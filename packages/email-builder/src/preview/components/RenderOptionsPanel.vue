@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { X } from '@lucide/vue';
+import { CloseIcon } from '@coolicons/vue';
 import type { PreviewRenderOptions } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 import AdvancedOptions from './renderOptions/AdvancedOptions.vue';
@@ -29,7 +29,7 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 		<div class="ep-settings-header">
 			<span class="ep-settings-title">{{ t('builder.preview.renderOptions.title') }}</span>
 			<button class="ep-settings-close" @click="emit('close')">
-				<X class="ep-settings-close-icon" />
+				<CloseIcon class="ep-settings-close-icon" />
 			</button>
 		</div>
 

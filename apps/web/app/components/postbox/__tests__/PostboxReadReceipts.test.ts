@@ -22,7 +22,6 @@ function mountReceipts(receipt: ReadReceiptRecord, recipients: string[]) {
 		props: { receipt, recipients },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: { props: ['name'], template: '<span />' } },
 		},
 	});
 }

@@ -79,7 +79,6 @@ function mountPage() {
 			mocks: { formatDate: () => 'Mar 3, 2026' },
 			components: { UiQueryBoundary: QueryBoundary, ContactsContactRow: ContactRow },
 			stubs: {
-				Icon: true,
 				UiModal: ModalStub,
 				UiPageHeader: { template: '<header><slot name="actions" /></header>' },
 				AudienceTabs: true,

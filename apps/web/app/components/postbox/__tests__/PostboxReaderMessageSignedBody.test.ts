@@ -172,7 +172,6 @@ function mountCard(
 				PostboxSchedulingChip: marker('PostboxSchedulingChip'),
 				PostboxDeliveryStrip: marker('PostboxDeliveryStrip'),
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

@@ -22,8 +22,6 @@ beforeAll(() => {
 	Object.assign(globalThis, { useClickOutside, useI18n: i18nStubs.useI18n });
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 let wrapper: VueWrapper | null = null;
 let outside: HTMLElement | null = null;
 
@@ -40,7 +38,7 @@ function mountMenu(): VueWrapper {
 				<button role="menuitem" class="stay">Forward</button>
 			</template>`,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 	return wrapper;
 }

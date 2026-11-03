@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
+import { CheckIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	importProgress:
@@ -34,9 +35,10 @@ const suppressionSummary = computed(() => {
 					importProgress?.status === 'failed' ? 'bg-error/10' : 'bg-success/10',
 				]"
 			>
-				<Icon
-					:name="importProgress?.status === 'failed' ? 'lucide:alert-triangle' : 'lucide:check'"
+				<component
+					:is="importProgress?.status === 'failed' ? TriangleWarningIcon : CheckIcon"
 					:class="['w-8 h-8', importProgress?.status === 'failed' ? 'text-error' : 'text-success']"
+					size="1em"
 				/>
 			</div>
 			<p class="text-lg font-medium text-text-primary">

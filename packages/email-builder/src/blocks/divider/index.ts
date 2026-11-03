@@ -1,4 +1,4 @@
-import { Minus } from '@lucide/vue';
+import { MinusIcon } from '@coolicons/vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type { EditorModule } from '../_module';
 import type { DividerBlockContent } from '../../types';
@@ -7,7 +7,7 @@ import { dividerSchema } from '../../schema/definitions/divider';
 export const dividerEditor: EditorModule<'divider'> = {
 	type: 'divider',
 	label: 'Divider',
-	icon: Minus,
+	icon: MinusIcon,
 	schema: dividerSchema,
 	slashCommand: {
 		name: 'Divider',

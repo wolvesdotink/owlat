@@ -3,6 +3,14 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { InboxListThread } from '~/composables/useInboxListActions';
 import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import {
+	CircleCheckIcon,
+	ClockIcon,
+	SquareCheckIcon,
+	SquareMinusIcon,
+	UserCheckCornerIcon,
+	UserPlusCornerIcon,
+} from '@coolicons/vue';
 
 /** The verbs a Team Inbox row's swipe can fire. */
 export type InboxRowSwipeAction = 'resolve' | 'snooze' | 'none';
@@ -58,14 +66,14 @@ export function useInboxRowMenu(opts: {
 				label: selected
 					? t('components.inbox.inboxThreadRow.deselect')
 					: t('components.inbox.inboxThreadRow.select'),
-				icon: selected ? 'lucide:square-minus' : 'lucide:square-check',
+				icon: selected ? SquareMinusIcon : SquareCheckIcon,
 				...keyed('inboxList.toggleSelect'),
 				run: () => opts.toggleSelect(thread),
 			},
 			{
 				id: 'assign-to-me',
 				label: counted('components.inbox.rowMenu.assignToMe', n),
-				icon: 'lucide:user-check',
+				icon: UserCheckCornerIcon,
 				separatorBefore: true,
 				...keyed('inboxList.assignToMe'),
 				run: () => opts.assignToMe(targets),
@@ -73,21 +81,21 @@ export function useInboxRowMenu(opts: {
 			{
 				id: 'assign',
 				label: counted('components.inbox.rowMenu.assign', n),
-				icon: 'lucide:user-plus',
+				icon: UserPlusCornerIcon,
 				...keyed('inboxList.assign'),
 				run: () => opts.openAssign(thread, targets),
 			},
 			{
 				id: 'resolve',
 				label: counted('components.inbox.inboxThreadRow.resolve', n),
-				icon: 'lucide:check-circle',
+				icon: CircleCheckIcon,
 				...keyed('inboxList.resolve'),
 				run: () => opts.resolve(targets),
 			},
 			{
 				id: 'snooze',
 				label: counted('components.inbox.rowMenu.snooze', n),
-				icon: 'lucide:clock',
+				icon: ClockIcon,
 				...keyed('inboxList.snooze'),
 				run: () => opts.snooze(targets),
 			},

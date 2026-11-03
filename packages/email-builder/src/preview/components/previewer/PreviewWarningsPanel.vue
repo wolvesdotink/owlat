@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, X } from '@lucide/vue';
+import { CloseIcon, TriangleWarningIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -17,11 +17,11 @@ const emit = defineEmits<{
 	<div class="ep-warnings-panel">
 		<div class="ep-warnings-header">
 			<span class="ep-warnings-title">
-				<AlertTriangle class="ep-warnings-title-icon" />
+				<TriangleWarningIcon class="ep-warnings-title-icon" />
 				{{ t('builder.preview.warnings.title', { count: renderWarnings.length }) }}
 			</span>
 			<button class="ep-warnings-close" @click="emit('close')">
-				<X class="ep-warnings-close-icon" />
+				<CloseIcon class="ep-warnings-close-icon" />
 			</button>
 		</div>
 		<ul class="ep-warnings-list">

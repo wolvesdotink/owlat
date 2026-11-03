@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { TrashIcon } from '@coolicons/vue';
 
 /**
  * Workspace → General → Danger zone: deleting the whole workspace.
@@ -50,7 +51,7 @@ async function handleDelete() {
 		<UiCard padding="none" overflow="hidden" class="border-error/20">
 			<template #header>
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
+					<UiIconBox :icon="TrashIcon" size="sm" variant="error" rounded="lg" />
 					<div>
 						<h2 id="danger-zone-heading" class="text-lg font-semibold text-error">
 							{{ t('dashboard.admin.team.dangerZone.heading') }}
@@ -68,7 +69,7 @@ async function handleDelete() {
 				</p>
 				<UiButton variant="danger" @click="showDeleteModal = true">
 					<template #iconLeft>
-						<Icon name="lucide:trash-2" class="h-4 w-4" />
+						<TrashIcon class="h-4 w-4" />
 					</template>
 					{{ t('dashboard.admin.team.dangerZone.title') }}
 				</UiButton>

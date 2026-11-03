@@ -6,13 +6,15 @@
  * place of the reader (Postbox) and of the conversation (Answer mode), which
  * pass the way out as the action.
  */
+import { MailCloseIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 </script>
 
 <template>
 	<div class="flex h-full items-center justify-center" data-testid="postbox-message-not-found">
 		<UiEmptyState
-			icon="lucide:mail-x"
+			:icon="MailCloseIcon"
 			:title="t('components.postbox.postboxMessageNotFound.title')"
 			:description="t('components.postbox.postboxMessageNotFound.body')"
 		>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { PencilIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * The file detail page's tags card: the tags a person set (editable by admins,
@@ -56,7 +57,7 @@ const cancelEditTags = () => {
 				@click="startEditTags"
 				:aria-label="t('common.edit')"
 			>
-				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" />
 			</button>
 		</div>
 
@@ -103,7 +104,7 @@ const cancelEditTags = () => {
 						:key="tag"
 						class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-brand-subtle/50 text-brand"
 					>
-						<Icon name="lucide:sparkles" class="w-3 h-3" />
+						<SparklesIcon class="w-3 h-3" />
 						{{ tag }}
 					</span>
 				</div>

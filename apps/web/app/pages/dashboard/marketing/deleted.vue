@@ -15,6 +15,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatRelativeTime } from '~/utils/formatters';
+import { TrashIcon, UndoIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -141,7 +142,7 @@ function meta(row: DeletedRow): string {
 
 		<UiCard v-if="!hasActiveOrganization || !kind" padding="none" overflow="hidden">
 			<UiEmptyState
-				icon="lucide:trash-2"
+				:icon="TrashIcon"
 				:title="t('dashboard.marketing.deleted.unavailable.title')"
 				:description="t('dashboard.marketing.deleted.unavailable.description')"
 			/>
@@ -171,7 +172,7 @@ function meta(row: DeletedRow): string {
 			>
 				<UiCard v-if="rows.length === 0" padding="none" overflow="hidden">
 					<UiEmptyState
-						icon="lucide:trash-2"
+						:icon="TrashIcon"
 						:title="t('dashboard.marketing.deleted.empty.title')"
 						:description="t('dashboard.marketing.deleted.empty.description')"
 					/>
@@ -197,7 +198,7 @@ function meta(row: DeletedRow): string {
 								:aria-label="t('dashboard.marketing.deleted.restoreNamed', { name: row.name })"
 								@click="restore(row)"
 							>
-								<template #iconLeft><Icon name="lucide:undo-2" class="h-4 w-4" /></template>
+								<template #iconLeft><UndoIcon class="h-4 w-4" /></template>
 								{{ t('dashboard.marketing.deleted.restore') }}
 							</UiButton>
 						</li>

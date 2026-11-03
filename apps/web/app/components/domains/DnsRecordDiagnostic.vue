@@ -4,6 +4,8 @@
  * at the name — the value it found, so the operator can compare found against
  * expected instead of just seeing a red status. Split out of `DNSRecordPanel`.
  */
+import { CheckIcon, CircleWarningIcon, CopyIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	verification?: { verified: boolean; error?: string; foundValue?: string };
 	/** Prefix for the copied-state key, unique per record. */
@@ -35,7 +37,7 @@ const handleCopyFound = () => {
 		data-testid="dns-diagnostic"
 	>
 		<p class="flex items-start gap-2 text-xs font-medium text-error">
-			<Icon name="lucide:alert-circle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+			<CircleWarningIcon class="mt-0.5 w-3.5 h-3.5 shrink-0" />
 			<span data-testid="dns-diagnostic-error">{{ diagnostic.error }}</span>
 		</p>
 		<div v-if="diagnostic.foundValue" class="mt-2">
@@ -57,12 +59,8 @@ const handleCopyFound = () => {
 						:aria-label="t('components.domains.dnsRecordPanel.copyFoundValue')"
 						@click="handleCopyFound"
 					>
-						<Icon
-							v-if="isCopied(`${copyKey}-found`)"
-							name="lucide:check"
-							class="w-4 h-4 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="isCopied(`${copyKey}-found`)" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 			</div>

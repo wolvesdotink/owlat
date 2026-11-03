@@ -8,6 +8,7 @@ import RecipientFooter from '~/components/recipient/RecipientFooter.vue';
 import BookingMeetingSummary from '~/components/booking/BookingMeetingSummary.vue';
 import { fetchBookingPage, type BookingPageData } from '~/lib/bookingClient';
 import { bookingErrorKey, isUnreachableReason } from '~/utils/bookingErrors';
+import { ChevronRightIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -72,7 +73,7 @@ onMounted(async () => {
 								t('components.booking.summary.duration', { minutes: meeting.durationMinutes })
 							}}</span>
 						</span>
-						<Icon name="lucide:chevron-right" class="h-5 w-5 shrink-0 text-text-tertiary" />
+						<ChevronRightIcon class="h-5 w-5 shrink-0 text-text-tertiary" />
 					</NuxtLink>
 				</li>
 			</ul>

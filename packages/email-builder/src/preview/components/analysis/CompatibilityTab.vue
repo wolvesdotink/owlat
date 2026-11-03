@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { AlertCircle, AlertTriangle, Info, Loader2 } from '@lucide/vue';
+import { CircleInfoIcon, CircleWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import type { CompatibilityIssue, CompatibilityReport } from '../../types';
 import { scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
@@ -47,7 +48,7 @@ const compatibilityScoreColor = computed(() => {
 		{{ t('builder.analysis.compatibility.selectClient') }}
 	</AnalysisEmpty>
 	<AnalysisEmpty v-else-if="isAnalyzing" class="ep-compat-pending" role="status">
-		<Loader2 class="ep-compat-spinner" aria-hidden="true" />
+		<SpinnerIcon class="ep-compat-spinner" aria-hidden="true" />
 		{{ t('builder.analysis.compatibility.checking', { client: selectedClientName }) }}
 	</AnalysisEmpty>
 	<AnalysisEmpty
@@ -56,7 +57,7 @@ const compatibilityScoreColor = computed(() => {
 		role="alert"
 		:title="compatibilityError"
 	>
-		<AlertCircle class="ep-compat-failed-icon" aria-hidden="true" />
+		<CircleWarningIcon class="ep-compat-failed-icon" aria-hidden="true" />
 		{{ t('builder.analysis.compatibility.failed', { client: selectedClientName }) }}
 	</AnalysisEmpty>
 	<template v-else-if="compatibilityReport">
@@ -76,7 +77,7 @@ const compatibilityScoreColor = computed(() => {
 		<!-- Issues -->
 		<div v-if="compatibilityIssues.errors.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-errors">
-				<AlertCircle class="ep-compat-group-icon" />
+				<CircleWarningIcon class="ep-compat-group-icon" />
 				{{
 					t('builder.analysis.compatibility.errors', {
 						count: compatibilityIssues.errors.length,
@@ -94,7 +95,7 @@ const compatibilityScoreColor = computed(() => {
 		</div>
 		<div v-if="compatibilityIssues.warnings.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-warnings">
-				<AlertTriangle class="ep-compat-group-icon" />
+				<TriangleWarningIcon class="ep-compat-group-icon" />
 				{{
 					t('builder.analysis.compatibility.warnings', {
 						count: compatibilityIssues.warnings.length,
@@ -112,7 +113,7 @@ const compatibilityScoreColor = computed(() => {
 		</div>
 		<div v-if="compatibilityIssues.info.length > 0" class="ep-compat-group">
 			<div class="ep-compat-group-title ep-compat-info">
-				<Info class="ep-compat-group-icon" />
+				<CircleInfoIcon class="ep-compat-group-icon" />
 				{{
 					t('builder.analysis.compatibility.notes', {
 						count: compatibilityIssues.info.length,

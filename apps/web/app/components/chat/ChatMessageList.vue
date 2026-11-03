@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { useReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useVirtualList } from '@owlat/ui/composables/useVirtualList';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
+import { ChatCircleIcon } from '@coolicons/vue';
 
 interface Props {
 	messages: ChatMessageRow[];
@@ -176,7 +177,7 @@ watch(
 			<div
 				class="w-12 h-12 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
 			>
-				<Icon name="lucide:message-circle" class="w-6 h-6 text-text-tertiary" />
+				<ChatCircleIcon class="w-6 h-6 text-text-tertiary" />
 			</div>
 			<p class="text-text-secondary font-medium">
 				{{ t('components.chat.chatMessageList.emptyTitle') }}

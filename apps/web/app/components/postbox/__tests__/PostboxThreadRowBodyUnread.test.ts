@@ -23,7 +23,7 @@ beforeAll(() => {
 });
 
 const components = { PostboxRowCore, PostboxUnreadMark };
-const stubs = { PostboxThreadRowFollowUp: true, Icon: true };
+const stubs = { PostboxThreadRowFollowUp: true };
 
 function mountRow(msg: Record<string, unknown>, opts: { priority?: boolean } = {}) {
 	return mount(PostboxThreadRowBody, {

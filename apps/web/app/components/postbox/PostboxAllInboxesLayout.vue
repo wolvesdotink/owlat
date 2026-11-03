@@ -23,6 +23,7 @@ import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFil
 import { providePostboxRowInbox } from '~/composables/postbox/usePostboxRowInbox';
 import { usePostboxAllInboxesFeed } from '~/composables/postbox/usePostboxAllInboxesFeed';
 import PostboxAllInboxesRail from './PostboxAllInboxesRail.vue';
+import { CloseIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	activeMessageId?: string | null;
@@ -184,7 +185,7 @@ const advanceIds = computed(
 							@click="clearCategory"
 						>
 							{{ t(`components.postbox.allInboxes.category.${category}`) }}
-							<Icon name="lucide:x" class="size-3" />
+							<CloseIcon class="size-3" />
 						</button>
 					</div>
 					<PostboxTriageFilterChips

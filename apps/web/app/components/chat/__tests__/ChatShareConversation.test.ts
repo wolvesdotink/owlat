@@ -75,7 +75,6 @@ afterEach(() => {
 });
 
 const stubs = {
-	Icon: true,
 	UiSpinner: true,
 	ChatDialogShell: {
 		props: ['title'],

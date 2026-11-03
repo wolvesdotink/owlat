@@ -16,6 +16,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
+import { EyeOffIcon, LockIcon, UserIcon, UsersIcon } from '@coolicons/vue';
 
 type ShareReview = NonNullable<FunctionReturnType<typeof api.knowledge.sharing.getShareReview>>;
 
@@ -93,7 +94,7 @@ async function confirm(): Promise<void> {
 
 <template>
 	<UiButton variant="secondary" class="gap-2" @click="start">
-		<Icon name="lucide:users" class="w-4 h-4" />
+		<UsersIcon class="w-4 h-4" />
 		{{ t('components.knowledge.shareWithMembers.action') }}
 	</UiButton>
 
@@ -115,7 +116,7 @@ async function confirm(): Promise<void> {
 			class="flex items-start gap-2 rounded-lg bg-bg-surface p-3 text-sm text-text-secondary"
 			data-testid="share-unavailable"
 		>
-			<Icon name="lucide:eye-off" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+			<EyeOffIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
 			<span>{{ t('components.knowledge.shareWithMembers.unavailable') }}</span>
 		</p>
 		<p v-else-if="!reviewed" class="text-sm text-text-tertiary">
@@ -131,7 +132,7 @@ async function confirm(): Promise<void> {
 				class="flex items-start gap-2 rounded-lg bg-warning/10 p-3 text-sm text-text-primary"
 				data-testid="share-blocked"
 			>
-				<Icon name="lucide:lock" class="w-4 h-4 mt-0.5 text-warning shrink-0" />
+				<LockIcon class="w-4 h-4 mt-0.5 text-warning shrink-0" />
 				<span>{{ blockedCopy }}</span>
 			</div>
 
@@ -195,7 +196,7 @@ async function confirm(): Promise<void> {
 						class="flex items-center gap-2 text-sm"
 						data-testid="share-contact"
 					>
-						<Icon name="lucide:user" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+						<UserIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 						<template v-if="contact.name || contact.email">
 							<NuxtLink
 								:to="`/dashboard/audience/contacts/${contact.contactId}`"

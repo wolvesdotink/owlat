@@ -32,7 +32,6 @@ function mountActions(fromAddress?: string) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiButton: { template: '<button type="button"><slot /></button>' },
 				PostboxOverflowMenu: {
 					setup: () => ({ close }),

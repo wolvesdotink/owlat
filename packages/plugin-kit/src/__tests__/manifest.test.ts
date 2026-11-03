@@ -89,7 +89,7 @@ describe('plugin manifest validation', () => {
 						section: 'audience',
 						name: 'Reports',
 						href: '/dashboard/audience/reports',
-						icon: 'lucide:chart-bar',
+						icon: 'coolicons:chart-bar-vertical',
 					},
 				],
 				settingsPanels: [
@@ -97,7 +97,7 @@ describe('plugin manifest validation', () => {
 						id: 'reports',
 						name: 'Reports',
 						href: '/dashboard/admin/reports',
-						icon: 'lucide:chart-bar',
+						icon: 'coolicons:chart-bar-vertical',
 					},
 				],
 				webhookEvents: [

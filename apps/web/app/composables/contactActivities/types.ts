@@ -18,11 +18,12 @@
 
 import type { ContactActivityType } from '../../../../api/convex/contactActivities/catalog';
 import type { MetadataFor } from '../../../../api/convex/contactActivities/writer';
+import type { IconComponent } from '@coolicons/vue';
 
 export type { ContactActivityType, MetadataFor };
 
 export interface ContactActivityDisplayConfig {
-	readonly icon: string;
+	readonly icon: IconComponent;
 	/** Catalog key for the timeline label — resolved with `t()` at render time. */
 	readonly label: string;
 	readonly color: string;

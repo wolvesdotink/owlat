@@ -21,7 +21,6 @@ beforeAll(() => {
 });
 
 const stubs = {
-	Icon: true,
 	UiCard: { template: '<div><slot /></div>' },
 	UiIconBox: true,
 	UiSpinner: true,

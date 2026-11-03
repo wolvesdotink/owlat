@@ -179,7 +179,6 @@ function mountPage() {
 			PostboxSearchRewrite: rewriteStub,
 		},
 		stubs: {
-			Icon: true,
 			I18nT: true,
 			PostboxThreadListSkeleton: true,
 			PostboxEmptyState: true,

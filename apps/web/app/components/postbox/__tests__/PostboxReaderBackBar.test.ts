@@ -36,7 +36,7 @@ function mountBar(props: { zen: boolean; activeMessageId?: string }) {
 			orderedIds: ['a', 'b', 'c'],
 			...props,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 	return wrapper;
 }

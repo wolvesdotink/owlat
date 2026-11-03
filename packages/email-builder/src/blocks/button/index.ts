@@ -1,4 +1,4 @@
-import { MousePointerClick } from '@lucide/vue';
+import { CursorClickIcon } from '@coolicons/vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type { EditorModule } from '../_module';
 import type { ButtonBlockContent } from '../../types';
@@ -9,7 +9,7 @@ import { computeButtonTextColor } from '../../utils/colors';
 export const buttonEditor: EditorModule<'button'> = {
 	type: 'button',
 	label: 'Button',
-	icon: MousePointerClick,
+	icon: CursorClickIcon,
 	schema: buttonSchema,
 	slashCommand: {
 		name: 'Button',

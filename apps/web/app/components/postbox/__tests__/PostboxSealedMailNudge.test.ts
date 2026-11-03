@@ -38,10 +38,9 @@ beforeEach(() => {
 	navigate.mockClear();
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const mountNudge = () =>
 	mount(PostboxSealedMailNudge, {
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 
 describe('PostboxSealedMailNudge', () => {

@@ -1,4 +1,4 @@
-import { Columns } from '@lucide/vue';
+import { ColumnsIcon } from '@coolicons/vue';
 import type { EditorModule, NestedChild } from '../_module';
 import type { BlockType } from '../../types';
 import { columnsSchema } from '../../schema/definitions/columns';
@@ -7,7 +7,7 @@ import { editorModuleFor, getAllEditorModules } from '../_registry';
 export const columnsEditor: EditorModule<'columns'> = {
 	type: 'columns',
 	label: 'Columns',
-	icon: Columns,
+	icon: ColumnsIcon,
 	schema: columnsSchema,
 	slashCommand: {
 		name: 'Columns',

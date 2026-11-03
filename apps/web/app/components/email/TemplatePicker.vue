@@ -18,6 +18,7 @@
  */
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
+import { CheckIcon, SearchIcon } from '@coolicons/vue';
 
 type TemplateType = 'marketing' | 'transactional';
 
@@ -102,8 +103,7 @@ function choose(template: Doc<'emailTemplates'>) {
 		input-testid="template-picker-input"
 	>
 		<template #leading>
-			<Icon
-				name="lucide:search"
+			<SearchIcon
 				class="w-4 h-4 text-text-tertiary absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
 			/>
 		</template>
@@ -171,7 +171,7 @@ function choose(template: Doc<'emailTemplates'>) {
 								]"
 								aria-hidden="true"
 							>
-								<Icon name="lucide:check" class="w-3 h-3" />
+								<CheckIcon class="w-3 h-3" />
 							</span>
 						</div>
 					</template>

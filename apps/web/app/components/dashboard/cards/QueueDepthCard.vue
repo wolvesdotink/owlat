@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { formatNumber } from '~/utils/formatters';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { LayersIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -60,7 +61,7 @@ const maxCount = computed(() => {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:layers" size="sm" variant="surface" />
+					<UiIconBox :icon="LayersIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.queueDepthCard.title') }}
 					</h3>

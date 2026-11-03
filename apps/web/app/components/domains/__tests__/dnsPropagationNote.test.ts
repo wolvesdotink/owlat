@@ -17,7 +17,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 // The note renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
-const stubs = { Icon: { props: ['name'], template: '<i :data-icon="name" />' } };
+const stubs = {};
 
 function mountNote() {
 	return mount(DnsPropagationNote, { global: { plugins: [createTestI18n()], stubs } });

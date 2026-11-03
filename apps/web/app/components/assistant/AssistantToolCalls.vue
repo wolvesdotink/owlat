@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, WrenchIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 export interface AssistantToolCall {
 	toolCallId: string;
 	toolName: string;
@@ -41,10 +44,10 @@ const summary = computed(() =>
 			class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
 			@click="open = !open"
 		>
-			<Icon name="lucide:wrench" class="w-3.5 h-3.5 flex-shrink-0" />
+			<WrenchIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			<span class="truncate">{{ summary }}</span>
-			<Icon
-				:name="open ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+			<component
+				:is="open ? ChevronDownIcon : ChevronRightIcon"
 				class="w-3.5 h-3.5 ml-auto flex-shrink-0"
 			/>
 		</button>
@@ -52,17 +55,15 @@ const summary = computed(() =>
 		<div v-if="open" class="border-t border-border-subtle px-3 py-2 space-y-2">
 			<div v-for="tc in toolCalls" :key="tc.toolCallId" class="text-xs">
 				<div class="flex items-center gap-2 font-medium text-text-secondary">
-					<Icon
+					<SpinnerIcon
 						v-if="tc.status === 'running'"
-						name="lucide:loader-circle"
-						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none text-brand"
+						class="w-3.5 h-3.5 text-brand"
 					/>
-					<Icon
+					<CheckIcon
 						v-else-if="tc.status === 'done'"
-						name="lucide:check"
 						class="w-3.5 h-3.5 text-success"
 					/>
-					<Icon v-else name="lucide:x" class="w-3.5 h-3.5 text-error" />
+					<CloseIcon v-else class="w-3.5 h-3.5 text-error" />
 					<span>{{ label(tc.toolName) }}</span>
 					<code class="text-[10px] text-text-tertiary">{{ tc.toolName }}</code>
 				</div>

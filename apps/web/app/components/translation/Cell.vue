@@ -2,6 +2,7 @@
 import type { TranslationCellStatus } from '~/composables/useTranslationDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { CheckIcon, CircleWarningIcon, CloseIcon } from '@coolicons/vue';
 
 interface Props {
 	value: string;
@@ -155,7 +156,7 @@ watch(editValue, () => {
 						:aria-label="saveTitle"
 						@click="saveEdit"
 					>
-						<Icon name="lucide:check" class="w-4 h-4" />
+						<CheckIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip :text="t('components.translation.cell.cancelTitle')">
@@ -165,7 +166,7 @@ watch(editValue, () => {
 						:aria-label="t('components.translation.cell.cancelTitle')"
 						@click="cancelEdit"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</div>
@@ -249,7 +250,7 @@ watch(editValue, () => {
 			</p>
 			<div v-else-if="hasError" class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
 				<p :id="statusId" class="flex items-center gap-1 text-xs text-error" role="alert">
-					<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 shrink-0" />
+					<CircleWarningIcon class="w-3.5 h-3.5 shrink-0" />
 					{{
 						status === 'conflict'
 							? t('components.translation.cell.conflict')

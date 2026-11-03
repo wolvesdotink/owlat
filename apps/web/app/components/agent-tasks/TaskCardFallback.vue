@@ -14,6 +14,7 @@
  */
 import { computed } from 'vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
+import { CircleHelpIcon, ExternalLinkIcon, EyeOffIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -57,14 +58,14 @@ const kindLabel = computed(() =>
 const copy = computed(() =>
 	props.reason === 'disabled'
 		? {
-				icon: 'lucide:eye-off',
+				icon: EyeOffIcon,
 				title: t('components.agentTasks.taskCardFallback.disabled.title', {
 					label: kindLabel.value,
 				}),
 				body: t('components.agentTasks.taskCardFallback.disabled.body'),
 			}
 		: {
-				icon: 'lucide:help-circle',
+				icon: CircleHelpIcon,
 				title: t('components.agentTasks.taskCardFallback.unknown.title'),
 				body: t('components.agentTasks.taskCardFallback.unknown.body'),
 			}
@@ -115,7 +116,7 @@ const copy = computed(() =>
 				class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 				@click="emit('open')"
 			>
-				<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+				<ExternalLinkIcon class="w-3.5 h-3.5" />
 				{{ t('common.open') }}
 			</button>
 		</div>

@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { ShieldCheckIcon } from '@coolicons/vue';
 
 export const doiAttestedEditorModule: ContactActivityEditorModule<'doi_attested'> = {
 	literal: 'doi_attested',
 	displayConfig: {
-		icon: 'lucide:shield-check',
+		icon: ShieldCheckIcon,
 		label: 'DOI Attested',
 		color: 'text-success',
 	},

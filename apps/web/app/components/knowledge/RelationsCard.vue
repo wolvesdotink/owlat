@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { RELATION_TYPES, entryTypeIcon, type RelationType } from '~/utils/knowledgeEntryTypes';
 import { useKnowledgeDetailLabels } from '~/composables/useKnowledgeDetailLabels';
+import { CloseIcon, PlusIcon } from '@coolicons/vue';
 
 type Relation = {
 	_id: string;
@@ -108,7 +109,7 @@ const handleRemoveRelation = async (relationId: string) => {
 				class="gap-1.5"
 				@click="showRelationForm = true"
 			>
-				<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+				<PlusIcon class="w-3.5 h-3.5" />
 				{{ t('dashboard.knowledge.detail.addRelation') }}
 			</UiButton>
 		</div>
@@ -144,7 +145,7 @@ const handleRemoveRelation = async (relationId: string) => {
 						:aria-label="t('dashboard.knowledge.detail.clearSelection')"
 						@click="selectedTarget = null"
 					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
+						<CloseIcon class="w-3.5 h-3.5" />
 					</button>
 				</div>
 				<template v-else>
@@ -167,8 +168,8 @@ const handleRemoveRelation = async (relationId: string) => {
 							class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-surface transition-colors"
 							@click="selectTarget(candidate)"
 						>
-							<Icon
-								:name="entryTypeIcon(candidate.entryType)"
+							<component
+								:is="entryTypeIcon(candidate.entryType)"
 								class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0"
 							/>
 							<span class="text-sm text-text-primary truncate">{{ candidate.title }}</span>

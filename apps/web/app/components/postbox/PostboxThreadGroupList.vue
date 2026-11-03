@@ -12,6 +12,7 @@ import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	threads: PostboxConversationThread[];
@@ -107,7 +108,7 @@ const { handleScroll } = usePostboxListAutoLoad({
 		<!-- The conversation view only serves the inbox, so empty means inbox zero. -->
 		<PostboxEmptyState
 			v-else-if="threads.length === 0"
-			icon="lucide:check-circle-2"
+			:icon="CircleCheckIcon"
 			:title="t('components.postbox.postboxThreadGroupList.allClear')"
 		/>
 		<!-- role=listbox owns the full scroll height (so the scrollbar reflects every

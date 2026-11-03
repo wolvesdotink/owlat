@@ -17,7 +17,6 @@ function mountForm(policy = { isEnabled: false, quietDays: 7 }) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiCard: { template: '<section><slot /></section>' },
 				UiSwitch: {
 					props: ['modelValue', 'label'],

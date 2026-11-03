@@ -278,7 +278,6 @@ deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
 deferred 55 PostboxUndoSendToast
 deferred 3 backendConnection
-deferred 2 components
 deferred 55 components/AppCommandPalette.vue
 deferred 15 components/KeyboardShortcutsHelp.vue
 deferred 11 components/SendTestEmailModal.vue
@@ -309,6 +308,7 @@ deferred 7 lib/desktop/deepLink.client.ts
 deferred 5 lib/desktop/desktopAuthClient.ts
 deferred 15 lib/desktop/desktopBoot.client.ts
 deferred 4 lib/localPerfTraceInstall.client.ts
+deferred 12 lib/navIconFills.ts
 deferred 9 lib/postboxVcardTransfer.ts
 deferred 3 middleware/admin.ts
 deferred 8 middleware/auth.ts

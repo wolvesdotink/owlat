@@ -98,7 +98,6 @@ const globalOptions = {
 		PostboxRowCore,
 		PostboxThreadListSkeleton,
 		PostboxEmptyState,
-		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		UiContextMenu: {
 			props: ['items'],

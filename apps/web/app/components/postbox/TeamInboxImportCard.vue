@@ -23,6 +23,14 @@
 import type { Id } from '@owlat/api/dataModel';
 import { formatNumber } from '~/utils/formatters';
 import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
+import {
+	BrainIcon,
+	CircleCheckIcon,
+	ClockIcon,
+	DownloadIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -115,10 +123,7 @@ const errorPreview = computed(() => {
 		     so an inbox mid-import would flash the Start button before flipping
 		     to a progress bar. -->
 		<div v-if="isLoading" data-testid="team-inbox-import-loading" class="p-4 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 
 		<!-- ── Idle: explain, offer the opt-in, start ───────────────────────── -->
@@ -140,7 +145,7 @@ const errorPreview = computed(() => {
 				:loading="startBusy"
 				@click="handleStart"
 			>
-				<Icon name="lucide:download" class="w-4 h-4 mr-1.5" />
+				<DownloadIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.admin.team.inboxes.import.start') }}
 			</UiButton>
 		</div>
@@ -159,7 +164,7 @@ const errorPreview = computed(() => {
 			<!-- Paused for the provider's daily download budget: a wait with a known
 			     end, which the worker resumes by itself — not an error to act on. -->
 			<div v-if="isPaused" data-testid="team-inbox-import-paused" class="flex items-start gap-2">
-				<Icon name="lucide:clock" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+				<ClockIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
 				<div>
 					<p class="text-sm text-text-primary">
 						{{ t('dashboard.admin.team.inboxes.import.paused', { when: resumesAtLabel }) }}
@@ -235,7 +240,7 @@ const errorPreview = computed(() => {
 			class="space-y-3"
 		>
 			<div class="flex items-start gap-2">
-				<Icon name="lucide:check-circle-2" class="w-4 h-4 mt-0.5 text-success shrink-0" />
+				<CircleCheckIcon class="w-4 h-4 mt-0.5 text-success shrink-0" />
 				<div>
 					<p class="text-sm text-text-primary">
 						{{
@@ -266,7 +271,7 @@ const errorPreview = computed(() => {
 				class="rounded-lg border border-border-subtle p-3 space-y-3"
 			>
 				<div class="flex items-start gap-2">
-					<Icon name="lucide:brain" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+					<BrainIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
 					<div>
 						<p class="text-sm text-text-primary">
 							{{ t('dashboard.admin.team.inboxes.import.learnTitle') }}
@@ -304,7 +309,7 @@ const errorPreview = computed(() => {
 		<!-- ── Failed ───────────────────────────────────────────────────────── -->
 		<div v-else-if="step === 'failed'" data-testid="team-inbox-import-failed" class="space-y-3">
 			<div class="flex items-start gap-2">
-				<Icon name="lucide:triangle-alert" class="w-4 h-4 mt-0.5 text-error shrink-0" />
+				<TriangleWarningIcon class="w-4 h-4 mt-0.5 text-error shrink-0" />
 				<div>
 					<p class="text-sm text-text-primary">
 						{{ t('dashboard.admin.team.inboxes.import.failed') }}

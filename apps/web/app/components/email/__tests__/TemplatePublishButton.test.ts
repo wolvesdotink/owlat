@@ -41,7 +41,6 @@ function mountButton(props: {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton },
-			stubs: { Icon: true },
 		},
 	});
 	return wrapper;

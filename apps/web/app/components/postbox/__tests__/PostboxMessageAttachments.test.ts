@@ -27,7 +27,6 @@ function mountRows(indexing?: AttachmentIndexing) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true },
 			components: { MailMessageAttachmentList },
 		},
 	});

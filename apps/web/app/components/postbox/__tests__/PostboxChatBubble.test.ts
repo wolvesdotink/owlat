@@ -47,7 +47,7 @@ function message(overrides: Partial<PostboxReaderMessage> = {}): PostboxReaderMe
 function mountBubble(props: { message?: PostboxReaderMessage; own?: boolean }) {
 	return mount(PostboxChatBubble, {
 		props: { message: message(), own: false, ...props },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true, UiAvatar: true } },
+		global: { plugins: [createTestI18n()], stubs: { UiAvatar: true } },
 	});
 }
 

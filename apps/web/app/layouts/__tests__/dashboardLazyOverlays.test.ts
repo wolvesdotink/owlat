@@ -120,7 +120,6 @@ function mountLayout(): VueWrapper {
 				AppLiveRegion: true,
 				AppCommandPaletteFooter: true,
 				QueryResult: true,
-				Icon: true,
 				UiBadge: true,
 				UiSkeleton: true,
 				UiSpinner: true,

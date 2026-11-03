@@ -6,6 +6,7 @@
  * `DNSRecordPanel`.
  */
 import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
+import { CheckIcon, CopyIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	coexistence: SpfCoexistenceSuggestion;
@@ -22,7 +23,7 @@ const handleCopyMerged = () => copy(props.coexistence.merged, `${props.copyKey}-
 <template>
 	<div class="mt-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
 		<p class="flex items-start gap-2 text-xs font-medium text-warning">
-			<Icon name="lucide:alert-triangle" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+			<TriangleWarningIcon class="mt-0.5 w-3.5 h-3.5 shrink-0" />
 			<I18nT
 				keypath="components.domains.dnsRecordPanel.coexistenceWarning"
 				tag="span"
@@ -60,12 +61,8 @@ const handleCopyMerged = () => copy(props.coexistence.merged, `${props.copyKey}-
 						:aria-label="t('components.domains.dnsRecordPanel.copyMergedValue')"
 						@click="handleCopyMerged"
 					>
-						<Icon
-							v-if="isCopied(`${copyKey}-merged`)"
-							name="lucide:check"
-							class="w-4 h-4 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="isCopied(`${copyKey}-merged`)" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 			</div>

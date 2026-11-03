@@ -8,6 +8,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
+import { MailIcon } from '@coolicons/vue';
 
 /** Exactly one of `roomId` and `conversation`; `audience` goes with `conversation`. */
 interface Props {
@@ -114,7 +115,7 @@ const formatTime = (timestamp: number) => {
 						class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors"
 						@click="linkAndClose(thread._id)"
 					>
-						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+						<MailIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 						<div class="flex-1 min-w-0">
 							<div class="text-sm font-medium text-text-primary truncate">
 								{{ thread.subject }}

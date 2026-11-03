@@ -6,6 +6,8 @@
  * step), Discard leaves the selection untouched. Nothing is ever auto-applied.
  */
 
+import { CheckIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 defineProps<{
@@ -57,7 +59,7 @@ const emit = defineEmits<{
 				class="inline-flex items-center gap-1 rounded bg-brand px-2.5 py-1 text-xs font-medium text-text-inverse hover:opacity-90"
 				@click="emit('apply')"
 			>
-				<Icon name="lucide:check" class="h-3.5 w-3.5" />
+				<CheckIcon class="h-3.5 w-3.5" />
 				{{ t('common.apply') }}
 			</button>
 		</div>

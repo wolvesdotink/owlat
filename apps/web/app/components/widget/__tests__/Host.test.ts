@@ -34,7 +34,7 @@ function moduleFor(component: Component, extra: Partial<WidgetModule> = {}): Wid
 	return moduleForLoader(() => Promise.resolve(component), extra);
 }
 
-const mountOpts = { global: { stubs: { Icon: true }, plugins: [createTestI18n()] } };
+const mountOpts = { global: { plugins: [createTestI18n()] } };
 
 afterEach(() => {
 	vi.restoreAllMocks();

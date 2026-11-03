@@ -3,6 +3,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
+import {
+	CircleCheckIcon,
+	ClockIcon,
+	LinkIcon,
+	PlusIcon,
+	ReloadIcon,
+	TrashIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // Tracking domains let an org serve open/click tracking from its own branded
 // host (CNAME → the shared tracking endpoint) instead of the platform domain,
@@ -130,7 +139,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 				class="gap-2 shrink-0 self-start whitespace-nowrap sm:self-auto"
 				@click="addModal.open()"
 			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('components.domains.trackingDomainsSection.addButton') }}
 			</UiButton>
 		</div>
@@ -138,7 +147,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<!-- Info card -->
 		<div class="card p-6 bg-brand/5 border-brand/20 mb-4">
 			<div class="flex gap-4">
-				<UiIconBox icon="lucide:link" size="sm" variant="brand" rounded="lg" />
+				<UiIconBox :icon="LinkIcon" size="sm" variant="brand" rounded="lg" />
 				<div>
 					<h3 class="font-medium text-text-primary mb-1">
 						{{ t('components.domains.trackingDomainsSection.info.title') }}
@@ -177,14 +186,14 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		     h2 above it. -->
 		<div v-else-if="trackingDomains && trackingDomains.length === 0" class="card">
 			<UiEmptyState
-				icon="lucide:link"
+				:icon="LinkIcon"
 				:heading-level="3"
 				:title="t('components.domains.trackingDomainsSection.empty.title')"
 				:description="t('components.domains.trackingDomainsSection.empty.body')"
 			>
 				<template #action>
 					<UiButton variant="secondary" class="gap-2" @click="addModal.open()">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('components.domains.trackingDomainsSection.empty.action') }}
 					</UiButton>
 				</template>
@@ -201,7 +210,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					@click="toggleExpansion(td._id)"
 				>
 					<div class="flex items-center gap-4">
-						<UiIconBox icon="lucide:link" size="sm" variant="surface" rounded="lg" />
+						<UiIconBox :icon="LinkIcon" size="sm" variant="surface" rounded="lg" />
 						<div>
 							<div class="flex items-center gap-3">
 								<p class="font-medium text-text-primary">{{ td.domain }}</p>
@@ -213,10 +222,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 											: 'bg-warning/20 text-warning border-warning/30',
 									]"
 								>
-									<Icon
-										:name="td.isVerified ? 'lucide:check-circle-2' : 'lucide:clock'"
-										class="w-3 h-3"
-									/>
+									<component :is="td.isVerified ? CircleCheckIcon : ClockIcon" class="w-3 h-3" />
 									{{
 										td.isVerified
 											? t('components.domains.trackingDomainsSection.status.verified')
@@ -247,12 +253,8 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 								:disabled="verifyingId === td._id"
 								@click.stop="handleVerify(td._id)"
 							>
-								<Icon
-									v-if="verifyingId === td._id"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+								<SpinnerIcon v-if="verifyingId === td._id" class="w-4 h-4" />
+								<ReloadIcon v-else class="w-4 h-4" />
 								{{
 									verifyingId === td._id
 										? t('components.domains.trackingDomainsSection.verifying')
@@ -267,7 +269,7 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 								:aria-label="t('components.domains.trackingDomainsSection.removeTitle')"
 								@click.stop="deleteModal.open(td)"
 							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<div

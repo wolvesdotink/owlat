@@ -10,6 +10,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { useAddCampaignSender } from '~/composables/useAddCampaignSender';
+import { CircleCheckIcon, PlusIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{
 	added: [senderId: Id<'campaignSenders'>];
@@ -60,9 +61,9 @@ async function add() {
 			]"
 			data-testid="add-sender-verification"
 		>
-			<Icon
+			<component
 				v-if="verification.tone !== 'neutral'"
-				:name="verification.tone === 'success' ? 'lucide:check-circle' : 'lucide:alert-triangle'"
+				:is="verification.tone === 'success' ? CircleCheckIcon : TriangleWarningIcon"
 				class="w-3.5 h-3.5 shrink-0 mt-px"
 			/>
 			<span>
@@ -85,7 +86,7 @@ async function add() {
 				@click="add"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t(`${prefix}.submit`) }}
 			</UiButton>

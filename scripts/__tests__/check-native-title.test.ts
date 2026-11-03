@@ -21,7 +21,7 @@ describe('nativeTitleSites', () => {
 			title="Archive"
 			@click="archive"
 		>
-			<Icon name="lucide:archive" />
+			<ArchiveIcon />
 		</button>
 		<a href="/x" :title="t('open')">Open</a>
 		<input v-bind:title="hint" />

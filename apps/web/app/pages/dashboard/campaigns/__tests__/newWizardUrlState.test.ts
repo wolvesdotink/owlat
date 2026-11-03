@@ -90,7 +90,6 @@ const stepStubs = {
 			return this.open ? h('div', { class: 'leave-dialog' }) : null;
 		},
 	}),
-	Icon: Blank,
 };
 
 /** The page's collaborators; a test that mounts a real step adds that step's on top. */

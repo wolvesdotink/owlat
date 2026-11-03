@@ -8,6 +8,8 @@
  * the <KnowledgeGraphView> also gates its own render and skips every Convex read
  * until the flag resolves on, so this is defence-in-depth, not the only gate.
  */
+import { ListUnorderedIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.knowledge.graph.pageTitle') });
@@ -27,7 +29,7 @@ definePageMeta({
 		>
 			<template #actions>
 				<UiButton variant="secondary" to="/dashboard/knowledge" class="gap-2">
-					<Icon name="lucide:list" class="w-4 h-4" />
+					<ListUnorderedIcon class="w-4 h-4" />
 					{{ t('dashboard.knowledge.graph.listView') }}
 				</UiButton>
 			</template>

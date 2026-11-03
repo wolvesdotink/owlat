@@ -43,7 +43,7 @@ function mountGuard() {
 		props: { mailboxId: null, loading: false },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, NuxtLink: true, UiButton: true },
+			stubs: { NuxtLink: true, UiButton: true },
 		},
 	});
 }
@@ -95,7 +95,7 @@ describe('PostboxMailboxGuard failed mailbox read (#721)', () => {
 				loading: false,
 				error: new Error('[CONVEX Q(mail/mailbox/identity:list)] Server Error'),
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: true, NuxtLink: true } },
+			global: { plugins: [createTestI18n()], stubs: { NuxtLink: true } },
 		});
 
 		expect(w.text()).toContain('Failed to load');

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ReaderTranslationState } from '~/composables/postbox/usePostboxReaderTranslation';
+import { TranslateIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The reader's translation panel: the newest message somebody else wrote,
@@ -26,7 +28,7 @@ const { t } = useI18n();
 		:aria-label="t('postbox.reader.translation.heading', { language })"
 	>
 		<div class="flex items-center gap-2 px-3 py-2">
-			<Icon name="lucide:languages" class="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
+			<TranslateIcon class="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
 			<p class="flex-1 text-xs font-medium text-text-secondary">
 				{{ t('postbox.reader.translation.heading', { language }) }}
 			</p>
@@ -44,7 +46,7 @@ const { t } = useI18n();
 				v-if="state.status === 'loading'"
 				class="flex items-center gap-1.5 text-xs text-text-tertiary"
 			>
-				<Icon name="lucide:loader-2" class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon class="w-3.5 h-3.5" />
 				{{ t('postbox.reader.translation.loading') }}
 			</p>
 			<div v-else-if="state.status === 'error'" class="flex items-center gap-2 text-xs">

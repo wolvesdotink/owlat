@@ -12,6 +12,7 @@
 import type { ProviderRouteMessageType } from '~/utils/providerRouteOptions';
 import { useLocalized } from '~/composables/useLocalized';
 import type { LocalizedText } from '~/utils/localizedText';
+import { RotateLeftIcon, ServerIcon, Slider1Icon, type IconComponent } from '@coolicons/vue';
 
 interface RouteProvider {
 	providerType: string;
@@ -33,7 +34,7 @@ interface RouteSummary {
 const props = defineProps<{
 	messageType: {
 		value: ProviderRouteMessageType;
-		icon: string;
+		icon: IconComponent;
 		/** Labels in the definition set are message KEYS, per the registry convention. */
 		label: LocalizedText;
 		description: LocalizedText;
@@ -61,7 +62,7 @@ const description = computed(() => localized(props.messageType.description));
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-start gap-4">
 				<div class="p-3 rounded-lg bg-bg-surface flex items-center justify-center">
-					<Icon :name="messageType.icon" class="w-6 h-6 text-text-secondary" />
+					<component :is="messageType.icon" class="w-6 h-6 text-text-secondary" />
 				</div>
 				<div>
 					<h3 class="text-lg font-medium text-text-primary">{{ label }}</h3>
@@ -77,7 +78,7 @@ const description = computed(() => localized(props.messageType.description));
 
 					<!-- Default fallback summary -->
 					<p v-else class="mt-3 text-xs text-text-tertiary inline-flex items-center gap-1.5">
-						<Icon name="lucide:server" class="w-3.5 h-3.5" />
+						<ServerIcon class="w-3.5 h-3.5" />
 						{{
 							defaultProviderName
 								? t('dashboard.admin.delivery.providerRouting.usingDefaultNamed', {
@@ -100,11 +101,11 @@ const description = computed(() => localized(props.messageType.description));
 						:aria-label="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
 						@click="emit('reset')"
 					>
-						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
+						<RotateLeftIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 				<UiButton variant="secondary" class="gap-2" @click="emit('edit')">
-					<Icon name="lucide:settings-2" class="w-4 h-4" />
+					<Slider1Icon class="w-4 h-4" />
 					{{ route ? t('common.edit') : t('dashboard.admin.delivery.providerRouting.configure') }}
 				</UiButton>
 			</div>

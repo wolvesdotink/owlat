@@ -33,6 +33,8 @@ import { mboxExportFilename, writeMailboxMboxExport } from '~/utils/mboxExport';
 import { useLocalized } from '~/composables/useLocalized';
 import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
+import { DownloadIcon, ShieldCheckIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 const localized = useLocalized();
@@ -99,7 +101,7 @@ async function downloadAllMail() {
 <template>
 	<section class="card !p-0">
 		<header class="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
-			<UiIconBox icon="lucide:shield-check" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="ShieldCheckIcon" size="sm" variant="surface" rounded="lg" />
 			<div class="min-w-0">
 				<h2 class="font-semibold text-text-primary">
 					{{ t('components.preferences.preferencesYourData.title') }}
@@ -166,12 +168,8 @@ async function downloadAllMail() {
 					:disabled="isExportingMail || !currentMailbox"
 					@click="downloadAllMail"
 				>
-					<Icon
-						v-if="isExportingMail"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:download" class="w-4 h-4" />
+					<SpinnerIcon v-if="isExportingMail" class="w-4 h-4" />
+					<DownloadIcon v-else class="w-4 h-4" />
 					{{
 						isExportingMail
 							? t('components.preferences.preferencesYourData.mailExportRunning')

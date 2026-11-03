@@ -3,12 +3,13 @@
  *
  * The review used to list raw flag keys (`campaigns.archive`, `scan.content`)
  * as chips and leave Launch disabled with no reason next to it. This module
- * derives the two things the page needs instead:
+ * derives what the page needs instead:
  *
  *  - the active features grouped by the pack they belong to, so the page can
  *    name each one by its label under a pack heading;
  *  - every reason Launch is blocked, each pointing at the step (or field) that
- *    fixes it.
+ *    fixes it;
+ *  - the places offered once setup is done.
  *
  * Pure, so both are unit-testable without mounting the page. Copy is message
  * KEYS; the page resolves them.
@@ -20,8 +21,16 @@ import {
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
+import { GlobeIcon, InboxIcon, UserPlusCornerIcon } from '@coolicons/vue';
 import { adminIsValid } from './setupWizardValidation';
 import type { AdminDraft } from './useSetupWizard';
+
+/** Where the finished setup points the operator next, each a page behind the sign-in. */
+export const SETUP_NEXT_STEPS = [
+	{ id: 'domain', icon: GlobeIcon, to: '/dashboard/admin/delivery/domains' },
+	{ id: 'team', icon: UserPlusCornerIcon, to: '/dashboard/admin/team' },
+	{ id: 'postbox', icon: InboxIcon, to: '/dashboard/postbox' },
+] as const;
 
 export interface ReviewFeatureGroup {
 	/** The pack these features belong to, or `'other'` for flags outside every pack. */

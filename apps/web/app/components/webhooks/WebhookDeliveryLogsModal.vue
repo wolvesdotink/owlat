@@ -1,5 +1,8 @@
 <script setup lang="ts">
 // --- Created Webhook Secret Modal ---
+import { CheckIcon, CircleWarningIcon, CopyIcon, ReloadIcon, TrashIcon, WebhookIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 interface CreatedWebhookProps {
 	showCreatedWebhook: boolean;
 	createdWebhook: { name: string; url: string; secret: string } | null;
@@ -51,7 +54,7 @@ const emit = defineEmits<{
 			<!-- Header -->
 			<div class="flex items-center gap-3 mb-6">
 				<div class="p-2 rounded-lg bg-success/10">
-					<Icon name="lucide:webhook" class="w-5 h-5 text-success" />
+					<WebhookIcon class="w-5 h-5 text-success" />
 				</div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.webhooks.webhookDeliveryLogsModal.created.title') }}
@@ -61,7 +64,7 @@ const emit = defineEmits<{
 			<!-- Content -->
 			<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
 						<p class="text-sm font-medium text-warning">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.created.copyNow') }}
@@ -96,8 +99,8 @@ const emit = defineEmits<{
 						{{ createdWebhook.secret }}
 					</code>
 					<UiButton variant="secondary" class="shrink-0 gap-2" @click="emit('copySecret')">
-						<Icon v-if="copiedSecret" name="lucide:check" class="w-4 h-4 text-success" />
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="copiedSecret" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 						{{
 							copiedSecret
 								? t('components.webhooks.webhookDeliveryLogsModal.copied')
@@ -133,7 +136,7 @@ const emit = defineEmits<{
 		<!-- Content - Before Regeneration -->
 		<div v-if="!regeneratedSecret" class="flex items-start gap-4">
 			<div class="p-3 rounded-full bg-warning/10 shrink-0">
-				<Icon name="lucide:refresh-cw" class="w-6 h-6 text-warning" />
+				<ReloadIcon class="w-6 h-6 text-warning" />
 			</div>
 			<div>
 				<I18nT
@@ -156,7 +159,7 @@ const emit = defineEmits<{
 		<div v-else>
 			<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
 						<p class="text-sm font-medium text-warning">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.copyNow') }}
@@ -183,8 +186,8 @@ const emit = defineEmits<{
 						class="shrink-0 gap-2"
 						@click="emit('copyRegeneratedSecret')"
 					>
-						<Icon v-if="copiedRegeneratedSecret" name="lucide:check" class="w-4 h-4 text-success" />
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="copiedRegeneratedSecret" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 						{{
 							copiedRegeneratedSecret
 								? t('components.webhooks.webhookDeliveryLogsModal.copied')
@@ -210,7 +213,7 @@ const emit = defineEmits<{
 				:disabled="isRegenerating"
 				@click="emit('regenerate')"
 			>
-				<Icon v-if="isRegenerating" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon v-if="isRegenerating" class="w-4 h-4" />
 				{{
 					isRegenerating
 						? t('components.webhooks.webhookDeliveryLogsModal.regenerate.submitting')
@@ -236,7 +239,7 @@ const emit = defineEmits<{
 	>
 		<div class="flex items-start gap-4">
 			<div class="p-3 rounded-full bg-error/10 shrink-0">
-				<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
+				<TrashIcon class="w-6 h-6 text-error" />
 			</div>
 			<div>
 				<I18nT
@@ -265,7 +268,7 @@ const emit = defineEmits<{
 				:disabled="isDeleting"
 				@click="emit('confirmDelete')"
 			>
-				<Icon v-if="isDeleting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon v-if="isDeleting" class="w-4 h-4" />
 				{{
 					isDeleting
 						? t('components.webhooks.webhookDeliveryLogsModal.delete.submitting')

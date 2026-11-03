@@ -9,6 +9,7 @@
  */
 import { WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { ClockIcon, SaveIcon } from '@coolicons/vue';
 
 interface Props {
 	enabled?: boolean;
@@ -123,7 +124,7 @@ const handleSave = () => {
 	<UiCard data-testid="working-hours">
 		<div class="flex items-center justify-between mb-4">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:clock" size="sm" variant="surface" />
+				<UiIconBox :icon="ClockIcon" size="sm" variant="surface" />
 				<div>
 					<div class="flex items-center gap-2">
 						<h3 class="text-base font-medium text-text-primary">
@@ -212,7 +213,7 @@ const handleSave = () => {
 
 		<div class="flex justify-end mt-5 pt-4 border-t border-border-subtle">
 			<UiButton class="gap-2" :disabled="busy" @click="handleSave">
-				<Icon name="lucide:save" class="w-4 h-4" />
+				<SaveIcon class="w-4 h-4" />
 				{{ t('components.autonomy.autonomyWorkingHours.save') }}
 			</UiButton>
 		</div>

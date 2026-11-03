@@ -181,7 +181,6 @@ function mountStep(
 				CampaignsChangedSinceLastSend: true,
 				CampaignsPresendChecksPanel: presendPanelStub,
 				CampaignsSendTimingOptions: true,
-				Icon: true,
 				I18nT: passthroughStub,
 			},
 		},

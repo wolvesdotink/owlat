@@ -28,7 +28,6 @@ Object.assign(globalThis, {
 });
 
 const formStubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	// The receiving-mode choice has its own suite (externalReceiving.test.ts);
 	// inert here so these assertions stay about the return path.
@@ -143,7 +142,7 @@ function mountEditor(props: Record<string, unknown> = {}) {
 			canManage: true,
 			...props,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -257,7 +256,6 @@ describe('ReturnPathEditor — edit affordance', () => {
 // ── C1 carry-forward: zone-framed "Configure these DNS records" heading ─────
 
 const rowStubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	DomainsDNSRecordPanel: { template: '<div />' },
 	DomainsReceivingDnsSection: { template: '<div />' },

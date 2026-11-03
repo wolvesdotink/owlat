@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { PropertyField } from '../../schema/types';
 import { createArrayItem } from '../../schema/arrayItem';
-import { GripVertical, Plus, Trash2 } from '@lucide/vue';
+import { DragVerticalIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
@@ -82,7 +82,7 @@ function handleReorder(newItems: unknown[]) {
 		>
 			<div v-for="(item, index) in items" :key="index" class="group/item flex items-start gap-1 p-1.5 border border-border-subtle rounded-lg bg-bg-surface transition-[border-color] duration-(--motion-fast) hover:border-border-strong">
 				<div class="array-editor-drag-handle flex items-center py-1 cursor-grab text-text-tertiary opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast) active:cursor-grabbing">
-					<GripVertical :size="12" />
+					<DragVerticalIcon :size="12" />
 				</div>
 
 				<div class="flex-1 flex flex-col gap-1 min-w-0">
@@ -170,7 +170,7 @@ function handleReorder(newItems: unknown[]) {
 				</div>
 
 				<IconButton
-					:icon="Trash2"
+					:icon="TrashIcon"
 					:title="t('builder.panel.array.remove')"
 					:aria-label="t('builder.panel.array.removeItem', { index: index + 1 })"
 					size="sm"
@@ -181,6 +181,6 @@ function handleReorder(newItems: unknown[]) {
 			</div>
 		</VueDraggable>
 
-		<ActionButton :icon="Plus" :label="t('builder.panel.array.add')" @click="addItem" />
+		<ActionButton :icon="PlusIcon" :label="t('builder.panel.array.add')" @click="addItem" />
 	</div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
+import { ArrowRightIcon, CircleInfoIcon, KeyIcon, ShieldOffIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -98,7 +99,7 @@ const recordedAtLabel = computed(() =>
 		<div
 			class="flex items-start gap-3 rounded-xl border border-border-subtle bg-bg-surface p-4 text-sm text-text-secondary"
 		>
-			<Icon name="lucide:info" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+			<CircleInfoIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 			<I18nT keypath="dashboard.admin.backups.honestyNote" tag="p" scope="global">
 				<template #you>
 					<span class="font-medium text-text-primary">{{
@@ -130,7 +131,7 @@ const recordedAtLabel = computed(() =>
 
 					<div v-if="!state" class="mt-4">
 						<UiEmptyState
-							icon="lucide:shield-off"
+							:icon="ShieldOffIcon"
 							:title="t('dashboard.admin.backups.noPlanTitle')"
 							:description="t('dashboard.admin.backups.noPlanDescription')"
 						/>
@@ -267,7 +268,7 @@ const recordedAtLabel = computed(() =>
 					     without the instance secret OR the per-address recovery kits. -->
 					<div class="rounded-lg border border-warning/40 bg-warning/5 p-4">
 						<div class="flex items-start gap-3">
-							<Icon name="lucide:key-round" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+							<KeyIcon class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 							<div class="space-y-2">
 								<p class="text-sm font-medium text-text-primary">
 									{{ t('dashboard.admin.backups.sealedMailTitle') }}
@@ -290,7 +291,7 @@ const recordedAtLabel = computed(() =>
 									class="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
 								>
 									{{ t('dashboard.admin.backups.sealedMailLink') }}
-									<Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
+									<ArrowRightIcon class="h-3.5 w-3.5" />
 								</NuxtLink>
 							</div>
 						</div>

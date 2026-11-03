@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatNumber } from '~/utils/formatters';
+import { ClockIcon, CloudDownloadIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * The mail import wizard's two running steps: downloading the mail
@@ -37,7 +38,7 @@ function formatCount(value: number | undefined): string {
 			     card and bar, but saying when it picks up again — the worker
 			     resumes it unaided, so there is nothing to press. -->
 			<div v-if="isPaused" data-testid="migrate-paused" class="flex items-center gap-3">
-				<UiIconBox icon="lucide:clock" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="ClockIcon" size="md" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="font-semibold">
 						{{ t('dashboard.postbox.migrate.pausedTitle', { when: resumesAtLabel }) }}
@@ -48,7 +49,7 @@ function formatCount(value: number | undefined): string {
 				</div>
 			</div>
 			<div v-else class="flex items-center gap-3">
-				<UiIconBox icon="lucide:download-cloud" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="CloudDownloadIcon" size="md" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="font-semibold">
 						{{
@@ -99,7 +100,7 @@ function formatCount(value: number | undefined): string {
 	<section v-else class="space-y-5">
 		<UiCard padding="lg">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:sparkles" size="md" variant="success" rounded="xl" />
+				<UiIconBox :icon="SparklesIcon" size="md" variant="success" rounded="xl" />
 				<div>
 					<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.indexingTitle') }}</h2>
 					<p class="text-sm text-text-secondary">

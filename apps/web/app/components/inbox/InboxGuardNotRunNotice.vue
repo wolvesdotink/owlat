@@ -7,6 +7,7 @@
  */
 import { GUARD_NOT_RUN_REASON_KEYS, type GuardNotRunMarker } from '~/utils/guardNotRun';
 import { formatDateTime } from '~/utils/formatters';
+import { ShieldHelpIcon } from '@coolicons/vue';
 
 const props = defineProps<{ marker: GuardNotRunMarker }>();
 
@@ -21,11 +22,7 @@ const recordedAt = computed(() => formatDateTime(props.marker.at));
 		data-testid="thread-guard-not-run"
 		:data-reason="marker.reason"
 	>
-		<Icon
-			name="lucide:shield-question"
-			class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary"
-			aria-hidden="true"
-		/>
+		<ShieldHelpIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 		<div class="min-w-0 text-xs">
 			<p class="font-medium text-text-primary">{{ t('components.inbox.guardNotRun.title') }}</p>
 			<p class="mt-0.5 text-text-secondary">{{ t(GUARD_NOT_RUN_REASON_KEYS[marker.reason]) }}</p>

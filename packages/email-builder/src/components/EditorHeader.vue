@@ -2,19 +2,19 @@
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import {
-	ArrowLeft,
-	Save,
-	Loader2,
-	Eye,
-	Code2,
-	Maximize2,
-	Minimize2,
-	Undo2,
-	Redo2,
-	Settings,
-	Keyboard,
-	Palette,
-} from '@lucide/vue';
+	ArrowLeftIcon,
+	CodeIcon,
+	ExpandIcon,
+	EyeIcon,
+	KeyboardIcon,
+	PaletteIcon,
+	RedoIcon,
+	SaveIcon,
+	SettingsIcon,
+	ShrinkIcon,
+	UndoIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import type { PreviewMode, EmailBuilderConfig } from '../types';
@@ -109,7 +109,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:aria-label="t('builder.header.back')"
 					@click="emit('back')"
 				>
-					<ArrowLeft class="w-5 h-5" aria-hidden="true" />
+					<ArrowLeftIcon class="w-5 h-5" aria-hidden="true" />
 				</UiButton>
 			</UiTooltip>
 
@@ -142,15 +142,12 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				@update:model-value="emit('toggle-preview')"
 			>
 				<template #option-edit>
-					<Code2 class="w-4 h-4" />
+					<CodeIcon class="w-4 h-4" />
 					{{ t('builder.header.edit') }}
 				</template>
 				<template #option-preview>
-					<Loader2
-						v-if="isGeneratingHtml"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Eye v-else class="w-4 h-4" />
+					<SpinnerIcon v-if="isGeneratingHtml" class="w-4 h-4" />
+					<EyeIcon v-else class="w-4 h-4" />
 					{{ t('builder.header.preview') }}
 				</template>
 			</UiSegmentedControl>
@@ -164,8 +161,8 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:aria-pressed="isFocusMode"
 					@click="emit('toggle-focus-mode')"
 				>
-					<Minimize2 v-if="isFocusMode" class="w-4 h-4" />
-					<Maximize2 v-else class="w-4 h-4" />
+					<ShrinkIcon v-if="isFocusMode" class="w-4 h-4" />
+					<ExpandIcon v-else class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 
@@ -179,7 +176,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 						:aria-label="undoTitle"
 						@click="emit('undo')"
 					>
-						<Undo2 class="w-4 h-4" />
+						<UndoIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 				<UiTooltip :text="redoTitle">
@@ -190,7 +187,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 						:aria-label="redoTitle"
 						@click="emit('redo')"
 					>
-						<Redo2 class="w-4 h-4" />
+						<RedoIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 			</div>
@@ -204,7 +201,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:aria-label="t('builder.header.shortcuts')"
 					@click="emit('show-shortcuts')"
 				>
-					<Keyboard class="w-4 h-4" />
+					<KeyboardIcon class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 
@@ -217,7 +214,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					data-testid="apply-brand-kit"
 					@click="emit('apply-brand')"
 				>
-					<Palette class="w-4 h-4" />
+					<PaletteIcon class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 
@@ -234,15 +231,15 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:aria-label="settingsLabel"
 					@click="emit('settings')"
 				>
-					<Settings class="w-4 h-4" />
+					<SettingsIcon class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 
 			<!-- Save Button, or the host's save status where it saves on its own -->
 			<slot name="save-status">
 				<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
-					<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-					<Save v-else class="w-4 h-4" />
+					<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+					<SaveIcon v-else class="w-4 h-4" />
 					{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
 				</UiButton>
 			</slot>

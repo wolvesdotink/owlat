@@ -16,6 +16,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 import { formatRelativeTime } from '~/utils/formatters';
+import { ArrowRightIcon, CircleWarningIcon, FilePlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(
 	defineProps<{
@@ -90,7 +92,7 @@ const reportDomain = computed(() => {
 				data-testid="dmarc-reports-link"
 			>
 				{{ t('components.domains.dmarcReporting.openReports') }}
-				<Icon name="lucide:arrow-right" class="h-3.5 w-3.5" />
+				<ArrowRightIcon class="h-3.5 w-3.5" />
 			</NuxtLink>
 		</div>
 
@@ -98,7 +100,7 @@ const reportDomain = computed(() => {
 			{{ t('components.domains.dmarcReporting.loading') }}
 		</p>
 		<p v-else-if="error" class="mt-2 flex items-start gap-2 text-sm text-text-secondary">
-			<Icon name="lucide:alert-circle" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+			<CircleWarningIcon class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 			{{ t('components.domains.dmarcReporting.error') }}
 		</p>
 
@@ -131,9 +133,10 @@ const reportDomain = computed(() => {
 						:disabled="isUpdating"
 						@click="requestReports"
 					>
-						<Icon
-							:name="isUpdating ? 'lucide:loader-2' : 'lucide:file-plus'"
+						<component
+							:is="isUpdating ? SpinnerIcon : FilePlusIcon"
 							:class="['h-4 w-4', isUpdating && 'animate-spin motion-reduce:animate-none']"
+							size="1em"
 						/>
 						{{ t('components.domains.dmarcReporting.owlat.update') }}
 					</UiButton>

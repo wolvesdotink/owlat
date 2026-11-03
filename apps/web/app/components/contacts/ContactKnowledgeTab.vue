@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { entryTypeIcon, entryTypeLabel, entryTypeVariant } from '~/utils/knowledgeEntryTypes';
+import { BrainIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -56,7 +57,7 @@ const truncate = (text: string, max = 100): string => {
 			v-else-if="!entries || entries.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox icon="lucide:brain" size="lg" variant="surface" rounded="full" class="mb-3" />
+			<UiIconBox :icon="BrainIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
 				{{ t('components.contacts.contactKnowledgeTab.emptyTitle') }}
 			</p>
@@ -76,7 +77,7 @@ const truncate = (text: string, max = 100): string => {
 				<div class="flex items-start gap-3">
 					<!-- Type icon -->
 					<div class="flex-shrink-0 p-1.5 rounded-lg bg-bg-elevated">
-						<Icon :name="typeIcon(entry.entryType)" class="w-4 h-4 text-text-tertiary" />
+						<component :is="typeIcon(entry.entryType)" class="w-4 h-4 text-text-tertiary" />
 					</div>
 
 					<div class="flex-1 min-w-0">

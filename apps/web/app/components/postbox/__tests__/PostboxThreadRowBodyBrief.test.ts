@@ -50,7 +50,6 @@ function mountRow(top: Record<string, unknown>) {
 			stubs: {
 				PostboxRowCore: { template: '<div><slot /></div>' },
 				PostboxThreadRowFollowUp: true,
-				Icon: true,
 			},
 		},
 	});

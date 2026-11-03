@@ -94,7 +94,6 @@ function mountWith(translations: string | undefined) {
 				UiQueryBoundary: Passthrough,
 				UiUnsavedChangesDialog: true,
 				UiSpinner: true,
-				Icon: true,
 			},
 		},
 	});

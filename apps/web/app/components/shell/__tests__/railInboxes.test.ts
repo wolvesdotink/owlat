@@ -71,7 +71,6 @@ function mountRail() {
 			plugins: [createTestI18n()],
 			components: { NuxtLink: NuxtLinkStub },
 			stubs: {
-				Icon: true,
 				UiTooltip: { template: '<div><slot /></div>' },
 				InboxChip: true,
 				ShellSidebarOptions: true,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { ArrowLeftIcon, MailIcon, ZapIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -50,7 +51,7 @@ const contactName = computed(() => {
 			v-else-if="!send"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="MailIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.send.transactional.detail.sends.detail.notFound.title') }}
 			</p>
@@ -70,7 +71,7 @@ const contactName = computed(() => {
 					:to="'/dashboard/send/transactional'"
 					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
+					<ArrowLeftIcon class="w-4 h-4" />
 					{{ t('dashboard.send.transactional.detail.sends.detail.backToList') }}
 				</NuxtLink>
 
@@ -79,7 +80,7 @@ const contactName = computed(() => {
 						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-tertiary">
 							<DashboardSendStatusBadge :status="send.status" fallback="sent" />
 							<div v-if="send.transactionalEmail" class="flex items-center gap-2">
-								<Icon name="lucide:zap" class="w-4 h-4" />
+								<ZapIcon class="w-4 h-4" />
 								<span>{{ send.transactionalEmail.name }}</span>
 								<span class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">
 									{{ send.transactionalEmail.slug }}

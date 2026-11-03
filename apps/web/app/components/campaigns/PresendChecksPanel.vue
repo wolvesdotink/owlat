@@ -11,6 +11,17 @@
  */
 import type { PresendSummary } from '~/lib/presendChecks/checks';
 import type { PresendCheck, PresendStatus } from '~/lib/presendChecks/types';
+import {
+	CheckIcon,
+	ChevronRightIcon,
+	CircleCheckIcon,
+	CircleMinusIcon,
+	OctagonCloseIcon,
+	ReloadIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(
 	defineProps<{
@@ -71,15 +82,12 @@ function toggleItems(id: string) {
 const visibleItems = (check: PresendCheck) =>
 	expanded.value.has(check.id) ? check.items : check.items.slice(0, ITEM_PREVIEW);
 
-const STATUS_ICON: Record<PresendStatus, { name: string; tone: string }> = {
-	blocking: { name: 'lucide:octagon-x', tone: 'text-error' },
-	warning: { name: 'lucide:triangle-alert', tone: 'text-warning' },
-	pending: {
-		name: 'lucide:loader-circle',
-		tone: 'text-text-tertiary animate-spin motion-reduce:animate-none',
-	},
-	skipped: { name: 'lucide:circle-minus', tone: 'text-text-tertiary' },
-	pass: { name: 'lucide:circle-check', tone: 'text-success' },
+const STATUS_ICON: Record<PresendStatus, { name: IconComponent; tone: string }> = {
+	blocking: { name: OctagonCloseIcon, tone: 'text-error' },
+	warning: { name: TriangleWarningIcon, tone: 'text-warning' },
+	pending: { name: SpinnerIcon, tone: 'text-text-tertiary' },
+	skipped: { name: CircleMinusIcon, tone: 'text-text-tertiary' },
+	pass: { name: CircleCheckIcon, tone: 'text-success' },
 };
 
 const headline = computed(() => {
@@ -115,7 +123,7 @@ const headline = computed(() => {
 				@click="emit('retry')"
 			>
 				<template v-if="!isChecking" #iconLeft>
-					<Icon name="lucide:refresh-cw" class="h-4 w-4" />
+					<ReloadIcon class="h-4 w-4" />
 				</template>
 				{{ t(`${KEY}.recheck`) }}
 			</UiButton>
@@ -130,8 +138,8 @@ const headline = computed(() => {
 				:data-status="check.status"
 			>
 				<div class="flex items-start gap-3">
-					<Icon
-						:name="STATUS_ICON[check.status].name"
+					<component
+						:is="STATUS_ICON[check.status].name"
 						class="mt-0.5 h-5 w-5 shrink-0"
 						:class="STATUS_ICON[check.status].tone"
 					/>
@@ -193,11 +201,7 @@ const headline = computed(() => {
 				data-testid="presend-toggle-passed"
 				@click="showPassed = !showPassed"
 			>
-				<Icon
-					name="lucide:chevron-right"
-					class="h-4 w-4 transition-transform"
-					:class="showPassed && 'rotate-90'"
-				/>
+				<ChevronRightIcon class="h-4 w-4 transition-transform" :class="showPassed && 'rotate-90'" />
 				{{ t(`${KEY}.passed`, { count: passed.length }, passed.length) }}
 			</button>
 			<ul v-if="showPassed" class="mt-2 space-y-1.5 pl-6">
@@ -208,7 +212,7 @@ const headline = computed(() => {
 					:data-testid="`presend-check-${check.id}`"
 					data-status="pass"
 				>
-					<Icon name="lucide:circle-check" class="mt-0.5 h-4 w-4 shrink-0 text-success" />
+					<CircleCheckIcon class="mt-0.5 h-4 w-4 shrink-0 text-success" />
 					<span class="text-text-secondary">
 						<span class="text-text-primary">{{ t(`${KEY}.names.${check.id}`) }}:</span>
 						{{ localized(check.summary)
@@ -227,7 +231,7 @@ const headline = computed(() => {
 				{{ acknowledged ? t(`${KEY}.acknowledged`) : t(`${KEY}.warningsDontBlock`) }}
 			</p>
 			<UiButton v-if="!acknowledged" variant="secondary" size="sm" @click="emit('acknowledge')">
-				<template #iconLeft><Icon name="lucide:check" class="h-4 w-4" /></template>
+				<template #iconLeft><CheckIcon class="h-4 w-4" /></template>
 				{{ t(`${KEY}.markReviewed`) }}
 			</UiButton>
 		</div>

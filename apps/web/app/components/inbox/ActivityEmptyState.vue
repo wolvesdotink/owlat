@@ -14,6 +14,8 @@
  * one lead → one action); this component only decides the wording and who gets
  * the button.
  */
+import { ChatIcon, PlusIcon } from '@coolicons/vue';
+
 defineProps<{
 	/** Human channel label when a filter is active (e.g. "SMS"), else null. */
 	filterLabel?: string | null;
@@ -26,7 +28,7 @@ const { t } = useI18n();
 
 <template>
 	<UiEmptyState
-		icon="lucide:message-square"
+		:icon="ChatIcon"
 		:title="
 			filterLabel
 				? t('components.inbox.activityEmptyState.emptyForChannel', { channel: filterLabel })
@@ -40,7 +42,7 @@ const { t } = useI18n();
 				class="inline-flex items-center gap-1.5"
 				data-testid="connect-channel-cta"
 			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('components.inbox.activityEmptyState.connectChannel') }}
 			</UiButton>
 		</template>

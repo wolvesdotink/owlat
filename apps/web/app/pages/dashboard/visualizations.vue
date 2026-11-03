@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { ChartBarVerticalIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -63,7 +64,7 @@ const {
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
 			<UiIconBox
-				icon="lucide:bar-chart-3"
+				:icon="ChartBarVerticalIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"

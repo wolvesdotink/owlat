@@ -48,7 +48,7 @@ async function mountBody() {
 		props: { message: MESSAGE, find: null },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { PostboxImageBanner: true, PostboxReaderSkeleton: true, Icon: true },
+			stubs: { PostboxImageBanner: true, PostboxReaderSkeleton: true },
 		},
 	});
 	await flushPromises();

@@ -1,4 +1,5 @@
 import type { BlockType } from '@owlat/shared';
+import type { IconComponent } from '@coolicons/vue';
 
 export interface TemplatePreset {
 	id: string;
@@ -13,7 +14,7 @@ export interface TemplatePreset {
 	name: string;
 	/** MESSAGE KEY for the card's second line. */
 	description: string;
-	icon: string;
+	icon: IconComponent;
 	subject: string;
 	content: Array<{ id: string; type: BlockType; content: Record<string, unknown> }>;
 	previewHtml: string;

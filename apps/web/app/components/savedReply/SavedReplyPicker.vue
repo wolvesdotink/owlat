@@ -15,6 +15,7 @@ import { SAVED_REPLIES_CHORD } from '~/composables/useComposerSavedReplyPicker';
 import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
 import { rankSnippets } from '~/utils/postboxSnippets';
+import { BookmarkPlusIcon, ChatQuoteIcon, PaperclipIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	replies: EditorSnippet[];
@@ -88,7 +89,7 @@ function saveCurrent() {
 			data-testid="saved-reply-button"
 			@click="open = true"
 		>
-			<Icon name="lucide:message-square-quote" class="w-4 h-4" />
+			<ChatQuoteIcon class="w-4 h-4" />
 		</UiButton>
 	</UiTooltip>
 	<UiModal v-model:open="open" size="lg" :title="t('shared.savedReplies.picker.title')">
@@ -136,9 +137,8 @@ function saveCurrent() {
 						<span v-if="reply.shortcut" class="shrink-0 font-mono text-xs text-text-tertiary"
 							>;{{ reply.shortcut }}</span
 						>
-						<Icon
+						<PaperclipIcon
 							v-if="reply.attachmentCount"
-							name="lucide:paperclip"
 							class="size-3.5 shrink-0 text-text-tertiary"
 							:aria-label="t('shared.savedReplies.files', reply.attachmentCount)"
 							data-testid="saved-reply-has-files"
@@ -163,7 +163,7 @@ function saveCurrent() {
 					data-testid="saved-reply-save-current"
 					@click="saveCurrent"
 				>
-					<Icon name="lucide:bookmark-plus" class="w-4 h-4 mr-1.5" />
+					<BookmarkPlusIcon class="w-4 h-4 mr-1.5" />
 					{{
 						savesSelection
 							? t('shared.savedReplies.saveSelection')

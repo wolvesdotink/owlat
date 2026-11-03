@@ -8,6 +8,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { CoeditNoticeView } from '~/composables/useEmailEditorCoedit';
+import { GitMergeIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	notices: CoeditNoticeView[];
@@ -55,7 +56,7 @@ const shown = computed(() => props.notices.slice(0, 3));
 			:key="notice.noticeId"
 			class="flex items-start gap-3 rounded-lg border border-warning/30 bg-bg-elevated px-4 py-3 shadow-lg"
 		>
-			<Icon name="lucide:git-merge" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+			<GitMergeIcon class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 			<div class="min-w-0 flex-1">
 				<p class="text-sm text-text-primary">{{ message(notice) }}</p>
 				<p v-if="hasVersionHistory" class="mt-0.5 text-xs text-text-secondary">

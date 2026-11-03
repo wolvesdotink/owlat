@@ -6,6 +6,7 @@
  */
 import type { PostboxReaderMessage } from '~/composables/postbox/postboxReaderMessage';
 import type { PostboxThreadChat } from '~/composables/postbox/usePostboxThreadChat';
+import { ChatCircleIcon } from '@coolicons/vue';
 
 const props = defineProps<{ chat: PostboxThreadChat; message: PostboxReaderMessage }>();
 
@@ -31,7 +32,7 @@ const own = computed(() => props.chat.isOwn(props.message));
 			data-testid="chat-show-bubble"
 			@click="chat.showBubble(message._id)"
 		>
-			<Icon name="lucide:message-circle" class="h-3.5 w-3.5" aria-hidden="true" />
+			<ChatCircleIcon class="h-3.5 w-3.5" aria-hidden="true" />
 			{{ t('components.postbox.threadChat.backToChat') }}
 		</button>
 		<slot />

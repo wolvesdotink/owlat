@@ -36,7 +36,6 @@ function mountPicker(
 			stubs: {
 				UiButton: { template: '<button type="button" v-bind="$attrs"><slot /></button>' },
 				UiSkeleton: true,
-				Icon: true,
 			},
 		},
 	});

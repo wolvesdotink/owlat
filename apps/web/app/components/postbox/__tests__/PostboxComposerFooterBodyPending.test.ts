@@ -64,7 +64,6 @@ function mountFooter(bodyPending: boolean, dictationTarget?: { insertText: () =>
 				},
 			},
 			stubs: {
-				Icon: true,
 				PostboxComposerPreflightChip: true,
 				PostboxPreviewAsSent: true,
 				PostboxFollowUpDialog: true,

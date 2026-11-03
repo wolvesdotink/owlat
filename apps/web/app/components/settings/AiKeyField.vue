@@ -6,6 +6,8 @@
  * only a `keyPreview` comes back from the backend). Used for both the language
  * key and the hosted-embedder key.
  */
+import { KeyIcon } from '@coolicons/vue';
+
 defineProps<{
 	label: string;
 	/** True when a key is already encrypted on the row (blank = keep it). */
@@ -42,7 +44,7 @@ const { t } = useI18n();
 			v-if="storedKeySet && keyPreview"
 			class="mt-1.5 text-xs text-text-tertiary flex items-center gap-1.5"
 		>
-			<Icon name="lucide:key-round" class="w-3.5 h-3.5" />
+			<KeyIcon class="w-3.5 h-3.5" />
 			<I18nT keypath="components.settings.aiKeyField.savedKey" tag="span" scope="global">
 				<template #preview>
 					<span class="font-mono">{{ keyPreview }}</span>

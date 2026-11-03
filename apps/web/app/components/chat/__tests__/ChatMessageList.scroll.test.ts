@@ -54,7 +54,7 @@ function mountList(messages: ChatMessageRow[], chatMessage: object = ChatMessage
 		props: { messages, currentUserId: ME },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, ChatMessage: chatMessage },
+			stubs: { ChatMessage: chatMessage },
 		},
 	});
 }

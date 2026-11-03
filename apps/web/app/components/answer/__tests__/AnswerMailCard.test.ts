@@ -97,7 +97,6 @@ function mountCard(item: ReplyQueueItem = followUp()) {
 			// A Nuxt auto-import the template calls directly.
 			mocks: { formatCompactRelativeTime: () => 'now' },
 			stubs: {
-				Icon: true,
 				TaskContext: { template: '<div class="context"><slot name="chips" /></div>' },
 				TaskAsk: {
 					props: ['ask', 'detail'],

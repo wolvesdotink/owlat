@@ -1,6 +1,7 @@
 /**
  * Pure group builders for the OPEN CONVERSATION's palette verbs: the Postbox
- * reader's and the Team Inbox thread page's.
+ * reader's here, the Team Inbox thread page's in `commandPaletteTeamThreadSurfaces`
+ * on the helpers this module exports.
  *
  * Everything the toolbar, the ⋯ menu and the single-key shortcuts can do to the
  * conversation on screen is one ⌘K away, and a verb that needs a parameter (when
@@ -24,8 +25,35 @@ import {
 	filterItems,
 } from './commandPalette';
 import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
+import {
+	AlarmIcon,
+	AlarmOffIcon,
+	ArchiveIcon,
+	BellIcon,
+	BellOffIcon,
+	ChatCircleIcon,
+	ChatShareIcon,
+	ClockIcon,
+	CopyIcon,
+	FileCodeIcon,
+	FolderDownloadIcon,
+	ForwardIcon,
+	ImageIcon,
+	InboxIcon,
+	LinkIcon,
+	MailIcon,
+	PinIcon,
+	PinOffIcon,
+	ReplyIcon,
+	SearchIcon,
+	TagIcon,
+	TranslateIcon,
+	ZoomInIcon,
+	ZoomOutIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
-type Translate = (key: string, params?: Record<string, unknown>) => string;
+export type Translate = (key: string, params?: Record<string, unknown>) => string;
 
 /**
  * The unprefixed idle palette shows the first few verbs, beside the rest of the
@@ -34,7 +62,7 @@ type Translate = (key: string, params?: Record<string, unknown>) => string;
 const IDLE_CAP = 6;
 const FULL_CAP = 20;
 
-function threadGroup(
+export function threadGroup(
 	key: string,
 	heading: string,
 	items: PaletteItem[],
@@ -56,7 +84,7 @@ function threadGroup(
 }
 
 /** A verb that asks for its parameter first. `run` never fires for it. */
-function withArgument(
+export function withArgument(
 	item: Omit<PaletteItem, 'run' | 'argument'>,
 	promptKey: string,
 	options: PaletteArgumentOption[]
@@ -133,10 +161,10 @@ export interface ThreadSurfaceDeps {
 	chatView?: { isOn: () => boolean; toggle: () => void } | null;
 }
 
-const ZOOM_VERBS: ReadonlyArray<{ action: SenderZoomAction; slug: string; icon: string }> = [
-	{ action: 'zoomIn', slug: 'zoom-in', icon: 'lucide:zoom-in' },
-	{ action: 'zoomOut', slug: 'zoom-out', icon: 'lucide:zoom-out' },
-	{ action: 'zoomReset', slug: 'zoom-reset', icon: 'lucide:search' },
+const ZOOM_VERBS: ReadonlyArray<{ action: SenderZoomAction; slug: string; icon: IconComponent }> = [
+	{ action: 'zoomIn', slug: 'zoom-in', icon: ZoomInIcon },
+	{ action: 'zoomOut', slug: 'zoom-out', icon: ZoomOutIcon },
+	{ action: 'zoomReset', slug: 'zoom-reset', icon: SearchIcon },
 ];
 
 /** Zoom in, out and back to 100% for the open message's sender, each while it can move. */
@@ -159,7 +187,7 @@ const P = 'shared.commandPaletteSurfaces.thread';
 const L = 'shared.conversationLink';
 
 /** The two link verbs every open conversation offers, Postbox or Team Inbox. */
-function linkItems(
+export function linkItems(
 	idPrefix: string,
 	deps: {
 		t: Translate;
@@ -172,7 +200,7 @@ function linkItems(
 		{
 			id: `${idPrefix}-copy-link`,
 			label: deps.t(`${L}.copyLink`),
-			icon: 'lucide:link',
+			icon: LinkIcon,
 			run: deps.onCopyLink,
 		},
 	];
@@ -180,7 +208,7 @@ function linkItems(
 		items.push({
 			id: `${idPrefix}-share-in-chat`,
 			label: deps.t(`${L}.shareInChat`),
-			icon: 'lucide:message-square-share',
+			icon: ChatShareIcon,
 			run: deps.onShareInChat,
 		});
 	}
@@ -207,7 +235,7 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-reply',
 			label: t(`${P}.reply`),
 			...about,
-			icon: 'lucide:reply',
+			icon: ReplyIcon,
 			shortcutId: 'postbox.reply',
 			run: deps.onReply,
 		},
@@ -215,46 +243,46 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-archive',
 			label: t(`${P}.archive`),
 			...about,
-			icon: 'lucide:archive',
+			icon: ArchiveIcon,
 			shortcutId: 'postbox.archive',
 			run: deps.onArchive,
 		},
 		withArgument(
-			{ id: 'postbox:thread-snooze', label: t(`${P}.snooze`), icon: 'lucide:clock' },
+			{ id: 'postbox:thread-snooze', label: t(`${P}.snooze`), icon: ClockIcon },
 			`${P}.snoozePrompt`,
 			deps.snoozeOptions()
 		),
 		{
 			id: 'postbox:forward',
 			label: t(`${P}.forward`),
-			icon: 'lucide:forward',
+			icon: ForwardIcon,
 			shortcutId: 'postbox.forward',
 			run: deps.onForward,
 		},
 		{
 			id: 'postbox:thread-mark-unread',
 			label: t(`${P}.markUnread`),
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			shortcutId: 'postbox.markUnread',
 			run: deps.onMarkUnread,
 		},
 		{
 			id: 'postbox:thread-mute',
 			label: t(deps.isMuted() ? `${P}.unmute` : `${P}.mute`),
-			icon: deps.isMuted() ? 'lucide:bell' : 'lucide:bell-off',
+			icon: deps.isMuted() ? BellIcon : BellOffIcon,
 			shortcutId: 'postbox.mute',
 			run: deps.onToggleMute,
 		},
 		{
 			id: 'postbox:thread-alert',
 			label: t(deps.isAlerted() ? `${P}.stopNotifyOnReply` : `${P}.notifyOnReply`),
-			icon: 'lucide:bell',
+			icon: BellIcon,
 			run: deps.onToggleAlert,
 		},
 		{
 			id: 'postbox:thread-pin',
 			label: t(deps.isPinned() ? `${P}.unpin` : `${P}.pin`),
-			icon: deps.isPinned() ? 'lucide:pin-off' : 'lucide:pin',
+			icon: deps.isPinned() ? PinOffIcon : PinIcon,
 			run: deps.onTogglePin,
 		},
 	];
@@ -262,7 +290,7 @@ export function buildThreadSurfaceGroups(
 	if (labels.length > 0) {
 		items.push(
 			withArgument(
-				{ id: 'postbox:label-as', label: t(`${P}.label`), icon: 'lucide:tag' },
+				{ id: 'postbox:label-as', label: t(`${P}.label`), icon: TagIcon },
 				`${P}.labelPrompt`,
 				labels
 			)
@@ -272,7 +300,7 @@ export function buildThreadSurfaceGroups(
 	if (folders.length > 0) {
 		items.push(
 			withArgument(
-				{ id: 'postbox:move', label: t(`${P}.move`), icon: 'lucide:folder-input' },
+				{ id: 'postbox:move', label: t(`${P}.move`), icon: FolderDownloadIcon },
 				`${P}.movePrompt`,
 				folders
 			)
@@ -285,7 +313,7 @@ export function buildThreadSurfaceGroups(
 				{
 					id: 'postbox:thread-move-to-mailbox',
 					label: t(`${P}.moveToMailbox`),
-					icon: 'lucide:inbox',
+					icon: InboxIcon,
 				},
 				`${P}.moveToMailboxPrompt`,
 				mailboxMoves
@@ -299,7 +327,7 @@ export function buildThreadSurfaceGroups(
 				{
 					id: 'postbox:thread-copy-to-mailbox',
 					label: t(`${P}.copyToMailbox`),
-					icon: 'lucide:copy',
+					icon: CopyIcon,
 				},
 				`${P}.copyToMailboxPrompt`,
 				mailboxCopies
@@ -310,7 +338,7 @@ export function buildThreadSurfaceGroups(
 	if (followUp === 'armable') {
 		items.push(
 			withArgument(
-				{ id: 'postbox:thread-follow-up', label: t(`${P}.followUp`), icon: 'lucide:alarm-clock' },
+				{ id: 'postbox:thread-follow-up', label: t(`${P}.followUp`), icon: AlarmIcon },
 				`${P}.followUpPrompt`,
 				deps.followUpOptions()
 			)
@@ -319,7 +347,7 @@ export function buildThreadSurfaceGroups(
 		items.push({
 			id: 'postbox:thread-follow-up',
 			label: t(`${P}.cancelFollowUp`),
-			icon: 'lucide:alarm-clock-off',
+			icon: AlarmOffIcon,
 			run: deps.onCancelFollowUp,
 		});
 	}
@@ -328,7 +356,7 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-find',
 			label: t(`${P}.find`),
 			...about,
-			icon: 'lucide:search',
+			icon: SearchIcon,
 			shortcutId: 'global.findInConversation',
 			run: deps.onFind,
 		});
@@ -339,7 +367,7 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-chat-view',
 			label: t(deps.chatView.isOn() ? `${P}.showConversation` : `${P}.showChat`),
 			...about,
-			icon: 'lucide:message-circle',
+			icon: ChatCircleIcon,
 			shortcutId: 'postbox.chatView',
 			run: deps.chatView.toggle,
 		});
@@ -348,7 +376,7 @@ export function buildThreadSurfaceGroups(
 		items.push({
 			id: 'postbox:thread-translate',
 			label: t(`${P}.translate`),
-			icon: 'lucide:languages',
+			icon: TranslateIcon,
 			run: deps.onTranslate,
 		});
 	}
@@ -356,7 +384,7 @@ export function buildThreadSurfaceGroups(
 		{
 			id: 'postbox:thread-original',
 			label: t(`${P}.showOriginal`),
-			icon: 'lucide:file-code',
+			icon: FileCodeIcon,
 			run: deps.onShowOriginal,
 		},
 		...linkItems('postbox:thread', deps)
@@ -365,7 +393,7 @@ export function buildThreadSurfaceGroups(
 		items.push({
 			id: 'postbox:thread-share-image',
 			label: t('components.postbox.postboxShareImage.menuItem'),
-			icon: 'lucide:image',
+			icon: ImageIcon,
 			run: deps.onShareAsImage,
 		});
 	}
@@ -373,112 +401,3 @@ export function buildThreadSurfaceGroups(
 }
 
 // ── Team Inbox thread ───────────────────────────────────────────────────────
-
-/** Registry id of the Team Inbox thread provider (one thread page at a time). */
-export const TEAM_THREAD_COMMAND_PROVIDER_ID = 'surface:team-thread';
-
-/** Consulted before the other external providers: the thread is what is on screen. */
-export const TEAM_THREAD_COMMAND_PROVIDER_PRIORITY = 5;
-
-/** Group key of the Team Inbox conversation block. */
-export const TEAM_THREAD_COMMAND_GROUP_KEY = 'team-thread';
-
-export interface TeamThreadSurfaceDeps {
-	subject: () => string;
-	t: Translate;
-	/** The thread is assigned to the person at the keyboard. */
-	isMine: () => boolean;
-	/** Resolved (or legacy closed): the status verb reopens instead. */
-	isResolved: () => boolean;
-	isSnoozed: () => boolean;
-	/** Submenus, built by the composable (they carry their own `run`). */
-	assignOptions: () => PaletteArgumentOption[];
-	snoozeOptions: () => PaletteArgumentOption[];
-	priorityOptions: () => PaletteArgumentOption[];
-	onReply: () => void;
-	onClaim: () => void;
-	onClose: () => void;
-	onReopen: () => void;
-	onUnsnooze: () => void;
-	onAddNote: () => void;
-	onCopyLink: () => void;
-	canShareInChat: () => boolean;
-	onShareInChat: () => void;
-}
-
-const T = 'shared.commandPaletteSurfaces.teamThread';
-
-/**
- * The Team Inbox conversation's verbs: reply, assign / claim, close or reopen,
- * snooze or wake, an internal note, its priority, and a link to it. Pure.
- */
-export function buildTeamThreadSurfaceGroups(
-	deps: TeamThreadSurfaceDeps,
-	query: string,
-	mode: PaletteMode = 'all'
-): PaletteGroup[] {
-	const { t } = deps;
-	const subject = deps.subject().trim();
-	const items: PaletteItem[] = [
-		{
-			id: 'inbox:thread-reply',
-			label: t(`${T}.reply`),
-			...(subject ? { subtitle: subject } : {}),
-			icon: 'lucide:reply',
-			run: deps.onReply,
-		},
-		withArgument(
-			{ id: 'inbox:thread-assign', label: t(`${T}.assign`), icon: 'lucide:user-plus' },
-			`${T}.assignPrompt`,
-			deps.assignOptions()
-		),
-	];
-	if (!deps.isMine()) {
-		items.push({
-			id: 'inbox:thread-claim',
-			label: t(`${T}.claim`),
-			icon: 'lucide:user-plus',
-			run: deps.onClaim,
-		});
-	}
-	items.push(
-		deps.isResolved()
-			? {
-					id: 'inbox:thread-status',
-					label: t(`${T}.reopen`),
-					icon: 'lucide:rotate-ccw',
-					run: deps.onReopen,
-				}
-			: {
-					id: 'inbox:thread-status',
-					label: t(`${T}.close`),
-					icon: 'lucide:circle-check',
-					run: deps.onClose,
-				},
-		deps.isSnoozed()
-			? {
-					id: 'inbox:thread-snooze',
-					label: t(`${T}.unsnooze`),
-					icon: 'lucide:alarm-clock-off',
-					run: deps.onUnsnooze,
-				}
-			: withArgument(
-					{ id: 'inbox:thread-snooze', label: t(`${T}.snooze`), icon: 'lucide:clock' },
-					`${T}.snoozePrompt`,
-					deps.snoozeOptions()
-				),
-		{
-			id: 'inbox:thread-note',
-			label: t(`${T}.addNote`),
-			icon: 'lucide:sticky-note',
-			run: deps.onAddNote,
-		},
-		withArgument(
-			{ id: 'inbox:thread-priority', label: t(`${T}.priority`), icon: 'lucide:flag' },
-			`${T}.priorityPrompt`,
-			deps.priorityOptions()
-		),
-		...linkItems('inbox:thread', deps)
-	);
-	return threadGroup(TEAM_THREAD_COMMAND_GROUP_KEY, t(`${T}.heading`), items, query, mode);
-}

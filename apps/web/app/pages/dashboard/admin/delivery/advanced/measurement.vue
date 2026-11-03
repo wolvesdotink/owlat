@@ -46,6 +46,7 @@ import { hasNoMeasuredTraffic } from '~/utils/deliveryAdvancedEmpty';
 // a mount that resolved it to nothing would hide the one thing it says.
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import { ActivityIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -211,7 +212,7 @@ const decisionLabel = computed(() => {
 
 			<DeliveryAdvancedEmptyState
 				v-if="isEmpty"
-				icon="lucide:activity"
+				:icon="ActivityIcon"
 				:title="t('dashboard.admin.delivery.advanced.measurement.empty.title')"
 				:description="t('dashboard.admin.delivery.advanced.measurement.empty.description')"
 			/>

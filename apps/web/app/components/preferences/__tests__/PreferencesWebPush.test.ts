@@ -71,7 +71,6 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiSkeleton: true,
 				UiBadge: { template: '<span class="badge"><slot /></span>' },
 				UiButton: {

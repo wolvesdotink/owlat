@@ -21,6 +21,7 @@
 import { api } from '@owlat/api';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
+import { ChatIcon } from '@coolicons/vue';
 
 /** How many thread hits the overlay shows. Matches the other object groups. */
 const INBOX_SCOPE_HIT_LIMIT = 5;
@@ -93,7 +94,7 @@ export function useCommandPaletteInboxScope(options: CommandPaletteInboxScopeOpt
 			objectId: thread._id,
 			label: thread.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: thread.contactIdentifier,
-			icon: 'lucide:message-square',
+			icon: ChatIcon,
 			run: () => {
 				options.onRemember(options.query.value);
 				void navigateTo(`/dashboard/inbox/${thread._id}`);

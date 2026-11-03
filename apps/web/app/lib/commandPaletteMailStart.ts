@@ -13,6 +13,7 @@
  */
 import type { PaletteItem } from './commandPalette';
 import { withoutLastOperator } from '~/utils/postboxSearchSuggest';
+import { BookmarkIcon, TerminalIcon, UndoIcon, UserIcon } from '@coolicons/vue';
 
 const MESSAGE_ROOT = 'shared.commandPaletteMailStart';
 
@@ -79,7 +80,7 @@ export function buildMailStartItems(input: {
 			id: `mail-saved:${search._id}`,
 			label: search.name,
 			subtitle: search.rawQuery,
-			icon: 'lucide:bookmark',
+			icon: BookmarkIcon,
 			keepOpen: true,
 			run: () => apply(search.rawQuery),
 		})),
@@ -87,7 +88,7 @@ export function buildMailStartItems(input: {
 			id: `mail-person:${contact.email}`,
 			label: contact.displayName || contact.email,
 			subtitle: `from:${contact.email}`,
-			icon: 'lucide:user',
+			icon: UserIcon,
 			keepOpen: true,
 			run: () => apply(`from:${contact.email}`),
 		})),
@@ -95,7 +96,7 @@ export function buildMailStartItems(input: {
 			id: `mail-example:${example.query}`,
 			label: example.query,
 			subtitle: t(example.hintKey),
-			icon: 'lucide:terminal',
+			icon: TerminalIcon,
 			keepOpen: true,
 			run: () => apply(example.query),
 		})),
@@ -119,7 +120,7 @@ export function buildMailFixItems(
 			id: `mail-fix:${fix.rest}`,
 			label: t(`${MESSAGE_ROOT}.withoutOperator`, { operator: fix.removed }),
 			subtitle: fix.rest,
-			icon: 'lucide:undo-2',
+			icon: UndoIcon,
 			keepOpen: true,
 			run: () => apply(fix.rest),
 		},

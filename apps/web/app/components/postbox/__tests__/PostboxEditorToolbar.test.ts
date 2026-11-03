@@ -11,8 +11,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import PostboxEditorToolbar from '../PostboxEditorToolbar.vue';
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 // The button tooltips flow through vue-i18n now; `useI18n` is a Nuxt
 // auto-import, so it has to exist as a global for the component's setup.
 beforeAll(() => {
@@ -22,7 +20,7 @@ beforeAll(() => {
 function mountToolbar(props: Record<string, unknown> = {}) {
 	return mount(PostboxEditorToolbar, {
 		props: { activeMarks: { ...EMPTY_ACTIVE_MARKS }, ...props },
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

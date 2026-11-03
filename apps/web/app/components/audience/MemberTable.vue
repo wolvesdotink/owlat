@@ -13,9 +13,10 @@
  */
 import type { MemberRow } from '~/composables/useMemberTable';
 import { formatDate } from '~/utils/formatters';
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon, type IconComponent } from '@coolicons/vue';
 
 interface EmptyCopy {
-	icon: string;
+	icon: IconComponent;
 	title: string;
 	description: string;
 }
@@ -43,7 +44,7 @@ const props = defineProps<{
 	error: Error | null;
 	empty: EmptyCopy;
 	isSortable: (field: string) => boolean;
-	getSortIcon: (field: string) => string | null;
+	getSortIcon: (field: string) => IconComponent | null;
 	/** The active header's `aria-sort`; undefined (attribute omitted) on every other. */
 	getAriaSort: (field: string) => 'ascending' | 'descending' | undefined;
 	currentPage: number;
@@ -114,7 +115,7 @@ const pagerButtonClass =
 				:placeholder="searchPlaceholder"
 				@update:model-value="emit('update:search', String($event ?? ''))"
 			>
-				<template #iconLeft><Icon name="lucide:search" /></template>
+				<template #iconLeft><SearchIcon size="1em" /></template>
 			</UiInput>
 		</div>
 
@@ -135,7 +136,7 @@ const pagerButtonClass =
 			<UiEmptyState
 				v-else-if="isEmpty"
 				variant="no-results"
-				icon="lucide:search"
+				:icon="SearchIcon"
 				:title="t('shared.memberTable.noResults.title')"
 				:description="t('shared.memberTable.noResults.body', { query: activeSearch })"
 				:clear-label="t('shared.listPage.clearSearch')"
@@ -173,9 +174,9 @@ const pagerButtonClass =
 										@click="emit('sort', column.field)"
 									>
 										{{ column.label }}
-										<Icon
+										<component
 											v-if="getSortIcon(column.field)"
-											:name="getSortIcon(column.field)!"
+											:is="getSortIcon(column.field)!"
 											class="w-4 h-4"
 										/>
 									</button>
@@ -238,7 +239,7 @@ const pagerButtonClass =
 							:aria-label="t('shared.memberTable.pagination.previous')"
 							@click="emit('page', currentPage - 1)"
 						>
-							<Icon name="lucide:chevron-left" class="w-4 h-4" />
+							<ChevronLeftIcon class="w-4 h-4" />
 						</button>
 
 						<template v-for="(page, index) in pageNumbers" :key="index">
@@ -266,7 +267,7 @@ const pagerButtonClass =
 							:aria-label="t('shared.memberTable.pagination.next')"
 							@click="emit('page', currentPage + 1)"
 						>
-							<Icon name="lucide:chevron-right" class="w-4 h-4" />
+							<ChevronRightIcon class="w-4 h-4" />
 						</button>
 					</nav>
 				</div>

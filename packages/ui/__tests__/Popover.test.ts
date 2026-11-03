@@ -12,7 +12,6 @@ import Popover from '../components/ui/Popover.vue';
 import { anchorToElementBox } from '../utils/popoverAnchor';
 import { createUiI18n } from './i18n';
 
-const IconStub = { name: 'Icon', setup: () => () => h('i') };
 const panel = () => document.querySelector<HTMLElement>('[data-testid="panel"]');
 
 async function escape(target: Element = document.activeElement ?? document.body) {
@@ -86,7 +85,7 @@ describe('UiPopover', () => {
 		});
 		mount(Host, {
 			attachTo: document.body,
-			global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+			global: { plugins: [createUiI18n('en')] },
 		});
 		await flushPromises();
 		document.querySelector<HTMLElement>('[data-testid="trigger"]')!.click();
@@ -131,7 +130,7 @@ describe('UiPopover', () => {
 		});
 		mount(Host, {
 			attachTo: document.body,
-			global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+			global: { plugins: [createUiI18n('en')] },
 		});
 		await flushPromises();
 		const byId = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
@@ -241,7 +240,6 @@ describe('UiPopover', () => {
 				attachTo: document.body,
 				global: {
 					plugins: [createUiI18n('en')],
-					components: { Icon: IconStub },
 					stubs: transitions ? { transition: false } : {},
 				},
 			});

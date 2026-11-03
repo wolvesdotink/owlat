@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ChevronDownIcon, MailIcon, UsersIcon } from '@coolicons/vue';
 
 /**
  * The mailbox identity chip: which mailbox you are reading, and the menu that
@@ -39,13 +40,13 @@ const sectionDescriptors = computed(() => [
 	{
 		key: 'personal',
 		heading: t('components.postbox.postboxMailboxSwitcher.personal.heading'),
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		items: personal.value,
 	},
 	{
 		key: 'team',
 		heading: t('components.postbox.postboxMailboxSwitcher.team.heading'),
-		icon: 'lucide:users',
+		icon: UsersIcon,
 		items: team.value,
 	},
 ]);
@@ -99,10 +100,10 @@ function switchTo(id: Id<'mailboxes'>) {
 						t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })
 					"
 				>
-					<Icon name="lucide:mail" class="w-4 h-4 flex-shrink-0" />
+					<MailIcon class="w-4 h-4 flex-shrink-0" />
 					<template v-if="!collapsed">
 						<span class="text-xs truncate">{{ chipLabel }}</span>
-						<Icon name="lucide:chevron-down" class="w-3 h-3 flex-shrink-0" />
+						<ChevronDownIcon class="w-3 h-3 flex-shrink-0" />
 					</template>
 					<!-- Unread waiting in the OTHER mailboxes. The current mailbox's own
 					     counts are already on the folder rows below. -->

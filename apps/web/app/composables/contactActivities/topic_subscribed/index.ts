@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { ListPlusIcon } from '@coolicons/vue';
 
 export const topicSubscribedEditorModule: ContactActivityEditorModule<'topic_subscribed'> = {
 	literal: 'topic_subscribed',
 	displayConfig: {
-		icon: 'lucide:list-plus',
+		icon: ListPlusIcon,
 		label: 'shared.contactActivities.topicSubscribed.label',
 		color: 'text-brand',
 	},

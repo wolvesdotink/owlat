@@ -29,6 +29,7 @@ import RowContextMenu from '~/components/RowContextMenu.vue';
 import { automationRowHref } from '~/utils/automationRowVerbs';
 import { formatNumber } from '~/utils/formatters';
 import AutomationsHealthSummary, { type AutomationHealth } from './HealthSummary.vue';
+import { UsersIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	items: AutomationListItem[];
@@ -78,7 +79,7 @@ const statusPill =
 						</span>
 						<span class="flex items-center gap-2 mt-1 min-w-0">
 							<span :class="[statusPill, getStatusBadge(automation.status).color]">
-								<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+								<component :is="getStatusBadge(automation.status).icon" class="w-3 h-3" />
 								{{ t(getStatusBadge(automation.status).label) }}
 							</span>
 							<span class="text-sm text-text-secondary truncate">
@@ -86,7 +87,7 @@ const statusPill =
 							</span>
 						</span>
 						<span class="flex flex-wrap items-center gap-1.5 text-xs text-text-tertiary mt-1">
-							<Icon name="lucide:users" class="w-3.5 h-3.5" />
+							<UsersIcon class="w-3.5 h-3.5" />
 							<span class="tabular-nums">{{ formatNumber(automation.statsActive ?? 0) }}</span>
 							<span aria-hidden="true">·</span>
 							<span>{{ t('dashboard.automations.index.health.cardLabel') }}</span>
@@ -153,8 +154,8 @@ const statusPill =
 							</td>
 							<td class="px-6 py-4">
 								<div class="flex items-center gap-1.5">
-									<Icon
-										:name="getTriggerDisplay(automation.triggerType).icon"
+									<component
+										:is="getTriggerDisplay(automation.triggerType).icon"
 										class="w-4 h-4 text-text-tertiary"
 									/>
 									<span class="text-text-secondary text-sm">
@@ -164,13 +165,13 @@ const statusPill =
 							</td>
 							<td class="px-6 py-4">
 								<span :class="[statusPill, getStatusBadge(automation.status).color]">
-									<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+									<component :is="getStatusBadge(automation.status).icon" class="w-3 h-3" />
 									{{ t(getStatusBadge(automation.status).label) }}
 								</span>
 							</td>
 							<td class="px-6 py-4">
 								<div class="flex items-center gap-1.5">
-									<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+									<UsersIcon class="w-4 h-4 text-text-tertiary" />
 									<span class="text-text-secondary text-sm tabular-nums">
 										{{ formatNumber(automation.statsActive ?? 0) }}
 									</span>

@@ -68,7 +68,6 @@ async function mountPanel() {
 			plugins: [createTestI18n()],
 			components: { UiSegmentedControl },
 			stubs: {
-				Icon: true,
 				UiIconBox: true,
 				UiQueryBoundary: true,
 				UiButton: true,

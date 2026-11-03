@@ -27,7 +27,6 @@ import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiButton: { template: '<button><slot /></button>' },
 };
 

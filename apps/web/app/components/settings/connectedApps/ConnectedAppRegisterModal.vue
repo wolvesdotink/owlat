@@ -8,6 +8,7 @@
  * `is-submitting` / `error-message`.
  */
 import { connectedAppCapabilityLabel } from '~/utils/connectedAppCapabilities';
+import { CircleWarningIcon, PuzzleIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -155,7 +156,7 @@ const canSubmit = computed(
 		<!-- No bundled plugin to bind to. -->
 		<div v-if="plugins.length === 0" class="py-6">
 			<UiEmptyState
-				icon="lucide:puzzle"
+				:icon="PuzzleIcon"
 				:title="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsTitle')"
 				:description="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsDescription')"
 			/>
@@ -169,7 +170,7 @@ const canSubmit = computed(
 				role="alert"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 				<p class="text-sm text-error">{{ detailsError }}</p>
 			</div>
 
@@ -236,7 +237,7 @@ const canSubmit = computed(
 				:aria-label="t('components.settings.connectedApps.connectedAppRegisterModal.riskDisclosureLabel')"
 			>
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<ShieldWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div class="text-sm text-warning/90 space-y-1">
 						<p class="font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskTitle') }}</p>
 						<p>
@@ -256,7 +257,7 @@ const canSubmit = computed(
 				role="alert"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 				<p class="text-sm text-error">{{ errorMessage }}</p>
 			</div>
 

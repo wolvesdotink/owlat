@@ -24,8 +24,6 @@ beforeAll(() => {
 	});
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountMenu(opts: { attachTo?: HTMLElement } = {}) {
 	return mount(PostboxOverflowMenu, {
 		...opts,
@@ -36,7 +34,7 @@ function mountMenu(opts: { attachTo?: HTMLElement } = {}) {
 				<button role="menuitem">Forward</button>
 			</template>`,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

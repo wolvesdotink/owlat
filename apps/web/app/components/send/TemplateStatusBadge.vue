@@ -16,7 +16,7 @@ const badge = computed(() => templateStatusBadge(props.status));
 			badge.color,
 		]"
 	>
-		<Icon :name="badge.icon" class="w-3 h-3" />
+		<component :is="badge.icon" class="w-3 h-3" />
 		{{ t(badge.label) }}
 	</span>
 </template>

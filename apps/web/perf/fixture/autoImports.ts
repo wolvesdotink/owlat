@@ -50,6 +50,7 @@ const APP_AUTO_IMPORTS: Record<string, readonly string[]> = {
 	'composables/postbox/usePostboxOptimisticHide.ts': ['usePostboxOptimisticHide'],
 	'composables/postbox/usePostboxRowTriage.ts': ['usePostboxRowTriage'],
 	'composables/postbox/usePostboxRowPickers.ts': ['usePostboxRowPickers'],
+	'composables/postbox/usePostboxMailboxTransfer.ts': ['usePostboxMailboxTransfer'],
 	'composables/postbox/usePostboxMessageDrag.ts': ['usePostboxListRowDrag'],
 	'composables/postbox/usePostboxTriageUndo.ts': ['usePostboxTriageUndo'],
 	'composables/postbox/usePostboxListKeyboard.ts': ['usePostboxListKeyboard'],
@@ -65,6 +66,9 @@ const APP_AUTO_IMPORTS: Record<string, readonly string[]> = {
 	'utils/postboxOfflineFolderStore.ts': ['PostboxOfflineFolderStore'],
 	'utils/postboxOfflineStore.ts': ['OfflineWriteError', 'PostboxOfflineStore'],
 	'utils/composerDraftStore.ts': ['ComposerDraftStore'],
+	'composables/useConfirm.ts': ['useConfirm'],
+	'composables/useInboxes.ts': ['useInboxes'],
+	'composables/useLocalStorage.ts': ['useLocalStorage'],
 };
 
 function appAutoImports(): Record<string, unknown> {

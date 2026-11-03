@@ -6,6 +6,8 @@ import {
 	usePostboxThreadTimestamp,
 } from '~/composables/postbox/usePostboxListClock';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { ClockIcon, FileEditIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -45,13 +47,10 @@ function preview(bodyHtml: string | undefined): string {
 
 <template>
 	<div v-if="isLoading" class="p-6 flex justify-center">
-		<Icon
-			name="lucide:loader-2"
-			class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-		/>
+		<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 	</div>
 	<div v-else-if="drafts.length === 0" class="p-12 text-center">
-		<Icon name="lucide:file-edit" class="w-10 h-10 mx-auto text-text-tertiary" />
+		<FileEditIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 		<p class="text-sm text-text-secondary mt-3">
 			{{ t('components.postbox.postboxDraftList.empty') }}
 		</p>
@@ -79,7 +78,7 @@ function preview(bodyHtml: string | undefined): string {
 					v-if="d.state === 'scheduled' && d.scheduledSendAt"
 					class="inline-flex items-center gap-1 mt-1 text-xs text-brand"
 				>
-					<Icon name="lucide:clock" class="w-3 h-3" />
+					<ClockIcon class="w-3 h-3" />
 					{{
 						t('components.postbox.postboxDraftList.scheduled', {
 							when: formatDateTime(d.scheduledSendAt),

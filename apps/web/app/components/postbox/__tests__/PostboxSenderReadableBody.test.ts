@@ -77,7 +77,7 @@ function mountInCard(body: Component, bodyProps: Record<string, unknown>) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxReaderSkeleton, UiSkeleton },
-			stubs: { Icon: true, PostboxImageBanner: true },
+			stubs: { PostboxImageBanner: true },
 		},
 	});
 }

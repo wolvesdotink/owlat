@@ -32,6 +32,16 @@
  * state: a user who wants one direction inert (or swipe off entirely) picks it,
  * and the row then never claims a horizontal drag on that side.
  */
+import {
+	ArchiveIcon,
+	CircleCheckIcon,
+	ClockIcon,
+	MailOpenIcon,
+	StarIcon,
+	TrashIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type PostboxSwipeAction = 'archive' | 'trash' | 'snooze' | 'star' | 'read' | 'none';
 
 /**
@@ -106,15 +116,15 @@ export type PostboxSwipeTone = 'brand' | 'error' | 'warning' | 'info' | 'success
 export const POSTBOX_SWIPE_VISUALS: Readonly<
 	Record<
 		Exclude<RowSwipeAction, 'none'>,
-		{ readonly icon: string; readonly tone: PostboxSwipeTone }
+		{ readonly icon: IconComponent; readonly tone: PostboxSwipeTone }
 	>
 > = {
-	archive: { icon: 'lucide:archive', tone: 'brand' },
-	trash: { icon: 'lucide:trash', tone: 'error' },
-	snooze: { icon: 'lucide:clock', tone: 'warning' },
-	star: { icon: 'lucide:star', tone: 'warning' },
-	read: { icon: 'lucide:mail-open', tone: 'info' },
-	resolve: { icon: 'lucide:check-circle', tone: 'success' },
+	archive: { icon: ArchiveIcon, tone: 'brand' },
+	trash: { icon: TrashIcon, tone: 'error' },
+	snooze: { icon: ClockIcon, tone: 'warning' },
+	star: { icon: StarIcon, tone: 'warning' },
+	read: { icon: MailOpenIcon, tone: 'info' },
+	resolve: { icon: CircleCheckIcon, tone: 'success' },
 };
 
 /**
@@ -221,7 +231,7 @@ export function swipeProgress(dx: number): number {
 export interface PostboxSwipeTrackState<A extends RowSwipeAction = PostboxSwipeAction> {
 	readonly action: Exclude<A, 'none'>;
 	readonly direction: PostboxSwipeDirection;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly tone: PostboxSwipeTone;
 	/** 0..1 towards the commit distance. */
 	readonly progress: number;

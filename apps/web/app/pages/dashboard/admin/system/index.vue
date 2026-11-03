@@ -4,6 +4,18 @@ import { semverCompare } from '@owlat/shared/semver';
 import { formatDateTime } from '~/utils/formatters';
 import { migrationNameKey } from '~/utils/systemMigrations';
 import { hasReleaseNotes, OWLAT_REPO_URL, parseReleaseNotes } from '~/utils/releaseNotes';
+import {
+	BookOpenIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleInfoIcon,
+	DatabaseIcon,
+	DownloadIcon,
+	ExternalLinkIcon,
+	ReloadIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, te } = useI18n();
 const { showToast } = useToast();
@@ -168,7 +180,7 @@ const {
 
 					<template v-else-if="latestRelease?.latestVersion">
 						<div class="flex items-baseline gap-2">
-							<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success" />
+							<CircleCheckIcon class="w-5 h-5 text-success" />
 							<span class="text-text-primary font-medium">{{
 								t('dashboard.admin.system.index.updates.upToDate')
 							}}</span>
@@ -191,12 +203,8 @@ const {
 				</div>
 
 				<UiButton variant="outline" size="sm" :disabled="checking" @click="checkNow">
-					<Icon
-						v-if="checking"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+					<SpinnerIcon v-if="checking" class="w-4 h-4" />
+					<ReloadIcon v-else class="w-4 h-4" />
 					{{ t('dashboard.admin.system.index.updates.checkNow') }}
 				</UiButton>
 			</div>
@@ -216,11 +224,7 @@ const {
 						class="rounded-lg border border-warning/40 bg-warning/5 p-4"
 					>
 						<div class="flex items-start gap-3">
-							<Icon
-								name="lucide:info"
-								class="w-5 h-5 text-warning shrink-0 mt-0.5"
-								aria-hidden="true"
-							/>
+							<CircleInfoIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
 							<div class="min-w-0 space-y-2 text-sm leading-relaxed text-text-secondary">
 								<h4 class="font-semibold text-text-primary">
 									{{ t('dashboard.admin.system.index.updates.beforeUpdate') }}
@@ -247,11 +251,7 @@ const {
 						role="status"
 						data-test="migration-blockers"
 					>
-						<Icon
-							name="lucide:database"
-							class="w-5 h-5 text-warning shrink-0 mt-0.5"
-							aria-hidden="true"
-						/>
+						<DatabaseIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
 						<p class="min-w-0 break-words">
 							{{
 								t('dashboard.admin.system.index.updates.migrationsFirst', {
@@ -271,7 +271,7 @@ const {
 							:disabled="updateInProgress || blockingMigrations.length > 0"
 							@click="startUpdate"
 						>
-							<Icon name="lucide:download" class="w-4 h-4" />
+							<DownloadIcon class="w-4 h-4" />
 							{{
 								t('dashboard.admin.system.index.updates.updateNowTo', {
 									version: latestRelease.latestVersion,
@@ -284,7 +284,7 @@ const {
 							rel="noopener"
 							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand"
 						>
-							<Icon name="lucide:book-open" class="w-4 h-4" aria-hidden="true" />
+							<BookOpenIcon class="w-4 h-4" aria-hidden="true" />
 							{{ t('dashboard.admin.system.index.updates.updateGuide') }}
 						</a>
 						<a
@@ -294,7 +294,7 @@ const {
 							rel="noopener"
 							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand"
 						>
-							<Icon name="lucide:external-link" class="w-4 h-4" aria-hidden="true" />
+							<ExternalLinkIcon class="w-4 h-4" aria-hidden="true" />
 							{{ t('dashboard.admin.system.index.updates.viewOnGithub') }}
 						</a>
 					</div>
@@ -355,7 +355,7 @@ const {
 			class="rounded-xl border border-success/40 bg-success/5 p-6"
 		>
 			<div class="flex items-start gap-3">
-				<Icon name="lucide:check-circle-2" class="w-6 h-6 text-success shrink-0" />
+				<CircleCheckIcon class="w-6 h-6 text-success shrink-0" />
 				<div>
 					<h3 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.success.title') }}
@@ -375,11 +375,7 @@ const {
 			role="status"
 		>
 			<div class="flex items-start gap-3">
-				<Icon
-					name="lucide:alert-triangle"
-					class="w-6 h-6 text-warning shrink-0"
-					aria-hidden="true"
-				/>
+				<TriangleWarningIcon class="w-6 h-6 text-warning shrink-0" aria-hidden="true" />
 				<div class="flex-1 min-w-0">
 					<h3 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.started.title') }}
@@ -406,7 +402,7 @@ const {
 
 		<div v-if="updateState === 'failed'" class="rounded-xl border border-error/40 bg-error/5 p-6">
 			<div class="flex items-start gap-3">
-				<Icon name="lucide:x-circle" class="w-6 h-6 text-error shrink-0" />
+				<CircleCloseIcon class="w-6 h-6 text-error shrink-0" />
 				<div class="flex-1 min-w-0">
 					<h3 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.failure.title') }}

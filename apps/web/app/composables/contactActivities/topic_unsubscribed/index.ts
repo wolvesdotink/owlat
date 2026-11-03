@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { ListMinusIcon } from '@coolicons/vue';
 
 export const topicUnsubscribedEditorModule: ContactActivityEditorModule<'topic_unsubscribed'> = {
 	literal: 'topic_unsubscribed',
 	displayConfig: {
-		icon: 'lucide:list-minus',
+		icon: ListMinusIcon,
 		label: 'shared.contactActivities.topicUnsubscribed.label',
 		color: 'text-warning',
 	},

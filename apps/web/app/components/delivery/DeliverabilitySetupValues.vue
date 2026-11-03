@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DeliverabilitySetupValue } from '~/utils/deliverabilityCenter';
+import { CheckIcon, CopyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	setupValues: readonly DeliverabilitySetupValue[];
@@ -99,11 +100,11 @@ const presentedSetupValues = computed(() => props.setupValues.map(setupPresentat
 							"
 							@click="copy(field.value, `${scopeKey}:${presentation.setupValue.id}:${field.key}`)"
 						>
-							<Icon
-								:name="
+							<component
+								:is="
 									isCopied(`${scopeKey}:${presentation.setupValue.id}:${field.key}`)
-										? 'lucide:check'
-										: 'lucide:copy'
+										? CheckIcon
+										: CopyIcon
 								"
 								class="h-3.5 w-3.5"
 							/>

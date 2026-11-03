@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { FormFieldDraft } from '~/composables/useFormSettings';
+import { PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The forms admin page's "New form" modal. The draft, its validation and the
 // create live in useFormSettings, which the page owns.
@@ -157,12 +159,8 @@ const { t } = useI18n();
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" form="add-form" class="gap-2" :disabled="isAdding">
-				<Icon
-					v-if="isAdding"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:plus" class="w-4 h-4" />
+				<SpinnerIcon v-if="isAdding" class="w-4 h-4" />
+				<PlusIcon v-else class="w-4 h-4" />
 				{{
 					isAdding
 						? t('dashboard.admin.instance.forms.addModal.creating')

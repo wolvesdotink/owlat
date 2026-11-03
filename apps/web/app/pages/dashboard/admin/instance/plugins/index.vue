@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import { ChevronRightIcon, PuzzleIcon, TrashIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -62,7 +63,7 @@ async function confirmPurge() {
 			<div class="space-y-8">
 				<UiCard v-if="manifests.length === 0">
 					<UiEmptyState
-						icon="lucide:puzzle"
+						:icon="PuzzleIcon"
 						:title="t('dashboard.admin.instance.plugins.index.empty.title')"
 						:description="t('dashboard.admin.instance.plugins.index.empty.description')"
 					/>
@@ -104,8 +105,7 @@ async function confirmPurge() {
 										</template>
 									</p>
 								</div>
-								<Icon
-									name="lucide:chevron-right"
+								<ChevronRightIcon
 									class="w-5 h-5 text-text-tertiary group-hover:text-brand transition-colors shrink-0"
 								/>
 							</div>
@@ -117,7 +117,7 @@ async function confirmPurge() {
 				<UiCard v-if="orphaned.length > 0" padding="none" overflow="hidden">
 					<template #header>
 						<div class="flex items-center gap-3">
-							<UiIconBox icon="lucide:trash-2" size="sm" variant="surface" rounded="lg" />
+							<UiIconBox :icon="TrashIcon" size="sm" variant="surface" rounded="lg" />
 							<div>
 								<h2 class="text-lg font-semibold text-text-primary">
 									{{ t('dashboard.admin.instance.plugins.index.residual.title') }}

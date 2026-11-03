@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, useTemplateRef } from 'vue';
-import { Loader2, AlertTriangle } from '@lucide/vue';
+import { TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import { useUiI18n } from '@owlat/ui/composables/useUiI18n';
 
 // Stands in for a lazily loaded preview panel (see lazyPanels.ts) while its
@@ -36,14 +37,14 @@ onMounted(() => {
 		:role="failed ? 'alert' : 'status'"
 	>
 		<template v-if="failed">
-			<AlertTriangle class="ep-panel-loading-icon" aria-hidden="true" />
+			<TriangleWarningIcon class="ep-panel-loading-icon" aria-hidden="true" />
 			<span>{{ t('ui.errorBoundary.message') }}</span>
 			<button ref="retryButton" type="button" class="ep-panel-loading-retry" @click="emit('retry')">
 				{{ t('ui.actions.retry') }}
 			</button>
 		</template>
 		<template v-else>
-			<Loader2 class="ep-panel-loading-icon ep-panel-loading-spinner" aria-hidden="true" />
+			<SpinnerIcon class="ep-panel-loading-icon ep-panel-loading-spinner" aria-hidden="true" />
 			<span>{{ t('ui.progress.loading') }}</span>
 		</template>
 	</div>

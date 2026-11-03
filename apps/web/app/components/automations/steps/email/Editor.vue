@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Doc, Id } from '@owlat/api/dataModel';
 import type { EmailStepConfig } from '~/composables/automations/steps';
+import { MailIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -47,7 +48,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 	<div class="space-y-6">
 		<div>
 			<label for="emailStepTemplate" class="label flex items-center gap-2 mb-2">
-				<Icon name="lucide:mail" class="w-4 h-4 text-brand" />
+				<MailIcon class="w-4 h-4 text-brand" />
 				{{ t('components.automations.steps.email.editor.templateLabel') }}
 			</label>
 			<p class="text-xs text-text-tertiary mb-2">
@@ -84,7 +85,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 					to="/dashboard/send/marketing"
 					class="gap-2"
 				>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('components.automations.steps.email.editor.createCta') }}
 				</UiButton>
 			</div>

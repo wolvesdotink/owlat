@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ChevronDownIcon, CloseIcon, PlusIcon, TagIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type Topic = { _id: Id<'topics'>; name: string };
 
@@ -46,14 +48,10 @@ useClickOutside(addToTopicDropdownRef, () => {
 					:disabled="availableTopics.length === 0 || isAdding"
 					@click.stop="isAddToTopicDropdownOpen = !isAddToTopicDropdownOpen"
 				>
-					<Icon
-						v-if="isAdding"
-						name="lucide:loader-2"
-						class="w-3 h-3 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:plus" class="w-3 h-3" />
+					<SpinnerIcon v-if="isAdding" class="w-3 h-3" />
+					<PlusIcon v-else class="w-3 h-3" />
 					{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}
-					<Icon name="lucide:chevron-down" class="w-3 h-3" />
+					<ChevronDownIcon class="w-3 h-3" />
 				</UiButton>
 
 				<!-- Dropdown Menu -->
@@ -76,7 +74,7 @@ useClickOutside(addToTopicDropdownRef, () => {
 							:disabled="isAdding"
 							@click="emit('add', list._id)"
 						>
-							<Icon name="lucide:tag" class="w-4 h-4 text-brand flex-shrink-0" />
+							<TagIcon class="w-4 h-4 text-brand flex-shrink-0" />
 							<span class="truncate">{{ list.name }}</span>
 						</button>
 					</div>
@@ -114,7 +112,7 @@ useClickOutside(addToTopicDropdownRef, () => {
 				:key="list._id"
 				class="group flex items-center gap-2 p-2 rounded-lg bg-bg-surface"
 			>
-				<Icon name="lucide:tag" class="w-4 h-4 text-brand flex-shrink-0" />
+				<TagIcon class="w-4 h-4 text-brand flex-shrink-0" />
 				<div class="flex-1 min-w-0">
 					<NuxtLink
 						:to="`/dashboard/audience/topics/${list._id}`"
@@ -129,7 +127,7 @@ useClickOutside(addToTopicDropdownRef, () => {
 						:aria-label="t('dashboard.audience.contacts.detail.topics.remove')"
 						@click="emit('remove', list._id)"
 					>
-						<Icon name="lucide:x" class="w-3 h-3" />
+						<CloseIcon class="w-3 h-3" />
 					</button>
 				</UiTooltip>
 			</div>

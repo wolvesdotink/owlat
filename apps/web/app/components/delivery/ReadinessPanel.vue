@@ -24,6 +24,14 @@ import {
 } from '~/utils/deliveryReadiness';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	ArrowRightIcon,
+	CircleCheckIcon,
+	CircleWarningIcon,
+	ClockIcon,
+	RocketIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { canManageOrganization } = usePermissions();
 
@@ -127,10 +135,10 @@ const readiness = computed(() => {
 
 // Per-gate glyph; the text colour reuses the shared tone → class map so it can't
 // drift from the dot/chip renderings (never the brand terracotta for state).
-const GATE_ICON: Record<ReadinessGateStatus, string> = {
-	ready: 'lucide:check-circle-2',
-	attention: 'lucide:alert-circle',
-	pending: 'lucide:clock',
+const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
+	ready: CircleCheckIcon,
+	attention: CircleWarningIcon,
+	pending: ClockIcon,
 };
 </script>
 
@@ -154,7 +162,7 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 
 		<!-- Error -->
 		<div v-else-if="hasError" class="p-6 flex items-start gap-3">
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 shrink-0" />
+			<CircleWarningIcon class="w-5 h-5 text-warning mt-0.5 shrink-0" />
 			<p class="text-sm text-text-secondary">
 				{{ t('components.delivery.readinessPanel.error') }}
 			</p>
@@ -164,7 +172,7 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 			<!-- Headline verdict -->
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-start gap-3 min-w-0">
-					<UiIconBox icon="lucide:rocket" size="md" variant="brand" rounded="lg" />
+					<UiIconBox :icon="RocketIcon" size="md" variant="brand" rounded="lg" />
 					<div class="min-w-0">
 						<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
 							{{ t('components.delivery.readinessPanel.eyebrow') }}
@@ -192,8 +200,8 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 					:key="g.key"
 					class="flex items-start gap-3 rounded-lg bg-bg-surface px-3 py-3"
 				>
-					<Icon
-						:name="GATE_ICON[g.status]"
+					<component
+						:is="GATE_ICON[g.status]"
 						class="w-5 h-5 mt-0.5 shrink-0"
 						:class="healthTextClass[g.tone]"
 					/>
@@ -207,8 +215,7 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 						class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline shrink-0 mt-0.5 group"
 					>
 						{{ localized(g.actionLabel) }}
-						<Icon
-							name="lucide:arrow-right"
+						<ArrowRightIcon
 							class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"
 						/>
 					</NuxtLink>

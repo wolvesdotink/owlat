@@ -10,6 +10,8 @@
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
+import { CircleCheckIcon, ClockIcon, SplitIcon, TrophyIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /** A/B stats shape — the non-null return of the query that feeds this block. */
 type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
@@ -81,7 +83,7 @@ const variants = computed(() => [
 	<div class="card p-6" data-testid="ab-comparison">
 		<div class="flex items-center justify-between gap-4 mb-6">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
+				<UiIconBox :icon="SplitIcon" size="sm" rounded="lg" />
 				<div>
 					<h3 class="text-base font-medium text-text-primary">{{ t('components.dashboard.campaignAbComparison.title') }}</h3>
 					<p class="text-sm text-text-secondary">
@@ -95,7 +97,7 @@ const variants = computed(() => [
 				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-success/10 text-success"
 				data-testid="ab-winner-chip"
 			>
-				<Icon name="lucide:trophy" class="w-3.5 h-3.5" />
+				<TrophyIcon class="w-3.5 h-3.5" />
 				{{ t('components.dashboard.campaignAbComparison.winnerChip', { variant: stats.winner }) }}
 			</span>
 			<span
@@ -103,7 +105,7 @@ const variants = computed(() => [
 				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning"
 				data-testid="ab-testing-chip"
 			>
-				<Icon name="lucide:clock" class="w-3.5 h-3.5" />
+				<ClockIcon class="w-3.5 h-3.5" />
 				{{ t('components.dashboard.campaignAbComparison.testingInProgress') }}
 			</span>
 		</div>
@@ -137,9 +139,8 @@ const variants = computed(() => [
 							})
 						}}</span
 						>
-						<Icon
+						<TrophyIcon
 							v-if="stats.winner === variant.key"
-							name="lucide:trophy"
 							class="w-4 h-4 text-success"
 						/>
 					</div>
@@ -195,8 +196,8 @@ const variants = computed(() => [
 					data-testid="ab-pick-winner"
 					@click="emit('select-winner', variant.key)"
 				>
-					<Icon v-if="isSelectingWinner" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-					<Icon v-else name="lucide:trophy" class="w-4 h-4" />
+					<SpinnerIcon v-if="isSelectingWinner" class="w-4 h-4" />
+					<TrophyIcon v-else class="w-4 h-4" />
 					{{ t('components.dashboard.campaignAbComparison.pickVariant', { variant: variant.key }) }}
 				</UiButton>
 			</div>
@@ -208,7 +209,7 @@ const variants = computed(() => [
 			class="border-t border-border-subtle pt-4 flex items-center gap-2 text-sm text-text-secondary"
 			data-testid="ab-winner-summary"
 		>
-			<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success shrink-0" />
+			<CircleCheckIcon class="w-4 h-4 text-success shrink-0" />
 			<I18nT
 				:keypath="
 					stats.winnerSelectedAt

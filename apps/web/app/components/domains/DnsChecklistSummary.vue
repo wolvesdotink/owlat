@@ -17,6 +17,7 @@ import {
 // Explicit import so the summary also mounts inside the row's component tests.
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { CheckIcon, CircleCloseIcon, CopyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	entries: ChecklistEntry[];
@@ -140,9 +141,10 @@ const jumpTo = (entry: ChecklistEntry) => {
 					data-testid="dns-copy-zone"
 					@click="handleCopy"
 				>
-					<Icon
-						:name="isCopied('zone-file') ? 'lucide:check' : 'lucide:clipboard-copy'"
+					<component
+						:is="isCopied('zone-file') ? CheckIcon : CopyIcon"
 						:class="['w-4 h-4', isCopied('zone-file') && 'text-success']"
+						size="1em"
 					/>
 					{{ isCopied('zone-file') ? t('common.copied') : copyLabel }}
 				</UiButton>
@@ -167,7 +169,7 @@ const jumpTo = (entry: ChecklistEntry) => {
 				data-testid="dns-outstanding-link"
 				@click="jumpTo(entry)"
 			>
-				<Icon name="lucide:x-circle" class="w-3 h-3" />
+				<CircleCloseIcon class="w-3 h-3" />
 				{{ entry.label }}
 			</button>
 		</div>

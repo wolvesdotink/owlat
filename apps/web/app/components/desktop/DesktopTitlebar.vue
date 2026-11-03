@@ -37,6 +37,7 @@ import { formatBadgeCount } from '~/lib/desktop/workspaceTypes';
 import DesktopWorkspaceMenu from './WorkspaceMenu.vue';
 import ShellConnectionIndicator from '~/components/shell/ConnectionIndicator.vue';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { CloseIcon, InboxIcon, MinusIcon, SearchIcon, SquareIcon } from '@coolicons/vue';
 
 /** `showSearch`: the mounting surface has a command palette listening. */
 const props = defineProps<{ showSearch?: boolean }>();
@@ -136,7 +137,7 @@ function openForYou(): void {
 			:aria-keyshortcuts="ariaFor('global.commandPalette')"
 			@click="() => openSearch()"
 		>
-			<Icon name="lucide:search" class="w-3.5 h-3.5 shrink-0" />
+			<SearchIcon class="w-3.5 h-3.5 shrink-0" />
 			<span class="hidden min-[560px]:inline text-[13px] leading-none truncate">
 				{{ t('components.desktop.desktopTitlebar.searchPill') }}
 			</span>
@@ -168,7 +169,7 @@ function openForYou(): void {
 						"
 						@click.prevent="openForYou"
 					>
-						<Icon name="lucide:inbox" class="w-3.5 h-3.5" />
+						<InboxIcon class="w-3.5 h-3.5" />
 						<span v-if="unreadCount > 0" class="tabular-nums text-[11px] font-[550] leading-none">{{
 							unreadLabel
 						}}</span>
@@ -184,7 +185,7 @@ function openForYou(): void {
 					:aria-label="t('components.desktop.desktopTitlebar.minimize')"
 					@click="control('minimizeWindow')"
 				>
-					<Icon name="lucide:minus" class="w-4 h-4" />
+					<MinusIcon class="w-4 h-4" />
 				</button>
 				<button
 					type="button"
@@ -192,7 +193,7 @@ function openForYou(): void {
 					:aria-label="t('components.desktop.desktopTitlebar.maximize')"
 					@click="control('toggleMaximizeWindow')"
 				>
-					<Icon name="lucide:square" class="w-3.5 h-3.5" />
+					<SquareIcon class="w-3.5 h-3.5" />
 				</button>
 				<button
 					type="button"
@@ -200,7 +201,7 @@ function openForYou(): void {
 					:aria-label="t('common.close')"
 					@click="control('closeWindow')"
 				>
-					<Icon name="lucide:x" class="w-4 h-4" />
+					<CloseIcon class="w-4 h-4" />
 				</button>
 			</div>
 		</div>

@@ -42,7 +42,7 @@ function mountNote(props: Record<string, unknown>) {
 		props,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiAvatar: true, InboxNoteComposer: EditorStub },
+			stubs: { UiAvatar: true, InboxNoteComposer: EditorStub },
 		},
 	});
 }
@@ -103,7 +103,7 @@ describe('ThreadNote editor failure', () => {
 			props: { note: note(), canEdit: true, save: vi.fn(async () => true) },
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { Icon: true, UiAvatar: true, InboxNoteComposer: FailingEditor },
+				stubs: { UiAvatar: true, InboxNoteComposer: FailingEditor },
 			},
 		});
 		await wrapper.get('[data-testid="thread-note-edit"]').trigger('click');

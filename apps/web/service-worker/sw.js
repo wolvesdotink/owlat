@@ -96,7 +96,7 @@ function classifyRequest(input) {
 	} catch {
 		return 'bypass';
 	}
-	// Cross-origin: Convex (ws/https), PostHog, iconify. Not ours to cache.
+	// Cross-origin: Convex (ws/https), PostHog. Not ours to cache.
 	if (url.origin !== input.origin) return 'bypass';
 	if (BYPASS_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return 'bypass';
 	if (input.mode === 'navigate') return 'navigate';

@@ -194,7 +194,6 @@ describe('AnswerTeamPlan (t/)', () => {
 			global: {
 				plugins: [createTestI18n()],
 				components: { UiButton: ButtonStub, PostboxOverflowMenu: Plain },
-				stubs: { Icon: true },
 			},
 		});
 		expect(w.get('[data-testid="answer-team-plan-toggle"]').text()).toContain(
@@ -227,7 +226,6 @@ describe('AnswerTeamPlan (t/)', () => {
 			global: {
 				plugins: [createTestI18n()],
 				components: { UiButton: ButtonStub, PostboxOverflowMenu: Plain },
-				stubs: { Icon: true },
 			},
 		});
 		const marker = w.findAll('[data-testid="evidence-marker"]')[0]!;

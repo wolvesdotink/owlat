@@ -18,6 +18,7 @@ import {
 	type SenderAuthResult,
 	type SenderHeuristics,
 } from '~/utils/senderAuth';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Feature-flag gate: when false the badge renders nothing. */
@@ -95,10 +96,10 @@ const toneClasses = computed(() => {
 			data-testid="auth-badge-toggle"
 			@click="expanded = !expanded"
 		>
-			<Icon :name="result.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
+			<component :is="result.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
 			<span data-testid="auth-badge-summary">{{ message(result.summary) }}</span>
-			<Icon
-				:name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+			<component
+				:is="expanded ? ChevronUpIcon : ChevronDownIcon"
 				class="w-3 h-3 text-text-tertiary"
 			/>
 		</button>

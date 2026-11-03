@@ -63,7 +63,6 @@ function mountOffer(query = 'the invoice from the hosting company in september')
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton: buttonStub },
-			stubs: { Icon: true },
 		},
 	});
 	return wrapper;

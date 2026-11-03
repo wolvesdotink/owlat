@@ -13,6 +13,7 @@
 import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import type { PopoverAnchorTarget } from '@owlat/ui/utils/popoverAnchor';
 import type { EditorSnippet } from '~/composables/postbox/usePostboxSnippetPicker';
+import { PaperclipIcon, UsersIcon } from '@coolicons/vue';
 
 defineProps<{
 	items: EditorSnippet[];
@@ -55,15 +56,13 @@ defineExpose({
 		<template #option="{ option }">
 			<span class="truncate">{{ option.name }}</span>
 			<span class="flex shrink-0 items-center gap-1.5">
-				<Icon
+				<PaperclipIcon
 					v-if="option.attachmentCount"
-					name="lucide:paperclip"
 					class="size-3 text-text-tertiary"
 					:aria-label="t('shared.savedReplies.files', option.attachmentCount)"
 				/>
-				<Icon
+				<UsersIcon
 					v-if="option.isShared"
-					name="lucide:users"
 					class="size-3 text-text-tertiary"
 					:aria-label="t('shared.savedReplies.sharedBadge')"
 				/>

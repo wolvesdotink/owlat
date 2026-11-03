@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.preferences.appPasswords.pageTitle') });
@@ -94,7 +97,7 @@ const smtpHost = computed(() => imapHost.value);
 				{{ t('dashboard.preferences.appPasswords.subheading') }}
 			</p>
 			<UiButton v-if="mailboxId" type="button" class="shrink-0" @click="showCreate = true">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.appPasswords.generate') }}
 			</UiButton>
 		</header>
@@ -140,10 +143,7 @@ const smtpHost = computed(() => imapHost.value);
 				<h2 class="font-semibold">{{ t('dashboard.preferences.appPasswords.activePasswords') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
@@ -250,11 +250,7 @@ const smtpHost = computed(() => imapHost.value);
 						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton type="submit" :disabled="!newLabel.trim() || generating">
-						<Icon
-							v-if="generating"
-							name="lucide:loader-2"
-							class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-						/>
+						<SpinnerIcon v-if="generating" class="w-4 h-4 mr-1.5" />
 						{{
 							generating
 								? t('dashboard.preferences.appPasswords.generating')

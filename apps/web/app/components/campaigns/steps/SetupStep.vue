@@ -6,6 +6,7 @@ import { rules } from '~/composables/useFormValidation';
 import { useCampaignAudience } from '~/composables/useCampaignAudience';
 import { joinList, missingSetupItems } from '~/utils/campaignSetupReadiness';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
+import { ArrowRightIcon, FileTextIcon, PlusIcon, ReplyIcon } from '@coolicons/vue';
 
 interface Props {
 	campaignId: Id<'campaigns'> | null;
@@ -307,7 +308,7 @@ defineExpose({
 			<div class="space-y-6">
 				<div>
 					<label for="campaignName" class="label flex items-center gap-2">
-						<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+						<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.steps.setupStep.nameLabel') }}
 						<span class="text-error">*</span>
 					</label>
@@ -342,7 +343,7 @@ defineExpose({
 
 				<div>
 					<label for="replyTo" class="label flex items-center gap-2">
-						<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
+						<ReplyIcon class="w-4 h-4 text-text-tertiary" />
 						<I18nT
 							keypath="components.campaigns.steps.setupStep.replyToLabel"
 							tag="span"
@@ -392,7 +393,7 @@ defineExpose({
 				class="flex w-full items-center gap-2 text-left text-text-primary font-medium hover:opacity-80 transition-opacity"
 				@click="addABTest"
 			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('components.campaigns.steps.setupStep.addABTest') }}
 			</button>
 			<p class="mt-1 text-sm text-text-tertiary">
@@ -444,7 +445,7 @@ defineExpose({
 				>
 					{{ isLoading ? t('common.saving') : t('common.next') }}
 					<template v-if="!isLoading" #iconRight>
-						<Icon name="lucide:arrow-right" class="w-4 h-4" />
+						<ArrowRightIcon class="w-4 h-4" />
 					</template>
 				</UiButton>
 			</div>

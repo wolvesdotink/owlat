@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OrganizationInvitation } from '~/composables/useOrganization';
+import { CloseIcon } from '@coolicons/vue';
 
 /**
  * "Cancel this invitation?" — the confirmation in front of revoking a pending
@@ -39,7 +40,7 @@ const { t } = useI18n();
 			</UiButton>
 			<UiButton variant="danger" :loading="busy" @click="emit('confirm')">
 				<template #iconLeft>
-					<Icon v-if="!busy" name="lucide:x" class="w-4 h-4" />
+					<CloseIcon v-if="!busy" class="w-4 h-4" />
 				</template>
 				{{
 					busy

@@ -30,7 +30,6 @@ beforeAll(() => {
 });
 
 const stubs = {
-	Icon: { props: ['name'], template: '<span />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 };
 

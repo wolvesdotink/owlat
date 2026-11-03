@@ -165,7 +165,6 @@ const stubs = {
 	UiSwitch: toggleStub,
 	UiSpinner: true,
 	UiIconBox: true,
-	Icon: true,
 	NuxtLink: true,
 	DeliveryEnvSetupSteps: true,
 };

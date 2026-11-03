@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Condition } from '~/composables/conditions';
+import { CloseIcon, FilterIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 
@@ -112,7 +114,7 @@ const filterSummaryOf = (segment: SegmentRow) => describeFilters(segment.filters
 // card has no filter column.
 const listTable = computed(() => ({
 	items: filteredSegments.value,
-	icon: 'lucide:filter',
+	icon: FilterIcon,
 	itemTo: segmentPath,
 	countOf: (segment: { cachedCount?: number | null }) => segment.cachedCount,
 	countField: 'cachedCount' as const,
@@ -189,12 +191,12 @@ onMounted(() => {
 		:active-search="debouncedSearch"
 		:search-placeholder="t('dashboard.audience.segments.index.searchPlaceholder')"
 		:empty-no-org="{
-			icon: 'lucide:filter',
+			icon: FilterIcon,
 			title: t('dashboard.audience.segments.index.noWorkspace.title'),
 			description: t('dashboard.audience.segments.index.noWorkspace.description'),
 		}"
 		:empty="{
-			icon: 'lucide:filter',
+			icon: FilterIcon,
 			title: t('dashboard.audience.segments.index.empty.title'),
 			description: t('dashboard.audience.segments.index.empty.description'),
 		}"
@@ -224,7 +226,7 @@ onMounted(() => {
 
 		<template #actions>
 			<UiButton v-if="canManage" @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.audience.segments.index.newSegment') }}
 			</UiButton>
 			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
@@ -238,7 +240,7 @@ onMounted(() => {
 
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.audience.segments.index.newSegment') }}
 			</UiButton>
 		</template>
@@ -260,7 +262,7 @@ onMounted(() => {
 							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
 						>
-							<Icon name="lucide:users" class="w-4 h-4" />
+							<UsersIcon class="w-4 h-4" />
 						</NuxtLink>
 					</UiTooltip>
 				</template>
@@ -373,7 +375,7 @@ onMounted(() => {
 							class="gap-1"
 							@click="addCondition"
 						>
-							<Icon name="lucide:plus" class="w-3 h-3" />
+							<PlusIcon class="w-3 h-3" />
 							{{ t('dashboard.audience.segments.index.modal.addCondition') }}
 						</UiButton>
 					</div>
@@ -391,7 +393,7 @@ onMounted(() => {
 						v-if="segmentForm.filters.conditions.length === 0"
 						class="p-8 border-2 border-dashed border-border-subtle rounded-xl text-center"
 					>
-						<Icon name="lucide:filter" class="w-8 h-8 text-text-tertiary mx-auto mb-2" />
+						<FilterIcon class="w-8 h-8 text-text-tertiary mx-auto mb-2" :stroke-width="1.5" />
 						<p class="text-text-secondary text-sm">
 							{{ t('dashboard.audience.segments.index.modal.noConditions') }}
 						</p>
@@ -432,7 +434,7 @@ onMounted(() => {
 										:aria-label="t('dashboard.audience.segments.index.modal.removeCondition')"
 										@click="removeCondition(index)"
 									>
-										<Icon name="lucide:x" class="w-4 h-4" />
+										<CloseIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 							</div>
@@ -444,7 +446,7 @@ onMounted(() => {
 				<div class="mb-6 p-4 bg-bg-surface rounded-xl border border-border-subtle">
 					<div class="flex items-center gap-3">
 						<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-							<Icon name="lucide:users" class="w-5 h-5 text-brand" />
+							<UsersIcon class="w-5 h-5 text-brand" />
 						</div>
 						<div>
 							<p class="text-sm text-text-secondary">
@@ -452,10 +454,7 @@ onMounted(() => {
 							</p>
 							<p class="text-xl font-semibold text-text-primary">
 								<template v-if="countLoading">
-									<Icon
-										name="lucide:loader-2"
-										class="w-5 h-5 animate-spin motion-reduce:animate-none inline"
-									/>
+									<SpinnerIcon class="w-5 h-5 inline" />
 								</template>
 								<template v-else>
 									{{ matchingCount?.toLocaleString(locale) ?? 0 }}

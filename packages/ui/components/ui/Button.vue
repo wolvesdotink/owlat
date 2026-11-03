@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, resolveComponent } from 'vue';
+import { SpinnerIcon } from '../../icons/SpinnerIcon';
 
 defineOptions({ inheritAttrs: false });
 
@@ -107,12 +108,7 @@ const element = computed(() => {
 		@click="handleClick"
 	>
 		<slot name="iconLeft" />
-		<Icon
-			v-if="loading"
-			name="lucide:loader-2"
-			class="w-4 h-4 animate-spin motion-reduce:animate-none"
-			:class="{ 'mr-2': $slots['default'] }"
-		/>
+		<SpinnerIcon v-if="loading" class="w-4 h-4" :class="{ 'mr-2': $slots['default'] }" />
 		<slot />
 		<slot name="iconRight" />
 	</component>

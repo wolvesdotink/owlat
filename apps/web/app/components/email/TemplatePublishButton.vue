@@ -14,6 +14,8 @@
  * `aria-describedby` makes the reason arrive with the control; the click
  * handler is what keeps it inert.
  */
+import { PaperPlaneIcon, UndoIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	isPublished: boolean;
 	hasChanges: boolean;
@@ -67,7 +69,7 @@ function onToggle() {
 			@click="onToggle"
 		>
 			<template #iconLeft>
-				<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
+				<component :is="isPublished ? UndoIcon : PaperPlaneIcon" class="w-4 h-4" />
 			</template>
 			{{
 				isPublished

@@ -13,6 +13,8 @@
  */
 import { ref, computed, nextTick, defineAsyncComponent } from 'vue';
 import type { WidgetModule } from '~/composables/widgets/types';
+import { CircleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	/** The resolved widget module to render. */
@@ -75,10 +77,7 @@ function retry(clearFailure: () => void) {
 				<component :is="asyncComponent" v-bind="boundProps" />
 				<template #fallback>
 					<div class="p-4 flex items-center justify-center gap-2" aria-busy="true">
-						<Icon
-							name="lucide:loader-2"
-							class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-						/>
+						<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 						<span class="sr-only">{{
 							t('components.widget.host.loading', { label: regionLabel })
 						}}</span>
@@ -88,7 +87,7 @@ function retry(clearFailure: () => void) {
 			<template #fallback="{ retry: clearFailure }">
 				<div role="alert" class="p-4 rounded-lg border border-error/20 bg-error/5 text-center">
 					<div class="flex flex-col items-center gap-2">
-						<Icon name="lucide:alert-circle" class="w-6 h-6 text-error" />
+						<CircleWarningIcon class="w-6 h-6 text-error" />
 						<p class="text-sm text-text-secondary">
 							{{ t('components.widget.host.failed') }}
 						</p>

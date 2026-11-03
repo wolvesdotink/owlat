@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
+import { CloseIcon, CloudUploadIcon, FileIcon, HistoryIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	open: boolean;
@@ -145,7 +146,7 @@ watch(
 			v-if="isNewVersion"
 			class="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-lg bg-brand-subtle/50 text-text-secondary"
 		>
-			<Icon name="lucide:history" class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
+			<HistoryIcon class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
 			<p class="text-xs leading-relaxed">
 				{{ t('components.files.fileUploadModal.newVersionHint') }}
 			</p>
@@ -166,7 +167,7 @@ watch(
 			@drop="handleDrop"
 			@click="browse"
 		>
-			<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+			<CloudUploadIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 			<p class="text-sm font-medium text-text-primary">
 				{{ t('components.files.fileUploadModal.dropzone') }}
 			</p>
@@ -180,7 +181,7 @@ watch(
 			v-else
 			class="flex items-center gap-3 p-4 bg-bg-surface shadow-surface-1 rounded-xl"
 		>
-			<Icon name="lucide:file" class="w-8 h-8 text-text-tertiary flex-shrink-0" />
+			<FileIcon class="w-8 h-8 text-text-tertiary flex-shrink-0" :stroke-width="1.5" />
 			<div class="min-w-0 flex-1">
 				<p class="text-sm font-medium text-text-primary truncate">{{ selectedFile.name }}</p>
 				<p class="text-xs text-text-tertiary">
@@ -192,7 +193,7 @@ watch(
 				@click="removeSelectedFile"
 				:aria-label="t('components.files.fileUploadModal.removeFile')"
 			>
-				<Icon name="lucide:x" class="w-4 h-4" />
+				<CloseIcon class="w-4 h-4" />
 			</button>
 		</div>
 

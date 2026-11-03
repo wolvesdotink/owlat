@@ -22,6 +22,8 @@ import type { BrandLogoAsset } from '@owlat/shared/brandKitBlocks';
 import type { BrandKitImportSelection } from '~/components/brand-kit/ImportDialog.vue';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { CheckIcon, CircleWarningIcon, GlobeIcon, ReloadIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 useHead({ title: () => t('dashboard.admin.instance.brandKit.pageTitle') });
@@ -155,7 +157,7 @@ const buttonFields = [
 					data-testid="brand-kit-import"
 					@click="isImportOpen = true"
 				>
-					<template #iconLeft><Icon name="lucide:globe" class="w-4 h-4" /></template>
+					<template #iconLeft><GlobeIcon class="w-4 h-4" /></template>
 					{{ t('dashboard.admin.instance.brandKit.importButton') }}
 				</UiButton>
 			</template>
@@ -381,23 +383,19 @@ const buttonFields = [
 					<!-- Actions -->
 					<div class="card flex flex-wrap items-center justify-between gap-3">
 						<UiButton variant="ghost" type="button" :disabled="isSaving" @click="resetToDefaults">
-							<template #iconLeft><Icon name="lucide:refresh-cw" class="w-4 h-4" /></template>
+							<template #iconLeft><ReloadIcon class="w-4 h-4" /></template>
 							{{ t('dashboard.admin.instance.brandKit.resetToDefaults') }}
 						</UiButton>
 						<div class="flex items-center gap-3">
 							<p v-if="problem" class="text-sm text-error" role="alert">{{ problem }}</p>
 							<p v-else-if="isDirty" class="text-sm text-warning flex items-center gap-2">
-								<Icon name="lucide:alert-circle" class="w-4 h-4" />
+								<CircleWarningIcon class="w-4 h-4" />
 								{{ t('dashboard.admin.instance.brandKit.unsaved') }}
 							</p>
 							<UiButton type="submit" :disabled="isSaving || !isDirty || !loaded">
 								<template #iconLeft>
-									<Icon
-										v-if="isSaving"
-										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin motion-reduce:animate-none"
-									/>
-									<Icon v-else name="lucide:check" class="w-4 h-4" />
+									<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+									<CheckIcon v-else class="w-4 h-4" />
 								</template>
 								{{
 									isSaving

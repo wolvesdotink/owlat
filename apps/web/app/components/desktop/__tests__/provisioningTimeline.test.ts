@@ -26,7 +26,6 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const iconStub = { props: ['name'], template: '<i class="icon" :data-name="name" />' };
 const progressStub = { props: ['size', 'value'], template: '<div class="progress" />' };
 
 function logs(count: number, prefix = 'line'): LogLine[] {
@@ -41,7 +40,7 @@ function mountTimeline(lines: LogLine[]) {
 		props: { steps: createTimeline(), logs: lines, progress: 42 },
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: iconStub, UiProgressBar: progressStub },
+			components: { UiProgressBar: progressStub },
 		},
 	});
 }

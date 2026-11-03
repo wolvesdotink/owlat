@@ -12,6 +12,8 @@
  * renders — the tables are module scope, where no `t` exists.
  */
 
+import { CircleCheckIcon, ClockIcon, FileTextIcon, type IconComponent } from '@coolicons/vue';
+
 type TemplateSortField = 'updatedAt' | 'createdAt' | 'name';
 
 export interface TemplateSortOption {
@@ -87,7 +89,7 @@ export type TemplateStatus = 'draft' | 'published' | 'pending_review';
 
 interface TemplateStatusBadge {
 	color: string;
-	icon: string;
+	icon: IconComponent;
 	/** i18n message key under `shared.templateList.status`. */
 	label: string;
 }
@@ -95,17 +97,17 @@ interface TemplateStatusBadge {
 const STATUS_BADGES: Record<TemplateStatus, TemplateStatusBadge> = {
 	published: {
 		color: 'bg-success/10 text-success',
-		icon: 'lucide:check-circle',
+		icon: CircleCheckIcon,
 		label: 'shared.templateList.status.published',
 	},
 	pending_review: {
 		color: 'bg-warning/10 text-warning',
-		icon: 'lucide:clock-3',
+		icon: ClockIcon,
 		label: 'shared.templateList.status.pendingReview',
 	},
 	draft: {
 		color: 'bg-text-tertiary/10 text-text-tertiary',
-		icon: 'lucide:file-text',
+		icon: FileTextIcon,
 		label: 'shared.templateList.status.draft',
 	},
 };

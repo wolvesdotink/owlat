@@ -14,6 +14,7 @@
  * is what marks the settings page dirty.
  */
 import { languageOptions } from '~/data/languageOptions';
+import { GlobeIcon, PlusIcon, TranslateIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Language codes the template currently carries overlays for. */
@@ -92,7 +93,7 @@ const removeLanguage = (langCode: string) => {
 		<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
 			<div class="flex min-w-0 flex-1 basis-64 items-center gap-3">
 				<div class="p-2 shrink-0 rounded-lg bg-brand/10 flex items-center justify-center">
-					<Icon name="lucide:languages" class="w-5 h-5 text-brand" />
+					<TranslateIcon class="w-5 h-5 text-brand" />
 				</div>
 				<div class="min-w-0">
 					<h2 class="text-lg font-semibold text-text-primary">
@@ -109,7 +110,7 @@ const removeLanguage = (langCode: string) => {
 				<template #trigger>
 					<UiButton variant="secondary" size="sm">
 						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
+							<PlusIcon class="w-4 h-4" />
 						</template>
 						{{ t('dashboard.send.emails.detail.settings.translations.addLanguage') }}
 					</UiButton>
@@ -120,7 +121,7 @@ const removeLanguage = (langCode: string) => {
 					:key="lang.value"
 					@click="addLanguage(lang.value)"
 				>
-					<Icon name="lucide:globe" class="w-4 h-4" />
+					<GlobeIcon class="w-4 h-4" />
 					{{
 						t('dashboard.send.emails.detail.settings.languageWithNative', {
 							label: t(lang.label),
@@ -136,7 +137,7 @@ const removeLanguage = (langCode: string) => {
 			v-if="supportedLanguages.length === 0"
 			class="text-center py-8 border border-dashed border-border-subtle rounded-xl"
 		>
-			<Icon name="lucide:globe" class="w-8 h-8 text-text-tertiary mx-auto mb-3" />
+			<GlobeIcon class="w-8 h-8 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 			<p class="text-text-secondary mb-1">
 				{{ t('dashboard.send.emails.detail.settings.translations.emptyTitle') }}
 			</p>
@@ -167,7 +168,7 @@ const removeLanguage = (langCode: string) => {
 							:aria-label="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
 							@click.stop="removeLanguage(langCode)"
 						>
-							<Icon name="lucide:trash-2" class="w-3 h-3" />
+							<TrashIcon class="w-3 h-3" />
 						</button>
 					</UiTooltip>
 				</div>
@@ -181,7 +182,7 @@ const removeLanguage = (langCode: string) => {
 					class="border border-border-subtle rounded-xl p-6 bg-bg-surface/50"
 				>
 					<div class="flex items-center gap-2 mb-4">
-						<Icon name="lucide:globe" class="w-4 h-4 text-brand" />
+						<GlobeIcon class="w-4 h-4 text-brand" />
 						<h3 class="font-medium text-text-primary">
 							{{ getLanguageLabel(selectedLanguage) }}
 						</h3>

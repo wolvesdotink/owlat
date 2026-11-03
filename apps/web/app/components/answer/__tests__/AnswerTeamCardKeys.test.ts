@@ -110,7 +110,6 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				InboxTrustChip: true,
 				InboxDecisionRationale: true,
 				TaskContext: true,

@@ -44,7 +44,7 @@ afterEach(() => {
 
 function mountBanner() {
 	wrapper = mount(AppUpdatedBanner, {
-		global: { plugins: [createTestI18n()], components: { UiButton }, stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], components: { UiButton } },
 	});
 	return wrapper;
 }

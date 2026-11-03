@@ -27,6 +27,7 @@ import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
 import { POSTBOX_SORT_ORDER_OPTIONS } from '~/utils/postboxSortOrder';
 import type { PostboxUnreadStyle } from '~/utils/postboxUnreadStyle';
 import { POSTBOX_UNREAD_STYLE_OPTIONS } from '~/utils/postboxUnreadStyle';
+import { CheckIcon, Slider1Icon } from '@coolicons/vue';
 
 defineProps<{
 	/** Inbox-only list renderer; absent options hide the group entirely. */
@@ -60,7 +61,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 
 <template>
 	<PostboxOverflowMenu
-		icon="lucide:sliders-horizontal"
+		:icon="Slider1Icon"
 		:label="t('components.postbox.postboxListDisplayMenu.label')"
 		:trigger-text="t('components.postbox.postboxListDisplayMenu.display')"
 		trigger-class="px-2 py-1 text-text-secondary"
@@ -87,8 +88,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 							close();
 						"
 					>
-						<Icon
-							name="lucide:check"
+						<CheckIcon
 							class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-brand"
 							:class="{ invisible: viewMode !== option.value }"
 							aria-hidden="true"
@@ -124,8 +124,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 							close();
 						"
 					>
-						<Icon
-							name="lucide:check"
+						<CheckIcon
 							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 							:class="{ invisible: sortOrder !== option.value }"
 							aria-hidden="true"
@@ -150,8 +149,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 						close();
 					"
 				>
-					<Icon
-						name="lucide:check"
+					<CheckIcon
 						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 						:class="{ invisible: density !== option.value }"
 						aria-hidden="true"
@@ -175,8 +173,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 						close();
 					"
 				>
-					<Icon
-						name="lucide:check"
+					<CheckIcon
 						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 						:class="{ invisible: unreadStyle !== option.value }"
 						aria-hidden="true"
@@ -200,8 +197,7 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 						close();
 					"
 				>
-					<Icon
-						name="lucide:check"
+					<CheckIcon
 						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 						:class="{ invisible: readingPane !== option.value }"
 						aria-hidden="true"

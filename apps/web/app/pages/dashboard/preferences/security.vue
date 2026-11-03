@@ -13,6 +13,7 @@
 import { useAccountSessions } from '~/composables/useAccountSecurity';
 import { describeLastSeen, type ActiveSessionRow } from '~/utils/accountSessions';
 import { useLocalized } from '~/composables/useLocalized';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 
@@ -136,10 +137,7 @@ async function confirmSignOutOthers() {
 			</header>
 
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<p v-else-if="hasLoadError" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.security.sessions.loadFailed') }}
@@ -154,7 +152,7 @@ async function confirmSignOutOthers() {
 					class="px-5 py-3 flex items-center justify-between gap-4"
 				>
 					<div class="flex items-start gap-3 min-w-0">
-						<Icon :name="row.icon" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
+						<component :is="row.icon" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 						<div class="min-w-0">
 							<p class="font-medium text-sm flex items-center gap-2 flex-wrap">
 								<span>{{ say(row.browser) }}</span>

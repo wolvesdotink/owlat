@@ -16,7 +16,7 @@ export interface PluginSettingsPanelDefinition {
 	readonly name: string;
 	/** Absolute internal dashboard path the entry links to. */
 	readonly href: string;
-	/** Icon token, for example `lucide:sliders-horizontal`. */
+	/** A coolicons icon token, `coolicons:<name>` with a name from coolicons.cool, for example `coolicons:slider-1`. */
 	readonly icon: string;
 	/** Ordering hint among this plugin's settings entries (default: declaration order). */
 	readonly order?: number;

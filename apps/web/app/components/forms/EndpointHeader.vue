@@ -2,6 +2,14 @@
 // The clickable header of one form endpoint card on the forms admin page:
 // name, status, topic, submission count and creation date, then the active
 // switch, edit, delete and the expand arrow. The page owns every action.
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	FileTextIcon,
+	Slider1Icon,
+	TrashIcon,
+} from '@coolicons/vue';
+
 defineProps<{
 	form: { name: string; isActive: boolean; totalSubmissions: number };
 	topicName: string;
@@ -26,7 +34,7 @@ const { t } = useI18n();
 		@click="emit('toggle')"
 	>
 		<div class="flex items-center gap-4">
-			<UiIconBox icon="lucide:file-text" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="FileTextIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
 				<div class="flex items-center gap-3">
 					<p class="font-medium text-text-primary">{{ form.name }}</p>
@@ -38,10 +46,7 @@ const { t } = useI18n();
 								: 'bg-text-tertiary/20 text-text-tertiary border-text-tertiary/30',
 						]"
 					>
-						<Icon
-							:name="form.isActive ? 'lucide:check-circle-2' : 'lucide:x-circle'"
-							class="w-3 h-3"
-						/>
+						<component :is="form.isActive ? CircleCheckIcon : CircleCloseIcon" class="w-3 h-3" />
 						{{ form.isActive ? t('common.active') : t('common.inactive') }}
 					</span>
 				</div>
@@ -84,7 +89,7 @@ const { t } = useI18n();
 					:aria-label="t('dashboard.admin.instance.forms.editForm')"
 					@click.stop="emit('edit')"
 				>
-					<Icon name="lucide:settings-2" class="w-4 h-4" />
+					<Slider1Icon class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 			<!-- Delete -->
@@ -95,7 +100,7 @@ const { t } = useI18n();
 					:aria-label="t('dashboard.admin.instance.forms.deleteForm')"
 					@click.stop="emit('delete')"
 				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon class="w-4 h-4" />
 				</UiButton>
 			</UiTooltip>
 			<!-- Expand Arrow -->

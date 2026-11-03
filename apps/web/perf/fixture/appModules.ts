@@ -9,9 +9,9 @@ type Module = Record<string, unknown>;
 
 export const appModules = import.meta.glob<Module>(
 	[
-		'../../app/composables/{useConvexQuery,useBackendOperation,useToast,useAnnounce,usePostHog,useAuth,useOrganization,useOrganizationContext,useActiveMemberRole,usePermissions,useFeatureFlag,useFeatureCopy,useDesktopContext,useFormat}.ts',
+		'../../app/composables/{useConvexQuery,useBackendOperation,useToast,useAnnounce,usePostHog,useAuth,useOrganization,useOrganizationContext,useActiveMemberRole,usePermissions,useFeatureFlag,useFeatureCopy,useDesktopContext,useFormat,useConfirm,useInboxes,useLocalStorage}.ts',
 		'../../app/composables/chat/useChatAttachments.ts',
-		'../../app/composables/postbox/{usePostboxBulkActions,usePostboxOptimisticFlags,usePostboxOptimisticHide,usePostboxRowTriage,usePostboxRowPickers,usePostboxMessageDrag,usePostboxTriageUndo,usePostboxListKeyboard,usePostboxPrefetch,usePostboxSettings,usePostboxLabels,usePostboxFolders,usePostboxOfflineFolders,usePostboxOfflineCache}.ts',
+		'../../app/composables/postbox/{usePostboxBulkActions,usePostboxOptimisticFlags,usePostboxOptimisticHide,usePostboxRowTriage,usePostboxRowPickers,usePostboxMailboxTransfer,usePostboxMessageDrag,usePostboxTriageUndo,usePostboxListKeyboard,usePostboxPrefetch,usePostboxSettings,usePostboxLabels,usePostboxFolders,usePostboxOfflineFolders,usePostboxOfflineCache}.ts',
 		'../../app/utils/{postboxShortcuts,waitForLoaded,formatters,postboxOfflineFolderStore,postboxOfflineStore,composerDraftStore}.ts',
 	],
 	{ eager: true }

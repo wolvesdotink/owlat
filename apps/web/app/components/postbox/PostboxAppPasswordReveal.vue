@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CheckIcon, CopyIcon, KeyIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	open: boolean;
 	password: string | null;
@@ -31,7 +33,7 @@ function close() {
 				<div
 					class="w-9 h-9 rounded-full bg-warning/10 text-warning flex items-center justify-center flex-shrink-0"
 				>
-					<Icon name="lucide:key-round" class="w-5 h-5" />
+					<KeyIcon class="w-5 h-5" />
 				</div>
 				<div class="flex-1">
 					<h2 class="text-lg font-semibold">
@@ -58,7 +60,7 @@ function close() {
 
 			<div class="flex items-center justify-between mt-4">
 				<UiButton variant="ghost" type="button" @click="copyPassword">
-					<Icon :name="copied ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4 mr-1.5" />
+					<component :is="copied ? CheckIcon : CopyIcon" class="w-4 h-4 mr-1.5" />
 					{{ copied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
 				<UiButton type="button" @click="close">{{

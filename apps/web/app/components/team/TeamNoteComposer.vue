@@ -26,6 +26,7 @@ import { activeItemQuery, matchItems, removeItemQuery } from '~/utils/teamStream
 import TeamItemPicker from './TeamItemPicker.vue';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { useId } from 'vue';
+import { CloseIcon, LockIcon, ReplyIcon } from '@coolicons/vue';
 
 export type TeamComposeMode = 'note' | 'reply';
 
@@ -245,7 +246,7 @@ defineExpose({ focus });
 					data-testid="team-composer-mode-note"
 					@click="focus('note')"
 				>
-					<Icon name="lucide:lock" class="size-3" aria-hidden="true" />
+					<LockIcon class="size-3" aria-hidden="true" />
 					{{ t('components.team.composer.note') }}
 				</button>
 				<button
@@ -262,7 +263,7 @@ defineExpose({ focus });
 					data-testid="team-composer-mode-reply"
 					@click="focus('reply')"
 				>
-					<Icon name="lucide:reply" class="size-3" aria-hidden="true" />
+					<ReplyIcon class="size-3" aria-hidden="true" />
 					{{ t('components.team.composer.replyTo', { name: replyName }) }}
 				</button>
 			</div>
@@ -308,7 +309,7 @@ defineExpose({ focus });
 					:aria-label="t('components.team.composer.unlink')"
 					@click="noteDraft = { ...noteDraft, itemId: null }"
 				>
-					<Icon name="lucide:x" class="size-3" />
+					<CloseIcon class="size-3" />
 				</button>
 			</p>
 
@@ -370,7 +371,7 @@ defineExpose({ focus });
 				data-testid="team-composer-post"
 				@click="post"
 			>
-				<Icon name="lucide:lock" class="size-3.5" />
+				<LockIcon class="size-3.5" />
 				{{ t('components.team.composer.post') }}
 			</UiButton>
 			<UiButton
@@ -380,7 +381,7 @@ defineExpose({ focus });
 				data-testid="team-composer-continue"
 				@click="continueReply"
 			>
-				<Icon name="lucide:reply" class="size-3.5" />
+				<ReplyIcon class="size-3.5" />
 				{{ t('components.team.composer.continue') }}
 			</UiButton>
 		</div>

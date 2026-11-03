@@ -5,7 +5,7 @@ import type { Component } from 'vue';
 import type { EditorBlock, BlockType, EmailTheme } from '../../types';
 import { editorModuleFor } from '../../blocks';
 import type { NestedChild } from '../../blocks/_module';
-import { Trash2, Plus, ChevronRight } from '@lucide/vue';
+import { ChevronRightIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t, label } = useBuilderI18n();
@@ -117,7 +117,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						class="flex-1 text-xs text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
 						>{{ childLabel(child) }}</span
 					>
-					<ChevronRight
+					<ChevronRightIcon
 						:size="12"
 						class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
 					/>
@@ -129,7 +129,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
 						@click.stop="emit('remove-child', child.id)"
 					>
-						<Trash2 :size="12" />
+						<TrashIcon :size="12" />
 					</button>
 				</UiTooltip>
 			</div>

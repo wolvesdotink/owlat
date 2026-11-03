@@ -54,7 +54,7 @@ beforeEach(() => {
 
 const globalMount = {
 	plugins: [createTestI18n()],
-	components: { PostboxReaderSkeleton, UiSkeleton, Icon: { template: '<span />' } },
+	components: { PostboxReaderSkeleton, UiSkeleton },
 	stubs: { PostboxImageBanner: true },
 };
 

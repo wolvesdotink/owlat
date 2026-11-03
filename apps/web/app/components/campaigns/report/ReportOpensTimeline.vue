@@ -2,6 +2,7 @@
 // The campaign report's "Opens over time" card: the first 48 hours after the
 // first recorded open.
 import { formatNumber } from '~/utils/formatters';
+import { EyeIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	opensTimeline: ReadonlyArray<{ timestamp: number; count: number }> | null | undefined;
@@ -41,7 +42,7 @@ const timelineData = computed<{ label: string; value: number }[]>(() => {
 			v-if="timelineData.length === 0"
 			class="flex flex-col items-center justify-center py-12 text-center"
 		>
-			<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
+			<EyeIcon class="w-10 h-10 text-text-tertiary mb-3" :stroke-width="1.5" />
 			<p class="text-text-secondary">
 				{{ t('dashboard.campaigns.detail.report.timeline.emptyTitle') }}
 			</p>

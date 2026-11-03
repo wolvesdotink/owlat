@@ -123,7 +123,6 @@ function mountPage() {
 			stubs: {
 				UiModal: UiModalStub,
 				UiButton: UiButtonStub,
-				Icon: true,
 				UiSwitch: true,
 				I18nT: true,
 				PreferencesWebPush: true,

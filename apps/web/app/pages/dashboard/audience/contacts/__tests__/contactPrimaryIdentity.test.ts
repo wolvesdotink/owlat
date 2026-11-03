@@ -75,7 +75,6 @@ function mountPage(tableFits: boolean) {
 				UiContextMenu,
 			},
 			stubs: {
-				Icon: true,
 				UiModal: true,
 				UiPageHeader: true,
 				AudienceTabs: true,

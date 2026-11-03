@@ -9,6 +9,7 @@ import {
 	type Partstat,
 } from '@owlat/shared/ical';
 import { escapeHtml } from '@owlat/shared/html';
+import { CalendarIcon, CheckIcon, CircleHelpIcon, CloseIcon, MapPinIcon } from '@coolicons/vue';
 
 /**
  * Renders an iCalendar invite (a text/calendar or .ics part) as a card and
@@ -116,14 +117,14 @@ function rsvp(status: Partstat) {
 <template>
 	<div v-if="event" class="mt-3 border border-border-subtle rounded-lg p-4 bg-bg-surface">
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:calendar" class="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
+			<CalendarIcon class="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
 			<div class="flex-1 min-w-0">
 				<p class="font-semibold text-text-primary">
 					{{ event.summary || t('components.postbox.postboxInviteCard.fallbackSummary') }}
 				</p>
 				<p v-if="formatWhen()" class="text-sm text-text-secondary mt-0.5">{{ formatWhen() }}</p>
 				<p v-if="event.location" class="text-sm text-text-tertiary mt-0.5 flex items-center gap-1">
-					<Icon name="lucide:map-pin" class="w-3.5 h-3.5" />
+					<MapPinIcon class="w-3.5 h-3.5" />
 					{{ event.location }}
 				</p>
 				<p
@@ -147,15 +148,15 @@ function rsvp(status: Partstat) {
 		</div>
 		<div v-if="canRsvp" class="flex items-center gap-2 mt-3">
 			<UiButton variant="ghost" type="button" class="text-success" @click="rsvp('ACCEPTED')">
-				<Icon name="lucide:check" class="w-4 h-4 mr-1" />
+				<CheckIcon class="w-4 h-4 mr-1" />
 				{{ t('components.postbox.postboxInviteCard.accept') }}
 			</UiButton>
 			<UiButton variant="ghost" type="button" class="text-warning" @click="rsvp('TENTATIVE')">
-				<Icon name="lucide:help-circle" class="w-4 h-4 mr-1" />
+				<CircleHelpIcon class="w-4 h-4 mr-1" />
 				{{ t('components.postbox.postboxInviteCard.maybe') }}
 			</UiButton>
 			<UiButton variant="ghost" type="button" class="text-error" @click="rsvp('DECLINED')">
-				<Icon name="lucide:x" class="w-4 h-4 mr-1" />
+				<CloseIcon class="w-4 h-4 mr-1" />
 				{{ t('components.postbox.postboxInviteCard.decline') }}
 			</UiButton>
 		</div>

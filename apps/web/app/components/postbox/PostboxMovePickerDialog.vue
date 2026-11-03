@@ -16,6 +16,7 @@ import type {
 	PostboxTransferMode,
 	PostboxTransferTarget,
 } from '~/composables/postbox/usePostboxMailboxTransfer';
+import { FolderIcon, InboxIcon, LinkIcon, UsersIcon } from '@coolicons/vue';
 
 withDefaults(
 	defineProps<{
@@ -50,7 +51,7 @@ const { t } = useI18n();
 					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm capitalize"
 					@click="emit('pick', folder._id)"
 				>
-					<Icon name="lucide:folder" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<FolderIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					{{ folder.role ?? folder.name }}
 				</button>
 			</li>
@@ -73,14 +74,8 @@ const { t } = useI18n();
 						"
 						@click="emit('pick-mailbox', mailbox.mailboxId, 'move')"
 					>
-						<Icon
-							:name="
-								mailbox.isConnected
-									? 'lucide:link'
-									: mailbox.isShared
-										? 'lucide:users'
-										: 'lucide:inbox'
-							"
+						<component
+							:is="mailbox.isConnected ? LinkIcon : mailbox.isShared ? UsersIcon : InboxIcon"
 							class="w-4 h-4 text-text-tertiary flex-shrink-0"
 						/>
 						<span class="truncate">{{ mailbox.name }}</span>

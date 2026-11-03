@@ -7,6 +7,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { browserTimeZone, formatSlotRange } from '~/utils/bookingSlots';
+import { CalendarDaysIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -46,7 +47,7 @@ async function confirmCancel() {
 			</template>
 			<template #empty>
 				<UiEmptyState
-					icon="lucide:calendar-days"
+					:icon="CalendarDaysIcon"
 					:heading-level="3"
 					:title="t('components.booking.upcoming.emptyTitle')"
 					:description="t('components.booking.upcoming.emptyBody')"

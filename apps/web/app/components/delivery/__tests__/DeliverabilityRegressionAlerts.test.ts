@@ -44,7 +44,6 @@ const alert: DeliverabilityRegressionAlert = {
 	emailNotificationState: 'sent',
 };
 const stubs = {
-	Icon: { template: '<i />' },
 	UiButton: {
 		props: ['disabled', 'loading'],
 		emits: ['click'],

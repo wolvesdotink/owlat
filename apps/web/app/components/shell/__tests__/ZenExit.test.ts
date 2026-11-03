@@ -23,7 +23,7 @@ function mountExit(props: { showBar?: boolean; pageOwnsEscape?: boolean } = {}) 
 	wrapper = mount(ZenExit, {
 		attachTo: document.body,
 		props: { showBar: true, pageOwnsEscape: false, ...props },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 	return wrapper;
 }

@@ -21,6 +21,7 @@ import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { ChevronDownIcon, UsersIcon } from '@coolicons/vue';
 
 const tableFits = ref(true);
 const push = vi.fn();
@@ -48,9 +49,9 @@ const baseProps = {
 	searchPlaceholder: 'Search contacts in this topic...',
 	loading: false,
 	error: null as Error | null,
-	empty: { icon: 'lucide:users', title: 'No contacts in this topic', description: 'Add some.' },
+	empty: { icon: UsersIcon, title: 'No contacts in this topic', description: 'Add some.' },
 	isSortable: (field: string) => ['email', 'firstName', 'lastName', 'addedAt'].includes(field),
-	getSortIcon: (field: string) => (field === 'addedAt' ? 'lucide:chevron-down' : null),
+	getSortIcon: (field: string) => (field === 'addedAt' ? ChevronDownIcon : null),
 	getAriaSort: (field: string) => (field === 'addedAt' ? ('descending' as const) : undefined),
 	currentPage: 1,
 	totalPages: 3,

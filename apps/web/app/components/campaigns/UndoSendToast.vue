@@ -22,6 +22,7 @@
  */
 import { api } from '@owlat/api';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -61,7 +62,7 @@ async function undoCampaignSend() {
 	<UiUndoCountdownToast
 		:visible="state.visible"
 		:send-at="state.sendAt"
-		icon="lucide:send"
+		:icon="PaperPlaneIcon"
 		:message="message"
 		:undo-label="t('components.campaigns.undoSendToast.undo')"
 		:on-undo="undoCampaignSend"

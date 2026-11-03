@@ -51,7 +51,7 @@ function mountLine(relative: (time: number) => string = () => '3 days ago') {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { formatRelativeTime: relative },
-			stubs: { EmailTemplateCompareModal: compareStub, Icon: true },
+			stubs: { EmailTemplateCompareModal: compareStub },
 		},
 	});
 }

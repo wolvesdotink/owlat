@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { IconComponent } from '@coolicons/vue';
+
 interface Props {
-	icon?: string;
+	icon?: IconComponent;
 	disabled?: boolean;
 	danger?: boolean;
 }
@@ -50,7 +52,7 @@ const itemClasses = computed(() => {
 		:disabled="disabled"
 		@click="handleClick"
 	>
-		<Icon v-if="icon" :name="icon" class="w-4 h-4" />
+		<component v-if="icon" :is="icon" class="w-4 h-4" />
 		<slot />
 	</button>
 </template>

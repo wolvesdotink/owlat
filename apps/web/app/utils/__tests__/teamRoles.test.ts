@@ -71,7 +71,7 @@ describe('mailboxStatusMeta', () => {
 		for (const status of statuses) {
 			const meta = mailboxStatusMeta(status);
 			expect(meta.toneClass).toMatch(/^text-text-/);
-			expect(meta.icon.startsWith('lucide:')).toBe(true);
+			expect(meta.icon).toBeTypeOf('function');
 			expect(t(meta.description)).not.toBe(meta.description);
 		}
 	});

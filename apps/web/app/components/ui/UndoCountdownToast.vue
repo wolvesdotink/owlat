@@ -13,12 +13,13 @@
  */
 import { useNow } from '~/composables/useNow';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import type { IconComponent } from '@coolicons/vue';
 
 const props = defineProps<{
 	visible: boolean;
 	/** Epoch ms the held action fires. */
 	sendAt: number;
-	icon: string;
+	icon: IconComponent;
 	message: (seconds: number) => string;
 	undoLabel: string | ((seconds: number) => string);
 	onUndo: () => Promise<unknown> | unknown;
@@ -66,7 +67,7 @@ async function handleUndo() {
 				aria-live="polite"
 				class="bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3"
 			>
-				<Icon :name="icon" class="w-4 h-4" />
+				<component :is="icon" class="w-4 h-4" />
 				<span class="text-sm">{{ message(remainingSec) }}</span>
 				<button
 					type="button"

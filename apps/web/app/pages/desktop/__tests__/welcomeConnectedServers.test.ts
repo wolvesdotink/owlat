@@ -68,7 +68,6 @@ function mountPage() {
 			stubs: {
 				DesktopTitlebar: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
-				Icon: true,
 				UiButton: { template: '<button><slot/></button>' },
 			},
 		},

@@ -27,7 +27,7 @@ function mountList(stored: FeatureFlagState = {}, extra: Record<string, unknown>
 			resolved: resolveFlags(stored),
 			...extra,
 		},
-		global: { plugins: [createTestI18n()], stubs: { UiCard: cardStub, Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { UiCard: cardStub } },
 	});
 }
 

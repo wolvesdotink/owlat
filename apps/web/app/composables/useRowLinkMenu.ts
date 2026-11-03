@@ -2,6 +2,7 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { useToast } from '@owlat/ui/composables/useToast';
 import { getActiveWorkspace, isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { ArrowRightIcon, ExternalLinkIcon, LinkIcon } from '@coolicons/vue';
 
 /**
  * The verbs every linked row's context menu ends with: open the row in a new
@@ -47,14 +48,14 @@ export function useRowLinkMenu() {
 			items.push({
 				id: 'open-new-tab',
 				label: t('shared.rowMenu.openInNewTab'),
-				icon: 'lucide:external-link',
+				icon: ExternalLinkIcon,
 				run: () => void window.open(absolute(to, origin), '_blank', 'noopener'),
 			});
 		}
 		items.push({
 			id: 'copy-link',
 			label: t('shared.rowMenu.copyLink'),
-			icon: 'lucide:link',
+			icon: LinkIcon,
 			run: () => void copyLink(to, origin),
 		});
 		items[0]!.separatorBefore = true;
@@ -66,7 +67,7 @@ export function useRowLinkMenu() {
 		return {
 			id: 'open',
 			label: t('shared.rowMenu.open'),
-			icon: 'lucide:arrow-right',
+			icon: ArrowRightIcon,
 			...(shortcut ? { shortcut } : {}),
 			run: () => void navigateTo(to),
 		};

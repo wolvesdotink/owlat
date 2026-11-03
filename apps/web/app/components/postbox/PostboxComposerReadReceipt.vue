@@ -10,6 +10,7 @@
 import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	compose: {
@@ -62,12 +63,7 @@ async function toggle() {
 		data-testid="composer-read-receipt"
 		@click="toggle"
 	>
-		<Icon
-			name="lucide:check"
-			class="w-4 h-4 text-brand"
-			:class="{ invisible: !isRequested }"
-			aria-hidden="true"
-		/>
+		<CheckIcon class="w-4 h-4 text-brand" :class="{ invisible: !isRequested }" aria-hidden="true" />
 		{{ t('components.postbox.postboxComposerFooter.readReceipt') }}
 	</button>
 </template>

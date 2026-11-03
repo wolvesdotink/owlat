@@ -18,7 +18,6 @@ beforeAll(() => {
 type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 };
 

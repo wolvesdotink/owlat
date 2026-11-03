@@ -8,6 +8,7 @@ import {
 } from '@owlat/shared/workspaceLogo';
 import { holdPendingWork } from '~/lib/pendingOperations';
 import { uploadFileToStorage } from '~/utils/storageUpload';
+import { ImageIcon } from '@coolicons/vue';
 
 /**
  * The workspace logo (Workspace → General): the picture the sign-in,
@@ -126,7 +127,7 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 	<UiCard>
 		<template #header>
 			<div class="flex items-center gap-3 pb-4">
-				<UiIconBox icon="lucide:image" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="ImageIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-medium text-text-primary">
 						{{ t('components.settings.workspaceLogoCard.title') }}

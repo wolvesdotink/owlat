@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
+import { ArrowRightIcon, CopyIcon, SquareCheckIcon, SquareIcon } from '@coolicons/vue';
 
 /**
  * One row of the audience contacts table.
@@ -70,13 +71,13 @@ function menuItems(): ContextMenuItem[] {
 		{
 			id: 'open',
 			label: t('dashboard.audience.contacts.index.contextMenu.open'),
-			icon: 'lucide:arrow-right',
+			icon: ArrowRightIcon,
 			run: () => emit('open'),
 		},
 		{
 			id: 'copy-email',
 			label: t('dashboard.audience.contacts.index.contextMenu.copyEmail'),
-			icon: 'lucide:copy',
+			icon: CopyIcon,
 			disabled: !email,
 			run: () => {
 				if (email) void copyEmail(email);
@@ -89,7 +90,7 @@ function menuItems(): ContextMenuItem[] {
 			label: props.selected
 				? t('dashboard.audience.contacts.index.contextMenu.deselect')
 				: t('dashboard.audience.contacts.index.contextMenu.select'),
-			icon: props.selected ? 'lucide:square' : 'lucide:check-square',
+			icon: props.selected ? SquareIcon : SquareCheckIcon,
 			separatorBefore: true,
 			run: () => emit('toggle-select'),
 		});

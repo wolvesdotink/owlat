@@ -119,8 +119,6 @@ afterEach(() => {
 	for (const w of mounted.splice(0)) w.unmount();
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 type BodyProps = InstanceType<typeof PostboxMessageBody>['$props'];
 
 function mountBody(props: BodyProps) {
@@ -128,7 +126,7 @@ function mountBody(props: BodyProps) {
 		props,
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+			components: { PostboxReaderSkeleton, UiSkeleton },
 			stubs: { PostboxImageBanner: true },
 		},
 	});

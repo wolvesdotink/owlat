@@ -19,6 +19,7 @@ import {
 	sourceIcon,
 	sourceLabel,
 } from '../knowledgeEntryTypes';
+import { CircleIcon } from '@coolicons/vue';
 
 const schema = readFileSync(
 	resolve(__dirname, '../../../../api/convex/schema/knowledge.ts'),
@@ -67,7 +68,7 @@ describe('knowledge entry type map', () => {
 
 	it('gives every type a real icon', () => {
 		for (const type of ENTRY_TYPES) {
-			expect(entryTypeIcon(type), type).not.toBe('lucide:circle');
+			expect(entryTypeIcon(type), type).not.toBe(CircleIcon);
 			expect(TYPE_CONFIG[type].label, type).toBeTruthy();
 		}
 	});
@@ -76,7 +77,7 @@ describe('knowledge entry type map', () => {
 		expect(backendSourceTypes).toContain('curated');
 		expect(Object.keys(SOURCE_CONFIG).sort()).toEqual([...backendSourceTypes].sort());
 		for (const source of backendSourceTypes) {
-			expect(sourceIcon(source), source).not.toBe('lucide:circle');
+			expect(sourceIcon(source), source).not.toBe(CircleIcon);
 		}
 	});
 

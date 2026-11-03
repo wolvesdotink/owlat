@@ -25,7 +25,6 @@ const { t } = createTestI18n().global;
 const localized = localizedWith(t);
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
 	UiIconBox: { template: '<i />' },
 };

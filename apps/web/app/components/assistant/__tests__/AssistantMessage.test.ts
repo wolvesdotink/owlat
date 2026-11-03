@@ -32,7 +32,7 @@ function mountMessage(over: Partial<AssistantMessageData>) {
 		props: { message },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, AssistantMarkdown: mdStub, AssistantToolCalls: true },
+			stubs: { AssistantMarkdown: mdStub, AssistantToolCalls: true },
 			components: { AiBudgetRefusal: BudgetRefusal },
 		},
 	});

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CheckIcon, CopyIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	open: boolean;
 	token: string | null;
@@ -75,8 +77,8 @@ const snippets = computed(() => [
 						type="button"
 						@click="copy(snippet.text, snippet.key)"
 					>
-						<Icon
-							:name="copiedKey === snippet.key ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="copiedKey === snippet.key ? CheckIcon : CopyIcon"
 							class="w-4 h-4 mr-1.5"
 						/>
 						{{ copiedKey === snippet.key ? t('common.copied') : t('common.copy') }}

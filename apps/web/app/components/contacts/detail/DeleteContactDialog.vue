@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // The contact page's delete confirmation. The page owns the delete itself.
+import { TrashIcon } from '@coolicons/vue';
+
 defineProps<{
 	email?: string;
 	isDeleting: boolean;
@@ -32,7 +34,7 @@ const { t } = useI18n();
 				>
 					<div class="flex items-center gap-4 mb-4">
 						<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
-							<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
+							<TrashIcon class="w-6 h-6 text-error" />
 						</div>
 						<div>
 							<h3 class="text-lg font-semibold text-text-primary">

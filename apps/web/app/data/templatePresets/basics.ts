@@ -1,11 +1,12 @@
 /** The two presets without a design: the empty canvas and a plain personal note. */
 import type { TemplatePreset } from './types';
+import { TextAlignLeftIcon } from '@coolicons/vue';
 
 export const blankPreset: TemplatePreset = {
 	id: 'blank',
 	name: 'shared.data.marketingTemplatePresets.blank.name',
 	description: 'shared.data.marketingTemplatePresets.blank.description',
-	icon: 'lucide:align-left',
+	icon: TextAlignLeftIcon,
 	subject: '',
 	content: [],
 	previewHtml: `<div style="padding: 40px; text-align: center; color: #9CA3AF;">
@@ -17,7 +18,7 @@ export const plainTextPreset: TemplatePreset = {
 	id: 'plain-text',
 	name: 'shared.data.marketingTemplatePresets.plainText.name',
 	description: 'shared.data.marketingTemplatePresets.plainText.description',
-	icon: 'lucide:align-left',
+	icon: TextAlignLeftIcon,
 	subject: 'A quick note from {{sender_name}}',
 	content: [
 		{

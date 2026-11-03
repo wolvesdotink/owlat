@@ -25,6 +25,26 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import { alertSoundKindsFor } from './alertSoundRules';
 import { fuzzyMatch } from './commandPalette';
+import {
+	CalendarCheckIcon,
+	ChatQuoteIcon,
+	ForwardIcon,
+	KeyIcon,
+	KeyboardIcon,
+	ListFilterIcon,
+	MagicWandIcon,
+	MailPlusIcon,
+	MentionIcon,
+	MonitorIcon,
+	PlaneIcon,
+	PlusIcon,
+	RobotIcon,
+	SettingsIcon,
+	ShieldCheckIcon,
+	SignatureIcon,
+	UserSettingsCornerIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** Where the Preferences tree lives. Everything under it is registry-owned. */
 export const SETTINGS_ROOT = '/dashboard/preferences';
@@ -110,7 +130,7 @@ export interface SettingsEntry {
 	readonly path: string;
 	readonly titleKey: string;
 	readonly descriptionKey: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly section: SettingsSectionKey;
 	readonly keywordsKey: string;
 	readonly gate?: SettingsGate;
@@ -155,7 +175,7 @@ function control(id: string, anchor: string, gate?: SettingsGate): SettingsContr
 export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	entry('overview', {
 		path: SETTINGS_ROOT,
-		icon: 'lucide:settings',
+		icon: SettingsIcon,
 		section: 'general',
 		controls: [
 			control('appearance', 'appearance'),
@@ -184,62 +204,62 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('shortcuts', {
 		path: `${SETTINGS_ROOT}/shortcuts`,
-		icon: 'lucide:keyboard',
+		icon: KeyboardIcon,
 		section: 'general',
 		controls: [control('shortcuts', 'shortcuts')],
 	}),
 	entry('booking', {
 		path: `${SETTINGS_ROOT}/booking`,
-		icon: 'lucide:calendar-check',
+		icon: CalendarCheckIcon,
 		section: 'general',
 		gate: flag('calendar.booking'),
 	}),
 	entry('filters', {
 		path: `${SETTINGS_ROOT}/filters`,
-		icon: 'lucide:list-filter',
+		icon: ListFilterIcon,
 		section: 'mail',
 		gate: hasMail,
 	}),
 	entry('aliases', {
 		path: `${SETTINGS_ROOT}/aliases`,
-		icon: 'lucide:at-sign',
+		icon: MentionIcon,
 		section: 'mail',
 		gate: hasMail,
 	}),
 	entry('forwarding', {
 		path: `${SETTINGS_ROOT}/forwarding`,
-		icon: 'lucide:forward',
+		icon: ForwardIcon,
 		section: 'mail',
 		gate: hasMail,
 	}),
 	entry('vacation', {
 		path: `${SETTINGS_ROOT}/vacation`,
-		icon: 'lucide:plane',
+		icon: PlaneIcon,
 		section: 'mail',
 		gate: hasMail,
 	}),
 	entry('signatures', {
 		path: `${SETTINGS_ROOT}/signatures`,
-		icon: 'lucide:signature',
+		icon: SignatureIcon,
 		section: 'mail',
 		gate: hasMail,
 	}),
 	entry('snippets', {
 		path: `${SETTINGS_ROOT}/snippets`,
-		icon: 'lucide:message-square-quote',
+		icon: ChatQuoteIcon,
 		section: 'mail',
 		// Saved replies serve the Team inbox's composer too.
 		gate: any(hasMail, flag('inbox')),
 	}),
 	entry('writingVoice', {
 		path: `${SETTINGS_ROOT}/writing-voice`,
-		icon: 'lucide:wand-sparkles',
+		icon: MagicWandIcon,
 		section: 'mail',
 		gate: all(hasMail, flag('ai')),
 	}),
 	entry('connectedMailboxes', {
 		path: `${SETTINGS_ROOT}/external-account`,
-		icon: 'lucide:mail-plus',
+		icon: MailPlusIcon,
 		section: 'mail',
 		gate: hasMail,
 		// Someone looking for "disconnect" types that word, not "connected
@@ -251,20 +271,20 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('addAccount', {
 		path: `${SETTINGS_ROOT}/add-account`,
-		icon: 'lucide:plus',
+		icon: PlusIcon,
 		section: 'mail',
 		gate: hasMail,
 		hidden: true,
 	}),
 	entry('account', {
 		path: `${SETTINGS_ROOT}/account`,
-		icon: 'lucide:user-cog',
+		icon: UserSettingsCornerIcon,
 		section: 'account',
 		controls: [control('dailyBriefEmail', 'daily-brief', hasMail)],
 	}),
 	entry('security', {
 		path: `${SETTINGS_ROOT}/security`,
-		icon: 'lucide:shield-check',
+		icon: ShieldCheckIcon,
 		section: 'account',
 		controls: [
 			control('sealedMail', 'sealed-mail', all(hasMail, flag('sealedMail'))),
@@ -273,19 +293,19 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('appPasswords', {
 		path: `${SETTINGS_ROOT}/app-passwords`,
-		icon: 'lucide:key-round',
+		icon: KeyIcon,
 		section: 'account',
 		gate: hasMail,
 	}),
 	entry('aiClients', {
 		path: `${SETTINGS_ROOT}/ai-clients`,
-		icon: 'lucide:bot',
+		icon: RobotIcon,
 		section: 'account',
 		gate: all(hasMail, flag('mail.mcp')),
 	}),
 	entry('device', {
 		path: `${SETTINGS_ROOT}/device`,
-		icon: 'lucide:monitor',
+		icon: MonitorIcon,
 		section: 'device',
 		// Device-local: Web Push, the offline read cache and the mailto handler
 		// (any browser) plus the desktop app's own switches; with them, the

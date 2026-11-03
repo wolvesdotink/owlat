@@ -5,6 +5,7 @@
  */
 import { formatDateTime } from '~/utils/formatters';
 import { readReceiptView, type ReadReceiptRecord } from '~/utils/postboxReadReceipts';
+import { MailCheckIcon, MailIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	receipt: ReadReceiptRecord;
@@ -24,12 +25,12 @@ const view = computed(() => readReceiptView(props.receipt, props.recipients));
 		data-testid="reader-read-receipts"
 	>
 		<p v-for="line in view.lines" :key="line.address" class="flex items-center gap-1.5">
-			<Icon name="lucide:mail-check" class="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
+			<MailCheckIcon class="w-3.5 h-3.5 shrink-0 text-text-tertiary" />
 			<span>{{ t(line.key, { address: line.address }) }}</span>
 			<span class="text-text-tertiary tabular-nums">{{ formatDateTime(line.at, locale) }}</span>
 		</p>
 		<p v-if="view.waiting.length > 0" class="flex items-start gap-1.5">
-			<Icon name="lucide:mail" class="w-3.5 h-3.5 mt-px shrink-0 text-text-tertiary" />
+			<MailIcon class="w-3.5 h-3.5 mt-px shrink-0 text-text-tertiary" />
 			<span>
 				{{
 					view.waiting.length === 1

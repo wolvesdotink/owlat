@@ -17,6 +17,7 @@ import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { createTestI18n } from '~/__tests__/i18n';
+import { GaugeIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
 
@@ -39,7 +40,7 @@ const SIDEBAR_SECTIONS = [
 			{
 				name: 'shared.dashboardNavigation.items.administration.overview',
 				href: '/dashboard/admin',
-				icon: 'lucide:gauge',
+				icon: GaugeIcon,
 			},
 		],
 	},
@@ -191,7 +192,7 @@ describe('navigation', () => {
 		const admin = navItems.value.filter((item) => item.id === 'nav:/dashboard/admin');
 
 		expect(admin).toHaveLength(1);
-		expect(admin[0]?.icon).toBe('lucide:gauge');
+		expect(admin[0]?.icon).toBe(GaugeIcon);
 	});
 
 	it('offers a member nothing under /dashboard/admin', async () => {

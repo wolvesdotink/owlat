@@ -51,7 +51,6 @@ function mountEditor(props: Record<string, unknown> = {}) {
 				PostboxRewriteLayer: true,
 				PostboxEmojiPicker: true,
 				PostboxSnippetSurface: true,
-				Icon: { props: ['name'], template: '<span />' },
 			},
 		},
 	});

@@ -3,6 +3,7 @@
 // here, so the page's outside-click handler does not close the menu at once.
 import type { StepKind } from '~/composables/automations/steps';
 import { getIconColorClass } from '~/composables/automations/editorDisplay';
+import { ClockIcon, GitBranchIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 
 defineProps<{
 	open: boolean;
@@ -23,7 +24,7 @@ const { t } = useI18n();
 			@click="emit('toggle')"
 			:aria-label="t('common.add')"
 		>
-			<Icon name="lucide:plus" class="w-4 h-4" />
+			<PlusIcon class="w-4 h-4" />
 		</button>
 
 		<!-- Dropdown -->
@@ -48,14 +49,8 @@ const { t } = useI18n();
 							getIconColorClass(type.color),
 						]"
 					>
-						<Icon
-							:name="
-								type.id === 'email'
-									? 'lucide:mail'
-									: type.id === 'delay'
-										? 'lucide:clock'
-										: 'lucide:git-branch'
-							"
+						<component
+							:is="type.id === 'email' ? MailIcon : type.id === 'delay' ? ClockIcon : GitBranchIcon"
 							class="w-4 h-4"
 						/>
 					</div>

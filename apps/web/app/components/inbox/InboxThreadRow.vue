@@ -51,6 +51,17 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import RowContextMenu from '~/components/RowContextMenu.vue';
 import PostboxSwipeTrack from '~/components/postbox/PostboxSwipeTrack.vue';
 import type { InboxRowSwipeAction } from '~/composables/useInboxRowMenu';
+import {
+	AlarmIcon,
+	ArrowRightIcon,
+	ChatCircleIcon,
+	CheckIcon,
+	CircleCheckIcon,
+	ClockIcon,
+	NoteIcon,
+	TimerIcon,
+	UserPlusCornerIcon,
+} from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -262,7 +273,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									v-if="showChannelChip"
 									class="flex-shrink-0 inline-flex items-center gap-1 text-xs text-text-tertiary"
 								>
-									<Icon name="lucide:message-circle" class="w-3 h-3" />
+									<ChatCircleIcon class="w-3 h-3" />
 									{{ channelLabel }}
 								</span>
 								<DraftMarker v-if="hasDraft" />
@@ -275,7 +286,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									"
 									data-testid="inbox-row-note-count"
 								>
-									<Icon name="lucide:sticky-note" class="w-3 h-3" aria-hidden="true" />
+									<NoteIcon class="w-3 h-3" aria-hidden="true" />
 									<span class="sr-only">{{
 										t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
 									}}</span>
@@ -291,7 +302,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									:class="INBOX_SLA_TIER_CLASS[sla.tier]"
 									data-testid="inbox-sla-chip"
 								>
-									<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+									<AlarmIcon class="w-3 h-3" />
 									{{ t(sla.label.key, sla.label.params) }}
 								</span>
 								<span
@@ -299,7 +310,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
 									:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
 								>
-									<Icon name="lucide:timer" class="w-3 h-3" />
+									<TimerIcon class="w-3 h-3" />
 									{{ t(waiting.label.key, waiting.label.params) }}
 								</span>
 							</div>
@@ -354,7 +365,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					data-testid="inbox-row-checkbox"
 					@click="onCheckboxClick"
 				>
-					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
+					<CheckIcon v-if="selected" class="w-3 h-3" />
 				</button>
 
 				<!-- Hover-reveal quick actions (opacity-only, focus-within reveals for
@@ -386,7 +397,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
 									:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
 								>
-									<Icon name="lucide:user-plus" class="w-4 h-4" />
+									<UserPlusCornerIcon class="w-4 h-4" />
 								</button>
 							</UiTooltip>
 						</template>
@@ -398,7 +409,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							:aria-label="t('components.inbox.inboxThreadRow.resolve')"
 							@click="rowAction($event, 'resolve')"
 						>
-							<Icon name="lucide:check-circle" class="w-4 h-4" />
+							<CircleCheckIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="t('components.inbox.inboxThreadRow.snooze')">
@@ -408,7 +419,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							:aria-label="t('components.inbox.inboxThreadRow.snooze')"
 							@click="rowAction($event, 'snooze')"
 						>
-							<Icon name="lucide:clock" class="w-4 h-4" />
+							<ClockIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="t('common.open')">
@@ -418,7 +429,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							:aria-label="t('components.inbox.inboxThreadRow.openThread')"
 							@click.stop
 						>
-							<Icon name="lucide:arrow-right" class="w-4 h-4" />
+							<ArrowRightIcon class="w-4 h-4" />
 						</NuxtLink>
 					</UiTooltip>
 				</div>

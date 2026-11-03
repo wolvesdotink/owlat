@@ -4,6 +4,8 @@
  * this device. Not colour alone: the name is in the tooltip and for screen
  * readers.
  */
+import { PencilIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 </script>
 
@@ -13,7 +15,7 @@ const { t } = useI18n();
 		:title="t('components.shell.draftMarker.label')"
 		data-testid="draft-marker"
 	>
-		<Icon name="lucide:pencil" class="size-3" aria-hidden="true" />
+		<PencilIcon class="size-3" aria-hidden="true" />
 		<span class="sr-only">{{ t('components.shell.draftMarker.label') }}</span>
 	</span>
 </template>

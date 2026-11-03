@@ -4,6 +4,7 @@ import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
 import { currentConversationLinkOrigin } from '~/composables/useConversationLink';
 import { type ConversationLinkSegment, splitConversationLinks } from '~/utils/conversationLink';
+import { PencilIcon, SparklesIcon, TrashIcon } from '@coolicons/vue';
 
 interface Props {
 	message: ChatMessageRow;
@@ -143,7 +144,7 @@ const aiTyping = computed(
 			v-if="isAssistant"
 			class="w-9 h-9 rounded-full bg-brand-subtle text-brand flex-shrink-0 flex items-center justify-center"
 		>
-			<Icon name="lucide:sparkles" class="w-4 h-4" />
+			<SparklesIcon class="w-4 h-4" />
 		</div>
 		<UiAvatar
 			v-else
@@ -261,7 +262,7 @@ const aiTyping = computed(
 					:aria-label="t('common.edit')"
 					@click="startEdit"
 				>
-					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+					<PencilIcon class="w-3.5 h-3.5" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="t('common.delete')">
@@ -271,7 +272,7 @@ const aiTyping = computed(
 					:aria-label="t('common.delete')"
 					@click="doDelete"
 				>
-					<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
+					<TrashIcon class="w-3.5 h-3.5" />
 				</button>
 			</UiTooltip>
 		</div>

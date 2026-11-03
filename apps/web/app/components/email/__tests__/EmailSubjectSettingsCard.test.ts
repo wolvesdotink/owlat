@@ -43,7 +43,6 @@ function mountCard() {
 				UiSelect: selectStub,
 				UiInput: inputStub,
 				UiTextarea: inputStub,
-				Icon: true,
 			},
 		},
 	});

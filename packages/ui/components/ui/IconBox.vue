@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { IconComponent } from '@coolicons/vue';
+
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type Variant = 'brand' | 'success' | 'warning' | 'error' | 'surface' | 'inverse';
 type Rounded = 'lg' | 'xl' | '2xl' | 'full';
 
 interface Props {
-	icon: string;
+	icon: IconComponent;
 	size?: Size;
 	variant?: Variant;
 	rounded?: Rounded;
@@ -16,12 +18,16 @@ const props = withDefaults(defineProps<Props>(), {
 	rounded: 'xl',
 });
 
-const sizeClasses: Record<Size, { box: string; icon: string }> = {
+// A coolicons glyph is drawn with a 2px stroke on a 24px grid, so it scales
+// with the box: at the 28px of `xl` it would render 2.33px wide and read as
+// bold next to the 1.33px of the 16px icons around it. `stroke` pulls the
+// large size back to the weight the rest of the app shows.
+const sizeClasses: Record<Size, { box: string; icon: string; stroke?: number }> = {
 	xs: { box: 'size-7', icon: 'size-3.5' },
 	sm: { box: 'size-8', icon: 'size-4' },
 	md: { box: 'size-9', icon: 'size-[18px]' },
 	lg: { box: 'size-10', icon: 'size-5' },
-	xl: { box: 'size-14', icon: 'size-7' },
+	xl: { box: 'size-14', icon: 'size-7', stroke: 1.5 },
 };
 
 const variantClasses: Record<Variant, string> = {
@@ -48,10 +54,11 @@ const boxClasses = computed(() => [
 ]);
 
 const iconClasses = computed(() => sizeClasses[props.size].icon);
+const iconStroke = computed(() => sizeClasses[props.size].stroke);
 </script>
 
 <template>
 	<div :class="boxClasses">
-		<Icon :name="icon" :class="iconClasses" />
+		<component :is="icon" :class="iconClasses" :stroke-width="iconStroke" />
 	</div>
 </template>

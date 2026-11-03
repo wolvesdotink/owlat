@@ -7,6 +7,7 @@ import {
 	isBrandLinkUrl,
 	type BrandSocialLink,
 } from '@owlat/shared/brandKit';
+import { PlusIcon, TrashIcon } from '@coolicons/vue';
 
 defineProps<{ disabled?: boolean }>();
 
@@ -88,12 +89,12 @@ const platformLabel = (platform: SocialPlatform) => SOCIAL_PLATFORMS[platform].l
 					:disabled="disabled"
 					@click="remove(index)"
 				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon class="w-4 h-4" />
 				</UiButton>
 			</li>
 		</ul>
 		<UiButton variant="ghost" size="sm" type="button" :disabled="disabled || !canAdd" @click="add">
-			<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+			<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 			{{ t('dashboard.admin.instance.brandKit.footer.addSocialLink') }}
 		</UiButton>
 	</div>

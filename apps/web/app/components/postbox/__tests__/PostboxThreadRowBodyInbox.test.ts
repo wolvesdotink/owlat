@@ -52,7 +52,7 @@ function mountRow(lookup: InboxIdentity[] | null) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxRowCore, PostboxUnreadMark },
-			stubs: { PostboxThreadRowFollowUp: true, Icon: true },
+			stubs: { PostboxThreadRowFollowUp: true },
 		},
 	});
 }

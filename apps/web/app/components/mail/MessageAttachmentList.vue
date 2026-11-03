@@ -3,6 +3,8 @@ import { useId } from 'vue';
 import { formatCompactFileSize } from '~/utils/formatters';
 import { isPreviewableFile } from '~/utils/postboxFileFacets';
 import { attachmentTypeLabel, type AttachmentMeta } from '~/utils/attachmentMeta';
+import { DownloadIcon, EyeIcon, PaperclipIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The attachment rows under one received message: name, size, type, an
@@ -133,7 +135,7 @@ function onDownload(att: AttachmentMeta): void {
 				:aria-busy="isDownloading(att) ? 'true' : undefined"
 				data-testid="message-attachment-row"
 			>
-				<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+				<PaperclipIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm">{{ att.filename }}</p>
 					<p class="truncate text-xs text-text-tertiary" :title="att.contentType">
@@ -154,7 +156,7 @@ function onDownload(att: AttachmentMeta): void {
 						data-testid="message-attachment-preview"
 						@click="emit('preview', att, attachments)"
 					>
-						<Icon name="lucide:eye" class="w-4 h-4" />
+						<EyeIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip v-if="!isDownloadHidden" :text="downloadLabel(att.filename)">
@@ -168,8 +170,8 @@ function onDownload(att: AttachmentMeta): void {
 						data-testid="message-attachment-download"
 						@click="onDownload(att)"
 					>
-						<Icon
-							:name="isDownloading(att) ? 'lucide:loader-2' : 'lucide:download'"
+						<component
+							:is="isDownloading(att) ? SpinnerIcon : DownloadIcon"
 							class="w-4 h-4"
 							:class="{ 'animate-spin motion-reduce:animate-none': isDownloading(att) }"
 						/>

@@ -3,6 +3,8 @@
 // campaign back to draft, the last save's error, and the scheduled-send notice
 // with Unschedule and Cancel. Several roots, so each alert stays a direct child
 // of the form's spaced column.
+import { CircleWarningIcon, ClockIcon, ShieldWarningIcon } from '@coolicons/vue';
+
 defineProps<{
 	contentBlockReason?: string;
 	saveError: string | null | undefined;
@@ -23,7 +25,7 @@ const { t } = useI18n();
 		v-if="contentBlockReason"
 		class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
 	>
-		<Icon name="lucide:shield-alert" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+		<ShieldWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 		<div>
 			<p class="text-sm font-medium text-text-primary">
 				{{ t('dashboard.campaigns.detail.edit.contentBlocked.title') }}
@@ -41,7 +43,7 @@ const { t } = useI18n();
 		v-if="saveError"
 		class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
 	>
-		<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+		<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 		<div>
 			<p class="text-sm font-medium text-error">{{ t('common.error') }}</p>
 			<p class="text-sm text-error/80">{{ saveError }}</p>
@@ -51,7 +53,7 @@ const { t } = useI18n();
 	<!-- Scheduled Campaign Notice -->
 	<div v-if="isScheduled && scheduledAt" class="p-4 bg-brand/10 border border-brand/20 rounded-lg">
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:clock" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+			<ClockIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 			<div class="flex-1">
 				<p class="text-sm font-medium text-brand">
 					{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}

@@ -1,11 +1,11 @@
-import { Code } from '@lucide/vue';
+import { CodeIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { rawHtmlSchema } from '../../schema/definitions/rawHtml';
 
 export const rawHtmlEditor: EditorModule<'rawHtml'> = {
 	type: 'rawHtml',
 	label: 'HTML',
-	icon: Code,
+	icon: CodeIcon,
 	schema: rawHtmlSchema,
 	slashCommand: {
 		name: 'Raw HTML',

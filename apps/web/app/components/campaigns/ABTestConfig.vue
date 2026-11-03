@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ABTestType, ABWinnerCriteria } from '~/composables/useCampaignABTest';
+import {
+	CircleCheckIcon,
+	ClockIcon,
+	EyeIcon,
+	FileTextIcon,
+	MailIcon,
+	PencilIcon,
+	ReloadIcon,
+	SplitIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The current campaign subject line (for Variant A display) */
@@ -71,7 +82,7 @@ const durationOptions = computed(() =>
 							abTestEnabled ? 'bg-brand/20 text-brand' : 'bg-bg-surface text-text-tertiary',
 						]"
 					>
-						<Icon name="lucide:split" class="w-5 h-5" />
+						<SplitIcon class="w-5 h-5" />
 					</div>
 					<div>
 						<p class="font-medium text-text-primary">
@@ -183,7 +194,7 @@ const durationOptions = computed(() =>
 					<!-- Subject Line B (for subject tests) -->
 					<div v-if="abTestType === 'subject'" class="ml-8">
 						<label for="abVariantBSubject" class="label flex items-center gap-2">
-							<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+							<MailIcon class="w-4 h-4 text-text-tertiary" />
 							{{ t('components.campaigns.abTestConfig.subjectBLabel') }}
 						</label>
 						<input
@@ -198,7 +209,7 @@ const durationOptions = computed(() =>
 					<!-- Template B (for content tests) -->
 					<div v-else class="ml-8">
 						<label for="abVariantBTemplate" class="label flex items-center gap-2">
-							<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+							<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 							{{ t('components.campaigns.abTestConfig.templateBLabel') }}
 						</label>
 						<select id="abVariantBTemplate" v-model="abVariantBTemplateId" class="input mt-1.5">
@@ -218,7 +229,7 @@ const durationOptions = computed(() =>
 							class="mt-1.5"
 							:message="t('components.campaigns.abTestConfig.templatesLoadFailed')"
 							:action-label="t('common.tryAgain')"
-							action-icon="lucide:refresh-cw"
+							:action-icon="ReloadIcon"
 							data-testid="ab-templates-load-failed"
 							@action="$emit('retryTemplates')"
 						/>
@@ -228,7 +239,7 @@ const durationOptions = computed(() =>
 				<!-- Split Percentage -->
 				<div>
 					<label class="label flex items-center gap-2">
-						<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+						<UsersIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.abTestConfig.splitLabel') }}
 					</label>
 					<div class="space-y-3">
@@ -267,7 +278,7 @@ const durationOptions = computed(() =>
 				<!-- Winner Criteria -->
 				<div>
 					<label class="label flex items-center gap-2">
-						<Icon name="lucide:check-circle" class="w-4 h-4 text-text-tertiary" />
+						<CircleCheckIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.abTestConfig.winnerLabel') }}
 					</label>
 					<div class="grid grid-cols-3 gap-3 mt-2">
@@ -286,7 +297,7 @@ const durationOptions = computed(() =>
 								value="open_rate"
 								class="sr-only"
 							/>
-							<Icon name="lucide:eye" class="w-5 h-5 text-brand mb-2" />
+							<EyeIcon class="w-5 h-5 text-brand mb-2" />
 							<span class="text-sm font-medium text-text-primary">{{
 								t('components.campaigns.abTestConfig.winnerOpenRate')
 							}}</span>
@@ -309,7 +320,7 @@ const durationOptions = computed(() =>
 								value="click_rate"
 								class="sr-only"
 							/>
-							<Icon name="lucide:mail" class="w-5 h-5 text-brand mb-2" />
+							<MailIcon class="w-5 h-5 text-brand mb-2" />
 							<span class="text-sm font-medium text-text-primary">{{
 								t('components.campaigns.abTestConfig.winnerClickRate')
 							}}</span>
@@ -332,7 +343,7 @@ const durationOptions = computed(() =>
 								value="manual"
 								class="sr-only"
 							/>
-							<Icon name="lucide:pencil" class="w-5 h-5 text-brand mb-2" />
+							<PencilIcon class="w-5 h-5 text-brand mb-2" />
 							<span class="text-sm font-medium text-text-primary">{{
 								t('components.campaigns.abTestConfig.winnerManual')
 							}}</span>
@@ -346,7 +357,7 @@ const durationOptions = computed(() =>
 				<!-- Test Duration (for auto winner selection) -->
 				<div v-if="abWinnerCriteria !== 'manual'">
 					<label for="abTestDuration" class="label flex items-center gap-2">
-						<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+						<ClockIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.abTestConfig.durationLabel') }}
 					</label>
 					<div class="flex items-center gap-4 mt-1.5">

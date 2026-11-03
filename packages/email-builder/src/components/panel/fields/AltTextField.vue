@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { TriangleAlert } from '@lucide/vue';
+import { TriangleWarningIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -54,7 +54,7 @@ function focusInput() {
 			class="flex flex-col gap-1.5 py-2 px-2.5 rounded-lg border border-warning/20 bg-warning/10"
 		>
 			<div class="flex items-start gap-1.5">
-				<TriangleAlert :size="13" class="shrink-0 mt-px text-warning" />
+				<TriangleWarningIcon :size="13" class="shrink-0 mt-px text-warning" />
 				<p class="text-[11px] leading-[1.4] text-text-secondary m-0">
 					{{ t('builder.panel.altText.missing') }}
 				</p>

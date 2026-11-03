@@ -4,6 +4,7 @@
  * editor's pickers offer after the five named ones.
  */
 import { MAX_BRAND_SWATCHES, isBrandHexColor } from '@owlat/shared/brandKit';
+import { CloseIcon, PlusIcon } from '@coolicons/vue';
 
 defineProps<{ disabled?: boolean }>();
 
@@ -59,7 +60,7 @@ function remove(index: number) {
 					:disabled="disabled"
 					@click="remove(index)"
 				>
-					<Icon name="lucide:x" class="w-3.5 h-3.5" />
+					<CloseIcon class="w-3.5 h-3.5" />
 				</button>
 			</li>
 			<li>
@@ -71,7 +72,7 @@ function remove(index: number) {
 					class="h-[38px]"
 					@click="add"
 				>
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 					{{ t('dashboard.admin.instance.brandKit.colors.addSwatch') }}
 				</UiButton>
 			</li>

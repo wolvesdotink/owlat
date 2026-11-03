@@ -3,6 +3,8 @@
  * Standardizes the common patterns used across list pages
  */
 
+import { ChevronDownIcon, ChevronUpIcon, type IconComponent } from '@coolicons/vue';
+
 export interface DataTableOptions<TSortField extends string = string> {
 	/** Default field to sort by */
 	defaultSort: TSortField;
@@ -76,9 +78,9 @@ export function useDataTable<TSortField extends string = string>(
 	 * The chevron for a column header: null unless the field is the active sort,
 	 * then up/down for asc/desc. Shared so every list renders the same affordance.
 	 */
-	const getSortIcon = (field: TSortField): string | null => {
+	const getSortIcon = (field: TSortField): IconComponent | null => {
 		if (sortBy.value !== field) return null;
-		return sortOrder.value === 'asc' ? 'lucide:chevron-up' : 'lucide:chevron-down';
+		return sortOrder.value === 'asc' ? ChevronUpIcon : ChevronDownIcon;
 	};
 
 	/**

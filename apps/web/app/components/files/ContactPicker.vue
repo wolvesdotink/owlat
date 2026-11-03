@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CloseIcon, UserIcon } from '@coolicons/vue';
 
 // Multi-select contact picker: search contacts by name/email and collect a set
 // of them as removable chips. Used to associate an uploaded document with the
@@ -43,7 +44,7 @@ const unpick = (contactId: Id<'contacts'>) => {
 				:key="contact._id"
 				class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs font-medium rounded-full bg-bg-surface text-text-secondary"
 			>
-				<Icon name="lucide:user" class="w-3 h-3 text-text-tertiary" />
+				<UserIcon class="w-3 h-3 text-text-tertiary" />
 				{{ contactPickerLabel(contact) }}
 				<button
 					type="button"
@@ -53,7 +54,7 @@ const unpick = (contactId: Id<'contacts'>) => {
 					"
 					@click="unpick(contact._id)"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</span>
 		</div>

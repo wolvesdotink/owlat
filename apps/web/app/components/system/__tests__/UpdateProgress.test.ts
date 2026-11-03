@@ -26,11 +26,13 @@
  *   - the clock ticks every second, off wall time rather than a tally of ticks.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 import { UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate';
 import UpdateProgress from '../UpdateProgress.vue';
+import { CircleCheckIcon, CircleCloseIcon, CircleIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const TARGET = '0.4.17';
 
@@ -77,19 +79,23 @@ const SUCCESSFUL_UPDATE: Step[] = [
 function mountLog(steps?: Step[]) {
 	return mount(UpdateProgress, {
 		props: { targetVersion: TARGET, steps },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
-/** The icon name the row for `step` is painted with. */
-function iconFor(wrapper: VueWrapper, label: string): string | undefined {
-	const row = wrapper.findAll('li').find((li) => li.text().includes(label));
-	return row?.find('icon-stub').attributes('name');
+/** Which of the step glyphs `el` renders. */
+function glyphIn(el: DOMWrapper<Element> | undefined): IconComponent | undefined {
+	return el ? STEP_GLYPHS.find((glyph) => el.findComponent(glyph).exists()) : undefined;
 }
 
-/** Every step row's icon, in rendered order. */
-function rowIcons(wrapper: VueWrapper): (string | undefined)[] {
-	return wrapper.findAll('ol li icon-stub').map((icon) => icon.attributes('name'));
+/** The glyph the row for `step` is painted with. */
+function iconFor(wrapper: VueWrapper, label: string): IconComponent | undefined {
+	return glyphIn(wrapper.findAll('li').find((li) => li.text().includes(label)));
+}
+
+/** Every step row's glyph, in rendered order. */
+function rowIcons(wrapper: VueWrapper): (IconComponent | undefined)[] {
+	return wrapper.findAll('ol li').map(glyphIn);
 }
 
 function rowLabels(wrapper: VueWrapper): string[] {
@@ -107,10 +113,11 @@ function clock(wrapper: VueWrapper): string {
 	return wrapper.find('h3 + span').text();
 }
 
-const SUCCESS = 'lucide:check-circle-2';
-const FAILED = 'lucide:x-circle';
-const PENDING = 'lucide:circle';
-const SPINNER = 'lucide:loader-2';
+const SUCCESS = CircleCheckIcon;
+const FAILED = CircleCloseIcon;
+const PENDING = CircleIcon;
+const SPINNER = SpinnerIcon;
+const STEP_GLYPHS = [SUCCESS, FAILED, PENDING, SPINNER];
 
 afterEach(() => {
 	vi.clearAllTimers();
@@ -225,7 +232,7 @@ describe('UpdateProgress — the in-flight indicator', () => {
 		const waiting = () => wrapper.find('[role="status"]');
 
 		expect(waiting().exists()).toBe(true);
-		expect(waiting().find('icon-stub').attributes('name')).toBe(SPINNER);
+		expect(glyphIn(waiting())).toBe(SPINNER);
 
 		health = healthAfterUpdate;
 		await vi.advanceTimersByTimeAsync(5_000);
@@ -316,7 +323,7 @@ describe('UpdateProgress — the updater verdict', () => {
 	function mountAttempt() {
 		return mount(UpdateProgress, {
 			props: { targetVersion: TARGET, attempt: ATTEMPT },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 	}
 

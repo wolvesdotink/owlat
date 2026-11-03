@@ -272,7 +272,6 @@ describe('AnswerConversation', () => {
 					PostboxThreadFindBar: inert('PostboxThreadFindBar'),
 					PostboxThreadFindButton: inert('PostboxThreadFindButton'),
 				},
-				stubs: { Icon: true },
 			},
 		});
 		const cards = w.findAll('section[data-message-id]');

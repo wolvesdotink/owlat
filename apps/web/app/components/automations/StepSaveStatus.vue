@@ -8,6 +8,8 @@
  * the footer copy is a live region, so a screen reader hears each change once.
  */
 import type { StepSaveStatus } from '~/composables/useAutomationStepConfig';
+import { CheckIcon, CircleWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	status: StepSaveStatus;
@@ -29,11 +31,11 @@ const { t } = useI18n();
 		:data-status="status"
 	>
 		<template v-if="status === 'saving'">
-			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-4 h-4" />
 			<span>{{ t('components.automations.stepSaveStatus.saving') }}</span>
 		</template>
 		<template v-else-if="status === 'error'">
-			<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0" />
+			<CircleWarningIcon class="w-4 h-4 shrink-0" />
 			<span>{{ t('components.automations.stepSaveStatus.error') }}</span>
 			<button
 				type="button"
@@ -44,11 +46,11 @@ const { t } = useI18n();
 			</button>
 		</template>
 		<template v-else-if="status === 'conflict'">
-			<Icon name="lucide:alert-triangle" class="w-4 h-4 shrink-0 text-warning" />
+			<TriangleWarningIcon class="w-4 h-4 shrink-0 text-warning" />
 			<span>{{ t('components.automations.stepSaveStatus.conflict') }}</span>
 		</template>
 		<template v-else>
-			<Icon name="lucide:check" class="w-4 h-4" />
+			<CheckIcon class="w-4 h-4" />
 			<span>{{ t('components.automations.stepSaveStatus.saved') }}</span>
 		</template>
 	</div>

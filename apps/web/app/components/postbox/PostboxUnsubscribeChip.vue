@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
+import { BellOffIcon, CheckIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * Quiet "Unsubscribe" chip for list mail, shown only when the message carried
@@ -66,7 +68,7 @@ async function onClick() {
 
 <template>
 	<span v-if="unsubscribed" class="inline-flex items-center gap-1 text-xs text-text-tertiary">
-		<Icon name="lucide:check" class="w-3 h-3" />
+		<CheckIcon class="w-3 h-3" />
 		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribed') }}
 	</span>
 	<UiTooltip v-else :text="t('components.postbox.postboxUnsubscribeChip.chipTitle')">
@@ -77,8 +79,8 @@ async function onClick() {
 			:aria-label="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
 			@click="onClick"
 		>
-			<Icon
-				:name="actions.isBusy.value ? 'lucide:loader-2' : 'lucide:bell-off'"
+			<component
+				:is="actions.isBusy.value ? SpinnerIcon : BellOffIcon"
 				class="w-3 h-3"
 				:class="{ 'animate-spin motion-reduce:animate-none': actions.isBusy.value }"
 			/>

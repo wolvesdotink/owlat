@@ -22,12 +22,13 @@ interface AudienceListItem {
  * the `#extra-header` / `#extra-cell` / `#actions` slots.
  */
 import { formatDate, formatNumber } from '~/utils/formatters';
+import { PencilIcon, TrashIcon, UsersIcon, type IconComponent } from '@coolicons/vue';
 
 const props = defineProps<{
 	items: T[];
 	layout: 'table' | 'cards';
 	/** The glyph beside each name in the table. */
-	icon: string;
+	icon: IconComponent;
 	itemTo: (item: T) => string;
 	/** The member count, or null while it is not known yet. */
 	countOf: (item: T) => number | null | undefined;
@@ -40,7 +41,7 @@ const props = defineProps<{
 	editLabel: string;
 	deleteLabel: string;
 	canManage: boolean;
-	getSortIcon: (field: TField) => string | null;
+	getSortIcon: (field: TField) => IconComponent | null;
 	/** The active header's `aria-sort`; undefined (attribute omitted) on every other. */
 	getAriaSort: (field: TField) => 'ascending' | 'descending' | undefined;
 	/** The card's second line; the description when omitted. */
@@ -88,7 +89,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 						{{ subtitle(item) }}
 					</span>
 					<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
-						<Icon name="lucide:users" class="w-3.5 h-3.5" />
+						<UsersIcon class="w-3.5 h-3.5" />
 						{{ countText(item) }}
 						<span aria-hidden="true">·</span>
 						{{ formatDate(item.createdAt) }}
@@ -105,7 +106,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 							:aria-label="editLabel"
 							@click="emit('edit', item)"
 						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
+							<PencilIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="deleteLabel">
@@ -118,7 +119,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 							:aria-label="deleteLabel"
 							@click="emit('delete', item)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 				</template>
@@ -137,9 +138,9 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 									@click="emit('sort', column.field)"
 								>
 									{{ column.label }}
-									<Icon
+									<component
 										v-if="getSortIcon(column.field)"
-										:name="getSortIcon(column.field)!"
+										:is="getSortIcon(column.field)!"
 										class="w-4 h-4"
 									/>
 								</button>
@@ -181,7 +182,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 						</td>
 						<td class="px-6 py-4">
 							<div class="flex items-center gap-2">
-								<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+								<UsersIcon class="w-4 h-4 text-text-tertiary" />
 								<span class="text-text-secondary tabular-nums">{{ countText(item) }}</span>
 							</div>
 						</td>
@@ -204,7 +205,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 											:aria-label="editLabel"
 											@click="emit('edit', item)"
 										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
+											<PencilIcon class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 									<UiTooltip :text="deleteLabel">
@@ -217,7 +218,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 											:aria-label="deleteLabel"
 											@click="emit('delete', item)"
 										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
+											<TrashIcon class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 								</template>

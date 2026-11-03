@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** Accessible progressive-disclosure trigger shared across Owlat surfaces. */
 import { useUiI18n } from '../../composables/useUiI18n';
+import { ChevronDownIcon, ChevronRightIcon } from '@coolicons/vue';
 
 // `label` has no default: prop defaults are evaluated outside the setup
 // context, where `useUiI18n()` cannot run. It is resolved below instead.
@@ -33,10 +34,7 @@ const contentId = computed(() => props.controls ?? `disclosure-${generatedId}`);
 			:disabled="disabled"
 			@click="open = !open"
 		>
-			<Icon
-				:name="open ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-				class="mt-0.5 h-4 w-4 shrink-0"
-			/>
+			<component :is="open ? ChevronDownIcon : ChevronRightIcon" class="mt-0.5 h-4 w-4 shrink-0" />
 			<slot name="label">{{ resolvedLabel }}</slot>
 		</button>
 		<div v-if="open" :id="contentId" class="mt-3">

@@ -17,6 +17,7 @@ import {
 	type DmarcWindowDays,
 } from '~/utils/dmarcReportView';
 import { formatNumber, formatRelativeTime } from '~/utils/formatters';
+import { GlobeIcon, InboxIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -142,7 +143,7 @@ const tiles = computed(() => {
 		>
 			<template #empty>
 				<UiEmptyState
-					icon="lucide:globe"
+					:icon="GlobeIcon"
 					:eyebrow="t('dashboard.admin.delivery.dmarc.title')"
 					:title="t('dashboard.admin.delivery.dmarc.noDomains.title')"
 					:description="t('dashboard.admin.delivery.dmarc.noDomains.description')"
@@ -197,7 +198,7 @@ const tiles = computed(() => {
 				>
 					<template #empty>
 						<UiEmptyState
-							icon="lucide:inbox"
+							:icon="InboxIcon"
 							:title="t('dashboard.admin.delivery.dmarc.empty.title')"
 							:description="t('dashboard.admin.delivery.dmarc.empty.description')"
 						/>

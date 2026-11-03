@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { DEFAULT_LOADING_DELAY_MS, useDelayedLoading } from '../../composables/useDelayedLoading';
+import { SpinnerIcon } from '../../icons/SpinnerIcon';
 
 type SpinnerSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 type SpinnerTone = 'brand' | 'inverse';
@@ -18,8 +19,8 @@ const SIZE_CLASSES: Record<SpinnerSize, string> = {
 // ring matches the button's own icon/text in both themes (text-inverse on
 // btn-primary and btn-danger alike) — no baked-in hex.
 const TONE_CLASSES: Record<SpinnerTone, string> = {
-	brand: 'border-brand',
-	inverse: 'border-current',
+	brand: 'text-brand',
+	inverse: '',
 };
 
 const props = withDefaults(
@@ -59,8 +60,5 @@ const visible = useDelayedLoading(true, { delay: delayMs, minVisible: 0 });
 </script>
 
 <template>
-	<div
-		class="border-2 border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
-		:class="[sizeClass, toneClass, { invisible: !visible }]"
-	/>
+	<SpinnerIcon :class="[sizeClass, toneClass, { invisible: !visible }]" />
 </template>

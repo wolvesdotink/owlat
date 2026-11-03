@@ -12,7 +12,7 @@ describe('UiDisclosure', () => {
 				'onUpdate:modelValue': (value: boolean) => (open.value = value),
 			},
 			slots: { default: '<p>Technical detail</p>' },
-			global: { stubs: { Icon: true } },
+			global: {},
 		});
 		const trigger = wrapper.get('button');
 		expect(trigger.attributes('aria-expanded')).toBe('false');

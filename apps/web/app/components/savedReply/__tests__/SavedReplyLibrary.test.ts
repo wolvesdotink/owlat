@@ -58,7 +58,6 @@ function mountLibrary(props: Record<string, unknown>) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiConfirmationDialog: true,
 				PostboxBasicEditor: {
 					props: ['modelValue'],

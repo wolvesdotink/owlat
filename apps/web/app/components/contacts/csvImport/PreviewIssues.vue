@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ValidationResult } from '~/composables/useCsvImport';
+import { ChevronRightIcon } from '@coolicons/vue';
 
 defineProps<{
 	validationResult: ValidationResult | null;
@@ -17,8 +18,7 @@ const { t } = useI18n();
 			class="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
 			@click="showValidationDetails = !showValidationDetails"
 		>
-			<Icon
-				name="lucide:chevron-right"
+			<ChevronRightIcon
 				class="w-4 h-4 transition-transform"
 				:class="{ 'rotate-90': showValidationDetails }"
 			/>

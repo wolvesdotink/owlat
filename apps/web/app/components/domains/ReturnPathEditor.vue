@@ -19,6 +19,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isDnsLabel } from '@owlat/shared';
 import { useFormValidation, type ValidationRule } from '~/composables/useFormValidation';
+import { PencilIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	domainId: Id<'domains'>;
@@ -115,7 +117,7 @@ async function save() {
 				data-testid="returnpath-edit"
 				@click="startEditing"
 			>
-				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" />
 				{{ t('common.edit') }}
 			</UiButton>
 		</div>
@@ -159,7 +161,7 @@ async function save() {
 				class="mt-1 inline-flex items-start gap-1.5 text-xs text-error"
 				data-testid="returnpath-sync-error"
 			>
-				<Icon name="lucide:alert-triangle" class="w-3 h-3 mt-0.5 shrink-0" />
+				<TriangleWarningIcon class="w-3 h-3 mt-0.5 shrink-0" />
 				<span>{{ t('components.domains.returnPathEditor.syncError') }}</span>
 			</p>
 		</template>
@@ -192,7 +194,7 @@ async function save() {
 					:disabled="isSaving"
 					@click="save"
 				>
-					<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
 					{{ isSaving ? t('common.saving') : t('common.save') }}
 				</UiButton>
 				<UiButton
@@ -246,7 +248,7 @@ async function save() {
 				class="mt-2 inline-flex items-start gap-1.5 text-xs text-warning"
 				data-testid="returnpath-reverify-warning"
 			>
-				<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+				<TriangleWarningIcon class="w-3.5 h-3.5 mt-0.5 shrink-0" />
 				<span>{{ t('components.domains.returnPathEditor.reverifyWarning') }}</span>
 			</p>
 		</div>

@@ -69,7 +69,6 @@ function mountColumn(
 							h('button', { ...attrs, onClick: () => emit('click') }, slots['default']?.()),
 				}),
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

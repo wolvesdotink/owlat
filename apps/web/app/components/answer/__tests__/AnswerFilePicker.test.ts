@@ -60,7 +60,7 @@ describe('AnswerFilePicker', () => {
 			props: { open: true },
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { Icon: true, UiModal: { template: '<div><slot /></div>' } },
+				stubs: { UiModal: { template: '<div><slot /></div>' } },
 			},
 		});
 

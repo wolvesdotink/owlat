@@ -6,10 +6,13 @@
  * consumer's buttons already used — this is presentation, never a new
  * action path.
  */
+import { PencilIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 withDefaults(
 	defineProps<{
 		primaryLabel: string;
-		primaryIcon?: string;
+		primaryIcon?: IconComponent;
 		primaryDisabled?: boolean;
 		/** Shows a spinner in place of the icon while the action runs. */
 		primaryLoading?: boolean;
@@ -74,13 +77,13 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 				:aria-disabled="held ? 'true' : undefined"
 				@click.stop.prevent="emit('primary')"
 			>
-				<Icon
-					v-if="primaryLoading"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
+				<SpinnerIcon v-if="primaryLoading" class="w-3.5 h-3.5" aria-hidden="true" />
+				<component
+					v-else-if="primaryIcon"
+					:is="primaryIcon"
+					class="w-3.5 h-3.5"
 					aria-hidden="true"
 				/>
-				<Icon v-else-if="primaryIcon" :name="primaryIcon" class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ primaryLabel }}
 			</button>
 			<slot />
@@ -124,7 +127,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 			data-testid="task-held-reason"
 			role="status"
 		>
-			<Icon name="lucide:pencil-line" class="w-3 h-3 text-warning shrink-0" aria-hidden="true" />
+			<PencilIcon class="w-3 h-3 text-warning shrink-0" aria-hidden="true" />
 			<span>{{ heldReason }}</span>
 		</p>
 	</div>

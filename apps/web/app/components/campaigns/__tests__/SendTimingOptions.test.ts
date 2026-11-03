@@ -32,7 +32,7 @@ function mountOptions(modelValue: SendTiming, extra: Record<string, unknown> = {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiSelect: selectStub, CampaignsSendTimeDistribution: true },
+			stubs: { UiSelect: selectStub, CampaignsSendTimeDistribution: true },
 		},
 	});
 }

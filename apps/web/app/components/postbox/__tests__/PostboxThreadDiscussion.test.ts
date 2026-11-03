@@ -90,7 +90,6 @@ beforeEach(() => {
 });
 
 const stubs = {
-	Icon: { props: ['name'], template: '<span />' },
 	UiAvatar: { props: ['name', 'image', 'size'], template: '<span />' },
 	UiButton: {
 		props: ['disabled', 'loading', 'type'],

@@ -15,6 +15,7 @@ import {
 	groupSlotsByDay,
 	timeZoneOptions,
 } from '~/utils/bookingSlots';
+import { ChevronLeftIcon, ChevronRightIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	slots: readonly number[];
@@ -106,7 +107,7 @@ function pickDay(key: string) {
 						:aria-label="t('components.booking.slotPicker.previousMonth')"
 						@click="shift(-1)"
 					>
-						<Icon name="lucide:chevron-left" class="h-4 w-4" />
+						<ChevronLeftIcon class="h-4 w-4" />
 					</UiButton>
 					<UiButton
 						variant="ghost"
@@ -115,7 +116,7 @@ function pickDay(key: string) {
 						:aria-label="t('components.booking.slotPicker.nextMonth')"
 						@click="shift(1)"
 					>
-						<Icon name="lucide:chevron-right" class="h-4 w-4" />
+						<ChevronRightIcon class="h-4 w-4" />
 					</UiButton>
 				</div>
 			</div>

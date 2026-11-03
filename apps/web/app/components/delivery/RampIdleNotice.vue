@@ -4,6 +4,7 @@
  * the controls work, so this only says where to begin.
  */
 import { DELIVERY_MIGRATE_ROUTE } from '~/utils/deliveryAdvancedEmpty';
+import { ArrowLeftRightIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 </script>
@@ -17,7 +18,7 @@ const { t } = useI18n();
 			:to="DELIVERY_MIGRATE_ROUTE"
 			class="mt-2 inline-flex items-center gap-2 text-sm text-brand hover:underline"
 		>
-			<Icon name="lucide:arrow-right-left" class="h-4 w-4" />
+			<ArrowLeftRightIcon class="h-4 w-4" />
 			{{ t('components.delivery.advancedEmptyState.migrateAction') }}
 		</NuxtLink>
 	</UiCard>

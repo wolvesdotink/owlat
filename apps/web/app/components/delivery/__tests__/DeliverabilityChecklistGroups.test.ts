@@ -48,7 +48,6 @@ function mountGroups(itemOverrides: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { template: '<i />' },
 				UiButton: { template: '<button><slot /></button>' },
 				DeliverabilitySetupValues: true,
 			},

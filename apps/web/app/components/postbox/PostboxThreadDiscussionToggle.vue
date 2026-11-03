@@ -5,6 +5,8 @@
  * a badge. Hidden entirely when the `chat` feature is off or the backend
  * reports no access.
  */
+import { ChatConversationIcon } from '@coolicons/vue';
+
 const props = defineProps<{ threadId: string }>();
 
 const { t } = useI18n();
@@ -30,7 +32,7 @@ const { isAvailable, isOpen, toggle, discussion, count } = usePostboxThreadDiscu
 			data-testid="thread-discussion-toggle"
 			@click="toggle"
 		>
-			<Icon name="lucide:messages-square" class="w-4 h-4" aria-hidden="true" />
+			<ChatConversationIcon class="w-4 h-4" aria-hidden="true" />
 			<span>{{ t('components.postbox.threadDiscussion.toggle') }}</span>
 			<span
 				v-if="count > 0"

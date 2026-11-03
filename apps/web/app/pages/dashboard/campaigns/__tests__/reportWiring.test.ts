@@ -135,7 +135,6 @@ function mountReport(campaign: Record<string, unknown>) {
 				NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
 				UiTrendChart: trendChartStub,
 				UiIconBox: true,
-				Icon: true,
 				CampaignsUndoSendToast: true,
 			},
 		},

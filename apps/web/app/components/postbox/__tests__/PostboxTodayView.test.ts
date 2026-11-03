@@ -108,7 +108,6 @@ function queueItem(id: string, overrides: Partial<ReplyQueueItem> = {}): ReplyQu
 	};
 }
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 const threadListStub = defineComponent({
 	props: {
@@ -186,7 +185,6 @@ function mountView(extraProps: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				PostboxDailyBrief: dailyBriefStub,
 				PostboxPinnedBand: { template: '<section data-testid="pinned-band-stub" />' },

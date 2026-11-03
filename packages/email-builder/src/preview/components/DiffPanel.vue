@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { X, Plus, Minus, Pencil, FileText, Image, Link, Palette, Layout, Tag } from '@lucide/vue';
+import {
+	CloseIcon,
+	FileTextIcon,
+	ImageIcon,
+	LayoutTemplateIcon,
+	LinkIcon,
+	MinusIcon,
+	PaletteIcon,
+	PencilIcon,
+	PlusIcon,
+	TagIcon,
+} from '@coolicons/vue';
 import type { PreviewEmailDiff, PreviewEmailDiffChange } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
@@ -34,32 +45,32 @@ const sizeDeltaColor = computed(() => {
 function getCategoryIcon(category: PreviewEmailDiffChange['category']) {
 	switch (category) {
 		case 'text':
-			return FileText;
+			return FileTextIcon;
 		case 'style':
-			return Palette;
+			return PaletteIcon;
 		case 'image':
-			return Image;
+			return ImageIcon;
 		case 'link':
-			return Link;
+			return LinkIcon;
 		case 'structure':
-			return Layout;
+			return LayoutTemplateIcon;
 		case 'meta':
-			return Tag;
+			return TagIcon;
 		default:
-			return FileText;
+			return FileTextIcon;
 	}
 }
 
 function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 	switch (type) {
 		case 'added':
-			return Plus;
+			return PlusIcon;
 		case 'removed':
-			return Minus;
+			return MinusIcon;
 		case 'modified':
-			return Pencil;
+			return PencilIcon;
 		default:
-			return Pencil;
+			return PencilIcon;
 	}
 }
 </script>
@@ -77,7 +88,7 @@ function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 				</span>
 			</div>
 			<button class="ep-diff-close" @click="emit('close')">
-				<X class="ep-diff-close-icon" />
+				<CloseIcon class="ep-diff-close-icon" />
 			</button>
 		</div>
 

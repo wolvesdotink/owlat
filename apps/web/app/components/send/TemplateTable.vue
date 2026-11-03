@@ -5,6 +5,7 @@
  * trailing action cell (page actions, edit, overflow menu) is rendered here.
  */
 import type { TemplateListItem, TemplateRowAction } from '~/composables/useTemplateList';
+import { PencilIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -71,7 +72,7 @@ const iconButton =
 									:aria-label="action.label"
 									@click="action.run(item)"
 								>
-									<Icon :name="action.icon" class="w-4 h-4" />
+									<component :is="action.icon" class="w-4 h-4" />
 								</button>
 							</UiTooltip>
 							<UiTooltip :text="t('common.edit')">
@@ -81,7 +82,7 @@ const iconButton =
 									:aria-label="t('common.edit')"
 									@click="emit('edit', item)"
 								>
-									<Icon name="lucide:pencil" class="w-4 h-4" />
+									<PencilIcon class="w-4 h-4" />
 								</button>
 							</UiTooltip>
 							<SendTemplateActionsMenu

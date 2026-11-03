@@ -5,6 +5,14 @@ import CreatePropertyModal from '~/components/contactProperties/CreatePropertyMo
 import DeletePropertyModal from '~/components/contactProperties/DeletePropertyModal.vue';
 import EditPropertyModal from '~/components/contactProperties/EditPropertyModal.vue';
 import PropertyRow from '~/components/contactProperties/PropertyRow.vue';
+import {
+	CalendarIcon,
+	HashIcon,
+	PlusIcon,
+	TagsIcon,
+	TextIcon,
+	ToggleLeftIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -112,25 +120,25 @@ const propertyTypes = [
 	{
 		value: 'string',
 		label: 'dashboard.admin.instance.properties.types.string.label',
-		icon: 'lucide:type',
+		icon: TextIcon,
 		description: 'dashboard.admin.instance.properties.types.string.description',
 	},
 	{
 		value: 'number',
 		label: 'dashboard.admin.instance.properties.types.number.label',
-		icon: 'lucide:hash',
+		icon: HashIcon,
 		description: 'dashboard.admin.instance.properties.types.number.description',
 	},
 	{
 		value: 'boolean',
 		label: 'dashboard.admin.instance.properties.types.boolean.label',
-		icon: 'lucide:toggle-left',
+		icon: ToggleLeftIcon,
 		description: 'dashboard.admin.instance.properties.types.boolean.description',
 	},
 	{
 		value: 'date',
 		label: 'dashboard.admin.instance.properties.types.date.label',
-		icon: 'lucide:calendar',
+		icon: CalendarIcon,
 		description: 'dashboard.admin.instance.properties.types.date.description',
 	},
 ] as const;
@@ -319,7 +327,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			<template #actions>
 				<UiButton @click="openCreateModal()">
 					<template #iconLeft>
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 					</template>
 					{{ t('dashboard.admin.instance.properties.newProperty') }}
 				</UiButton>
@@ -336,7 +344,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			<!-- No Team State -->
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
-					icon="lucide:tags"
+					:icon="TagsIcon"
 					:title="t('dashboard.admin.instance.properties.noTeamTitle')"
 					:description="t('dashboard.admin.instance.properties.noTeamBody')"
 				/>
@@ -348,7 +356,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 				<UiCard padding="none" overflow="hidden">
 					<template #header>
 						<div class="flex items-center gap-3">
-							<UiIconBox icon="lucide:tags" size="sm" variant="surface" rounded="lg" />
+							<UiIconBox :icon="TagsIcon" size="sm" variant="surface" rounded="lg" />
 							<div>
 								<h2 class="text-lg font-semibold text-text-primary">
 									{{ t('dashboard.admin.instance.properties.cardTitle') }}
@@ -369,7 +377,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<!-- Empty State -->
 					<UiEmptyState
 						v-if="!propertiesData || propertiesData.length === 0"
-						icon="lucide:tags"
+						:icon="TagsIcon"
 						:title="t('dashboard.admin.instance.properties.emptyTitle')"
 						:description="t('dashboard.admin.instance.properties.emptyBody')"
 						class="py-12"
@@ -377,7 +385,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 						<template #action>
 							<UiButton @click="openCreateModal()">
 								<template #iconLeft>
-									<Icon name="lucide:plus" class="w-4 h-4" />
+									<PlusIcon class="w-4 h-4" />
 								</template>
 								{{ t('dashboard.admin.instance.properties.createFirst') }}
 							</UiButton>
@@ -411,7 +419,7 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 					<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 						<div v-for="type in propertyTypes" :key="type.value" class="flex items-start gap-3">
 							<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
+								<component :is="type.icon" class="w-4 h-4 text-text-secondary" />
 							</div>
 							<div>
 								<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>

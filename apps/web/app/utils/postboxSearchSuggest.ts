@@ -17,6 +17,15 @@
  * at the render boundary; nothing in this module is user-visible English.
  */
 
+import {
+	FolderIcon,
+	HistoryIcon,
+	TagIcon,
+	TerminalIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type SuggestionKind = 'operator' | 'value' | 'recent';
 
 export interface SearchSuggestion {
@@ -34,7 +43,7 @@ export interface SearchSuggestion {
 	 * it is passed through rather than routed through the catalog.
 	 */
 	detail?: string;
-	icon: string;
+	icon: IconComponent;
 	/** Whether accepting this row completes a whole term (vs. opening one). */
 	isTerminal: boolean;
 }
@@ -239,7 +248,7 @@ export function buildSearchSuggestions(input: SuggestInput): SearchSuggestion[] 
 			insert: `${sign}${entry.token}`,
 			label: `${sign}${entry.token}`,
 			hint: { key: entry.hintKey },
-			icon: 'lucide:terminal',
+			icon: TerminalIcon,
 			isTerminal: entry.isTerminal,
 		});
 		if (rows.length >= limit) return rows;
@@ -286,7 +295,7 @@ function recentRows(recents: string[], prefix: string, limit: number): SearchSug
 			// `insert` carries the query so both paths read the same field.
 			insert: entry,
 			label: entry,
-			icon: 'lucide:history',
+			icon: HistoryIcon,
 			isTerminal: true,
 		}));
 }
@@ -316,7 +325,7 @@ function operandSuggestions(
 				insert: `${sign}${op}:${quoteOperand(contact.email)}`,
 				label: `${sign}${op}: ${contact.email}`,
 				detail: contact.displayName,
-				icon: 'lucide:user',
+				icon: UserIcon,
 				isTerminal: true,
 			}));
 	}
@@ -330,7 +339,7 @@ function operandSuggestions(
 				kind: 'value' as const,
 				insert: `${sign}label:${quoteOperand(label.name)}`,
 				label: `${sign}label: ${label.name}`,
-				icon: 'lucide:tag',
+				icon: TagIcon,
 				isTerminal: true,
 			}));
 	}
@@ -343,7 +352,7 @@ function operandSuggestions(
 				kind: 'value' as const,
 				insert: `${sign}in:${role}`,
 				label: `${sign}in: ${role}`,
-				icon: 'lucide:folder',
+				icon: FolderIcon,
 				isTerminal: true,
 			}));
 	}
@@ -362,7 +371,7 @@ function operandSuggestions(
 				insert: `${sign}${entry.token}`,
 				label: `${sign}${entry.token}`,
 				hint: { key: entry.hintKey },
-				icon: 'lucide:terminal',
+				icon: TerminalIcon,
 				isTerminal: true,
 			}));
 	}

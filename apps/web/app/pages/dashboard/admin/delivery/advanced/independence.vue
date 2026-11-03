@@ -38,6 +38,7 @@ import { hasNoIndependenceTraffic } from '~/utils/deliveryAdvancedEmpty';
 // a mount that resolved it to nothing would hide the one thing it says.
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import { TrendingUpIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -220,7 +221,7 @@ function confirmRelayRemoval(): void {
 
 				<DeliveryAdvancedEmptyState
 					v-if="isQuietStandalone"
-					icon="lucide:trending-up"
+					:icon="TrendingUpIcon"
 					:title="t('dashboard.admin.delivery.advanced.independence.empty.title')"
 					:description="t('dashboard.admin.delivery.advanced.independence.empty.description')"
 				/>
@@ -287,7 +288,7 @@ function confirmRelayRemoval(): void {
 			</div>
 			<DeliveryAdvancedEmptyState
 				v-else
-				icon="lucide:trending-up"
+				:icon="TrendingUpIcon"
 				:title="t('dashboard.admin.delivery.advanced.independence.empty.title')"
 				:description="t('dashboard.admin.delivery.advanced.independence.empty.description')"
 			/>

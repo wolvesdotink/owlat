@@ -31,6 +31,7 @@
  */
 import { computed, getCurrentInstance, useSlots } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { CircleCheckIcon, type IconComponent } from '@coolicons/vue';
 
 type EmptyStateVariant = 'empty' | 'no-results';
 type EmptyStateTone = 'default' | 'clear';
@@ -46,7 +47,7 @@ interface Props {
 	/** One secondary lead sentence. Keep it to a sentence. */
 	description?: string;
 	/** Decorative glyph inside the eyebrow row. No disc, no fill. */
-	icon?: string;
+	icon?: IconComponent;
 	variant?: EmptyStateVariant;
 	/** `clear` marks an empty that is good news: check glyph, "All clear". */
 	tone?: EmptyStateTone;
@@ -92,9 +93,7 @@ const eyebrowText = computed<string | undefined>(() => {
 	return undefined;
 });
 
-const eyebrowIcon = computed(
-	() => props.icon ?? (isClear.value ? 'lucide:circle-check' : undefined)
-);
+const eyebrowIcon = computed(() => props.icon ?? (isClear.value ? CircleCheckIcon : undefined));
 
 /**
  * `default` counts as well as `action`: several call sites pass the button as
@@ -114,17 +113,17 @@ const showClear = computed(() => isNoResults.value && !hasAction.value && hasCle
 			:class="isClear ? 'text-success' : undefined"
 			:data-tone="tone"
 		>
-			<Icon
+			<component
 				v-if="eyebrowIcon"
-				:name="eyebrowIcon"
+				:is="eyebrowIcon"
 				class="w-3.5 h-3.5 shrink-0"
 				aria-hidden="true"
 			/>
 			<span>{{ eyebrowText }}</span>
 		</p>
-		<Icon
+		<component
 			v-else-if="eyebrowIcon"
-			:name="eyebrowIcon"
+			:is="eyebrowIcon"
 			class="w-4 h-4 shrink-0 text-text-tertiary"
 			aria-hidden="true"
 		/>

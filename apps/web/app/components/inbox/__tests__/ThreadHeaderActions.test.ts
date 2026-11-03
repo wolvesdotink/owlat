@@ -37,7 +37,6 @@ function mountActions(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiAvatar: true,
 				UiButton: button,
 				InboxAssignPopover: { template: '<div><slot name="trigger" /></div>' },

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { ArrowLeftIcon, MailIcon, MegaphoneIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -44,7 +45,7 @@ const contactName = computed(() => {
 				v-if="!send"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox :icon="MailIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">
 					{{ t('dashboard.campaigns.detail.sends.detail.notFoundTitle') }}
 				</p>
@@ -68,7 +69,7 @@ const contactName = computed(() => {
 						:to="`/dashboard/campaigns/${campaignId}/report`"
 						class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 					>
-						<Icon name="lucide:arrow-left" class="w-4 h-4" />
+						<ArrowLeftIcon class="w-4 h-4" />
 						{{ t('dashboard.campaigns.detail.sends.detail.backToReport') }}
 					</NuxtLink>
 
@@ -87,7 +88,7 @@ const contactName = computed(() => {
 								</span>
 								<DashboardSendStatusBadge :status="send.status" fallback="queued" />
 								<div v-if="send.campaign" class="flex items-center gap-2">
-									<Icon name="lucide:megaphone" class="w-4 h-4" />
+									<MegaphoneIcon class="w-4 h-4" />
 									<span>{{ send.campaign.name }}</span>
 									<span v-if="send.personalizedSubject" class="text-text-tertiary">
 										&mdash; {{ send.personalizedSubject }}

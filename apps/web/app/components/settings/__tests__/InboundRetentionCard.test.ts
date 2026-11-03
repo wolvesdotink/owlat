@@ -74,7 +74,7 @@ function mountCard(
 			components: { UiSelect, UiCard },
 			// The select teleports its list to <body>; render it in place so the
 			// wrapper can find the options.
-			stubs: { Icon: true, UiSpinner: true, UiIconBox: true, teleport: true },
+			stubs: { UiSpinner: true, UiIconBox: true, teleport: true },
 		},
 	});
 	return { wrapper, updates, toasts };

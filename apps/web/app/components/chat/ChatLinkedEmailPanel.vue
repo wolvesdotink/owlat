@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
+import { MailIcon } from '@coolicons/vue';
 
 interface Thread {
 	_id: Id<'conversationThreads'>;
@@ -42,7 +43,7 @@ const isExpanded = ref(false);
 <template>
 	<div class="border-b border-border-subtle bg-brand-subtle/30">
 		<div class="px-4 py-3 flex items-center gap-3">
-			<Icon name="lucide:mail" class="w-4 h-4 text-brand flex-shrink-0" />
+			<MailIcon class="w-4 h-4 text-brand flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
 					<span class="text-xs uppercase tracking-wider font-semibold text-brand">{{

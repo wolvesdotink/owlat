@@ -50,7 +50,6 @@ function mountStatus(autosave: DraftAutosave) {
 		global: {
 			plugins: [i18n],
 			stubs: {
-				Icon: true,
 				UiButton: buttonStub,
 			},
 		},

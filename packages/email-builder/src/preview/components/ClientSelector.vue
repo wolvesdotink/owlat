@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Globe, ChevronDown } from '@lucide/vue';
+import { ChevronDownIcon, GlobeIcon } from '@coolicons/vue';
 import type { EmailClient, DevicePreset } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 import ClientDropdown from './clientSelector/ClientDropdown.vue';
@@ -51,13 +51,16 @@ function closeDropdowns() {
 				"
 			>
 				<component
-					:is="selectedClient ? getIcon(selectedClient.icon) : Globe"
+					:is="selectedClient ? getIcon(selectedClient.icon) : GlobeIcon"
 					class="ep-selector-icon"
 				/>
 				<span class="ep-selector-label">
 					{{ selectedClient?.name || t('builder.preview.clients.all') }}
 				</span>
-				<ChevronDown class="ep-selector-chevron" :class="{ 'ep-chevron-up': showClientDropdown }" />
+				<ChevronDownIcon
+					class="ep-selector-chevron"
+					:class="{ 'ep-chevron-up': showClientDropdown }"
+				/>
 			</button>
 
 			<!-- Client Dropdown -->
@@ -82,7 +85,10 @@ function closeDropdowns() {
 			>
 				<component :is="getIcon(selectedDevice.icon)" class="ep-selector-icon" />
 				<span class="ep-selector-label">{{ label(selectedDevice.name) }}</span>
-				<ChevronDown class="ep-selector-chevron" :class="{ 'ep-chevron-up': showDeviceDropdown }" />
+				<ChevronDownIcon
+					class="ep-selector-chevron"
+					:class="{ 'ep-chevron-up': showDeviceDropdown }"
+				/>
 			</button>
 
 			<!-- Device Dropdown -->

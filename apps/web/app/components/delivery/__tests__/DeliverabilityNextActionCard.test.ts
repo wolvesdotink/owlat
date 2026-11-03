@@ -9,7 +9,6 @@ const copy = vi.fn(async () => true);
 const isCopied = vi.fn(() => false);
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a><slot /></a>' },
 	UiButton: {
 		props: ['disabled', 'loading'],

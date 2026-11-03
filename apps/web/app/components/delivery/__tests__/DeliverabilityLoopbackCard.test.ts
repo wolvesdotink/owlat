@@ -6,7 +6,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const domains = [{ id: 'domain-a' as Id<'domains'>, domain: 'example.com', eligible: true }];
 const stubs = {
-	Icon: { template: '<i />' },
 	UiButton: {
 		props: ['disabled', 'loading'],
 		emits: ['click'],

@@ -12,6 +12,7 @@ import {
 	usePostboxShareImage,
 	type PostboxShareImageMessage,
 } from '~/composables/postbox/usePostboxShareImage';
+import { CopyIcon, DownloadIcon, EyeOffIcon, ShareIcon } from '@coolicons/vue';
 
 const props = defineProps<{ message: PostboxShareImageMessage }>();
 const emit = defineEmits<{ close: [] }>();
@@ -121,7 +122,7 @@ async function run(action: () => Promise<unknown>, successKey: string | null, fa
 			/>
 			<span class="flex-1" />
 			<UiButton variant="secondary" size="sm" type="button" @click="share.hidePersonalDetails()">
-				<Icon name="lucide:eye-off" class="w-4 h-4 mr-1.5" />
+				<EyeOffIcon class="w-4 h-4 mr-1.5" />
 				{{ t(`${P}.hidePersonal`) }}
 			</UiButton>
 			<UiButton
@@ -174,7 +175,7 @@ async function run(action: () => Promise<unknown>, successKey: string | null, fa
 				:disabled="!layout || busy"
 				@click="run(share.share, null, `${P}.shareFailed`)"
 			>
-				<Icon name="lucide:share" class="w-4 h-4 mr-1.5" />
+				<ShareIcon class="w-4 h-4 mr-1.5" />
 				{{ t(`${P}.share`) }}
 			</UiButton>
 			<UiButton
@@ -183,7 +184,7 @@ async function run(action: () => Promise<unknown>, successKey: string | null, fa
 				:disabled="!layout || busy"
 				@click="run(share.save, null, `${P}.saveFailed`)"
 			>
-				<Icon name="lucide:download" class="w-4 h-4 mr-1.5" />
+				<DownloadIcon class="w-4 h-4 mr-1.5" />
 				{{ t(`${P}.save`) }}
 			</UiButton>
 			<UiButton
@@ -192,7 +193,7 @@ async function run(action: () => Promise<unknown>, successKey: string | null, fa
 				:disabled="!layout || busy"
 				@click="run(share.copy, `${P}.copied`, `${P}.copyFailed`)"
 			>
-				<Icon name="lucide:copy" class="w-4 h-4 mr-1.5" />
+				<CopyIcon class="w-4 h-4 mr-1.5" />
 				{{ t(`${P}.copy`) }}
 			</UiButton>
 		</div>

@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="T extends string | number">
 import { useEscapeLayer } from '../../composables/useEscapeLayer';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { CheckIcon, ChevronDownIcon } from '@coolicons/vue';
 
 type SelectSize = 'sm' | 'md';
 
@@ -387,8 +388,7 @@ onUnmounted(() => {
 				@keyup="handleTriggerKeyup"
 			>
 				<span :class="textClasses" class="truncate">{{ displayText }}</span>
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					class="w-4 h-4 text-text-tertiary shrink-0 transition-transform duration-(--motion-moderate) ease-spring"
 					:class="{ 'rotate-180': isOpen }"
 					aria-hidden="true"
@@ -436,9 +436,8 @@ onUnmounted(() => {
 							@click="selectOption(option)"
 						>
 							<span class="truncate">{{ option.label }}</span>
-							<Icon
+							<CheckIcon
 								v-if="index === selectedIndex"
-								name="lucide:check"
 								class="w-4 h-4 text-brand shrink-0"
 								aria-hidden="true"
 							/>

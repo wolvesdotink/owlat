@@ -9,6 +9,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
 import { VCARD_MAX_ENTRIES, VCARD_MAX_FILE_BYTES } from '@owlat/shared/postboxVcardLimits';
 import type { VcardImportOutcome } from '~/composables/postbox/usePostboxVcardTransfer';
+import { DownloadIcon, UploadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'> | null;
@@ -107,7 +108,7 @@ function report(outcome: VcardImportOutcome | null) {
 				:disabled="!mailboxId || isImporting"
 				@click="browse"
 			>
-				<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
+				<template #iconLeft><UploadIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.postbox.contacts.vcard.import') }}
 			</UiButton>
 		</UiTooltip>
@@ -118,7 +119,7 @@ function report(outcome: VcardImportOutcome | null) {
 			:disabled="contacts.length === 0 || isExporting"
 			@click="runExport"
 		>
-			<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+			<template #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 			{{ t('dashboard.postbox.contacts.vcard.export') }}
 		</UiButton>
 	</div>

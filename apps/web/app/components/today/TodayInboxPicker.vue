@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
+import { Slider1Icon, SquareCheckIcon, SquareIcon } from '@coolicons/vue';
 
 /**
  * Which inboxes get a Workbench tab. Each row is a checkbox that toggles
@@ -46,7 +47,7 @@ const triggerLabel = computed(() =>
 					:class="allShown ? 'w-8 px-0' : ''"
 					:aria-label="`${t('components.today.inboxPicker.label')}: ${triggerLabel}`"
 				>
-					<Icon name="lucide:sliders-horizontal" class="size-4" />
+					<Slider1Icon class="size-4" />
 					<span v-if="!allShown" class="ml-1.5">{{ triggerLabel }}</span>
 				</UiButton>
 			</UiTooltip>
@@ -62,8 +63,8 @@ const triggerLabel = computed(() =>
 				class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
 				@click.stop="emit('toggle', inbox.mailboxId, hiddenSet.has(inbox.mailboxId))"
 			>
-				<Icon
-					:name="hiddenSet.has(inbox.mailboxId) ? 'lucide:square' : 'lucide:square-check'"
+				<component
+					:is="hiddenSet.has(inbox.mailboxId) ? SquareIcon : SquareCheckIcon"
 					class="size-4 shrink-0"
 					:class="hiddenSet.has(inbox.mailboxId) ? 'text-text-tertiary' : 'text-text-primary'"
 					aria-hidden="true"

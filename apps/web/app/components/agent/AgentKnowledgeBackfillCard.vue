@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { CloseIcon } from '@coolicons/vue';
 
 /**
  * One-shot knowledge backfill status for the Instance → Agent settings page:
@@ -166,7 +167,7 @@ const backfillStatusVariant = computed(() => {
 					@click="handleCancelBackfill"
 				>
 					<UiSpinner v-if="isCancellingBackfill" size="xs" tone="brand" />
-					<Icon v-else name="lucide:x" class="w-3.5 h-3.5" />
+					<CloseIcon v-else class="w-3.5 h-3.5" />
 					{{ t('dashboard.admin.instance.agent.backfill.cancel') }}
 				</UiButton>
 			</div>

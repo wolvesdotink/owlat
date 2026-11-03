@@ -27,7 +27,7 @@ async function coach(suggestions: { category: string; message: string }[]) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiButton: { template: '<button><slot /></button>' } },
+			stubs: { UiButton: { template: '<button><slot /></button>' } },
 		},
 	});
 	await wrapper.find('[data-testid="postbox-coach-run"]').trigger('click');

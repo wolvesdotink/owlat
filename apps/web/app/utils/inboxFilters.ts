@@ -6,6 +6,14 @@
  * carries NO query param, keeping the canonical URL clean.
  */
 
+import {
+	AlarmIcon,
+	SortDescendingIcon,
+	SparklesIcon,
+	TimerIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 /**
  * The status tabs. Four, one per thread state: assignment is a separate
  * filter ({@link INBOX_ASSIGNEES}) and "waiting over 24h" is a highlight + sort
@@ -54,14 +62,14 @@ export const DEFAULT_INBOX_SORT: InboxSort = 'needs-attention';
  * The chip that renders them is also the control that cycles them, so it needs
  * both the current name and something to move to.
  */
-export const INBOX_SORT_META: Record<InboxSort, { label: string; icon: string }> = {
+export const INBOX_SORT_META: Record<InboxSort, { label: string; icon: IconComponent }> = {
 	'needs-attention': {
 		label: 'shared.inboxSorts.needsAttention',
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 	},
-	'oldest-waiting': { label: 'shared.inboxSorts.oldestWaiting', icon: 'lucide:timer' },
-	due: { label: 'shared.inboxSorts.due', icon: 'lucide:alarm-clock' },
-	newest: { label: 'shared.inboxSorts.newest', icon: 'lucide:arrow-down-wide-narrow' },
+	'oldest-waiting': { label: 'shared.inboxSorts.oldestWaiting', icon: TimerIcon },
+	due: { label: 'shared.inboxSorts.due', icon: AlarmIcon },
+	newest: { label: 'shared.inboxSorts.newest', icon: SortDescendingIcon },
 };
 
 /** Normalise a stored/unknown value to a valid sort, defaulting safely. */

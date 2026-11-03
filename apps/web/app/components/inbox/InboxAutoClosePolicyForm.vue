@@ -11,6 +11,7 @@ import {
 	autoCloseDaysProblem,
 	type AutoClosePolicyShape,
 } from '~/utils/inboxAutoClose';
+import { SaveIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	policy: AutoClosePolicyShape;
@@ -80,7 +81,7 @@ function save() {
 					data-testid="inbox-auto-close-save"
 					@click="save"
 				>
-					<Icon name="lucide:save" class="w-4 h-4" />
+					<SaveIcon class="w-4 h-4" />
 					{{ t('components.inbox.inboxAutoClosePolicyForm.save') }}
 				</UiButton>
 			</div>

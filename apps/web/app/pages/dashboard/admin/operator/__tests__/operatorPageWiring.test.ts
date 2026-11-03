@@ -146,7 +146,6 @@ async function mountOn(tab: string) {
 				formatRelativeTime,
 			},
 			stubs: {
-				Icon: true,
 				UiBadge: { template: '<span class="badge"><slot /></span>' },
 				UiButton: { template: '<button v-bind="$attrs"><slot /></button>', inheritAttrs: false },
 				UiTooltip: { template: '<span><slot /></span>' },

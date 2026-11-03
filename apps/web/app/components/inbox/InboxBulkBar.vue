@@ -8,6 +8,7 @@
  * same handlers serve the keyboard, the row menus and this bar.
  */
 import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
+import { CircleCheckIcon, ClockIcon, CloseIcon, UserPlusCornerIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	count: number;
@@ -57,7 +58,7 @@ const assignOpenModel = computed({
 					<template #shortcut><UiShortcut id="inboxList.assign" /></template>
 					<UiButton variant="ghost" size="sm" class="gap-1.5 px-2 py-1">
 						<template #iconLeft>
-							<Icon name="lucide:user-plus" class="h-4 w-4" />
+							<UserPlusCornerIcon class="h-4 w-4" />
 						</template>
 						{{ t('components.inbox.bulkBar.assign') }}
 					</UiButton>
@@ -74,7 +75,7 @@ const assignOpenModel = computed({
 				@click="emit('resolve')"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:check-circle" class="h-4 w-4" />
+					<CircleCheckIcon class="h-4 w-4" />
 				</template>
 				{{ t('components.inbox.inboxThreadRow.resolve') }}
 			</UiButton>
@@ -89,7 +90,7 @@ const assignOpenModel = computed({
 				@click="emit('snooze')"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:clock" class="h-4 w-4" />
+					<ClockIcon class="h-4 w-4" />
 				</template>
 				{{ t('components.inbox.inboxThreadRow.snooze') }}
 			</UiButton>
@@ -105,7 +106,7 @@ const assignOpenModel = computed({
 				data-testid="inbox-bulk-clear"
 				@click="emit('clear')"
 			>
-				<Icon name="lucide:x" class="h-4 w-4" />
+				<CloseIcon class="h-4 w-4" />
 			</UiButton>
 		</UiTooltip>
 	</div>

@@ -6,6 +6,15 @@
  * Archive is also a sweep handle (`data-sweep-handle`), read by the row.
  * Its vertical place is set per density in postbox-density.css.
  */
+import {
+	ArchiveIcon,
+	CircleHelpIcon,
+	MailIcon,
+	MailOpenIcon,
+	StarIcon,
+	TrashIcon,
+} from '@coolicons/vue';
+
 defineProps<{
 	// The two flags, not the row's message: each tooltip's slot reads its flag,
 	// and a slot that read the message object would re-render its tooltip on
@@ -36,7 +45,7 @@ const { t } = useI18n();
 				data-testid="row-why-here"
 				@click="emit('why-here', $event)"
 			>
-				<Icon name="lucide:help-circle" class="w-4 h-4" />
+				<CircleHelpIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip
@@ -56,7 +65,7 @@ const { t } = useI18n();
 				"
 				@click="emit('action', $event, 'toggle-star')"
 			>
-				<Icon name="lucide:star" class="w-4 h-4" />
+				<StarIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip
@@ -76,7 +85,7 @@ const { t } = useI18n();
 				"
 				@click="emit('action', $event, 'toggle-read')"
 			>
-				<Icon :name="seen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
+				<component :is="seen ? MailIcon : MailOpenIcon" class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('components.postbox.postboxThreadRow.archiveSweepHint')">
@@ -87,7 +96,7 @@ const { t } = useI18n();
 				data-sweep-handle="archive"
 				@click="emit('action', $event, 'archive')"
 			>
-				<Icon name="lucide:archive" class="w-4 h-4" />
+				<ArchiveIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('common.delete')">
@@ -97,7 +106,7 @@ const { t } = useI18n();
 				:aria-label="t('common.delete')"
 				@click="emit('action', $event, 'trash')"
 			>
-				<Icon name="lucide:trash" class="w-4 h-4" />
+				<TrashIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 	</div>

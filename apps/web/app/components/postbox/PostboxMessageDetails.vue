@@ -24,6 +24,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildMessageDetailRows, type MessageDetailTone } from '~/utils/postboxMessageDetails';
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 const props = defineProps<{ messageId: string }>();
 
@@ -67,7 +68,7 @@ const { downloading, downloadOriginal } = usePostboxOriginalEml();
 			@click="expanded = !expanded"
 		>
 			{{ t('components.postbox.postboxMessageDetails.toggle') }}
-			<Icon :name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3 h-3" />
+			<component :is="expanded ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
 		</button>
 		<div
 			v-if="expanded"

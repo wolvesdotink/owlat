@@ -7,6 +7,8 @@
  * boundary and a locale switch relabels in place.
  */
 
+import { ArchiveIcon, ShieldWarningIcon, TrashIcon, type IconComponent } from '@coolicons/vue';
+
 export type PostboxTriageVerb = 'archive' | 'trash' | 'spam';
 
 interface TriageVerbCopy {
@@ -16,7 +18,7 @@ interface TriageVerbCopy {
 	acceptKey: string;
 	/** The name the created rule is saved under. */
 	ruleNameKey: string;
-	icon: string;
+	icon: IconComponent;
 }
 
 const VERB_COPY: Readonly<Record<PostboxTriageVerb, TriageVerbCopy>> = {
@@ -24,19 +26,19 @@ const VERB_COPY: Readonly<Record<PostboxTriageVerb, TriageVerbCopy>> = {
 		promptKey: 'components.postbox.postboxTriageSuggestion.prompt.archive',
 		acceptKey: 'components.postbox.postboxTriageSuggestion.accept.archive',
 		ruleNameKey: 'components.postbox.postboxTriageSuggestion.ruleName.archive',
-		icon: 'lucide:archive',
+		icon: ArchiveIcon,
 	},
 	trash: {
 		promptKey: 'components.postbox.postboxTriageSuggestion.prompt.trash',
 		acceptKey: 'components.postbox.postboxTriageSuggestion.accept.trash',
 		ruleNameKey: 'components.postbox.postboxTriageSuggestion.ruleName.trash',
-		icon: 'lucide:trash-2',
+		icon: TrashIcon,
 	},
 	spam: {
 		promptKey: 'components.postbox.postboxTriageSuggestion.prompt.spam',
 		acceptKey: 'components.postbox.postboxTriageSuggestion.accept.spam',
 		ruleNameKey: 'components.postbox.postboxTriageSuggestion.ruleName.spam',
-		icon: 'lucide:shield-alert',
+		icon: ShieldWarningIcon,
 	},
 };
 

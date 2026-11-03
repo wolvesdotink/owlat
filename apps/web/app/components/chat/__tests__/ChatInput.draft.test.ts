@@ -57,7 +57,6 @@ async function openPage(userId = 'u1') {
 			UiSpinner: true,
 			UiAvatar: true,
 			UiSkeleton: true,
-			Icon: true,
 		},
 	};
 	const send = vi.fn(async (..._args: unknown[]) => ({ ok: true }));

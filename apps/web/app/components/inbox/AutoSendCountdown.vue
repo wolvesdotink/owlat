@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useNow } from '~/composables/useNow';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 /**
  * "Sending automatically in 9s — Undo" on a team-inbox message whose approved
@@ -36,7 +37,7 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((props.sendAt - now.val
 		data-testid="auto-send-countdown"
 	>
 		<div class="flex items-center gap-2 text-sm text-text-primary">
-			<Icon name="lucide:send" class="h-4 w-4 text-brand" />
+			<PaperPlaneIcon class="h-4 w-4 text-brand" />
 			{{ t(labelKey, { seconds: secondsLeft }) }}
 		</div>
 		<UiButton variant="secondary" size="sm" :loading="busy" @click="emit('cancel')">

@@ -11,6 +11,7 @@ import {
 	templateHasBody,
 	type ReviewSchedule,
 } from '~/lib/campaignCompose';
+import { ArrowLeftIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -304,7 +305,7 @@ const reviewData = computed(() => {
 						:aria-label="t('common.back')"
 						@click="handleCancel"
 					>
-						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+						<ArrowLeftIcon class="w-5 h-5" />
 					</button>
 					<div>
 						<h1 class="text-lg font-semibold text-text-primary">

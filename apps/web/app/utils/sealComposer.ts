@@ -26,6 +26,14 @@
  */
 
 import type { SealTone } from './sealTone';
+import {
+	KeyIcon,
+	LockIcon,
+	LockOpenIcon,
+	ShieldCheckIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /** Why a draft cannot (or would not automatically) be sealed. Mirrors the Convex `SealSkipReason`. */
 export type SealSkipReason =
@@ -93,7 +101,7 @@ export interface ComposerLockResult {
 	/** Plain-language explanation — a catalog key or a `{ key, params }` pair. */
 	detail: SealLockText;
 	tone: SealLockTone;
-	icon: string;
+	icon: IconComponent;
 	/**
 	 * True ONLY for a `cannotSeal` state the sender can actually act on: sending in
 	 * plaintext is a decision, so the composer offers a distinct control that opens
@@ -177,7 +185,7 @@ export function deriveComposerLock(
 			summary: 'shared.sealComposer.checking.summary',
 			detail: 'shared.sealComposer.checking.detail',
 			tone: 'muted',
-			icon: 'lucide:loader-2',
+			icon: SpinnerIcon,
 			allowSendUnsealed: false,
 		};
 	}
@@ -192,7 +200,7 @@ export function deriveComposerLock(
 					? 'shared.sealComposer.willSeal.detailVerified'
 					: 'shared.sealComposer.willSeal.detail',
 				tone: 'ok',
-				icon: allVerified ? 'lucide:shield-check' : 'lucide:lock',
+				icon: allVerified ? ShieldCheckIcon : LockIcon,
 				allowSendUnsealed: false,
 			};
 		case 'keyChanged':
@@ -201,7 +209,7 @@ export function deriveComposerLock(
 				summary: 'shared.sealComposer.keyChanged.summary',
 				detail: keyChangedDetail(state.addresses),
 				tone: 'warn',
-				icon: 'lucide:key-round',
+				icon: KeyIcon,
 				allowSendUnsealed: false,
 			};
 		case 'cannotSeal':
@@ -210,7 +218,7 @@ export function deriveComposerLock(
 				summary: 'shared.sealComposer.cannotSeal.summary',
 				detail: cannotSealDetail(state.reason),
 				tone: 'muted',
-				icon: 'lucide:lock-open',
+				icon: LockOpenIcon,
 				// Only a send that could have been sealed is a decision; ordinary
 				// mail to keyless recipients just goes out.
 				allowSendUnsealed: unsealedSendNeedsConsent(state.reason),

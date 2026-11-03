@@ -8,6 +8,7 @@ import { api } from '@owlat/api';
 import BookingProfileForm from '~/components/booking/BookingProfileForm.vue';
 import BookingMeetingTypes from '~/components/booking/BookingMeetingTypes.vue';
 import BookingUpcomingList from '~/components/booking/BookingUpcomingList.vue';
+import { CheckIcon, CopyIcon, LinkIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -33,7 +34,7 @@ const { copy, isCopied } = useCopyToClipboard();
 				class="flex flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-bg-surface px-3 py-2"
 				data-testid="booking-page-link"
 			>
-				<Icon name="lucide:link" class="h-4 w-4 shrink-0 text-text-tertiary" />
+				<LinkIcon class="h-4 w-4 shrink-0 text-text-tertiary" />
 				<a
 					:href="data.profile.pageUrl"
 					target="_blank"
@@ -42,7 +43,7 @@ const { copy, isCopied } = useCopyToClipboard();
 					>{{ data.profile.pageUrl }}</a
 				>
 				<UiButton variant="ghost" size="sm" @click="copy(data.profile.pageUrl, 'page')">
-					<Icon :name="isCopied('page') ? 'lucide:check' : 'lucide:copy'" class="mr-1 h-4 w-4" />
+					<component :is="isCopied('page') ? CheckIcon : CopyIcon" class="mr-1 h-4 w-4" />
 					{{
 						isCopied('page')
 							? t('dashboard.preferences.booking.copied')

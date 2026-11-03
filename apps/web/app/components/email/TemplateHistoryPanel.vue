@@ -7,6 +7,17 @@ import {
 	type HistoryState,
 } from '@owlat/email-builder';
 import type { CompareSide } from './TemplateCompareModal.vue';
+import {
+	EyeIcon,
+	GitCompareIcon,
+	GitMergeIcon,
+	GlobeIcon,
+	HistoryIcon,
+	PaperPlaneIcon,
+	RotateLeftIcon,
+	SaveIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * Persisted version history for one email template — the durable sibling of the
@@ -61,11 +72,11 @@ const triggerLabel = (trigger: VersionSummary['trigger']) => t(TRIGGER_LABEL_KEY
 /** Absolute snapshot timestamp, formatted for whichever locale is active. */
 const absoluteTime = (createdAt: number) => new Date(createdAt).toLocaleString(locale.value);
 
-const TRIGGER_ICONS: Record<VersionSummary['trigger'], string> = {
-	save: 'lucide:save',
-	publish: 'lucide:globe',
-	send: 'lucide:send',
-	conflict: 'lucide:git-merge',
+const TRIGGER_ICONS: Record<VersionSummary['trigger'], IconComponent> = {
+	save: SaveIcon,
+	publish: GlobeIcon,
+	send: PaperPlaneIcon,
+	conflict: GitMergeIcon,
 };
 
 // ── Preview ────────────────────────────────────────────────────────────────
@@ -249,7 +260,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 			<UiTooltip :text="t('components.email.templateHistoryPanel.triggerTitle')">
 				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
 					<template #iconLeft>
-						<Icon name="lucide:history" class="w-4 h-4" />
+						<HistoryIcon class="w-4 h-4" />
 					</template>
 					<!-- Icon-only below 2xl, where the builder toolbar is short of room;
 					     the label stays the accessible name. -->
@@ -307,8 +318,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 							>
 								<div class="min-w-0">
 									<div class="flex items-center gap-1.5">
-										<Icon
-											:name="TRIGGER_ICONS[version.trigger]"
+										<component
+											:is="TRIGGER_ICONS[version.trigger]"
 											class="w-3.5 h-3.5 text-text-tertiary shrink-0"
 										/>
 										<span class="text-xs font-medium text-text-primary">
@@ -334,7 +345,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											:aria-label="t('components.email.templateHistoryPanel.previewAction')"
 											@click="openPreview(version)"
 										>
-											<Icon name="lucide:eye" class="w-3.5 h-3.5" />
+											<EyeIcon class="w-3.5 h-3.5" />
 										</button>
 									</UiTooltip>
 									<UiTooltip
@@ -346,7 +357,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											:aria-label="t('components.email.templateHistoryPanel.compareAction')"
 											@click="openCompare(version)"
 										>
-											<Icon name="lucide:git-compare" class="w-3.5 h-3.5" />
+											<GitCompareIcon class="w-3.5 h-3.5" />
 										</button>
 									</UiTooltip>
 									<UiTooltip :text="t('components.email.templateHistoryPanel.restoreAction')">
@@ -356,7 +367,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											:disabled="isRestoring"
 											@click="requestRestore(version)"
 										>
-											<Icon name="lucide:rotate-ccw" class="w-3.5 h-3.5" />
+											<RotateLeftIcon class="w-3.5 h-3.5" />
 										</button>
 									</UiTooltip>
 								</div>
@@ -370,7 +381,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 		<!-- Snapshot preview -->
 		<UiModal v-model:open="isPreviewOpen" size="3xl">
 			<div class="flex items-center gap-3 mb-4">
-				<UiIconBox icon="lucide:history" size="sm" variant="brand" rounded="lg" />
+				<UiIconBox :icon="HistoryIcon" size="sm" variant="brand" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-semibold text-text-primary truncate">
 						{{ previewVersion?.name }}
@@ -411,7 +422,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					@click="previewVersion && openCompare(previewVersion)"
 				>
 					<template #iconLeft>
-						<Icon name="lucide:git-compare" class="w-4 h-4" />
+						<GitCompareIcon class="w-4 h-4" />
 					</template>
 					{{ t('components.email.templateHistoryPanel.compare') }}
 				</UiButton>
@@ -421,7 +432,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					@click="previewVersion && requestRestore(previewVersion)"
 				>
 					<template #iconLeft>
-						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
+						<RotateLeftIcon class="w-4 h-4" />
 					</template>
 					{{ t('components.email.templateHistoryPanel.restore') }}
 				</UiButton>
@@ -441,7 +452,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					@click="compareVersion && requestRestore(compareVersion)"
 				>
 					<template #iconLeft>
-						<Icon name="lucide:rotate-ccw" class="w-4 h-4" />
+						<RotateLeftIcon class="w-4 h-4" />
 					</template>
 					{{ t('components.email.templateHistoryPanel.restore') }}
 				</UiButton>

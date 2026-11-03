@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Monitor, Smartphone, Tablet, Check } from '@lucide/vue';
+import { CheckIcon, MobileIcon, MonitorIcon, TabletIcon } from '@coolicons/vue';
 import type { DevicePreset } from '../../types';
 import { devicePresets } from '../../data/clients';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -33,7 +33,7 @@ function selectDevice(device: DevicePreset) {
 		<!-- Desktop -->
 		<div class="ep-dropdown-section">
 			<div class="ep-dropdown-section-title">
-				<Monitor class="ep-section-icon" />
+				<MonitorIcon class="ep-section-icon" />
 				{{ t('builder.preview.devices.desktop') }}
 			</div>
 			<div class="ep-device-list">
@@ -46,7 +46,7 @@ function selectDevice(device: DevicePreset) {
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>
 					<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-					<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
+					<CheckIcon v-if="selectedDevice.id === device.id" class="ep-device-check" />
 				</button>
 			</div>
 		</div>
@@ -54,7 +54,7 @@ function selectDevice(device: DevicePreset) {
 		<!-- Tablet -->
 		<div class="ep-dropdown-section">
 			<div class="ep-dropdown-section-title">
-				<Tablet class="ep-section-icon" />
+				<TabletIcon class="ep-section-icon" />
 				{{ t('builder.preview.devices.tablet') }}
 			</div>
 			<div class="ep-device-list">
@@ -67,7 +67,7 @@ function selectDevice(device: DevicePreset) {
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>
 					<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-					<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
+					<CheckIcon v-if="selectedDevice.id === device.id" class="ep-device-check" />
 				</button>
 			</div>
 		</div>
@@ -75,7 +75,7 @@ function selectDevice(device: DevicePreset) {
 		<!-- Mobile -->
 		<div class="ep-dropdown-section">
 			<div class="ep-dropdown-section-title">
-				<Smartphone class="ep-section-icon" />
+				<MobileIcon class="ep-section-icon" />
 				{{ t('builder.preview.devices.mobile') }}
 			</div>
 			<div class="ep-device-list">
@@ -88,7 +88,7 @@ function selectDevice(device: DevicePreset) {
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>
 					<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-					<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
+					<CheckIcon v-if="selectedDevice.id === device.id" class="ep-device-check" />
 				</button>
 			</div>
 		</div>

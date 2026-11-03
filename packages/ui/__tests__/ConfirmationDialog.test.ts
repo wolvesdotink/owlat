@@ -58,7 +58,7 @@ function mountDialog(props: Record<string, unknown> = {}) {
 		props: { open: true, ...props },
 		global: {
 			plugins: [createUiI18n()],
-			stubs: { UiModal: ModalStub, UiButton: ButtonStub, Icon: true },
+			stubs: { UiModal: ModalStub, UiButton: ButtonStub },
 		},
 	});
 }
@@ -110,7 +110,7 @@ describe('ConfirmationDialog — description', () => {
 			slots: { description: '<p>Delete <strong>Welcome</strong>?</p>' },
 			global: {
 				plugins: [createUiI18n()],
-				stubs: { UiModal: ModalStub, UiButton: ButtonStub, Icon: true },
+				stubs: { UiModal: ModalStub, UiButton: ButtonStub },
 			},
 		});
 

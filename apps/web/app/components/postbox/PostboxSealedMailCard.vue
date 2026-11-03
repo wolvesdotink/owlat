@@ -23,6 +23,7 @@
  */
 import { api } from '@owlat/api';
 import { formatFingerprint } from '~/utils/fingerprints';
+import { LockIcon, LockOpenIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -120,8 +121,8 @@ async function download() {
 				class="px-5 py-3 flex items-center gap-3"
 				data-testid="sealed-mail-address"
 			>
-				<Icon
-					:name="row.hasKey ? 'lucide:lock' : 'lucide:lock-open'"
+				<component
+					:is="row.hasKey ? LockIcon : LockOpenIcon"
 					class="w-4 h-4 shrink-0"
 					:class="row.hasKey ? 'text-success' : 'text-text-tertiary'"
 				/>

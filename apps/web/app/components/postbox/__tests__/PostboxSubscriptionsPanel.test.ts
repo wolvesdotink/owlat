@@ -86,7 +86,6 @@ const stubs = {
 		props: ['disabled', 'loading'],
 		template: '<button :disabled="disabled"><slot /></button>',
 	},
-	Icon: { props: ['name'], template: '<span />' },
 };
 
 function mountPanel() {

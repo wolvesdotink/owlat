@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { MoreHorizontalIcon, PencilIcon, TrashIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // One row of the contact properties admin list: type icon, label, type badge
 // and key, then either the edit/delete menu or, while the property's values
@@ -11,7 +13,7 @@ defineProps<{
 		label: string;
 		deletion?: { status: string; valuesDeleted: number } | null;
 	};
-	typeIcon: string;
+	typeIcon: IconComponent;
 	/** The type's label, already translated. */
 	typeLabel: string;
 	pendingDeletion: boolean;
@@ -35,7 +37,7 @@ const { t } = useI18n();
 		<div class="flex items-center gap-4" :class="{ 'opacity-60': pendingDeletion }">
 			<!-- Type Icon -->
 			<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-				<Icon :name="typeIcon" class="w-5 h-5 text-text-secondary" />
+				<component :is="typeIcon" class="w-5 h-5 text-text-secondary" />
 			</div>
 
 			<!-- Property Info -->
@@ -69,10 +71,7 @@ const { t } = useI18n();
 			<template v-else>
 				<div class="text-right">
 					<p class="flex items-center justify-end gap-2 text-sm font-medium text-text-secondary">
-						<Icon
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
-						/>
+						<SpinnerIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('dashboard.admin.instance.properties.deletion.deleting') }}
 					</p>
 					<p v-if="property.deletion" class="text-xs text-text-tertiary">
@@ -91,7 +90,7 @@ const { t } = useI18n();
 		<!-- Actions -->
 		<div v-else class="relative" data-property-dropdown>
 			<UiButton variant="ghost" size="sm" @click.stop="emit('toggle-menu')">
-				<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+				<MoreHorizontalIcon class="w-4 h-4" />
 			</UiButton>
 
 			<!-- Dropdown Menu -->
@@ -104,14 +103,14 @@ const { t } = useI18n();
 						class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 						@click="emit('edit')"
 					>
-						<Icon name="lucide:pencil" class="w-4 h-4 text-text-tertiary" />
+						<PencilIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('common.edit') }}
 					</button>
 					<button
 						class="w-full px-4 py-2 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
 						@click="emit('delete')"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 						{{ t('common.delete') }}
 					</button>
 				</div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { AlertTriangle } from '@lucide/vue';
+import { TriangleWarningIcon } from '@coolicons/vue';
 import { GMAIL_CLIP_BYTES } from '@owlat/shared/emailLimits';
 import type { PreviewEmailAnalysis } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
@@ -98,14 +98,14 @@ function formatBytes(bytes: number): string {
 				></div>
 			</div>
 			<div v-if="emailAnalysis.exceedsGmailClip" class="ep-size-warning">
-				<AlertTriangle class="ep-size-warning-icon" />
+				<TriangleWarningIcon class="ep-size-warning-icon" />
 				{{ t('builder.analysis.size.gmailClip') }}
 			</div>
 		</div>
 
 		<!-- CSS size warning -->
 		<div v-if="emailAnalysis.exceedsGmailCssLimit" class="ep-size-css-warning">
-			<AlertTriangle class="ep-size-warning-icon" />
+			<TriangleWarningIcon class="ep-size-warning-icon" />
 			{{ t('builder.analysis.size.cssLimit') }}
 			<span v-if="emailAnalysis.styleBlockSizeBytes" class="ep-size-css-value">
 				({{ formatBytes(emailAnalysis.styleBlockSizeBytes) }})

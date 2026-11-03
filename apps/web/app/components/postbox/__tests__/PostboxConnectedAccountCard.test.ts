@@ -129,7 +129,6 @@ beforeEach(() => {
 	toasts.length = 0;
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const buttonStub = {
 	props: ['size', 'variant', 'disabled', 'loading'],
 	template: '<button v-bind="$attrs"><slot /></button>',
@@ -160,7 +159,6 @@ const mountCard = (props: Record<string, unknown> = {}) =>
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: iconStub,
 				UiButton: buttonStub,
 				UiConfirmationDialog: confirmStub,
 				PostboxMailboxConnectForm: connectFormStub,

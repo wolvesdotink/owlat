@@ -5,6 +5,8 @@
  * which nobody outside Owlat ever sees. The count says how many notes the
  * thread already has, so a teammate's context is not missed.
  */
+import { NoteIcon, ReplyIcon, type IconComponent } from '@coolicons/vue';
+
 type ComposeMode = 'reply' | 'note';
 
 defineProps<{ noteCount: number }>();
@@ -12,9 +14,9 @@ const mode = defineModel<ComposeMode>({ required: true });
 
 const { t } = useI18n();
 
-const TABS: Array<{ id: ComposeMode; icon: string; label: string }> = [
-	{ id: 'reply', icon: 'lucide:reply', label: 'components.inbox.notes.tabs.reply' },
-	{ id: 'note', icon: 'lucide:sticky-note', label: 'components.inbox.notes.tabs.note' },
+const TABS: Array<{ id: ComposeMode; icon: IconComponent; label: string }> = [
+	{ id: 'reply', icon: ReplyIcon, label: 'components.inbox.notes.tabs.reply' },
+	{ id: 'note', icon: NoteIcon, label: 'components.inbox.notes.tabs.note' },
 ];
 </script>
 
@@ -42,7 +44,7 @@ const TABS: Array<{ id: ComposeMode; icon: string; label: string }> = [
 			:data-testid="`compose-mode-${tab.id}`"
 			@click="mode = tab.id"
 		>
-			<Icon :name="tab.icon" class="size-3.5" />
+			<component :is="tab.icon" class="size-3.5" />
 			{{ t(tab.label) }}
 			<span
 				v-if="tab.id === 'note' && noteCount > 0"

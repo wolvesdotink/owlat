@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The campaign editor's title bar: Back, the title, the campaign's name and its
 // draft / scheduled / under-review badge.
+import { ArrowLeftIcon, ClockIcon, PencilIcon, ShieldWarningIcon } from '@coolicons/vue';
+
 defineProps<{
 	campaign: { name?: string; status: string } | null | undefined;
 	isScheduled: boolean;
@@ -21,7 +23,7 @@ const { t } = useI18n();
 					@click="emit('back')"
 					:aria-label="t('common.back')"
 				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					<ArrowLeftIcon class="w-5 h-5" />
 				</button>
 				<UiPageHeader
 					class="flex-1"
@@ -40,21 +42,21 @@ const { t } = useI18n();
 							v-if="isScheduled"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
 						>
-							<Icon name="lucide:clock" class="w-4 h-4" />
+							<ClockIcon class="w-4 h-4" />
 							{{ t('dashboard.campaigns.detail.edit.badges.scheduled') }}
 						</span>
 						<span
 							v-else-if="isDraft"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-text-tertiary/10 text-text-tertiary"
 						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
+							<PencilIcon class="w-4 h-4" />
 							{{ t('dashboard.campaigns.detail.edit.badges.draft') }}
 						</span>
 						<span
 							v-else-if="campaign.status === 'pending_review'"
 							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-warning/10 text-warning"
 						>
-							<Icon name="lucide:shield-alert" class="w-4 h-4" />
+							<ShieldWarningIcon class="w-4 h-4" />
 							{{ t('dashboard.campaigns.detail.edit.badges.underReview') }}
 						</span>
 					</template>

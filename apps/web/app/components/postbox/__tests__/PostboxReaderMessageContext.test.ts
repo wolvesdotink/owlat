@@ -154,7 +154,7 @@ function makeHost() {
 }
 
 const mountOptions = {
-	global: { plugins: [createTestI18n()], components, stubs: { Icon: true } },
+	global: { plugins: [createTestI18n()], components },
 };
 
 type Wrapper = ReturnType<typeof mount>;

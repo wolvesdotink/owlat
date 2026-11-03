@@ -11,14 +11,17 @@ import { resolvePaletteGroups } from '../commandPaletteRegistry';
 import {
 	POSTBOX_THREAD_COMMAND_GROUP_KEY,
 	POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
-	TEAM_THREAD_COMMAND_GROUP_KEY,
-	type TeamThreadSurfaceDeps,
 	type ThreadSurfaceDeps,
-	buildTeamThreadSurfaceGroups,
 	buildThreadSurfaceGroups,
 } from '../commandPaletteThreadSurfaces';
+import {
+	TEAM_THREAD_COMMAND_GROUP_KEY,
+	type TeamThreadSurfaceDeps,
+	buildTeamThreadSurfaceGroups,
+} from '../commandPaletteTeamThreadSurfaces';
 import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePostboxCommandSurface';
 import { createTestI18n } from '~/__tests__/i18n';
+import { ForwardIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
 const translate = (key: string, params: Record<string, unknown> = {}) => t(key, params);
@@ -295,7 +298,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 							heading: 'Mailbox',
 							order: 0,
 							items: [
-								{ id: 'postbox:forward', label: 'Forward', icon: 'lucide:forward', run: broadcast },
+								{ id: 'postbox:forward', label: 'Forward', icon: ForwardIcon, run: broadcast },
 							],
 						},
 					],

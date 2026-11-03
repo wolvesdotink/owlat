@@ -49,7 +49,6 @@ function mountCard(enforced: boolean) {
 				UiCard: { template: '<div><slot /></div>' },
 				UiIconBox: true,
 				UiSwitch: SwitchStub,
-				Icon: true,
 			},
 		},
 	});

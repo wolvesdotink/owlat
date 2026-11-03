@@ -56,8 +56,6 @@ beforeEach(() => {
 	loadBody.mockResolvedValue(null);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBody(
 	message: Record<string, unknown> = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }
 ) {
@@ -65,7 +63,7 @@ function mountBody(
 		props: { message },
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+			components: { PostboxReaderSkeleton, UiSkeleton },
 			stubs: { PostboxImageBanner: true },
 		},
 	});

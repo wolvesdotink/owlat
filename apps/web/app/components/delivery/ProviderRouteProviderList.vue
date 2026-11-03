@@ -19,6 +19,7 @@
  * selectable — once the server reports it ready.
  */
 import DeliveryEnvSetupSteps from './EnvSetupSteps.vue';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 interface ProviderEntry {
 	providerType: string;
@@ -102,7 +103,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')"
 								@click="moveProvider(index, -1)"
 							>
-								<Icon name="lucide:chevron-up" class="w-4 h-4" />
+								<ChevronUpIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 						<UiTooltip :text="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')">
@@ -113,7 +114,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')"
 								@click="moveProvider(index, 1)"
 							>
-								<Icon name="lucide:chevron-down" class="w-4 h-4" />
+								<ChevronDownIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</div>

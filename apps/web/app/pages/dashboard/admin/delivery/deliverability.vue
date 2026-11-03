@@ -19,6 +19,7 @@ import {
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { CheckIcon, CopyIcon, ServerOffIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -189,8 +190,8 @@ async function copyReport() {
 				<!-- `whitespace-nowrap`: the German label ("Einrichtungsbericht
 				     kopieren") otherwise wrapped onto two lines beside the lede. -->
 				<UiButton variant="ghost" size="sm" class="whitespace-nowrap" @click="copyReport">
-					<Icon
-						:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
+					<component
+						:is="isCopied('deliverability-report') ? CheckIcon : CopyIcon"
 						class="h-4 w-4"
 					/>
 					{{
@@ -223,7 +224,7 @@ async function copyReport() {
 			</template>
 			<template #empty>
 				<UiEmptyState
-					icon="lucide:server-off"
+					:icon="ServerOffIcon"
 					:title="t('dashboard.admin.delivery.deliverability.empty.title')"
 					:description="t('dashboard.admin.delivery.deliverability.empty.description')"
 				>
@@ -249,7 +250,7 @@ async function copyReport() {
 								class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border"
 								:class="grade.className"
 							>
-								<Icon :name="grade.icon" class="h-6 w-6" />
+								<component :is="grade.icon" class="h-6 w-6" />
 							</div>
 							<div>
 								<p

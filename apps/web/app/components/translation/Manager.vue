@@ -22,6 +22,7 @@ import {
 	type TranslationEmailType,
 } from '~/composables/translation/useTranslationEmail';
 import TranslationTable from './Table.vue';
+import { ArrowLeftIcon, CircleWarningIcon, GlobeIcon } from '@coolicons/vue';
 
 type EmailType = TranslationEmailType;
 
@@ -299,11 +300,11 @@ const handleBack = () => {
 					@click="handleBack"
 					:aria-label="t('common.back')"
 				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					<ArrowLeftIcon class="w-5 h-5" />
 				</button>
 
 				<div class="flex items-center gap-2">
-					<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary" />
+					<GlobeIcon class="w-5 h-5 text-text-tertiary" />
 					<span class="text-text-primary font-medium">
 						{{
 							t('components.translation.manager.heading', {
@@ -316,7 +317,7 @@ const handleBack = () => {
 
 			<div class="flex items-center gap-3">
 				<span v-if="failedCount > 0" class="text-sm text-warning flex items-center gap-1.5">
-					<Icon name="lucide:alert-circle" class="w-4 h-4" />
+					<CircleWarningIcon class="w-4 h-4" />
 					{{ t('components.translation.manager.unsavedChanges') }}
 				</span>
 				<span
@@ -365,7 +366,7 @@ const handleBack = () => {
 					v-if="translatableRows.length === 0"
 					class="text-center py-16 border border-dashed border-border-subtle rounded-xl"
 				>
-					<Icon name="lucide:globe" class="w-10 h-10 text-text-tertiary mx-auto mb-4" />
+					<GlobeIcon class="w-10 h-10 text-text-tertiary mx-auto mb-4" :stroke-width="1.5" />
 					<h3 class="text-lg font-medium text-text-primary mb-2">
 						{{ t('components.translation.manager.emptyTitle') }}
 					</h3>
@@ -398,7 +399,7 @@ const handleBack = () => {
 				<!-- Info Card -->
 				<div class="mt-6 p-4 rounded-xl surface-3">
 					<div class="flex gap-3">
-						<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+						<GlobeIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 						<div class="text-sm">
 							<p class="text-text-primary font-medium mb-1">
 								{{ t('components.translation.manager.infoTitle') }}

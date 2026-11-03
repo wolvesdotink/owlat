@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { PencilIcon, UserIcon } from '@coolicons/vue';
 
 /** The file detail page's linked contacts: links to each contact, edited with the multi-select picker. */
 const props = defineProps<{
@@ -56,7 +57,7 @@ const cancelEditContacts = () => {
 				:aria-label="t('dashboard.files.detail.editLinkedContacts')"
 				@click="startEditContacts"
 			>
-				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" />
 			</button>
 		</div>
 
@@ -85,7 +86,7 @@ const cancelEditContacts = () => {
 					:to="`/dashboard/audience/contacts/${contact._id}`"
 					class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
 				>
-					<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
+					<UserIcon class="w-4 h-4 text-text-tertiary" />
 					<span class="text-sm text-brand hover:underline truncate">{{
 						contactPickerLabel(contact)
 					}}</span>

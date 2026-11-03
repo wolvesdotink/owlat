@@ -40,6 +40,13 @@ import {
 	type SenderAuthText,
 	type SenderHeuristics,
 } from './senderAuth';
+import {
+	LockIcon,
+	ShieldCheckIcon,
+	ShieldIcon,
+	ShieldWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 export interface TrustChipInput {
 	/** Feature flag `senderAuthBadges`. */
@@ -63,21 +70,21 @@ export type TrustChipTone = 'ok' | 'attention' | 'unknown';
 
 export interface TrustChipResult {
 	tone: TrustChipTone;
-	icon: string;
+	icon: IconComponent;
 	/** Short chip label — a catalog key, or a `{ key, params }` pair. */
 	summary: SenderAuthText;
 }
 
-const TONE_ICON: Record<TrustChipTone, string> = {
-	ok: 'lucide:shield-check',
-	attention: 'lucide:shield-alert',
-	unknown: 'lucide:shield',
+const TONE_ICON: Record<TrustChipTone, IconComponent> = {
+	ok: ShieldCheckIcon,
+	attention: ShieldWarningIcon,
+	unknown: ShieldIcon,
 };
 
 /** The one driver that gets to name the state, or null when none can. */
 function primaryDriver(
 	input: TrustChipInput
-): { summary: string; icon: string; ok: boolean } | null {
+): { summary: string; icon: IconComponent; ok: boolean } | null {
 	const sealed = input.sealedEnabled ? deriveSealedBadge(input.sealed) : null;
 	if (sealed) return { summary: sealed.summary, icon: sealed.icon, ok: sealed.tone === 'ok' };
 
@@ -91,7 +98,7 @@ function primaryDriver(
 	if (isEncryptedClass(input.secureClass)) {
 		return {
 			summary: 'components.postbox.postboxSecurityBadge.encrypted',
-			icon: 'lucide:lock',
+			icon: LockIcon,
 			ok: false,
 		};
 	}

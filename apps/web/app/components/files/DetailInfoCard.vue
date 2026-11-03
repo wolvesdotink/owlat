@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /** The file detail page's "Details" card: type, size, creation date and where the file came from. */
+import { MailIcon, SparklesIcon, UploadIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	mimeType: string;
 	fileSize: number;
@@ -62,13 +64,13 @@ const sourceLabel = computed(() => {
 						'bg-brand-subtle text-brand': sourceType === 'agent_generated',
 					}"
 				>
-					<Icon
-						:name="
+					<component
+						:is="
 							sourceType === 'upload'
-								? 'lucide:upload'
+								? UploadIcon
 								: sourceType === 'email_attachment'
-									? 'lucide:mail'
-									: 'lucide:sparkles'
+									? MailIcon
+									: SparklesIcon
 						"
 						class="w-3.5 h-3.5"
 					/>

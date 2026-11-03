@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { FolderIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 /**
  * The folders half of "Manage folders & labels".
@@ -92,7 +93,7 @@ watch(
 				:key="folder._id"
 				class="flex items-center gap-2 px-3 py-2 rounded border border-border-subtle"
 			>
-				<Icon name="lucide:folder" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+				<FolderIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 				<input
 					v-if="renamingId === folder._id"
 					v-model="renameName"
@@ -119,7 +120,7 @@ watch(
 						"
 						@click="startRename({ _id: folder._id as Id<'mailFolders'>, name: folder.name })"
 					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
+						<PencilIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip :text="t('components.postbox.postboxManageFolders.delete')">
@@ -133,7 +134,7 @@ watch(
 							requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name })
 						"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</li>

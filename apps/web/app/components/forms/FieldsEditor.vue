@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FormFieldDraft } from '~/composables/useFormSettings';
 import { stableRowKey } from '~/utils/stableRowKey';
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 
 // Editor for a form endpoint's ordered field list (key/label/type/required).
 // The parent owns the reactive `fields` array and an `editor` of add/remove/move
@@ -41,7 +42,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 				:disabled="disabled"
 				@click="editor.addField()"
 			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('components.forms.fieldsEditor.addField') }}
 			</UiButton>
 		</div>
@@ -134,7 +135,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 								:disabled="disabled || index === 0"
 								@click="editor.moveField(index, -1)"
 							>
-								<Icon name="lucide:arrow-up" class="w-4 h-4" />
+								<ArrowUpIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('components.forms.fieldsEditor.moveDown')">
@@ -146,7 +147,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 								:disabled="disabled || index === fields.length - 1"
 								@click="editor.moveField(index, 1)"
 							>
-								<Icon name="lucide:arrow-down" class="w-4 h-4" />
+								<ArrowDownIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('components.forms.fieldsEditor.removeField')">
@@ -158,7 +159,7 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 								:disabled="disabled || fields.length === 1"
 								@click="editor.removeField(index)"
 							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 					</div>

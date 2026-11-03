@@ -11,10 +11,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('@tailwindcss/vite', () => ({ default: () => [] }));
-vi.mock('../../scripts/uiLayerIcons', () => ({
-	uiLayerIconNames: () => [],
-	ICON_SCAN_EXCLUDE: [],
-}));
 
 const here = dirname(fileURLToPath(import.meta.url));
 const builderSrc = resolve(here, '..', '..', '..', '..', 'packages', 'email-builder', 'src');

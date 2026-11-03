@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SETUP_STEPS, setupStepPath } from '~/composables/useSetupWizard';
+import { ArrowRightIcon, FeatherIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -42,7 +43,7 @@ function start() {
 		<div class="relative w-full max-w-xl">
 			<UiCard padding="lg">
 				<div class="flex items-center gap-3 mb-6">
-					<UiIconBox icon="lucide:feather" size="lg" variant="brand" rounded="2xl" />
+					<UiIconBox :icon="FeatherIcon" size="lg" variant="brand" rounded="2xl" />
 					<span class="lp-eyebrow">{{ t('setup.index.eyebrow') }}</span>
 				</div>
 
@@ -83,7 +84,7 @@ function start() {
 
 				<UiButton size="lg" @click="start">
 					{{ t('setup.index.start') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 
 				<I18nT

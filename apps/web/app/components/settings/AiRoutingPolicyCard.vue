@@ -25,6 +25,7 @@ import {
 import { formatDateTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 import { SHADOW_FRACTION_MAXIMA } from '@owlat/shared/aiRouting';
+import { CheckIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{ dirty: [isDirty: boolean] }>();
 
@@ -260,7 +261,7 @@ const canSave = computed(
 							@click="routing.save"
 						>
 							<template #iconLeft>
-								<Icon v-if="!routing.isSaving.value" name="lucide:check" class="w-4 h-4" />
+								<CheckIcon v-if="!routing.isSaving.value" class="w-4 h-4" />
 							</template>
 							{{ t(`${K}.save`) }}
 						</UiButton>

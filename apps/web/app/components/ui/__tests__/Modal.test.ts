@@ -27,7 +27,7 @@ function mountModal(overrides: Overrides = {}) {
 		props: { open: true, title: 'Upload File', ...overrides },
 		slots: { default: '<button data-testid="body-action">Do it</button>' },
 		attachTo: document.body,
-		global: { stubs: { Icon: true, teleport: true } },
+		global: { stubs: { teleport: true } },
 	});
 }
 
@@ -67,7 +67,7 @@ describe('UiModal (semantics inherited by every converted overlay)', () => {
 			props: { open: true, labelledBy: 'own-heading', describedBy: 'own-lead' },
 			slots: { default: '<h3 id="own-heading">Delete</h3><p id="own-lead">Gone for good.</p>' },
 			attachTo: document.body,
-			global: { stubs: { Icon: true, teleport: true } },
+			global: { stubs: { teleport: true } },
 		});
 		const dialog = wrapper.find('[role="dialog"]');
 		expect(dialog.attributes('aria-labelledby')).toBe('own-heading');
@@ -81,7 +81,7 @@ describe('UiModal (semantics inherited by every converted overlay)', () => {
 		const wrapper = mount(UiModal, {
 			props: { open: true, title: 'Upload File', labelledBy: 'own-heading' },
 			attachTo: document.body,
-			global: { stubs: { Icon: true, teleport: true } },
+			global: { stubs: { teleport: true } },
 		});
 		expect(wrapper.find('[role="dialog"]').attributes('aria-labelledby')).toBe('own-heading');
 		wrapper.unmount();
@@ -130,7 +130,7 @@ describe('UiModal panel geometry', () => {
 				footer: '<button data-testid="submit">Save</button>',
 			},
 			attachTo: document.body,
-			global: { stubs: { Icon: true, teleport: true } },
+			global: { stubs: { teleport: true } },
 		});
 		const body = bodyOf(wrapper).element;
 		const heading = wrapper.find('h2').element;

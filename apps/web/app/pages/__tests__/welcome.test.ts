@@ -67,7 +67,6 @@ function mountPage() {
 				OnboardingFreshStart: true,
 				UiIconBox: true,
 				UiSpinner: true,
-				Icon: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
 			},
 		},

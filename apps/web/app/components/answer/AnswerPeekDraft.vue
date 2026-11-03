@@ -5,6 +5,8 @@
  * On a phone the instruction is a chore; the ask card is where the phone user
  * answers.
  */
+import { SparklesIcon } from '@coolicons/vue';
+
 defineProps<{ disabled?: boolean }>();
 const emit = defineEmits<{ draft: [] }>();
 const { t } = useI18n();
@@ -20,7 +22,7 @@ const { t } = useI18n();
 		data-testid="answer-peek-draft"
 		@click="emit('draft')"
 	>
-		<Icon name="lucide:sparkles" class="mr-1 size-3.5 text-brand" aria-hidden="true" />
+		<SparklesIcon class="mr-1 size-3.5 text-brand" aria-hidden="true" />
 		{{ t('components.answer.aiBar.peekDraft') }}
 	</UiButton>
 </template>

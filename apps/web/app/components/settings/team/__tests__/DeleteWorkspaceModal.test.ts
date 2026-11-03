@@ -24,7 +24,6 @@ const stubs = {
 	UiModal: { props: ['open', 'size', 'closable', 'persistent'], template: '<div><slot /></div>' },
 	UiButton: { props: ['variant', 'loading', 'disabled'], template: '<button><slot /></button>' },
 	UiIconBox: true,
-	Icon: true,
 };
 
 type Locale = 'en' | 'de';

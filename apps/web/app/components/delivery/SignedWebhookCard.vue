@@ -22,6 +22,15 @@
  * rendered as a NAME and a present/missing chip.
  */
 
+import {
+	BroadcastIcon,
+	CheckIcon,
+	CircleCheckIcon,
+	ClockIcon,
+	CopyIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+
 const props = defineProps<{
 	/**
 	 * The active transport kind, used ONLY to look up the per-kind copy below.
@@ -124,7 +133,7 @@ const lastEventLabel = computed(() =>
 	<UiCard padding="none" overflow="hidden" data-testid="signed-webhook-card">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="BroadcastIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary" data-testid="signed-webhook-title">
 						{{ t('components.delivery.signedWebhookCard.title', { provider: providerLabel }) }}
@@ -151,8 +160,8 @@ const lastEventLabel = computed(() =>
 						"
 					>
 						<UiButton variant="ghost" size="sm" @click="copy(webhookUrl, 'signed-webhook-url')">
-							<Icon
-								:name="isCopied('signed-webhook-url') ? 'lucide:check' : 'lucide:copy'"
+							<component
+								:is="isCopied('signed-webhook-url') ? CheckIcon : CopyIcon"
 								class="w-3.5 h-3.5"
 								:class="isCopied('signed-webhook-url') ? 'text-success' : ''"
 							/>
@@ -187,7 +196,7 @@ const lastEventLabel = computed(() =>
 							:key="event.name"
 							class="flex items-start gap-2 text-xs text-text-secondary"
 						>
-							<Icon name="lucide:check" class="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
+							<CheckIcon class="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
 							<span
 								><code class="text-text-primary">{{ event.name }}</code> — {{ t(event.why) }}</span
 							>
@@ -227,8 +236,8 @@ const lastEventLabel = computed(() =>
 						:class="isWebhookKeyPresent ? 'text-success' : 'text-warning'"
 						data-testid="signed-webhook-key-presence"
 					>
-						<Icon
-							:name="isWebhookKeyPresent ? 'lucide:check' : 'lucide:alert-triangle'"
+						<component
+							:is="isWebhookKeyPresent ? CheckIcon : TriangleWarningIcon"
 							class="w-3.5 h-3.5"
 						/>
 						{{
@@ -243,13 +252,13 @@ const lastEventLabel = computed(() =>
 			<!-- Live "last event received" line -->
 			<div class="flex items-center gap-2 text-xs" data-testid="signed-webhook-last-event">
 				<template v-if="lastEventLabel">
-					<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
+					<CircleCheckIcon class="w-3.5 h-3.5 text-success" />
 					<span class="text-success">
 						{{ t('components.delivery.signedWebhookCard.lastEvent', { at: lastEventLabel }) }}
 					</span>
 				</template>
 				<template v-else>
-					<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
+					<ClockIcon class="w-3.5 h-3.5 text-text-tertiary" />
 					<span class="text-text-tertiary">
 						{{ t('components.delivery.signedWebhookCard.noFeedback') }}
 					</span>

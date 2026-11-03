@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked, type CsvContact } from '~/utils/contactsCsv';
+import { DownloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	totalCount: number;
@@ -108,7 +109,7 @@ const close = () => {
 	>
 		<div class="flex items-center gap-3 mb-6">
 			<div class="p-2 rounded-lg flex items-center justify-center bg-bg-surface">
-				<Icon name="lucide:download" class="w-5 h-5 text-brand" />
+				<DownloadIcon class="w-5 h-5 text-brand" />
 			</div>
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
@@ -165,7 +166,7 @@ const close = () => {
 				t('common.cancel')
 			}}</UiButton>
 			<UiButton :loading="isExporting" @click="handleExport">
-				<template v-if="!isExporting" #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+				<template v-if="!isExporting" #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 				{{
 					isExporting
 						? t('components.contacts.exportModal.exporting')

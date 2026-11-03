@@ -1,5 +1,6 @@
 import { defineAsyncComponent } from 'vue';
 import type { DelayStepConfig, StepEditorModule } from '../types';
+import { ClockIcon } from '@coolicons/vue';
 
 type Unit = DelayStepConfig['unit'];
 
@@ -19,7 +20,7 @@ export const delayStepEditorModule: StepEditorModule<'delay'> = {
 	label: 'shared.automations.steps.delay.label',
 	description: 'shared.automations.steps.delay.description',
 	color: 'lavender',
-	icon: 'lucide:clock',
+	icon: ClockIcon,
 	createDefault: () => ({ duration: 1, unit: 'days' }),
 	parseConfig(raw): DelayStepConfig {
 		const r = (raw ?? {}) as Record<string, unknown>;

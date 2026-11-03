@@ -7,6 +7,7 @@ import {
 	type EmailBuilderConfig,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { CircleWarningIcon } from '@coolicons/vue';
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.send.blocks.detail.edit.pageTitle') });
@@ -165,7 +166,7 @@ const handleSettings = () => {
 		<!-- Not Found State -->
 		<div v-else-if="!block" class="h-full flex items-center justify-center bg-bg-deep">
 			<div class="text-center">
-				<Icon name="lucide:alert-circle" class="w-12 h-12 text-error mx-auto mb-4" />
+				<CircleWarningIcon class="w-12 h-12 text-error mx-auto mb-4" :stroke-width="1.5" />
 				<h2 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('dashboard.send.blocks.detail.edit.notFoundTitle') }}
 				</h2>

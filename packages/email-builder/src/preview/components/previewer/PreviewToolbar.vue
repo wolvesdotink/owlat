@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import {
-	Code,
-	Eye,
-	RefreshCw,
-	AlertTriangle,
-	Send,
-	FileText,
-	Zap,
-	Download,
-	Settings,
-	GitCompare,
-	Sun,
-	Moon,
-} from '@lucide/vue';
+	CodeIcon,
+	DownloadIcon,
+	EyeIcon,
+	FileTextIcon,
+	GitCompareIcon,
+	MoonIcon,
+	PaperPlaneIcon,
+	ReloadIcon,
+	SettingsIcon,
+	SunIcon,
+	TriangleWarningIcon,
+	ZapIcon,
+} from '@coolicons/vue';
 import type { EmailClient, DevicePreset } from '../../types';
 import { useEmailExport } from '../../composables/useEmailExport';
 import ClientSelector from '../ClientSelector.vue';
@@ -71,7 +71,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:class="{ 'ep-view-active': viewMode === 'preview' }"
 					@click="viewMode = 'preview'"
 				>
-					<Eye class="ep-view-icon" />
+					<EyeIcon class="ep-view-icon" />
 					{{ t('builder.preview.views.preview') }}
 				</button>
 				<button
@@ -79,7 +79,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:class="{ 'ep-view-active': viewMode === 'code' }"
 					@click="viewMode = 'code'"
 				>
-					<Code class="ep-view-icon" />
+					<CodeIcon class="ep-view-icon" />
 					HTML
 				</button>
 				<button
@@ -87,7 +87,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:class="{ 'ep-view-active': viewMode === 'plaintext' }"
 					@click="viewMode = 'plaintext'"
 				>
-					<FileText class="ep-view-icon" />
+					<FileTextIcon class="ep-view-icon" />
 					{{ t('builder.preview.views.text') }}
 				</button>
 				<button
@@ -96,7 +96,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:class="{ 'ep-view-active': viewMode === 'amp' }"
 					@click="viewMode = 'amp'"
 				>
-					<Zap class="ep-view-icon" />
+					<ZapIcon class="ep-view-icon" />
 					AMP
 				</button>
 			</div>
@@ -118,7 +118,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:aria-label="`${t('builder.preview.toolbar.renderWarnings')}: ${renderWarnings.length}`"
 					@click="warningsExpanded = !warningsExpanded"
 				>
-					<AlertTriangle class="ep-warning-badge-icon" />
+					<TriangleWarningIcon class="ep-warning-badge-icon" />
 					<span>{{ renderWarnings.length }}</span>
 				</button>
 			</UiTooltip>
@@ -131,7 +131,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:aria-label="t('builder.preview.toolbar.compare')"
 					@click="diffPanelOpen = !diffPanelOpen"
 				>
-					<GitCompare class="ep-control-icon" />
+					<GitCompareIcon class="ep-control-icon" />
 				</button>
 			</UiTooltip>
 
@@ -151,8 +151,8 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					"
 					@click="emit('update:dark-mode', !darkMode)"
 				>
-					<Moon v-if="!darkMode" class="ep-control-icon" />
-					<Sun v-else class="ep-control-icon" />
+					<MoonIcon v-if="!darkMode" class="ep-control-icon" />
+					<SunIcon v-else class="ep-control-icon" />
 				</button>
 			</UiTooltip>
 
@@ -164,7 +164,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:aria-label="t('builder.preview.toolbar.renderOptions')"
 					@click="settingsPanelOpen = !settingsPanelOpen"
 				>
-					<Settings class="ep-control-icon" />
+					<SettingsIcon class="ep-control-icon" />
 				</button>
 			</UiTooltip>
 
@@ -176,7 +176,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 						:aria-label="t('builder.preview.toolbar.export')"
 						@click.stop="exportMenuOpen = !exportMenuOpen"
 					>
-						<Download class="ep-control-icon" />
+						<DownloadIcon class="ep-control-icon" />
 					</button>
 				</UiTooltip>
 				<PreviewExportMenu
@@ -194,7 +194,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 
 			<UiTooltip v-if="showSendTest" :text="t('builder.preview.toolbar.sendTestTitle')">
 				<button class="ep-action-btn ep-action-primary" @click="emit('send-test')">
-					<Send class="ep-action-icon" />
+					<PaperPlaneIcon class="ep-action-icon" />
 					<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
 				</button>
 			</UiTooltip>
@@ -208,7 +208,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 					:aria-label="t('builder.preview.toolbar.refresh')"
 					@click="emit('refresh')"
 				>
-					<RefreshCw class="ep-control-icon" />
+					<ReloadIcon class="ep-control-icon" />
 				</button>
 			</UiTooltip>
 		</div>

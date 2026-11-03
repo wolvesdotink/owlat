@@ -3,6 +3,14 @@ import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads'
 import type { AttachmentMeter } from '~/composables/postbox/postboxAttachmentMeter';
 import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import {
+	CircleWarningIcon,
+	ClockIcon,
+	CloseIcon,
+	LinkIcon,
+	PaperclipIcon,
+	RotateRightIcon,
+} from '@coolicons/vue';
 
 // Two roots: the parent's attributes (`inert` while the draft mirror is busy)
 // belong on the visible row, not on the queue status beside it.
@@ -76,7 +84,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					:alt="att.filename"
 					class="w-5 h-5 rounded object-cover"
 				/>
-				<Icon v-else name="lucide:paperclip" class="w-3 h-3 text-text-tertiary" />
+				<PaperclipIcon v-else class="w-3 h-3 text-text-tertiary" />
 				<span class="truncate max-w-[140px]">{{ att.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(att.size) }}</span>
 				<!-- Idea 10: swap this file for an expiring link in the body. Offered
@@ -96,7 +104,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 						"
 						@click="emit('share', att.storageId)"
 					>
-						<Icon name="lucide:link" class="w-3 h-3" />
+						<LinkIcon class="w-3 h-3" />
 					</button>
 				</UiTooltip>
 				<button
@@ -107,7 +115,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					"
 					@click="emit('remove', att.storageId)"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</span>
 
@@ -125,14 +133,14 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					:alt="up.filename"
 					class="w-5 h-5 rounded object-cover"
 				/>
-				<Icon
+				<component
 					v-else
-					:name="
+					:is="
 						up.status === 'failed'
-							? 'lucide:alert-circle'
+							? CircleWarningIcon
 							: up.status === 'queued'
-								? 'lucide:clock'
-								: 'lucide:paperclip'
+								? ClockIcon
+								: PaperclipIcon
 					"
 					class="w-3 h-3"
 					:class="up.status === 'failed' ? 'text-error' : 'text-text-tertiary'"
@@ -165,7 +173,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 						"
 						@click="emit('retry', up.id)"
 					>
-						<Icon name="lucide:rotate-cw" class="w-3 h-3" />
+						<RotateRightIcon class="w-3 h-3" />
 					</button>
 				</UiTooltip>
 				<button
@@ -182,7 +190,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					"
 					@click="emit('cancel', up.id)"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 				<!-- Progress bar: determinate fill, or an indeterminate shimmer -->
 				<span

@@ -6,6 +6,7 @@ import {
 	restartStepStatus,
 	type RestartPhase,
 } from '~/utils/restartProgress';
+import { CheckIcon } from '@coolicons/vue';
 
 /**
  * Live, phased progress for a config-apply restart, derived from the caller's
@@ -67,9 +68,8 @@ const steps = computed(() =>
 				:aria-current="step.status === 'active' ? 'step' : undefined"
 			>
 				<span class="mt-0.5 flex size-5 shrink-0 items-center justify-center">
-					<Icon
+					<CheckIcon
 						v-if="step.status === 'complete'"
-						name="lucide:check"
 						class="size-5 text-success"
 						aria-hidden="true"
 					/>

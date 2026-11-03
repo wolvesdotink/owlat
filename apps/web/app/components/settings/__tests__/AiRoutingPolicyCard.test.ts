@@ -69,7 +69,6 @@ function mountCard() {
 				UiSelect: SelectStub,
 				UiInput: InputStub,
 				UiSwitch: true,
-				Icon: true,
 				UiButton: {
 					props: ['disabled'],
 					emits: ['click'],

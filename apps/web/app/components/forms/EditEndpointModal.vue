@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { FormFieldDraft } from '~/composables/useFormSettings';
+import { CheckIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The forms admin page's edit modal for one form endpoint. The draft, its
 // validation and the save live in useFormSettings, which the page owns.
@@ -142,12 +144,8 @@ const { t } = useI18n();
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" form="edit-form" class="gap-2" :disabled="isSaving">
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:check" class="w-4 h-4" />
+				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+				<CheckIcon v-else class="w-4 h-4" />
 				{{
 					isSaving
 						? t('dashboard.admin.instance.forms.editModal.saving')

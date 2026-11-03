@@ -137,7 +137,6 @@ const mountShare = () =>
 				UiModal: modalStub,
 				UiButton: buttonStub,
 				NuxtLink: linkStub,
-				Icon: true,
 				UiSpinner: true,
 				UiEmptyState: true,
 			},

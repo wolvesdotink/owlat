@@ -35,6 +35,13 @@
  */
 
 import { extractDomainOrNull } from '@owlat/shared';
+import {
+	ShieldCheckIcon,
+	ShieldCloseIcon,
+	ShieldHelpIcon,
+	ShieldWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 export type SenderAuthState =
 	| 'verified'
@@ -78,7 +85,7 @@ export interface SenderAuthResult {
 	/** Expandable plain-language explanation — a key or a `{ key, params }` pair. */
 	detail: SenderAuthText;
 	tone: 'ok' | 'warn' | 'danger';
-	icon: string;
+	icon: IconComponent;
 }
 
 function norm(v: string | undefined): string {
@@ -173,7 +180,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 						params: { domain: fromDomain },
 					},
 			tone: 'ok',
-			icon: 'lucide:shield-check',
+			icon: ShieldCheckIcon,
 		};
 	}
 
@@ -194,7 +201,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 				params: { domain: fromDomain },
 			},
 			tone: 'danger',
-			icon: 'lucide:shield-x',
+			icon: ShieldCloseIcon,
 		};
 	}
 
@@ -210,7 +217,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 				params: { domain: fromDomain },
 			},
 			tone: 'ok',
-			icon: 'lucide:shield-check',
+			icon: ShieldCheckIcon,
 		};
 	}
 
@@ -229,7 +236,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 				params: { sender: actualDomain, domain: fromDomain },
 			},
 			tone: 'danger',
-			icon: 'lucide:shield-alert',
+			icon: ShieldWarningIcon,
 		};
 	}
 
@@ -244,7 +251,7 @@ export function deriveSenderAuth(input: SenderAuthInput): SenderAuthResult | nul
 			params: { domain: fromDomain },
 		},
 		tone: 'warn',
-		icon: 'lucide:shield-question',
+		icon: ShieldHelpIcon,
 	};
 }
 
@@ -376,7 +383,7 @@ export interface SenderRowMarker {
 	label: string;
 	/** The full sentence, used as the chip's title / accessible name. */
 	title: SenderAuthText;
-	icon: string;
+	icon: IconComponent;
 }
 
 /**
@@ -394,7 +401,7 @@ export function deriveSenderRowMarker(input: SenderRiskInput): SenderRowMarker |
 			reason: line.reason,
 			label: ROW_MARKER_LABELS[line.reason],
 			title: line.text,
-			icon: 'lucide:shield-alert',
+			icon: ShieldWarningIcon,
 		};
 	}
 	return null;

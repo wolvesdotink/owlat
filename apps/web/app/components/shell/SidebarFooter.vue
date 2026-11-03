@@ -4,6 +4,16 @@ import { useZenMode } from '~/composables/useZenMode';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import ShellConnectionIndicator from './ConnectionIndicator.vue';
+import {
+	ExpandIcon,
+	KeyboardIcon,
+	ListChecklistIcon,
+	LogOutIcon,
+	PanelLeftCloseIcon,
+	PanelLeftIcon,
+	SettingsIcon,
+	SparklesIcon,
+} from '@coolicons/vue';
 
 /**
  * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
@@ -160,7 +170,7 @@ function openSetupChecklist() {
 						:aria-keyshortcuts="ariaFor('global.assistant')"
 						class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
 					>
-						<Icon name="lucide:sparkles" class="size-4 text-text-tertiary" />
+						<SparklesIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
 						<UiShortcut id="global.assistant" class="font-mono text-2xs text-text-tertiary" />
 					</NuxtLink>
@@ -171,7 +181,7 @@ function openSetupChecklist() {
 						:aria-keyshortcuts="ariaFor('global.zen')"
 						@click="startZen"
 					>
-						<Icon name="lucide:maximize-2" class="size-4 text-text-tertiary" />
+						<ExpandIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{ t('components.shell.zen.enter') }}</span>
 						<UiShortcut id="global.zen" class="font-mono text-2xs text-text-tertiary" />
 					</button>
@@ -182,7 +192,7 @@ function openSetupChecklist() {
 						:aria-keyshortcuts="ariaFor('global.help')"
 						@click="openShortcuts"
 					>
-						<Icon name="lucide:keyboard" class="size-4 text-text-tertiary" />
+						<KeyboardIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{ t('components.shell.footer.shortcuts') }}</span>
 						<UiShortcut id="global.help" class="font-mono text-2xs text-text-tertiary" />
 					</button>
@@ -192,7 +202,7 @@ function openSetupChecklist() {
 						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
 						@click="openSetupChecklist"
 					>
-						<Icon name="lucide:list-checks" class="size-4 text-text-tertiary" />
+						<ListChecklistIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{
 							t('components.dashboard.gettingStarted.show')
 						}}</span>
@@ -211,7 +221,7 @@ function openSetupChecklist() {
 						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-error hover:bg-error-subtle"
 						@click="handleSignOut"
 					>
-						<Icon name="lucide:log-out" class="size-4" />
+						<LogOutIcon class="size-4" />
 						{{ t('shell.dashboard.signOut') }}
 					</button>
 				</div>
@@ -237,7 +247,7 @@ function openSetupChecklist() {
 						: 'text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary'
 				"
 			>
-				<Icon name="lucide:settings" class="size-4.5" />
+				<SettingsIcon class="size-4.5" />
 			</NuxtLink>
 		</UiTooltip>
 		<UiTooltip v-if="props.collapseLabel" :text="props.collapseLabel">
@@ -247,10 +257,7 @@ function openSetupChecklist() {
 				:aria-label="props.collapseLabel"
 				@click="emit('toggleCollapse')"
 			>
-				<Icon
-					:name="props.collapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
-					class="size-4.5"
-				/>
+				<component :is="props.collapsed ? PanelLeftIcon : PanelLeftCloseIcon" class="size-4.5" />
 			</button>
 		</UiTooltip>
 	</div>

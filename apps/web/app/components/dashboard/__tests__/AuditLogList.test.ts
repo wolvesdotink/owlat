@@ -67,7 +67,7 @@ describe('AuditLogList badges', () => {
 function mountList(logs: AuditLogEntry[]) {
 	return mount(AuditLogList, {
 		props: { logs, hasMore: false },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

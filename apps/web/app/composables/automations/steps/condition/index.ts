@@ -5,6 +5,7 @@ import {
 	type ConditionEditorContext,
 } from '~/composables/conditions';
 import type { ConditionStepConfig, StepEditorModule, StepMessage } from '../types';
+import { GitBranchIcon } from '@coolicons/vue';
 
 function emptyContext(): ConditionEditorContext {
 	return {
@@ -35,7 +36,7 @@ export const conditionStepEditorModule: StepEditorModule<'condition'> = {
 	label: 'shared.automations.steps.condition.label',
 	description: 'shared.automations.steps.condition.description',
 	color: 'warning',
-	icon: 'lucide:git-branch',
+	icon: GitBranchIcon,
 	createDefault: () => ({
 		condition: {
 			kind: 'contact_property',

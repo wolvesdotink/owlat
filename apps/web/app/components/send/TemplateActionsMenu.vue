@@ -7,6 +7,7 @@
  * Each menu owns its open state, instead of a page-wide record keyed by row id.
  */
 import type { TemplateListItem, TemplateRowAction } from '~/composables/useTemplateList';
+import { CopyIcon, MoreVerticalIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 withDefaults(
 	defineProps<{
@@ -30,7 +31,7 @@ const open = ref(false);
 	<UiDropdownMenu v-model:open="open" @click.stop>
 		<template #trigger>
 			<UiButton variant="ghost" size="sm" :aria-label="t('shared.templateList.moreActions')">
-				<Icon name="lucide:more-vertical" class="w-4 h-4" />
+				<MoreVerticalIcon class="w-4 h-4" />
 			</UiButton>
 		</template>
 		<UiDropdownMenuItem
@@ -41,15 +42,15 @@ const open = ref(false);
 		>
 			{{ action.label }}
 		</UiDropdownMenuItem>
-		<UiDropdownMenuItem v-if="withEdit" icon="lucide:pencil" @click="emit('edit', item)">
+		<UiDropdownMenuItem v-if="withEdit" :icon="PencilIcon" @click="emit('edit', item)">
 			{{ t('common.edit') }}
 		</UiDropdownMenuItem>
 		<template v-if="canManage">
-			<UiDropdownMenuItem icon="lucide:copy" @click="emit('duplicate', item)">
+			<UiDropdownMenuItem :icon="CopyIcon" @click="emit('duplicate', item)">
 				{{ t('common.duplicate') }}
 			</UiDropdownMenuItem>
 			<UiDropdownDivider />
-			<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('delete', item)">
+			<UiDropdownMenuItem :icon="TrashIcon" danger @click="emit('delete', item)">
 				{{ t('common.delete') }}
 			</UiDropdownMenuItem>
 		</template>

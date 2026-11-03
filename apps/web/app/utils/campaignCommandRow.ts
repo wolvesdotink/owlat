@@ -6,6 +6,7 @@
 import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { CampaignAttentionReason } from '~/utils/campaignAttention';
+import type { IconComponent } from '@coolicons/vue';
 
 /**
  * The exact campaign fields the command center's row + classifier read, derived
@@ -28,7 +29,7 @@ export interface ReasonChip {
 /** The rendered status badge (mirrors `useCampaignStatusBadge`'s shape). */
 export interface RowStatusBadge {
 	color: string;
-	icon: string;
+	icon: IconComponent;
 	label: string;
 }
 

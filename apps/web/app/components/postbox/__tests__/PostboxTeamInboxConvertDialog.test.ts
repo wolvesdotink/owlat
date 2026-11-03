@@ -79,7 +79,7 @@ const mountDialog = (mailboxes: (typeof INFO | typeof PERSONAL)[]) =>
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxTeamMemberPicker },
-			stubs: { UiModal: modalStub, UiButton: buttonStub, Icon: true },
+			stubs: { UiModal: modalStub, UiButton: buttonStub },
 		},
 	});
 

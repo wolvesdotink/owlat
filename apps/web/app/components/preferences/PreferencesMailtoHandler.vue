@@ -12,6 +12,7 @@ import {
 	requestMailtoHandler,
 	type MailtoHandlerSupport,
 } from '~/utils/mailtoHandler';
+import { UndoIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -84,7 +85,7 @@ const statusLine = computed(() => {
 		</div>
 
 		<div class="px-5 py-3 border-t border-border-subtle bg-bg-surface flex gap-3">
-			<Icon name="lucide:undo-2" class="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
+			<UndoIcon class="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
 			<p class="text-xs text-text-secondary" data-testid="mailto-handler-undo">
 				{{ t(`${KEY}.undo`) }}
 			</p>

@@ -41,6 +41,7 @@ import {
 	type ExternalReceivingProvider,
 } from '@owlat/shared/externalReceiving';
 import { EXTERNAL_RECEIVING_PROVIDER_KEYS } from '~/utils/externalReceivingLabels';
+import { ArrowRightIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/**
@@ -415,7 +416,7 @@ const missingSpfInclude = computed(() => {
 				class="inline-flex items-center gap-1 text-sm text-brand hover:underline mt-2"
 			>
 				{{ t('components.domains.externalReceivingSection.migrate.link') }}
-				<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+				<ArrowRightIcon class="w-3.5 h-3.5" />
 			</NuxtLink>
 		</div>
 	</div>

@@ -7,6 +7,7 @@
  */
 import type { InboxRetryFacts } from '@owlat/shared/inboxRetry';
 import { inboxRetryCopy } from '~/utils/inboxRetry';
+import { PaperPlaneIcon, ReloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	message: InboxRetryFacts & { errorMessage?: string };
@@ -45,10 +46,7 @@ const copy = computed(() => inboxRetryCopy(props.message));
 				:disabled="retrying"
 				@click="emit('retry')"
 			>
-				<Icon
-					:name="copy.plan === 'sendAgain' ? 'lucide:send' : 'lucide:refresh-cw'"
-					class="w-3 h-3"
-				/>
+				<component :is="copy.plan === 'sendAgain' ? PaperPlaneIcon : ReloadIcon" class="w-3 h-3" />
 				{{ t(copy.action) }}
 			</UiButton>
 			<p class="text-xs text-text-secondary">{{ t(copy.hint) }}</p>

@@ -1,6 +1,7 @@
 import type { Component, ComputedRef } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import type { LocalizedText } from '~/utils/localizedText';
+import type { IconComponent } from '@coolicons/vue';
 
 export type TriggerKind =
 	| 'contact_created'
@@ -52,7 +53,7 @@ export interface TriggerEditorModule<K extends TriggerKind> {
 	readonly label: string;
 	/** A message key — see {@link TriggerMessage}. */
 	readonly description: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly color: string;
 	readonly requiresConfig: boolean;
 	createDefault(): TriggerConfigOfKind<K>;

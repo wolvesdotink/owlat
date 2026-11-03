@@ -1,6 +1,9 @@
 <script setup lang="ts">
 // The contact properties page's delete confirmation, with a warning when
 // contacts hold a value for the property. The page loads the count and deletes.
+import { CircleWarningIcon, TrashIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 defineProps<{
 	/** The property up for deletion; the modal is open while it is set. */
 	property: { label: string } | null;
@@ -36,10 +39,7 @@ const { t } = useI18n();
 			v-if="isLoadingUsageCount"
 			class="mt-4 p-4 rounded-xl bg-bg-surface border border-border-subtle flex items-center gap-3"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-4 h-4 text-text-tertiary" />
 			<span class="text-sm text-text-tertiary">
 				{{ t('dashboard.admin.instance.properties.deleteModal.checkingUsage') }}
 			</span>
@@ -49,7 +49,7 @@ const { t } = useI18n();
 			class="mt-4 p-4 rounded-xl bg-warning-subtle border border-warning/20"
 		>
 			<div class="flex items-start gap-3">
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 flex-shrink-0" />
+				<CircleWarningIcon class="w-5 h-5 text-warning mt-0.5 flex-shrink-0" />
 				<div>
 					<p class="font-medium text-warning">
 						{{ t('dashboard.admin.instance.properties.deleteModal.dataWarningTitle') }}
@@ -78,7 +78,7 @@ const { t } = useI18n();
 				@click="emit('confirm')"
 			>
 				<template #iconLeft>
-					<Icon v-if="!isDeleting" name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon v-if="!isDeleting" class="w-4 h-4" />
 				</template>
 				{{
 					isDeleting

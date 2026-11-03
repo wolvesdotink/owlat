@@ -6,6 +6,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { isEmptyableRole } from '~/composables/postbox/usePostboxFolderBulk';
+import { TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -34,7 +35,7 @@ const role = computed(() => (isEmptyableRole(props.folderRole) ? props.folderRol
 			)
 		}}</span>
 		<UiButton variant="danger-ghost" size="sm" @click="bulk.requestEmpty(folder)">
-			<Icon name="lucide:trash-2" class="w-3.5 h-3.5" aria-hidden="true" />
+			<TrashIcon class="w-3.5 h-3.5" aria-hidden="true" />
 			{{ t(`components.postbox.postboxFolderActions.empty.${role}`) }}
 		</UiButton>
 	</div>

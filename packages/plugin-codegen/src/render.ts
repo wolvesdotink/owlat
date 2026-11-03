@@ -21,6 +21,7 @@ import {
 	renderSendTransportWebhookCatalog,
 	renderSendTransportWebhookModules,
 } from './renderSendTransportWebhook';
+import { renderPluginNavIcons } from './renderNavIcons';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
 	importProvidersFor,
@@ -155,7 +156,7 @@ export function renderPluginComposition(
 	return Object.freeze({
 		convex: shared,
 		components: renderConvexComponents(plugins),
-		nuxt: `${plugins.length === 0 ? EMPTY_NUXT_COMPOSITION : shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
+		nuxt: `${plugins.length === 0 ? EMPTY_NUXT_COMPOSITION : shared}\n${renderPluginNavIcons(plugins)}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
 		sendTransportCatalog,
 		// The same data-only artifact in the browser's package. Web must not reach
 		// across the package boundary into `apps/api`, and rendering this twice from

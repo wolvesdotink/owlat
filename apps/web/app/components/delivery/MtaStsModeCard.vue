@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { isMtaStsMode, type MtaStsMode } from '@owlat/shared/mtaStsPolicy';
+import { LockIcon } from '@coolicons/vue';
 
 /**
  * MTA-STS publishing stepper (Delivery → provider config).
@@ -98,7 +99,7 @@ async function selectMode(next: string) {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:lock" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="LockIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.mtaStsModeCard.title') }}

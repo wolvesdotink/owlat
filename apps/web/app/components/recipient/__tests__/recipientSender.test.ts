@@ -48,7 +48,7 @@ function mountPage(page: object) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { RecipientHeader, RecipientFooter, RecipientContactHint, WorkspaceLogo },
-			stubs: { UiSpinner: true, UiButton: true, UiSwitch: true, Icon: true },
+			stubs: { UiSpinner: true, UiButton: true, UiSwitch: true },
 		},
 	});
 }

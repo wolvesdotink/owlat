@@ -14,6 +14,7 @@
  */
 import { api } from '@owlat/api';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { LockKeyholeIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
@@ -56,7 +57,7 @@ async function setRequired(value: boolean) {
 	<UiCard v-if="hasHostedMail" data-testid="inbound-tls-card">
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex min-w-0 items-start gap-3">
-				<UiIconBox icon="lucide:lock-keyhole" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="LockKeyholeIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<div class="flex items-center gap-2">
 						<h3 class="text-lg font-semibold text-text-primary">

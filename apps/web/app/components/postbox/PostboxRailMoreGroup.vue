@@ -15,6 +15,20 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	ChevronUpIcon,
+	ClockIcon,
+	DownloadIcon,
+	MentionIcon,
+	MoreHorizontalIcon,
+	PaperclipIcon,
+	SettingsIcon,
+	Slider1Icon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -47,38 +61,38 @@ const spamUnread = computed(
  * The non-folder destinations, in the order the plan lists them. `role` marks
  * the ones that are a virtual folder view, so the row can go current.
  */
-const LINKS: Array<{ to: string; icon: string; labelKey: string; role: string }> = [
+const LINKS: Array<{ to: string; icon: IconComponent; labelKey: string; role: string }> = [
 	{
 		to: '/dashboard/postbox/snoozed',
-		icon: 'lucide:clock',
+		icon: ClockIcon,
 		labelKey: 'components.postbox.postboxFolderRail.snoozed',
 		role: 'snoozed',
 	},
 	{
 		to: '/dashboard/postbox/files',
-		icon: 'lucide:paperclip',
+		icon: PaperclipIcon,
 		labelKey: 'components.postbox.postboxFolderRail.files',
 		role: '',
 	},
 	{
 		to: '/dashboard/postbox/senders',
-		icon: 'lucide:at-sign',
+		icon: MentionIcon,
 		labelKey: 'postbox.senders.rail',
 		role: '',
 	},
 	{
 		to: '/dashboard/postbox/contacts',
-		icon: 'lucide:users',
+		icon: UsersIcon,
 		labelKey: 'components.postbox.postboxFolderRail.contacts',
 		role: '',
 	},
 	{
 		to: '/dashboard/postbox/migrate',
-		icon: 'lucide:download',
+		icon: DownloadIcon,
 		labelKey: 'components.postbox.postboxFolderRail.import',
 		role: '',
 	},
-	{ to: '/dashboard/preferences', icon: 'lucide:settings', labelKey: 'common.settings', role: '' },
+	{ to: '/dashboard/preferences', icon: SettingsIcon, labelKey: 'common.settings', role: '' },
 ];
 
 /**
@@ -154,14 +168,14 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value || spring
 				@dragenter="armSpring"
 				@dragleave="onHeaderDragleave"
 			>
-				<Icon
+				<component
 					v-if="collapsed"
-					:name="expanded ? 'lucide:chevron-up' : 'lucide:ellipsis'"
+					:is="expanded ? ChevronUpIcon : MoreHorizontalIcon"
 					class="w-4 h-4"
 				/>
 				<template v-else>
-					<Icon
-						:name="expanded ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+					<component
+						:is="expanded ? ChevronDownIcon : ChevronRightIcon"
 						class="w-4 h-4 flex-shrink-0"
 					/>
 					<span class="flex-1 text-left">{{
@@ -218,7 +232,7 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value || spring
 					:aria-label="collapsed ? t('components.postbox.postboxLabelManager.title') : undefined"
 					@click="openManager({ section: 'folders' })"
 				>
-					<Icon name="lucide:settings-2" class="w-4 h-4 flex-shrink-0" />
+					<Slider1Icon class="w-4 h-4 flex-shrink-0" />
 					<span v-if="!collapsed" class="flex-1 truncate">{{
 						t('components.postbox.postboxLabelManager.title')
 					}}</span>

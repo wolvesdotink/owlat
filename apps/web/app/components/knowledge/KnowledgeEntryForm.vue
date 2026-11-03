@@ -6,6 +6,7 @@ import {
 	type EntryType,
 	type SourceType,
 } from '~/utils/knowledgeEntryTypes';
+import { PlusIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -261,7 +262,7 @@ const handleCancel = () => {
 			}}</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="!canSubmit || isSubmitting">
 				<UiSpinner v-if="isSubmitting" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon v-else class="w-4 h-4" />
 				{{
 					isEdit
 						? t('components.knowledge.knowledgeEntryForm.submitUpdate')

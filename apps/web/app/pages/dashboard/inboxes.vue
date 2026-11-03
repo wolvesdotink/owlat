@@ -9,10 +9,7 @@ import { legacyInboxesRedirect } from '~/utils/postboxAllInboxes';
  */
 definePageMeta({
 	layout: 'dashboard',
-	middleware: [
-		'auth',
-		(to) => navigateTo(legacyInboxesRedirect(to.query), { replace: true }),
-	],
+	middleware: ['auth', (to) => navigateTo(legacyInboxesRedirect(to.query), { replace: true })],
 });
 </script>
 

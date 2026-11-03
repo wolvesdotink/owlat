@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Button from '../components/ui/Button.vue';
 
-const stubs = { Icon: true, NuxtLink: true };
+const stubs = { NuxtLink: true };
 
 describe('UiButton aria-disabled', () => {
 	it('keeps a caller-supplied aria-disabled on a native button, which stays focusable', () => {

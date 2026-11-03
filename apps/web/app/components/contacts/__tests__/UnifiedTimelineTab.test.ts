@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount, RouterLinkStub } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { ArrowDownLeftIcon, MailIcon } from '@coolicons/vue';
 
 vi.mock('~/composables/useChannelOutbound', () => ({
 	useChannelOutbound: () => ({
@@ -25,10 +26,10 @@ vi.stubGlobal('useUnifiedContactTimeline', () => ({
 	isLoading: ref(false),
 	channelFilter: ref(null),
 	channels: ref(['email']),
-	channelIcon: () => 'lucide:mail',
+	channelIcon: () => MailIcon,
 	channelLabel: (channel: string) => channel,
 	channelColor: () => '',
-	directionIcon: () => 'lucide:arrow-down-left',
+	directionIcon: () => ArrowDownLeftIcon,
 	formatTime: () => 'today',
 	truncate: (text: string) => text,
 }));
@@ -57,7 +58,6 @@ function mountTab() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiBadge: true,
 				UiSpinner: true,
 				UiIconBox: true,

@@ -75,11 +75,6 @@ function mountCard(reduced: boolean) {
 				PostboxMessageAttachments: marker('PostboxMessageAttachments'),
 				PostboxSchedulingChip: marker('PostboxSchedulingChip'),
 				PostboxDeliveryStrip: marker('PostboxDeliveryStrip'),
-				Icon: defineComponent({
-					name: 'Icon',
-					inheritAttrs: true,
-					setup: () => () => h('span'),
-				}),
 			},
 		},
 	});

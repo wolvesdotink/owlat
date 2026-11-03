@@ -1,5 +1,21 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	ArrowLeftIcon,
+	CalendarIcon,
+	ChartBarVerticalIcon,
+	ClockIcon,
+	CursorIcon,
+	ExternalLinkIcon,
+	EyeIcon,
+	ListUnorderedIcon,
+	MailIcon,
+	PaperPlaneIcon,
+	TrashIcon,
+	TriangleWarningIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 // Removing a contact from a topic requires `topics:manage` (owner/admin) —
@@ -118,22 +134,22 @@ const getEmailStatusColor = (status: string) => {
 	}
 };
 
-const getEmailStatusIcon = (status: string): string => {
+const getEmailStatusIcon = (status: string): IconComponent => {
 	switch (status) {
 		case 'clicked':
-			return 'lucide:mouse-pointer';
+			return CursorIcon;
 		case 'opened':
-			return 'lucide:eye';
+			return EyeIcon;
 		case 'delivered':
 		case 'sent':
-			return 'lucide:send';
+			return PaperPlaneIcon;
 		case 'bounced':
 		case 'complained':
-			return 'lucide:alert-triangle';
+			return TriangleWarningIcon;
 		case 'queued':
-			return 'lucide:clock';
+			return ClockIcon;
 		default:
-			return 'lucide:send';
+			return PaperPlaneIcon;
 	}
 };
 
@@ -192,7 +208,7 @@ const contactInitials = computed(() => {
 			v-else-if="!isLoading && !details"
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="UserIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.audience.topics.detail.contacts.detail.notFound.title') }}
 			</p>
@@ -211,7 +227,7 @@ const contactInitials = computed(() => {
 				:to="`/dashboard/audience/topics/${topicId}`"
 				class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 				{{
 					t('dashboard.audience.topics.detail.contacts.detail.backToTopic', {
 						topic: details.topic.name,
@@ -241,7 +257,7 @@ const contactInitials = computed(() => {
 									class="inline-flex items-center gap-1.5 text-sm text-brand hover:text-brand/80 transition-colors mt-2"
 								>
 									{{ t('dashboard.audience.topics.detail.contacts.detail.viewFullProfileLink') }}
-									<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+									<ExternalLinkIcon class="w-3.5 h-3.5" />
 								</NuxtLink>
 							</div>
 						</div>
@@ -250,7 +266,7 @@ const contactInitials = computed(() => {
 					<!-- Topic Membership Card -->
 					<div class="card">
 						<div class="flex items-center gap-2 mb-4">
-							<Icon name="lucide:list" class="w-5 h-5 text-text-tertiary" />
+							<ListUnorderedIcon class="w-5 h-5 text-text-tertiary" />
 							<h2 class="text-lg font-medium text-text-primary">
 								{{ t('dashboard.audience.topics.detail.contacts.detail.membership.title') }}
 							</h2>
@@ -263,7 +279,7 @@ const contactInitials = computed(() => {
 									t('dashboard.audience.topics.detail.contacts.detail.membership.addedAt')
 								}}</span>
 								<div class="flex items-center gap-2 text-text-primary">
-									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+									<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 									{{ formatDate(details.membership.addedAt) }}
 								</div>
 							</div>
@@ -273,7 +289,7 @@ const contactInitials = computed(() => {
 					<!-- Email History Card -->
 					<div class="card">
 						<div class="flex items-center gap-2 mb-4">
-							<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary" />
+							<MailIcon class="w-5 h-5 text-text-tertiary" />
 							<h2 class="text-lg font-medium text-text-primary">
 								{{ t('dashboard.audience.topics.detail.contacts.detail.emailHistory.title') }}
 							</h2>
@@ -287,13 +303,7 @@ const contactInitials = computed(() => {
 							v-if="details.emailHistory.length === 0"
 							class="flex flex-col items-center justify-center py-8 text-center"
 						>
-							<UiIconBox
-								icon="lucide:mail"
-								size="lg"
-								variant="surface"
-								rounded="full"
-								class="mb-3"
-							/>
+							<UiIconBox :icon="MailIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 							<p class="text-text-secondary text-sm">
 								{{ t('dashboard.audience.topics.detail.contacts.detail.emailHistory.emptyTitle') }}
 							</p>
@@ -356,7 +366,7 @@ const contactInitials = computed(() => {
 													getEmailStatusColor(email.status),
 												]"
 											>
-												<Icon :name="getEmailStatusIcon(email.status)" class="w-3 h-3" />
+												<component :is="getEmailStatusIcon(email.status)" class="w-3 h-3" />
 												{{ getEmailStatusLabel(email.status) }}
 											</span>
 										</td>
@@ -380,7 +390,7 @@ const contactInitials = computed(() => {
 					<!-- Engagement Stats Card -->
 					<div class="card">
 						<div class="flex items-center gap-2 mb-4">
-							<Icon name="lucide:bar-chart-3" class="w-5 h-5 text-text-tertiary" />
+							<ChartBarVerticalIcon class="w-5 h-5 text-text-tertiary" />
 							<h2 class="text-lg font-medium text-text-primary">
 								{{ t('dashboard.audience.topics.detail.contacts.detail.engagement.title') }}
 							</h2>
@@ -447,7 +457,7 @@ const contactInitials = computed(() => {
 								:to="`/dashboard/audience/contacts/${contactId}`"
 								class="gap-2"
 							>
-								<Icon name="lucide:user" class="w-4 h-4" />
+								<UserIcon class="w-4 h-4" />
 								{{ t('dashboard.audience.topics.detail.contacts.detail.viewFullProfile') }}
 							</UiButton>
 
@@ -457,7 +467,7 @@ const contactInitials = computed(() => {
 								class="gap-2 text-error bg-error-subtle hover:bg-error/20 border-0"
 								@click="isRemoveModalOpen = true"
 							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 								{{ t('dashboard.audience.topics.detail.contacts.detail.removeFromTopic') }}
 							</UiButton>
 						</div>

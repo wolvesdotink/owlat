@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ChatCircleIcon, HashIcon, PanelLeftIcon, PlusIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.chat.index.pageTitle') });
@@ -29,7 +31,7 @@ const { railOpen, openRail, openBrowseChannels, openCreateChannel } = useChatShe
 				:aria-expanded="railOpen"
 				@click="openRail"
 			>
-				<Icon name="lucide:panel-left" class="w-4 h-4" />
+				<PanelLeftIcon class="w-4 h-4" />
 				<span class="text-sm">{{ t('dashboard.chat.index.openConversations') }}</span>
 			</button>
 		</div>
@@ -39,7 +41,7 @@ const { railOpen, openRail, openBrowseChannels, openCreateChannel } = useChatShe
 			<div
 				class="w-16 h-16 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
 			>
-				<Icon name="lucide:message-circle" class="w-8 h-8 text-text-tertiary" />
+				<ChatCircleIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 			</div>
 			<h3 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.chat.index.emptyTitle') }}
@@ -51,11 +53,11 @@ const { railOpen, openRail, openBrowseChannels, openCreateChannel } = useChatShe
 			     inside their own pills, and a button never wraps. -->
 			<div class="mt-6 flex flex-col gap-3 sm:flex-row">
 				<UiButton variant="secondary" class="gap-2" @click="openBrowseChannels">
-					<Icon name="lucide:hash" class="w-4 h-4" />
+					<HashIcon class="w-4 h-4" />
 					{{ t('dashboard.chat.index.browseChannels') }}
 				</UiButton>
 				<UiButton class="gap-2" @click="openCreateChannel">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.chat.index.newChannel') }}
 				</UiButton>
 			</div>

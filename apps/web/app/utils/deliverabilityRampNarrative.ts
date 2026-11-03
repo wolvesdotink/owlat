@@ -30,6 +30,13 @@ import {
 	type RampControls,
 } from '~/utils/deliverabilityRamp';
 import type { LocalizedText } from '~/utils/localizedText';
+import {
+	ActivityIcon,
+	GridAltIcon,
+	Slider1Icon,
+	TrendingUpIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * HOW A SENTENCE THAT NAMES A CELL GETS ITS NAME.
@@ -406,7 +413,7 @@ export interface RampAdvancedScreen {
 	readonly to: string;
 	readonly label: LocalizedText;
 	readonly description: LocalizedText;
-	readonly icon: string;
+	readonly icon: IconComponent;
 }
 
 /**
@@ -423,32 +430,32 @@ export function rampAdvancedScreens(isRelayConfigured: boolean): readonly RampAd
 			to: CELLS_HREF,
 			label: 'shared.deliverabilityRampNarrative.screens.cells.label',
 			description: 'shared.deliverabilityRampNarrative.screens.cells.description',
-			icon: 'lucide:grid-3x3',
+			icon: GridAltIcon,
 		},
 		{
 			to: CONTROLS_HREF,
 			label: 'shared.deliverabilityRampNarrative.screens.controls.label',
 			description: 'shared.deliverabilityRampNarrative.screens.controls.description',
-			icon: 'lucide:sliders-horizontal',
+			icon: Slider1Icon,
 		},
 		{
 			to: MEASUREMENT_HREF,
 			label: 'shared.deliverabilityRampNarrative.screens.measurement.label',
 			description: 'shared.deliverabilityRampNarrative.screens.measurement.description',
-			icon: 'lucide:activity',
+			icon: ActivityIcon,
 		},
 		isRelayConfigured
 			? {
 					to: INDEPENDENCE_HREF,
 					label: 'shared.deliverabilityRampNarrative.screens.independence.label',
 					description: 'shared.deliverabilityRampNarrative.screens.independence.description',
-					icon: 'lucide:trending-up',
+					icon: TrendingUpIcon,
 				}
 			: {
 					to: INDEPENDENCE_HREF,
 					label: 'shared.deliverabilityRampNarrative.screens.warmupAutopilot.label',
 					description: 'shared.deliverabilityRampNarrative.screens.warmupAutopilot.description',
-					icon: 'lucide:trending-up',
+					icon: TrendingUpIcon,
 				},
 	];
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OrganizationRole } from '~/composables/useOrganization';
 import { ROLE_DEFINITIONS, roleDefinition } from '~/utils/teamRoles';
+import { CheckIcon, ChevronDownIcon } from '@coolicons/vue';
 
 /**
  * Inline role picker for a team member row. Shows the member's current role as a
@@ -196,9 +197,9 @@ onUnmounted(removeListeners);
 			@click="toggleMenu"
 			@keydown="onTriggerKeydown"
 		>
-			<Icon :name="current.icon" class="w-3.5 h-3.5" />
+			<component :is="current.icon" class="w-3.5 h-3.5" />
 			<span>{{ t(current.label) }}</span>
-			<Icon v-if="!disabled" name="lucide:chevron-down" class="w-3 h-3 text-text-tertiary" />
+			<ChevronDownIcon v-if="!disabled" class="w-3 h-3 text-text-tertiary" />
 		</button>
 
 		<Teleport to="body">
@@ -234,13 +235,12 @@ onUnmounted(removeListeners);
 						class="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
 						@click="selectRole(option.role)"
 					>
-						<Icon :name="option.icon" class="mt-0.5 w-4 h-4 shrink-0 text-text-secondary" />
+						<component :is="option.icon" class="mt-0.5 w-4 h-4 shrink-0 text-text-secondary" />
 						<span class="min-w-0 flex-1">
 							<span class="flex items-center gap-1.5">
 								<span class="text-sm font-medium text-text-primary">{{ t(option.label) }}</span>
-								<Icon
+								<CheckIcon
 									v-if="option.role === role"
-									name="lucide:check"
 									class="w-3.5 h-3.5 text-brand"
 									aria-hidden="true"
 								/>

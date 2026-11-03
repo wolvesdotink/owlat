@@ -42,7 +42,6 @@ function mountCard(props: Record<string, unknown> = {}) {
 					emits: ['click'],
 					template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
 				},
-				Icon: true,
 			},
 		},
 	});

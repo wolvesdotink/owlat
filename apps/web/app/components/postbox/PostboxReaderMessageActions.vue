@@ -13,6 +13,25 @@ import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalE
 import { useSenderZoom } from '~/composables/useSenderZoom';
 import { postboxSenderKey } from '~/utils/postboxImageAllowlist';
 import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
+import {
+	ChatShareIcon,
+	CircleSlashIcon,
+	DownloadIcon,
+	FilterIcon,
+	ForwardIcon,
+	ImageIcon,
+	LinkIcon,
+	MinusIcon,
+	PlusIcon,
+	PrinterIcon,
+	ReplyAllIcon,
+	ReplyIcon,
+	ShieldWarningIcon,
+	StarIcon,
+	ZoomInIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	messageId: string;
@@ -55,10 +74,14 @@ const { downloading: downloadingEml, downloadOriginal } = usePostboxOriginalEml(
 const { zoomOf, applyZoom } = useSenderZoom();
 const hasSender = computed(() => postboxSenderKey(props.fromAddress) !== null);
 const zoom = computed(() => zoomOf(props.fromAddress));
-const zoomControls: ReadonlyArray<{ action: SenderZoomAction; icon: string; key: string }> = [
-	{ action: 'zoomOut', icon: 'lucide:minus', key: 'zoomOut' },
-	{ action: 'zoomReset', icon: '', key: 'zoomReset' },
-	{ action: 'zoomIn', icon: 'lucide:plus', key: 'zoomIn' },
+const zoomControls: ReadonlyArray<{
+	action: SenderZoomAction;
+	icon: IconComponent | null;
+	key: string;
+}> = [
+	{ action: 'zoomOut', icon: MinusIcon, key: 'zoomOut' },
+	{ action: 'zoomReset', icon: null, key: 'zoomReset' },
+	{ action: 'zoomIn', icon: PlusIcon, key: 'zoomIn' },
 ];
 
 const MENU_ITEM_CLASS =
@@ -80,11 +103,11 @@ const MENU_ITEM_CLASS =
 				:aria-pressed="starred"
 				@click="emit('toggle-star')"
 			>
-				<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
+				<StarIcon class="w-4 h-4" :class="{ 'fill-current': starred }" />
 			</UiButton>
 		</UiTooltip>
 		<UiButton variant="ghost" type="button" @click="emit('reply')">
-			<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
+			<ReplyIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.reply') }}
 		</UiButton>
 		<UiButton
@@ -94,7 +117,7 @@ const MENU_ITEM_CLASS =
 			class="pbx-reader-secondary-action"
 			@click="emit('reply-all')"
 		>
-			<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
+			<ReplyAllIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.replyAll') }}
 		</UiButton>
 		<UiButton
@@ -103,7 +126,7 @@ const MENU_ITEM_CLASS =
 			class="pbx-reader-secondary-action"
 			@click="emit('forward')"
 		>
-			<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
+			<ForwardIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.forward') }}
 		</UiButton>
 		<span class="flex-1" />
@@ -116,7 +139,7 @@ const MENU_ITEM_CLASS =
 					:aria-label="t('components.postbox.postboxThreadReader.zoomLabel')"
 					class="flex items-center gap-1 px-3 py-1 text-sm border-b border-border-subtle mb-1"
 				>
-					<Icon name="lucide:zoom-in" class="w-4 h-4 text-text-tertiary" />
+					<ZoomInIcon class="w-4 h-4 text-text-tertiary" />
 					<span class="flex-1 ml-1">{{
 						t('components.postbox.postboxThreadReader.zoomLabel')
 					}}</span>
@@ -133,7 +156,7 @@ const MENU_ITEM_CLASS =
 						:disabled="senderZoomAtLimit(zoom, control.action)"
 						@click="applyZoom(fromAddress, control.action)"
 					>
-						<Icon v-if="control.icon" :name="control.icon" class="w-4 h-4" />
+						<component v-if="control.icon" :is="control.icon" class="w-4 h-4" />
 						<template v-else>{{
 							t('components.postbox.postboxThreadReader.zoomPercent', { percent: zoom })
 						}}</template>
@@ -148,7 +171,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:link" class="w-4 h-4 text-text-tertiary" />
+					<LinkIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.copyLink') }}
 				</button>
 				<button
@@ -161,7 +184,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:message-square-share" class="w-4 h-4 text-text-tertiary" />
+					<ChatShareIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.shareInChat') }}
 				</button>
 				<button
@@ -174,7 +197,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:image" class="w-4 h-4 text-text-tertiary" />
+					<ImageIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxShareImage.menuItem') }}
 				</button>
 				<button
@@ -186,7 +209,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
+					<ShieldWarningIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.reportSpam') }}
 				</button>
 				<button
@@ -198,7 +221,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
+					<CircleSlashIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.blockSender') }}
 				</button>
 				<!-- "One more of these" is where a filter gets written, so the rule
@@ -212,7 +235,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+					<FilterIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.createFilter') }}
 				</button>
 				<button
@@ -224,7 +247,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:printer" class="w-4 h-4 text-text-tertiary" />
+					<PrinterIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.print') }}
 				</button>
 				<button
@@ -234,8 +257,8 @@ const MENU_ITEM_CLASS =
 					:disabled="downloadingEml"
 					@click="downloadOriginal(messageId)"
 				>
-					<Icon
-						:name="downloadingEml ? 'lucide:loader-2' : 'lucide:download'"
+					<component
+						:is="downloadingEml ? SpinnerIcon : DownloadIcon"
 						class="w-4 h-4 text-text-tertiary"
 						:class="{ 'animate-spin motion-reduce:animate-none': downloadingEml }"
 					/>

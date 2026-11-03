@@ -45,7 +45,6 @@ import { queryResult } from '~/__tests__/queryStubs';
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const stubs = {
-	Icon: { template: '<i />' },
 	// The copyable record panel is exercised by its own test; render an inert
 	// stub that still exposes the derived record for assertions.
 	DomainsDNSRecordPanel: {

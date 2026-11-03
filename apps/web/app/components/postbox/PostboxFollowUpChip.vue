@@ -10,6 +10,7 @@
  * All mutations are ownership-checked server-side (mail/followUps.ts).
  */
 import { usePostboxFollowUp } from '~/composables/postbox/usePostboxFollowUp';
+import { AlarmIcon, CloseIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	thread: {
@@ -59,7 +60,7 @@ const dueLabel = computed(() => {
 			v-if="followUp && isDue"
 			class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-warning/10 text-warning text-xs font-medium"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
+			<AlarmIcon class="w-3.5 h-3.5" />
 			{{ dueLabel }}
 			<UiTooltip :text="t('components.postbox.postboxFollowUpChip.dismissReminder')">
 				<button
@@ -69,7 +70,7 @@ const dueLabel = computed(() => {
 					:disabled="busy"
 					@click="cancelWatch"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</UiTooltip>
 		</span>
@@ -79,7 +80,7 @@ const dueLabel = computed(() => {
 			class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium"
 			:title="t('components.postbox.postboxFollowUpChip.armedTitle', { date: remindLabel })"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
+			<AlarmIcon class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxFollowUpChip.armedChip', { date: remindLabel }) }}
 			<UiTooltip :text="t('components.postbox.postboxFollowUpChip.cancelReminder')">
 				<button
@@ -89,7 +90,7 @@ const dueLabel = computed(() => {
 					:disabled="busy"
 					@click="cancelWatch"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</UiTooltip>
 		</span>
@@ -101,7 +102,7 @@ const dueLabel = computed(() => {
 			:disabled="busy"
 			@click="dialogOpen = true"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
+			<AlarmIcon class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxFollowUpChip.remindMe') }}
 		</button>
 

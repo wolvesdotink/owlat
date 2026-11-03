@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ChatIcon, PencilIcon } from '@coolicons/vue';
 
 /** The file detail page's linked conversation: a link into the team inbox, edited with the thread picker. */
 const props = defineProps<{
@@ -59,7 +60,7 @@ const cancelEditThread = () => {
 				:aria-label="t('dashboard.files.detail.editLinkedConversation')"
 				@click="startEditThread"
 			>
-				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" />
 			</button>
 		</div>
 
@@ -86,7 +87,7 @@ const cancelEditThread = () => {
 				:to="`/dashboard/inbox/${linkedThread._id}`"
 				class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
 			>
-				<Icon name="lucide:message-square" class="w-4 h-4 text-text-tertiary" />
+				<ChatIcon class="w-4 h-4 text-text-tertiary" />
 				<span class="text-sm text-brand hover:underline truncate">
 					{{ threadPickerLabel(linkedThread) }}
 				</span>

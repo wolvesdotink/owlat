@@ -54,7 +54,6 @@ function mountFooter(overrides: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				PostboxOverflowMenu: true,
 				PostboxComposerPreflightChip: true,
 				PostboxPreviewAsSent: true,

@@ -9,6 +9,8 @@
  * the parent page calls the corresponding mutation. Presentational + prop-driven
  * for straightforward unit testing.
  */
+import { TrendingUpIcon } from '@coolicons/vue';
+
 interface ScorecardOffer {
 	category: string;
 	sender: string;
@@ -59,7 +61,7 @@ const pct = (n: number) =>
 <template>
 	<UiCard v-if="hasNudges" data-testid="graduation-nudge" class="border-brand/40">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:trending-up" size="sm" variant="brand" />
+			<UiIconBox :icon="TrendingUpIcon" size="sm" variant="brand" />
 			<div>
 				<h3 class="text-base font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyGraduationNudge.title') }}

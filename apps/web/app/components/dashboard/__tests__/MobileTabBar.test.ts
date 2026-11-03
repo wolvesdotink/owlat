@@ -15,6 +15,7 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 import MobileTabBar from '../MobileTabBar.vue';
 import { buildNavigationSections } from '~/lib/dashboardNavigation';
+import { PencilIcon, UserPlusCornerIcon } from '@coolicons/vue';
 
 let flags: readonly FeatureFlagKey[] | 'all';
 let path: string;
@@ -29,10 +30,6 @@ const NuxtLink = defineComponent({
 		() =>
 			h('a', { href: props.to }, slots['default']?.()),
 });
-const Icon = defineComponent({
-	props: { name: { type: String, default: '' } },
-	setup: (props) => () => h('span', { 'data-icon': props.name }),
-});
 const UiModal = defineComponent({
 	props: { open: Boolean, title: { type: String, default: '' } },
 	setup:
@@ -45,7 +42,7 @@ function mountBar(props: { navigationOpen?: boolean } = {}) {
 	return mount(MobileTabBar, {
 		props,
 		global: {
-			components: { NuxtLink, Icon, UiModal },
+			components: { NuxtLink, UiModal },
 			stubs: { teleport: true },
 		},
 	});
@@ -60,8 +57,8 @@ beforeEach(() => {
 	railDrawerOpen = ref(false);
 	answerCount = ref(0);
 	actions = [
-		{ id: 'compose', label: 'Compose email', icon: 'lucide:pencil', run: vi.fn() },
-		{ id: 'contact', label: 'Contact', icon: 'lucide:user-plus', run: vi.fn() },
+		{ id: 'compose', label: 'Compose email', icon: PencilIcon, run: vi.fn() },
+		{ id: 'contact', label: 'Contact', icon: UserPlusCornerIcon, run: vi.fn() },
 	];
 
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));

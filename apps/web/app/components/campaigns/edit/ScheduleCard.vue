@@ -3,6 +3,7 @@
 // delivery time is picked, and a preview of when the send starts.
 import type { Id } from '@owlat/api/dataModel';
 import type { SendTiming } from '~/lib/sendTiming';
+import { CalendarIcon, ClockIcon } from '@coolicons/vue';
 
 defineProps<{
 	isScheduled: boolean;
@@ -33,7 +34,7 @@ const { t } = useI18n();
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<label for="scheduleDate" class="label flex items-center gap-2">
-					<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+					<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('dashboard.campaigns.detail.edit.schedule.date') }}
 				</label>
 				<input
@@ -46,7 +47,7 @@ const { t } = useI18n();
 			</div>
 			<div>
 				<label for="scheduleTime" class="label flex items-center gap-2">
-					<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+					<ClockIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('dashboard.campaigns.detail.edit.schedule.time') }}
 				</label>
 				<input id="scheduleTime" v-model="scheduledTime" type="time" class="input mt-1.5" />

@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 
@@ -106,10 +107,7 @@ async function onRemoveAdjustment(kind: string) {
 		</header>
 
 		<div v-if="isLoading" class="p-6 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 
 		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
@@ -144,7 +142,7 @@ async function onRemoveAdjustment(kind: string) {
 				</div>
 
 				<div v-if="isRefreshing" class="flex items-center gap-2 text-sm text-text-secondary">
-					<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<SpinnerIcon class="w-4 h-4" />
 					{{ t('components.postbox.postboxVoiceProfileCard.learning') }}
 				</div>
 

@@ -55,10 +55,9 @@ beforeEach(() => {
 	sanitizeSpy.mockClear();
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const globalMount = {
 	plugins: [createTestI18n()],
-	components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+	components: { PostboxReaderSkeleton, UiSkeleton },
 	stubs: { PostboxImageBanner: true },
 };
 

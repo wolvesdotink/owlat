@@ -7,6 +7,8 @@
  * otherwise the chip is a plain indicator, for rows whose list does not wire
  * the cancel.
  */
+import { AlarmIcon } from '@coolicons/vue';
+
 const { t, locale } = useI18n();
 
 defineProps<{
@@ -39,7 +41,7 @@ function reminderSetTitle(remindAt: number): string {
 			v-if="followUp.watched && followUp.dueAt"
 			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium flex-shrink-0"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+			<AlarmIcon class="w-3 h-3" />
 			{{ t('components.postbox.postboxThreadRowFollowUp.noReplyYet') }}
 		</span>
 		<span
@@ -49,7 +51,7 @@ function reminderSetTitle(remindAt: number): string {
 			:title="reminderSetTitle(followUp.remindAt)"
 			:aria-label="reminderSetTitle(followUp.remindAt)"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+			<AlarmIcon class="w-3 h-3" />
 		</span>
 	</template>
 	<UiTooltip
@@ -62,7 +64,7 @@ function reminderSetTitle(remindAt: number): string {
 			:aria-label="t('components.postbox.postboxThreadRowFollowUp.dueLabel')"
 			@click="emit('cancel', $event)"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+			<AlarmIcon class="w-3 h-3" />
 			{{ t('components.postbox.postboxThreadRowFollowUp.noReplyYet') }}
 		</button>
 	</UiTooltip>
@@ -73,7 +75,7 @@ function reminderSetTitle(remindAt: number): string {
 			:aria-label="t('components.postbox.postboxThreadRowFollowUp.cancelLabel')"
 			@click="emit('cancel', $event)"
 		>
-			<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+			<AlarmIcon class="w-3 h-3" />
 		</button>
 	</UiTooltip>
 </template>

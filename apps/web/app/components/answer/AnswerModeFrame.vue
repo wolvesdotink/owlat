@@ -31,6 +31,7 @@ import { useAnswerAnchor } from '~/composables/useAnswerAnchor';
 import { useKeyboardInset } from '~/composables/useKeyboardInset';
 import type { AnswerSheetState, AnswerTab } from '~/utils/answerModeLayout';
 import { useShortcutScope } from '~/composables/useShortcutScope';
+import { ArrowLeftIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Where "←" goes, spelled as a place ("Inbox", "Answer queue"). */
@@ -191,7 +192,7 @@ function startReply() {
 				data-testid="answer-back"
 				@click="emit('back')"
 			>
-				<Icon name="lucide:arrow-left" class="size-4" />
+				<ArrowLeftIcon class="size-4" />
 				<span class="max-md:hidden">{{ backLabel }}</span>
 				<!-- A key hint means nothing without a keyboard. -->
 				<kbd class="font-mono text-2xs text-text-tertiary max-md:hidden pointer-coarse:hidden">

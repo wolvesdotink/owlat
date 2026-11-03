@@ -9,6 +9,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { MAIL_CATEGORY_META, type MailCategory } from '~/utils/mailCategory';
 import { usePostboxThreadGroups } from './usePostboxThreadGroups';
+import type { IconComponent } from '@coolicons/vue';
 
 /**
  * Section order (People first, "Everything else" last); icon and label KEY come
@@ -27,7 +28,7 @@ const CATEGORY_SECTION_ORDER = [
 	'other',
 ] as const satisfies readonly MailCategory[];
 
-const CATEGORY_SECTIONS: ReadonlyArray<{ key: MailCategory; label: string; icon: string }> =
+const CATEGORY_SECTIONS: ReadonlyArray<{ key: MailCategory; label: string; icon: IconComponent }> =
 	CATEGORY_SECTION_ORDER.map((key) => ({
 		key,
 		label: MAIL_CATEGORY_META[key].labelKey,

@@ -1,6 +1,21 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArchiveIcon,
+	FileIcon,
+	FileSearchIcon,
+	FileTextIcon,
+	ImageIcon,
+	MusicNoteIcon,
+	PaperclipIcon,
+	PresentationIcon,
+	RobotIcon,
+	TableIcon,
+	UploadIcon,
+	VideoIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -13,20 +28,19 @@ const { data: files, isLoading } = useConvexQuery(api.files.cards.listByContact,
 	limit: 50,
 }));
 
-const mimeIcon = (mimeType: string): string => {
-	if (mimeType.startsWith('image/')) return 'lucide:image';
-	if (mimeType === 'application/pdf') return 'lucide:file-text';
+const mimeIcon = (mimeType: string): IconComponent => {
+	if (mimeType.startsWith('image/')) return ImageIcon;
+	if (mimeType === 'application/pdf') return FileTextIcon;
 	if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv'))
-		return 'lucide:table';
-	if (mimeType.includes('presentation') || mimeType.includes('powerpoint'))
-		return 'lucide:presentation';
-	if (mimeType.includes('word') || mimeType.includes('document')) return 'lucide:file-text';
-	if (mimeType.startsWith('text/')) return 'lucide:file-text';
-	if (mimeType.startsWith('video/')) return 'lucide:video';
-	if (mimeType.startsWith('audio/')) return 'lucide:music';
+		return TableIcon;
+	if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return PresentationIcon;
+	if (mimeType.includes('word') || mimeType.includes('document')) return FileTextIcon;
+	if (mimeType.startsWith('text/')) return FileTextIcon;
+	if (mimeType.startsWith('video/')) return VideoIcon;
+	if (mimeType.startsWith('audio/')) return MusicNoteIcon;
 	if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compressed'))
-		return 'lucide:archive';
-	return 'lucide:file';
+		return ArchiveIcon;
+	return FileIcon;
 };
 
 const sourceLabel = (sourceType: string): string => {
@@ -39,13 +53,13 @@ const sourceLabel = (sourceType: string): string => {
 	return key ? t(key) : sourceType;
 };
 
-const sourceIcon = (sourceType: string): string => {
-	const map: Record<string, string> = {
-		upload: 'lucide:upload',
-		email_attachment: 'lucide:paperclip',
-		agent_generated: 'lucide:bot',
+const sourceIcon = (sourceType: string): IconComponent => {
+	const map: Record<string, IconComponent> = {
+		upload: UploadIcon,
+		email_attachment: PaperclipIcon,
+		agent_generated: RobotIcon,
 	};
-	return map[sourceType] || 'lucide:file';
+	return map[sourceType] || FileIcon;
 };
 </script>
 
@@ -75,13 +89,7 @@ const sourceIcon = (sourceType: string): string => {
 			v-else-if="!files || files.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox
-				icon="lucide:file-search"
-				size="lg"
-				variant="surface"
-				rounded="full"
-				class="mb-3"
-			/>
+			<UiIconBox :icon="FileSearchIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
 				{{ t('components.contacts.contactFilesTab.emptyTitle') }}
 			</p>
@@ -100,7 +108,7 @@ const sourceIcon = (sourceType: string): string => {
 			>
 				<!-- File icon -->
 				<div class="flex-shrink-0 p-2 rounded-lg bg-bg-elevated">
-					<Icon :name="mimeIcon(file.mimeType)" class="w-5 h-5 text-text-tertiary" />
+					<component :is="mimeIcon(file.mimeType)" class="w-5 h-5 text-text-tertiary" />
 				</div>
 
 				<!-- File info -->
@@ -119,7 +127,7 @@ const sourceIcon = (sourceType: string): string => {
 
 				<!-- Source badge -->
 				<div class="flex-shrink-0 flex items-center gap-1.5">
-					<Icon :name="sourceIcon(file.sourceType)" class="w-3 h-3 text-text-tertiary" />
+					<component :is="sourceIcon(file.sourceType)" class="w-3 h-3 text-text-tertiary" />
 					<span class="text-xs text-text-tertiary">{{ sourceLabel(file.sourceType) }}</span>
 				</div>
 

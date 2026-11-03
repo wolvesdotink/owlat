@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { ReplyIcon } from '@coolicons/vue';
 
 export const inboundRepliedEditorModule: ContactActivityEditorModule<'inbound_replied'> = {
 	literal: 'inbound_replied',
 	displayConfig: {
-		icon: 'lucide:reply',
+		icon: ReplyIcon,
 		label: 'Inbound Replied',
 		color: 'text-brand',
 	},

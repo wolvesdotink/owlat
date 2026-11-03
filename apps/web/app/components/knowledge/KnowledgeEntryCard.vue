@@ -65,7 +65,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 					'bg-error/10 text-error': typeVariant(entryType) === 'error',
 				}"
 			>
-				<Icon :name="typeIcon(entryType)" class="w-5 h-5" />
+				<component :is="typeIcon(entryType)" class="w-5 h-5" />
 			</div>
 
 			<!-- Content -->
@@ -114,7 +114,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 
 					<!-- Source -->
 					<div class="flex items-center gap-1 whitespace-nowrap">
-						<Icon :name="sourceIcon(sourceType)" class="w-3 h-3" />
+						<component :is="sourceIcon(sourceType)" class="w-3 h-3" />
 						<span>{{ sourceTypeLabel(sourceType) }}</span>
 					</div>
 

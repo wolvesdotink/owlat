@@ -81,7 +81,7 @@ describe('ChatMessageList.openEditor', () => {
 	it('mounts a row outside the window, opens it once, and keeps it mounted', async () => {
 		const wrapper = mount(ChatMessageList, {
 			props: { messages, currentUserId: ME },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true, ChatMessage: RowStub } },
+			global: { plugins: [createTestI18n()], stubs: { ChatMessage: RowStub } },
 		});
 		const el = wrapper.element as HTMLElement;
 		// Reading the oldest messages: the newest are far out of the window.

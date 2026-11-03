@@ -6,9 +6,11 @@
  * chip) mounts via the `status` / `chips` slots — the single-status rule is
  * the consumer's contract, this component just makes the default path honor it.
  */
+import { MailIcon, type IconComponent } from '@coolicons/vue';
+
 export interface TaskStatusChip {
 	label: string;
-	icon?: string;
+	icon?: IconComponent;
 	tone?: 'brand' | 'warning' | 'error' | 'success' | 'neutral';
 }
 
@@ -20,7 +22,7 @@ const props = withDefaults(
 		name?: string;
 		email?: string;
 		/** Icon shown when there is no avatar identity. */
-		icon?: string;
+		icon?: IconComponent;
 		/** Muted meta line (timestamp etc.) — or use the `meta` slot for rich content. */
 		meta?: string;
 		/** The one roll-up status chip. */
@@ -31,7 +33,9 @@ const props = withDefaults(
 	{
 		name: undefined,
 		email: undefined,
-		icon: 'lucide:mail',
+		// A component default must be a factory: the prop's runtime type is
+		// unresolved, so Vue would call the component itself to make the default.
+		icon: () => MailIcon,
 		meta: undefined,
 		status: undefined,
 		due: undefined,
@@ -72,7 +76,7 @@ const hasAvatar = computed(() => Boolean(props.name || props.email));
 						class="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
 						:class="statusClass"
 					>
-						<Icon v-if="status.icon" :name="status.icon" class="w-3 h-3" aria-hidden="true" />
+						<component v-if="status.icon" :is="status.icon" class="w-3 h-3" aria-hidden="true" />
 						{{ status.label }}
 					</span>
 				</slot>

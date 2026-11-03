@@ -16,6 +16,7 @@ import { useToast } from '@owlat/ui/composables/useToast';
 import { useAnnounce } from '~/composables/useAnnounce';
 import { useSpeechDictation, type DictationError } from '~/composables/useSpeechDictation';
 import { insertDictated, type DictationTarget } from '~/utils/dictation';
+import { MicrophoneIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -112,7 +113,7 @@ const label = computed(() => t('components.dictationButton.label'));
 				@mousedown.prevent
 				@click="toggle"
 			>
-				<Icon name="lucide:mic" class="size-4" aria-hidden="true" />
+				<MicrophoneIcon class="size-4" aria-hidden="true" />
 				<span
 					v-if="listening"
 					class="absolute right-1 top-1 size-1.5 rounded-full bg-error animate-pulse motion-reduce:animate-none"

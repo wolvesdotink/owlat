@@ -14,7 +14,6 @@ import { createTaskCardRegistry } from '~/utils/taskCardRegistry';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	UiSpinner: { template: '<i />' },
 };

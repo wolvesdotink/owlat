@@ -5,6 +5,15 @@ import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 // Explicit imports so the panel's own tests render its notices.
 import DnsRecordDiagnostic from './DnsRecordDiagnostic.vue';
 import SpfMergeNotice from './SpfMergeNotice.vue';
+import {
+	ArrowRightIcon,
+	CheckIcon,
+	ChevronRightIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CopyIcon,
+	LockIcon,
+} from '@coolicons/vue';
 
 interface DNSRecord {
 	type: string;
@@ -259,13 +268,13 @@ const handleCopyValue = () => {
 				data-testid="dns-record-toggle"
 				@click="collapsible ? toggleOpen() : undefined"
 			>
-				<Icon
+				<ChevronRightIcon
 					v-if="collapsible"
-					name="lucide:chevron-right"
 					:class="[
 						'w-4 h-4 shrink-0 text-text-tertiary transition-transform',
 						isOpen && 'rotate-90',
 					]"
+					size="1em"
 				/>
 				<span
 					class="shrink-0 px-2 py-0.5 bg-brand/20 text-brand text-xs font-medium rounded font-mono"
@@ -284,7 +293,7 @@ const handleCopyValue = () => {
 				"
 				data-testid="dns-standard-pill"
 			>
-				<Icon name="lucide:lock" class="w-3 h-3" />
+				<LockIcon class="w-3 h-3" />
 				{{ t('components.domains.dnsRecordPanel.standardPill') }}
 			</span>
 
@@ -306,13 +315,14 @@ const handleCopyValue = () => {
 						:aria-label="t('components.domains.dnsRecordPanel.copyHostOf', { label })"
 						@click="handleCopyHost"
 					>
-						<Icon
-							:name="isCopied(`${label}-host`) ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="isCopied(`${label}-host`) ? CheckIcon : CopyIcon"
 							:class="['w-3.5 h-3.5', isCopied(`${label}-host`) && 'text-success']"
+							size="1em"
 						/>
 					</UiButton>
 				</UiTooltip>
-				<Icon name="lucide:arrow-right" class="w-3 h-3 shrink-0 text-text-tertiary" />
+				<ArrowRightIcon class="w-3 h-3 shrink-0 text-text-tertiary" />
 				<code class="min-w-0 flex-1 truncate" :title="valueDisplay ?? undefined">{{
 					valueDisplay
 				}}</code>
@@ -326,9 +336,10 @@ const handleCopyValue = () => {
 						:aria-label="t('components.domains.dnsRecordPanel.copyValueOf', { label })"
 						@click="handleCopyValue"
 					>
-						<Icon
-							:name="isCopied(`${label}-value`) ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="isCopied(`${label}-value`) ? CheckIcon : CopyIcon"
 							:class="['w-3.5 h-3.5', isCopied(`${label}-value`) && 'text-success']"
+							size="1em"
 						/>
 					</UiButton>
 				</UiTooltip>
@@ -342,8 +353,8 @@ const handleCopyValue = () => {
 				]"
 				data-testid="dns-record-status"
 			>
-				<Icon
-					:name="status === 'verified' ? 'lucide:check-circle-2' : 'lucide:x-circle'"
+				<component
+					:is="status === 'verified' ? CircleCheckIcon : CircleCloseIcon"
 					class="w-3.5 h-3.5"
 				/>
 				{{ t(`components.domains.dnsRecordPanel.status.${status}`) }}
@@ -388,12 +399,8 @@ const handleCopyValue = () => {
 							:aria-label="t('components.domains.dnsRecordPanel.copyHost')"
 							@click="handleCopyHost"
 						>
-							<Icon
-								v-if="isCopied(`${label}-host`)"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+							<CheckIcon v-if="isCopied(`${label}-host`)" class="w-4 h-4 text-success" />
+							<CopyIcon v-else class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 				</div>
@@ -416,12 +423,8 @@ const handleCopyValue = () => {
 							:aria-label="t('components.domains.dnsRecordPanel.copyFullName')"
 							@click="handleCopyFqdn"
 						>
-							<Icon
-								v-if="isCopied(`${label}-fqdn`)"
-								name="lucide:check"
-								class="w-3.5 h-3.5 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
+							<CheckIcon v-if="isCopied(`${label}-fqdn`)" class="w-3.5 h-3.5 text-success" />
+							<CopyIcon v-else class="w-3.5 h-3.5" />
 						</UiButton>
 					</UiTooltip>
 					<span data-testid="dns-provider-hint">
@@ -480,12 +483,8 @@ const handleCopyValue = () => {
 							:aria-label="t('components.domains.dnsRecordPanel.copyValue')"
 							@click="handleCopyValue"
 						>
-							<Icon
-								v-if="isCopied(`${label}-value`)"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+							<CheckIcon v-if="isCopied(`${label}-value`)" class="w-4 h-4 text-success" />
+							<CopyIcon v-else class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 				</div>

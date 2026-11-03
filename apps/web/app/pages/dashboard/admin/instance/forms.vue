@@ -3,6 +3,7 @@ import AddEndpointModal from '~/components/forms/AddEndpointModal.vue';
 import EditEndpointModal from '~/components/forms/EditEndpointModal.vue';
 import EndpointDetails from '~/components/forms/EndpointDetails.vue';
 import EndpointHeader from '~/components/forms/EndpointHeader.vue';
+import { CodeIcon, FileTextIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -107,7 +108,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 		>
 			<template #actions>
 				<UiButton class="gap-2" @click="isAddModalOpen = true">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.instance.forms.newForm') }}
 				</UiButton>
 			</template>
@@ -133,7 +134,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 			v-else-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:file-text" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="FileTextIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.instance.forms.noWorkspaceTitle') }}
 			</p>
@@ -147,7 +148,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 			<!-- Info Card -->
 			<div class="card p-6 bg-brand/5 border-brand/20">
 				<div class="flex gap-4">
-					<UiIconBox icon="lucide:code" size="sm" variant="brand" rounded="lg" />
+					<UiIconBox :icon="CodeIcon" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<h3 class="font-medium text-text-primary mb-1">
 							{{ t('dashboard.admin.instance.forms.infoTitle') }}
@@ -167,13 +168,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 				v-else-if="formsData && formsData.length === 0"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox
-					icon="lucide:file-text"
-					size="xl"
-					variant="surface"
-					rounded="full"
-					class="mb-4"
-				/>
+				<UiIconBox :icon="FileTextIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">
 					{{ t('dashboard.admin.instance.forms.emptyTitle') }}
 				</p>
@@ -181,7 +176,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 					{{ t('dashboard.admin.instance.forms.emptyBody') }}
 				</p>
 				<UiButton class="gap-2 mt-4" @click="isAddModalOpen = true">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.instance.forms.createFirst') }}
 				</UiButton>
 			</div>

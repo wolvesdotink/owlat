@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	BroadcastIcon,
+	ChatCircleIcon,
+	ChatIcon,
+	MailIcon,
+	MobileIcon,
+	WebhookIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -15,12 +24,12 @@ interface ChannelConfigRow {
 
 const channelList = computed<ChannelConfigRow[]>(() => channels.value ?? []);
 
-const CHANNEL_ICONS: Record<string, string> = {
-	email: 'lucide:mail',
-	sms: 'lucide:smartphone',
-	whatsapp: 'lucide:message-circle',
-	generic: 'lucide:webhook',
-	chat: 'lucide:message-square',
+const CHANNEL_ICONS: Record<string, IconComponent> = {
+	email: MailIcon,
+	sms: MobileIcon,
+	whatsapp: ChatCircleIcon,
+	generic: WebhookIcon,
+	chat: ChatIcon,
 };
 
 /** Message keys, resolved per render so the labels follow the active locale. */
@@ -32,8 +41,8 @@ const CHANNEL_LABEL_KEYS: Record<string, string> = {
 	chat: 'components.dashboard.cards.channelHealth.channels.chat',
 };
 
-function getChannelIcon(channel: string): string {
-	return CHANNEL_ICONS[channel] ?? 'lucide:radio';
+function getChannelIcon(channel: string): IconComponent {
+	return CHANNEL_ICONS[channel] ?? BroadcastIcon;
 }
 
 function getChannelName(channel: ChannelConfigRow): string {
@@ -63,7 +72,7 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
-				<UiIconBox icon="lucide:radio" size="sm" variant="surface" />
+				<UiIconBox :icon="BroadcastIcon" size="sm" variant="surface" />
 				<h3 class="text-sm font-semibold text-text-primary">
 					{{ t('components.dashboard.cards.channelHealth.title') }}
 				</h3>
@@ -72,7 +81,7 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="3" :avatar="false" />
 
 			<div v-else-if="channelList.length === 0" class="py-4 text-center">
-				<Icon name="lucide:radio" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
+				<BroadcastIcon class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
 				<p class="text-sm text-text-tertiary">
 					{{ t('components.dashboard.cards.channelHealth.empty') }}
 				</p>
@@ -85,7 +94,7 @@ function getStatusLabel(channel: ChannelConfigRow): string {
 					class="flex items-center justify-between rounded-lg bg-bg-surface px-3 py-2"
 				>
 					<div class="flex items-center gap-2.5">
-						<Icon :name="getChannelIcon(channel.channel)" class="w-4 h-4 text-text-secondary" />
+						<component :is="getChannelIcon(channel.channel)" class="w-4 h-4 text-text-secondary" />
 						<span class="text-sm text-text-primary">{{ getChannelName(channel) }}</span>
 					</div>
 					<UiBadge :variant="getStatusVariant(channel)" dot>

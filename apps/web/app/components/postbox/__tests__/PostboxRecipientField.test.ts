@@ -31,7 +31,6 @@ beforeAll(() => {
 	vi.stubGlobal('useConvexQuery', () => queryResult([]));
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const avatarStub = { props: ['email', 'name'], template: '<span />' };
 
 function mountField(props: Record<string, unknown> = {}) {
@@ -44,7 +43,7 @@ function mountField(props: Record<string, unknown> = {}) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, UiAvatar: avatarStub },
+			stubs: { UiAvatar: avatarStub },
 		},
 	});
 }

@@ -9,6 +9,7 @@ import type { LanguageOption } from '~/data/languageOptions';
 import type { TranslationCellStatus } from '~/composables/useTranslationDrafts';
 import type { TranslatableRow } from '~/utils/translationRows';
 import TranslationCell from './Cell.vue';
+import { GlobeIcon, PlusIcon, SparklesIcon, TrashIcon } from '@coolicons/vue';
 
 defineProps<{
 	rows: TranslatableRow[];
@@ -83,7 +84,7 @@ const addLanguageDropdownOpen = ref(false);
 											:aria-label="t('components.translation.manager.autoTranslateTitle')"
 											@click="emit('autoTranslate', lang)"
 										>
-											<Icon name="lucide:sparkles" class="w-4 h-4" />
+											<SparklesIcon class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 									<UiSpinner v-else size="xs" />
@@ -93,7 +94,7 @@ const addLanguageDropdownOpen = ref(false);
 											:aria-label="t('components.translation.manager.removeLanguageTitle')"
 											@click="emit('removeLanguage', lang)"
 										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
+											<TrashIcon class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 								</div>
@@ -108,7 +109,7 @@ const addLanguageDropdownOpen = ref(false);
 							>
 								<template #trigger>
 									<UiButton variant="outline" size="sm" :disabled="isSaving">
-										<Icon name="lucide:plus" class="w-4 h-4" />
+										<PlusIcon class="w-4 h-4" />
 										{{ t('components.translation.manager.addLanguage') }}
 									</UiButton>
 								</template>
@@ -118,7 +119,7 @@ const addLanguageDropdownOpen = ref(false);
 									:key="lang.value"
 									@click="emit('addLanguage', lang.value)"
 								>
-									<Icon name="lucide:globe" class="w-4 h-4" />
+									<GlobeIcon class="w-4 h-4" />
 									{{
 										t('components.translation.manager.languageOption', {
 											label: t(lang.label),

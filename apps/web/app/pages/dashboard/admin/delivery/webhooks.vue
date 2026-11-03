@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { PlusIcon, ShieldIcon, WebhookIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -181,7 +182,7 @@ async function handleGuardSave() {
 		>
 			<template #actions>
 				<UiButton class="gap-2" @click="openCreateModal">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.webhooks.create') }}
 				</UiButton>
 			</template>
@@ -190,7 +191,7 @@ async function handleGuardSave() {
 		<!-- Info Box -->
 		<div id="webhook-signing" class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">
 			<div class="flex items-start gap-3">
-				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+				<ShieldIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm text-text-primary font-medium">
 						{{ t('dashboard.admin.delivery.webhooks.secure.title') }}
@@ -222,7 +223,7 @@ async function handleGuardSave() {
 			     names the surface rather than claiming there is nothing here. -->
 			<UiEmptyState
 				v-else-if="!hasActiveOrganization"
-				icon="lucide:webhook"
+				:icon="WebhookIcon"
 				:eyebrow="t('dashboard.admin.delivery.webhooks.title')"
 				:title="t('dashboard.admin.delivery.webhooks.noWorkspace.title')"
 				:description="t('dashboard.admin.delivery.webhooks.noWorkspace.description')"
@@ -234,13 +235,13 @@ async function handleGuardSave() {
 			<!-- Empty State (no webhooks) -->
 			<UiEmptyState
 				v-else-if="!isLoading && (!webhooks || webhooks.length === 0)"
-				icon="lucide:webhook"
+				:icon="WebhookIcon"
 				:title="t('dashboard.admin.delivery.webhooks.empty.title')"
 				:description="t('dashboard.admin.delivery.webhooks.empty.description')"
 			>
 				<template #action>
 					<UiButton class="gap-2" @click="openCreateModal">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.delivery.webhooks.create') }}
 					</UiButton>
 				</template>

@@ -125,8 +125,7 @@ The report goes to stdout and to `node_modules/.cache/owlat-perf/reports/`
   scrolling into view (`fixture/nuxtComponents.ts`).
 - The Team Inbox scenario rebuilds the page's list around the real rows; the
   page itself needs its signed-in queries.
-- `Icon` is a stand-in `<span>`, as @nuxt/icon's CSS mode renders. Fonts are the
-  system fallback, because @nuxt/fonts is a Nuxt module.
+- Fonts are the system fallback, because @nuxt/fonts is a Nuxt module.
 - vue-i18n compiles messages at runtime here; the app precompiles them.
 - Authenticated full-route scenarios are out of scope. They depend on how
   route fixtures get delivered, which is still undecided.

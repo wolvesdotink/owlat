@@ -16,6 +16,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatCompactFileSize } from '~/utils/formatters';
+import { FileIcon } from '@coolicons/vue';
 
 export interface PickedFile {
 	source: 'semanticFile' | 'mailAttachment';
@@ -130,11 +131,7 @@ const searchId = useId();
 							data-testid="file-picker-row"
 							@click="pick(row.ref)"
 						>
-							<Icon
-								name="lucide:file"
-								class="size-4 shrink-0 text-text-tertiary"
-								aria-hidden="true"
-							/>
+							<FileIcon class="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 							<span class="min-w-0 flex-1 truncate text-text-primary">{{ row.label }}</span>
 							<span class="shrink-0 text-xs text-text-tertiary">{{ row.detail }}</span>
 						</button>

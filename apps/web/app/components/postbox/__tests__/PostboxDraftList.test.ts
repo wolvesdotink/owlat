@@ -45,7 +45,7 @@ const draft = (over: Record<string, unknown>) => ({
 function mountList() {
 	return mount(PostboxDraftList, {
 		props: { mailboxId: 'mbx_1' as never },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

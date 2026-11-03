@@ -44,7 +44,7 @@ function mountActions(rows = contacts) {
 		props: { mailboxId: 'mailbox-1' as never, contacts: rows },
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiButton, UiTooltip: passthrough, Icon: passthrough },
+			components: { UiButton, UiTooltip: passthrough },
 		},
 	});
 }

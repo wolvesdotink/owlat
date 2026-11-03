@@ -51,7 +51,7 @@ function render() {
 			previewLabel: (name: string) => `Preview ${name}`,
 			downloadLabel: (name: string) => `Download ${name}`,
 		},
-		global: { stubs: { Icon: true } },
+		global: {},
 	});
 }
 

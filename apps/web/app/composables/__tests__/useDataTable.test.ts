@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { useDebouncedSearch } from '../useDebouncedSearch';
 import { useDataTable } from '../useDataTable';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 // useDataTable composes useDebouncedSearch, which Nuxt auto-imports at runtime.
 beforeAll(() => {
@@ -68,17 +69,17 @@ describe('useDataTable getSortIcon', () => {
 		});
 
 		// Active default column shows the desc chevron; the other shows nothing.
-		expect(getSortIcon('createdAt')).toBe('lucide:chevron-down');
+		expect(getSortIcon('createdAt')).toBe(ChevronDownIcon);
 		expect(getSortIcon('name')).toBeNull();
 
 		// Toggling to a new (non-date) column activates it ascending.
 		toggleSort('name');
-		expect(getSortIcon('name')).toBe('lucide:chevron-up');
+		expect(getSortIcon('name')).toBe(ChevronUpIcon);
 		expect(getSortIcon('createdAt')).toBeNull();
 
 		// Toggling the active column flips the direction.
 		toggleSort('name');
-		expect(getSortIcon('name')).toBe('lucide:chevron-down');
+		expect(getSortIcon('name')).toBe(ChevronDownIcon);
 	});
 });
 

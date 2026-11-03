@@ -10,6 +10,8 @@ import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { decodeAudienceValue, encodeAudienceValue } from '~/utils/campaignSetupReadiness';
+import { ReloadIcon, UsersIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type AudienceType = 'topic' | 'segment';
 
@@ -178,7 +180,7 @@ const nonEligibleRecipients = computed(() => {
 		</div>
 
 		<label for="audiencePicker" class="label flex items-center gap-2">
-			<Icon name="lucide:users" class="w-4 h-4 text-text-tertiary" />
+			<UsersIcon class="w-4 h-4 text-text-tertiary" />
 			{{ t(`${prefix}.sendTo`) }}
 			<span class="text-error">*</span>
 		</label>
@@ -207,7 +209,7 @@ const nonEligibleRecipients = computed(() => {
 			class="mt-1.5"
 			:message="t(`${prefix}.loadFailed`)"
 			:action-label="t('common.tryAgain')"
-			action-icon="lucide:refresh-cw"
+			:action-icon="ReloadIcon"
 			data-testid="audience-load-failed"
 			@action="$emit('retry')"
 		/>
@@ -260,11 +262,7 @@ const nonEligibleRecipients = computed(() => {
 				data-testid="audience-count-status"
 				role="status"
 			>
-				<Icon
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
-					aria-hidden="true"
-				/>
+				<SpinnerIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ t(`${prefix}.countCounting`) }}
 			</p>
 			<p

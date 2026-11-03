@@ -8,6 +8,17 @@
  */
 
 /** The set of statuses an automation record can actually have. */
+import {
+	BroadcastIcon,
+	ListPlusIcon,
+	PauseIcon,
+	PencilIcon,
+	PlayIcon,
+	UserPlusCornerIcon,
+	UserSettingsCornerIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type AutomationStatus = 'draft' | 'active' | 'paused';
 
 /** The set of triggers that can start an automation. */
@@ -24,7 +35,7 @@ export type AutomationTriggerType =
  */
 interface AutomationStatusBadge {
 	color: string;
-	icon: string;
+	icon: IconComponent;
 	/** A message key. */
 	label: string;
 }
@@ -32,7 +43,7 @@ interface AutomationStatusBadge {
 interface AutomationTriggerBadge {
 	/** A message key. */
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	color: string;
 	bgColor: string;
 }
@@ -40,17 +51,17 @@ interface AutomationTriggerBadge {
 const STATUS_BADGES: Record<AutomationStatus, AutomationStatusBadge> = {
 	draft: {
 		color: 'bg-text-tertiary/10 text-text-tertiary',
-		icon: 'lucide:pencil',
+		icon: PencilIcon,
 		label: 'shared.useAutomationBadges.status.draft',
 	},
 	active: {
 		color: 'bg-success/10 text-success',
-		icon: 'lucide:play',
+		icon: PlayIcon,
 		label: 'shared.useAutomationBadges.status.active',
 	},
 	paused: {
 		color: 'bg-warning/10 text-warning',
-		icon: 'lucide:pause',
+		icon: PauseIcon,
 		label: 'shared.useAutomationBadges.status.paused',
 	},
 };
@@ -58,25 +69,25 @@ const STATUS_BADGES: Record<AutomationStatus, AutomationStatusBadge> = {
 const TRIGGER_BADGES: Record<AutomationTriggerType, AutomationTriggerBadge> = {
 	contact_created: {
 		label: 'shared.useAutomationBadges.triggers.contactCreated',
-		icon: 'lucide:user-plus',
+		icon: UserPlusCornerIcon,
 		color: 'text-brand',
 		bgColor: 'bg-brand/10',
 	},
 	contact_updated: {
 		label: 'shared.useAutomationBadges.triggers.contactUpdated',
-		icon: 'lucide:user-cog',
+		icon: UserSettingsCornerIcon,
 		color: 'text-brand',
 		bgColor: 'bg-brand/10',
 	},
 	event_received: {
 		label: 'shared.useAutomationBadges.triggers.eventReceived',
-		icon: 'lucide:radio',
+		icon: BroadcastIcon,
 		color: 'text-warning',
 		bgColor: 'bg-warning/10',
 	},
 	topic_subscribed: {
 		label: 'shared.useAutomationBadges.triggers.topicSubscribed',
-		icon: 'lucide:list-plus',
+		icon: ListPlusIcon,
 		color: 'text-success',
 		bgColor: 'bg-success/10',
 	},

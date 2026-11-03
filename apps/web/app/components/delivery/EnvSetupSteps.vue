@@ -18,6 +18,8 @@ import {
 	buildEnvCliCommands,
 	ENV_CONNECTION_POLL_MS,
 } from '~/utils/deliveryEnvSnippet';
+import { CheckIcon, CircleCheckIcon, CopyIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(
 	defineProps<{
@@ -92,7 +94,7 @@ onBeforeUnmount(stopPolling);
 			role="status"
 			data-testid="env-setup-connected"
 		>
-			<Icon name="lucide:check-circle-2" class="h-4 w-4" />
+			<CircleCheckIcon class="h-4 w-4" />
 			{{ connectedLabel ?? t('components.delivery.envSetupSteps.connected') }}
 		</p>
 
@@ -109,8 +111,8 @@ onBeforeUnmount(stopPolling);
 						data-testid="env-setup-copy-env"
 						@click="copy(envSnippet, 'env-setup-env')"
 					>
-						<Icon
-							:name="isCopied('env-setup-env') ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="isCopied('env-setup-env') ? CheckIcon : CopyIcon"
 							class="h-3.5 w-3.5"
 							:class="isCopied('env-setup-env') ? 'text-success' : ''"
 						/>
@@ -138,8 +140,8 @@ onBeforeUnmount(stopPolling);
 						data-testid="env-setup-copy-cli"
 						@click="copy(cliCommands, 'env-setup-cli')"
 					>
-						<Icon
-							:name="isCopied('env-setup-cli') ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="isCopied('env-setup-cli') ? CheckIcon : CopyIcon"
 							class="h-3.5 w-3.5"
 							:class="isCopied('env-setup-cli') ? 'text-success' : ''"
 						/>
@@ -160,11 +162,7 @@ onBeforeUnmount(stopPolling);
 					aria-live="polite"
 					data-testid="env-setup-waiting"
 				>
-					<Icon
-						name="lucide:loader-2"
-						class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-						aria-hidden="true"
-					/>
+					<SpinnerIcon class="h-3.5 w-3.5" aria-hidden="true" />
 					{{ t('components.delivery.envSetupSteps.waiting') }}
 				</p>
 				<UiButton

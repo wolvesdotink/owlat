@@ -28,6 +28,7 @@ import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
 import FeatureToggleSwitch from '~/components/settings/FeatureToggleSwitch.vue';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { groupFeatureFlags, type FeatureGroup, type FeatureGroupKey } from '~/utils/featureGroups';
+import { ChevronDownIcon, ChevronRightIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -164,7 +165,7 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 							v-if="groupNeedsConfig(group)"
 							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
 						>
-							<Icon name="lucide:alert-triangle" class="w-3 h-3" />
+							<TriangleWarningIcon class="w-3 h-3" />
 							{{ t('components.settings.featurePackList.needsSetup') }}
 						</span>
 					</div>
@@ -178,8 +179,8 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 						:data-testid="`feature-customize-${group.key}`"
 						@click="toggleOpen(group.key)"
 					>
-						<Icon
-							:name="open.has(group.key) ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+						<component
+							:is="open.has(group.key) ? ChevronDownIcon : ChevronRightIcon"
 							class="w-4 h-4"
 						/>
 						{{
@@ -223,7 +224,7 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 										})
 									"
 								>
-									<Icon name="lucide:alert-triangle" class="w-3 h-3" />
+									<TriangleWarningIcon class="w-3 h-3" />
 									{{ t('components.settings.featurePackList.needsSetup') }}
 								</span>
 							</div>

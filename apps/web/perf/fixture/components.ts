@@ -4,11 +4,11 @@
  * `chat/ChatMessage.vue` stays `ChatMessage`), because their templates refer
  * to each other by those names.
  *
- * Two stand-ins, both for Nuxt modules: `Icon` (@nuxt/icon's CSS mode renders
- * one sized `<span>` per icon, and so does the stand-in, with the same classes)
- * and `NuxtLink` (./nuxtComponents.ts).
+ * One stand-in, for a Nuxt module: `NuxtLink` (./nuxtComponents.ts). Icons
+ * are the real coolicons components the templates import, so every scenario
+ * pays for the same SVG the app renders.
  */
-import { defineComponent, h, type App, type Component } from 'vue';
+import type { App, Component } from 'vue';
 import { NuxtLink } from './nuxtComponents';
 
 const modules = import.meta.glob<Component>(
@@ -43,16 +43,7 @@ export function component(name: string): Component {
 	return found;
 }
 
-const Icon = defineComponent({
-	name: 'Icon',
-	props: { name: { type: String, required: true } },
-	setup(props) {
-		return () => h('span', { class: 'iconify', 'data-icon': props.name, 'aria-hidden': 'true' });
-	},
-});
-
 export function registerComponents(app: App): void {
 	for (const [name, registered] of registry) app.component(name, registered);
-	app.component('Icon', Icon);
 	app.component('NuxtLink', NuxtLink);
 }

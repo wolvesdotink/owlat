@@ -104,7 +104,7 @@
 			"dependsOn": ["transit"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
-				// check-dead-tokens.sh and check-icon-names.sh scan the UI layer
+				// check-dead-tokens.sh scans the UI layer
 				"$TURBO_ROOT$/packages/ui/**",
 				// check-localized-text.sh execs the shared ratchet runner
 				"$TURBO_ROOT$/scripts/ratchet.sh",

@@ -46,7 +46,6 @@ function mountStream(props: Record<string, unknown>, slots: Record<string, unkno
 							}),
 				}),
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

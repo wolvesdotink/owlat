@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { BrainIcon, RouteIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -83,7 +84,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 <template>
 	<UiCard v-if="strategyCatalog" class="mt-6">
 		<div class="mb-5 flex items-start gap-3">
-			<UiIconBox icon="lucide:route" size="sm" variant="surface" />
+			<UiIconBox :icon="RouteIcon" size="sm" variant="surface" />
 			<div>
 				<h2 class="font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyLearningControls.strategiesTitle') }}
@@ -113,7 +114,7 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 
 	<UiCard class="mt-6">
 		<div class="mb-5 flex items-start gap-3">
-			<UiIconBox icon="lucide:brain" size="sm" variant="surface" />
+			<UiIconBox :icon="BrainIcon" size="sm" variant="surface" />
 			<div>
 				<h2 class="font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyLearningControls.memoryTitle') }}

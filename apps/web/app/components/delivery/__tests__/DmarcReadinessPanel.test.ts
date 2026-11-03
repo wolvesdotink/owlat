@@ -11,7 +11,6 @@ beforeAll(() => {
 const global = {
 	plugins: [createTestI18n()],
 	stubs: {
-		Icon: true,
 		UiIconBox: true,
 		UiProgressBar: true,
 		UiBadge: { template: '<span data-testid="badge"><slot /></span>' },

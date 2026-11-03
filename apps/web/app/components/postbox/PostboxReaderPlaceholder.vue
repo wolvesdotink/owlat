@@ -7,6 +7,8 @@
  *     "no longer available" with the way back to the folder;
  *   - nothing is open: "Select a message".
  */
+import { MailOpenIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	error: Error | null;
 	notFound: boolean;
@@ -30,7 +32,7 @@ const { t } = useI18n();
 	</PostboxMessageNotFound>
 	<div v-else class="pbx-reader-swap h-full flex items-center justify-center">
 		<div class="text-center">
-			<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+			<MailOpenIcon class="w-12 h-12 mx-auto text-text-tertiary" :stroke-width="1.5" />
 			<p class="mt-4 text-text-secondary">
 				{{ t('components.postbox.postboxLayout.selectMessage') }}
 			</p>

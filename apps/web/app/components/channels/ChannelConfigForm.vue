@@ -4,6 +4,8 @@ import { api } from '@owlat/api';
 // `unifiedMessageChannelValidator` must break the exhaustive Records below
 // rather than silently render a channel with no credential fields.
 import type { ChannelKind } from '~/utils/channelKinds';
+import { CircleInfoIcon, CircleWarningIcon, EyeIcon, EyeOffIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	channel: ChannelKind;
@@ -270,10 +272,7 @@ async function handleSave() {
 						class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="toggleFieldVisibility(field.key)"
 					>
-						<Icon
-							:name="visibleFields[field.key] ? 'lucide:eye-off' : 'lucide:eye'"
-							class="w-4 h-4"
-						/>
+						<component :is="visibleFields[field.key] ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
 					</button>
 				</div>
 				<p v-if="field.hint" class="text-xs text-text-tertiary mt-1">
@@ -287,7 +286,7 @@ async function handleSave() {
 			v-else
 			class="flex items-start gap-3 rounded-lg bg-brand-subtle/50 border border-brand/20 p-4"
 		>
-			<Icon name="lucide:info" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+			<CircleInfoIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
 				{{ channelInfoMessage }}
 			</p>
@@ -298,7 +297,7 @@ async function handleSave() {
 			v-if="formError"
 			class="flex items-start gap-3 rounded-lg bg-error-subtle border border-error/20 p-4"
 		>
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ formError }}</p>
 		</div>
 
@@ -308,11 +307,7 @@ async function handleSave() {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
 				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>

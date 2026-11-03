@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { clarificationTrust, type ClarificationProvenance } from '~/utils/clarificationLocale';
+import { ShieldCheckIcon } from '@coolicons/vue';
 
 /**
  * The one trust line under a card of clarification questions: they were
@@ -29,7 +30,7 @@ const line = computed(() => {
 
 <template>
 	<p v-if="line" class="flex items-start gap-1.5 text-2xs text-text-tertiary" :data-testid="testId">
-		<Icon name="lucide:shield-check" class="mt-px size-3 shrink-0" aria-hidden="true" />
+		<ShieldCheckIcon class="mt-px size-3 shrink-0" aria-hidden="true" />
 		<span>{{ line }}</span>
 	</p>
 </template>

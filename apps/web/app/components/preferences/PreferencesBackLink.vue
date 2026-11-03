@@ -14,6 +14,8 @@
  * block again. The default label is resolved in setup rather than through
  * `withDefaults`, because a prop default is hoisted out of `t()`'s reach.
  */
+import { ArrowLeftIcon } from '@coolicons/vue';
+
 const props = withDefaults(defineProps<{ to?: string; label?: string }>(), {
 	to: '/dashboard/preferences',
 	label: undefined,
@@ -31,7 +33,7 @@ const resolvedLabel = computed(
 		:to="to"
 		class="text-sm text-text-secondary inline-flex items-center gap-1 hover:text-text-primary mb-4"
 	>
-		<Icon name="lucide:arrow-left" class="w-3.5 h-3.5" />
+		<ArrowLeftIcon class="w-3.5 h-3.5" />
 		{{ resolvedLabel }}
 	</NuxtLink>
 </template>

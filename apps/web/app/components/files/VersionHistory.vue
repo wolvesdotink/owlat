@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { DownloadIcon, HistoryIcon } from '@coolicons/vue';
+
 defineProps<{
 	versions: Array<{
 		_id: string;
@@ -91,7 +93,7 @@ const { t } = useI18n();
 							:aria-label="t('components.files.versionHistory.download')"
 							@click.stop
 						>
-							<Icon name="lucide:download" class="w-4 h-4" />
+							<DownloadIcon class="w-4 h-4" />
 						</a>
 					</UiTooltip>
 				</div>
@@ -109,7 +111,7 @@ const { t } = useI18n();
 				{{ t('components.files.versionHistory.olderFailed') }}
 			</p>
 			<UiButton variant="ghost" size="sm" :loading="loadingOlder" @click="emit('loadOlder')">
-				<Icon name="lucide:history" class="w-4 h-4 mr-2" />
+				<HistoryIcon class="w-4 h-4 mr-2" />
 				{{ t('components.files.versionHistory.showOlder') }}
 			</UiButton>
 		</div>

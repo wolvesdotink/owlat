@@ -14,6 +14,7 @@ import { formatRelativeTime } from '~/utils/formatters';
 import type { NoteMentionCandidate } from '~/utils/threadNotes';
 import type { NoteEntry } from '~/utils/teamStream';
 import TeamReactionPicker from './TeamReactionPicker.vue';
+import { LockIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -78,7 +79,7 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 				class="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-subtle px-2 py-px text-2xs font-medium text-warning"
 				data-testid="team-note-internal"
 			>
-				<Icon name="lucide:lock" class="size-3" aria-hidden="true" />
+				<LockIcon class="size-3" aria-hidden="true" />
 				{{ t('components.team.note.internal') }}
 			</span>
 			<span
@@ -109,7 +110,7 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 						data-testid="team-note-edit"
 						@click="editing = true"
 					>
-						<Icon name="lucide:pencil" class="size-3.5" />
+						<PencilIcon class="size-3.5" />
 					</button>
 				</UiTooltip>
 				<UiTooltip v-if="canDelete" :text="t('components.team.note.delete')">
@@ -120,7 +121,7 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 						data-testid="team-note-delete"
 						@click="emit('delete')"
 					>
-						<Icon name="lucide:trash-2" class="size-3.5" />
+						<TrashIcon class="size-3.5" />
 					</button>
 				</UiTooltip>
 			</span>

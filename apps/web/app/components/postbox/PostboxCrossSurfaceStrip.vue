@@ -15,6 +15,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { UsersIcon } from '@coolicons/vue';
 
 const props = defineProps<{ messageId: string }>();
 
@@ -53,7 +54,7 @@ const detail = computed(() => {
 		v-if="data"
 		class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm"
 	>
-		<Icon name="lucide:users" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+		<UsersIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 		<span class="text-text-secondary">{{
 			t('components.postbox.postboxCrossSurfaceStrip.alsoInTeamInbox')
 		}}</span>

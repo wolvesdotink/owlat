@@ -17,10 +17,6 @@ import { sentPreviewSrcdoc } from '~/utils/postboxSentPreview';
  */
 
 vi.mock('@tailwindcss/vite', () => ({ default: () => [] }));
-vi.mock('../../scripts/uiLayerIcons', () => ({
-	uiLayerIconNames: () => [],
-	ICON_SCAN_EXCLUDE: [],
-}));
 
 const here = dirname(fileURLToPath(import.meta.url));
 

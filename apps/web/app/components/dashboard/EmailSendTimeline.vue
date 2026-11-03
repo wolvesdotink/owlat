@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { BracesIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleCloseIcon, ClockIcon, CopyIcon, CursorClickIcon, ExternalLinkIcon, EyeIcon, HashIcon, PaperPlaneIcon, TriangleWarningIcon, type IconComponent } from '@coolicons/vue';
+
 interface TimelineEvent {
 	key: string;
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	colorClasses: string;
 	timestamp: number | undefined;
 	reached: boolean;
@@ -33,14 +35,14 @@ const props = defineProps<{
 	showQueued?: boolean;
 }>();
 
-const statusConfig: Record<string, { icon: string; color: string }> = {
-	queued: { icon: 'lucide:clock', color: 'bg-bg-surface text-text-secondary' },
-	sent: { icon: 'lucide:send', color: 'bg-brand/10 text-brand' },
-	delivered: { icon: 'lucide:check-circle-2', color: 'bg-success/10 text-success' },
-	opened: { icon: 'lucide:eye', color: 'bg-brand/10 text-brand' },
-	clicked: { icon: 'lucide:mouse-pointer-click', color: 'bg-warning/10 text-warning' },
-	bounced: { icon: 'lucide:x-circle', color: 'bg-error/10 text-error' },
-	complained: { icon: 'lucide:alert-triangle', color: 'bg-error/10 text-error' },
+const statusConfig: Record<string, { icon: IconComponent; color: string }> = {
+	queued: { icon: ClockIcon, color: 'bg-bg-surface text-text-secondary' },
+	sent: { icon: PaperPlaneIcon, color: 'bg-brand/10 text-brand' },
+	delivered: { icon: CircleCheckIcon, color: 'bg-success/10 text-success' },
+	opened: { icon: EyeIcon, color: 'bg-brand/10 text-brand' },
+	clicked: { icon: CursorClickIcon, color: 'bg-warning/10 text-warning' },
+	bounced: { icon: CircleCloseIcon, color: 'bg-error/10 text-error' },
+	complained: { icon: TriangleWarningIcon, color: 'bg-error/10 text-error' },
 };
 
 const { t, locale } = useI18n();
@@ -217,7 +219,7 @@ const copyMessageId = async () => {
 							class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
 							:class="event.reached ? event.colorClasses : 'bg-bg-surface text-text-tertiary'"
 						>
-							<Icon :name="event.icon" class="w-5 h-5" />
+							<component :is="event.icon" class="w-5 h-5" />
 						</div>
 
 						<!-- Content -->
@@ -260,8 +262,7 @@ const copyMessageId = async () => {
 					:key="index"
 					class="flex items-start gap-3 text-sm"
 				>
-					<Icon
-						name="lucide:external-link"
+					<ExternalLinkIcon
 						class="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0"
 					/>
 					<div class="min-w-0">
@@ -284,7 +285,7 @@ const copyMessageId = async () => {
 		<!-- Error Details -->
 		<div v-if="errorMessage || errorCode" class="card p-6 bg-error-subtle border-error/20">
 			<div class="flex items-center gap-3 mb-3">
-				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error" />
+				<TriangleWarningIcon class="w-5 h-5 text-error" />
 				<h3 class="text-lg font-medium text-error">{{ t('components.dashboard.emailSendTimeline.errorDetails') }}</h3>
 			</div>
 			<div class="space-y-2 text-sm">
@@ -301,14 +302,14 @@ const copyMessageId = async () => {
 		<div v-if="providerMessageId" class="card p-4">
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-3 min-w-0">
-					<Icon name="lucide:hash" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<HashIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					<div class="min-w-0">
 						<p class="text-xs text-text-tertiary">{{ t('components.dashboard.emailSendTimeline.providerMessageId') }}</p>
 						<p class="text-sm text-text-secondary font-mono truncate">{{ providerMessageId }}</p>
 					</div>
 				</div>
 				<UiButton variant="secondary" class="text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
-					<Icon :name="messageIdCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
+					<component :is="messageIdCopied ? CheckIcon : CopyIcon" class="w-3.5 h-3.5" />
 					{{ messageIdCopied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
 			</div>
@@ -321,11 +322,10 @@ const copyMessageId = async () => {
 				@click="showDataVariables = !showDataVariables"
 			>
 				<div class="flex items-center gap-3">
-					<Icon name="lucide:braces" class="w-5 h-5 text-text-tertiary" />
+					<BracesIcon class="w-5 h-5 text-text-tertiary" />
 					<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.emailSendTimeline.dataVariables') }}</h3>
 				</div>
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					class="w-5 h-5 text-text-tertiary transition-transform"
 					:class="{ 'rotate-180': showDataVariables }"
 				/>

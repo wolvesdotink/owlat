@@ -3,6 +3,8 @@
 // trigger, step count), and why it did not activate when the open step's
 // edits could not be saved first.
 import { getTriggerInfo } from '~/composables/automations/editorDisplay';
+import { CircleWarningIcon, PlayIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	open: boolean;
@@ -40,7 +42,7 @@ const { t } = useI18n();
 						<div
 							class="w-12 h-12 mx-auto mb-4 rounded-full bg-brand/10 flex items-center justify-center"
 						>
-							<Icon name="lucide:play" class="w-6 h-6 text-brand" />
+							<PlayIcon class="w-6 h-6 text-brand" />
 						</div>
 
 						<!-- Title -->
@@ -58,7 +60,7 @@ const { t } = useI18n();
 							role="alert"
 							class="flex items-start gap-2 p-3 mb-6 rounded-lg bg-error/10 border border-error/20 text-sm text-error"
 						>
-							<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5" />
+							<CircleWarningIcon class="w-4 h-4 shrink-0 mt-0.5" />
 							<span>{{ t('dashboard.automations.detail.edit.activateDialog.saveFailed') }}</span>
 						</div>
 
@@ -103,12 +105,8 @@ const { t } = useI18n();
 								{{ t('common.cancel') }}
 							</UiButton>
 							<UiButton class="flex-1 gap-2" :disabled="isActivating" @click="emit('confirm')">
-								<Icon
-									v-if="isActivating"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:play" class="w-4 h-4" />
+								<SpinnerIcon v-if="isActivating" class="w-4 h-4" />
+								<PlayIcon v-else class="w-4 h-4" />
 								{{
 									isActivating
 										? t('dashboard.automations.detail.edit.activating')

@@ -25,7 +25,7 @@ beforeEach(() => {
 function mountField(field: Field, props: Record<string, unknown> = {}) {
 	return mount(PluginSettingsField, {
 		props: { field, modelValue: props.modelValue ?? '', ...props },
-		global: { plugins: [createTestI18n()], components: { UiSwitch }, stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()], components: { UiSwitch } },
 	});
 }
 

@@ -7,9 +7,10 @@
  * own sentence about what it will show.
  */
 import { DELIVERY_MIGRATE_ROUTE } from '~/utils/deliveryAdvancedEmpty';
+import { ArrowLeftRightIcon, type IconComponent } from '@coolicons/vue';
 
 defineProps<{
-	icon: string;
+	icon: IconComponent;
 	title: string;
 	description: string;
 }>();
@@ -26,7 +27,7 @@ const { t } = useI18n();
 					variant="secondary"
 					data-testid="delivery-advanced-empty-migrate"
 				>
-					<template #iconLeft><Icon name="lucide:arrow-right-left" class="h-4 w-4" /></template>
+					<template #iconLeft><ArrowLeftRightIcon class="h-4 w-4" /></template>
 					{{ t('components.delivery.advancedEmptyState.migrateAction') }}
 				</UiButton>
 			</template>

@@ -19,6 +19,14 @@ import { deriveTransportDisplay } from '~/utils/transportState';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	CircleInfoIcon,
+	CircleWarningIcon,
+	PaperPlaneIcon,
+	RouteIcon,
+	Slider1Icon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -69,13 +77,13 @@ const infrastructureChecks = computed(() => {
 	<UiCard padding="none" overflow="hidden">
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-6 flex items-center gap-3 text-text-tertiary">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-5 h-5" />
 			<span class="text-sm">{{ t('components.delivery.transportCard.loading') }}</span>
 		</div>
 
 		<!-- Error (e.g. transiently unavailable) -->
 		<div v-else-if="error" class="p-6 flex items-start gap-3">
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning mt-0.5 shrink-0" />
+			<CircleWarningIcon class="w-5 h-5 text-warning mt-0.5 shrink-0" />
 			<p class="text-sm text-text-secondary">
 				{{ t('components.delivery.transportCard.error') }}
 			</p>
@@ -85,7 +93,7 @@ const infrastructureChecks = computed(() => {
 			<!-- Headline: transport + state chips -->
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-start gap-3 min-w-0">
-					<UiIconBox icon="lucide:send" size="md" variant="brand" rounded="lg" />
+					<UiIconBox :icon="PaperPlaneIcon" size="md" variant="brand" rounded="lg" />
 					<div class="min-w-0">
 						<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
 							{{ t('components.delivery.transportCard.eyebrow') }}
@@ -142,7 +150,7 @@ const infrastructureChecks = computed(() => {
 				v-if="!display.isConfigured"
 				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
 			>
-				<Icon name="lucide:info" class="w-4 h-4 text-warning mt-0.5 shrink-0" />
+				<CircleInfoIcon class="w-4 h-4 text-warning mt-0.5 shrink-0" />
 				<span>{{ t('components.delivery.transportCard.notConfigured') }}</span>
 			</p>
 
@@ -151,14 +159,14 @@ const infrastructureChecks = computed(() => {
 				v-else-if="summary.advancedRoutingActive"
 				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
 			>
-				<Icon name="lucide:route" class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
+				<RouteIcon class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
 				<span>{{ t('components.delivery.transportCard.advancedRoutingActive') }}</span>
 			</p>
 
 			<!-- Actions -->
 			<div class="flex flex-wrap items-center gap-3 pt-1">
 				<UiButton to="/dashboard/admin/delivery/transport">
-					<Icon name="lucide:settings-2" class="w-4 h-4" />
+					<Slider1Icon class="w-4 h-4" />
 					{{
 						display.isConfigured
 							? t('components.delivery.transportCard.changeTransport')
@@ -169,7 +177,7 @@ const infrastructureChecks = computed(() => {
 					to="/dashboard/admin/delivery/provider-routing"
 					class="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-brand transition-colors duration-(--motion-fast)"
 				>
-					<Icon name="lucide:route" class="w-4 h-4" />
+					<RouteIcon class="w-4 h-4" />
 					{{ t('components.delivery.transportCard.advancedRouting') }}
 				</NuxtLink>
 			</div>

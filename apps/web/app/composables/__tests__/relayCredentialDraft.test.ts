@@ -84,7 +84,7 @@ describe('the transport picker', () => {
 
 	it('gives every option an icon, so none renders as an unlabelled row', () => {
 		// THE ICON IS THE ONLY GUARANTEE, deliberately. `pickerOption` falls back to
-		// the catalog's label and a neutral `lucide:send`, but its hint falls back to
+		// the catalog's label and a neutral paper plane, but its hint falls back to
 		// `''` — and the providers page states that as a promise: step 7 is "not
 		// enforced… nothing breaks". A sixth core kind with no `TRANSPORT_PICKER_COPY`
 		// row must therefore be able to ship WITHOUT a red suite in `apps/web`, a

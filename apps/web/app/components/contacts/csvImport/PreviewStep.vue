@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import CsvImportPreviewIssues from './PreviewIssues.vue';
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleWarningIcon,
+	ListUnorderedIcon,
+	ShieldCheckIcon,
+	TagIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
@@ -110,7 +119,7 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 			v-if="!csvImport.canImport.value"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 		>
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">
 				{{ t('components.contacts.csvImportModal.preview.noValidContacts') }}
 			</p>
@@ -132,7 +141,7 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 				<thead>
 					<tr class="border-b border-border-subtle bg-bg-surface">
 						<th class="text-left px-4 py-2 font-medium text-text-secondary w-8">
-							<Icon name="lucide:shield-check" class="w-4 h-4" />
+							<ShieldCheckIcon class="w-4 h-4" />
 						</th>
 						<th class="text-left px-4 py-2 font-medium text-text-secondary">
 							{{ t('common.email') }}
@@ -162,17 +171,12 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 						class="border-b border-border-subtle last:border-b-0"
 					>
 						<td class="px-4 py-2">
-							<Icon
-								v-if="prepared.status === 'valid'"
-								name="lucide:check-circle"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon
+							<CircleCheckIcon v-if="prepared.status === 'valid'" class="w-4 h-4 text-success" />
+							<CircleCloseIcon
 								v-else-if="prepared.status === 'missing'"
-								name="lucide:x-circle"
 								class="w-4 h-4 text-error"
 							/>
-							<Icon v-else name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
+							<TriangleWarningIcon v-else class="w-4 h-4 text-warning" />
 						</td>
 						<td class="px-4 py-2 text-text-primary">
 							{{ prepared.contact.email || '—' }}
@@ -217,11 +221,11 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 					}}
 				</li>
 				<li v-if="topicAssignmentSummary">
-					<Icon name="lucide:list" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
+					<ListUnorderedIcon class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
 					{{ topicAssignmentSummary }}
 				</li>
 				<li v-if="mappedPropertyKeys.length > 0">
-					<Icon name="lucide:tag" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
+					<TagIcon class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
 					{{
 						t(
 							'components.contacts.csvImportModal.preview.summaryProperties',

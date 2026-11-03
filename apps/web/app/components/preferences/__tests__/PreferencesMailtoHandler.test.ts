@@ -32,7 +32,6 @@ async function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiButton: {
 					emits: ['click'],
 					template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>',

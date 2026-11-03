@@ -5,6 +5,7 @@ import {
 	type TeamThreadPriority,
 } from '~/utils/teamThreadPriority';
 import type { PresencePerson } from './InboxThreadPresence.vue';
+import { AlarmIcon, FlagIcon } from '@coolicons/vue';
 
 /**
  * The Team Inbox thread page's header: the subject, once (the messages below
@@ -62,14 +63,14 @@ function absoluteTime(timestamp: number): string {
 						:class="priority === 'urgent' ? 'font-medium text-error' : ''"
 						data-testid="thread-priority"
 					>
-						<Icon name="lucide:flag" class="w-3.5 h-3.5" aria-hidden="true" />
+						<FlagIcon class="w-3.5 h-3.5" aria-hidden="true" />
 						{{ t(TEAM_THREAD_PRIORITY_CHIP_KEYS[priority]) }}
 					</span>
 				</template>
 				<template v-if="snoozedUntil">
 					<span aria-hidden="true">·</span>
 					<span class="inline-flex items-center gap-1">
-						<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" aria-hidden="true" />
+						<AlarmIcon class="w-3.5 h-3.5" aria-hidden="true" />
 						<time
 							:datetime="new Date(snoozedUntil).toISOString()"
 							:title="absoluteTime(snoozedUntil)"

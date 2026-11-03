@@ -88,6 +88,18 @@ import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadRowQuickActions from './PostboxThreadRowQuickActions.vue';
 import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
+import {
+	ArchiveIcon,
+	BellIcon,
+	BellOffIcon,
+	CheckIcon,
+	MailIcon,
+	MailOpenIcon,
+	PinIcon,
+	PinOffIcon,
+	StarIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -238,7 +250,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: props.msg.flagFlagged
 			? t('components.postbox.postboxThreadRow.unstar')
 			: t('components.postbox.postboxThreadRow.star'),
-		icon: 'lucide:star',
+		icon: StarIcon,
 		shortcut: key('postbox.star'),
 		run: () => triage('toggle-star'),
 	},
@@ -247,14 +259,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: props.msg.flagSeen
 			? t('components.postbox.postboxThreadRow.markAsUnread')
 			: t('components.postbox.postboxThreadRow.markAsRead'),
-		icon: props.msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open',
+		icon: props.msg.flagSeen ? MailIcon : MailOpenIcon,
 		shortcut: key('postbox.toggleRead'),
 		run: () => triage('toggle-read'),
 	},
 	{
 		id: 'archive',
 		label: t('common.archive'),
-		icon: 'lucide:archive',
+		icon: ArchiveIcon,
 		shortcut: key('postbox.archive'),
 		run: () => triage('archive'),
 	},
@@ -263,7 +275,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: props.msg.pinnedAt
 			? t('components.postbox.postboxThreadRow.unpin')
 			: t('components.postbox.postboxThreadRow.pin'),
-		icon: props.msg.pinnedAt ? 'lucide:pin-off' : 'lucide:pin',
+		icon: props.msg.pinnedAt ? PinOffIcon : PinIcon,
 		run: () => triage('toggle-pin'),
 	},
 	{
@@ -271,14 +283,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		label: props.msg.mutedAt
 			? t('components.postbox.postboxThreadRow.unmute')
 			: t('components.postbox.postboxThreadRow.mute'),
-		icon: props.msg.mutedAt ? 'lucide:bell' : 'lucide:bell-off',
+		icon: props.msg.mutedAt ? BellIcon : BellOffIcon,
 		shortcut: key('postbox.mute'),
 		run: () => triage('toggle-mute'),
 	},
 	{
 		id: 'trash',
 		label: t('common.delete'),
-		icon: 'lucide:trash',
+		icon: TrashIcon,
 		danger: true,
 		separatorBefore: true,
 		shortcut: key('postbox.trash'),
@@ -411,7 +423,7 @@ function onCapturedClick(event: MouseEvent) {
 								data-sweep-handle="select"
 								@click="onCheckboxClick($event)"
 							>
-								<Icon v-if="shownSelected" name="lucide:check" class="w-3 h-3" />
+								<CheckIcon v-if="shownSelected" class="w-3 h-3" />
 							</button>
 						</UiTooltip>
 						<PostboxSenderAvatar :sender="msg" size="sm" class="flex-shrink-0" />

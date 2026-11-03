@@ -9,12 +9,22 @@
  * cannot be deleted. Module scope never calls `useI18n`, so `labelKey` is a
  * catalog key resolved at the render boundary.
  */
+import {
+	CopyIcon,
+	PauseIcon,
+	PencilIcon,
+	PlayIcon,
+	TrashIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type AutomationRowVerbId = 'view' | 'edit' | 'duplicate' | 'toggle' | 'delete';
 
 export interface AutomationRowVerb {
 	readonly id: AutomationRowVerbId;
 	readonly labelKey: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly danger?: true;
 	/** Draw a divider above this verb (it starts the destructive group). */
 	readonly separatorBefore?: true;
@@ -31,13 +41,13 @@ export function automationRowVerbs(
 		verbs.push({
 			id: 'view',
 			labelKey: 'dashboard.automations.index.actions.viewDetails',
-			icon: 'lucide:zap',
+			icon: ZapIcon,
 		});
 	}
 	if (!canManage) return verbs;
 	verbs.push(
-		{ id: 'edit', labelKey: 'common.edit', icon: 'lucide:pencil' },
-		{ id: 'duplicate', labelKey: 'common.duplicate', icon: 'lucide:copy' }
+		{ id: 'edit', labelKey: 'common.edit', icon: PencilIcon },
+		{ id: 'duplicate', labelKey: 'common.duplicate', icon: CopyIcon }
 	);
 	if (!isDraft) {
 		verbs.push({
@@ -45,14 +55,14 @@ export function automationRowVerbs(
 			labelKey: isActive
 				? 'dashboard.automations.index.actions.pause'
 				: 'dashboard.automations.index.actions.activate',
-			icon: isActive ? 'lucide:pause' : 'lucide:play',
+			icon: isActive ? PauseIcon : PlayIcon,
 		});
 	}
 	if (!isActive) {
 		verbs.push({
 			id: 'delete',
 			labelKey: 'common.delete',
-			icon: 'lucide:trash-2',
+			icon: TrashIcon,
 			danger: true,
 			separatorBefore: true,
 		});

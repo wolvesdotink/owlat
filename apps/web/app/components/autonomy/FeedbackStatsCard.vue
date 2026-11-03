@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { ChatCircleIcon } from '@coolicons/vue';
 
 interface CategoryStats {
 	approved: number;
@@ -49,7 +50,7 @@ const editedWidth = computed(() => {
 <template>
 	<UiCard>
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:message-circle" size="sm" variant="surface" />
+			<UiIconBox :icon="ChatCircleIcon" size="sm" variant="surface" />
 			<div>
 				<h3 class="text-base font-medium text-text-primary">
 					{{ t('components.autonomy.feedbackStatsCard.title') }}

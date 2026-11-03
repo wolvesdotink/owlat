@@ -21,6 +21,7 @@
  */
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, UndoIcon } from '@coolicons/vue';
 
 withDefaults(
 	defineProps<{
@@ -128,7 +129,7 @@ const MAX_DOTS = 9;
 								:aria-label="t('components.agentTasks.agentTaskFlow.back')"
 								@click="emit('back')"
 							>
-								<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
+								<ChevronLeftIcon class="w-4 h-4" aria-hidden="true" />
 							</button>
 						</UiTooltip>
 						<UiTooltip :text="t('components.agentTasks.agentTaskFlow.nextTitle')">
@@ -140,7 +141,7 @@ const MAX_DOTS = 9;
 								:aria-label="t('components.agentTasks.agentTaskFlow.next')"
 								@click="emit('next')"
 							>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
+								<ChevronRightIcon class="w-4 h-4" aria-hidden="true" />
 							</button>
 						</UiTooltip>
 					</div>
@@ -154,7 +155,7 @@ const MAX_DOTS = 9;
 							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
 							@click="emit('undo')"
 						>
-							<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
+							<UndoIcon class="w-3.5 h-3.5" />
 							{{ t('components.agentTasks.agentTaskFlow.undo') }}
 						</button>
 					</UiTooltip>
@@ -167,7 +168,7 @@ const MAX_DOTS = 9;
 							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
 							@click="emit('exit')"
 						>
-							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							<CloseIcon class="w-3.5 h-3.5" />
 							{{ t('components.agentTasks.agentTaskFlow.exit') }}
 						</button>
 					</UiTooltip>

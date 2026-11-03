@@ -24,6 +24,7 @@ import {
 	type InboxFilter,
 	type InboxFilterCounts,
 } from '~/utils/inboxFilters';
+import { MentionIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -182,7 +183,7 @@ const slaPills = computed(() => {
 			data-testid="inbox-mentions-filter"
 			@click="emit('update:mentions', !mentions)"
 		>
-			<Icon name="lucide:at-sign" class="size-3.5" aria-hidden="true" />
+			<MentionIcon class="size-3.5" aria-hidden="true" />
 			<span>{{ t('components.inbox.inboxFilterPills.mentions') }}</span>
 			<!-- aria-label on a plain span is not announced; spell it out instead. -->
 			<span

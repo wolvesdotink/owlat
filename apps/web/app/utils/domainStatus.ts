@@ -1,3 +1,6 @@
+import { CircleCheckIcon, CircleCloseIcon, ClockIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 /** DMARC enforcement policy. */
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';
 
@@ -16,14 +19,14 @@ export function getStatusBadgeClass(status: string): string {
 }
 
 // Status icons
-const statusIcons: Record<string, string> = {
-	verified: 'lucide:check-circle-2',
-	failed: 'lucide:x-circle',
-	pending: 'lucide:clock',
-	registering: 'lucide:loader-2',
+const statusIcons: Record<string, IconComponent> = {
+	verified: CircleCheckIcon,
+	failed: CircleCloseIcon,
+	pending: ClockIcon,
+	registering: SpinnerIcon,
 };
 
-export function getStatusIcon(status: string): string {
+export function getStatusIcon(status: string): IconComponent {
 	return statusIcons[status] || statusIcons['pending']!;
 }
 

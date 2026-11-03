@@ -10,7 +10,6 @@ beforeAll(() => {
 });
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiCard: { template: '<div><slot /></div>' },
 	UiIconBox: { template: '<i />' },
 };

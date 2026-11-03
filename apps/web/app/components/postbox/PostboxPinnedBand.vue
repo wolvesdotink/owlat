@@ -25,6 +25,7 @@ import {
 	usePostboxPinnedConversations,
 	type PostboxPinnedConversation,
 } from '~/composables/postbox/usePostboxPins';
+import { PinIcon, PinOffIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -77,7 +78,7 @@ const subject = (c: PostboxPinnedConversation) =>
 		<h2
 			class="flex items-center gap-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-tertiary"
 		>
-			<Icon name="lucide:pin" class="w-3 h-3" aria-hidden="true" />
+			<PinIcon class="w-3 h-3" aria-hidden="true" />
 			{{ t('postbox.pins.title') }}
 			<span class="ml-auto font-normal normal-case tracking-normal tabular-nums">{{
 				t('postbox.pins.count', { count: conversations.length, limit })
@@ -123,7 +124,7 @@ const subject = (c: PostboxPinnedConversation) =>
 						data-testid="postbox-pinned-unpin"
 						@click="pins.setPinned([c.messageId], false)"
 					>
-						<Icon name="lucide:pin-off" class="w-3.5 h-3.5" aria-hidden="true" />
+						<PinOffIcon class="w-3.5 h-3.5" aria-hidden="true" />
 					</button>
 				</UiTooltip>
 			</li>

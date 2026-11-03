@@ -30,6 +30,7 @@ import { useTeamThreadDraftActions } from '~/composables/team/useTeamThreadDraft
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { isAutoClosed } from '~/utils/inboxAutoClose';
 import { useConversationLink } from '~/composables/useConversationLink';
+import { ArrowLeftIcon, CircleWarningIcon, MailIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -311,7 +312,7 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 			to="/dashboard/inbox"
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
@@ -324,7 +325,7 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 		<!-- Not Found -->
 		<div v-else-if="!thread" class="flex flex-col items-center justify-center py-16 text-center">
 			<UiIconBox
-				icon="lucide:alert-circle"
+				:icon="CircleWarningIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"
@@ -456,7 +457,7 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 
 					<UiEmptyState
 						v-if="messages.length === 0"
-						icon="lucide:mail"
+						:icon="MailIcon"
 						:title="t('dashboard.inbox.detail.noMessages')"
 					/>
 

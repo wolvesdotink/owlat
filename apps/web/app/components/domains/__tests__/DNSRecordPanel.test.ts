@@ -32,8 +32,7 @@ function mountPanel(
 			domain: 'example.com',
 			verification,
 		},
-		// <Icon> is a Nuxt component; render it as an inert stub.
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -135,7 +134,7 @@ describe('DNSRecordPanel MX priority (F2 finding 2)', () => {
 		}));
 		const w = mount(DNSRecordPanel, {
 			props: { record: mxRecord, label: 'MAIL FROM', domain: 'example.com' },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		w.findAll('button')
 			.find((button) => tooltipOf(w, button) === 'Copy value')!
@@ -217,7 +216,7 @@ describe('DNSRecordPanel — verified records fold to one line', () => {
 				verification: { verified: true },
 				coexistence: { existing: 'v=spf1 include:other.test ~all', merged: 'v=spf1 merged ~all' },
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(w.find('[data-testid="dns-host-primary"]').exists()).toBe(true);
 	});
@@ -225,7 +224,7 @@ describe('DNSRecordPanel — verified records fold to one line', () => {
 	it('carries the anchor id so a summary link can land on it', () => {
 		const w = mount(DNSRecordPanel, {
 			props: { record: baseRecord, label: 'SPF', domain: 'example.com', anchorId: 'dns-d1-spf' },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		expect(w.find('[data-testid="dns-record"]').attributes('id')).toBe('dns-d1-spf');
 	});

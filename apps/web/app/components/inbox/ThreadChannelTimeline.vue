@@ -13,6 +13,7 @@ import {
 import { useChannelOutbound } from '~/composables/useChannelOutbound';
 import type { SendableChannel } from '~/composables/useChannelOutbound';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
+import { PaperPlaneIcon, ReplyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	threadId: Id<'conversationThreads'>;
@@ -127,8 +128,8 @@ async function submitReply(item: TimelineMessage) {
 					<div
 						class="flex-shrink-0 w-8 h-8 rounded-full bg-bg-surface flex items-center justify-center"
 					>
-						<Icon
-							:name="channelIcon(item.channel)"
+						<component
+							:is="channelIcon(item.channel)"
 							class="w-4 h-4"
 							:class="channelColor(item.channel)"
 						/>
@@ -146,7 +147,7 @@ async function submitReply(item: TimelineMessage) {
 										: 'bg-success-subtle text-success',
 								]"
 							>
-								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
+								<component :is="directionIcon(item.direction)" class="w-3 h-3" />
 								{{ directionName(item.direction) }}
 							</span>
 
@@ -182,7 +183,7 @@ async function submitReply(item: TimelineMessage) {
 								"
 								@click="openReply(item)"
 							>
-								<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+								<ReplyIcon class="w-3.5 h-3.5" />
 								{{ t('components.inbox.threadChannelTimeline.reply') }}
 							</button>
 						</div>
@@ -231,7 +232,7 @@ async function submitReply(item: TimelineMessage) {
 									@click="submitReply(item)"
 								>
 									<template #iconLeft>
-										<Icon name="lucide:send" class="w-4 h-4" />
+										<PaperPlaneIcon class="w-4 h-4" />
 									</template>
 									{{ t('common.send') }}
 								</UiButton>

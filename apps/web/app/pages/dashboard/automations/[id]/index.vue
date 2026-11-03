@@ -8,6 +8,17 @@ import type { LocalizedText } from '~/utils/localizedText';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 import AutomationsRunsPanel from '~/components/automations/RunsPanel.vue';
+import {
+	ArrowLeftIcon,
+	CircleCloseIcon,
+	ClockIcon,
+	MailIcon,
+	PencilIcon,
+	UserCheckCornerIcon,
+	UsersIcon,
+	ZapIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -131,28 +142,28 @@ const statsCards = computed(() => {
 		{
 			label: t('dashboard.automations.detail.index.stats.contactsEntered'),
 			value: stats.value.totalEntered,
-			icon: 'lucide:users',
+			icon: UsersIcon,
 			color: 'text-brand',
 			bgColor: 'bg-brand/10',
 		},
 		{
 			label: t('common.active'),
 			value: stats.value.running,
-			icon: 'lucide:loader-2',
+			icon: SpinnerIcon,
 			color: 'text-brand',
 			bgColor: 'bg-brand/10',
 		},
 		{
 			label: t('dashboard.automations.detail.index.stats.completed'),
 			value: stats.value.completed,
-			icon: 'lucide:user-check',
+			icon: UserCheckCornerIcon,
 			color: 'text-success',
 			bgColor: 'bg-success/10',
 		},
 		{
 			label: t('dashboard.automations.detail.index.stats.emailsSent'),
 			value: stats.value.emailsSent,
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			color: 'text-warning',
 			bgColor: 'bg-warning/10',
 		},
@@ -185,7 +196,7 @@ const handleEdit = () => {
 			v-else-if="!automation"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:zap" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="ZapIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.automations.detail.index.notFoundTitle') }}
 			</p>
@@ -205,7 +216,7 @@ const handleEdit = () => {
 					to="/dashboard/automations"
 					class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors"
 				>
-					<Icon name="lucide:arrow-left" class="w-4 h-4" />
+					<ArrowLeftIcon class="w-4 h-4" />
 					{{ t('dashboard.automations.detail.index.backToAutomations') }}
 				</NuxtLink>
 				<UiPageHeader :title="automation.name" :description="automation.description">
@@ -217,15 +228,15 @@ const handleEdit = () => {
 									getStatusBadge(automation.status).color,
 								]"
 							>
-								<Icon :name="getStatusBadge(automation.status).icon" class="w-3 h-3" />
+								<component :is="getStatusBadge(automation.status).icon" class="w-3 h-3" />
 								{{ t(getStatusBadge(automation.status).label) }}
 							</span>
 							<div class="flex items-center gap-1.5">
-								<Icon :name="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
+								<component :is="getTriggerDisplay(automation.triggerType).icon" class="w-4 h-4" />
 								{{ t(getTriggerDisplay(automation.triggerType).label) }}
 							</div>
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:clock" class="w-4 h-4" />
+								<ClockIcon class="w-4 h-4" />
 								{{
 									t('dashboard.automations.detail.index.createdAt', {
 										date: formatDateTime(automation.createdAt),
@@ -236,7 +247,7 @@ const handleEdit = () => {
 					</template>
 					<template #actions>
 						<UiButton variant="secondary" class="gap-2" @click="handleEdit">
-							<Icon name="lucide:pencil" class="w-4 h-4" />
+							<PencilIcon class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.index.editAutomation') }}
 						</UiButton>
 					</template>
@@ -248,7 +259,7 @@ const handleEdit = () => {
 				<div v-for="stat in statsCards" :key="stat.label" class="card p-4">
 					<div class="flex items-center gap-3 mb-3">
 						<div :class="['p-2 rounded-lg', stat.bgColor]">
-							<Icon :name="stat.icon" :class="['w-4 h-4', stat.color]" />
+							<component :is="stat.icon" :class="['w-4 h-4', stat.color]" size="1em" />
 						</div>
 						<span class="text-sm text-text-secondary">{{ stat.label }}</span>
 					</div>
@@ -292,7 +303,7 @@ const handleEdit = () => {
 					v-if="!stepAnalytics || stepAnalytics.length === 0"
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
-					<Icon name="lucide:zap" class="w-12 h-12 text-text-tertiary mb-3" />
+					<ZapIcon class="w-12 h-12 text-text-tertiary mb-3" :stroke-width="1.5" />
 					<p class="text-text-secondary">
 						{{ t('dashboard.automations.detail.index.funnel.emptyTitle') }}
 					</p>
@@ -316,9 +327,10 @@ const handleEdit = () => {
 						<div class="flex-1 min-w-0">
 							<div class="flex items-center gap-3">
 								<div :class="['p-2 rounded-lg', getTriggerDisplay(automation.triggerType).bgColor]">
-									<Icon
-										:name="getTriggerDisplay(automation.triggerType).icon"
+									<component
+										:is="getTriggerDisplay(automation.triggerType).icon"
 										:class="['w-4 h-4', getTriggerDisplay(automation.triggerType).color]"
+										size="1em"
 									/>
 								</div>
 								<div class="flex-1 min-w-0">
@@ -362,9 +374,10 @@ const handleEdit = () => {
 							<div class="flex-1 min-w-0">
 								<div class="flex items-center gap-3">
 									<div :class="['p-2 rounded-lg', stepAccent(step.stepType).iconBg]">
-										<Icon
-											:name="stepInfo(step.stepType).icon"
+										<component
+											:is="stepInfo(step.stepType).icon"
 											:class="['w-4 h-4', stepAccent(step.stepType).iconText]"
+											size="1em"
 										/>
 									</div>
 									<div class="flex-1 min-w-0">
@@ -402,7 +415,7 @@ const handleEdit = () => {
 									class="ml-11 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary"
 								>
 									<span v-if="step.stats.pending > 0" class="flex items-center gap-1">
-										<Icon name="lucide:clock" class="w-3 h-3" />
+										<ClockIcon class="w-3 h-3" />
 										{{
 											t('dashboard.automations.detail.index.funnel.pending', {
 												count: step.stats.pending,
@@ -410,10 +423,7 @@ const handleEdit = () => {
 										}}
 									</span>
 									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
-										<Icon
-											name="lucide:loader-2"
-											class="w-3 h-3 animate-spin motion-reduce:animate-none"
-										/>
+										<SpinnerIcon class="w-3 h-3" />
 										{{
 											t('dashboard.automations.detail.index.funnel.executing', {
 												count: step.stats.executing,
@@ -421,7 +431,7 @@ const handleEdit = () => {
 										}}
 									</span>
 									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
-										<Icon name="lucide:x-circle" class="w-3 h-3" />
+										<CircleCloseIcon class="w-3 h-3" />
 										{{
 											t('dashboard.automations.detail.index.funnel.failed', {
 												count: step.stats.failed,

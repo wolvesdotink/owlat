@@ -5,6 +5,7 @@ import {
 	type TemplateSortOption,
 	type TemplateStatus,
 } from '~/utils/templateListSort';
+import type { IconComponent } from '@coolicons/vue';
 
 /** What the shared template grid, table and card list read off a row. */
 export interface TemplateListItem {
@@ -23,7 +24,7 @@ export interface TemplateListItem {
  */
 export interface TemplateRowAction<T> {
 	key: string;
-	icon: string;
+	icon: IconComponent;
 	/** Already resolved — the page builds these where `t()` is at hand. */
 	label: string;
 	overlay?: boolean;

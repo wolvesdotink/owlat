@@ -27,6 +27,7 @@ import { useShortcutPreferences } from '~/composables/useShortcutPreferences';
 import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 import PreferencesShortcutRow, { type ShortcutRowRefusal } from './PreferencesShortcutRow.vue';
+import { SearchIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const {
@@ -175,7 +176,7 @@ const presetChanged = computed(
 				data-testid="shortcut-filter"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:search" class="size-4" />
+					<SearchIcon class="size-4" />
 				</template>
 			</UiInput>
 		</div>

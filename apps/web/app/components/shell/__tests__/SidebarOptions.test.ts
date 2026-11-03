@@ -43,7 +43,6 @@ beforeEach(() => {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiDropdownMenu, UiDropdownMenuItem, UiDropdownDivider },
-			stubs: { Icon: true },
 		},
 	});
 });

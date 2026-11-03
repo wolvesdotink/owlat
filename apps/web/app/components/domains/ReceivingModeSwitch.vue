@@ -33,6 +33,7 @@ import {
 	DEFAULT_EXTERNAL_RECEIVING_PROVIDER,
 	EXTERNAL_RECEIVING_PROVIDER_KEYS,
 } from '~/utils/externalReceivingLabels';
+import { TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	domainId: Id<'domains'>;
@@ -136,7 +137,7 @@ async function save() {
 
 			<!-- The cost of the change, before the click. -->
 			<p class="mt-3 flex items-start gap-2 text-xs text-warning">
-				<Icon name="lucide:alert-triangle" class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+				<TriangleWarningIcon class="mt-0.5 h-3.5 w-3.5 shrink-0" />
 				<span>{{ t('components.domains.receivingModeSwitch.consequence') }}</span>
 			</p>
 

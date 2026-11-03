@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { UserMinusCornerIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * Full member management for one team inbox: add an org member, invite someone
@@ -214,10 +216,7 @@ const busy = computed(
 				<h2 class="font-semibold">{{ t('components.postbox.teamInboxMembersPanel.members') }}</h2>
 			</header>
 			<div v-if="membersLoading && members.length === 0" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<UiQueryBoundary v-else-if="membersError" :error="membersError" @retry="refetchMembers" />
 			<div v-else-if="members.length === 0" class="p-8 text-center text-text-secondary">
@@ -274,7 +273,7 @@ const busy = computed(
 								:disabled="busy"
 								@click="handleRemove(m.authUserId)"
 							>
-								<Icon name="lucide:user-minus" class="w-4 h-4" />
+								<UserMinusCornerIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</div>

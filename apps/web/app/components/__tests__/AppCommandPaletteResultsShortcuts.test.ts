@@ -5,6 +5,7 @@ import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import type { PaletteGroup, PaletteItem } from '~/lib/commandPalette';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
+import { CircleIcon } from '@coolicons/vue';
 
 /**
  * A palette row's key chip comes from the registry: the key as this person has
@@ -19,7 +20,7 @@ afterEach(() => resetShortcutPreferences());
 const item = (id: string, shortcutId?: string): PaletteItem => ({
 	id,
 	label: id,
-	icon: 'lucide:circle',
+	icon: CircleIcon,
 	run: () => {},
 	...(shortcutId ? { shortcutId } : {}),
 });

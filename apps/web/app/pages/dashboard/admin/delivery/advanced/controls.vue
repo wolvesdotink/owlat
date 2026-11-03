@@ -53,6 +53,7 @@ import { isRampInactive } from '~/utils/deliveryAdvancedEmpty';
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 import DeliveryRampIdleNotice from '~/components/delivery/RampIdleNotice.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import { Slider1Icon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -323,7 +324,7 @@ async function changePreset(
 
 			<DeliveryAdvancedEmptyState
 				v-if="controls && cells.length === 0"
-				icon="lucide:sliders-horizontal"
+				:icon="Slider1Icon"
 				:title="t('dashboard.admin.delivery.advanced.controls.empty.title')"
 				:description="t('dashboard.admin.delivery.advanced.controls.empty.description')"
 			/>

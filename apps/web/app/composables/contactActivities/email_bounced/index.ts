@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { TriangleWarningIcon } from '@coolicons/vue';
 
 export const emailBouncedEditorModule: ContactActivityEditorModule<'email_bounced'> = {
 	literal: 'email_bounced',
 	displayConfig: {
-		icon: 'lucide:alert-triangle',
+		icon: TriangleWarningIcon,
 		label: 'shared.contactActivities.emailBounced.label',
 		color: 'text-error',
 	},

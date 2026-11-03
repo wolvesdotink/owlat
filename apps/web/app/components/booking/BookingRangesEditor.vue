@@ -6,6 +6,7 @@
  */
 import { BOOKING_LIMITS } from '@owlat/shared/booking';
 import { formRangeProblem, type FormRange } from '~/utils/bookingForm';
+import { CloseIcon, PlusIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Accessible name of the day ("Monday", "Dec 24"). */
@@ -64,7 +65,7 @@ function update(index: number, field: keyof FormRange, value: string) {
 				:aria-label="t('components.booking.ranges.remove', { day: props.label })"
 				@click="remove(index)"
 			>
-				<Icon name="lucide:x" class="h-4 w-4" />
+				<CloseIcon class="h-4 w-4" />
 			</UiButton>
 		</div>
 		<p v-if="problem" class="text-xs text-error" role="alert">
@@ -76,7 +77,7 @@ function update(index: number, field: keyof FormRange, value: string) {
 			size="sm"
 			@click="add"
 		>
-			<Icon name="lucide:plus" class="mr-1 h-4 w-4" />
+			<PlusIcon class="mr-1 h-4 w-4" />
 			{{ t('components.booking.ranges.add') }}
 		</UiButton>
 	</div>

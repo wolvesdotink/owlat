@@ -7,6 +7,7 @@ import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 import { buildCredentialArgs, buildSharedConnectArgs } from '~/utils/postboxConnectArgs';
 import { usePostboxConnectOAuth } from '~/composables/postbox/usePostboxConnectOAuth';
+import { CheckIcon, CloseIcon } from '@coolicons/vue';
 
 /**
  * The shared connect/edit form for the unified mail-import wizard. One form
@@ -369,11 +370,11 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 
 		<div v-if="testResult" class="text-sm space-y-1">
 			<p :class="testResult.imap.ok ? 'text-success' : 'text-error'">
-				<Icon :name="testResult.imap.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
+				<component :is="testResult.imap.ok ? CheckIcon : CloseIcon" class="w-3.5 h-3.5 inline" />
 				{{ t('components.postbox.postboxMailboxConnectForm.incomingMail', { status: imapStatus }) }}
 			</p>
 			<p :class="testResult.smtp.ok ? 'text-success' : 'text-error'">
-				<Icon :name="testResult.smtp.ok ? 'lucide:check' : 'lucide:x'" class="w-3.5 h-3.5 inline" />
+				<component :is="testResult.smtp.ok ? CheckIcon : CloseIcon" class="w-3.5 h-3.5 inline" />
 				{{ t('components.postbox.postboxMailboxConnectForm.outgoingMail', { status: smtpStatus }) }}
 			</p>
 		</div>

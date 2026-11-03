@@ -32,6 +32,7 @@ import {
 	type NavigationEnvironment,
 	type NavigationItem,
 } from './dashboardNavigationCore';
+import { PuzzleIcon, type IconComponent } from '@coolicons/vue';
 
 export { minRole };
 export type { NavigationEnvironment, NavigationItem };
@@ -40,7 +41,7 @@ export interface NavigationSection {
 	key: SectionKey;
 	/** i18n key (see {@link NavigationItem}). */
 	name: string;
-	icon: string;
+	icon: IconComponent;
 	/**
 	 * When set, the sidebar renders the section as a single flat link to this
 	 * destination instead of a collapsible sub-list — used for surfaces that
@@ -111,11 +112,18 @@ function clampLabel(raw: string): string {
  * so a disabled plugin contributes nothing. The dedup id is the href, so a
  * plugin entry pointing at a core destination is dropped rather than shadowing
  * it.
+ *
+ * A manifest names its icon as a `coolicons:<name>` token; `icons` is the
+ * token → component map the plugin codegen compiled for the bundled plugins.
+ * A token missing from it (a composition generated before the plugin changed)
+ * shows the puzzle piece, the app's mark for "a plugin's", not an empty slot.
  */
 export function derivePluginNavigation(
 	plugins: readonly BundledPlugin[],
-	isFeatureEnabled: (flag: FeatureFlagKey) => boolean
+	isFeatureEnabled: (flag: FeatureFlagKey) => boolean,
+	icons: Readonly<Record<string, IconComponent>> = {}
 ): PluginNavigationContributions {
+	const iconFor = (token: string): IconComponent => icons[token] ?? PuzzleIcon;
 	const navItems: PluginNavContribution[] = [];
 	const settingsPanels: PluginSettingsContribution[] = [];
 
@@ -132,7 +140,7 @@ export function derivePluginNavigation(
 				id: item.href,
 				order: item.order ?? index,
 				enabled,
-				value: { name: clampLabel(item.name), href: item.href, icon: item.icon },
+				value: { name: clampLabel(item.name), href: item.href, icon: iconFor(item.icon) },
 			});
 		}
 
@@ -142,7 +150,7 @@ export function derivePluginNavigation(
 				id: panel.href,
 				order: panel.order ?? index,
 				enabled,
-				value: { name: clampLabel(panel.name), href: panel.href, icon: panel.icon },
+				value: { name: clampLabel(panel.name), href: panel.href, icon: iconFor(panel.icon) },
 			});
 		}
 	}

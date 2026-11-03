@@ -9,6 +9,8 @@ import { api } from '@owlat/api';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import type { SavedReplyFile } from '~/composables/useSavedReplies';
 import { uploadFileToStorage } from '~/utils/storageUpload';
+import { CloseIcon, PaperclipIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const files = defineModel<SavedReplyFile[]>({ required: true });
 /** True while a file is still on its way up: the form waits for it. */
@@ -104,7 +106,7 @@ function remove(file: SavedReplyFile) {
 				:key="file.storageId"
 				class="inline-flex items-center gap-1.5 rounded bg-bg-surface py-1 pl-1.5 pr-1 text-xs"
 			>
-				<Icon name="lucide:paperclip" class="h-3 w-3 text-text-tertiary" aria-hidden="true" />
+				<PaperclipIcon class="h-3 w-3 text-text-tertiary" aria-hidden="true" />
 				<span class="max-w-[180px] truncate">{{ file.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(file.size) }}</span>
 				<button
@@ -113,7 +115,7 @@ function remove(file: SavedReplyFile) {
 					:aria-label="t('shared.savedReplies.fields.removeFile', { filename: file.filename })"
 					@click="remove(file)"
 				>
-					<Icon name="lucide:x" class="h-3 w-3" />
+					<CloseIcon class="h-3 w-3" />
 				</button>
 			</span>
 			<UiButton
@@ -124,8 +126,8 @@ function remove(file: SavedReplyFile) {
 				data-testid="saved-reply-add-files"
 				@click="input?.click()"
 			>
-				<Icon
-					:name="uploading ? 'lucide:loader-2' : 'lucide:paperclip'"
+				<component
+					:is="uploading ? SpinnerIcon : PaperclipIcon"
 					class="mr-1.5 h-4 w-4"
 					:class="uploading ? 'animate-spin motion-reduce:animate-none' : ''"
 				/>

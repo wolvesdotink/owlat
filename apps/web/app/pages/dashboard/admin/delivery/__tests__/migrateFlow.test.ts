@@ -17,7 +17,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	UiCard: { template: '<div><slot /></div>' },
 	DeliveryMigrationImportStep: { template: '<div data-testid="import-step-stub" />' },

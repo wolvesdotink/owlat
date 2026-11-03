@@ -16,6 +16,8 @@ import {
 	type RolloutStage,
 	type UpdaterHealth,
 } from '~/lib/systemUpdate';
+import { CircleCheckIcon, CircleCloseIcon, CircleIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface Step {
 	step: string;
@@ -227,16 +229,16 @@ onMounted(() => {
 onBeforeUnmount(stopPolling);
 
 // UI helpers
-function iconForStatus(s: StepStatus): string {
+function iconForStatus(s: StepStatus): IconComponent {
 	switch (s) {
 		case 'pending':
-			return 'lucide:circle';
+			return CircleIcon;
 		case 'running':
-			return 'lucide:loader-2';
+			return SpinnerIcon;
 		case 'success':
-			return 'lucide:check-circle-2';
+			return CircleCheckIcon;
 		case 'failed':
-			return 'lucide:x-circle';
+			return CircleCloseIcon;
 	}
 }
 
@@ -274,8 +276,8 @@ const totalElapsedDisplay = computed(() => {
 
 		<ol class="space-y-3">
 			<li v-for="(step, idx) in stepOrder" :key="step" class="flex items-start gap-3">
-				<Icon
-					:name="iconForStatus(stepStatuses[step] ?? 'pending')"
+				<component
+					:is="iconForStatus(stepStatuses[step] ?? 'pending')"
 					class="w-5 h-5 shrink-0 mt-0.5"
 					:class="colorForStatus(stepStatuses[step] ?? 'pending')"
 					aria-hidden="true"
@@ -303,11 +305,7 @@ const totalElapsedDisplay = computed(() => {
 			class="mt-4 pt-4 border-t border-border-subtle flex items-start gap-2 text-[0.75rem] text-text-tertiary"
 			role="status"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="w-3.5 h-3.5 shrink-0 mt-px animate-spin motion-reduce:animate-none"
-				aria-hidden="true"
-			/>
+			<SpinnerIcon class="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
 			<span>{{
 				rollingBack
 					? t('components.system.updateProgress.rollingBackNotice')

@@ -22,7 +22,6 @@ beforeAll(() => {
 const ME = 'user_me';
 const STUBS = {
 	UiAvatar: true,
-	Icon: true,
 	AssistantToolCalls: true,
 	AssistantMarkdown: true,
 	AiBudgetRefusal: true,

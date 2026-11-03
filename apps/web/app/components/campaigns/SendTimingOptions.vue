@@ -12,6 +12,7 @@ import {
 	type SendTiming,
 	type SendTimingMode,
 } from '~/lib/sendTiming';
+import { ClockIcon, GlobeIcon, SparklesIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	modelValue: SendTiming;
@@ -36,21 +37,21 @@ const timeLabel = computed(() => props.time || '--:--');
 const modes = computed(() => [
 	{
 		value: 'fixed' as const,
-		icon: 'lucide:clock',
+		icon: ClockIcon,
 		title: t(`${prefix}.fixed.title`),
 		hint: t(`${prefix}.fixed.hint`, { time: timeLabel.value }),
 		disabled: false,
 	},
 	{
 		value: 'local' as const,
-		icon: 'lucide:globe',
+		icon: GlobeIcon,
 		title: t(`${prefix}.local.title`),
 		hint: t(`${prefix}.local.hint`, { time: timeLabel.value }),
 		disabled: false,
 	},
 	{
 		value: 'optimized' as const,
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 		title: t(`${prefix}.optimized.title`),
 		hint: props.isAbTest ? t(`${prefix}.optimized.abTest`) : t(`${prefix}.optimized.hint`),
 		disabled: props.isAbTest === true,
@@ -117,7 +118,7 @@ watch(
 			/>
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
-					<Icon :name="mode.icon" class="w-4 h-4 text-text-tertiary" />
+					<component :is="mode.icon" class="w-4 h-4 text-text-tertiary" />
 					<span class="font-medium text-text-primary text-sm">{{ mode.title }}</span>
 				</div>
 				<p class="text-xs text-text-secondary mt-1">{{ mode.hint }}</p>

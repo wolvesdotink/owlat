@@ -29,7 +29,6 @@ function mountPanel() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiProgressBar: true,
 				MediaPickerModal: MediaPickerModalStub,
 			},

@@ -15,6 +15,7 @@ import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import ThreadBrief from '~/components/brief/ThreadBrief.vue';
 import BriefElsewhere from '~/components/brief/BriefElsewhere.vue';
+import { CloseIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	open: boolean;
@@ -92,7 +93,7 @@ function toConversation() {
 						:aria-label="t('common.close')"
 						@click="close"
 					>
-						<Icon name="lucide:x" class="h-4 w-4" />
+						<CloseIcon class="h-4 w-4" />
 					</button>
 				</header>
 				<div class="space-y-3 p-4">

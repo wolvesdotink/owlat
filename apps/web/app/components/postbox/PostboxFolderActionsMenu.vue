@@ -10,6 +10,7 @@ import {
 	findViewFolder,
 	isEmptyableRole,
 } from '~/composables/postbox/usePostboxFolderBulk';
+import { CheckAllIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -49,7 +50,7 @@ const ITEM_CLASS =
 					close();
 				"
 			>
-				<Icon name="lucide:check-check" class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+				<CheckAllIcon class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
 				{{ t('components.postbox.postboxFolderActions.markAllRead') }}
 			</button>
 			<button
@@ -62,7 +63,7 @@ const ITEM_CLASS =
 					close();
 				"
 			>
-				<Icon name="lucide:trash-2" class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+				<TrashIcon class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
 				{{ t(`components.postbox.postboxFolderActions.empty.${folder.role}`) }}
 			</button>
 		</template>

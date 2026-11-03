@@ -5,6 +5,8 @@
  * single record. The count is omitted until a check has run — "0 of 5 found"
  * on a domain nobody has verified yet would read as a failure.
  */
+import { CircleCheckIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	/** Plain heading; the `title` slot replaces it when the heading needs markup. */
 	title?: string;
@@ -37,7 +39,7 @@ const complete = computed(() => props.total > 0 && props.verified === props.tota
 				]"
 				data-testid="dns-record-group-count"
 			>
-				<Icon v-if="complete" name="lucide:check-circle-2" class="w-3.5 h-3.5" />
+				<CircleCheckIcon v-if="complete" class="w-3.5 h-3.5" />
 				{{ t('components.domains.dnsRecordGroup.count', { verified, total }) }}
 			</span>
 		</div>

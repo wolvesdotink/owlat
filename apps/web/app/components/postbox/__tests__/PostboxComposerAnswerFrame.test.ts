@@ -220,7 +220,6 @@ function mountComposer(props: Record<string, unknown>, slots: Record<string, unk
 				PostboxComposerDialogs: inert('PostboxComposerDialogs'),
 			},
 			stubs: {
-				Icon: true,
 				PostboxOverflowMenu: { template: '<div><slot :close="() => {}" /></div>' },
 				PostboxComposerPreflightChip: true,
 				PostboxPreviewAsSent: PreviewStub,

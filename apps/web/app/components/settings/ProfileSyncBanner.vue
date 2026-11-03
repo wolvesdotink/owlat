@@ -7,6 +7,7 @@
  * CLI instructions when the updater sidecar is unreachable.
  */
 import { useProfileSync, type ProfileServiceResult } from '~/composables/useProfileSync';
+import { CircleCheckIcon, ReloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Resolved flag snapshot to send to the updater on Apply. */
@@ -45,7 +46,7 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 		class="rounded-xl border border-warning/40 bg-warning/5 px-5 py-4"
 	>
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:refresh-cw" class="w-4 h-4 mt-1 text-warning shrink-0" />
+			<ReloadIcon class="w-4 h-4 mt-1 text-warning shrink-0" />
 			<div class="min-w-0 flex-1">
 				<p class="font-medium text-text-primary">
 					{{ t('components.settings.profileSyncBanner.title') }}
@@ -115,7 +116,7 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 		class="rounded-xl border border-border-subtle bg-bg-surface px-5 py-4"
 	>
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:check-circle-2" class="w-4 h-4 mt-1 text-success shrink-0" />
+			<CircleCheckIcon class="w-4 h-4 mt-1 text-success shrink-0" />
 			<div class="min-w-0 flex-1">
 				<p class="font-medium text-text-primary">
 					{{ t('components.settings.profileSyncBanner.appliedTitle') }}

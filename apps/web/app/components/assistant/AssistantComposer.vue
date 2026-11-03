@@ -11,6 +11,8 @@ import {
 	type PromptHistoryEntry,
 	type PromptHistoryPosition,
 } from '~/utils/composerRecall';
+import { PaperPlaneIcon, SquareIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	/**
@@ -180,7 +182,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 						:aria-label="t('components.assistant.assistantComposer.stop')"
 						@click="emit('stop')"
 					>
-						<Icon name="lucide:square" class="w-4 h-4" />
+						<SquareIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 				<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
@@ -198,12 +200,8 @@ const handleKeydown = (event: KeyboardEvent) => {
 						data-testid="assistant-send"
 						@click="send"
 					>
-						<Icon
-							v-if="isSending"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:send" class="w-4 h-4" />
+						<SpinnerIcon v-if="isSending" class="w-4 h-4" />
+						<PaperPlaneIcon v-else class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 			</div>

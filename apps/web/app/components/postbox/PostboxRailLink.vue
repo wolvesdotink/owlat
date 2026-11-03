@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { IconComponent } from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
+
 /**
  * One navigation row in the Postbox folder rail.
  *
@@ -17,8 +20,8 @@
 withDefaults(
 	defineProps<{
 		to: string;
-		/** Lucide icon name, e.g. `lucide:paperclip`. */
-		icon: string;
+		/** A coolicons component, e.g. `PaperclipIcon`. */
+		icon: IconComponent;
 		label: string;
 		/** Rail is the narrow icon strip. */
 		collapsed?: boolean;
@@ -67,7 +70,7 @@ withDefaults(
 			:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
 			:aria-current="active ? 'page' : undefined"
 		>
-			<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
+			<component :is="navIcon(icon, !!active)" class="w-4 h-4 flex-shrink-0" />
 			<template v-if="!collapsed">
 				<!-- With a worded count the label keeps its full width and the count
 				     truncates instead (the tooltip shows the full countLabel phrase). -->

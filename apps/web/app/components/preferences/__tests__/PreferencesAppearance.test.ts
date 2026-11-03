@@ -35,7 +35,6 @@ function mountAppearance() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { template: '<span />' },
 				NuxtLink: { props: ['to'], template: '<a><slot /></a>' },
 			},
 		},

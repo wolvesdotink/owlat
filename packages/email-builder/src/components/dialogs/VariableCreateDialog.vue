@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Sparkles } from '@lucide/vue';
+import { SparklesIcon } from '@coolicons/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
@@ -111,7 +111,7 @@ watch(
 			</UiButton>
 			<UiButton variant="primary" :disabled="!canCreate" @click="handleCreate">
 				<template #iconLeft>
-					<Sparkles class="w-4 h-4" />
+					<SparklesIcon class="w-4 h-4" />
 				</template>
 				{{ t('builder.variableDialog.create') }}
 			</UiButton>

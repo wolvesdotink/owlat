@@ -23,7 +23,6 @@ const stubs = {
 	// pass-through keeps the panel inside the mounted tree so its text is
 	// assertable.
 	Teleport: { template: '<div><slot /></div>' },
-	Icon: { template: '<i />' },
 	UiButton: { template: '<button><slot /><slot name="iconLeft" /></button>' },
 };
 

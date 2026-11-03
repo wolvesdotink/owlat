@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The builder's two-step progress line: the trigger is chosen, the workflow is
 // being built.
+import { CheckIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 </script>
 
@@ -12,7 +14,7 @@ const { t } = useI18n();
 					<div
 						class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
 					>
-						<Icon name="lucide:check" class="w-4 h-4" />
+						<CheckIcon class="w-4 h-4" />
 					</div>
 					<span class="text-sm font-medium text-text-primary">{{
 						t('dashboard.automations.detail.edit.steps.chooseTrigger')

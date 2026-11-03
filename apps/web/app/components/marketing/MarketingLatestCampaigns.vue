@@ -8,6 +8,13 @@
 import type { LatestCampaign, RecentCampaigns } from '~/utils/marketingOverviewTypes';
 import { campaignHeadline, pointsDelta, ratesOf } from '~/utils/marketingHeadline';
 import { formatNumber, formatPercentage, formatShortDate } from '~/utils/formatters';
+import {
+	ArrowDownRightIcon,
+	ArrowUpRightIcon,
+	MinusIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	campaigns: readonly LatestCampaign[];
@@ -77,10 +84,10 @@ const qualityClass: Record<-1 | 0 | 1, string> = {
 	0: 'text-text-tertiary',
 	[-1]: 'text-error',
 };
-const qualityIcon: Record<-1 | 0 | 1, string> = {
-	1: 'lucide:arrow-up-right',
-	0: 'lucide:minus',
-	[-1]: 'lucide:arrow-down-right',
+const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
+	1: ArrowUpRightIcon,
+	0: MinusIcon,
+	[-1]: ArrowDownRightIcon,
 };
 </script>
 
@@ -100,10 +107,7 @@ const qualityIcon: Record<-1 | 0 | 1, string> = {
 				<p class="mt-0.5 text-xs text-text-tertiary tabular-nums">
 					<template v-if="card.campaign.isSending">
 						<span class="inline-flex items-center gap-1 text-info">
-							<Icon
-								name="lucide:loader-2"
-								class="w-3 h-3 animate-spin motion-reduce:animate-none"
-							/>
+							<SpinnerIcon class="w-3 h-3" />
 							{{
 								card.campaign.progress === undefined
 									? t('components.marketing.latest.sending')
@@ -166,7 +170,7 @@ const qualityIcon: Record<-1 | 0 | 1, string> = {
 							qualityClass[metric.quality],
 						]"
 					>
-						<Icon :name="qualityIcon[metric.quality]" class="w-3 h-3" aria-hidden="true" />
+						<component :is="qualityIcon[metric.quality]" class="w-3 h-3" aria-hidden="true" />
 						{{ metric.delta }}
 					</dd>
 				</div>

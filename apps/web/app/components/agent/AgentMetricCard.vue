@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { MinusIcon, TrendingDownIcon, TrendingUpIcon, type IconComponent } from '@coolicons/vue';
+
 interface Props {
 	label: string;
 	value: string | number;
-	icon: string;
+	icon: IconComponent;
 	trend?: 'up' | 'down' | 'stable';
 	description?: string;
 }
@@ -13,11 +15,11 @@ const trendConfig = computed(() => {
 	if (!props.trend) return null;
 	switch (props.trend) {
 		case 'up':
-			return { icon: 'lucide:trending-up', color: 'text-success' };
+			return { icon: TrendingUpIcon, color: 'text-success' };
 		case 'down':
-			return { icon: 'lucide:trending-down', color: 'text-error' };
+			return { icon: TrendingDownIcon, color: 'text-error' };
 		case 'stable':
-			return { icon: 'lucide:minus', color: 'text-text-tertiary' };
+			return { icon: MinusIcon, color: 'text-text-tertiary' };
 	}
 });
 </script>
@@ -27,7 +29,7 @@ const trendConfig = computed(() => {
 		<div class="flex items-start justify-between mb-3">
 			<UiIconBox :icon="icon" size="sm" variant="surface" />
 			<div v-if="trendConfig" class="flex items-center">
-				<Icon :name="trendConfig.icon" class="w-4 h-4" :class="trendConfig.color" />
+				<component :is="trendConfig.icon" class="w-4 h-4" :class="trendConfig.color" />
 			</div>
 		</div>
 		<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ value }}</p>

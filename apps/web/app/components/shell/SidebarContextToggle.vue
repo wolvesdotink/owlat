@@ -6,6 +6,8 @@
  * last-visited route.
  */
 import type { SidebarContext } from '~/lib/sidebarContext';
+import { ChatConversationIcon, MegaphoneIcon } from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 defineProps<{ collapsed: boolean; activeContext: SidebarContext }>();
 const emit = defineEmits<{ switch: [context: SidebarContext] }>();
@@ -15,8 +17,8 @@ const { t } = useI18n();
 // Frozen at setup, so `label` holds a MESSAGE KEY the template resolves rather
 // than a sentence captured in whatever locale was active at mount.
 const sidebarContexts = [
-	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: 'lucide:messages-square' },
-	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: 'lucide:megaphone' },
+	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: ChatConversationIcon },
+	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: MegaphoneIcon },
 ] as const;
 </script>
 
@@ -41,12 +43,13 @@ const sidebarContexts = [
 					:aria-label="collapsed ? t(context.label) : undefined"
 					@click="emit('switch', context.key)"
 				>
-					<Icon
-						:name="context.icon"
+					<component
+						:is="navIcon(context.icon, activeContext === context.key)"
 						:class="[
 							collapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
 							activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
 						]"
+						size="1em"
 					/>
 					<span v-if="!collapsed">{{ t(context.label) }}</span>
 				</button>

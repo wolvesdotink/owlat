@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // Under a draft's canvas: what still stops it from being activated.
+import { CircleWarningIcon } from '@coolicons/vue';
+
 defineProps<{ reasons: string[] }>();
 
 const { t } = useI18n();
@@ -8,7 +10,7 @@ const { t } = useI18n();
 <template>
 	<div class="mt-6 p-4 bg-warning/10 border border-warning/20 rounded-lg">
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<div class="flex-1 min-w-0">
 				<p class="font-medium text-warning mb-2">
 					{{ t('dashboard.automations.detail.edit.validation.title') }}

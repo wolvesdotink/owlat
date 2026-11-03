@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ clientId: Id<'mcpClients'> }>();
 
@@ -36,10 +37,7 @@ function formatTime(ts: number) {
 <template>
 	<div class="rounded border border-border-subtle bg-bg-base">
 		<div v-if="isLoading" class="p-4 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-4 h-4 text-text-tertiary" />
 		</div>
 		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 		<p v-else-if="rows.length === 0" class="p-4 text-sm text-text-secondary">

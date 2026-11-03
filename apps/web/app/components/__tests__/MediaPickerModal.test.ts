@@ -62,7 +62,6 @@ describe('MediaPickerModal upload provenance', () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					UiInput: true,
 					UiSpinner: true,
 					UiModal: { template: '<div><slot /></div>' },
@@ -109,7 +108,6 @@ describe('MediaPickerModal and the slow-save episode', () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					UiInput: true,
 					UiSpinner: true,
 					UiModal: { template: '<div><slot /></div>' },

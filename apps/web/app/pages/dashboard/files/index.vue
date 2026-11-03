@@ -1,4 +1,20 @@
 <script setup lang="ts">
+import {
+	FileIcon,
+	FileTextIcon,
+	FilmIcon,
+	FolderOpenIcon,
+	GridIcon,
+	ImageIcon,
+	ListUnorderedIcon,
+	MailIcon,
+	MusicNoteIcon,
+	SearchIcon,
+	SparklesIcon,
+	UploadIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.files.index.pageTitle') });
@@ -19,22 +35,22 @@ const { isAdmin } = usePermissions();
 const showUploadModal = ref(false);
 
 type SourceType = 'upload' | 'email_attachment' | 'agent_generated';
-const sourceFilterOptions = computed<{ value: SourceType | null; label: string; icon?: string }[]>(
-	() => [
-		{ value: null, label: t('dashboard.files.index.sources.all') },
-		{ value: 'upload', label: t('dashboard.files.index.sources.uploads'), icon: 'lucide:upload' },
-		{
-			value: 'email_attachment',
-			label: t('dashboard.files.index.sources.emailAttachments'),
-			icon: 'lucide:mail',
-		},
-		{
-			value: 'agent_generated',
-			label: t('dashboard.files.index.sources.aiGenerated'),
-			icon: 'lucide:sparkles',
-		},
-	]
-);
+const sourceFilterOptions = computed<
+	{ value: SourceType | null; label: string; icon?: IconComponent }[]
+>(() => [
+	{ value: null, label: t('dashboard.files.index.sources.all') },
+	{ value: 'upload', label: t('dashboard.files.index.sources.uploads'), icon: UploadIcon },
+	{
+		value: 'email_attachment',
+		label: t('dashboard.files.index.sources.emailAttachments'),
+		icon: MailIcon,
+	},
+	{
+		value: 'agent_generated',
+		label: t('dashboard.files.index.sources.aiGenerated'),
+		icon: SparklesIcon,
+	},
+]);
 
 /** The short source badge in the list view. */
 const sourceBadge = (sourceType: string) => {
@@ -67,7 +83,7 @@ const formatCreatedAt = (createdAt: number) =>
 		>
 			<template v-if="isAdmin" #actions>
 				<UiButton @click="showUploadModal = true">
-					<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+					<UploadIcon class="w-4 h-4 mr-2" />
 					{{ t('common.upload') }}
 				</UiButton>
 			</template>
@@ -80,10 +96,7 @@ const formatCreatedAt = (createdAt: number) =>
 			<!-- Search -->
 			<div class="w-full sm:w-auto sm:flex-1 sm:max-w-sm">
 				<div class="relative">
-					<Icon
-						name="lucide:search"
-						class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-					/>
+					<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
 					<input
 						v-model="searchQuery"
 						type="text"
@@ -109,7 +122,7 @@ const formatCreatedAt = (createdAt: number) =>
 					"
 					@click="sourceFilter = opt.value"
 				>
-					<Icon v-if="opt.icon" :name="opt.icon" class="w-3.5 h-3.5" />
+					<component v-if="opt.icon" :is="opt.icon" class="w-3.5 h-3.5" />
 					{{ opt.label }}
 				</button>
 			</div>
@@ -131,7 +144,7 @@ const formatCreatedAt = (createdAt: number) =>
 						:aria-pressed="viewMode === 'grid'"
 						@click="viewMode = 'grid'"
 					>
-						<Icon name="lucide:layout-grid" class="w-4 h-4" />
+						<GridIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip :text="t('dashboard.files.index.listView')">
@@ -147,7 +160,7 @@ const formatCreatedAt = (createdAt: number) =>
 						:aria-pressed="viewMode === 'list'"
 						@click="viewMode = 'list'"
 					>
-						<Icon name="lucide:list" class="w-4 h-4" />
+						<ListUnorderedIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</div>
@@ -169,7 +182,7 @@ const formatCreatedAt = (createdAt: number) =>
 					class="flex flex-col items-center justify-center py-16 text-center"
 				>
 					<UiIconBox
-						icon="lucide:folder-open"
+						:icon="FolderOpenIcon"
 						size="xl"
 						variant="surface"
 						rounded="full"
@@ -192,7 +205,7 @@ const formatCreatedAt = (createdAt: number) =>
 						}}
 					</p>
 					<UiButton v-if="!searchQuery && isAdmin" class="mt-4" @click="showUploadModal = true">
-						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+						<UploadIcon class="w-4 h-4 mr-2" />
 						{{ t('dashboard.files.index.uploadFile') }}
 					</UiButton>
 				</div>
@@ -259,17 +272,17 @@ const formatCreatedAt = (createdAt: number) =>
 						>
 							<td class="px-4 py-3">
 								<div class="flex items-center gap-3">
-									<Icon
-										:name="
+									<component
+										:is="
 											file.mimeType === 'application/pdf'
-												? 'lucide:file-text'
+												? FileTextIcon
 												: file.mimeType.startsWith('image/')
-													? 'lucide:image'
+													? ImageIcon
 													: file.mimeType.startsWith('video/')
-														? 'lucide:film'
+														? FilmIcon
 														: file.mimeType.startsWith('audio/')
-															? 'lucide:music'
-															: 'lucide:file'
+															? MusicNoteIcon
+															: FileIcon
 										"
 										class="w-5 h-5 text-text-tertiary flex-shrink-0"
 									/>

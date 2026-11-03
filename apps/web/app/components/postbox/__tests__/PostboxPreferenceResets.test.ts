@@ -94,7 +94,6 @@ function mountCard(component: unknown) {
 				UiSwitch: SwitchStub,
 				UiButton: true,
 				UiIconBox: true,
-				Icon: true,
 				I18nT: true,
 				PostboxNotificationPermission: true,
 			},

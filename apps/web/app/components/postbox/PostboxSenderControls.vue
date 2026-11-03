@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { extractEmailAddress } from '~/utils/emailAddress';
+import { CrownIcon, UserCheckCornerIcon } from '@coolicons/vue';
 
 /**
  * Per-sender triage corrections in the thread reader header: an explicit VIP
@@ -36,7 +37,7 @@ const { isVip, canAccept, toggleVip, acceptSender, busy } = usePostboxSenderStat
 				:disabled="busy"
 				@click.stop.prevent="acceptSender"
 			>
-				<Icon name="lucide:user-check" class="w-3.5 h-3.5" />
+				<UserCheckCornerIcon class="w-3.5 h-3.5" />
 				{{ t('components.postbox.postboxSenderControls.accept') }}
 			</button>
 		</UiTooltip>
@@ -60,7 +61,7 @@ const { isVip, canAccept, toggleVip, acceptSender, busy } = usePostboxSenderStat
 				:disabled="busy"
 				@click.stop.prevent="toggleVip"
 			>
-				<Icon name="lucide:crown" class="w-3.5 h-3.5" :class="{ 'fill-current': isVip }" />
+				<CrownIcon class="w-3.5 h-3.5" :class="{ 'fill-current': isVip }" />
 			</button>
 		</UiTooltip>
 	</div>

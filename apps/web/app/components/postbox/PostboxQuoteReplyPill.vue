@@ -13,6 +13,7 @@
 import type { FrameSelectionAnchor } from '~/composables/postbox/usePostboxFrameSelection';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { resolvePostboxShortcut } from '~/utils/postboxShortcuts';
+import { BookmarkPlusIcon, QuoteLeftIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	anchor: FrameSelectionAnchor;
@@ -89,7 +90,7 @@ defineExpose({
 			data-testid="quote-reply-pill"
 			@click="emit('quote')"
 		>
-			<Icon name="lucide:quote" class="size-3.5 text-text-tertiary" aria-hidden="true" />
+			<QuoteLeftIcon class="size-3.5 text-text-tertiary" aria-hidden="true" />
 			{{ t('components.postbox.postboxQuoteReplyPill.action') }}
 			<kbd
 				v-if="shortcut"
@@ -105,7 +106,7 @@ defineExpose({
 			data-testid="save-reply-pill"
 			@click="emit('save')"
 		>
-			<Icon name="lucide:bookmark-plus" class="size-3.5 text-text-tertiary" aria-hidden="true" />
+			<BookmarkPlusIcon class="size-3.5 text-text-tertiary" aria-hidden="true" />
 			{{ t('shared.savedReplies.saveCurrent') }}
 		</button>
 	</div>

@@ -22,7 +22,6 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 // template global, so inject it into the render context via `global.mocks`.
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	// Exercised by their own tests; inert here so we can assert the row's own copy.
 	DomainsDNSRecordPanel: {

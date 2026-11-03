@@ -10,6 +10,7 @@ import { api } from '@owlat/api';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { ShieldWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -404,7 +405,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 						v-if="isPendingReview"
 						class="mt-3 p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3"
 					>
-						<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<ShieldWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
 							<p class="text-sm font-medium text-text-primary">
 								{{ t('dashboard.send.transactional.detail.edit.reviewBanner.title') }}

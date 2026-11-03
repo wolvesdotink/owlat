@@ -17,6 +17,7 @@
 import { api } from '@owlat/api';
 import { transportDnsGuidance } from '~/utils/transportDnsGuidance';
 import { useLocalized } from '~/composables/useLocalized';
+import { CheckIcon, ChevronDownIcon, ShieldCheckIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { data: summary } = useOrganizationQuery(api.delivery.status.getTransportSummary);
@@ -42,7 +43,7 @@ const open = ref(false);
 			@click="open = !open"
 		>
 			<span class="flex items-center gap-2.5 min-w-0">
-				<Icon name="lucide:shield-check" class="w-4 h-4 text-text-tertiary shrink-0" />
+				<ShieldCheckIcon class="w-4 h-4 text-text-tertiary shrink-0" />
 				<span class="text-sm text-text-secondary truncate">
 					<span class="font-medium text-text-primary">{{
 						t('components.delivery.domainDnsGuidance.heading', {
@@ -52,8 +53,7 @@ const open = ref(false);
 					— {{ message(guidance.lead) }}
 				</span>
 			</span>
-			<Icon
-				name="lucide:chevron-down"
+			<ChevronDownIcon
 				class="w-4 h-4 text-text-tertiary shrink-0 transition-transform duration-(--motion-fast)"
 				:class="open ? 'rotate-180' : ''"
 			/>
@@ -65,7 +65,7 @@ const open = ref(false);
 					:key="i"
 					class="flex items-start gap-2 text-sm text-text-secondary"
 				>
-					<Icon name="lucide:check" class="w-4 h-4 text-success mt-0.5 shrink-0" />
+					<CheckIcon class="w-4 h-4 text-success mt-0.5 shrink-0" />
 					<span>{{ message(point) }}</span>
 				</li>
 			</ul>

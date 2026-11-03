@@ -3,6 +3,7 @@ import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useHeaderScrolledPast } from '~/composables/postbox/usePostboxReaderStickyBar';
 import { findScrollParent } from '~/composables/postbox/usePostboxScrollHost';
+import { ArchiveIcon, ReplyIcon } from '@coolicons/vue';
 
 /**
  * The slim bar that takes over from the reader's header line once it scrolls
@@ -91,7 +92,7 @@ function backToTop() {
 						data-testid="reader-sticky-bar-reply"
 						@click="emit('reply')"
 					>
-						<Icon name="lucide:reply" class="w-4 h-4" aria-hidden="true" />
+						<ReplyIcon class="w-4 h-4" aria-hidden="true" />
 					</UiButton>
 				</UiTooltip>
 				<UiTooltip :text="t('postbox.reader.header.archive')">
@@ -105,7 +106,7 @@ function backToTop() {
 						data-testid="reader-sticky-bar-archive"
 						@click="emit('archive')"
 					>
-						<Icon name="lucide:archive" class="w-4 h-4" aria-hidden="true" />
+						<ArchiveIcon class="w-4 h-4" aria-hidden="true" />
 					</UiButton>
 				</UiTooltip>
 				<!-- Host-owned, after the verbs (the ⋯ menu). -->

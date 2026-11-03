@@ -2,6 +2,7 @@
 import type { OrganizationInvitation } from '~/composables/useOrganization';
 import { useLocalized } from '~/composables/useLocalized';
 import { roleDefinition } from '~/utils/teamRoles';
+import { ClockIcon, CloseIcon, LinkIcon, MailIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 /**
  * Pending invites with their expiry and the copy-link, resend and revoke
@@ -46,7 +47,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('dashboard.admin.team.invites.title') }}
@@ -73,7 +74,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 				<div class="flex items-center gap-4">
 					<!-- Email Icon -->
 					<div class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center">
-						<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary" />
+						<MailIcon class="w-5 h-5 text-text-tertiary" />
 					</div>
 
 					<!-- Email and Status -->
@@ -87,12 +88,12 @@ const formatExpiryTime = (expiresAt: Date) => {
 									roleDefinition(invite.role).badgeToneClass,
 								]"
 							>
-								<Icon :name="roleDefinition(invite.role).icon" class="w-3 h-3" />
+								<component :is="roleDefinition(invite.role).icon" class="w-3 h-3" />
 								{{ localized(roleDefinition(invite.role).label) }}
 							</span>
 						</div>
 						<div class="flex items-center gap-2 text-sm text-text-tertiary">
-							<Icon name="lucide:clock" class="w-3 h-3" />
+							<ClockIcon class="w-3 h-3" />
 							<span>{{ formatExpiryTime(invite.expiresAt) }}</span>
 						</div>
 					</div>
@@ -107,7 +108,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							:aria-label="t('dashboard.admin.team.invites.copyLink')"
 							@click="emit('copyLink', invite.id)"
 						>
-							<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
+							<LinkIcon class="w-4 h-4 text-text-secondary" />
 						</UiButton>
 					</UiTooltip>
 					<!-- An expired invite's obvious next step is a fresh email, so it
@@ -124,7 +125,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							data-testid="invite-resend-labelled"
 							@click="emit('resend', invite)"
 						>
-							<Icon v-if="resendingId !== invite.id" name="lucide:send" class="w-4 h-4 mr-2" />
+							<PaperPlaneIcon v-if="resendingId !== invite.id" class="w-4 h-4 mr-2" />
 							{{ t('dashboard.admin.team.invites.resendShort') }}
 						</UiButton>
 					</UiTooltip>
@@ -137,9 +138,8 @@ const formatExpiryTime = (expiresAt: Date) => {
 							:disabled="resendingId === invite.id"
 							@click="emit('resend', invite)"
 						>
-							<Icon
+							<PaperPlaneIcon
 								v-if="resendingId !== invite.id"
-								name="lucide:send"
 								class="w-4 h-4 text-text-secondary"
 							/>
 						</UiButton>
@@ -151,7 +151,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							:aria-label="t('dashboard.admin.team.invites.revoke')"
 							@click="emit('revoke', invite)"
 						>
-							<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
+							<CloseIcon class="w-4 h-4 text-text-secondary hover:text-error" />
 						</UiButton>
 					</UiTooltip>
 				</div>

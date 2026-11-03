@@ -4,6 +4,7 @@ import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import type { PaletteGroup } from '~/lib/commandPalette';
 import type { PalettePrompt } from '~/composables/useCommandPaletteScope';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { TerminalIcon } from '@coolicons/vue';
 
 /**
  * The stand-in under the rows. An empty box has searched for nothing, so it
@@ -17,9 +18,7 @@ const example: PaletteGroup = {
 	key: 'mail-try',
 	heading: 'Try',
 	order: 0,
-	items: [
-		{ id: 'mail-example:is:unread', label: 'is:unread', icon: 'lucide:terminal', run: () => {} },
-	],
+	items: [{ id: 'mail-example:is:unread', label: 'is:unread', icon: TerminalIcon, run: () => {} }],
 };
 
 function mountResults(props: {

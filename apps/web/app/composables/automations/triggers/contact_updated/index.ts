@@ -1,11 +1,12 @@
 import { defineAsyncComponent } from 'vue';
 import type { TriggerEditorModule } from '../types';
+import { UserSettingsCornerIcon } from '@coolicons/vue';
 
 export const contactUpdatedTriggerEditorModule: TriggerEditorModule<'contact_updated'> = {
 	kind: 'contact_updated',
 	label: 'shared.automations.triggers.contactUpdated.label',
 	description: 'shared.automations.triggers.contactUpdated.description',
-	icon: 'lucide:user-cog',
+	icon: UserSettingsCornerIcon,
 	color: 'lavender',
 	requiresConfig: true,
 	createDefault: () => ({ propertyKey: '' }),

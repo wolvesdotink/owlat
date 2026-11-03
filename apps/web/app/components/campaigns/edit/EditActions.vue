@@ -3,6 +3,9 @@
 // and Send now. On a phone the three send actions take their own line
 // (wrapping, right-aligned) instead of squeezing every label onto two lines and
 // pushing Send now past the edge.
+import { ClockIcon, PaperPlaneIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 defineProps<{
 	isDraft: boolean;
 	isScheduled: boolean;
@@ -29,11 +32,7 @@ const { t } = useI18n();
 				:disabled="isSaving"
 				@click="emit('save')"
 			>
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
 				{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
 			</UiButton>
 
@@ -44,12 +43,8 @@ const { t } = useI18n();
 				:disabled="isSaving || !canSchedule"
 				@click="emit('schedule')"
 			>
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:clock" class="w-4 h-4" />
+				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+				<ClockIcon v-else class="w-4 h-4" />
 				{{
 					isScheduled
 						? t('dashboard.campaigns.detail.edit.actions.reschedule')
@@ -59,12 +54,8 @@ const { t } = useI18n();
 
 			<!-- Send Now button -->
 			<UiButton class="gap-2" :disabled="isSaving" @click="emit('sendNow')">
-				<Icon
-					v-if="isSaving"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
+				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+				<PaperPlaneIcon v-else class="w-4 h-4" />
 				{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
 			</UiButton>
 		</div>

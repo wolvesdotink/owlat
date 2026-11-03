@@ -13,6 +13,8 @@ import { EXTERNAL_RECEIVING_PROVIDER_KEYS } from '~/utils/externalReceivingLabel
 // Explicit import (rather than the Nuxt auto-import) so the section resolves in
 // the row's own component tests, which stub only the leaf panels.
 import SendingDnsSection from './SendingDnsSection.vue';
+import { ChevronDownIcon, GlobeIcon, MagicWandIcon, ReloadIcon, TrashIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type DomainRow = FunctionReturnType<typeof api.domains.domains.listByOrganization>[number];
 
@@ -147,7 +149,7 @@ const registrationSettled = computed(
 				@click="emit('toggle')"
 			/>
 			<div class="flex items-center gap-4">
-				<UiIconBox icon="lucide:globe" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="GlobeIcon" size="sm" variant="surface" rounded="lg" />
 				<!-- Mouse-only by design: the disclosure above is the keyboard route. -->
 				<div class="relative cursor-pointer" @click="toggleFromText">
 					<div class="flex items-center gap-3">
@@ -158,12 +160,13 @@ const registrationSettled = computed(
 								getStatusBadgeClass(domain.status),
 							]"
 						>
-							<Icon
-								:name="getStatusIcon(domain.status)"
+							<component
+								:is="getStatusIcon(domain.status)"
 								:class="[
 									'w-3 h-3',
 									domain.status === 'registering' && 'animate-spin motion-reduce:animate-none',
 								]"
+								size="1em"
 							/>
 							{{ statusLabel }}
 						</span>
@@ -228,12 +231,8 @@ const registrationSettled = computed(
 						:disabled="isForcing"
 						@click="emit('forceVerify')"
 					>
-						<Icon
-							v-if="isForcing"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
+						<SpinnerIcon v-if="isForcing" class="w-4 h-4" />
+						<MagicWandIcon v-else class="w-4 h-4" />
 						{{ t('components.domains.recordRow.forceVerify') }}
 						<span
 							class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/20 uppercase tracking-wide"
@@ -259,12 +258,8 @@ const registrationSettled = computed(
 								: emit('verify')
 						"
 					>
-						<Icon
-							v-if="isVerifying || domain.status === 'registering'"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+						<SpinnerIcon v-if="isVerifying || domain.status === 'registering'" class="w-4 h-4" />
+						<ReloadIcon v-else class="w-4 h-4" />
 						<template v-if="domain.status === 'registering'">{{
 							t('components.domains.recordRow.registering')
 						}}</template>
@@ -285,7 +280,7 @@ const registrationSettled = computed(
 						:aria-label="t('components.domains.recordRow.removeDomain')"
 						@click="emit('delete')"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 				<!-- Decorative. Its rotation makes it a stacking context painted above
@@ -297,19 +292,7 @@ const registrationSettled = computed(
 						isExpanded ? 'rotate-180' : '',
 					]"
 				>
-					<svg
-						class="w-4 h-4 text-text-tertiary"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M19 9l-7 7-7-7"
-						/>
-					</svg>
+					<ChevronDownIcon class="w-4 h-4 text-text-tertiary" />
 				</div>
 			</div>
 		</div>
@@ -327,10 +310,7 @@ const registrationSettled = computed(
 						v-if="domain.status === 'registering'"
 						class="flex items-center gap-3 py-8 justify-center"
 					>
-						<Icon
-							name="lucide:loader-2"
-							class="w-5 h-5 animate-spin motion-reduce:animate-none text-info"
-						/>
+						<SpinnerIcon class="w-5 h-5 text-info" />
 						<p class="text-sm text-text-secondary">
 							{{ t('components.domains.recordRow.settingUp') }}
 						</p>
@@ -347,7 +327,7 @@ const registrationSettled = computed(
 							</p>
 						</div>
 						<UiButton class="gap-2" @click="emit('retryRegistration')">
-							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
+							<ReloadIcon class="w-4 h-4" />
 							{{ t('components.domains.recordRow.retryRegistration') }}
 						</UiButton>
 					</div>

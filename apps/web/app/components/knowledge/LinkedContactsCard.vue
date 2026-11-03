@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /** The knowledge entry detail page's linked contacts, each a link to the contact. */
+import { ExternalLinkIcon, UserIcon } from '@coolicons/vue';
+
 defineProps<{
 	contactIds: string[];
 }>();
@@ -19,9 +21,9 @@ const { t } = useI18n();
 				:to="`/dashboard/audience/contacts/${contactId}`"
 				class="flex items-center gap-2 py-1.5 text-sm text-text-primary hover:text-brand transition-colors"
 			>
-				<Icon name="lucide:user" class="w-3.5 h-3.5 text-text-tertiary" />
+				<UserIcon class="w-3.5 h-3.5 text-text-tertiary" />
 				<span class="truncate">{{ contactId }}</span>
-				<Icon name="lucide:external-link" class="w-3 h-3 text-text-tertiary ml-auto" />
+				<ExternalLinkIcon class="w-3 h-3 text-text-tertiary ml-auto" />
 			</NuxtLink>
 		</div>
 	</div>

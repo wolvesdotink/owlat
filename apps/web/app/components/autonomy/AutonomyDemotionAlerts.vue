@@ -7,6 +7,8 @@
  * `acknowledge` to dismiss an incident; the sender stays draft-only until the
  * operator deliberately re-enables it. Presentational + prop-driven.
  */
+import { ShieldWarningIcon } from '@coolicons/vue';
+
 interface DemotionIncident {
 	_id: string;
 	category: string;
@@ -32,7 +34,7 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 <template>
 	<UiCard v-if="hasIncidents" data-testid="demotion-alerts" class="border-error/40">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:shield-alert" size="sm" variant="error" />
+			<UiIconBox :icon="ShieldWarningIcon" size="sm" variant="error" />
 			<div>
 				<h3 class="text-base font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyDemotionAlerts.title') }}

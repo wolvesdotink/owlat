@@ -24,6 +24,7 @@ import {
 	buildSavedReplyGroups,
 } from '../commandPaletteSurfaces';
 import { createTestI18n } from '~/__tests__/i18n';
+import { MegaphoneIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
 /** The surfaces resolve their own copy, so the assertions read as words. */
@@ -104,7 +105,7 @@ describe('the campaigns provider inside the shell', () => {
 						{
 							id: 'verb:new-campaign',
 							label: 'New campaign',
-							icon: 'lucide:megaphone',
+							icon: MegaphoneIcon,
 							run: () => {},
 						},
 					],

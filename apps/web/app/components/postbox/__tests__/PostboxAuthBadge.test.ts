@@ -23,12 +23,10 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBadge(auth: SenderAuthInput, enabled = true, heuristics?: SenderHeuristics) {
 	return mount(PostboxAuthBadge, {
 		props: { enabled, auth, heuristics },
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

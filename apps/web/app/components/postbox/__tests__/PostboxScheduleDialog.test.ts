@@ -42,7 +42,7 @@ function mountDialog(props: Record<string, unknown> = {}) {
 		props: { open: true, mailboxId: 'mbx_1', recipients: ['ines@example.test'], ...props },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiModal: modalStub, Icon: { template: '<span />' } },
+			stubs: { UiModal: modalStub },
 		},
 	});
 }

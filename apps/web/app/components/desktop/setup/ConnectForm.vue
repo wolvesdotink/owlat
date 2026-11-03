@@ -10,6 +10,7 @@ import type { ProvisionStage } from '~/composables/useServerProvisioning';
 import type { SetupConnectForm } from '~/composables/desktopSetup/useSetupConnectForm';
 import { labelClass } from '~/composables/desktopSetup/setupFormClasses';
 import { useLocalized } from '~/composables/useLocalized';
+import { ShieldWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	form: SetupConnectForm;
@@ -255,7 +256,7 @@ const {
 					class="text-sm font-medium"
 					:class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'"
 				>
-					<Icon name="lucide:shield-alert" class="mb-0.5 mr-1 inline size-4" />
+					<ShieldWarningIcon class="mb-0.5 mr-1 inline size-4" />
 					{{ tk(hostKeyPrompt.title) }}
 				</p>
 				<p class="mt-1 text-xs text-text-secondary">{{ tk(hostKeyPrompt.body) }}</p>

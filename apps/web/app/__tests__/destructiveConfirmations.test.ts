@@ -47,7 +47,7 @@ const UiButtonStub = defineComponent({
 });
 
 const globalStubs = {
-	global: { stubs: { UiModal: UiModalStub, UiButton: UiButtonStub, Icon: true } },
+	global: { stubs: { UiModal: UiModalStub, UiButton: UiButtonStub } },
 };
 
 // Mirrors the page pattern: a trigger arms the dialog (sets :open), @confirm runs

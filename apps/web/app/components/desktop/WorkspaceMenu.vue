@@ -16,6 +16,8 @@
  * The trigger deliberately omits `data-tauri-drag-region` so clicks open the
  * menu instead of starting a window drag.
  */
+import { CheckIcon, PlusIcon, UnfoldMoreIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 const { workspaces, activeId, active, switchTo } = useDesktopWorkspaces();
@@ -140,7 +142,7 @@ onUnmounted(() => {
 			<span class="font-display text-[13px] font-[550] leading-none truncate text-text-primary">
 				{{ title }}
 			</span>
-			<Icon name="lucide:chevrons-up-down" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+			<UnfoldMoreIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 		</button>
 
 		<Transition
@@ -178,11 +180,7 @@ onUnmounted(() => {
 						{{ ws.label }}
 					</span>
 					<DesktopWorkspaceUnreadBadge :count="badgeFor(ws.id)" />
-					<Icon
-						v-if="ws.id === activeId"
-						name="lucide:check"
-						class="w-3.5 h-3.5 text-brand shrink-0"
-					/>
+					<CheckIcon v-if="ws.id === activeId" class="w-3.5 h-3.5 text-brand shrink-0" />
 				</button>
 
 				<div class="my-1 h-px bg-border-subtle" />
@@ -193,7 +191,7 @@ onUnmounted(() => {
 					class="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="closeMenu({ restoreFocus: false })"
 				>
-					<Icon name="lucide:plus" class="w-3.5 h-3.5 shrink-0" />
+					<PlusIcon class="w-3.5 h-3.5 shrink-0" />
 					{{ t('components.desktop.workspaceMenu.addWorkspace') }}
 				</NuxtLink>
 			</div>

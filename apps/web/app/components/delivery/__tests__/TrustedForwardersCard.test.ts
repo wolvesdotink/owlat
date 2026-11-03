@@ -66,7 +66,6 @@ const stubs = {
 	UiIconBox: true,
 	UiSpinner: true,
 	UiQueryBoundary: true,
-	Icon: true,
 	UiInput: {
 		props: ['modelValue'],
 		emits: ['update:modelValue'],

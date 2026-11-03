@@ -13,6 +13,7 @@
  */
 import { api } from '@owlat/api';
 import { shortFingerprint } from '~/utils/fingerprints';
+import { KeyIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -81,7 +82,7 @@ async function accept() {
 		role="status"
 	>
 		<div class="flex items-start gap-2.5">
-			<Icon name="lucide:key-round" class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+			<KeyIcon class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
 			<div class="min-w-0">
 				<p class="text-sm text-text-primary font-medium">
 					{{ t('components.postbox.postboxKeyChangeBanner.title') }}

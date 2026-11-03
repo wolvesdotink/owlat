@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { AuditLogEntry } from '~/composables/useAuditLogPresentation';
+import {
+	ActivityIcon,
+	CalendarIcon,
+	ClipboardListIcon,
+	FilterIcon,
+	LockIcon,
+	PaperPlaneIcon,
+	ReloadIcon,
+	SearchIcon,
+	SettingsIcon,
+	UserIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -170,7 +183,7 @@ const dateRangeOptions = computed(() => [
 			v-if="showAdminGate"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.audit.adminGate.title') }}
 			</p>
@@ -204,7 +217,7 @@ const dateRangeOptions = computed(() => [
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox
-					icon="lucide:clipboard-list"
+					:icon="ClipboardListIcon"
 					size="xl"
 					variant="surface"
 					rounded="full"
@@ -232,7 +245,7 @@ const dateRangeOptions = computed(() => [
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:send" class="w-4 h-4 text-brand" />
+							<PaperPlaneIcon class="w-4 h-4 text-brand" />
 							<p class="text-sm text-text-secondary">
 								{{ t('dashboard.admin.team.audit.stats.campaigns') }}
 							</p>
@@ -243,7 +256,7 @@ const dateRangeOptions = computed(() => [
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:users" class="w-4 h-4 text-brand" />
+							<UsersIcon class="w-4 h-4 text-brand" />
 							<p class="text-sm text-text-secondary">
 								{{ t('dashboard.admin.team.audit.stats.contacts') }}
 							</p>
@@ -254,7 +267,7 @@ const dateRangeOptions = computed(() => [
 					</div>
 					<div class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:settings" class="w-4 h-4 text-warning" />
+							<SettingsIcon class="w-4 h-4 text-warning" />
 							<p class="text-sm text-text-secondary">{{ t('common.settings') }}</p>
 						</div>
 						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
@@ -271,8 +284,7 @@ const dateRangeOptions = computed(() => [
 					<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
 						<!-- Search -->
 						<div class="relative w-full">
-							<Icon
-								name="lucide:search"
+							<SearchIcon
 								class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 							/>
 							<input
@@ -285,7 +297,7 @@ const dateRangeOptions = computed(() => [
 
 						<!-- Resource Filter -->
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+							<FilterIcon class="w-4 h-4 text-text-tertiary" />
 							<select v-model="selectedResource" class="input w-40">
 								<option
 									v-for="resource in resourceTypes"
@@ -299,7 +311,7 @@ const dateRangeOptions = computed(() => [
 
 						<!-- Action Filter -->
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:activity" class="w-4 h-4 text-text-tertiary" />
+							<ActivityIcon class="w-4 h-4 text-text-tertiary" />
 							<select v-model="selectedAction" class="input w-44">
 								<option value="">{{ t('dashboard.admin.team.audit.allActions') }}</option>
 								<optgroup
@@ -323,7 +335,7 @@ const dateRangeOptions = computed(() => [
 							v-if="activeUsersData && activeUsersData.length > 0"
 							class="flex items-center gap-2"
 						>
-							<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
+							<UserIcon class="w-4 h-4 text-text-tertiary" />
 							<select v-model="selectedUserId" class="input w-40">
 								<option value="">{{ t('dashboard.admin.team.audit.allUsers') }}</option>
 								<option v-for="user in activeUsersData" :key="user._id" :value="user.authUserId">
@@ -334,7 +346,7 @@ const dateRangeOptions = computed(() => [
 
 						<!-- Date Range Filter -->
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+							<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 							<select v-model="dateRange" class="input w-44">
 								<option
 									v-for="option in dateRangeOptions"
@@ -359,7 +371,7 @@ const dateRangeOptions = computed(() => [
 							class="gap-2 text-text-secondary hover:text-text-primary"
 							@click="resetFilters"
 						>
-							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
+							<ReloadIcon class="w-4 h-4" />
 							{{ t('dashboard.admin.team.audit.resetFilters') }}
 						</UiButton>
 					</div>
@@ -371,7 +383,7 @@ const dateRangeOptions = computed(() => [
 					class="card flex flex-col items-center justify-center py-16 text-center px-6"
 				>
 					<UiIconBox
-						icon="lucide:clipboard-list"
+						:icon="ClipboardListIcon"
 						size="xl"
 						variant="surface"
 						rounded="full"
@@ -390,7 +402,7 @@ const dateRangeOptions = computed(() => [
 					v-else-if="filteredLogs.length === 0 && searchQuery.trim()"
 					class="card flex flex-col items-center justify-center py-16 text-center px-6"
 				>
-					<UiIconBox icon="lucide:search" size="xl" variant="surface" rounded="full" class="mb-4" />
+					<UiIconBox :icon="SearchIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 					<p class="text-text-secondary font-medium">
 						{{ t('dashboard.admin.team.audit.noResults.title') }}
 					</p>

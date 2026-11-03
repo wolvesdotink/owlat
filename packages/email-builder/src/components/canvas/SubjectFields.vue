@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from 'vue';
-import { Braces, Plus, TriangleAlert } from '@lucide/vue';
+import { BracesIcon, PlusIcon, TriangleWarningIcon } from '@coolicons/vue';
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import type { Variable } from '../../types';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
@@ -228,7 +228,7 @@ const subjectPlaceholder = computed(() =>
 								@mousedown.prevent
 								@click="handleInsertButton"
 							>
-								<Braces :size="12" />
+								<BracesIcon :size="12" />
 								{{ t('builder.subject.variable') }}
 							</button>
 						</UiTooltip>
@@ -249,7 +249,7 @@ const subjectPlaceholder = computed(() =>
 					:id="hintId"
 					class="mt-1 flex items-center gap-1 text-xs text-warning"
 				>
-					<TriangleAlert :size="12" class="shrink-0" />
+					<TriangleWarningIcon :size="12" class="shrink-0" />
 					{{ t('builder.subject.empty') }}
 				</p>
 				<div
@@ -257,7 +257,7 @@ const subjectPlaceholder = computed(() =>
 					:id="hintId"
 					class="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-warning"
 				>
-					<TriangleAlert :size="12" class="shrink-0" />
+					<TriangleWarningIcon :size="12" class="shrink-0" />
 					<span>
 						<template v-for="(key, index) in unknownKeys" :key="key">
 							<span v-if="index > 0">, </span>
@@ -297,7 +297,7 @@ const subjectPlaceholder = computed(() =>
 						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-border-default text-xs text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-strong transition-colors"
 						@click="emit('add-variable')"
 					>
-						<Plus :size="12" />
+						<PlusIcon :size="12" />
 						{{ t('builder.subject.newVariable') }}
 					</button>
 				</UiTooltip>

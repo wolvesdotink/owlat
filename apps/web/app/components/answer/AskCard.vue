@@ -44,6 +44,8 @@ import { useShortcutScope } from '~/composables/useShortcutScope';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
 import FileAsk, { type FileAnswerRef, type FileAskValue, type FileCopyPolicy } from './FileAsk.vue';
+import { SparklesIcon, WalletIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /** An answer as the card emits it: `files` only when `multipleFiles` is on. */
 export type AskCardAnswer = AskAnswer & { files?: FileAnswerRef[] };
@@ -211,7 +213,7 @@ const title = computed(() => {
 		     only the retry, which accepts no gaps. -->
 		<template v-if="shown.length === 0">
 			<div class="flex flex-wrap items-baseline gap-x-2">
-				<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
+				<SparklesIcon class="size-3.5 self-center text-brand" aria-hidden="true" />
 				<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
 					{{ t('components.answer.askCard.allAnswered') }}
 				</h2>
@@ -224,12 +226,7 @@ const title = computed(() => {
 				data-testid="ask-submit"
 				@click="emit('answer', [])"
 			>
-				<Icon
-					v-if="submitting"
-					name="lucide:loader-2"
-					class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
-					aria-hidden="true"
-				/>
+				<SpinnerIcon v-if="submitting" class="mr-1 size-3.5" aria-hidden="true" />
 				{{ t('components.answer.askCard.draftNow') }}
 			</UiButton>
 		</template>
@@ -244,7 +241,7 @@ const title = computed(() => {
 		>
 			<template #header>
 				<div class="flex flex-wrap items-baseline gap-x-2">
-					<Icon name="lucide:sparkles" class="size-3.5 self-center text-brand" aria-hidden="true" />
+					<SparklesIcon class="size-3.5 self-center text-brand" aria-hidden="true" />
 					<h2 :id="titleId" class="text-sm font-semibold text-text-primary">
 						{{ title }}
 					</h2>
@@ -304,12 +301,7 @@ const title = computed(() => {
 						data-testid="ask-submit"
 						@click="submit"
 					>
-						<Icon
-							v-if="submitting"
-							name="lucide:loader-2"
-							class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
-							aria-hidden="true"
-						/>
+						<SpinnerIcon v-if="submitting" class="mr-1 size-3.5" aria-hidden="true" />
 						{{ t('components.answer.askCard.answerAndDraft') }}
 					</UiButton>
 					<UiButton
@@ -332,7 +324,7 @@ const title = computed(() => {
 			role="status"
 			data-testid="ask-budget"
 		>
-			<Icon name="lucide:wallet" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+			<WalletIcon class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 			{{ t('components.answer.askCard.budgetRefused') }}
 		</p>
 	</section>

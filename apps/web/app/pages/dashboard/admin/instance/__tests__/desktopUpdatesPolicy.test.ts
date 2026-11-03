@@ -140,7 +140,6 @@ const stubs = {
 	UiCard: passthroughStub,
 	UiEmptyState: emptyStateStub,
 	UiButton: buttonStub,
-	Icon: true,
 	NuxtLink: true,
 };
 

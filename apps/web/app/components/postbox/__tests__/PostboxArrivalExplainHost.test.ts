@@ -78,7 +78,6 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, isPriority: boolean) {
 			components: {
 				PostboxRowCore,
 				PostboxThreadRowBody,
-				Icon: { props: ['name'], template: '<span />' },
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: {
 					props: ['items'],

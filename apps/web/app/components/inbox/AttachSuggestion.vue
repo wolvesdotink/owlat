@@ -16,6 +16,8 @@
  * only ever appears on the human review surface.
  */
 
+import { PaperclipIcon } from '@coolicons/vue';
+
 interface AttachmentCandidate {
 	fileId: string;
 	storageId: string;
@@ -47,7 +49,7 @@ function label(candidate: AttachmentCandidate): string {
 <template>
 	<div class="bg-brand-subtle/20 border border-brand/20 rounded-lg p-3">
 		<div class="flex items-center gap-2 mb-2">
-			<Icon name="lucide:paperclip" class="w-4 h-4 text-brand" />
+			<PaperclipIcon class="w-4 h-4 text-brand" />
 			<p class="text-xs font-medium text-brand uppercase tracking-wider">
 				{{
 					props.suggestions.ambiguous
@@ -67,7 +69,7 @@ function label(candidate: AttachmentCandidate): string {
 			data-testid="attach-suggestion"
 			@click="emit('attach', props.suggestions.candidates[0]!)"
 		>
-			<Icon name="lucide:paperclip" class="w-3 h-3" />
+			<PaperclipIcon class="w-3 h-3" />
 			{{
 				t('components.inbox.attachSuggestion.attachFile', {
 					file: label(props.suggestions.candidates[0]!),
@@ -91,7 +93,7 @@ function label(candidate: AttachmentCandidate): string {
 					data-testid="attach-suggestion"
 					@click="emit('attach', candidate)"
 				>
-					<Icon name="lucide:paperclip" class="w-3 h-3" />
+					<PaperclipIcon class="w-3 h-3" />
 					{{ label(candidate) }}
 				</UiButton>
 			</div>

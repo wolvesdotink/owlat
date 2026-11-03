@@ -9,6 +9,7 @@ import { compareSendTimeArms, MIN_DELIVERED_PER_GROUP } from '~/utils/sendTimeCo
 import type { SendTimeMetricComparison } from '~/utils/sendTimeComparison';
 import { formatDateTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
+import { SparklesIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	campaign: {
@@ -51,7 +52,7 @@ function verdictTone(metric: SendTimeMetricComparison): string {
 <template>
 	<div class="card p-4 sm:p-6" data-testid="campaign-send-time-report">
 		<div class="flex items-start gap-3">
-			<UiIconBox icon="lucide:sparkles" size="sm" rounded="lg" />
+			<UiIconBox :icon="SparklesIcon" size="sm" rounded="lg" />
 			<div class="min-w-0">
 				<h3 class="text-base font-medium text-text-primary">{{ t(`${prefix}.title`) }}</h3>
 				<p v-if="settings" class="text-sm text-text-secondary mt-1">

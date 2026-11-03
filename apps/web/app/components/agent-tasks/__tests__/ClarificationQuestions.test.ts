@@ -43,7 +43,7 @@ function mountList(props: {
 				<span data-testid="remaining">{{ remaining }}</span>
 			</template>`,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -168,7 +168,7 @@ describe('ClarificationQuestions', () => {
 					<button data-testid="go" :disabled="!canSubmit" @click="submit">go</button>
 				</template>`,
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		// The default chips and text line are replaced, not added to.
 		expect(chips(wrapper)).toHaveLength(0);

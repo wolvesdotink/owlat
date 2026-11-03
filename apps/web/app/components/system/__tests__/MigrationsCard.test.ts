@@ -64,7 +64,6 @@ function mountCard(data: unknown) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiQueryBoundary: { template: '<div data-test="boundary" />' },
 				UiButton: {
 					props: ['disabled'],

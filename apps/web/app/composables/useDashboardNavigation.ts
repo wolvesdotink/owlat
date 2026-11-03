@@ -1,4 +1,7 @@
-import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import {
+	bundledPluginComposition,
+	bundledPluginIcons,
+} from '~/plugins/plugin-composition.generated';
 import {
 	buildNavigationSections,
 	derivePluginNavigation,
@@ -27,7 +30,7 @@ export function useDashboardNavigation() {
 	const navigationSections = computed<NavigationSection[]>(() =>
 		buildNavigationSections(
 			{ isFeatureEnabled, isDesktop: isDesktop.value, role: role.value },
-			derivePluginNavigation(bundledPluginComposition, isFeatureEnabled)
+			derivePluginNavigation(bundledPluginComposition, isFeatureEnabled, bundledPluginIcons)
 		)
 	);
 

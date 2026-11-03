@@ -3,6 +3,7 @@ import {
 	localizedQuestionCopy,
 	type LocalizableClarificationQuestion,
 } from '~/utils/clarificationLocale';
+import { HistoryIcon } from '@coolicons/vue';
 
 /**
  * The answers the agent reused from memory for the draft in the editor, above
@@ -27,10 +28,7 @@ const { t, locale } = useI18n();
 		</p>
 		<ul class="mt-2 space-y-1.5 text-sm">
 			<li v-for="question in questions" :key="question.id" class="flex items-baseline gap-2">
-				<Icon
-					name="lucide:history"
-					class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary"
-				/>
+				<HistoryIcon class="w-3.5 h-3.5 shrink-0 translate-y-0.5 text-text-tertiary" />
 				<span class="text-text-secondary">{{ localizedQuestionCopy(question, locale).text }}</span>
 				<span class="font-medium text-text-primary">{{ question.answer?.value }}</span>
 			</li>

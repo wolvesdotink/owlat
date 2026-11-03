@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { MailIcon } from '@coolicons/vue';
 
 export const inboundReceivedEditorModule: ContactActivityEditorModule<'inbound_received'> = {
 	literal: 'inbound_received',
 	displayConfig: {
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		label: 'shared.contactActivities.inboundReceived.label',
 		color: 'text-brand',
 	},

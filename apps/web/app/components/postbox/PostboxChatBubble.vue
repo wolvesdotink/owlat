@@ -23,6 +23,7 @@ import { isPreviewableFile } from '~/utils/postboxFileFacets';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import type { PostboxReaderMessage } from '~/composables/postbox/postboxReaderMessage';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
+import { PaperclipIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -136,7 +137,7 @@ function openAttachment(att: AttachmentMeta) {
 							:title="att.filename"
 							@click="openAttachment(att)"
 						>
-							<Icon name="lucide:paperclip" class="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+							<PaperclipIcon class="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
 							<span class="truncate">{{ att.filename }}</span>
 							<span class="flex-shrink-0 tabular-nums text-text-tertiary">{{
 								formatCompactFileSize(att.size)

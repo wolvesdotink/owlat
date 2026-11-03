@@ -26,6 +26,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CircleInfoIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	domainId: Id<'domains'>;
@@ -202,7 +203,7 @@ const bimiOffers = computed(() =>
 				class="flex items-start gap-2 text-xs text-text-secondary"
 				:data-advice-key="line.key"
 			>
-				<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+				<CircleInfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
 				<span>{{ line.text }}</span>
 			</li>
 		</ul>

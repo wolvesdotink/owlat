@@ -5,16 +5,28 @@
  * consumed by the autonomy rule editor and the thread-detail composable.
  */
 
-const AGENT_CATEGORY_ICONS: Record<string, string> = {
-	support: 'lucide:life-buoy',
-	sales: 'lucide:trending-up',
-	billing: 'lucide:credit-card',
-	feature_request: 'lucide:lightbulb',
-	complaint: 'lucide:alert-triangle',
-	spam: 'lucide:shield-x',
-	internal: 'lucide:building',
-	other: 'lucide:mail',
+import {
+	Building1Icon,
+	BulbIcon,
+	CreditCardIcon,
+	HeadsetIcon,
+	MailIcon,
+	ShieldCloseIcon,
+	TrendingUpIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
+const AGENT_CATEGORY_ICONS: Record<string, IconComponent> = {
+	support: HeadsetIcon,
+	sales: TrendingUpIcon,
+	billing: CreditCardIcon,
+	feature_request: BulbIcon,
+	complaint: TriangleWarningIcon,
+	spam: ShieldCloseIcon,
+	internal: Building1Icon,
+	other: MailIcon,
 };
 
-export const categoryIcon = (category: string): string =>
-	AGENT_CATEGORY_ICONS[category] ?? 'lucide:mail';
+export const categoryIcon = (category: string): IconComponent =>
+	AGENT_CATEGORY_ICONS[category] ?? MailIcon;

@@ -33,7 +33,6 @@ function mountPanel({ wide, saveStatus = 'saved' }: { wide: boolean; saveStatus?
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiButton: { template: '<button type="button"><slot /></button>' },
 				AutomationsStepSaveStatus: {
 					props: ['status', 'live'],

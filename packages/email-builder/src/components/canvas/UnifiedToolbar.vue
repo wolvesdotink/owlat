@@ -21,23 +21,23 @@ import ToolbarField from './ToolbarField.vue';
 import IconButton from '../ui/IconButton.vue';
 import ToolbarDivider from '../ui/ToolbarDivider.vue';
 import {
-	Bold,
-	Italic,
-	Underline,
-	Link,
-	AlignLeft,
-	AlignCenter,
-	AlignRight,
-	FileText,
-	Palette,
-	Move,
-	SlidersHorizontal,
-	Copy,
-	Trash2,
-	Link2,
-	Unlink,
-	Bookmark,
-} from '@lucide/vue';
+	BoldIcon,
+	BookmarkIcon,
+	CopyIcon,
+	FileTextIcon,
+	ItalicIcon,
+	LinkBreakIcon,
+	LinkHorizontalIcon,
+	LinkIcon,
+	MoveIcon,
+	PaletteIcon,
+	Slider1Icon,
+	TextAlignCenterIcon,
+	TextAlignLeftIcon,
+	TextAlignRightIcon,
+	TrashIcon,
+	UnderlineIcon,
+} from '@coolicons/vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -56,22 +56,22 @@ interface TabDef {
 const TAB_DEFS: TabDef[] = [
 	{
 		id: 'content',
-		icon: FileText,
+		icon: FileTextIcon,
 		match: ['Content', 'Data', 'Items', 'Sections', 'Links', 'Images', 'Labels', 'Behavior'],
 	},
 	{
 		id: 'design',
-		icon: Palette,
+		icon: PaletteIcon,
 		match: ['Typography', 'Style', 'Layout', 'Background', 'Retina', 'Button Border'],
 	},
 	{
 		id: 'spacing',
-		icon: Move,
+		icon: MoveIcon,
 		match: ['Spacing', 'Border'],
 	},
 	{
 		id: 'more',
-		icon: SlidersHorizontal,
+		icon: Slider1Icon,
 		match: ['Dark Mode', 'Responsive', 'Advanced', 'Dark', 'Mobile'],
 	},
 ];
@@ -281,44 +281,44 @@ onUnmounted(() => {
 			<!-- ===== Inline editing mode: formatting controls ===== -->
 			<template v-if="isInlineEditing && block.type === 'text'">
 				<IconButton
-					:icon="Bold"
+					:icon="BoldIcon"
 					:title="t('builder.toolbar.bold')"
 					:aria-label="t('builder.toolbar.bold')"
 					@click="emit('format', 'bold')"
 				/>
 				<IconButton
-					:icon="Italic"
+					:icon="ItalicIcon"
 					:title="t('builder.toolbar.italic')"
 					:aria-label="t('builder.toolbar.italic')"
 					@click="emit('format', 'italic')"
 				/>
 				<IconButton
-					:icon="Underline"
+					:icon="UnderlineIcon"
 					:title="t('builder.toolbar.underline')"
 					:aria-label="t('builder.toolbar.underline')"
 					@click="emit('format', 'underline')"
 				/>
 				<IconButton
-					:icon="Link"
+					:icon="LinkIcon"
 					:title="t('builder.toolbar.link')"
 					:aria-label="t('builder.toolbar.link')"
 					@click="emit('format', 'createLink')"
 				/>
 				<ToolbarDivider />
 				<IconButton
-					:icon="AlignLeft"
+					:icon="TextAlignLeftIcon"
 					:title="t('builder.toolbar.alignLeft')"
 					:aria-label="t('builder.toolbar.alignLeft')"
 					@click="emit('update', block.id, 'textAlign', 'left')"
 				/>
 				<IconButton
-					:icon="AlignCenter"
+					:icon="TextAlignCenterIcon"
 					:title="t('builder.toolbar.alignCenter')"
 					:aria-label="t('builder.toolbar.alignCenter')"
 					@click="emit('update', block.id, 'textAlign', 'center')"
 				/>
 				<IconButton
-					:icon="AlignRight"
+					:icon="TextAlignRightIcon"
 					:title="t('builder.toolbar.alignRight')"
 					:aria-label="t('builder.toolbar.alignRight')"
 					@click="emit('update', block.id, 'textAlign', 'right')"
@@ -328,7 +328,7 @@ onUnmounted(() => {
 			<!-- ===== Linked block mode ===== -->
 			<template v-else-if="isLinked">
 				<div class="flex items-center gap-1.5 px-1.5">
-					<Link2 :size="12" class="text-brand/60 shrink-0" />
+					<LinkHorizontalIcon :size="12" class="text-brand/60 shrink-0" />
 					<span
 						class="text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis"
 					>
@@ -337,13 +337,13 @@ onUnmounted(() => {
 				</div>
 				<ToolbarDivider />
 				<IconButton
-					:icon="Unlink"
+					:icon="LinkBreakIcon"
 					:title="t('builder.toolbar.detach')"
 					:aria-label="t('builder.toolbar.detach')"
 					@click="emit('detach')"
 				/>
 				<IconButton
-					:icon="Trash2"
+					:icon="TrashIcon"
 					:title="t('builder.toolbar.delete')"
 					:aria-label="t('builder.toolbar.delete')"
 					size="sm"
@@ -384,21 +384,21 @@ onUnmounted(() => {
 				<!-- Save as reusable block, Duplicate & Delete -->
 				<IconButton
 					v-if="canSaveAsBlock"
-					:icon="Bookmark"
+					:icon="BookmarkIcon"
 					:title="t('builder.toolbar.saveAsBlock')"
 					:aria-label="t('builder.toolbar.saveAsBlock')"
 					size="sm"
 					@click="emit('save-block')"
 				/>
 				<IconButton
-					:icon="Copy"
+					:icon="CopyIcon"
 					:title="t('builder.toolbar.duplicate')"
 					:aria-label="t('builder.toolbar.duplicate')"
 					size="sm"
 					@click="emit('duplicate')"
 				/>
 				<IconButton
-					:icon="Trash2"
+					:icon="TrashIcon"
 					:title="t('builder.toolbar.delete')"
 					:aria-label="t('builder.toolbar.delete')"
 					size="sm"

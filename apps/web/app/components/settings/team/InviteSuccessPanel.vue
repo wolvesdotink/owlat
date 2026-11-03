@@ -1,5 +1,7 @@
 <script setup lang="ts">
 /** A sent invitation, as the invite modal's success panel needs it. */
+import { CheckIcon, CopyIcon } from '@coolicons/vue';
+
 export interface InviteSuccess {
 	email: string;
 	acceptUrl: string;
@@ -27,7 +29,7 @@ const { copyLinkText } = useInviteLinks();
 <template>
 	<div class="space-y-4">
 		<div class="flex items-start gap-3">
-			<UiIconBox icon="lucide:check" size="sm" variant="brand" rounded="lg" />
+			<UiIconBox :icon="CheckIcon" size="sm" variant="brand" rounded="lg" />
 			<div>
 				<p class="font-medium text-text-primary">
 					{{ t('components.settings.team.inviteModal.invitationReady') }}
@@ -77,7 +79,7 @@ const { copyLinkText } = useInviteLinks();
 				/>
 				<UiButton variant="secondary" @click="copyLinkText(success.acceptUrl)">
 					<template #iconLeft>
-						<Icon name="lucide:copy" class="w-4 h-4" />
+						<CopyIcon class="w-4 h-4" />
 					</template>
 					{{ t('common.copy') }}
 				</UiButton>

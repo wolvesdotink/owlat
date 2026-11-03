@@ -66,7 +66,6 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiBadge, UiInput, UiSelect },
-			stubs: { Icon: true },
 		},
 	});
 }

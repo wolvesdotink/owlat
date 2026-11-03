@@ -65,7 +65,7 @@ function mountToast() {
 	return mount(UndoSendToast, {
 		// The shared toast teleports into the layout's undo region; render it in
 		// place so the wrapper can see it.
-		global: { plugins: [createTestI18n()], stubs: { Icon: true, teleport: true } },
+		global: { plugins: [createTestI18n()], stubs: { teleport: true } },
 	});
 }
 

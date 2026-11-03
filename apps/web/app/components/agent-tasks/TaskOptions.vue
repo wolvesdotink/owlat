@@ -22,6 +22,8 @@
  * visible affordance; the parent card resolves the key and calls the exposed
  * `pickIndex`. Enter inside the free text emits `submit`.
  */
+import { CheckIcon, CircleCheckIcon } from '@coolicons/vue';
+
 const props = withDefaults(
 	defineProps<{
 		/** The one-tap answer chips (multiple choice). May be empty (free text only). */
@@ -124,12 +126,7 @@ defineExpose({ pickIndex });
 					"
 					@click.stop="pick(option)"
 				>
-					<Icon
-						v-if="selectedChip === option"
-						name="lucide:check"
-						class="w-3 h-3"
-						aria-hidden="true"
-					/>
+					<CheckIcon v-if="selectedChip === option" class="w-3 h-3" aria-hidden="true" />
 					<kbd
 						v-else-if="i < 9"
 						class="font-mono text-2xs leading-none opacity-60"
@@ -168,8 +165,7 @@ defineExpose({ pickIndex });
 			class="mt-1 text-[11px] text-text-secondary"
 			data-testid="task-options-readback"
 		>
-			<Icon
-				name="lucide:check-circle-2"
+			<CircleCheckIcon
 				class="w-3 h-3 inline-block align-[-2px] mr-0.5 text-success"
 				aria-hidden="true"
 			/>

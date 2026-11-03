@@ -6,6 +6,7 @@ import {
 	toActiveSessionRows,
 	type AuthSessionRecord,
 } from '~/utils/accountSessions';
+import { MobileIcon, MonitorIcon } from '@coolicons/vue';
 
 const CHROME_MAC =
 	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
@@ -54,10 +55,10 @@ describe('describeUserAgent', () => {
 	});
 
 	it.each([
-		[CHROME_MAC, 'macos', 'computer', 'lucide:monitor'],
-		[EDGE_WINDOWS, 'windows', 'computer', 'lucide:monitor'],
-		[SAFARI_IPHONE, 'ios', 'phone', 'lucide:smartphone'],
-		[FIREFOX_LINUX, 'linux', 'computer', 'lucide:monitor'],
+		[CHROME_MAC, 'macos', 'computer', MonitorIcon],
+		[EDGE_WINDOWS, 'windows', 'computer', MonitorIcon],
+		[SAFARI_IPHONE, 'ios', 'phone', MobileIcon],
+		[FIREFOX_LINUX, 'linux', 'computer', MonitorIcon],
 	])('places %# on its platform', (ua, platform, kind, icon) => {
 		const device = describeUserAgent(ua);
 		expect(device.platform).toEqual({

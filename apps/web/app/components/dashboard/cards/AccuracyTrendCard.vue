@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { TrendingUpIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -32,7 +33,7 @@ function formatPct(ratio: number): string {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:trending-up" size="sm" variant="surface" />
+					<UiIconBox :icon="TrendingUpIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.accuracyTrend.title') }}
 					</h3>

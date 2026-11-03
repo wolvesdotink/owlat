@@ -4,6 +4,8 @@
  * Workbench). The page's own heading already says where you are; the trail
  * earns its row once there is somewhere to go back to.
  */
+import { ChevronRightIcon, HouseIcon } from '@coolicons/vue';
+
 const props = defineProps<{ hideShallow?: boolean }>();
 const { t } = useI18n();
 const { breadcrumbs } = useBreadcrumbs();
@@ -21,7 +23,7 @@ const { breadcrumbs } = useBreadcrumbs();
 			class="flex items-center text-text-tertiary hover:text-text-primary transition-colors"
 			:aria-label="t('components.breadcrumbs.home')"
 		>
-			<Icon name="lucide:home" class="w-4 h-4" />
+			<HouseIcon class="w-4 h-4" />
 		</NuxtLink>
 
 		<!-- Breadcrumb items -->
@@ -31,7 +33,7 @@ const { breadcrumbs } = useBreadcrumbs();
 		     a campaign title) is not a key and passes through unchanged. -->
 		<template v-for="(item, index) in breadcrumbs" :key="index">
 			<!-- Separator -->
-			<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+			<ChevronRightIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 
 			<!-- Breadcrumb item -->
 			<NuxtLink

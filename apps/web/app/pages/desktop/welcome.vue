@@ -22,6 +22,7 @@ useHead({ title: () => t('desktop.welcome.pageTitle') });
 definePageMeta({ layout: false });
 
 import { parseConnectionCode } from '~/lib/desktop/connectionCode';
+import { ArrowRightIcon, PlugIcon, ServerIcon } from '@coolicons/vue';
 
 const { isDesktop } = useDesktopContext();
 const {
@@ -189,7 +190,7 @@ function startOver() {
 					<span
 						class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand"
 					>
-						<Icon name="lucide:plug" class="size-5" />
+						<PlugIcon class="size-5" />
 					</span>
 					<div class="min-w-0">
 						<h2 id="desktop-connect-title" class="text-base font-semibold">
@@ -276,15 +277,14 @@ function startOver() {
 				to="/desktop/setup"
 				class="group mt-4 flex w-full items-center gap-3 rounded-xl border border-border-subtle px-4 py-3 text-left transition-colors duration-(--motion-fast) hover:border-brand-border"
 			>
-				<Icon name="lucide:server" class="size-4 shrink-0 text-text-tertiary" />
+				<ServerIcon class="size-4 shrink-0 text-text-tertiary" />
 				<span class="min-w-0 flex-1">
 					<span class="block text-sm font-medium">{{ t('desktop.welcome.setup.title') }}</span>
 					<span class="mt-0.5 block text-xs text-text-secondary">{{
 						t('desktop.welcome.setup.description')
 					}}</span>
 				</span>
-				<Icon
-					name="lucide:arrow-right"
+				<ArrowRightIcon
 					class="size-4 shrink-0 text-text-tertiary transition-transform duration-(--motion-fast) group-hover:translate-x-[2px] group-hover:text-brand"
 				/>
 			</NuxtLink>

@@ -143,7 +143,6 @@ function mountModal(state: ModalState, topics: Array<{ _id: string; name: string
 			plugins: [i18n],
 			stubs: {
 				UiModal: UiModalStub,
-				Icon: true,
 				I18nT: true,
 				UiIconBox: true,
 				UiStatCard: true,

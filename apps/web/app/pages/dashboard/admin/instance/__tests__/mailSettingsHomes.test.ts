@@ -55,7 +55,6 @@ beforeEach(() => {
 
 const globalOptions = {
 	stubs: {
-		Icon: true,
 		UiButton: { template: '<button type="button"><slot /></button>' },
 		UiCard: { template: '<div><slot /></div>' },
 		UiInput: true,

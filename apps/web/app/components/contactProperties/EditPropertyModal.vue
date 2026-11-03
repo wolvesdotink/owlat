@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // The contact properties page's edit modal. Only the label can change; the
 // key is shown read-only. The page validates and saves.
+import { CheckIcon, type IconComponent } from '@coolicons/vue';
+
 defineProps<{
 	property: { key: string } | null;
-	typeIcon: string;
+	typeIcon: IconComponent;
 	/** The page's edit draft; the input writes into it in place. */
 	form: { label: string };
 	errors: { label: string };
@@ -27,7 +29,7 @@ const { t } = useI18n();
 			<div v-if="property" class="p-4 rounded-xl bg-bg-surface border border-border-subtle">
 				<div class="flex items-center gap-3">
 					<div class="p-2 rounded-lg bg-bg-elevated flex items-center justify-center">
-						<Icon :name="typeIcon" class="w-5 h-5 text-text-secondary" />
+						<component :is="typeIcon" class="w-5 h-5 text-text-secondary" />
 					</div>
 					<div>
 						<p class="text-sm text-text-tertiary">
@@ -58,7 +60,7 @@ const { t } = useI18n();
 			</UiButton>
 			<UiButton :loading="isSaving" @click="emit('submit')">
 				<template #iconLeft>
-					<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
+					<CheckIcon v-if="!isSaving" class="w-4 h-4" />
 				</template>
 				{{
 					isSaving

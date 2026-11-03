@@ -64,7 +64,6 @@ function mountPage() {
 			plugins: [createTestI18n()],
 			components: { UiQueryBoundary: QueryBoundary },
 			stubs: {
-				Icon: true,
 				ContactsContactRow: true,
 				UiModal: true,
 				UiPageHeader: true,
@@ -146,7 +145,7 @@ describe('contacts table sort announcement', () => {
 		await search(wrapper, 'person');
 		expect(listArgs().search).toBe('person');
 		expect(sortedHeaders(wrapper)).toHaveLength(0);
-		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(false);
+		expect(createdSortButton(wrapper).find('svg').exists()).toBe(false);
 		expect(sortHint(wrapper)).toBe('Search results are ordered by relevance');
 
 		// The control is inert but stays focusable, and its tooltip says why.
@@ -167,7 +166,7 @@ describe('contacts table sort announcement', () => {
 		// The click during the search left the stored direction alone.
 		expect(listArgs().order).toBe('desc');
 		expectOneTruthfulAriaSort(wrapper);
-		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(true);
+		expect(createdSortButton(wrapper).find('svg').exists()).toBe(true);
 		expect(createdSortButton(wrapper).attributes('aria-disabled')).toBeUndefined();
 		expect(tooltipOf(wrapper, createdSortButton(wrapper))).toBeUndefined();
 		wrapper.unmount();

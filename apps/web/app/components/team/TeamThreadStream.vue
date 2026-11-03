@@ -22,6 +22,7 @@ import {
 import TeamStreamNote from './TeamStreamNote.vue';
 import TeamStreamReply from './TeamStreamReply.vue';
 import TeamStreamSystemLine from './TeamStreamSystemLine.vue';
+import { ChevronDoubleUpIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -94,7 +95,7 @@ function saverFor(entry: NoteEntry) {
 				data-testid="team-stream-earlier"
 				@click="emit('load-earlier')"
 			>
-				<Icon name="lucide:chevrons-up" class="size-3.5" />
+				<ChevronDoubleUpIcon class="size-3.5" />
 				{{ t('components.team.stream.earlier') }}
 			</UiButton>
 		</div>

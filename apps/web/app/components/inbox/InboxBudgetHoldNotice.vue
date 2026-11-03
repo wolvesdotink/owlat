@@ -11,6 +11,7 @@
 import type { BudgetHold } from '~/utils/aiBudget';
 import { BUDGET_REASON_KEYS, MISSING_JUDGMENT_KEYS } from '~/utils/aiBudget';
 import { formatDateTime } from '~/utils/formatters';
+import { ReloadIcon, WalletIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	hold: BudgetHold;
@@ -33,7 +34,7 @@ const missing = computed(() => props.hold.missingJudgments.map((j) => t(MISSING_
 		:data-reason="hold.reason"
 	>
 		<p class="flex items-center gap-1.5 text-sm font-medium text-text-primary">
-			<Icon name="lucide:wallet" class="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+			<WalletIcon class="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
 			{{ t(`${K}.title`) }}
 		</p>
 		<p class="mt-1 text-sm text-text-secondary">{{ t(BUDGET_REASON_KEYS[hold.reason]) }}</p>
@@ -55,7 +56,7 @@ const missing = computed(() => props.hold.missingJudgments.map((j) => t(MISSING_
 				:disabled="retrying"
 				@click="emit('retry')"
 			>
-				<Icon name="lucide:refresh-cw" class="w-3 h-3" />
+				<ReloadIcon class="w-3 h-3" />
 				{{ t(`${K}.retry`) }}
 			</UiButton>
 			<p class="text-xs text-text-secondary">{{ t(`${K}.retryHint`) }}</p>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -28,10 +29,7 @@ const { isEnabled } = useFeatureFlag();
 		</div>
 
 		<div v-else-if="isLoading" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 
 		<div v-else-if="mailboxes.length === 0" class="card p-8 text-center text-text-secondary">

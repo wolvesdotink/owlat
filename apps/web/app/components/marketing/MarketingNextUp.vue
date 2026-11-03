@@ -6,6 +6,7 @@
  */
 import type { NextUpRow } from '~/composables/useMarketingNextUp';
 import { formatDateTime, formatRelativeTime } from '~/utils/formatters';
+import { TriangleWarningIcon } from '@coolicons/vue';
 
 defineProps<{
 	needsYou: readonly NextUpRow[];
@@ -45,12 +46,7 @@ const { t } = useI18n();
 									row.isUrgent ? 'text-warning' : 'text-text-tertiary',
 								]"
 							>
-								<Icon
-									v-if="row.isUrgent"
-									name="lucide:alert-triangle"
-									class="w-3 h-3"
-									aria-hidden="true"
-								/>
+								<TriangleWarningIcon v-if="row.isUrgent" class="w-3 h-3" aria-hidden="true" />
 								<template v-if="row.isUrgent && row.scheduledAt">
 									{{
 										t('components.marketing.nextUp.reviewBefore', {

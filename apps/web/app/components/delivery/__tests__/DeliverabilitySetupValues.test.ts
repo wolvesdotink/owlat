@@ -37,7 +37,7 @@ describe('DeliverabilitySetupValues', () => {
 						},
 					],
 				},
-				global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
+				global: { plugins: [createTestI18n()] },
 			});
 
 			await wrapper
@@ -66,7 +66,7 @@ describe('DeliverabilitySetupValues', () => {
 					},
 				],
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
+			global: { plugins: [createTestI18n()] },
 		});
 
 		expect(wrapper.text()).toContain('Do not publish a second SPF record.');
@@ -96,7 +96,7 @@ describe('DeliverabilitySetupValues', () => {
 					},
 				],
 			},
-			global: { plugins: [createTestI18n()], stubs: { Icon: { template: '<i />' } } },
+			global: { plugins: [createTestI18n()] },
 		});
 
 		expect(wrapper.text()).toContain('EHLO hostname');

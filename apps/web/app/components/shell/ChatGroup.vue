@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
+import { ChevronDownIcon } from '@coolicons/vue';
 /**
  * Chat in the Conversations sidebar: the channels and direct messages with
  * something new, most recent first, plus a link to all of chat. A mention
@@ -50,8 +51,7 @@ const activeRoomId = computed(() => /^\/dashboard\/chat\/([^/?#]+)/.exec(route.p
 				:aria-expanded="!props.collapsed"
 				@click="emit('toggle')"
 			>
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					class="size-3 transition-transform duration-(--motion-fast)"
 					:class="props.collapsed ? '-rotate-90' : ''"
 				/>

@@ -1,4 +1,4 @@
-import { MoveVertical } from '@lucide/vue';
+import { MoveVerticalIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import type { SpacerBlockContent } from '../../types';
 import { spacerSchema } from '../../schema/definitions/spacer';
@@ -6,7 +6,7 @@ import { spacerSchema } from '../../schema/definitions/spacer';
 export const spacerEditor: EditorModule<'spacer'> = {
 	type: 'spacer',
 	label: 'Spacer',
-	icon: MoveVertical,
+	icon: MoveVerticalIcon,
 	schema: spacerSchema,
 	slashCommand: {
 		name: 'Spacer',

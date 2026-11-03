@@ -45,7 +45,7 @@ function mountGuards(over: Partial<Record<string, unknown>> = {}) {
 		props: { guards },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiConfirmationDialog: dialogStub },
+			stubs: { UiConfirmationDialog: dialogStub },
 		},
 	});
 	return { wrapper, guards };

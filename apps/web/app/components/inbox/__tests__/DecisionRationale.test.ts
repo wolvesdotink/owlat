@@ -7,8 +7,7 @@
  *   - shows ONLY the sources it was handed (no cross-contact leak: a component
  *     handed a contact-scoped list can never invent another contact's source)
  *
- * `computed` is polyfilled by the web vitest setup (Nuxt auto-imports); <Icon>
- * is stubbed since it is a global auto-import.
+ * `computed` is polyfilled by the web vitest setup (Nuxt auto-imports).
  */
 import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -23,7 +22,7 @@ beforeAll(() => {
 });
 
 const mountOpts = {
-	global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+	global: { plugins: [createTestI18n()] },
 };
 
 describe('DecisionRationale', () => {

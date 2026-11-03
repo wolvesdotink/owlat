@@ -28,6 +28,7 @@
  */
 import { useLocalized } from '~/composables/useLocalized';
 import type { ReplyRisk } from '~/utils/senderAuth';
+import { ShieldWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -94,7 +95,7 @@ defineExpose({ guard });
 		"
 	>
 		<div class="flex items-start gap-3">
-			<Icon name="lucide:shield-alert" class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+			<ShieldWarningIcon class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
 			<div class="min-w-0">
 				<p class="text-sm text-text-secondary">
 					{{ t('components.postbox.postboxReplyGuard.body') }}

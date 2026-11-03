@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon, CopyIcon, PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 
@@ -65,7 +67,7 @@ function formatTime(ts?: number) {
 		>
 			<p class="text-text-secondary">{{ t('dashboard.preferences.aiClients.subheading') }}</p>
 			<UiButton type="button" class="shrink-0" @click="showCreate = true">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.aiClients.connect') }}
 			</UiButton>
 		</header>
@@ -78,8 +80,8 @@ function formatTime(ts?: number) {
 				<div class="flex items-center gap-2">
 					<code class="font-mono break-all flex-1 min-w-0">{{ serverUrl }}</code>
 					<UiButton variant="ghost" type="button" @click="copy(serverUrl, 'mcp-server-url')">
-						<Icon
-							:name="copiedKey === 'mcp-server-url' ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="copiedKey === 'mcp-server-url' ? CheckIcon : CopyIcon"
 							class="w-4 h-4 mr-1.5"
 						/>
 						{{ copiedKey === 'mcp-server-url' ? t('common.copied') : t('common.copy') }}
@@ -94,10 +96,7 @@ function formatTime(ts?: number) {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.aiClients.clientsHeading') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 			<div v-else-if="clients.length === 0" class="p-8 text-center text-text-secondary">

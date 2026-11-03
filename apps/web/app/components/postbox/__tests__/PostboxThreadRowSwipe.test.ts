@@ -22,7 +22,6 @@ beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-const iconStub = { props: ['name'], template: '<span :data-icon="name" />' };
 const contextMenuStub = {
 	props: ['items'],
 	template: '<slot :on-contextmenu="() => {}" :on-keydown="() => {}" />',
@@ -60,7 +59,6 @@ function mountRow(props: Partial<Record<'swipeLeft' | 'swipeRight', string>> = {
 				PostboxRowCore,
 				PostboxThreadRowBody,
 				PostboxSwipeTrack,
-				Icon: iconStub,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: contextMenuStub,
 				UiAvatar: { props: ['name', 'email', 'size'], template: '<span />' },

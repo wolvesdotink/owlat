@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { PlusIcon, type IconComponent } from '@coolicons/vue';
+
 type PropertyType = 'string' | 'number' | 'boolean' | 'date';
 
 // The contact properties page's "New property" modal: label, key (the page
@@ -10,7 +12,12 @@ defineProps<{
 	errors: { key?: string; label?: string };
 	isCreating: boolean;
 	/** `label` / `description` are message keys. */
-	types: ReadonlyArray<{ value: PropertyType; label: string; icon: string; description: string }>;
+	types: ReadonlyArray<{
+		value: PropertyType;
+		label: string;
+		icon: IconComponent;
+		description: string;
+	}>;
 }>();
 
 const emit = defineEmits<{ submit: []; cancel: [] }>();
@@ -85,7 +92,7 @@ const { t } = useI18n();
 							@click="form.type = type.value"
 						>
 							<div class="flex items-center gap-2 mb-1">
-								<Icon :name="type.icon" class="w-4 h-4 text-text-secondary" />
+								<component :is="type.icon" class="w-4 h-4 text-text-secondary" />
 								<span class="font-medium text-text-primary text-sm">{{ t(type.label) }}</span>
 							</div>
 							<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
@@ -101,7 +108,7 @@ const { t } = useI18n();
 			</UiButton>
 			<UiButton :loading="isCreating" @click="emit('submit')">
 				<template #iconLeft>
-					<Icon v-if="!isCreating" name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon v-if="!isCreating" class="w-4 h-4" />
 				</template>
 				{{
 					isCreating

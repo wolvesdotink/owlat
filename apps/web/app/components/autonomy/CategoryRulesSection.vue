@@ -9,6 +9,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { AiReplyMode } from '~/utils/aiReplyMode';
+import { PlusIcon } from '@coolicons/vue';
 
 defineProps<{
 	/** The page's current mode; the heading copy differs between auto and draft. */
@@ -151,7 +152,7 @@ async function handleAcknowledgeDemotion(payload: { ruleId: string }) {
 				:disabled="isAddingRule"
 				@click="isAddingRule = true"
 			>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('dashboard.admin.instance.aiReplies.rules.add') }}
 			</UiButton>
 		</div>
@@ -200,7 +201,7 @@ async function handleAcknowledgeDemotion(payload: { ruleId: string }) {
 						{{ t('dashboard.admin.instance.aiReplies.rules.emptyBody') }}
 					</p>
 					<UiButton class="gap-2" @click="isAddingRule = true">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.instance.aiReplies.rules.add') }}
 					</UiButton>
 				</div>

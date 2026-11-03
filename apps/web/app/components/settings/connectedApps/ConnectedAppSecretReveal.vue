@@ -6,6 +6,8 @@
  * explicit "Done": the operator must acknowledge they have copied it. The
  * backend never stores or re-serves the plaintext.
  */
+import { CheckIcon, CircleWarningIcon, CopyIcon, KeyIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 const props = defineProps<{
@@ -55,13 +57,13 @@ function done() {
 	>
 		<template v-if="secret">
 			<div class="flex items-center gap-3 mb-6">
-				<UiIconBox icon="lucide:key-round" size="sm" variant="success" rounded="lg" />
+				<UiIconBox :icon="KeyIcon" size="sm" variant="success" rounded="lg" />
 				<h2 class="text-lg font-semibold text-text-primary">{{ heading }}</h2>
 			</div>
 
 			<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
 						<p class="text-sm font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppSecretReveal.copyNow') }}</p>
 						<p class="text-sm text-warning/80 mt-1">
@@ -89,8 +91,8 @@ function done() {
 						{{ secret }}
 					</code>
 					<UiButton variant="secondary" class="shrink-0" @click="copySecret">
-						<Icon
-							:name="copied ? 'lucide:check' : 'lucide:copy'"
+						<component
+							:is="copied ? CheckIcon : CopyIcon"
 							class="w-4 h-4"
 							:class="copied ? 'text-success' : ''"
 						/>

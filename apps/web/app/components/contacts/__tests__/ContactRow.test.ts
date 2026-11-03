@@ -77,7 +77,6 @@ function mountRow(
 			plugins: [createTestI18n(), router],
 			// The real router link, so navigation and modified clicks are vue-router's.
 			components: { UiContextMenu, NuxtLink: RouterLink },
-			stubs: { Icon: true },
 			// A template global (Nuxt auto-import), so it reaches the row as a mock.
 			mocks: { formatDate: () => 'Mar 3, 2026' },
 		},

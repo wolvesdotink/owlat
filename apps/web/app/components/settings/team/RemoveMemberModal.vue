@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OrganizationMember } from '~/composables/useOrganization';
+import { TrashIcon } from '@coolicons/vue';
 
 /**
  * "Remove this member?" — the confirmation in front of the roster's remove
@@ -41,7 +42,7 @@ const { t } = useI18n();
 			</UiButton>
 			<UiButton variant="danger" :loading="busy" @click="emit('confirm')">
 				<template #iconLeft>
-					<Icon v-if="!busy" name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon v-if="!busy" class="w-4 h-4" />
 				</template>
 				{{
 					busy

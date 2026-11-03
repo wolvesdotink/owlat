@@ -36,7 +36,7 @@ function mountRow(row: Partial<Row> = {}) {
 		props: { row: { ...base, ...row } },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiSegmentedControl: segmentedStub },
+			stubs: { UiSegmentedControl: segmentedStub },
 		},
 		attachTo: document.createElement('tbody'),
 	});

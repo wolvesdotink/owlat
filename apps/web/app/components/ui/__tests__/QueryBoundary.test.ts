@@ -12,7 +12,7 @@
  *     not-found slot, so real "nothing here" and "you don't have access" cases
  *     are preserved untouched.
  *
- * The Ui* globals and Icon are auto-imported app-wide, so they are stubbed here.
+ * The Ui* globals are auto-imported app-wide, so they are stubbed here.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -29,7 +29,6 @@ beforeAll(() => {
 });
 
 const stubs = {
-	Icon: true,
 	UiSpinner: true,
 	UiEmptyState: { template: '<div data-testid="empty"><slot /></div>' },
 	UiErrorAlert: {

@@ -49,7 +49,7 @@ const triggerSummary = computed(() => {
 						getIconColorClass(getTriggerInfo(automation.triggerType).color),
 					]"
 				>
-					<Icon :name="getTriggerInfo(automation.triggerType).icon" class="w-5 h-5" />
+					<component :is="getTriggerInfo(automation.triggerType).icon" class="w-5 h-5" />
 				</div>
 				<div class="flex-1 min-w-0">
 					<div class="flex items-center gap-2">

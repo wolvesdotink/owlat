@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, ImageBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
-import { ImageIcon } from '@lucide/vue';
+import { ImageIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();

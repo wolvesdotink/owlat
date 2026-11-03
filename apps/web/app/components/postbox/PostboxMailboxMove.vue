@@ -20,6 +20,8 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ArchiveIcon, CheckIcon, CircleCheckIcon, CopyIcon, GlobeIcon, PauseIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type MoveMxCheck = {
 	verified: boolean;
@@ -141,12 +143,12 @@ async function onCancel() {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 
 		<!-- Error: the subscription failed. Don't silently drop the section. -->
 		<div v-else-if="error" class="px-5 py-6 flex items-start gap-3" role="alert">
-			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+			<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
 				{{ t('components.postbox.postboxMailboxMove.loadError') }}
 			</p>
@@ -182,7 +184,7 @@ async function onCancel() {
 						v-if="paused"
 						class="rounded-md border border-warning/30 bg-warning-subtle px-4 py-3 flex items-start gap-3"
 					>
-						<Icon name="lucide:pause" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<PauseIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div class="min-w-0">
 							<p class="font-medium text-sm">
 								{{ t('components.postbox.postboxMailboxMove.paused.title') }}
@@ -204,8 +206,8 @@ async function onCancel() {
 					<!-- Stage 1 — Provision -->
 					<div class="rounded-md border border-border-subtle px-4 py-3">
 						<div class="flex items-center gap-2">
-							<Icon
-								:name="stage === 'provisioning' ? 'lucide:loader-2' : 'lucide:check-circle-2'"
+							<component
+								:is="stage === 'provisioning' ? SpinnerIcon : CircleCheckIcon"
 								class="w-4 h-4 shrink-0"
 								:class="stage === 'provisioning' ? 'text-brand' : 'text-success'"
 							/>
@@ -269,8 +271,8 @@ async function onCancel() {
 						"
 					>
 						<div class="flex items-center gap-2">
-							<Icon
-								:name="stage === 'archived' ? 'lucide:check-circle-2' : 'lucide:globe'"
+							<component
+								:is="stage === 'archived' ? CircleCheckIcon : GlobeIcon"
 								class="w-4 h-4 shrink-0"
 								:class="stage === 'archived' ? 'text-success' : 'text-text-secondary'"
 							/>
@@ -313,7 +315,7 @@ async function onCancel() {
 											"
 											@click="copy(mxRecordLine, 'mx')"
 										>
-											<Icon :name="isCopied('mx') ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
+											<component :is="isCopied('mx') ? CheckIcon : CopyIcon" class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 								</div>
@@ -330,7 +332,7 @@ async function onCancel() {
 										v-if="mxCheck?.verified"
 										class="text-xs text-success flex items-center gap-1"
 									>
-										<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5" />
+										<CircleCheckIcon class="w-3.5 h-3.5" />
 										{{ t('components.postbox.postboxMailboxMove.stage2.pointsHere', { domain }) }}
 									</span>
 									<span v-else-if="mxCheck" class="text-xs text-text-tertiary">
@@ -373,8 +375,8 @@ async function onCancel() {
 						"
 					>
 						<div class="flex items-center gap-2">
-							<Icon
-								:name="stage === 'archived' ? 'lucide:check-circle-2' : 'lucide:archive'"
+							<component
+								:is="stage === 'archived' ? CircleCheckIcon : ArchiveIcon"
 								class="w-4 h-4 shrink-0"
 								:class="stage === 'archived' ? 'text-success' : 'text-text-secondary'"
 							/>

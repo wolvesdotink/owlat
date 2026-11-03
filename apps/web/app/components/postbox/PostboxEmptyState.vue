@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import type { IconComponent } from '@coolicons/vue';
+
 /**
  * Quiet, minimal empty state for Postbox panes: small icon + one line +
  * optional single-line hint and action. Deliberately restrained (no large
  * illustration) to match the Postbox visual language.
  */
 defineProps<{
-	icon: string;
+	icon: IconComponent;
 	title: string;
 	hint?: string;
 }>();
@@ -13,7 +15,7 @@ defineProps<{
 
 <template>
 	<div data-testid="postbox-empty-state" class="p-12 text-center">
-		<Icon :name="icon" class="w-8 h-8 mx-auto text-text-tertiary" />
+		<component :is="icon" class="w-8 h-8 mx-auto text-text-tertiary" :stroke-width="1.5" />
 		<p class="text-sm text-text-secondary mt-3">{{ title }}</p>
 		<p v-if="hint" class="text-xs text-text-tertiary mt-1 max-w-xs mx-auto">{{ hint }}</p>
 		<slot name="action" />

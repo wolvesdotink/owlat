@@ -39,7 +39,7 @@ function mountCard(over: Record<string, unknown> = {}) {
 	return mount(AgentKnowledgeBackfillCard, {
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiButton: true, UiProgressBar: true, UiSpinner: true },
+			stubs: { UiButton: true, UiProgressBar: true, UiSpinner: true },
 		},
 	});
 }

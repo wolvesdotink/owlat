@@ -7,6 +7,15 @@ import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import { FEATURE_FLAGS } from '@owlat/shared/featureFlags';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import {
+	ArrowRightIcon,
+	CheckIcon,
+	CircleWarningIcon,
+	MailIcon,
+	MentionIcon,
+	SettingsIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -236,7 +245,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 			<!-- No Workspace State -->
 			<UiCard v-if="!hasActiveOrganization">
 				<UiEmptyState
-					icon="lucide:settings"
+					:icon="SettingsIcon"
 					:title="t('dashboard.admin.instance.general.noWorkspaceTitle')"
 					:description="t('dashboard.admin.instance.general.noWorkspaceBody')"
 				/>
@@ -279,7 +288,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 							<!-- Divider -->
 							<div class="border-t border-border-subtle pt-6 -mx-6 px-6">
 								<h3 class="text-sm font-medium text-text-primary mb-4 flex items-center gap-2">
-									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+									<MailIcon class="w-4 h-4 text-text-tertiary" />
 									{{ t('dashboard.admin.instance.general.senderSection') }}
 								</h3>
 								<p class="text-xs text-text-tertiary mb-4">
@@ -289,9 +298,9 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 									to="/dashboard/admin/team/senders"
 									class="inline-flex items-center gap-1.5 text-xs text-brand hover:underline"
 								>
-									<Icon name="lucide:at-sign" class="w-3.5 h-3.5" />
+									<MentionIcon class="w-3.5 h-3.5" />
 									{{ t('dashboard.admin.instance.general.manageSenders') }}
-									<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+									<ArrowRightIcon class="w-3.5 h-3.5" />
 								</NuxtLink>
 							</div>
 
@@ -320,7 +329,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 									v-if="fromDomainWarning"
 									class="mt-1.5 text-xs text-warning flex items-start gap-1.5"
 								>
-									<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 shrink-0 mt-px" />
+									<TriangleWarningIcon class="w-3.5 h-3.5 shrink-0 mt-px" />
 									<span>
 										{{ fromDomainWarning }}
 										<NuxtLink
@@ -379,14 +388,14 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 						<!-- Save Button -->
 						<div class="flex items-center justify-between pt-6 mt-6 border-t border-border-subtle">
 							<p v-if="isFormDirty" class="text-sm text-warning flex items-center gap-2">
-								<Icon name="lucide:alert-circle" class="w-4 h-4" />
+								<CircleWarningIcon class="w-4 h-4" />
 								{{ t('dashboard.admin.instance.general.unsavedChanges') }}
 							</p>
 							<p v-else class="text-sm text-text-tertiary" />
 
 							<UiButton type="submit" :loading="isSaving" :disabled="!isFormDirty">
 								<template #iconLeft>
-									<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
+									<CheckIcon v-if="!isSaving" class="w-4 h-4" />
 								</template>
 								{{
 									isSaving

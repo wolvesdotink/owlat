@@ -1,3 +1,5 @@
+import type { IconComponent } from '@coolicons/vue';
+
 /**
  * Shared command-palette model + pure helpers for the app-wide `AppCommandPalette`.
  *
@@ -35,7 +37,7 @@ export interface PaletteArgumentOption {
 	label: string;
 	subtitle?: string;
 	/** Overrides the spec's shared icon for an odd one out ("Pick a time…"). */
-	icon?: string;
+	icon?: IconComponent;
 	run: () => void;
 }
 
@@ -57,7 +59,7 @@ export interface PaletteArgumentSpec {
 	/** Message key for the heading above the option list. */
 	headingKey: string;
 	/** Icon for every option row (options are homogeneous by construction). */
-	icon: string;
+	icon: IconComponent;
 	options: PaletteArgumentOption[];
 }
 
@@ -80,7 +82,7 @@ export interface PaletteItem {
 	 * advertising the wrong key. Takes the place of `hint`.
 	 */
 	shortcutId?: string;
-	icon: string;
+	icon: IconComponent;
 	run: () => void;
 	/**
 	 * The route this item leads to, when it leads to one. Two rows with the same
@@ -237,6 +239,13 @@ export function mergeGroups(
 /** Flatten merged groups into render order for keyboard navigation. Pure. */
 export function flattenGroups(groups: PaletteGroup[]): PaletteItem[] {
 	return groups.flatMap((group) => group.items);
+}
+
+/** Each flattened row's position by id, for the row that renders it to find its option index. */
+export function indexById(items: readonly PaletteItem[]): Map<string, number> {
+	const map = new Map<string, number>();
+	for (const [index, item] of items.entries()) map.set(item.id, index);
+	return map;
 }
 
 /** A query's match against one string: how good, and which characters matched. */

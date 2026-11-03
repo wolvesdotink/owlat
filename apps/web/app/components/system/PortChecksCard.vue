@@ -20,6 +20,16 @@ import {
 	type SelectedPortCheck,
 	type PortCheckStatus,
 } from '@owlat/shared/networkPorts';
+import {
+	CircleCheckIcon,
+	CircleHelpIcon,
+	CircleMinusIcon,
+	NetworkIcon,
+	ShieldCloseIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /** A catalog entry as the probe hands it back: the selection, plus what it found. */
 interface PortCheckRow extends SelectedPortCheck {
@@ -142,12 +152,12 @@ function statusTone(row: PortCheckRow): string {
 	}
 }
 
-function statusIcon(row: PortCheckRow): string {
-	if (row.status === 'open') return 'lucide:check-circle-2';
-	if (row.relevance === 'optional') return 'lucide:minus-circle';
-	if (row.status === 'blocked') return 'lucide:shield-x';
-	if (row.status === 'refused') return 'lucide:alert-triangle';
-	return 'lucide:help-circle';
+function statusIcon(row: PortCheckRow): IconComponent {
+	if (row.status === 'open') return CircleCheckIcon;
+	if (row.relevance === 'optional') return CircleMinusIcon;
+	if (row.status === 'blocked') return ShieldCloseIcon;
+	if (row.status === 'refused') return TriangleWarningIcon;
+	return CircleHelpIcon;
 }
 </script>
 
@@ -169,12 +179,8 @@ function statusIcon(row: PortCheckRow): string {
 				:disabled="state === 'running'"
 				@click="runChecks"
 			>
-				<Icon
-					v-if="state === 'running'"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:network" class="w-4 h-4" />
+				<SpinnerIcon v-if="state === 'running'" class="w-4 h-4" />
+				<NetworkIcon v-else class="w-4 h-4" />
 				{{
 					state === 'running'
 						? t('components.system.portChecksCard.running')
@@ -244,7 +250,7 @@ function statusIcon(row: PortCheckRow): string {
 				data-testid="port-checks-verdict"
 				class="mt-4 text-caption text-success flex items-center gap-1.5"
 			>
-				<Icon name="lucide:check-circle-2" class="w-4 h-4" />
+				<CircleCheckIcon class="w-4 h-4" />
 				{{ t('components.system.portChecksCard.allOpen') }}
 			</p>
 
@@ -262,8 +268,8 @@ function statusIcon(row: PortCheckRow): string {
 						:data-testid="`port-check-${row.id}`"
 						class="flex items-start gap-3 py-2"
 					>
-						<Icon
-							:name="statusIcon(row)"
+						<component
+							:is="statusIcon(row)"
 							class="w-4 h-4 mt-0.5 shrink-0"
 							:class="statusTone(row)"
 						/>

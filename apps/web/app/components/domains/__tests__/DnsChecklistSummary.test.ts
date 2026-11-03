@@ -45,7 +45,7 @@ function mountSummary(
 			anchorFor: (entry: { id: string }) => `dns-d1-${entry.id}`,
 			valueOverrides,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -107,7 +107,7 @@ describe('DnsChecklistSummary', () => {
 		});
 		const w = mount(DnsChecklistSummary, {
 			props: { entries, domain: 'mail.example.com', anchorFor: () => 'dns-d1' },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		await w.find('[data-testid="dns-copy-zone"]').trigger('click');
 		expect(String(copy.mock.calls[0]![0]).split('\n')).toEqual([

@@ -11,6 +11,7 @@
 import { api } from '@owlat/api';
 import { answerModeHref } from '~/utils/answerMode';
 import { useAnswerLeftDraft } from '~/composables/useAnswerMode';
+import { CloseIcon, PencilIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { left, clear } = useAnswerLeftDraft();
@@ -37,7 +38,7 @@ const resumeHref = computed(() =>
 		role="status"
 		data-testid="answer-draft-bar"
 	>
-		<Icon name="lucide:pen-line" class="size-4 shrink-0 text-brand" />
+		<PencilIcon class="size-4 shrink-0 text-brand" />
 		<span class="flex-1 truncate text-text-secondary">
 			{{ t('components.postbox.postboxAnswerDraftBar.saved', { name: left.recipient }) }}
 		</span>
@@ -51,7 +52,7 @@ const resumeHref = computed(() =>
 				:aria-label="t('components.postbox.postboxAnswerDraftBar.dismiss')"
 				@click="clear()"
 			>
-				<Icon name="lucide:x" class="size-3.5" />
+				<CloseIcon class="size-3.5" />
 			</button>
 		</UiTooltip>
 	</div>

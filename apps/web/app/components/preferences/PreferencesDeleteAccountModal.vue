@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { TrashIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	/** BetterAuth user id of the account being deleted. */
@@ -65,7 +67,7 @@ const handleDeleteAccount = async () => {
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
+			<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="error" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.preferences.account.deleteModalTitle') }}
@@ -135,12 +137,8 @@ const handleDeleteAccount = async () => {
 				:disabled="isDeleting || deleteConfirmText !== 'DELETE'"
 				@click="handleDeleteAccount"
 			>
-				<Icon
-					v-if="isDeleting"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:trash-2" class="w-4 h-4" />
+				<SpinnerIcon v-if="isDeleting" class="w-4 h-4" />
+				<TrashIcon v-else class="w-4 h-4" />
 				{{
 					isDeleting
 						? t('dashboard.preferences.account.processing')

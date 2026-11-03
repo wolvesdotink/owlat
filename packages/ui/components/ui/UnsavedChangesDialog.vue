@@ -3,6 +3,7 @@ import { useId } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
 import UiButton from './Button.vue';
 import UiModal from './Modal.vue';
+import { TriangleWarningIcon } from '@coolicons/vue';
 
 /**
  * The leave prompt every page with a dirty form shows. It lived in
@@ -39,7 +40,7 @@ const descriptionId = useId();
 	>
 		<div class="flex items-center gap-3 mb-4">
 			<div class="p-2 rounded-full bg-warning/10">
-				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning" />
+				<TriangleWarningIcon class="w-5 h-5 text-warning" />
 			</div>
 			<p :id="descriptionId" class="text-text-secondary">
 				{{ t('ui.unsavedChanges.description') }}

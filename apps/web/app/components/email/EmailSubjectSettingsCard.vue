@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { languageOptions } from '~/data/languageOptions';
+import { MailIcon } from '@coolicons/vue';
 
 defineProps<{ published: boolean }>();
 
@@ -15,7 +16,7 @@ const previewText = defineModel<string>('previewText', { required: true });
 	<UiCard>
 		<div class="flex items-center gap-3 mb-6">
 			<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-				<Icon name="lucide:mail" class="w-5 h-5 text-brand" />
+				<MailIcon class="w-5 h-5 text-brand" />
 			</div>
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">

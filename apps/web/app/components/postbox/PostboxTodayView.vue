@@ -44,6 +44,7 @@ import { formatAutoFiledLine, startOfLocalDay } from '~/utils/postboxTodayPartit
 import { POSTBOX_PRIORITY_ROWS, groupPriorityRows } from '~/utils/postboxPriorityGroups';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
+import { PanelLeftIcon } from '@coolicons/vue';
 
 /**
  * Client detection that is both SSR-safe (no `window` on the server) and
@@ -265,7 +266,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 					:aria-label="t('components.postbox.postboxLayout.openFolders')"
 					@click="emit('open-rail')"
 				>
-					<Icon name="lucide:panel-left" class="w-4 h-4" />
+					<PanelLeftIcon class="w-4 h-4" />
 				</button>
 				<h1 class="flex-1 min-w-0 text-lg font-semibold text-text-primary">
 					{{ t('components.postbox.postboxTodayView.inbox') }}

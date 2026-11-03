@@ -29,6 +29,17 @@ import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxIn
 import type { ComposerSendActions, PostboxAfterReply } from '~/utils/postboxAfterReply';
 import { POSTBOX_SEND_AND_LABELS } from '~/utils/postboxAfterReply';
 import PostboxComposerSendButton from './PostboxComposerSendButton.vue';
+import {
+	CalendarCheckIcon,
+	ClockIcon,
+	PaperPlaneIcon,
+	PaperclipIcon,
+	PencilIcon,
+	ScanEyeIcon,
+	SparklesIcon,
+	TrashIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	/** What the composer's target allows; hides the controls it cannot use. */
@@ -37,8 +48,8 @@ const props = defineProps<{
 	sending: boolean;
 	/** Send's own label (who holds it, a target's wording); spins while `sending`. */
 	sendLabel?: string;
-	/** Send's icon when not sending. Default `lucide:send`. */
-	sendIcon?: string;
+	/** Send's icon when not sending. Default `PaperPlaneIcon`. */
+	sendIcon?: IconComponent;
 	/** The ⋯ menu's accessible name, when the target words it ("More for this reply"). */
 	menuLabel?: string;
 	isUploading?: boolean;
@@ -207,7 +218,7 @@ function onPickFiles(event: Event) {
 							:aria-label="t('components.postbox.postboxComposerFooter.attachFiles')"
 							@click="onAttachClick"
 						>
-							<Icon name="lucide:paperclip" class="w-4 h-4" />
+							<PaperclipIcon class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 					<!-- A proxy for the paperclip button above, opened by `.click()` and
@@ -237,7 +248,7 @@ function onPickFiles(event: Event) {
 						data-testid="composer-schedule"
 						@click="emit('schedule')"
 					>
-						<Icon name="lucide:clock" class="w-4 h-4" />
+						<ClockIcon class="w-4 h-4" />
 					</UiButton>
 				</UiTooltip>
 				<PostboxComposerFollowUp
@@ -259,7 +270,7 @@ function onPickFiles(event: Event) {
 							v-if="showSignaturePicker && capabilities.signatures"
 							class="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary"
 						>
-							<Icon name="lucide:pen-line" class="w-4 h-4 text-text-tertiary" />
+							<PencilIcon class="w-4 h-4 text-text-tertiary" />
 							<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
 							<select
 								:value="activeSignatureId ?? ''"
@@ -287,7 +298,7 @@ function onPickFiles(event: Event) {
 									close();
 								"
 							>
-								<Icon name="lucide:scan-eye" class="w-4 h-4 text-text-tertiary" />
+								<ScanEyeIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
 							</button>
 							<!-- The booking page's next open times and link, into the body. -->
@@ -303,7 +314,7 @@ function onPickFiles(event: Event) {
 									close();
 								"
 							>
-								<Icon name="lucide:calendar-check" class="w-4 h-4 text-text-tertiary" />
+								<CalendarCheckIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('components.postbox.postboxInsertAvailability.menuItem') }}
 							</button>
 						</template>
@@ -321,7 +332,7 @@ function onPickFiles(event: Event) {
 								close();
 							"
 						>
-							<Icon name="lucide:sparkles" class="w-4 h-4 text-text-tertiary" />
+							<SparklesIcon class="w-4 h-4 text-text-tertiary" />
 							{{
 								advisoryOpen
 									? t('components.postbox.postboxComposerFooter.hideCoach')
@@ -339,7 +350,7 @@ function onPickFiles(event: Event) {
 								close();
 							"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4 text-text-tertiary" />
+							<TrashIcon class="w-4 h-4 text-text-tertiary" />
 							{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
 						</button>
 						<template v-if="richBody">

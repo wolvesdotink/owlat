@@ -41,7 +41,7 @@ function mountLightbox(initialIndex = 0, loadPart?: (att: unknown) => Promise<Bl
 		attachTo: document.body,
 		// Teleport renders in place so wrapper queries reach the overlay; Icon
 		// is a Nuxt component, stubbed inert.
-		global: { plugins: [createTestI18n()], stubs: { Teleport: true, Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { Teleport: true } },
 	});
 	return wrapper;
 }
@@ -157,7 +157,7 @@ describe('PostboxAttachmentLightbox', () => {
 					new Blob(['x'], { type: att.contentType }),
 			},
 			attachTo: document.body,
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		await flush();
 		await nextTick();

@@ -108,7 +108,6 @@ function render(): VueWrapper {
 				UiSegmentedControl: SegmentedControl,
 			},
 			stubs: {
-				Icon: true,
 				UiIconBox: true,
 				UiErrorAlert: { template: '<div data-stub="error"><slot /></div>' },
 				UiSpinner: true,

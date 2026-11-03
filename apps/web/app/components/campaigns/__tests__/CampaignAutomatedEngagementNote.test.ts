@@ -27,7 +27,7 @@ function render(
 			isAutomatedClickFiltered: true,
 			...props,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

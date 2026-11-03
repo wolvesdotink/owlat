@@ -17,6 +17,7 @@ import {
 	parseTotpUri,
 } from '~/utils/accountTwoFactor';
 import { totpQrCode } from '~/utils/accountTwoFactorQr';
+import { CopyIcon, DownloadIcon } from '@coolicons/vue';
 
 /** Raised when the session was rotated underneath the page (see `confirmEnrolment`). */
 const emit = defineEmits<{ sessionsChanged: [] }>();
@@ -313,7 +314,7 @@ async function copyManualKey() {
 								}}
 							</p>
 							<UiButton variant="ghost" type="button" class="mt-2" @click="copyManualKey">
-								<Icon name="lucide:copy" class="w-4 h-4 mr-1.5" />
+								<CopyIcon class="w-4 h-4 mr-1.5" />
 								{{ t('dashboard.preferences.security.twoFactor.setup.copyKey') }}
 							</UiButton>
 						</div>
@@ -336,7 +337,7 @@ async function copyManualKey() {
 						class="mt-2"
 						@click="downloadBackupCodes(backupCodes)"
 					>
-						<Icon name="lucide:download" class="w-4 h-4 mr-1.5" />
+						<DownloadIcon class="w-4 h-4 mr-1.5" />
 						{{ t('dashboard.preferences.security.twoFactor.setup.download') }}
 					</UiButton>
 				</div>

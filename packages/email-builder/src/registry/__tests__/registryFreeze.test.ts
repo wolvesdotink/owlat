@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Minus } from '@lucide/vue';
+import { MinusIcon } from '@coolicons/vue';
 import {
 	registerBlock,
 	getBlock,
@@ -62,7 +62,7 @@ describe('editor module registry freeze', () => {
 		({
 			type: type as 'divider',
 			label: 'Module fixture',
-			icon: Minus,
+			icon: MinusIcon,
 		}) as EditorModule<'divider'>;
 
 	it('rejects editor-module registration after finalize', () => {

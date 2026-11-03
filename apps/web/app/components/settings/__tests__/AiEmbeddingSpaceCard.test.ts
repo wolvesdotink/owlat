@@ -72,7 +72,6 @@ function mountCard() {
 				UiCard: slot,
 				UiQueryBoundary: slot,
 				UiSkeleton: true,
-				Icon: true,
 				UiButton: {
 					props: ['disabled', 'type'],
 					emits: ['click'],

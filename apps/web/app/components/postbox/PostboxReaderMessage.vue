@@ -33,6 +33,7 @@ import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/pos
 import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
 import PostboxReadReceipts from './PostboxReadReceipts.vue';
 import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
+import { ChevronDownIcon, MoonIcon, ShieldWarningIcon, SunIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -258,9 +259,8 @@ const renderToggleLabel = computed(() =>
 								&lt;{{ msg.fromAddress }}&gt;
 							</span>
 							<!-- Reduced, the name is a disclosure; say so without a hover. -->
-							<Icon
+							<ChevronDownIcon
 								v-if="reader.reduced"
-								name="lucide:chevron-down"
 								class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
 								:class="{ 'rotate-180': metaOpen }"
 								aria-hidden="true"
@@ -353,7 +353,7 @@ const renderToggleLabel = computed(() =>
 							:aria-pressed="forcedLight"
 							@click="emit('toggle-forced-light')"
 						>
-							<Icon :name="forcedLight ? 'lucide:moon' : 'lucide:sun'" class="w-3.5 h-3.5" />
+							<component :is="forcedLight ? MoonIcon : SunIcon" class="w-3.5 h-3.5" />
 							{{ renderToggleLabel }}
 						</button>
 
@@ -398,7 +398,7 @@ const renderToggleLabel = computed(() =>
 			v-if="showSpamBanner"
 			class="my-3 px-3 py-2 rounded bg-warning/10 text-warning text-xs flex items-center gap-2"
 		>
-			<Icon name="lucide:shield-alert" class="w-4 h-4" />
+			<ShieldWarningIcon class="w-4 h-4" />
 			<span v-if="msg.spamVerdict === 'spam'">{{
 				t('components.postbox.postboxThreadReader.markedAsSpam')
 			}}</span>

@@ -19,7 +19,6 @@ function mountNotice(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiButton: {
 					emits: ['click'],
 					template: '<button @click="$emit(\'click\')"><slot /></button>',

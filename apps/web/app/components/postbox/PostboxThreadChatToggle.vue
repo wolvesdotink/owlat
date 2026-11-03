@@ -5,6 +5,7 @@
  * the shortcut as this person has it bound.
  */
 import type { PostboxThreadChat } from '~/composables/postbox/usePostboxThreadChat';
+import { ChatCircleIcon } from '@coolicons/vue';
 
 defineProps<{ chat: PostboxThreadChat }>();
 
@@ -33,7 +34,7 @@ const { ariaFor } = useShortcutLabels();
 			data-testid="thread-chat-toggle"
 			@click="chat.toggle()"
 		>
-			<Icon name="lucide:message-circle" class="w-4 h-4" aria-hidden="true" />
+			<ChatCircleIcon class="w-4 h-4" aria-hidden="true" />
 		</UiButton>
 	</UiTooltip>
 </template>

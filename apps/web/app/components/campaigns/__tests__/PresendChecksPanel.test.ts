@@ -56,7 +56,7 @@ function mountPanel(props: Record<string, unknown> = {}) {
 			isChecking: true,
 			...props,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

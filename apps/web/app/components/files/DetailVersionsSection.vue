@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { useFileVersionHistory } from '~/composables/useFileVersionHistory';
+import { ChevronDownIcon, HistoryIcon } from '@coolicons/vue';
 
 /**
  * The file detail page's collapsible version history. The page owns the
@@ -23,7 +24,7 @@ const showVersions = ref(true);
 			@click="showVersions = !showVersions"
 		>
 			<div class="flex items-center gap-2">
-				<Icon name="lucide:history" class="w-4 h-4 text-text-tertiary" />
+				<HistoryIcon class="w-4 h-4 text-text-tertiary" />
 				<span class="text-sm font-medium text-text-primary">{{
 					t('dashboard.files.detail.versionHistory')
 				}}</span>
@@ -31,8 +32,7 @@ const showVersions = ref(true);
 					>({{ history.versions.value.length }}{{ history.isIncomplete.value ? '+' : '' }})</span
 				>
 			</div>
-			<Icon
-				name="lucide:chevron-down"
+			<ChevronDownIcon
 				class="w-4 h-4 text-text-tertiary transition-transform"
 				:class="{ '-rotate-180': showVersions }"
 			/>

@@ -16,6 +16,8 @@ import { api } from '@owlat/api';
 import type { BudgetHoldReason } from '@owlat/shared/aiRouting';
 import { BUDGET_REASON_KEYS, budgetReasonOf } from '~/utils/aiBudget';
 import { localDayOf } from '~/utils/postboxDailyBrief';
+import { SparklesIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	/** The plain-language query the search ran. */
@@ -113,7 +115,7 @@ watch(
 		</template>
 		<template v-else>
 			<div class="flex items-start gap-2">
-				<Icon name="lucide:sparkles" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+				<SparklesIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
 				<p class="flex-1 text-xs text-text-secondary">
 					{{ t('components.postbox.postboxSearchRewrite.offer') }}
 				</p>
@@ -126,11 +128,7 @@ watch(
 				data-testid="search-rewrite-suggest"
 				@click="suggest"
 			>
-				<Icon
-					v-if="isBusy"
-					name="lucide:loader-2"
-					class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="isBusy" class="h-3.5 w-3.5" />
 				{{
 					isBusy
 						? t('components.postbox.postboxSearchRewrite.working')

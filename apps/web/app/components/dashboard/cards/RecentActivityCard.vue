@@ -1,5 +1,15 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	ActivityIcon,
+	ListUnorderedIcon,
+	MailIcon,
+	MegaphoneIcon,
+	SettingsIcon,
+	UserIcon,
+	WorkflowIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -23,18 +33,18 @@ const activityList = computed<ActivityItem[]>(() => {
 	return (activity.value as ActivityItem[] | null) ?? [];
 });
 
-// Maps the backend icon tag to a lucide glyph for display.
-const iconForActivity: Record<ActivityIcon, string> = {
-	email: 'lucide:mail',
-	contact: 'lucide:user',
-	campaign: 'lucide:megaphone',
-	settings: 'lucide:settings',
-	automation: 'lucide:workflow',
-	list: 'lucide:list',
+// Maps the backend icon tag to a glyph for display.
+const iconForActivity: Record<ActivityIcon, IconComponent> = {
+	email: MailIcon,
+	contact: UserIcon,
+	campaign: MegaphoneIcon,
+	settings: SettingsIcon,
+	automation: WorkflowIcon,
+	list: ListUnorderedIcon,
 };
 
-function getIcon(item: ActivityItem): string {
-	return iconForActivity[item.icon] ?? 'lucide:activity';
+function getIcon(item: ActivityItem): IconComponent {
+	return iconForActivity[item.icon] ?? ActivityIcon;
 }
 </script>
 
@@ -42,7 +52,7 @@ function getIcon(item: ActivityItem): string {
 	<UiCard class="h-full" padding="none" overflow="hidden">
 		<div class="p-5">
 			<div class="flex items-center gap-2.5 mb-4">
-				<UiIconBox icon="lucide:activity" size="sm" variant="surface" />
+				<UiIconBox :icon="ActivityIcon" size="sm" variant="surface" />
 				<h3 class="text-sm font-semibold text-text-primary">
 					{{ t('components.dashboard.cards.recentActivityCard.title') }}
 				</h3>
@@ -65,7 +75,7 @@ function getIcon(item: ActivityItem): string {
 					<div
 						class="flex items-center justify-center w-7 h-7 rounded-full bg-brand-subtle text-brand shrink-0"
 					>
-						<Icon :name="getIcon(item)" class="w-3.5 h-3.5" />
+						<component :is="getIcon(item)" class="w-3.5 h-3.5" />
 					</div>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm text-text-primary truncate">

@@ -6,6 +6,7 @@
  */
 import { api } from '@owlat/api';
 import SavedReplyLibrary from '~/components/savedReply/SavedReplyLibrary.vue';
+import { LockIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -52,7 +53,7 @@ const teamInboxes = computed(() =>
 			v-if="showAdminGate"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.savedReplies.adminGate.title') }}
 			</p>

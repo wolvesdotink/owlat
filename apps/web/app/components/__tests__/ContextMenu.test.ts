@@ -22,8 +22,6 @@ import { defineComponent, nextTick } from 'vue';
 
 import UiContextMenu, { type ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 
-const Icon = defineComponent({ name: 'Icon', props: ['name'], template: '<i />' });
-
 type Items = ContextMenuItem[] | (() => ContextMenuItem[]);
 
 function makeHarness(items: Items) {
@@ -43,7 +41,7 @@ function makeHarness(items: Items) {
 function mountHarness(items: Items) {
 	return mount(makeHarness(items), {
 		attachTo: document.body,
-		global: { components: { Icon } },
+		global: {},
 	});
 }
 

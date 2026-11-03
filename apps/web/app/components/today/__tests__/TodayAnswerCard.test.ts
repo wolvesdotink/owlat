@@ -82,7 +82,6 @@ describe('TodayAnswerCard', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},
@@ -108,7 +107,6 @@ describe('TodayAnswerCard', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},
@@ -142,7 +140,6 @@ describe('TodayAnswerCard', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},
@@ -179,7 +176,6 @@ describe('TodayAnswerCard', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},
@@ -215,7 +211,6 @@ describe('TodayAnswerCard', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},
@@ -285,7 +280,6 @@ describe('TodayAnswerCard · brief rows', () => {
 				stubs: {
 					UiButton: { template: '<a><slot /></a>' },
 					UiSkeleton: true,
-					Icon: true,
 					InboxChip: true,
 					NuxtLink: { template: '<a><slot /></a>' },
 				},

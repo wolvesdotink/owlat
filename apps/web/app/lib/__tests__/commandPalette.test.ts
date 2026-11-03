@@ -15,6 +15,7 @@ import {
 	buildArgumentGroups,
 	filterItems,
 	flattenGroups,
+	indexById,
 	fuzzyMatch,
 	groupsForMode,
 	highlightSegments,
@@ -23,9 +24,10 @@ import {
 	parsePaletteQuery,
 	scoreItems,
 } from '../commandPalette';
+import { CircleSmallIcon, TagIcon } from '@coolicons/vue';
 
 function item(id: string, label: string, subtitle?: string): PaletteItem {
-	return { id, label, subtitle, icon: 'lucide:dot', run: () => {} };
+	return { id, label, subtitle, icon: CircleSmallIcon, run: () => {} };
 }
 
 function group(key: string, order: number, items: PaletteItem[], cap?: number): PaletteGroup {
@@ -215,7 +217,7 @@ describe('buildArgumentGroups', () => {
 	const spec = {
 		promptKey: 'prompt',
 		headingKey: 'heading',
-		icon: 'lucide:tag',
+		icon: TagIcon,
 		options: [
 			{ id: 'work', label: 'Work', run: () => {} },
 			{ id: 'personal', label: 'Personal', run: () => {} },
@@ -305,6 +307,17 @@ describe('flattenGroups', () => {
 			group('b', 1, [item('b1', 'B1')]),
 		]);
 		expect(flat.map((i) => i.id)).toEqual(['a1', 'a2', 'b1']);
+	});
+});
+
+describe('indexById', () => {
+	it('maps every row id to its flattened position', () => {
+		const index = indexById([item('a1', 'A1'), item('a2', 'A2'), item('b1', 'B1')]);
+		expect([...index]).toEqual([
+			['a1', 0],
+			['a2', 1],
+			['b1', 2],
+		]);
 	});
 });
 

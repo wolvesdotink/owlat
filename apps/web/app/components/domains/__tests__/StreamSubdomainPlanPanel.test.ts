@@ -125,7 +125,6 @@ function mountPanel(plan: unknown, canManage = true) {
 		props: { domainId: 'domain_1', canManage },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: { props: ['name'], template: '<i :data-icon="name" />' } },
 			components: { DomainsDNSRecordPanel: DNSRecordPanel },
 		},
 	});

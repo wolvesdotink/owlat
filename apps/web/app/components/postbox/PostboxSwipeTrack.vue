@@ -63,7 +63,7 @@ const iconStyle = computed(() => {
 		aria-hidden="true"
 	>
 		<span class="pbx-swipe-track-mark flex items-center gap-2" :class="tone.ink" :style="iconStyle">
-			<Icon :name="track.icon" class="w-5 h-5" />
+			<component :is="track.icon" class="w-5 h-5" />
 			<span class="text-xs font-medium">{{ label }}</span>
 		</span>
 	</div>

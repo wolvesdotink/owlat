@@ -62,7 +62,6 @@ function mountList() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				InboxChip: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiModal: true,

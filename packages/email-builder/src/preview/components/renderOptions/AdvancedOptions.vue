@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Trash2 } from '@lucide/vue';
+import { PlusIcon, TrashIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 import SettingsAccordion from './SettingsAccordion.vue';
 import { useRenderOptionsDraft } from './useRenderOptionsDraft';
@@ -101,11 +101,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 						@change="emitUpdate()"
 					/>
 					<button class="ep-settings-list-remove" @click="removeFontUrl(idx)">
-						<Trash2 class="ep-settings-list-remove-icon" />
+						<TrashIcon class="ep-settings-list-remove-icon" />
 					</button>
 				</div>
 				<button class="ep-settings-list-add" @click="addFontUrl">
-					<Plus class="ep-settings-list-add-icon" />
+					<PlusIcon class="ep-settings-list-add-icon" />
 					{{ t('builder.preview.renderOptions.addFontUrl') }}
 				</button>
 			</div>

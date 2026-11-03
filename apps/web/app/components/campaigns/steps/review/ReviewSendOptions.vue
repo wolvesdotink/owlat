@@ -6,6 +6,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { parseScheduledStart } from '~/lib/campaignSchedule';
 import type { SendingReadiness } from '~/lib/sendReadiness';
 import type { SendTiming } from '~/lib/sendTiming';
+import { CalendarIcon, CircleWarningIcon, ClockIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 defineProps<{
 	campaignId: Id<'campaigns'>;
@@ -61,7 +62,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 			v-if="sendBlockedReason"
 			class="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
 		>
-			<Icon name="lucide:alert-circle" class="mt-0.5 h-4 w-4 shrink-0" />
+			<CircleWarningIcon class="mt-0.5 h-4 w-4 shrink-0" />
 			<p>{{ sendBlockedReason }}</p>
 		</div>
 
@@ -87,7 +88,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 				/>
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
-						<Icon name="lucide:send" class="w-5 h-5 text-text-tertiary" />
+						<PaperPlaneIcon class="w-5 h-5 text-text-tertiary" />
 						<span class="font-medium text-text-primary">{{
 							t('components.campaigns.steps.reviewStep.sendNow')
 						}}</span>
@@ -116,7 +117,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 				/>
 				<div class="flex-1">
 					<div class="flex items-center gap-2">
-						<Icon name="lucide:clock" class="w-5 h-5 text-text-tertiary" />
+						<ClockIcon class="w-5 h-5 text-text-tertiary" />
 						<span class="font-medium text-text-primary">{{
 							t('components.campaigns.steps.reviewStep.scheduleLater')
 						}}</span>
@@ -130,7 +131,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 						<div class="grid grid-cols-2 gap-4">
 							<div>
 								<label for="scheduleDate" class="label flex items-center gap-2">
-									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+									<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 									{{ t('components.campaigns.steps.reviewStep.dateLabel') }}
 								</label>
 								<input
@@ -143,7 +144,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 							</div>
 							<div>
 								<label for="scheduleTime" class="label flex items-center gap-2">
-									<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
+									<ClockIcon class="w-4 h-4 text-text-tertiary" />
 									{{ t('components.campaigns.steps.reviewStep.timeLabel') }}
 								</label>
 								<input id="scheduleTime" v-model="scheduledTime" type="time" class="input mt-1.5" />

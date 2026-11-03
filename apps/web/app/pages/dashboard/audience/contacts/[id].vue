@@ -12,6 +12,7 @@ import ContactDeleteDialog from '~/components/contacts/detail/DeleteContactDialo
 import ContactDetailHeader from '~/components/contacts/detail/Header.vue';
 import ContactProfileCard from '~/components/contacts/detail/ProfileCard.vue';
 import ContactTopicsCard from '~/components/contacts/detail/TopicsCard.vue';
+import { ArrowLeftIcon, CalendarIcon, CircleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -202,7 +203,7 @@ async function handleRemoveSuppression() {
 			to="/dashboard/audience/contacts"
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.audience.contacts.detail.backToCustomers') }}
 		</NuxtLink>
 
@@ -225,7 +226,7 @@ async function handleRemoveSuppression() {
 			class="flex flex-col items-center justify-center py-16 text-center"
 		>
 			<UiIconBox
-				icon="lucide:alert-circle"
+				:icon="CircleWarningIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"
@@ -281,7 +282,7 @@ async function handleRemoveSuppression() {
 				v-if="saveError"
 				class="mb-6 p-4 rounded-lg bg-error-subtle border border-error/20 text-error flex items-center gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 flex-shrink-0" />
+				<CircleWarningIcon class="w-5 h-5 flex-shrink-0" />
 				{{ saveError }}
 			</div>
 
@@ -401,7 +402,7 @@ async function handleRemoveSuppression() {
 									{{ t('dashboard.audience.contacts.detail.created') }}
 								</p>
 								<div class="flex items-center gap-2 text-text-primary">
-									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+									<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 									{{ formatDateTime(contact.createdAt) }}
 								</div>
 							</div>
@@ -411,7 +412,7 @@ async function handleRemoveSuppression() {
 									{{ t('dashboard.audience.contacts.detail.lastUpdated') }}
 								</p>
 								<div class="flex items-center gap-2 text-text-primary">
-									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
+									<CalendarIcon class="w-4 h-4 text-text-tertiary" />
 									{{ formatDateTime(contact.updatedAt) }}
 								</div>
 							</div>

@@ -11,6 +11,7 @@
  * renders this only for admins.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { ChevronDownIcon, ChevronRightIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	inboundMessageId: Id<'inboundMessages'>;
@@ -48,7 +49,7 @@ const confidencePercent = computed(() =>
 			:aria-expanded="open"
 			@click="open = !open"
 		>
-			<Icon :name="open ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="w-3 h-3" />
+			<component :is="open ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3" />
 			{{ t('dashboard.inbox.detail.insight.toggle') }}
 		</button>
 		<div

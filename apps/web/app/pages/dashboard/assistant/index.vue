@@ -2,6 +2,16 @@
 import type { Id } from '@owlat/api/dataModel';
 import { formatDate } from '~/utils/formatters';
 import { useFollowLatest } from '~/composables/useFollowLatest';
+import {
+	ArrowDownIcon,
+	ChatIcon,
+	MoreHorizontalIcon,
+	PanelLeftIcon,
+	PencilIcon,
+	PlusIcon,
+	SparklesIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -180,7 +190,7 @@ const cancelRename = () => {
 			<aside class="flex flex-1 min-w-0 flex-col border-r border-border-subtle bg-bg-elevated">
 				<div class="p-3">
 					<UiButton full-width class="gap-2" @click="startConversation">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.assistant.index.newChat') }}
 					</UiButton>
 				</div>
@@ -213,7 +223,7 @@ const cancelRename = () => {
 							v-if="editingId === c._id"
 							class="flex flex-1 min-w-0 items-center gap-2 px-3 py-1.5"
 						>
-							<Icon name="lucide:message-square" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+							<ChatIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 							<input
 								:id="`conversation-rename-${c._id}`"
 								v-model="editingTitle"
@@ -237,10 +247,7 @@ const cancelRename = () => {
 								data-testid="assistant-conversation"
 								@click="openConversation(c._id)"
 							>
-								<Icon
-									name="lucide:message-square"
-									class="w-4 h-4 flex-shrink-0 text-text-tertiary"
-								/>
+								<ChatIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 								<span class="flex-1 truncate">{{ c.title }}</span>
 								<span class="text-2xs text-text-tertiary flex-shrink-0">{{
 									formatDate(c.lastMessageAt, 'short')
@@ -270,15 +277,15 @@ const cancelRename = () => {
 											"
 											data-testid="assistant-conversation-actions"
 										>
-											<Icon name="lucide:ellipsis" class="w-4 h-4" />
+											<MoreHorizontalIcon class="w-4 h-4" />
 										</button>
 									</UiTooltip>
 								</template>
-								<UiDropdownMenuItem icon="lucide:pencil" @click="startRename(c._id, c.title)">
+								<UiDropdownMenuItem :icon="PencilIcon" @click="startRename(c._id, c.title)">
 									{{ t('dashboard.assistant.index.renameConversation') }}
 								</UiDropdownMenuItem>
 								<UiDropdownMenuItem
-									icon="lucide:trash-2"
+									:icon="TrashIcon"
 									danger
 									@click="pendingDelete = { _id: c._id, title: c.title }"
 								>
@@ -307,7 +314,7 @@ const cancelRename = () => {
 					:aria-expanded="railOpen"
 					@click="railOpen = true"
 				>
-					<Icon name="lucide:panel-left" class="w-4 h-4" />
+					<PanelLeftIcon class="w-4 h-4" />
 					<span class="text-sm">{{ t('dashboard.assistant.index.openConversations') }}</span>
 				</button>
 				<button
@@ -316,7 +323,7 @@ const cancelRename = () => {
 					:aria-label="t('dashboard.assistant.index.newChat')"
 					@click="startConversation"
 				>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</button>
 			</div>
 
@@ -324,7 +331,7 @@ const cancelRename = () => {
 				v-if="activeConversation"
 				class="border-b border-border-subtle px-4 py-2.5 flex items-center gap-2"
 			>
-				<Icon name="lucide:sparkles" class="w-4 h-4 text-brand flex-shrink-0" />
+				<SparklesIcon class="w-4 h-4 text-brand flex-shrink-0" />
 				<h1 class="text-sm font-semibold text-text-primary truncate">
 					{{ activeConversation.title }}
 				</h1>
@@ -346,7 +353,7 @@ const cancelRename = () => {
 						<div
 							class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
 						>
-							<Icon name="lucide:sparkles" class="w-8 h-8" />
+							<SparklesIcon class="w-8 h-8" :stroke-width="1.5" />
 						</div>
 						<h2 class="text-lg font-medium text-text-primary">
 							{{ t('dashboard.assistant.index.welcomeTitle') }}
@@ -385,7 +392,7 @@ const cancelRename = () => {
 						@click="onJumpToLatest"
 					>
 						{{ t('dashboard.assistant.index.jumpToLatest') }}
-						<Icon name="lucide:arrow-down" class="w-3.5 h-3.5" />
+						<ArrowDownIcon class="w-3.5 h-3.5" />
 					</UiButton>
 				</div>
 			</div>

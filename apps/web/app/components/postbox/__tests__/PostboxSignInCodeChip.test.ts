@@ -46,7 +46,7 @@ function mountInRow(signInCode: typeof code | typeof link) {
 			h('div', { onClick: onRowClick }, [h(PostboxSignInCodeChip, { signInCode })]),
 	});
 	const wrapper = mount(Row, {
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 	return { wrapper, onRowClick };
 }

@@ -10,7 +10,7 @@ import { mount } from '@vue/test-utils';
 import TaskCardFallback from '../TaskCardFallback.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
-const stubs = { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' } };
+const stubs = { UiIconBox: { template: '<i />' } };
 
 // `useI18n` is a Nuxt auto-import in the SFC — a bare global here.
 beforeAll(() => {

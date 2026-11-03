@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { OrganizationMember } from '~/composables/useOrganization';
+import { CrownIcon } from '@coolicons/vue';
 
 /**
  * Transfer ownership (owner only): promotes `member` to owner and demotes the
@@ -43,7 +44,7 @@ function confirm() {
 		@update:open="(v: boolean) => !v && emit('close')"
 	>
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:crown" size="sm" variant="brand" rounded="lg" />
+			<UiIconBox :icon="CrownIcon" size="sm" variant="brand" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.transferModal.title') }}
@@ -102,7 +103,7 @@ function confirm() {
 			</UiButton>
 			<UiButton :loading="busy" :disabled="!canConfirm" @click="confirm">
 				<template #iconLeft>
-					<Icon v-if="!busy" name="lucide:crown" class="w-4 h-4" />
+					<CrownIcon v-if="!busy" class="w-4 h-4" />
 				</template>
 				{{
 					busy

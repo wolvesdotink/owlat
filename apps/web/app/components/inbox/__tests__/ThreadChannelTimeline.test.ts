@@ -57,7 +57,7 @@ beforeAll(() => {
 const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
-		stubs: { Icon: true, UiBadge: true, UiSpinner: true },
+		stubs: { UiBadge: true, UiSpinner: true },
 		components: { UiTextarea: UiTextareaStub },
 	},
 	props: { threadId: THREAD_ID as never },

@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadMenu from './PostboxThreadMenu.vue';
+import { ArchiveIcon, ReplyIcon } from '@coolicons/vue';
 
 /**
  * The calm reader's header line (read on arrival §3): the subject,
@@ -179,7 +180,7 @@ const subjectParts = computed(() => {
 					data-testid="thread-header-reply"
 					@click="emit('reply')"
 				>
-					<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<ReplyIcon class="w-4 h-4 sm:hidden" aria-hidden="true" />
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
 				</UiButton>
 			</UiTooltip>
@@ -194,7 +195,7 @@ const subjectParts = computed(() => {
 					data-testid="thread-header-archive"
 					@click="emit('archive')"
 				>
-					<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<ArchiveIcon class="w-4 h-4 sm:hidden" aria-hidden="true" />
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
 				</UiButton>
 			</UiTooltip>

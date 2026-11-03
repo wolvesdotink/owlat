@@ -2,7 +2,7 @@
  * THE TRANSPORT PAGE'S THREE PENDING STATES (UX plan item 55 / admin-delivery-06).
  *
  * The page has two honest states to keep and one dead end to avoid. A bare
- * centred `lucide:loader-2` on first load blanks the whole page and reflows it
+ * centred spinner on first load blanks the whole page and reflows it
  * when the query lands, while its sibling delivery lists stand in for their
  * rows with a content-shaped skeleton. And a content branch that is a
  * `v-else-if="status"` with NO `v-else` lets a `getStatus` that resolved to
@@ -73,7 +73,6 @@ const passthrough = { template: '<div><slot /></div>' };
 
 const globalOptions = {
 	stubs: {
-		Icon: true,
 		UiIconBox: true,
 		UiBadge: true,
 		UiSkeleton: true,

@@ -3,7 +3,7 @@
  * Content-shaped first-load placeholder for the *body* of a dashboard card.
  *
  * Every card in `components/dashboard/cards/` used to render a centred
- * `lucide:loader-2` inside a `py-6` box while its query resolved, so a card
+ * spinner inside a `py-6` box while its query resolved, so a card
  * collapsed to ~48px of body and then snapped open to its real height. Thirteen
  * of those on one grid is the layout jitter the dashboard is known for.
  *

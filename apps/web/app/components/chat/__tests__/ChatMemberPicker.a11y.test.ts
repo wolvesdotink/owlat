@@ -15,8 +15,6 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountPicker() {
 	return mount(ChatMemberPicker, {
 		props: {
@@ -29,7 +27,6 @@ function mountPicker() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiAvatar },
-			stubs: { Icon: iconStub },
 		},
 	});
 }

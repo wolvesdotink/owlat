@@ -1,5 +1,5 @@
 import { reactive, computed, ref, type ComputedRef } from 'vue';
-import { PanelBottom, Stamp } from '@lucide/vue';
+import { PanelBottomIcon, StampIcon } from '@coolicons/vue';
 import type { SlashCommand, SlashMenuState, SavedBlock, BlockType, BrandBlockKind } from '../types';
 import { getSlashCommands } from '../registry';
 import { useBuilderI18n, type BuilderI18n } from '../i18n/useBuilderI18n';
@@ -65,7 +65,7 @@ const BRAND_COMMANDS: Record<BrandBlockKind, SlashCommand> = {
 		id: 'brand:logo',
 		name: 'Logo',
 		description: 'Your brand kit logo',
-		icon: Stamp,
+		icon: StampIcon,
 		category: 'brand',
 		aliases: ['brand', 'logo'],
 		brandBlock: 'logo',
@@ -74,7 +74,7 @@ const BRAND_COMMANDS: Record<BrandBlockKind, SlashCommand> = {
 		id: 'brand:footer',
 		name: 'Footer',
 		description: 'Company name, address and social links',
-		icon: PanelBottom,
+		icon: PanelBottomIcon,
 		category: 'brand',
 		aliases: ['brand', 'footer', 'address'],
 		brandBlock: 'footer',

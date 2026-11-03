@@ -86,7 +86,6 @@ function mountHeader(
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				Icon: { props: ['name'], template: '<span />' },
 				PostboxListDisplayMenu: displayMenuStub,
 				PostboxInboxModeToggle: inboxModeToggleStub,
 				PostboxFolderActionsMenu: folderActionsStub,

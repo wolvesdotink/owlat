@@ -1,11 +1,11 @@
-import { ChartBar } from '@lucide/vue';
+import { ChartBarVerticalIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { progressBarSchema } from '../../schema/definitions/progressBar';
 
 export const progressBarEditor: EditorModule<'progressBar'> = {
 	type: 'progressBar',
 	label: 'Progress',
-	icon: ChartBar,
+	icon: ChartBarVerticalIcon,
 	schema: progressBarSchema,
 	slashCommand: {
 		name: 'Progress Bar',

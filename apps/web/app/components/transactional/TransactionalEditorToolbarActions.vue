@@ -17,6 +17,14 @@
  * arrive with the control; the click handler is what keeps it inert.
  */
 import type { Id } from '@owlat/api/dataModel';
+import {
+	CircleCheckIcon,
+	ClockIcon,
+	PencilIcon,
+	RocketIcon,
+	RotateLeftIcon,
+	TranslateIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The email being edited; the share-links popover scopes itself to it. */
@@ -96,10 +104,8 @@ function onTogglePublish() {
 					: t('dashboard.send.transactional.detail.edit.statusHint.draft')
 		"
 	>
-		<Icon
-			:name="
-				isPublished ? 'lucide:check-circle' : isPendingReview ? 'lucide:clock-3' : 'lucide:pencil'
-			"
+		<component
+			:is="isPublished ? CircleCheckIcon : isPendingReview ? ClockIcon : PencilIcon"
 			class="w-3.5 h-3.5"
 		/>
 		{{
@@ -114,7 +120,7 @@ function onTogglePublish() {
 	<UiTooltip :text="t('dashboard.send.transactional.detail.edit.manageTranslations')">
 		<UiButton variant="outline" size="sm" @click="emit('translations')">
 			<template #iconLeft>
-				<Icon name="lucide:languages" class="w-4 h-4" />
+				<TranslateIcon class="w-4 h-4" />
 			</template>
 			<!-- Icon-only below 2xl, where the builder toolbar is short of room. -->
 			<span class="max-2xl:sr-only">{{
@@ -133,7 +139,7 @@ function onTogglePublish() {
 			:class="pendingReviewClass"
 		>
 			<template #iconLeft>
-				<Icon name="lucide:clock-3" class="w-4 h-4" />
+				<ClockIcon class="w-4 h-4" />
 			</template>
 			{{ t('dashboard.send.transactional.detail.edit.status.pendingReview') }}
 		</UiButton>
@@ -160,7 +166,7 @@ function onTogglePublish() {
 			@click="onTogglePublish"
 		>
 			<template v-if="!isPublishing" #iconLeft>
-				<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
+				<component :is="isPublished ? RotateLeftIcon : RocketIcon" class="w-4 h-4" />
 			</template>
 			{{
 				isPublished

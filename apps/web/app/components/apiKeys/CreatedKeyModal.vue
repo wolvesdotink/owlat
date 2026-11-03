@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CheckIcon, CircleWarningIcon, CopyIcon, KeyIcon } from '@coolicons/vue';
+
 defineProps<{
 	open: boolean;
 	/** The key just created; its secret is shown only this once. */
@@ -26,7 +28,7 @@ const { t } = useI18n();
 		<template v-if="createdKey">
 			<!-- Header -->
 			<div class="flex items-center gap-3 mb-6">
-				<UiIconBox icon="lucide:key" size="sm" variant="success" rounded="lg" />
+				<UiIconBox :icon="KeyIcon" size="sm" variant="success" rounded="lg" />
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.api.index.created.title') }}
 				</h2>
@@ -35,7 +37,7 @@ const { t } = useI18n();
 			<!-- Content -->
 			<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
 						<p class="text-sm font-medium text-warning">
 							{{ t('dashboard.admin.team.api.index.created.copyNow') }}
@@ -61,8 +63,8 @@ const { t } = useI18n();
 						{{ createdKey.apiKey }}
 					</code>
 					<UiButton variant="secondary" class="shrink-0 gap-2" @click="emit('copy')">
-						<Icon v-if="copied" name="lucide:check" class="w-4 h-4 text-success" />
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="copied" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 						{{ copied ? t('dashboard.admin.team.api.index.created.copied') : t('common.copy') }}
 					</UiButton>
 				</div>

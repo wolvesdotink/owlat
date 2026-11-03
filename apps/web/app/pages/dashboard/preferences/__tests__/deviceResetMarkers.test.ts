@@ -63,7 +63,6 @@ function mountPage() {
 			stubs: {
 				UiButton: true,
 				UiConfirmationDialog: true,
-				Icon: true,
 				UiSwitch: true,
 				I18nT: true,
 				PreferencesWebPush: true,

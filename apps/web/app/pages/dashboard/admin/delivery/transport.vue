@@ -9,6 +9,7 @@ import {
 } from '~/utils/providerFeedbackPanel';
 import { transportKindLabel } from '~/utils/transportState';
 import { useLocalized } from '~/composables/useLocalized';
+import { CheckIcon, CloseIcon, ServerIcon, ServerOffIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -208,7 +209,7 @@ const inboundHeadingId = useId();
 			-->
 			<template #empty>
 				<UiEmptyState
-					icon="lucide:server-off"
+					:icon="ServerOffIcon"
 					:eyebrow="t('dashboard.admin.delivery.transport.title')"
 					:title="t('dashboard.admin.delivery.transport.empty.title')"
 					:description="t('dashboard.admin.delivery.transport.empty.description')"
@@ -260,7 +261,7 @@ const inboundHeadingId = useId();
 				<UiCard padding="none" overflow="hidden">
 					<template #header>
 						<div class="flex items-center gap-3">
-							<UiIconBox icon="lucide:server" size="sm" variant="surface" rounded="lg" />
+							<UiIconBox :icon="ServerIcon" size="sm" variant="surface" rounded="lg" />
 							<div>
 								<h2 class="text-lg font-semibold text-text-primary">
 									{{ t('dashboard.admin.delivery.transport.config.title') }}
@@ -313,10 +314,7 @@ const inboundHeadingId = useId();
 										class="inline-flex items-center gap-1.5 text-xs font-medium"
 										:class="entry.isPresent ? 'text-success' : 'text-error'"
 									>
-										<Icon
-											:name="entry.isPresent ? 'lucide:check' : 'lucide:x'"
-											class="w-3.5 h-3.5"
-										/>
+										<component :is="entry.isPresent ? CheckIcon : CloseIcon" class="w-3.5 h-3.5" />
 										{{
 											entry.isPresent
 												? t('dashboard.admin.delivery.transport.config.present')

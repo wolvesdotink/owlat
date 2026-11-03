@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { acceptInvitation, getSession } from '~/lib/auth-client';
+import { CheckIcon, CircleWarningIcon, UsersIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -139,10 +141,7 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon
-							name="lucide:loader-2"
-							class="w-8 h-8 text-brand animate-spin motion-reduce:animate-none"
-						/>
+						<SpinnerIcon class="w-8 h-8 text-brand" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{
@@ -165,7 +164,7 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon name="lucide:users" class="w-8 h-8 text-brand" />
+						<UsersIcon class="w-8 h-8 text-brand" :stroke-width="1.5" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.loginRequiredTitle') }}
@@ -188,7 +187,7 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-success/10 mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon name="lucide:check" class="w-8 h-8 text-success" />
+						<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.successTitle') }}
@@ -243,7 +242,7 @@ function redirectToRegister() {
 					<div
 						class="p-4 rounded-2xl bg-error/10 mx-auto w-fit mb-6 flex items-center justify-center"
 					>
-						<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
+						<CircleWarningIcon class="w-8 h-8 text-error" :stroke-width="1.5" />
 					</div>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.errorTitle') }}

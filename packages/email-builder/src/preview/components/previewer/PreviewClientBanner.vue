@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { AlertTriangle } from '@lucide/vue';
+import { TriangleWarningIcon } from '@coolicons/vue';
 import type { EmailClient } from '../../types';
 import type { SimulationResult } from '../../clientSimulation';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -42,7 +42,7 @@ const simulationSummary = computed(() => {
 			</template>
 		</span>
 		<div class="ep-simulation-note">
-			<AlertTriangle class="ep-simulation-icon" />
+			<TriangleWarningIcon class="ep-simulation-icon" />
 			<span>
 				{{ t('builder.preview.client.simulated') }}
 				<template v-if="hasSimulationAdjustments">

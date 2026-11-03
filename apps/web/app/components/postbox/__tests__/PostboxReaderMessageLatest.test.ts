@@ -94,7 +94,6 @@ function mountCard(props: Record<string, unknown>, message: Record<string, unkno
 				PostboxSecurityBadge: marker('PostboxSecurityBadge'),
 				PostboxInviteCard: marker('PostboxInviteCard'),
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

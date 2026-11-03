@@ -40,7 +40,7 @@ function mountRow(uploads: UploadChip[] = []) {
 		attachTo: document.body,
 		props: { attachments: [], uploads, meter, thumbUrlFor: () => null },
 		attrs: { inert: true },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

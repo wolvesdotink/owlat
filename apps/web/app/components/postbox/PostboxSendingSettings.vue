@@ -23,6 +23,8 @@ import {
 } from '~/utils/postboxUndoSendWindow';
 import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
 import PreferencesSettingRow from '~/components/preferences/PreferencesSettingRow.vue';
+import { PaperPlaneIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -162,15 +164,12 @@ async function choose(preference: 'external' | 'instance') {
 			<div class="border-t border-border-subtle" />
 			<!-- Loading -->
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 
 			<!-- Error: the subscription failed. Don't silently drop the section. -->
 			<div v-else-if="error" class="px-5 py-6 flex items-start gap-3" role="alert">
-				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+				<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
 					{{ t('components.postbox.postboxSendingSettings.loadError') }}
 				</p>
@@ -183,7 +182,7 @@ async function choose(preference: 'external' | 'instance') {
 					class="mx-5 mt-4 rounded-md border border-brand/30 bg-brand-subtle px-4 py-3"
 				>
 					<div class="flex items-start gap-3">
-						<Icon name="lucide:send" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+						<PaperPlaneIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 						<div class="min-w-0">
 							<p class="font-medium text-sm">
 								{{ t('components.postbox.postboxSendingSettings.promptTitle') }}

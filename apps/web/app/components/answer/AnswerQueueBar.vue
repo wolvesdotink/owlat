@@ -6,6 +6,15 @@ import { useAnswerLayout } from '~/composables/useAnswerSheet';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { isDialogOpen } from '~/utils/dialogOpen';
+import {
+	ArchiveIcon,
+	CheckIcon,
+	ChevronLeftIcon,
+	ChevronRightIcon,
+	ClockIcon,
+	InboxIcon,
+	ListChecklistIcon,
+} from '@coolicons/vue';
 
 /**
  * The Answer queue in Answer mode's top bar (the frame's `#queue` slot):
@@ -119,7 +128,7 @@ const menuItem =
 					data-testid="answer-queue-previous"
 					@click="session.back()"
 				>
-					<Icon name="lucide:chevron-left" class="size-4" />
+					<ChevronLeftIcon class="size-4" />
 				</UiButton>
 			</UiTooltip>
 			<span class="tabular-nums" data-testid="answer-queue-position">
@@ -139,7 +148,7 @@ const menuItem =
 					data-testid="answer-queue-next"
 					@click="session.next()"
 				>
-					<Icon name="lucide:chevron-right" class="size-4" />
+					<ChevronRightIcon class="size-4" />
 				</UiButton>
 			</UiTooltip>
 		</template>
@@ -156,7 +165,7 @@ const menuItem =
 		<PostboxOverflowMenu
 			:label="t('components.answer.queueBar.menu')"
 			:trigger-text="layout === 'phone' ? undefined : t('components.answer.queueBar.inQueue')"
-			icon="lucide:list-checks"
+			:icon="ListChecklistIcon"
 			align="right"
 		>
 			<template #default="{ close }">
@@ -170,7 +179,7 @@ const menuItem =
 						data-testid="answer-queue-archive"
 						@click="(close(), archive())"
 					>
-						<Icon name="lucide:archive" class="size-4 text-text-tertiary" />
+						<ArchiveIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('common.archive') }}</span>
 						<kbd v-if="labelFor('answer.archive')" class="font-mono text-2xs text-text-tertiary">{{
 							labelFor('answer.archive')
@@ -185,7 +194,7 @@ const menuItem =
 						data-testid="answer-queue-snooze"
 						@click="(close(), openSnooze())"
 					>
-						<Icon name="lucide:clock" class="size-4 text-text-tertiary" />
+						<ClockIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.postbox.postboxReplyFlow.snooze') }}</span>
 						<kbd v-if="labelFor('answer.snooze')" class="font-mono text-2xs text-text-tertiary">{{
 							labelFor('answer.snooze')
@@ -200,7 +209,7 @@ const menuItem =
 						data-testid="answer-queue-done"
 						@click="(close(), markDone())"
 					>
-						<Icon name="lucide:check" class="size-4 text-text-tertiary" />
+						<CheckIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.answer.queueBar.markDone') }}</span>
 					</button>
 					<div class="my-1 border-t border-border-subtle" role="separator" />
@@ -218,8 +227,8 @@ const menuItem =
 					data-testid="answer-queue-filter"
 					@click="(close(), session.setFilter(chip.id))"
 				>
-					<Icon
-						:name="session.filter.value === chip.id ? 'lucide:check' : chip.icon || 'lucide:inbox'"
+					<component
+						:is="session.filter.value === chip.id ? CheckIcon : chip.icon || InboxIcon"
 						class="size-4 text-text-tertiary"
 					/>
 					<span class="flex-1 truncate">{{ chip.label }}</span>

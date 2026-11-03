@@ -25,6 +25,7 @@ import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { CircleCheckIcon, MailIcon } from '@coolicons/vue';
 
 const tableFits = ref(true);
 
@@ -88,8 +89,8 @@ const baseProps = {
 	sortLabel: 'Sort templates',
 	sortListboxId: 'test-sort-listbox',
 	viewMode: 'list' as const,
-	emptyNoOrg: { icon: 'lucide:mail', title: 'No team selected', description: 'Pick a team.' },
-	empty: { icon: 'lucide:mail', title: 'No templates yet', description: 'Create one.' },
+	emptyNoOrg: { icon: MailIcon, title: 'No team selected', description: 'Pick a team.' },
+	empty: { icon: MailIcon, title: 'No templates yet', description: 'Create one.' },
 	noResults: { title: 'No results found', description: 'Nothing matches.' },
 	deleteCopy: {
 		title: 'Delete template',
@@ -230,7 +231,7 @@ describe('ListPageShell', () => {
 		const wrapper = render({
 			isEmpty: true,
 			empty: {
-				icon: 'lucide:check-circle',
+				icon: CircleCheckIcon,
 				eyebrow: 'All clear',
 				title: 'Nothing needs you.',
 				description: 'Done.',

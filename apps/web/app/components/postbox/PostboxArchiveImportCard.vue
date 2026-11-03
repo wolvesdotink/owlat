@@ -19,6 +19,8 @@ import {
 	type ArchiveImportJob,
 } from '~/utils/postboxArchiveImport';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { FileUploadIcon, FilterIcon, UploadIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 const localized = useLocalized();
@@ -76,7 +78,7 @@ async function onFilterFileChange(event: Event) {
 <template>
 	<section class="card !p-0">
 		<header class="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
-			<UiIconBox icon="lucide:file-up" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="FileUploadIcon" size="sm" variant="surface" rounded="lg" />
 			<div class="min-w-0">
 				<h2 class="font-semibold text-text-primary">
 					{{ t('components.postbox.postboxArchiveImportCard.title') }}
@@ -139,12 +141,8 @@ async function onFilterFileChange(event: Event) {
 					:disabled="isBusy"
 					@click="fileInput?.click()"
 				>
-					<Icon
-						v-if="isUploading"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:upload" class="w-4 h-4" />
+					<SpinnerIcon v-if="isUploading" class="w-4 h-4" />
+					<UploadIcon v-else class="w-4 h-4" />
 					{{
 						isUploading
 							? t('components.postbox.postboxArchiveImportCard.uploading')
@@ -193,12 +191,8 @@ async function onFilterFileChange(event: Event) {
 					:disabled="isImportingFilters"
 					@click="filterInput?.click()"
 				>
-					<Icon
-						v-if="isImportingFilters"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:filter" class="w-4 h-4" />
+					<SpinnerIcon v-if="isImportingFilters" class="w-4 h-4" />
+					<FilterIcon v-else class="w-4 h-4" />
 					{{ t('components.postbox.postboxArchiveImportCard.filtersAction') }}
 				</UiButton>
 				<div v-if="untranslatedFilters.length > 0" class="text-xs text-text-tertiary space-y-1">

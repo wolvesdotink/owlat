@@ -26,7 +26,7 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const stubs = { UiCard: { template: '<div><slot /></div>' }, Icon: { template: '<i />' } };
+const stubs = { UiCard: { template: '<div><slot /></div>' } };
 
 function mountCard() {
 	return mount(MeasurementCellCard, {

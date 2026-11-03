@@ -3,6 +3,18 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 import { isEmptyableRole } from '~/composables/postbox/usePostboxFolderBulk';
+import {
+	ArchiveIcon,
+	CheckAllIcon,
+	FileEditIcon,
+	FolderIcon,
+	InboxIcon,
+	PaperPlaneIcon,
+	ShieldWarningIcon,
+	TrashIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 type PostboxFolderRow = {
 	_id: string;
@@ -39,7 +51,7 @@ function folderMenuItems(folder: PostboxFolderRow): ContextMenuItem[] {
 		{
 			id: 'mark-all-read',
 			label: t('components.postbox.postboxFolderActions.markAllRead'),
-			icon: 'lucide:check-check',
+			icon: CheckAllIcon,
 			disabled: folder.unseenCount === 0,
 			run: () => void bulk.markAllRead(folder),
 		},
@@ -48,7 +60,7 @@ function folderMenuItems(folder: PostboxFolderRow): ContextMenuItem[] {
 		items.push({
 			id: 'empty',
 			label: t(`components.postbox.postboxFolderActions.empty.${folder.role}`),
-			icon: 'lucide:trash-2',
+			icon: TrashIcon,
 			danger: true,
 			separatorBefore: true,
 			run: () => bulk.requestEmpty(folder),
@@ -57,13 +69,13 @@ function folderMenuItems(folder: PostboxFolderRow): ContextMenuItem[] {
 	return items;
 }
 
-const ICON_BY_ROLE: Record<string, string> = {
-	inbox: 'lucide:inbox',
-	sent: 'lucide:send',
-	drafts: 'lucide:file-edit',
-	trash: 'lucide:trash',
-	spam: 'lucide:shield-alert',
-	archive: 'lucide:archive',
+const ICON_BY_ROLE: Record<string, IconComponent> = {
+	inbox: InboxIcon,
+	sent: PaperPlaneIcon,
+	drafts: FileEditIcon,
+	trash: TrashIcon,
+	spam: ShieldWarningIcon,
+	archive: ArchiveIcon,
 };
 
 // System folders arrive with a role, not a translated name; a custom/unknown
@@ -113,7 +125,12 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 						@contextmenu="onContextmenu"
 						@keydown="onKeydown"
 					>
-						<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
+						<component
+							:is="
+								navIcon(ICON_BY_ROLE[folder.role ?? ''] ?? FolderIcon, activeFolder === folder.role)
+							"
+							class="w-4 h-4"
+						/>
 						<template v-if="!collapsed">
 							<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
 							<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{

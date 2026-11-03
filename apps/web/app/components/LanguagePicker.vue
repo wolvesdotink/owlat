@@ -20,6 +20,7 @@
  * was reading the gap this closes.
  */
 import { api } from '@owlat/api';
+import { CheckIcon, TranslateIcon } from '@coolicons/vue';
 
 const { t, locale, locales, setLocale } = useI18n();
 const { isAuthenticated } = useAuth();
@@ -99,8 +100,8 @@ async function rememberOnAccount(code: AppLocale) {
 			]"
 			@click="choose(option.code)"
 		>
-			<Icon
-				:name="option.code === locale ? 'lucide:check' : 'lucide:languages'"
+			<component
+				:is="option.code === locale ? CheckIcon : TranslateIcon"
 				class="w-5 h-5 text-brand"
 			/>
 			<span :lang="option.language" class="mt-2 block text-sm font-medium text-text-primary">{{

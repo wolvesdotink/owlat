@@ -87,7 +87,6 @@ function mountPanel(
 				EmailTemplateCompareModal: compareModalStub,
 				UiIconBox: true,
 				UiSpinner: true,
-				Icon: true,
 			},
 		},
 	});

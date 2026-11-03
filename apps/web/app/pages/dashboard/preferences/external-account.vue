@@ -14,6 +14,9 @@
  * delete it. Connecting a new mailbox is still the wizard's job, so the empty
  * state points there.
  */
+import { PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.preferences.externalAccount.pageTitle') });
@@ -41,7 +44,7 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 				{{ t('dashboard.preferences.externalAccount.subheading') }}
 			</p>
 			<UiButton class="shrink-0" @click="navigateTo('/dashboard/preferences/add-account')">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.index.addAccount') }}
 			</UiButton>
 		</header>
@@ -58,10 +61,7 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 			class="card p-8 flex justify-center scroll-mt-6"
 			aria-busy="true"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 

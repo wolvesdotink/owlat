@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { formatNumber } from '~/utils/formatters';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { ChartBarVerticalIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -30,7 +31,7 @@ function formatCount(value: number): string {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:bar-chart-3" size="sm" variant="surface" />
+					<UiIconBox :icon="ChartBarVerticalIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.campaignPerformance.title') }}
 					</h3>

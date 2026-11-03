@@ -1,13 +1,13 @@
 /**
  * The components Nuxt registers for every page, so a mounted tree can reach
- * them: `Icon` (@nuxt/icon), `NuxtLink`, the UI layer's `UiButton` and
- * `UiCheckbox`, and the read-state boundary `UiQueryBoundary` with the three
- * it renders.
+ * them: `NuxtLink`, the UI layer's `UiButton` and `UiCheckbox`, and the
+ * read-state boundary `UiQueryBoundary` with the three it renders. Icons need
+ * nothing here: they are coolicons components each template imports.
  *
  * `UiButton` is the REAL component. A stub that dropped `variant`, `size` and
  * the icon slots would let a regression in the one control every screen uses
- * pass every suite that clicks it. Its template resolves `Icon` and `NuxtLink`
- * up front, which is why those two are registered alongside it.
+ * pass every suite that clicks it. Its template resolves `NuxtLink` up front,
+ * which is why it is registered alongside it.
  *
  * `UiQueryBoundary` is real for the same reason: list and detail pages show a
  * failed read through it, so a suite mounting one sees the categorized
@@ -63,14 +63,6 @@ import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import UiShortcut from '~/components/ui/Shortcut.vue';
 
-export const IconStub = defineComponent({
-	name: 'Icon',
-	props: { name: { type: String, default: '' } },
-	// Matches the real @nuxt/icon output: a decorative glyph with no accessible
-	// name, so an icon-only control still fails `button-name` in an audit.
-	setup: () => () => h('span', { 'aria-hidden': 'true' }),
-});
-
 export const NuxtLinkStub = defineComponent({
 	name: 'NuxtLink',
 	inheritAttrs: false,
@@ -85,7 +77,6 @@ export const NuxtLinkStub = defineComponent({
 /** Installed once by the vitest setup file; a suite's own `stubs` still win. */
 export function registerNuxtComponents(): void {
 	Object.assign(config.global.components, {
-		Icon: IconStub,
 		NuxtLink: NuxtLinkStub,
 		UiButton,
 		UiCheckbox,

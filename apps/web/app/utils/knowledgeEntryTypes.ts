@@ -8,6 +8,26 @@
  * can import the accessors directly via `~/utils/knowledgeEntryTypes`.
  */
 
+import {
+	BookOpenIcon,
+	CalendarIcon,
+	ChatCircleIcon,
+	CircleHelpIcon,
+	CircleIcon,
+	FileIcon,
+	GavelIcon,
+	HeartIcon,
+	LinkIcon,
+	MailIcon,
+	PencilIcon,
+	RobotIcon,
+	ShieldCheckIcon,
+	SquareCheckIcon,
+	TargetIcon,
+	WavyCheckIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type EntryType =
 	| 'fact'
 	| 'decision'
@@ -46,29 +66,29 @@ export const AUTHORABLE_ENTRY_TYPES: EntryType[] = ENTRY_TYPES.filter(
 
 export const TYPE_CONFIG: Record<
 	EntryType,
-	{ variant: EntryTypeVariant; icon: string; label: string }
+	{ variant: EntryTypeVariant; icon: IconComponent; label: string }
 > = {
-	fact: { variant: 'default', icon: 'lucide:book-open', label: 'Fact' },
-	decision: { variant: 'warning', icon: 'lucide:gavel', label: 'Decision' },
-	event: { variant: 'neutral', icon: 'lucide:calendar', label: 'Event' },
-	preference: { variant: 'neutral', icon: 'lucide:heart', label: 'Preference' },
-	goal: { variant: 'success', icon: 'lucide:target', label: 'Goal' },
-	relationship: { variant: 'error', icon: 'lucide:link', label: 'Relationship' },
-	action_item: { variant: 'warning', icon: 'lucide:check-square', label: 'Action Item' },
-	policy: { variant: 'success', icon: 'lucide:shield-check', label: 'Policy' },
-	faq: { variant: 'default', icon: 'lucide:help-circle', label: 'FAQ' },
+	fact: { variant: 'default', icon: BookOpenIcon, label: 'Fact' },
+	decision: { variant: 'warning', icon: GavelIcon, label: 'Decision' },
+	event: { variant: 'neutral', icon: CalendarIcon, label: 'Event' },
+	preference: { variant: 'neutral', icon: HeartIcon, label: 'Preference' },
+	goal: { variant: 'success', icon: TargetIcon, label: 'Goal' },
+	relationship: { variant: 'error', icon: LinkIcon, label: 'Relationship' },
+	action_item: { variant: 'warning', icon: SquareCheckIcon, label: 'Action Item' },
+	policy: { variant: 'success', icon: ShieldCheckIcon, label: 'Policy' },
+	faq: { variant: 'default', icon: CircleHelpIcon, label: 'FAQ' },
 };
 
 // Mirrors the backend sourceTypeValidator union (schema/knowledge.ts).
 export type SourceType = 'email' | 'chat' | 'manual' | 'file' | 'agent_extracted' | 'curated';
 
-export const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
-	email: { icon: 'lucide:mail', label: 'Email' },
-	chat: { icon: 'lucide:message-circle', label: 'Chat' },
-	manual: { icon: 'lucide:pen-line', label: 'Manual' },
-	file: { icon: 'lucide:file', label: 'File' },
-	agent_extracted: { icon: 'lucide:bot', label: 'AI Extracted' },
-	curated: { icon: 'lucide:badge-check', label: 'Canonical answer' },
+export const SOURCE_CONFIG: Record<string, { icon: IconComponent; label: string }> = {
+	email: { icon: MailIcon, label: 'Email' },
+	chat: { icon: ChatCircleIcon, label: 'Chat' },
+	manual: { icon: PencilIcon, label: 'Manual' },
+	file: { icon: FileIcon, label: 'File' },
+	agent_extracted: { icon: RobotIcon, label: 'AI Extracted' },
+	curated: { icon: WavyCheckIcon, label: 'Canonical answer' },
 };
 
 // A hand-authored entry is always `manual`: the backend refuses any other
@@ -78,13 +98,13 @@ export const AUTHORABLE_SOURCE_TYPES: SourceType[] = ['manual'];
 
 export const entryTypeVariant = (type: string): EntryTypeVariant =>
 	TYPE_CONFIG[type as EntryType]?.variant ?? 'neutral';
-export const entryTypeIcon = (type: string): string =>
-	TYPE_CONFIG[type as EntryType]?.icon ?? 'lucide:circle';
+export const entryTypeIcon = (type: string): IconComponent =>
+	TYPE_CONFIG[type as EntryType]?.icon ?? CircleIcon;
 export const entryTypeLabel = (type: string): string =>
 	TYPE_CONFIG[type as EntryType]?.label ?? type;
 
-export const sourceIcon = (source: string): string =>
-	SOURCE_CONFIG[source]?.icon ?? 'lucide:circle';
+export const sourceIcon = (source: string): IconComponent =>
+	SOURCE_CONFIG[source]?.icon ?? CircleIcon;
 export const sourceLabel = (source: string): string => SOURCE_CONFIG[source]?.label ?? source;
 
 // Mirrors the backend RELATION_TYPES tuple (schema/knowledge.ts) — the six typed

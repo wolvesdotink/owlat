@@ -60,7 +60,6 @@ function mountTree() {
 					template: '<slot :on-contextmenu="() => {}" :on-keydown="() => {}" />',
 				},
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

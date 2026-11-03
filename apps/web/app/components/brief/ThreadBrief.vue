@@ -33,6 +33,7 @@ import BriefItems from './BriefItems.vue';
 import BriefLatest from './BriefLatest.vue';
 import BriefParticipants from './BriefParticipants.vue';
 import BriefStanding from './BriefStanding.vue';
+import { ChevronRightIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -217,7 +218,7 @@ function toggle(item: BriefItemView) {
 					@click="moreOpen = true"
 				>
 					{{ t('components.brief.phone.more') }}
-					<Icon name="lucide:chevron-right" class="size-3.5" aria-hidden="true" />
+					<ChevronRightIcon class="size-3.5" aria-hidden="true" />
 				</button>
 			</template>
 		</template>

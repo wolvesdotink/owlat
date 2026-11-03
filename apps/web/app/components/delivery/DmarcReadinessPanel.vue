@@ -8,6 +8,13 @@
  * rewrites the domain's `_dmarc` record.
  */
 import { formatPassRate, readinessState } from '~/utils/dmarcReportView';
+import {
+	CircleDashedIcon,
+	HourglassIcon,
+	InboxIcon,
+	ShieldCheckIcon,
+	ShieldWarningIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	domain: string;
@@ -36,12 +43,12 @@ const tone = computed(() => {
 const icon = computed(
 	() =>
 		({
-			ready: 'lucide:shield-check',
-			enforced: 'lucide:shield-check',
-			building: 'lucide:hourglass',
-			failing: 'lucide:shield-alert',
-			incomplete: 'lucide:circle-dashed',
-			'no-data': 'lucide:inbox',
+			ready: ShieldCheckIcon,
+			enforced: ShieldCheckIcon,
+			building: HourglassIcon,
+			failing: ShieldWarningIcon,
+			incomplete: CircleDashedIcon,
+			'no-data': InboxIcon,
 		})[state.value]
 );
 

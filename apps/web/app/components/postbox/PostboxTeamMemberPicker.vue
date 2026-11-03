@@ -6,6 +6,8 @@
  * list and the selected-id set; this only renders the checkboxes and emits a
  * toggle. The creator is always the owner and is excluded upstream.
  */
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 export interface PickerMember {
 	userId: string;
 	user: { name?: string | null; email: string };
@@ -34,7 +36,7 @@ const { t } = useI18n();
 			v-if="loading && members.length === 0"
 			class="flex items-center gap-2 text-text-secondary text-sm py-2"
 		>
-			<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-4 h-4" />
 			{{ t('components.postbox.postboxTeamMemberPicker.loading') }}
 		</div>
 		<p v-else-if="members.length === 0" class="text-sm text-text-secondary">

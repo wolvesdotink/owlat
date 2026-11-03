@@ -18,8 +18,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxComposerSealLock from '../PostboxComposerSealLock.vue';
 import type { SealState } from '~/utils/sealComposer';
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 // The lock's own control and the derived lock copy flow through vue-i18n now;
 // `useI18n` is a Nuxt auto-import, so it has to exist as a global for setup.
 beforeAll(() => {
@@ -34,7 +32,7 @@ function mountLock(
 ) {
 	return mount(PostboxComposerSealLock, {
 		props: { enabled, sealState, pending, blockingRecipients },
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 
@@ -141,7 +139,7 @@ describe('PostboxComposerSealLock', () => {
 		function mountCompact(sealState: SealState, blockingRecipients: string[] = []) {
 			return mount(PostboxComposerSealLock, {
 				props: { enabled: true, sealState, blockingRecipients, compact: true },
-				global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+				global: { plugins: [createTestI18n()] },
 			});
 		}
 

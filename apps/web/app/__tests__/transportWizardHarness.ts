@@ -134,7 +134,6 @@ export const ALIGNED_DNS: TxtFixture = {
 };
 
 export const wizardStubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	UiCard: { template: '<section><slot name="header" /><slot /></section>' },
 	UiButton: {

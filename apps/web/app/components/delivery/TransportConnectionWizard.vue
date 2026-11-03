@@ -59,6 +59,7 @@ import { runAlignmentProbe } from '~/utils/transportAlignmentProbe';
 // wizard with no step 1 and no findings.
 import TransportCredentialsStep from './TransportCredentialsStep.vue';
 import WizardFindingRow from './WizardFindingRow.vue';
+import { PlugIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/**
@@ -260,7 +261,7 @@ watch(
 		<template #header>
 			<div class="flex items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:plug" size="sm" variant="surface" rounded="lg" />
+					<UiIconBox :icon="PlugIcon" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t(entryCopy.title) }}

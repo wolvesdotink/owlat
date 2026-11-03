@@ -17,6 +17,16 @@
  */
 
 /** The kinds of record the jump-back list remembers. */
+import {
+	FileTextIcon,
+	InboxIcon,
+	MailIcon,
+	MegaphoneIcon,
+	UserIcon,
+	WorkflowIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 const PALETTE_OBJECT_KINDS = [
 	'conversation',
 	'teamThread',
@@ -160,13 +170,13 @@ export function objectRecencyIndex(list: readonly PaletteObjectRecent[]): Map<st
 }
 
 /** The icon each kind of record carries in the list. */
-export const PALETTE_OBJECT_ICONS: Readonly<Record<PaletteObjectKind, string>> = {
-	conversation: 'lucide:mail',
-	teamThread: 'lucide:inbox',
-	campaign: 'lucide:megaphone',
-	contact: 'lucide:user',
-	automation: 'lucide:workflow',
-	template: 'lucide:file-text',
+export const PALETTE_OBJECT_ICONS: Readonly<Record<PaletteObjectKind, IconComponent>> = {
+	conversation: MailIcon,
+	teamThread: InboxIcon,
+	campaign: MegaphoneIcon,
+	contact: UserIcon,
+	automation: WorkflowIcon,
+	template: FileTextIcon,
 };
 
 /** The dedupe key of a record: its kind and its id. */

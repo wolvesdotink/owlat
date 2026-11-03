@@ -11,6 +11,7 @@
  * message and the thread page never re-renders for the countdown.
  */
 import { formatRelativeTime } from '~/utils/formatters';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 type OutboundStatus = 'scheduled' | 'sending' | 'sent' | 'failed';
 
@@ -53,7 +54,7 @@ const absoluteTime = computed(() =>
 		:aria-label="t('dashboard.inbox.detail.outbound.label', { name: authorLabel })"
 	>
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:send" size="sm" variant="surface" rounded="full" />
+			<UiIconBox :icon="PaperPlaneIcon" size="sm" variant="surface" rounded="full" />
 			<div class="min-w-0 flex-1">
 				<p class="text-text-primary font-medium text-sm truncate">{{ authorLabel }}</p>
 				<time

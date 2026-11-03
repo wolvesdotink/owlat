@@ -8,7 +8,6 @@ beforeAll(() => {
 });
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { template: '<a><slot /></a>' },
 	UiCard: { template: '<div><slot /></div>' },
 	UiEmptyState: {

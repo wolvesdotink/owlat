@@ -1,11 +1,11 @@
-import { List } from '@lucide/vue';
+import { ListUnorderedIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { listSchema } from '../../schema/definitions/list';
 
 export const listEditor: EditorModule<'list'> = {
 	type: 'list',
 	label: 'List',
-	icon: List,
+	icon: ListUnorderedIcon,
 	schema: listSchema,
 	slashCommand: {
 		name: 'List',

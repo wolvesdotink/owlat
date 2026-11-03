@@ -4,6 +4,7 @@ import { formatChord } from '~/utils/shortcutRegistry';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { ArrowLeftIcon, ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 /**
  * The bar above an open conversation when the list is not beside it.
@@ -80,7 +81,7 @@ const stepClass =
 			class="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-3 text-sm text-text-secondary outline-none hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40"
 			@click="emit('back')"
 		>
-			<Icon name="lucide:arrow-left" class="size-4 shrink-0" />
+			<ArrowLeftIcon class="size-4 shrink-0" />
 			<span class="truncate capitalize">{{ folderName }}</span>
 		</button>
 		<template v-if="zen">
@@ -95,7 +96,7 @@ const stepClass =
 					:aria-label="t('components.postbox.readerBackBar.previous')"
 					@click="open(previousId)"
 				>
-					<Icon name="lucide:chevron-up" class="size-4" />
+					<ChevronUpIcon class="size-4" />
 				</button>
 			</UiTooltip>
 			<UiTooltip
@@ -109,7 +110,7 @@ const stepClass =
 					:aria-label="t('components.postbox.readerBackBar.next')"
 					@click="open(nextId)"
 				>
-					<Icon name="lucide:chevron-down" class="size-4" />
+					<ChevronDownIcon class="size-4" />
 				</button>
 			</UiTooltip>
 		</template>

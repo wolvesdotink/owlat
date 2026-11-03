@@ -19,6 +19,7 @@ import {
 	senderAuthDisplay,
 	type SenderAuthDisplay,
 } from '~/utils/senderAlignment';
+import { ReplyAllIcon, ReplyIcon } from '@coolicons/vue';
 
 type RecipientField = 'to' | 'cc' | 'bcc';
 
@@ -328,7 +329,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			data-testid="postbox-reply-mode-toggle"
 		>
 			<template v-if="!convertedToReplyAll">
-				<Icon name="lucide:reply" class="w-3 h-3" />
+				<ReplyIcon class="w-3 h-3" />
 				<span>{{ t('components.postbox.postboxComposerEnvelope.replyingSenderOnly') }}</span>
 				<UiTooltip
 					:text="
@@ -343,7 +344,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				</UiTooltip>
 			</template>
 			<template v-else>
-				<Icon name="lucide:reply-all" class="w-3 h-3" />
+				<ReplyAllIcon class="w-3 h-3" />
 				<span>{{ t('components.postbox.postboxComposerEnvelope.replyingEveryone') }}</span>
 			</template>
 		</div>

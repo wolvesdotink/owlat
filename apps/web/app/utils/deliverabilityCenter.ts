@@ -7,6 +7,15 @@ import type {
 	DeliverabilitySetupValue as CanonicalDeliverabilitySetupValue,
 } from '@owlat/shared';
 import type { LocalizedText } from '~/utils/localizedText';
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleWarningIcon,
+	ShieldWarningIcon,
+	WavyCheckIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 export type DeliverabilityGrade = CanonicalDeliverabilityGrade;
 export type DeliverabilityItemStatus = DeliverabilityChecklistStatus;
@@ -121,48 +130,48 @@ export interface DeliverabilityCounts {
 export const DELIVERABILITY_GRADE_PRESENTATION = {
 	ready: {
 		label: 'shared.deliverabilityCenter.grade.ready',
-		icon: 'lucide:badge-check',
+		icon: WavyCheckIcon,
 		className: 'border-success/30 bg-success/10 text-success',
 	},
 	needs_attention: {
 		label: 'shared.deliverabilityCenter.grade.needsAttention',
-		icon: 'lucide:circle-alert',
+		icon: CircleWarningIcon,
 		className: 'border-warning/30 bg-warning/10 text-warning',
 	},
 	at_risk: {
 		label: 'shared.deliverabilityCenter.grade.atRisk',
-		icon: 'lucide:shield-alert',
+		icon: ShieldWarningIcon,
 		className: 'border-error/30 bg-error/10 text-error',
 	},
 } as const satisfies Record<
 	DeliverabilityGrade,
-	{ label: string; icon: string; className: string }
+	{ label: string; icon: IconComponent; className: string }
 >;
 
 export const DELIVERABILITY_STATUS_PRESENTATION = {
 	pass: {
 		label: 'shared.deliverabilityCenter.status.pass',
-		icon: 'lucide:check-circle-2',
+		icon: CircleCheckIcon,
 		className: 'border-success/30 bg-success/10 text-success',
 	},
 	warn: {
 		label: 'shared.deliverabilityCenter.status.warn',
-		icon: 'lucide:circle-alert',
+		icon: CircleWarningIcon,
 		className: 'border-warning/30 bg-warning/10 text-warning',
 	},
 	fail: {
 		label: 'shared.deliverabilityCenter.status.fail',
-		icon: 'lucide:x-circle',
+		icon: CircleCloseIcon,
 		className: 'border-error/30 bg-error/10 text-error',
 	},
 	'pending-dns': {
 		label: 'shared.deliverabilityCenter.status.pendingDns',
-		icon: 'lucide:loader-2',
+		icon: SpinnerIcon,
 		className: 'border-brand/30 bg-brand/10 text-brand',
 	},
 } as const satisfies Record<
 	DeliverabilityItemStatus,
-	{ label: string; icon: string; className: string }
+	{ label: string; icon: IconComponent; className: string }
 >;
 
 export function countDeliverabilityItems(

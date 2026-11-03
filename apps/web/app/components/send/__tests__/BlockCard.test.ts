@@ -28,7 +28,6 @@ function render(canManage: boolean) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiCard: { template: '<div class="card"><slot /></div>' },
 				UiButton: { template: '<button class="trigger"><slot /></button>' },
 				UiDropdownMenu: { template: '<div role="menu"><slot name="trigger" /><slot /></div>' },

@@ -6,6 +6,15 @@
  * {@link ThreadComposer} to keep it under the file-size ratchet; it only
  * renders and reports, the composer owns the state.
  */
+import {
+	EraserIcon,
+	GitCompareIcon,
+	PencilIcon,
+	SaveIcon,
+	TrashIcon,
+	UndoIcon,
+} from '@coolicons/vue';
+
 defineProps<{
 	/** The footer menu's `close`, run before every item's action. */
 	close: () => void;
@@ -43,7 +52,7 @@ const menuItem =
 		data-testid="thread-composer-show-changes"
 		@click="(close(), emit('toggle-diff'))"
 	>
-		<Icon name="lucide:git-compare" class="size-4 text-text-tertiary" />
+		<GitCompareIcon class="size-4 text-text-tertiary" />
 		{{
 			diffOpen ? t('components.answer.team.hideChanges') : t('components.answer.team.showChanges')
 		}}
@@ -57,7 +66,7 @@ const menuItem =
 		data-testid="thread-composer-save"
 		@click="(close(), emit('save'))"
 	>
-		<Icon name="lucide:save" class="size-4 text-text-tertiary" />
+		<SaveIcon class="size-4 text-text-tertiary" />
 		{{ t('dashboard.inbox.detail.composer.saveDraft') }}
 	</button>
 	<button
@@ -69,7 +78,7 @@ const menuItem =
 		data-testid="thread-composer-restore"
 		@click="(close(), emit('restore'))"
 	>
-		<Icon name="lucide:undo-2" class="size-4 text-text-tertiary" />
+		<UndoIcon class="size-4 text-text-tertiary" />
 		{{ t('dashboard.inbox.detail.composer.restoreDraft') }}
 	</button>
 	<button
@@ -81,7 +90,7 @@ const menuItem =
 		data-testid="thread-composer-write-own"
 		@click="(close(), emit('write-own'))"
 	>
-		<Icon name="lucide:pencil" class="size-4 text-text-tertiary" />
+		<PencilIcon class="size-4 text-text-tertiary" />
 		{{ t('dashboard.inbox.detail.composer.writeOwn') }}
 	</button>
 	<button
@@ -93,7 +102,7 @@ const menuItem =
 		data-testid="thread-composer-skip"
 		@click="(close(), emit('reject'))"
 	>
-		<Icon name="lucide:trash-2" class="size-4" />
+		<TrashIcon class="size-4" />
 		{{ t('components.answer.team.discardDraft') }}
 	</button>
 	<button
@@ -105,7 +114,7 @@ const menuItem =
 		data-testid="thread-composer-clear"
 		@click="(close(), emit('write-own'))"
 	>
-		<Icon name="lucide:eraser" class="size-4 text-text-tertiary" />
+		<EraserIcon class="size-4 text-text-tertiary" />
 		{{ t('components.answer.team.clear') }}
 	</button>
 </template>

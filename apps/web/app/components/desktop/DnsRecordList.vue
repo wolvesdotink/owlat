@@ -12,6 +12,8 @@
  * the server IP is unknown). Those render muted with the copy button disabled
  * so the user never pastes a literal "your server's IP" placeholder.
  */
+import { CheckIcon, CopyIcon } from '@coolicons/vue';
+
 interface DnsRecord {
 	name: string;
 	type: string;
@@ -57,8 +59,8 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 					:aria-label="t('components.desktop.dnsRecordList.copyValue', { name: r.name })"
 					@click="copy(r.value, keyOf(r))"
 				>
-					<Icon
-						:name="isCopied(keyOf(r)) ? 'lucide:check' : 'lucide:copy'"
+					<component
+						:is="isCopied(keyOf(r)) ? CheckIcon : CopyIcon"
 						class="size-3.5"
 						:class="isCopied(keyOf(r)) ? 'text-success' : ''"
 					/>
@@ -69,7 +71,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 				class="flex size-6 items-center justify-center justify-self-end text-text-tertiary"
 				:title="t('components.desktop.dnsRecordList.placeholderTitle', { name: r.name })"
 			>
-				<Icon name="lucide:copy" class="size-3.5 opacity-30" />
+				<CopyIcon class="size-3.5 opacity-30" />
 			</span>
 			<p
 				v-if="r.note"

@@ -134,7 +134,7 @@ describe('WorkspaceLogoCard', () => {
 			global: {
 				plugins: [createTestI18n()],
 				components: { UiCard, UiButton },
-				stubs: { Icon: true, UiSpinner: true, UiIconBox: true },
+				stubs: { UiSpinner: true, UiIconBox: true },
 			},
 		});
 		return { wrapper, calls, toasts };

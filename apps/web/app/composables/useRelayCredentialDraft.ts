@@ -50,6 +50,15 @@ import {
 	COMPOSED_SEND_TRANSPORT_KINDS,
 	composedSendProviderCatalogEntry,
 } from '~/utils/composedSendProviderCatalog';
+import {
+	CloudIcon,
+	PaperPlaneIcon,
+	RouteIcon,
+	ServerIcon,
+	ShuffleIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * The transports you CONNECT: every catalog kind except the own arm (the one
@@ -69,7 +78,7 @@ export interface RelayProviderOption {
 	readonly labelKey?: string;
 	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 }
 
 /**
@@ -95,7 +104,7 @@ export interface RelayProviderOption {
 const TRANSPORT_PICKER_COPY: readonly {
 	kind: string;
 	hint: string;
-	icon: string;
+	icon: IconComponent;
 	labelKey?: string;
 }[] = [
 	{
@@ -108,32 +117,32 @@ const TRANSPORT_PICKER_COPY: readonly {
 		// the entry's own label is display text, never a message key.
 		labelKey: 'shared.useRelayCredentialDraft.providers.mta.label',
 		hint: 'shared.useRelayCredentialDraft.providers.mta.hint',
-		icon: 'lucide:server',
+		icon: ServerIcon,
 	},
 	{
 		kind: 'ses',
 		hint: 'shared.useRelayCredentialDraft.providers.ses.hint',
-		icon: 'lucide:cloud',
+		icon: CloudIcon,
 	},
 	{
 		kind: 'smtp',
 		hint: 'shared.useRelayCredentialDraft.providers.smtp.hint',
-		icon: 'lucide:route',
+		icon: RouteIcon,
 	},
 	{
 		kind: 'resend',
 		hint: 'shared.useRelayCredentialDraft.providers.resend.hint',
-		icon: 'lucide:zap',
+		icon: ZapIcon,
 	},
 	{
 		kind: 'mandrill',
 		hint: 'shared.useRelayCredentialDraft.providers.mandrill.hint',
-		icon: 'lucide:shuffle',
+		icon: ShuffleIcon,
 	},
 	{
 		kind: 'emailit',
 		hint: 'shared.useRelayCredentialDraft.providers.emailit.hint',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 	},
 ];
 
@@ -155,7 +164,7 @@ function pickerOption(kind: string): RelayProviderOption {
 		label: composedSendProviderCatalogEntry(kind)?.label ?? kind,
 		...(copy?.labelKey ? { labelKey: copy.labelKey } : {}),
 		hint: copy?.hint ?? '',
-		icon: copy?.icon ?? 'lucide:send',
+		icon: copy?.icon ?? PaperPlaneIcon,
 	};
 }
 
@@ -180,7 +189,7 @@ export const TRANSPORT_EDITOR_PROVIDER_OPTIONS: readonly {
 	readonly labelKey?: string;
 	/** i18n message key — resolve with `t()`; empty when the kind has no copy. */
 	readonly hint: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 }[] = [pickerOption(OWN_SEND_PROVIDER_KIND), ...RELAY_PROVIDER_OPTIONS];
 
 /** The apply endpoint's contract, shared so both callers read the same fields. */

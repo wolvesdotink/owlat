@@ -5,6 +5,7 @@ import {
 	getPresetById,
 	type TemplatePreset,
 } from '~/data/marketingTemplatePresets';
+import { ArrowLeftIcon, CircleWarningIcon, EyeIcon, PlusIcon } from '@coolicons/vue';
 
 interface Props {
 	open: boolean;
@@ -160,7 +161,7 @@ defineExpose({
 			class="flex items-center gap-2 mb-4 p-1 -ml-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 			@click="goBackToLibrary"
 		>
-			<Icon name="lucide:arrow-left" class="w-5 h-5" />
+			<ArrowLeftIcon class="w-5 h-5" />
 			<span class="text-sm">{{ t('components.mail.templateLibraryModal.backToTemplates') }}</span>
 		</button>
 
@@ -204,7 +205,7 @@ defineExpose({
 									v-if="preset.id === 'blank'"
 									class="w-full h-full flex flex-col items-center justify-center text-text-tertiary"
 								>
-									<Icon name="lucide:plus" class="w-8 h-8 mb-2" />
+									<PlusIcon class="w-8 h-8 mb-2" :stroke-width="1.5" />
 									<span class="text-sm">{{
 										t('components.mail.templateLibraryModal.emptyCanvas')
 									}}</span>
@@ -220,7 +221,7 @@ defineExpose({
 							<!-- Info -->
 							<div class="p-3 bg-bg-elevated border-t border-border-subtle">
 								<div class="flex items-center gap-2">
-									<Icon :name="preset.icon" class="w-4 h-4 text-brand shrink-0" />
+									<component :is="preset.icon" class="w-4 h-4 text-brand shrink-0" />
 									<h3 class="font-medium text-text-primary text-sm truncate">
 										{{ presetText(preset.name) }}
 									</h3>
@@ -238,7 +239,7 @@ defineExpose({
 							@click.stop="previewPreset = previewPreset === preset.id ? null : preset.id"
 							:aria-label="t('common.preview')"
 						>
-							<Icon name="lucide:eye" class="w-4 h-4" />
+							<EyeIcon class="w-4 h-4" />
 						</button>
 					</div>
 				</div>
@@ -268,7 +269,7 @@ defineExpose({
 							v-if="error"
 							class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 						>
-							<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+							<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 							<p class="text-sm text-error">{{ error }}</p>
 						</div>
 
@@ -278,7 +279,7 @@ defineExpose({
 							class="mb-4 p-3 rounded-lg bg-brand/10 border border-brand/20"
 						>
 							<div class="flex items-center gap-2">
-								<Icon :name="selectedPresetData.icon" class="w-4 h-4 text-brand" />
+								<component :is="selectedPresetData.icon" class="w-4 h-4 text-brand" />
 								<span class="text-sm font-medium text-text-primary">
 									{{ presetText(selectedPresetData.name) }}
 								</span>

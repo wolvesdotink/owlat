@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	CloudUploadIcon,
+	CopyIcon,
+	FileIcon,
+	FileTextIcon,
+	FilmIcon,
+	ImageIcon,
+	MusicNoteIcon,
+	TrashIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -38,14 +49,14 @@ const {
 const { isAdmin } = usePermissions();
 
 const typeFilterOptions = computed(() => [
-	{ value: 'image/', label: t('dashboard.send.media.types.images'), icon: 'lucide:image' },
+	{ value: 'image/', label: t('dashboard.send.media.types.images'), icon: ImageIcon },
 	{
 		value: 'application/pdf',
 		label: t('dashboard.send.media.types.pdf'),
-		icon: 'lucide:file-text',
+		icon: FileTextIcon,
 	},
-	{ value: 'video/', label: t('dashboard.send.media.types.video'), icon: 'lucide:film' },
-	{ value: 'audio/', label: t('dashboard.send.media.types.audio'), icon: 'lucide:music' },
+	{ value: 'video/', label: t('dashboard.send.media.types.video'), icon: FilmIcon },
+	{ value: 'audio/', label: t('dashboard.send.media.types.audio'), icon: MusicNoteIcon },
 ]);
 
 const toggleTypeFilter = (value: string) => {
@@ -62,10 +73,10 @@ const tagFilterOptions = computed(() =>
 );
 
 const getFileIcon = (mimeType: string) => {
-	if (mimeType === 'application/pdf') return 'lucide:file-text';
-	if (mimeType.startsWith('video/')) return 'lucide:film';
-	if (mimeType.startsWith('audio/')) return 'lucide:music';
-	return 'lucide:file';
+	if (mimeType === 'application/pdf') return FileTextIcon;
+	if (mimeType.startsWith('video/')) return FilmIcon;
+	if (mimeType.startsWith('audio/')) return MusicNoteIcon;
+	return FileIcon;
 };
 
 // File input ref
@@ -163,13 +174,13 @@ const copyUrl = async (url: string) => {
 					@click="showDeleteConfirm = true"
 				>
 					<template #iconLeft>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</template>
 					{{ t('dashboard.send.media.deleteSelected', { count: selectedAssets.size }) }}
 				</UiButton>
 				<UiButton variant="primary" size="sm" :loading="isUploading" @click="fileInputRef?.click()">
 					<template #iconLeft>
-						<Icon name="lucide:upload" class="w-4 h-4" />
+						<UploadIcon class="w-4 h-4" />
 					</template>
 					{{ t('common.upload') }}
 				</UiButton>
@@ -203,7 +214,7 @@ const copyUrl = async (url: string) => {
 					"
 					@click="toggleTypeFilter(opt.value)"
 				>
-					<Icon :name="opt.icon" class="w-3.5 h-3.5" />
+					<component :is="opt.icon" class="w-3.5 h-3.5" />
 					{{ opt.label }}
 				</button>
 			</div>
@@ -232,7 +243,7 @@ const copyUrl = async (url: string) => {
 				<div
 					class="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-brand rounded-xl bg-bg-elevated"
 				>
-					<Icon name="lucide:upload-cloud" class="w-12 h-12 text-brand" />
+					<CloudUploadIcon class="w-12 h-12 text-brand" :stroke-width="1.5" />
 					<p class="text-lg font-medium text-text-primary">
 						{{ t('dashboard.send.media.dropToUpload') }}
 					</p>
@@ -265,11 +276,11 @@ const copyUrl = async (url: string) => {
 					? t('dashboard.send.media.emptyDescriptionAdmin')
 					: t('dashboard.send.media.emptyDescriptionMember')
 			"
-			icon="lucide:image"
+			:icon="ImageIcon"
 		>
 			<UiButton v-if="isAdmin" variant="primary" size="sm" @click="fileInputRef?.click()">
 				<template #iconLeft>
-					<Icon name="lucide:upload" class="w-4 h-4" />
+					<UploadIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.media.uploadFirst') }}
 			</UiButton>
@@ -316,7 +327,11 @@ const copyUrl = async (url: string) => {
 						v-else
 						class="flex flex-col items-center justify-center gap-2 bg-bg-surface w-full h-full p-3"
 					>
-						<Icon :name="getFileIcon(asset.mimeType || '')" class="w-10 h-10 text-text-tertiary" />
+						<component
+							:is="getFileIcon(asset.mimeType || '')"
+							class="w-10 h-10 text-text-tertiary"
+							:stroke-width="1.5"
+						/>
 						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
 							asset.filename
 						}}</span>
@@ -370,9 +385,10 @@ const copyUrl = async (url: string) => {
 								class="max-w-full max-h-full object-contain"
 							/>
 							<div v-else class="flex flex-col items-center justify-center gap-3">
-								<Icon
-									:name="getFileIcon(detailAsset.mimeType || '')"
+								<component
+									:is="getFileIcon(detailAsset.mimeType || '')"
 									class="w-16 h-16 text-text-tertiary"
+									:stroke-width="1.5"
 								/>
 								<span class="text-sm text-text-secondary">{{ detailAsset.filename }}</span>
 							</div>
@@ -427,7 +443,7 @@ const copyUrl = async (url: string) => {
 						<div class="flex items-center gap-2 pt-2">
 							<UiButton variant="outline" size="sm" @click="copyUrl(detailAsset.url)">
 								<template #iconLeft>
-									<Icon name="lucide:copy" class="w-3.5 h-3.5" />
+									<CopyIcon class="w-3.5 h-3.5" />
 								</template>
 								{{ t('dashboard.send.media.copyUrl') }}
 							</UiButton>
@@ -442,7 +458,7 @@ const copyUrl = async (url: string) => {
 								"
 							>
 								<template #iconLeft>
-									<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
+									<TrashIcon class="w-3.5 h-3.5" />
 								</template>
 								{{ t('common.delete') }}
 							</UiButton>

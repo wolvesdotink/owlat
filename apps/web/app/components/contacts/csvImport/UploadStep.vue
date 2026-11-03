@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { UploadIcon } from '@coolicons/vue';
+
 defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
 }>();
@@ -41,7 +43,7 @@ const { t } = useI18n();
 		>
 			<div class="flex flex-col items-center gap-4">
 				<div class="p-4 rounded-full bg-bg-surface">
-					<Icon name="lucide:upload" class="w-8 h-8 text-text-tertiary" />
+					<UploadIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 				</div>
 				<div>
 					<p class="text-text-primary font-medium">

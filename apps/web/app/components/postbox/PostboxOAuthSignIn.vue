@@ -13,6 +13,8 @@
  * the five connect/update flavours this mount is) and the operation that runs
  * it, since those are derived from props only it has.
  */
+import { LogInIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	/** Whose sign-in this block offers; picks the copy. */
 	provider: 'google' | 'microsoft';
@@ -71,7 +73,7 @@ const explanation = computed(() => {
 			:loading="loading"
 			@click="emit('connect')"
 		>
-			<Icon name="lucide:log-in" class="w-4 h-4" />
+			<LogInIcon class="w-4 h-4" />
 			{{ buttonLabel }}
 		</UiButton>
 

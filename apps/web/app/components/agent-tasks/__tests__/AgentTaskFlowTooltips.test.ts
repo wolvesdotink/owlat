@@ -18,7 +18,7 @@ function mountFlow(props: Record<string, unknown> = {}) {
 		props: { position: 2, total: 5, canUndo: true, ...props },
 		slots: { default: '<div>card</div>' },
 		attachTo: document.body,
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

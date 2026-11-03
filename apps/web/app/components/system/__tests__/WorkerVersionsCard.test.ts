@@ -97,7 +97,7 @@ function mountCard(data: unknown, error: Error | null = null) {
 	const wrapper = mount(WorkerVersionsCard, {
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiQueryBoundary: { template: '<div data-test="boundary" />' } },
+			stubs: { UiQueryBoundary: { template: '<div data-test="boundary" />' } },
 		},
 	});
 	return { wrapper, refetch };

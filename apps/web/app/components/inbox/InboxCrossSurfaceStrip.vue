@@ -10,6 +10,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { InboxIcon } from '@coolicons/vue';
 
 const props = defineProps<{ inboundMessageId: string }>();
 
@@ -33,7 +34,7 @@ const link = computed(() =>
 		v-if="data"
 		class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-border-subtle bg-bg-surface px-3 py-2 text-sm"
 	>
-		<Icon name="lucide:inbox" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+		<InboxIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 		<span class="text-text-secondary">{{
 			t('components.inbox.inboxCrossSurfaceStrip.alsoInPostbox', {
 				mailbox: data.mailboxAddress,

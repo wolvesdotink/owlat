@@ -33,7 +33,6 @@ function mountToggle(draftId: string | null) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: { props: ['name'], template: '<span />' } },
 		},
 	});
 	return { wrapper, ensureDraft };

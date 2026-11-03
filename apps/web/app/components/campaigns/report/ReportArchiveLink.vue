@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // The campaign report's public archive link, with Copy link.
+import { CheckIcon, CopyIcon, GlobeIcon } from '@coolicons/vue';
+
 const props = defineProps<{ archiveUrl: string }>();
 
 const { t } = useI18n();
@@ -17,7 +19,7 @@ const copyArchiveLink = async () => {
 	<div class="card p-4 mb-8">
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 			<div class="flex items-center gap-3 min-w-0">
-				<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
+				<UiIconBox :icon="GlobeIcon" size="sm" rounded="lg" />
 				<div class="min-w-0">
 					<p class="text-sm font-medium text-text-primary">
 						{{ t('dashboard.campaigns.detail.report.archive.title') }}
@@ -30,7 +32,7 @@ const copyArchiveLink = async () => {
 				class="text-sm gap-1.5 self-start sm:self-auto shrink-0"
 				@click="copyArchiveLink"
 			>
-				<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
+				<component :is="archiveCopied ? CheckIcon : CopyIcon" class="w-3.5 h-3.5" />
 				{{
 					archiveCopied
 						? t('common.copied')

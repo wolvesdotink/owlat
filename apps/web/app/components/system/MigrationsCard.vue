@@ -24,6 +24,8 @@ import {
 	type MigrationRow,
 	type MigrationWorkerWait,
 } from '~/utils/systemMigrations';
+import { CircleCheckIcon, CircleCloseIcon, PlayIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, te } = useI18n();
 const { showToast } = useToast();
@@ -133,12 +135,8 @@ async function runPending() {
 				data-test="run-pending"
 				@click="runPending"
 			>
-				<Icon
-					v-if="submitting || runnerActive"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:play" class="w-4 h-4" />
+				<SpinnerIcon v-if="submitting || runnerActive" class="w-4 h-4" />
+				<PlayIcon v-else class="w-4 h-4" />
 				{{ t('components.system.migrationsCard.runPending') }}
 			</UiButton>
 		</div>
@@ -157,11 +155,7 @@ async function runPending() {
 					class="flex items-start gap-2 rounded-lg border border-brand/30 bg-brand/5 p-3 text-caption text-text-primary"
 					role="status"
 				>
-					<Icon
-						name="lucide:loader-2"
-						class="w-4 h-4 text-brand shrink-0 mt-0.5"
-						aria-hidden="true"
-					/>
+					<SpinnerIcon class="w-4 h-4 text-brand shrink-0 mt-0.5" aria-hidden="true" />
 					{{ t('components.system.migrationsCard.runnerActive') }}
 				</p>
 				<div
@@ -169,11 +163,7 @@ async function runPending() {
 					class="flex items-start gap-2 rounded-lg border border-error/40 bg-error/5 p-3 text-caption text-text-primary"
 					role="alert"
 				>
-					<Icon
-						name="lucide:x-circle"
-						class="w-4 h-4 text-error shrink-0 mt-0.5"
-						aria-hidden="true"
-					/>
+					<CircleCloseIcon class="w-4 h-4 text-error shrink-0 mt-0.5" aria-hidden="true" />
 					<div class="min-w-0">
 						<p>
 							{{
@@ -191,7 +181,7 @@ async function runPending() {
 					v-if="isEverythingCompleted"
 					class="flex items-center gap-2 text-caption text-text-secondary"
 				>
-					<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success" aria-hidden="true" />
+					<CircleCheckIcon class="w-4 h-4 text-success" aria-hidden="true" />
 					{{ t('components.system.migrationsCard.allCompleted') }}
 				</p>
 				<p v-else class="text-caption text-text-secondary" data-test="summary">
@@ -294,11 +284,7 @@ async function runPending() {
 								v-if="row.isSteppingStone && row.state !== 'completed'"
 								class="flex items-start gap-1.5 text-warning"
 							>
-								<Icon
-									name="lucide:alert-triangle"
-									class="w-3.5 h-3.5 shrink-0 mt-0.5"
-									aria-hidden="true"
-								/>
+								<TriangleWarningIcon class="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
 								{{
 									row.requiredBefore
 										? t('components.system.migrationsCard.steppingStoneBefore', {

@@ -40,7 +40,6 @@ function mountNotes() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { AssistantInline },
-			stubs: { Icon: true },
 		},
 	});
 }

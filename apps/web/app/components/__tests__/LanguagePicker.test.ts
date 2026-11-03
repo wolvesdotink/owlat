@@ -100,7 +100,6 @@ function mountPicker(component: unknown, locale: 'en' | 'de' = 'en') {
 			// `LanguagePicker` is an auto-import in the app; PreferencesLanguage
 			// renders it by that name.
 			components: { LanguagePicker },
-			stubs: { Icon: { template: '<span />' } },
 		},
 	});
 }

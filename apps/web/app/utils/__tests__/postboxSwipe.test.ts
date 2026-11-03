@@ -32,6 +32,7 @@ import {
 	swipeVelocity,
 	type PostboxSwipeAction,
 } from '../postboxSwipe';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 describe('resolvePostboxSwipeAction', () => {
 	it('defaults an unset preference to the direction it belongs to', () => {
@@ -53,7 +54,7 @@ describe('resolvePostboxSwipeAction', () => {
 		for (const option of POSTBOX_SWIPE_ACTION_OPTIONS) {
 			if (option.value === 'none') continue;
 			const visual = POSTBOX_SWIPE_VISUALS[option.value];
-			expect(visual.icon).toMatch(/^lucide:/);
+			expect(visual.icon).toBeTypeOf('function');
 			expect(visual.tone).not.toBe('');
 		}
 	});
@@ -61,7 +62,7 @@ describe('resolvePostboxSwipeAction', () => {
 
 describe('surface verbs outside the mail preference', () => {
 	it('paints the Team Inbox resolve verb and fires it like any other', () => {
-		expect(POSTBOX_SWIPE_VISUALS.resolve).toEqual({ icon: 'lucide:check-circle', tone: 'success' });
+		expect(POSTBOX_SWIPE_VISUALS.resolve).toEqual({ icon: CircleCheckIcon, tone: 'success' });
 		expect(swipeActionFor(-100, 'resolve', 'snooze')).toBe('resolve');
 		expect(
 			swipeTrackState({ dx: -100, leftAction: 'resolve', rightAction: 'snooze' })?.action

@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { TemplateRowAction } from '~/composables/useTemplateList';
 import { formatNumber } from '~/utils/formatters';
+import { CodeIcon, PaperPlaneIcon, PlusIcon } from '@coolicons/vue';
 
 type EmailRow = FunctionReturnType<typeof api.transactional.emails.list>[number];
 type StatusFilter = 'all' | EmailRow['status'];
@@ -91,7 +92,7 @@ const sendCount = (email: EmailRow) => formatNumber(sendCounts.value?.[email._id
 const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 	{
 		key: 'api-code',
-		icon: 'lucide:code',
+		icon: CodeIcon,
 		label: t('dashboard.send.transactional.index.viewApiCode'),
 		overlay: true,
 		inline: true,
@@ -99,7 +100,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 	},
 	{
 		key: 'sends',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 		label: t('dashboard.send.transactional.index.viewSends'),
 		run: (email) => {
 			recentSends.value = { id: email._id, name: email.name };
@@ -128,12 +129,12 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		:sort-label="t('dashboard.send.transactional.index.sortLabel')"
 		sort-listbox-id="transactional-sort-listbox"
 		:empty-no-org="{
-			icon: 'lucide:send',
+			icon: PaperPlaneIcon,
 			title: t('dashboard.send.transactional.index.emptyNoWorkspace.title'),
 			description: t('dashboard.send.transactional.index.emptyNoWorkspace.description'),
 		}"
 		:empty="{
-			icon: 'lucide:send',
+			icon: PaperPlaneIcon,
 			title: t('dashboard.send.transactional.index.empty.title'),
 			description: t('dashboard.send.transactional.index.empty.description'),
 		}"
@@ -161,7 +162,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="isCreateOpen = true">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.transactional.index.newEmail') }}
 			</UiButton>
@@ -195,7 +196,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="isCreateOpen = true">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.transactional.index.empty.action') }}
 			</UiButton>
@@ -211,7 +212,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 				@delete="list.openDelete"
 			>
 				<template #thumbnail="{ item }">
-					<Icon name="lucide:send" class="w-10 h-10 text-text-tertiary/30 mb-2" />
+					<PaperPlaneIcon class="w-10 h-10 text-text-tertiary/30 mb-2" :stroke-width="1.5" />
 					<code
 						class="px-2 py-1 rounded bg-bg-elevated text-text-tertiary text-xs font-mono truncate max-w-full"
 					>

@@ -11,6 +11,14 @@ import {
 } from '~/utils/welcomeFlow';
 import { useLocalized } from '~/composables/useLocalized';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
+import { useGettingStartedMemberSignals } from '~/composables/useGettingStartedMemberSignals';
+import {
+	CheckIcon,
+	ChevronRightIcon,
+	ClockIcon,
+	CloseIcon,
+	ListChecklistIcon,
+} from '@coolicons/vue';
 
 /**
  * The single, adaptive "Getting started" surface. It REPLACES the three
@@ -141,28 +149,12 @@ const aiConfigured = computed(() => isAiConnected(flagsConfigStatus.value));
 // signature, notifications); an admin also gets the instance-facing ones.
 const audience = computed<ChecklistAudience>(() => (isInstanceViewer.value ? 'admin' : 'member'));
 
-// The member's own steps are read from real state rather than stamps: the
-// mailbox's display name, whether it has a signature, and the notification
-// setting. These are the same records the welcome form writes.
-const { currentMailbox, isLoading: isLoadingMailbox } = usePostboxMailbox();
-const { data: signatures, isLoading: isLoadingSignatures } = useConvexQuery(
-	api.mail.signatures.list,
-	() => {
-		const mailbox = currentMailbox.value;
-		return audience.value === 'member' && mailbox ? { mailboxId: mailbox._id } : 'skip';
-	}
-);
-const { data: mailSettings, isLoading: isLoadingMailSettings } = useConvexQuery(
-	api.mail.settings.get,
-	() => (audience.value === 'member' ? {} : 'skip')
-);
-const isLoadingMemberSignals = computed(
-	() =>
-		audience.value === 'member' &&
-		(isLoadingMailbox.value ||
-			(currentMailbox.value !== null && isLoadingSignatures.value) ||
-			isLoadingMailSettings.value)
-);
+const {
+	currentMailbox,
+	signatures,
+	mailSettings,
+	isLoading: isLoadingMemberSignals,
+} = useGettingStartedMemberSignals(audience);
 
 // The resolved set of completed personal step ids — stamps, the org-scoped
 // `aiConnected`, and the member's derived steps (see `completedChecklistSteps`).
@@ -290,7 +282,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 			role="region"
 			:aria-label="t('components.dashboard.gettingStarted.title')"
 		>
-			<Icon name="lucide:list-checks" class="size-4 shrink-0 text-text-tertiary" />
+			<ListChecklistIcon class="size-4 shrink-0 text-text-tertiary" />
 			<p class="min-w-0 flex-1 truncate text-sm text-text-secondary">
 				<span class="font-medium text-text-primary">{{
 					t('components.dashboard.gettingStarted.title')
@@ -324,7 +316,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
 					@click="handleDismiss"
 				>
-					<Icon name="lucide:x" class="h-4 w-4" />
+					<CloseIcon class="h-4 w-4" />
 				</button>
 			</UiTooltip>
 		</section>
@@ -339,7 +331,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 			<!-- Header -->
 			<div class="mb-6 flex items-start justify-between">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:list-checks" variant="surface" />
+					<UiIconBox :icon="ListChecklistIcon" variant="surface" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t('components.dashboard.gettingStarted.title') }}
@@ -355,7 +347,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 						:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
 						@click="handleDismiss"
 					>
-						<Icon name="lucide:x" class="h-4 w-4" />
+						<CloseIcon class="h-4 w-4" />
 					</button>
 				</UiTooltip>
 			</div>
@@ -427,8 +419,8 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 											: 'bg-bg-elevated text-text-secondary group-hover:bg-brand group-hover:text-text-inverse',
 								]"
 							>
-								<Icon v-if="step.completed" name="lucide:check" class="h-4 w-4" />
-								<Icon v-else :name="step.icon" class="h-4 w-4" />
+								<CheckIcon v-if="step.completed" class="h-4 w-4" />
+								<component v-else :is="step.icon" class="h-4 w-4" />
 							</div>
 
 							<div class="min-w-0 flex-1">
@@ -463,7 +455,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 								v-else-if="step.blocked"
 								class="flex min-w-0 items-center gap-1.5 text-sm text-text-tertiary"
 							>
-								<Icon name="lucide:clock" class="h-4 w-4 flex-shrink-0" />
+								<ClockIcon class="h-4 w-4 flex-shrink-0" />
 								{{ step.blockedReason ? localize(step.blockedReason) : '' }}
 							</span>
 							<span
@@ -471,7 +463,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 								class="hidden flex-shrink-0 items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 sm:flex"
 							>
 								<span class="sr-only">{{ localize(step.cta) }}</span>
-								<Icon name="lucide:chevron-right" class="h-4 w-4" />
+								<ChevronRightIcon class="h-4 w-4" />
 							</span>
 						</component>
 					</div>

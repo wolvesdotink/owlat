@@ -5,6 +5,8 @@
 // one of the two shows. Extracted from PostboxLayout.vue to keep the layout
 // under the file-size cap; the outbox itself stays mounted in the layout so the
 // drain-on-reconnect watcher runs in Today mode too.
+import { CloudOffIcon, PaperPlaneIcon } from '@coolicons/vue';
+
 defineProps<{
 	isOffline: boolean;
 	/** Sends waiting on this device (offline notice only). */
@@ -33,7 +35,7 @@ const { t } = useI18n();
 		class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
 		role="status"
 	>
-		<Icon name="lucide:cloud-off" class="w-3.5 h-3.5 flex-shrink-0" />
+		<CloudOffIcon class="w-3.5 h-3.5 flex-shrink-0" />
 		<span class="truncate">{{
 			cachedAt && queuedCount > 0
 				? t(
@@ -68,7 +70,7 @@ const { t } = useI18n();
 		class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
 		role="status"
 	>
-		<Icon name="lucide:send" class="w-3.5 h-3.5 flex-shrink-0" />
+		<PaperPlaneIcon class="w-3.5 h-3.5 flex-shrink-0" />
 		<span class="truncate">{{
 			t(
 				'components.postbox.postboxOfflineBanners.failedSendsBanner',

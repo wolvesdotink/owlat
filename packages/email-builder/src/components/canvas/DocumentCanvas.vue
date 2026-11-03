@@ -11,7 +11,7 @@ import BlockInsertPoint from './BlockInsertPoint.vue';
 import InlineTextEditor from './InlineTextEditor.vue';
 import ColorField from '../panel/fields/ColorField.vue';
 import { useDraggable } from 'vue-draggable-plus';
-import { Link } from '@lucide/vue';
+import { LinkIcon } from '@coolicons/vue';
 import { blockAccessibleLabel } from '../../utils/blockLabel';
 import { getBlock } from '../../registry';
 import { isEditableTarget, nextListboxIndex } from '../../utils/canvasListboxNav';
@@ -417,7 +417,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 										type="button"
 										@click.stop="requestDetachLinkedBlock(block.id)"
 									>
-										<Link :size="12" />
+										<LinkIcon :size="12" />
 									</button>
 								</UiTooltip>
 							</div>

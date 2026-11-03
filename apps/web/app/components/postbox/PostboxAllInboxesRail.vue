@@ -9,6 +9,7 @@
 import { allInboxesHref } from '~/utils/postboxAllInboxes';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
 import InboxChip from '~/components/inbox/InboxChip.vue';
+import { ArrowUpRightIcon, InboxIcon, RobotIcon } from '@coolicons/vue';
 
 defineProps<{
 	inboxes: readonly InboxIdentity[];
@@ -34,7 +35,7 @@ const ROW_CLASS = 'flex items-center gap-2 px-2.5 py-1 rounded text-sm min-w-0';
 			:aria-current="only ? undefined : 'page'"
 			data-testid="all-inboxes-rail-all"
 		>
-			<Icon name="lucide:inbox" class="w-4 h-4 flex-shrink-0" />
+			<InboxIcon class="w-4 h-4 flex-shrink-0" />
 			<span class="truncate">{{ t('components.postbox.allInboxes.title') }}</span>
 		</NuxtLink>
 
@@ -67,7 +68,7 @@ const ROW_CLASS = 'flex items-center gap-2 px-2.5 py-1 rounded text-sm min-w-0';
 							class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-text-primary"
 							:aria-label="t('components.postbox.allInboxes.openInbox', { name: inbox.name })"
 						>
-							<Icon name="lucide:arrow-up-right" class="w-3.5 h-3.5" />
+							<ArrowUpRightIcon class="w-3.5 h-3.5" />
 						</NuxtLink>
 					</UiTooltip>
 				</li>
@@ -78,7 +79,7 @@ const ROW_CLASS = 'flex items-center gap-2 px-2.5 py-1 rounded text-sm min-w-0';
 			v-if="showTeamInbox"
 			class="mt-3"
 			to="/dashboard/inbox"
-			icon="lucide:bot"
+			:icon="RobotIcon"
 			:label="t('components.shell.teamInbox')"
 		/>
 	</aside>

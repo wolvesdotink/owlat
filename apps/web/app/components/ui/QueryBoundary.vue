@@ -36,6 +36,7 @@
 import { computed, getCurrentInstance } from 'vue';
 import { useDelayedLoading } from '@owlat/ui/composables/useDelayedLoading';
 import { queryErrorCopy, resolveOperationCopy } from '~/lib/operationError';
+import { InboxIcon, ReloadIcon } from '@coolicons/vue';
 
 interface Props {
 	/** Truthy while the underlying query has not delivered its first result. */
@@ -131,7 +132,7 @@ function handleRetry() {
 				<UiErrorAlert :title="displayTitle" :message="displayMessage" variant="error" />
 			</div>
 			<UiButton v-if="!hideRetry" variant="secondary" size="sm" @click="handleRetry">
-				<template #iconLeft><Icon name="lucide:refresh-cw" class="w-4 h-4" /></template>
+				<template #iconLeft><ReloadIcon class="w-4 h-4" /></template>
 				{{ t('components.ui.queryBoundary.tryAgain') }}
 			</UiButton>
 		</div>
@@ -148,7 +149,7 @@ function handleRetry() {
 
 	<slot v-else-if="state === 'empty'" name="empty">
 		<UiEmptyState
-			icon="lucide:inbox"
+			:icon="InboxIcon"
 			:title="t('components.ui.queryBoundary.emptyTitle')"
 			:description="t('components.ui.queryBoundary.emptyDescription')"
 		/>

@@ -17,8 +17,6 @@ import PostboxFloatingFormatBar from '../PostboxFloatingFormatBar.vue';
 import PostboxEditorToolbar from '../PostboxEditorToolbar.vue';
 import PostboxRewriteActions from '../PostboxRewriteActions.vue';
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 // The bar's accessible name and the toolbar tooltips flow through vue-i18n now;
 // `useI18n` is a Nuxt auto-import, so it has to exist as a global for setup.
 beforeAll(() => {
@@ -35,7 +33,6 @@ function mountBar(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxEditorToolbar, PostboxRewriteActions },
-			stubs: { Icon: iconStub },
 		},
 	});
 }

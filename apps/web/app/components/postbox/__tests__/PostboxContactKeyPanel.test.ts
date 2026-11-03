@@ -22,7 +22,6 @@ beforeAll(() => {
 const PIN = 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555';
 const OTHER = 'FFFF9999EEEE8888DDDD7777CCCC6666BBBB5555';
 
-const iconStub = { props: ['name'], template: '<span />' };
 const verifyPanelStub = {
 	props: ['address', 'fingerprint', 'state'],
 	template: '<div data-testid="verify-panel-stub" />',
@@ -48,7 +47,7 @@ const mountPanel = (status: Status) =>
 		props: { address: 'bob@b.test', status: status as never },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, PostboxContactVerifyPanel: verifyPanelStub },
+			stubs: { PostboxContactVerifyPanel: verifyPanelStub },
 		},
 	});
 

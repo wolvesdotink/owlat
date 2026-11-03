@@ -8,6 +8,8 @@ import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
 import { clarificationCardState } from '~/utils/postboxReplyQueue';
 import type { ThreadFile } from '~/utils/answerThreadFiles';
+import { CirclePauseIcon, ShieldWarningIcon, SparklesIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The background clarification of a Reply Queue thread, above the editor:
@@ -175,7 +177,7 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			role="status"
 			data-testid="answer-queue-ask-paused"
 		>
-			<Icon name="lucide:circle-pause" class="size-4 shrink-0" aria-hidden="true" />
+			<CirclePauseIcon class="size-4 shrink-0" aria-hidden="true" />
 			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.paused') }}</span>
 			<UiButton variant="ghost" size="sm" @click="deferred = true">
 				{{ t('components.postbox.postboxClarificationCard.answerLater') }}
@@ -187,7 +189,7 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			role="status"
 			data-testid="answer-queue-ask-ready"
 		>
-			<Icon name="lucide:sparkles" class="size-4 text-brand" aria-hidden="true" />
+			<SparklesIcon class="size-4 text-brand" aria-hidden="true" />
 			<span class="flex-1">{{ t('components.answer.aiBar.readyKept') }}</span>
 			<UiButton variant="secondary" size="sm" @click="useWaitingDraft">
 				{{ t('components.answer.aiBar.useDraft') }}
@@ -202,7 +204,7 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			role="status"
 			data-testid="answer-queue-ask-held"
 		>
-			<Icon name="lucide:shield-alert" class="size-4 shrink-0" aria-hidden="true" />
+			<ShieldWarningIcon class="size-4 shrink-0" aria-hidden="true" />
 			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.held') }}</span>
 		</div>
 		<div
@@ -211,11 +213,7 @@ async function submit(answers: AskCardAnswer[], withGaps = false) {
 			role="status"
 			data-testid="answer-queue-ask-drafting"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="size-4 animate-spin motion-reduce:animate-none"
-				aria-hidden="true"
-			/>
+			<SpinnerIcon class="size-4" aria-hidden="true" />
 			<span class="flex-1">{{ t('components.postbox.postboxClarificationCard.drafting') }}</span>
 			<UiButton variant="ghost" size="sm" @click="deferred = true">
 				{{ t('components.postbox.postboxClarificationCard.answerLater') }}

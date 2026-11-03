@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Doc } from '@owlat/api/dataModel';
 import type { TopicSubscribedTriggerConfig } from '~/composables/automations/triggers';
+import { ListPlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -23,7 +24,7 @@ const updateTopicId = (event: Event) => {
 <template>
 	<div>
 		<label for="topicId" class="label flex items-center gap-2">
-			<Icon name="lucide:list-plus" class="w-4 h-4 text-success" />
+			<ListPlusIcon class="w-4 h-4 text-success" />
 			{{ t('components.automations.triggers.topicSubscribed.editor.topicLabel') }}
 			<span class="text-error">*</span>
 		</label>

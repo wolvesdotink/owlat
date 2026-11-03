@@ -24,6 +24,15 @@ import { threadFileFromDrop, type ThreadFile } from '~/utils/answerThreadFiles';
 import { isAcceptedAnswerUpload, pickAnswerFile } from '~/utils/answerFilePicker';
 import { formatCompactFileSize } from '~/utils/formatters';
 import AnswerFilePicker, { type PickedFile } from './AnswerFilePicker.vue';
+import {
+	CheckIcon,
+	CloseIcon,
+	FileIcon,
+	FolderOpenIcon,
+	PaperclipIcon,
+	UploadIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 export interface FileAnswerRef {
 	source: 'upload' | 'semanticFile' | 'mailAttachment';
@@ -209,7 +218,7 @@ const busy = computed(() => uploading.value || resolving.value);
 				class="flex items-center gap-2 rounded-lg border border-border-subtle px-3 py-2 text-sm"
 				data-testid="file-ask-picked"
 			>
-				<Icon name="lucide:paperclip" class="size-4 shrink-0 text-brand" aria-hidden="true" />
+				<PaperclipIcon class="size-4 shrink-0 text-brand" aria-hidden="true" />
 				<span class="min-w-0 flex-1 truncate text-text-primary">{{ file.filename }}</span>
 				<button
 					type="button"
@@ -219,7 +228,7 @@ const busy = computed(() => uploading.value || resolving.value);
 					data-testid="file-ask-remove"
 					@click="removeFile(file)"
 				>
-					<Icon name="lucide:x" class="size-4" aria-hidden="true" />
+					<CloseIcon class="size-4" aria-hidden="true" />
 				</button>
 			</li>
 		</ul>
@@ -233,7 +242,7 @@ const busy = computed(() => uploading.value || resolving.value);
 			@drop="onDrop"
 		>
 			<div v-if="picked && !multiple" class="flex items-center gap-2" data-testid="file-ask-picked">
-				<Icon name="lucide:paperclip" class="size-4 shrink-0 text-brand" aria-hidden="true" />
+				<PaperclipIcon class="size-4 shrink-0 text-brand" aria-hidden="true" />
 				<span class="min-w-0 flex-1 truncate text-text-primary">{{ picked.filename }}</span>
 				<button
 					type="button"
@@ -243,12 +252,12 @@ const busy = computed(() => uploading.value || resolving.value);
 					data-testid="file-ask-remove"
 					@click="emit('update:modelValue', null)"
 				>
-					<Icon name="lucide:x" class="size-4" aria-hidden="true" />
+					<CloseIcon class="size-4" aria-hidden="true" />
 				</button>
 			</div>
 			<div v-else class="flex items-start gap-2">
-				<Icon
-					:name="busy ? 'lucide:loader-2' : 'lucide:upload'"
+				<component
+					:is="busy ? SpinnerIcon : UploadIcon"
 					class="mt-0.5 size-4 shrink-0 text-text-tertiary"
 					:class="busy ? 'animate-spin motion-reduce:animate-none' : ''"
 					aria-hidden="true"
@@ -332,7 +341,7 @@ const busy = computed(() => uploading.value || resolving.value);
 					data-testid="file-ask-candidate"
 					@click="pickCandidate(candidate)"
 				>
-					<Icon name="lucide:file" class="size-3.5 shrink-0" aria-hidden="true" />
+					<FileIcon class="size-3.5 shrink-0" aria-hidden="true" />
 					<span class="truncate">{{ candidate.title?.trim() || candidate.filename }}</span>
 					<span class="shrink-0 opacity-70">
 						{{ formatCompactFileSize(candidate.size)
@@ -350,7 +359,7 @@ const busy = computed(() => uploading.value || resolving.value);
 				data-testid="file-ask-pick-files"
 				@click="pickerOpen = true"
 			>
-				<Icon name="lucide:folder-open" class="size-3.5" aria-hidden="true" />
+				<FolderOpenIcon class="size-3.5" aria-hidden="true" />
 				{{ t('components.answer.fileAsk.pickFromFiles') }}
 			</button>
 			<button
@@ -368,12 +377,7 @@ const busy = computed(() => uploading.value || resolving.value);
 				data-testid="file-ask-option"
 				@click="pickOption(option)"
 			>
-				<Icon
-					v-if="pickedOption === option"
-					name="lucide:check"
-					class="size-3"
-					aria-hidden="true"
-				/>
+				<CheckIcon v-if="pickedOption === option" class="size-3" aria-hidden="true" />
 				{{ option }}
 			</button>
 		</div>

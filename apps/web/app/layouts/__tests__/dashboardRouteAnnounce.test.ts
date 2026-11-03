@@ -80,7 +80,6 @@ function mountLayout(): VueWrapper {
 				ShellComposerOverlay: true,
 				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: true,
-				Icon: true,
 				UiBadge: true,
 				UiSkeleton: true,
 				UiThemeToggle: true,

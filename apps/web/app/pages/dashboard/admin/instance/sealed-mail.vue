@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { CircleInfoIcon } from '@coolicons/vue';
 
 /**
  * Sealed mail settings (flag `sealedMail`). The org-level sealing policy:
@@ -168,7 +169,7 @@ async function runReSeal() {
 		</div>
 		<template v-else>
 			<div v-if="!sealedMailEnabled" class="flex items-start gap-2.5 card p-4">
-				<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
+				<CircleInfoIcon class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5" />
 				<p class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.instance.sealedMail.disabledNotice') }}
 				</p>

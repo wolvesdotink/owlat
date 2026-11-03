@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { CircleCheckIcon, CloseIcon, GitMergeIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -83,7 +84,7 @@ const identifierPlaceholder = computed(() => {
 					{{ t('components.contacts.identitiesTab.title') }}
 				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
-					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
+					<component :is="showAddForm ? CloseIcon : PlusIcon" class="w-3 h-3" />
 					{{ showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity') }}
 				</UiButton>
 			</div>
@@ -148,7 +149,7 @@ const identifierPlaceholder = computed(() => {
 					:key="identity._id"
 					class="group flex items-center gap-3 p-3 rounded-lg bg-bg-surface"
 				>
-					<Icon :name="getChannelIcon(identity.channel)" class="w-5 h-5 text-brand flex-shrink-0" />
+					<component :is="getChannelIcon(identity.channel)" class="w-5 h-5 text-brand flex-shrink-0" />
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2">
 							<p class="text-text-primary text-sm font-medium truncate">
@@ -164,7 +165,7 @@ const identifierPlaceholder = computed(() => {
 								v-if="identity.verifiedAt"
 								class="text-xs text-success flex items-center gap-0.5"
 							>
-								<Icon name="lucide:check-circle" class="w-3 h-3" />
+								<CircleCheckIcon class="w-3 h-3" />
 								{{ t('components.contacts.identitiesTab.verified') }}
 							</span>
 						</div>
@@ -177,7 +178,7 @@ const identifierPlaceholder = computed(() => {
 								:aria-label="t('components.contacts.identitiesTab.markVerified')"
 								@click="onVerify(identity._id)"
 							>
-								<Icon name="lucide:check-circle" class="w-4 h-4" />
+								<CircleCheckIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 						<UiTooltip :text="t('components.contacts.identitiesTab.removeIdentity')">
@@ -186,7 +187,7 @@ const identifierPlaceholder = computed(() => {
 								:aria-label="t('components.contacts.identitiesTab.removeIdentity')"
 								@click="onRemove(identity._id)"
 							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</div>
@@ -197,7 +198,7 @@ const identifierPlaceholder = computed(() => {
 		<!-- Merge Suggestions -->
 		<div v-if="mergeSuggestions && mergeSuggestions.length > 0" class="card border-warning/20">
 			<div class="flex items-center gap-2 mb-4">
-				<Icon name="lucide:git-merge" class="w-5 h-5 text-warning" />
+				<GitMergeIcon class="w-5 h-5 text-warning" />
 				<h2 class="text-lg font-medium text-text-primary">
 					{{ t('components.contacts.identitiesTab.mergeSuggestions') }}
 				</h2>
@@ -231,7 +232,7 @@ const identifierPlaceholder = computed(() => {
 						class="gap-1"
 						@click="onMerge(suggestion.contact._id)"
 					>
-						<Icon name="lucide:git-merge" class="w-3 h-3" />
+						<GitMergeIcon class="w-3 h-3" />
 						{{ t('components.contacts.identitiesTab.merge') }}
 					</UiButton>
 				</div>

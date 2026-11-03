@@ -7,6 +7,8 @@
  *
  * Mounted only inside the desktop app (the parent section is `v-if="isDesktop"`).
  */
+import { BellIcon, BellOffIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 const { showToast } = useToast();
 const { permission, isBusy, isDenied, osSettingsUri, refresh, request, sendTest, openOsSettings } =
@@ -48,8 +50,8 @@ async function onOpenSettings() {
 <template>
 	<div class="px-5 py-4 border-b border-border-subtle flex flex-wrap items-center gap-3">
 		<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs border" :class="statusClass">
-			<Icon
-				:name="permission === 'granted' ? 'lucide:bell' : 'lucide:bell-off'"
+			<component
+				:is="permission === 'granted' ? BellIcon : BellOffIcon"
 				class="w-3.5 h-3.5"
 			/>
 			{{ statusLabel }}

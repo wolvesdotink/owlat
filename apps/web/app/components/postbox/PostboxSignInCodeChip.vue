@@ -16,6 +16,7 @@
 import type { Doc } from '@owlat/api/dataModel';
 import { usePostboxRowNow } from '~/composables/postbox/usePostboxListClock';
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { CopyIcon, KeyIcon, LogInIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	signInCode: NonNullable<Doc<'mailMessages'>['signInCode']>;
@@ -65,12 +66,12 @@ async function onClick(event: MouseEvent) {
 			@click="onClick"
 		>
 			<template v-if="signInCode.kind === 'code'">
-				<Icon name="lucide:key-round" class="w-3 h-3" />
+				<KeyIcon class="w-3 h-3" />
 				<span class="font-mono font-semibold tracking-wider">{{ signInCode.value }}</span>
-				<Icon name="lucide:copy" class="w-3 h-3" />
+				<CopyIcon class="w-3 h-3" />
 			</template>
 			<template v-else>
-				<Icon name="lucide:log-in" class="w-3 h-3" />
+				<LogInIcon class="w-3 h-3" />
 				<span class="font-medium">{{
 					t(
 						size === 'reader'

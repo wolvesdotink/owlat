@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ChannelHealthDot } from '~/utils/channelKinds';
 import { useLocalized } from '~/composables/useLocalized';
+import { ArrowUpRightIcon, CircleCheckIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const { t, te } = useI18n();
 const localized = useLocalized();
@@ -107,7 +108,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				     button on the inbox list. -->
 				<UiTooltip :text="t('dashboard.inbox.activity.failedMessagesTitle')">
 					<UiButton variant="secondary" to="/dashboard/admin/delivery/failed" class="gap-2">
-						<Icon name="lucide:alert-triangle" class="w-4 h-4" />
+						<TriangleWarningIcon class="w-4 h-4" />
 						{{ t('dashboard.inbox.activity.failedMessages') }}
 						<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
 					</UiButton>
@@ -139,7 +140,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				]"
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
-				<Icon :name="channelIcon(ch)" class="w-3 h-3" />
+				<component :is="channelIcon(ch)" class="w-3 h-3" />
 				{{ channelName(ch) }}
 				<span
 					v-if="channelHealth(ch)"
@@ -182,8 +183,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 						<div
 							class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
 						>
-							<Icon
-								:name="channelIcon(item.channel)"
+							<component
+								:is="channelIcon(item.channel)"
 								class="w-5 h-5"
 								:class="channelColor(item.channel)"
 							/>
@@ -201,7 +202,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 											: 'bg-success-subtle text-success',
 									]"
 								>
-									<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
+									<component :is="directionIcon(item.direction)" class="w-3 h-3" />
 									{{ directionName(item.direction) }}
 								</span>
 
@@ -211,9 +212,9 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 								</UiBadge>
 
 								<!-- Delivery state — one small mark, detail in its title (one-chip rule) -->
-								<Icon
+								<component
 									v-if="deliveryStatusMeta(item.status)"
-									:name="deliveryStatusMeta(item.status)!.icon"
+									:is="deliveryStatusMeta(item.status)!.icon"
 									class="w-3.5 h-3.5"
 									:class="deliveryStatusMeta(item.status)!.class"
 									:title="deliveryStatusName(deliveryStatusMeta(item.status)!, item.status ?? '')"
@@ -256,7 +257,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 								class="!px-2"
 								:aria-label="t('dashboard.inbox.activity.openConversation')"
 							>
-								<Icon name="lucide:arrow-up-right" class="w-4 h-4" />
+								<ArrowUpRightIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('dashboard.inbox.activity.markAsResolved')">
@@ -269,7 +270,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 								:aria-label="t('dashboard.inbox.activity.markAsResolved')"
 								@click="handleResolve(item.threadId)"
 							>
-								<Icon name="lucide:check-circle" class="w-4 h-4" />
+								<CircleCheckIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 					</div>

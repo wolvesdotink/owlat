@@ -28,6 +28,7 @@ import {
 } from '~/utils/postboxSendingHealth';
 import type { ReadinessGateStatus } from '~/utils/readinessGate';
 import { useLocalized } from '~/composables/useLocalized';
+import { CircleCheckIcon, CircleWarningIcon, ClockIcon, type IconComponent } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { currentMailbox } = usePostboxMailbox();
@@ -64,10 +65,10 @@ const health = computed(() =>
 
 const localized = useLocalized();
 
-const GATE_ICON: Record<ReadinessGateStatus, string> = {
-	ready: 'lucide:check-circle-2',
-	attention: 'lucide:alert-circle',
-	pending: 'lucide:clock',
+const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
+	ready: CircleCheckIcon,
+	attention: CircleWarningIcon,
+	pending: ClockIcon,
 };
 </script>
 
@@ -108,8 +109,8 @@ const GATE_ICON: Record<ReadinessGateStatus, string> = {
 					:key="gate.key"
 					class="flex items-start gap-2.5 rounded-lg bg-bg-surface px-3 py-2.5"
 				>
-					<Icon
-						:name="GATE_ICON[gate.status]"
+					<component
+						:is="GATE_ICON[gate.status]"
 						class="w-4 h-4 mt-0.5 shrink-0"
 						:class="healthTextClass[gate.tone]"
 					/>

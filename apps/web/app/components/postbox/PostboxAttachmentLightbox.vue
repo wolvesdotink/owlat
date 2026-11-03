@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, nextTick } from 'vue';
 import { formatCompactFileSize } from '~/utils/formatters';
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ExternalLinkIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * Apple-style Quick Look overlay for previewable attachments (image/* and
@@ -199,7 +201,7 @@ onBeforeUnmount(() => {
 						:disabled="!objectUrl"
 						@click="openInNewTab"
 					>
-						<Icon name="lucide:external-link" class="w-4 h-4" />
+						<ExternalLinkIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip v-if="current" :text="
@@ -213,7 +215,7 @@ onBeforeUnmount(() => {
 						"
 						@click="emit('download', current)"
 					>
-						<Icon name="lucide:download" class="w-4 h-4" />
+						<DownloadIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip :text="t('components.postbox.postboxAttachmentLightbox.closePreview')">
@@ -223,7 +225,7 @@ onBeforeUnmount(() => {
 						:aria-label="t('components.postbox.postboxAttachmentLightbox.closePreview')"
 						@click="close()"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</header>
@@ -236,12 +238,12 @@ onBeforeUnmount(() => {
 						:aria-label="t('components.postbox.postboxAttachmentLightbox.previous')"
 						@click="goPrev"
 					>
-						<Icon name="lucide:chevron-left" class="w-5 h-5" />
+						<ChevronLeftIcon class="w-5 h-5" />
 					</button>
 				</UiTooltip>
 
 				<div v-if="isLoading" class="flex flex-col items-center gap-2 text-white/70">
-					<Icon name="lucide:loader-2" class="w-6 h-6 animate-spin motion-reduce:animate-none" />
+					<SpinnerIcon class="w-6 h-6" />
 					<p class="text-sm">{{ t('components.postbox.postboxAttachmentLightbox.loading') }}</p>
 				</div>
 				<p v-else-if="loadFailed || !objectUrl" class="text-sm text-white/70">
@@ -288,7 +290,7 @@ onBeforeUnmount(() => {
 						:aria-label="t('components.postbox.postboxAttachmentLightbox.next')"
 						@click="goNext"
 					>
-						<Icon name="lucide:chevron-right" class="w-5 h-5" />
+						<ChevronRightIcon class="w-5 h-5" />
 					</button>
 				</UiTooltip>
 			</div>

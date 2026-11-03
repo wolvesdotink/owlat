@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle } from '@lucide/vue';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 defineProps<{
 	/** Show the success check icon (e.g. "no issues found"). */
@@ -9,7 +9,7 @@ defineProps<{
 
 <template>
 	<div class="ep-analysis-empty">
-		<CheckCircle v-if="success" class="ep-analysis-empty-icon" />
+		<CircleCheckIcon v-if="success" class="ep-analysis-empty-icon" />
 		<slot />
 	</div>
 </template>

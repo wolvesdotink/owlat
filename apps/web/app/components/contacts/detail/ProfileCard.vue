@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The contact page's "Contact details" card: email, name, timezone and
 // language, read-only or as inputs while the page is editing.
+import { GlobeIcon, MailIcon, TranslateIcon, UserIcon } from '@coolicons/vue';
+
 defineProps<{
 	contact: {
 		email?: string;
@@ -34,7 +36,7 @@ const { t } = useI18n();
 			<div>
 				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.email') }}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
-					<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<MailIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
 						v-model="form.email"
 						type="email"
@@ -43,7 +45,7 @@ const { t } = useI18n();
 					/>
 				</div>
 				<div v-else class="flex items-center gap-3 py-2">
-					<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<MailIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<span class="text-text-primary">{{ contact.email }}</span>
 				</div>
 			</div>
@@ -52,7 +54,7 @@ const { t } = useI18n();
 			<div>
 				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.firstName') }}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
-					<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
 						v-model="form.firstName"
 						type="text"
@@ -61,7 +63,7 @@ const { t } = useI18n();
 					/>
 				</div>
 				<div v-else class="flex items-center gap-3 py-2">
-					<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<span :class="contact.firstName ? 'text-text-primary' : 'text-text-tertiary'">
 						{{ contact.firstName || t('dashboard.audience.contacts.detail.notSet') }}
 					</span>
@@ -72,7 +74,7 @@ const { t } = useI18n();
 			<div>
 				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.lastName') }}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
-					<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
 						v-model="form.lastName"
 						type="text"
@@ -81,7 +83,7 @@ const { t } = useI18n();
 					/>
 				</div>
 				<div v-else class="flex items-center gap-3 py-2">
-					<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<span :class="contact.lastName ? 'text-text-primary' : 'text-text-tertiary'">
 						{{ contact.lastName || t('dashboard.audience.contacts.detail.notSet') }}
 					</span>
@@ -92,7 +94,7 @@ const { t } = useI18n();
 			<div>
 				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.timezone') }}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
-					<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<GlobeIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<select v-model="form.timezone" class="input">
 						<option v-for="tz in timezones" :key="tz.value" :value="tz.value">
 							{{ tz.label }}
@@ -100,7 +102,7 @@ const { t } = useI18n();
 					</select>
 				</div>
 				<div v-else class="flex items-center gap-3 py-2">
-					<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<GlobeIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<span :class="contact.timezone ? 'text-text-primary' : 'text-text-tertiary'">
 						{{ timezoneLabel }}
 					</span>
@@ -111,7 +113,7 @@ const { t } = useI18n();
 			<div>
 				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.language') }}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
-					<Icon name="lucide:languages" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<TranslateIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<select v-model="form.language" class="input">
 						<option v-for="lang in languages" :key="lang.value" :value="lang.value">
 							{{ lang.label }}
@@ -119,7 +121,7 @@ const { t } = useI18n();
 					</select>
 				</div>
 				<div v-else class="flex items-center gap-3 py-2">
-					<Icon name="lucide:languages" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
+					<TranslateIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<span :class="contact.language ? 'text-text-primary' : 'text-text-tertiary'">
 						{{ languageLabel }}
 					</span>

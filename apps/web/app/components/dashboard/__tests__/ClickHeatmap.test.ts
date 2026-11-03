@@ -13,7 +13,7 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const stubs = { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' } };
+const stubs = { UiIconBox: { template: '<i />' } };
 
 function mountHeatmap(htmlContent: string) {
 	return mount(ClickHeatmap, {

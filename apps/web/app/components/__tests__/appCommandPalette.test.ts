@@ -29,6 +29,7 @@ import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
 import QueryResult from '../query/QueryResult.vue';
+import { TagIcon } from '@coolicons/vue';
 
 const searchResults: SearchResults = {
 	contacts: [
@@ -74,12 +75,12 @@ function argumentProvider(): CommandPaletteProvider {
 					{
 						id: 'test:label-as',
 						label: 'Label as',
-						icon: 'lucide:tag',
+						icon: TagIcon,
 						run: runParentItem,
 						argument: {
 							promptKey: 'common.create',
 							headingKey: 'common.create',
-							icon: 'lucide:tag',
+							icon: TagIcon,
 							options: [{ id: 'work', label: 'Work label', run: runLabelOption }],
 						},
 					},
@@ -152,7 +153,6 @@ async function openPalette() {
 			plugins: [createTestI18n()],
 			components: { AppCommandPaletteResults, QueryResult },
 			stubs: {
-				Icon: true,
 				UiSpinner: true,
 				AppCommandPaletteFooter: true,
 				QuerySourceCitation: true,
@@ -548,7 +548,7 @@ describe('AppCommandPalette — while closed and across sessions (plan 1.6)', ()
 			global: {
 				plugins: [createTestI18n()],
 				components: { AppCommandPaletteResults, QueryResult },
-				stubs: { Icon: true, UiSpinner: true, AppCommandPaletteFooter: true },
+				stubs: { UiSpinner: true, AppCommandPaletteFooter: true },
 			},
 		});
 		await nextTick();

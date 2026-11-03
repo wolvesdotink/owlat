@@ -4,6 +4,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
 import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import {
+	ArrowLeftIcon,
+	BookmarkPlusIcon,
+	CircleInfoIcon,
+	CloseIcon,
+	MailOpenIcon,
+	SearchCloseIcon,
+	SearchIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -192,7 +201,7 @@ async function confirmSave() {
 							data-testid="mail-search-refine"
 							@click="refineSearch"
 						>
-							<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+							<SearchIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 							<span
 								class="flex-1 truncate"
 								:class="query.trim() ? 'text-text-primary' : 'text-text-tertiary'"
@@ -245,7 +254,7 @@ async function confirmSave() {
 								class="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary"
 								@click="startSave"
 							>
-								<Icon name="lucide:bookmark-plus" class="w-3.5 h-3.5" />
+								<BookmarkPlusIcon class="w-3.5 h-3.5" />
 								{{ t('dashboard.postbox.search.saveThisSearch') }}
 							</button>
 						</div>
@@ -255,7 +264,7 @@ async function confirmSave() {
 							class="flex items-start gap-1.5 text-xs text-text-tertiary"
 							data-testid="body-search-depth-hint"
 						>
-							<Icon name="lucide:info" class="w-3 h-3 mt-0.5 flex-shrink-0" />
+							<CircleInfoIcon class="w-3 h-3 mt-0.5 flex-shrink-0" />
 							<span>
 								{{ t(bodySearchHint.key) }}
 								<NuxtLink
@@ -280,7 +289,7 @@ async function confirmSave() {
 								@click="removeChip(chip.key)"
 							>
 								{{ chip.label }}
-								<Icon name="lucide:x" class="w-3 h-3" />
+								<CloseIcon class="w-3 h-3" />
 							</button>
 						</div>
 					</header>
@@ -322,7 +331,7 @@ async function confirmSave() {
 					     drop an operator or clear them all — instead of a dead end. -->
 						<PostboxEmptyState
 							v-else-if="exhausted"
-							icon="lucide:search-x"
+							:icon="SearchCloseIcon"
 							:title="t('dashboard.postbox.search.noResultsTitle')"
 							:hint="t('dashboard.postbox.search.noResultsHint')"
 						>
@@ -336,7 +345,7 @@ async function confirmSave() {
 										@click="removeChip(chip.key)"
 									>
 										{{ t('dashboard.postbox.search.removeChip', { chip: chip.label }) }}
-										<Icon name="lucide:x" class="w-3 h-3" />
+										<CloseIcon class="w-3 h-3" />
 									</button>
 									<button
 										v-if="chips.length > 2"
@@ -402,7 +411,7 @@ async function confirmSave() {
 							class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none rounded px-2 py-3"
 							@click="activeMessageId = null"
 						>
-							<Icon name="lucide:arrow-left" class="w-4 h-4" />
+							<ArrowLeftIcon class="w-4 h-4" />
 							{{ t('dashboard.postbox.search.backToResults') }}
 						</button>
 					</div>
@@ -413,7 +422,7 @@ async function confirmSave() {
 					     results the list pane already says why, so this stays blank. -->
 					<div v-else-if="results.length > 0" class="h-full flex items-center justify-center">
 						<div class="text-center">
-							<Icon name="lucide:mail-open" class="w-12 h-12 mx-auto text-text-tertiary" />
+							<MailOpenIcon class="w-12 h-12 mx-auto text-text-tertiary" :stroke-width="1.5" />
 							<p class="mt-4 text-text-secondary">
 								{{ t('dashboard.postbox.search.selectResult') }}
 							</p>

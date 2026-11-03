@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{
 	close: [];
@@ -64,7 +65,7 @@ const handleSubmit = async () => {
 				@click="handleSubmit"
 			>
 				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
+				<PaperPlaneIcon v-else class="w-4 h-4" />
 				{{ t('components.chat.chatNewDmDialog.startChat') }}
 			</UiButton>
 		</div>

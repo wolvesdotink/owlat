@@ -2,6 +2,7 @@
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
 import { MIN_PASSWORD_LENGTH } from '@owlat/shared/passwordPolicy';
 import { validateAdmin, adminIsValid } from '~/composables/setupWizardValidation';
+import { ArrowLeftIcon, ArrowRightIcon, FeatherIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -56,7 +57,7 @@ function next() {
 
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="FeatherIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.admin.eyebrow') }}</span>
 			</div>
 
@@ -117,12 +118,12 @@ function next() {
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" @click="router.push('/setup/email')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+					<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton @click="next">
 					{{ t('setup.admin.next') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</footer>
 		</div>
