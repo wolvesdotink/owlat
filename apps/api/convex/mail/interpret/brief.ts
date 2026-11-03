@@ -39,7 +39,6 @@ import { countThreadOpen } from '../senders/opens';
 import { readResult } from './load';
 import {
 	gapOf,
-	readActivityTail,
 	readFacts,
 	readInterpretations,
 	readItemsPage,
@@ -48,9 +47,13 @@ import {
 	readExactWording,
 	readMessageLatest,
 	readViewerState,
+} from './briefRead';
+import {
+	readActivityTail,
 	sinceLastSeenOf,
 	toActivityViews,
-} from './briefRead';
+	withoutGateRefusals,
+} from './briefReadActivity';
 import { isReplyExpectingIntent, type ReplyIntent } from '../ai/replyIntent';
 import { openMessageBody } from '../../lib/messageBody';
 import type { MutationCtx } from '../../_generated/server';
@@ -110,7 +113,7 @@ export const get = publicQuery({
 
 		const [itemsPage, tail, interpretations, viewer] = await Promise.all([
 			readItemsPage(ctx, ref, locale, args.cursor ?? null, Date.now()),
-			readActivityTail(ctx, ref),
+			readActivityTail(ctx, ref).then(withoutGateRefusals),
 			readInterpretations(ctx, ref),
 			readViewerState(ctx, ref, session.userId),
 		]);

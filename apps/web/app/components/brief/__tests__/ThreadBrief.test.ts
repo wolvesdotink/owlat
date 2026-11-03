@@ -7,21 +7,34 @@
  *   - "Where things stand" strikes the replaced value;
  *   - an incomplete brief says so and never claims there is nothing to do;
  *   - no brief at all says why and offers the conversation;
+ *   - AI the instance cannot run is a quiet note, with AI settings for admins;
  *   - Answer mode: checkboxes instead of rings, no reactions;
  *   - a phone folds everything after the items into one disclosure.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import ThreadBrief from '../ThreadBrief.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { briefView, evidence, item, T0 } from '~/utils/__tests__/threadBriefFixtures';
 
+const isAdmin = ref(false);
+
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		usePermissions: () => ({ isAdmin }),
+	});
 });
 
 const Plain = defineComponent({ setup: () => () => h('span') });
+const LinkStub = defineComponent({
+	props: { to: { type: String, required: true } },
+	setup:
+		(props, { slots }) =>
+		() =>
+			h('a', { href: props.to }, slots['default']?.()),
+});
 /** The overflow menu, always open, so its items can be clicked. */
 const MenuStub = defineComponent({
 	props: { label: { type: String, default: '' } },
@@ -50,7 +63,12 @@ function mountBrief(props: Record<string, unknown> = {}) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiSkeleton: Plain, UiAvatar: Plain, PostboxOverflowMenu: MenuStub },
+			components: {
+				UiSkeleton: Plain,
+				UiAvatar: Plain,
+				PostboxOverflowMenu: MenuStub,
+				NuxtLink: LinkStub,
+			},
 		},
 	});
 }
@@ -311,8 +329,27 @@ describe('ThreadBrief', () => {
 			}),
 		});
 		expect(w.get('[data-testid="brief-incomplete"]').attributes('data-kind')).toBe('none');
-		expect(w.text()).toContain('AI is off');
+		expect(w.text()).toContain("AI isn't available");
 		expect(w.find('[data-testid="brief-items-forYou"]').exists()).toBe(false);
+	});
+
+	it('says AI the instance cannot run quietly, and shows admins the way to AI settings', () => {
+		const brief = briefView({
+			completeness: 'none',
+			gap: { interpretedMessages: 0, totalMessages: 2, reason: 'aiOff' },
+		});
+		isAdmin.value = false;
+		const member = mountBrief({ brief });
+		const banner = member.get('[data-testid="brief-incomplete"]');
+		expect(banner.text()).toContain("AI isn't available in this workspace");
+		expect(banner.text()).not.toContain('Partly read');
+		expect(member.find('[data-testid="brief-ai-settings"]').exists()).toBe(false);
+		isAdmin.value = true;
+		const admin = mountBrief({ brief });
+		expect(admin.get('[data-testid="brief-ai-settings"]').attributes('href')).toBe(
+			'/dashboard/admin/instance/ai-provider'
+		);
+		isAdmin.value = false;
 	});
 
 	it('shows a security mail as written', () => {

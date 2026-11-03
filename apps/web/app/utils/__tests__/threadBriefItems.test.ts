@@ -209,6 +209,51 @@ describe('briefBanners', () => {
 		).toBe('err');
 	});
 
+	it('says an instance-wide AI gap quietly, pointing to AI settings instead of warning', () => {
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'partial',
+					gap: { interpretedMessages: 1, totalMessages: 3, reason: 'aiOff' },
+				})
+			)
+		).toEqual([
+			{
+				key: 'instance',
+				tone: 'neutral',
+				text: {
+					key: 'components.brief.incomplete.partialReason.aiOff',
+					params: { done: 1, total: 3 },
+				},
+				offersConversation: true,
+				offersAiSettings: true,
+			},
+		]);
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'none',
+					gap: { interpretedMessages: 0, totalMessages: 2, reason: 'budget' },
+				})
+			)
+		).toMatchObject([
+			{
+				key: 'none',
+				tone: 'neutral',
+				text: 'components.brief.incomplete.none.budget',
+				offersAiSettings: true,
+			},
+		]);
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'partial',
+					gap: { interpretedMessages: 1, totalMessages: 3, reason: 'failed' },
+				})
+			)[0]
+		).not.toHaveProperty('offersAiSettings');
+	});
+
 	it('notes the signed scope, and nothing for a complete brief', () => {
 		expect(briefBanners(briefView())).toEqual([]);
 		expect(briefBanners(briefView(), { isSigned: true }).map((b) => b.key)).toEqual(['signed']);

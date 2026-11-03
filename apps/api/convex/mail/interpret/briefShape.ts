@@ -224,7 +224,10 @@ export const briefGapViewValidator = v.object({
 			// Earlier history that cannot be read back (a team reply sent before snapshots).
 			v.literal('history'),
 			v.literal('tooLong'),
+			// AI is off or has no provider: the same on every thread.
 			v.literal('aiOff'),
+			// The AI spend budget is used up: the same on every thread.
+			v.literal('budget'),
 			v.literal('undecryptable'),
 			v.literal('ineligible'),
 			v.literal('security'),

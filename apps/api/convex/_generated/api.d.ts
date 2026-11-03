@@ -45,6 +45,7 @@ import type * as mail_interpret_brief from '../mail/interpret/brief.js';
 import type * as mail_interpret_briefOpen from '../mail/interpret/briefOpen.js';
 import type * as mail_interpret_briefProject from '../mail/interpret/briefProject.js';
 import type * as mail_interpret_briefRead from '../mail/interpret/briefRead.js';
+import type * as mail_interpret_briefReadActivity from '../mail/interpret/briefReadActivity.js';
 import type * as mail_interpret_briefRow from '../mail/interpret/briefRow.js';
 import type * as mail_interpret_categoryDefer from '../mail/interpret/categoryDefer.js';
 import type * as mail_interpret_claimCheck from '../mail/interpret/claimCheck.js';
@@ -105,6 +106,7 @@ import type * as mail_interpret_responsePlanState from '../mail/interpret/respon
 import type * as mail_interpret_retry from '../mail/interpret/retry.js';
 import type * as mail_interpret_run from '../mail/interpret/run.js';
 import type * as mail_interpret_runApply from '../mail/interpret/runApply.js';
+import type * as mail_interpret_runFailure from '../mail/interpret/runFailure.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
 import type * as mail_interpret_scopeLoad from '../mail/interpret/scopeLoad.js';
@@ -3213,6 +3215,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/briefOpen': typeof mail_interpret_briefOpen;
 	'mail/interpret/briefProject': typeof mail_interpret_briefProject;
 	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
+	'mail/interpret/briefReadActivity': typeof mail_interpret_briefReadActivity;
 	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
 	'mail/interpret/categoryDefer': typeof mail_interpret_categoryDefer;
 	'mail/interpret/claimCheck': typeof mail_interpret_claimCheck;
@@ -3273,6 +3276,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/retry': typeof mail_interpret_retry;
 	'mail/interpret/run': typeof mail_interpret_run;
 	'mail/interpret/runApply': typeof mail_interpret_runApply;
+	'mail/interpret/runFailure': typeof mail_interpret_runFailure;
 	'mail/interpret/scope': typeof mail_interpret_scope;
 	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
 	'mail/interpret/scopeLoad': typeof mail_interpret_scopeLoad;

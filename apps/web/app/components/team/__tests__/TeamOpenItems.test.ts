@@ -6,14 +6,18 @@
  * the emails are not fully read, and folds into one line on a phone.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import TeamOpenItems from '../TeamOpenItems.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { item, teamView } from '~/utils/__tests__/teamStreamFixtures';
 
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, useLocalized: () => (s: string) => s });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		useLocalized: () => (s: string) => s,
+		usePermissions: () => ({ isAdmin: ref(false) }),
+	});
 });
 
 const Plain = defineComponent({ setup: () => () => h('span') });
