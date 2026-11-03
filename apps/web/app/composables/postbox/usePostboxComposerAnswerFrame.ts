@@ -30,6 +30,8 @@ import { bodyHasQuote } from '~/utils/answerMode';
 export interface BasicEditorHandle {
 	focus: () => void;
 	insertSnippet: (snippet: EditorSnippet) => void;
+	/** Dictated text, at the caret. */
+	insertText: (text: string) => void;
 }
 
 export function usePostboxComposerAnswerFrame(opts: {

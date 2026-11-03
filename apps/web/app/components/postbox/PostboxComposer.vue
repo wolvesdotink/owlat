@@ -403,7 +403,6 @@ function onKeydown(event: KeyboardEvent) {
 				@update:background-color="backgroundColor = $event"
 			/>
 		</div>
-
 		<PostboxComposerAttachments
 			:inert="draftMirror.busy"
 			:attachments="attachments"
@@ -458,6 +457,7 @@ function onKeydown(event: KeyboardEvent) {
 				:advisory-available="aiRewriteEnabled"
 				:advisory-open="frameView.advisoryOpen.value"
 				:saved-replies="savedReplies.footer"
+				:dictation-target="basicEditor"
 				@send="sendWith"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"
