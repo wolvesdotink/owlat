@@ -5227,8 +5227,29 @@
 				"toggle": "Message details"
 			},
 			"postboxMovePickerDialog": {
+				"alreadyThere": "{name} already has this message, so it stayed here | {name} already has {count} of these messages, so they stayed here",
+				"confirmTeamAction": "Continue",
+				"confirmTeamBody": "Everyone with access to {name} will see the mail you put there.",
+				"confirmTeamTitle": "Put mail in {name}?",
+				"connectedNote": "Mail can't be moved into a connected account yet.",
+				"copiedTo": "Copied to {name} | Copied {count} messages to {name}",
+				"copy": "Copy",
+				"copyOnlyNote": "This message is in a connected account, so it can be copied but not moved for now.",
+				"copyTo": "Copy to {name}",
+				"movedTo": "Moved to {name} | Moved {count} messages to {name}",
+				"moveTo": "Move to {name}",
 				"noOtherFolders": "No other folders",
-				"title": "Move to folder"
+				"otherMailboxes": "Other mailboxes",
+				"refused": {
+					"external_source": "Mail in a connected account can be copied, not moved, for now.",
+					"external_target": "Mail can't be moved into a connected account yet.",
+					"over_quota": "That mailbox is full.",
+					"sealed": "This message is end-to-end encrypted. It can only go to a mailbox on the same address, which holds its key.",
+					"sending": "This message is still being sent. Try again once it's delivered."
+				},
+				"title": "Move to folder",
+				"transferOperation": "Move to mailbox",
+				"undoCopyOperation": "Undo copy"
 			},
 			"postboxNotificationSettings": {
 				"badgeAll": {
@@ -18549,6 +18570,10 @@
 				"labelPrompt": "Label as",
 				"move": "Move to…",
 				"movePrompt": "Move to",
+				"moveToMailbox": "Move to mailbox…",
+				"moveToMailboxPrompt": "Move to mailbox",
+				"copyToMailbox": "Copy to mailbox…",
+				"copyToMailboxPrompt": "Copy to mailbox",
 				"followUp": "Remind me if no reply…",
 				"followUpPrompt": "Remind me",
 				"cancelFollowUp": "Cancel reply reminder",

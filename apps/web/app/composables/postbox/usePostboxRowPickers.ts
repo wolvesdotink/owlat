@@ -8,14 +8,19 @@
  * row's thread is captured with it for the same reason, so the dialog's default
  * "whole conversation" scope cannot retarget either.
  *
+ * The move picker also offers the caller's other mailboxes
+ * (`usePostboxMailboxTransfer`); its props and handlers travel as one bundle
+ * each (`movePicker`, `movePickerOn`).
+ *
  * Lifted out of PostboxThreadList.vue, which owns rendering and the keyboard
- * dispatch; this is state plus three one-line commits, and nothing in it needs
+ * dispatch; this is state plus a few short commits, and nothing in it needs
  * the component.
  */
 
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
+import type { PostboxTransferMode } from './usePostboxMailboxTransfer';
 
 export function usePostboxRowPickers(opts: {
 	mailboxId: Ref<Id<'mailboxes'>>;
@@ -85,17 +90,35 @@ export function usePostboxRowPickers(opts: {
 		if (id) await opts.moveMsg(id, targetFolderId);
 	}
 
+	const mailboxTransfer = usePostboxMailboxTransfer(() => opts.mailboxId.value);
+	async function transferFocusedTo(targetId: Id<'mailboxes'>, mode: PostboxTransferMode) {
+		const id = moveTargetId.value;
+		moveOpen.value = false;
+		moveTargetId.value = null;
+		if (!id || !(await mailboxTransfer.confirmTarget(targetId))) return;
+		await mailboxTransfer.transfer([id], targetId, mode);
+	}
+	const movePicker = computed(() => ({
+		folders: movableFolders.value,
+		mailboxes: mailboxTransfer.targets.value,
+		canMove: !mailboxTransfer.isSourceConnected.value,
+	}));
+	const movePickerOn = { pick: moveFocusedTo, 'pick-mailbox': transferFocusedTo };
+
 	return {
 		snoozeOpen,
 		labelOpen,
 		moveOpen,
 		labels,
 		movableFolders,
+		movePicker,
+		movePickerOn,
 		openSnooze,
 		openLabel,
 		openMove,
 		snoozeFocused,
 		applyLabelToFocused,
 		moveFocusedTo,
+		transferFocusedTo,
 	};
 }

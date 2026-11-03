@@ -76,6 +76,11 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxLabels', () => ({ labels: ref([]), setOnMessage: vi.fn() }));
 	vi.stubGlobal('usePostboxFolders', () => ({ folders: ref([]) }));
 	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	// The move picker's other mailboxes: none here.
+	vi.stubGlobal('usePostboxMailboxTransfer', () => ({
+		targets: ref([]),
+		isSourceConnected: ref(false),
+	}));
 	// Inert: these cases never pick a row up.
 	vi.stubGlobal('usePostboxListRowDrag', () => ({ start: vi.fn() }));
 	vi.stubGlobal('nextUnreadIndex', nextUnreadIndex);

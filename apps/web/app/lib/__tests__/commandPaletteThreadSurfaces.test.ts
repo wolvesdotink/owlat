@@ -134,6 +134,26 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(byId(items, 'postbox:move')).toBeUndefined();
 	});
 
+	it('offers moving and copying to another mailbox as submenus that run the picked option', () => {
+		const run = vi.fn();
+		const items = postboxItems('', {
+			mailboxMoveOptions: () => [option('mailbox-move-team', run)],
+			mailboxCopyOptions: () => [option('mailbox-copy-team')],
+		});
+		const move = byId(items, 'postbox:thread-move-to-mailbox');
+		const copy = byId(items, 'postbox:thread-copy-to-mailbox');
+		expect([move?.label, copy?.label]).toEqual(['Move to mailbox…', 'Copy to mailbox…']);
+		expect(t(move!.argument!.promptKey)).toBe('Move to mailbox');
+		move?.argument?.options[0]?.run();
+		expect(run).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves out the mailbox verbs when there is no other mailbox to offer', () => {
+		const items = postboxItems('', { mailboxMoveOptions: () => [], mailboxCopyOptions: () => [] });
+		expect(byId(items, 'postbox:thread-move-to-mailbox')).toBeUndefined();
+		expect(byId(items, 'postbox:thread-copy-to-mailbox')).toBeUndefined();
+	});
+
 	it('offers the reply reminder by state: arm on our own last mail, cancel once armed', () => {
 		expect(byId(postboxItems(), 'postbox:thread-follow-up')).toBeUndefined();
 		const armable = byId(

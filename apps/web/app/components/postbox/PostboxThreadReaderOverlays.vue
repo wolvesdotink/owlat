@@ -3,6 +3,7 @@ import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import type { PostboxReaderMessage } from '~/composables/postbox/postboxReaderMessage';
 import type { usePostboxReaderActions } from '~/composables/postbox/usePostboxReaderActions';
 import type { usePostboxReaderAttachments } from '~/composables/postbox/usePostboxReaderAttachments';
+import type { usePostboxReaderCommands } from '~/composables/postbox/usePostboxReaderCommands';
 import type { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 
 /**
@@ -15,6 +16,8 @@ defineProps<{
 	mailboxId: string;
 	/** The reader's thread-level triage, which owns the pickers' state. */
 	actions: ReturnType<typeof usePostboxReaderActions>;
+	/** The move picker's "Other mailboxes" section. */
+	moves: ReturnType<typeof usePostboxReaderCommands>['moves'];
 	brief: ReturnType<typeof usePostboxReaderBrief>;
 	messages: PostboxReaderMessage[];
 	/** Shared mailboxes post the link to team rooms only. */
@@ -49,8 +52,11 @@ const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { 
 	<PostboxMovePickerDialog
 		:open="actions.moveDialogOpen.value"
 		:folders="actions.movableFolders.value"
+		:mailboxes="moves.targets.value"
+		:can-move="moves.canMove.value"
 		@update:open="actions.moveDialogOpen.value = $event"
 		@pick="actions.moveOpenMessageTo"
+		@pick-mailbox="moves.pick"
 	/>
 
 	<!-- "Full brief": the whole brief card beside the conversation. -->

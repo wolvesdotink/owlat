@@ -16,6 +16,7 @@ import { getFunctionName } from 'convex/server';
 import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalStorage } from '~/composables/useLocalStorage';
 import { POSTBOX_WHY_HERE_KEY } from '~/composables/postbox/usePostboxWhyHere';
 import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFilter';
 import { briefView, item } from '~/utils/__tests__/threadBriefFixtures';
@@ -97,6 +98,7 @@ beforeEach(() => {
 		useId,
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
+		useLocalStorage,
 		usePaginatedQuery: () => paginatedResult([]),
 		// The first-open read (lazy.ensure) and mark-seen answer like the server.
 		useBackendOperation: () => ({

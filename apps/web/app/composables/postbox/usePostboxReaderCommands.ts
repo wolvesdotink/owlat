@@ -1,10 +1,12 @@
 /**
  * The verbs PostboxThreadReader offers beyond its buttons: Translate, Copy link
- * and Share in chat, Find in conversation (⌘F), the ⌘K surface with every verb
- * the reader has, and the single-key reading shortcuts. All of them act on
- * THIS conversation, and only the reader on top answers the shortcuts.
+ * and Share in chat, Find in conversation (⌘F), moving the open message to
+ * another mailbox, the ⌘K surface with every verb the reader has, and the
+ * single-key reading shortcuts. All of them act on THIS conversation, and only
+ * the reader on top answers the shortcuts.
  */
 import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
+import type { Id } from '@owlat/api/dataModel';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { useConversationLink } from '~/composables/useConversationLink';
@@ -15,6 +17,7 @@ import type { PostboxReaderMessage, PostboxReaderThread } from './postboxReaderM
 import type { usePostboxReaderActions } from './usePostboxReaderActions';
 import type { usePostboxThreadPages } from './usePostboxThreadPages';
 import { usePostboxThreadFind, type PostboxFindSeed } from './usePostboxThreadFind';
+import type { PostboxTransferMode } from './usePostboxMailboxTransfer';
 
 export function usePostboxReaderCommands(source: {
 	message: () => PostboxReaderMessage;
@@ -77,6 +80,26 @@ export function usePostboxReaderCommands(source: {
 		answersShortcut: () => threadSurface.isTopmost(),
 	});
 
+	// "Other mailboxes" (the move picker and ⌘K): the open message, like the folder
+	// move beside it. A move leaves the conversation, so the reader moves on.
+	const transfer = usePostboxMailboxTransfer(() => source.message().mailboxId);
+	async function transferOpenMessage(targetId: Id<'mailboxes'>, mode: PostboxTransferMode) {
+		actions.moveDialogOpen.value = false;
+		if (!(await transfer.confirmTarget(targetId))) return;
+		const run = (id: Id<'mailMessages'>) => transfer.transfer([id], targetId, mode);
+		if (mode === 'copy') await run(source.message()._id as Id<'mailMessages'>);
+		else
+			await actions.runAndAdvance(async (id) =>
+				(await run(id)) ? { ok: true, result: null } : { ok: false }
+			);
+	}
+	const moves = {
+		targets: transfer.targets,
+		canMove: computed(() => !transfer.isSourceConnected.value),
+		pick: (targetId: Id<'mailboxes'>, mode: PostboxTransferMode) =>
+			void transferOpenMessage(targetId, mode),
+	};
+
 	// ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 	// actions directly, so it acts on THIS conversation.
 	const senderZoom = useSenderZoom();
@@ -108,6 +131,9 @@ export function usePostboxReaderCommands(source: {
 		snoozeUntilReply: actions.snoozeOpenMessageUntilReply,
 		applyLabel: (labelId) => void actions.applyLabelToOpenMessage(labelId),
 		moveTo: (folderId) => void actions.moveOpenMessageTo(folderId),
+		mailboxes: () => moves.targets.value,
+		canMoveToMailbox: () => moves.canMove.value,
+		transferTo: moves.pick,
 		toggleMute: actions.toggleOpenThreadMute,
 		toggleAlert: actions.toggleOpenThreadAlert,
 		togglePin: actions.toggleOpenThreadPin,
@@ -128,5 +154,5 @@ export function usePostboxReaderCommands(source: {
 		},
 	});
 
-	return { translation, find, shareTarget, copyConversationLink, conversationLinkOf };
+	return { translation, find, shareTarget, copyConversationLink, conversationLinkOf, moves };
 }

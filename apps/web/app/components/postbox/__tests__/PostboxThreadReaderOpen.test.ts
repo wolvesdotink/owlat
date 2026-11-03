@@ -15,6 +15,7 @@ import { getFunctionName } from 'convex/server';
 import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalStorage } from '~/composables/useLocalStorage';
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
@@ -61,6 +62,7 @@ beforeEach(() => {
 		useId,
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
+		useLocalStorage,
 		usePaginatedQuery: () => paginatedResult([]),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
 		registerCommandPaletteProvider: vi.fn(),

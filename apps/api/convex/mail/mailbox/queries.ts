@@ -327,6 +327,8 @@ export const accessible = publicQuery({
 			label: string;
 			address: string;
 			scope: 'personal' | 'shared';
+			/** Backed by a connected IMAP account rather than hosted here. */
+			isConnected: boolean;
 			colorSlot: number | null;
 			unread: number;
 		}> = [];
@@ -342,6 +344,7 @@ export const accessible = publicQuery({
 				label: displayName && displayName.length > 0 ? displayName : mb.address,
 				address: mb.address,
 				scope: mb.scope === 'shared' ? 'shared' : 'personal',
+				isConnected: mb.kind === 'external',
 				colorSlot: mb.colorSlot ?? null,
 				unread: inbox?.unseenCount ?? 0,
 			});
