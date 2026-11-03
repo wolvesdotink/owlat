@@ -66,6 +66,8 @@ export interface PostboxThreadCommandSources {
 	find?: () => void;
 	/** The open message's sender zoom in percent; null when its From holds no address. */
 	senderZoom: () => number | null;
+	/** The chat layout's switch, while the thread offers one. */
+	chatView?: () => { isOn: () => boolean; toggle: () => void } | null;
 }
 
 /**
@@ -199,6 +201,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					onFind: sources.find,
 					senderZoom: sources.senderZoom,
 					onZoom: sources.runAction,
+					chatView: sources.chatView?.() ?? null,
 				},
 				query,
 				mode

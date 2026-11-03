@@ -57,6 +57,15 @@ describe('resolvePostboxShortcut', () => {
 		applyShortcutPreferences('owlat');
 	});
 
+	it('maps ⇧C to the chat layout in every map, apart from the global compose key', () => {
+		for (const preset of ['owlat', 'gmail', 'superhuman', 'outlook'] as const) {
+			applyShortcutPreferences(preset);
+			expect(resolvePostboxShortcut('C')).toBe('chatView');
+			expect(resolvePostboxShortcut('c')).toBeNull();
+		}
+		applyShortcutPreferences('owlat');
+	});
+
 	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
 		expect(resolvePostboxShortcut('n')).toBe('nextUnread');
 		expect(resolvePostboxShortcut('p')).toBe('previousUnread');

@@ -14,7 +14,12 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import type { BriefCompleteness, InterpretMode, ItemStatus } from '@owlat/shared/threadBrief';
+import type {
+	BriefCompleteness,
+	InterpretMode,
+	ItemStatus,
+	ThreadView,
+} from '@owlat/shared/threadBrief';
 import { compareForYou, itemStateKey, primaryReaction } from '@owlat/shared/threadBriefRules';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import type {
@@ -57,8 +62,8 @@ export interface ProjectionInput {
 	deferredSources?: number;
 	/** The thread needs no reply: payment items offer "Mark paid" first. */
 	isNoReplyNeeded?: boolean;
-	/** The viewer's per-thread Overview / Conversation choice (brief mode). */
-	viewOverride?: 'overview' | 'conversation';
+	/** The viewer's per-thread view choice (brief mode). */
+	viewOverride?: ThreadView;
 	/** The brief's maintained item counters (accurate past one page). */
 	itemCounts?: { us: number; them: number; unclear: number; closed: number; hidden: number };
 	/** Paging of the item lists. */

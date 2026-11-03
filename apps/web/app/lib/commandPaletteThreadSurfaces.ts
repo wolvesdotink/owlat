@@ -127,6 +127,8 @@ export interface ThreadSurfaceDeps {
 	/** The open message's sender zoom in percent; null when its From holds no address. */
 	senderZoom: () => number | null;
 	onZoom: (action: SenderZoomAction) => void;
+	/** The chat layout's switch; absent where the thread has none (a team inbox). */
+	chatView?: { isOn: () => boolean; toggle: () => void } | null;
 }
 
 const ZOOM_VERBS: ReadonlyArray<{ action: SenderZoomAction; slug: string; icon: string }> = [
@@ -330,6 +332,16 @@ export function buildThreadSurfaceGroups(
 		});
 	}
 	items.push(...zoomItems(deps));
+	if (deps.chatView) {
+		items.push({
+			id: 'postbox:thread-chat-view',
+			label: t(deps.chatView.isOn() ? `${P}.showConversation` : `${P}.showChat`),
+			...about,
+			icon: 'lucide:message-circle',
+			shortcutId: 'postbox.chatView',
+			run: deps.chatView.toggle,
+		});
+	}
 	if (deps.canTranslate()) {
 		items.push({
 			id: 'postbox:thread-translate',

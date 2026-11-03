@@ -411,6 +411,14 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		labelKey: L('moveToFolder'),
 		groupKey: G.organize,
 	},
+	{
+		// The open conversation only: the list has no chat layout.
+		id: 'postbox.chatView',
+		scope: 'postbox',
+		keys: ['C'],
+		labelKey: L('chatView'),
+		groupKey: G.organize,
+	},
 
 	// --- Postbox compose ------------------------------------------------------
 	{ id: 'postbox.reply', scope: 'postbox', keys: ['r'], labelKey: L('reply'), groupKey: G.compose },

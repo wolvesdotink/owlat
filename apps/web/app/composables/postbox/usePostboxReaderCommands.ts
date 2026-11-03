@@ -1,9 +1,9 @@
 /**
  * The verbs PostboxThreadReader offers beyond its buttons: Translate, Copy link
  * and Share in chat, Find in conversation (⌘F), moving the open message to
- * another mailbox, the ⌘K surface with every verb the reader has, and the
- * single-key reading shortcuts. All of them act on THIS conversation, and only
- * the reader on top answers the shortcuts.
+ * another mailbox, the chat layout, the ⌘K surface with every verb the reader
+ * has, and the single-key reading shortcuts. All of them act on THIS
+ * conversation, and only the reader on top answers the shortcuts.
  */
 import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
@@ -18,6 +18,8 @@ import type { usePostboxReaderActions } from './usePostboxReaderActions';
 import type { usePostboxThreadPages } from './usePostboxThreadPages';
 import { usePostboxThreadFind, type PostboxFindSeed } from './usePostboxThreadFind';
 import type { PostboxTransferMode } from './usePostboxMailboxTransfer';
+import type { usePostboxReaderAttachments } from './usePostboxReaderAttachments';
+import { usePostboxThreadChat } from './usePostboxThreadChat';
 
 export function usePostboxReaderCommands(source: {
 	message: () => PostboxReaderMessage;
@@ -36,6 +38,11 @@ export function usePostboxReaderCommands(source: {
 	hideRawBody: (msg: { _id: string }) => boolean;
 	aiEnabled: () => boolean;
 	actions: ReturnType<typeof usePostboxReaderActions>;
+	attachments: ReturnType<typeof usePostboxReaderAttachments>;
+	/** The mailbox is a team inbox (no chat layout). */
+	isShared: () => boolean;
+	/** A cited quote is marked in this message, so its card must show. */
+	isCited: (messageId: string) => boolean;
 }) {
 	const { actions } = source;
 
@@ -99,6 +106,25 @@ export function usePostboxReaderCommands(source: {
 		pick: (targetId: Id<'mailboxes'>, mode: PostboxTransferMode) =>
 			void transferOpenMessage(targetId, mode),
 	};
+	// The chat layout. A find match or a cited quote is marked in the card, so
+	// a message holding one shows as its card.
+	const chat = usePostboxThreadChat({
+		threadId: () => source.readerThread.value?._id ?? source.message().threadId,
+		isShared: source.isShared,
+		ownAddresses: source.ownAddresses,
+		expanded: source.expanded,
+		toggleExpanded: source.toggleExpanded,
+		isPlain: (msg) =>
+			source.secureClass(msg) === 'none' && !msg.inboundSignatureInfo && !source.hideRawBody(msg),
+		needsCard: (messageId) =>
+			source.isCited(messageId) || (find.hasQuery.value && find.matchCountOf(messageId) > 0),
+		previewAttachment: source.attachments.openAttachmentPreview,
+		downloadAttachment: (messageId, att) =>
+			void source.attachments.handleAttachmentDownload(messageId, att),
+	});
+	// The shortcut's action lives here, not among the triage actions.
+	const runAction = (action: string) =>
+		action === 'chatView' ? void chat.toggle() : actions.runReaderAction(action);
 
 	// ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 	// actions directly, so it acts on THIS conversation.
@@ -126,7 +152,7 @@ export function usePostboxReaderCommands(source: {
 			!source.hideRawBody(translationTarget.value),
 		labels: () => actions.labels.value,
 		folders: () => actions.movableFolders.value,
-		runAction: actions.runReaderAction,
+		runAction,
 		snooze: (until) => actions.snoozeOpenMessage(until, 'thread'),
 		snoozeUntilReply: actions.snoozeOpenMessageUntilReply,
 		applyLabel: (labelId) => void actions.applyLabelToOpenMessage(labelId),
@@ -143,16 +169,20 @@ export function usePostboxReaderCommands(source: {
 			const from = source.message().fromAddress;
 			return postboxSenderKey(from) ? senderZoom.zoomOf(from) : null;
 		},
+		chatView: () =>
+			chat.isAvailable.value
+				? { isOn: () => chat.isOn.value, toggle: () => void chat.toggle() }
+				: null,
 	});
 
 	// Single-key shortcuts while reading and the Cmd-K palette bridge, both
 	// dispatching into runReaderAction (see utils/postboxShortcuts.ts).
 	usePostboxReaderShortcuts({
-		runAction: actions.runReaderAction,
+		runAction,
 		applyLabel: (labelId) => {
 			void actions.applyLabelToOpenMessage(labelId);
 		},
 	});
 
-	return { translation, find, shareTarget, copyConversationLink, conversationLinkOf, moves };
+	return { translation, find, chat, shareTarget, copyConversationLink, conversationLinkOf, moves };
 }

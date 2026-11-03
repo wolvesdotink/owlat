@@ -5697,6 +5697,18 @@
 				"loadingEarlier": "Loading earlier messages…",
 				"rowCount": "{count} match | {count} matches"
 			},
+			"threadChat": {
+				"toggle": "Chat layout",
+				"showChat": "Show as chat",
+				"showConversation": "Show as conversation",
+				"operation": "Switch the conversation layout",
+				"you": "You",
+				"withheld": "Signed or encrypted. Open the full message to read it.",
+				"noNewText": "No new text in this message.",
+				"attachments": "Attachments",
+				"showFull": "Show full message",
+				"backToChat": "Back to chat"
+			},
 			"postboxThreadEarlier": {
 				"load": "Load earlier messages",
 				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
@@ -17286,7 +17298,8 @@
 				"skipCard": "Skip for now",
 				"clearSelection": "Clear the selection",
 				"resolveThread": "Resolve the thread",
-				"assignThread": "Assign the thread to…"
+				"assignThread": "Assign the thread to…",
+				"chatView": "Chat layout"
 			}
 		},
 		"signatureBadge": {
@@ -18625,6 +18638,8 @@
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
 				"find": "Find in conversation",
+				"showChat": "Show as chat",
+				"showConversation": "Show as conversation",
 				"showOriginal": "Download original (.eml)",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation",
