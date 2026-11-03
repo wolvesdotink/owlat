@@ -1,7 +1,7 @@
 /**
- * How an interpretation run that threw is recorded (split out of
- * `./runOnce.ts` to hold it under the size cap): which error code the failed
- * extraction carries, and whether the attempt counts against its retries.
+ * How an interpretation run that threw is recorded (`./runOnce.ts`): which
+ * error code the failed extraction carries, and whether the attempt counts
+ * against its retries.
  */
 
 import { admissionRefusalOf } from '../../lib/llm/admissionPort';

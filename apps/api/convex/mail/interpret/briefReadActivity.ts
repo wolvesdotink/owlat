@@ -1,9 +1,8 @@
 /**
- * The activity tail behind `brief.ts get` and the team stream (split out of
- * `./briefRead.ts` at the file-size cap): the newest rows, their sealed
- * payloads opened, the rows a reader never sees dropped, and "since you last
- * looked". No authorization here: the caller has decided the viewer may read
- * the thread.
+ * The activity tail behind `brief.ts get` and the team stream: the newest
+ * rows, their sealed payloads opened, the rows a reader never sees dropped,
+ * and "since you last looked". No authorization here: the caller has decided
+ * the viewer may read the thread.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
