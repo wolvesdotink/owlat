@@ -67,7 +67,7 @@ function contentWrites(): unknown[] {
 beforeEach(async () => {
 	vi.resetModules();
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop }));
-	vi.stubGlobal('usePostboxSettings', () => ({ hidePreview }));
+	vi.stubGlobal('usePostboxSettings', () => ({ hidePreview, badgeNonPeople: ref(true) }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({ settings, isReady }));
 	isDesktop.value = true;
 	data.value = undefined;

@@ -17,6 +17,7 @@ function message(id: string, extra: Partial<UnreadPeekMessage> = {}): UnreadPeek
 const base: TrayInput = {
 	count: 2,
 	messages: [message('a'), message('b')],
+	badgeNonPeople: true,
 	hidePreview: false,
 	notificationsEnabled: true,
 	workspaceId: 'ws-1',
@@ -47,6 +48,19 @@ describe('trayContent', () => {
 		const content = trayContent({ ...base, hidePreview: true });
 		expect(content.unread).toBe(2);
 		expect(content.messages).toEqual([]);
+	});
+
+	it('lists only the mail a people-only count covers', () => {
+		const content = trayContent({
+			...base,
+			count: 1,
+			badgeNonPeople: false,
+			messages: [
+				message('news', { category: 'newsletter' }),
+				message('ada', { category: 'person' }),
+			],
+		});
+		expect(content.messages.map((m) => m.messageId)).toEqual(['ada']);
 	});
 
 	it('lists nothing before the first count arrives', () => {

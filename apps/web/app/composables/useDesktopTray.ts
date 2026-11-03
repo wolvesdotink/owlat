@@ -21,7 +21,7 @@ let owners = 0;
  */
 export function useDesktopTray(unread: UnreadBadge) {
 	const { isDesktop } = useDesktopContext();
-	const { hidePreview } = usePostboxSettings();
+	const { hidePreview, badgeNonPeople } = usePostboxSettings();
 	const { settings, isReady } = useDesktopAppSettings();
 
 	// One pending import shared by both watchers: a settings change wakes them
@@ -63,6 +63,7 @@ export function useDesktopTray(unread: UnreadBadge) {
 			return trayContent({
 				count: unread.count.value,
 				messages: (unread.data.value?.messages ?? []) as UnreadPeekMessage[],
+				badgeNonPeople: badgeNonPeople.value,
 				hidePreview: hidePreview.value,
 				notificationsEnabled: settings.value.global.notificationsEnabled,
 				workspaceId: getActiveWorkspace()?.id ?? null,

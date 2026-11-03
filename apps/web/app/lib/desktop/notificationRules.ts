@@ -156,6 +156,14 @@ export function stepQuietHours(
 }
 
 /**
+ * Whether a message counts toward a people-only badge. Mail whose category is
+ * absent counts, so the badge never under-reports un-classified new mail.
+ */
+export function countsInPeopleBadge(message: UnreadPeekMessage): boolean {
+	return message.category === undefined || message.category === 'person';
+}
+
+/**
  * The badge value to display. Defaults to the exact server `total`. When the
  * user opts non-`person` mail OUT of the badge (`badgeNonPeople === false`),
  * fall back to counting only the `person` messages in the bounded peek window
@@ -168,7 +176,7 @@ export function badgeCount(
 	badgeNonPeople: boolean
 ): number {
 	if (badgeNonPeople) return total;
-	const people = messages.filter((m) => m.category === undefined || m.category === 'person').length;
+	const people = messages.filter(countsInPeopleBadge).length;
 	return Math.min(people, total);
 }
 
