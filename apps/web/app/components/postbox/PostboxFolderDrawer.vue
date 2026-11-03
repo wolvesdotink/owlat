@@ -4,10 +4,11 @@ import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 
 // Pane 1's responsive shell: a static column at lg+, an off-canvas drawer below
 // it (same pattern as the dashboard shell's mobile sidebar). The rail itself is
-// unchanged — this only decides where it sits.
+// unchanged — this only decides where it sits. The default slot replaces the
+// mailbox's folder rail (All inboxes puts its inbox list there).
 const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
-	folderRole: string;
+	mailboxId?: Id<'mailboxes'>;
+	folderRole?: string;
 	folderId?: Id<'mailFolders'>;
 	open: boolean;
 	/** Zen mode: no static column at lg+; below lg the drawer still opens. */
@@ -63,12 +64,15 @@ useEscapeLayer(
 		     is no adjacent content to make room for, so the saved collapsed
 		     preference (a desktop space tradeoff) must not turn it into an icon
 		     strip. At lg+ the drawer is a static column and the preference wins. -->
-			<PostboxFolderRail
-				:mailbox-id="mailboxId"
-				:folder-role="folderRole"
-				:folder-id="folderId"
-				:force-expanded="true"
-			/>
+			<slot>
+				<PostboxFolderRail
+					v-if="mailboxId"
+					:mailbox-id="mailboxId"
+					:folder-role="folderRole ?? ''"
+					:folder-id="folderId"
+					:force-expanded="true"
+				/>
+			</slot>
 		</div>
 	</DashboardNavigationPortal>
 </template>

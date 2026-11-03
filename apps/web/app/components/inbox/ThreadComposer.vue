@@ -367,7 +367,6 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 				</p>
 
 				<slot name="above-editor" :composer="answer" />
-
 				<!-- Plain text, escaped into HTML on the way out; `;` opens saved replies. -->
 				<div class="relative flex min-h-48 flex-1 flex-col">
 					<textarea
@@ -430,6 +429,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					:preflight="preflight"
 					:last-saved-label="gaps.note.value ?? ''"
 					:saved-replies="savedReplies.footer"
+					:dictation-target="textarea"
 					@send="send"
 				>
 					<template #send-hint>

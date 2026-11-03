@@ -5,6 +5,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailDailyBriefEmailValidator,
 	mailDensityValidator,
+	mailUnreadStyleValidator,
 	mailInboxModeValidator,
 	mailListSizeValidator,
 	mailMarkReadPolicyValidator,
@@ -64,13 +65,17 @@ export const mailSettingsTables = {
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
+		// How an unread list row stands out: 'weight', 'dot', 'dot-weight' or
+		// 'tint'. Optional so existing rows read as undefined; the list defaults it
+		// to 'dot-weight'.
+		unreadStyle: v.optional(mailUnreadStyleValidator),
 		// Inbox list view mode: 'flat' (single message list), 'conversations'
 		// (thread-grouped), 'categories' (smart-inbox sections), 'bundled' (the
 		// flat feed with consecutive low-signal runs folded into one row per
 		// category) or 'sections' (the split inbox — the sections a user's
 		// `pinToSection` filter rules name). Inbox-only — other folders always
 		// render flat. Optional so existing rows read as undefined; the reader
-		// defaults it to 'flat'.
+		// defaults it to 'conversations', so only an explicit 'flat' is flat.
 		viewMode: v.optional(mailViewModeValidator),
 		// Reading-pane layout: 'right' (the reader beside the list — the geometry
 		// that shipped before this control existed), 'bottom' (a full-width list
@@ -113,6 +118,10 @@ export const mailSettingsTables = {
 		// which always asks first. Tracking pixels stay stripped either way.
 		// Optional so existing rows read as undefined; the reader defaults it ON.
 		isAutoLoadImagesOn: v.optional(v.boolean()),
+		// Show brand logos in place of initials for senders that pass DMARC
+		// (`mail/senderLogos/`). Optional so existing rows read as undefined; the
+		// list and reader reads default it ON.
+		isSenderLogosOn: v.optional(v.boolean()),
 		// Undo-send window, in seconds: how long a sent message waits in
 		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
 		// show no undo toast). Optional so existing rows read as undefined; the

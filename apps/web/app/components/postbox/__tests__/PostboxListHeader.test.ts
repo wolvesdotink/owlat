@@ -45,6 +45,11 @@ const displayMenuStub = {
 	template:
 		'<div class="display-menu" :data-view-mode="viewMode" :data-sort="sortOrder" :data-view-modes="viewModeOptions ? \'yes\' : \'no\'" />',
 };
+const folderActionsStub = {
+	props: ['mailboxId', 'folderRole', 'folderId'],
+	template:
+		'<div class="folder-actions" :data-mailbox="mailboxId" :data-role="folderRole" :data-folder="folderId" />',
+};
 const inboxModeToggleStub = {
 	props: ['mode'],
 	emits: ['select'],
@@ -60,6 +65,7 @@ function mountHeader(
 		sortOrder?: string;
 		inboxMode?: string;
 		mailboxId?: string;
+		folderMailboxId?: string;
 		pageIds?: string[];
 	} = {}
 ) {
@@ -74,6 +80,7 @@ function mountHeader(
 			sortOrder: props.sortOrder,
 			inboxMode: props.inboxMode ?? 'browse',
 			mailboxId: props.mailboxId,
+			folderMailboxId: props.folderMailboxId,
 			pageIds: props.pageIds,
 		},
 		global: {
@@ -81,6 +88,7 @@ function mountHeader(
 			components: {
 				PostboxListDisplayMenu: displayMenuStub,
 				PostboxInboxModeToggle: inboxModeToggleStub,
+				PostboxFolderActionsMenu: folderActionsStub,
 			},
 		},
 	});
@@ -196,5 +204,21 @@ describe('PostboxListHeader select-all', () => {
 		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
 		await selectAllBox(w).trigger('click');
 		expect(w.text()).not.toContain('Select everything in this folder');
+	});
+});
+
+describe('PostboxListHeader folder menu', () => {
+	it('hands the folder on screen to the folder menu, in any renderer', () => {
+		const w = mountHeader({ folderRole: 'trash', folderMailboxId: 'mbx1' });
+		const menu = w.get('.folder-actions');
+		expect(menu.attributes('data-mailbox')).toBe('mbx1');
+		expect(menu.attributes('data-role')).toBe('trash');
+
+		const custom = mountHeader({ folderRole: '', folderId: 'f-news', folderMailboxId: 'mbx1' });
+		expect(custom.get('.folder-actions').attributes('data-folder')).toBe('f-news');
+	});
+
+	it('has no folder menu without a mailbox', () => {
+		expect(mountHeader().find('.folder-actions').exists()).toBe(false);
 	});
 });

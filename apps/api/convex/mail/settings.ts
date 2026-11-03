@@ -24,6 +24,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailUnreadStyleValidator,
 	mailViewModeValidator,
 	mailReadingPaneValidator,
 	mailListSizeValidator,
@@ -64,6 +65,7 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			afterReply: row.afterReply,
 			density: row.density,
+			unreadStyle: row.unreadStyle,
 			viewMode: row.viewMode,
 			readingPane: row.readingPane,
 			listWidth: row.listWidth,
@@ -75,6 +77,7 @@ export const get = publicQuery({
 			isAssignmentSoundOn: row.isAssignmentSoundOn,
 			isQuestionSoundOn: row.isQuestionSoundOn,
 			isAutoLoadImagesOn: row.isAutoLoadImagesOn,
+			isSenderLogosOn: row.isSenderLogosOn,
 			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
@@ -109,6 +112,7 @@ export const update = postboxMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		afterReply: v.optional(mailAfterReplyValidator),
 		density: v.optional(mailDensityValidator),
+		unreadStyle: v.optional(mailUnreadStyleValidator),
 		viewMode: v.optional(mailViewModeValidator),
 		readingPane: v.optional(mailReadingPaneValidator),
 		listWidth: v.optional(mailListSizeValidator),
@@ -118,6 +122,8 @@ export const update = postboxMutation({
 		isSendSoundOn: v.optional(v.boolean()),
 		// Remote images on open, outside suspicious mail: absent = on.
 		isAutoLoadImagesOn: v.optional(v.boolean()),
+		// Brand logos for senders that pass DMARC: absent = on.
+		isSenderLogosOn: v.optional(v.boolean()),
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
@@ -154,6 +160,7 @@ export const update = postboxMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			afterReply?: (typeof args)['afterReply'];
 			density?: (typeof args)['density'];
+			unreadStyle?: (typeof args)['unreadStyle'];
 			viewMode?: (typeof args)['viewMode'];
 			readingPane?: (typeof args)['readingPane'];
 			listWidth?: number;
@@ -162,6 +169,7 @@ export const update = postboxMutation({
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
 			isAutoLoadImagesOn?: boolean;
+			isSenderLogosOn?: boolean;
 			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
@@ -188,6 +196,7 @@ export const update = postboxMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.afterReply !== undefined) patch.afterReply = args.afterReply;
 		if (args.density !== undefined) patch.density = args.density;
+		if (args.unreadStyle !== undefined) patch.unreadStyle = args.unreadStyle;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;
 		if (args.listWidth !== undefined) patch.listWidth = args.listWidth;
@@ -196,6 +205,7 @@ export const update = postboxMutation({
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.isAutoLoadImagesOn !== undefined) patch.isAutoLoadImagesOn = args.isAutoLoadImagesOn;
+		if (args.isSenderLogosOn !== undefined) patch.isSenderLogosOn = args.isSenderLogosOn;
 		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;

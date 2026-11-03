@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { CheckIcon, CloseIcon, CopyIcon, PlusIcon, ShareIcon } from '@coolicons/vue';
+import { CheckIcon, CloseIcon, CopyIcon, PlusIcon, ShareAltIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
@@ -116,7 +116,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 			<UiTooltip :text="t('components.shareLinksPopover.triggerTitle')">
 				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
 					<template #iconLeft>
-						<ShareIcon class="w-4 h-4" />
+						<ShareAltIcon class="w-4 h-4" />
 					</template>
 					<!-- Icon-only below 2xl, where the builder toolbar is short of room;
 					     the label stays the accessible name. -->

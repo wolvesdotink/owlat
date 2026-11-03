@@ -1,6 +1,7 @@
 /**
  * Pure group builders for the OPEN CONVERSATION's palette verbs: the Postbox
- * reader's and the Team Inbox thread page's.
+ * reader's here, the Team Inbox thread page's in `commandPaletteTeamThreadSurfaces`
+ * on the helpers this module exports.
  *
  * Everything the toolbar, the ⋯ menu and the single-key shortcuts can do to the
  * conversation on screen is one ⌘K away, and a verb that needs a parameter (when
@@ -23,33 +24,36 @@ import {
 	type PaletteMode,
 	filterItems,
 } from './commandPalette';
+import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
 import {
 	AlarmIcon,
 	AlarmOffIcon,
 	ArchiveIcon,
 	BellIcon,
 	BellOffIcon,
+	ChatCircleIcon,
 	ChatShareIcon,
-	CircleCheckIcon,
 	ClockIcon,
+	CopyIcon,
 	FileCodeIcon,
-	FlagIcon,
 	FolderDownloadIcon,
 	ForwardIcon,
+	ImageIcon,
+	InboxIcon,
 	LinkIcon,
 	MailIcon,
-	NoteIcon,
 	PinIcon,
 	PinOffIcon,
 	ReplyIcon,
-	RotateLeftIcon,
 	SearchIcon,
 	TagIcon,
 	TranslateIcon,
-	UserPlusCornerIcon,
+	ZoomInIcon,
+	ZoomOutIcon,
+	type IconComponent,
 } from '@coolicons/vue';
 
-type Translate = (key: string, params?: Record<string, unknown>) => string;
+export type Translate = (key: string, params?: Record<string, unknown>) => string;
 
 /**
  * The unprefixed idle palette shows the first few verbs, beside the rest of the
@@ -58,7 +62,7 @@ type Translate = (key: string, params?: Record<string, unknown>) => string;
 const IDLE_CAP = 6;
 const FULL_CAP = 20;
 
-function threadGroup(
+export function threadGroup(
 	key: string,
 	heading: string,
 	items: PaletteItem[],
@@ -80,7 +84,7 @@ function threadGroup(
 }
 
 /** A verb that asks for its parameter first. `run` never fires for it. */
-function withArgument(
+export function withArgument(
 	item: Omit<PaletteItem, 'run' | 'argument'>,
 	promptKey: string,
 	options: PaletteArgumentOption[]
@@ -128,6 +132,9 @@ export interface ThreadSurfaceDeps {
 	snoozeOptions: () => PaletteArgumentOption[];
 	labelOptions: () => PaletteArgumentOption[];
 	folderOptions: () => PaletteArgumentOption[];
+	/** The caller's other mailboxes; empty leaves the verb out. */
+	mailboxMoveOptions?: () => PaletteArgumentOption[];
+	mailboxCopyOptions?: () => PaletteArgumentOption[];
 	followUpOptions: () => PaletteArgumentOption[];
 	onReply: () => void;
 	onArchive: () => void;
@@ -138,6 +145,8 @@ export interface ThreadSurfaceDeps {
 	onTogglePin: () => void;
 	onCancelFollowUp: () => void;
 	onShowOriginal: () => void;
+	/** Opens "Share as image…" for the open message; absent where it cannot be drawn. */
+	onShareAsImage?: () => void;
 	onTranslate: () => void;
 	onCopyLink: () => void;
 	/** Chat is on: the conversation's link can be posted to a room. */
@@ -145,6 +154,32 @@ export interface ThreadSurfaceDeps {
 	onShareInChat: () => void;
 	/** Opens find in conversation; absent where the reader has none. */
 	onFind?: () => void;
+	/** The open message's sender zoom in percent; null when its From holds no address. */
+	senderZoom: () => number | null;
+	onZoom: (action: SenderZoomAction) => void;
+	/** The chat layout's switch; absent where the thread has none (a team inbox). */
+	chatView?: { isOn: () => boolean; toggle: () => void } | null;
+}
+
+const ZOOM_VERBS: ReadonlyArray<{ action: SenderZoomAction; slug: string; icon: IconComponent }> = [
+	{ action: 'zoomIn', slug: 'zoom-in', icon: ZoomInIcon },
+	{ action: 'zoomOut', slug: 'zoom-out', icon: ZoomOutIcon },
+	{ action: 'zoomReset', slug: 'zoom-reset', icon: SearchIcon },
+];
+
+/** Zoom in, out and back to 100% for the open message's sender, each while it can move. */
+function zoomItems(deps: ThreadSurfaceDeps): PaletteItem[] {
+	const percent = deps.senderZoom();
+	if (percent === null) return [];
+	return ZOOM_VERBS.filter(({ action }) => !senderZoomAtLimit(percent, action)).map(
+		({ action, slug, icon }) => ({
+			id: `postbox:thread-${slug}`,
+			label: deps.t(`${P}.${action}`, { percent }),
+			icon,
+			shortcutId: `postbox.${action}`,
+			run: () => deps.onZoom(action),
+		})
+	);
 }
 
 const P = 'shared.commandPaletteSurfaces.thread';
@@ -152,7 +187,7 @@ const P = 'shared.commandPaletteSurfaces.thread';
 const L = 'shared.conversationLink';
 
 /** The two link verbs every open conversation offers, Postbox or Team Inbox. */
-function linkItems(
+export function linkItems(
 	idPrefix: string,
 	deps: {
 		t: Translate;
@@ -271,6 +306,34 @@ export function buildThreadSurfaceGroups(
 			)
 		);
 	}
+	const mailboxMoves = deps.mailboxMoveOptions?.() ?? [];
+	if (mailboxMoves.length > 0) {
+		items.push(
+			withArgument(
+				{
+					id: 'postbox:thread-move-to-mailbox',
+					label: t(`${P}.moveToMailbox`),
+					icon: InboxIcon,
+				},
+				`${P}.moveToMailboxPrompt`,
+				mailboxMoves
+			)
+		);
+	}
+	const mailboxCopies = deps.mailboxCopyOptions?.() ?? [];
+	if (mailboxCopies.length > 0) {
+		items.push(
+			withArgument(
+				{
+					id: 'postbox:thread-copy-to-mailbox',
+					label: t(`${P}.copyToMailbox`),
+					icon: CopyIcon,
+				},
+				`${P}.copyToMailboxPrompt`,
+				mailboxCopies
+			)
+		);
+	}
 	const followUp = deps.followUp();
 	if (followUp === 'armable') {
 		items.push(
@@ -298,6 +361,17 @@ export function buildThreadSurfaceGroups(
 			run: deps.onFind,
 		});
 	}
+	items.push(...zoomItems(deps));
+	if (deps.chatView) {
+		items.push({
+			id: 'postbox:thread-chat-view',
+			label: t(deps.chatView.isOn() ? `${P}.showConversation` : `${P}.showChat`),
+			...about,
+			icon: ChatCircleIcon,
+			shortcutId: 'postbox.chatView',
+			run: deps.chatView.toggle,
+		});
+	}
 	if (deps.canTranslate()) {
 		items.push({
 			id: 'postbox:thread-translate',
@@ -315,116 +389,15 @@ export function buildThreadSurfaceGroups(
 		},
 		...linkItems('postbox:thread', deps)
 	);
+	if (deps.onShareAsImage) {
+		items.push({
+			id: 'postbox:thread-share-image',
+			label: t('components.postbox.postboxShareImage.menuItem'),
+			icon: ImageIcon,
+			run: deps.onShareAsImage,
+		});
+	}
 	return threadGroup(POSTBOX_THREAD_COMMAND_GROUP_KEY, t(`${P}.heading`), items, query, mode);
 }
 
 // ── Team Inbox thread ───────────────────────────────────────────────────────
-
-/** Registry id of the Team Inbox thread provider (one thread page at a time). */
-export const TEAM_THREAD_COMMAND_PROVIDER_ID = 'surface:team-thread';
-
-/** Consulted before the other external providers: the thread is what is on screen. */
-export const TEAM_THREAD_COMMAND_PROVIDER_PRIORITY = 5;
-
-/** Group key of the Team Inbox conversation block. */
-export const TEAM_THREAD_COMMAND_GROUP_KEY = 'team-thread';
-
-export interface TeamThreadSurfaceDeps {
-	subject: () => string;
-	t: Translate;
-	/** The thread is assigned to the person at the keyboard. */
-	isMine: () => boolean;
-	/** Resolved (or legacy closed): the status verb reopens instead. */
-	isResolved: () => boolean;
-	isSnoozed: () => boolean;
-	/** Submenus, built by the composable (they carry their own `run`). */
-	assignOptions: () => PaletteArgumentOption[];
-	snoozeOptions: () => PaletteArgumentOption[];
-	priorityOptions: () => PaletteArgumentOption[];
-	onReply: () => void;
-	onClaim: () => void;
-	onClose: () => void;
-	onReopen: () => void;
-	onUnsnooze: () => void;
-	onAddNote: () => void;
-	onCopyLink: () => void;
-	canShareInChat: () => boolean;
-	onShareInChat: () => void;
-}
-
-const T = 'shared.commandPaletteSurfaces.teamThread';
-
-/**
- * The Team Inbox conversation's verbs: reply, assign / claim, close or reopen,
- * snooze or wake, an internal note, its priority, and a link to it. Pure.
- */
-export function buildTeamThreadSurfaceGroups(
-	deps: TeamThreadSurfaceDeps,
-	query: string,
-	mode: PaletteMode = 'all'
-): PaletteGroup[] {
-	const { t } = deps;
-	const subject = deps.subject().trim();
-	const items: PaletteItem[] = [
-		{
-			id: 'inbox:thread-reply',
-			label: t(`${T}.reply`),
-			...(subject ? { subtitle: subject } : {}),
-			icon: ReplyIcon,
-			run: deps.onReply,
-		},
-		withArgument(
-			{ id: 'inbox:thread-assign', label: t(`${T}.assign`), icon: UserPlusCornerIcon },
-			`${T}.assignPrompt`,
-			deps.assignOptions()
-		),
-	];
-	if (!deps.isMine()) {
-		items.push({
-			id: 'inbox:thread-claim',
-			label: t(`${T}.claim`),
-			icon: UserPlusCornerIcon,
-			run: deps.onClaim,
-		});
-	}
-	items.push(
-		deps.isResolved()
-			? {
-					id: 'inbox:thread-status',
-					label: t(`${T}.reopen`),
-					icon: RotateLeftIcon,
-					run: deps.onReopen,
-				}
-			: {
-					id: 'inbox:thread-status',
-					label: t(`${T}.close`),
-					icon: CircleCheckIcon,
-					run: deps.onClose,
-				},
-		deps.isSnoozed()
-			? {
-					id: 'inbox:thread-snooze',
-					label: t(`${T}.unsnooze`),
-					icon: AlarmOffIcon,
-					run: deps.onUnsnooze,
-				}
-			: withArgument(
-					{ id: 'inbox:thread-snooze', label: t(`${T}.snooze`), icon: ClockIcon },
-					`${T}.snoozePrompt`,
-					deps.snoozeOptions()
-				),
-		{
-			id: 'inbox:thread-note',
-			label: t(`${T}.addNote`),
-			icon: NoteIcon,
-			run: deps.onAddNote,
-		},
-		withArgument(
-			{ id: 'inbox:thread-priority', label: t(`${T}.priority`), icon: FlagIcon },
-			`${T}.priorityPrompt`,
-			deps.priorityOptions()
-		),
-		...linkItems('inbox:thread', deps)
-	);
-	return threadGroup(TEAM_THREAD_COMMAND_GROUP_KEY, t(`${T}.heading`), items, query, mode);
-}

@@ -3,7 +3,7 @@ import { buildNavigationSections } from '../dashboardNavigation';
 import { mobileMoreDestinations } from '../mobileMoreDestinations';
 import type { OrganizationRole } from '~/composables/useOrganization';
 
-const TABS = ['/dashboard', '/dashboard/answer', '/dashboard/inboxes'];
+const TABS = ['/dashboard', '/dashboard/answer', '/dashboard/postbox/all-inboxes'];
 
 function sectionsFor(role: OrganizationRole, flags: 'all' | string[] = 'all') {
 	return buildNavigationSections({

@@ -296,6 +296,8 @@ export const eraseDrafts: MemberPhaseRunner = (phase) =>
 				if (!isSessionsEmpty) return false;
 				if (!(await eraseDraftPlans(ctx, budget, draft._id))) return false;
 				for (const attachment of draft.attachments) {
+					// A saved reply's file: its reply deletes it, if at all.
+					if (attachment.savedReplyId) continue;
 					await deleteBlobAndReceipt(phase, attachment.storageId, { draftId: draft._id });
 					budget.chargeRows(1);
 				}

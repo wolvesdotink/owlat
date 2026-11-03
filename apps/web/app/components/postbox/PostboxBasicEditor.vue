@@ -338,8 +338,9 @@ onBeforeUnmount(() => {
 	rewriteCtl.dispose();
 });
 
-// `insertSnippet`: a reply picked outside the text goes in at the caret.
-defineExpose({ focus: focusEditor, insertSnippet: snippetPicker.insertAtCaret });
+// A reply picked, or speech dictated, outside the text goes in at the caret.
+const { insertAtCaret: insertSnippet, insertTextAtCaret: insertText } = snippetPicker;
+defineExpose({ focus: focusEditor, insertSnippet, insertText });
 </script>
 
 <template>

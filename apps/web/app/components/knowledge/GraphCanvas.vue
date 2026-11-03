@@ -22,7 +22,7 @@ import {
 } from 'd3-force';
 import type { GraphNodeModel, GraphEdgeModel } from '~/utils/knowledgeGraphLayout';
 import { entryTypeIcon } from '~/utils/knowledgeEntryTypes';
-import { ShareIcon } from '@coolicons/vue';
+import { ShareAltIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	nodes: GraphNodeModel[];
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 			class="flex flex-col items-center justify-center py-20 text-center"
 		>
 			<div class="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center mb-3">
-				<ShareIcon class="w-6 h-6 text-text-tertiary" />
+				<ShareAltIcon class="w-6 h-6 text-text-tertiary" />
 			</div>
 			<p class="text-sm text-text-secondary">
 				{{ t('components.knowledge.graphCanvas.emptyTitle') }}

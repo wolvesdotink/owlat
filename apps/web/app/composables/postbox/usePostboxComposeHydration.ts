@@ -128,6 +128,7 @@ type DraftRow = {
 		contentType: string;
 		size: number;
 		isInline?: boolean;
+		savedReplyId?: string;
 	}>;
 };
 
@@ -176,6 +177,7 @@ export function usePostboxComposeHydration(
 					filename: a.filename,
 					contentType: a.contentType,
 					size: a.size,
+					...(a.savedReplyId ? { savedReplyId: a.savedReplyId } : {}),
 				}));
 		}
 	}

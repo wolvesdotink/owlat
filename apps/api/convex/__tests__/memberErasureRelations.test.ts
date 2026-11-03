@@ -108,6 +108,9 @@ const DELETED_BY_HELPER = new Set([
 	'userOnboarding',
 	'sendReadyNotices',
 	'platformAdmins',
+	// memberMcpClientRanges (mcp/erasure.ts), drained by eraseMemberRecords.
+	'mcpClientActivity',
+	'mcpClients',
 	// The thread brief rows of a personal thread: drainThreadBrief, through the
 	// per-thread ranges of mail/interpret/purgeRows.ts (purge jobs, purgeThread.ts).
 	...THREAD_BRIEF_TABLES,

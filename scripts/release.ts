@@ -25,7 +25,8 @@
  * Flags:
  *   --dry-run     print planned changes without touching anything
  *   --no-commit   write the file changes but skip commit + tag (curate first)
- *   --push        after tagging, push HEAD to origin/main and push the tag
+ *   --push        after tagging, push the commit to main and the tag once
+ *                 main CI of that commit passed (scripts/release-push.ts)
  *   --any-branch  allow running from a branch other than main
  *
  * Version locations kept in sync (all must hold the same version):
@@ -46,6 +47,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { candidatesOf, classifyReleaseTag, nextCandidateTag } from './ci/release-policy';
 import { readPackageManifest, requiredVersion } from './package-manifest';
+import { pushCandidateCli } from './release-push';
 import { bucketSubjects, bucketSummary, writeSection } from './release-changelog';
 
 const ROOT = join(import.meta.dir, '..');
@@ -316,7 +318,7 @@ if (noCommit) {
 	console.info(`\nFiles written, nothing committed. Curate CHANGELOG.md, then:`);
 	console.info(`  git add -A && git commit -m "chore(release): ${tag}"`);
 	console.info(`  git tag -a ${tag} -m "Owlat ${tag}"`);
-	console.info(`  git push origin HEAD:main && git push origin ${tag}`);
+	console.info(`  bun run release:push ${tag}`);
 	process.exit(0);
 }
 
@@ -326,13 +328,10 @@ git('tag', '-a', tag, '-m', `Owlat ${tag}`);
 console.info(`\nCommitted and tagged ${tag}.`);
 
 if (push) {
-	git('push', 'origin', 'HEAD:main');
-	git('push', 'origin', tag);
-	console.info(`Pushed main and ${tag} — the release pipeline is now building the candidate:`);
-	console.info(`  https://github.com/wolvesdotink/owlat/actions/workflows/release.yml`);
+	await pushCandidateCli(tag);
 } else {
-	console.info(`To trigger the release pipeline:`);
-	console.info(`  git push origin HEAD:main && git push origin ${tag}`);
+	console.info(`To push main and, once its CI passed, the tag:`);
+	console.info(`  bun run release:push ${tag}`);
 }
 console.info(`Once its run is green, publish it as v${newVersion}:`);
 console.info(`  bun run release:promote ${tag} --push`);

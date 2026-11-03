@@ -205,6 +205,33 @@ describe('Team Inbox stream', () => {
 		expect(opened).toMatchObject({ itemText: 'Send the signed contract' });
 	});
 
+	it('shows no line for a run the AI gate refused, which is the instance state, not the thread', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId } = await seedTeamThread(t);
+		await t.run(async (ctx) => {
+			for (const [key, code] of [
+				['refused', 'ai_off'],
+				['budget', 'budget'],
+				['failed', 'model_error'],
+			] as const) {
+				await appendActivity(ctx, {
+					threadRef: { kind: 'team', id: threadId },
+					idempotencyKey: key,
+					type: 'interpretation_incomplete',
+					actor: { kind: 'system' },
+					provenance: 'recorded',
+					eventAt: SENT,
+					payload: { status: 'failed', code },
+				});
+			}
+		});
+		const page = await t.query(api.inbox.teamStream.page, { threadId, locale: 'en' });
+		const incomplete = (page?.entries ?? []).filter(
+			(e) => e.kind === 'activity' && e.activity.type === 'interpretation_incomplete'
+		);
+		expect(incomplete).toHaveLength(1);
+	});
+
 	it('pages back across every source without gaps or repeats', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedTeamThread(t);

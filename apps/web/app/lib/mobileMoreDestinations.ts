@@ -25,7 +25,11 @@ export interface MoreDestination {
 }
 
 /** Tab hrefs that already stand for the mailbox as a whole. */
-const MAILBOX_TAB_HREFS = new Set(['/dashboard/inboxes', '/dashboard/postbox']);
+const MAILBOX_TAB_HREFS = new Set([
+	'/dashboard/inboxes',
+	'/dashboard/postbox',
+	'/dashboard/postbox/all-inboxes',
+]);
 
 export function mobileMoreDestinations(
 	sections: readonly NavigationSection[],

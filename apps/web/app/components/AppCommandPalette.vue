@@ -33,14 +33,11 @@ import { CloseIcon } from '@coolicons/vue';
  * registry (`~/lib/commandPaletteRegistry`): core providers built here are
  * consulted first, then the surface/plugin providers registered while mounted.
  *
- * It is SCOPED BY ROUTE (`~/lib/commandPaletteScope`). On Postbox it opens on
- * Mail — the full operator grammar, its autocomplete, live hits from the real
- * mail search, and Enter handing off to `/dashboard/postbox/search`. On
- * knowledge/files it opens on Ask, which answers from `assistant/quickQuery.ask` with its
- * citations right here. Everywhere else it opens on Everything, the cross-object
- * index. Tab cycles, so nothing is ever out of reach. This replaced four separate
- * boxes — this palette, the Postbox rail bar, the search page's bar and the Quick
- * Query modal — each of which had its own grammar and its own history.
+ * It is SCOPED BY ROUTE (`~/lib/commandPaletteScope`). On Postbox it opens on Mail — the full
+ * operator grammar, its autocomplete, live hits from the real mail search, and Enter handing off
+ * to `/dashboard/postbox/search`. On knowledge/files it opens on Ask, which answers from
+ * `assistant/quickQuery.ask` with its citations right here. Everywhere else it opens on
+ * Everything, the cross-object index. Tab cycles, so nothing is ever out of reach.
  *
  * Typing is fuzzy (subsequence, with the matched characters highlighted), a
  * leading `>`/`@`/`#` narrows to commands/people/labels and `?` asks knowledge,
@@ -204,6 +201,8 @@ const coreProviders = buildCorePaletteProviders({
 	isMailScope: () => prompt.value === 'mailSearch',
 	mailSuggestionItems: () => mailScope.suggestionItems.value,
 	mailHitItems: () => mailScope.hitItems.value,
+	mailStartItems: () => mailScope.startItems.value,
+	mailFixItems: () => mailScope.fixItems.value,
 	inboxThreadItems: () => inboxScope.threadItems.value,
 });
 
@@ -484,6 +483,7 @@ onBeforeUnmount(() => detachTriggers?.());
 					:prompt="prompt"
 					:is-searching="isSearching"
 					:has-rows="hasAnyResults"
+					:ask-available="isAskAvailable"
 					:ask-answer="askScope.answer.value"
 					:ask-loading="askScope.isLoading.value"
 					@run="runItem"

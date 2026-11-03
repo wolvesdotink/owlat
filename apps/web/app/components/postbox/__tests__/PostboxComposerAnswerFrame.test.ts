@@ -226,6 +226,7 @@ function mountComposer(props: Record<string, unknown>, slots: Record<string, unk
 				PostboxFollowUpDialog: true,
 				PostboxComposerFollowUp: { template: '<button data-testid="follow-up" />' },
 				PostboxComposerModeControls: true,
+				PostboxComposerReadReceipt: true,
 			},
 		},
 	});

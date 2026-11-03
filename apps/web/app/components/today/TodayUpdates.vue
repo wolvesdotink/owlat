@@ -3,6 +3,7 @@ import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
 import RowContextMenu from '~/components/RowContextMenu.vue';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 import { TriangleWarningIcon, UserPlusCornerIcon, type IconComponent } from '@coolicons/vue';
 
 /**
@@ -18,7 +19,7 @@ import { TriangleWarningIcon, UserPlusCornerIcon, type IconComponent } from '@co
  * or a long-press on a line offers the same verbs, with their keys.
  */
 const props = withDefaults(defineProps<{ model: TodayModel; moreHref?: string }>(), {
-	moreHref: '/dashboard/inboxes',
+	moreHref: ALL_INBOXES_PATH,
 });
 const emit = defineEmits<{ done: [line: TodayLine]; replyAnyway: [line: TodayLine] }>();
 const { t } = useI18n();

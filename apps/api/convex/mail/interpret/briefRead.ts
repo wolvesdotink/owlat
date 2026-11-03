@@ -3,8 +3,8 @@
  * opens its sealed text for one locale. No authorization here: the caller
  * (`brief.ts`) has already decided the viewer may read the thread.
  *
- * Every read is bounded (items per status, facts, the activity tail, the
- * newest messages for participants and files).
+ * Every read is bounded (items per status, facts, the newest messages for
+ * participants and files). The activity tail is read in `./briefReadActivity.ts`.
  */
 
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -21,22 +21,13 @@ import type { EXACT_WORDING_REASONS } from './schema';
 import type { SourceCounts } from './counters';
 
 type ExactWordingReason = (typeof EXACT_WORDING_REASONS)[number];
-import type {
-	ActivityView,
-	FactView,
-	FileView,
-	LatestLineView,
-	ParticipantView,
-} from './briefShape';
+import type { FactView, FileView, LatestLineView, ParticipantView } from './briefShape';
 import { gapReasonOf, type GapReason, type OpenedItem } from './briefProject';
 import { openEvidence, openHeld } from './briefOpen';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
 const FACTS_READ = 60;
-/** Activity rows scanned for the tail and for "since you last looked". */
-const ACTIVITY_SCAN = 100;
-const ACTIVITY_SHOWN = 5;
 /** Messages read for participants and files. */
 const MESSAGES_READ = 30;
 const INTERPRETATIONS_READ = 200;
@@ -198,83 +189,6 @@ export async function readFacts(
 			};
 		})
 	);
-}
-
-/** The newest activity rows (newest first), bounded. */
-export async function readActivityTail(ctx: ReadCtx, ref: ThreadRef) {
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('threadActivity')
-				.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', ref.id))
-				.order('desc')
-				.take(ACTIVITY_SCAN)
-		: ctx.db
-				.query('threadActivity')
-				.withIndex('by_conversation_thread_and_seq', (q) => q.eq('conversationThreadId', ref.id))
-				.order('desc')
-				.take(ACTIVITY_SCAN);
-}
-
-async function activityText(row: Doc<'threadActivity'>): Promise<string | undefined> {
-	if (!row.payload) return undefined;
-	try {
-		const parsed: unknown = JSON.parse(await openMessageBody(row.payload));
-		if (parsed && typeof parsed === 'object' && 'text' in parsed) {
-			const text = (parsed as { text: unknown }).text;
-			return typeof text === 'string' ? text : undefined;
-		}
-	} catch {
-		// A payload that does not parse renders without detail.
-	}
-	return undefined;
-}
-
-/** One activity row as the brief and the team stream show it. */
-export async function toActivityView(row: Doc<'threadActivity'>): Promise<ActivityView> {
-	const text = await activityText(row);
-	return {
-		id: row._id,
-		seq: row.seq,
-		type: row.type,
-		actor: row.actor,
-		provenance: row.provenance,
-		visibility: row.visibility,
-		...(row.itemId ? { itemId: row.itemId } : {}),
-		...(row.itemRevision !== undefined ? { itemRevision: row.itemRevision } : {}),
-		...(row.delta ? { delta: row.delta } : {}),
-		...(row.opRef ? { opRef: row.opRef } : {}),
-		...(text !== undefined ? { text } : {}),
-		eventAt: row.eventAt,
-	};
-}
-
-/** The latest substance rows as the brief's "Activity" block. */
-export async function toActivityViews(
-	rows: readonly Doc<'threadActivity'>[]
-): Promise<ActivityView[]> {
-	const shown = rows.filter((r) => r.visibility === 'substance').slice(0, ACTIVITY_SHOWN);
-	return Promise.all(shown.map(toActivityView));
-}
-
-/** "Since you last looked", from the activity tail past the viewer's seen seq. Pure. */
-export function sinceLastSeenOf(
-	rows: readonly Pick<Doc<'threadActivity'>, 'seq' | 'type' | 'itemId' | 'visibility'>[],
-	seenActivitySeq: number
-) {
-	const newItemIds = new Set<Id<'threadItems'>>();
-	const changedItemIds = new Set<Id<'threadItems'>>();
-	let newActivityCount = 0;
-	for (const row of rows) {
-		if (row.seq <= seenActivitySeq) continue;
-		if (row.visibility === 'substance') newActivityCount++;
-		if (!row.itemId) continue;
-		if (row.type === 'item_opened') newItemIds.add(row.itemId);
-		else if (row.type.startsWith('item_') || row.type === 'proposal_confirmed') {
-			changedItemIds.add(row.itemId);
-		}
-	}
-	for (const id of newItemIds) changedItemIds.delete(id);
-	return { newItemIds: [...newItemIds], changedItemIds: [...changedItemIds], newActivityCount };
 }
 
 /** The viewer's state row on a thread, or null. */

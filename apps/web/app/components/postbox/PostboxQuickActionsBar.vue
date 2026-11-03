@@ -12,6 +12,11 @@
  *
  * The whole-folder select-all hatch renders below the verbs, on the surface
  * that already says how many messages are selected.
+ *
+ * Over All inboxes (no `mailboxId`, a `selectionScope` instead) the selection
+ * spans mailboxes, so the bar keeps the verbs the server routes per message
+ * (read, star, archive, delete) and leaves out the ones that name one
+ * mailbox's folders or labels: Move, the overflow and the whole-folder hatch.
  */
 
 import type { Id } from '@owlat/api/dataModel';
@@ -26,7 +31,9 @@ import {
 } from '@coolicons/vue';
 
 const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
+	mailboxId?: Id<'mailboxes'>;
+	/** The selection bucket when the list spans mailboxes (All inboxes). */
+	selectionScope?: string;
 	folderRole?: string;
 	/** The list's arrival direction, for the whole-folder select-all query. */
 	folderId?: Id<'mailFolders'>;
@@ -39,8 +46,8 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const mailboxIdRef = computed(() => props.mailboxId);
-const bulk = usePostboxBulkActions(mailboxIdRef);
+const mailboxIdRef = computed(() => props.mailboxId ?? null);
+const bulk = usePostboxBulkActions(computed(() => props.selectionScope ?? props.mailboxId ?? null));
 const { folders } = usePostboxFolders(mailboxIdRef);
 
 const moveOpen = ref(false);
@@ -112,7 +119,7 @@ const movableFolders = computed(() =>
 					</UiButton>
 				</UiTooltip>
 				<span class="w-px h-4 bg-border-subtle mx-1" />
-				<div class="relative">
+				<div v-if="mailboxId" class="relative">
 					<UiButton
 						variant="ghost"
 						size="sm"
@@ -177,7 +184,11 @@ const movableFolders = computed(() =>
 						{{ t('common.delete') }}
 					</UiButton>
 				</UiTooltip>
-				<PostboxBulkOverflowMenu :mailbox-id="mailboxId" :folder-role="folderRole" />
+				<PostboxBulkOverflowMenu
+					v-if="mailboxId"
+					:mailbox-id="mailboxId"
+					:folder-role="folderRole"
+				/>
 				<span class="w-px h-4 bg-border-subtle mx-1" />
 				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')">
 					<button
@@ -191,6 +202,7 @@ const movableFolders = computed(() =>
 				</UiTooltip>
 			</div>
 			<PostboxBulkSelectAllRow
+				v-if="mailboxId"
 				:mailbox-id="mailboxId"
 				:folder-role="folderRole"
 				:folder-id="folderId"

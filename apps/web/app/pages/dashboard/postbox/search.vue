@@ -3,6 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
+import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
 import {
 	ArrowLeftIcon,
 	BookmarkPlusIcon,
@@ -72,6 +73,20 @@ const exhausted = computed(() => results.value.length === 0 && !hasMore.value);
 const pageEmptyWithMore = computed(() => results.value.length === 0 && hasMore.value);
 const chips = computed(() => describeChips(parsed.value));
 
+// A plain-words search that found little can be turned into operators by the
+// model, on request (components/postbox/PostboxSearchRewrite.vue).
+const { isEnabled } = useFeatureFlag();
+const offersRewrite = computed(
+	() =>
+		isEnabled('ai') &&
+		isSearchRewriteOffered({
+			parsed: parsed.value,
+			resultCount: results.value.length,
+			hasMore: hasMore.value,
+			isLoading: isLoading.value,
+		})
+);
+
 // In-place preview: clicking a result selects it here rather than navigating
 // into the folder view (which would eject the user out of search and mislabel
 // the folder, since every hit shares one results list across folders).
@@ -88,6 +103,10 @@ watch(results, (rows) => {
 const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
+// The reader's sticky bar sticks below the back bar (hidden at lg, 0 there).
+const backBarEl = ref<HTMLElement | null>(null);
+const backBarHeight = useBlockSize(() => backBarEl.value);
+
 // The preview opens with the searched words found (find in conversation),
 // in the result that was picked; operators alone seed nothing.
 const findSeed = computed(() => {
@@ -256,6 +275,11 @@ async function confirmSave() {
 								>
 							</span>
 						</p>
+						<PostboxSearchRewrite
+							v-if="offersRewrite"
+							:query="query.trim()"
+							@search="query = $event"
+						/>
 						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
 							<button
 								v-for="chip in chips"
@@ -372,12 +396,14 @@ async function confirmSave() {
 				<section
 					class="flex-1 min-w-0 overflow-auto bg-bg-base"
 					:class="activeMessageId ? 'block' : 'hidden lg:block'"
+					:style="{ '--pbx-reader-sticky-top': `${backBarHeight}px` }"
 				>
 					<!-- The bar carries no vertical padding of its own: the button owns it,
 					     so the whole 44px height is a touch target and not just its
 					     middle third. -->
 					<div
 						v-if="activeMessageId"
+						ref="backBarEl"
 						class="lg:hidden sticky top-0 z-10 flex items-center border-b border-border-subtle bg-bg-base px-2"
 					>
 						<button

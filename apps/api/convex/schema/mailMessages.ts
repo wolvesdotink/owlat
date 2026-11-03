@@ -6,6 +6,8 @@ import { spamVerdictValidator } from '../lib/convexValidators';
 import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailMessageAttachmentValidator,
+	mailReadReceiptValidator,
+	mailSignInCodeValidator,
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
 import { senderHeuristicsValidator } from '../lib/validators/senderHeuristics';
@@ -150,6 +152,12 @@ export const mailMessagesTables = {
 		// off this field's presence.
 		unsubscribe: v.optional(mailUnsubscribeValidator),
 
+		// The one-time code or sign-in link of live mail from an authenticated
+		// sender, for the row and reader chip (mail/signInCodes.ts). Plaintext,
+		// like `snippet`, but only for its 15 minutes: a scheduled run clears it
+		// at `expiresAt`, and an IMAP COPY does not carry it to the copy.
+		signInCode: v.optional(mailSignInCodeValidator),
+
 		// Delivery/security metadata
 		receivedAt: v.number(),
 		internalDate: v.number(),
@@ -261,6 +269,11 @@ export const mailMessagesTables = {
 				),
 			})
 		),
+
+		// Read receipts on a SENT copy whose sender asked for them (RFC 8098):
+		// what came back, written by mail/readReceipts.ts. Absent when no receipt
+		// was asked for.
+		readReceipt: v.optional(mailReadReceiptValidator),
 
 		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
 		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject

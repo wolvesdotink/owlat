@@ -12,7 +12,7 @@ import {
 import {
 	MAIL_TEXT_PX,
 	MAIL_TYPOGRAPHY_DEFAULT,
-	mailZoom,
+	mailBodyZoom,
 	READING_WIDTH_CSS,
 	type MailTypography,
 } from './readingComfort';
@@ -66,15 +66,16 @@ function simpleMeasureStyle(quoteBorder: string, quoteText: string): string {
 export const POSTBOX_COMFORT_STYLE_OPEN = '<style data-owlat-comfort>';
 
 /**
- * The reader's text size and reading width for one body. Text size is a zoom
- * on the body for both kinds (see mailZoom): a base font size would miss every
- * inline or Outlook-sized run of text. Simple mail keeps its 15px base and
- * gets the measure, which the zoom scales along with the text, so a line holds
- * the same number of characters at every size. Designed mail keeps its own
- * width. At the default size no zoom is written at all.
+ * The reader's text size, zoom and reading width for one body. Text size and
+ * zoom are one zoom on the body for both kinds (see mailZoom): a base font size
+ * would miss every inline or Outlook-sized run of text. Simple mail keeps its
+ * 15px base and gets the measure, which the zoom scales along with the text,
+ * so a line holds the same number of characters at every size. Designed mail
+ * keeps its own width. With nothing to scale no zoom is written at all.
  */
 export function buildComfortStyle(kind: EmailHtmlKind, typography: MailTypography): string {
-	const zoom = typography.textSize === 'default' ? '' : `zoom:${mailZoom(typography.textSize)};`;
+	const factor = mailBodyZoom(typography);
+	const zoom = factor === 1 ? '' : `zoom:${factor};`;
 	const rules =
 		kind === 'simple'
 			? `body{max-width:${READING_WIDTH_CSS[typography.readingWidth]};font-size:${MAIL_TEXT_PX.default}px;${zoom}}`

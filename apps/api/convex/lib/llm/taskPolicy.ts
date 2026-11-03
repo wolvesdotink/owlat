@@ -314,6 +314,13 @@ const ENTRIES = {
 		...replySurface,
 		features: ['postbox_coach_draft'],
 	}),
+	'mail.search_rewrite': language({
+		...SMALL_OUTPUT,
+		tiers: ['fast'],
+		...interactive,
+		...replySurface,
+		features: ['postbox_search_rewrite'],
+	}),
 	'mail.translate': language({
 		...DOCUMENT_OUTPUT,
 		tiers: ['fast'],

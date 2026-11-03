@@ -64,6 +64,13 @@ export { extractAttachments, type MessageAttachment } from './parse/attachments'
 
 export { parseMessage, type ParsedMessage, type ParsedHeaderValue } from './parse/index';
 
+export {
+	isDispositionNotificationReport,
+	parseDispositionNotification,
+	type DispositionNotification,
+	type DispositionType,
+} from './parse/mdn';
+
 // --- compose side ---
 export {
 	escapeHeader,

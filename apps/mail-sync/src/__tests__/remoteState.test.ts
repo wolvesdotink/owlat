@@ -7,7 +7,8 @@
  *   - a move is reported with where the message is now, and a deletion only
  *     when the message left a folder AND is nowhere else — Gmail's All Mail is
  *     searched before anything is called deleted;
- *   - mail Owlat wrote itself (Sent, Drafts) is never called deleted;
+ *   - Sent mail is never called deleted, since Owlat writes mail there the
+ *     provider may not have; a draft the client replaced or discarded is;
  *   - a full reconcile compares every local message and marks the account
  *     aligned once it completes.
  */
@@ -123,16 +124,17 @@ describe('decide', () => {
 		expect(unplaced).toEqual([]);
 	});
 
-	it('never questions Sent or Drafts, or a message in an untracked All Mail', () => {
+	it('never questions Sent, or a message in an untracked All Mail', () => {
 		const { unplaced } = decide(
 			[
 				row('s@x', 'Sent', { role: 'sent' }),
 				row('g@x', '[Gmail]/All Mail', { role: 'archive' }),
 				row('i@x', 'INBOX'),
+				row('d@x', 'Drafts', { role: 'drafts' }),
 			],
 			input({}, ['[Gmail]/All Mail'])
 		);
-		expect(unplaced.map((r) => r.messageId)).toEqual(['i@x']);
+		expect(unplaced.map((r) => r.messageId)).toEqual(['i@x', 'd@x']);
 	});
 
 	it('reports provider flags that differ', () => {
@@ -202,6 +204,36 @@ describe('reconcile', () => {
 		await reconcile(h.deps);
 
 		expect(h.applied).toEqual([{ messageId: 't@x', isGone: true }]);
+	});
+
+	it('reports a draft the client replaced on the provider as gone', async () => {
+		const imap = new FakeImap({ INBOX: [], Drafts: ['d1@x'], Trash: [], Sent: [] });
+		const h = harness(imap, [row('d1@x', 'Drafts', { role: 'drafts' })], {
+			tracked: ['INBOX', 'Drafts', 'Trash', 'Sent'],
+		});
+		await reconcile(h.deps);
+
+		// An autosave: the client stores the new version and expunges the old one.
+		imap.remove('Drafts', 'd1@x');
+		imap.add('Drafts', 'd2@x');
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([{ messageId: 'd1@x', isGone: true }]);
+	});
+
+	it('follows a sent draft into Sent rather than calling it gone', async () => {
+		const imap = new FakeImap({ INBOX: [], Drafts: ['d@x'], Trash: [], Sent: [] });
+		const h = harness(imap, [row('d@x', 'Drafts', { role: 'drafts' })], {
+			tracked: ['INBOX', 'Drafts', 'Trash', 'Sent'],
+		});
+		await reconcile(h.deps);
+
+		imap.move('Drafts', 'Sent', 'd@x');
+		h.applied.length = 0;
+		await reconcile(h.deps);
+
+		expect(h.applied).toEqual([{ messageId: 'd@x', remoteFolders: ['Sent'] }]);
 	});
 
 	it('calls Gmail archiving a move to All Mail, not a deletion', async () => {

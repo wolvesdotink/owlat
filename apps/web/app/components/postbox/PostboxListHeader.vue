@@ -19,6 +19,7 @@ import type { PostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
 import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
+import type { PostboxUnreadStyle } from '~/utils/postboxUnreadStyle';
 import { headerSelectionState } from '~/utils/postboxRangeSelect';
 import { CheckIcon, MinusIcon, PanelLeftIcon } from '@coolicons/vue';
 
@@ -35,17 +36,23 @@ const props = defineProps<{
 	isOffline?: boolean;
 	/** Inbox-only view-mode options (Flat / Conversations / Categories / …). */
 	viewMode?: string;
-	viewModeOptions?: Array<{ value: string; label: string }>;
+	viewModeOptions?: Array<{ value: string; label: string; description?: string }>;
 	/** Arrival direction of the list — 'newest' (default) or 'oldest'. */
 	sortOrder?: string;
 	/** List/reader row density, shown as a radio group in the Display menu. */
 	density?: PostboxDensity;
+	/** How unread rows stand out (dot, weight, both, or a tinted row). */
+	unreadStyle?: PostboxUnreadStyle;
 	/** Where the reader sits (right / bottom / off). */
 	readingPane?: PostboxReadingPane;
 	/** Which inbox landing surface is on screen — drives the Today|Browse switch. */
 	inboxMode?: PostboxInboxMode;
 	/** Set on the flat list, which is the only renderer with a selection model. */
 	mailboxId?: Id<'mailboxes'>;
+	/** The selection bucket when the list spans mailboxes (All inboxes). */
+	selectionScope?: string;
+	/** The mailbox on screen, whatever the renderer: the folder menu acts on it. */
+	folderMailboxId?: Id<'mailboxes'>;
 	/** Ids of the rows the list currently has loaded, in render order. */
 	pageIds?: string[];
 }>();
@@ -54,10 +61,10 @@ const props = defineProps<{
 // The header owns the checkbox that covers the whole page of rows. The escape
 // hatch past it ("and the rest of the folder") lives in the bulk bar, where the
 // selection it grows is already rendered.
-const mailboxIdRef = computed(() => props.mailboxId ?? null);
-const bulk = usePostboxBulkActions(mailboxIdRef);
+const selectionScope = computed(() => props.selectionScope ?? props.mailboxId ?? null);
+const bulk = usePostboxBulkActions(selectionScope);
 const pageIds = computed(() => props.pageIds ?? []);
-const selectionEnabled = computed(() => props.mailboxId != null && pageIds.value.length > 0);
+const selectionEnabled = computed(() => selectionScope.value != null && pageIds.value.length > 0);
 const selectionState = computed(() => headerSelectionState(pageIds.value, bulk.selected.value));
 
 function toggleSelectPage() {
@@ -82,6 +89,7 @@ const emit = defineEmits<{
 	'select-view-mode': [value: string];
 	'select-sort-order': [value: PostboxSortOrder];
 	'select-density': [value: PostboxDensity];
+	'select-unread-style': [value: PostboxUnreadStyle];
 	'select-reading-pane': [value: PostboxReadingPane];
 }>();
 </script>
@@ -166,21 +174,32 @@ const emit = defineEmits<{
 				@select="emit('switch-inbox-mode', $event)"
 			/>
 		</div>
-		<!-- Four persisted preferences behind one menu rather than permanent
+		<!-- Five persisted preferences behind one menu rather than permanent
 		     chrome, so the pane never has to scroll a control sideways to reach
 		     its own labels. The view-mode group is
 		     withheld outside the inbox, where every folder renders flat and the
 		     choice would be a control that does nothing. -->
-		<PostboxListDisplayMenu
-			:view-mode="viewMode"
-			:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
-			:sort-order="sortOrder"
-			:density="density"
-			:reading-pane="readingPane"
-			@select-view-mode="emit('select-view-mode', $event)"
-			@select-sort-order="emit('select-sort-order', $event)"
-			@select-density="emit('select-density', $event)"
-			@select-reading-pane="emit('select-reading-pane', $event)"
-		/>
+		<div class="flex items-center gap-1">
+			<PostboxListDisplayMenu
+				:view-mode="viewMode"
+				:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
+				:sort-order="sortOrder"
+				:density="density"
+				:unread-style="unreadStyle"
+				:reading-pane="readingPane"
+				@select-view-mode="emit('select-view-mode', $event)"
+				@select-sort-order="emit('select-sort-order', $event)"
+				@select-density="emit('select-density', $event)"
+				@select-unread-style="emit('select-unread-style', $event)"
+				@select-reading-pane="emit('select-reading-pane', $event)"
+			/>
+			<!-- Whole-folder verbs (mark all read, empty) for the folder on screen. -->
+			<PostboxFolderActionsMenu
+				v-if="folderMailboxId"
+				:mailbox-id="folderMailboxId"
+				:folder-role="folderRole"
+				:folder-id="folderId"
+			/>
+		</div>
 	</header>
 </template>

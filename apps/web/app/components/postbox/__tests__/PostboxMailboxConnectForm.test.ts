@@ -16,7 +16,7 @@ vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
 // The form renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 
 import PostboxMailboxConnectForm from '../PostboxMailboxConnectForm.vue';
-import PostboxGoogleSignIn from '../PostboxGoogleSignIn.vue';
+import PostboxOAuthSignIn from '../PostboxOAuthSignIn.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { tooltipOf } from '~/__tests__/tooltip';
 
@@ -24,7 +24,7 @@ vi.stubGlobal('useI18n', i18nStubs.useI18n);
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import type { Id } from '@owlat/api/dataModel';
 import { queryResult } from '~/__tests__/queryStubs';
-import type { GoogleConnectIntent } from '~/composables/postbox/useGoogleOAuthConnect';
+import type { MailOAuthIntent } from '~/composables/postbox/useMailOAuthConnect';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { ServerIcon } from '@coolicons/vue';
 
@@ -41,7 +41,7 @@ vi.mock('@owlat/api', () => {
 
 /** Whether `googleOAuth.isConfigured` answers yes for the mounted form. */
 let googleConfigured: boolean;
-/** Calls the Google branch made: one per "Sign in with Google" click. */
+/** Calls the sign-in branch made: one per "Sign in with …" click. */
 let googleConnect: ReturnType<typeof vi.fn>;
 
 const CONNECT = 'Connect mailbox';
@@ -62,7 +62,7 @@ beforeEach(() => {
 	googleConnect = vi.fn(async () => true);
 	vi.stubGlobal('useConvexQuery', () => queryResult({ configured: googleConfigured }));
 	vi.stubGlobal('useRoute', () => ({ fullPath: '/dashboard/postbox/migrate' }));
-	vi.stubGlobal('useGoogleOAuthConnect', () => ({
+	vi.stubGlobal('useMailOAuthConnect', () => ({
 		connect: googleConnect,
 		isLoading: ref(false),
 		handedOffToBrowser: ref(false),
@@ -166,7 +166,7 @@ function mountForm(props: FormProps) {
 			// The Google branch is rendered for real — its copy is the surface these
 			// cases are about. The server fields are a stub: they carry no Google
 			// behaviour and their disclosure markup is audited in its own suite.
-			components: { PostboxGoogleSignIn },
+			components: { PostboxOAuthSignIn },
 			stubs: {
 				PostboxMailboxServerFields: true,
 				UiInput: UiInputStub,
@@ -297,11 +297,15 @@ async function clickButton(wrapper: VueWrapper, text: string) {
 	await flushPromises();
 }
 
-/** The intent the Google branch handed `useGoogleOAuthConnect().connect`. */
-function connectedWith(): { intent: GoogleConnectIntent; returnTo: string } {
+/** What the sign-in branch handed `useMailOAuthConnect().connect`. */
+function connectedWith(): { provider: string; intent: MailOAuthIntent; returnTo: string } {
 	expect(googleConnect).toHaveBeenCalledTimes(1);
-	const [intent, returnTo] = googleConnect.mock.calls[0] as [GoogleConnectIntent, string];
-	return { intent, returnTo };
+	const [provider, intent, returnTo] = googleConnect.mock.calls[0] as [
+		string,
+		MailOAuthIntent,
+		string,
+	];
+	return { provider, intent, returnTo };
 }
 
 const oauthAccount = { ...account, authMethod: 'oauth2', status: 'active' };
@@ -312,7 +316,7 @@ const oauthAccount = { ...account, authMethod: 'oauth2', status: 'active' };
  * comments can never be mistaken for its copy.
  */
 function googleComesBeforePassword(wrapper: VueWrapper): boolean {
-	const google = wrapper.findComponent(PostboxGoogleSignIn);
+	const google = wrapper.findComponent(PostboxOAuthSignIn);
 	expect(google.exists(), 'no Google block rendered').toBe(true);
 	const password = wrapper.find('input[type="password"]').element;
 	// DOCUMENT_POSITION_FOLLOWING: the password field comes after the block.
@@ -396,14 +400,14 @@ describe('PostboxMailboxConnectForm Google branch', () => {
 
 		await clickButton(wrapper, 'with Google');
 
-		expect(connectedWith().returnTo).toBe('/dashboard/postbox/migrate?googleConnected=1');
+		expect(connectedWith().returnTo).toBe('/dashboard/postbox/migrate?oauthConnected=1');
 	});
 
 	// The same five-way fan-out `handleSubmit` dispatches on. A wrong intent here
 	// is the OAuth twin of the bug the submit-dispatch suite guards: the exchange
 	// would connect a team inbox as the caller's personal mailbox, or rewrite a
 	// personal account from a team-inbox form.
-	const intentCases: { name: string; props: FormProps; intent: GoogleConnectIntent }[] = [
+	const intentCases: { name: string; props: FormProps; intent: MailOAuthIntent }[] = [
 		{ name: 'personal connect', props: { mode: 'connect' }, intent: { kind: 'connect' } },
 		{
 			name: 'personal update',
@@ -456,5 +460,112 @@ describe('PostboxMailboxConnectForm Google branch', () => {
 		// path guards, reached through the OAuth door.
 		expect(googleConnect).not.toHaveBeenCalled();
 		expect(wrapper.text()).toContain('its mailbox is missing');
+	});
+});
+
+// ── Microsoft sign-in branch ────────────────────────────────────────────────
+
+/** Outlook.com / Microsoft 365, connected with Microsoft sign-in. */
+const outlookProvider: MailProvider = {
+	...provider,
+	id: 'outlook',
+	name: 'shared.mailAutodiscover.provider.outlook.name',
+	hint: 'shared.mailAutodiscover.provider.outlook.hint',
+	oauth: { provider: 'microsoft' },
+};
+
+/** The generic IMAP card: no provider of its own, servers typed by hand. */
+const genericProvider: MailProvider = { ...provider, preset: null, manualServer: true };
+
+describe('PostboxMailboxConnectForm Microsoft branch', () => {
+	it('offers Microsoft sign-in under the password form on the Outlook card', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({ provider: outlookProvider, mode: 'connect' });
+
+		expect(wrapper.text()).toContain('Sign in with Microsoft');
+		expect(wrapper.text()).not.toContain('with Google');
+		expect(googleComesBeforePassword(wrapper)).toBe(false);
+		expectFullyLocalized(wrapper);
+
+		await clickButton(wrapper, 'with Microsoft');
+		expect(connectedWith()).toEqual({
+			provider: 'microsoft',
+			intent: { kind: 'connect' },
+			returnTo: '/dashboard/postbox/migrate?oauthConnected=1',
+		});
+	});
+
+	it('leaves the Outlook card password-only when no Microsoft app is configured', () => {
+		googleConfigured = false;
+		const wrapper = mountForm({ provider: outlookProvider, mode: 'connect' });
+
+		expect(wrapper.text()).not.toContain('with Microsoft');
+		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+	});
+
+	it('reconnects a Microsoft account with Microsoft, whatever card it maps to', async () => {
+		googleConfigured = true;
+		const wrapper = mountForm({
+			provider: genericProvider,
+			mode: 'update',
+			account: { ...oauthAccount, oauthProvider: 'microsoft' },
+		});
+
+		expect(wrapper.text()).toContain('Reconnect with Microsoft');
+		expect(googleComesBeforePassword(wrapper)).toBe(true);
+		await clickButton(wrapper, 'Reconnect with Microsoft');
+		expect(connectedWith().provider).toBe('microsoft');
+	});
+
+	const DETECT = 'Check whether Microsoft hosts this address';
+
+	it('offers Microsoft sign-in on the generic card when the backend says Microsoft hosts the address', async () => {
+		vi.useFakeTimers();
+		try {
+			googleConfigured = true;
+			const detect = vi.fn(async ({ email }: { email: string }) => ({
+				ok: true,
+				result: { hosted: email.endsWith('@contoso.com') },
+			}));
+			runs.set(DETECT, detect);
+			const wrapper = mountForm({ provider: genericProvider, mode: 'connect' });
+			expect(wrapper.text()).not.toContain('with Microsoft');
+
+			await wrapper.find('input[type="email"]').setValue('ada@contoso.com');
+			await vi.advanceTimersByTimeAsync(500);
+			await flushPromises();
+
+			expect(detect).toHaveBeenCalledWith({ email: 'ada@contoso.com' });
+			expect(wrapper.text()).toContain('Sign in with Microsoft');
+			expect(wrapper.text()).toContain('Microsoft hosts the mail for this address');
+			expectFullyLocalized(wrapper);
+
+			// Typing on hides the offer at once; a domain Microsoft does not host
+			// never brings it back.
+			await wrapper.find('input[type="email"]').setValue('ada@example.org');
+			expect(wrapper.text()).not.toContain('with Microsoft');
+			await vi.advanceTimersByTimeAsync(500);
+			await flushPromises();
+			expect(wrapper.text()).not.toContain('with Microsoft');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('asks nothing for a guided card or an incomplete address', async () => {
+		vi.useFakeTimers();
+		try {
+			const detect = vi.fn();
+			runs.set(DETECT, detect);
+			const guided = mountForm({ provider: outlookProvider, mode: 'connect' });
+			await guided.find('input[type="email"]').setValue('ada@contoso.com');
+			const generic = mountForm({ provider: genericProvider, mode: 'connect' });
+			await generic.find('input[type="email"]').setValue('ada@contoso');
+			await vi.advanceTimersByTimeAsync(500);
+
+			expect(detect).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

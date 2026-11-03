@@ -268,6 +268,7 @@ Gated families and their builders:
 | `forms`                      | `formsQuery`, `formsMutation`                                            | `forms/_helpers.ts`                |
 | `ai.knowledge`               | `knowledgeMutation`, `knowledgeAdminMutation`                            | `knowledge/visibility.ts`          |
 | `calendar.booking`           | `bookingQuery`, `bookingMutation`                                        | `booking/_helpers.ts`              |
+| `mail.mcp`                   | `mcpQuery`, `mcpMutation`                                                | `mcp/_helpers.ts`                  |
 | `inbox` (response targets)   | `teamInboxAdminQuery`, `teamInboxAdminMutation`                          | `inbox/sla/policy.ts`              |
 
 The knowledge soft-auth reads apply `ai.knowledge` through

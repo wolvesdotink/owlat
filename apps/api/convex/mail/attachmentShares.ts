@@ -252,8 +252,10 @@ export const prepareShare = internalQuery({
 		if (!owned.ok) return null;
 		const attachment = draft.attachments.find((a) => a.storageId === args.storageId);
 		// Inline parts are body images with a Content-ID the rendered HTML points
-		// at; pulling one out into a link would leave a broken image behind.
-		if (!attachment || attachment.isInline) return null;
+		// at; pulling one out into a link would leave a broken image behind. A
+		// file borrowed from a saved reply is the reply's: the share would have
+		// to take over bytes the draft does not own.
+		if (!attachment || attachment.isInline || attachment.savedReplyId) return null;
 		const settings = await ctx.db
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', owned.userId))
@@ -295,7 +297,9 @@ export const createShare = internalMutation({
 		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
 		if (!owned.ok) throwForbidden('Draft not accessible');
 		const attachment = draft.attachments.find((a) => a.storageId === args.storageId);
-		if (!attachment || attachment.isInline) throwInvalidInput('Attachment not found');
+		if (!attachment || attachment.isInline || attachment.savedReplyId) {
+			throwInvalidInput('Attachment not found');
+		}
 
 		const now = Date.now();
 		const expiresAt = attachmentShareExpiryAt(now, args.expiryDays);

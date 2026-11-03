@@ -87,6 +87,7 @@ export interface ListRow {
 	isSnoozeUntilReply?: boolean;
 	pinnedSection?: string;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	signInCode?: { kind: 'code' | 'link'; value: string; senderDomain: string; expiresAt: number };
 	receivedAt: number;
 	spamVerdict?: string;
 	virusVerdict?: string;
@@ -130,6 +131,8 @@ export interface ListRow {
 	category?: string;
 	briefTop?: ListRowBriefTop;
 	placement?: string;
+	// The authenticated sender's brand logo, joined in with the thread state.
+	senderLogoUrl?: string;
 }
 
 /** The thread-state keys of a row, as `attachThreadState` joins them. */

@@ -20,6 +20,7 @@ import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { resolveBodySearchMode, textSearchQuery } from '../searchBody';
 import { toMailListRow, type MailListRow } from './rowThreadState';
+import { withSenderLogos, type SenderLogoField } from '../senderLogos/cache';
 import {
 	type MailboxPage,
 	type MailboxScanPosition,
@@ -198,6 +199,33 @@ async function scanMailbox(
 }
 
 /**
+ * One fan-out page over `targets`, newest first. The caller has already
+ * decided that it may read every target: this reads, it does not authorize.
+ * `clauses` must be normalized (`normalizeClause`).
+ */
+export async function searchMailboxes(
+	ctx: QueryCtx,
+	targets: readonly Id<'mailboxes'>[],
+	clauses: readonly SearchClause[],
+	limit: number,
+	cursor: string | undefined
+): Promise<{ messages: Doc<'mailMessages'>[]; hasMore: boolean; nextCursor: string | null }> {
+	const decoded = decodeMultiCursor(cursor);
+	const pages: MailboxPage<Doc<'mailMessages'>>[] = [];
+	for (const target of targets.slice(0, MAX_SEARCH_MAILBOXES)) {
+		// A mailbox missing from a live cursor was drained on an earlier page.
+		if (decoded && !(target in decoded)) continue;
+		pages.push(await scanMailbox(ctx, target, clauses, limit, decoded?.[target] ?? null));
+	}
+	const merged = mergeMailboxPages(pages, limit);
+	return {
+		messages: merged.page,
+		hasMore: merged.hasMore,
+		nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
+	};
+}
+
+/**
  * Has the attachment index been built over this mailbox's EXISTING mail?
  *
  * `mail/attachmentIndex.ts` writes a junction row for every message delivered
@@ -242,7 +270,7 @@ async function searchByFilename(
 	names: ResolvedNames,
 	limit: number,
 	cursor: string | null
-): Promise<{ messages: MailListRow[]; hasMore: boolean; nextCursor: string | null }> {
+): Promise<MailboxSearchPage> {
 	const page = await ctx.db
 		.query('mailAttachments')
 		.withSearchIndex('search_filenames', (q) =>
@@ -265,9 +293,93 @@ async function searchByFilename(
 	}
 
 	return {
-		// Results leave as slim list rows (plan 2.3): the reader loads the body
-		// through its own thread query, so no row body is unsealed here.
-		messages: messages.map(toMailListRow),
+		messages,
+		hasMore: !page.isDone,
+		nextCursor: page.isDone ? null : page.continueCursor,
+	};
+}
+
+/** One page of a search, as message rows. */
+type MailboxSearchPage = {
+	messages: Doc<'mailMessages'>[];
+	hasMore: boolean;
+	nextCursor: string | null;
+};
+
+/**
+ * One mailbox, paginated natively, so a free-text search reaches every match
+ * page by page. The caller has already decided that it may read the mailbox:
+ * this reads, it does not authorize. `clauses` must be normalized.
+ */
+export async function searchMailbox(
+	ctx: QueryCtx,
+	mailboxId: Id<'mailboxes'>,
+	clauses: readonly SearchClause[],
+	limit: number,
+	cursor: string | undefined
+): Promise<MailboxSearchPage> {
+	const names = await resolveNames(ctx, mailboxId, clauses);
+	const live = clauses.filter((clause) => !isDeadClause(clause, names));
+	if (live.length === 0) return { messages: [], hasMore: false, nextCursor: null };
+
+	// A disjunction has no shared text to search on, so it walks the arrival
+	// index and re-checks each clause's text in the post-filter.
+	const disjunctive = live.length > 1;
+	const single = disjunctive ? null : live[0]!;
+	const folderId = single?.folderRole
+		? (names.folderByRole.get(single.folderRole) ?? undefined)
+		: undefined;
+
+	// `filename:` with no free text scans the ATTACHMENT index instead of the
+	// message table (idea 37). Before `mailAttachments` existed the operand
+	// could only ever be a post-filter over one page of arrival-ordered mail,
+	// so a contract sent two years ago was unfindable no matter how exactly
+	// its name was typed. Now the scan itself is the filename search.
+	//
+	// ONLY once the index covers this mailbox's existing mail. The write path
+	// fills it from delivery onward, so until the backfill has completed the
+	// index is a partial view and driving the scan off it would make
+	// `filename:` return LESS than the post-filter it replaced — a regression
+	// dressed up as an empty result. Until then the post-filter below runs,
+	// exactly as it did before the index shipped.
+	if (
+		single &&
+		!single.text &&
+		single.filename &&
+		(await isAttachmentIndexComplete(ctx, mailboxId))
+	) {
+		return searchByFilename(ctx, mailboxId, single, names, limit, cursor ?? null);
+	}
+
+	// Both branches paginate natively: the text branch over the search index,
+	// the no-text branch over the arrival index. The page may shrink below
+	// `limit` after the post-filter; the cursor still marks the true scan
+	// position, so "Load more" never skips or repeats a row.
+	// `from` is a partial token (e.g. "sara"), not a full address, so it can't
+	// use the search index's exact .eq('fromAddress') — the substring
+	// post-filter below handles it for both the text and no-text branches.
+	const page =
+		single && single.text
+			? await textSearchQuery(ctx, await resolveBodySearchMode(ctx, mailboxId), {
+					mailboxId,
+					text: single.text,
+					folderId,
+					flagSeen: single.flagSeen,
+					flagFlagged: single.flagFlagged,
+				}).paginate({ cursor: cursor ?? null, numItems: limit })
+			: await ctx.db
+					.query('mailMessages')
+					.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
+					.order('desc')
+					.paginate({ cursor: cursor ?? null, numItems: limit });
+
+	// Final filters that the search index couldn't express.
+	const filtered = page.page.filter((m) =>
+		live.some((clause) => matchesClause(m, clause, names, disjunctive))
+	);
+
+	return {
+		messages: filtered,
 		hasMore: !page.isDone,
 		nextCursor: page.isDone ? null : page.continueCursor,
 	};
@@ -312,7 +424,11 @@ export const search = publicQuery({
 		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { messages: [] as MailListRow[], hasMore: false, nextCursor: null };
+		const empty = {
+			messages: [] as Array<MailListRow & SenderLogoField>,
+			hasMore: false,
+			nextCursor: null,
+		};
 		const { mailboxId, mailboxIds, or, limit: rawLimit, cursor, ...primary } = args;
 		// Case-fold every clause before anything reads it: the matching below
 		// does not trust the caller to have lowercased its operands.
@@ -323,18 +439,11 @@ export const search = publicQuery({
 		if (!mailboxId || mailboxIds) {
 			const targets = await resolveTargets(ctx, mailboxIds);
 			if (targets.length === 0) return empty;
-			const decoded = decodeMultiCursor(cursor);
-			const pages: MailboxPage<Doc<'mailMessages'>>[] = [];
-			for (const target of targets) {
-				// A mailbox missing from a live cursor was drained on an earlier page.
-				if (decoded && !(target in decoded)) continue;
-				pages.push(await scanMailbox(ctx, target, clauses, limit, decoded?.[target] ?? null));
-			}
-			const merged = mergeMailboxPages(pages, limit);
+			const merged = await searchMailboxes(ctx, targets, clauses, limit, cursor);
 			return {
-				messages: merged.page.map(toMailListRow),
+				messages: await withSenderLogos(ctx, merged.messages.map(toMailListRow)),
 				hasMore: merged.hasMore,
-				nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
+				nextCursor: merged.nextCursor,
 			};
 		}
 
@@ -342,70 +451,13 @@ export const search = publicQuery({
 		const mailbox = await loadReadableMailbox(ctx, mailboxId);
 		if (!mailbox) return empty;
 
-		const names = await resolveNames(ctx, mailboxId, clauses);
-		const live = clauses.filter((clause) => !isDeadClause(clause, names));
-		if (live.length === 0) return empty;
-
-		// A disjunction has no shared text to search on, so it walks the arrival
-		// index and re-checks each clause's text in the post-filter.
-		const disjunctive = live.length > 1;
-		const single = disjunctive ? null : live[0]!;
-		const folderId = single?.folderRole
-			? (names.folderByRole.get(single.folderRole) ?? undefined)
-			: undefined;
-
-		// `filename:` with no free text scans the ATTACHMENT index instead of the
-		// message table (idea 37). Before `mailAttachments` existed the operand
-		// could only ever be a post-filter over one page of arrival-ordered mail,
-		// so a contract sent two years ago was unfindable no matter how exactly
-		// its name was typed. Now the scan itself is the filename search.
-		//
-		// ONLY once the index covers this mailbox's existing mail. The write path
-		// fills it from delivery onward, so until the backfill has completed the
-		// index is a partial view and driving the scan off it would make
-		// `filename:` return LESS than the post-filter it replaced — a regression
-		// dressed up as an empty result. Until then the post-filter below runs,
-		// exactly as it did before the index shipped.
-		if (
-			single &&
-			!single.text &&
-			single.filename &&
-			(await isAttachmentIndexComplete(ctx, mailboxId))
-		) {
-			return searchByFilename(ctx, mailboxId, single, names, limit, cursor ?? null);
-		}
-
-		// Both branches paginate natively: the text branch over the search index,
-		// the no-text branch over the arrival index. The page may shrink below
-		// `limit` after the post-filter; the cursor still marks the true scan
-		// position, so "Load more" never skips or repeats a row.
-		// `from` is a partial token (e.g. "sara"), not a full address, so it can't
-		// use the search index's exact .eq('fromAddress') — the substring
-		// post-filter below handles it for both the text and no-text branches.
-		const page =
-			single && single.text
-				? await textSearchQuery(ctx, await resolveBodySearchMode(ctx, mailboxId), {
-						mailboxId,
-						text: single.text,
-						folderId,
-						flagSeen: single.flagSeen,
-						flagFlagged: single.flagFlagged,
-					}).paginate({ cursor: cursor ?? null, numItems: limit })
-				: await ctx.db
-						.query('mailMessages')
-						.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
-						.order('desc')
-						.paginate({ cursor: cursor ?? null, numItems: limit });
-
-		// Final filters that the search index couldn't express.
-		const filtered = page.page.filter((m) =>
-			live.some((clause) => matchesClause(m, clause, names, disjunctive))
-		);
-
+		const page = await searchMailbox(ctx, mailboxId, clauses, limit, cursor);
 		return {
-			messages: filtered.map(toMailListRow),
-			hasMore: !page.isDone,
-			nextCursor: page.isDone ? null : page.continueCursor,
+			// Results leave as slim list rows (plan 2.3): the reader loads the body
+			// through its own thread query, so no row body is unsealed here.
+			messages: await withSenderLogos(ctx, page.messages.map(toMailListRow)),
+			hasMore: page.hasMore,
+			nextCursor: page.nextCursor,
 		};
 	},
 });

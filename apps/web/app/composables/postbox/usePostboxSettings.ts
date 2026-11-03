@@ -22,9 +22,12 @@
  *     ('keep', the default) or marks it done. See utils/postboxAfterReply.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
- *   - `viewMode` — which list renderer the inbox uses: 'flat' (default),
- *     'conversations' (thread-grouped), or 'categories' (smart-inbox
- *     sections). Inbox-only; other folders always render flat.
+ *   - `unreadStyle` lives in the same row but is read and written by
+ *     usePostboxUnreadStyle.
+ *   - `viewMode` — which list renderer the inbox uses: 'conversations'
+ *     (thread-grouped, the default), 'flat', 'categories', 'bundled' or
+ *     'sections'. See utils/postboxViewMode. Inbox-only; other folders always
+ *     render flat.
  *   - `readingPane` — where the reader sits relative to the list: 'right'
  *     (side-by-side, the default and today's geometry), 'bottom' (a full-width
  *     list above the reader) or 'off' (no reading pane; opening navigates).
@@ -157,7 +160,7 @@ export function usePostboxSettings() {
 	// so the reader can consume it unconditionally while the query loads.
 	const density = computed<PostboxDensity>(() => resolvePostboxDensity(data.value?.density));
 
-	// Inbox list view mode. An unset (or unknown) value resolves to 'flat', so
+	// Inbox list view mode. An unset (or unknown) value resolves to 'conversations', so
 	// the layout can consume it unconditionally while the query loads.
 	const viewMode = computed<PostboxViewMode>(() => resolvePostboxViewMode(data.value?.viewMode));
 

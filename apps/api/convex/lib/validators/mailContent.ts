@@ -26,6 +26,17 @@ export const mailUnsubscribeValidator = v.object({
 	oneClick: v.boolean(),
 });
 
+// A one-time code or sign-in link read out of an authenticated message at
+// arrival (mailMessages.signInCode, see mail/signInCodes.ts). `senderDomain` is
+// the From domain the chip names; the row is cleared at `expiresAt`.
+export const mailSignInCodeValidator = v.object({
+	kind: v.union(v.literal('code'), v.literal('link')),
+	value: v.string(),
+	senderDomain: v.string(),
+	expiresAt: v.number(),
+});
+export type MailSignInCode = Infer<typeof mailSignInCodeValidator>;
+
 // Observed triage verb (mailTriageTallies.verb + the mail/triageTally args).
 // Exactly the verbs that map onto a filter action a user would plausibly
 // automate: archive → move to Archive, trash → delete, spam → move to Spam.
@@ -68,6 +79,17 @@ export const mailSnippetVariableValidator = v.object({
 	label: v.optional(v.string()),
 });
 
+// A file a saved reply carries (mailSnippets.attachments). The reply owns the
+// blob through an upload receipt bound to `mailSnippets:<id>`
+// (mail/savedReplyAttachments.ts); a draft it is inserted into only borrows it.
+export const savedReplyAttachmentValidator = v.object({
+	storageId: v.id('_storage'),
+	filename: v.string(),
+	contentType: v.string(),
+	size: v.number(),
+});
+export type SavedReplyAttachment = Infer<typeof savedReplyAttachmentValidator>;
+
 // Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
 export const mailDraftAttachmentValidator = v.object({
 	storageId: v.id('_storage'),
@@ -84,6 +106,9 @@ export const mailDraftAttachmentValidator = v.object({
 			id: v.string(),
 		})
 	),
+	// Borrowed from this saved reply: the blob is the reply's, so no path that
+	// frees a draft's files may delete it (mail/savedReplyAttachments.ts).
+	savedReplyId: v.optional(v.id('mailSnippets')),
 });
 
 /**
@@ -150,3 +175,37 @@ export const mailAttachmentShareScopeValidator = v.union(v.literal('anyone'), v.
  * a confirmed verdict refuses creation, so no row can ever carry it.
  */
 export const mailAttachmentShareScanValidator = v.union(v.literal('clean'), v.literal('skipped'));
+
+// One read receipt (RFC 8098) a recipient's client returned for a sent message.
+// `displayed` is "opened"; `deleted` says nothing about whether it was seen. The
+// receipts' other dispositions say nothing about reading and are not kept.
+export const mailReturnedReceiptValidator = v.object({
+	address: v.string(),
+	disposition: v.union(v.literal('displayed'), v.literal('deleted')),
+	// The recipient's client sent it without asking them.
+	isAutomatic: v.boolean(),
+	at: v.number(),
+});
+export type MailReturnedReceipt = Infer<typeof mailReturnedReceiptValidator>;
+
+// The read receipt a sent message asked for (mailMessages.readReceipt): present
+// only when the sender asked. `returned` holds at most one entry per recipient,
+// the last to arrive. A recipient missing from it may still have read the message.
+export const mailReadReceiptValidator = v.object({
+	requestedAt: v.number(),
+	returned: v.array(mailReturnedReceiptValidator),
+});
+
+// What the ingest action read out of an arriving receipt, for the delivery
+// mutation to match against a sent message.
+export const inboundReadReceiptValidator = v.object({
+	originalMessageId: v.string(),
+	finalRecipient: v.optional(v.string()),
+	disposition: v.union(
+		v.literal('displayed'),
+		v.literal('deleted'),
+		v.literal('dispatched'),
+		v.literal('processed')
+	),
+	isAutomatic: v.boolean(),
+});

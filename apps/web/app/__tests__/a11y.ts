@@ -463,6 +463,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		useUnreadBadge: () => ({ data: ref(undefined), count: ref(null) }),
 		useTabBadge: vi.fn(),
 		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
+		useDesktopTray: vi.fn(),
 		useAlertSounds: vi.fn(),
 		useWorkspaceHotkeys: vi.fn(),
 		useCommandPalette: () => ({ open: ref(false) }),
@@ -500,6 +501,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			error: ref(null),
 			refetch: vi.fn(),
 		}),
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),

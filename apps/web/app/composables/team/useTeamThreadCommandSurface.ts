@@ -4,7 +4,7 @@ import {
 	TEAM_THREAD_COMMAND_PROVIDER_ID,
 	TEAM_THREAD_COMMAND_PROVIDER_PRIORITY,
 	buildTeamThreadSurfaceGroups,
-} from '~/lib/commandPaletteThreadSurfaces';
+} from '~/lib/commandPaletteTeamThreadSurfaces';
 import { usePostboxSnoozePresets } from '~/composables/postbox/usePostboxSnoozePresets';
 import {
 	TEAM_THREAD_PRIORITIES,

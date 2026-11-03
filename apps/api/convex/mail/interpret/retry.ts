@@ -33,6 +33,14 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 ]);
 const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
 
+/**
+ * Whether an extraction's `errorCode` is a gate refusal: the instance could not
+ * run AI (off, no provider, budget used up), whatever the thread holds.
+ */
+export function isGateRefusalCode(code: string | undefined): boolean {
+	return code !== undefined && GATE_CODES.has(code);
+}
+
 /** Hold refusals of one revision before it waits for a new trigger. */
 export const MAX_BUDGET_DEFERRALS = 24;
 const BUDGET_BACKOFF: RetryPolicy = { baseMs: BASE_BACKOFF_MS, capMs: 6 * 60 * 60 * 1000 };

@@ -168,9 +168,11 @@ export function decide(rows: ReadonlyArray<LocalMessageRow>, input: DecideInput)
 		const held = input.order.filter((name) => locations.some((l) => l.remoteName === name));
 		const observation: RemoteObservation = { messageId: row.messageId };
 
-		// Sent and Drafts hold mail Owlat wrote itself, which the provider may
-		// never have had; an absence there proves nothing.
-		const isOwnMail = row.role === 'sent' || row.role === 'drafts';
+		// Sent holds mail Owlat wrote itself, which the provider may never have
+		// had; an absence there proves nothing. Drafts does not: Owlat writes no
+		// drafts to the provider, and a client replaces its draft on every
+		// autosave, so a version that left Drafts and is nowhere else was deleted.
+		const isOwnMail = row.role === 'sent';
 		if (!held.includes(row.remoteName)) {
 			if (held.length > 0) observation.remoteFolders = held;
 			else if (!input.untracked.has(row.remoteName) && !isOwnMail) unplaced.push(row);

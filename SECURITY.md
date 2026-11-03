@@ -73,19 +73,20 @@ The following secrets gate security-critical paths. If any are missing,
 the corresponding endpoint **must** return 503 — never fall back to
 accepting unsigned/unverified traffic.
 
-| Env var                                   | Used by                                                  | Failure mode if unset         |
-| ----------------------------------------- | -------------------------------------------------------- | ----------------------------- |
-| `BETTER_AUTH_SECRET`                      | `apps/api/convex/auth.ts`                                | Session signing fails.        |
-| `INSTANCE_SECRET`                         | Mailbox auth, unsubscribe tokens.                        | Various.                      |
-| `MTA_API_KEY`                             | Outbound mail dispatch, attachment scan.                 | No outbound mail.             |
-| `MTA_WEBHOOK_SECRET`                      | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)        | 503.                          |
-| `RESEND_WEBHOOK_SECRET`                   | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)  | 503.                          |
-| `TWILIO_AUTH_TOKEN`                       | `webhooks/adapters/twilio.ts` (SMS webhook verification) | 503.                          |
-| `META_APP_SECRET`                         | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST  | 503.                          |
-| `META_VERIFY_TOKEN`                       | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET   | 503.                          |
-| `GENERIC_WEBHOOK_SECRET`                  | `webhooks/channelsHttp.ts` `handleGenericWebhook`        | 503.                          |
-| `UNSUBSCRIBE_SECRET`                      | Unsubscribe-link HMAC.                                   | Link generation/verify fails. |
-| `GOOGLE_SAFE_BROWSING_API_KEY` (optional) | URL-reputation scanner.                                  | Reputation skipped.           |
+| Env var                                    | Used by                                                  | Failure mode if unset         |
+| ------------------------------------------ | -------------------------------------------------------- | ----------------------------- |
+| `BETTER_AUTH_SECRET`                       | `apps/api/convex/auth.ts`                                | Session signing fails.        |
+| `INSTANCE_SECRET`                          | Mailbox auth, unsubscribe tokens.                        | Various.                      |
+| `MTA_API_KEY`                              | Outbound mail dispatch, attachment scan.                 | No outbound mail.             |
+| `MTA_WEBHOOK_SECRET`                       | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)        | 503.                          |
+| `RESEND_WEBHOOK_SECRET`                    | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)  | 503.                          |
+| `TWILIO_AUTH_TOKEN`                        | `webhooks/adapters/twilio.ts` (SMS webhook verification) | 503.                          |
+| `META_APP_SECRET`                          | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST  | 503.                          |
+| `META_VERIFY_TOKEN`                        | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET   | 503.                          |
+| `GENERIC_WEBHOOK_SECRET`                   | `webhooks/channelsHttp.ts` `handleGenericWebhook`        | 503.                          |
+| `UNSUBSCRIBE_SECRET`                       | Unsubscribe-link HMAC.                                   | Link generation/verify fails. |
+| `GOOGLE_SAFE_BROWSING_API_KEY` (optional)  | URL-reputation scanner.                                  | Reputation skipped.           |
+| `MICROSOFT_OAUTH_CLIENT_SECRET` (optional) | Microsoft sign-in token exchange and refresh.            | No Microsoft sign-in offered. |
 
 The send-provider feedback routes (`/webhooks/mta`, `/webhooks/resend`,
 `/webhooks/ses`, `/webhooks/mandrill`) share one HTTP entry point —

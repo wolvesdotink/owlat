@@ -45,6 +45,18 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
       - uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
         if: runner.os == 'Windows'
+      # openssl-sys builds the vendored OpenSSL with perl. Under `shell: bash`
+      # Git for Windows' perl comes first on PATH and lacks modules OpenSSL's
+      # Configure needs. This producer and the release build
+      # (_desktop-build.yml) name the same perl, so the cached build scripts
+      # stay fresh.
+      - name: Use Strawberry Perl for vendored OpenSSL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $perl = 'C:\Strawberry\perl\bin\perl.exe'
+          if (-not (Test-Path $perl)) { throw "Strawberry Perl not found at $perl" }
+          "OPENSSL_SRC_PERL=$perl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Read pinned Rust toolchain
         id: rust
         shell: bash

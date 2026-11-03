@@ -5,6 +5,7 @@
  * Pinned here:
  *   - once aligned, the provider's moves, deletions and flags are mirrored
  *     locally WITHOUT being queued back to the provider;
+ *   - a draft the provider no longer holds is deleted, not kept or trashed;
  *   - a message with a write-back in flight is left alone;
  *   - before alignment the two sides are merged: inbox mail follows the
  *     provider, mail filed in Owlat is pushed, flags are combined, nothing is
@@ -35,12 +36,13 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-type Roles = 'inbox' | 'archive' | 'trash' | 'sent';
+type Roles = 'inbox' | 'archive' | 'trash' | 'sent' | 'drafts';
 const REMOTE: Record<Roles, string> = {
 	inbox: 'INBOX',
 	archive: 'Archive',
 	trash: 'Trash',
 	sent: 'Sent',
+	drafts: 'Drafts',
 };
 
 async function fullSyncMailbox(opts: { aligned?: boolean; syncMode?: 'full' | 'incoming' } = {}) {
@@ -167,6 +169,19 @@ describe('mirroring provider changes once aligned', () => {
 		await observe(t, accountId, [{ messageId: 's@x.example', isGone: true }]);
 
 		expect(await folderOf(t, sent)).toBe(folders.sent);
+	});
+
+	it('deletes a draft the provider no longer holds, rather than keeping or trashing it', async () => {
+		const { t, mailboxId, accountId } = await fullSyncMailbox();
+		const draft = await seedMessage(t, mailboxId, {
+			rfc822MessageId: 'd@x.example',
+			role: 'drafts',
+		});
+
+		await observe(t, accountId, [{ messageId: 'd@x.example', isGone: true }]);
+
+		expect(await folderOf(t, draft)).toBeNull();
+		expect(await queuedOps(t)).toEqual([]);
 	});
 
 	it('takes the provider flags', async () => {

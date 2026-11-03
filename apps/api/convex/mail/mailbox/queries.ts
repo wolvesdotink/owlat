@@ -21,6 +21,7 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
+import type { SenderLogoField } from '../senderLogos/cache';
 import { toThreadListRow, type ThreadListRow } from './threadListRow';
 import { isThreadLatestSnoozed } from '../threadLatestSnooze';
 
@@ -50,7 +51,7 @@ export const listMessages = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty = {
-			messages: [] as Array<MailListRow & RowThreadState>,
+			messages: [] as Array<MailListRow & RowThreadState & SenderLogoField>,
 			hasMore: false,
 			nextCursor: null,
 		};
@@ -198,7 +199,7 @@ export const listByLabel = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty = {
-			messages: [] as Array<MailListRow & RowThreadState>,
+			messages: [] as Array<MailListRow & RowThreadState & SenderLogoField>,
 			hasMore: false,
 			nextCursor: null,
 		};
@@ -326,8 +327,12 @@ export const accessible = publicQuery({
 			label: string;
 			address: string;
 			scope: 'personal' | 'shared';
+			/** Backed by a connected IMAP account rather than hosted here. */
+			isConnected: boolean;
 			colorSlot: number | null;
 			unread: number;
+			/** The Inbox folder, which All inboxes (`allInboxes.ts`) reads by id. */
+			inboxFolderId: Id<'mailFolders'> | null;
 		}> = [];
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
@@ -341,8 +346,10 @@ export const accessible = publicQuery({
 				label: displayName && displayName.length > 0 ? displayName : mb.address,
 				address: mb.address,
 				scope: mb.scope === 'shared' ? 'shared' : 'personal',
+				isConnected: mb.kind === 'external',
 				colorSlot: mb.colorSlot ?? null,
 				unread: inbox?.unseenCount ?? 0,
+				inboxFolderId: inbox?._id ?? null,
 			});
 		}
 		return rows;

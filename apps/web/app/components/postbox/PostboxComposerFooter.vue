@@ -12,7 +12,8 @@
  *
  * Slots: `send-hint` (beside Send), `menu` (first in ⋯, receives `close`),
  * `notes` (under the pre-send checks). Both composers pass `savedReplies`, which
- * puts the saved-reply picker beside the paperclip.
+ * puts the saved-reply picker beside the paperclip, and `dictationTarget`, the
+ * microphone beside it.
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
@@ -21,7 +22,9 @@ import type { ComposerTargetCapabilities } from '~/utils/composerTarget';
 import type { ComposerSavedReplies } from '~/composables/useComposerSavedReplyPicker';
 import type { InlineImageSources } from '~/composables/postbox/usePostboxInlineImages';
 import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
+import DictationButton from '~/components/DictationButton.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
+import type { DictationTarget } from '~/utils/dictation';
 import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxInsertAvailability';
 import type { ComposerSendActions, PostboxAfterReply } from '~/utils/postboxAfterReply';
 import { POSTBOX_SEND_AND_LABELS } from '~/utils/postboxAfterReply';
@@ -81,6 +84,8 @@ const props = defineProps<{
 	advisoryOpen?: boolean;
 	/** The composer's saved replies (picker button, "Save as reply"). */
 	savedReplies?: ComposerSavedReplies;
+	/** Where dictation writes: the body field, or nothing while it can't be written. */
+	dictationTarget?: DictationTarget | null;
 }>();
 
 const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
@@ -231,6 +236,7 @@ function onPickFiles(event: Event) {
 					/>
 				</template>
 				<SavedReplyComposerTools v-if="savedReplies" :api="savedReplies" />
+				<DictationButton :target="dictationTarget" :disabled="isScheduled || bodyPending" />
 				<!-- Schedule and the follow-up chip sit on the row itself. -->
 				<UiTooltip v-if="capabilities.schedule" :text="scheduleShortcutHint">
 					<UiButton

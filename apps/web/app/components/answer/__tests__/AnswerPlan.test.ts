@@ -34,6 +34,7 @@ vi.mock('~/composables/useThreadBrief', async () => {
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(false) }));
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 });
 

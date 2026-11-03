@@ -48,11 +48,15 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	category?: NonNullable<Doc<'mailThreads'>['category']>['label'];
 	// Parsed List-Unsubscribe target; `oneClick` is what lets a bundle offer one.
 	unsubscribe?: ListUnsubscribeTarget;
+	// The sign-in code or link read at arrival (mail/signInCodes.ts).
+	signInCode?: Doc<'mailMessages'>['signInCode'];
 	// The thread brief's top open item (mail/interpret/briefTop.ts), shown
 	// instead of the snippet once the thread is interpreted.
 	briefTop?: BriefTopRow;
 	// The thread's Priority placement (read on arrival §3), attached server-side.
 	placement?: Placement;
+	// The authenticated sender's brand logo, served by us (mail/senderLogos/).
+	senderLogoUrl?: string;
 };
 </script>
 
@@ -83,6 +87,7 @@ import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadRowQuickActions from './PostboxThreadRowQuickActions.vue';
+import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 import {
 	ArchiveIcon,
 	BellIcon,
@@ -421,14 +426,7 @@ function onCapturedClick(event: MouseEvent) {
 								<CheckIcon v-if="shownSelected" class="w-3 h-3" />
 							</button>
 						</UiTooltip>
-						<UiAvatar
-							:name="msg.fromName"
-							:email="msg.fromAddress"
-							deterministic-color
-							size="sm"
-							class="flex-shrink-0"
-							aria-hidden="true"
-						/>
+						<PostboxSenderAvatar :sender="msg" size="sm" class="flex-shrink-0" />
 						<PostboxThreadRowBody
 							:msg="msg"
 							:trust-markers="trustMarkers"

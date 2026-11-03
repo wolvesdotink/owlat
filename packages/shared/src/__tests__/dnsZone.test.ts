@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	asDnsName,
 	isDnsLabel,
+	organizationalDomain,
 	trySplitZone,
 	zoneRelativeHost,
 	type DnsName,
@@ -284,5 +285,24 @@ describe('asDnsName', () => {
 		const overLong = `${['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(63)].join('.')}.com`;
 		expect(overLong.length).toBeGreaterThan(253);
 		expect(asDnsName(overLong)).toBeNull();
+	});
+});
+
+describe('organizationalDomain', () => {
+	it('is the name one label below the public suffix', () => {
+		expect(organizationalDomain('mail.acme-bank.com')).toBe('acme-bank.com');
+		expect(organizationalDomain('News.Example.CO.UK.')).toBe('example.co.uk');
+	});
+
+	it('counts the private section, so hosted tenants are their own organisation', () => {
+		expect(organizationalDomain('shop.github.io')).toBe('shop.github.io');
+		expect(organizationalDomain('mail.app.herokuapp.com')).toBe('app.herokuapp.com');
+	});
+
+	it('is null for names with no organisational domain', () => {
+		expect(organizationalDomain('co.uk')).toBeNull();
+		expect(organizationalDomain('localhost')).toBeNull();
+		expect(organizationalDomain('192.0.2.1')).toBeNull();
+		expect(organizationalDomain('')).toBeNull();
 	});
 });

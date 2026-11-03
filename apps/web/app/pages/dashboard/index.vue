@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
+import { allInboxesHref } from '~/utils/postboxAllInboxes';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
 import { useZenMode } from '~/composables/useZenMode';
@@ -131,7 +132,7 @@ const inboxHref = computed(() =>
 	isTeam.value ? '/dashboard/inbox' : `/dashboard/postbox/inbox?mailbox=${scope.value}`
 );
 const moreHref = computed(() =>
-	isTeam.value ? '/dashboard/inbox' : `/dashboard/inboxes?in=${scope.value}`
+	isTeam.value ? '/dashboard/inbox' : allInboxesHref({ in: scope.value })
 );
 
 // Greeting

@@ -7,6 +7,8 @@
  *   can change it, and links to the setting. Members never see it.
  * - When recent pages match nothing but older mail remains, "Search older mail"
  *   is a real button that keeps walking.
+ * - A plain-words search that found little offers an AI rewrite into operators
+ *   (only with the `ai` flag), and running the rewrite replaces the query.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
@@ -15,6 +17,7 @@ import { parseSearchQuery } from '@owlat/shared/mailSearch';
 
 import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
+import { isSearchRewriteOffered } from '~/utils/postboxSearchQuery';
 import SearchPage from '../search.vue';
 
 vi.mock('@owlat/api', () => {
@@ -44,6 +47,7 @@ const searchOlder = vi.fn(() => {
 const searchError = ref<Error | null>(null);
 const refetchSearch = vi.fn();
 const parsed = ref<object>({});
+const aiEnabled = ref(false);
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -96,6 +100,8 @@ beforeAll(() => {
 			save: vi.fn(),
 			isSaving: ref(false),
 		}),
+		useFeatureFlag: () => ({ isEnabled: (flag: string) => flag === 'ai' && aiEnabled.value }),
+		isSearchRewriteOffered,
 		describeChips: () => [],
 		removeSearchOperator: (q: string) => q,
 		stripSearchOperators: (q: string) => q,
@@ -118,6 +124,7 @@ beforeEach(() => {
 	searchError.value = null;
 	refetchSearch.mockClear();
 	parsed.value = {};
+	aiEnabled.value = false;
 });
 
 const passthrough = (name: string) =>
@@ -135,6 +142,19 @@ const nuxtLinkStub = defineComponent({
 		(props, { slots, attrs }) =>
 		() =>
 			h('a', { ...attrs, href: props.to }, slots.default?.()),
+});
+const rewriteStub = defineComponent({
+	name: 'PostboxSearchRewrite',
+	props: { query: { type: String, required: true } },
+	emits: ['search'],
+	setup:
+		(props, { emit }) =>
+		() =>
+			h(
+				'button',
+				{ 'data-testid': 'rewrite-stub', onClick: () => emit('search', `from:mia ${props.query}`) },
+				props.query
+			),
 });
 const buttonStub = defineComponent({
 	name: 'UiButton',
@@ -156,6 +176,7 @@ function mountPage() {
 			NuxtLink: nuxtLinkStub,
 			UiButton: buttonStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
+			PostboxSearchRewrite: rewriteStub,
 		},
 		stubs: {
 			I18nT: true,
@@ -242,5 +263,30 @@ describe('mail search page', () => {
 		parsed.value = parseSearchQuery('from:ines@example.com is:unread');
 		await nextTick();
 		expect(seed()).toBeNull();
+	});
+
+	it('offers to rewrite a plain-words search that found little, and runs the rewrite', async () => {
+		aiEnabled.value = true;
+		route.query = { q: 'onboarding date from mia' };
+		parsed.value = parseSearchQuery('onboarding date from mia');
+		const page = mountPage();
+		const offer = page.get('[data-testid="rewrite-stub"]');
+		expect(offer.text()).toBe('onboarding date from mia');
+		await offer.trigger('click');
+		expect(routerReplace).toHaveBeenLastCalledWith({
+			query: { q: 'from:mia onboarding date from mia' },
+		});
+	});
+
+	it('offers no rewrite without the AI flag or for a query that uses operators', () => {
+		route.query = { q: 'onboarding date from mia' };
+		parsed.value = parseSearchQuery('onboarding date from mia');
+		expect(mountPage().find('[data-testid="rewrite-stub"]').exists()).toBe(false);
+		wrapper?.unmount();
+
+		aiEnabled.value = true;
+		route.query = { q: 'from:mia onboarding' };
+		parsed.value = parseSearchQuery('from:mia onboarding');
+		expect(mountPage().find('[data-testid="rewrite-stub"]').exists()).toBe(false);
 	});
 });

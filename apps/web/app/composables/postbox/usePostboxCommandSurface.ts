@@ -2,9 +2,11 @@ import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { type PaletteGroup, type PaletteItem, filterItems } from '~/lib/commandPalette';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
+import { canMarkFolderRead, findViewFolder, isEmptyableRole } from './usePostboxFolderBulk';
 import {
 	ArchiveIcon,
 	ArrowLeftRightIcon,
+	CheckAllIcon,
 	CircleSlashIcon,
 	ClockIcon,
 	CloudDownloadIcon,
@@ -17,6 +19,7 @@ import {
 	SearchIcon,
 	ShieldWarningIcon,
 	TagIcon,
+	TrashIcon,
 	UsersIcon,
 } from '@coolicons/vue';
 
@@ -53,6 +56,9 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  * team-inbox entries still appear the instant a shared inbox's membership
  * resolves — no explicit watch needed.
  *
+ * "Mark all as read" and "Empty trash / spam" act on the folder on screen
+ * (`view`), and appear only while that folder has something for them to do.
+ *
  * Forward, Move and "Label as…" share their ids with the open conversation's
  * provider (`usePostboxThreadCommandSurface`), which is consulted first: while a
  * conversation is open its direct verbs win and these broadcast twins drop out.
@@ -60,7 +66,10 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  * Extracted from PostboxLayout.vue to keep the layout under the file-size cap;
  * mirrors how the sidebar nav was pulled into `useDashboardNavigation`.
  */
-export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
+export function usePostboxCommandSurface(
+	mailboxId: Ref<Id<'mailboxes'>>,
+	view?: { folderRole: Ref<string>; folderId: Ref<Id<'mailFolders'> | undefined> }
+) {
 	const { t } = useI18n();
 	const composeNav = usePostboxComposeNav();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
@@ -71,6 +80,34 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	// The mailbox's labels, for the `#` mode and for the "Label as…" argument
 	// step. Read at build time so a label created mid-session shows up.
 	const { labels } = usePostboxLabels(mailboxId);
+	const { folders } = usePostboxFolders(mailboxId);
+	const folderBulk = usePostboxFolderBulk(mailboxId);
+
+	/** The whole-folder verbs for the folder on screen, read at build time. */
+	function folderItems(): PaletteItem[] {
+		const folder = view
+			? findViewFolder(folders.value, view.folderRole.value, view.folderId.value)
+			: null;
+		if (!folder) return [];
+		const items: PaletteItem[] = [];
+		if (canMarkFolderRead(folder)) {
+			items.push({
+				id: 'postbox:mark-all-read',
+				label: t('components.postbox.postboxFolderActions.markAllRead'),
+				icon: CheckAllIcon,
+				run: () => void folderBulk.markAllRead(folder),
+			});
+		}
+		if (folderBulk.canEmpty(folder) && isEmptyableRole(folder.role)) {
+			items.push({
+				id: 'postbox:empty-folder',
+				label: t(`components.postbox.postboxFolderActions.empty.${folder.role}`),
+				icon: TrashIcon,
+				run: () => folderBulk.requestEmpty(folder),
+			});
+		}
+		return items;
+	}
 
 	function dispatchReaderAction(action: string, detail: Record<string, unknown> = {}) {
 		window.dispatchEvent(
@@ -151,6 +188,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 							})),
 						},
 					},
+					...folderItems(),
 				],
 			},
 			{

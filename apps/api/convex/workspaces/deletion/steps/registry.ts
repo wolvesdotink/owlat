@@ -14,15 +14,18 @@ import type { TENANT_TABLES } from '../../../lib/tenantTables';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
 // storage-blob purges (mediaAssets / semanticFiles / mailMessages / inboundMessages /
-// mailDrafts / transactionalSends / the team reply tables) and delegated cascades (contacts →
-// permanentlyDeleteContactWithRelations, domains → sendingDomainLifecycle.remove).
+// mailDrafts / mailSnippets / transactionalSends / the team reply tables / senderLogos) and
+// delegated cascades (contacts → permanentlyDeleteContactWithRelations, domains →
+// sendingDomainLifecycle.remove).
 // Every other table is a pure `take + delete` sweep, expressed inline below via
 // makeSweepStep — no per-table file needed.
 import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
+import { mailSnippetsStep } from './mailSnippets';
 import { mailMessagesStep } from './mailMessages';
 import { mailMessagePartsStep } from './mailMessageParts';
+import { senderLogosStep } from './senderLogos';
 import { inboundMessagesStep } from './inboundMessages';
 import { conversationThreadsStep, inboxFollowUpsStep } from './teamReplies';
 import { mailDraftsStep } from './mailDrafts';
@@ -80,6 +83,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailMessageBodies: makeSweepStep('mailMessageBodies'),
 	mailMessages: mailMessagesStep,
 	mailMessageParts: mailMessagePartsStep,
+	senderLogos: senderLogosStep,
 	mailDraftRequestNonces: makeSweepStep('mailDraftRequestNonces'),
 	mailDrafts: mailDraftsStep,
 	apiRequestReceipts: makeSweepStep('apiRequestReceipts'),
@@ -106,10 +110,12 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailFilters: makeSweepStep('mailFilters'),
 	mailFilterRunJobs: makeSweepStep('mailFilterRunJobs'),
 	mailSignatures: makeSweepStep('mailSignatures'),
-	mailSnippets: makeSweepStep('mailSnippets'),
+	mailSnippets: mailSnippetsStep,
 	mailSavedSearches: makeSweepStep('mailSavedSearches'),
 	mailUserSettings: makeSweepStep('mailUserSettings'),
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
+	mcpClientActivity: makeSweepStep('mcpClientActivity'),
+	mcpClients: makeSweepStep('mcpClients'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),
 	pendingMailboxMembers: makeSweepStep('pendingMailboxMembers'),
 	mailboxUsage: makeSweepStep('mailboxUsage'),

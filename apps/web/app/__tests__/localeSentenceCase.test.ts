@@ -110,6 +110,7 @@ const PROPER_NOUNS = new Set([
 
 /** Multi-word product names whose later words are part of the name. */
 const PROPER_PHRASES = [
+	'Claude Code',
 	'Google Workspace',
 	'Mailchimp Transactional',
 	'Mailchimp Marketing',

@@ -10,7 +10,12 @@
 import { describe, it, expect } from 'vitest';
 
 import { parseSearchQuery } from '@owlat/shared/mailSearch';
-import { removeSearchOperator, stripSearchOperators, describeChips } from '../postboxSearchQuery';
+import {
+	removeSearchOperator,
+	stripSearchOperators,
+	describeChips,
+	isSearchRewriteOffered,
+} from '../postboxSearchQuery';
 
 describe('removeSearchOperator', () => {
 	it('removes a quoted operator whole, leaving no fragment behind', () => {
@@ -77,5 +82,29 @@ describe('describeChips', () => {
 	it('deduplicates a chip that both OR sides produce', () => {
 		const chips = describeChips(parseSearchQuery('is:unread from:a OR is:unread from:b'));
 		expect(chips.filter((c) => c.key === 'is')).toHaveLength(1);
+	});
+});
+
+describe('isSearchRewriteOffered', () => {
+	const settled = { resultCount: 0, hasMore: false, isLoading: false };
+	const offered = (query: string, state: Partial<typeof settled> = {}) =>
+		isSearchRewriteOffered({ parsed: parseSearchQuery(query), ...settled, ...state });
+
+	it('offers a rewrite for plain words that found little', () => {
+		expect(offered('invoice from the hosting company')).toBe(true);
+		expect(offered('flight to lisbon', { resultCount: 3 })).toBe(true);
+	});
+
+	it('does not offer one while the search is still settling or found plenty', () => {
+		expect(offered('flight to lisbon', { isLoading: true })).toBe(false);
+		expect(offered('flight to lisbon', { resultCount: 4 })).toBe(false);
+		expect(offered('flight to lisbon', { hasMore: true })).toBe(false);
+	});
+
+	it('does not offer one for a single word or a query that already uses the syntax', () => {
+		expect(offered('invoice')).toBe(false);
+		expect(offered('from:mia onboarding')).toBe(false);
+		expect(offered('"onboarding date"')).toBe(false);
+		expect(offered('invoice -draft')).toBe(false);
 	});
 });

@@ -405,7 +405,15 @@
 			"select": "Select",
 			"scopeLabel": "Search scope",
 			"scopeHint": "Scope",
-			"filterPlaceholder": "Type to narrow the list…"
+			"filterPlaceholder": "Type to narrow the list…",
+			"keepTyping": "Keep typing to search your mail",
+			"prefixes": {
+				"heading": "Narrow with a prefix",
+				"commands": "Commands, pages and settings",
+				"people": "People and contacts",
+				"labels": "Labels",
+				"ask": "Ask your knowledge base"
+			}
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -1010,6 +1018,10 @@
 					"asserted": "you said",
 					"reported": "from their email"
 				},
+				"provenanceHint": {
+					"asserted": "Someone on your side said so, for example with Mark done.",
+					"reported": "An email in this thread said so."
+				},
 				"type": {
 					"message_received": "A new message arrived.",
 					"reply_sent": "You sent a reply.",
@@ -1075,12 +1087,15 @@
 					"failed": "{done} of {total} messages are in this brief. Reading the rest failed.",
 					"undecryptable": "{done} of {total} messages are in this brief. The rest could not be decrypted.",
 					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
-					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it."
+					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it.",
+					"aiOff": "{done} of {total} messages are in this brief. AI isn't available in this workspace, so the rest hasn't been read.",
+					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet."
 				},
 				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
 					"default": "There is no brief for this thread yet. The conversation shows everything.",
-					"aiOff": "AI is off, so there is no brief. The conversation shows everything.",
+					"aiOff": "AI isn't available in this workspace, so there is no brief. The conversation shows everything.",
+					"budget": "The AI budget for this period is used up, so there is no brief yet. The conversation shows everything.",
 					"undecryptable": "This message could not be decrypted, so there is no brief.",
 					"ineligible": "Mail like this is not summarised, so there is no brief.",
 					"failed": "Reading this thread failed, so there is no brief.",
@@ -1092,6 +1107,7 @@
 				"signed": "Only the signed part is summarised.",
 				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
+				"aiSettings": "AI settings",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
 			},
 			"conversation": {
@@ -3486,6 +3502,25 @@
 				"switchWorkspace": "Switch workspace"
 			}
 		},
+		"dictationButton": {
+			"label": "Dictate",
+			"stopTooltip": "Stop dictating",
+			"listening": "Listening…",
+			"listeningAnnouncement": "Listening. Speak, then press the microphone again to stop, or Esc to cancel.",
+			"stoppedAnnouncement": "Stopped listening.",
+			"escHint": "Press the microphone again to stop. Esc cancels.",
+			"privacy": {
+				"onDevice": "Speech is turned into text on this device. Owlat never receives the audio.",
+				"browser": "Your browser's speech service turns speech into text and may send the audio to its provider. Owlat never receives it."
+			},
+			"errors": {
+				"blocked": "Dictation can't use the microphone. Allow microphone access for this site and try again.",
+				"noSpeech": "Didn't catch anything. Press the microphone and speak again.",
+				"network": "The speech service couldn't be reached. Check your connection and try again.",
+				"language": "Dictation doesn't support your browser's language here.",
+				"failed": "Dictation stopped unexpectedly. Try again."
+			}
+		},
 		"domains": {
 			"addDomainForm": {
 				"adding": "Adding...",
@@ -4627,6 +4662,21 @@
 			"uploadMediaOperation": "Upload media"
 		},
 		"postbox": {
+			"allInboxes": {
+				"title": "All inboxes",
+				"inboxesHeading": "Inboxes",
+				"openInbox": "Open {name}",
+				"clearCategory": "Show every category",
+				"category": {
+					"newsletter": "Newsletters",
+					"notification": "Notifications",
+					"receipt": "Receipts",
+					"promotion": "Promotions",
+					"spam": "Spam",
+					"person": "From people",
+					"other": "Other"
+				}
+			},
 			"postboxAiStrip": {
 				"ask": "Ask",
 				"askAbout": "Ask about this thread",
@@ -4746,7 +4796,9 @@
 				"discardDraft": "Discard draft",
 				"showQuote": "Show quoted text",
 				"hideQuote": "Hide quoted text",
-				"gapsLeft": "1 gap left | {count} gaps left"
+				"gapsLeft": "1 gap left | {count} gaps left",
+				"readReceipt": "Ask for a read receipt",
+				"readReceiptOperation": "Change the read receipt request"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -4804,6 +4856,14 @@
 				"showServerReply": "What the server said",
 				"resendOne": "Resend to {address} only",
 				"resendMany": "Resend to the {count} recipients it didn't reach"
+			},
+			"postboxReadReceipts": {
+				"regionLabel": "Read receipts",
+				"readBy": "Read by {address}",
+				"deletedBy": "Deleted by {address}",
+				"waitingOne": "No read receipt from {address} yet.",
+				"waitingMany": "No read receipt from {count} recipients yet.",
+				"caveat": "Not every mail app sends one, and people can decline. A missing receipt doesn't mean the message is unread."
 			},
 			"postboxDraftList": {
 				"empty": "No drafts",
@@ -5020,6 +5080,13 @@
 					"flat": "Flat",
 					"bundled": "Bundled",
 					"sections": "Sections"
+				},
+				"viewModeDescriptions": {
+					"flat": "One row per message, so a reply gets its own row.",
+					"conversations": "One row per conversation, with its replies inside.",
+					"categories": "Grouped by kind: people, newsletters, notifications, receipts.",
+					"bundled": "Like Flat, but runs of newsletters and notifications fold into one row.",
+					"sections": "The sections your filter rules pin mail to, then everything else."
 				}
 			},
 			"postboxListDisplayMenu": {
@@ -5027,7 +5094,8 @@
 				"display": "Display",
 				"label": "Display options",
 				"readingPane": "Reading pane",
-				"sortOrder": "Sort order"
+				"sortOrder": "Sort order",
+				"unreadStyle": "Unread messages"
 			},
 			"postboxListHeader": {
 				"deselectPage": "Clear selection",
@@ -5058,6 +5126,17 @@
 				"imapHostPlaceholder": "imap.example.com",
 				"imapPort": "IMAP port",
 				"incomingMail": "Incoming mail {status}",
+				"microsoft": {
+					"continue": "Sign in with Microsoft",
+					"desktopHint": "Finish signing in with Microsoft in the browser window that just opened. This page updates by itself once the mailbox is connected.",
+					"detectOperation": "Check whether Microsoft hosts this address",
+					"detected": "Microsoft hosts the mail for this address, so you can sign in with Microsoft instead of using a password.",
+					"explain": "Sign in with Microsoft instead of creating an app password. Owlat receives only a revocable token for your mail, never your password. Work and school accounts may need an admin to approve Owlat first.",
+					"or": "or",
+					"reconnect": "Reconnect with Microsoft",
+					"reconnectExplain": "This mailbox is connected with Microsoft sign-in. Reconnecting restores its access without an app password — or switch it to an app password below.",
+					"startOperation": "Start Microsoft sign-in"
+				},
 				"missingMailboxError": "Cannot reconnect this team inbox: its mailbox is missing.",
 				"outgoingMail": "Outgoing mail {status}",
 				"passwordHelp": "Stored encrypted — only the sync worker can read it.",
@@ -5201,8 +5280,29 @@
 				"toggle": "Message details"
 			},
 			"postboxMovePickerDialog": {
+				"alreadyThere": "{name} already has this message, so it stayed here | {name} already has {count} of these messages, so they stayed here",
+				"confirmTeamAction": "Continue",
+				"confirmTeamBody": "Everyone with access to {name} will see the mail you put there.",
+				"confirmTeamTitle": "Put mail in {name}?",
+				"connectedNote": "Mail can't be moved into a connected account yet.",
+				"copiedTo": "Copied to {name} | Copied {count} messages to {name}",
+				"copy": "Copy",
+				"copyOnlyNote": "This message is in a connected account, so it can be copied but not moved for now.",
+				"copyTo": "Copy to {name}",
+				"movedTo": "Moved to {name} | Moved {count} messages to {name}",
+				"moveTo": "Move to {name}",
 				"noOtherFolders": "No other folders",
-				"title": "Move to folder"
+				"otherMailboxes": "Other mailboxes",
+				"refused": {
+					"external_source": "Mail in a connected account can be copied, not moved, for now.",
+					"external_target": "Mail can't be moved into a connected account yet.",
+					"over_quota": "That mailbox is full.",
+					"sealed": "This message is end-to-end encrypted. It can only go to a mailbox on the same address, which holds its key.",
+					"sending": "This message is still being sent. Try again once it's delivered."
+				},
+				"title": "Move to folder",
+				"transferOperation": "Move to mailbox",
+				"undoCopyOperation": "Undo copy"
 			},
 			"postboxNotificationSettings": {
 				"badgeAll": {
@@ -5468,6 +5568,17 @@
 					"olderThan": "older than 7d, 24h, 30m"
 				}
 			},
+			"postboxSearchRewrite": {
+				"editHint": "Check the operators before you search, and fix anything the guess got wrong.",
+				"failed": "Couldn't suggest a search. Try again in a moment.",
+				"none": "No search operator fits these words. Try describing the message differently.",
+				"offer": "Few results. AI can turn these words into a search with operators.",
+				"operation": "Suggest a search",
+				"search": "Search",
+				"searchFor": "Search for",
+				"suggest": "Suggest a search",
+				"working": "Suggesting…"
+			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· can't decrypt",
 				"copyCiphertext": "Copy encrypted message",
@@ -5623,6 +5734,17 @@
 				"loadingEarlier": "Loading earlier messages…",
 				"rowCount": "{count} match | {count} matches"
 			},
+			"threadChat": {
+				"toggle": "Chat layout",
+				"showChat": "Show as chat",
+				"showConversation": "Show as conversation",
+				"operation": "Switch the conversation layout",
+				"you": "You",
+				"noNewText": "No new text in this message.",
+				"attachments": "Attachments",
+				"showFull": "Show full message",
+				"backToChat": "Back to chat"
+			},
 			"postboxThreadEarlier": {
 				"load": "Load earlier messages",
 				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
@@ -5660,7 +5782,12 @@
 				"undoMoved": "Moved",
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to trash",
-				"unstar": "Unstar"
+				"unstar": "Unstar",
+				"zoomLabel": "Zoom",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom (now {percent}%)",
+				"zoomPercent": "{percent}%"
 			},
 			"postboxSweepStatus": {
 				"select": "Select {count} message | Select {count} messages",
@@ -5702,6 +5829,9 @@
 			"postboxTodayReaderOverlay": {
 				"conversation": "Conversation"
 			},
+			"postboxUnreadMark": {
+				"unread": "Unread."
+			},
 			"postboxTodayView": {
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
@@ -5731,6 +5861,14 @@
 				"sending": "Sending… ({seconds}s)",
 				"undo": "Undo",
 				"undoSendOperation": "Undo send"
+			},
+			"postboxSignInCodeChip": {
+				"copied": "Code copied",
+				"copyFailed": "Couldn't copy the code",
+				"copyLabel": "Copy sign-in code {code} from {domain}",
+				"openLabel": "Open the sign-in link from {domain}",
+				"openLink": "Open sign-in link",
+				"openLinkShort": "Open link"
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Unsubscribe from this mailing list",
@@ -6178,6 +6316,31 @@
 				"loadingSignedText": "Loading the signed text…",
 				"showDetails": "Show recipients and details"
 			},
+			"postboxShareImage": {
+				"menuItem": "Share as image…",
+				"title": "Share as image",
+				"hint": "Click a word to hide it. The image is made on this device, and nothing is uploaded.",
+				"canvasLabel": "Image preview. Click a word, or move between words with the arrow keys and press Space, to hide it.",
+				"light": "Light",
+				"dark": "Dark",
+				"schemeLabel": "Card colours",
+				"bar": "Bar",
+				"blur": "Blur",
+				"styleLabel": "How hidden words look",
+				"hidePersonal": "Hide personal details",
+				"clear": "Show all",
+				"hiddenCount": "No words hidden | {count} word hidden | {count} words hidden",
+				"copy": "Copy image",
+				"save": "Save PNG",
+				"share": "Share…",
+				"copied": "Image copied",
+				"copyFailed": "Couldn't copy the image",
+				"saveFailed": "Couldn't save the image",
+				"shareFailed": "Couldn't share the image",
+				"loading": "Loading the message…",
+				"truncated": "This message is long, so the image ends after its first part.",
+				"noSubject": "(no subject)"
+			},
 			"postboxComposerEnvelopeLine": {
 				"label": "Recipients, sender and subject. Open to edit",
 				"copies": "+{count} in copy",
@@ -6194,6 +6357,23 @@
 			"readerBackBar": {
 				"previous": "Previous conversation",
 				"next": "Next conversation"
+			},
+			"postboxFolderActions": {
+				"menuLabel": "Folder actions",
+				"markAllRead": "Mark all as read",
+				"empty": {
+					"trash": "Empty trash",
+					"spam": "Empty spam"
+				},
+				"count": {
+					"trash": "{count} message in the trash | {count} messages in the trash",
+					"spam": "{count} message in spam | {count} messages in spam"
+				},
+				"confirmTitle": {
+					"trash": "Empty the trash?",
+					"spam": "Empty spam?"
+				},
+				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
 			}
 		},
 		"preferences": {
@@ -6221,6 +6401,10 @@
 			"preferencesComfort": {
 				"title": "Reading comfort",
 				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"uiTextSizeLabel": "Text size",
+				"uiTextSizeHelp": "How large text reads across Owlat, mail included. Spacing and layout keep their size.",
+				"uiTextSizeOption": "{percent}%",
+				"uiTextSizeDefault": "100% (default)",
 				"textSizeLabel": "Mail text size",
 				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
 				"readingWidthLabel": "Reading width",
@@ -6231,6 +6415,9 @@
 				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
 				"reduceMotionLabel": "Reduce motion",
 				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"senderZoomLabel": "Zoom per sender",
+				"senderZoomHelp": "Senders whose mail you zoomed in the reader, with + and - or in a message's ⋯ menu.",
+				"senderZoomCount": "None | One sender | {count} senders",
 				"textSize": {
 					"small": "Small",
 					"default": "Default",
@@ -6272,6 +6459,8 @@
 				"densityHelp": "How tightly the message list and reader are packed. Compact drops the snippet line for single-line rows.",
 				"readingPaneLabel": "Reading pane",
 				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
+				"unreadStyleLabel": "Unread messages",
+				"unreadStyleHelp": "How unread messages stand out in the list. A dot marks them without relying on bold text or color.",
 				"replyDefaultLabel": "Default reply behavior",
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"afterReplyLabel": "After replying",
@@ -6297,6 +6486,8 @@
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"autoLoadImagesLabel": "Load images automatically",
 				"autoLoadImagesHelp": "Show pictures in mail as soon as you open it. Tracking pixels stay blocked, and mail that looks suspicious always asks first.",
+				"senderLogosLabel": "Show sender logos",
+				"senderLogosHelp": "Show a company's logo instead of initials when its mail passes sender authentication. Owlat fetches logos on the server, so senders never see when you read their mail.",
 				"swipeLeftLabel": "Swipe left on a message",
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
@@ -6440,6 +6631,54 @@
 				"rules": {
 					"heading": "What notifies you",
 					"notifyAboutHint": "Which new mail sends a notification. Quiet hours hold notifications back and send one summary when they end. Chat mentions and direct messages count as people."
+				}
+			},
+			"mailtoHandler": {
+				"heading": "Email links",
+				"intro": "Open {mailto} links you click on other websites in Owlat instead of your computer's mail app. This applies to this browser only.",
+				"thisBrowser": "This browser",
+				"request": "Open email links in Owlat",
+				"status": {
+					"idle": "Your browser asks you to confirm first.",
+					"requested": "Your browser was asked. If it showed a prompt, or an icon at the end of the address bar, allow Owlat there. To check, click an email link on another website: it opens a new message here.",
+					"failed": "Your browser turned the request down.",
+					"unsupported": "This browser can't open email links in a website. Chrome, Edge and Firefox on a computer can.",
+					"insecure": "Browsers only allow this when Owlat is served over HTTPS."
+				},
+				"undo": "To stop, remove Owlat in your browser's settings: in Chrome or Edge under Site settings → Protocol handlers, in Firefox under Settings → General → Applications, next to mailto."
+			},
+			"mcpClientCreateDialog": {
+				"title": "Connect an AI client",
+				"nameLabel": "Name",
+				"namePlaceholder": "Claude on my laptop",
+				"mailboxesLegend": "Mailboxes it may read",
+				"noMailboxes": "You have no mailbox to share yet.",
+				"readOnlyHint": "The client can search and read mail in these mailboxes. It cannot send or change anything.",
+				"submit": "Create token"
+			},
+			"mcpClientTokenReveal": {
+				"title": "Token for {name}",
+				"body": "Copy the token now. It is shown only this once; if you lose it, revoke this connection and create a new one.",
+				"token": "Token",
+				"config": "Configuration for Claude Desktop, Cursor and other clients",
+				"command": "Command for Claude Code",
+				"saved": "I have saved it"
+			},
+			"mcpClientActivity": {
+				"empty": "No activity yet.",
+				"results": "{count} result | {count} results",
+				"tools": {
+					"listMailboxes": "Listed mailboxes",
+					"listFolders": "Listed folders",
+					"listLabels": "Listed labels",
+					"searchMail": "Searched",
+					"readThread": "Read a conversation"
+				},
+				"outcomes": {
+					"ok": "Done",
+					"denied": "Refused",
+					"invalid": "Invalid request",
+					"error": "Failed"
 				}
 			}
 		},
@@ -7275,7 +7514,8 @@
 				"allInboxes": "All inboxes",
 				"inboxes": "Inboxes",
 				"more": "More",
-				"answerCount": "one waiting for an answer | {count} waiting for an answer"
+				"answerCount": "one waiting for an answer | {count} waiting for an answer",
+				"inboxUnread": "{name}, {count} unread"
 			},
 			"marketing": {
 				"overview": "Overview",
@@ -12060,9 +12300,26 @@
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
 				"searchPlaceholder": "Search contacts",
-				"subtitle": "People you mail — used for address autocomplete",
+				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
-				"undo": "Undo"
+				"undo": "Undo",
+				"vcard": {
+					"import": "Import .vcf",
+					"export": "Export .vcf",
+					"importHint": "Add people from a .vcf file, such as your phone's address book",
+					"pickerTitle": "Choose a vCard file",
+					"importedBadge": "Imported",
+					"importedTooltip": "Added or updated by a vCard import",
+					"imported": "Imported: {created} new, {merged} merged with existing contacts.",
+					"stopped": "The import stopped. No contacts were saved. | The import stopped after one contact, which is saved. | The import stopped after {count} contacts. Those are saved.",
+					"skipped": "Skipped one card without an email address. | Skipped {count} cards without an email address.",
+					"truncated": "Only the first {max} contacts in the file were read.",
+					"tooLarge": "That file is over {size} MB.",
+					"wrongType": "Pick a .vcf file.",
+					"empty": "That file has no contacts with an email address.",
+					"exportFailed": "The address book could not be exported. Try again.",
+					"unreadable": "That file could not be read. Try again."
+				}
 			},
 			"detail": {
 				"detail": {
@@ -12625,6 +12882,23 @@
 				"featureOffTitle": "Connecting outside mail accounts is turned off",
 				"pageTitle": "Connected mailboxes — Owlat",
 				"subheading": "Your mailboxes, how they send, and mailboxes elsewhere that Owlat keeps in step."
+			},
+			"aiClients": {
+				"pageTitle": "AI clients — Owlat",
+				"subheading": "Connect an AI app such as Claude Desktop, Claude Code or Cursor so it can search and read your mail. Each connection gets its own token and sees only the mailboxes you choose.",
+				"connect": "Connect a client",
+				"serverHeading": "Server address",
+				"readOnlyNote": "Connections are read-only: they can search and read mail, but cannot send, move, label or delete anything. Mail you share this way leaves Owlat for the AI app and its provider.",
+				"clientsHeading": "Connected clients",
+				"empty": "No AI clients yet. Connect one to get a token.",
+				"revoked": "Revoked",
+				"readOnly": "Read-only",
+				"mailboxUnavailable": "A mailbox you no longer have",
+				"usageLine": "Created {created} · Last used {lastUsed}",
+				"activity": "Activity",
+				"revoke": "Revoke",
+				"revokeDialogTitle": "Revoke this connection?",
+				"revokeDialogDescription": "The AI client loses access right away. Its activity stays listed here."
 			}
 		},
 		"send": {
@@ -13066,35 +13340,6 @@
 			"mode": {
 				"pageTitle": "Answer mode"
 			}
-		},
-		"inboxes": {
-			"pageTitle": "All inboxes",
-			"title": "All inboxes",
-			"subtitle": "Every conversation from the one inbox you read | Every conversation from the {count} inboxes you read",
-			"filterLabel": "Filter conversations",
-			"allInboxes": "All",
-			"show": {
-				"all": "Everything",
-				"unread": "Unread",
-				"needs": "Needs you"
-			},
-			"clearCategory": "Show every category",
-			"category": {
-				"newsletter": "Newsletters",
-				"notification": "Notifications",
-				"receipt": "Receipts",
-				"promotion": "Promotions",
-				"spam": "Spam",
-				"person": "From people",
-				"other": "Other"
-			},
-			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
-			"archiveOperation": "Archive conversations",
-			"archiveUndoOperation": "Undo archive",
-			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
-			"archiveSweepHint": "Archive — drag across rows to archive several",
-			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {
@@ -13141,6 +13386,23 @@
 				"description": "Which workspace Owlat opens when it launches.",
 				"lastActive": "Last active workspace",
 				"title": "Open at startup"
+			},
+			"tray": {
+				"closeToTray": {
+					"description": "Closing the main window hides it to the tray icon. Quit from the icon's menu.",
+					"needsIcon": "Turn on the tray icon first. Without it, closing the window quits Owlat.",
+					"title": "Keep running when the window is closed"
+				},
+				"menuBarIcon": {
+					"description": "Show the unread count and your newest unread mail in the menu bar.",
+					"heading": "Menu bar",
+					"title": "Menu bar icon"
+				},
+				"trayIcon": {
+					"description": "Show the unread count and your newest unread mail in the system tray.",
+					"heading": "System tray",
+					"title": "Tray icon"
+				}
 			},
 			"unreadBadge": {
 				"description": "Show the unread count on the app icon.",
@@ -13494,6 +13756,19 @@
 				"operation": "Finish Google sign-in",
 				"pageTitle": "Connecting Google"
 			}
+		},
+		"microsoft": {
+			"callback": {
+				"back": "Back to mail import",
+				"connecting": "Connecting your Microsoft mailbox…",
+				"denied": "Microsoft did not grant access, so nothing was connected. If this is a work or school account, your organization's admin may have to approve Owlat first. You can start again whenever you like.",
+				"deniedTitle": "Microsoft sign-in not completed",
+				"failed": "The Microsoft sign-in could not be completed. Please start again.",
+				"failedTitle": "Could not finish connecting",
+				"missingParams": "This link is incomplete. Start the Microsoft sign-in again from the mail import page.",
+				"operation": "Finish Microsoft sign-in",
+				"pageTitle": "Connecting Microsoft"
+			}
 		}
 	},
 	"postbox": {
@@ -13604,7 +13879,10 @@
 			"confirmUnsubscribeBody": "Their mail will be archived from now on.",
 			"shortcuts": {
 				"autoArchive": "Auto-archive this sender's mail",
-				"unsubscribe": "Unsubscribe from this sender"
+				"unsubscribe": "Unsubscribe from this sender",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom"
 			}
 		},
 		"reader": {
@@ -13616,6 +13894,10 @@
 				"fullBrief": "Full brief",
 				"snooze": "Snooze",
 				"ask": "Ask about this thread"
+			},
+			"stickyBar": {
+				"backToTop": "Back to top",
+				"backToTopOf": "{subject}, back to top"
 			},
 			"strip": {
 				"reading": "Reading this thread now",
@@ -14681,8 +14963,20 @@
 				"templates": "Templates",
 				"refine": "Refine",
 				"inboxThreads": "Team inbox",
-				"jumpBack": "Jump back"
+				"jumpBack": "Jump back",
+				"savedSearches": "Saved searches",
+				"people": "People you mail",
+				"tryOperators": "Try",
+				"noMailHits": "No messages match"
 			}
+		},
+		"commandPaletteMailStart": {
+			"examples": {
+				"hasAttachment": "Messages with attachments",
+				"isUnread": "Unread messages",
+				"olderThan30d": "Older than 30 days"
+			},
+			"withoutOperator": "Search without {operator}"
 		},
 		"conditions": {
 			"contact_property": {
@@ -16091,7 +16385,8 @@
 			},
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
-				"saveContact": "Save contact"
+				"saveContact": "Save contact",
+				"importContacts": "Import contacts"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",
@@ -16203,6 +16498,15 @@
 			"usePostboxAttachmentShares": {
 				"revokeOperation": "revoking the share link",
 				"scopeOperation": "changing who can open the share link"
+			},
+			"usePostboxFolderBulk": {
+				"markAllReadOperation": "Mark all as read",
+				"emptyOperation": "Empty folder",
+				"markedAllRead": "Marked {count} message as read | Marked {count} messages as read",
+				"emptied": {
+					"trash": "Trash emptied",
+					"spam": "Spam emptied"
+				}
 			}
 		},
 		"postboxAfterReply": {
@@ -16517,7 +16821,11 @@
 				"shortcut": "Shortcut",
 				"shortcutPlaceholder": "refund",
 				"text": "Text",
-				"textPlaceholder": "Write the reply…"
+				"textPlaceholder": "Write the reply…",
+				"files": "Files",
+				"filesHint": "Attached to the draft each time you insert this reply.",
+				"addFiles": "Add files",
+				"removeFile": "Remove {filename}"
 			},
 			"help": {
 				"gaps": "Write {example} for anything you fill in by hand each time. Send waits until every gap is filled.",
@@ -16544,7 +16852,8 @@
 				"create": "Save reply",
 				"recordUse": "Count reply use",
 				"remove": "Delete reply",
-				"save": "Update reply"
+				"save": "Update reply",
+				"attachFiles": "Attach the reply’s files"
 			},
 			"paletteHeading": "Saved replies",
 			"picker": {
@@ -16561,14 +16870,18 @@
 				"emptyText": "Write something first.",
 				"imagesLeftOut": "A saved reply cannot keep pasted images, so this one is left out. Paste it again after you insert the reply. | A saved reply cannot keep pasted images, so these {count} images are left out. Paste them again after you insert the reply.",
 				"save": "Save reply",
-				"title": "Save as reply"
+				"title": "Save as reply",
+				"selectionTitle": "Save selection as reply"
 			},
 			"scopes": {
 				"personal": "Only me",
 				"shared": "Everyone in the team"
 			},
 			"sharedBadge": "Shared",
-			"insertSubmenu": "Insert saved reply…"
+			"insertSubmenu": "Insert saved reply…",
+			"files": "One file | {count} files",
+			"saveSelection": "Save selection as reply",
+			"teamFilesNotAttached": "“{name}” has files. A team inbox reply can’t take them from a saved reply, so attach them by hand."
 		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",
@@ -16742,12 +17055,21 @@
 					"title": "This device",
 					"description": "Offline cache, notifications and the desktop app",
 					"keywords": "desktop, offline, notifications, workspaces, updates, startup"
+				},
+				"aiClients": {
+					"title": "AI clients",
+					"description": "Let an AI app read your mail, read-only",
+					"keywords": "mcp, claude, cursor, chatgpt, ai assistant, token, model context protocol"
 				}
 			},
 			"controls": {
 				"appearance": {
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
+				},
+				"uiTextSize": {
+					"title": "Text size",
+					"keywords": "font size, larger text, zoom, scale, readability, accessibility"
 				},
 				"mailTextSize": {
 					"title": "Mail text size",
@@ -16768,6 +17090,10 @@
 				"reduceMotion": {
 					"title": "Reduce motion",
 					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
+				},
+				"senderZoom": {
+					"title": "Zoom per sender",
+					"keywords": "zoom, newsletter, small text, font size, sender"
 				},
 				"language": {
 					"title": "Language",
@@ -16813,6 +17139,10 @@
 					"title": "Load images automatically",
 					"keywords": "images, pictures, remote content, privacy, tracking"
 				},
+				"senderLogos": {
+					"title": "Show sender logos",
+					"keywords": "logo, brand, avatar, bimi, favicon, sender icon, initials"
+				},
 				"mailboxes": {
 					"title": "Mailboxes",
 					"keywords": "rename mailbox, delete mailbox, storage, quota"
@@ -16841,6 +17171,10 @@
 					"title": "Open at startup",
 					"keywords": "startup workspace, default workspace"
 				},
+				"trayIcon": {
+					"title": "Tray icon",
+					"keywords": "menu bar, system tray, notification area, close to tray, keep running"
+				},
 				"unreadBadge": {
 					"title": "Unread badge",
 					"keywords": "dock badge, taskbar count, unread count"
@@ -16853,9 +17187,17 @@
 					"title": "Default email app",
 					"keywords": "mailto, default handler, open mail links"
 				},
+				"mailtoHandler": {
+					"title": "Open email links in Owlat",
+					"keywords": "mailto, protocol handler, email links, default mail app, browser"
+				},
 				"workspaces": {
 					"title": "Workspaces",
 					"keywords": "connected servers, accent, remove workspace"
+				},
+				"unreadStyle": {
+					"title": "Unread messages",
+					"keywords": "unread, dot, bold, tint, highlight, new mail"
 				},
 				"readingPane": {
 					"title": "Reading pane",
@@ -17057,7 +17399,8 @@
 				"skipCard": "Skip for now",
 				"clearSelection": "Clear the selection",
 				"resolveThread": "Resolve the thread",
-				"assignThread": "Assign the thread to…"
+				"assignThread": "Assign the thread to…",
+				"chatView": "Chat layout"
 			}
 		},
 		"signatureBadge": {
@@ -18225,6 +18568,12 @@
 			"bottom": "Reader below a wide list",
 			"off": "No reading pane — opening navigates"
 		},
+		"postboxUnreadStyle": {
+			"dotWeight": "Dot and bold text",
+			"dot": "Dot",
+			"weight": "Bold text",
+			"tint": "Tinted row"
+		},
 		"inboxSorts": {
 			"needsAttention": "needs attention",
 			"oldestWaiting": "oldest waiting",
@@ -18262,6 +18611,7 @@
 			"externalMailAccounts": "Connected mail accounts",
 			"formEndpoints": "Forms",
 			"mailDrafts": "Drafts",
+			"mailContacts": "Address book",
 			"mailMessages": "Messages",
 			"mailboxes": "Mailboxes",
 			"organizationMemberships": "Workspace memberships",
@@ -18380,14 +18730,23 @@
 				"labelPrompt": "Label as",
 				"move": "Move to…",
 				"movePrompt": "Move to",
+				"moveToMailbox": "Move to mailbox…",
+				"moveToMailboxPrompt": "Move to mailbox",
+				"copyToMailbox": "Copy to mailbox…",
+				"copyToMailboxPrompt": "Copy to mailbox",
 				"followUp": "Remind me if no reply…",
 				"followUpPrompt": "Remind me",
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
 				"find": "Find in conversation",
+				"showChat": "Show as chat",
+				"showConversation": "Show as conversation",
 				"showOriginal": "Download original (.eml)",
 				"pin": "Pin conversation",
-				"unpin": "Unpin conversation"
+				"unpin": "Unpin conversation",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom (now {percent}%)"
 			},
 			"teamThread": {
 				"heading": "This conversation",
@@ -18465,6 +18824,10 @@
 			"copyLink": "Copy link",
 			"linkCopied": "Link copied",
 			"copyFailed": "Couldn't copy the link"
+		},
+		"useMcpClients": {
+			"createOperation": "Connect AI client",
+			"revokeOperation": "Revoke AI client"
 		}
 	},
 	"sharedPkg": {
@@ -18774,6 +19137,10 @@
 					"external": {
 						"description": "Let each user connect their own existing Gmail / Fastmail / company mailbox over IMAP+SMTP — personal mail without registering a sending domain. Independent of hosted Postbox.",
 						"label": "Connect external mailbox"
+					},
+					"mcp": {
+						"label": "AI clients (MCP)",
+						"description": "Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP. Read-only, with a token each member creates and can revoke."
 					}
 				},
 				"multiTenancy": {

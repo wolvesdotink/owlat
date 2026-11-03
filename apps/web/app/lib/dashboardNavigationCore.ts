@@ -37,7 +37,7 @@ import {
 	ReplyAllIcon,
 	ServerSettingsCornerIcon,
 	SettingsIcon,
-	ShareIcon,
+	ShareAltIcon,
 	ShieldCheckIcon,
 	ShieldWarningIcon,
 	SparklesIcon,
@@ -169,7 +169,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.allInboxes',
-				href: '/dashboard/inboxes',
+				href: '/dashboard/postbox/all-inboxes',
 				icon: InboxIcon,
 			},
 			{
@@ -324,7 +324,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.graph',
 				href: '/dashboard/knowledge/graph',
-				icon: ShareIcon,
+				icon: ShareAltIcon,
 				gate: flag('ai.knowledge.analytics'),
 			},
 			{

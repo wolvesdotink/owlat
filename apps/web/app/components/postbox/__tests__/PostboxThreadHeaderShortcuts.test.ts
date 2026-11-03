@@ -20,7 +20,14 @@ afterEach(() => resetShortcutPreferences());
 function mountHeader() {
 	return mount(PostboxThreadHeader, {
 		props: { subject: 'Invoice 4471', messageCount: 1, messageId: 'm1' as never },
-		global: { plugins: [createTestI18n()], stubs: { PostboxOverflowMenu: true } },
+		global: {
+			plugins: [createTestI18n()],
+			stubs: {
+				PostboxOverflowMenu: true,
+				PostboxReaderStickyBar: true,
+				PostboxUnsubscribeChip: true,
+			},
+		},
 		attachTo: document.body,
 	});
 }

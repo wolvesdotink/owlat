@@ -23,6 +23,7 @@ import {
 } from '../lib/accountExportTemplates';
 import {
 	openMailDraftForAccountExport,
+	openSavedReplyForAccountExport,
 	readMailMessageBodiesForAccountExport,
 } from '../lib/messageBodyExport';
 import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
@@ -45,7 +46,6 @@ const accountExportResourceValidator = literalUnion([
 /** The personal resources that page by user alone (no mailbox, no organization). */
 const USER_SCOPED_EXPORT_QUERIES: Record<
 	| 'externalMailAccounts'
-	| 'savedReplies'
 	| 'chatMessages'
 	| 'threadNotes'
 	| 'deliverabilityAlertRecipientStates'
@@ -56,7 +56,6 @@ const USER_SCOPED_EXPORT_QUERIES: Record<
 	FunctionReference<'query', 'internal', { userId: string; paginationOpts: PaginationOptions }>
 > = {
 	externalMailAccounts: internal.auth.accountExportQueries.listPersonalExternalAccounts,
-	savedReplies: internal.auth.accountExportQueries.listPersonalSavedReplies,
 	chatMessages: internal.auth.accountExportQueries.listPersonalChatMessages,
 	threadNotes: internal.auth.accountExportQueries.listPersonalThreadNotes,
 	deliverabilityAlertRecipientStates:
@@ -180,8 +179,14 @@ export const getExportPlan = authedAction({
 			await ctx.runQuery(internal.auth.accountExportQueries.getPersonalExportCounts, {
 				userId: args.userId,
 			});
+		const mailContacts: { resource: string; count: number; isCapped: boolean } = await ctx.runQuery(
+			internal.auth.accountExportContactQueries.countPersonalMailContacts,
+			{
+				userId: args.userId,
+			}
+		);
 		return {
-			personal,
+			personal: [...personal, mailContacts],
 			organizationResources: [...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES],
 		};
 	},
@@ -382,6 +387,28 @@ export const exportUserDataPage = authedAction({
 				})
 			);
 			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'savedReplies') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalSavedReplies,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'mailSnippets'>>;
+			const page = await Promise.all(
+				result.page.map(async (reply) => {
+					if (!reply.attachments?.length) return reply;
+					const { row, content } = await openSavedReplyForAccountExport(ctx.storage, reply);
+					return { ...row, ...(await stage(reply._id, content)) };
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'mailContacts') {
+			if (!args.mailboxId) throwInvalidInput('Address book export page requires mailboxId');
+			const result = await ctx.runQuery(
+				internal.auth.accountExportContactQueries.listMailboxContacts,
+				{ userId: args.userId, mailboxId: args.mailboxId, paginationOpts }
+			);
+			return serializeAccountExportPage(result);
 		}
 		if (args.resource === 'threadBriefs') {
 			if (!args.mailboxId) throwInvalidInput('Thread brief export page requires mailboxId');

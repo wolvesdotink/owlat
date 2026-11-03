@@ -10,7 +10,12 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { parseSearchQuery, tokenizeSearchQuery } from '../mailSearch';
+import {
+	isPlainTextSearch,
+	parseSearchQuery,
+	renderSearchTokens,
+	tokenizeSearchQuery,
+} from '../mailSearch';
 
 describe('tokenizeSearchQuery', () => {
 	it('splits on whitespace outside quotes', () => {
@@ -199,5 +204,25 @@ describe('parseSearchQuery — single-level OR', () => {
 
 	it('leaves a query with no OR shaped exactly as before', () => {
 		expect(parseSearchQuery('from:sara hello')).toEqual({ text: 'hello', from: 'sara' });
+	});
+});
+
+describe('isPlainTextSearch', () => {
+	it('is true for loose words only', () => {
+		expect(isPlainTextSearch(parseSearchQuery('flight to lisbon'))).toBe(true);
+	});
+
+	it.each(['from:mia', '"exact phrase"', 'invoice -draft', 'a OR b', ''])(
+		'is false for %j',
+		(query) => {
+			expect(isPlainTextSearch(parseSearchQuery(query))).toBe(false);
+		}
+	);
+});
+
+describe('renderSearchTokens', () => {
+	it('re-quotes values with spaces and drops dangling ORs', () => {
+		const tokens = tokenizeSearchQuery('OR subject:"quarterly report" -"exact phrase" OR');
+		expect(renderSearchTokens(tokens)).toBe('subject:"quarterly report" -"exact phrase"');
 	});
 });

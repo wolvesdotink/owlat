@@ -69,6 +69,8 @@ describe('Full brief from the ⋯ menu', () => {
 				components: { PostboxOverflowMenu },
 				stubs: {
 					UiButton: { template: '<button type="button"><slot /></button>' },
+					PostboxReaderStickyBar: true,
+					PostboxUnsubscribeChip: true,
 				},
 			},
 		});
@@ -101,6 +103,8 @@ describe('Full brief from the ⋯ menu', () => {
 				components: { PostboxOverflowMenu },
 				stubs: {
 					UiButton: { template: '<button type="button"><slot /></button>' },
+					PostboxReaderStickyBar: true,
+					PostboxUnsubscribeChip: true,
 				},
 			},
 		});

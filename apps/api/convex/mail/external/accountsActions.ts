@@ -31,6 +31,7 @@ import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
+import { refreshMicrosoftAccessToken } from './microsoftOAuthTokens';
 import { getCredentialsForWorker as getCredentialsForWorkerContract } from '@owlat/worker-protocol/mailSync';
 import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { decodeJsonString } from '../../lib/jsonText';
@@ -44,8 +45,11 @@ const connectionTestResultValidator = v.object({
 type ConnectionTestResult = Infer<typeof connectionTestResultValidator>;
 const decodeConnectionTestResult = validatorDecoder(connectionTestResultValidator);
 
-/** The sealed plaintext of a Google sign-in account. */
-const oauthSecretValidator = v.object({ oauthRefreshToken: v.optional(v.string()) });
+/** The sealed plaintext of a provider sign-in account (`OAuthEnvelopeSecret`). */
+const oauthSecretValidator = v.object({
+	oauthRefreshToken: v.optional(v.string()),
+	oauthRefreshTokenStoredAt: v.optional(v.number()),
+});
 /** The sealed plaintext of a password account (`encodeEnvelope`). */
 const passwordSecretValidator = v.object({
 	imapPassword: v.string(),
@@ -54,7 +58,7 @@ const passwordSecretValidator = v.object({
 
 /**
  * What a worker credential fetch produced (the worker wire contract's
- * `getCredentialsForWorker.returns`). On an `oauth2` account (Google sign-in)
+ * `getCredentialsForWorker.returns`). On an `oauth2` account (Google or Microsoft sign-in)
  * the bundle carries SASL XOAUTH2 bearer tokens INSTEAD of the passwords:
  * short-lived and minted per request from the stored refresh token, never
  * persisted, so the worker always receives a live one and the two password
@@ -65,10 +69,10 @@ const passwordSecretValidator = v.object({
  * message that tells the user to reconnect, and no amount of retrying will
  * change the answer. The worker keys off that to stop its connect loop and leave
  * the message alone, instead of overwriting it with a generic error and
- * re-asking Google for a token it will never get every few seconds.
+ * re-asking the provider for a token it will never get every few seconds.
  *
  * `missing` covers a deleted row and an undecryptable envelope; `refresh_failed`
- * a transient refusal from Google's token endpoint. Both are worth retrying.
+ * a transient refusal from the provider's token endpoint. Both are worth retrying.
  */
 type WorkerCredentialsResult = Infer<typeof getCredentialsForWorkerContract.returns>;
 
@@ -335,7 +339,7 @@ export const testConnection = authedAction({
  * never logs the plaintext.
  *
  * Always answers with a {@link WorkerCredentialsResult} discriminant rather than
- * `credentials | null`, so the worker can tell a revoked Google grant (stop, the
+ * `credentials | null`, so the worker can tell a revoked OAuth grant (stop, the
  * user must act) from a transient miss (back off and retry).
  */
 export const getCredentialsForWorker = internalAction({
@@ -379,15 +383,29 @@ export const getCredentialsForWorker = internalAction({
 		// account is already `auth_error` by then — and is reported as such, so the
 		// worker stops rather than retrying something only the user can fix.
 		if (row.authMethod === 'oauth2') {
-			let refreshToken: string | undefined;
+			let secret: Infer<typeof oauthSecretValidator> | undefined;
 			try {
-				const secret = decodeJsonString(decryptSecret(envelope), oauthSecretValidator);
-				refreshToken = secret.ok ? secret.value.oauthRefreshToken : undefined;
+				const decoded = decodeJsonString(decryptSecret(envelope), oauthSecretValidator);
+				secret = decoded.ok ? decoded.value : undefined;
 			} catch {
 				return { kind: 'unavailable', reason: 'missing' };
 			}
+			const refreshToken = secret?.oauthRefreshToken;
 			if (!refreshToken) return { kind: 'unavailable', reason: 'missing' };
-			const token = await refreshGoogleAccessToken(ctx, row._id, refreshToken, secretIv);
+			// Every oauth2 row from before Microsoft sign-in is a Google one, with or
+			// without the column.
+			const token =
+				row.oauthProvider === 'microsoft'
+					? await refreshMicrosoftAccessToken(
+							ctx,
+							row._id,
+							{
+								oauthRefreshToken: refreshToken,
+								oauthRefreshTokenStoredAt: secret?.oauthRefreshTokenStoredAt,
+							},
+							secretIv
+						)
+					: await refreshGoogleAccessToken(ctx, row._id, refreshToken, secretIv);
 			if (token.kind !== 'token') {
 				return {
 					kind: 'unavailable',

@@ -11,7 +11,7 @@ import {
 	MinusIcon,
 	MoreHorizontalIcon,
 	PanelBottomIcon,
-	ShareIcon,
+	ShareAltIcon,
 	SquareIcon,
 	StampIcon,
 	TextIcon,
@@ -52,7 +52,7 @@ const allQuickBlocks: { type: BlockType; icon: Component; label: string }[] = [
 	{ type: 'button', icon: CursorClickIcon, label: 'Button' },
 	{ type: 'divider', icon: MinusIcon, label: 'Divider' },
 	{ type: 'columns', icon: ColumnsIcon, label: 'Columns' },
-	{ type: 'social', icon: ShareIcon, label: 'Social' },
+	{ type: 'social', icon: ShareAltIcon, label: 'Social' },
 	{ type: 'container', icon: SquareIcon, label: 'Container' },
 ];
 

@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-message",
-	"version": "0.6.17",
+	"version": "0.6.18",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -37,6 +37,10 @@
 		"./parse/attachments": {
 			"types": "./src/parse/attachments.ts",
 			"import": "./src/parse/attachments.ts"
+		},
+		"./parse/mdn": {
+			"types": "./src/parse/mdn.ts",
+			"import": "./src/parse/mdn.ts"
 		},
 		"./parse/address": {
 			"types": "./src/parse/address.ts",

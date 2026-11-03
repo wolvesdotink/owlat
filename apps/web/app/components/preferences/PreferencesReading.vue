@@ -24,6 +24,8 @@ import { POSTBOX_AFTER_REPLY_OPTIONS } from '~/utils/postboxAfterReply';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
+import type { PostboxUnreadStyle } from '~/utils/postboxUnreadStyle';
+import { POSTBOX_UNREAD_STYLE_OPTIONS } from '~/utils/postboxUnreadStyle';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
 import { POSTBOX_READING_PANE_OPTIONS } from '~/utils/postboxReadingPane';
 import type { PostboxMarkReadPolicy } from '~/utils/postboxMarkReadPolicy';
@@ -32,6 +34,7 @@ import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { POSTBOX_SWIPE_ACTION_OPTIONS } from '~/utils/postboxSwipe';
 import { POSTBOX_READING_DEFAULTS as DEFAULTS } from '~/utils/postboxReadingDefaults';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
+import PreferencesSenderLogos from './PreferencesSenderLogos.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -68,6 +71,7 @@ const {
 	isSaving,
 	isLoading,
 } = usePostboxSettings();
+const { unreadStyle, setUnreadStyle } = usePostboxUnreadStyle();
 
 type ReadingField = keyof typeof DEFAULTS;
 
@@ -75,6 +79,7 @@ const values = computed<Record<ReadingField, unknown>>(() => ({
 	autoAdvance: autoAdvance.value,
 	markReadPolicy: markReadPolicy.value,
 	density: density.value,
+	unreadStyle: unreadStyle.value,
 	readingPane: readingPane.value,
 	swipeLeftAction: swipeLeftAction.value,
 	swipeRightAction: swipeRightAction.value,
@@ -101,6 +106,7 @@ const RESETS: Record<ReadingField, () => Promise<unknown>> = {
 	autoAdvance: () => setAutoAdvance(DEFAULTS.autoAdvance),
 	markReadPolicy: () => setMarkReadPolicy(DEFAULTS.markReadPolicy),
 	density: () => setDensity(DEFAULTS.density),
+	unreadStyle: () => setUnreadStyle(DEFAULTS.unreadStyle),
 	readingPane: () => setReadingPane(DEFAULTS.readingPane),
 	swipeLeftAction: () => setSwipeAction('left', DEFAULTS.swipeLeftAction),
 	swipeRightAction: () => setSwipeAction('right', DEFAULTS.swipeRightAction),
@@ -224,6 +230,30 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@change="onDensityChange"
 			>
 				<option v-for="option in POSTBOX_DENSITY_OPTIONS" :key="option.value" :value="option.value">
+					{{ t(option.label) }}
+				</option>
+			</select>
+		</PreferencesSettingRow>
+		<PreferencesSettingRow
+			control-id="postbox-unread-style"
+			:label="t('components.preferences.preferencesReading.unreadStyleLabel')"
+			:help="t('components.preferences.preferencesReading.unreadStyleHelp')"
+			:changed="isChanged('unreadStyle')"
+			:disabled="isSaving"
+			@reset="resetToDefault('unreadStyle')"
+		>
+			<select
+				id="postbox-unread-style"
+				class="input w-full sm:w-64 shrink-0"
+				:value="unreadStyle"
+				:disabled="isSaving"
+				@change="setUnreadStyle(($event.target as HTMLSelectElement).value as PostboxUnreadStyle)"
+			>
+				<option
+					v-for="option in POSTBOX_UNREAD_STYLE_OPTIONS"
+					:key="option.value"
+					:value="option.value"
+				>
 					{{ t(option.label) }}
 				</option>
 			</select>
@@ -446,6 +476,7 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@update:model-value="setAutoLoadImages"
 			/>
 		</PreferencesSettingRow>
+		<PreferencesSenderLogos />
 		<PreferencesSettingRow
 			layout="switch"
 			control-id="postbox-send-sound"

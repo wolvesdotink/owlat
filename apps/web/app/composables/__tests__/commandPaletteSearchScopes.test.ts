@@ -98,6 +98,7 @@ describe('useCommandPaletteMailScope', () => {
 		const remembered: string[] = [];
 		const run = async (text: string) => {
 			const query = ref(text);
+			const first = queries.length;
 			const mail = scope.run(() =>
 				useCommandPaletteMailScope({
 					query,
@@ -107,7 +108,8 @@ describe('useCommandPaletteMailScope', () => {
 					onRemember: (term) => remembered.push(term),
 				})
 			)!;
-			queries[queries.length - 1]!.data.value = { messages: [hit] };
+			// Subscribed third: the address book, the labels, then the search.
+			queries[first + 2]!.data.value = { messages: [hit] };
 			await nextTick();
 			// The palette's real sequence: pick the row, close (clearing the box and
 			// resetting the scope), then run the row.
@@ -127,6 +129,53 @@ describe('useCommandPaletteMailScope', () => {
 			'from:ines@example.com "refund the duplicate" is:unread',
 			'from:ines@example.com is:unread',
 		]);
+	});
+
+	it('offers the query without its last operator once a search found nothing', async () => {
+		const query = ref('invoice is:unread');
+		const replaced: Array<[string, number]> = [];
+		const mail = scope.run(() =>
+			useCommandPaletteMailScope({
+				query,
+				caret: ref(query.value.length),
+				enabled: ref(true),
+				onReplace: (value, caret) => replaced.push([value, caret]),
+				onRemember: vi.fn(),
+			})
+		)!;
+		mail.resetQuery('invoice is:unread');
+		const search = queries[2]!;
+		expect(mail.fixItems.value).toEqual([]);
+
+		// An empty page with more behind it has not found nothing yet.
+		search.data.value = { messages: [], hasMore: true };
+		await nextTick();
+		expect(mail.fixItems.value).toEqual([]);
+
+		search.data.value = { messages: [], hasMore: false };
+		await nextTick();
+		expect(mail.fixItems.value.map((item) => item.subtitle)).toEqual(['invoice']);
+		mail.fixItems.value[0]!.run();
+		expect(replaced).toEqual([['invoice ', 8]]);
+
+		// The next query is running: the old answer is not this one's.
+		search.isRefetching.value = true;
+		expect(mail.fixItems.value).toEqual([]);
+	});
+
+	it('builds the empty box’s rows from the mailbox’s saved searches and address book', async () => {
+		const mail = mailScope(ref(''));
+		const [, , , saved, addressBook] = queries;
+		expect(saved!.args()).toEqual({ mailboxId: 'mailbox-1' });
+		expect(addressBook!.args()).toEqual({ mailboxId: 'mailbox-1', limit: 50 });
+		saved!.data.value = [{ _id: 's1', name: 'Invoices', rawQuery: 'subject:invoice' }];
+		addressBook!.data.value = [{ email: 'ines@example.com', useCount: 2, lastUsedAt: 1 }];
+		await nextTick();
+		expect(mail.startItems.value.saved.map((item) => item.label)).toEqual(['Invoices']);
+		expect(mail.startItems.value.people.map((item) => item.subtitle)).toEqual([
+			'from:ines@example.com',
+		]);
+		expect(mail.startItems.value.examples).toHaveLength(3);
 	});
 
 	it('forgets the last session’s hits and completions on reset', () => {

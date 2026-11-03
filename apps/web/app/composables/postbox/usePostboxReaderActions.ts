@@ -493,5 +493,6 @@ export function usePostboxReaderActions(opts: {
 		reportSpamMessage,
 		blockSenderOf,
 		runReaderAction,
+		runAndAdvance,
 	};
 }

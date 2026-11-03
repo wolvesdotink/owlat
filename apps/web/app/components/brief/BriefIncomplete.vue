@@ -7,6 +7,8 @@
  *    not, and the way to the original;
  *  - still reading, or no overview at all (and why: AI off, undecryptable,
  *    not eligible, failed);
+ *  - AI the instance cannot run (off, no provider, budget used up): a quiet
+ *    note, the same on every thread, with the way to AI settings for admins;
  *  - short mail and security mail, shown as written;
  *  - signed mail: only the signed part was read.
  */
@@ -31,6 +33,7 @@ const emit = defineEmits<{ 'open-conversation': [] }>();
 
 const { t } = useI18n();
 const localized = useLocalized();
+const { isAdmin } = usePermissions();
 const banners = computed(() => briefBanners(props.brief, { isSigned: props.isSigned }));
 
 const TONE: Record<string, string> = {
@@ -63,6 +66,14 @@ const ICON: Record<string, IconComponent> = {
 				<b v-if="banner.lead" class="font-medium">{{ t(banner.lead) }}</b>
 				{{ localized(banner.text) }}
 			</p>
+			<NuxtLink
+				v-if="banner.offersAiSettings && isAdmin"
+				to="/dashboard/admin/instance/ai-provider"
+				class="shrink-0 font-medium underline-offset-2 hover:underline"
+				data-testid="brief-ai-settings"
+			>
+				{{ t('components.brief.incomplete.aiSettings') }}
+			</NuxtLink>
 			<button
 				v-if="banner.offersConversation"
 				type="button"

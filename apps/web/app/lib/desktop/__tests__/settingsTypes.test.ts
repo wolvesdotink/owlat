@@ -45,6 +45,16 @@ describe('normalizeDesktopSettings', () => {
 		expect(s.global.startupWorkspaceId).toBeNull(); // junk → default
 	});
 
+	it('shows the tray icon and closes to it unless the file says otherwise', () => {
+		expect(normalizeDesktopSettings({ global: {} }).global).toMatchObject({
+			showTrayIcon: true,
+			closeToTray: true,
+		});
+		const s = normalizeDesktopSettings({ global: { showTrayIcon: 'off', closeToTray: false } });
+		expect(s.global.showTrayIcon).toBe(true);
+		expect(s.global.closeToTray).toBe(false);
+	});
+
 	it('keeps valid per-workspace entries and drops junk ones', () => {
 		const s = normalizeDesktopSettings({
 			workspaces: {
@@ -65,6 +75,8 @@ describe('normalizeDesktopSettings', () => {
 				autoCheckUpdates: false,
 				notificationsEnabled: false,
 				showUnreadBadge: false,
+				showTrayIcon: false,
+				closeToTray: false,
 				startupWorkspaceId: 'ws-9',
 			},
 			workspaces: { 'ws-9': { muteNotifications: true } },

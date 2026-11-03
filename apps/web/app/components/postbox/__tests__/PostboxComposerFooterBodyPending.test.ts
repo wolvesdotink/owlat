@@ -6,7 +6,7 @@
  * signature `<select>` showing a choice that was never applied.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { composerTargetCapabilities } from '~/utils/composerTarget';
@@ -29,7 +29,7 @@ beforeAll(() => {
 	});
 });
 
-function mountFooter(bodyPending: boolean) {
+function mountFooter(bodyPending: boolean, dictationTarget?: { insertText: () => void }) {
 	return mount(PostboxComposerFooter, {
 		props: {
 			capabilities: mailboxCapabilities,
@@ -50,6 +50,7 @@ function mountFooter(bodyPending: boolean) {
 			subject: '',
 			bodyHtml: '',
 			bodyBlocks: [],
+			dictationTarget,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -87,6 +88,26 @@ describe('PostboxComposerFooter while the body is loading', () => {
 			wrapper.get('[data-testid="composer-insert-availability"]');
 		expect(item(mountFooter(true)).attributes('disabled')).toBeDefined();
 		expect(item(mountFooter(false)).attributes('disabled')).toBeUndefined();
+	});
+
+	it('holds the microphone until the body has loaded', async () => {
+		const globals = window as unknown as Record<string, unknown>;
+		globals.webkitSpeechRecognition = class {
+			start() {}
+			stop() {}
+			abort() {}
+		};
+		try {
+			const mic = async (pending: boolean) => {
+				const wrapper = mountFooter(pending, { insertText: vi.fn() });
+				await flushPromises();
+				return wrapper.get('[data-testid="dictation-button"]');
+			};
+			expect((await mic(true)).attributes('disabled')).toBeDefined();
+			expect((await mic(false)).attributes('disabled')).toBeUndefined();
+		} finally {
+			delete globals.webkitSpeechRecognition;
+		}
 	});
 
 	it('enables both once the body has loaded', () => {

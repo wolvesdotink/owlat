@@ -29,6 +29,8 @@ beforeAll(() => {
 			};
 		},
 		useBackendOperation: () => ({ run, isLoading: ref(false) }),
+		// The editor's file list reports upload limits as toasts.
+		useToast: () => ({ showToast: vi.fn() }),
 	});
 });
 afterEach(() => run.mockClear());
@@ -40,6 +42,7 @@ function reply(overrides: Record<string, unknown>) {
 		shortcut: '',
 		bodyHtml: '<p>Text</p>',
 		variables: undefined,
+		attachments: [],
 		scope: 'personal',
 		mailboxIds: [],
 		useCount: 0,
@@ -133,6 +136,7 @@ describe('SavedReplyLibrary', () => {
 			shortcut: ';Refund Policy',
 			bodyHtml: '<p>Hi</p>',
 			variables: [],
+			attachments: [],
 			mailboxIds: ['mb_2'],
 		});
 	});

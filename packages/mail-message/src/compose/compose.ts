@@ -38,6 +38,11 @@ export interface ComposeInput {
 	 * the fallback.
 	 */
 	bodyAmp?: string;
+	/**
+	 * Asks the recipient's client for a read receipt (RFC 8098): the address
+	 * the receipt goes to, normally the sender's own.
+	 */
+	dispositionNotificationTo?: string;
 }
 
 export function buildRfc822(
@@ -62,6 +67,11 @@ export function buildRfc822(
 	headers.push(`Subject: ${encodeHeaderValue(input.subject || '(no subject)')}`);
 	if (inReplyToHeaderValue) headers.push(`In-Reply-To: ${inReplyToHeaderValue}`);
 	if (referencesHeaderValue) headers.push(`References: ${referencesHeaderValue}`);
+	if (input.dispositionNotificationTo) {
+		headers.push(
+			`Disposition-Notification-To: ${encodeAddressHeader([input.dispositionNotificationTo])}`
+		);
+	}
 	headers.push('MIME-Version: 1.0');
 
 	// Inline images (a `cid:`-referenced `<img>` in the body) ride in a

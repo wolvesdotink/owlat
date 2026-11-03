@@ -99,7 +99,8 @@ export function usePostboxDeletedOpenRowGuard(opts: {
  * Also says which folder is Trash, so a move there counts as a delete.
  */
 export function usePostboxListDeletedOpenRow(opts: {
-	mailboxId: Ref<Id<'mailboxes'>>;
+	/** Null for a list that spans mailboxes: none of its folders is one Trash. */
+	mailboxId: Ref<Id<'mailboxes'> | null>;
 	/** The list's rows in visual order (after optimistic hiding). */
 	orderedIds: Ref<readonly string[]>;
 	/** The list's props: its open row, and whether it previews in place. */

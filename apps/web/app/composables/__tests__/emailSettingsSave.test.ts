@@ -198,6 +198,28 @@ describe('emailSettingsSave', () => {
 		expect(setDefaultLanguage).not.toHaveBeenCalled();
 	});
 
+	it('relabels the default language of an email without translations', async () => {
+		const { update, setDefaultLanguage, run } = save({
+			selectedDefaultLanguage: 'de',
+			overlayLanguages: [],
+			updatePayload: payload({
+				defaultLanguage: 'de',
+				supportedLanguages: [],
+				translations: '{}',
+			}),
+			base: base({ translations: undefined }),
+		});
+
+		const result = await run();
+
+		expect(result).toEqual({ status: 'saved' });
+		expect(update).toHaveBeenCalledOnce();
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({ defaultLanguage: 'de', translations: '{}' })
+		);
+		expect(setDefaultLanguage).not.toHaveBeenCalled();
+	});
+
 	it('reports failed when update fails (its own error already toasted)', async () => {
 		const { run } = save({ update: vi.fn().mockResolvedValue({ ok: false }) });
 

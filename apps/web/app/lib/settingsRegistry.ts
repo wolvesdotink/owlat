@@ -38,6 +38,7 @@ import {
 	MonitorIcon,
 	PlaneIcon,
 	PlusIcon,
+	RobotIcon,
 	SettingsIcon,
 	ShieldCheckIcon,
 	SignatureIcon,
@@ -178,15 +179,18 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'general',
 		controls: [
 			control('appearance', 'appearance'),
+			control('uiTextSize', 'comfort'),
 			control('mailTextSize', 'comfort'),
 			control('readingWidth', 'comfort'),
 			control('listDensity', 'comfort'),
 			control('highContrast', 'comfort'),
 			control('reduceMotion', 'comfort'),
+			control('senderZoom', 'comfort'),
 			control('language', 'language'),
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),
 			control('density', 'reading', hasMail),
+			control('unreadStyle', 'reading', hasMail),
 			control('readingPane', 'reading', hasMail),
 			control('swipeActions', 'reading', hasMail),
 			control('replyDefault', 'reading', hasMail),
@@ -195,6 +199,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
 			control('autoLoadImages', 'reading', hasMail),
+			control('senderLogos', 'reading', hasMail),
 		],
 	}),
 	entry('shortcuts', {
@@ -292,27 +297,35 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'account',
 		gate: hasMail,
 	}),
+	entry('aiClients', {
+		path: `${SETTINGS_ROOT}/ai-clients`,
+		icon: RobotIcon,
+		section: 'account',
+		gate: all(hasMail, flag('mail.mcp')),
+	}),
 	entry('device', {
 		path: `${SETTINGS_ROOT}/device`,
 		icon: MonitorIcon,
 		section: 'device',
-		// Device-local: Web Push and the offline read cache (any browser) plus
-		// the desktop app's own switches; with them, the marketing notification
-		// switches that decide what push and the desktop notify about. Each
-		// section self-hides, and the page disappears entirely on an instance
-		// with none.
+		// Device-local: Web Push, the offline read cache and the mailto handler
+		// (any browser) plus the desktop app's own switches; with them, the
+		// marketing notification switches that decide what push and the desktop
+		// notify about. Each section self-hides, and the page disappears entirely
+		// on an instance with none.
 		gate: any(desktopOnly, hasMail, hasMarketingNotices, all(browserOnly, hasPushSource)),
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
 			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
 			control('alertSounds', 'alert-sounds', hasAlertSounds),
 			control('offlineCache', 'offline', hasMail),
+			control('mailtoHandler', 'mailto-handler', all(browserOnly, hasMail)),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),
 			control('hidePreview', 'notifications', all(desktopOnly, hasMail)),
 			control('autostart', 'startup', desktopOnly),
 			control('startupWorkspace', 'startup', desktopOnly),
 			control('unreadBadge', 'notifications', desktopOnly),
+			control('trayIcon', 'tray', desktopOnly),
 			control('updates', 'updates', desktopOnly),
 			control('defaultApp', 'default-app', desktopOnly),
 			control('workspaces', 'workspaces', desktopOnly),

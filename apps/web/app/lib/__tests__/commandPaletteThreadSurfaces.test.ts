@@ -11,18 +11,20 @@ import { resolvePaletteGroups } from '../commandPaletteRegistry';
 import {
 	POSTBOX_THREAD_COMMAND_GROUP_KEY,
 	POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
-	TEAM_THREAD_COMMAND_GROUP_KEY,
-	type TeamThreadSurfaceDeps,
 	type ThreadSurfaceDeps,
-	buildTeamThreadSurfaceGroups,
 	buildThreadSurfaceGroups,
 } from '../commandPaletteThreadSurfaces';
+import {
+	TEAM_THREAD_COMMAND_GROUP_KEY,
+	type TeamThreadSurfaceDeps,
+	buildTeamThreadSurfaceGroups,
+} from '../commandPaletteTeamThreadSurfaces';
 import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePostboxCommandSurface';
 import { createTestI18n } from '~/__tests__/i18n';
 import { ForwardIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
-const translate = (key: string) => t(key);
+const translate = (key: string, params: Record<string, unknown> = {}) => t(key, params);
 
 function option(id: string, run = vi.fn()): PaletteArgumentOption {
 	return { id, label: id, run };
@@ -54,6 +56,8 @@ function postboxDeps(overrides: Partial<ThreadSurfaceDeps> = {}): ThreadSurfaceD
 		onCopyLink: vi.fn(),
 		canShareInChat: () => true,
 		onShareInChat: vi.fn(),
+		senderZoom: () => null,
+		onZoom: vi.fn(),
 		...overrides,
 	};
 }
@@ -133,6 +137,26 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(byId(items, 'postbox:move')).toBeUndefined();
 	});
 
+	it('offers moving and copying to another mailbox as submenus that run the picked option', () => {
+		const run = vi.fn();
+		const items = postboxItems('', {
+			mailboxMoveOptions: () => [option('mailbox-move-team', run)],
+			mailboxCopyOptions: () => [option('mailbox-copy-team')],
+		});
+		const move = byId(items, 'postbox:thread-move-to-mailbox');
+		const copy = byId(items, 'postbox:thread-copy-to-mailbox');
+		expect([move?.label, copy?.label]).toEqual(['Move to mailbox…', 'Copy to mailbox…']);
+		expect(t(move!.argument!.promptKey)).toBe('Move to mailbox');
+		move?.argument?.options[0]?.run();
+		expect(run).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves out the mailbox verbs when there is no other mailbox to offer', () => {
+		const items = postboxItems('', { mailboxMoveOptions: () => [], mailboxCopyOptions: () => [] });
+		expect(byId(items, 'postbox:thread-move-to-mailbox')).toBeUndefined();
+		expect(byId(items, 'postbox:thread-copy-to-mailbox')).toBeUndefined();
+	});
+
 	it('offers the reply reminder by state: arm on our own last mail, cancel once armed', () => {
 		expect(byId(postboxItems(), 'postbox:thread-follow-up')).toBeUndefined();
 		const armable = byId(
@@ -155,6 +179,31 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(
 			byId(postboxItems('', { canTranslate: () => false }), 'postbox:thread-translate')
 		).toBeUndefined();
+	});
+
+	it('offers the sender zoom while it can move, and only for a message with a sender', () => {
+		const zoomRows = (percent: number | null) =>
+			postboxItems('', { senderZoom: () => percent })
+				.filter((item) => item.id.startsWith('postbox:thread-zoom'))
+				.map((item) => [item.id, item.label, item.shortcutId]);
+		expect(zoomRows(null)).toEqual([]);
+		expect(zoomRows(100)).toEqual([
+			['postbox:thread-zoom-in', "Zoom in on this sender's mail", 'postbox.zoomIn'],
+			['postbox:thread-zoom-out', "Zoom out on this sender's mail", 'postbox.zoomOut'],
+		]);
+		expect(zoomRows(200).map(([id]) => id)).toEqual([
+			'postbox:thread-zoom-out',
+			'postbox:thread-zoom-reset',
+		]);
+		expect(zoomRows(125)[2]?.[1]).toBe("Reset this sender's zoom (now 125%)");
+
+		const onZoom = vi.fn();
+		const zoomIn = byId(
+			postboxItems('', { senderZoom: () => 110, onZoom }),
+			'postbox:thread-zoom-in'
+		);
+		zoomIn?.run();
+		expect(onZoom).toHaveBeenCalledWith('zoomIn');
 	});
 
 	it('runs exactly the handler each row was handed', () => {
@@ -194,6 +243,31 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(
 			byId(postboxItems('', { canShareInChat: () => false }), 'postbox:thread-copy-link')
 		).toBeDefined();
+	});
+
+	it('offers the chat layout where the thread has one, named by the layout it leads to', () => {
+		expect(byId(postboxItems(), 'postbox:thread-chat-view')).toBeUndefined();
+		const toggle = vi.fn();
+		const off = byId(
+			postboxItems('', { chatView: { isOn: () => false, toggle } }),
+			'postbox:thread-chat-view'
+		);
+		expect(off).toMatchObject({ label: 'Show as chat', shortcutId: 'postbox.chatView' });
+		off?.run();
+		expect(toggle).toHaveBeenCalledOnce();
+		expect(
+			byId(postboxItems('', { chatView: { isOn: () => true, toggle } }), 'postbox:thread-chat-view')
+				?.label
+		).toBe('Show as conversation');
+	});
+
+	it('offers Share as image only for a message the reader can draw, and runs its handler', () => {
+		expect(byId(postboxItems(), 'postbox:thread-share-image')).toBeUndefined();
+		const onShareAsImage = vi.fn();
+		const item = byId(postboxItems('', { onShareAsImage }), 'postbox:thread-share-image');
+		expect(item?.label).toBe('Share as image…');
+		item?.run();
+		expect(onShareAsImage).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops the subject line when the message has no subject', () => {

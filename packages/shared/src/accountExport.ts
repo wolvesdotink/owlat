@@ -21,6 +21,8 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'mailboxes',
 	'mailMessages',
 	'mailDrafts',
+	// The Postbox address book of each personal mailbox (mailbox-scoped).
+	'mailContacts',
 	'externalMailAccounts',
 	'chatMessages',
 	'threadNotes',

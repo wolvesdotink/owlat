@@ -130,6 +130,14 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 			asString(ph['host'], 'config.integrations.posthog.host');
 			asString(ph['apiKey'], 'config.integrations.posthog.apiKey');
 		}
+		if (integrations['microsoftOAuth'] !== undefined) {
+			const ms = asObject(integrations['microsoftOAuth'], 'config.integrations.microsoftOAuth');
+			asString(ms['clientId'], 'config.integrations.microsoftOAuth.clientId');
+			asString(ms['clientSecret'], 'config.integrations.microsoftOAuth.clientSecret');
+			if (ms['tenant'] !== undefined) {
+				asString(ms['tenant'], 'config.integrations.microsoftOAuth.tenant');
+			}
+		}
 	}
 
 	const admin = asObject(root['admin'], 'config.admin');
@@ -328,6 +336,12 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 		patch['POSTHOG_HOST'] = config.integrations.posthog.host;
 		patch['NUXT_PUBLIC_POSTHOG_API_KEY'] = config.integrations.posthog.apiKey;
 		patch['NUXT_PUBLIC_POSTHOG_HOST'] = config.integrations.posthog.host;
+	}
+	if (config.integrations?.microsoftOAuth) {
+		const ms = config.integrations.microsoftOAuth;
+		patch['MICROSOFT_OAUTH_CLIENT_ID'] = ms.clientId;
+		patch['MICROSOFT_OAUTH_CLIENT_SECRET'] = ms.clientSecret;
+		if (ms.tenant) patch['MICROSOFT_OAUTH_TENANT'] = ms.tenant;
 	}
 
 	if (config.domain) {

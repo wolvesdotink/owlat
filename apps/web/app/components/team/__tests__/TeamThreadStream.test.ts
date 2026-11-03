@@ -78,19 +78,28 @@ describe('TeamThreadStream', () => {
 	});
 
 	it('renders what happened as system lines and groups new actions', () => {
+		const said = activity('a4', T0 + 4 * MIN, 'item_closed');
+		if (said.kind === 'activity') said.activity = { ...said.activity, provenance: 'asserted' };
 		const w = mountStream({
 			entries: [
 				email('e1', T0),
 				activity('a1', T0 + 1000, 'item_opened', { itemText: 'Refund €129.00' }),
 				activity('a2', T0 + 2000, 'item_opened', { itemText: 'Return the lamps?' }),
 				activity('a3', T0 + 3 * MIN, 'send_held'),
+				said,
 			],
 		});
 		const lines = w.findAll('[data-testid="team-stream-system"]');
-		expect(lines.map((l) => l.attributes('data-type'))).toEqual(['item_opened', 'send_held']);
+		expect(lines.map((l) => l.attributes('data-type'))).toEqual([
+			'item_opened',
+			'send_held',
+			'item_closed',
+		]);
 		expect(lines[0]!.text()).toContain('2 new actions for the team');
 		expect(lines[1]!.text()).toContain('A reply was held for review.');
-		expect(lines[1]!.find('[data-testid="team-stream-provenance"]').text()).toBe('recorded');
+		// What Owlat saw happen carries no label; a claim says whose it is.
+		expect(lines[1]!.find('[data-testid="team-stream-provenance"]').exists()).toBe(false);
+		expect(lines[2]!.find('[data-testid="team-stream-provenance"]').text()).toBe('you said');
 	});
 
 	it('hands customer emails to the host through its slot', () => {

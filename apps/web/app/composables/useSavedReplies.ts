@@ -18,13 +18,38 @@ import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 
 export type SavedReplyScope = 'personal' | 'shared';
 
+/** A file a reply carries, or an upload that will become one when it is saved. */
+export interface SavedReplyFile {
+	storageId: Id<'_storage'>;
+	filename: string;
+	contentType: string;
+	size: number;
+}
+
 /** What a new reply is made of. `mailboxIds` only means something when shared. */
 export interface SavedReplyDraft {
 	name: string;
 	shortcut: string;
 	bodyHtml: string;
 	variables?: SnippetVariable[];
+	attachments?: SavedReplyFile[];
 	mailboxIds?: Id<'mailboxes'>[];
+}
+
+/** The server takes a file's id, name and type; it measures the size itself. */
+function toArgs<T extends Partial<SavedReplyDraft>>({ attachments, ...draft }: T) {
+	return {
+		...draft,
+		...(attachments
+			? {
+					attachments: attachments.map(({ storageId, filename, contentType }) => ({
+						storageId,
+						filename,
+						contentType,
+					})),
+				}
+			: {}),
+	};
 }
 
 function useSavedRepliesAvailable() {
@@ -38,7 +63,7 @@ export function useCreateSavedReply() {
 	const op = useBackendOperation(api.mail.savedReplies.create, {
 		label: () => t('shared.savedReplies.operations.create'),
 	});
-	return (scope: SavedReplyScope, draft: SavedReplyDraft) => op.run({ scope, ...draft });
+	return (scope: SavedReplyScope, draft: SavedReplyDraft) => op.run({ scope, ...toArgs(draft) });
 }
 
 /**
@@ -60,6 +85,7 @@ export function useComposerSavedReplies(mailboxId: () => Id<'mailboxes'> | null)
 			shortcut: reply.shortcut,
 			bodyHtml: reply.bodyHtml,
 			variables: (reply.variables ?? undefined) as SnippetVariable[] | undefined,
+			attachmentCount: reply.attachments.length,
 			isShared: reply.scope === 'shared',
 			useCount: reply.useCount,
 			lastUsedAt: reply.lastUsedAt,
@@ -112,7 +138,7 @@ export function useSavedReplyLibrary(scope: SavedReplyScope) {
 		refetch: source.refetch,
 		create: (draft: SavedReplyDraft) => create(scope, draft),
 		update: (replyId: Id<'mailSnippets'>, draft: Partial<SavedReplyDraft>) =>
-			updateOp.run({ replyId, ...draft }),
+			updateOp.run({ replyId, ...toArgs(draft) }),
 		remove: (replyId: Id<'mailSnippets'>) => removeOp.run({ replyId }),
 	};
 }

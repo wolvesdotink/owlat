@@ -116,14 +116,32 @@ async function openSharedInbox(
 	if ((await tab.first().getAttribute('aria-selected')) !== 'true') await tab.first().click();
 }
 
+/**
+ * The Flat list, picked in the Display menu. Only its rows carry the
+ * "Mark unread" control the reader shot waits on, and an account that never
+ * chose a view lands on Conversations.
+ */
+async function chooseFlatList(page: Page): Promise<void> {
+	const display = page.getByRole('button', { name: 'Display options' });
+	await needs(display, 'The Display menu');
+	await display.first().click();
+	const flat = page.getByRole('menuitemradio', { name: 'Flat', exact: true });
+	await needs(flat, 'The "Flat" list view');
+	if ((await flat.first().getAttribute('aria-checked')) === 'true')
+		await page.keyboard.press('Escape');
+	else await flat.first().click();
+}
+
 export const SURFACES: readonly Surface[] = [
 	{
 		// Before postbox-today, whose Priority view counts the message.
 		name: 'postbox',
-		changes: 'the seeded message becomes read; the inbox view is saved as All mail',
+		changes:
+			'the seeded message becomes read; the inbox view is saved as All mail and the list view as Flat',
 		description: `The shared ${SHARED_INBOX} inbox (All mail) with "${SHARED_MESSAGE.subject}" open in the reader.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'All mail');
+			await chooseFlatList(page);
 			const row = page.locator('li', { hasText: SHARED_MESSAGE.subject });
 			await needs(row, `The seeded message "${SHARED_MESSAGE.subject}"`);
 			await row.first().getByText(SHARED_MESSAGE.subject).first().click();

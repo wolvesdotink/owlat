@@ -3,6 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
+import { OAUTH_RETURN_FLAG } from '~/composables/postbox/useMailOAuthConnect';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
 import type { Id } from '@owlat/api/dataModel';
 import {
@@ -103,18 +104,24 @@ async function handleStartImport() {
 	if (res.ok) showToast(t('dashboard.postbox.migrate.toastImportStarted'), 'success');
 }
 
-// ── Returning from Google sign-in ───────────────────────────────────────────
+// ── Returning from provider sign-in (Google, Microsoft) ─────────────────────
 // The OAuth callback lands back on whatever page started the flow, flagged with
-// `googleConnected=1`. The connect FORM cannot start the import itself — the
-// browser left the page mid-flow and its `submitted` event never fired — so the
-// wizard picks the thread back up here: strip the flag, then start the import
-// once the account subscription reports the new mailbox.
-const googleReturn = ref(route.query['googleConnected'] === '1');
+// `oauthConnected=1`; a consent the previous release started still returns with
+// `googleConnected=1` (remove after the next release). The connect FORM cannot
+// start the import itself — the browser left the page mid-flow and its
+// `submitted` event never fired — so the wizard picks the thread back up here:
+// strip the flag, then start the import once the account subscription reports
+// the new mailbox.
+const LEGACY_RETURN_FLAG = 'googleConnected';
+const oauthReturn = ref(
+	route.query[OAUTH_RETURN_FLAG] === '1' || route.query[LEGACY_RETURN_FLAG] === '1'
+);
 
 onMounted(() => {
-	if (!googleReturn.value) return;
+	if (!oauthReturn.value) return;
 	const query = { ...route.query };
-	delete query['googleConnected'];
+	delete query[OAUTH_RETURN_FLAG];
+	delete query[LEGACY_RETURN_FLAG];
 	void router.replace({ query });
 
 	// `account` is a live subscription: with a warm cache it is already resolved
@@ -122,11 +129,11 @@ onMounted(() => {
 	// watcher FIRST and only then probe the current value — an `immediate: true`
 	// watcher cannot call its own stop handle (the binding is still in its
 	// temporal dead zone on the immediate run), which is a ReferenceError on
-	// exactly the already-resolved path. `googleReturn` keeps this to one start.
+	// exactly the already-resolved path. `oauthReturn` keeps this to one start.
 	let stop: (() => void) | undefined;
 	function startIfConnected() {
-		if (!googleReturn.value || !account.value?.configured) return;
-		googleReturn.value = false;
+		if (!oauthReturn.value || !account.value?.configured) return;
+		oauthReturn.value = false;
 		stop?.();
 		// An import already running (or finished) needs nothing started.
 		if (migration.value) return;

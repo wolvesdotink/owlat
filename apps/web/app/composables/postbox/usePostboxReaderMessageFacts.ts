@@ -88,7 +88,11 @@ export function usePostboxReaderMessageFacts(source: {
 	const deliveryByMessage = computed(() => {
 		const map = new Map<string, OutboundDelivery>();
 		for (const row of outboundDelivery.value ?? []) {
-			map.set(row.messageId, { state: row.state, recipients: row.recipients });
+			map.set(row.messageId, {
+				state: row.state,
+				recipients: row.recipients,
+				...(row.readReceipt ? { readReceipt: row.readReceipt } : {}),
+			});
 		}
 		return map;
 	});

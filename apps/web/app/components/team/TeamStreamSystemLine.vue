@@ -2,8 +2,9 @@
 /**
  * What happened, as a thin line in the team stream: an action
  * closed, a reply held, a file added. Several new actions noted together
- * read as one line. Each line says how Owlat knows it (recorded, you said,
- * from their email). Never an AI sentence about the customer's mail.
+ * read as one line. A line Owlat saw happen carries no label; one a person
+ * stated or an email reported says so (you said, from their email). Never an
+ * AI sentence about the customer's mail.
  */
 import type { ActivityEntry } from '~/utils/teamStream';
 import { briefShortDate } from '~/utils/threadBriefContext';
@@ -31,7 +32,9 @@ const text = computed(() => systemLineText(props.entries, { t, memberName: props
 		<span aria-hidden="true">·</span>
 		<span class="text-text-secondary">{{ text }}</span>
 		<span
-			class="rounded border border-border-subtle px-1 font-mono text-[10px]"
+			v-if="first.activity.provenance !== 'recorded'"
+			class="rounded border border-border-subtle px-1 text-[10px]"
+			:title="t(`components.brief.activity.provenanceHint.${first.activity.provenance}`)"
 			data-testid="team-stream-provenance"
 			>{{ t(`components.brief.activity.provenance.${first.activity.provenance}`) }}</span
 		>

@@ -54,6 +54,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { loadReadableMailbox } from './permissions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { attachThreadState, type MailListRow, type RowThreadState } from './mailbox/rowThreadState';
+import type { SenderLogoField } from './senderLogos/cache';
 import { readSectionUnreadCounts } from './messageCounters';
 
 /**
@@ -93,7 +94,7 @@ interface InboxSection {
 	/** The section name, or `null` for the trailing "Everything else". */
 	name: string | null;
 	/** Slim list rows (no bodies) carrying their thread's chip state (follow-up, mute, category). */
-	messages: Array<MailListRow & RowThreadState>;
+	messages: Array<MailListRow & RowThreadState & SenderLogoField>;
 	/** More mail exists in THIS section past its own limit. */
 	hasMore: boolean;
 	unreadCount: number;

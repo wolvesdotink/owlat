@@ -25,6 +25,16 @@ export interface GlobalDesktopSettings {
 	notificationsEnabled: boolean;
 	/** Show the unread-count badge on the dock/taskbar icon. */
 	showUnreadBadge: boolean;
+	/**
+	 * Show the tray icon (the menu bar extra on macOS). The Rust shell also
+	 * reads this key from the file at launch (src-tauri tray.rs).
+	 */
+	showTrayIcon: boolean;
+	/**
+	 * Windows and Linux: closing the main window hides it to the tray icon
+	 * instead of quitting. macOS always hides it. Also read by tray.rs.
+	 */
+	closeToTray: boolean;
 	/** Workspace to activate on a cold app launch; null = last active. */
 	startupWorkspaceId: string | null;
 }
@@ -49,6 +59,8 @@ export function defaultDesktopSettings(): DesktopSettings {
 			autoCheckUpdates: true,
 			notificationsEnabled: true,
 			showUnreadBadge: true,
+			showTrayIcon: true,
+			closeToTray: true,
 			startupWorkspaceId: null,
 		},
 		workspaces: {},
@@ -83,6 +95,8 @@ export function normalizeDesktopSettings(raw: unknown): DesktopSettings {
 		base.global.notificationsEnabled
 	);
 	base.global.showUnreadBadge = pickBoolean(g['showUnreadBadge'], base.global.showUnreadBadge);
+	base.global.showTrayIcon = pickBoolean(g['showTrayIcon'], base.global.showTrayIcon);
+	base.global.closeToTray = pickBoolean(g['closeToTray'], base.global.closeToTray);
 	base.global.startupWorkspaceId =
 		typeof g['startupWorkspaceId'] === 'string' ? g['startupWorkspaceId'] : null;
 

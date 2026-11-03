@@ -19,3 +19,9 @@ export function postboxFilterQueryFrom(msg: {
 	if (subject) query['filterSubject'] = subject;
 	return Object.keys(query).length === 0 ? null : query;
 }
+
+/** Open the filter builder pre-filled from this message, when it gives the builder anything. */
+export function openPostboxFilterBuilderFrom(msg: { fromAddress?: string; subject?: string }) {
+	const query = postboxFilterQueryFrom(msg);
+	if (query) void navigateTo({ path: '/dashboard/preferences/filters', query });
+}

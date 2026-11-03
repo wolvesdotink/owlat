@@ -3,18 +3,21 @@ import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import type { PostboxReaderMessage } from '~/composables/postbox/postboxReaderMessage';
 import type { usePostboxReaderActions } from '~/composables/postbox/usePostboxReaderActions';
 import type { usePostboxReaderAttachments } from '~/composables/postbox/usePostboxReaderAttachments';
+import type { usePostboxReaderCommands } from '~/composables/postbox/usePostboxReaderCommands';
 import type { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 
 /**
  * What PostboxThreadReader opens over the conversation: the keyboard-flow
  * pickers for the open message, the full brief, the sender profile, the
- * share-in-chat dialog and the attachment Quick Look. One of each per reader,
- * whichever message card asked for it.
+ * share-in-chat and share-as-image dialogs and the attachment Quick Look. One
+ * of each per reader, whichever message card asked for it.
  */
 defineProps<{
 	mailboxId: string;
 	/** The reader's thread-level triage, which owns the pickers' state. */
 	actions: ReturnType<typeof usePostboxReaderActions>;
+	/** The move picker's "Other mailboxes" section. */
+	moves: ReturnType<typeof usePostboxReaderCommands>['moves'];
 	brief: ReturnType<typeof usePostboxReaderBrief>;
 	messages: PostboxReaderMessage[];
 	/** Shared mailboxes post the link to team rooms only. */
@@ -28,6 +31,9 @@ const senderProfile = defineModel<{ fromAddress: string; fromName: string | null
 	{ required: true }
 );
 const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { required: true });
+const shareImageMessage = defineModel<PostboxReaderMessage | null>('shareImageMessage', {
+	required: true,
+});
 </script>
 
 <template>
@@ -49,8 +55,11 @@ const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { 
 	<PostboxMovePickerDialog
 		:open="actions.moveDialogOpen.value"
 		:folders="actions.movableFolders.value"
+		:mailboxes="moves.targets.value"
+		:can-move="moves.canMove.value"
 		@update:open="actions.moveDialogOpen.value = $event"
 		@pick="actions.moveOpenMessageTo"
+		@pick-mailbox="moves.pick"
 	/>
 
 	<!-- "Full brief": the whole brief card beside the conversation. -->
@@ -71,6 +80,13 @@ const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { 
 		:conversation="shareTarget"
 		:audience="shared ? 'shared' : 'personal'"
 		@close="shareTarget = null"
+	/>
+
+	<!-- Lazy: the canvas card and its redaction tools load on first use. -->
+	<LazyPostboxShareImageDialog
+		v-if="shareImageMessage"
+		:message="shareImageMessage"
+		@close="shareImageMessage = null"
 	/>
 
 	<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

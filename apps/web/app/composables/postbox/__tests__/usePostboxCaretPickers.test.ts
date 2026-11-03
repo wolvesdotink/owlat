@@ -105,6 +105,22 @@ describe('usePostboxSnippetPicker', () => {
 	});
 });
 
+describe('usePostboxSnippetPicker: dictated text', () => {
+	it('goes in where the caret last was, spaced from the word before it', () => {
+		const picker = usePostboxSnippetPicker({
+			editorRef: editorWith('Thursday'),
+			snippets: () => SNIPPETS,
+			insertOptions: () => undefined,
+			emitContent: () => {},
+		});
+		picker.onSelectionChange();
+		// Pressing the microphone moved the selection out of the editor.
+		window.getSelection()!.removeAllRanges();
+		picker.insertTextAtCaret('works & suits us');
+		expect(editor.textContent).toBe('Thursday works & suits us');
+	});
+});
+
 describe('usePostboxEmojiPicker', () => {
 	function mountPicker(text: string) {
 		const editorRef = editorWith(text);

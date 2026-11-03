@@ -16,9 +16,12 @@ import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxListDeletedOpenRow } from '~/composables/postbox/usePostboxDeletedOpenRow';
+import { usePostboxListReadAhead } from '~/composables/postbox/usePostboxListReadAhead';
 
 const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
+	/** None for a list that spans mailboxes (All inboxes); `selectionScope` names its selection. */
+	mailboxId?: Id<'mailboxes'>;
+	selectionScope?: string;
 	messages: Array<PostboxThreadRowMessage>;
 	loading: boolean;
 	folderRole: string;
@@ -72,13 +75,13 @@ usePostboxListNow(); // one minute clock for every row's timestamp
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
 
-const mailboxIdRef = computed(() => props.mailboxId);
+const mailboxIdRef = computed(() => props.mailboxId ?? null);
 // Which folder the rows belong to. The page stays mounted across folder
 // switches, so focus and scroll reset on this key instead of on a remount. It
 // is also the folder's route segment (a role, or a custom folder's id: its
 // role is empty), so every link into or out of a message is built from it.
 const folderKey = computed(() => props.folderId ?? props.folderRole);
-const bulk = usePostboxBulkActions(mailboxIdRef);
+const bulk = usePostboxBulkActions(computed(() => props.selectionScope ?? props.mailboxId ?? null));
 
 // Optimistic row state, in two layers over the rows the folder query delivers:
 //   - flags: star / mark-read paint immediately and are pruned once the live
@@ -152,15 +155,16 @@ const {
 	labelOpen,
 	moveOpen,
 	labels,
-	movableFolders,
+	movePicker,
 	openSnooze,
 	openLabel,
 	openMove,
 	snoozeFocused,
 	applyLabelToFocused,
-	moveFocusedTo,
+	movePickerOn,
 } = usePostboxRowPickers({
 	mailboxId: mailboxIdRef,
+	mailboxOf: (id) => props.messages.find((m) => m._id === id)?.mailboxId ?? null,
 	folderRole: computed(() => props.folderRole),
 	snoozeMsg,
 	snoozeThread,
@@ -294,26 +298,11 @@ const {
 	},
 });
 
-// Read-ahead: when the j/k focus or the open message changes, hold the next and
-// previous rows' thread and inline-body queries (the ones the reader opens with;
-// debounced, LRU-capped and fail-soft) so Enter / auto-advance opens from cache.
-const { prefetch: prefetchAdjacent } = usePostboxPrefetch();
-
-// The mouse half of the same read-ahead: hovering (or tabbing to) a row warms
-// the thread and body the click is about to need. The composable's 150ms debounce means a
-// pointer sweeping down the list warms only where it comes to rest, and its LRU
-// cap bounds what a long sweep can accumulate — so this needs no throttle of
-// its own.
-function prefetchRow(id: string) {
-	prefetchAdjacent([id]);
-}
-watch([focusedIndex, () => props.activeMessageId], () => {
-	const ids = visibleIds.value;
-	let anchor = focusedIndex.value;
-	if (anchor < 0 && props.activeMessageId)
-		anchor = ids.findIndex((id) => id === props.activeMessageId);
-	if (anchor < 0) return;
-	prefetchAdjacent([ids[anchor + 1], ids[anchor - 1]]);
+// Read-ahead on j/k focus, the open message and row hover.
+const { prefetchRow } = usePostboxListReadAhead({
+	focusedIndex,
+	visibleIds,
+	activeMessageId: () => props.activeMessageId,
 });
 
 // --- Windowed rendering + infinite scroll (large folders) --------------------
@@ -492,8 +481,8 @@ useListAnswerRoundTrip({
 	/>
 	<PostboxMovePickerDialog
 		:open="moveOpen"
-		:folders="movableFolders"
+		v-bind="movePicker"
 		@update:open="moveOpen = $event"
-		@pick="moveFocusedTo"
+		v-on="movePickerOn"
 	/>
 </template>

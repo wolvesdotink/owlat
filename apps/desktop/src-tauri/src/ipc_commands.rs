@@ -11,12 +11,14 @@
 // reading these three lists as plain string-literal arrays.
 
 /// Commands every app window uses (`main` and `compose`): notifications, the
-/// keychain, user-picked files, window chrome, zoom and updates.
+/// tray icon, the keychain, user-picked files, window chrome, zoom and updates.
 pub const WINDOW_COMMANDS: &[&str] = &[
     "update_unread_badge",
     "send_native_notification",
     "send_actionable_notification",
     "send_link_notification",
+    "update_tray",
+    "set_tray_preferences",
     "secret_get",
     "session_secret_read",
     "session_secret_write",

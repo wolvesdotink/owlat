@@ -23,6 +23,17 @@ describe('buildRfc822 (ComposeInput)', () => {
 		expect(eml.split('\r\n\r\n')[0]).not.toContain('secret@y.test');
 	});
 
+	it('asks for a read receipt only when the input names an address for it', () => {
+		const header = (input: Parameters<typeof makeInput>[0]) =>
+			buildRfc822(makeInput(input), [], '<id@owlat.test>', undefined, undefined)
+				.raw.toString('utf-8')
+				.split('\r\n\r\n')[0];
+		expect(header({ dispositionNotificationTo: 'ada@owlat.test' })).toContain(
+			'\r\nDisposition-Notification-To: ada@owlat.test\r\n'
+		);
+		expect(header({})).not.toContain('Disposition-Notification-To');
+	});
+
 	it('never emits Content-Transfer-Encoding: 8bit', () => {
 		const { raw } = buildRfc822(
 			makeInput({ bodyHtml: '<p>Grüße — café ☕</p>', bodyText: undefined }),

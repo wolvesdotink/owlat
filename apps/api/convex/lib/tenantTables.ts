@@ -4,6 +4,7 @@ import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
 import { MARKETING_NOTIFICATION_TABLES } from '../schema/marketingNotifications';
 import { AUTOMATION_TABLES } from '../schema/automations';
+import { MCP_TABLES } from '../schema/mcp';
 import type { NON_TENANT_TABLES } from './nonTenantTables';
 
 /**
@@ -231,6 +232,9 @@ export const TENANT_TABLES = [
 	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
 	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
 	'mailMessageParts',
+	// Brand logos of the domains that wrote to this workspace, with their
+	// stored images: the set of domains traces its correspondents.
+	'senderLogos',
 	'mailThreads',
 	'mailDraftRequestNonces',
 	'mailDrafts',
@@ -249,6 +253,8 @@ export const TENANT_TABLES = [
 	'mailVacationResponders',
 	'mailVacationLog',
 	'mailAppPasswords',
+	// MCP client tokens and their activity log: credentials over the mail above.
+	...MCP_TABLES,
 	'mailContacts',
 	'mailSenderCategoryOverrides',
 	'mailSenderImageAllowlist',
@@ -282,7 +288,7 @@ export const TENANT_TABLES = [
 	// Pending local → remote write-backs (moves, flags, deletes) for an account.
 	'externalMailRemoteOps',
 	'externalMailAccounts',
-	// In-flight Google sign-in handshakes for connecting an external mailbox.
+	// In-flight Google or Microsoft sign-in handshakes for connecting an external mailbox.
 	// User- and org-attributed, short-lived, and meaningless once the org is gone
 	// — wiped with it like the account rows the finished handshake would write.
 	'externalMailOAuthStates',

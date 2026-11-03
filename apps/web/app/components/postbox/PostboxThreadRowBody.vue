@@ -2,7 +2,8 @@
 /**
  * The presentational body of a Postbox message row: sender, timestamp, the
  * sender-trust marker, the state chips (star, pinned, snoozed, muted, back
- * from snooze, attachment, follow-up), subject and snippet.
+ * from snooze, attachment, follow-up), subject, the sign-in code chip and
+ * snippet.
  *
  * Every renderer that lists messages builds on this one body — the flat list
  * (PostboxThreadRow), the split inbox (PostboxThreadSectionList) and the
@@ -32,6 +33,10 @@ import {
 	priorityRowLine,
 } from '~/utils/postboxPriorityGroups';
 import { useBriefLinesShown } from '~/composables/postbox/usePostboxBriefLines';
+import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
+import PostboxUnreadMark from './PostboxUnreadMark.vue';
+import InboxChip from '~/components/inbox/InboxChip.vue';
+import { usePostboxRowInbox } from '~/composables/postbox/usePostboxRowInbox';
 import { BellOffIcon, ClockIcon, PaperclipIcon, PinIcon, StarIcon, UndoIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
@@ -59,6 +64,13 @@ const props = defineProps<{
 const emit = defineEmits<{
 	'cancel-follow-up': [];
 }>();
+
+/** The inbox the row came from, in a list that spans mailboxes. */
+const rowInboxOf = usePostboxRowInbox();
+const rowInbox = computed(() => {
+	const mailboxId = props.msg.mailboxId;
+	return mailboxId && rowInboxOf ? rowInboxOf(mailboxId) : null;
+});
 
 /** One sender fallback for every renderer: a blank display name reads as absent. */
 const sender = computed(() => props.msg.fromName?.trim() || props.msg.fromAddress);
@@ -140,9 +152,11 @@ function onCancelFollowUp(event: MouseEvent) {
 	>
 		<span
 			class="flex items-baseline gap-2 truncate text-sm sm:w-40 sm:flex-shrink-0"
-			:class="msg.flagSeen ? 'text-text-secondary' : 'font-semibold text-text-primary'"
+			:class="
+				msg.flagSeen ? 'text-text-secondary' : 'pbx-unread-weight font-semibold text-text-primary'
+			"
 		>
-			<span class="truncate">{{ sender }}</span>
+			<span class="truncate"><PostboxUnreadMark v-if="!msg.flagSeen" announce />{{ sender }}</span>
 			<span
 				class="ml-auto text-xs font-normal tabular-nums sm:hidden"
 				:class="priorityLine.state.kind === 'time' ? 'text-text-tertiary' : 'text-brand'"
@@ -164,6 +178,7 @@ function onCancelFollowUp(event: MouseEvent) {
 			<span class="truncate max-sm:whitespace-normal max-sm:line-clamp-2">{{
 				priorityLine.text
 			}}</span>
+			<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" />
 		</span>
 		<span
 			class="flex-shrink-0 text-xs tabular-nums max-sm:hidden"
@@ -179,9 +194,16 @@ function onCancelFollowUp(event: MouseEvent) {
 		>
 	</div>
 	<PostboxRowCore v-else :unread="!msg.flagSeen">
-		<template #identifier>{{ sender }}</template>
+		<template #identifier><PostboxUnreadMark v-if="!msg.flagSeen" announce />{{ sender }}</template>
 		<template #meta>{{ formatTimestamp(msg.receivedAt) }}</template>
 		<div class="flex items-center gap-1.5 mt-0.5">
+			<InboxChip
+				v-if="rowInbox"
+				class="flex-shrink-0"
+				:name="rowInbox.name"
+				:slot="rowInbox.slot"
+				data-testid="row-inbox-chip"
+			/>
 			<!-- Danger-only sender marker: failed / misaligned / look-alike of a
 			     known contact's domain. Silent for every other verdict. -->
 			<span
@@ -233,10 +255,13 @@ function onCancelFollowUp(event: MouseEvent) {
 			/>
 			<p
 				class="truncate text-sm flex-1"
-				:class="msg.flagSeen ? 'text-text-secondary' : 'font-medium text-text-primary'"
+				:class="
+					msg.flagSeen ? 'text-text-secondary' : 'pbx-unread-weight font-medium text-text-primary'
+				"
 			>
 				{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
 			</p>
+			<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" />
 		</div>
 		<p
 			v-if="!compact && briefLine"

@@ -25,6 +25,10 @@ beforeEach(() => {
 	isBriefShown = true;
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: (flag: string) => flag === 'ai' && isAiOn }));
+	vi.stubGlobal('usePostboxUnreadStyle', () => ({
+		unreadStyle: ref('dot-weight'),
+		setUnreadStyle: vi.fn(),
+	}));
 	vi.stubGlobal('usePostboxSettings', () => ({
 		autoAdvance: ref('next'),
 		setAutoAdvance: vi.fn(),
@@ -62,6 +66,8 @@ function mountCard() {
 			plugins: [createTestI18n()],
 			stubs: {
 				PreferencesBriefBackfill: true,
+				// Its own card test covers it: it reads its own settings query.
+				PreferencesSenderLogos: true,
 				UiSwitch: {
 					props: ['modelValue', 'id'],
 					emits: ['update:modelValue'],

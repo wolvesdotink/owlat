@@ -13,11 +13,13 @@ import { getFunctionName } from 'convex/server';
 import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalStorage } from '~/composables/useLocalStorage';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
 import { earlierThreadPageArgs, threadPageArgs } from '~/composables/postbox/postboxThreadPage';
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadChatItem from '../PostboxThreadChatItem.vue';
 import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 import PostboxThreadEarlier from '../PostboxThreadEarlier.vue';
 import PostboxThreadFindBar from '../PostboxThreadFindBar.vue';
@@ -55,6 +57,7 @@ beforeEach(() => {
 		useId,
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
+		useLocalStorage,
 		useConvexQueryMap,
 		usePaginatedQuery: () => paginatedResult([]),
 		useOperationErrorToast: () => ({ showOperationError: vi.fn() }),
@@ -136,6 +139,7 @@ const marker = (name: string) =>
 /** Reader and card chrome this suite does not look into. */
 const CHROME = [
 	'LazyChatLinkEmailDialog',
+	'LazyPostboxShareImageDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxReaderStrip',
@@ -165,6 +169,8 @@ const CHROME = [
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadFindBar',
 	'PostboxThreadFindButton',
+	'PostboxThreadChatToggle',
+	'PostboxChatBubble',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -184,6 +190,8 @@ function mountReader(components: Record<string, unknown> = {}) {
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real: with the chat layout off it renders the card above.
+				PostboxThreadChatItem,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
 				PostboxThreadEarlier,

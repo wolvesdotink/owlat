@@ -16,6 +16,7 @@ import { getFunctionName } from 'convex/server';
 import { dashboardShellStubs, installNuxtStubs, paginatedResult } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useLocalStorage } from '~/composables/useLocalStorage';
 import { POSTBOX_WHY_HERE_KEY } from '~/composables/postbox/usePostboxWhyHere';
 import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFilter';
 import { briefView, item } from '~/utils/__tests__/threadBriefFixtures';
@@ -23,6 +24,7 @@ import type { BriefModeView } from '../../../../../api/convex/mail/interpret/bri
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadChatItem from '../PostboxThreadChatItem.vue';
 import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 import PostboxThreadHeader from '../PostboxThreadHeader.vue';
 import PostboxReaderStrip from '../PostboxReaderStrip.vue';
@@ -97,6 +99,7 @@ beforeEach(() => {
 		useId,
 		useClickOutside,
 		useClickOutsideSelector: useClickOutside,
+		useLocalStorage,
 		usePaginatedQuery: () => paginatedResult([]),
 		// The first-open read (lazy.ensure) and mark-seen answer like the server.
 		useBackendOperation: () => ({
@@ -199,6 +202,7 @@ const marker = (name: string) =>
 /** Reader chrome this suite does not look into. */
 const CHROME = [
 	'LazyChatLinkEmailDialog',
+	'LazyPostboxShareImageDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxAiStrip',
@@ -224,6 +228,8 @@ const CHROME = [
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadFindButton',
+	'PostboxThreadChatToggle',
+	'PostboxChatBubble',
 	'PostboxThreadEarlier',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -272,12 +278,19 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 					name: 'PostboxThreadFindBar',
 					setup: () => () => null,
 				}),
+				// Until the header scrolls away the sticky bar shows nothing either.
+				PostboxReaderStickyBar: defineComponent({
+					name: 'PostboxReaderStickyBar',
+					setup: () => () => null,
+				}),
 				PostboxThreadHeader,
 				PostboxReaderStrip,
 				PostboxReaderStripLinks,
 				PostboxReaderNotice,
 				PostboxOverflowMenu: overflowMenu,
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real: with the chat layout off it renders the card above.
+				PostboxThreadChatItem,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
 				PostboxLazyBody: passThrough,

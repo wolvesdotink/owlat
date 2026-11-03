@@ -35,6 +35,7 @@ import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { selectionCaretAnchor, type VirtualAnchor } from '@owlat/ui/utils/popoverAnchor';
 import { detectSnippetTrigger, rankSnippets } from '~/utils/postboxSnippets';
 import { isImeComposing } from '~/utils/imeComposition';
+import { spaceDictated } from '~/utils/dictation';
 import {
 	promptedSnippetVariables,
 	resolveSnippetBody,
@@ -54,6 +55,8 @@ export interface EditorSnippet {
 	variables?: SnippetVariable[];
 	/** Shared with the organization (the picker marks it). */
 	isShared?: boolean;
+	/** Files inserting it attaches (the pickers mark a reply that has any). */
+	attachmentCount?: number;
 	useCount?: number;
 	lastUsedAt?: number | null;
 }
@@ -227,9 +230,15 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 	 * never clicked into.
 	 */
 	function insertAtCaret(snippet: EditorSnippet) {
-		const el = opts.editorRef.value;
-		if (!el) return;
+		if (!focusAtCaret()) return;
 		close();
+		begin(snippet);
+	}
+
+	/** Focus the editor with the caret where it last was. False without an editor. */
+	function focusAtCaret(): boolean {
+		const el = opts.editorRef.value;
+		if (!el) return false;
 		el.focus();
 		const sel = window.getSelection();
 		const inside = !!sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).startContainer);
@@ -237,7 +246,34 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 			sel.removeAllRanges();
 			sel.addRange(lastRange);
 		}
-		begin(snippet);
+		return true;
+	}
+
+	/**
+	 * Plain text from outside the editor (dictation) where the caret last was,
+	 * spaced from the word before it. `insertText` keeps it one native undo
+	 * step, and its `input` event saves the draft like typing; an engine without
+	 * it gets a plain range insert.
+	 */
+	function insertTextAtCaret(phrase: string) {
+		if (!focusAtCaret()) return;
+		const sel = window.getSelection();
+		const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+		if (!range) return;
+		const node = range.startContainer;
+		const before =
+			node.nodeType === Node.TEXT_NODE ? (node.textContent ?? '').slice(0, range.startOffset) : '';
+		const text = spaceDictated(before, phrase);
+		if (!text) return;
+		if (typeof document.execCommand === 'function') {
+			if (document.execCommand('insertText', false, text)) return;
+		}
+		const inserted = document.createTextNode(text);
+		range.deleteContents();
+		range.insertNode(inserted);
+		range.setStartAfter(inserted);
+		range.collapse(true);
+		opts.emitContent();
 	}
 
 	/** The dialog answered: finish the parked insert at the remembered caret. */
@@ -303,6 +339,7 @@ export function usePostboxSnippetPicker(opts: SnippetPickerOptions) {
 		update,
 		insert,
 		insertAtCaret,
+		insertTextAtCaret,
 		submitPrompt,
 		cancelPrompt,
 		close,

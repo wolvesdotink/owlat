@@ -15,12 +15,14 @@ import { SAVED_REPLIES_CHORD } from '~/composables/useComposerSavedReplyPicker';
 import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
 import { rankSnippets } from '~/utils/postboxSnippets';
-import { BookmarkPlusIcon, ChatQuoteIcon } from '@coolicons/vue';
+import { BookmarkPlusIcon, ChatQuoteIcon, PaperclipIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	replies: EditorSnippet[];
 	/** "Save as reply" needs text to save. */
 	canSaveCurrent: boolean;
+	/** It saves the text selected in the composer, not all of it. */
+	savesSelection?: boolean;
 }>();
 
 const open = defineModel<boolean>('open', { required: true });
@@ -135,6 +137,12 @@ function saveCurrent() {
 						<span v-if="reply.shortcut" class="shrink-0 font-mono text-xs text-text-tertiary"
 							>;{{ reply.shortcut }}</span
 						>
+						<PaperclipIcon
+							v-if="reply.attachmentCount"
+							class="size-3.5 shrink-0 text-text-tertiary"
+							:aria-label="t('shared.savedReplies.files', reply.attachmentCount)"
+							data-testid="saved-reply-has-files"
+						/>
 						<span
 							v-if="reply.isShared"
 							class="ml-auto shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand"
@@ -156,7 +164,11 @@ function saveCurrent() {
 					@click="saveCurrent"
 				>
 					<BookmarkPlusIcon class="w-4 h-4 mr-1.5" />
-					{{ t('shared.savedReplies.saveCurrent') }}
+					{{
+						savesSelection
+							? t('shared.savedReplies.saveSelection')
+							: t('shared.savedReplies.saveCurrent')
+					}}
 				</UiButton>
 				<NuxtLink
 					to="/dashboard/preferences/snippets"

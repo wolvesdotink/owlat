@@ -102,6 +102,11 @@ beforeAll(() => {
 	// The h/l/v picker state lives in its own composable now; real, because it is
 	// only refs over the two stubbed queries above.
 	vi.stubGlobal('usePostboxRowPickers', usePostboxRowPickers);
+	// The move picker's other mailboxes: none here.
+	vi.stubGlobal('usePostboxMailboxTransfer', () => ({
+		targets: ref([]),
+		isSourceConnected: ref(false),
+	}));
 	// Real: the drag source is the behaviour under test in its own block below.
 	vi.stubGlobal('usePostboxListRowDrag', usePostboxListRowDrag);
 	vi.stubGlobal('useRoute', () => ({ params: { folder: 'inbox' } }));

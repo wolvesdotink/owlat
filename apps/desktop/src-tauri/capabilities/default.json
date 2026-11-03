@@ -1,7 +1,7 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
-	"description": "Core capability for the main + compose windows: window control, notifications, deep links, updater, shell-open, the workspace store, and the app commands every window uses (src/ipc_commands.rs WINDOW_COMMANDS). Server provisioning is granted to the main window only (provisioning.json).",
+	"description": "Core capability for the main + compose windows: window control, notifications, the tray icon, deep links, updater, shell-open, the workspace store, and the app commands every window uses (src/ipc_commands.rs WINDOW_COMMANDS). Server provisioning is granted to the main window only (provisioning.json).",
 	"windows": ["main", "compose"],
 	"permissions": [
 		"core:default",
@@ -33,6 +33,8 @@
 		"allow-send-native-notification",
 		"allow-send-actionable-notification",
 		"allow-send-link-notification",
+		"allow-update-tray",
+		"allow-set-tray-preferences",
 		"allow-secret-get",
 		"allow-session-secret-read",
 		"allow-session-secret-write",

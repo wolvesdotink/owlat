@@ -3,9 +3,10 @@
 /**
  * Google's OAuth 2.0 wire protocol — the half that needs Node.
  *
- * PKCE generation (`node:crypto`), the authorization-URL shape, the
- * authorization-code exchange, the `id_token` read, and the worker-facing
- * access-token refresh. Kept out of `googleOAuthActions.ts` so neither file
+ * The authorization-URL shape, the authorization-code exchange, the `id_token`
+ * read, and the worker-facing access-token refresh. PKCE, the token POST and
+ * the access-token cache are shared with Microsoft sign-in
+ * (`oauthTokenShared.ts`). Kept out of `googleOAuthActions.ts` so neither file
  * approaches the ~500 LOC cap, and out of `accountsActions.ts` so the refresh
  * path `getCredentialsForWorker` needs can be imported without pulling the
  * connect actions in behind it.
@@ -15,16 +16,22 @@
  * an HTTP status) does.
  */
 
-import { createHash, randomBytes } from 'node:crypto';
-import { v, type Infer } from 'convex/values';
-import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
-import { internal } from '../../_generated/api';
-import { decryptSecret, encryptSecret } from '../../lib/credentialCrypto';
 import { getOptional } from '../../lib/env';
-import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
+import {
+	clearAccessTokenCache,
+	markGrantRevoked,
+	oauthRedirectUri,
+	postTokenRequest,
+	readCachedAccessToken,
+	readJwtPayload,
+	rememberAccessToken,
+	type OAuthAccessTokenResult,
+} from './oauthTokenShared';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+
+export { pkceChallenge, randomUrlSafeToken } from './oauthTokenShared';
 
 const AUTHORIZATION_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -39,9 +46,6 @@ const SCOPES = 'https://mail.google.com/ openid email';
 
 /** The issuer values Google stamps on an `id_token` (both spellings are current). */
 const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.com']);
-
-/** Refresh an access token this long before it actually expires. */
-const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
 
 /**
  * What the account's `lastError` says once Google stops honouring the grant.
@@ -68,32 +72,9 @@ export function requireGoogleOAuthClient(): GoogleOAuthClient {
 	return { clientId, clientSecret };
 }
 
-/**
- * The redirect URI, which must match the one registered in Google Cloud Console
- * byte for byte. `SITE_URL` may or may not carry a trailing slash depending on
- * how the operator wrote it, and `https://x.example//oauth/google/callback` is a
- * DIFFERENT URI to Google — strip it.
- */
+/** The redirect URI registered in Google Cloud Console (`oauthRedirectUri`). */
 export function googleRedirectUri(): string {
-	const siteUrl = getOptional('SITE_URL');
-	if (!siteUrl) {
-		throwInvalidInput('SITE_URL is not configured on this instance, so Google sign-in cannot run.');
-	}
-	return `${siteUrl.replace(/\/+$/, '')}/oauth/google/callback`;
-}
-
-function base64url(bytes: Buffer): string {
-	return bytes.toString('base64url');
-}
-
-/** A 43-character base64url nonce — the `state` parameter and the PKCE verifier. */
-export function randomUrlSafeToken(): string {
-	return base64url(randomBytes(32));
-}
-
-/** S256 PKCE challenge for a verifier. */
-export function pkceChallenge(verifier: string): string {
-	return base64url(createHash('sha256').update(verifier).digest());
+	return oauthRedirectUri('google', 'Google sign-in');
 }
 
 /**
@@ -128,78 +109,28 @@ export function buildAuthorizationUrl(params: {
 	return `${AUTHORIZATION_ENDPOINT}?${query.toString()}`;
 }
 
-/** Google's token endpoint answer: the tokens on success, `error` on a refusal. */
-const googleTokenResponseValidator = v.object({
-	access_token: v.optional(v.string()),
-	refresh_token: v.optional(v.string()),
-	expires_in: v.optional(v.number()),
-	id_token: v.optional(v.string()),
-	error: v.optional(v.string()),
-	error_description: v.optional(v.string()),
-});
-type GoogleTokenResponse = Infer<typeof googleTokenResponseValidator>;
-const decodeGoogleTokenResponse = validatorDecoder(googleTokenResponseValidator);
-
-async function postToken(body: URLSearchParams): Promise<GoogleTokenResponse> {
-	const res = await fetchWithTimeout(
-		TOKEN_ENDPOINT,
-		{
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: body.toString(),
-		},
-		FETCH_TIMEOUTS.thirdPartyApi
-	);
-	let answer: unknown;
-	try {
-		answer = await res.json();
-	} catch {
-		return { error: `http_${res.status}` };
-	}
-	// A body in another shape is a failure with its own taxonomy entry, never a
-	// token: no field of it is read, and none of it is logged.
-	const parsed = decodeGoogleTokenResponse(answer);
-	return parsed.ok ? parsed.value : { error: 'malformed_response' };
+/** The `id_token` claims read below; each is checked for its type before use. */
+interface GoogleIdTokenClaims {
+	aud?: unknown;
+	iss?: unknown;
+	exp?: unknown;
+	email?: unknown;
+	email_verified?: unknown;
 }
 
 /**
- * Read the `id_token` payload.
- *
- * The signature is deliberately NOT verified, and that is sound here: this token
- * did not arrive from a browser — we just received it as the response body of a
- * server-to-server POST we made ourselves to Google's token endpoint over TLS.
- * There is no path for an attacker to substitute one without breaking TLS, which
- * is the same assumption every other statement in that response rests on. The
- * claim checks below are still made, because they catch a MISCONFIGURED client
- * (a token minted for someone else's client id) and an unverified address.
+ * Read the `id_token` payload (`readJwtPayload`, which explains why the
+ * signature is not verified). The claim checks below are still made, because
+ * they catch a MISCONFIGURED client (a token minted for someone else's client
+ * id) and an unverified address.
  */
 export function readVerifiedGoogleEmail(idToken: string, clientId: string): string {
-	const segments = idToken.split('.');
-	if (segments.length !== 3) throwInvalidInput('Google returned an unreadable sign-in token.');
-	let claims: {
-		aud?: string;
-		iss?: string;
-		exp?: number;
-		email?: string;
-		email_verified?: boolean | string;
-	};
-	try {
-		// A payload that parses to something other than an object (`null`, a bare
-		// string or number) would otherwise sail past JSON.parse and only blow up
-		// on the first property read — a TypeError that escapes this try and
-		// surfaces as a 500 instead of the invalid-input refusal below.
-		const decoded: unknown = JSON.parse(
-			Buffer.from(segments[1] ?? '', 'base64url').toString('utf8')
-		);
-		if (typeof decoded !== 'object' || decoded === null) throw new Error('not an object');
-		claims = decoded;
-	} catch {
-		throwInvalidInput('Google returned an unreadable sign-in token.');
-	}
+	const claims: GoogleIdTokenClaims | null = readJwtPayload(idToken);
+	if (!claims) throwInvalidInput('Google returned an unreadable sign-in token.');
 	if (claims.aud !== clientId) {
 		throwInvalidInput('Google returned a sign-in token for a different application.');
 	}
-	if (!claims.iss || !GOOGLE_ISSUERS.has(claims.iss)) {
+	if (typeof claims.iss !== 'string' || !GOOGLE_ISSUERS.has(claims.iss)) {
 		throwInvalidInput('Google returned a sign-in token from an unexpected issuer.');
 	}
 	// `exp` is seconds since the epoch. A token that is already expired means the
@@ -213,7 +144,9 @@ export function readVerifiedGoogleEmail(idToken: string, clientId: string): stri
 	if (claims.email_verified !== true && claims.email_verified !== 'true') {
 		throwInvalidInput('This Google account does not have a verified email address.');
 	}
-	if (!claims.email) throwInvalidInput('Google did not return an email address for this account.');
+	if (typeof claims.email !== 'string' || !claims.email) {
+		throwInvalidInput('Google did not return an email address for this account.');
+	}
 	return claims.email.toLowerCase();
 }
 
@@ -239,7 +172,7 @@ export async function exchangeAuthorizationCode(params: {
 		redirect_uri: params.redirectUri,
 		code_verifier: params.codeVerifier,
 	});
-	const token = await postToken(body);
+	const token = await postTokenRequest(TOKEN_ENDPOINT, body);
 	if (token.error) {
 		console.warn('google oauth: authorization code exchange refused', { error: token.error });
 		throwInvalidInput('Google refused this sign-in. Please start again.');
@@ -258,47 +191,10 @@ export async function exchangeAuthorizationCode(params: {
 	};
 }
 
-/**
- * Warm-isolate cache of minted access tokens, keyed by account AND by the
- * envelope the refresh token came out of.
- *
- * The first of two tiers. Convex may reuse a Node isolate across invocations,
- * in which case the worker's repeated credential fetches reuse one token without
- * even a database read. A cold isolate falls through to the sealed
- * `externalMailAccessTokens` row (`accessTokenStore.ts`), and only a miss there
- * spends a Google token request.
- *
- * The envelope's IV is part of the key because it is re-randomized on every
- * write: a reconnect (new grant, new refresh token, same account id) therefore
- * lands on a different key, instead of being served the previous grant's token
- * for up to an hour after the user re-authorized precisely to get a live one.
- */
-const accessTokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
-
-/** Drop a cached token (tests, and any path that learns the grant is dead). */
+/** Drop every cached access token (tests). */
 export function clearGoogleAccessTokenCache(): void {
-	accessTokenCache.clear();
+	clearAccessTokenCache();
 }
-
-export interface GoogleAccessToken {
-	accessToken: string;
-	expiresAt: number;
-}
-
-/**
- * What minting an access token produced.
- *
- * `revoked` is kept apart from `failed` all the way out to the worker: a revoked
- * grant is TERMINAL (only the user reconnecting fixes it, and the account has
- * already been flipped to `auth_error` with that instruction), while `failed` is
- * a Google hiccup or a network blip that the next retry may well survive.
- * Collapsing the two into one `null` is what let a retry loop overwrite the
- * actionable message with a generic error and then spin forever.
- */
-export type GoogleAccessTokenResult =
-	| ({ kind: 'token' } & GoogleAccessToken)
-	| { kind: 'revoked' }
-	| { kind: 'failed' };
 
 /**
  * Mint an access token for an oauth2 account from its stored refresh token.
@@ -308,9 +204,9 @@ export type GoogleAccessTokenResult =
  * account is flipped to `auth_error` with a message that names the one action
  * that does (reconnect), exactly as a wrong app password would be.
  *
- * A token is reused until {@link ACCESS_TOKEN_REFRESH_SKEW_MS} before it expires:
- * first from this isolate's memory, then from the sealed row a previous mint
- * stored. Only when both miss is Google asked for a new one.
+ * A token is reused until a minute before it expires: first from this isolate's
+ * memory, then from the sealed row a previous mint stored. Only when both miss
+ * is Google asked for a new one.
  *
  * `envelopeIv` is the account row's `secretIv`; it only identifies which stored
  * envelope this refresh token came from, so neither cache tier can outlive a
@@ -321,20 +217,13 @@ export async function refreshGoogleAccessToken(
 	accountId: Id<'externalMailAccounts'>,
 	refreshToken: string,
 	envelopeIv: string
-): Promise<GoogleAccessTokenResult> {
-	const cacheKey = `${accountId}:${envelopeIv}`;
-	const cached = accessTokenCache.get(cacheKey);
-	if (cached && isFresh(cached.expiresAt)) {
-		return { kind: 'token', ...cached };
-	}
-	const stored = await readStoredAccessToken(ctx, accountId, envelopeIv);
-	if (stored) {
-		accessTokenCache.set(cacheKey, stored);
-		return { kind: 'token', ...stored };
-	}
+): Promise<OAuthAccessTokenResult> {
+	const cached = await readCachedAccessToken(ctx, accountId, envelopeIv);
+	if (cached) return { kind: 'token', ...cached };
 
 	const client = requireGoogleOAuthClient();
-	const token = await postToken(
+	const token = await postTokenRequest(
+		TOKEN_ENDPOINT,
 		new URLSearchParams({
 			grant_type: 'refresh_token',
 			refresh_token: refreshToken,
@@ -343,16 +232,8 @@ export async function refreshGoogleAccessToken(
 		})
 	);
 	if (token.error === 'invalid_grant') {
-		accessTokenCache.delete(cacheKey);
 		console.warn('google oauth: refresh token rejected (invalid_grant)', { accountId });
-		await ctx.runMutation(internal.mail.external.accessTokenStore._clearStoredAccessToken, {
-			accountId,
-		});
-		await ctx.runMutation(internal.mail.external.accounts.setSyncStatus, {
-			accountId,
-			status: 'auth_error',
-			lastError: GOOGLE_AUTH_REVOKED_MESSAGE,
-		});
+		await markGrantRevoked(ctx, accountId, envelopeIv, GOOGLE_AUTH_REVOKED_MESSAGE);
 		return { kind: 'revoked' };
 	}
 	if (token.error || !token.access_token) {
@@ -366,67 +247,6 @@ export async function refreshGoogleAccessToken(
 		accessToken: token.access_token,
 		expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
 	};
-	accessTokenCache.set(cacheKey, minted);
-	await storeAccessToken(ctx, accountId, envelopeIv, minted);
+	await rememberAccessToken(ctx, accountId, envelopeIv, minted);
 	return { kind: 'token', ...minted };
-}
-
-function isFresh(expiresAt: number): boolean {
-	return expiresAt - Date.now() > ACCESS_TOKEN_REFRESH_SKEW_MS;
-}
-
-/**
- * The stored token for this account and envelope, when it is still fresh.
- *
- * Any problem reading or opening it is a cache miss, never an error: the worst
- * outcome is one extra token request, which is what every call cost before the
- * row existed.
- */
-async function readStoredAccessToken(
-	ctx: ActionCtx,
-	accountId: Id<'externalMailAccounts'>,
-	envelopeIv: string
-): Promise<GoogleAccessToken | null> {
-	try {
-		const row = await ctx.runQuery(internal.mail.external.accessTokenStore._getStoredAccessToken, {
-			accountId,
-		});
-		if (!row || row.sourceIv !== envelopeIv || !isFresh(row.expiresAt)) return null;
-		const accessToken = decryptSecret({
-			ciphertext: row.ciphertext,
-			iv: row.iv,
-			authTag: row.authTag,
-			version: row.version,
-		});
-		return { accessToken, expiresAt: row.expiresAt };
-	} catch {
-		console.warn('google oauth: stored access token unreadable, minting a new one', { accountId });
-		return null;
-	}
-}
-
-/**
- * Seal and persist a freshly minted token. Best-effort: the caller already has
- * a live token, and a failed write only means the next cold call mints again.
- */
-async function storeAccessToken(
-	ctx: ActionCtx,
-	accountId: Id<'externalMailAccounts'>,
-	envelopeIv: string,
-	minted: GoogleAccessToken
-): Promise<void> {
-	try {
-		const sealed = encryptSecret(minted.accessToken);
-		await ctx.runMutation(internal.mail.external.accessTokenStore._storeAccessToken, {
-			accountId,
-			sourceIv: envelopeIv,
-			ciphertext: sealed.ciphertext,
-			iv: sealed.iv,
-			authTag: sealed.authTag,
-			version: sealed.version,
-			expiresAt: minted.expiresAt,
-		});
-	} catch {
-		console.warn('google oauth: could not store the minted access token', { accountId });
-	}
 }

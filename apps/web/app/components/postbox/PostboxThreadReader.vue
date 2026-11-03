@@ -11,7 +11,7 @@ export type { PostboxReaderMessage } from '~/composables/postbox/postboxReaderMe
 import type { Id } from '@owlat/api/dataModel';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
-import { postboxFilterQueryFrom } from '~/utils/postboxFilterFromMessage';
+import { openPostboxFilterBuilderFrom } from '~/utils/postboxFilterFromMessage';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 import { usePostboxCalmReader } from '~/composables/postbox/usePostboxCalmReader';
 import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
@@ -228,31 +228,34 @@ const readerActions = usePostboxReaderActions({
 		forward: replies.forwardLatest,
 	},
 });
-// Translate, Copy link / Share in chat, Find (⌘F), the ⌘K surface and the
-// single-key shortcuts, all acting on this conversation.
-const { translation, find, shareTarget, copyConversationLink, conversationLinkOf } =
-	usePostboxReaderCommands({
-		message: () => props.message,
-		folderRole: () => props.folderRole,
-		findSeed: () => props.findSeed,
-		threadKey,
-		pages: threadPages,
-		messages: allMessages,
-		latestMessage,
-		ownAddresses,
-		readerThread,
-		latestOutboundId,
-		expanded,
-		toggleExpanded,
-		secureClass: facts.secureClass,
-		hideRawBody: facts.hideRawBody,
-		aiEnabled: () => isFeatureEnabled('ai'),
-		actions: readerActions,
-	});
-
 // Attachment download plus the Quick Look overlay for image/PDF parts.
 const attachments = usePostboxReaderAttachments();
 const { downloadingAttachment, handleAttachmentDownload, openAttachmentPreview } = attachments;
+
+// Translate, Copy link, Share in chat or as an image, Find (⌘F), the chat layout,
+// the ⌘K surface and the single-key shortcuts, all acting on this conversation.
+const commands = usePostboxReaderCommands({
+	message: () => props.message,
+	folderRole: () => props.folderRole,
+	findSeed: () => props.findSeed,
+	threadKey,
+	pages: threadPages,
+	messages: allMessages,
+	latestMessage,
+	ownAddresses,
+	readerThread,
+	latestOutboundId,
+	expanded,
+	toggleExpanded,
+	secureClass: facts.secureClass,
+	hideRawBody: facts.hideRawBody,
+	aiEnabled: () => isFeatureEnabled('ai'),
+	actions: readerActions,
+	attachments,
+	isShared: () => rb.isShared.value,
+	mustShowCard: (id) => rb.citeQuoteFor(id) != null || rb.exactWording.value.has(id),
+});
+const { translation, find, chat, shareTarget, shareImageMessage, conversationLinkOf } = commands;
 
 // What every card shares; the props carry only what differs per message.
 providePostboxReaderContext({
@@ -275,19 +278,13 @@ providePostboxReaderContext({
 	},
 	find,
 });
-
-/** Open the filter builder pre-filled from this message (see postboxFilterQueryFrom). */
-function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
-	const query = postboxFilterQueryFrom(msg);
-	if (query) void navigateTo({ path: '/dashboard/preferences/filters', query });
-}
 </script>
 
 <template>
 	<article
 		ref="articleEl"
 		v-reply-drop="replyDrop"
-		class="pbx-reader-article p-6 max-w-4xl mx-auto"
+		class="pbx-reader-article p-6 max-w-4xl mx-auto [--pbx-reader-bar-h:2.75rem]"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
 		<!-- One page (read on arrival §3): header line, the strip (or the slim
@@ -302,6 +299,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:show-why-here="!rb.isShared.value"
 			:show-ask="isFeatureEnabled('ai')"
 			:show-full-brief="rb.hasFullBrief.value"
+			:messages="allMessages"
+			:mailbox-id="message.mailboxId"
 			@toggle-mute="readerActions.toggleOpenThreadMute"
 			@toggle-alert="readerActions.toggleOpenThreadAlert"
 			@toggle-pin="readerActions.toggleOpenThreadPin"
@@ -316,6 +315,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 		>
 			<template #actions>
 				<PostboxThreadFindButton @click="find.open()" />
+				<PostboxThreadChatToggle :chat="chat" />
 				<PostboxThreadDiscussionToggle
 					v-if="discussionThreadId && !team.isActive.value"
 					:thread-id="discussionThreadId"
@@ -403,53 +403,56 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			<PostboxTeamInterlude :state="team" :entries="team.leading.value" leading />
 
 			<template v-for="msg in allMessages" :key="msg._id">
-				<PostboxReaderMessage
-					:message="msg"
-					:expanded="expanded.has(msg._id)"
-					:relative-time="facts.relativeReceivedAt(msg.receivedAt)"
-					:starred="readerActions.isMessageStarred(msg)"
-					:show-reply-all="replies.hasOtherRecipients(msg)"
-					:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-					:secure-class="facts.secureClass(msg)"
-					:hide-body="facts.hideRawBody(msg)"
-					:tracker="facts.trackerDetection(msg)"
-					:delivery="facts.deliveryFor(msg)"
-					:scheduling-times="facts.schedulingTimesFor(msg)"
-					:forced-light="facts.isForcedLight(msg._id)"
-					:images="
-						postboxBodyImageProps(msg, {
-							autoLoadImages,
-							isSenderAllowed: facts.imageAllowlist.isAllowed(msg.fromAddress),
-						})
-					"
-					:has-invite="!!facts.calendarAttachment(msg)"
-					:seal-status="sealStatusFor(msg)"
-					:latest-line="rb.latestFor(msg._id)"
-					:cite-quote="rb.citeQuoteFor(msg._id)"
-					@image-state="calm.onImageState(msg._id, $event)"
-					@toggle-expanded="toggleExpanded(msg._id)"
-					@open-sender-profile="openSenderProfile(msg)"
-					@toggle-forced-light="facts.toggleForcedLight(msg._id)"
-					@toggle-star="readerActions.toggleMessageStar(msg)"
-					@reply="replies.guardedReply(msg)"
-					@reply-all="replies.guardedReplyAll(msg)"
-					@forward="replies.openForward(msg)"
-					@report-spam="readerActions.reportSpamMessage(msg._id)"
-					@block-sender="readerActions.blockSenderOf(msg._id)"
-					@create-filter="createFilterFrom(msg)"
-					@print="readerActions.runReaderAction('print')"
-					@copy-link="copyConversationLink(conversationLinkOf(msg._id))"
-					@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
-					@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
-					@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
-					@trackers="facts.onTrackersDetected(msg._id, $event)"
-					@trust-sender="facts.imageAllowlist.allow($event)"
-					@untrust-sender="facts.imageAllowlist.revoke($event)"
-					@resend="(addresses) => replies.openResend(msg, addresses)"
-					@use-reply="(text) => replies.openReplyWithBody(msg, text)"
-					@dismiss-scheduling="facts.dismissScheduling(msg._id)"
-					@seal-refetch="refetchCorrespondentKey()"
-				/>
+				<PostboxThreadChatItem :chat="chat" :message="msg">
+					<PostboxReaderMessage
+						:message="msg"
+						:expanded="expanded.has(msg._id)"
+						:relative-time="facts.relativeReceivedAt(msg.receivedAt)"
+						:starred="readerActions.isMessageStarred(msg)"
+						:show-reply-all="replies.hasOtherRecipients(msg)"
+						:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
+						:secure-class="facts.secureClass(msg)"
+						:hide-body="facts.hideRawBody(msg)"
+						:tracker="facts.trackerDetection(msg)"
+						:delivery="facts.deliveryFor(msg)"
+						:scheduling-times="facts.schedulingTimesFor(msg)"
+						:forced-light="facts.isForcedLight(msg._id)"
+						:images="
+							postboxBodyImageProps(msg, {
+								autoLoadImages,
+								isSenderAllowed: facts.imageAllowlist.isAllowed(msg.fromAddress),
+							})
+						"
+						:has-invite="!!facts.calendarAttachment(msg)"
+						:seal-status="sealStatusFor(msg)"
+						:latest-line="rb.latestFor(msg._id)"
+						:cite-quote="rb.citeQuoteFor(msg._id)"
+						@image-state="calm.onImageState(msg._id, $event)"
+						@toggle-expanded="toggleExpanded(msg._id)"
+						@open-sender-profile="openSenderProfile(msg)"
+						@toggle-forced-light="facts.toggleForcedLight(msg._id)"
+						@toggle-star="readerActions.toggleMessageStar(msg)"
+						@reply="replies.guardedReply(msg)"
+						@reply-all="replies.guardedReplyAll(msg)"
+						@forward="replies.openForward(msg)"
+						@report-spam="readerActions.reportSpamMessage(msg._id)"
+						@block-sender="readerActions.blockSenderOf(msg._id)"
+						@create-filter="openPostboxFilterBuilderFrom(msg)"
+						@print="readerActions.runReaderAction('print')"
+						@copy-link="commands.copyConversationLink(conversationLinkOf(msg._id))"
+						@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
+						@share-image="shareImageMessage = msg"
+						@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
+						@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
+						@trackers="facts.onTrackersDetected(msg._id, $event)"
+						@trust-sender="facts.imageAllowlist.allow($event)"
+						@untrust-sender="facts.imageAllowlist.revoke($event)"
+						@resend="(addresses) => replies.openResend(msg, addresses)"
+						@use-reply="(text) => replies.openReplyWithBody(msg, text)"
+						@dismiss-scheduling="facts.dismissScheduling(msg._id)"
+						@seal-refetch="refetchCorrespondentKey()"
+					/>
+				</PostboxThreadChatItem>
 				<PostboxTeamInterlude :state="team" :entries="team.after(msg._id)" />
 			</template>
 
@@ -483,8 +486,10 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			v-model:brief-open="calm.sheetOpen.value"
 			v-model:sender-profile="senderProfile"
 			v-model:share-target="shareTarget"
+			v-model:share-image-message="shareImageMessage"
 			:mailbox-id="message.mailboxId"
 			:actions="readerActions"
+			:moves="commands.moves"
 			:brief="rb"
 			:messages="allMessages"
 			:shared="rb.isShared.value"

@@ -16,6 +16,10 @@ import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjec
 import { useConversationLink } from '~/composables/useConversationLink';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { followUpPresets } from '~/utils/postboxFollowUpPresets';
+import type {
+	PostboxTransferMode,
+	PostboxTransferTarget,
+} from '~/composables/postbox/usePostboxMailboxTransfer';
 
 /** What the open conversation hands the palette. */
 export interface PostboxThreadCommandSources {
@@ -31,6 +35,9 @@ export interface PostboxThreadCommandSources {
 	link: () => ConversationLinkTarget;
 	/** Opens the reader's "Share in chat…" dialog. */
 	shareInChat: () => void;
+	/** The open message can be drawn as an image card, and opens its dialog. */
+	canShareAsImage?: () => boolean;
+	shareAsImage?: () => void;
 	/** Subject + snippet, for the snooze presets' suggestion. */
 	hintText: () => string;
 	isMuted: () => boolean;
@@ -47,12 +54,23 @@ export interface PostboxThreadCommandSources {
 	snoozeUntilReply: (capUntil: number) => void;
 	applyLabel: (labelId: Id<'mailLabels'>) => void;
 	moveTo: (folderId: Id<'mailFolders'>) => void;
+	/**
+	 * The caller's other mailboxes, whether the open message may leave its own,
+	 * and the transfer; absent where the reader offers none.
+	 */
+	mailboxes?: () => ReadonlyArray<PostboxTransferTarget>;
+	canMoveToMailbox?: () => boolean;
+	transferTo?: (mailboxId: Id<'mailboxes'>, mode: PostboxTransferMode) => void;
 	toggleMute: () => void;
 	toggleAlert: () => void;
 	togglePin: () => void;
 	translate: () => void;
 	/** Opens the reader's find in conversation bar. */
 	find?: () => void;
+	/** The open message's sender zoom in percent; null when its From holds no address. */
+	senderZoom: () => number | null;
+	/** The chat layout's switch, while the thread offers one. */
+	chatView?: () => { isOn: () => boolean; toggle: () => void } | null;
 }
 
 /**
@@ -68,8 +86,9 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  * reader is mounted, and records it for the palette's "Jump back" list.
  *
  * Every verb the reader offers is here — reply, archive, snooze ›, forward,
- * mark unread, mute, notify on reply, pin, label ›, move ›, remind me if no reply ›,
- * translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
+ * mark unread, mute, notify on reply, pin, label ›, move ›, move or copy to mailbox ›,
+ * remind me if no reply ›,
+ * the sender's zoom, translate, the original `.eml`, share as image, copy link, share in chat — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
 export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): {
@@ -115,6 +134,20 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 		}));
 	}
 
+	/** One submenu row per mailbox that can take the message; connected accounts cannot yet. */
+	function mailboxOptions(mode: PostboxTransferMode): PaletteArgumentOption[] {
+		const { mailboxes, canMoveToMailbox, transferTo } = sources;
+		if (!mailboxes || !transferTo) return [];
+		if (mode === 'move' && canMoveToMailbox?.() === false) return [];
+		return mailboxes()
+			.filter((mailbox) => !mailbox.isConnected)
+			.map((mailbox) => ({
+				id: `mailbox-${mode}-${mailbox.mailboxId}`,
+				label: mailbox.name,
+				run: () => transferTo(mailbox.mailboxId, mode),
+			}));
+	}
+
 	registerCommandPaletteProvider({
 		id: `${POSTBOX_THREAD_COMMAND_PROVIDER_ID_PREFIX}:${instanceId}`,
 		priority: POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
@@ -149,6 +182,8 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 							label: postboxFolderLabel(t, folder),
 							run: () => sources.moveTo(folder._id as Id<'mailFolders'>),
 						})),
+					mailboxMoveOptions: () => mailboxOptions('move'),
+					mailboxCopyOptions: () => mailboxOptions('copy'),
 					followUpOptions,
 					onReply: () => sources.runAction('reply'),
 					onArchive: () => sources.runAction('archive'),
@@ -162,11 +197,17 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 						if (threadId) void followUp.cancel(threadId);
 					},
 					onShowOriginal: () => void original.downloadOriginal(sources.messageId()),
+					...(sources.shareAsImage && sources.canShareAsImage?.()
+						? { onShareAsImage: sources.shareAsImage }
+						: {}),
 					onTranslate: sources.translate,
 					onCopyLink: () => void copyConversationLink(sources.link()),
 					canShareInChat: () => isFeatureEnabled('chat'),
 					onShareInChat: sources.shareInChat,
 					onFind: sources.find,
+					senderZoom: sources.senderZoom,
+					onZoom: sources.runAction,
+					chatView: sources.chatView?.() ?? null,
 				},
 				query,
 				mode

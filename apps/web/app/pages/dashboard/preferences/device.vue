@@ -191,6 +191,10 @@ async function confirmRemoveWorkspace() {
 			<PostboxOfflineSettings />
 		</div>
 
+		<!-- Email links: this browser's mailto handler. The desktop app is the
+		     operating system's handler instead (the default-app card below). -->
+		<PreferencesMailtoHandler v-if="!isDesktop && hasMail" />
+
 		<template v-if="isDesktop">
 			<section id="notifications" class="card !p-0 mb-6 scroll-mt-6 overflow-hidden">
 				<header class="px-5 py-3 border-b border-border-subtle">
@@ -307,6 +311,8 @@ async function confirmRemoveWorkspace() {
 					</select>
 				</div>
 			</section>
+
+			<DesktopTraySettings />
 
 			<section id="updates" class="card mb-6 scroll-mt-6">
 				<DesktopUpdateCard />

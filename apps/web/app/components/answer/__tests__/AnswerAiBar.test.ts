@@ -6,7 +6,7 @@
  *   - an AI draft in the editor gets a quiet "AI draft · Discard" tag.
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import AnswerAiBar from '../AnswerAiBar.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
@@ -96,6 +96,36 @@ describe('AnswerAiBar', () => {
 		expect(w.emitted('discard')).toHaveLength(1);
 		expect(w.find('[data-testid="answer-ai-injection"]').exists()).toBe(true);
 		w.unmount();
+	});
+
+	it('dictates into the instruction field, and holds the microphone while busy', async () => {
+		const globals = window as unknown as Record<string, unknown>;
+		class Engine extends EventTarget {
+			static last: Engine | null = null;
+			constructor() {
+				super();
+				Engine.last = this;
+			}
+			start() {}
+			stop() {}
+			abort() {}
+		}
+		globals.webkitSpeechRecognition = Engine;
+		try {
+			const w = mountBar();
+			await flushPromises();
+			await w.get('[data-testid="answer-ai-instruction"]').setValue('tell them');
+			await w.get('[data-testid="dictation-button"]').trigger('click');
+			const results = [Object.assign([{ transcript: 'Thursday works' }], { isFinal: true })];
+			Engine.last!.dispatchEvent(Object.assign(new Event('result'), { resultIndex: 0, results }));
+			await w.get('form').trigger('submit');
+			expect(w.emitted('draft')?.[0]).toEqual(['tell them Thursday works']);
+			await w.setProps({ busy: true });
+			expect(w.get('[data-testid="dictation-button"]').attributes('disabled')).toBeDefined();
+			w.unmount();
+		} finally {
+			delete globals.webkitSpeechRecognition;
+		}
 	});
 
 	it('passes an accessibility audit', async () => {

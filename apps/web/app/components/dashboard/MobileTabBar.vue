@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 import {
 	DashboardIcon,
 	InboxIcon,
@@ -73,7 +74,7 @@ const { count: answerCount } = useAnswerQueueCount();
 const inboxTab = computed<TabItem | null>(() => {
 	const href =
 		isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')
-			? '/dashboard/inboxes'
+			? ALL_INBOXES_PATH
 			: isFeatureEnabled('inbox')
 				? '/dashboard/inbox'
 				: null;

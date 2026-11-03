@@ -13,6 +13,7 @@
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
+import PostboxUnreadMark from './PostboxUnreadMark.vue';
 import { PaperclipIcon, PinIcon, StarIcon } from '@coolicons/vue';
 
 export type PostboxConversationThread = {
@@ -84,9 +85,13 @@ const rowLabel = computed(() =>
 		<div class="flex items-baseline justify-between gap-3">
 			<span
 				class="truncate text-sm"
-				:class="thread.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-secondary'"
+				:class="
+					thread.unreadCount > 0
+						? 'pbx-unread-weight font-semibold text-text-primary'
+						: 'text-text-secondary'
+				"
 			>
-				{{ thread.latestFromAddress }}
+				<PostboxUnreadMark v-if="thread.unreadCount > 0" />{{ thread.latestFromAddress }}
 				<span v-if="thread.messageCount > 1" class="text-text-tertiary font-normal"
 					>({{ thread.messageCount }})</span
 				>
@@ -106,7 +111,11 @@ const rowLabel = computed(() =>
 			<PaperclipIcon v-if="thread.hasAttachments" class="w-3.5 h-3.5 text-text-tertiary" />
 			<p
 				class="truncate text-sm flex-1"
-				:class="thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'"
+				:class="
+					thread.unreadCount > 0
+						? 'pbx-unread-weight font-medium text-text-primary'
+						: 'text-text-secondary'
+				"
 			>
 				{{ thread.latestSubject || t('components.postbox.postboxConversationRow.noSubject') }}
 			</p>

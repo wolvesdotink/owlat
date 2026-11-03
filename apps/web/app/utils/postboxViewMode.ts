@@ -4,8 +4,11 @@
  * category/conversation toggles let "categories" silently override
  * "conversations"):
  *
- *   - 'flat'          → PostboxThreadList (single message list; the default)
- *   - 'conversations' → PostboxThreadGroupList (thread-grouped rows)
+ *   - 'flat'          → PostboxThreadList (single message list)
+ *   - 'conversations' → PostboxThreadGroupList (thread-grouped rows; the
+ *                       default, because a reply and the message it answers
+ *                       open the same thread, so a row per message counts
+ *                       one conversation as two)
  *   - 'categories'    → PostboxThreadCategoryList (People / Newsletters /
  *                       Notifications / Receipts sections)
  *   - 'bundled'       → PostboxThreadBundleList (the flat feed with runs of
@@ -22,7 +25,7 @@
 
 export type PostboxViewMode = 'flat' | 'conversations' | 'categories' | 'bundled' | 'sections';
 
-export const POSTBOX_VIEW_MODE_DEFAULT: PostboxViewMode = 'flat';
+export const POSTBOX_VIEW_MODE_DEFAULT: PostboxViewMode = 'conversations';
 
 /** Segments for the labeled view-mode control in the inbox list header. */
 export const POSTBOX_VIEW_MODE_OPTIONS: Array<{
@@ -36,9 +39,14 @@ export const POSTBOX_VIEW_MODE_OPTIONS: Array<{
 	{ value: 'sections', label: 'Sections' },
 ];
 
-/** Normalise a stored/unknown value to a valid view mode, defaulting safely. */
+/**
+ * Normalise a stored/unknown value to a valid view mode, defaulting safely.
+ * 'flat' is matched explicitly: a person who picked it keeps it even though it
+ * is no longer the default.
+ */
 export function resolvePostboxViewMode(value: string | undefined | null): PostboxViewMode {
-	return value === 'conversations' ||
+	return value === 'flat' ||
+		value === 'conversations' ||
 		value === 'categories' ||
 		value === 'bundled' ||
 		value === 'sections'

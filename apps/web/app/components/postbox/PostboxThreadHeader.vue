@@ -1,31 +1,20 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
-import {
-	ArchiveIcon,
-	ChatHelpIcon,
-	CheckIcon,
-	CircleHelpIcon,
-	ClockIcon,
-	FileTextIcon,
-	ListUnorderedIcon,
-	MailOpenIcon,
-	ReplyIcon,
-	UndoIcon,
-} from '@coolicons/vue';
+import PostboxThreadMenu from './PostboxThreadMenu.vue';
+import { ArchiveIcon, ReplyIcon } from '@coolicons/vue';
 
 /**
  * The calm reader's header line (read on arrival §3): the subject,
- * Reply, Archive and ONE ⋯ menu. Nothing else sits between the subject and
- * the strip: the follow-up chip, the team badge, the labels and the
- * cross-surface link moved into the strip's Details row.
+ * Reply, Archive and ONE ⋯ menu (PostboxThreadMenu). Nothing else sits between
+ * the subject and the strip: the follow-up chip, the team badge, the labels and
+ * the cross-surface link moved into the strip's Details row.
  *
- * The ⋯ menu holds the conversation's state as checkable items (pinned, alert
- * on reply, muted, back-from-snooze, mark-read under the `manual` policy), the
- * ways into the strip that also work without one ("Why is this here?",
- * "Details", and "Full brief", the only way to the brief when the viewer turned
- * the strip off), and the verbs that left the old Overview's button row (Snooze,
- * "Ask about this thread").
+ * It also renders the sticky bar that stands in for this line once it scrolls
+ * away (PostboxReaderStickyBar), as the sibling before the <header>: the bar's
+ * anchor has to be a direct child of the article, ahead of the line it
+ * watches. Both carry the same verbs and the same ⋯ menu.
  */
 const props = defineProps<{
 	subject?: string;
@@ -55,6 +44,14 @@ const props = defineProps<{
 	showAsk?: boolean;
 	/** Offer "Full brief" (the brief holds anything, `briefHasContent`). */
 	showFullBrief?: boolean;
+	/** The conversation, oldest first: the sticky bar's sender and Unsubscribe. */
+	messages?: ReadonlyArray<{
+		_id: string;
+		fromAddress: string;
+		fromName?: string | null;
+		unsubscribe?: ListUnsubscribeTarget;
+	}>;
+	mailboxId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -76,11 +73,35 @@ const { t } = useI18n();
 // tooltips and accessible shortcuts name the key as this person has it bound.
 const { ariaFor } = useShortcutLabels();
 const headerEl = ref<HTMLElement | null>(null);
+const stickyBarRef = ref<{ $el: HTMLElement } | null>(null);
 
-const isMuted = computed(() => props.thread?.mutedAt != null);
-const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
-const isPinned = computed(() => props.thread?.pinnedAt != null);
-const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null);
+// The ⋯ menu's state and verbs, the same here and in the sticky bar.
+const menuProps = computed(() => ({
+	thread: props.thread,
+	showMarkRead: props.showMarkRead,
+	markingRead: props.markingRead,
+	showWhyHere: props.showWhyHere,
+	showAsk: props.showAsk,
+	showFullBrief: props.showFullBrief,
+}));
+const menuOn = {
+	'toggle-mute': () => emit('toggle-mute'),
+	'mark-read': () => emit('mark-read'),
+	'toggle-alert': () => emit('toggle-alert'),
+	'toggle-pin': () => emit('toggle-pin'),
+	snooze: () => emit('snooze'),
+	ask: () => emit('ask'),
+	details: () => emit('details'),
+	'full-brief': () => emit('full-brief'),
+};
+
+// The bar names the latest sender (whom Reply answers) and offers the newest
+// list unsubscribe in the conversation.
+const latestSender = computed(() => {
+	const latest = props.messages?.at(-1);
+	return latest ? latest.fromName || latest.fromAddress : undefined;
+});
+const listMessage = computed(() => props.messages?.findLast((m) => !!m.unsubscribe));
 
 // The "(2)" count must not wrap onto a line of its own, so the subject's last
 // word and the count render as one unbreakable unit.
@@ -92,15 +113,43 @@ const subjectParts = computed(() => {
 	const cut = text.search(/\S+$/);
 	return { head: text.slice(0, Math.max(cut, 0)), tail: text.slice(Math.max(cut, 0)) };
 });
-
-/** Shared item shape — one string rather than copies drifting apart. */
-const ITEM_CLASS =
-	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap text-text-primary hover:bg-bg-surface disabled:opacity-60';
-const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 </script>
 
 <template>
-	<header ref="headerEl" class="pbx-reader-header mb-3" data-reader-chrome="header">
+	<!-- Hidden until this line scrolls away; it overlays the conversation, so it
+	     adds nothing to the page above the mail. -->
+	<PostboxReaderStickyBar
+		ref="stickyBarRef"
+		:subject="subject"
+		:sender="latestSender"
+		:header="headerEl"
+		@reply="emit('reply')"
+		@archive="emit('archive')"
+	>
+		<template #lead>
+			<PostboxUnsubscribeChip
+				v-if="listMessage?.unsubscribe && mailboxId"
+				class="flex-shrink-0 mx-1"
+				:message-id="listMessage._id"
+				:mailbox-id="mailboxId"
+				:unsubscribe="listMessage.unsubscribe"
+				:sender-name="listMessage.fromName || listMessage.fromAddress"
+			/>
+		</template>
+		<PostboxThreadMenu
+			v-bind="menuProps"
+			v-on="menuOn"
+			@why-here="emit('why-here', stickyBarRef?.$el ?? null)"
+		/>
+	</PostboxReaderStickyBar>
+	<!-- Focusable from script only: the sticky bar's "back to top" lands here,
+	     since the bar it was clicked in hides as the header comes back. -->
+	<header
+		ref="headerEl"
+		tabindex="-1"
+		class="pbx-reader-header mb-3 outline-none"
+		data-reader-chrome="header"
+	>
 		<div class="flex items-start gap-2">
 			<!-- The verbs stay siblings of the header rather than its #actions: on a
 			     phone they shrink to icons and keep to the subject's line, where the
@@ -152,172 +201,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 			</UiTooltip>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
-			<PostboxOverflowMenu
-				class="flex-shrink-0"
-				:label="t('components.postbox.postboxThreadHeader.menuLabel')"
-			>
-				<template #default="{ close }">
-					<button
-						v-if="showWhyHere"
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-why-here"
-						@click="
-							emit('why-here', headerEl);
-							close();
-						"
-					>
-						<CircleHelpIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('postbox.reader.header.whyHere') }}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-details"
-						@click="
-							emit('details');
-							close();
-						"
-					>
-						<ListUnorderedIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('postbox.reader.header.details') }}
-					</button>
-					<button
-						v-if="showFullBrief"
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-full-brief"
-						@click="
-							emit('full-brief');
-							close();
-						"
-					>
-						<FileTextIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('postbox.reader.header.fullBrief') }}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-snooze"
-						@click="
-							emit('snooze');
-							close();
-						"
-					>
-						<ClockIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('postbox.reader.header.snooze') }}
-					</button>
-					<button
-						v-if="showAsk"
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-ask"
-						@click="
-							emit('ask');
-							close();
-						"
-					>
-						<ChatHelpIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('postbox.reader.header.ask') }}
-					</button>
-					<div class="my-1 border-t border-border-subtle" role="separator" />
-					<!-- The conversation's state, made checkable. -->
-					<UiTooltip :text="t('components.postbox.postboxThreadHeader.pinHint')">
-						<button
-							type="button"
-							role="menuitemcheckbox"
-							:aria-checked="isPinned"
-							:class="ITEM_CLASS"
-							data-testid="thread-menu-pin"
-							@click="
-								emit('toggle-pin');
-								close();
-							"
-						>
-							<CheckIcon
-								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-								:class="{ invisible: !isPinned }"
-								aria-hidden="true"
-							/>
-							{{ t('components.postbox.postboxThreadHeader.pinConversation') }}
-						</button>
-					</UiTooltip>
-					<UiTooltip :text="t('components.postbox.postboxThreadHeader.alertedHint')">
-						<button
-							type="button"
-							role="menuitemcheckbox"
-							:aria-checked="isAlerted"
-							:class="ITEM_CLASS"
-							data-testid="thread-menu-alert"
-							@click="
-								emit('toggle-alert');
-								close();
-							"
-						>
-							<CheckIcon
-								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-								:class="{ invisible: !isAlerted }"
-								aria-hidden="true"
-							/>
-							{{ t('components.postbox.postboxThreadHeader.alertOnReply') }}
-						</button>
-					</UiTooltip>
-					<UiTooltip :text="t('components.postbox.postboxThreadHeader.unmuteHint')">
-						<button
-							type="button"
-							role="menuitemcheckbox"
-							:aria-checked="isMuted"
-							:class="ITEM_CLASS"
-							data-testid="thread-menu-mute"
-							@click="
-								emit('toggle-mute');
-								close();
-							"
-						>
-							<CheckIcon
-								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-								:class="{ invisible: !isMuted }"
-								aria-hidden="true"
-							/>
-							{{ t('components.postbox.postboxThreadHeader.muteConversation') }}
-						</button>
-					</UiTooltip>
-					<!-- Mark-read is an ACTION, not a state, and only exists under the
-					     manual mark-read policy while the thread still has unread mail. -->
-					<button
-						v-if="showMarkRead"
-						type="button"
-						role="menuitem"
-						:class="ITEM_CLASS"
-						:disabled="markingRead"
-						data-testid="thread-menu-mark-read"
-						@click="
-							emit('mark-read');
-							close();
-						"
-					>
-						<MailOpenIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('components.postbox.postboxThreadHeader.markRead') }}
-					</button>
-					<!-- The one-shot "you asked for this back" cue: a state with no verb,
-					     so it reads as a checked, non-actionable row. -->
-					<p
-						v-if="cameBackFromSnooze"
-						role="menuitem"
-						aria-disabled="true"
-						:class="ITEM_CLASS"
-						data-testid="thread-menu-back-from-snooze"
-					>
-						<UndoIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
-						{{ t('components.postbox.postboxThreadHeader.backFromSnooze') }}
-					</p>
-				</template>
-			</PostboxOverflowMenu>
+			<PostboxThreadMenu v-bind="menuProps" v-on="menuOn" @why-here="emit('why-here', headerEl)" />
 		</div>
 	</header>
 </template>

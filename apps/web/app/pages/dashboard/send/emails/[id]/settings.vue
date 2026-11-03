@@ -231,6 +231,8 @@ const handleSave = async (): Promise<boolean> => {
 					}
 					persistedType.value = form.type;
 				}
+				// A save without translations may have relabelled the default.
+				persistedDefaultLanguage.value = form.defaultLanguage;
 				markClean();
 				showToast(t('dashboard.send.emails.detail.settings.toasts.saved'));
 				return true;

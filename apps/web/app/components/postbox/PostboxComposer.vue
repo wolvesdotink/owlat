@@ -11,6 +11,7 @@ import { usePostboxComposerSendChoice } from '~/composables/postbox/usePostboxCo
 import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mailboxComposerTarget } from '~/utils/composerTarget';
 import PostboxComposerShell from './PostboxComposerShell.vue';
+import PostboxComposerReadReceipt from './PostboxComposerReadReceipt.vue';
 
 const EmailBuilder = defineAsyncComponent(() =>
 	import('@owlat/email-builder').then((m) => m.EmailBuilder)
@@ -129,17 +130,14 @@ const seal = usePostboxComposerSealLock(() => activeDraftId.value ?? undefined, 
 	onConfirm: (opts) => void handleSend(opts),
 });
 
-// Plan idea 11: which chips may show a key glyph, and what removing a named
-// blocker does. Both live in a sibling composable so this file stays focused.
+// Which chips may show a key glyph, and what removing a named blocker does.
 const { chipSealStates, lockBindings } = usePostboxComposerSealChips(seal, {
 	toAddresses,
 	ccAddresses,
 	bccAddresses,
 });
 
-// Formatting-toolbar preference. Default is the Apple-minimal floating bar (only
-// on selection); the footer "Aa" affordance flips back to the classic persistent
-// toolbar and persists the choice per user.
+// Formatting toolbar: floating on selection; the footer "Aa" pins it, per user.
 const { persistentToolbar, toggleToolbar } = usePostboxToolbarPreference();
 
 async function onFromChange(address: string) {
@@ -405,7 +403,6 @@ function onKeydown(event: KeyboardEvent) {
 				@update:background-color="backgroundColor = $event"
 			/>
 		</div>
-
 		<PostboxComposerAttachments
 			:inert="draftMirror.busy"
 			:attachments="attachments"
@@ -460,6 +457,7 @@ function onKeydown(event: KeyboardEvent) {
 				:advisory-available="aiRewriteEnabled"
 				:advisory-open="frameView.advisoryOpen.value"
 				:saved-replies="savedReplies.footer"
+				:dictation-target="basicEditor"
 				@send="sendWith"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"
@@ -475,6 +473,9 @@ function onKeydown(event: KeyboardEvent) {
 				     the decision; the dialog below is the single source of consent. -->
 				<template #notes>
 					<PostboxComposerSealLock compact v-bind="lockBindings" />
+				</template>
+				<template #menu>
+					<PostboxComposerReadReceipt :compose="compose" />
 				</template>
 			</PostboxComposerFooter>
 			<!-- Every dialog that PARKS a send until the sender answers: the schedule

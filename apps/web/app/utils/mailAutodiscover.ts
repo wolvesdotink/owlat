@@ -289,7 +289,7 @@ export type MailProvider = {
 	 * backend whether this instance has an OAuth client configured, and falls
 	 * back to the app-password form when it has not.
 	 */
-	oauth: { provider: 'google' } | null;
+	oauth: { provider: 'google' | 'microsoft' } | null;
 	/** Whether the user must fill in the IMAP/SMTP servers by hand. */
 	manualServer: boolean;
 };
@@ -324,8 +324,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.gmail.hint',
 		preset: DOMAIN_PRESETS['gmail.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['gmail.com'] ?? null,
-		// The only provider with a sign-in flow today: Google deprecates password
-		// auth for IMAP, and OAuth is what it asks new clients to use.
+		// Google deprecates password auth for IMAP; OAuth is what it asks for.
 		oauth: { provider: 'google' },
 		manualServer: false,
 	},
@@ -336,7 +335,9 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 		hint: 'shared.mailAutodiscover.provider.outlook.hint',
 		preset: DOMAIN_PRESETS['outlook.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['outlook.com'] ?? null,
-		oauth: null,
+		// Microsoft is retiring basic auth for IMAP/SMTP, and many tenants refuse
+		// app passwords already.
+		oauth: { provider: 'microsoft' },
 		manualServer: false,
 	},
 	{

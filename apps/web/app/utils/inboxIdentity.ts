@@ -27,6 +27,8 @@ export interface AccessibleInboxRow {
 	label: string;
 	address: string;
 	scope: 'personal' | 'shared';
+	/** Backed by a connected IMAP account rather than hosted here. */
+	isConnected?: boolean;
 	colorSlot: number | null;
 	unread: number;
 }
@@ -37,6 +39,8 @@ export interface InboxIdentity<Id extends string = string> {
 	name: string;
 	address: string;
 	scope: 'personal' | 'shared';
+	/** Set (true) only for an inbox backed by a connected IMAP account. */
+	isConnected?: true;
 	/** Swatch slot, or null for the neutral fallback past the fourth inbox. */
 	slot: number | null;
 	unread: number;
@@ -102,6 +106,7 @@ export function resolveInboxIdentities<Id extends string>(
 			name: shortName(row),
 			address: row.address,
 			scope: row.scope,
+			...(row.isConnected ? { isConnected: true as const } : {}),
 			slot: explicit ?? nextFree(),
 			unread: row.unread,
 		};

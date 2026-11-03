@@ -14,6 +14,7 @@
 import type { HealthTone } from '~/utils/healthTone';
 import type { LocalizedText } from '~/utils/localizedText';
 import { explainBounce, type BounceExplanation } from '~/utils/postboxBounceCatalog';
+import type { ReadReceiptRecord } from '~/utils/postboxReadReceipts';
 import { CheckIcon, ClockIcon, CloseIcon, type IconComponent } from '@coolicons/vue';
 
 /** Per-recipient state, exactly as `mailMessages.outbound.recipients[].state`. */
@@ -39,6 +40,8 @@ export interface DeliveryRecipient {
 export interface OutboundDelivery {
 	state: 'queued' | 'sent' | 'bounced' | 'failed' | 'partial';
 	recipients: DeliveryRecipient[];
+	/** The read receipts the message asked for; absent when it asked for none. */
+	readReceipt?: ReadReceiptRecord;
 }
 
 export interface DeliveryRow {

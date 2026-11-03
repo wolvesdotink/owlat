@@ -120,9 +120,9 @@ function goConnect() {
 	void navigateTo(WIZARD_PATH);
 }
 
-// A Google-authorized mailbox has no password to re-enter — the form offers
-// "Reconnect with Google" instead — so the button that opens it must not promise
-// a password field.
+// A mailbox connected with Google or Microsoft sign-in has no password to
+// re-enter — the form offers "Reconnect with …" instead — so the button that
+// opens it must not promise a password field.
 const usesOauth = computed(() => account.value?.authMethod === 'oauth2');
 
 const editing = ref(false);

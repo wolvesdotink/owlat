@@ -1,24 +1,35 @@
 <script setup lang="ts">
 /**
  * The action row under one expanded message in the reader: Star, Reply,
- * Reply all, Forward and the ⋯ overflow (copy link, share in chat, report
- * spam, block, filter, print, download the original). Split out of PostboxReaderMessage so Answer mode can
- * render the same card without it (you are already replying there).
- * Presentational; every verb is emitted back to the reader.
+ * Reply all, Forward and the ⋯ overflow (the sender's text zoom, copy link,
+ * share in chat, share as image, report spam, block, filter, print, download
+ * the original).
+ * Split out of PostboxReaderMessage so Answer mode can render the same card
+ * without it (you are already replying there). Every verb on the mail is
+ * emitted back to the reader; the zoom is this device's view of it and is set
+ * here.
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
+import { useSenderZoom } from '~/composables/useSenderZoom';
+import { postboxSenderKey } from '~/utils/postboxImageAllowlist';
+import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
 import {
 	ChatShareIcon,
 	CircleSlashIcon,
 	DownloadIcon,
 	FilterIcon,
 	ForwardIcon,
+	ImageIcon,
 	LinkIcon,
+	MinusIcon,
+	PlusIcon,
 	PrinterIcon,
 	ReplyAllIcon,
 	ReplyIcon,
 	ShieldWarningIcon,
 	StarIcon,
+	ZoomInIcon,
+	type IconComponent,
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -27,6 +38,10 @@ const props = defineProps<{
 	starred: boolean;
 	/** Whether Reply-all would add anyone beyond a plain Reply. */
 	showReplyAll: boolean;
+	/** The From header; the zoom row shows only when it holds an address. */
+	fromAddress?: string;
+	/** The body is the reader's to show as text (not sealed or signed mail shown by its badge). */
+	canShareImage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +55,7 @@ const emit = defineEmits<{
 	(e: 'print'): void;
 	(e: 'copy-link'): void;
 	(e: 'share-in-chat'): void;
+	(e: 'share-image'): void;
 }>();
 
 const { t } = useI18n();
@@ -54,6 +70,19 @@ const starLabel = computed(() =>
 // The ⋯ item and the details disclosure both hand back the original `.eml`; one
 // implementation so they cannot disagree about it.
 const { downloading: downloadingEml, downloadOriginal } = usePostboxOriginalEml();
+
+const { zoomOf, applyZoom } = useSenderZoom();
+const hasSender = computed(() => postboxSenderKey(props.fromAddress) !== null);
+const zoom = computed(() => zoomOf(props.fromAddress));
+const zoomControls: ReadonlyArray<{
+	action: SenderZoomAction;
+	icon: IconComponent | null;
+	key: string;
+}> = [
+	{ action: 'zoomOut', icon: MinusIcon, key: 'zoomOut' },
+	{ action: 'zoomReset', icon: null, key: 'zoomReset' },
+	{ action: 'zoomIn', icon: PlusIcon, key: 'zoomIn' },
+];
 
 const MENU_ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-60';
@@ -103,6 +132,36 @@ const MENU_ITEM_CLASS =
 		<span class="flex-1" />
 		<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
 			<template #default="{ close }">
+				<!-- Stays open while stepping, so the size can be read as it changes. -->
+				<div
+					v-if="hasSender"
+					role="group"
+					:aria-label="t('components.postbox.postboxThreadReader.zoomLabel')"
+					class="flex items-center gap-1 px-3 py-1 text-sm border-b border-border-subtle mb-1"
+				>
+					<ZoomInIcon class="w-4 h-4 text-text-tertiary" />
+					<span class="flex-1 ml-1">{{
+						t('components.postbox.postboxThreadReader.zoomLabel')
+					}}</span>
+					<button
+						v-for="control in zoomControls"
+						:key="control.action"
+						type="button"
+						role="menuitem"
+						class="h-7 rounded hover:bg-bg-surface disabled:hover:bg-transparent inline-flex items-center justify-center"
+						:class="control.icon ? 'w-7 disabled:opacity-40' : 'min-w-12 px-1 tabular-nums'"
+						:aria-label="
+							t(`components.postbox.postboxThreadReader.${control.key}`, { percent: zoom })
+						"
+						:disabled="senderZoomAtLimit(zoom, control.action)"
+						@click="applyZoom(fromAddress, control.action)"
+					>
+						<component v-if="control.icon" :is="control.icon" class="w-4 h-4" />
+						<template v-else>{{
+							t('components.postbox.postboxThreadReader.zoomPercent', { percent: zoom })
+						}}</template>
+					</button>
+				</div>
 				<button
 					type="button"
 					role="menuitem"
@@ -127,6 +186,19 @@ const MENU_ITEM_CLASS =
 				>
 					<ChatShareIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.shareInChat') }}
+				</button>
+				<button
+					v-if="canShareImage"
+					type="button"
+					role="menuitem"
+					:class="MENU_ITEM_CLASS"
+					@click="
+						emit('share-image');
+						close();
+					"
+				>
+					<ImageIcon class="w-4 h-4 text-text-tertiary" />
+					{{ t('components.postbox.postboxShareImage.menuItem') }}
 				</button>
 				<button
 					type="button"

@@ -8,6 +8,7 @@ import {
 import { formatTaskFlowEstimate } from '~/utils/taskFlow';
 import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { opensInAnswerMode } from '~/utils/answerQueue';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 import { useLocalized } from '~/composables/useLocalized';
 import { CircleCheckIcon } from '@coolicons/vue';
@@ -216,7 +217,7 @@ const failedNames = computed(() =>
 					<p class="mt-1 text-xs text-text-tertiary">{{ t('components.answer.done.body') }}</p>
 					<div class="mt-6 flex items-center justify-center gap-2">
 						<UiButton to="/dashboard">{{ t('components.answer.backToToday') }}</UiButton>
-						<UiButton variant="secondary" to="/dashboard/inboxes">{{
+						<UiButton variant="secondary" :to="ALL_INBOXES_PATH">{{
 							t('components.today.openInboxes')
 						}}</UiButton>
 					</div>

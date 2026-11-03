@@ -209,6 +209,8 @@ const INVENTORY: readonly CallSite[] = [
 	site('mail/ai/voiceProfileActions.ts', "ctx, 'mail.voice_profile'", 'extract'),
 	site('mail/ai/composeDraftWrite.ts', "ctx, 'mail.compose'", 'draft'),
 	site('mail/ai/coach.ts', "ctx, 'mail.coach'", 'classify'),
+	// New: a one-line operator query from the search text, fast like the coach.
+	site('mail/ai/searchRewrite.ts', "ctx, 'mail.search_rewrite'", 'classify'),
 	site('mail/ai/categoryClassify.ts', "ctx, 'mail.classify'", 'summarize'),
 	// Read on arrival R2: the category refinement with this message's rule questions.
 	site('mail/ai/categoryQuestions.ts', "ctx, 'mail.classify'", 'summarize'),

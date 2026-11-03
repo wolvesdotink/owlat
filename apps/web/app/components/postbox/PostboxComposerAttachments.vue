@@ -22,6 +22,7 @@ interface ComposerAttachment {
 	filename: string;
 	contentType: string;
 	size: number;
+	savedReplyId?: string;
 }
 
 const props = defineProps<{
@@ -89,8 +90,9 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				<!-- Idea 10: swap this file for an expiring link in the body. Offered
 				     only once the meter is worried; the file is malware-scanned before it
 				     becomes shareable, so the click takes a moment. -->
+				<!-- A saved reply's file is the reply's, not the draft's to hand over. -->
 				<UiTooltip
-					v-if="offerShare"
+					v-if="offerShare && !att.savedReplyId"
 					:text="t('components.postbox.postboxComposerAttachments.shareTitle')"
 				>
 					<button

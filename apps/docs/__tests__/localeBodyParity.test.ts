@@ -63,7 +63,7 @@ const pairs = markdownFiles(englishRoot).map((englishPath) => {
 /**
  * Existing translation debt is recorded explicitly so this suite is a ratchet:
  * a new mismatch fails, while fixing one requires deleting its baseline here.
- * Decision-plane and cold-pitch rows were added equally to EN and DE; their
+ * Decision-plane, cold-pitch and MCP rows were added equally to EN and DE; their
  * table sizes below include those rows without increasing the pre-existing
  * translation difference.
  */
@@ -72,12 +72,12 @@ const knownStructureDrift = {
 		en: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '10x3', '37x4'],
+			tables: ['5x3', '10x3', '38x4'],
 		},
 		de: {
 			headings: '123311322222',
 			fences: ['sh', 'plain', 'sh', 'plain'],
-			tables: ['5x3', '9x3', '36x4'],
+			tables: ['5x3', '9x3', '37x4'],
 		},
 	},
 	'1.guide/34.code-tasks.md': {
@@ -172,7 +172,8 @@ const knownStructureDrift = {
 	},
 	'3.developer/8.environment-variables.md': {
 		en: {
-			headings: '233333111111131131131111111111431111111343333223343433344343233233323312222233332',
+			headings:
+				'2333331111111311311311111111114311111113443333223343433344343233233323312222233332',
 			fences: [
 				'sh',
 				'plain',
@@ -214,6 +215,7 @@ const knownStructureDrift = {
 				'6x3',
 				'4x2',
 				'4x2',
+				'5x2',
 				'5x2',
 				'5x3',
 				'6x2',
@@ -235,14 +237,15 @@ const knownStructureDrift = {
 				'14x3',
 				'4x3',
 				'5x2',
-				'80x5',
+				'83x5',
 				'8x5',
 				'5x5',
 				'14x5',
 			],
 		},
 		de: {
-			headings: '233333111111131131131111111111431111111343333223343433344343233233323312222233332',
+			headings:
+				'2333331111111311311311111111114311111113443333223343433344343233233323312222233332',
 			fences: [
 				'sh',
 				'plain',
@@ -285,6 +288,7 @@ const knownStructureDrift = {
 				'4x2',
 				'4x2',
 				'5x2',
+				'5x2',
 				'5x3',
 				'6x2',
 				'32x3',
@@ -305,7 +309,7 @@ const knownStructureDrift = {
 				'14x3',
 				'4x3',
 				'5x2',
-				'80x5',
+				'83x5',
 				'8x5',
 				'5x5',
 				'14x5',

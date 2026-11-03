@@ -322,6 +322,44 @@ function parseClause(tokens: SearchToken[]): MailSearchClause | null {
 	return constrains ? clause : null;
 }
 
+/**
+ * True when a parsed query is nothing but loose words: no operator, no quoted
+ * phrase, no exclusion and no `OR`. The parser only sets a key when the query
+ * uses that part of the grammar, so any key besides `text` is syntax.
+ */
+export function isPlainTextSearch(parsed: MailSearchQuery): boolean {
+	return parsed.text !== '' && Object.keys(parsed).every((key) => key === 'text');
+}
+
+/**
+ * Join tokens back into a query string, re-quoting what needs it and dropping
+ * the `OR`s that a removal left dangling — `from:a OR from:b` minus `from` is
+ * a bare `OR`, which would otherwise re-parse into an empty alternative.
+ */
+export function renderSearchTokens(tokens: readonly SearchToken[]): string {
+	const kept: SearchToken[] = [];
+	for (const token of tokens) {
+		if (isOrToken(token) && (kept.length === 0 || isOrToken(kept[kept.length - 1]!))) continue;
+		kept.push(token);
+	}
+	while (kept.length > 0 && isOrToken(kept[kept.length - 1]!)) kept.pop();
+	return kept
+		.map((token) => (token.quoted || /\s/.test(token.raw) ? quoteToken(token.raw) : token.raw))
+		.join(' ')
+		.trim();
+}
+
+/** Re-quote a token for display, keeping `-op:"value with spaces"` shape. */
+function quoteToken(raw: string): string {
+	const { negated, body } = splitNegation(raw);
+	const colon = body.indexOf(':');
+	const requoted =
+		colon > 0 && /^[a-z_]+:/i.test(body)
+			? `${body.slice(0, colon)}:"${body.slice(colon + 1)}"`
+			: `"${body}"`;
+	return negated ? `-${requoted}` : requoted;
+}
+
 export function parseSearchQuery(input: string): MailSearchQuery {
 	const groups: SearchToken[][] = [[]];
 	for (const token of tokenizeSearchQuery(input)) {

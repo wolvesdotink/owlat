@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/shared",
-	"version": "0.6.17",
+	"version": "0.6.18",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -89,6 +89,10 @@
 		"./sunsetPolicy": {
 			"types": "./src/sunsetPolicy.ts",
 			"import": "./src/sunsetPolicy.ts"
+		},
+		"./freemailDomains": {
+			"types": "./src/freemailDomains.ts",
+			"import": "./src/freemailDomains.ts"
 		},
 		"./workspaceLogo": {
 			"types": "./src/workspaceLogo.ts",
@@ -293,6 +297,14 @@
 		"./ical": {
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
+		},
+		"./postboxVcard": {
+			"types": "./src/postboxVcard.ts",
+			"import": "./src/postboxVcard.ts"
+		},
+		"./postboxVcardLimits": {
+			"types": "./src/postboxVcardLimits.ts",
+			"import": "./src/postboxVcardLimits.ts"
 		},
 		"./html": {
 			"types": "./src/html.ts",

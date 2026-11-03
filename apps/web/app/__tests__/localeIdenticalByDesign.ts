@@ -12,6 +12,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'common.name',
 	'common.optional',
 	'common.status',
+	'components.appCommandPalette.prefixes.labels',
 	'components.autonomy.autonomyDemotionAlerts.incident',
 	'components.autonomy.autonomyRuleEditor.categories.spam',
 	'components.autonomy.autonomyRuleEditor.categories.support',
@@ -363,7 +364,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.breadcrumbRoutes.sections.marketing',
 	// A product noun ("Chat") and the category name ("Spam") read the same in German.
 	'components.shell.chat.title',
-	'dashboard.inboxes.category.spam',
+	'components.postbox.allInboxes.category.spam',
 	// Senders page kinds (read on arrival), each a correct German word as is:
 	// "Newsletter" is the German term (Duden), not a loan awaiting translation.
 	'postbox.senders.kind.newsletter',

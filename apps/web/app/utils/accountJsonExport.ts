@@ -126,7 +126,7 @@ export async function writeAccountJsonExport(
 			}
 		}
 		async function* mailboxResourceWriters(
-			resource: 'mailMessages' | 'mailDrafts' | 'threadBriefs'
+			resource: 'mailMessages' | 'mailDrafts' | 'mailContacts' | 'threadBriefs'
 		): AsyncGenerator<JsonValueWriter> {
 			for await (const mailbox of iterateAccountExportPageRows(context, 'mailboxes')) {
 				if (typeof mailbox['_id'] !== 'string') {
@@ -184,6 +184,7 @@ export async function writeAccountJsonExport(
 					['mailboxes', jsonArray(mailboxWriters())],
 					['mailMessages', jsonArray(mailboxResourceWriters('mailMessages'))],
 					['mailDrafts', jsonArray(mailboxResourceWriters('mailDrafts'))],
+					['mailContacts', jsonArray(mailboxResourceWriters('mailContacts'))],
 					[
 						'externalMailAccounts',
 						jsonArray(accountExportRowWriters(context, 'externalMailAccounts')),

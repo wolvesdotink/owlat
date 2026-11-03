@@ -34,11 +34,24 @@ export const mailAfterReplyValidator = v.union(v.literal('keep'), v.literal('don
 // single-line subject/snippet). Single source so schema and args can't drift.
 export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
 
+// How an unread Postbox list row stands out (mailUserSettings.unreadStyle and
+// mail/settings update args): 'weight' (heavier text only), 'dot' (an accent dot
+// before the sender, a cue that does not depend on telling weights or colours
+// apart), 'dot-weight' (both; the default) or 'tint' (an accent wash on the row
+// plus the weight). Single source so schema and args can't drift.
+export const mailUnreadStyleValidator = v.union(
+	v.literal('weight'),
+	v.literal('dot'),
+	v.literal('dot-weight'),
+	v.literal('tint')
+);
+
 // Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
-// update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), 'categories' (People / Newsletters / Notifications /
-// Receipts sections) or 'bundled' (the flat feed with runs of consecutive
-// low-signal mail folded into one expandable row per category). Inbox-only;
+// update args) — 'flat' (single message list), 'conversations'
+// (thread-grouped rows, the default), 'categories' (People / Newsletters /
+// Notifications / Receipts sections), 'bundled' (the flat feed with runs of
+// consecutive low-signal mail folded into one expandable row per category) or
+// 'sections' (the sections `pinToSection` filter rules name). Inbox-only;
 // other folders always render flat. Single source so schema and args can't
 // drift.
 export const mailViewModeValidator = v.union(

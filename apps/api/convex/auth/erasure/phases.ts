@@ -56,6 +56,7 @@ import {
 	eraseThreadItemCorrections,
 	eraseThreadViewerState,
 } from './threadBriefPhases';
+import { eraseSavedReplies } from './savedReplyPhases';
 import type { MemberPhaseRunner } from './phaseKit';
 
 const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
@@ -71,6 +72,7 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	mailboxThreads: eraseThreads,
 	mailboxDrafts: eraseDrafts,
 	mailboxShares: eraseShares,
+	savedReplies: eraseSavedReplies,
 	mailboxRecords: eraseMailboxRecords,
 	mailboxRows: eraseMailboxRows,
 	memberRecords: eraseMemberRecords,

@@ -7,6 +7,7 @@ import {
 	mailDraftAttachmentValidator,
 	mailDraftExpectedAttachmentValidator,
 	mailSnippetVariableValidator,
+	savedReplyAttachmentValidator,
 } from '../lib/validators/mailContent';
 
 /**
@@ -93,6 +94,10 @@ export const mailCompositionTables = {
 		// "Remind me if no reply by…" — carried onto the sent message's thread as
 		// a follow-up watch by the sent-effects reducer (see mail/followUps.ts).
 		followUpRemindAt: v.optional(v.number()),
+		// "Ask for a read receipt": the sent message carries a
+		// Disposition-Notification-To header naming the From address, and its
+		// Sent copy collects the receipts that come back (mail/readReceipts.ts).
+		isReadReceiptRequested: v.optional(v.boolean()),
 
 		// Edit-learning flywheel: a snapshot of the AI's ORIGINAL draft text, taken
 		// when the composer first applies an AI-generated draft. On send, the
@@ -406,6 +411,9 @@ export const mailCompositionTables = {
 		// token still resolves through the client's implicit name table, so
 		// absent = exactly today's `{{firstName}}` behaviour.
 		variables: v.optional(v.array(mailSnippetVariableValidator)),
+		// Files inserted with the reply. A draft references them instead of
+		// holding a copy; absent on rows without files.
+		attachments: v.optional(v.array(savedReplyAttachmentValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

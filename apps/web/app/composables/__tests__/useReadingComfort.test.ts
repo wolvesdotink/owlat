@@ -30,7 +30,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.restoreAllMocks();
 	resetReadingComfortForTests();
-	for (const name of ['data-contrast', 'data-motion', 'data-list-density']) {
+	for (const name of ['data-text-size', 'data-contrast', 'data-motion', 'data-list-density']) {
 		document.documentElement.removeAttribute(name);
 	}
 });
@@ -93,7 +93,12 @@ describe('useReadingComfort', () => {
 
 	it('follows a change made in another tab', async () => {
 		const { comfort, mailTypography } = useReadingComfort();
-		const next = { ...READING_COMFORT_DEFAULTS, textSize: 'small', readingWidth: 'full' };
+		const next = {
+			...READING_COMFORT_DEFAULTS,
+			uiTextSize: 120,
+			textSize: 'small',
+			readingWidth: 'full',
+		};
 		window.dispatchEvent(
 			new StorageEvent('storage', {
 				key: READING_COMFORT_STORAGE_KEY,
@@ -102,7 +107,8 @@ describe('useReadingComfort', () => {
 		);
 		await nextTick();
 		expect(comfort.value).toEqual(next);
-		expect(mailTypography.value).toEqual({ textSize: 'small', readingWidth: 'full' });
+		// The app's text size reaches mail as zoom.
+		expect(mailTypography.value).toEqual({ textSize: 'small', readingWidth: 'full', zoom: 1.2 });
 
 		// Another key changing is none of its business; a cleared storage is.
 		window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: '{}' }));
@@ -133,15 +139,18 @@ describe('applyReadingComfort', () => {
 		const root = document.documentElement;
 		applyReadingComfort(root, {
 			...READING_COMFORT_DEFAULTS,
+			uiTextSize: 130,
 			highContrast: true,
 			reduceMotion: true,
 			listDensity: 'compact',
 		});
+		expect(root.getAttribute('data-text-size')).toBe('130');
 		expect(root.getAttribute('data-contrast')).toBe('more');
 		expect(root.getAttribute('data-motion')).toBe('reduce');
 		expect(root.getAttribute('data-list-density')).toBe('compact');
 
 		applyReadingComfort(root, READING_COMFORT_DEFAULTS);
+		expect(root.hasAttribute('data-text-size')).toBe(false);
 		expect(root.hasAttribute('data-contrast')).toBe(false);
 		expect(root.hasAttribute('data-motion')).toBe(false);
 		expect(root.hasAttribute('data-list-density')).toBe(false);

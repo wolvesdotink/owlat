@@ -9,6 +9,9 @@
  * `flex-1 min-w-0` column, the baseline header row (identifier on the left,
  * timestamp on the right), and the weight-based unread emphasis — an unread row's
  * identifier is font-weight 550/semibold, NEVER a colour, per the design system.
+ * Inside the Postbox the user's unread style can drop that weight in favour of
+ * a dot (`pbx-unread-weight`, postbox-unread.css); the Postbox supplies the dot
+ * itself through the identifier slot.
  * Timestamps are tabular-nums so relative times don't jitter.
  *
  * Everything below the header (subject + inline indicators, the snippet line) is
@@ -32,7 +35,9 @@ defineProps<{
 		<div class="flex items-baseline justify-between gap-3">
 			<span
 				class="truncate text-sm"
-				:class="unread ? 'font-semibold text-text-primary' : 'text-text-secondary'"
+				:class="
+					unread ? 'pbx-unread-weight font-semibold text-text-primary' : 'text-text-secondary'
+				"
 			>
 				<slot name="identifier" />
 			</span>

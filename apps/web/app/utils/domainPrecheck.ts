@@ -14,74 +14,19 @@
  *
  * Out of scope: WHOIS / registrar ownership checks.
  */
+import { isFreemailDomain } from '@owlat/shared/freemailDomains';
 import { dohQuery, DNS_TYPE_NS, DNS_STATUS_NXDOMAIN } from './doh';
 
 /**
- * Full freemail / public-mailbox domains the operator cannot publish DNS for.
- * Kept as an explicit static set (not a heuristic) so the block only fires on
- * domains we are confident are shared mailbox providers.
+ * Freemail / public-mailbox domains the operator cannot publish DNS for. The
+ * list lives in `@owlat/shared/freemailDomains`, which the Postbox also uses
+ * to keep brand logos off webmail senders.
  */
-const FREEMAIL_DOMAINS = new Set<string>([
-	// Google
-	'gmail.com',
-	'googlemail.com',
-	// Microsoft
-	'outlook.com',
-	'outlook.de',
-	'hotmail.com',
-	'hotmail.co.uk',
-	'hotmail.de',
-	'live.com',
-	'msn.com',
-	// Apple
-	'icloud.com',
-	'me.com',
-	'mac.com',
-	// Yahoo / AOL
-	'ymail.com',
-	'rocketmail.com',
-	'aol.com',
-	// Proton
-	'proton.me',
-	'protonmail.com',
-	'pm.me',
-	// German freemail
-	'web.de',
-	't-online.de',
-	'freenet.de',
-	// Other public mailboxes
-	'mail.com',
-	'zoho.com',
-	'fastmail.com',
-	'yandex.com',
-	'yandex.ru',
-	'qq.com',
-	'163.com',
-	'126.com',
-]);
-
-/**
- * First-label brands with many country-code TLDs — matched regardless of the
- * TLD so `gmx.de`, `gmx.net`, `yahoo.co.uk`, `yahoo.fr`, … are all covered
- * without enumerating every variant.
- */
-const FREEMAIL_BRAND_LABELS = new Set<string>(['gmx', 'yahoo']);
+export { isFreemailDomain };
 
 /** Normalize user input for comparison: trim, lowercase, drop a trailing dot. */
 function normalizeDomain(domain: string): string {
 	return domain.trim().toLowerCase().replace(/\.+$/, '');
-}
-
-/**
- * True when `domain` is a known freemail / public-mailbox domain the user does
- * not control and therefore cannot publish sending DNS records for.
- */
-export function isFreemailDomain(domain: string): boolean {
-	const normalized = normalizeDomain(domain);
-	if (!normalized || !normalized.includes('.')) return false;
-	if (FREEMAIL_DOMAINS.has(normalized)) return true;
-	const firstLabel = normalized.split('.')[0];
-	return firstLabel !== undefined && FREEMAIL_BRAND_LABELS.has(firstLabel);
 }
 
 /**

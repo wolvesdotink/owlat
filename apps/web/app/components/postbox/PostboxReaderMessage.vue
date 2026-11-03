@@ -7,9 +7,7 @@
  * file the per-message rendering. Presentational over semantic emits: the
  * reader owns the mutations, the auto-advance and the undo registration.
  *
- * Star / Reply / Reply-all / Forward stay visible; the ⋯ keeps genuine
- * overflow (spam, block, filter, print, original). The dark-render toggle,
- * delivery strip and scheduling chip live in the message-details disclosure.
+ * The dark toggle, delivery strip and scheduling chip are in message details.
  *
  * What every card of the reader shares (mailbox, flags, theme, Answer mode's
  * reduced cut, where the chrome renders) comes from the reader context, so
@@ -32,6 +30,9 @@ import { usePostboxReaderContext } from '~/composables/postbox/usePostboxReaderC
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
+import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
+import PostboxReadReceipts from './PostboxReadReceipts.vue';
+import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 import { ChevronDownIcon, MoonIcon, ShieldWarningIcon, SunIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -77,6 +78,7 @@ const emit = defineEmits<{
 	(e: 'print'): void;
 	(e: 'copy-link'): void;
 	(e: 'share-in-chat'): void;
+	(e: 'share-image'): void;
 	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
 	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
@@ -178,22 +180,16 @@ const renderToggleLabel = computed(() =>
 </script>
 
 <template>
-	<!-- Collapsed message header -->
+	<!-- Collapsed message header. Both roots keep a jump to them (a cite, a
+	     quote) clear of the reader's sticky bar and the host's bar above it. -->
 	<button
 		v-if="!expanded"
 		type="button"
 		:data-message-id="msg._id"
-		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface"
+		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface scroll-mt-[calc(var(--pbx-reader-sticky-top,0px)+var(--pbx-reader-bar-h,0px)+1rem)]"
 		@click="emit('toggle-expanded')"
 	>
-		<UiAvatar
-			:name="msg.fromName"
-			:email="msg.fromAddress"
-			deterministic-color
-			size="md"
-			class="flex-shrink-0"
-			aria-hidden="true"
-		/>
+		<PostboxSenderAvatar :sender="msg" size="md" class="flex-shrink-0" />
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
@@ -224,18 +220,11 @@ const renderToggleLabel = computed(() =>
 		v-else
 		ref="sectionEl"
 		:data-message-id="msg._id"
-		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-4"
+		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-[calc(var(--pbx-reader-sticky-top,0px)+var(--pbx-reader-bar-h,0px)+1rem)]"
 		:class="{ 'ring-1 ring-brand': citeQuote != null }"
 	>
 		<header class="flex items-start gap-3">
-			<UiAvatar
-				:name="msg.fromName"
-				:email="msg.fromAddress"
-				deterministic-color
-				size="lg"
-				class="flex-shrink-0"
-				aria-hidden="true"
-			/>
+			<PostboxSenderAvatar :sender="msg" size="lg" class="flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<!-- Wraps on a phone only: there the sender and the trust chip do not
 				     fit one line, and the chip (never shrinking) ran off the card's
@@ -329,6 +318,12 @@ const renderToggleLabel = computed(() =>
 						}}
 					</span>
 				</p>
+				<PostboxReadReceipts
+					v-if="showMeta && delivery?.readReceipt"
+					class="mt-1"
+					:receipt="delivery.readReceipt"
+					:recipients="delivery.recipients.map((r) => r.address)"
+				/>
 				<button
 					v-if="reader.reduced && metaOpen"
 					type="button"
@@ -387,6 +382,8 @@ const renderToggleLabel = computed(() =>
 			</div>
 		</header>
 
+		<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" size="reader" />
+
 		<!-- DMARC fails show in PostboxAuthBadge behind `senderAuthBadges`; with the
 		     flag off this legacy line still says it. Spam always shows here. -->
 		<p
@@ -438,6 +435,7 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:force-light="forcedLight"
 			:images="images"
+			:from-address="msg.fromAddress"
 			:eager="reader.eagerBody || find?.active != null"
 		>
 			<PostboxMessageBody
@@ -481,6 +479,8 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:starred="starred"
 			:show-reply-all="showReplyAll"
+			:from-address="msg.fromAddress"
+			:can-share-image="!holdBody && secureClass === 'none' && !msg.inboundSignatureInfo"
 			@toggle-star="emit('toggle-star')"
 			@reply="emit('reply')"
 			@reply-all="emit('reply-all')"
@@ -491,6 +491,7 @@ const renderToggleLabel = computed(() =>
 			@print="emit('print')"
 			@copy-link="emit('copy-link')"
 			@share-in-chat="emit('share-in-chat')"
+			@share-image="emit('share-image')"
 		/>
 	</section>
 </template>

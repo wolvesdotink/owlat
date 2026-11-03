@@ -18,8 +18,10 @@ import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
 import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
+import { mailReadReceiptValidator } from '../../lib/validators/mailContent';
 import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
 import { withVisibleDrafts } from '../needsReplySlot';
+import { withSenderLogos } from '../senderLogos/cache';
 
 /**
  * Load a message the caller is allowed to READ (owner/admin, or the mailbox
@@ -52,7 +54,9 @@ export const getMessage = publicQuery({
 		// E8b: the inline bodies are sealed at rest; the reader renders them
 		// straight off the row, so they leave this boundary as plaintext. Plan 3.2:
 		// they live in `mailMessageBodies` and are attached here.
-		return message === null ? null : openStoredMailMessageRow(ctx.db, message);
+		if (message === null) return null;
+		const [row] = await withSenderLogos(ctx, [await openStoredMailMessageRow(ctx.db, message)]);
+		return row ?? null;
 	},
 });
 
@@ -233,6 +237,8 @@ export const listThreadOutboundDelivery = publicQuery({
 						errorCode: v.optional(v.string()),
 					})
 				),
+				// The read receipts it asked for and got back (mail/readReceipts.ts).
+				readReceipt: v.optional(mailReadReceiptValidator),
 			})
 		)
 	),

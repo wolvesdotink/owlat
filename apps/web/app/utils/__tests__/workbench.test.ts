@@ -50,7 +50,7 @@ describe('workbench scope', () => {
 
 	it('opens each filed count as that exact list in that inbox', () => {
 		expect(filedHref('mb_me', 'newsletter')).toBe(
-			'/dashboard/inboxes?in=mb_me&category=newsletter'
+			'/dashboard/postbox/all-inboxes?in=mb_me&category=newsletter'
 		);
 		expect(filedHref('mb_me', 'spam')).toBe('/dashboard/postbox/spam?mailbox=mb_me');
 		expect(filedHref('team', 'promotion')).toBe('/dashboard/inbox/updates?view=promotions');

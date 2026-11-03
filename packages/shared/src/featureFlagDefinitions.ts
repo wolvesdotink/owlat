@@ -297,6 +297,13 @@ const FEATURE_FLAG_DETAILS: { readonly [Key in CoreFeatureFlagKey]: CoreFeatureF
 		description:
 			"Carry a Mandrill account's rejection blacklist (bounces, complaints, unsubscribes) into the suppression list when migrating.",
 	},
+	// Served by the Convex backend at <CONVEX_SITE_URL>/mcp/postbox; no service.
+	'mail.mcp': {
+		category: 'integrations',
+		label: 'AI clients (MCP)',
+		description:
+			'Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP. Read-only, with a token each member creates and can revoke.',
+	},
 
 	'scan.content': {
 		category: 'security',

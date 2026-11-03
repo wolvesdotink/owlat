@@ -17,7 +17,7 @@ import { formatRelativeTime } from '~/utils/formatters';
 import { rankSnippets } from '~/utils/postboxSnippets';
 import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 import SavedReplyEditor from './SavedReplyEditor.vue';
-import { PlusIcon } from '@coolicons/vue';
+import { PaperclipIcon, PlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
@@ -70,6 +70,7 @@ const initial = computed<SavedReplyDraft | null>(() => {
 		shortcut: reply.shortcut,
 		bodyHtml: reply.bodyHtml,
 		variables: (reply.variables ?? []) as SnippetVariable[],
+		attachments: reply.attachments,
 		mailboxIds: reply.mailboxIds,
 	};
 });
@@ -140,6 +141,14 @@ async function confirmRemove() {
 								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary font-mono"
 								>;{{ reply.shortcut }}</span
 							>
+							<span
+								v-if="reply.attachments.length > 0"
+								class="inline-flex items-center gap-1 text-xs text-text-tertiary"
+								:title="reply.attachments.map((file) => file.filename).join(', ')"
+							>
+								<PaperclipIcon class="h-3 w-3" aria-hidden="true" />
+								{{ t('shared.savedReplies.files', reply.attachments.length) }}
+							</span>
 						</div>
 						<p class="text-xs text-text-tertiary mt-1 line-clamp-2">{{ preview(reply) }}</p>
 						<p class="text-2xs text-text-tertiary mt-1">

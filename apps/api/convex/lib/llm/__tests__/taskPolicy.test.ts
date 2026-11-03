@@ -43,6 +43,7 @@ const TODAY: Record<string, [AiTaskName, readonly LlmTier[]]> = {
 	postbox_ask_thread: ['mail.ask', ['capable']],
 	postbox_rewrite_selection: ['mail.rewrite', ['capable', 'fast']],
 	postbox_coach_draft: ['mail.coach', ['fast']],
+	postbox_search_rewrite: ['mail.search_rewrite', ['fast']],
 	translate: ['mail.translate', ['fast']],
 	handling_rule_compile: ['mail.rule_compile', ['fast']],
 	knowledge_extract_message: ['knowledge.extract', ['fast']],
