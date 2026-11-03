@@ -50,6 +50,7 @@ describe('parseSetupConfig — happy path', () => {
 			integrations: {
 				googleSafeBrowsingKey: 'gsb',
 				posthog: { host: 'https://ph', apiKey: 'phc_1' },
+				microsoftOAuth: { clientId: 'app-id', clientSecret: 'secret', tenant: 'organizations' },
 			},
 			domain: { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' },
 			seedDemo: true,
@@ -98,6 +99,10 @@ describe('parseSetupConfig — rejections (field-named errors)', () => {
 			(c) => (c['ai'] = { provider: 'custom', baseUrl: 'x', apiKey: 'y' }),
 		],
 		['posthog missing apiKey', (c) => (c['integrations'] = { posthog: { host: 'https://ph' } })],
+		[
+			'microsoft sign-in missing its secret',
+			(c) => (c['integrations'] = { microsoftOAuth: { clientId: 'app-id' } }),
+		],
 		['domain missing bounce', (c) => (c['domain'] = { ehloHostname: 'mail.x' })],
 		[
 			'network missing convexUrl',
@@ -256,12 +261,15 @@ describe('buildEnvPatchFromConfig', () => {
 				integrations: {
 					googleSafeBrowsingKey: 'gsb',
 					posthog: { host: 'https://ph', apiKey: 'phc' },
+					microsoftOAuth: { clientId: 'app-id', clientSecret: 'secret' },
 				},
 				domain: { ehloHostname: 'mail.x', bounceDomain: 'bounces.x' },
 			})
 		).toEqual({
 			EMAIL_PROVIDER: 'mta',
 			GOOGLE_SAFE_BROWSING_API_KEY: 'gsb',
+			MICROSOFT_OAUTH_CLIENT_ID: 'app-id',
+			MICROSOFT_OAUTH_CLIENT_SECRET: 'secret',
 			POSTHOG_API_KEY: 'phc',
 			POSTHOG_HOST: 'https://ph',
 			NUXT_PUBLIC_POSTHOG_API_KEY: 'phc',

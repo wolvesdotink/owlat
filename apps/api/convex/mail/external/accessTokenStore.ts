@@ -1,16 +1,18 @@
 /**
  * Durable cache of minted OAuth access tokens (`externalMailAccessTokens`).
  *
- * `refreshGoogleAccessToken` (the `'use node'` half in `googleOAuthTokens.ts`)
- * seals and opens the token; this V8 file only moves the sealed envelope in and
- * out of the table, so no plaintext token ever reaches a query or mutation.
+ * The `'use node'` refresh paths (`googleOAuthTokens.ts`, `microsoftOAuthTokens.ts`,
+ * through `oauthTokenShared.ts`) seal and open the token; this V8 file only
+ * moves the sealed envelope in and out of the table, so no plaintext token ever
+ * reaches a query or mutation.
  *
- * The in-memory map in `googleOAuthTokens.ts` stays as the first tier: it is
+ * The in-memory map in `oauthTokenShared.ts` stays as the first tier: it is
  * free when Convex reuses a warm isolate. This table is the second tier that
  * survives a cold one, which is the common case for an action called a few
  * times an hour.
  *
- *   Internal: _getStoredAccessToken, _storeAccessToken, _clearStoredAccessToken
+ *   Internal: _getStoredAccessToken, _storeAccessToken, _clearStoredAccessToken,
+ *             _rotateRefreshTokenInternal
  *   Helper:   deleteStoredAccessToken (for the teardown and erasure mutations)
  */
 
@@ -92,11 +94,52 @@ export const _storeAccessToken = internalMutation({
 	},
 });
 
-/** Forget an account's cached token (Google reported the grant revoked). */
+/** Forget an account's cached token (the provider reported the grant revoked). */
 export const _clearStoredAccessToken = internalMutation({
 	args: { accountId: v.id('externalMailAccounts') },
 	handler: async (ctx, args) => {
 		await deleteStoredAccessToken(ctx, args.accountId);
+	},
+});
+
+/**
+ * Replace an oauth2 account's sealed refresh-token envelope with a newer one the
+ * provider issued on refresh (Microsoft rotates its refresh tokens).
+ *
+ * Compare-and-swap on the envelope's IV: the refresh ran outside any
+ * transaction, so a reconnect (a different grant), a disconnect (the credential
+ * forgotten) or a concurrent rotation may have landed in between, and each of
+ * those must win. Only the four envelope columns change; the account's status
+ * and connection settings are not this write's business. The cached access
+ * token keyed to the old IV is dropped with it.
+ */
+export const _rotateRefreshTokenInternal = internalMutation({
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		expectedIv: v.string(),
+		ciphertext: v.string(),
+		iv: v.string(),
+		authTag: v.string(),
+		version: v.number(),
+	},
+	handler: async (ctx, args): Promise<{ rotated: boolean }> => {
+		const account = await ctx.db.get(args.accountId);
+		if (
+			!account ||
+			account.status === 'disconnected' ||
+			account.authMethod !== 'oauth2' ||
+			account.secretIv !== args.expectedIv
+		) {
+			return { rotated: false };
+		}
+		await ctx.db.patch(args.accountId, {
+			secretCiphertext: args.ciphertext,
+			secretIv: args.iv,
+			secretAuthTag: args.authTag,
+			secretEnvelopeVersion: args.version,
+		});
+		await deleteStoredAccessToken(ctx, args.accountId);
+		return { rotated: true };
 	},
 });
 

@@ -5111,6 +5111,17 @@
 				"imapHostPlaceholder": "imap.beispiel.de",
 				"imapPort": "IMAP-Port",
 				"incomingMail": "Eingehende Mail {status}",
+				"microsoft": {
+					"continue": "Mit Microsoft anmelden",
+					"desktopHint": "Schließe die Anmeldung bei Microsoft im soeben geöffneten Browserfenster ab. Diese Seite aktualisiert sich von selbst, sobald das Postfach verbunden ist.",
+					"detectOperation": "Prüfen, ob Microsoft diese Adresse betreibt",
+					"detected": "Die Mail dieser Adresse liegt bei Microsoft, du kannst dich also mit Microsoft anmelden, statt ein Passwort zu verwenden.",
+					"explain": "Melde dich mit Microsoft an, statt ein App-Passwort zu erstellen. Owlat erhält dabei nur ein widerrufbares Token für deine Mail, niemals dein Passwort. Bei Arbeits- und Schulkonten muss die Administration Owlat eventuell erst freigeben.",
+					"or": "oder",
+					"reconnect": "Erneut mit Microsoft verbinden",
+					"reconnectExplain": "Dieses Postfach ist per Microsoft-Anmeldung verbunden. Ein erneutes Verbinden stellt seinen Zugriff ohne App-Passwort wieder her — alternativ wechselst du unten auf ein App-Passwort.",
+					"startOperation": "Microsoft-Anmeldung starten"
+				},
 				"missingMailboxError": "Dieses Team-Postfach kann nicht neu verbunden werden: Sein Postfach fehlt.",
 				"outgoingMail": "Ausgehende Mail {status}",
 				"passwordHelp": "Verschlüsselt gespeichert — nur der Sync-Worker kann es lesen.",
@@ -13671,6 +13682,19 @@
 				"missingParams": "Dieser Link ist unvollständig. Starte die Google-Anmeldung erneut auf der Seite für den Mail-Import.",
 				"operation": "Google-Anmeldung abschließen",
 				"pageTitle": "Google wird verbunden"
+			}
+		},
+		"microsoft": {
+			"callback": {
+				"back": "Zurück zum Mail-Import",
+				"connecting": "Dein Microsoft-Postfach wird verbunden …",
+				"denied": "Microsoft hat den Zugriff nicht erteilt, es wurde nichts verbunden. Bei einem Arbeits- oder Schulkonto muss die Administration deiner Organisation Owlat eventuell erst freigeben. Du kannst jederzeit neu starten.",
+				"deniedTitle": "Microsoft-Anmeldung nicht abgeschlossen",
+				"failed": "Die Microsoft-Anmeldung konnte nicht abgeschlossen werden. Bitte starte sie erneut.",
+				"failedTitle": "Verbindung nicht abgeschlossen",
+				"missingParams": "Dieser Link ist unvollständig. Starte die Microsoft-Anmeldung erneut auf der Seite für den Mail-Import.",
+				"operation": "Microsoft-Anmeldung abschließen",
+				"pageTitle": "Microsoft wird verbunden"
 			}
 		}
 	},

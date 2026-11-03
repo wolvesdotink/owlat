@@ -15,6 +15,7 @@ import type { DatabaseReader, MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { deleteStoredAccessToken } from './accessTokenStore';
+import { oauthProviderValidator } from '../../schema/mailAccounts';
 
 /**
  * The account statuses a worker should hold (or retry) a connection for.
@@ -150,13 +151,13 @@ export const connectFieldsValidator = {
 	isSmtpSecure: v.boolean(),
 	imapUsername: v.string(),
 	smtpUsername: v.optional(v.string()),
-	// Widened for Google sign-in: an 'oauth2' row's envelope holds a refresh
+	// Widened for provider sign-in: an 'oauth2' row's envelope holds a refresh
 	// token instead of passwords (see schema/mailAccounts.ts). App passwords are
 	// unchanged and remain supported for every provider, Gmail included. Both
 	// write through this one shape, so a row can rotate from one to the other and
 	// back without a second path.
 	authMethod: v.union(v.literal('password'), v.literal('oauth2')),
-	oauthProvider: v.optional(v.literal('google')),
+	oauthProvider: v.optional(oauthProviderValidator),
 	secretCiphertext: v.string(),
 	secretIv: v.string(),
 	secretAuthTag: v.string(),
@@ -225,7 +226,8 @@ export function toPublicAccountView(account: Doc<'externalMailAccounts'>) {
 		imapUsername: account.imapUsername,
 		smtpUsername: account.smtpUsername,
 		// How the account authenticates, so a connect form can offer "Reconnect
-		// with Google" instead of a password field. Never a credential.
+		// with Google" or "with Microsoft" instead of a password field. Never a
+		// credential.
 		authMethod: account.authMethod,
 		oauthProvider: account.oauthProvider,
 		status: account.status,

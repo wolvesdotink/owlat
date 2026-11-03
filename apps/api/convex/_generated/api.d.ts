@@ -1413,6 +1413,12 @@ import type * as mail_external_externalFeature from '../mail/external/externalFe
 import type * as mail_external_googleOAuth from '../mail/external/googleOAuth.js';
 import type * as mail_external_googleOAuthActions from '../mail/external/googleOAuthActions.js';
 import type * as mail_external_googleOAuthTokens from '../mail/external/googleOAuthTokens.js';
+import type * as mail_external_microsoftOAuth from '../mail/external/microsoftOAuth.js';
+import type * as mail_external_microsoftOAuthActions from '../mail/external/microsoftOAuthActions.js';
+import type * as mail_external_microsoftOAuthTokens from '../mail/external/microsoftOAuthTokens.js';
+import type * as mail_external_oauthConnect from '../mail/external/oauthConnect.js';
+import type * as mail_external_oauthState from '../mail/external/oauthState.js';
+import type * as mail_external_oauthTokenShared from '../mail/external/oauthTokenShared.js';
 import type * as mail_external_personalAccount from '../mail/external/personalAccount.js';
 import type * as mail_external_mirroredFolders from '../mail/external/mirroredFolders.js';
 import type * as mail_external_remoteFolderOpOrder from '../mail/external/remoteFolderOpOrder.js';
@@ -3418,6 +3424,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/googleOAuth': typeof mail_external_googleOAuth;
 	'mail/external/googleOAuthActions': typeof mail_external_googleOAuthActions;
 	'mail/external/googleOAuthTokens': typeof mail_external_googleOAuthTokens;
+	'mail/external/microsoftOAuth': typeof mail_external_microsoftOAuth;
+	'mail/external/microsoftOAuthActions': typeof mail_external_microsoftOAuthActions;
+	'mail/external/microsoftOAuthTokens': typeof mail_external_microsoftOAuthTokens;
+	'mail/external/oauthConnect': typeof mail_external_oauthConnect;
+	'mail/external/oauthState': typeof mail_external_oauthState;
+	'mail/external/oauthTokenShared': typeof mail_external_oauthTokenShared;
 	'mail/external/personalAccount': typeof mail_external_personalAccount;
 	'mail/external/mirroredFolders': typeof mail_external_mirroredFolders;
 	'mail/external/remoteFolderOpOrder': typeof mail_external_remoteFolderOpOrder;

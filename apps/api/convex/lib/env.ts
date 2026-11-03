@@ -308,6 +308,19 @@ export type EnvKey =
 	// Client secret of the same Google OAuth client. Used only server-side, in the
 	// token exchange/refresh. Unset ⇒ same as above: no Google sign-in.
 	| 'GOOGLE_OAUTH_CLIENT_SECRET'
+	// Microsoft app registration for CONNECTING an Outlook.com / Microsoft 365
+	// mailbox with Microsoft sign-in (authorization-code + PKCE) instead of an
+	// app password. Its web redirect URI must be
+	// `${SITE_URL}/oauth/microsoft/callback`. Unset ⇒ no Microsoft button; app
+	// passwords keep working either way.
+	| 'MICROSOFT_OAUTH_CLIENT_ID'
+	// Client secret of the same app registration. Used only server-side, in the
+	// token exchange/refresh. Unset ⇒ same as above: no Microsoft sign-in.
+	| 'MICROSOFT_OAUTH_CLIENT_SECRET'
+	// Which directories may sign in: `common` (the default: personal and any work
+	// or school account), `organizations`, `consumers`, or one tenant's id or
+	// verified domain.
+	| 'MICROSOFT_OAUTH_TENANT'
 	// Calendar / availability grounding for scheduling replies (mail/availability).
 	// Optional read-only ICS/CalDAV subscription URL for the owner's own calendar
 	// (a private iCal export). Fetched server-side, in-deployment, to derive

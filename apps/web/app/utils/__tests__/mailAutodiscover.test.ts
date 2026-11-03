@@ -248,14 +248,16 @@ describe('MAIL_PROVIDERS (import-wizard provider list)', () => {
 		expect(providerById('imap')?.appPassword).toBeNull();
 	});
 
-	it('offers Google sign-in for Gmail only, and keeps its app-password fallback', () => {
-		// The connect form reads this to decide whether to offer "Continue with
-		// Google" at all; every other provider must stay on the password path, and
-		// Gmail keeps its app-password guidance for instances with no OAuth client.
+	it('offers provider sign-in for Gmail and Outlook only, and keeps their app-password fallback', () => {
+		// The connect form reads this to decide whether to offer a sign-in button
+		// at all; every other provider must stay on the password path, and both
+		// keep their app-password guidance for instances with no OAuth app.
 		expect(providerById('gmail')?.oauth).toEqual({ provider: 'google' });
 		expect(providerById('gmail')?.appPassword?.provider).toBe('Gmail');
+		expect(providerById('outlook')?.oauth).toEqual({ provider: 'microsoft' });
+		expect(providerById('outlook')?.appPassword).not.toBeNull();
 		for (const p of MAIL_PROVIDERS) {
-			if (p.id === 'gmail') continue;
+			if (p.id === 'gmail' || p.id === 'outlook') continue;
 			expect(p.oauth, p.id).toBeNull();
 		}
 	});

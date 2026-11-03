@@ -285,7 +285,7 @@ export const TENANT_TABLES = [
 	// Pending local → remote write-backs (moves, flags, deletes) for an account.
 	'externalMailRemoteOps',
 	'externalMailAccounts',
-	// In-flight Google sign-in handshakes for connecting an external mailbox.
+	// In-flight Google or Microsoft sign-in handshakes for connecting an external mailbox.
 	// User- and org-attributed, short-lived, and meaningless once the org is gone
 	// — wiped with it like the account rows the finished handshake would write.
 	'externalMailOAuthStates',

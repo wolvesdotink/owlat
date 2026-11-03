@@ -6,8 +6,7 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
 import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
 import { buildCredentialArgs, buildSharedConnectArgs } from '~/utils/postboxConnectArgs';
-import type { GoogleConnectIntent } from '~/composables/postbox/useGoogleOAuthConnect';
-import { returnToWithGoogleFlag } from '~/composables/postbox/useGoogleOAuthConnect';
+import { usePostboxConnectOAuth } from '~/composables/postbox/usePostboxConnectOAuth';
 
 /**
  * The shared connect/edit form for the unified mail-import wizard. One form
@@ -32,8 +31,10 @@ const props = defineProps<{
 		isSmtpSecure: boolean;
 		imapUsername: string;
 		status?: string;
-		/** `'oauth2'` when the account authenticates with Google, not a password. */
+		/** `'oauth2'` when the account authenticates with provider sign-in, not a password. */
 		authMethod?: string;
+		/** Which provider's sign-in an `'oauth2'` account uses. */
+		oauthProvider?: string;
 	} | null;
 	/**
 	 * Hide the Cancel/Back button. The reconnect step renders this form as the
@@ -87,29 +88,18 @@ const showAdvanced = ref(props.mode === 'update');
 type TestResult = FunctionReturnType<typeof api.mail.external.accountsActions.testConnection>;
 const testResult = ref<TestResult | null>(null);
 
-// ── Google sign-in branch ───────────────────────────────────────────────────
-// An ADDITION to the app-password form, never a replacement for it. Google
-// sign-in needs an operator to have created an OAuth client for this instance,
-// which most self-hosters will not have done, so the password path below always
-// renders exactly as it did before OAuth existed. The extra block appears only
-// when both halves agree: the provider supports it (only Gmail does) and the
-// query says a client is configured.
-const { data: googleOAuth } = useConvexQuery(api.mail.external.googleOAuth.isConfigured, () =>
-	props.provider.oauth ? {} : 'skip'
-);
-const googleConfigured = computed(
-	() => !!props.provider.oauth && googleOAuth.value?.configured === true
-);
-const isOauthAccount = computed(() => props.account?.authMethod === 'oauth2');
-/**
- * Re-authorizing a mailbox that already uses Google is the one case where the
- * Google block leads: the account has no password to re-enter, so "Reconnect
- * with Google" is what the user came for. The password form still follows it —
- * rotating such an account onto an app password is allowed.
- */
-const googleLeads = computed(
-	() => googleConfigured.value && props.mode === 'update' && isOauthAccount.value
-);
+// ── Provider sign-in branch (Google, Microsoft) ─────────────────────────────
+// An ADDITION to the app-password form, never a replacement; see the composable.
+const {
+	oauthProvider,
+	oauthDetected,
+	oauthConfigured,
+	oauthLeads,
+	isOauthAccount,
+	oauthLoading,
+	oauthHandedOff,
+	connectWithOAuth,
+} = usePostboxConnectOAuth(props, () => form.emailAddress, formError);
 
 // Copy the six IMAP/SMTP server fields from a preset (or an existing account,
 // which shares the same shape) into the form. The single source of truth for
@@ -204,12 +194,9 @@ const updateSharedOp = useBackendOperation(
 	}
 );
 
-const google = useGoogleOAuthConnect({ inlineTarget: formError });
-const route = useRoute();
-
 const busy = computed(
 	() =>
-		google.isLoading.value ||
+		oauthLoading.value ||
 		testOp.isLoading.value ||
 		connectOp.isLoading.value ||
 		connectSharedOp.isLoading.value ||
@@ -242,42 +229,6 @@ async function handleTest() {
 	testResult.value = null;
 	const res = await testOp.run(buildCredentialArgs(form));
 	if (res.ok) testResult.value = res.result;
-}
-
-/**
- * The Google connect INTENT for this mount — the same (mode, shared,
- * seedProvider) fan-out `handleSubmit` dispatches on, in the form the backend
- * stores alongside the OAuth state row. `null` means the shared update is
- * missing its mailbox, the one branch that must refuse rather than fall through
- * to the personal account (see `handleSubmit`).
- */
-function googleIntent(): GoogleConnectIntent | null {
-	if (props.mode === 'connect' && props.seedProvider) {
-		return { kind: 'connectSeed', seedProvider: props.seedProvider };
-	}
-	if (props.mode === 'connect' && props.shared) {
-		return {
-			kind: 'connectShared',
-			displayName: props.displayName,
-			memberUserIds: props.memberUserIds ?? [],
-		};
-	}
-	if (props.mode === 'update' && props.shared) {
-		if (!props.mailboxId) return null;
-		return { kind: 'updateShared', mailboxId: props.mailboxId };
-	}
-	return props.mode === 'update' ? { kind: 'update' } : { kind: 'connect' };
-}
-
-async function handleGoogleConnect() {
-	formError.value = null;
-	const intent = googleIntent();
-	if (!intent) {
-		formError.value = t('components.postbox.postboxMailboxConnectForm.missingMailboxError');
-		return;
-	}
-	// The wizard reads the flag on the way back to start the import itself.
-	await google.connect(intent, returnToWithGoogleFlag(route.fullPath));
 }
 
 async function handleSubmit() {
@@ -362,16 +313,17 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 
 <template>
 	<form class="space-y-5" @submit.prevent="handleSubmit">
-		<!-- Only a mailbox already connected with Google leads with the Google
-		     block; every other mount keeps the app-password form first. -->
-		<PostboxGoogleSignIn
-			v-if="googleLeads"
+		<!-- Only a mailbox already connected with provider sign-in leads with the
+		     sign-in block; every other mount keeps the app-password form first. -->
+		<PostboxOAuthSignIn
+			v-if="oauthLeads && oauthProvider"
+			:provider="oauthProvider"
 			:mode="mode"
 			:oauth-account="isOauthAccount"
 			placement="above"
-			:loading="google.isLoading.value"
-			:handed-off-to-browser="google.handedOffToBrowser.value"
-			@connect="handleGoogleConnect"
+			:loading="oauthLoading"
+			:handed-off-to-browser="oauthHandedOff"
+			@connect="connectWithOAuth"
 		/>
 
 		<PostboxAppPasswordCallout
@@ -462,16 +414,18 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 			</UiButton>
 		</div>
 
-		<!-- The optional extra: only on instances whose operator created a Google
-		     OAuth client, and only below the path every Gmail user can take. -->
-		<PostboxGoogleSignIn
-			v-if="googleConfigured && !googleLeads"
+		<!-- The optional extra: only on instances whose operator registered an OAuth
+		     app, and only below the path every user can take. -->
+		<PostboxOAuthSignIn
+			v-if="oauthConfigured && !oauthLeads && oauthProvider"
+			:provider="oauthProvider"
 			:mode="mode"
 			:oauth-account="isOauthAccount"
+			:detected="oauthDetected"
 			placement="below"
-			:loading="google.isLoading.value"
-			:handed-off-to-browser="google.handedOffToBrowser.value"
-			@connect="handleGoogleConnect"
+			:loading="oauthLoading"
+			:handed-off-to-browser="oauthHandedOff"
+			@connect="connectWithOAuth"
 		/>
 	</form>
 </template>

@@ -31,6 +31,7 @@ convex/mail/pendingMailbox.ts:setForInvitation
 # Instance capability, not mail data: a boolean from env presence that the
 # connect form reads to pick its branch.
 convex/mail/external/googleOAuth.ts:isConfigured
+convex/mail/external/microsoftOAuth.ts:isConfigured
 #
 # The AI handling rules serve the ai.autonomy surface, not Postbox
 # (mail/_helpers.ts exemption).

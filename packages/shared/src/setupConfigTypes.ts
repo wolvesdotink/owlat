@@ -69,6 +69,11 @@ export interface SetupConfig {
 	integrations?: {
 		googleSafeBrowsingKey?: string;
 		posthog?: { host: string; apiKey: string };
+		/**
+		 * Microsoft app registration for connecting Outlook / Microsoft 365
+		 * mailboxes with Microsoft sign-in. `tenant` defaults to `common`.
+		 */
+		microsoftOAuth?: { clientId: string; clientSecret: string; tenant?: string };
 	};
 	admin: { email: string; name: string; password: string };
 	/** MTA self-host only — EHLO + Return-Path domains. */

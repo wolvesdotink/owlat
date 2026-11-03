@@ -5111,6 +5111,17 @@
 				"imapHostPlaceholder": "imap.example.com",
 				"imapPort": "IMAP port",
 				"incomingMail": "Incoming mail {status}",
+				"microsoft": {
+					"continue": "Sign in with Microsoft",
+					"desktopHint": "Finish signing in with Microsoft in the browser window that just opened. This page updates by itself once the mailbox is connected.",
+					"detectOperation": "Check whether Microsoft hosts this address",
+					"detected": "Microsoft hosts the mail for this address, so you can sign in with Microsoft instead of using a password.",
+					"explain": "Sign in with Microsoft instead of creating an app password. Owlat receives only a revocable token for your mail, never your password. Work and school accounts may need an admin to approve Owlat first.",
+					"or": "or",
+					"reconnect": "Reconnect with Microsoft",
+					"reconnectExplain": "This mailbox is connected with Microsoft sign-in. Reconnecting restores its access without an app password — or switch it to an app password below.",
+					"startOperation": "Start Microsoft sign-in"
+				},
 				"missingMailboxError": "Cannot reconnect this team inbox: its mailbox is missing.",
 				"outgoingMail": "Outgoing mail {status}",
 				"passwordHelp": "Stored encrypted — only the sync worker can read it.",
@@ -13671,6 +13682,19 @@
 				"missingParams": "This link is incomplete. Start the Google sign-in again from the mail import page.",
 				"operation": "Finish Google sign-in",
 				"pageTitle": "Connecting Google"
+			}
+		},
+		"microsoft": {
+			"callback": {
+				"back": "Back to mail import",
+				"connecting": "Connecting your Microsoft mailbox…",
+				"denied": "Microsoft did not grant access, so nothing was connected. If this is a work or school account, your organization's admin may have to approve Owlat first. You can start again whenever you like.",
+				"deniedTitle": "Microsoft sign-in not completed",
+				"failed": "The Microsoft sign-in could not be completed. Please start again.",
+				"failedTitle": "Could not finish connecting",
+				"missingParams": "This link is incomplete. Start the Microsoft sign-in again from the mail import page.",
+				"operation": "Finish Microsoft sign-in",
+				"pageTitle": "Connecting Microsoft"
 			}
 		}
 	},

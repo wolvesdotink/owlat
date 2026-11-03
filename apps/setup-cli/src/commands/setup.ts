@@ -188,6 +188,11 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 		if (!ph) return 1;
 		envPatch = { ...envPatch, ...ph };
 	}
+	if (flags['mail.external']) {
+		const ms = await collectMicrosoftOAuth();
+		if (!ms) return 1;
+		envPatch = { ...envPatch, ...ms };
+	}
 
 	// Step 6: admin account
 	const admin = await collectAdmin();
@@ -345,6 +350,44 @@ async function collectPostHog(): Promise<EnvMap | null> {
 		POSTHOG_HOST: result.host,
 		NUXT_PUBLIC_POSTHOG_API_KEY: result.apiKey,
 		NUXT_PUBLIC_POSTHOG_HOST: result.host,
+	};
+}
+
+/**
+ * Optional: the Microsoft app registration that lets users connect Outlook and
+ * Microsoft 365 mailboxes by signing in with Microsoft. Skipping it is a
+ * supported answer (an empty patch); only a cancelled prompt returns `null`.
+ */
+async function collectMicrosoftOAuth(): Promise<EnvMap | null> {
+	const wanted = await confirm({
+		message:
+			'Offer "Sign in with Microsoft" for Outlook and Microsoft 365 mailboxes? (needs an app registered in Microsoft Entra)',
+		initialValue: false,
+	});
+	if (isCancel(wanted)) return null;
+	if (!wanted) return {};
+	const result = await group({
+		clientId: () =>
+			text({
+				message: 'Application (client) ID',
+				validate: (v) => (v?.trim() ? undefined : 'Enter the application ID'),
+			}),
+		clientSecret: () => password({ message: 'Client secret value' }),
+		tenant: () =>
+			text({
+				message: 'Tenant (common, organizations, consumers, or a tenant ID or domain)',
+				initialValue: 'common',
+				validate: (v) =>
+					/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(v?.trim() ?? '')
+						? undefined
+						: 'Enter common, organizations, consumers, a tenant ID or a domain',
+			}),
+	});
+	if (isCancel(result) || !result.clientSecret) return null;
+	return {
+		MICROSOFT_OAUTH_CLIENT_ID: result.clientId.trim(),
+		MICROSOFT_OAUTH_CLIENT_SECRET: result.clientSecret,
+		MICROSOFT_OAUTH_TENANT: result.tenant.trim(),
 	};
 }
 

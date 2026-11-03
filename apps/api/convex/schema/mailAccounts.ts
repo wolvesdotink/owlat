@@ -19,14 +19,14 @@ import {
  * Spread into `mailTables` from schema/mail.ts.
  */
 /**
- * What a completed Google authorization should DO — captured when the flow
- * STARTS, so the callback (which only carries `code` + `state`) cannot redirect
- * the grant into a different operation than the one the user consented to.
+ * What a completed provider sign-in (Google or Microsoft) should DO — captured
+ * when the flow STARTS, so the callback (which only carries `code` + `state`)
+ * cannot redirect the grant into a different operation than the one the user
+ * consented to.
  *
- * Declared here rather than in `mail/external/googleOAuth.ts` because the state
+ * Declared here rather than in `mail/external/oauthState.ts` because the state
  * table persists it: the schema module is the leaf both the table definition and
- * the functions can import without closing a cycle. `googleOAuth.ts` re-exports
- * it (with its TS type) as the feature's public surface.
+ * the functions can import without closing a cycle.
  *
  *   connect       — a new personal BYO mailbox
  *   update        — re-authorize the caller's existing personal mailbox
@@ -34,7 +34,7 @@ import {
  *   updateShared  — re-authorize an existing team inbox
  *   connectSeed   — a deliverability seed mailbox
  */
-export const googleOAuthIntentValidator = v.union(
+export const oauthIntentValidator = v.union(
 	v.object({ kind: v.literal('connect') }),
 	v.object({ kind: v.literal('update') }),
 	v.object({
@@ -45,6 +45,13 @@ export const googleOAuthIntentValidator = v.union(
 	v.object({ kind: v.literal('updateShared'), mailboxId: v.id('mailboxes') }),
 	v.object({ kind: v.literal('connectSeed'), seedProvider: destinationProviderValidator })
 );
+
+/**
+ * The authorization server an `oauth2` account's refresh token came from. It
+ * decides which token endpoint mints the account's access tokens, so a row's
+ * value never changes without its envelope changing with it.
+ */
+export const oauthProviderValidator = v.union(v.literal('google'), v.literal('microsoft'));
 
 /**
  * Connection/sync status of an external mail account: the
@@ -112,7 +119,7 @@ export const mailAccountsTables = {
 		// 'password' — an IMAP/SMTP app password, the path every provider supports
 		// and the one that needs no operator configuration.
 		// 'oauth2' — an authorization-code grant the user completed in their
-		// provider's own sign-in (today: Google, `oauthProvider: 'google'`). The
+		// provider's own sign-in (Google or Microsoft, named by `oauthProvider`). The
 		// mail-sync worker authenticates with SASL XOAUTH2 using a short-lived
 		// access token the backend mints on demand from a stored REFRESH token.
 		// That refresh token lives INSIDE the same encrypted envelope below
@@ -126,7 +133,7 @@ export const mailAccountsTables = {
 		authMethod: v.union(v.literal('password'), v.literal('oauth2')),
 		// Which provider's authorization server issued the refresh token. Absent on
 		// every password row; set together with `authMethod: 'oauth2'`.
-		oauthProvider: v.optional(v.literal('google')),
+		oauthProvider: v.optional(oauthProviderValidator),
 		imapUsername: v.string(),
 		smtpUsername: v.optional(v.string()),
 
@@ -203,7 +210,7 @@ export const mailAccountsTables = {
 		// with no cursor starves whichever orgs sort last, permanently.
 		.index('by_purpose', ['purpose']),
 
-	// One in-flight Google authorization-code exchange.
+	// One in-flight Google or Microsoft authorization-code exchange.
 	//
 	// The OAuth handshake spans two HTTP round trips through a third party, so the
 	// `state` nonce and the PKCE `code_verifier` have to outlive the request that
@@ -222,10 +229,10 @@ export const mailAccountsTables = {
 	externalMailOAuthStates: defineTable({
 		userId: v.string(),
 		organizationId: v.string(),
-		provider: v.literal('google'),
+		provider: oauthProviderValidator,
 		state: v.string(),
 		codeVerifier: v.string(),
-		intent: googleOAuthIntentValidator,
+		intent: oauthIntentValidator,
 		returnTo: v.string(),
 		createdAt: v.number(),
 		expiresAt: v.number(),
@@ -237,14 +244,14 @@ export const mailAccountsTables = {
 	// sealed in the same AES-256-GCM box as the refresh token it came from.
 	//
 	// A cache, not state: `getCredentialsForWorker` reuses it until a minute
-	// before `expiresAt` instead of asking Google for a new token on every
+	// before `expiresAt` instead of asking the provider for a new token on every
 	// worker connect and every /send. At most one row per account, kept off the
 	// account row so the hourly write neither re-runs the account's subscribers
 	// nor contends with the worker's status writes. `sourceIv` is the IV of the
 	// refresh-token envelope it was minted from: a reconnect re-seals that
 	// envelope under a fresh IV, so a token from the previous grant can never be
 	// served. Deleted when the account is disconnected, purged or erased, and
-	// when Google reports the grant revoked.
+	// when the provider reports the grant revoked.
 	externalMailAccessTokens: defineTable({
 		accountId: v.id('externalMailAccounts'),
 		sourceIv: v.string(),
