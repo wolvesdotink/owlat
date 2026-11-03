@@ -40,6 +40,9 @@ const { t } = useI18n();
 /** Currently open language tab; null until one is picked. */
 const selectedLanguage = ref<string | null>(null);
 
+// UiDropdownMenu opens only through its `open` model; unbound, it never opens.
+const addMenuOpen = ref(false);
+
 // Languages still available to add: not already supported, and not the default
 // (whose copy is edited on the template itself, not as an overlay).
 const availableLanguages = computed(() =>
@@ -102,7 +105,7 @@ const removeLanguage = (langCode: string) => {
 			</div>
 
 			<!-- Add Language Dropdown -->
-			<UiDropdownMenu v-if="availableLanguages.length > 0">
+			<UiDropdownMenu v-if="availableLanguages.length > 0" v-model:open="addMenuOpen">
 				<template #trigger>
 					<UiButton variant="secondary" size="sm">
 						<template #iconLeft>
