@@ -29,11 +29,11 @@ import {
 import { useLocalized } from '~/composables/useLocalized';
 import { useRelayCredentialDraft } from '~/composables/useRelayCredentialDraft';
 import { OUTBOUND_TLS_MODE_OPTIONS } from '~/composables/setupOutboundTls';
-import { ComponentIcon, GlobeIcon, PlugIcon, UserSettingsCornerIcon } from '@coolicons/vue';
+import { BlocksIcon, GlobeIcon, PlugIcon, UserSettingsCornerIcon } from '@coolicons/vue';
 
 // ---- configure wizard steps ----
 const configSteps = [
-	{ id: 'features', label: 'desktop.setup.steps.features', icon: ComponentIcon },
+	{ id: 'features', label: 'desktop.setup.steps.features', icon: BlocksIcon },
 	{ id: 'providers', label: 'desktop.setup.steps.providers', icon: PlugIcon },
 	{ id: 'domain', label: 'desktop.setup.steps.domain', icon: GlobeIcon },
 	{ id: 'admin', label: 'desktop.setup.steps.admin', icon: UserSettingsCornerIcon },

@@ -21,8 +21,8 @@ import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
 	FeatherIcon,
+	PartyPopperIcon,
 	RocketIcon,
-	SparkleIcon,
 } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
@@ -222,7 +222,7 @@ onUnmounted(stopPolling);
 		     `signInHref`) — there is no second reload anywhere in this flow. -->
 		<div v-if="phase === 'complete'" class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox :icon="SparkleIcon" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="PartyPopperIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.review.complete.eyebrow') }}</span>
 			</div>
 

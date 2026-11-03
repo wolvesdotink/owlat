@@ -8,7 +8,7 @@ import { useLocalized } from '~/composables/useLocalized';
 import {
 	ArrowRightIcon,
 	CircleWarningIcon,
-	MailIcon,
+	MailHelpIcon,
 	ShieldCheckIcon,
 	ShieldOffIcon,
 	TriangleWarningIcon,
@@ -453,7 +453,7 @@ const sendingDetail = computed(() => {
 				class="flex items-start gap-2 px-4 py-3 rounded-lg bg-bg-surface"
 				data-testid="unresolved-feedback-summary"
 			>
-				<MailIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+				<MailHelpIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
 				<I18nT
 					keypath="dashboard.admin.delivery.index.unresolvedFeedback.summary"
 					tag="p"

@@ -23,8 +23,8 @@ import {
 	type PostboxFileKind,
 } from '~/utils/postboxFileFacets';
 import {
-	ArchiveIcon,
 	DownloadIcon,
+	FileArchiveIcon,
 	FileIcon,
 	FileTextIcon,
 	ImageIcon,
@@ -72,7 +72,7 @@ const KIND_ICONS: Record<PostboxFileKind, IconComponent> = {
 	pdf: FileTextIcon,
 	image: ImageIcon,
 	document: FileIcon,
-	archive: ArchiveIcon,
+	archive: FileArchiveIcon,
 	other: PaperclipIcon,
 };
 

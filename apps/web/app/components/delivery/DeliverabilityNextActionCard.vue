@@ -10,7 +10,7 @@ import {
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
-import { CircleArrowRightIcon, ReloadIcon, SparkleIcon } from '@coolicons/vue';
+import { CircleArrowRightIcon, PartyPopperIcon, ReloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	item: DeliverabilityChecklistItem | null;
@@ -216,7 +216,7 @@ async function copyValue(value: string, key: string) {
 
 	<UiCard v-else class="border-success/25 bg-success/5">
 		<div class="flex items-start gap-4">
-			<UiIconBox :icon="SparkleIcon" size="lg" variant="success" rounded="xl" />
+			<UiIconBox :icon="PartyPopperIcon" size="lg" variant="success" rounded="xl" />
 			<div>
 				<p class="text-xs font-semibold uppercase tracking-wide text-success">
 					{{ t('components.delivery.deliverabilityNextActionCard.complete.eyebrow') }}

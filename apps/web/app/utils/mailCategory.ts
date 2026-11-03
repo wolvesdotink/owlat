@@ -16,7 +16,7 @@ import {
 	BellIcon,
 	InboxIcon,
 	MegaphoneIcon,
-	NotebookIcon,
+	NewspaperIcon,
 	ReceiptIcon,
 	ShieldOffIcon,
 	UserIcon,
@@ -29,7 +29,7 @@ export const MAIL_CATEGORY_META: Readonly<
 	Record<MailCategory, { icon: IconComponent; labelKey: string }>
 > = {
 	person: { icon: UserIcon, labelKey: 'shared.mailCategory.person' },
-	newsletter: { icon: NotebookIcon, labelKey: 'shared.mailCategory.newsletter' },
+	newsletter: { icon: NewspaperIcon, labelKey: 'shared.mailCategory.newsletter' },
 	notification: { icon: BellIcon, labelKey: 'shared.mailCategory.notification' },
 	receipt: { icon: ReceiptIcon, labelKey: 'shared.mailCategory.receipt' },
 	// Megaphone, not tag: the tag is the Recategorize button's icon.

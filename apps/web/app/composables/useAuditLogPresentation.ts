@@ -22,13 +22,13 @@ import { isPluginId } from '@owlat/plugin-kit';
 import { capitalize } from '../utils/formatters';
 import { buildActionTypeGroups, RESOURCE_FILTER_OPTIONS } from './auditLogFilterCatalog';
 import {
+	BlocksIcon,
 	CalendarIcon,
 	CheckIcon,
 	CircleCloseIcon,
 	CircleSlashIcon,
 	ClipboardListIcon,
 	CloseIcon,
-	ComponentIcon,
 	DatabaseIcon,
 	FileTextIcon,
 	GlobeIcon,
@@ -104,7 +104,7 @@ const RESOURCE_ICONS: Record<string, IconComponent> = {
 	ai_provider_config: SparklesIcon,
 	ai_routing_policy: RouteIcon,
 	embedding_space: DatabaseIcon,
-	plugin: ComponentIcon,
+	plugin: BlocksIcon,
 	connected_app: PlugIcon,
 	deliverability_ramp: TrendingUpIcon,
 };

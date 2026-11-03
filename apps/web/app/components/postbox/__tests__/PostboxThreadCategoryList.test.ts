@@ -18,7 +18,7 @@ import PostboxSectionedThreadList from '../PostboxSectionedThreadList.vue';
 import PostboxConversationRow from '../PostboxConversationRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
-import { NotebookIcon, UserIcon } from '@coolicons/vue';
+import { NewspaperIcon, UserIcon } from '@coolicons/vue';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -76,7 +76,7 @@ function mountCategories() {
 				{
 					key: 'newsletter' as const,
 					label: 'shared.mailCategory.newsletter',
-					icon: NotebookIcon,
+					icon: NewspaperIcon,
 					threads: [thread('t4', 0)],
 				},
 			],

@@ -19,7 +19,7 @@
 
 import type { Doc } from '@owlat/api/dataModel';
 import {
-	ChatIcon,
+	ChatWarningIcon,
 	MailIcon,
 	MoonIcon,
 	UserCloseCornerIcon,
@@ -77,7 +77,7 @@ const SUPPRESSION_REASON_PRESENTATION = {
 		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-warning/20 text-warning border-warning/30',
 		tone: 'text-warning',
-		icon: ChatIcon,
+		icon: ChatWarningIcon,
 		label: 'shared.suppressionReasons.complained.label',
 		phrase: (dateLabel: string) => ({
 			key: 'shared.suppressionReasons.complained.phrase',

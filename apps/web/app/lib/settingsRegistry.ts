@@ -27,13 +27,13 @@ import { alertSoundKindsFor } from './alertSoundRules';
 import { fuzzyMatch } from './commandPalette';
 import {
 	CalendarCheckIcon,
-	ChatTextIcon,
+	ChatQuoteIcon,
 	ForwardIcon,
 	KeyIcon,
 	KeyboardIcon,
 	ListFilterIcon,
 	MagicWandIcon,
-	MailIcon,
+	MailPlusIcon,
 	MentionIcon,
 	MonitorIcon,
 	PlaneIcon,
@@ -241,7 +241,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('snippets', {
 		path: `${SETTINGS_ROOT}/snippets`,
-		icon: ChatTextIcon,
+		icon: ChatQuoteIcon,
 		section: 'mail',
 		// Saved replies serve the Team inbox's composer too.
 		gate: any(hasMail, flag('inbox')),
@@ -254,7 +254,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 	}),
 	entry('connectedMailboxes', {
 		path: `${SETTINGS_ROOT}/external-account`,
-		icon: MailIcon,
+		icon: MailPlusIcon,
 		section: 'mail',
 		gate: hasMail,
 		// Someone looking for "disconnect" types that word, not "connected

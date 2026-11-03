@@ -16,7 +16,7 @@
  */
 import { sendReadinessNote, type SendingReadiness } from '~/lib/sendReadiness';
 import { useLocalized } from '~/composables/useLocalized';
-import { CalendarEventIcon, CircleCheckIcon, ClockIcon } from '@coolicons/vue';
+import { CalendarClockCornerIcon, CircleCheckIcon, ClockIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	readiness: SendingReadiness | null | undefined;
@@ -54,7 +54,7 @@ const TONE = {
 	paced: {
 		box: 'bg-accent/5 border-accent/20',
 		icon: 'text-accent',
-		name: CalendarEventIcon,
+		name: CalendarClockCornerIcon,
 	},
 	waiting: {
 		box: 'bg-warning/10 border-warning/20',

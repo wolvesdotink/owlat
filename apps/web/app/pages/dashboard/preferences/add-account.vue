@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
-import { CheckIcon, MailIcon } from '@coolicons/vue';
+import { CheckIcon, MailPlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
@@ -283,14 +283,14 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 								data-testid="add-account-connect-team-external"
 								@click="teamTransport = 'external'"
 							>
-								<MailIcon class="w-4 h-4 mr-1.5" />
+								<MailPlusIcon class="w-4 h-4 mr-1.5" />
 								{{ t('dashboard.preferences.addAccount.transportExternal') }}
 							</UiButton>
 						</template>
 						<template v-else>
 							<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHint') }}</p>
 							<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate">
-								<MailIcon class="w-4 h-4 mr-1.5" />
+								<MailPlusIcon class="w-4 h-4 mr-1.5" />
 								{{ t('dashboard.preferences.addAccount.connectExternalMailbox') }}
 							</UiButton>
 						</template>

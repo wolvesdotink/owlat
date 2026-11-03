@@ -35,7 +35,7 @@ import {
 	MegaphoneIcon,
 	PaperPlaneIcon,
 	ReplyAllIcon,
-	ServerIcon,
+	ServerSettingsCornerIcon,
 	SettingsIcon,
 	ShareIcon,
 	ShieldCheckIcon,
@@ -360,7 +360,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			{
 				name: 'shared.dashboardNavigation.items.administration.instance',
 				href: '/dashboard/admin/instance',
-				icon: ServerIcon,
+				icon: ServerSettingsCornerIcon,
 			},
 		],
 	},

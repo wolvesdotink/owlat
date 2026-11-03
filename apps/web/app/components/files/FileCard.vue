@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import {
-	ArchiveIcon,
+	FileArchiveIcon,
 	FileIcon,
 	FileTextIcon,
+	FileTypeIcon,
 	FilmIcon,
 	ImageIcon,
 	MailIcon,
@@ -38,8 +39,8 @@ const mimeIcon = computed(() => {
 	if (mime.includes('presentation') || mime.includes('powerpoint')) return PresentationIcon;
 	if (mime.includes('word') || mime.includes('document')) return FileTextIcon;
 	if (mime.includes('zip') || mime.includes('tar') || mime.includes('compressed'))
-		return ArchiveIcon;
-	if (mime.startsWith('text/')) return FileTextIcon;
+		return FileArchiveIcon;
+	if (mime.startsWith('text/')) return FileTypeIcon;
 	return FileIcon;
 });
 

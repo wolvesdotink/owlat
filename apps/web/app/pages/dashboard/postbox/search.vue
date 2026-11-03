@@ -9,6 +9,7 @@ import {
 	CircleInfoIcon,
 	CloseIcon,
 	MailOpenIcon,
+	SearchCloseIcon,
 	SearchIcon,
 } from '@coolicons/vue';
 
@@ -306,7 +307,7 @@ async function confirmSave() {
 					     drop an operator or clear them all — instead of a dead end. -->
 						<PostboxEmptyState
 							v-else-if="exhausted"
-							:icon="SearchIcon"
+							:icon="SearchCloseIcon"
 							:title="t('dashboard.postbox.search.noResultsTitle')"
 							:hint="t('dashboard.postbox.search.noResultsHint')"
 						>

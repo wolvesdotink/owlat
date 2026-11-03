@@ -15,7 +15,7 @@ import { SAVED_REPLIES_CHORD } from '~/composables/useComposerSavedReplyPicker';
 import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
 import { rankSnippets } from '~/utils/postboxSnippets';
-import { BookmarkPlusIcon, ChatTextIcon } from '@coolicons/vue';
+import { BookmarkPlusIcon, ChatQuoteIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	replies: EditorSnippet[];
@@ -87,7 +87,7 @@ function saveCurrent() {
 			data-testid="saved-reply-button"
 			@click="open = true"
 		>
-			<ChatTextIcon class="w-4 h-4" />
+			<ChatQuoteIcon class="w-4 h-4" />
 		</UiButton>
 	</UiTooltip>
 	<UiModal v-model:open="open" size="lg" :title="t('shared.savedReplies.picker.title')">

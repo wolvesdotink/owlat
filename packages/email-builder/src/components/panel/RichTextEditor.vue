@@ -7,11 +7,11 @@ import type { Variable } from '../../types';
 import { insertVariableChip, useVariableTrigger } from '../../composables/useVariableTrigger';
 import {
 	BoldIcon,
-	BracesIcon,
 	CodeIcon,
 	ItalicIcon,
 	LinkIcon,
 	UnderlineIcon,
+	VariableIcon,
 } from '@coolicons/vue';
 import VariablePickerMenu from '../canvas/VariablePickerMenu.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -185,7 +185,7 @@ function handleSourceInput(event: Event) {
 						:aria-expanded="showVariableMenu"
 						@click="showVariableMenu = !showVariableMenu"
 					>
-						<BracesIcon :size="14" />
+						<VariableIcon :size="14" />
 					</button>
 				</UiTooltip>
 				<div

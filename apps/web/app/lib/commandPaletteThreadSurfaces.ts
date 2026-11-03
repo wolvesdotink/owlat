@@ -29,6 +29,7 @@ import {
 	ArchiveIcon,
 	BellIcon,
 	BellOffIcon,
+	ChatShareIcon,
 	CircleCheckIcon,
 	ClockIcon,
 	FileCodeIcon,
@@ -43,7 +44,6 @@ import {
 	ReplyIcon,
 	RotateLeftIcon,
 	SearchIcon,
-	ShareIcon,
 	TagIcon,
 	TranslateIcon,
 	UserPlusCornerIcon,
@@ -173,7 +173,7 @@ function linkItems(
 		items.push({
 			id: `${idPrefix}-share-in-chat`,
 			label: deps.t(`${L}.shareInChat`),
-			icon: ShareIcon,
+			icon: ChatShareIcon,
 			run: deps.onShareInChat,
 		});
 	}

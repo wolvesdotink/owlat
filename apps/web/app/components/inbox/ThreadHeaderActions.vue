@@ -21,13 +21,14 @@ import {
 	AlarmOffIcon,
 	ChatCircleIcon,
 	ChatCirclePlusIcon,
+	ChatShareIcon,
 	CheckIcon,
 	ChevronDownIcon,
 	LinkIcon,
 	MoreHorizontalIcon,
 	ReplyIcon,
-	ShareIcon,
 	TimerIcon,
+	TimerOffIcon,
 	UserMinusCornerIcon,
 	UserPlusCornerIcon,
 	type IconComponent,
@@ -121,7 +122,7 @@ const simpleActions = computed<SimpleAction[]>(() => {
 	if (props.chatEnabled) {
 		actions.push({
 			key: 'share-in-chat',
-			icon: ShareIcon,
+			icon: ChatShareIcon,
 			label: t('shared.conversationLink.shareInChat'),
 			run: () => emit('shareInChat'),
 		});
@@ -130,7 +131,7 @@ const simpleActions = computed<SimpleAction[]>(() => {
 		const isOn = props.autoClose === 'on';
 		actions.push({
 			key: 'auto-close',
-			icon: isOn ? AlarmOffIcon : TimerIcon,
+			icon: isOn ? TimerOffIcon : TimerIcon,
 			label: t(
 				isOn
 					? 'dashboard.inbox.detail.autoClose.turnOff'

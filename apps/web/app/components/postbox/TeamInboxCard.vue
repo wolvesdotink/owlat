@@ -21,8 +21,8 @@ import {
 	CloudDownloadIcon,
 	DownloadIcon,
 	KeyIcon,
-	MailIcon,
-	MailboxIcon,
+	MailPlusIcon,
+	MailsIcon,
 	ReloadIcon,
 	ShieldOffIcon,
 	TrashIcon,
@@ -173,7 +173,7 @@ const createdOn = computed(() =>
 			     squeezing the name/address block to nothing. -->
 			<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 				<div class="flex items-center gap-3 min-w-0 flex-1 basis-64">
-					<UiIconBox :icon="MailboxIcon" size="md" variant="surface" rounded="lg" />
+					<UiIconBox :icon="MailsIcon" size="md" variant="surface" rounded="lg" />
 					<div class="min-w-0">
 						<!-- State badges sit with the name they describe, not at the head
 						     of the action group, where "External" read as a button label
@@ -330,7 +330,7 @@ const createdOn = computed(() =>
 				v-if="inbox.pendingInvites.length > 0"
 				class="mt-3 text-xs text-text-tertiary flex items-center gap-1.5"
 			>
-				<MailIcon class="w-3.5 h-3.5" />
+				<MailPlusIcon class="w-3.5 h-3.5" />
 				{{
 					t(
 						'dashboard.admin.team.inboxes.pendingInvites',

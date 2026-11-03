@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** The "add a reaction" button of a team note, with the quick emojis it offers. */
 import { QUICK_REACTIONS } from '~/utils/teamStream';
-import { FaceSmileIcon } from '@coolicons/vue';
+import { FaceSmilePlusCornerIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{ pick: [emoji: string] }>();
 
@@ -24,7 +24,7 @@ function pick(emoji: string) {
 			data-testid="team-note-add-reaction"
 			@click="open = !open"
 		>
-			<FaceSmileIcon class="size-3.5" />
+			<FaceSmilePlusCornerIcon class="size-3.5" />
 		</button>
 		<span
 			v-if="open"

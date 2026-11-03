@@ -17,7 +17,7 @@
  * identical row.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
-import { BookmarkPlusIcon, ChatTextIcon, MegaphoneIcon } from '@coolicons/vue';
+import { BookmarkPlusIcon, ChatQuoteIcon, MegaphoneIcon } from '@coolicons/vue';
 
 // ── Campaigns command center ────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 		id: `saved-reply:${reply._id}`,
 		label: reply.name,
 		...(reply.shortcut ? { subtitle: `;${reply.shortcut}` } : {}),
-		icon: ChatTextIcon,
+		icon: ChatQuoteIcon,
 		run: () => deps.onInsert(reply._id),
 	}));
 	const items: PaletteItem[] = [];
@@ -143,12 +143,12 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 		items.push({
 			id: 'saved-reply:insert',
 			label: deps.t('shared.savedReplies.insertSubmenu'),
-			icon: ChatTextIcon,
+			icon: ChatQuoteIcon,
 			run: () => {},
 			argument: {
 				promptKey: 'shared.savedReplies.paletteHeading',
 				headingKey: 'shared.savedReplies.paletteHeading',
-				icon: ChatTextIcon,
+				icon: ChatQuoteIcon,
 				options: replyItems.map((item) => ({
 					id: item.id,
 					label: item.label,

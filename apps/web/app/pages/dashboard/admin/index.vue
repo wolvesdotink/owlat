@@ -10,7 +10,7 @@ import {
 	ActivityIcon,
 	ArrowRightIcon,
 	GaugeIcon,
-	ServerIcon,
+	ServerSettingsCornerIcon,
 	ShieldCheckIcon,
 	ShieldIcon,
 	SparklesIcon,
@@ -48,7 +48,7 @@ const GROUP_ICONS: Record<AdminAreaKey, IconComponent> = {
 	delivery: TruckIcon,
 	ai: SparklesIcon,
 	features: ToggleRightIcon,
-	system: ServerIcon,
+	system: ServerSettingsCornerIcon,
 };
 const groups = computed(() =>
 	registryAreas.value

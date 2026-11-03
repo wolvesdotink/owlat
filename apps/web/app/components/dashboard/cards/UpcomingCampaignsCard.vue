@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { CalendarEventIcon, CalendarIcon } from '@coolicons/vue';
+import { CalendarClockCornerIcon, CalendarIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -64,7 +64,7 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox :icon="CalendarEventIcon" size="sm" variant="surface" />
+					<UiIconBox :icon="CalendarClockCornerIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.upcomingCampaignsCard.title') }}
 					</h3>

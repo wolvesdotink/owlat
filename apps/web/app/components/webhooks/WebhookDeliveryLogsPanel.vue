@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { capitalize, formatDateTime } from '~/utils/formatters';
-import { ArrowLeftIcon, ChevronRightIcon, FileTextIcon, PaperPlaneIcon } from '@coolicons/vue';
+import { ArrowLeftIcon, ChevronRightIcon, PaperPlaneIcon, ScrollTextIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface WebhookDeliveryLog {
@@ -340,7 +340,7 @@ function formatJson(value: unknown) {
 			<!-- Empty state -->
 			<div v-else class="flex flex-col items-center justify-center py-16 text-center px-6">
 				<div class="p-4 rounded-full bg-bg-surface mb-4">
-					<FileTextIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
+					<ScrollTextIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 				</div>
 				<p class="text-text-secondary font-medium">
 					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyTitle') }}

@@ -11,7 +11,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { getWebhookEventLabel, type WebhookEvent } from '~/composables/useWebhookForm';
-import { ChevronDownIcon, FileTextIcon, GlobeIcon, PaperPlaneIcon, PauseIcon, PlayIcon, ReloadIcon, SettingsIcon, TrashIcon } from '@coolicons/vue';
+import { ChevronDownIcon, GlobeIcon, PaperPlaneIcon, PauseIcon, PlayIcon, ReloadIcon, ScrollTextIcon, SettingsIcon, TrashIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface WebhookRowEndpoint {
@@ -180,7 +180,7 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 							{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click.stop="emit('viewLogs')">
-							<FileTextIcon class="w-4 h-4" />
+							<ScrollTextIcon class="w-4 h-4" />
 							{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click.stop="emit('regenerate')">

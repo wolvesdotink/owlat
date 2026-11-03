@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
-import { CalendarEventIcon, CloseIcon } from '@coolicons/vue';
+import { CalendarClockCornerIcon, CloseIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
@@ -60,7 +60,7 @@ async function draft() {
 			>
 				<template #iconLeft>
 					<component
-						:is="suggestBusy ? SpinnerIcon : CalendarEventIcon"
+						:is="suggestBusy ? SpinnerIcon : CalendarClockCornerIcon"
 						class="w-3.5 h-3.5"
 						:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
 					/>

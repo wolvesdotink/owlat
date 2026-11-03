@@ -9,8 +9,8 @@ import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { formatDate } from '~/utils/formatters';
 import {
+	BlocksIcon,
 	ChartBarVerticalIcon,
-	ComponentIcon,
 	CopyIcon,
 	FileEditIcon,
 	MoreVerticalIcon,
@@ -50,7 +50,7 @@ const overlayButton =
 		@click="emit('open', block)"
 	>
 		<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
-			<ComponentIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
+			<BlocksIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
 			<div
 				class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 			>

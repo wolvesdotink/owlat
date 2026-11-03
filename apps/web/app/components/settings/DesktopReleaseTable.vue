@@ -8,7 +8,7 @@ import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { formatDateTime } from '~/utils/formatters';
 import { releaseLineKey } from '~/composables/useDesktopUpdatePolicy';
-import { MonitorIcon } from '@coolicons/vue';
+import { MonitorDownloadIcon } from '@coolicons/vue';
 
 type CachedRelease = FunctionReturnType<typeof api.desktop.updates.listReleases>[number];
 
@@ -27,7 +27,7 @@ const { t } = useI18n();
 		<UiEmptyState
 			v-if="releases.length === 0"
 			class="mt-2"
-			:icon="MonitorIcon"
+			:icon="MonitorDownloadIcon"
 			:title="t('dashboard.admin.instance.desktopUpdates.empty.title')"
 			:description="t('dashboard.admin.instance.desktopUpdates.empty.description')"
 			data-testid="desktop-updates-empty"

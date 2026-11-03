@@ -7,7 +7,7 @@ import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { DmarcPolicy } from '~/utils/domainStatus';
-import { GlobeIcon, MailIcon, PlusIcon } from '@coolicons/vue';
+import { GlobeIcon, MailPlusIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -365,7 +365,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 				v-if="isEnabled('mail.external') && domainsData && !hasVerifiedDomain"
 				class="card p-6 bg-bg-surface flex items-start gap-4"
 			>
-				<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="MailPlusIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="flex-1">
 					<h3 class="font-medium text-text-primary mb-1">
 						{{ t('dashboard.admin.delivery.domains.noDomain.title') }}
@@ -374,7 +374,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 						{{ t('dashboard.admin.delivery.domains.noDomain.body') }}
 					</p>
 					<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate" class="gap-2">
-						<MailIcon class="w-4 h-4" />
+						<MailPlusIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.delivery.domains.noDomain.action') }}
 					</UiButton>
 				</div>

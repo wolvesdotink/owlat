@@ -14,7 +14,7 @@ import {
 	Building2Icon,
 	FileTextIcon,
 	LockIcon,
-	MonitorIcon,
+	MonitorDownloadIcon,
 	PaletteIcon,
 	PuzzleIcon,
 	RobotIcon,
@@ -120,7 +120,7 @@ const groups = computed(() => [
 		title: t('dashboard.admin.instance.index.groups.desktopUpdates.title'),
 		description: t('dashboard.admin.instance.index.groups.desktopUpdates.description'),
 		href: '/dashboard/admin/instance/desktop-updates',
-		icon: MonitorIcon,
+		icon: MonitorDownloadIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.aiProvider.title'),

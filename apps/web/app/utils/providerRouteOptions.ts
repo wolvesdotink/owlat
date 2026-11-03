@@ -1,4 +1,4 @@
-import { MailIcon, MegaphoneIcon, WorkflowIcon, type IconComponent } from '@coolicons/vue';
+import { MailCheckIcon, MegaphoneIcon, WorkflowIcon, type IconComponent } from '@coolicons/vue';
 
 export type ProviderRouteMessageType = 'campaign' | 'transactional' | 'automation';
 export type ProviderRouteStrategy =
@@ -61,7 +61,7 @@ export const PROVIDER_ROUTE_MESSAGE_TYPES: {
 		value: 'transactional',
 		label: 'shared.providerRouteOptions.messageTypes.transactional.label',
 		description: 'shared.providerRouteOptions.messageTypes.transactional.description',
-		icon: MailIcon,
+		icon: MailCheckIcon,
 	},
 	{
 		value: 'campaign',

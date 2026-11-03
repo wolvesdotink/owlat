@@ -10,8 +10,8 @@ import {
 	ArrowRightIcon,
 	CircleWarningIcon,
 	DownloadIcon,
+	FileSpreadsheetIcon,
 	RotateRightIcon,
-	TableIcon,
 	TagIcon,
 	TriangleWarningIcon,
 	UploadIcon,
@@ -173,7 +173,7 @@ watch(
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox :icon="TableIcon" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="FileSpreadsheetIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.csvImportModal.title') }}

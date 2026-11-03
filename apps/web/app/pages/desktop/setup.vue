@@ -14,10 +14,10 @@ import DesktopSetupConfigureForm from '~/components/desktop/setup/ConfigureForm.
 import {
 	ArrowLeftIcon,
 	CircleCheckIcon,
+	PartyPopperIcon,
 	ReloadIcon,
 	ShieldCheckIcon,
 	ShieldWarningIcon,
-	SparkleIcon,
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -173,7 +173,7 @@ watch(stage, (s) => {
 						class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-success">
-							<SparkleIcon class="size-4" />
+							<PartyPopperIcon class="size-4" />
 							{{ t('desktop.setup.done.readyTitle') }}
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>

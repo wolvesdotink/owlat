@@ -15,8 +15,8 @@ import {
 	type StoredMediaReference,
 } from '~/utils/mediaAssetReference';
 import {
-	ArchiveIcon,
 	CloseIcon,
+	FileArchiveIcon,
 	FileIcon,
 	FileTextIcon,
 	ImageIcon,
@@ -86,7 +86,7 @@ function getFileIcon(contentType: string) {
 		contentType.includes('excel')
 	)
 		return TableIcon;
-	if (contentType.includes('zip') || contentType.includes('compressed')) return ArchiveIcon;
+	if (contentType.includes('zip') || contentType.includes('compressed')) return FileArchiveIcon;
 	if (contentType.includes('word') || contentType.includes('document')) return FileTextIcon;
 	return FileIcon;
 }

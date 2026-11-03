@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { ArchiveIcon, HashIcon, LinkIcon, LockIcon, LogOutIcon, MoreHorizontalIcon, PencilIcon, RotateLeftIcon, UserIcon, UsersIcon } from '@coolicons/vue';
+import { ArchiveIcon, ArchiveRestoreIcon, HashIcon, LinkIcon, LockIcon, LogOutIcon, MoreHorizontalIcon, PencilIcon, UserIcon, UsersIcon } from '@coolicons/vue';
 
 interface Room {
 	_id: Id<'chatRooms'>;
@@ -137,7 +137,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('unarchive')"
 				>
-					<RotateLeftIcon class="w-3.5 h-3.5" />
+					<ArchiveRestoreIcon class="w-3.5 h-3.5" />
 					{{ t('components.chat.chatRoomHeader.unarchiveChannel') }}
 				</button>
 				<button

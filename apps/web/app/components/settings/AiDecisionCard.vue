@@ -51,7 +51,7 @@ import {
 	CircleCheckIcon,
 	CloseIcon,
 	OctagonWarningIcon,
-	PlugIcon,
+	PlugZapIcon,
 	TriangleWarningIcon,
 } from '@coolicons/vue';
 
@@ -441,7 +441,7 @@ watch(baseUrl, (value) => {
 							@click="emit('test')"
 						>
 							<template #iconLeft>
-								<PlugIcon v-if="!isTesting" class="w-4 h-4" />
+								<PlugZapIcon v-if="!isTesting" class="w-4 h-4" />
 							</template>
 							{{
 								t(

@@ -21,7 +21,7 @@
 /** Instance onboarding mode, derived from `instanceSettings.isMigrationMode`. */
 import {
 	BellIcon,
-	DownloadIcon,
+	ImportIcon,
 	MailboxIcon,
 	PaperPlaneIcon,
 	ReloadIcon,
@@ -153,7 +153,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.importDone.description',
 		href: '/dashboard/postbox/migrate',
 		cta: 'shared.welcomeFlow.steps.importDone.cta',
-		icon: DownloadIcon,
+		icon: ImportIcon,
 		migrationOnly: true,
 	},
 	{

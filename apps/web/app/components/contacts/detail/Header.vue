@@ -3,7 +3,7 @@
 // edit / resend / export / delete actions. The page owns every action.
 import {
 	DownloadIcon,
-	MailIcon,
+	MailCheckIcon,
 	PencilIcon,
 	SaveIcon,
 	TrashIcon,
@@ -73,7 +73,7 @@ const { t } = useI18n();
 							@click="emit('resend-doi')"
 						>
 							<SpinnerIcon v-if="isResendingDoi" class="w-4 h-4" />
-							<MailIcon v-else class="w-4 h-4" />
+							<MailCheckIcon v-else class="w-4 h-4" />
 							{{
 								isResendingDoi
 									? t('dashboard.audience.contacts.detail.sending')

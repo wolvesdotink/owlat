@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { useListPage, type ListSortOption } from '~/composables/useListPage';
-import { ComponentIcon, PlusIcon } from '@coolicons/vue';
+import { BlocksIcon, PlusIcon } from '@coolicons/vue';
 
 type BlockRow = FunctionReturnType<typeof api.emailBlocks.blocks.list>[number];
 
@@ -216,12 +216,12 @@ const navigateToEditPage = (block: BlockRow) => {
 		:sort-label="t('dashboard.send.blocks.index.sortLabel')"
 		sort-listbox-id="blocks-sort-listbox"
 		:empty-no-org="{
-			icon: ComponentIcon,
+			icon: BlocksIcon,
 			title: t('dashboard.send.blocks.index.noWorkspaceTitle'),
 			description: t('dashboard.send.blocks.index.noWorkspaceDescription'),
 		}"
 		:empty="{
-			icon: ComponentIcon,
+			icon: BlocksIcon,
 			title: t('dashboard.send.blocks.index.emptyTitle'),
 			description: t('dashboard.send.blocks.index.emptyDescription'),
 		}"

@@ -23,7 +23,7 @@
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
-import { LinkIcon, MailIcon, MailboxIcon } from '@coolicons/vue';
+import { LinkIcon, MailCheckIcon, MailboxIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
@@ -106,7 +106,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		data-testid="mailbox-guard-reserved"
 	>
 		<div class="w-full max-w-sm text-center">
-			<MailIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
+			<MailCheckIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 			<template v-if="reservationAwaitingDomain">
 				<h2 class="text-lg font-semibold text-text-primary mt-4">
 					{{ t('postbox.mailboxGuard.awaitingDomainHeading') }}

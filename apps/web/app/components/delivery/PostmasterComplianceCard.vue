@@ -22,7 +22,12 @@
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { formatDate } from '~/utils/formatters';
-import { CircleInfoIcon, CircleWarningIcon, MailIcon, TriangleWarningIcon } from '@coolicons/vue';
+import {
+	CircleInfoIcon,
+	CircleWarningIcon,
+	MailCheckIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 // Derived from the query's own return type so the server shape and the props
 // cannot drift — the same idiom as `DomainTable.vue`.
@@ -79,7 +84,7 @@ const failingDomains = computed(() =>
 	<UiCard>
 		<div class="space-y-5">
 			<div class="flex items-center gap-3">
-				<UiIconBox :icon="MailIcon" size="lg" variant="brand" rounded="xl" />
+				<UiIconBox :icon="MailCheckIcon" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.postmasterComplianceCard.title') }}

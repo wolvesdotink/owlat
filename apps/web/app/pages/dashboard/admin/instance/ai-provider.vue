@@ -4,8 +4,8 @@ import {
 	CheckIcon,
 	CircleCheckIcon,
 	CloseIcon,
-	PlugIcon,
-	ReloadIcon,
+	ListRestartIcon,
+	PlugZapIcon,
 	TriangleWarningIcon,
 } from '@coolicons/vue';
 
@@ -282,7 +282,7 @@ watch(
 								@click="handleLoadModels"
 							>
 								<template #iconLeft>
-									<ReloadIcon v-if="!isLoadingModels" class="w-4 h-4" />
+									<ListRestartIcon v-if="!isLoadingModels" class="w-4 h-4" />
 								</template>
 								{{ t('dashboard.admin.instance.aiProvider.language.loadModels') }}
 							</UiButton>
@@ -428,7 +428,7 @@ watch(
 							@click="handleTest"
 						>
 							<template #iconLeft>
-								<PlugIcon v-if="!isTesting" class="w-4 h-4" />
+								<PlugZapIcon v-if="!isTesting" class="w-4 h-4" />
 							</template>
 							{{ t('dashboard.admin.instance.aiProvider.testConnection') }}
 						</UiButton>

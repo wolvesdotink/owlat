@@ -6,7 +6,7 @@
  * only: the page owns the write.
  */
 import { formatRelativeTime } from '~/utils/formatters';
-import { AlarmOffIcon, RotateLeftIcon } from '@coolicons/vue';
+import { RotateLeftIcon, TimerOffIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	autoClosedAt: number;
@@ -46,7 +46,7 @@ const absolute = computed(() =>
 		data-testid="thread-auto-closed-notice"
 	>
 		<p class="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-			<AlarmOffIcon class="h-4 w-4 shrink-0 text-text-tertiary" aria-hidden="true" />
+			<TimerOffIcon class="h-4 w-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 			<span :title="absolute">{{ message }}</span>
 		</p>
 		<UiButton

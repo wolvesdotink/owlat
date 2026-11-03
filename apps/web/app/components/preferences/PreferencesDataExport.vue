@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AccountExportManifestRow } from '~/utils/accountExportProgress';
-import { DownloadIcon, FileCodeIcon, TableIcon } from '@coolicons/vue';
+import { DownloadIcon, FileCodeIcon, FileSpreadsheetIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
@@ -85,7 +85,7 @@ const { t } = useI18n();
 				<!-- CSV Export -->
 				<div class="card p-5 bg-bg-surface/50">
 					<div class="flex items-start gap-4">
-						<UiIconBox :icon="TableIcon" size="lg" variant="brand" rounded="lg" />
+						<UiIconBox :icon="FileSpreadsheetIcon" size="lg" variant="brand" rounded="lg" />
 						<div class="flex-1">
 							<h3 class="font-medium text-text-primary mb-1">
 								{{ t('dashboard.preferences.account.exportCsvTitle') }}

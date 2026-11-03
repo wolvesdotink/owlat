@@ -21,7 +21,7 @@ import {
 	CircleInfoIcon,
 	CircleWarningIcon,
 	PencilIcon,
-	PlugIcon,
+	PlugZapIcon,
 	ShieldIcon,
 	Slider1Icon,
 } from '@coolicons/vue';
@@ -417,7 +417,7 @@ function cancel() {
 					@click="handleTest"
 				>
 					<template v-if="!testing" #iconLeft>
-						<PlugIcon class="w-4 h-4" />
+						<PlugZapIcon class="w-4 h-4" />
 					</template>
 					{{
 						testing

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 // The contacts list header's Import dropdown: a CSV file or a connected
 // integration. The page opens the matching modal.
-import { ChevronDownIcon, LinkHorizontalIcon, TableIcon, UploadIcon } from '@coolicons/vue';
+import {
+	ChevronDownIcon,
+	FileSpreadsheetIcon,
+	LinkHorizontalIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const emit = defineEmits<{ csv: []; integrations: [] }>();
 
@@ -45,7 +50,7 @@ useClickOutside(importDropdownRef, () => {
 						isImportDropdownOpen = false;
 					"
 				>
-					<TableIcon class="w-4 h-4 text-brand" />
+					<FileSpreadsheetIcon class="w-4 h-4 text-brand" />
 					<div>
 						<p class="font-medium">
 							{{ t('dashboard.audience.contacts.index.importMenu.csvTitle') }}

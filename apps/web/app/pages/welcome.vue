@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { stampWelcomed } from '~/lib/welcomeStamp';
-import { ChevronRightIcon, DownloadIcon, SparkleIcon, SparklesIcon } from '@coolicons/vue';
+import { ChevronRightIcon, ImportIcon, PartyPopperIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * First-login welcome screen.
@@ -129,7 +129,7 @@ onBeforeUnmount(abortStamp);
 			<div v-else class="card">
 				<!-- Shared header -->
 				<div class="text-center">
-					<UiIconBox :icon="SparkleIcon" variant="brand" size="lg" class="mx-auto mb-6" />
+					<UiIconBox :icon="PartyPopperIcon" variant="brand" size="lg" class="mx-auto mb-6" />
 					<!-- The header sizes to its content, so centring the box centres the
 					     title and the capped lead together; text-center does the lines. -->
 					<div class="flex justify-center">
@@ -157,7 +157,7 @@ onBeforeUnmount(abortStamp);
 							to="/dashboard/postbox/migrate"
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-colors hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
-							<UiIconBox :icon="DownloadIcon" variant="surface" size="sm" />
+							<UiIconBox :icon="ImportIcon" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.migrate.title') }}</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.migrate.body') }}</p>
 							<span

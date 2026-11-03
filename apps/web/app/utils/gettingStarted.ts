@@ -35,7 +35,7 @@ import {
 import type { LocalizedText } from '~/utils/localizedText';
 import {
 	CompassIcon,
-	DatabaseIcon,
+	DatabaseBackupCornerIcon,
 	FileTextIcon,
 	KeyIcon,
 	MegaphoneIcon,
@@ -198,7 +198,7 @@ export const BACKUPS_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'backupsScheduled',
 	title: 'shared.gettingStarted.backups.title',
 	description: 'shared.gettingStarted.backups.description',
-	icon: DatabaseIcon,
+	icon: DatabaseBackupCornerIcon,
 	href: '/dashboard/admin/backups',
 	cta: 'shared.gettingStarted.backups.cta',
 };

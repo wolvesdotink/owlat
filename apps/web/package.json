@@ -30,7 +30,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
-		"@coolicons/vue": "^5.1.0",
+		"@coolicons/vue": "^5.2.0",
 		"@nuxtjs/color-mode": "catalog:vue",
 		"@nuxtjs/i18n": "^10.6.0",
 		"@owlat/api": "workspace:*",

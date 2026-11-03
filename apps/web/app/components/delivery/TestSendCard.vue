@@ -8,7 +8,7 @@ import {
 	CircleCloseIcon,
 	CircleDashedIcon,
 	CircleWarningIcon,
-	MailIcon,
+	MailCheckIcon,
 	PaperPlaneIcon,
 } from '@coolicons/vue';
 
@@ -115,7 +115,7 @@ async function handleSendTest() {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="MailCheckIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.testSendCard.title') }}

@@ -4,7 +4,6 @@ import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { stableRowKey } from '~/utils/stableRowKey';
 import {
-	BracesIcon,
 	CircleCheckIcon,
 	CircleWarningIcon,
 	MailIcon,
@@ -12,6 +11,7 @@ import {
 	PlusIcon,
 	TrashIcon,
 	UserIcon,
+	VariableIcon,
 } from '@coolicons/vue';
 
 interface Props {
@@ -344,7 +344,7 @@ watch(
 							:placeholder="variable.key"
 							class="input input-sm pl-10"
 						/>
-						<BracesIcon
+						<VariableIcon
 							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 						/>
 					</div>

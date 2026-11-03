@@ -8,6 +8,7 @@
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
 import {
+	ChatShareIcon,
 	CircleSlashIcon,
 	DownloadIcon,
 	FilterIcon,
@@ -16,7 +17,6 @@ import {
 	PrinterIcon,
 	ReplyAllIcon,
 	ReplyIcon,
-	ShareIcon,
 	ShieldWarningIcon,
 	StarIcon,
 } from '@coolicons/vue';
@@ -125,7 +125,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<ShareIcon class="w-4 h-4 text-text-tertiary" />
+					<ChatShareIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.shareInChat') }}
 				</button>
 				<button

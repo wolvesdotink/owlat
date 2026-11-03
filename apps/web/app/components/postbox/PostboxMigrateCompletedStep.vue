@@ -6,7 +6,7 @@ import {
 	BrainIcon,
 	CheckIcon,
 	PackageCheckCornerIcon,
-	SparkleIcon,
+	PartyPopperIcon,
 	TriangleWarningIcon,
 } from '@coolicons/vue';
 
@@ -99,7 +99,7 @@ async function saveDetectedSignature() {
 		<UiCard padding="lg">
 			<div class="text-center py-2">
 				<UiIconBox
-					:icon="skippedCount > 0 ? PackageCheckCornerIcon : SparkleIcon"
+					:icon="skippedCount > 0 ? PackageCheckCornerIcon : PartyPopperIcon"
 					size="xl"
 					:variant="skippedCount > 0 ? 'warning' : 'success'"
 					rounded="2xl"

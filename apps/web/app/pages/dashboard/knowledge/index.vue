@@ -7,6 +7,7 @@ import {
 	CloseIcon,
 	LayersIcon,
 	PlusIcon,
+	SearchCloseIcon,
 	SearchIcon,
 	WavyCheckIcon,
 } from '@coolicons/vue';
@@ -153,7 +154,7 @@ const handleCancelled = () => {
 						class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
 					>
 						<component
-							:is="searchQuery ? SearchIcon : BrainIcon"
+							:is="searchQuery ? SearchCloseIcon : BrainIcon"
 							class="w-7 h-7 text-text-tertiary"
 							:stroke-width="1.5"
 						/>

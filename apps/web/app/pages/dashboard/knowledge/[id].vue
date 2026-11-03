@@ -6,7 +6,7 @@ import {
 	ArrowLeftIcon,
 	ChatIcon,
 	CloseIcon,
-	FileSearchIcon,
+	FileHelpIcon,
 	PencilIcon,
 	TrashIcon,
 } from '@coolicons/vue';
@@ -162,7 +162,7 @@ const handleDelete = async () => {
 			<div
 				class="w-14 h-14 rounded-full bg-bg-surface shadow-surface-1 flex items-center justify-center mb-4"
 			>
-				<FileSearchIcon class="w-7 h-7 text-text-tertiary" :stroke-width="1.5" />
+				<FileHelpIcon class="w-7 h-7 text-text-tertiary" :stroke-width="1.5" />
 			</div>
 			<h3 class="text-base font-medium text-text-primary">
 				{{ t('dashboard.knowledge.detail.notFoundTitle') }}

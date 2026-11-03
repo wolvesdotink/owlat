@@ -11,6 +11,7 @@ import {
 	FileCloseIcon,
 	FileIcon,
 	FileTextIcon,
+	FileTypeIcon,
 	FilmIcon,
 	ImageIcon,
 	MusicNoteIcon,
@@ -129,7 +130,7 @@ const mimeIcon = computed(() => {
 	if (mime.startsWith('audio/')) return MusicNoteIcon;
 	if (mime.includes('spreadsheet') || mime.includes('csv')) return TableIcon;
 	if (mime.includes('word') || mime.includes('document')) return FileTextIcon;
-	if (mime.startsWith('text/')) return FileTextIcon;
+	if (mime.startsWith('text/')) return FileTypeIcon;
 	return FileIcon;
 });
 </script>

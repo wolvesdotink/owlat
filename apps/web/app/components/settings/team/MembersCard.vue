@@ -5,9 +5,10 @@ import { formatDate } from '~/utils/formatters';
 import { roleDefinition, type MailboxStatusMeta } from '~/utils/teamRoles';
 import {
 	CrownIcon,
-	MailIcon,
+	MailCheckIcon,
 	MoreHorizontalIcon,
 	PaperPlaneIcon,
+	SearchCloseIcon,
 	SearchIcon,
 	TrashIcon,
 	UsersIcon,
@@ -93,7 +94,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 		<!-- Empty: no members match the search -->
 		<UiEmptyState
 			v-if="filteredMembers.length === 0 && memberSearch.trim()"
-			:icon="SearchIcon"
+			:icon="SearchCloseIcon"
 			:title="t('dashboard.admin.team.members.noMatchesTitle')"
 			:description="
 				t('dashboard.admin.team.members.noMatchesDescription', {
@@ -245,7 +246,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 								<!-- Email-verification recovery (owner + admin): unblock a
 								     member the verification gate stranded. -->
 								<UiDropdownMenuItem
-									:icon="MailIcon"
+									:icon="MailCheckIcon"
 									:disabled="verifyingMemberId === member.id"
 									@click="emit('markVerified', member)"
 								>

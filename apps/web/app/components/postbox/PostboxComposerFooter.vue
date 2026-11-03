@@ -29,9 +29,10 @@ import PostboxComposerSendButton from './PostboxComposerSendButton.vue';
 import {
 	CalendarCheckIcon,
 	ClockIcon,
-	EyeIcon,
+	PaperPlaneIcon,
 	PaperclipIcon,
 	PencilIcon,
+	ScanEyeIcon,
 	SparklesIcon,
 	TrashIcon,
 	type IconComponent,
@@ -291,7 +292,7 @@ function onPickFiles(event: Event) {
 									close();
 								"
 							>
-								<EyeIcon class="w-4 h-4 text-text-tertiary" />
+								<ScanEyeIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('components.postbox.postboxComposerFooter.previewAsSent') }}
 							</button>
 							<!-- The booking page's next open times and link, into the body. -->

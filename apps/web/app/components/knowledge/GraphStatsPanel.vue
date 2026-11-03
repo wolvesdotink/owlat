@@ -14,7 +14,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { confidenceBucketBars } from '~/utils/knowledgeGraphLayout';
 import { entryTypeIcon, relationLabel } from '~/utils/knowledgeEntryTypes';
-import { ExternalLinkIcon, PackageIcon, ShieldIcon, SparklesIcon, ZapIcon } from '@coolicons/vue';
+import { ExternalLinkIcon, PackagesIcon, ShieldIcon, SparklesIcon, ZapIcon } from '@coolicons/vue';
 
 type Snapshot = NonNullable<FunctionReturnType<typeof api.knowledge.graphAnalytics.getGraphStats>>;
 
@@ -189,7 +189,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<!-- Communities -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2">
-				<PackageIcon class="w-4 h-4 text-text-tertiary" />
+				<PackagesIcon class="w-4 h-4 text-text-tertiary" />
 				{{ t('components.knowledge.graphStatsPanel.communities') }}
 				<span class="text-text-tertiary font-normal">
 					{{

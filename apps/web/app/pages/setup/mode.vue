@@ -17,8 +17,8 @@ import { setupChoiceClass } from '~/utils/setupChoiceCard';
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
-	DownloadIcon,
 	FeatherIcon,
+	ImportIcon,
 	SparklesIcon,
 } from '@coolicons/vue';
 
@@ -206,7 +206,7 @@ function pick(key: OperatingModeKey) {
 							/>
 							<span>
 								<span class="flex items-center gap-2 font-medium text-text-primary">
-									<DownloadIcon class="h-4 w-4" />
+									<ImportIcon class="h-4 w-4" />
 									{{ t('setup.mode.migratingTitle') }}
 								</span>
 								<span class="mt-1 block text-sm text-text-secondary">{{

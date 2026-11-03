@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { KeyIcon, LockIcon, MailboxIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
+import { KeyIcon, LockIcon, MailsIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -194,7 +194,7 @@ async function confirmPurge() {
 			v-else-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox :icon="MailboxIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="MailsIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}
 			</p>
@@ -214,7 +214,7 @@ async function confirmPurge() {
 		<!-- Empty state -->
 		<div v-else-if="(inboxes?.length ?? 0) === 0" class="card py-16 px-6 text-center">
 			<UiIconBox
-				:icon="MailboxIcon"
+				:icon="MailsIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"
