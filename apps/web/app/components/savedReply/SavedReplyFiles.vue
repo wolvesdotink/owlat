@@ -127,7 +127,7 @@ function remove(file: SavedReplyFile) {
 				<Icon
 					:name="uploading ? 'lucide:loader-2' : 'lucide:paperclip'"
 					class="mr-1.5 h-4 w-4"
-					:class="uploading ? 'animate-spin' : ''"
+					:class="uploading ? 'animate-spin motion-reduce:animate-none' : ''"
 				/>
 				{{ t('shared.savedReplies.fields.addFiles') }}
 			</UiButton>

@@ -471,7 +471,9 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				},
 			],
 		});
-		expect(res.personalData.savedReplies[0]!['attachments'][0]).not.toHaveProperty('storageId');
+		expect(res.personalData.savedReplies[0]?.['attachments']).toEqual([
+			expect.not.objectContaining({ storageId: expect.anything() }),
+		]);
 		const plan = await t.action(api.auth.accountExport.getExportPlan, { userId: 'auth-user-1' });
 		expect(plan.personal.find((entry) => entry.resource === 'savedReplies')?.count).toBe(1);
 	});
