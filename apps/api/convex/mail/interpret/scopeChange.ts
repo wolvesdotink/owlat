@@ -12,7 +12,7 @@
  *    replayed instead of re-run, so a brief-mode row would keep a later
  *    actions-mode run from ever happening (the reverse holds for actions →
  *    brief). A row a new-mode run already wrote stays;
- *  - every viewer's `viewOverride` (team surfaces have no Overview switch);
+ *  - every viewer's `viewOverride` (team surfaces have no view switch);
  *  - the thread's response plans (marked `stale`);
  *  - `mailThreads.briefTop`, recomputed in the new mode (no latest line);
  *  - going shared, read on arrival's state: `threadBriefs.gist` and the

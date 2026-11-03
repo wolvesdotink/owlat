@@ -5697,6 +5697,17 @@
 				"loadingEarlier": "Ältere Nachrichten werden geladen…",
 				"rowCount": "{count} Treffer | {count} Treffer"
 			},
+			"threadChat": {
+				"toggle": "Chat-Ansicht",
+				"showChat": "Als Chat anzeigen",
+				"showConversation": "Als Unterhaltung anzeigen",
+				"operation": "Ansicht der Unterhaltung wechseln",
+				"you": "Du",
+				"noNewText": "Kein neuer Text in dieser Nachricht.",
+				"attachments": "Anhänge",
+				"showFull": "Ganze Nachricht anzeigen",
+				"backToChat": "Zurück zum Chat"
+			},
 			"postboxThreadEarlier": {
 				"load": "Ältere Nachrichten laden",
 				"loadCount": "{count} ältere Nachricht laden | {count} ältere Nachrichten laden",
@@ -17286,7 +17297,8 @@
 				"skipCard": "Vorerst überspringen",
 				"clearSelection": "Auswahl aufheben",
 				"resolveThread": "Thread erledigen",
-				"assignThread": "Thread zuweisen an …"
+				"assignThread": "Thread zuweisen an …",
+				"chatView": "Chat-Ansicht"
 			}
 		},
 		"signatureBadge": {
@@ -18625,6 +18637,8 @@
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
 				"translate": "Übersetzen",
 				"find": "In dieser Unterhaltung suchen",
+				"showChat": "Als Chat anzeigen",
+				"showConversation": "Als Unterhaltung anzeigen",
 				"showOriginal": "Original herunterladen (.eml)",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen",

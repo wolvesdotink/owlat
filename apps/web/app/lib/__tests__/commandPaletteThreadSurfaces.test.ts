@@ -242,6 +242,22 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		).toBeDefined();
 	});
 
+	it('offers the chat layout where the thread has one, named by the layout it leads to', () => {
+		expect(byId(postboxItems(), 'postbox:thread-chat-view')).toBeUndefined();
+		const toggle = vi.fn();
+		const off = byId(
+			postboxItems('', { chatView: { isOn: () => false, toggle } }),
+			'postbox:thread-chat-view'
+		);
+		expect(off).toMatchObject({ label: 'Show as chat', shortcutId: 'postbox.chatView' });
+		off?.run();
+		expect(toggle).toHaveBeenCalledOnce();
+		expect(
+			byId(postboxItems('', { chatView: { isOn: () => true, toggle } }), 'postbox:thread-chat-view')
+				?.label
+		).toBe('Show as conversation');
+	});
+
 	it('drops the subject line when the message has no subject', () => {
 		expect(
 			postboxItems('', { subject: () => '   ' }).every((item) => item.subtitle === undefined)

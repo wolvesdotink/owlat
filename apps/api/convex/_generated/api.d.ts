@@ -1568,6 +1568,7 @@ import type * as mail_subscriptions from '../mail/subscriptions.js';
 import type * as mail_teamInboxConversion from '../mail/teamInboxConversion.js';
 import type * as mail_threadAggregates from '../mail/threadAggregates.js';
 import type * as mail_threadLatestSnooze from '../mail/threadLatestSnooze.js';
+import type * as mail_threadView from '../mail/threadView.js';
 import type * as mail_threadVisits from '../mail/threadVisits.js';
 import type * as mail_threadAlerts from '../mail/threadAlerts.js';
 import type * as mail_threadArchive from '../mail/threadArchive.js';
@@ -3572,6 +3573,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/teamInboxConversion': typeof mail_teamInboxConversion;
 	'mail/threadAggregates': typeof mail_threadAggregates;
 	'mail/threadLatestSnooze': typeof mail_threadLatestSnooze;
+	'mail/threadView': typeof mail_threadView;
 	'mail/threadVisits': typeof mail_threadVisits;
 	'mail/threadAlerts': typeof mail_threadAlerts;
 	'mail/threadArchive': typeof mail_threadArchive;

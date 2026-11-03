@@ -31,8 +31,12 @@ export type ThreadRefKind = (typeof THREAD_REF_KINDS)[number];
 export const INTERPRET_MODES = ['brief', 'actions'] as const;
 export type InterpretMode = (typeof INTERPRET_MODES)[number];
 
-/** The two reader views of a personal thread. */
-export const THREAD_VIEWS = ['overview', 'conversation'] as const;
+/**
+ * The reader views of a personal thread: the brief, the stacked messages, and
+ * the chat layout (one bubble per message, quoted history and signature
+ * stripped).
+ */
+export const THREAD_VIEWS = ['overview', 'conversation', 'chat'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type ThreadView = (typeof THREAD_VIEWS)[number];
 
