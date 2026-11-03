@@ -46,7 +46,7 @@ const OPERATOR_GUIDE = [
 	'- after:YYYY-MM-DD and before:YYYY-MM-DD received after / before that day',
 	'- newer_than:<n>d and older_than:<n>d relative age in days (also h, m)',
 	'- larger:<size> and smaller:<size> message size (larger:5M, smaller:200K)',
-	'- a leading minus excludes (-from:newsletter); an uppercase OR separates alternatives',
+	'- a leading minus excludes (-from:newsletter), but never on after:, before:, newer_than:, older_than:, larger: or smaller:, which ignore it; an uppercase OR separates alternatives',
 	'- any other word is searched in the message text',
 ].join('\n');
 
