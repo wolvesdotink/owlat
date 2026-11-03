@@ -7,15 +7,18 @@
  * A plain field edit (subject/preview/supported-languages/overlay text) goes
  * through `api.emailTemplates.emails.update`, which just patches the row.
  *
- * Changing the default language is NOT a field patch: the body, subject, and
- * preview must be re-keyed so the newly-chosen language becomes the main
- * content and the outgoing default is demoted to a translation overlay. That is
- * exactly what `api.emailTemplates.i18n.setDefaultLanguage` does. Patching
- * `defaultLanguage` directly (the previous behaviour) relabelled the row's
- * language while leaving the old-language body in place — the content and its
- * declared language silently diverged. `setDefaultLanguage` only accepts a
- * target language that already has a translation overlay, so this helper refuses
- * the swap (rather than corrupt state) when the chosen default has none.
+ * On an email with translations, changing the default language is NOT a field
+ * patch: the body, subject, and preview must be re-keyed so the newly-chosen
+ * language becomes the main content and the outgoing default is demoted to a
+ * translation overlay. That is what `api.emailTemplates.i18n.setDefaultLanguage`
+ * does; relabelling such a row would leave the old-language body under the new
+ * language. `setDefaultLanguage` only accepts a target language that already
+ * has a translation overlay, so this helper refuses the swap (rather than
+ * corrupt state) when the chosen default has none.
+ *
+ * An email the save leaves without translations has no overlay to swap in, so
+ * its default language is a plain `update`: the author is naming the language
+ * the body is written in.
  *
  * Both writes also carry the delivery HTML rendered from the state they leave
  * (`emailSettingsRender.ts`) and the revision they were built on, so a send
@@ -186,7 +189,13 @@ export async function emailSettingsSave(
 			expectedContentRevision: args.base.revision,
 		}));
 
-	if (!languageChanged) {
+	// An email without translations has nothing to swap: picking another
+	// default language says which language the body is written in. `update`
+	// accepts that relabel as long as the row it leaves has no overlays.
+	const savedOverlays = readTranslationOverlays(args.updatePayload.translations);
+	const relabels = savedOverlays !== null && Object.keys(savedOverlays).length === 0;
+
+	if (!languageChanged || relabels) {
 		const write = updateWrite(args.updatePayload);
 		if (!write.ok) return { status: 'render-failed', error: write.error };
 		const result = await args.update(write.write);
