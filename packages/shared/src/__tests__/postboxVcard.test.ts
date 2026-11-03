@@ -172,6 +172,19 @@ describe('parseVcards', () => {
 		expect(exact.isTruncated).toBe(false);
 	});
 
+	it('keeps a few values per parameter, so a repeated one adds no work', () => {
+		const result = parseVcards(
+			crlf(
+				'BEGIN:VCARD',
+				`TEL${';PREF'.repeat(100_000)};CELL:+1 555 0100`,
+				'EMAIL:many@example.com',
+				'END:VCARD'
+			)
+		);
+		// CELL comes after the kept values, so it is not read.
+		expect(result.entries[0]!.phones).toEqual([{ value: '+1 555 0100' }]);
+	});
+
 	it('bounds addresses, phones and field lengths on one card', () => {
 		const emails = Array.from(
 			{ length: VCARD_MAX_EMAILS_PER_CARD + 3 },

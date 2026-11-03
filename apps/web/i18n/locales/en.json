@@ -12190,7 +12190,8 @@
 					"truncated": "Only the first {max} contacts in the file were read.",
 					"tooLarge": "That file is over {size} MB.",
 					"wrongType": "Pick a .vcf file.",
-					"empty": "That file has no contacts with an email address."
+					"empty": "That file has no contacts with an email address.",
+					"exportFailed": "The address book could not be exported. Try again."
 				}
 			},
 			"detail": {

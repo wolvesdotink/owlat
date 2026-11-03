@@ -30,6 +30,13 @@ export interface VcardParseResult {
 	isTruncated: boolean;
 }
 
+/**
+ * Values kept per parameter name. A line may repeat a parameter without limit
+ * (`TEL;HOME;HOME;…`); keeping a few makes each line's cost linear in its
+ * length, and no real type list is longer.
+ */
+const MAX_PARAM_VALUES = 8;
+
 /** The properties the parser assembles; every other line is skipped. */
 const READ_PROPERTIES = new Set(['BEGIN', 'END', 'FN', 'N', 'ORG', 'EMAIL', 'TEL', 'ADR']);
 
@@ -100,7 +107,12 @@ function parseContentLine(line: string): ContentLine | null {
 		const values = (eq >= 0 ? raw.slice(eq + 1) : raw)
 			.split(',')
 			.map((value) => value.replace(/"/g, '').trim().toLowerCase());
-		params.set(key, [...(params.get(key) ?? []), ...values]);
+		const kept = params.get(key) ?? [];
+		for (const value of values) {
+			if (kept.length >= MAX_PARAM_VALUES) break;
+			kept.push(value);
+		}
+		params.set(key, kept);
 	}
 	return { name, params, value: line.slice(colon + 1) };
 }

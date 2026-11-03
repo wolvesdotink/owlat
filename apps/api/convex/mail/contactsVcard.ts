@@ -1,5 +1,6 @@
 /**
- * vCard import into the Postbox address book (`mailContacts`).
+ * vCard import into and export out of the Postbox address book
+ * (`mailContacts`).
  *
  * The browser parses the .vcf file (`@owlat/shared/postboxVcard`) and sends
  * its entries here in batches. Every entry is normalized again with the
@@ -11,8 +12,12 @@
  * phone numbers and postal addresses. A new row counts as an address-book
  * entry everywhere else (screener, cold-pitch verdicts) with `useCount` 0,
  * because nobody has been written to yet.
+ *
+ * Export pages through the whole book, so it can hand back more rows than the
+ * contacts page loads.
  */
 
+import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	VCARD_IMPORT_BATCH_SIZE,
@@ -20,12 +25,15 @@ import {
 	mergeVcardPhones,
 	normalizeVcardImportEntry,
 } from '@owlat/shared/postboxVcard';
-import { postboxMutation } from './_helpers';
+import { postboxMutation, postboxQuery } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { loadSenderContact } from './senderEvidence';
 import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { mailContactImportEntryValidator } from '../lib/validators/mailContacts';
+
+/** Rows one export page holds at most. */
+const EXPORT_PAGE_LIMIT = 500;
 
 /** Write one batch of parsed vCard entries into a mailbox's address book. */
 // authz: mailbox access via requireMailboxAccess; org membership via the postbox builder.
@@ -84,5 +92,32 @@ export const importBatch = postboxMutation({
 			created++;
 		}
 		return { created, merged, skipped };
+	},
+});
+
+/** One page of a mailbox's address book, in the shape the .vcf export writes. */
+// authz: mailbox access via requireMailboxAccess; org membership via the postbox builder.
+export const exportPage = postboxQuery({
+	args: { mailboxId: v.id('mailboxes'), paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const owned = await requireMailboxAccess(ctx, args.mailboxId);
+		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		const result = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) => q.eq('mailboxId', args.mailboxId))
+			.paginate({
+				...args.paginationOpts,
+				numItems: Math.min(args.paginationOpts.numItems, EXPORT_PAGE_LIMIT),
+			});
+		return {
+			...result,
+			page: result.page.map((contact) => ({
+				email: contact.email,
+				displayName: contact.displayName,
+				organization: contact.organization,
+				phones: contact.phones,
+				postalAddresses: contact.postalAddresses,
+			})),
+		};
 	},
 });

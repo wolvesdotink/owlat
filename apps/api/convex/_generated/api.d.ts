@@ -1364,7 +1364,7 @@ import type * as mail_category from '../mail/category.js';
 import type * as mail_categoryArrival from '../mail/categoryArrival.js';
 import type * as mail_commitments from '../mail/commitments.js';
 import type * as mail_contacts from '../mail/contacts.js';
-import type * as mail_contactsImport from '../mail/contactsImport.js';
+import type * as mail_contactsVcard from '../mail/contactsVcard.js';
 import type * as mail_counterpartName from '../mail/counterpartName.js';
 import type * as mail_crossSurface from '../mail/crossSurface.js';
 import type * as mail_dailyBrief from '../mail/dailyBrief.js';
@@ -3368,7 +3368,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/categoryArrival': typeof mail_categoryArrival;
 	'mail/commitments': typeof mail_commitments;
 	'mail/contacts': typeof mail_contacts;
-	'mail/contactsImport': typeof mail_contactsImport;
+	'mail/contactsVcard': typeof mail_contactsVcard;
 	'mail/counterpartName': typeof mail_counterpartName;
 	'mail/crossSurface': typeof mail_crossSurface;
 	'mail/dailyBrief': typeof mail_dailyBrief;

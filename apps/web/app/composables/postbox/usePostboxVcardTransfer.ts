@@ -5,8 +5,11 @@
  * The file is parsed here and written in batches of
  * `VCARD_IMPORT_BATCH_SIZE`; the server bounds every entry again. Batches run
  * one after another, so a failure stops the import with what was already
- * written kept, and the summary says how far it got.
+ * written kept, and the summary says how far it got. Export reads the whole
+ * book page by page rather than the rows the contacts page has loaded, which
+ * stop at its list cap.
  */
+import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import {
@@ -32,12 +35,16 @@ export type VcardImportOutcome =
 			isTruncated: boolean;
 	  };
 
+const EXPORT_PAGE_SIZE = 500;
+
 export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
-	const importOp = useBackendOperation(api.mail.contactsImport.importBatch, {
+	const client = useConvex();
+	const importOp = useBackendOperation(api.mail.contactsVcard.importBatch, {
 		label: () => t('shared.postbox.usePostboxContacts.importContacts'),
 	});
 	const isImporting = ref(false);
+	const isExporting = ref(false);
 
 	async function importFile(file: File): Promise<VcardImportOutcome | null> {
 		const target = mailboxId.value;
@@ -79,8 +86,34 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		return importOp.run({ mailboxId: mailboxId.value, entries: [vcardEntryOfContact(entry)] });
 	}
 
-	function exportContacts(contacts: readonly VcardContactEntry[]): void {
-		const contents = serializeVcards(contacts.map(vcardEntryOfContact));
+	/** Download the whole address book as a .vcf file; false when a page failed to load. */
+	async function exportBook(): Promise<boolean> {
+		const target = mailboxId.value;
+		if (!target || !client || isExporting.value) return false;
+		isExporting.value = true;
+		try {
+			const entries: VcardContactEntry[] = [];
+			let cursor: string | null = null;
+			for (;;) {
+				const result: FunctionReturnType<typeof api.mail.contactsVcard.exportPage> =
+					await client.query(api.mail.contactsVcard.exportPage, {
+						mailboxId: target,
+						paginationOpts: { cursor, numItems: EXPORT_PAGE_SIZE },
+					});
+				entries.push(...result.page);
+				if (result.isDone) break;
+				cursor = result.continueCursor;
+			}
+			download(serializeVcards(entries));
+			return true;
+		} catch {
+			return false;
+		} finally {
+			isExporting.value = false;
+		}
+	}
+
+	function download(contents: string): void {
 		const url = URL.createObjectURL(new Blob([contents], { type: 'text/vcard;charset=utf-8' }));
 		const link = document.createElement('a');
 		link.href = url;
@@ -91,5 +124,5 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		URL.revokeObjectURL(url);
 	}
 
-	return { isImporting, importFile, restoreEntry, exportContacts };
+	return { isImporting, isExporting, importFile, restoreEntry, exportBook };
 }

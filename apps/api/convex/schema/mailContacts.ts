@@ -33,7 +33,7 @@ export const mailContactsTables = {
 		// existing rows read as undefined (unscreened, i.e. treated as accepted for
 		// pre-existing correspondents that already have a row).
 		isScreenerAccepted: v.optional(v.boolean()),
-		// Details only a vCard import brings (mail/contactsImport.ts), bounded by
+		// Details only a vCard import brings (mail/contactsVcard.ts), bounded by
 		// @owlat/shared/postboxVcard.
 		phones: v.optional(v.array(mailContactPhoneValidator)),
 		postalAddresses: v.optional(v.array(mailContactPostalAddressValidator)),

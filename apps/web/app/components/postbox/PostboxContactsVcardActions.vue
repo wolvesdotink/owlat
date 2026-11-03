@@ -2,7 +2,8 @@
 /**
  * Import and export of the Postbox address book as .vcf files, in the header
  * of /dashboard/postbox/contacts. Export is the way back out of an import, and
- * it writes every row, whatever built it.
+ * it writes every row, whatever built it. `contacts` (the rows the page has
+ * loaded) only decides whether there is anything to export.
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
@@ -17,7 +18,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 const { isDesktop, pickNativeFiles } = useNativeFilePicker();
-const { isImporting, importFile, exportContacts } = usePostboxVcardTransfer(
+const { isImporting, isExporting, importFile, exportBook } = usePostboxVcardTransfer(
 	toRef(props, 'mailboxId')
 );
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -39,6 +40,10 @@ async function onFileChosen(event: Event) {
 	const file = input.files?.[0];
 	input.value = '';
 	if (file) await run(file);
+}
+
+async function runExport() {
+	if (!(await exportBook())) showToast(t('dashboard.postbox.contacts.vcard.exportFailed'), 'error');
 }
 
 async function run(file: File) {
@@ -108,8 +113,9 @@ function report(outcome: VcardImportOutcome | null) {
 		<UiButton
 			variant="secondary"
 			type="button"
-			:disabled="contacts.length === 0"
-			@click="exportContacts(contacts)"
+			:loading="isExporting"
+			:disabled="contacts.length === 0 || isExporting"
+			@click="runExport"
 		>
 			<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
 			{{ t('dashboard.postbox.contacts.vcard.export') }}

@@ -1,7 +1,7 @@
 /**
  * The address book's vCard buttons: a picked file goes to the import and its
  * outcome comes back as one toast (written, skipped, cut off, or refused), and
- * export hands over every row on the page.
+ * export downloads the whole book, saying so when it could not.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { defineComponent, h, ref } from 'vue';
@@ -11,7 +11,7 @@ import UiButton from '@owlat/ui/components/ui/Button.vue';
 import PostboxContactsVcardActions from '../PostboxContactsVcardActions.vue';
 
 const importFile = vi.fn();
-const exportContacts = vi.fn();
+const exportBook = vi.fn();
 const showToast = vi.fn();
 
 beforeEach(() => {
@@ -24,8 +24,9 @@ beforeEach(() => {
 	}));
 	vi.stubGlobal('usePostboxVcardTransfer', () => ({
 		isImporting: ref(false),
+		isExporting: ref(false),
 		importFile,
-		exportContacts,
+		exportBook,
 	}));
 });
 
@@ -109,11 +110,23 @@ describe('PostboxContactsVcardActions', () => {
 		expect(showToast).toHaveBeenCalledWith('That file is over 10 MB.', 'error');
 	});
 
-	it('exports every row, and offers no export for an empty book', async () => {
+	it('exports the book, says when it could not, and offers no export for an empty book', async () => {
 		const wrapper = mountActions();
-		const exportButton = wrapper.findAll('button').find((b) => b.text().includes('Export .vcf'))!;
-		await exportButton.trigger('click');
-		expect(exportContacts).toHaveBeenCalledWith(contacts);
+		const exportButton = () =>
+			wrapper.findAll('button').find((b) => b.text().includes('Export .vcf'))!;
+		exportBook.mockResolvedValue(true);
+		await exportButton().trigger('click');
+		expect(exportBook).toHaveBeenCalledTimes(1);
+		expect(showToast).not.toHaveBeenCalled();
+
+		exportBook.mockResolvedValue(false);
+		await exportButton().trigger('click');
+		await vi.waitFor(() =>
+			expect(showToast).toHaveBeenCalledWith(
+				'The address book could not be exported. Try again.',
+				'error'
+			)
+		);
 
 		const empty = mountActions([]);
 		const disabled = empty.findAll('button').find((b) => b.text().includes('Export .vcf'))!;
