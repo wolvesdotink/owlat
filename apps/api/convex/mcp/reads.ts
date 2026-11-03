@@ -19,7 +19,7 @@ import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import { scrubForInjection } from '../assistant/prompt';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { normalizeClause } from '../mail/mailbox/searchClause';
-import { searchMailboxes } from '../mail/mailbox/search';
+import { searchMailbox, searchMailboxes } from '../mail/mailbox/search';
 import { resolveMcpAccess } from './access';
 
 /** Longest body one message returns; the rest is cut and flagged. */
@@ -160,7 +160,12 @@ export const searchMail = internalQuery({
 		}
 		const { or, ...primary } = parseSearchQuery(args.query);
 		const clauses = [primary, ...(or ?? [])].map(normalizeClause);
-		const page = await searchMailboxes(ctx, targets, clauses, args.limit, args.cursor);
+		// One mailbox pages natively, so free text reaches every match. Across
+		// several, free text gives one page per mailbox, as in the web app.
+		const page =
+			targets.length === 1
+				? await searchMailbox(ctx, targets[0]!, clauses, args.limit, args.cursor)
+				: await searchMailboxes(ctx, targets, clauses, args.limit, args.cursor);
 		const results = page.messages.map(searchHit);
 		return {
 			status: 'ok',

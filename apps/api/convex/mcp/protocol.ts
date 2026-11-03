@@ -86,7 +86,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
 	{
 		name: 'search_mail',
 		title: 'Search mail',
-		description: `Search mail with the same syntax as the Owlat search box: free text plus operators such as from:, to:, subject:, label:, in:inbox, is:unread, has:attachment, filename:, after:YYYY-MM-DD, before:YYYY-MM-DD and OR. Returns messages newest first with sender, subject and a short snippet; pass a message_id to read_thread for the whole conversation. Without mailbox_id it searches every mailbox this connection may read. ${UNTRUSTED_DESCRIPTION}`,
+		description: `Search mail with the same syntax as the Owlat search box: free text plus operators such as from:, to:, subject:, label:, in:inbox, is:unread, has:attachment, filename:, after:YYYY-MM-DD, before:YYYY-MM-DD and OR. Returns messages newest first with sender, subject and a short snippet; pass a message_id to read_thread for the whole conversation. Without mailbox_id it searches every mailbox this connection may read, and free text then returns one page per mailbox; pass mailbox_id to page through all matches with next_cursor. ${UNTRUSTED_DESCRIPTION}`,
 		inputSchema: {
 			type: 'object',
 			properties: {

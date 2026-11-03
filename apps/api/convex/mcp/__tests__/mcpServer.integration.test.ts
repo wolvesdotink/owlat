@@ -222,6 +222,33 @@ describe('POST /mcp/postbox', () => {
 		expect(log[1]).toMatchObject({ query: 'subject:contract', resultCount: 1 });
 	});
 
+	it('pages through free-text matches in one mailbox', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		for (let i = 0; i < 5; i++) {
+			await seedMessage(t, own, { subject: `Quarterly contract ${i}`, receivedAt: 1_000 + i });
+		}
+		const { token } = await t.mutation(api.mcp.clients.create, {
+			label: 'Claude',
+			mailboxIds: [own],
+		});
+		const seen = new Set<string>();
+		let cursor: string | undefined;
+		for (let page = 0; page < 5; page++) {
+			const found = await callTool(t, token, 'search_mail', {
+				query: 'contract',
+				mailbox_id: own,
+				limit: 2,
+				...(cursor ? { cursor } : {}),
+			});
+			const content = found.body.result.structuredContent;
+			for (const hit of content.results) seen.add(hit.message_id);
+			cursor = content.next_cursor ?? undefined;
+			if (!cursor) break;
+		}
+		expect(seen.size).toBe(5);
+	});
+
 	it('reads a thread, never one from another mailbox, and withholds injected text', async () => {
 		const { t, orgId } = await harness();
 		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
