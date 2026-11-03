@@ -13,7 +13,8 @@ import { isAppLocale, type AppLocale } from '@owlat/shared/appLocales';
 import { openMessageBody } from '../../lib/messageBody';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import type { TeamStreamEntry } from './briefShape';
-import { isGateRefusalActivity, readViewerState, toActivityView } from './briefRead';
+import { readViewerState } from './briefRead';
+import { isGateRefusalActivity, toActivityView } from './briefReadActivity';
 import {
 	isStreamActivity,
 	rangesBefore,

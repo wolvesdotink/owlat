@@ -39,7 +39,6 @@ import { countThreadOpen } from '../senders/opens';
 import { readResult } from './load';
 import {
 	gapOf,
-	readActivityTail,
 	readFacts,
 	readInterpretations,
 	readItemsPage,
@@ -48,10 +47,13 @@ import {
 	readExactWording,
 	readMessageLatest,
 	readViewerState,
+} from './briefRead';
+import {
+	readActivityTail,
 	sinceLastSeenOf,
 	toActivityViews,
 	withoutGateRefusals,
-} from './briefRead';
+} from './briefReadActivity';
 import { isReplyExpectingIntent, type ReplyIntent } from '../ai/replyIntent';
 import { openMessageBody } from '../../lib/messageBody';
 import type { MutationCtx } from '../../_generated/server';

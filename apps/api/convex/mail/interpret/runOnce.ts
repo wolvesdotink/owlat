@@ -19,7 +19,6 @@ import { renderSegments } from './prompt';
 import { extractOutput, prepareExtraction } from './extractOutput';
 import { admitInterpretRun, type InterpretRunHold } from './runHold';
 import { resolveLanguageModel } from '../../lib/llmProvider';
-import { AiNotConfiguredError } from '../../lib/aiNotConfigured';
 import {
 	finish,
 	RESTART_ERROR_CODE,
@@ -37,6 +36,7 @@ import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot } from './verify';
 import { planVerification, verifyHoldPlanOf, verifyRouted } from './verifyRoute';
 import { apply as applyRecord } from './runApply';
+import { runFailureOf } from './runFailure';
 import type { ReserveRunAllocations } from '../../aiRouting/admission';
 import {
 	arrivalAnswer,
@@ -439,46 +439,27 @@ export async function runOnce(
 			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
 		});
 	} catch (error) {
-		// Spend admission refused the model call after the gate passed (the
-		// request did not fit, or another call took the headroom): a budget
-		// deferral like the gate's, not a model error, and no retry is spent.
-		const refusal = admissionRefusalOf(error);
-		if (refusal && countOnRefusal)
+		// A display-only arrival read that spend admission refused is counted, not retried.
+		if (admissionRefusalOf(error) && countOnRefusal)
 			return await countOnRefusal().catch(() => ({ status: 'gone' as const }));
-		const isBudget = refusal !== null;
-		// No provider is set up: the instance cannot run AI at all, the same
-		// state as the `ai` flag being off. Recorded as that gate refusal, it is
-		// re-checked on every call instead of spending this thread's retries,
-		// and the reader names the instance, not the thread, as the cause.
-		const isAiUnavailable = error instanceof AiNotConfiguredError;
-		const errorCode = isBudget ? 'budget' : isAiUnavailable ? 'ai_off' : 'model_error';
-		const budgetRefusal = refusal ? { reason: refusal.reason, limit: refusal.limit } : undefined;
+		const { retryCount: attempts, ...failure } = runFailureOf(error, retryCount);
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
 			'[interpret] run failed:',
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
-			const isRefusal = isBudget || isAiUnavailable;
-			const attempts = isRefusal && retryCount !== undefined ? retryCount - 1 : retryCount;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,
 					status: 'failed',
-					errorCode,
+					...failure,
 					...(attempts !== undefined ? { retryCount: attempts } : {}),
-					...(budgetRefusal ? { budgetRefusal } : {}),
 				}),
-				{ errorCode, ...(budgetRefusal ? { budgetRefusal } : {}) }
+				failure
 			);
 		} catch {
-			return {
-				status: 'failed',
-				isReplayed: false,
-				createdItemIds: [],
-				errorCode,
-				...(budgetRefusal ? { budgetRefusal } : {}),
-			};
+			return { status: 'failed', isReplayed: false, createdItemIds: [], ...failure };
 		}
 	} finally {
 		await hold?.settle();
