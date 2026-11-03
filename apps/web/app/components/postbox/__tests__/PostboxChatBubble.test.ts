@@ -1,8 +1,8 @@
 /**
  * A chat bubble shows what its sender wrote this time: the quoted history and
  * the signature are left out, attachments are chips that open the file, and
- * the full message is one click away. Signed or encrypted mail never shows
- * its content in a bubble.
+ * the full message is one click away. A clearsigned body is handed back to
+ * the card without showing its content.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -44,9 +44,9 @@ function message(overrides: Partial<PostboxReaderMessage> = {}): PostboxReaderMe
 	};
 }
 
-function mountBubble(props: { message?: PostboxReaderMessage; own?: boolean; plain?: boolean }) {
+function mountBubble(props: { message?: PostboxReaderMessage; own?: boolean }) {
 	return mount(PostboxChatBubble, {
-		props: { message: message(), own: false, plain: true, ...props },
+		props: { message: message(), own: false, ...props },
 		global: { plugins: [createTestI18n()], stubs: { Icon: true, UiAvatar: true } },
 	});
 }
@@ -79,19 +79,16 @@ describe('PostboxChatBubble', () => {
 		expect(bubble.text()).not.toContain('Sam Lee');
 	});
 
-	it('withholds the content of signed or encrypted mail', () => {
-		const flagged = mountBubble({ plain: false });
-		expect(flagged.find('[data-testid="chat-bubble-text"]').exists()).toBe(false);
-		expect(flagged.text()).toContain('Signed or encrypted');
-
+	it('hands a body that turns out to be clearsigned back to the card, unread', () => {
 		const clearsigned = mountBubble({
 			message: message({
 				textBodyInline:
 					'-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nPay to IBAN X\n-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----',
 			}),
 		});
+		expect(clearsigned.emitted('secure')).toHaveLength(1);
 		expect(clearsigned.text()).not.toContain('IBAN');
-		expect(clearsigned.text()).toContain('Signed or encrypted');
+		expect(mountBubble({}).emitted('secure')).toBeUndefined();
 	});
 
 	it('says so when a message holds no new text', () => {

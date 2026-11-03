@@ -5703,7 +5703,6 @@
 				"showConversation": "Show as conversation",
 				"operation": "Switch the conversation layout",
 				"you": "You",
-				"withheld": "Signed or encrypted. Open the full message to read it.",
 				"noNewText": "No new text in this message.",
 				"attachments": "Attachments",
 				"showFull": "Show full message",

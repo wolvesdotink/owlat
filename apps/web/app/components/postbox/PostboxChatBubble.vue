@@ -8,7 +8,9 @@
  * The bubble shows plain text: no HTML, remote images or tracking pixels from
  * the sender reach the page, so it needs none of the card's sanitising and
  * image-privacy machinery. Signed or encrypted mail never shows as a bubble,
- * because only the card's security badge says what the signature covers.
+ * because only the card's security badge says what the signature covers: the
+ * host routes it to the card, and a clearsigned body, recognised only once its
+ * text has arrived, is handed back with `secure`.
  */
 import { segmentMessage } from '@owlat/shared/mailSegments';
 import { classifySecureMessage } from '@owlat/shared/secureMessage';
@@ -26,31 +28,29 @@ const props = defineProps<{
 	message: PostboxReaderMessage;
 	/** The viewer wrote it: the bubble sits on the right. */
 	own: boolean;
-	/** Ordinary mail (not signed or encrypted). */
-	plain: boolean;
 }>();
 
 const emit = defineEmits<{
 	'show-full': [];
+	/** The body turned out to be signed or encrypted: show the card instead. */
+	secure: [];
 	preview: [att: AttachmentMeta, all: AttachmentMeta[]];
 	download: [att: AttachmentMeta];
 }>();
 
 const { t } = useI18n();
 
-// Only ordinary mail is read; the rest never needs its body here.
-const body = usePostboxBodySource(() => (props.plain ? props.message : {}));
+const body = usePostboxBodySource(() => props.message);
 
-// A clearsigned body is only known as one once its text has arrived.
 const withheld = computed(
 	() =>
-		!props.plain ||
-		(!body.waiting.value &&
-			classifySecureMessage({
-				attachments: [...props.message.attachments],
-				textBody: body.effectiveText.value,
-			}) !== 'none')
+		!body.waiting.value &&
+		classifySecureMessage({
+			attachments: [...props.message.attachments],
+			textBody: body.effectiveText.value,
+		}) !== 'none'
 );
+watch(withheld, (isSecure) => isSecure && emit('secure'), { immediate: true });
 
 /** The sender's own words this time; null while loading, '' when there are none. */
 const fresh = computed<string | null>(() => {
@@ -113,10 +113,10 @@ function openAttachment(att: AttachmentMeta) {
 						: 'rounded-bl-md border border-border-subtle bg-bg-elevated'
 				"
 			>
-				<p v-if="withheld" class="italic text-text-secondary">
-					{{ t('components.postbox.threadChat.withheld') }}
-				</p>
-				<div v-else-if="fresh === null" class="h-4 w-40 animate-pulse rounded bg-bg-surface" />
+				<div
+					v-if="withheld || fresh === null"
+					class="h-4 w-40 animate-pulse rounded bg-bg-surface"
+				/>
 				<p v-else-if="fresh" class="whitespace-pre-wrap break-words" data-testid="chat-bubble-text">
 					{{ fresh }}
 				</p>

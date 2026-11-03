@@ -41,8 +41,8 @@ export function usePostboxReaderCommands(source: {
 	attachments: ReturnType<typeof usePostboxReaderAttachments>;
 	/** The mailbox is a team inbox (no chat layout). */
 	isShared: () => boolean;
-	/** A cited quote is marked in this message, so its card must show. */
-	isCited: (messageId: string) => boolean;
+	/** The brief marks a quote in this message or keeps its exact wording: its card must show. */
+	mustShowCard: (messageId: string) => boolean;
 }) {
 	const { actions } = source;
 
@@ -106,8 +106,9 @@ export function usePostboxReaderCommands(source: {
 		pick: (targetId: Id<'mailboxes'>, mode: PostboxTransferMode) =>
 			void transferOpenMessage(targetId, mode),
 	};
-	// The chat layout. A find match or a cited quote is marked in the card, so
-	// a message holding one shows as its card.
+
+	// The chat layout. A find match or a cited quote is marked in the card, and
+	// exact wording must not lose its quote or footer, so those show as cards.
 	const chat = usePostboxThreadChat({
 		threadId: () => source.readerThread.value?._id ?? source.message().threadId,
 		isShared: source.isShared,
@@ -117,7 +118,7 @@ export function usePostboxReaderCommands(source: {
 		isPlain: (msg) =>
 			source.secureClass(msg) === 'none' && !msg.inboundSignatureInfo && !source.hideRawBody(msg),
 		needsCard: (messageId) =>
-			source.isCited(messageId) || (find.hasQuery.value && find.matchCountOf(messageId) > 0),
+			source.mustShowCard(messageId) || (find.hasQuery.value && find.matchCountOf(messageId) > 0),
 		previewAttachment: source.attachments.openAttachmentPreview,
 		downloadAttachment: (messageId, att) =>
 			void source.attachments.handleAttachmentDownload(messageId, att),

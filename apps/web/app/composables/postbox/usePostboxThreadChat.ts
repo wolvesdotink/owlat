@@ -34,8 +34,8 @@ export interface PostboxThreadChatSource {
 	 */
 	isPlain: (msg: PostboxReaderMessage) => boolean;
 	/**
-	 * The card must show (a find match or a cited quote is marked in it), so
-	 * the bubble stands aside.
+	 * The card must show (a find match or a cited quote is marked in it, or
+	 * the brief keeps its exact wording), so the bubble stands aside.
 	 */
 	needsCard: (messageId: string) => boolean;
 	previewAttachment: (messageId: string, att: AttachmentMeta, all: AttachmentMeta[]) => void;
@@ -65,8 +65,10 @@ export function usePostboxThreadChat(source: PostboxThreadChatSource) {
 	const isAvailable = computed(() => !!threadId.value);
 	const isOn = computed(() => view.value === 'chat');
 
-	// Messages shown as their full card while the chat layout is on.
+	// Messages shown as their full card while the chat layout is on, by
+	// request ("Show full message") or because they turned out to be secure.
 	const full = shallowReactive(new Set<string>());
+	const secure = shallowReactive(new Set<string>());
 
 	async function toggle() {
 		const id = threadId.value;
@@ -81,8 +83,14 @@ export function usePostboxThreadChat(source: PostboxThreadChatSource) {
 		}
 	}
 
-	function isBubble(messageId: string): boolean {
-		return isOn.value && !full.has(messageId) && !source.needsCard(messageId);
+	function isBubble(msg: PostboxReaderMessage): boolean {
+		if (!isOn.value || full.has(msg._id) || secure.has(msg._id)) return false;
+		return source.isPlain(msg) && !source.needsCard(msg._id);
+	}
+
+	/** The card stands in with a way back to the bubble. */
+	function isShownFull(messageId: string): boolean {
+		return isOn.value && full.has(messageId) && !secure.has(messageId);
 	}
 
 	function showFull(messageId: string) {
@@ -92,6 +100,10 @@ export function usePostboxThreadChat(source: PostboxThreadChatSource) {
 
 	function showBubble(messageId: string) {
 		full.delete(messageId);
+	}
+
+	function keepCard(messageId: string) {
+		secure.add(messageId);
 	}
 
 	function isOwn(msg: { fromAddress: string }): boolean {
@@ -104,10 +116,11 @@ export function usePostboxThreadChat(source: PostboxThreadChatSource) {
 		isSaving: setOp.isLoading,
 		toggle,
 		isBubble,
+		isShownFull,
 		showFull,
 		showBubble,
+		keepCard,
 		isOwn,
-		isPlain: source.isPlain,
 		previewAttachment: source.previewAttachment,
 		downloadAttachment: source.downloadAttachment,
 	};

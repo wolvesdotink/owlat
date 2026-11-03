@@ -254,7 +254,7 @@ const { translation, find, chat, shareTarget, copyConversationLink, conversation
 		actions: readerActions,
 		attachments,
 		isShared: () => rb.isShared.value,
-		isCited: (id) => rb.citeQuoteFor(id) != null,
+		mustShowCard: (id) => rb.citeQuoteFor(id) != null || rb.exactWording.value.has(id),
 	});
 
 // What every card shares; the props carry only what differs per message.

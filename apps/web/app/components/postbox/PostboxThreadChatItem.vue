@@ -15,15 +15,15 @@ const own = computed(() => props.chat.isOwn(props.message));
 
 <template>
 	<PostboxChatBubble
-		v-if="chat.isBubble(message._id)"
+		v-if="chat.isBubble(message)"
 		:message="message"
 		:own="own"
-		:plain="chat.isPlain(message)"
 		@show-full="chat.showFull(message._id)"
+		@secure="chat.keepCard(message._id)"
 		@preview="(att, all) => chat.previewAttachment(message._id, att, all)"
 		@download="(att) => chat.downloadAttachment(message._id, att)"
 	/>
-	<div v-else-if="chat.isOn.value" class="space-y-1">
+	<div v-else-if="chat.isShownFull(message._id)" class="space-y-1">
 		<button
 			type="button"
 			class="flex items-center gap-1 rounded px-1 text-xs text-text-tertiary outline-none hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40"
