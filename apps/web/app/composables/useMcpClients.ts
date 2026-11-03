@@ -5,6 +5,7 @@
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { getActiveWorkspace, isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 
 /** Shown instead of a host when the instance has no public site URL configured. */
 const SITE_URL_PLACEHOLDER = 'https://<your-convex-site-url>';
@@ -15,9 +16,13 @@ export function useMcpClients() {
 	const { data, isLoading, error, refetch } = useConvexQuery(api.mcp.clients.list, () => ({}));
 	const clients = computed(() => data.value ?? []);
 
-	// The MCP route is an HTTP action, served on the Convex SITE origin.
+	// The MCP route is an HTTP action, served on the Convex SITE origin. The
+	// desktop app talks to whichever workspace is active, so it asks that one.
 	const serverUrl = computed(() => {
-		const base = (runtimeConfig.public.convexSiteUrl || '').replace(/\/+$/, '');
+		const siteUrl = isDesktopRuntime()
+			? getActiveWorkspace()?.convexSiteUrl
+			: runtimeConfig.public.convexSiteUrl;
+		const base = (siteUrl || '').replace(/\/+$/, '');
 		return `${base || SITE_URL_PLACEHOLDER}/mcp/postbox`;
 	});
 
