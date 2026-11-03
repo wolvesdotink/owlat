@@ -17,6 +17,7 @@
 import { VCARD_ADDRESS_PARTS, type VcardContactEntry } from './postboxVcardEntry';
 
 export * from './postboxVcardEntry';
+export * from './postboxVcardLimits';
 export { parseVcards, type VcardParseResult } from './postboxVcardParse';
 
 function escapeText(value: string): string {

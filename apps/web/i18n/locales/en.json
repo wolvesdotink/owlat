@@ -12191,7 +12191,8 @@
 					"tooLarge": "That file is over {size} MB.",
 					"wrongType": "Pick a .vcf file.",
 					"empty": "That file has no contacts with an email address.",
-					"exportFailed": "The address book could not be exported. Try again."
+					"exportFailed": "The address book could not be exported. Try again.",
+					"unreadable": "That file could not be read. Try again."
 				}
 			},
 			"detail": {

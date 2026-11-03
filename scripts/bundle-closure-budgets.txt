@@ -309,6 +309,7 @@ deferred 7 lib/desktop/deepLink.client.ts
 deferred 5 lib/desktop/desktopAuthClient.ts
 deferred 15 lib/desktop/desktopBoot.client.ts
 deferred 4 lib/localPerfTraceInstall.client.ts
+deferred 9 lib/postboxVcardTransfer.ts
 deferred 3 middleware/admin.ts
 deferred 8 middleware/auth.ts
 deferred 3 middleware/guest.ts

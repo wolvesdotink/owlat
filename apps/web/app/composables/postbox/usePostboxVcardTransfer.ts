@@ -2,40 +2,22 @@
  * vCard import into and export out of the Postbox address book (the personal
  * `mailContacts`, not the audience contacts and their CSV import).
  *
- * The file is parsed here and written in batches of
- * `VCARD_IMPORT_BATCH_SIZE`; the server bounds every entry again. Batches run
- * one after another, so a failure stops the import with what was already
- * written kept, and the summary says how far it got. Export reads the whole
- * book page by page rather than the rows the contacts page has loaded, which
- * stop at its list cap.
+ * The runs themselves (`~/lib/postboxVcardTransfer`) load when one starts, so
+ * the parser and serializer stay out of the contacts page's own bundle. The
+ * server bounds every imported entry again. Export reads the whole book page
+ * by page rather than the rows the contacts page has loaded, which stop at its
+ * list cap.
  */
-import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import {
-	VCARD_IMPORT_BATCH_SIZE,
-	parseVcards,
-	serializeVcards,
-	type VcardContactEntry,
-} from '@owlat/shared/postboxVcard';
-import {
-	vcardEntryOfContact,
-	vcardExportFilename,
-	vcardFileRejection,
-	type VcardFileRejection,
-} from '~/utils/postboxVcardFile';
+import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
+import type { VcardImportOutcome } from '~/lib/postboxVcardTransfer';
 
-export type VcardImportOutcome =
-	| { kind: 'rejected'; reason: VcardFileRejection | 'empty' }
-	| {
-			kind: 'done' | 'stopped';
-			created: number;
-			merged: number;
-			skippedWithoutEmail: number;
-			isTruncated: boolean;
-	  };
+export type { VcardImportOutcome };
 
 const EXPORT_PAGE_SIZE = 500;
+
+const loadTransfer = () => import('~/lib/postboxVcardTransfer');
 
 export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();
@@ -49,32 +31,14 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 	async function importFile(file: File): Promise<VcardImportOutcome | null> {
 		const target = mailboxId.value;
 		if (!target || isImporting.value) return null;
-		const rejection = vcardFileRejection(file);
-		if (rejection) return { kind: 'rejected', reason: rejection };
 		isImporting.value = true;
 		try {
-			const parsed = parseVcards(await file.text());
-			if (parsed.entries.length === 0) return { kind: 'rejected', reason: 'empty' };
-			let created = 0;
-			let merged = 0;
-			let kind: 'done' | 'stopped' = 'done';
-			for (let start = 0; start < parsed.entries.length; start += VCARD_IMPORT_BATCH_SIZE) {
-				const entries = parsed.entries.slice(start, start + VCARD_IMPORT_BATCH_SIZE);
-				const result = await importOp.run({ mailboxId: target, entries });
-				if (!result.ok) {
-					kind = 'stopped';
-					break;
-				}
-				created += result.result.created;
-				merged += result.result.merged;
-			}
-			return {
-				kind,
-				created,
-				merged,
-				skippedWithoutEmail: parsed.skippedWithoutEmail,
-				isTruncated: parsed.isTruncated,
-			};
+			const { importVcardFile } = await loadTransfer();
+			return await importVcardFile(file, (entries) => importOp.run({ mailboxId: target, entries }));
+		} catch {
+			// The file could not be read, or the import could not be loaded (offline).
+			// A failed batch is not this: `importOp.run` reports and resolves.
+			return { kind: 'rejected', reason: 'unreadable' };
 		} finally {
 			isImporting.value = false;
 		}
@@ -83,45 +47,32 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 	/** Write one entry back, as the import would: the Undo of removing an imported row. */
 	async function restoreEntry(entry: VcardContactEntry) {
 		if (!mailboxId.value) return { ok: false } as const;
-		return importOp.run({ mailboxId: mailboxId.value, entries: [vcardEntryOfContact(entry)] });
+		const { email, displayName, organization, phones, postalAddresses } = entry;
+		return importOp.run({
+			mailboxId: mailboxId.value,
+			entries: [{ email, displayName, organization, phones, postalAddresses }],
+		});
 	}
 
-	/** Download the whole address book as a .vcf file; false when a page failed to load. */
+	/** Download the whole address book as a .vcf file; false when it could not. */
 	async function exportBook(): Promise<boolean> {
 		const target = mailboxId.value;
 		if (!target || !client || isExporting.value) return false;
 		isExporting.value = true;
 		try {
-			const entries: VcardContactEntry[] = [];
-			let cursor: string | null = null;
-			for (;;) {
-				const result: FunctionReturnType<typeof api.mail.contactsVcard.exportPage> =
-					await client.query(api.mail.contactsVcard.exportPage, {
-						mailboxId: target,
-						paginationOpts: { cursor, numItems: EXPORT_PAGE_SIZE },
-					});
-				entries.push(...result.page);
-				if (result.isDone) break;
-				cursor = result.continueCursor;
-			}
-			download(serializeVcards(entries));
+			const { exportVcardBook } = await loadTransfer();
+			await exportVcardBook((cursor) =>
+				client.query(api.mail.contactsVcard.exportPage, {
+					mailboxId: target,
+					paginationOpts: { cursor, numItems: EXPORT_PAGE_SIZE },
+				})
+			);
 			return true;
 		} catch {
 			return false;
 		} finally {
 			isExporting.value = false;
 		}
-	}
-
-	function download(contents: string): void {
-		const url = URL.createObjectURL(new Blob([contents], { type: 'text/vcard;charset=utf-8' }));
-		const link = document.createElement('a');
-		link.href = url;
-		link.setAttribute('download', vcardExportFilename(new Date()));
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
 	}
 
 	return { isImporting, isExporting, importFile, restoreEntry, exportBook };

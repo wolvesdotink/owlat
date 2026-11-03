@@ -8,17 +8,19 @@
 import {
 	VCARD_ADDRESS_PARTS,
 	VCARD_ADDRESS_TYPES,
-	VCARD_MAX_ADDRESSES,
-	VCARD_MAX_CARDS,
-	VCARD_MAX_EMAILS_PER_CARD,
-	VCARD_MAX_ENTRIES,
-	VCARD_MAX_PHONES,
 	normalizeVcardImportEntry,
 	type VcardContactEntry,
 	type VcardPhone,
 	type VcardPhoneType,
 	type VcardPostalAddress,
 } from './postboxVcardEntry';
+import {
+	VCARD_MAX_ADDRESSES,
+	VCARD_MAX_CARDS,
+	VCARD_MAX_EMAILS_PER_CARD,
+	VCARD_MAX_ENTRIES,
+	VCARD_MAX_PHONES,
+} from './postboxVcardLimits';
 
 export interface VcardParseResult {
 	entries: VcardContactEntry[];

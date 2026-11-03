@@ -252,6 +252,7 @@
 				"src/listUnsubscribe.ts",
 				"src/ical.ts",
 				"src/postboxVcard.ts",
+				"src/postboxVcardLimits.ts",
 				"src/html.ts",
 				"src/appLocales.ts",
 				"src/emailDefaults.ts",

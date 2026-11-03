@@ -1,10 +1,10 @@
 /**
  * The file decisions of the Postbox address book's vCard import and export.
- * Pure, so they are testable without a DOM; the picking, reading and writing
- * is `usePostboxVcardTransfer`.
+ * Pure, so they are testable without a DOM; the reading and writing is
+ * `~/lib/postboxVcardTransfer`.
  */
 
-import { VCARD_MAX_FILE_BYTES, type VcardContactEntry } from '@owlat/shared/postboxVcard';
+import { VCARD_MAX_FILE_BYTES } from '@owlat/shared/postboxVcardLimits';
 
 export type VcardFileRejection = 'too_large' | 'wrong_type';
 
@@ -29,15 +29,4 @@ export function vcardFileRejection(file: {
 /** The export's file name, dated so a second export does not overwrite the first. */
 export function vcardExportFilename(now: Date): string {
 	return `owlat-contacts-${now.toISOString().slice(0, 10)}.vcf`;
-}
-
-/** The entry an address-book row exports as. */
-export function vcardEntryOfContact(contact: VcardContactEntry): VcardContactEntry {
-	return {
-		email: contact.email,
-		displayName: contact.displayName,
-		organization: contact.organization,
-		phones: contact.phones,
-		postalAddresses: contact.postalAddresses,
-	};
 }

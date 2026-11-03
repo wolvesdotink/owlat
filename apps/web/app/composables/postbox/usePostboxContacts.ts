@@ -5,7 +5,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { VCARD_MAX_ENTRIES } from '@owlat/shared/postboxVcard';
+import { VCARD_MAX_ENTRIES } from '@owlat/shared/postboxVcardLimits';
 
 export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	const { t } = useI18n();

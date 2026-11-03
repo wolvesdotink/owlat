@@ -7,7 +7,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
-import { VCARD_MAX_ENTRIES, VCARD_MAX_FILE_BYTES } from '@owlat/shared/postboxVcard';
+import { VCARD_MAX_ENTRIES, VCARD_MAX_FILE_BYTES } from '@owlat/shared/postboxVcardLimits';
 import type { VcardImportOutcome } from '~/composables/postbox/usePostboxVcardTransfer';
 
 const props = defineProps<{
@@ -59,6 +59,7 @@ function report(outcome: VcardImportOutcome | null) {
 			}),
 			wrong_type: t('dashboard.postbox.contacts.vcard.wrongType'),
 			empty: t('dashboard.postbox.contacts.vcard.empty'),
+			unreadable: t('dashboard.postbox.contacts.vcard.unreadable'),
 		}[outcome.reason];
 		showToast(copy, 'error');
 		return;
