@@ -71,16 +71,20 @@ export function mediaTypeOf(contentType: string | null): string {
 /**
  * An SVG that points outside itself would make whoever opens its storage URL
  * fetch from the sender's servers. Only references to a local `#fragment` are
- * allowed: an `href`/`src` or `url(…)` that starts with anything else is
- * refused, which also catches a CSS escape (`url(\68 ttps:…)`). `<style>`
- * and `@import` are refused outright, because CSS escapes can spell any
- * reference there. `xmlns` values are names, not fetches, so they pass.
- * Tried on every form `svgTextForms` gives, so XML character references
+ * allowed: an `href`/`src` or `url(…)` whose value starts with anything else
+ * is refused. The fragment test is a lookahead right after `=` or `(`, so an
+ * optional quote or space cannot be skipped to make `url("#g")` look external.
+ *
+ * CSS escapes can spell any name or scheme (`u\72l(`, `\68 ttps:`), so a
+ * backslash anywhere refuses the file, as do `<style>` and `@import`; logo
+ * markup needs none of them. `xmlns` values are names, not fetches, so they
+ * pass. Tried on every form `svgTextForms` gives, so XML character references
  * (`&#104;ttps:`) are read the way the parser will.
  */
 const EXTERNAL_SVG_REFERENCE: readonly RegExp[] = [
-	/(?:href|src)\s*=\s*["']?\s*(?!#)[^\s"'>]/i,
-	/url\(\s*["']?\s*(?!#)/i,
+	/(?:href|src)\s*=(?!\s*["']?\s*#)/i,
+	/url\((?!\s*["']?\s*#)/i,
+	/\\/,
 	/<(?:[\w.-]+:)?style[\s>/]/i,
 	/@import/i,
 ];

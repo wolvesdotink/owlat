@@ -148,11 +148,26 @@ describe('acceptedLogoType', () => {
 			'<rect fill="url(\\68 ttps://tracker.example/p)"/><rect'
 		);
 		const styleImport = SVG.replace('<rect', '<style>@\\69mport "x.css";</style><rect');
-		for (const svg of [encodedHref, cssEscape, styleImport]) {
+		const escapedFunction = SVG.replace(
+			'<rect',
+			'<rect style="fill:u\\72l(https://tracker.example/p.svg#g)"/><rect'
+		);
+		for (const svg of [encodedHref, cssEscape, styleImport, escapedFunction]) {
 			expect(acceptedLogoType('image/svg+xml', bytes(svg))).toBeNull();
 		}
-		const gradient = SVG.replace('<rect', '<rect fill="url(#g)"/><rect');
-		expect(acceptedLogoType('image/svg+xml', bytes(gradient))).toBe('image/svg+xml');
+	});
+
+	it('keeps local fragment references however they are quoted or spaced', () => {
+		for (const reference of [
+			'fill="url(#g)"',
+			'fill="url(\'#g\')"',
+			'fill=\'url("#g")\'',
+			'fill="url( #g )"',
+			'href= "#g"',
+		]) {
+			const svg = SVG.replace('<rect', `<rect ${reference}/><rect`);
+			expect(acceptedLogoType('image/svg+xml', bytes(svg))).toBe('image/svg+xml');
+		}
 	});
 
 	it('takes only SVG for a BIMI logo', () => {
