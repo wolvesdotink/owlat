@@ -312,6 +312,8 @@ async function confirmRemoveWorkspace() {
 				</div>
 			</section>
 
+			<DesktopTraySettings />
+
 			<section id="updates" class="card mb-6 scroll-mt-6">
 				<DesktopUpdateCard />
 			</section>

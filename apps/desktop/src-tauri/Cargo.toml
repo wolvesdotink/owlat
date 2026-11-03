@@ -9,7 +9,8 @@ repository = "https://github.com/wolvesdotink/owlat"
 [dependencies]
 # `macos-private-api` is required for transparent windows on macOS (used for the
 # sidebar vibrancy material); it pairs with `macOSPrivateApi: true` in tauri.conf.json.
-tauri = { version = "2", features = ["macos-private-api"] }
+# `tray-icon` for the tray / menu bar icon (src/tray.rs).
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
@@ -79,7 +80,7 @@ tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 # `tauri::test`'s mock runtime, for the IPC ACL tests (ipc_commands.rs).
-tauri = { version = "2", features = ["macos-private-api", "test"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "test"] }
 
 [features]
 default = ["custom-protocol"]

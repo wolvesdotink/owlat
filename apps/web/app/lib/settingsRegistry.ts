@@ -299,6 +299,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('autostart', 'startup', desktopOnly),
 			control('startupWorkspace', 'startup', desktopOnly),
 			control('unreadBadge', 'notifications', desktopOnly),
+			control('trayIcon', 'tray', desktopOnly),
 			control('updates', 'updates', desktopOnly),
 			control('defaultApp', 'default-app', desktopOnly),
 			control('workspaces', 'workspaces', desktopOnly),
