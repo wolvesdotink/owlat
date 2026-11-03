@@ -36,6 +36,8 @@ export interface ComposerAttachment {
 	filename: string;
 	contentType: string;
 	size: number;
+	/** A saved reply's file the draft only references: it cannot become a share link. */
+	savedReplyId?: string;
 }
 
 export function usePostboxComposeAttachments(opts: {

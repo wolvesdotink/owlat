@@ -331,6 +331,7 @@ import type * as auth_erasure_phaseCatalog from '../auth/erasure/phaseCatalog.js
 import type * as auth_erasure_phaseKit from '../auth/erasure/phaseKit.js';
 import type * as auth_erasure_phases from '../auth/erasure/phases.js';
 import type * as auth_erasure_relations from '../auth/erasure/relations.js';
+import type * as auth_erasure_savedReplyPhases from '../auth/erasure/savedReplyPhases.js';
 import type * as auth_erasure_schedule from '../auth/erasure/schedule.js';
 import type * as auth_erasure_threadBriefPhases from '../auth/erasure/threadBriefPhases.js';
 import type * as auth_erasure_threadBriefRelations from '../auth/erasure/threadBriefRelations.js';
@@ -1534,6 +1535,7 @@ import type * as mail_replyDone from '../mail/replyDone.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
 import type * as mail_savedReplies from '../mail/savedReplies.js';
+import type * as mail_savedReplyAttachments from '../mail/savedReplyAttachments.js';
 import type * as mail_savedReplyRules from '../mail/savedReplyRules.js';
 import type * as mail_savedSearches from '../mail/savedSearches.js';
 import type * as mail_scheduledSends from '../mail/scheduledSends.js';
@@ -1892,6 +1894,7 @@ import type * as workspaces_deletion_steps_mailAttachmentShares from '../workspa
 import type * as workspaces_deletion_steps_mailDrafts from '../workspaces/deletion/steps/mailDrafts.js';
 import type * as workspaces_deletion_steps_mailMessageParts from '../workspaces/deletion/steps/mailMessageParts.js';
 import type * as workspaces_deletion_steps_mailMessages from '../workspaces/deletion/steps/mailMessages.js';
+import type * as workspaces_deletion_steps_mailSnippets from '../workspaces/deletion/steps/mailSnippets.js';
 import type * as workspaces_deletion_steps_mediaAssets from '../workspaces/deletion/steps/mediaAssets.js';
 import type * as workspaces_deletion_steps_registry from '../workspaces/deletion/steps/registry.js';
 import type * as workspaces_deletion_steps_semanticFiles from '../workspaces/deletion/steps/semanticFiles.js';
@@ -2161,6 +2164,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/erasure/phaseKit': typeof auth_erasure_phaseKit;
 	'auth/erasure/phases': typeof auth_erasure_phases;
 	'auth/erasure/relations': typeof auth_erasure_relations;
+	'auth/erasure/savedReplyPhases': typeof auth_erasure_savedReplyPhases;
 	'auth/erasure/schedule': typeof auth_erasure_schedule;
 	'auth/erasure/threadBriefPhases': typeof auth_erasure_threadBriefPhases;
 	'auth/erasure/threadBriefRelations': typeof auth_erasure_threadBriefRelations;
@@ -3520,6 +3524,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;
 	'mail/savedReplies': typeof mail_savedReplies;
+	'mail/savedReplyAttachments': typeof mail_savedReplyAttachments;
 	'mail/savedReplyRules': typeof mail_savedReplyRules;
 	'mail/savedSearches': typeof mail_savedSearches;
 	'mail/scheduledSends': typeof mail_scheduledSends;
@@ -3995,6 +4000,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/mailDrafts': typeof workspaces_deletion_steps_mailDrafts;
 	'workspaces/deletion/steps/mailMessageParts': typeof workspaces_deletion_steps_mailMessageParts;
 	'workspaces/deletion/steps/mailMessages': typeof workspaces_deletion_steps_mailMessages;
+	'workspaces/deletion/steps/mailSnippets': typeof workspaces_deletion_steps_mailSnippets;
 	'workspaces/deletion/steps/mediaAssets': typeof workspaces_deletion_steps_mediaAssets;
 	'workspaces/deletion/steps/registry': typeof workspaces_deletion_steps_registry;
 	'workspaces/deletion/steps/semanticFiles': typeof workspaces_deletion_steps_semanticFiles;

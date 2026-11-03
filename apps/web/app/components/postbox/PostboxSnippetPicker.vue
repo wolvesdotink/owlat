@@ -56,6 +56,12 @@ defineExpose({
 			<span class="truncate">{{ option.name }}</span>
 			<span class="flex shrink-0 items-center gap-1.5">
 				<Icon
+					v-if="option.attachmentCount"
+					name="lucide:paperclip"
+					class="size-3 text-text-tertiary"
+					:aria-label="t('shared.savedReplies.files', option.attachmentCount)"
+				/>
+				<Icon
 					v-if="option.isShared"
 					name="lucide:users"
 					class="size-3 text-text-tertiary"

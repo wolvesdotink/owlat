@@ -16618,7 +16618,11 @@
 				"shortcut": "Kürzel",
 				"shortcutPlaceholder": "erstattung",
 				"text": "Antworttext",
-				"textPlaceholder": "Schreib die Antwort…"
+				"textPlaceholder": "Schreib die Antwort…",
+				"files": "Dateien",
+				"filesHint": "Werden bei jedem Einsetzen dieser Antwort an den Entwurf angehängt.",
+				"addFiles": "Dateien hinzufügen",
+				"removeFile": "{filename} entfernen"
 			},
 			"help": {
 				"gaps": "Schreib {example} für alles, was du jedes Mal von Hand einträgst. Senden wartet, bis jede Lücke gefüllt ist.",
@@ -16645,7 +16649,8 @@
 				"create": "Antwort speichern",
 				"recordUse": "Verwendung zählen",
 				"remove": "Antwort löschen",
-				"save": "Antwort ändern"
+				"save": "Antwort ändern",
+				"attachFiles": "Dateien der Antwort anhängen"
 			},
 			"paletteHeading": "Gespeicherte Antworten",
 			"picker": {
@@ -16662,14 +16667,18 @@
 				"emptyText": "Schreib zuerst etwas.",
 				"imagesLeftOut": "Gespeicherte Antworten können keine eingefügten Bilder enthalten, deshalb fehlt dieses Bild. Füg es nach dem Einsetzen der Antwort neu ein. | Gespeicherte Antworten können keine eingefügten Bilder enthalten, deshalb fehlen diese {count} Bilder. Füg sie nach dem Einsetzen der Antwort neu ein.",
 				"save": "Antwort speichern",
-				"title": "Als Antwort speichern"
+				"title": "Als Antwort speichern",
+				"selectionTitle": "Auswahl als Antwort speichern"
 			},
 			"scopes": {
 				"personal": "Nur ich",
 				"shared": "Das ganze Team"
 			},
 			"sharedBadge": "Team",
-			"insertSubmenu": "Gespeicherte Antwort einfügen…"
+			"insertSubmenu": "Gespeicherte Antwort einfügen…",
+			"files": "Eine Datei | {count} Dateien",
+			"saveSelection": "Auswahl als Antwort speichern",
+			"teamFilesNotAttached": "„{name}“ hat Dateien. Eine Antwort im Team-Postfach kann sie nicht aus einer gespeicherten Antwort übernehmen, häng sie also von Hand an."
 		},
 		"sendReadiness": {
 			"audienceFits": "Deine Zielgruppe von {audience} passt in die heutige Kapazität.",

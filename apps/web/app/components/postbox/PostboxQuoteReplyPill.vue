@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * "Quote in reply": the one action over a passage selected in a message body,
- * placed by its host under the selection's last line and kept inside the
- * body's width.
+ * "Quote in reply" over a passage selected in a message body, and beside it
+ * "Save as reply" when the host offers it, placed by the host under the
+ * selection's last line and kept inside the body's width.
  *
  * A press keeps the selection where it is (no focus moves on pointer-down),
  * so the passage it quotes is the one still highlighted. Enter and Space
@@ -18,10 +18,13 @@ const props = defineProps<{
 	anchor: FrameSelectionAnchor;
 	/** The width the pill must stay inside (the body's). */
 	boundsWidth: number;
+	/** Offer "Save as reply" for the passage too. */
+	canSave?: boolean;
 }>();
 
 const emit = defineEmits<{
 	quote: [];
+	save: [];
 	dismiss: [];
 }>();
 
@@ -29,7 +32,9 @@ const { t } = useI18n();
 const { labelFor, ariaFor } = useShortcutLabels();
 const shortcut = computed(() => labelFor('postbox.reply'));
 
-const el = ref<HTMLButtonElement | null>(null);
+// The whole group: a press anywhere in it keeps the selection.
+const el = ref<HTMLElement | null>(null);
+const quoteButton = ref<HTMLButtonElement | null>(null);
 const width = ref(0);
 watch(
 	() => props.anchor,
@@ -43,6 +48,9 @@ const position = computed(() => {
 	const left = Math.max(0, Math.min(centred, props.boundsWidth - width.value));
 	return { top: `${props.anchor.bottom + 6}px`, left: `${left}px` };
 });
+
+const pillClass =
+	'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border-subtle bg-bg-elevated px-2.5 py-1 text-xs font-medium text-text-primary shadow-md hover:bg-bg-surface';
 
 function onKeydown(event: KeyboardEvent) {
 	if (event.key === 'Escape') {
@@ -60,30 +68,45 @@ function onKeydown(event: KeyboardEvent) {
 
 defineExpose({
 	el,
-	focus: () => el.value?.focus({ preventScroll: true }),
+	focus: () => quoteButton.value?.focus({ preventScroll: true }),
 });
 </script>
 
 <template>
-	<button
+	<div
 		ref="el"
-		type="button"
-		class="absolute z-20 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border-subtle bg-bg-elevated px-2.5 py-1 text-xs font-medium text-text-primary shadow-md hover:bg-bg-surface"
+		class="absolute z-20 inline-flex items-center gap-1"
 		:style="position"
-		:aria-keyshortcuts="ariaFor('postbox.reply')"
-		data-testid="quote-reply-pill"
 		@pointerdown.prevent
 		@mousedown.prevent
-		@click="emit('quote')"
 		@keydown="onKeydown"
 	>
-		<Icon name="lucide:quote" class="size-3.5 text-text-tertiary" aria-hidden="true" />
-		{{ t('components.postbox.postboxQuoteReplyPill.action') }}
-		<kbd
-			v-if="shortcut"
-			class="rounded border border-border-subtle px-1 font-sans text-[10px] text-text-tertiary"
-			aria-hidden="true"
-			>{{ shortcut }}</kbd
+		<button
+			ref="quoteButton"
+			type="button"
+			:class="pillClass"
+			:aria-keyshortcuts="ariaFor('postbox.reply')"
+			data-testid="quote-reply-pill"
+			@click="emit('quote')"
 		>
-	</button>
+			<Icon name="lucide:quote" class="size-3.5 text-text-tertiary" aria-hidden="true" />
+			{{ t('components.postbox.postboxQuoteReplyPill.action') }}
+			<kbd
+				v-if="shortcut"
+				class="rounded border border-border-subtle px-1 font-sans text-[10px] text-text-tertiary"
+				aria-hidden="true"
+				>{{ shortcut }}</kbd
+			>
+		</button>
+		<button
+			v-if="canSave"
+			type="button"
+			:class="pillClass"
+			data-testid="save-reply-pill"
+			@click="emit('save')"
+		>
+			<Icon name="lucide:bookmark-plus" class="size-3.5 text-text-tertiary" aria-hidden="true" />
+			{{ t('shared.savedReplies.saveCurrent') }}
+		</button>
+	</div>
 </template>

@@ -11,11 +11,15 @@ const ACCOUNT_EXPORT_PAGE_SIZE = 100;
 /** A content row stages one artifact, so a content page holds one row. */
 const ACCOUNT_EXPORT_CONTENT_PAGE_SIZE = 1;
 
-/** The resources whose rows carry body or template content staged as an artifact. */
+/**
+ * The resources whose rows carry body or template content, or file bytes,
+ * staged as an artifact.
+ */
 export function isContentResource(resource: string): boolean {
 	return (
 		resource === 'mailMessages' ||
 		resource === 'mailDrafts' ||
+		resource === 'savedReplies' ||
 		resource === 'emailTemplates' ||
 		resource === 'transactionalEmails'
 	);

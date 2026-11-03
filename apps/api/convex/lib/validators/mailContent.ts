@@ -79,6 +79,17 @@ export const mailSnippetVariableValidator = v.object({
 	label: v.optional(v.string()),
 });
 
+// A file a saved reply carries (mailSnippets.attachments). The reply owns the
+// blob through an upload receipt bound to `mailSnippets:<id>`
+// (mail/savedReplyAttachments.ts); a draft it is inserted into only borrows it.
+export const savedReplyAttachmentValidator = v.object({
+	storageId: v.id('_storage'),
+	filename: v.string(),
+	contentType: v.string(),
+	size: v.number(),
+});
+export type SavedReplyAttachment = Infer<typeof savedReplyAttachmentValidator>;
+
 // Compose-draft attachment referencing Convex storage (mailDrafts.attachments)
 export const mailDraftAttachmentValidator = v.object({
 	storageId: v.id('_storage'),
@@ -95,6 +106,9 @@ export const mailDraftAttachmentValidator = v.object({
 			id: v.string(),
 		})
 	),
+	// Borrowed from this saved reply: the blob is the reply's, so no path that
+	// frees a draft's files may delete it (mail/savedReplyAttachments.ts).
+	savedReplyId: v.optional(v.id('mailSnippets')),
 });
 
 /**

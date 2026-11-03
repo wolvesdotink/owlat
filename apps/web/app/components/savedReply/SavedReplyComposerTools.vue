@@ -26,6 +26,7 @@ const canSaveCurrent = computed(
 		v-model:open="pickerOpen"
 		:replies="api.replies.value"
 		:can-save-current="canSaveCurrent"
+		:saves-selection="api.savesSelection.value"
 		@pick="api.pick"
 		@save-current="saveOpen = true"
 	/>
@@ -34,5 +35,6 @@ const canSaveCurrent = computed(
 		v-if="saveOpen"
 		v-model:open="saveOpen"
 		:body-html="api.currentBodyHtml.value"
+		:from-selection="api.savesSelection.value"
 	/>
 </template>

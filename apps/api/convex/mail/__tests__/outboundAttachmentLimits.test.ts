@@ -63,6 +63,14 @@ describe('legacy outbound attachment metadata preflight', () => {
 		expect(result.attachments[0]?.data.toString()).toBe('hello');
 		expect(f.get).toHaveBeenCalledOnce();
 	});
+	it('stops the send when a file borrowed from a saved reply is gone', async () => {
+		const f = fixture([5, null]);
+		const borrowed = f.draft.attachments[1]!;
+		f.draft.attachments[1] = { ...borrowed, savedReplyId: 'reply-1' as never };
+		await expect(bufferDraftAttachments(f.ctx, f.draft)).rejects.toThrow(
+			'removed from its saved reply'
+		);
+	});
 	it('prunes unused inline images before counting them', async () => {
 		const f = fixture(Array(ATTACHMENT_COMPOSE_LIMITS.maxCount + 1).fill(1), {
 			unusedInline: true,

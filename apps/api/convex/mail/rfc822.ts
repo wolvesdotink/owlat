@@ -64,6 +64,7 @@ export interface DraftRow {
 		size: number;
 		isInline: boolean;
 		contentId?: string;
+		savedReplyId?: Id<'mailSnippets'>;
 	}>;
 	state: 'draft' | 'pending_send' | 'scheduled';
 	isUnsealedSendAllowed?: boolean;

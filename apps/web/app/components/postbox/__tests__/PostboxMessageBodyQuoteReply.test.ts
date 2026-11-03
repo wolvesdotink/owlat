@@ -2,7 +2,8 @@
  * "Quote in reply" in a message body: offered only where the reader around it
  * can quote this message (a body outside a reader, or one its reader says no
  * for, never shows a dead action), and pressing it hands the reader this
- * message's id and the selected passage, once.
+ * message's id and the selected passage, once. "Save as reply" beside it opens
+ * the save dialog with the passage.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -47,7 +48,7 @@ function mountBody(quoteReply?: PostboxReaderQuoteReply | null) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxReaderSkeleton, UiSkeleton, Icon: { template: '<span />' } },
-			stubs: { PostboxImageBanner: true },
+			stubs: { PostboxImageBanner: true, SavedReplySaveDialog: true },
 			provide: quoteReply === undefined ? {} : readerContextProvide({ quoteReply }),
 		},
 	});
@@ -81,6 +82,18 @@ describe('PostboxMessageBody quote in reply', () => {
 		expect(pill.text()).toContain('Quote in reply');
 		await pill.trigger('click');
 		expect(quote).toHaveBeenCalledExactlyOnceWith('msg_old', 'billed twice');
+		expect(wrapper.find('[data-testid="quote-reply-pill"]').exists()).toBe(false);
+	});
+
+	it('saves the selected passage as a reply', async () => {
+		const quote = vi.fn();
+		const wrapper = mountBody({ canQuote: () => true, quote });
+		await selectInFrame(wrapper, 'billed twice');
+
+		await wrapper.get('[data-testid="save-reply-pill"]').trigger('click');
+		const dialog = wrapper.findComponent({ name: 'SavedReplySaveDialog' });
+		expect(dialog.props()).toMatchObject({ bodyHtml: '<p>billed twice</p>', fromSelection: true });
+		expect(quote).not.toHaveBeenCalled();
 		expect(wrapper.find('[data-testid="quote-reply-pill"]').exists()).toBe(false);
 	});
 

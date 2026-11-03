@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * "Save as reply": keeps what is in the composer as a new saved reply. The
- * name is required; the shortcut is what `;` finds it by. Admins choose
+ * "Save as reply": keeps what is in the composer, or the passage selected in
+ * it or in a message, as a new saved reply. The name is required; the shortcut is what `;` finds it by. Admins choose
  * whether it is theirs or the team's; everyone else saves a personal reply.
  * Variables (`{{contact.firstName}}`) and gaps (`[[order number]]`) in the
  * text are kept as written and resolve on every later insert.
@@ -17,6 +17,8 @@ import { useCreateSavedReply, type SavedReplyScope } from '~/composables/useSave
 const props = defineProps<{
 	/** The text to save, as the composer's HTML (no quote, no signature). */
 	bodyHtml: string;
+	/** The text is a selection, which the title says. */
+	fromSelection?: boolean;
 }>();
 
 const open = defineModel<boolean>('open', { required: true });
@@ -50,7 +52,15 @@ async function save() {
 </script>
 
 <template>
-	<UiModal v-model:open="open" size="md" :title="t('shared.savedReplies.saveDialog.title')">
+	<UiModal
+		v-model:open="open"
+		size="md"
+		:title="
+			fromSelection
+				? t('shared.savedReplies.saveDialog.selectionTitle')
+				: t('shared.savedReplies.saveDialog.title')
+		"
+	>
 		<form class="space-y-3" data-testid="saved-reply-save-dialog" @submit.prevent="save">
 			<label class="block">
 				<span class="mb-1 block text-sm text-text-secondary">

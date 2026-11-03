@@ -16618,7 +16618,11 @@
 				"shortcut": "Shortcut",
 				"shortcutPlaceholder": "refund",
 				"text": "Text",
-				"textPlaceholder": "Write the reply…"
+				"textPlaceholder": "Write the reply…",
+				"files": "Files",
+				"filesHint": "Attached to the draft each time you insert this reply.",
+				"addFiles": "Add files",
+				"removeFile": "Remove {filename}"
 			},
 			"help": {
 				"gaps": "Write {example} for anything you fill in by hand each time. Send waits until every gap is filled.",
@@ -16645,7 +16649,8 @@
 				"create": "Save reply",
 				"recordUse": "Count reply use",
 				"remove": "Delete reply",
-				"save": "Update reply"
+				"save": "Update reply",
+				"attachFiles": "Attach the reply’s files"
 			},
 			"paletteHeading": "Saved replies",
 			"picker": {
@@ -16662,14 +16667,18 @@
 				"emptyText": "Write something first.",
 				"imagesLeftOut": "A saved reply cannot keep pasted images, so this one is left out. Paste it again after you insert the reply. | A saved reply cannot keep pasted images, so these {count} images are left out. Paste them again after you insert the reply.",
 				"save": "Save reply",
-				"title": "Save as reply"
+				"title": "Save as reply",
+				"selectionTitle": "Save selection as reply"
 			},
 			"scopes": {
 				"personal": "Only me",
 				"shared": "Everyone in the team"
 			},
 			"sharedBadge": "Shared",
-			"insertSubmenu": "Insert saved reply…"
+			"insertSubmenu": "Insert saved reply…",
+			"files": "One file | {count} files",
+			"saveSelection": "Save selection as reply",
+			"teamFilesNotAttached": "“{name}” has files. A team inbox reply can’t take them from a saved reply, so attach them by hand."
 		},
 		"sendReadiness": {
 			"audienceFits": "Your audience of {audience} fits in today's capacity.",

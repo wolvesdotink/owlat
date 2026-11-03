@@ -9,6 +9,7 @@ const platform = ref('linux');
 // The saved replies the composer may insert, and the "it went in" counter.
 const savedReplies = ref<unknown[]>([]);
 const recordUse = vi.fn(async () => ({ ok: true, result: null }));
+const showToast = vi.fn();
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
@@ -17,7 +18,7 @@ beforeAll(() => {
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useNativeFilePicker: () => ({ isDesktop: ref(false), pickNativeFiles: vi.fn() }),
 		// Insert availability (booking page) in the footer's ⋯ menu stays off.
-		useToast: () => ({ showToast: vi.fn() }),
+		useToast: () => ({ showToast }),
 		// Saved replies: the list, the use counter, the writer's name, the palette.
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flag !== 'calendar.booking' }),
 		useConvexQuery: () => ({ data: savedReplies, isLoading: ref(false), error: ref(null) }),
@@ -464,6 +465,7 @@ describe('InboxThreadComposer and saved replies', () => {
 		name: 'Refund',
 		shortcut: 'refund',
 		bodyHtml: '<p>Hi {{contact.firstName}},</p><p>your refund is on its way. {{me.firstName}}</p>',
+		attachments: [],
 		scope: 'personal',
 		useCount: 3,
 		lastUsedAt: 1,
@@ -473,6 +475,7 @@ describe('InboxThreadComposer and saved replies', () => {
 		name: 'Order status',
 		shortcut: 'order',
 		bodyHtml: '<p>Order [[order number]] for {{contact.lastName}} ships today.</p>',
+		attachments: [],
 		scope: 'shared',
 		useCount: 0,
 		lastUsedAt: null,
@@ -691,5 +694,31 @@ describe('InboxThreadComposer and saved replies', () => {
 		expect(wrapper.get('[data-testid="saved-reply-save-dialog"]').text()).toContain(
 			'We have refunded the invoice.'
 		);
+	});
+
+	it('saves only the selected passage when text is selected', async () => {
+		const wrapper = mountComposer();
+		await type(wrapper, 'Thanks for writing. Refunds take five days.');
+		const textarea = body(wrapper).element;
+		textarea.focus();
+		textarea.setSelectionRange(20, textarea.value.length);
+		document.dispatchEvent(new Event('selectionchange'));
+
+		await wrapper.get('[data-testid="saved-reply-button"]').trigger('click');
+		const save = wrapper.get('[data-testid="saved-reply-save-current"]');
+		expect(save.text()).toBe('Save selection as reply');
+		await save.trigger('click');
+		const dialog = wrapper.get('[data-testid="saved-reply-save-dialog"]');
+		expect(dialog.text()).toContain('Refunds take five days.');
+		expect(dialog.text()).not.toContain('Thanks for writing.');
+	});
+
+	it('says a reply’s files are not attached to a team inbox reply', async () => {
+		savedReplies.value = [{ ...refund, attachments: [{ filename: 'refunds.pdf' }] }];
+		const wrapper = mountComposer({ recipient: { firstName: 'Ana' } });
+		await type(wrapper, ';ref');
+		await body(wrapper).trigger('keydown', { key: 'Enter' });
+
+		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('“Refund” has files'), 'info');
 	});
 });

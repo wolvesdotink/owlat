@@ -425,7 +425,9 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.savedReplies).toHaveLength(0);
 	});
 
-	it('includes the caller’s personal saved replies, not shared or other members’ ones', async () => {
+	it('includes the caller’s personal saved replies with their files, not shared or other members’ ones', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1');
 		await t.run(async (ctx) => {
@@ -436,10 +438,14 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				createdAt: 1,
 				updatedAt: 1,
 			});
+			const storageId = await ctx.storage.store(new Blob(['price list bytes']));
 			await ctx.db.insert('mailSnippets', {
 				...row('mine'),
 				scope: 'personal',
 				ownerUserId: 'auth-user-1',
+				attachments: [
+					{ storageId, filename: 'prices.pdf', contentType: 'application/pdf', size: 16 },
+				],
 			});
 			await ctx.db.insert('mailSnippets', {
 				...row('theirs'),
@@ -456,6 +462,16 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 
 		const res = await exportAllUserData(t, 'auth-user-1');
 		expect(res.personalData.savedReplies.map((r) => r['name'])).toEqual(['mine']);
+		expect(res.personalData.savedReplies[0]).toMatchObject({
+			attachments: [
+				{
+					filename: 'prices.pdf',
+					contentBase64: btoa('price list bytes'),
+					isContentAvailable: true,
+				},
+			],
+		});
+		expect(res.personalData.savedReplies[0]!['attachments'][0]).not.toHaveProperty('storageId');
 		const plan = await t.action(api.auth.accountExport.getExportPlan, { userId: 'auth-user-1' });
 		expect(plan.personal.find((entry) => entry.resource === 'savedReplies')?.count).toBe(1);
 	});

@@ -13,7 +13,9 @@
  *
  * After an insert the reply is counted (the picker's order) and, when the
  * text now holds a gap, the draft is marked gap-guarded: Send is held until
- * every gap is filled, here and on the server, also after a reload.
+ * every gap is filled, here and on the server, also after a reload. A reply
+ * with files puts them on the draft; the server references the reply's copy
+ * (`mail/savedReplyAttachments.ts`), so nothing is uploaded again.
  *
  * Extracted out of `PostboxComposer.vue` to keep that SFC under the file-size
  * ratchet; the pure trigger/rank logic lives in `~/utils/postboxSnippets`, the
@@ -24,6 +26,7 @@
 
 import { computed, type Ref } from 'vue';
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type { usePostboxCompose, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 import { usePostboxContacts } from '~/composables/postbox/usePostboxContacts';
 import type { SnippetInsertOptions } from '~/composables/postbox/usePostboxSnippetPicker';
@@ -54,6 +57,8 @@ export function usePostboxComposerSnippets(
 		| 'isScheduled'
 		| 'isGapGuarded'
 		| 'flush'
+		| 'attachments'
+		| 'ensureDraft'
 	>,
 	view: {
 		rootEl: Ref<HTMLElement | null>;
@@ -113,6 +118,31 @@ export function usePostboxComposerSnippets(
 		if (saved.ok && saved.result) await guardOp.run({ draftId: saved.result, isGapGuarded: true });
 	}
 
+	const attachFilesOp = useBackendOperation(api.mail.savedReplyAttachments.attachToDraft, {
+		label: () => t('shared.savedReplies.operations.attachFiles'),
+	});
+	/** Put the reply's files on the draft, beside whatever it carries already. */
+	async function attachFiles(replyId: string) {
+		const draftId = await compose.ensureDraft();
+		if (!draftId) return;
+		const attached = await attachFilesOp.run({
+			draftId,
+			replyId: replyId as Id<'mailSnippets'>,
+		});
+		if (!attached.ok) return;
+		const shown = new Set(compose.attachments.value.map((a) => a.storageId));
+		const added = attached.result
+			.filter((a) => !a.isInline && !shown.has(a.storageId))
+			.map((a) => ({
+				storageId: a.storageId,
+				filename: a.filename,
+				contentType: a.contentType,
+				size: a.size,
+				...(a.savedReplyId ? { savedReplyId: a.savedReplyId } : {}),
+			}));
+		if (added.length > 0) compose.attachments.value = [...compose.attachments.value, ...added];
+	}
+
 	const snippetInsert = computed<SnippetInsertOptions>(() => ({
 		variableContext: variableContext.value,
 		gapLabel: (token, source) =>
@@ -120,6 +150,7 @@ export function usePostboxComposerSnippets(
 		onInserted: (snippet, resolved) => {
 			recordUse(snippet._id);
 			if (resolved.hasGaps) void guardSend();
+			if (snippet.attachmentCount) void attachFiles(snippet._id);
 		},
 	}));
 
