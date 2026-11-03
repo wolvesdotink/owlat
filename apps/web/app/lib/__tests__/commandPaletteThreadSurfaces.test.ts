@@ -258,6 +258,15 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		).toBe('Show as conversation');
 	});
 
+	it('offers Share as image only for a message the reader can draw, and runs its handler', () => {
+		expect(byId(postboxItems(), 'postbox:thread-share-image')).toBeUndefined();
+		const onShareAsImage = vi.fn();
+		const item = byId(postboxItems('', { onShareAsImage }), 'postbox:thread-share-image');
+		expect(item?.label).toBe('Share as image…');
+		item?.run();
+		expect(onShareAsImage).toHaveBeenCalledTimes(1);
+	});
+
 	it('drops the subject line when the message has no subject', () => {
 		expect(
 			postboxItems('', { subject: () => '   ' }).every((item) => item.subtitle === undefined)

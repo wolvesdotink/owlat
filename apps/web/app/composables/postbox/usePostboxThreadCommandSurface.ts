@@ -35,6 +35,9 @@ export interface PostboxThreadCommandSources {
 	link: () => ConversationLinkTarget;
 	/** Opens the reader's "Share in chat…" dialog. */
 	shareInChat: () => void;
+	/** The open message can be drawn as an image card, and opens its dialog. */
+	canShareAsImage?: () => boolean;
+	shareAsImage?: () => void;
 	/** Subject + snippet, for the snooze presets' suggestion. */
 	hintText: () => string;
 	isMuted: () => boolean;
@@ -85,7 +88,7 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  * Every verb the reader offers is here — reply, archive, snooze ›, forward,
  * mark unread, mute, notify on reply, pin, label ›, move ›, move or copy to mailbox ›,
  * remind me if no reply ›,
- * the sender's zoom, translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
+ * the sender's zoom, translate, the original `.eml`, share as image, copy link, share in chat — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
 export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): {
@@ -194,6 +197,9 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 						if (threadId) void followUp.cancel(threadId);
 					},
 					onShowOriginal: () => void original.downloadOriginal(sources.messageId()),
+					...(sources.shareAsImage && sources.canShareAsImage?.()
+						? { onShareAsImage: sources.shareAsImage }
+						: {}),
 					onTranslate: sources.translate,
 					onCopyLink: () => void copyConversationLink(sources.link()),
 					canShareInChat: () => isFeatureEnabled('chat'),

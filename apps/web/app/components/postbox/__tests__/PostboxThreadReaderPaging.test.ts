@@ -140,6 +140,7 @@ const marker = (name: string) =>
 const CHROME = [
 	'Icon',
 	'LazyChatLinkEmailDialog',
+	'LazyPostboxShareImageDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxReaderStrip',

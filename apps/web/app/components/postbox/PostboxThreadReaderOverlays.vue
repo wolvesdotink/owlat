@@ -9,8 +9,8 @@ import type { usePostboxReaderBrief } from '~/composables/postbox/usePostboxRead
 /**
  * What PostboxThreadReader opens over the conversation: the keyboard-flow
  * pickers for the open message, the full brief, the sender profile, the
- * share-in-chat dialog and the attachment Quick Look. One of each per reader,
- * whichever message card asked for it.
+ * share-in-chat and share-as-image dialogs and the attachment Quick Look. One
+ * of each per reader, whichever message card asked for it.
  */
 defineProps<{
 	mailboxId: string;
@@ -31,6 +31,9 @@ const senderProfile = defineModel<{ fromAddress: string; fromName: string | null
 	{ required: true }
 );
 const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { required: true });
+const shareImageMessage = defineModel<PostboxReaderMessage | null>('shareImageMessage', {
+	required: true,
+});
 </script>
 
 <template>
@@ -77,6 +80,13 @@ const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { 
 		:conversation="shareTarget"
 		:audience="shared ? 'shared' : 'personal'"
 		@close="shareTarget = null"
+	/>
+
+	<!-- Lazy: the canvas card and its redaction tools load on first use. -->
+	<LazyPostboxShareImageDialog
+		v-if="shareImageMessage"
+		:message="shareImageMessage"
+		@close="shareImageMessage = null"
 	/>
 
 	<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->
