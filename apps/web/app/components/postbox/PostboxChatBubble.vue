@@ -115,7 +115,7 @@ function openAttachment(att: AttachmentMeta) {
 			>
 				<div
 					v-if="withheld || fresh === null"
-					class="h-4 w-40 animate-pulse rounded bg-bg-surface"
+					class="h-4 w-40 animate-pulse motion-reduce:animate-none rounded bg-bg-surface"
 				/>
 				<p v-else-if="fresh" class="whitespace-pre-wrap break-words" data-testid="chat-bubble-text">
 					{{ fresh }}
