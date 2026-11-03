@@ -3502,6 +3502,25 @@
 				"switchWorkspace": "Switch workspace"
 			}
 		},
+		"dictationButton": {
+			"label": "Dictate",
+			"stopTooltip": "Stop dictating",
+			"listening": "Listening…",
+			"listeningAnnouncement": "Listening. Speak, then press the microphone again to stop, or Esc to cancel.",
+			"stoppedAnnouncement": "Stopped listening.",
+			"escHint": "Press the microphone again to stop. Esc cancels.",
+			"privacy": {
+				"onDevice": "Speech is turned into text on this device. Owlat never receives the audio.",
+				"browser": "Your browser's speech service turns speech into text and may send the audio to its provider. Owlat never receives it."
+			},
+			"errors": {
+				"blocked": "Dictation can't use the microphone. Allow microphone access for this site and try again.",
+				"noSpeech": "Didn't catch anything. Press the microphone and speak again.",
+				"network": "The speech service couldn't be reached. Check your connection and try again.",
+				"language": "Dictation doesn't support your browser's language here.",
+				"failed": "Dictation stopped unexpectedly. Try again."
+			}
+		},
 		"domains": {
 			"addDomainForm": {
 				"adding": "Adding...",

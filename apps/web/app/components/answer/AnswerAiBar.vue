@@ -4,14 +4,16 @@
  * with an optional instruction, and "Draft with AI".
  *
  * Cmd/Ctrl+J inside Answer mode lands in the instruction field (the page asks
- * `useAnswerAiFocus`, this bar registers how). Enter drafts. While the AI
- * checks for gaps or writes, the bar says so and stays out of the way; once an
- * AI draft is in the editor a quiet "AI draft · Discard" tag offers to take it
- * back out. The page hides the bar when AI is off.
+ * `useAnswerAiFocus`, this bar registers how), and the microphone beside it
+ * dictates into it. Enter drafts. While the AI checks for gaps or writes, the
+ * bar says so and stays out of the way; once an AI draft is in the editor a
+ * quiet "AI draft · Discard" tag offers to take it back out. The page hides
+ * the bar when AI is off.
  */
 import { useAnswerAiFocus } from '~/composables/useAnswerMode';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { AskPhase } from '~/composables/useAnswerAskSession';
+import DictationButton from '~/components/DictationButton.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -82,6 +84,8 @@ const inputId = useId();
 				maxlength="500"
 				data-testid="answer-ai-instruction"
 			/>
+			<!-- An instruction goes in as spoken, in the language spoken, untranslated. -->
+			<DictationButton :target="inputEl" bubble="below" size="sm" :disabled="busy" />
 			<UiTooltip
 				:text="jumpKey ? t('components.answer.aiBar.shortcut') : undefined"
 				:shortcut="jumpKey ?? undefined"
