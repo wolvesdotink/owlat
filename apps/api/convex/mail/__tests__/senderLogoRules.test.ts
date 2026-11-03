@@ -138,6 +138,23 @@ describe('acceptedLogoType', () => {
 		expect(acceptedLogoType('image/svg+xml', bytes(internal))).toBe('image/svg+xml');
 	});
 
+	it('refuses an outside reference hidden behind XML or CSS escapes', () => {
+		const encodedHref = SVG.replace(
+			'<rect',
+			'<image href="&#104;ttps://tracker.example/p.png"/><rect'
+		);
+		const cssEscape = SVG.replace(
+			'<rect',
+			'<rect fill="url(\\68 ttps://tracker.example/p)"/><rect'
+		);
+		const styleImport = SVG.replace('<rect', '<style>@\\69mport "x.css";</style><rect');
+		for (const svg of [encodedHref, cssEscape, styleImport]) {
+			expect(acceptedLogoType('image/svg+xml', bytes(svg))).toBeNull();
+		}
+		const gradient = SVG.replace('<rect', '<rect fill="url(#g)"/><rect');
+		expect(acceptedLogoType('image/svg+xml', bytes(gradient))).toBe('image/svg+xml');
+	});
+
 	it('takes only SVG for a BIMI logo', () => {
 		expect(acceptedLogoType('image/png', PNG, { svgOnly: true })).toBeNull();
 		expect(acceptedLogoType('image/svg+xml', bytes(SVG), { svgOnly: true })).toBe('image/svg+xml');

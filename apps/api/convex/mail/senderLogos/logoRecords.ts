@@ -9,7 +9,7 @@
  * script and no reference to anything outside itself.
  */
 
-import { workspaceLogoBytesProblem } from '@owlat/shared/workspaceLogo';
+import { svgTextForms, workspaceLogoBytesProblem } from '@owlat/shared/workspaceLogo';
 
 /** BIMI recommends logos well under this; anything bigger is not a logo. */
 export const MAX_BIMI_LOGO_BYTES = 32 * 1024;
@@ -70,14 +70,26 @@ export function mediaTypeOf(contentType: string | null): string {
 
 /**
  * An SVG that points outside itself would make whoever opens its storage URL
- * fetch from the sender's servers. `xmlns` values are names, not fetches,
- * so only reference-bearing attributes, `url(…)` and `@import` count.
+ * fetch from the sender's servers. Only references to a local `#fragment` are
+ * allowed: an `href`/`src` or `url(…)` that starts with anything else is
+ * refused, which also catches a CSS escape (`url(\68 ttps:…)`). `<style>`
+ * and `@import` are refused outright, because CSS escapes can spell any
+ * reference there. `xmlns` values are names, not fetches, so they pass.
+ * Tried on every form `svgTextForms` gives, so XML character references
+ * (`&#104;ttps:`) are read the way the parser will.
  */
 const EXTERNAL_SVG_REFERENCE: readonly RegExp[] = [
-	/(?:href|src)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:|\/\/)/i,
-	/url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:|\/\/)/i,
+	/(?:href|src)\s*=\s*["']?\s*(?!#)[^\s"'>]/i,
+	/url\(\s*["']?\s*(?!#)/i,
+	/<(?:[\w.-]+:)?style[\s>/]/i,
 	/@import/i,
 ];
+
+function hasExternalReference(text: string): boolean {
+	return svgTextForms(text).some((form) =>
+		EXTERNAL_SVG_REFERENCE.some((pattern) => pattern.test(form))
+	);
+}
 
 const ICO_SIGNATURE = [0x00, 0x00, 0x01, 0x00];
 
@@ -95,7 +107,7 @@ export function acceptedLogoType(
 	if (declared === 'image/svg+xml') {
 		if (workspaceLogoBytesProblem('image/svg+xml', bytes) !== null) return null;
 		const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-		return EXTERNAL_SVG_REFERENCE.some((pattern) => pattern.test(text)) ? null : 'image/svg+xml';
+		return hasExternalReference(text) ? null : 'image/svg+xml';
 	}
 	if (opts.svgOnly) return null;
 	if (declared === 'image/png' || declared === 'image/jpeg') {

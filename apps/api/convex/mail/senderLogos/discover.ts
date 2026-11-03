@@ -152,8 +152,10 @@ async function declaredIcons(deps: SenderLogoDeps, domain: string): Promise<stri
 }
 
 async function siteIcon(deps: SenderLogoDeps, domain: string): Promise<FoundLogo | null> {
-	const candidates = [...(await declaredIcons(deps, domain)), `https://${domain}/favicon.ico`];
-	for (const url of [...new Set(candidates)].slice(0, MAX_ICON_ATTEMPTS)) {
+	const favicon = `https://${domain}/favicon.ico`;
+	// The last attempt is always `/favicon.ico`: declared icons are often stale.
+	const declared = [...new Set(await declaredIcons(deps, domain))].filter((url) => url !== favicon);
+	for (const url of [...declared.slice(0, MAX_ICON_ATTEMPTS - 1), favicon]) {
 		const image = await fetchImage(deps, url, { maxBytes: MAX_ICON_BYTES, svgOnly: false });
 		if (image) return { source: 'icon', ...image };
 	}

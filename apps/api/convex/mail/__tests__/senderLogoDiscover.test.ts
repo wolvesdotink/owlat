@@ -81,6 +81,27 @@ describe('discoverSenderLogo', () => {
 		});
 	});
 
+	it('still tries /favicon.ico after every declared icon failed', async () => {
+		const { deps } = fakeDeps(
+			{},
+			{
+				[HOME]: {
+					body:
+						'<link rel="apple-touch-icon" href="/a.png"><link rel="icon" href="/b.png">' +
+						'<link rel="icon" href="/c.png">',
+					type: 'text/html',
+				},
+				'https://acme-bank.com/favicon.ico': {
+					body: new Uint8Array([0, 0, 1, 0, 1, 0]),
+					type: 'image/x-icon',
+				},
+			}
+		);
+		expect(await discoverSenderLogo('acme-bank.com', deps)).toMatchObject({
+			mimeType: 'image/x-icon',
+		});
+	});
+
 	it('does not use the icons of a site the homepage redirects away to', async () => {
 		const { deps, fetched } = fakeDeps(
 			{},
