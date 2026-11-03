@@ -232,30 +232,30 @@ const readerActions = usePostboxReaderActions({
 const attachments = usePostboxReaderAttachments();
 const { downloadingAttachment, handleAttachmentDownload, openAttachmentPreview } = attachments;
 
-// Translate, Copy link / Share in chat, Find (⌘F), the chat layout, the ⌘K
-// surface and the single-key shortcuts, all acting on this conversation.
-const { translation, find, chat, shareTarget, copyConversationLink, conversationLinkOf, moves } =
-	usePostboxReaderCommands({
-		message: () => props.message,
-		folderRole: () => props.folderRole,
-		findSeed: () => props.findSeed,
-		threadKey,
-		pages: threadPages,
-		messages: allMessages,
-		latestMessage,
-		ownAddresses,
-		readerThread,
-		latestOutboundId,
-		expanded,
-		toggleExpanded,
-		secureClass: facts.secureClass,
-		hideRawBody: facts.hideRawBody,
-		aiEnabled: () => isFeatureEnabled('ai'),
-		actions: readerActions,
-		attachments,
-		isShared: () => rb.isShared.value,
-		mustShowCard: (id) => rb.citeQuoteFor(id) != null || rb.exactWording.value.has(id),
-	});
+// Translate, Copy link, Share in chat or as an image, Find (⌘F), the chat layout,
+// the ⌘K surface and the single-key shortcuts, all acting on this conversation.
+const commands = usePostboxReaderCommands({
+	message: () => props.message,
+	folderRole: () => props.folderRole,
+	findSeed: () => props.findSeed,
+	threadKey,
+	pages: threadPages,
+	messages: allMessages,
+	latestMessage,
+	ownAddresses,
+	readerThread,
+	latestOutboundId,
+	expanded,
+	toggleExpanded,
+	secureClass: facts.secureClass,
+	hideRawBody: facts.hideRawBody,
+	aiEnabled: () => isFeatureEnabled('ai'),
+	actions: readerActions,
+	attachments,
+	isShared: () => rb.isShared.value,
+	mustShowCard: (id) => rb.citeQuoteFor(id) != null || rb.exactWording.value.has(id),
+});
+const { translation, find, chat, shareTarget, shareImageMessage, conversationLinkOf } = commands;
 
 // What every card shares; the props carry only what differs per message.
 providePostboxReaderContext({
@@ -439,8 +439,9 @@ providePostboxReaderContext({
 						@block-sender="readerActions.blockSenderOf(msg._id)"
 						@create-filter="openPostboxFilterBuilderFrom(msg)"
 						@print="readerActions.runReaderAction('print')"
-						@copy-link="copyConversationLink(conversationLinkOf(msg._id))"
+						@copy-link="commands.copyConversationLink(conversationLinkOf(msg._id))"
 						@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
+						@share-image="shareImageMessage = msg"
 						@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
 						@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
 						@trackers="facts.onTrackersDetected(msg._id, $event)"
@@ -485,9 +486,10 @@ providePostboxReaderContext({
 			v-model:brief-open="calm.sheetOpen.value"
 			v-model:sender-profile="senderProfile"
 			v-model:share-target="shareTarget"
+			v-model:share-image-message="shareImageMessage"
 			:mailbox-id="message.mailboxId"
 			:actions="readerActions"
-			:moves="moves"
+			:moves="commands.moves"
 			:brief="rb"
 			:messages="allMessages"
 			:shared="rb.isShared.value"

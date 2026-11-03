@@ -117,6 +117,8 @@ export interface ThreadSurfaceDeps {
 	onTogglePin: () => void;
 	onCancelFollowUp: () => void;
 	onShowOriginal: () => void;
+	/** Opens "Share as image…" for the open message; absent where it cannot be drawn. */
+	onShareAsImage?: () => void;
 	onTranslate: () => void;
 	onCopyLink: () => void;
 	/** Chat is on: the conversation's link can be posted to a room. */
@@ -359,6 +361,14 @@ export function buildThreadSurfaceGroups(
 		},
 		...linkItems('postbox:thread', deps)
 	);
+	if (deps.onShareAsImage) {
+		items.push({
+			id: 'postbox:thread-share-image',
+			label: t('components.postbox.postboxShareImage.menuItem'),
+			icon: 'lucide:image',
+			run: deps.onShareAsImage,
+		});
+	}
 	return threadGroup(POSTBOX_THREAD_COMMAND_GROUP_KEY, t(`${P}.heading`), items, query, mode);
 }
 

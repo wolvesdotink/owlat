@@ -1,8 +1,8 @@
 /**
- * The verbs PostboxThreadReader offers beyond its buttons: Translate, Copy link
- * and Share in chat, Find in conversation (⌘F), moving the open message to
- * another mailbox, the chat layout, the ⌘K surface with every verb the reader
- * has, and the single-key reading shortcuts. All of them act on THIS
+ * The verbs PostboxThreadReader offers beyond its buttons: Translate, Copy link,
+ * Share in chat and Share as image, Find in conversation (⌘F), moving the open
+ * message to another mailbox, the chat layout, the ⌘K surface with every verb
+ * the reader has, and the single-key reading shortcuts. All of them act on THIS
  * conversation, and only the reader on top answers the shortcuts.
  */
 import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
@@ -71,6 +71,17 @@ export function usePostboxReaderCommands(source: {
 	}
 	const shareTarget = shallowRef<ConversationLinkTarget | null>(null);
 
+	// "Share as image…", from a card's ⋯ menu (that card's message) or the palette
+	// (the open message). Mail whose raw body the reader does not show as text,
+	// sealed or signed, is not offered: the card would draw the raw body.
+	const shareImageMessage = shallowRef<PostboxReaderMessage | null>(null);
+	const canShareAsImage = (msg: PostboxReaderMessage) =>
+		source.secureClass(msg) === 'none' && !msg.inboundSignatureInfo;
+	function openMessage(): PostboxReaderMessage {
+		const id = source.message()._id;
+		return source.messages.value.find((msg) => msg._id === id) ?? source.message();
+	}
+
 	// Find in conversation (⌘F): collapsed messages, folded quotes and envelopes
 	// included. Only the reader on top answers the shortcut.
 	const find = usePostboxThreadFind({
@@ -138,6 +149,8 @@ export function usePostboxReaderCommands(source: {
 		href: () => `/dashboard/postbox/${source.folderRole() ?? 'inbox'}/${source.message()._id}`,
 		link: () => conversationLinkOf(source.message()._id),
 		shareInChat: () => (shareTarget.value = conversationLinkOf(source.message()._id)),
+		canShareAsImage: () => canShareAsImage(openMessage()),
+		shareAsImage: () => (shareImageMessage.value = openMessage()),
 		hintText: () => actions.snoozeHintText.value,
 		isMuted: () => source.readerThread.value?.mutedAt != null,
 		isAlerted: () => source.readerThread.value?.notifyOnReplyAt != null,
@@ -185,5 +198,14 @@ export function usePostboxReaderCommands(source: {
 		},
 	});
 
-	return { translation, find, chat, shareTarget, copyConversationLink, conversationLinkOf, moves };
+	return {
+		translation,
+		find,
+		chat,
+		shareTarget,
+		shareImageMessage,
+		copyConversationLink,
+		conversationLinkOf,
+		moves,
+	};
 }

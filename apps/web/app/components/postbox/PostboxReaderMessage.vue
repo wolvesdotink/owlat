@@ -77,6 +77,7 @@ const emit = defineEmits<{
 	(e: 'print'): void;
 	(e: 'copy-link'): void;
 	(e: 'share-in-chat'): void;
+	(e: 'share-image'): void;
 	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
 	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
@@ -479,6 +480,7 @@ const renderToggleLabel = computed(() =>
 			:starred="starred"
 			:show-reply-all="showReplyAll"
 			:from-address="msg.fromAddress"
+			:can-share-image="!holdBody"
 			@toggle-star="emit('toggle-star')"
 			@reply="emit('reply')"
 			@reply-all="emit('reply-all')"
@@ -489,6 +491,7 @@ const renderToggleLabel = computed(() =>
 			@print="emit('print')"
 			@copy-link="emit('copy-link')"
 			@share-in-chat="emit('share-in-chat')"
+			@share-image="emit('share-image')"
 		/>
 	</section>
 </template>

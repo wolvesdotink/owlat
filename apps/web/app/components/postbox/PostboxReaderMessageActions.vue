@@ -2,7 +2,8 @@
 /**
  * The action row under one expanded message in the reader: Star, Reply,
  * Reply all, Forward and the ⋯ overflow (the sender's text zoom, copy link,
- * share in chat, report spam, block, filter, print, download the original).
+ * share in chat, share as image, report spam, block, filter, print, download
+ * the original).
  * Split out of PostboxReaderMessage so Answer mode can render the same card
  * without it (you are already replying there). Every verb on the mail is
  * emitted back to the reader; the zoom is this device's view of it and is set
@@ -20,6 +21,8 @@ const props = defineProps<{
 	showReplyAll: boolean;
 	/** The From header; the zoom row shows only when it holds an address. */
 	fromAddress?: string;
+	/** The body is the reader's to show as text (not sealed or signed mail shown by its badge). */
+	canShareImage?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -33,6 +36,7 @@ const emit = defineEmits<{
 	(e: 'print'): void;
 	(e: 'copy-link'): void;
 	(e: 'share-in-chat'): void;
+	(e: 'share-image'): void;
 }>();
 
 const { t } = useI18n();
@@ -159,6 +163,19 @@ const MENU_ITEM_CLASS =
 				>
 					<Icon name="lucide:message-square-share" class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.shareInChat') }}
+				</button>
+				<button
+					v-if="canShareImage"
+					type="button"
+					role="menuitem"
+					:class="MENU_ITEM_CLASS"
+					@click="
+						emit('share-image');
+						close();
+					"
+				>
+					<Icon name="lucide:image" class="w-4 h-4 text-text-tertiary" />
+					{{ t('components.postbox.postboxShareImage.menuItem') }}
 				</button>
 				<button
 					type="button"
