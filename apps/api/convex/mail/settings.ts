@@ -77,6 +77,7 @@ export const get = publicQuery({
 			isAssignmentSoundOn: row.isAssignmentSoundOn,
 			isQuestionSoundOn: row.isQuestionSoundOn,
 			isAutoLoadImagesOn: row.isAutoLoadImagesOn,
+			isSenderLogosOn: row.isSenderLogosOn,
 			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
 			isBadgeNonPeopleOn: row.isBadgeNonPeopleOn,
@@ -121,6 +122,8 @@ export const update = postboxMutation({
 		isSendSoundOn: v.optional(v.boolean()),
 		// Remote images on open, outside suspicious mail: absent = on.
 		isAutoLoadImagesOn: v.optional(v.boolean()),
+		// Brand logos for senders that pass DMARC: absent = on.
+		isSenderLogosOn: v.optional(v.boolean()),
 		undoSendSeconds: v.optional(mailUndoSendSecondsValidator),
 		notifyAbout: v.optional(mailNotifyAboutValidator),
 		isBadgeNonPeopleOn: v.optional(v.boolean()),
@@ -166,6 +169,7 @@ export const update = postboxMutation({
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
 			isAutoLoadImagesOn?: boolean;
+			isSenderLogosOn?: boolean;
 			undoSendSeconds?: (typeof args)['undoSendSeconds'];
 			notifyAbout?: (typeof args)['notifyAbout'];
 			isBadgeNonPeopleOn?: boolean;
@@ -201,6 +205,7 @@ export const update = postboxMutation({
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.isAutoLoadImagesOn !== undefined) patch.isAutoLoadImagesOn = args.isAutoLoadImagesOn;
+		if (args.isSenderLogosOn !== undefined) patch.isSenderLogosOn = args.isSenderLogosOn;
 		if (args.undoSendSeconds !== undefined) patch.undoSendSeconds = args.undoSendSeconds;
 		if (args.notifyAbout !== undefined) patch.notifyAbout = args.notifyAbout;
 		if (args.isBadgeNonPeopleOn !== undefined) patch.isBadgeNonPeopleOn = args.isBadgeNonPeopleOn;

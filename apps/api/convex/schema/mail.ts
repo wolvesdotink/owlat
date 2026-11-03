@@ -11,6 +11,7 @@ import { mailContactsTables } from './mailContacts';
 import { mailSettingsTables } from './mailSettings';
 import { mailAiTables } from './mailAi';
 import { mailArrivalTables } from './mailArrival';
+import { senderLogosTables } from './senderLogos';
 
 /**
  * Personal Mail (Postbox) tables — Gmail-equivalent backend.
@@ -36,4 +37,5 @@ export const mailTables = {
 	...mailSettingsTables,
 	...mailAiTables,
 	...mailArrivalTables,
+	...senderLogosTables,
 };

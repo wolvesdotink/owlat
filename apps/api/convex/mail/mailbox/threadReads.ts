@@ -11,6 +11,7 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { openStoredMailMessageRows } from '../../lib/messageBodyStore';
 import { toMailListRow, type MailListRow } from './rowThreadState';
+import { withSenderLogos, type SenderLogoField } from '../senderLogos/cache';
 
 /**
  * Most messages one thread read returns. Mail threads run to a few dozen
@@ -30,10 +31,13 @@ export type ThreadPageArgs = {
 };
 
 export type ThreadPage = {
-	/** The page's newest `withBodies` messages, bodies unsealed, oldest first. */
-	messages: Doc<'mailMessages'>[];
+	/**
+	 * The page's newest `withBodies` messages, bodies unsealed, oldest first.
+	 * Both lists carry the sender's brand logo where a message may show one.
+	 */
+	messages: Array<Doc<'mailMessages'> & SenderLogoField>;
 	/** The page's older messages as body-less envelopes (list rows), oldest first. */
-	envelopes: MailListRow[];
+	envelopes: Array<MailListRow & SenderLogoField>;
 	/** Cursor for the next-older page, or null when this page reaches the start. */
 	olderCursor: string | null;
 };
@@ -64,8 +68,8 @@ export async function loadThreadPage(
 	const newest = page.page.slice(0, withBodies).reverse();
 	const older = page.page.slice(withBodies).reverse();
 	return {
-		messages: await openStoredMailMessageRows(ctx.db, newest),
-		envelopes: older.map(toMailListRow),
+		messages: await withSenderLogos(ctx, await openStoredMailMessageRows(ctx.db, newest)),
+		envelopes: await withSenderLogos(ctx, older.map(toMailListRow)),
 		olderCursor: page.isDone ? null : page.continueCursor,
 	};
 }

@@ -55,6 +55,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	briefTop?: BriefTopRow;
 	// The thread's Priority placement (read on arrival §3), attached server-side.
 	placement?: Placement;
+	// The authenticated sender's brand logo, served by us (mail/senderLogos/).
+	senderLogoUrl?: string;
 };
 </script>
 
@@ -85,6 +87,7 @@ import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadRowQuickActions from './PostboxThreadRowQuickActions.vue';
+import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -411,14 +414,7 @@ function onCapturedClick(event: MouseEvent) {
 								<Icon v-if="shownSelected" name="lucide:check" class="w-3 h-3" />
 							</button>
 						</UiTooltip>
-						<UiAvatar
-							:name="msg.fromName"
-							:email="msg.fromAddress"
-							deterministic-color
-							size="sm"
-							class="flex-shrink-0"
-							aria-hidden="true"
-						/>
+						<PostboxSenderAvatar :sender="msg" size="sm" class="flex-shrink-0" />
 						<PostboxThreadRowBody
 							:msg="msg"
 							:trust-markers="trustMarkers"

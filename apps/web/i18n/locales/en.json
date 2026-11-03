@@ -6355,6 +6355,8 @@
 				"sendSoundHelp": "Play a short confirmation sound when a message is sent. Off by default.",
 				"autoLoadImagesLabel": "Load images automatically",
 				"autoLoadImagesHelp": "Show pictures in mail as soon as you open it. Tracking pixels stay blocked, and mail that looks suspicious always asks first.",
+				"senderLogosLabel": "Show sender logos",
+				"senderLogosHelp": "Show a company's logo instead of initials when its mail passes sender authentication. Owlat fetches logos on the server, so senders never see when you read their mail.",
 				"swipeLeftLabel": "Swipe left on a message",
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
@@ -16930,6 +16932,10 @@
 				"autoLoadImages": {
 					"title": "Load images automatically",
 					"keywords": "images, pictures, remote content, privacy, tracking"
+				},
+				"senderLogos": {
+					"title": "Show sender logos",
+					"keywords": "logo, brand, avatar, bimi, favicon, sender icon, initials"
 				},
 				"mailboxes": {
 					"title": "Mailboxes",

@@ -34,6 +34,7 @@ import { writeArrivalRecord, type ArrivalRecordSeed } from '../arrival/records';
 import { refreshArrivalProjection } from '../arrival/projection';
 import { isColdPitchAskable } from '../arrival/coldPitch';
 import { recordSignInCode } from '../signInCodes';
+import { requestSenderLogo } from '../senderLogos/cache';
 
 export type { InboundOrigin };
 
@@ -76,6 +77,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     the brief items it answered (`../interpret/enqueue.ts`).
  *   - A one-time code or sign-in link of live mail from an authenticated
  *     sender, for the row and reader chip (`../signInCodes.ts`).
+ *   - A brand logo lookup for the sender's domain, for live mail that passed
+ *     DMARC (`../senderLogos/`). History never starts one.
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
  *     actually notifies — scope, mute, quiet hours — is the sender's call.
@@ -126,6 +129,7 @@ export async function runPostInsertInboundEffects(
 			messageId,
 		});
 	}
+	if (isLive) await requestSenderLogo(ctx, delivered, Date.now());
 	// R2 also answers this message's pending rule questions and
 	// the cold-pitch question: per message, also when the heuristic
 	// settled the category without the model (a heuristic label does not keep

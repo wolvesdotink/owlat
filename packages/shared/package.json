@@ -90,6 +90,10 @@
 			"types": "./src/sunsetPolicy.ts",
 			"import": "./src/sunsetPolicy.ts"
 		},
+		"./freemailDomains": {
+			"types": "./src/freemailDomains.ts",
+			"import": "./src/freemailDomains.ts"
+		},
 		"./workspaceLogo": {
 			"types": "./src/workspaceLogo.ts",
 			"import": "./src/workspaceLogo.ts"

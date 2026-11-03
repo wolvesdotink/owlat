@@ -36,6 +36,7 @@ import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { batchGet } from '../../_utils/batchLoader';
 import type { Placement } from '@owlat/shared/arrival';
 import { modeOfMailbox, openBriefTop, type BriefTopRow } from '../interpret/briefTop';
+import { withSenderLogos, type SenderLogoField } from '../senderLogos/cache';
 
 /**
  * The fields a list row keeps, as an allowlist: a field added to `mailMessages`
@@ -145,10 +146,14 @@ function threadPlacement(
 	return thread?.arrival?.placement ?? thread?.placementOverride?.placement;
 }
 
+/**
+ * The page's rows with their thread state joined in, and the sender's brand
+ * logo where the message may show one (`../senderLogos/cache.ts`).
+ */
 export async function attachThreadState(
 	ctx: QueryCtx,
 	messages: Doc<'mailMessages'>[]
-): Promise<Array<MailListRow & RowThreadState>> {
+): Promise<Array<MailListRow & RowThreadState & SenderLogoField>> {
 	// A page of messages collapses to far fewer threads; `batchGet` keeps the
 	// dedupe and reads what is left in parallel rather than row by row.
 	const cache = await batchGet(
@@ -198,5 +203,5 @@ export async function attachThreadState(
 		};
 		out.push({ ...toMailListRow(m), ...state });
 	}
-	return out;
+	return withSenderLogos(ctx, out);
 }

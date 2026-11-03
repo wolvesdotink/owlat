@@ -74,6 +74,8 @@ export type PostboxReaderMessage = {
 	unsubscribe?: ListUnsubscribeTarget;
 	/** The sign-in code or link read at arrival (mail/signInCodes.ts). */
 	signInCode?: Doc<'mailMessages'>['signInCode'];
+	/** The authenticated sender's brand logo, served by us (mail/senderLogos/). */
+	senderLogoUrl?: string;
 };
 
 /** The open thread as the reader reads it off the thread page query. */

@@ -179,6 +179,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
 			control('autoLoadImages', 'reading', hasMail),
+			control('senderLogos', 'reading', hasMail),
 		],
 	}),
 	entry('shortcuts', {
