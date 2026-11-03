@@ -231,6 +231,9 @@ export const TENANT_TABLES = [
 	// Attachment parts stored out of a raw `.eml` (plan 3.5). Freed with the raw
 	// blob by `deleteMessageRowAndBlobs`; listed so an orphan still wipes.
 	'mailMessageParts',
+	// Brand logos of the domains that wrote to this workspace, with their
+	// stored images: the set of domains traces its correspondents.
+	'senderLogos',
 	'mailThreads',
 	'mailDraftRequestNonces',
 	'mailDrafts',

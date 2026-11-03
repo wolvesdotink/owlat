@@ -1545,6 +1545,11 @@ import type * as mail_sealedBlobHttp from '../mail/sealedBlobHttp.js';
 import type * as mail_sections from '../mail/sections.js';
 import type * as mail_senderEvidence from '../mail/senderEvidence.js';
 import type * as mail_senderHeuristics from '../mail/senderHeuristics.js';
+import type * as mail_senderLogos_cache from '../mail/senderLogos/cache.js';
+import type * as mail_senderLogos_discover from '../mail/senderLogos/discover.js';
+import type * as mail_senderLogos_eligibility from '../mail/senderLogos/eligibility.js';
+import type * as mail_senderLogos_fetch from '../mail/senderLogos/fetch.js';
+import type * as mail_senderLogos_logoRecords from '../mail/senderLogos/logoRecords.js';
 import type * as mail_senderProfile from '../mail/senderProfile.js';
 import type * as mail_sendingSwitch from '../mail/sendingSwitch.js';
 import type * as mail_settings from '../mail/settings.js';
@@ -1896,6 +1901,7 @@ import type * as workspaces_deletion_steps_mailMessageParts from '../workspaces/
 import type * as workspaces_deletion_steps_mailMessages from '../workspaces/deletion/steps/mailMessages.js';
 import type * as workspaces_deletion_steps_mailSnippets from '../workspaces/deletion/steps/mailSnippets.js';
 import type * as workspaces_deletion_steps_mediaAssets from '../workspaces/deletion/steps/mediaAssets.js';
+import type * as workspaces_deletion_steps_senderLogos from '../workspaces/deletion/steps/senderLogos.js';
 import type * as workspaces_deletion_steps_registry from '../workspaces/deletion/steps/registry.js';
 import type * as workspaces_deletion_steps_semanticFiles from '../workspaces/deletion/steps/semanticFiles.js';
 import type * as workspaces_deletion_steps_sweep from '../workspaces/deletion/steps/sweep.js';
@@ -1916,6 +1922,7 @@ import type * as mail_arrival_purgeRanges from '../mail/arrival/purgeRanges.js';
 import type * as mail_arrival_sharedConversion from '../mail/arrival/sharedConversion.js';
 import type * as schema_mailArrival from '../schema/mailArrival.js';
 import type * as schema_mailArrivalRules from '../schema/mailArrivalRules.js';
+import type * as schema_senderLogos from '../schema/senderLogos.js';
 import type * as mail_arrival_records from '../mail/arrival/records.js';
 import type * as mail_arrival_projection from '../mail/arrival/projection.js';
 import type * as mail_arrival_scopedInput from '../mail/arrival/scopedInput.js';
@@ -3534,6 +3541,11 @@ declare const fullApi: ApiFromModules<{
 	'mail/sections': typeof mail_sections;
 	'mail/senderEvidence': typeof mail_senderEvidence;
 	'mail/senderHeuristics': typeof mail_senderHeuristics;
+	'mail/senderLogos/cache': typeof mail_senderLogos_cache;
+	'mail/senderLogos/discover': typeof mail_senderLogos_discover;
+	'mail/senderLogos/eligibility': typeof mail_senderLogos_eligibility;
+	'mail/senderLogos/fetch': typeof mail_senderLogos_fetch;
+	'mail/senderLogos/logoRecords': typeof mail_senderLogos_logoRecords;
 	'mail/senderProfile': typeof mail_senderProfile;
 	'mail/sendingSwitch': typeof mail_sendingSwitch;
 	'mail/settings': typeof mail_settings;
@@ -3851,6 +3863,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/workerServers': typeof schema_workerServers;
 	'schema/mailArrival': typeof schema_mailArrival;
 	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
+	'schema/senderLogos': typeof schema_senderLogos;
 }> & ApiFromModules<{
 	'search/global': typeof search_global;
 }> & ApiFromModules<{
@@ -4002,6 +4015,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/mailMessages': typeof workspaces_deletion_steps_mailMessages;
 	'workspaces/deletion/steps/mailSnippets': typeof workspaces_deletion_steps_mailSnippets;
 	'workspaces/deletion/steps/mediaAssets': typeof workspaces_deletion_steps_mediaAssets;
+	'workspaces/deletion/steps/senderLogos': typeof workspaces_deletion_steps_senderLogos;
 	'workspaces/deletion/steps/registry': typeof workspaces_deletion_steps_registry;
 	'workspaces/deletion/steps/semanticFiles': typeof workspaces_deletion_steps_semanticFiles;
 	'workspaces/deletion/steps/sweep': typeof workspaces_deletion_steps_sweep;

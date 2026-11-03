@@ -6355,6 +6355,8 @@
 				"sendSoundHelp": "Beim Senden einer Nachricht einen kurzen Bestätigungston abspielen. Standardmäßig aus.",
 				"autoLoadImagesLabel": "Bilder automatisch laden",
 				"autoLoadImagesHelp": "Bilder in E-Mails gleich beim Öffnen anzeigen. Trackingpixel bleiben blockiert, und bei verdächtigen Nachrichten wirst du immer zuerst gefragt.",
+				"senderLogosLabel": "Absenderlogos anzeigen",
+				"senderLogosHelp": "Zeigt das Logo eines Unternehmens statt der Initialen, wenn seine E-Mail die Absenderprüfung besteht. Owlat lädt Logos auf dem Server, damit Absender nie sehen, wann du ihre E-Mail liest.",
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
@@ -16930,6 +16932,10 @@
 				"autoLoadImages": {
 					"title": "Bilder automatisch laden",
 					"keywords": "Bilder, externe Inhalte, Privatsphäre, Tracking"
+				},
+				"senderLogos": {
+					"title": "Absenderlogos anzeigen",
+					"keywords": "Logo, Marke, Avatar, BIMI, Favicon, Absendersymbol, Initialen"
 				},
 				"mailboxes": {
 					"title": "Postfächer",

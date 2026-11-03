@@ -31,6 +31,7 @@ import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
+import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -185,14 +186,7 @@ const renderToggleLabel = computed(() =>
 		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface scroll-mt-[calc(var(--pbx-reader-sticky-top,0px)+var(--pbx-reader-bar-h,0px)+1rem)]"
 		@click="emit('toggle-expanded')"
 	>
-		<UiAvatar
-			:name="msg.fromName"
-			:email="msg.fromAddress"
-			deterministic-color
-			size="md"
-			class="flex-shrink-0"
-			aria-hidden="true"
-		/>
+		<PostboxSenderAvatar :sender="msg" size="md" class="flex-shrink-0" />
 		<div class="flex-1 min-w-0">
 			<p class="text-sm truncate">
 				<span class="font-medium text-text-primary">{{ msg.fromName || msg.fromAddress }}</span>
@@ -227,14 +221,7 @@ const renderToggleLabel = computed(() =>
 		:class="{ 'ring-1 ring-brand': citeQuote != null }"
 	>
 		<header class="flex items-start gap-3">
-			<UiAvatar
-				:name="msg.fromName"
-				:email="msg.fromAddress"
-				deterministic-color
-				size="lg"
-				class="flex-shrink-0"
-				aria-hidden="true"
-			/>
+			<PostboxSenderAvatar :sender="msg" size="lg" class="flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<!-- Wraps on a phone only: there the sender and the trust chip do not
 				     fit one line, and the chip (never shrinking) ran off the card's

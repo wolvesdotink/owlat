@@ -21,6 +21,7 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
+import type { SenderLogoField } from '../senderLogos/cache';
 import { toThreadListRow, type ThreadListRow } from './threadListRow';
 import { isThreadLatestSnoozed } from '../threadLatestSnooze';
 
@@ -50,7 +51,7 @@ export const listMessages = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty = {
-			messages: [] as Array<MailListRow & RowThreadState>,
+			messages: [] as Array<MailListRow & RowThreadState & SenderLogoField>,
 			hasMore: false,
 			nextCursor: null,
 		};
@@ -198,7 +199,7 @@ export const listByLabel = publicQuery({
 	},
 	handler: async (ctx, args) => {
 		const empty = {
-			messages: [] as Array<MailListRow & RowThreadState>,
+			messages: [] as Array<MailListRow & RowThreadState & SenderLogoField>,
 			hasMore: false,
 			nextCursor: null,
 		};

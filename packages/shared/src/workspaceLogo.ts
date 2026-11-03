@@ -107,9 +107,10 @@ function decodeReferences(text: string): string {
  * The forms of an SVG's text the patterns are tried on: as stored, and with
  * references decoded (repeatedly, so `&amp;#x3a;` cannot hide a colon behind a
  * second layer) and whitespace and control characters dropped, the way a
- * browser reads `java\tscript:` in a URL.
+ * browser reads `java\tscript:` in a URL. Exported for other checks over
+ * untrusted SVG, which have to read it the way the parser will.
  */
-function svgTextForms(text: string): string[] {
+export function svgTextForms(text: string): string[] {
 	let decoded = text;
 	for (let i = 0; i < 4; i++) {
 		const next = decodeReferences(decoded);

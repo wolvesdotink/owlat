@@ -40,6 +40,7 @@ export type OrganizationDeletionTable =
 	| 'mailMessageBodies'
 	| 'mailMessages'
 	| 'mailMessageParts'
+	| 'senderLogos'
 	| 'mailDraftRequestNonces'
 	| 'mailDrafts'
 	| 'apiRequestReceipts'
@@ -257,6 +258,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailMessageBodies'),
 	v.literal('mailMessages'),
 	v.literal('mailMessageParts'),
+	v.literal('senderLogos'),
 	v.literal('mailDraftRequestNonces'),
 	v.literal('mailDrafts'),
 	v.literal('apiRequestReceipts'),

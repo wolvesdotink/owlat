@@ -34,6 +34,7 @@ import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import { POSTBOX_SWIPE_ACTION_OPTIONS } from '~/utils/postboxSwipe';
 import { POSTBOX_READING_DEFAULTS as DEFAULTS } from '~/utils/postboxReadingDefaults';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
+import PreferencesSenderLogos from './PreferencesSenderLogos.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -475,6 +476,7 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				@update:model-value="setAutoLoadImages"
 			/>
 		</PreferencesSettingRow>
+		<PreferencesSenderLogos />
 		<PreferencesSettingRow
 			layout="switch"
 			control-id="postbox-send-sound"

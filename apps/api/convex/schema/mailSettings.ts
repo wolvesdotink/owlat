@@ -118,6 +118,10 @@ export const mailSettingsTables = {
 		// which always asks first. Tracking pixels stay stripped either way.
 		// Optional so existing rows read as undefined; the reader defaults it ON.
 		isAutoLoadImagesOn: v.optional(v.boolean()),
+		// Show brand logos in place of initials for senders that pass DMARC
+		// (`mail/senderLogos/`). Optional so existing rows read as undefined; the
+		// list and reader reads default it ON.
+		isSenderLogosOn: v.optional(v.boolean()),
 		// Undo-send window, in seconds: how long a sent message waits in
 		// `pending_send` before it dispatches (0 = Off, dispatch immediately and
 		// show no undo toast). Optional so existing rows read as undefined; the

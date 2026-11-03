@@ -210,6 +210,22 @@ export function trySplitZone(domain: string): ZoneSplit | null {
 }
 
 /**
+ * The organisational domain of a mail domain, as DMARC defines it: the name one
+ * label below its public suffix, where the suffix list's PRIVATE section counts.
+ * So `alice.github.io` is its own organisation, not part of `github.io`, unlike
+ * {@link trySplitZone}, which splits at the zone a registrar sells. Anything
+ * shared under one organisational domain is shared by everyone who can send
+ * from below it, so a per-sender fact must never be keyed any higher than this.
+ * `null` when the input has no such domain.
+ */
+export function organizationalDomain(domain: string): DnsName | null {
+	const name = asDnsName(domain);
+	if (name === null) return null;
+	const parsed = parseTldts(name, { allowPrivateDomains: true });
+	return parsed.domain === null ? null : (parsed.domain as DnsName);
+}
+
+/**
  * Render a record's fully-qualified host **relative to the registrable zone** of
  * `domain`, as most DNS providers expect the name to be pasted.
  *

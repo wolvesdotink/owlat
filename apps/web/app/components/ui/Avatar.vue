@@ -40,8 +40,15 @@ const props = withDefaults(
 	}
 );
 
+// An image that fails to load (a storage URL gone stale, a network blip) falls
+// back to the initials rather than leaving a broken-image glyph in the circle.
+const failedImage = ref<string | null>(null);
+const shownImage = computed(() =>
+	props.image && props.image !== failedImage.value ? props.image : null
+);
+
 const identity = computed(() => {
-	if (!props.deterministicColor) return null;
+	if (!props.deterministicColor || shownImage.value) return null;
 	const nameOrEmail = props.name?.trim() || props.email?.trim();
 	if (!nameOrEmail) return null;
 	return initialsAndColorForAddress(nameOrEmail, {
@@ -53,7 +60,10 @@ const initials = computed(() =>
 );
 const sizeClass = computed(() => AVATAR_SIZE_CLASSES[props.size]);
 const sizePx = computed(() => AVATAR_SIZE_PX[props.size]);
-const bgClass = computed(() => (identity.value ? '' : AVATAR_BG_CLASSES[props.bg]));
+const IMAGE_TILE = 'bg-white'; // palette-ok: logos and transparent site icons are drawn for white
+const bgClass = computed(() =>
+	shownImage.value ? IMAGE_TILE : identity.value ? '' : AVATAR_BG_CLASSES[props.bg]
+);
 const colorStyle = computed(() =>
 	identity.value ? AVATAR_COLOR_STYLES[identity.value.colorToken] : undefined
 );
@@ -68,13 +78,14 @@ const colorStyle = computed(() =>
 		<!-- Sized and decoded off the main thread, so a list of avatars neither
 			shifts layout as images arrive nor blocks a frame decoding them. -->
 		<img
-			v-if="image"
-			:src="image"
+			v-if="shownImage"
+			:src="shownImage"
 			:alt="name ?? ''"
 			:width="sizePx"
 			:height="sizePx"
 			decoding="async"
 			class="w-full h-full object-cover"
+			@error="failedImage = shownImage"
 		/>
 		<span v-else>{{ initials }}</span>
 	</div>

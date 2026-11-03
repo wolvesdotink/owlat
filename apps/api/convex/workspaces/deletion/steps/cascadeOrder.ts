@@ -57,6 +57,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Parts cut out of a raw `.eml`: the step above frees them with their raw
 	// blob, so this only ever finds orphans, and it purges their blobs too.
 	'mailMessageParts',
+	// Sender logos purge their stored images with the row.
+	'senderLogos',
 	'mailDraftRequestNonces',
 	'mailDrafts',
 	// Share links own the blobs the drafts above no longer reference, so they
