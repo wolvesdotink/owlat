@@ -175,3 +175,37 @@ export const mailAttachmentShareScopeValidator = v.union(v.literal('anyone'), v.
  * a confirmed verdict refuses creation, so no row can ever carry it.
  */
 export const mailAttachmentShareScanValidator = v.union(v.literal('clean'), v.literal('skipped'));
+
+// One read receipt (RFC 8098) a recipient's client returned for a sent message.
+// `displayed` is "opened"; `deleted` is "deleted without being displayed". The
+// receipts' other dispositions say nothing about reading and are not kept.
+export const mailReturnedReceiptValidator = v.object({
+	address: v.string(),
+	disposition: v.union(v.literal('displayed'), v.literal('deleted')),
+	// The recipient's client sent it without asking them.
+	isAutomatic: v.boolean(),
+	at: v.number(),
+});
+export type MailReturnedReceipt = Infer<typeof mailReturnedReceiptValidator>;
+
+// The read receipt a sent message asked for (mailMessages.readReceipt): present
+// only when the sender asked. `returned` holds at most one entry per recipient,
+// the newest. A recipient missing from it may still have read the message.
+export const mailReadReceiptValidator = v.object({
+	requestedAt: v.number(),
+	returned: v.array(mailReturnedReceiptValidator),
+});
+
+// What the ingest action read out of an arriving receipt, for the delivery
+// mutation to match against a sent message.
+export const inboundReadReceiptValidator = v.object({
+	originalMessageId: v.string(),
+	finalRecipient: v.optional(v.string()),
+	disposition: v.union(
+		v.literal('displayed'),
+		v.literal('deleted'),
+		v.literal('dispatched'),
+		v.literal('processed')
+	),
+	isAutomatic: v.boolean(),
+});

@@ -6,6 +6,7 @@ import { spamVerdictValidator } from '../lib/convexValidators';
 import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailMessageAttachmentValidator,
+	mailReadReceiptValidator,
 	mailSignInCodeValidator,
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
@@ -268,6 +269,11 @@ export const mailMessagesTables = {
 				),
 			})
 		),
+
+		// Read receipts on a SENT copy whose sender asked for them (RFC 8098):
+		// what came back, written by mail/readReceipts.ts. Absent when no receipt
+		// was asked for.
+		readReceipt: v.optional(mailReadReceiptValidator),
 
 		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
 		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject

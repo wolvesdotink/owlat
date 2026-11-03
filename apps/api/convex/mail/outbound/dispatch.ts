@@ -305,6 +305,9 @@ export async function dispatchViaMta(
 								? { 'In-Reply-To': params.inReplyToHeaderValue }
 								: {}),
 							...(params.referencesHeaderValue ? { References: params.referencesHeaderValue } : {}),
+							...(draft.isReadReceiptRequested
+								? { 'Disposition-Notification-To': draft.fromAddress }
+								: {}),
 						},
 						// Same IP pool as system/API mail, but not the same queue: the
 						// MTA's /send/postbox route puts every job on the `postbox`

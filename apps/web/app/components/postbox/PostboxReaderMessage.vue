@@ -31,6 +31,7 @@ import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
+import PostboxReadReceipts from './PostboxReadReceipts.vue';
 import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 
 const props = defineProps<{
@@ -316,6 +317,12 @@ const renderToggleLabel = computed(() =>
 						}}
 					</span>
 				</p>
+				<PostboxReadReceipts
+					v-if="showMeta && delivery?.readReceipt"
+					class="mt-1"
+					:receipt="delivery.readReceipt"
+					:recipients="delivery.recipients.map((r) => r.address)"
+				/>
 				<button
 					v-if="reader.reduced && metaOpen"
 					type="button"

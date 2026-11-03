@@ -169,3 +169,28 @@ describe('dispatchViaMta', () => {
 		expect(held.peak()).toBe(6);
 	});
 });
+
+describe('dispatchViaMta — read receipt request', () => {
+	async function sentHeaders(draft: DraftRow): Promise<Record<string, string>> {
+		const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		await dispatchViaMta(fakeCtx().ctx, {
+			draft,
+			sealed: null,
+			mailMessageId: MAIL_MESSAGE_ID,
+			recipients: ['a@example.com'],
+			rfc822MessageId: '<m1@owlat.test>',
+			allowedFromAddresses: ['me@owlat.test'],
+			mta: MTA,
+		});
+		const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+		return (JSON.parse(String(init.body)) as { headers: Record<string, string> }).headers;
+	}
+
+	it('asks for the receipt at the From address only when the draft does', async () => {
+		expect(
+			(await sentHeaders({ ...DRAFT, isReadReceiptRequested: true }))['Disposition-Notification-To']
+		).toBe('me@owlat.test');
+		expect(await sentHeaders(DRAFT)).not.toHaveProperty('Disposition-Notification-To');
+	});
+});

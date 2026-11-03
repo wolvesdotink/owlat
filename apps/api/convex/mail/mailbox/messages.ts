@@ -18,6 +18,7 @@ import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { requireMessageAccess, loadReadableMailbox } from '../permissions';
 import { senderHeuristicsValidator } from '../../lib/validators/senderHeuristics';
+import { mailReadReceiptValidator } from '../../lib/validators/mailContent';
 import { loadThreadOutboundDelivery, loadThreadPage } from './threadReads';
 import { withVisibleDrafts } from '../needsReplySlot';
 import { withSenderLogos } from '../senderLogos/cache';
@@ -236,6 +237,8 @@ export const listThreadOutboundDelivery = publicQuery({
 						errorCode: v.optional(v.string()),
 					})
 				),
+				// The read receipts it asked for and got back (mail/readReceipts.ts).
+				readReceipt: v.optional(mailReadReceiptValidator),
 			})
 		)
 	),

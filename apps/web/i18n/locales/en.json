@@ -4754,7 +4754,9 @@
 				"discardDraft": "Discard draft",
 				"showQuote": "Show quoted text",
 				"hideQuote": "Hide quoted text",
-				"gapsLeft": "1 gap left | {count} gaps left"
+				"gapsLeft": "1 gap left | {count} gaps left",
+				"readReceipt": "Ask for a read receipt",
+				"readReceiptOperation": "Change the read receipt request"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -4812,6 +4814,14 @@
 				"showServerReply": "What the server said",
 				"resendOne": "Resend to {address} only",
 				"resendMany": "Resend to the {count} recipients it didn't reach"
+			},
+			"postboxReadReceipts": {
+				"regionLabel": "Read receipts",
+				"readBy": "Read by {address}",
+				"deletedBy": "Deleted without being read by {address}",
+				"waitingOne": "No read receipt from {address} yet.",
+				"waitingMany": "No read receipt from {count} recipients yet.",
+				"caveat": "Not every mail app sends one, and people can decline. A missing receipt doesn't mean the message is unread."
 			},
 			"postboxDraftList": {
 				"empty": "No drafts",

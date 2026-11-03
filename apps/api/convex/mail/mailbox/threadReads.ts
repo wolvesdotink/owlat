@@ -104,11 +104,17 @@ export async function loadThreadOutboundDelivery(ctx: QueryCtx, threadId: Id<'ma
 	);
 	const rows = perState.flat();
 	rows.sort((a, b) => a.receivedAt - b.receivedAt || a._creationTime - b._creationTime);
-	return rows
-		.slice(-THREAD_READ_CAP)
-		.flatMap((message) =>
-			message.outbound ? [{ messageId: message._id, ...projectOutbound(message.outbound) }] : []
-		);
+	return rows.slice(-THREAD_READ_CAP).flatMap((message) =>
+		message.outbound
+			? [
+					{
+						messageId: message._id,
+						...projectOutbound(message.outbound),
+						...(message.readReceipt ? { readReceipt: message.readReceipt } : {}),
+					},
+				]
+			: []
+	);
 }
 
 /**

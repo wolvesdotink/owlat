@@ -33,6 +33,7 @@ import { refuse } from '../../lib/lifecycle';
 import { noteDraftSent } from '../draftPause';
 import { refreshArrivalProjection } from '../arrival/projection';
 import { generateUndoToken } from './undoToken';
+import { requestedReadReceipt } from '../readReceipts';
 import {
 	DRAFT_LIFECYCLE,
 	dedupedRecipients,
@@ -168,6 +169,7 @@ async function runSentEffects(
 		},
 		// Sealed Mail (E3): honest record of whether this send was sealed and why.
 		...(context.encryptionInfo ? { encryptionInfo: context.encryptionInfo } : {}),
+		...requestedReadReceipt(draft, now),
 		createdAt: now,
 		updatedAt: now,
 	});

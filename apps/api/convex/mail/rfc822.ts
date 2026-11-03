@@ -68,6 +68,7 @@ export interface DraftRow {
 	}>;
 	state: 'draft' | 'pending_send' | 'scheduled';
 	isUnsealedSendAllowed?: boolean;
+	isReadReceiptRequested?: boolean;
 	undoToken?: string;
 	scheduledSendAt?: number;
 }
@@ -83,6 +84,7 @@ function toComposeInput(draft: DraftRow): ComposeInput {
 		bodyHtml: draft.bodyHtml,
 		bodyText: draft.bodyText,
 		bodyAmp: draft.bodyAmp,
+		...(draft.isReadReceiptRequested ? { dispositionNotificationTo: draft.fromAddress } : {}),
 	};
 }
 
