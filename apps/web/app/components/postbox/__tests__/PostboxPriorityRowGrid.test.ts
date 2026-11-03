@@ -80,7 +80,10 @@ describe('Priority view row grid', () => {
 		expect(units(queueLink, /\bpl-(\d+)\b/)).toBe(threadAvatarX);
 		// Sender x: the same avatar (size sm on both) and the same gap after it.
 		expect(units(queueLink, /\bgap-(\d+)\b/)).toBe(units(threadFlex, /\bgap-(\d+)\b/));
-		expect(row).toMatch(/<UiAvatar[^>]*size="sm"/);
+		// The thread row draws its sender through PostboxSenderAvatar, which hands
+		// the size to UiAvatar unchanged.
+		expect(row).toMatch(/<PostboxSenderAvatar[^>]*size="sm"/);
+		expect(source('PostboxSenderAvatar.vue')).toMatch(/<UiAvatar[^>]*:size="size"/);
 		expect(source('PostboxPriorityQueueList.vue')).toMatch(/<UiAvatar[^>]*size="sm"/);
 		// Line x: the same sender column width and the same gap after it.
 		expect(units(queueSender, /\bsm:w-(\d+)\b/)).toBe(units(threadSender, /\bsm:w-(\d+)\b/));
