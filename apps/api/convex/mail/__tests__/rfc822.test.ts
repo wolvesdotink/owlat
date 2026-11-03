@@ -278,3 +278,20 @@ describe('buildRfc822 Date header (RFC 5322 §3.3)', () => {
 		expect(parsed).toBeLessThanOrEqual(after + 2000);
 	});
 });
+
+describe('buildRfc822 — read receipt request (RFC 8098)', () => {
+	it('names the From address in Disposition-Notification-To only when the draft asks', () => {
+		const asked = buildRfc822(
+			makeDraft({ isReadReceiptRequested: true }),
+			[],
+			'<id@owlat.test>',
+			undefined,
+			undefined
+		);
+		expect(headerBlock(asked.raw)).toContain(
+			'\r\nDisposition-Notification-To: sender@owlat.test\r\n'
+		);
+		const plain = buildRfc822(makeDraft(), [], '<id@owlat.test>', undefined, undefined);
+		expect(headerBlock(plain.raw)).not.toContain('Disposition-Notification-To');
+	});
+});

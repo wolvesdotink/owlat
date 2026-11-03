@@ -73,6 +73,7 @@ import {
 	targetFolderRole,
 } from './deliveryPipeline/mailboxDecision';
 import { virusVerdictValidator } from '../lib/literalValidators';
+import { recordReturnedReceipt } from './readReceipts';
 import {
 	mailboxGateSignals,
 	resolveAttachmentGate,
@@ -138,6 +139,7 @@ export const ingestFromWebhook = internalAction({
 			rawSize: prepared.rawSize,
 			antiLoopHeaders: prepared.antiLoopHeaders,
 			unsubscribe: prepared.unsubscribe,
+			readReceipt: prepared.readReceipt,
 			recipientAddress: args.recipientAddress,
 			from: args.from,
 			to: args.to,
@@ -263,6 +265,20 @@ export const deliverToMailbox = internalMutation({
 		// otherwise post-cutover inbound mail lands in the archive forever.
 		const mailbox = await resolveDeliverableMailbox(ctx, extractEmail(args.recipientAddress));
 		if (!mailbox) {
+			return { skipped: true };
+		}
+
+		// 1b. A read receipt for a message this mailbox sent is recorded on the
+		// Sent copy and not delivered (mail/readReceipts.ts).
+		if (
+			args.readReceipt &&
+			(await recordReturnedReceipt(ctx, {
+				mailboxId: mailbox._id,
+				receipt: args.readReceipt,
+				from: args.from,
+				receivedAt: args.receivedAt,
+			}))
+		) {
 			return { skipped: true };
 		}
 

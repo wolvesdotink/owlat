@@ -4754,7 +4754,9 @@
 				"discardDraft": "Entwurf verwerfen",
 				"showQuote": "Zitierten Text anzeigen",
 				"hideQuote": "Zitierten Text ausblenden",
-				"gapsLeft": "1 Lücke offen | {count} Lücken offen"
+				"gapsLeft": "1 Lücke offen | {count} Lücken offen",
+				"readReceipt": "Lesebestätigung anfordern",
+				"readReceiptOperation": "Lesebestätigung umstellen"
 			},
 			"postboxComposerGuards": {
 				"alignment": {
@@ -4812,6 +4814,14 @@
 				"showServerReply": "Antwort des Servers",
 				"resendOne": "Nur an {address} erneut senden",
 				"resendMany": "Erneut an die {count} nicht erreichten Empfänger senden"
+			},
+			"postboxReadReceipts": {
+				"regionLabel": "Lesebestätigungen",
+				"readBy": "Gelesen von {address}",
+				"deletedBy": "Gelöscht von {address}",
+				"waitingOne": "Noch keine Lesebestätigung von {address}.",
+				"waitingMany": "Noch keine Lesebestätigung von {count} Empfängern.",
+				"caveat": "Nicht jedes Mailprogramm schickt eine, und Empfänger können ablehnen. Fehlt sie, heißt das nicht, dass die Nachricht ungelesen ist."
 			},
 			"postboxDraftList": {
 				"empty": "Keine Entwürfe",

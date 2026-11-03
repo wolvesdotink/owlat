@@ -31,6 +31,7 @@ import { base64ToBytes, bytesToBinaryString, utf8Bytes } from '../../lib/bytes';
 import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
+import { parseDispositionNotification } from '@owlat/mail-message/parse/mdn';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -103,6 +104,13 @@ export async function prepareInboundMessage(
 	// List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 / 8058), parsed once
 	// here so the reader's Unsubscribe chip never re-opens the raw .eml.
 	const unsubscribe = extractListUnsubscribe(rawHeaderBlock) ?? undefined;
+	// A read receipt (RFC 8098) is matched to the sent message it answers by the
+	// delivery mutation (mail/readReceipts.ts). The report-type test keeps
+	// ordinary mail, including mail that merely asks for a receipt, from paying
+	// for a MIME walk.
+	const readReceipt = /report-type\s*=\s*"?disposition-notification/i.test(rawHeaderBlock)
+		? (parseDispositionNotification(rawBinary) ?? undefined)
+		: undefined;
 	// The raw `.eml` we store IS the E2EE-sealed original when the message
 	// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
 	// while the row's body columns below carry the restored plaintext.
@@ -212,6 +220,7 @@ export async function prepareInboundMessage(
 		rawStorageId,
 		antiLoopHeaders,
 		unsubscribe,
+		readReceipt,
 		// Restored real subject when the message was opened; the outer
 		// placeholder `...` otherwise. Threading downstream keys off this.
 		subject: effectiveSubject,

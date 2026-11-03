@@ -38,6 +38,10 @@
 			"types": "./src/parse/attachments.ts",
 			"import": "./src/parse/attachments.ts"
 		},
+		"./parse/mdn": {
+			"types": "./src/parse/mdn.ts",
+			"import": "./src/parse/mdn.ts"
+		},
 		"./parse/address": {
 			"types": "./src/parse/address.ts",
 			"import": "./src/parse/address.ts"

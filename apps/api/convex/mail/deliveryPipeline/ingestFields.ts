@@ -17,7 +17,10 @@ import { inboundEncryptionInfoValidator } from '../../e2ee/inboundSeal';
 import { inboundSignatureInfoValidator } from '../../e2ee/inboundSignature';
 import { spamVerdictValidator } from '../../lib/convexValidators';
 import { virusVerdictValidator } from '../../lib/literalValidators';
-import { mailUnsubscribeValidator } from '../../lib/validators/mailContent';
+import {
+	inboundReadReceiptValidator,
+	mailUnsubscribeValidator,
+} from '../../lib/validators/mailContent';
 import { mailMessageStoredPartsValidator } from '../../schema/mailComposition';
 
 /**
@@ -59,6 +62,8 @@ export const mailboxDeliveryFields = {
 	antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
 	// Parsed List-Unsubscribe target (extracted at ingest by the caller).
 	unsubscribe: v.optional(mailUnsubscribeValidator),
+	// The message is a read receipt (RFC 8098), parsed by the ingest action.
+	readReceipt: v.optional(inboundReadReceiptValidator),
 	recipientAddress: v.string(),
 	// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
 	// sender. Passed to the post-delivery hook so vacation auto-replies skip
