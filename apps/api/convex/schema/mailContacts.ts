@@ -3,6 +3,10 @@ import { v } from 'convex/values';
 import { mailCategoryLabelValidator } from '../lib/literalValidators';
 import { mailTriageVerbValidator } from '../lib/validators/mailContent';
 import { editAdjustmentValidator } from '../lib/validators/editLearning';
+import {
+	mailContactPhoneValidator,
+	mailContactPostalAddressValidator,
+} from '../lib/validators/mailContacts';
 
 /**
  * Per-user sender knowledge: contacts, category and image overrides,
@@ -29,10 +33,22 @@ export const mailContactsTables = {
 		// existing rows read as undefined (unscreened, i.e. treated as accepted for
 		// pre-existing correspondents that already have a row).
 		isScreenerAccepted: v.optional(v.boolean()),
+		// Details only a vCard import brings (mail/contactsImport.ts), bounded by
+		// @owlat/shared/postboxVcard.
+		phones: v.optional(v.array(mailContactPhoneValidator)),
+		postalAddresses: v.optional(v.array(mailContactPostalAddressValidator)),
+		// Last time a vCard import created or merged into this row; the contacts
+		// page shows it as the row's source. Absent on rows built from mail alone.
+		importedAt: v.optional(v.number()),
 		createdAt: v.number(),
 	})
 		.index('by_mailbox_and_email', ['mailboxId', 'email'])
-		.index('by_mailbox_and_lastUsed', ['mailboxId', 'lastUsedAt']),
+		.index('by_mailbox_and_lastUsed', ['mailboxId', 'lastUsedAt'])
+		// Autocomplete by name across the whole book, not only its recent rows.
+		.searchIndex('search_display_name', {
+			searchField: 'displayName',
+			filterFields: ['mailboxId'],
+		}),
 
 	// Per-sender smart-inbox category overrides. When the user "Recategorizes as…"
 	// a thread, the chosen category is remembered here for that sender so future

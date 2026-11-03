@@ -308,6 +308,7 @@ import type * as auth_accountDeletionEmail from '../auth/accountDeletionEmail.js
 import type * as auth_accountExport from '../auth/accountExport.js';
 import type * as auth_accountExportArtifacts from '../auth/accountExportArtifacts.js';
 import type * as auth_accountExportBookingQueries from '../auth/accountExportBookingQueries.js';
+import type * as auth_accountExportContactQueries from '../auth/accountExportContactQueries.js';
 import type * as auth_accountExportDecision from '../auth/accountExportDecision.js';
 import type * as auth_accountExportPushQueries from '../auth/accountExportPushQueries.js';
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
@@ -1275,6 +1276,7 @@ import type * as lib_validators_mail from '../lib/validators/mail.js';
 import type * as lib_validators_inboxSla from '../lib/validators/inboxSla.js';
 import type * as lib_validators_inboxAutoClose from '../lib/validators/inboxAutoClose.js';
 import type * as lib_validators_mailAi from '../lib/validators/mailAi.js';
+import type * as lib_validators_mailContacts from '../lib/validators/mailContacts.js';
 import type * as lib_validators_mailContent from '../lib/validators/mailContent.js';
 import type * as lib_validators_mailSettings from '../lib/validators/mailSettings.js';
 import type * as lib_validators_push from '../lib/validators/push.js';
@@ -1362,6 +1364,7 @@ import type * as mail_category from '../mail/category.js';
 import type * as mail_categoryArrival from '../mail/categoryArrival.js';
 import type * as mail_commitments from '../mail/commitments.js';
 import type * as mail_contacts from '../mail/contacts.js';
+import type * as mail_contactsImport from '../mail/contactsImport.js';
 import type * as mail_counterpartName from '../mail/counterpartName.js';
 import type * as mail_crossSurface from '../mail/crossSurface.js';
 import type * as mail_dailyBrief from '../mail/dailyBrief.js';
@@ -2151,6 +2154,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/accountExport': typeof auth_accountExport;
 	'auth/accountExportArtifacts': typeof auth_accountExportArtifacts;
 	'auth/accountExportBookingQueries': typeof auth_accountExportBookingQueries;
+	'auth/accountExportContactQueries': typeof auth_accountExportContactQueries;
 	'auth/accountExportDecision': typeof auth_accountExportDecision;
 	'auth/accountExportPushQueries': typeof auth_accountExportPushQueries;
 	'auth/accountExportQueries': typeof auth_accountExportQueries;
@@ -3180,6 +3184,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/inboxSla': typeof lib_validators_inboxSla;
 	'lib/validators/inboxAutoClose': typeof lib_validators_inboxAutoClose;
 	'lib/validators/mailAi': typeof lib_validators_mailAi;
+	'lib/validators/mailContacts': typeof lib_validators_mailContacts;
 	'lib/validators/mailContent': typeof lib_validators_mailContent;
 	'lib/validators/mailSettings': typeof lib_validators_mailSettings;
 	'lib/validators/push': typeof lib_validators_push;
@@ -3363,6 +3368,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/categoryArrival': typeof mail_categoryArrival;
 	'mail/commitments': typeof mail_commitments;
 	'mail/contacts': typeof mail_contacts;
+	'mail/contactsImport': typeof mail_contactsImport;
 	'mail/counterpartName': typeof mail_counterpartName;
 	'mail/crossSurface': typeof mail_crossSurface;
 	'mail/dailyBrief': typeof mail_dailyBrief;

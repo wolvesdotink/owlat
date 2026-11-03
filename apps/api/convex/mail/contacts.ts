@@ -78,13 +78,16 @@ export function rankContacts<T extends RankableContact>(
 		.map((x) => x.c);
 }
 
+/** Rows the contacts page loads: one vCard import's worth (`VCARD_MAX_ENTRIES`). */
+const CONTACT_LIST_LIMIT = 2_000;
+
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
 	args: { mailboxId: v.id('mailboxes'), limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
-		const limit = Math.min(args.limit ?? 100, 500);
+		const limit = Math.min(args.limit ?? 100, CONTACT_LIST_LIMIT);
 		return ctx.db
 			.query('mailContacts')
 			.withIndex('by_mailbox_and_lastUsed', (q) => q.eq('mailboxId', args.mailboxId))
@@ -93,10 +96,20 @@ export const list = publicQuery({
 	},
 });
 
+/** Rows each whole-book lookup adds to the autocomplete's recent window. */
+const AUTOCOMPLETE_LOOKUP_LIMIT = 20;
+/** Words of the typed prefix the name search takes; Convex refuses more than 16 terms. */
+const AUTOCOMPLETE_SEARCH_TERMS = 8;
+
 /**
  * Autocomplete query for the recipient field. Returns up to `limit`
  * contacts whose email or display name starts with the prefix, ordered
  * by frecency (lastUsedAt desc).
+ *
+ * The candidates are the most recent rows plus an indexed email-prefix range
+ * and a name search over the whole book: an imported address book can be far
+ * larger than the recent window, and the person typed for is often one of its
+ * rows nobody has mailed yet.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const autocomplete = publicQuery({
@@ -120,11 +133,27 @@ export const autocomplete = publicQuery({
 			.withIndex('by_mailbox_and_lastUsed', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
 			.take(200);
+		const byEmail = await ctx.db
+			.query('mailContacts')
+			.withIndex('by_mailbox_and_email', (q) =>
+				q.eq('mailboxId', args.mailboxId).gte('email', prefix).lt('email', `${prefix}\uffff`)
+			)
+			.take(AUTOCOMPLETE_LOOKUP_LIMIT);
+		const nameQuery = prefix.split(/\s+/).slice(0, AUTOCOMPLETE_SEARCH_TERMS).join(' ');
+		const byName = await ctx.db
+			.query('mailContacts')
+			.withSearchIndex('search_display_name', (q) =>
+				q.search('displayName', nameQuery).eq('mailboxId', args.mailboxId)
+			)
+			.take(AUTOCOMPLETE_LOOKUP_LIMIT);
+		const candidates = new Map(
+			[...recent, ...byEmail, ...byName].map((contact) => [contact._id, contact])
+		);
 
 		// Blend recency + frequency (and match quality) rather than relying on
 		// the index order alone, so a frequently-mailed contact isn't buried
 		// below a stale one that merely happens to prefix-match.
-		return rankContacts(recent, prefix, Date.now(), limit);
+		return rankContacts([...candidates.values()], prefix, Date.now(), limit);
 	},
 });
 
