@@ -64,6 +64,20 @@ const exhausted = computed(() => results.value.length === 0 && !hasMore.value);
 const pageEmptyWithMore = computed(() => results.value.length === 0 && hasMore.value);
 const chips = computed(() => describeChips(parsed.value));
 
+// A plain-words search that found little can be turned into operators by the
+// model, on request (components/postbox/PostboxSearchRewrite.vue).
+const { isEnabled } = useFeatureFlag();
+const offersRewrite = computed(
+	() =>
+		isEnabled('ai') &&
+		isSearchRewriteOffered({
+			parsed: parsed.value,
+			resultCount: results.value.length,
+			hasMore: hasMore.value,
+			isLoading: isLoading.value,
+		})
+);
+
 // In-place preview: clicking a result selects it here rather than navigating
 // into the folder view (which would eject the user out of search and mislabel
 // the folder, since every hit shares one results list across folders).
@@ -252,6 +266,11 @@ async function confirmSave() {
 								>
 							</span>
 						</p>
+						<PostboxSearchRewrite
+							v-if="offersRewrite"
+							:query="query.trim()"
+							@search="query = $event"
+						/>
 						<div v-if="chips.length > 0" class="flex flex-wrap gap-1">
 							<button
 								v-for="chip in chips"
