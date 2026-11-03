@@ -66,6 +66,8 @@ function mountCard() {
 			plugins: [createTestI18n()],
 			stubs: {
 				PreferencesBriefBackfill: true,
+				// Its own card test covers it: it reads its own settings query.
+				PreferencesSenderLogos: true,
 				UiSwitch: {
 					props: ['modelValue', 'id'],
 					emits: ['update:modelValue'],
