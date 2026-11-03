@@ -103,7 +103,7 @@ async function callTool(
 		clientId,
 		tool: call.tool,
 		outcome: outcome?.status ?? 'error',
-		...(outcome?.audit ?? {}),
+		...outcome?.audit,
 		...(call.tool === 'search_mail' ? { query: call.query } : {}),
 	});
 	if (!outcome) return { ok: true, result: toolError('The tool failed. Try again later.') };

@@ -30,9 +30,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<object>('../../lib/sessionOrganization');
 	const session = async () => sessionMock.value;
 	return {
 		...actual,

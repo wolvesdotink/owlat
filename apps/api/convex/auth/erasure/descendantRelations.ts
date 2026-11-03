@@ -45,6 +45,34 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailboxes', 'pendingMailboxMembers', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc(
 		'mailboxes',
+		'mcpClients',
+		'mailboxIds[]',
+		'delete',
+		'A member’s AI client tokens go with the member, whichever mailboxes they name.'
+	),
+	desc(
+		'mailboxes',
+		'mcpClientActivity',
+		'mailboxId',
+		'delete',
+		'The log of the member’s own AI clients; it goes with them.'
+	),
+	desc(
+		'mcpClients',
+		'mcpClientActivity',
+		'clientId',
+		'delete',
+		'A client’s log belongs to the same member and is drained first.'
+	),
+	desc(
+		'mailThreads',
+		'mcpClientActivity',
+		'threadId',
+		'delete',
+		'The log of the member’s own AI clients; it goes with them.'
+	),
+	desc(
+		'mailboxes',
 		'mailboxRequests',
 		'fulfilledMailboxId',
 		'retain',

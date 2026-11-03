@@ -1594,6 +1594,7 @@ import type * as mcp__helpers from '../mcp/_helpers.js';
 import type * as mcp_access from '../mcp/access.js';
 import type * as mcp_activity from '../mcp/activity.js';
 import type * as mcp_clients from '../mcp/clients.js';
+import type * as mcp_erasure from '../mcp/erasure.js';
 import type * as mcp_protocol from '../mcp/protocol.js';
 import type * as mcp_reads from '../mcp/reads.js';
 import type * as mcp_serverHttp from '../mcp/serverHttp.js';
@@ -3701,6 +3702,7 @@ declare const fullApi: ApiFromModules<{
 	'mcp/access': typeof mcp_access;
 	'mcp/activity': typeof mcp_activity;
 	'mcp/clients': typeof mcp_clients;
+	'mcp/erasure': typeof mcp_erasure;
 	'mcp/protocol': typeof mcp_protocol;
 	'mcp/reads': typeof mcp_reads;
 	'mcp/serverHttp': typeof mcp_serverHttp;

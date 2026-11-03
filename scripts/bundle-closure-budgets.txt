@@ -137,6 +137,7 @@ route 35 pages/dashboard/postbox/senders.vue
 route 3 pages/dashboard/postbox/subscriptions.vue
 route 57 pages/dashboard/preferences/account.vue
 route 27 pages/dashboard/preferences/add-account.vue
+route 19 pages/dashboard/preferences/ai-clients.vue
 route 17 pages/dashboard/preferences/aliases.vue
 route 19 pages/dashboard/preferences/app-passwords.vue
 route 27 pages/dashboard/preferences/booking.vue

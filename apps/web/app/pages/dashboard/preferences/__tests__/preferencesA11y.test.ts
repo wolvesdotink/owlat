@@ -137,6 +137,15 @@ beforeEach(() => {
 			generate: vi.fn(),
 			revoke: vi.fn(),
 		}),
+		useMcpClients: () => ({
+			clients: ref([]),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+			serverUrl: ref('https://api.owlat.test/mcp/postbox'),
+			create: vi.fn(),
+			revoke: vi.fn(),
+		}),
 		usePostboxFilters: () => ({
 			filters: ref([]),
 			isLoading: ref(false),
