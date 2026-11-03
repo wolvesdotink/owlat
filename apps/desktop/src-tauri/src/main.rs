@@ -27,6 +27,7 @@ mod notifications;
 mod secrets;
 mod shortcuts;
 mod ssh;
+mod tray;
 mod updater;
 mod window;
 mod zoom;
@@ -90,6 +91,8 @@ fn main() {
         .manage(window::Revealed::default())
         // The app-wide page zoom (View → Zoom In/Out; zoom.rs).
         .manage(zoom::ZoomLevel::default())
+        // What the tray icon shows, and its device settings (tray.rs).
+        .manage(tray::TrayState::default())
         // Register Tauri commands. Which window may call which is decided by
         // the capabilities (see ipc_commands.rs, which lists every command
         // here); the local-source provisioning commands exist only in
@@ -99,6 +102,8 @@ fn main() {
             notifications::send_native_notification,
             notifications::send_actionable_notification,
             notifications::send_link_notification,
+            tray::update_tray,
+            tray::set_tray_preferences,
             secrets::secret_get,
             secrets::session_secret_read,
             secrets::session_secret_write,
@@ -141,7 +146,8 @@ fn main() {
                 let allow = window.state::<files::AllowedReads>();
                 files::remember_dropped_paths(&allow, paths);
             }
-            #[cfg(target_os = "macos")]
+            // macOS hides the main window on close; Windows and Linux hide it
+            // to the tray icon when there is one (window.rs).
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 window::hide_main_on_close(window, api);
             }
@@ -159,6 +165,8 @@ fn main() {
             // `create: false` in tauri.conf.json — built here so it carries the
             // link policy (links.rs) and starts hidden until first paint.
             window::create_main_window(app.handle())?;
+            // The tray icon (menu bar extra on macOS), unless turned off.
+            tray::setup(app.handle());
 
             // Native application menu. macOS gets the app-global menu bar; on
             // Windows/Linux we drop the native frame (the branded

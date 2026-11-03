@@ -2,9 +2,12 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::{command, AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    command, webview::PageLoadEvent, AppHandle, Manager, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
-use crate::{links, zoom};
+use crate::{links, tray, zoom};
 
 /// How long a window may stay hidden waiting for the SPA's first paint before it
 /// is shown anyway (a boot that throws, a slow `tauri dev` compile).
@@ -115,7 +118,15 @@ pub fn create_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .find(|w| w.label == "main")
         .cloned()
         .ok_or(tauri::Error::WindowNotFound)?;
-    let builder = WebviewWindowBuilder::from_config(app, &config)?.visible(false);
+    let builder = WebviewWindowBuilder::from_config(app, &config)?
+        .visible(false)
+        // Each new document (a reload, a workspace switch) reports its own
+        // unread state; until it does, the tray shows none.
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                tray::clear_content(window.app_handle());
+            }
+        });
     let window = links::guard(builder, app, "main").build()?;
     zoom::apply_to(app, &window);
     arm_reveal(&window);
@@ -691,8 +702,7 @@ pub fn set_traffic_lights_visible(_window: WebviewWindow, _visible: bool) -> Res
 /// would leave its empty fullscreen Space behind. The hide waits for the exit
 /// animation, off the event loop.
 ///
-/// Windows and Linux keep "closing the window quits" — without a tray icon
-/// there would be nothing left on screen to bring the app back.
+/// Windows and Linux follow their own rule: see the other `hide_main_on_close`.
 #[cfg(target_os = "macos")]
 pub fn hide_main_on_close(window: &tauri::Window, api: &tauri::CloseRequestApi) {
     if window.label() != "main" {
@@ -709,6 +719,20 @@ pub fn hide_main_on_close(window: &tauri::Window, api: &tauri::CloseRequestApi) 
     } else {
         let _ = window.hide();
     }
+}
+
+/// Windows and Linux: closing the MAIN window hides it to the tray icon while
+/// the icon is on screen and the "keep running in the tray" setting is on
+/// (tray.rs). The tray menu and its Quit bring it back or end the app. Without
+/// the icon (turned off, or no tray on this desktop) closing quits, because
+/// nothing would be left on screen to bring the app back.
+#[cfg(not(target_os = "macos"))]
+pub fn hide_main_on_close(window: &tauri::Window, api: &tauri::CloseRequestApi) {
+    if window.label() != "main" || !tray::keeps_running_on_close(window.app_handle()) {
+        return;
+    }
+    api.prevent_close();
+    let _ = window.hide();
 }
 
 /// macOS: opt out of automatic window tabbing. Otherwise AppKit adds "Show Tab

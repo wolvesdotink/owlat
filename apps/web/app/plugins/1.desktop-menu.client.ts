@@ -13,11 +13,21 @@
  * would navigate both windows. Runs after the `0.desktop-workspace` boot
  * plugin (filename order); registration is non-blocking. No-op on web.
  *
+ * The tray icon's "Pause Notifications" item lands here too, so it works on
+ * every screen, like Settings.
+ *
  * The deep-link handler is imported when a mailto: arrives, not statically:
  * this file is in every browser's boot bundle, and the handler brings the
- * workspace connect flow with it.
+ * workspace connect flow with it. The device settings load the same way.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+
+async function toggleNotifications(): Promise<void> {
+	const { loadDesktopAppSettings, useDesktopAppSettings } =
+		await import('~/composables/useDesktopAppSettings');
+	const current = await loadDesktopAppSettings();
+	useDesktopAppSettings().setGlobal('notificationsEnabled', !current.global.notificationsEnabled);
+}
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-menu',
@@ -44,6 +54,16 @@ export default defineNuxtPlugin({
 				// mounts the palette; elsewhere the event has no listener and the
 				// shortcut quietly does nothing, same as the titlebar pill.
 				await onMenuAction('find', () => palette.open());
+				// The tray's "Pause Notifications" flips the master switch the
+				// device settings show. Read the stored settings first: before
+				// they load, the flip would act on the defaults.
+				const { onTrayToggleNotifications } = await import('@owlat/desktop/src/tray');
+				await onTrayToggleNotifications(
+					() =>
+						void toggleNotifications().catch((e: unknown) =>
+							console.warn('[desktop] tray toggle failed:', e)
+						)
+				);
 				// A mailto: clicked in any Owlat window (the Rust link policy keeps
 				// it from the OS) opens our compose window, through the same parser
 				// as the OS-level mailto: deep link.

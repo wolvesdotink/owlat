@@ -13217,6 +13217,23 @@
 				"lastActive": "Zuletzt aktiver Workspace",
 				"title": "Beim Start öffnen"
 			},
+			"tray": {
+				"closeToTray": {
+					"description": "Das Schließen des Hauptfensters blendet es ins Tray-Symbol aus. Beenden kannst du Owlat über das Menü des Symbols.",
+					"needsIcon": "Schalte zuerst das Tray-Symbol ein. Ohne Symbol beendet das Schließen des Fensters Owlat.",
+					"title": "Weiterlaufen, wenn das Fenster geschlossen wird"
+				},
+				"menuBarIcon": {
+					"description": "Die Anzahl ungelesener Nachrichten und deine neuesten ungelesenen E-Mails in der Menüleiste anzeigen.",
+					"heading": "Menüleiste",
+					"title": "Symbol in der Menüleiste"
+				},
+				"trayIcon": {
+					"description": "Die Anzahl ungelesener Nachrichten und deine neuesten ungelesenen E-Mails im Infobereich anzeigen.",
+					"heading": "Infobereich",
+					"title": "Tray-Symbol"
+				}
+			},
 			"unreadBadge": {
 				"description": "Die Anzahl ungelesener Nachrichten auf dem App-Symbol anzeigen.",
 				"title": "Ungelesen-Zähler"
@@ -16964,6 +16981,10 @@
 				"startupWorkspace": {
 					"title": "Beim Start öffnen",
 					"keywords": "Start-Workspace, Standard-Workspace"
+				},
+				"trayIcon": {
+					"title": "Tray-Symbol",
+					"keywords": "Menüleiste, Infobereich, Taskleiste, ins Tray schließen, weiterlaufen"
 				},
 				"unreadBadge": {
 					"title": "Ungelesen-Zähler",

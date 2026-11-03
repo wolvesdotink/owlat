@@ -86,11 +86,8 @@ pub fn send_native_notification(app: AppHandle, title: String, body: String) -> 
 
 /// What an actionable notification is about, echoed back verbatim in every
 /// `notification-action` event it produces. Targets without action support
-/// show a plain notification and never read it back.
-#[cfg_attr(
-    not(any(target_os = "macos", target_os = "linux", test)),
-    allow(dead_code)
-)]
+/// show a plain notification and never read it back; the tray's unread rows
+/// send the same event on every target.
 struct ActionTarget {
     message_id: String,
     folder_role: String,
@@ -117,7 +114,6 @@ impl ActionTarget {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NotificationActionEvent {
@@ -136,7 +132,6 @@ struct NotificationActionEvent {
     notification_id: u64,
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
 impl NotificationActionEvent {
     fn new(action: &str, target: &ActionTarget, reply: Option<String>) -> Self {
         Self {
@@ -150,7 +145,6 @@ impl NotificationActionEvent {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn emit_notification_action(
     app: &AppHandle,
     action: &str,
@@ -162,6 +156,13 @@ fn emit_notification_action(
         "notification-action",
         NotificationActionEvent::new(action, target, reply),
     );
+}
+
+/// Open a message in the main window through the notification routing, as a
+/// click on its notification would: the tray menu's unread rows (tray.rs).
+pub fn emit_open_message(app: &AppHandle, message_id: String, workspace_id: Option<String>) {
+    let target = ActionTarget::new(message_id, "inbox".to_string(), workspace_id);
+    emit_notification_action(app, "open", &target, None);
 }
 
 #[cfg(target_os = "macos")]

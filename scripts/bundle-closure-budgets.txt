@@ -204,6 +204,7 @@ deferred 5 ../../desktop/src/notifications.ts
 deferred 5 ../../desktop/src/settings.ts
 deferred 3 ../../desktop/src/shell.ts
 deferred 4 ../../desktop/src/ssh.ts
+deferred 4 ../../desktop/src/tray.ts
 deferred 5 ../../desktop/src/updater.ts
 deferred 8 ../../desktop/src/window.ts
 deferred 5 ../../desktop/src/workspace.ts

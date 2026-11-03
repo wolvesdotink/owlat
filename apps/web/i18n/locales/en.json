@@ -13217,6 +13217,23 @@
 				"lastActive": "Last active workspace",
 				"title": "Open at startup"
 			},
+			"tray": {
+				"closeToTray": {
+					"description": "Closing the main window hides it to the tray icon. Quit from the icon's menu.",
+					"needsIcon": "Turn on the tray icon first. Without it, closing the window quits Owlat.",
+					"title": "Keep running when the window is closed"
+				},
+				"menuBarIcon": {
+					"description": "Show the unread count and your newest unread mail in the menu bar.",
+					"heading": "Menu bar",
+					"title": "Menu bar icon"
+				},
+				"trayIcon": {
+					"description": "Show the unread count and your newest unread mail in the system tray.",
+					"heading": "System tray",
+					"title": "Tray icon"
+				}
+			},
 			"unreadBadge": {
 				"description": "Show the unread count on the app icon.",
 				"title": "Unread badge"
@@ -16964,6 +16981,10 @@
 				"startupWorkspace": {
 					"title": "Open at startup",
 					"keywords": "startup workspace, default workspace"
+				},
+				"trayIcon": {
+					"title": "Tray icon",
+					"keywords": "menu bar, system tray, notification area, close to tray, keep running"
 				},
 				"unreadBadge": {
 					"title": "Unread badge",

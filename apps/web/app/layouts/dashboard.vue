@@ -229,6 +229,8 @@ const unreadBadge = useUnreadBadge();
 const { isDesktop: isDesktopApp } = useDesktopContext();
 useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
 useDesktopNotifications(unreadBadge);
+// The tray icon's count and newest unread messages, from the same peek.
+useDesktopTray(unreadBadge);
 // The opt-in alert chimes (armed replies, assignments, agent questions) read
 // the same unread peek, in the browser and the desktop app alike.
 useAlertSounds(unreadBadge);
