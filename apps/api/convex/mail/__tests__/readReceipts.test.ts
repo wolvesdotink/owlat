@@ -240,7 +240,7 @@ describe('foldReturnedReceipt', () => {
 		isAutomatic: false,
 	};
 
-	it('keeps one entry per recipient, the newest', () => {
+	it('keeps one entry per recipient, the last to arrive', () => {
 		const first = foldReturnedReceipt(message, displayed, 'ben@example.org', 10)!;
 		const second = foldReturnedReceipt(
 			{ ...message, readReceipt: first },

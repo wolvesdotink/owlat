@@ -4818,7 +4818,7 @@
 			"postboxReadReceipts": {
 				"regionLabel": "Lesebestätigungen",
 				"readBy": "Gelesen von {address}",
-				"deletedBy": "Ungelesen gelöscht von {address}",
+				"deletedBy": "Gelöscht von {address}",
 				"waitingOne": "Noch keine Lesebestätigung von {address}.",
 				"waitingMany": "Noch keine Lesebestätigung von {count} Empfängern.",
 				"caveat": "Nicht jedes Mailprogramm schickt eine, und Empfänger können ablehnen. Fehlt sie, heißt das nicht, dass die Nachricht ungelesen ist."

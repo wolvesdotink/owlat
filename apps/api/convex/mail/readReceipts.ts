@@ -78,7 +78,7 @@ export function foldReturnedReceipt(
 		isAutomatic: receipt.isAutomatic,
 		at,
 	};
-	// One entry per recipient, the newest: a client that sends `displayed` and
+	// One entry per recipient, the last to arrive: a client that sends `displayed` and
 	// later `deleted` for the same message leaves the later answer.
 	return {
 		...record,

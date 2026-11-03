@@ -4818,7 +4818,7 @@
 			"postboxReadReceipts": {
 				"regionLabel": "Read receipts",
 				"readBy": "Read by {address}",
-				"deletedBy": "Deleted without being read by {address}",
+				"deletedBy": "Deleted by {address}",
 				"waitingOne": "No read receipt from {address} yet.",
 				"waitingMany": "No read receipt from {count} recipients yet.",
 				"caveat": "Not every mail app sends one, and people can decline. A missing receipt doesn't mean the message is unread."

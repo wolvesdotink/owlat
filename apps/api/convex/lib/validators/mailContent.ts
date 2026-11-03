@@ -177,7 +177,7 @@ export const mailAttachmentShareScopeValidator = v.union(v.literal('anyone'), v.
 export const mailAttachmentShareScanValidator = v.union(v.literal('clean'), v.literal('skipped'));
 
 // One read receipt (RFC 8098) a recipient's client returned for a sent message.
-// `displayed` is "opened"; `deleted` is "deleted without being displayed". The
+// `displayed` is "opened"; `deleted` says nothing about whether it was seen. The
 // receipts' other dispositions say nothing about reading and are not kept.
 export const mailReturnedReceiptValidator = v.object({
 	address: v.string(),
@@ -190,7 +190,7 @@ export type MailReturnedReceipt = Infer<typeof mailReturnedReceiptValidator>;
 
 // The read receipt a sent message asked for (mailMessages.readReceipt): present
 // only when the sender asked. `returned` holds at most one entry per recipient,
-// the newest. A recipient missing from it may still have read the message.
+// the last to arrive. A recipient missing from it may still have read the message.
 export const mailReadReceiptValidator = v.object({
 	requestedAt: v.number(),
 	returned: v.array(mailReturnedReceiptValidator),

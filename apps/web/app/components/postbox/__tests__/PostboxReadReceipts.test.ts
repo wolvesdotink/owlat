@@ -58,7 +58,7 @@ describe('PostboxReadReceipts', () => {
 			},
 			['ben@example.com', 'cy@example.com', 'di@example.com']
 		);
-		expect(w.text()).toContain('Deleted without being read by ben@example.com');
+		expect(w.text()).toContain('Deleted by ben@example.com');
 		expect(w.text()).toContain('No read receipt from 2 recipients yet.');
 	});
 });
