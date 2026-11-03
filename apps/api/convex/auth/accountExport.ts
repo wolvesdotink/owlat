@@ -179,8 +179,14 @@ export const getExportPlan = authedAction({
 			await ctx.runQuery(internal.auth.accountExportQueries.getPersonalExportCounts, {
 				userId: args.userId,
 			});
+		const mailContacts: { resource: string; count: number; isCapped: boolean } = await ctx.runQuery(
+			internal.auth.accountExportContactQueries.countPersonalMailContacts,
+			{
+				userId: args.userId,
+			}
+		);
 		return {
-			personal,
+			personal: [...personal, mailContacts],
 			organizationResources: [...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES],
 		};
 	},
@@ -395,6 +401,14 @@ export const exportUserDataPage = authedAction({
 				})
 			);
 			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'mailContacts') {
+			if (!args.mailboxId) throwInvalidInput('Address book export page requires mailboxId');
+			const result = await ctx.runQuery(
+				internal.auth.accountExportContactQueries.listMailboxContacts,
+				{ userId: args.userId, mailboxId: args.mailboxId, paginationOpts }
+			);
+			return serializeAccountExportPage(result);
 		}
 		if (args.resource === 'threadBriefs') {
 			if (!args.mailboxId) throwInvalidInput('Thread brief export page requires mailboxId');

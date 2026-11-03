@@ -251,6 +251,8 @@
 				"src/inlineImages.ts",
 				"src/listUnsubscribe.ts",
 				"src/ical.ts",
+				"src/postboxVcard.ts",
+				"src/postboxVcardLimits.ts",
 				"src/html.ts",
 				"src/appLocales.ts",
 				"src/emailDefaults.ts",
@@ -326,12 +328,7 @@
 		// JS SDK inlines), the schemas and operation table the server validates
 		// with, and the generator that writes openapi.json.
 		"packages/public-contract": {
-			"entry": [
-				"src/types.ts",
-				"src/schemas.ts",
-				"scripts/openapi.ts",
-				"src/**/__tests__/**/*.ts",
-			],
+			"entry": ["src/types.ts", "src/schemas.ts", "scripts/openapi.ts", "src/**/__tests__/**/*.ts"],
 		},
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },

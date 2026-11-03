@@ -298,6 +298,14 @@
 			"types": "./src/ical.ts",
 			"import": "./src/ical.ts"
 		},
+		"./postboxVcard": {
+			"types": "./src/postboxVcard.ts",
+			"import": "./src/postboxVcard.ts"
+		},
+		"./postboxVcardLimits": {
+			"types": "./src/postboxVcardLimits.ts",
+			"import": "./src/postboxVcardLimits.ts"
+		},
 		"./html": {
 			"types": "./src/html.ts",
 			"import": "./src/html.ts"

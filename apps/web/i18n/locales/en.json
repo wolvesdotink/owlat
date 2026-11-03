@@ -12174,9 +12174,26 @@
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
 				"searchPlaceholder": "Search contacts",
-				"subtitle": "People you mail — used for address autocomplete",
+				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
-				"undo": "Undo"
+				"undo": "Undo",
+				"vcard": {
+					"import": "Import .vcf",
+					"export": "Export .vcf",
+					"importHint": "Add people from a .vcf file, such as your phone's address book",
+					"pickerTitle": "Choose a vCard file",
+					"importedBadge": "Imported",
+					"importedTooltip": "Added or updated by a vCard import",
+					"imported": "Imported: {created} new, {merged} merged with existing contacts.",
+					"stopped": "The import stopped. No contacts were saved. | The import stopped after one contact, which is saved. | The import stopped after {count} contacts. Those are saved.",
+					"skipped": "Skipped one card without an email address. | Skipped {count} cards without an email address.",
+					"truncated": "Only the first {max} contacts in the file were read.",
+					"tooLarge": "That file is over {size} MB.",
+					"wrongType": "Pick a .vcf file.",
+					"empty": "That file has no contacts with an email address.",
+					"exportFailed": "The address book could not be exported. Try again.",
+					"unreadable": "That file could not be read. Try again."
+				}
 			},
 			"detail": {
 				"detail": {
@@ -16241,7 +16258,8 @@
 			},
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
-				"saveContact": "Save contact"
+				"saveContact": "Save contact",
+				"importContacts": "Import contacts"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",
@@ -18460,6 +18478,7 @@
 			"externalMailAccounts": "Connected mail accounts",
 			"formEndpoints": "Forms",
 			"mailDrafts": "Drafts",
+			"mailContacts": "Address book",
 			"mailMessages": "Messages",
 			"mailboxes": "Mailboxes",
 			"organizationMemberships": "Workspace memberships",

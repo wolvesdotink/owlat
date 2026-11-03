@@ -21,10 +21,16 @@ type Contact = {
 	email: string;
 	displayName?: string;
 	organization?: string;
+	phones?: Array<{ value: string; type?: string }>;
+	importedAt?: number;
 };
 
 const save = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
 const remove = vi.fn(async () => ({ ok: true, result: null }));
+const restoreEntry = vi.fn(async () => ({
+	ok: true,
+	result: { created: 1, merged: 0, skipped: 0 },
+}));
 const composerOpen = vi.fn();
 const showToast = vi.fn();
 const contacts = ref<Contact[]>([]);
@@ -43,6 +49,7 @@ beforeAll(() => {
 		}),
 		usePostboxContacts: () => ({ contacts, isLoading: ref(false), save, remove }),
 		usePostboxComposeNav: () => ({ open: composerOpen }),
+		usePostboxVcardTransfer: () => ({ restoreEntry }),
 		useToast: () => ({ showToast }),
 	});
 });
@@ -74,6 +81,8 @@ function mountPage() {
 			Icon: iconStub,
 			UiModal: modalStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
+			PostboxContactsVcardActions: passthrough('PostboxContactsVcardActions'),
+			UiBadge: passthrough('UiBadge'),
 		},
 	});
 	return wrapper;
@@ -231,6 +240,45 @@ describe('postbox contacts page', () => {
 			displayName: 'Ada Lovelace',
 			organization: 'Analytical',
 		});
+	});
+
+	it('marks an imported contact and shows its first phone number', () => {
+		contacts.value = [
+			{
+				_id: 'c3',
+				email: 'linus@example.net',
+				displayName: 'Linus',
+				phones: [{ value: '+1 555 0100', type: 'cell' }],
+				importedAt: 1,
+			},
+			{ _id: 'c2', email: 'grace@example.com', displayName: 'Grace Hopper' },
+		];
+		const w = mountPage();
+		const [imported, fromMail] = w.findAll('li');
+		expect(imported!.text()).toContain('Imported');
+		expect(imported!.text()).toContain('+1 555 0100');
+		expect(fromMail!.text()).not.toContain('Imported');
+	});
+
+	it('undoes the removal of an imported contact through the import, details and all', async () => {
+		const linus = {
+			_id: 'c3',
+			email: 'linus@example.net',
+			displayName: 'Linus',
+			phones: [{ value: '+1 555 0100', type: 'cell' }],
+			importedAt: 1,
+		};
+		contacts.value = [linus];
+		const w = mountPage();
+		await w.get('button[aria-label="Remove contact"]').trigger('click');
+		const [, , options] = showToast.mock.calls[0] as [
+			string,
+			string,
+			{ action: { onAction: () => void } },
+		];
+		options.action.onAction();
+		expect(restoreEntry).toHaveBeenCalledWith(linus);
+		expect(save).not.toHaveBeenCalled();
 	});
 
 	it('opens the composer prefilled to the contact', async () => {

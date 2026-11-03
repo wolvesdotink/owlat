@@ -12174,9 +12174,26 @@
 				"removeAria": "Kontakt entfernen",
 				"removedToast": "{contact} entfernt",
 				"searchPlaceholder": "Kontakte durchsuchen",
-				"subtitle": "Personen, denen du schreibst — Grundlage für die Adressvervollständigung",
+				"subtitle": "Personen, denen du schreibst oder die du importierst, für die Autovervollständigung",
 				"title": "Kontakte",
-				"undo": "Rückgängig"
+				"undo": "Rückgängig",
+				"vcard": {
+					"import": ".vcf importieren",
+					"export": ".vcf exportieren",
+					"importHint": "Füge Personen aus einer .vcf-Datei hinzu, etwa aus dem Adressbuch deines Telefons",
+					"pickerTitle": "vCard-Datei auswählen",
+					"importedBadge": "Importiert",
+					"importedTooltip": "Von einem vCard-Import hinzugefügt oder ergänzt",
+					"imported": "Importiert: {created} neu, {merged} mit bestehenden Kontakten zusammengeführt.",
+					"stopped": "Der Import wurde abgebrochen. Es wurden keine Kontakte gespeichert. | Der Import wurde nach einem Kontakt abgebrochen, der gespeichert ist. | Der Import wurde nach {count} Kontakten abgebrochen. Diese sind gespeichert.",
+					"skipped": "Eine Karte ohne E-Mail-Adresse übersprungen. | {count} Karten ohne E-Mail-Adresse übersprungen.",
+					"truncated": "Nur die ersten {max} Kontakte der Datei wurden gelesen.",
+					"tooLarge": "Die Datei ist größer als {size} MB.",
+					"wrongType": "Wähle eine .vcf-Datei.",
+					"empty": "Die Datei enthält keine Kontakte mit E-Mail-Adresse.",
+					"exportFailed": "Das Adressbuch konnte nicht exportiert werden. Versuch es noch einmal.",
+					"unreadable": "Die Datei konnte nicht gelesen werden. Versuch es noch einmal."
+				}
 			},
 			"detail": {
 				"detail": {
@@ -16241,7 +16258,8 @@
 			},
 			"usePostboxContacts": {
 				"removeContact": "Kontakt entfernen",
-				"saveContact": "Kontakt speichern"
+				"saveContact": "Kontakt speichern",
+				"importContacts": "Kontakte importieren"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Filter erstellen",
@@ -18460,6 +18478,7 @@
 			"externalMailAccounts": "Verbundene Mail-Konten",
 			"formEndpoints": "Formulare",
 			"mailDrafts": "Entwürfe",
+			"mailContacts": "Adressbuch",
 			"mailMessages": "Nachrichten",
 			"mailboxes": "Postfächer",
 			"organizationMemberships": "Workspace-Mitgliedschaften",

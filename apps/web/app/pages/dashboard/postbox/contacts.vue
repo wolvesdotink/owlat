@@ -37,6 +37,7 @@ const {
 	remove,
 } = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
+const { restoreEntry } = usePostboxVcardTransfer(mailboxId);
 const composeNav = usePostboxComposeNav();
 const { showToast } = useToast();
 
@@ -115,8 +116,9 @@ async function submit() {
 	if (result.ok) editOpen.value = false;
 }
 
-// Removing a contact is no longer silent: it confirms with a toast that offers
-// an immediate Undo, which re-adds the contact from the captured details.
+// Removing a contact confirms with a toast that offers an immediate Undo, which
+// re-adds the contact from the captured details. An imported row goes back
+// through the import, so its phone numbers and addresses come back with it.
 async function removeContact(c: MailContact) {
 	const result = await remove(c._id);
 	if (!result.ok) return;
@@ -127,6 +129,10 @@ async function removeContact(c: MailContact) {
 			action: {
 				label: t('dashboard.postbox.contacts.undo'),
 				onAction: () => {
+					if (c.importedAt !== undefined) {
+						void restoreEntry(c);
+						return;
+					}
 					void save({
 						email: c.email,
 						displayName: c.displayName,
@@ -159,10 +165,13 @@ function initial(c: { displayName?: string; email: string }) {
 				</h1>
 				<p class="text-sm text-text-secondary">{{ t('dashboard.postbox.contacts.subtitle') }}</p>
 			</div>
-			<UiButton type="button" @click="openNew">
-				<template #iconLeft><Icon name="lucide:user-plus" class="w-4 h-4" /></template>
-				{{ t('dashboard.postbox.contacts.addContact') }}
-			</UiButton>
+			<div class="flex flex-wrap items-center gap-2">
+				<PostboxContactsVcardActions :mailbox-id="mailboxId" :contacts="contacts" />
+				<UiButton type="button" @click="openNew">
+					<template #iconLeft><Icon name="lucide:user-plus" class="w-4 h-4" /></template>
+					{{ t('dashboard.postbox.contacts.addContact') }}
+				</UiButton>
+			</div>
 		</header>
 
 		<div class="relative mb-4">
@@ -220,11 +229,20 @@ function initial(c: { displayName?: string; email: string }) {
 						{{ initial(c) }}
 					</div>
 					<div class="flex-1 min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">
-							{{ c.displayName || c.email }}
+						<p class="flex items-center gap-2 text-sm font-medium text-text-primary">
+							<span class="truncate">{{ c.displayName || c.email }}</span>
+							<UiTooltip
+								v-if="c.importedAt !== undefined"
+								:text="t('dashboard.postbox.contacts.vcard.importedTooltip')"
+							>
+								<UiBadge variant="neutral" class="flex-shrink-0">
+									{{ t('dashboard.postbox.contacts.vcard.importedBadge') }}
+								</UiBadge>
+							</UiTooltip>
 						</p>
 						<p class="text-xs text-text-tertiary truncate">
-							{{ c.email }}<span v-if="c.organization"> · {{ c.organization }}</span>
+							{{ c.email }}<span v-if="c.organization"> · {{ c.organization }}</span
+							><span v-if="c.phones?.[0]"> · {{ c.phones[0].value }}</span>
 						</p>
 					</div>
 					<!-- Row actions stay reachable for keyboard and touch users: they
