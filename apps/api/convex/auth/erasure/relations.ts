@@ -159,6 +159,8 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'Links out of a personal mailbox go with their file. A link from a team inbox is the team’s; it lapses at its expiry and the team can revoke it.'
 	),
 	rel('mailAppPasswords', 'userId', 'delete', 'Credentials.'),
+	rel('mcpClients', 'userId', 'delete', 'Credentials.'),
+	rel('mcpClientActivity', 'userId', 'delete', 'What the member’s AI clients read.'),
 	rel('mailUserSettings', 'userId', 'delete', 'Personal preferences.'),
 	rel('mailBriefCards', 'userId', 'delete', 'The member’s own greeting cards, on any mailbox.'),
 	rel('mailThreadVisits', 'userId', 'delete', 'Reading history.'),

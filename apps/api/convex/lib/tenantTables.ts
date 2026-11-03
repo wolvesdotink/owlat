@@ -4,6 +4,7 @@ import { AI_ROUTING_TABLES } from '../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES } from '../schema/mailArrival';
 import { MARKETING_NOTIFICATION_TABLES } from '../schema/marketingNotifications';
 import { AUTOMATION_TABLES } from '../schema/automations';
+import { MCP_TABLES } from '../schema/mcp';
 import type { NON_TENANT_TABLES } from './nonTenantTables';
 
 /**
@@ -252,6 +253,8 @@ export const TENANT_TABLES = [
 	'mailVacationResponders',
 	'mailVacationLog',
 	'mailAppPasswords',
+	// MCP client tokens and their activity log: credentials over the mail above.
+	...MCP_TABLES,
 	'mailContacts',
 	'mailSenderCategoryOverrides',
 	'mailSenderImageAllowlist',

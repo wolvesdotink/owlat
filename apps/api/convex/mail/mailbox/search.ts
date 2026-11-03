@@ -199,6 +199,33 @@ async function scanMailbox(
 }
 
 /**
+ * One fan-out page over `targets`, newest first. The caller has already
+ * decided that it may read every target: this reads, it does not authorize.
+ * `clauses` must be normalized (`normalizeClause`).
+ */
+export async function searchMailboxes(
+	ctx: QueryCtx,
+	targets: readonly Id<'mailboxes'>[],
+	clauses: readonly SearchClause[],
+	limit: number,
+	cursor: string | undefined
+): Promise<{ messages: Doc<'mailMessages'>[]; hasMore: boolean; nextCursor: string | null }> {
+	const decoded = decodeMultiCursor(cursor);
+	const pages: MailboxPage<Doc<'mailMessages'>>[] = [];
+	for (const target of targets.slice(0, MAX_SEARCH_MAILBOXES)) {
+		// A mailbox missing from a live cursor was drained on an earlier page.
+		if (decoded && !(target in decoded)) continue;
+		pages.push(await scanMailbox(ctx, target, clauses, limit, decoded?.[target] ?? null));
+	}
+	const merged = mergeMailboxPages(pages, limit);
+	return {
+		messages: merged.page,
+		hasMore: merged.hasMore,
+		nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
+	};
+}
+
+/**
  * Has the attachment index been built over this mailbox's EXISTING mail?
  *
  * `mail/attachmentIndex.ts` writes a junction row for every message delivered
@@ -332,18 +359,11 @@ export const search = publicQuery({
 		if (!mailboxId || mailboxIds) {
 			const targets = await resolveTargets(ctx, mailboxIds);
 			if (targets.length === 0) return empty;
-			const decoded = decodeMultiCursor(cursor);
-			const pages: MailboxPage<Doc<'mailMessages'>>[] = [];
-			for (const target of targets) {
-				// A mailbox missing from a live cursor was drained on an earlier page.
-				if (decoded && !(target in decoded)) continue;
-				pages.push(await scanMailbox(ctx, target, clauses, limit, decoded?.[target] ?? null));
-			}
-			const merged = mergeMailboxPages(pages, limit);
+			const merged = await searchMailboxes(ctx, targets, clauses, limit, cursor);
 			return {
-				messages: await withSenderLogos(ctx, merged.page.map(toMailListRow)),
+				messages: await withSenderLogos(ctx, merged.messages.map(toMailListRow)),
 				hasMore: merged.hasMore,
-				nextCursor: merged.hasMore ? encodeMultiCursor(merged.cursor) : null,
+				nextCursor: merged.nextCursor,
 			};
 		}
 

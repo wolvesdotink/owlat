@@ -277,6 +277,12 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'account',
 		gate: hasMail,
 	}),
+	entry('aiClients', {
+		path: `${SETTINGS_ROOT}/ai-clients`,
+		icon: 'lucide:bot',
+		section: 'account',
+		gate: all(hasMail, flag('mail.mcp')),
+	}),
 	entry('device', {
 		path: `${SETTINGS_ROOT}/device`,
 		icon: 'lucide:monitor',

@@ -9,6 +9,7 @@ import { THREAD_BRIEF_TABLES } from '../../../schema/threadBrief';
 import { MARKETING_NOTIFICATION_TABLES } from '../../../schema/marketingNotifications';
 import { MAIL_ARRIVAL_TABLES } from '../../../schema/mailArrival';
 import { AUTOMATION_TABLES } from '../../../schema/automations';
+import { MCP_TABLES } from '../../../schema/mcp';
 
 /**
  * Ordered cascade: children before parents, storage-bearing tables
@@ -162,6 +163,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'mailSavedSearches',
 	'mailUserSettings',
 	'mailAppPasswords',
+	...MCP_TABLES, // MCP client tokens point at mailboxes, so they go first
 	'mailboxMembers',
 	'pendingMailboxMembers',
 	'mailboxUsage',

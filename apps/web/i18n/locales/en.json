@@ -6620,6 +6620,40 @@
 					"insecure": "Browsers only allow this when Owlat is served over HTTPS."
 				},
 				"undo": "To stop, remove Owlat in your browser's settings: in Chrome or Edge under Site settings → Protocol handlers, in Firefox under Settings → General → Applications, next to mailto."
+			},
+			"mcpClientCreateDialog": {
+				"title": "Connect an AI client",
+				"nameLabel": "Name",
+				"namePlaceholder": "Claude on my laptop",
+				"mailboxesLegend": "Mailboxes it may read",
+				"noMailboxes": "You have no mailbox to share yet.",
+				"readOnlyHint": "The client can search and read mail in these mailboxes. It cannot send or change anything.",
+				"submit": "Create token"
+			},
+			"mcpClientTokenReveal": {
+				"title": "Token for {name}",
+				"body": "Copy the token now. It is shown only this once; if you lose it, revoke this connection and create a new one.",
+				"token": "Token",
+				"config": "Configuration for Claude Desktop, Cursor and other clients",
+				"command": "Command for Claude Code",
+				"saved": "I have saved it"
+			},
+			"mcpClientActivity": {
+				"empty": "No activity yet.",
+				"results": "{count} result | {count} results",
+				"tools": {
+					"listMailboxes": "Listed mailboxes",
+					"listFolders": "Listed folders",
+					"listLabels": "Listed labels",
+					"searchMail": "Searched",
+					"readThread": "Read a conversation"
+				},
+				"outcomes": {
+					"ok": "Done",
+					"denied": "Refused",
+					"invalid": "Invalid request",
+					"error": "Failed"
+				}
 			}
 		},
 		"query": {
@@ -12822,6 +12856,23 @@
 				"featureOffTitle": "Connecting outside mail accounts is turned off",
 				"pageTitle": "Connected mailboxes — Owlat",
 				"subheading": "Your mailboxes, how they send, and mailboxes elsewhere that Owlat keeps in step."
+			},
+			"aiClients": {
+				"pageTitle": "AI clients — Owlat",
+				"subheading": "Connect an AI app such as Claude Desktop, Claude Code or Cursor so it can search and read your mail. Each connection gets its own token and sees only the mailboxes you choose.",
+				"connect": "Connect a client",
+				"serverHeading": "Server address",
+				"readOnlyNote": "Connections are read-only: they can search and read mail, but cannot send, move, label or delete anything. Mail you share this way leaves Owlat for the AI app and its provider.",
+				"clientsHeading": "Connected clients",
+				"empty": "No AI clients yet. Connect one to get a token.",
+				"revoked": "Revoked",
+				"readOnly": "Read-only",
+				"mailboxUnavailable": "A mailbox you no longer have",
+				"usageLine": "Created {created} · Last used {lastUsed}",
+				"activity": "Activity",
+				"revoke": "Revoke",
+				"revokeDialogTitle": "Revoke this connection?",
+				"revokeDialogDescription": "The AI client loses access right away. Its activity stays listed here."
 			}
 		},
 		"send": {
@@ -17007,6 +17058,11 @@
 					"title": "This device",
 					"description": "Offline cache, notifications and the desktop app",
 					"keywords": "desktop, offline, notifications, workspaces, updates, startup"
+				},
+				"aiClients": {
+					"title": "AI clients",
+					"description": "Let an AI app read your mail, read-only",
+					"keywords": "mcp, claude, cursor, chatgpt, ai assistant, token, model context protocol"
 				}
 			},
 			"controls": {
@@ -18771,6 +18827,10 @@
 			"copyLink": "Copy link",
 			"linkCopied": "Link copied",
 			"copyFailed": "Couldn't copy the link"
+		},
+		"useMcpClients": {
+			"createOperation": "Connect AI client",
+			"revokeOperation": "Revoke AI client"
 		}
 	},
 	"sharedPkg": {
@@ -19080,6 +19140,10 @@
 					"external": {
 						"description": "Let each user connect their own existing Gmail / Fastmail / company mailbox over IMAP+SMTP — personal mail without registering a sending domain. Independent of hosted Postbox.",
 						"label": "Connect external mailbox"
+					},
+					"mcp": {
+						"label": "AI clients (MCP)",
+						"description": "Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP. Read-only, with a token each member creates and can revoke."
 					}
 				},
 				"multiTenancy": {

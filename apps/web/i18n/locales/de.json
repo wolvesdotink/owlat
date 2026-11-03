@@ -6620,6 +6620,40 @@
 					"insecure": "Browser erlauben das nur, wenn Owlat über HTTPS erreichbar ist."
 				},
 				"undo": "Um das rückgängig zu machen, entferne Owlat in den Einstellungen deines Browsers: in Chrome oder Edge unter Website-Einstellungen → Protokoll-Handler, in Firefox unter Einstellungen → Allgemein → Anwendungen, neben mailto."
+			},
+			"mcpClientCreateDialog": {
+				"title": "KI-Programm verbinden",
+				"nameLabel": "Bezeichnung",
+				"namePlaceholder": "Claude auf meinem Laptop",
+				"mailboxesLegend": "Postfächer, die es lesen darf",
+				"noMailboxes": "Du hast noch kein Postfach, das du teilen kannst.",
+				"readOnlyHint": "Das Programm kann Mail in diesen Postfächern durchsuchen und lesen. Es kann nichts senden oder ändern.",
+				"submit": "Token erstellen"
+			},
+			"mcpClientTokenReveal": {
+				"title": "Token für {name}",
+				"body": "Kopiere das Token jetzt. Es wird nur dieses eine Mal angezeigt; wenn du es verlierst, widerrufe die Verbindung und erstelle eine neue.",
+				"token": "Dein Token",
+				"config": "Konfiguration für Claude Desktop, Cursor und andere Programme",
+				"command": "Befehl für Claude Code",
+				"saved": "Ich habe es gespeichert"
+			},
+			"mcpClientActivity": {
+				"empty": "Noch keine Aktivität.",
+				"results": "{count} Treffer | {count} Treffer",
+				"tools": {
+					"listMailboxes": "Postfächer aufgelistet",
+					"listFolders": "Ordner aufgelistet",
+					"listLabels": "Labels aufgelistet",
+					"searchMail": "Gesucht",
+					"readThread": "Unterhaltung gelesen"
+				},
+				"outcomes": {
+					"ok": "Erledigt",
+					"denied": "Abgelehnt",
+					"invalid": "Ungültige Anfrage",
+					"error": "Fehlgeschlagen"
+				}
 			}
 		},
 		"query": {
@@ -12822,6 +12856,23 @@
 				"featureOffTitle": "Das Verbinden externer Postfächer ist ausgeschaltet",
 				"pageTitle": "Verbundene Postfächer — Owlat",
 				"subheading": "Deine Postfächer, wie sie senden, und Postfächer anderswo, die Owlat im Gleichschritt hält."
+			},
+			"aiClients": {
+				"pageTitle": "KI-Programme — Owlat",
+				"subheading": "Verbinde eine KI-App wie Claude Desktop, Claude Code oder Cursor, damit sie deine Mail durchsuchen und lesen kann. Jede Verbindung bekommt ein eigenes Token und sieht nur die Postfächer, die du auswählst.",
+				"connect": "Programm verbinden",
+				"serverHeading": "Serveradresse",
+				"readOnlyNote": "Verbindungen sind nur lesend: Sie können Mail durchsuchen und lesen, aber nichts senden, verschieben, labeln oder löschen. Mail, die du so teilst, verlässt Owlat und geht an die KI-App und ihren Anbieter.",
+				"clientsHeading": "Verbundene Programme",
+				"empty": "Noch keine KI-Programme. Verbinde eines, um ein Token zu bekommen.",
+				"revoked": "Widerrufen",
+				"readOnly": "Nur lesend",
+				"mailboxUnavailable": "Ein Postfach, auf das du keinen Zugriff mehr hast",
+				"usageLine": "Erstellt {created} · Zuletzt benutzt {lastUsed}",
+				"activity": "Aktivität",
+				"revoke": "Widerrufen",
+				"revokeDialogTitle": "Diese Verbindung widerrufen?",
+				"revokeDialogDescription": "Das KI-Programm verliert sofort den Zugriff. Seine Aktivität bleibt hier sichtbar."
 			}
 		},
 		"send": {
@@ -17007,6 +17058,11 @@
 					"title": "Dieses Gerät",
 					"description": "Offline-Cache, Benachrichtigungen und die Desktop-App",
 					"keywords": "Desktop, offline, Benachrichtigungen, Workspaces, Updates, Start"
+				},
+				"aiClients": {
+					"title": "KI-Programme",
+					"description": "Lass eine KI-App deine Mail lesen, nur lesend",
+					"keywords": "MCP, Claude, Cursor, ChatGPT, KI-Assistent, Token, Model Context Protocol"
 				}
 			},
 			"controls": {
@@ -18771,6 +18827,10 @@
 			"copyLink": "Link kopieren",
 			"linkCopied": "Link kopiert",
 			"copyFailed": "Der Link konnte nicht kopiert werden"
+		},
+		"useMcpClients": {
+			"createOperation": "KI-Programm verbinden",
+			"revokeOperation": "KI-Programm widerrufen"
 		}
 	},
 	"sharedPkg": {
@@ -19080,6 +19140,10 @@
 					"external": {
 						"description": "Jede Person verbindet ihr eigenes bestehendes Gmail-, Fastmail- oder Firmenpostfach über IMAP+SMTP — persönliche Mail, ohne eine Versanddomain zu registrieren. Unabhängig von der gehosteten Postbox.",
 						"label": "Externes Postfach verbinden"
+					},
+					"mcp": {
+						"label": "KI-Programme (MCP)",
+						"description": "Mitglieder verbinden ein KI-Programm wie Claude Desktop, Claude Code oder Cursor über MCP mit ihrer Mail. Nur lesend, mit einem Token, das jedes Mitglied selbst erstellt und widerrufen kann."
 					}
 				},
 				"multiTenancy": {
