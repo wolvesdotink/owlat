@@ -388,6 +388,25 @@ export default defineNuxtConfig({
 		plugins: [tailwindcss() as PluginOption],
 		build: {
 			sourcemap: false,
+			rolldownOptions: {
+				output: {
+					// Each coolicons glyph is its own module, and left alone the bundler
+					// gives every glyph that two pages share a chunk of its own: a few
+					// hundred bytes that compress poorly and cost a request each, over a
+					// hundred of them on a Postbox visit. The shared glyphs go in one
+					// chunk instead; a glyph only one page or lazy feature uses stays
+					// with it.
+					codeSplitting: {
+						groups: [
+							{
+								name: 'icons',
+								test: /@coolicons[\\/]vue[\\/]dist[\\/]icons[\\/]/,
+								minShareCount: 2,
+							},
+						],
+					},
+				},
+			},
 		},
 		// Pre-bundle the Tauri module reached via dynamic import (`@owlat/desktop`'s
 		// SSH/dialog bridges). Without this, Vite "discovers" it mid-session — the

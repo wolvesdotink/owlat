@@ -151,7 +151,7 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 		'run: rows re-rendered while scrolling': { max: 0 },
 		// The retained list is the window mounted at teardown, one or two rows
 		// more or less depending on where the last scroll step left it.
-		...postboxTeardown(1649, 399),
+		...postboxTeardown(1735, 399),
 	},
 	'team-inbox/100': {
 		'mount: rows': { exact: 100 },

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { InboxIcon, MoreVerticalIcon } from '@coolicons/vue';
 import { InboxIcon as InboxFillIcon } from '@coolicons/vue/fill';
-import { navIcon } from '../navIcons';
+import { loadNavIconFills, navIcon } from '../navIcons';
 import { buildNavigationSections } from '../dashboardNavigation';
-import { SETTINGS_REGISTRY } from '../settingsRegistry';
-import { ADMIN_REGISTRY } from '../adminSettingsRegistry';
 
 describe('navIcon', () => {
-	it('fills the glyph of the current page and leaves the others as lines', () => {
+	it('shows the line glyph until the fills arrive, then fills the current page only', async () => {
+		// First in the file: the fills load on demand and stay loaded.
+		expect(navIcon(InboxIcon, true)).toBe(InboxIcon);
+		await loadNavIconFills();
 		expect(navIcon(InboxIcon, true)).toBe(InboxFillIcon);
 		expect(navIcon(InboxIcon, false)).toBe(InboxIcon);
 	});
@@ -16,17 +17,21 @@ describe('navIcon', () => {
 		expect(navIcon(MoreVerticalIcon, true)).toBe(MoreVerticalIcon);
 	});
 
-	it('has a fill for every core sidebar, preferences and admin destination', () => {
+	it('has a fill for every core sidebar destination', () => {
 		const sections = buildNavigationSections({
 			isFeatureEnabled: () => true,
 			isDesktop: false,
 			role: 'owner',
 		});
+		// What the sidebar renders (layouts/dashboard.vue): Administration and My
+		// settings have their own navigation, and a section with an `href` is one
+		// flat link whose items only feed the palette.
+		const shown = sections.filter(
+			(section) => section.key !== 'administration' && section.key !== 'preferences'
+		);
 		const icons = new Set([
-			...sections.map((section) => section.icon),
-			...sections.flatMap((section) => section.items.map((item) => item.icon)),
-			...SETTINGS_REGISTRY.map((entry) => entry.icon),
-			...ADMIN_REGISTRY.map((entry) => entry.icon),
+			...shown.map((section) => section.icon),
+			...shown.flatMap((section) => (section.href ? [] : section.items.map((item) => item.icon))),
 		]);
 		const unfilled = [...icons].filter((icon) => navIcon(icon, true) === icon);
 		expect(unfilled.map((icon) => (icon as { displayName?: string }).displayName)).toEqual([]);

@@ -3,7 +3,6 @@ import type { SettingsSectionView } from '~/lib/settingsRegistry';
 import { adminRailEntryFor } from '~/lib/adminSettingsRegistry';
 import { type AdminAreaView } from '~/lib/adminSettingsNav';
 import { ArrowLeftIcon, SearchIcon } from '@coolicons/vue';
-import { navIcon } from '~/lib/navIcons';
 
 /**
  * The Settings sidebar. It takes the sidebar over while you are in Settings,
@@ -197,7 +196,7 @@ const tabs = computed(() => [
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
 							<component
-								:is="navIcon(entry.icon, isCurrent(entry.path))"
+								:is="entry.icon"
 								class="size-4 shrink-0"
 								:class="isCurrent(entry.path) ? 'text-brand' : undefined"
 							/>
@@ -230,7 +229,7 @@ const tabs = computed(() => [
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
 							<component
-								:is="navIcon(entry.icon, isCurrent(entry.path))"
+								:is="entry.icon"
 								class="size-4 shrink-0"
 								:class="isCurrent(entry.path) ? 'text-brand' : undefined"
 							/>
