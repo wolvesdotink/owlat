@@ -1,6 +1,7 @@
 import { computed, readonly, shallowRef } from 'vue';
 import { setAppReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import {
+	combineZoom,
 	parseReadingComfort,
 	READING_COMFORT_DEFAULTS,
 	READING_COMFORT_STORAGE_KEY,
@@ -62,8 +63,8 @@ function ensureLoaded(): void {
 }
 
 /**
- * Write the settings onto `<html>`: the attributes the CSS keys off (contrast,
- * motion, list density) and the shared reduced-motion owner that JavaScript
+ * Write the settings onto `<html>`: the attributes the CSS keys off (text size,
+ * contrast, motion, list density) and the shared reduced-motion owner that JavaScript
  * callers read. Called by the reading-comfort plugin on load and on change.
  */
 export function applyReadingComfort(root: HTMLElement, comfort: ReadingComfort): void {
@@ -86,10 +87,15 @@ export function useReadingComfort() {
 
 	return {
 		comfort: readonly(state),
-		/** The two settings that change a rendered mail body. */
+		/**
+		 * The settings that change a rendered mail body. The app's text size
+		 * reaches mail too, as zoom; a sender's own zoom multiplies in on top
+		 * (useSenderZoom).
+		 */
 		mailTypography: computed<MailTypography>(() => ({
 			textSize: state.value.textSize,
 			readingWidth: state.value.readingWidth,
+			zoom: combineZoom(state.value.uiTextSize / 100),
 		})),
 		set,
 		reset<K extends keyof ReadingComfort>(key: K): void {

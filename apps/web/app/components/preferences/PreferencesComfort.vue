@@ -1,23 +1,28 @@
 <script setup lang="ts">
 /**
- * Reading comfort: mail text size and reading width, higher contrast, an in-app
- * "Reduce motion" switch, and list density for the Team Inbox, contacts and
- * campaigns. Device-local like the theme (composables/useReadingComfort), so
- * the card shows for everyone, mail or not, and every change applies at once.
+ * Reading comfort: the app's text size, mail text size and reading width,
+ * higher contrast, an in-app "Reduce motion" switch, list density for the Team
+ * Inbox, contacts and campaigns, and the zoom kept per sender. Device-local
+ * like the theme (composables/useReadingComfort, useSenderZoom), so the card
+ * shows for everyone, mail or not, and every change applies at once.
  */
 import { useReadingComfort } from '~/composables/useReadingComfort';
+import { useSenderZoom } from '~/composables/useSenderZoom';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
 import {
 	LIST_DENSITY_OPTIONS,
 	MAIL_TEXT_SIZE_OPTIONS,
 	READING_WIDTH_OPTIONS,
+	UI_TEXT_SIZES,
 	type ListDensity,
 	type MailTextSize,
 	type ReadingWidth,
+	type UiTextSize,
 } from '~/utils/readingComfort';
 
 const { t } = useI18n();
 const { comfort, set, reset, isChanged } = useReadingComfort();
+const { count: senderZoomCount, clearAll: clearSenderZooms } = useSenderZoom();
 
 const key = (leaf: string) => `components.preferences.preferencesComfort.${leaf}`;
 
@@ -34,6 +39,26 @@ function selected<T extends string>(event: Event): T {
 		</header>
 		<PreferencesSettingRow
 			first
+			control-id="comfort-ui-text-size"
+			:label="t(key('uiTextSizeLabel'))"
+			:help="t(key('uiTextSizeHelp'))"
+			:changed="isChanged('uiTextSize')"
+			@reset="reset('uiTextSize')"
+		>
+			<select
+				id="comfort-ui-text-size"
+				class="input w-full sm:w-64 shrink-0"
+				:value="comfort.uiTextSize"
+				@change="set('uiTextSize', Number(selected($event)) as UiTextSize)"
+			>
+				<option v-for="percent in UI_TEXT_SIZES" :key="percent" :value="percent">
+					{{
+						percent === 100 ? t(key('uiTextSizeDefault')) : t(key('uiTextSizeOption'), { percent })
+					}}
+				</option>
+			</select>
+		</PreferencesSettingRow>
+		<PreferencesSettingRow
 			control-id="comfort-text-size"
 			:label="t(key('textSizeLabel'))"
 			:help="t(key('textSizeHelp'))"
@@ -114,6 +139,18 @@ function selected<T extends string>(event: Event): T {
 				:model-value="comfort.reduceMotion"
 				@update:model-value="set('reduceMotion', $event)"
 			/>
+		</PreferencesSettingRow>
+		<!-- Set from the reader; here it can be seen and undone in one go. -->
+		<PreferencesSettingRow
+			control-id="comfort-sender-zoom"
+			:label="t(key('senderZoomLabel'))"
+			:help="t(key('senderZoomHelp'))"
+			:changed="senderZoomCount > 0"
+			@reset="clearSenderZooms()"
+		>
+			<output id="comfort-sender-zoom" class="text-sm text-text-secondary shrink-0">
+				{{ t(key('senderZoomCount'), { count: senderZoomCount }, senderZoomCount) }}
+			</output>
 		</PreferencesSettingRow>
 	</section>
 </template>

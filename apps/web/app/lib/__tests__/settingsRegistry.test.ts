@@ -284,11 +284,13 @@ describe('settingsControlTargets', () => {
 		const ids = settingsControlTargets(NO_PUSH_SOURCE).map((target) => target.control.id);
 		expect(ids).toEqual([
 			'appearance',
+			'uiTextSize',
 			'mailTextSize',
 			'readingWidth',
 			'listDensity',
 			'highContrast',
 			'reduceMotion',
+			'senderZoom',
 			'language',
 			'shortcuts',
 		]);

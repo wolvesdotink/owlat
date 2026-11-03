@@ -21,7 +21,7 @@ import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePost
 import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
-const translate = (key: string) => t(key);
+const translate = (key: string, params: Record<string, unknown> = {}) => t(key, params);
 
 function option(id: string, run = vi.fn()): PaletteArgumentOption {
 	return { id, label: id, run };
@@ -53,6 +53,8 @@ function postboxDeps(overrides: Partial<ThreadSurfaceDeps> = {}): ThreadSurfaceD
 		onCopyLink: vi.fn(),
 		canShareInChat: () => true,
 		onShareInChat: vi.fn(),
+		senderZoom: () => null,
+		onZoom: vi.fn(),
 		...overrides,
 	};
 }
@@ -154,6 +156,31 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(
 			byId(postboxItems('', { canTranslate: () => false }), 'postbox:thread-translate')
 		).toBeUndefined();
+	});
+
+	it('offers the sender zoom while it can move, and only for a message with a sender', () => {
+		const zoomRows = (percent: number | null) =>
+			postboxItems('', { senderZoom: () => percent })
+				.filter((item) => item.id.startsWith('postbox:thread-zoom'))
+				.map((item) => [item.id, item.label, item.shortcutId]);
+		expect(zoomRows(null)).toEqual([]);
+		expect(zoomRows(100)).toEqual([
+			['postbox:thread-zoom-in', "Zoom in on this sender's mail", 'postbox.zoomIn'],
+			['postbox:thread-zoom-out', "Zoom out on this sender's mail", 'postbox.zoomOut'],
+		]);
+		expect(zoomRows(200).map(([id]) => id)).toEqual([
+			'postbox:thread-zoom-out',
+			'postbox:thread-zoom-reset',
+		]);
+		expect(zoomRows(125)[2]?.[1]).toBe("Reset this sender's zoom (now 125%)");
+
+		const onZoom = vi.fn();
+		const zoomIn = byId(
+			postboxItems('', { senderZoom: () => 110, onZoom }),
+			'postbox:thread-zoom-in'
+		);
+		zoomIn?.run();
+		expect(onZoom).toHaveBeenCalledWith('zoomIn');
 	});
 
 	it('runs exactly the handler each row was handed', () => {

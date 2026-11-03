@@ -76,6 +76,7 @@ function sources(
 		toggleAlert: vi.fn(),
 		togglePin: vi.fn(),
 		translate: vi.fn(),
+		senderZoom: () => 100,
 		...overrides,
 	};
 }
@@ -117,9 +118,11 @@ describe('usePostboxThreadCommandSurface', () => {
 		row('postbox:thread-mark-unread').run();
 		row('postbox:forward').run();
 		row('postbox:thread-translate').run();
+		row('postbox:thread-zoom-in').run();
 		expect(src.runAction).toHaveBeenNthCalledWith(1, 'reply');
 		expect(src.runAction).toHaveBeenNthCalledWith(2, 'markUnread');
 		expect(src.runAction).toHaveBeenNthCalledWith(3, 'forward');
+		expect(src.runAction).toHaveBeenNthCalledWith(4, 'zoomIn');
 		expect(src.translate).toHaveBeenCalledTimes(1);
 	});
 

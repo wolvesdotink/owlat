@@ -8,6 +8,8 @@ import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { useConversationLink } from '~/composables/useConversationLink';
+import { useSenderZoom } from '~/composables/useSenderZoom';
+import { postboxSenderKey } from '~/utils/postboxImageAllowlist';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 import type { PostboxReaderMessage, PostboxReaderThread } from './postboxReaderMessage';
 import type { usePostboxReaderActions } from './usePostboxReaderActions';
@@ -77,6 +79,7 @@ export function usePostboxReaderCommands(source: {
 
 	// ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 	// actions directly, so it acts on THIS conversation.
+	const senderZoom = useSenderZoom();
 	const threadSurface = usePostboxThreadCommandSurface({
 		subject: () => source.message().subject,
 		messageId: () => source.message()._id,
@@ -110,6 +113,10 @@ export function usePostboxReaderCommands(source: {
 		togglePin: actions.toggleOpenThreadPin,
 		translate: () => void translation.translate(),
 		find: () => find.open(),
+		senderZoom: () => {
+			const from = source.message().fromAddress;
+			return postboxSenderKey(from) ? senderZoom.zoomOf(from) : null;
+		},
 	});
 
 	// Single-key shortcuts while reading and the Cmd-K palette bridge, both

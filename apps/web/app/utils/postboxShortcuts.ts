@@ -26,6 +26,9 @@ export type PostboxShortcutAction =
 	| 'markUnread'
 	| 'senderAutoArchive'
 	| 'senderUnsubscribe'
+	| 'zoomIn'
+	| 'zoomOut'
+	| 'zoomReset'
 	| 'reply'
 	| 'replyAll'
 	| 'forward'
@@ -56,6 +59,9 @@ const ACTION_BY_ID: Readonly<Record<string, PostboxShortcutAction>> = {
 	'postbox.markUnread': 'markUnread',
 	'postbox.senderAutoArchive': 'senderAutoArchive',
 	'postbox.senderUnsubscribe': 'senderUnsubscribe',
+	'postbox.zoomIn': 'zoomIn',
+	'postbox.zoomOut': 'zoomOut',
+	'postbox.zoomReset': 'zoomReset',
 	'postbox.reply': 'reply',
 	'postbox.replyAll': 'replyAll',
 	'postbox.forward': 'forward',

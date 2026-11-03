@@ -53,6 +53,8 @@ export interface PostboxThreadCommandSources {
 	translate: () => void;
 	/** Opens the reader's find in conversation bar. */
 	find?: () => void;
+	/** The open message's sender zoom in percent; null when its From holds no address. */
+	senderZoom: () => number | null;
 }
 
 /**
@@ -69,7 +71,7 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  *
  * Every verb the reader offers is here — reply, archive, snooze ›, forward,
  * mark unread, mute, notify on reply, pin, label ›, move ›, remind me if no reply ›,
- * translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
+ * the sender's zoom, translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
 export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): {
@@ -167,6 +169,8 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					canShareInChat: () => isFeatureEnabled('chat'),
 					onShareInChat: sources.shareInChat,
 					onFind: sources.find,
+					senderZoom: sources.senderZoom,
+					onZoom: sources.runAction,
 				},
 				query,
 				mode

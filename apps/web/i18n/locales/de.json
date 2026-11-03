@@ -5676,7 +5676,12 @@
 				"undoMoved": "Verschoben",
 				"undoSpam": "Als Spam markiert",
 				"undoTrashed": "In den Papierkorb verschoben",
-				"unstar": "Markierung entfernen"
+				"unstar": "Markierung entfernen",
+				"zoomLabel": "Vergrößerung",
+				"zoomIn": "Mails dieses Absenders vergrößern",
+				"zoomOut": "Mails dieses Absenders verkleinern",
+				"zoomReset": "Zoom dieses Absenders zurücksetzen (jetzt {percent} %)",
+				"zoomPercent": "{percent} %"
 			},
 			"postboxSweepStatus": {
 				"select": "{count} Nachricht auswählen | {count} Nachrichten auswählen",
@@ -6265,6 +6270,10 @@
 			"preferencesComfort": {
 				"title": "Lesekomfort",
 				"subtitle": "Textgröße, Kontrast, Bewegung und Listenabstände auf diesem Gerät.",
+				"uiTextSizeLabel": "Textgröße",
+				"uiTextSizeHelp": "Wie groß Text in ganz Owlat erscheint, Mails eingeschlossen. Abstände und Layout behalten ihre Größe.",
+				"uiTextSizeOption": "{percent} %",
+				"uiTextSizeDefault": "100 % (Standard)",
 				"textSizeLabel": "Textgröße in Mails",
 				"textSizeHelp": "Wie groß Mails in Postbox und im Team-Posteingang erscheinen. Gestaltete Newsletter werden als Ganzes skaliert.",
 				"readingWidthLabel": "Lesebreite",
@@ -6275,6 +6284,9 @@
 				"highContrastHelp": "Dunklerer Text und kräftigere Rahmen im hellen Modus, hellere im dunklen Modus.",
 				"reduceMotionLabel": "Bewegung reduzieren",
 				"reduceMotionHelp": "Schaltet Animationen und weiches Scrollen in Owlat ab. Wenn dein Gerät weniger Bewegung verlangt, ist sie immer reduziert.",
+				"senderZoomLabel": "Zoom pro Absender",
+				"senderZoomHelp": "Absender, deren Mails du im Leser gezoomt hast, mit + und - oder im ⋯-Menü einer Mail.",
+				"senderZoomCount": "Keine | Ein Absender | {count} Absender",
 				"textSize": {
 					"small": "Klein",
 					"default": "Standard",
@@ -13665,7 +13677,10 @@
 			"confirmUnsubscribeBody": "Ihre Mails werden ab jetzt archiviert.",
 			"shortcuts": {
 				"autoArchive": "Mails dieses Absenders automatisch archivieren",
-				"unsubscribe": "Von diesem Absender abmelden"
+				"unsubscribe": "Von diesem Absender abmelden",
+				"zoomIn": "Mails dieses Absenders vergrößern",
+				"zoomOut": "Mails dieses Absenders verkleinern",
+				"zoomReset": "Zoom dieses Absenders zurücksetzen"
 			}
 		},
 		"reader": {
@@ -16835,6 +16850,10 @@
 					"title": "Erscheinungsbild",
 					"keywords": "Dunkelmodus, heller Modus, Design, Farbschema"
 				},
+				"uiTextSize": {
+					"title": "Textgröße",
+					"keywords": "schriftgröße, größerer text, zoom, skalierung, lesbarkeit, barrierefreiheit"
+				},
 				"mailTextSize": {
 					"title": "Textgröße in Mails",
 					"keywords": "Schriftgröße, Textgröße, Zoom, größere Schrift, Lesbarkeit"
@@ -16854,6 +16873,10 @@
 				"reduceMotion": {
 					"title": "Bewegung reduzieren",
 					"keywords": "Animation, Bewegung, Barrierefreiheit, weiches Scrollen, Schwindel"
+				},
+				"senderZoom": {
+					"title": "Zoom pro Absender",
+					"keywords": "zoom, newsletter, kleine schrift, schriftgröße, absender"
 				},
 				"language": {
 					"title": "Sprache",
@@ -18487,7 +18510,10 @@
 				"find": "In dieser Unterhaltung suchen",
 				"showOriginal": "Original herunterladen (.eml)",
 				"pin": "Unterhaltung anheften",
-				"unpin": "Unterhaltung lösen"
+				"unpin": "Unterhaltung lösen",
+				"zoomIn": "Mails dieses Absenders vergrößern",
+				"zoomOut": "Mails dieses Absenders verkleinern",
+				"zoomReset": "Zoom dieses Absenders zurücksetzen (jetzt {percent} %)"
 			},
 			"teamThread": {
 				"heading": "Diese Unterhaltung",

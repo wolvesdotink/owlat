@@ -46,6 +46,17 @@ describe('resolvePostboxShortcut', () => {
 		applyShortcutPreferences('owlat');
 	});
 
+	it('maps the zoom keys, = being + without Shift, in every preset', () => {
+		for (const preset of ['owlat', 'gmail', 'superhuman', 'outlook'] as const) {
+			applyShortcutPreferences(preset);
+			expect(resolvePostboxShortcut('+')).toBe('zoomIn');
+			expect(resolvePostboxShortcut('=')).toBe('zoomIn');
+			expect(resolvePostboxShortcut('-')).toBe('zoomOut');
+			expect(resolvePostboxShortcut('0')).toBe('zoomReset');
+		}
+		applyShortcutPreferences('owlat');
+	});
+
 	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
 		expect(resolvePostboxShortcut('n')).toBe('nextUnread');
 		expect(resolvePostboxShortcut('p')).toBe('previousUnread');

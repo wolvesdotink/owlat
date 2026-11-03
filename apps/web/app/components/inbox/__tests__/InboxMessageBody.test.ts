@@ -157,5 +157,10 @@ describe('InboxMessageBody', () => {
 		await flushPromises();
 		expect(text().attributes('style')).toContain('font-size: 1.125rem');
 		expect(text().attributes('style')).toContain('max-width: none');
+
+		// The app's text size grows it on top.
+		set('uiTextSize', 120);
+		await flushPromises();
+		expect(text().attributes('style')).toContain('font-size: calc(1.125rem * 1.2)');
 	});
 });

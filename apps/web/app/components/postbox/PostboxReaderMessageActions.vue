@@ -1,18 +1,25 @@
 <script setup lang="ts">
 /**
  * The action row under one expanded message in the reader: Star, Reply,
- * Reply all, Forward and the ⋯ overflow (copy link, share in chat, report
- * spam, block, filter, print, download the original). Split out of PostboxReaderMessage so Answer mode can
- * render the same card without it (you are already replying there).
- * Presentational; every verb is emitted back to the reader.
+ * Reply all, Forward and the ⋯ overflow (the sender's text zoom, copy link,
+ * share in chat, report spam, block, filter, print, download the original).
+ * Split out of PostboxReaderMessage so Answer mode can render the same card
+ * without it (you are already replying there). Every verb on the mail is
+ * emitted back to the reader; the zoom is this device's view of it and is set
+ * here.
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
+import { useSenderZoom } from '~/composables/useSenderZoom';
+import { postboxSenderKey } from '~/utils/postboxImageAllowlist';
+import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
 
 const props = defineProps<{
 	messageId: string;
 	starred: boolean;
 	/** Whether Reply-all would add anyone beyond a plain Reply. */
 	showReplyAll: boolean;
+	/** The From header; the zoom row shows only when it holds an address. */
+	fromAddress?: string;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +47,15 @@ const starLabel = computed(() =>
 // The ⋯ item and the details disclosure both hand back the original `.eml`; one
 // implementation so they cannot disagree about it.
 const { downloading: downloadingEml, downloadOriginal } = usePostboxOriginalEml();
+
+const { zoomOf, applyZoom } = useSenderZoom();
+const hasSender = computed(() => postboxSenderKey(props.fromAddress) !== null);
+const zoom = computed(() => zoomOf(props.fromAddress));
+const zoomControls: ReadonlyArray<{ action: SenderZoomAction; icon: string; key: string }> = [
+	{ action: 'zoomOut', icon: 'lucide:minus', key: 'zoomOut' },
+	{ action: 'zoomReset', icon: '', key: 'zoomReset' },
+	{ action: 'zoomIn', icon: 'lucide:plus', key: 'zoomIn' },
+];
 
 const MENU_ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-60';
@@ -89,6 +105,36 @@ const MENU_ITEM_CLASS =
 		<span class="flex-1" />
 		<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
 			<template #default="{ close }">
+				<!-- Stays open while stepping, so the size can be read as it changes. -->
+				<div
+					v-if="hasSender"
+					role="group"
+					:aria-label="t('components.postbox.postboxThreadReader.zoomLabel')"
+					class="flex items-center gap-1 px-3 py-1 text-sm border-b border-border-subtle mb-1"
+				>
+					<Icon name="lucide:zoom-in" class="w-4 h-4 text-text-tertiary" />
+					<span class="flex-1 ml-1">{{
+						t('components.postbox.postboxThreadReader.zoomLabel')
+					}}</span>
+					<button
+						v-for="control in zoomControls"
+						:key="control.action"
+						type="button"
+						role="menuitem"
+						class="h-7 rounded hover:bg-bg-surface disabled:hover:bg-transparent inline-flex items-center justify-center"
+						:class="control.icon ? 'w-7 disabled:opacity-40' : 'min-w-12 px-1 tabular-nums'"
+						:aria-label="
+							t(`components.postbox.postboxThreadReader.${control.key}`, { percent: zoom })
+						"
+						:disabled="senderZoomAtLimit(zoom, control.action)"
+						@click="applyZoom(fromAddress, control.action)"
+					>
+						<Icon v-if="control.icon" :name="control.icon" class="w-4 h-4" />
+						<template v-else>{{
+							t('components.postbox.postboxThreadReader.zoomPercent', { percent: zoom })
+						}}</template>
+					</button>
+				</div>
 				<button
 					type="button"
 					role="menuitem"

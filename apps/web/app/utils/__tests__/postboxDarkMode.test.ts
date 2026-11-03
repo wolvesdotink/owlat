@@ -618,13 +618,17 @@ describe('buildBaseStyle', () => {
 
 	it("writes the reader's width into simple mail and scales its text by zoom", () => {
 		for (const scheme of ['light', 'dark'] as const) {
-			const style = buildBaseStyle(scheme, 'simple', { textSize: 'larger', readingWidth: 'wide' });
+			const style = buildBaseStyle(scheme, 'simple', {
+				textSize: 'larger',
+				readingWidth: 'wide',
+				zoom: 1,
+			});
 			// The 15px base stays; the zoom carries inline and Outlook sizes along.
 			expect(style).toContain('body{max-width:90ch;font-size:15px;zoom:1.267;}');
 			expect(style).not.toContain('72ch');
 		}
 		expect(
-			buildBaseStyle('light', 'simple', { textSize: 'small', readingWidth: 'full' })
+			buildBaseStyle('light', 'simple', { textSize: 'small', readingWidth: 'full', zoom: 1 })
 		).toContain('body{max-width:none;font-size:15px;zoom:0.933;}');
 	});
 
@@ -642,15 +646,16 @@ describe('buildBaseStyle', () => {
 		const larger = buildBaseStyle('light', 'designed', {
 			textSize: 'larger',
 			readingWidth: 'narrow',
+			zoom: 1,
 		});
 		expect(larger).toContain('body{zoom:1.267;}');
 		expect(larger).not.toContain('60ch');
 		expect(
-			buildBaseStyle('light', 'designed', { textSize: 'small', readingWidth: 'default' })
+			buildBaseStyle('light', 'designed', { textSize: 'small', readingWidth: 'default', zoom: 1 })
 		).toContain('body{zoom:0.933;}');
 		// At the default size a designed body gets no zoom at all.
 		expect(
-			buildBaseStyle('dark', 'designed', { textSize: 'default', readingWidth: 'wide' })
+			buildBaseStyle('dark', 'designed', { textSize: 'default', readingWidth: 'wide', zoom: 1 })
 		).not.toContain('zoom');
 	});
 
@@ -660,7 +665,7 @@ describe('buildBaseStyle', () => {
 		const seen = new Set<string>();
 		for (const textSize of sizes) {
 			for (const readingWidth of widths) {
-				seen.add(buildBaseStyle('light', 'simple', { textSize, readingWidth }));
+				seen.add(buildBaseStyle('light', 'simple', { textSize, readingWidth, zoom: 1 }));
 			}
 		}
 		expect(seen.size).toBe(sizes.length * widths.length);

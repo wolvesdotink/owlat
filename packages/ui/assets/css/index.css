@@ -37,6 +37,7 @@
 @import './dark.css';
 @import './light.css';
 @import './contrast.css';
+@import './text-size.css';
 @import './components.css';
 @import './landing.css';
 @import './motion.css';
