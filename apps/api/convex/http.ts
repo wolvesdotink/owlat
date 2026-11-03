@@ -8,6 +8,7 @@ import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
 import { registerPublicApiRoutes } from './publicApi/v1Http';
 import { registerBookingRoutes } from './booking/publicHttp';
+import { postboxMcp, postboxMcpMethodNotAllowed } from './mcp/serverHttp';
 import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
@@ -129,6 +130,13 @@ http.route({
 // sample-data routes do. It is one versioned contract with one set of URLs, and
 // keeping it here pushed this file past the ~500 LOC ratchet.
 registerPublicApiRoutes(http);
+
+// The Postbox MCP server (mcp/serverHttp.ts). This URL goes into AI client
+// configs we do not own, so it stays written out. No OPTIONS route: browsers
+// are refused on purpose.
+http.route({ path: '/mcp/postbox', method: 'POST', handler: postboxMcp });
+http.route({ path: '/mcp/postbox', method: 'GET', handler: postboxMcpMethodNotAllowed });
+http.route({ path: '/mcp/postbox', method: 'DELETE', handler: postboxMcpMethodNotAllowed });
 
 // ============ FORM SUBMISSION ENDPOINTS ============
 

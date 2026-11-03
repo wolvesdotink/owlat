@@ -146,6 +146,8 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'internalQuery',
 	'knowledgeAdminMutation',
 	'knowledgeMutation',
+	'mcpMutation',
+	'mcpQuery',
 	'mutation',
 	'ownerMutation',
 	'platformAdminMutation',

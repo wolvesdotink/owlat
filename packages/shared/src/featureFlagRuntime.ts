@@ -46,6 +46,7 @@ export type CoreFeatureFlagKey =
 	| 'imports.mailchimp'
 	| 'imports.stripe'
 	| 'imports.mandrill'
+	| 'mail.mcp'
 	// Security / scanning
 	| 'scan.content'
 	| 'scan.files'
@@ -220,6 +221,14 @@ export const FEATURE_FLAG_RULES: { readonly [Key in CoreFeatureFlagKey]: Feature
 	'imports.mandrill': {
 		key: 'imports.mandrill',
 		default: false,
+	},
+	'mail.mcp': {
+		key: 'mail.mcp',
+		// Off by default: it lets software outside the instance read mail, so an
+		// operator opts in. A token still reaches only the mailboxes its member
+		// picked, and only while that member could read them in the web app.
+		default: false,
+		requiresAny: [['postbox', 'mail.external']],
 	},
 
 	'scan.content': {

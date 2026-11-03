@@ -38,7 +38,7 @@ const ALLOWED = new Set([
 	// names only, never a note's text.
 	'contacts/erasure/threadRelations.ts',
 	'lib/tenantTables.ts',
-	'workspaces/deletion/steps/_common.ts',
+	'workspaces/deletion/steps/tables.ts',
 	'workspaces/deletion/steps/cascadeOrder.ts',
 	'workspaces/deletion/steps/registry.ts',
 	// Thread brief erasure: unlinks a note's `threadItemId` when its item is

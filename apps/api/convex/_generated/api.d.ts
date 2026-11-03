@@ -1590,6 +1590,16 @@ import type * as marketing_noticePolicy from '../marketing/noticePolicy.js';
 import type * as marketing_noticeResolvers from '../marketing/noticeResolvers.js';
 import type * as marketing_noticeUrls from '../marketing/noticeUrls.js';
 import type * as marketing_notifications from '../marketing/notifications.js';
+import type * as mcp__helpers from '../mcp/_helpers.js';
+import type * as mcp_access from '../mcp/access.js';
+import type * as mcp_activity from '../mcp/activity.js';
+import type * as mcp_clients from '../mcp/clients.js';
+import type * as mcp_erasure from '../mcp/erasure.js';
+import type * as mcp_protocol from '../mcp/protocol.js';
+import type * as mcp_reads from '../mcp/reads.js';
+import type * as mcp_serverHttp from '../mcp/serverHttp.js';
+import type * as lib_validators_mcp from '../lib/validators/mcp.js';
+import type * as schema_mcp from '../schema/mcp.js';
 import type * as maintenance_retention from '../maintenance/retention.js';
 import type * as maintenance_derivedFields_adapters from '../maintenance/derivedFields/adapters.js';
 import type * as maintenance_derivedFields_registry from '../maintenance/derivedFields/registry.js';
@@ -1903,6 +1913,7 @@ import type * as workspaces_brandKitWebsite from '../workspaces/brandKitWebsite.
 import type * as workspaces_deletion_job from '../workspaces/deletion/job.js';
 import type * as workspaces_deletion_quiesce from '../workspaces/deletion/quiesce.js';
 import type * as workspaces_deletion_steps__common from '../workspaces/deletion/steps/_common.js';
+import type * as workspaces_deletion_steps_tables from '../workspaces/deletion/steps/tables.js';
 import type * as workspaces_deletion_steps_accountExportArtifacts from '../workspaces/deletion/steps/accountExportArtifacts.js';
 import type * as workspaces_deletion_steps_cascadeOrder from '../workspaces/deletion/steps/cascadeOrder.js';
 import type * as workspaces_deletion_steps_contacts from '../workspaces/deletion/steps/contacts.js';
@@ -3214,6 +3225,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/workingHours': typeof lib_workingHours;
 	'lib/writeFence': typeof lib_writeFence;
 	'lib/validators/arrival': typeof lib_validators_arrival;
+	'lib/validators/mcp': typeof lib_validators_mcp;
 }> & ApiFromModules<{
 	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
 	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
@@ -3686,6 +3698,15 @@ declare const fullApi: ApiFromModules<{
 	'marketing/noticeUrls': typeof marketing_noticeUrls;
 	'marketing/notifications': typeof marketing_notifications;
 }> & ApiFromModules<{
+	'mcp/_helpers': typeof mcp__helpers;
+	'mcp/access': typeof mcp_access;
+	'mcp/activity': typeof mcp_activity;
+	'mcp/clients': typeof mcp_clients;
+	'mcp/erasure': typeof mcp_erasure;
+	'mcp/protocol': typeof mcp_protocol;
+	'mcp/reads': typeof mcp_reads;
+	'mcp/serverHttp': typeof mcp_serverHttp;
+}> & ApiFromModules<{
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
 	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
@@ -3808,6 +3829,7 @@ declare const fullApi: ApiFromModules<{
 	'sampleData/index': typeof sampleData_index;
 	'sampleData/manageHttp': typeof sampleData_manageHttp;
 }> & ApiFromModules<{
+	'schema/mcp': typeof schema_mcp;
 	'schema/migrationRuns': typeof schema_migrationRuns;
 	'schema/counters': typeof schema_counters;
 	'schema/storage': typeof schema_storage;
@@ -4032,6 +4054,7 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/job': typeof workspaces_deletion_job;
 	'workspaces/deletion/quiesce': typeof workspaces_deletion_quiesce;
 	'workspaces/deletion/steps/_common': typeof workspaces_deletion_steps__common;
+	'workspaces/deletion/steps/tables': typeof workspaces_deletion_steps_tables;
 	'workspaces/deletion/steps/accountExportArtifacts': typeof workspaces_deletion_steps_accountExportArtifacts;
 	'workspaces/deletion/steps/cascadeOrder': typeof workspaces_deletion_steps_cascadeOrder;
 	'workspaces/deletion/steps/contacts': typeof workspaces_deletion_steps_contacts;

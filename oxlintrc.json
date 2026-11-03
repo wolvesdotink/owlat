@@ -263,6 +263,7 @@
 					{ "flag": "forms", "files": ["apps/api/convex/forms/**"] },
 					{ "flag": "ai.knowledge", "files": ["apps/api/convex/knowledge/**"] },
 					{ "flag": "calendar.booking", "files": ["apps/api/convex/booking/**"] },
+					{ "flag": "mail.mcp", "files": ["apps/api/convex/mcp/**"] },
 					{ "flag": "inbox", "files": ["apps/api/convex/inbox/sla/**"] }
 				],
 				// Postbox handlers use postboxQuery / postboxMutation, the external

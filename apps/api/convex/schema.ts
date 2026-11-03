@@ -38,6 +38,7 @@ import { messagingTables } from './schema/messaging';
 import { dashboardTables } from './schema/dashboard';
 import { integrationTables } from './schema/integrations';
 import { codeWorkTables } from './schema/codeWork';
+import { mcpTables } from './schema/mcp';
 import { chatTables } from './schema/chat';
 import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
@@ -129,4 +130,5 @@ export default defineSchema({
 	...aiRoutingTables,
 	...embeddingSpaceTables,
 	...apiRequestReceiptTables,
+	...mcpTables,
 });

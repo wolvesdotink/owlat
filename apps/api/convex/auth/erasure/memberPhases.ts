@@ -18,6 +18,7 @@ import {
 } from '../../delivery/checklistAlertRecipients';
 import { isPersonalMailbox } from '../../mail/permissions';
 import { deleteMemberInstanceRows } from '../memberInstanceRows';
+import { memberMcpClientRanges } from '../../mcp/erasure';
 import { deleteRanges } from './mailboxPhases';
 import {
 	DELETED_ACCOUNT_ID,
@@ -48,7 +49,8 @@ export const eraseInstanceRows: MemberPhaseRunner = async ({ ctx, authUserId, bu
 };
 
 /**
- * Everything else keyed by the user id: app passwords, the admin-request
+ * Everything else keyed by the user id: app passwords and AI client tokens
+ * (with their activity log), the admin-request
  * queues (they carry the email, name and a free-text note), Today state and
  * the thread-visit log (reading history), mail settings, dashboard layout,
  * inbox presence, read markers and assignment notices, OAuth handshakes in
@@ -171,6 +173,7 @@ export const eraseMemberRecords: MemberPhaseRunner = async (phase) => {
 				.query('mailSnippets')
 				.withIndex('by_owner', (q) => q.eq('ownerUserId', uid))
 				.take(n),
+		...memberMcpClientRanges(ctx, uid),
 	]);
 	if (!isEmpty) return { isDone: false };
 

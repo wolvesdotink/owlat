@@ -168,6 +168,17 @@ describe('gates', () => {
 		]);
 	});
 
+	it('shows AI clients only with mail and its flag on', () => {
+		const withFlag = (on: boolean): SettingsEnvironment => ({
+			isFeatureEnabled: (flag) => flag !== 'mail.mcp' || on,
+			isDesktop: false,
+		});
+		expect(visibleSettingsEntries(withFlag(true)).map((entry) => entry.id)).toContain('aiClients');
+		expect(visibleSettingsEntries(withFlag(false)).map((entry) => entry.id)).not.toContain(
+			'aiClients'
+		);
+	});
+
 	it('shows the booking page only while its flag is on', () => {
 		const noBooking: SettingsEnvironment = {
 			isFeatureEnabled: (flag) => flag !== 'calendar.booking',
