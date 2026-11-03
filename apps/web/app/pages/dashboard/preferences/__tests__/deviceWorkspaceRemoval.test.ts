@@ -133,6 +133,7 @@ function mountPage() {
 				PreferencesMailtoHandler: true,
 				PostboxNotificationSettings: true,
 				DesktopUpdateCard: true,
+				DesktopTraySettings: true,
 				DesktopWorkspaceAccentPicker: true,
 			},
 		},

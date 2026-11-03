@@ -3,8 +3,9 @@
  *
  * It is in every browser's boot bundle, so the deep-link handler a mailto:
  * click needs is imported when one arrives rather than with the plugin. These
- * cases pin that the mailto: route still reaches the handler, and that the web
- * runtime registers nothing.
+ * cases pin that the mailto: route still reaches the handler, that the tray's
+ * "Pause Notifications" flips the stored switch, and that the web runtime
+ * registers nothing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +29,24 @@ vi.mock('@owlat/desktop/src/menu', () => ({
 	onOpenMailto: (handler: (url: string) => void) => onOpenMailto(handler),
 }));
 
+let trayToggleHandler: (() => void) | null = null;
+const onTrayToggleNotifications = vi.fn(async (handler: () => void) => {
+	trayToggleHandler = handler;
+	return () => {};
+});
+vi.mock('@owlat/desktop/src/tray', () => ({
+	onTrayToggleNotifications: (handler: () => void) => onTrayToggleNotifications(handler),
+}));
+
+let storedNotificationsEnabled = true;
+const setGlobal = vi.fn();
+vi.mock('~/composables/useDesktopAppSettings', () => ({
+	loadDesktopAppSettings: async () => ({
+		global: { notificationsEnabled: storedNotificationsEnabled },
+	}),
+	useDesktopAppSettings: () => ({ setGlobal }),
+}));
+
 const deepLinkModuleLoads = vi.fn();
 const handleDeepLink = vi.fn(async (_url: string) => {});
 vi.mock('~/lib/desktop/deepLink.client', () => {
@@ -49,6 +68,10 @@ async function setupMenuPlugin(): Promise<void> {
 beforeEach(() => {
 	desktopRuntime = true;
 	mailtoHandler = null;
+	trayToggleHandler = null;
+	storedNotificationsEnabled = true;
+	setGlobal.mockClear();
+	onTrayToggleNotifications.mockClear();
 	onMenuAction.mockClear();
 	onOpenMailto.mockClear();
 	deepLinkModuleLoads.mockClear();
@@ -73,6 +96,20 @@ describe('desktop menu plugin', () => {
 		);
 	});
 
+	it('flips the stored notification switch from the tray, both ways', async () => {
+		await setupMenuPlugin();
+		await vi.waitFor(() => expect(onTrayToggleNotifications).toHaveBeenCalledTimes(1));
+
+		trayToggleHandler?.();
+		await vi.waitFor(() => expect(setGlobal).toHaveBeenCalledWith('notificationsEnabled', false));
+
+		storedNotificationsEnabled = false;
+		trayToggleHandler?.();
+		await vi.waitFor(() =>
+			expect(setGlobal).toHaveBeenLastCalledWith('notificationsEnabled', true)
+		);
+	});
+
 	it('registers nothing on the web', async () => {
 		desktopRuntime = false;
 
@@ -81,6 +118,7 @@ describe('desktop menu plugin', () => {
 
 		expect(onMenuAction).not.toHaveBeenCalled();
 		expect(onOpenMailto).not.toHaveBeenCalled();
+		expect(onTrayToggleNotifications).not.toHaveBeenCalled();
 		expect(deepLinkModuleLoads).not.toHaveBeenCalled();
 	});
 });
