@@ -120,15 +120,15 @@ export function buildShareCard(input: ShareCardInput): ShareCard {
 
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 // A run of digits with the separators phone numbers are written with. The
-// digit count below decides; a date is told apart by its shape.
+// digit count below decides; a date is told apart by its shape. A run has no
+// upper bound: two numbers written as "030 1234567 / 040 7654321" are one run,
+// and it is hidden whole.
 const PHONE_RUN = /\+?\(?\d[\d\s()./-]*\d/g;
 const DATE_SHAPES = [/^\d{4}-\d{1,2}-\d{1,2}$/, /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/];
 const MIN_PHONE_DIGITS = 7;
-const MAX_PHONE_DIGITS = 15;
 
 function isPhoneNumber(match: string): boolean {
-	const digits = match.replace(/\D/g, '').length;
-	if (digits < MIN_PHONE_DIGITS || digits > MAX_PHONE_DIGITS) return false;
+	if (match.replace(/\D/g, '').length < MIN_PHONE_DIGITS) return false;
 	const compact = match.replace(/\s/g, '');
 	return !DATE_SHAPES.some((shape) => shape.test(compact));
 }

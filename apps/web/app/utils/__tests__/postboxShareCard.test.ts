@@ -101,6 +101,13 @@ describe('personalDetailTokenIds', () => {
 		);
 	});
 
+	it('picks two phone numbers written as one run', () => {
+		const c = card('Office 030 12345678 / 040 87654321, ask for Ben.');
+		expect(textsOf(c, personalDetailTokenIds(c))).toEqual(
+			['/', '030', '040', '12345678', '87654321,', 'ben@acmecorp.example'].sort()
+		);
+	});
+
 	it('leaves dates, short numbers and the header date alone', () => {
 		const c = card('Invoice 2041 from 2026-11-03 and 03.11.2026, suite 300.');
 		expect(textsOf(c, personalDetailTokenIds(c))).toEqual(['ben@acmecorp.example']);

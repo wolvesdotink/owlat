@@ -480,7 +480,7 @@ const renderToggleLabel = computed(() =>
 			:starred="starred"
 			:show-reply-all="showReplyAll"
 			:from-address="msg.fromAddress"
-			:can-share-image="!holdBody"
+			:can-share-image="!holdBody && secureClass === 'none' && !msg.inboundSignatureInfo"
 			@toggle-star="emit('toggle-star')"
 			@reply="emit('reply')"
 			@reply-all="emit('reply-all')"
