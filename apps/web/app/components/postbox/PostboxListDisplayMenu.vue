@@ -32,6 +32,7 @@ defineProps<{
 	/** Inbox-only list renderer; absent options hide the group entirely. */
 	viewMode?: string;
 	viewModeOptions?: Array<{ value: string; label: string; description?: string }>;
+	/** Arrival direction; absent hides the group, for a list with one fixed order. */
 	sortOrder?: string;
 	density?: PostboxDensity;
 	unreadStyle?: PostboxUnreadStyle;
@@ -107,30 +108,32 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 					<div class="my-1 border-t border-border-subtle" />
 				</template>
 
-				<p :class="HEADING_CLASS">
-					{{ t('components.postbox.postboxListDisplayMenu.sortOrder') }}
-				</p>
-				<button
-					v-for="option in POSTBOX_SORT_ORDER_OPTIONS"
-					:key="option.value"
-					type="button"
-					role="menuitemradio"
-					:aria-checked="sortOrder === option.value"
-					:class="ITEM_CLASS"
-					@click="
-						emit('select-sort-order', option.value);
-						close();
-					"
-				>
-					<Icon
-						name="lucide:check"
-						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-						:class="{ invisible: sortOrder !== option.value }"
-						aria-hidden="true"
-					/>
-					{{ t(option.label) }}
-				</button>
-				<div class="my-1 border-t border-border-subtle" />
+				<template v-if="sortOrder">
+					<p :class="HEADING_CLASS">
+						{{ t('components.postbox.postboxListDisplayMenu.sortOrder') }}
+					</p>
+					<button
+						v-for="option in POSTBOX_SORT_ORDER_OPTIONS"
+						:key="option.value"
+						type="button"
+						role="menuitemradio"
+						:aria-checked="sortOrder === option.value"
+						:class="ITEM_CLASS"
+						@click="
+							emit('select-sort-order', option.value);
+							close();
+						"
+					>
+						<Icon
+							name="lucide:check"
+							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+							:class="{ invisible: sortOrder !== option.value }"
+							aria-hidden="true"
+						/>
+						{{ t(option.label) }}
+					</button>
+					<div class="my-1 border-t border-border-subtle" />
+				</template>
 
 				<p :class="HEADING_CLASS">
 					{{ t('components.postbox.postboxListDisplayMenu.density') }}

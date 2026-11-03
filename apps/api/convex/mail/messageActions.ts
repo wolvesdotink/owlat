@@ -19,7 +19,8 @@ import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { clearThreadNeedsReply } from './needsReply';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './messagePurge';
-import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
+import { roleFolderGroups, type RoleFolderGroup } from './roleFolderGroups';
 import {
 	applyThreadFlagDeltas,
 	applyThreadFolderMove,
@@ -296,62 +297,71 @@ export const move = postboxMutation({
 	},
 });
 
-/** Archive: move to the Archive system folder. */
-// authz: access enforced by moveWithAccess (requireMailboxAccess on the target
-// folder's mailbox); this is a thin folder-routing wrapper.
+/**
+ * The selection's groups (see `roleFolderGroups`) each moved to their own
+ * mailbox's folder, behind the handler's access gate.
+ */
+async function moveGroups(
+	ctx: MutationCtx,
+	access: AccessGate,
+	groups: RoleFolderGroup[]
+): Promise<MoveResult> {
+	const moved: MovedMessage[] = [];
+	for (const group of groups) {
+		const result = await moveWithAccess(ctx, access, {
+			messageIds: group.messageIds,
+			targetFolderId: group.folderId,
+		});
+		moved.push(...result.moved);
+	}
+	return { ok: true, moved };
+}
+
+/** Archive: move to the Archive system folder of each message's mailbox. */
+// authz: access enforced by roleFolderGroups and moveWithAccess
+// (requireMailboxAccess on each target folder's mailbox).
 export const archive = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args, session): Promise<MoveResult | undefined> => {
-		const firstId = args.messageIds[0];
-		if (!firstId) return undefined;
-		const first = await ctx.db.get(firstId);
-		if (!first) return undefined;
-		const archive = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', first.mailboxId).eq('role', 'archive')
-			)
-			.first();
-		if (!archive) throwInvalidState('Archive folder missing');
+		const access = createMailboxAccessGate(ctx, session);
+		const groups = await roleFolderGroups(ctx, access, args.messageIds, 'archive');
+		if (groups.length === 0) return undefined;
 		// Read on arrival §4.3: which messages were unread live mail, read BEFORE the move.
-		const unread = await unreadArchiveCandidates(ctx, args.messageIds, archive._id);
-		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
-			messageIds: args.messageIds,
-			targetFolderId: archive._id,
-		});
+		const unread: Awaited<ReturnType<typeof unreadArchiveCandidates>>[] = [];
+		for (const group of groups) {
+			unread.push(await unreadArchiveCandidates(ctx, group.messageIds, group.folderId));
+		}
+		const result = await moveGroups(ctx, access, groups);
+		const reached = groups.flatMap((group) => group.messageIds);
 		// Idea 27: one triage SESSION observed for these senders. Recorded on the
 		// human-initiated wrapper only — the retroactive filter sweep also moves
 		// mail through `move`, and a rule's own work must never become evidence
 		// for suggesting that rule again.
-		await recordTriageVerb(ctx, args.messageIds, 'archive');
-		await recordUnreadArchives(ctx, unread, result.moved, { now: Date.now() });
+		await recordTriageVerb(ctx, reached, 'archive');
+		const now = Date.now();
+		for (const candidates of unread) {
+			await recordUnreadArchives(ctx, candidates, result.moved, { now });
+		}
 		await recordArchivedMoves(ctx, result.moved, session.userId);
 		return result;
 	},
 });
 
-/** Soft-delete: move to Trash. */
-// authz: access enforced by moveWithAccess (requireMailboxAccess on the target
-// folder's mailbox); this is a thin folder-routing wrapper.
+/** Soft-delete: move to the Trash of each message's mailbox. */
+// authz: access enforced by roleFolderGroups and moveWithAccess
+// (requireMailboxAccess on each target folder's mailbox).
 export const trash = postboxMutation({
 	args: { messageIds: v.array(v.id('mailMessages')) },
 	handler: async (ctx, args, session): Promise<MoveResult | undefined> => {
-		const firstId = args.messageIds[0];
-		if (!firstId) return undefined;
-		const first = await ctx.db.get(firstId);
-		if (!first) return undefined;
-		const trash = await ctx.db
-			.query('mailFolders')
-			.withIndex('by_mailbox_and_role', (q) =>
-				q.eq('mailboxId', first.mailboxId).eq('role', 'trash')
-			)
-			.first();
-		if (!trash) throwInvalidState('Trash folder missing');
-		const result = await moveWithAccess(ctx, createMailboxAccessGate(ctx, session), {
-			messageIds: args.messageIds,
-			targetFolderId: trash._id,
-		});
-		await recordTriageVerb(ctx, args.messageIds, 'trash');
+		const access = createMailboxAccessGate(ctx, session);
+		const groups = await roleFolderGroups(ctx, access, args.messageIds, 'trash');
+		if (groups.length === 0) return undefined;
+		const result = await moveGroups(ctx, access, groups);
+		await recordTriageVerb(
+			ctx,
+			groups.flatMap((group) => group.messageIds),
+			'trash'
+		);
 		return result;
 	},
 });
@@ -405,7 +415,10 @@ export const setStar = postboxMutation({
 	},
 });
 
-/** Move messages to a system folder and stamp a spam verdict. */
+/**
+ * Move messages to a system folder of their own mailbox and stamp a spam
+ * verdict on the ones the caller can reach.
+ */
 async function moveToRoleWithVerdict(
 	ctx: MutationCtx,
 	session: MutationSessionContext,
@@ -413,28 +426,13 @@ async function moveToRoleWithVerdict(
 	role: 'spam' | 'inbox',
 	verdict: 'spam' | 'ham'
 ): Promise<MoveResult> {
-	const firstId = messageIds[0];
-	if (!firstId) return { ok: true, moved: [] };
-	const first = await ctx.db.get(firstId);
-	if (!first) return { ok: true, moved: [] };
-	// One decision per mailbox across the first-message check, the per-message
-	// loop and the move's target check (plan 1.13).
+	// One decision per mailbox across the grouping and the moves.
 	const access = createMailboxAccessGate(ctx, session);
-	const owned = await access(first.mailboxId);
-	if (!owned.ok) throwForbidden('Messages not accessible');
-	const folder = await ctx.db
-		.query('mailFolders')
-		.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', first.mailboxId).eq('role', role))
-		.first();
-	if (!folder) throwInvalidState(`${role} folder missing`);
-	for (const id of messageIds) {
-		const m = await ctx.db.get(id);
-		if (!m) continue;
-		const o = await access(m.mailboxId);
-		if (!o.ok) continue;
+	const groups = await roleFolderGroups(ctx, access, messageIds, role);
+	for (const id of groups.flatMap((group) => group.messageIds)) {
 		await ctx.db.patch(id, { spamVerdict: verdict, updatedAt: Date.now() });
 	}
-	return await moveWithAccess(ctx, access, { messageIds, targetFolderId: folder._id });
+	return await moveGroups(ctx, access, groups);
 }
 
 /** Report as spam: move to Spam and record the verdict. */

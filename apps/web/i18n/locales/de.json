@@ -4662,6 +4662,21 @@
 			"uploadMediaOperation": "Medien hochladen"
 		},
 		"postbox": {
+			"allInboxes": {
+				"title": "Alle Postfächer",
+				"inboxesHeading": "Postfächer",
+				"openInbox": "{name} öffnen",
+				"clearCategory": "Alle Kategorien anzeigen",
+				"category": {
+					"newsletter": "Newsletter",
+					"notification": "Benachrichtigungen",
+					"receipt": "Quittungen",
+					"promotion": "Werbung",
+					"spam": "Spam",
+					"person": "Von Menschen",
+					"other": "Sonstiges"
+				}
+			},
 			"postboxAiStrip": {
 				"ask": "Fragen",
 				"askAbout": "Zu diesem Thread fragen",
@@ -13314,35 +13329,6 @@
 			"mode": {
 				"pageTitle": "Antwortmodus"
 			}
-		},
-		"inboxes": {
-			"pageTitle": "Alle Postfächer",
-			"title": "Alle Postfächer",
-			"subtitle": "Alle Unterhaltungen aus dem einen Postfach, das du liest | Alle Unterhaltungen aus den {count} Postfächern, die du liest",
-			"filterLabel": "Unterhaltungen filtern",
-			"allInboxes": "Alle",
-			"show": {
-				"all": "Alles",
-				"unread": "Ungelesen",
-				"needs": "Braucht dich"
-			},
-			"clearCategory": "Alle Kategorien anzeigen",
-			"category": {
-				"newsletter": "Newsletter",
-				"notification": "Benachrichtigungen",
-				"receipt": "Quittungen",
-				"promotion": "Werbung",
-				"spam": "Spam",
-				"person": "Von Menschen",
-				"other": "Sonstiges"
-			},
-			"empty": "Keine Unterhaltung passt zu diesen Filtern.",
-			"footnote": "Zeigt die neuesten {count} Unterhaltungen je Postfach. Öffne ein Postfach für alles, auch Gesendet, Archiv und Suche.",
-			"archiveOperation": "Unterhaltungen archivieren",
-			"archiveUndoOperation": "Archivieren rückgängig machen",
-			"archivedUndo": "{count} Unterhaltung archiviert | {count} Unterhaltungen archiviert",
-			"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren",
-			"sweepStatus": "{count} Unterhaltung archivieren | {count} Unterhaltungen archivieren"
 		}
 	},
 	"desktop": {

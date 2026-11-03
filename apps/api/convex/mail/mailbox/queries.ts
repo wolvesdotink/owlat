@@ -331,6 +331,8 @@ export const accessible = publicQuery({
 			isConnected: boolean;
 			colorSlot: number | null;
 			unread: number;
+			/** The Inbox folder, which All inboxes (`allInboxes.ts`) reads by id. */
+			inboxFolderId: Id<'mailFolders'> | null;
 		}> = [];
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
@@ -347,6 +349,7 @@ export const accessible = publicQuery({
 				isConnected: mb.kind === 'external',
 				colorSlot: mb.colorSlot ?? null,
 				unread: inbox?.unseenCount ?? 0,
+				inboxFolderId: inbox?._id ?? null,
 			});
 		}
 		return rows;

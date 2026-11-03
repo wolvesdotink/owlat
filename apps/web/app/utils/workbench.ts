@@ -6,6 +6,7 @@
  */
 
 import type { FiledCategory } from '@owlat/shared/threadStatus';
+import { allInboxesHref } from './postboxAllInboxes';
 
 /** A mailbox id, or `team` for the team inbox. */
 export type WorkbenchScope = string;
@@ -71,5 +72,5 @@ export function filedHref(scope: WorkbenchScope, key: FiledCategory): string {
 	}
 	// The classifier moves spam out of the inbox, so it lives in the Spam folder.
 	if (key === 'spam') return `/dashboard/postbox/spam?mailbox=${scope}`;
-	return `/dashboard/inboxes?in=${scope}&category=${key}`;
+	return allInboxesHref({ in: scope, category: key });
 }

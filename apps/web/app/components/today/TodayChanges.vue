@@ -2,6 +2,7 @@
 import type { TodayChange } from '~/utils/todayDigest';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
 import RowContextMenu from '~/components/RowContextMenu.vue';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 
 /**
  * "What changed": conversations the viewer already knew (they opened or
@@ -11,7 +12,7 @@ import RowContextMenu from '~/components/RowContextMenu.vue';
  */
 const props = withDefaults(
 	defineProps<{ changes: readonly TodayChange[]; hidden: number; moreHref?: string }>(),
-	{ moreHref: '/dashboard/inboxes' }
+	{ moreHref: ALL_INBOXES_PATH }
 );
 const emit = defineEmits<{ done: [change: TodayChange] }>();
 const { t } = useI18n();

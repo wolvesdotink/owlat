@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
@@ -51,10 +52,11 @@ const pinned = computed(() => [
 		exact: false,
 		count: answerCount.value,
 	},
-	...(hasPersonalMail.value || showTeamInbox.value
+	// All inboxes merges the mailboxes; the team inbox has its own row below.
+	...(hasPersonalMail.value
 		? [
 				{
-					to: '/dashboard/inboxes',
+					to: ALL_INBOXES_PATH,
 					icon: 'lucide:inbox',
 					label: t('components.shell.nav.allInboxes'),
 					exact: false,
@@ -83,6 +85,8 @@ const railLabels = computed(() => {
 const { activeMailboxId } = usePostboxActiveMailbox();
 const openMailboxId = computed(() => {
 	if (!route.path.startsWith('/dashboard/postbox')) return null;
+	// All inboxes shows every inbox at once; its own pinned row is the one lit.
+	if (route.path === ALL_INBOXES_PATH || route.path.startsWith(`${ALL_INBOXES_PATH}/`)) return null;
 	const requested = route.query['mailbox'];
 	return typeof requested === 'string' ? requested : activeMailboxId.value;
 });

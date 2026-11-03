@@ -109,7 +109,7 @@ describe('slots', () => {
 		const hrefs = mountBar()
 			.findAll('a')
 			.map((link) => link.attributes('href'));
-		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer', '/dashboard/inboxes']);
+		expect(hrefs).toEqual(['/dashboard', '/dashboard/answer', '/dashboard/postbox/all-inboxes']);
 	});
 
 	it('shows how many things wait in the Answer queue', () => {
@@ -154,7 +154,7 @@ describe('More (#778)', () => {
 		expect(hrefs).toContain('/dashboard/chat');
 		expect(hrefs).toContain('/dashboard/marketing');
 		expect(hrefs).toContain('/dashboard/preferences');
-		for (const tab of ['/dashboard', '/dashboard/answer', '/dashboard/inboxes']) {
+		for (const tab of ['/dashboard', '/dashboard/answer', '/dashboard/postbox/all-inboxes']) {
 			expect(hrefs).not.toContain(tab);
 		}
 		// The sheet owns the bottom of the screen while it is up.

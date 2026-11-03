@@ -88,7 +88,8 @@ export function usePostboxMessageDrag() {
  * fifth entry point to the verb `v`, the bulk bar and the context menu share.
  */
 export function usePostboxListRowDrag(opts: {
-	mailboxId: Ref<Id<'mailboxes'>>;
+	/** Null for a list that spans mailboxes: its rows have no one rail to drop on. */
+	mailboxId: Ref<Id<'mailboxes'> | null>;
 	bulk: {
 		ids: Ref<Id<'mailMessages'>[]>;
 		isSelected: (id: Id<'mailMessages'>) => boolean;
@@ -112,12 +113,14 @@ export function usePostboxListRowDrag(opts: {
 	}
 
 	function start(row: { _id: Id<'mailMessages'>; subject: string }, event: DragEvent) {
+		const mailboxId = opts.mailboxId.value;
+		if (!mailboxId) return;
 		const carriesSelection = opts.bulk.isSelected(row._id);
 		const messageIds = dragMessageIds(row._id, opts.bulk.ids.value);
 		drag.start(
 			event,
 			{
-				mailboxId: opts.mailboxId.value,
+				mailboxId,
 				messageIds,
 				sourceFolder: sourceFolder(),
 				moveTo: async (folderId) => {

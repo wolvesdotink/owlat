@@ -3,6 +3,7 @@ import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
 import RowContextMenu from '~/components/RowContextMenu.vue';
+import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 
 /**
  * "Updates": everything in this inbox that needs no reply, as a short digest.
@@ -17,7 +18,7 @@ import RowContextMenu from '~/components/RowContextMenu.vue';
  * or a long-press on a line offers the same verbs, with their keys.
  */
 const props = withDefaults(defineProps<{ model: TodayModel; moreHref?: string }>(), {
-	moreHref: '/dashboard/inboxes',
+	moreHref: ALL_INBOXES_PATH,
 });
 const emit = defineEmits<{ done: [line: TodayLine]; replyAnyway: [line: TodayLine] }>();
 const { t } = useI18n();

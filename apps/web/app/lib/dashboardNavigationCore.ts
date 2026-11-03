@@ -137,7 +137,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.allInboxes',
-				href: '/dashboard/inboxes',
+				href: '/dashboard/postbox/all-inboxes',
 				icon: 'lucide:inbox',
 			},
 			{

@@ -35,6 +35,8 @@ const POSTBOX_FOLDER_ROLE_KEYS: Record<string, string> = {
 	spam: 'components.postbox.postboxLayout.folderRoles.spam',
 	trash: 'components.postbox.postboxLayout.folderRoles.trash',
 	snoozed: 'components.postbox.postboxLayout.folderRoles.snoozed',
+	// Not a role, but a folder route all the same (utils/postboxAllInboxes.ts).
+	'all-inboxes': 'components.postbox.allInboxes.title',
 };
 
 /** `inbox|drafts|sent|…` — the folder-list pattern matches these slugs ONLY, so
