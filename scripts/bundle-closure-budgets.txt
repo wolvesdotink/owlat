@@ -118,7 +118,7 @@ route 3 pages/dashboard/inbox/quarantine.vue
 route 23 pages/dashboard/inbox/response-targets.vue
 route 3 pages/dashboard/inbox/review.vue
 route 34 pages/dashboard/inbox/updates.vue
-route 36 pages/dashboard/inboxes.vue
+route 3 pages/dashboard/inboxes.vue
 route 110 pages/dashboard/index.vue
 route 34 pages/dashboard/knowledge/[id].vue
 route 26 pages/dashboard/knowledge/graph.vue
@@ -239,8 +239,6 @@ deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-files.de.json
 deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-files.en.json
 deferred 6 ../node_modules/.cache/owlat-i18n/areas/dashboard-inbox.de.json
 deferred 6 ../node_modules/.cache/owlat-i18n/areas/dashboard-inbox.en.json
-deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-inboxes.de.json
-deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-inboxes.en.json
 deferred 5 ../node_modules/.cache/owlat-i18n/areas/dashboard-knowledge.de.json
 deferred 5 ../node_modules/.cache/owlat-i18n/areas/dashboard-knowledge.en.json
 deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-marketing.de.json

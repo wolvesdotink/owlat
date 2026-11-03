@@ -8,6 +8,10 @@
  * row's thread is captured with it for the same reason, so the dialog's default
  * "whole conversation" scope cannot retarget either.
  *
+ * A list that spans mailboxes (All inboxes) has no list mailbox: the label and
+ * move pickers then offer the labels and folders of the row they were opened
+ * on, captured with it.
+ *
  * The move picker also offers the caller's other mailboxes
  * (`usePostboxMailboxTransfer`); its props and handlers travel as one bundle
  * each (`movePicker`, `movePickerOn`).
@@ -23,7 +27,10 @@ import type { PostboxSnoozeScope } from '~/utils/postboxSnoozeScope';
 import type { PostboxTransferMode } from './usePostboxMailboxTransfer';
 
 export function usePostboxRowPickers(opts: {
-	mailboxId: Ref<Id<'mailboxes'>>;
+	/** The list's mailbox; null when the list spans mailboxes. */
+	mailboxId: Ref<Id<'mailboxes'> | null>;
+	/** The mailbox a row belongs to, for a list that spans mailboxes. */
+	mailboxOf?: (id: Id<'mailMessages'>) => string | null;
 	/** The folder being shown — never a move destination for its own rows. */
 	folderRole: Ref<string>;
 	snoozeMsg: (id: Id<'mailMessages'>, until: number) => Promise<unknown>;
@@ -37,9 +44,12 @@ export function usePostboxRowPickers(opts: {
 	const labelTargetId = ref<Id<'mailMessages'> | null>(null);
 	const moveOpen = ref(false);
 	const moveTargetId = ref<Id<'mailMessages'> | null>(null);
+	// The mailbox of the row a label or move picker was opened on.
+	const targetMailboxId = ref<Id<'mailboxes'> | null>(null);
+	const pickerMailboxId = computed(() => opts.mailboxId.value ?? targetMailboxId.value);
 
-	const { labels, setOnMessage } = usePostboxLabels(opts.mailboxId);
-	const { folders } = usePostboxFolders(opts.mailboxId);
+	const { labels, setOnMessage } = usePostboxLabels(pickerMailboxId);
+	const { folders } = usePostboxFolders(pickerMailboxId);
 	// Same destination filter as PostboxQuickActionsBar: moving a received
 	// message into Sent/Drafts mis-frames it, and the current folder is a no-op.
 	const movableFolders = computed(() =>
@@ -54,12 +64,18 @@ export function usePostboxRowPickers(opts: {
 		snoozeOpen.value = true;
 	}
 
+	function captureMailbox(id: Id<'mailMessages'>) {
+		targetMailboxId.value = (opts.mailboxOf?.(id) ?? null) as Id<'mailboxes'> | null;
+	}
+
 	function openLabel(id: Id<'mailMessages'>) {
+		captureMailbox(id);
 		labelTargetId.value = id;
 		labelOpen.value = true;
 	}
 
 	function openMove(id: Id<'mailMessages'>) {
+		captureMailbox(id);
 		moveTargetId.value = id;
 		moveOpen.value = true;
 	}
@@ -90,7 +106,7 @@ export function usePostboxRowPickers(opts: {
 		if (id) await opts.moveMsg(id, targetFolderId);
 	}
 
-	const mailboxTransfer = usePostboxMailboxTransfer(() => opts.mailboxId.value);
+	const mailboxTransfer = usePostboxMailboxTransfer(() => pickerMailboxId.value ?? '');
 	async function transferFocusedTo(targetId: Id<'mailboxes'>, mode: PostboxTransferMode) {
 		const id = moveTargetId.value;
 		moveOpen.value = false;

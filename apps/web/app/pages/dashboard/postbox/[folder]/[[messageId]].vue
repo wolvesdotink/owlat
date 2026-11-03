@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
+import { isAllInboxesFolder } from '~/utils/postboxAllInboxes';
+import PostboxAllInboxesLayout from '~/components/postbox/PostboxAllInboxesLayout.vue';
 import { POSTBOX_PAGE_KEY, postboxPageTransition } from '~/utils/postboxPageTransition';
 
 // One page for the folder list and the open message (/inbox and /inbox/<id>).
@@ -22,6 +24,9 @@ const route = useRoute();
 // Passing the raw param through as a role would query a role that does not
 // exist and label the mobile back button with a raw Convex id.
 const folder = computed(() => resolvePostboxFolderParam(route.params['folder']));
+// All inboxes is a folder route of its own (utils/postboxAllInboxes.ts): the
+// list and the reader build their links from this segment, so they stay in it.
+const isAllInboxes = computed(() => isAllInboxesFolder(route.params['folder']));
 // The optional [[messageId]] param: absent (or empty) on the folder list.
 const messageId = computed(() => {
 	const param = route.params['messageId'];
@@ -32,7 +37,9 @@ useHead({
 	title: () =>
 		messageId.value
 			? t('dashboard.postbox.detail.detail.pageTitle')
-			: t('dashboard.postbox.detail.index.pageTitle'),
+			: isAllInboxes.value
+				? t('components.postbox.allInboxes.title')
+				: t('dashboard.postbox.detail.index.pageTitle'),
 });
 
 // The open message's thread and body start loading from the route right away,
@@ -71,7 +78,9 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 		     minimum width and the Postbox scrolled sideways on a phone. -->
 		<div v-else class="min-w-0 flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
 			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="guardLoading">
+				<PostboxAllInboxesLayout v-if="isAllInboxes" :active-message-id="messageId" />
 				<PostboxLayout
+					v-else
 					:mailbox-id="mailboxId!"
 					:folder-role="folder.folderRole"
 					:folder-id="folder.folderId"

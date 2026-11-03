@@ -121,7 +121,9 @@ describe('TodayFiledAway', () => {
 		expect(tiles[0]!.text()).toContain('From The Verge, Stratechery, Platformer and others');
 		expect(tiles[1]!.text()).toContain('From GitHub, Linear');
 		expect(tiles[1]!.text()).not.toContain('and others');
-		expect(tiles[0]!.attributes('href')).toBe('/dashboard/inboxes?in=mb_me&category=newsletter');
+		expect(tiles[0]!.attributes('href')).toBe(
+			'/dashboard/postbox/all-inboxes?in=mb_me&category=newsletter'
+		);
 	});
 
 	it('gives each kind the icon the inbox and bundles use for it', () => {

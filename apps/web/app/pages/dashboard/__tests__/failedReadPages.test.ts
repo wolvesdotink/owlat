@@ -158,22 +158,6 @@ const PAGES: PageCase[] = [
 		absent: ['dashboard.admin.instance.forms.emptyTitle'],
 	},
 	{
-		name: 'all inboxes',
-		load: () => import('../inboxes.vue'),
-		absent: ['dashboard.inboxes.empty'],
-		stubs: () => ({
-			useInboxes: () => ({
-				inboxes: ref([]),
-				ids: ref([]),
-				byId: ref(new Map()),
-				isLoading: ref(false),
-				error: ref(failure()),
-				refetch,
-			}),
-			useConvexQueryMap: () => new Map(),
-		}),
-	},
-	{
 		name: 'mail aliases',
 		load: () => import('../preferences/aliases.vue'),
 		absent: ['dashboard.preferences.aliases.empty'],

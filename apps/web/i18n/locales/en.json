@@ -4662,6 +4662,21 @@
 			"uploadMediaOperation": "Upload media"
 		},
 		"postbox": {
+			"allInboxes": {
+				"title": "All inboxes",
+				"inboxesHeading": "Inboxes",
+				"openInbox": "Open {name}",
+				"clearCategory": "Show every category",
+				"category": {
+					"newsletter": "Newsletters",
+					"notification": "Notifications",
+					"receipt": "Receipts",
+					"promotion": "Promotions",
+					"spam": "Spam",
+					"person": "From people",
+					"other": "Other"
+				}
+			},
 			"postboxAiStrip": {
 				"ask": "Ask",
 				"askAbout": "Ask about this thread",
@@ -13263,35 +13278,6 @@
 			"mode": {
 				"pageTitle": "Answer mode"
 			}
-		},
-		"inboxes": {
-			"pageTitle": "All inboxes",
-			"title": "All inboxes",
-			"subtitle": "Every conversation from the one inbox you read | Every conversation from the {count} inboxes you read",
-			"filterLabel": "Filter conversations",
-			"allInboxes": "All",
-			"show": {
-				"all": "Everything",
-				"unread": "Unread",
-				"needs": "Needs you"
-			},
-			"clearCategory": "Show every category",
-			"category": {
-				"newsletter": "Newsletters",
-				"notification": "Notifications",
-				"receipt": "Receipts",
-				"promotion": "Promotions",
-				"spam": "Spam",
-				"person": "From people",
-				"other": "Other"
-			},
-			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
-			"archiveOperation": "Archive conversations",
-			"archiveUndoOperation": "Undo archive",
-			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
-			"archiveSweepHint": "Archive — drag across rows to archive several",
-			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {

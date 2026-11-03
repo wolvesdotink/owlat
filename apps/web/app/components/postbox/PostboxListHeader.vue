@@ -48,6 +48,8 @@ const props = defineProps<{
 	inboxMode?: PostboxInboxMode;
 	/** Set on the flat list, which is the only renderer with a selection model. */
 	mailboxId?: Id<'mailboxes'>;
+	/** The selection bucket when the list spans mailboxes (All inboxes). */
+	selectionScope?: string;
 	/** The mailbox on screen, whatever the renderer: the folder menu acts on it. */
 	folderMailboxId?: Id<'mailboxes'>;
 	/** Ids of the rows the list currently has loaded, in render order. */
@@ -58,10 +60,10 @@ const props = defineProps<{
 // The header owns the checkbox that covers the whole page of rows. The escape
 // hatch past it ("and the rest of the folder") lives in the bulk bar, where the
 // selection it grows is already rendered.
-const mailboxIdRef = computed(() => props.mailboxId ?? null);
-const bulk = usePostboxBulkActions(mailboxIdRef);
+const selectionScope = computed(() => props.selectionScope ?? props.mailboxId ?? null);
+const bulk = usePostboxBulkActions(selectionScope);
 const pageIds = computed(() => props.pageIds ?? []);
-const selectionEnabled = computed(() => props.mailboxId != null && pageIds.value.length > 0);
+const selectionEnabled = computed(() => selectionScope.value != null && pageIds.value.length > 0);
 const selectionState = computed(() => headerSelectionState(pageIds.value, bulk.selected.value));
 
 function toggleSelectPage() {

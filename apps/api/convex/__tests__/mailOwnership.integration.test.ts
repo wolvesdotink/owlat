@@ -824,6 +824,70 @@ describe('mail.messageActions ownership', () => {
 		expect(archive?.unseenCount).toBe(1);
 		expect(archive?.totalCount).toBe(1);
 	});
+
+	it("archive files a selection spanning two mailboxes in each mailbox's own Archive", async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const work = await seedMailbox(t, 'user-alice', 'alice.work@owlat.test');
+		const first = await seedMessage(t, a.mailboxId, a.inboxId);
+		const second = await seedMessage(t, work.mailboxId, work.inboxId);
+
+		setUser('user-alice', 'editor');
+		const result = await t.mutation(api.mail.messageActions.archive, {
+			messageIds: [first.messageId, second.messageId],
+		});
+
+		const folders = await t.run(async (ctx) => [
+			(await ctx.db.get(first.messageId))?.folderId,
+			(await ctx.db.get(second.messageId))?.folderId,
+		]);
+		expect(folders).toEqual([a.archiveId, work.archiveId]);
+		expect(result?.moved).toEqual([
+			{ messageId: first.messageId, sourceFolderId: a.inboxId },
+			{ messageId: second.messageId, sourceFolderId: work.inboxId },
+		]);
+	});
+
+	it("trash files a selection spanning two mailboxes in each mailbox's own Trash", async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const work = await seedMailbox(t, 'user-alice', 'alice.work@owlat.test');
+		const first = await seedMessage(t, a.mailboxId, a.inboxId);
+		const second = await seedMessage(t, work.mailboxId, work.inboxId);
+
+		setUser('user-alice', 'editor');
+		await t.mutation(api.mail.messageActions.trash, {
+			messageIds: [first.messageId, second.messageId],
+		});
+
+		const folders = await t.run(async (ctx) => [
+			(await ctx.db.get(first.messageId))?.folderId,
+			(await ctx.db.get(second.messageId))?.folderId,
+		]);
+		expect(folders).toEqual([a.trashId, work.trashId]);
+	});
+
+	it('archive of a mixed selection leaves the message in a mailbox the caller cannot reach', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const a = await seedMailbox(t, 'user-alice', 'alice@owlat.test');
+		const b = await seedMailbox(t, 'user-bob', 'bob@owlat.test');
+		const bobs = await seedMessage(t, b.mailboxId, b.inboxId);
+		const alices = await seedMessage(t, a.mailboxId, a.inboxId);
+
+		setUser('user-alice', 'editor');
+		await t.mutation(api.mail.messageActions.archive, {
+			messageIds: [bobs.messageId, alices.messageId],
+		});
+
+		const folders = await t.run(async (ctx) => [
+			(await ctx.db.get(bobs.messageId))?.folderId,
+			(await ctx.db.get(alices.messageId))?.folderId,
+		]);
+		expect(folders).toEqual([b.inboxId, a.archiveId]);
+	});
 });
 
 // ════════════════════════════════════════════════════════════════════

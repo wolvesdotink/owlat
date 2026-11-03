@@ -28,9 +28,15 @@ interface SelectAllMatchingState {
 	capped: boolean;
 }
 
-export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
+/**
+ * `scope` names the selection's bucket: the mailbox on screen, or All inboxes
+ * (`ALL_INBOXES_FOLDER`), whose selection spans mailboxes. Every verb below
+ * takes message ids, and the server routes and gates each message by its own
+ * mailbox.
+ */
+export function usePostboxBulkActions(scope: Ref<string | null>) {
 	const { t } = useI18n();
-	const stateKey = computed(() => `postbox:bulk:${mailboxId.value ?? 'no-mailbox'}`);
+	const stateKey = computed(() => `postbox:bulk:${scope.value ?? 'no-mailbox'}`);
 
 	const selected = useState<Set<Id<'mailMessages'>>>(stateKey.value, () => new Set());
 	// The anchor is a message ID, not an index: rows shift under the selection

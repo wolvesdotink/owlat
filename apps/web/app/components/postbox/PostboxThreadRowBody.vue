@@ -35,6 +35,8 @@ import {
 import { useBriefLinesShown } from '~/composables/postbox/usePostboxBriefLines';
 import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
 import PostboxUnreadMark from './PostboxUnreadMark.vue';
+import InboxChip from '~/components/inbox/InboxChip.vue';
+import { usePostboxRowInbox } from '~/composables/postbox/usePostboxRowInbox';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -61,6 +63,13 @@ const props = defineProps<{
 const emit = defineEmits<{
 	'cancel-follow-up': [];
 }>();
+
+/** The inbox the row came from, in a list that spans mailboxes. */
+const rowInboxOf = usePostboxRowInbox();
+const rowInbox = computed(() => {
+	const mailboxId = props.msg.mailboxId;
+	return mailboxId && rowInboxOf ? rowInboxOf(mailboxId) : null;
+});
 
 /** One sender fallback for every renderer: a blank display name reads as absent. */
 const sender = computed(() => props.msg.fromName?.trim() || props.msg.fromAddress);
@@ -187,6 +196,13 @@ function onCancelFollowUp(event: MouseEvent) {
 		<template #identifier><PostboxUnreadMark v-if="!msg.flagSeen" announce />{{ sender }}</template>
 		<template #meta>{{ formatTimestamp(msg.receivedAt) }}</template>
 		<div class="flex items-center gap-1.5 mt-0.5">
+			<InboxChip
+				v-if="rowInbox"
+				class="flex-shrink-0"
+				:name="rowInbox.name"
+				:slot="rowInbox.slot"
+				data-testid="row-inbox-chip"
+			/>
 			<!-- Danger-only sender marker: failed / misaligned / look-alike of a
 			     known contact's domain. Silent for every other verdict. -->
 			<span
