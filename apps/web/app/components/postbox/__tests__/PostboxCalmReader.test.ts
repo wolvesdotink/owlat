@@ -202,6 +202,7 @@ const marker = (name: string) =>
 /** Reader chrome this suite does not look into. */
 const CHROME = [
 	'LazyChatLinkEmailDialog',
+	'LazyPostboxShareImageDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxAiStrip',
