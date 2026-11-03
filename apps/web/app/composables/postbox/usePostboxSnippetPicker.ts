@@ -54,6 +54,8 @@ export interface EditorSnippet {
 	variables?: SnippetVariable[];
 	/** Shared with the organization (the picker marks it). */
 	isShared?: boolean;
+	/** Files inserting it attaches (the pickers mark a reply that has any). */
+	attachmentCount?: number;
 	useCount?: number;
 	lastUsedAt?: number | null;
 }

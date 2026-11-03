@@ -10,7 +10,7 @@ import {
 } from '../accountExportDecision';
 
 describe('page size', () => {
-	it.each(['mailMessages', 'mailDrafts', 'emailTemplates', 'transactionalEmails'])(
+	it.each(['mailMessages', 'mailDrafts', 'savedReplies', 'emailTemplates', 'transactionalEmails'])(
 		'pages %s one row at a time',
 		(resource) => {
 			expect(isContentResource(resource)).toBe(true);

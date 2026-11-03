@@ -166,6 +166,34 @@ export async function openMailDraftForAccountExport(
 	};
 }
 
+/**
+ * A saved reply for the account export: the row with its files' metadata, and
+ * the files' bytes as the content its artifact holds.
+ */
+export async function openSavedReplyForAccountExport(
+	storage: BodyBlobStorageReader,
+	reply: Doc<'mailSnippets'>
+) {
+	const files = await Promise.all(
+		(reply.attachments ?? []).map(async ({ storageId, ...file }) => {
+			const opened = await readSealedBlobBytesForExport(storage, storageId);
+			return {
+				...file,
+				contentBase64: opened.availability === 'available' ? bytesToBase64(opened.content) : null,
+				isContentAvailable: opened.availability === 'available',
+				contentAvailability: opened.availability,
+			};
+		})
+	);
+	return {
+		row: {
+			...reply,
+			attachments: files.map(({ contentBase64: _content, ...file }) => file),
+		},
+		content: { attachments: files },
+	};
+}
+
 export async function readMailMessageBodiesForAccountExport(
 	storage: BodyBlobStorageReader,
 	row: MailMessageExportBodyFields

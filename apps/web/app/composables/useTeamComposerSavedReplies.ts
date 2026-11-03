@@ -12,6 +12,10 @@
  * hold Send like an AI draft's do (`useTeamComposerGaps`). The guard is saved
  * with the working draft (`isDraftGapGuarded`), and while the text is that
  * stored draft, untouched, the stored guard is the composer's.
+ *
+ * A reply's files are not attached here: a Team inbox reply owns every file
+ * it carries, so taking one would mean a copy per insert. The person is told
+ * to attach them by hand instead.
  */
 
 import { shallowRef, type Ref } from 'vue';
@@ -70,6 +74,7 @@ export function useTeamComposerSavedReplies(opts: {
 	const { t, locale } = useI18n();
 	const { user } = useAuth();
 	const { replies, recordUse } = useComposerSavedReplies(() => null);
+	const { showToast } = useToast();
 
 	/** A saved reply put `[[...]]` gaps into the text: they hold Send. */
 	const gapGuarded = ref(opts.storedGuard());
@@ -114,6 +119,9 @@ export function useTeamComposerSavedReplies(opts: {
 		opts.touched.value = true;
 		recordUse(reply._id);
 		if (resolved.hasGaps) gapGuarded.value = true;
+		if (reply.attachmentCount) {
+			showToast(t('shared.savedReplies.teamFilesNotAttached', { name: reply.name }), 'info');
+		}
 		const caret = range.start + text.length;
 		void nextTick(() => {
 			opts.textarea.value?.focus();

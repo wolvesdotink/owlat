@@ -22,6 +22,7 @@ import { mailboxHasSendTransport } from './draftQueries';
 import { openMailDraftBody } from '../lib/messageBody';
 import { assertNoAnswerGaps } from './ai/composeDraftStore';
 import { assertNothingOwed } from './draftExpectedAttachments';
+import { assertBorrowedFilesPresent } from './savedReplyAttachments';
 import { recordPostboxSendCancelled, recordPostboxSendQueued } from './interpret/sendActivity';
 
 /**
@@ -45,6 +46,7 @@ export async function sendHandler(
 	if (!owned.ok) throwForbidden('Draft not accessible');
 	// A file the draft was opened to carry is not on it yet (an RSVP's `.ics`).
 	assertNothingOwed(draft);
+	await assertBorrowedFilesPresent(ctx, draft);
 
 	// Answer mode gap placeholders block the send (mail/ai/composeDraftStore.ts).
 	await assertNoAnswerGaps(ctx, { kind: 'mailDraft', draftId: args.draftId }, async () => {

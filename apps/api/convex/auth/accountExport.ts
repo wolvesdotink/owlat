@@ -23,6 +23,7 @@ import {
 } from '../lib/accountExportTemplates';
 import {
 	openMailDraftForAccountExport,
+	openSavedReplyForAccountExport,
 	readMailMessageBodiesForAccountExport,
 } from '../lib/messageBodyExport';
 import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
@@ -45,7 +46,6 @@ const accountExportResourceValidator = literalUnion([
 /** The personal resources that page by user alone (no mailbox, no organization). */
 const USER_SCOPED_EXPORT_QUERIES: Record<
 	| 'externalMailAccounts'
-	| 'savedReplies'
 	| 'chatMessages'
 	| 'threadNotes'
 	| 'deliverabilityAlertRecipientStates'
@@ -56,7 +56,6 @@ const USER_SCOPED_EXPORT_QUERIES: Record<
 	FunctionReference<'query', 'internal', { userId: string; paginationOpts: PaginationOptions }>
 > = {
 	externalMailAccounts: internal.auth.accountExportQueries.listPersonalExternalAccounts,
-	savedReplies: internal.auth.accountExportQueries.listPersonalSavedReplies,
 	chatMessages: internal.auth.accountExportQueries.listPersonalChatMessages,
 	threadNotes: internal.auth.accountExportQueries.listPersonalThreadNotes,
 	deliverabilityAlertRecipientStates:
@@ -379,6 +378,20 @@ export const exportUserDataPage = authedAction({
 					const opened = await openMailDraftForAccountExport(ctx.storage, draft);
 					const { row, content } = splitDraftForExport(opened);
 					return { ...row, ...(await stage(draft._id, content)) };
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'savedReplies') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalSavedReplies,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'mailSnippets'>>;
+			const page = await Promise.all(
+				result.page.map(async (reply) => {
+					if (!reply.attachments?.length) return reply;
+					const { row, content } = await openSavedReplyForAccountExport(ctx.storage, reply);
+					return { ...row, ...(await stage(reply._id, content)) };
 				})
 			);
 			return serializeAccountExportPage({ ...result, page });

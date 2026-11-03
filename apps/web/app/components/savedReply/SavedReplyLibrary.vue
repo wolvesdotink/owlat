@@ -68,6 +68,7 @@ const initial = computed<SavedReplyDraft | null>(() => {
 		shortcut: reply.shortcut,
 		bodyHtml: reply.bodyHtml,
 		variables: (reply.variables ?? []) as SnippetVariable[],
+		attachments: reply.attachments,
 		mailboxIds: reply.mailboxIds,
 	};
 });
@@ -141,6 +142,14 @@ async function confirmRemove() {
 								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary font-mono"
 								>;{{ reply.shortcut }}</span
 							>
+							<span
+								v-if="reply.attachments.length > 0"
+								class="inline-flex items-center gap-1 text-xs text-text-tertiary"
+								:title="reply.attachments.map((file) => file.filename).join(', ')"
+							>
+								<Icon name="lucide:paperclip" class="h-3 w-3" aria-hidden="true" />
+								{{ t('shared.savedReplies.files', reply.attachments.length) }}
+							</span>
 						</div>
 						<p class="text-xs text-text-tertiary mt-1 line-clamp-2">{{ preview(reply) }}</p>
 						<p class="text-2xs text-text-tertiary mt-1">

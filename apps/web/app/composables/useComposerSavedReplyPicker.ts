@@ -10,6 +10,11 @@
  *
  * The composer supplies how a reply goes in (`insert`); the Postbox editor
  * writes at its caret, the Team inbox reply into its textarea.
+ *
+ * "Save as reply" keeps the text selected in the composer when there is a
+ * selection, and everything written otherwise. The selection is read as it
+ * changes, because opening the picker or the palette moves the page's
+ * selection into their search field; it is dropped with the composer's focus.
  */
 
 import type { ComputedRef, Ref } from 'vue';
@@ -20,6 +25,8 @@ import {
 } from '~/lib/commandPaletteSurfaces';
 import type { EditorSnippet } from '~/composables/postbox/usePostboxSnippetPicker';
 import { rankSnippets } from '~/utils/postboxSnippets';
+import { aiTextToHtml } from '~/utils/answerDraft';
+import { htmlToPlainText } from '@owlat/shared/html';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 
 /** Opens (and closes) the composer's saved-reply picker. */
@@ -31,8 +38,10 @@ export interface ComposerSavedReplies {
 	replies: ComputedRef<EditorSnippet[]>;
 	/** The composer can take a reply (the Postbox's simple editor, a loaded body). */
 	enabled: ComputedRef<boolean>;
-	/** What "Save as reply" keeps, as HTML. */
+	/** What "Save as reply" keeps, as HTML: the selection, or all that was written. */
 	currentBodyHtml: ComputedRef<string>;
+	/** "Save as reply" keeps a selection rather than all that was written. */
+	savesSelection: ComputedRef<boolean>;
 	pickerOpen: Ref<boolean>;
 	saveOpen: Ref<boolean>;
 	pick: (reply: EditorSnippet) => void;
@@ -55,6 +64,40 @@ export function useComposerSavedReplyPicker(opts: {
 	const instance = useId();
 	const active = useState<string | null>('savedReplies:activeComposer', () => null);
 
+	/**
+	 * The text selected in this composer, as HTML: '' when nothing is, null
+	 * when the page's selection is somewhere else (which says nothing about
+	 * this composer). A textarea keeps its own selection range.
+	 */
+	function readSelection(): string | null {
+		const root = opts.rootEl.value;
+		if (!root) return null;
+		const focused = document.activeElement;
+		if (focused instanceof HTMLTextAreaElement && root.contains(focused)) {
+			const text = focused.value.slice(focused.selectionStart, focused.selectionEnd);
+			return text.trim() ? aiTextToHtml(text) : '';
+		}
+		const selection = document.getSelection();
+		if (!selection || selection.rangeCount === 0) return null;
+		const range = selection.getRangeAt(0);
+		const node = range.commonAncestorContainer;
+		const editor = (node instanceof Element ? node : node.parentElement)?.closest(
+			'[contenteditable="true"]'
+		);
+		if (!editor || !root.contains(editor)) return null;
+		if (selection.isCollapsed) return '';
+		const box = document.createElement('div');
+		box.append(range.cloneContents());
+		return box.innerHTML;
+	}
+	const selectedHtml = ref('');
+	function onSelectionChange() {
+		const next = readSelection();
+		if (next !== null) selectedHtml.value = next;
+	}
+	onMounted(() => document.addEventListener('selectionchange', onSelectionChange));
+	const savesSelection = computed(() => htmlToPlainText(selectedHtml.value).trim().length > 0);
+
 	function onFocusIn() {
 		active.value = instance;
 	}
@@ -66,6 +109,7 @@ export function useComposerSavedReplyPicker(opts: {
 		if (opts.rootEl.value?.contains(next)) return;
 		if (next instanceof Element && next.closest('[role="dialog"]')) return;
 		if (active.value === instance) active.value = null;
+		selectedHtml.value = '';
 	}
 	watch(
 		opts.rootEl,
@@ -78,6 +122,7 @@ export function useComposerSavedReplyPicker(opts: {
 		{ immediate: true }
 	);
 	onBeforeUnmount(() => {
+		document.removeEventListener('selectionchange', onSelectionChange);
 		opts.rootEl.value?.removeEventListener('focusin', onFocusIn);
 		opts.rootEl.value?.removeEventListener('focusout', onFocusOut);
 		if (active.value === instance) active.value = null;
@@ -124,7 +169,10 @@ export function useComposerSavedReplyPicker(opts: {
 	return {
 		replies,
 		enabled,
-		currentBodyHtml: computed(() => opts.currentBodyHtml()),
+		currentBodyHtml: computed(() =>
+			savesSelection.value ? selectedHtml.value : opts.currentBodyHtml()
+		),
+		savesSelection,
 		pickerOpen,
 		saveOpen,
 		pick,

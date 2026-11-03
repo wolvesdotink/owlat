@@ -25,6 +25,8 @@ export const MEMBER_ERASURE_PHASES = [
 	'mailboxThreads',
 	'mailboxDrafts',
 	'mailboxShares',
+	// Saved replies with their files, before the mailbox records drop legacy rows.
+	'savedReplies',
 	'mailboxRecords',
 	'mailboxRows',
 	'memberRecords',

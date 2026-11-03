@@ -51,6 +51,8 @@ import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRendered
 import { usePostboxFrameSelection } from '~/composables/postbox/usePostboxFrameSelection';
 import { usePostboxReaderQuoteReply } from '~/composables/postbox/usePostboxReaderContext';
 import PostboxQuoteReplyPill from './PostboxQuoteReplyPill.vue';
+import SavedReplySaveDialog from '~/components/savedReply/SavedReplySaveDialog.vue';
+import { aiTextToHtml } from '~/utils/answerDraft';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
@@ -370,6 +372,12 @@ function quoteSelection(passage: string) {
 	frameSelection.clear();
 	if (id && quoteReply?.canQuote(id)) quoteReply.quote(id, passage);
 }
+// "Save as reply" beside it: the passage, as text, is what the dialog saves.
+const passageToSave = ref<string | null>(null);
+function saveSelection(passage: string) {
+	frameSelection.clear();
+	passageToSave.value = passage;
+}
 
 function untrustSender() {
 	const from = props.message.fromAddress;
@@ -455,10 +463,19 @@ usePostboxFrameAutosize({
 				ref="quotePill"
 				:anchor="selectedPassage.anchor"
 				:bounds-width="frameBox?.clientWidth ?? 0"
+				can-save
 				@quote="quoteSelection(selectedPassage.text)"
+				@save="saveSelection(selectedPassage.text)"
 				@dismiss="frameSelection.clear()"
 			/>
 		</div>
+		<SavedReplySaveDialog
+			v-if="passageToSave !== null"
+			:open="true"
+			:body-html="aiTextToHtml(passageToSave)"
+			from-selection
+			@update:open="(isOpen: boolean) => !isOpen && (passageToSave = null)"
+		/>
 		<button
 			v-if="hasQuotedContent"
 			type="button"

@@ -57,6 +57,10 @@ export class BlockedAttachmentError extends Error {
 	}
 }
 
+function missingSavedReplyFile(filename: string): BlockedAttachmentError {
+	return new BlockedAttachmentError(filename, 'removed from its saved reply', 'refused');
+}
+
 async function scanAttachment(filename: string, data: Buffer): Promise<void> {
 	// Shared client owns the POST + fail-open (not-configured / scanner-down /
 	// network error all resolve to 'skipped' and are surfaced via
@@ -114,9 +118,19 @@ export async function bufferDraftAttachments(
 
 	const attachments: DraftAttachmentBuffer[] = [];
 	for (const [index, att] of pending.entries()) {
-		if (sizes[index] === null) continue;
+		// A file borrowed from a saved reply can go after it was inserted
+		// (mail/savedReplyAttachments.ts). The person saw it on the draft, so
+		// the send stops rather than going out without it.
+		const isBorrowed = att.savedReplyId !== undefined;
+		if (sizes[index] === null) {
+			if (isBorrowed) throw missingSavedReplyFile(att.filename);
+			continue;
+		}
 		const blob = await ctx.storage.get(att.storageId);
-		if (!blob) continue;
+		if (!blob) {
+			if (isBorrowed) throw missingSavedReplyFile(att.filename);
+			continue;
+		}
 		const buf = Buffer.from(await blob.arrayBuffer());
 
 		// Throws BlockedAttachmentError on a positive verdict. Anything else

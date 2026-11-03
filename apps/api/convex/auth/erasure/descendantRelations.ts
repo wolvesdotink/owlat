@@ -179,6 +179,13 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'retain',
 		'A shared reply can only be limited to team inboxes, which an erasure never deletes.'
 	),
+	desc(
+		'mailSnippets',
+		'mailDrafts',
+		'attachments[].savedReplyId',
+		'retain',
+		'A draft in another mailbox may borrow a personal reply’s file; with the reply gone it refuses to send until the file is removed.'
+	),
 	desc('mailboxes', 'mailFilters', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc('mailboxes', 'mailFilterRunJobs', 'mailboxId', 'delete', 'Stopped before the mail goes.'),
 	desc('mailboxes', 'mailAliases', 'targetMailboxId', 'delete', WITH_MAILBOX),

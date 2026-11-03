@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
  * The form one saved reply is written in: name, shortcut, the text (the
- * composer's own rich editor), the variables it can use, what its other
- * `{{tokens}}` mean, and, for a shared reply, the team inboxes it is limited
- * to. Emits the finished draft; the library saves it.
+ * composer's own rich editor), the files it attaches, the variables it can
+ * use, what its other `{{tokens}}` mean, and, for a shared reply, the team
+ * inboxes it is limited to. Emits the finished draft; the library saves it.
  */
 import type { Id } from '@owlat/api/dataModel';
-import type { SavedReplyDraft } from '~/composables/useSavedReplies';
+import type { SavedReplyDraft, SavedReplyFile } from '~/composables/useSavedReplies';
 import { SAVED_REPLY_VARIABLES, type SnippetVariable } from '~/utils/postboxSnippetVariables';
+import SavedReplyFiles from './SavedReplyFiles.vue';
 
 const props = defineProps<{
 	/** The reply being edited, or null for a new one. */
@@ -28,6 +29,8 @@ const name = ref(props.initial?.name ?? '');
 const shortcut = ref(props.initial?.shortcut ?? '');
 const bodyHtml = ref(props.initial?.bodyHtml ?? '');
 const variables = ref<SnippetVariable[]>(props.initial?.variables ?? []);
+const attachments = ref<SavedReplyFile[]>(props.initial?.attachments ?? []);
+const uploading = ref(false);
 const mailboxIds = ref<Id<'mailboxes'>[]>(props.initial?.mailboxIds ?? []);
 
 // Literal tokens shown in the help; kept out of the template, whose tokenizer
@@ -42,12 +45,13 @@ function toggleInbox(id: Id<'mailboxes'>, on: boolean) {
 }
 
 function save() {
-	if (!name.value.trim()) return;
+	if (!name.value.trim() || uploading.value) return;
 	emit('save', {
 		name: name.value,
 		shortcut: shortcut.value,
 		bodyHtml: bodyHtml.value,
 		variables: variables.value,
+		attachments: attachments.value,
 		...(props.teamInboxes ? { mailboxIds: mailboxIds.value } : {}),
 	});
 }
@@ -90,6 +94,7 @@ function save() {
 				:placeholder="t('shared.savedReplies.fields.textPlaceholder')"
 			/>
 		</div>
+		<SavedReplyFiles v-model="attachments" v-model:uploading="uploading" />
 		<details class="rounded border border-border-subtle p-3 text-sm">
 			<summary class="cursor-pointer text-text-secondary">
 				{{ t('shared.savedReplies.help.title') }}
@@ -138,7 +143,7 @@ function save() {
 			<UiButton variant="ghost" type="button" @click="emit('cancel')">
 				{{ t('common.cancel') }}
 			</UiButton>
-			<UiButton type="submit" :disabled="!name.trim() || saving">
+			<UiButton type="submit" :disabled="!name.trim() || saving || uploading">
 				{{ initial ? t('shared.savedReplies.saveChanges') : t('common.create') }}
 			</UiButton>
 		</div>

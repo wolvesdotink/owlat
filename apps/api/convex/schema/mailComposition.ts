@@ -7,6 +7,7 @@ import {
 	mailDraftAttachmentValidator,
 	mailDraftExpectedAttachmentValidator,
 	mailSnippetVariableValidator,
+	savedReplyAttachmentValidator,
 } from '../lib/validators/mailContent';
 
 /**
@@ -406,6 +407,9 @@ export const mailCompositionTables = {
 		// token still resolves through the client's implicit name table, so
 		// absent = exactly today's `{{firstName}}` behaviour.
 		variables: v.optional(v.array(mailSnippetVariableValidator)),
+		// Files inserted with the reply. A draft references them instead of
+		// holding a copy; absent on rows without files.
+		attachments: v.optional(v.array(savedReplyAttachmentValidator)),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

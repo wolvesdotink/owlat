@@ -7,6 +7,9 @@
  *
  * The usage count and last use sort the picker: the replies a person reaches
  * for most come first before they type anything.
+ *
+ * A reply can carry files; `savedReplyAttachments.ts` owns them and puts them
+ * on a draft without copying them.
  */
 
 import { v } from 'convex/values';
@@ -16,6 +19,11 @@ import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { savedReplyMutation, savedReplyQuery } from './_helpers';
 import { createMailboxAccessGate, requireMailboxAccess } from './permissions';
+import {
+	deleteSavedReplyWithFiles,
+	savedReplyAttachmentArgs,
+	setSavedReplyAttachments,
+} from './savedReplyAttachments';
 import {
 	assertSavedReplyRoom,
 	canManageSavedReply,
@@ -40,6 +48,7 @@ function toView({ row, scope }: ScopedSavedReply) {
 		shortcut: row.shortcut,
 		bodyHtml: row.bodyHtml,
 		variables: row.variables,
+		attachments: row.attachments ?? [],
 		scope: scope.kind,
 		mailboxIds: scope.kind === 'shared' ? scope.mailboxIds : [],
 		useCount: row.useCount ?? 0,
@@ -121,6 +130,8 @@ const editableFields = {
 	shortcut: v.string(),
 	bodyHtml: v.string(),
 	variables: v.optional(v.array(mailSnippetVariableValidator)),
+	/** The files it carries: kept ones by id, new ones as the caller's uploads. */
+	attachments: v.optional(savedReplyAttachmentArgs),
 };
 
 export const create = savedReplyMutation({
@@ -140,13 +151,27 @@ export const create = savedReplyMutation({
 			createdAt: now,
 			updatedAt: now,
 		};
+		const withFiles = async (replyId: Id<'mailSnippets'>) => {
+			if (!args.attachments?.length) return replyId;
+			const attachments = await setSavedReplyAttachments(
+				ctx,
+				session,
+				replyId,
+				[],
+				args.attachments
+			);
+			await ctx.db.patch(replyId, { attachments });
+			return replyId;
+		};
 		// authz: a personal reply is the caller's own; a shared one needs settings:manage.
 		if (args.scope === 'personal') {
 			await assertSavedReplyRoom(ctx, { kind: 'personal', ownerUserId: session.userId });
-			return ctx.db.insert('mailSnippets', {
-				...content,
-				...scopeFields({ kind: 'personal', ownerUserId: session.userId }),
-			});
+			return withFiles(
+				await ctx.db.insert('mailSnippets', {
+					...content,
+					...scopeFields({ kind: 'personal', ownerUserId: session.userId }),
+				})
+			);
 		}
 		requirePermission(
 			hasPermission(session.role, 'settings:manage'),
@@ -161,11 +186,17 @@ export const create = savedReplyMutation({
 			args.mailboxIds ?? [],
 			session.activeOrganizationId
 		);
-		return ctx.db.insert('mailSnippets', {
-			...content,
-			...scopeFields({ kind: 'shared', organizationId: session.activeOrganizationId, mailboxIds }),
-			authorUserId: session.userId,
-		});
+		return withFiles(
+			await ctx.db.insert('mailSnippets', {
+				...content,
+				...scopeFields({
+					kind: 'shared',
+					organizationId: session.activeOrganizationId,
+					mailboxIds,
+				}),
+				authorUserId: session.userId,
+			})
+		);
 	},
 });
 
@@ -176,6 +207,8 @@ export const update = savedReplyMutation({
 		shortcut: v.optional(v.string()),
 		bodyHtml: v.optional(v.string()),
 		variables: v.optional(v.array(mailSnippetVariableValidator)),
+		/** Every file the reply keeps; absent leaves its files as they are. */
+		attachments: v.optional(savedReplyAttachmentArgs),
 		/** Shared only; an empty array lifts the limit. Absent leaves it as it is. */
 		mailboxIds: v.optional(v.array(v.id('mailboxes'))),
 	},
@@ -206,6 +239,15 @@ export const update = savedReplyMutation({
 		if (args.variables !== undefined) {
 			patch['variables'] = normalizeSavedReplyVariables(args.variables);
 		}
+		if (args.attachments !== undefined) {
+			patch['attachments'] = await setSavedReplyAttachments(
+				ctx,
+				session,
+				args.replyId,
+				row.attachments ?? [],
+				args.attachments
+			);
+		}
 		await ctx.db.patch(args.replyId, patch);
 	},
 });
@@ -219,7 +261,7 @@ export const remove = savedReplyMutation({
 		if (!canManageSavedReply(await loadSavedReplyScope(ctx, row), session)) {
 			throwForbidden('Not accessible');
 		}
-		await ctx.db.delete(args.replyId);
+		await deleteSavedReplyWithFiles(ctx, row);
 	},
 });
 
