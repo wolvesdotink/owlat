@@ -53,6 +53,7 @@ const choice = useWorkbenchInboxChoice();
 const { level: deliveryLevel, reason: deliveryReason } = useDeliveryHealth();
 const { showToast } = useToast();
 const { isZen, exitZen } = useZenMode();
+const { isClassicInbox } = usePostboxClassicInbox();
 
 // ── Which tab ──────────────────────────────────────────────────────────────
 const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
@@ -425,8 +426,10 @@ useWorkbenchKeyboard({
 						:counts="scopedCounts"
 						:is-loading="answer.isLoading.value"
 						:queue-href="answerHref"
+						:hide-list="!isTeam && !isClassicInbox"
 						:inbox-name="scopeName"
 					/>
+					<TodayPeople v-if="!isTeam && scope && !isClassicInbox" :mailbox-id="scope" />
 					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 
 					<!-- Zen keeps only what needs an answer (and says what it left out). -->

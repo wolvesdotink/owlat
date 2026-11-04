@@ -246,6 +246,11 @@ export const applyResult = internalMutation({
 		if (message && thread.latestReply && thread.latestReply.at >= message.receivedAt) {
 			resolved = null;
 		}
+		// "No reply needed" was said about this mail while the classifier ran: the
+		// late verdict must not undo it. Newer mail gets its own check.
+		if (message && (thread.needsReplyClearedAt ?? 0) >= message.receivedAt) {
+			resolved = null;
+		}
 		if (resolved !== null) {
 			const mailbox = await ctx.db.get(thread.mailboxId);
 			if (message && mailbox) {
@@ -415,7 +420,11 @@ export const countQueue = publicQuery({
 	},
 });
 
-/** Manual clear for the UI ("mark as done" on the Reply Queue). */
+/**
+ * Manual clear for the UI ("mark as done" on the Reply Queue, "No reply
+ * needed" in the People view). The flag is kept aside for
+ * `needsReplyRestore.restore`, the Postbox's undo.
+ */
 // authz: thread → mailbox access via requireMailboxAccess; org membership via
 // authedMutation.
 export const clear = postboxMutation({
@@ -424,6 +433,10 @@ export const clear = postboxMutation({
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId);
 		if (!owned.ok) throwForbidden('Thread not accessible');
+		await ctx.db.patch(args.threadId, {
+			needsReplyClearedAt: Date.now(),
+			...(thread.needsReply ? { needsReplyCleared: thread.needsReply } : {}),
+		});
 		await clearThreadNeedsReply(ctx, args.threadId);
 	},
 });

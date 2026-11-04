@@ -98,6 +98,10 @@ export const mailSettingsTables = {
 		// mode. Optional so existing rows read as undefined; the reader defaults
 		// it to 'today'.
 		inboxMode: v.optional(mailInboxModeValidator),
+		// The classic inbox (Priority and All mail, `inboxMode` above) instead of
+		// the People view. Absent = off: People is the inbox for everyone who
+		// did not ask for the classic one, whatever `inboxMode` remembers.
+		isClassicInboxOn: v.optional(v.boolean()),
 		// Message-list sort order: 'newest' (arrival descending) vs 'oldest'
 		// (ascending, for clearing a backlog front to back). Date direction only.
 		// Optional so existing rows read as undefined; the list defaults it to

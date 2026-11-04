@@ -214,6 +214,8 @@ const INVENTORY: readonly CallSite[] = [
 	site('mail/ai/categoryClassify.ts', "ctx, 'mail.classify'", 'summarize'),
 	// Read on arrival R2: the category refinement with this message's rule questions.
 	site('mail/ai/categoryQuestions.ts', "ctx, 'mail.classify'", 'summarize'),
+	// The People view's topic names, on the classify route.
+	site('mail/ai/topicTitle.ts', "ctx, 'mail.classify'", 'summarize'),
 	// Postbox localization; its slots go through the shared service.
 	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
 	// The questions about a held draft's gaps, localized like the clarification's.

@@ -164,7 +164,7 @@ const ENTRIES = {
 		tiers: ['fast'],
 		...triage,
 		...oneShot,
-		features: ['agent_classify', 'postbox_category'],
+		features: ['agent_classify', 'postbox_category', 'postbox_topic_title'],
 	}),
 	'mail.extract': language({
 		...LARGE_OUTPUT,

@@ -71,6 +71,7 @@ export const get = publicQuery({
 			listWidth: row.listWidth,
 			listHeight: row.listHeight,
 			inboxMode: row.inboxMode,
+			isClassicInboxOn: row.isClassicInboxOn,
 			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
 			isReplyAlertSoundOn: row.isReplyAlertSoundOn,
@@ -118,6 +119,7 @@ export const update = postboxMutation({
 		listWidth: v.optional(mailListSizeValidator),
 		listHeight: v.optional(mailListSizeValidator),
 		inboxMode: v.optional(mailInboxModeValidator),
+		isClassicInboxOn: v.optional(v.boolean()),
 		sortOrder: v.optional(mailSortOrderValidator),
 		isSendSoundOn: v.optional(v.boolean()),
 		// Remote images on open, outside suspicious mail: absent = on.
@@ -166,6 +168,7 @@ export const update = postboxMutation({
 			listWidth?: number;
 			listHeight?: number;
 			inboxMode?: (typeof args)['inboxMode'];
+			isClassicInboxOn?: boolean;
 			sortOrder?: (typeof args)['sortOrder'];
 			isSendSoundOn?: boolean;
 			isAutoLoadImagesOn?: boolean;
@@ -202,6 +205,7 @@ export const update = postboxMutation({
 		if (args.listWidth !== undefined) patch.listWidth = args.listWidth;
 		if (args.listHeight !== undefined) patch.listHeight = args.listHeight;
 		if (args.inboxMode !== undefined) patch.inboxMode = args.inboxMode;
+		if (args.isClassicInboxOn !== undefined) patch.isClassicInboxOn = args.isClassicInboxOn;
 		if (args.sortOrder !== undefined) patch.sortOrder = args.sortOrder;
 		if (args.isSendSoundOn !== undefined) patch.isSendSoundOn = args.isSendSoundOn;
 		if (args.isAutoLoadImagesOn !== undefined) patch.isAutoLoadImagesOn = args.isAutoLoadImagesOn;

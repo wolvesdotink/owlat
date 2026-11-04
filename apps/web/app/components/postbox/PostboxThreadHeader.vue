@@ -3,7 +3,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadMenu from './PostboxThreadMenu.vue';
-import { ArchiveIcon, ReplyIcon } from '@coolicons/vue';
+import { ArchiveIcon, CheckIcon, PencilIcon, ReplyIcon } from '@coolicons/vue';
+import { POSTBOX_TOPIC_HEADING } from '~/utils/postboxPeople';
 
 /**
  * The calm reader's header line (read on arrival §3): the subject,
@@ -103,11 +104,39 @@ const latestSender = computed(() => {
 });
 const listMessage = computed(() => props.messages?.findLast((m) => !!m.unsubscribe));
 
+// Opened from the People view, the conversation is headed by its topic name,
+// with the subject it was written under as the line below.
+const topicHeading = inject(POSTBOX_TOPIC_HEADING, null);
+const heading = computed(() => topicHeading?.value ?? null);
+// The topic name is edited where it is read.
+const isRenaming = ref(false);
+const renameDraft = ref('');
+const renameInput = ref<HTMLInputElement | null>(null);
+async function startRename() {
+	if (!heading.value) return;
+	renameDraft.value = heading.value.title;
+	isRenaming.value = true;
+	await nextTick();
+	renameInput.value?.select();
+}
+async function saveRename() {
+	if (!isRenaming.value || !heading.value) return;
+	isRenaming.value = false;
+	const next = renameDraft.value.trim();
+	if (next && next !== heading.value.title) await heading.value.rename(next);
+}
+async function resetName() {
+	isRenaming.value = false;
+	await heading.value?.reset();
+}
+const subjectText = computed(
+	() =>
+		topicHeading?.value?.title ||
+		props.subject ||
+		t('components.postbox.postboxThreadHeader.noSubject')
+);
 // The "(2)" count must not wrap onto a line of its own, so the subject's last
 // word and the count render as one unbreakable unit.
-const subjectText = computed(
-	() => props.subject || t('components.postbox.postboxThreadHeader.noSubject')
-);
 const subjectParts = computed(() => {
 	const text = subjectText.value.trimEnd();
 	const cut = text.search(/\S+$/);
@@ -150,13 +179,43 @@ const subjectParts = computed(() => {
 		class="pbx-reader-header mb-3 outline-none"
 		data-reader-chrome="header"
 	>
-		<div class="flex items-start gap-2">
+		<!-- A topic name gets its own row: the verbs wrap below it rather than squeeze it. -->
+		<div class="flex items-start gap-2" :class="heading ? 'flex-wrap' : ''">
 			<!-- The verbs stay siblings of the header rather than its #actions: on a
 			     phone they shrink to icons and keep to the subject's line, where the
 			     header's actions row would drop them below it. -->
-			<UiPageHeader class="flex-1 min-w-0">
+			<UiPageHeader class="flex-1 min-w-0" :class="heading ? 'basis-full' : ''">
 				<template #title>
-					<template v-if="messageCount > 1"
+					<!-- From the People view: the topic name, renamed in place, whatever the count. -->
+					<template v-if="heading && isRenaming">
+						<span class="input block w-full">
+							<input
+								ref="renameInput"
+								v-model="renameDraft"
+								type="text"
+								maxlength="80"
+								:aria-label="t('components.postbox.people.topicBar.rename')"
+								class="input-bare w-full text-[length:inherit]"
+								@keydown.enter.prevent="saveRename"
+								@keydown.esc.stop.prevent="isRenaming = false"
+								@blur="saveRename"
+							/>
+						</span>
+						<!-- The way back sits with the name it undoes; mousedown keeps the
+						     input from saving on blur first. -->
+						<button
+							v-if="heading.source === 'user'"
+							type="button"
+							class="mt-1 block text-xs font-normal text-text-secondary underline decoration-dotted underline-offset-2 hover:text-text-primary"
+							@mousedown.prevent
+							@click="resetName"
+						>
+							{{ t('components.postbox.people.topicBar.reset') }}
+						</button>
+					</template>
+					<!-- A topic name is set in the display serif, the face its person page uses. -->
+					<span v-else-if="heading" class="font-display font-normal">{{ subjectText }}</span>
+					<template v-else-if="messageCount > 1"
 						>{{ subjectParts.head
 						}}<span class="whitespace-nowrap"
 							>{{ subjectParts.tail
@@ -166,6 +225,25 @@ const subjectParts = computed(() => {
 						></template
 					>
 					<template v-else>{{ subjectText }}</template>
+					<UiTooltip
+						v-if="heading && !isRenaming"
+						:text="
+							heading.source === 'ai'
+								? t('components.postbox.people.topic.namedByOwlat')
+								: heading.source === 'user'
+									? t('components.postbox.people.topicBar.namedByYou')
+									: t('components.postbox.people.topicBar.rename')
+						"
+					>
+						<button
+							type="button"
+							class="ml-2 inline-flex h-7 w-7 items-center justify-center rounded align-middle text-text-tertiary outline-none hover:bg-bg-surface hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand/40"
+							:aria-label="t('components.postbox.people.topicBar.rename')"
+							@click="startRename"
+						>
+							<PencilIcon class="h-3.5 w-3.5" />
+						</button>
+					</UiTooltip>
 				</template>
 			</UiPageHeader>
 			<!-- The thread's two verbs. On a phone they shrink to icons. -->
@@ -199,6 +277,17 @@ const subjectParts = computed(() => {
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
 				</UiButton>
 			</UiTooltip>
+			<UiButton
+				v-if="heading?.noReply"
+				variant="ghost"
+				size="sm"
+				class="flex-shrink-0"
+				:aria-label="t('components.postbox.people.topic.noReplyNeeded')"
+				@click="heading.noReply()"
+			>
+				<CheckIcon class="w-4 h-4" aria-hidden="true" />
+				<span class="max-sm:sr-only">{{ t('components.postbox.people.topic.noReplyNeeded') }}</span>
+			</UiButton>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
 			<PostboxThreadMenu v-bind="menuProps" v-on="menuOn" @why-here="emit('why-here', headerEl)" />

@@ -820,6 +820,46 @@ describe('needs-reply clearing', () => {
 		const thread = await getThread(t, threadId);
 		expect(thread?.needsReply).toBeUndefined();
 	});
+
+	it('keeps a manual clear when a classification of the same mail lands after it', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+
+		await t.mutation(api.mail.needsReply.clear, { threadId });
+		await t.mutation(internal.mail.needsReply.applyResult, {
+			threadId,
+			expectedLatestMessageId: messageId,
+			needsReply: { messageId, source: 'llm', urgency: 'normal' },
+		});
+
+		expect((await getThread(t, threadId))?.needsReply).toBeUndefined();
+	});
+
+	it('undoes a manual clear with the same flag, and leaves a newer flag alone', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const seeded = await seedMailbox(t);
+		const { threadId, messageId } = await seedThreadWithMessage(t, seeded);
+		await setNeedsReply(t, threadId, messageId);
+		const before = (await getThread(t, threadId))?.needsReply;
+
+		await t.mutation(api.mail.needsReply.clear, { threadId });
+		expect((await getThread(t, threadId))?.needsReplyClearedAt).toBeDefined();
+		await t.mutation(api.mail.needsReplyRestore.restore, { threadId });
+		expect((await getThread(t, threadId))?.needsReply).toEqual(before);
+		expect((await getThread(t, threadId))?.needsReplyClearedAt).toBeUndefined();
+
+		await t.mutation(api.mail.needsReply.clear, { threadId });
+		const newer = { messageId, detectedAt: 1, source: 'llm' as const, urgency: 'high' as const };
+		await t.run(async (ctx) => {
+			await ctx.db.patch(threadId, { needsReply: newer });
+		});
+		await t.mutation(api.mail.needsReplyRestore.restore, { threadId });
+		expect((await getThread(t, threadId))?.needsReply).toEqual(newer);
+	});
 });
 
 // ─── Reply Queue read side ───────────────────────────────────────────────────

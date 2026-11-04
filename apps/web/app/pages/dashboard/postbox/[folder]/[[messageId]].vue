@@ -2,6 +2,8 @@
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
 import { isAllInboxesFolder } from '~/utils/postboxAllInboxes';
 import PostboxAllInboxesLayout from '~/components/postbox/PostboxAllInboxesLayout.vue';
+import PostboxPeopleLayout from '~/components/postbox/PostboxPeopleLayout.vue';
+import { parsePlacementQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { POSTBOX_PAGE_KEY, postboxPageTransition } from '~/utils/postboxPageTransition';
 
 // One page for the folder list and the open message (/inbox and /inbox/<id>).
@@ -27,6 +29,17 @@ const folder = computed(() => resolvePostboxFolderParam(route.params['folder']))
 // All inboxes is a folder route of its own (utils/postboxAllInboxes.ts): the
 // list and the reader build their links from this segment, so they stay in it.
 const isAllInboxes = computed(() => isAllInboxesFolder(route.params['folder']));
+// The People view is the inbox unless the classic inbox is on in Settings. A
+// Priority filter link (`?placement=`) names a classic list, so it opens one.
+// While the setting loads this is the default, People, which most people see.
+const { isClassicInbox } = usePostboxClassicInbox();
+const isPeopleView = computed(
+	() =>
+		folder.value.folderRole === 'inbox' &&
+		!folder.value.folderId &&
+		!isClassicInbox.value &&
+		parsePlacementQuery(route.query['placement']) === null
+);
 // The optional [[messageId]] param: absent (or empty) on the folder list.
 const messageId = computed(() => {
 	const param = route.params['messageId'];
@@ -79,6 +92,11 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 		<div v-else class="min-w-0 flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
 			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="guardLoading">
 				<PostboxAllInboxesLayout v-if="isAllInboxes" :active-message-id="messageId" />
+				<PostboxPeopleLayout
+					v-else-if="isPeopleView"
+					:mailbox-id="mailboxId!"
+					:active-message-id="messageId"
+				/>
 				<PostboxLayout
 					v-else
 					:mailbox-id="mailboxId!"

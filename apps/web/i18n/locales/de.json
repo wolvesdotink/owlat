@@ -5012,7 +5012,8 @@
 				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
-				"title": "Wichtige E-Mails oder alle E-Mails"
+				"title": "Wichtige E-Mails oder alle E-Mails",
+				"people": "Personen"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
@@ -6376,6 +6377,162 @@
 					"spam": "Spam leeren?"
 				},
 				"confirmBody": "{count} Nachricht wird endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen. | {count} Nachrichten werden endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen."
+			},
+			"people": {
+				"row": {
+					"owed": "{count} wartet auf dich | {count} warten auf dich",
+					"unread": "{count} ungelesen | {count} ungelesen",
+					"more": "{count} weiteres Gespräch | {count} weitere Gespräche",
+					"mayOwe": "{count} braucht vielleicht eine Antwort | {count} brauchen vielleicht eine Antwort",
+					"dueOn": "Fällig {date}",
+					"companyOwed": "{count} Gespräch wartet auf dich | {count} Gespräche warten auf dich",
+					"companyMayOwe": "{count} Gespräch braucht vielleicht eine Antwort | {count} Gespräche brauchen vielleicht eine Antwort",
+					"overdueOn": "Überfällig {date}"
+				},
+				"column": {
+					"label": "Personen und Firmen",
+					"search": "Personen und aktuelle Gespräche finden",
+					"waiting": "Wartet auf dich",
+					"waitingTeam": "Wartet aufs Team",
+					"companies": "Firmen",
+					"active": "Kürzlich",
+					"quiet": "Zuletzt ruhig",
+					"quietCount": "Eine Person, von der du länger nichts gehört hast | {count} Personen, von denen du länger nichts gehört hast",
+					"noMatch": "Keine Treffer in aktuellen Gesprächen",
+					"empty": "Noch keine Gespräche",
+					"clearSearch": "Suche leeren",
+					"viewMenu": "Posteingangsansicht",
+					"viewPeople": "Personen",
+					"intro": "Dein Posteingang ordnet E-Mails jetzt nach Personen.",
+					"introClassic": "Lieber eine Nachrichtenliste?",
+					"introDismiss": "Ausblenden",
+					"searchAll": "Alle E-Mails durchsuchen",
+					"peopleCount": "{count} Person | {count} Personen",
+					"moreCompanies": "{count} weitere Firma | {count} weitere Firmen",
+					"fromCompanies": "Firmen-E-Mails, die dich brauchen",
+					"viewPriority": "Priorität",
+					"viewAllMail": "Alle E-Mails",
+					"senders": "Automatische Absender",
+					"moreSenders": "{count} weiterer Absender | {count} weitere Absender",
+					"inbox": "Posteingang",
+					"viewPeopleHelp": "Nach Person gruppiert, dann nach Gespräch",
+					"viewPriorityHelp": "Eine Nachricht pro Zeile, Dringendes zuerst",
+					"viewAllMailHelp": "Alle Nachrichten, neueste zuerst",
+					"capped": "Einige ältere Gespräche, die auf jemanden warten, fehlen hier. Die Antwortliste zeigt alle, die du beantworten musst.",
+					"maybe": "Vielleicht eine Antwort fällig",
+					"searchAllFor": "Alle Mails nach „{query}“ durchsuchen",
+					"legendWaiting": "Wartet auf dich",
+					"legendMaybe": "Vielleicht Antwort fällig",
+					"legendUnread": "Ungelesen",
+					"peopleResults": "Personen",
+					"marksHelp": "Gefüllte Zahl: wartet auf dich. Ring: braucht vielleicht eine Antwort. Grauer Punkt: ungelesen.",
+					"conversationResults": "Gespräche",
+					"moreInGroup": "{count} weitere zeigen | {count} weitere zeigen",
+					"withWhom": "Mit {name}",
+					"showFewer": "Weniger zeigen",
+					"noneNeedReply": "{count} erledigen | Alle {count} erledigen",
+					"clearedMaybes": "{count} Gespräch erledigt | {count} Gespräche erledigt",
+					"noneNeedReplyHelp": "Alle Gespräche dieser Gruppe, auch eingeklappte. Rückgängig ist möglich."
+				},
+				"kind": {
+					"newsletter": "Newsletter",
+					"notification": "Benachrichtigungen",
+					"receipt": "Belege",
+					"promotion": "Werbung",
+					"spam": "Spam",
+					"other": "Nachrichten"
+				},
+				"topic": {
+					"you": "Du",
+					"subjectWas": "Betreff: {subject}",
+					"namedByOwlat": "Von Owlat benannt",
+					"waitingYou": "Wartet auf dich",
+					"waitingTeam": "Wartet aufs Team",
+					"waitingThem": "Wartet auf {name}",
+					"messages": "{count} Nachricht | {count} Nachrichten",
+					"attachments": "Mit Anhängen",
+					"youWroteLast": "Du hast zuletzt geschrieben",
+					"noReplyNeeded": "Keine Antwort nötig",
+					"archive": "Archivieren",
+					"waitingOthers": "Wartet auf andere",
+					"withNames": "mit {names}",
+					"unreadLabel": "Ungelesen",
+					"archived": "„{title}“ archiviert",
+					"markedNoReply": "Keine Antwort nötig",
+					"mayNeedReply": "Braucht vielleicht eine Antwort",
+					"noReplyUndone": "Antwort wieder offen",
+					"markedNoReplyOn": "Keine Antwort nötig: {title}",
+					"theyWroteLast": "{name} hat zuletzt geschrieben",
+					"reply": "Antworten",
+					"noReplyHelp": "Entfernt die offene Antwort, bis neue Mail kommt. Du kannst es rückgängig machen."
+				},
+				"person": {
+					"vip": "Wichtiger Absender",
+					"write": "{name} schreiben",
+					"more": "Mehr",
+					"markCompany": "Als automatischen Absender behandeln",
+					"nothingNow": "Mit {name} gibt es gerade keine aktuellen Gespräche.",
+					"writeShort": "Schreiben",
+					"owed": "{count} wartet auf dich | {count} warten auf dich",
+					"owedTeam": "{count} wartet aufs Team | {count} warten aufs Team",
+					"owedThem": "{count} wartet auf {name} | {count} warten auf {name}",
+					"copyAddress": "{address} kopieren",
+					"lastMessage": "Letzte Nachricht {when}",
+					"theyWrote": "{name} schrieb {when}",
+					"youWrote": "Du schriebst {when}"
+				},
+				"page": {
+					"now": "Aktuelle Gespräche",
+					"earlier": "Frühere Gespräche",
+					"gone": "Diese Person oder Firma ist nicht mehr in deinen neueren E-Mails",
+					"emptyTitle": "Noch niemand hier",
+					"emptyDescription": "Wenn du mit jemandem schreibst, erscheint die Person hier, mit den Themen, um die es geht."
+				},
+				"company": {
+					"account": "Automatischer Absender",
+					"verified": "Domain bestätigt",
+					"isPerson": "{address} als Person behandeln",
+					"needsYou": "Wartet auf dich",
+					"nothingNow": "Mit niemandem bei {name} gibt es gerade aktuelle Gespräche.",
+					"peopleAt": "Personen bei {name}",
+					"fromSystems": "Nachrichten von {name}",
+					"markPerson": "Als Person markieren",
+					"verifiedHelp": "Ihre E-Mails haben nachgewiesen, dass sie von dieser Domain kommen. Das zeigt, dass die Domain sie gesendet hat, nicht, wer hinter der Domain steht.",
+					"senderSettings": "Absender-Einstellungen",
+					"cadenceDaily": "Etwa täglich",
+					"cadenceWeekly": "Etwa wöchentlich",
+					"cadenceMonthly": "Etwa monatlich",
+					"earlierTitle": "Frühere Gespräche",
+					"company": "Firma",
+					"archiveUpdates": "{count} Nachricht archivieren | {count} Nachrichten archivieren",
+					"archivedUpdates": "{count} Nachricht von {name} archiviert | {count} Nachrichten von {name} archiviert",
+					"cadenceRare": "Seltener als monatlich",
+					"archiveOperation": "Updates archivieren",
+					"showMore": "{count} weitere Unterhaltung zeigen | {count} weitere Unterhaltungen zeigen"
+				},
+				"earlier": {
+					"showMore": "{count} mehr zeigen | {count} mehr zeigen",
+					"older": "Ältere E-Mails zeigen",
+					"none": "Nichts Älteres.",
+					"searchAll": "Alle E-Mails durchsuchen",
+					"olderEmails": "Ältere E-Mails zeigen",
+					"nothingOlder": "Nichts Älteres.",
+					"searchWith": "Alle E-Mails mit {name} durchsuchen",
+					"noneRecent": "Suchst du ein älteres Gespräch?"
+				},
+				"topicBar": {
+					"rename": "Thema umbenennen",
+					"reset": "Namen zurücksetzen",
+					"namedByOwlat": "Von Owlat aus {count} Nachricht benannt | Von Owlat aus {count} Nachrichten benannt",
+					"namedByYou": "Von dir benannt"
+				},
+				"topicsColumn": {
+					"label": "Gespräche mit {name}",
+					"back": "Zurück zu {name}"
+				}
+			},
+			"classicInbox": {
+				"operation": "Posteingangsansicht speichern"
 			}
 		},
 		"preferences": {
@@ -6493,7 +6650,9 @@
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
-				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
+				"swipeRightHelp": "Dieselbe Geste, andere Richtung.",
+				"classicInboxLabel": "Klassischer Posteingang",
+				"classicInboxHelp": "Priorität und Alle E-Mails statt der Personen-Ansicht verwenden. Personen ordnet deine E-Mails danach, mit wem du schreibst und worüber; der klassische Posteingang listet Nachrichten, wie sie ankommen."
 			},
 			"preferencesShortcuts": {
 				"heading": "Tastenkürzel",
@@ -7558,6 +7717,11 @@
 				"entered": "Zen-Modus an. Nur die Aufgabe ist zu sehen.",
 				"left": "Zen-Modus aus.",
 				"paletteSubtitle": "Alles außer der Aufgabe ausblenden"
+			},
+			"peopleRows": {
+				"empty": "Noch keine Gespräche",
+				"more": "{count} weitere Person | {count} weitere Personen",
+				"moreWaiting": "{count} weitere wartet auf dich | {count} weitere warten auf dich"
 			}
 		},
 		"today": {
@@ -7577,7 +7741,8 @@
 				"question": "Braucht deine Angabe",
 				"mention": "Erwähnung",
 				"mentionTitle": "#{room}: „{preview}“",
-				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
+				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort",
+				"queuedTitle": "in deiner Antwortliste"
 			},
 			"todo": {
 				"title": "Zu erledigen, keine Antwort nötig · {count}",
@@ -7599,7 +7764,7 @@
 				"keysMove": "bewegen",
 				"worth": "Wichtig",
 				"also": "Außerdem angekommen",
-				"empty": "Hier gibt es nichts Neues ohne Antwortbedarf. Was Menschen dir mitteilen und Hinweise mit Handlungsbedarf erscheinen hier.",
+				"empty": "Gerade keine Updates. Neuigkeiten, die nichts von dir wollen, erscheinen hier.",
 				"more": "{count} weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
 			},
 			"filed": {
@@ -7728,6 +7893,15 @@
 				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
 				"showMore": "Mehr anzeigen",
 				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
+			},
+			"people": {
+				"title": "Personen",
+				"waiting": "{count} Person wartet auf dich | {count} Personen warten auf dich",
+				"open": "Posteingang öffnen",
+				"waitingTeam": "{count} Person wartet aufs Team | {count} Personen warten aufs Team",
+				"waitingWithCount": "{conversations} Anfrage von {people} | {conversations} Anfragen von {people}",
+				"waitingTeamWithCount": "{conversations} Anfrage ans Team von {people} | {conversations} Anfragen ans Team von {people}",
+				"recent": "Zuletzt in Kontakt"
 			}
 		},
 		"answer": {
@@ -17243,6 +17417,10 @@
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
+				},
+				"classicInbox": {
+					"title": "Klassischer Posteingang",
+					"keywords": "Personen-Ansicht, klassisch, traditionell, Posteingang, Priorität, alle E-Mails, Nachrichtenliste"
 				}
 			},
 			"adminControls": {

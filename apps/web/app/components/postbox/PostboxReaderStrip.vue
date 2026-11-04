@@ -25,6 +25,7 @@ import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefS
 import { gistLine, stripItemActions, type ReaderStrip } from '~/utils/postboxReaderStrip';
 import { briefActionLabelKey, type BriefAction } from '~/utils/threadBriefItems';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import PostboxTopicNameNote from './PostboxTopicNameNote.vue';
 
 const props = defineProps<{
 	strip: ReaderStrip;
@@ -158,6 +159,7 @@ const linkHandlers = {
 					v-bind="{ ...linkProps, ...linkHandlers }"
 					data-testid="strip-meta"
 				>
+					<PostboxTopicNameNote />
 					<span v-if="waiting" class="text-text-secondary"
 						><span data-testid="strip-waiting">{{ waitingLine }}</span
 						>&nbsp;<span aria-hidden="true">·</span></span
@@ -170,6 +172,7 @@ const linkHandlers = {
 				v-bind="{ ...linkProps, ...linkHandlers }"
 				data-testid="reader-meta-line"
 			>
+				<PostboxTopicNameNote />
 				<span v-if="note === 'reading'"
 					><span data-testid="meta-reading">{{ t('postbox.reader.strip.reading') }}</span
 					>&nbsp;<span aria-hidden="true">·</span></span

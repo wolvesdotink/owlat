@@ -22,6 +22,7 @@ const TODAY: Record<string, [AiTaskName, readonly LlmTier[]]> = {
 	agent_security_scan: ['mail.guard', ['fast']],
 	agent_classify: ['mail.classify', ['fast']],
 	postbox_category: ['mail.classify', ['fast']],
+	postbox_topic_title: ['mail.classify', ['fast']],
 	interpret: ['mail.extract', ['fast']],
 	postbox_commitment: ['mail.extract', ['fast']],
 	interpret_verify: ['mail.verify', ['fast']],

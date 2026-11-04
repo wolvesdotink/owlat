@@ -40,6 +40,8 @@ beforeAll(() => {
 		useAuth: () => ({ user: ref({ id: 'user-1' }) }),
 		// The body-cache scope has its own spec (usePostboxBodyCacheScope.test.ts).
 		usePostboxBodyCacheScope: () => {},
+		// The classic inbox: these pages are about PostboxLayout, not the People view.
+		usePostboxClassicInbox: () => ({ isClassicInbox: ref(true) }),
 		usePostboxMailbox: () => ({
 			currentMailbox: ref({ _id: 'mailbox-1' }),
 			mailboxId: ref('mailbox-1'),

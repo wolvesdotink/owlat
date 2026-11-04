@@ -128,6 +128,13 @@ export const THREAD_BRIEF_CONTACT_DESCENDANTS: readonly DescendantRelation[] = [
 		'retain',
 		MAIL_ONLY
 	),
+	relation(
+		'threadItems',
+		'mailThreads',
+		'needsReplyCleared.clarification.questions[].itemId',
+		'retain',
+		MAIL_ONLY
+	),
 	relation('threadItems', 'mailThreads', 'briefTop.top.itemId', 'retain', MAIL_ONLY),
 	relation(
 		'threadItems',
