@@ -27,11 +27,11 @@ import {
 	generateInboxInviteEmailHtml,
 	generatePasswordResetEmailHtml,
 	generateChangeEmailVerificationHtml,
-	generateNewEmailVerificationHtml,
 } from '../lib/systemEmails';
 import { resolveBetterAuthIpAddressConfig } from './ipAddress';
 import { resolveTrustedOrigins } from './trustedOrigins';
 import { assertRegistrationAllowed } from './registrationGate';
+import { verificationEmailFor } from './verificationEmail';
 
 // Custom access control to use 'editor' instead of 'member'
 // This matches the legacy team role system
@@ -173,29 +173,34 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 			// New invitees must prove inbox ownership before joining, even when
 			// legacy members can still sign in without a verified-email flag.
 			sendOnSignUp: true,
-			// Final hop of the change-email flow. BetterAuth invokes this with
-			// `user.email` already set to the NEW address, so the verification
-			// link is delivered to the address being claimed. Following it is
-			// what actually commits the new login email (and marks it verified).
-			// Without this block BetterAuth dead-ends after the current-address
-			// approval and the email never changes — so the verified owner could
-			// not change their login email at all.
+			// No autoSignInAfterVerification: the link would then mint a session
+			// from inbox access alone, skipping the password and any TOTP factor.
+			// The invitation page re-reads the session past the cookie cache to
+			// see the address as confirmed instead.
+			//
+			// One hook, two flows. For a new account (sign-up or a resend) this
+			// confirms the address. It is also the final hop of the change-email
+			// flow: BetterAuth then invokes it with `user.email` already set to
+			// the NEW address, so the link reaches the address being claimed, and
+			// following it is what commits the new login email. Without this hook
+			// BetterAuth dead-ends after the current-address approval and the
+			// login email can never change. `verificationEmailFor` picks the copy.
 			sendVerificationEmail: async ({
 				user,
 				url,
+				token,
 			}: {
 				user: { name?: string; email: string };
 				url: string;
+				token: string;
 			}) => {
 				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
-
-				const html = generateNewEmailVerificationHtml(user.name || user.email, user.email, url);
+				const { subject, html } = verificationEmailFor({ user, url, token });
 
 				await sendViaMta({
-					// Sent to the NEW address (user.email is the claimed one here).
 					to: user.email,
 					from: `Owlat <noreply@${fromDomain}>`,
-					subject: 'Verify your new login email — Owlat',
+					subject,
 					html,
 				});
 			},

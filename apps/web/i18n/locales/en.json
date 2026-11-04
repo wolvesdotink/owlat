@@ -70,6 +70,8 @@
 			}
 		},
 		"register": {
+			"checkInboxBody": "We sent a link to {email}. Open it to confirm your address, then sign in to accept the invitation.",
+			"checkInboxTitle": "Check your inbox",
 			"createProfileOperation": "Create profile",
 			"haveAccount": "Already have an account?",
 			"inviteOnlyBody": "Registration is disabled. Contact your administrator for an invitation.",
@@ -13740,7 +13742,14 @@
 			"signInToAccept": "Sign in to accept",
 			"successBody": "You've successfully joined {organization}.",
 			"successTitle": "Welcome to the team!",
-			"teamInboxAdded": "The team inbox {address} is in your sidebar."
+			"teamInboxAdded": "The team inbox {address} is in your sidebar.",
+			"useDifferentAccount": "Use a different account",
+			"verifyEmailBody": "We sent a link to {email}. Open it to confirm your address, and you'll join the team right after.",
+			"verifyEmailCheck": "I've confirmed it",
+			"verifyEmailResend": "Send the email again",
+			"verifyEmailResendFailed": "The email couldn't be sent. Try again in a moment.",
+			"verifyEmailResent": "We sent another link. It can take a minute to arrive.",
+			"verifyEmailTitle": "Confirm your email"
 		}
 	},
 	"oauth": {

@@ -129,6 +129,7 @@ export const signUp = deferred(() => getAuthClient().signUp);
 export const signOut = deferred(() => getAuthClient().signOut);
 export const useSession = deferred(() => getAuthClient().useSession);
 export const getSession = deferred(() => getAuthClient().getSession);
+export const sendVerificationEmail = deferred(() => getAuthClient().sendVerificationEmail);
 
 // Export organization-related methods.
 // Owlat is single-organization-per-deployment — the singleton org is bootstrapped

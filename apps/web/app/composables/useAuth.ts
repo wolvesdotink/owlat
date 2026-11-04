@@ -256,18 +256,31 @@ export function useAuth() {
 		return result.data;
 	};
 
-	const signUpWithEmail = async (email: string, password: string, name: string) => {
+	/**
+	 * `callbackURL` is where the email-confirmation link lands. A `null` token in
+	 * the result means the instance withholds the session until the address is
+	 * confirmed (REQUIRE_EMAIL_VERIFICATION), so there is no session to wait for.
+	 */
+	const signUpWithEmail = async (
+		email: string,
+		password: string,
+		name: string,
+		options: { callbackURL?: string } = {}
+	) => {
 		const result = await authClient.signUp.email({
 			email,
 			password,
 			name,
+			...(options.callbackURL ? { callbackURL: options.callbackURL } : {}),
 		});
 
 		if (result.error) {
 			throw new Error(result.error.message || t('shared.useAuth.signUpFailed'));
 		}
 
-		await refetch({ force: true, expected: 'authenticated' });
+		if (result.data?.token) {
+			await refetch({ force: true, expected: 'authenticated' });
+		}
 
 		return result.data;
 	};
@@ -299,7 +312,7 @@ export function useAuth() {
 		});
 	};
 
-	const signOut = async () => {
+	const signOut = async (options: { redirectTo?: string } = {}) => {
 		// Before the session ends (the server forgets the device only for its
 		// owner): this browser stops showing the leaving person's notifications.
 		// Bounded and best effort; a chunk that fails to load must not keep the
@@ -330,7 +343,7 @@ export function useAuth() {
 		await refetch({ force: true, expected: 'unauthenticated' });
 		await waitUntilSignedOut();
 
-		await navigateTo('/auth/login');
+		await navigateTo(options.redirectTo ?? '/auth/login');
 
 		return result.data;
 	};

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { acceptInvitation, getSession } from '~/lib/auth-client';
-import { CheckIcon, CircleWarningIcon, UsersIcon } from '@coolicons/vue';
+import { acceptInvitation, getSession, sendVerificationEmail } from '~/lib/auth-client';
+import { CheckIcon, CircleWarningIcon, MailIcon, UsersIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
@@ -14,6 +14,7 @@ definePageMeta({
 
 const route = useRoute();
 const router = useRouter();
+const { signOut, refetch } = useAuth();
 
 // The workspace's logo above the card: someone opening an invitation
 // knows the company that invited them, not the product it runs on.
@@ -22,9 +23,22 @@ const { logo } = useRecipientSender();
 // Get invitation ID from query params
 const invitationId = computed(() => (route.query['id'] as string) || '');
 
+const acceptPath = computed(() => `/invite/accept?id=${encodeURIComponent(invitationId.value)}`);
+
+// The server accepts an invitation only for a confirmed address: existing
+// members can see pending invitation IDs, so holding the link proves nothing.
+// A new account starts unconfirmed, so it waits here until the link is followed.
+const VERIFICATION_REQUIRED_CODE =
+	'EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION';
+
 // State
-const status = ref<'loading' | 'accepting' | 'success' | 'error' | 'login-required'>('loading');
+const status = ref<
+	'loading' | 'accepting' | 'success' | 'error' | 'login-required' | 'verify-email'
+>('loading');
 const errorMessage = ref('');
+const sessionEmail = ref('');
+const resendState = ref<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+const checkingVerification = ref(false);
 const organizationName = ref('');
 const claimedMailboxAddress = ref('');
 // An early-instance reservation whose sending domain hasn't verified yet: the
@@ -49,26 +63,82 @@ onMounted(async () => {
 		return;
 	}
 
-	// Check if user is logged in
-	const session = await getSession();
-
-	if (!session.data?.user) {
-		// User needs to log in first
-		status.value = 'login-required';
-		return;
-	}
-
-	// User is logged in, attempt to accept the invitation
-	await handleAcceptInvitation();
+	await checkSessionAndAccept();
 });
 
-async function handleAcceptInvitation() {
+// Following the confirmation link usually happens in another tab; coming back
+// to this one checks again, so the person does not have to.
+function onVisibilityChange() {
+	if (document.visibilityState === 'visible' && status.value === 'verify-email') {
+		void checkSessionAndAccept();
+	}
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange));
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+async function checkSessionAndAccept() {
+	if (checkingVerification.value) return;
+	checkingVerification.value = true;
+	const waitedForConfirmation = status.value === 'verify-email';
+	try {
+		// Past the cookie cache: it holds the user as it was at sign-in for a
+		// few minutes, so a just-confirmed address would still read unconfirmed
+		// here and on the server. This read also rewrites that cache.
+		const session = await getSession({ query: { disableCookieCache: true } });
+		const user = session.data?.user;
+
+		if (!user) {
+			status.value = 'login-required';
+			return;
+		}
+
+		sessionEmail.value = user.email;
+		if (!user.emailVerified) {
+			status.value = 'verify-email';
+			return;
+		}
+
+		// The confirmation link opens this invitation in another tab, which
+		// accepts it and makes the workspace active on the shared session. A
+		// newcomer had no workspace before, so an active one means they joined.
+		await handleAcceptInvitation({
+			joinedElsewhere: waitedForConfirmation && !!session.data?.session?.activeOrganizationId,
+		});
+	} finally {
+		checkingVerification.value = false;
+	}
+}
+
+async function resendVerification() {
+	resendState.value = 'sending';
+	const result = await sendVerificationEmail({
+		email: sessionEmail.value,
+		callbackURL: acceptPath.value,
+	});
+	resendState.value = result.error ? 'failed' : 'sent';
+}
+
+async function switchAccount() {
+	await signOut({ redirectTo: `/auth/login?redirect=${encodeURIComponent(acceptPath.value)}` });
+}
+
+async function handleAcceptInvitation({ joinedElsewhere = false } = {}) {
 	status.value = 'accepting';
 
 	try {
 		const result = await acceptInvitation({
 			invitationId: invitationId.value,
 		});
+
+		if (result.error?.code === VERIFICATION_REQUIRED_CODE) {
+			status.value = 'verify-email';
+			return;
+		}
+
+		if (result.error && joinedElsewhere) {
+			await router.push('/welcome');
+			return;
+		}
 
 		if (result.error) {
 			status.value = 'error';
@@ -79,6 +149,18 @@ async function handleAcceptInvitation() {
 		// Success! The result contains member and invitation info
 		// We'll use a generic message since we don't have the org name directly
 		organizationName.value = t('invite.accept.defaultOrganization');
+
+		// Accepting makes the workspace the session's active one, but the Convex
+		// token still names none: the claims below would be refused with "No
+		// active organization". Wait for a session and token that carry it.
+		const organizationId = result.data?.member?.organizationId;
+		if (organizationId) {
+			await refetch({
+				force: true,
+				expected: 'authenticated',
+				activeOrganizationId: organizationId,
+			});
+		}
 
 		// Best-effort: claim any reserved mailbox the admin set up at invite time. A
 		// failure should not block onboarding — the operation module surfaces any
@@ -118,15 +200,11 @@ async function handleAcceptInvitation() {
 }
 
 function redirectToLogin() {
-	// Store the current path so we can redirect back after login
-	const currentPath = `/invite/accept?id=${encodeURIComponent(invitationId.value)}`;
-	router.push(`/auth/login?redirect=${encodeURIComponent(currentPath)}`);
+	router.push(`/auth/login?redirect=${encodeURIComponent(acceptPath.value)}`);
 }
 
 function redirectToRegister() {
-	// Store the current path so we can redirect back after registration
-	const currentPath = `/invite/accept?id=${encodeURIComponent(invitationId.value)}`;
-	router.push(`/auth/register?redirect=${encodeURIComponent(currentPath)}`);
+	router.push(`/auth/register?redirect=${encodeURIComponent(acceptPath.value)}`);
 }
 </script>
 
@@ -178,6 +256,56 @@ function redirectToRegister() {
 						</UiButton>
 						<UiButton variant="secondary" full-width @click="redirectToRegister">
 							{{ t('invite.accept.createAccount') }}
+						</UiButton>
+					</div>
+				</template>
+
+				<!-- Email confirmation pending -->
+				<template v-else-if="status === 'verify-email'">
+					<div
+						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
+					>
+						<MailIcon class="w-8 h-8 text-brand" :stroke-width="1.5" />
+					</div>
+					<h1 class="text-xl font-semibold text-text-primary mb-2">
+						{{ t('invite.accept.verifyEmailTitle') }}
+					</h1>
+					<I18nT
+						keypath="invite.accept.verifyEmailBody"
+						tag="p"
+						scope="global"
+						class="text-text-secondary mb-6"
+					>
+						<template #email>
+							<strong class="text-text-primary">{{ sessionEmail }}</strong>
+						</template>
+					</I18nT>
+					<p
+						v-if="resendState === 'sent' || resendState === 'failed'"
+						role="status"
+						class="text-sm mb-4"
+						:class="resendState === 'sent' ? 'text-text-secondary' : 'text-error'"
+					>
+						{{
+							resendState === 'sent'
+								? t('invite.accept.verifyEmailResent')
+								: t('invite.accept.verifyEmailResendFailed')
+						}}
+					</p>
+					<div class="flex flex-col gap-3">
+						<UiButton full-width :loading="checkingVerification" @click="checkSessionAndAccept">
+							{{ t('invite.accept.verifyEmailCheck') }}
+						</UiButton>
+						<UiButton
+							variant="secondary"
+							full-width
+							:loading="resendState === 'sending'"
+							@click="resendVerification"
+						>
+							{{ t('invite.accept.verifyEmailResend') }}
+						</UiButton>
+						<UiButton variant="ghost" full-width @click="switchAccount">
+							{{ t('invite.accept.useDifferentAccount') }}
 						</UiButton>
 					</div>
 				</template>
