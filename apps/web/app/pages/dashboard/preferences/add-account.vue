@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 import { CheckIcon, MailPlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import PostboxMailboxAddressField from '~/components/postbox/PostboxMailboxAddressField.vue';
 
 const { t } = useI18n();
 
@@ -35,6 +36,9 @@ const {
 	refetch: refetchDomains,
 } = useConvexQuery(api.domains.domains.listVerified, () => ({}));
 const verifiedDomains = computed(() => domainsData.value ?? []);
+const domainOptions = computed(() =>
+	verifiedDomains.value.map((d) => ({ value: d.domain, label: d.domain }))
+);
 const { isEnabled } = useFeatureFlag();
 const { isAdmin, showAdminGate } = usePermissions();
 
@@ -298,29 +302,21 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				</div>
 				<div v-else class="space-y-4">
 					<div>
-						<label class="text-sm font-medium block mb-1">{{
+						<label for="add-account-localpart" class="text-sm font-medium block mb-1">{{
 							t('dashboard.preferences.addAccount.addressLabel')
 						}}</label>
-						<div class="flex items-center gap-2">
-							<input
-								v-model="localPart"
-								type="text"
-								:placeholder="
-									isTeam
-										? t('dashboard.preferences.addAccount.addressPlaceholderTeam')
-										: t('dashboard.preferences.addAccount.addressPlaceholderPersonal')
-								"
-								class="input flex-1"
-								pattern="[a-zA-Z0-9.\-_]+"
-							/>
-							<span class="text-text-tertiary">@</span>
-							<select v-model="selectedDomain" class="input">
-								<option value="">{{ t('dashboard.preferences.addAccount.selectDomain') }}</option>
-								<option v-for="d in verifiedDomains" :key="d._id" :value="d.domain">
-									{{ d.domain }}
-								</option>
-							</select>
-						</div>
+						<PostboxMailboxAddressField
+							id="add-account-localpart"
+							v-model:localpart="localPart"
+							v-model:domain="selectedDomain"
+							:domains="domainOptions"
+							:placeholder="
+								isTeam
+									? t('dashboard.preferences.addAccount.addressPlaceholderTeam')
+									: t('dashboard.preferences.addAccount.addressPlaceholderPersonal')
+							"
+							:select-domain-label="t('dashboard.preferences.addAccount.selectDomain')"
+						/>
 						<I18nT
 							v-if="selectedAddress"
 							keypath="dashboard.preferences.addAccount.willBeCreatedAs"

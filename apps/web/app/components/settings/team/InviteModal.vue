@@ -6,6 +6,7 @@ import { ROLE_DEFINITIONS } from '~/utils/teamRoles';
 import InviteSuccessPanel, {
 	type InviteSuccess,
 } from '~/components/settings/team/InviteSuccessPanel.vue';
+import PostboxMailboxAddressField from '~/components/postbox/PostboxMailboxAddressField.vue';
 import { UserPlusCornerIcon } from '@coolicons/vue';
 
 // Use BetterAuth organization management (shared useState-backed store — the
@@ -40,6 +41,15 @@ const reservableDomains = computed(() =>
 	(domainsData.value ?? [])
 		.filter((d) => d.status === 'verified' || d.status === 'pending' || d.status === 'registering')
 		.sort((a, b) => Number(b.status === 'verified') - Number(a.status === 'verified'))
+);
+const mailboxDomainOptions = computed(() =>
+	reservableDomains.value.map((d) => ({
+		value: d.domain,
+		label:
+			d.status === 'verified'
+				? d.domain
+				: t('components.settings.team.inviteModal.domainVerifying', { domain: d.domain }),
+	}))
 );
 const canOfferMailbox = computed(() => postboxEnabled.value && reservableDomains.value.length > 0);
 
@@ -361,35 +371,20 @@ defineExpose({ open: openInviteModal });
 
 					<div v-if="canOfferMailbox && inviteForm.addMailbox" class="space-y-3 pl-6">
 						<div>
-							<label class="text-sm font-medium block mb-1">{{
+							<label for="inviteform-mailboxlocalpart" class="text-sm font-medium block mb-1">{{
 								t('components.settings.team.inviteModal.addressLabel')
 							}}</label>
-							<div class="flex items-center gap-2">
-								<input
-									v-model="inviteForm.mailboxLocalpart"
-									type="text"
-									:placeholder="t('components.settings.team.inviteModal.localpartPlaceholder')"
-									class="input flex-1"
-									:disabled="isInviting"
-									pattern="[a-zA-Z0-9.\-_]+"
-									@input="localpartEdited = true"
-								/>
-								<span class="text-text-tertiary">@</span>
-								<select v-model="inviteForm.mailboxDomain" class="input" :disabled="isInviting">
-									<option value="">
-										{{ t('components.settings.team.inviteModal.selectDomain') }}
-									</option>
-									<option v-for="d in reservableDomains" :key="d._id" :value="d.domain">
-										{{
-											d.status === 'verified'
-												? d.domain
-												: t('components.settings.team.inviteModal.domainVerifying', {
-														domain: d.domain,
-													})
-										}}
-									</option>
-								</select>
-							</div>
+							<PostboxMailboxAddressField
+								id="inviteform-mailboxlocalpart"
+								v-model:localpart="inviteForm.mailboxLocalpart"
+								v-model:domain="inviteForm.mailboxDomain"
+								:domains="mailboxDomainOptions"
+								:placeholder="t('components.settings.team.inviteModal.localpartPlaceholder')"
+								:select-domain-label="t('components.settings.team.inviteModal.selectDomain')"
+								:disabled="isInviting"
+								:invalid="!!inviteFormErrors.mailbox"
+								@localpart-input="localpartEdited = true"
+							/>
 							<I18nT
 								v-if="mailboxPreviewAddress && selectedDomainVerified"
 								keypath="components.settings.team.inviteModal.willBeCreatedAs"
