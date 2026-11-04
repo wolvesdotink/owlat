@@ -97,9 +97,14 @@ describe('invitation identity verification with installed BetterAuth', () => {
 			const target = listed.find((invitation) => invitation.role === 'admin')!;
 			expect(target).toBeDefined();
 			const impostor = await signup(target.email);
+			// A new account is asked to confirm its address, not told it is
+			// changing a login email it never had.
 			expect(ctx.runAction).toHaveBeenCalledWith(
 				expect.anything(),
-				expect.objectContaining({ to: target.email })
+				expect.objectContaining({
+					to: target.email,
+					subject: 'Confirm your email address — Owlat',
+				})
 			);
 			await expect(
 				auth.api.acceptInvitation({ headers: impostor.headers, body: { invitationId: target.id } })

@@ -90,9 +90,15 @@ describe('change-login-email wiring', () => {
 		// BetterAuth invokes sendVerificationEmail with user.email ALREADY set to
 		// the new address (update-user.mjs / email-verification.mjs spread
 		// `...session.user, email: newEmail`).
+		// The change-email token carries `updateTo`, the address being claimed;
+		// that is what tells this hop apart from a new account's confirmation.
+		const payload = Buffer.from(
+			JSON.stringify({ email: 'current@example.com', updateTo: 'new@example.com' })
+		).toString('base64url');
 		await opts.emailVerification!.sendVerificationEmail({
 			user: { name: 'Owner', email: 'new@example.com' },
 			url: 'https://app.example.com/verify-email?token=hop2',
+			token: `header.${payload}.signature`,
 		});
 
 		expect(sends).toHaveLength(1);

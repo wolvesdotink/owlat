@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { isValidEmail } from '@owlat/shared';
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { registrationOpenFor } from '~/utils/instanceEntry';
-import { LockIcon } from '@coolicons/vue';
+import { LockIcon, MailIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -28,6 +28,9 @@ const name = ref('');
 const email = ref('');
 const password = ref('');
 const { isLoading, errorMessage, submit } = useAuthForm();
+// Set when the account exists but the instance keeps the session back until
+// the address is confirmed; the confirmation link carries on from there.
+const awaitingConfirmationFor = ref('');
 
 // Field-level validation errors
 const termsAccepted = ref(false);
@@ -107,11 +110,23 @@ async function handleSubmit() {
 	}
 
 	await submit(async () => {
-		const result = await signUpWithEmail(email.value, password.value, name.value);
+		const redirect = safeRedirect(route.query['redirect'], '/dashboard');
+		// The invitation can only be accepted once the address is confirmed, so
+		// the confirmation link leads back to it.
+		const result = await signUpWithEmail(email.value, password.value, name.value, {
+			callbackURL: redirect,
+		});
+
+		// No session yet: the profile mutation needs one, and its refusal would
+		// send the person to sign-in instead of telling them to check their inbox.
+		if (!result?.token) {
+			awaitingConfirmationFor.value = email.value;
+			return;
+		}
 
 		// Create user profile. Non-blocking: a failure is surfaced by the operation
 		// module (toast + telemetry); the user still proceeds to the dashboard.
-		if (result?.user?.id) {
+		if (result.user?.id) {
 			await createUserProfile({
 				authUserId: result.user.id,
 				email: email.value,
@@ -119,15 +134,12 @@ async function handleSubmit() {
 			});
 		}
 
-		// Redirect to the invite accept page or dashboard
-		const redirect = route.query['redirect'] as string | undefined;
-		await router.push(redirect || '/dashboard');
+		await router.push(redirect);
 	});
 }
 </script>
 
 <template>
-	<!-- Registration blocked — invite-only (unless this is an invite redirect) -->
 	<AuthShell v-if="!isInviteRedirect" :subtitle="t('auth.register.inviteOnlyTagline')">
 		<template #title>
 			{{ t('auth.register.inviteOnlyTitle') }}
@@ -147,22 +159,38 @@ async function handleSubmit() {
 		</template>
 	</AuthShell>
 
-	<!-- Registration form (only accessible via invite redirect) -->
 	<AuthShell v-else :subtitle="t('auth.register.tagline')">
 		<template #title>
 			{{ t('auth.register.title') }}
 			<span class="lp-title-accent">{{ t('auth.register.titleAccent') }}</span>
 		</template>
 
+		<div v-if="awaitingConfirmationFor" class="text-center space-y-4" role="status">
+			<MailIcon class="w-12 h-12 text-brand mx-auto" :stroke-width="1.5" />
+			<h2 class="text-lg font-semibold text-text-primary">
+				{{ t('auth.register.checkInboxTitle') }}
+			</h2>
+			<I18nT
+				keypath="auth.register.checkInboxBody"
+				tag="p"
+				scope="global"
+				class="text-text-secondary"
+			>
+				<template #email>
+					<strong class="text-text-primary">{{ awaitingConfirmationFor }}</strong>
+				</template>
+			</I18nT>
+		</div>
+
 		<!-- Error Message -->
 		<div
-			v-if="errorMessage"
+			v-else-if="errorMessage"
 			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
 		>
 			{{ errorMessage }}
 		</div>
 
-		<form class="space-y-5" @submit.prevent="handleSubmit">
+		<form v-if="!awaitingConfirmationFor" class="space-y-5" @submit.prevent="handleSubmit">
 			<!-- Name Field -->
 			<UiInput
 				id="name"

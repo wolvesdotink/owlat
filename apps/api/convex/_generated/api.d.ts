@@ -354,6 +354,7 @@ import type * as auth_sendReadyNotices from '../auth/sendReadyNotices.js';
 import type * as auth_trustedOrigins from '../auth/trustedOrigins.js';
 import type * as auth_userOnboarding from '../auth/userOnboarding.js';
 import type * as auth_userProfiles from '../auth/userProfiles.js';
+import type * as auth_verificationEmail from '../auth/verificationEmail.js';
 import type * as automations__helpers from '../automations/_helpers.js';
 import type * as automations_analytics from '../automations/analytics.js';
 import type * as automations_automations from '../automations/automations.js';
@@ -2223,6 +2224,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/trustedOrigins': typeof auth_trustedOrigins;
 	'auth/userOnboarding': typeof auth_userOnboarding;
 	'auth/userProfiles': typeof auth_userProfiles;
+	'auth/verificationEmail': typeof auth_verificationEmail;
 	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
 }> & ApiFromModules<{
 	'automations/_helpers': typeof automations__helpers;

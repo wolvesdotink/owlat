@@ -209,6 +209,40 @@ ${ctaWithFallback(resetUrl, 'Reset Password')}
 	return renderSystemEmail({ title: 'Reset your password', body });
 }
 
+/** Address confirmation for a new account. BetterAuth sends it at sign-up and
+ * whenever the person asks for the link again; invitation acceptance waits for
+ * it, so the copy names that next step. */
+export function generateAccountVerificationHtml(
+	userName: string,
+	email: string,
+	verifyUrl: string
+): string {
+	const safeName = escapeHtml(userName);
+	const safeEmail = escapeHtml(email);
+
+	const body = `              <!-- Header -->
+              <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 600; color: #f5f2ef;">
+                Confirm your email address
+              </h1>
+              <p style="margin: 0 0 32px 0; color: #a09890; font-size: 14px;">
+                Hi ${safeName}
+              </p>
+
+              <!-- Message -->
+              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #a09890;">
+                Click the button below to confirm <strong style="color: #f5f2ef;">${safeEmail}</strong> and finish setting up your Owlat account. If you were invited to a team, you join it right after.
+              </p>
+
+${ctaWithFallback(verifyUrl, 'Confirm email address')}
+
+              <!-- Footer note -->
+              <p style="margin: 0; font-size: 13px; color: #6b635a;">
+                This link expires in 1 hour. If you didn't create an account, you can safely ignore this email.
+              </p>`;
+
+	return renderSystemEmail({ title: 'Confirm your email address', body });
+}
+
 /** Change-of-login-email confirmation, step 1. Sent to the CURRENT address so
  * only the account owner can approve moving the login email to a new address.
  * Following the link does NOT yet change the email — it triggers a second

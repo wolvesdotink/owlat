@@ -70,6 +70,8 @@
 			}
 		},
 		"register": {
+			"checkInboxBody": "Wir haben einen Link an {email} geschickt. Öffne ihn, um deine Adresse zu bestätigen, und melde dich dann an, um die Einladung anzunehmen.",
+			"checkInboxTitle": "Schau in dein Postfach",
 			"createProfileOperation": "Profil erstellen",
 			"haveAccount": "Du hast bereits ein Konto?",
 			"inviteOnlyBody": "Die Registrierung ist deaktiviert. Wende dich für eine Einladung an deine Administration.",
@@ -13740,7 +13742,14 @@
 			"signInToAccept": "Zum Annehmen anmelden",
 			"successBody": "Du bist {organization} erfolgreich beigetreten.",
 			"successTitle": "Willkommen im Team!",
-			"teamInboxAdded": "Das Team-Postfach {address} findest du in deiner Seitenleiste."
+			"teamInboxAdded": "Das Team-Postfach {address} findest du in deiner Seitenleiste.",
+			"useDifferentAccount": "Anderes Konto verwenden",
+			"verifyEmailBody": "Wir haben einen Link an {email} geschickt. Öffne ihn, um deine Adresse zu bestätigen, danach trittst du dem Team direkt bei.",
+			"verifyEmailCheck": "Ich habe bestätigt",
+			"verifyEmailResend": "E-Mail erneut senden",
+			"verifyEmailResendFailed": "Die E-Mail konnte nicht gesendet werden. Versuch es gleich noch einmal.",
+			"verifyEmailResent": "Wir haben einen neuen Link geschickt. Es kann eine Minute dauern, bis er ankommt.",
+			"verifyEmailTitle": "Bestätige deine E-Mail-Adresse"
 		}
 	},
 	"oauth": {
