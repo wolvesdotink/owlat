@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { requestUpdater } from '../updater';
 
 /**
@@ -17,10 +17,12 @@ import { requestUpdater } from '../updater';
  * smaller scale. (undici checks its header deadline on a coarse timer that
  * ticks about once a second, so the answer has to come well after one tick.)
  *
- * The short deadline goes to that one call as its `dispatcher`, from the npm
- * `undici` package, and Node's global dispatcher is left alone. Its class is
- * not something to construct: Node 26 keeps a compatibility wrapper there
- * whose constructor wants a dispatcher, not options.
+ * The short deadline comes from an `Agent` of the npm `undici` package, and
+ * Node's global dispatcher is left alone. Its class is not something to
+ * construct: Node 26 keeps a compatibility wrapper there whose constructor
+ * wants a dispatcher, not options. Global `fetch` is stubbed to go through that
+ * Agent, so a `requestUpdater` that went back to `fetch` fails the slow-answer
+ * case instead of passing on the 300 s default.
  */
 
 const HEADERS_TIMEOUT_MS = 200;
@@ -68,9 +70,15 @@ beforeAll(async () => {
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 	baseUrl = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
 	shortHeaderDeadline = new Agent({ headersTimeout: HEADERS_TIMEOUT_MS });
+	vi.stubGlobal('fetch', ((
+		input: Parameters<typeof undiciFetch>[0],
+		init?: Parameters<typeof undiciFetch>[1]
+	) =>
+		undiciFetch(input, { ...init, dispatcher: shortHeaderDeadline })) as unknown as typeof fetch);
 });
 
 afterAll(async () => {
+	vi.unstubAllGlobals();
 	server.closeAllConnections();
 	await new Promise<void>((resolve) => server.close(() => resolve()));
 	await shortHeaderDeadline.close();
