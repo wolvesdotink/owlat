@@ -72,6 +72,17 @@ describe('markDone and reopen', () => {
 		expect(after.thread.doneBy).toBeUndefined();
 	});
 
+	it('unmutes a muted conversation it reopens, so it is open again', async () => {
+		const mailboxId = await seedBox();
+		const messageId = await seedMessage(t, mailboxId, { role: 'archive' });
+		const { thread } = await messageAndThread(messageId);
+		await t.run(async (ctx) => ctx.db.patch(thread._id, { mutedAt: Date.now() }));
+
+		await t.mutation(api.mail.people.done.reopen, { threadId: thread._id });
+
+		expect((await messageAndThread(messageId)).thread.mutedAt).toBeUndefined();
+	});
+
 	it('refuses a conversation in a mailbox the caller cannot reach', async () => {
 		const mailboxId = await seedBox('user-B', 'other@owlat.test', 'org-2');
 		const messageId = await seedMessage(t, mailboxId, { role: 'inbox' });

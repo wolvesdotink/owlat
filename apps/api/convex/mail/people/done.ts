@@ -6,8 +6,9 @@
  * archiveThreads` and then stamps it here. The stamp is what marks a
  * conversation with nothing in the Inbox to move (one you started and are
  * waiting on), and it lapses on its own once a newer message arrives (see
- * `doneAt` in the schema). Reopen undoes both: the Archive copies go back to
- * the Inbox, read state untouched, and the stamp is cleared.
+ * `doneAt` in the schema). Reopen undoes all of it: the Archive copies go
+ * back to the Inbox, read state untouched, the stamp is cleared, and a muted
+ * conversation is unmuted, since muting keeps it out of the open list too.
  */
 
 import { v } from 'convex/values';
@@ -67,7 +68,12 @@ export const reopen = postboxMutation({
 		if (page.length > 0) {
 			await moveMessagesToFolder(ctx, { messageIds: page, targetFolderId: inbox._id });
 		}
-		await ctx.db.patch(thread._id, { doneAt: undefined, doneBy: undefined, updatedAt: Date.now() });
+		await ctx.db.patch(thread._id, {
+			doneAt: undefined,
+			doneBy: undefined,
+			mutedAt: undefined,
+			updatedAt: Date.now(),
+		});
 		return { hasMore: archived.length > REOPEN_PAGE };
 	},
 });
