@@ -25,12 +25,60 @@
 # compiler options. That is checked here too.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+
+# Every failure goes to stderr. A caller that reports a failed command by its
+# stderr alone, as a rejected execFile promise in the vitest suite does, would
+# otherwise show an exit code and none of the reasons.
+reported=""
+fail() {
+	echo "FAIL: $*" >&2
+	reported=1
+}
+
+# What the guard is doing and which image it is reading, for the exit trap.
+step="startup"
+dockerfile=""
+
+# A process the kernel kills (the OOM killer on a CI runner, say) prints
+# nothing, and neither does a bash error under `set -u` that names no image.
+# Any non-zero exit that has not printed a FAIL line names where it stopped.
+report_silent_exit() {
+	local code=$?
+	if [ "$code" -ne 0 ] && [ -z "$reported" ]; then
+		echo "FAIL: stopped with exit code $code in step '$step'${dockerfile:+ while reading $dockerfile}, without printing a reason" >&2
+	fi
+}
+trap report_silent_exit EXIT
+
+# A node step that exits non-zero may have printed nothing, so name the step
+# and the exit code, and the signal when the code says it was killed.
+node_failed() {
+	local what="$1" code="$2" reason="node exited $2" signal
+	if [ "$code" -gt 128 ] && signal=$(kill -l "$((code - 128))" 2>/dev/null); then
+		reason+=" (killed by SIG$signal)"
+	fi
+	fail "$what: $reason"
+	exit 1
+}
+
+for tool in node git; do
+	command -v "$tool" >/dev/null || {
+		fail "$tool is not on PATH"
+		exit 1
+	}
+done
+
+cd "$(dirname "$0")/.." || {
+	fail "cannot enter the repository root from $0"
+	exit 1
+}
 
 # Workspaces the root manifest declares, expanded to real directories. Negated
 # globs ("!packages/sdk-java") drop their matches, mirroring bun's own
-# resolution.
-mapfile -t globs < <(node -e '
+# resolution. The list is captured before it is split so that node's exit code
+# is the one tested: `mapfile < <(node …)` succeeds however node ends.
+step="reading the root workspaces globs"
+globs_text=$(node -e '
 // `workspaces` is either the array form or bun catalog form ({ packages, … }).
 const declared = require("./package.json").workspaces;
 const globs = Array.isArray(declared) ? declared : declared?.packages;
@@ -39,7 +87,9 @@ if (!Array.isArray(globs) || globs.length === 0) {
 	process.exit(1);
 }
 for (const glob of globs) console.log(glob);
-') || exit 1
+') || node_failed "$step" $?
+mapfile -t globs <<<"$globs_text"
+step="expanding the workspaces globs"
 
 manifests=()
 excluded=()
@@ -54,7 +104,7 @@ for glob in "${globs[@]}"; do
 done
 
 if [ ${#manifests[@]} -eq 0 ]; then
-	echo "FAIL: no workspace package.json files matched the root workspaces globs" >&2
+	fail "no workspace package.json files matched the root workspaces globs"
 	exit 1
 fi
 
@@ -105,12 +155,15 @@ while IFS= read -r image; do
 done < <(git ls-files '*Dockerfile' '*.Dockerfile' \
 	| xargs -r grep -lE '^[[:space:]]*COPY[[:space:]].*tsconfig\.base\.json')
 
+step="reading the root patchedDependencies"
 has_patched_dependencies=$(
 	node -e '
 const patched = require("./package.json").patchedDependencies;
 process.stdout.write(patched && Object.keys(patched).length > 0 ? "1" : "0");
 '
-) || exit 1
+) || node_failed "$step" $?
+
+step="per-Dockerfile checks"
 while IFS= read -r dockerfile; do
 	joined=$(join_continuations "$dockerfile")
 
@@ -129,7 +182,7 @@ while IFS= read -r dockerfile; do
 				candidate="${token%/}"
 				[[ ${candidate##*/} == tsconfig.json ]] || candidate="$candidate/tsconfig.json"
 				[ -n "${extends_base[$candidate]:-}" ] || continue
-				echo "FAIL: $dockerfile copies $candidate, which extends tsconfig.base.json, without copying tsconfig.base.json"
+				fail "$dockerfile copies $candidate, which extends tsconfig.base.json, without copying tsconfig.base.json"
 				failures=$((failures + 1))
 			done
 		done <<<"$joined"
@@ -144,7 +197,7 @@ while IFS= read -r dockerfile; do
 				stage_has_patches=1
 			elif [[ $instruction =~ ^[[:space:]]*RUN[[:space:]].*bun[[:space:]]+install.*--frozen-lockfile ]] \
 				&& [ -z "$stage_has_patches" ]; then
-				echo "FAIL: $dockerfile runs a frozen Bun install without copying patches/ in that stage"
+				fail "$dockerfile runs a frozen Bun install without copying patches/ in that stage"
 				failures=$((failures + 1))
 			fi
 		done <<<"$joined"
@@ -161,7 +214,7 @@ while IFS= read -r dockerfile; do
 		# manifests it copies; skipping it here is how the guard would go
 		# quiet on exactly the image that needs it.
 		if printf '%s\n' "$joined" | grep -qE 'bun install[^&|]*--frozen-lockfile'; then
-			echo "FAIL: $dockerfile runs 'bun install --frozen-lockfile' but copies no workspace manifests"
+			fail "$dockerfile runs 'bun install --frozen-lockfile' but copies no workspace manifests"
 			failures=$((failures + 1))
 		fi
 		continue
@@ -178,7 +231,7 @@ while IFS= read -r dockerfile; do
 			fi
 		done <<<"$patterns"
 		if [ -z "$covered" ]; then
-			echo "FAIL: $dockerfile does not copy $manifest"
+			fail "$dockerfile does not copy $manifest"
 			failures=$((failures + 1))
 		fi
 	done
@@ -200,23 +253,24 @@ while IFS= read -r dockerfile; do
 				| cut -d: -f1
 		)
 		if [ -z "$provider_build_line" ] || [ -z "$plugin_build_line" ]; then
-			echo "FAIL: $dockerfile uses plugin-kit but does not build both provider-kit and plugin-kit"
+			fail "$dockerfile uses plugin-kit but does not build both provider-kit and plugin-kit"
 			failures=$((failures + 1))
 		elif [ "$provider_build_line" -ge "$plugin_build_line" ]; then
-			echo "FAIL: $dockerfile must build provider-kit before plugin-kit"
+			fail "$dockerfile must build provider-kit before plugin-kit"
 			failures=$((failures + 1))
 		fi
 
 		if printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/plugin-kit/dist' \
 			&& ! printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/provider-kit/dist'; then
-			echo "FAIL: $dockerfile ships plugin-kit dist without provider-kit dist"
+			fail "$dockerfile ships plugin-kit dist without provider-kit dist"
 			failures=$((failures + 1))
 		fi
 	fi
 done < <(git ls-files '*Dockerfile' '*.Dockerfile')
+dockerfile=""
 
 if [ "$checked" -eq 0 ]; then
-	echo "FAIL: no Dockerfile copies workspace manifests; the guard is not looking at anything" >&2
+	fail "no Dockerfile copies workspace manifests; the guard is not looking at anything"
 	exit 1
 fi
 
@@ -251,6 +305,7 @@ fi
 #     `COPY --parents … package.json` line above never trips this.
 #
 # Hard-0 with no baseline, like the manifest check it extends.
+step="source closure check"
 closure_failures=$(
 	node -e '
 const fs = require("node:fs");
@@ -328,26 +383,31 @@ for (const file of dockerfiles) {
 	});
 }
 '
-) || exit 1
+) || node_failed "$step" $?
 
 if [ -n "$closure_failures" ]; then
-	printf '%s\n' "$closure_failures"
-	echo ""
-	echo "An image that copies a workspace's SOURCE must also copy the source of"
-	echo "every in-repo workspace it depends on, transitively — the manifest alone"
-	echo "makes the symlink resolve and the files behind it missing."
+	reported=1
+	{
+		printf '%s\n' "$closure_failures"
+		echo ""
+		echo "An image that copies a workspace's SOURCE must also copy the source of"
+		echo "every in-repo workspace it depends on, transitively — the manifest alone"
+		echo "makes the symlink resolve and the files behind it missing."
+	} >&2
 	exit 1
 fi
 
 if [ "$failures" -gt 0 ]; then
-	echo ""
-	echo "Each image's 'COPY --parents … package.json' line must cover every"
-	echo "workspace in the root package.json 'workspaces' globs, or bun's"
-	echo "frozen-lockfile check refuses the partial workspace shape."
-	echo ""
-	echo "An image whose context holds a tsconfig.json that extends the repo base"
-	echo "must also COPY tsconfig.base.json: tsc fails with TS5083 without it, and"
-	echo "bun build compiles with none of the options the config was meant to set."
+	{
+		echo ""
+		echo "Each image's 'COPY --parents … package.json' line must cover every"
+		echo "workspace in the root package.json 'workspaces' globs, or bun's"
+		echo "frozen-lockfile check refuses the partial workspace shape."
+		echo ""
+		echo "An image whose context holds a tsconfig.json that extends the repo base"
+		echo "must also COPY tsconfig.base.json: tsc fails with TS5083 without it, and"
+		echo "bun build compiles with none of the options the config was meant to set."
+	} >&2
 	exit 1
 fi
 
