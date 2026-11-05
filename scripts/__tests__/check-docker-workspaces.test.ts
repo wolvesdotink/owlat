@@ -20,12 +20,16 @@
  * its dependency's source) and the two asymmetries that keep it quiet on the
  * real tree: a `--from=<stage>` copy satisfies a dependency without demanding
  * one, and a manifest-only copy is not a source copy.
+ *
+ * The failure-report cases pin that a failing guard always says why on
+ * stderr, including when node is missing, exits without a word, or is killed.
  */
 
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, chmod, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -45,7 +49,64 @@ afterAll(async () => {
 
 interface GuardResult {
 	readonly code: number;
+	readonly stdout: string;
+	readonly stderr: string;
+	/** Both streams together, for assertions and for failure messages. */
 	readonly output: string;
+}
+
+/** Absolute path of `name` on this process's PATH. */
+async function which(name: string): Promise<string> {
+	for (const dir of (process.env['PATH'] ?? '').split(delimiter)) {
+		if (!dir) continue;
+		const candidate = join(dir, name);
+		try {
+			await access(candidate, constants.X_OK);
+			return candidate;
+		} catch {
+			// Not in this PATH entry.
+		}
+	}
+	throw new Error(`${name} is not on PATH`);
+}
+
+/**
+ * Run the guard in `cwd` and capture its exit code and both streams, whether it
+ * passes or fails. A rejected `execFile` promise's message holds only stderr,
+ * so awaiting `run` directly would drop every stdout line from a failure report.
+ *
+ * bash is spawned by absolute path so that a PATH built for one case (one
+ * without node, say) does not also decide which shell runs the guard.
+ */
+async function captureGuard(cwd: string, env?: NodeJS.ProcessEnv): Promise<GuardResult> {
+	try {
+		const { stdout, stderr } = await run(await which('bash'), [GUARD], { cwd, env });
+		return { code: 0, stdout, stderr, output: `${stdout}${stderr}` };
+	} catch (error) {
+		const failure = error as { code?: number; stdout?: string; stderr?: string };
+		const stdout = failure.stdout ?? '';
+		const stderr = failure.stderr ?? '';
+		return { code: failure.code ?? 1, stdout, stderr, output: `${stdout}${stderr}` };
+	}
+}
+
+/** The tools the guard shells out to, apart from node. */
+const GUARD_TOOLS = ['dirname', 'git', 'sed', 'grep', 'xargs', 'tr', 'head', 'cut'];
+
+/**
+ * A bin directory inside `root` that holds only the guard's tools, plus an
+ * optional `node` script standing in for the real one. Leaving the script out
+ * gives a PATH without node.
+ */
+async function guardBin(root: string, nodeShim: string | null): Promise<string> {
+	const bin = join(root, '.bin');
+	await mkdir(bin, { recursive: true });
+	for (const tool of GUARD_TOOLS) await symlink(await which(tool), join(bin, tool));
+	if (nodeShim !== null) {
+		await writeFile(join(bin, 'node'), nodeShim, 'utf8');
+		await chmod(join(bin, 'node'), 0o755);
+	}
+	return bin;
 }
 
 /**
@@ -53,8 +114,14 @@ interface GuardResult {
  *
  * `git init` + `git add` are required because the guard enumerates images with
  * `git ls-files`, exactly as it does in this repository.
+ *
+ * With `nodeShim` set, the guard runs on a PATH from `guardBin`: the string is
+ * the `node` it finds, and `null` leaves node off the PATH.
  */
-async function runGuard(files: Record<string, string>): Promise<GuardResult> {
+async function runGuard(
+	files: Record<string, string>,
+	options: { readonly nodeShim?: string | null } = {}
+): Promise<GuardResult> {
 	const root = await mkdtemp(join(tmpdir(), 'owlat-docker-guard-'));
 	roots.push(root);
 
@@ -69,13 +136,11 @@ async function runGuard(files: Record<string, string>): Promise<GuardResult> {
 	await run('git', ['init', '--quiet'], { cwd: root });
 	await run('git', ['add', '--all'], { cwd: root });
 
-	try {
-		const { stdout, stderr } = await run('bash', [GUARD], { cwd: root });
-		return { code: 0, output: `${stdout}${stderr}` };
-	} catch (error) {
-		const failure = error as { code?: number; stdout?: string; stderr?: string };
-		return { code: failure.code ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` };
-	}
+	if (options.nodeShim === undefined) return captureGuard(root);
+	// Created after `git add`, so the bin directory never reaches the guard's
+	// `git ls-files`.
+	const bin = await guardBin(root, options.nodeShim);
+	return captureGuard(root, { ...process.env, PATH: bin });
 }
 
 /** Root manifest declaring the two workspace shapes the real repository has. */
@@ -163,7 +228,7 @@ describe('docker workspace-manifest guard', () => {
 			'docker/other.Dockerfile': flatImage(),
 		});
 
-		expect(result.output).toContain(
+		expect(result.stderr).toContain(
 			'FAIL: apps/web/Dockerfile does not copy examples/conformance/package.json'
 		);
 		expect(result.code).toBe(1);
@@ -414,10 +479,68 @@ describe('docker workspace-manifest guard', () => {
 	// The only case here that runs the guard over the REAL tree: a `git ls-files`
 	// plus a parse of every Dockerfile in the repository.
 	it('holds for the images checked into this repository', async () => {
-		const { stdout } = await run('bash', [GUARD], { cwd: REPOSITORY_ROOT });
+		const result = await captureGuard(REPOSITORY_ROOT);
 
-		expect(stdout).toMatch(
+		// The guard's whole output is the assertion message, so a failure names
+		// the image and the manifest the guard objected to.
+		expect(result.code, result.output).toBe(0);
+		expect(result.stdout).toMatch(
 			/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
 		);
+	});
+});
+
+describe('docker workspace-manifest guard failure reports', () => {
+	const IMAGES = {
+		...WORKSPACES,
+		'apps/web/Dockerfile': flatImage(),
+	};
+
+	it('writes its failures and their explanation to stderr', async () => {
+		const result = await runGuard({
+			...WORKSPACES,
+			'apps/web/Dockerfile': flatImage('apps/*/package.json'),
+		});
+
+		expect(result.stderr).toContain(
+			'FAIL: apps/web/Dockerfile does not copy examples/conformance/package.json'
+		);
+		expect(result.stderr).toContain("Each image's 'COPY --parents");
+		expect(result.stdout).toBe('');
+		expect(result.code).toBe(1);
+	});
+
+	it('names node when it is not on PATH', async () => {
+		const result = await runGuard(IMAGES, { nodeShim: null });
+
+		expect(result.stderr).toContain('FAIL: node is not on PATH');
+		expect(result.code).toBe(1);
+	});
+
+	it('names the step when node exits non-zero without a word', async () => {
+		const result = await runGuard(IMAGES, { nodeShim: '#!/bin/sh\nexit 3\n' });
+
+		expect(result.stderr).toContain('FAIL: reading the root workspaces globs: node exited 3');
+		expect(result.code).toBe(1);
+	});
+
+	it('names the step and the signal when node is killed', async () => {
+		// Only the closure script calls execSync. Every other node call reaches
+		// the real binary, so the guard gets as far as the closure check.
+		const result = await runGuard(IMAGES, {
+			nodeShim: [
+				'#!/bin/sh',
+				'case "$2" in',
+				'*execSync*) kill -KILL $$ ;;',
+				`*) exec '${process.execPath}' "$@" ;;`,
+				'esac',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.stderr).toContain(
+			'FAIL: source closure check: node exited 137 (killed by SIGKILL)'
+		);
+		expect(result.code).toBe(1);
 	});
 });
