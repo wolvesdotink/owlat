@@ -37,6 +37,7 @@ export type ShortcutScope =
 	| 'inboxList'
 	| 'workbench'
 	| 'peek'
+	| 'tasks'
 	| 'review'
 	| 'composer'
 	| 'chatComposer'

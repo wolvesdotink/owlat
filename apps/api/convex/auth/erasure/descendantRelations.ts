@@ -9,8 +9,9 @@
 import type { TableNames } from '../../_generated/dataModel';
 import { THREAD_BRIEF_MEMBER_DESCENDANTS } from './threadBriefRelations';
 import { ARRIVAL_MEMBER_DESCENDANTS } from './arrivalRelations';
+import { TASK_MEMBER_DESCENDANTS } from './taskRelations';
 
-export type MemberErasureAction = 'delete' | 'anonymize' | 'retain';
+export type MemberErasureAction = 'delete' | 'anonymize' | 'unlink' | 'retain';
 
 export interface MemberRelation {
 	table: TableNames;
@@ -458,4 +459,5 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	...THREAD_BRIEF_MEMBER_DESCENDANTS,
 	...ARRIVAL_MEMBER_DESCENDANTS,
+	...TASK_MEMBER_DESCENDANTS,
 ];

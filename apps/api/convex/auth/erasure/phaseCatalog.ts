@@ -28,6 +28,8 @@ export const MEMBER_ERASURE_PHASES = [
 	// Saved replies with their files, before the mailbox records drop legacy rows.
 	'savedReplies',
 	'mailboxRecords',
+	// Company index rows and task links of the mailbox, while its id still finds them.
+	'mailboxTaskLinks',
 	'mailboxRows',
 	'memberRecords',
 	'sharedMemberships',
@@ -47,6 +49,8 @@ export const MEMBER_ERASURE_PHASES = [
 	'threadItemAssignments',
 	'noteReactions',
 	'threadItemCorrections',
+	'tasks',
+	'memberGroups',
 ] as const;
 
 export type MemberErasurePhase = (typeof MEMBER_ERASURE_PHASES)[number];

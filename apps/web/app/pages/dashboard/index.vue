@@ -21,13 +21,19 @@ import {
 import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
 
 /**
- * The Workbench — the home screen, one tab per inbox. Each tab summarises only
- * its own inbox and answers, in this order: does anything here need me (one
- * button into the Answer queue, narrowed to this inbox), what moved in the
- * conversations I already know, what should I know (important updates, one
- * sentence each, then routine mail), and what was filed away (newsletters,
- * notifications… as counts with a few senders, never as lines). Every
- * summarised phrase links, quietly, to the email it came from.
+ * The Workbench — the home screen, one tab per inbox. Everything that arrives
+ * either tells you something or asks something of you, so each tab answers
+ * two questions side by side:
+ *
+ *   - To do: what needs an answer (one button into the Answer queue, narrowed
+ *     to this inbox), what was asked of you without needing a reply, and your
+ *     own tasks (the same on every tab: a task belongs to you, not an inbox);
+ *   - To acknowledge: what moved in the conversations you already know, what
+ *     you should know (important updates, one sentence each, then routine
+ *     mail), and what was filed away. "Got it" on a line acknowledges it; any
+ *     line can still become a task or get a reply.
+ *
+ * Every summarised phrase links, quietly, to the email it came from.
  *
  * Each tab has its own "since you last looked" watermark. It only moves on
  * purpose: "Mark as seen", finishing the Answer queue (which catches every tab
@@ -124,6 +130,8 @@ const scopedAnswer = computed(() =>
 	scope.value ? answer.items.value.filter((item) => answerItemMatches(item, scope.value!)) : []
 );
 const scopedCounts = computed(() => answerCounts(scopedAnswer.value));
+// Shares the subscription TodayMyTasks opens (same function, same args).
+const myTasks = useConvexQuery(api.tasks.tasks.list, { view: 'mine' });
 const mentions = computed(() => answer.counts.value.mention);
 const answerHref = computed(() =>
 	scope.value ? `/dashboard/answer?in=${encodeURIComponent(scope.value)}` : '/dashboard/answer'
@@ -162,6 +170,11 @@ const sinceLabel = computed(() => {
 	}).format(date);
 	return t('components.today.scope.since', { when });
 });
+
+const doCount = computed(() => scopedAnswer.value.length + (myTasks.data.value?.length ?? 0));
+const ackCount = computed(
+	() => model.value.changed.length + model.value.worth.length + model.value.also.length
+);
 
 const hasAnything = computed(
 	() =>
@@ -289,9 +302,9 @@ useWorkbenchKeyboard({
 </script>
 
 <template>
-	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10 2xl:max-w-page">
-		<!-- One reading column up to 2xl; from there the page grows to the shared
-		     page cap and the panel below splits into two columns. -->
+	<div class="mx-auto w-full max-w-4xl px-6 pb-16 pt-8 lg:px-10 xl:max-w-page">
+		<!-- One reading column up to xl; from there the page grows to the shared
+		     page cap and the lanes sit side by side. -->
 		<header v-if="!isZen">
 			<UiPageHeader>
 				<template #title>
@@ -391,14 +404,10 @@ useWorkbenchKeyboard({
 				id="workbench-panel"
 				:key="scope"
 				v-bind="isZen ? {} : { role: 'tabpanel', 'aria-labelledby': `workbench-tab-${scope}` }"
-				class="pt-6 2xl:grid 2xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-rows-[auto_1fr] 2xl:items-start 2xl:gap-x-8"
+				class="pt-6"
 			>
-				<!-- From 2xl the inbox summary and "Filed away" sit in a side column
-				     beside what needs doing (answer, what changed, updates). The DOM
-				     order stays the single-column reading order. -->
 				<TodayScopeHeader
 					v-if="!isZen"
-					class="2xl:col-start-2 2xl:row-start-1"
 					:name="scopeName"
 					:slot="inbox?.slot ?? null"
 					:address="inbox?.address ?? null"
@@ -418,50 +427,84 @@ useWorkbenchKeyboard({
 					@mark-seen="markAllSeen"
 				/>
 
-				<div class="mt-4 2xl:col-start-1 2xl:row-span-2 2xl:row-start-1 2xl:mt-0">
-					<h1 v-if="isZen" class="mb-3 text-sm font-medium text-text-secondary">{{ scopeName }}</h1>
-					<TodayAnswerCard
-						:items="scopedAnswer"
-						:counts="scopedCounts"
-						:is-loading="answer.isLoading.value"
-						:queue-href="answerHref"
-						:inbox-name="scopeName"
-					/>
-					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
+				<!-- Two lanes, one question each: what do I owe, and what should I
+				     know. Below xl they stack, "To do" first. -->
+				<div class="mt-6 xl:grid xl:grid-cols-2 xl:items-start xl:gap-x-10">
+					<section aria-labelledby="workbench-lane-do" data-workbench-lane="do">
+						<h2 id="workbench-lane-do" class="flex items-baseline gap-2">
+							<span class="text-base font-medium text-text-primary">{{
+								t('dashboard.today.lanes.do.title')
+							}}</span>
+							<span v-if="doCount > 0" class="text-sm tabular-nums text-text-tertiary">{{
+								doCount
+							}}</span>
+						</h2>
+						<p class="mb-4 mt-0.5 text-xs text-text-tertiary">
+							{{ t('dashboard.today.lanes.do.hint') }}
+						</p>
+						<h1 v-if="isZen" class="mb-3 text-sm font-medium text-text-secondary">
+							{{ scopeName }}
+						</h1>
+						<TodayAnswerCard
+							:items="scopedAnswer"
+							:counts="scopedCounts"
+							:is-loading="answer.isLoading.value"
+							:queue-href="answerHref"
+							:inbox-name="scopeName"
+						/>
+						<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
+						<TodayMyTasks v-if="!isZen" />
+					</section>
 
-					<!-- Zen keeps only what needs an answer (and says what it left out). -->
-					<TodayZenMore
-						v-if="isZen"
-						:inbox-name="scopeName"
-						:count="allLines.length"
-						@show="exitZen"
-					/>
-					<template v-else>
-						<TodayChanges
-							:changes="model.changed"
-							:hidden="model.changedHidden"
-							:more-href="moreHref"
-							@done="doneLine"
+					<section
+						aria-labelledby="workbench-lane-ack"
+						class="mt-12 xl:mt-0"
+						data-workbench-lane="acknowledge"
+					>
+						<h2 id="workbench-lane-ack" class="flex items-baseline gap-2">
+							<span class="text-base font-medium text-text-primary">{{
+								t('dashboard.today.lanes.acknowledge.title')
+							}}</span>
+							<span v-if="ackCount > 0" class="text-sm tabular-nums text-text-tertiary">{{
+								ackCount
+							}}</span>
+						</h2>
+						<p class="mt-0.5 text-xs text-text-tertiary">
+							{{ t('dashboard.today.lanes.acknowledge.hint') }}
+						</p>
+						<!-- Zen keeps only what needs an answer (and says what it left out). -->
+						<TodayZenMore
+							v-if="isZen"
+							:inbox-name="scopeName"
+							:count="allLines.length"
+							@show="exitZen"
 						/>
-						<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
-							<UiSkeleton class="h-3 w-24" />
-							<UiSkeleton class="h-24 w-full rounded-xl" />
-						</div>
-						<TodayUpdates
-							v-else
-							:model="model"
-							:more-href="moreHref"
-							@done="doneLine"
-							@reply-anyway="replyAnyway"
-						/>
-					</template>
+						<template v-else>
+							<TodayChanges
+								:changes="model.changed"
+								:hidden="model.changedHidden"
+								:more-href="moreHref"
+								@done="doneLine"
+							/>
+							<div v-if="workbench.isLoading.value && !hasAnything" class="mt-8 space-y-2">
+								<UiSkeleton class="h-3 w-24" />
+								<UiSkeleton class="h-24 w-full rounded-xl" />
+							</div>
+							<TodayUpdates
+								v-else
+								:model="model"
+								:more-href="moreHref"
+								@done="doneLine"
+								@reply-anyway="replyAnyway"
+							/>
+							<TodayFiledAway
+								v-if="!(workbench.isLoading.value && !hasAnything)"
+								:model="model"
+								:scope="scope"
+							/>
+						</template>
+					</section>
 				</div>
-				<TodayFiledAway
-					v-if="!isZen && !(workbench.isLoading.value && !hasAnything)"
-					class="2xl:col-start-2 2xl:row-start-2"
-					:model="model"
-					:scope="scope"
-				/>
 			</div>
 		</template>
 

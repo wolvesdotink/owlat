@@ -53,6 +53,20 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		groupKey: G.navigation,
 	},
 	{
+		id: 'global.goToTasks',
+		scope: 'global',
+		keys: ['g k'],
+		labelKey: L('goToTasks'),
+		groupKey: G.navigation,
+	},
+	{
+		id: 'global.goToCompanies',
+		scope: 'global',
+		keys: ['g o'],
+		labelKey: L('goToCompanies'),
+		groupKey: G.navigation,
+	},
+	{
 		id: 'global.goToContacts',
 		scope: 'global',
 		keys: ['g c'],

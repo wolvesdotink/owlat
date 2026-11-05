@@ -24,6 +24,7 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		expect(sections.map((section) => section.key)).toEqual([
 			'inbox',
 			'postbox',
+			'work',
 			'chat',
 			'assistant',
 			'send',
@@ -50,6 +51,7 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		expect(sections.map((section) => section.key)).toEqual([
 			'inbox',
 			'postbox',
+			'work',
 			'assistant',
 			'send',
 			'audience',

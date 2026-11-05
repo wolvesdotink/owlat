@@ -286,6 +286,55 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 
+	// --- Tasks page (the focused row of /dashboard/tasks) ----------------------
+	{
+		id: 'tasks.next',
+		scope: 'tasks',
+		keys: ['j'],
+		labelKey: L('nextTask'),
+		groupKey: G.tasks,
+	},
+	{
+		id: 'tasks.previous',
+		scope: 'tasks',
+		keys: ['k'],
+		labelKey: L('previousTask'),
+		groupKey: G.tasks,
+	},
+	{
+		id: 'tasks.open',
+		scope: 'tasks',
+		keys: ['Enter'],
+		labelKey: L('openTask'),
+		groupKey: G.tasks,
+		...CONVENTION,
+	},
+	{
+		id: 'tasks.toggleDone',
+		scope: 'tasks',
+		keys: ['x', 'Space'],
+		labelKey: L('toggleTaskDone'),
+		groupKey: G.tasks,
+	},
+	{
+		// Takes `c` from the app-wide compose while the Tasks page is open: here
+		// the thing to create is a task.
+		id: 'tasks.newTask',
+		scope: 'tasks',
+		keys: ['c'],
+		labelKey: L('newTask'),
+		groupKey: G.tasks,
+	},
+	{
+		// Through the shared Escape stack (useEscapeLayer), like every panel.
+		id: 'tasks.closePanel',
+		scope: 'tasks',
+		keys: ['Escape'],
+		labelKey: L('closeTask'),
+		groupKey: G.tasks,
+		...CONVENTION,
+	},
+
 	...ANSWER_SHORTCUTS,
 
 	// --- Desktop workspaces ---------------------------------------------------

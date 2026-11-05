@@ -1,0 +1,86 @@
+[
+	{
+		"title": "Prepare the counter-offer for Northwind's 40-seat plan",
+		"notes": "Two-year commitment: up to 12% off. Check whether quarterly invoicing works for finance.",
+		"visibility": "private",
+		"createdBy": "dev@example.com",
+		"due": "today",
+		"company": "northwind.example",
+		"source": "demo-dev-0001@demo.localhost"
+	},
+	{
+		"title": "Send the meetup slides",
+		"visibility": "private",
+		"createdBy": "dev@example.com",
+		"source": "demo-dev-0004@demo.localhost"
+	},
+	{
+		"title": "Book the Berlin migration call with Acme",
+		"visibility": "private",
+		"createdBy": "dev@example.com",
+		"due": "later",
+		"company": "acmecorp.example",
+		"source": "demo-dev-0003@demo.localhost"
+	},
+	{
+		"title": "Answer Northwind's security questionnaire",
+		"notes": "Elena needs it back by Friday. Data residency and backups are in the operations handbook.",
+		"visibility": "everyone",
+		"createdBy": "taylor@example.com",
+		"assignee": "dev@example.com",
+		"due": "overdue",
+		"company": "northwind.example",
+		"source": "demo-team-0004@demo.localhost"
+	},
+	{
+		"title": "Move the Northwind onboarding call to Thursday",
+		"visibility": "everyone",
+		"createdBy": "dev@example.com",
+		"assignee": "jordan@example.com",
+		"due": "today",
+		"company": "northwind.example",
+		"source": "demo-team-0001@demo.localhost"
+	},
+	{
+		"title": "Decide on the price increase for 2027",
+		"notes": "Options: 8% across the board, or keep the starter plan and raise the team plans by 12%.",
+		"visibility": "group",
+		"group": "Management",
+		"createdBy": "taylor@example.com",
+		"assignee": "dev@example.com",
+		"due": "week"
+	},
+	{
+		"title": "Approve the second support hire",
+		"visibility": "group",
+		"group": "Management",
+		"createdBy": "dev@example.com",
+		"assignee": "taylor@example.com",
+		"due": "overdue"
+	},
+	{
+		"title": "Scope CSV export for the monthly reports",
+		"visibility": "group",
+		"group": "Product",
+		"createdBy": "jordan@example.com",
+		"due": "later",
+		"company": "initech.example",
+		"source": "demo-support-0002@demo.localhost"
+	},
+	{
+		"title": "Send Omar next year's renewal terms",
+		"visibility": "private",
+		"createdBy": "taylor@example.com",
+		"due": "week",
+		"company": "northwind.example",
+		"source": "demo-taylor-0001@demo.localhost"
+	},
+	{
+		"title": "Correct the billing address on Acme invoice #2041",
+		"visibility": "everyone",
+		"createdBy": "taylor@example.com",
+		"status": "done",
+		"company": "acmecorp.example",
+		"source": "demo-team-0003@demo.localhost"
+	}
+]

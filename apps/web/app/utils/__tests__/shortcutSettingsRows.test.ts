@@ -41,6 +41,7 @@ describe('shortcut page sections', () => {
 			'review',
 			'workbench',
 			'peek',
+			'tasks',
 			'answer',
 			'answerQueue',
 			'askCard',

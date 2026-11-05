@@ -6550,7 +6550,8 @@
 					"askCard": "The AI’s questions",
 					"mailCard": "Answer queue: follow-ups",
 					"teamCard": "Answer queue: Team inbox drafts",
-					"mentionCard": "Answer queue: mentions"
+					"mentionCard": "Answer queue: mentions",
+					"tasks": "Tasks"
 				}
 			},
 			"preferencesYourData": {
@@ -7517,7 +7518,10 @@
 				"inboxes": "Inboxes",
 				"more": "More",
 				"answerCount": "one waiting for an answer | {count} waiting for an answer",
-				"inboxUnread": "{name}, {count} unread"
+				"inboxUnread": "{name}, {count} unread",
+				"tasks": "Tasks",
+				"companies": "Companies",
+				"taskCount": "one open task | {count} open tasks"
 			},
 			"marketing": {
 				"overview": "Overview",
@@ -7617,7 +7621,7 @@
 				"empty": "Nothing filed away since you last looked."
 			},
 			"line": {
-				"done": "Done",
+				"done": "Got it",
 				"replyAnyway": "Reply anyway",
 				"open": "Peek",
 				"openThread": "Open conversation"
@@ -7728,6 +7732,13 @@
 				"cancelled": "Unscheduled. It is back in Drafts.",
 				"showMore": "Show more",
 				"moreThanShown": "More is scheduled than the Workbench lists."
+			},
+			"myTasks": {
+				"title": "Your tasks",
+				"all": "All tasks",
+				"empty": "No open tasks. Make one from any conversation, or add one here.",
+				"add": "Add task",
+				"more": "{count} more task | {count} more tasks"
 			}
 		},
 		"answer": {
@@ -7923,6 +7934,126 @@
 						"failed": "Remove the file that couldn't be copied, then send."
 					}
 				}
+			}
+		},
+		"companies": {
+			"teamInbox": "Team Inbox",
+			"mailbox": "Mailbox",
+			"noSubject": "(no subject)",
+			"colleagues": {
+				"someone": "Someone on your team is also in touch with {company}. | {count} people on your team are also in touch with {company}.",
+				"one": "{first} is also in touch with {company}.",
+				"two": "{first} and {second} are also in touch with {company}.",
+				"three": "{first}, {second} and {third} are also in touch with {company}.",
+				"oneAndOthers": "{first} and one other colleague are also in touch with {company}. | {first} and {count} others are also in touch with {company}.",
+				"twoAndOthers": "{first}, {second} and one other colleague are also in touch with {company}. | {first}, {second} and {count} others are also in touch with {company}."
+			},
+			"context": {
+				"people": "People at {company}",
+				"earlier": "Earlier with {company}",
+				"peopleMore": "{names} +{count}",
+				"tasks": "Tasks",
+				"noTasks": "No tasks from this conversation yet.",
+				"loadFailed": "The company and tasks couldn't be loaded."
+			},
+			"rail": {
+				"title": "Company & tasks",
+				"show": "Show company and tasks",
+				"hide": "Hide company and tasks"
+			},
+			"tasks": {
+				"complete": "Mark “{title}” as done",
+				"reopen": "Reopen “{title}”",
+				"due": "due {date}",
+				"audience": {
+					"private": "Private",
+					"everyone": "Everyone",
+					"group": "A group"
+				}
+			}
+		},
+		"tasks": {
+			"people": {
+				"someone": "Someone"
+			},
+			"audience": {
+				"label": "Who sees this task",
+				"private": "Only me",
+				"privateChip": "Private",
+				"everyone": "Everyone",
+				"unknownGroup": "A group"
+			},
+			"assignee": {
+				"label": "Assignee: {name}",
+				"listLabel": "Members",
+				"search": "Find a member",
+				"noMatch": "No member matches.",
+				"me": "Me",
+				"you": "you",
+				"privateReason": "A task only you see stays with you."
+			},
+			"fields": {
+				"title": "Title",
+				"titlePlaceholder": "What needs doing?",
+				"notes": "Notes",
+				"notesPlaceholder": "Add details",
+				"audience": "Who sees it",
+				"assignee": "Assignee",
+				"due": "Due",
+				"company": "Company",
+				"companyPlaceholder": "e.g. northwind.example",
+				"source": "From the conversation"
+			},
+			"create": {
+				"trigger": "Make task",
+				"title": "New task",
+				"submit": "Create",
+				"created": "Task created",
+				"open": "Open"
+			},
+			"row": {
+				"complete": "Mark “{title}” done",
+				"reopen": "Reopen “{title}”",
+				"from": "from {name}",
+				"assignedTo": "Assigned to {name}",
+				"dropped": "Dropped"
+			},
+			"due": {
+				"today": "Today",
+				"tomorrow": "Tomorrow",
+				"yesterday": "Yesterday",
+				"overdue": "Overdue:"
+			},
+			"source": {
+				"fromEmail": "From email",
+				"fromTeamInbox": "From the team inbox"
+			},
+			"detail": {
+				"label": "Task",
+				"back": "Back to the list",
+				"gone": "This task is gone, or you can't see it.",
+				"createdBy": "Added by {name} on {date}",
+				"doneBy": "Done by {name} on {date}",
+				"droppedBy": "Dropped by {name} on {date}",
+				"privateReason": "Only a task you added and own yourself can be made private.",
+				"clearCompany": "Remove the company",
+				"openCompany": "Open {name}",
+				"sourceClosed": "A conversation you can't open",
+				"done": "Done",
+				"drop": "Won't do",
+				"reopen": "Reopen",
+				"restore": "Restore"
+			},
+			"toast": {
+				"done": "Task done",
+				"dropped": "Task dropped",
+				"reopened": "Task reopened",
+				"restored": "Task restored"
+			},
+			"operations": {
+				"create": "Create a task",
+				"update": "Change a task",
+				"setStatus": "Change a task's status"
 			}
 		}
 	},
@@ -10479,6 +10610,66 @@
 					"title": "Transfer ownership",
 					"transferring": "Transferring...",
 					"typeToConfirm": "Type {phrase} to confirm"
+				},
+				"groups": {
+					"title": "Groups",
+					"lede": "Show a task only to the people in a group, such as Management.",
+					"newGroup": "New group",
+					"loading": "Loading groups…",
+					"loadError": "Couldn't load the groups.",
+					"empty": {
+						"title": "No groups yet",
+						"description": "Create a group such as Management or Product, then show a task only to its members.",
+						"descriptionReadOnly": "Owners and admins can create groups, such as Management or Product.",
+						"action": "Create a group"
+					},
+					"youAreIn": "You're a member",
+					"memberCount": "No members | {count} member | {count} members",
+					"rowActions": "Actions for {name}",
+					"edit": "Edit group",
+					"delete": "Delete group",
+					"noMembers": "Nobody is in this group yet.",
+					"addMembers": "Add members",
+					"removeMember": "Remove {member} from {name}",
+					"formerMembers": "{count} former member | {count} former members",
+					"operations": {
+						"create": "Create group",
+						"rename": "Rename group",
+						"addMember": "Add group member",
+						"removeMember": "Remove group member",
+						"remove": "Delete group"
+					},
+					"toasts": {
+						"created": "Group {name} created",
+						"saved": "Group {name} saved",
+						"deleted": "Group {name} deleted",
+						"memberRemoved": "{member} removed from {name}"
+					},
+					"dialog": {
+						"createTitle": "New group",
+						"editTitle": "Edit group",
+						"namePlaceholder": "e.g. Management",
+						"nameEmpty": "A group needs a name.",
+						"nameTooLong": "A group name is at most {max} characters.",
+						"nameTaken": "There is already a group called {name}.",
+						"membersLabel": "Members",
+						"membersHelp": "A task shown to this group reaches these people, plus the task's creator and assignee.",
+						"save": "Save changes",
+						"create": "Create group"
+					},
+					"picker": {
+						"label": "Workspace members",
+						"search": "Search members",
+						"searchPlaceholder": "Search by name or email",
+						"noMatches": "Nobody matches “{query}”.",
+						"selected": "No one selected | {count} selected | {count} selected"
+					},
+					"deleteDialog": {
+						"title": "Delete {name}?",
+						"description": "The group is removed for everyone. Its members stay in the workspace.",
+						"hasTasks": "This group still has tasks. Move them to another group first.",
+						"confirm": "Delete group"
+					}
 				}
 			}
 		},
@@ -13335,12 +13526,109 @@
 				"title": "No inbox to work from yet",
 				"body": "Each inbox you read gets its own workbench here, with what needs you, what moved and what arrived. Connect a mailbox to get started.",
 				"cta": "Connect a mailbox"
+			},
+			"lanes": {
+				"do": {
+					"title": "To do",
+					"hint": "Replies, asks and your tasks."
+				},
+				"acknowledge": {
+					"title": "To acknowledge",
+					"hint": "What people told you. Nothing to do but know it."
+				}
 			}
 		},
 		"answer": {
 			"pageTitle": "Answer queue",
 			"mode": {
 				"pageTitle": "Answer mode"
+			}
+		},
+		"companies": {
+			"index": {
+				"pageTitle": "Companies",
+				"title": "Companies",
+				"subtitle": "The people you write with, grouped by the company behind their email address.",
+				"emptyTitle": "No companies yet",
+				"emptyDescription": "Companies come from the email domains of the people you talk to. Free-mail addresses like Gmail aren't grouped, and new conversations show up here within a couple of minutes.",
+				"searchPlaceholder": "Search by name or domain",
+				"searchLabel": "Search companies",
+				"noResults": "No company matches “{query}”",
+				"listLabel": "Companies",
+				"peopleCount": "one person | {count} people",
+				"conversations": "1 conversation | {count} conversations",
+				"footnote": "Free-mail addresses and your own domains aren't grouped. New conversations show up within a couple of minutes."
+			},
+			"detail": {
+				"back": "Companies",
+				"allCompanies": "All companies",
+				"emptyTitle": "Nothing with {company} yet",
+				"emptyDescription": "There's no conversation with anyone there that you can open. If one just arrived, it shows up within a couple of minutes.",
+				"lastContact": "last contact {time}",
+				"makeTask": "Make task",
+				"conversations": "Conversations",
+				"noConversations": "No conversations you can open.",
+				"openTasks": "Open tasks",
+				"noTasks": "No open tasks about this company.",
+				"people": "People",
+				"writeTo": "Write to {name}",
+				"personConversations": "1 conversation | {count} conversations"
+			}
+		},
+		"tasks": {
+			"pageTitle": "Tasks",
+			"title": "Tasks",
+			"subtitle": "What your conversations leave to do, and what you add yourself.",
+			"addedElsewhere": "Task added. It isn't in this list.",
+			"views": {
+				"mine": "Mine",
+				"everyone": "Everyone",
+				"private": "Private",
+				"created": "Handed off",
+				"done": "Done"
+			},
+			"quickAdd": {
+				"placeholder": "Add a task…",
+				"submit": "Add"
+			},
+			"dueBuckets": {
+				"overdue": "Overdue",
+				"today": "Today",
+				"thisWeek": "This week",
+				"later": "Later",
+				"none": "No date"
+			},
+			"doneBuckets": {
+				"today": "Today",
+				"yesterday": "Yesterday",
+				"thisWeek": "Earlier this week",
+				"earlier": "Earlier"
+			},
+			"empty": {
+				"mine": {
+					"title": "Nothing on your plate",
+					"body": "Tasks assigned to you show up here. Add one above, or make one from a conversation."
+				},
+				"everyone": {
+					"title": "No tasks for everyone",
+					"body": "Tasks the whole workspace can see show up here."
+				},
+				"group": {
+					"title": "Nothing for {group}",
+					"body": "Tasks shared with {group} show up here. Only its members see them."
+				},
+				"private": {
+					"title": "No private tasks",
+					"body": "Tasks only you can see show up here."
+				},
+				"created": {
+					"title": "Nothing handed off",
+					"body": "Tasks you gave to someone else show up here until they're done."
+				},
+				"done": {
+					"title": "Nothing done yet",
+					"body": "Tasks you finish show up here."
+				}
 			}
 		}
 	},
@@ -14870,7 +15158,9 @@
 				"visualizations": "Visualizations",
 				"chat": "Chat",
 				"assistant": "Assistant",
-				"knowledge": "Knowledge"
+				"knowledge": "Knowledge",
+				"companies": "Companies",
+				"tasks": "Tasks"
 			}
 		},
 		"campaignAttention": {
@@ -15210,6 +15500,10 @@
 					"templates": "Templates",
 					"transactional": "Transactional",
 					"overview": "Marketing overview"
+				},
+				"work": {
+					"tasks": "Tasks",
+					"companies": "Companies"
 				}
 			},
 			"sections": {
@@ -15220,7 +15514,8 @@
 				"customers": "Customers",
 				"inbox": "Team inbox",
 				"knowledge": "Knowledge",
-				"postbox": "Inboxes"
+				"postbox": "Inboxes",
+				"work": "Work"
 			}
 		},
 		"data": {
@@ -16688,7 +16983,8 @@
 			"automation": "Automation",
 			"campaign": "Campaign",
 			"compose": "Compose email",
-			"contact": "Contact"
+			"contact": "Contact",
+			"task": "Task"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -17269,6 +17565,10 @@
 				"brandColors": {
 					"title": "Brand colors",
 					"keywords": "brand colours, colors, colours, primary color, link color, palette, theme color"
+				},
+				"memberGroups": {
+					"title": "Member groups",
+					"keywords": "groups, member groups, management, task visibility, who sees a task, team groups"
 				}
 			}
 		},
@@ -17313,7 +17613,8 @@
 				"review": "Updates list",
 				"teamInbox": "Team inbox",
 				"workbench": "Workbench",
-				"answer": "Answer mode"
+				"answer": "Answer mode",
+				"tasks": "Tasks"
 			},
 			"labels": {
 				"addLabel": "Add label",
@@ -17409,7 +17710,15 @@
 				"clearSelection": "Clear the selection",
 				"resolveThread": "Resolve the thread",
 				"assignThread": "Assign the thread to…",
-				"chatView": "Chat layout"
+				"chatView": "Chat layout",
+				"goToTasks": "Go to tasks",
+				"goToCompanies": "Go to companies",
+				"nextTask": "Next task",
+				"previousTask": "Previous task",
+				"openTask": "Open the task",
+				"toggleTaskDone": "Mark the task done, or open again",
+				"newTask": "Add a task",
+				"closeTask": "Close the task"
 			}
 		},
 		"signatureBadge": {
@@ -18024,7 +18333,8 @@
 			"newContact": "New contact",
 			"sidebarContext": "Sidebar context",
 			"switchToInbox": "Switch to Inbox",
-			"switchToMarketing": "Switch to marketing"
+			"switchToMarketing": "Switch to marketing",
+			"newTask": "New task"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Add contacts to topic",

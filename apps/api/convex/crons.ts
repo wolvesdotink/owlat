@@ -11,6 +11,15 @@ import { registerAutomationCrons } from './automations/cronRegistration';
 
 const crons = cronJobs();
 
+// The company index trails the mail by at most this interval; its first
+// runs on an existing install are the backfill (companies/indexer.ts).
+crons.interval(
+	'index conversations by company',
+	{ minutes: 2 },
+	internal.companies.indexer.sweep,
+	{}
+);
+
 crons.interval(
 	'cleanup abandoned storage uploads',
 	{ minutes: 15 },

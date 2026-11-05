@@ -64,6 +64,7 @@ describe('useQuickCreateMenu', () => {
 			'campaign',
 			'contact',
 			'automation',
+			'task',
 		]);
 		expect(actions.value[0]?.label).toBe('shared.quickCreate.compose');
 	});
@@ -91,8 +92,13 @@ describe('useQuickCreateMenu', () => {
 
 		actions.value.find((action) => action.id === 'campaign')?.run();
 		actions.value.find((action) => action.id === 'automation')?.run();
+		actions.value.find((action) => action.id === 'task')?.run();
 
-		expect(navigations).toEqual(['/dashboard/campaigns/new', '/dashboard/automations/new']);
+		expect(navigations).toEqual([
+			'/dashboard/campaigns/new',
+			'/dashboard/automations/new',
+			'/dashboard/tasks?new=1',
+		]);
 	});
 
 	it('re-resolves when the role arrives', async () => {
@@ -100,7 +106,7 @@ describe('useQuickCreateMenu', () => {
 		// stay frozen on that fail-closed answer once membership resolves.
 		roleRef.value = null;
 		const { actions } = await menu();
-		expect(actions.value.map((action) => action.id)).toEqual(['compose', 'campaign']);
+		expect(actions.value.map((action) => action.id)).toEqual(['compose', 'campaign', 'task']);
 
 		roleRef.value = 'admin';
 		expect(actions.value.map((action) => action.id)).toContain('contact');
@@ -114,13 +120,13 @@ describe('useQuickCreateMenu', () => {
 		expect(defaultAction.value?.id).toBe('campaign');
 	});
 
-	it('has nothing at all for a member with no create rights', async () => {
+	it('leaves a task to a member with no other create rights', async () => {
 		flags = [];
 		roleRef.value = 'editor';
 		const { actions, defaultAction } = await menu();
 
-		expect(actions.value).toEqual([]);
-		expect(defaultAction.value).toBeNull();
+		expect(actions.value.map((action) => action.id)).toEqual(['task']);
+		expect(defaultAction.value?.id).toBe('task');
 	});
 
 	it('leads with Compose in Conversations and New campaign in Marketing', async () => {

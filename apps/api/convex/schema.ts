@@ -48,6 +48,8 @@ import { pluginTables } from './schema/plugins';
 import { postmasterTables } from './schema/postmaster';
 import { sndsTables } from './schema/snds';
 import { todayTables } from './schema/today';
+import { taskTables } from './schema/tasks';
+import { companyTables } from './schema/companies';
 import { counterTables } from './schema/counters';
 import { answerCatchUpTables } from './schema/answerCatchUp';
 import { migrationRunTables } from './schema/migrationRuns';
@@ -115,6 +117,8 @@ export default defineSchema({
 	...postmasterTables,
 	...sndsTables,
 	...todayTables,
+	...taskTables,
+	...companyTables,
 	...counterTables,
 	...answerCatchUpTables,
 	...migrationRunTables,

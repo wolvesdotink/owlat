@@ -24,6 +24,7 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { minRole, type NavigationEnvironment } from './dashboardNavigationCore';
 import type { SidebarContext } from './sidebarContext';
 import {
+	ListChecklistIcon,
 	MegaphoneIcon,
 	PencilIcon,
 	UserPlusCornerIcon,
@@ -31,7 +32,7 @@ import {
 	type IconComponent,
 } from '@coolicons/vue';
 
-export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation';
+export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation' | 'task';
 
 type Gate = (env: NavigationEnvironment) => boolean;
 
@@ -89,6 +90,14 @@ export const QUICK_CREATE_ENTRIES: readonly QuickCreateEntry[] = [
 		icon: ZapIcon,
 		href: '/dashboard/automations/new',
 		gate: (env) => adminOnly(env) && flag('automations')(env),
+	},
+	{
+		// Every member keeps tasks. The page opens with its quick add focused.
+		id: 'task',
+		labelKey: 'shared.quickCreate.task',
+		icon: ListChecklistIcon,
+		href: '/dashboard/tasks?new=1',
+		gate: () => true,
 	},
 ];
 
