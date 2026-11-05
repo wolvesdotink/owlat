@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The foot of a conversation opened from the conversation view: a field that
- * says whom a reply goes to, and, when the AI drafted one on arrival, a way to
+ * The foot of a conversation opened from the conversation view: what the
+ * latest message asks, a field that says whom a reply goes to, and, when the AI drafted one on arrival, a way to
  * review it. Both open the reply in Answer mode, behind the reader's reply
  * guard (`?reply=1`, usePostboxReaderReplies), where the drafted reply is
  * already in the composer, marked as the AI's, to edit before sending.
@@ -20,6 +20,17 @@ function reply() {
 </script>
 
 <template>
+	<p
+		v-if="heading?.hasReplyField && heading.ask"
+		class="mx-auto mb-2.5 max-w-4xl px-6 text-sm text-text-primary"
+	>
+		<span class="text-text-secondary">{{
+			heading.ask.author
+				? t('components.postbox.conversations.line.asks', { name: heading.ask.author })
+				: t('components.postbox.conversations.line.asked')
+		}}</span>
+		{{ heading.ask.text }}
+	</p>
 	<div v-if="heading?.hasReplyField" class="mx-auto flex max-w-4xl flex-wrap gap-2.5 px-6 pb-12">
 		<button
 			type="button"

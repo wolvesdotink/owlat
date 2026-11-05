@@ -1552,6 +1552,7 @@ import type * as mail_ai_topicTitle from '../mail/ai/topicTitle.js';
 import type * as mail_people_assemble from '../mail/people/assemble.js';
 import type * as mail_people_classify from '../mail/people/classify.js';
 import type * as mail_people_directory from '../mail/people/directory.js';
+import type * as mail_people_done from '../mail/people/done.js';
 import type * as mail_people_topicTitle from '../mail/people/topicTitle.js';
 import type * as lib_validators_topicTitle from '../lib/validators/topicTitle.js';
 import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js';
@@ -3589,6 +3590,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/people/assemble': typeof mail_people_assemble;
 	'mail/people/classify': typeof mail_people_classify;
 	'mail/people/directory': typeof mail_people_directory;
+	'mail/people/done': typeof mail_people_done;
 	'mail/people/topicTitle': typeof mail_people_topicTitle;
 	'mail/postboxOutboundAudit': typeof mail_postboxOutboundAudit;
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;

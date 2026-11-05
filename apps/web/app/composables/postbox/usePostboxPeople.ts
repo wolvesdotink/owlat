@@ -223,3 +223,76 @@ export function usePostboxOlderTopics() {
 export function olderTopicsKey(mailboxId: string, email: string): string {
 	return `${mailboxId}:${email.toLowerCase()}`;
 }
+
+/**
+ * The mailbox's live drafts, newest edit first, and the reply draft each
+ * conversation holds: one read for the pane's Drafts row and the "Draft
+ * reply" cue on a conversation.
+ */
+export function usePostboxDrafts(mailboxId: Ref<Id<'mailboxes'>>) {
+	const { data } = useConvexQuery(api.mail.drafts.listForMailbox, () => ({
+		mailboxId: mailboxId.value,
+	}));
+	const drafts = computed(() => data.value ?? []);
+	const byThread = computed(() => {
+		const map = new Map<string, (typeof drafts.value)[number]>();
+		for (const draft of drafts.value) {
+			if (draft.threadId && !map.has(draft.threadId)) map.set(draft.threadId, draft);
+		}
+		return map;
+	});
+	return { drafts, byThread };
+}
+
+/** Calls one Done or Reopen may make before it gives up on a huge conversation. */
+const DONE_CALLS_MAX = 50;
+
+/**
+ * Done and Reopen for one conversation. Done is archive underneath (every
+ * Inbox message of it, a page per call, through `threadArchive.archiveThreads`)
+ * plus the done mark (`mail/people/done.ts`), which also covers a
+ * conversation with nothing in the Inbox. Undo reopens it.
+ */
+export function usePostboxDone() {
+	const { t } = useI18n();
+	const label = () => t('components.postbox.conversations.done.action');
+	const archiveOp = useBackendOperation(api.mail.threadArchive.archiveThreads, { label });
+	const markOp = useBackendOperation(api.mail.people.done.markDone, { label });
+	const reopenOp = useBackendOperation(api.mail.people.done.reopen, {
+		label: () => t('components.postbox.conversations.done.reopen'),
+	});
+	const triageUndo = usePostboxTriageUndo();
+
+	async function reopen(threadId: Id<'mailThreads'>): Promise<boolean> {
+		for (let call = 0; call < DONE_CALLS_MAX; call++) {
+			const result = await reopenOp.run({ threadId });
+			if (!result.ok) return false;
+			if (!result.result?.hasMore) return true;
+		}
+		return true;
+	}
+
+	async function markDone(topic: PeopleTopic): Promise<boolean> {
+		const threadId = topic.id as Id<'mailThreads'>;
+		let cursor: string | null = null;
+		for (let call = 0; call < DONE_CALLS_MAX; call++) {
+			const result = await archiveOp.run({
+				threads: [{ threadId, ...(cursor ? { cursor } : {}) }],
+			});
+			if (!result.ok) return false;
+			const outcome = result.result?.threads[0];
+			if (!outcome || outcome.isDone) break;
+			cursor = outcome.cursor;
+		}
+		if (!(await markOp.run({ threadId })).ok) return false;
+		triageUndo.register({
+			label: t('components.postbox.conversations.done.marked', { title: topic.title }),
+			inverse: async () => {
+				await reopen(threadId);
+			},
+		});
+		return true;
+	}
+
+	return { markDone, reopen };
+}

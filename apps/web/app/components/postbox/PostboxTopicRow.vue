@@ -1,14 +1,18 @@
 <script setup lang="ts">
 /**
- * One current conversation on a person's or company's page: its topic, a
- * one-word cue when it may need a reply ("Reply?") or a follow-up is armed
- * ("Waiting on Lena"), and under it what is asked, with its due date, or the
- * latest words with their author.
+ * One open conversation on a person's or company's page: its topic, a cue
+ * when it may need a reply ("Reply?"), a follow-up is armed ("Waiting on
+ * Lena") or a reply is half written ("Draft reply"), its due date, and under
+ * it what is asked or the latest words with their author.
  *
  * "Reply?" keeps its question mark: it is a reading of the mail, not a fact,
- * and "No reply needed" sits right beside it to say so.
+ * and "No reply needed" sits right beside it to say so. Done (the button, or
+ * the Postbox's archive key on a focused row) finishes the conversation.
  */
 import { CheckIcon } from '@coolicons/vue';
+import type { ShortcutScope } from '~/utils/shortcutRegistry';
+import { chordFromEvent } from '~/utils/shortcutRegistry';
+import { resolveActiveChord } from '~/utils/shortcutScope';
 import {
 	authorName,
 	dueUrgency,
@@ -30,8 +34,18 @@ const props = defineProps<{
 	showParty?: boolean;
 	/** The card treatment, for the first conversation that may need a reply. */
 	isRaised?: boolean;
+	/** A reply to it is saved and unsent. */
+	hasDraft?: boolean;
 }>();
-const emit = defineEmits<{ 'no-reply': [topic: PeopleTopic] }>();
+const emit = defineEmits<{ 'no-reply': [topic: PeopleTopic]; done: [topic: PeopleTopic] }>();
+
+const ROW_SCOPES: readonly ShortcutScope[] = ['postbox'];
+function onKeydown(event: KeyboardEvent) {
+	if ((event.target as HTMLElement | null)?.closest('input, textarea')) return;
+	if (resolveActiveChord(chordFromEvent(event), ROW_SCOPES) !== 'postbox.archive') return;
+	event.preventDefault();
+	emit('done', props.topic);
+}
 
 const { t, locale } = useI18n();
 const now = usePostboxListNow();
@@ -78,6 +92,7 @@ const due = computed(() => {
 				? 'bg-bg-base shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-border-subtle'
 				: 'hover:bg-bg-surface-hover'
 		"
+		@keydown="onKeydown"
 	>
 		<PostboxPeopleAvatar
 			v-if="showParty && party"
@@ -106,6 +121,19 @@ const due = computed(() => {
 					class="flex-shrink-0 text-xs font-semibold text-info"
 					>{{ t('components.postbox.conversations.cue.waiting', { name: waitingOn }) }}</span
 				>
+				<span
+					v-if="hasDraft"
+					class="flex-shrink-0 rounded bg-bg-soft px-1.5 text-[0.6875rem] font-semibold text-text-secondary"
+					>{{ t('components.postbox.conversations.cue.draft') }}</span
+				>
+				<span
+					v-if="due"
+					class="flex-shrink-0 rounded-md px-1.5 text-xs font-semibold"
+					:class="
+						due.urgency === 'due' ? 'bg-brand text-text-inverse' : 'bg-brand-soft text-brand-muted'
+					"
+					>{{ t('components.postbox.conversations.line.due', { date: due.label }) }}</span
+				>
 				<span class="flex-shrink-0 text-xs tabular-nums text-text-tertiary">{{
 					stamp(topic.lastMessageAt)
 				}}</span>
@@ -117,14 +145,6 @@ const due = computed(() => {
 						: t('components.postbox.conversations.line.asked')
 				}}</span>
 				{{ saying.text }}
-				<span
-					v-if="due"
-					class="ml-1 inline-block rounded-md px-1.5 text-xs font-semibold"
-					:class="
-						due.urgency === 'due' ? 'bg-brand text-text-inverse' : 'bg-brand-soft text-brand-muted'
-					"
-					>{{ t('components.postbox.conversations.line.due', { date: due.label }) }}</span
-				>
 			</p>
 			<p v-else class="mt-1 truncate text-[0.8125rem] text-text-secondary">
 				<span class="font-semibold text-text-primary">{{ saying.line.author ?? you }}:</span>
@@ -139,8 +159,18 @@ const due = computed(() => {
 			class="relative z-10 hidden h-7 flex-shrink-0 items-center gap-1 self-center rounded-md px-2 text-xs font-medium text-text-secondary hover:bg-bg-surface hover:text-text-primary max-lg:!hidden focus-visible:flex group-focus-within:flex group-hover:flex"
 			@click="emit('no-reply', topic)"
 		>
-			<CheckIcon class="h-3.5 w-3.5" />
 			{{ t('components.postbox.conversations.cue.noReply') }}
 		</button>
+		<UiTooltip :text="t('components.postbox.conversations.done.help')">
+			<template #shortcut><UiShortcut id="postbox.archive" /></template>
+			<button
+				type="button"
+				class="relative z-10 hidden h-7 flex-shrink-0 items-center gap-1 self-center rounded-md px-2 text-xs font-medium text-text-secondary hover:bg-bg-surface hover:text-text-primary max-lg:!hidden focus-visible:flex group-focus-within:flex group-hover:flex"
+				@click="emit('done', topic)"
+			>
+				<CheckIcon class="h-3.5 w-3.5" />
+				{{ t('components.postbox.conversations.done.action') }}
+			</button>
+		</UiTooltip>
 	</div>
 </template>

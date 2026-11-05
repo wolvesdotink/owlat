@@ -6399,21 +6399,16 @@
 					"new": "New",
 					"people": "People",
 					"updates": "Updates",
-					"drafts": "Drafts",
-					"views": "Views",
 					"search": "Search people and mail",
-					"sent": "Sent",
-					"archive": "Archive",
-					"folders": "All folders",
 					"traditional": "Use the traditional layout",
 					"showMembers": "Show the people at {name}",
 					"hideMembers": "Hide the people at {name}",
 					"error": "The conversations didn't load.",
 					"retry": "Try again",
-					"emptyTitle": "No conversations yet",
-					"emptyHint": "When you write with someone, they show up here.",
+					"emptyTitle": "No open conversations",
+					"emptyHint": "Done conversations are a search away.",
 					"noMatch": "Nothing matches",
-					"noMatchHint": "Press Enter to search all mail."
+					"backToConversations": "Conversations"
 				},
 				"greeting": {
 					"hello": "Hi",
@@ -6427,14 +6422,15 @@
 					"team": "Team",
 					"asks": "{name} asks:",
 					"asked": "Asked:",
-					"due": "By {date}"
+					"due": "Due {date}"
 				},
 				"cue": {
 					"reply": "Reply?",
 					"waiting": "Waiting on {name}",
 					"noReply": "No reply needed",
 					"noReplyUndone": "Reply needed again",
-					"markedNoReply": "No reply needed: {title}"
+					"markedNoReply": "No reply needed: {title}",
+					"draft": "Draft reply"
 				},
 				"page": {
 					"company": "Company",
@@ -6446,16 +6442,16 @@
 						"reply": "Reply?",
 						"waiting": "Waiting"
 					},
-					"current": "Current",
-					"earlier": "Earlier",
-					"noneCurrent": "No current conversations.",
 					"noneReply": "Nothing here may need a reply.",
 					"noneWaiting": "Nothing is waiting on them.",
 					"showMore": "Show more",
-					"olderMail": "Show older mail",
+					"olderMail": "Show older conversations",
 					"updatesFrom": "Updates from {name}",
 					"gone": "This one isn't in your recent mail.",
-					"pickUpdate": "Choose an update to read it."
+					"pickUpdate": "Choose an update to read it.",
+					"open": "Open",
+					"done": "Done",
+					"noneOpen": "Nothing open with {name}."
 				},
 				"reply": {
 					"to": "Reply to {name}…",
@@ -6477,6 +6473,31 @@
 					"fromCompany": "From {name} only",
 					"showAll": "Show all",
 					"empty": "No updates."
+				},
+				"done": {
+					"action": "Done",
+					"help": "Moves this conversation to Archive. New replies bring it back.",
+					"label": "Done",
+					"marked": "Done: {title}",
+					"muted": "Muted",
+					"reopen": "Reopen",
+					"reopenHelp": "This conversation is done. Reopen brings it back to your open list."
+				},
+				"drafts": {
+					"title": "Drafts",
+					"noRecipient": "No recipient yet",
+					"noSubject": "No subject",
+					"scheduled": "Scheduled"
+				},
+				"search": {
+					"label": "Look through",
+					"recent": "Recent matches",
+					"all": "Search all mail for “{query}”",
+					"done": "Done",
+					"sent": "Sent",
+					"drafts": "Drafts",
+					"trash": "Trash",
+					"spam": "Spam"
 				}
 			},
 			"classicInbox": {

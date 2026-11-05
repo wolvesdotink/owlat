@@ -1,41 +1,31 @@
 <script setup lang="ts">
 /**
  * The top of the conversation pane: which mailbox this is (its menu switches
- * mailboxes and holds what the folder rail used to: Sent, Archive, every
- * folder, the traditional layout), New, a greeting that names who may need a
- * reply, the People · Updates · Drafts tabs and the search field.
+ * mailboxes and offers the traditional layout), New, a greeting that names
+ * who may need a reply, and search.
+ *
+ * There are no folders here. Search stands in for them: focused and empty,
+ * it offers what other mail clients file away (done, sent, drafts, trash,
+ * spam) as one-click searches, so nobody has to know an operator.
  *
  * The greeting only speaks when someone is waiting: at most two names, each a
  * link to that person's conversations that may need a reply.
  */
 import type { Id } from '@owlat/api/dataModel';
-import {
-	ArchiveIcon,
-	ChevronDownIcon,
-	FoldersIcon,
-	ColumnsIcon,
-	MailIcon,
-	PaperPlaneIcon,
-	SearchIcon,
-	UsersIcon,
-} from '@coolicons/vue';
+import { ChevronDownIcon, ColumnsIcon, MailIcon, SearchIcon, UsersIcon } from '@coolicons/vue';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
 	mailboxAddress: string | null;
-	view: 'people' | 'updates';
-	updatesUnread: number;
 	/** Who may need a reply, most recent first, each with the link to their open asks. */
 	waiting: ReadonlyArray<{ key: string; name: string; href: string }>;
 	/** Prefills New with whoever is open. */
 	newTo: string | null;
-	peopleHref: string;
-	updatesHref: string;
 }>();
 const query = defineModel<string>('query', { required: true });
-const emit = defineEmits<{ 'open-folders': []; 'search-down': [event: KeyboardEvent] }>();
+const emit = defineEmits<{ 'search-down': [event: KeyboardEvent] }>();
 
 const { t } = useI18n();
 const { user } = useAuth();
@@ -61,6 +51,27 @@ const firstName = computed(() => user.value?.name?.trim().split(/\s+/)[0] ?? '')
 const named = computed(() => props.waiting.slice(0, 2));
 const others = computed(() => Math.max(0, props.waiting.length - named.value.length));
 
+const searchHref = (q: string) => `/dashboard/postbox/search?q=${encodeURIComponent(q)}`;
+// What a folder bar would list, as searches. "Done" is the Archive: a
+// conversation you started and marked done has nothing there, and is found
+// by its words or its person instead.
+const shortcuts = computed(() =>
+	(
+		[
+			['done', 'in:archive'],
+			['sent', 'in:sent'],
+			['drafts', 'in:drafts'],
+			['trash', 'in:trash'],
+			['spam', 'in:spam'],
+		] as const
+	).map(([id, q]) => ({
+		id,
+		label: t(`components.postbox.conversations.search.${id}`),
+		href: searchHref(q),
+	}))
+);
+const isSearchFocused = ref(false);
+
 const searchEl = ref<HTMLInputElement | null>(null);
 function onWindowKeydown(event: KeyboardEvent) {
 	if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -73,18 +84,16 @@ function onWindowKeydown(event: KeyboardEvent) {
 // oxlint-disable-next-line owlat/no-raw-keydown-listener -- `/` focuses this pane's own search field, which only exists while the conversation view is on screen
 onMounted(() => window.addEventListener('keydown', onWindowKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
-const searchAllHref = computed(
-	() => `/dashboard/postbox/search?q=${encodeURIComponent(query.value.trim())}`
-);
 function onSearchKeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && query.value.trim()) {
 		event.preventDefault();
-		void navigateTo(searchAllHref.value);
+		void navigateTo(searchHref(query.value.trim()));
 	} else if (event.key === 'ArrowDown') {
 		emit('search-down', event);
-	} else if (event.key === 'Escape' && query.value) {
+	} else if (event.key === 'Escape') {
 		event.preventDefault();
-		query.value = '';
+		if (query.value) query.value = '';
+		else searchEl.value?.blur();
 	}
 }
 </script>
@@ -96,7 +105,7 @@ function onSearchKeydown(event: KeyboardEvent) {
 				<template #trigger>
 					<button
 						type="button"
-						class="-ml-1.5 flex min-h-9 max-w-full items-baseline gap-1.5 rounded-lg px-1.5 text-left hover:bg-bg-surface"
+						class="-ml-1.5 flex min-h-9 max-w-full items-center gap-1.5 rounded-lg px-1.5 text-left hover:bg-bg-surface"
 						:aria-label="t('components.postbox.conversations.pane.mailboxMenu')"
 					>
 						<span class="truncate text-[0.9375rem] font-semibold text-text-primary">
@@ -108,7 +117,7 @@ function onSearchKeydown(event: KeyboardEvent) {
 						>
 							{{ mailboxAddress }}
 						</span>
-						<ChevronDownIcon class="h-3 w-3 flex-shrink-0 self-center text-text-tertiary" />
+						<ChevronDownIcon class="h-3 w-3 flex-shrink-0 text-text-tertiary" />
 					</button>
 				</template>
 				<template v-if="mailboxes.length > 1">
@@ -129,33 +138,20 @@ function onSearchKeydown(event: KeyboardEvent) {
 					</UiDropdownMenuItem>
 					<UiDropdownDivider />
 				</template>
-				<UiDropdownMenuItem :icon="PaperPlaneIcon" @click="navigateTo('/dashboard/postbox/sent')">
-					{{ t('components.postbox.conversations.pane.sent') }}
-				</UiDropdownMenuItem>
-				<UiDropdownMenuItem :icon="ArchiveIcon" @click="navigateTo('/dashboard/postbox/archive')">
-					{{ t('components.postbox.conversations.pane.archive') }}
-				</UiDropdownMenuItem>
-				<UiDropdownMenuItem :icon="FoldersIcon" @click="emit('open-folders')">
-					{{ t('components.postbox.conversations.pane.folders') }}
-				</UiDropdownMenuItem>
-				<UiDropdownDivider />
 				<UiDropdownMenuItem :icon="ColumnsIcon" @click="setClassicInbox(true)">
 					{{ t('components.postbox.conversations.pane.traditional') }}
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 			<button
 				type="button"
-				class="flex-shrink-0 rounded-lg bg-brand px-3 py-1.5 text-[0.8125rem] font-semibold text-text-inverse hover:bg-brand-hover"
+				class="flex-shrink-0 rounded-lg bg-brand px-3 py-1.5 text-[0.8125rem] font-semibold text-text-inverse hover:bg-brand-hover max-lg:py-2.5"
 				@click="startNew"
 			>
 				{{ t('components.postbox.conversations.pane.new') }}
 			</button>
 		</div>
 
-		<p
-			v-if="view === 'people' && named.length > 0"
-			class="text-[0.8125rem] leading-snug text-text-secondary"
-		>
+		<p v-if="named.length > 0" class="text-[0.8125rem] leading-snug text-text-secondary">
 			<i18n-t
 				:keypath="
 					others > 0
@@ -182,58 +178,40 @@ function onSearchKeydown(event: KeyboardEvent) {
 			</i18n-t>
 		</p>
 
-		<nav
-			class="grid grid-cols-3 gap-0.5 rounded-lg bg-bg-soft p-[3px]"
-			:aria-label="t('components.postbox.conversations.pane.views')"
-		>
-			<NuxtLink
-				:to="peopleHref"
-				class="rounded-md py-1 text-center text-[0.8125rem] max-lg:py-2.5"
-				:class="
-					view === 'people'
-						? 'bg-bg-base font-semibold text-text-primary shadow-sm'
-						: 'font-medium text-text-secondary hover:text-text-primary'
-				"
-				:aria-current="view === 'people' ? 'page' : undefined"
-				>{{ t('components.postbox.conversations.pane.people') }}</NuxtLink
+		<div @focusin="isSearchFocused = true" @focusout="isSearchFocused = false">
+			<label class="input input-sm flex items-center gap-2">
+				<SearchIcon class="h-3.5 w-3.5 flex-shrink-0 text-text-tertiary" />
+				<input
+					ref="searchEl"
+					v-model="query"
+					type="search"
+					class="input-bare min-w-0 flex-1 text-[0.8125rem]"
+					:placeholder="t('components.postbox.conversations.pane.search')"
+					:aria-label="t('components.postbox.conversations.pane.search')"
+					@keydown="onSearchKeydown"
+				/>
+				<kbd
+					v-if="!query"
+					class="rounded border border-border-default px-1 font-sans text-[0.6875rem] text-text-tertiary max-lg:hidden"
+					>/</kbd
+				>
+			</label>
+			<!-- Folders as searches, one each. mousedown keeps the
+			     field focused, so the row does not vanish under the click. -->
+			<nav
+				v-if="isSearchFocused && !query"
+				class="mt-2 flex flex-wrap gap-1.5"
+				:aria-label="t('components.postbox.conversations.search.label')"
+				@mousedown.prevent
 			>
-			<NuxtLink
-				:to="updatesHref"
-				class="rounded-md py-1 text-center text-[0.8125rem] max-lg:py-2.5"
-				:class="
-					view === 'updates'
-						? 'bg-bg-base font-semibold text-text-primary shadow-sm'
-						: 'font-medium text-text-secondary hover:text-text-primary'
-				"
-				:aria-current="view === 'updates' ? 'page' : undefined"
-				>{{ t('components.postbox.conversations.pane.updates')
-				}}<span v-if="updatesUnread > 0" class="ml-1 text-[0.6875rem] text-brand-muted">{{
-					updatesUnread > 99 ? '99+' : updatesUnread
-				}}</span></NuxtLink
-			>
-			<NuxtLink
-				to="/dashboard/postbox/drafts"
-				class="rounded-md py-1 text-center text-[0.8125rem] max-lg:py-2.5 font-medium text-text-secondary hover:text-text-primary"
-				>{{ t('components.postbox.conversations.pane.drafts') }}</NuxtLink
-			>
-		</nav>
-
-		<label class="input input-sm flex items-center gap-2">
-			<SearchIcon class="h-3.5 w-3.5 flex-shrink-0 text-text-tertiary" />
-			<input
-				ref="searchEl"
-				v-model="query"
-				type="search"
-				class="input-bare min-w-0 flex-1 text-[0.8125rem]"
-				:placeholder="t('components.postbox.conversations.pane.search')"
-				:aria-label="t('components.postbox.conversations.pane.search')"
-				@keydown="onSearchKeydown"
-			/>
-			<kbd
-				v-if="!query"
-				class="rounded border border-border-default px-1 font-sans text-[0.6875rem] text-text-tertiary max-lg:hidden"
-				>/</kbd
-			>
-		</label>
+				<NuxtLink
+					v-for="shortcut in shortcuts"
+					:key="shortcut.id"
+					:to="shortcut.href"
+					class="rounded-full bg-bg-soft px-2.5 py-1 text-xs font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary max-lg:py-2"
+					>{{ shortcut.label }}</NuxtLink
+				>
+			</nav>
+		</div>
 	</header>
 </template>

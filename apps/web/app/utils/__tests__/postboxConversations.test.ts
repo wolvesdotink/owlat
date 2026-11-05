@@ -217,18 +217,42 @@ describe('paneRows', () => {
 		expect(rows.some((row) => row.key === 'priya@raman.example')).toBe(false);
 	});
 
-	it('gives the people of an archived group conversation their rows back', () => {
+	it('drops whoever has nothing open, and search still finds them, done', () => {
 		const index = fixture();
 		const meetup = index.topics.get('meetup')!;
-		const archived = indexDirectory({
+		const done = indexDirectory({
 			...index.directory,
 			topics: index.directory.topics.map((t) =>
-				t === meetup ? { ...t, isCurrent: false, isArchived: true } : t
+				t === meetup ? { ...t, isCurrent: false, isDone: true } : t
 			),
 		});
-		const keys = paneRows(archived).map((row) => `${row.kind}:${row.key}`);
-		expect(keys).toContain('person:priya@raman.example');
+		const keys = paneRows(done).map((row) => `${row.kind}:${row.key}`);
 		expect(keys).not.toContain('group:meetup');
+		expect(keys).not.toContain('person:priya@raman.example');
+		const found = paneRows(done, 'priya');
+		expect(found.map((row) => [row.key, row.isDone])).toEqual([['priya@raman.example', true]]);
+	});
+
+	it('leads a row with its newest open conversation, not the newest of all', () => {
+		const index = fixture();
+		const leadsWithLake = indexDirectory({
+			...index.directory,
+			topics: [
+				...index.directory.topics,
+				topic('newer-done', {
+					partyKeys: ['jonas@gmail.com'],
+					latestFromKey: 'jonas@gmail.com',
+					snippet: 'All sorted, thanks.',
+					lastMessageAt: NOW,
+					isCurrent: false,
+				}),
+			],
+			people: index.directory.people.map((p) =>
+				p.key === 'jonas@gmail.com' ? { ...p, topicIds: ['newer-done', ...p.topicIds] } : p
+			),
+		});
+		const jonas = paneRows(leadsWithLake).find((row) => row.key === 'jonas@gmail.com');
+		expect(jonas?.line?.text).toBe('Saturday works for me.');
 	});
 
 	it('finds a company by one of its people and a group by a member', () => {

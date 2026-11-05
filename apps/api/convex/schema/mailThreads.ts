@@ -291,6 +291,13 @@ export const mailThreadsTables = {
 		// model run in flight, so a view that keeps asking schedules it once.
 		topicTitle: v.optional(topicTitleValidator),
 		topicTitlePendingAt: v.optional(v.number()),
+		// Marked done in the conversation view (`mail/people/done.ts`). A
+		// conversation is done while this is at or after `lastMessageAt`, so any
+		// newer message reopens it without anyone clearing the stamp. It marks
+		// conversations with no Inbox copy to archive (one you started), and
+		// records who settled a shared one.
+		doneAt: v.optional(v.number()),
+		doneBy: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

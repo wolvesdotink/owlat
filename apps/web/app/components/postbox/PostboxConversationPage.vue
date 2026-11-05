@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * A person's or a company's page: who it is, then what you are talking about.
- * Current conversations (newest first; the first one that may need a reply is
- * raised as a card), narrowed by All · Reply? · Waiting, then the Earlier
+ * Open conversations (newest first; the first one that may need a reply is
+ * raised as a card), narrowed by All · Reply? · Waiting, then the Done
  * ones. A company page can be narrowed to one of its people or departments,
  * and links to the company's Updates.
  */
@@ -29,8 +29,10 @@ const props = defineProps<{
 	pageHref: (target: PeopleSelection, narrow?: { focus?: Focus; member?: string | null }) => string;
 	updatesHref: (from?: string | null) => string;
 	topicHref: (topic: PeopleTopic) => string;
+	/** Conversations with a reply saved and unsent. */
+	draftThreadIds: ReadonlySet<string>;
 }>();
-const emit = defineEmits<{ 'no-reply': [topic: PeopleTopic] }>();
+const emit = defineEmits<{ 'no-reply': [topic: PeopleTopic]; done: [topic: PeopleTopic] }>();
 
 const { t } = useI18n();
 
@@ -226,7 +228,7 @@ defineExpose({ focusHeading: () => headingEl.value?.focus() });
 		<h2
 			class="mb-1.5 mt-6 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-text-tertiary"
 		>
-			{{ t('components.postbox.conversations.page.current') }}
+			{{ t('components.postbox.conversations.page.open') }}
 		</h2>
 		<div v-if="conversations.current.length > 0" class="flex flex-col gap-0.5">
 			<PostboxTopicRow
@@ -238,7 +240,9 @@ defineExpose({ focusHeading: () => headingEl.value?.focus() });
 				:is-shared="isShared"
 				:show-party="isCompanyPage"
 				:is-raised="topic.id === raisedId"
+				:has-draft="draftThreadIds.has(topic.id)"
 				@no-reply="emit('no-reply', $event)"
+				@done="emit('done', $event)"
 			/>
 		</div>
 		<p v-else class="py-2 text-sm text-text-tertiary">
@@ -247,7 +251,7 @@ defineExpose({ focusHeading: () => headingEl.value?.focus() });
 					? t('components.postbox.conversations.page.noneReply')
 					: focus === 'waiting'
 						? t('components.postbox.conversations.page.noneWaiting')
-						: t('components.postbox.conversations.page.noneCurrent')
+						: t('components.postbox.conversations.page.noneOpen', { name })
 			}}
 		</p>
 

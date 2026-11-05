@@ -26,6 +26,8 @@ const props = defineProps<{
 	line: TopicLine | null;
 	isSelected: boolean;
 	isShared: boolean;
+	/** Nothing open: a search result, labelled so. */
+	isDone?: boolean;
 	/** A member row, indented under its company. */
 	isNested?: boolean;
 	/** A company row's disclosure; absent on every other row. */
@@ -93,6 +95,9 @@ const author = computed(() =>
 						:class="[isUnread ? 'font-bold' : 'font-medium', disclosure ? 'pl-5' : '']"
 					>
 						{{ name }}<span v-if="more" class="font-normal text-text-tertiary"> +{{ more }}</span>
+					</span>
+					<span v-if="isDone" class="flex-shrink-0 text-xs font-medium text-text-tertiary">
+						{{ t('components.postbox.conversations.done.label') }}
 					</span>
 					<span class="flex-shrink-0 text-xs tabular-nums text-text-tertiary">
 						{{ stamp(lastAt) }}

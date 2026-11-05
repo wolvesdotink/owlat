@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * A page's Earlier conversations (archived or muted, and older mail past the
- * directory's window): one quiet line each,
+ * A page's Done conversations (archived, muted or marked done, and older mail
+ * past the directory's window): one quiet line each,
  * topic and date. "Show more" first unfolds what the directory already holds,
  * then, for a person, reaches back through their older mail a page at a time
  * (`mail/people/directory.ts earlierTopics`). What it loaded is kept per
@@ -103,7 +103,7 @@ const date = (at: number) =>
 <template>
 	<section v-if="all.length > 0 || canReachBack">
 		<h2 class="mb-1 mt-9 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-text-tertiary">
-			{{ t('components.postbox.conversations.page.earlier') }}
+			{{ t('components.postbox.conversations.page.done') }}
 		</h2>
 		<ul>
 			<li v-for="topic in shown" :key="topic.id" data-topic-card>
@@ -112,6 +112,9 @@ const date = (at: number) =>
 					class="-mx-2 flex items-baseline gap-3 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
 				>
 					<span class="min-w-0 flex-1 truncate">{{ topic.title }}</span>
+					<span v-if="topic.isMuted" class="flex-shrink-0 text-xs text-text-tertiary">{{
+						t('components.postbox.conversations.done.muted')
+					}}</span>
 					<span class="flex-shrink-0 text-xs tabular-nums text-text-tertiary">{{
 						date(topic.lastMessageAt)
 					}}</span>

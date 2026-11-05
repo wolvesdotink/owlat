@@ -44,6 +44,8 @@ export type PaneRow =
 			lastAt: number;
 			isUnread: boolean;
 			line: TopicLine | null;
+			/** Nothing open: found by search only. */
+			isDone: boolean;
 	  }
 	| {
 			kind: 'company';
@@ -53,6 +55,8 @@ export type PaneRow =
 			isUnread: boolean;
 			line: TopicLine | null;
 			members: MemberRow[];
+			/** Nothing open: found by search only. */
+			isDone: boolean;
 	  }
 	| {
 			kind: 'group';
@@ -63,7 +67,20 @@ export type PaneRow =
 			lastAt: number;
 			isUnread: boolean;
 			line: TopicLine | null;
+			/** Nothing open: found by search only. */
+			isDone: boolean;
 	  };
+
+/** An unsent draft as the pane lists it (`mail.drafts.listForMailbox`). */
+export interface PaneDraft {
+	_id: string;
+	threadId?: string;
+	toAddresses: string[];
+	subject: string;
+	lastEditedAt: number;
+	state: 'draft' | 'pending_send' | 'scheduled';
+	inReplyToMessageId?: string;
+}
 
 export function firstName(name: string): string {
 	return name.trim().split(/\s+/)[0] ?? name;
@@ -156,21 +173,32 @@ function topicsOf(index: DirectoryIndex, ids: readonly string[]): PeopleTopic[] 
 	return ids.map((id) => index.topics.get(id)).filter((t): t is PeopleTopic => !!t);
 }
 
-/** The pane's rows, newest activity first, narrowed by `query` when there is one. */
+/**
+ * The pane's rows, newest open activity first: who you have something open
+ * with. A search reaches everyone the directory holds, done ones included,
+ * each led by its newest open conversation where it has one.
+ */
 export function paneRows(index: DirectoryIndex, query = ''): PaneRow[] {
 	const terms = searchTerms(query);
+	const isSearching = terms.length > 0;
 	const matches = (...texts: string[]) => {
-		if (terms.length === 0) return true;
+		if (!isSearching) return true;
 		const haystack = normalize(texts.join(' '));
 		return terms.every((term) => haystack.includes(term));
 	};
-	// A current group conversation has a row of its own; once archived or muted
-	// it counts for its people again, so they stay reachable with their Earlier.
+	// An open group conversation has a row of its own; once done it counts for
+	// its people again, so search finds it under them.
 	const conversational = (ids: readonly string[]) =>
 		topicsOf(index, ids).filter(
 			(t) => !isUpdateTopic(index, t) && !(t.isCurrent && isGroupTopic(index, t))
 		);
 	const titles = (topics: readonly PeopleTopic[]) => topics.map((t) => t.title);
+	/** What a row leads with, or null when it has no place in the list. */
+	const leadOf = (own: readonly PeopleTopic[]) => {
+		const open = own.filter((t) => t.isCurrent);
+		const lead = newest(open) ?? (isSearching ? newest(own) : undefined);
+		return lead ? { lead, open, isDone: open.length === 0 } : null;
+	};
 
 	const rows: PaneRow[] = [];
 	const nested = new Set<string>();
@@ -180,72 +208,78 @@ export function paneRows(index: DirectoryIndex, query = ''): PaneRow[] {
 		const members: MemberRow[] = [];
 		const all: PeopleTopic[] = [];
 		const memberTexts: string[] = [];
-		for (const key of company.personKeys) {
-			const person = index.people.get(key);
-			if (!person) continue;
-			nested.add(key);
-			const own = conversational(person.topicIds);
-			const lead = newest(own) ?? newest(topicsOf(index, person.topicIds));
-			if (!lead) continue;
+		const owners: Array<{
+			kind: MemberRow['kind'];
+			key: string;
+			name: string;
+			email: string;
+			ids: readonly string[];
+			logoUrl?: string;
+		}> = [
+			...company.personKeys.flatMap((key) => {
+				const p = index.people.get(key);
+				return p
+					? [{ kind: 'person' as const, key, name: p.name, email: p.email, ids: p.topicIds }]
+					: [];
+			}),
+			...departmentsOf(index, company).map((a) => ({
+				kind: 'account' as const,
+				key: a.key,
+				name: a.name,
+				email: a.email,
+				ids: a.topicIds,
+				...(a.logoUrl ? { logoUrl: a.logoUrl } : {}),
+			})),
+		];
+		for (const owner of owners) {
+			if (owner.kind === 'person') nested.add(owner.key);
+			const own = conversational(owner.ids);
 			all.push(...own);
-			memberTexts.push(person.name, person.email, ...titles(own));
+			memberTexts.push(owner.name, owner.email, ...titles(own));
+			const led = leadOf(own);
+			if (!led) continue;
 			members.push({
-				kind: 'person',
-				key,
-				name: person.name,
-				lastAt: lead.lastMessageAt,
-				isUnread: own.some((t) => t.unreadCount > 0),
-				line: topicLine(index, lead),
+				kind: owner.kind,
+				key: owner.key,
+				name: owner.name,
+				...(owner.logoUrl ? { logoUrl: owner.logoUrl } : {}),
+				lastAt: led.lead.lastMessageAt,
+				isUnread: led.open.some((t) => t.unreadCount > 0),
+				line: topicLine(index, led.lead),
 			});
 		}
-		for (const account of departmentsOf(index, company)) {
-			const own = conversational(account.topicIds);
-			const lead = newest(own);
-			if (!lead) continue;
-			all.push(...own);
-			memberTexts.push(account.name, account.email, ...titles(own));
-			members.push({
-				kind: 'account',
-				key: account.key,
-				name: account.name,
-				...(account.logoUrl ? { logoUrl: account.logoUrl } : {}),
-				lastAt: lead.lastMessageAt,
-				isUnread: own.some((t) => t.unreadCount > 0),
-				line: topicLine(index, lead),
-			});
-		}
-		const lead = newest(all);
-		if (!lead || !matches(company.name, company.domain ?? '', ...memberTexts)) continue;
+		const led = leadOf(all);
+		if (!led || !matches(company.name, company.domain ?? '', ...memberTexts)) continue;
 		members.sort((a, b) => b.lastAt - a.lastAt);
 		rows.push({
 			kind: 'company',
 			key: company.key,
 			company,
-			lastAt: lead.lastMessageAt,
-			isUnread: all.some((t) => t.unreadCount > 0),
-			line: topicLine(index, lead),
+			lastAt: led.lead.lastMessageAt,
+			isUnread: led.open.some((t) => t.unreadCount > 0),
+			line: topicLine(index, led.lead),
 			members,
+			isDone: led.isDone,
 		});
 	}
 
 	for (const person of index.directory.people) {
 		if (nested.has(person.key)) continue;
 		const own = conversational(person.topicIds);
-		const lead = newest(own);
 		const company = person.companyKey ? index.companies.get(person.companyKey) : undefined;
-		if (!lead || !matches(person.name, person.email, company?.name ?? '', ...titles(own))) continue;
+		const led = leadOf(own);
+		if (!led || !matches(person.name, person.email, company?.name ?? '', ...titles(own))) continue;
 		rows.push({
 			kind: 'person',
 			key: person.key,
 			person,
-			lastAt: lead.lastMessageAt,
-			isUnread: own.some((t) => t.unreadCount > 0),
-			line: topicLine(index, lead),
+			lastAt: led.lead.lastMessageAt,
+			isUnread: led.open.some((t) => t.unreadCount > 0),
+			line: topicLine(index, led.lead),
+			isDone: led.isDone,
 		});
 	}
 
-	// A group stays in the list while it is current; an archived one lives on
-	// its people's pages, under Earlier.
 	for (const topic of index.directory.topics) {
 		if (!topic.isCurrent || !isGroupTopic(index, topic)) continue;
 		const members = topic.partyKeys
@@ -263,10 +297,12 @@ export function paneRows(index: DirectoryIndex, query = ''): PaneRow[] {
 			lastAt: topic.lastMessageAt,
 			isUnread: topic.unreadCount > 0,
 			line: topicLine(index, topic),
+			isDone: false,
 		});
 	}
 
-	return rows.sort((a, b) => b.lastAt - a.lastAt);
+	// Searching, what is open comes first.
+	return rows.sort((a, b) => Number(a.isDone) - Number(b.isDone) || b.lastAt - a.lastAt);
 }
 
 /** "Priya, Jonas +1": the first two people of a group by first name, then how many more. */

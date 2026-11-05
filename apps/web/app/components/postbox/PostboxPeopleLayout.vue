@@ -5,11 +5,11 @@
  * layout is on (`usePostboxClassicInbox`); the page picks this layout or
  * PostboxLayout.
  *
- *   pane → the mailbox, who may need a reply, and the people (or Updates)
+ *   pane → the mailbox, who may need a reply, drafts, Updates and the people
  *   main → a person's or company's page, or the open conversation
  *
- * The folder rail is folded away (the pane's mailbox menu opens it), so a
- * conversation gets the room. Where you are lives in the URL (`?person=`,
+ * There are no folders: a conversation is open or done (archive underneath,
+ * `usePostboxDone`), and search finds everything else. Where you are lives in the URL (`?person=`,
  * `?company=`, `?view=updates`, `?focus=`), so Back, a reload and a shared
  * link land where they should. Below `lg` the pane, the page and the
  * conversation drill in one at a time.
@@ -21,6 +21,8 @@ import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import {
 	olderTopicsKey,
 	usePostboxOlderTopics,
+	usePostboxDone,
+	usePostboxDrafts,
 	usePostboxPeopleDirectory,
 	usePostboxPeopleRoute,
 	usePostboxTopicTitleRequests,
@@ -29,6 +31,7 @@ import {
 	authorName,
 	isUpdateTopic,
 	pageConversations,
+	rowSaying,
 	paneRows,
 	updateTopics,
 } from '~/utils/postboxConversations';
@@ -43,7 +46,7 @@ const props = defineProps<{
 	activeMessageId?: string | null;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const mailboxIdRef = providePostboxListMailbox(computed(() => props.mailboxId));
 usePostboxCommandSurface(mailboxIdRef, {
 	folderRole: computed(() => 'inbox'),
@@ -135,6 +138,9 @@ const restoreOp = useBackendOperation(api.mail.needsReplyRestore.restore, {
 	label: () => t('components.postbox.conversations.cue.noReplyUndone'),
 });
 const triageUndo = usePostboxTriageUndo();
+const { markDone, reopen } = usePostboxDone();
+const { drafts, byThread: draftsByThread } = usePostboxDrafts(mailboxIdRef);
+const draftThreadIds = computed(() => new Set(draftsByThread.value.keys()));
 async function markNoReply(topic: PeopleTopic) {
 	const threadId = topic.id as Id<'mailThreads'>;
 	if (!(await clearOp.run({ threadId })).ok) return;
@@ -163,6 +169,17 @@ provide(
 				await resetOp.run({ threadId });
 			},
 			...(topic.turn === 'you' ? { noReply: () => markNoReply(topic) } : {}),
+			done: async () => {
+				await markDone(topic);
+			},
+			reopen: async () => {
+				await reopen(threadId);
+			},
+			isDone: !topic.isCurrent,
+			...(() => {
+				const saying = rowSaying(index.value, topic, locale.value.startsWith('de') ? 'de' : 'en');
+				return saying.kind === 'ask' ? { ask: { author: saying.author, text: saying.text } } : {};
+			})(),
 			...(isUpdateTopic(index.value, topic)
 				? {}
 				: { hasReplyField: true, ...(to ? { replyTo: authorName(index.value, to) } : {}) }),
@@ -190,7 +207,7 @@ watch(
 		}
 		setDynamicBreadcrumbs([
 			// The trail translates its labels: a message key, where there is one.
-			{ label: 'components.postbox.conversations.pane.inbox', href: '/dashboard/postbox/inbox' },
+			{ label: 'components.postbox.conversations.pane.label', href: '/dashboard/postbox/inbox' },
 			...(isPlaced
 				? [
 						props.activeMessageId
@@ -219,16 +236,6 @@ const activeRead = usePostboxActiveMessageRead({
 	listRows: () => [],
 });
 
-const foldersOpen = ref(false);
-const route = useRoute();
-watch(
-	() => route.fullPath,
-	() => {
-		foldersOpen.value = false;
-	},
-	{ flush: 'post' }
-);
-
 // Below lg one pane at a time: the list until a page or a conversation is open.
 const isDetailOpen = computed(() => !!place.value.selection || !!props.activeMessageId);
 
@@ -254,13 +261,6 @@ watch(
 
 <template>
 	<div class="flex w-full min-w-0">
-		<PostboxFolderDrawer
-			v-model:open="foldersOpen"
-			:mailbox-id="mailboxId"
-			folder-role="inbox"
-			zen
-		/>
-
 		<div
 			class="w-full min-w-0 flex-shrink-0 border-r border-border-subtle lg:flex lg:w-[21.5rem]"
 			:class="isDetailOpen ? 'hidden' : 'flex'"
@@ -273,9 +273,9 @@ watch(
 				:page-href="pageHref"
 				:updates-href="updatesHref"
 				:topic-href="hrefFromPane"
+				:drafts="drafts"
 				:is-loading="isLoading"
 				:error="error"
-				@open-folders="foldersOpen = true"
 				@retry="refetch"
 			/>
 		</div>
@@ -341,7 +341,9 @@ watch(
 						:page-href="pageHref"
 						:updates-href="updatesHref"
 						:topic-href="hrefForTopic"
+						:draft-thread-ids="draftThreadIds"
 						@no-reply="markNoReply"
+						@done="markDone"
 					/>
 					<p
 						v-else-if="index && !isLoading"

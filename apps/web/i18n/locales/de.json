@@ -6398,22 +6398,17 @@
 					"inbox": "Posteingang",
 					"new": "Neu",
 					"people": "Personen",
-					"updates": "Updates",
-					"drafts": "Entwürfe",
-					"views": "Ansichten",
+					"updates": "Mitteilungen",
 					"search": "Personen und Mails suchen",
-					"sent": "Gesendet",
-					"archive": "Archiv",
-					"folders": "Alle Ordner",
 					"traditional": "Klassisches Layout verwenden",
 					"showMembers": "Personen bei {name} zeigen",
 					"hideMembers": "Personen bei {name} ausblenden",
 					"error": "Die Unterhaltungen konnten nicht geladen werden.",
 					"retry": "Erneut versuchen",
-					"emptyTitle": "Noch keine Unterhaltungen",
-					"emptyHint": "Sobald du mit jemandem schreibst, erscheint die Person hier.",
+					"emptyTitle": "Keine offenen Unterhaltungen",
+					"emptyHint": "Erledigte Unterhaltungen findest du über die Suche.",
 					"noMatch": "Keine Treffer",
-					"noMatchHint": "Drück Enter, um alle Mails zu durchsuchen."
+					"backToConversations": "Unterhaltungen"
 				},
 				"greeting": {
 					"hello": "Hallo",
@@ -6427,14 +6422,15 @@
 					"team": "Team",
 					"asks": "{name} fragt:",
 					"asked": "Gefragt:",
-					"due": "Bis {date}"
+					"due": "Fällig {date}"
 				},
 				"cue": {
 					"reply": "Antworten?",
 					"waiting": "Wartet auf {name}",
 					"noReply": "Keine Antwort nötig",
 					"noReplyUndone": "Antwort wieder nötig",
-					"markedNoReply": "Keine Antwort nötig: {title}"
+					"markedNoReply": "Keine Antwort nötig: {title}",
+					"draft": "Antwortentwurf"
 				},
 				"page": {
 					"company": "Firma",
@@ -6446,16 +6442,16 @@
 						"reply": "Antworten?",
 						"waiting": "Wartend"
 					},
-					"current": "Aktuell",
-					"earlier": "Früher",
-					"noneCurrent": "Keine aktuellen Unterhaltungen.",
 					"noneReply": "Hier wartet nichts auf eine Antwort.",
 					"noneWaiting": "Hier wartest du auf nichts.",
 					"showMore": "Mehr zeigen",
-					"olderMail": "Ältere Mails zeigen",
+					"olderMail": "Ältere Unterhaltungen zeigen",
 					"updatesFrom": "Updates von {name}",
 					"gone": "Das ist nicht in deinen neueren Mails.",
-					"pickUpdate": "Wähl ein Update aus, um es zu lesen."
+					"pickUpdate": "Wähl ein Update aus, um es zu lesen.",
+					"open": "Offen",
+					"done": "Erledigt",
+					"noneOpen": "Mit {name} ist nichts offen."
 				},
 				"reply": {
 					"to": "Antwort an {name} …",
@@ -6477,6 +6473,31 @@
 					"fromCompany": "Nur von {name}",
 					"showAll": "Alle zeigen",
 					"empty": "Keine Updates."
+				},
+				"done": {
+					"action": "Erledigt",
+					"help": "Verschiebt diese Unterhaltung ins Archiv. Neue Antworten bringen sie zurück.",
+					"label": "Erledigt",
+					"marked": "Erledigt: {title}",
+					"muted": "Stumm",
+					"reopen": "Wieder öffnen",
+					"reopenHelp": "Diese Unterhaltung ist erledigt. Wieder öffnen holt sie zurück in deine offene Liste."
+				},
+				"drafts": {
+					"title": "Entwürfe",
+					"noRecipient": "Noch kein Empfänger",
+					"noSubject": "Kein Betreff",
+					"scheduled": "Geplant"
+				},
+				"search": {
+					"label": "Durchsuchen",
+					"recent": "Neueste Treffer",
+					"all": "Alle E-Mails nach „{query}“ durchsuchen",
+					"done": "Erledigt",
+					"sent": "Gesendet",
+					"drafts": "Entwürfe",
+					"trash": "Papierkorb",
+					"spam": "Spam"
 				}
 			},
 			"classicInbox": {

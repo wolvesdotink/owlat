@@ -232,12 +232,25 @@ export function topicTurn(input: TurnInput): TopicTurn {
 }
 
 /**
- * Current: neither archived nor muted. Archiving or muting is the owner saying
- * a conversation is done here; nothing leaves Current by age, since an
- * unanswered request does not stop mattering because it waited.
+ * Marked done and nothing has arrived or been sent since: a newer message
+ * reopens the conversation without anyone clearing the stamp.
  */
-export function isCurrentTopic(input: { isArchived: boolean; isMuted: boolean }): boolean {
-	return !input.isArchived && !input.isMuted;
+export function isMarkedDone(doneAt: number | undefined, lastMessageAt: number): boolean {
+	return doneAt !== undefined && doneAt >= lastMessageAt;
+}
+
+/**
+ * Open: not archived, not muted and not marked done since its latest message.
+ * Each is the owner saying a conversation is finished for now; nothing leaves
+ * the open list by age, since an unanswered request does not stop mattering
+ * because it waited.
+ */
+export function isCurrentTopic(input: {
+	isArchived: boolean;
+	isMuted: boolean;
+	isDone?: boolean;
+}): boolean {
+	return !input.isArchived && !input.isMuted && input.isDone !== true;
 }
 
 /** Archived: in Archive and no longer in the Inbox. */

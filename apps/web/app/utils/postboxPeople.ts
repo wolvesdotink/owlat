@@ -87,6 +87,15 @@ export interface TopicHeading {
 	reset: () => Promise<void>;
 	/** "No reply needed", while the conversation's turn is the mailbox's. */
 	noReply?: () => Promise<void>;
+	/**
+	 * Done (archive underneath) and its way back. The conversation view names
+	 * the reader's Archive this way; `isDone` swaps it for Reopen.
+	 */
+	done?: () => Promise<void>;
+	reopen?: () => Promise<void>;
+	isDone?: boolean;
+	/** What the latest message asks, shown above the reply field. */
+	ask?: { author: string | null; text: string };
 	/** The reply field at the conversation's foot: not under machine mail. */
 	hasReplyField?: boolean;
 	/** Whom that field addresses, by first name. */

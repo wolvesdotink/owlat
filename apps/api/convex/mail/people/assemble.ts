@@ -43,6 +43,8 @@ export interface ThreadInput {
 	isPinned: boolean;
 	isMuted: boolean;
 	isArchived: boolean;
+	/** Marked done in the conversation view since its latest message. */
+	isDone?: boolean;
 	isOwedByUs: boolean;
 	/** The model read the flag as a request; a heuristic flag only may be one. */
 	isAskDetected: boolean;
@@ -95,6 +97,8 @@ export interface DirectoryTopic {
 	isPinned: boolean;
 	isMuted: boolean;
 	isArchived: boolean;
+	/** Marked done since its latest message (as well as, or instead of, archived). */
+	isDone: boolean;
 	category?: MailCategory;
 	/** Every other party's key (a person's or a company account's address). */
 	partyKeys: string[];
@@ -239,6 +243,7 @@ export function assembleDirectory(input: {
 			isPinned: thread.isPinned,
 			isMuted: thread.isMuted,
 			isArchived: thread.isArchived,
+			isDone: thread.isDone === true,
 			...(thread.category ? { category: thread.category } : {}),
 			partyKeys,
 			// A dismissed request is gone from every surface (text, date, company

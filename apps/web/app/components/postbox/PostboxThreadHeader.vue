@@ -3,7 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadMenu from './PostboxThreadMenu.vue';
-import { ArchiveIcon, CheckIcon, PencilIcon, ReplyIcon } from '@coolicons/vue';
+import { ArchiveIcon, UndoIcon, CheckIcon, PencilIcon, ReplyIcon } from '@coolicons/vue';
 import { POSTBOX_TOPIC_HEADING } from '~/utils/postboxPeople';
 
 /**
@@ -262,7 +262,35 @@ const subjectParts = computed(() => {
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
 				</UiButton>
 			</UiTooltip>
-			<UiTooltip :text="t('postbox.reader.header.archive')">
+			<!-- The conversation view says Done for its archive, and Reopen once done. -->
+			<UiTooltip
+				v-if="heading?.isDone && heading.reopen"
+				:text="t('components.postbox.conversations.done.reopenHelp')"
+			>
+				<UiButton variant="secondary" size="sm" class="flex-shrink-0" @click="heading.reopen()">
+					<UndoIcon class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{
+						t('components.postbox.conversations.done.reopen')
+					}}</span>
+				</UiButton>
+			</UiTooltip>
+			<UiTooltip v-else-if="heading?.done" :text="t('components.postbox.conversations.done.help')">
+				<template #shortcut><UiShortcut id="postbox.archive" /></template>
+				<UiButton
+					variant="secondary"
+					size="sm"
+					class="flex-shrink-0"
+					:aria-keyshortcuts="ariaFor('postbox.archive')"
+					data-testid="thread-header-done"
+					@click="heading.done()"
+				>
+					<CheckIcon class="w-4 h-4" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{
+						t('components.postbox.conversations.done.action')
+					}}</span>
+				</UiButton>
+			</UiTooltip>
+			<UiTooltip v-else :text="t('postbox.reader.header.archive')">
 				<template #shortcut><UiShortcut id="postbox.archive" /></template>
 				<UiButton
 					variant="ghost"

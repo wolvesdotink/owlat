@@ -9,6 +9,7 @@ import {
 	counterpartsOf,
 	isArchivedThread,
 	isCurrentTopic,
+	isMarkedDone,
 	isOutOfView,
 	isRoleAddress,
 	nameFromAddress,
@@ -176,6 +177,13 @@ describe('isCurrentTopic', () => {
 		expect(isCurrentTopic({ isArchived: false, isMuted: false })).toBe(true);
 		expect(isCurrentTopic({ isArchived: true, isMuted: false })).toBe(false);
 		expect(isCurrentTopic({ isArchived: false, isMuted: true })).toBe(false);
+		expect(isCurrentTopic({ isArchived: false, isMuted: false, isDone: true })).toBe(false);
+	});
+
+	it('keeps a conversation done until a newer message arrives', () => {
+		expect(isMarkedDone(undefined, 100)).toBe(false);
+		expect(isMarkedDone(100, 100)).toBe(true);
+		expect(isMarkedDone(100, 101)).toBe(false);
 	});
 });
 

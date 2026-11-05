@@ -26,7 +26,7 @@ import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { mailboxScope } from '../mailbox/shared';
 import { assembleDirectory, type AddressInput, type ThreadInput } from './assemble';
 import { isTitleShown } from './topicTitle';
-import { counterpartsOf, isArchivedThread, isOutOfView } from './classify';
+import { counterpartsOf, isArchivedThread, isMarkedDone, isOutOfView } from './classify';
 
 /** How many of the newest threads the directory folds. */
 export const DIRECTORY_SCAN = 300;
@@ -66,6 +66,7 @@ async function threadInput(
 		isPinned: thread.pinnedAt !== undefined,
 		isMuted: isThreadMuted(thread),
 		isArchived: isArchivedThread(thread.folderRoles),
+		isDone: isMarkedDone(thread.doneAt, thread.lastMessageAt),
 		isOwedByUs: thread.needsReply !== undefined,
 		isAskDetected: thread.needsReply?.source === 'llm',
 		isDismissed:

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 /**
- * The conversation view's pane: the mailbox header, then either the people
- * you write with (newest activity first; a company holds its people and
- * departments under a chevron, a group conversation is a row of its own) or
- * the Updates feed. Search narrows by name, address, company and topic; `/`
- * focuses it, and j/k or the arrows walk the rows.
+ * The conversation view's pane: the mailbox header, unsent drafts, Updates,
+ * then the people you have something open with (newest first; a company
+ * holds its people and departments under a chevron, a group conversation is
+ * a row of its own). Done conversations leave the list; search finds them,
+ * labelled, and Enter searches all mail. Updates opens as a feed in the same
+ * pane. `/` focuses the search, and j/k or the arrows walk the rows.
  */
 import type { Id } from '@owlat/api/dataModel';
+import { ChevronLeftIcon, SearchIcon } from '@coolicons/vue';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import type { ShortcutScope } from '~/utils/shortcutRegistry';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
@@ -18,6 +20,7 @@ import {
 	updateTopics,
 	type DirectoryIndex,
 	type Focus,
+	type PaneDraft,
 	type PaneRow,
 } from '~/utils/postboxConversations';
 import type { PeopleSelection, PeopleTopic } from '~/utils/postboxPeople';
@@ -32,10 +35,11 @@ const props = defineProps<{
 	pageHref: (target: PeopleSelection, narrow?: { focus?: Focus; member?: string | null }) => string;
 	updatesHref: (from?: string | null) => string;
 	topicHref: (topic: PeopleTopic) => string;
+	drafts: readonly PaneDraft[];
 	isLoading: boolean;
 	error: Error | null;
 }>();
-const emit = defineEmits<{ 'open-folders': []; retry: [] }>();
+const emit = defineEmits<{ retry: [] }>();
 
 const { t } = useI18n();
 const query = ref('');
@@ -54,9 +58,22 @@ const waiting = computed(() =>
 			}))
 		: []
 );
-const updatesUnread = computed(() =>
-	props.index ? updateTopics(props.index).filter((x) => x.unreadCount > 0).length : 0
+const updates = computed(() => (props.index ? updateTopics(props.index) : []));
+const updatesUnread = computed(() => updates.value.filter((x) => x.unreadCount > 0).length);
+const latestUpdate = computed(() => updates.value[0]);
+const latestUpdateSender = computed(() => {
+	const topic = latestUpdate.value;
+	return topic
+		? props.index?.accounts.get(topic.latestFromKey ?? topic.partyKeys[0] ?? '')
+		: undefined;
+});
+const searchAllHref = computed(
+	() => `/dashboard/postbox/search?q=${encodeURIComponent(query.value.trim())}`
 );
+function nameOf(address: string): string {
+	const key = address.toLowerCase();
+	return props.index?.people.get(key)?.name ?? props.index?.accounts.get(key)?.name ?? address;
+}
 const newTo = computed(() => {
 	const selection = props.place.selection;
 	return selection?.kind === 'person'
@@ -110,13 +127,8 @@ function walk(event: KeyboardEvent, from: 'list' | 'search') {
 			v-model:query="query"
 			:mailbox-id="mailboxId"
 			:mailbox-address="index?.directory.mailboxAddress ?? null"
-			:view="place.view"
-			:updates-unread="updatesUnread"
 			:waiting="waiting"
 			:new-to="newTo"
-			:people-href="'/dashboard/postbox/inbox'"
-			:updates-href="updatesHref()"
-			@open-folders="emit('open-folders')"
 			@search-down="walk($event, 'search')"
 		/>
 
@@ -133,17 +145,76 @@ function walk(event: KeyboardEvent, from: 'list' | 'search') {
 				<UiSkeletonRow v-for="n in 8" :key="n" avatar avatar-size="h-9 w-9" :lines="2" trailing />
 			</div>
 
-			<PostboxUpdatesList
-				v-else-if="index && place.view === 'updates'"
-				:index="index"
-				:query="query"
-				:from="place.from"
-				:active-topic-id="activeTopicId"
-				:updates-href="updatesHref"
-				:href-for="topicHref"
-			/>
+			<template v-else-if="index && place.view === 'updates'">
+				<NuxtLink
+					to="/dashboard/postbox/inbox"
+					class="mx-4 mb-1 inline-flex min-h-8 items-center gap-1 text-[0.8125rem] text-text-tertiary hover:text-text-primary"
+				>
+					<ChevronLeftIcon class="h-3.5 w-3.5" />
+					{{ t('components.postbox.conversations.pane.backToConversations') }}
+				</NuxtLink>
+				<h2 class="px-4 text-lg font-semibold text-text-primary">
+					{{ t('components.postbox.conversations.pane.updates') }}
+				</h2>
+				<PostboxUpdatesList
+					:index="index"
+					:query="query"
+					:from="place.from"
+					:active-topic-id="activeTopicId"
+					:updates-href="updatesHref"
+					:href-for="topicHref"
+				/>
+			</template>
 
 			<template v-else-if="index">
+				<template v-if="!isSearching">
+					<PostboxPaneDrafts :mailbox-id="mailboxId" :drafts="drafts" :name-of="nameOf" />
+					<NuxtLink
+						:to="updatesHref()"
+						data-pane-row
+						class="flex min-h-14 items-center gap-3 px-4 py-2.5 hover:bg-bg-surface-hover"
+					>
+						<PostboxPeopleAvatar
+							kind="company"
+							:name="latestUpdateSender?.name ?? t('components.postbox.conversations.pane.updates')"
+							:logo-url="latestUpdateSender?.logoUrl"
+							is-automated
+							:sender-kind="latestUpdateSender?.kind ?? 'notification'"
+						/>
+						<span class="min-w-0 flex-1">
+							<span class="flex items-baseline gap-2">
+								<span
+									class="flex-1 text-[0.9375rem] text-text-primary"
+									:class="updatesUnread > 0 ? 'font-bold' : 'font-medium'"
+									>{{ t('components.postbox.conversations.pane.updates')
+									}}<span
+										v-if="updatesUnread > 0"
+										class="ml-1.5 text-xs font-semibold text-brand-muted"
+										>{{ updatesUnread }}</span
+									></span
+								>
+							</span>
+							<span class="mt-0.5 block truncate text-[0.8125rem] text-text-secondary">
+								<template v-if="latestUpdate"
+									><span class="font-semibold"
+										>{{ latestUpdateSender?.name ?? latestUpdate.title }}:</span
+									>
+									{{ latestUpdate.title }}</template
+								>
+								<template v-else>{{
+									t('components.postbox.conversations.updates.empty')
+								}}</template>
+							</span>
+						</span>
+					</NuxtLink>
+					<div class="mx-4 my-1 border-t border-border-subtle" />
+				</template>
+				<h3
+					v-else
+					class="px-4 pb-1 pt-2 text-[0.6875rem] font-bold uppercase tracking-[0.09em] text-text-tertiary"
+				>
+					{{ t('components.postbox.conversations.search.recent') }}
+				</h3>
 				<template v-for="row in rows" :key="`${row.kind}:${row.key}`">
 					<PostboxPaneRow
 						v-if="row.kind === 'person'"
@@ -155,6 +226,7 @@ function walk(event: KeyboardEvent, from: 'list' | 'search') {
 						:line="row.line"
 						:is-selected="isSelected('person', row.key)"
 						:is-shared="isShared"
+						:is-done="row.isDone"
 					/>
 					<template v-else-if="row.kind === 'company'">
 						<PostboxPaneRow
@@ -170,6 +242,7 @@ function walk(event: KeyboardEvent, from: 'list' | 'search') {
 							:line="row.line"
 							:is-selected="isSelected('company', row.key)"
 							:is-shared="isShared"
+							:is-done="row.isDone"
 							:disclosure="isExpanded(row) ? 'open' : 'closed'"
 							@toggle="toggle(row.key, isExpanded(row))"
 						/>
@@ -222,20 +295,21 @@ function walk(event: KeyboardEvent, from: 'list' | 'search') {
 					/>
 				</template>
 
-				<div v-if="rows.length === 0" class="px-6 py-14 text-center">
+				<NuxtLink
+					v-if="isSearching"
+					:to="searchAllHref"
+					data-pane-row
+					class="mx-2 mt-1 flex min-h-11 items-center gap-2 rounded-lg px-2 text-[0.8125rem] font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
+				>
+					<SearchIcon class="h-3.5 w-3.5" />
+					{{ t('components.postbox.conversations.search.all', { query: query.trim() }) }}
+				</NuxtLink>
+				<div v-else-if="rows.length === 0" class="px-6 py-12 text-center">
 					<p class="text-sm font-medium text-text-primary">
-						{{
-							isSearching
-								? t('components.postbox.conversations.pane.noMatch')
-								: t('components.postbox.conversations.pane.emptyTitle')
-						}}
+						{{ t('components.postbox.conversations.pane.emptyTitle') }}
 					</p>
 					<p class="mt-1 text-[0.8125rem] text-text-tertiary">
-						{{
-							isSearching
-								? t('components.postbox.conversations.pane.noMatchHint')
-								: t('components.postbox.conversations.pane.emptyHint')
-						}}
+						{{ t('components.postbox.conversations.pane.emptyHint') }}
 					</p>
 				</div>
 			</template>
