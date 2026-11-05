@@ -246,17 +246,23 @@ watch(
 			<div v-else class="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
 				<div>
 					<label :for="titleId" class="sr-only">{{ t('components.tasks.fields.title') }}</label>
-					<input
-						:id="titleId"
-						v-model="titleDraft"
-						type="text"
-						maxlength="300"
-						class="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-base font-medium text-text-primary hover:border-border-subtle focus:border-border-default focus:outline-none"
-						:class="task.status !== 'open' ? 'text-text-tertiary line-through' : ''"
-						data-testid="task-detail-title"
-						@blur="saveTitle"
-						@keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
-					/>
+					<!-- The title edits in place; the wrapper draws its field only on
+					     hover and focus, so it reads as a heading until then. -->
+					<div
+						class="rounded-md border border-transparent px-1 py-0.5 hover:border-border-subtle focus-within:border-border-default"
+					>
+						<input
+							:id="titleId"
+							v-model="titleDraft"
+							type="text"
+							maxlength="300"
+							class="input-bare w-full text-base font-medium text-text-primary"
+							:class="task.status !== 'open' ? 'text-text-tertiary line-through' : ''"
+							data-testid="task-detail-title"
+							@blur="saveTitle"
+							@keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+						/>
+					</div>
 					<p class="mt-1 px-1 text-xs text-text-tertiary">{{ createdLine }}</p>
 					<p v-if="statusLine" class="mt-0.5 px-1 text-xs text-text-tertiary">{{ statusLine }}</p>
 				</div>

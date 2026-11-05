@@ -293,7 +293,7 @@ registerShortcut({ id: 'tasks.newTask', handler: focusQuickAdd });
 					type="text"
 					maxlength="300"
 					autocomplete="off"
-					class="min-w-0 flex-1 bg-transparent py-1 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none"
+					class="input-bare min-w-0 flex-1 py-1 text-sm text-text-primary placeholder:text-text-tertiary"
 					:placeholder="t('dashboard.tasks.quickAdd.placeholder')"
 					data-testid="task-quick-add-title"
 				/>
