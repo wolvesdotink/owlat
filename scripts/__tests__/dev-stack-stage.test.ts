@@ -21,7 +21,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolveDevStackConfig } from '../dev-stack/config';
 import { resolveConvexTarget, selfHostedCliEnv } from '../dev-stack/convexTarget';
 import { syncStage } from '../dev-stack/stage';
-import { composeEnvEntries, devStackPaths, loadOrCreateSecrets } from '../dev-stack/state';
+import {
+	composeEnvEntries,
+	deploymentSecretEnv,
+	devStackPaths,
+	loadOrCreateSecrets,
+	webSecretEnv,
+} from '../dev-stack/state';
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -143,6 +149,13 @@ describe('secrets', () => {
 			OWLAT_DEV_CONVEX_SITE_URL: 'http://127.0.0.1:3218',
 			OWLAT_DEV_INSTANCE_SECRET: '1',
 			OWLAT_DEV_REDIS_PASSWORD: '3',
+		});
+	});
+
+	it('gives the web server the INSTANCE_SECRET the deployment checks', () => {
+		const secrets = { instanceSecret: '1', betterAuthSecret: '2', redisPassword: '3' };
+		expect(webSecretEnv(secrets)).toEqual({
+			INSTANCE_SECRET: deploymentSecretEnv(secrets)['INSTANCE_SECRET'],
 		});
 	});
 });

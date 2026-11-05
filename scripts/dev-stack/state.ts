@@ -126,3 +126,14 @@ export function deploymentSecretEnv(secrets: DevStackSecrets): Record<string, st
 		OWLAT_DEV_MODE: 'true',
 	};
 }
+
+/**
+ * Secrets the Nuxt server needs. Its upload and updater-facing routes sign
+ * their calls to the deployment with INSTANCE_SECRET, so the value must be the
+ * one deploymentSecretEnv() gives the deployment. It is merged over the
+ * process environment, which also keeps an INSTANCE_SECRET from the repo's
+ * .env files (Nuxt loads them without overriding) out of the web server.
+ */
+export function webSecretEnv(secrets: DevStackSecrets): Record<string, string> {
+	return { INSTANCE_SECRET: secrets.instanceSecret };
+}
