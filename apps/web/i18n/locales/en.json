@@ -5113,6 +5113,7 @@
 				"connectSeedOperation": "Connect test mailbox",
 				"connectShared": "Connect team inbox",
 				"connectSharedOperation": "Connect team inbox",
+				"discoverOperation": "Look up the mail servers for this address",
 				"emailPlaceholder": "you{'@'}example.com",
 				"failed": "failed",
 				"google": {

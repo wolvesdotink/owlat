@@ -5113,6 +5113,7 @@
 				"connectSeedOperation": "Testpostfach verbinden",
 				"connectShared": "Team-Postfach verbinden",
 				"connectSharedOperation": "Team-Postfach verbinden",
+				"discoverOperation": "Mailserver für diese Adresse suchen",
 				"emailPlaceholder": "du{'@'}beispiel.de",
 				"failed": "fehlgeschlagen",
 				"google": {

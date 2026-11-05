@@ -1410,6 +1410,8 @@ import type * as mail_external_accounts from '../mail/external/accounts.js';
 import type * as mail_external_accountsActions from '../mail/external/accountsActions.js';
 import type * as mail_external_accountsSeed from '../mail/external/accountsSeed.js';
 import type * as mail_external_accountTeardown from '../mail/external/accountTeardown.js';
+import type * as mail_external_autodiscover from '../mail/external/autodiscover.js';
+import type * as mail_external_autodiscoverActions from '../mail/external/autodiscoverActions.js';
 import type * as mail_external_connectMailbox from '../mail/external/connectMailbox.js';
 import type * as mail_external_delivery from '../mail/external/delivery.js';
 import type * as mail_external_rawUploadHttp from '../mail/external/rawUploadHttp.js';
@@ -3439,6 +3441,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/accountsActions': typeof mail_external_accountsActions;
 	'mail/external/accountsSeed': typeof mail_external_accountsSeed;
 	'mail/external/accountTeardown': typeof mail_external_accountTeardown;
+	'mail/external/autodiscover': typeof mail_external_autodiscover;
+	'mail/external/autodiscoverActions': typeof mail_external_autodiscoverActions;
 	'mail/external/connectMailbox': typeof mail_external_connectMailbox;
 	'mail/external/delivery': typeof mail_external_delivery;
 	'mail/external/rawUploadHttp': typeof mail_external_rawUploadHttp;
