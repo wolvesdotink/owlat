@@ -1,6 +1,6 @@
 {
-	"release": "v0.6.19",
-	"commit": "656db5ce2d235554924686c1876135961e0601c3",
+	"release": "v0.6.20",
+	"commit": "7adba1acca290fe18a4ea8fa55c358026dc3bb4e",
 	"tables": {
 		"accessRequests": {"type": "object", "value": {
 			"authUserId": {"fieldType":{"type":"string"},"optional":false},
