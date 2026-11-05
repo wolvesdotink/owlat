@@ -429,7 +429,6 @@ useWorkbenchKeyboard({
 						:hide-list="!isTeam && !isClassicInbox"
 						:inbox-name="scopeName"
 					/>
-					<TodayPeople v-if="!isTeam && scope && !isClassicInbox" :mailbox-id="scope" />
 					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 
 					<!-- Zen keeps only what needs an answer (and says what it left out). -->

@@ -106,4 +106,5 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'desktop/updates.ts#pruneReleases': 'old desktop release refreshes mid-run',
 	// All inboxes archives messages through mail/messageActions.ts `archive`, as
 	// a single inbox does; the conversation archive was the digest page's.
+	'mail/threadArchive.ts#archiveThreads': 'old web clients with the All inboxes digest open',
 };

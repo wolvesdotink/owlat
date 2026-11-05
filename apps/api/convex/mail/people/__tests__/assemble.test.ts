@@ -59,7 +59,6 @@ describe('assembleDirectory', () => {
 				['tom@lumenstudio.de', known],
 				['billing@lumenstudio.de', { isKnownCorrespondent: false, isVip: false }],
 			]),
-			now: NOW,
 		});
 
 		expect(directory.people.map((p) => p.key)).toEqual([
@@ -112,7 +111,6 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map(),
-			now: NOW,
 		});
 		const automated = Object.fromEntries(
 			directory.companies.map((c) => [c.key, c.isAutomated] as const)
@@ -137,7 +135,6 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map(),
-			now: NOW,
 		});
 		expect(topics.map((t) => [t.title, t.titleSource])).toEqual([
 			['Budget', 'subject'],
@@ -163,14 +160,13 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map([['jonas@gmail.com', known]]),
-			now: NOW,
 		});
 		expect(directory.people[0]).toMatchObject({
 			key: 'jonas@gmail.com',
 			companyKey: null,
 			owedCount: 1,
 			mayOweCount: 0,
-			currentCount: 1,
+			currentCount: 2,
 			topicIds: ['a', 'b'],
 		});
 		expect(directory.companies).toEqual([]);
@@ -194,7 +190,6 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map([['jonas@gmail.com', known]]),
-			now: NOW,
 		});
 		expect(directory.topics.map((t) => [t.id, t.turn, t.isAsk])).toEqual([
 			['flag', 'you', false],
@@ -203,7 +198,7 @@ describe('assembleDirectory', () => {
 		expect(directory.people[0]).toMatchObject({ owedCount: 1, mayOweCount: 1 });
 	});
 
-	it('holds a heuristic flag to latest words that ask something', () => {
+	it('holds a heuristic flag to latest words that ask something, however old', () => {
 		const directory = assembleDirectory({
 			threads: [
 				thread({
@@ -231,13 +226,41 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map([['jonas@gmail.com', known]]),
-			now: NOW,
 		});
 		expect(directory.topics.map((t) => [t.id, t.turn])).toEqual([
 			['ask', 'you'],
 			['thanks', 'none'],
-			['stale', 'none'],
+			['stale', 'you'],
 		]);
+	});
+
+	it("carries the model's ask and a suggested reply only while it is the mailbox's turn", () => {
+		const directory = assembleDirectory({
+			threads: [
+				thread({
+					id: 'open',
+					participants: ['jonas@gmail.com'],
+					isOwedByUs: true,
+					isAskDetected: true,
+					latestFromAddress: 'jonas@gmail.com',
+					askSummary: 'Return the signed copy',
+					hasSuggestedReply: true,
+				}),
+				thread({
+					id: 'answered',
+					participants: ['jonas@gmail.com'],
+					latestFromAddress: 'me@owlat.example',
+					askSummary: 'Return the signed copy',
+					hasSuggestedReply: true,
+				}),
+			],
+			ownAddresses: OWN,
+			addresses: new Map([['jonas@gmail.com', known]]),
+		});
+		const [open, answered] = directory.topics;
+		expect(open).toMatchObject({ askSummary: 'Return the signed copy', hasSuggestedReply: true });
+		expect(answered?.askSummary).toBeUndefined();
+		expect(answered?.hasSuggestedReply).toBeUndefined();
 	});
 
 	it('counts a request the brief holds as waiting on you without an Answer-queue flag', () => {
@@ -251,7 +274,6 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map([['jonas@gmail.com', known]]),
-			now: NOW,
 		});
 		expect(directory.topics[0]).toMatchObject({ turn: 'you', isAsk: true });
 		expect(directory.people[0]).toMatchObject({ owedCount: 1 });
@@ -270,7 +292,6 @@ describe('assembleDirectory', () => {
 			],
 			ownAddresses: OWN,
 			addresses: new Map([['jonas@gmail.com', known]]),
-			now: NOW,
 		});
 		expect(directory.topics[0]).toMatchObject({ turn: 'none', isAsk: false });
 		expect(directory.topics[0]?.openItem).toBeUndefined();
@@ -291,7 +312,6 @@ describe('assembleDirectory', () => {
 			addresses: new Map([
 				['digest.weekly@gmail.com', { isKnownCorrespondent: false, isVip: false, name: 'Weekly' }],
 			]),
-			now: NOW,
 		});
 		expect(directory.people).toEqual([]);
 		expect(directory.companies).toMatchObject([
@@ -304,7 +324,6 @@ describe('assembleDirectory', () => {
 			threads: [thread({ id: 'self', participants: ['me@owlat.example'] })],
 			ownAddresses: OWN,
 			addresses: new Map(),
-			now: NOW,
 		});
 		expect(directory.topics).toEqual([]);
 	});

@@ -368,8 +368,10 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	// Senders page kinds (read on arrival), each a correct German word as is:
 	// "Newsletter" is the German term (Duden), not a loan awaiting translation.
 	'postbox.senders.kind.newsletter',
-	'components.postbox.people.kind.newsletter',
-	'components.postbox.people.kind.spam',
+	// The conversation view's Updates tab and the team as a reply's author:
+	// "Updates" and "Team" are the German words in use.
+	'components.postbox.conversations.pane.updates',
+	'components.postbox.conversations.line.team',
 	// "Person" is the German noun, same spelling and meaning.
 	'postbox.senders.kind.person',
 	// "Spam" is the German term, as for the folder and category names above.

@@ -5013,7 +5013,7 @@
 				"label": "Inbox view",
 				"priority": "Priority",
 				"title": "Priority mail or all mail",
-				"people": "People"
+				"people": "Conversations"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Here are a few times that work for me ({zone}):",
@@ -6379,156 +6379,104 @@
 				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
 			},
 			"people": {
-				"row": {
-					"owed": "{count} waiting on you | {count} waiting on you",
-					"unread": "{count} unread | {count} unread",
-					"more": "{count} more conversation | {count} more conversations",
-					"mayOwe": "{count} may need a reply | {count} may need a reply",
-					"dueOn": "Due {date}",
-					"companyOwed": "{count} conversation waiting on you | {count} conversations waiting on you",
-					"companyMayOwe": "{count} conversation may need a reply | {count} conversations may need a reply",
-					"overdueOn": "Overdue {date}"
-				},
-				"column": {
-					"label": "People and companies",
-					"search": "Find people and recent conversations",
-					"waiting": "Waiting on you",
-					"waitingTeam": "Waiting on the team",
-					"companies": "Companies",
-					"active": "Recent",
-					"quiet": "Quiet lately",
-					"quietCount": "One person you have not heard from lately | {count} people you have not heard from lately",
-					"noMatch": "No matches in recent conversations",
-					"empty": "No conversations yet",
-					"clearSearch": "Clear search",
-					"viewMenu": "Inbox view",
-					"viewPeople": "People",
-					"intro": "Your inbox now groups mail by person.",
-					"introClassic": "Prefer a message list?",
-					"introDismiss": "Dismiss",
-					"searchAll": "Search all mail",
-					"peopleCount": "{count} person | {count} people",
-					"moreCompanies": "{count} more company | {count} more companies",
-					"fromCompanies": "Company mail that needs a look",
-					"viewPriority": "Priority",
-					"viewAllMail": "All mail",
-					"senders": "Automated senders",
-					"moreSenders": "{count} more sender | {count} more senders",
-					"inbox": "Inbox",
-					"viewPeopleHelp": "Grouped by person, then by conversation",
-					"viewPriorityHelp": "One message per row, most urgent first",
-					"viewAllMailHelp": "Every message, newest first",
-					"capped": "Some older conversations that wait on someone are not shown here. The Answer queue lists every one you owe.",
-					"maybe": "May need a reply",
-					"searchAllFor": "Search all mail for “{query}”",
-					"legendWaiting": "Waiting on you",
-					"legendMaybe": "May need a reply",
-					"legendUnread": "Unread",
-					"peopleResults": "People",
-					"marksHelp": "Filled number: waiting on you. Ring: may need a reply. Grey dot: unread.",
-					"conversationResults": "Conversations",
-					"moreInGroup": "Show {count} more | Show {count} more",
-					"withWhom": "With {name}",
-					"showFewer": "Show fewer",
-					"noneNeedReply": "Clear {count} | Clear all {count}",
-					"clearedMaybes": "Cleared {count} conversation | Cleared {count} conversations",
-					"noneNeedReplyHelp": "Every conversation in this group, folded ones included. Undo is offered."
-				},
-				"kind": {
-					"newsletter": "Newsletter",
-					"notification": "Notifications",
-					"receipt": "Receipts",
-					"promotion": "Promotions",
-					"spam": "Spam",
-					"other": "Updates"
-				},
 				"topic": {
-					"you": "You",
 					"subjectWas": "Subject: {subject}",
 					"namedByOwlat": "Named by Owlat",
-					"waitingYou": "Waiting on you",
-					"waitingTeam": "Waiting on the team",
-					"waitingThem": "Waiting on {name}",
-					"messages": "{count} message | {count} messages",
-					"attachments": "Has attachments",
-					"youWroteLast": "You wrote last",
-					"noReplyNeeded": "No reply needed",
-					"archive": "Archive",
-					"waitingOthers": "Waiting on others",
-					"withNames": "with {names}",
-					"unreadLabel": "Unread",
-					"archived": "Archived “{title}”",
-					"markedNoReply": "No reply needed",
-					"mayNeedReply": "May need a reply",
-					"noReplyUndone": "Reply needed again",
-					"markedNoReplyOn": "No reply needed: {title}",
-					"theyWroteLast": "{name} wrote last",
-					"reply": "Reply",
-					"noReplyHelp": "Clears the reply this conversation was waiting for, until new mail arrives. Undo is offered."
-				},
-				"person": {
-					"vip": "Important sender",
-					"write": "Write to {name}",
-					"more": "More",
-					"markCompany": "Treat as automated sender",
-					"nothingNow": "No current conversations with {name}.",
-					"writeShort": "Write",
-					"owed": "{count} waiting on you | {count} waiting on you",
-					"owedTeam": "{count} waiting on the team | {count} waiting on the team",
-					"owedThem": "{count} waiting on {name} | {count} waiting on {name}",
-					"copyAddress": "Copy {address}",
-					"lastMessage": "Last message {when}",
-					"theyWrote": "{name} wrote {when}",
-					"youWrote": "You wrote {when}"
-				},
-				"page": {
-					"now": "Current conversations",
-					"earlier": "Earlier conversations",
-					"gone": "This person or company is no longer in your recent mail",
-					"emptyTitle": "Nobody to show yet",
-					"emptyDescription": "When you write with someone, they show up here with what you talk about."
-				},
-				"company": {
-					"account": "Automated sender",
-					"verified": "Domain authenticated",
-					"isPerson": "Treat {address} as a person",
-					"needsYou": "Waiting on you",
-					"nothingNow": "No current conversations with anyone at {name}.",
-					"peopleAt": "People at {name}",
-					"fromSystems": "Updates from {name}",
-					"markPerson": "Mark as a person",
-					"verifiedHelp": "Its mail proved it was sent from this domain. That shows the domain sent it, not who is behind the domain.",
-					"senderSettings": "Sender settings",
-					"cadenceDaily": "About daily",
-					"cadenceWeekly": "About weekly",
-					"cadenceMonthly": "About monthly",
-					"earlierTitle": "Earlier conversations",
-					"company": "Company",
-					"archiveUpdates": "Archive {count} update | Archive {count} updates",
-					"archivedUpdates": "Archived {count} update from {name} | Archived {count} updates from {name}",
-					"cadenceRare": "Less than monthly",
-					"archiveOperation": "Archive updates",
-					"showMore": "Show {count} more conversation | Show {count} more conversations"
-				},
-				"earlier": {
-					"showMore": "Show {count} more | Show {count} more",
-					"older": "Show older mail",
-					"none": "Nothing older.",
-					"searchAll": "Search all mail",
-					"olderEmails": "Show older mail",
-					"nothingOlder": "Nothing older.",
-					"searchWith": "Search all mail with {name}",
-					"noneRecent": "Looking for an older conversation?"
+					"noReplyNeeded": "No reply needed"
 				},
 				"topicBar": {
 					"rename": "Rename topic",
 					"reset": "Reset the name",
 					"namedByOwlat": "Named by Owlat from {count} message | Named by Owlat from {count} messages",
 					"namedByYou": "Named by you"
+				}
+			},
+			"conversations": {
+				"pane": {
+					"label": "Conversations",
+					"mailboxMenu": "Switch mailbox, folders and layout",
+					"inbox": "Inbox",
+					"new": "New",
+					"people": "People",
+					"updates": "Updates",
+					"drafts": "Drafts",
+					"views": "Views",
+					"search": "Search people and mail",
+					"sent": "Sent",
+					"archive": "Archive",
+					"folders": "All folders",
+					"traditional": "Use the traditional layout",
+					"showMembers": "Show the people at {name}",
+					"hideMembers": "Hide the people at {name}",
+					"error": "The conversations didn't load.",
+					"retry": "Try again",
+					"emptyTitle": "No conversations yet",
+					"emptyHint": "When you write with someone, they show up here.",
+					"noMatch": "Nothing matches",
+					"noMatchHint": "Press Enter to search all mail."
 				},
-				"topicsColumn": {
-					"label": "Conversations with {name}",
-					"back": "Back to {name}"
+				"greeting": {
+					"hello": "Hi",
+					"helloNamed": "Hi {name}",
+					"one": "{hello}. {name0} may need a reply.",
+					"two": "{hello}. {name0} and {name1} may need replies.",
+					"many": "{hello}. {name0}, {name1} and {count} more may need replies."
+				},
+				"line": {
+					"you": "You",
+					"team": "Team",
+					"asks": "{name} asks:",
+					"asked": "Asked:",
+					"due": "By {date}"
+				},
+				"cue": {
+					"reply": "Reply?",
+					"waiting": "Waiting on {name}",
+					"noReply": "No reply needed",
+					"noReplyUndone": "Reply needed again",
+					"markedNoReply": "No reply needed: {title}"
+				},
+				"page": {
+					"company": "Company",
+					"everyone": "Everyone",
+					"findPerson": "Find a person",
+					"focus": {
+						"label": "Show",
+						"all": "All",
+						"reply": "Reply?",
+						"waiting": "Waiting"
+					},
+					"current": "Current",
+					"earlier": "Earlier",
+					"noneCurrent": "No current conversations.",
+					"noneReply": "Nothing here may need a reply.",
+					"noneWaiting": "Nothing is waiting on them.",
+					"showMore": "Show more",
+					"olderMail": "Show older mail",
+					"updatesFrom": "Updates from {name}",
+					"gone": "This one isn't in your recent mail.",
+					"pickUpdate": "Choose an update to read it."
+				},
+				"reply": {
+					"to": "Reply to {name}…",
+					"plain": "Reply…",
+					"suggested": "Review suggested reply"
+				},
+				"topic": {
+					"rename": "Rename topic",
+					"reset": "Reset the name"
+				},
+				"updates": {
+					"today": "Today",
+					"yesterday": "Yesterday",
+					"week": "Earlier this week",
+					"markAllRead": "Mark all read",
+					"menu": "More for this update",
+					"moveToPeople": "Treat as a person",
+					"movedToPeople": "{name} is listed with your people from now on.",
+					"fromCompany": "From {name} only",
+					"showAll": "Show all",
+					"empty": "No updates."
 				}
 			},
 			"classicInbox": {
@@ -6651,8 +6599,8 @@
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
 				"swipeRightHelp": "The same gesture, the other way.",
-				"classicInboxLabel": "Classic inbox",
-				"classicInboxHelp": "Use Priority and All mail instead of the People view. People groups your mail by who you write with and what about; the classic inbox lists messages as they arrive."
+				"classicInboxLabel": "Traditional layout",
+				"classicInboxHelp": "List messages as they arrive, in Priority and All mail, instead of the conversation view. The conversation view lists the people you write with, and what you are talking about."
 			},
 			"preferencesShortcuts": {
 				"heading": "Keyboard shortcuts",

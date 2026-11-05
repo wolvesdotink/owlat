@@ -14,6 +14,17 @@
 @source "../../../../../packages/ui/composables/**/*.ts";
 @source "../../../../../packages/ui/icons/**/*.ts";
 
+/* The product sets its headings in the sans: the display serif belongs to the
+   marketing site, which reads the same token from packages/ui. A heading keeps
+   its size and gains weight instead, since the sans at display sizes reads thin. */
+:root {
+	--font-display: var(--font-sans);
+}
+.font-display {
+	font-weight: 600;
+	letter-spacing: -0.015em;
+}
+
 /* Email Previewer aliases (web-only — maps design tokens to --ep-* namespace) */
 :root {
 	/* Background Colors */

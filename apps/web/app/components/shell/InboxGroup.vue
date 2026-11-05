@@ -22,7 +22,8 @@ const emit = defineEmits<{ toggle: [] }>();
 
 const { t } = useI18n();
 const route = useRoute();
-// The People view lists the inbox's people here; the classic inbox its conversations.
+// The classic inbox lists its conversations here. The conversation view keeps
+// its people in its own pane, so the sidebar only links to the inbox.
 const { isClassicInbox } = usePostboxClassicInbox();
 
 // keepPreviousData: collapsing, expanding or changing the per-inbox count keeps
@@ -102,12 +103,7 @@ const moreCount = computed(() =>
 			</UiTooltip>
 		</div>
 
-		<ShellPeopleRows
-			v-if="!collapsed && !isClassicInbox"
-			:mailbox-id="inbox.mailboxId"
-			:limit="limit"
-		/>
-		<div v-else-if="!collapsed" class="mt-px space-y-px">
+		<div v-if="!collapsed && isClassicInbox" class="mt-px space-y-px">
 			<ShellThreadRow
 				v-for="row in rows"
 				:key="row.threadId"

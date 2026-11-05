@@ -30,7 +30,7 @@ beforeEach(() => {
 		useRoute: () => ({ path: '/dashboard' }),
 		useConvex: () => client,
 		useConvexQuery,
-		// The classic inbox lists conversations here; the People view, people.
+		// The classic inbox lists conversations here; the conversation view, nothing.
 		usePostboxClassicInbox: () => ({ isClassicInbox: ref(true) }),
 		// The Team inbox rows' menu verbs (assign to me, resolve) set up their
 		// writes and the undo notice; nothing here runs them.
@@ -56,7 +56,7 @@ const global = {
 			template: '<span class="pill" :data-status="status" />',
 		},
 	},
-	stubs: { InboxChip: true, ShellPeopleRows: true },
+	stubs: { InboxChip: true },
 	// A template-level auto-import.
 	mocks: { formatCompactRelativeTime: () => 'now' },
 };

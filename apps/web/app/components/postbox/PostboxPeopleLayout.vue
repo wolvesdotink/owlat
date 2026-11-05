@@ -1,29 +1,22 @@
 <script setup lang="ts">
 /**
- * The People view: the inbox read as who you are talking to, then what about.
- * It is the Postbox inbox unless the person turned the classic inbox on in
- * Settings (`usePostboxClassicInbox`); the page picks this layout or
- * PostboxLayout. The folder rail stays beside it, so Sent, Archive and every
- * folder are where they always were.
+ * The conversation view: the Postbox inbox read as the people you write with,
+ * then what you are talking about. It is the inbox unless the traditional
+ * layout is on (`usePostboxClassicInbox`); the page picks this layout or
+ * PostboxLayout.
  *
- *   column  → people and companies (PostboxPeopleColumn)
- *   main    → the selected person's or company's page, or, once a topic is
- *             open, the bar naming it above the ordinary reader
+ *   pane → the mailbox, who may need a reply, and the people (or Updates)
+ *   main → a person's or company's page, or the open conversation
  *
- * The page lives in the URL (`?person=` / `?company=`), so Back, a reload and
- * a shared link land where they should; the reader keeps it on every route it
- * builds. Wide screens show the first person who waits on you when nothing is
- * chosen; below `lg` the column, the page and the topic drill in one by one.
+ * The folder rail is folded away (the pane's mailbox menu opens it), so a
+ * conversation gets the room. Where you are lives in the URL (`?person=`,
+ * `?company=`, `?view=updates`, `?focus=`), so Back, a reload and a shared
+ * link land where they should. Below `lg` the pane, the page and the
+ * conversation drill in one at a time.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ChevronLeftIcon } from '@coolicons/vue';
-import { isDialogOpen } from '~/utils/dialogOpen';
-import { isEditableTarget } from '~/utils/postboxShortcuts';
-import type { ShortcutScope } from '~/utils/shortcutRegistry';
-import { chordFromEvent } from '~/utils/shortcutRegistry';
-import { resolveActiveChord } from '~/utils/shortcutScope';
-import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFilter';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import {
 	olderTopicsKey,
@@ -33,11 +26,14 @@ import {
 	usePostboxTopicTitleRequests,
 } from '~/composables/postbox/usePostboxPeople';
 import {
+	authorName,
+	isUpdateTopic,
+	pageConversations,
+	paneRows,
+	updateTopics,
+} from '~/utils/postboxConversations';
+import {
 	POSTBOX_TOPIC_HEADING,
-	leadTopic,
-	peopleSections,
-	selectionQuery,
-	splitTopics,
 	type PeopleSelection,
 	type PeopleTopic,
 } from '~/utils/postboxPeople';
@@ -55,58 +51,35 @@ usePostboxCommandSurface(mailboxIdRef, {
 });
 usePostboxListNow();
 
-const { directory, topics, people, companies, accounts, isLoading, error, refetch } =
-	usePostboxPeopleDirectory(mailboxIdRef);
-const {
-	selection: chosen,
-	pageHref,
-	topicHref,
-	backToPage,
-	backToColumn,
-} = usePostboxPeopleRoute();
-
-// Nothing chosen: the first person waiting on you, else the first one at all.
-const fallback = computed<PeopleSelection | null>(() => {
-	if (!directory.value) return null;
-	const { waiting, maybe, active, quiet, companies: listed } = peopleSections(directory.value, '');
-	const first = waiting[0] ?? maybe[0] ?? active[0] ?? quiet[0];
-	if (first) return { kind: 'person', key: first.key };
-	return listed[0] ? { kind: 'company', key: listed[0].key } : null;
-});
-const selection = computed(() => chosen.value ?? fallback.value);
-const person = computed(() =>
-	selection.value?.kind === 'person' ? people.value.get(selection.value.key) : undefined
-);
-const company = computed(() =>
-	selection.value?.kind === 'company' ? companies.value.get(selection.value.key) : undefined
-);
+const { directory, index, isLoading, error, refetch } = usePostboxPeopleDirectory(mailboxIdRef);
+const { place, pageHref, updatesHref, topicHref, backToPlace, backToList } =
+	usePostboxPeopleRoute();
 const isShared = computed(() => directory.value?.scope === 'shared');
+const isUpdates = computed(() => place.value.view === 'updates');
 
-const names = computed(() => {
-	const map = new Map<string, string>();
-	for (const p of directory.value?.people ?? []) map.set(p.key, p.name);
-	for (const a of directory.value?.accounts ?? []) map.set(a.key, a.name);
-	return map;
+// Nothing chosen on a wide screen: the newest person or company in the pane.
+const isWide = useMediaQuery('(min-width: 1024px)');
+const fallback = computed<PeopleSelection | null>(() => {
+	if (!index.value || isUpdates.value) return null;
+	const first = paneRows(index.value).find((row) => row.kind !== 'group');
+	if (!first) return null;
+	return { kind: first.kind, key: first.key };
+});
+const selection = computed(() => place.value.selection ?? fallback.value);
+const pageName = computed(() => {
+	const s = selection.value;
+	if (!s || !index.value) return null;
+	return s.kind === 'person'
+		? (index.value.people.get(s.key)?.name ?? null)
+		: (index.value.companies.get(s.key)?.name ?? null);
 });
 
-// The page's topics in the page's own order (current, waiting on you first,
-// then earlier): what the topic column lists and j/k in the reader step through.
-// With the older ones "Show older mail" loaded for this person, so an old
-// conversation opens with its name and its place in the column too.
+// The open conversation, from the directory or from older mail loaded on a page.
 const olderStore = usePostboxOlderTopics();
-const olderTopics = computed<PeopleTopic[]>(() =>
-	person.value
-		? (olderStore.value[olderTopicsKey(props.mailboxId, person.value.email)]?.topics ?? [])
-		: []
-);
-const pageTopics = computed<PeopleTopic[]>(() => {
-	const ids = person.value?.topicIds ?? company.value?.topicIds ?? [];
-	const known = new Set(ids);
-	const { now, earlier } = splitTopics([
-		...ids.map((id) => topics.value.get(id)).filter((x): x is PeopleTopic => !!x),
-		...olderTopics.value.filter((x) => !known.has(x.id)),
-	]);
-	return [...now, ...earlier];
+const olderTopics = computed<PeopleTopic[]>(() => {
+	const s = place.value.selection;
+	const email = s?.kind === 'person' ? index.value?.people.get(s.key)?.email : undefined;
+	return email ? (olderStore.value[olderTopicsKey(props.mailboxId, email)]?.topics ?? []) : [];
 });
 const openTopic = computed(() =>
 	props.activeMessageId
@@ -115,43 +88,67 @@ const openTopic = computed(() =>
 			)
 		: undefined
 );
+
+// What j/k step through in the reader: the list the conversation was opened from.
+const listTopics = computed<PeopleTopic[]>(() => {
+	if (!index.value) return [];
+	if (isUpdates.value) return updateTopics(index.value, place.value.from);
+	const s = place.value.selection;
+	if (!s) return [];
+	const owner =
+		s.kind === 'person' ? index.value.people.get(s.key) : index.value.companies.get(s.key);
+	const { current, earlier } = pageConversations(index.value, owner?.topicIds ?? [], {
+		focus: place.value.focus,
+		memberKey: place.value.member,
+	});
+	return [...current, ...earlier];
+});
 const stepIds = computed(() =>
-	pageTopics.value.flatMap((x) => (x.latestMessageId ? [x.latestMessageId] : []))
+	listTopics.value.flatMap((x) => (x.latestMessageId ? [x.latestMessageId] : []))
 );
 
-// The reader heads the open conversation with its topic name, renamed where
-// it is read.
+const hrefForTopic = (topic: PeopleTopic) => topicHref(topic, place.value);
+const hrefFromPane = (topic: PeopleTopic) =>
+	topicHref(topic, isUpdates.value ? { view: 'updates', from: place.value.from } : null);
+
+const backLabel = computed(() =>
+	isUpdates.value
+		? t('components.postbox.conversations.pane.updates')
+		: (pageName.value ?? t('components.postbox.conversations.pane.people'))
+);
+
+// The reader heads the conversation with its topic, renamed where it is read,
+// and ends it with the reply field.
 const renameOp = useBackendOperation(api.mail.people.topicTitle.renameTopic, {
-	label: () => t('components.postbox.people.topicBar.rename'),
+	label: () => t('components.postbox.conversations.topic.rename'),
 });
-// "No reply needed" from the reader, where the decision is usually made, with
-// the same undo as the card's.
+const resetOp = useBackendOperation(api.mail.people.topicTitle.resetTopicTitle, {
+	label: () => t('components.postbox.conversations.topic.reset'),
+});
 const clearOp = useBackendOperation(api.mail.needsReply.clear, {
-	label: () => t('components.postbox.people.topic.noReplyNeeded'),
+	label: () => t('components.postbox.conversations.cue.noReply'),
 });
 const restoreOp = useBackendOperation(api.mail.needsReplyRestore.restore, {
-	label: () => t('components.postbox.people.topic.noReplyUndone'),
+	label: () => t('components.postbox.conversations.cue.noReplyUndone'),
 });
 const triageUndo = usePostboxTriageUndo();
 async function markNoReply(topic: PeopleTopic) {
 	const threadId = topic.id as Id<'mailThreads'>;
 	if (!(await clearOp.run({ threadId })).ok) return;
 	triageUndo.register({
-		label: t('components.postbox.people.topic.markedNoReplyOn', { title: topic.title }),
+		label: t('components.postbox.conversations.cue.markedNoReply', { title: topic.title }),
 		inverse: async () => {
 			await restoreOp.run({ threadId });
 		},
 	});
 }
-const resetOp = useBackendOperation(api.mail.people.topicTitle.resetTopicTitle, {
-	label: () => t('components.postbox.people.topicBar.reset'),
-});
 provide(
 	POSTBOX_TOPIC_HEADING,
 	computed(() => {
 		const topic = openTopic.value;
-		if (!topic) return null;
+		if (!topic || !index.value) return null;
 		const threadId = topic.id as Id<'mailThreads'>;
+		const to = topic.latestFromKey ?? topic.partyKeys.find((k) => index.value?.people.has(k));
 		return {
 			title: topic.title,
 			subject: topic.subject,
@@ -163,32 +160,41 @@ provide(
 				await resetOp.run({ threadId });
 			},
 			...(topic.turn === 'you' ? { noReply: () => markNoReply(topic) } : {}),
+			...(isUpdateTopic(index.value, topic)
+				? {}
+				: { hasReplyField: true, ...(to ? { replyTo: authorName(index.value, to) } : {}) }),
+			...(topic.hasSuggestedReply ? { hasSuggestedReply: true } : {}),
 		};
 	})
 );
 
-// The app's own breadcrumb follows the People path: Inbox › person › topic.
-// On a phone the fallback page is not on screen (the column is), so the trail
-// names a page only once one was opened.
+// The app's breadcrumb follows the path: Inbox › person (or Updates) › topic.
 const { setDynamicBreadcrumbs, clearDynamicBreadcrumbs } = useBreadcrumbs();
-const isWide = useMediaQuery('(min-width: 1024px)');
+const placeHref = computed(() =>
+	isUpdates.value
+		? updatesHref(place.value.from)
+		: selection.value
+			? pageHref(selection.value)
+			: '/dashboard/postbox/inbox'
+);
 watch(
-	[
-		selection,
-		() => person.value?.name ?? company.value?.name,
-		() => openTopic.value?.title,
-		isWide,
-	],
+	[backLabel, placeHref, () => openTopic.value?.title, () => props.activeMessageId],
 	() => {
-		const page = isWide.value || chosen.value || openTopic.value ? selection.value : null;
-		const name = person.value?.name ?? company.value?.name;
-		if (!page || !name) {
+		const isPlaced = isUpdates.value || !!place.value.selection;
+		if (!isPlaced && !openTopic.value) {
 			clearDynamicBreadcrumbs();
 			return;
 		}
 		setDynamicBreadcrumbs([
-			{ label: t('components.postbox.people.column.inbox'), href: '/dashboard/postbox/inbox' },
-			props.activeMessageId ? { label: name, href: pageHref(page) } : { label: name },
+			// The trail translates its labels: a message key, where there is one.
+			{ label: 'components.postbox.conversations.pane.inbox', href: '/dashboard/postbox/inbox' },
+			...(isPlaced
+				? [
+						props.activeMessageId
+							? { label: backLabel.value, href: placeHref.value }
+							: { label: backLabel.value },
+					]
+				: []),
 			...(props.activeMessageId && openTopic.value ? [{ label: openTopic.value.title }] : []),
 		]);
 	},
@@ -196,167 +202,105 @@ watch(
 );
 onBeforeUnmount(clearDynamicBreadcrumbs);
 
-// Every route the reader builds keeps the page, so Back and j/k stay on it.
-provide(
-	POSTBOX_LIST_QUERY,
-	computed(() =>
-		chosen.value ? `?${new URLSearchParams(selectionQuery(chosen.value)).toString()}` : ''
-	)
-);
-
-// Titles for what is on screen: the page's topics and each column row's lead.
+// Titles for what is on screen: the page's conversations and the open one.
 usePostboxTopicTitleRequests(
 	mailboxIdRef,
-	computed(() => {
-		const leads = (directory.value?.people ?? [])
-			.slice(0, 30)
-			.map((p) => leadTopic(p.topicIds, topics.value))
-			.filter((x): x is PeopleTopic => !!x);
-		return [...pageTopics.value.slice(0, 20), ...leads];
-	})
+	computed(() => [
+		...(openTopic.value ? [openTopic.value] : []),
+		...(isUpdates.value ? [] : listTopics.value.slice(0, 24)),
+	])
 );
 
 const activeRead = usePostboxActiveMessageRead({
 	activeMessageId: () => props.activeMessageId,
 	listRows: () => [],
 });
-const hrefForTopic = (topic: PeopleTopic) => topicHref(topic, selection.value);
-const backLabel = computed(
-	() => person.value?.name ?? company.value?.name ?? t('components.postbox.people.column.inbox')
-);
 
-const railOpen = ref(false);
+const foldersOpen = ref(false);
 const route = useRoute();
 watch(
 	() => route.fullPath,
 	() => {
-		railOpen.value = false;
+		foldersOpen.value = false;
 	},
 	{ flush: 'post' }
 );
 
-// j/k (the Postbox's own next/previous, remaps and presets included) reach the
-// column from anywhere on the view: from the page, from nowhere at all after a
-// click. Inside the column or a page their own handlers move first and claim
-// the key, so this only picks up what nothing else took.
-const PEOPLE_SCOPES: readonly ShortcutScope[] = ['postbox'];
-function onWindowKeydown(event: KeyboardEvent) {
-	if (event.defaultPrevented || props.activeMessageId) return;
-	if (isEditableTarget(event.target) || isDialogOpen()) return;
-	const id = resolveActiveChord(chordFromEvent(event), PEOPLE_SCOPES);
-	if (id !== 'postbox.next' && id !== 'postbox.previous') return;
-	const rows = [...(columnEl.value?.querySelectorAll<HTMLElement>('[data-people-row]') ?? [])];
-	if (rows.length === 0 || !columnEl.value?.offsetParent) return;
-	event.preventDefault();
-	const current = rows.findIndex((row) => row.getAttribute('aria-current') === 'page');
-	const next = current < 0 ? 0 : current + (id === 'postbox.next' ? 1 : -1);
-	rows[Math.min(rows.length - 1, Math.max(0, next))]?.focus();
-}
-// oxlint-disable-next-line owlat/no-raw-keydown-listener -- resolves postbox.next and postbox.previous through the registry
-onMounted(() => window.addEventListener('keydown', onWindowKeydown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown));
+// Below lg one pane at a time: the list until a page or a conversation is open.
+const isDetailOpen = computed(() => !!place.value.selection || !!props.activeMessageId);
 
-// Below lg one pane at a time: the column until a page is chosen or a topic is open.
-const isDetailOpen = computed(() => !!chosen.value || !!props.activeMessageId);
-
-// Focus follows the drill-in where the column hides (below lg): into the
-// page's heading on the way down, back onto the row it came from on the way
-// up. Beside the column (lg and up) focus stays where the person put it, so
-// j/k keep walking the rows.
-const columnEl = ref<HTMLElement | null>(null);
+// Focus follows the drill-in where the pane hides: into the page's heading on
+// the way in, onto the conversation's header when one opens.
 const pageRef = ref<{ focusHeading: () => void } | null>(null);
-watch(
-	() => chosen.value?.key ?? null,
-	async (key, previous) => {
-		await nextTick();
-		const isColumnHidden = !columnEl.value?.offsetParent;
-		if (key && isColumnHidden) {
-			pageRef.value?.focusHeading();
-		} else if (!key && previous) {
-			const row = [
-				...(columnEl.value?.querySelectorAll<HTMLElement>('[data-people-row]') ?? []),
-			].find((el) => decodeURIComponent(el.getAttribute('href') ?? '').includes(`=${previous}`));
-			row?.focus();
-		}
-	}
-);
-
-// Opening a topic moves focus into the reader's header, unless it was opened
-// from the topics column, where j/k keep walking; closing it returns focus to
-// the card it was opened from.
 const mainEl = ref<HTMLElement | null>(null);
 watch(
-	() => props.activeMessageId ?? null,
-	async (id, previous) => {
-		const fromColumn = columnEl.value?.contains(document.activeElement) ?? false;
+	() => place.value.selection?.key ?? null,
+	async (key) => {
 		await nextTick();
-		if (id && !fromColumn) {
-			mainEl.value?.querySelector<HTMLElement>('[data-reader-chrome="header"]')?.focus();
-		} else if (!id && previous) {
-			const card = [
-				...(mainEl.value?.querySelectorAll<HTMLElement>('[data-topic-card] a') ?? []),
-			].find((el) => (el.getAttribute('href') ?? '').includes(previous));
-			card?.focus();
-		}
+		if (key && !isWide.value) pageRef.value?.focusHeading();
+	}
+);
+watch(
+	() => props.activeMessageId ?? null,
+	async (id) => {
+		await nextTick();
+		if (id) mainEl.value?.querySelector<HTMLElement>('[data-reader-chrome="header"]')?.focus();
 	}
 );
 </script>
 
 <template>
 	<div class="flex w-full min-w-0">
-		<PostboxFolderDrawer v-model:open="railOpen" :mailbox-id="mailboxId" folder-role="inbox" />
+		<PostboxFolderDrawer
+			v-model:open="foldersOpen"
+			:mailbox-id="mailboxId"
+			folder-role="inbox"
+			zen
+		/>
 
 		<div
-			ref="columnEl"
-			class="w-full min-w-0 flex-shrink-0 border-r border-border-subtle lg:flex lg:w-[22rem] xl:w-[24rem]"
+			class="w-full min-w-0 flex-shrink-0 border-r border-border-subtle lg:flex lg:w-[21.5rem]"
 			:class="isDetailOpen ? 'hidden' : 'flex'"
 		>
-			<PostboxTopicsColumn
-				v-if="activeMessageId && (person || company)"
-				:name="backLabel"
-				:kind="person ? 'person' : 'company'"
-				:color-key="person?.key"
-				:logo-url="company?.logoUrl"
-				:topics="pageTopics"
-				:active-message-id="activeMessageId"
-				:href-for="hrefForTopic"
-				:is-shared="isShared"
-				@back="backToPage"
-			/>
-			<PostboxPeopleColumn
-				v-else
-				:directory="directory"
-				:topics="topics"
-				:companies="companies"
-				:people="people"
-				:selection="isWide || chosen ? selection : null"
+			<PostboxConversationPane
+				:mailbox-id="mailboxId"
+				:index="index"
+				:place="place"
+				:active-topic-id="openTopic?.id ?? null"
 				:page-href="pageHref"
-				:topic-href="topicHref"
+				:updates-href="updatesHref"
+				:topic-href="hrefFromPane"
 				:is-loading="isLoading"
 				:error="error"
-				@open-rail="railOpen = true"
+				@open-folders="foldersOpen = true"
 				@retry="refetch"
 			/>
 		</div>
 
 		<main
 			ref="mainEl"
-			class="min-w-0 flex-1 flex-col bg-bg-base lg:flex"
-			:class="isDetailOpen ? 'flex' : 'hidden'"
+			class="min-w-0 flex-1 flex-col lg:flex"
+			:class="[
+				isDetailOpen ? 'flex' : 'hidden',
+				activeMessageId ? 'bg-bg-base' : 'bg-bg-elevated/40',
+			]"
 			:aria-label="backLabel"
 		>
 			<template v-if="activeMessageId">
-				<!-- Below lg the column, with its own way back, is hidden. -->
-				<button
-					type="button"
-					class="flex min-h-11 items-center gap-1 border-b border-border-subtle px-3 text-caption text-text-secondary hover:text-text-primary lg:hidden"
-					@click="backToPage"
-				>
-					<ChevronLeftIcon class="h-3.5 w-3.5" />
-					{{ backLabel }}
-				</button>
+				<!-- Wide screens: the way back to where the conversation was opened.
+				     Below lg the reader's own back bar does it. -->
+				<div class="hidden px-6 pt-4 lg:block">
+					<button
+						type="button"
+						class="mx-auto flex w-full max-w-4xl items-center gap-1 px-6 text-[0.8125rem] text-text-tertiary hover:text-text-primary"
+						@click="backToPlace"
+					>
+						<ChevronLeftIcon class="h-3.5 w-3.5" />
+						{{ backLabel }}
+					</button>
+				</div>
 				<PostboxReaderPane
-					class="@container min-h-0 flex-1 overflow-auto bg-bg-base"
+					class="@container min-h-0 flex-1 overflow-auto"
 					:active-message-id="activeMessageId"
 					:message="activeRead.message.value"
 					:advance-ids="stepIds"
@@ -367,59 +311,47 @@ watch(
 					:error="activeRead.error.value"
 					:not-found="activeRead.notFound.value"
 					@retry="activeRead.refetch"
-					@back="backToPage"
+					@back="backToPlace"
 				/>
 			</template>
 			<div v-else class="min-h-0 flex-1 overflow-y-auto">
 				<button
-					v-if="chosen"
+					v-if="place.selection || isUpdates"
 					type="button"
-					class="ml-3 mt-1 inline-flex min-h-11 items-center gap-1 rounded px-2 text-caption text-text-secondary hover:bg-bg-surface lg:hidden"
-					@click="backToColumn"
+					class="ml-3 mt-1 inline-flex min-h-11 items-center gap-1 rounded px-2 text-[0.8125rem] text-text-secondary hover:bg-bg-surface lg:hidden"
+					@click="backToList"
 				>
 					<ChevronLeftIcon class="h-3.5 w-3.5" />
-					{{ t('components.postbox.people.column.inbox') }}
+					{{ t('components.postbox.conversations.pane.people') }}
 				</button>
 				<Transition name="pbx-fade" mode="out-in">
-					<PostboxPersonPage
-						v-if="person"
+					<PostboxConversationPage
+						v-if="index && selection && pageName && !isUpdates"
 						ref="pageRef"
-						:key="`person:${person.key}`"
-						:person="person"
+						:key="`${selection.kind}:${selection.key}`"
 						:mailbox-id="mailboxId"
-						:topics="topics"
-						:company="person.companyKey ? companies.get(person.companyKey) : undefined"
-						:names="names"
+						:index="index"
+						:selection="selection"
+						:focus="place.focus"
+						:member="place.member"
 						:is-shared="isShared"
 						:page-href="pageHref"
+						:updates-href="updatesHref"
 						:topic-href="hrefForTopic"
+						@no-reply="markNoReply"
 					/>
-					<PostboxCompanyPage
-						v-else-if="company"
-						ref="pageRef"
-						:key="`company:${company.key}`"
-						:company="company"
-						:mailbox-id="mailboxId"
-						:topics="topics"
-						:people="people"
-						:accounts="accounts"
-						:names="names"
-						:is-shared="isShared"
-						:page-href="pageHref"
-						:topic-href="hrefForTopic"
-					/>
-					<div v-else-if="directory && !isLoading" class="mx-auto max-w-md px-6 py-24">
-						<UiEmptyState
-							:title="
-								chosen
-									? t('components.postbox.people.page.gone')
-									: t('components.postbox.people.page.emptyTitle')
-							"
-							:description="
-								chosen ? undefined : t('components.postbox.people.page.emptyDescription')
-							"
-						/>
-					</div>
+					<p
+						v-else-if="index && !isLoading"
+						class="mx-auto max-w-md px-6 py-24 text-center text-sm text-text-tertiary"
+					>
+						{{
+							isUpdates
+								? t('components.postbox.conversations.page.pickUpdate')
+								: place.selection
+									? t('components.postbox.conversations.page.gone')
+									: t('components.postbox.conversations.pane.emptyTitle')
+						}}
+					</p>
 				</Transition>
 			</div>
 		</main>

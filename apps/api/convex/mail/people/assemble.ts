@@ -19,7 +19,6 @@ import {
 	companyNameFromSender,
 	accountKindOf,
 	asksSomething,
-	MAYBE_WINDOW_MS,
 	isAutomatedAccount,
 	topicTurn,
 	type TopicTurn,
@@ -55,6 +54,10 @@ export interface ThreadInput {
 	/** The brief's top open item and its "Latest update" line, opened. */
 	openItem?: { text: Localized; dueAt?: number; isOurs: boolean };
 	latestLine?: Localized;
+	/** The model's one line of what is asked (needsReply.askSummary), where it may be shown. */
+	askSummary?: string;
+	/** A reply was drafted for review (needsReply.draftSlot). */
+	hasSuggestedReply?: boolean;
 }
 
 /** What the mailbox knows about one address, beyond its threads. */
@@ -97,6 +100,10 @@ export interface DirectoryTopic {
 	partyKeys: string[];
 	openItem?: { text: Localized; dueAt?: number; isOurs: boolean };
 	latestLine?: Localized;
+	/** What the latest message asks of the mailbox, in the model's words; only on its turn. */
+	askSummary?: string;
+	/** A reply waits for review; only on the mailbox's turn. */
+	hasSuggestedReply?: boolean;
 }
 
 export interface DirectoryPerson {
@@ -190,9 +197,8 @@ export function assembleDirectory(input: {
 	threads: readonly ThreadInput[];
 	ownAddresses: ReadonlySet<string>;
 	addresses: ReadonlyMap<string, AddressInput>;
-	now: number;
 }): Directory {
-	const { threads, ownAddresses, addresses, now } = input;
+	const { threads, ownAddresses, addresses } = input;
 	const topics: DirectoryTopic[] = [];
 	// Per address: its topics, and the categories of the threads it sent last.
 	const byAddress = new Map<string, { topics: DirectoryTopic[]; categories: MailCategory[] }>();
@@ -203,12 +209,10 @@ export function assembleDirectory(input: {
 		const latestFromKey = partyKeys.find((key) => key === thread.latestFromAddress.toLowerCase());
 		const isLatestFromOwner = ownAddresses.has(thread.latestFromAddress.toLowerCase());
 		// A request the brief holds for us is our turn as much as an Answer-queue
-		// flag; a heuristic flag counts only when the latest words ask something,
-		// and only for a week without newer mail.
+		// flag; a heuristic flag counts only when the latest words ask something.
+		// An unanswered request does not stop mattering with age.
 		const isFlagged =
-			thread.isOwedByUs &&
-			(thread.isAskDetected ||
-				(asksSomething(thread.latestSnippet) && now - thread.lastMessageAt < MAYBE_WINDOW_MS));
+			thread.isOwedByUs && (thread.isAskDetected || asksSomething(thread.latestSnippet));
 		const isBriefAsk = thread.openItem?.isOurs === true && !thread.isDismissed;
 		const turn = topicTurn({
 			isOwedByUs: isFlagged || isBriefAsk,
@@ -231,16 +235,7 @@ export function assembleDirectory(input: {
 			hasFlagged: thread.hasFlagged,
 			turn,
 			isAsk: turn === 'you' && (thread.isAskDetected || isBriefAsk),
-			isCurrent: isCurrentTopic(
-				{
-					turn,
-					lastMessageAt: thread.lastMessageAt,
-					isPinned: thread.isPinned,
-					isMuted: thread.isMuted,
-					isArchived: thread.isArchived,
-				},
-				now
-			),
+			isCurrent: isCurrentTopic(thread),
 			isPinned: thread.isPinned,
 			isMuted: thread.isMuted,
 			isArchived: thread.isArchived,
@@ -252,6 +247,8 @@ export function assembleDirectory(input: {
 				? { openItem: thread.openItem }
 				: {}),
 			...(thread.latestLine ? { latestLine: thread.latestLine } : {}),
+			...(thread.askSummary && turn === 'you' ? { askSummary: thread.askSummary } : {}),
+			...(thread.hasSuggestedReply && turn === 'you' ? { hasSuggestedReply: true } : {}),
 		};
 		topics.push(topic);
 		for (const key of partyKeys) {

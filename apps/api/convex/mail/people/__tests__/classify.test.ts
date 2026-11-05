@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
 	asksSomething,
-	CURRENT_WINDOW_MS,
 	accountKindOf,
 	cleanSubject,
 	companyKeyOf,
@@ -173,33 +172,10 @@ describe('topicTurn', () => {
 });
 
 describe('isCurrentTopic', () => {
-	const now = 10 * CURRENT_WINDOW_MS;
-	const old = now - CURRENT_WINDOW_MS - 1;
-
-	it('keeps open, pinned and recent topics current', () => {
-		const base = { isPinned: false, isMuted: false, isArchived: false };
-		expect(isCurrentTopic({ ...base, turn: 'you', lastMessageAt: old }, now)).toBe(true);
-		expect(isCurrentTopic({ ...base, isPinned: true, turn: 'none', lastMessageAt: old }, now)).toBe(
-			true
-		);
-		expect(isCurrentTopic({ ...base, turn: 'none', lastMessageAt: now - 1000 }, now)).toBe(true);
-		expect(isCurrentTopic({ ...base, turn: 'them', lastMessageAt: old }, now)).toBe(true);
-		expect(isCurrentTopic({ ...base, turn: 'replied', lastMessageAt: old }, now)).toBe(false);
-	});
-
-	it('never keeps a muted or archived topic current', () => {
-		expect(
-			isCurrentTopic(
-				{ isPinned: true, isMuted: true, isArchived: false, turn: 'you', lastMessageAt: now },
-				now
-			)
-		).toBe(false);
-		expect(
-			isCurrentTopic(
-				{ isPinned: false, isMuted: false, isArchived: true, turn: 'you', lastMessageAt: now },
-				now
-			)
-		).toBe(false);
+	it('keeps every conversation current until it is archived or muted, whatever its age', () => {
+		expect(isCurrentTopic({ isArchived: false, isMuted: false })).toBe(true);
+		expect(isCurrentTopic({ isArchived: true, isMuted: false })).toBe(false);
+		expect(isCurrentTopic({ isArchived: false, isMuted: true })).toBe(false);
 	});
 });
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * The "Classic inbox" row of the Reading card: Priority and All mail instead
- * of the People view. Its own component because the card and
+ * The "Traditional layout" row of the Reading card: Priority and All mail instead
+ * of the conversation view. Its own component because the card and
  * `usePostboxSettings` are both at the file-size cap. Off by default; on,
  * the inbox opens on the classic view the person used last.
  */

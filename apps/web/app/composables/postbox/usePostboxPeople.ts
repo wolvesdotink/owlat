@@ -1,6 +1,6 @@
 /**
- * The People view's data: the live directory read, lookups by key, the page
- * the route selects, and the topic-title requests for what is on screen.
+ * The conversation view's data: the live directory read, lookups by key, the
+ * place the route names, and the topic-title requests for what is on screen.
  *
  * Titles are asked for lazily (`mail/people/topicTitle.ts requestTopicTitles`)
  * from here, for the topics a person can see, so a mailbox nobody opens in
@@ -13,11 +13,10 @@ import type { Ref } from 'vue';
 import type { ShortcutScope } from '~/utils/shortcutRegistry';
 import { chordFromEvent } from '~/utils/shortcutRegistry';
 import { resolveActiveChord } from '~/utils/shortcutScope';
+import { indexDirectory, parseFocus, type Focus } from '~/utils/postboxConversations';
 import {
 	selectionFromQuery,
 	selectionQuery,
-	type PeopleCompany,
-	type PeoplePerson,
 	type PeopleSelection,
 	type PeopleTopic,
 } from '~/utils/postboxPeople';
@@ -32,37 +31,71 @@ export function usePostboxPeopleDirectory(mailboxId: Ref<Id<'mailboxes'>>) {
 		{ keepPreviousData: true }
 	);
 	const directory = computed(() => data.value ?? null);
-	const topics = computed(
-		() => new Map<string, PeopleTopic>((directory.value?.topics ?? []).map((t) => [t.id, t]))
-	);
-	const people = computed(
-		() => new Map<string, PeoplePerson>((directory.value?.people ?? []).map((p) => [p.key, p]))
-	);
-	const companies = computed(
-		() => new Map<string, PeopleCompany>((directory.value?.companies ?? []).map((c) => [c.key, c]))
-	);
-	const accounts = computed(
-		() => new Map((directory.value?.accounts ?? []).map((a) => [a.key, a] as const))
-	);
-	return { directory, topics, people, companies, accounts, isLoading, error, refetch };
+	const index = computed(() => (directory.value ? indexDirectory(directory.value) : null));
+	return { directory, index, isLoading, error, refetch };
 }
 
-/** The page the URL selects, and the moves between pages and topics. */
+/** The inbox's own place in the URL: the Updates tab, or a page and how it is narrowed. */
+export interface PeoplePlace {
+	view: 'people' | 'updates';
+	selection: PeopleSelection | null;
+	focus: Focus;
+	/** A company page narrowed to one of its people or departments. */
+	member: string | null;
+	/** Updates narrowed to one company. */
+	from: string | null;
+}
+
+function placeQuery(place: Partial<PeoplePlace>): Record<string, string> {
+	return {
+		...(place.view === 'updates' ? { view: 'updates' } : {}),
+		...(place.selection ? selectionQuery(place.selection) : {}),
+		...(place.focus && place.focus !== 'all' ? { focus: place.focus } : {}),
+		...(place.member ? { member: place.member } : {}),
+		...(place.from ? { from: place.from } : {}),
+	};
+}
+
+export function placeSearch(place: Partial<PeoplePlace>): string {
+	const params = new URLSearchParams(placeQuery(place)).toString();
+	return params ? `?${params}` : '';
+}
+
+/** The place the URL names, and the links between places and conversations. */
 export function usePostboxPeopleRoute() {
 	const route = useRoute();
-	const selection = computed(() => selectionFromQuery(route.query));
+	const place = computed<PeoplePlace>(() => {
+		const one = (key: string) => {
+			const value = route.query[key];
+			return typeof value === 'string' && value ? value : null;
+		};
+		return {
+			view: one('view') === 'updates' ? 'updates' : 'people',
+			selection: selectionFromQuery(route.query),
+			focus: parseFocus(one('focus')),
+			member: one('member'),
+			from: one('from'),
+		};
+	});
+	const selection = computed(() => place.value.selection);
 
-	/** The URL of a page, keeping whatever else the inbox URL carries. */
-	function pageHref(target: PeopleSelection): string {
-		const params = new URLSearchParams(selectionQuery(target));
-		return `/dashboard/postbox/inbox?${params.toString()}`;
+	/** A page, optionally narrowed. */
+	function pageHref(
+		target: PeopleSelection,
+		narrow: { focus?: Focus; member?: string | null } = {}
+	): string {
+		return `/dashboard/postbox/inbox${placeSearch({ selection: target, ...narrow })}`;
 	}
 
-	/** The URL of a topic opened from a page: the reader, with the page kept for Back. */
-	function topicHref(topic: PeopleTopic, from: PeopleSelection | null): string {
+	/** The Updates tab, optionally one company's. */
+	function updatesHref(from: string | null = null): string {
+		return `/dashboard/postbox/inbox${placeSearch({ view: 'updates', from })}`;
+	}
+
+	/** A conversation, keeping the place it was opened from for Back. */
+	function topicHref(topic: PeopleTopic, from: Partial<PeoplePlace> | null): string {
 		if (!topic.latestMessageId) return '';
-		const query = from ? `?${new URLSearchParams(selectionQuery(from)).toString()}` : '';
-		return `/dashboard/postbox/inbox/${topic.latestMessageId}${query}`;
+		return `/dashboard/postbox/inbox/${topic.latestMessageId}${placeSearch(from ?? {})}`;
 	}
 
 	const router = useRouter();
@@ -79,18 +112,19 @@ export function usePostboxPeopleRoute() {
 		else void navigateTo(href, { replace: true });
 	}
 
-	/** From the reader back to the page it was opened from. */
-	function backToPage() {
-		const from = selection.value;
-		goUp(from ? pageHref(from) : '/dashboard/postbox/inbox');
+	/** From a conversation back to the place it was opened from. */
+	function backToPlace() {
+		goUp(`/dashboard/postbox/inbox${placeSearch(place.value)}`);
 	}
 
-	/** From a page back to the column, which is all there is below `lg`. */
-	function backToColumn() {
-		goUp('/dashboard/postbox/inbox');
+	/** From a page back to the list, which is all there is on a phone. */
+	function backToList() {
+		goUp(
+			place.value.view === 'updates' ? updatesHref(place.value.from) : '/dashboard/postbox/inbox'
+		);
 	}
 
-	return { selection, pageHref, topicHref, backToPage, backToColumn };
+	return { place, selection, pageHref, updatesHref, topicHref, backToPlace, backToList };
 }
 
 /**

@@ -114,22 +114,19 @@ async function openSharedInbox(
 	await openRoute(page, appUrl, href);
 	// The view is a per-user setting the app saves; choosing it every time keeps
 	// the capture independent of whatever the last run or a person left behind.
-	// People is the default; the classic views sit behind its view menu, and the
-	// classic switch carries a People segment back.
+	// The conversation view is the default; the traditional layout sits in its
+	// mailbox menu, and the classic switch carries a Conversations segment back.
 	const tabs = page.getByRole('tablist', { name: 'Inbox view' });
-	const menu = page.getByRole('button', { name: 'Inbox view' });
+	const menu = page.getByRole('button', { name: 'Switch mailbox, folders and layout' });
 	await needs(tabs.or(menu), 'The inbox view switch');
 	if (view === 'People') {
-		if (await tabs.count()) await tabs.getByRole('tab', { name: 'People' }).first().click();
-		await needs(page.locator('[data-people-row]'), 'The People column');
+		if (await tabs.count()) await tabs.getByRole('tab', { name: 'Conversations' }).first().click();
+		await needs(page.locator('[data-pane-row]'), 'The conversation pane');
 		return;
 	}
 	if (await menu.count()) {
 		await menu.first().click();
-		await page
-			.getByRole('menuitem', { name: new RegExp(`^${view}`) })
-			.first()
-			.click();
+		await page.getByRole('menuitem', { name: 'Use the traditional layout' }).first().click();
 	}
 	const tab = tabs.getByRole('tab', { name: view });
 	await needs(tab, `The "${view}" inbox view switch`);
@@ -194,7 +191,7 @@ export const SURFACES: readonly Surface[] = [
 	{
 		name: 'postbox-people',
 		changes: 'the classic inbox switch is saved off',
-		description: `The shared ${SHARED_INBOX} inbox in the People view, the default.`,
+		description: `The shared ${SHARED_INBOX} inbox in the conversation view, the default.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'People');
 		},

@@ -20,6 +20,7 @@ import { isThreadMuted } from '../../lib/mailMute';
 import { openMessageBody } from '../../lib/messageBody';
 import { openBriefTop, modeOfMailbox } from '../interpret/briefTop';
 import { isFencedThread } from '../interpret/staleFence';
+import { visibleThreadDraftSlot } from '../needsReplySlot';
 import { withSenderLogos } from '../senderLogos/cache';
 import { loadSenderProfile, senderKeyOf } from '../senders/profiles';
 import { mailboxScope } from '../mailbox/shared';
@@ -38,16 +39,13 @@ const EARLIER_PAGE = 100;
  * follow-up armed or overdue), so nothing either side owes drops out of view.
  */
 const OWED_SCAN = 200;
-/** Threads the sidebar's people come from: the last few weeks of most inboxes. */
-const SIDEBAR_SCAN = 80;
-/** People one sidebar group may list. */
-const SIDEBAR_MAX = 10;
 
 /** One thread as the directory folds it; brief texts are opened only when asked. */
 async function threadInput(
 	thread: Doc<'mailThreads'>,
 	mode: ReturnType<typeof modeOfMailbox>,
-	isOpeningBrief: boolean
+	isOpeningBrief: boolean,
+	isShared: boolean
 ): Promise<ThreadInput> {
 	const fenced = isFencedThread(thread);
 	const stored = fenced ? undefined : thread.briefTop;
@@ -75,7 +73,12 @@ async function threadInput(
 			thread.needsReplyClearedAt >= thread.lastMessageAt,
 		// A follow-up watch, armed or overdue, is a reply still expected.
 		isOwedToUs: (stored?.waiting ?? 0) > 0 || thread.followUp !== undefined,
+		...(visibleThreadDraftSlot(thread) ? { hasSuggestedReply: true } : {}),
 	};
+	// The model's summary of the ask is the Answer queue's: never on a team
+	// surface, nor from a fenced thread.
+	const askSummary = thread.needsReply?.askSummary;
+	if (askSummary && !isShared && !fenced) input.askSummary = askSummary;
 	if (thread.topicTitle && isTitleShown(thread)) {
 		input.title = {
 			text: await openMessageBody(thread.topicTitle.text),
@@ -221,6 +224,7 @@ export const directory = postboxQuery({
 		const mailbox = access.mailbox;
 		const now = Date.now();
 		const mode = modeOfMailbox(mailbox);
+		const isShared = mailboxScope(mailbox) === 'shared';
 		const own = await mailboxOwnAddresses(ctx, mailbox);
 
 		const { threads: recent, isOutstandingCapped } = await windowWithOwed(
@@ -236,7 +240,8 @@ export const directory = postboxQuery({
 				threadInput(
 					thread,
 					mode,
-					isUnresolved(thread) || now - thread.lastMessageAt < 30 * 24 * 60 * 60 * 1000
+					isUnresolved(thread) || now - thread.lastMessageAt < 30 * 24 * 60 * 60 * 1000,
+					isShared
 				)
 			)
 		);
@@ -270,11 +275,11 @@ export const directory = postboxQuery({
 		}
 
 		return {
-			scope: mailboxScope(mailbox) === 'shared' ? ('shared' as const) : ('personal' as const),
+			scope: isShared ? ('shared' as const) : ('personal' as const),
 			mailboxAddress: mailbox.address,
 			isWindowFull: recent.length >= DIRECTORY_SCAN,
 			isOutstandingCapped,
-			...assembleDirectory({ threads: inputs, ownAddresses: own, addresses, now }),
+			...assembleDirectory({ threads: inputs, ownAddresses: own, addresses }),
 		};
 	},
 });
@@ -315,129 +320,17 @@ export const earlierTopics = postboxQuery({
 		);
 		const own = await mailboxOwnAddresses(ctx, mailbox);
 		const mode = modeOfMailbox(mailbox);
-		const inputs = await Promise.all(threads.map((t) => threadInput(t, mode, false)));
+		const isShared = mailboxScope(mailbox) === 'shared';
+		const inputs = await Promise.all(threads.map((t) => threadInput(t, mode, false, isShared)));
 		const { topics } = assembleDirectory({
 			threads: inputs,
 			ownAddresses: own,
 			addresses: new Map(),
-			now,
 		});
 		return {
 			topics: topics.sort((a, b) => b.lastMessageAt - a.lastMessageAt),
 			continueCursor: page.isDone ? null : page.continueCursor,
 			isDone: page.isDone,
-		};
-	},
-});
-
-/**
- * The sidebar's people for one inbox: whoever waits on you first, then the
- * most recent, each with the topic it leads with. A small fold of the newest
- * threads, because the sidebar is on every page; the People view reads the
- * full directory.
- */
-export const sidebarPeople = postboxQuery({
-	args: { mailboxId: v.id('mailboxes'), limit: v.number() },
-	handler: async (ctx, args, session) => {
-		const empty = {
-			scope: 'personal' as 'personal' | 'shared',
-			peopleCount: 0,
-			waitingCount: 0,
-			owedConversations: 0,
-			people: [],
-			companies: [],
-		};
-		const access = await requireMailboxAccess(ctx, args.mailboxId, 'member', session);
-		if (!access.ok) return empty;
-		const mailbox = access.mailbox;
-		const scope = mailboxScope(mailbox) === 'shared' ? ('shared' as const) : ('personal' as const);
-		const limit = Math.max(0, Math.min(SIDEBAR_MAX, Math.round(args.limit)));
-		if (limit === 0) return { ...empty, scope };
-		const now = Date.now();
-		const own = await mailboxOwnAddresses(ctx, mailbox);
-		const { threads: recent } = await windowWithOwed(ctx, mailbox._id, SIDEBAR_SCAN);
-		const threads = await visibleThreads(ctx, recent, now);
-		const mode = modeOfMailbox(mailbox);
-		// Brief texts only for what may be owed: the reason a company row shows.
-		const inputs = await Promise.all(threads.map((t) => threadInput(t, mode, isUnresolved(t))));
-		const order = [...new Set(threads.flatMap((t) => counterpartsOf(t.participants, own)))];
-		const looked = await Promise.all(
-			order.slice(0, limit * 3).map((email) => addressInput(ctx, mailbox, email))
-		);
-		const addresses = new Map<string, AddressInput>();
-		for (const [i, { info }] of looked.entries()) addresses.set(order[i]!, info);
-		const directory = assembleDirectory({ threads: inputs, ownAddresses: own, addresses, now });
-		const topics = new Map(directory.topics.map((t) => [t.id, t]));
-		const people = [...directory.people]
-			.sort(
-				(a, b) =>
-					Number(b.owedCount > 0) - Number(a.owedCount > 0) ||
-					Number(b.mayOweCount > 0) - Number(a.mayOweCount > 0) ||
-					b.lastAt - a.lastAt
-			)
-			.slice(0, limit)
-			.map((person) => {
-				const own = person.topicIds.map((id) => topics.get(id)!);
-				const lead =
-					own.find((t) => t.isAsk) ??
-					own.find((t) => t.turn === 'you') ??
-					own.find((t) => t.isCurrent) ??
-					own[0];
-				return {
-					key: person.key,
-					name: person.name,
-					lastAt: person.lastAt,
-					unread: person.unread,
-					owedCount: person.owedCount,
-					mayOweCount: person.mayOweCount,
-					leadTitle: lead?.title ?? '',
-					// The latest words of a turn that only may need a reply, so the
-					// Workbench can show what is asked rather than the topic.
-					...(lead && lead.turn === 'you' && !lead.isAsk ? { leadSnippet: lead.snippet } : {}),
-					leadMessageId: lead?.latestMessageId ?? null,
-				};
-			});
-		// Company mail that asks something of you (a payment due, a question
-		// about an invoice), with what it asks: the Workbench lists it apart from
-		// people, and only when it needs action, never for being merely new.
-		const companies = directory.companies
-			.flatMap((company) => {
-				const actionable = company.topicIds
-					.map((id) => topics.get(id)!)
-					.filter(
-						(t) =>
-							t.openItem?.isOurs === true &&
-							t.partyKeys.some((k) => company.accountKeys.includes(k)) &&
-							!t.partyKeys.some((k) => company.personKeys.includes(k))
-					);
-				const first = actionable[0];
-				return first
-					? [
-							{
-								key: company.key,
-								name: company.name,
-								kind: company.kind,
-								isAutomated: company.isAutomated,
-								...(company.logoUrl ? { logoUrl: company.logoUrl } : {}),
-								title: first.title,
-								reason: first.openItem!.text,
-								...(first.openItem!.dueAt !== undefined ? { dueAt: first.openItem!.dueAt } : {}),
-								actionableCount: actionable.length,
-							},
-						]
-					: [];
-			})
-			.slice(0, limit);
-		return {
-			scope,
-			// Everyone in the window, so the sidebar can say how many it left out.
-			peopleCount: directory.people.length,
-			// Everyone waiting in the window, not only the rows returned.
-			waitingCount: directory.people.filter((p) => p.owedCount > 0).length,
-			// The conversations those people wait on, so the two numbers say their units.
-			owedConversations: directory.people.reduce((sum, p) => sum + p.owedCount, 0),
-			people,
-			companies,
 		};
 	},
 });

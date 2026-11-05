@@ -17,15 +17,6 @@ import { isFreemailDomain } from '@owlat/shared/freemailDomains';
 import { extractEmail } from '../../lib/emailAddress';
 import type { MailCategory } from '../category';
 
-/** A conversation counts as current this long after its last message. */
-export const CURRENT_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-/**
- * How long a heuristic flag (no model read it) keeps a conversation the
- * mailbox's turn without newer mail. Past it the flag was most likely a polite
- * closing; the Answer queue still holds it.
- */
-export const MAYBE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
 /** Local parts that only machines and departments send from. */
 const ROLE_LOCAL_PART =
 	/^(no-?reply|do-?not-?reply|donotreply|noreply-.*|notifications?|notify|alerts?|updates?|news(letter)?s?|marketing|mailer(-daemon)?|bounces?|postmaster|system|automated|auto|billing|invoices?|receipts?|orders?|shipping|delivery|tracking|accounts?|security|statements?|bot)([+._-].*)?$/i;
@@ -241,26 +232,12 @@ export function topicTurn(input: TurnInput): TopicTurn {
 }
 
 /**
- * Current: a turn is open either way, it is pinned, or it moved in the last
- * two weeks.
- * Archiving or muting a conversation is the owner saying it is done here, so
- * either moves it to Earlier whatever its age.
+ * Current: neither archived nor muted. Archiving or muting is the owner saying
+ * a conversation is done here; nothing leaves Current by age, since an
+ * unanswered request does not stop mattering because it waited.
  */
-export function isCurrentTopic(
-	input: {
-		turn: TopicTurn;
-		lastMessageAt: number;
-		isPinned: boolean;
-		isMuted: boolean;
-		isArchived: boolean;
-	},
-	now: number
-): boolean {
-	if (input.isMuted || input.isArchived) return false;
-	// An open turn either way stays current however old: an unanswered
-	// question does not become history by waiting.
-	if (input.isPinned || input.turn === 'you' || input.turn === 'them') return true;
-	return now - input.lastMessageAt < CURRENT_WINDOW_MS;
+export function isCurrentTopic(input: { isArchived: boolean; isMuted: boolean }): boolean {
+	return !input.isArchived && !input.isMuted;
 }
 
 /** Archived: in Archive and no longer in the Inbox. */
