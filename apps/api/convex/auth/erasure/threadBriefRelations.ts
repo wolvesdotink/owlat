@@ -80,6 +80,13 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		'delete',
 		SAME_THREAD
 	),
+	descendant(
+		'threadItems',
+		'mailThreads',
+		'needsReplyCleared.clarification.questions[].itemId',
+		'delete',
+		SAME_THREAD
+	),
 	descendant('threadItems', 'mailThreads', 'briefTop.top.itemId', 'delete', SAME_THREAD),
 	descendant(
 		'threadItems',

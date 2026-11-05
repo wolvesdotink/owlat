@@ -97,10 +97,13 @@ async function openContactList(page: Page, appUrl: string): Promise<void> {
 async function openSharedInbox(
 	page: Page,
 	appUrl: string,
-	view: 'Priority' | 'All mail'
+	view: 'Priority' | 'All mail' | 'People'
 ): Promise<void> {
 	await openRoute(page, appUrl, '/dashboard/postbox/inbox');
-	const rail = page.locator(`a[title="${SHARED_INBOX}"]`);
+	// The rail names an entry by its label, then its unread count ("Team, 3 unread").
+	const rail = page.locator(
+		`a[href*="mailbox="][aria-label="${SHARED_INBOX}"], a[href*="mailbox="][aria-label^="${SHARED_INBOX},"]`
+	);
 	await needs(rail, `The shared "${SHARED_INBOX}" inbox in the mailbox rail`, POSTBOX_HINT);
 	const href = await rail.first().getAttribute('href');
 	if (!href?.includes('mailbox=')) {
@@ -111,7 +114,21 @@ async function openSharedInbox(
 	await openRoute(page, appUrl, href);
 	// The view is a per-user setting the app saves; choosing it every time keeps
 	// the capture independent of whatever the last run or a person left behind.
-	const tab = page.getByRole('tablist', { name: 'Inbox view' }).getByRole('tab', { name: view });
+	// The conversation view is the default; the traditional layout sits in its
+	// mailbox menu, and the classic switch carries a Conversations segment back.
+	const tabs = page.getByRole('tablist', { name: 'Inbox view' });
+	const menu = page.getByRole('button', { name: 'Switch mailbox, folders and layout' });
+	await needs(tabs.or(menu), 'The inbox view switch');
+	if (view === 'People') {
+		if (await tabs.count()) await tabs.getByRole('tab', { name: 'Conversations' }).first().click();
+		await needs(page.locator('[data-pane-row]'), 'The conversation pane');
+		return;
+	}
+	if (await menu.count()) {
+		await menu.first().click();
+		await page.getByRole('menuitem', { name: 'Use the traditional layout' }).first().click();
+	}
+	const tab = tabs.getByRole('tab', { name: view });
 	await needs(tab, `The "${view}" inbox view switch`);
 	if ((await tab.first().getAttribute('aria-selected')) !== 'true') await tab.first().click();
 }
@@ -137,7 +154,7 @@ export const SURFACES: readonly Surface[] = [
 		// Before postbox-today, whose Priority view counts the message.
 		name: 'postbox',
 		changes:
-			'the seeded message becomes read; the inbox view is saved as All mail and the list view as Flat',
+			'the seeded message becomes read; the classic inbox switch is saved on, its view as All mail and the list view as Flat',
 		description: `The shared ${SHARED_INBOX} inbox (All mail) with "${SHARED_MESSAGE.subject}" open in the reader.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'All mail');
@@ -161,7 +178,7 @@ export const SURFACES: readonly Surface[] = [
 	},
 	{
 		name: 'postbox-today',
-		changes: 'the inbox view is saved as Priority',
+		changes: 'the classic inbox switch is saved on and its view as Priority',
 		description: `The shared ${SHARED_INBOX} inbox in the Priority view.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'Priority');
@@ -169,6 +186,14 @@ export const SURFACES: readonly Surface[] = [
 			await needs(main.getByText("here's where things stand"), 'The Priority view greeting');
 			await needs(main.getByRole('heading', { name: /^Needs you/ }), 'The "Needs you" section');
 			await needs(main.getByText('Ben Ortiz', { exact: true }), 'The seeded sender Ben Ortiz');
+		},
+	},
+	{
+		name: 'postbox-people',
+		changes: 'the classic inbox switch is saved off',
+		description: `The shared ${SHARED_INBOX} inbox in the conversation view, the default.`,
+		async open(page, appUrl) {
+			await openSharedInbox(page, appUrl, 'People');
 		},
 	},
 	{

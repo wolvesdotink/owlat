@@ -5012,7 +5012,8 @@
 				"all": "All mail",
 				"label": "Inbox view",
 				"priority": "Priority",
-				"title": "Priority mail or all mail"
+				"title": "Priority mail or all mail",
+				"people": "Conversations"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Here are a few times that work for me ({zone}):",
@@ -6376,6 +6377,131 @@
 					"spam": "Empty spam?"
 				},
 				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
+			},
+			"people": {
+				"topic": {
+					"subjectWas": "Subject: {subject}",
+					"namedByOwlat": "Named by Owlat",
+					"noReplyNeeded": "No reply needed"
+				},
+				"topicBar": {
+					"rename": "Rename topic",
+					"reset": "Reset the name",
+					"namedByOwlat": "Named by Owlat from {count} message | Named by Owlat from {count} messages",
+					"namedByYou": "Named by you"
+				}
+			},
+			"conversations": {
+				"pane": {
+					"label": "Conversations",
+					"mailboxMenu": "Switch mailbox, folders and layout",
+					"inbox": "Inbox",
+					"new": "New",
+					"people": "People",
+					"updates": "Updates",
+					"search": "Search people and mail",
+					"traditional": "Use the traditional layout",
+					"showMembers": "Show the people at {name}",
+					"hideMembers": "Hide the people at {name}",
+					"error": "The conversations didn't load.",
+					"retry": "Try again",
+					"emptyTitle": "No open conversations",
+					"emptyHint": "Done conversations are a search away.",
+					"noMatch": "Nothing matches",
+					"backToConversations": "Conversations"
+				},
+				"greeting": {
+					"hello": "Hi",
+					"helloNamed": "Hi {name}",
+					"one": "{hello}. {name0} may need a reply.",
+					"two": "{hello}. {name0} and {name1} may need replies.",
+					"many": "{hello}. {name0}, {name1} and {count} more may need replies."
+				},
+				"line": {
+					"you": "You",
+					"team": "Team",
+					"asks": "{name} asks:",
+					"asked": "Asked:",
+					"due": "Due {date}"
+				},
+				"cue": {
+					"reply": "Reply?",
+					"waiting": "Waiting on {name}",
+					"noReply": "No reply needed",
+					"noReplyUndone": "Reply needed again",
+					"markedNoReply": "No reply needed: {title}",
+					"draft": "Draft reply"
+				},
+				"page": {
+					"company": "Company",
+					"everyone": "Everyone",
+					"findPerson": "Find a person",
+					"focus": {
+						"label": "Show",
+						"all": "All",
+						"reply": "Reply?",
+						"waiting": "Waiting"
+					},
+					"noneReply": "Nothing here may need a reply.",
+					"noneWaiting": "Nothing is waiting on them.",
+					"showMore": "Show more",
+					"olderMail": "Show older conversations",
+					"updatesFrom": "Updates from {name}",
+					"gone": "This one isn't in your recent mail.",
+					"pickUpdate": "Choose an update to read it.",
+					"open": "Open",
+					"done": "Done",
+					"noneOpen": "Nothing open with {name}."
+				},
+				"reply": {
+					"to": "Reply to {name}…",
+					"plain": "Reply…",
+					"suggested": "Review suggested reply"
+				},
+				"topic": {
+					"rename": "Rename topic",
+					"reset": "Reset the name"
+				},
+				"updates": {
+					"today": "Today",
+					"yesterday": "Yesterday",
+					"week": "Earlier this week",
+					"markAllRead": "Mark all read",
+					"menu": "More for this update",
+					"moveToPeople": "Treat as a person",
+					"movedToPeople": "{name} is listed with your people from now on.",
+					"fromCompany": "From {name} only",
+					"showAll": "Show all",
+					"empty": "No updates."
+				},
+				"done": {
+					"action": "Done",
+					"help": "Moves this conversation to Archive. New replies bring it back.",
+					"label": "Done",
+					"marked": "Done: {title}",
+					"muted": "Muted",
+					"reopen": "Reopen",
+					"reopenHelp": "This conversation is done. Reopen brings it back to your open list."
+				},
+				"drafts": {
+					"title": "Drafts",
+					"noRecipient": "No recipient yet",
+					"noSubject": "No subject",
+					"scheduled": "Scheduled"
+				},
+				"search": {
+					"label": "Look through",
+					"recent": "Recent matches",
+					"all": "Search all mail for “{query}”",
+					"done": "Done",
+					"sent": "Sent",
+					"drafts": "Drafts",
+					"trash": "Trash",
+					"spam": "Spam"
+				}
+			},
+			"classicInbox": {
+				"operation": "Save inbox view"
 			}
 		},
 		"preferences": {
@@ -6493,7 +6619,9 @@
 				"swipeLeftLabel": "Swipe left on a message",
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
-				"swipeRightHelp": "The same gesture, the other way."
+				"swipeRightHelp": "The same gesture, the other way.",
+				"classicInboxLabel": "Traditional layout",
+				"classicInboxHelp": "List messages as they arrive, in Priority and All mail, instead of the conversation view. The conversation view lists the people you write with, and what you are talking about."
 			},
 			"preferencesShortcuts": {
 				"heading": "Keyboard shortcuts",
@@ -7558,6 +7686,11 @@
 				"entered": "Zen mode on. Only the task is on screen.",
 				"left": "Zen mode off.",
 				"paletteSubtitle": "Hide everything but the task"
+			},
+			"peopleRows": {
+				"empty": "No conversations yet",
+				"more": "{count} more person | {count} more people",
+				"moreWaiting": "{count} more waiting on you | {count} more waiting on you"
 			}
 		},
 		"today": {
@@ -7577,7 +7710,8 @@
 				"question": "needs your input",
 				"mention": "mention",
 				"mentionTitle": "#{room}: {preview}",
-				"clearTitleIn": "Nothing in {inbox} needs an answer"
+				"clearTitleIn": "Nothing in {inbox} needs an answer",
+				"queuedTitle": "in your Answer queue"
 			},
 			"todo": {
 				"title": "To do, no reply needed · {count}",
@@ -7599,7 +7733,7 @@
 				"keysMove": "move",
 				"worth": "Important",
 				"also": "Also arrived",
-				"empty": "Nothing new here that needs no reply. What people tell you and alerts that need action show up here.",
+				"empty": "No updates right now. News that asks nothing of you shows up here.",
 				"more": "{count} more update is waiting. | {count} more updates are waiting."
 			},
 			"filed": {
@@ -7728,6 +7862,15 @@
 				"cancelled": "Unscheduled. It is back in Drafts.",
 				"showMore": "Show more",
 				"moreThanShown": "More is scheduled than the Workbench lists."
+			},
+			"people": {
+				"title": "People",
+				"waiting": "{count} person waiting on you | {count} people waiting on you",
+				"open": "Open inbox",
+				"waitingTeam": "{count} person waiting on the team | {count} people waiting on the team",
+				"waitingWithCount": "{conversations} request from {people} | {conversations} requests from {people}",
+				"waitingTeamWithCount": "{conversations} request to the team from {people} | {conversations} requests to the team from {people}",
+				"recent": "Recently in touch"
 			}
 		},
 		"answer": {
@@ -17243,6 +17386,10 @@
 				"pushNotifications": {
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
+				},
+				"classicInbox": {
+					"title": "Classic inbox",
+					"keywords": "people view, classic, traditional, inbox layout, priority, all mail, message list"
 				}
 			},
 			"adminControls": {

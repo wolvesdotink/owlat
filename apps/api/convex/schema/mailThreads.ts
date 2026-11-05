@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { needsReplyClarificationValidator } from '../lib/validators/clarification';
 import { briefTopValidator } from '../lib/validators/briefTop';
+import { topicTitleValidator } from '../lib/validators/topicTitle';
 import { placementOverrideValidator, threadArrivalValidator } from '../lib/validators/arrival';
 import { draftQualityValidator } from '../lib/convexValidators';
 import {
@@ -170,6 +171,14 @@ export const mailThreadsTables = {
 		// Cleared by any outbound reply in the thread, archive/trash of its
 		// messages, or the manual clear mutation (mail/needsReply.ts).
 		needsReply: v.optional(needsReplyValidator),
+		// The flag a person cleared by hand ("No reply needed"), kept so the
+		// Postbox's undo puts back exactly what was there. Only `needsReply.restore`
+		// reads it, and only while no newer flag has arrived.
+		needsReplyCleared: v.optional(needsReplyValidator),
+		// When a person last said "No reply needed". Until newer mail arrives it
+		// also silences a request the brief holds, so the People view does not
+		// count a conversation the person just dismissed.
+		needsReplyClearedAt: v.optional(v.number()),
 		// Set when inbound ingest enqueues needs-reply classification; cleared once
 		// the classify action reaches a verdict or settles without one (AI off,
 		// model error). The heuristic baseline re-stamps it rather than clearing
@@ -277,6 +286,18 @@ export const mailThreadsTables = {
 		// delivery, aggregate rebuild, archive or snooze clears it. Its value is
 		// the pin time, which orders the band. Absent = not pinned.
 		pinnedAt: v.optional(v.number()),
+		// The People view's name for the conversation (`mail/people/topicTitle.ts`).
+		// Absent ⇒ the cleaned subject stands in. `topicTitlePendingAt` marks a
+		// model run in flight, so a view that keeps asking schedules it once.
+		topicTitle: v.optional(topicTitleValidator),
+		topicTitlePendingAt: v.optional(v.number()),
+		// Marked done in the conversation view (`mail/people/done.ts`). A
+		// conversation is done while this is at or after `lastMessageAt`, so any
+		// newer message reopens it without anyone clearing the stamp. It marks
+		// conversations with no Inbox copy to archive (one you started), and
+		// records who settled a shared one.
+		doneAt: v.optional(v.number()),
+		doneBy: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

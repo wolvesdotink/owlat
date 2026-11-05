@@ -30,6 +30,8 @@ beforeEach(() => {
 		useRoute: () => ({ path: '/dashboard' }),
 		useConvex: () => client,
 		useConvexQuery,
+		// The classic inbox lists conversations here; the conversation view, nothing.
+		usePostboxClassicInbox: () => ({ isClassicInbox: ref(true) }),
 		// The Team inbox rows' menu verbs (assign to me, resolve) set up their
 		// writes and the undo notice; nothing here runs them.
 		useAuth: () => ({ user: ref({ id: 'user1' }) }),

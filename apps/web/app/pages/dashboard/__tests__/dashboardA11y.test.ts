@@ -151,6 +151,7 @@ beforeEach(() => {
 			error: ref(null),
 		}),
 		usePostboxSettings: () => ({ settings: ref(null), isLoading: ref(false) }),
+		usePostboxClassicInbox: () => ({ isClassicInbox: ref(false) }),
 		useConvexQuery: () => queryResult(undefined),
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),

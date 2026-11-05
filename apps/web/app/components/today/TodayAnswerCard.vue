@@ -34,6 +34,12 @@ const props = withDefaults(
 		queueHref?: string;
 		/** The tab's inbox name, for the all-clear sentence. */
 		inboxName?: string;
+		/**
+		 * Leave out the "Needs an answer" list: the People card lists the same
+		 * conversations grouped by person, so the card keeps its count and the
+		 * way into the queue.
+		 */
+		hideList?: boolean;
 	}>(),
 	{ queueTotal: undefined, queueHref: '/dashboard/answer', inboxName: undefined }
 );
@@ -200,7 +206,11 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 				>
 				<div class="min-w-0 flex-1">
 					<h2 id="today-answer" class="text-sm font-medium text-text-primary">
-						{{ t('components.today.answer.title', { count: items.length }, items.length) }}
+						{{
+							hideList
+								? t('components.today.answer.queuedTitle')
+								: t('components.today.answer.title', { count: items.length }, items.length)
+						}}
 					</h2>
 					<p v-if="sourceLine" class="mt-0.5 text-xs text-text-secondary">{{ sourceLine }}</p>
 					<p class="mt-0.5 text-xs text-text-tertiary">{{ effortLine }}</p>
@@ -229,7 +239,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			</div>
 		</div>
 
-		<template v-if="top.length > 0">
+		<template v-if="top.length > 0 && !hideList">
 			<h3
 				class="mb-2 mt-8 flex items-center text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 			>

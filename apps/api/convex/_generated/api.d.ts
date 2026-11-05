@@ -122,6 +122,7 @@ import type * as mail_interpret_transitionSources from '../mail/interpret/transi
 import type * as mail_interpret_verify from '../mail/interpret/verify.js';
 import type * as mail_interpret_verifyRoute from '../mail/interpret/verifyRoute.js';
 import type * as mail_messageCounters from '../mail/messageCounters.js';
+import type * as mail_needsReplyRestore from '../mail/needsReplyRestore.js';
 import type * as mail_needsReplySlot from '../mail/needsReplySlot.js';
 import type * as mail_nudgeQueue from '../mail/nudgeQueue.js';
 import type * as mail_nudges from '../mail/nudges.js';
@@ -1547,6 +1548,13 @@ import type * as mail_pendingInboxMembership from '../mail/pendingInboxMembershi
 import type * as mail_pendingMailbox from '../mail/pendingMailbox.js';
 import type * as mail_permissions from '../mail/permissions.js';
 import type * as mail_pins from '../mail/pins.js';
+import type * as mail_ai_topicTitle from '../mail/ai/topicTitle.js';
+import type * as mail_people_assemble from '../mail/people/assemble.js';
+import type * as mail_people_classify from '../mail/people/classify.js';
+import type * as mail_people_directory from '../mail/people/directory.js';
+import type * as mail_people_done from '../mail/people/done.js';
+import type * as mail_people_topicTitle from '../mail/people/topicTitle.js';
+import type * as lib_validators_topicTitle from '../lib/validators/topicTitle.js';
 import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js';
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_readReceipts from '../mail/readReceipts.js';
@@ -3234,6 +3242,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/writeFence': typeof lib_writeFence;
 	'lib/validators/arrival': typeof lib_validators_arrival;
 	'lib/validators/mcp': typeof lib_validators_mcp;
+	'lib/validators/topicTitle': typeof lib_validators_topicTitle;
 }> & ApiFromModules<{
 	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
 	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
@@ -3324,6 +3333,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/verify': typeof mail_interpret_verify;
 	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
 	'mail/messageCounters': typeof mail_messageCounters;
+	'mail/needsReplyRestore': typeof mail_needsReplyRestore;
 	'mail/needsReplySlot': typeof mail_needsReplySlot;
 	'mail/nudgeQueue': typeof mail_nudgeQueue;
 	'mail/nudges': typeof mail_nudges;
@@ -3576,6 +3586,12 @@ declare const fullApi: ApiFromModules<{
 	'mail/pendingMailbox': typeof mail_pendingMailbox;
 	'mail/permissions': typeof mail_permissions;
 	'mail/pins': typeof mail_pins;
+	'mail/ai/topicTitle': typeof mail_ai_topicTitle;
+	'mail/people/assemble': typeof mail_people_assemble;
+	'mail/people/classify': typeof mail_people_classify;
+	'mail/people/directory': typeof mail_people_directory;
+	'mail/people/done': typeof mail_people_done;
+	'mail/people/topicTitle': typeof mail_people_topicTitle;
 	'mail/postboxOutboundAudit': typeof mail_postboxOutboundAudit;
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/readReceipts': typeof mail_readReceipts;

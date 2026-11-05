@@ -112,5 +112,22 @@ export function usePostboxReaderReplies(source: {
 		};
 	});
 
+	// `?reply=1` (a People card's Reply) opens the reply as soon as the latest
+	// message is here, behind the same guard as `r`, then leaves the URL so a
+	// reload or Back does not open it again.
+	const route = useRoute();
+	const router = useRouter();
+	watch(
+		[() => route.query['reply'], source.latestMessage],
+		([intent, latest]) => {
+			if (intent !== '1' || !latest) return;
+			const { reply: _reply, ...rest } = route.query;
+			// The reply navigates on to Answer mode: strip first, so the two
+			// navigations do not race and Back returns to the plain reader.
+			void router.replace({ query: rest }).then(() => composer.replyToLatest());
+		},
+		{ immediate: true }
+	);
+
 	return { ...composer, runGuarded, guardLatestReply, guardedReply, guardedReplyAll, replyDrop };
 }

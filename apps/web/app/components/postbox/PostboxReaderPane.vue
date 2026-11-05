@@ -11,6 +11,7 @@ import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadRea
 import type { PostboxFindSeed } from '~/composables/postbox/usePostboxThreadFind';
 import { POSTBOX_FIND_QUERY_PARAM } from '~/utils/postboxFindSeed';
 import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import PostboxConversationReply from './PostboxConversationReply.vue';
 
 const props = defineProps<{
 	activeMessageId?: string | null;
@@ -70,6 +71,8 @@ const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 				:folder-role="folderPath"
 				:find-seed="findSeed"
 			/>
+			<!-- Opened from the conversation view: the reply field at its foot. -->
+			<PostboxConversationReply />
 		</AppErrorBoundary>
 		<PostboxReaderPlaceholder
 			v-else

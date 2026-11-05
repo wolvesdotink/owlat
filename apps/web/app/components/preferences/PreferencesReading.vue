@@ -35,6 +35,7 @@ import { POSTBOX_SWIPE_ACTION_OPTIONS } from '~/utils/postboxSwipe';
 import { POSTBOX_READING_DEFAULTS as DEFAULTS } from '~/utils/postboxReadingDefaults';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
 import PreferencesSenderLogos from './PreferencesSenderLogos.vue';
+import PreferencesClassicInbox from './PreferencesClassicInbox.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -165,8 +166,8 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 		<header class="px-5 py-3 border-b border-border-subtle">
 			<h2 class="font-semibold">{{ t('components.preferences.preferencesReading.reading') }}</h2>
 		</header>
+		<PreferencesClassicInbox />
 		<PreferencesSettingRow
-			first
 			control-id="postbox-auto-advance"
 			:label="t('components.preferences.preferencesReading.autoAdvanceLabel')"
 			:help="t('components.preferences.preferencesReading.autoAdvanceHelp')"

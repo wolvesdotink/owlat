@@ -187,6 +187,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('reduceMotion', 'comfort'),
 			control('senderZoom', 'comfort'),
 			control('language', 'language'),
+			control('classicInbox', 'reading', hasMail),
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),
 			control('density', 'reading', hasMail),

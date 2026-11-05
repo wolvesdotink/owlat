@@ -22,6 +22,9 @@ const emit = defineEmits<{ toggle: [] }>();
 
 const { t } = useI18n();
 const route = useRoute();
+// The classic inbox lists its conversations here. The conversation view keeps
+// its people in its own pane, so the sidebar only links to the inbox.
+const { isClassicInbox } = usePostboxClassicInbox();
 
 // keepPreviousData: collapsing, expanding or changing the per-inbox count keeps
 // the rows and the status dot until the new list lands, instead of blinking
@@ -30,7 +33,7 @@ const { data } = useConvexQuery(
 	api.today.mailbox.sidebarThreads,
 	() => ({
 		mailboxId: props.inbox.mailboxId,
-		limit: props.collapsed ? 0 : props.limit,
+		limit: props.collapsed || !isClassicInbox.value ? 0 : props.limit,
 	}),
 	{ keepPreviousData: true }
 );
@@ -100,7 +103,7 @@ const moreCount = computed(() =>
 			</UiTooltip>
 		</div>
 
-		<div v-if="!collapsed" class="mt-px space-y-px">
+		<div v-if="!collapsed && isClassicInbox" class="mt-px space-y-px">
 			<ShellThreadRow
 				v-for="row in rows"
 				:key="row.threadId"

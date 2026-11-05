@@ -5012,7 +5012,8 @@
 				"all": "Alle E-Mails",
 				"label": "Posteingangsansicht",
 				"priority": "Priorität",
-				"title": "Wichtige E-Mails oder alle E-Mails"
+				"title": "Wichtige E-Mails oder alle E-Mails",
+				"people": "Unterhaltungen"
 			},
 			"postboxInsertAvailability": {
 				"intro": "Hier ein paar Zeiten, die bei mir passen ({zone}):",
@@ -6376,6 +6377,131 @@
 					"spam": "Spam leeren?"
 				},
 				"confirmBody": "{count} Nachricht wird endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen. | {count} Nachrichten werden endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen."
+			},
+			"people": {
+				"topic": {
+					"subjectWas": "Betreff: {subject}",
+					"namedByOwlat": "Von Owlat benannt",
+					"noReplyNeeded": "Keine Antwort nötig"
+				},
+				"topicBar": {
+					"rename": "Thema umbenennen",
+					"reset": "Namen zurücksetzen",
+					"namedByOwlat": "Von Owlat aus {count} Nachricht benannt | Von Owlat aus {count} Nachrichten benannt",
+					"namedByYou": "Von dir benannt"
+				}
+			},
+			"conversations": {
+				"pane": {
+					"label": "Unterhaltungen",
+					"mailboxMenu": "Postfach, Ordner und Layout",
+					"inbox": "Posteingang",
+					"new": "Neu",
+					"people": "Personen",
+					"updates": "Mitteilungen",
+					"search": "Personen und Mails suchen",
+					"traditional": "Klassisches Layout verwenden",
+					"showMembers": "Personen bei {name} zeigen",
+					"hideMembers": "Personen bei {name} ausblenden",
+					"error": "Die Unterhaltungen konnten nicht geladen werden.",
+					"retry": "Erneut versuchen",
+					"emptyTitle": "Keine offenen Unterhaltungen",
+					"emptyHint": "Erledigte Unterhaltungen findest du über die Suche.",
+					"noMatch": "Keine Treffer",
+					"backToConversations": "Unterhaltungen"
+				},
+				"greeting": {
+					"hello": "Hallo",
+					"helloNamed": "Hallo {name}",
+					"one": "{hello}. {name0} wartet vielleicht auf eine Antwort.",
+					"two": "{hello}. {name0} und {name1} warten vielleicht auf eine Antwort.",
+					"many": "{hello}. {name0}, {name1} und {count} weitere warten vielleicht auf eine Antwort."
+				},
+				"line": {
+					"you": "Du",
+					"team": "Team",
+					"asks": "{name} fragt:",
+					"asked": "Gefragt:",
+					"due": "Fällig {date}"
+				},
+				"cue": {
+					"reply": "Antworten?",
+					"waiting": "Wartet auf {name}",
+					"noReply": "Keine Antwort nötig",
+					"noReplyUndone": "Antwort wieder nötig",
+					"markedNoReply": "Keine Antwort nötig: {title}",
+					"draft": "Antwortentwurf"
+				},
+				"page": {
+					"company": "Firma",
+					"everyone": "Alle",
+					"findPerson": "Person suchen",
+					"focus": {
+						"label": "Anzeigen",
+						"all": "Alle",
+						"reply": "Antworten?",
+						"waiting": "Wartend"
+					},
+					"noneReply": "Hier wartet nichts auf eine Antwort.",
+					"noneWaiting": "Hier wartest du auf nichts.",
+					"showMore": "Mehr zeigen",
+					"olderMail": "Ältere Unterhaltungen zeigen",
+					"updatesFrom": "Updates von {name}",
+					"gone": "Das ist nicht in deinen neueren Mails.",
+					"pickUpdate": "Wähl ein Update aus, um es zu lesen.",
+					"open": "Offen",
+					"done": "Erledigt",
+					"noneOpen": "Mit {name} ist nichts offen."
+				},
+				"reply": {
+					"to": "Antwort an {name} …",
+					"plain": "Antworten …",
+					"suggested": "Antwortvorschlag ansehen"
+				},
+				"topic": {
+					"rename": "Thema umbenennen",
+					"reset": "Namen zurücksetzen"
+				},
+				"updates": {
+					"today": "Heute",
+					"yesterday": "Gestern",
+					"week": "Diese Woche",
+					"markAllRead": "Alle als gelesen markieren",
+					"menu": "Mehr zu diesem Update",
+					"moveToPeople": "Als Person behandeln",
+					"movedToPeople": "{name} steht ab jetzt bei deinen Personen.",
+					"fromCompany": "Nur von {name}",
+					"showAll": "Alle zeigen",
+					"empty": "Keine Updates."
+				},
+				"done": {
+					"action": "Erledigt",
+					"help": "Verschiebt diese Unterhaltung ins Archiv. Neue Antworten bringen sie zurück.",
+					"label": "Erledigt",
+					"marked": "Erledigt: {title}",
+					"muted": "Stumm",
+					"reopen": "Wieder öffnen",
+					"reopenHelp": "Diese Unterhaltung ist erledigt. Wieder öffnen holt sie zurück in deine offene Liste."
+				},
+				"drafts": {
+					"title": "Entwürfe",
+					"noRecipient": "Noch kein Empfänger",
+					"noSubject": "Kein Betreff",
+					"scheduled": "Geplant"
+				},
+				"search": {
+					"label": "Durchsuchen",
+					"recent": "Neueste Treffer",
+					"all": "Alle E-Mails nach „{query}“ durchsuchen",
+					"done": "Erledigt",
+					"sent": "Gesendet",
+					"drafts": "Entwürfe",
+					"trash": "Papierkorb",
+					"spam": "Spam"
+				}
+			},
+			"classicInbox": {
+				"operation": "Posteingangsansicht speichern"
 			}
 		},
 		"preferences": {
@@ -6493,7 +6619,9 @@
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
-				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
+				"swipeRightHelp": "Dieselbe Geste, andere Richtung.",
+				"classicInboxLabel": "Klassisches Layout",
+				"classicInboxHelp": "Nachrichten so auflisten, wie sie ankommen, in Priorität und Alle E-Mails, statt in der Unterhaltungsansicht. Die Unterhaltungsansicht zeigt, mit wem du schreibst und worüber."
 			},
 			"preferencesShortcuts": {
 				"heading": "Tastenkürzel",
@@ -7558,6 +7686,11 @@
 				"entered": "Zen-Modus an. Nur die Aufgabe ist zu sehen.",
 				"left": "Zen-Modus aus.",
 				"paletteSubtitle": "Alles außer der Aufgabe ausblenden"
+			},
+			"peopleRows": {
+				"empty": "Noch keine Gespräche",
+				"more": "{count} weitere Person | {count} weitere Personen",
+				"moreWaiting": "{count} weitere wartet auf dich | {count} weitere warten auf dich"
 			}
 		},
 		"today": {
@@ -7577,7 +7710,8 @@
 				"question": "Braucht deine Angabe",
 				"mention": "Erwähnung",
 				"mentionTitle": "#{room}: „{preview}“",
-				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
+				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort",
+				"queuedTitle": "in deiner Antwortliste"
 			},
 			"todo": {
 				"title": "Zu erledigen, keine Antwort nötig · {count}",
@@ -7599,7 +7733,7 @@
 				"keysMove": "bewegen",
 				"worth": "Wichtig",
 				"also": "Außerdem angekommen",
-				"empty": "Hier gibt es nichts Neues ohne Antwortbedarf. Was Menschen dir mitteilen und Hinweise mit Handlungsbedarf erscheinen hier.",
+				"empty": "Gerade keine Updates. Neuigkeiten, die nichts von dir wollen, erscheinen hier.",
 				"more": "{count} weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
 			},
 			"filed": {
@@ -7728,6 +7862,15 @@
 				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
 				"showMore": "Mehr anzeigen",
 				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
+			},
+			"people": {
+				"title": "Personen",
+				"waiting": "{count} Person wartet auf dich | {count} Personen warten auf dich",
+				"open": "Posteingang öffnen",
+				"waitingTeam": "{count} Person wartet aufs Team | {count} Personen warten aufs Team",
+				"waitingWithCount": "{conversations} Anfrage von {people} | {conversations} Anfragen von {people}",
+				"waitingTeamWithCount": "{conversations} Anfrage ans Team von {people} | {conversations} Anfragen ans Team von {people}",
+				"recent": "Zuletzt in Kontakt"
 			}
 		},
 		"answer": {
@@ -17243,6 +17386,10 @@
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
+				},
+				"classicInbox": {
+					"title": "Klassischer Posteingang",
+					"keywords": "Personen-Ansicht, klassisch, traditionell, Posteingang, Priorität, alle E-Mails, Nachrichtenliste"
 				}
 			},
 			"adminControls": {

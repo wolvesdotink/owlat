@@ -39,5 +39,126 @@
 		"subject": "Feature request: CSV export for reports",
 		"text": "Hey there,\n\nLoving the product so far. One thing that would help our finance team a lot: a CSV export on the monthly reports page. Is that on the roadmap?\n\nCheers,\nLeo",
 		"minutesAgo": 600
+	},
+	{
+		"messageId": "demo-dev-0001@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lena Hartmann <lena@lumenstudio.example>",
+		"subject": "Contract renewal for 2027",
+		"text": "Hi,\n\nattached is the draft of the 2027 agreement. The rates change from January, everything else stays as it is. Could you take a look this week?\n\nBest,\nLena",
+		"minutesAgo": 20160
+	},
+	{
+		"messageId": "demo-dev-0002@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lena Hartmann <lena@lumenstudio.example>",
+		"subject": "Re: Contract renewal for 2027",
+		"text": "Hi again,\n\nthanks for the quick look. Could you send the signed copy back by Friday? Legal wants it before the 15th so the new rates apply from January.\n\nBest,\nLena",
+		"minutesAgo": 120,
+		"inReplyTo": "demo-dev-0001@demo.localhost"
+	},
+	{
+		"messageId": "demo-dev-0003@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Tom Becker <tom@lumenstudio.example>",
+		"subject": "Q4 budget sign-off",
+		"text": "Hi,\n\nthe Q4 budget is ready for your sign-off. Could you approve it by Thursday so we can book the December work?\n\nThanks,\nTom",
+		"minutesAgo": 300
+	},
+	{
+		"messageId": "demo-dev-0004@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lena Hartmann <lena@lumenstudio.example>",
+		"subject": "Workshop dates in December",
+		"text": "Hi,\n\nwould the 9th or the 11th of December work for the workshop? Mornings are best for our team.\n\nLena",
+		"minutesAgo": 1500
+	},
+	{
+		"messageId": "demo-dev-0005@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Aylin Kaya <aylin@lumenstudio.example>",
+		"subject": "Onboarding project wrap-up",
+		"text": "Hi,\n\nhere is the summary of the onboarding project, with the final files and the open points for next year.\n\nAylin",
+		"minutesAgo": 6000
+	},
+	{
+		"messageId": "demo-dev-0006@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lena Hartmann <lena@lumenstudio.example>",
+		"subject": "Feedback on the onboarding illustrations",
+		"text": "Hi,\n\nthe new illustrations are in the shared folder. We are happy with them, so unless you see something, we ship them next week.\n\nLena",
+		"minutesAgo": 50000
+	},
+	{
+		"messageId": "demo-dev-0007@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lena Hartmann <lena@lumenstudio.example>",
+		"subject": "Portfolio site launch",
+		"text": "Hi,\n\nthe portfolio site is live. Thanks again for the quotes, they made the case studies.\n\nLena",
+		"minutesAgo": 70000
+	},
+	{
+		"messageId": "demo-dev-0008@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Lumen Studio Billing <billing@lumenstudio.example>",
+		"subject": "Invoice 2026-114",
+		"text": "Your invoice 2026-114 for October is attached. Amount due: EUR 2,400.00, payable within 30 days.",
+		"minutesAgo": 30000
+	},
+	{
+		"messageId": "demo-dev-0009@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Parcelway <no-reply@parcelway.example>",
+		"subject": "Your parcel is out for delivery",
+		"text": "Your parcel from Lumen Studio is out for delivery and arrives today between 14:00 and 16:00. Tracking number PW 4821 7730 19.",
+		"minutesAgo": 60
+	},
+	{
+		"messageId": "demo-dev-0010@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Parcelway <no-reply@parcelway.example>",
+		"subject": "Your parcel was delivered",
+		"text": "Your parcel from Fernweh Outdoor was delivered and left with a neighbour.",
+		"minutesAgo": 9000
+	},
+	{
+		"messageId": "demo-dev-0011@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Northbank <statements@northbank.example>",
+		"subject": "Your October statement is ready",
+		"text": "Your October card statement is ready. The payment of EUR 312.40 is due on 15 November.",
+		"minutesAgo": 2880
+	},
+	{
+		"messageId": "demo-dev-0012@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Figment Weekly <news@figmentweekly.example>",
+		"subject": "Issue 212: Typography that breathes",
+		"text": "This week: variable fonts in long reads, a visit to a type foundry, and five quiet layouts.",
+		"minutesAgo": 4000
+	},
+	{
+		"messageId": "demo-dev-0013@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Jonas Weber <jonas.weber@gmail.com>",
+		"subject": "Weekend at the lake",
+		"text": "Hey, are you still up for the lake on Saturday? I can pick you up around nine.",
+		"minutesAgo": 2000
+	},
+	{
+		"messageId": "demo-dev-0014@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Priya Raman <priya@fernweh.example>",
+		"subject": "Speaker slot at the November meetup",
+		"text": "Hi,\n\nwe would love to have you speak at the November meetup. Twenty minutes, any topic around design systems. Would that work for you?\n\nPriya",
+		"minutesAgo": 1440
+	},
+	{
+		"messageId": "demo-dev-0015@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Sofia Marín <sofia@hartwell.example>",
+		"subject": "Due diligence documents",
+		"text": "Hello,\n\nthe due diligence folder is complete now. Please let me know if anything is missing before the call on Monday.\n\nSofia",
+		"minutesAgo": 4300
 	}
 ]

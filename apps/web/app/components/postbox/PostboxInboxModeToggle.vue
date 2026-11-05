@@ -11,6 +11,10 @@
  * the active surface is now visible from either side, which is what the pair
  * always described.
  *
+ * Its first segment, People, leaves the classic inbox for the People view (the
+ * same setting as Preferences → Reading), so the way back is where the
+ * person is, not only in Settings.
+ *
  * The keyboard is untouched: `postbox.toggleBrowse` (B), Cmd/Ctrl-B and Esc are
  * still handled window-level in usePostboxInboxModes, and `aria-keyshortcuts`
  * on the control says so.
@@ -35,10 +39,27 @@ const keyShortcuts = computed(() =>
 	[ariaFor('postbox.toggleBrowse'), chordAria('mod+b'), 'Escape'].filter(Boolean).join(' ')
 );
 
+const { setClassicInbox } = usePostboxClassicInbox();
 const options = computed(() => [
+	{ value: 'people', label: t('components.postbox.postboxInboxModeToggle.people') },
 	{ value: 'today', label: t('components.postbox.postboxInboxModeToggle.priority') },
 	{ value: 'browse', label: t('components.postbox.postboxInboxModeToggle.all') },
 ]);
+const route = useRoute();
+const router = useRouter();
+function onSelect(value: string) {
+	if (value !== 'people') {
+		emit('select', value === 'browse' ? 'browse' : 'today');
+		return;
+	}
+	void setClassicInbox(false);
+	// A filtered list (`?placement=`) is a classic view of its own: People only
+	// shows once the filter is gone too.
+	if (route.query['placement'] !== undefined) {
+		const { placement: _placement, ...rest } = route.query;
+		void router.replace({ query: rest });
+	}
+}
 </script>
 
 <template>
@@ -50,7 +71,8 @@ const options = computed(() => [
 			:aria-label="t('components.postbox.postboxInboxModeToggle.label')"
 			:options="options"
 			:model-value="mode"
-			@update:model-value="emit('select', $event === 'browse' ? 'browse' : 'today')"
+			fit="content"
+			@update:model-value="onSelect"
 		/>
 	</UiTooltip>
 </template>

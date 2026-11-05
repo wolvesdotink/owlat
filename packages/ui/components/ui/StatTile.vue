@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * UiStatTile — the chart-kit stat: uppercase muted label, Instrument Serif
- * display numeral, an optional day-over-day delta line, and an optional muted
+ * UiStatTile — the chart-kit stat: uppercase muted label, a numeral in the
+ * display face (`--font-display`), an optional day-over-day delta line, and an optional muted
  * hint (e.g. a threshold reminder like "limit 2%"). For plain colored stat
  * values keep using UiStatCard; use this tile when the number is the hero of a
  * chart surface or sits next to sparklines/trend charts.

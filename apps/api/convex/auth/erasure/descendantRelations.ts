@@ -280,6 +280,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailMessages', 'senderMemory', 'sourceMailMessageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'latestReply.messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'needsReply.messageId', 'delete', SAME_MAILBOX),
+	desc('mailMessages', 'mailThreads', 'needsReplyCleared.messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailThreads', 'followUp.messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailDrafts', 'linkedMessageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailDrafts', 'inReplyToMessageId', 'delete', SAME_MAILBOX),

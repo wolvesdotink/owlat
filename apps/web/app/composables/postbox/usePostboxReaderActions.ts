@@ -18,6 +18,7 @@ import {
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
 import { usePostboxPinAction } from './usePostboxPins';
+import { POSTBOX_TOPIC_HEADING } from '~/utils/postboxPeople';
 
 /** The live thread fields the reader's thread-level actions branch on. */
 export type ReaderActionThread = {
@@ -104,6 +105,7 @@ export function usePostboxReaderActions(opts: {
 	const { t } = useI18n();
 	const router = useRouter();
 	const readerHost = hasInjectionContext() ? inject(POSTBOX_READER_HOST_KEY, null) : null;
+	const topicHeading = hasInjectionContext() ? inject(POSTBOX_TOPIC_HEADING, null) : null;
 
 	const bulk = usePostboxBulkActions(mailboxId);
 	const senderShortcuts = usePostboxSenderShortcuts(mailboxId);
@@ -396,9 +398,8 @@ export function usePostboxReaderActions(opts: {
 	}
 
 	/**
-	 * Run a thread-level action against the OPEN message. Shared by the keyboard
-	 * shortcuts, the palette-command bridge, and the reader toolbar so a demoted
-	 * action stays reachable from every entry point (keyboard, Cmd-K, overflow).
+	 * Run a thread-level action against the OPEN message, from keys, Cmd-K and the
+	 * toolbar alike. In the conversation view, archive is Done for the whole conversation.
 	 */
 	function runReaderAction(action: string) {
 		switch (action) {
@@ -406,6 +407,7 @@ export function usePostboxReaderActions(opts: {
 				closeConversation();
 				break;
 			case 'archive':
+				if (topicHeading?.value?.done) return void topicHeading.value.done();
 				void runAndAdvance(async (id) => {
 					const result = await archiveOp.run({ messageIds: [id] });
 					registerTriageUndo('archived', result);

@@ -8,11 +8,14 @@ type DropdownPosition = 'left' | 'right';
 interface Props {
 	open?: boolean;
 	position?: DropdownPosition;
+	/** Room for items with a line of description under their label. */
+	wide?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
 	open: false,
 	position: 'right',
+	wide: false,
 });
 
 const emit = defineEmits<{
@@ -354,8 +357,8 @@ provide('dropdownClose', close);
 					v-if="isOpen"
 					ref="menuRef"
 					role="menu"
-					class="fixed w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-50 py-1"
-					:class="{ 'overflow-y-auto': menuScrolls }"
+					class="fixed bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-50 py-1"
+					:class="[wide ? 'w-72' : 'w-44', { 'overflow-y-auto': menuScrolls }]"
 					:style="{
 						...menuStyle,
 						transformOrigin: openSide === 'above' ? 'bottom' : 'top',

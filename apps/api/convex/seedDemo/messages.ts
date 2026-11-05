@@ -1,5 +1,7 @@
 /**
- * Seed step: demo threads for the seeded shared (team) inboxes.
+ * Seed step: demo threads for the seeded shared (team) inboxes and for the
+ * dev owner's own mailbox, whose People view needs people at one company, the
+ * company's own systems and a few other senders to show anything.
  *
  * Runs as an internalAction — NOT a `Loader` in the mutation-based pipeline —
  * because `mailMessages.rawStorageId` must reference a real `_storage` blob
@@ -26,7 +28,7 @@ import messagesFixture from './fixtures/mailboxMessages.json';
 interface MessageFixture {
 	/** Stable RFC 5322 Message-ID (without angle brackets) — the dedupe key. */
 	messageId: string;
-	/** Team-inbox address the message is delivered to. */
+	/** Mailbox address the message is delivered to. */
 	recipient: string;
 	/** RFC 5322 From header ("Name <addr>"). */
 	from: string;
