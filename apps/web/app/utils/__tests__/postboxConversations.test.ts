@@ -217,6 +217,20 @@ describe('paneRows', () => {
 		expect(rows.some((row) => row.key === 'priya@raman.example')).toBe(false);
 	});
 
+	it('gives the people of an archived group conversation their rows back', () => {
+		const index = fixture();
+		const meetup = index.topics.get('meetup')!;
+		const archived = indexDirectory({
+			...index.directory,
+			topics: index.directory.topics.map((t) =>
+				t === meetup ? { ...t, isCurrent: false, isArchived: true } : t
+			),
+		});
+		const keys = paneRows(archived).map((row) => `${row.kind}:${row.key}`);
+		expect(keys).toContain('person:priya@raman.example');
+		expect(keys).not.toContain('group:meetup');
+	});
+
 	it('finds a company by one of its people and a group by a member', () => {
 		expect(paneRows(fixture(), 'tom').map((row) => row.key)).toEqual(['lumen.example']);
 		expect(paneRows(fixture(), 'priya').map((row) => row.key)).toEqual(['meetup']);

@@ -77,7 +77,7 @@ const pageName = computed(() => {
 // The open conversation, from the directory or from older mail loaded on a page.
 const olderStore = usePostboxOlderTopics();
 const olderTopics = computed<PeopleTopic[]>(() => {
-	const s = place.value.selection;
+	const s = selection.value;
 	const email = s?.kind === 'person' ? index.value?.people.get(s.key)?.email : undefined;
 	return email ? (olderStore.value[olderTopicsKey(props.mailboxId, email)]?.topics ?? []) : [];
 });
@@ -93,7 +93,7 @@ const openTopic = computed(() =>
 const listTopics = computed<PeopleTopic[]>(() => {
 	if (!index.value) return [];
 	if (isUpdates.value) return updateTopics(index.value, place.value.from);
-	const s = place.value.selection;
+	const s = selection.value;
 	if (!s) return [];
 	const owner =
 		s.kind === 'person' ? index.value.people.get(s.key) : index.value.companies.get(s.key);
@@ -107,7 +107,10 @@ const stepIds = computed(() =>
 	listTopics.value.flatMap((x) => (x.latestMessageId ? [x.latestMessageId] : []))
 );
 
-const hrefForTopic = (topic: PeopleTopic) => topicHref(topic, place.value);
+// The page on screen, the fallback included, so the reader opens with its
+// way back and its j/k list.
+const hrefForTopic = (topic: PeopleTopic) =>
+	topicHref(topic, { ...place.value, selection: selection.value });
 const hrefFromPane = (topic: PeopleTopic) =>
 	topicHref(topic, isUpdates.value ? { view: 'updates', from: place.value.from } : null);
 

@@ -164,8 +164,12 @@ export function paneRows(index: DirectoryIndex, query = ''): PaneRow[] {
 		const haystack = normalize(texts.join(' '));
 		return terms.every((term) => haystack.includes(term));
 	};
+	// A current group conversation has a row of its own; once archived or muted
+	// it counts for its people again, so they stay reachable with their Earlier.
 	const conversational = (ids: readonly string[]) =>
-		topicsOf(index, ids).filter((t) => !isUpdateTopic(index, t) && !isGroupTopic(index, t));
+		topicsOf(index, ids).filter(
+			(t) => !isUpdateTopic(index, t) && !(t.isCurrent && isGroupTopic(index, t))
+		);
 	const titles = (topics: readonly PeopleTopic[]) => topics.map((t) => t.title);
 
 	const rows: PaneRow[] = [];

@@ -219,7 +219,6 @@ function onSearchKeydown(event: KeyboardEvent) {
 		</nav>
 
 		<label class="input input-sm flex items-center gap-2">
-			>
 			<SearchIcon class="h-3.5 w-3.5 flex-shrink-0 text-text-tertiary" />
 			<input
 				ref="searchEl"

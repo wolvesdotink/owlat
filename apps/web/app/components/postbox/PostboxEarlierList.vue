@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * A page's Earlier conversations (archived or muted): one quiet line each,
+ * A page's Earlier conversations (archived or muted, and older mail past the
+ * directory's window): one quiet line each,
  * topic and date. "Show more" first unfolds what the directory already holds,
  * then, for a person, reaches back through their older mail a page at a time
  * (`mail/people/directory.ts earlierTopics`). What it loaded is kept per
@@ -69,13 +70,13 @@ watch(page, (next) => {
 });
 
 // Older pages start from the newest mail, so they repeat what the page shows
-// above (its current conversations) and what is already here; those stay out.
+// above and what is already here; those stay out. An unarchived conversation
+// older than the directory reaches is listed here too: it has nowhere else.
 const all = computed(() => {
 	const known = new Set([...props.topics.map((x) => x.id), ...props.shownAbove]);
-	return [
-		...props.topics,
-		...state.value.topics.filter((x) => !known.has(x.id) && !x.isCurrent),
-	].sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+	return [...props.topics, ...state.value.topics.filter((x) => !known.has(x.id))].sort(
+		(a, b) => b.lastMessageAt - a.lastMessageAt
+	);
 });
 const shown = computed(() => (state.value.isExpanded ? all.value : all.value.slice(0, INITIAL)));
 const canReachBack = computed(() => !!props.olderFor && !state.value.isDone);
