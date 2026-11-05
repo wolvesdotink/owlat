@@ -36,6 +36,27 @@ import {
 import type * as VueModule from 'vue';
 import { useConfirm } from '~/composables/useConfirm';
 
+// Node 25 and later define `localStorage` and `sessionStorage` on globalThis
+// themselves, as getters that return undefined unless Node was started with
+// `--localstorage-file`. Vitest's DOM environment leaves a global that Node
+// already defines alone unless the name is on its own list, and these two are
+// not, so the suites would read Node's undefined instead of a Storage. The
+// config keeps Node's storage out of the workers, but a run that starts Node
+// without that flag would still hit it, so whatever is not a happy-dom
+// `Storage` here is replaced by a fresh one, as a fresh window would have. A
+// spy on `Storage.prototype` reaches it either way.
+if (typeof document !== 'undefined') {
+	for (const name of ['localStorage', 'sessionStorage'] as const) {
+		if (globalThis[name] instanceof Storage) continue;
+		Object.defineProperty(globalThis, name, {
+			value: new Storage(),
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		});
+	}
+}
+
 registerNuxtComponents();
 installVueWarnGuard();
 // Every wrapper `mount` / `shallowMount` returns is unmounted after its test,
