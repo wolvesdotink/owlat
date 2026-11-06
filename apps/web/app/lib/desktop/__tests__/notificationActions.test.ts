@@ -21,6 +21,13 @@ describe('resolveNotificationEffect', () => {
 		});
 	});
 
+	it('routes the Copy code action', () => {
+		expect(resolveNotificationEffect({ action: 'copy', messageId: 'm1' })).toEqual({
+			type: 'copy',
+			messageId: 'm1',
+		});
+	});
+
 	it('routes a reply with typed text', () => {
 		expect(
 			resolveNotificationEffect({ action: 'reply', messageId: 'm1', reply: 'on it, thanks' })
@@ -66,6 +73,20 @@ describe('resolveNotificationEffect', () => {
 		expect(resolveNotificationEffect({ action: 'open' })).toBeNull();
 		expect(resolveNotificationEffect({})).toBeNull();
 		expect(resolveNotificationEffect({ action: 'archive', messageId: 123 })).toBeNull();
+	});
+});
+
+describe('runEffect copy', () => {
+	it('hands the message to the injected copy, without navigating or triaging', async () => {
+		const navigate = vi.fn((_path: string) => {});
+		const convex = { query: vi.fn(), mutation: vi.fn() } as unknown as ConvexClient;
+		const copySignInCode = vi.fn(async (_messageId: string) => {});
+
+		await runEffect({ type: 'copy', messageId: 'm1' }, convex, navigate, undefined, copySignInCode);
+
+		expect(copySignInCode).toHaveBeenCalledWith('m1');
+		expect(navigate).not.toHaveBeenCalled();
+		expect(convex.mutation).not.toHaveBeenCalled();
 	});
 });
 

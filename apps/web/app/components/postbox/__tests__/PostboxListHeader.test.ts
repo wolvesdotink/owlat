@@ -50,6 +50,10 @@ const folderActionsStub = {
 	template:
 		'<div class="folder-actions" :data-mailbox="mailboxId" :data-role="folderRole" :data-folder="folderId" />',
 };
+const markReadMenuStub = {
+	props: ['target', 'enabled', 'label'],
+	template: '<div class="mark-read-menu" :data-enabled="String(enabled)" />',
+};
 const inboxModeToggleStub = {
 	props: ['mode'],
 	emits: ['select'],
@@ -67,6 +71,7 @@ function mountHeader(
 		mailboxId?: string;
 		folderMailboxId?: string;
 		pageIds?: string[];
+		markRead?: { target: unknown; enabled: boolean } | null;
 	} = {}
 ) {
 	return mount(PostboxListHeader, {
@@ -82,6 +87,7 @@ function mountHeader(
 			mailboxId: props.mailboxId,
 			folderMailboxId: props.folderMailboxId,
 			pageIds: props.pageIds,
+			markRead: props.markRead as never,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -89,6 +95,7 @@ function mountHeader(
 				PostboxListDisplayMenu: displayMenuStub,
 				PostboxInboxModeToggle: inboxModeToggleStub,
 				PostboxFolderActionsMenu: folderActionsStub,
+				PostboxMarkReadMenu: markReadMenuStub,
 			},
 		},
 	});
@@ -195,7 +202,13 @@ describe('PostboxListHeader select-all', () => {
 	it('reads as mixed while only some of the page is picked', async () => {
 		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
 		// A row toggled from the list writes into the same per-mailbox bucket.
-		stateBuckets.get('postbox:bulk:mbx').value = new Set(['b']);
+		stateBuckets.get('postbox:bulk').value = {
+			mbx: {
+				selected: new Set(['b']),
+				anchorId: null,
+				selectAllMatching: { active: false, capped: false },
+			},
+		};
 		await w.vm.$nextTick();
 		expect(selectAllBox(w).attributes('aria-checked')).toBe('mixed');
 	});
@@ -220,5 +233,13 @@ describe('PostboxListHeader folder menu', () => {
 
 	it('has no folder menu without a mailbox', () => {
 		expect(mountHeader().find('.folder-actions').exists()).toBe(false);
+	});
+
+	it('offers mark-all-read for a list of several mailboxes, which has no folder menu', () => {
+		const target = { kind: 'folders', folderIds: ['f-a', 'f-b'] };
+		const w = mountHeader({ markRead: { target, enabled: true } });
+		expect(w.find('.folder-actions').exists()).toBe(false);
+		expect(w.get('.mark-read-menu').attributes('data-enabled')).toBe('true');
+		expect(mountHeader().find('.mark-read-menu').exists()).toBe(false);
 	});
 });

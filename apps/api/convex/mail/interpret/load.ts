@@ -48,37 +48,15 @@ import {
 } from './schema';
 import { reduceResultValidator, type ReduceResult } from './reduceInput';
 import { decodeJsonString } from '../../lib/jsonText';
+import { readProviderAuthFailure } from '../../lib/providerAuthFailure';
+import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './itemReads';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
-/** Statuses read as "recently closed" for the prompt. */
-export const CLOSED_STATUSES = ['done', 'declined', 'superseded', 'untracked'] as const;
 /** Items per closed status read within the lookback. */
 const CLOSED_SCAN = 100;
 
 // ── Items and facts ────────────────────────────────────────────────────────
-
-/** Read a thread's items with the given status, bounded. */
-export async function threadItemsWithStatus(
-	ctx: ReadCtx,
-	ref: ThreadRef,
-	status: Doc<'threadItems'>['status'],
-	limit: number
-): Promise<Doc<'threadItems'>[]> {
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('threadItems')
-				.withIndex('by_mail_thread_and_status', (q) =>
-					q.eq('mailThreadId', ref.id).eq('status', status)
-				)
-				.take(limit)
-		: ctx.db
-				.query('threadItems')
-				.withIndex('by_conversation_thread_and_status', (q) =>
-					q.eq('conversationThreadId', ref.id).eq('status', status)
-				)
-				.take(limit);
-}
 
 /**
  * The prompt page of a thread's items: open items oldest ask first, then
@@ -97,55 +75,6 @@ export function selectPromptItems<T extends { status: string; askedAt: number; u
 	return { page: all.slice(0, limit), isOverflow: all.length > limit };
 }
 
-/** A thread's items of `status` changed since `since`, newest first, bounded. */
-export async function recentlyUpdatedItems(
-	ctx: ReadCtx,
-	ref: ThreadRef,
-	status: Doc<'threadItems'>['status'],
-	since: number,
-	limit: number
-): Promise<Doc<'threadItems'>[]> {
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('threadItems')
-				.withIndex('by_mail_thread_and_status', (q) =>
-					q.eq('mailThreadId', ref.id).eq('status', status).gte('updatedAt', since)
-				)
-				.order('desc')
-				.take(limit)
-		: ctx.db
-				.query('threadItems')
-				.withIndex('by_conversation_thread_and_status', (q) =>
-					q.eq('conversationThreadId', ref.id).eq('status', status).gte('updatedAt', since)
-				)
-				.order('desc')
-				.take(limit);
-}
-
-/**
- * Items of `statuses` changed within the closed-item lookback, newest first,
- * read by update time (a long history never hides a recently closed or
- * corrected item). `isCut` says a bound was hit.
- */
-export async function recentlyClosedItems(
-	ctx: ReadCtx,
-	ref: ThreadRef,
-	statuses: readonly Doc<'threadItems'>['status'][],
-	now: number,
-	limitPerStatus: number
-): Promise<{ rows: Doc<'threadItems'>[]; isCut: boolean }> {
-	const since = now - CLOSED_ITEM_LOOKBACK_MS;
-	const found = await Promise.all(
-		statuses.map((status) => recentlyUpdatedItems(ctx, ref, status, since, limitPerStatus + 1))
-	);
-	return {
-		rows: found
-			.flatMap((rows) => rows.slice(0, limitPerStatus))
-			.sort((a, b) => b.updatedAt - a.updatedAt),
-		isCut: found.some((rows) => rows.length > limitPerStatus),
-	};
-}
-
 /**
  * The candidate rows {@link selectPromptItems} picks from: the open items, and
  * the items closed within the lookback. `isScanCut` says a bound was hit: the
@@ -156,8 +85,10 @@ export async function loadPromptItemCandidates(
 	ref: ThreadRef,
 	now: number
 ): Promise<{ rows: Doc<'threadItems'>[]; isScanCut: boolean }> {
-	const open = await threadItemsWithStatus(ctx, ref, 'open', MAX_PROMPT_ITEMS + 1);
-	const closed = await recentlyClosedItems(ctx, ref, CLOSED_STATUSES, now, CLOSED_SCAN);
+	// A withdrawn item is never shown to the model (scopeReconcile.ts).
+	const live = { isLiveOnly: true };
+	const open = await threadItemsWithStatus(ctx, ref, 'open', MAX_PROMPT_ITEMS + 1, live);
+	const closed = await recentlyClosedItems(ctx, ref, CLOSED_STATUSES, now, CLOSED_SCAN, live);
 	return {
 		rows: [...open, ...closed.rows],
 		isScanCut: open.length > MAX_PROMPT_ITEMS || closed.isCut,
@@ -493,6 +424,7 @@ export const loadForInterpretation = internalQuery({
 			// stored extraction only on an exact match of both (run.ts).
 			current: current ? extractionSummary(current) : null,
 			counted: counted ? extractionSummary(counted) : null,
+			isProviderKeyRefused: (await readProviderAuthFailure(ctx.db)) !== null,
 		};
 	},
 });

@@ -126,10 +126,10 @@ route 24 pages/dashboard/knowledge/index.vue
 route 16 pages/dashboard/marketing/deleted.vue
 route 22 pages/dashboard/marketing/index.vue
 route 420 pages/dashboard/postbox/[folder]/[[messageId]].vue
-route 27 pages/dashboard/postbox/contacts.vue
+route 31 pages/dashboard/postbox/contacts.vue
 route 29 pages/dashboard/postbox/files.vue
 route 3 pages/dashboard/postbox/index.vue
-route 103 pages/dashboard/postbox/label/[labelId].vue
+route 115 pages/dashboard/postbox/label/[labelId].vue
 route 44 pages/dashboard/postbox/migrate.vue
 route 3 pages/dashboard/postbox/reply-queue.vue
 route 357 pages/dashboard/postbox/search.vue
@@ -198,6 +198,7 @@ deferred 3 ../../../packages/ui/i18n/locales/de.json
 deferred 3 ../../desktop/src/autostart.ts
 deferred 7 ../../desktop/src/compose.ts
 deferred 4 ../../desktop/src/deeplink.ts
+deferred 3 ../../desktop/src/dictation.ts
 deferred 9 ../../desktop/src/dialog.ts
 deferred 4 ../../desktop/src/keychain.ts
 deferred 4 ../../desktop/src/menu.ts
@@ -296,6 +297,7 @@ deferred 15 components/contacts/ExportModal.vue
 deferred 13 components/contacts/IntegrationImportModal.vue
 deferred 12 components/mail/TemplateLibraryModal.vue
 deferred 7 components/postbox/PostboxArrivalUndoHost.vue
+deferred 11 components/postbox/PostboxContactsCardDavPanel.vue
 deferred 16 components/postbox/PostboxShareImageDialog.vue
 deferred 10 components/shell/BackendStatusHost.vue
 deferred 13 components/system/AppUpdatedBanner.vue
@@ -314,6 +316,7 @@ deferred 3 middleware/admin.ts
 deferred 8 middleware/auth.ts
 deferred 3 middleware/guest.ts
 deferred 3 middleware/platform-admin.ts
+deferred 3 postboxCheckForMail
 deferred 247 src
 deferred 4 useDesktopAppSettings
 deferred 9 useDesktopWorkspaces

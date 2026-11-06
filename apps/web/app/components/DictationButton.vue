@@ -14,6 +14,7 @@
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import { useToast } from '@owlat/ui/composables/useToast';
 import { useAnnounce } from '~/composables/useAnnounce';
+import { useDesktopContext } from '~/composables/useDesktopContext';
 import { useSpeechDictation, type DictationError } from '~/composables/useSpeechDictation';
 import { insertDictated, type DictationTarget } from '~/utils/dictation';
 import { MicrophoneIcon } from '@coolicons/vue';
@@ -31,6 +32,7 @@ const props = withDefaults(
 );
 
 const { t } = useI18n();
+const { isDesktop } = useDesktopContext();
 const { announce } = useAnnounce();
 const { showToast } = useToast();
 
@@ -57,6 +59,41 @@ watch(
 	}
 );
 
+// Listening must stop once the mic and its bubble are out of sight, which a
+// page-level visibility check cannot see: a composer hidden with `v-show` while
+// still mounted (Answer mode's Reply tab when Note is chosen), a collapsed
+// sheet, a scrolled-away footer. A `display: none` ancestor leaves the button
+// no box, so the observer reports it as not intersecting. Cancelling also drops
+// a session still waiting on a permission prompt, so it never starts.
+const root = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
+function unobserve() {
+	observer?.disconnect();
+	observer = null;
+}
+watch(
+	root,
+	(el) => {
+		unobserve();
+		if (!el || typeof IntersectionObserver === 'undefined') return;
+		// A mic exactly at the edge of the view counts as intersecting with no
+		// visible area, and a lone zero threshold may not report reaching it: the
+		// second threshold does, and a zero ratio counts as out of sight.
+		observer = new IntersectionObserver(
+			(entries) => {
+				const entry = entries.at(-1);
+				if (entry && (!entry.isIntersecting || entry.intersectionRatio === 0)) {
+					dictation.cancel();
+				}
+			},
+			{ threshold: [0, Number.EPSILON] }
+		);
+		observer.observe(el);
+	},
+	{ flush: 'post' }
+);
+onBeforeUnmount(unobserve);
+
 watch(listening, (on) =>
 	announce(
 		on
@@ -65,8 +102,12 @@ watch(listening, (on) =>
 	)
 );
 
+// The desktop app asks the OS for the microphone and speech recognition, not
+// a site permission.
 const ERROR_KEYS: Record<DictationError, string> = {
-	blocked: 'components.dictationButton.errors.blocked',
+	blocked: isDesktop.value
+		? 'components.dictationButton.errors.blockedDesktop'
+		: 'components.dictationButton.errors.blocked',
 	'no-speech': 'components.dictationButton.errors.noSpeech',
 	network: 'components.dictationButton.errors.network',
 	language: 'components.dictationButton.errors.language',
@@ -92,7 +133,7 @@ const label = computed(() => t('components.dictationButton.label'));
 </script>
 
 <template>
-	<span v-if="available && target" class="relative inline-flex shrink-0">
+	<span v-if="available && target" ref="root" class="relative inline-flex shrink-0">
 		<UiTooltip
 			:text="
 				listening

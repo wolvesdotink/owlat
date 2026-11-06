@@ -1,5 +1,5 @@
 /**
- * Migration 0070: a conversation row stored before threads carried the latest
+ * Migration 0071: a conversation row stored before threads carried the latest
  * sender's display name gets it from the thread's newest message. A thread
  * that already has a name, and one whose newest message has none, is left
  * alone.
@@ -16,7 +16,7 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import { MIGRATION, PAGE_SIZE } from '../0070_backfill_thread_sender_names';
+import { MIGRATION, PAGE_SIZE } from '../0071_backfill_thread_sender_names';
 
 const migration = internal.migrations[MIGRATION];
 type T = TestConvex<typeof schema>;
@@ -42,7 +42,7 @@ async function seedThread(
 	});
 }
 
-describe('0070_backfill_thread_sender_names', () => {
+describe('0071_backfill_thread_sender_names', () => {
 	it("fills the name from each thread's newest message, over several pages", async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);

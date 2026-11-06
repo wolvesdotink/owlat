@@ -56,7 +56,7 @@ export interface ProjectionInput {
 		changedItemIds: Id<'threadItems'>[];
 		newActivityCount: number;
 	};
-	gap: { interpretedMessages: number; totalMessages: number; reason?: GapReason };
+	gap: NonNullable<ThreadBriefView['gap']>;
 	history?: 'running' | 'stalled';
 	/** Sources waiting for the thread to be opened (`defer.ts`). */
 	deferredSources?: number;
@@ -184,10 +184,20 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 
 /**
  * Gap reasons that describe the instance, not the thread: AI is off or has no
- * provider, or the spend budget is used up. Every thread reads the same until
- * an admin acts, so none of them is a fault of the thread.
+ * provider, the provider refused the key, or the spend budget is used up.
+ * Every thread reads the same until an admin acts, so none of them is a fault
+ * of the thread.
  */
-const INSTANCE_GAP_REASONS: ReadonlySet<GapReason> = new Set<GapReason>(['aiOff', 'budget']);
+const INSTANCE_GAP_REASONS: ReadonlySet<GapReason> = new Set<GapReason>([
+	'aiOff',
+	'aiProvider',
+	'budget',
+]);
+
+/** Whether `reason` is the instance's state rather than this thread's. Pure. */
+export function isInstanceGapReason(reason: GapReason | undefined): boolean {
+	return reason !== undefined && INSTANCE_GAP_REASONS.has(reason);
+}
 
 /**
  * The completeness the reader is given. A thread of which nothing was read,
@@ -201,7 +211,7 @@ export function viewCompletenessOf(
 	gap: ProjectionInput['gap'],
 	itemCount: number
 ): BriefCompleteness {
-	const isInstanceGap = gap.reason !== undefined && INSTANCE_GAP_REASONS.has(gap.reason);
+	const isInstanceGap = isInstanceGapReason(gap.reason);
 	if (
 		completeness === 'partial' &&
 		isInstanceGap &&
@@ -221,6 +231,7 @@ export function gapReasonOf(row: {
 }): GapReason | undefined {
 	if (row.status === 'failed') {
 		if (row.errorCode === 'ai_off') return 'aiOff';
+		if (row.errorCode === 'provider_auth') return 'aiProvider';
 		return row.errorCode === 'budget' ? 'budget' : 'failed';
 	}
 	if (row.status === 'partial') {

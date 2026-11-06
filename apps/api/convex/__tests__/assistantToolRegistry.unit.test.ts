@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { tool } from 'ai';
+import { getFunctionName } from 'convex/server';
 import type { Tool, ToolExecuteFunction, ToolExecutionOptions } from 'ai';
 import { z } from 'zod';
 import type { ActionCtx } from '../_generated/server';
@@ -52,6 +53,7 @@ describe('built-in tool registry conformance', () => {
 		expect(TOOL_MODULES.map((m) => m.name)).toEqual([
 			'searchKnowledge',
 			'searchFiles',
+			'askMailbox',
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
@@ -66,8 +68,9 @@ describe('built-in tool registry conformance', () => {
 		}
 	});
 
-	it('attributes LLM spend only for the draft tools, under one shared tag', () => {
+	it('attributes LLM spend only for the draft tools and the mail answer', () => {
 		const byName = new Map(TOOL_MODULES.map((m) => [m.name, m]));
+		expect(byName.get('askMailbox')?.spend).toBe('postbox_ask_mailbox');
 		expect(byName.get('draftEmailReply')?.spend).toBe(ASSISTANT_TOOL_DRAFT_SPEND);
 		expect(byName.get('draftCampaignCopy')?.spend).toBe(ASSISTANT_TOOL_DRAFT_SPEND);
 		for (const readTool of [
@@ -81,12 +84,24 @@ describe('built-in tool registry conformance', () => {
 		}
 	});
 
-	it('scrubs the output of every built-in and gates only the knowledge search on ai.knowledge', () => {
+	it('scrubs the output of every built-in and gates the knowledge search and the mail answer', () => {
+		const flags: Record<string, string> = { searchKnowledge: 'ai.knowledge', askMailbox: 'ai' };
 		for (const module of TOOL_MODULES) {
 			expect(module.scrubOutput).toBe(true);
-			expect(module.flag).toBe(module.name === 'searchKnowledge' ? 'ai.knowledge' : undefined);
+			expect(module.flag).toBe(flags[module.name]);
 		}
 		expect(hasFlaggedModule(TOOL_MODULES)).toBe(true);
+	});
+
+	it('declares the mail answer as a flagged, scrubbed read that counts as a retrieval', () => {
+		const askMailbox = TOOL_MODULES.find((m) => m.name === 'askMailbox');
+		expect(askMailbox).toMatchObject({
+			flag: 'ai',
+			scope: 'workspace:read',
+			spend: 'postbox_ask_mailbox',
+			scrubOutput: true,
+			isRetrieval: true,
+		});
 	});
 });
 
@@ -233,13 +248,14 @@ describe('withHostScrub', () => {
 const READER = { canReadInbox: true };
 
 describe('buildAssistantTools', () => {
-	it('assembles exactly the built-in set, in order, with ai.knowledge on', async () => {
-		const runQuery = vi.fn(async () => ({ 'ai.knowledge': true }));
+	it('assembles exactly the built-in set, in order, with ai and ai.knowledge on', async () => {
+		const runQuery = vi.fn(async () => ({ ai: true, 'ai.knowledge': true }));
 		const ctx = { runQuery } as unknown as ActionCtx;
 		const set = await buildAssistantTools(ctx, READER);
 		expect(Object.keys(set)).toEqual([
 			'searchKnowledge',
 			'searchFiles',
+			'askMailbox',
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
@@ -304,6 +320,45 @@ describe('buildAssistantTools', () => {
 				expect.objectContaining({ includeInboxDerived: canReadInbox })
 			);
 		}
+	});
+
+	it('searches the mail of the turn’s own user, team inboxes included for any member', async () => {
+		const SEARCH = 'mail/ai/askMailboxSearch:searchForReader';
+		for (const canReadInbox of [false, true]) {
+			const runQuery = vi.fn(async (ref: unknown) =>
+				getFunctionName(ref as never) === SEARCH
+					? { sources: [], bodySearchUsed: false }
+					: { ai: true }
+			);
+			const ctx = { runQuery } as unknown as ActionCtx;
+			const set = await buildAssistantTools(ctx, {
+				canReadInbox,
+				mailReader: { userId: 'user-B', organizationId: 'org-1' },
+			});
+			const result = await set['askMailbox']?.execute?.(
+				{ question: 'When does my flight to Lisbon leave?' },
+				options
+			);
+			expect(runQuery).toHaveBeenCalledWith(expect.anything(), {
+				question: 'When does my flight to Lisbon leave?',
+				userId: 'user-B',
+				organizationId: 'org-1',
+				// Membership is checked by the search, not by the Team Inbox role.
+				includeTeamInboxes: true,
+			});
+			// Nothing matched: no model call, and the model is told so.
+			expect(result).toMatchObject({ answer: '', citations: [], answeredFromHeadersOnly: true });
+		}
+	});
+
+	it('reads no mail for a reply a whole room reads', async () => {
+		const runQuery = vi.fn(async () => ({ ai: true }));
+		const ctx = { runQuery } as unknown as ActionCtx;
+		const set = await buildAssistantTools(ctx, { canReadInbox: false });
+		const result = await set['askMailbox']?.execute?.({ question: 'flight to Lisbon' }, options);
+		// Only the flag read; the search never ran.
+		expect(runQuery).toHaveBeenCalledTimes(1);
+		expect(result).toMatchObject({ answer: '', citations: [] });
 	});
 
 	it('leaves output untouched when a module opts out of scrubbing', async () => {

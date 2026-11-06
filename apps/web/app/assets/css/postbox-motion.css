@@ -159,8 +159,8 @@
 	transition: transform var(--pbx-swipe-settle) var(--pbx-motion-ease-exit);
 }
 
-/* Mouse drag of a row onto the folder rail (usePostboxMessageDrag). The row
-   under the pointer that will take the drop gets a brand tint plus an inset
+/* Mouse drag of a row onto the folder rail or an inbox in the sidebar
+   (usePostboxMessageDrag). The row under the pointer that will take the drop gets a brand tint plus an inset
    ring: a shadow, not a border, so the rail rows do not shift by a pixel as the
    pointer crosses them. */
 .pbx-drop-target {

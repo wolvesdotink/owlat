@@ -20,7 +20,11 @@ const { customFolders } = usePostboxFolders(mailboxIdRef);
 // Register Postbox as the app command palette's "current surface" while mounted
 // (reader actions + the folders/searches the sidebar doesn't list). Extracted to
 // a composable to keep this layout under the file-size cap.
-usePostboxCommandSurface(mailboxIdRef, { folderRole: folderRef, folderId: folderIdRef });
+usePostboxCommandSurface(mailboxIdRef, {
+	folderRole: folderRef,
+	folderId: folderIdRef,
+	markReadCommands: () => viewMarkRead.commands(),
+});
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
@@ -218,9 +222,11 @@ const {
 	categories,
 	bundles,
 	sections,
+	viewMarkRead,
 } = usePostboxListSources({
 	mailboxId: mailboxIdRef,
 	folderRole: folderRef,
+	folderId: folderIdRef,
 	renderer: activeListRenderer,
 	listMessages,
 	flatRead: feed,
@@ -388,6 +394,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 												@load-more="categories.loadMore"
 												@toggle="categories.toggle"
 												@recategorize="categories.recategorize"
+												@mark-read="viewMarkRead.markCategoryRead"
 											/>
 											<PostboxThreadGroupList
 												v-else-if="conversationsEnabled"
@@ -412,6 +419,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 												@load-more="loadMore"
 												@toggle="bundles.toggle"
 												@archive-bundle="(ids) => void bundles.archiveBundle(ids)"
+												@mark-bundle-read="viewMarkRead.markBundleRead"
 												@unsubscribe-bundle="
 													(senders, ids) => void bundles.unsubscribeBundle(senders, ids)
 												"

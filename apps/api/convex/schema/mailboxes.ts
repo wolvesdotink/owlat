@@ -62,6 +62,11 @@ export const mailboxesTables = {
 		// web's fixed, colour-blind-validated four-colour set; unset ⇒ derived
 		// from the mailbox's position. Always rendered next to a text label.
 		colorSlot: v.optional(v.number()),
+		// The mark the inbox chip shows in place of initials: an icon key from
+		// the fixed set in `mail/mailbox/appearance.ts` or a single emoji. Set by an
+		// owner and shown to every member. Unset ⇒ the connected provider's logo,
+		// else initials.
+		mark: v.optional(v.string()),
 		// Sharing model. undefined ⇒ 'personal' (a single user's mailbox;
 		// back-compat for all pre-shared-inbox rows). 'shared' ⇒ a team inbox
 		// whose access is governed by explicit `mailboxMembers` rows rather than

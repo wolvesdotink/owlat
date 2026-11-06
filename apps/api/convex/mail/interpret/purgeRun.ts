@@ -6,7 +6,8 @@
  *    `mail/messagePurge.ts purgeThreadBriefsOf`);
  *  - {@link purgeThreadBrief}: a deleted thread (a Postbox thread that lost its
  *    last message, an external account's teardown);
- *  - {@link invalidateMailboxThreadsPage}: a mailbox scope change.
+ *  - {@link invalidateMailboxThreadsPage}: a mailbox scope change;
+ *  - `scopeReconcile.ts startScopeReconcile`: a narrowed signature scope.
  *
  * Each bumps the epoch in the caller's transaction (in-flight
  * interpretations stop at once), runs a first slice there from the
@@ -36,6 +37,7 @@ import { bumpDeletionEpoch } from './purgeRows';
 import { sourcesPlan } from './purge';
 import { threadPlan } from './purgeThread';
 import { modeOfScope, scopePlan, startScopeChange } from './scopeChange';
+import { withdrawPlan } from './scopeReconcile';
 
 /** Units a purge spends inline, in the transaction of the purge itself. */
 export const INLINE_PURGE_UNITS = 400;
@@ -56,6 +58,8 @@ function planOf(job: PurgeJob): JobPlan {
 			return threadPlan(job.threadKind);
 		case 'scope':
 			return scopePlan;
+		case 'withdraw':
+			return withdrawPlan;
 	}
 }
 

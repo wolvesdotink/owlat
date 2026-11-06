@@ -23,19 +23,25 @@
  * The detection is the code detector's (`interpret/eligibility.ts
  * isCodeOrSignInMail`); the opt-in "archive after a day" rule that reads it is
  * unchanged.
+ *
+ * {@link latestSignInCode} and {@link messageSignInCode} hand a live code to
+ * the surfaces that are not the message itself: the command palette, and the
+ * "Copy code" action of a web push or desktop notification.
  */
 
 import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { isIdentifierAligned } from '@owlat/shared/spfAlignment';
-import type { Doc } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { openStoredInlineBody } from '../lib/messageBodyStore';
 import type { MailSignInCode } from '../lib/validators/mailContent';
 import { isCodeOrSignInMail } from './interpret/eligibility';
 import { isFromMailboxOwner } from './needsReplyHeuristic';
+import { postboxQuery } from './_helpers';
+import { loadAccessibleMailboxes, requireMailboxAccess } from './permissions';
 
 /** How long a code stays offered after the message was received. */
 export const SIGN_IN_CODE_TTL_MS = 15 * 60 * 1000;
@@ -235,5 +241,89 @@ export const expireSignInCode = internalMutation({
 		const message = await ctx.db.get(args.messageId);
 		if (!message?.signInCode || message.signInCode.expiresAt > Date.now()) return;
 		await ctx.db.patch(message._id, { signInCode: undefined });
+	},
+});
+
+/** A live code or link, with the message it came from. */
+export interface LiveSignInCode extends MailSignInCode {
+	messageId: Id<'mailMessages'>;
+	mailboxId: Id<'mailboxes'>;
+}
+
+/**
+ * Newest messages per mailbox the palette looks through. A code lives for 15
+ * minutes, so the window only has to cover one mailbox's arrivals in that time.
+ */
+const RECENT_SCAN = 25;
+
+/**
+ * The message's code, while it is live and the message has not since gone to
+ * Spam, Trash, Sent or Drafts. A message moved to the bin keeps its stored code
+ * until it expires, but nothing should offer it any more.
+ */
+async function liveCodeOf(
+	ctx: QueryCtx,
+	message: Doc<'mailMessages'>,
+	now: number
+): Promise<LiveSignInCode | null> {
+	const code = message.signInCode;
+	if (!code || code.expiresAt <= now) return null;
+	const folder = await ctx.db.get(message.folderId);
+	if (folder?.role !== undefined && EXCLUDED_ROLES.has(folder.role)) return null;
+	return { ...code, messageId: message._id, mailboxId: message.mailboxId };
+}
+
+/**
+ * The newest live code or sign-in link across every mailbox the caller reads:
+ * their own personal mailboxes and the team inboxes they are a member of, never
+ * another person's personal mailbox. Null when none is live. Backs the
+ * palette's "Copy latest sign-in code".
+ */
+export const latestSignInCode = postboxQuery({
+	args: {},
+	handler: async (ctx, _args, session): Promise<LiveSignInCode | null> => {
+		const now = Date.now();
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
+		let latest: { code: LiveSignInCode; receivedAt: number } | null = null;
+		for (const mailbox of mailboxes) {
+			if (mailbox.status !== 'active') continue;
+			// Every live code was received within the last TTL (expiresAt is
+			// receivedAt + TTL), so nothing older needs reading.
+			const recent = await ctx.db
+				.query('mailMessages')
+				.withIndex('by_mailbox_and_received', (q) =>
+					q.eq('mailboxId', mailbox._id).gt('receivedAt', now - SIGN_IN_CODE_TTL_MS)
+				)
+				.order('desc')
+				.take(RECENT_SCAN);
+			for (const message of recent) {
+				if (latest && message.receivedAt <= latest.receivedAt) break;
+				const code = await liveCodeOf(ctx, message, now);
+				if (code) {
+					latest = { code, receivedAt: message.receivedAt };
+					break;
+				}
+			}
+		}
+		return latest?.code ?? null;
+	},
+});
+
+/**
+ * One message's live code, for the "Copy code" action of a notification about
+ * it. Null when the caller cannot read the message or its code expired.
+ */
+export const messageSignInCode = postboxQuery({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args, session): Promise<LiveSignInCode | null> => {
+		const message = await ctx.db.get(args.messageId);
+		if (!message?.signInCode) return null;
+		const access = await requireMailboxAccess(ctx, message.mailboxId, 'member', session);
+		if (!access.ok) return null;
+		return liveCodeOf(ctx, message, Date.now());
 	},
 });

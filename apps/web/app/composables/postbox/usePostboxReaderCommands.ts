@@ -1,8 +1,9 @@
 /**
  * The verbs PostboxThreadReader offers beyond its buttons: Translate, Copy link,
  * Share in chat and Share as image, Find in conversation (⌘F), moving the open
- * message to another mailbox, the chat layout, the ⌘K surface with every verb
- * the reader has, and the single-key reading shortcuts. All of them act on THIS
+ * message to another mailbox, the chat layout, copying the conversation's
+ * sign-in code, the ⌘K surface with every verb the reader has, and the
+ * single-key reading shortcuts. All of them act on THIS
  * conversation, and only the reader on top answers the shortcuts.
  */
 import { computed, shallowRef, type ComputedRef, type Ref } from 'vue';
@@ -20,6 +21,11 @@ import { usePostboxThreadFind, type PostboxFindSeed } from './usePostboxThreadFi
 import type { PostboxTransferMode } from './usePostboxMailboxTransfer';
 import type { usePostboxReaderAttachments } from './usePostboxReaderAttachments';
 import { usePostboxThreadChat } from './usePostboxThreadChat';
+import {
+	latestLiveSignInCode,
+	usePostboxSignInCode,
+	usePostboxSignInCodeIntent,
+} from './usePostboxSignInCode';
 
 export function usePostboxReaderCommands(source: {
 	message: () => PostboxReaderMessage;
@@ -119,7 +125,6 @@ export function usePostboxReaderCommands(source: {
 	}
 	const moves = {
 		targets: transfer.targets,
-		canMove: computed(() => !transfer.isSourceConnected.value),
 		pick: (targetId: Id<'mailboxes'>, mode: PostboxTransferMode) =>
 			void transferOpenMessage(targetId, mode),
 	};
@@ -140,9 +145,20 @@ export function usePostboxReaderCommands(source: {
 		downloadAttachment: (messageId, att) =>
 			void source.attachments.handleAttachmentDownload(messageId, att),
 	});
-	// The shortcut's action lives here, not among the triage actions.
-	const runAction = (action: string) =>
-		action === 'chatView' ? void chat.toggle() : actions.runReaderAction(action);
+	// "Copy sign-in code": the newest live code in the conversation, with the
+	// chip's own copy (or open, for a link).
+	const signInCode = usePostboxSignInCode();
+	const copySignInCode = () =>
+		void signInCode.copyOrOpen(
+			latestLiveSignInCode(source.messages.value) ?? source.message().signInCode
+		);
+
+	// These shortcuts' actions live here, not among the triage actions.
+	const runAction = (action: string) => {
+		if (action === 'chatView') void chat.toggle();
+		else if (action === 'copySignInCode') copySignInCode();
+		else actions.runReaderAction(action);
+	};
 
 	// ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 	// actions directly, so it acts on THIS conversation.
@@ -178,7 +194,6 @@ export function usePostboxReaderCommands(source: {
 		applyLabel: (labelId) => void actions.applyLabelToOpenMessage(labelId),
 		moveTo: (folderId) => void actions.moveOpenMessageTo(folderId),
 		mailboxes: () => moves.targets.value,
-		canMoveToMailbox: () => moves.canMove.value,
 		transferTo: moves.pick,
 		toggleMute: actions.toggleOpenThreadMute,
 		toggleAlert: actions.toggleOpenThreadAlert,
@@ -193,6 +208,13 @@ export function usePostboxReaderCommands(source: {
 			chat.isAvailable.value
 				? { isOn: () => chat.isOn.value, toggle: () => void chat.toggle() }
 				: null,
+	});
+
+	// A web push's "Copy code" button lands here with the copy request.
+	usePostboxSignInCodeIntent({
+		messageId: () => source.message()._id,
+		isTopmost: () => threadSurface.isTopmost(),
+		run: copySignInCode,
 	});
 
 	// Single-key shortcuts while reading and the Cmd-K palette bridge, both

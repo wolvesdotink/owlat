@@ -71,6 +71,24 @@ describe('PostboxReaderStrip', () => {
 		expect(w.emitted('full-brief')).toHaveLength(1);
 	});
 
+	it('says why an item you owe needs review again, with its earlier confirmation', () => {
+		const withdrawn = item({
+			id: 'i_pay',
+			text: 'Pay account 999',
+			verify: 'proposal',
+			withdrawn: { at: Date.UTC(2026, 9, 8), confirmedAt: Date.UTC(2026, 9, 7, 12) },
+		});
+		const w = mountStrip({ kind: 'brief', lead: null, owe: withdrawn, waiting: null });
+		expect(w.get('[data-testid="strip-owe-text"]').text()).toBe(
+			'Needs review again: Pay account 999'
+		);
+		expect(w.get('[data-testid="strip-owe-withdrawn"]').text()).toMatch(
+			/^The signature covers less of this message than was read · Confirmed on .*7/
+		);
+		expect(w.find('[data-testid="strip-owe-confirmProposal"]').exists()).toBe(false);
+		expect(w.get('[data-testid="strip-owe-notARequest"]').exists()).toBe(true);
+	});
+
 	it('quotes gist spans verbatim with the sender', () => {
 		const w = mountStrip({
 			kind: 'gist',

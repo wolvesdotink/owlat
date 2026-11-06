@@ -34,8 +34,12 @@ const AI_RATE_BUCKET = v.union(
 	v.literal('postboxAiPerUser'),
 	v.literal('translateBatchPerUser'),
 	v.literal('quickQueryPerUser'),
-	v.literal('answerCoveragePerUser')
+	v.literal('answerCoveragePerUser'),
+	v.literal('askMailboxPerUser')
 );
+
+/** A bucket {@link assertAiAllowed} accepts. */
+export type AiRateBucket = typeof AI_RATE_BUCKET.type;
 
 /** Thrown for a session-less gate call that names no owner: a caller bug, never a refusal. */
 export const MISSING_AI_OWNER_MESSAGE =
@@ -102,13 +106,17 @@ type ThreadMessages = FunctionReturnType<typeof api.mail.mailbox.messages.listTh
  * unless the gate passed. `work` is always settled before this returns or
  * throws, so no read is left dangling when the action ends.
  */
-export async function gatedInParallel<T>(ctx: ActionCtx, work: Promise<T>): Promise<T> {
+export async function gatedInParallel<T>(
+	ctx: ActionCtx,
+	work: Promise<T>,
+	gate: { rateLimitBucket?: AiRateBucket } = {}
+): Promise<T> {
 	const settled = Promise.resolve(work).then(
 		(value) => ({ ok: true as const, value }),
 		(error: unknown) => ({ ok: false as const, error })
 	);
 	try {
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, gate);
 	} catch (gateError) {
 		await settled;
 		throw gateError;

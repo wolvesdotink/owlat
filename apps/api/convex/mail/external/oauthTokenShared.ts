@@ -23,6 +23,7 @@ import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 import { throwInvalidInput } from '../../_utils/errors';
 import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
+import type { AccessTokenAudience } from './accessTokenStore';
 
 /** Refresh an access token this long before it actually expires. */
 const ACCESS_TOKEN_REFRESH_SKEW_MS = 60_000;
@@ -142,8 +143,9 @@ export type OAuthAccessTokenResult =
 	| { kind: 'failed' };
 
 /**
- * Warm-isolate cache of minted access tokens, keyed by account AND by the
- * envelope the refresh token came out of.
+ * Warm-isolate cache of minted access tokens, keyed by account, by the
+ * envelope the refresh token came out of, and by the token's audience (the
+ * mail token, or a Microsoft Graph one).
  *
  * The first of two tiers. Convex may reuse a Node isolate across invocations,
  * in which case the worker's repeated credential fetches reuse one token without
@@ -163,8 +165,12 @@ export function clearAccessTokenCache(): void {
 	accessTokenCache.clear();
 }
 
-function cacheKey(accountId: Id<'externalMailAccounts'>, envelopeIv: string): string {
-	return `${accountId}:${envelopeIv}`;
+function cacheKey(
+	accountId: Id<'externalMailAccounts'>,
+	envelopeIv: string,
+	audience: AccessTokenAudience
+): string {
+	return `${accountId}:${envelopeIv}:${audience ?? 'mail'}`;
 }
 
 function isFresh(expiresAt: number): boolean {
@@ -172,19 +178,20 @@ function isFresh(expiresAt: number): boolean {
 }
 
 /**
- * A still-fresh token for this account and envelope: first from this isolate's
- * memory, then from the sealed row a previous mint stored. `null` means the
- * caller has to ask the provider.
+ * A still-fresh token for this account, envelope and audience: first from this
+ * isolate's memory, then from the sealed row a previous mint stored. `null`
+ * means the caller has to ask the provider.
  */
 export async function readCachedAccessToken(
 	ctx: ActionCtx,
 	accountId: Id<'externalMailAccounts'>,
-	envelopeIv: string
+	envelopeIv: string,
+	audience?: AccessTokenAudience
 ): Promise<OAuthAccessToken | null> {
-	const key = cacheKey(accountId, envelopeIv);
+	const key = cacheKey(accountId, envelopeIv, audience);
 	const cached = accessTokenCache.get(key);
 	if (cached && isFresh(cached.expiresAt)) return cached;
-	const stored = await readStoredAccessToken(ctx, accountId, envelopeIv);
+	const stored = await readStoredAccessToken(ctx, accountId, envelopeIv, audience);
 	if (stored) accessTokenCache.set(key, stored);
 	return stored;
 }
@@ -194,10 +201,11 @@ export async function rememberAccessToken(
 	ctx: ActionCtx,
 	accountId: Id<'externalMailAccounts'>,
 	envelopeIv: string,
-	minted: OAuthAccessToken
+	minted: OAuthAccessToken,
+	audience?: AccessTokenAudience
 ): Promise<void> {
-	accessTokenCache.set(cacheKey(accountId, envelopeIv), minted);
-	await storeAccessToken(ctx, accountId, envelopeIv, minted);
+	accessTokenCache.set(cacheKey(accountId, envelopeIv, audience), minted);
+	await storeAccessToken(ctx, accountId, envelopeIv, minted, audience);
 }
 
 /**
@@ -210,7 +218,8 @@ export async function markGrantRevoked(
 	envelopeIv: string,
 	message: string
 ): Promise<void> {
-	accessTokenCache.delete(cacheKey(accountId, envelopeIv));
+	accessTokenCache.delete(cacheKey(accountId, envelopeIv, undefined));
+	accessTokenCache.delete(cacheKey(accountId, envelopeIv, 'graph'));
 	await ctx.runMutation(internal.mail.external.accessTokenStore._clearStoredAccessToken, {
 		accountId,
 	});
@@ -230,11 +239,13 @@ export async function markGrantRevoked(
 async function readStoredAccessToken(
 	ctx: ActionCtx,
 	accountId: Id<'externalMailAccounts'>,
-	envelopeIv: string
+	envelopeIv: string,
+	audience: AccessTokenAudience
 ): Promise<OAuthAccessToken | null> {
 	try {
 		const row = await ctx.runQuery(internal.mail.external.accessTokenStore._getStoredAccessToken, {
 			accountId,
+			audience,
 		});
 		if (!row || row.sourceIv !== envelopeIv || !isFresh(row.expiresAt)) return null;
 		const accessToken = decryptSecret({
@@ -260,12 +271,14 @@ async function storeAccessToken(
 	ctx: ActionCtx,
 	accountId: Id<'externalMailAccounts'>,
 	envelopeIv: string,
-	minted: OAuthAccessToken
+	minted: OAuthAccessToken,
+	audience: AccessTokenAudience
 ): Promise<void> {
 	try {
 		const sealed = encryptSecret(minted.accessToken);
 		await ctx.runMutation(internal.mail.external.accessTokenStore._storeAccessToken, {
 			accountId,
+			audience,
 			sourceIv: envelopeIv,
 			ciphertext: sealed.ciphertext,
 			iv: sealed.iv,

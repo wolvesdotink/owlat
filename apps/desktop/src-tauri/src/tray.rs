@@ -6,8 +6,9 @@
 //! (`update_tray`), which owns the unread peek; a new document in the main
 //! window (a reload, a workspace switch) clears it until that page reports.
 //!
-//! Whether the icon is shown, and whether closing the main window keeps the
-//! app running in it, are device settings the SPA owns (`settings.json`, see
+//! Whether the icon is shown, whether closing the main window keeps the app
+//! running in it, and on macOS whether the Dock icon is hidden, are device
+//! settings the SPA owns (`settings.json`, see
 //! apps/web lib/desktop/settingsTypes.ts). They are read from that file at
 //! launch, so a close before the SPA has booted already follows them, and the
 //! SPA pushes every later change (`set_tray_preferences`).
@@ -45,12 +46,17 @@ const MAX_LABEL_CHARS: usize = 60;
 const ID_MESSAGE_PREFIX: &str = "tray:message:";
 const ID_SHOW: &str = "tray:show";
 const ID_COMPOSE: &str = "tray:compose";
+const ID_CHECK: &str = "tray:check";
 const ID_PAUSE: &str = "tray:pause";
 const ID_QUIT: &str = "tray:quit";
 
 /// Asks the SPA to flip its "notifications enabled" setting. The SPA pushes
 /// the new state back through `update_tray`.
 const TOGGLE_NOTIFICATIONS_EVENT: &str = "tray://toggle-notifications";
+
+/// Asks the SPA to have the mail-sync worker sync the connected accounts now.
+/// The SPA holds the session the request needs.
+const CHECK_MAIL_EVENT: &str = "tray://check-mail";
 
 /// One unread message as the menu lists it.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -78,6 +84,9 @@ pub struct TrayPreferences {
     /// Windows and Linux: closing the main window hides it to the tray. macOS
     /// always hides it (window.rs) and ignores this.
     pub close_to_tray: bool,
+    /// macOS: the app leaves the Dock and runs from the menu bar icon alone.
+    /// Only honoured while that icon is on screen (`hides_dock_icon`).
+    pub hide_dock_icon: bool,
 }
 
 impl Default for TrayPreferences {
@@ -85,8 +94,16 @@ impl Default for TrayPreferences {
         Self {
             visible: true,
             close_to_tray: true,
+            hide_dock_icon: false,
         }
     }
+}
+
+/// Whether the Dock icon goes away. Without the menu bar icon nothing would be
+/// left on screen to bring the app back, so hiding the tray icon, or a tray
+/// that could not be created, keeps the Dock icon whatever the setting says.
+pub fn hides_dock_icon(preferences: TrayPreferences, tray_exists: bool) -> bool {
+    preferences.hide_dock_icon && preferences.visible && tray_exists
 }
 
 #[derive(Default)]
@@ -109,6 +126,9 @@ pub fn preferences_from_settings(settings: &serde_json::Value) -> TrayPreference
         close_to_tray: global["closeToTray"]
             .as_bool()
             .unwrap_or(defaults.close_to_tray),
+        hide_dock_icon: global["hideDockIcon"]
+            .as_bool()
+            .unwrap_or(defaults.hide_dock_icon),
     }
 }
 
@@ -178,6 +198,14 @@ fn message_label(message: &TrayMessage) -> String {
     literal_label(&format!("{}: {subject}", message.sender.trim()))
 }
 
+/// The verbs below the message rows, in menu order: id and label. A check item
+/// (Pause Notifications) follows them.
+const VERBS: [(&str, &str); 3] = [
+    (ID_SHOW, "Open Owlat"),
+    (ID_COMPOSE, "New Message"),
+    (ID_CHECK, "Check for Mail"),
+];
+
 fn build_menu(app: &AppHandle, content: &TrayContent) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::new(app)?;
     menu.append(&MenuItem::with_id(
@@ -200,20 +228,9 @@ fn build_menu(app: &AppHandle, content: &TrayContent) -> tauri::Result<Menu<Wry>
         }
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&MenuItem::with_id(
-        app,
-        ID_SHOW,
-        "Open Owlat",
-        true,
-        None::<&str>,
-    )?)?;
-    menu.append(&MenuItem::with_id(
-        app,
-        ID_COMPOSE,
-        "New Message",
-        true,
-        None::<&str>,
-    )?)?;
+    for (id, label) in VERBS {
+        menu.append(&MenuItem::with_id(app, id, label, true, None::<&str>)?)?;
+    }
     menu.append(&CheckMenuItem::with_id(
         app,
         ID_PAUSE,
@@ -300,20 +317,43 @@ fn build_tray(app: &AppHandle) -> bool {
     }
 }
 
-/// Show or hide the icon, creating it the first time it is shown.
-fn apply_visibility(app: &AppHandle, visible: bool) {
+/// Show or hide the icon, creating it the first time it is shown, then give
+/// the Dock icon the state that goes with it.
+fn apply_preferences(app: &AppHandle, preferences: TrayPreferences) {
     match app.tray_by_id(TRAY_ID) {
         Some(tray) => {
-            let _ = tray.set_visible(visible);
+            let _ = tray.set_visible(preferences.visible);
         }
-        None if visible => {
+        None if preferences.visible => {
             if build_tray(app) {
                 refresh(app);
             }
         }
         None => {}
     }
+    apply_dock_icon(
+        app,
+        hides_dock_icon(preferences, app.tray_by_id(TRAY_ID).is_some()),
+    );
 }
+
+/// macOS: an accessory app has no Dock icon, and macOS shows no menu bar for
+/// it. At launch the app starts as a regular one and switches here, so the
+/// Dock icon shows briefly before it goes.
+#[cfg(target_os = "macos")]
+fn apply_dock_icon(app: &AppHandle, hidden: bool) {
+    let policy = if hidden {
+        tauri::ActivationPolicy::Accessory
+    } else {
+        tauri::ActivationPolicy::Regular
+    };
+    if let Err(e) = app.set_activation_policy(policy) {
+        eprintln!("[tray] could not change the Dock icon: {e}");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_dock_icon(_app: &AppHandle, _hidden: bool) {}
 
 /// Read the stored preferences and create the icon if it is enabled. Call from
 /// `setup`, on the main thread.
@@ -322,7 +362,7 @@ pub fn setup(app: &AppHandle) {
     if let Ok(mut inner) = app.state::<TrayState>().0.lock() {
         inner.preferences = preferences;
     }
-    apply_visibility(app, preferences.visible);
+    apply_preferences(app, preferences);
 }
 
 /// Whether closing the main window should hide it rather than quit (Windows
@@ -348,30 +388,59 @@ pub fn clear_content(app: &AppHandle) {
     refresh(app);
 }
 
-fn handle_menu_event(app: &AppHandle, id: &str) {
+/// What a click on a menu row does.
+#[derive(Debug, PartialEq)]
+enum TrayAction<'a> {
+    OpenMessage(&'a str),
+    Show,
+    Compose,
+    CheckMail,
+    TogglePause,
+    Quit,
+}
+
+fn tray_action(id: &str) -> Option<TrayAction<'_>> {
     if let Some(message_id) = id.strip_prefix(ID_MESSAGE_PREFIX) {
-        let workspace_id = app
-            .state::<TrayState>()
-            .0
-            .lock()
-            .ok()
-            .and_then(|inner| inner.content.workspace_id.clone());
-        window::show_main_window(app);
-        // The same event a clicked notification sends, so the SPA's routing
-        // opens it, in its own workspace if the user has switched since.
-        notifications::emit_open_message(app, message_id.to_string(), workspace_id);
-        return;
+        return Some(TrayAction::OpenMessage(message_id));
     }
     match id {
-        ID_SHOW => window::show_main_window(app),
-        ID_COMPOSE => {
+        ID_SHOW => Some(TrayAction::Show),
+        ID_COMPOSE => Some(TrayAction::Compose),
+        ID_CHECK => Some(TrayAction::CheckMail),
+        ID_PAUSE => Some(TrayAction::TogglePause),
+        ID_QUIT => Some(TrayAction::Quit),
+        _ => None,
+    }
+}
+
+fn handle_menu_event(app: &AppHandle, id: &str) {
+    match tray_action(id) {
+        Some(TrayAction::OpenMessage(message_id)) => {
+            let workspace_id = app
+                .state::<TrayState>()
+                .0
+                .lock()
+                .ok()
+                .and_then(|inner| inner.content.workspace_id.clone());
+            window::show_main_window(app);
+            // The same event a clicked notification sends, so the SPA's routing
+            // opens it, in its own workspace if the user has switched since.
+            notifications::emit_open_message(app, message_id.to_string(), workspace_id);
+        }
+        Some(TrayAction::Show) => window::show_main_window(app),
+        Some(TrayAction::Compose) => {
             window::open_compose_window(app, "/compose");
         }
-        ID_PAUSE => {
+        // The main window's SPA answers it even while the window is hidden to
+        // the tray, so the check runs without bringing the window up.
+        Some(TrayAction::CheckMail) => {
+            let _ = app.emit(CHECK_MAIL_EVENT, ());
+        }
+        Some(TrayAction::TogglePause) => {
             let _ = app.emit(TOGGLE_NOTIFICATIONS_EVENT, ());
         }
-        ID_QUIT => app.exit(0),
-        _ => {}
+        Some(TrayAction::Quit) => app.exit(0),
+        None => {}
     }
 }
 
@@ -396,16 +465,25 @@ pub fn update_tray(
     refresh(&app);
 }
 
-/// Command: the device settings for the icon changed.
+/// Command: the device settings for the icon changed. A shell older than the
+/// SPA's `hideDockIcon` never sees it; an SPA older than this shell sends none
+/// and keeps the Dock icon.
 #[command]
-pub fn set_tray_preferences(app: AppHandle, visible: bool, close_to_tray: bool) {
+pub fn set_tray_preferences(
+    app: AppHandle,
+    visible: bool,
+    close_to_tray: bool,
+    hide_dock_icon: Option<bool>,
+) {
+    let preferences = TrayPreferences {
+        visible,
+        close_to_tray,
+        hide_dock_icon: hide_dock_icon.unwrap_or(false),
+    };
     if let Ok(mut inner) = app.state::<TrayState>().0.lock() {
-        inner.preferences = TrayPreferences {
-            visible,
-            close_to_tray,
-        };
+        inner.preferences = preferences;
     }
-    apply_visibility(&app, visible);
+    apply_preferences(&app, preferences);
 }
 
 #[cfg(test)]
@@ -423,7 +501,8 @@ mod tests {
             preferences_from_settings(&json!({ "state": { "global": {} } })),
             TrayPreferences {
                 visible: true,
-                close_to_tray: true
+                close_to_tray: true,
+                hide_dock_icon: false
             }
         );
     }
@@ -431,13 +510,16 @@ mod tests {
     #[test]
     fn preferences_are_read_from_the_spa_settings() {
         let settings = json!({
-            "state": { "version": 1, "global": { "showTrayIcon": false, "closeToTray": false } }
+            "state": { "version": 1, "global": {
+                "showTrayIcon": false, "closeToTray": false, "hideDockIcon": true
+            } }
         });
         assert_eq!(
             preferences_from_settings(&settings),
             TrayPreferences {
                 visible: false,
-                close_to_tray: false
+                close_to_tray: false,
+                hide_dock_icon: true
             }
         );
     }
@@ -445,15 +527,56 @@ mod tests {
     #[test]
     fn a_malformed_preference_keeps_its_default() {
         let settings = json!({
-            "state": { "global": { "showTrayIcon": "no", "closeToTray": false } }
+            "state": { "global": { "showTrayIcon": "no", "closeToTray": false, "hideDockIcon": 1 } }
         });
         assert_eq!(
             preferences_from_settings(&settings),
             TrayPreferences {
                 visible: true,
-                close_to_tray: false
+                close_to_tray: false,
+                hide_dock_icon: false
             }
         );
+    }
+
+    #[test]
+    fn the_dock_icon_hides_only_while_the_tray_icon_is_there() {
+        let hide = TrayPreferences {
+            hide_dock_icon: true,
+            ..TrayPreferences::default()
+        };
+        assert!(hides_dock_icon(hide, true));
+        // No way back to the app without one of the two icons.
+        assert!(!hides_dock_icon(hide, false));
+        assert!(!hides_dock_icon(
+            TrayPreferences {
+                visible: false,
+                ..hide
+            },
+            true
+        ));
+        assert!(!hides_dock_icon(TrayPreferences::default(), true));
+    }
+
+    #[test]
+    fn the_menu_offers_check_for_mail_after_new_message() {
+        let ids: Vec<&str> = VERBS.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [ID_SHOW, ID_COMPOSE, ID_CHECK]);
+        assert_eq!(VERBS[2].1, "Check for Mail");
+        assert_eq!(tray_action(ID_CHECK), Some(TrayAction::CheckMail));
+    }
+
+    #[test]
+    fn each_menu_row_maps_to_its_action() {
+        assert_eq!(
+            tray_action("tray:message:m1"),
+            Some(TrayAction::OpenMessage("m1"))
+        );
+        assert_eq!(tray_action(ID_SHOW), Some(TrayAction::Show));
+        assert_eq!(tray_action(ID_COMPOSE), Some(TrayAction::Compose));
+        assert_eq!(tray_action(ID_PAUSE), Some(TrayAction::TogglePause));
+        assert_eq!(tray_action(ID_QUIT), Some(TrayAction::Quit));
+        assert_eq!(tray_action("tray:count"), None);
     }
 
     #[test]

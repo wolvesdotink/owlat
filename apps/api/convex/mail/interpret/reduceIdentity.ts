@@ -29,6 +29,7 @@ import { claimKeysOf, factLineage, itemLineage, type MemState } from './fold';
 import { factToMem, itemToMem } from './reduceState';
 import type { ReduceResult } from './reduceInput';
 import { MAX_INTERPRET_TRANSITIONS } from './schema';
+import { isWithdrawnItem } from './staleFence';
 
 /** Convex's array limit is 8192; the record stays below it. */
 export const MAX_CLAIM_IDS = 8000;
@@ -104,7 +105,8 @@ export async function loadIdentityTargets(
 		const itemId = ctx.db.normalizeId('threadItems', id);
 		if (itemId) {
 			const row = await ctx.db.get(itemId);
-			if (row && rowMatchesThreadRef(row, ref)) {
+			// A withdrawn item is nobody's identity target (scopeReconcile.ts).
+			if (row && rowMatchesThreadRef(row, ref) && !isWithdrawnItem(row)) {
 				loaded.rows.set(row._id, row);
 				loaded.state.items.set(row._id, await itemToMem(row));
 			}

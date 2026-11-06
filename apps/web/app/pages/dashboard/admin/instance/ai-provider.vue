@@ -220,6 +220,8 @@ watch(
 							</p>
 						</div>
 
+						<SettingsAiProviderKeyRefused />
+
 						<SettingsAiKeyField
 							v-if="requiresKey"
 							v-model="form.apiKey"

@@ -2,8 +2,9 @@
 /**
  * Bundled view — the flat feed with runs of consecutive low-signal mail folded
  * into one expandable row per category ("Newsletters · 12 · latest from
- * Northwind Digest"), each carrying an archive-all and, where the senders
- * support RFC 8058 one-click, an unsubscribe-all.
+ * Northwind Digest"), each carrying a mark-read while any of it is unread, an
+ * archive-all and, where the senders support RFC 8058 one-click, an
+ * unsubscribe-all.
  *
  * Deliberately NOT windowed, unlike the flat and grouped renderers: folding is
  * what keeps this list short — a page of fifty messages with forty newsletters
@@ -45,6 +46,8 @@ const emit = defineEmits<{
 	(e: 'load-more'): void;
 	(e: 'toggle', bundleId: string): void;
 	(e: 'archive-bundle', messageIds: string[]): void;
+	/** The bundle's unread messages, the ones its unread badge counts. */
+	(e: 'mark-bundle-read', messageIds: string[]): void;
 	(e: 'unsubscribe-bundle', senderEmails: string[], messageIds: string[]): void;
 }>();
 
@@ -205,6 +208,29 @@ function focusIndexOf(messageId: string): number {
 								{{ t('components.postbox.postboxThreadBundleList.unsubscribe') }}
 							</button>
 						</UiTooltip>
+						<button
+							v-if="entry.unreadCount > 0"
+							type="button"
+							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
+							:disabled="busy"
+							:aria-label="
+								t(
+									'components.postbox.postboxThreadBundleList.markReadLabel',
+									{ count: entry.unreadCount },
+									entry.unreadCount
+								)
+							"
+							@click="
+								emit(
+									'mark-bundle-read',
+									entry.messages
+										.filter((message) => !message.flagSeen)
+										.map((message) => String(message._id))
+								)
+							"
+						>
+							{{ t('components.postbox.postboxThreadBundleList.markRead') }}
+						</button>
 						<button
 							type="button"
 							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"

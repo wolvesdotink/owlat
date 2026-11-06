@@ -1,6 +1,7 @@
 /**
  * Move or copy messages into ANOTHER mailbox: the "Other mailboxes" half of the
- * move picker (`v`) and the palette's "Move to mailbox…" / "Copy to mailbox…".
+ * move picker (`v`), the palette's "Move to mailbox…" / "Copy to mailbox…" and
+ * a drop on a mailbox in the sidebar.
  *
  * The server (`mail.mailboxTransfer.transfer`) writes the copy before it
  * deletes the source and refuses what may not travel; this is the client half:
@@ -9,9 +10,10 @@
  * moving each copy back to the folder its source sat in; a copy, by purging the
  * copies.
  *
- * A connected (IMAP) account is listed but cannot be picked, and a move out of
- * one is offered as a copy only: nothing writes to the provider yet, so the
- * server refuses both, and the picker says so instead of failing on click.
+ * A connected (IMAP) account takes mail like any other mailbox, but the copy
+ * only counts once its provider has it: the server uploads it in the
+ * background and keeps a move's source until then (`uploading`), so the undo
+ * label says "Moving to" rather than "Moved to".
  */
 
 import { api } from '@owlat/api';
@@ -27,7 +29,7 @@ export interface PostboxTransferTarget {
 	mailboxId: Id<'mailboxes'>;
 	name: string;
 	isShared: boolean;
-	/** A connected account: shown, never pickable. */
+	/** A connected account: mail moved there stays put until its provider has it. */
 	isConnected: boolean;
 }
 
@@ -37,7 +39,14 @@ export const POSTBOX_MESSAGES_PER_TRANSFER = 25;
 /** Team inboxes this browser already confirmed filing mail into. */
 const CONFIRMED_KEY = 'postbox-transfer-confirmed-team-inboxes';
 
-const REFUSALS = new Set(['external_target', 'external_source', 'sealed', 'sending', 'over_quota']);
+const REFUSALS = new Set([
+	'external_target',
+	'no_message_id',
+	'sealed',
+	'sending',
+	'over_quota',
+	'all_mail',
+]);
 
 function chunks<T>(items: readonly T[]): T[][] {
 	const out: T[][] = [];
@@ -74,9 +83,6 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 		label: () => t('components.postbox.postboxMovePickerDialog.undoCopyOperation'),
 	});
 
-	const isSourceConnected = computed(
-		() => inboxes.value.find((inbox) => inbox.mailboxId === mailboxId())?.isConnected === true
-	);
 	const targets = computed<PostboxTransferTarget[]>(() =>
 		inboxes.value
 			.filter((inbox) => inbox.mailboxId !== mailboxId())
@@ -106,19 +112,28 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 		return ok;
 	}
 
+	/** The undo label: "Moving to" while the copies are still on their way to a provider. */
+	function undoLabel(mode: PostboxTransferMode, name: string, count: number, uploading: boolean) {
+		if (mode === 'move') {
+			return uploading
+				? t('components.postbox.postboxMovePickerDialog.movingTo', { name }, count)
+				: t('components.postbox.postboxMovePickerDialog.movedTo', { name }, count);
+		}
+		return uploading
+			? t('components.postbox.postboxMovePickerDialog.copyingTo', { name }, count)
+			: t('components.postbox.postboxMovePickerDialog.copiedTo', { name }, count);
+	}
+
 	function registerUndo(
 		mode: PostboxTransferMode,
 		target: PostboxTransferTarget | undefined,
 		sourceMailboxId: Id<'mailboxes'>,
 		moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }>,
-		hidden: Id<'mailMessages'>[]
+		hidden: Id<'mailMessages'>[],
+		uploading: boolean
 	) {
-		const name = target?.name ?? '';
 		triageUndo.register({
-			label:
-				mode === 'move'
-					? t('components.postbox.postboxMovePickerDialog.movedTo', { name }, moved.length)
-					: t('components.postbox.postboxMovePickerDialog.copiedTo', { name }, moved.length),
+			label: undoLabel(mode, target?.name ?? '', moved.length, uploading),
 			inverse: async () => {
 				const copies = moved.map((entry) => entry.messageId);
 				if (mode === 'copy') {
@@ -149,7 +164,10 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 
 	/**
 	 * Move or copy `ids` into `targetId`. A move hides the rows at once and
-	 * brings back any the server did not take. Resolves to whether every call
+	 * brings back any the server did not take. A move into a connected account
+	 * hides nothing: its sources stay until the provider has each copy, and an
+	 * upload that fails for good leaves its source where it was, with nothing on
+	 * this side told of it. Resolves to whether every call
 	 * landed. The caller confirms the target first ({@link confirmTarget}).
 	 */
 	async function transfer(
@@ -160,9 +178,11 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 		if (ids.length === 0) return false;
 		const sourceMailboxId = mailboxId() as Id<'mailboxes'>;
 		const target = targets.value.find((m) => m.mailboxId === targetId);
-		if (mode === 'move') for (const id of ids) hidePostboxRowEverywhere(id);
+		const hides = mode === 'move' && target?.isConnected !== true;
+		if (hides) for (const id of ids) hidePostboxRowEverywhere(id);
 		const moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }> = [];
 		const kept: Id<'mailMessages'>[] = [];
+		let uploading = false;
 		let landed = 0;
 		let isAllLanded = true;
 		for (const chunk of chunks(ids)) {
@@ -174,9 +194,11 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 			landed += chunk.length;
 			moved.push(...outcome.result.moved);
 			kept.push(...outcome.result.skipped);
+			uploading ||= outcome.result.uploading;
 		}
-		const restored = [...ids.slice(landed), ...kept];
-		if (mode === 'move') for (const id of restored) unhidePostboxRowEverywhere(id);
+		// The target list may predate the account's connection: the server's answer decides.
+		const restored = uploading ? ids : [...ids.slice(landed), ...kept];
+		if (hides) for (const id of restored) unhidePostboxRowEverywhere(id);
 		if (kept.length > 0) {
 			showToast(
 				t(
@@ -188,11 +210,12 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 			);
 		}
 		if (moved.length > 0) {
-			const hidden = ids.slice(0, landed).filter((id) => !kept.includes(id));
-			registerUndo(mode, target, sourceMailboxId, moved, hidden);
+			const hidden =
+				hides && !uploading ? ids.slice(0, landed).filter((id) => !kept.includes(id)) : [];
+			registerUndo(mode, target, sourceMailboxId, moved, hidden, uploading);
 		}
 		return isAllLanded;
 	}
 
-	return { targets, isSourceConnected, confirmTarget, transfer };
+	return { targets, confirmTarget, transfer };
 }

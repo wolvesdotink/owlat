@@ -10,7 +10,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
@@ -53,8 +53,26 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	};
 });
 
-const HOUR = 60 * 60 * 1000;
+const NOW = Date.UTC(2026, 9, 21, 8, 0);
+const MIN = 60_000;
+const HOUR = 60 * MIN;
 const TEAM = 'team@owlat.test';
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+/**
+ * Each step lands a minute after the last. The digest treats a visit stamped
+ * at or after the thread's last message as already seen, so a visit and the
+ * reply that follows it must not share a timestamp.
+ */
+function later() {
+	vi.setSystemTime(Date.now() + MIN);
+}
 
 async function addMember(
 	t: TestConvex<typeof schema>,
@@ -162,12 +180,15 @@ describe('a teammate answers a team-inbox thread', () => {
 	it('clears the thread from the other members’ Answer queue and digest', async () => {
 		const t = convexTest(schema, modules);
 		const { team, threadId } = await seedTeamQuestion(t);
+		later();
 
 		const before = await viewAs(t, team);
 		expect(before.queue.items.map((i) => i.threadId)).toEqual([threadId]);
 		expect(before.sidebar!.threads[0]).toMatchObject({ threadId, status: 'needs_you' });
 
+		later();
 		await sendReply(t, { mailboxId: team, threadId, fromAddress: TEAM });
+		later();
 
 		const after = await viewAs(t, team);
 		expect(after.queue.items).toEqual([]);
@@ -181,10 +202,13 @@ describe('a teammate answers a team-inbox thread', () => {
 	it('keeps the thread in "What changed" for a member who had read it', async () => {
 		const t = convexTest(schema, modules);
 		const { team, threadId } = await seedTeamQuestion(t);
+		later();
 		sessionMock.userId = 'user-C';
 		await t.mutation(api.mail.threadVisits.recordVisit, { threadId });
 
+		later();
 		await sendReply(t, { mailboxId: team, threadId, fromAddress: TEAM });
+		later();
 
 		const { queue, digest } = await viewAs(t, team);
 		expect(queue.items).toEqual([]);

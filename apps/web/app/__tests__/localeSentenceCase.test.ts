@@ -59,6 +59,7 @@ const PROPER_NOUNS = new Set([
 	'Beijing',
 	'Claude',
 	'Convex',
+	'Dock', // the macOS Dock
 	'Docker',
 	'Emailit',
 	'Gemini',
@@ -112,6 +113,7 @@ const PROPER_NOUNS = new Set([
 const PROPER_PHRASES = [
 	'Claude Code',
 	'Google Workspace',
+	'Microsoft Graph',
 	'Mailchimp Transactional',
 	'Mailchimp Marketing',
 	'Migrate from Mailchimp',

@@ -10,7 +10,6 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
 import type { VcardImportOutcome } from '~/lib/postboxVcardTransfer';
 
 export type { VcardImportOutcome };
@@ -25,6 +24,9 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 	const importOp = useBackendOperation(api.mail.contactsVcard.importBatch, {
 		label: () => t('shared.postbox.usePostboxContacts.importContacts'),
 	});
+	const photosOp = useBackendOperation(api.mail.contactsPhotos.importPhotos, {
+		label: () => t('shared.postbox.usePostboxContacts.importPhotos'),
+	});
 	const isImporting = ref(false);
 	const isExporting = ref(false);
 
@@ -34,7 +36,11 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		isImporting.value = true;
 		try {
 			const { importVcardFile } = await loadTransfer();
-			return await importVcardFile(file, (entries) => importOp.run({ mailboxId: target, entries }));
+			return await importVcardFile(
+				file,
+				(entries) => importOp.run({ mailboxId: target, entries }),
+				(photos) => photosOp.run({ mailboxId: target, photos })
+			);
 		} catch {
 			// The file could not be read, or the import could not be loaded (offline).
 			// A failed batch is not this: `importOp.run` reports and resolves.
@@ -42,16 +48,6 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		} finally {
 			isImporting.value = false;
 		}
-	}
-
-	/** Write one entry back, as the import would: the Undo of removing an imported row. */
-	async function restoreEntry(entry: VcardContactEntry) {
-		if (!mailboxId.value) return { ok: false } as const;
-		const { email, displayName, organization, phones, postalAddresses } = entry;
-		return importOp.run({
-			mailboxId: mailboxId.value,
-			entries: [{ email, displayName, organization, phones, postalAddresses }],
-		});
 	}
 
 	/** Download the whole address book as a .vcf file; false when it could not. */
@@ -75,5 +71,5 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		}
 	}
 
-	return { isImporting, isExporting, importFile, restoreEntry, exportBook };
+	return { isImporting, isExporting, importFile, exportBook };
 }

@@ -103,6 +103,7 @@ async function mountPage() {
 					template: '<div data-testid="key-field">{{ error }}</div>',
 				},
 				SettingsAiModelPicker: true,
+				SettingsAiProviderKeyRefused: true,
 				SettingsAiDecisionCard: true,
 				SettingsAiEmbeddingSpaceCard: true,
 				SettingsAiRemoveConfigCard: true,

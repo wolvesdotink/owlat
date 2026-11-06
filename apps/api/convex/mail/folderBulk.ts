@@ -1,10 +1,11 @@
 /**
- * Whole-folder chores: "Mark all as read" and "Empty Trash / Spam".
+ * Whole-folder chores: "Mark all as read" (for a folder, a label or one
+ * smart-inbox category of a folder) and "Empty Trash / Spam".
  *
- * Both act on a folder rather than on a selection, so neither is capped at the
- * selection's 500 ids, and both stop at the folder's highest uid when the
- * person asked: a message that arrives (or is moved in, which allocates a new
- * uid) after the click is not part of what they cleared.
+ * They act on a folder or label rather than on a selection, so none is capped
+ * at the selection's 500 ids, and each stops where the folder or mailbox stood
+ * when the person asked: a message that arrives (or is moved in, which
+ * allocates a new uid) after the click is not part of what they cleared.
  *
  * Marking read is driven by the client one bounded batch at a time, because
  * each batch hands back the ids it flipped and the client's Undo needs every
@@ -13,6 +14,7 @@
  */
 
 import { v } from 'convex/values';
+import { mailCategoryLabelValidator } from '../lib/literalValidators';
 import { postboxMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -58,12 +60,61 @@ async function highestUid(ctx: MutationCtx, folderId: Id<'mailFolders'>): Promis
 }
 
 /**
+ * Mark the messages of one batch read, skipping snoozed ones: they are not in
+ * the view the person is looking at, and they should come back unread. Returns
+ * the ids it flipped, which the client's Undo puts back.
+ */
+async function markMessagesRead(
+	ctx: MutationCtx,
+	messages: readonly Doc<'mailMessages'>[]
+): Promise<Id<'mailMessages'>[]> {
+	const now = Date.now();
+	const folders = new FolderFlagWrites(ctx);
+	const threads: ThreadFlagDeltas = new Map();
+	const remote: RemoteChange[] = [];
+	const markedIds: Id<'mailMessages'>[] = [];
+	for (const message of messages) {
+		if (message.flagSeen || isMessageSnoozed(message, now)) continue;
+		const change = await writeMessageFlags(ctx, folders, threads, message, { seen: true });
+		if (!change) continue;
+		remote.push(change);
+		markedIds.push(message._id);
+	}
+	await folders.flush();
+	await applyThreadFlagDeltas(ctx, threads);
+	await recordRemoteChanges(ctx, remote);
+	return markedIds;
+}
+
+/**
+ * One batch of a folder's unread messages up to `ceilingUid`, and the cursor
+ * for the next batch (null once the folder holds no more).
+ */
+async function unreadFolderBatch(
+	ctx: MutationCtx,
+	folderId: Id<'mailFolders'>,
+	cursor: { ceilingUid: number; afterUid: number }
+): Promise<{ batch: Doc<'mailMessages'>[]; afterUid: number | null }> {
+	const batch = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_folder_and_seen', (q) =>
+			q
+				.eq('folderId', folderId)
+				.eq('flagSeen', false)
+				.gt('uid', cursor.afterUid)
+				.lte('uid', cursor.ceilingUid)
+		)
+		.take(MARK_FOLDER_READ_BATCH);
+	const last = batch[batch.length - 1];
+	return { batch, afterUid: batch.length === MARK_FOLDER_READ_BATCH && last ? last.uid : null };
+}
+
+/**
  * Mark one batch of a folder's unread messages read.
  *
  * The first call omits `ceilingUid` and `afterUid`; the answer carries both for
  * the next call, and `afterUid: null` once the folder holds no more unread mail
- * up to the ceiling. Snoozed messages are skipped: they are not in the folder
- * the person is looking at, and they should come back unread.
+ * up to the ceiling. Snoozed messages are skipped.
  *
  * Read state on a team inbox is one shared truth (see `sharedUnread.test.ts`),
  * so a member clears it for everyone, exactly as select-all and `u` do.
@@ -91,39 +142,129 @@ export const markFolderRead = postboxMutation({
 		if (!access.ok) throwForbidden('Folder not accessible');
 
 		const ceilingUid = args.ceilingUid ?? (await highestUid(ctx, folder._id));
-		const afterUid = args.afterUid ?? 0;
-		const batch = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_folder_and_seen', (q) =>
-				q
-					.eq('folderId', folder._id)
-					.eq('flagSeen', false)
-					.gt('uid', afterUid)
-					.lte('uid', ceilingUid)
-			)
-			.take(MARK_FOLDER_READ_BATCH);
-
-		const now = Date.now();
-		const folders = new FolderFlagWrites(ctx);
-		const threads: ThreadFlagDeltas = new Map();
-		const remote: RemoteChange[] = [];
-		const markedIds: Id<'mailMessages'>[] = [];
-		for (const message of batch) {
-			if (isMessageSnoozed(message, now)) continue;
-			const change = await writeMessageFlags(ctx, folders, threads, message, { seen: true });
-			if (!change) continue;
-			remote.push(change);
-			markedIds.push(message._id);
-		}
-		await folders.flush();
-		await applyThreadFlagDeltas(ctx, threads);
-		await recordRemoteChanges(ctx, remote);
-
-		const last = batch[batch.length - 1];
-		return {
-			markedIds,
+		const { batch, afterUid } = await unreadFolderBatch(ctx, folder._id, {
 			ceilingUid,
-			afterUid: batch.length === MARK_FOLDER_READ_BATCH && last ? last.uid : null,
+			afterUid: args.afterUid ?? 0,
+		});
+		return { markedIds: await markMessagesRead(ctx, batch), ceilingUid, afterUid };
+	},
+});
+
+/**
+ * Mark one batch of a smart-inbox category's unread messages in a folder read:
+ * the Categories view's section header. It walks the folder exactly as
+ * `markFolderRead` does and keeps the messages whose conversation carries the
+ * category. A conversation the classifier has not reached yet counts as
+ * `other`, the section the view files it under.
+ */
+// authz: requireMailboxAccess on the folder's mailbox (member floor, the same
+// one setFlags applies per message).
+export const markCategoryRead = postboxMutation({
+	args: {
+		folderId: v.id('mailFolders'),
+		category: mailCategoryLabelValidator,
+		ceilingUid: v.optional(v.number()),
+		afterUid: v.optional(v.number()),
+	},
+	handler: async (
+		ctx,
+		args,
+		session
+	): Promise<{
+		markedIds: Id<'mailMessages'>[];
+		ceilingUid: number;
+		afterUid: number | null;
+	}> => {
+		const folder = await ctx.db.get(args.folderId);
+		if (!folder) throwNotFound('Folder');
+		const access = await requireMailboxAccess(ctx, folder.mailboxId, 'member', session);
+		if (!access.ok) throwForbidden('Folder not accessible');
+
+		const ceilingUid = args.ceilingUid ?? (await highestUid(ctx, folder._id));
+		const { batch, afterUid } = await unreadFolderBatch(ctx, folder._id, {
+			ceilingUid,
+			afterUid: args.afterUid ?? 0,
+		});
+		const categoryOf = new Map<Id<'mailThreads'>, string>();
+		const inCategory: Doc<'mailMessages'>[] = [];
+		for (const message of batch) {
+			let category = categoryOf.get(message.threadId);
+			if (category === undefined) {
+				const thread = await ctx.db.get(message.threadId);
+				category = thread?.category?.label ?? 'other';
+				categoryOf.set(message.threadId, category);
+			}
+			if (category === args.category) inCategory.push(message);
+		}
+		return { markedIds: await markMessagesRead(ctx, inCategory), ceilingUid, afterUid };
+	},
+});
+
+/**
+ * Mark one batch of a label's unread messages read, in whichever folder they
+ * are filed: the label view lists them all.
+ *
+ * There is no index over label membership (Convex indexes an array field by
+ * its whole value), so a batch pages MARK_FOLDER_READ_BATCH of the mailbox's
+ * unread messages in creation order and keeps the labelled ones. A batch can
+ * flip nothing and still hand back a cursor.
+ *
+ * The cursor is a Convex pagination cursor, a position in the index, so a
+ * batch reads only its own page however many earlier unread rows share one
+ * creation time (an import batch, or writes of several transactions in one
+ * millisecond). A cursor of the creation time and id would have to read the
+ * rest of that tie again from its start on every call. Rows a batch marks read
+ * leave the range, which a position cursor does not mind. The ceiling is the
+ * creation time of the newest unread message at the first call, so later
+ * arrivals stay unread; rows at exactly the ceiling are part of the walk. The
+ * range must stay the same on every call for the cursor to be valid.
+ */
+// authz: requireMailboxAccess on the label's mailbox (member floor, the same
+// one setFlags applies per message); the label must belong to that mailbox.
+export const markLabelRead = postboxMutation({
+	args: {
+		mailboxId: v.id('mailboxes'),
+		labelId: v.id('mailLabels'),
+		ceilingTime: v.optional(v.number()),
+		cursor: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		args,
+		session
+	): Promise<{
+		markedIds: Id<'mailMessages'>[];
+		ceilingTime: number;
+		cursor: string | null;
+	}> => {
+		const label = await ctx.db.get(args.labelId);
+		if (!label || label.mailboxId !== args.mailboxId) throwNotFound('Label');
+		const access = await requireMailboxAccess(ctx, args.mailboxId, 'member', session);
+		if (!access.ok) throwForbidden('Label not accessible');
+
+		const ceilingTime =
+			args.ceilingTime ??
+			(
+				await ctx.db
+					.query('mailMessages')
+					.withIndex('by_mailbox_and_unseen', (q) =>
+						q.eq('mailboxId', args.mailboxId).eq('flagSeen', false)
+					)
+					.order('desc')
+					.first()
+			)?._creationTime ??
+			0;
+		const page = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_unseen', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('flagSeen', false).lte('_creationTime', ceilingTime)
+			)
+			.paginate({ cursor: args.cursor ?? null, numItems: MARK_FOLDER_READ_BATCH });
+		const labelled = page.page.filter((message) => message.labelIds.includes(args.labelId));
+		return {
+			markedIds: await markMessagesRead(ctx, labelled),
+			ceilingTime,
+			cursor: page.isDone ? null : page.continueCursor,
 		};
 	},
 });

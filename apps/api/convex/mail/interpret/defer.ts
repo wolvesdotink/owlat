@@ -56,7 +56,7 @@ import { deferSource, markOutstanding, runOf, settleSource } from './outstanding
 import { sourceOrderKey } from './sourceOrder';
 import { rootRequest, type LlmRootContext } from '../../lib/llm/requestMeter';
 import { loadInterpretSource } from './sources';
-import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './load';
+import { CLOSED_STATUSES, recentlyClosedItems, threadItemsWithStatus } from './itemReads';
 import type { InterpretDeferReason } from '@owlat/shared/aiRouting';
 import type { Depth } from '@owlat/shared/arrival';
 import { isReadOnArrivalOn } from './preferences';

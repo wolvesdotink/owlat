@@ -15,7 +15,7 @@
  */
 import type { Doc } from '@owlat/api/dataModel';
 import { usePostboxRowNow } from '~/composables/postbox/usePostboxListClock';
-import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { usePostboxSignInCode } from '~/composables/postbox/usePostboxSignInCode';
 import { CopyIcon, KeyIcon, LogInIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -25,8 +25,7 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const { showToast } = useToast();
-const { copy } = useCopyToClipboard();
+const { copyOrOpen } = usePostboxSignInCode();
 const now = usePostboxRowNow();
 
 const isLive = computed(() => now.value < props.signInCode.expiresAt);
@@ -42,16 +41,10 @@ const label = computed(() =>
 			})
 );
 
-async function onClick(event: MouseEvent) {
+function onClick(event: MouseEvent) {
 	event.stopPropagation();
 	event.preventDefault();
-	if (props.signInCode.kind === 'link') {
-		window.open(props.signInCode.value, '_blank', 'noopener,noreferrer');
-		return;
-	}
-	const copied = await copy(props.signInCode.value);
-	if (copied) showToast(t('components.postbox.postboxSignInCodeChip.copied'));
-	else showToast(t('components.postbox.postboxSignInCodeChip.copyFailed'), 'error');
+	void copyOrOpen(props.signInCode);
 }
 </script>
 

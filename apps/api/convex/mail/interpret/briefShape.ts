@@ -123,6 +123,10 @@ export const briefItemViewValidator = v.object({
 			),
 		})
 	),
+	// Its only support was a read its message may no longer be read for (a
+	// signature that covers less of it): "Needs review again", with when a
+	// person had confirmed it before. Never confirmable as it stands.
+	withdrawn: v.optional(v.object({ at: v.number(), confirmedAt: v.optional(v.number()) })),
 	askedAt: v.number(),
 	updatedAt: v.number(),
 	// Changed since the viewer last looked.
@@ -228,6 +232,8 @@ export const briefGapViewValidator = v.object({
 			v.literal('aiOff'),
 			// The AI spend budget is used up: the same on every thread.
 			v.literal('budget'),
+			// The AI provider refused the instance's key: the same on every thread.
+			v.literal('aiProvider'),
 			v.literal('undecryptable'),
 			v.literal('ineligible'),
 			v.literal('security'),
@@ -236,6 +242,10 @@ export const briefGapViewValidator = v.object({
 			v.literal('stale')
 		)
 	),
+	// The message `reason` is about, so the banner can name it: its sender's
+	// name (else address) and when it arrived. Only for a reason that is about
+	// one message of this thread.
+	message: v.optional(v.object({ from: v.string(), at: v.number() })),
 });
 
 // ── The brief ──────────────────────────────────────────────────────────────

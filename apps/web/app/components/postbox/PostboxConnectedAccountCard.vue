@@ -18,6 +18,9 @@
  *
  * Disconnect stops the sync and drops the stored password. Delete additionally
  * erases the mail, and says so before it runs.
+ *
+ * A Microsoft sign-in mailbox also shows how it sends, and the prompt to grant
+ * Graph's send permission when its grant lacks it (`PostboxMicrosoftSendPath`).
  */
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
@@ -288,6 +291,11 @@ const showCard = computed(
 					@cancel="editing = false"
 				/>
 			</div>
+
+			<PostboxMicrosoftSendPath
+				:account="account"
+				class="mt-5 pt-4 border-t border-border-subtle"
+			/>
 
 			<PostboxSyncModeToggle
 				:mode="account.syncMode"

@@ -7,7 +7,7 @@
  * selected, not about what is done to them.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -18,6 +18,7 @@ vi.mock('@owlat/api', () => {
 });
 
 let stateBuckets: Map<string, any>;
+let runs: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
 	stateBuckets = new Map();
@@ -26,10 +27,8 @@ beforeEach(() => {
 		return stateBuckets.get(key);
 	});
 	vi.stubGlobal('useI18n', () => ({ t: (k: string) => k }));
-	vi.stubGlobal('useBackendOperation', () => ({
-		run: vi.fn(async () => ({ ok: true, result: {} })),
-		isLoading: ref(false),
-	}));
+	runs = vi.fn(async () => ({ ok: true, result: {} }));
+	vi.stubGlobal('useBackendOperation', () => ({ run: runs, isLoading: ref(false) }));
 	vi.stubGlobal('usePostboxTriageUndo', () => ({
 		register: vi.fn(),
 		registerMoveBack: vi.fn(),
@@ -150,5 +149,33 @@ describe('usePostboxBulkActions selection', () => {
 		bulk.setRange([], true, PAGE[0]!);
 		expect(bulk.ids.value).toEqual(['c']);
 		expect(bulk.anchorId.value).toBe('c');
+	});
+
+	it('a folder switch leaves the previous selection behind, for every surface bound to it', async () => {
+		// The unified folders keep the header, list and bulk bar mounted across a
+		// switch, each binding the same scope.
+		const scope = ref<string | null>('all-inbox:all');
+		const bar = usePostboxBulkActions(scope);
+		const list = usePostboxBulkActions(scope);
+		list.toggle('inbox-msg' as never);
+		expect(bar.ids.value).toEqual(['inbox-msg']);
+
+		scope.value = 'all-trash:all';
+		expect(bar.ids.value).toEqual([]);
+		expect(list.count.value).toBe(0);
+		list.toggle('trash-msg' as never);
+		expect(bar.ids.value).toEqual(['trash-msg']);
+
+		await nextTick();
+		scope.value = 'all-inbox:all';
+		// Coming back starts clean rather than reviving the old picks.
+		expect(bar.ids.value).toEqual([]);
+		expect(bar.anchorId.value).toBeNull();
+	});
+
+	it('Delete forever asks the server to purge only what is filed in Trash', async () => {
+		const bulk = bulkFor();
+		await bulk.purgeSelected(['a'] as never[]);
+		expect(runs).toHaveBeenCalledWith({ messageIds: ['a'], onlyFromTrash: true });
 	});
 });

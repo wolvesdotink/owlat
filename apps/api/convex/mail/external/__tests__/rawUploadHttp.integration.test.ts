@@ -1,23 +1,16 @@
-/** Raw uploads authenticate before reading and enforce the buffered sealing budget. */
+/**
+ * Raw uploads authenticate before reading and enforce the buffered sealing
+ * budget; the download an `append` write-back reads serves only the message
+ * the op names.
+ */
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../../../schema';
 import { MAX_RAW_MESSAGE_BYTES } from '../rawUploadHttp';
 import { openBytesAtRest } from '../../../lib/atRestBodies';
-
-const allModules = import.meta.glob('../../../**/*.*s');
-const modules = Object.fromEntries(
-	Object.entries(allModules).filter(
-		([p]) =>
-			!p.includes('sesActions') &&
-			!p.includes('agent') &&
-			!p.includes('knowledgeExtraction') &&
-			!p.includes('files/processing') &&
-			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider')
-	)
-);
+import { storeSealedBlob } from '../../../lib/sealedBlob';
+import { modules, seedFolder, seedMailbox, seedMessage } from '../../__tests__/helpers.testlib';
 
 const PATH = '/mail-sync/raw-message';
 const KEY = 'msk_test_secret';
@@ -131,5 +124,87 @@ describe('POST /mail-sync/raw-message', () => {
 		const res = await post(t, new Uint8Array(0), { Authorization: `Bearer ${KEY}` });
 
 		expect(res.status).toBe(400);
+	});
+});
+
+describe('GET /mail-sync/raw-message', () => {
+	/** An `append` op whose copy holds `raw`, stored sealed as every raw blob is. */
+	async function queuedUpload(t: ReturnType<typeof convexTest>, raw: Uint8Array) {
+		const mailboxId = await seedMailbox(t, { kind: 'external' });
+		await seedFolder(t, mailboxId, 'inbox');
+		const messageId = await seedMessage(t, mailboxId, { rfc822MessageId: 'big@acme.test' });
+		const opId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const rawStorageId = await storeSealedBlob(ctx.storage, raw, 'message/rfc822');
+			await ctx.db.patch(messageId, { rawStorageId, rawSize: raw.byteLength });
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				mailboxId,
+				imapHost: 'imap.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'me@example.com',
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return await ctx.db.insert('externalMailRemoteOps', {
+				accountId,
+				kind: 'append',
+				rfc822MessageId: 'big@acme.test',
+				source: { role: 'inbox' },
+				target: { role: 'inbox' },
+				append: { messageId, receivedAt: now },
+				attempts: 0,
+				nextAttemptAt: now,
+				createdAt: now,
+			});
+		});
+		return { opId, messageId };
+	}
+
+	function get(t: ReturnType<typeof convexTest>, opId: string, key = KEY): Promise<Response> {
+		return t.fetch(`${PATH}?opId=${encodeURIComponent(opId)}`, {
+			method: 'GET',
+			headers: { Authorization: `Bearer ${key}` },
+		});
+	}
+
+	it('answers with the unsealed bytes of the message an upload names', async () => {
+		process.env['INSTANCE_SECRET'] = 'test-raw-message-secret';
+		try {
+			const t = convexTest(schema, modules);
+			const raw = message(2048);
+			const { opId } = await queuedUpload(t, raw);
+
+			const res = await get(t, opId);
+
+			expect(res.status).toBe(200);
+			expect(res.headers.get('content-type')).toBe('message/rfc822');
+			expect(new Uint8Array(await res.arrayBuffer())).toEqual(raw);
+		} finally {
+			delete process.env['INSTANCE_SECRET'];
+		}
+	});
+
+	it('answers 404 once the message is gone, and for an id that names no upload', async () => {
+		const t = convexTest(schema, modules);
+		const { opId, messageId } = await queuedUpload(t, message(64));
+		await t.run(async (ctx) => ctx.db.delete(messageId));
+
+		expect((await get(t, opId)).status).toBe(404);
+		expect((await get(t, 'not-an-id')).status).toBe(404);
+	});
+
+	it('refuses a caller without the worker key', async () => {
+		const t = convexTest(schema, modules);
+		const { opId } = await queuedUpload(t, message(64));
+
+		expect((await get(t, opId, 'wrong')).status).toBe(401);
 	});
 });

@@ -4,6 +4,7 @@ import { mailCategoryLabelValidator } from '../lib/literalValidators';
 import { mailTriageVerbValidator } from '../lib/validators/mailContent';
 import { editAdjustmentValidator } from '../lib/validators/editLearning';
 import {
+	mailContactCardDavSourceValidator,
 	mailContactPhoneValidator,
 	mailContactPostalAddressValidator,
 } from '../lib/validators/mailContacts';
@@ -40,9 +41,16 @@ export const mailContactsTables = {
 		// Last time a vCard import created or merged into this row; the contacts
 		// page shows it as the row's source. Absent on rows built from mail alone.
 		importedAt: v.optional(v.number()),
+		// The CardDAV card this row was last synced from (mail/contactsCardDav.ts).
+		cardDavSource: v.optional(mailContactCardDavSourceValidator),
+		// The contact's picture from a vCard PHOTO, a raster image of at most
+		// VCARD_MAX_PHOTO_BYTES. The row owns the blob: whatever deletes the row
+		// deletes the blob first.
+		photoStorageId: v.optional(v.id('_storage')),
 		createdAt: v.number(),
 	})
 		.index('by_mailbox_and_email', ['mailboxId', 'email'])
+		.index('by_carddav_account_and_href', ['cardDavSource.accountId', 'cardDavSource.href'])
 		.index('by_mailbox_and_lastUsed', ['mailboxId', 'lastUsedAt'])
 		// Autocomplete by name across the whole book, not only its recent rows.
 		.searchIndex('search_display_name', {

@@ -5,7 +5,8 @@
  *   1. recheck, against the database as it is now, everything the run assumed:
  *      the source still sits in this thread; the thread's mode (a mailbox
  *      converted to shared runs in actions mode; the cached brief mode is
- *      reconciled); no purge ran (`deletionEpoch`); the body the run read is
+ *      reconciled); no purge ran (`deletionEpoch`) and the thread is not
+ *      fenced (`staleFence.ts`, refused like a purge); the body the run read is
  *      the body stored now (`sourceVersion`). A mismatch writes nothing of the
  *      run and tells it to start over (`modeChanged`, `sourceChanged`);
  *   2. compare-and-set on `threadBriefs.interpretationRevision` (`stale` →
@@ -67,6 +68,8 @@ import { factKeyHashes } from './factKeys';
 import { startPendingMatch } from './pendingMatch';
 import { leaseLostAt, releaseLeaseIfHeld } from './lease';
 import { noteArrivalSkip } from '../arrival/records';
+import { isThreadInterpretationFenced } from './staleFence';
+import { restoreWithdrawn } from './scopeReconcile';
 
 export type ApplyOutcome =
 	| {
@@ -159,7 +162,11 @@ async function applyLeased(
 		await ctx.db.patch(brief._id, { mode, overview: undefined, updatedAt: Date.now() });
 	}
 	if (mode !== args.mode) return { outcome: 'modeChanged' };
-	if (brief.deletionEpoch !== args.deletionEpoch) {
+	// Nothing is written to a fenced thread (staleFence.ts), not even a failed
+	// attempt: the reconciliation owns it until the fence lifts, and the
+	// source is read on the next open after that.
+	const isFenced = ref.kind === 'mail' && (await isThreadInterpretationFenced(ctx, ref.id));
+	if (isFenced || brief.deletionEpoch !== args.deletionEpoch) {
 		// A purge repair refused here cannot leave its counter behind (purgeRepairs.ts).
 		const { counted } = await markedRowsOf(ctx, interpretationSourceKey(args.source));
 		await abandonRepair(ctx, brief._id, counted);
@@ -202,6 +209,9 @@ async function applyLeased(
 		// Another refused hold is a new deferral: written, so its backoff moves on.
 		existing.budgetDeferrals === args.budgetDeferrals &&
 		existing.status === args.status &&
+		// A different refusal (AI off, then a refused key) changes what the
+		// thread says, so it is a new outcome.
+		existing.errorCode === args.errorCode &&
 		existing.mode === mode &&
 		existing.isCounted !== false &&
 		(!args.result || existing.isCurrent === true)
@@ -309,6 +319,9 @@ async function applyLeased(
 	let claims: Awaited<ReturnType<typeof sourceClaimIds>> | null = null;
 	let isItemScanCut = false;
 	if (entry) {
+		// A withdrawn item comes back only when this read restates it in full
+		// (scopeReconcile.ts); every other fold passes it by.
+		entry.result = await restoreWithdrawn(ctx, ref, entry);
 		const loaded = await loadFoldState(ctx, ref, mode);
 		isItemScanCut = loaded.isItemScanCut || loaded.isFactScanCut;
 		// Identity beyond the scan (round 5 F5): named rows, loaded by id.

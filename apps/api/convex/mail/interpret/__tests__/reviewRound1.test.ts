@@ -16,6 +16,8 @@ import { threadRefToFields } from '../../../lib/validators/threadRef';
 import { appendActivity } from '../activity';
 import { recordItemChange } from '../counters';
 import { loadPromptItemCandidates } from '../load';
+import { FOLD_MAX_ITEMS, loadFoldState } from '../reduceState';
+import { MAX_PROMPT_ITEMS } from '../schema';
 import { sourceVersionOf } from '../sourceVersion';
 import { captureTeamReplySnapshot } from '../sources';
 import type { ReduceResult } from '../reduceInput';
@@ -409,6 +411,61 @@ describe('F14: the closed lookback reads by update time', () => {
 		);
 		expect(rows.map((r) => r._id)).toEqual([recent]);
 		expect(isScanCut).toBe(false);
+	});
+});
+
+/**
+ * More withdrawn open items than `n` before one live open item changed later
+ * (a bounded read by update time meets the withdrawn ones first).
+ */
+async function seedWithdrawnBeforeLive(t: Test, n: number) {
+	const { messageId, threadId } = await seedMailThread(t);
+	const now = Date.now();
+	await insertOpenItems(t, threadId, n + 5, now - 1000);
+	await t.run(async (ctx) => {
+		const rows = await ctx.db
+			.query('threadItems')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+			.collect();
+		for (const row of rows) {
+			await ctx.db.patch(row._id, { withdrawal: { at: now, messageId, verify: 'na' } });
+		}
+	});
+	await insertOpenItems(t, threadId, 1, now);
+	const live = await t.run(async (ctx) => {
+		const rows = await ctx.db
+			.query('threadItems')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+			.collect();
+		return rows.find((r) => !r.withdrawal)!._id;
+	});
+	return { threadId, live, now };
+}
+
+describe('withdrawn items never crowd out the live ones', () => {
+	it('the prompt still gets a live item behind more withdrawn items than its bound', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, live, now } = await seedWithdrawnBeforeLive(t, MAX_PROMPT_ITEMS + 1);
+		const { rows, isScanCut } = await t.run(async (ctx) =>
+			loadPromptItemCandidates(ctx, { kind: 'mail', id: threadId }, now)
+		);
+		expect(rows.map((r) => r._id)).toEqual([live]);
+		expect(isScanCut).toBe(false);
+	});
+
+	it('the fold still reads a live item behind more withdrawn items than its bound', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, live } = await seedWithdrawnBeforeLive(t, FOLD_MAX_ITEMS + 1);
+		const loaded = await t.run(async (ctx) => {
+			const { rows, isItemScanCut } = await loadFoldState(
+				ctx,
+				{ kind: 'mail', id: threadId },
+				'brief'
+			);
+			return { ids: [...rows.keys()], isItemScanCut };
+		});
+		expect(loaded.ids).toEqual([live]);
+		expect(loaded.isItemScanCut).toBe(false);
 	});
 });
 

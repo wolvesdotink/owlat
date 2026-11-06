@@ -15,6 +15,7 @@
  * layout's existing handlers.
  */
 import type { Id } from '@owlat/api/dataModel';
+import type { PostboxMarkReadTarget } from '~/composables/postbox/usePostboxFolderBulk';
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
@@ -53,6 +54,11 @@ const props = defineProps<{
 	selectionScope?: string;
 	/** The mailbox on screen, whatever the renderer: the folder menu acts on it. */
 	folderMailboxId?: Id<'mailboxes'>;
+	/**
+	 * "Mark all as read" for a list of several mailboxes (All inboxes, the
+	 * unified folders), which has no one folder for the folder menu.
+	 */
+	markRead?: { target: PostboxMarkReadTarget; enabled: boolean } | null;
 	/** Ids of the rows the list currently has loaded, in render order. */
 	pageIds?: string[];
 }>();
@@ -199,6 +205,12 @@ const emit = defineEmits<{
 				:mailbox-id="folderMailboxId"
 				:folder-role="folderRole"
 				:folder-id="folderId"
+			/>
+			<PostboxMarkReadMenu
+				v-else-if="markRead"
+				:target="markRead.target"
+				:enabled="markRead.enabled"
+				:label="t('components.postbox.postboxFolderActions.menuLabel')"
 			/>
 		</div>
 	</header>

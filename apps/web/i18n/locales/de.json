@@ -409,12 +409,23 @@
 			"scopeHint": "Bereich",
 			"filterPlaceholder": "Tippe, um die Liste einzugrenzen…",
 			"keepTyping": "Tippe weiter, um deine E-Mails zu durchsuchen",
+			"mailAsk": {
+				"operation": "Deine E-Mails fragen",
+				"placeholder": "Stell eine Frage zu deinen E-Mails…",
+				"emptyTitle": "Stell eine Frage zu deinen E-Mails",
+				"emptyHint": "Drück Enter für eine Antwort, die die verwendeten Nachrichten nennt",
+				"searching": "Deine E-Mails werden gelesen…",
+				"noMatches": "Keine Nachricht in deinen E-Mails passt zu dieser Frage.",
+				"headersOnly": "Nur aus Kopfzeilen und Vorschautext beantwortet, weil die Volltextsuche im Nachrichtentext aus ist.",
+				"citationLabel": "Nachricht {index} öffnen: {subject}"
+			},
 			"prefixes": {
 				"heading": "Mit einem Präfix eingrenzen",
 				"commands": "Befehle, Seiten und Einstellungen",
 				"people": "Personen und Kontakte",
 				"labels": "Labels",
-				"ask": "Frag deine Wissensdatenbank"
+				"ask": "Frag deine Wissensdatenbank",
+				"askMail": "Frag deine E-Mails"
 			}
 		},
 		"assistant": {
@@ -436,6 +447,7 @@
 			"assistantToolCalls": {
 				"summary": "{count} Tools verwendet",
 				"tools": {
+					"askMailbox": "In deinen E-Mails nachgesehen",
 					"draftCampaignCopy": "Kampagnentext entworfen",
 					"draftEmailReply": "E-Mail-Antwort entworfen",
 					"getCampaignStats": "Kampagnenstatistiken abgerufen",
@@ -936,6 +948,9 @@
 			"item": {
 				"due": "fällig {date}",
 				"checkThis": "Prüf das:",
+				"reviewAgain": "Nochmal prüfen:",
+				"withdrawn": "Die Signatur deckt weniger von dieser Nachricht ab, als gelesen wurde",
+				"confirmedEarlier": "Am {date} bestätigt",
 				"proposal": "Vorschlag · noch nicht nachverfolgt",
 				"pendingChange": "Prüf diese Änderung:",
 				"pendingOptions": "Optionen: {options}",
@@ -1091,13 +1106,24 @@
 					"pending": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest wird noch gelesen.",
 					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie.",
 					"aiOff": "{done} von {total} Nachrichten sind in dieser Übersicht. KI ist in diesem Workspace nicht verfügbar, deshalb wurde der Rest nicht gelesen.",
-					"budget": "{done} von {total} Nachrichten sind in dieser Übersicht. Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb wurde der Rest noch nicht gelesen."
+					"budget": "{done} von {total} Nachrichten sind in dieser Übersicht. Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb wurde der Rest noch nicht gelesen.",
+					"aiProvider": "{done} von {total} Nachrichten sind in dieser Übersicht. Der KI-Anbieter nimmt den API-Schlüssel dieses Workspaces nicht an, deshalb wurde der Rest nicht gelesen."
+				},
+				"partialMessage": {
+					"tooLong": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} ist zu lang zum Zusammenfassen.",
+					"failed": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} konnte nicht zusammengefasst werden.",
+					"undecryptable": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} ließ sich nicht entschlüsseln."
+				},
+				"noneMessage": {
+					"failed": "Die Nachricht von {from} vom {date} konnte nicht zusammengefasst werden, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"undecryptable": "Die Nachricht von {from} vom {date} ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht."
 				},
 				"pending": "Dieser Verlauf wird gerade gelesen. Die Übersicht folgt gleich.",
 				"none": {
 					"default": "Für diesen Verlauf gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"aiOff": "KI ist in diesem Workspace nicht verfügbar, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"budget": "Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"aiProvider": "Der KI-Anbieter nimmt den API-Schlüssel dieses Workspaces nicht an, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht.",
 					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keine Übersicht.",
 					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keine Übersicht.",
@@ -1107,7 +1133,7 @@
 				"securityLead": "Sicherheits-E-Mail.",
 				"security": "Wird so angezeigt, wie geschrieben, und nie zusammengefasst.",
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
-				"stale": "Die Übersicht ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
+				"stale": "Die Übersicht ist pausiert, während eine Signaturprüfung nachzieht, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
 				"aiSettings": "KI-Einstellungen",
 				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich die Übersicht gleich."
@@ -3517,6 +3543,7 @@
 			},
 			"errors": {
 				"blocked": "Das Diktat kann nicht auf das Mikrofon zugreifen. Erlaube den Mikrofonzugriff für diese Seite und versuch es noch einmal.",
+				"blockedDesktop": "Das Diktat kann weder das Mikrofon noch die Spracherkennung nutzen. Erlaube Owlat beides in den Datenschutzeinstellungen deines Systems und versuch es noch einmal.",
 				"noSpeech": "Es war nichts zu hören. Drück auf das Mikrofon und sprich noch einmal.",
 				"network": "Der Sprachdienst ist nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal.",
 				"language": "Das Diktat unterstützt die Sprache deines Browsers hier nicht.",
@@ -4668,6 +4695,26 @@
 				"title": "Alle Postfächer",
 				"inboxesHeading": "Postfächer",
 				"openInbox": "{name} öffnen",
+				"roles": {
+					"inbox": "Alle Postfächer",
+					"sent": "Alles Gesendete",
+					"drafts": "Alle Entwürfe",
+					"archive": "Gesamtes Archiv",
+					"spam": "Gesamter Spam",
+					"trash": "Gesamter Papierkorb"
+				},
+				"foldersHeading": "Ordner",
+				"expandFolder": "{folder} jedes Postfachs zeigen",
+				"collapseFolder": "{folder} jedes Postfachs ausblenden",
+				"mailboxFolder": "{folder} von {name}",
+				"narrow": {
+					"title": "Ein Postfach oder einen Anbieter zeigen",
+					"all": "Alle Postfächer",
+					"mailboxesHeading": "Postfach",
+					"providersHeading": "Anbieter",
+					"owlat": "Bei Owlat gehostet",
+					"clear": "Alle Postfächer zeigen"
+				},
 				"clearCategory": "Alle Kategorien anzeigen",
 				"category": {
 					"newsletter": "Newsletter",
@@ -5287,18 +5334,20 @@
 				"confirmTeamAction": "Weiter",
 				"confirmTeamBody": "Alle mit Zugriff auf {name} sehen die Mail, die du dort ablegst.",
 				"confirmTeamTitle": "Mail in {name} ablegen?",
-				"connectedNote": "In ein verbundenes Konto kann noch keine Mail verschoben werden.",
+				"connectedNote": "Mail, die du in ein verbundenes Konto verschiebst, bleibt an ihrem Platz, bis der Server des Kontos sie hat.",
 				"copiedTo": "Nach {name} kopiert | {count} Nachrichten nach {name} kopiert",
 				"copy": "Kopieren",
-				"copyOnlyNote": "Diese Nachricht liegt in einem verbundenen Konto. Du kannst sie vorerst kopieren, aber nicht verschieben.",
 				"copyTo": "Nach {name} kopieren",
+				"copyingTo": "Wird nach {name} kopiert | {count} Nachrichten werden nach {name} kopiert",
 				"movedTo": "Nach {name} verschoben | {count} Nachrichten nach {name} verschoben",
 				"moveTo": "Nach {name} verschieben",
+				"movingTo": "Wird nach {name} verschoben | {count} Nachrichten werden nach {name} verschoben",
 				"noOtherFolders": "Keine weiteren Ordner",
 				"otherMailboxes": "Andere Postfächer",
 				"refused": {
-					"external_source": "Mail aus einem verbundenen Konto kannst du vorerst nur kopieren, nicht verschieben.",
-					"external_target": "In ein verbundenes Konto kann noch keine Mail verschoben werden.",
+					"all_mail": "Gmail behält archivierte Mail in „Alle Nachrichten“, deshalb kannst du sie nicht aus diesem Konto verschieben. Kopier sie stattdessen.",
+					"external_target": "Dieses verbundene Konto nimmt keine Mail aus Owlat an. Es ist getrennt oder empfängt nur neue Mail.",
+					"no_message_id": "Diese Nachricht hat keine Message-ID, deshalb kann ein verbundenes Konto sie nicht zuordnen.",
 					"over_quota": "Dieses Postfach ist voll.",
 					"sealed": "Diese Nachricht ist Ende-zu-Ende-verschlüsselt. Sie kann nur in ein Postfach derselben Adresse verschoben werden, denn nur dort liegt ihr Schlüssel.",
 					"sending": "Diese Nachricht wird noch gesendet. Versuch es noch mal, sobald sie zugestellt ist."
@@ -5871,7 +5920,8 @@
 				"copyLabel": "Anmeldecode {code} von {domain} kopieren",
 				"openLabel": "Anmeldelink von {domain} öffnen",
 				"openLink": "Anmeldelink öffnen",
-				"openLinkShort": "Link öffnen"
+				"openLinkShort": "Link öffnen",
+				"unavailable": "Kein Anmeldecode zum Kopieren. Ein Code wird 15 Minuten nach dem Eingang angeboten."
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
@@ -6046,6 +6096,8 @@
 				"listLabel": "Gebündelte Nachrichten",
 				"loadMore": "Mehr laden",
 				"latestFrom": "zuletzt von {sender}",
+				"markRead": "Gelesen",
+				"markReadLabel": "Die {count} ungelesene Nachricht dieses Bündels als gelesen markieren | Die {count} ungelesenen Nachrichten dieses Bündels als gelesen markieren",
 				"archiveAll": "Alle archivieren",
 				"archiveAllLabel": "Alle {count} Nachrichten dieses Bündels archivieren",
 				"unsubscribe": "Abbestellen",
@@ -6363,7 +6415,9 @@
 			},
 			"postboxFolderActions": {
 				"menuLabel": "Ordneraktionen",
+				"labelMenuLabel": "Labelaktionen",
 				"markAllRead": "Alle als gelesen markieren",
+				"markCategoryRead": "{category} als gelesen markieren",
 				"empty": {
 					"trash": "Papierkorb leeren",
 					"spam": "Spam leeren"
@@ -6377,6 +6431,17 @@
 					"spam": "Spam leeren?"
 				},
 				"confirmBody": "{count} Nachricht wird endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen. | {count} Nachrichten werden endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen."
+			},
+			"postboxMicrosoftSendPath": {
+				"consentNeeded": "Wenn deine Organisation die SMTP-Anmeldung abschaltet, kann Owlat weiter über Microsoft Graph senden, braucht dafür aber zuerst deine Erlaubnis.",
+				"consentNeededGraph": "Microsoft hat die SMTP-Anmeldung für dieses Postfach abgeschaltet, und Owlat darf nicht mehr über Microsoft Graph senden. Bis du es wieder erlaubst, geht keine Mail raus.",
+				"continueInBrowser": "Schließ die Anmeldung bei Microsoft in deinem Browser ab.",
+				"grant": "Senden erlauben",
+				"graph": "Microsoft Graph",
+				"graphHelp": "Deine Organisation hat die SMTP-Anmeldung abgeschaltet, deshalb geht Mail über Microsoft Graph raus. Microsoft legt die Kopie unter „Gesendete Elemente“ ab.",
+				"label": "Sendet über",
+				"smtp": "SMTP",
+				"smtpHelp": "Mail geht über den SMTP-Server von Microsoft raus, angemeldet mit deinem Microsoft-Konto."
 			}
 		},
 		"preferences": {
@@ -8814,6 +8879,11 @@
 						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar. Nach dem Speichern findet die Stichwortsuche ältere Elemente, bis sie neu eingebettet sind: von selbst mit einem lokalen Modell, oder wenn du es unter „Embedding-Suche“ startest mit einem gehosteten. Für einen Wechsel ohne diese Lücke nutze dort „Mit einem anderen Modell neu aufbauen“, wo der Wechsel das erlaubt.",
 						"reindexTitle": "Ein Modellwechsel nimmt ältere Elemente aus der Vektorsuche",
 						"title": "Embeddings"
+					},
+					"keyRefused": {
+						"body": "Seit {since} lehnt der Anbieter jeden KI-Aufruf ab, deshalb funktionieren Verlaufsübersichten und die anderen KI-Funktionen nicht. Speichere unten einen funktionierenden Schlüssel, damit sie wieder laufen.",
+						"lastSeen": "Zuletzt abgelehnt: {time}.",
+						"title": "Der KI-Anbieter lehnt den API-Schlüssel dieses Workspaces ab"
 					},
 					"language": {
 						"apiKeyHelp": "Einmal über TLS übertragen, verschlüsselt gespeichert und nie wieder angezeigt.",
@@ -12302,6 +12372,8 @@
 				"pageTitle": "Kontakte — Owlat",
 				"removeAria": "Kontakt entfernen",
 				"removedToast": "{contact} entfernt",
+				"resumeCardDav": "CardDAV-Änderungen wieder übernehmen",
+				"resumedToast": "{contact} folgt wieder CardDAV. Die nächste Synchronisierung holt die Angaben der Karte zurück.",
 				"searchPlaceholder": "Kontakte durchsuchen",
 				"subtitle": "Personen, denen du schreibst oder die du importierst, für die Autovervollständigung",
 				"title": "Kontakte",
@@ -12311,8 +12383,6 @@
 					"export": ".vcf exportieren",
 					"importHint": "Füge Personen aus einer .vcf-Datei hinzu, etwa aus dem Adressbuch deines Telefons",
 					"pickerTitle": "vCard-Datei auswählen",
-					"importedBadge": "Importiert",
-					"importedTooltip": "Von einem vCard-Import hinzugefügt oder ergänzt",
 					"imported": "Importiert: {created} neu, {merged} mit bestehenden Kontakten zusammengeführt.",
 					"stopped": "Der Import wurde abgebrochen. Es wurden keine Kontakte gespeichert. | Der Import wurde nach einem Kontakt abgebrochen, der gespeichert ist. | Der Import wurde nach {count} Kontakten abgebrochen. Diese sind gespeichert.",
 					"skipped": "Eine Karte ohne E-Mail-Adresse übersprungen. | {count} Karten ohne E-Mail-Adresse übersprungen.",
@@ -12322,6 +12392,51 @@
 					"empty": "Die Datei enthält keine Kontakte mit E-Mail-Adresse.",
 					"exportFailed": "Das Adressbuch konnte nicht exportiert werden. Versuch es noch einmal.",
 					"unreadable": "Die Datei konnte nicht gelesen werden. Versuch es noch einmal."
+				},
+				"source": {
+					"carddav": "CardDAV",
+					"carddavTooltip": "Aus dem verbundenen CardDAV-Adressbuch synchronisiert",
+					"carddavEdited": "Hier bearbeitet, folgt CardDAV nicht",
+					"carddavEditedTooltip": "Du hast diesen Kontakt hier geändert, deshalb ersetzen Änderungen auf dem CardDAV-Server ihn nicht mehr.",
+					"vcard": "vCard",
+					"vcardTooltip": "Von einem vCard-Import hinzugefügt oder ergänzt",
+					"mail": "Mail",
+					"mailTooltip": "Aus E-Mails oder von Hand hinzugefügt"
+				},
+				"carddav": {
+					"title": "CardDAV-Adressbuch",
+					"description": "Lies die Kontakte eines Adressbuchs auf einem anderen Server, etwa Nextcloud, Fastmail oder iCloud. Owlat liest es nur und sucht jede Stunde nach Änderungen. Das sind die Kontakte dieses Postfachs, nicht die Kontakte unter Zielgruppe.",
+					"sharedNote": "Alle Mitglieder dieses Team-Postfachs sehen die synchronisierten Kontakte.",
+					"connect": "CardDAV-Adressbuch verbinden",
+					"serverUrl": "Server-URL",
+					"serverUrlPlaceholder": "https://dav.example.com",
+					"username": "Benutzername",
+					"password": "Passwort",
+					"passwordHint": "Nimm ein App-Passwort, wenn dein Anbieter eins anbietet. Owlat speichert es verschlüsselt.",
+					"connectAction": "Verbinden",
+					"connectedToast": "Adressbuch verbunden. Die erste Synchronisierung läuft.",
+					"syncing": "{name} wird von {server} synchronisiert",
+					"lastSynced": "Zuletzt synchronisiert {time}",
+					"firstSync": "Erste Synchronisierung läuft",
+					"syncNow": "Jetzt synchronisieren",
+					"syncStarted": "Synchronisierung gestartet.",
+					"disconnect": "Trennen",
+					"disconnectTitle": "Dieses Adressbuch trennen?",
+					"disconnectBody": "Kontakte, die die Synchronisierung hinzugefügt hat, werden entfernt, außer du hast ihnen inzwischen geschrieben. Kontakte, die schon im Adressbuch waren, bleiben.",
+					"disconnectedToast": "Adressbuch getrennt.",
+					"truncated": "Das Adressbuch hat mehr Karten, als eine Synchronisierung liest ({max}). Der Rest wurde übersprungen.",
+					"syncFailed": "Die letzte Synchronisierung ist fehlgeschlagen: {reason}",
+					"errors": {
+						"auth": "Der Server hat Benutzername und Passwort nicht angenommen.",
+						"unreachable": "Der Server war nicht erreichbar.",
+						"not_carddav": "Der Server hat nicht wie ein CardDAV-Server geantwortet.",
+						"no_address_book": "Für dieses Konto wurde kein Adressbuch gefunden.",
+						"too_large": "Der Server hat mehr geschickt, als eine Synchronisierung liest.",
+						"failed": "Etwas ist schiefgelaufen. Versuch es später noch einmal.",
+						"invalid_url": "Gib die Serveradresse ein, beginnend mit https://.",
+						"forbidden": "Du kannst das Adressbuch dieses Postfachs nicht ändern.",
+						"already_connected": "Mit diesem Postfach ist schon ein Adressbuch verbunden."
+					}
 				}
 			},
 			"detail": {
@@ -12697,14 +12812,26 @@
 				"noMailboxes": "Noch keine Postfächer. Füge dein erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Allgemein — Owlat",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
-				"renameMailbox": "Name und Farbe",
+				"renameMailbox": "Name, Farbe und Zeichen",
 				"renameOperation": "Postfach umbenennen",
 				"subtitle": "Wie Owlat aussieht und wie sich deine Post liest.",
 				"teamManage": "Team · verwalten",
 				"colour": "Farbe",
 				"colourAutomatic": "Automatisch",
 				"colourSlot": "Farbe {n}",
-				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf der Werkbank, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
+				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf der Werkbank, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen.",
+				"mark": "Zeichen",
+				"markHelp": "Steht vor dem Namen und ersetzt die Initialen, wenn die Seitenleiste eingeklappt ist. Alle Mitglieder des Postfachs sehen es. Ohne Zeichen zeigt ein verbundenes Gmail- oder Microsoft-Konto sein Logo.",
+				"markDefault": "Standard",
+				"markIcons": {
+					"home": "Zuhause",
+					"work": "Arbeit",
+					"team": "Team",
+					"shop": "Laden"
+				},
+				"markEmoji": "Oder ein Emoji",
+				"markEmojiPlaceholder": "Gib ein Emoji ein oder füge es ein",
+				"markEmojiInvalid": "Nutze ein einzelnes Emoji."
 			},
 			"members": {
 				"detail": {
@@ -13395,6 +13522,16 @@
 					"description": "Das Schließen des Hauptfensters blendet es ins Tray-Symbol aus. Beenden kannst du Owlat über das Menü des Symbols.",
 					"needsIcon": "Schalte zuerst das Tray-Symbol ein. Ohne Symbol beendet das Schließen des Fensters Owlat.",
 					"title": "Weiterlaufen, wenn das Fenster geschlossen wird"
+				},
+				"hideDockIcon": {
+					"description": "Owlat läuft nur über das Menüleisten-Symbol, ohne Dock-Symbol und ohne eigene Menüleiste.",
+					"needsIcon": "Schalte zuerst das Menüleisten-Symbol ein. Ohne es ist das Dock-Symbol dein Weg zurück zu Owlat.",
+					"title": "Dock-Symbol ausblenden"
+				},
+				"mailbox": {
+					"all": "Alle Posteingänge",
+					"description": "Welchen Posteingang das Symbol zählt und auflistet.",
+					"title": "Ungelesene zählen in"
 				},
 				"menuBarIcon": {
 					"description": "Die Anzahl ungelesener Nachrichten und deine neuesten ungelesenen E-Mails in der Menüleiste anzeigen.",
@@ -14177,6 +14314,12 @@
 			"unpinNamed": "„{subject}“ lösen",
 			"full": "Du kannst bis zu 5 Unterhaltungen anheften. Löse zuerst eine.",
 			"dropHint": "Zum Anheften hier ablegen"
+		},
+		"checkForMail": {
+			"busy": "Owlat sucht schon nach neuer Mail.",
+			"checking": "Deine verbundenen Konten werden nach neuer Mail gefragt.",
+			"failed": "Die Suche nach neuer Mail hat nicht geklappt. Versuch es gleich noch mal.",
+			"nothing": "Keine verbundenen Konten zum Abfragen. Mail an deine Owlat-Adressen kommt von selbst an."
 		}
 	},
 	"recipient": {
@@ -15202,7 +15345,12 @@
 					"spam": "Spam",
 					"trash": "Papierkorb",
 					"answerQueue": "Antwortliste",
-					"allInboxes": "Alle Postfächer"
+					"allInboxes": "Alle Postfächer",
+					"allSent": "Alles Gesendete",
+					"allDrafts": "Alle Entwürfe",
+					"allArchive": "Gesamtes Archiv",
+					"allSpam": "Gesamter Spam",
+					"allTrash": "Gesamter Papierkorb"
 				},
 				"send": {
 					"automations": "Automationen",
@@ -16396,7 +16544,10 @@
 			"usePostboxContacts": {
 				"removeContact": "Kontakt entfernen",
 				"saveContact": "Kontakt speichern",
-				"importContacts": "Kontakte importieren"
+				"importContacts": "Kontakte importieren",
+				"importPhotos": "Kontaktbilder importieren",
+				"restoreContact": "Kontakt wiederherstellen",
+				"resumeCardDav": "CardDAV-Änderungen wieder übernehmen"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Filter erstellen",
@@ -17183,7 +17334,7 @@
 				},
 				"trayIcon": {
 					"title": "Tray-Symbol",
-					"keywords": "Menüleiste, Infobereich, Taskleiste, ins Tray schließen, weiterlaufen"
+					"keywords": "Menüleiste, Infobereich, Taskleiste, ins Tray schließen, weiterlaufen, Dock-Symbol, Dock ausblenden, Ungelesen-Anzahl, Postfach"
 				},
 				"unreadBadge": {
 					"title": "Ungelesen-Zähler",
@@ -17410,7 +17561,8 @@
 				"clearSelection": "Auswahl aufheben",
 				"resolveThread": "Thread erledigen",
 				"assignThread": "Thread zuweisen an …",
-				"chatView": "Chat-Ansicht"
+				"chatView": "Chat-Ansicht",
+				"copySignInCode": "Anmeldecode kopieren (oder Anmeldelink öffnen)"
 			}
 		},
 		"signatureBadge": {
@@ -18025,7 +18177,11 @@
 			"newContact": "Neuer Kontakt",
 			"sidebarContext": "Seitenleisten-Kontext",
 			"switchToInbox": "Zum Posteingang wechseln",
-			"switchToMarketing": "Zu Marketing wechseln"
+			"switchToMarketing": "Zu Marketing wechseln",
+			"copySignInCode": "Neuesten Anmeldecode kopieren",
+			"openSignInLink": "Neuesten Anmeldelink öffnen",
+			"checkForMail": "Nach neuer Mail suchen",
+			"checkForMailSubtitle": "Verbundene Konten"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",
@@ -18555,7 +18711,9 @@
 			"waitingSince": "Wartet seit {time}",
 			"changeCount": "{count} Änderung | {count} Änderungen",
 			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
-			"allSaved": "Alle Änderungen gespeichert"
+			"allSaved": "Alle Änderungen gespeichert",
+			"aiKeyRefused": "Der KI-Anbieter lehnt den API-Schlüssel dieses Workspaces ab, deshalb funktionieren die KI-Funktionen nicht.",
+			"aiSettings": "KI-Einstellungen"
 		},
 		"appUpdated": {
 			"title": "Owlat wurde aktualisiert",

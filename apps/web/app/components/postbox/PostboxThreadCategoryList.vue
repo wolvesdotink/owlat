@@ -4,7 +4,8 @@
  * Notifications / Receipts / Everything else collapsible sections. An adapter
  * over PostboxSectionedThreadList (keyboard, windowing, sticky headers) that
  * renders the shared conversation row; each row carries a "Recategorize as…"
- * overflow action that writes a per-sender user override.
+ * overflow action that writes a per-sender user override, and a section with
+ * unread mail offers "Mark … as read" on its header.
  */
 import type { Id } from '@owlat/api/dataModel';
 import { RECATEGORIZE_OPTIONS } from '~/composables/postbox/usePostboxThreadCategories';
@@ -13,7 +14,7 @@ import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDra
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
 import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
-import { TagIcon, type IconComponent } from '@coolicons/vue';
+import { CheckAllIcon, TagIcon, type IconComponent } from '@coolicons/vue';
 
 type CategoryThread = PostboxConversationThread & { category?: { label: string } };
 
@@ -35,6 +36,8 @@ const emit = defineEmits<{
 	(e: 'load-more'): void;
 	(e: 'toggle', key: MailCategory): void;
 	(e: 'recategorize', threadId: Id<'mailThreads'>, label: MailCategory): void;
+	/** Every unread message of the category in the folder, loaded or not. */
+	(e: 'mark-read', key: MailCategory): void;
 }>();
 
 const { t } = useI18n();
@@ -116,6 +119,30 @@ function pickCategory(label: MailCategory) {
 		@toggle="(key: string) => emit('toggle', key as MailCategory)"
 		@load-more="emit('load-more')"
 	>
+		<template #section-actions="{ section }">
+			<UiTooltip
+				v-if="section.headerBadge && section.headerBadge.count > 0"
+				:text="
+					t('components.postbox.postboxFolderActions.markCategoryRead', {
+						category: section.label,
+					})
+				"
+			>
+				<button
+					type="button"
+					class="mr-2 p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+					:aria-label="
+						t('components.postbox.postboxFolderActions.markCategoryRead', {
+							category: section.label,
+						})
+					"
+					data-testid="section-mark-read"
+					@click="emit('mark-read', section.key as MailCategory)"
+				>
+					<CheckAllIcon class="w-3.5 h-3.5" aria-hidden="true" />
+				</button>
+			</UiTooltip>
+		</template>
 		<template #row="{ item: thread, focused }">
 			<PostboxConversationRow
 				v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"

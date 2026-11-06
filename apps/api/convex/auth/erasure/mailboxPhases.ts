@@ -30,6 +30,7 @@ import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount'
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
 import { drainThreadBrief, eraseDraftPlans } from '../../contacts/erasure/threadBriefPhases';
 import { eraseCapturedFiles } from './capturedFilePhases';
+import { eraseAddressBook } from './addressBookPhases';
 import { arrivalMailboxRanges } from '../../mail/arrival/mailboxRows';
 import {
 	deleteAskSession,
@@ -331,7 +332,8 @@ export const eraseShares: MemberPhaseRunner = (phase) =>
 /**
  * The mailbox's own records: rules, signatures, snippets, learned style, the
  * AI digests and commitments, saved searches, forwarding and vacation state,
- * the private address book and per-sender preferences, app passwords, aliases,
+ * the private address book with its pictures and any CardDAV account syncing
+ * into it, per-sender preferences, app passwords, aliases,
  * pending and current member grants, any attachment index row a message
  * delete left behind, and the attachments captured into Files from its mail.
  */
@@ -340,6 +342,7 @@ export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
 		const { ctx } = phase;
 		const id = mailbox._id;
 		if (!(await eraseCapturedFiles(phase, id))) return false;
+		if (!(await eraseAddressBook(phase, id))) return false;
 		return deleteRanges(phase, [
 			...arrivalMailboxRanges(ctx, id),
 			(n) =>
@@ -406,11 +409,6 @@ export const eraseMailboxRecords: MemberPhaseRunner = (phase) =>
 				ctx.db
 					.query('mailVacationLog')
 					.withIndex('by_mailbox_and_sender', (q) => q.eq('mailboxId', id))
-					.take(n),
-			(n) =>
-				ctx.db
-					.query('mailContacts')
-					.withIndex('by_mailbox_and_email', (q) => q.eq('mailboxId', id))
 					.take(n),
 			(n) =>
 				ctx.db

@@ -66,9 +66,9 @@ export async function sendDesktopNotification(title: string, body: string): Prom
 
 export interface NotificationActionPayload {
 	/**
-	 * "open", "archive", "read" or "reply" for a message notification;
-	 * "navigate" for a link notification, which carries `url` instead of a
-	 * message.
+	 * "open", "archive", "read", "copy" (a sign-in code's Copy code) or "reply"
+	 * for a message notification; "navigate" for a link notification, which
+	 * carries `url` instead of a message.
 	 */
 	action: string;
 	messageId?: string;
@@ -90,7 +90,9 @@ export interface NotificationActionPayload {
 /**
  * Send a per-message notification with inline actions. On macOS it renders an
  * inline Reply field plus an Archive button; on Linux it renders Open / Archive
- * / Mark read. Interacting (or clicking the notification) emits the
+ * / Mark read. A message with a live sign-in code (`hasSignInCode`) offers
+ * Copy code instead of Reply on macOS and beside Open on Linux; only that the
+ * code exists crosses to the native side, never the code. Interacting (or clicking the notification) emits the
  * `notification-action` event handled via {@link onNotificationAction}, carrying
  * `workspaceId` back unchanged; on other targets this degrades to a plain
  * notification.
@@ -100,7 +102,8 @@ export async function sendActionableNotification(
 	body: string,
 	messageId: string,
 	folderRole: string,
-	workspaceId?: string | null
+	workspaceId?: string | null,
+	hasSignInCode = false
 ): Promise<void> {
 	try {
 		await invoke('send_actionable_notification', {
@@ -109,6 +112,7 @@ export async function sendActionableNotification(
 			messageId,
 			folderRole,
 			workspaceId: workspaceId ?? null,
+			hasSignInCode,
 		});
 	} catch (e) {
 		console.warn('[desktop] Failed to send actionable notification:', e);

@@ -1,8 +1,8 @@
 /**
  * Bulk-selection state + triage actions for the thread/message list.
  *
- * Selection lives in a per-mailbox useState bucket so navigating between
- * folders doesn't carry stale picks across. Alongside it sit the two pieces
+ * Selection lives in a useState bucket per scope (a mailbox, or a unified
+ * folder and its narrow). Alongside it sit the two pieces
  * that make a large selection cheap to build: the ANCHOR that Shift+click and
  * Shift+J/K extend a range from (utils/postboxRangeSelect.ts), and the
  * "select all matching" flag for a selection that came from the server-side id
@@ -28,24 +28,58 @@ interface SelectAllMatchingState {
 	capped: boolean;
 }
 
+/** One selection bucket: the picks, the range anchor and the all-matching claim. */
+interface SelectionBucket {
+	selected: Set<Id<'mailMessages'>>;
+	// The anchor is a message ID, not an index: rows shift under the selection
+	// as mail arrives, and an index would silently re-anchor to a neighbour.
+	anchorId: Id<'mailMessages'> | null;
+	selectAllMatching: SelectAllMatchingState;
+}
+
+const EMPTY_BUCKET: Readonly<SelectionBucket> = Object.freeze({
+	selected: new Set<Id<'mailMessages'>>(),
+	anchorId: null,
+	selectAllMatching: { active: false, capped: false },
+});
+
 /**
- * `scope` names the selection's bucket: the mailbox on screen, or All inboxes
- * (`ALL_INBOXES_FOLDER`), whose selection spans mailboxes. Every verb below
- * takes message ids, and the server routes and gates each message by its own
- * mailbox.
+ * `scope` names the selection's bucket: the mailbox on screen, or one unified
+ * folder with its mailbox/provider narrow, whose selection spans mailboxes.
+ * Every verb below takes message ids, and the server routes and gates each
+ * message by its own mailbox.
+ *
+ * The bucket follows `scope` rather than being bound once, and the one being
+ * left is emptied: the list, its header and the bulk bar stay mounted when the
+ * unified folder or its narrow changes, and a selection carried into another
+ * folder would let that folder's verbs (Delete forever) act on rows it does
+ * not show.
  */
 export function usePostboxBulkActions(scope: Ref<string | null>) {
 	const { t } = useI18n();
-	const stateKey = computed(() => `postbox:bulk:${scope.value ?? 'no-mailbox'}`);
+	const stateKey = computed(() => scope.value ?? 'no-mailbox');
+	const buckets = useState<Record<string, SelectionBucket>>('postbox:bulk', () => ({}));
 
-	const selected = useState<Set<Id<'mailMessages'>>>(stateKey.value, () => new Set());
-	// The anchor is a message ID, not an index: rows shift under the selection
-	// as mail arrives, and an index would silently re-anchor to a neighbour.
-	const anchorId = useState<Id<'mailMessages'> | null>(`${stateKey.value}:anchor`, () => null);
-	const selectAllMatching = useState<SelectAllMatchingState>(
-		`${stateKey.value}:all-matching`,
-		() => ({ active: false, capped: false })
-	);
+	function bucketField<K extends keyof SelectionBucket>(name: K) {
+		return computed<SelectionBucket[K]>({
+			get: () => buckets.value[stateKey.value]?.[name] ?? EMPTY_BUCKET[name],
+			set: (value) => {
+				const key = stateKey.value;
+				const current = buckets.value[key] ?? { ...EMPTY_BUCKET, selected: new Set() };
+				buckets.value = { ...buckets.value, [key]: { ...current, [name]: value } };
+			},
+		});
+	}
+
+	const selected = bucketField('selected');
+	const anchorId = bucketField('anchorId');
+	const selectAllMatching = bucketField('selectAllMatching');
+
+	watch(stateKey, (_key, left) => {
+		if (!(left in buckets.value)) return;
+		const { [left]: _dropped, ...rest } = buckets.value;
+		buckets.value = rest;
+	});
 
 	/** Any change that isn't the whole-folder answer stops claiming to be one. */
 	function dropAllMatchingClaim() {
@@ -228,12 +262,13 @@ export function usePostboxBulkActions(scope: Ref<string | null>) {
 	/**
 	 * `messageIds` is the selection as it stood when the person confirmed; a
 	 * caller that asked first passes it so the purge cannot reach rows selected
-	 * while the question was open.
+	 * while the question was open. Delete forever is a Trash verb, so the server
+	 * is told to skip anything not filed in Trash.
 	 */
 	async function purgeSelected(messageIds: Id<'mailMessages'>[] = ids.value) {
 		if (messageIds.length === 0) return;
 		const returnToOpenRow = leaveDeletedOpenRow(messageIds);
-		const result = await purge.run({ messageIds });
+		const result = await purge.run({ messageIds, onlyFromTrash: true });
 		if (!result.ok) {
 			returnToOpenRow(messageIds);
 			return;
@@ -282,9 +317,9 @@ export function usePostboxBulkActions(scope: Ref<string | null>) {
 		clear();
 	}
 
-	async function notSpamSelected() {
-		if (ids.value.length === 0) return;
-		const result = await notSpamOp.run({ messageIds: ids.value });
+	async function notSpamSelected(messageIds: Id<'mailMessages'>[] = ids.value) {
+		if (messageIds.length === 0) return;
+		const result = await notSpamOp.run({ messageIds });
 		if (!result.ok) return;
 		clear();
 	}

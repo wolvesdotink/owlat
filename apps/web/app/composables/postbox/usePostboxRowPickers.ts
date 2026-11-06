@@ -117,7 +117,6 @@ export function usePostboxRowPickers(opts: {
 	const movePicker = computed(() => ({
 		folders: movableFolders.value,
 		mailboxes: mailboxTransfer.targets.value,
-		canMove: !mailboxTransfer.isSourceConnected.value,
 	}));
 	const movePickerOn = { pick: moveFocusedTo, 'pick-mailbox': transferFocusedTo };
 

@@ -8,7 +8,12 @@ const { invokeMock, listenMock } = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: (...args: unknown[]) => listenMock(...args) }));
 
-import { onTrayToggleNotifications, setTrayPreferences, updateTray } from '../tray';
+import {
+	onTrayCheckMail,
+	onTrayToggleNotifications,
+	setTrayPreferences,
+	updateTray,
+} from '../tray';
 
 beforeEach(() => {
 	invokeMock.mockReset();
@@ -51,12 +56,13 @@ describe('updateTray', () => {
 });
 
 describe('setTrayPreferences', () => {
-	it('sends both switches', async () => {
+	it('sends every switch', async () => {
 		invokeMock.mockResolvedValue(undefined);
-		await setTrayPreferences({ visible: false, closeToTray: true });
+		await setTrayPreferences({ visible: false, closeToTray: true, hideDockIcon: true });
 		expect(invokeMock).toHaveBeenCalledWith('set_tray_preferences', {
 			visible: false,
 			closeToTray: true,
+			hideDockIcon: true,
 		});
 	});
 });
@@ -68,6 +74,18 @@ describe('onTrayToggleNotifications', () => {
 		const cb = vi.fn();
 		await expect(onTrayToggleNotifications(cb)).resolves.toBe(unlisten);
 		expect(listenMock).toHaveBeenCalledWith('tray://toggle-notifications', expect.any(Function));
+		listenMock.mock.calls[0]![1]();
+		expect(cb).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('onTrayCheckMail', () => {
+	it('listens for the event the Rust tray emits', async () => {
+		const unlisten = vi.fn();
+		listenMock.mockResolvedValue(unlisten);
+		const cb = vi.fn();
+		await expect(onTrayCheckMail(cb)).resolves.toBe(unlisten);
+		expect(listenMock).toHaveBeenCalledWith('tray://check-mail', expect.any(Function));
 		listenMock.mock.calls[0]![1]();
 		expect(cb).toHaveBeenCalledTimes(1);
 	});

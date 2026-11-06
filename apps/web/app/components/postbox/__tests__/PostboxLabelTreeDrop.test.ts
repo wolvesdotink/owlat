@@ -14,7 +14,11 @@ import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDr
 import PostboxLabelTree from '../PostboxLabelTree.vue';
 
 const labels = ref([{ _id: 'lbl-1', name: 'Billing', mailboxId: 'mbx-1' }]);
+const unreadCounts = ref<Record<string, number>>({});
 const applyToMessages = vi.fn();
+const markRead = vi.fn();
+/** The items each row's context menu was handed, in row order. */
+let menus: Array<Array<{ id: string; disabled?: boolean; run: () => void }>> = [];
 const showToast = vi.fn();
 
 beforeAll(() => {
@@ -24,7 +28,7 @@ beforeAll(() => {
 		useToast: () => ({ showToast }),
 		usePostboxLabels: () => ({
 			labels,
-			labelTree: computed(() => buildLabelTree(labels.value)),
+			labelTree: computed(() => buildLabelTree(labels.value, unreadCounts.value)),
 			reorder: vi.fn(),
 			setParent: vi.fn(),
 			rename: vi.fn(),
@@ -38,10 +42,14 @@ beforeAll(() => {
 			expandAll: vi.fn(),
 		}),
 		usePostboxManageDialog: () => ({ openManager: vi.fn(), editLabelId: ref(null) }),
+		usePostboxFolderBulk: () => ({ markRead }),
 	});
 });
 
 beforeEach(() => {
+	menus = [];
+	unreadCounts.value = {};
+	markRead.mockReset();
 	applyToMessages.mockReset();
 	showToast.mockReset();
 });
@@ -57,6 +65,9 @@ function mountTree() {
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: {
 					props: ['items'],
+					created(this: { items: (typeof menus)[number] }) {
+						menus.push(this.items);
+					},
 					template: '<slot :on-contextmenu="() => {}" :on-keydown="() => {}" />',
 				},
 			},
@@ -125,5 +136,23 @@ describe('PostboxLabelTree as a drop target', () => {
 		expect(fire(w.get('li').element, 'dragover')).toBe(false);
 		startDrag(['m1'], 'mbx-2');
 		expect(fire(w.get('a').element, 'dragover')).toBe(false);
+	});
+});
+
+describe('PostboxLabelTree context menu', () => {
+	it("marks the label's mail read from the row's menu", () => {
+		unreadCounts.value = { 'lbl-1': 3 };
+		mountTree();
+
+		const item = menus[0]!.find((entry) => entry.id === 'mark-all-read');
+		expect(item?.disabled).toBe(false);
+		item!.run();
+
+		expect(markRead).toHaveBeenCalledWith({ kind: 'label', mailboxId: 'mbx-1', labelId: 'lbl-1' });
+	});
+
+	it('offers it disabled while nothing in the label is unread', () => {
+		mountTree();
+		expect(menus[0]!.find((entry) => entry.id === 'mark-all-read')?.disabled).toBe(true);
 	});
 });

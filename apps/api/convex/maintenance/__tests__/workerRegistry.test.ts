@@ -94,7 +94,7 @@ describe('workerRegistry.report', () => {
 			service: 'mail-sync',
 			...reportArgs(),
 		});
-		expect(answer).toEqual({ backendWireVersion: 1, minSupportedWireVersion: 0, compatible: true });
+		expect(answer).toEqual({ backendWireVersion: 3, minSupportedWireVersion: 0, compatible: true });
 		await t.mutation(internal.maintenance.workerRegistry.report, {
 			service: 'mta',
 			...reportArgs(),
@@ -131,10 +131,10 @@ describe('workerRegistry.report', () => {
 		const t = harness();
 		const answer = await t.mutation(internal.maintenance.workerRegistry.report, {
 			service: 'mail-sync',
-			...reportArgs({ wireVersion: 2 }),
+			...reportArgs({ wireVersion: 4 }),
 		});
 		expect(answer).toEqual({
-			backendWireVersion: 1,
+			backendWireVersion: 3,
 			minSupportedWireVersion: 0,
 			compatible: false,
 			reason: 'backend_older',

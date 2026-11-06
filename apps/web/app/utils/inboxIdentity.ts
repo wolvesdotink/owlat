@@ -21,6 +21,42 @@ export const INBOX_SLOT_SWATCH: readonly string[] = [
 	'bg-chart-cat-2',
 ];
 
+/**
+ * Icon marks an owner can pick for an inbox. The backend accepts the same keys
+ * (`INBOX_MARK_ICONS` in apps/api mail/mailbox/appearance.ts).
+ */
+export const INBOX_MARK_ICONS = ['home', 'work', 'team', 'shop'] as const;
+export type InboxMarkIcon = (typeof INBOX_MARK_ICONS)[number];
+
+export type InboxProvider = 'gmail' | 'microsoft';
+
+/**
+ * What an inbox's chip shows before its name, and in place of initials on the
+ * icon rail: the icon or emoji its owner picked, else the logo of a connected
+ * Gmail or Microsoft account.
+ */
+export type InboxMark =
+	| { kind: 'icon'; icon: InboxMarkIcon }
+	| { kind: 'emoji'; emoji: string }
+	| { kind: 'provider'; provider: InboxProvider };
+
+export function isInboxMarkIcon(value: string): value is InboxMarkIcon {
+	return (INBOX_MARK_ICONS as readonly string[]).includes(value);
+}
+
+/** The mark a chip shows, or null for a plain chip with initials on the rail. */
+export function resolveInboxMark(
+	mark: string | null | undefined,
+	provider: InboxProvider | null | undefined
+): InboxMark | null {
+	const picked = mark?.trim();
+	if (picked)
+		return isInboxMarkIcon(picked)
+			? { kind: 'icon', icon: picked }
+			: { kind: 'emoji', emoji: picked };
+	return provider ? { kind: 'provider', provider } : null;
+}
+
 /** The row `mail.mailbox.queries.accessible` returns for one inbox. */
 export interface AccessibleInboxRow {
 	mailboxId: string;
@@ -30,6 +66,10 @@ export interface AccessibleInboxRow {
 	/** Backed by a connected IMAP account rather than hosted here. */
 	isConnected?: boolean;
 	colorSlot: number | null;
+	/** An icon key or one emoji the owner picked. */
+	mark?: string | null;
+	/** The provider of a connected Gmail or Microsoft account. */
+	provider?: InboxProvider | null;
 	unread: number;
 }
 
@@ -43,6 +83,8 @@ export interface InboxIdentity<Id extends string = string> {
 	isConnected?: true;
 	/** Swatch slot, or null for the neutral fallback past the fourth inbox. */
 	slot: number | null;
+	/** Set only when the inbox has a mark to show (see {@link resolveInboxMark}). */
+	mark?: InboxMark;
 	unread: number;
 }
 
@@ -101,6 +143,7 @@ export function resolveInboxIdentities<Id extends string>(
 			row.colorSlot !== null && row.colorSlot >= 0 && row.colorSlot < INBOX_COLOR_SLOTS
 				? row.colorSlot
 				: null;
+		const mark = resolveInboxMark(row.mark, row.provider);
 		return {
 			mailboxId: row.mailboxId,
 			name: shortName(row),
@@ -108,7 +151,35 @@ export function resolveInboxIdentities<Id extends string>(
 			scope: row.scope,
 			...(row.isConnected ? { isConnected: true as const } : {}),
 			slot: explicit ?? nextFree(),
+			...(mark ? { mark } : {}),
 			unread: row.unread,
 		};
+	});
+}
+
+/** Longest label the icon rail has room for. */
+const RAIL_LABEL_MAX = 3;
+
+/**
+ * Icon-rail labels: the shortest start of each name that no other name begins
+ * with, so "Work", "Wolves" and "Webshop" read "Wor", "Wol" and "We". A name
+ * that only another name's start can tell apart ("Team", "Team EU") stops at
+ * three characters; the tooltip still names it in full.
+ */
+export function uniqueRailLabels(names: readonly string[]): string[] {
+	const chars = names.map((name) => Array.from(name.trim()));
+	const folded = chars.map((c) => c.map((ch) => ch.toLocaleLowerCase()));
+	return chars.map((own, index) => {
+		if (own.length === 0) return '';
+		let length = 1;
+		while (length < Math.min(own.length, RAIL_LABEL_MAX)) {
+			const prefix = folded[index]!.slice(0, length).join('');
+			const shared = folded.some(
+				(other, j) => j !== index && other.slice(0, length).join('') === prefix
+			);
+			if (!shared) break;
+			length++;
+		}
+		return own[0]!.toLocaleUpperCase() + own.slice(1, length).join('');
 	});
 }

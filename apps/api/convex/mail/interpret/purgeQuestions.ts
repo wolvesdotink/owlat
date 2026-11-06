@@ -237,7 +237,7 @@ export const clarificationRanges: readonly PurgeRange[] = [
  * resumable range: every source costs budget, so a thread with many sources
  * is scheduled over as many slices as it takes.
  */
-const reinterpretRange: PurgeRange = async (ctx, run) => {
+export const reinterpretRange: PurgeRange = async (ctx, run) => {
 	const { ref, state, budget } = run;
 	if (!state.isSurvivorChanged) return { isDone: true };
 	return scanRange(

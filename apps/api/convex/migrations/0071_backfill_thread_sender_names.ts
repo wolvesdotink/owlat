@@ -1,8 +1,8 @@
 /**
  * Give stored conversation rows their latest sender's display name
- * (migration 0070).
+ * (migration 0071).
  *
- *   npx convex run migrations/0070_backfill_thread_sender_names:run
+ *   npx convex run migrations/0071_backfill_thread_sender_names:run
  *
  * Every write that moves a thread's newest message records `latestFromName`
  * beside `latestFromAddress`. Threads written before that carry only the
@@ -14,7 +14,7 @@
  * ONE SWEEP over `mailThreads`. A thread that already has a name, has no
  * `latestMessageId`, or whose newest message has no name is left untouched.
  * Each page records its cursor in the migration ledger (`migrationRuns` row
- * `0070_backfill_thread_sender_names`, lib/migrationLedger.ts) before the next
+ * `0071_backfill_thread_sender_names`, lib/migrationLedger.ts) before the next
  * is scheduled. Running `run` again on an unfinished walk resumes it; on a
  * finished one it does nothing (`'{"restart":true}'` starts over). Pages are
  * idempotent: a name is only written where none is stored.
@@ -33,7 +33,7 @@ import {
 	scheduleMigrationPage,
 } from '../lib/migrationLedger';
 
-export const MIGRATION = '0070_backfill_thread_sender_names';
+export const MIGRATION = '0071_backfill_thread_sender_names';
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.21';
 /**
@@ -64,7 +64,7 @@ export const processPage = internalMutation({
 	handler: async (ctx, args): Promise<{ isDone: boolean; isSuperseded?: boolean }> => {
 		const run = await readMigrationRun(ctx, MIGRATION);
 		if (!isCurrentMigrationPage(run, args.generation)) {
-			logInfo('migration.0070_backfill_thread_sender_names.superseded', {
+			logInfo('migration.0071_backfill_thread_sender_names.superseded', {
 				generation: args.generation,
 			});
 			return { isDone: false, isSuperseded: true };
@@ -76,7 +76,7 @@ export const processPage = internalMutation({
 			scanned: result.scanned,
 			changed: result.changed,
 		});
-		logInfo('migration.0070_backfill_thread_sender_names.page', {
+		logInfo('migration.0071_backfill_thread_sender_names.page', {
 			scanned: result.scanned,
 			changed: result.changed,
 			isDone: result.isDone,
@@ -87,7 +87,7 @@ export const processPage = internalMutation({
 				ctx,
 				run,
 				0,
-				internal.migrations['0070_backfill_thread_sender_names'].processPage,
+				internal.migrations['0071_backfill_thread_sender_names'].processPage,
 				{ cursor: result.cursor, generation: run.generation }
 			);
 		}
@@ -123,10 +123,10 @@ export const run = internalMutation({
 			ctx,
 			begun,
 			0,
-			internal.migrations['0070_backfill_thread_sender_names'].processPage,
+			internal.migrations['0071_backfill_thread_sender_names'].processPage,
 			{ cursor, generation: begun.generation }
 		);
-		logInfo('migration.0070_backfill_thread_sender_names.started', {
+		logInfo('migration.0071_backfill_thread_sender_names.started', {
 			cursor,
 			generation: begun.generation,
 		});

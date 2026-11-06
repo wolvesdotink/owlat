@@ -409,12 +409,23 @@
 			"scopeHint": "Scope",
 			"filterPlaceholder": "Type to narrow the list…",
 			"keepTyping": "Keep typing to search your mail",
+			"mailAsk": {
+				"operation": "Ask your mail",
+				"placeholder": "Ask a question about your mail…",
+				"emptyTitle": "Ask a question about your mail",
+				"emptyHint": "Press Enter for an answer that cites the messages it used",
+				"searching": "Reading your mail…",
+				"noMatches": "No message in your mail matches this question.",
+				"headersOnly": "Answered from headers and snippets only, because full-text body search is off.",
+				"citationLabel": "Open message {index}: {subject}"
+			},
 			"prefixes": {
 				"heading": "Narrow with a prefix",
 				"commands": "Commands, pages and settings",
 				"people": "People and contacts",
 				"labels": "Labels",
-				"ask": "Ask your knowledge base"
+				"ask": "Ask your knowledge base",
+				"askMail": "Ask your mail"
 			}
 		},
 		"assistant": {
@@ -436,6 +447,7 @@
 			"assistantToolCalls": {
 				"summary": "Used {count} tools",
 				"tools": {
+					"askMailbox": "Checked your mail",
 					"draftCampaignCopy": "Drafted campaign copy",
 					"draftEmailReply": "Drafted an email reply",
 					"getCampaignStats": "Looked up campaign stats",
@@ -936,6 +948,9 @@
 			"item": {
 				"due": "due {date}",
 				"checkThis": "Check this:",
+				"reviewAgain": "Needs review again:",
+				"withdrawn": "The signature covers less of this message than was read",
+				"confirmedEarlier": "Confirmed on {date}",
 				"proposal": "proposal · not tracked yet",
 				"pendingChange": "Check this change:",
 				"pendingOptions": "options: {options}",
@@ -1091,13 +1106,24 @@
 					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
 					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it.",
 					"aiOff": "{done} of {total} messages are in this brief. AI isn't available in this workspace, so the rest hasn't been read.",
-					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet."
+					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet.",
+					"aiProvider": "{done} of {total} messages are in this brief. The AI provider isn't accepting this workspace's API key, so the rest hasn't been read."
+				},
+				"partialMessage": {
+					"tooLong": "{done} of {total} messages are in this brief. The message from {from} on {date} is too long to summarise.",
+					"failed": "{done} of {total} messages are in this brief. The message from {from} on {date} couldn't be summarised.",
+					"undecryptable": "{done} of {total} messages are in this brief. The message from {from} on {date} couldn't be decrypted."
+				},
+				"noneMessage": {
+					"failed": "The message from {from} on {date} couldn't be summarised, so there is no brief. The conversation shows everything.",
+					"undecryptable": "The message from {from} on {date} couldn't be decrypted, so there is no brief."
 				},
 				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
 					"default": "There is no brief for this thread yet. The conversation shows everything.",
 					"aiOff": "AI isn't available in this workspace, so there is no brief. The conversation shows everything.",
 					"budget": "The AI budget for this period is used up, so there is no brief yet. The conversation shows everything.",
+					"aiProvider": "The AI provider isn't accepting this workspace's API key, so there is no brief. The conversation shows everything.",
 					"undecryptable": "This message could not be decrypted, so there is no brief.",
 					"ineligible": "Mail like this is not summarised, so there is no brief.",
 					"failed": "Reading this thread failed, so there is no brief.",
@@ -1107,7 +1133,7 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
+				"stale": "The brief is paused while a signature check updates what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
 				"aiSettings": "AI settings",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
@@ -3517,6 +3543,7 @@
 			},
 			"errors": {
 				"blocked": "Dictation can't use the microphone. Allow microphone access for this site and try again.",
+				"blockedDesktop": "Dictation can't use the microphone or speech recognition. Allow both for Owlat in your system's privacy settings and try again.",
 				"noSpeech": "Didn't catch anything. Press the microphone and speak again.",
 				"network": "The speech service couldn't be reached. Check your connection and try again.",
 				"language": "Dictation doesn't support your browser's language here.",
@@ -4668,6 +4695,26 @@
 				"title": "All inboxes",
 				"inboxesHeading": "Inboxes",
 				"openInbox": "Open {name}",
+				"roles": {
+					"inbox": "All inboxes",
+					"sent": "All sent",
+					"drafts": "All drafts",
+					"archive": "All archive",
+					"spam": "All spam",
+					"trash": "All trash"
+				},
+				"foldersHeading": "Folders",
+				"expandFolder": "Show {folder} of each mailbox",
+				"collapseFolder": "Hide {folder} of each mailbox",
+				"mailboxFolder": "{folder} of {name}",
+				"narrow": {
+					"title": "Show one mailbox or provider",
+					"all": "All mailboxes",
+					"mailboxesHeading": "Mailbox",
+					"providersHeading": "Provider",
+					"owlat": "Hosted on Owlat",
+					"clear": "Show every mailbox"
+				},
 				"clearCategory": "Show every category",
 				"category": {
 					"newsletter": "Newsletters",
@@ -5287,18 +5334,20 @@
 				"confirmTeamAction": "Continue",
 				"confirmTeamBody": "Everyone with access to {name} will see the mail you put there.",
 				"confirmTeamTitle": "Put mail in {name}?",
-				"connectedNote": "Mail can't be moved into a connected account yet.",
+				"connectedNote": "Mail moved into a connected account stays where it is until the account's server has it.",
 				"copiedTo": "Copied to {name} | Copied {count} messages to {name}",
 				"copy": "Copy",
-				"copyOnlyNote": "This message is in a connected account, so it can be copied but not moved for now.",
 				"copyTo": "Copy to {name}",
+				"copyingTo": "Copying to {name} | Copying {count} messages to {name}",
 				"movedTo": "Moved to {name} | Moved {count} messages to {name}",
 				"moveTo": "Move to {name}",
+				"movingTo": "Moving to {name} | Moving {count} messages to {name}",
 				"noOtherFolders": "No other folders",
 				"otherMailboxes": "Other mailboxes",
 				"refused": {
-					"external_source": "Mail in a connected account can be copied, not moved, for now.",
-					"external_target": "Mail can't be moved into a connected account yet.",
+					"all_mail": "Gmail keeps archived mail in All Mail, so it can't be moved out of this account. Copy it instead.",
+					"external_target": "This connected account doesn't take mail from Owlat. It's disconnected or set to receive new mail only.",
+					"no_message_id": "This message has no Message-ID, so a connected account couldn't keep track of it.",
 					"over_quota": "That mailbox is full.",
 					"sealed": "This message is end-to-end encrypted. It can only go to a mailbox on the same address, which holds its key.",
 					"sending": "This message is still being sent. Try again once it's delivered."
@@ -5871,7 +5920,8 @@
 				"copyLabel": "Copy sign-in code {code} from {domain}",
 				"openLabel": "Open the sign-in link from {domain}",
 				"openLink": "Open sign-in link",
-				"openLinkShort": "Open link"
+				"openLinkShort": "Open link",
+				"unavailable": "No sign-in code to copy. A code is offered for 15 minutes after it arrives."
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Unsubscribe from this mailing list",
@@ -6046,6 +6096,8 @@
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
 				"latestFrom": "latest from {sender}",
+				"markRead": "Mark read",
+				"markReadLabel": "Mark the {count} unread message in this bundle as read | Mark the {count} unread messages in this bundle as read",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
 				"unsubscribe": "Unsubscribe",
@@ -6363,7 +6415,9 @@
 			},
 			"postboxFolderActions": {
 				"menuLabel": "Folder actions",
+				"labelMenuLabel": "Label actions",
 				"markAllRead": "Mark all as read",
+				"markCategoryRead": "Mark {category} as read",
 				"empty": {
 					"trash": "Empty trash",
 					"spam": "Empty spam"
@@ -6377,6 +6431,17 @@
 					"spam": "Empty spam?"
 				},
 				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
+			},
+			"postboxMicrosoftSendPath": {
+				"consentNeeded": "If your organization turns off SMTP sign-in, Owlat can still send through Microsoft Graph, but it needs your permission first.",
+				"consentNeededGraph": "Microsoft turned off SMTP sign-in for this mailbox, and Owlat no longer has permission to send through Microsoft Graph. Sending stops until you grant it again.",
+				"continueInBrowser": "Finish signing in with Microsoft in your browser.",
+				"grant": "Grant send permission",
+				"graph": "Microsoft Graph",
+				"graphHelp": "Your organization turned off SMTP sign-in, so mail goes out through Microsoft Graph. Microsoft keeps the copy in Sent Items.",
+				"label": "Sends through",
+				"smtp": "SMTP",
+				"smtpHelp": "Mail goes out through Microsoft's SMTP server, signed in with your Microsoft account."
 			}
 		},
 		"preferences": {
@@ -8814,6 +8879,11 @@
 						"reindexBody": "Vectors from two models can't be compared. After saving, keyword search finds older items until they are re-embedded: on its own with a local model, or when you start it under Embedding search with a hosted one. To change without that gap, use Rebuild with another model there, where the change allows it.",
 						"reindexTitle": "Changing the model takes older items out of vector search",
 						"title": "Embeddings"
+					},
+					"keyRefused": {
+						"body": "Since {since}, the provider has turned down every AI call, so thread briefs and the other AI features don't work. Save a working key below to bring them back.",
+						"lastSeen": "Last refused {time}.",
+						"title": "The AI provider is refusing this workspace's API key"
 					},
 					"language": {
 						"apiKeyHelp": "Sent once over TLS, encrypted at rest, and never shown again.",
@@ -12302,6 +12372,8 @@
 				"pageTitle": "Contacts — Owlat",
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
+				"resumeCardDav": "Resume CardDAV updates",
+				"resumedToast": "{contact} follows CardDAV again. The next sync brings back the card’s details.",
 				"searchPlaceholder": "Search contacts",
 				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
@@ -12311,8 +12383,6 @@
 					"export": "Export .vcf",
 					"importHint": "Add people from a .vcf file, such as your phone's address book",
 					"pickerTitle": "Choose a vCard file",
-					"importedBadge": "Imported",
-					"importedTooltip": "Added or updated by a vCard import",
 					"imported": "Imported: {created} new, {merged} merged with existing contacts.",
 					"stopped": "The import stopped. No contacts were saved. | The import stopped after one contact, which is saved. | The import stopped after {count} contacts. Those are saved.",
 					"skipped": "Skipped one card without an email address. | Skipped {count} cards without an email address.",
@@ -12322,6 +12392,51 @@
 					"empty": "That file has no contacts with an email address.",
 					"exportFailed": "The address book could not be exported. Try again.",
 					"unreadable": "That file could not be read. Try again."
+				},
+				"source": {
+					"carddav": "CardDAV",
+					"carddavTooltip": "Synced from the connected CardDAV address book",
+					"carddavEdited": "Edited here, not following CardDAV",
+					"carddavEditedTooltip": "You changed this contact here, so changes on the CardDAV server no longer replace it.",
+					"vcard": "vCard",
+					"vcardTooltip": "Added or updated by a vCard import",
+					"mail": "Mail",
+					"mailTooltip": "Added from mail or by hand"
+				},
+				"carddav": {
+					"title": "CardDAV address book",
+					"description": "Read the contacts of an address book on another server, such as Nextcloud, Fastmail or iCloud. Owlat only reads it and checks for changes every hour. These are this mailbox's contacts, not the Audience contacts.",
+					"sharedNote": "Every member of this team inbox sees the synced contacts.",
+					"connect": "Connect CardDAV address book",
+					"serverUrl": "Server URL",
+					"serverUrlPlaceholder": "https://dav.example.com",
+					"username": "Username",
+					"password": "Password",
+					"passwordHint": "Use an app password if your provider offers one. Owlat stores it encrypted.",
+					"connectAction": "Connect",
+					"connectedToast": "Address book connected. The first sync is running.",
+					"syncing": "Syncing {name} from {server}",
+					"lastSynced": "Last synced {time}",
+					"firstSync": "First sync in progress",
+					"syncNow": "Sync now",
+					"syncStarted": "Sync started.",
+					"disconnect": "Disconnect",
+					"disconnectTitle": "Disconnect this address book?",
+					"disconnectBody": "Contacts the sync added are removed unless you have mailed them since. Contacts that were already in the address book stay.",
+					"disconnectedToast": "Address book disconnected.",
+					"truncated": "The address book has more cards than one sync reads ({max}). The rest were skipped.",
+					"syncFailed": "The last sync failed: {reason}",
+					"errors": {
+						"auth": "The server did not accept the username and password.",
+						"unreachable": "The server could not be reached.",
+						"not_carddav": "That server did not answer as a CardDAV server.",
+						"no_address_book": "No address book was found for this account.",
+						"too_large": "The server sent more than one sync reads.",
+						"failed": "Something went wrong. Try again later.",
+						"invalid_url": "Enter the server address, starting with https://.",
+						"forbidden": "You can't change this mailbox's address book.",
+						"already_connected": "This mailbox already has an address book connected."
+					}
 				}
 			},
 			"detail": {
@@ -12697,14 +12812,26 @@
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "General — Owlat",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
-				"renameMailbox": "Name and colour",
+				"renameMailbox": "Name, colour and mark",
 				"renameOperation": "Rename mailbox",
 				"subtitle": "How Owlat looks and how your mail reads.",
 				"teamManage": "Team · manage",
 				"colour": "Colour",
 				"colourAutomatic": "Automatic",
 				"colourSlot": "Colour {n}",
-				"colourHelp": "The chip this inbox wears in the sidebar, on the Workbench, in the Answer queue and next to Send — always together with its name."
+				"colourHelp": "The chip this inbox wears in the sidebar, on the Workbench, in the Answer queue and next to Send — always together with its name.",
+				"mark": "Mark",
+				"markHelp": "Shown before the name, and instead of the initials when the sidebar is collapsed. Every member of the inbox sees it. Without one, a connected Gmail or Microsoft account shows its logo.",
+				"markDefault": "Default",
+				"markIcons": {
+					"home": "Home",
+					"work": "Work",
+					"team": "Team",
+					"shop": "Shop"
+				},
+				"markEmoji": "Or an emoji",
+				"markEmojiPlaceholder": "Type or paste one emoji",
+				"markEmojiInvalid": "Use a single emoji."
 			},
 			"members": {
 				"detail": {
@@ -13395,6 +13522,16 @@
 					"description": "Closing the main window hides it to the tray icon. Quit from the icon's menu.",
 					"needsIcon": "Turn on the tray icon first. Without it, closing the window quits Owlat.",
 					"title": "Keep running when the window is closed"
+				},
+				"hideDockIcon": {
+					"description": "Run Owlat from the menu bar icon alone, without a Dock icon or a menu bar of its own.",
+					"needsIcon": "Turn on the menu bar icon first. Without it, the Dock icon is the way back to Owlat.",
+					"title": "Hide the Dock icon"
+				},
+				"mailbox": {
+					"all": "All inboxes",
+					"description": "Which inbox the icon counts and lists.",
+					"title": "Count unread in"
 				},
 				"menuBarIcon": {
 					"description": "Show the unread count and your newest unread mail in the menu bar.",
@@ -14177,6 +14314,12 @@
 			"unpinNamed": "Unpin “{subject}”",
 			"full": "You can pin up to 5 conversations. Unpin one to make room.",
 			"dropHint": "Drop here to pin"
+		},
+		"checkForMail": {
+			"busy": "Already checking for new mail.",
+			"checking": "Checking your connected accounts for new mail.",
+			"failed": "Couldn't check for new mail. Try again in a moment.",
+			"nothing": "No connected accounts to check. Mail to your Owlat addresses arrives on its own."
 		}
 	},
 	"recipient": {
@@ -15202,7 +15345,12 @@
 					"spam": "Spam",
 					"trash": "Trash",
 					"answerQueue": "Answer queue",
-					"allInboxes": "All inboxes"
+					"allInboxes": "All inboxes",
+					"allSent": "All sent",
+					"allDrafts": "All drafts",
+					"allArchive": "All archive",
+					"allSpam": "All spam",
+					"allTrash": "All trash"
 				},
 				"send": {
 					"automations": "Automations",
@@ -16396,7 +16544,10 @@
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
 				"saveContact": "Save contact",
-				"importContacts": "Import contacts"
+				"importContacts": "Import contacts",
+				"importPhotos": "Import contact pictures",
+				"restoreContact": "Restore contact",
+				"resumeCardDav": "Resume CardDAV updates"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",
@@ -17183,7 +17334,7 @@
 				},
 				"trayIcon": {
 					"title": "Tray icon",
-					"keywords": "menu bar, system tray, notification area, close to tray, keep running"
+					"keywords": "menu bar, system tray, notification area, close to tray, keep running, dock icon, hide dock, unread count, mailbox"
 				},
 				"unreadBadge": {
 					"title": "Unread badge",
@@ -17410,7 +17561,8 @@
 				"clearSelection": "Clear the selection",
 				"resolveThread": "Resolve the thread",
 				"assignThread": "Assign the thread to…",
-				"chatView": "Chat layout"
+				"chatView": "Chat layout",
+				"copySignInCode": "Copy the sign-in code (or open the sign-in link)"
 			}
 		},
 		"signatureBadge": {
@@ -18025,7 +18177,11 @@
 			"newContact": "New contact",
 			"sidebarContext": "Sidebar context",
 			"switchToInbox": "Switch to Inbox",
-			"switchToMarketing": "Switch to marketing"
+			"switchToMarketing": "Switch to marketing",
+			"copySignInCode": "Copy latest sign-in code",
+			"openSignInLink": "Open latest sign-in link",
+			"checkForMail": "Check for mail",
+			"checkForMailSubtitle": "Connected accounts"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Add contacts to topic",
@@ -18555,7 +18711,9 @@
 			"waitingSince": "Waiting since {time}",
 			"changeCount": "{count} change | {count} changes",
 			"nothingWaiting": "Nothing is waiting to be saved.",
-			"allSaved": "All changes saved"
+			"allSaved": "All changes saved",
+			"aiKeyRefused": "The AI provider is refusing this workspace's API key, so AI features don't work.",
+			"aiSettings": "AI settings"
 		},
 		"appUpdated": {
 			"title": "Owlat was updated",

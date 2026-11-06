@@ -78,6 +78,8 @@ const emit = defineEmits<{
 defineSlots<{
 	row(props: { item: T; focused: boolean }): unknown;
 	'section-footer'?(props: { section: PostboxThreadListSection<T> }): unknown;
+	/** Fits the 32px header: a small icon button at most. */
+	'section-actions'?(props: { section: PostboxThreadListSection<T> }): unknown;
 }>();
 
 // One minute clock for every slotted row's timestamp (they inject it).
@@ -170,10 +172,15 @@ const { handleScroll } = usePostboxListAutoLoad({
 				<!-- Collapsible section header. Pinned to the same constant the
 				     sectioned window math charges per section, so the header can't
 				     drift the rows below it either. -->
-				<li class="sticky top-0 z-10 bg-bg-surface" :class="{ 'pbx-section-header': virtualize }">
+				<!-- `#section-actions` sits beside the toggle, never inside it: a
+				     button cannot hold another button. -->
+				<li
+					class="sticky top-0 z-10 bg-bg-surface flex items-center"
+					:class="{ 'pbx-section-header': virtualize }"
+				>
 					<button
 						type="button"
-						class="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary hover:bg-bg-elevated"
+						class="flex-1 min-w-0 self-stretch flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary hover:bg-bg-elevated"
 						:aria-expanded="!collapsed[section.key]"
 						@click="emit('toggle', section.key)"
 					>
@@ -194,6 +201,7 @@ const { handleScroll } = usePostboxListAutoLoad({
 							>{{ section.headerBadge.text ?? section.headerBadge.count }}</span
 						>
 					</button>
+					<slot name="section-actions" :section="section" />
 				</li>
 				<template v-if="!collapsed[section.key]">
 					<!-- Spacers stand in for the rows this section is not mounting, so

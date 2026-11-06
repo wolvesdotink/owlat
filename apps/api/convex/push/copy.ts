@@ -10,7 +10,9 @@
  *
  * Privacy is decided here, once: a private notification (the shared "hide
  * message preview" preference) and any sealed (E2EE) message carry only a
- * generic line, never a sender, subject or chat text.
+ * generic line, never a sender, subject or chat text. A sign-in code never
+ * travels in a payload at all: its "Copy code" button opens the message, and
+ * the reader copies the code from there.
  */
 
 import type { AppLocale } from '@owlat/shared/appLocales';
@@ -43,6 +45,7 @@ interface Copy {
 	newMessage: string;
 	noSubject: string;
 	encryptedMail: string;
+	copyCode: string;
 	assignedTitle: string;
 	assignedBody: (subject: string, by: string) => string;
 	assignedPrivate: string;
@@ -65,6 +68,7 @@ const COPY: Record<AppLocale, Copy> = {
 		newMessage: 'New message',
 		noSubject: '(no subject)',
 		encryptedMail: 'New encrypted message',
+		copyCode: 'Copy code',
 		assignedTitle: 'Assigned to you',
 		assignedBody: (subject, by) => `${subject} · from ${by}`,
 		assignedPrivate: 'A conversation was assigned to you',
@@ -88,6 +92,7 @@ const COPY: Record<AppLocale, Copy> = {
 		newMessage: 'Neue Nachricht',
 		noSubject: '(kein Betreff)',
 		encryptedMail: 'Neue verschlüsselte Nachricht',
+		copyCode: 'Code kopieren',
 		assignedTitle: 'Dir zugewiesen',
 		assignedBody: (subject, by) => `${subject} · von ${by}`,
 		assignedPrivate: 'Dir wurde eine Konversation zugewiesen',
@@ -134,7 +139,16 @@ export interface MailNotice {
 	subject: string;
 	/** The message arrived sealed (PGP/MIME): never show anything from it. */
 	isSealed: boolean;
+	/** The message carries a live one-time code (mail/signInCodes.ts). */
+	hasSignInCode?: boolean;
 }
+
+/**
+ * The reader copies the open message's code once when its route carries this
+ * query (`usePostboxSignInCodeIntent` in the web app). A service worker cannot
+ * write to the clipboard, so the button can only hand the copy to the page.
+ */
+export const SIGN_IN_CODE_COPY_QUERY = 'signInCode=copy';
 
 export function mailPayload(
 	notice: MailNotice,
@@ -145,13 +159,18 @@ export function mailPayload(
 	const tag = `mail:${notice.threadId}`;
 	const url = `/dashboard/postbox/inbox/${notice.messageId}?mailbox=${notice.mailboxId}`;
 	if (notice.isSealed) return { title: copy.newMail, body: copy.encryptedMail, tag, url };
-	if (isPrivate) return { title: copy.newMail, body: copy.newMessage, tag, url };
-	return {
-		title: clip(notice.senderName, MAX_TITLE),
-		body: clip(notice.subject, MAX_BODY) || copy.noSubject,
-		tag,
-		url,
-	};
+	// A sign-in link gets no button: opening the message is already one click
+	// from its chip, and the link itself never leaves the server in a payload.
+	const actions: PushAction[] | undefined = notice.hasSignInCode
+		? [{ action: 'copy-code', title: copy.copyCode, url: `${url}&${SIGN_IN_CODE_COPY_QUERY}` }]
+		: undefined;
+	const text = isPrivate
+		? { title: copy.newMail, body: copy.newMessage }
+		: {
+				title: clip(notice.senderName, MAX_TITLE),
+				body: clip(notice.subject, MAX_BODY) || copy.noSubject,
+			};
+	return { ...text, tag, url, ...(actions ? { actions } : {}) };
 }
 
 export interface AssignmentNoticeCopy {

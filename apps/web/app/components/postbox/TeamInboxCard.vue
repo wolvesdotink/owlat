@@ -354,6 +354,13 @@ const createdOn = computed(() =>
 				{{ importSummary }}
 			</p>
 
+			<PostboxMicrosoftSendPath
+				v-if="inbox.kind === 'external' && reconnectAccountForForm"
+				:account="reconnectAccountForForm"
+				:mailbox-id="inbox._id"
+				class="mt-4 pt-4 border-t border-border-subtle"
+			/>
+
 			<PostboxSyncModeToggle
 				v-if="inbox.kind === 'external' && reconnectAccountForForm"
 				:mode="reconnectAccountForForm.syncMode"

@@ -2,7 +2,7 @@
  * The sign-in chip copies the code or opens the link without opening the row
  * it sits in, names the sender's domain, and is gone once the code expired.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, shallowRef } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -15,8 +15,14 @@ const showToast = vi.fn();
 vi.mock('~/composables/postbox/usePostboxListClock', () => ({ usePostboxRowNow: () => now }));
 
 beforeAll(() => {
+	// The copy checks the code is still live against the real clock.
+	vi.setSystemTime(NOW);
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useToast', () => ({ showToast }));
+});
+
+afterAll(() => {
+	vi.useRealTimers();
 });
 
 afterEach(() => {

@@ -8,6 +8,7 @@ import { mailCompositionTables } from './mailComposition';
 import { mailRulesTables } from './mailRules';
 import { mailAuthTables } from './mailAuth';
 import { mailContactsTables } from './mailContacts';
+import { mailContactsCardDavTables } from './mailContactsCardDav';
 import { mailSettingsTables } from './mailSettings';
 import { mailAiTables } from './mailAi';
 import { mailArrivalTables } from './mailArrival';
@@ -34,6 +35,7 @@ export const mailTables = {
 	...mailRulesTables,
 	...mailAuthTables,
 	...mailContactsTables,
+	...mailContactsCardDavTables,
 	...mailSettingsTables,
 	...mailAiTables,
 	...mailArrivalTables,

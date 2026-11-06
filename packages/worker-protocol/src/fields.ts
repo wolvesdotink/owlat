@@ -65,6 +65,14 @@ export const externalAccountStatusValidator = v.union(
 );
 
 /**
+ * How a Microsoft sign-in account submits mail. 'smtp' is SMTP AUTH with
+ * XOAUTH2, the default. 'graph' is Microsoft Graph's `sendMail`, which the
+ * worker switches to once Exchange Online refuses SMTP AUTH for the mailbox
+ * (many Microsoft 365 tenants turn it off). Other accounts always use SMTP.
+ */
+export const externalSendPathValidator = v.union(v.literal('smtp'), v.literal('graph'));
+
+/**
  * A folder on the REMOTE server of a connected external account, named the
  * way the local side can name it: a system folder by role (the mail-sync
  * worker maps it through its own folder discovery), or a user folder by its
@@ -103,6 +111,9 @@ export const remoteOpKindValidator = v.union(
 	v.literal('move'),
 	v.literal('flags'),
 	v.literal('delete'),
+	// A message moved or copied into this account from another mailbox: the
+	// worker uploads it with APPEND.
+	v.literal('append'),
 	// A mirrored folder renamed or deleted in Owlat.
 	v.literal('renameFolder'),
 	v.literal('deleteFolder')

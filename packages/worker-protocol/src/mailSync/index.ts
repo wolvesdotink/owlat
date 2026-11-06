@@ -5,7 +5,12 @@
  * from here.
  */
 
-import { getCredentialsForWorker, listConnectableAccounts, setSyncStatus } from './accounts';
+import {
+	getCredentialsForWorker,
+	listConnectableAccounts,
+	setSendPath,
+	setSyncStatus,
+} from './accounts';
 import {
 	completeBackfillImport,
 	findKnownMessageIds,
@@ -51,6 +56,7 @@ export const MAIL_SYNC_ENDPOINTS = {
 	getCredentialsForWorker,
 	listConnectableAccounts,
 	setSyncStatus,
+	setSendPath,
 	ingestExternalRaw,
 	discardStagedRaw,
 	getSyncState,

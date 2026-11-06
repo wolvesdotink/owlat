@@ -52,6 +52,8 @@ export interface RemoteOpsClient {
 	messageFlagsRemove(range: string, flags: string[], options: { uid: true }): Promise<boolean>;
 	/** STORE \Deleted, whose result ImapFlow ignores, then EXPUNGE. */
 	messageDelete(range: string, options: { uid: true }): Promise<boolean | undefined>;
+	/** APPEND; ImapFlow resolves `false` when the server refuses it. */
+	append(path: string, content: Buffer, flags: string[], idate?: Date): Promise<object | false>;
 	mailboxCreate(path: string[]): Promise<{ path: string }>;
 	mailboxRename(path: string, newPath: string): Promise<object | undefined>;
 	mailboxDelete(path: string): Promise<object | undefined>;
@@ -86,6 +88,12 @@ export interface ReplayHooks {
 	renamed?(op: RemoteOp, rename: { from: string; to: string; delimiter: string }): Promise<void>;
 	/** The op settles without the part of its change the provider cannot keep. */
 	skipped?(op: RemoteOp, reason: string): void;
+	/**
+	 * The raw `.eml` an `append` op uploads, from the backend; null once the
+	 * backend no longer has the message. Throws when it could not be fetched,
+	 * which fails the op so it is retried.
+	 */
+	raw?(op: RemoteOp): Promise<Buffer | null>;
 }
 
 /** One page of an account's queued folder renames (`listQueuedFolderRenames`). */

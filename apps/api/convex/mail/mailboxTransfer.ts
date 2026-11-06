@@ -8,20 +8,31 @@
  * the message (`mailboxTransferCopy.ts`). The client undoes a move by moving
  * the copies back, and a copy by purging the copies.
  *
+ * Connected (IMAP) accounts: a move out of one deletes the provider's copy
+ * with the usual write-back. Into one, the copy is written here at once and
+ * uploaded by the worker (an `append` write-back), and a move keeps its
+ * source until that upload has landed: the account's mail lives at the
+ * provider, and a row only Owlat holds would vanish with the account
+ * (`external/remoteAppend.ts`). The undo of such a move, while the upload is
+ * still queued, keeps the original and lets the copy go.
+ *
  * What a transfer refuses, each with a `reason` the client words:
- *   - `external_target`: the target is a connected (IMAP) account. Its copy
- *     has to reach the provider by IMAP APPEND before the source may go, and
- *     nothing writes there yet; a row only Owlat holds would vanish with the
- *     account.
- *   - `external_source`: a MOVE out of a connected account. It would delete
- *     the provider's copy, and the undo would need the APPEND above. Copying
- *     out of one is allowed: the source is untouched.
+ *   - `external_target`: the target is a connected account that takes no
+ *     mail from Owlat (disconnected, or set to receive new mail only).
+ *   - `no_message_id`: into a connected account, a message whose Message-ID
+ *     the worker invented. The provider could never find the upload by it,
+ *     and the next sync would import it as a second message.
  *   - `sealed`: a sealed (end-to-end encrypted) message bound for a mailbox
  *     on another address. Only the address it was sealed to holds the key, so
  *     it may only travel between mailboxes on that same address.
  *   - `sending`: a sent message with a recipient still queued; the
  *     transport's updates address the source row.
  *   - `over_quota`: the target has no room for the batch.
+ *   - `all_mail`: a move out of a connected account's Gmail All Mail (its
+ *     archive). Gmail ignores a delete there, so the source would stay at the
+ *     provider and come back with the next sync. A copy is fine. A move into
+ *     a connected account whose source is archived there before its upload
+ *     lands settles as a copy (`external/remoteAppend.ts`).
  *
  * Mailbox scope: the target must be on the caller's own rail (their mailbox,
  * or a team inbox they are a member of), never a teammate's personal mailbox
@@ -42,6 +53,13 @@ import { withMailboxUsage } from './mailboxUsage';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './messagePurge';
 import { rebuildThreadAggregates } from './threadAggregates';
 import { insertMessageCopy, type LabelMap } from './mailboxTransferCopy';
+import {
+	hasSyntheticMessageId,
+	recordRemoteChanges,
+	type RemoteChange,
+} from './external/remoteOps';
+import { allMailFolderIds, liveAccountFor } from './external/remoteAccount';
+import { pendingAppendOf } from './external/remoteAppend';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 
 /**
@@ -54,10 +72,11 @@ export const MAX_MESSAGES_PER_TRANSFER = 25;
 
 export type TransferRefusal =
 	| 'external_target'
-	| 'external_source'
+	| 'no_message_id'
 	| 'sealed'
 	| 'sending'
-	| 'over_quota';
+	| 'over_quota'
+	| 'all_mail';
 
 type TransferResult = {
 	ok: true;
@@ -65,6 +84,18 @@ type TransferResult = {
 	moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }>;
 	/** Messages the target already held, left where they were. */
 	skipped: Id<'mailMessages'>[];
+	/**
+	 * The target is a connected account: the copies are on their way to its
+	 * provider, and a move's sources stay until each has arrived.
+	 */
+	uploading: boolean;
+};
+
+/** A pending copy moved back to where its original still is: the undo of a move into a connected account. */
+type Recall = {
+	copy: Doc<'mailMessages'>;
+	op: Doc<'externalMailRemoteOps'>;
+	original: Doc<'mailMessages'>;
 };
 
 function refuse(reason: TransferRefusal, message: string): never {
@@ -96,14 +127,15 @@ async function resolveTarget(
 	session: MutationSessionContext,
 	access: ReturnType<typeof createMailboxAccessGate>,
 	args: { targetMailboxId: Id<'mailboxes'>; targetFolderId?: Id<'mailFolders'> }
-): Promise<{ mailbox: Doc<'mailboxes'>; folder: Doc<'mailFolders'> }> {
+): Promise<{ mailbox: Doc<'mailboxes'>; folder: Doc<'mailFolders'>; connected: boolean }> {
 	const owned = await access(args.targetMailboxId);
 	if (!owned.ok || !(await isOnCallersRail(ctx, owned.mailbox, session.userId))) {
 		throwForbidden('Mailbox not accessible');
 	}
 	const mailbox = owned.mailbox;
-	if (mailbox.kind === 'external') {
-		refuse('external_target', 'Mail cannot be moved into a connected account yet');
+	const connected = mailbox.kind === 'external';
+	if (connected && !(await liveAccountFor(ctx, mailbox._id))) {
+		refuse('external_target', 'This connected account takes no mail from Owlat');
 	}
 	const folder = args.targetFolderId
 		? await ctx.db.get(args.targetFolderId)
@@ -112,7 +144,7 @@ async function resolveTarget(
 				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailbox._id).eq('role', 'inbox'))
 				.first();
 	if (!folder || folder.mailboxId !== mailbox._id) throwInvalidInput('Folder not in that mailbox');
-	return { mailbox, folder };
+	return { mailbox, folder, connected };
 }
 
 /**
@@ -124,23 +156,25 @@ async function collectSources(
 	ctx: MutationCtx,
 	access: ReturnType<typeof createMailboxAccessGate>,
 	args: { messageIds: Id<'mailMessages'>[]; mode: 'move' | 'copy' },
-	target: Doc<'mailboxes'>
-): Promise<{ sources: Doc<'mailMessages'>[]; skipped: Id<'mailMessages'>[] }> {
+	target: { mailbox: Doc<'mailboxes'>; connected: boolean }
+): Promise<{ sources: Doc<'mailMessages'>[]; skipped: Id<'mailMessages'>[]; recalls: Recall[] }> {
 	const sources: Doc<'mailMessages'>[] = [];
+	const recalls: Recall[] = [];
 	const seen = new Set<Id<'mailMessages'>>();
 	const messageIds = new Set<string>();
 	const skipped: Id<'mailMessages'>[] = [];
+	const allMail = new Map<Id<'mailboxes'>, Set<Id<'mailFolders'>>>();
 	for (const id of args.messageIds) {
 		if (seen.has(id)) continue;
 		seen.add(id);
 		const message = await ctx.db.get(id);
-		if (!message || message.mailboxId === target._id) continue;
+		if (!message || message.mailboxId === target.mailbox._id) continue;
 		const owned = await access(message.mailboxId);
 		if (!owned.ok) continue;
-		if (args.mode === 'move' && owned.mailbox.kind === 'external') {
-			refuse('external_source', 'Mail in a connected account can be copied, not moved, for now');
+		if (target.connected && hasSyntheticMessageId(message)) {
+			refuse('no_message_id', 'This message has no Message-ID a connected account can keep');
 		}
-		if (isSealed(message) && owned.mailbox.address !== target.address) {
+		if (isSealed(message) && owned.mailbox.address !== target.mailbox.address) {
 			refuse('sealed', 'A sealed message can only move to a mailbox that can open it');
 		}
 		// `partial` can still hold queued recipients, whose updates address this row.
@@ -151,17 +185,58 @@ async function collectSources(
 		const duplicate = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
-				q.eq('mailboxId', target._id).eq('rfc822MessageId', message.rfc822MessageId)
+				q.eq('mailboxId', target.mailbox._id).eq('rfc822MessageId', message.rfc822MessageId)
 			)
 			.first();
+		if (duplicate && args.mode === 'move') {
+			const op = await pendingAppendOf(ctx, message);
+			if (op?.append?.sourceMessageId === duplicate._id) {
+				recalls.push({ copy: message, op, original: duplicate });
+				continue;
+			}
+		}
 		if (duplicate || messageIds.has(message.rfc822MessageId)) {
 			skipped.push(id);
 			continue;
 		}
+		if (args.mode === 'move') {
+			if (!allMail.has(message.mailboxId)) {
+				allMail.set(message.mailboxId, await allMailFolderIds(ctx, message.mailboxId));
+			}
+			if (allMail.get(message.mailboxId)!.has(message.folderId)) {
+				refuse('all_mail', 'Gmail keeps archived mail in All Mail, so it cannot be moved out');
+			}
+		}
 		messageIds.add(message.rfc822MessageId);
 		sources.push(message);
 	}
-	return { sources, skipped };
+	return { sources, skipped, recalls };
+}
+
+/**
+ * Undo a move into a connected account whose upload has not settled: the
+ * original never left, so it stays, and the copy goes. The upload may already
+ * be in flight, so it is left to run and the copy's delete is queued behind
+ * it; only the purge of the original it would have done is taken back.
+ */
+async function recall(
+	ctx: MutationCtx,
+	recalls: Recall[],
+	remote: RemoteChange[]
+): Promise<TransferResult['moved']> {
+	const purged: PurgedMessages = new Map();
+	const threads = new Set<Id<'mailThreads'>>();
+	for (const { copy, op } of recalls) {
+		await ctx.db.patch(op._id, { append: { ...op.append!, isRecalled: true } });
+		threads.add(await purgeMessageRow(ctx, copy, purged));
+		remote.push({ kind: 'delete', message: copy });
+	}
+	await purgeThreadBriefsOf(ctx, purged);
+	for (const threadId of threads) await rebuildThreadAggregates(ctx, threadId);
+	return recalls.map(({ copy, original }) => ({
+		messageId: original._id,
+		sourceFolderId: copy.folderId,
+	}));
 }
 
 /** Move or copy messages into another mailbox (its Inbox unless a folder is named). */
@@ -179,9 +254,17 @@ export const transfer = postboxMutation({
 			throwInvalidInput(`At most ${MAX_MESSAGES_PER_TRANSFER} messages per call`);
 		}
 		const access = createMailboxAccessGate(ctx, session);
-		const { mailbox, folder } = await resolveTarget(ctx, session, access, args);
-		const { sources, skipped } = await collectSources(ctx, access, args, mailbox);
-		if (sources.length === 0) return { ok: true, moved: [], skipped };
+		const { mailbox, folder, connected } = await resolveTarget(ctx, session, access, args);
+		const { sources, skipped, recalls } = await collectSources(ctx, access, args, {
+			mailbox,
+			connected,
+		});
+		const remote: RemoteChange[] = [];
+		const recalled = await recall(ctx, recalls, remote);
+		if (sources.length === 0) {
+			await recordRemoteChanges(ctx, remote);
+			return { ok: true, moved: recalled, skipped, uploading: connected };
+		}
 
 		const bytes = sources.reduce((sum, m) => sum + m.rawSize, 0);
 		if (isOverQuota(await withMailboxUsage(ctx.db, mailbox), bytes)) {
@@ -191,7 +274,7 @@ export const transfer = postboxMutation({
 		const now = Date.now();
 		const labelMap: LabelMap = new Map();
 		const targetThreads = new Set<Id<'mailThreads'>>();
-		const moved: TransferResult['moved'] = [];
+		const moved: TransferResult['moved'] = [...recalled];
 		let uid = folder.uidNext;
 		let modseq = folder.highestModseq + 1;
 		let unseen = 0;
@@ -206,6 +289,14 @@ export const transfer = postboxMutation({
 			if (!message.flagSeen) unseen++;
 			targetThreads.add(copy.threadId);
 			moved.push({ messageId: copy.messageId, sourceFolderId: message.folderId });
+			const written = connected ? await ctx.db.get(copy.messageId) : null;
+			if (written) {
+				remote.push({
+					kind: 'append',
+					message: written,
+					...(args.mode === 'move' ? { sourceMessageId: message._id } : {}),
+				});
+			}
 		}
 		await ctx.db.patch(folder._id, {
 			uidNext: uid,
@@ -216,14 +307,20 @@ export const transfer = postboxMutation({
 		});
 		for (const threadId of targetThreads) await rebuildThreadAggregates(ctx, threadId);
 
-		// Only now, with every copy written, does a move delete its sources.
-		if (args.mode === 'move') {
+		// Only now, with every copy written, does a move delete its sources; into
+		// a connected account, only once each upload has landed.
+		if (args.mode === 'move' && !connected) {
 			const purged: PurgedMessages = new Map();
 			const sourceThreads = new Set<Id<'mailThreads'>>();
-			for (const message of sources) sourceThreads.add(await purgeMessageRow(ctx, message, purged));
+			for (const message of sources) {
+				sourceThreads.add(await purgeMessageRow(ctx, message, purged));
+				// A no-op for a hosted mailbox; a connected one deletes the provider's copy.
+				remote.push({ kind: 'delete', message });
+			}
 			await purgeThreadBriefsOf(ctx, purged);
 			for (const threadId of sourceThreads) await rebuildThreadAggregates(ctx, threadId);
 		}
+		await recordRemoteChanges(ctx, remote);
 
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: mailbox._id,
@@ -236,6 +333,6 @@ export const transfer = postboxMutation({
 			}),
 			occurredAt: now,
 		});
-		return { ok: true, moved, skipped };
+		return { ok: true, moved, skipped, uploading: connected };
 	},
 });

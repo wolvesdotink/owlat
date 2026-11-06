@@ -365,6 +365,27 @@ export const interpretEligibilitySignalsValidator = v.object({
 	category: v.optional(v.string()),
 });
 
+// ── Withdrawals ────────────────────────────────────────────────────────────
+
+/**
+ * `threadItems.withdrawal`: the item's only support was a read its message
+ * may no longer be read for (a signature that covers less of it,
+ * `mail/interpret/scopeReconcile.ts`). The item stays, with what people set
+ * on it, but no machine consumer uses it until a read of the message under its
+ * new scope restates every field the machine reads. What it was trusted as
+ * before is kept here, apart from the live fields.
+ */
+export const itemWithdrawalValidator = v.object({
+	at: v.number(),
+	// The message whose read was withdrawn (its `mail:` and `outboundMail:` sources).
+	messageId: v.id('mailMessages'),
+	// The item's `verify` before; the item reads `proposal` meanwhile.
+	verify: itemVerifyValidator,
+	// The person's `confirmed` correction before, moved off the item.
+	confirmation: v.optional(itemCorrectionValidator),
+	isReviewNeeded: v.optional(v.boolean()),
+});
+
 // ── Confirmations ──────────────────────────────────────────────────────────
 
 /**

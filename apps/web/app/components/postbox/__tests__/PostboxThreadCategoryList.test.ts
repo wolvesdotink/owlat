@@ -148,4 +148,17 @@ describe('PostboxThreadCategoryList', () => {
 		const w = mountCategories();
 		expect(w.findAll('button[aria-label="Recategorize as…"]')).toHaveLength(4);
 	});
+
+	it('offers mark-read on a section header with unread mail, and says which category', async () => {
+		const w = mountCategories();
+		const headers = w.findAll('li.sticky');
+		const button = headers[0]!.get('[data-testid="section-mark-read"]');
+		expect(button.attributes('aria-label')).toBe('Mark People as read');
+		expect(headers[1]!.find('[data-testid="section-mark-read"]').exists()).toBe(false);
+
+		await button.trigger('click');
+
+		expect(w.emitted('mark-read')).toEqual([['person']]);
+		expect(w.emitted('toggle')).toBeUndefined();
+	});
 });

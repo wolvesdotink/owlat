@@ -1,13 +1,15 @@
 /**
- * All inboxes (`mail.mailbox.allInboxes.listMessages`): the Inbox folders of
- * every mailbox the caller reads, merged newest first and paged like one
- * folder.
+ * All inboxes and the unified folders (`mail.mailbox.allInboxes`): one system
+ * folder of every mailbox the caller reads, merged newest first and paged like
+ * one folder, and the live drafts of those mailboxes.
  *
  * What it must get right: the order across mailboxes, a cursor walk that
  * neither skips nor repeats a message (also inside a run of messages that tie
  * on both timestamps), the access boundary (own mailboxes and team-inbox
  * memberships only, even for an org owner who could open any mailbox), a
- * folder id that is not the named mailbox's, and snoozed mail.
+ * folder id that is not the named mailbox's, snoozed mail, and the role folder
+ * ids and provider that `queries.accessible` hands the client to ask with.
+ * All trash's Delete forever leaves alone a message that is not in a Trash.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -36,6 +38,41 @@ type Source = { mailboxId: Id<'mailboxes'>; folderId: Id<'mailFolders'> };
 async function seedInbox(t: T, seed: Parameters<typeof seedMailbox>[1] = {}): Promise<Source> {
 	const mailboxId = await seedMailbox(t, seed);
 	return { mailboxId, folderId: await seedFolder(t, mailboxId) };
+}
+
+async function joinTeamInbox(t: T, mailboxId: Id<'mailboxes'>) {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('mailboxMembers', {
+			mailboxId,
+			authUserId: 'user-A',
+			role: 'member',
+			addedBy: 'user-B',
+			createdAt: Date.now(),
+		});
+	});
+}
+
+async function seedDraft(
+	t: T,
+	mailboxId: Id<'mailboxes'>,
+	seed: { subject: string; lastEditedAt: number; obsoleted?: boolean }
+) {
+	await t.run((ctx) =>
+		ctx.db.insert('mailDrafts', {
+			mailboxId,
+			toAddresses: ['ines@example.com'],
+			ccAddresses: [],
+			bccAddresses: [],
+			fromAddress: 'a@owlat.test',
+			subject: seed.subject,
+			bodyHtml: '<p>hi</p>',
+			attachments: [],
+			state: 'draft',
+			lastEditedAt: seed.lastEditedAt,
+			createdAt: seed.lastEditedAt,
+			...(seed.obsoleted ? { obsoleted: { at: seed.lastEditedAt, byMessageIds: [] } } : {}),
+		})
+	);
 }
 
 function list(t: T, sources: Source[], extra: { limit?: number; cursor?: string } = {}) {
@@ -162,5 +199,190 @@ describe('mail.mailbox.allInboxes.listMessages', () => {
 		const page = await list(t, [home]);
 
 		expect(page.messages.map((m) => m.subject)).toEqual(['visible']);
+	});
+
+	it('merges the Sent folders of two mailboxes, and the Trash folders, without crossing into the Inbox', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		const work = await seedInbox(t, { address: 'me.work@owlat.test' });
+		const sent = {
+			home: { mailboxId: home.mailboxId, folderId: await seedFolder(t, home.mailboxId, 'sent') },
+			work: { mailboxId: work.mailboxId, folderId: await seedFolder(t, work.mailboxId, 'sent') },
+		};
+		const trash = {
+			home: { mailboxId: home.mailboxId, folderId: await seedFolder(t, home.mailboxId, 'trash') },
+			work: { mailboxId: work.mailboxId, folderId: await seedFolder(t, work.mailboxId, 'trash') },
+		};
+		await seedMessage(t, home.mailboxId, {
+			subject: 'sent home',
+			role: 'sent',
+			receivedAt: now - 3000,
+		});
+		await seedMessage(t, work.mailboxId, {
+			subject: 'sent work',
+			role: 'sent',
+			receivedAt: now - 1000,
+		});
+		await seedMessage(t, work.mailboxId, {
+			subject: 'binned work',
+			role: 'trash',
+			receivedAt: now - 500,
+		});
+		await seedMessage(t, home.mailboxId, {
+			subject: 'binned home',
+			role: 'trash',
+			receivedAt: now - 200,
+		});
+		await seedMessage(t, home.mailboxId, { subject: 'inbox', receivedAt: now });
+
+		const sentPage = await list(t, [sent.home, sent.work]);
+		const trashPage = await list(t, [trash.home, trash.work], { limit: 1 });
+		const trashRest = await list(t, [trash.home, trash.work], {
+			limit: 1,
+			cursor: trashPage.nextCursor ?? undefined,
+		});
+
+		expect(sentPage.messages.map((m) => [m.subject, m.mailboxId])).toEqual([
+			['sent work', work.mailboxId],
+			['sent home', home.mailboxId],
+		]);
+		expect(trashPage.messages.map((m) => m.subject)).toEqual(['binned home']);
+		expect(trashPage.hasMore).toBe(true);
+		expect(trashRest.messages.map((m) => m.subject)).toEqual(['binned work']);
+	});
+
+	it("reads nothing from another mailbox's Sent folder named under the caller's mailbox", async () => {
+		const t = convexTest(schema, modules);
+		const mine = await seedInbox(t, { address: 'me@owlat.test' });
+		await seedFolder(t, mine.mailboxId, 'sent');
+		const colleague = await seedInbox(t, { userId: 'user-B', address: 'b@owlat.test' });
+		const colleagueSent = await seedFolder(t, colleague.mailboxId, 'sent');
+		await seedMessage(t, colleague.mailboxId, { subject: 'private', role: 'sent' });
+
+		const page = await list(t, [{ mailboxId: mine.mailboxId, folderId: colleagueSent }]);
+
+		expect(page).toEqual({ messages: [], hasMore: false, nextCursor: null });
+	});
+});
+
+describe('mail.mailbox.allInboxes.listDrafts', () => {
+	it('merges the live drafts of the mailboxes the caller reads, last edited first', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const mine = await seedInbox(t, { address: 'me@owlat.test' });
+		const colleague = await seedInbox(t, { userId: 'user-B', address: 'b@owlat.test' });
+		const team = await seedInbox(t, {
+			userId: 'user-B',
+			address: 'support@owlat.test',
+			scope: 'shared',
+		});
+		await joinTeamInbox(t, team.mailboxId);
+		await seedDraft(t, mine.mailboxId, { subject: 'mine old', lastEditedAt: now - 3000 });
+		await seedDraft(t, team.mailboxId, { subject: 'team', lastEditedAt: now - 2000 });
+		await seedDraft(t, mine.mailboxId, { subject: 'mine new', lastEditedAt: now - 1000 });
+		await seedDraft(t, mine.mailboxId, { subject: 'answered', lastEditedAt: now, obsoleted: true });
+		await seedDraft(t, colleague.mailboxId, { subject: 'private', lastEditedAt: now });
+
+		const drafts = await t.query(api.mail.mailbox.allInboxes.listDrafts, {
+			mailboxIds: [mine.mailboxId, colleague.mailboxId, team.mailboxId],
+		});
+
+		expect(drafts.map((d) => [d.subject, d.mailboxId])).toEqual([
+			['mine new', mine.mailboxId],
+			['team', team.mailboxId],
+			['mine old', mine.mailboxId],
+		]);
+	});
+
+	it('keeps every mailbox its own bound, so two mailboxes of 60 drafts list all 120', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		const work = await seedInbox(t, { address: 'me.work@owlat.test' });
+		for (let i = 0; i < 60; i++) {
+			await seedDraft(t, home.mailboxId, { subject: `home ${i}`, lastEditedAt: now - 2 * i });
+			await seedDraft(t, work.mailboxId, { subject: `work ${i}`, lastEditedAt: now - 2 * i - 1 });
+		}
+
+		const drafts = await t.query(api.mail.mailbox.allInboxes.listDrafts, {
+			mailboxIds: [home.mailboxId, work.mailboxId],
+		});
+
+		expect(drafts).toHaveLength(120);
+		expect(drafts.slice(0, 3).map((d) => d.subject)).toEqual(['home 0', 'work 0', 'home 1']);
+		expect(drafts[drafts.length - 1]?.subject).toBe('work 59');
+	});
+});
+
+describe('mail.messageActions.purge from Trash', () => {
+	it('deletes only the messages that sit in a Trash folder when asked for Trash only', async () => {
+		const t = convexTest(schema, modules);
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		const work = await seedInbox(t, { address: 'me.work@owlat.test' });
+		await seedFolder(t, work.mailboxId, 'trash');
+		const kept = await seedMessage(t, home.mailboxId, { subject: 'still in the inbox' });
+		const binned = await seedMessage(t, work.mailboxId, { subject: 'binned', role: 'trash' });
+
+		await t.mutation(api.mail.messageActions.purge, {
+			messageIds: [kept, binned],
+			onlyFromTrash: true,
+		});
+
+		const [keptRow, binnedRow] = await t.run(
+			async (ctx) => [await ctx.db.get(kept), await ctx.db.get(binned)] as const
+		);
+		expect(keptRow?.subject).toBe('still in the inbox');
+		expect(binnedRow).toBeNull();
+	});
+});
+
+describe('mail.mailbox.queries.accessible', () => {
+	it('names each role folder and the provider a mailbox is reached through', async () => {
+		const t = convexTest(schema, modules);
+		const hosted = await seedInbox(t, { address: 'me@owlat.test' });
+		const hostedSent = await seedFolder(t, hosted.mailboxId, 'sent');
+		const connected = await seedInbox(t, { address: 'me@gmail.example', kind: 'external' });
+		const connectedTrash = await seedFolder(t, connected.mailboxId, 'trash');
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				mailboxId: connected.mailboxId,
+				imapHost: 'IMAP.Gmail.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.gmail.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password' as const,
+				imapUsername: 'me@gmail.example',
+				status: 'connected' as const,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(connected.mailboxId, { externalAccountId: accountId });
+		});
+
+		const rows = await t.query(api.mail.mailbox.queries.accessible, {});
+		const byId = new Map(rows.map((row) => [row.mailboxId, row]));
+
+		expect(byId.get(hosted.mailboxId)).toMatchObject({
+			providerHost: null,
+			folderIds: {
+				inbox: hosted.folderId,
+				sent: hostedSent,
+				drafts: null,
+				archive: null,
+				spam: null,
+				trash: null,
+			},
+		});
+		expect(byId.get(connected.mailboxId)).toMatchObject({
+			isConnected: true,
+			providerHost: 'imap.gmail.example',
+			folderIds: { inbox: connected.folderId, sent: null, trash: connectedTrash },
+		});
 	});
 });

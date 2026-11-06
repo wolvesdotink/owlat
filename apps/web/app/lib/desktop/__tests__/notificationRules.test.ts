@@ -334,6 +334,17 @@ describe('notificationParts', () => {
 		});
 	});
 
+	it('offers Copy code for a sign-in code with previews hidden, and never says the code', () => {
+		const code = {
+			kind: 'single',
+			message: msg({ messageId: 'a', subject: '482913 is your code', hasSignInCode: true }),
+		} as const;
+		const parts = notificationParts(code, true);
+		expect(parts).toMatchObject({ messageId: 'a', hasSignInCode: true });
+		expect(JSON.stringify(parts)).not.toContain('482913');
+		expect(notificationParts(single).hasSignInCode).toBeUndefined();
+	});
+
 	it('drops the sender from a group body when previews are hidden', () => {
 		const group = {
 			kind: 'group',

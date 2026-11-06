@@ -65,7 +65,15 @@ function mountRow(
 
 /** Pick every loaded row, the way the header checkbox does. */
 function selectWholePage(ids = ['a', 'b', 'c']) {
-	stateBuckets.get('postbox:bulk:mbx').value = new Set(ids);
+	const buckets = stateBuckets.get('postbox:bulk');
+	buckets.value = {
+		...buckets.value,
+		mbx: {
+			selected: new Set(ids),
+			anchorId: null,
+			selectAllMatching: { active: false, capped: false },
+		},
+	};
 }
 
 const hatchOf = (w: ReturnType<typeof mountRow>) =>
