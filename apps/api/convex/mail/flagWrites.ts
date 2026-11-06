@@ -15,6 +15,7 @@
 
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { applyReceiptReplyPolicy } from './readReceipts';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import {
 	applyThreadFlagDelta,
@@ -137,13 +138,18 @@ export const MARK_THREAD_READ_BATCH = 200;
  * batches of a long thread stays unread, and the thread count is healed
  * outright only when no such newer row disagrees. The first batch runs in the
  * user's own transaction and needs none.
+ *
+ * `reader` is the person whose reader marked the thread read: they opened
+ * these messages, so their read-receipt setting answers the requests among
+ * them (mail/readReceipts.ts).
  */
 export async function markThreadSeenBatch(
 	ctx: MutationCtx,
 	threadId: Id<'mailThreads'>,
 	seen: boolean,
-	ceiling?: number
+	options: { ceiling?: number; reader?: { userId: string } } = {}
 ): Promise<{ more: boolean }> {
+	const { ceiling, reader } = options;
 	const flips = await ctx.db
 		.query('mailMessages')
 		.withIndex('by_thread_and_seen', (q) => {
@@ -178,6 +184,7 @@ export async function markThreadSeenBatch(
 				.first()) === null);
 	await applyThreadFlagDelta(ctx, threadId, delta, settled ? { allSeen: seen } : undefined);
 	await recordRemoteChanges(ctx, remote);
+	if (seen && reader) await applyReceiptReplyPolicy(ctx, reader.userId, flips);
 	return { more };
 }
 

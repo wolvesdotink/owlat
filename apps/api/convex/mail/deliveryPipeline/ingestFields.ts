@@ -64,6 +64,9 @@ export const mailboxDeliveryFields = {
 	unsubscribe: v.optional(mailUnsubscribeValidator),
 	// The message is a read receipt (RFC 8098), parsed by the ingest action.
 	readReceipt: v.optional(inboundReadReceiptValidator),
+	// Where the sender asked a read receipt to go, already checked against the
+	// Return-Path by the ingest action (mail/readReceipts.ts).
+	receiptRequestTo: v.optional(v.string()),
 	recipientAddress: v.string(),
 	// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
 	// sender. Passed to the post-delivery hook so vacation auto-replies skip

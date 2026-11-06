@@ -66,7 +66,11 @@ export interface MtaSendRequest {
 	subject: string;
 	html: string;
 	text?: string;
-	/** Postbox-only complete PGP/MIME bytes, base64-encoded. */
+	/**
+	 * Postbox-only finished message bytes, base64-encoded, shipped verbatim: a
+	 * Sealed Mail PGP/MIME message or an RFC 8098 read receipt
+	 * (`multipart/report`), the two shapes the intake authorizes.
+	 */
 	sealedMimeBase64?: string;
 	/**
 	 * System-intake only: small files the message carries. `/send` and

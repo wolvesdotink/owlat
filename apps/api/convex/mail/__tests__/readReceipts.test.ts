@@ -8,11 +8,33 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { DatabaseWriter } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
+import { enableFeatures } from '../../__tests__/factories';
 import { foldReturnedReceipt, requestedReadReceipt } from '../readReceipts';
+
+const sessionMock = vi.hoisted(() => ({ userId: 'test-user', role: 'owner' as const }));
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	return {
+		...actual,
+		requireOrgMember: vi.fn(async () => ({ userId: sessionMock.userId, role: sessionMock.role })),
+		getMutationContext: vi.fn(async () => ({
+			userId: sessionMock.userId,
+			role: sessionMock.role,
+			activeOrganizationId: 'test-org',
+		})),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getBetterAuthSessionWithRole: vi.fn(async () => ({
+			userId: sessionMock.userId,
+			role: sessionMock.role,
+			activeOrganizationId: 'test-org',
+		})),
+	};
+});
 
 const SENT_ID = 'm1.abc@example.com';
 
@@ -137,18 +159,24 @@ async function setup(opts: { isRequested: boolean }) {
 	return { t, ...ids };
 }
 
-function ingest(t: ReturnType<typeof convexTest>, from: string, raw: string) {
+function ingest(
+	t: ReturnType<typeof convexTest>,
+	from: string,
+	raw: string,
+	envelope: { returnPath?: string; messageId?: string } = {}
+) {
 	return t.action(internal.mail.delivery.ingestFromWebhook, {
 		deliveryId: 'd1',
 		rawBytesBase64: Buffer.from(raw).toString('base64'),
 		recipientAddress: 'me@example.com',
+		...(envelope.returnPath !== undefined ? { returnPath: envelope.returnPath } : {}),
 		from,
 		to: ['me@example.com'],
 		cc: [],
 		bcc: [],
 		subject: 'Read: Quarterly numbers',
 		textBody: 'This is a receipt for the mail you sent.',
-		messageId: '<rcpt-1@example.org>',
+		messageId: envelope.messageId ?? '<rcpt-1@example.org>',
 		date: Date.UTC(2026, 10, 3, 9, 12),
 		attachments: [],
 	});
@@ -267,5 +295,261 @@ describe('foldReturnedReceipt', () => {
 		expect(
 			foldReturnedReceipt(message, { ...displayed, disposition: 'processed' }, 'ben@example.org', 1)
 		).toBeNull();
+	});
+});
+
+/** Ordinary mail from Ben that asks for a read receipt. */
+function requestEml(opts: { dispositionNotificationTo: string; returnPath?: string }): string {
+	return [
+		...(opts.returnPath ? [`Return-Path: <${opts.returnPath}>`] : []),
+		'From: Ben <ben@example.org>',
+		'To: me@example.com',
+		'Subject: Did you get the numbers?',
+		'Message-ID: <ask-1@example.org>',
+		`Disposition-Notification-To: ${opts.dispositionNotificationTo}`,
+		'MIME-Version: 1.0',
+		'Content-Type: text/plain; charset=utf-8',
+		'',
+		'Let me know when you have read them.',
+		'',
+	].join('\r\n');
+}
+
+async function inboxMessage(t: ReturnType<typeof convexTest>, inboxId: Id<'mailFolders'>) {
+	return t.run(
+		async (ctx) =>
+			(await ctx.db
+				.query('mailMessages')
+				.filter((q) => q.eq(q.field('folderId'), inboxId))
+				.first())!
+	);
+}
+
+/** The receipt sends the scheduler holds, the one way an MDN leaves. */
+async function queuedReceipts(t: ReturnType<typeof convexTest>) {
+	return t.run(async (ctx) =>
+		(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+			job.name.includes('readReceiptsSend')
+		)
+	);
+}
+
+describe('ingestFromWebhook — read receipt requests', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(Date.UTC(2026, 10, 3, 10, 0));
+	});
+	afterEach(() => vi.useRealTimers());
+
+	it('stores a request that names the envelope sender', async () => {
+		const { t, inboxId } = await setup({ isRequested: false });
+
+		await ingest(
+			t,
+			'Ben <ben@example.org>',
+			requestEml({ dispositionNotificationTo: 'Ben <Ben@example.org>' }),
+			{ returnPath: 'ben@example.org', messageId: '<ask-1@example.org>' }
+		);
+
+		expect((await inboxMessage(t, inboxId)).receiptRequest).toEqual({
+			address: 'ben@example.org',
+			requestedAt: Date.UTC(2026, 10, 3, 9, 12),
+		});
+	});
+
+	it('ignores a request that names another address than the Return-Path', async () => {
+		const { t, inboxId } = await setup({ isRequested: false });
+
+		await ingest(
+			t,
+			'Ben <ben@example.org>',
+			requestEml({ dispositionNotificationTo: 'tracker@elsewhere.example' }),
+			{ returnPath: 'ben@example.org', messageId: '<ask-1@example.org>' }
+		);
+
+		const message = await inboxMessage(t, inboxId);
+		expect(message).toBeDefined();
+		expect(message.receiptRequest).toBeUndefined();
+	});
+});
+
+/** A mailbox (owned by the session user) with one unread message asking for a receipt. */
+async function setupRequest(opts: { contact?: boolean } = {}) {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	await enableFeatures(t, ['postbox']);
+	const ids = await t.run(async (ctx) => {
+		const now = Date.now();
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'test-user',
+			organizationId: 'test-org',
+			address: 'me@example.com',
+			domain: 'example.com',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const inboxId = await insertFolder(ctx, mailboxId, 'inbox');
+		const threadId = await ctx.db.insert('mailThreads', {
+			mailboxId,
+			normalizedSubject: 'did you get the numbers?',
+			participants: ['ben@example.org', 'me@example.com'],
+			messageCount: 1,
+			unreadCount: 1,
+			hasFlagged: false,
+			hasAttachments: false,
+			lastMessageAt: now,
+			firstMessageAt: now,
+			latestSnippet: 'Let me know',
+			latestFromAddress: 'ben@example.org',
+			latestSubject: 'Did you get the numbers?',
+			folderRoles: ['inbox'],
+			labelIds: [],
+			createdAt: now,
+			updatedAt: now,
+		});
+		const messageId = await ctx.db.insert('mailMessages', {
+			mailboxId,
+			folderId: inboxId,
+			uid: 1,
+			modseq: 1,
+			rfc822MessageId: 'ask-1@example.org',
+			threadId,
+			fromAddress: 'ben@example.org',
+			toAddresses: ['me@example.com'],
+			ccAddresses: [],
+			bccAddresses: [],
+			subject: 'Did you get the numbers?',
+			normalizedSubject: 'did you get the numbers?',
+			snippet: 'Let me know',
+			rawStorageId: await ctx.storage.store(new Blob(['raw'])),
+			rawSize: 3,
+			attachments: [],
+			hasAttachments: false,
+			flagSeen: false,
+			flagFlagged: false,
+			flagAnswered: false,
+			flagDraft: false,
+			flagDeleted: false,
+			customFlags: [],
+			labelIds: [],
+			receivedAt: now,
+			internalDate: now,
+			receiptRequest: { address: 'ben@example.org', requestedAt: now },
+			createdAt: now,
+			updatedAt: now,
+		});
+		if (opts.contact) {
+			await ctx.db.insert('mailContacts', {
+				mailboxId,
+				email: 'ben@example.org',
+				useCount: 1,
+				lastUsedAt: now,
+				createdAt: now,
+			});
+		}
+		return { mailboxId, threadId, messageId };
+	});
+	return { t, ...ids };
+}
+
+async function setReceiptReply(
+	t: ReturnType<typeof convexTest>,
+	reply: 'ask' | 'never' | 'contacts'
+) {
+	await t.mutation(api.mail.settings.update, { readReceiptReply: reply });
+}
+
+describe('respondToReceiptRequest', () => {
+	it('queues exactly one receipt however often Send is pressed', async () => {
+		const { t, messageId } = await setupRequest();
+
+		await t.mutation(api.mail.readReceipts.respondToReceiptRequest, { messageId, answer: 'send' });
+		await t.mutation(api.mail.readReceipts.respondToReceiptRequest, { messageId, answer: 'send' });
+		await t.mutation(api.mail.readReceipts.respondToReceiptRequest, {
+			messageId,
+			answer: 'decline',
+		});
+
+		expect(await queuedReceipts(t)).toHaveLength(1);
+		const message = await t.run((ctx) => ctx.db.get(messageId));
+		expect(message?.receiptRequest).toMatchObject({ answer: 'sent', isAutomatic: false });
+	});
+
+	it('can still send a receipt that was declined', async () => {
+		const { t, messageId } = await setupRequest();
+
+		await t.mutation(api.mail.readReceipts.respondToReceiptRequest, {
+			messageId,
+			answer: 'decline',
+		});
+		expect(await queuedReceipts(t)).toHaveLength(0);
+		await t.mutation(api.mail.readReceipts.respondToReceiptRequest, { messageId, answer: 'send' });
+
+		expect(await queuedReceipts(t)).toHaveLength(1);
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.receiptRequest?.answer).toBe('sent');
+	});
+});
+
+describe('the read-receipt setting on first read', () => {
+	it("'never' answers the request without sending anything", async () => {
+		const { t, threadId, messageId } = await setupRequest({ contact: true });
+		await setReceiptReply(t, 'never');
+
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: true });
+
+		expect(await queuedReceipts(t)).toHaveLength(0);
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.receiptRequest?.answer).toBe('declined');
+	});
+
+	it("'contacts' sends one automatically to a contact", async () => {
+		const { t, threadId, messageId } = await setupRequest({ contact: true });
+		await setReceiptReply(t, 'contacts');
+
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: true });
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: false });
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: true });
+
+		expect(await queuedReceipts(t)).toHaveLength(1);
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.receiptRequest).toMatchObject({
+			answer: 'sent',
+			isAutomatic: true,
+		});
+	});
+
+	it("'contacts' leaves the question to the reader for anyone else", async () => {
+		const { t, threadId, messageId } = await setupRequest();
+		await setReceiptReply(t, 'contacts');
+
+		await t.mutation(api.mail.messageActions.markThreadRead, { threadId, seen: true });
+
+		expect(await queuedReceipts(t)).toHaveLength(0);
+		expect((await t.run((ctx) => ctx.db.get(messageId)))?.receiptRequest?.answer).toBeUndefined();
+	});
+});
+
+describe('the per-address read-receipt default', () => {
+	it('starts a new draft from that address asking for a receipt', async () => {
+		const { t, mailboxId } = await setupRequest();
+		await t.mutation(api.mail.settings.update, {
+			readReceiptRequestAddresses: ['Me@Example.com'],
+		});
+
+		const { draftId } = await t.mutation(api.mail.drafts.create, { mailboxId });
+
+		expect((await t.run((ctx) => ctx.db.get(draftId)))?.isReadReceiptRequested).toBe(true);
+	});
+
+	it('leaves drafts from other addresses without one', async () => {
+		const { t, mailboxId } = await setupRequest();
+		await t.mutation(api.mail.settings.update, {
+			readReceiptRequestAddresses: ['alias@example.com'],
+		});
+
+		const { draftId } = await t.mutation(api.mail.drafts.create, { mailboxId });
+
+		expect((await t.run((ctx) => ctx.db.get(draftId)))?.isReadReceiptRequested).toBeUndefined();
 	});
 });

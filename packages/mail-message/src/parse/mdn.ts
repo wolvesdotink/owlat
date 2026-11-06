@@ -15,6 +15,7 @@
 
 import { parseContentType, parseHeaders, type MessageHeaders } from './headers';
 import { parseMimeTree, transferDecode, walkLeaves } from './body';
+import { parseAddressList } from './address';
 
 /**
  * The disposition types RFC 8098 §3.2.6.2 defines. `dispatched` and
@@ -109,4 +110,18 @@ export function parseDispositionNotification(raw: string): DispositionNotificati
 		notification = readFields(parseHeaders(new TextDecoder().decode(bytes)));
 	});
 	return notification;
+}
+
+/**
+ * The address a `Disposition-Notification-To` header value asks the receipt to
+ * be sent to, lowercased. `undefined` unless the value names exactly one
+ * mailbox: RFC 8098 §2.1 lets a request name several, and a receipt for more
+ * than one address is never sent without asking, so it is not kept at all.
+ */
+export function readDispositionNotificationTo(value: string | undefined): string | undefined {
+	if (!value) return undefined;
+	const mailboxes = parseAddressList(value);
+	const only = mailboxes.length === 1 ? mailboxes[0] : undefined;
+	if (!only || only.group || !only.address.includes('@')) return undefined;
+	return only.address;
 }

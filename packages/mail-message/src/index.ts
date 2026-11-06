@@ -67,6 +67,7 @@ export { parseMessage, type ParsedMessage, type ParsedHeaderValue } from './pars
 export {
 	isDispositionNotificationReport,
 	parseDispositionNotification,
+	readDispositionNotificationTo,
 	type DispositionNotification,
 	type DispositionType,
 } from './parse/mdn';
@@ -88,6 +89,7 @@ export {
 	type ComposeMessageInput,
 	type ComposedMessage,
 } from './compose/compose';
+export { buildDispositionNotification, type DispositionNotificationInput } from './compose/mdn';
 export {
 	SIGNED_HEADERS,
 	signMessage,

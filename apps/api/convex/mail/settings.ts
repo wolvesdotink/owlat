@@ -22,6 +22,9 @@ import { postboxMutation } from './_helpers';
 import {
 	mailAfterReplyValidator,
 	mailAutoAdvanceValidator,
+	mailReadReceiptReplyValidator,
+	mailReadReceiptRequestAddressesValidator,
+	MAX_READ_RECEIPT_REQUEST_ADDRESSES,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
 	mailUnreadStyleValidator,
@@ -64,6 +67,8 @@ export const get = publicQuery({
 			isCodeAutoArchiveOn: row.isCodeAutoArchiveOn,
 			replyDefault: row.replyDefault,
 			afterReply: row.afterReply,
+			readReceiptReply: row.readReceiptReply,
+			readReceiptRequestAddresses: row.readReceiptRequestAddresses,
 			density: row.density,
 			unreadStyle: row.unreadStyle,
 			viewMode: row.viewMode,
@@ -111,6 +116,9 @@ export const update = postboxMutation({
 		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		afterReply: v.optional(mailAfterReplyValidator),
+		readReceiptReply: v.optional(mailReadReceiptReplyValidator),
+		// The whole set, replacing the stored one.
+		readReceiptRequestAddresses: v.optional(mailReadReceiptRequestAddressesValidator),
 		density: v.optional(mailDensityValidator),
 		unreadStyle: v.optional(mailUnreadStyleValidator),
 		viewMode: v.optional(mailViewModeValidator),
@@ -159,6 +167,8 @@ export const update = postboxMutation({
 			isCodeAutoArchiveOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
 			afterReply?: (typeof args)['afterReply'];
+			readReceiptReply?: (typeof args)['readReceiptReply'];
+			readReceiptRequestAddresses?: string[];
 			density?: (typeof args)['density'];
 			unreadStyle?: (typeof args)['unreadStyle'];
 			viewMode?: (typeof args)['viewMode'];
@@ -195,6 +205,15 @@ export const update = postboxMutation({
 			patch.isCodeAutoArchiveOn = args.isCodeAutoArchiveOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.afterReply !== undefined) patch.afterReply = args.afterReply;
+		if (args.readReceiptReply !== undefined) patch.readReceiptReply = args.readReceiptReply;
+		if (args.readReceiptRequestAddresses !== undefined) {
+			// Compared against a draft's lowercased From address, so stored the same way.
+			patch.readReceiptRequestAddresses = [
+				...new Set(args.readReceiptRequestAddresses.map((a) => a.trim().toLowerCase())),
+			]
+				.filter((a) => a.includes('@'))
+				.slice(0, MAX_READ_RECEIPT_REQUEST_ADDRESSES);
+		}
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.unreadStyle !== undefined) patch.unreadStyle = args.unreadStyle;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;

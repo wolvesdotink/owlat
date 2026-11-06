@@ -43,6 +43,7 @@ import { deliveredEnvelopeFields, storedBodyFields } from '../deliveryPipeline/i
 import { extractAntiLoopHeaders } from '../../lib/inboundClassification';
 import { buildSearchBody } from '../searchBody';
 import { splitBodyForStorage } from '../deliveryPipeline/ingest';
+import { receiptRequestAddress } from '../readReceipts';
 import { base64ToBytes } from '../../lib/bytes';
 import { extractListUnsubscribe } from '@owlat/shared/listUnsubscribe';
 import { folderRoleValidator } from '../../lib/validators/mail';
@@ -99,6 +100,9 @@ export const ingestExternalMessage = internalMutation({
 		// suppress bulk + machine-generated mail in the classifiers; none of it is
 		// persisted on the message row.
 		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
+		// Where the sender asked a read receipt to go, checked against the
+		// message's Return-Path by ingestExternalRaw (mail/readReceipts.ts).
+		receiptRequestTo: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ExternalIngestOutcome> => {
 		const dropBlob = async () =>
@@ -167,6 +171,9 @@ export const ingestExternalMessage = internalMutation({
 			flagFlagged: args.flagFlagged,
 			flagDraft: args.flagDraft,
 			unsubscribe: args.unsubscribe,
+			// Only new mail nobody has read yet: on a backfill, or on a message
+			// already read in another client, the request is long settled.
+			receiptRequestTo: origin === 'sync' && !args.flagSeen ? args.receiptRequestTo : undefined,
 			// The provider holds it here: the evidence a later reconcile needs to
 			// call it deleted there, even one after a worker restart.
 			remoteSighting: {
@@ -410,14 +417,17 @@ export const ingestExternalRaw = internalAction({
 		// Deep-search excerpt (idea 32) from the pre-split body, same as the hosted
 		// inbound path; persisted only when the instance opted in.
 		const searchBody = buildSearchBody(args.textBodyInline, args.htmlBodyInline);
-		// The header block, decoded once and read twice. List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 /
+		// The header block, decoded once and read three times. List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 /
 		// 8058) is parsed here so the reader's Unsubscribe chip never re-opens the
 		// raw .eml, and the anti-loop headers give the classifiers the same
 		// bulk-mail suppression the hosted path gets (Precedence is not persisted
-		// on the message row, so it has to ride along with the ingest call).
+		// on the message row, so it has to ride along with the ingest call). A
+		// read-receipt request is checked against the Return-Path header the
+		// provider wrote on delivery.
 		const headerBlock = new TextDecoder().decode(headerBytes);
 		const unsubscribe = extractListUnsubscribe(headerBlock) ?? undefined;
 		const antiLoopHeaders = extractAntiLoopHeaders(headerBlock);
+		const receiptRequestTo = receiptRequestAddress(headerBlock, undefined);
 		// `ingestExternalMessage` deletes the staged blobs itself on skip/dup.
 		return await ctx.runMutation(internal.mail.external.delivery.ingestExternalMessage, {
 			accountId: args.accountId,
@@ -450,6 +460,7 @@ export const ingestExternalRaw = internalAction({
 			unsubscribe,
 			origin: args.origin,
 			antiLoopHeaders,
+			receiptRequestTo,
 		});
 	},
 });

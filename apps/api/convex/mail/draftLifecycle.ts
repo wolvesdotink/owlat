@@ -71,6 +71,8 @@ export const create = internalMutation({
 		// Offline-outbox idempotency key (the queued item's id) — see
 		// `drafts.create`, which dedupes on it before calling here.
 		clientNonce: v.optional(v.string()),
+		// The From address's "Ask for a read receipt" default (mail/readReceipts.ts).
+		isReadReceiptRequested: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args): Promise<Id<'mailDrafts'>> => {
 		return await ctx.db.insert('mailDrafts', {
@@ -87,6 +89,7 @@ export const create = internalMutation({
 			bodyText: undefined,
 			attachments: [],
 			clientNonce: args.clientNonce,
+			...(args.isReadReceiptRequested ? { isReadReceiptRequested: true } : {}),
 			state: 'draft',
 			lastEditedAt: args.at,
 			createdAt: args.at,

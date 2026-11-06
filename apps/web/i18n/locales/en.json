@@ -4910,6 +4910,18 @@
 				"waitingMany": "No read receipt from {count} recipients yet.",
 				"caveat": "Not every mail app sends one, and people can decline. A missing receipt doesn't mean the message is unread."
 			},
+			"postboxReceiptRequestBar": {
+				"regionLabel": "Read receipt request",
+				"asked": "{sender} asked for a read receipt.",
+				"send": "Send receipt",
+				"decline": "Don't send",
+				"sent": "You sent {sender} a read receipt.",
+				"sentAutomatic": "A read receipt went to {sender} automatically, because they are in your contacts.",
+				"declined": "You didn't send {sender} a read receipt.",
+				"declinedAutomatic": "No read receipt was sent. Your settings say never to send one.",
+				"sendAnyway": "Send one anyway",
+				"operation": "Answer read receipt request"
+			},
 			"postboxDraftList": {
 				"empty": "No drafts",
 				"noRecipient": "No recipient",
@@ -6549,7 +6561,11 @@
 				"swipeLeftLabel": "Swipe left on a message",
 				"swipeRightLabel": "Swipe right on a message",
 				"swipeHelp": "Drag a row sideways on a touchscreen to triage it. A mouse never triggers this.",
-				"swipeRightHelp": "The same gesture, the other way."
+				"swipeRightHelp": "The same gesture, the other way.",
+				"readReceiptReplyLabel": "Read receipt requests",
+				"readReceiptReplyHelp": "What happens when someone asks to know that you opened their message. A receipt only says the message was shown, not that you read it.",
+				"readReceiptRequestLabel": "Ask for a read receipt",
+				"readReceiptRequestHelp": "New messages from these addresses start with \"Ask for a read receipt\" on. You can still turn it off in the composer's ⋯ menu."
 			},
 			"preferencesShortcuts": {
 				"heading": "Keyboard shortcuts",
@@ -16600,6 +16616,11 @@
 			"keep": "Keep it in the Inbox",
 			"done": "Mark it done (archive)"
 		},
+		"postboxReadReceiptReply": {
+			"ask": "Ask me each time",
+			"contacts": "Send to my contacts, ask for others",
+			"never": "Never send one"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Go back to the list",
 			"next": "Open the next conversation",
@@ -17205,6 +17226,14 @@
 				"afterReply": {
 					"title": "After replying",
 					"keywords": "send and archive, mark done, done, archive after reply, keep in inbox"
+				},
+				"readReceiptReply": {
+					"title": "Read receipt requests",
+					"keywords": "read receipt, return receipt, mdn, disposition notification, opened, confirm reading"
+				},
+				"readReceiptRequest": {
+					"title": "Ask for a read receipt",
+					"keywords": "read receipt, return receipt, request receipt, default, disposition-notification-to"
 				},
 				"shortcuts": {
 					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, gmail keys, superhuman keys, outlook keys",

@@ -35,6 +35,7 @@ import { POSTBOX_SWIPE_ACTION_OPTIONS } from '~/utils/postboxSwipe';
 import { POSTBOX_READING_DEFAULTS as DEFAULTS } from '~/utils/postboxReadingDefaults';
 import PreferencesSettingRow from './PreferencesSettingRow.vue';
 import PreferencesSenderLogos from './PreferencesSenderLogos.vue';
+import PreferencesReadReceipts from './PreferencesReadReceipts.vue';
 
 const { t } = useI18n();
 const { isEnabled } = useFeatureFlag();
@@ -408,6 +409,7 @@ function onSwipeChange(direction: 'left' | 'right', event: Event) {
 				</option>
 			</select>
 		</PreferencesSettingRow>
+		<PreferencesReadReceipts />
 		<PreferencesSettingRow
 			v-if="isEnabled('ai')"
 			layout="switch"

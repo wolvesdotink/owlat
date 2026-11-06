@@ -42,8 +42,9 @@ export interface EmailJob {
 	/** Plain text content (auto-generated from HTML if omitted) */
 	text?: string;
 	/**
-	 * Postbox-only complete PGP/MIME message. When present the SMTP sender uses
-	 * these exact bytes instead of rebuilding MIME from `html`/`text`.
+	 * Postbox-only finished message (a Sealed Mail PGP/MIME message or a read
+	 * receipt). When present the SMTP sender uses these exact bytes instead of
+	 * rebuilding MIME from `html`/`text`.
 	 */
 	sealedMimeBase64?: string;
 	/**

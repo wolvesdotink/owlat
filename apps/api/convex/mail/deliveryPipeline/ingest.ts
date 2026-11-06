@@ -32,6 +32,7 @@ import { buildSnippet } from './insert';
 import { buildSearchBody } from '../searchBody';
 import { scanInboundAttachments } from './scan';
 import { parseDispositionNotification } from '@owlat/mail-message/parse/mdn';
+import { receiptRequestAddress } from '../readReceipts';
 
 const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
 
@@ -76,6 +77,8 @@ export async function prepareInboundMessage(
 		rawBytesBase64: string;
 		recipientAddress: string;
 		from: string;
+		// SMTP envelope sender; a read-receipt request must name it.
+		returnPath?: string;
 		subject: string;
 		textBody?: string;
 		htmlBody?: string;
@@ -111,6 +114,11 @@ export async function prepareInboundMessage(
 	const readReceipt = /report-type\s*=\s*"?disposition-notification/i.test(rawHeaderBlock)
 		? (parseDispositionNotification(rawBinary) ?? undefined)
 		: undefined;
+	// A request for a read receipt (Disposition-Notification-To). A receipt is
+	// never asked of a receipt, so a report keeps none.
+	const receiptRequestTo = readReceipt
+		? undefined
+		: receiptRequestAddress(rawHeaderBlock, args.returnPath);
 	// The raw `.eml` we store IS the E2EE-sealed original when the message
 	// arrived sealed — decrypt-on-ingest keeps that ciphertext downloadable
 	// while the row's body columns below carry the restored plaintext.
@@ -221,6 +229,7 @@ export async function prepareInboundMessage(
 		antiLoopHeaders,
 		unsubscribe,
 		readReceipt,
+		receiptRequestTo,
 		// Restored real subject when the message was opened; the outer
 		// placeholder `...` otherwise. Threading downstream keys off this.
 		subject: effectiveSubject,

@@ -140,6 +140,7 @@ export const ingestFromWebhook = internalAction({
 			antiLoopHeaders: prepared.antiLoopHeaders,
 			unsubscribe: prepared.unsubscribe,
 			readReceipt: prepared.readReceipt,
+			receiptRequestTo: prepared.receiptRequestTo,
 			recipientAddress: args.recipientAddress,
 			from: args.from,
 			to: args.to,

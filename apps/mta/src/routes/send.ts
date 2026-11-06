@@ -41,6 +41,40 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
 /**
+ * A read receipt is a short note and four fields; anything near this size is
+ * not one, and the raw-bytes path must not become a way around composition.
+ */
+const MAX_RECEIPT_MIME_BYTES = 64 * 1024;
+
+/**
+ * The two raw messages Postbox may hand over as finished bytes: a Sealed Mail
+ * PGP/MIME message (placeholder Subject, encrypted body) and an RFC 8098 read
+ * receipt, which is a `multipart/report` the structured composer cannot build.
+ * Both must carry the authorized From.
+ */
+function authorizedRawMimeKind(
+	header: (name: string) => string | undefined,
+	size: number
+): 'sealed' | 'receipt' | null {
+	const contentType = header('Content-Type') ?? '';
+	if (
+		header('Subject') === '...' &&
+		/^multipart\/encrypted\b/i.test(contentType) &&
+		/[;\s]protocol="?application\/pgp-encrypted"?/i.test(contentType)
+	) {
+		return 'sealed';
+	}
+	if (
+		size <= MAX_RECEIPT_MIME_BYTES &&
+		/^multipart\/report\b/i.test(contentType) &&
+		/[;\s]report-type="?disposition-notification"?/i.test(contentType)
+	) {
+		return 'receipt';
+	}
+	return null;
+}
+
+/**
  * The two answers the intake may give, each bound to its one declaration.
  *
  * Every `return` in the handler goes through one of these, for the same reason
@@ -279,14 +313,15 @@ export function createSendHandler(
 			const header = (name: string) =>
 				headerBlock.match(new RegExp(`^${name}:[ \\t]*(.+)$`, 'im'))?.[1]?.trim();
 			const rawFrom = parseAddress(header('From') ?? '');
-			const contentType = header('Content-Type') ?? '';
 			if (
 				rawFrom?.address !== parsedFrom.address ||
-				header('Subject') !== '...' ||
-				!/^multipart\/encrypted\b/i.test(contentType) ||
-				!/[;\s]protocol="?application\/pgp-encrypted"?/i.test(contentType)
+				authorizedRawMimeKind(header, rawBytes.length) === null
 			) {
-				return refuse(c, { error: 'sealedMimeBase64 is not an authorized PGP/MIME message' }, 400);
+				return refuse(
+					c,
+					{ error: 'sealedMimeBase64 is not an authorized PGP/MIME message or read receipt' },
+					400
+				);
 			}
 		}
 

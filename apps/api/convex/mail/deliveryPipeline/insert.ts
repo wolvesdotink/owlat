@@ -37,6 +37,7 @@ import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import type { VirusVerdict } from '../../lib/literalValidators';
 import { invalidateSenderMemoryOnAuthFailure } from '../../decision/senderMemory';
+import { receiptRequestToStore } from '../readReceipts';
 
 function extractName(field: string): string | undefined {
 	const match = field.match(/^([^<]+?)\s*<[^>]+>$/);
@@ -210,6 +211,9 @@ export async function insertDeliveredMessage(
 		inboundSignatureInfo?: InboundSignatureInfo;
 		/** Parsed List-Unsubscribe target (extracted at ingest from the raw header block). */
 		unsubscribe?: ListUnsubscribeTarget;
+		/** The address the sender asked a read receipt to go to, already checked
+		 * against the Return-Path (`mail/readReceipts.ts`). */
+		receiptRequestTo?: string;
 		/** Split inbox (idea 24): the named inbox section a `pinToSection` filter
 		 * claimed this message for. Absent ⇒ the message renders in the trailing
 		 * "Everything else" section, which is exactly today's flat inbox. */
@@ -296,6 +300,15 @@ export async function insertDeliveredMessage(
 	// against — the folder it actually lands in.
 	folder = await redirectMutedDelivery(ctx, threadId, folder);
 
+	const receiptRequest = await receiptRequestToStore(ctx, {
+		mailbox,
+		folder,
+		from: params.from,
+		spamVerdict: params.spamVerdict,
+		address: params.receiptRequestTo,
+		receivedAt: params.receivedAt,
+	});
+
 	const uid = folder.uidNext;
 	const modseq = folder.highestModseq + 1;
 
@@ -349,6 +362,7 @@ export async function insertDeliveredMessage(
 		inboundEncryptionInfo: params.inboundEncryptionInfo,
 		inboundSignatureInfo: params.inboundSignatureInfo,
 		unsubscribe: params.unsubscribe,
+		receiptRequest,
 		pinnedSection: params.pinnedSection,
 		remoteSighting: params.remoteSighting,
 		createdAt: now,

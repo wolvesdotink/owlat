@@ -32,6 +32,7 @@ import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
 import PostboxReadReceipts from './PostboxReadReceipts.vue';
+import PostboxReceiptRequestBar from './PostboxReceiptRequestBar.vue';
 import PostboxSenderAvatar from './PostboxSenderAvatar.vue';
 import { ChevronDownIcon, MoonIcon, ShieldWarningIcon, SunIcon } from '@coolicons/vue';
 
@@ -324,6 +325,7 @@ const renderToggleLabel = computed(() =>
 					:receipt="delivery.readReceipt"
 					:recipients="delivery.recipients.map((r) => r.address)"
 				/>
+				<PostboxReceiptRequestBar v-if="msg.receiptRequest" class="mt-1.5" :message="msg" />
 				<button
 					v-if="reader.reduced && metaOpen"
 					type="button"

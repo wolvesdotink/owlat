@@ -166,6 +166,7 @@ export function deliveredMessageInput(
 		inboundEncryptionInfo: args.inboundEncryptionInfo,
 		inboundSignatureInfo: args.inboundSignatureInfo,
 		unsubscribe: args.unsubscribe,
+		receiptRequestTo: args.receiptRequestTo,
 		pinnedSection: filter.pinnedSection,
 		countUsedBytes: true,
 		inboundOrigin: 'mx',

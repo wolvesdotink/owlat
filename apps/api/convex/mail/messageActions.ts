@@ -120,7 +120,7 @@ export const markThreadRead = postboxMutation({
 		if (!thread) return;
 		const owned = await requireMailboxAccess(ctx, thread.mailboxId, 'member', session);
 		if (!owned.ok) return;
-		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen);
+		const { more } = await markThreadSeenBatch(ctx, thread._id, args.seen, { reader: owned });
 		if (more) {
 			// Mail that arrives while a long thread is still being flipped is not
 			// part of what the user marked.
@@ -139,7 +139,7 @@ export const markThreadRead = postboxMutation({
 export const continueMarkThreadRead = internalMutation({
 	args: { threadId: v.id('mailThreads'), seen: v.boolean(), ceiling: v.number() },
 	handler: async (ctx, args) => {
-		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen, args.ceiling);
+		const { more } = await markThreadSeenBatch(ctx, args.threadId, args.seen, args);
 		if (more) {
 			await ctx.scheduler.runAfter(0, internal.mail.messageActions.continueMarkThreadRead, args);
 		}

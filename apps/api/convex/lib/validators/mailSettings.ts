@@ -29,6 +29,23 @@ export const mailReplyDefaultValidator = v.union(v.literal('reply'), v.literal('
 // 'keep' leaves it in the Inbox, 'done' archives it once the reply goes out.
 export const mailAfterReplyValidator = v.union(v.literal('keep'), v.literal('done'));
 
+// What happens when someone asks for a read receipt on mail this user opens
+// (mailUserSettings.readReceiptReply): 'ask' shows Send / Don't send in the
+// reader, 'never' answers every request with no receipt, and 'contacts' sends
+// one without asking when the sender is in the mailbox's contacts and asks
+// otherwise.
+export const mailReadReceiptReplyValidator = v.union(
+	v.literal('ask'),
+	v.literal('never'),
+	v.literal('contacts')
+);
+
+// The From addresses whose new drafts start with "Ask for a read receipt" on
+// (mailUserSettings.readReceiptRequestAddresses), lowercased. Bounded: one
+// person's own addresses and aliases.
+export const mailReadReceiptRequestAddressesValidator = v.array(v.string());
+export const MAX_READ_RECEIPT_REQUEST_ADDRESSES = 100;
+
 // Postbox list/reader density (mailUserSettings.density and mail/settings update
 // args) — 'comfortable' (the roomy default) vs 'compact' (tighter rows +
 // single-line subject/snippet). Single source so schema and args can't drift.

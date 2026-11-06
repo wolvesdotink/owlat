@@ -68,6 +68,7 @@ function mountCard() {
 				PreferencesBriefBackfill: true,
 				// Its own card test covers it: it reads its own settings query.
 				PreferencesSenderLogos: true,
+				PreferencesReadReceipts: true,
 				UiSwitch: {
 					props: ['modelValue', 'id'],
 					emits: ['update:modelValue'],

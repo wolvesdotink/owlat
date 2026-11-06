@@ -7,6 +7,7 @@ import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/liter
 import {
 	mailMessageAttachmentValidator,
 	mailReadReceiptValidator,
+	mailReceiptRequestValidator,
 	mailSignInCodeValidator,
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
@@ -274,6 +275,11 @@ export const mailMessagesTables = {
 		// what came back, written by mail/readReceipts.ts. Absent when no receipt
 		// was asked for.
 		readReceipt: v.optional(mailReadReceiptValidator),
+
+		// On an ARRIVING message whose sender asked for a read receipt: the
+		// request and how it was answered (mail/readReceipts.ts). Absent when no
+		// receipt was asked for or the request was not one to honour.
+		receiptRequest: v.optional(mailReceiptRequestValidator),
 
 		// Sealed Mail (E3): the outbound sealing outcome for a SENT copy. When
 		// `isSealed` is true the raw `.eml` is PGP/MIME ciphertext (real subject

@@ -1559,6 +1559,7 @@ import type * as mail_pins from '../mail/pins.js';
 import type * as mail_postboxOutboundAudit from '../mail/postboxOutboundAudit.js';
 import type * as mail_postboxOutboundLifecycle from '../mail/postboxOutboundLifecycle.js';
 import type * as mail_readReceipts from '../mail/readReceipts.js';
+import type * as mail_readReceiptsSend from '../mail/readReceiptsSend.js';
 import type * as mail_replyDone from '../mail/replyDone.js';
 import type * as mail_replyOptions from '../mail/replyOptions.js';
 import type * as mail_rfc822 from '../mail/rfc822.js';
@@ -3598,6 +3599,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/postboxOutboundAudit': typeof mail_postboxOutboundAudit;
 	'mail/postboxOutboundLifecycle': typeof mail_postboxOutboundLifecycle;
 	'mail/readReceipts': typeof mail_readReceipts;
+	'mail/readReceiptsSend': typeof mail_readReceiptsSend;
 	'mail/replyDone': typeof mail_replyDone;
 	'mail/replyOptions': typeof mail_replyOptions;
 	'mail/rfc822': typeof mail_rfc822;

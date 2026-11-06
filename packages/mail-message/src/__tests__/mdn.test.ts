@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isDispositionNotificationReport, parseDispositionNotification } from '../parse/mdn';
+import {
+	isDispositionNotificationReport,
+	parseDispositionNotification,
+	readDispositionNotificationTo,
+} from '../parse/mdn';
+import { buildDispositionNotification } from '../compose/mdn';
+import { parseHeaders } from '../parse/headers';
 
 const eml = (...lines: string[]): string => lines.join('\r\n');
 
@@ -103,5 +109,59 @@ describe('isDispositionNotificationReport', () => {
 	it('rejects other content types and a missing header', () => {
 		expect(isDispositionNotificationReport('multipart/mixed; boundary=x')).toBe(false);
 		expect(isDispositionNotificationReport(undefined)).toBe(false);
+	});
+});
+
+describe('readDispositionNotificationTo', () => {
+	it('reads the one address a request names, lowercased', () => {
+		expect(readDispositionNotificationTo('Ada <Ada@Example.org>')).toBe('ada@example.org');
+		expect(readDispositionNotificationTo('ada@example.org')).toBe('ada@example.org');
+	});
+
+	it('keeps no request for several addresses, a group or garbage', () => {
+		expect(readDispositionNotificationTo('a@example.org, b@example.org')).toBeUndefined();
+		expect(readDispositionNotificationTo('team: a@example.org;')).toBeUndefined();
+		expect(readDispositionNotificationTo('not an address')).toBeUndefined();
+		expect(readDispositionNotificationTo(undefined)).toBeUndefined();
+	});
+});
+
+describe('buildDispositionNotification', () => {
+	const base = {
+		from: 'Ben <ben@example.com>',
+		to: 'ada@example.org',
+		originalSubject: 'Quarterly numbers',
+		originalMessageId: 'm1.abc@example.org',
+		messageId: '<mdn1@example.com>',
+		reportingUa: 'Owlat',
+		date: new Date(Date.UTC(2026, 10, 6, 9, 30)),
+		boundary: 'MDN-BOUNDARY',
+	};
+
+	it('round-trips a manual receipt through the parser', () => {
+		const raw = buildDispositionNotification({ ...base, mode: 'manual' }).raw.toString('binary');
+		expect(parseDispositionNotification(raw)).toEqual({
+			originalMessageId: 'm1.abc@example.org',
+			finalRecipient: 'ben@example.com',
+			disposition: 'displayed',
+			isAutomatic: false,
+		});
+	});
+
+	it('round-trips an automatic receipt and marks it auto-submitted', () => {
+		const raw = buildDispositionNotification({ ...base, mode: 'automatic' }).raw.toString('binary');
+		expect(parseDispositionNotification(raw)?.isAutomatic).toBe(true);
+		const headers = parseHeaders(raw.split('\r\n\r\n', 1)[0]!);
+		expect(headers.get('auto-submitted')).toBe('auto-replied');
+	});
+
+	it('addresses the request, threads onto the original and names the report type', () => {
+		const raw = buildDispositionNotification({ ...base, mode: 'manual' }).raw.toString('binary');
+		const headers = parseHeaders(raw.split('\r\n\r\n', 1)[0]!);
+		expect(headers.get('to')).toBe('ada@example.org');
+		expect(headers.get('subject')).toBe('Read: Quarterly numbers');
+		expect(headers.get('in-reply-to')).toBe('<m1.abc@example.org>');
+		expect(headers.get('auto-submitted')).toBeUndefined();
+		expect(isDispositionNotificationReport(headers.get('content-type'))).toBe(true);
 	});
 });

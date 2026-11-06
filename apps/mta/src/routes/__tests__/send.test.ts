@@ -880,6 +880,64 @@ describe('POST /send — job construction and routing', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
+	const receiptMime = (from: string, padding = '') =>
+		[
+			`From: ${from}`,
+			'To: ada@example.org',
+			'Subject: Read: Quarterly numbers',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/report; report-type=disposition-notification; boundary="r"',
+			'',
+			'--r',
+			'Content-Type: message/disposition-notification',
+			'',
+			'Original-Message-ID: <m1@example.org>',
+			'Disposition: manual-action/MDN-sent-manually; displayed',
+			padding,
+			'--r--',
+			'',
+		].join('\r\n');
+
+	const receiptBody = (raw: string) =>
+		validBody({
+			organizationId: 'postbox',
+			messageType: undefined,
+			subject: 'Read: Quarterly numbers',
+			sealedMimeBase64: Buffer.from(raw).toString('base64'),
+			allowedFromAddresses: ['alice@example.com'],
+			routingLease: undefined,
+			routingReentry: undefined,
+			routingReentryToken: undefined,
+			workAttemptId: undefined,
+		});
+
+	it('accepts a Postbox read receipt as finished bytes', async () => {
+		const queue = fakeQueue();
+		const raw = receiptMime('alice@example.com');
+		const res = await post(
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox'),
+			receiptBody(raw)
+		);
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { sealedMimeBase64?: string } };
+		expect(Buffer.from(arg.data.sealedMimeBase64!, 'base64').toString()).toBe(raw);
+	});
+
+	it('rejects a read receipt from another address or of more than receipt size', async () => {
+		const queue = fakeQueue();
+		const app = buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox');
+		const forged = await post(app, receiptBody(receiptMime('mallory@example.com')));
+		const oversized = await post(
+			app,
+			receiptBody(receiptMime('alice@example.com', 'x'.repeat(70 * 1024)))
+		);
+
+		expect(forged.status).toBe(400);
+		expect(oversized.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
 	it('copies anti-loop headers (vacation auto-reply) onto the enqueued job', async () => {
 		// RFC 3834 §5: a vacation auto-reply MUST be stamped Auto-Submitted:
 		// auto-replied (so a receiving auto-responder won't reply back) and

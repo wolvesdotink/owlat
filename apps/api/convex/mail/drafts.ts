@@ -41,6 +41,7 @@ import { mailAfterReplyValidator } from '../lib/validators/mailSettings';
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
+import { isReadReceiptRequestedByDefault } from './readReceipts';
 import { aiWritePatch, editPatch, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
@@ -154,6 +155,11 @@ export const create = postboxMutation({
 			subject,
 			at: now,
 			clientNonce: args.clientNonce,
+			isReadReceiptRequested: await isReadReceiptRequestedByDefault(
+				ctx,
+				owned.userId,
+				mailbox.address
+			),
 		});
 		await scheduleRecipientDiscovery(ctx, toAddresses);
 		if (args.expectedAttachments?.length) {
@@ -276,9 +282,21 @@ export const setIdentity = postboxMutation({
 		// Personal send-as ⇒ record the sending mailbox; team/own identity ⇒ clear
 		// it so the classic path (transport + Sent copy on the thread mailbox) runs.
 		const sendAsMailboxId = match.mailboxId === draft.mailboxId ? undefined : match.mailboxId;
+		// A read-receipt request the user left at the old address's default
+		// follows the new address's default; one they toggled stays as they set it.
+		const isReceiptAtDefault =
+			(draft.isReadReceiptRequested ?? false) ===
+			(await isReadReceiptRequestedByDefault(ctx, owned.userId, draft.fromAddress));
+		const receiptPatch = isReceiptAtDefault
+			? {
+					isReadReceiptRequested:
+						(await isReadReceiptRequestedByDefault(ctx, owned.userId, candidate)) || undefined,
+				}
+			: {};
 		await ctx.db.patch(args.draftId, {
 			fromAddress: candidate,
 			sendAsMailboxId,
+			...receiptPatch,
 			...editPatch(candidate !== draft.fromAddress || sendAsMailboxId !== draft.sendAsMailboxId),
 		});
 	},

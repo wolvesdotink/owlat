@@ -72,6 +72,8 @@ export type PostboxReaderMessage = {
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
 	unsubscribe?: ListUnsubscribeTarget;
+	/** The sender's read-receipt request and its answer (mail/readReceipts.ts). */
+	receiptRequest?: Doc<'mailMessages'>['receiptRequest'];
 	/** The sign-in code or link read at arrival (mail/signInCodes.ts). */
 	signInCode?: Doc<'mailMessages'>['signInCode'];
 	/** The authenticated sender's brand logo, served by us (mail/senderLogos/). */

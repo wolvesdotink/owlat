@@ -12,6 +12,8 @@ import {
 	mailNotifyAboutValidator,
 	mailQuietHoursValidator,
 	mailReadingPaneValidator,
+	mailReadReceiptReplyValidator,
+	mailReadReceiptRequestAddressesValidator,
 	mailReplyDefaultValidator,
 	mailShareLinkExpiryDaysValidator,
 	mailShortcutOverridesValidator,
@@ -61,6 +63,12 @@ export const mailSettingsTables = {
 		// mark it 'done' (archive). Absent reads as 'keep', the behaviour before
 		// the setting existed. The composer's opposite-action chord flips it per send.
 		afterReply: v.optional(mailAfterReplyValidator),
+		// Answering read-receipt requests on mail this user opens
+		// (mail/readReceipts.ts). Absent reads as 'ask'.
+		readReceiptReply: v.optional(mailReadReceiptReplyValidator),
+		// From addresses whose new drafts ask for a read receipt from the start.
+		// Absent or empty: every draft starts without one.
+		readReceiptRequestAddresses: v.optional(mailReadReceiptRequestAddressesValidator),
 		// List/reader density: 'comfortable' (roomy default) vs 'compact' (tighter
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.

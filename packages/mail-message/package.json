@@ -62,6 +62,10 @@
 			"types": "./src/compose/messageId.ts",
 			"import": "./src/compose/messageId.ts"
 		},
+		"./compose/mdn": {
+			"types": "./src/compose/mdn.ts",
+			"import": "./src/compose/mdn.ts"
+		},
 		"./compose/dkim": {
 			"types": "./src/compose/dkim.ts",
 			"import": "./src/compose/dkim.ts"

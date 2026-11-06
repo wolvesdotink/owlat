@@ -209,3 +209,20 @@ export const inboundReadReceiptValidator = v.object({
 	),
 	isAutomatic: v.boolean(),
 });
+
+// A read receipt the SENDER of an arriving message asked for
+// (mailMessages.receiptRequest, RFC 8098 Disposition-Notification-To). Kept
+// only when the request names the message's Return-Path, outside Spam, and
+// never on the mailbox's own mail. `address` is where the receipt would go.
+// `answer` is unset until someone answers: 'sent' once a receipt was queued
+// (by the reader's Send, or by the 'contacts' setting when `isAutomatic`),
+// 'declined' after Don't send or the 'never' setting. A declined request can
+// still be sent; a sent one is final.
+export const mailReceiptRequestValidator = v.object({
+	address: v.string(),
+	requestedAt: v.number(),
+	answeredAt: v.optional(v.number()),
+	answer: v.optional(v.union(v.literal('sent'), v.literal('declined'))),
+	isAutomatic: v.optional(v.boolean()),
+});
+export type MailReceiptRequest = Infer<typeof mailReceiptRequestValidator>;

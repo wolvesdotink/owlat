@@ -4910,6 +4910,18 @@
 				"waitingMany": "Noch keine Lesebestätigung von {count} Empfängern.",
 				"caveat": "Nicht jedes Mailprogramm schickt eine, und Empfänger können ablehnen. Fehlt sie, heißt das nicht, dass die Nachricht ungelesen ist."
 			},
+			"postboxReceiptRequestBar": {
+				"regionLabel": "Anfrage nach Lesebestätigung",
+				"asked": "{sender} bittet um eine Lesebestätigung.",
+				"send": "Bestätigung senden",
+				"decline": "Nicht senden",
+				"sent": "Du hast {sender} eine Lesebestätigung gesendet.",
+				"sentAutomatic": "{sender} hat automatisch eine Lesebestätigung bekommen, weil die Adresse in deinen Kontakten steht.",
+				"declined": "Du hast {sender} keine Lesebestätigung gesendet.",
+				"declinedAutomatic": "Es wurde keine Lesebestätigung gesendet. Laut deinen Einstellungen sendest du nie eine.",
+				"sendAnyway": "Trotzdem senden",
+				"operation": "Anfrage nach Lesebestätigung beantworten"
+			},
 			"postboxDraftList": {
 				"empty": "Keine Entwürfe",
 				"noRecipient": "Kein Empfänger",
@@ -6549,7 +6561,11 @@
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
-				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
+				"swipeRightHelp": "Dieselbe Geste, andere Richtung.",
+				"readReceiptReplyLabel": "Anfragen nach Lesebestätigung",
+				"readReceiptReplyHelp": "Was passiert, wenn jemand wissen möchte, dass du die Nachricht geöffnet hast. Eine Bestätigung sagt nur, dass die Nachricht angezeigt wurde, nicht dass du sie gelesen hast.",
+				"readReceiptRequestLabel": "Lesebestätigung anfordern",
+				"readReceiptRequestHelp": "Neue Nachrichten von diesen Adressen fordern von Anfang an eine Lesebestätigung an. Im ⋯-Menü des Editors kannst du das trotzdem ausschalten."
 			},
 			"preferencesShortcuts": {
 				"heading": "Tastenkürzel",
@@ -16600,6 +16616,11 @@
 			"keep": "Im Posteingang lassen",
 			"done": "Als erledigt markieren (archivieren)"
 		},
+		"postboxReadReceiptReply": {
+			"ask": "Jedes Mal fragen",
+			"contacts": "An Kontakte senden, sonst fragen",
+			"never": "Nie senden"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Zurück zur Liste",
 			"next": "Die nächste Konversation öffnen",
@@ -17205,6 +17226,14 @@
 				"afterReply": {
 					"title": "Nach dem Antworten",
 					"keywords": "senden und archivieren, als erledigt markieren, erledigt, nach dem Antworten archivieren, im Posteingang lassen"
+				},
+				"readReceiptReply": {
+					"title": "Anfragen nach Lesebestätigung",
+					"keywords": "lesebestätigung, empfangsbestätigung, mdn, read receipt, geöffnet, bestätigen"
+				},
+				"readReceiptRequest": {
+					"title": "Lesebestätigung anfordern",
+					"keywords": "lesebestätigung, empfangsbestätigung, anfordern, standard, read receipt"
 				},
 				"shortcuts": {
 					"keywords": "Tastatur, Tastenkürzel, Hotkeys, Tastenbelegung, neu belegen, Gmail-Tasten, Superhuman-Tasten, Outlook-Tasten",
