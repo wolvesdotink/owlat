@@ -162,6 +162,15 @@ export const TENANT_TABLES = [
 	'contentScanResults',
 	'domains',
 
+	// ── Tasks and the company index (children first) ──
+	// Tasks point at member groups and at the conversations they came from; the
+	// company index points at threads and mailboxes. Both go before them.
+	'tasks',
+	'memberGroupMembers',
+	'memberGroups',
+	'companyThreads',
+	'companyIndexCursors',
+
 	// ── Inbox / inbound pipeline ──
 	'inboxAssignmentNotices',
 	'threadPresence',

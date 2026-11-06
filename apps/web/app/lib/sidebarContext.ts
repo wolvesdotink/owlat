@@ -3,7 +3,7 @@
  *
  * The sidebar renders one *context* (workspace) at a time so it stays focused
  * on what the user is currently doing: Conversations (Today, the Answer queue,
- * every inbox, Chat, Knowledge) or Marketing (Overview, Campaigns, Automations,
+ * Tasks, Companies, every inbox, Chat, Knowledge) or Marketing (Overview, Campaigns, Automations,
  * Audience, Templates). Assistant and Settings are shared — owned by neither,
  * reached from the sidebar footer and ⌘K rather than listed in either.
  *
@@ -43,6 +43,7 @@ export function readLastVisitedRoutes(
 const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
 	inbox: 'inbox',
 	postbox: 'inbox',
+	work: 'inbox',
 	chat: 'inbox',
 	assistant: 'shared',
 	send: 'marketing',
@@ -63,6 +64,8 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
 		'/dashboard/inboxes',
 		'/dashboard/answer',
 		'/dashboard/postbox',
+		'/dashboard/tasks',
+		'/dashboard/companies',
 		'/dashboard/chat',
 		'/dashboard/knowledge',
 		'/dashboard/files',

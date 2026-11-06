@@ -5,6 +5,7 @@ import { readStoredBoolean } from '~/utils/storedValue';
 export interface SectionState {
 	inbox: boolean;
 	postbox: boolean;
+	work: boolean;
 	chat: boolean;
 	assistant: boolean;
 	send: boolean;
@@ -28,6 +29,7 @@ export type SidebarMode = 'visible' | 'collapsed' | 'hidden';
 const defaultSectionState: SectionState = {
 	inbox: true,
 	postbox: true,
+	work: true,
 	chat: true,
 	assistant: true,
 	send: true,

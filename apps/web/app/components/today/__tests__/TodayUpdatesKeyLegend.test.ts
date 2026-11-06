@@ -22,7 +22,7 @@ function legend(): string[] {
 		props: { model: EMPTY },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { NuxtLink: true, TodaySourceLink: true },
+			stubs: { NuxtLink: true, TodaySourceLink: true, TaskCreatePopover: true },
 		},
 	});
 	const keys = wrapper.findAll('h3 kbd').map((kbd) => kbd.text());
@@ -36,7 +36,7 @@ let text = '';
 describe('TodayUpdates key legend', () => {
 	it('shows the shipped keys', () => {
 		expect(legend()).toEqual(['J', 'K', 'D', 'R']);
-		expect(text).toBe('J K move · D Done · R Reply anyway');
+		expect(text).toBe('J K move · D Got it · R Reply anyway');
 	});
 
 	it('follows a remap and leaves out an unbound key', () => {
@@ -45,6 +45,6 @@ describe('TodayUpdates key legend', () => {
 			{ id: 'workbench.reply', keys: [] },
 		]);
 		expect(legend()).toEqual(['J', 'K', 'X']);
-		expect(text).toBe('J K move · X Done');
+		expect(text).toBe('J K move · X Got it');
 	});
 });

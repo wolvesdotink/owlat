@@ -103,6 +103,14 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'agentShadowScorecard',
 	'contentScanResults',
 
+	// Tasks point at member groups and at the conversations they came from; the
+	// company index points at threads and mailboxes. Before all of them.
+	'tasks',
+	'memberGroupMembers',
+	'memberGroups',
+	'companyThreads',
+	'companyIndexCursors',
+
 	// Conversation parents (after their leaves)
 	'unifiedMessages',
 	'threadPresence', // ephemeral viewer/replier signals — clear before their threads

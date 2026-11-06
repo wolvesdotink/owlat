@@ -18,6 +18,7 @@ import type { OrganizationRole } from '~/composables/useOrganization';
 import { SETTINGS_REGISTRY } from './settingsRegistry';
 import {
 	BrainIcon,
+	BriefcaseIcon,
 	ChartBarVerticalIcon,
 	ChatCircleIcon,
 	ChatIcon,
@@ -30,6 +31,7 @@ import {
 	GaugeIcon,
 	GridIcon,
 	InboxIcon,
+	ListChecklistIcon,
 	ListFilterIcon,
 	MailboxIcon,
 	MegaphoneIcon,
@@ -201,6 +203,26 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				name: 'shared.dashboardNavigation.items.postbox.preferences',
 				href: '/dashboard/preferences',
 				icon: SettingsIcon,
+			},
+		],
+	},
+	{
+		// Tasks and Companies: what conversations leave to do, and who they are
+		// with. The Conversations sidebar pins both; these items feed the palette.
+		key: 'work',
+		name: 'shared.dashboardNavigation.sections.work',
+		icon: ListChecklistIcon,
+		items: [
+			{
+				name: 'shared.dashboardNavigation.items.work.tasks',
+				href: '/dashboard/tasks',
+				icon: ListChecklistIcon,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.work.companies',
+				href: '/dashboard/companies',
+				icon: BriefcaseIcon,
+				gate: anyFlag('postbox', 'mail.external', 'inbox'),
 			},
 		],
 	},

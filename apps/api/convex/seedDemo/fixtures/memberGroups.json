@@ -1,0 +1,12 @@
+[
+	{
+		"name": "Management",
+		"createdBy": "dev@example.com",
+		"members": ["dev@example.com", "taylor@example.com"]
+	},
+	{
+		"name": "Product",
+		"createdBy": "dev@example.com",
+		"members": ["dev@example.com", "jordan@example.com"]
+	}
+]

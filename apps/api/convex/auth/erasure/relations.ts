@@ -23,6 +23,8 @@
  *     organization infrastructure and are never erased with one member.
  *   - `anonymize` — the organization keeps the row; the member's id on it is
  *     replaced with '[deleted account]'.
+ *   - `unlink` — the row stays; the field pointing at a row the erasure
+ *     deletes is cleared.
  *   - `retain` — the row stays as it is. `why` says why that is lawful and
  *     safe: typically an organization record whose attribution is an opaque id
  *     that no longer resolves to a person once the profile and login identity
@@ -32,6 +34,7 @@
 import type { TableNames } from '../../_generated/dataModel';
 import type { tables as betterAuthTables } from '../../betterAuth/schema';
 import { THREAD_BRIEF_MEMBER_RELATIONS } from './threadBriefRelations';
+import { TASK_MEMBER_RELATIONS } from './taskRelations';
 import {
 	DESCENDANT_RELATIONS,
 	type MemberErasureAction,
@@ -364,6 +367,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('workspaceDeletionJobs', 'requestedBy', 'retain', 'The workspace deletion’s own history.'),
 	rel('workspaceDeletionJobs', 'abortedBy', 'retain', 'The workspace deletion’s own history.'),
 	...THREAD_BRIEF_MEMBER_RELATIONS,
+	...TASK_MEMBER_RELATIONS,
 ];
 
 type BetterAuthTable = keyof typeof betterAuthTables;

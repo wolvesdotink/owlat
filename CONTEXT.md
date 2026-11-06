@@ -4164,6 +4164,45 @@ read from the mailbox scope at read time, never from a cached row.
 _Avoid_: Brief mode / team mode as separate features (one pipeline, two
 outputs).
 
+## Tasks and companies
+
+**Task**:
+Work one person owns: added by hand, or taken from a conversation, often from
+one of its **Item**s. It has an assignee, an optional due date and company, a
+status of `open | done | dropped`, and a **Task visibility**. An Item is
+Owlat's reading of what a thread asks; a Task is what someone took on.
+_Avoid_: To-do, Item (the extracted obligation, see **§ Thread brief**),
+Code task (the coding-agent job).
+
+**Task visibility**:
+Who sees a Task: `private` (its creator, who is always its assignee),
+`everyone` (every member of the workspace) or `group` (one **Member group**).
+The creator and the assignee always see their own task. Owners and admins
+outside a group do not see that group's tasks.
+_Avoid_: Scope (a mailbox's scope means personal or shared), Audience (the
+campaign recipients).
+
+**Member group**:
+A named set of workspace members, such as Management, that a Task can be shown
+to. Owners and admins manage the groups; every member may see who is in them.
+_Avoid_: Team (the workspace, or the Team Inbox), Segment (contacts, not
+members).
+
+**Company**:
+The people a workspace talks to at one organisation, keyed by the
+organisational domain of their email addresses. It needs no record: everyone
+writing from one domain belongs to it. Free-mail addresses and the
+workspace's own domains belong to no Company. A member sees the conversations
+with a Company they could open anyway; a colleague's personal mailbox adds only
+that this colleague is in touch with it.
+_Avoid_: Account, Organization (the BetterAuth workspace), Customer.
+
+**Workbench lanes**:
+The two questions every Workbench tab answers: **To do** (what needs an
+answer, what was asked without needing one, and the viewer's Tasks) and **To
+acknowledge** (what people told the viewer; "Got it" acknowledges a line).
+_Avoid_: Desk, Inbox zero.
+
 ## IMAP
 
 **IMAP command (module)**:

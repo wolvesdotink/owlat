@@ -58,6 +58,11 @@ export type OrganizationDeletionTable =
 	| 'googlePostmasterStats'
 	| 'googlePostmasterCompliance'
 	| 'unsubscribeLatencyBuckets'
+	| 'tasks'
+	| 'memberGroupMembers'
+	| 'memberGroups'
+	| 'companyThreads'
+	| 'companyIndexCursors'
 	| 'threadPresence'
 	| 'threadReads'
 	| 'threadNoteMentions'
@@ -277,6 +282,11 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('googlePostmasterStats'),
 	v.literal('googlePostmasterCompliance'),
 	v.literal('unsubscribeLatencyBuckets'),
+	v.literal('tasks'),
+	v.literal('memberGroupMembers'),
+	v.literal('memberGroups'),
+	v.literal('companyThreads'),
+	v.literal('companyIndexCursors'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),
 	v.literal('threadNoteMentions'),

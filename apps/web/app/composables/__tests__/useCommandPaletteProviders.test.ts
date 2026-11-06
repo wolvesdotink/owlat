@@ -253,6 +253,7 @@ describe('settings controls', () => {
 			'setting:admin:rampControls:rampPace',
 			'setting:admin:webhooks:webhookSecret',
 			'setting:admin:brandKit:brandColors',
+			'setting:admin:team:memberGroups',
 		]);
 		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
 	});

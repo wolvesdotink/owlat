@@ -2,12 +2,15 @@
 import type { Id } from '@owlat/api/dataModel';
 import { formatRelativeTime } from '~/utils/formatters';
 import type { ThreadAutoCloseFact } from '~/utils/inboxAutoClose';
+import CompanyContextPanel from '~/components/companies/CompanyContextPanel.vue';
 import { UserIcon } from '@coolicons/vue';
 
 /**
  * The Team Inbox thread page's side column: the brief from elsewhere, the
- * contact, the facts about the thread, and its SMS / WhatsApp timeline. Every
- * fact here READS; the header is where each of them is changed.
+ * company and tasks of the thread, the contact, the facts about the thread,
+ * and its SMS / WhatsApp timeline. Every fact here READS; the header is where
+ * each of them is changed (a task is the exception: it is made and ticked off
+ * in its own block).
  */
 defineProps<{
 	threadId: Id<'conversationThreads'>;
@@ -39,6 +42,7 @@ function absoluteTime(timestamp: number): string {
 <template>
 	<div class="space-y-6">
 		<BriefElsewhere :thread-ref="{ kind: 'team', id: threadId }" class="card" />
+		<CompanyContextPanel :conversation-thread-id="threadId" class="card" />
 		<!-- Contact Card -->
 		<div v-if="contact" class="card">
 			<h2 class="text-lg font-medium text-text-primary mb-4">

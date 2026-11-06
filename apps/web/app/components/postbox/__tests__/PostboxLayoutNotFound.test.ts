@@ -112,6 +112,7 @@ beforeEach(() => {
 const INERT = Object.fromEntries(
 	[
 		'PostboxBannerSlot',
+		'PostboxContextRail',
 		'PostboxDraftList',
 		'PostboxFolderDrawer',
 		'PostboxListHeader',

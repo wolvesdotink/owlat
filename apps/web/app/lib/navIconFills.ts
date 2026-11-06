@@ -5,6 +5,7 @@
 import {
 	ArchiveIcon,
 	BrainIcon,
+	BriefcaseIcon,
 	ChartBarVerticalIcon,
 	ChatCircleIcon,
 	ChatConversationIcon,
@@ -23,6 +24,7 @@ import {
 	GridIcon,
 	InboxIcon,
 	LayoutTemplateIcon,
+	ListChecklistIcon,
 	ListFilterIcon,
 	MailboxIcon,
 	MegaphoneIcon,
@@ -49,6 +51,7 @@ import {
 import {
 	ArchiveIcon as ArchiveFillIcon,
 	BrainIcon as BrainFillIcon,
+	BriefcaseIcon as BriefcaseFillIcon,
 	ChartBarVerticalIcon as ChartBarVerticalFillIcon,
 	ChatCircleIcon as ChatCircleFillIcon,
 	ChatConversationIcon as ChatConversationFillIcon,
@@ -67,6 +70,7 @@ import {
 	GridIcon as GridFillIcon,
 	InboxIcon as InboxFillIcon,
 	LayoutTemplateIcon as LayoutTemplateFillIcon,
+	ListChecklistIcon as ListChecklistFillIcon,
 	ListFilterIcon as ListFilterFillIcon,
 	MailboxIcon as MailboxFillIcon,
 	MegaphoneIcon as MegaphoneFillIcon,
@@ -96,6 +100,7 @@ export const FILLED: ReadonlyMap<IconComponent, IconComponent> = new Map<
 >([
 	[ArchiveIcon, ArchiveFillIcon],
 	[BrainIcon, BrainFillIcon],
+	[BriefcaseIcon, BriefcaseFillIcon],
 	[ChartBarVerticalIcon, ChartBarVerticalFillIcon],
 	[ChatCircleIcon, ChatCircleFillIcon],
 	[ChatConversationIcon, ChatConversationFillIcon],
@@ -114,6 +119,7 @@ export const FILLED: ReadonlyMap<IconComponent, IconComponent> = new Map<
 	[GridIcon, GridFillIcon],
 	[InboxIcon, InboxFillIcon],
 	[LayoutTemplateIcon, LayoutTemplateFillIcon],
+	[ListChecklistIcon, ListChecklistFillIcon],
 	[ListFilterIcon, ListFilterFillIcon],
 	[MailboxIcon, MailboxFillIcon],
 	[MegaphoneIcon, MegaphoneFillIcon],
