@@ -2,7 +2,12 @@ import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { type PaletteGroup, type PaletteItem, filterItems } from '~/lib/commandPalette';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
-import { canMarkFolderRead, findViewFolder, isEmptyableRole } from './usePostboxFolderBulk';
+import {
+	canMarkFolderRead,
+	findViewFolder,
+	isEmptyableRole,
+	type PostboxMarkReadTarget,
+} from './usePostboxFolderBulk';
 import {
 	ArchiveIcon,
 	ArrowLeftRightIcon,
@@ -68,7 +73,12 @@ export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
  */
 export function usePostboxCommandSurface(
 	mailboxId: Ref<Id<'mailboxes'>>,
-	view?: { folderRole: Ref<string>; folderId: Ref<Id<'mailFolders'> | undefined> }
+	view?: {
+		folderRole: Ref<string>;
+		folderId: Ref<Id<'mailFolders'> | undefined>;
+		/** Further "Mark … as read" entries the view offers (Categories sections). */
+		markReadCommands?: () => PostboxMarkReadCommand[];
+	}
 ) {
 	const { t } = useI18n();
 	const composeNav = usePostboxComposeNav();
@@ -85,11 +95,11 @@ export function usePostboxCommandSurface(
 
 	/** The whole-folder verbs for the folder on screen, read at build time. */
 	function folderItems(): PaletteItem[] {
+		const items = markReadItems(view?.markReadCommands?.() ?? [], folderBulk);
 		const folder = view
 			? findViewFolder(folders.value, view.folderRole.value, view.folderId.value)
 			: null;
-		if (!folder) return [];
-		const items: PaletteItem[] = [];
+		if (!folder) return items;
 		if (canMarkFolderRead(folder)) {
 			items.push({
 				id: 'postbox:mark-all-read',
@@ -320,5 +330,62 @@ export function usePostboxCommandSurface(
 				...group,
 				items: filterItems(group.items, query),
 			})),
+	});
+}
+
+/** One "Mark … as read" palette entry for a view that is not one folder. */
+export interface PostboxMarkReadCommand {
+	/** Unique within the provider, e.g. the category key. */
+	key: string;
+	label: string;
+	target: PostboxMarkReadTarget;
+}
+
+function markReadItems(
+	commands: readonly PostboxMarkReadCommand[],
+	folderBulk: { markRead: (target: PostboxMarkReadTarget) => Promise<void> }
+): PaletteItem[] {
+	return commands.map((command) => ({
+		id: `postbox:mark-read:${command.key}`,
+		label: command.label,
+		icon: CheckAllIcon,
+		run: () => void folderBulk.markRead(command.target),
+	}));
+}
+
+/**
+ * "Mark all as read" in the palette for the pages the Postbox surface above is
+ * not mounted on: a label, All inboxes and the unified folders. The Categories
+ * view's sections go through `view.markReadCommands` of the
+ * surface above instead. `commands` is read when the palette opens and lists
+ * only targets with something unread. Each mounting surface passes its own
+ * `id`, because a page transition mounts the next page before the last one
+ * unmounts and the registry keeps the first provider of an id.
+ */
+export function usePostboxMarkReadCommands(
+	id: string,
+	mailboxId: Ref<Id<'mailboxes'> | null>,
+	commands: () => PostboxMarkReadCommand[]
+) {
+	const { t } = useI18n();
+	const folderBulk = usePostboxFolderBulk(mailboxId);
+	registerCommandPaletteProvider({
+		id: `${POSTBOX_COMMAND_PROVIDER_ID}:mark-read:${id}`,
+		priority: POSTBOX_COMMAND_PROVIDER_PRIORITY,
+		matchRoute: matchPostboxRoute,
+		build: ({ query }) => {
+			const items = markReadItems(commands(), folderBulk);
+			if (items.length === 0) return [];
+			return [
+				{
+					key: `postbox-mark-read-${id}`,
+					heading: t('shared.postbox.usePostboxCommandSurface.groups.mailbox'),
+					order: 0,
+					cap: 12,
+					mode: 'commands',
+					items: filterItems(items, query),
+				},
+			];
+		},
 	});
 }

@@ -6095,6 +6095,8 @@
 				"listLabel": "Gebündelte Nachrichten",
 				"loadMore": "Mehr laden",
 				"latestFrom": "zuletzt von {sender}",
+				"markRead": "Gelesen",
+				"markReadLabel": "Die {count} ungelesene Nachricht dieses Bündels als gelesen markieren | Die {count} ungelesenen Nachrichten dieses Bündels als gelesen markieren",
 				"archiveAll": "Alle archivieren",
 				"archiveAllLabel": "Alle {count} Nachrichten dieses Bündels archivieren",
 				"unsubscribe": "Abbestellen",
@@ -6412,7 +6414,9 @@
 			},
 			"postboxFolderActions": {
 				"menuLabel": "Ordneraktionen",
+				"labelMenuLabel": "Labelaktionen",
 				"markAllRead": "Alle als gelesen markieren",
+				"markCategoryRead": "{category} als gelesen markieren",
 				"empty": {
 					"trash": "Papierkorb leeren",
 					"spam": "Spam leeren"

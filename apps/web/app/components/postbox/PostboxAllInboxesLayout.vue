@@ -11,8 +11,9 @@
  * The rows come from one merged, paginated query; the server routes and gates
  * every action by the mailbox each message belongs to. What names one
  * mailbox's folders or labels (the bulk Move and overflow, the whole-folder
- * select-all, the folder menu, the list renderers other than the flat one,
- * Today) stays in the single-mailbox view the rail links to.
+ * select-all, "Empty now", the list renderers other than the flat one, Today)
+ * stays in the single-mailbox view the rail links to. "Mark all as read" walks
+ * each listed mailbox's folder through its own access check.
  */
 import type { Id } from '@owlat/api/dataModel';
 import {
@@ -24,6 +25,8 @@ import {
 import { POSTBOX_LIST_QUERY } from '~/composables/postbox/usePostboxPlacementFilter';
 import { providePostboxRowInbox } from '~/composables/postbox/usePostboxRowInbox';
 import { usePostboxAllInboxesFeed } from '~/composables/postbox/usePostboxAllInboxesFeed';
+import { usePostboxMarkReadCommands } from '~/composables/postbox/usePostboxCommandSurface';
+import { MAIL_CATEGORY_META, type MailCategory } from '~/utils/mailCategory';
 import PostboxAllInboxesRail from './PostboxAllInboxesRail.vue';
 import PostboxAllInboxesNarrow from './PostboxAllInboxesNarrow.vue';
 import { CloseIcon } from '@coolicons/vue';
@@ -68,6 +71,37 @@ const feed = usePostboxAllInboxesFeed({
 const { providers, provider } = feed;
 /** The mailboxes the narrow keeps, whose drafts All Drafts lists. */
 const draftMailboxIds = feed.mailboxIds;
+
+// "Mark all as read" over what the list shows: the role's folder of every
+// mailbox the narrow keeps, and only the category when one is picked. Drafts
+// have no read state.
+const markRead = computed(() => {
+	if (props.role === 'drafts') return null;
+	const folderIds = feed.sources.value.map((source) => source.folderId);
+	if (folderIds.length === 0) return null;
+	// A `?category=` no category answers to lists nothing, so there is nothing to mark.
+	if (category.value !== null && !Object.hasOwn(MAIL_CATEGORY_META, category.value)) return null;
+	return {
+		target: {
+			kind: 'folders' as const,
+			folderIds,
+			category: category.value as MailCategory | null,
+		},
+		// Only the Inbox's unread count is known up front.
+		enabled: props.role !== 'inbox' || category.value !== null || feed.inboxUnread.value > 0,
+	};
+});
+usePostboxMarkReadCommands('all-inboxes', ref(null), () =>
+	markRead.value?.enabled
+		? [
+				{
+					key: 'all-inboxes',
+					label: t('components.postbox.postboxFolderActions.markAllRead'),
+					target: markRead.value.target,
+				},
+			]
+		: []
+);
 
 const listQuery = computed(() =>
 	allInboxesQuerySuffix({ in: only.value, provider: provider.value, category: category.value })
@@ -203,6 +237,7 @@ const advanceIds = computed(
 						:reading-pane="readingPane"
 						:selection-scope="role === 'drafts' ? undefined : listScope"
 						:page-ids="listMessageIds"
+						:mark-read="markRead"
 						@open-rail="railOpen = true"
 						@select-density="(mode) => void setDensity(mode)"
 						@select-unread-style="(style) => void setUnreadStyle(style)"

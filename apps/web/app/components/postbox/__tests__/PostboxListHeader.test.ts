@@ -50,6 +50,10 @@ const folderActionsStub = {
 	template:
 		'<div class="folder-actions" :data-mailbox="mailboxId" :data-role="folderRole" :data-folder="folderId" />',
 };
+const markReadMenuStub = {
+	props: ['target', 'enabled', 'label'],
+	template: '<div class="mark-read-menu" :data-enabled="String(enabled)" />',
+};
 const inboxModeToggleStub = {
 	props: ['mode'],
 	emits: ['select'],
@@ -67,6 +71,7 @@ function mountHeader(
 		mailboxId?: string;
 		folderMailboxId?: string;
 		pageIds?: string[];
+		markRead?: { target: unknown; enabled: boolean } | null;
 	} = {}
 ) {
 	return mount(PostboxListHeader, {
@@ -82,6 +87,7 @@ function mountHeader(
 			mailboxId: props.mailboxId,
 			folderMailboxId: props.folderMailboxId,
 			pageIds: props.pageIds,
+			markRead: props.markRead as never,
 		},
 		global: {
 			plugins: [createTestI18n()],
@@ -89,6 +95,7 @@ function mountHeader(
 				PostboxListDisplayMenu: displayMenuStub,
 				PostboxInboxModeToggle: inboxModeToggleStub,
 				PostboxFolderActionsMenu: folderActionsStub,
+				PostboxMarkReadMenu: markReadMenuStub,
 			},
 		},
 	});
@@ -226,5 +233,13 @@ describe('PostboxListHeader folder menu', () => {
 
 	it('has no folder menu without a mailbox', () => {
 		expect(mountHeader().find('.folder-actions').exists()).toBe(false);
+	});
+
+	it('offers mark-all-read for a list of several mailboxes, which has no folder menu', () => {
+		const target = { kind: 'folders', folderIds: ['f-a', 'f-b'] };
+		const w = mountHeader({ markRead: { target, enabled: true } });
+		expect(w.find('.folder-actions').exists()).toBe(false);
+		expect(w.get('.mark-read-menu').attributes('data-enabled')).toBe('true');
+		expect(mountHeader().find('.mark-read-menu').exists()).toBe(false);
 	});
 });

@@ -23,6 +23,7 @@ import {
 	POSTBOX_COMMAND_PROVIDER_PRIORITY,
 	matchPostboxRoute,
 	usePostboxCommandSurface,
+	type PostboxMarkReadCommand,
 } from '../usePostboxCommandSurface';
 
 describe('Postbox command provider descriptor', () => {
@@ -109,12 +110,14 @@ describe('Postbox command provider — "Switch mailbox ›"', () => {
 
 describe('Postbox command provider — whole-folder verbs', () => {
 	const markAllRead = vi.fn();
+	const markRead = vi.fn();
 	const requestEmpty = vi.fn();
 	let wrapper: VueWrapper | null = null;
 	afterEach(() => {
 		wrapper?.unmount();
 		wrapper = null;
 		markAllRead.mockReset();
+		markRead.mockReset();
 		requestEmpty.mockReset();
 	});
 
@@ -125,7 +128,12 @@ describe('Postbox command provider — whole-folder verbs', () => {
 		{ _id: 'f-news', role: null, unseenCount: 0, totalCount: 2 },
 	];
 
-	function verbsOn(folderRole: string, folderId?: string, mayEmpty = true): PaletteItem[] {
+	function verbsOn(
+		folderRole: string,
+		folderId?: string,
+		mayEmpty = true,
+		markReadCommands?: () => PostboxMarkReadCommand[]
+	): PaletteItem[] {
 		installNuxtStubs({
 			...i18nStubs,
 			registerCommandPaletteProvider,
@@ -137,6 +145,7 @@ describe('Postbox command provider — whole-folder verbs', () => {
 				canEmpty: (folder: { role?: string | null; totalCount: number }) =>
 					mayEmpty && folder.role === 'trash' && folder.totalCount > 0,
 				markAllRead,
+				markRead,
 				requestEmpty,
 			}),
 			usePostboxMailbox: () => ({
@@ -150,6 +159,7 @@ describe('Postbox command provider — whole-folder verbs', () => {
 					usePostboxCommandSurface(ref('mb-ada') as never, {
 						folderRole: ref(folderRole),
 						folderId: ref(folderId) as never,
+						markReadCommands,
 					});
 					return () => h('div');
 				},
@@ -163,7 +173,12 @@ describe('Postbox command provider — whole-folder verbs', () => {
 			{ query: '', mode: 'commands' }
 		)
 			.flatMap((group) => group.items)
-			.filter((item) => item.id === 'postbox:mark-all-read' || item.id === 'postbox:empty-folder');
+			.filter(
+				(item) =>
+					item.id === 'postbox:mark-all-read' ||
+					item.id === 'postbox:empty-folder' ||
+					item.id.startsWith('postbox:mark-read:')
+			);
 	}
 
 	it('offers "Mark all as read" for the folder on screen while it has unread mail', () => {
@@ -179,6 +194,23 @@ describe('Postbox command provider — whole-folder verbs', () => {
 
 	it('never offers "Mark all as read" in Drafts', () => {
 		expect(verbsOn('drafts')).toEqual([]);
+	});
+
+	it("offers the view's own mark-read entries beside the folder's", () => {
+		const target = {
+			kind: 'category' as const,
+			folderId: 'f-inbox' as never,
+			category: 'newsletter' as const,
+		};
+		const items = verbsOn('inbox', undefined, true, () => [
+			{ key: 'category:newsletter', label: 'Mark Newsletters as read', target },
+		]);
+		expect(items.map((item) => item.label)).toEqual([
+			'Mark Newsletters as read',
+			'Mark all as read',
+		]);
+		items[0]!.run();
+		expect(markRead).toHaveBeenCalledWith(target);
 	});
 
 	it('offers "Empty trash" only to someone who may empty it', () => {
