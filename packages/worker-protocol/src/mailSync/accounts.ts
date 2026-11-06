@@ -6,7 +6,7 @@
 
 import { v } from 'convex/values';
 import { defineEndpoint } from '../contract';
-import { externalAccountStatusValidator } from '../fields';
+import { externalAccountStatusValidator, externalSendPathValidator } from '../fields';
 
 const workerCredentialsFields = {
 	imapHost: v.string(),
@@ -21,11 +21,19 @@ const workerCredentialsFields = {
 	smtpPassword: v.string(),
 	imapAccessToken: v.optional(v.string()),
 	smtpAccessToken: v.optional(v.string()),
+	graphAccessToken: v.optional(v.string()),
+	sendPath: v.optional(externalSendPathValidator),
 };
 
 /**
  * The plaintext credential bundle. On an `oauth2` account the two access tokens
  * stand in for the passwords, which are then empty strings.
+ *
+ * `sendPath` is set on Microsoft sign-in accounts only, and says how the
+ * account submitted its last successful send. `graphAccessToken` is a Microsoft
+ * Graph token for `Mail.Send`, present when the grant covers that scope: a
+ * token request names one resource, so it cannot be the token the IMAP and SMTP
+ * logins use.
  */
 export const workerCredentialsValidator = v.object(workerCredentialsFields);
 
@@ -92,6 +100,22 @@ export const listConnectableAccounts = defineEndpoint({
 			status: v.union(v.literal('pending'), v.literal('connected'), v.literal('error')),
 		})
 	),
+});
+
+/**
+ * Record how a Microsoft sign-in account sends: 'graph' once SMTP AUTH was
+ * refused and Graph took the message, 'smtp' when SMTP works again. The worker
+ * calls it only when the path changed, and treats a backend without it as a
+ * no-op.
+ */
+export const setSendPath = defineEndpoint({
+	path: 'mail/external/accounts:setSendPath',
+	kind: 'mutation',
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		sendPath: externalSendPathValidator,
+	},
+	returns: v.null(),
 });
 
 /** Connection / sync status write-back. */

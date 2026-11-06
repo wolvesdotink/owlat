@@ -29,8 +29,15 @@ describe('workerWireWindow', () => {
 	it('still serves the releases from before reporting for the services that start reporting now', () => {
 		for (const service of ['mail-sync', 'mta', 'code-worker'] as const) {
 			expect(workerWireVerdict(0, workerWireWindow(service))).toBe('supported');
+		}
+		for (const service of ['mta', 'code-worker'] as const) {
 			expect(workerWireVerdict(1, workerWireWindow(service))).toBe('current');
 		}
+	});
+
+	it('still serves the first reporting mail-sync worker, which sends through SMTP only', () => {
+		expect(workerWireVerdict(1, workerWireWindow('mail-sync'))).toBe('supported');
+		expect(workerWireVerdict(2, workerWireWindow('mail-sync'))).toBe('current');
 	});
 
 	it('has a window for every service', () => {

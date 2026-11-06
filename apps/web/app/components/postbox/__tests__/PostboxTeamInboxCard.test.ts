@@ -32,7 +32,12 @@ type Status = FunctionReturnType<typeof api.mail.migrationShared.getStatusShared
 const MAILBOX_ID = 'mailbox_support' as Id<'mailboxes'>;
 
 const importStatus: Ref<Status> = ref(null);
-const sharedAccount: Ref<{ configured: true; syncMode: 'full' | 'incoming' } | null> = ref(null);
+const sharedAccount: Ref<{
+	configured: true;
+	syncMode: 'full' | 'incoming';
+	authMethod?: 'password' | 'oauth2';
+	oauthProvider?: 'google' | 'microsoft';
+} | null> = ref(null);
 
 function inbox(overrides: Partial<SharedInbox> = {}): SharedInbox {
 	return {
@@ -99,6 +104,11 @@ function mountCard(overrides: Partial<SharedInbox> = {}) {
 					props: ['mode', 'mailboxId'],
 					template:
 						'<div data-testid="sync-mode-toggle" :data-mode="mode" :data-mailbox="mailboxId" />',
+				},
+				PostboxMicrosoftSendPath: {
+					props: ['account', 'mailboxId'],
+					template:
+						'<div data-testid="microsoft-send-path" :data-provider="account.oauthProvider" :data-mailbox="mailboxId" />',
 				},
 			},
 		},
@@ -188,6 +198,18 @@ describe('TeamInboxCard — sync with the provider', () => {
 		const toggle = mountCard().find('[data-testid="sync-mode-toggle"]');
 		expect(toggle.attributes('data-mode')).toBe('incoming');
 		expect(toggle.attributes('data-mailbox')).toBe(MAILBOX_ID);
+	});
+
+	it('shows how a Microsoft team inbox sends, with the team inbox as the re-consent target', () => {
+		sharedAccount.value = {
+			configured: true,
+			syncMode: 'full',
+			authMethod: 'oauth2',
+			oauthProvider: 'microsoft',
+		};
+		const row = mountCard().find('[data-testid="microsoft-send-path"]');
+		expect(row.attributes('data-provider')).toBe('microsoft');
+		expect(row.attributes('data-mailbox')).toBe(MAILBOX_ID);
 	});
 
 	it('has no switch for a hosted inbox, which has no provider', () => {

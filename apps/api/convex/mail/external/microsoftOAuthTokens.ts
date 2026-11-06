@@ -45,11 +45,29 @@ const MAIL_SCOPES = [
 ];
 
 /**
+ * Microsoft Graph's delegated send permission, for mailboxes whose tenant turned
+ * SMTP AUTH off. It belongs to another resource than the IMAP and SMTP scopes,
+ * so it is consented to at sign-in but redeemed with its own token request.
+ */
+export const GRAPH_SEND_SCOPE = 'https://graph.microsoft.com/Mail.Send';
+
+/**
  * `offline_access` is what makes Microsoft return a refresh token. `openid email
  * profile` put the signed-in address into the `id_token`, so the exchange learns
  * which account was picked without a call to another resource.
+ *
+ * Microsoft consents to every scope named here but returns a token for the
+ * first resource only, so the Exchange scopes lead: the code exchange's token is
+ * the one {@link coversMailScopes} checks.
  */
-const AUTHORIZE_SCOPES = [...MAIL_SCOPES, 'offline_access', 'openid', 'email', 'profile'].join(' ');
+const AUTHORIZE_SCOPES = [
+	...MAIL_SCOPES,
+	GRAPH_SEND_SCOPE,
+	'offline_access',
+	'openid',
+	'email',
+	'profile',
+].join(' ');
 const REFRESH_SCOPES = [...MAIL_SCOPES, 'offline_access'].join(' ');
 
 /** The directory id Microsoft stamps on every personal (consumer) account's token. */
@@ -62,7 +80,11 @@ const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * the password changed, or a policy (MFA, conditional access, consent withdrawn)
  * now demands the user sign in again. Only the user reconnecting fixes these.
  */
-const REVOKED_ERRORS = new Set(['invalid_grant', 'interaction_required', 'consent_required']);
+export const REVOKED_ERRORS = new Set([
+	'invalid_grant',
+	'interaction_required',
+	'consent_required',
+]);
 
 /**
  * Microsoft issues a new refresh token on every refresh, and each one lives 90
@@ -134,7 +156,7 @@ export function microsoftRedirectUri(): string {
 	return oauthRedirectUri('microsoft', 'Microsoft sign-in');
 }
 
-function tokenEndpoint(tenant: string): string {
+export function microsoftTokenEndpoint(tenant: string): string {
 	return `${AUTHORITY}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`;
 }
 
@@ -276,7 +298,7 @@ export async function exchangeMicrosoftAuthorizationCode(params: {
 	redirectUri: string;
 }): Promise<{ refreshToken: string; email: string; tenantId: string }> {
 	const token = await postTokenRequest(
-		tokenEndpoint(params.client.tenant),
+		microsoftTokenEndpoint(params.client.tenant),
 		new URLSearchParams({
 			grant_type: 'authorization_code',
 			code: params.code,
@@ -367,7 +389,7 @@ export async function refreshMicrosoftAccessToken(
 
 	const client = requireMicrosoftOAuthClient();
 	const token = await postTokenRequest(
-		tokenEndpoint(client.tenant),
+		microsoftTokenEndpoint(client.tenant),
 		new URLSearchParams({
 			grant_type: 'refresh_token',
 			refresh_token: secret.oauthRefreshToken,

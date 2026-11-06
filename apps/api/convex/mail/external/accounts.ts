@@ -28,7 +28,8 @@
  *   Public:   getForCurrentUser, disconnect, purge
  *   Internal: _connectInternal, _updateCredentialsInternal (called by the
  *             connect actions after encryption), _getRowInternal,
- *             listConnectableAccounts, setSyncStatus
+ *             listConnectableAccounts, setSyncStatus, setSendPath,
+ *             _setGraphConsentInternal
  *
  * What DISCONNECTING does — forgetting the password, cancelling a running
  * import, hiding the mailbox — and the purge cascade both live in the sibling
@@ -69,6 +70,7 @@ import { markOnboardingStep } from '../../auth/userOnboarding';
 import { throwForbidden, throwAlreadyExists, throwNotFound } from '../../_utils/errors';
 import {
 	listConnectableAccounts as listConnectableAccountsContract,
+	setSendPath as setSendPathContract,
 	setSyncStatus as setSyncStatusContract,
 } from '@owlat/worker-protocol/mailSync';
 
@@ -387,5 +389,44 @@ export const setSyncStatus = internalMutation({
 		}
 		if (args.markSynced) patch['lastSyncAt'] = now;
 		await ctx.db.patch(args.accountId, patch);
+	},
+});
+
+/**
+ * Worker records how a Microsoft sign-in account sends (see `sendPath` in
+ * `schema/mailAccounts.ts`). Ignored on any other account, and on one that was
+ * disconnected while the send ran.
+ */
+export const setSendPath = internalMutation({
+	args: setSendPathContract.args,
+	returns: setSendPathContract.returns,
+	handler: async (ctx, args) => {
+		const account = await ctx.db.get(args.accountId);
+		if (!account || account.status === 'disconnected') return null;
+		if (account.authMethod !== 'oauth2' || account.oauthProvider !== 'microsoft') return null;
+		if ((account.sendPath ?? 'smtp') === args.sendPath) return null;
+		await ctx.db.patch(args.accountId, { sendPath: args.sendPath, updatedAt: Date.now() });
+		return null;
+	},
+});
+
+/**
+ * Record whether a Microsoft account's grant covers Graph `Mail.Send`, as the
+ * credential fetch just found. Only written while the account still holds the
+ * envelope the token request used, so a reconnect that landed in between (and
+ * cleared the field to ask again) wins; and only when the answer changed.
+ */
+export const _setGraphConsentInternal = internalMutation({
+	args: {
+		accountId: v.id('externalMailAccounts'),
+		expectedIv: v.string(),
+		graphConsent: v.union(v.literal('granted'), v.literal('missing')),
+	},
+	handler: async (ctx, args) => {
+		const account = await ctx.db.get(args.accountId);
+		if (!account || account.status === 'disconnected') return;
+		if (account.secretIv !== args.expectedIv) return;
+		if (account.graphConsent === args.graphConsent) return;
+		await ctx.db.patch(args.accountId, { graphConsent: args.graphConsent });
 	},
 });

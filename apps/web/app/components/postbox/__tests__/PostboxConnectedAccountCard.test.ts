@@ -16,7 +16,17 @@ import { ref, computed, watch, type Ref } from 'vue';
 
 import { setAppReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import PostboxConnectedAccountCard from '../PostboxConnectedAccountCard.vue';
+import PostboxMicrosoftSendPath from '../PostboxMicrosoftSendPath.vue';
 import { createTestI18n, i18nStubs, expectFullyLocalized } from '~/__tests__/i18n';
+
+const oauthConnect = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('~/composables/postbox/useMailOAuthConnect', () => ({
+	useMailOAuthConnect: () => ({
+		connect: oauthConnect,
+		isLoading: ref(false),
+		handedOffToBrowser: ref(false),
+	}),
+}));
 
 // Each `api.a.b.c` is its own readable path, so the two subscriptions this card
 // opens can be told apart in the query stub.
@@ -43,6 +53,10 @@ type Account = {
 	lastError?: string;
 	lastSyncAt?: number;
 	syncMode?: 'full' | 'incoming';
+	authMethod?: 'password' | 'oauth2';
+	oauthProvider?: 'google' | 'microsoft';
+	sendPath?: 'smtp' | 'graph';
+	graphConsent?: 'granted' | 'missing';
 };
 type Retained = {
 	configured: false;
@@ -108,7 +122,7 @@ beforeAll(() => {
 		},
 	}));
 	vi.stubGlobal('navigateTo', navigateTo);
-	vi.stubGlobal('useRoute', () => ({ path: routePath.value }));
+	vi.stubGlobal('useRoute', () => ({ path: routePath.value, fullPath: routePath.value }));
 	vi.stubGlobal('watch', watch);
 	vi.stubGlobal('computed', computed);
 	vi.stubGlobal('ref', ref);
@@ -124,6 +138,7 @@ beforeEach(() => {
 	routePath.value = '/dashboard/preferences/external-account';
 	subscriptionArgs.clear();
 	navigateTo.mockClear();
+	oauthConnect.mockClear();
 	disconnectRun.mockClear();
 	purgeRun.mockClear();
 	toasts.length = 0;
@@ -158,6 +173,7 @@ const mountCard = (props: Record<string, unknown> = {}) =>
 		props,
 		global: {
 			plugins: [createTestI18n()],
+			components: { PostboxMicrosoftSendPath },
 			stubs: {
 				UiButton: buttonStub,
 				UiConfirmationDialog: confirmStub,
@@ -204,6 +220,65 @@ describe('PostboxConnectedAccountCard — a live connection', () => {
 			.find((b) => b.text() === 'Update password')!
 			.trigger('click');
 		expect(wrapper.find('.connect-form').exists()).toBe(true);
+	});
+});
+
+describe('PostboxConnectedAccountCard — how a Microsoft mailbox sends', () => {
+	const MICROSOFT: Account = {
+		...CONNECTED,
+		emailAddress: 'me@contoso.example',
+		imapHost: 'outlook.office365.com',
+		smtpHost: 'smtp.office365.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+		authMethod: 'oauth2',
+		oauthProvider: 'microsoft',
+	};
+
+	it('says a mailbox sends through SMTP until Microsoft refuses it', () => {
+		accountData.value = { ...MICROSOFT, graphConsent: 'granted' };
+		const wrapper = mountCard();
+		expect(wrapper.find('[data-testid="microsoft-send-path-badge"]').text()).toBe('SMTP');
+		expect(wrapper.find('[data-testid="microsoft-send-consent"]').exists()).toBe(false);
+		expectFullyLocalized(wrapper);
+	});
+
+	it('says a mailbox whose organization turned SMTP off sends through Microsoft Graph', () => {
+		accountData.value = { ...MICROSOFT, sendPath: 'graph', graphConsent: 'granted' };
+		const wrapper = mountCard();
+		expect(wrapper.find('[data-testid="microsoft-send-path-badge"]').text()).toBe(
+			'Microsoft Graph'
+		);
+		expect(wrapper.find('[data-testid="microsoft-send-path"]').text()).toContain('Sent Items');
+	});
+
+	it('offers one click to grant the send permission, through Microsoft sign-in', async () => {
+		accountData.value = { ...MICROSOFT, graphConsent: 'missing' };
+		const wrapper = mountCard();
+		const prompt = wrapper.find('[data-testid="microsoft-send-consent"]');
+		expect(prompt.text()).toContain('needs your permission');
+		expectFullyLocalized(wrapper);
+
+		await wrapper.find('[data-testid="microsoft-send-consent-button"]').trigger('click');
+		await flushPromises();
+		expect(oauthConnect).toHaveBeenCalledWith(
+			'microsoft',
+			{ kind: 'update' },
+			'/dashboard/preferences/external-account'
+		);
+	});
+
+	it('says sending has stopped when the Graph path lost its permission', () => {
+		accountData.value = { ...MICROSOFT, sendPath: 'graph', graphConsent: 'missing' };
+		const prompt = mountCard().find('[data-testid="microsoft-send-consent"]');
+		expect(prompt.text()).toContain('Sending stops until you grant it again');
+	});
+
+	it('shows nothing about Graph for a mailbox that is not Microsoft sign-in', () => {
+		accountData.value = { ...CONNECTED, authMethod: 'oauth2', oauthProvider: 'google' };
+		expect(mountCard().find('[data-testid="microsoft-send-path"]').exists()).toBe(false);
+		accountData.value = { ...CONNECTED, authMethod: 'password' };
+		expect(mountCard().find('[data-testid="microsoft-send-path"]').exists()).toBe(false);
 	});
 });
 

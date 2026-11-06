@@ -6401,6 +6401,17 @@
 					"spam": "Empty spam?"
 				},
 				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
+			},
+			"postboxMicrosoftSendPath": {
+				"consentNeeded": "If your organization turns off SMTP sign-in, Owlat can still send through Microsoft Graph, but it needs your permission first.",
+				"consentNeededGraph": "Microsoft turned off SMTP sign-in for this mailbox, and Owlat no longer has permission to send through Microsoft Graph. Sending stops until you grant it again.",
+				"continueInBrowser": "Finish signing in with Microsoft in your browser.",
+				"grant": "Grant send permission",
+				"graph": "Microsoft Graph",
+				"graphHelp": "Your organization turned off SMTP sign-in, so mail goes out through Microsoft Graph. Microsoft keeps the copy in Sent Items.",
+				"label": "Sends through",
+				"smtp": "SMTP",
+				"smtpHelp": "Mail goes out through Microsoft's SMTP server, signed in with your Microsoft account."
 			}
 		},
 		"preferences": {
