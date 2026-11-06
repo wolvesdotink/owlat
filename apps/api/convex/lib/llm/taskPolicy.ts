@@ -298,7 +298,7 @@ const ENTRIES = {
 		tiers: ['capable'],
 		...interactive,
 		...replySurface,
-		features: ['postbox_ask_thread'],
+		features: ['postbox_ask_thread', 'postbox_ask_mailbox'],
 	}),
 	'mail.rewrite': language({
 		...MEDIUM_OUTPUT,

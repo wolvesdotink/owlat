@@ -409,12 +409,23 @@
 			"scopeHint": "Scope",
 			"filterPlaceholder": "Type to narrow the list…",
 			"keepTyping": "Keep typing to search your mail",
+			"mailAsk": {
+				"operation": "Ask your mail",
+				"placeholder": "Ask a question about your mail…",
+				"emptyTitle": "Ask a question about your mail",
+				"emptyHint": "Press Enter for an answer that cites the messages it used",
+				"searching": "Reading your mail…",
+				"noMatches": "No message in your mail matches this question.",
+				"headersOnly": "Answered from headers and snippets only, because full-text body search is off.",
+				"citationLabel": "Open message {index}: {subject}"
+			},
 			"prefixes": {
 				"heading": "Narrow with a prefix",
 				"commands": "Commands, pages and settings",
 				"people": "People and contacts",
 				"labels": "Labels",
-				"ask": "Ask your knowledge base"
+				"ask": "Ask your knowledge base",
+				"askMail": "Ask your mail"
 			}
 		},
 		"assistant": {
@@ -436,6 +447,7 @@
 			"assistantToolCalls": {
 				"summary": "Used {count} tools",
 				"tools": {
+					"askMailbox": "Checked your mail",
 					"draftCampaignCopy": "Drafted campaign copy",
 					"draftEmailReply": "Drafted an email reply",
 					"getCampaignStats": "Looked up campaign stats",

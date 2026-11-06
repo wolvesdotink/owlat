@@ -58,6 +58,11 @@ export const ASSISTANT_TOOL_DRAFT_SPEND = 'assistant_tool_draft' as const;
 export interface AssistantAudience {
 	/** Whether knowledge derived from Team Inbox mail may be returned. */
 	readonly canReadInbox: boolean;
+	/**
+	 * Whose mail the turn may read: the person the personal assistant answers.
+	 * Absent for a reply a whole room reads, so no one's mail is searched there.
+	 */
+	readonly mailReader?: { readonly userId: string; readonly organizationId: string };
 }
 
 /**

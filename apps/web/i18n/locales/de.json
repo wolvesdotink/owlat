@@ -409,12 +409,23 @@
 			"scopeHint": "Bereich",
 			"filterPlaceholder": "Tippe, um die Liste einzugrenzen…",
 			"keepTyping": "Tippe weiter, um deine E-Mails zu durchsuchen",
+			"mailAsk": {
+				"operation": "Deine E-Mails fragen",
+				"placeholder": "Stell eine Frage zu deinen E-Mails…",
+				"emptyTitle": "Stell eine Frage zu deinen E-Mails",
+				"emptyHint": "Drück Enter für eine Antwort, die die verwendeten Nachrichten nennt",
+				"searching": "Deine E-Mails werden gelesen…",
+				"noMatches": "Keine Nachricht in deinen E-Mails passt zu dieser Frage.",
+				"headersOnly": "Nur aus Kopfzeilen und Vorschautext beantwortet, weil die Volltextsuche im Nachrichtentext aus ist.",
+				"citationLabel": "Nachricht {index} öffnen: {subject}"
+			},
 			"prefixes": {
 				"heading": "Mit einem Präfix eingrenzen",
 				"commands": "Befehle, Seiten und Einstellungen",
 				"people": "Personen und Kontakte",
 				"labels": "Labels",
-				"ask": "Frag deine Wissensdatenbank"
+				"ask": "Frag deine Wissensdatenbank",
+				"askMail": "Frag deine E-Mails"
 			}
 		},
 		"assistant": {
@@ -436,6 +447,7 @@
 			"assistantToolCalls": {
 				"summary": "{count} Tools verwendet",
 				"tools": {
+					"askMailbox": "In deinen E-Mails nachgesehen",
 					"draftCampaignCopy": "Kampagnentext entworfen",
 					"draftEmailReply": "E-Mail-Antwort entworfen",
 					"getCampaignStats": "Kampagnenstatistiken abgerufen",

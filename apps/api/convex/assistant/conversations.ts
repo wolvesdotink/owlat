@@ -229,6 +229,7 @@ export const sendMessage = assistantMutation({
 			// The searchKnowledge tool returns Team Inbox-derived knowledge only
 			// to a shared-inbox reader (inbox/access.ts).
 			includeInboxDerived: isSharedInboxReader(session),
+			organizationId: session.activeOrganizationId,
 		});
 
 		return { assistantMessageId };

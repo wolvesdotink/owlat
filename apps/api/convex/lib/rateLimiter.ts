@@ -264,6 +264,16 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 40,
 	},
 
+	// Ask your mailbox (`mail.ai.askMailbox.askMailbox`). Each ask runs a mail
+	// search and a capable-tier answer, so it gets its own bucket rather than
+	// eating the one Ask about this thread and suggested replies share.
+	askMailboxPerUser: {
+		kind: 'token bucket',
+		rate: 20,
+		period: MINUTE,
+		capacity: 30,
+	},
+
 	// The thread brief's first-open interpretation (`mail.interpret.lazy.ensure`).
 	// The reader calls it once per older thread it opens; each call schedules
 	// a few cheap-tier runs, so a loop over every thread is capped here.

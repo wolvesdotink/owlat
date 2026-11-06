@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import type { PaletteGroup, PaletteItem } from '~/lib/commandPalette';
 import type { QuickQueryAnswer } from '~/composables/useCommandPaletteAsk';
+import type { MailAskAnswer, MailAskCitation } from '~/composables/useCommandPaletteMailAsk';
 import type { PalettePrompt } from '~/composables/useCommandPaletteScope';
 import { highlightSegments } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
-import { ChevronRightIcon, SearchIcon, SparklesIcon } from '@coolicons/vue';
+import AppCommandPaletteMailAnswer from '~/components/AppCommandPaletteMailAnswer.vue';
+import { ChevronRightIcon, MailIcon, SearchIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
- * The command palette's result region: the grouped rows, and the three things
- * that stand in for them — the Ask answer, the spinner, and the empty state.
+ * The command palette's result region: the grouped rows, and the things that
+ * stand in for them — the Ask answer, the mail answer, the spinner, and the
+ * empty state.
  * Mail scope's empty box also gets a legend of the mode prefixes.
  *
  * Split out of `AppCommandPalette.vue` (file-size cap) as a purely presentational
@@ -34,33 +37,49 @@ const props = defineProps<{
 	askLoading: boolean;
 	/** Whether `?` asks knowledge here; with the flag off the legend leaves it out. */
 	askAvailable: boolean;
+	/** Mail ask only: `?` in Mail scope answers from mail while `ai` is on. */
+	mailAskAvailable: boolean;
+	mailAskAnswer: MailAskAnswer | null;
+	mailAskLoading: boolean;
 }>();
 
 defineEmits<{
 	run: [item: PaletteItem];
 	hover: [index: number];
 	clearRecent: [];
+	openCitation: [citation: MailAskCitation];
 }>();
 
 const { t } = useI18n();
 const { labelFor } = useShortcutLabels();
 
-const PREFIX_LEGEND = [
+interface PrefixLegendEntry {
+	prefix: string;
+	labelKey: string;
+}
+
+const PREFIX_LEGEND: readonly PrefixLegendEntry[] = [
 	{ prefix: '>', labelKey: 'components.appCommandPalette.prefixes.commands' },
 	{ prefix: '@', labelKey: 'components.appCommandPalette.prefixes.people' },
 	{ prefix: '#', labelKey: 'components.appCommandPalette.prefixes.labels' },
 	{ prefix: '?', labelKey: 'components.appCommandPalette.prefixes.ask' },
-] as const;
+];
 
 /**
  * Shown under the starting points of an empty Mail box. The footer only lists
  * the four characters, which says nothing about what each one does.
  */
-const prefixLegend = computed(() =>
-	props.prompt === 'mailSearch' && !props.matchTerm.trim()
-		? PREFIX_LEGEND.filter((entry) => entry.prefix !== '?' || props.askAvailable)
-		: []
-);
+const prefixLegend = computed(() => {
+	if (props.prompt !== 'mailSearch' || props.matchTerm.trim()) return [];
+	// In Mail scope `?` asks the mail itself when it can, else the knowledge base.
+	return PREFIX_LEGEND.flatMap((entry): PrefixLegendEntry[] => {
+		if (entry.prefix !== '?') return [entry];
+		if (props.mailAskAvailable) {
+			return [{ ...entry, labelKey: 'components.appCommandPalette.prefixes.askMail' }];
+		}
+		return props.askAvailable ? [entry] : [];
+	});
+});
 
 /** The row's key chip: its catalog shortcut as bound right now, else its literal hint. */
 function hintFor(item: PaletteItem): string | null {
@@ -147,6 +166,26 @@ function hintFor(item: PaletteItem): string | null {
 					<SparklesIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
 					<p class="text-sm">{{ t('components.query.quickQueryPanel.emptyTitle') }}</p>
 					<p class="text-xs mt-1">{{ t('components.query.quickQueryPanel.emptyHint') }}</p>
+				</div>
+			</template>
+
+			<!-- Mail ask: the answer from the person's own mail, its sources opening
+		     the messages they cite. -->
+			<template v-else-if="prompt === 'mailAsk'">
+				<div v-if="mailAskLoading" class="px-4 py-8 text-center text-text-tertiary">
+					<UiSpinner class="mx-auto" size="sm" tone="brand" />
+					<p class="mt-2 text-sm">{{ t('components.appCommandPalette.mailAsk.searching') }}</p>
+				</div>
+				<div v-else-if="mailAskAnswer" class="px-4 py-3">
+					<AppCommandPaletteMailAnswer
+						:answer="mailAskAnswer"
+						@open="$emit('openCitation', $event)"
+					/>
+				</div>
+				<div v-else class="px-4 py-8 text-center text-text-tertiary">
+					<MailIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
+					<p class="text-sm">{{ t('components.appCommandPalette.mailAsk.emptyTitle') }}</p>
+					<p class="text-xs mt-1">{{ t('components.appCommandPalette.mailAsk.emptyHint') }}</p>
 				</div>
 			</template>
 
