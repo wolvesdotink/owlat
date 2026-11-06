@@ -87,9 +87,8 @@ usePostboxMarkReadCommands('label', mailboxId, () =>
 							{{ t('dashboard.postbox.label.detail.heading') }}
 						</h2>
 						<!-- The 36px trigger would grow the 20px title row: the negative
-						     margin keeps the header the height it has without it. Lazy,
-						     so the menu stays out of this page's bundle budget. -->
-						<LazyPostboxMarkReadMenu
+						     margin keeps the header the height it has without it. -->
+						<PostboxMarkReadMenu
 							v-if="markReadTarget"
 							class="-my-2"
 							:target="markReadTarget"
