@@ -245,3 +245,109 @@ describe('mail/contactsVcard.exportPage', () => {
 		).rejects.toThrow(/not accessible/i);
 	});
 });
+
+describe('mail/contacts.remove and restore (the Undo)', () => {
+	async function seedSyncedRow(t: T, mailboxId: Id<'mailboxes'>) {
+		return t.run(async (ctx) => {
+			const accountId = await ctx.db.insert('mailCardDavAccounts', {
+				mailboxId,
+				serverUrl: 'https://dav.example.com/',
+				addressBookUrl: 'https://dav.example.com/books/me/contacts/',
+				username: 'me',
+				secretCiphertext: 'c',
+				secretIv: 'i',
+				secretAuthTag: 'a',
+				secretEnvelopeVersion: 1,
+				status: 'ok',
+				nextSyncAt: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+			const photoStorageId = await ctx.storage.store(
+				new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' })
+			);
+			const contactId = await ctx.db.insert('mailContacts', {
+				mailboxId,
+				email: 'ada@example.com',
+				displayName: 'Ada Lovelace',
+				organization: 'Analytical',
+				phones: [{ value: '+44 20 7946 0000', type: 'cell' }],
+				postalAddresses: [{ type: 'home', street: '12 St James Sq', locality: 'London' }],
+				photoStorageId,
+				isVip: true,
+				useCount: 3,
+				lastUsedAt: 50,
+				createdAt: 10,
+				cardDavSource: {
+					accountId,
+					href: 'https://dav.example.com/books/me/contacts/ada.vcf',
+					etag: '"7"',
+					isRowCreatedBySync: true,
+				},
+			});
+			return (await ctx.db.get(contactId))!;
+		});
+	}
+
+	const photoExists = (t: T, storageId: Id<'_storage'>) =>
+		t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null);
+
+	function snapshotOf(row: Awaited<ReturnType<typeof seedSyncedRow>>) {
+		const { _id: _ignoredId, _creationTime: _ignoredTime, mailboxId: _mailbox, ...contact } = row;
+		return contact;
+	}
+
+	it('restores the whole contact, picture and CardDAV link included, within the window', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+			const row = await seedSyncedRow(t, mailboxId);
+
+			const removed = await t.mutation(api.mail.contacts.remove, { contactId: row._id });
+			expect(await contactsOf(t, mailboxId)).toHaveLength(0);
+			// The picture outlives the row until the Undo window closes.
+			expect(await photoExists(t, row.photoStorageId!)).toBe(true);
+
+			await t.mutation(api.mail.contactsUndo.restore, {
+				mailboxId,
+				contact: snapshotOf(row),
+				photoRemovalId: removed.photoRemovalId,
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+			const [restored] = await contactsOf(t, mailboxId);
+			const { _id: _a, _creationTime: _b, ...expected } = row;
+			expect(restored).toMatchObject(expected);
+			expect(await photoExists(t, row.photoStorageId!)).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('deletes the picture once the window closes, and never attaches a picture it did not hold', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = convexTest(schema, modules);
+			const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+			const row = await seedSyncedRow(t, mailboxId);
+			const other = await t.run((ctx) =>
+				ctx.storage.store(new Blob([new Uint8Array([1])], { type: 'image/png' }))
+			);
+
+			await t.mutation(api.mail.contacts.remove, { contactId: row._id });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+			expect(await photoExists(t, row.photoStorageId!)).toBe(false);
+
+			await t.mutation(api.mail.contactsUndo.restore, {
+				mailboxId,
+				contact: { ...snapshotOf(row), photoStorageId: other },
+			});
+			const [restored] = await contactsOf(t, mailboxId);
+			expect(restored!.phones).toEqual(row.phones);
+			expect(restored!.photoStorageId).toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

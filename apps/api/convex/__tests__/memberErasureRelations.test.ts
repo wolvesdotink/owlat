@@ -78,6 +78,7 @@ const referencesTo = (target: string) =>
 	schemaFields((validator) => validator.kind === 'id' && validator.tableName === target);
 
 const erasureSource = [
+	'addressBookPhases',
 	'capturedFilePhases',
 	'identityPhases',
 	'mailboxPhases',

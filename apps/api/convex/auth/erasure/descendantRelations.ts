@@ -244,6 +244,20 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailboxes', 'mailContacts', 'mailboxId', 'delete', 'The private address book.'),
 	desc(
 		'mailboxes',
+		'mailCardDavAccounts',
+		'mailboxId',
+		'delete',
+		'The address book’s CardDAV server and sealed password.'
+	),
+	desc(
+		'mailCardDavAccounts',
+		'mailContacts',
+		'cardDavSource.accountId',
+		'delete',
+		'Rows synced into the private address book; deleted with it.'
+	),
+	desc(
+		'mailboxes',
 		'mailSenderCategoryOverrides',
 		'mailboxId',
 		'delete',

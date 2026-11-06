@@ -7,28 +7,21 @@
  * parser's own bounds before it is written, so a hand-made call can store no
  * more than an honest file could.
  *
- * Merging is by address. A row the mail already built keeps its name,
- * organization and use counts; the import fills what is missing and adds
- * phone numbers and postal addresses. A new row counts as an address-book
- * entry everywhere else (screener, cold-pitch verdicts) with `useCount` 0,
- * because nobody has been written to yet.
+ * Merging is by address (`contactsMerge.ts`). Pictures do not travel in these
+ * batches: the browser sends them afterwards through `contactsPhotos.ts`,
+ * because only an action can put them in file storage.
  *
  * Export pages through the whole book, so it can hand back more rows than the
- * contacts page loads.
+ * contacts page loads. A row's picture comes back as a short-lived URL the
+ * browser reads and writes into the card.
  */
 
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import {
-	VCARD_IMPORT_BATCH_SIZE,
-	mergeVcardAddresses,
-	mergeVcardPhones,
-	normalizeVcardImportEntry,
-} from '@owlat/shared/postboxVcard';
+import { VCARD_IMPORT_BATCH_SIZE, normalizeVcardImportEntry } from '@owlat/shared/postboxVcard';
 import { postboxMutation, postboxQuery } from './_helpers';
 import { requireMailboxAccess } from './permissions';
-import { loadSenderContact } from './senderEvidence';
-import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
+import { writeAddressBookEntry } from './contactsMerge';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { mailContactImportEntryValidator } from '../lib/validators/mailContacts';
 
@@ -59,37 +52,15 @@ export const importBatch = postboxMutation({
 				skipped++;
 				continue;
 			}
-			const existing = await loadSenderContact(ctx, args.mailboxId, entry.email);
-			if (existing) {
-				const phones = mergeVcardPhones(existing.phones, entry.phones);
-				const postalAddresses = mergeVcardAddresses(
-					existing.postalAddresses,
-					entry.postalAddresses
-				);
-				await ctx.db.patch(existing._id, {
-					displayName: existing.displayName ?? entry.displayName,
-					organization: existing.organization ?? entry.organization,
-					phones: phones.length > 0 ? phones : undefined,
-					postalAddresses: postalAddresses.length > 0 ? postalAddresses : undefined,
-					importedAt: now,
-				});
-				merged++;
-				continue;
-			}
-			await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, entry.email);
-			await ctx.db.insert('mailContacts', {
-				mailboxId: args.mailboxId,
-				email: entry.email,
-				displayName: entry.displayName,
-				organization: entry.organization,
-				phones: entry.phones,
-				postalAddresses: entry.postalAddresses,
-				useCount: 0,
-				lastUsedAt: now,
-				importedAt: now,
-				createdAt: now,
-			});
-			created++;
+			const written = await writeAddressBookEntry(
+				ctx,
+				args.mailboxId,
+				entry,
+				{ kind: 'vcard' },
+				now
+			);
+			if (written.outcome === 'created') created++;
+			else merged++;
 		}
 		return { created, merged, skipped };
 	},
@@ -109,15 +80,18 @@ export const exportPage = postboxQuery({
 				...args.paginationOpts,
 				numItems: Math.min(args.paginationOpts.numItems, EXPORT_PAGE_LIMIT),
 			});
-		return {
-			...result,
-			page: result.page.map((contact) => ({
+		const page = await Promise.all(
+			result.page.map(async (contact) => ({
 				email: contact.email,
 				displayName: contact.displayName,
 				organization: contact.organization,
 				phones: contact.phones,
 				postalAddresses: contact.postalAddresses,
-			})),
-		};
+				photoUrl: contact.photoStorageId
+					? ((await ctx.storage.getUrl(contact.photoStorageId)) ?? undefined)
+					: undefined,
+			}))
+		);
+		return { ...result, page };
 	},
 });

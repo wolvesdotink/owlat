@@ -23,6 +23,8 @@ export const ACCOUNT_EXPORT_PERSONAL_RESOURCES = [
 	'mailDrafts',
 	// The Postbox address book of each personal mailbox (mailbox-scoped).
 	'mailContacts',
+	// The CardDAV book each personal mailbox syncs, without its sealed password.
+	'mailCardDavAccounts',
 	'externalMailAccounts',
 	'chatMessages',
 	'threadNotes',

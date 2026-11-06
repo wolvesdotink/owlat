@@ -11,7 +11,8 @@ import {
 
 /**
  * Erasing a member deletes their personal address book, what a vCard import
- * added to it included, and leaves a team inbox's book alone.
+ * added to it included (pictures too), and the CardDAV account syncing into
+ * it, and leaves a team inbox's book alone.
  */
 
 beforeEach(() => {
@@ -46,6 +47,49 @@ describe('member erasure of the Postbox address book', () => {
 			});
 		await seedContact(personal.mailboxId, 'friend@example.org');
 		await seedContact(team.mailboxId, 'customer@example.org');
+		const seedAccount = (mailboxId: Id<'mailboxes'>) =>
+			t.run((ctx) =>
+				ctx.db.insert('mailCardDavAccounts', {
+					mailboxId,
+					serverUrl: 'https://dav.example.com/',
+					addressBookUrl: 'https://dav.example.com/books/contacts/',
+					username: 'someone',
+					secretCiphertext: 'c',
+					secretIv: 'i',
+					secretAuthTag: 't',
+					secretEnvelopeVersion: 1,
+					status: 'ok',
+					nextSyncAt: 1,
+					createdAt: 1,
+					updatedAt: 1,
+				})
+			);
+		const personalAccount = await seedAccount(personal.mailboxId);
+		const teamAccount = await seedAccount(team.mailboxId);
+		const { photoId, teamPhotoId } = await t.run(async (ctx) => {
+			const photo = await ctx.storage.store(new Blob(['jpeg'], { type: 'image/jpeg' }));
+			const teamPhoto = await ctx.storage.store(new Blob(['jpeg'], { type: 'image/jpeg' }));
+			await ctx.db.insert('mailContacts', {
+				mailboxId: personal.mailboxId,
+				email: 'synced@example.org',
+				photoStorageId: photo,
+				cardDavSource: {
+					accountId: personalAccount,
+					href: 'https://dav.example.com/books/contacts/a.vcf',
+					etag: '"1"',
+					isRowCreatedBySync: true,
+				},
+				useCount: 0,
+				lastUsedAt: 1,
+				createdAt: 1,
+			});
+			const teamRow = await ctx.db
+				.query('mailContacts')
+				.withIndex('by_mailbox_and_email', (q) => q.eq('mailboxId', team.mailboxId))
+				.first();
+			await ctx.db.patch(teamRow!._id, { photoStorageId: teamPhoto });
+			return { photoId: photo, teamPhotoId: teamPhoto };
+		});
 
 		await runDeletionCron(t);
 		await drainScheduled(t);
@@ -53,5 +97,9 @@ describe('member erasure of the Postbox address book', () => {
 		expect((await requestOf(t, requestId))?.status).toBe('completed');
 		const left = await t.run(async (ctx) => ctx.db.query('mailContacts').collect());
 		expect(left.map((row) => row.email)).toEqual(['customer@example.org']);
+		const accounts = await t.run(async (ctx) => ctx.db.query('mailCardDavAccounts').collect());
+		expect(accounts.map((account) => account._id)).toEqual([teamAccount]);
+		expect(await t.run(async (ctx) => (await ctx.storage.get(photoId)) !== null)).toBe(false);
+		expect(await t.run(async (ctx) => (await ctx.storage.get(teamPhotoId)) !== null)).toBe(true);
 	});
 });
