@@ -8,9 +8,16 @@ import {
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { ClockIcon, FileEditIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import InboxChip from '~/components/inbox/InboxChip.vue';
 
+/**
+ * One mailbox's drafts (`mailboxId`), or All Drafts (`mailboxIds`): the live
+ * drafts of several mailboxes merged last edited first, each wearing its inbox
+ * chip and reopening in its own mailbox.
+ */
 const props = defineProps<{
-	mailboxId: Id<'mailboxes'>;
+	mailboxId?: Id<'mailboxes'>;
+	mailboxIds?: readonly Id<'mailboxes'>[];
 }>();
 
 const { t } = useI18n();
@@ -19,20 +26,34 @@ const formatTimestamp = usePostboxThreadTimestamp(usePostboxListNow());
 
 const composeNav = usePostboxComposeNav();
 
-const { data, isLoading } = useConvexQuery(api.mail.drafts.listForMailbox, () => ({
-	mailboxId: props.mailboxId,
-}));
-const drafts = computed(() => data.value ?? []);
+const single = useConvexQuery(api.mail.drafts.listForMailbox, () =>
+	props.mailboxId ? { mailboxId: props.mailboxId } : 'skip'
+);
+const merged = useConvexQuery(api.mail.mailbox.allInboxes.listDrafts, () =>
+	!props.mailboxId && props.mailboxIds && props.mailboxIds.length > 0
+		? { mailboxIds: [...props.mailboxIds] }
+		: 'skip'
+);
+const isMerged = computed(() => !props.mailboxId);
+const drafts = computed(() => (isMerged.value ? merged.data.value : single.data.value) ?? []);
+const isLoading = computed(() =>
+	isMerged.value ? merged.isLoading.value : single.isLoading.value
+);
+const { byId: inboxById } = useInboxes();
 
 // A reply draft is continued where replies are written (Answer mode, on the
 // message it answers); a new email or a forward reopens on the compose page.
 const answerNav = useAnswerModeNav();
-function openDraft(draft: { _id: string; inReplyToMessageId?: string }) {
+function openDraft(draft: {
+	_id: string;
+	mailboxId: Id<'mailboxes'>;
+	inReplyToMessageId?: string;
+}) {
 	if (draft.inReplyToMessageId) {
 		void answerNav.open(draft.inReplyToMessageId, { draftId: draft._id });
 		return;
 	}
-	void composeNav.open({ mailboxId: props.mailboxId, draftId: draft._id as Id<'mailDrafts'> });
+	void composeNav.open({ mailboxId: draft.mailboxId, draftId: draft._id as Id<'mailDrafts'> });
 }
 
 function preview(bodyHtml: string | undefined): string {
@@ -85,8 +106,18 @@ function preview(bodyHtml: string | undefined): string {
 						})
 					}}
 				</p>
-				<p class="truncate text-sm text-text-secondary mt-0.5">
-					{{ d.subject || t('components.postbox.postboxDraftList.noSubject') }}
+				<p class="flex items-center gap-2 min-w-0 text-sm text-text-secondary mt-0.5">
+					<InboxChip
+						v-if="isMerged && inboxById.get(d.mailboxId)"
+						:name="inboxById.get(d.mailboxId)!.name"
+						:slot="inboxById.get(d.mailboxId)!.slot"
+						:mark="inboxById.get(d.mailboxId)!.mark"
+						variant="plain"
+						class="flex-shrink-0"
+					/>
+					<span class="truncate">{{
+						d.subject || t('components.postbox.postboxDraftList.noSubject')
+					}}</span>
 				</p>
 				<p class="text-xs text-text-tertiary truncate mt-0.5">{{ preview(d.bodyHtml) }}</p>
 			</button>

@@ -13,10 +13,12 @@
  * The whole-folder select-all hatch renders below the verbs, on the surface
  * that already says how many messages are selected.
  *
- * Over All inboxes (no `mailboxId`, a `selectionScope` instead) the selection
- * spans mailboxes, so the bar keeps the verbs the server routes per message
- * (read, star, archive, delete) and leaves out the ones that name one
- * mailbox's folders or labels: Move, the overflow and the whole-folder hatch.
+ * Over All inboxes and the unified folders (no `mailboxId`, a
+ * `selectionScope` instead) the selection spans mailboxes, so the bar keeps
+ * the verbs the server routes per message (read, star, archive, delete, and
+ * Not spam and Delete forever where the folder has them) and leaves out the
+ * ones that name one mailbox's folders or labels: Move, the overflow and the
+ * whole-folder hatch.
  */
 
 import type { Id } from '@owlat/api/dataModel';
@@ -26,6 +28,7 @@ import {
 	FolderDownloadIcon,
 	MailIcon,
 	MailOpenIcon,
+	ShieldCheckIcon,
 	StarIcon,
 	TrashIcon,
 } from '@coolicons/vue';
@@ -51,6 +54,23 @@ const bulk = usePostboxBulkActions(computed(() => props.selectionScope ?? props.
 const { folders } = usePostboxFolders(mailboxIdRef);
 
 const moveOpen = ref(false);
+const confirm = useConfirm();
+
+/** The overflow's Delete forever, for a selection that spans mailboxes. */
+async function purgeAcrossMailboxes() {
+	// The ids the question counted, not whatever is selected once it is answered.
+	const messageIds = bulk.ids.value;
+	const n = messageIds.length;
+	if (n === 0) return;
+	const confirmed = await confirm({
+		title: t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n),
+		body: t('components.postbox.postboxQuickActionsBar.purgeConfirmBody'),
+		confirmText: t('components.postbox.postboxQuickActionsBar.deleteForever'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
+	await bulk.purgeSelected(messageIds);
+}
 
 // Exclude the current folder and the non-destination system roles: moving a
 // received message into Sent/Drafts mis-frames it as a sent/draft item.
@@ -184,6 +204,41 @@ const movableFolders = computed(() =>
 						{{ t('common.delete') }}
 					</UiButton>
 				</UiTooltip>
+				<template v-if="!mailboxId">
+					<UiTooltip
+						v-if="props.folderRole === 'spam'"
+						:text="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
+					>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="gap-1.5 px-2 py-1"
+							@click="bulk.notSpamSelected()"
+						>
+							<template #iconLeft>
+								<ShieldCheckIcon class="w-4 h-4" />
+							</template>
+							{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
+						</UiButton>
+					</UiTooltip>
+					<UiTooltip
+						v-if="props.folderRole === 'trash'"
+						:text="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')"
+					>
+						<UiButton
+							variant="danger-ghost"
+							size="sm"
+							class="gap-1.5 px-2 py-1"
+							data-testid="bulk-delete-forever"
+							@click="purgeAcrossMailboxes()"
+						>
+							<template #iconLeft>
+								<TrashIcon class="w-4 h-4" />
+							</template>
+							{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
+						</UiButton>
+					</UiTooltip>
+				</template>
 				<PostboxBulkOverflowMenu
 					v-if="mailboxId"
 					:mailbox-id="mailboxId"

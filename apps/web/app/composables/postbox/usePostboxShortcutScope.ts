@@ -14,6 +14,7 @@
  */
 
 import { pushShortcutScope } from '~/utils/shortcutScope';
+import { unifiedChordTarget, type UnifiedFolderRole } from '~/utils/postboxAllInboxes';
 
 /**
  * Where each mailbox `g` chord goes. Starred is a saved query rather than a
@@ -27,17 +28,47 @@ const POSTBOX_CHORD_TARGETS: Readonly<Record<string, string>> = {
 	'postbox.goStarred': `/dashboard/postbox/search?q=${encodeURIComponent('is:starred')}`,
 };
 
+/**
+ * The folder chords that have a unified folder: from All inboxes or a unified
+ * folder they stay unified (`g t` there is All sent), with the same narrow.
+ */
+const UNIFIED_CHORD_ROLES: Readonly<Record<string, UnifiedFolderRole>> = {
+	'postbox.goInbox': 'inbox',
+	'postbox.goSent': 'sent',
+	'postbox.goDrafts': 'drafts',
+};
+
+function queryString(value: unknown): string | null {
+	return typeof value === 'string' ? value : null;
+}
+
 let mounted = 0;
 
 export function usePostboxShortcutScope() {
 	const { registerShortcut, unregisterShortcut } = useKeyboardShortcuts();
+	const route = useRoute();
 	let release: (() => void) | null = null;
+
+	function target(id: string, path: string): string {
+		const role = UNIFIED_CHORD_ROLES[id];
+		if (!role) return path;
+		return (
+			unifiedChordTarget(role, route.params['folder'], {
+				in: queryString(route.query['in']),
+				provider: queryString(route.query['provider']),
+			}) ?? path
+		);
+	}
 
 	onMounted(() => {
 		release = pushShortcutScope('postbox');
 		mounted += 1;
 		for (const [id, path] of Object.entries(POSTBOX_CHORD_TARGETS)) {
-			registerShortcut({ id, handler: () => void navigateTo(path), ignoreInputs: true });
+			registerShortcut({
+				id,
+				handler: () => void navigateTo(target(id, path)),
+				ignoreInputs: true,
+			});
 		}
 	});
 

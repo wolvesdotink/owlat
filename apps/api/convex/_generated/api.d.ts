@@ -1498,6 +1498,7 @@ import type * as mail_labelsMembership from '../mail/labelsMembership.js';
 import type * as mail_labelsTree from '../mail/labelsTree.js';
 import type * as mail_legacySummaryRows from '../mail/legacySummaryRows.js';
 import type * as mail_liveKnowledge from '../mail/liveKnowledge.js';
+import type * as mail_mailbox_accessibleRow from '../mail/mailbox/accessibleRow.js';
 import type * as mail_mailbox_addressResolution from '../mail/mailbox/addressResolution.js';
 import type * as mail_mailbox_allInboxes from '../mail/mailbox/allInboxes.js';
 import type * as mail_mailbox_attachments from '../mail/mailbox/attachments.js';
@@ -3535,6 +3536,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/labelsTree': typeof mail_labelsTree;
 	'mail/legacySummaryRows': typeof mail_legacySummaryRows;
 	'mail/liveKnowledge': typeof mail_liveKnowledge;
+	'mail/mailbox/accessibleRow': typeof mail_mailbox_accessibleRow;
 	'mail/mailbox/addressResolution': typeof mail_mailbox_addressResolution;
 	'mail/mailbox/allInboxes': typeof mail_mailbox_allInboxes;
 	'mail/mailbox/attachments': typeof mail_mailbox_attachments;

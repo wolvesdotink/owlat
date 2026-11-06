@@ -1,28 +1,57 @@
 /**
- * The All inboxes list: every readable Inbox merged newest first
- * (`mail.mailbox.allInboxes.listMessages`), paged through the same keyset
- * cursor feed as one folder, so the first page stays live and "Load more"
- * appends.
+ * The list of All inboxes or a unified folder: that system folder of every
+ * readable mailbox merged newest first (`mail.mailbox.allInboxes.listMessages`),
+ * paged through the same keyset cursor feed as one folder, so the first page
+ * stays live and "Load more" appends. All Drafts reads drafts instead
+ * (`listDrafts` in PostboxDraftList), so this feed skips for it.
  *
  * The sources come from `mail.mailbox.queries.accessible` (the subscription
- * the shell already holds), which names each inbox's Inbox folder. The server
- * still checks every source against the caller's own mailboxes and team-inbox
- * memberships; the list here only decides which of them to ask for.
+ * the shell already holds), which names each mailbox's folder of every role.
+ * The server still checks every source against the caller's own mailboxes and
+ * team-inbox memberships; the list here only decides which of them to ask for.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { allInboxesSources } from '~/utils/postboxAllInboxes';
+import {
+	allInboxesSources,
+	mailboxProviders,
+	matchesNarrow,
+	type UnifiedFolderRole,
+} from '~/utils/postboxAllInboxes';
 
 export function usePostboxAllInboxesFeed(args: {
-	/** One inbox to narrow to (`?in=`), or null for every inbox. */
+	role: Ref<UnifiedFolderRole>;
+	/** One mailbox to narrow to (`?in=`), or null. Wins over `provider`. */
 	only: Ref<Id<'mailboxes'> | null>;
+	/** The `?provider=` the route asks for, or null. */
+	provider: Ref<string | null>;
 }) {
 	const { data: accessible, isLoading: accessibleLoading } = useConvexQuery(
 		api.mail.mailbox.queries.accessible,
 		() => ({})
 	);
-	const sources = computed(() => allInboxesSources(accessible.value ?? [], args.only.value));
+	/** The providers the viewer's mailboxes span, for the narrow control. */
+	const providers = computed(() => mailboxProviders(accessible.value ?? []));
+	// A provider none of the viewer's mailboxes is on narrows nothing, and a
+	// mailbox narrow wins over a provider one.
+	const provider = computed(() => {
+		const asked = args.provider.value;
+		if (args.only.value || !asked) return null;
+		return providers.value.some((entry) => entry.key === asked) ? asked : null;
+	});
+	const narrow = computed(() => ({ only: args.only.value, provider: provider.value }));
+	const sources = computed(() =>
+		args.role.value === 'drafts'
+			? []
+			: allInboxesSources(accessible.value ?? [], args.role.value, narrow.value)
+	);
+	/** The mailboxes the narrow keeps, for the drafts list. */
+	const mailboxIds = computed(() =>
+		(accessible.value ?? [])
+			.filter((row) => matchesNarrow(row, narrow.value))
+			.map((row) => row.mailboxId)
+	);
 	// A different set of inboxes is a different list: no cursor carries over.
 	const resetKey = computed(() => sources.value.map((source) => source.folderId).join(','));
 
@@ -34,6 +63,10 @@ export function usePostboxAllInboxesFeed(args: {
 	);
 
 	return {
+		providers,
+		/** The provider narrow in effect, or null. */
+		provider,
+		mailboxIds,
 		messages: feed.rows,
 		isLoading: computed(
 			() => (accessibleLoading.value && !accessible.value) || feed.isLoading.value
