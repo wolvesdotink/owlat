@@ -23,6 +23,13 @@ export default defineConfig({
 		exclude: [...configDefaults.exclude, '**/*.browser.test.ts'],
 		environment: 'happy-dom',
 		setupFiles: ['app/__tests__/setup.ts'],
+		// Node 25 and later ship their own Web Storage, which without a
+		// `--localstorage-file` is an undefined `localStorage` and a warning in
+		// every file that reads it. This flag keeps it out of the workers, so the
+		// DOM files get happy-dom's storage and the node-environment files see no
+		// `localStorage` at all; Node 22 accepts the flag too. The setup file
+		// still replaces a storage that is not happy-dom's, for a run without it.
+		execArgv: ['--no-experimental-webstorage'],
 		// Composable specs reload the composable under test with `vi.resetModules()`
 		// + a dynamic `import()` INSIDE the case, because the Nuxt auto-import stubs
 		// have to be installed before the module graph is evaluated. Transforming

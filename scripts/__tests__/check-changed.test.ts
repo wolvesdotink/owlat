@@ -375,6 +375,7 @@ describe('buildPlan', () => {
 		expect(ci).toContain(
 			'test-web-browser: the web component tests in Chrome (bun run --cwd apps/web test:browser)'
 		);
+		expect(ci).toContain('test-web-node-current: the full web suite on Node 26, without coverage');
 		expect(ci).toContain('docker-build: image builds: web');
 		expect(ci.some((line) => line.startsWith('test-api'))).toBe(false);
 	});
