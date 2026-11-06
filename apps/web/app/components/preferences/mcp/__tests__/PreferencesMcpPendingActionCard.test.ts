@@ -83,7 +83,10 @@ function mountPrompt() {
 	return mount(McpApprovalPrompt, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { PreferencesMcpPendingActionCard },
+			components: {
+				PreferencesMcpPendingActionCard,
+				LazyPreferencesMcpPendingActionCard: PreferencesMcpPendingActionCard,
+			},
 			stubs: {
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiButton: {

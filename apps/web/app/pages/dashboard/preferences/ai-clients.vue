@@ -118,7 +118,7 @@ function formatTime(ts?: number) {
 				{{ t('dashboard.preferences.aiClients.approvalsEmpty') }}
 			</p>
 			<div v-else class="p-4 space-y-3">
-				<PreferencesMcpPendingActionCard
+				<LazyPreferencesMcpPendingActionCard
 					v-for="action in pending"
 					:key="action._id"
 					:action="action"

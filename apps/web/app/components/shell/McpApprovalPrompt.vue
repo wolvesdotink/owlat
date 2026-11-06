@@ -2,7 +2,8 @@
 /**
  * An AI client's write waiting for the member, wherever they are in the app:
  * the newest one as an approval card, bottom right. The AI clients page lists
- * them all, so the card stays off that page.
+ * them all, so the card stays off that page. The card carries the HTML
+ * sanitizer for its preview, so it loads only when there is something to approve.
  */
 const { t } = useI18n();
 const route = useRoute();
@@ -32,7 +33,7 @@ function approveCurrent(reviewDigest: string) {
 				{{ t('components.shell.mcpApprovalPrompt.seeAll') }}
 			</NuxtLink>
 		</div>
-		<PreferencesMcpPendingActionCard
+		<LazyPreferencesMcpPendingActionCard
 			:key="current._id"
 			:action="current"
 			:busy="busyId === current._id"
