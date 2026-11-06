@@ -23,18 +23,20 @@ import { BodyTooLargeError, readBodyBytes } from '../../lib/readBody';
  * key configured there is no way to authenticate a caller, so the route is shut.
  */
 
-import { httpAction } from '../../_generated/server';
+import { httpAction, type ActionCtx } from '../../_generated/server';
+import { internal } from '../../_generated/api';
 import { getOptional } from '../../lib/env';
 import { secretMatches } from '../../lib/crypto';
 import { errorResponse, jsonResponse } from '../../lib/httpResponse';
-import { storeSealedBlob } from '../../lib/sealedBlob';
+import { readSealedBlobBytes, storeSealedBlob } from '../../lib/sealedBlob';
 import { logError } from '../../lib/runtimeLog';
 
 /** Buffered sealing must fit in the HTTP action's 64 MiB isolate. */
 export const MAX_RAW_MESSAGE_BYTES = MAIL_SYNC_MAX_RAW_MESSAGE_BYTES;
 const TOO_LARGE_MESSAGE = `Message exceeds the ${MAIL_SYNC_MAX_RAW_MESSAGE_BYTES / (1024 * 1024)} MiB raw message limit (including attachments)`;
 
-export const handleRawMessageUpload = httpAction(async (ctx, request) => {
+/** The worker's shared secret checked, or the response refusing the caller. */
+function refuseUnlessWorker(request: Request): Response | null {
 	const expected = getOptional('MAIL_SYNC_API_KEY');
 	if (!expected) {
 		// No configured secret ⇒ no way to tell the worker from anyone else.
@@ -45,6 +47,12 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 	if (!secretMatches(presented, expected)) {
 		return errorResponse('unauthenticated', 'Unauthorized');
 	}
+	return null;
+}
+
+export const handleRawMessageUpload = httpAction(async (ctx, request) => {
+	const refused = refuseUnlessWorker(request);
+	if (refused) return refused;
 
 	// Content-Length is advisory (a chunked upload has none), so the decoded
 	// length is checked again below — this only avoids buffering an obvious
@@ -74,4 +82,26 @@ export const handleRawMessageUpload = httpAction(async (ctx, request) => {
 	const size = bytes.byteLength;
 	const storageId = await storeSealedBlob(ctx.storage, bytes, 'message/rfc822');
 	return jsonResponse({ storageId, size });
+});
+
+/**
+ * The other direction, for an `append` write-back: the unsealed raw `.eml` of
+ * the message the op uploads to the provider (`mail/external/remoteAppend.ts`),
+ * named by the op so the worker can fetch nothing an op does not name. 404
+ * once there is nothing left to upload, which the worker settles as
+ * `not_found`.
+ */
+export const handleRawMessageDownload = httpAction(async (ctx: ActionCtx, request) => {
+	const refused = refuseUnlessWorker(request);
+	if (refused) return refused;
+	const opId = new URL(request.url).searchParams.get('opId') ?? '';
+	const storageId = opId
+		? await ctx.runQuery(internal.mail.external.remoteAppend.appendRawSource, { opId })
+		: null;
+	const bytes = storageId ? await readSealedBlobBytes(ctx.storage, storageId) : null;
+	if (!bytes) return errorResponse('not_found', 'Nothing to upload for this op');
+	return new Response(new Uint8Array(bytes), {
+		status: 200,
+		headers: { 'Content-Type': 'message/rfc822', 'Cache-Control': 'no-store' },
+	});
 });

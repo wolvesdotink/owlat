@@ -18,6 +18,12 @@
  * it deletes the message everywhere, so a move out of it is a COPY (adding the
  * label) and a delete there is never issued.
  *
+ * An `append` uploads a message moved or copied into the account from another
+ * mailbox. Its folder is searched first: an APPEND whose answer was lost, and
+ * whose op is therefore retried, has already put the message there, and a
+ * second APPEND would file it twice. The bytes come from the backend
+ * (`ReplayHooks.raw`) only when the folder does not hold it yet.
+ *
  * Two ops act on a folder rather than a message: renaming a mirrored folder
  * (its own name only, so it stays where it sits in the provider's tree) and
  * deleting one — after moving what the provider still holds in it to the
@@ -88,6 +94,8 @@ export class RemoteOpReplayer {
 		const id = canonicalMessageId(op.rfc822MessageId ?? '');
 		if (!id) return 'not_found';
 
+		if (op.kind === 'append') return await this.append(op, id);
+
 		if (op.kind === 'delete') {
 			if (!source || this.folders.allMail.has(source)) return 'not_found';
 			return (await this.withMessage(source, id, (uids) => this.expunge(uids)))
@@ -127,6 +135,23 @@ export class RemoteOpReplayer {
 			}
 		});
 		return found ? 'done' : 'not_found';
+	}
+
+	/**
+	 * Upload a message into the op's folder, with the flags it carries and its
+	 * received time as INTERNALDATE. Done when the folder already holds it;
+	 * `not_found` when the backend no longer has the message to upload.
+	 */
+	private async append(op: RemoteOp, id: string): Promise<'done' | 'not_found'> {
+		const path = await this.targetPath(op.target ?? op.source);
+		if (await this.withMessage(path, id, async () => undefined)) return 'done';
+		if (!this.hooks.raw) throw new Error('APPEND withheld: no way to fetch the message');
+		const raw = await this.hooks.raw(op);
+		if (raw === null) return 'not_found';
+		const flags = flagNames(op.flags, true);
+		const idate = op.receivedAt === undefined ? undefined : new Date(op.receivedAt);
+		await this.accepted('APPEND', () => this.client.append(path, raw, flags, idate));
+		return 'done';
 	}
 
 	/**

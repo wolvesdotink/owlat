@@ -12,6 +12,7 @@
  *   - an IMAP client's COPY + EXPUNGE reaches the provider as a move, never as a
  *     delete of mail the member still has;
  *   - the worker's settle retires or backs off each op;
+ *   - an upload is listed only to a worker that can run it;
  *   - a folder the worker renamed is known by its new name from then on: its
  *     mapping and the ops still naming the old name follow it, so a worker
  *     restart forgets nothing.
@@ -300,6 +301,37 @@ describe('the worker surface', () => {
 		expect(await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId })).toEqual(
 			[]
 		);
+	});
+
+	it('lists an upload only to a worker that says it can run one', async () => {
+		const { t, mailboxId, accountId } = await externalMailbox();
+		const messageId = await seedMessage(t, mailboxId, { rfc822MessageId: 'up@x.example' });
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('externalMailRemoteOps', {
+				accountId,
+				kind: 'append',
+				rfc822MessageId: 'up@x.example',
+				source: { role: 'inbox' },
+				target: { role: 'inbox' },
+				flags: { seen: true },
+				append: { messageId, receivedAt: 1_700_000_000_000 },
+				attempts: 0,
+				nextAttemptAt: now,
+				createdAt: now,
+			});
+		});
+
+		const older = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId });
+		const current = await t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+			accountId,
+			appends: true,
+		});
+
+		expect(older).toEqual([]);
+		expect(current).toMatchObject([
+			{ kind: 'append', rfc822MessageId: 'up@x.example', receivedAt: 1_700_000_000_000 },
+		]);
 	});
 
 	it('drops an op whose attempts are spent', async () => {

@@ -157,6 +157,35 @@ async function uploadRawMessage(
 	return stored;
 }
 
+/**
+ * The raw `.eml` an `append` write-back uploads to the provider, from the
+ * same route the uploads go to. Null when the backend answers 404: the op or
+ * its message is gone, so there is nothing left to upload. Any other failure
+ * throws, so the op is retried.
+ */
+export async function fetchAppendRaw(
+	config: RawUploadConfig,
+	opId: string
+): Promise<Buffer | null> {
+	const url = new URL(`${config.convexSiteUrl}/mail-sync/raw-message`);
+	url.searchParams.set('opId', opId);
+	const response = await fetch(url, {
+		headers: { Authorization: `Bearer ${config.apiKey}` },
+		signal: AbortSignal.timeout(RAW_UPLOAD_TIMEOUT_MS),
+	});
+	if (response.status === 404) {
+		await response.body?.cancel().catch(() => undefined);
+		return null;
+	}
+	if (!response.ok) {
+		const detail = await response.text().catch(() => '');
+		throw new Error(`raw download failed: HTTP ${response.status} ${detail.slice(0, 200)}`);
+	}
+	const raw = Buffer.from(await response.arrayBuffer());
+	if (raw.byteLength === 0) throw new Error('raw download failed: empty body');
+	return raw;
+}
+
 /** The `{ storageId, size }` the raw-upload endpoint answers with, or undefined. */
 function uploadedRaw(body: unknown): { storageId: string; size: number } | undefined {
 	if (!isRecord(body)) return undefined;

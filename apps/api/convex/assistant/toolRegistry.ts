@@ -40,6 +40,12 @@ import { scrubForInjection } from './prompt';
  * There is intentionally no write or send scope: no assistant tool ever mutates
  * workspace state or sends mail (decision B1), and the conformance suite asserts
  * every built-in stays inside this union.
+ *
+ * Moving or copying mail into another mailbox (`mail/mailboxTransfer.ts`) has
+ * no tool for that reason and one more: it changes who sees the mail (a team
+ * inbox shows it to every member) and, into a connected account, uploads it to
+ * the provider, so it waits for the member's own confirm in the move picker,
+ * the palette or a sidebar drop.
  */
 type AssistantToolScope = 'workspace:read' | 'workspace:draft';
 

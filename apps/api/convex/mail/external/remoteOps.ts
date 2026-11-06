@@ -22,7 +22,8 @@
  * provider — is `remoteState.ts`. The order ops reach the provider in, and how
  * a newer flag change supersedes an older one, is `remoteOpOrder.ts`.
  * How a folder the worker renamed at the provider is followed through the
- * backend is `remoteFolderRename.ts`.
+ * backend is `remoteFolderRename.ts`. A message moved or copied in from another
+ * mailbox is uploaded with an `append` op, which `remoteAppend.ts` settles.
  */
 
 import { v, type Infer } from 'convex/values';
@@ -49,6 +50,7 @@ import {
 	runDeferral,
 	type DeferralBudget,
 } from './remoteOpDeferral';
+import { abandonAppend, appendOpFields, finishAppend } from './remoteAppend';
 import {
 	listDueRemoteOps as listDueRemoteOpsContract,
 	settleRemoteOps as settleRemoteOpsContract,
@@ -66,7 +68,13 @@ export type RemoteChange =
 			targetFolderId: Id<'mailFolders'>;
 	  }
 	| { kind: 'flags'; message: Doc<'mailMessages'>; flags: RemoteFlagChanges }
-	| { kind: 'delete'; message: Doc<'mailMessages'> };
+	| { kind: 'delete'; message: Doc<'mailMessages'> }
+	/**
+	 * `message` is the copy just written into the external mailbox, to upload
+	 * with the flags it has; `sourceMessageId` the original a move purges once
+	 * the upload has landed (`remoteAppend.ts`).
+	 */
+	| { kind: 'append'; message: Doc<'mailMessages'>; sourceMessageId?: Id<'mailMessages'> };
 
 /** Attempts before a failing op is dropped. With the backoff below, about two hours. */
 export const MAX_REMOTE_OP_ATTEMPTS = 8;
@@ -80,6 +88,13 @@ const MAX_FOLDER_DEPTH = 16;
  * header to search for, so a change to one of these is not recorded.
  */
 const SYNTHETIC_MESSAGE_ID_SUFFIX = '@owlat-mail-sync';
+
+/** A message whose Message-ID the worker invented: the provider cannot find it by one. */
+export function hasSyntheticMessageId(
+	message: Pick<Doc<'mailMessages'>, 'rfc822MessageId'>
+): boolean {
+	return message.rfc822MessageId.endsWith(SYNTHETIC_MESSAGE_ID_SUFFIX);
+}
 
 /**
  * The subset of `next` that differs from the message's current flags — what a
@@ -144,7 +159,7 @@ export async function recordRemoteChanges(
 
 	for (const change of changes) {
 		const { message } = change;
-		if (message.rfc822MessageId.endsWith(SYNTHETIC_MESSAGE_ID_SUFFIX)) continue;
+		if (hasSyntheticMessageId(message)) continue;
 		accountId = await accountFor(message.mailboxId);
 		if (!accountId) continue;
 		const base = {
@@ -155,7 +170,16 @@ export async function recordRemoteChanges(
 			createdAt: now,
 		};
 
-		if (change.kind === 'flags') {
+		if (change.kind === 'append') {
+			const folder = await refFor(message.folderId);
+			if (!folder) continue;
+			const upload = appendOpFields(message, change.sourceMessageId);
+			await insertRemoteOp(
+				ctx,
+				{ ...base, kind: 'append', source: folder, target: folder, ...upload },
+				budget
+			);
+		} else if (change.kind === 'flags') {
 			if (Object.keys(change.flags).length === 0) continue;
 			const source = await refFor(message.folderId);
 			if (!source) continue;
@@ -301,7 +325,7 @@ export function writesBack(account: Pick<Doc<'externalMailAccounts'>, 'syncMode'
  * be written back: a hosted mailbox, a disconnected or purging account, or a
  * deliverability seed (org infrastructure, never a member's inbox).
  */
-async function liveAccountFor(
+export async function liveAccountFor(
 	ctx: MutationCtx,
 	mailboxId: Id<'mailboxes'>
 ): Promise<Id<'externalMailAccounts'> | null> {
@@ -352,7 +376,8 @@ export const listDueRemoteOps = internalQuery({
 		const account = await ctx.db.get(args.accountId);
 		if (!account || !writesBack(account)) return [];
 		const rows = await dueRemoteOps(ctx, args.accountId, Date.now(), DUE_PAGE_SIZE);
-		return rows.map(workerOp);
+		// A worker that does not say it can upload would refuse the whole page.
+		return rows.filter((r) => r.kind !== 'append' || args.appends === true).map(workerOp);
 	},
 });
 
@@ -365,6 +390,7 @@ export function workerOp(r: Doc<'externalMailRemoteOps'>) {
 		source: r.source,
 		target: r.target,
 		flags: r.flags,
+		receivedAt: r.append?.receivedAt,
 		attempts: r.attempts,
 	};
 }
@@ -380,7 +406,8 @@ export function remoteOpRetryDelayMs(attempts: number): number {
  * Close out a batch the worker replayed. `done` and `not_found` retire the op
  * (there is nothing left to do on the server); `failed` pushes it back, along
  * with the later ops of its message that wait behind it, and drops it once its
- * attempts are spent.
+ * attempts are spent. An upload that is done finishes its transfer; one that
+ * found nothing to upload, or is dropped, abandons it (`remoteAppend.ts`).
  */
 export const settleRemoteOps = internalMutation({
 	args: settleRemoteOpsContract.args,
@@ -401,6 +428,10 @@ export const settleRemoteOps = internalMutation({
 			}
 			if (result.outcome !== 'failed') {
 				await ctx.db.delete(op._id);
+				if (op.kind === 'append' && result.outcome === 'done') {
+					const source = await finishAppend(ctx, op);
+					if (source) await recordRemoteChanges(ctx, [{ kind: 'delete', message: source }]);
+				} else if (op.kind === 'append') await abandonAppend(ctx, op, 'nothing to upload');
 				continue;
 			}
 			const attempts = op.attempts + 1;
@@ -410,6 +441,7 @@ export const settleRemoteOps = internalMutation({
 					`[remoteOps] dropping ${op.kind} for account ${op.accountId} after ${attempts} attempts: ${lastError ?? 'unknown error'}`
 				);
 				await ctx.db.delete(op._id);
+				if (op.kind === 'append') await abandonAppend(ctx, op, lastError ?? 'unknown error');
 				continue;
 			}
 			const nextAttemptAt = now + remoteOpRetryDelayMs(attempts);

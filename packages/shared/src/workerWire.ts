@@ -52,7 +52,7 @@ export interface WorkerWireWindow {
 }
 
 const WIRE_WINDOWS: Readonly<Record<Exclude<WorkerService, 'imap'>, WorkerWireWindow>> = {
-	'mail-sync': { current: 2, minSupported: 0 },
+	'mail-sync': { current: 3, minSupported: 0 },
 	mta: { current: 1, minSupported: 0 },
 	'code-worker': { current: 1, minSupported: 0 },
 };

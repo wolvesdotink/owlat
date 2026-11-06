@@ -22,6 +22,7 @@ import {
 	type ModseqCursor,
 } from './remoteState.js';
 import { logger } from './logger.js';
+import { fetchAppendRaw, type RawUploadConfig } from './ingest.js';
 
 /** A synced remote folder: a system role, or (full sync) a mirrored user folder by path. */
 export interface SyncedFolder {
@@ -110,7 +111,8 @@ export class RemoteSync {
 
 	constructor(
 		private readonly accountId: string,
-		private readonly convex: ConvexClient
+		private readonly convex: ConvexClient,
+		private readonly rawConfig: RawUploadConfig
 	) {}
 
 	/**
@@ -168,6 +170,7 @@ export class RemoteSync {
 						);
 					}
 				},
+				raw: (op) => fetchAppendRaw(this.rawConfig, op.opId),
 				skipped: (op, reason) =>
 					logger.warn(
 						{ accountId, opId: op.opId, kind: op.kind, reason },
@@ -194,7 +197,7 @@ export class RemoteSync {
 				}
 			}
 			await drainRemoteOps({
-				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId }),
+				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId, appends: true }),
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},

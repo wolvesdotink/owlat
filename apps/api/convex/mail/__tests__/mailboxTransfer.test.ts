@@ -8,7 +8,11 @@
  *   - a copy leaves the source alone;
  *   - the target must be on the caller's own rail, whatever their org role;
  *   - a sealed message only travels to a mailbox on its own address;
- *   - a connected account is never the target, and never the source of a move;
+ *   - into a connected account, the copy is uploaded by an `append` write-back
+ *     and a move's source survives until that upload has landed; a failed
+ *     upload takes the copy away and leaves the source; the undo of a move
+ *     still uploading keeps the original;
+ *   - a move out of a connected account deletes the provider's copy;
  *   - a message the target already holds is skipped, not duplicated.
  */
 
@@ -16,7 +20,8 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
+import { MAX_REMOTE_OP_ATTEMPTS } from '../external/remoteOps';
 import { readMailboxUsage } from '../mailboxUsage';
 import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
@@ -65,6 +70,47 @@ async function messagesIn(t: Test, mailboxId: Id<'mailboxes'>): Promise<Doc<'mai
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
 			.collect()
 	);
+}
+
+/** A connected account's mailbox, with the account the worker syncs it through. */
+async function connectedMailbox(
+	t: Test,
+	account: { syncMode?: 'full' | 'incoming' } = {}
+): Promise<{
+	mailboxId: Id<'mailboxes'>;
+	inboxId: Id<'mailFolders'>;
+	accountId: Id<'externalMailAccounts'>;
+}> {
+	const box = await seedMailboxWithFolders(t, { address: 'me@example.com', kind: 'external' });
+	const accountId = await t.run(async (ctx) => {
+		const now = Date.now();
+		const id = await ctx.db.insert('externalMailAccounts', {
+			userId: 'user-A',
+			organizationId: 'org-1',
+			mailboxId: box.mailboxId,
+			imapHost: 'imap.example',
+			imapPort: 993,
+			isImapSecure: true,
+			smtpHost: 'smtp.example',
+			smtpPort: 465,
+			isSmtpSecure: true,
+			authMethod: 'password',
+			imapUsername: 'me@example.com',
+			status: 'connected',
+			...(account.syncMode ? { syncMode: account.syncMode } : {}),
+			createdAt: now,
+			updatedAt: now,
+		});
+		await ctx.db.patch(box.mailboxId, { externalAccountId: id });
+		return id;
+	});
+	return { ...box, accountId };
+}
+
+/** The queued write-backs, oldest first, as the worker would be told them. */
+async function remoteOps(t: Test) {
+	const rows = await t.run(async (ctx) => ctx.db.query('externalMailRemoteOps').collect());
+	return rows.map(({ kind, rfc822MessageId, source }) => ({ kind, rfc822MessageId, source }));
 }
 
 async function setup(t: Test) {
@@ -194,7 +240,7 @@ describe('mail.mailboxTransfer.transfer', () => {
 			mode: 'move',
 		});
 
-		expect(result).toEqual({ ok: true, moved: [], skipped: [messageId] });
+		expect(result).toEqual({ ok: true, moved: [], skipped: [messageId], uploading: false });
 		expect((await messagesIn(t, personal.mailboxId)).map((m) => m._id)).toEqual([messageId]);
 		expect(await messagesIn(t, work.mailboxId)).toHaveLength(1);
 	});
@@ -344,13 +390,10 @@ describe('mail.mailboxTransfer.transfer', () => {
 		expect(await messagesIn(t, sameAddress.mailboxId)).toHaveLength(1);
 	});
 
-	it('never writes into a connected account', async () => {
+	it('refuses a connected account that takes no mail from Owlat', async () => {
 		const t = convexTest(schema, modules);
 		const { personal } = await setup(t);
-		const connected = await seedMailboxWithFolders(t, {
-			address: 'me@example.com',
-			kind: 'external',
-		});
+		const connected = await connectedMailbox(t, { syncMode: 'incoming' });
 		const messageId = await seedMessage(t, personal.mailboxId);
 
 		await expect(
@@ -359,27 +402,160 @@ describe('mail.mailboxTransfer.transfer', () => {
 				targetMailboxId: connected.mailboxId,
 				mode: 'copy',
 			})
-		).rejects.toThrow(/connected account/);
+		).rejects.toThrow(/takes no mail from Owlat/);
 		expect(await messagesIn(t, connected.mailboxId)).toEqual([]);
+		expect(await remoteOps(t)).toEqual([]);
 	});
 
-	it('copies out of a connected account but does not move out of one', async () => {
+	it('moves out of a connected account and deletes the provider copy', async () => {
 		const t = convexTest(schema, modules);
 		const { work } = await setup(t);
-		const connected = await seedMailboxWithFolders(t, {
-			address: 'me@example.com',
-			kind: 'external',
+		const connected = await connectedMailbox(t);
+		const messageId = await seedMessage(t, connected.mailboxId, { rfc822MessageId: 'out@x' });
+
+		const result = await t.mutation(api.mail.mailboxTransfer.transfer, {
+			messageIds: [messageId],
+			targetMailboxId: work.mailboxId,
+			mode: 'move',
 		});
-		const messageId = await seedMessage(t, connected.mailboxId);
-		const args = { messageIds: [messageId], targetMailboxId: work.mailboxId };
 
-		await expect(
-			t.mutation(api.mail.mailboxTransfer.transfer, { ...args, mode: 'move' })
-		).rejects.toThrow(/copied, not moved/);
-		expect(await messagesIn(t, work.mailboxId)).toEqual([]);
-
-		await t.mutation(api.mail.mailboxTransfer.transfer, { ...args, mode: 'copy' });
+		expect(result.uploading).toBe(false);
+		expect(await messagesIn(t, connected.mailboxId)).toEqual([]);
 		expect(await messagesIn(t, work.mailboxId)).toHaveLength(1);
-		expect(await messagesIn(t, connected.mailboxId)).toHaveLength(1);
+		expect(await remoteOps(t)).toEqual([
+			{ kind: 'delete', rfc822MessageId: 'out@x', source: { role: 'inbox' } },
+		]);
+	});
+
+	describe('into a connected account', () => {
+		async function moveIn(mode: 'move' | 'copy' = 'move') {
+			const t = convexTest(schema, modules);
+			const { personal } = await setup(t);
+			const connected = await connectedMailbox(t);
+			const sourceId = await seedMessage(t, personal.mailboxId, {
+				rfc822MessageId: 'in@x',
+				receivedAt: 1_700_000_000_000,
+			});
+			await t.run(async (ctx) => ctx.db.patch(sourceId, { flagSeen: true }));
+			const result = await t.mutation(api.mail.mailboxTransfer.transfer, {
+				messageIds: [sourceId],
+				targetMailboxId: connected.mailboxId,
+				mode,
+			});
+			const [op] = await t.run(async (ctx) => ctx.db.query('externalMailRemoteOps').collect());
+			return { t, personal, connected, sourceId, result, op: op! };
+		}
+
+		it('queues the upload with its flags and keeps the source until it has landed', async () => {
+			const { t, personal, connected, sourceId, result, op } = await moveIn();
+
+			expect(result.uploading).toBe(true);
+			const [copy] = await messagesIn(t, connected.mailboxId);
+			expect(copy).toMatchObject({ _id: result.moved[0]!.messageId, folderId: connected.inboxId });
+			expect(await messagesIn(t, personal.mailboxId)).toHaveLength(1);
+			expect(op).toMatchObject({
+				accountId: connected.accountId,
+				kind: 'append',
+				rfc822MessageId: 'in@x',
+				target: { role: 'inbox' },
+				flags: { seen: true, flagged: false, answered: false },
+				append: { messageId: copy!._id, sourceMessageId: sourceId, receivedAt: 1_700_000_000_000 },
+			});
+			// The worker fetches the bytes through the op, from the copy.
+			expect(
+				await t.query(internal.mail.external.remoteAppend.appendRawSource, { opId: op._id })
+			).toBe(copy!.rawStorageId);
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op._id, outcome: 'done' }],
+			});
+
+			expect(await messagesIn(t, personal.mailboxId)).toEqual([]);
+			expect((await messagesIn(t, connected.mailboxId)).map((m) => m._id)).toEqual([copy!._id]);
+			expect(await remoteOps(t)).toEqual([]);
+		});
+
+		it('takes the copy away and leaves the source when the upload fails for good', async () => {
+			const { t, personal, connected, sourceId, op } = await moveIn();
+			await t.run(async (ctx) => ctx.db.patch(op._id, { attempts: MAX_REMOTE_OP_ATTEMPTS - 1 }));
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op._id, outcome: 'failed', error: 'NO [OVERQUOTA]' }],
+			});
+
+			expect((await messagesIn(t, personal.mailboxId)).map((m) => m._id)).toEqual([sourceId]);
+			expect(await messagesIn(t, connected.mailboxId)).toEqual([]);
+			expect(await remoteOps(t)).toEqual([]);
+		});
+
+		it('leaves the source while a failed upload is retried', async () => {
+			const { t, personal, connected, op } = await moveIn();
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op._id, outcome: 'failed', error: 'NO [OVERQUOTA]' }],
+			});
+
+			expect(await messagesIn(t, personal.mailboxId)).toHaveLength(1);
+			expect(await messagesIn(t, connected.mailboxId)).toHaveLength(1);
+		});
+
+		it('a copy keeps its source whatever the upload does', async () => {
+			const { t, personal, op } = await moveIn('copy');
+			expect(op.append?.sourceMessageId).toBeUndefined();
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op._id, outcome: 'done' }],
+			});
+
+			expect(await messagesIn(t, personal.mailboxId)).toHaveLength(1);
+		});
+
+		it('the undo of a move still uploading keeps the original and lets the copy go', async () => {
+			const { t, personal, connected, sourceId, result, op } = await moveIn();
+
+			const undone = await t.mutation(api.mail.mailboxTransfer.transfer, {
+				messageIds: [result.moved[0]!.messageId],
+				targetMailboxId: personal.mailboxId,
+				targetFolderId: result.moved[0]!.sourceFolderId,
+				mode: 'move',
+			});
+
+			expect(undone.moved.map((m) => m.messageId)).toEqual([sourceId]);
+			expect(await messagesIn(t, connected.mailboxId)).toEqual([]);
+			// The upload may already be in flight: it stays, the copy's delete runs
+			// after it, and it no longer takes the original with it.
+			expect(await remoteOps(t)).toEqual([
+				{ kind: 'append', rfc822MessageId: 'in@x', source: { role: 'inbox' } },
+				{ kind: 'delete', rfc822MessageId: 'in@x', source: { role: 'inbox' } },
+			]);
+			// With the copy gone, the upload reads the original's bytes.
+			const original = (await messagesIn(t, personal.mailboxId))[0]!;
+			expect(
+				await t.query(internal.mail.external.remoteAppend.appendRawSource, { opId: op._id })
+			).toBe(original.rawStorageId);
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op._id, outcome: 'done' }],
+			});
+			expect((await messagesIn(t, personal.mailboxId)).map((m) => m._id)).toEqual([sourceId]);
+		});
+
+		it('refuses a message whose Message-ID the worker invented', async () => {
+			const t = convexTest(schema, modules);
+			const { personal } = await setup(t);
+			const connected = await connectedMailbox(t);
+			const messageId = await seedMessage(t, personal.mailboxId, {
+				rfc822MessageId: 'abc123@owlat-mail-sync',
+			});
+
+			await expect(
+				t.mutation(api.mail.mailboxTransfer.transfer, {
+					messageIds: [messageId],
+					targetMailboxId: connected.mailboxId,
+					mode: 'move',
+				})
+			).rejects.toThrow(/no Message-ID/);
+			expect(await messagesIn(t, connected.mailboxId)).toEqual([]);
+		});
 	});
 });
