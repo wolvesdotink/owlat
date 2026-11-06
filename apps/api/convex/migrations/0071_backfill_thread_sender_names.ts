@@ -52,6 +52,11 @@ async function backfillPage(ctx: MutationCtx, cursor: string | null) {
 		if (thread.latestFromName || !thread.latestMessageId) continue;
 		const message = await ctx.db.get(thread.latestMessageId);
 		if (!message?.fromName) continue;
+		// A send-as reply in a team conversation moves the row's sender without
+		// moving latestMessageId: that message's name belongs to someone else.
+		if (message.fromAddress.toLowerCase() !== (thread.latestFromAddress ?? '').toLowerCase()) {
+			continue;
+		}
 		await ctx.db.patch(thread._id, { latestFromName: message.fromName });
 		changed++;
 	}

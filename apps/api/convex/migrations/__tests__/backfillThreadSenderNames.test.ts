@@ -75,4 +75,21 @@ describe('0071_backfill_thread_sender_names', () => {
 
 		expect(await t.mutation(migration.run, {})).toMatchObject({ started: false });
 	});
+
+	it("leaves the name empty when the thread's latest sender is no longer its newest message's", async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		// A send-as reply in a team conversation moves the row's sender to the
+		// teammate without pointing latestMessageId at the reply.
+		const replied = await seedThread(t, mailboxId, { subject: 'replied', fromName: 'Ben Ortiz' });
+		await t.run((ctx) => ctx.db.patch(replied, { latestFromAddress: 'teammate@owlat.test' }));
+
+		await t.mutation(migration.run, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(replied))!.latestFromName).toBeUndefined();
+		});
+	});
 });
