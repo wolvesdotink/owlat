@@ -39,6 +39,9 @@ function mountResults(items: PaletteItem[]) {
 			askAnswer: null,
 			askLoading: false,
 			askAvailable: false,
+			mailAskAvailable: false,
+			mailAskAnswer: null,
+			mailAskLoading: false,
 		},
 		global: { plugins: [createTestI18n()], stubs: { QueryResult: true } },
 	});

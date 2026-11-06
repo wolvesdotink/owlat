@@ -20,6 +20,7 @@ import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObj
 import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
 import { useCommandPaletteArgument } from '~/composables/useCommandPaletteArgument';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
+import { useCommandPaletteMailAsk } from '~/composables/useCommandPaletteMailAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { SearchResults } from '~/lib/commandPaletteCore';
@@ -98,6 +99,7 @@ beforeEach(() => {
 		useCommandPaletteObjectRecents,
 		useCommandPaletteArgument,
 		useCommandPaletteAsk,
+		useCommandPaletteMailAsk,
 		useDebouncedSearch,
 		useBreadcrumbs: () => ({
 			breadcrumbs: ref([

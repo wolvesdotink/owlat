@@ -1306,6 +1306,9 @@ import type * as mail__bodySearchLifecycle from '../mail/_bodySearchLifecycle.js
 import type * as mail__helpers from '../mail/_helpers.js';
 import type * as mail__jobLifecycle from '../mail/_jobLifecycle.js';
 import type * as mail_ai_answerStreamFence from '../mail/ai/answerStreamFence.js';
+import type * as mail_ai_askMailbox from '../mail/ai/askMailbox.js';
+import type * as mail_ai_askMailboxSearch from '../mail/ai/askMailboxSearch.js';
+import type * as mail_ai_askMailboxText from '../mail/ai/askMailboxText.js';
 import type * as mail_ai_assist from '../mail/ai/assist.js';
 import type * as mail_ai_categoryClassify from '../mail/ai/categoryClassify.js';
 import type * as mail_ai_coach from '../mail/ai/coach.js';
@@ -3340,6 +3343,9 @@ declare const fullApi: ApiFromModules<{
 	'mail/_helpers': typeof mail__helpers;
 	'mail/_jobLifecycle': typeof mail__jobLifecycle;
 	'mail/ai/answerStreamFence': typeof mail_ai_answerStreamFence;
+	'mail/ai/askMailbox': typeof mail_ai_askMailbox;
+	'mail/ai/askMailboxSearch': typeof mail_ai_askMailboxSearch;
+	'mail/ai/askMailboxText': typeof mail_ai_askMailboxText;
 	'mail/ai/assist': typeof mail_ai_assist;
 	'mail/ai/categoryClassify': typeof mail_ai_categoryClassify;
 	'mail/ai/coach': typeof mail_ai_coach;

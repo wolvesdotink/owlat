@@ -27,6 +27,7 @@ import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObj
 import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
 import { useCommandPaletteArgument } from '~/composables/useCommandPaletteArgument';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
+import { useCommandPaletteMailAsk } from '~/composables/useCommandPaletteMailAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
@@ -81,6 +82,7 @@ beforeEach(() => {
 		useCommandPaletteObjectRecents,
 		useCommandPaletteArgument,
 		useCommandPaletteAsk,
+		useCommandPaletteMailAsk,
 		useDebouncedSearch,
 		useModalFocus,
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),

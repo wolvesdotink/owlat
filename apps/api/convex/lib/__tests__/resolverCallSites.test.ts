@@ -219,6 +219,8 @@ const INVENTORY: readonly CallSite[] = [
 	// The questions about a held draft's gaps, localized like the clarification's.
 	site('mail/ai/needsReplyRefine.ts', "ctx, 'mail.clarify'", 'summarize'),
 	site('mail/ai/assist.ts', "ctx, 'mail.ask'", 'draft'),
+	// Ask your mailbox, for the palette's action and the assistant's tool alike.
+	site('mail/ai/askMailbox.ts', "ctx, 'mail.ask'", 'draft'),
 	site('mail/ai/assist.ts', "ctx, 'mail.complete'", 'summarize'),
 	site(
 		'mail/ai/assist.ts',

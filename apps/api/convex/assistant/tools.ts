@@ -34,6 +34,7 @@ import { resolveLanguageModelForUserText } from '../lib/llmProvider';
 import { meterLlmCall } from '../analytics/meteredSpend';
 import type { LlmRootContext } from '../lib/llm/requestMeter';
 import { scrubForInjection, clampText } from './prompt';
+import { ASK_MAILBOX_SPEND, answerFromMail } from '../mail/ai/askMailbox';
 import {
 	ASSISTANT_TOOL_DRAFT_SPEND,
 	hasFlaggedModule,
@@ -130,6 +131,51 @@ function buildSearchFiles(
 					summary: scrubForInjection(f.summary ?? ''),
 					excerpt: scrubForInjection(clampText(f.extractedText ?? '', MAX_FILE_EXCERPT)),
 				})),
+			};
+		},
+	});
+}
+
+/** What the model reads when the turn has no mail of its own to search. */
+const NO_MAIL_READER_NOTE = 'Mail is not searched in a conversation other people can read.';
+
+function buildAskMailbox(ctx: ActionCtx, audience: AssistantAudience, root?: LlmRootContext): Tool {
+	return tool({
+		description:
+			"Answer a question from the user's own email: their personal mailboxes and the team inboxes they belong to. Returns a short answer citing the messages it used. Use for questions whose answer is likely in a message they received or sent, such as a booking, a date someone gave, or what a person said.",
+		inputSchema: z.object({
+			question: z.string().describe('The question, in the words the user would search with.'),
+		}),
+		execute: async ({ question }, { abortSignal }) => {
+			// The reader comes from the turn, never from the model's input.
+			const reader = audience.mailReader;
+			if (!reader) return { answer: '', citations: [], note: NO_MAIL_READER_NOTE };
+			const trimmed = clampText(question.trim(), 2000);
+			const found = await ctx.runQuery(internal.mail.ai.askMailboxSearch.searchForReader, {
+				question: trimmed,
+				userId: reader.userId,
+				organizationId: reader.organizationId,
+				// Team inbox mail only for an audience that may read the Team Inbox.
+				includeTeamInboxes: audience.canReadInbox,
+			});
+			const result = await answerFromMail(ctx, {
+				question: trimmed,
+				found,
+				...(root ? { root } : {}),
+				...(abortSignal ? { abortSignal } : {}),
+			});
+			return {
+				answer: result.answer,
+				citations: result.citations.map((citation) => ({
+					index: citation.index,
+					subject: citation.subject,
+					from: citation.from,
+					date: new Date(citation.date).toISOString(),
+				})),
+				// Headers and snippets only: the answer may miss what a body says.
+				answeredFromHeadersOnly: !result.bodySearchUsed,
+				isComplete: !result.isTruncated,
+				...(found.sources.length === 0 ? { note: 'No message matched the question.' } : {}),
 			};
 		},
 	});
@@ -293,7 +339,8 @@ function buildDraftCampaignCopy(
  * the single source of truth for built-in membership and metadata; the same set
  * powers both the personal assistant and @assistant-in-chat. The assistant is
  * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
- * `ai.knowledge`, like Quick Query. No built-in writes or sends.
+ * `ai.knowledge`, like Quick Query, and `askMailbox` by `ai`, like the rest of
+ * Postbox AI. No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
@@ -314,6 +361,17 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scrubOutput: true,
 		isRetrieval: true,
 		build: buildSearchFiles,
+	},
+	{
+		name: 'askMailbox',
+		// The Postbox AI flag, as the palette's Ask your mailbox is gated on.
+		flag: 'ai',
+		scope: 'workspace:read',
+		spend: ASK_MAILBOX_SPEND,
+		scrubOutput: true,
+		// A mail search per call, so it shares the turn's retrieval allowance.
+		isRetrieval: true,
+		build: buildAskMailbox,
 	},
 	{
 		name: 'searchEverything',

@@ -98,8 +98,8 @@ const argument = useCommandPaletteArgument({
 const pendingArgument = argument.pending;
 
 // ── Scope: which corpus this overlay is searching right now (none in a submenu).
-const { scope, prompt, effectiveMode, isAskAvailable, resetScope, cycleScope } =
-	useCommandPaletteScope(() => parsedQuery.value.mode, pendingArgument);
+const paletteScope = useCommandPaletteScope(() => parsedQuery.value.mode, pendingArgument);
+const { scope, prompt, effectiveMode, isAskAvailable, resetScope, cycleScope } = paletteScope;
 
 // ── Recent terms, tagged with the scope they were typed in (localStorage).
 // Tagged by what the box is DOING, not by the chip: a `?` question asked from
@@ -154,8 +154,10 @@ const mailScope = useCommandPaletteMailScope({
 	onRemember: (term) => saveRecent(term),
 });
 
-// ── Ask scope: the knowledge + files question, answered inline with citations.
+// ── Ask: the knowledge + files question, and in Mail scope the question to the
+// person's own mail, each answered inline with citations.
 const askScope = useCommandPaletteAsk();
+const mailAskScope = useCommandPaletteMailAsk({ onNavigate: () => close() });
 
 // ── Team Inbox threads: the one ROUTE-scoped corpus. The registry gates the
 // provider on `/dashboard/inbox/**`; the same predicate gates the subscription
@@ -223,7 +225,7 @@ const groups = computed<PaletteGroup[]>(() => {
 	// Ask replaces the object list with one answer; only the history survives it,
 	// and it survives the `?` prefix too (no provider declares the `ask` mode, so
 	// the usual mode filter would blank it).
-	if (prompt.value === 'ask') {
+	if (prompt.value === 'ask' || prompt.value === 'mailAsk') {
 		return mergeGroups(resolved.filter((group) => group.key === 'recent'));
 	}
 	const scoped = groupsForScope(resolved, scope.value, effectiveMode.value, searchTerm.value);
@@ -258,12 +260,6 @@ watch(flatItems, () => {
 });
 
 const scopeLabel = computed(() => t(PALETTE_SCOPE_LABEL_KEYS[scope.value]));
-const placeholder = computed(() => {
-	if (pendingArgument.value) return t('components.appCommandPalette.filterPlaceholder');
-	if (prompt.value === 'ask') return t('components.query.quickQueryPanel.placeholder');
-	if (scope.value === 'mail') return t('components.postbox.postboxSearchBar.placeholder');
-	return t('components.appCommandPalette.searchPlaceholder');
-});
 
 function syncCaret() {
 	caret.value = inputEl.value?.selectionStart ?? searchQuery.value.length;
@@ -282,6 +278,7 @@ async function openPalette(detail?: CommandPaletteOpenDetail) {
 	mailScope.resetQuery(initialQuery);
 	inboxScope.resetQuery();
 	askScope.reset();
+	mailAskScope.reset();
 	loadRecent();
 	objectRecents.load();
 	await nextTick();
@@ -297,6 +294,7 @@ function close() {
 	mailScope.resetQuery();
 	inboxScope.resetQuery();
 	askScope.reset();
+	mailAskScope.reset();
 }
 
 function runItem(item: PaletteItem | undefined) {
@@ -315,9 +313,9 @@ function runItem(item: PaletteItem | undefined) {
 
 /** Enter: run the highlighted row, or — with none — do what the scope means. */
 function onEnter() {
-	if (prompt.value === 'ask') {
+	if (prompt.value === 'ask' || prompt.value === 'mailAsk') {
 		saveRecent(searchTerm.value);
-		void askScope.ask(searchTerm.value);
+		void (prompt.value === 'ask' ? askScope : mailAskScope).ask(searchTerm.value);
 		return;
 	}
 	const item = flatItems.value[activeIndex.value];
@@ -446,7 +444,7 @@ onBeforeUnmount(() => detachTriggers?.());
 						ref="inputEl"
 						v-model="searchQuery"
 						type="text"
-						:placeholder="placeholder"
+						:placeholder="t(paletteScope.placeholderKey.value)"
 						class="input-bare flex-1 text-base"
 						role="combobox"
 						aria-expanded="true"
@@ -486,9 +484,13 @@ onBeforeUnmount(() => detachTriggers?.());
 					:ask-available="isAskAvailable"
 					:ask-answer="askScope.answer.value"
 					:ask-loading="askScope.isLoading.value"
+					:mail-ask-available="paletteScope.isMailAskAvailable.value"
+					:mail-ask-answer="mailAskScope.answer.value"
+					:mail-ask-loading="mailAskScope.isLoading.value"
 					@run="runItem"
 					@hover="activeIndex = $event"
 					@clear-recent="clearRecent"
+					@open-citation="mailAskScope.openCitation"
 				/>
 
 				<AppCommandPaletteFooter :pending-argument="!!pendingArgument" />

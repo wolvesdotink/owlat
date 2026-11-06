@@ -26,6 +26,7 @@ function mountResults(props: {
 	matchTerm: string;
 	prompt: PalettePrompt;
 	askAvailable?: boolean;
+	mailAskAvailable?: boolean;
 }) {
 	const groups = props.groups ?? [];
 	return mount(AppCommandPaletteResults, {
@@ -40,6 +41,9 @@ function mountResults(props: {
 			askAnswer: null,
 			askLoading: false,
 			askAvailable: props.askAvailable ?? true,
+			mailAskAvailable: props.mailAskAvailable ?? false,
+			mailAskAnswer: null,
+			mailAskLoading: false,
 		},
 		global: { plugins: [createTestI18n()], stubs: { QueryResult: true } },
 	});
@@ -84,6 +88,16 @@ describe('the prefix legend', () => {
 		]);
 		// A legend is not something to pick: it stays out of the listbox.
 		expect(wrapper.get('[role="listbox"]').find('dl').exists()).toBe(false);
+	});
+
+	it('says `?` asks the mail itself where Postbox AI is on', () => {
+		const wrapper = mountResults({
+			groups: [example],
+			matchTerm: '',
+			prompt: 'mailSearch',
+			mailAskAvailable: true,
+		});
+		expect(legend(wrapper).at(-1)).toEqual(['?', 'Ask your mail']);
 	});
 
 	it('leaves out `?` where knowledge is switched off', () => {
