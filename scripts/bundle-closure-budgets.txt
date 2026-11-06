@@ -314,6 +314,7 @@ deferred 3 middleware/admin.ts
 deferred 8 middleware/auth.ts
 deferred 3 middleware/guest.ts
 deferred 3 middleware/platform-admin.ts
+deferred 3 postboxCheckForMail
 deferred 247 src
 deferred 4 useDesktopAppSettings
 deferred 9 useDesktopWorkspaces
