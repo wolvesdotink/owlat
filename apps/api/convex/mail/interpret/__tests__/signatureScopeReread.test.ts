@@ -35,10 +35,11 @@ import {
 } from '../../../e2ee/__tests__/signedMailTestHelpers';
 import { enableFeatures } from '../../../__tests__/factories';
 import { seedMessage } from '../../__tests__/helpers.testlib';
+import { withCreationTime } from '../../../__tests__/helpers/creationTimeSeam';
 import { interpretationSourceKey } from '../../../lib/validators/threadBrief';
 import { openMessageBody } from '../../../lib/messageBody';
 import { runPurgeJob } from '../purgeRun';
-import { unitBudget } from '../purgeDrain';
+import { DRAIN_CHUNK, unitBudget } from '../purgeDrain';
 import { WITHDRAWN_CLAIM_TEXT } from '../purgeClaims';
 import { captureInterpretSource } from '../sources';
 import { listBucketOf } from '../counters';
@@ -1006,6 +1007,80 @@ describe('per-row reconciliation of a narrowed read', () => {
 		);
 		expect(reads).toEqual([]);
 	});
+
+	it.each([
+		['more of them than one read takes', false],
+		['a row at a time', true],
+	])(
+		'withdraws every narrowed read of messages written in one millisecond, paged %s, before it lifts the fence',
+		async (_paging, isNarrow) => {
+			const t = convexTest(schema, modules);
+			const { messageId, threadId } = await seedLegacy(t);
+			await interpret(t, messageId, threadId, {
+				contentRevision: 'rev-old-read',
+				result: reduceResult({ items: [trailerItem] }),
+			});
+			await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+			const job = (await withdrawJobOf(t, threadId))!;
+			await t.run((ctx) => ctx.db.delete(job._id));
+			const { _id, _creationTime, ...message } = (await t.run((ctx) => ctx.db.get(messageId)))!;
+			// One import batch: more narrowed messages than a read takes, one creation time.
+			const tiedIds = await withCreationTime(_creationTime + 1, () =>
+				t.run(async (ctx) => {
+					const ids: Id<'mailMessages'>[] = [];
+					for (let i = 0; i < DRAIN_CHUNK + 6; i++) {
+						ids.push(await ctx.db.insert('mailMessages', message));
+					}
+					return ids;
+				})
+			);
+			// Each keeps its old read and the item that read made.
+			await t.run(async (ctx) => {
+				const key = interpretationSourceKey({ kind: 'mail', id: messageId });
+				const read = (await ctx.db
+					.query('messageInterpretations')
+					.withIndex('by_source_current', (q) => q.eq('sourceKey', key).eq('isCurrent', true))
+					.first())!;
+				const { _id: _r, _creationTime: _rc, ...row } = read;
+				const [item] = await ctx.db
+					.query('threadItems')
+					.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+					.collect();
+				const { _id: _i, _creationTime: _ic, ...fields } = item!;
+				for (const id of tiedIds) {
+					const source = { kind: 'mail' as const, id };
+					await ctx.db.insert('messageInterpretations', {
+						...row,
+						source,
+						sourceKey: interpretationSourceKey(source),
+					});
+					await ctx.db.insert('threadItems', {
+						...fields,
+						evidence: fields.evidence.map((e) => ({ ...e, source })),
+					});
+				}
+			});
+
+			await t.mutation(internal.migrations['0070_reconcile_fenced_threads'].run, {});
+			vi.runOnlyPendingTimers();
+			await t.finishInProgressScheduledFunctions();
+			const jobId = (await withdrawJobOf(t, threadId))!._id;
+			// A slice that stopped inside a row: the scan goes on one row per read.
+			if (isNarrow) await t.run((ctx) => ctx.db.patch(jobId, { cursor: { isNarrow: true } }));
+			let slices = 0;
+			for (let isDone = false; !isDone; slices++) {
+				// Every slice moves: the scan ends instead of re-reading the tie.
+				expect(slices).toBeLessThan(400);
+				isDone = await t.run((ctx) => runPurgeJob(ctx, jobId, unitBudget(100)));
+				const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+				expect(thread.interpretationStaleSince === undefined).toBe(isDone);
+			}
+			const items = await itemsOf(t, threadId);
+			expect(items.map((i) => i.withdrawal?.messageId).sort()).toEqual(
+				[messageId, ...tiedIds].sort()
+			);
+		}
+	);
 
 	it('keeps a source that was already deferred deferred when a fenced run meets it', async () => {
 		const t = convexTest(schema, modules);

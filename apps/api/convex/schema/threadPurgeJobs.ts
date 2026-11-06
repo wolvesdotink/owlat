@@ -26,8 +26,9 @@ export const purgeJobKindValidator = v.union(
 
 /**
  * Where a job's current range stands: the position of the last row handled
- * (`at`: creation time or activity seq; `key`: an ask session's owner), or
- * for a range of sub-ranges the first unfinished one (`step`).
+ * (`at`: creation time or activity seq; `key`: an ask session's owner; both:
+ * a creation time and the id of the row at it), or for a range of sub-ranges
+ * the first unfinished one (`step`).
  */
 export const purgeCursorValidator = v.object({
 	at: v.optional(v.number()),

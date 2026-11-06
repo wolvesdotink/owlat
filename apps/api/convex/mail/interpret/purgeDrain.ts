@@ -12,8 +12,8 @@
  *    comes back short empties it, so it needs no cursor.
  *  - {@link scanRange}: a range whose rows STAY (patched in place, or
  *    skipped). It walks by an index position that a handled row never
- *    changes and that is unique in the range (creation time, activity seq,
- *    an ask session's owner) and keeps the last handled position as its
+ *    changes and that is unique in the range (creation time with the row's
+ *    id, activity seq, an ask session's owner) and keeps the last handled position as its
  *    cursor; the next read starts strictly after it.
  *  - {@link drainSteps}: a list of sub-ranges, with the first unfinished
  *    one in the cursor, so emptied sub-ranges are never queried again.
@@ -180,13 +180,40 @@ export async function drainShrinking<Row>(
 	}
 }
 
-/** A row's place in a range that keeps its rows: a number (creation time, seq) or a string (owner). */
-export type RangePosition = number | string;
+/**
+ * A row's place in a range that keeps its rows: a number (creation time, seq),
+ * a string (owner), or a creation time with the row's id, for a range where
+ * many rows share one creation time (documents written in one millisecond).
+ */
+export type RangePosition = number | string | TiedPosition;
+
+/**
+ * A row of an index range that ends in `_creationTime`: the index orders rows
+ * of one creation time by id, so `(at, key)` is unique where `at` alone is not.
+ */
+export interface TiedPosition {
+	at: number;
+	key: string;
+}
+
+function cursorPosition(cursor: PurgeCursor | undefined): RangePosition | undefined {
+	if (cursor?.at !== undefined && cursor.key !== undefined) {
+		return { at: cursor.at, key: cursor.key };
+	}
+	return cursor?.key ?? cursor?.at;
+}
+
+function positionCursor(position: RangePosition | undefined): PurgeCursor {
+	if (position === undefined) return {};
+	if (typeof position === 'string') return { key: position };
+	if (typeof position === 'number') return { at: position };
+	return { at: position.at, key: position.key };
+}
 
 /**
  * Walk a range whose rows stay, from `cursor`, by a position that is unique
- * within the range and that a handled row never changes (creation time,
- * activity seq, an ask session's owner per target). `read(after, n)` returns
+ * within the range and that a handled row never changes (creation time with
+ * the row's id, activity seq, an ask session's owner per target). `read(after, n)` returns
  * the first `n` rows strictly after position `after` (from the start when
  * undefined), in position order. The cursor is the last handled position.
  */
@@ -197,14 +224,14 @@ export async function scanRange<Row>(
 	position: (row: Row) => RangePosition,
 	each: (row: Row) => Promise<boolean>
 ): Promise<RangeOutcome> {
-	let after: RangePosition | undefined = cursor?.key ?? cursor?.at;
+	let after = cursorPosition(cursor);
 	// A slice that stopped inside a row (its children outlasted the budget):
 	// the next reads this range a row at a time, so the bytes go to children.
 	const isNarrow = cursor?.isNarrow === true;
 	const save = (isStopped = false): RangeOutcome => ({
 		isDone: false,
 		cursor: {
-			...(typeof after === 'string' ? { key: after } : after !== undefined ? { at: after } : {}),
+			...positionCursor(after),
 			...(isStopped || isNarrow ? { isNarrow: true } : {}),
 		},
 	});
