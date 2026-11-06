@@ -132,9 +132,11 @@ pub fn release<R: Runtime>(app: &AppHandle<R>, label: &str) {
 /// double-click). Hide and Minimize are AppKit's own menu items, so the app's
 /// menu handler never sees them; AppKit's notifications cover every path.
 ///
-/// The observers run as operations on the main queue, never inside AppKit's
-/// post: a minimize Tauri itself starts may post while the runtime is still
-/// handling it, and the window lookup below goes back through that runtime.
+/// Each observer only queues its work as a new main-queue operation. AppKit
+/// runs an observer inline when the notification is posted on the main thread,
+/// and Tauri's `run_on_main_thread` and window getters run inline there too, so
+/// without the hop a minimize Tauri itself started could re-enter the runtime
+/// while it is still handling that minimize.
 #[cfg(target_os = "macos")]
 pub fn watch_out_of_sight<R: Runtime>(app: &AppHandle<R>) {
     use core::ptr::NonNull;
@@ -146,10 +148,7 @@ pub fn watch_out_of_sight<R: Runtime>(app: &AppHandle<R>) {
     let center = NSNotificationCenter::defaultCenter();
     let queue = NSOperationQueue::mainQueue();
 
-    let hop = app.clone();
-    let hidden = block2::RcBlock::new(move |_: NonNull<NSNotification>| {
-        let _ = hop.run_on_main_thread(macos::release_all);
-    });
+    let hidden = block2::RcBlock::new(|_: NonNull<NSNotification>| later(macos::release_all));
 
     let hop = app.clone();
     let minimized = block2::RcBlock::new(move |note: NonNull<NSNotification>| {
@@ -157,12 +156,15 @@ pub fn watch_out_of_sight<R: Runtime>(app: &AppHandle<R>) {
         let Some(object) = (unsafe { note.as_ref() }).object() else {
             return;
         };
-        let minimized = Retained::as_ptr(&object) as *mut std::ffi::c_void;
-        for (label, window) in hop.webview_windows() {
-            if window.ns_window().is_ok_and(|ptr| ptr == minimized) {
-                release(&hop, &label);
+        let hop = hop.clone();
+        later(move || {
+            let minimized = Retained::as_ptr(&object) as *mut std::ffi::c_void;
+            for (label, window) in hop.webview_windows() {
+                if window.ns_window().is_ok_and(|ptr| ptr == minimized) {
+                    release(&hop, &label);
+                }
             }
-        }
+        });
     });
 
     // SAFETY: no object filter, a main-queue delivery, and blocks that only
@@ -182,6 +184,15 @@ pub fn watch_out_of_sight<R: Runtime>(app: &AppHandle<R>) {
             &minimized,
         ));
     }
+}
+
+/// Run `work` on the main thread once the main queue's current work returns.
+#[cfg(target_os = "macos")]
+fn later(work: impl Fn() + 'static) {
+    let block = block2::RcBlock::new(work);
+    // SAFETY: called on the main thread, and the main queue runs the block on
+    // it, so what the block holds never crosses threads.
+    unsafe { objc2_foundation::NSOperationQueue::mainQueue().addOperationWithBlock(&block) };
 }
 
 #[cfg(not(target_os = "macos"))]

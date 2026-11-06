@@ -59,6 +59,32 @@ watch(
 	}
 );
 
+// Listening must stop once the mic and its bubble are out of sight, which a
+// page-level visibility check cannot see: a composer hidden with `v-show` while
+// still mounted (Answer mode's Reply tab when Note is chosen), a collapsed
+// sheet, a scrolled-away footer. A `display: none` ancestor leaves the button
+// no box, so the observer reports it as not intersecting. Cancelling also drops
+// a session still waiting on a permission prompt, so it never starts.
+const root = ref<HTMLElement | null>(null);
+let observer: IntersectionObserver | null = null;
+function unobserve() {
+	observer?.disconnect();
+	observer = null;
+}
+watch(
+	root,
+	(el) => {
+		unobserve();
+		if (!el || typeof IntersectionObserver === 'undefined') return;
+		observer = new IntersectionObserver((entries) => {
+			if (entries.at(-1)?.isIntersecting === false) dictation.cancel();
+		});
+		observer.observe(el);
+	},
+	{ flush: 'post' }
+);
+onBeforeUnmount(unobserve);
+
 watch(listening, (on) =>
 	announce(
 		on
@@ -98,7 +124,7 @@ const label = computed(() => t('components.dictationButton.label'));
 </script>
 
 <template>
-	<span v-if="available && target" class="relative inline-flex shrink-0">
+	<span v-if="available && target" ref="root" class="relative inline-flex shrink-0">
 		<UiTooltip
 			:text="
 				listening
