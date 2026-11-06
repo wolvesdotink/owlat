@@ -303,6 +303,29 @@ describe('askMailbox: mailbox scope', () => {
 		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
 	});
 
+	it('finds a live match behind more deleted-flagged matches than it cites', async () => {
+		// CLOSE deselects without expunging, so `\Deleted` rows can stay in a
+		// folder indefinitely; they must not take the live match's slot.
+		const own = await mailbox({ userId: 'user-A' });
+		for (let i = 0; i < 9; i++) {
+			const gone = await seedMessage(t, own, {
+				subject: `Old Lisbon flight ${i}`,
+				snippet: `Lisbon flight cancelled ${i}`,
+				receivedAt: Date.parse('2026-10-02T09:00:00Z') + i,
+			});
+			await t.run((ctx) => ctx.db.patch(gone, { flagDeleted: true }));
+		}
+		const live = await seedMessage(t, own, {
+			subject: 'Your flight',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+			receivedAt: Date.parse('2026-10-01T09:00:00Z'),
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(result.citations.map((c) => c.messageId)).toEqual([live]);
+	});
+
 	it('still searches the Inbox of a mailbox with more folders than it reads', async () => {
 		// The Inbox is created after the other folders, so a plain cut of the
 		// mailbox's folder rows would leave it out.

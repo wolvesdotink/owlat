@@ -156,8 +156,11 @@ export async function searchMailForAsk(
 			mailboxId: folder.mailboxId,
 			folderId: folder._id,
 			text,
+			// In the index, not after the take: CLOSE does not expunge, so
+			// `\Deleted` rows can outnumber the slots a folder gets.
+			flagDeleted: false,
 		}).take(ASK_MAILBOX_MAX_MESSAGES);
-		matches.push(...hits.filter((message) => !message.flagDeleted));
+		matches.push(...hits);
 	}
 	const sources = matches
 		.sort(newestFirst)
