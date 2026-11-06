@@ -112,6 +112,40 @@ export async function hasActiveSigningKey(ctx: QueryCtx, fromAddress: string): P
 }
 
 /**
+ * What the seal decision reads for one send, from the V8 plane: the flag, the
+ * org policy, the signer and every recipient's key state. Dispatch reads it
+ * through `getOutboundSealInputs`, and the approval review of an AI client's
+ * send (`mcp/actionReview.ts`) calls it directly, so both decide from the same
+ * inputs.
+ */
+export async function loadSealInputs(
+	ctx: QueryCtx,
+	fromAddress: string,
+	addresses: string[]
+): Promise<SealInputs & { discoveryAddresses: string[] }> {
+	const flagEnabled = await isFeatureEnabled(ctx, 'sealedMail');
+	const settings = await ctx.db.query('instanceSettings').first();
+	const policy = settings?.sealPolicy ?? 'auto';
+	// Sealed Mail off: skip the per-recipient discovery reads entirely — the
+	// decision is `flag_off` regardless, so the send path stays byte-identical
+	// to today for every deployment that has not enabled the flag.
+	if (!flagEnabled) {
+		return {
+			flagEnabled: false,
+			policy,
+			hasSigningKey: false,
+			discoveryAddresses: [],
+			recipients: [],
+		};
+	}
+
+	const hasSigningKey = await hasActiveSigningKey(ctx, fromAddress);
+	const recipients = await loadRecipientKeyStates(ctx, addresses);
+	const discoveryAddresses = await loadDiscoveryAddresses(ctx, addresses);
+	return { flagEnabled, policy, hasSigningKey, discoveryAddresses, recipients };
+}
+
+/**
  * Gather everything the dispatch-time seal decision (`mail/sealPolicy.decideSeal`)
  * reads, from the V8 plane, so the Node `dispatchDraft` action can decide whether
  * to seal without a direct db handle. Returns PUBLIC material only: recipient
@@ -147,26 +181,5 @@ export const getOutboundSealInputs = internalQuery({
 			})
 		),
 	}),
-	handler: async (ctx, args): Promise<SealInputs & { discoveryAddresses: string[] }> => {
-		const flagEnabled = await isFeatureEnabled(ctx, 'sealedMail');
-		const settings = await ctx.db.query('instanceSettings').first();
-		const policy = settings?.sealPolicy ?? 'auto';
-		// Sealed Mail off: skip the per-recipient discovery reads entirely — the
-		// decision is `flag_off` regardless, so the send path stays byte-identical
-		// to today for every deployment that has not enabled the flag.
-		if (!flagEnabled) {
-			return {
-				flagEnabled: false,
-				policy,
-				hasSigningKey: false,
-				discoveryAddresses: [],
-				recipients: [],
-			};
-		}
-
-		const hasSigningKey = await hasActiveSigningKey(ctx, args.fromAddress);
-		const recipients = await loadRecipientKeyStates(ctx, args.recipients);
-		const discoveryAddresses = await loadDiscoveryAddresses(ctx, args.recipients);
-		return { flagEnabled, policy, hasSigningKey, discoveryAddresses, recipients };
-	},
+	handler: (ctx, args) => loadSealInputs(ctx, args.fromAddress, args.recipients),
 });

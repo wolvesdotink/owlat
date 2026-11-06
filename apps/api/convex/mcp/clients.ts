@@ -1,6 +1,7 @@
 /**
  * MCP clients: the per-member tokens an external AI client uses to read
- * Postbox mail, and the lookup that turns a presented token into a client.
+ * Postbox mail (and, for a read-write token, to ask for writes the member
+ * approves), and the lookup that turns a presented token into a client.
  *
  * A member manages only their own clients. The plaintext token is returned
  * once, by `create`, and only its SHA-256 hash is kept.
@@ -17,6 +18,8 @@ import { hashApiKey } from '../auth/apiKeyAuth';
 import { loadMcpEligibleMailboxes } from './access';
 import { mcpMutation, mcpQuery } from './_helpers';
 import { MCP_TOKEN_PREFIX } from './protocol';
+import { cancelPendingForClient } from './actions';
+import { mcpClientAccessValidator } from '../lib/validators/mcp';
 
 const LABEL_MAX = 80;
 const MAILBOXES_MAX = 10;
@@ -75,7 +78,12 @@ export const list = mcpQuery({
 
 // all-members: any member may connect an AI client, and only to mailboxes they can already read.
 export const create = mcpMutation({
-	args: { label: v.string(), mailboxIds: v.array(v.id('mailboxes')) },
+	args: {
+		label: v.string(),
+		mailboxIds: v.array(v.id('mailboxes')),
+		// Absent is `read`, the safe default for a caller that does not ask.
+		access: v.optional(mcpClientAccessValidator),
+	},
 	handler: async (ctx, args, session) => {
 		const label = args.label.trim();
 		if (!label) throwInvalidInput('Name required');
@@ -101,7 +109,7 @@ export const create = mcpMutation({
 			label,
 			tokenHash: await hashApiKey(token),
 			tokenPrefix: token.slice(0, TOKEN_PREFIX_SHOWN),
-			access: 'read',
+			access: args.access ?? 'read',
 			mailboxIds,
 			activityCount: 0,
 			createdAt: Date.now(),
@@ -124,6 +132,8 @@ export const revoke = mcpMutation({
 		}
 		if (client.revokedAt !== undefined) return;
 		await ctx.db.patch(client._id, { revokedAt: Date.now() });
+		// What it asked for and nobody approved goes with the token.
+		await cancelPendingForClient(ctx, client._id);
 	},
 });
 
@@ -155,6 +165,6 @@ export const authenticate = internalMutation({
 		if (client.lastUsedAt === undefined || now - client.lastUsedAt >= LAST_USED_GRANULARITY_MS) {
 			await ctx.db.patch(client._id, { lastUsedAt: now });
 		}
-		return { ok: true, clientId: client._id } as const;
+		return { ok: true, clientId: client._id, access: client.access } as const;
 	},
 });

@@ -429,6 +429,10 @@ useSendReadyNotice();
 		     the page the reply leaves from. -->
 		<AnswerReviewApproveUndoToast />
 
+		<!-- An AI client's write waiting for approval, on every page but the
+		     AI clients settings, which lists them all. -->
+		<ShellMcpApprovalPrompt />
+
 		<!-- Keyboard shortcuts help modal -->
 		<LazyKeyboardShortcutsHelp v-if="helpRequested" />
 

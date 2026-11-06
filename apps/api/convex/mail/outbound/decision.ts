@@ -14,7 +14,12 @@
 import type { Id } from '../../_generated/dataModel';
 import type { SentInputContext, TransitionOutcome } from '../draftLifecycle/types';
 import type { DraftRow } from '../rfc822';
-import { unsealedSendNeedsConsent, type OutboundEncryptionInfo } from '../sealPolicy';
+import type { MailApprovedSend } from '../../lib/validators/mailContent';
+import {
+	unsealedSendNeedsConsent,
+	type OutboundEncryptionInfo,
+	type SealOutcome,
+} from '../sealPolicy';
 
 /** A line for the operator log. */
 export interface DispatchLog {
@@ -76,6 +81,24 @@ export function isUnsealedConsentMissing(input: {
 		unsealedSendNeedsConsent(input.encryptionInfo.reason) &&
 		!input.isUnsealedSendAllowed
 	);
+}
+
+/**
+ * Would this send be sealed otherwise than its owner approved: sealed where
+ * the card said ordinary mail, plain where it said sealed, or sealed to other
+ * keys? Discovery runs again at dispatch and keys rotate during the undo
+ * window, so an approved send that now differs goes back to the composer for
+ * a person to look at, never out.
+ */
+export function breaksApprovedSealing(
+	approved: MailApprovedSend | undefined,
+	outcome: SealOutcome
+): boolean {
+	if (!approved) return false;
+	if (!approved.sealing.isSealed || !outcome.isSealed) {
+		return approved.sealing.isSealed !== outcome.isSealed;
+	}
+	return approved.sealing.keysDigest !== outcome.keysDigest;
 }
 
 const unbracket = (value: string): string => value.replace(/^<|>$/g, '');

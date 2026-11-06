@@ -4,6 +4,7 @@ import { mailboxJobFields } from '../lib/validators/mail';
 import {
 	mailAttachmentShareScanValidator,
 	mailAttachmentShareScopeValidator,
+	mailApprovedSendValidator,
 	mailDraftAttachmentValidator,
 	mailDraftExpectedAttachmentValidator,
 	mailSnippetVariableValidator,
@@ -152,6 +153,10 @@ export const mailCompositionTables = {
 		// Per-send explicit plaintext consent. Dispatch checks this again after
 		// discovery/crypto so a trust change during the undo window fails closed.
 		isUnsealedSendAllowed: v.optional(v.boolean()),
+		// The send inputs its owner approved, for an AI client's send: set by the
+		// approval run after `drafts.send`, cleared by `drafts.send` and on every
+		// revert, so it only ever describes the send in flight.
+		approvedSend: v.optional(mailApprovedSendValidator),
 		// The sender chose "send and mark done" for this send of a reply. The cutoff
 		// is when they chose it: once the reply is sent, the conversation's Inbox
 		// mail up to then is archived (mail/replyDone.ts) and anything newer stays.

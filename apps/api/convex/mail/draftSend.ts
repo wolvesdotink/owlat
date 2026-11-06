@@ -76,6 +76,8 @@ export async function sendHandler(
 	await ctx.db.patch(args.draftId, {
 		sentByUserId: owned.userId,
 		isUnsealedSendAllowed,
+		// Only an approval run sets it again, after this send (mcp/actionRun.ts).
+		approvedSend: undefined,
 		doneOnSendAt: doneOnSendCutoff(draft, args, now),
 	});
 

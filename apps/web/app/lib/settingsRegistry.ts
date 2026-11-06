@@ -302,6 +302,8 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		icon: RobotIcon,
 		section: 'account',
 		gate: all(hasMail, flag('mail.mcp')),
+		// The writes AI clients ask for, so "approve" finds them from the palette.
+		controls: [control('aiClientApprovals', 'approvals')],
 	}),
 	entry('device', {
 		path: `${SETTINGS_ROOT}/device`,

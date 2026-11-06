@@ -401,6 +401,10 @@ crons.interval(
 	{}
 );
 
+// AI client (MCP) writes: lapse the ones nobody approved within a day, and
+// delete decided ones once their outcome has been readable for a month.
+crons.interval('mcp pending action sweep', { minutes: 15 }, internal.mcp.actions.sweep, {});
+
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose check never reached a verdict (lost, or its run was killed).
 crons.interval(

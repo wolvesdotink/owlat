@@ -71,6 +71,7 @@ function mountLayout() {
 				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
 				AnswerReviewApproveUndoToast: true,
+				ShellMcpApprovalPrompt: true,
 				LazyKeyboardShortcutsHelp: true,
 				AppLiveRegion: true,
 				UiBadge: true,
