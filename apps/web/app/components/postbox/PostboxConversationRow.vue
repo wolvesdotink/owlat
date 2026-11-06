@@ -20,6 +20,8 @@ export type PostboxConversationThread = {
 	_id: string;
 	latestMessageId?: string;
 	latestFromAddress: string;
+	/** The newest sender's display name; absent when that message has none. */
+	latestFromName?: string;
 	latestSubject: string;
 	latestSnippet: string;
 	lastMessageAt: number;
@@ -59,6 +61,11 @@ const replyDrop = computed(() => {
 		: null;
 });
 
+// Named like the flat list's rows: the display name, else the address.
+const senderLabel = computed(
+	() => props.thread.latestFromName?.trim() || props.thread.latestFromAddress
+);
+
 const rowLabel = computed(() =>
 	props.thread.unreadCount > 0
 		? t('components.postbox.postboxConversationRow.rowLabel', {
@@ -84,6 +91,8 @@ const rowLabel = computed(() =>
 	>
 		<div class="flex items-baseline justify-between gap-3">
 			<span
+				data-testid="row-sender"
+				:title="thread.latestFromAddress"
 				class="truncate text-sm"
 				:class="
 					thread.unreadCount > 0
@@ -91,7 +100,7 @@ const rowLabel = computed(() =>
 						: 'text-text-secondary'
 				"
 			>
-				<PostboxUnreadMark v-if="thread.unreadCount > 0" />{{ thread.latestFromAddress }}
+				<PostboxUnreadMark v-if="thread.unreadCount > 0" />{{ senderLabel }}
 				<span v-if="thread.messageCount > 1" class="text-text-tertiary font-normal"
 					>({{ thread.messageCount }})</span
 				>

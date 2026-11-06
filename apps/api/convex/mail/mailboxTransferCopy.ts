@@ -100,6 +100,7 @@ async function targetThread(
 		firstMessageAt: message.receivedAt,
 		latestSnippet: message.snippet,
 		latestFromAddress: message.fromAddress,
+		...(message.fromName ? { latestFromName: message.fromName } : {}),
 		latestSubject: message.subject,
 		folderRoles: [],
 		labelIds: [],

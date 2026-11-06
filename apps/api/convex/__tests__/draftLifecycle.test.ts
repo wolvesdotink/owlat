@@ -538,6 +538,35 @@ describe('draftLifecycle.transition — to: sent', () => {
 		});
 	});
 
+	it("a reply takes the previous sender's name off the conversation row", async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedMailboxAndSent(t);
+		const inboundId = await seedInboundMessage(t, mailboxId);
+		const threadId = await t.run(async (ctx) => {
+			const { threadId } = (await ctx.db.get(inboundId))!;
+			await ctx.db.patch(threadId, { latestFromName: 'Sam Sender' });
+			return threadId;
+		});
+		const draftId = await seedDraft(t, mailboxId, {
+			state: 'pending_send',
+			undoToken: 'tok-name',
+			inReplyToMessageId: inboundId,
+		});
+		await t.run((ctx) => ctx.db.patch(draftId, { threadId }));
+		const rawStorageId = await storeBlob(t);
+
+		const outcome = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			input: { to: 'sent', at: Date.now(), context: makeSentContext(rawStorageId) },
+		});
+
+		expect(outcome.ok).toBe(true);
+		const thread = await t.run(async (ctx) => (await ctx.db.get(threadId))!);
+		expect(thread.latestFromAddress).toBe('alice@example.com');
+		// The sent copy records no display name, so the row shows the address.
+		expect(thread).not.toHaveProperty('latestFromName');
+	});
+
 	it('builds the Sent-copy snippet like a delivered one: no <style> CSS, entities decoded', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId } = await seedMailboxAndSent(t);

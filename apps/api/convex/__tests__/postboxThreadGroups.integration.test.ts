@@ -4,10 +4,11 @@
  * threads whose latest message is snoozed.
  */
 
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 
@@ -146,5 +147,55 @@ describe('mail.mailbox.queries.listThreads', () => {
 			folderRole: 'inbox',
 		});
 		expect(res.threads).toHaveLength(0);
+	});
+
+	it('names the latest sender by display name and drops a name the newest message lacks', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['mail.external']);
+		const { mailboxId } = await seedThread(t, ['inbox']);
+		const deliver = async (
+			from: string,
+			messageId: string,
+			receivedAt: number,
+			inReplyTo?: string
+		) => {
+			const rawStorageId = await t.run((ctx) => ctx.storage.store(new Blob(['raw'])));
+			await t.mutation(internal.mail.delivery.deliverToMailbox, {
+				rawStorageId,
+				rawSize: 3,
+				recipientAddress: 'me@example.com',
+				from,
+				to: ['me@example.com'],
+				cc: [],
+				bcc: [],
+				subject: 'Quarterly numbers',
+				textBodyInline: 'see attached',
+				snippet: 'see attached',
+				messageId,
+				inReplyTo,
+				receivedAt,
+				attachments: [],
+			});
+		};
+		const rowFor = async () => {
+			const res = await t.query(api.mail.mailbox.queries.listThreads, {
+				mailboxId,
+				folderRole: 'inbox',
+			});
+			return res.threads.find((row) => row.latestSubject === 'Quarterly numbers');
+		};
+
+		const now = Date.now();
+		await deliver('Ben Ortiz <ben@acme.example>', '<q-1@acme.example>', now + 1000);
+		expect(await rowFor()).toMatchObject({
+			latestFromAddress: 'ben@acme.example',
+			latestFromName: 'Ben Ortiz',
+		});
+
+		await deliver('carol@acme.example', '<q-2@acme.example>', now + 2000, '<q-1@acme.example>');
+		const row = await rowFor();
+		expect(row?.latestFromAddress).toBe('carol@acme.example');
+		expect(row).not.toHaveProperty('latestFromName');
 	});
 });

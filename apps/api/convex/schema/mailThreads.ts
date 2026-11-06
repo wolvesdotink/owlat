@@ -131,6 +131,11 @@ export const mailThreadsTables = {
 		firstMessageAt: v.number(),
 		latestSnippet: v.string(),
 		latestFromAddress: v.string(),
+		// Display name of the newest message's sender, beside its address, so the
+		// conversation row names people the way the flat list does. Absent when
+		// that message carries no name, and on rows the sender-name backfill has
+		// not reached yet; readers fall back to the address.
+		latestFromName: v.optional(v.string()),
 		latestSubject: v.string(),
 		// Newest message in the thread — the row a conversation list links to.
 		latestMessageId: v.optional(v.id('mailMessages')),
