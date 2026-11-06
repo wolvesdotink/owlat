@@ -229,6 +229,61 @@ describe('newestUnreadInbox for one chosen mailbox', () => {
 		expect(team.messages.map((m) => m.subject)).toEqual(['help']);
 	});
 
+	it('answers unavailable for a chosen mailbox that was deleted', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId: teamId } = await seedSharedInboxWithUnread(t);
+		const personalId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(teamId, { status: 'deleted' });
+		});
+
+		setSession('user-B', 'editor');
+		expect(
+			await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId: teamId })
+		).toEqual({ total: 0, messages: [], unavailable: true });
+		// The all-inbox peek still counts the mailbox that is left.
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(1);
+		expect(
+			(await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId: personalId })).total
+		).toBe(1);
+	});
+
+	it('answers unavailable for a chosen mailbox whose account was disconnected', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-B',
+				organizationId: 'org-1',
+				mailboxId,
+				imapHost: 'imap.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'b@owlat.test',
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(mailboxId, { kind: 'external', externalAccountId: accountId });
+		});
+
+		setSession('user-B', 'editor');
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId })).total).toBe(
+			1
+		);
+		await t.mutation(api.mail.external.accounts.disconnect, {});
+		expect(await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId })).toEqual({
+			total: 0,
+			messages: [],
+			unavailable: true,
+		});
+	});
+
 	it('reveals nothing about a mailbox the caller cannot read', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId: teamId } = await seedSharedInboxWithUnread(t);

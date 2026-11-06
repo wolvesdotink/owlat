@@ -5,7 +5,8 @@
  *
  * Mail to a hosted address is pushed in as it arrives, so the answer for
  * someone with no connected account says there is nothing to check rather
- * than pretending to check.
+ * than pretending to check. "Checking" is shown only once mail-sync took the
+ * request; the backend action waits for the worker's answer.
  */
 import { api } from '@owlat/api';
 import type { ConvexClient } from 'convex/browser';
@@ -20,12 +21,19 @@ export const CHECK_FOR_MAIL_MESSAGE_KEYS: Record<CheckForMailOutcome, string> = 
 	failed: 'postbox.checkForMail.failed',
 };
 
+/** The backend's answer, as the toast it shows. */
+const OUTCOME_BY_STATUS = {
+	checking: 'checking',
+	nothing_to_check: 'nothing',
+	rate_limited: 'busy',
+	failed: 'failed',
+} as const satisfies Record<string, CheckForMailOutcome>;
+
 export async function requestMailCheck(client: ConvexClient | null): Promise<CheckForMailOutcome> {
 	if (!client) return 'failed';
 	try {
-		const result = await client.mutation(api.mail.external.checkForMail.request, {});
-		if (result.accounts === 0) return 'nothing';
-		return result.throttled ? 'busy' : 'checking';
+		const { status } = await client.action(api.mail.external.checkForMail.request, {});
+		return OUTCOME_BY_STATUS[status];
 	} catch {
 		return 'failed';
 	}

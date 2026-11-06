@@ -123,8 +123,9 @@ export async function pokeMailSyncReconcile(): Promise<boolean> {
 
 /**
  * Ask the mail-sync worker to sync these accounts now (its `POST /sync`): the
- * user pressed "Check for mail". Best-effort like the reconcile poke, since
- * the worker's own timers pick the mail up anyway, only later.
+ * user pressed "Check for mail". Never throws; false when the worker is not
+ * configured, unreachable or answered with an error, which the caller reports
+ * to the user, since the click otherwise looks like it worked.
  */
 export async function pokeMailSyncCheck(accountIds: readonly string[]): Promise<boolean> {
 	const mailSync = getMailSyncConfig();

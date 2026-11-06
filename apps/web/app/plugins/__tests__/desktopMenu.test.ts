@@ -9,6 +9,7 @@
  * registers nothing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PostboxCheckForMail from '~/lib/postboxCheckForMail';
 
 let desktopRuntime = true;
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
@@ -45,12 +46,19 @@ vi.mock('@owlat/desktop/src/tray', () => ({
 	onTrayCheckMail: (handler: () => void) => onTrayCheckMail(handler),
 }));
 
-const checkForMail = vi.fn(async (_deps: unknown) => 'checking');
-vi.mock('~/lib/postboxCheckForMail', () => ({
-	checkForMail: (deps: unknown) => checkForMail(deps),
-}));
+// A spy over the real helper, so the toast the tray click ends in is checked too.
+const checkForMail = vi.fn();
+vi.mock('~/lib/postboxCheckForMail', async (importOriginal) => {
+	const actual = await importOriginal<typeof PostboxCheckForMail>();
+	checkForMail.mockImplementation(actual.checkForMail);
+	return { checkForMail: (deps: unknown) => checkForMail(deps) };
+});
 
-const convexClient = { mutation: vi.fn() };
+const convexClient = {
+	action: vi.fn(async (): Promise<unknown> => ({ status: 'checking' })),
+	// A backend that only schedules the worker call answers success either way.
+	mutation: vi.fn(async () => ({ accounts: 1 })),
+};
 const showToast = vi.fn();
 
 let storedNotificationsEnabled = true;
@@ -88,6 +96,8 @@ beforeEach(() => {
 	trayCheckHandler = null;
 	onTrayCheckMail.mockClear();
 	checkForMail.mockClear();
+	convexClient.action.mockClear();
+	showToast.mockClear();
 	storedNotificationsEnabled = true;
 	setGlobal.mockClear();
 	onTrayToggleNotifications.mockClear();
@@ -144,6 +154,18 @@ describe('desktop menu plugin', () => {
 		expect(deps.client).toBe(convexClient);
 		expect(deps.t('postbox.checkForMail.checking')).toBe('t:postbox.checkForMail.checking');
 		expect(deps.showToast).toBe(showToast);
+	});
+
+	it('says so when the tray check for mail failed', async () => {
+		convexClient.action.mockResolvedValueOnce({ status: 'failed' });
+		await setupMenuPlugin();
+		await vi.waitFor(() => expect(onTrayCheckMail).toHaveBeenCalledTimes(1));
+
+		trayCheckHandler?.();
+
+		await vi.waitFor(() =>
+			expect(showToast).toHaveBeenCalledWith('t:postbox.checkForMail.failed', 'error')
+		);
 	});
 
 	it('registers nothing on the web', async () => {

@@ -2,11 +2,12 @@
  * "Check for mail" (mail/external/checkForMail.ts): the desktop tray and the
  * command palette ask the mail-sync worker to sync now. The request names
  * exactly the connected accounts behind the caller's readable mailboxes, the
- * personal one and the team inboxes they belong to, and nothing else.
+ * personal one and the team inboxes they belong to, and nothing else, and the
+ * answer says whether the worker took it.
  */
 
 import { type TestConvex } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
@@ -52,11 +53,30 @@ async function connectAccount(
 	});
 }
 
-async function scheduledWakes(t: TestConvex<typeof schema>): Promise<string[][]> {
-	const jobs = await t.run(async (ctx) => ctx.db.system.query('_scheduled_functions').collect());
-	return jobs
-		.filter((job) => job.name.includes('checkForMail'))
-		.map((job) => [...(job.args[0] as { accountIds: string[] }).accountIds].sort());
+const fetchMock = vi.fn();
+
+beforeEach(() => {
+	vi.stubEnv('MAIL_SYNC_API_URL', 'http://mail-sync.test');
+	vi.stubEnv('MAIL_SYNC_API_KEY', 'sync-key');
+	fetchMock.mockReset();
+	fetchMock.mockResolvedValue(Response.json({ accepted: 1 }, { status: 202 }));
+	vi.stubGlobal('fetch', fetchMock);
+});
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+});
+
+/** The account ids of each `POST /sync` the worker received. */
+function syncRequests(): string[][] {
+	return fetchMock.mock.calls
+		.filter(([url]) => String(url) === 'http://mail-sync.test/sync')
+		.map(([, init]) =>
+			[
+				...(JSON.parse(String((init as RequestInit).body)) as { accountIds: string[] }).accountIds,
+			].sort()
+		);
 }
 
 describe('mail.external.checkForMail.request', () => {
@@ -89,20 +109,52 @@ describe('mail.external.checkForMail.request', () => {
 		// Hosted mail arrives without the worker.
 		await seedMailbox(t, { address: 'hosted@owlat.test' });
 
-		expect(await t.mutation(api.mail.external.checkForMail.request, {})).toEqual({
-			accounts: 2,
+		expect(await t.action(api.mail.external.checkForMail.request, {})).toEqual({
+			status: 'checking',
 		});
-		expect(await scheduledWakes(t)).toEqual([[personalAccount, teamAccount].sort()]);
+		expect(syncRequests()).toEqual([[personalAccount, teamAccount].sort()]);
 	});
 
-	it('schedules nothing when the caller has no connected account', async () => {
+	it('asks the worker nothing when the caller has no connected account', async () => {
 		const t = liveMailTest();
 		await seedMailbox(t, { address: 'hosted@owlat.test' });
 
-		expect(await t.mutation(api.mail.external.checkForMail.request, {})).toEqual({
-			accounts: 0,
+		expect(await t.action(api.mail.external.checkForMail.request, {})).toEqual({
+			status: 'nothing_to_check',
 		});
-		expect(await scheduledWakes(t)).toEqual([]);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('fails when mail-sync cannot be reached', async () => {
+		const t = liveMailTest();
+		await connectAccount(t, await seedMailbox(t, { kind: 'external' }));
+		fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+		expect(await t.action(api.mail.external.checkForMail.request, {})).toEqual({
+			status: 'failed',
+		});
+	});
+
+	it('fails when mail-sync refuses the request', async () => {
+		const t = liveMailTest();
+		await connectAccount(t, await seedMailbox(t, { kind: 'external' }));
+		fetchMock.mockResolvedValue(new Response('unauthorized', { status: 401 }));
+
+		expect(await t.action(api.mail.external.checkForMail.request, {})).toEqual({
+			status: 'failed',
+		});
+		expect(syncRequests()).toHaveLength(1);
+	});
+
+	it('fails when mail-sync is not configured', async () => {
+		const t = liveMailTest();
+		await connectAccount(t, await seedMailbox(t, { kind: 'external' }));
+		vi.stubEnv('MAIL_SYNC_API_URL', '');
+
+		expect(await t.action(api.mail.external.checkForMail.request, {})).toEqual({
+			status: 'failed',
+		});
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it('stops waking the worker when the same person asks again and again', async () => {
@@ -112,11 +164,11 @@ describe('mail.external.checkForMail.request', () => {
 
 		const answers = [];
 		for (let i = 0; i < 10; i++) {
-			answers.push(await t.mutation(api.mail.external.checkForMail.request, {}));
+			answers.push(await t.action(api.mail.external.checkForMail.request, {}));
 		}
 
-		expect(answers[0]).toEqual({ accounts: 1 });
-		expect(answers[answers.length - 1]).toEqual({ accounts: 1, throttled: true });
-		expect((await scheduledWakes(t)).length).toBeLessThan(10);
+		expect(answers[0]).toEqual({ status: 'checking' });
+		expect(answers[answers.length - 1]).toEqual({ status: 'rate_limited' });
+		expect(syncRequests().length).toBeLessThan(10);
 	});
 });

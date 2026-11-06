@@ -385,8 +385,8 @@ export const accessible = publicQuery({
  * Minimal, plain-text fields only.
  *
  * `mailboxId` narrows both to one accessible mailbox (the desktop tray). One the
- * caller cannot read gets the empty peek with `unavailable`, not an error: the
- * id is a device setting that can outlive the access.
+ * caller cannot read or that is not active gets the empty peek with
+ * `unavailable`, not an error: the id is a device setting that can outlive both.
  */
 // public: soft-auth — returns an empty peek for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const newestUnreadInbox = publicQuery({
@@ -415,7 +415,7 @@ export const newestUnreadInbox = publicQuery({
 				hasSignInCode?: boolean;
 				receivedAt: number;
 			}>,
-			/** Set when `mailboxId` names a mailbox the caller cannot read. */
+			/** Set when `mailboxId` names a mailbox the caller cannot read or that is not active. */
 			unavailable: undefined as true | undefined,
 		};
 		const unavailable = { ...empty, unavailable: true as const };
@@ -431,8 +431,10 @@ export const newestUnreadInbox = publicQuery({
 			session.userId,
 			session.activeOrganizationId
 		);
+		// Not active (deleted, suspended, or disconnected, which soft-deletes it)
+		// counts as unreadable, so the tray falls back to all inboxes.
 		const mailboxes = args.mailboxId
-			? accessible.filter((mb) => mb._id === args.mailboxId)
+			? accessible.filter((mb) => mb._id === args.mailboxId && mb.status === 'active')
 			: accessible;
 		if (args.mailboxId && mailboxes.length === 0) return unavailable;
 		let total = 0;

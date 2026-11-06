@@ -34,7 +34,7 @@ let openNewContact: ReturnType<typeof vi.fn>;
 let navigations: unknown[];
 let latestSignInCode: unknown;
 let showToast: ReturnType<typeof vi.fn>;
-let mutation: ReturnType<typeof vi.fn>;
+let action: ReturnType<typeof vi.fn>;
 
 const SIDEBAR_SECTIONS = [
 	{
@@ -60,8 +60,9 @@ beforeEach(() => {
 	showToast = vi.fn();
 	showChecklist.mockClear();
 	vi.stubGlobal('useToast', () => ({ showToast }));
-	mutation = vi.fn(async () => ({ accounts: 1 }));
-	vi.stubGlobal('useConvex', () => ({ mutation }));
+	action = vi.fn(async () => ({ status: 'checking' }));
+	// A backend that only schedules the worker call answers success either way.
+	vi.stubGlobal('useConvex', () => ({ action, mutation: vi.fn(async () => ({ accounts: 1 })) }));
 
 	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -200,12 +201,25 @@ describe('verbs', () => {
 		verb?.run();
 		await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
 
-		expect(getFunctionName(mutation.mock.calls[0]![0])).toBe(
+		expect(getFunctionName(action.mock.calls[0]![0])).toBe(
 			getFunctionName(api.mail.external.checkForMail.request)
 		);
 		expect(showToast).toHaveBeenCalledWith(
 			'Checking your connected accounts for new mail.',
 			'info'
+		);
+	});
+
+	it('says the mail check failed when mail-sync did not take it', async () => {
+		action = vi.fn(async () => ({ status: 'failed' }));
+		const { verbItems } = await providers();
+
+		byId(verbItems.value, 'verb:check-mail')?.run();
+		await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
+
+		expect(showToast).toHaveBeenCalledWith(
+			"Couldn't check for new mail. Try again in a moment.",
+			'error'
 		);
 	});
 
