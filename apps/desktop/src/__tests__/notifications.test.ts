@@ -89,7 +89,14 @@ describe('sendActionableNotification', () => {
 			messageId: 'm1',
 			folderRole: 'inbox',
 			workspaceId: 'ws-a',
+			hasSignInCode: false,
 		});
+	});
+
+	it('says whether the message has a sign-in code to copy, never the code', async () => {
+		invokeMock.mockResolvedValue(undefined);
+		await sendActionableNotification('Northwind', '482913 is your code', 'm1', 'inbox', null, true);
+		expect(invokeMock.mock.calls[0]?.[1]).toMatchObject({ hasSignInCode: true });
 	});
 
 	it('sends an explicit null when there is no active workspace', async () => {

@@ -385,6 +385,11 @@ export const newestUnreadInbox = publicQuery({
 				 * — pierces the people-only scope AND quiet hours.
 				 */
 				alerted?: boolean;
+				/**
+				 * A live one-time code (mail/signInCodes.ts) the desktop notification
+				 * offers to copy. Only that it exists: the value stays on the message.
+				 */
+				hasSignInCode?: boolean;
 				receivedAt: number;
 			}>,
 		};
@@ -450,6 +455,9 @@ export const newestUnreadInbox = publicQuery({
 					category: state.category,
 					muted: state.muted,
 					alerted: state.alerted,
+					...(m.signInCode?.kind === 'code' && m.signInCode.expiresAt > now
+						? { hasSignInCode: true }
+						: {}),
 					receivedAt: m.receivedAt,
 				});
 			}

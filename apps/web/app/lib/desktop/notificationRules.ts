@@ -37,6 +37,8 @@ export interface UnreadPeekMessage {
 	 * (mail/threadAlerts.ts) — it pierces the people-only scope AND quiet hours.
 	 */
 	alerted?: boolean;
+	/** A live one-time code is on the message: the notification offers Copy code. */
+	hasSignInCode?: boolean;
 	receivedAt: number;
 }
 
@@ -299,6 +301,8 @@ export interface NotificationParts {
 	 * therefore sent as a plain notification.
 	 */
 	messageId?: string;
+	/** That message carries a live sign-in code (never the code itself). */
+	hasSignInCode?: boolean;
 }
 
 const KEY_PREFIX = 'shared.useDesktopNotifications';
@@ -324,19 +328,23 @@ export function notificationParts(n: PlannedNotification, hidePreview = false): 
 				? { key: `${KEY_PREFIX}.hiddenPreview.group`, params: { count: n.count } }
 				: { key: `${KEY_PREFIX}.groupBody`, params: { count: n.count, sender: n.sender } },
 			messageId: n.sample.messageId,
+			...(n.sample.hasSignInCode ? { hasSignInCode: true } : {}),
 		};
 	}
 	const m = n.message;
+	const code = m.hasSignInCode ? { hasSignInCode: true } : {};
 	if (hidePreview) {
 		return {
 			title: { key: `${KEY_PREFIX}.newMail` },
 			body: { key: `${KEY_PREFIX}.hiddenPreview.single` },
 			messageId: m.messageId,
+			...code,
 		};
 	}
 	return {
 		title: { text: m.fromName || m.fromAddress },
 		body: m.subject ? { text: m.subject } : { key: `${KEY_PREFIX}.noSubject` },
 		messageId: m.messageId,
+		...code,
 	};
 }

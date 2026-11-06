@@ -5882,7 +5882,8 @@
 				"copyLabel": "Anmeldecode {code} von {domain} kopieren",
 				"openLabel": "Anmeldelink von {domain} öffnen",
 				"openLink": "Anmeldelink öffnen",
-				"openLinkShort": "Link öffnen"
+				"openLinkShort": "Link öffnen",
+				"unavailable": "Kein Anmeldecode zum Kopieren. Ein Code wird 15 Minuten nach dem Eingang angeboten."
 			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
@@ -17426,7 +17427,8 @@
 				"clearSelection": "Auswahl aufheben",
 				"resolveThread": "Thread erledigen",
 				"assignThread": "Thread zuweisen an …",
-				"chatView": "Chat-Ansicht"
+				"chatView": "Chat-Ansicht",
+				"copySignInCode": "Anmeldecode kopieren (oder Anmeldelink öffnen)"
 			}
 		},
 		"signatureBadge": {
@@ -18041,7 +18043,9 @@
 			"newContact": "Neuer Kontakt",
 			"sidebarContext": "Seitenleisten-Kontext",
 			"switchToInbox": "Zum Posteingang wechseln",
-			"switchToMarketing": "Zu Marketing wechseln"
+			"switchToMarketing": "Zu Marketing wechseln",
+			"copySignInCode": "Neuesten Anmeldecode kopieren",
+			"openSignInLink": "Neuesten Anmeldelink öffnen"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",

@@ -419,6 +419,16 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		labelKey: L('chatView'),
 		groupKey: G.organize,
 	},
+	{
+		// The open conversation's sign-in code, as its chip copies it (or its
+		// sign-in link, opened). ⇧Y ("yank"), free in every map and preset;
+		// plain `y` stays free for the remaps people make.
+		id: 'postbox.copySignInCode',
+		scope: 'postbox',
+		keys: ['Y'],
+		labelKey: L('copySignInCode'),
+		groupKey: G.organize,
+	},
 
 	// --- Postbox compose ------------------------------------------------------
 	{ id: 'postbox.reply', scope: 'postbox', keys: ['r'], labelKey: L('reply'), groupKey: G.compose },

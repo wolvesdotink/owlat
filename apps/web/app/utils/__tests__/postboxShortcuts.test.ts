@@ -66,6 +66,15 @@ describe('resolvePostboxShortcut', () => {
 		applyShortcutPreferences('owlat');
 	});
 
+	it('maps ⇧Y to copying the open conversation’s sign-in code in every map', () => {
+		for (const preset of ['owlat', 'gmail', 'superhuman', 'outlook'] as const) {
+			applyShortcutPreferences(preset);
+			expect(resolvePostboxShortcut('Y')).toBe('copySignInCode');
+			expect(resolvePostboxShortcut('y')).toBeNull();
+		}
+		applyShortcutPreferences('owlat');
+	});
+
 	it('maps the vocabulary added with the registry (n/p unread jumps, z undo)', () => {
 		expect(resolvePostboxShortcut('n')).toBe('nextUnread');
 		expect(resolvePostboxShortcut('p')).toBe('previousUnread');

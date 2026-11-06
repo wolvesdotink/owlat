@@ -206,7 +206,55 @@ describe('useDesktopNotifications: workspace provenance', () => {
 		await deliver();
 
 		expect(sendActionableNotification).toHaveBeenCalledTimes(1);
-		expect(sendActionableNotification.mock.calls[0]?.slice(2)).toEqual(['m1', 'inbox', 'ws-a']);
+		expect(sendActionableNotification.mock.calls[0]?.slice(2)).toEqual([
+			'm1',
+			'inbox',
+			'ws-a',
+			false,
+		]);
+		wrapper.unmount();
+	});
+});
+
+describe('useDesktopNotifications: a sign-in code', () => {
+	it('offers Copy code on its notification and copies the code it reads back', async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { clipboard: { writeText } });
+		const query = vi.fn(async () => ({
+			kind: 'code',
+			value: '482913',
+			senderDomain: 'northwind.example',
+			expiresAt: Date.now() + 60_000,
+		}));
+		vi.stubGlobal('requireConvex', () => ({ query, mutation: vi.fn() }));
+		const wrapper = await mountDashboard();
+		unread.value = { total: 0, messages: [] };
+		await deliver();
+		unread.value = {
+			total: 1,
+			messages: [
+				{
+					messageId: 'm1',
+					threadId: 't1',
+					fromAddress: 'security@northwind.example',
+					subject: '482913 is your Northwind code',
+					category: 'person',
+					hasSignInCode: true,
+					receivedAt: Date.now(),
+				},
+			],
+		};
+		await deliver();
+		expect(sendActionableNotification.mock.calls[0]?.at(-1)).toBe(true);
+
+		const routing = lastRouting();
+		await routing.ready;
+		for (const cb of listeners) cb({ action: 'copy', messageId: 'm1', workspaceId: 'ws-a' });
+		await routing.idle();
+
+		expect(query).toHaveBeenCalledWith(expect.anything(), { messageId: 'm1' });
+		expect(writeText).toHaveBeenCalledWith('482913');
+		expect(showToast).toHaveBeenCalledWith('components.postbox.postboxSignInCodeChip.copied');
 		wrapper.unmount();
 	});
 });

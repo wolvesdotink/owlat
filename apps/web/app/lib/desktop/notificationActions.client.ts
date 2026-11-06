@@ -1,7 +1,7 @@
 /**
  * Routing for desktop notification actions. The Rust backend emits a
- * `notification-action` event ({ action: 'open' | 'archive' | 'read' | 'reply',
- * messageId, folderRole, reply? }) when the user interacts with a per-message
+ * `notification-action` event ({ action: 'open' | 'archive' | 'read' | 'copy' |
+ * 'reply', messageId, folderRole, reply? }) when the user interacts with a per-message
  * notification (macOS/Linux), and ({ action: 'navigate', url }) when a link
  * notification (a campaign, automation or sending-domain notice) is clicked.
  * The pure resolver maps that to an app effect; the executor focuses the window
@@ -59,6 +59,7 @@ export type NotifEffect =
 	| { type: 'open'; folderRole: string; messageId: string }
 	| { type: 'archive'; messageId: string }
 	| { type: 'read'; messageId: string }
+	| { type: 'copy'; messageId: string }
 	| { type: 'reply'; messageId: string; text: string }
 	| { type: 'navigate'; path: string }
 	| null;
@@ -79,6 +80,7 @@ export function resolveNotificationEffect(payload: NotificationActionPayload): N
 	if (!messageId) return null;
 	if (payload.action === 'archive') return { type: 'archive', messageId };
 	if (payload.action === 'read') return { type: 'read', messageId };
+	if (payload.action === 'copy') return { type: 'copy', messageId };
 	if (payload.action === 'reply') {
 		const text = str(payload?.reply);
 		// A blank or whitespace-only submission carries no words to preserve —
@@ -188,6 +190,9 @@ export async function replyFromNotification(
  */
 export type NavigateFn = (path: string) => void;
 
+/** Copy a message's live sign-in code (Copy code); injected, it needs the app's toasts. */
+export type CopySignInCodeFn = (messageId: string) => Promise<void>;
+
 async function openDesktopComposer(path: string): Promise<void> {
 	const { openCompose } = await import('@owlat/desktop/src/compose');
 	await openCompose(path);
@@ -211,7 +216,8 @@ export async function runEffect(
 	effect: NonNullable<NotifEffect>,
 	convex: ConvexClient,
 	navigate: NavigateFn,
-	openComposer: ReplyDeps['openComposer'] = openDesktopComposer
+	openComposer: ReplyDeps['openComposer'] = openDesktopComposer,
+	copySignInCode?: CopySignInCodeFn
 ): Promise<void> {
 	// The Archive / Mark-read actions triage in place WITHOUT navigating away —
 	// they should not steal the user's current view. Only an explicit open
@@ -240,6 +246,12 @@ export async function runEffect(
 		} catch (e) {
 			console.warn('[desktop] mark-read from notification failed', e);
 		}
+		return;
+	}
+	if (effect.type === 'copy') {
+		// The clipboard only takes a write from the focused window.
+		await focusMainWindow();
+		await copySignInCode?.(effect.messageId);
 		return;
 	}
 	if (effect.type === 'reply') {
@@ -292,6 +304,7 @@ export interface NotificationRoutingContext {
 	/** Resolves true once the client's auth is confirmed (see convexAuthReady). */
 	authReady: () => Promise<boolean>;
 	openComposer?: ReplyDeps['openComposer'];
+	copySignInCode?: CopySignInCodeFn;
 	now?: () => number;
 }
 
@@ -314,7 +327,7 @@ export async function handleNotificationAction(
 		workspaces.exists
 	);
 	if (route.kind === 'here') {
-		await runEffect(effect, ctx.convex, ctx.navigate, ctx.openComposer);
+		await runEffect(effect, ctx.convex, ctx.navigate, ctx.openComposer, ctx.copySignInCode);
 		return;
 	}
 	await focusMainWindow();
@@ -373,7 +386,7 @@ export async function runPendingAction(ctx: NotificationRoutingContext): Promise
 	const { fresh } = pending;
 	const openComposer = ctx.openComposer ?? openDesktopComposer;
 	if (fresh) {
-		await runEffect(effect, ctx.convex, ctx.navigate, openComposer);
+		await runEffect(effect, ctx.convex, ctx.navigate, openComposer, ctx.copySignInCode);
 	} else if (effect.type === 'reply') {
 		await replyFromNotification(
 			ctx.convex,

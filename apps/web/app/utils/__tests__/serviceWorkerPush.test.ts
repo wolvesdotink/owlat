@@ -304,6 +304,39 @@ describe('notification buttons', () => {
 	});
 });
 
+describe('the Copy code button of a sign-in code', () => {
+	const COPY_URL = `${MAIL.url}&signInCode=copy`;
+
+	it('hands the open window the message with the copy request, and nothing else', async () => {
+		const open = client();
+		const { self, listeners } = makeSelf({ windows: [open] });
+		await fire(listeners, 'push', {
+			data: pushData({
+				...MAIL,
+				actions: [{ action: 'copy-code', title: 'Copy code', url: COPY_URL }],
+			}),
+		});
+		const [, options] = self.registration.showNotification.mock.calls[0] as unknown as [
+			string,
+			{ actions: unknown; data: { url: string; actionUrls: Record<string, string> } },
+		];
+		expect(options.actions).toEqual([{ action: 'copy-code', title: 'Copy code' }]);
+
+		await fire(listeners, 'notificationclick', {
+			notification: { close: vi.fn(), data: options.data },
+			action: 'copy-code',
+		});
+		await fire(listeners, 'notificationclick', {
+			notification: { close: vi.fn(), data: options.data },
+			action: '',
+		});
+		expect(open.postMessage.mock.calls).toEqual([
+			[{ type: 'owlat:navigate', path: COPY_URL }],
+			[{ type: 'owlat:navigate', path: MAIL.url }],
+		]);
+	});
+});
+
 describe('push-only registration (/sw.js?shell=off)', () => {
 	it('answers no fetch at all', () => {
 		const { listeners } = makeSelf({ search: '?shell=off' });

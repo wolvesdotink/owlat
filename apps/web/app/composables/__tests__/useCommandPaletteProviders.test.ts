@@ -32,6 +32,8 @@ let disabledFlags: string[];
 let openCompose: ReturnType<typeof vi.fn>;
 let openNewContact: ReturnType<typeof vi.fn>;
 let navigations: unknown[];
+let latestSignInCode: unknown;
+let showToast: ReturnType<typeof vi.fn>;
 
 const SIDEBAR_SECTIONS = [
 	{
@@ -53,7 +55,10 @@ beforeEach(() => {
 	openCompose = vi.fn(async () => {});
 	openNewContact = vi.fn(async () => {});
 	navigations = [];
+	latestSignInCode = null;
+	showToast = vi.fn();
 	showChecklist.mockClear();
+	vi.stubGlobal('useToast', () => ({ showToast }));
 
 	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -71,6 +76,9 @@ beforeEach(() => {
 		}
 		if (name === getFunctionName(api.platformAdmin.platformAdmin.isPlatformAdmin)) {
 			return { data: ref(true) };
+		}
+		if (name === getFunctionName(api.mail.signInCodes.latestSignInCode)) {
+			return { data: ref(latestSignInCode) };
 		}
 		return { data: ref(undefined) };
 	});
@@ -124,6 +132,61 @@ describe('verbs', () => {
 		verb?.run();
 
 		expect(showChecklist).toHaveBeenCalledTimes(1);
+	});
+
+	it('copies the latest live sign-in code, naming its sender domain', async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal('navigator', { clipboard: { writeText } });
+		latestSignInCode = {
+			kind: 'code',
+			value: '482913',
+			senderDomain: 'northwind.example',
+			expiresAt: Date.now() + 60_000,
+		};
+		const { verbItems } = await providers();
+
+		const verb = byId(verbItems.value, 'verb:copy-sign-in-code');
+		expect(verb?.label).toBe('Copy latest sign-in code');
+		expect(verb?.subtitle).toBe('482913 · northwind.example');
+		verb?.run();
+
+		await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith('Code copied'));
+		expect(writeText).toHaveBeenCalledWith('482913');
+	});
+
+	it('opens the latest sign-in link instead of copying it', async () => {
+		const open = vi.spyOn(window, 'open').mockReturnValue(null);
+		latestSignInCode = {
+			kind: 'link',
+			value: 'https://app.fabrikam.example/login/magic?token=1',
+			senderDomain: 'fabrikam.example',
+			expiresAt: Date.now() + 60_000,
+		};
+		const { verbItems } = await providers();
+
+		const verb = byId(verbItems.value, 'verb:copy-sign-in-code');
+		expect(verb?.label).toBe('Open latest sign-in link');
+		verb?.run();
+
+		expect(open).toHaveBeenCalledWith(
+			'https://app.fabrikam.example/login/magic?token=1',
+			'_blank',
+			'noopener,noreferrer'
+		);
+		open.mockRestore();
+	});
+
+	it('offers no sign-in code verb without a live code or without personal mail', async () => {
+		expect(byId((await providers()).verbItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
+
+		latestSignInCode = {
+			kind: 'code',
+			value: '482913',
+			senderDomain: 'northwind.example',
+			expiresAt: Date.now() + 60_000,
+		};
+		disabledFlags = ['postbox', 'mail.external'];
+		expect(byId((await providers()).verbItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
 	});
 
 	it('drops Compose entirely when no mail feature is on', async () => {

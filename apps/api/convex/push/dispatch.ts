@@ -172,6 +172,8 @@ async function resolveMail(
 				senderName: message.fromName || message.fromAddress,
 				subject: message.subject,
 				isSealed: message.inboundEncryptionInfo !== undefined,
+				hasSignInCode:
+					message.signInCode?.kind === 'code' && message.signInCode.expiresAt > Date.now(),
 			},
 			prefs.locale,
 			prefs.isPrivate
