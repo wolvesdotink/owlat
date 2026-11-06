@@ -35,6 +35,7 @@ import {
 	composeEnvEntries,
 	devStackPaths,
 	loadOrCreateSecrets,
+	webSecretEnv,
 	type DevStackPaths,
 } from './dev-stack/state';
 import { supervise } from './dev-stack/supervise';
@@ -187,7 +188,7 @@ async function up(seed: boolean): Promise<number> {
 						command: process.execPath,
 						args: ['run', 'dev'],
 						cwd: join(root, 'apps', 'web'),
-						env: { ...process.env, ...webEnv(config) },
+						env: { ...process.env, ...webEnv(config), ...webSecretEnv(secrets) },
 					},
 				],
 				stopWatching

@@ -32,6 +32,13 @@
  * - `launch-editor` as reached from apps/web → nuxt → @nuxt/devtools, which
  *   opens component source files from the devtools panel.
  *
+ * simple-git 3 and its @simple-git/argv-parser 1 have high advisories with no
+ * fixed release on those lines, and the fixed simple-git 4 has no default
+ * export, so an override breaks the consumer that imports it that way.
+ * @nuxt/devtools dropped the dependency in 3.4.3, and the root override keeps
+ * it at 3.4.4 or later. The lockfile check fails the script tests when any
+ * package brings either line back, instead of only the Security workflow.
+ *
  * The gate blocks on the zod advisory too (GHSA-mrhx-c7xc-m3w5, high), but
  * acknowledges it: @nuxt/content keeps a zod 3 copy that has no fixed release
  * (see check-security-audit.ts). An acknowledgement matches the advisory for
@@ -232,6 +239,22 @@ describe('dev-server editor launching (GHSA-587h-7wmj-h5pm)', () => {
 	it('resolves the launch-editor release that rejects Windows existence-check bypasses', () => {
 		const { version } = devtoolsRequire('launch-editor/package.json') as { version: string };
 		expect(atLeast(version, '2.14.2'), `launch-editor ${version}`).toBe(true);
+	});
+});
+
+describe('simple-git 3 (GHSA-x6jw-m9v5-85vh and three others)', () => {
+	it('resolves an @nuxt/devtools release without simple-git', () => {
+		const { version } = nuxtRequire('@nuxt/devtools/package.json') as { version: string };
+		expect(atLeast(version, '3.4.3'), `@nuxt/devtools ${version}`).toBe(true);
+	});
+
+	it('locks no simple-git 3 or @simple-git/argv-parser 1 copy', () => {
+		const vulnerable = [
+			...LOCKFILE.matchAll(
+				/^\s*"([^"]+)": \["((?:simple-git@3|@simple-git\/argv-parser@1)\.[^"]*)"/gm
+			),
+		].map(([, path, resolved]) => `${path} → ${resolved}`);
+		expect(vulnerable).toEqual([]);
 	});
 });
 

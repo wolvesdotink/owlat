@@ -67,8 +67,11 @@ In order, it:
    stops here: nothing is seeded and Nuxt does not start.
 6. Seeds demo data with `bun run dev:seed` unless `--no-seed` is given.
 7. Runs the Convex watcher and `nuxt dev` in the foreground, with output
-   prefixed `[convex]` and `[web]`. Editing anything under `apps/api/convex`
-   re-syncs the stage (`[stage] 1 copied, 0 removed`) and the watcher pushes.
+   prefixed `[convex]` and `[web]`. Nuxt gets the deployment's
+   `INSTANCE_SECRET`, so file uploads and the updater-facing server routes
+   work without exporting it yourself; a value in your shell or a `.env` file
+   does not replace it. Editing anything under `apps/api/convex` re-syncs the
+   stage (`[stage] 1 copied, 0 removed`) and the watcher pushes.
 
 Sign in at the printed web URL as `dev@example.com` / `devpassword12345`
 (owner), or `taylor@example.com` (admin) and `jordan@example.com` (member)

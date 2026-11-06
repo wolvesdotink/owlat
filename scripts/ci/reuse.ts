@@ -21,6 +21,7 @@ export const FULL_JOBS = [
 	'test-web',
 	'test-web-merge',
 	'test-web-browser',
+	'test-web-node-current',
 	'test-mta',
 	'docker-build',
 	'sdk-java',

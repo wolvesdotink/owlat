@@ -241,6 +241,36 @@ jobs:
           path: apps/web/coverage/
           retention-days: 14
 
+  # The web suite again on the current Node release, without coverage. Node
+  # changes the globals the test setup builds on (its own Web Storage, the
+  # undici behind fetch) from one major to the next, and the coverage shards
+  # above run on whatever older Node the runner image ships, so they would not
+  # notice. Contributors on a current Node run the suite on it.
+  test-web-node-current:
+    name: Test web (Node 26, shard ${{ matrix.shard }}/3)
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '26'
+      - name: Run the web suite on Node 26
+        working-directory: apps/web
+        run: |
+          node --version
+          bunx vitest run --maxWorkers=2 --shard=${{ matrix.shard }}/3
+
   # The real-browser component tests (apps/web/vitest.browser.config.ts): what
   # happy-dom cannot show, such as a virtual list under real scrolling, a
   # modal's native Tab trap, or a picker placed from the caret's real box. Kept
@@ -628,6 +658,7 @@ jobs:
         test-web,
         test-web-merge,
         test-web-browser,
+        test-web-node-current,
         ramp-gate-matrix,
         lint,
         typecheck,

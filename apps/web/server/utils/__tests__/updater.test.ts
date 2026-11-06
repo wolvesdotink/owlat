@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { Agent, fetch as undiciFetch } from 'undici';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { requestUpdater } from '../updater';
 
 /**
@@ -11,22 +12,26 @@ import { requestUpdater } from '../updater';
  * `headersTimeout` (300 s by default), whatever AbortSignal the caller passes,
  * so `/update` and `/apply-profiles` were cut off at five minutes although the
  * routes allow 30 and 10. Waiting five real minutes is not an option here, so
- * the tests shrink undici's global dispatcher to a 200 ms `headersTimeout` and
- * let the fake updater answer after 2.5 s: the same race at a smaller scale.
- * (undici checks its header deadline on a coarse timer that ticks about once
- * a second, so the answer has to come well after one tick.)
+ * the fetch case runs undici's fetch with an `Agent` whose `headersTimeout` is
+ * 200 ms and lets the fake updater answer after 2.5 s: the same race at a
+ * smaller scale. (undici checks its header deadline on a coarse timer that
+ * ticks about once a second, so the answer has to come well after one tick.)
+ *
+ * The short deadline comes from an `Agent` of the npm `undici` package, and
+ * Node's global dispatcher is left alone. Its class is not something to
+ * construct: Node 26 keeps a compatibility wrapper there whose constructor
+ * wants a dispatcher, not options. Global `fetch` is stubbed to go through that
+ * Agent, so a `requestUpdater` that went back to `fetch` fails the slow-answer
+ * case instead of passing on the 300 s default.
  */
 
 const HEADERS_TIMEOUT_MS = 200;
 const ANSWER_AFTER_MS = 2500;
 
-const DISPATCHER = Symbol.for('undici.globalDispatcher.1');
-type DispatcherHolder = { [DISPATCHER]?: { constructor: new (opts: object) => unknown } };
-
 let server: Server;
 let baseUrl: URL;
 let received: { url?: string; method?: string; secret?: string; body: string }[] = [];
-let originalDispatcher: unknown;
+let shortHeaderDeadline: Agent;
 /** Called once the fake updater has read a request it is going to answer late. */
 let onRequest: (() => void) | undefined;
 
@@ -42,7 +47,6 @@ async function readSmallBody(req: IncomingMessage): Promise<string> {
 beforeAll(async () => {
 	server = createServer(async (req, res) => {
 		const body = await readSmallBody(req);
-		if (req.url === '/warm-up') return void res.end();
 		// Only the calls under test reach the fake updater. Anything else that
 		// finds the port (a host process probing listening ports sends `GET /`)
 		// gets a 404 and is neither recorded nor taken for the awaited request.
@@ -65,24 +69,19 @@ beforeAll(async () => {
 	});
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 	baseUrl = new URL(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
-
-	// Load Node's fetch so its global dispatcher exists, then swap in one of the
-	// same class with the shortened header deadline.
-	await fetch(new URL('/warm-up', baseUrl), { signal: AbortSignal.timeout(5000) }).then((r) =>
-		r.text()
-	);
-	const holder = globalThis as DispatcherHolder;
-	originalDispatcher = holder[DISPATCHER];
-	const Dispatcher = holder[DISPATCHER]!.constructor;
-	(holder as Record<symbol, unknown>)[DISPATCHER] = new Dispatcher({
-		headersTimeout: HEADERS_TIMEOUT_MS,
-	});
+	shortHeaderDeadline = new Agent({ headersTimeout: HEADERS_TIMEOUT_MS });
+	vi.stubGlobal('fetch', ((
+		input: Parameters<typeof undiciFetch>[0],
+		init?: Parameters<typeof undiciFetch>[1]
+	) =>
+		undiciFetch(input, { ...init, dispatcher: shortHeaderDeadline })) as unknown as typeof fetch);
 });
 
 afterAll(async () => {
-	(globalThis as Record<symbol, unknown>)[DISPATCHER] = originalDispatcher;
+	vi.unstubAllGlobals();
 	server.closeAllConnections();
 	await new Promise<void>((resolve) => server.close(() => resolve()));
+	await shortHeaderDeadline.close();
 });
 
 afterEach(() => {
@@ -91,10 +90,11 @@ afterEach(() => {
 
 describe('updater transport', () => {
 	it('fetch gives up on a slow updater answer at its header deadline (the bug)', async () => {
-		const failure = await fetch(new URL('/update', baseUrl), {
+		const failure = await undiciFetch(new URL('/update', baseUrl), {
 			method: 'POST',
 			body: '{}',
 			signal: AbortSignal.timeout(30_000),
+			dispatcher: shortHeaderDeadline,
 		}).then(
 			() => null,
 			(err: Error & { cause?: { code?: string } }) => err.cause?.code
