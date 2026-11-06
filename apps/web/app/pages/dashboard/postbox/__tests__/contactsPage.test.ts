@@ -93,6 +93,7 @@ function mountPage() {
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
 			PostboxContactsVcardActions: passthrough('PostboxContactsVcardActions'),
 			PostboxContactsCardDavPanel: passthrough('PostboxContactsCardDavPanel'),
+			LazyPostboxContactsCardDavPanel: passthrough('PostboxContactsCardDavPanel'),
 			UiBadge: passthrough('UiBadge'),
 		},
 	});

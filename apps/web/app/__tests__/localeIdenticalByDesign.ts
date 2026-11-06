@@ -476,4 +476,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.breadcrumbRoutes.sections.workspace',
 	'shared.shortcuts.groups.workspace',
 	'shell.admin.areas.overview',
+	'dashboard.postbox.contacts.carddav.serverUrlPlaceholder',
+	'dashboard.postbox.contacts.source.carddav',
+	'dashboard.postbox.contacts.source.mail',
+	'dashboard.postbox.contacts.source.vcard',
 ];

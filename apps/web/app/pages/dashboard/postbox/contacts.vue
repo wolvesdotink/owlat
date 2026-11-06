@@ -195,7 +195,7 @@ function sourceOf(c: MailContact): ContactSource {
 			</div>
 		</header>
 
-		<PostboxContactsCardDavPanel :mailbox-id="mailboxId" :is-team-inbox="isTeamInbox" />
+		<LazyPostboxContactsCardDavPanel :mailbox-id="mailboxId" :is-team-inbox="isTeamInbox" />
 
 		<div class="relative mb-4">
 			<SearchIcon class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
