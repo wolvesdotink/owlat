@@ -60,16 +60,24 @@ export async function refreshMicrosoftGraphAccessToken(
 	if (cached) return { kind: 'token', ...cached };
 
 	const client = requireMicrosoftOAuthClient();
-	const token = await postTokenRequest(
-		microsoftTokenEndpoint(client.tenant),
-		new URLSearchParams({
-			grant_type: 'refresh_token',
-			refresh_token: refreshToken,
-			client_id: client.clientId,
-			client_secret: client.clientSecret,
-			scope: GRAPH_REFRESH_SCOPES,
-		})
-	);
+	let token: Awaited<ReturnType<typeof postTokenRequest>>;
+	try {
+		token = await postTokenRequest(
+			microsoftTokenEndpoint(client.tenant),
+			new URLSearchParams({
+				grant_type: 'refresh_token',
+				refresh_token: refreshToken,
+				client_id: client.clientId,
+				client_secret: client.clientSecret,
+				scope: GRAPH_REFRESH_SCOPES,
+			})
+		);
+	} catch {
+		// A timeout or a dropped connection says nothing about the grant, and the
+		// mail token the caller already holds still works for IMAP and SMTP.
+		console.warn('microsoft oauth: graph token request did not get through', { accountId });
+		return { kind: 'failed' };
+	}
 	if (token.error && REVOKED_ERRORS.has(token.error)) {
 		console.warn('microsoft oauth: graph send scope not granted', {
 			accountId,

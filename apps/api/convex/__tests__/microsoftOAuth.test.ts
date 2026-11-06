@@ -779,6 +779,34 @@ describe('Microsoft Graph send token', () => {
 		expect((await t.run((ctx) => ctx.db.get(accountId)))?.graphConsent).toBe('granted');
 	});
 
+	it('hands out the credentials without a Graph token when the Graph request does not get through', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t, { sendPath: 'graph', graphConsent: 'granted' });
+		let call = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				call += 1;
+				if (call === 1) {
+					return {
+						status: 200,
+						json: async () => ({ access_token: 'eyJ.MAIL', expires_in: 3599 }),
+					} as unknown as Response;
+				}
+				throw new TypeError('fetch failed');
+			})
+		);
+
+		const result = await fetchCredentials(t, accountId);
+
+		expect(result.kind).toBe('credentials');
+		const creds = result.kind === 'credentials' ? result.credentials : null;
+		expect(creds?.imapAccessToken).toBe('eyJ.MAIL');
+		expect(creds?.graphAccessToken).toBeUndefined();
+		expect(creds?.sendPath).toBe('graph');
+		expect((await t.run((ctx) => ctx.db.get(accountId)))?.graphConsent).toBe('granted');
+	});
+
 	it('gives a Google account no send path and asks Google for one token', async () => {
 		const t = convexTest(schema, modules);
 		vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'client-id.apps.googleusercontent.com');
