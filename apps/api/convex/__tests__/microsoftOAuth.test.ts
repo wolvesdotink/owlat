@@ -65,6 +65,7 @@ const WORK_TENANT = '72f988bf-86f1-41af-91ab-2d7cd011db47';
 const CONSUMER_TENANT = '9188040d-6c67-4c5b-b112-36a304b66dad';
 const MAIL_SCOPE =
 	'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send';
+const GRAPH_SEND_SCOPE = 'https://graph.microsoft.com/Mail.Send';
 
 function setSession(userId: string, role: 'owner' | 'admin' | 'editor' = 'owner', orgId = 'org-1') {
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
@@ -223,7 +224,12 @@ describe('microsoftOAuthActions.start', () => {
 		expect(url.origin + url.pathname).toBe(
 			'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
 		);
-		expect(url.searchParams.get('scope')).toBe(`${MAIL_SCOPE} offline_access openid email profile`);
+		// Graph's send permission is consented to here, behind the Exchange scopes:
+		// Microsoft returns a token for the first resource only, and that is the
+		// one the code exchange checks.
+		expect(url.searchParams.get('scope')).toBe(
+			`${MAIL_SCOPE} ${GRAPH_SEND_SCOPE} offline_access openid email profile`
+		);
 		expect(url.searchParams.get('response_type')).toBe('code');
 		expect(url.searchParams.get('response_mode')).toBe('query');
 		expect(url.searchParams.get('prompt')).toBe('select_account');
@@ -554,11 +560,10 @@ describe('getCredentialsForWorker on a Microsoft oauth2 row', () => {
 			oauthRefreshToken: 'M.R3_STORED',
 			oauthRefreshTokenStoredAt: Date.now(),
 		});
-		const calls = stubToken({
-			access_token: 'eyJ.FRESH',
-			refresh_token: 'M.R3_NEXT',
-			expires_in: 3599,
-		});
+		const calls = stubToken(
+			{ access_token: 'eyJ.FRESH', refresh_token: 'M.R3_NEXT', expires_in: 3599 },
+			{ access_token: 'eyJ.GRAPH', refresh_token: 'M.R3_GRAPH', expires_in: 3599 }
+		);
 
 		const result = await fetchCredentials(t, accountId);
 
@@ -570,6 +575,7 @@ describe('getCredentialsForWorker on a Microsoft oauth2 row', () => {
 		expect(creds?.imapAccessToken).toBe('eyJ.FRESH');
 		expect(creds?.smtpAccessToken).toBe('eyJ.FRESH');
 		expect(creds?.imapPassword).toBe('');
+		expect(creds?.sendPath).toBe('smtp');
 		expect(JSON.stringify(result)).not.toContain('M.R3_');
 
 		// A refresh token stored moments ago is not rewritten for the newer one.
@@ -584,11 +590,10 @@ describe('getCredentialsForWorker on a Microsoft oauth2 row', () => {
 			oauthRefreshTokenStoredAt: Date.now() - 8 * DAY_MS,
 		});
 		const before = await t.run((ctx) => ctx.db.get(accountId));
-		const calls = stubToken({
-			access_token: 'eyJ.FRESH',
-			refresh_token: 'M.R3_NEXT',
-			expires_in: 3599,
-		});
+		const calls = stubToken(
+			{ access_token: 'eyJ.FRESH', refresh_token: 'M.R3_NEXT', expires_in: 3599 },
+			{ access_token: 'eyJ.GRAPH', expires_in: 3599 }
+		);
 
 		expect((await fetchCredentials(t, accountId)).kind).toBe('credentials');
 
@@ -600,12 +605,13 @@ describe('getCredentialsForWorker on a Microsoft oauth2 row', () => {
 		expect(after?.status).toBe('connected');
 
 		// The minted token was cached under the NEW envelope, which is the one the
-		// next fetch reads: no second trip to Microsoft.
+		// next fetch reads: no second trip to Microsoft for it. The Graph token was
+		// minted from the old envelope, so it is asked for once more.
 		const second = await fetchCredentials(t, accountId);
 		expect(second.kind === 'credentials' ? second.credentials.imapAccessToken : null).toBe(
 			'eyJ.FRESH'
 		);
-		expect(calls).toHaveLength(1);
+		expect(calls.filter((c) => c.body.get('scope')?.startsWith(MAIL_SCOPE))).toHaveLength(1);
 	});
 
 	it('rotates an envelope from before the timestamp existed', async () => {
@@ -644,6 +650,185 @@ describe('getCredentialsForWorker on a Microsoft oauth2 row', () => {
 			reason: 'refresh_failed',
 		});
 		expect((await t.run((ctx) => ctx.db.get(accountId)))?.status).toBe('connected');
+	});
+});
+
+describe('Microsoft Graph send token', () => {
+	async function seedAccount(
+		t: ReturnType<typeof convexTest>,
+		extra: Record<string, unknown> = {}
+	) {
+		const envelope = encryptSecret(
+			JSON.stringify({ oauthRefreshToken: 'M.R3_STORED', oauthRefreshTokenStoredAt: Date.now() })
+		);
+		return await t.run(async (ctx) => {
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				address: 'ada@contoso.com',
+				domain: 'contoso.com',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			return await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				mailboxId,
+				imapHost: 'outlook.office365.com',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.office365.com',
+				smtpPort: 587,
+				isSmtpSecure: false,
+				authMethod: 'oauth2',
+				oauthProvider: 'microsoft',
+				imapUsername: 'ada@contoso.com',
+				secretCiphertext: envelope.ciphertext,
+				secretIv: envelope.iv,
+				secretAuthTag: envelope.authTag,
+				secretEnvelopeVersion: envelope.version,
+				status: 'connected',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				...extra,
+			});
+		});
+	}
+
+	const fetchCredentials = (
+		t: ReturnType<typeof convexTest>,
+		accountId: Id<'externalMailAccounts'>
+	) => t.action(internal.mail.external.accountsActions.getCredentialsForWorker, { accountId });
+
+	it('redeems the refresh token a second time for Graph Mail.Send and caches it in its own slot', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t);
+		const calls = stubToken(
+			{ access_token: 'eyJ.MAIL', expires_in: 3599 },
+			{ access_token: 'eyJ.GRAPH', expires_in: 3599 }
+		);
+
+		const first = await fetchCredentials(t, accountId);
+
+		expect(calls).toHaveLength(2);
+		expect(calls[1]?.url).toBe('https://login.microsoftonline.com/common/oauth2/v2.0/token');
+		expect(calls[1]?.body.get('refresh_token')).toBe('M.R3_STORED');
+		expect(calls[1]?.body.get('scope')).toBe(`${GRAPH_SEND_SCOPE} offline_access`);
+		const creds = first.kind === 'credentials' ? first.credentials : null;
+		expect(creds?.smtpAccessToken).toBe('eyJ.MAIL');
+		expect(creds?.graphAccessToken).toBe('eyJ.GRAPH');
+		expect(creds?.sendPath).toBe('smtp');
+		expect((await t.run((ctx) => ctx.db.get(accountId)))?.graphConsent).toBe('granted');
+
+		// Both tokens come from their own rows of the durable cache: a cold isolate
+		// serves each without a token request, and neither overwrites the other.
+		clearAccessTokenCache();
+		const second = await fetchCredentials(t, accountId);
+		expect(calls).toHaveLength(2);
+		const again = second.kind === 'credentials' ? second.credentials : null;
+		expect(again?.smtpAccessToken).toBe('eyJ.MAIL');
+		expect(again?.graphAccessToken).toBe('eyJ.GRAPH');
+		const rows = await t.run((ctx) => ctx.db.query('externalMailAccessTokens').collect());
+		expect(rows.map((r) => r.audience).sort()).toEqual(['graph', undefined]);
+	});
+
+	it.each(['invalid_grant', 'consent_required', 'interaction_required'])(
+		'reports a Graph %s as missing consent and keeps the account syncing',
+		async (error) => {
+			const t = convexTest(schema, modules);
+			const accountId = await seedAccount(t);
+			const calls = stubToken({ access_token: 'eyJ.MAIL', expires_in: 3599 }, { error });
+
+			const result = await fetchCredentials(t, accountId);
+
+			expect(result.kind).toBe('credentials');
+			const creds = result.kind === 'credentials' ? result.credentials : null;
+			expect(creds?.imapAccessToken).toBe('eyJ.MAIL');
+			expect(creds?.graphAccessToken).toBeUndefined();
+			const account = await t.run((ctx) => ctx.db.get(accountId));
+			expect(account?.status).toBe('connected');
+			expect(account?.lastError).toBeUndefined();
+			expect(account?.graphConsent).toBe('missing');
+
+			// A grant known to lack the scope is not asked for it again on every
+			// connect and every send.
+			clearAccessTokenCache();
+			await t.run(async (ctx) => {
+				for (const row of await ctx.db.query('externalMailAccessTokens').collect()) {
+					await ctx.db.delete(row._id);
+				}
+			});
+			await fetchCredentials(t, accountId);
+			expect(calls.filter((c) => c.body.get('scope')?.includes(GRAPH_SEND_SCOPE))).toHaveLength(1);
+		}
+	);
+
+	it('hands out the credentials without a Graph token when Graph has a hiccup', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t, { sendPath: 'graph', graphConsent: 'granted' });
+		stubToken({ access_token: 'eyJ.MAIL', expires_in: 3599 }, { error: 'temporarily_unavailable' });
+
+		const result = await fetchCredentials(t, accountId);
+
+		const creds = result.kind === 'credentials' ? result.credentials : null;
+		expect(creds?.graphAccessToken).toBeUndefined();
+		expect(creds?.sendPath).toBe('graph');
+		expect((await t.run((ctx) => ctx.db.get(accountId)))?.graphConsent).toBe('granted');
+	});
+
+	it('gives a Google account no send path and asks Google for one token', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', 'client-id.apps.googleusercontent.com');
+		vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', 'client-secret');
+		const accountId = await seedAccount(t, {
+			oauthProvider: 'google',
+			imapHost: 'imap.gmail.com',
+		});
+		const calls = stubToken({ access_token: 'google-access', expires_in: 3599 });
+
+		const result = await fetchCredentials(t, accountId);
+
+		expect(calls).toHaveLength(1);
+		const creds = result.kind === 'credentials' ? result.credentials : null;
+		expect(creds?.sendPath).toBeUndefined();
+		expect(creds?.graphAccessToken).toBeUndefined();
+	});
+
+	it('signing in with Microsoft again asks for the Graph scope again', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A');
+		await roundTrip(t, { kind: 'connect' }, microsoftAccount('ada@contoso.com'));
+		const accountId = (await firstAccount(t))!._id as Id<'externalMailAccounts'>;
+		await t.run((ctx) => ctx.db.patch(accountId, { graphConsent: 'missing', sendPath: 'graph' }));
+
+		await roundTrip(t, { kind: 'update' }, microsoftAccount('ada@contoso.com'));
+
+		const account = await t.run((ctx) => ctx.db.get(accountId));
+		expect(account?.graphConsent).toBeUndefined();
+		// The tenant's SMTP AUTH setting did not change with the reconnect.
+		expect(account?.sendPath).toBe('graph');
+	});
+
+	it('records the send path the worker reports, on Microsoft accounts only', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t);
+		const googleId = await seedAccount(t, { oauthProvider: 'google' });
+
+		await t.mutation(internal.mail.external.accounts.setSendPath, {
+			accountId,
+			sendPath: 'graph',
+		});
+		await t.mutation(internal.mail.external.accounts.setSendPath, {
+			accountId: googleId,
+			sendPath: 'graph',
+		});
+
+		expect((await t.run((ctx) => ctx.db.get(accountId)))?.sendPath).toBe('graph');
+		expect((await t.run((ctx) => ctx.db.get(googleId)))?.sendPath).toBeUndefined();
 	});
 });
 

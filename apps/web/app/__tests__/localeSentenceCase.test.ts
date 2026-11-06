@@ -112,6 +112,7 @@ const PROPER_NOUNS = new Set([
 const PROPER_PHRASES = [
 	'Claude Code',
 	'Google Workspace',
+	'Microsoft Graph',
 	'Mailchimp Transactional',
 	'Mailchimp Marketing',
 	'Migrate from Mailchimp',

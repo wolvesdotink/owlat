@@ -6401,6 +6401,17 @@
 					"spam": "Spam leeren?"
 				},
 				"confirmBody": "{count} Nachricht wird endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen. | {count} Nachrichten werden endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen."
+			},
+			"postboxMicrosoftSendPath": {
+				"consentNeeded": "Wenn deine Organisation die SMTP-Anmeldung abschaltet, kann Owlat weiter über Microsoft Graph senden, braucht dafür aber zuerst deine Erlaubnis.",
+				"consentNeededGraph": "Microsoft hat die SMTP-Anmeldung für dieses Postfach abgeschaltet, und Owlat darf nicht mehr über Microsoft Graph senden. Bis du es wieder erlaubst, geht keine Mail raus.",
+				"continueInBrowser": "Schließ die Anmeldung bei Microsoft in deinem Browser ab.",
+				"grant": "Senden erlauben",
+				"graph": "Microsoft Graph",
+				"graphHelp": "Deine Organisation hat die SMTP-Anmeldung abgeschaltet, deshalb geht Mail über Microsoft Graph raus. Microsoft legt die Kopie unter „Gesendete Elemente“ ab.",
+				"label": "Sendet über",
+				"smtp": "SMTP",
+				"smtpHelp": "Mail geht über den SMTP-Server von Microsoft raus, angemeldet mit deinem Microsoft-Konto."
 			}
 		},
 		"preferences": {

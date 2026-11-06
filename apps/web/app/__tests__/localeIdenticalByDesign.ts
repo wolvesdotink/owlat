@@ -133,6 +133,9 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.postbox.postboxFolderRail.replyQueueScopedCount',
 	'components.postbox.postboxLayout.folderRoles.spam',
 	'components.postbox.postboxMailboxConnectForm.ssl',
+	// A product name and a protocol name: how a Microsoft mailbox sends.
+	'components.postbox.postboxMicrosoftSendPath.graph',
+	'components.postbox.postboxMicrosoftSendPath.smtp',
 	// Protocol names and RFC header field names — the same words in both
 	// locales, and translating them would stop them matching the raw message.
 	'components.postbox.postboxMessageDetails.arc',

@@ -10,25 +10,34 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { SendMessageOptions, SendResult } from '@owlat/smtp-client';
+import type * as SmtpClient from '@owlat/smtp-client';
 import type { MailSyncConfig } from '../config.js';
 import type { ConvexClient, WorkerCredentialsResult } from '../convex.js';
 
-const { sendMessage, imapConnect, imapList, imapAppend, imapLogout, warn, fetchCreds } = vi.hoisted(
-	() => ({
-		sendMessage: vi.fn<(o: SendMessageOptions) => Promise<SendResult>>(),
-		imapConnect: vi.fn(),
-		imapList: vi.fn(),
-		imapAppend: vi.fn(),
-		imapLogout: vi.fn(),
-		warn: vi.fn(),
-		fetchCreds: vi.fn<(c: unknown, id: string) => Promise<WorkerCredentialsResult>>(),
-	})
-);
+const {
+	sendMessage,
+	imapConnect,
+	imapList,
+	imapAppend,
+	imapLogout,
+	warn,
+	fetchCreds,
+	convexMutation,
+} = vi.hoisted(() => ({
+	sendMessage: vi.fn<(o: SendMessageOptions) => Promise<SendResult>>(),
+	imapConnect: vi.fn(),
+	imapList: vi.fn(),
+	imapAppend: vi.fn(),
+	imapLogout: vi.fn(),
+	warn: vi.fn(),
+	fetchCreds: vi.fn<(c: unknown, id: string) => Promise<WorkerCredentialsResult>>(),
+	convexMutation: vi.fn(async () => null),
+}));
 
-vi.mock('@owlat/smtp-client', () => ({
+vi.mock('@owlat/smtp-client', async (importOriginal) => ({
+	...(await importOriginal<typeof SmtpClient>()),
 	sendMessage,
 	verify: vi.fn(),
-	isSmtpError: () => false,
 }));
 
 vi.mock('imapflow', () => ({
@@ -44,10 +53,15 @@ vi.mock('../logger.js', () => ({
 	logger: { warn, info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('../convex.js', () => ({ fetchWorkerCredentials: fetchCreds }));
+vi.mock('../convex.js', () => ({
+	fetchWorkerCredentials: fetchCreds,
+	fn: { setSendPath: 'mail/external/accounts:setSendPath' },
+	isMissingFunction: () => false,
+}));
 
-import { createApp } from '../server.js';
-import { drainSentCopies } from '../send.js';
+import { SmtpError } from '@owlat/smtp-client';
+import { createApp, GRAPH_CONSENT_NEEDED_MESSAGE } from '../server.js';
+import { drainSentCopies, GRAPH_SEND_MAIL_URL } from '../send.js';
 
 const API_KEY = 'test-api-key';
 const CONVEX_ORIGIN = 'http://convex:3210';
@@ -59,17 +73,17 @@ const config = {
 } as unknown as MailSyncConfig;
 
 function app() {
-	return createApp(config, {} as ConvexClient);
+	return createApp(config, { mutation: convexMutation } as unknown as ConvexClient);
 }
 
-function postSend() {
+function postSend(recipients = ['x@example.com']) {
 	return app().request('/send', {
 		method: 'POST',
 		headers: { Authorization: `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			externalAccountId: 'acc-1',
 			from: 'me@example.com',
-			recipients: ['x@example.com'],
+			recipients,
 			rawEmlUrl: `${CONVEX_ORIGIN}/api/storage/abc`,
 		}),
 	});
@@ -171,5 +185,151 @@ describe('POST /send', () => {
 		expect(res.status).toBe(502);
 		expect(imapConnect).not.toHaveBeenCalled();
 		expect(imapAppend).not.toHaveBeenCalled();
+	});
+});
+
+describe('POST /send for a Microsoft 365 mailbox with SMTP AUTH turned off', () => {
+	const MICROSOFT = {
+		imapHost: 'outlook.office365.com',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.office365.com',
+		smtpPort: 587,
+		isSmtpSecure: false,
+		imapUsername: 'me@contoso.com',
+		smtpUsername: 'me@contoso.com',
+		imapPassword: '',
+		smtpPassword: '',
+		imapAccessToken: 'mail-token',
+		smtpAccessToken: 'mail-token',
+	};
+	const smtpAuthDisabled = () =>
+		new SmtpError({
+			phase: 'auth',
+			message: 'XOAUTH2 rejected with 535',
+			replyCode: 535,
+			enhancedCode: '5.7.139',
+			secured: true,
+			authCause: 'credentials-rejected',
+		});
+
+	/** Serve the raw .eml from Convex and record what reaches Graph. */
+	function stubFetch(graph: () => Response = () => new Response(null, { status: 202 })) {
+		const graphCalls: RequestInit[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init: RequestInit) => {
+				if (url === GRAPH_SEND_MAIL_URL) {
+					graphCalls.push(init);
+					return graph();
+				}
+				return new Response(RAW, { status: 200 });
+			})
+		);
+		return graphCalls;
+	}
+
+	function microsoftCreds(extra: Record<string, unknown>) {
+		fetchCreds.mockResolvedValue({
+			kind: 'credentials',
+			credentials: { ...MICROSOFT, ...extra },
+		} as WorkerCredentialsResult);
+	}
+
+	it('falls back to Graph with the MIME and a Bcc, skips the APPEND and records the path', async () => {
+		microsoftCreds({ sendPath: 'smtp', graphAccessToken: 'graph-token' });
+		sendMessage.mockRejectedValue(smtpAuthDisabled());
+		const graphCalls = stubFetch();
+
+		const res = await postSend(['x@example.com', 'hidden@example.com']);
+		await drainSentCopies();
+
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({
+			recipients: [
+				{ address: 'x@example.com', status: 'sent' },
+				{ address: 'hidden@example.com', status: 'sent' },
+			],
+		});
+		expect(graphCalls).toHaveLength(1);
+		const headers = graphCalls[0]?.headers as Record<string, string> | undefined;
+		expect(headers?.['Authorization']).toBe('Bearer graph-token');
+		expect(Buffer.from(String(graphCalls[0]?.body), 'base64').toString()).toBe(
+			`Bcc: x@example.com, hidden@example.com\r\n${RAW}`
+		);
+		// Graph files the Sent copy itself.
+		expect(imapConnect).not.toHaveBeenCalled();
+		expect(convexMutation).toHaveBeenCalledWith('mail/external/accounts:setSendPath', {
+			accountId: 'acc-1',
+			sendPath: 'graph',
+		});
+	});
+
+	it('sends an account already on the Graph path through Graph without trying SMTP', async () => {
+		microsoftCreds({ sendPath: 'graph', graphAccessToken: 'graph-token' });
+		const graphCalls = stubFetch();
+
+		const res = await postSend();
+		await drainSentCopies();
+
+		expect(res.status).toBe(200);
+		expect(sendMessage).not.toHaveBeenCalled();
+		expect(graphCalls).toHaveLength(1);
+		expect(imapConnect).not.toHaveBeenCalled();
+		expect(convexMutation).not.toHaveBeenCalled();
+	});
+
+	it('asks the user to sign in again when the grant has no Graph send permission', async () => {
+		microsoftCreds({ sendPath: 'smtp' });
+		sendMessage.mockRejectedValue(smtpAuthDisabled());
+		const graphCalls = stubFetch();
+
+		const res = await postSend();
+
+		expect(res.status).toBe(502);
+		expect(await res.json()).toEqual({ error: GRAPH_CONSENT_NEEDED_MESSAGE });
+		expect(graphCalls).toHaveLength(0);
+		expect(convexMutation).not.toHaveBeenCalled();
+	});
+
+	it('reports a Graph refusal after the fallback as a retryable failure', async () => {
+		microsoftCreds({ sendPath: 'smtp', graphAccessToken: 'graph-token' });
+		sendMessage.mockRejectedValue(smtpAuthDisabled());
+		stubFetch(() =>
+			Response.json({ error: { code: 'ErrorAccessDenied', message: 'Denied' } }, { status: 403 })
+		);
+
+		const res = await postSend();
+
+		expect(res.status).toBe(502);
+		expect(await res.json()).toEqual({
+			error: 'Microsoft Graph refused the message (403 ErrorAccessDenied: Denied)',
+		});
+		expect(convexMutation).not.toHaveBeenCalled();
+	});
+
+	it('moves back to SMTP when the Graph path has no token and SMTP takes the message', async () => {
+		microsoftCreds({ sendPath: 'graph' });
+		stubFetch();
+
+		const res = await postSend();
+		await drainSentCopies();
+
+		expect(res.status).toBe(200);
+		expect(imapAppend).toHaveBeenCalledTimes(1);
+		expect(convexMutation).toHaveBeenCalledWith('mail/external/accounts:setSendPath', {
+			accountId: 'acc-1',
+			sendPath: 'smtp',
+		});
+	});
+
+	it('does not reach for Graph on another provider’s refusal', async () => {
+		sendMessage.mockRejectedValue(smtpAuthDisabled());
+		const graphCalls = stubFetch();
+
+		const res = await postSend();
+
+		expect(res.status).toBe(502);
+		expect(graphCalls).toHaveLength(0);
 	});
 });

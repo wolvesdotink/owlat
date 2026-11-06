@@ -33,10 +33,17 @@ export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean 
 }
 import { serve, type ServerType } from '@hono/node-server';
 import { isSmtpError } from '@owlat/smtp-client';
-import type { ConvexClient } from './convex.js';
-import { fetchWorkerCredentials } from './convex.js';
+import type { ConvexClient, WorkerCredentials } from './convex.js';
+import { fetchWorkerCredentials, fn, isMissingFunction } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { fileSentCopyInBackground, sendViaExternal, testConnection } from './send.js';
+import {
+	fileSentCopyInBackground,
+	GraphSendError,
+	isSmtpAuthRefusedByExchange,
+	sendViaExternal,
+	sendViaGraph,
+	testConnection,
+} from './send.js';
 import type { RecipientResult } from './send.js';
 import { logger } from './logger.js';
 
@@ -86,6 +93,49 @@ async function readBody<C extends JsonChecker>(
  * holding the send until the caller gives up.
  */
 const RAW_EML_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * What the /send route answers when Exchange Online refused SMTP AUTH and the
+ * account's Microsoft grant does not cover Graph `Mail.Send`. The outbound
+ * dispatcher records it as the send's failure reason, so it names the fix.
+ */
+export const GRAPH_CONSENT_NEEDED_MESSAGE =
+	'Microsoft turned off SMTP sign-in for this mailbox. Sign in with Microsoft again and allow Owlat to send mail, then send again.';
+
+/**
+ * Record a Microsoft account's send path. Best-effort: the message is already
+ * sent, a backend from before the call has no such function, and the next
+ * send that takes the other path records it again.
+ */
+async function recordSendPath(
+	convex: ConvexClient,
+	accountId: string,
+	sendPath: 'smtp' | 'graph'
+): Promise<void> {
+	try {
+		await convex.mutation(fn.setSendPath, { accountId, sendPath });
+	} catch (err) {
+		if (!isMissingFunction(err, fn.setSendPath)) {
+			logger.warn({ accountId, err }, 'could not record the send path');
+		}
+	}
+}
+
+/** A Graph refusal as the route's answer: a permanent one bounces, the rest are retryable. */
+function graphFailure(c: Context, accountId: string, recipients: string[], err: unknown): Response {
+	const message = err instanceof Error ? err.message : String(err);
+	logger.warn({ accountId, err }, 'external send through Microsoft Graph failed');
+	if (err instanceof GraphSendError && err.permanent) {
+		return c.json({
+			recipients: recipients.map((address): RecipientResult => ({
+				address,
+				status: 'bounced',
+				error: message,
+			})),
+		});
+	}
+	return c.json({ error: message }, 502);
+}
 
 /**
  * Asks the account's live connection to replay its write-back queue; false when
@@ -204,6 +254,17 @@ export function createApp(
 			return c.json({ error: `failed to fetch raw eml: ${message}` }, 502);
 		}
 
+		// A Microsoft account whose tenant refused SMTP AUTH before goes straight
+		// to Graph. Graph files the Sent copy itself, so there is no APPEND.
+		const graphToken = creds.graphAccessToken;
+		if (creds.sendPath === 'graph' && graphToken) {
+			try {
+				return c.json(await sendViaGraph(graphToken, { recipients: body.recipients, raw }));
+			} catch (err) {
+				return graphFailure(c, body.externalAccountId, body.recipients, err);
+			}
+		}
+
 		try {
 			const result = await sendViaExternal(creds, {
 				from: body.from,
@@ -214,8 +275,34 @@ export function createApp(
 			// on a second login to the IMAP server. The copy never rejects (a
 			// failure is logged at warn, as before), and shutdown waits for it.
 			fileSentCopyInBackground(creds, raw);
+			// On the Graph path without a Graph token, and SMTP took it: the tenant
+			// turned SMTP AUTH back on.
+			if (creds.sendPath === 'graph') {
+				await recordSendPath(convex, body.externalAccountId, 'smtp');
+			}
 			return c.json(result);
 		} catch (err) {
+			if (isMicrosoftAccount(creds) && isSmtpAuthRefusedByExchange(err)) {
+				if (!graphToken) {
+					logger.warn(
+						{ accountId: body.externalAccountId },
+						'external send refused: SMTP AUTH is off and Graph Mail.Send is not granted'
+					);
+					return c.json({ error: GRAPH_CONSENT_NEEDED_MESSAGE }, 502);
+				}
+				let result: { recipients: RecipientResult[] };
+				try {
+					result = await sendViaGraph(graphToken, { recipients: body.recipients, raw });
+				} catch (graphErr) {
+					return graphFailure(c, body.externalAccountId, body.recipients, graphErr);
+				}
+				logger.info(
+					{ accountId: body.externalAccountId },
+					'SMTP AUTH is off for this Microsoft mailbox; sent through Microsoft Graph'
+				);
+				await recordSendPath(convex, body.externalAccountId, 'graph');
+				return c.json(result);
+			}
 			// A client-side SMTPUTF8 refusal (the external server does not advertise
 			// RFC 6531 for an internationalized envelope) is a PERMANENT condition —
 			// there is no ASCII downgrade for a non-ASCII local-part. Surface it like a
@@ -242,6 +329,11 @@ export function createApp(
 	});
 
 	return app;
+}
+
+/** Only a Microsoft sign-in account's credentials carry a send path. */
+function isMicrosoftAccount(creds: WorkerCredentials): boolean {
+	return creds.sendPath !== undefined;
 }
 
 export function startServer(

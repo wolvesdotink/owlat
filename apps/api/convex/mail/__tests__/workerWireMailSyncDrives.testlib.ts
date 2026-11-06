@@ -23,6 +23,30 @@ function stubGoogleToken(body: Record<string, unknown>): void {
 	);
 }
 
+/** The OAuth account as a Microsoft 365 one that already sends through Graph. */
+async function asMicrosoftAccount(w: MailSyncWireWorld): Promise<void> {
+	vi.stubEnv('MICROSOFT_OAUTH_CLIENT_ID', '00000000-0000-0000-0000-00000000c1d0');
+	vi.stubEnv('MICROSOFT_OAUTH_CLIENT_SECRET', 'client-secret');
+	await w.t.run((ctx) =>
+		ctx.db.patch(w.oauthAccountId, {
+			oauthProvider: 'microsoft',
+			imapHost: 'outlook.office365.com',
+			smtpHost: 'smtp.office365.com',
+			smtpPort: 587,
+			isSmtpSecure: false,
+			sendPath: 'graph',
+		})
+	);
+	const bodies = [
+		{ access_token: 'microsoft-fixture-access', expires_in: 3599 },
+		{ access_token: 'microsoft-fixture-graph', expires_in: 3599 },
+	];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => ({ status: 200, json: async () => bodies.shift() }) as unknown as Response)
+	);
+}
+
 const credentials = (w: MailSyncWireWorld, accountId = w.accountId) =>
 	w.t.action(internal.mail.external.accountsActions.getCredentialsForWorker, { accountId });
 
@@ -108,6 +132,10 @@ export const MAIL_SYNC_DRIVES = {
 			stubGoogleToken({ access_token: 'google-fixture-access', expires_in: 3599 });
 			return credentials(w, w.oauthAccountId);
 		},
+		'microsoft account': async (w) => {
+			await asMicrosoftAccount(w);
+			return await credentials(w, w.oauthAccountId);
+		},
 		missing: (w) => credentials(w, w.goneAccountId),
 		disconnected: async (w) => {
 			await w.t.run((ctx) => ctx.db.patch(w.accountId, { status: 'disconnected' }));
@@ -134,6 +162,15 @@ export const MAIL_SYNC_DRIVES = {
 				lastError: 'Connection reset',
 				markSynced: false,
 			}),
+	},
+	setSendPath: {
+		written: async (w) => {
+			await asMicrosoftAccount(w);
+			return await w.t.mutation(internal.mail.external.accounts.setSendPath, {
+				accountId: w.oauthAccountId,
+				sendPath: 'smtp',
+			});
+		},
 	},
 	ingestExternalRaw: {
 		stored: async (w) => {

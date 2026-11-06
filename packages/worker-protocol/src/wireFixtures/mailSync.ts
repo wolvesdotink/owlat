@@ -49,6 +49,27 @@ export const MAIL_SYNC_FIXTURE_OAUTH_CREDENTIALS = {
 	smtpAccessToken: 'google-fixture-access',
 };
 
+/**
+ * The OAuth account re-cast as a Microsoft 365 one: its Graph token rides along
+ * for when Exchange Online refuses SMTP AUTH.
+ */
+export const MAIL_SYNC_FIXTURE_MICROSOFT_CREDENTIALS = {
+	imapHost: 'outlook.office365.com',
+	imapPort: 993,
+	isImapSecure: true,
+	smtpHost: 'smtp.office365.com',
+	smtpPort: 587,
+	isSmtpSecure: false,
+	imapUsername: 'oauth@gmail.example',
+	smtpUsername: 'oauth@gmail.example',
+	imapPassword: '',
+	smtpPassword: '',
+	imapAccessToken: 'microsoft-fixture-access',
+	smtpAccessToken: 'microsoft-fixture-access',
+	graphAccessToken: 'microsoft-fixture-graph',
+	sendPath: 'graph' as const,
+};
+
 /** The backend's side of the mail-sync contract, as every report answer carries it. */
 const MAIL_SYNC_WIRE = workerWireWindow('mail-sync');
 const backendWire = {
@@ -65,6 +86,10 @@ export const MAIL_SYNC_WIRE_FIXTURES = {
 		{
 			name: 'oauth account',
 			value: { kind: 'credentials', credentials: MAIL_SYNC_FIXTURE_OAUTH_CREDENTIALS },
+		},
+		{
+			name: 'microsoft account',
+			value: { kind: 'credentials', credentials: MAIL_SYNC_FIXTURE_MICROSOFT_CREDENTIALS },
 		},
 		{ name: 'missing', value: { kind: 'unavailable', reason: 'missing' } },
 		{ name: 'disconnected', value: { kind: 'unavailable', reason: 'disconnected' } },
@@ -97,6 +122,7 @@ export const MAIL_SYNC_WIRE_FIXTURES = {
 		},
 	],
 	setSyncStatus: [{ name: 'written', value: null }],
+	setSendPath: [{ name: 'written', value: null }],
 	ingestExternalRaw: [
 		{ name: 'stored', value: { messageId: M.ingested } },
 		{ name: 'duplicate', value: { skipped: 'duplicate' } },
