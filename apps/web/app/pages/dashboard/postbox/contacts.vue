@@ -154,6 +154,18 @@ function composeTo(email: string) {
 function initial(c: { displayName?: string; email: string }) {
 	return (c.displayName || c.email).charAt(0).toUpperCase();
 }
+
+const isTeamInbox = computed(() => currentMailbox.value?.scope === 'shared');
+
+// Where a row came from: a CardDAV sync, a vCard import, or mail and the
+// add-contact form. A synced row that a vCard import also touched counts as
+// synced, since the sync keeps it up to date.
+type ContactSource = 'carddav' | 'vcard' | 'mail';
+function sourceOf(c: MailContact): ContactSource {
+	if (c.cardDavSource) return 'carddav';
+	if (c.importedAt !== undefined) return 'vcard';
+	return 'mail';
+}
 </script>
 
 <template>
@@ -175,6 +187,8 @@ function initial(c: { displayName?: string; email: string }) {
 				</UiButton>
 			</div>
 		</header>
+
+		<PostboxContactsCardDavPanel :mailbox-id="mailboxId" :is-team-inbox="isTeamInbox" />
 
 		<div class="relative mb-4">
 			<SearchIcon class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
@@ -219,7 +233,15 @@ function initial(c: { displayName?: string; email: string }) {
 					class="group flex items-center gap-3 h-16 px-4 hover:bg-bg-surface"
 					style="content-visibility: auto; contain-intrinsic-size: auto 64px"
 				>
+					<img
+						v-if="c.photoUrl"
+						:src="c.photoUrl"
+						alt=""
+						class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+						loading="lazy"
+					/>
 					<div
+						v-else
 						class="w-9 h-9 rounded-full bg-brand-subtle text-brand flex items-center justify-center font-semibold flex-shrink-0"
 					>
 						{{ initial(c) }}
@@ -227,12 +249,9 @@ function initial(c: { displayName?: string; email: string }) {
 					<div class="flex-1 min-w-0">
 						<p class="flex items-center gap-2 text-sm font-medium text-text-primary">
 							<span class="truncate">{{ c.displayName || c.email }}</span>
-							<UiTooltip
-								v-if="c.importedAt !== undefined"
-								:text="t('dashboard.postbox.contacts.vcard.importedTooltip')"
-							>
+							<UiTooltip :text="t(`dashboard.postbox.contacts.source.${sourceOf(c)}Tooltip`)">
 								<UiBadge variant="neutral" class="flex-shrink-0">
-									{{ t('dashboard.postbox.contacts.vcard.importedBadge') }}
+									{{ t(`dashboard.postbox.contacts.source.${sourceOf(c)}`) }}
 								</UiBadge>
 							</UiTooltip>
 						</p>

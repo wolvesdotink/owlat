@@ -4,6 +4,7 @@ import {
 	VCARD_MAX_EMAILS_PER_CARD,
 	VCARD_MAX_ENTRIES,
 	VCARD_MAX_PHONES,
+	VCARD_MAX_PHOTO_BYTES,
 	mergeVcardPhones,
 	normalizeVcardImportEntry,
 	parseVcards,
@@ -286,5 +287,124 @@ describe('serializeVcards', () => {
 
 	it('writes nothing for an empty address book', () => {
 		expect(serializeVcards([])).toBe('');
+	});
+});
+
+/** A picture of `size` bytes that starts like a real file of the format. */
+function pictureBase64(magic: readonly number[], size: number): string {
+	const bytes = new Uint8Array(size);
+	bytes.set(magic);
+	return Buffer.from(bytes).toString('base64');
+}
+const JPEG = [0xff, 0xd8, 0xff, 0xe0];
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** A base64 value folded into 3.0 continuation lines of 74 characters. */
+function folded(name: string, base64: string): string[] {
+	const lines = [`${name}${base64.slice(0, 60)}`];
+	for (let i = 60; i < base64.length; i += 74) lines.push(` ${base64.slice(i, i + 74)}`);
+	return lines;
+}
+
+describe('vCard PHOTO', () => {
+	it('reads a folded 3.0 inline picture into the first address only, typed from its bytes', () => {
+		const base64 = pictureBase64(JPEG, 2048);
+		const result = parseVcards(
+			crlf(
+				'BEGIN:VCARD',
+				'VERSION:3.0',
+				'FN:Grace Hopper',
+				'EMAIL:grace@example.com',
+				'EMAIL:hopper@example.org',
+				// The card claims PNG; the bytes are a JPEG.
+				...folded('PHOTO;ENCODING=b;TYPE=PNG:', base64),
+				'TEL:+1 555 0100',
+				'END:VCARD'
+			)
+		);
+		expect(result.entries).toHaveLength(2);
+		expect(result.entries[0]!.photo).toEqual({ mediaType: 'image/jpeg', base64 });
+		expect(result.entries[1]!.photo).toBeUndefined();
+		// The property after the picture is still read.
+		expect(result.entries[0]!.phones).toEqual([{ value: '+1 555 0100' }]);
+	});
+
+	it('reads a 4.0 data URI', () => {
+		const base64 = pictureBase64(PNG, 300);
+		const result = parseVcards(
+			crlf(
+				'BEGIN:VCARD',
+				'VERSION:4.0',
+				'EMAIL:ada@example.com',
+				`PHOTO:data:image/png;base64,${base64}`,
+				'END:VCARD'
+			)
+		);
+		expect(result.entries[0]!.photo).toEqual({ mediaType: 'image/png', base64 });
+	});
+
+	it('takes a picture of exactly the cap and skips a larger one without losing the card', () => {
+		const atCap = pictureBase64(JPEG, VCARD_MAX_PHOTO_BYTES);
+		const overCap = pictureBase64(JPEG, VCARD_MAX_PHOTO_BYTES + 1);
+		const card = (email: string, base64: string) => [
+			'BEGIN:VCARD',
+			'VERSION:3.0',
+			`EMAIL:${email}`,
+			...folded('PHOTO;ENCODING=b;TYPE=JPEG:', base64),
+			'ORG:Analytical Engines',
+			'END:VCARD',
+		];
+		const result = parseVcards(
+			crlf(...card('cap@example.com', atCap), ...card('big@example.com', overCap))
+		);
+		expect(result.entries.map((entry) => entry.email)).toEqual([
+			'cap@example.com',
+			'big@example.com',
+		]);
+		expect(result.entries[0]!.photo?.base64).toBe(atCap);
+		expect(result.entries[1]!.photo).toBeUndefined();
+		expect(result.entries[1]!.organization).toBe('Analytical Engines');
+	});
+
+	it('fetches no picture named by a URL and keeps no image that is not a raster picture', () => {
+		const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
+		const result = parseVcards(
+			crlf(
+				'BEGIN:VCARD',
+				'VERSION:4.0',
+				'EMAIL:url@example.com',
+				'PHOTO;MEDIATYPE=image/jpeg:https://example.com/me.jpg',
+				'END:VCARD',
+				'BEGIN:VCARD',
+				'VERSION:3.0',
+				'EMAIL:svg@example.com',
+				`PHOTO;ENCODING=b;TYPE=SVG:${svg}`,
+				'END:VCARD',
+				'BEGIN:VCARD',
+				'VERSION:3.0',
+				'EMAIL:broken@example.com',
+				'PHOTO;ENCODING=b;TYPE=JPEG:/9j/not*base64',
+				'END:VCARD'
+			)
+		);
+		expect(result.entries.map((entry) => entry.photo)).toEqual([undefined, undefined, undefined]);
+	});
+
+	it('drops an oversized picture on the server-side normalization too', () => {
+		const entry = normalizeVcardImportEntry({
+			email: 'a@example.com',
+			photo: { mediaType: 'image/png', base64: pictureBase64(JPEG, VCARD_MAX_PHOTO_BYTES + 3) },
+		});
+		expect(entry).toEqual({ email: 'a@example.com' });
+	});
+
+	it('writes the picture back out and reads it again', () => {
+		const base64 = pictureBase64(JPEG, 1500);
+		const entries = [
+			{ email: 'grace@example.com', photo: { mediaType: 'image/jpeg' as const, base64 } },
+		];
+		const text = serializeVcards(entries);
+		expect(text).toContain('PHOTO;ENCODING=b;TYPE=JPEG:');
+		expect(parseVcards(text).entries).toEqual(entries);
 	});
 });

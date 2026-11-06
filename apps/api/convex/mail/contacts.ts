@@ -18,6 +18,7 @@ import { contactFrecencyScore, isScreenedOut, senderSignalFromContact } from './
 import { resolveScreenerEnabled } from './ai/needsReplyScoring';
 import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
 import { recordCorrespondents } from './correspondence';
+import { deleteContactRow } from './contactsMerge';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
@@ -88,11 +89,19 @@ export const list = publicQuery({
 		const owned = await requireMailboxAccess(ctx, args.mailboxId);
 		if (!owned.ok) return [];
 		const limit = Math.min(args.limit ?? 100, CONTACT_LIST_LIMIT);
-		return ctx.db
+		const rows = await ctx.db
 			.query('mailContacts')
 			.withIndex('by_mailbox_and_lastUsed', (q) => q.eq('mailboxId', args.mailboxId))
 			.order('desc')
 			.take(limit);
+		return Promise.all(
+			rows.map(async (row) => ({
+				...row,
+				photoUrl: row.photoStorageId
+					? ((await ctx.storage.getUrl(row.photoStorageId)) ?? undefined)
+					: undefined,
+			}))
+		);
 	},
 });
 
@@ -374,7 +383,7 @@ export const remove = postboxMutation({
 		if (!row) return;
 		const owned = await requireMailboxAccess(ctx, row.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
-		await ctx.db.delete(args.contactId);
+		await deleteContactRow(ctx, row);
 	},
 });
 

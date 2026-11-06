@@ -25,6 +25,9 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 	const importOp = useBackendOperation(api.mail.contactsVcard.importBatch, {
 		label: () => t('shared.postbox.usePostboxContacts.importContacts'),
 	});
+	const photosOp = useBackendOperation(api.mail.contactsPhotos.importPhotos, {
+		label: () => t('shared.postbox.usePostboxContacts.importPhotos'),
+	});
 	const isImporting = ref(false);
 	const isExporting = ref(false);
 
@@ -34,7 +37,11 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		isImporting.value = true;
 		try {
 			const { importVcardFile } = await loadTransfer();
-			return await importVcardFile(file, (entries) => importOp.run({ mailboxId: target, entries }));
+			return await importVcardFile(
+				file,
+				(entries) => importOp.run({ mailboxId: target, entries }),
+				(photos) => photosOp.run({ mailboxId: target, photos })
+			);
 		} catch {
 			// The file could not be read, or the import could not be loaded (offline).
 			// A failed batch is not this: `importOp.run` reports and resolves.

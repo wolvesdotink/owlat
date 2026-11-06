@@ -31,3 +31,40 @@ export const mailContactImportEntryValidator = v.object({
 	phones: v.optional(v.array(mailContactPhoneValidator)),
 	postalAddresses: v.optional(v.array(mailContactPostalAddressValidator)),
 });
+
+/**
+ * Where a CardDAV-synced address-book row came from: the account, the card's
+ * URL and the etag it had when the row was written. `isRowCreatedBySync` tells
+ * a row the sync inserted from one it merged into (built from mail or a vCard
+ * import first), which a removal of the card or a disconnect leaves in place.
+ */
+export const mailContactCardDavSourceValidator = v.object({
+	accountId: v.id('mailCardDavAccounts'),
+	href: v.string(),
+	etag: v.string(),
+	isRowCreatedBySync: v.boolean(),
+});
+
+/** How the last CardDAV sync of an account went. */
+export const mailCardDavSyncStatusValidator = v.union(
+	v.literal('pending'),
+	v.literal('ok'),
+	v.literal('error')
+);
+
+/**
+ * Why connecting or syncing a CardDAV book failed: the server refused the
+ * credentials, could not be reached (or is not a public host), did not answer
+ * as CardDAV, has no address book, sent more than a sync reads, or failed
+ * another way.
+ */
+export const CARDDAV_ERROR_CODES = [
+	'auth',
+	'unreachable',
+	'not_carddav',
+	'no_address_book',
+	'too_large',
+	'failed',
+] as const;
+export type CardDavErrorCode = (typeof CARDDAV_ERROR_CODES)[number];
+export const mailCardDavErrorCodeValidator = literalUnion(CARDDAV_ERROR_CODES);

@@ -10,8 +10,10 @@
  * in the parser, and {@link normalizeVcardImportEntry} applies the per-entry
  * bounds again on the server, which never trusts the browser that parsed the
  * file. Only the properties the parser reads are assembled from their folded
- * lines; photos, notes and every other property are skipped as they stream
- * past, so a file of large embedded pictures costs a line scan and no more.
+ * lines; notes and every other property are skipped as they stream past. An
+ * inline PHOTO is assembled only up to `VCARD_MAX_PHOTO_BYTES`, and a
+ * larger one is skipped the same way, so a file of large embedded pictures
+ * costs a line scan and no more. A picture named by a URL is never fetched.
  */
 
 import { VCARD_ADDRESS_PARTS, type VcardContactEntry } from './postboxVcardEntry';
@@ -69,6 +71,10 @@ export function serializeVcards(entries: readonly VcardContactEntry[]): string {
 			const type = address.type ? `;TYPE=${address.type.toUpperCase()}` : '';
 			const parts = VCARD_ADDRESS_PARTS.map((part) => escapeText(address[part] ?? ''));
 			lines.push(`ADR${type}:${parts.join(';')}`);
+		}
+		if (entry.photo) {
+			const type = entry.photo.mediaType.slice('image/'.length).toUpperCase();
+			lines.push(`PHOTO;ENCODING=b;TYPE=${type}:${entry.photo.base64}`);
 		}
 		lines.push('END:VCARD');
 	}

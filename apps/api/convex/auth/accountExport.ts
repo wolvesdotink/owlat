@@ -66,6 +66,19 @@ const USER_SCOPED_EXPORT_QUERIES: Record<
 	threadViewerState: internal.auth.accountExportThreadBriefQueries.listOwnThreadViewerState,
 };
 
+/** The address-book resources, which page by one personal mailbox. */
+const ADDRESS_BOOK_EXPORT_QUERIES: Record<
+	'mailContacts' | 'mailCardDavAccounts',
+	FunctionReference<
+		'query',
+		'internal',
+		{ userId: string; mailboxId: Id<'mailboxes'>; paginationOpts: PaginationOptions }
+	>
+> = {
+	mailContacts: internal.auth.accountExportContactQueries.listMailboxContacts,
+	mailCardDavAccounts: internal.auth.accountExportContactQueries.listMailboxCardDavAccounts,
+};
+
 async function contentAddressedArtifactKey(scope: string, bytes: Uint8Array): Promise<string> {
 	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
 	const digestHex = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -402,12 +415,13 @@ export const exportUserDataPage = authedAction({
 			);
 			return serializeAccountExportPage({ ...result, page });
 		}
-		if (args.resource === 'mailContacts') {
+		if (args.resource === 'mailContacts' || args.resource === 'mailCardDavAccounts') {
 			if (!args.mailboxId) throwInvalidInput('Address book export page requires mailboxId');
-			const result = await ctx.runQuery(
-				internal.auth.accountExportContactQueries.listMailboxContacts,
-				{ userId: args.userId, mailboxId: args.mailboxId, paginationOpts }
-			);
+			const result = (await ctx.runQuery(ADDRESS_BOOK_EXPORT_QUERIES[args.resource], {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			})) as PaginationResult<Record<string, unknown>>;
 			return serializeAccountExportPage(result);
 		}
 		if (args.resource === 'threadBriefs') {

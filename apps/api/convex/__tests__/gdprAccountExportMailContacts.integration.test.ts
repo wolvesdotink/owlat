@@ -98,6 +98,50 @@ describe('accountManagement.exportUserData — Postbox address book', () => {
 		);
 	});
 
+	it('exports the CardDAV account of a personal book without its sealed password', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1', 'me@example.com');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'editor');
+		const base = { organizationId: 'org-x', domain: 'example.com', userId: 'auth-user-1' };
+		const mine = await seedMailbox(t, { ...base, address: 'me@example.com' });
+		const team = await seedMailbox(t, { ...base, address: 'team@example.com', scope: 'shared' });
+		const seedAccount = (mailboxId: Id<'mailboxes'>, username: string) =>
+			t.run((ctx) =>
+				ctx.db.insert('mailCardDavAccounts', {
+					mailboxId,
+					serverUrl: 'https://dav.example.com/',
+					addressBookUrl: 'https://dav.example.com/books/me/contacts/',
+					username,
+					secretCiphertext: 'sealed-ciphertext',
+					secretIv: 'sealed-iv',
+					secretAuthTag: 'sealed-tag',
+					secretEnvelopeVersion: 1,
+					status: 'ok',
+					lastSyncedAt: 5,
+					nextSyncAt: 10,
+					createdAt: 1,
+					updatedAt: 5,
+				})
+			);
+		await seedAccount(mine, 'me');
+		await seedAccount(team, 'team');
+
+		const exported = await exportAllUserData(t, 'auth-user-1');
+		const accounts = exported.personalData.mailCardDavAccounts as Array<Record<string, unknown>>;
+		expect(accounts).toEqual([
+			expect.objectContaining({
+				mailboxId: mine,
+				serverUrl: 'https://dav.example.com/',
+				username: 'me',
+				lastSyncedAt: 5,
+			}),
+		]);
+		expect(JSON.stringify(accounts)).not.toContain('sealed-');
+	});
+
 	it('counts the address book in the pre-run manifest', async () => {
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1', 'me@example.com');
