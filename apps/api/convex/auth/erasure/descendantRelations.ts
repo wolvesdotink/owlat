@@ -9,6 +9,7 @@
 import type { TableNames } from '../../_generated/dataModel';
 import { THREAD_BRIEF_MEMBER_DESCENDANTS } from './threadBriefRelations';
 import { ARRIVAL_MEMBER_DESCENDANTS } from './arrivalRelations';
+import { MCP_MEMBER_DESCENDANTS } from './mcpRelations';
 
 export type MemberErasureAction = 'delete' | 'anonymize' | 'retain';
 
@@ -27,7 +28,6 @@ export interface DescendantRelation extends MemberRelation {
 
 const WITH_MAILBOX = 'Part of the personal mailbox; deleted with it.';
 const SAME_MAILBOX = 'Points within the same personal mailbox, whose rows are all deleted.';
-const MCP_ACTION = 'A write the member’s own AI client asked for; it goes with the member.';
 
 function desc(
 	parent: TableNames,
@@ -72,18 +72,6 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'delete',
 		'The log of the member’s own AI clients; it goes with them.'
 	),
-	...(
-		[
-			['mailboxes', 'mailboxId'],
-			['mcpClients', 'clientId'],
-			['mailDrafts', 'resultDraftId'],
-			['mailDrafts', 'action.draftId'],
-			['mailLabels', 'action.labelId'],
-			['mailThreads', 'action.threadId'],
-			['mailMessages', 'action.inReplyToMessageId'],
-			['mailFolders', 'action.folderId'],
-		] as const
-	).map(([parent, field]) => desc(parent, 'mcpPendingActions', field, 'delete', MCP_ACTION)),
 	desc(
 		'mailboxes',
 		'mailboxRequests',
@@ -499,4 +487,5 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	...THREAD_BRIEF_MEMBER_DESCENDANTS,
 	...ARRIVAL_MEMBER_DESCENDANTS,
+	...MCP_MEMBER_DESCENDANTS,
 ];

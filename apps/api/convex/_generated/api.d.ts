@@ -1981,6 +1981,7 @@ import type * as workspaces_mediaAssets from '../workspaces/mediaAssets.js';
 import type * as workspaces_mediaAssetScan from '../workspaces/mediaAssetScan.js';
 import type * as workspaces_settings from '../workspaces/settings.js';
 import type * as auth_erasure_arrivalRelations from '../auth/erasure/arrivalRelations.js';
+import type * as auth_erasure_mcpRelations from '../auth/erasure/mcpRelations.js';
 import type * as lib_validators_arrival from '../lib/validators/arrival.js';
 import type * as mail_arrival_changeRows from '../mail/arrival/changeRows.js';
 import type * as mail_arrival_digestState from '../mail/arrival/digestState.js';
@@ -2265,6 +2266,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/userProfiles': typeof auth_userProfiles;
 	'auth/verificationEmail': typeof auth_verificationEmail;
 	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
+	'auth/erasure/mcpRelations': typeof auth_erasure_mcpRelations;
 }> & ApiFromModules<{
 	'automations/_helpers': typeof automations__helpers;
 	'automations/analytics': typeof automations_analytics;
