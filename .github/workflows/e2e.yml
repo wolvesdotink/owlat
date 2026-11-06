@@ -32,10 +32,7 @@ concurrency:
 jobs:
   e2e:
     name: E2E Tests
-    # Pinned: the Playwright version in apps/web has no browser or ffmpeg
-    # builds for Ubuntu 26.04, which ubuntu-latest now resolves to, so
-    # `playwright install` fails there. Move back with a Playwright upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     # Every step has its own cap, and the job's is above their sum, so a hung
     # step fails on its own cap and the always-run reset after the tests still
     # gets its time. Hitting the job timeout instead would cancel the whole job,

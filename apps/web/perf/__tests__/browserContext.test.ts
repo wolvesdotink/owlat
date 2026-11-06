@@ -4,11 +4,12 @@
  * the mail lists' relative times and waiting chips on the current time (and
  * with them the DOM and update counters).
  */
-import type { Browser, BrowserContextOptions } from '@playwright/test';
-import { describe, expect, it } from 'vitest';
+import type { Browser, BrowserContextOptions, Page } from '@playwright/test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	assertPinned,
 	newScenarioContext,
+	primePinnedClock,
 	SCENARIO_CONTEXT,
 	SCENARIO_NOW,
 } from '../browserContext';
@@ -17,6 +18,10 @@ import { SCENARIOS } from '../scenarios';
 import { assistantStreamWorkload, chatHistoryWorkload } from '../workload';
 
 describe('scenario browser context', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('the context the runner opens pins timezone, locale, viewport and scale', async () => {
 		let options: BrowserContextOptions | undefined;
 		const browser = {
@@ -44,6 +49,27 @@ describe('scenario browser context', () => {
 		);
 		expect(() => assertPinned({ ...pinned, locale: 'de-DE' })).toThrow(/de-DE/);
 		expect(() => assertPinned({ ...pinned, now: SCENARIO_NOW + 1 })).toThrow(/clock/);
+	});
+
+	it('priming the pinned clock fires one page timer and waits for it', async () => {
+		// Playwright's fake clock registers a listener on the first timer it
+		// fires; the runner fires one before its baseline so that listener is
+		// not counted as one the components left behind.
+		vi.useFakeTimers();
+		const page = {
+			evaluate: (fn: () => Promise<void>) => fn(),
+		} as unknown as Pick<Page, 'evaluate'>;
+		let primed = false;
+		const priming = primePinnedClock(page).then(() => {
+			primed = true;
+		});
+		expect(vi.getTimerCount()).toBe(1);
+		await Promise.resolve();
+		expect(primed).toBe(false);
+		await vi.runAllTimersAsync();
+		await priming;
+		expect(primed).toBe(true);
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it('the pinned clock reads after every synthetic timestamp', () => {

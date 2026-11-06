@@ -280,10 +280,7 @@ jobs:
     name: Test web (browser)
     needs: detect
     if: needs.detect.outputs.web == 'true'
-    # Pinned: the Playwright version in apps/web has no browser or ffmpeg
-    # builds for Ubuntu 26.04, which ubuntu-latest now resolves to, so
-    # `playwright install` fails there. Move back with a Playwright upgrade.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
