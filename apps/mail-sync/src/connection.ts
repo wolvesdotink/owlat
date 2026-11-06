@@ -302,6 +302,14 @@ export class AccountConnection {
 	}
 
 	/**
+	 * The user asked to check for mail (server.ts `/sync`): a full cycle now,
+	 * rather than on the folder timer. It joins a cycle already running.
+	 */
+	requestSync(): void {
+		void this.runCycle('full');
+	}
+
+	/**
 	 * One sync cycle, never two at once — a reconcile working from views read
 	 * before a write-back landed would undo it. A request that arrives mid-cycle
 	 * runs another afterwards ('full' wins over 'drain').

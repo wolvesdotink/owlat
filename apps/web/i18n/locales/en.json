@@ -13477,6 +13477,16 @@
 					"needsIcon": "Turn on the tray icon first. Without it, closing the window quits Owlat.",
 					"title": "Keep running when the window is closed"
 				},
+				"hideDockIcon": {
+					"description": "Run Owlat from the menu bar icon alone, without a Dock icon or a menu bar of its own.",
+					"needsIcon": "Turn on the menu bar icon first. Without it, the Dock icon is the way back to Owlat.",
+					"title": "Hide the Dock icon"
+				},
+				"mailbox": {
+					"all": "All inboxes",
+					"description": "Which inbox the icon counts and lists.",
+					"title": "Count unread in"
+				},
 				"menuBarIcon": {
 					"description": "Show the unread count and your newest unread mail in the menu bar.",
 					"heading": "Menu bar",
@@ -14258,6 +14268,12 @@
 			"unpinNamed": "Unpin “{subject}”",
 			"full": "You can pin up to 5 conversations. Unpin one to make room.",
 			"dropHint": "Drop here to pin"
+		},
+		"checkForMail": {
+			"busy": "Already checking for new mail.",
+			"checking": "Checking your connected accounts for new mail.",
+			"failed": "Couldn't check for new mail. Try again in a moment.",
+			"nothing": "No connected accounts to check. Mail to your Owlat addresses arrives on its own."
 		}
 	},
 	"recipient": {
@@ -17269,7 +17285,7 @@
 				},
 				"trayIcon": {
 					"title": "Tray icon",
-					"keywords": "menu bar, system tray, notification area, close to tray, keep running"
+					"keywords": "menu bar, system tray, notification area, close to tray, keep running, dock icon, hide dock, unread count, mailbox"
 				},
 				"unreadBadge": {
 					"title": "Unread badge",
@@ -18114,7 +18130,9 @@
 			"switchToInbox": "Switch to Inbox",
 			"switchToMarketing": "Switch to marketing",
 			"copySignInCode": "Copy latest sign-in code",
-			"openSignInLink": "Open latest sign-in link"
+			"openSignInLink": "Open latest sign-in link",
+			"checkForMail": "Check for mail",
+			"checkForMailSubtitle": "Connected accounts"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Add contacts to topic",

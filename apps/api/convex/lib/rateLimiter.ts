@@ -416,4 +416,14 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		period: HOUR,
 		capacity: 20,
 	},
+
+	// "Check for mail" (mail/external/checkForMail.ts), per user. A sync cycle
+	// already running absorbs a repeat, so this only stops a held-down shortcut
+	// from scheduling a worker call per keystroke.
+	mailCheckNow: {
+		kind: 'token bucket',
+		rate: 6,
+		period: MINUTE,
+		capacity: 3,
+	},
 });

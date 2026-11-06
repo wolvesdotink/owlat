@@ -13477,6 +13477,16 @@
 					"needsIcon": "Schalte zuerst das Tray-Symbol ein. Ohne Symbol beendet das Schließen des Fensters Owlat.",
 					"title": "Weiterlaufen, wenn das Fenster geschlossen wird"
 				},
+				"hideDockIcon": {
+					"description": "Owlat läuft nur über das Menüleisten-Symbol, ohne Dock-Symbol und ohne eigene Menüleiste.",
+					"needsIcon": "Schalte zuerst das Menüleisten-Symbol ein. Ohne es ist das Dock-Symbol dein Weg zurück zu Owlat.",
+					"title": "Dock-Symbol ausblenden"
+				},
+				"mailbox": {
+					"all": "Alle Posteingänge",
+					"description": "Welchen Posteingang das Symbol zählt und auflistet.",
+					"title": "Ungelesene zählen in"
+				},
 				"menuBarIcon": {
 					"description": "Die Anzahl ungelesener Nachrichten und deine neuesten ungelesenen E-Mails in der Menüleiste anzeigen.",
 					"heading": "Menüleiste",
@@ -14258,6 +14268,12 @@
 			"unpinNamed": "„{subject}“ lösen",
 			"full": "Du kannst bis zu 5 Unterhaltungen anheften. Löse zuerst eine.",
 			"dropHint": "Zum Anheften hier ablegen"
+		},
+		"checkForMail": {
+			"busy": "Owlat sucht schon nach neuer Mail.",
+			"checking": "Deine verbundenen Konten werden nach neuer Mail gefragt.",
+			"failed": "Die Suche nach neuer Mail hat nicht geklappt. Versuch es gleich noch mal.",
+			"nothing": "Keine verbundenen Konten zum Abfragen. Mail an deine Owlat-Adressen kommt von selbst an."
 		}
 	},
 	"recipient": {
@@ -17269,7 +17285,7 @@
 				},
 				"trayIcon": {
 					"title": "Tray-Symbol",
-					"keywords": "Menüleiste, Infobereich, Taskleiste, ins Tray schließen, weiterlaufen"
+					"keywords": "Menüleiste, Infobereich, Taskleiste, ins Tray schließen, weiterlaufen, Dock-Symbol, Dock ausblenden, Ungelesen-Anzahl, Postfach"
 				},
 				"unreadBadge": {
 					"title": "Ungelesen-Zähler",
@@ -18114,7 +18130,9 @@
 			"switchToInbox": "Zum Posteingang wechseln",
 			"switchToMarketing": "Zu Marketing wechseln",
 			"copySignInCode": "Neuesten Anmeldecode kopieren",
-			"openSignInLink": "Neuesten Anmeldelink öffnen"
+			"openSignInLink": "Neuesten Anmeldelink öffnen",
+			"checkForMail": "Nach neuer Mail suchen",
+			"checkForMailSubtitle": "Verbundene Konten"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",

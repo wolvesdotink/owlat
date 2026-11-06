@@ -34,6 +34,7 @@ let openNewContact: ReturnType<typeof vi.fn>;
 let navigations: unknown[];
 let latestSignInCode: unknown;
 let showToast: ReturnType<typeof vi.fn>;
+let mutation: ReturnType<typeof vi.fn>;
 
 const SIDEBAR_SECTIONS = [
 	{
@@ -59,6 +60,8 @@ beforeEach(() => {
 	showToast = vi.fn();
 	showChecklist.mockClear();
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	mutation = vi.fn(async () => ({ accounts: 1 }));
+	vi.stubGlobal('useConvex', () => ({ mutation }));
 
 	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -187,6 +190,30 @@ describe('verbs', () => {
 		};
 		disabledFlags = ['postbox', 'mail.external'];
 		expect(byId((await providers()).verbItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
+	});
+
+	it('checks the connected accounts for mail and says so', async () => {
+		const { verbItems } = await providers();
+
+		const verb = byId(verbItems.value, 'verb:check-mail');
+		expect(verb?.label).toBe('Check for mail');
+		verb?.run();
+		await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
+
+		expect(getFunctionName(mutation.mock.calls[0]![0])).toBe(
+			getFunctionName(api.mail.external.checkForMail.request)
+		);
+		expect(showToast).toHaveBeenCalledWith(
+			'Checking your connected accounts for new mail.',
+			'info'
+		);
+	});
+
+	it('offers no mail check without personal mail', async () => {
+		disabledFlags = ['postbox', 'mail.external'];
+		const { verbItems } = await providers();
+
+		expect(byId(verbItems.value, 'verb:check-mail')).toBeUndefined();
 	});
 
 	it('drops Compose entirely when no mail feature is on', async () => {
