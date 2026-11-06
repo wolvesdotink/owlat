@@ -1435,6 +1435,7 @@ import type * as mail_external_personalAccount from '../mail/external/personalAc
 import type * as mail_external_mirroredFolders from '../mail/external/mirroredFolders.js';
 import type * as mail_external_remoteFolderOpOrder from '../mail/external/remoteFolderOpOrder.js';
 import type * as mail_external_remoteAppend from '../mail/external/remoteAppend.js';
+import type * as mail_external_remoteAccount from '../mail/external/remoteAccount.js';
 import type * as mail_external_remoteFolderRename from '../mail/external/remoteFolderRename.js';
 import type * as mail_external_remoteOpDeferral from '../mail/external/remoteOpDeferral.js';
 import type * as mail_external_remoteOpOrder from '../mail/external/remoteOpOrder.js';
@@ -3475,6 +3476,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/external/mirroredFolders': typeof mail_external_mirroredFolders;
 	'mail/external/remoteFolderOpOrder': typeof mail_external_remoteFolderOpOrder;
 	'mail/external/remoteAppend': typeof mail_external_remoteAppend;
+	'mail/external/remoteAccount': typeof mail_external_remoteAccount;
 	'mail/external/remoteFolderRename': typeof mail_external_remoteFolderRename;
 	'mail/external/remoteOpDeferral': typeof mail_external_remoteOpDeferral;
 	'mail/external/remoteOpOrder': typeof mail_external_remoteOpOrder;

@@ -30,7 +30,9 @@
  *   - `over_quota`: the target has no room for the batch.
  *   - `all_mail`: a move out of a connected account's Gmail All Mail (its
  *     archive). Gmail ignores a delete there, so the source would stay at the
- *     provider and come back with the next sync. A copy is fine.
+ *     provider and come back with the next sync. A copy is fine. A move into
+ *     a connected account whose source is archived there before its upload
+ *     lands settles as a copy (`external/remoteAppend.ts`).
  *
  * Mailbox scope: the target must be on the caller's own rail (their mailbox,
  * or a team inbox they are a member of), never a teammate's personal mailbox
@@ -53,11 +55,10 @@ import { rebuildThreadAggregates } from './threadAggregates';
 import { insertMessageCopy, type LabelMap } from './mailboxTransferCopy';
 import {
 	hasSyntheticMessageId,
-	liveAccountFor,
 	recordRemoteChanges,
-	remoteNamesByFolder,
 	type RemoteChange,
 } from './external/remoteOps';
+import { allMailFolderIds, liveAccountFor } from './external/remoteAccount';
 import { pendingAppendOf } from './external/remoteAppend';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 
@@ -99,28 +100,6 @@ type Recall = {
 
 function refuse(reason: TransferRefusal, message: string): never {
 	throwInvalidState(message, { reason });
-}
-
-/** Gmail's All Mail, by the names the worker maps to the archive (`apps/mail-sync/src/folders.ts`). */
-const ALL_MAIL_NAMES = new Set(['[gmail]/all mail', '[google mail]/all mail']);
-
-/**
- * The mailbox's local folders that mirror Gmail's All Mail. The provider never
- * runs a delete there: the worker retires it, since a message leaves All Mail
- * only through Trash (`apps/mail-sync/src/remoteOps.ts`). The worker mirrors no
- * other `\All` folder, so the name decides. Empty for a mailbox nothing is
- * written back for.
- */
-async function allMailFolderIds(
-	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>
-): Promise<Set<Id<'mailFolders'>>> {
-	const accountId = await liveAccountFor(ctx, mailboxId);
-	if (!accountId) return new Set();
-	const names = await remoteNamesByFolder(ctx, accountId);
-	return new Set(
-		[...names].filter(([, name]) => ALL_MAIL_NAMES.has(name.toLowerCase())).map(([id]) => id)
-	);
 }
 
 /** Is `mailbox` on the caller's own rail: theirs, or a team inbox they belong to? */

@@ -23,6 +23,7 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated
 import type { Doc, Id } from '../../_generated/dataModel';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../messagePurge';
 import { rebuildThreadAggregates } from '../threadAggregates';
+import { allMailFolderIds } from './remoteAccount';
 
 type RemoteOpRow = Doc<'externalMailRemoteOps'>;
 
@@ -86,6 +87,12 @@ async function purgeRows(ctx: MutationCtx, rows: Doc<'mailMessages'>[]): Promise
  * whose delete the caller records for the original's own provider when that
  * is a connected account too (`remoteOps.ts`, which this module must not
  * import back).
+ *
+ * The transfer refused an original in Gmail's All Mail, where that delete is
+ * ignored, but the original stays visible while the upload is pending and
+ * can be archived there meanwhile. Purging it then would leave the message
+ * at the provider while the move reported success, so the move settles as a
+ * copy instead, with an audit-log row saying so.
  */
 export async function finishAppend(
 	ctx: MutationCtx,
@@ -94,6 +101,15 @@ export async function finishAppend(
 	const sourceId = op.append?.isRecalled ? undefined : op.append?.sourceMessageId;
 	const source = sourceId ? await ctx.db.get(sourceId) : null;
 	if (!source) return null;
+	if ((await allMailFolderIds(ctx, source.mailboxId)).has(source.folderId)) {
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: source.mailboxId,
+			event: 'transfer_kept_source',
+			details: JSON.stringify({ messageId: source.rfc822MessageId, reason: 'all_mail' }),
+			occurredAt: Date.now(),
+		});
+		return null;
+	}
 	await purgeRows(ctx, [source]);
 	return source;
 }

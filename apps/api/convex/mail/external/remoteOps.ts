@@ -28,12 +28,7 @@
 
 import { v, type Infer } from 'convex/values';
 import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
-import {
-	internalAction,
-	internalQuery,
-	type MutationCtx,
-	type QueryCtx,
-} from '../../_generated/server';
+import { internalAction, internalQuery, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -51,6 +46,7 @@ import {
 	type DeferralBudget,
 } from './remoteOpDeferral';
 import { abandonAppend, appendOpFields, finishAppend } from './remoteAppend';
+import { liveAccountFor, remoteNamesByFolder, writesBack } from './remoteAccount';
 import {
 	listDueRemoteOps as listDueRemoteOpsContract,
 	settleRemoteOps as settleRemoteOpsContract,
@@ -301,42 +297,6 @@ export async function enqueueRemoteOp(
 		budget
 	);
 	await scheduleLeftoverDeferrals(ctx, budget);
-}
-
-/** The remote name each mapped local folder of an account syncs with. */
-export async function remoteNamesByFolder(
-	ctx: QueryCtx,
-	accountId: Id<'externalMailAccounts'>
-): Promise<Map<Id<'mailFolders'>, string>> {
-	const rows = await ctx.db
-		.query('externalMailFolderSync')
-		.withIndex('by_account', (q) => q.eq('accountId', accountId))
-		.collect(); // bounded: one row per synced folder of one account
-	return new Map(rows.map((r) => [r.folderId, r.remoteName]));
-}
-
-/** An account whose provider is told about local changes: not set to new-mail-only. */
-export function writesBack(account: Pick<Doc<'externalMailAccounts'>, 'syncMode'>): boolean {
-	return (account.syncMode ?? 'full') === 'full';
-}
-
-/**
- * The account whose provider mirrors this mailbox, or null when nothing should
- * be written back: a hosted mailbox, a disconnected or purging account, or a
- * deliverability seed (org infrastructure, never a member's inbox).
- */
-export async function liveAccountFor(
-	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'>
-): Promise<Id<'externalMailAccounts'> | null> {
-	const accounts = await ctx.db
-		.query('externalMailAccounts')
-		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
-		.collect(); // bounded: one live account per mailbox, plus the disconnected ones a re-attach left
-	const live = accounts.find(
-		(a) => a.status !== 'disconnected' && a.purpose !== 'seed' && a.purgeStartedAt === undefined
-	);
-	return live && writesBack(live) ? live._id : null;
 }
 
 /**

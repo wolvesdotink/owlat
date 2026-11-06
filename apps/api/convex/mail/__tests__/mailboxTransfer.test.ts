@@ -75,13 +75,14 @@ async function messagesIn(t: Test, mailboxId: Id<'mailboxes'>): Promise<Doc<'mai
 /** A connected account's mailbox, with the account the worker syncs it through. */
 async function connectedMailbox(
 	t: Test,
-	account: { syncMode?: 'full' | 'incoming' } = {}
+	account: { syncMode?: 'full' | 'incoming'; address?: string } = {}
 ): Promise<{
 	mailboxId: Id<'mailboxes'>;
 	inboxId: Id<'mailFolders'>;
 	accountId: Id<'externalMailAccounts'>;
 }> {
-	const box = await seedMailboxWithFolders(t, { address: 'me@example.com', kind: 'external' });
+	const address = account.address ?? 'me@example.com';
+	const box = await seedMailboxWithFolders(t, { address, kind: 'external' });
 	const accountId = await t.run(async (ctx) => {
 		const now = Date.now();
 		const id = await ctx.db.insert('externalMailAccounts', {
@@ -95,7 +96,7 @@ async function connectedMailbox(
 			smtpPort: 465,
 			isSmtpSecure: true,
 			authMethod: 'password',
-			imapUsername: 'me@example.com',
+			imapUsername: address,
 			status: 'connected',
 			...(account.syncMode ? { syncMode: account.syncMode } : {}),
 			createdAt: now,
@@ -105,6 +106,31 @@ async function connectedMailbox(
 		return id;
 	});
 	return { ...box, accountId };
+}
+
+/** Map the connected mailbox's Archive to Gmail's All Mail, as the worker syncs it; returns that folder. */
+async function mirrorAllMail(
+	t: Test,
+	connected: { mailboxId: Id<'mailboxes'>; accountId: Id<'externalMailAccounts'> }
+): Promise<Id<'mailFolders'>> {
+	return t.run(async (ctx) => {
+		const archive = await ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox_and_role', (q) =>
+				q.eq('mailboxId', connected.mailboxId).eq('role', 'archive')
+			)
+			.first();
+		await ctx.db.insert('externalMailFolderSync', {
+			accountId: connected.accountId,
+			mailboxId: connected.mailboxId,
+			folderId: archive!._id,
+			remoteName: '[Gmail]/All Mail',
+			remoteUidValidity: 1,
+			lastSeenUid: 0,
+			lastSyncedAt: Date.now(),
+		});
+		return archive!._id;
+	});
 }
 
 /** The queued write-backs, oldest first, as the worker would be told them. */
@@ -431,23 +457,7 @@ describe('mail.mailboxTransfer.transfer', () => {
 		const t = convexTest(schema, modules);
 		const { work } = await setup(t);
 		const connected = await connectedMailbox(t);
-		await t.run(async (ctx) => {
-			const archive = await ctx.db
-				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) =>
-					q.eq('mailboxId', connected.mailboxId).eq('role', 'archive')
-				)
-				.first();
-			await ctx.db.insert('externalMailFolderSync', {
-				accountId: connected.accountId,
-				mailboxId: connected.mailboxId,
-				folderId: archive!._id,
-				remoteName: '[Gmail]/All Mail',
-				remoteUidValidity: 1,
-				lastSeenUid: 0,
-				lastSyncedAt: Date.now(),
-			});
-		});
+		await mirrorAllMail(t, connected);
 		const messageId = await seedMessage(t, connected.mailboxId, {
 			rfc822MessageId: 'archived@x',
 			role: 'archive',
@@ -576,6 +586,40 @@ describe('mail.mailboxTransfer.transfer', () => {
 				results: [{ opId: op._id, outcome: 'done' }],
 			});
 			expect((await messagesIn(t, personal.mailboxId)).map((m) => m._id)).toEqual([sourceId]);
+		});
+
+		it('settles as a copy when the source was archived to Gmail All Mail before the upload landed', async () => {
+			const t = convexTest(schema, modules);
+			const gmail = await connectedMailbox(t, { address: 'me@gmail.example' });
+			const allMailId = await mirrorAllMail(t, gmail);
+			const other = await connectedMailbox(t, { address: 'me@other.example' });
+			const sourceId = await seedMessage(t, gmail.mailboxId, { rfc822MessageId: 'kept@x' });
+			const result = await t.mutation(api.mail.mailboxTransfer.transfer, {
+				messageIds: [sourceId],
+				targetMailboxId: other.mailboxId,
+				mode: 'move',
+			});
+			const [op] = await t.run(async (ctx) => ctx.db.query('externalMailRemoteOps').collect());
+			// Archived while the upload was pending: the source now sits where
+			// Gmail ignores a delete.
+			await t.run(async (ctx) => ctx.db.patch(sourceId, { folderId: allMailId }));
+
+			await t.mutation(internal.mail.external.remoteOps.settleRemoteOps, {
+				results: [{ opId: op!._id, outcome: 'done' }],
+			});
+
+			expect((await messagesIn(t, gmail.mailboxId)).map((m) => m._id)).toEqual([sourceId]);
+			expect((await messagesIn(t, other.mailboxId)).map((m) => m._id)).toEqual([
+				result.moved[0]!.messageId,
+			]);
+			expect(await remoteOps(t)).toEqual([]);
+			const audit = await t.run(async (ctx) =>
+				ctx.db
+					.query('mailAuditLog')
+					.filter((q) => q.eq(q.field('event'), 'transfer_kept_source'))
+					.collect()
+			);
+			expect(audit.map((row) => row.mailboxId)).toEqual([gmail.mailboxId]);
 		});
 
 		it('refuses a message whose Message-ID the worker invented', async () => {
