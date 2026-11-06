@@ -129,7 +129,7 @@ route 420 pages/dashboard/postbox/[folder]/[[messageId]].vue
 route 27 pages/dashboard/postbox/contacts.vue
 route 29 pages/dashboard/postbox/files.vue
 route 3 pages/dashboard/postbox/index.vue
-route 103 pages/dashboard/postbox/label/[labelId].vue
+route 115 pages/dashboard/postbox/label/[labelId].vue
 route 44 pages/dashboard/postbox/migrate.vue
 route 3 pages/dashboard/postbox/reply-queue.vue
 route 357 pages/dashboard/postbox/search.vue
