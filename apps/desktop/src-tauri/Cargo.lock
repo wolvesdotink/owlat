@@ -2891,7 +2891,7 @@ dependencies = [
 
 [[package]]
 name = "owlat-desktop"
-version = "0.6.20"
+version = "0.6.21"
 dependencies = [
  "block2",
  "flate2",
