@@ -383,10 +383,14 @@ export const accessible = publicQuery({
  * `messages` is a bounded, best-effort newest-first window used only for
  * category-aware toast decisions — it never drives `total`.
  * Minimal, plain-text fields only.
+ *
+ * `mailboxId` narrows both to one accessible mailbox (the desktop tray). One the
+ * caller cannot read or that is not active gets the empty peek with
+ * `unavailable`, not an error: the id is a device setting that can outlive both.
  */
 // public: soft-auth — returns an empty peek for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const newestUnreadInbox = publicQuery({
-	args: { limit: v.optional(v.number()) },
+	args: { limit: v.optional(v.number()), mailboxId: v.optional(v.id('mailboxes')) },
 	handler: async (ctx, args) => {
 		const empty = {
 			total: 0,
@@ -411,19 +415,28 @@ export const newestUnreadInbox = publicQuery({
 				hasSignInCode?: boolean;
 				receivedAt: number;
 			}>,
+			/** Set when `mailboxId` names a mailbox the caller cannot read or that is not active. */
+			unavailable: undefined as true | undefined,
 		};
+		const unavailable = { ...empty, unavailable: true as const };
 		const session = await readSession(ctx);
-		if (!session) return empty;
+		if (!session) return args.mailboxId ? unavailable : empty;
 		// Clamp the window so a caller can't force an unbounded scan.
 		const limit = Math.max(1, Math.min(50, Math.round(args.limit ?? 5)));
 		const now = Date.now();
 		// The caller's own mailboxes plus any shared mailbox they belong to; the
 		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(
+		const accessible = await loadAccessibleMailboxes(
 			ctx,
 			session.userId,
 			session.activeOrganizationId
 		);
+		// Not active (deleted, suspended, or disconnected, which soft-deletes it)
+		// counts as unreadable, so the tray falls back to all inboxes.
+		const mailboxes = args.mailboxId
+			? accessible.filter((mb) => mb._id === args.mailboxId && mb.status === 'active')
+			: accessible;
+		if (args.mailboxId && mailboxes.length === 0) return unavailable;
 		let total = 0;
 		const collected: (typeof empty)['messages'] = [];
 		for (const mb of mailboxes) {
@@ -482,6 +495,6 @@ export const newestUnreadInbox = publicQuery({
 			}
 		}
 		collected.sort((a, b) => b.receivedAt - a.receivedAt);
-		return { total, messages: collected.slice(0, limit) };
+		return { ...empty, total, messages: collected.slice(0, limit) };
 	},
 });

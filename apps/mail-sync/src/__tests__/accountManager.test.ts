@@ -12,6 +12,7 @@ const { instances, resetInstances } = vi.hoisted(() => {
 		account: { accountId: string };
 		start: ReturnType<typeof vi.fn>;
 		stop: ReturnType<typeof vi.fn>;
+		requestSync: ReturnType<typeof vi.fn>;
 		isStopped: boolean;
 	}> = [];
 	return {
@@ -26,6 +27,7 @@ vi.mock('../connection.js', () => {
 	class AccountConnection {
 		start = vi.fn().mockResolvedValue(undefined);
 		stop = vi.fn().mockResolvedValue(undefined);
+		requestSync = vi.fn();
 		isStopped = false;
 		constructor(public account: { accountId: string }) {
 			instances.push(this as never);
@@ -437,5 +439,19 @@ describe('AccountManager.stop drains before it resolves', () => {
 		await expect(first).resolves.toBeUndefined();
 		expect(a.stop).toHaveBeenCalledTimes(1);
 		expect(b.stop).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('AccountManager.requestSync (Check for mail)', () => {
+	it('starts a sync cycle on the live connections it was asked about', async () => {
+		const { client } = mockConvex([[account('a'), account('b')]]);
+		const mgr = new AccountManager(client, CONFIG);
+		await mgr.start();
+
+		expect(mgr.requestSync(['a', 'unknown'])).toBe(1);
+
+		expect(connFor('a')?.requestSync).toHaveBeenCalledTimes(1);
+		expect(connFor('b')?.requestSync).not.toHaveBeenCalled();
+		await mgr.stop();
 	});
 });

@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
-import { modules, seedMailbox } from './helpers.testlib';
+import { modules, seedFolder, seedMailbox, seedMessage } from './helpers.testlib';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -188,5 +188,121 @@ describe('shared inbox unread is one shared truth across members', () => {
 		await seedSharedInboxWithUnread(t);
 		setSession('stranger', 'editor');
 		expect(await t.query(api.mail.mailbox.queries.accessible, {})).toEqual([]);
+	});
+});
+
+/** A personal inbox for `userId` holding one unread message. */
+async function seedPersonalInboxWithUnread(
+	t: TestConvex<typeof schema>,
+	userId: string,
+	address: string
+): Promise<Id<'mailboxes'>> {
+	const mailboxId = await seedMailbox(t, { userId, address });
+	const folderId = await seedFolder(t, mailboxId);
+	await seedMessage(t, mailboxId, { subject: `for ${address}` });
+	await t.run(async (ctx) => {
+		await ctx.db.patch(folderId, { unseenCount: 1, totalCount: 1 });
+	});
+	return mailboxId;
+}
+
+describe('newestUnreadInbox for one chosen mailbox', () => {
+	it('counts and lists only that mailbox, personal or team', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId: teamId } = await seedSharedInboxWithUnread(t);
+		const personalId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+
+		setSession('user-B', 'editor');
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(2);
+
+		const personal = await t.query(api.mail.mailbox.queries.newestUnreadInbox, {
+			mailboxId: personalId,
+		});
+		expect(personal.total).toBe(1);
+		expect(personal.messages.map((m) => m.subject)).toEqual(['for b@owlat.test']);
+		expect(personal.unavailable).toBeUndefined();
+
+		const team = await t.query(api.mail.mailbox.queries.newestUnreadInbox, {
+			mailboxId: teamId,
+		});
+		expect(team.total).toBe(1);
+		expect(team.messages.map((m) => m.subject)).toEqual(['help']);
+	});
+
+	it('answers unavailable for a chosen mailbox that was deleted', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId: teamId } = await seedSharedInboxWithUnread(t);
+		const personalId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(teamId, { status: 'deleted' });
+		});
+
+		setSession('user-B', 'editor');
+		expect(
+			await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId: teamId })
+		).toEqual({ total: 0, messages: [], unavailable: true });
+		// The all-inbox peek still counts the mailbox that is left.
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, {})).total).toBe(1);
+		expect(
+			(await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId: personalId })).total
+		).toBe(1);
+	});
+
+	it('answers unavailable for a chosen mailbox whose account was disconnected', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const accountId = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-B',
+				organizationId: 'org-1',
+				mailboxId,
+				imapHost: 'imap.example',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.example',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'b@owlat.test',
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(mailboxId, { kind: 'external', externalAccountId: accountId });
+		});
+
+		setSession('user-B', 'editor');
+		expect((await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId })).total).toBe(
+			1
+		);
+		await t.mutation(api.mail.external.accounts.disconnect, {});
+		expect(await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId })).toEqual({
+			total: 0,
+			messages: [],
+			unavailable: true,
+		});
+	});
+
+	it('reveals nothing about a mailbox the caller cannot read', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId: teamId } = await seedSharedInboxWithUnread(t);
+		const personalId = await seedPersonalInboxWithUnread(t, 'user-B', 'b@owlat.test');
+
+		// user-C is in the org but neither owns the personal inbox nor belongs
+		// to the team inbox.
+		setSession('user-C', 'editor');
+		for (const mailboxId of [personalId, teamId]) {
+			expect(await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId })).toEqual({
+				total: 0,
+				messages: [],
+				unavailable: true,
+			});
+		}
+		// A member of the team inbox who is signed into another organization.
+		setSession('user-B', 'editor', 'org-2');
+		expect(
+			await t.query(api.mail.mailbox.queries.newestUnreadInbox, { mailboxId: teamId })
+		).toEqual({ total: 0, messages: [], unavailable: true });
 	});
 });

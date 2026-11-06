@@ -9,6 +9,8 @@
  *   POST /reconcile — re-read the connectable accounts now (a mailbox was just
  *                    connected or re-authorized); answers 202 at once
  *   POST /remote-ops — an account has queued write-backs; replay them now
+ *   POST /sync — the user asked to check for mail; run a sync cycle on the
+ *                named accounts now
  *   GET  /health
  *   GET  /metrics — Prometheus process metrics; unauthenticated like the MTA's,
  *                   since the port is not published
@@ -63,6 +65,7 @@ const sendBody = v.object({
 	rawEmlUrl: v.string(),
 });
 const remoteOpsBody = v.object({ accountId: v.string() });
+const syncBody = v.object({ accountIds: v.array(v.string()) });
 
 /** Every body here is a few fields, or one message's recipient list. */
 const BODY_MAX_BYTES = 1024 * 1024;
@@ -143,12 +146,20 @@ function graphFailure(c: Context, accountId: string, recipients: string[], err: 
  */
 export type RemoteOpsRequester = (accountId: string) => boolean;
 
+/**
+ * Starts a sync cycle on each named account's live connection; answers how
+ * many of them the worker holds (`AccountManager.requestSync`).
+ */
+export type SyncRequester = (accountIds: string[]) => number;
+
 /** What the routes need from the rest of the worker, beyond Convex. */
 export interface ServerHooks {
 	/** Start a reconcile pass without waiting for it (AccountManager.requestReconcile). */
 	requestReconcile?: () => void;
 	/** Replay one account's write-back queue (AccountManager.requestRemoteOps). */
 	requestRemoteOps?: RemoteOpsRequester;
+	/** Check the named accounts for new mail now (AccountManager.requestSync). */
+	requestSync?: SyncRequester;
 	/** The process registry served on `GET /metrics`; the route is absent without it. */
 	metrics?: MetricsSource;
 }
@@ -172,6 +183,7 @@ export function createApp(
 	app.use('/test', auth);
 	app.use('/reconcile', auth);
 	app.use('/remote-ops', auth);
+	app.use('/sync', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
 
@@ -205,6 +217,14 @@ export function createApp(
 		const { accountId } = read.value;
 		if (!accountId) return c.json({ error: 'accountId required' }, 400);
 		return c.json({ accepted: hooks.requestRemoteOps?.(accountId) ?? false }, 202);
+	});
+
+	// Fire-and-forget like /remote-ops: the cycle runs on each connection, and
+	// the new mail reaches the user through Convex, not through this answer.
+	app.post('/sync', async (c) => {
+		const read = await readBody(c, syncBody, 'accountIds required');
+		if (!read.ok) return read.response;
+		return c.json({ accepted: hooks.requestSync?.(read.value.accountIds) ?? 0 }, 202);
 	});
 
 	app.post('/send', async (c) => {

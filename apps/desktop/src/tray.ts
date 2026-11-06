@@ -4,7 +4,8 @@
  * The Rust shell (src-tauri tray.rs) owns the icon; the main window's SPA
  * tells it what to show (`updateTray`) and whether to show it at all
  * (`setTrayPreferences`). The icon's "Pause Notifications" item asks the SPA
- * to flip its notification switch through `onTrayToggleNotifications`; its
+ * to flip its notification switch through `onTrayToggleNotifications`, and
+ * "Check for Mail" asks it to request a sync through `onTrayCheckMail`; its
  * message rows reuse the `notification-action` event (notifications.ts). No-op
  * outside Tauri.
  */
@@ -32,6 +33,8 @@ export interface TrayPreferences {
 	visible: boolean;
 	/** Windows and Linux: closing the main window hides it to the tray. */
 	closeToTray: boolean;
+	/** macOS: no Dock icon while the menu bar icon is shown. */
+	hideDockIcon: boolean;
 }
 
 export async function updateTray(content: TrayContent): Promise<void> {
@@ -52,6 +55,7 @@ export async function setTrayPreferences(preferences: TrayPreferences): Promise<
 		await invoke('set_tray_preferences', {
 			visible: preferences.visible,
 			closeToTray: preferences.closeToTray,
+			hideDockIcon: preferences.hideDockIcon,
 		});
 	} catch (e) {
 		console.warn('[desktop] Failed to apply the tray settings:', e);
@@ -61,4 +65,9 @@ export async function setTrayPreferences(preferences: TrayPreferences): Promise<
 /** The tray's "Pause Notifications" item was clicked. */
 export async function onTrayToggleNotifications(cb: () => void): Promise<UnlistenFn> {
 	return listen('tray://toggle-notifications', () => cb());
+}
+
+/** The tray's "Check for Mail" item was clicked. */
+export async function onTrayCheckMail(cb: () => void): Promise<UnlistenFn> {
+	return listen('tray://check-mail', () => cb());
 }

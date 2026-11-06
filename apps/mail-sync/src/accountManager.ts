@@ -111,6 +111,23 @@ export class AccountManager {
 		return true;
 	}
 
+	/**
+	 * The user asked to check for mail: run a sync cycle on each named account
+	 * the worker holds a connection for, and answer how many that was. An
+	 * account without one (still connecting, or never connectable) syncs on its
+	 * next connect anyway.
+	 */
+	requestSync(accountIds: readonly string[]): number {
+		let accepted = 0;
+		for (const accountId of new Set(accountIds)) {
+			const conn = this.connections.get(accountId);
+			if (!conn) continue;
+			conn.requestSync();
+			accepted += 1;
+		}
+		return accepted;
+	}
+
 	private async reconcile(): Promise<void> {
 		let accounts: ConnectableAccount[];
 		try {
