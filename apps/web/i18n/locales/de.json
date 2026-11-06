@@ -6752,6 +6752,20 @@
 				"attachments": "Anhänge",
 				"body": "Vollständige Nachricht",
 				"plainTextBody": "Nur-Text-Version",
+				"views": {
+					"preview": "Vorschau",
+					"text": "Als Text"
+				},
+				"preview": "Nachricht, wie sie beim Empfänger ankommt",
+				"previewHint": "So sieht der Empfänger die Nachricht. Bilder aus dem Netz bleiben blockiert, und nichts darin wird ausgeführt.",
+				"links": "Links und ihre Ziele",
+				"linkParts": {
+					"html": "In der Nachricht",
+					"text": "In der Nur-Text-Version",
+					"amp": "In der AMP-Version"
+				},
+				"linkNoText": "(kein Text)",
+				"linkMismatch": "Zeigt {shown}, führt zu {target}",
 				"sealing": "Versiegelung",
 				"sealed": "Versiegelt: signiert und für alle Empfänger verschlüsselt",
 				"notSealed": "Nicht versiegelt: geht als gewöhnliche E-Mail raus",

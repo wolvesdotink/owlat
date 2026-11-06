@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { McpActionReview, McpPendingAction } from '~/composables/useMcpPendingActions';
 import { formatCompactFileSize } from '~/utils/formatters';
+import { mcpReviewPreviewSrcdoc } from '~/utils/mcpReviewPreview';
 
 /**
  * `action` is the list's summary; the card loads the full review (every
@@ -86,6 +87,27 @@ const summaryLine = computed(() => {
 	if ('isInaccessible' in value) return '';
 	return value.subject || value.threadSubject || '';
 });
+
+/**
+ * A send previews its HTML part as the recipient sees it and lists its links;
+ * the parts as text are the secondary view. A drafted body is text only.
+ */
+const html = computed(() =>
+	details.value && 'html' in details.value && details.value.html ? details.value.html : null
+);
+const previewSrcdoc = computed(() => (html.value ? mcpReviewPreviewSrcdoc(html.value) : ''));
+const view = ref<'preview' | 'text'>('preview');
+const isPreviewShown = computed(() => html.value !== null && view.value === 'preview');
+const links = computed(() =>
+	details.value && 'links' in details.value ? details.value.links : []
+);
+const LINK_PARTS = ['html', 'text', 'amp'] as const;
+const linkGroups = computed(() =>
+	LINK_PARTS.map((part) => ({
+		part,
+		links: links.value.filter((link) => link.part === part),
+	})).filter((group) => group.links.length > 0)
+);
 
 function list(addresses: string[] | undefined) {
 	return addresses && addresses.length > 0 ? addresses.join(', ') : '';
@@ -179,30 +201,94 @@ function approve() {
 				</template>
 			</template>
 		</dl>
-		<!-- The whole body, never a clip: it is what approval sends. Focusable so a
-		     keyboard can scroll it. -->
 		<template v-if="isMessage && details && !isDraftGone && !isInaccessible">
-			<p
-				v-if="'body' in details && details.body"
+			<div v-if="html" class="mt-3 flex items-center gap-1" role="tablist">
+				<button
+					v-for="option in ['preview', 'text'] as const"
+					:key="option"
+					type="button"
+					role="tab"
+					:data-test="`view-${option}`"
+					class="rounded-full px-3 py-1 text-xs font-medium"
+					:class="
+						view === option ? 'bg-brand/10 text-brand' : 'text-text-secondary hover:bg-bg-surface'
+					"
+					:aria-selected="view === option"
+					@click="view = option"
+				>
+					{{ t(`${KEY}.views.${option}`) }}
+				</button>
+			</div>
+			<template v-if="isPreviewShown">
+				<p class="mt-2 text-xs text-text-tertiary">{{ t(`${KEY}.previewHint`) }}</p>
+				<!-- palette-ok: the recipient's paper, not our chrome; the message
+				     brings its own colours, so the frame stays white in either theme. -->
+				<iframe
+					:srcdoc="previewSrcdoc"
+					sandbox=""
+					referrerpolicy="no-referrer"
+					data-test="html-preview"
+					:title="t(`${KEY}.preview`)"
+					class="mt-2 h-56 w-full rounded border border-border-subtle bg-white"
+				/>
+			</template>
+			<!-- The whole body, never a clip: it is what approval sends. Focusable so a
+			     keyboard can scroll it. -->
+			<template v-else>
+				<p
+					v-if="'body' in details && details.body"
+					role="region"
+					tabindex="0"
+					:aria-label="t(`${KEY}.body`)"
+					data-test="body"
+					class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+				>
+					{{ details.body }}
+				</p>
+				<!-- The text/plain part goes out too; shown when it says something else. -->
+				<p
+					v-if="'plainTextBody' in details && details.plainTextBody"
+					role="region"
+					tabindex="0"
+					:aria-label="t(`${KEY}.plainTextBody`)"
+					data-test="plain-text-body"
+					class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+				>
+					{{ details.plainTextBody }}
+				</p>
+			</template>
+			<!-- A preview shows a link's text, never where it goes: every target, as sent. -->
+			<section
+				v-if="linkGroups.length > 0"
 				role="region"
 				tabindex="0"
-				:aria-label="t(`${KEY}.body`)"
-				data-test="body"
-				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+				:aria-label="t(`${KEY}.links`)"
+				data-test="links"
+				class="mt-3 max-h-40 overflow-y-auto rounded border border-border-subtle bg-bg-base p-3"
 			>
-				{{ details.body }}
-			</p>
-			<!-- The text/plain part goes out too; shown when it says something else. -->
-			<p
-				v-if="'plainTextBody' in details && details.plainTextBody"
-				role="region"
-				tabindex="0"
-				:aria-label="t(`${KEY}.plainTextBody`)"
-				data-test="plain-text-body"
-				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
-			>
-				{{ details.plainTextBody }}
-			</p>
+				<h4 class="text-xs font-medium text-text-tertiary">{{ t(`${KEY}.links`) }}</h4>
+				<div v-for="group in linkGroups" :key="group.part" class="mt-2 first:mt-1">
+					<p v-if="linkGroups.length > 1" class="text-xs text-text-tertiary">
+						{{ t(`${KEY}.linkParts.${group.part}`) }}
+					</p>
+					<ul class="space-y-1.5">
+						<li v-for="(link, index) in group.links" :key="index" class="text-xs">
+							<p v-if="link.text !== undefined" class="break-words text-text-secondary">
+								{{ link.text || t(`${KEY}.linkNoText`) }}
+							</p>
+							<p class="break-all font-mono text-text-primary">{{ link.href }}</p>
+							<p v-if="link.shownHost" data-test="link-mismatch" class="font-medium text-error">
+								{{
+									t(`${KEY}.linkMismatch`, {
+										shown: link.shownHost,
+										target: link.host ?? link.href,
+									})
+								}}
+							</p>
+						</li>
+					</ul>
+				</div>
+			</section>
 		</template>
 		<p v-if="notice" role="alert" class="mt-3 text-error">{{ notice }}</p>
 

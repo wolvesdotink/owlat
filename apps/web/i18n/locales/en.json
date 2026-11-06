@@ -6752,6 +6752,20 @@
 				"attachments": "Attachments",
 				"body": "Full message",
 				"plainTextBody": "Plain-text version",
+				"views": {
+					"preview": "Preview",
+					"text": "As text"
+				},
+				"preview": "Message as the recipient sees it",
+				"previewHint": "As the recipient sees it. Images from the web stay blocked, and nothing in it runs.",
+				"links": "Links and where they go",
+				"linkParts": {
+					"html": "In the message",
+					"text": "In the plain-text version",
+					"amp": "In the AMP version"
+				},
+				"linkNoText": "(no text)",
+				"linkMismatch": "Shows {shown}, goes to {target}",
 				"sealing": "Sealing",
 				"sealed": "Sealed: signed and encrypted for every recipient",
 				"notSealed": "Not sealed: goes out as ordinary email",

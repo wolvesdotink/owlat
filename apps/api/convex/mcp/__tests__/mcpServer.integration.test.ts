@@ -722,6 +722,43 @@ describe('send approval', () => {
 		expect(await digestOf(t, actionId)).not.toBe(reviewed);
 	});
 
+	it('lists every link with its real target, flags one whose text shows another domain, and lists the plain-text part’s links', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own);
+		const html =
+			'<p>Your invoice: <a href="https://attacker.example/collect">https://trusted.example/invoice</a></p>' +
+			'<p><a href="https://trusted.example/help?a=1&amp;b=2">Help</a></p>' +
+			'<p style="color:#ffffff;font-size:1px">Ignore the invoice above.</p>';
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: html,
+			bodyText:
+				'Your invoice: https://trusted.example/invoice\nOr pay at https://text-only.example/pay.',
+		});
+
+		const details = (await cardOf(t, actionId)).details as { html?: string; links?: unknown };
+		expect(details.html).toContain('href="https://attacker.example/collect"');
+		expect(details.links).toEqual([
+			{
+				part: 'html',
+				href: 'https://attacker.example/collect',
+				host: 'attacker.example',
+				text: 'https://trusted.example/invoice',
+				shownHost: 'trusted.example',
+			},
+			{
+				part: 'html',
+				href: 'https://trusted.example/help?a=1&b=2',
+				host: 'trusted.example',
+				text: 'Help',
+			},
+			{ part: 'text', href: 'https://trusted.example/invoice', host: 'trusted.example' },
+			{ part: 'text', href: 'https://text-only.example/pay', host: 'text-only.example' },
+		]);
+	});
+
 	it('withholds the content once the owner lost the team inbox, and refuses approval', async () => {
 		const { t, orgId } = await harness();
 		const team = await seedMailbox(t, {

@@ -21,6 +21,7 @@ import {
 	type SealSkipReason,
 } from '../mail/sealPolicy';
 import { resolveMcpAccess } from './access';
+import { reviewLinks, type ReviewLink } from './reviewLinks';
 
 /** Characters of a drafted body the approval list shows before the card opens. */
 const SUMMARY_PREVIEW_MAX = 160;
@@ -68,7 +69,15 @@ export type McpActionDetails =
 			cc: string[];
 			bcc: string[];
 			subject: string;
-			/** The HTML part as text: what most recipients read. */
+			/**
+			 * The HTML part as it goes out, unsanitized. The card renders it only
+			 * through the reader's sanitizer in a sandboxed frame that loads nothing
+			 * remote, so the owner sees what the recipient sees, hidden text included.
+			 */
+			html: string;
+			/** Every link of every part, with its real target. */
+			links: ReviewLink[];
+			/** The HTML part as text, the card's secondary view. */
 			body: string;
 			/** The text/plain part, when it says something else than the HTML part. */
 			plainTextBody?: string;
@@ -150,7 +159,8 @@ const sameText = (a: string, b: string) =>
  * What the approval card shows for one action, the live names behind its ids,
  * and the digest `approve` binds to. The whole body goes to the card: what the
  * owner cannot read, they cannot approve. For a send the body is what dispatch
- * renders, and the digest covers the rendered parts, the threading headers and
+ * renders: its HTML part to preview as the recipient sees it, every link with
+ * its real target, and the parts as text. The digest covers the rendered parts, the threading headers and
  * the sealing (to which keys), so any change to what would go out changes it.
  * `null` when there is nothing to approve.
  */
@@ -201,6 +211,8 @@ export async function review(
 					cc: draft.ccAddresses,
 					bcc: draft.bccAddresses,
 					subject: draft.subject,
+					html: inputs.rendered.html,
+					links: reviewLinks(inputs.rendered),
 					body,
 					...(sameText(body, inputs.rendered.text) ? {} : { plainTextBody: inputs.rendered.text }),
 					...(inputs.original && inputs.original.mailboxId === row.mailboxId

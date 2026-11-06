@@ -143,6 +143,22 @@ function visibleTextOf(innerHtml: string): string {
 	return htmlToPlainText(innerHtml);
 }
 
+/**
+ * Where a link really goes, and the host its visible text claims when that is
+ * another one: the same text-vs-href test the reader's marker applies. A link
+ * that is not http(s) (`javascript:`, `data:`) but whose text shows a domain
+ * also counts as claiming another host, because it goes nowhere near it.
+ */
+export function linkDestination(
+	href: string,
+	visibleText: string
+): { host: string | null; shownHost: string | null } {
+	const host = hostOf(href.trim());
+	const claimed = textClaimedHost(visibleText);
+	const shownHost = claimed && (!host || claimed !== normalizeHost(host)) ? claimed : null;
+	return { host, shownHost };
+}
+
 /** Muted inline marker exposing the real destination host of a deceptive link. */
 function mismatchMarker(realHost: string): string {
 	return ` <span style="color:#8a8a8a;font-size:0.85em">→ ${escapeHtml(realHost)}</span>`;

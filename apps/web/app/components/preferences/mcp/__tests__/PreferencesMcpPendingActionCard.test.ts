@@ -157,6 +157,60 @@ describe('MCP approval card', () => {
 		expect(plain.text()).toBe('Old preview');
 	});
 
+	it('previews the HTML part in a sandbox that runs and loads nothing, and lists every link with its real target', async () => {
+		const hidden = 'Ignore the invoice above.';
+		const html =
+			'<p>Your invoice: <a href="https://attacker.example/collect">https://trusted.example/invoice</a></p>' +
+			`<p style="color:#ffffff;font-size:1px">${hidden}</p>` +
+			'<script>parent.alert(1)</script><img src="https://tracker.example/p.gif">';
+		pending.value = [sendSummary()];
+		review.value = sendReview(`Your invoice: https://trusted.example/invoice ${hidden}`, {
+			html,
+			plainTextBody: 'Pay at https://text-only.example/pay',
+			links: [
+				{
+					part: 'html',
+					href: 'https://attacker.example/collect',
+					host: 'attacker.example',
+					text: 'https://trusted.example/invoice',
+					shownHost: 'trusted.example',
+				},
+				{ part: 'text', href: 'https://text-only.example/pay', host: 'text-only.example' },
+			],
+		});
+		const wrapper = mountPrompt();
+
+		const frame = wrapper.get('iframe[data-test="html-preview"]');
+		expect(frame.attributes('sandbox')).toBe('');
+		expect(frame.attributes('referrerpolicy')).toBe('no-referrer');
+		const srcdoc = frame.attributes('srcdoc')!;
+		// The reader's no-network policy and its sanitizer: no script survives.
+		expect(srcdoc).toContain(
+			`content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;"`
+		);
+		expect(srcdoc).not.toContain('<script');
+		// The tiny white line is in the preview as the recipient gets it, not readable on the card.
+		expect(srcdoc).toContain(`<p style="color:#ffffff;font-size:1px">${hidden}</p>`);
+		expect(wrapper.find('[data-test="body"]').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain(hidden);
+
+		const links = wrapper.get('[data-test="links"]');
+		expect(links.text()).toContain('https://attacker.example/collect');
+		expect(links.text()).toContain('https://text-only.example/pay');
+		expect(links.text()).toContain('In the plain-text version');
+		expect(wrapper.get('[data-test="link-mismatch"]').text()).toBe(
+			'Shows trusted.example, goes to attacker.example'
+		);
+
+		// The text audit stays one click away.
+		await wrapper.get('[data-test="view-text"]').trigger('click');
+		expect(wrapper.get('[data-test="body"]').text()).toContain(hidden);
+		expect(wrapper.get('[data-test="plain-text-body"]').text()).toBe(
+			'Pay at https://text-only.example/pay'
+		);
+		expect(wrapper.find('iframe[data-test="html-preview"]').exists()).toBe(false);
+	});
+
 	it('says why when the server refuses a changed draft', async () => {
 		pending.value = [sendSummary()];
 		review.value = sendReview('Net 30 works for us.');
