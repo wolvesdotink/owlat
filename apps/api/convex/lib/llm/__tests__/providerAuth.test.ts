@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { APICallError } from 'ai';
-import { isProviderAuthError } from '../retryPolicy';
+import { isProviderAuthError, isRetriableLlmError } from '../retryPolicy';
 import { LlmPartialUsageError } from '../partialUsage';
 
 function apiError(statusCode: number, message = 'provider error') {
@@ -38,5 +38,20 @@ describe('isProviderAuthError', () => {
 		expect(isProviderAuthError(apiError(400, 'Invalid API key'))).toBe(false);
 		expect(isProviderAuthError(new Error('provider down'))).toBe(false);
 		expect(isProviderAuthError(undefined)).toBe(false);
+	});
+
+	it('is not a 403 that refuses the content rather than the key', () => {
+		expect(
+			isProviderAuthError(apiError(403, 'The request was rejected by the content policy'))
+		).toBe(false);
+		expect(isProviderAuthError(apiError(403, 'Blocked by the safety system'))).toBe(false);
+	});
+});
+
+describe('isRetriableLlmError on a refused key', () => {
+	it('does not retry a bad key reported without a status', () => {
+		expect(isRetriableLlmError(new Error('Incorrect API key provided'))).toBe(false);
+		expect(isRetriableLlmError(new Error('invalid x-api-key'))).toBe(false);
+		expect(isRetriableLlmError({ code: 'invalid_api_key', message: 'no' })).toBe(false);
 	});
 });

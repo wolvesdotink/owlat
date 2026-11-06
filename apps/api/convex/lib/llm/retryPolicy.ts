@@ -110,10 +110,15 @@ export function errorStatus(error: unknown): number | undefined {
  */
 export function isProviderAuthError(error: unknown): boolean {
 	const status = errorStatus(error);
-	if (status === 401 || status === 403) return true;
-	if (status !== undefined) return false;
 	const e = providerError(error) as { message?: unknown; code?: unknown } | null;
 	const text = `${String(e?.code ?? '')} ${String(e?.message ?? '')}`.toLowerCase();
+	// Some providers answer a refused prompt with a 403 too. That refuses one
+	// message, not the key, so it stays a per-message failure.
+	if (status === 403 && /content.?(policy|filter|management)|safety|moderation/.test(text)) {
+		return false;
+	}
+	if (status === 401 || status === 403) return true;
+	if (status !== undefined) return false;
 	return /invalid.?api.?key|incorrect api key|invalid x-api-key|authentication.?(error|failed)/.test(
 		text
 	);
@@ -134,6 +139,8 @@ export function isRetriableLlmError(error: unknown): boolean {
 	// An error that says it is final (a spend-admission refusal): the
 	// retry would be refused the same way, or would buy what was refused.
 	if ((providerError(error) as { retriable?: unknown } | null)?.retriable === false) return false;
+	// A refused key fails every attempt the same way, with or without a status.
+	if (isProviderAuthError(error)) return false;
 	const status = errorStatus(error);
 	if (status !== undefined) {
 		if (status === 408 || status === 409 || status === 429) return true;

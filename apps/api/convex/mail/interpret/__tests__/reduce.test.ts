@@ -161,6 +161,27 @@ describe('applyInterpretation', () => {
 		expect(state.activity).toHaveLength(2);
 	});
 
+	it('records a different gate refusal on the same revision instead of replaying it', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		const refused = (errorCode: string, expectedRevision: number) =>
+			applyArgs({ kind: 'mail', id: messageId }, threadId, {
+				status: 'failed',
+				errorCode,
+				result: undefined,
+				expectedRevision,
+			});
+		await t.mutation(internal.mail.interpret.reduce.applyInterpretation, refused('ai_off', 0));
+		const brief = (await rows(t, threadId)).brief;
+		const again = await t.mutation(
+			internal.mail.interpret.reduce.applyInterpretation,
+			refused('provider_auth', brief!.interpretationRevision)
+		);
+		expect(again).not.toMatchObject({ outcome: 'replayed' });
+		const codes = (await rows(t, threadId)).interpretations.map((row) => row.errorCode);
+		expect(codes).toContain('provider_auth');
+	});
+
 	it('drops the write when a purge bumped the deletion epoch meanwhile', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId } = await seedMailThread(t);
