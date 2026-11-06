@@ -4,14 +4,15 @@
 //! Every function here runs on the main thread, and the recognizer is told to
 //! answer on the main queue, so the one session lives in a thread-local and
 //! needs no lock. The permission prompts answer on any thread; their callbacks
-//! hop back through `MainThread` and check that their session is still the
-//! current one. Only the audio tap runs elsewhere, and it touches nothing but
-//! its own request, whose buffer appends the framework allows from any thread.
+//! hop back through `MainThread` and carry on only while their session is
+//! still the current one (session.rs). Only the audio tap runs elsewhere, and
+//! it touches nothing but its own request, whose buffer appends the framework
+//! allows from any thread.
 //!
 //! The Speech framework arrived in macOS 10.15 and `AVAudioApplication` in 14;
 //! both are weakly linked (build.rs), so each is looked up before use.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -28,19 +29,18 @@ use objc2_foundation::{NSError, NSLocale, NSOperationQueue, NSString};
 use objc2_speech::{
     SFSpeechAudioBufferRecognitionRequest, SFSpeechRecognitionResult, SFSpeechRecognitionTask,
     SFSpeechRecognitionTaskHint, SFSpeechRecognizer, SFSpeechRecognizerAuthorizationStatus,
+    SFTranscription,
 };
 
-use super::model::{classify, DictationError, DictationEvent, Phrases};
+use super::model::{byte_offset, classify, DictationError, DictationEvent, Phrases, Segment};
+use super::session::{Session, Sessions};
 
 /// Delivers a session's events to the webview that started it.
 pub type Emit = Rc<dyn Fn(DictationEvent)>;
 /// Runs a task on the main thread.
 pub type MainThread = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
-struct Session {
-    id: u64,
-    /// The label of the webview that started it.
-    owner: String,
+struct State {
     lang: String,
     emit: Emit,
     phrases: Phrases,
@@ -56,8 +56,7 @@ struct Live {
 }
 
 thread_local! {
-    static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
-    static LAST_ID: Cell<u64> = const { Cell::new(0) };
+    static SESSIONS: RefCell<Sessions<State>> = const { RefCell::new(Sessions::new()) };
 }
 
 /// The input bus of the input node, the only one it has.
@@ -91,19 +90,16 @@ pub fn available(lang: &str) -> bool {
 /// Start a session for the webview `owner`, ending any other first. Its events
 /// go to `emit`; the returned id stops or cancels it.
 pub fn start(owner: String, lang: String, emit: Emit, main: MainThread) -> u64 {
-    if let Some(previous) = SESSION.take() {
-        end(previous, None);
-    }
-    let id = LAST_ID.get() + 1;
-    LAST_ID.set(id);
-    SESSION.set(Some(Session {
-        id,
-        owner,
+    let state = State {
         lang,
         emit,
         phrases: Phrases::default(),
         live: None,
-    }));
+    };
+    let (id, previous) = SESSIONS.with_borrow_mut(|s| s.start(owner, state));
+    if let Some(previous) = previous {
+        end(previous, None);
+    }
     if speech_framework() {
         authorize(id, main, false);
     } else {
@@ -114,9 +110,8 @@ pub fn start(owner: String, lang: String, emit: Emit, main: MainThread) -> u64 {
 
 /// Stop listening; the recognizer still delivers what it heard, then ends.
 pub fn stop(id: u64) {
-    let listening = SESSION.with_borrow(|s| {
-        s.as_ref()
-            .filter(|s| s.id == id)
+    let listening = SESSIONS.with_borrow(|s| {
+        s.get(id)
             .map(|s| s.live.as_ref().map(|live| live.request.clone()))
     });
     match listening {
@@ -132,48 +127,42 @@ pub fn stop(id: u64) {
 
 /// Stop listening and drop what has not been delivered yet.
 pub fn cancel(id: u64) {
-    if let Some(session) = take(|s| s.id == id) {
+    if let Some(session) = take(id) {
         end(session, None);
     }
 }
 
-/// The webview `owner` navigated or closed: its session, if any, goes with it.
+/// The webview `owner` navigated, closed or was hidden: its session, if any,
+/// ends. A hidden window keeps its page, which hears `End` and resets its mic.
 pub fn release(owner: &str) {
-    if let Some(mut session) = take(|s| s.owner == owner) {
-        if let Some(live) = session.live.take() {
-            teardown(&live);
-        }
+    if let Some(session) = SESSIONS.with_borrow_mut(|s| s.release(owner)) {
+        end(session, None);
     }
 }
 
-fn take(matches: impl Fn(&Session) -> bool) -> Option<Session> {
-    SESSION.with_borrow_mut(|s| {
-        if s.as_ref().is_some_and(matches) {
-            s.take()
-        } else {
-            None
-        }
-    })
+fn take(id: u64) -> Option<Session<State>> {
+    SESSIONS.with_borrow_mut(|s| s.take(id))
 }
 
 fn is_current(id: u64) -> bool {
-    SESSION.with_borrow(|s| s.as_ref().is_some_and(|s| s.id == id))
+    SESSIONS.with_borrow(|s| s.is_current(id))
 }
 
 /// End a session that is no longer the current one: release the microphone and
 /// the recognizer, then tell the webview.
-fn end(mut session: Session, error: Option<DictationError>) {
-    if let Some(live) = session.live.take() {
+fn end(session: Session<State>, error: Option<DictationError>) {
+    let mut state = session.state;
+    if let Some(live) = state.live.take() {
         teardown(&live);
     }
     if let Some(reason) = error {
-        (session.emit)(DictationEvent::Error { reason });
+        (state.emit)(DictationEvent::Error { reason });
     }
-    (session.emit)(DictationEvent::End);
+    (state.emit)(DictationEvent::End);
 }
 
 fn fail(id: u64, reason: DictationError) {
-    if let Some(session) = take(|s| s.id == id) {
+    if let Some(session) = take(id) {
         end(session, Some(reason));
     }
 }
@@ -188,9 +177,8 @@ fn teardown(live: &Live) {
 }
 
 fn stop_audio(id: u64) {
-    let engine = SESSION.with_borrow(|s| {
-        s.as_ref()
-            .filter(|s| s.id == id)
+    let engine = SESSIONS.with_borrow(|s| {
+        s.get(id)
             .and_then(|s| s.live.as_ref().map(|live| live.engine.clone()))
     });
     if let Some(engine) = engine {
@@ -248,11 +236,11 @@ fn authorize_microphone(id: u64, main: MainThread, asked: bool) {
 }
 
 fn listen(id: u64) {
-    let lang = SESSION.with_borrow(|s| s.as_ref().filter(|s| s.id == id).map(|s| s.lang.clone()));
+    let lang = SESSIONS.with_borrow(|s| s.get(id).map(|s| s.lang.clone()));
     let Some(lang) = lang else { return };
     match begin(id, &lang) {
         Ok(live) => {
-            let orphan = SESSION.with_borrow_mut(|s| match s.as_mut().filter(|s| s.id == id) {
+            let orphan = SESSIONS.with_borrow_mut(|s| match s.get_mut(id) {
                 Some(session) => {
                     session.live = Some(live);
                     None
@@ -335,22 +323,39 @@ fn utterance_ended(result: &SFSpeechRecognitionResult) -> bool {
         && unsafe { result.speechRecognitionMetadata() }.is_some()
 }
 
+/// A transcript's text and the timings of its segments.
+fn transcript(transcription: &SFTranscription) -> (String, Vec<Segment>) {
+    let text = unsafe { transcription.formattedString() }.to_string();
+    let segments = unsafe { transcription.segments() }
+        .iter()
+        .filter_map(|segment| unsafe {
+            Some(Segment {
+                at: byte_offset(&text, segment.substringRange().location)?,
+                start: segment.timestamp(),
+                duration: segment.duration(),
+            })
+        })
+        .collect();
+    (text, segments)
+}
+
 /// The recognizer's answer: a result, an error, or both.
 fn heard(id: u64, result: Option<&SFSpeechRecognitionResult>, error: Option<&NSError>) {
     let mut events = Vec::new();
     let mut done = false;
-    let emit = SESSION.with_borrow_mut(|s| {
-        let session = s.as_mut().filter(|s| s.id == id)?;
+    let emit = SESSIONS.with_borrow_mut(|s| {
+        let session = s.get_mut(id)?;
         if let Some(result) = result {
-            let text = unsafe { result.bestTranscription().formattedString() }.to_string();
+            let best = unsafe { result.bestTranscription() };
+            let (text, segments) = transcript(&best);
             let last = unsafe { result.isFinal() };
             if last || utterance_ended(result) {
-                if let Some(text) = session.phrases.phrase(&text) {
+                if let Some(text) = session.phrases.phrase(&text, &segments) {
                     events.push(DictationEvent::Phrase { text });
                 }
             } else {
                 events.push(DictationEvent::Partial {
-                    text: session.phrases.partial(&text),
+                    text: session.phrases.partial(&text, &segments),
                 });
             }
             done |= last;
@@ -368,7 +373,7 @@ fn heard(id: u64, result: Option<&SFSpeechRecognitionResult>, error: Option<&NSE
         emit(event);
     }
     if done {
-        if let Some(session) = take(|s| s.id == id) {
+        if let Some(session) = take(id) {
             end(session, None);
         }
     }

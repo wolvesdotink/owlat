@@ -144,7 +144,7 @@ fn main() {
         // dictation session the old one started.
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
-                dictation::release(webview.label());
+                dictation::release(webview.app_handle(), webview.label());
             }
         })
         // Capture OS-level file drops in Rust so `read_authorized_file` will
@@ -159,11 +159,15 @@ fn main() {
                 files::remember_dropped_paths(&allow, paths);
             }
             // macOS hides the main window on close; Windows and Linux hide it
-            // to the tray icon when there is one (window.rs).
+            // to the tray icon when there is one (window.rs). Hidden or gone,
+            // the window stops dictating: `Destroyed` never comes for a hidden one.
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                dictation::release(window.app_handle(), window.label());
                 window::hide_main_on_close(window, api);
             }
-            tauri::WindowEvent::Destroyed => dictation::release(window.label()),
+            tauri::WindowEvent::Destroyed => {
+                dictation::release(window.app_handle(), window.label())
+            }
             _ => {}
         })
         .setup(|app| {

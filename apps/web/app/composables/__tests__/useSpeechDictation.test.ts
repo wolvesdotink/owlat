@@ -270,6 +270,32 @@ describe('useSpeechDictation', () => {
 		expect(api.listening.value).toBe(false);
 	});
 
+	it('resets the mic when the shell ends the session on its own, as a hidden window does', async () => {
+		globals.__TAURI_INTERNALS__ = {};
+		nativeEngine(true);
+		const { api, phrases } = setup();
+		await flushPromises();
+		api.start();
+		await flushPromises();
+		shell({ kind: 'partial', text: 'ask for the agenda' });
+		expect(api.interim.value).toBe('ask for the agenda');
+
+		shell({ kind: 'end' });
+		expect(api.listening.value).toBe(false);
+		expect(api.interim.value).toBe('');
+		expect(api.error.value).toBeNull();
+		expect(phrases).toEqual([]);
+		expect(invokeMock).not.toHaveBeenCalledWith('dictation_stop', expect.anything());
+		expect(invokeMock).not.toHaveBeenCalledWith('dictation_cancel', expect.anything());
+
+		// Shown again, the window can dictate again.
+		api.start();
+		expect(api.listening.value).toBe(true);
+		expect(invokeMock.mock.calls.filter(([cmd]) => cmd === 'dictation_start')).toHaveLength(2);
+		await flushPromises();
+		shell({ kind: 'end' });
+	});
+
 	it('cancels the native session and ignores what it says after', async () => {
 		globals.__TAURI_INTERNALS__ = {};
 		nativeEngine(true);

@@ -40,6 +40,8 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, state: ShortcutState) {
     if shortcut == &toggle_shortcut() {
         if let Some(w) = app.get_webview_window("main") {
             if w.is_visible().unwrap_or(false) {
+                // Out of sight, the window stops dictating.
+                crate::dictation::release(app, w.label());
                 let _ = w.hide();
             } else {
                 window::show_main_window(app);

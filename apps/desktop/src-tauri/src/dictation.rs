@@ -11,13 +11,14 @@
 //! There is one session at a time, app-wide, since there is one microphone:
 //! starting one ends the one before. `dictation_start` returns the session's
 //! id, and stop and cancel act only on that id, so one window's late stop
-//! cannot end another window's session. A session also ends when its webview
-//! navigates or closes (`release`), so a page that went away never leaves the
-//! microphone open.
+//! cannot end another window's session (session.rs). A session also ends when
+//! its webview navigates, or its window closes or hides (`release`), so a page
+//! that went away or out of sight never leaves the microphone open.
 
 #[cfg(target_os = "macos")]
 mod macos;
 mod model;
+mod session;
 
 pub use model::DictationEvent;
 
@@ -110,13 +111,18 @@ pub fn dictation_cancel<R: Runtime>(app: AppHandle<R>, session: u64) -> Result<(
     }
 }
 
-/// End the session of the webview `label` (it navigated, or its window
-/// closed). Call on the main thread.
-pub fn release(label: &str) {
+/// End the session of the webview `label`: it navigated, or its window closed
+/// or hid. A hidden window's page stays loaded, so it hears `End` and resets
+/// its mic. Runs right away on the main thread, and is queued for it from any
+/// other.
+pub fn release<R: Runtime>(app: &AppHandle<R>, label: &str) {
     #[cfg(target_os = "macos")]
-    macos::release(label);
+    {
+        let label = label.to_owned();
+        let _ = app.run_on_main_thread(move || macos::release(&label));
+    }
     #[cfg(not(target_os = "macos"))]
-    let _ = label;
+    let _ = (app, label);
 }
 
 #[cfg(not(target_os = "macos"))]

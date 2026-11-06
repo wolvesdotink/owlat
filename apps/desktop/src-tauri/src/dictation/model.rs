@@ -73,71 +73,95 @@ pub fn classify(domain: &str, code: isize) -> Option<DictationError> {
     }
 }
 
+/// A word or group of words of a transcript, as the recognizer timed it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Segment {
+    /// Where it starts in the transcript, in bytes.
+    pub at: usize,
+    /// When it was spoken, in seconds since the session's audio began.
+    pub start: f64,
+    pub duration: f64,
+}
+
+/// The byte offset in `text` of the UTF-16 offset `index` (what an `NSRange`
+/// counts in), if it falls on a character.
+pub fn byte_offset(text: &str, index: usize) -> Option<usize> {
+    let mut units = 0;
+    for (at, c) in text.char_indices() {
+        if units == index {
+            return Some(at);
+        }
+        units += c.len_utf16();
+    }
+    (units == index).then_some(text.len())
+}
+
 /// Cuts the recognizer's transcripts into phrases.
 ///
-/// Each result carries the whole transcript so far, and an utterance ends at a
-/// pause (the result then has metadata) or when the session finishes. What
-/// follows an utterance's end depends on the macOS version: the transcript
-/// either carries on from the full text or starts over with the next
-/// utterance. The first result after a phrase tells which: a transcript that
-/// carries on starts with the text already sent, give or take a revision of
-/// its last words, while a fresh one shares at most a word with it. Text
-/// already sent as phrases is never sent again.
+/// Each result carries a transcript, and an utterance ends at a pause (the
+/// result then has metadata) or when the session finishes. What follows an
+/// utterance's end depends on the macOS version: the transcript either carries
+/// on from the full text or starts over with the next utterance. Text cannot
+/// tell the two apart, since people often open a sentence the way they opened
+/// the last one ("Yes." then "Yes, please."). The segments' timings can: they
+/// count from the start of the session's audio, so the words of a phrase
+/// already sent were spoken before its end, and every word after it is new.
+///
+/// Partial results may carry no timings (every segment's duration is zero).
+/// Without them, a transcript that starts with the whole text already sent
+/// carries on from it; anything else starts over. That guess only decides
+/// what a partial shows until the phrase arrives, or, should a phrase itself
+/// carry no timings, what it inserts.
 #[derive(Debug, Default)]
 pub struct Phrases {
     /// The transcript the phrases sent so far were cut from.
     sent: String,
-    /// Whether the transcript since the last phrase extends `sent`; `None`
-    /// until a result after it arrives.
-    extends: Option<bool>,
+    /// Where in the audio that transcript ends, if its segments were timed.
+    heard_until: Option<f64>,
+}
+
+fn timed(segments: &[Segment]) -> bool {
+    segments.iter().any(|s| s.duration > 0.0)
 }
 
 impl Phrases {
-    fn unsent<'t>(&mut self, transcript: &'t str) -> &'t str {
-        if self.sent.is_empty() {
+    fn unsent<'t>(&self, transcript: &'t str, segments: &[Segment]) -> &'t str {
+        if self.sent.is_empty() && self.heard_until.is_none() {
             return transcript;
         }
-        let sent = self.sent.as_str();
-        if !*self
-            .extends
-            .get_or_insert_with(|| carries_on(sent, transcript))
-        {
-            return transcript;
+        if let (Some(until), true) = (self.heard_until, timed(segments)) {
+            // A word belongs to what was sent when most of it was spoken
+            // before that ended, so a revision that shifts a word's timing a
+            // little still counts as the same word.
+            return segments
+                .iter()
+                .find(|s| s.start + s.duration / 2.0 >= until)
+                .and_then(|s| transcript.get(s.at..))
+                .unwrap_or("");
         }
-        transcript.strip_prefix(sent).unwrap_or_else(|| {
-            // A revision reached back into text already sent; what is new
-            // starts where that text ended.
-            let mut cut = sent.len().min(transcript.len());
-            while !transcript.is_char_boundary(cut) {
-                cut -= 1;
-            }
-            &transcript[cut..]
-        })
+        transcript
+            .strip_prefix(self.sent.as_str())
+            .unwrap_or(transcript)
     }
 
     /// A result still being heard: the text to show.
-    pub fn partial(&mut self, transcript: &str) -> String {
-        self.unsent(transcript).trim().to_string()
+    pub fn partial(&mut self, transcript: &str, segments: &[Segment]) -> String {
+        self.unsent(transcript, segments).trim().to_string()
     }
 
     /// The end of an utterance: the phrase to insert, if it says anything new.
-    pub fn phrase(&mut self, transcript: &str) -> Option<String> {
-        let phrase = self.unsent(transcript).trim().to_string();
+    pub fn phrase(&mut self, transcript: &str, segments: &[Segment]) -> Option<String> {
+        let phrase = self.unsent(transcript, segments).trim().to_string();
+        let end = timed(segments).then(|| {
+            segments
+                .iter()
+                .map(|s| s.start + s.duration)
+                .fold(self.heard_until.unwrap_or(0.0), f64::max)
+        });
         self.sent = transcript.to_string();
-        self.extends = None;
+        self.heard_until = end;
         (!phrase.is_empty()).then_some(phrase)
     }
-}
-
-/// Whether `transcript` continues `sent` rather than starting over: it shares
-/// at least half of `sent` as its start, ignoring case.
-fn carries_on(sent: &str, transcript: &str) -> bool {
-    let shared = sent
-        .chars()
-        .zip(transcript.chars())
-        .take_while(|(a, b)| a.to_lowercase().eq(b.to_lowercase()))
-        .count();
-    shared * 2 >= sent.chars().count()
 }
 
 #[cfg(test)]
@@ -204,61 +228,148 @@ mod tests {
         assert_eq!(language(&"a".repeat(36)), None);
     }
 
+    /// A transcript of words spoken one after another from `from` seconds on,
+    /// each taking `step` seconds, with its segments; `timed: false` drops
+    /// the timings, as partial results may.
+    fn heard(words: &str, from: f64, step: f64, timed: bool) -> (String, Vec<Segment>) {
+        let mut segments = Vec::new();
+        let mut at = 0;
+        for (i, word) in words.split(' ').enumerate() {
+            let (start, duration) = if timed {
+                (from + step * i as f64, step * 0.8)
+            } else {
+                (0.0, 0.0)
+            };
+            segments.push(Segment {
+                at,
+                start,
+                duration,
+            });
+            at += word.len() + 1;
+        }
+        (words.to_string(), segments)
+    }
+
+    /// `next` spoken after `first`, carrying on in one transcript: the
+    /// segments of `first` keep their timings.
+    fn carried(first: &(String, Vec<Segment>), next: &str, from: f64) -> (String, Vec<Segment>) {
+        let (more, tail) = heard(next, from, 0.4, true);
+        let offset = first.0.len() + 1;
+        let mut segments = first.1.clone();
+        segments.extend(tail.into_iter().map(|s| Segment {
+            at: s.at + offset,
+            ..s
+        }));
+        (format!("{} {more}", first.0), segments)
+    }
+
     #[test]
-    fn a_transcript_that_carries_on_is_cut_after_what_was_sent() {
+    fn a_new_utterance_that_opens_like_the_last_keeps_all_its_words() {
         let mut p = Phrases::default();
-        assert_eq!(p.partial("Tell them"), "Tell them");
+        let (yes, at) = heard("Yes.", 0.0, 0.4, true);
+        assert_eq!(p.phrase(&yes, &at), Some("Yes.".into()));
+        let (more, at) = heard("Yes please.", 1.5, 0.4, true);
+        assert_eq!(p.partial(&more, &at), "Yes please.");
+        assert_eq!(p.phrase(&more, &at), Some("Yes please.".into()));
+        // Also when the partials carry no timings.
+        let mut p = Phrases::default();
+        let (yes, at) = heard("Yes", 0.0, 0.4, true);
+        p.phrase(&yes, &at);
+        let (more, untimed) = heard("Yes please", 0.0, 0.0, false);
+        let (_, at) = heard("Yes please", 1.5, 0.4, true);
+        assert_eq!(p.partial(&more, &untimed), "please");
+        assert_eq!(p.phrase(&more, &at), Some("Yes please".into()));
+    }
+
+    #[test]
+    fn a_transcript_that_carries_on_after_a_pause_is_cut_after_what_was_sent() {
+        let mut p = Phrases::default();
+        let first = heard("Tell them Thursday works.", 0.0, 0.4, true);
+        assert_eq!(p.partial("Tell them", &first.1[..2]), "Tell them");
         assert_eq!(
-            p.phrase("Tell them Thursday works."),
+            p.phrase(&first.0, &first.1),
             Some("Tell them Thursday works.".into())
         );
-        assert_eq!(p.partial("Tell them Thursday works. And"), "And");
+        let and = carried(&first, "And", 3.0);
+        assert_eq!(p.partial(&and.0, &and.1), "And");
+        // Untimed, it still reads as carrying on.
+        let untimed: Vec<_> = and
+            .1
+            .iter()
+            .map(|s| Segment {
+                start: 0.0,
+                duration: 0.0,
+                ..*s
+            })
+            .collect();
+        assert_eq!(p.partial(&and.0, &untimed), "And");
+        // It may open like the phrase before it, too.
+        let next = carried(&first, "Tell them I said yes.", 3.0);
         assert_eq!(
-            p.phrase("Tell them Thursday works. And ask"),
-            Some("And ask".into())
+            p.phrase(&next.0, &next.1),
+            Some("Tell them I said yes.".into())
         );
         // The session's final result repeats the transcript: nothing new.
-        assert_eq!(p.phrase("Tell them Thursday works. And ask"), None);
+        assert_eq!(p.phrase(&next.0, &next.1), None);
     }
 
     #[test]
     fn a_transcript_that_starts_over_is_a_phrase_of_its_own() {
         let mut p = Phrases::default();
+        let first = heard("Tell them Thursday works.", 0.0, 0.4, true);
         assert_eq!(
-            p.phrase("Tell them Thursday works."),
+            p.phrase(&first.0, &first.1),
             Some("Tell them Thursday works.".into())
         );
-        assert_eq!(p.partial("And"), "And");
-        assert_eq!(
-            p.partial("And ask for the agenda"),
-            "And ask for the agenda"
-        );
-        assert_eq!(
-            p.phrase("And ask for the agenda."),
-            Some("And ask for the agenda.".into())
-        );
+        let (and, at) = heard("And", 0.0, 0.0, false);
+        assert_eq!(p.partial(&and, &at), "And");
+        let (next, at) = heard("And ask for the agenda.", 3.0, 0.4, true);
+        assert_eq!(p.partial(&next, &at), "And ask for the agenda.");
+        assert_eq!(p.phrase(&next, &at), Some("And ask for the agenda.".into()));
+        // Stopping repeats the last utterance as the final result.
+        assert_eq!(p.phrase(&next, &at), None);
     }
 
     #[test]
     fn a_revision_of_sent_text_does_not_send_it_again() {
         let mut p = Phrases::default();
-        p.phrase("Tell them thursday");
-        // The recognizer capitalised a word of the first phrase.
-        assert_eq!(p.partial("Tell them Thursday. Thanks"), ". Thanks");
-        assert_eq!(
-            p.phrase("Tell them Thursday. Thanks"),
-            Some(". Thanks".into())
-        );
-        // The cut lands on a character boundary.
+        let first = heard("Tell them thursday", 0.0, 0.4, true);
+        p.phrase(&first.0, &first.1);
+        // The recognizer capitalised a word of the first phrase and moved it
+        // a little.
+        let mut next = carried(&heard("Tell them Thursday.", 0.0, 0.4, true), "Thanks", 2.0);
+        next.1[2].start += 0.1;
+        assert_eq!(p.partial(&next.0, &next.1), "Thanks");
+        assert_eq!(p.phrase(&next.0, &next.1), Some("Thanks".into()));
+    }
+
+    #[test]
+    fn a_phrase_without_timings_is_cut_by_its_text() {
         let mut p = Phrases::default();
-        p.phrase("Tschüß");
-        assert_eq!(p.phrase("Tschü Ärger"), Some("Ärger".into()));
+        let (first, at) = heard("Tell them", 0.0, 0.0, false);
+        assert_eq!(p.phrase(&first, &at), Some("Tell them".into()));
+        let (next, at) = heard("Tell them Thursday.", 0.0, 0.0, false);
+        assert_eq!(p.phrase(&next, &at), Some("Thursday.".into()));
+        let (over, at) = heard("Thanks.", 0.0, 0.0, false);
+        assert_eq!(p.phrase(&over, &at), Some("Thanks.".into()));
+    }
+
+    #[test]
+    fn segment_ranges_convert_to_byte_offsets() {
+        // NSRange counts UTF-16 units: "ü" and "ß" are one each, "😀" two.
+        let text = "Tschüß Ärger 😀 ok";
+        assert_eq!(byte_offset(text, 0), Some(0));
+        assert_eq!(byte_offset(text, 7), Some(text.find('Ä').unwrap()));
+        assert_eq!(byte_offset(text, 16), Some(text.find("ok").unwrap()));
+        assert_eq!(byte_offset(text, 14), None);
+        assert_eq!(byte_offset(text, 18), Some(text.len()));
+        assert_eq!(byte_offset(text, 19), None);
     }
 
     #[test]
     fn a_silent_utterance_inserts_nothing() {
         let mut p = Phrases::default();
-        assert_eq!(p.phrase("  "), None);
-        assert_eq!(p.phrase(""), None);
+        assert_eq!(p.phrase("  ", &[]), None);
+        assert_eq!(p.phrase("", &[]), None);
     }
 }
