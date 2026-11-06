@@ -227,7 +227,8 @@ export const mailThreadsTables = {
 		briefTop: v.optional(briefTopValidator),
 		// The stale fence (mail/interpret/staleFence.ts): a re-verified signature
 		// narrowed what one of the thread's messages may be read for, so its AI
-		// interpretation is not used anywhere until an operator lifts the fence.
+		// interpretation is not used anywhere until the per-row reconciliation
+		// lifts the fence (mail/interpret/scopeReconcile.ts), or an operator does.
 		// Human state on its items stays.
 		interpretationStaleSince: v.optional(v.number()),
 		// Read on arrival: the derived placement of the newest
@@ -301,7 +302,9 @@ export const mailThreadsTables = {
 		.index('by_mailbox_digest_pending', ['mailboxId', 'digestPendingSince'])
 		// The pinned band: a mailbox's pinned threads in pin order (lower-bounded
 		// gt(0), since an unpinned thread's absent value sorts first).
-		.index('by_mailbox_pinned', ['mailboxId', 'pinnedAt']),
+		.index('by_mailbox_pinned', ['mailboxId', 'pinnedAt'])
+		// Fenced threads (migration 0070 reconciles the ones fenced before it).
+		.index('by_interpretation_stale', ['interpretationStaleSince']),
 
 	// Per-identity (mailbox) writing-voice profile, derived from the user's own
 	// SENT mail so advisory AI drafts sound like them. Recomputed lazily (see

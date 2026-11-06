@@ -436,8 +436,13 @@ export type ReembedJobStatus = (typeof REEMBED_JOB_STATUSES)[number];
 export const REEMBED_PAUSE_REASONS = ['budget', 'provider_unavailable', 'space_changed'] as const;
 export type ReembedPauseReason = (typeof REEMBED_PAUSE_REASONS)[number];
 
-/** Why an interpretation source waits for the thread to be opened. */
-export const INTERPRET_DEFER_REASONS = ['display_only'] as const;
+/**
+ * Why an interpretation source waits for the thread to be opened:
+ * `display_only`, the reader is its only consumer; `scope_reread`, its earlier
+ * read was withdrawn when its signature turned out to cover less of it, or it
+ * arrived while that was being reconciled.
+ */
+export const INTERPRET_DEFER_REASONS = ['display_only', 'scope_reread'] as const;
 export type InterpretDeferReason = (typeof INTERPRET_DEFER_REASONS)[number];
 
 // ── Security-scan thresholds ──────────────────────────────────────────────

@@ -17,7 +17,8 @@ import { openMessageBody } from '../../lib/messageBody';
 import { rowFactKeyLabel } from './factKeys';
 import { isPurgeActive } from './purgeActive';
 import { mailboxOwnAddresses } from '../identities';
-import { readResult, recentlyClosedItems } from './load';
+import { recentlyClosedItems } from './itemReads';
+import { readResult } from './load';
 import type { EXACT_WORDING_REASONS } from './schema';
 import type { SourceCounts } from './counters';
 
@@ -122,6 +123,14 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 		...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
 		...(row.pendingUpdate ? { pendingUpdate: await openHeld(row.pendingUpdate, locale) } : {}),
+		...(row.withdrawal
+			? {
+					withdrawn: {
+						at: row.withdrawal.at,
+						...(row.withdrawal.confirmation ? { confirmedAt: row.withdrawal.confirmation.at } : {}),
+					},
+				}
+			: {}),
 		askedAt: row.askedAt,
 		updatedAt: row.updatedAt,
 	};

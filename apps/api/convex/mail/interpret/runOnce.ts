@@ -71,10 +71,11 @@ export async function runOnce(
 	const mode: InterpretMode = loaded.mode;
 
 	// A fenced thread (staleFence.ts) is not read: nothing is recorded (a record
-	// would rebuild what the fence hides), and the source stops being outstanding.
+	// would rebuild what the fence hides), and the source waits for the thread's
+	// next open, after the reconciliation lifted the fence (scopeReconcile.ts).
 	const source = { source: args.source };
 	if (await ctx.runQuery(internal.mail.interpret.staleFence.isSourceFenced, source)) {
-		await ctx.runMutation(internal.mail.interpret.outstanding.settleRecorded, source);
+		await ctx.runMutation(internal.mail.interpret.scopeReconcile.deferFencedSource, source);
 		return {
 			status: 'skipped',
 			isReplayed: false,

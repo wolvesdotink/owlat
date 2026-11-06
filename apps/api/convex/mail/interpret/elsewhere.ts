@@ -35,7 +35,7 @@ import { openMessageBody } from '../../lib/messageBody';
 import { appLocaleOf, type AppLocale } from '@owlat/shared/appLocales';
 import { threadRefValidator, type ThreadRef } from '../../lib/validators/threadRef';
 import { itemResponsibilityValidator } from '../../lib/validators/threadBrief';
-import { isFencedThread, isInterpretationFenced } from './staleFence';
+import { isFencedThread, isInterpretationFenced, isWithdrawnItem } from './staleFence';
 
 /** People of this thread looked up (the most frequent counterparties first). */
 export const ELSEWHERE_PEOPLE = 2;
@@ -308,7 +308,11 @@ export const list = publicQuery({
 		// A fenced thread's items name no one to look up (staleFence.ts).
 		if (await isInterpretationFenced(ctx, args.threadRef)) return { groups: [] };
 		const own = await ownItems(ctx, args.threadRef);
-		const keys = counterpartiesOf(own).slice(0, ELSEWHERE_PEOPLE);
+		// A withdrawn item's parties came from a read that no longer holds.
+		const keys = counterpartiesOf(own.filter((item) => !isWithdrawnItem(item))).slice(
+			0,
+			ELSEWHERE_PEOPLE
+		);
 		const scopes = await scopesOf(ctx, session);
 		const limit = Math.max(
 			1,

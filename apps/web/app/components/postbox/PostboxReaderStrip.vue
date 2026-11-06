@@ -65,10 +65,20 @@ const waiting = computed(() => (props.strip.kind === 'brief' ? props.strip.waiti
 /** BriefItem's semantics: a proposal reads "Check this" and offers Track / Not a request. */
 const oweActions = computed(() => (owe.value ? stripItemActions(owe.value) : []));
 function itemText(item: BriefItemView): string {
+	if (item.withdrawn) return `${t('components.brief.item.reviewAgain')} ${item.text}`;
 	return item.verify === 'proposal'
 		? `${t('components.brief.item.checkThis')} ${item.text}`
 		: item.text;
 }
+/** Why a withdrawn item needs review again, and when it was confirmed before. */
+const oweWithdrawn = computed(() => {
+	const at = owe.value?.withdrawn?.confirmedAt;
+	if (!owe.value?.withdrawn) return null;
+	const why = t('components.brief.item.withdrawn');
+	return at === undefined
+		? why
+		: `${why} · ${t('components.brief.item.confirmedEarlier', { date: briefDueDate(at, locale.value) })}`;
+});
 const oweDue = computed(() =>
 	owe.value?.due?.at !== undefined ? briefDueDate(owe.value.due.at, locale.value) : null
 );
@@ -146,13 +156,19 @@ const linkHandlers = {
 							v-for="(action, i) in oweActions"
 							:key="action"
 							size="sm"
-							:variant="i === 0 ? 'primary' : 'ghost'"
+							:variant="i === 0 && !owe.withdrawn ? 'primary' : 'ghost'"
 							:data-testid="`strip-owe-${action}`"
 							@click="emit('react', owe, action)"
 						>
 							{{ t(briefActionLabelKey(action)) }}
 						</UiButton>
 					</span>
+					<span
+						v-if="oweWithdrawn"
+						class="basis-full pl-5.5 text-xs text-warning"
+						data-testid="strip-owe-withdrawn"
+						>{{ oweWithdrawn }}</span
+					>
 				</div>
 				<PostboxReaderStripLinks
 					v-bind="{ ...linkProps, ...linkHandlers }"

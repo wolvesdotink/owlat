@@ -105,6 +105,45 @@ const storeSlot = (t: Test, threadId: Id<'mailThreads'>) =>
 		});
 	});
 
+describe('the stale fence at the reducer', () => {
+	it('writes nothing of a run that loaded the thread before the fence', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedThread(t);
+		const source = { kind: 'mail' as const, id: messageId };
+		const brief = await t.run((ctx) =>
+			ctx.db
+				.query('threadBriefs')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.first()
+		);
+		await fence(t, threadId);
+
+		const outcome = await applyAsRun(t, {
+			source,
+			threadRef: { kind: 'mail', id: threadId },
+			mode: 'brief',
+			contentRevision: 'rev-2',
+			extractorVersion: 2,
+			sourceAt: Date.now(),
+			direction: 'inbound',
+			status: 'complete',
+			result: reduceResult({ facts: [] }),
+			sourceVersion: (await t.run((ctx) => sourceVersionOf(ctx, source)))!,
+			deletionEpoch: brief!.deletionEpoch,
+			expectedRevision: brief!.interpretationRevision,
+		});
+
+		expect(outcome.outcome).toBe('erased');
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(rows.map((r) => r.contentRevision)).toEqual(['rev-1']);
+	});
+});
+
 describe('the stale fence at the boundaries round 5 found open', () => {
 	it('drops the model summary from a digest snapshot taken before the fence', async () => {
 		const t = convexTest(schema, modules);

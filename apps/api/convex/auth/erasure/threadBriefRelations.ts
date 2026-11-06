@@ -63,6 +63,7 @@ export const THREAD_BRIEF_MEMBER_DESCENDANTS: readonly DescendantRelation[] = [
 		'delete',
 		WITH_THREAD
 	),
+	descendant('mailMessages', 'threadItems', 'withdrawal.messageId', 'delete', WITH_THREAD),
 	descendant(
 		'mailDrafts',
 		'draftResponsePlans',
