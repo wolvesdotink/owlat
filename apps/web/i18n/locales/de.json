@@ -12372,6 +12372,8 @@
 				"pageTitle": "Kontakte — Owlat",
 				"removeAria": "Kontakt entfernen",
 				"removedToast": "{contact} entfernt",
+				"resumeCardDav": "CardDAV-Änderungen wieder übernehmen",
+				"resumedToast": "{contact} folgt wieder CardDAV. Die nächste Synchronisierung holt die Angaben der Karte zurück.",
 				"searchPlaceholder": "Kontakte durchsuchen",
 				"subtitle": "Personen, denen du schreibst oder die du importierst, für die Autovervollständigung",
 				"title": "Kontakte",
@@ -12381,8 +12383,6 @@
 					"export": ".vcf exportieren",
 					"importHint": "Füge Personen aus einer .vcf-Datei hinzu, etwa aus dem Adressbuch deines Telefons",
 					"pickerTitle": "vCard-Datei auswählen",
-					"importedBadge": "Importiert",
-					"importedTooltip": "Von einem vCard-Import hinzugefügt oder ergänzt",
 					"imported": "Importiert: {created} neu, {merged} mit bestehenden Kontakten zusammengeführt.",
 					"stopped": "Der Import wurde abgebrochen. Es wurden keine Kontakte gespeichert. | Der Import wurde nach einem Kontakt abgebrochen, der gespeichert ist. | Der Import wurde nach {count} Kontakten abgebrochen. Diese sind gespeichert.",
 					"skipped": "Eine Karte ohne E-Mail-Adresse übersprungen. | {count} Karten ohne E-Mail-Adresse übersprungen.",
@@ -12392,6 +12392,51 @@
 					"empty": "Die Datei enthält keine Kontakte mit E-Mail-Adresse.",
 					"exportFailed": "Das Adressbuch konnte nicht exportiert werden. Versuch es noch einmal.",
 					"unreadable": "Die Datei konnte nicht gelesen werden. Versuch es noch einmal."
+				},
+				"source": {
+					"carddav": "CardDAV",
+					"carddavTooltip": "Aus dem verbundenen CardDAV-Adressbuch synchronisiert",
+					"carddavEdited": "Hier bearbeitet, folgt CardDAV nicht",
+					"carddavEditedTooltip": "Du hast diesen Kontakt hier geändert, deshalb ersetzen Änderungen auf dem CardDAV-Server ihn nicht mehr.",
+					"vcard": "vCard",
+					"vcardTooltip": "Von einem vCard-Import hinzugefügt oder ergänzt",
+					"mail": "Mail",
+					"mailTooltip": "Aus E-Mails oder von Hand hinzugefügt"
+				},
+				"carddav": {
+					"title": "CardDAV-Adressbuch",
+					"description": "Lies die Kontakte eines Adressbuchs auf einem anderen Server, etwa Nextcloud, Fastmail oder iCloud. Owlat liest es nur und sucht jede Stunde nach Änderungen. Das sind die Kontakte dieses Postfachs, nicht die Kontakte unter Zielgruppe.",
+					"sharedNote": "Alle Mitglieder dieses Team-Postfachs sehen die synchronisierten Kontakte.",
+					"connect": "CardDAV-Adressbuch verbinden",
+					"serverUrl": "Server-URL",
+					"serverUrlPlaceholder": "https://dav.example.com",
+					"username": "Benutzername",
+					"password": "Passwort",
+					"passwordHint": "Nimm ein App-Passwort, wenn dein Anbieter eins anbietet. Owlat speichert es verschlüsselt.",
+					"connectAction": "Verbinden",
+					"connectedToast": "Adressbuch verbunden. Die erste Synchronisierung läuft.",
+					"syncing": "{name} wird von {server} synchronisiert",
+					"lastSynced": "Zuletzt synchronisiert {time}",
+					"firstSync": "Erste Synchronisierung läuft",
+					"syncNow": "Jetzt synchronisieren",
+					"syncStarted": "Synchronisierung gestartet.",
+					"disconnect": "Trennen",
+					"disconnectTitle": "Dieses Adressbuch trennen?",
+					"disconnectBody": "Kontakte, die die Synchronisierung hinzugefügt hat, werden entfernt, außer du hast ihnen inzwischen geschrieben. Kontakte, die schon im Adressbuch waren, bleiben.",
+					"disconnectedToast": "Adressbuch getrennt.",
+					"truncated": "Das Adressbuch hat mehr Karten, als eine Synchronisierung liest ({max}). Der Rest wurde übersprungen.",
+					"syncFailed": "Die letzte Synchronisierung ist fehlgeschlagen: {reason}",
+					"errors": {
+						"auth": "Der Server hat Benutzername und Passwort nicht angenommen.",
+						"unreachable": "Der Server war nicht erreichbar.",
+						"not_carddav": "Der Server hat nicht wie ein CardDAV-Server geantwortet.",
+						"no_address_book": "Für dieses Konto wurde kein Adressbuch gefunden.",
+						"too_large": "Der Server hat mehr geschickt, als eine Synchronisierung liest.",
+						"failed": "Etwas ist schiefgelaufen. Versuch es später noch einmal.",
+						"invalid_url": "Gib die Serveradresse ein, beginnend mit https://.",
+						"forbidden": "Du kannst das Adressbuch dieses Postfachs nicht ändern.",
+						"already_connected": "Mit diesem Postfach ist schon ein Adressbuch verbunden."
+					}
 				}
 			},
 			"detail": {
@@ -16483,7 +16528,10 @@
 			"usePostboxContacts": {
 				"removeContact": "Kontakt entfernen",
 				"saveContact": "Kontakt speichern",
-				"importContacts": "Kontakte importieren"
+				"importContacts": "Kontakte importieren",
+				"importPhotos": "Kontaktbilder importieren",
+				"restoreContact": "Kontakt wiederherstellen",
+				"resumeCardDav": "CardDAV-Änderungen wieder übernehmen"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Filter erstellen",

@@ -12372,6 +12372,8 @@
 				"pageTitle": "Contacts — Owlat",
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
+				"resumeCardDav": "Resume CardDAV updates",
+				"resumedToast": "{contact} follows CardDAV again. The next sync brings back the card’s details.",
 				"searchPlaceholder": "Search contacts",
 				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
@@ -12381,8 +12383,6 @@
 					"export": "Export .vcf",
 					"importHint": "Add people from a .vcf file, such as your phone's address book",
 					"pickerTitle": "Choose a vCard file",
-					"importedBadge": "Imported",
-					"importedTooltip": "Added or updated by a vCard import",
 					"imported": "Imported: {created} new, {merged} merged with existing contacts.",
 					"stopped": "The import stopped. No contacts were saved. | The import stopped after one contact, which is saved. | The import stopped after {count} contacts. Those are saved.",
 					"skipped": "Skipped one card without an email address. | Skipped {count} cards without an email address.",
@@ -12392,6 +12392,51 @@
 					"empty": "That file has no contacts with an email address.",
 					"exportFailed": "The address book could not be exported. Try again.",
 					"unreadable": "That file could not be read. Try again."
+				},
+				"source": {
+					"carddav": "CardDAV",
+					"carddavTooltip": "Synced from the connected CardDAV address book",
+					"carddavEdited": "Edited here, not following CardDAV",
+					"carddavEditedTooltip": "You changed this contact here, so changes on the CardDAV server no longer replace it.",
+					"vcard": "vCard",
+					"vcardTooltip": "Added or updated by a vCard import",
+					"mail": "Mail",
+					"mailTooltip": "Added from mail or by hand"
+				},
+				"carddav": {
+					"title": "CardDAV address book",
+					"description": "Read the contacts of an address book on another server, such as Nextcloud, Fastmail or iCloud. Owlat only reads it and checks for changes every hour. These are this mailbox's contacts, not the Audience contacts.",
+					"sharedNote": "Every member of this team inbox sees the synced contacts.",
+					"connect": "Connect CardDAV address book",
+					"serverUrl": "Server URL",
+					"serverUrlPlaceholder": "https://dav.example.com",
+					"username": "Username",
+					"password": "Password",
+					"passwordHint": "Use an app password if your provider offers one. Owlat stores it encrypted.",
+					"connectAction": "Connect",
+					"connectedToast": "Address book connected. The first sync is running.",
+					"syncing": "Syncing {name} from {server}",
+					"lastSynced": "Last synced {time}",
+					"firstSync": "First sync in progress",
+					"syncNow": "Sync now",
+					"syncStarted": "Sync started.",
+					"disconnect": "Disconnect",
+					"disconnectTitle": "Disconnect this address book?",
+					"disconnectBody": "Contacts the sync added are removed unless you have mailed them since. Contacts that were already in the address book stay.",
+					"disconnectedToast": "Address book disconnected.",
+					"truncated": "The address book has more cards than one sync reads ({max}). The rest were skipped.",
+					"syncFailed": "The last sync failed: {reason}",
+					"errors": {
+						"auth": "The server did not accept the username and password.",
+						"unreachable": "The server could not be reached.",
+						"not_carddav": "That server did not answer as a CardDAV server.",
+						"no_address_book": "No address book was found for this account.",
+						"too_large": "The server sent more than one sync reads.",
+						"failed": "Something went wrong. Try again later.",
+						"invalid_url": "Enter the server address, starting with https://.",
+						"forbidden": "You can't change this mailbox's address book.",
+						"already_connected": "This mailbox already has an address book connected."
+					}
 				}
 			},
 			"detail": {
@@ -16483,7 +16528,10 @@
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
 				"saveContact": "Save contact",
-				"importContacts": "Import contacts"
+				"importContacts": "Import contacts",
+				"importPhotos": "Import contact pictures",
+				"restoreContact": "Restore contact",
+				"resumeCardDav": "Resume CardDAV updates"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",

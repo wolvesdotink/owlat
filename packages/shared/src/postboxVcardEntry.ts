@@ -5,7 +5,7 @@
  */
 
 import { normalizeEmail } from './address';
-import { VCARD_MAX_ADDRESSES, VCARD_MAX_PHONES } from './postboxVcardLimits';
+import { VCARD_MAX_ADDRESSES, VCARD_MAX_PHONES, VCARD_MAX_PHOTO_BYTES } from './postboxVcardLimits';
 import { isValidEmail } from './utils/validation';
 
 const VCARD_MAX_EMAIL_LENGTH = 254;
@@ -36,6 +36,16 @@ export interface VcardPostalAddress {
 	country?: string;
 }
 
+/** The raster formats a contact picture may be in; anything else is dropped. */
+const VCARD_PHOTO_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+export type VcardPhotoMediaType = (typeof VCARD_PHOTO_MEDIA_TYPES)[number];
+
+/** A card's inline picture: its type, read from the bytes, and the bytes in base64. */
+export interface VcardPhoto {
+	mediaType: VcardPhotoMediaType;
+	base64: string;
+}
+
 /** One address-book entry: the shape the import mutation takes and export reads. */
 export interface VcardContactEntry {
 	email: string;
@@ -43,6 +53,12 @@ export interface VcardContactEntry {
 	organization?: string;
 	phones?: VcardPhone[];
 	postalAddresses?: VcardPostalAddress[];
+	/**
+	 * The card's picture. Only the card's first address carries it, so one
+	 * picture becomes one stored image, and the import mutation never takes it
+	 * (`contactsPhotos.ts` does).
+	 */
+	photo?: VcardPhoto;
 }
 
 /** The components of a postal address, in vCard `ADR` order. */
@@ -139,6 +155,53 @@ export function mergeVcardAddresses(
 	return merged;
 }
 
+const BASE64_TEXT = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** The decoded size of a base64 string without padding errors. */
+function base64DecodedLength(base64: string): number {
+	const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+	return (base64.length / 4) * 3 - padding;
+}
+
+/** The leading bytes of a base64 string, decoded. */
+function base64Prefix(base64: string, bytes: number): number[] {
+	const chunk = base64.slice(0, Math.ceil(bytes / 3) * 4);
+	const binary = atob(chunk);
+	return Array.from(binary.slice(0, bytes), (char) => char.charCodeAt(0));
+}
+
+/** The raster type the bytes start with, or null (SVG and the rest are not pictures here). */
+function sniffPhotoType(prefix: readonly number[]): VcardPhotoMediaType | null {
+	const startsWith = (...magic: number[]) => magic.every((byte, i) => prefix[i] === byte);
+	if (startsWith(0xff, 0xd8, 0xff)) return 'image/jpeg';
+	if (startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return 'image/png';
+	if (startsWith(0x47, 0x49, 0x46, 0x38)) return 'image/gif';
+	if (startsWith(0x52, 0x49, 0x46, 0x46) && prefix.slice(8, 12).join() === '87,69,66,80') {
+		return 'image/webp';
+	}
+	return null;
+}
+
+/**
+ * A picture from base64 text, or null when it is not valid base64, is larger
+ * than {@link VCARD_MAX_PHOTO_BYTES} decoded, or is not a raster image. The type
+ * comes from the bytes, never from what the card claims.
+ */
+export function normalizeVcardPhoto(base64: string | undefined): VcardPhoto | null {
+	if (typeof base64 !== 'string') return null;
+	const text = base64.replace(/\s+/g, '');
+	if (text.length === 0 || text.length % 4 !== 0 || !BASE64_TEXT.test(text)) return null;
+	if (base64DecodedLength(text) > VCARD_MAX_PHOTO_BYTES) return null;
+	let prefix: number[];
+	try {
+		prefix = base64Prefix(text, 12);
+	} catch {
+		return null;
+	}
+	const mediaType = sniffPhotoType(prefix);
+	return mediaType ? { mediaType, base64: text } : null;
+}
+
 /**
  * The entry with every bound applied, or null when its address is not a
  * usable email address. Idempotent, so the server runs it again on what the
@@ -162,5 +225,7 @@ export function normalizeVcardImportEntry(raw: VcardContactEntry): VcardContactE
 		raw.postalAddresses?.slice(0, VCARD_MAX_ADDRESSES * 4)
 	);
 	if (addresses.length > 0) entry.postalAddresses = addresses;
+	const photo = raw.photo ? normalizeVcardPhoto(raw.photo.base64) : null;
+	if (photo) entry.photo = photo;
 	return entry;
 }

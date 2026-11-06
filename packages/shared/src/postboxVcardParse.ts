@@ -20,6 +20,7 @@ import {
 	VCARD_MAX_EMAILS_PER_CARD,
 	VCARD_MAX_ENTRIES,
 	VCARD_MAX_PHONES,
+	VCARD_MAX_PHOTO_BYTES,
 } from './postboxVcardLimits';
 
 export interface VcardParseResult {
@@ -40,7 +41,14 @@ export interface VcardParseResult {
 const MAX_PARAM_VALUES = 8;
 
 /** The properties the parser assembles; every other line is skipped. */
-const READ_PROPERTIES = new Set(['BEGIN', 'END', 'FN', 'N', 'ORG', 'EMAIL', 'TEL', 'ADR']);
+const READ_PROPERTIES = new Set(['BEGIN', 'END', 'FN', 'N', 'ORG', 'EMAIL', 'TEL', 'ADR', 'PHOTO']);
+
+/**
+ * Characters of a PHOTO line assembled before the picture counts as too large
+ * and the rest of the line is skipped: the base64 of the largest picture, plus
+ * room for the property name, its parameters and a `data:` prefix.
+ */
+const MAX_PHOTO_LINE_CHARS = Math.ceil(VCARD_MAX_PHOTO_BYTES / 3) * 4 + 256;
 
 const PHONE_TYPE_ALIASES: Record<string, VcardPhoneType> = {
 	cell: 'cell',
@@ -169,6 +177,18 @@ interface CardBuilder {
 	emails: string[];
 	phones: VcardPhone[];
 	addresses: VcardPostalAddress[];
+	/** The first inline PHOTO's base64, not yet checked. */
+	photoBase64?: string;
+}
+
+/**
+ * The base64 of an inline picture: `ENCODING=b` (3.0) or `BASE64` (2.1), or a
+ * 4.0 `data:` URI. A picture named by any other URI is not fetched.
+ */
+function inlinePhoto(line: ContentLine, encoding: string | undefined): string | undefined {
+	if (encoding === 'b' || encoding === 'base64') return line.value;
+	const match = /^data:[^,]*;base64,/i.exec(line.value);
+	return match ? line.value.slice(match[0].length) : undefined;
 }
 
 function newCard(): CardBuilder {
@@ -177,6 +197,10 @@ function newCard(): CardBuilder {
 
 function addProperty(card: CardBuilder, line: ContentLine): void {
 	const encoding = line.params.get('ENCODING')?.[0];
+	if (line.name === 'PHOTO') {
+		card.photoBase64 ??= inlinePhoto(line, encoding);
+		return;
+	}
 	if (encoding === 'b' || encoding === 'base64') return;
 	const raw =
 		encoding === 'quoted-printable'
@@ -235,12 +259,18 @@ function cardEntries(card: CardBuilder): VcardContactEntry[] {
 	const entries: VcardContactEntry[] = [];
 	const seen = new Set<string>();
 	for (const email of card.emails) {
+		// The picture goes to the first address only, which stores it once.
+		const photo =
+			entries.length === 0 && card.photoBase64 !== undefined
+				? { mediaType: 'image/jpeg' as const, base64: card.photoBase64 }
+				: undefined;
 		const entry = normalizeVcardImportEntry({
 			email,
 			displayName: cardDisplayName(card),
 			organization: card.organization,
 			phones: card.phones,
 			postalAddresses: card.addresses,
+			photo,
 		});
 		if (!entry || seen.has(entry.email)) continue;
 		seen.add(entry.email);
@@ -299,6 +329,8 @@ export function parseVcards(text: string): VcardParseResult {
 	let isInLine = false;
 	let isQuotedPrintable = false;
 	let isSoftBroken = false;
+	// Characters a PHOTO line may still add before it is dropped.
+	let photoBudget = Infinity;
 	const flush = () => {
 		if (pieces !== null) finishLine(pieces.join(''));
 		pieces = null;
@@ -308,6 +340,8 @@ export function parseVcards(text: string): VcardParseResult {
 		if (isContinuation || isSoftBroken) {
 			const piece = isContinuation ? raw.slice(1) : raw;
 			isSoftBroken = isQuotedPrintable && piece.endsWith('=');
+			photoBudget -= piece.length;
+			if (photoBudget < 0) pieces = null;
 			pieces?.push(isSoftBroken ? piece.slice(0, -1) : piece);
 			continue;
 		}
@@ -326,7 +360,10 @@ export function parseVcards(text: string): VcardParseResult {
 		// next line, which is not indented.
 		isQuotedPrintable = colon > 0 && /quoted-printable/i.test(raw.slice(0, colon));
 		isSoftBroken = isQuotedPrintable && raw.endsWith('=');
-		if (!READ_PROPERTIES.has(propertyName(raw))) continue;
+		const property = propertyName(raw);
+		if (!READ_PROPERTIES.has(property)) continue;
+		photoBudget = property === 'PHOTO' ? MAX_PHOTO_LINE_CHARS - raw.length : Infinity;
+		if (photoBudget < 0) continue;
 		pieces = [isSoftBroken ? raw.slice(0, -1) : raw];
 	}
 	flush();

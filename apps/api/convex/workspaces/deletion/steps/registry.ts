@@ -14,7 +14,7 @@ import type { TENANT_TABLES } from '../../../lib/tenantTables';
 
 // Distinct steps with per-row side effects the generic sweep can't express:
 // storage-blob purges (mediaAssets / semanticFiles / mailMessages / inboundMessages /
-// mailDrafts / mailSnippets / transactionalSends / the team reply tables / senderLogos) and
+// mailDrafts / mailSnippets / mailContacts / transactionalSends / the team reply tables / senderLogos) and
 // delegated cascades (contacts → permanentlyDeleteContactWithRelations, domains →
 // sendingDomainLifecycle.remove).
 // Every other table is a pure `take + delete` sweep, expressed inline below via
@@ -23,6 +23,7 @@ import { mediaAssetsStep } from './mediaAssets';
 import { accountExportArtifactsStep } from './accountExportArtifacts';
 import { semanticFilesStep } from './semanticFiles';
 import { mailSnippetsStep } from './mailSnippets';
+import { mailContactsStep } from './mailContacts';
 import { mailMessagesStep } from './mailMessages';
 import { mailMessagePartsStep } from './mailMessageParts';
 import { senderLogosStep } from './senderLogos';
@@ -223,7 +224,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	agentShadowDecisions: makeSweepStep('agentShadowDecisions'),
 	agentShadowScorecard: makeSweepStep('agentShadowScorecard'),
 	mailThreads: makeSweepStep('mailThreads'),
-	mailContacts: makeSweepStep('mailContacts'),
+	mailContacts: mailContactsStep,
+	mailCardDavAccounts: makeSweepStep('mailCardDavAccounts'),
 	mailSenderCategoryOverrides: makeSweepStep('mailSenderCategoryOverrides'),
 	mailSenderImageAllowlist: makeSweepStep('mailSenderImageAllowlist'),
 	mailAttachmentShares: mailAttachmentSharesStep,

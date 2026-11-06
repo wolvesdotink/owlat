@@ -247,6 +247,10 @@ function ownedBlobs(table: (typeof TENANT_TABLES)[number], row: Doc<TableNames>)
 		}
 		case 'transactionalPendingUploads':
 			return [(row as Doc<'transactionalPendingUploads'>).storageId];
+		case 'mailContacts': {
+			const stored = (row as Doc<'mailContacts'>).photoStorageId;
+			return stored ? [stored] : [];
+		}
 		default:
 			return [];
 	}
