@@ -33,6 +33,7 @@
  * Isolate-safe helpers, no Convex functions.
  */
 
+import type { IndexRange } from 'convex/server';
 import { getConvexSize, type Value } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
@@ -194,6 +195,56 @@ export type RangePosition = number | string | TiedPosition;
 export interface TiedPosition {
 	at: number;
 	key: string;
+}
+
+/** A row's place in an index range that ends in `_creationTime`. */
+export function tiedPositionOf(row: { _id: string; _creationTime: number }): TiedPosition {
+	return { at: row._creationTime, key: row._id };
+}
+
+/** Which creation times of an index range to read: all, exactly one, or every later one. */
+export type CreationTimeBound = { eq: number } | { gt: number } | undefined;
+
+type CreationTimeRange = IndexRange & {
+	eq(field: '_creationTime', value: number): IndexRange;
+	gt(field: '_creationTime', value: number): IndexRange;
+};
+
+/** `range` narrowed to the creation times `bound` names. */
+export function withinCreationTime(range: CreationTimeRange, bound: CreationTimeBound): IndexRange {
+	if (bound === undefined) return range;
+	return 'eq' in bound ? range.eq('_creationTime', bound.eq) : range.gt('_creationTime', bound.gt);
+}
+
+/**
+ * The first `n` rows of an index range that ends in `_creationTime`, strictly
+ * after `after`, for {@link scanRange}. Many rows can share one creation time
+ * (an import batch, one millisecond), so the rest of that creation time is read
+ * past the id first, then every later one. The index orders the rows of one
+ * creation time by id, and the ids of one table compare as strings in that
+ * order (as `lib/keysetMerge.ts` relies on). The rows passed over are charged,
+ * as every fetched row is. A position without an id (a cursor a
+ * creation-time-only walk wrote) reads its whole creation time again.
+ */
+export async function rowsAfterTied<Row extends { _id: string; _creationTime: number }>(
+	budget: DrainBudget,
+	after: RangePosition | undefined,
+	n: number,
+	query: (bound: CreationTimeBound) => AsyncIterable<Row> & { take(n: number): Promise<Row[]> }
+): Promise<Row[]> {
+	if (after === undefined) return query(undefined).take(n);
+	const { at, key } = typeof after === 'object' ? after : { at: Number(after), key: '' };
+	const rows: Row[] = [];
+	for await (const row of query({ eq: at })) {
+		if (row._id <= key) {
+			budget.charge(row);
+			continue;
+		}
+		rows.push(row);
+		if (rows.length === n) return rows;
+	}
+	budget.range();
+	return [...rows, ...(await query({ gt: at }).take(n - rows.length))];
 }
 
 function cursorPosition(cursor: PurgeCursor | undefined): RangePosition | undefined {

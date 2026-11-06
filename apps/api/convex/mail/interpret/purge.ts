@@ -49,7 +49,11 @@ import {
 	DRAIN_CHUNK,
 	drainShrinking,
 	drainSteps,
+	rowsAfterTied,
 	scanRange,
+	tiedPositionOf,
+	withinCreationTime,
+	type DrainBudget,
 	type JobPlan,
 	type PurgeRange,
 	type RangePosition,
@@ -287,31 +291,24 @@ const sourceActivityRange: PurgeRange = (ctx, { ref, cursor, budget, state }) =>
 	]);
 };
 
-/** A thread's items in creation order, strictly after `after`. */
+/** A thread's items in creation order, strictly after `after` (`rowsAfterTied`). */
 export function itemsAfter(
 	ctx: MutationCtx,
 	ref: ThreadRef,
 	after: RangePosition | undefined,
-	n: number
+	n: number,
+	budget: DrainBudget
 ) {
-	const at = afterTime(after);
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('threadItems')
-				.withIndex('by_mail_thread', (q) =>
-					at === undefined
-						? q.eq('mailThreadId', ref.id)
-						: q.eq('mailThreadId', ref.id).gt('_creationTime', at)
+	const items = ctx.db.query('threadItems');
+	return rowsAfterTied(budget, after, n, (bound) =>
+		ref.kind === 'mail'
+			? items.withIndex('by_mail_thread', (q) =>
+					withinCreationTime(q.eq('mailThreadId', ref.id), bound)
 				)
-				.take(n)
-		: ctx.db
-				.query('threadItems')
-				.withIndex('by_conversation_thread', (q) =>
-					at === undefined
-						? q.eq('conversationThreadId', ref.id)
-						: q.eq('conversationThreadId', ref.id).gt('_creationTime', at)
+			: items.withIndex('by_conversation_thread', (q) =>
+					withinCreationTime(q.eq('conversationThreadId', ref.id), bound)
 				)
-				.take(n);
+	);
 }
 
 /** 4. The thread's items: strip and rebuild, or clear the links and delete. */
@@ -320,8 +317,8 @@ const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => itemsAfter(ctx, run.ref, after, n),
-		(row) => row._creationTime,
+		(after, n) => itemsAfter(ctx, run.ref, after, n, run.budget),
+		tiedPositionOf,
 		async (item) => {
 			const fate = await stripItem(ctx, run.ref, item, purged, run.budget);
 			if (fate === 'untouched') return true;
@@ -349,18 +346,15 @@ export const factsRange: PurgeRange = async (ctx, run) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => {
-			const at = afterTime(after);
-			return ctx.db
-				.query('threadFacts')
-				.withIndex('by_mail_thread', (q) =>
-					at === undefined
-						? q.eq('mailThreadId', threadId)
-						: q.eq('mailThreadId', threadId).gt('_creationTime', at)
-				)
-				.take(n);
-		},
-		(row) => row._creationTime,
+		(after, n) =>
+			rowsAfterTied(run.budget, after, n, (bound) =>
+				ctx.db
+					.query('threadFacts')
+					.withIndex('by_mail_thread', (q) =>
+						withinCreationTime(q.eq('mailThreadId', threadId), bound)
+					)
+			),
+		tiedPositionOf,
 		async (fact) => {
 			const fate = await stripFact(ctx, fact, purged, redactedTextOf(run.job.kind));
 			if (fate === 'untouched') return true;

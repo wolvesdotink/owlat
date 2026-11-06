@@ -6,16 +6,17 @@
  * fence lift included, before its last page.
  */
 
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { interpretationSourceKey } from '../../lib/validators/threadBrief';
 import { mailMessageSources } from './purge';
 import {
+	rowsAfterTied,
 	scanRange,
+	tiedPositionOf,
+	withinCreationTime,
 	type DrainBudget,
 	type PurgeRange,
-	type RangePosition,
-	type TiedPosition,
 } from './purgeDrain';
 import { sourceVersionOf } from './sourceVersion';
 
@@ -43,49 +44,6 @@ async function isReadStale(
 	return false;
 }
 
-/**
- * The thread's first `n` messages after `after`, in index order. Many
- * messages can share one creation time (an import batch, one millisecond), so
- * a position is the creation time with the message's id: the rest of that
- * creation time is read past the id, then every later one. The index orders
- * the rows of one creation time by id, and the ids of one table compare as
- * strings in that order (as `lib/keysetMerge.ts` relies on). The rows passed
- * over are charged, as every fetched row is.
- */
-async function messagesAfter(
-	ctx: MutationCtx,
-	threadId: Id<'mailThreads'>,
-	after: RangePosition | undefined,
-	n: number,
-	budget: DrainBudget
-): Promise<Doc<'mailMessages'>[]> {
-	const messages = () => ctx.db.query('mailMessages');
-	if (after === undefined) {
-		return messages()
-			.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-			.take(n);
-	}
-	// A position without an id (none is written) reads its whole creation time again.
-	const { at, key } = typeof after === 'object' ? after : { at: Number(after), key: '' };
-	const rows: Doc<'mailMessages'>[] = [];
-	const tied = messages().withIndex('by_thread', (q) =>
-		q.eq('threadId', threadId).eq('_creationTime', at)
-	);
-	for await (const message of tied) {
-		if (message._id <= key) {
-			budget.charge(message);
-			continue;
-		}
-		rows.push(message);
-		if (rows.length === n) return rows;
-	}
-	budget.range();
-	const later = await messages()
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId).gt('_creationTime', at))
-		.take(n - rows.length);
-	return [...rows, ...later];
-}
-
 /** 0. The thread's messages, when the narrowed ones are not known (`isScanNeeded`). */
 export const narrowedReadsRange: PurgeRange = async (ctx, run) => {
 	if (!run.job.isScanNeeded || run.ref.kind !== 'mail') return { isDone: true };
@@ -93,8 +51,13 @@ export const narrowedReadsRange: PurgeRange = async (ctx, run) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => messagesAfter(ctx, threadId, after, n, run.budget),
-		(row): TiedPosition => ({ at: row._creationTime, key: row._id }),
+		(after, n) =>
+			rowsAfterTied(run.budget, after, n, (bound) =>
+				ctx.db
+					.query('mailMessages')
+					.withIndex('by_thread', (q) => withinCreationTime(q.eq('threadId', threadId), bound))
+			),
+		tiedPositionOf,
 		async (message) => {
 			if (!message.inboundSignatureInfo?.scope) return true;
 			if (!(await isReadStale(ctx, message, run.budget))) return true;

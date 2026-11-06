@@ -1082,6 +1082,80 @@ describe('per-row reconciliation of a narrowed read', () => {
 		}
 	);
 
+	describe.each([
+		['more of them than one read takes', false],
+		['a row at a time', true],
+	])('rows the narrowed read wrote in one millisecond, paged %s', (_paging, isNarrow) => {
+		/** The narrowed read's item and fact, each copied past a read's size at one creation time. */
+		async function seedTiedClaims(t: Test) {
+			const { messageId, threadId } = await seedLegacy(t);
+			await interpret(t, messageId, threadId, {
+				contentRevision: 'rev-old-read',
+				result: reduceResult({ items: [trailerItem], facts: [trailerFact] }),
+			});
+			const [item] = await itemsOf(t, threadId);
+			await withCreationTime(item!._creationTime + 1, () =>
+				t.run(async (ctx) => {
+					const [fact] = await ctx.db
+						.query('threadFacts')
+						.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+						.collect();
+					const { _id: _i, _creationTime: _ic, ...itemFields } = item!;
+					const { _id: _f, _creationTime: _fc, ...factFields } = fact!;
+					for (let i = 0; i < DRAIN_CHUNK + 6; i++) {
+						await ctx.db.insert('threadItems', itemFields);
+						await ctx.db.insert('threadFacts', factFields);
+					}
+				})
+			);
+			return { messageId, threadId };
+		}
+
+		/** Re-verify, then walk the withdraw job a slice at a time; the fence holds until the last. */
+		async function withdrawInSlices(
+			t: Test,
+			messageId: Id<'mailMessages'>,
+			threadId: Id<'mailThreads'>
+		) {
+			await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+			const jobId = (await withdrawJobOf(t, threadId))!._id;
+			let slices = 0;
+			for (let isDone = false; !isDone; slices++) {
+				// Every slice moves: the walk ends instead of re-reading the tie.
+				expect(slices).toBeLessThan(400);
+				if (isNarrow) {
+					// Every scan reads a row at a time, as after a slice that stopped inside a row.
+					await t.run(async (ctx) => {
+						const job = (await ctx.db.get(jobId))!;
+						await ctx.db.patch(jobId, { cursor: { ...job.cursor, isNarrow: true } });
+					});
+				}
+				isDone = await t.run((ctx) => runPurgeJob(ctx, jobId, unitBudget(100)));
+				const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+				expect(thread.interpretationStaleSince === undefined).toBe(isDone);
+			}
+			return slices;
+		}
+
+		it('withdraws every item before it lifts the fence', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId, threadId } = await seedTiedClaims(t);
+			const slices = await withdrawInSlices(t, messageId, threadId);
+			const items = await itemsOf(t, threadId);
+			expect(items).toHaveLength(DRAIN_CHUNK + 7);
+			expect(items.filter((i) => i.withdrawal?.messageId !== messageId)).toHaveLength(0);
+			expect(slices).toBeGreaterThan(1);
+		});
+
+		it('removes every fact before it lifts the fence', async () => {
+			const t = convexTest(schema, modules);
+			const { messageId, threadId } = await seedTiedClaims(t);
+			const slices = await withdrawInSlices(t, messageId, threadId);
+			expect(await factTexts(t, threadId)).toHaveLength(0);
+			expect(slices).toBeGreaterThan(1);
+		});
+	});
+
 	it('keeps a source that was already deferred deferred when a fenced run meets it', async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, threadId, otherId } = await seedTwoMessages(t);

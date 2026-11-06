@@ -91,6 +91,7 @@ import {
 	drainSteps,
 	findPurgeJob,
 	scanRange,
+	tiedPositionOf,
 	type DrainBudget,
 	type JobPlan,
 	type PurgeRange,
@@ -253,8 +254,8 @@ const withdrawItemsRange: PurgeRange = (ctx, run) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => itemsAfter(ctx, run.ref, after, n),
-		(row) => row._creationTime,
+		(after, n) => itemsAfter(ctx, run.ref, after, n, run.budget),
+		tiedPositionOf,
 		async (item) => {
 			const fate = await withdrawItem(ctx, run.ref, item, purged, run.budget);
 			if (fate === 'untouched') return true;
