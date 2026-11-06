@@ -36,7 +36,8 @@ export const mailContactImportEntryValidator = v.object({
  * Where a CardDAV-synced address-book row came from: the account, the card's
  * URL and the etag it had when the row was written. `isRowCreatedBySync` tells
  * a row the sync inserted from one it merged into (built from mail or a vCard
- * import first), which a removal of the card or a disconnect leaves in place.
+ * import first, or edited by a person since), which a removal of the card or a
+ * disconnect leaves in place and a changed card only merges into.
  */
 export const mailContactCardDavSourceValidator = v.object({
 	accountId: v.id('mailCardDavAccounts'),

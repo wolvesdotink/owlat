@@ -16524,7 +16524,8 @@
 				"removeContact": "Kontakt entfernen",
 				"saveContact": "Kontakt speichern",
 				"importContacts": "Kontakte importieren",
-				"importPhotos": "Kontaktbilder importieren"
+				"importPhotos": "Kontaktbilder importieren",
+				"restoreContact": "Kontakt wiederherstellen"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Filter erstellen",

@@ -11,6 +11,7 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
 import type * as SsrfGuard from '../../lib/ssrfGuard';
+import type * as ContactsMerge from '../contactsMerge';
 import { modules, seedMailbox } from './helpers.testlib';
 
 const sessionMock = vi.hoisted(() => ({ userId: 'owner-user' }));
@@ -37,7 +38,25 @@ const server = vi.hoisted(() => ({
 	version: 0,
 	hasSyncReport: true,
 	requests: [] as Array<{ method: string; url: string; authorization: string | null }>,
+	/** Holds the next multiget answer, already read, until the test releases it. */
+	gate: null as null | { reached: () => void; release: Promise<void> },
 }));
+
+/** Every row each `_applyChanges` transaction took out of the book, by transaction. */
+const detachesByTransaction = vi.hoisted(() => new Map<object, number>());
+
+vi.mock('../contactsMerge', async () => {
+	const actual = await vi.importActual<typeof ContactsMerge>('../contactsMerge');
+	return {
+		...actual,
+		detachSyncedRow: vi.fn(
+			async (ctx: object, row: Parameters<typeof actual.detachSyncedRow>[1]) => {
+				detachesByTransaction.set(ctx, (detachesByTransaction.get(ctx) ?? 0) + 1);
+				return actual.detachSyncedRow(ctx as Parameters<typeof actual.detachSyncedRow>[0], row);
+			}
+		),
+	};
+});
 
 vi.mock('../../lib/ssrfGuard', async () => {
 	const actual = await vi.importActual<typeof SsrfGuard>('../../lib/ssrfGuard');
@@ -129,7 +148,7 @@ async function fakeDav(url: string, init: RequestInit = {}): Promise<Response> {
 	}
 	if (method === 'REPORT' && body.includes('addressbook-multiget')) {
 		const hrefs = [...body.matchAll(/<d:href>([^<]+)<\/d:href>/g)].map((m) => m[1]!);
-		return multistatus(
+		const answer = multistatus(
 			hrefs.flatMap((href) => {
 				const card = server.cards.get(href);
 				return card
@@ -142,6 +161,13 @@ async function fakeDav(url: string, init: RequestInit = {}): Promise<Response> {
 					: [];
 			})
 		);
+		const gate = server.gate;
+		if (gate) {
+			server.gate = null;
+			gate.reached();
+			await gate.release;
+		}
+		return answer;
 	}
 	return new Response('', { status: 404 });
 }
@@ -207,7 +233,18 @@ beforeEach(() => {
 	server.version = 0;
 	server.hasSyncReport = true;
 	server.requests.length = 0;
+	server.gate = null;
+	detachesByTransaction.clear();
 });
+
+/** Hold the next multiget answer; `reached` resolves once a sync is waiting on it. */
+function holdNextMultiget(): { reached: Promise<void>; release: () => void } {
+	let release!: () => void;
+	let reached!: () => void;
+	const isReached = new Promise<void>((resolve) => (reached = resolve));
+	server.gate = { reached, release: new Promise<void>((resolve) => (release = resolve)) };
+	return { reached: isReached, release };
+}
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -378,6 +415,118 @@ describe('CardDAV address-book sync', () => {
 		expect([...book.keys()]).toEqual(['grace@example.com']);
 		expect(book.get('grace@example.com')!.displayName).toBe('Grace Hopper');
 		expect(book.get('grace@example.com')!.cardDavSource).toBeUndefined();
+	});
+
+	it('keeps a name the person edited when the card changes later', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		putCard('ada', ['FN:Ada Lovelace', 'EMAIL:ada@example.com', 'ORG:Analytical']);
+		await connect(t, mailboxId);
+
+		await t.mutation(api.mail.contacts.upsert, {
+			mailboxId,
+			email: 'ada@example.com',
+			displayName: 'Ada (mine)',
+		});
+		putCard('ada', [
+			'FN:Ada King',
+			'EMAIL:ada@example.com',
+			'ORG:Babbage',
+			'TEL;TYPE=CELL:+44 20 7946 0000',
+		]);
+		await sync(t, mailboxId);
+
+		const ada = (await contactsOf(t, mailboxId)).get('ada@example.com')!;
+		expect(ada.displayName).toBe('Ada (mine)');
+		expect(ada.organization).toBe('Analytical');
+		// What the person did not edit still follows the card.
+		expect(ada.phones).toEqual([{ value: '+44 20 7946 0000', type: 'cell' }]);
+		expect(ada.cardDavSource!.etag).toBe(server.cards.get(`${BOOK}ada.vcf`)!.etag);
+	});
+
+	it('runs one sync of an account at a time', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		putCard('ada', ['FN:Ada', 'EMAIL:ada@example.com']);
+		await connect(t, mailboxId);
+
+		putCard('ada', ['FN:Ada King', 'EMAIL:ada@example.com']);
+		const held = holdNextMultiget();
+		const first = sync(t, mailboxId);
+		await held.reached;
+		const requestsBefore = server.requests.length;
+		await sync(t, mailboxId);
+		// The second sync found the first one running and asked the server nothing.
+		expect(server.requests.length).toBe(requestsBefore);
+
+		held.release();
+		await first;
+		expect((await contactsOf(t, mailboxId)).get('ada@example.com')!.displayName).toBe('Ada King');
+		expect(await accountOf(t, mailboxId)).toMatchObject({
+			status: 'ok',
+			syncToken: `tok-${server.version}`,
+		});
+	});
+
+	it('drops the work of a sync whose claim expired, so a removed contact stays removed', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		putCard('ada', ['FN:Ada', 'EMAIL:ada@example.com']);
+		putCard('linus', ['FN:Linus', 'EMAIL:linus@example.org']);
+		await connect(t, mailboxId);
+
+		putCard('linus', ['FN:Linus Torvalds', 'EMAIL:linus@example.org']);
+		const held = holdNextMultiget();
+		const stale = sync(t, mailboxId);
+		await held.reached;
+		// The first sync stalls past its claim; a later one reads the removal.
+		vi.setSystemTime(Date.now() + 60 * 60 * 1000);
+		deleteCard('linus');
+		await sync(t, mailboxId);
+		expect((await contactsOf(t, mailboxId)).has('linus@example.org')).toBe(false);
+
+		held.release();
+		await stale;
+		expect((await contactsOf(t, mailboxId)).has('linus@example.org')).toBe(false);
+		expect((await accountOf(t, mailboxId))!.syncToken).toBe(`tok-${server.version}`);
+	});
+
+	it('takes a large removal out in bounded transactions', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		await connect(t, mailboxId);
+		const account = (await accountOf(t, mailboxId))!;
+		// 120 cards of ten addresses each, all gone from the server; no sync token,
+		// so the next sync reads the full listing.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(account._id, { syncToken: undefined });
+			for (let card = 0; card < 120; card++) {
+				for (let n = 0; n < 10; n++) {
+					await ctx.db.insert('mailContacts', {
+						mailboxId,
+						email: `person${card}-${n}@example.org`,
+						useCount: 0,
+						lastUsedAt: 1,
+						createdAt: 1,
+						cardDavSource: {
+							accountId: account._id,
+							href: `${ORIGIN}${BOOK}card${card}.vcf`,
+							etag: '"1"',
+							isRowCreatedBySync: true,
+						},
+					});
+				}
+			}
+		});
+
+		await sync(t, mailboxId);
+
+		expect((await contactsOf(t, mailboxId)).size).toBe(0);
+		const perTransaction = [...detachesByTransaction.values()];
+		expect(perTransaction.reduce((sum, rows) => sum + rows, 0)).toBe(1_200);
+		expect(perTransaction.length).toBeGreaterThan(1);
+		// The cap on rows one removal transaction takes (REMOVED_CARDS_PER_COMMIT cards).
+		expect(Math.max(...perTransaction)).toBeLessThanOrEqual(500);
 	});
 
 	it('refuses another member’s mailbox before contacting the server', async () => {

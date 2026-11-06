@@ -40,6 +40,12 @@ const DUE_SYNCS_PER_TICK = 25;
 const DETACH_BATCH_SIZE = 200;
 /** Rows of a book one known-cards page reads. */
 const KNOWN_CARDS_PAGE_LIMIT = 1_000;
+/**
+ * How long a sync holds its account. Longer than an action may run (ten
+ * minutes), so a live sync never loses its claim, and a sync that died
+ * without releasing it blocks the account only this long.
+ */
+export const CARDDAV_SYNC_CLAIM_MS = 15 * 60 * 1000;
 
 async function accountOfMailbox(
 	ctx: Pick<QueryCtx, 'db'>,
@@ -184,11 +190,32 @@ export const _insertAccount = internalMutation({
 	},
 });
 
-/** The account a sync runs for, sealed password included. Internal only. */
-export const _getSyncAccount = internalQuery({
-	args: { accountId: v.id('mailCardDavAccounts') },
-	handler: async (ctx, args) => ctx.db.get(args.accountId),
+/**
+ * Claim the account for one sync run and return it, sealed password included
+ * (internal only). Null while another run's claim is live: that run already
+ * reads the book, and two runs interleaving their commits could bring back a
+ * card the other removed. A claim lapses after `CARDDAV_SYNC_CLAIM_MS`.
+ */
+export const _claimSync = internalMutation({
+	args: { accountId: v.id('mailCardDavAccounts'), runToken: v.string() },
+	handler: async (ctx, args): Promise<Doc<'mailCardDavAccounts'> | null> => {
+		const account = await ctx.db.get(args.accountId);
+		if (!account) return null;
+		const now = Date.now();
+		if (account.syncRunToken && (account.syncRunExpiresAt ?? 0) > now) return null;
+		const claim = { syncRunToken: args.runToken, syncRunExpiresAt: now + CARDDAV_SYNC_CLAIM_MS };
+		await ctx.db.patch(account._id, claim);
+		return { ...account, ...claim };
+	},
 });
+
+/** Whether `runToken` still holds the account; false once it is gone or claimed by another run. */
+function isHeldBy(
+	account: Doc<'mailCardDavAccounts'> | null,
+	runToken: string
+): account is Doc<'mailCardDavAccounts'> {
+	return account !== null && account.syncRunToken === runToken;
+}
 
 /** One page of the cards the book already holds, with the etag each was written at. */
 export const _knownCards = internalQuery({
@@ -222,11 +249,13 @@ const syncedEntryValidator = v.object({
  * Write one page of a sync's changes: changed cards with their entries, and
  * cards the server no longer has. Idempotent, so a sync that fails between
  * pages leaves a book the next sync finishes. Pictures the rows do not take
- * are deleted here, as are all of them when the account is gone.
+ * are deleted here, as are all of them when the run no longer holds the
+ * account (disconnected, or claimed by a later run after this one's lapsed).
  */
 export const _applyChanges = internalMutation({
 	args: {
 		accountId: v.id('mailCardDavAccounts'),
+		runToken: v.string(),
 		changed: v.array(
 			v.object({ href: v.string(), etag: v.string(), entries: v.array(syncedEntryValidator) })
 		),
@@ -235,14 +264,14 @@ export const _applyChanges = internalMutation({
 	handler: async (ctx, args) => {
 		const unusedPhotos: Array<Id<'_storage'>> = [];
 		const account = await ctx.db.get(args.accountId);
-		if (!account) {
+		if (!isHeldBy(account, args.runToken)) {
 			for (const card of args.changed) {
 				for (const { photoStorageId } of card.entries) {
 					if (photoStorageId) unusedPhotos.push(photoStorageId);
 				}
 			}
 			await deletePhotos(ctx, unusedPhotos);
-			return { isAccountGone: true };
+			return { isStopped: true };
 		}
 		const now = Date.now();
 		for (const card of args.changed) {
@@ -275,14 +304,15 @@ export const _applyChanges = internalMutation({
 			}
 		}
 		await deletePhotos(ctx, unusedPhotos);
-		return { isAccountGone: false };
+		return { isStopped: false };
 	},
 });
 
-/** How a sync ended: the new sync state, or why it failed. */
+/** How a sync ended: the new sync state, or why it failed. Releases the run's claim. */
 export const _finishSync = internalMutation({
 	args: {
 		accountId: v.id('mailCardDavAccounts'),
+		runToken: v.string(),
 		outcome: v.union(
 			v.object({
 				ok: v.literal(true),
@@ -295,10 +325,13 @@ export const _finishSync = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
-		if (!account) return;
+		// A run that lost its claim leaves the state to the run that holds it.
+		if (!isHeldBy(account, args.runToken)) return;
 		const now = Date.now();
+		const release = { syncRunToken: undefined, syncRunExpiresAt: undefined };
 		if (args.outcome.ok) {
 			await ctx.db.patch(account._id, {
+				...release,
 				status: 'ok',
 				syncToken: args.outcome.syncToken,
 				ctag: args.outcome.ctag,
@@ -310,6 +343,7 @@ export const _finishSync = internalMutation({
 			return;
 		}
 		await ctx.db.patch(account._id, {
+			...release,
 			status: 'error',
 			lastErrorCode: args.outcome.errorCode,
 			updatedAt: now,

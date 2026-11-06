@@ -46,6 +46,12 @@ export const mailContactsCardDavTables = {
 		nextSyncAt: v.number(),
 		/** The last "Sync now", which is refused again within a minute. */
 		syncRequestedAt: v.optional(v.number()),
+		/**
+		 * The sync that holds the account (`_claimSync`) and when its claim lapses.
+		 * Only the holder's writes land, so overlapping syncs cannot interleave.
+		 */
+		syncRunToken: v.optional(v.string()),
+		syncRunExpiresAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})

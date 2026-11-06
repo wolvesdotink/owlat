@@ -142,6 +142,52 @@ describe('accountManagement.exportUserData — Postbox address book', () => {
 		expect(JSON.stringify(accounts)).not.toContain('sealed-');
 	});
 
+	it('exports a contact picture with its bytes, through the staged artifact', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1', 'me@example.com');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'editor');
+		const mine = await seedMailbox(t, {
+			organizationId: 'org-x',
+			domain: 'example.com',
+			userId: 'auth-user-1',
+			address: 'me@example.com',
+		});
+		const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+		await t.run(async (ctx) => {
+			const photoStorageId = await ctx.storage.store(new Blob([png], { type: 'image/png' }));
+			await ctx.db.insert('mailContacts', {
+				mailboxId: mine,
+				email: 'ada@example.org',
+				photoStorageId,
+				useCount: 0,
+				lastUsedAt: 1,
+				createdAt: 1,
+			});
+			await ctx.db.insert('mailContacts', {
+				mailboxId: mine,
+				email: 'grace@example.org',
+				useCount: 0,
+				lastUsedAt: 2,
+				createdAt: 2,
+			});
+		});
+
+		const staged: string[] = [];
+		const exported = await exportAllUserData(t, 'auth-user-1', (url) => staged.push(url));
+		const rows = exported.personalData.mailContacts as Array<Record<string, unknown>>;
+		const byEmail = new Map(rows.map((row) => [row['email'], row]));
+		expect(byEmail.get('ada@example.org')!['photo']).toEqual({
+			mediaType: 'image/png',
+			contentBase64: Buffer.from(png).toString('base64'),
+			contentAvailability: 'available',
+		});
+		expect(byEmail.get('grace@example.org')!['photo']).toBeUndefined();
+		expect(staged).toHaveLength(1);
+	});
+
 	it('counts the address book in the pre-run manifest', async () => {
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1', 'me@example.com');

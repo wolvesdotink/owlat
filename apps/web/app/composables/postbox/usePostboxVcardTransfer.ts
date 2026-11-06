@@ -10,7 +10,6 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { VcardContactEntry } from '@owlat/shared/postboxVcard';
 import type { VcardImportOutcome } from '~/lib/postboxVcardTransfer';
 
 export type { VcardImportOutcome };
@@ -51,16 +50,6 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		}
 	}
 
-	/** Write one entry back, as the import would: the Undo of removing an imported row. */
-	async function restoreEntry(entry: VcardContactEntry) {
-		if (!mailboxId.value) return { ok: false } as const;
-		const { email, displayName, organization, phones, postalAddresses } = entry;
-		return importOp.run({
-			mailboxId: mailboxId.value,
-			entries: [{ email, displayName, organization, phones, postalAddresses }],
-		});
-	}
-
 	/** Download the whole address book as a .vcf file; false when it could not. */
 	async function exportBook(): Promise<boolean> {
 		const target = mailboxId.value;
@@ -82,5 +71,5 @@ export function usePostboxVcardTransfer(mailboxId: Ref<Id<'mailboxes'> | null>) 
 		}
 	}
 
-	return { isImporting, isExporting, importFile, restoreEntry, exportBook };
+	return { isImporting, isExporting, importFile, exportBook };
 }

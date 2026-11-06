@@ -27,6 +27,7 @@ import {
 	readMailMessageBodiesForAccountExport,
 } from '../lib/messageBodyExport';
 import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
+import { bytesToBase64 } from '../lib/bytes';
 import {
 	artifactScope,
 	exportPageSize,
@@ -66,18 +67,26 @@ const USER_SCOPED_EXPORT_QUERIES: Record<
 	threadViewerState: internal.auth.accountExportThreadBriefQueries.listOwnThreadViewerState,
 };
 
-/** The address-book resources, which page by one personal mailbox. */
-const ADDRESS_BOOK_EXPORT_QUERIES: Record<
-	'mailContacts' | 'mailCardDavAccounts',
-	FunctionReference<
-		'query',
-		'internal',
-		{ userId: string; mailboxId: Id<'mailboxes'>; paginationOpts: PaginationOptions }
-	>
-> = {
-	mailContacts: internal.auth.accountExportContactQueries.listMailboxContacts,
-	mailCardDavAccounts: internal.auth.accountExportContactQueries.listMailboxCardDavAccounts,
-};
+/**
+ * A contact's picture for the export: its bytes, base64, staged as the row's
+ * content like any other blob. A picture whose blob is gone says so.
+ */
+async function readContactPhotoForExport(
+	ctx: ActionCtx,
+	storageId: Id<'_storage'>
+): Promise<{
+	mediaType: string | null;
+	contentBase64: string | null;
+	contentAvailability: 'available' | 'missing';
+}> {
+	const blob = await ctx.storage.get(storageId);
+	if (!blob) return { mediaType: null, contentBase64: null, contentAvailability: 'missing' };
+	return {
+		mediaType: blob.type || null,
+		contentBase64: bytesToBase64(await blob.arrayBuffer()),
+		contentAvailability: 'available',
+	};
+}
 
 async function contentAddressedArtifactKey(scope: string, bytes: Uint8Array): Promise<string> {
 	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
@@ -89,6 +98,35 @@ async function artifactUrl(ctx: ActionCtx, storageId: Id<'_storage'>): Promise<s
 	const url = await sealedBlobUrl(ctx.storage, storageId, 'application/json');
 	if (!url) throw new Error('Could not create account export artifact URL');
 	return url;
+}
+
+/**
+ * One page of a personal address book or its CardDAV account. A contact with
+ * a picture stages the picture's bytes as its content.
+ */
+async function exportAddressBookPage(
+	ctx: ActionCtx,
+	resource: 'mailContacts' | 'mailCardDavAccounts',
+	args: { userId: string; mailboxId: Id<'mailboxes'>; paginationOpts: PaginationOptions },
+	stage: (rowId: string, content: Record<string, unknown>) => Promise<StagedAccountExportContent>
+): Promise<SerializedAccountExportPage> {
+	if (resource === 'mailCardDavAccounts') {
+		return serializeAccountExportPage(
+			await ctx.runQuery(internal.auth.accountExportContactQueries.listMailboxCardDavAccounts, args)
+		);
+	}
+	const result = await ctx.runQuery(
+		internal.auth.accountExportContactQueries.listMailboxContacts,
+		args
+	);
+	const page = await Promise.all(
+		result.page.map(async (contact) => {
+			if (!contact.photoStorageId) return contact;
+			const photo = await readContactPhotoForExport(ctx, contact.photoStorageId);
+			return { ...contact, ...(await stage(contact._id, { photo })) };
+		})
+	);
+	return serializeAccountExportPage({ ...result, page });
 }
 
 interface StagedAccountExportContent {
@@ -417,12 +455,8 @@ export const exportUserDataPage = authedAction({
 		}
 		if (args.resource === 'mailContacts' || args.resource === 'mailCardDavAccounts') {
 			if (!args.mailboxId) throwInvalidInput('Address book export page requires mailboxId');
-			const result = (await ctx.runQuery(ADDRESS_BOOK_EXPORT_QUERIES[args.resource], {
-				userId: args.userId,
-				mailboxId: args.mailboxId,
-				paginationOpts,
-			})) as PaginationResult<Record<string, unknown>>;
-			return serializeAccountExportPage(result);
+			const pageArgs = { userId: args.userId, mailboxId: args.mailboxId, paginationOpts };
+			return exportAddressBookPage(ctx, args.resource, pageArgs, stage);
 		}
 		if (args.resource === 'threadBriefs') {
 			if (!args.mailboxId) throwInvalidInput('Thread brief export page requires mailboxId');

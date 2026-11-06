@@ -37,9 +37,9 @@ const {
 	refetch: refetchList,
 	save,
 	remove,
+	restore,
 } = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
-const { restoreEntry } = usePostboxVcardTransfer(mailboxId);
 const composeNav = usePostboxComposeNav();
 const { showToast } = useToast();
 
@@ -119,11 +119,12 @@ async function submit() {
 }
 
 // Removing a contact confirms with a toast that offers an immediate Undo, which
-// re-adds the contact from the captured details. An imported row goes back
-// through the import, so its phone numbers and addresses come back with it.
+// puts the whole row back from the copy the page holds: details, source and,
+// while the server still keeps it, the picture.
 async function removeContact(c: MailContact) {
 	const result = await remove(c._id);
 	if (!result.ok) return;
+	const photoRemovalId = result.result?.photoRemovalId;
 	showToast(
 		t('dashboard.postbox.contacts.removedToast', { contact: c.displayName || c.email }),
 		'success',
@@ -131,15 +132,7 @@ async function removeContact(c: MailContact) {
 			action: {
 				label: t('dashboard.postbox.contacts.undo'),
 				onAction: () => {
-					if (c.importedAt !== undefined) {
-						void restoreEntry(c);
-						return;
-					}
-					void save({
-						email: c.email,
-						displayName: c.displayName,
-						organization: c.organization,
-					});
+					void restore(c, photoRemovalId);
 				},
 			},
 		}

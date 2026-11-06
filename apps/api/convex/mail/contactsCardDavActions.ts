@@ -5,22 +5,27 @@
  * finds the address book behind a server URL and seals the password; `_sync`
  * reads what changed and hands it to the commits in `contactsCardDav.ts`.
  *
- * Every request goes through the SSRF guard (`fetchGuarded`), so a server URL
- * cannot reach a private or internal address, and every answer is read up to
- * a byte cap. Requests carrying the password refuse redirects and stay on the
- * origin discovery settled on (see `contactsCardDavProtocol.ts`). Only the
- * unauthenticated `/.well-known/carddav` probe follows redirects.
+ * Every request goes through the SSRF guard (`contactsCardDavTransport.ts`),
+ * so a server URL cannot reach a private or internal address, and every
+ * answer is read up to a byte cap. Requests carrying the password refuse
+ * redirects and stay on the origin discovery settled on (see
+ * `contactsCardDavProtocol.ts`). Only the unauthenticated `/.well-known/carddav`
+ * probe follows redirects.
  */
 
 import { v } from 'convex/values';
-import { parseVcards, VCARD_MAX_CARDS, type VcardContactEntry } from '@owlat/shared/postboxVcard';
+import {
+	parseVcards,
+	VCARD_MAX_CARDS,
+	VCARD_MAX_EMAILS_PER_CARD,
+	type VcardContactEntry,
+} from '@owlat/shared/postboxVcard';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
 import { openCardDavPassword, sealCardDavPassword } from '../lib/credentialCrypto';
 import { STRING_LIMITS, validateStringLength } from '../lib/inputGuards';
-import { CappedReadOverflow, fetchGuarded, readCappedBytes } from '../lib/ssrfGuard';
 import type { CardDavErrorCode } from '../lib/validators/mailContacts';
 import {
 	PROPFIND_BOOKS_BODY,
@@ -42,11 +47,9 @@ import {
 	syncReportChanges,
 	wellKnownUrl,
 	type CardChange,
-	type Multistatus,
 } from './contactsCardDavProtocol';
+import { CardDavError, authHeader, davRequest, multistatusOf } from './contactsCardDavTransport';
 
-/** One request; a slow server fails the step instead of holding the action. */
-const REQUEST_TIMEOUT_MS = 20_000;
 /** A discovery or listing answer. A listing of the largest book read fits. */
 const MAX_LISTING_BYTES = 8 * 1024 * 1024;
 /** A multiget answer: a chunk of cards, pictures included. */
@@ -55,88 +58,17 @@ const MAX_MULTIGET_BYTES = 16 * 1024 * 1024;
 const MULTIGET_CHUNK = 50;
 /** Cards one commit writes. */
 const COMMIT_CHUNK = 25;
+/**
+ * Removed cards one commit takes out. A card holds at most
+ * VCARD_MAX_EMAILS_PER_CARD rows, so a commit deletes at most 500 rows and a
+ * removal of the whole book persists its progress batch by batch.
+ */
+const REMOVED_CARDS_PER_COMMIT = Math.floor(500 / VCARD_MAX_EMAILS_PER_CARD);
 /** Sync report rounds one sync follows when the server answers in parts. */
 const MAX_SYNC_ROUNDS = 20;
 /** Rows one known-cards read asks for. */
 const KNOWN_CARDS_PAGE = 1_000;
 const MAX_PASSWORD_LENGTH = 1_024;
-
-/** A failed step, with the reason the contacts page shows. */
-class CardDavError extends Error {
-	readonly code: CardDavErrorCode;
-	constructor(code: CardDavErrorCode) {
-		super(code);
-		this.code = code;
-	}
-}
-
-interface DavAnswer {
-	status: number;
-	text: string;
-	url: string;
-}
-
-function authHeader(username: string, password: string): string {
-	return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
-}
-
-async function davRequest(
-	url: string,
-	init: {
-		method: 'PROPFIND' | 'REPORT';
-		depth: '0' | '1';
-		body: string;
-		authorization?: string;
-		maxBytes: number;
-		maxRedirects?: number;
-	}
-): Promise<DavAnswer> {
-	let response: Response;
-	try {
-		response = await fetchGuarded(url, {
-			protocols: ['https:'],
-			method: init.method,
-			maxRedirects: init.maxRedirects ?? 0,
-			headers: {
-				'content-type': 'application/xml; charset=utf-8',
-				accept: 'application/xml, text/xml',
-				depth: init.depth,
-				...(init.authorization ? { authorization: init.authorization } : {}),
-			},
-			body: init.body,
-			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-		});
-	} catch {
-		// A refused destination (private address, redirect) reads to the user as
-		// an unreachable server, like a DNS or socket failure.
-		throw new CardDavError('unreachable');
-	}
-	if (response.status === 401 || response.status === 403) {
-		const text = await readText(response, 64 * 1024).catch(() => '');
-		return { status: response.status, text, url: response.url || url };
-	}
-	const text = await readText(response, init.maxBytes);
-	return { status: response.status, text, url: response.url || url };
-}
-
-async function readText(response: Response, maxBytes: number): Promise<string> {
-	try {
-		const bytes = await readCappedBytes(response.body, maxBytes);
-		return bytes ? new TextDecoder('utf-8').decode(bytes) : '';
-	} catch (err) {
-		if (err instanceof CappedReadOverflow) throw new CardDavError('too_large');
-		throw new CardDavError('unreachable');
-	}
-}
-
-/** A 207 answer read as multistatus; anything else is the step's failure. */
-function multistatusOf(answer: DavAnswer): Multistatus {
-	if (answer.status === 401 || answer.status === 403) throw new CardDavError('auth');
-	if (answer.status !== 207) throw new CardDavError('not_carddav');
-	const status = parseMultistatus(answer.text, answer.url);
-	if (!status) throw new CardDavError('not_carddav');
-	return status;
-}
 
 /**
  * The context URL to start from: where the server's `/.well-known/carddav`
@@ -411,28 +343,36 @@ async function cardEntries(ctx: ActionCtx, vcard: string): Promise<SyncedEntry[]
 	return synced;
 }
 
-/** Fetch the changed cards in chunks and commit them, one checkpoint per chunk. */
+/**
+ * Take the removed cards out, then fetch the changed cards in chunks and
+ * commit them, one checkpoint per batch. Stops as soon as a commit finds the
+ * run no longer holds the account.
+ */
 async function fetchAndApply(
 	ctx: ActionCtx,
 	account: Doc<'mailCardDavAccounts'>,
+	runToken: string,
 	authorization: string,
 	plan: SyncPlan
-): Promise<{ isAccountGone: boolean }> {
+): Promise<{ isStopped: boolean }> {
 	const pending: Array<{ href: string; etag: string; entries: SyncedEntry[] }> = [];
-	let removed = plan.removed;
+	const removed = [...plan.removed];
 	const commit = async (): Promise<boolean> => {
 		const changed = pending.splice(0, pending.length);
-		const removedHrefs = removed;
-		removed = [];
+		const removedHrefs = removed.splice(0, REMOVED_CARDS_PER_COMMIT);
 		if (changed.length === 0 && removedHrefs.length === 0) return false;
 		// checkpoint: one page of an idempotent sync; the next sync redoes what a failure leaves.
 		const result = await ctx.runMutation(internal.mail.contactsCardDav._applyChanges, {
 			accountId: account._id,
+			runToken,
 			changed,
 			removedHrefs,
 		});
-		return result.isAccountGone;
+		return result.isStopped;
 	};
+	while (removed.length > 0) {
+		if (await commit()) return { isStopped: true };
+	}
 	for (let start = 0; start < plan.changed.length; start += MULTIGET_CHUNK) {
 		const chunk = plan.changed.slice(start, start + MULTIGET_CHUNK);
 		const status = multistatusOf(
@@ -450,20 +390,23 @@ async function fetchAndApply(
 				etag: card.etag,
 				entries: await cardEntries(ctx, card.vcard),
 			});
-			if (pending.length >= COMMIT_CHUNK && (await commit())) return { isAccountGone: true };
+			if (pending.length >= COMMIT_CHUNK && (await commit())) return { isStopped: true };
 		}
 	}
-	return { isAccountGone: await commit() };
+	return { isStopped: await commit() };
 }
 
 /** Read what changed in an account's book and write it into the mailbox's address book. */
 export const _sync = internalAction({
 	args: { accountId: v.id('mailCardDavAccounts') },
 	handler: async (ctx, args) => {
-		const account: Doc<'mailCardDavAccounts'> | null = await ctx.runQuery(
-			internal.mail.contactsCardDav._getSyncAccount,
-			{ accountId: args.accountId }
+		const runToken = crypto.randomUUID();
+		// checkpoint: the claim stands alone; `_finishSync` releases it, or it lapses.
+		const account: Doc<'mailCardDavAccounts'> | null = await ctx.runMutation(
+			internal.mail.contactsCardDav._claimSync,
+			{ accountId: args.accountId, runToken }
 		);
+		// Gone, or another run holds it: that run reads what this one would have.
 		if (!account) return;
 		type Outcome =
 			| { ok: true; syncToken?: string; ctag?: string; isTruncated: boolean }
@@ -481,14 +424,15 @@ export const _sync = internalAction({
 			const plan = await planSync(account, authorization, known);
 			const isTruncated = plan.isTruncated || plan.changed.length > VCARD_MAX_CARDS;
 			plan.changed = plan.changed.slice(0, VCARD_MAX_CARDS);
-			const applied = await fetchAndApply(ctx, account, authorization, plan);
-			if (applied.isAccountGone) return;
+			const applied = await fetchAndApply(ctx, account, runToken, authorization, plan);
+			if (applied.isStopped) return;
 			outcome = { ok: true, syncToken: plan.syncToken, ctag: plan.ctag, isTruncated };
 		} catch (err) {
 			outcome = { ok: false, errorCode: err instanceof CardDavError ? err.code : 'failed' };
 		}
 		await ctx.runMutation(internal.mail.contactsCardDav._finishSync, {
 			accountId: account._id,
+			runToken,
 			outcome,
 		});
 	},

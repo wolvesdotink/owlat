@@ -10,7 +10,8 @@
  * because nobody has been written to yet.
  *
  * A row a CardDAV sync inserted is the card's copy, so a later version of the
- * same card replaces its details instead of merging into them.
+ * same card replaces its details instead of merging into them. Editing the row
+ * (`contacts.upsert`) ends that: the row is the person's from then on.
  */
 
 import {

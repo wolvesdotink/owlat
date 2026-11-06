@@ -7,6 +7,7 @@
  */
 
 import { v } from 'convex/values';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
@@ -18,7 +19,7 @@ import { contactFrecencyScore, isScreenedOut, senderSignalFromContact } from './
 import { resolveScreenerEnabled } from './ai/needsReplyScoring';
 import { voidColdPitchVerdictsOfSender } from './arrival/coldPitch';
 import { recordCorrespondents } from './correspondence';
-import { deleteContactRow } from './contactsMerge';
+import { scheduleRemovedPhotoDeletion } from './contactsUndo';
 
 // ─── Pure frecency ranking (recency × frequency blend) ───────────────────────
 // Exported for unit tests. The autocomplete ordering blends how *recently* a
@@ -354,11 +355,20 @@ export const upsert = postboxMutation({
 			)
 			.first();
 		if (existing) {
+			const displayName = args.displayName ?? existing.displayName;
+			const organization = args.organization ?? existing.organization;
+			const isEdited =
+				displayName !== existing.displayName || organization !== existing.organization;
 			await ctx.db.patch(existing._id, {
-				displayName: args.displayName ?? existing.displayName,
-				organization: args.organization ?? existing.organization,
+				displayName,
+				organization,
 				useCount: existing.useCount + 1,
 				lastUsedAt: now,
+				// A person's edit makes a synced row theirs: later versions of the card
+				// merge into it (fill gaps, add numbers) instead of replacing its name.
+				...(isEdited && existing.cardDavSource?.isRowCreatedBySync
+					? { cardDavSource: { ...existing.cardDavSource, isRowCreatedBySync: false } }
+					: {}),
 			});
 			return existing._id;
 		}
@@ -376,14 +386,23 @@ export const upsert = postboxMutation({
 	},
 });
 
+/**
+ * Remove an address-book row. Its picture is deleted after the Undo window;
+ * `photoRemovalId` names that deletion, which `contactsUndo.restore` cancels.
+ */
+// authz: mailbox access via requireMailboxAccess; org membership via authedMutation.
 export const remove = postboxMutation({
 	args: { contactId: v.id('mailContacts') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<{ photoRemovalId?: Id<'_scheduled_functions'> }> => {
 		const row = await ctx.db.get(args.contactId);
-		if (!row) return;
+		if (!row) return {};
 		const owned = await requireMailboxAccess(ctx, row.mailboxId);
 		if (!owned.ok) throwForbidden('Not accessible');
-		await deleteContactRow(ctx, row);
+		await ctx.db.delete(row._id);
+		if (!row.photoStorageId) return {};
+		return {
+			photoRemovalId: await scheduleRemovedPhotoDeletion(ctx, row.mailboxId, row.photoStorageId),
+		};
 	},
 });
 
