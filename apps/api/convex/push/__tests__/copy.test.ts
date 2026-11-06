@@ -47,4 +47,27 @@ describe('push copy', () => {
 		);
 		expect(payload.title).toBe(`${'b'.repeat(38)}🦉… in #general`);
 	});
+
+	describe('a sign-in code', () => {
+		const CODE = { ...MAIL, subject: '482913 is your Northwind code', hasSignInCode: true };
+		const COPY_URL = '/dashboard/postbox/inbox/m1?mailbox=b1&signInCode=copy';
+
+		it('gets a Copy code button that opens the message to copy it', () => {
+			expect(mailPayload(CODE, 'en', false).actions).toEqual([
+				{ action: 'copy-code', title: 'Copy code', url: COPY_URL },
+			]);
+			expect(mailPayload(CODE, 'de', false).actions?.[0]?.title).toBe('Code kopieren');
+		});
+
+		it('keeps the button but not the code when previews are private', () => {
+			const payload = mailPayload(CODE, 'en', true);
+			expect(payload.actions?.map((action) => action.url)).toEqual([COPY_URL]);
+			expect(JSON.stringify(payload)).not.toContain('482913');
+		});
+
+		it('gives a sealed message and mail without a code no button', () => {
+			expect(mailPayload({ ...CODE, isSealed: true }, 'en', false).actions).toBeUndefined();
+			expect(mailPayload(MAIL, 'en', false).actions).toBeUndefined();
+		});
+	});
 });

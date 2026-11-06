@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { whenConvexAuthSettled } from '~/lib/convexAuthReady';
 import {
@@ -31,6 +32,7 @@ import {
 	type UnreadPeekMessage,
 } from '~/lib/desktop/notificationRules';
 import { useLocalized } from '~/composables/useLocalized';
+import { usePostboxSignInCode } from '~/composables/postbox/usePostboxSignInCode';
 import type { UnreadBadge } from '~/composables/useUnreadBadge';
 
 /**
@@ -107,6 +109,7 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 	 * up and keeps the words one click from the clipboard.
 	 */
 	const { copy } = useCopyToClipboard();
+	const signInCode = usePostboxSignInCode();
 	function offerReplyCopy(message: string, text: string): void {
 		showToast(message, 'warning', {
 			durationMs: 0,
@@ -158,6 +161,15 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 			},
 			storage: sessionStorage,
 			authReady: () => whenConvexAuthSettled(),
+			// Copy code: read the code now (it may have expired since), then copy.
+			copySignInCode: async (messageId) => {
+				const code = await convex
+					.query(api.mail.signInCodes.messageSignInCode, {
+						messageId: messageId as Id<'mailMessages'>,
+					})
+					.catch(() => null);
+				await signInCode.copyOrOpen(code);
+			},
 		});
 		void requestNotificationPermission();
 	});
@@ -227,7 +239,8 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 				body,
 				parts.messageId,
 				'inbox',
-				getActiveWorkspace()?.id
+				getActiveWorkspace()?.id,
+				parts.hasSignInCode === true
 			);
 		} else {
 			await notif.sendDesktopNotification(title, body);

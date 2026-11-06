@@ -1,3 +1,4 @@
+import { api } from '@owlat/api';
 import type { PaletteItem } from '~/lib/commandPalette';
 import type { SettingsPaletteItem } from '~/lib/commandPaletteCore';
 import { routePaletteTargets } from '~/lib/commandPaletteRoutes';
@@ -7,11 +8,14 @@ import { adminControlTargets } from '~/lib/adminSettingsControls';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
+import { usePostboxSignInCode } from '~/composables/postbox/usePostboxSignInCode';
 import {
 	CloudDownloadIcon,
 	ExpandIcon,
 	InboxIcon,
+	KeyIcon,
 	ListChecklistIcon,
+	LogInIcon,
 	MegaphoneIcon,
 	ShrinkIcon,
 	SparklesIcon,
@@ -19,8 +23,8 @@ import {
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
- *   - verbs — New campaign, Compose, New contact, Ask knowledge, Zen, the
- *     setup checklist, updates;
+ *   - verbs — New campaign, Compose, New contact, Copy latest sign-in code,
+ *     Ask knowledge, Zen, the setup checklist, updates;
  *   - sidebar-context switch — offers the OTHER context (Inbox ↔ Marketing),
  *     only while the sidebar toggle itself exists (both contexts survived the
  *     feature flags); runs the same last-visited navigation as the toggle;
@@ -77,6 +81,15 @@ export function useCommandPaletteProviders() {
 	// provider offers. Subscribed only for someone who can open those pages.
 	const canAdminister = computed(() => role.value === 'admin' || role.value === 'owner');
 	const { environment: adminEnvironment } = useAdminEnvironment(canAdminister);
+	// The newest live sign-in code or link in the caller's mailboxes, while the
+	// palette is mounted, on an instance with personal mail (the query's floor).
+	const hasPersonalMail = computed(
+		() => isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')
+	);
+	const { data: latestSignInCode } = useConvexQuery(api.mail.signInCodes.latestSignInCode, () =>
+		hasPersonalMail.value ? {} : 'skip'
+	);
+	const { copyOrOpen } = usePostboxSignInCode();
 
 	const verbItems = computed<PaletteItem[]>(() => {
 		const environment = {
@@ -103,6 +116,25 @@ export function useCommandPaletteProviders() {
 						: () => void openNewContact(),
 			};
 		});
+		const signInCode = latestSignInCode.value;
+		if (signInCode) {
+			// The subtitle names the sender's domain, as the chip does, so a
+			// look-alike domain stands out before the code is used.
+			verbs.push({
+				id: 'verb:copy-sign-in-code',
+				label: t(
+					signInCode.kind === 'code'
+						? 'shared.useCommandPaletteProviders.copySignInCode'
+						: 'shared.useCommandPaletteProviders.openSignInLink'
+				),
+				subtitle:
+					signInCode.kind === 'code'
+						? `${signInCode.value} · ${signInCode.senderDomain}`
+						: signInCode.senderDomain,
+				icon: signInCode.kind === 'code' ? KeyIcon : LogInIcon,
+				run: () => void copyOrOpen(signInCode),
+			});
+		}
 		if (isFeatureEnabled('ai.knowledge')) {
 			verbs.push({
 				id: 'verb:ask-knowledge',
