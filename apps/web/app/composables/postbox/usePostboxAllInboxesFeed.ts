@@ -52,6 +52,12 @@ export function usePostboxAllInboxesFeed(args: {
 			.filter((row) => matchesNarrow(row, narrow.value))
 			.map((row) => row.mailboxId)
 	);
+	/** Unread Inbox mail of the mailboxes the narrow keeps. */
+	const inboxUnread = computed(() =>
+		(accessible.value ?? [])
+			.filter((row) => matchesNarrow(row, narrow.value))
+			.reduce((sum, row) => sum + row.unread, 0)
+	);
 	// A different set of inboxes is a different list: no cursor carries over.
 	const resetKey = computed(() => sources.value.map((source) => source.folderId).join(','));
 
@@ -67,6 +73,9 @@ export function usePostboxAllInboxesFeed(args: {
 		/** The provider narrow in effect, or null. */
 		provider,
 		mailboxIds,
+		/** Each listed mailbox's folder of the role, which the list reads from. */
+		sources,
+		inboxUnread,
 		messages: feed.rows,
 		isLoading: computed(
 			() => (accessibleLoading.value && !accessible.value) || feed.isLoading.value

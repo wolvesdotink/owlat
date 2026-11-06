@@ -6093,6 +6093,8 @@
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
 				"latestFrom": "latest from {sender}",
+				"markRead": "Mark read",
+				"markReadLabel": "Mark the {count} unread message in this bundle as read | Mark the {count} unread messages in this bundle as read",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
 				"unsubscribe": "Unsubscribe",
@@ -6410,7 +6412,9 @@
 			},
 			"postboxFolderActions": {
 				"menuLabel": "Folder actions",
+				"labelMenuLabel": "Label actions",
 				"markAllRead": "Mark all as read",
+				"markCategoryRead": "Mark {category} as read",
 				"empty": {
 					"trash": "Empty trash",
 					"spam": "Empty spam"

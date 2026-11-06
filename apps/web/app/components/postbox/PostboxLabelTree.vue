@@ -5,7 +5,8 @@
  * `nav` (the folder rail) is pure navigation: colour, name, unread count and
  * the twisty. A collapsed branch shows its rolled-up count, so folding `Work`
  * away never hides the fact that something under it is unread. Right-clicking a
- * row reaches the manage surface — an entry point, not a second rendering.
+ * row offers "Mark all as read" for that label and reaches the manage surface —
+ * an entry point, not a second rendering.
  *
  * `manage` (inside "Manage folders & labels") is where the row's verbs live:
  * rename in place, recolour, delete, and reorder — drag-first with the
@@ -21,6 +22,7 @@ import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
 import { moveSibling } from '~/utils/postboxReorder';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 import {
+	CheckAllIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
 	ChevronUpIcon,
@@ -49,6 +51,7 @@ const { labels, labelTree, reorder, setParent, rename, setColor, remove, applyTo
 	usePostboxLabels(mailboxIdRef);
 const { collapsedIds, toggle, expandAll } = usePostboxLabelCollapse();
 const { openManager, editLabelId } = usePostboxManageDialog();
+const folderBulk = usePostboxFolderBulk(mailboxIdRef);
 
 const PRESET_COLORS = LABEL_PRESET_HEXES;
 
@@ -187,13 +190,29 @@ watch(
 	{ immediate: true }
 );
 
-/** Right-click on a nav row: entry points into the one manage surface. */
-function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
+/**
+ * Right-click on a nav row: "Mark all as read" for the label's own messages (a
+ * child label's are its own row's), then entry points into the manage surface.
+ */
+function menuItems(label: { _id: string; name: string }, unreadCount: number): ContextMenuItem[] {
 	return [
+		{
+			id: 'mark-all-read',
+			label: t('components.postbox.postboxFolderActions.markAllRead'),
+			icon: CheckAllIcon,
+			disabled: unreadCount === 0,
+			run: () =>
+				void folderBulk.markRead({
+					kind: 'label',
+					mailboxId: props.mailboxId,
+					labelId: label._id as Id<'mailLabels'>,
+				}),
+		},
 		{
 			id: 'rename',
 			label: t('components.postbox.postboxLabelTree.renameLabel'),
 			icon: PencilIcon,
+			separatorBefore: true,
 			run: () => openManager({ editLabelId: label._id as Id<'mailLabels'> }),
 		},
 		{
@@ -218,7 +237,7 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 		<UiContextMenu
 			v-for="row in rows"
 			:key="row.label._id"
-			:items="manage ? [] : menuItems(row.label)"
+			:items="manage ? [] : menuItems(row.label, row.unreadCount)"
 		>
 			<template #default="{ onContextmenu, onKeydown }">
 				<li
