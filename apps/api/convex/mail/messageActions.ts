@@ -366,13 +366,14 @@ export const trash = postboxMutation({
 	},
 });
 
-/** Permanently delete from storage (invoked manually from the Trash folder via
- * the bulk-actions bar's "Delete forever"). Frees the raw .eml blob too, and on
- * an external mailbox deletes the provider's copy. */
+/** Permanently delete from storage (the bulk bars' "Delete forever" in Trash). Frees
+ * the raw .eml blob too, and on an external mailbox deletes the provider's copy.
+ * `onlyFromTrash` skips what is not filed in Trash, so a stale selection cannot
+ * destroy it; it is opt-in because undoing a cross-mailbox copy purges anywhere. */
 // authz: the mailbox gate per message (createMailboxAccessGate, decided once per
 // mailbox); messages in a mailbox the caller cannot access are skipped.
 export const purge = postboxMutation({
-	args: { messageIds: v.array(v.id('mailMessages')) },
+	args: { messageIds: v.array(v.id('mailMessages')), onlyFromTrash: v.optional(v.boolean()) },
 	handler: async (ctx, args, session): Promise<{ ok: true }> => {
 		const access = createMailboxAccessGate(ctx, session);
 		const touchedThreads = new Set<Id<'mailThreads'>>();
@@ -383,6 +384,7 @@ export const purge = postboxMutation({
 			if (!message) continue;
 			const owned = await access(message.mailboxId);
 			if (!owned.ok) continue;
+			if (args.onlyFromTrash && (await ctx.db.get(message.folderId))?.role !== 'trash') continue;
 			touchedThreads.add(await purgeMessageRow(ctx, message, purged));
 			remote.push({ kind: 'delete', message });
 		}

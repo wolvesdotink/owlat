@@ -9,6 +9,7 @@
  * memberships only, even for an org owner who could open any mailbox), a
  * folder id that is not the named mailbox's, snoozed mail, and the role folder
  * ids and provider that `queries.accessible` hands the client to ask with.
+ * All trash's Delete forever leaves alone a message that is not in a Trash.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -292,6 +293,47 @@ describe('mail.mailbox.allInboxes.listDrafts', () => {
 			['team', team.mailboxId],
 			['mine old', mine.mailboxId],
 		]);
+	});
+
+	it('keeps every mailbox its own bound, so two mailboxes of 60 drafts list all 120', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		const work = await seedInbox(t, { address: 'me.work@owlat.test' });
+		for (let i = 0; i < 60; i++) {
+			await seedDraft(t, home.mailboxId, { subject: `home ${i}`, lastEditedAt: now - 2 * i });
+			await seedDraft(t, work.mailboxId, { subject: `work ${i}`, lastEditedAt: now - 2 * i - 1 });
+		}
+
+		const drafts = await t.query(api.mail.mailbox.allInboxes.listDrafts, {
+			mailboxIds: [home.mailboxId, work.mailboxId],
+		});
+
+		expect(drafts).toHaveLength(120);
+		expect(drafts.slice(0, 3).map((d) => d.subject)).toEqual(['home 0', 'work 0', 'home 1']);
+		expect(drafts[drafts.length - 1]?.subject).toBe('work 59');
+	});
+});
+
+describe('mail.messageActions.purge from Trash', () => {
+	it('deletes only the messages that sit in a Trash folder when asked for Trash only', async () => {
+		const t = convexTest(schema, modules);
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		const work = await seedInbox(t, { address: 'me.work@owlat.test' });
+		await seedFolder(t, work.mailboxId, 'trash');
+		const kept = await seedMessage(t, home.mailboxId, { subject: 'still in the inbox' });
+		const binned = await seedMessage(t, work.mailboxId, { subject: 'binned', role: 'trash' });
+
+		await t.mutation(api.mail.messageActions.purge, {
+			messageIds: [kept, binned],
+			onlyFromTrash: true,
+		});
+
+		const [keptRow, binnedRow] = await t.run(
+			async (ctx) => [await ctx.db.get(kept), await ctx.db.get(binned)] as const
+		);
+		expect(keptRow?.subject).toBe('still in the inbox');
+		expect(binnedRow).toBeNull();
 	});
 });
 

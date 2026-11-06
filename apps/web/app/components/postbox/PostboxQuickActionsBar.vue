@@ -56,10 +56,20 @@ const { folders } = usePostboxFolders(mailboxIdRef);
 const moveOpen = ref(false);
 const confirm = useConfirm();
 
+/**
+ * The selected ids that are rows of this view. The folder verbs below
+ * (Delete forever, Not spam) are only right for rows the folder holds, so a
+ * pick the list no longer shows is never sent along with them.
+ */
+function selectedInView(): Id<'mailMessages'>[] {
+	const shown = new Set(props.pageIds ?? []);
+	return bulk.ids.value.filter((id) => shown.has(id));
+}
+
 /** The overflow's Delete forever, for a selection that spans mailboxes. */
 async function purgeAcrossMailboxes() {
 	// The ids the question counted, not whatever is selected once it is answered.
-	const messageIds = bulk.ids.value;
+	const messageIds = selectedInView();
 	const n = messageIds.length;
 	if (n === 0) return;
 	const confirmed = await confirm({
@@ -213,7 +223,7 @@ const movableFolders = computed(() =>
 							variant="ghost"
 							size="sm"
 							class="gap-1.5 px-2 py-1"
-							@click="bulk.notSpamSelected()"
+							@click="bulk.notSpamSelected(selectedInView())"
 						>
 							<template #iconLeft>
 								<ShieldCheckIcon class="w-4 h-4" />

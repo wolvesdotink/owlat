@@ -157,9 +157,8 @@ const DRAFTS_LIMIT = 100;
 /**
  * All Drafts: the live drafts of every named mailbox the caller reads, last
  * edited first, as the single-mailbox Drafts list shows them. Each mailbox is
- * read along `by_mailbox_live_and_edited` up to the list's bound, so the merge
- * never loses a draft the bound would keep; only the drafts that make the cut
- * have their bodies opened.
+ * read along `by_mailbox_live_and_edited` up to the list's bound, and the merge
+ * keeps every one of them, so it lists what each mailbox's own Drafts would.
  */
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + team-inbox memberships)
 export const listDrafts = publicQuery({
@@ -187,7 +186,9 @@ export const listDrafts = publicQuery({
 					.take(DRAFTS_LIMIT))
 			);
 		}
-		const newest = drafts.sort((a, b) => b.lastEditedAt - a.lastEditedAt).slice(0, DRAFTS_LIMIT);
-		return await Promise.all(newest.map((draft) => openMailDraftBody(draft)));
+		// No cap on the merge: each mailbox is already held to its own bound, and
+		// a global one would hide drafts no other view reaches.
+		drafts.sort((a, b) => b.lastEditedAt - a.lastEditedAt);
+		return await Promise.all(drafts.map((draft) => openMailDraftBody(draft)));
 	},
 });

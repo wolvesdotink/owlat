@@ -99,6 +99,10 @@ const {
 const listPaneRef = ref<HTMLElement | null>(null);
 
 const { messages, isLoading, isLoadingMore, hasMore, canLoadMore, loadMore } = feed;
+// The folder and its narrow: what the triage chips and the selection belong
+// to. The header, the list and the bulk bar bind the same selection by it, and
+// changing it leaves the previous selection behind.
+const listScope = computed(() => `${segment.value}:${only.value ?? provider.value ?? 'all'}`);
 const categoryRows = computed(() =>
 	category.value ? messages.value.filter((m) => m.category === category.value) : messages.value
 );
@@ -109,7 +113,7 @@ const {
 	countsArePartial: triageCountsArePartial,
 	filtered: filteredMessages,
 } = usePostboxTriageFilters({
-	scope: computed(() => `${segment.value}:${only.value ?? provider.value ?? 'all'}`),
+	scope: listScope,
 	rows: categoryRows,
 	hasMore,
 });
@@ -197,7 +201,7 @@ const advanceIds = computed(
 						:density="density"
 						:unread-style="unreadStyle"
 						:reading-pane="readingPane"
-						:selection-scope="role === 'drafts' ? undefined : segment"
+						:selection-scope="role === 'drafts' ? undefined : listScope"
 						:page-ids="listMessageIds"
 						@open-rail="railOpen = true"
 						@select-density="(mode) => void setDensity(mode)"
@@ -240,7 +244,7 @@ const advanceIds = computed(
 							@select-filter="setTriageFilter"
 						/>
 						<PostboxQuickActionsBar
-							:selection-scope="segment"
+							:selection-scope="listScope"
 							:folder-role="role"
 							:page-ids="listMessageIds"
 						/>
@@ -255,7 +259,7 @@ const advanceIds = computed(
 								<PostboxThreadList
 									v-else
 									ref="threadListRef"
-									:selection-scope="segment"
+									:selection-scope="listScope"
 									:messages="listMessages"
 									:loading="isLoading"
 									:folder-role="role"
