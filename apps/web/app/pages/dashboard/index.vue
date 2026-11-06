@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
 import { allInboxesHref } from '~/utils/postboxAllInboxes';
-import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { useWorkbenchLineActions } from '~/composables/useWorkbenchLineActions';
 import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
 import { useZenMode } from '~/composables/useZenMode';
 import { useWorkbenchDwell } from '~/composables/useWorkbenchDwell';
@@ -204,58 +204,7 @@ useWorkbenchDwell({
 watch(scope, () => (hidden.value = new Set()));
 
 // ── Actions on lines ────────────────────────────────────────────────────────
-const answerNav = useAnswerModeNav();
-const { run: recordVisit } = useBackendOperation(api.mail.threadVisits.recordVisit, {
-	label: () => t('dashboard.today.operations.done'),
-});
-const { run: dismissUpdate } = useBackendOperation(api.inbox.updates.dismissUpdate, {
-	label: () => t('dashboard.today.operations.done'),
-});
-const { run: requestReply } = useBackendOperation(api.inbox.updates.requestReply, {
-	label: () => t('dashboard.today.operations.replyAnyway'),
-});
-
-function unhide(key: string) {
-	const next = new Set(hidden.value);
-	next.delete(key);
-	hidden.value = next;
-}
-async function doneLine(line: TodayLine | TodayChange) {
-	hidden.value = new Set([...hidden.value, line.key]);
-	const source = line.sources[0];
-	let ok = true;
-	if ('inboundMessageId' in line && line.inboundMessageId) {
-		ok = (await dismissUpdate({ inboundMessageId: line.inboundMessageId as Id<'inboundMessages'> }))
-			.ok;
-	} else if (source?.kind === 'mail') {
-		ok = (await recordVisit({ threadId: source.threadId as Id<'mailThreads'> })).ok;
-	}
-	if (!ok) unhide(line.key);
-}
-async function replyAnyway(line: TodayLine, opts: { answer?: TodaySource } = {}) {
-	if (!line.inboundMessageId) return;
-	hidden.value = new Set([...hidden.value, line.key]);
-	const result = await requestReply({
-		inboundMessageId: line.inboundMessageId as Id<'inboundMessages'>,
-	});
-	if (!result.ok) {
-		unhide(line.key);
-		return;
-	}
-	// From the peek, the person is about to answer: the reply opens in Answer
-	// mode, where the agent's draft lands in the editor.
-	const source = opts.answer;
-	if (source) {
-		void answerNav.openTeam(source.threadId, { messageId: source.id });
-		return;
-	}
-	showToast(t('dashboard.today.replyRequested'), 'success', {
-		action: {
-			label: t('dashboard.today.openQueue'),
-			onAction: () => void navigateTo(`/dashboard/answer?in=${TEAM_SCOPE}`),
-		},
-	});
-}
+const { doneLine, replyAnyway } = useWorkbenchLineActions(hidden);
 
 // ── Peek panel (state in the URL) ───────────────────────────────────────────
 const peekSources = ref<TodaySource[]>([]);
@@ -430,18 +379,13 @@ useWorkbenchKeyboard({
 				<!-- Two lanes, one question each: what do I owe, and what should I
 				     know. Below xl they stack, "To do" first. -->
 				<div class="mt-6 xl:grid xl:grid-cols-2 xl:items-start xl:gap-x-10">
-					<section aria-labelledby="workbench-lane-do" data-workbench-lane="do">
-						<h2 id="workbench-lane-do" class="flex items-baseline gap-2">
-							<span class="text-base font-medium text-text-primary">{{
-								t('dashboard.today.lanes.do.title')
-							}}</span>
-							<span v-if="doCount > 0" class="text-sm tabular-nums text-text-tertiary">{{
-								doCount
-							}}</span>
-						</h2>
-						<p class="mb-4 mt-0.5 text-xs text-text-tertiary">
-							{{ t('dashboard.today.lanes.do.hint') }}
-						</p>
+					<TodayLane
+						id="workbench-lane-do"
+						:title="t('dashboard.today.lanes.do.title')"
+						:hint="t('dashboard.today.lanes.do.hint')"
+						:count="doCount"
+						data-workbench-lane="do"
+					>
 						<h1 v-if="isZen" class="mb-3 text-sm font-medium text-text-secondary">
 							{{ scopeName }}
 						</h1>
@@ -454,24 +398,16 @@ useWorkbenchKeyboard({
 						/>
 						<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 						<TodayMyTasks v-if="!isZen" />
-					</section>
+					</TodayLane>
 
-					<section
-						aria-labelledby="workbench-lane-ack"
+					<TodayLane
+						id="workbench-lane-ack"
+						:title="t('dashboard.today.lanes.acknowledge.title')"
+						:hint="t('dashboard.today.lanes.acknowledge.hint')"
+						:count="ackCount"
 						class="mt-12 xl:mt-0"
 						data-workbench-lane="acknowledge"
 					>
-						<h2 id="workbench-lane-ack" class="flex items-baseline gap-2">
-							<span class="text-base font-medium text-text-primary">{{
-								t('dashboard.today.lanes.acknowledge.title')
-							}}</span>
-							<span v-if="ackCount > 0" class="text-sm tabular-nums text-text-tertiary">{{
-								ackCount
-							}}</span>
-						</h2>
-						<p class="mt-0.5 text-xs text-text-tertiary">
-							{{ t('dashboard.today.lanes.acknowledge.hint') }}
-						</p>
 						<!-- Zen keeps only what needs an answer (and says what it left out). -->
 						<TodayZenMore
 							v-if="isZen"
@@ -503,7 +439,7 @@ useWorkbenchKeyboard({
 								:scope="scope"
 							/>
 						</template>
-					</section>
+					</TodayLane>
 				</div>
 			</div>
 		</template>

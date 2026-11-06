@@ -170,6 +170,7 @@ function onRowClick(event: MouseEvent) {
 					<span class="truncate">{{ task.companyName ?? task.companyKey }}</span>
 				</NuxtLink>
 				<template v-if="sourceChip">
+					<!-- native-title: the full subject of a chip that truncates it -->
 					<NuxtLink
 						v-if="sourceHref"
 						:to="sourceHref"

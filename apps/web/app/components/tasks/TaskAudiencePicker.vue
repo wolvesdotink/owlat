@@ -113,9 +113,6 @@ const tabStopKey = computed(() => {
 				:aria-checked="choice.key === selectedKey"
 				:aria-disabled="choice.disabled || undefined"
 				:tabindex="choice.key === tabStopKey ? 0 : -1"
-				:title="
-					choice.key === 'private' && privateDisabledReason ? privateDisabledReason : undefined
-				"
 				:data-audience="choice.key"
 				class="inline-flex max-w-48 items-center gap-1 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-brand"
 				:class="[

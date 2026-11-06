@@ -80,7 +80,6 @@ useEscapeLayer(isOpen, () => {
 			:aria-expanded="isOpen"
 			:aria-label="t('components.tasks.assignee.label', { name: triggerLabel })"
 			:aria-describedby="disabledReason ? reasonId : undefined"
-			:title="disabledReason ?? undefined"
 			data-testid="task-assignee-picker"
 			@click="toggle"
 		>

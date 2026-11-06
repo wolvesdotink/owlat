@@ -8005,7 +8005,7 @@
 				"source": "Aus der Unterhaltung"
 			},
 			"create": {
-				"trigger": "Aufgabe machen",
+				"trigger": "Aufgabe anlegen",
 				"title": "Neue Aufgabe",
 				"submit": "Anlegen",
 				"created": "Aufgabe angelegt",
