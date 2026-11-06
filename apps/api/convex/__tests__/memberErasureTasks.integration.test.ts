@@ -112,12 +112,12 @@ describe('member erasure of tasks and the company index', () => {
 			});
 			const personalCursor = await ctx.db.insert('companyIndexCursors', {
 				mailboxId,
-				lastMessageAt: now,
+				position: now,
 				updatedAt: now,
 			});
 			const teamCursor = await ctx.db.insert('companyIndexCursors', {
 				mailboxId: teamBox.mailboxId,
-				lastMessageAt: now,
+				position: now,
 				updatedAt: now,
 			});
 			return {

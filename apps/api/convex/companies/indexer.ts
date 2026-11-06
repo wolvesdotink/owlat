@@ -6,7 +6,9 @@
  * every run walks each mailbox's threads by `lastMessageAt` from that
  * mailbox's cursor, and the Team Inbox's threads from its own. A thread that
  * gained a message has a later `lastMessageAt`, so it comes round again and is
- * re-indexed. The first runs on an existing install are the backfill.
+ * re-indexed. A second walk takes new threads by creation time, because a
+ * thread imported with old mail sorts behind those cursors. The first runs on
+ * an existing install are the backfill.
  *
  * The index is read-side data and may lag a sweep interval behind the mail.
  * Rows whose thread was deleted since are skipped by the readers.
@@ -89,10 +91,16 @@ async function reindexThread(
 	}
 }
 
-async function loadCursor(ctx: MutationCtx, mailboxId: Id<'mailboxes'> | undefined) {
+type Stream = Doc<'companyIndexCursors'>['stream'];
+
+async function loadCursor(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'> | undefined,
+	stream: Stream = undefined
+) {
 	return await ctx.db
 		.query('companyIndexCursors')
-		.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+		.withIndex('by_mailbox_stream', (q) => q.eq('mailboxId', mailboxId).eq('stream', stream))
 		.first();
 }
 
@@ -115,22 +123,17 @@ export function nextCursor(
 
 async function saveCursor(
 	ctx: MutationCtx,
-	mailboxId: Id<'mailboxes'> | undefined,
+	key: { mailboxId?: Id<'mailboxes'>; stream?: NonNullable<Stream> },
 	existing: Doc<'companyIndexCursors'> | null,
-	lastMessageAt: number
+	position: number
 ): Promise<void> {
 	const now = Date.now();
 	if (existing) {
-		if (existing.lastMessageAt !== lastMessageAt) {
-			await ctx.db.patch(existing._id, { lastMessageAt, updatedAt: now });
-		}
+		if (existing.position !== position)
+			await ctx.db.patch(existing._id, { position, updatedAt: now });
 		return;
 	}
-	await ctx.db.insert('companyIndexCursors', {
-		...(mailboxId ? { mailboxId } : {}),
-		lastMessageAt,
-		updatedAt: now,
-	});
+	await ctx.db.insert('companyIndexCursors', { ...key, position, updatedAt: now });
 }
 
 async function sweepMailbox(
@@ -140,7 +143,7 @@ async function sweepMailbox(
 	limit: number
 ): Promise<number> {
 	const cursor = await loadCursor(ctx, mailbox._id);
-	const from = cursor?.lastMessageAt ?? 0;
+	const from = cursor?.position ?? 0;
 	const threads = await ctx.db
 		.query('mailThreads')
 		.withIndex('by_mailbox_and_last_message', (q) =>
@@ -151,7 +154,7 @@ async function sweepMailbox(
 	for (const thread of threads) {
 		await reindexThread(ctx, { kind: 'mail', thread, mailbox }, ownDomains);
 	}
-	await saveCursor(ctx, mailbox._id, cursor, nextCursor(from, threads, limit));
+	await saveCursor(ctx, { mailboxId: mailbox._id }, cursor, nextCursor(from, threads, limit));
 	return threads.length;
 }
 
@@ -161,7 +164,7 @@ async function sweepTeamInbox(
 	limit: number
 ): Promise<number> {
 	const cursor = await loadCursor(ctx, undefined);
-	const from = cursor?.lastMessageAt ?? 0;
+	const from = cursor?.position ?? 0;
 	const threads = await ctx.db
 		.query('conversationThreads')
 		.withIndex('by_last_message_at', (q) => q.gte('lastMessageAt', from))
@@ -170,7 +173,55 @@ async function sweepTeamInbox(
 	for (const thread of threads) {
 		await reindexThread(ctx, { kind: 'team', thread }, ownDomains);
 	}
-	await saveCursor(ctx, undefined, cursor, nextCursor(from, threads, limit));
+	await saveCursor(ctx, {}, cursor, nextCursor(from, threads, limit));
+	return threads.length;
+}
+
+/**
+ * New Postbox threads by creation time, whatever date they carry. A thread
+ * imported with old mail sorts behind its mailbox's `lastMessageAt` cursor,
+ * so that walk alone would never reach it. `_creationTime` is unique per
+ * table, so the exclusive range never skips a thread.
+ */
+async function sweepCreatedMail(
+	ctx: MutationCtx,
+	mailboxes: ReadonlyMap<string, Doc<'mailboxes'>>,
+	ownDomains: ReadonlySet<string>,
+	limit: number
+): Promise<number> {
+	const cursor = await loadCursor(ctx, undefined, 'mail_created');
+	const from = cursor?.position ?? 0;
+	const threads = await ctx.db
+		.query('mailThreads')
+		.withIndex('by_creation_time', (q) => q.gt('_creationTime', from))
+		.order('asc')
+		.take(limit);
+	for (const thread of threads) {
+		const mailbox = mailboxes.get(thread.mailboxId);
+		// An inactive or seed mailbox has no conversations to show.
+		if (mailbox) await reindexThread(ctx, { kind: 'mail', thread, mailbox }, ownDomains);
+	}
+	const last = threads[threads.length - 1];
+	if (last) await saveCursor(ctx, { stream: 'mail_created' }, cursor, last._creationTime);
+	return threads.length;
+}
+
+/** New Team Inbox threads by creation time; see {@link sweepCreatedMail}. */
+async function sweepCreatedTeam(
+	ctx: MutationCtx,
+	ownDomains: ReadonlySet<string>,
+	limit: number
+): Promise<number> {
+	const cursor = await loadCursor(ctx, undefined, 'team_created');
+	const from = cursor?.position ?? 0;
+	const threads = await ctx.db
+		.query('conversationThreads')
+		.withIndex('by_creation_time', (q) => q.gt('_creationTime', from))
+		.order('asc')
+		.take(limit);
+	for (const thread of threads) await reindexThread(ctx, { kind: 'team', thread }, ownDomains);
+	const last = threads[threads.length - 1];
+	if (last) await saveCursor(ctx, { stream: 'team_created' }, cursor, last._creationTime);
 	return threads.length;
 }
 
@@ -184,6 +235,16 @@ export async function runSweep(ctx: MutationCtx, now: number): Promise<{ indexed
 	).filter((m) => m.scope !== 'seed');
 	let budget = RUN_BUDGET;
 	let indexed = 0;
+	// New threads first: they are what a person is most likely to look for.
+	const created =
+		(await sweepCreatedMail(
+			ctx,
+			new Map(mailboxes.map((m) => [m._id as string, m])),
+			ownDomains,
+			MAILBOX_BATCH
+		)) + (await sweepCreatedTeam(ctx, ownDomains, MAILBOX_BATCH));
+	budget -= created;
+	indexed += created;
 	// Rotate where a run starts, so a backlog in the first mailboxes cannot
 	// keep the later ones waiting run after run.
 	const start = mailboxes.length > 0 ? Math.floor(now / 60_000) % mailboxes.length : 0;

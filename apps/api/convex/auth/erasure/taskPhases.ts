@@ -31,7 +31,7 @@ export const eraseMailboxTaskLinks: MemberPhaseRunner = (phase) =>
 			(n) =>
 				ctx.db
 					.query('companyIndexCursors')
-					.withIndex('by_mailbox', (q) => q.eq('mailboxId', id))
+					.withIndex('by_mailbox_stream', (q) => q.eq('mailboxId', id))
 					.take(n),
 		]);
 		if (!isIndexEmpty) return false;

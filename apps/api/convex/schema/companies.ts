@@ -33,10 +33,18 @@ export const companyTables = {
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId']),
 
-	// How far the indexer got. `mailboxId` absent is the Team Inbox cursor.
+	// How far the indexer got, one row per stream. A stream with a mailbox
+	// walks that mailbox's threads by `lastMessageAt`; one without a mailbox and
+	// without `stream` walks the Team Inbox the same way. `mail_created` and
+	// `team_created` walk all Postbox / Team Inbox threads by `_creationTime`,
+	// so a thread that arrives with an old date (a history import, a migration
+	// from another provider) is indexed although its `lastMessageAt` is behind
+	// the other cursors. `position` is the `lastMessageAt` or `_creationTime`
+	// the stream reached.
 	companyIndexCursors: defineTable({
 		mailboxId: v.optional(v.id('mailboxes')),
-		lastMessageAt: v.number(),
+		stream: v.optional(v.union(v.literal('mail_created'), v.literal('team_created'))),
+		position: v.number(),
 		updatedAt: v.number(),
-	}).index('by_mailbox', ['mailboxId']),
+	}).index('by_mailbox_stream', ['mailboxId', 'stream']),
 };

@@ -13,6 +13,7 @@ import { useTaskActions } from '~/composables/useTaskActions';
 import type { TaskView } from '~/types/tasks';
 import { taskAudienceLabel } from '~/utils/companies';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import { taskDueBucket } from '~/utils/taskBuckets';
 import { LockIcon, UsersGroupIcon, UsersIcon } from '@coolicons/vue';
 
 defineProps<{
@@ -22,6 +23,9 @@ defineProps<{
 }>();
 
 const { t, locale } = useI18n();
+// Read when the list mounts, so a list left open across midnight marks
+// yesterday's tasks overdue only once it is shown again.
+const now = Date.now();
 const { setStatus } = useTaskActions();
 
 const pending = ref(new Map<string, 'open' | 'done'>());
@@ -85,7 +89,13 @@ function audienceIcon(task: TaskView) {
 						<component :is="audienceIcon(task)" class="h-3.5 w-3.5" aria-hidden="true" />
 						{{ audienceText(task) }}
 					</span>
-					<span v-if="task.dueAt !== null">
+					<span
+						v-if="task.dueAt !== null"
+						:class="{
+							'font-medium text-error':
+								task.status === 'open' && taskDueBucket(task.dueAt, now) === 'overdue',
+						}"
+					>
 						{{ t('components.companies.tasks.due', { date: briefDueDate(task.dueAt, locale) }) }}
 					</span>
 				</span>

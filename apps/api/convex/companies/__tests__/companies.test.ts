@@ -107,6 +107,21 @@ describe('company indexer', () => {
 		// A second sweep over unchanged threads writes no duplicate.
 		expect(await indexedRows(t)).toHaveLength(2);
 	});
+
+	it('indexes a thread that arrives later with an older date, as a history import does', async () => {
+		const t = await workspaceHarness(MEMBERS);
+		const box = await seedMailbox(t, 'user-dev', 'dev@owlat.test');
+		await seedThread(t, box, { participants: ['mia@northwind.example'], lastMessageAt: 2_000 });
+		expect((await indexedRows(t)).map((row) => row.companyKey)).toEqual(['northwind.example']);
+
+		// Its last message predates the mailbox cursor, which already stands at 2000.
+		const imported = await seedThread(t, box, {
+			participants: ['ben@acmecorp.example'],
+			lastMessageAt: 1_000,
+		});
+		const rows = await indexedRows(t);
+		expect(rows.find((row) => row.mailThreadId === imported)?.companyKey).toBe('acmecorp.example');
+	});
 });
 
 async function northwindWorkspace() {
