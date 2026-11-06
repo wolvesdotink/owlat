@@ -79,7 +79,13 @@ const moreCount = computed(() =>
 			</button>
 			<UiTooltip :text="inbox.address">
 				<NuxtLink :to="inboxHref" class="flex min-w-0 flex-1 items-center gap-2 py-1">
-					<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+					<InboxChip
+						:name="inbox.name"
+						:slot="inbox.slot"
+						:mark="inbox.mark"
+						variant="plain"
+						size="md"
+					/>
 					<ShellStatusPill v-if="data?.groupStatus" :status="data.groupStatus" dot-only />
 					<span
 						v-if="inbox.unread > 0"

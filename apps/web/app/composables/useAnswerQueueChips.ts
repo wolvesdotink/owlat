@@ -7,13 +7,25 @@
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import type { AnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { ChatCircleIcon, RobotIcon, type IconComponent } from '@coolicons/vue';
+import type { InboxIdentity, InboxMark } from '~/utils/inboxIdentity';
 
 export interface AnswerQueueChip {
 	id: string;
 	label: string;
 	count: number;
 	slot?: number | null;
+	mark?: InboxMark;
 	icon?: IconComponent;
+}
+
+function inboxChip(inbox: InboxIdentity, count: number): AnswerQueueChip {
+	return {
+		id: inbox.mailboxId,
+		label: inbox.name,
+		count,
+		slot: inbox.slot,
+		...(inbox.mark ? { mark: inbox.mark } : {}),
+	};
 }
 
 export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 'filter'> | null) {
@@ -29,7 +41,7 @@ export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 
 		];
 		for (const inbox of inboxes.value) {
 			const n = count((i) => i.source === 'mail' && i.mailboxId === inbox.mailboxId);
-			if (n > 0) list.push({ id: inbox.mailboxId, label: inbox.name, count: n, slot: inbox.slot });
+			if (n > 0) list.push(inboxChip(inbox, n));
 		}
 		const team = count((i) => i.source === 'team');
 		if (team > 0)
@@ -68,7 +80,7 @@ export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 
 					icon: ChatCircleIcon,
 				});
 			} else if (inbox) {
-				list.push({ id: inbox.mailboxId, label: inbox.name, count: 0, slot: inbox.slot });
+				list.push(inboxChip(inbox, 0));
 			}
 		}
 		return list;

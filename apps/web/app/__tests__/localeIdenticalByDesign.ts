@@ -293,6 +293,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.preferences.appPasswords.smtpValue',
 	'dashboard.preferences.forwarding.addressPlaceholder',
 	'dashboard.preferences.index.displayNamePlaceholder',
+	'dashboard.preferences.index.markIcons.team',
 	// Browser and OS names are product names; German uses them verbatim. Only
 	// the two `unknown` fallbacks in those blocks are prose, and both ARE
 	// translated — which is what keeps this run of entries honest.

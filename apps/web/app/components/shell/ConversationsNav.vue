@@ -3,6 +3,7 @@ import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
 import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
+import { uniqueRailLabels } from '~/utils/inboxIdentity';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
@@ -10,7 +11,8 @@ import { navIcon } from '~/lib/navIcons';
  * Workbench (one tab per inbox), the Answer queue, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
- * per inbox, with its unread count and a highlight on the inbox that is open.
+ * per inbox with its mark or initials, its unread count and a highlight on the
+ * inbox that is open.
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -68,17 +70,10 @@ const pinned = computed(() => [
 		: []),
 ]);
 
-/** Icon-rail labels: the first letter, or two where two inboxes share one. */
+/** Icon-rail labels: the shortest start of each name that tells it apart. */
 const railLabels = computed(() => {
-	const firsts = inboxes.value.map((i) => i.name.charAt(0).toUpperCase());
-	return new Map(
-		inboxes.value.map((inbox, index) => [
-			inbox.mailboxId,
-			firsts.filter((f) => f === firsts[index]).length > 1
-				? inbox.name.slice(0, 2)
-				: firsts[index]!,
-		])
-	);
+	const labels = uniqueRailLabels(inboxes.value.map((inbox) => inbox.name));
+	return new Map(inboxes.value.map((inbox, index) => [inbox.mailboxId, labels[index]!]));
 });
 
 // The mailbox the Postbox is showing: the one its URL names, else the shared
@@ -161,6 +156,8 @@ function isActive(to: string, exact: boolean): boolean {
 					<InboxChip
 						:name="railLabels.get(inbox.mailboxId) ?? inbox.name.charAt(0)"
 						:slot="inbox.slot"
+						:mark="inbox.mark"
+						mark-only
 						variant="plain"
 						size="md"
 					/>

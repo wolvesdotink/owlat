@@ -57,7 +57,13 @@ const ROW_CLASS = 'flex items-center gap-2 px-2.5 py-1 rounded text-sm min-w-0';
 						:aria-current="only === inbox.mailboxId ? 'page' : undefined"
 						data-testid="all-inboxes-rail-inbox"
 					>
-						<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+						<InboxChip
+							:name="inbox.name"
+							:slot="inbox.slot"
+							:mark="inbox.mark"
+							variant="plain"
+							size="md"
+						/>
 						<span v-if="inbox.unread > 0" class="ml-auto text-xs tabular-nums text-text-tertiary">{{
 							inbox.unread
 						}}</span>

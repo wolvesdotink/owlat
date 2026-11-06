@@ -12726,14 +12726,26 @@
 				"noMailboxes": "Noch keine Postfächer. Füge dein erstes Konto hinzu, um Mail zu empfangen.",
 				"pageTitle": "Allgemein — Owlat",
 				"renameIntro": "Anzeigename für {address}. Die Adresse selbst kann nicht geändert werden.",
-				"renameMailbox": "Name und Farbe",
+				"renameMailbox": "Name, Farbe und Zeichen",
 				"renameOperation": "Postfach umbenennen",
 				"subtitle": "Wie Owlat aussieht und wie sich deine Post liest.",
 				"teamManage": "Team · verwalten",
 				"colour": "Farbe",
 				"colourAutomatic": "Automatisch",
 				"colourSlot": "Farbe {n}",
-				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf der Werkbank, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen."
+				"colourHelp": "Die Markierung dieses Postfachs in der Seitenleiste, auf der Werkbank, in der Antwortliste und neben „Senden“ – immer zusammen mit seinem Namen.",
+				"mark": "Zeichen",
+				"markHelp": "Steht vor dem Namen und ersetzt die Initialen, wenn die Seitenleiste eingeklappt ist. Alle Mitglieder des Postfachs sehen es. Ohne Zeichen zeigt ein verbundenes Gmail- oder Microsoft-Konto sein Logo.",
+				"markDefault": "Standard",
+				"markIcons": {
+					"home": "Zuhause",
+					"work": "Arbeit",
+					"team": "Team",
+					"shop": "Laden"
+				},
+				"markEmoji": "Oder ein Emoji",
+				"markEmojiPlaceholder": "Gib ein Emoji ein oder füge es ein",
+				"markEmojiInvalid": "Nutze ein einzelnes Emoji."
 			},
 			"members": {
 				"detail": {
