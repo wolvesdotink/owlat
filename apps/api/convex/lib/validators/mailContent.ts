@@ -226,3 +226,18 @@ export const mailReceiptRequestValidator = v.object({
 	isAutomatic: v.optional(v.boolean()),
 });
 export type MailReceiptRequest = Infer<typeof mailReceiptRequestValidator>;
+
+// What an owner approved for one send (an AI client's send, mcp/actionReview.ts),
+// as dispatch derives it: the threading headers from the reply target, and
+// whether the message is sealed and to which keys (`keysDigest`, a SHA-256 of
+// the recipient public keys in order). Dispatch sends with these headers and
+// puts the draft back when its own sealing outcome differs.
+export const mailApprovedSendValidator = v.object({
+	inReplyToHeaderValue: v.optional(v.string()),
+	referencesHeaderValue: v.optional(v.string()),
+	sealing: v.union(
+		v.object({ isSealed: v.literal(true), keysDigest: v.string() }),
+		v.object({ isSealed: v.literal(false) })
+	),
+});
+export type MailApprovedSend = Infer<typeof mailApprovedSendValidator>;

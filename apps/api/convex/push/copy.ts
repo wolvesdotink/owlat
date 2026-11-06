@@ -17,6 +17,7 @@
 
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { systemEmailLocale } from '../lib/systemEmailCopy';
+import type { McpWriteToolName } from '../lib/validators/mcp';
 
 /** The JSON the service worker (`apps/web/service-worker/sw.js`) turns into a notification. */
 export interface PushPayload {
@@ -60,6 +61,10 @@ interface Copy {
 	quietBody: (count: number) => string;
 	testTitle: string;
 	testBody: string;
+	mcpTitle: string;
+	mcpBody: (client: string, verb: string) => string;
+	mcpPrivate: string;
+	mcpVerbs: Record<McpWriteToolName, string>;
 }
 
 const COPY: Record<AppLocale, Copy> = {
@@ -86,6 +91,16 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} notifications arrived during quiet hours`,
 		testTitle: 'Notifications are on',
 		testBody: 'This device will show Owlat notifications.',
+		mcpTitle: 'Approval needed',
+		mcpBody: (client, verb) => `${client} wants to ${verb}`,
+		mcpPrivate: 'An AI client is waiting for your approval',
+		mcpVerbs: {
+			create_draft: 'create a draft',
+			send_draft: 'send an email',
+			archive_thread: 'archive a conversation',
+			move_thread: 'move a conversation',
+			label_thread: 'label a conversation',
+		},
 	},
 	de: {
 		newMail: 'Neue E-Mail',
@@ -110,6 +125,16 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} Benachrichtigungen sind während der Ruhezeiten eingegangen`,
 		testTitle: 'Benachrichtigungen sind an',
 		testBody: 'Dieses Gerät zeigt Owlat-Benachrichtigungen an.',
+		mcpTitle: 'Freigabe nötig',
+		mcpBody: (client, verb) => `${client} möchte ${verb}`,
+		mcpPrivate: 'Ein KI-Client wartet auf deine Freigabe',
+		mcpVerbs: {
+			create_draft: 'einen Entwurf anlegen',
+			send_draft: 'eine E-Mail senden',
+			archive_thread: 'eine Konversation archivieren',
+			move_thread: 'eine Konversation verschieben',
+			label_thread: 'eine Konversation mit einem Label versehen',
+		},
 	},
 };
 
@@ -256,5 +281,24 @@ export function testPayload(locale: string | undefined): PushPayload {
 		body: copy.testBody,
 		tag: 'test',
 		url: '/dashboard/preferences/device#push',
+	};
+}
+
+/** Where an approval notification opens: the waiting actions on the AI clients page. */
+export const MCP_APPROVALS_URL = '/dashboard/preferences/ai-clients#approvals';
+
+export function mcpActionPayload(
+	notice: { actionId: string; clientLabel: string; tool: McpWriteToolName },
+	locale: string | undefined,
+	isPrivate: boolean
+): PushPayload {
+	const copy = copyFor(locale);
+	return {
+		title: copy.mcpTitle,
+		body: isPrivate
+			? copy.mcpPrivate
+			: clip(copy.mcpBody(clip(notice.clientLabel, 40), copy.mcpVerbs[notice.tool]), MAX_BODY),
+		tag: `mcp:${notice.actionId}`,
+		url: MCP_APPROVALS_URL,
 	};
 }

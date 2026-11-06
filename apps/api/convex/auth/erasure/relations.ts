@@ -161,6 +161,12 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('mailAppPasswords', 'userId', 'delete', 'Credentials.'),
 	rel('mcpClients', 'userId', 'delete', 'Credentials.'),
 	rel('mcpClientActivity', 'userId', 'delete', 'What the member’s AI clients read.'),
+	rel(
+		'mcpPendingActions',
+		'userId',
+		'delete',
+		'Writes the member’s AI clients asked them to approve.'
+	),
 	rel('mailUserSettings', 'userId', 'delete', 'Personal preferences.'),
 	rel('mailBriefCards', 'userId', 'delete', 'The member’s own greeting cards, on any mailbox.'),
 	rel('mailThreadVisits', 'userId', 'delete', 'Reading history.'),

@@ -118,6 +118,7 @@ function mountLayout(): VueWrapper {
 				DashboardShellHeader: true,
 				ShellComposerOverlay: true,
 				AnswerReviewApproveUndoToast: true,
+				ShellMcpApprovalPrompt: true,
 				LazyKeyboardShortcutsHelp: { template: '<div data-testid="help" />' },
 				AppLiveRegion: true,
 				AppCommandPaletteFooter: true,

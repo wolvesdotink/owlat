@@ -12,6 +12,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
+import { seedFolder, seedMessage } from './helpers.testlib';
 
 type T = ReturnType<typeof convexTest>;
 
@@ -128,6 +129,46 @@ describe('mail/outbound · dispatch guards', () => {
 		const draftId = await seedDraft(t, 'mallory@a.test');
 		const { draft, sent, blobs } = await dispatch(t, draftId);
 		expect(draft?.state).toBe('draft');
+		expect(sent).toHaveLength(0);
+		expect(blobs).toBe(0);
+	});
+	it('sends an approved send with the threading headers its approval bound', async () => {
+		const t = convexTest(schema, modules);
+		const draftId = await seedDraft(t);
+		const draft = await t.run((ctx) => ctx.db.get(draftId));
+		await seedFolder(t, draft!.mailboxId, 'inbox');
+		const original = await seedMessage(t, draft!.mailboxId, {
+			rfc822MessageId: 'changed-since@example.com',
+		});
+		await t.run((ctx) =>
+			ctx.db.patch(draftId, {
+				inReplyToMessageId: original,
+				approvedSend: {
+					inReplyToHeaderValue: '<approved@example.com>',
+					referencesHeaderValue: '<root@example.com> <approved@example.com>',
+					sealing: { isSealed: false },
+				},
+			})
+		);
+		const { sent } = await dispatch(t, draftId);
+		const reply = sent.find((row) => row.inReplyTo !== undefined);
+		expect(reply).toMatchObject({
+			inReplyTo: 'approved@example.com',
+			references: ['root@example.com', 'approved@example.com'],
+		});
+	});
+
+	it('puts an approved send back in the composer when it would not be sealed as approved', async () => {
+		const t = convexTest(schema, modules);
+		const draftId = await seedDraft(t);
+		await t.run((ctx) =>
+			ctx.db.patch(draftId, {
+				approvedSend: { sealing: { isSealed: true, keysDigest: 'approved-keys' } },
+			})
+		);
+		const { draft, sent, blobs } = await dispatch(t, draftId);
+		expect(draft?.state).toBe('draft');
+		expect(draft?.approvedSend).toBeUndefined();
 		expect(sent).toHaveLength(0);
 		expect(blobs).toBe(0);
 	});

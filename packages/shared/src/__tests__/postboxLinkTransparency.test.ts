@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyLinkTransparency } from '../postboxLinkTransparency';
+import { applyLinkTransparency, linkDestination } from '../postboxLinkTransparency';
 
 describe('applyLinkTransparency — destination tooltip', () => {
 	it('adds a title with the real destination host', () => {
@@ -205,5 +205,42 @@ describe('applyLinkTransparency — host the visible text claims', () => {
 		for (const text of ['Click here', 'v2.10', '1.5', '']) {
 			expect(flagged('https://evil.example/', text), text).toBe(false);
 		}
+	});
+});
+
+describe('linkDestination — internationalized domains', () => {
+	// "аpple.com" with a Cyrillic а (U+0430): looks like apple.com, is another domain.
+	const LOOKALIKE = 'аpple.com';
+
+	it('reads a bare Unicode domain in the text as its punycode, and flags it', () => {
+		expect(linkDestination('https://attacker.example/', LOOKALIKE)).toEqual({
+			host: 'attacker.example',
+			shownHost: 'xn--pple-43d.com',
+		});
+		expect(linkDestination('https://apple.com/', LOOKALIKE)).toEqual({
+			host: 'apple.com',
+			shownHost: 'xn--pple-43d.com',
+		});
+		expect(flagged('https://apple.com/', LOOKALIKE)).toBe(true);
+	});
+
+	it('matches a punycode href against the same domain written in Unicode', () => {
+		expect(linkDestination('https://xn--pple-43d.com/', LOOKALIKE)).toEqual({
+			host: 'xn--pple-43d.com',
+			shownHost: null,
+		});
+		expect(linkDestination(`https://${LOOKALIKE}/`, 'xn--pple-43d.com')).toEqual({
+			host: 'xn--pple-43d.com',
+			shownHost: null,
+		});
+	});
+
+	it('flags a trusted name used as a subdomain of another domain', () => {
+		expect(linkDestination('https://trusted.example.attacker.example/', 'trusted.example')).toEqual(
+			{ host: 'trusted.example.attacker.example', shownHost: 'trusted.example' }
+		);
+		expect(
+			linkDestination('https://attacker.example/', 'trusted.example.attacker.example')
+		).toEqual({ host: 'attacker.example', shownHost: 'trusted.example.attacker.example' });
 	});
 });

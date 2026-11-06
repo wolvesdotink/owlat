@@ -167,6 +167,7 @@ export function reduceDraftRevert(
 			scheduledSendAt: undefined,
 			undoToken: undefined,
 			isUnsealedSendAllowed: undefined,
+			approvedSend: undefined,
 			doneOnSendAt: undefined,
 			lastEditedAt: args.at,
 		},
