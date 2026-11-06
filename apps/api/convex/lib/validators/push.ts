@@ -35,6 +35,9 @@ export const pushEventValidator = v.union(
 	// a stalled or paused automation, a broken sending-domain DNS record),
 	// written for this person by `marketing/notifications.fanOut`.
 	v.object({ kind: v.literal('marketing'), noticeId: v.id('marketingNotices') }),
+	// An AI client connected over MCP asked for a write that waits for this
+	// person's approval (`mcp/actions.ts`).
+	v.object({ kind: v.literal('mcpAction'), actionId: v.id('mcpPendingActions') }),
 	// "Send a test notification" from Preferences, to one device.
 	v.object({ kind: v.literal('test'), subscriptionId: v.id('pushSubscriptions') })
 );

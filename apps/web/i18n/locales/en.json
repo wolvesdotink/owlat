@@ -6721,8 +6721,61 @@
 				"namePlaceholder": "Claude on my laptop",
 				"mailboxesLegend": "Mailboxes it may read",
 				"noMailboxes": "You have no mailbox to share yet.",
-				"readOnlyHint": "The client can search and read mail in these mailboxes. It cannot send or change anything.",
+				"accessLegend": "What it may do",
+				"readOption": "Read only",
+				"readHint": "Search and read mail in these mailboxes. It cannot send or change anything.",
+				"readWriteOption": "Read, and ask to write",
+				"readWriteHint": "Also ask to create and send drafts and to archive, move or label conversations. Nothing happens until you approve it in Owlat.",
 				"submit": "Create token"
+			},
+			"mcpPendingActionCard": {
+				"titles": {
+					"createDraft": "{client} wants to create a draft",
+					"sendDraft": "{client} wants to send an email",
+					"archiveThread": "{client} wants to archive a conversation",
+					"moveThread": "{client} wants to move a conversation",
+					"labelThread": "{client} wants to label a conversation",
+					"unlabelThread": "{client} wants to remove a label"
+				},
+				"asked": "Asked {time}",
+				"to": "To",
+				"cc": "Cc",
+				"bcc": "Bcc",
+				"subject": "Subject",
+				"inReplyTo": "Reply to",
+				"conversation": "Conversation",
+				"folder": "Folder",
+				"label": "Label",
+				"noSubject": "(no subject)",
+				"draftGone": "The draft no longer exists.",
+				"from": "From",
+				"sendAs": "as {name}",
+				"attachments": "Attachments",
+				"body": "Full message",
+				"plainTextBody": "Plain-text version",
+				"ampBody": "Interactive (AMP) version",
+				"fullText": "All text in the message",
+				"fullTextHint": "Includes text that shows only in some mail apps, modes or screen sizes.",
+				"hiddenContent": "This message has content some recipients may not see — check the full text.",
+				"preview": "Message as the recipient sees it",
+				"previewHint": "As the recipient sees it. Images from the web stay blocked, and nothing in it runs.",
+				"links": "Links and where they go",
+				"linkParts": {
+					"html": "In the message",
+					"text": "In the plain-text version",
+					"amp": "In the AMP version"
+				},
+				"linkNoText": "(no text)",
+				"linkMismatch": "Shows {shown}, goes to {target}",
+				"sealing": "Sealing",
+				"sealed": "Sealed: signed and encrypted for every recipient",
+				"notSealed": "Not sealed: goes out as ordinary email",
+				"loadingReview": "Loading the full request…",
+				"reviewGone": "This request has already been decided.",
+				"inaccessible": "You no longer have access to this mailbox, so what this action would change is hidden.",
+				"approve": "Approve",
+				"approveSend": "Approve and send",
+				"reject": "Reject"
 			},
 			"mcpClientTokenReveal": {
 				"title": "Token for {name}",
@@ -6740,13 +6793,24 @@
 					"listFolders": "Listed folders",
 					"listLabels": "Listed labels",
 					"searchMail": "Searched",
-					"readThread": "Read a conversation"
+					"readThread": "Read a conversation",
+					"getActionStatus": "Checked an action",
+					"createDraft": "Draft",
+					"sendDraft": "Send",
+					"archiveThread": "Archive",
+					"moveThread": "Move",
+					"labelThread": "Label"
 				},
 				"outcomes": {
 					"ok": "Done",
 					"denied": "Refused",
 					"invalid": "Invalid request",
-					"error": "Failed"
+					"error": "Failed",
+					"pendingApproval": "Waiting for approval",
+					"approved": "Approved",
+					"rejected": "Rejected by you",
+					"expired": "Expired",
+					"cancelled": "Cancelled"
 				}
 			}
 		},
@@ -7624,6 +7688,11 @@
 				"entered": "Zen mode on. Only the task is on screen.",
 				"left": "Zen mode off.",
 				"paletteSubtitle": "Hide everything but the task"
+			},
+			"mcpApprovalPrompt": {
+				"label": "AI client approval",
+				"waiting": "{count} action waiting for approval | {count} actions waiting for approval",
+				"seeAll": "See all"
 			}
 		},
 		"today": {
@@ -13018,11 +13087,14 @@
 				"subheading": "Connect an AI app such as Claude Desktop, Claude Code or Cursor so it can search and read your mail. Each connection gets its own token and sees only the mailboxes you choose.",
 				"connect": "Connect a client",
 				"serverHeading": "Server address",
-				"readOnlyNote": "Connections are read-only: they can search and read mail, but cannot send, move, label or delete anything. Mail you share this way leaves Owlat for the AI app and its provider.",
+				"accessNote": "A read-only connection can search and read mail. A read-write connection can also ask to create and send drafts, archive, move and label conversations, and each of those waits below until you approve it. No connection can delete mail. Mail you share this way leaves Owlat for the AI app and its provider.",
 				"clientsHeading": "Connected clients",
+				"approvalsHeading": "Waiting for your approval",
+				"approvalsEmpty": "Nothing is waiting. When a read-write client asks to change your mail, it shows up here.",
 				"empty": "No AI clients yet. Connect one to get a token.",
 				"revoked": "Revoked",
 				"readOnly": "Read-only",
+				"readWrite": "Read and write",
 				"mailboxUnavailable": "A mailbox you no longer have",
 				"usageLine": "Created {created} · Last used {lastUsed}",
 				"activity": "Activity",
@@ -17219,8 +17291,8 @@
 				},
 				"aiClients": {
 					"title": "AI clients",
-					"description": "Let an AI app read your mail, read-only",
-					"keywords": "mcp, claude, cursor, chatgpt, ai assistant, token, model context protocol"
+					"description": "Let an AI app read your mail and ask before it acts",
+					"keywords": "mcp, claude, cursor, chatgpt, ai assistant, token, model context protocol, approval"
 				}
 			},
 			"controls": {
@@ -17395,6 +17467,10 @@
 				"pushNotifications": {
 					"title": "Push notifications",
 					"keywords": "web push, browser notifications, phone, mobile, pwa, notify, devices"
+				},
+				"aiClientApprovals": {
+					"title": "Pending AI client approvals",
+					"keywords": "approve, reject, ai client, mcp, waiting, send draft"
 				}
 			},
 			"adminControls": {
@@ -18996,6 +19072,14 @@
 		"useMcpClients": {
 			"createOperation": "Connect AI client",
 			"revokeOperation": "Revoke AI client"
+		},
+		"useMcpPendingActions": {
+			"approveOperation": "Approve AI client action",
+			"rejectOperation": "Reject AI client action",
+			"failed": "The action could not run: {reason}",
+			"failedUnknown": "unknown error",
+			"expired": "The action expired before you approved it.",
+			"changed": "This changed after you opened it. Check the updated details, then approve again."
 		}
 	},
 	"sharedPkg": {
@@ -19308,7 +19392,7 @@
 					},
 					"mcp": {
 						"label": "AI clients (MCP)",
-						"description": "Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP. Read-only, with a token each member creates and can revoke."
+						"description": "Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP, with a token each member creates and can revoke. Any write it asks for waits for the member’s approval."
 					}
 				},
 				"multiTenancy": {

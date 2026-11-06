@@ -452,6 +452,16 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			initFromStorage: vi.fn(),
 		}),
 		useFocusMode: () => ({ isFocusMode: ref(false), setFocusMode: vi.fn() }),
+		// The AI client approval card the layout mounts: nothing waiting.
+		useMcpPendingActions: () => ({
+			pending: ref([]),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+			busyId: ref(null),
+			approve: vi.fn(),
+			reject: vi.fn(),
+		}),
 		// Web, not Tauri: the desktop branch dynamically imports @owlat/desktop.
 		useDesktopContext: () => ({
 			isDesktop: ref(false),

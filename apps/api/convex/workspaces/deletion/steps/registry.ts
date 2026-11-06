@@ -115,6 +115,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	mailSavedSearches: makeSweepStep('mailSavedSearches'),
 	mailUserSettings: makeSweepStep('mailUserSettings'),
 	mailAppPasswords: makeSweepStep('mailAppPasswords'),
+	mcpPendingActions: makeSweepStep('mcpPendingActions'),
 	mcpClientActivity: makeSweepStep('mcpClientActivity'),
 	mcpClients: makeSweepStep('mcpClients'),
 	mailboxMembers: makeSweepStep('mailboxMembers'),

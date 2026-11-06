@@ -8,9 +8,16 @@
  */
 
 import { v } from 'convex/values';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { throwNotFound } from '../_utils/errors';
-import { mcpActivityOutcomeValidator, mcpToolNameValidator } from '../lib/validators/mcp';
+import {
+	mcpActivityOutcomeValidator,
+	mcpToolNameValidator,
+	type McpActivityOutcome,
+	type McpToolName,
+} from '../lib/validators/mcp';
 import { mcpQuery } from './_helpers';
 
 export const ACTIVITY_PER_CLIENT_MAX = 200;
@@ -47,6 +54,46 @@ export const list = mcpQuery({
 	},
 });
 
+export type ActivityEntry = {
+	tool: McpToolName;
+	outcome: McpActivityOutcome;
+	mailboxId?: Id<'mailboxes'>;
+	threadId?: Id<'mailThreads'>;
+	query?: string;
+	resultCount?: number;
+};
+
+/** Add one row to a client's log, dropping the oldest past the cap. */
+export async function appendActivity(
+	ctx: MutationCtx,
+	client: Doc<'mcpClients'>,
+	entry: ActivityEntry
+): Promise<void> {
+	const { query, ...rest } = entry;
+	await ctx.db.insert('mcpClientActivity', {
+		clientId: client._id,
+		userId: client.userId,
+		...rest,
+		...(query !== undefined ? { query: query.slice(0, QUERY_LOG_MAX) } : {}),
+		at: Date.now(),
+	});
+	// Re-read: an earlier append in the same transaction already moved the count.
+	const current = (await ctx.db.get(client._id)) ?? client;
+	let count = current.activityCount + 1;
+	if (count > ACTIVITY_PER_CLIENT_MAX) {
+		const oldest = await ctx.db
+			.query('mcpClientActivity')
+			.withIndex('by_client_and_at', (q) => q.eq('clientId', client._id))
+			.order('asc')
+			.first();
+		if (oldest) {
+			await ctx.db.delete(oldest._id);
+			count -= 1;
+		}
+	}
+	await ctx.db.patch(client._id, { activityCount: count });
+}
+
 export const record = internalMutation({
 	args: {
 		clientId: v.id('mcpClients'),
@@ -60,26 +107,7 @@ export const record = internalMutation({
 	handler: async (ctx, args) => {
 		const client = await ctx.db.get(args.clientId);
 		if (!client) return;
-		const { clientId, query, ...rest } = args;
-		await ctx.db.insert('mcpClientActivity', {
-			clientId,
-			userId: client.userId,
-			...rest,
-			...(query !== undefined ? { query: query.slice(0, QUERY_LOG_MAX) } : {}),
-			at: Date.now(),
-		});
-		let count = client.activityCount + 1;
-		if (count > ACTIVITY_PER_CLIENT_MAX) {
-			const oldest = await ctx.db
-				.query('mcpClientActivity')
-				.withIndex('by_client_and_at', (q) => q.eq('clientId', clientId))
-				.order('asc')
-				.first();
-			if (oldest) {
-				await ctx.db.delete(oldest._id);
-				count -= 1;
-			}
-		}
-		await ctx.db.patch(clientId, { activityCount: count });
+		const { clientId: _clientId, ...entry } = args;
+		await appendActivity(ctx, client, entry);
 	},
 });

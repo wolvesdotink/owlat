@@ -9,6 +9,7 @@
 import type { TableNames } from '../../_generated/dataModel';
 import { THREAD_BRIEF_MEMBER_DESCENDANTS } from './threadBriefRelations';
 import { ARRIVAL_MEMBER_DESCENDANTS } from './arrivalRelations';
+import { MCP_MEMBER_DESCENDANTS } from './mcpRelations';
 
 export type MemberErasureAction = 'delete' | 'anonymize' | 'retain';
 
@@ -486,4 +487,5 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	),
 	...THREAD_BRIEF_MEMBER_DESCENDANTS,
 	...ARRIVAL_MEMBER_DESCENDANTS,
+	...MCP_MEMBER_DESCENDANTS,
 ];

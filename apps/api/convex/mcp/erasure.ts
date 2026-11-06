@@ -1,5 +1,5 @@
 /**
- * A member's MCP clients and their activity log, as ranges the member-erasure
+ * A member's MCP clients, their activity log and their pending actions, as ranges the member-erasure
  * phase (`auth/erasure/memberPhases.ts`) drains. Each range is emptied by the
  * deletes the phase makes, so reading it again resumes.
  *
@@ -10,6 +10,11 @@ import type { MutationCtx } from '../_generated/server';
 
 export function memberMcpClientRanges(ctx: MutationCtx, userId: string) {
 	return [
+		(n: number) =>
+			ctx.db
+				.query('mcpPendingActions')
+				.withIndex('by_user', (q) => q.eq('userId', userId))
+				.take(n),
 		(n: number) =>
 			ctx.db
 				.query('mcpClientActivity')

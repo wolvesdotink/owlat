@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { McpClientAccess } from '~/composables/useMcpClients';
 
 const props = defineProps<{ busy: boolean }>();
 
 const emit = defineEmits<{
 	(e: 'cancel'): void;
-	(e: 'submit', value: { label: string; mailboxIds: Id<'mailboxes'>[] }): void;
+	(
+		e: 'submit',
+		value: { label: string; mailboxIds: Id<'mailboxes'>[]; access: McpClientAccess }
+	): void;
 }>();
 
 const { t } = useI18n();
@@ -21,6 +25,8 @@ const mailboxes = computed(() => mailboxData.value ?? []);
 
 const label = ref('');
 const selected = ref<Id<'mailboxes'>[]>([]);
+// Read-only unless the member chooses otherwise: a write still waits for them.
+const access = ref<McpClientAccess>('read');
 
 watch(
 	mailboxes,
@@ -37,7 +43,11 @@ const canSubmit = computed(
 
 function submit() {
 	if (!canSubmit.value) return;
-	emit('submit', { label: label.value.trim(), mailboxIds: [...selected.value] });
+	emit('submit', {
+		label: label.value.trim(),
+		mailboxIds: [...selected.value],
+		access: access.value,
+	});
 }
 </script>
 
@@ -83,9 +93,33 @@ function submit() {
 					}}</span>
 				</label>
 			</fieldset>
-			<p class="text-xs text-text-tertiary mt-4">
-				{{ t('components.preferences.mcpClientCreateDialog.readOnlyHint') }}
-			</p>
+			<fieldset class="mt-4">
+				<legend class="text-sm font-medium mb-1">
+					{{ t('components.preferences.mcpClientCreateDialog.accessLegend') }}
+				</legend>
+				<label class="flex items-start gap-2 text-sm mt-1">
+					<input v-model="access" type="radio" value="read" class="mt-1" />
+					<span>
+						<span class="block">{{
+							t('components.preferences.mcpClientCreateDialog.readOption')
+						}}</span>
+						<span class="block text-xs text-text-tertiary">{{
+							t('components.preferences.mcpClientCreateDialog.readHint')
+						}}</span>
+					</span>
+				</label>
+				<label class="flex items-start gap-2 text-sm mt-2">
+					<input v-model="access" type="radio" value="read_write" class="mt-1" />
+					<span>
+						<span class="block">{{
+							t('components.preferences.mcpClientCreateDialog.readWriteOption')
+						}}</span>
+						<span class="block text-xs text-text-tertiary">{{
+							t('components.preferences.mcpClientCreateDialog.readWriteHint')
+						}}</span>
+					</span>
+				</label>
+			</fieldset>
 			<div class="flex items-center justify-end gap-2 mt-5">
 				<UiButton variant="ghost" type="button" @click="emit('cancel')">
 					{{ t('common.cancel') }}
