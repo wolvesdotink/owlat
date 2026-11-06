@@ -126,29 +126,29 @@ describe('markRead', () => {
 		return calls.flatMap((args) => args.messageIds);
 	};
 
-	it("walks a label's batches by creation time and undoes exactly what they flipped", async () => {
+	it("walks a label's batches by creation time and id, and undoes exactly what they flipped", async () => {
 		const bulk = usePostboxFolderBulk(ref('mbx' as never));
 		const { markLabelBatch, setFlags } = runnerOf();
 		markLabelBatch
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: ids('a', 4), ceilingTime: 900, afterTime: 400 },
+				result: { markedIds: ids('a', 4), ceilingTime: 900, afterTime: 400, afterId: 'r1' },
 			})
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: [], ceilingTime: 900, afterTime: 600 },
+				result: { markedIds: [], ceilingTime: 900, afterTime: 400, afterId: 'r2' },
 			})
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: ids('b', 2), ceilingTime: 900, afterTime: null },
+				result: { markedIds: ids('b', 2), ceilingTime: 900, afterTime: null, afterId: null },
 			});
 
 		await bulk.markRead({ kind: 'label', mailboxId: 'mbx' as never, labelId: 'lbl' as never });
 
 		expect(markLabelBatch.mock.calls.map(([args]) => args)).toEqual([
 			{ mailboxId: 'mbx', labelId: 'lbl' },
-			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 400 },
-			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 600 },
+			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 400, afterId: 'r1' },
+			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 400, afterId: 'r2' },
 		]);
 		expect(registered).toHaveLength(1);
 		expect(await undoIds(setFlags)).toEqual([...ids('a', 4), ...ids('b', 2)]);
@@ -173,6 +173,10 @@ describe('markRead', () => {
 		const bulk = usePostboxFolderBulk(ref('mbx' as never));
 		const { setFlags } = runnerOf();
 		const bundle = ids('m', 250) as never[];
+		setFlags.mockImplementation(async (args: { messageIds: string[] }) => ({
+			ok: true,
+			result: { seenChangedIds: args.messageIds },
+		}));
 
 		await bulk.markRead({ kind: 'messages', messageIds: bundle });
 
@@ -181,6 +185,18 @@ describe('markRead', () => {
 		expect(calls.flatMap((args) => args.messageIds)).toEqual(bundle);
 		expect(Math.max(...calls.map((args) => args.messageIds.length))).toBeLessThan(250);
 		expect(await undoIds(setFlags)).toEqual(bundle);
+	});
+
+	it("undoes only the bundle's messages the server moved from unread to read", async () => {
+		const bulk = usePostboxFolderBulk(ref('mbx' as never));
+		const { setFlags } = runnerOf();
+		// m1 was read on another client after the bundle row was drawn.
+		setFlags.mockResolvedValueOnce({ ok: true, result: { seenChangedIds: ['m0', 'm2'] } });
+
+		await bulk.markRead({ kind: 'messages', messageIds: ['m0', 'm1', 'm2'] as never[] });
+
+		expect(registered).toHaveLength(1);
+		expect(await undoIds(setFlags)).toEqual(['m0', 'm2']);
 	});
 
 	it('walks every mailbox folder of All inboxes and merges them into one Undo', async () => {

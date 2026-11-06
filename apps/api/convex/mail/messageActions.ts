@@ -41,8 +41,7 @@ import { recordRemoteChanges, type RemoteChange } from './external/remoteOps';
 import { recordArchivedMoves } from './interpret/threadEvents';
 import { recordUnreadArchives, unreadArchiveCandidates } from './arrival/learningSignals';
 
-// Re-exported so the modules that reach the rebuild through this one keep
-// working unchanged; it lives in ./threadAggregates now (size cap).
+// Re-exported for the modules that import the rebuild from this one.
 export { rebuildThreadAggregates };
 
 /**
@@ -61,20 +60,19 @@ type MoveResult = { ok: true; moved: MovedMessage[] };
 type AccessGate = ReturnType<typeof createMailboxAccessGate>;
 
 /**
- * Apply a flag delta to every message the caller can access, then apply the
- * touched threads' `unreadCount` / `hasFlagged` deltas (plan 3.3: a star or a
- * mark-read no longer re-reads the whole thread). Shared by `setFlags` and its
- * single-message wrappers, which call it directly: they used to go through
- * `ctx.runMutation` with `api` loaded by a dynamic `import()`, and the Convex
- * isolate rejects that at call time ("dynamic module import unsupported").
+ * Apply a flag delta to every message the caller can access, then the touched
+ * threads' `unreadCount` / `hasFlagged` deltas. `setFlags` and its wrappers
+ * call it directly (the Convex isolate rejects a dynamic `import()` of `api`).
+ * Returns the ids whose read state changed: an Undo skips mail already read.
  */
 async function applyFlags(
 	ctx: MutationCtx,
 	session: MutationSessionContext,
 	messageIds: Id<'mailMessages'>[],
 	flagDeltas: Partial<Record<Flag, boolean>>
-): Promise<void> {
-	if (Object.keys(flagDeltas).length === 0) return;
+): Promise<Id<'mailMessages'>[]> {
+	if (Object.keys(flagDeltas).length === 0) return [];
+	const seenChangedIds: Id<'mailMessages'>[] = [];
 	// One access decision per mailbox, not per message (plan 1.13).
 	const access = createMailboxAccessGate(ctx, session);
 	const folders = new FolderFlagWrites(ctx);
@@ -87,10 +85,12 @@ async function applyFlags(
 		if (!owned.ok) continue;
 		const change = await writeMessageFlags(ctx, folders, threads, message, flagDeltas);
 		if (change) remote.push(change);
+		if (change && flagDeltas.seen === !message.flagSeen) seenChangedIds.push(message._id);
 	}
 	await folders.flush();
 	await applyThreadFlagDeltas(ctx, threads);
 	await recordRemoteChanges(ctx, remote);
+	return seenChangedIds;
 }
 
 // ── Public mutations ──────────────────────────────────────────────
@@ -109,7 +109,7 @@ export const setFlags = postboxMutation({
 		if (args.seen !== undefined) flagDeltas.seen = args.seen;
 		if (args.flagged !== undefined) flagDeltas.flagged = args.flagged;
 		if (args.answered !== undefined) flagDeltas.answered = args.answered;
-		await applyFlags(ctx, session, args.messageIds, flagDeltas);
+		return { seenChangedIds: await applyFlags(ctx, session, args.messageIds, flagDeltas) };
 	},
 });
 

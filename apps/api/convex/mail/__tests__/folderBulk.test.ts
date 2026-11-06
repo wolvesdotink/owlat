@@ -22,6 +22,7 @@ import {
 	type SeededFolderRole,
 } from './helpers.testlib';
 import { MARK_FOLDER_READ_BATCH, EMPTY_FOLDER_BATCH } from '../folderBulk';
+import { withCreationTime } from '../../__tests__/helpers/creationTimeSeam';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -210,6 +211,7 @@ type LabelAnswer = {
 	markedIds: Id<'mailMessages'>[];
 	ceilingTime: number;
 	afterTime: number | null;
+	afterId: Id<'mailMessages'> | null;
 };
 
 /** Drive `markLabelRead` the way the client does, keeping each batch's ids. */
@@ -220,7 +222,7 @@ async function markLabelAllRead(
 	betweenBatches?: () => Promise<void>
 ): Promise<{ batches: Id<'mailMessages'>[][] }> {
 	const batches: Id<'mailMessages'>[][] = [];
-	let cursor: { ceilingTime: number; afterTime: number } | null = null;
+	let cursor: { ceilingTime: number; afterTime: number; afterId: Id<'mailMessages'> } | null = null;
 	for (;;) {
 		const answer: LabelAnswer = await t.mutation(api.mail.folderBulk.markLabelRead, {
 			mailboxId,
@@ -228,8 +230,12 @@ async function markLabelAllRead(
 			...cursor,
 		});
 		batches.push(answer.markedIds);
-		if (answer.afterTime === null) break;
-		cursor = { ceilingTime: answer.ceilingTime, afterTime: answer.afterTime };
+		if (answer.afterTime === null || answer.afterId === null) break;
+		cursor = {
+			ceilingTime: answer.ceilingTime,
+			afterTime: answer.afterTime,
+			afterId: answer.afterId,
+		};
 		await betweenBatches?.();
 	}
 	return { batches };
@@ -387,6 +393,43 @@ describe('markLabelRead', () => {
 		expect(await unreadOf(t, late)).toEqual(late);
 	});
 
+	it('marks every labelled message that shares one creation time, past a full batch', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonal(t);
+		const work = await seedLabel(t, mailboxId, 'work');
+		const tied = await withCreationTime(Date.now(), () =>
+			seedMessages(t, mailboxId, 'inbox', MARK_FOLDER_READ_BATCH + 1)
+		);
+		await setLabels(t, tied, [work]);
+
+		const { batches } = await markLabelAllRead(t, mailboxId, work);
+
+		expect(new Set(batches.flat())).toEqual(new Set(tied));
+		expect(await unreadOf(t, tied)).toEqual([]);
+	});
+
+	it('keeps going inside one creation time after a batch that matched nothing', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonal(t);
+		const work = await seedLabel(t, mailboxId, 'work');
+		// One import batch: a full read of unlabelled mail, then the labelled
+		// mail after it in index order, all at one creation time.
+		const { plain, labelled } = await withCreationTime(Date.now(), async () => ({
+			plain: await seedMessages(t, mailboxId, 'inbox', MARK_FOLDER_READ_BATCH, {
+				subjectPrefix: 'plain',
+			}),
+			labelled: await seedMessages(t, mailboxId, 'inbox', MARK_FOLDER_READ_BATCH + 1),
+		}));
+		await setLabels(t, labelled, [work]);
+
+		const { batches } = await markLabelAllRead(t, mailboxId, work);
+
+		expect(batches[0]).toEqual([]);
+		expect(new Set(batches.flat())).toEqual(new Set(labelled));
+		expect(await unreadOf(t, labelled)).toEqual([]);
+		expect(await unreadOf(t, plain)).toEqual(plain);
+	});
+
 	it('skips snoozed labelled mail', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedPersonal(t);
@@ -428,6 +471,26 @@ describe('markLabelRead', () => {
 			t.mutation(api.mail.folderBulk.markLabelRead, { mailboxId, labelId: work })
 		).rejects.toThrow();
 		expect(await unreadOf(t, ids)).toEqual(ids);
+	});
+});
+
+describe('setFlags for a bundle', () => {
+	it('answers with only the ids it moved from unread to read', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonal(t);
+		const [unread, readElsewhere] = await seedMessages(t, mailboxId, 'inbox', 2);
+		// Another client read this one after the bundle row was drawn.
+		await t.mutation(api.mail.messageActions.setFlags, {
+			messageIds: [readElsewhere!],
+			seen: true,
+		});
+
+		const answer = await t.mutation(api.mail.messageActions.setFlags, {
+			messageIds: [unread!, readElsewhere!],
+			seen: true,
+		});
+
+		expect(answer.seenChangedIds).toEqual([unread]);
 	});
 });
 

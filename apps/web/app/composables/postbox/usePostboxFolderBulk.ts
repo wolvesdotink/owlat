@@ -164,15 +164,17 @@ export function usePostboxFolderBulk(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		};
 	}
 
-	function labelStep(
-		mailboxId: Id<'mailboxes'>,
-		labelId: Id<'mailLabels'>
-	): MarkStep<{ ceilingTime: number; afterTime: number }> {
+	type LabelCursor = { ceilingTime: number; afterTime: number; afterId: Id<'mailMessages'> };
+
+	function labelStep(mailboxId: Id<'mailboxes'>, labelId: Id<'mailLabels'>): MarkStep<LabelCursor> {
 		return async (cursor) => {
 			const batch = await markLabelBatch.run({ mailboxId, labelId, ...cursor });
 			if (!batch.ok) return null;
-			const { markedIds, ceilingTime, afterTime } = batch.result;
-			return { markedIds, next: afterTime === null ? null : { ceilingTime, afterTime } };
+			const { markedIds, ceilingTime, afterTime, afterId } = batch.result;
+			return {
+				markedIds,
+				next: afterTime === null || afterId === null ? null : { ceilingTime, afterTime, afterId },
+			};
 		};
 	}
 
@@ -194,7 +196,9 @@ export function usePostboxFolderBulk(mailboxId: Ref<Id<'mailboxes'> | null>) {
 				for (const messageIds of chunkForMove(target.messageIds)) {
 					const result = await setFlags.run({ messageIds, seen: true });
 					if (!result.ok) return;
-					marked.push(...messageIds);
+					// Only what this call flipped: a message another client read
+					// after the row was drawn stays read on Undo.
+					marked.push(...result.result.seenChangedIds);
 				}
 				return;
 			case 'folders':
