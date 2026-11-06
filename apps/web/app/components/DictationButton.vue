@@ -76,9 +76,18 @@ watch(
 	(el) => {
 		unobserve();
 		if (!el || typeof IntersectionObserver === 'undefined') return;
-		observer = new IntersectionObserver((entries) => {
-			if (entries.at(-1)?.isIntersecting === false) dictation.cancel();
-		});
+		// A mic exactly at the edge of the view counts as intersecting with no
+		// visible area, and a lone zero threshold may not report reaching it: the
+		// second threshold does, and a zero ratio counts as out of sight.
+		observer = new IntersectionObserver(
+			(entries) => {
+				const entry = entries.at(-1);
+				if (entry && (!entry.isIntersecting || entry.intersectionRatio === 0)) {
+					dictation.cancel();
+				}
+			},
+			{ threshold: [0, Number.EPSILON] }
+		);
 		observer.observe(el);
 	},
 	{ flush: 'post' }

@@ -52,14 +52,15 @@ class FakeRecognition extends EventTarget {
 /** Records what each observer watches, so a test can say what came into or out of sight. */
 type ObserverRecord = {
 	callback: IntersectionObserverCallback;
+	options: IntersectionObserverInit | undefined;
 	targets: Element[];
 	disconnected: boolean;
 };
 let observers: ObserverRecord[] = [];
 class FakeIntersectionObserver {
 	record: ObserverRecord;
-	constructor(callback: IntersectionObserverCallback) {
-		this.record = { callback, targets: [], disconnected: false };
+	constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+		this.record = { callback, options, targets: [], disconnected: false };
 		observers.push(this.record);
 	}
 	observe(el: Element) {
@@ -241,6 +242,32 @@ describe('DictationButton', () => {
 		expect(button(wrapper).attributes('aria-pressed')).toBe('false');
 		wrapper.unmount();
 		expect(observers.every((r) => r.disconnected)).toBe(true);
+	});
+
+	it('stops listening when its mic sits right at the edge of the view with nothing of it showing', async () => {
+		globals.webkitSpeechRecognition = FakeRecognition;
+		const { wrapper } = await mountButton();
+		await button(wrapper).trigger('click');
+		const rec = FakeRecognition.last!;
+		const record = observers.find((r) => !r.disconnected)!;
+		// A threshold above zero, so leaving the last visible pixel reports a change.
+		expect(record.options?.threshold).toEqual(expect.arrayContaining([Number.EPSILON]));
+
+		// Touching the edge counts as intersecting, with no visible area.
+		record.callback(
+			[
+				{
+					target: record.targets[0]!,
+					isIntersecting: true,
+					intersectionRatio: 0,
+				} as IntersectionObserverEntry,
+			],
+			record as unknown as IntersectionObserver
+		);
+		await flushPromises();
+		expect(rec.abort).toHaveBeenCalled();
+		expect(button(wrapper).attributes('aria-pressed')).toBe('false');
+		wrapper.unmount();
 	});
 
 	it('in the desktop app, a session still waiting on the permission prompt never starts once hidden', async () => {
