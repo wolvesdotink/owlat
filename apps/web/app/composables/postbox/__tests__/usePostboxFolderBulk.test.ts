@@ -126,29 +126,29 @@ describe('markRead', () => {
 		return calls.flatMap((args) => args.messageIds);
 	};
 
-	it("walks a label's batches by creation time and id, and undoes exactly what they flipped", async () => {
+	it("walks a label's batches by their page cursor, and undoes exactly what they flipped", async () => {
 		const bulk = usePostboxFolderBulk(ref('mbx' as never));
 		const { markLabelBatch, setFlags } = runnerOf();
 		markLabelBatch
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: ids('a', 4), ceilingTime: 900, afterTime: 400, afterId: 'r1' },
+				result: { markedIds: ids('a', 4), ceilingTime: 900, cursor: 'page-1' },
 			})
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: [], ceilingTime: 900, afterTime: 400, afterId: 'r2' },
+				result: { markedIds: [], ceilingTime: 900, cursor: 'page-2' },
 			})
 			.mockResolvedValueOnce({
 				ok: true,
-				result: { markedIds: ids('b', 2), ceilingTime: 900, afterTime: null, afterId: null },
+				result: { markedIds: ids('b', 2), ceilingTime: 900, cursor: null },
 			});
 
 		await bulk.markRead({ kind: 'label', mailboxId: 'mbx' as never, labelId: 'lbl' as never });
 
 		expect(markLabelBatch.mock.calls.map(([args]) => args)).toEqual([
 			{ mailboxId: 'mbx', labelId: 'lbl' },
-			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 400, afterId: 'r1' },
-			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, afterTime: 400, afterId: 'r2' },
+			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, cursor: 'page-1' },
+			{ mailboxId: 'mbx', labelId: 'lbl', ceilingTime: 900, cursor: 'page-2' },
 		]);
 		expect(registered).toHaveLength(1);
 		expect(await undoIds(setFlags)).toEqual([...ids('a', 4), ...ids('b', 2)]);

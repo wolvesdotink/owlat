@@ -31,7 +31,6 @@ import {
 } from './threadAggregates';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './messagePurge';
 import { recordRemoteChanges, type RemoteChange } from './external/remoteOps';
-import { rowsAfterTied, type DrainBudget } from './interpret/purgeDrain';
 
 /**
  * Unread messages one mark-read batch reads. A flag write costs a few index
@@ -202,32 +201,23 @@ export const markCategoryRead = postboxMutation({
 });
 
 /**
- * `rowsAfterTied` charges the rows it reads past inside one creation time to a
- * budget. A label batch has no budget beyond its own row count: the rows it
- * passes over are the ones earlier batches of this walk read in that creation
- * time and left unread, so they are bounded by what one transaction can write
- * at a single creation time.
- */
-const UNMETERED: DrainBudget = {
-	isExhausted: () => false,
-	chunk: (max) => max,
-	charge: () => {},
-	range: () => {},
-	progress: () => {},
-};
-
-/**
  * Mark one batch of a label's unread messages read, in whichever folder they
  * are filed: the label view lists them all.
  *
  * There is no index over label membership (Convex indexes an array field by
- * its whole value), so a batch reads up to MARK_FOLDER_READ_BATCH of the
- * mailbox's unread messages in creation order and keeps the labelled ones. The
- * cursor is the creation time and id of the last row read: many messages share
- * one creation time (an import batch), and the index orders those by id, so a
- * creation time alone would skip the rest of a tie. The ceiling is the
+ * its whole value), so a batch pages MARK_FOLDER_READ_BATCH of the mailbox's
+ * unread messages in creation order and keeps the labelled ones. A batch can
+ * flip nothing and still hand back a cursor.
+ *
+ * The cursor is a Convex pagination cursor, a position in the index, so a
+ * batch reads only its own page however many earlier unread rows share one
+ * creation time (an import batch, or writes of several transactions in one
+ * millisecond). A cursor of the creation time and id would have to read the
+ * rest of that tie again from its start on every call. Rows a batch marks read
+ * leave the range, which a position cursor does not mind. The ceiling is the
  * creation time of the newest unread message at the first call, so later
- * arrivals stay unread. A batch can flip nothing and still hand back a cursor.
+ * arrivals stay unread; rows at exactly the ceiling are part of the walk. The
+ * range must stay the same on every call for the cursor to be valid.
  */
 // authz: requireMailboxAccess on the label's mailbox (member floor, the same
 // one setFlags applies per message); the label must belong to that mailbox.
@@ -236,8 +226,7 @@ export const markLabelRead = postboxMutation({
 		mailboxId: v.id('mailboxes'),
 		labelId: v.id('mailLabels'),
 		ceilingTime: v.optional(v.number()),
-		afterTime: v.optional(v.number()),
-		afterId: v.optional(v.id('mailMessages')),
+		cursor: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -246,8 +235,7 @@ export const markLabelRead = postboxMutation({
 	): Promise<{
 		markedIds: Id<'mailMessages'>[];
 		ceilingTime: number;
-		afterTime: number | null;
-		afterId: Id<'mailMessages'> | null;
+		cursor: string | null;
 	}> => {
 		const label = await ctx.db.get(args.labelId);
 		if (!label || label.mailboxId !== args.mailboxId) throwNotFound('Label');
@@ -266,23 +254,17 @@ export const markLabelRead = postboxMutation({
 					.first()
 			)?._creationTime ??
 			0;
-		const after =
-			args.afterTime === undefined ? undefined : { at: args.afterTime, key: args.afterId ?? '' };
-		const batch = await rowsAfterTied(UNMETERED, after, MARK_FOLDER_READ_BATCH, (bound) =>
-			ctx.db.query('mailMessages').withIndex('by_mailbox_and_unseen', (q) => {
-				const unseen = q.eq('mailboxId', args.mailboxId).eq('flagSeen', false);
-				if (bound === undefined) return unseen.lte('_creationTime', ceilingTime);
-				if ('eq' in bound) return unseen.eq('_creationTime', bound.eq);
-				return unseen.gt('_creationTime', bound.gt).lte('_creationTime', ceilingTime);
-			})
-		);
-		const labelled = batch.filter((message) => message.labelIds.includes(args.labelId));
-		const last = batch.length === MARK_FOLDER_READ_BATCH ? batch[batch.length - 1] : undefined;
+		const page = await ctx.db
+			.query('mailMessages')
+			.withIndex('by_mailbox_and_unseen', (q) =>
+				q.eq('mailboxId', args.mailboxId).eq('flagSeen', false).lte('_creationTime', ceilingTime)
+			)
+			.paginate({ cursor: args.cursor ?? null, numItems: MARK_FOLDER_READ_BATCH });
+		const labelled = page.page.filter((message) => message.labelIds.includes(args.labelId));
 		return {
 			markedIds: await markMessagesRead(ctx, labelled),
 			ceilingTime,
-			afterTime: last?._creationTime ?? null,
-			afterId: last?._id ?? null,
+			cursor: page.isDone ? null : page.continueCursor,
 		};
 	},
 });

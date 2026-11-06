@@ -164,17 +164,14 @@ export function usePostboxFolderBulk(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		};
 	}
 
-	type LabelCursor = { ceilingTime: number; afterTime: number; afterId: Id<'mailMessages'> };
+	type LabelCursor = { ceilingTime: number; cursor: string };
 
 	function labelStep(mailboxId: Id<'mailboxes'>, labelId: Id<'mailLabels'>): MarkStep<LabelCursor> {
-		return async (cursor) => {
-			const batch = await markLabelBatch.run({ mailboxId, labelId, ...cursor });
+		return async (next) => {
+			const batch = await markLabelBatch.run({ mailboxId, labelId, ...next });
 			if (!batch.ok) return null;
-			const { markedIds, ceilingTime, afterTime, afterId } = batch.result;
-			return {
-				markedIds,
-				next: afterTime === null || afterId === null ? null : { ceilingTime, afterTime, afterId },
-			};
+			const { markedIds, ceilingTime, cursor } = batch.result;
+			return { markedIds, next: cursor === null ? null : { ceilingTime, cursor } };
 		};
 	}
 

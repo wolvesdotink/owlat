@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
+import type { MutationCtx } from '../../_generated/server';
 import {
 	modules,
 	seedMailbox,
@@ -21,7 +22,7 @@ import {
 	seedMessage,
 	type SeededFolderRole,
 } from './helpers.testlib';
-import { MARK_FOLDER_READ_BATCH, EMPTY_FOLDER_BATCH } from '../folderBulk';
+import { MARK_FOLDER_READ_BATCH, EMPTY_FOLDER_BATCH, markLabelRead } from '../folderBulk';
 import { withCreationTime } from '../../__tests__/helpers/creationTimeSeam';
 
 const sessionMocks = vi.hoisted(() => ({
@@ -210,8 +211,7 @@ async function unreadOf(
 type LabelAnswer = {
 	markedIds: Id<'mailMessages'>[];
 	ceilingTime: number;
-	afterTime: number | null;
-	afterId: Id<'mailMessages'> | null;
+	cursor: string | null;
 };
 
 /** Drive `markLabelRead` the way the client does, keeping each batch's ids. */
@@ -222,23 +222,114 @@ async function markLabelAllRead(
 	betweenBatches?: () => Promise<void>
 ): Promise<{ batches: Id<'mailMessages'>[][] }> {
 	const batches: Id<'mailMessages'>[][] = [];
-	let cursor: { ceilingTime: number; afterTime: number; afterId: Id<'mailMessages'> } | null = null;
+	let next: { ceilingTime: number; cursor: string } | null = null;
 	for (;;) {
 		const answer: LabelAnswer = await t.mutation(api.mail.folderBulk.markLabelRead, {
 			mailboxId,
 			labelId,
-			...cursor,
+			...next,
 		});
 		batches.push(answer.markedIds);
-		if (answer.afterTime === null || answer.afterId === null) break;
-		cursor = {
-			ceilingTime: answer.ceilingTime,
-			afterTime: answer.afterTime,
-			afterId: answer.afterId,
-		};
+		if (answer.cursor === null) break;
+		next = { ceilingTime: answer.ceilingTime, cursor: answer.cursor };
 		await betweenBatches?.();
 	}
 	return { batches };
+}
+
+/**
+ * `db` that counts every row a `mailMessages` read over `by_mailbox_and_unseen`
+ * hands back: the walk `markLabelRead` pages through. Reads the flag writes
+ * make per message go through other indexes and are not counted.
+ */
+function unseenWalkCountingDb(db: MutationCtx['db'], counter: { rows: number }): MutationCtx['db'] {
+	const counted = (query: object): object =>
+		new Proxy(query, {
+			get(target, prop) {
+				const value = Reflect.get(target, prop) as unknown;
+				if (typeof value !== 'function') return value;
+				if (prop === Symbol.asyncIterator) {
+					return () => {
+						const it = (value as () => AsyncIterator<unknown>).call(target);
+						return {
+							async next() {
+								const step = await it.next();
+								if (!step.done) counter.rows += 1;
+								return step;
+							},
+						};
+					};
+				}
+				return (...args: unknown[]) => {
+					const result = (value as (...a: unknown[]) => unknown).apply(target, args);
+					if (result instanceof Promise) {
+						return result.then((rows: unknown) => {
+							if (Array.isArray(rows)) counter.rows += rows.length;
+							else if (rows && typeof rows === 'object' && 'page' in rows) {
+								counter.rows += (rows as { page: unknown[] }).page.length;
+							} else if (rows) counter.rows += 1;
+							return rows;
+						});
+					}
+					return typeof result === 'object' && result !== null ? counted(result) : result;
+				};
+			},
+		});
+	const table = (query: object): object =>
+		new Proxy(query, {
+			get(target, prop) {
+				const value = Reflect.get(target, prop) as unknown;
+				if (typeof value !== 'function') return value;
+				return (...args: unknown[]) => {
+					const result = (value as (...a: unknown[]) => object).apply(target, args);
+					return prop === 'withIndex' && args[0] === 'by_mailbox_and_unseen'
+						? counted(result)
+						: result;
+				};
+			},
+		});
+	return new Proxy(db, {
+		get(target, prop) {
+			const value = Reflect.get(target, prop) as unknown;
+			if (typeof value !== 'function') return value;
+			if (prop !== 'query') return (value as (...a: unknown[]) => unknown).bind(target);
+			return (name: string) => {
+				const query = (value as (n: string) => object).call(target, name);
+				return name === 'mailMessages' ? table(query) : query;
+			};
+		},
+	});
+}
+
+/**
+ * Drive `markLabelRead` as the client does, through a db that counts the rows
+ * each call reads from the unseen walk.
+ */
+async function markLabelAllReadCounted(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>,
+	labelId: Id<'mailLabels'>
+): Promise<{ rowsPerCall: number[] }> {
+	const handler = (
+		markLabelRead as unknown as {
+			_handler: (ctx: MutationCtx, args: Record<string, unknown>) => Promise<LabelAnswer>;
+		}
+	)._handler;
+	const rowsPerCall: number[] = [];
+	let next: { ceilingTime?: number; cursor?: string } = {};
+	for (;;) {
+		const counter = { rows: 0 };
+		const answer = await t.run(async (ctx) =>
+			handler(
+				{ ...ctx, db: unseenWalkCountingDb(ctx.db, counter) },
+				{ mailboxId, labelId, ...next }
+			)
+		);
+		rowsPerCall.push(counter.rows);
+		if (answer.cursor === null) break;
+		next = { ceilingTime: answer.ceilingTime, cursor: answer.cursor };
+	}
+	return { rowsPerCall };
 }
 
 /** Drive `markCategoryRead` the way the client does, keeping each batch's ids. */
@@ -428,6 +519,30 @@ describe('markLabelRead', () => {
 		expect(new Set(batches.flat())).toEqual(new Set(labelled));
 		expect(await unreadOf(t, labelled)).toEqual([]);
 		expect(await unreadOf(t, plain)).toEqual(plain);
+	});
+
+	it('reads a bounded number of rows per call however large a creation-time tie is', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedPersonal(t);
+		const work = await seedLabel(t, mailboxId, 'work');
+		const tieSize = 10 * MARK_FOLDER_READ_BATCH;
+		// One import batch: many batches of unlabelled unread mail, then a few
+		// labelled messages after them in index order, all at one creation time.
+		const { plain, labelled } = await withCreationTime(Date.now(), async () => ({
+			plain: await seedMessages(t, mailboxId, 'inbox', tieSize, { subjectPrefix: 'plain' }),
+			labelled: await seedMessages(t, mailboxId, 'inbox', 5),
+		}));
+		await setLabels(t, labelled, [work]);
+
+		const { rowsPerCall } = await markLabelAllReadCounted(t, mailboxId, work);
+
+		// The first call also reads the newest unread row for its ceiling.
+		for (const rows of rowsPerCall) expect(rows).toBeLessThanOrEqual(MARK_FOLDER_READ_BATCH + 1);
+		const unseenRows = plain.length + labelled.length;
+		expect(rowsPerCall.length).toBeLessThanOrEqual(unseenRows / MARK_FOLDER_READ_BATCH + 2);
+		expect(rowsPerCall.reduce((sum, rows) => sum + rows, 0)).toBeLessThanOrEqual(unseenRows + 2);
+		expect(await unreadOf(t, labelled)).toEqual([]);
+		expect(await unreadOf(t, plain)).toHaveLength(plain.length);
 	});
 
 	it('skips snoozed labelled mail', async () => {
