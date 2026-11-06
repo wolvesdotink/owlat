@@ -14,6 +14,11 @@
  * selected item shows its stance picker, and the draft's coverage overlays
  * "Addressed in draft". An unconfirmed proposal ("Check this") offers Track
  * instead of a reaction: it is not tracked until someone confirms it.
+ *
+ * A withdrawn item ("Needs review again": the read it rested on no longer
+ * holds, because its message's signature covers less of it) says why and
+ * when someone had confirmed it. Nobody can confirm it as it stands; a new
+ * read of its message restores it, or the viewer says it is not a request.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
 import { itemStateKey } from '@owlat/shared/threadBriefRules';
@@ -62,6 +67,18 @@ const stateKey = computed(() =>
 );
 const ring = computed(() => briefRing(props.item, stateKey.value));
 const isProposal = computed(() => props.item.verify === 'proposal');
+const isWithdrawn = computed(() => props.item.withdrawn !== undefined);
+const confirmedEarlier = computed(() =>
+	props.item.withdrawn?.confirmedAt !== undefined
+		? briefDueDate(props.item.withdrawn.confirmedAt, locale.value)
+		: null
+);
+const lead = computed(() => {
+	if (isWithdrawn.value) return `${t('components.brief.item.reviewAgain')} ${props.item.text}`;
+	return isProposal.value
+		? `${t('components.brief.item.checkThis')} ${props.item.text}`
+		: props.item.text;
+});
 const isOpen = computed(() => props.item.status === 'open');
 const due = computed(() =>
 	props.item.due?.at !== undefined ? briefDueDate(props.item.due.at, locale.value) : null
@@ -73,7 +90,7 @@ const kinds = computed(() =>
 	].join(' · ')
 );
 const primary = computed<BriefAction | null>(() => {
-	if (!isOpen.value) return null;
+	if (!isOpen.value || isWithdrawn.value) return null;
 	return isProposal.value ? 'confirmProposal' : props.item.primaryReaction;
 });
 /**
@@ -129,14 +146,20 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 			:data-ring="ring"
 		/>
 		<div class="min-w-0">
-			<p class="text-sm text-text-primary">
-				{{ isProposal ? `${t('components.brief.item.checkThis')} ${item.text}` : item.text }}
-			</p>
+			<p class="text-sm text-text-primary">{{ lead }}</p>
 			<p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary">
 				<span v-if="due && isOpen" class="font-medium text-error">{{
 					t('components.brief.item.due', { date: due })
 				}}</span>
-				<span v-if="isProposal">{{ t('components.brief.item.proposal') }}</span>
+				<template v-if="isWithdrawn">
+					<span class="text-warning" data-testid="brief-item-withdrawn">{{
+						t('components.brief.item.withdrawn')
+					}}</span>
+					<span v-if="confirmedEarlier" data-testid="brief-item-confirmed-earlier">{{
+						t('components.brief.item.confirmedEarlier', { date: confirmedEarlier })
+					}}</span>
+				</template>
+				<span v-else-if="isProposal">{{ t('components.brief.item.proposal') }}</span>
 				<span v-else>{{ kinds }}</span>
 				<span
 					v-if="showsStateChip(stateKey)"
@@ -144,7 +167,7 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 					data-testid="brief-item-state"
 					>{{ t(`components.brief.state.${stateKey}`) }}</span
 				>
-				<span v-if="item.isReviewNeeded" class="text-warning">{{
+				<span v-if="item.isReviewNeeded && !isWithdrawn" class="text-warning">{{
 					t('components.brief.item.review')
 				}}</span>
 				<span v-if="item.possibleDuplicateOfId">{{ t('components.brief.item.duplicate') }}</span>

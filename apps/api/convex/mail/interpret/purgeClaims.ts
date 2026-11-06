@@ -27,7 +27,12 @@
  *    touched what it would restore;
  *  - a status or disposition the purged source set, as a message or as a
  *    recorded operation on it (`op:<sourceKey>`), goes back to `open` /
- *    `unanswered` (`transitionSources.ts resetTransitionsFrom`).
+ *    `unanswered` (`transitionSources.ts resetTransitionsFrom`);
+ *  - a withdrawn item (`scopeReconcile.ts`) goes with the message whose read
+ *    was withdrawn: its wording is that message's.
+ *
+ * A withdrawal (`scopeReconcile.ts`) strips claims the same way, with its own
+ * neutral line.
  *
  * Isolate-safe helpers, no Convex functions.
  */
@@ -48,6 +53,20 @@ export const REDACTED_CLAIM_TEXT = {
 	en: 'Details removed with the deleted message',
 	de: 'Details mit der gelöschten Nachricht entfernt',
 } as const;
+
+/** The neutral line a withdrawn read's fields are redacted to (`scopeReconcile.ts`). */
+export const WITHDRAWN_CLAIM_TEXT = {
+	en: 'Details withdrawn: the signature covers less of this message',
+	de: 'Details zurückgezogen: die Signatur deckt weniger von dieser Nachricht ab',
+} as const;
+
+/** The neutral line, per locale, a redaction writes (a purge's, or a withdrawal's). */
+export type RedactedText = { readonly en: string; readonly de: string };
+
+/** The neutral line a purge job of `kind` redacts to. Pure. */
+export function redactedTextOf(kind: Doc<'threadPurgeJobs'>['kind']): RedactedText {
+	return kind === 'withdraw' ? WITHDRAWN_CLAIM_TEXT : REDACTED_CLAIM_TEXT;
+}
 
 /** What an item's redaction clears (`threadItems.redactedFields`). */
 export const REDACTED_ITEM_FIELDS = [
@@ -192,7 +211,7 @@ function neutralOf(fields: readonly ProvenanceField[]): ItemPatch {
 async function itemRedaction(
 	item: Doc<'threadItems'>,
 	purged: PurgedSources,
-	opts: { isLegacyRedacted: boolean }
+	opts: { isLegacyRedacted: boolean; text: RedactedText }
 ): Promise<ItemPatch | null> {
 	const sources = item.fieldSources ?? {};
 	const stamped = (Object.keys(sources) as ProvenanceField[]).filter((field) =>
@@ -217,8 +236,8 @@ async function itemRedaction(
 		}),
 		...(isWordingGone
 			? {
-					assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
-					display: await sealedPair(REDACTED_CLAIM_TEXT),
+					assertion: await sealBodyAtWrite(opts.text.en),
+					display: await sealedPair(opts.text),
 				}
 			: {}),
 		...(isFacetsKept ? {} : { facets: [], consequences: undefined }),
@@ -233,14 +252,21 @@ async function itemRedaction(
 	};
 }
 
-/** Strip one item; a survivor is redacted and written through the counters' item write. */
+/**
+ * Strip one item; a survivor is redacted (with `opts.text`, the deleted
+ * message's line by default) and written through the counters' item write.
+ */
 export async function stripItem(
 	ctx: MutationCtx,
 	ref: ThreadRef,
 	item: Doc<'threadItems'>,
 	purged: PurgedSources,
-	_budget: DrainBudget
+	_budget: DrainBudget,
+	opts: { text?: RedactedText } = {}
 ): Promise<ClaimFate> {
+	// A withdrawn item's wording is its withdrawn message's, though it holds no
+	// quote of it any more (scopeReconcile.ts): it goes with that message.
+	if (item.withdrawal && purged.ids.has(item.withdrawal.messageId)) return 'doomed';
 	const names = (list: ReadonlyArray<{ source: { id: string } }>) =>
 		list.some((e) => purged.ids.has(e.source.id));
 	const pending = item.pendingUpdate;
@@ -256,6 +282,7 @@ export async function stripItem(
 	// Rule P: the shown fields the purged sources set (one path, see itemRedaction).
 	const redaction = await itemRedaction(item, purged, {
 		isLegacyRedacted: isNamedByEvidence,
+		text: opts.text ?? REDACTED_CLAIM_TEXT,
 	});
 	const pendingEvidence = pending?.evidence.filter((e) => !purged.ids.has(e.source.id)) ?? [];
 	const held = isPendingNamed
@@ -320,11 +347,12 @@ function strippedHeld(
 	return evidence.length > 0 || isStanding ? { ...kept, evidence } : undefined;
 }
 
-/** Strip one fact (mail threads only); a survivor is redacted. */
+/** Strip one fact (mail threads only); a survivor is redacted (with `text`, as {@link stripItem}). */
 export async function stripFact(
 	ctx: MutationCtx,
 	fact: Doc<'threadFacts'>,
-	purged: PurgedSources
+	purged: PurgedSources,
+	text: RedactedText = REDACTED_CLAIM_TEXT
 ): Promise<ClaimFate> {
 	if (!fact.evidence.some((e) => purged.ids.has(e.source.id))) return 'untouched';
 	const evidence = fact.evidence.filter((e) => !purged.ids.has(e.source.id));
@@ -334,8 +362,8 @@ export async function stripFact(
 		factKeyHash: redactedFactKeyHash(fact._id),
 		factKeyLabel: undefined,
 		factKey: undefined,
-		assertion: await sealBodyAtWrite(REDACTED_CLAIM_TEXT.en),
-		display: await sealedPair(REDACTED_CLAIM_TEXT),
+		assertion: await sealBodyAtWrite(text.en),
+		display: await sealedPair(text),
 		value: undefined,
 		redactedFields: [...REDACTED_FACT_FIELDS, 'factKey'],
 		...(fact.lineage && purged.keys.has(lineageSource(fact.lineage)) ? { lineage: undefined } : {}),

@@ -6,10 +6,11 @@
  * may be read for (a clearsigned scope: only the signed block). What the old
  * read took from the rest of that message is spread over the thread's items,
  * facts, "latest" lines, overview, plans and caches, and the reducer is
- * monotone, so no later read takes it back. Instead of reconciling row by row
- * (a follow-up), the whole thread's interpretation is fenced off in the
- * transaction that applies the narrower scope (`mailThreads.
- * interpretationStaleSince`), whatever the `ai` flag or the spend hold say.
+ * monotone, so no later read takes it back. The whole thread's
+ * interpretation is fenced off in the transaction that applies the narrower
+ * scope (`mailThreads.interpretationStaleSince`), whatever the `ai` flag or
+ * the spend hold say, while `scopeReconcile.ts` withdraws the old read row by
+ * row, a page at a time.
  *
  * A fenced thread has no interpretation for every machine consumer: the brief
  * shows its items (the human state on them, never deleted) under a neutral
@@ -19,11 +20,12 @@
  * it out. Each consumer reads {@link isInterpretationFenced} (or the field on
  * a thread it already holds) at its one shared entry point.
  *
- * There is no path that re-reads a thread from scratch while keeping what
- * people set on its items (order-aware transitions replaced the old rebuild,
- * `fold.ts`), so the fence stays until an operator lifts it with
- * {@link release}. Lifting it shows the interpretation as it stands, the
- * narrowed message's old contributions included.
+ * Nothing is written to a fenced thread's interpretation: a run that reaches
+ * the reducer anyway is refused (`reduce.ts`) and its source waits for the
+ * next open (`scopeReconcile.ts deferFencedSource`). The reconciliation lifts
+ * the fence itself once every row is reconciled. An operator can lift it
+ * sooner with {@link release}, which shows the interpretation as it stands,
+ * what the reconciliation has not reached yet included.
  */
 
 import { v } from 'convex/values';
@@ -71,6 +73,15 @@ export function isFencedThread(
 	thread: Pick<Doc<'mailThreads'>, 'interpretationStaleSince'> | null
 ): boolean {
 	return thread?.interpretationStaleSince !== undefined;
+}
+
+/**
+ * Is the item withdrawn (`threadItems.withdrawal`, `scopeReconcile.ts`)? Its
+ * only support was a read that no longer holds: every machine consumer passes
+ * it by, as it passes a fenced thread by. Pure.
+ */
+export function isWithdrawnItem(item: Pick<Doc<'threadItems'>, 'withdrawal'>): boolean {
+	return item.withdrawal !== undefined;
 }
 
 /**

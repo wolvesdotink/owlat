@@ -948,6 +948,9 @@
 			"item": {
 				"due": "due {date}",
 				"checkThis": "Check this:",
+				"reviewAgain": "Needs review again:",
+				"withdrawn": "The signature covers less of this message than was read",
+				"confirmedEarlier": "Confirmed on {date}",
 				"proposal": "proposal · not tracked yet",
 				"pendingChange": "Check this change:",
 				"pendingOptions": "options: {options}",
@@ -1130,7 +1133,7 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
+				"stale": "The brief is paused while a signature check updates what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
 				"aiSettings": "AI settings",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."

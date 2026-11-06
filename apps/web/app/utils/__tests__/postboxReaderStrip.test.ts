@@ -251,4 +251,8 @@ describe('stripItemActions', () => {
 		expect(stripItemActions({ verify: 'proposal' })).toEqual(['confirmProposal', 'notARequest']);
 		expect(stripItemActions({ verify: 'passed' })).toEqual(['reply', 'markDone']);
 	});
+
+	it('offers only Not a request on an item that needs review again', () => {
+		expect(stripItemActions({ verify: 'proposal', withdrawn: { at: 1 } })).toEqual(['notARequest']);
+	});
 });

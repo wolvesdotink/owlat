@@ -44,7 +44,7 @@ import { scopedIdempotencyKey } from './activity';
 import { recordItemChange } from './counters';
 import { deleteExtractions } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
-import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
+import { redactedTextOf, stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
 	DRAIN_CHUNK,
 	drainShrinking,
@@ -194,7 +194,7 @@ const followUpRepliesRange: PurgeRange = async (ctx, { job, ref, cursor, budget,
 };
 
 /** 1. Every extraction of every purged source. */
-const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
+export const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 	drainSteps(
 		budget,
 		cursor,
@@ -342,7 +342,7 @@ const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
 };
 
 /** 5. The thread's facts (mail threads only). */
-const factsRange: PurgeRange = async (ctx, run) => {
+export const factsRange: PurgeRange = async (ctx, run) => {
 	if (run.ref.kind !== 'mail') return { isDone: true };
 	const threadId = run.ref.id;
 	const purged = purgedOf(run.state);
@@ -362,7 +362,7 @@ const factsRange: PurgeRange = async (ctx, run) => {
 		},
 		(row) => row._creationTime,
 		async (fact) => {
-			const fate = await stripFact(ctx, fact, purged);
+			const fate = await stripFact(ctx, fact, purged, redactedTextOf(run.job.kind));
 			if (fate === 'untouched') return true;
 			run.state.isClaimChanged = true;
 			if (fate === 'survived') {
@@ -377,7 +377,7 @@ const factsRange: PurgeRange = async (ctx, run) => {
 };
 
 /** 6. The thread's response plans: deleted items out, every plan stale. */
-const plansRange: PurgeRange = async (ctx, run) => {
+export const plansRange: PurgeRange = async (ctx, run) => {
 	if (!run.state.isClaimChanged) return { isDone: true };
 	const ref = run.ref;
 	return scanRange(
@@ -426,7 +426,7 @@ const plansRange: PurgeRange = async (ctx, run) => {
  * 7. The surviving sources' claim records (`interpretSources.claimIds`) lose
  * their entries for deleted items and facts.
  */
-const claimRecordsRange: PurgeRange = async (ctx, run) => {
+export const claimRecordsRange: PurgeRange = async (ctx, run) => {
 	if (!run.state.isClaimChanged) return { isDone: true };
 	const ref = run.ref;
 	const gone = new Map<string, boolean>();

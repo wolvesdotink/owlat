@@ -9,7 +9,11 @@
  * the list projection, the Reply Queue summary and the Daily Brief, the
  * extraction run, the lazy read, pending matches and their confirmation),
  * keeps every item and what people set on them, and other threads are
- * untouched. There is no rebuild path, so only the operator `release` lifts it.
+ * untouched.
+ *
+ * The per-row reconciliation (`scopeReconcile.ts`) then withdraws the old
+ * read a page at a time and lifts the fence itself; the operator `release`
+ * can still lift it sooner.
  */
 
 import { convexTest } from 'convex-test';
@@ -31,12 +35,24 @@ import {
 } from '../../../e2ee/__tests__/signedMailTestHelpers';
 import { enableFeatures } from '../../../__tests__/factories';
 import { seedMessage } from '../../__tests__/helpers.testlib';
+import { interpretationSourceKey } from '../../../lib/validators/threadBrief';
+import { openMessageBody } from '../../../lib/messageBody';
+import { runPurgeJob } from '../purgeRun';
+import { unitBudget } from '../purgeDrain';
+import { WITHDRAWN_CLAIM_TEXT } from '../purgeClaims';
 import { captureInterpretSource } from '../sources';
 import { listBucketOf } from '../counters';
 import { refreshBriefTop } from '../briefTop';
 import { sourceVersionOf } from '../sourceVersion';
 import type { ReduceResult } from '../reduceInput';
-import { modules, reduceItem, reduceResult, seedMailThread, type Test } from './interpret.testlib';
+import {
+	addMessageToThread,
+	modules,
+	reduceItem,
+	reduceResult,
+	seedMailThread,
+	type Test,
+} from './interpret.testlib';
 import { applyAsRun } from './lease.testlib';
 
 vi.mock('../../../lib/sessionOrganization', async () => {
@@ -117,10 +133,16 @@ const HUMAN: Pick<
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
+	// The reconciliation is scheduled: each test drives it ({@link reconcile}).
+	vi.useFakeTimers();
 });
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllEnvs();
 });
+
+/** Run what is scheduled: the withdraw job's walk to its end, and what it schedules. */
+const reconcile = (t: Test) => t.finishAllScheduledFunctions(vi.runAllTimers);
 
 /**
  * An interpreted Postbox message as an older release left it: a clearsigned
@@ -356,6 +378,14 @@ describe('the stale fence (#1320)', () => {
 			status: 'failed',
 			errorCode: 'budget',
 		});
+		// Nothing of it is written to the fenced thread, not even the failure.
+		const attempts = await t.run((ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(attempts.map((a) => a.contentRevision)).toEqual(['rev-old-read']);
 		// A projection write of a run in flight brings no summary back.
 		await t.run(async (ctx) => {
 			await refreshBriefTop(ctx, threadId, { latest: { en: 'Pay 999', de: 'Zahl 999' } });
@@ -450,6 +480,20 @@ describe('the stale fence (#1320)', () => {
 		expect(c.planItems).toBe(0);
 		expect(c.isInToDo).toBe(false);
 		expect(c.thread.briefTop).toBeUndefined();
+
+		// The walk pages through every row; the fence holds until its last page.
+		const jobId = (await withdrawJobOf(t, threadId))!._id;
+		let slices = 0;
+		for (let isDone = false; !isDone; slices++) {
+			isDone = await t.run((ctx) => runPurgeJob(ctx, jobId, unitBudget(100)));
+			const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+			expect(thread.interpretationStaleSince === undefined).toBe(isDone);
+		}
+		expect(slices).toBeGreaterThan(5);
+		const items = await itemsOf(t, threadId);
+		expect(items).toHaveLength(522);
+		expect(items.filter((i) => i.withdrawal !== undefined)).toHaveLength(522);
+		expect(items.every((i) => i.verify === 'proposal' && i.evidence.length === 0)).toBe(true);
 	});
 
 	it('leaves other threads alone', async () => {
@@ -469,7 +513,7 @@ describe('the stale fence (#1320)', () => {
 		expect(after.isRunSkipped).toBe(false);
 	});
 
-	it('only the operator lifts the fence, and nothing else changes with it', async () => {
+	it('the operator can still lift the fence before the walk is done, changing nothing else', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedInterpreted(t);
 		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
@@ -533,5 +577,369 @@ describe('the stale fence (#1320)', () => {
 			scope: 'clearsigned',
 		});
 		expect(thread.interpretationStaleSince).toBeUndefined();
+	});
+});
+
+async function withdrawJobOf(t: Test, threadId: Id<'mailThreads'>) {
+	return t.run((ctx) =>
+		ctx.db
+			.query('threadPurgeJobs')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+			.first()
+	);
+}
+
+const T2 = T + 3_600_000;
+
+/**
+ * A thread of two messages: the narrowed one's old read made `signedItem`
+ * (confirmed by a person, with a reminder) and `trailerItem`, and two facts;
+ * a later message made `venueItem` and its fact. The Reply Queue flag carries
+ * the model's summary.
+ */
+async function seedTwoMessages(t: Test) {
+	const { mailboxId, messageId, threadId } = await seedLegacy(t);
+	await interpret(t, messageId, threadId, {
+		contentRevision: 'rev-old-read',
+		result: reduceResult({ items: [signedItem, trailerItem], facts: [signedFact, trailerFact] }),
+	});
+	const signedId = (await itemsOf(t, threadId)).find((i) => i.amount === undefined && i.due)!._id;
+	await t.run(async (ctx) => {
+		await ctx.db.patch(signedId, {
+			correction: { by: 'user-A', at: T + 1, kind: 'confirmed' },
+			remindAt: T + 86_400_000,
+		});
+		await ctx.db.patch(threadId, {
+			needsReply: {
+				messageId,
+				source: 'llm',
+				urgency: 'high',
+				askSummary: 'Pay account 999 today',
+				detectedAt: T,
+			},
+		});
+	});
+	const otherId = await addMessageToThread(
+		t,
+		{ mailboxId, threadId },
+		{ text: 'Which venue do we use?', receivedAt: T2 }
+	);
+	await t.run((ctx) =>
+		captureInterpretSource(ctx, { source: { kind: 'mail', id: otherId }, isLive: true })
+	);
+	await interpretOther(
+		t,
+		otherId,
+		threadId,
+		reduceResult({ items: [venueItem], facts: [venueFact] })
+	);
+	return { mailboxId, messageId, threadId, otherId, signedId };
+}
+
+/** A read of another message of the thread, as a run records it now. */
+async function interpretOther(
+	t: Test,
+	messageId: Id<'mailMessages'>,
+	threadId: Id<'mailThreads'>,
+	result: ReduceResult,
+	contentRevision = 'rev-other'
+) {
+	const source = { kind: 'mail' as const, id: messageId };
+	const brief = await t.run((ctx) =>
+		ctx.db
+			.query('threadBriefs')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+			.first()
+	);
+	return applyAsRun(t, {
+		source,
+		threadRef: { kind: 'mail', id: threadId },
+		mode: 'brief',
+		contentRevision,
+		extractorVersion: 2,
+		sourceAt: T2,
+		direction: 'inbound',
+		status: 'complete',
+		result,
+		sourceVersion: (await t.run((ctx) => sourceVersionOf(ctx, source)))!,
+		deletionEpoch: brief!.deletionEpoch,
+		expectedRevision: brief!.interpretationRevision,
+	});
+}
+
+async function itemById(t: Test, id: Id<'threadItems'>) {
+	return (await t.run((ctx) => ctx.db.get(id)))!;
+}
+
+async function factTexts(t: Test, threadId: Id<'mailThreads'>) {
+	const facts = await t.run((ctx) =>
+		ctx.db
+			.query('threadFacts')
+			.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+			.collect()
+	);
+	return Promise.all(facts.map((f) => openMessageBody(f.display.en)));
+}
+
+describe('per-row reconciliation of a narrowed read', () => {
+	it('withdraws what the read alone supported, keeps the rest, and lifts the fence itself', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId, signedId } = await seedTwoMessages(t);
+		const items = await itemsOf(t, threadId);
+		const trailerId = items.find((i) => i._id !== signedId && i.intent === 'request')!._id;
+		const venueId = items.find((i) => i.intent === 'question')!._id;
+
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		expect((await t.run((ctx) => ctx.db.get(threadId)))!.interpretationStaleSince).toBeTypeOf(
+			'number'
+		);
+		await reconcile(t);
+
+		const c = await consumersOf(t, mailboxId, messageId, threadId);
+		expect(c.thread.interpretationStaleSince).toBeUndefined();
+		expect(await withdrawJobOf(t, threadId)).toBeNull();
+		expect(c.isRunSkipped).toBe(false);
+		expect(c.brief.gap?.reason).not.toBe('stale');
+
+		// The read's items stay with what people set, out of every machine path.
+		const signed = await itemById(t, signedId);
+		expect(signed).toMatchObject({
+			verify: 'proposal',
+			evidence: [],
+			remindAt: T + 86_400_000,
+			withdrawal: {
+				messageId,
+				verify: 'passed',
+				confirmation: { by: 'user-A', kind: 'confirmed' },
+			},
+		});
+		expect(signed.correction).toBeUndefined();
+		expect((await itemById(t, trailerId)).withdrawal).toMatchObject({ messageId });
+		// The other message's item and fact are untouched; the read's facts are gone.
+		const venue = await itemById(t, venueId);
+		expect(venue.withdrawal).toBeUndefined();
+		expect(venue.evidence).toHaveLength(1);
+		expect(await factTexts(t, threadId)).toEqual(['Venue still open']);
+		expect(c.planItems).toBe(1);
+
+		// The brief: the other message's facts and lines, the withdrawn items marked.
+		expect(c.brief.mode === 'brief' && c.brief.standing?.facts.map((f) => f.text)).toEqual([
+			'Venue still open',
+		]);
+		const messageLatest = c.brief.mode === 'brief' ? (c.brief.messageLatest ?? []) : [];
+		expect(messageLatest.some((l) => l.messageId === messageId)).toBe(false);
+		const shown = c.brief.mode === 'brief' ? c.brief.forYou : [];
+		expect(shown.find((i) => i.id === signedId)?.withdrawn).toEqual({
+			at: expect.any(Number),
+			confirmedAt: T + 1,
+		});
+		expect(shown.find((i) => i.id === venueId)?.withdrawn).toBeUndefined();
+
+		// The needs-reply summary (and the Daily Brief subtitle) waits for a new read.
+		expect(c.thread.needsReply).toMatchObject({ urgency: 'high' });
+		expect(c.thread.needsReply?.askSummary).toBeUndefined();
+		expect(c.dailySubtitle).toBe(SENDER);
+
+		// The withdrawn message is read again on the next open, under its new scope.
+		const snapshot = await t.run((ctx) =>
+			ctx.db
+				.query('interpretSources')
+				.withIndex('by_source_key', (q) =>
+					q.eq('sourceKey', interpretationSourceKey({ kind: 'mail', id: messageId }))
+				)
+				.first()
+		);
+		expect(snapshot).toMatchObject({ isDeferred: true, deferReason: 'scope_reread' });
+		const extractions = await t.run((ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_source_revision', (q) =>
+					q.eq('sourceKey', interpretationSourceKey({ kind: 'mail', id: messageId }))
+				)
+				.collect()
+		);
+		expect(extractions).toEqual([]);
+
+		// Nobody confirms a withdrawn item; what a person decides alone still works.
+		await expect(
+			t.mutation(api.mail.interpret.reactions.confirmProposal, { itemId: signedId })
+		).rejects.toThrow(/read again/);
+		await t.mutation(api.mail.interpret.reactions.remind, {
+			itemId: trailerId,
+			remindAt: Date.now() + 2 * 86_400_000,
+		});
+	});
+
+	it('restores an item only when a read under the new scope restates every field', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, signedId } = await seedTwoMessages(t);
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		await reconcile(t);
+		const before = await itemsOf(t, threadId);
+		const trailerId = before.find((i) => i._id !== signedId && i.intent === 'request')!._id;
+
+		// The signed block's read: the same request with another deadline, and
+		// the trailer's wording as an unverified claim. Neither restores.
+		const moved = {
+			...signedItem,
+			due: { ...signedItem.due!, at: signedItem.due!.at! + 86_400_000 },
+		};
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-signed-block',
+			result: reduceResult({ items: [moved, { ...trailerItem, verify: 'proposal' }] }),
+		});
+		expect((await itemById(t, signedId)).withdrawal).toBeDefined();
+		expect((await itemById(t, trailerId)).withdrawal).toBeDefined();
+		expect(await itemsOf(t, threadId)).toHaveLength(before.length + 2);
+
+		// A read that restates it in full restores it, with the person's confirmation.
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-signed-block-2',
+			result: reduceResult({ items: [signedItem] }),
+		});
+		const restored = await itemById(t, signedId);
+		expect(restored.withdrawal).toBeUndefined();
+		expect(restored).toMatchObject({
+			verify: 'passed',
+			correction: { by: 'user-A', kind: 'confirmed' },
+			due: signedItem.due,
+		});
+		expect(restored.evidence.map((e) => e.contentRevision)).toEqual(['rev-signed-block-2']);
+		expect((await itemById(t, trailerId)).withdrawal).toBeDefined();
+	});
+
+	it('passes a withdrawn item by on every later fold', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, otherId, signedId } = await seedTwoMessages(t);
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		await reconcile(t);
+		const withdrawn = await itemById(t, signedId);
+
+		// Another message names it, merges a claim into it and closes it.
+		await interpretOther(
+			t,
+			otherId,
+			threadId,
+			reduceResult({
+				items: [{ ...signedItem, matchItemId: signedId }],
+				transitions: [
+					{
+						itemId: signedId,
+						to: 'done',
+						evidence: [{ segmentId: 's0', start: 0, end: 5, quote: 'which' }],
+						isVerified: true,
+						isReviewNeeded: false,
+					},
+				],
+			}),
+			'rev-other-2'
+		);
+
+		const after = await itemById(t, signedId);
+		expect(after.revision).toBe(withdrawn.revision);
+		expect(after.status).toBe(withdrawn.status);
+		expect(after.evidence).toEqual([]);
+		expect(after.withdrawal).toEqual(withdrawn.withdrawal);
+	});
+
+	it('redacts what the read set on an item other messages support too', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedLegacy(t);
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-old-read',
+			result: reduceResult({ items: [trailerItem] }),
+		});
+		const [shared] = await itemsOf(t, threadId);
+		const otherId = await addMessageToThread(
+			t,
+			{ mailboxId: (await t.run((ctx) => ctx.db.get(threadId)))!.mailboxId, threadId },
+			{ text: 'Yes, pay account 999.', receivedAt: T2 }
+		);
+		await t.run((ctx) =>
+			captureInterpretSource(ctx, { source: { kind: 'mail', id: otherId }, isLive: true })
+		);
+		await interpretOther(
+			t,
+			otherId,
+			threadId,
+			reduceResult({ items: [{ ...trailerItem, matchItemId: shared!._id }] })
+		);
+		expect((await itemById(t, shared!._id)).evidence).toHaveLength(2);
+
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		await reconcile(t);
+
+		const item = await itemById(t, shared!._id);
+		expect(item.withdrawal).toBeUndefined();
+		expect(item.evidence.map((e) => e.source.id)).toEqual([otherId]);
+		expect(await openMessageBody(item.display.en)).toBe(WITHDRAWN_CLAIM_TEXT.en);
+		expect(item.redactedFields).toContain('assertion');
+		expect(item.isReviewNeeded).toBe(true);
+	});
+
+	it("retires the read's waiting transitions", async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await seedLegacy(t);
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-old-read',
+			result: reduceResult({
+				items: [],
+				transitions: [
+					{
+						about: 'Pay invoice 4471',
+						to: 'done',
+						evidence: [{ segmentId: 's0', start: 0, end: 16, quote: 'UNSIGNED TRAILER' }],
+						isVerified: true,
+						isReviewNeeded: false,
+					},
+				],
+			}),
+		});
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		await reconcile(t);
+		expect((await t.run((ctx) => ctx.db.get(threadId)))!.interpretationStaleSince).toBeUndefined();
+
+		// The request arrives later: nothing waits to settle it any more.
+		const otherId = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'Please pay invoice 4471.', receivedAt: T2 }
+		);
+		await t.run((ctx) =>
+			captureInterpretSource(ctx, { source: { kind: 'mail', id: otherId }, isLive: true })
+		);
+		await interpretOther(
+			t,
+			otherId,
+			threadId,
+			reduceResult({
+				items: [
+					reduceItem({
+						assertion: 'Pay invoice 4471',
+						display: { en: 'Pay invoice 4471', de: 'Bezahl Rechnung 4471' },
+					}),
+				],
+			})
+		);
+		await reconcile(t);
+		const [item] = await itemsOf(t, threadId);
+		expect(item!.pendingUpdate).toBeUndefined();
+		expect(item!.status).toBe('open');
+	});
+
+	it('reconciles a thread an earlier release fenced without a walk (migration 0070)', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, signedId } = await seedTwoMessages(t);
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		// What an earlier release left: the fence and the scoped verdict, no job.
+		const job = (await withdrawJobOf(t, threadId))!;
+		await t.run((ctx) => ctx.db.delete(job._id));
+
+		await t.mutation(internal.migrations['0070_reconcile_fenced_threads'].run, {});
+		await reconcile(t);
+
+		expect((await t.run((ctx) => ctx.db.get(threadId)))!.interpretationStaleSince).toBeUndefined();
+		expect((await itemById(t, signedId)).withdrawal).toMatchObject({ messageId });
+		expect(await factTexts(t, threadId)).toEqual(['Venue still open']);
 	});
 });

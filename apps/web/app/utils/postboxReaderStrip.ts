@@ -156,8 +156,11 @@ export function briefHasContent(brief: BriefModeView | null | undefined): boolea
  * The actions the strip offers on the item you owe, with BriefItem's
  * semantics: an unconfirmed proposal ("Check this") is not an obligation
  * until confirmed, so it offers Track and "Not a request"; a tracked item
- * offers Reply and Mark done.
+ * offers Reply and Mark done; a withdrawn one ("Needs review again") only
+ * "Not a request".
  */
-export function stripItemActions(item: Pick<BriefItemView, 'verify'>): BriefAction[] {
+export function stripItemActions(item: Pick<BriefItemView, 'verify' | 'withdrawn'>): BriefAction[] {
+	// A withdrawn item cannot be confirmed as it stands (BriefItem.vue).
+	if (item.withdrawn) return ['notARequest'];
 	return item.verify === 'proposal' ? ['confirmProposal', 'notARequest'] : ['reply', 'markDone'];
 }

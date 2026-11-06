@@ -19,6 +19,7 @@ import { exactValueKey } from './factEquivalence';
 import { rowFactKeyHash } from './factKeys';
 import { threadItemsWithStatus } from './load';
 import { teamReplyContext } from './sources';
+import { isWithdrawnItem } from './staleFence';
 import type { MemFact, MemItem, MemState } from './fold';
 import type { ReduceResult } from './reduceInput';
 
@@ -179,7 +180,10 @@ export async function loadFoldState(
 		const left = FOLD_MAX_ITEMS - rows.size;
 		const page = await threadItemsWithStatus(ctx, ref, status, left + 1);
 		if (page.length > left) isItemScanCut = true;
-		for (const row of page.slice(0, left)) rows.set(row._id, row);
+		for (const row of page.slice(0, left)) {
+			// A withdrawn item is folded into by nothing (scopeReconcile.ts).
+			if (!isWithdrawnItem(row)) rows.set(row._id, row);
+		}
 		if (isItemScanCut) break;
 	}
 	const factRows = new Map<string, Doc<'threadFacts'>>();

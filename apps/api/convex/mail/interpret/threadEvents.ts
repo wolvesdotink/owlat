@@ -21,7 +21,7 @@ import type { ActivityType } from '@owlat/shared/threadBrief';
 import { normalizeEmail } from '@owlat/shared';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import { appendActivity } from './activity';
-import { isInterpretationFenced } from './staleFence';
+import { isInterpretationFenced, isWithdrawnItem } from './staleFence';
 
 interface ThreadEvent {
 	key: string;
@@ -234,6 +234,8 @@ async function bookingThreadOf(
 		.take(BOOKING_ITEM_SCAN);
 	for (const item of items) {
 		if (item.status !== 'open' || !item.facets.includes('meeting')) continue;
+		// A withdrawn item links nothing (scopeReconcile.ts).
+		if (isWithdrawnItem(item)) continue;
 		if (!item.mailThreadId || !item.mailboxId) continue;
 		// A fenced thread's items link nothing (staleFence.ts).
 		if (await isInterpretationFenced(ctx, { kind: 'mail', id: item.mailThreadId })) continue;

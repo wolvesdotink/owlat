@@ -18,7 +18,10 @@ export const purgeJobKindValidator = v.union(
 	// A deleted thread: every thread brief row of it.
 	v.literal('thread'),
 	// A mailbox scope change: the thread's outputs of the old mode.
-	v.literal('scope')
+	v.literal('scope'),
+	// A narrowed signature scope: what the old reads of `sources` contributed
+	// (mail/interpret/scopeReconcile.ts).
+	v.literal('withdraw')
 );
 
 /**
@@ -51,7 +54,7 @@ export const threadPurgeJobTables = {
 		// Find-or-create key of a job its caller drives itself (the erasure
 		// walkers); absent on scheduled jobs.
 		jobKey: v.optional(v.string()),
-		// `sources` jobs: the purged sources.
+		// `sources` jobs: the purged sources; `withdraw` jobs: the withdrawn reads.
 		sources: v.optional(v.array(interpretationSourceValidator)),
 		// `sources` jobs of a received Team Inbox message: every team reply
 		// that answered it is added to `sources` (paged, before anything else).

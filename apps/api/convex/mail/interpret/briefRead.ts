@@ -122,6 +122,14 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 		...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
 		...(row.pendingUpdate ? { pendingUpdate: await openHeld(row.pendingUpdate, locale) } : {}),
+		...(row.withdrawal
+			? {
+					withdrawn: {
+						at: row.withdrawal.at,
+						...(row.withdrawal.confirmation ? { confirmedAt: row.withdrawal.confirmation.at } : {}),
+					},
+				}
+			: {}),
 		askedAt: row.askedAt,
 		updatedAt: row.updatedAt,
 	};

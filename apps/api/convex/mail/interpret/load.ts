@@ -160,7 +160,7 @@ export async function loadPromptItemCandidates(
 	const open = await threadItemsWithStatus(ctx, ref, 'open', MAX_PROMPT_ITEMS + 1);
 	const closed = await recentlyClosedItems(ctx, ref, CLOSED_STATUSES, now, CLOSED_SCAN);
 	return {
-		rows: [...open, ...closed.rows],
+		rows: [...open, ...closed.rows].filter((item) => !item.withdrawal), // never shown to the model (scopeReconcile.ts)
 		isScanCut: open.length > MAX_PROMPT_ITEMS || closed.isCut,
 	};
 }

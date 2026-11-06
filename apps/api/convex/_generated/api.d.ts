@@ -110,6 +110,7 @@ import type * as mail_interpret_runFailure from '../mail/interpret/runFailure.js
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
 import type * as mail_interpret_scopeLoad from '../mail/interpret/scopeLoad.js';
+import type * as mail_interpret_scopeReconcile from '../mail/interpret/scopeReconcile.js';
 import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
 import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
 import type * as mail_interpret_sourceOrder from '../mail/interpret/sourceOrder.js';
@@ -142,6 +143,7 @@ import type * as migrations_0066_backfill_clarification_origin from '../migratio
 import type * as migrations_0067_empty_retired_summaries from '../migrations/0067_empty_retired_summaries.js';
 import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fact_keys.js';
 import type * as migrations_0069_restrict_captured_file_knowledge from '../migrations/0069_restrict_captured_file_knowledge.js';
+import type * as migrations_0070_reconcile_fenced_threads from '../migrations/0070_reconcile_fenced_threads.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -3324,6 +3326,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/scope': typeof mail_interpret_scope;
 	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
 	'mail/interpret/scopeLoad': typeof mail_interpret_scopeLoad;
+	'mail/interpret/scopeReconcile': typeof mail_interpret_scopeReconcile;
 	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
 	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
 	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
@@ -3754,6 +3757,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
 	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
 	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
+	'migrations/0070_reconcile_fenced_threads': typeof migrations_0070_reconcile_fenced_threads;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;

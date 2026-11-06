@@ -123,6 +123,10 @@ export const briefItemViewValidator = v.object({
 			),
 		})
 	),
+	// Its only support was a read its message may no longer be read for (a
+	// signature that covers less of it): "Needs review again", with when a
+	// person had confirmed it before. Never confirmable as it stands.
+	withdrawn: v.optional(v.object({ at: v.number(), confirmedAt: v.optional(v.number()) })),
 	askedAt: v.number(),
 	updatedAt: v.number(),
 	// Changed since the viewer last looked.

@@ -27,7 +27,8 @@
  * go before their parent.
  *
  * The job's kind (its range list and how it settles) lives in `purge.ts`,
- * `purgeThread.ts` and `scopeChange.ts`; `purgeRun.ts` dispatches.
+ * `purgeThread.ts`, `scopeChange.ts` and `scopeReconcile.ts`; `purgeRun.ts`
+ * dispatches.
  *
  * Isolate-safe helpers, no Convex functions.
  */
