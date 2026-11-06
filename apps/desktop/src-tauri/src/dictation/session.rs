@@ -75,6 +75,12 @@ impl<S> Sessions<S> {
         self.take_if(|s| s.owner == owner)
     }
 
+    /// The app hid, so every window is out of sight: the session, whichever
+    /// webview owns it, is the caller's to end.
+    pub fn release_all(&mut self) -> Option<Session<S>> {
+        self.current.take()
+    }
+
     fn take_if(&mut self, matches: impl Fn(&Session<S>) -> bool) -> Option<Session<S>> {
         if self.current.as_ref().is_some_and(matches) {
             self.current.take()
@@ -138,6 +144,16 @@ mod tests {
         assert!(!answered(&mut sessions, id));
         assert_eq!(sessions.get(next), Some(&vec!["asking"]));
         assert!(answered(&mut sessions, next));
+    }
+
+    #[test]
+    fn hiding_the_app_ends_the_session_whichever_window_owns_it() {
+        let mut sessions = Sessions::new();
+        let (id, _) = sessions.start("compose-1".into(), vec!["asking"]);
+        let ended = sessions.release_all().expect("hiding the app ends it");
+        assert_eq!((ended.id, ended.owner.as_str()), (id, "compose-1"));
+        assert!(!answered(&mut sessions, id));
+        assert!(sessions.release_all().is_none());
     }
 
     #[test]

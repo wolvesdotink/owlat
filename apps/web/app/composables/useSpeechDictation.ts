@@ -265,8 +265,22 @@ export function useSpeechDictation(opts: {
 		rec.abort();
 	}
 
+	// Nobody dictates to a page they cannot see, and the mic must not keep
+	// listening once its indicator is out of sight: a minimized window, a hidden
+	// app, a background tab. The desktop shell ends its session for these too;
+	// this covers any way out of sight it does not hear about.
+	function onVisibilityChange() {
+		if (document.hidden) cancel();
+	}
+	if (typeof document !== 'undefined') {
+		document.addEventListener('visibilitychange', onVisibilityChange);
+	}
+
 	onScopeDispose(() => {
 		disposed = true;
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+		}
 		cancel();
 	});
 

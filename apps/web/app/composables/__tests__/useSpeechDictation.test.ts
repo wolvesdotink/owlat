@@ -97,6 +97,12 @@ function setup() {
 	return { api, phrases, wrapper };
 }
 
+/** The page goes out of sight (or back): a minimized window, a hidden app, a background tab. */
+function setHidden(hidden: boolean) {
+	Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+	document.dispatchEvent(new Event('visibilitychange'));
+}
+
 const globals = window as unknown as Record<string, unknown>;
 /** Put an engine on `window` under one of the names browsers use. */
 function install(name: 'SpeechRecognition' | 'webkitSpeechRecognition', engine: unknown) {
@@ -116,6 +122,7 @@ beforeEach(() => {
 
 // Not `vi.unstubAllGlobals`: that would also take the suite's Nuxt auto-import stubs.
 afterEach(() => {
+	delete (document as unknown as Record<string, unknown>).hidden;
 	invokeMock.mockReset();
 	channels.length = 0;
 	FakeRecognition.instances = [];
@@ -294,6 +301,39 @@ describe('useSpeechDictation', () => {
 		expect(invokeMock.mock.calls.filter(([cmd]) => cmd === 'dictation_start')).toHaveLength(2);
 		await flushPromises();
 		shell({ kind: 'end' });
+	});
+
+	it('cancels the native session when the page goes out of sight', async () => {
+		globals.__TAURI_INTERNALS__ = {};
+		nativeEngine(true);
+		const { api, phrases } = setup();
+		await flushPromises();
+		api.start();
+		await flushPromises();
+		shell({ kind: 'partial', text: 'ask for the agenda' });
+
+		setHidden(true);
+		expect(invokeMock).toHaveBeenCalledWith('dictation_cancel', { session: 7 });
+		expect(api.listening.value).toBe(false);
+		expect(api.interim.value).toBe('');
+		shell({ kind: 'phrase', text: 'ask for the agenda' });
+		shell({ kind: 'end' });
+		expect(phrases).toEqual([]);
+
+		// Back in sight, nothing restarts on its own.
+		setHidden(false);
+		expect(api.listening.value).toBe(false);
+		expect(invokeMock.mock.calls.filter(([cmd]) => cmd === 'dictation_start')).toHaveLength(1);
+	});
+
+	it('stops the browser engine when the page goes out of sight', async () => {
+		install('webkitSpeechRecognition', FakeRecognition);
+		const { api } = setup();
+		await flushPromises();
+		api.start();
+		setHidden(true);
+		expect(FakeRecognition.instances[0]!.abort).toHaveBeenCalled();
+		expect(api.listening.value).toBe(false);
 	});
 
 	it('cancels the native session and ignores what it says after', async () => {

@@ -185,6 +185,11 @@ fn main() {
             // The tray icon (menu bar extra on macOS), unless turned off.
             tray::setup(app.handle());
 
+            // Minimizing a window or hiding the app ends its dictation, as
+            // closing and hiding a window do (below and in shortcuts.rs).
+            #[cfg(target_os = "macos")]
+            dictation::watch_out_of_sight(app.handle());
+
             // Native application menu. macOS gets the app-global menu bar; on
             // Windows/Linux we drop the native frame (the branded
             // <DesktopTitlebar> takes over) and attach the menu to the main

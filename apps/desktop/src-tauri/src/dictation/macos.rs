@@ -140,6 +140,13 @@ pub fn release(owner: &str) {
     }
 }
 
+/// The app hid: end the session, whichever webview owns it.
+pub fn release_all() {
+    if let Some(session) = SESSIONS.with_borrow_mut(|s| s.release_all()) {
+        end(session, None);
+    }
+}
+
 fn take(id: u64) -> Option<Session<State>> {
     SESSIONS.with_borrow_mut(|s| s.take(id))
 }
