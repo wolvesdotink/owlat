@@ -47,7 +47,7 @@ jobs:
       build_date: ${{ steps.meta.outputs.build_date }}
       images: ${{ steps.images.outputs.images }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -137,7 +137,7 @@ jobs:
         platform: [linux/amd64, linux/arm64]
         image: ${{ fromJSON(needs.resolve.outputs.images) }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -149,7 +149,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -215,7 +215,7 @@ jobs:
           cat "/tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt"
 
       - name: Upload per-arch digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: arch-digest-${{ matrix.image.name }}-${{ steps.platform.outputs.arch }}
           path: /tmp/arch-digest/${{ steps.platform.outputs.arch }}.txt
@@ -234,12 +234,12 @@ jobs:
       matrix:
         image: ${{ fromJSON(needs.resolve.outputs.images) }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
       - name: Collect per-arch digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: arch-digest-${{ matrix.image.name }}-*
           path: /tmp/arch-digest
@@ -249,7 +249,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -311,7 +311,7 @@ jobs:
           cat "/tmp/image-digest/${NAME}.txt"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: image-digest-${{ matrix.image.name }}
           path: /tmp/image-digest/${{ matrix.image.name }}.txt
@@ -362,7 +362,7 @@ jobs:
     needs: [resolve, merge-manifests]
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -407,7 +407,7 @@ jobs:
     needs: [resolve, merge-manifests]
     runs-on: ubuntu-latest
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -416,7 +416,7 @@ jobs:
           fetch-depth: 0
 
       - name: Collect image digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: image-digest-*
           path: /tmp/image-digest
@@ -522,7 +522,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -796,7 +796,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -824,7 +824,7 @@ jobs:
           echo "artifact=update-target-${VERSION}" >> "$GITHUB_OUTPUT"
       - name: Hand the template to the update flow
         if: steps.pair.outputs.from != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: update-target-${{ inputs.version }}
           path: ${{ runner.temp }}/update-target/

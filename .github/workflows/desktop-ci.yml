@@ -48,7 +48,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15, windows-latest]
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -85,7 +85,7 @@ jobs:
 
       # rust-cache keys only on OS family and CPU arch; the runner label keeps a
       # new runner image from restoring crates built against the previous one.
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: apps/desktop/src-tauri
           key: ${{ matrix.os }}
@@ -144,7 +144,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2
         with:
           egress-policy: audit
 
@@ -161,7 +161,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       # The built web server runs on node, as it does in the web image.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
 
@@ -174,7 +174,7 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.channel }}
 
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: apps/desktop/src-tauri
 
