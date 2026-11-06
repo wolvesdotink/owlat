@@ -133,6 +133,24 @@ function ask(question: string) {
 	return t.action(api.mail.ai.askMailbox.askMailbox, { question });
 }
 
+/**
+ * `count` Spam and Trash matches, all newer than any match the test seeds
+ * after them. The test search index returns hits in insertion order, so they
+ * also rank ahead of it.
+ */
+async function seedJunk(mailboxId: Id<'mailboxes'>, count: number, tag: string): Promise<void> {
+	await seedFolder(t, mailboxId, 'spam');
+	await seedFolder(t, mailboxId, 'trash');
+	for (let i = 0; i < count; i++) {
+		await seedMessage(t, mailboxId, {
+			role: i % 2 === 0 ? 'spam' : 'trash',
+			subject: `Cheap Lisbon flight ${tag} ${i}`,
+			snippet: `Lisbon flight deal ${tag} ${i}`,
+			receivedAt: Date.parse('2026-10-02T09:00:00Z') + i,
+		});
+	}
+}
+
 /** The part of the prompt inside the `<messages>` fence, and the rest. */
 function splitFence(prompt: string): { inside: string; outside: string } {
 	const open = prompt.indexOf('<messages>');
@@ -250,6 +268,69 @@ describe('askMailbox: mailbox scope', () => {
 		expect(llm.prompts).toHaveLength(1);
 		expect(llm.prompts[0]!.prompt).not.toContain('Cheap');
 		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
+	});
+
+	it('finds an older Inbox match behind more newer junk matches than any page holds', async () => {
+		const own = await mailbox({ userId: 'user-A' });
+		await seedJunk(own, 70, 'own');
+		const inbox = await seedMessage(t, own, {
+			subject: 'Booking confirmed',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+			receivedAt: Date.parse('2026-10-01T09:00:00Z'),
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(llm.prompts[0]!.prompt).not.toContain('Cheap');
+		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
+	});
+
+	it("finds a mailbox's only Inbox match behind newer junk in two other mailboxes", async () => {
+		const first = await mailbox({ userId: 'user-A', address: 'a@owlat.test' });
+		await seedJunk(first, 33, 'first');
+		const second = await mailbox({ userId: 'user-A', address: 'a2@owlat.test' });
+		await seedJunk(second, 33, 'second');
+		const third = await mailbox({ userId: 'user-A', address: 'a3@owlat.test' });
+		const inbox = await seedMessage(t, third, {
+			subject: 'Booking confirmed',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+			receivedAt: Date.parse('2026-10-01T09:00:00Z'),
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(llm.prompts[0]!.prompt).not.toContain('Cheap');
+		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
+	});
+
+	it('finds a match filed in a folder the user created', async () => {
+		const own = await mailbox({ userId: 'user-A' });
+		await seedJunk(own, 70, 'own');
+		const filed = await seedMessage(t, own, {
+			subject: 'Booking confirmed',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+			receivedAt: Date.parse('2026-10-01T09:00:00Z'),
+		});
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			const travel = await ctx.db.insert('mailFolders', {
+				mailboxId: own,
+				name: 'Travel',
+				uidNext: 1,
+				uidValidity: now,
+				highestModseq: 1,
+				totalCount: 0,
+				unseenCount: 0,
+				subscribed: true,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(filed, { folderId: travel });
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(result.citations.map((c) => c.messageId)).toEqual([filed]);
 	});
 
 	it('calls no model, resolves none and cites nothing when no message matches', async () => {
