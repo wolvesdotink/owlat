@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { McpPendingAction } from '~/composables/useMcpPendingActions';
+import { formatCompactFileSize } from '~/utils/formatters';
 
-const props = defineProps<{ action: McpPendingAction; busy: boolean }>();
+/** `notice`: why the last approval was refused, shown until the next try. */
+const props = defineProps<{ action: McpPendingAction; busy: boolean; notice?: string | null }>();
 
 const emit = defineEmits<{ (e: 'approve'): void; (e: 'reject'): void }>();
 
@@ -31,6 +33,18 @@ const isMessage = computed(
 	() => props.action.tool === 'create_draft' || props.action.tool === 'send_draft'
 );
 const isDraftGone = computed(() => 'isDraftGone' in details.value && details.value.isDraftGone);
+const isInaccessible = computed(
+	() => 'isInaccessible' in details.value && details.value.isInaccessible
+);
+// Approval is bound to the digest of what this card shows; without one there
+// is nothing the owner could have reviewed.
+const canApprove = computed(
+	() => !isDraftGone.value && !isInaccessible.value && Boolean(props.action.reviewDigest)
+);
+const from = computed(() => ('from' in details.value ? details.value.from : null));
+const attachments = computed(() =>
+	'attachments' in details.value ? details.value.attachments : []
+);
 
 function list(addresses: string[] | undefined) {
 	return addresses && addresses.length > 0 ? addresses.join(', ') : '';
@@ -49,9 +63,21 @@ function list(addresses: string[] | undefined) {
 			{{ action.mailboxAddress }}
 		</p>
 
-		<p v-if="isDraftGone" class="mt-3 text-text-secondary">{{ t(`${KEY}.draftGone`) }}</p>
+		<p v-if="isInaccessible" class="mt-3 text-text-secondary">
+			{{ t(`${KEY}.inaccessible`) }}
+		</p>
+		<p v-else-if="isDraftGone" class="mt-3 text-text-secondary">{{ t(`${KEY}.draftGone`) }}</p>
 		<dl v-else class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 			<template v-if="isMessage">
+				<template v-if="from">
+					<dt class="text-text-tertiary">{{ t(`${KEY}.from`) }}</dt>
+					<dd class="break-all">
+						{{ from.address }}
+						<span v-if="from.isSendAs && from.mailboxName" class="text-text-secondary">
+							{{ t(`${KEY}.sendAs`, { name: from.mailboxName }) }}
+						</span>
+					</dd>
+				</template>
 				<dt class="text-text-tertiary">{{ t(`${KEY}.to`) }}</dt>
 				<dd class="break-all">{{ 'to' in details ? list(details.to) : '' }}</dd>
 				<template v-if="'cc' in details && list(details.cc)">
@@ -70,6 +96,17 @@ function list(addresses: string[] | undefined) {
 					<dt class="text-text-tertiary">{{ t(`${KEY}.inReplyTo`) }}</dt>
 					<dd class="break-words">{{ details.inReplyToSubject }}</dd>
 				</template>
+				<template v-if="attachments.length > 0">
+					<dt class="text-text-tertiary">{{ t(`${KEY}.attachments`) }}</dt>
+					<dd>
+						<ul data-test="attachments">
+							<li v-for="(file, index) in attachments" :key="index" class="break-all">
+								{{ file.filename }}
+								<span class="text-text-tertiary">{{ formatCompactFileSize(file.size) }}</span>
+							</li>
+						</ul>
+					</dd>
+				</template>
 			</template>
 			<template v-else>
 				<dt class="text-text-tertiary">{{ t(`${KEY}.conversation`) }}</dt>
@@ -86,18 +123,25 @@ function list(addresses: string[] | undefined) {
 				</template>
 			</template>
 		</dl>
+		<!-- The whole body, never a clip: it is what approval sends. Focusable so a
+		     keyboard can scroll it. -->
 		<p
-			v-if="isMessage && !isDraftGone && 'body' in details && details.body"
+			v-if="isMessage && !isDraftGone && !isInaccessible && 'body' in details && details.body"
+			role="region"
+			tabindex="0"
+			:aria-label="t(`${KEY}.body`)"
+			data-test="body"
 			class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
 		>
 			{{ details.body }}
 		</p>
+		<p v-if="notice" role="alert" class="mt-3 text-error">{{ notice }}</p>
 
 		<footer class="mt-4 flex items-center justify-end gap-2">
 			<UiButton variant="ghost" type="button" :disabled="busy" @click="emit('reject')">
 				{{ t(`${KEY}.reject`) }}
 			</UiButton>
-			<UiButton type="button" :disabled="busy || isDraftGone" @click="emit('approve')">
+			<UiButton type="button" :disabled="busy || !canApprove" @click="emit('approve')">
 				{{ action.tool === 'send_draft' ? t(`${KEY}.approveSend`) : t(`${KEY}.approve`) }}
 			</UiButton>
 		</footer>

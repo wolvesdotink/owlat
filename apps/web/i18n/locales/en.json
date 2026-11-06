@@ -6747,6 +6747,11 @@
 				"label": "Label",
 				"noSubject": "(no subject)",
 				"draftGone": "The draft no longer exists.",
+				"from": "From",
+				"sendAs": "as {name}",
+				"attachments": "Attachments",
+				"body": "Full message",
+				"inaccessible": "You no longer have access to this mailbox, so what this action would change is hidden.",
 				"approve": "Approve",
 				"approveSend": "Approve and send",
 				"reject": "Reject"
@@ -18986,7 +18991,8 @@
 			"rejectOperation": "Reject AI client action",
 			"failed": "The action could not run: {reason}",
 			"failedUnknown": "unknown error",
-			"expired": "The action expired before you approved it."
+			"expired": "The action expired before you approved it.",
+			"changed": "This changed after you opened it. Check the updated details, then approve again."
 		}
 	},
 	"sharedPkg": {

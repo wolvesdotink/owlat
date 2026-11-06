@@ -18,6 +18,8 @@ export function useMcpPendingActions() {
 	);
 	const pending = computed(() => data.value ?? []);
 	const busyId = ref<Id<'mcpPendingActions'> | null>(null);
+	/** Why the last approval of an action was refused, by action id. */
+	const notices = ref<Record<string, string>>({});
 
 	const approveOperation = useBackendOperation(api.mcp.actions.approve, {
 		label: () => t('shared.useMcpPendingActions.approveOperation'),
@@ -27,13 +29,23 @@ export function useMcpPendingActions() {
 	});
 	const { showToast } = useToast();
 
-	async function approve(actionId: Id<'mcpPendingActions'>) {
+	/**
+	 * Approve the action as its card shows it. The server refuses when what
+	 * would run changed since (`isChanged`); the list has refreshed by then, so
+	 * the card says why and waits for another look.
+	 */
+	async function approve(action: Pick<McpPendingAction, '_id' | 'reviewDigest'>) {
+		const actionId = action._id;
+		if (!action.reviewDigest) return;
 		busyId.value = actionId;
+		delete notices.value[actionId];
 		try {
-			const outcome = await approveOperation.run({ actionId });
+			const outcome = await approveOperation.run({ actionId, reviewDigest: action.reviewDigest });
 			if (!outcome.ok) return;
-			const { status, failureMessage } = outcome.result;
-			if (status === 'failed') {
+			const { status, failureMessage, isChanged } = outcome.result;
+			if (isChanged) {
+				notices.value[actionId] = t('shared.useMcpPendingActions.changed');
+			} else if (status === 'failed') {
 				showToast(
 					t('shared.useMcpPendingActions.failed', {
 						reason: failureMessage ?? t('shared.useMcpPendingActions.failedUnknown'),
@@ -57,5 +69,5 @@ export function useMcpPendingActions() {
 		}
 	}
 
-	return { pending, isLoading, error, refetch, busyId, approve, reject };
+	return { pending, isLoading, error, refetch, busyId, notices, approve, reject };
 }

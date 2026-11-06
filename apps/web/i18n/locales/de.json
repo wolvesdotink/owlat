@@ -6747,6 +6747,11 @@
 				"label": "Label",
 				"noSubject": "(kein Betreff)",
 				"draftGone": "Den Entwurf gibt es nicht mehr.",
+				"from": "Von",
+				"sendAs": "als {name}",
+				"attachments": "Anhänge",
+				"body": "Vollständige Nachricht",
+				"inaccessible": "Du hast keinen Zugriff mehr auf dieses Postfach, deshalb ist ausgeblendet, was diese Aktion ändern würde.",
 				"approve": "Freigeben",
 				"approveSend": "Freigeben und senden",
 				"reject": "Ablehnen"
@@ -18986,7 +18991,8 @@
 			"rejectOperation": "Aktion des KI-Programms ablehnen",
 			"failed": "Die Aktion konnte nicht ausgeführt werden: {reason}",
 			"failedUnknown": "unbekannter Fehler",
-			"expired": "Die Aktion ist abgelaufen, bevor du sie freigegeben hast."
+			"expired": "Die Aktion ist abgelaufen, bevor du sie freigegeben hast.",
+			"changed": "Das hat sich geändert, nachdem du es geöffnet hast. Prüf die neuen Angaben und gib es dann erneut frei."
 		}
 	},
 	"sharedPkg": {

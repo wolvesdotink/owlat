@@ -6,7 +6,7 @@
  */
 const { t } = useI18n();
 const route = useRoute();
-const { pending, busyId, approve, reject } = useMcpPendingActions();
+const { pending, busyId, notices, approve, reject } = useMcpPendingActions();
 
 const APPROVALS_PATH = '/dashboard/preferences/ai-clients';
 
@@ -31,8 +31,9 @@ const isShown = computed(() => current.value !== null && route.path !== APPROVAL
 		<PreferencesMcpPendingActionCard
 			:action="current"
 			:busy="busyId === current._id"
+			:notice="notices[current._id]"
 			class="!rounded-t-none"
-			@approve="approve(current._id)"
+			@approve="approve(current)"
 			@reject="reject(current._id)"
 		/>
 	</aside>

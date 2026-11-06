@@ -1614,6 +1614,7 @@ import type * as marketing_notifications from '../marketing/notifications.js';
 import type * as mcp__helpers from '../mcp/_helpers.js';
 import type * as mcp_access from '../mcp/access.js';
 import type * as mcp_actionRequests from '../mcp/actionRequests.js';
+import type * as mcp_actionReview from '../mcp/actionReview.js';
 import type * as mcp_actionRun from '../mcp/actionRun.js';
 import type * as mcp_actions from '../mcp/actions.js';
 import type * as mcp_activity from '../mcp/activity.js';
@@ -3750,6 +3751,7 @@ declare const fullApi: ApiFromModules<{
 	'mcp/_helpers': typeof mcp__helpers;
 	'mcp/access': typeof mcp_access;
 	'mcp/actionRequests': typeof mcp_actionRequests;
+	'mcp/actionReview': typeof mcp_actionReview;
 	'mcp/actionRun': typeof mcp_actionRun;
 	'mcp/actions': typeof mcp_actions;
 	'mcp/activity': typeof mcp_activity;

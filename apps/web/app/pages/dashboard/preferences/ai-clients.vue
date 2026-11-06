@@ -21,6 +21,7 @@ const {
 	error: pendingError,
 	refetch: refetchPending,
 	busyId,
+	notices,
 	approve,
 	reject,
 } = useMcpPendingActions();
@@ -122,7 +123,8 @@ function formatTime(ts?: number) {
 					:key="action._id"
 					:action="action"
 					:busy="busyId === action._id"
-					@approve="approve(action._id)"
+					:notice="notices[action._id]"
+					@approve="approve(action)"
 					@reject="reject(action._id)"
 				/>
 			</div>

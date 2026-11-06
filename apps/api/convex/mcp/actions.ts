@@ -10,6 +10,12 @@
  * so every mailbox and team-inbox permission applies as if they had clicked
  * it themselves.
  *
+ * The owner approves what the card showed them, not an id. The card carries a
+ * digest of everything the run will act on (for a send: recipients, subject,
+ * the whole body, attachments and From identity), and `approve` recomputes it
+ * in its own transaction: a draft another session or a teammate changed after
+ * the card loaded is refused, never sent.
+ *
  * A pending action lapses after {@link PENDING_ACTION_TTL_MS}, goes with its
  * token when that is revoked, and every step is written to the client's
  * activity log.
@@ -20,8 +26,6 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { htmlToPlainText } from '@owlat/shared/html';
-import { openMailDraftBody } from '../lib/messageBody';
 import { throwNotFound } from '../_utils/errors';
 import type { McpAction, McpActionStatus, McpActivityOutcome } from '../lib/validators/mcp';
 import { enqueuePush } from '../push/events';
@@ -30,6 +34,7 @@ import { appendActivity } from './activity';
 import { mcpMutation, mcpQuery } from './_helpers';
 import type { ToolOutcome } from './reads';
 import { checkRequest, writeRequestValidator } from './actionRequests';
+import { canReach, review } from './actionReview';
 
 /** How long an action waits for the owner before it lapses. */
 export const PENDING_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -39,13 +44,13 @@ export const PENDING_PER_CLIENT_MAX = 20;
 export const DECIDED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 /** Rows one sweep pass touches; a full batch schedules the next pass. */
 const SWEEP_BATCH = 100;
-/** Longest preview of a draft body the approval card shows. */
-const PREVIEW_MAX_CHARS = 4_000;
 const FAILURE_MESSAGE_MAX = 300;
 
 const NO_ACCESS = 'This connection no longer has access. Ask its owner to check it in Owlat.';
 const READ_ONLY =
 	'This connection is read-only. Its owner can connect a read-write client in Owlat.';
+const LOST_ACCESS = 'The connection no longer has access to this mailbox.';
+const CHANGED = 'This changed after you opened it. Check it again, then approve.';
 
 function threadOf(action: McpAction): Id<'mailThreads'> | undefined {
 	return 'threadId' in action ? action.threadId : undefined;
@@ -216,27 +221,26 @@ function failureText(error: unknown): string {
 // authz: self-scope — only the client's owner decides (row.userId === session.userId);
 // the run then goes through the Postbox mutations' own mailbox gates under that session.
 export const approve = mcpMutation({
-	args: { actionId: v.id('mcpPendingActions') },
+	args: { actionId: v.id('mcpPendingActions'), reviewDigest: v.string() },
 	handler: async (
 		ctx,
 		args,
 		session
-	): Promise<{ status: McpActionStatus; failureMessage?: string }> => {
+	): Promise<{ status: McpActionStatus; failureMessage?: string; isChanged?: true }> => {
 		const row = await loadOwnAction(ctx, args.actionId, session);
 		if (row.status !== 'pending') return { status: row.status };
 		if (row.expiresAt <= Date.now()) {
 			await settle(ctx, row, 'expired', 'expired');
 			return { status: 'expired' };
 		}
-		const access = await resolveMcpAccess(ctx, row.clientId);
-		const isReachable =
-			access.ok &&
-			access.client.access === 'read_write' &&
-			access.mailboxes.some((mailbox) => mailbox._id === row.mailboxId);
-		if (!isReachable) {
-			const failureMessage = 'The connection no longer has access to this mailbox.';
-			await settle(ctx, row, 'failed', 'denied', { failureMessage });
-			return { status: 'failed', failureMessage };
+		if (!(await canReach(ctx, row))) {
+			await settle(ctx, row, 'failed', 'denied', { failureMessage: LOST_ACCESS });
+			return { status: 'failed', failureMessage: LOST_ACCESS };
+		}
+		// Same transaction as the run below, so nothing can change in between.
+		const { reviewDigest } = await review(ctx, row, true);
+		if (reviewDigest !== null && reviewDigest !== args.reviewDigest) {
+			return { status: 'pending', isChanged: true, failureMessage: CHANGED };
 		}
 		try {
 			// Its own transaction: a failed run leaves nothing half done.
@@ -284,59 +288,8 @@ export async function cancelPendingForClient(
 	for (const row of waiting) await settle(ctx, row, 'cancelled', 'cancelled');
 }
 
-function clip(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-/** What the approval card shows for one action: the live names behind its ids. */
-async function describe(ctx: QueryCtx, row: Doc<'mcpPendingActions'>) {
-	const { action } = row;
-	const thread = 'threadId' in action ? await ctx.db.get(action.threadId) : null;
-	const base = thread ? { threadSubject: thread.latestSubject } : {};
-	switch (action.tool) {
-		case 'create_draft': {
-			const original = action.inReplyToMessageId
-				? await ctx.db.get(action.inReplyToMessageId)
-				: null;
-			return {
-				...base,
-				to: action.to,
-				cc: action.cc,
-				subject: action.subject,
-				body: clip(action.body, PREVIEW_MAX_CHARS),
-				...(original ? { inReplyToSubject: original.subject } : {}),
-			};
-		}
-		case 'send_draft': {
-			const draft = await ctx.db.get(action.draftId);
-			if (!draft) return { ...base, isDraftGone: true };
-			const opened = await openMailDraftBody(draft);
-			const text =
-				opened.bodyText ||
-				(opened.bodyHtml ? htmlToPlainText(opened.bodyHtml, { preserveBreaks: true }) : '');
-			return {
-				...base,
-				to: draft.toAddresses,
-				cc: draft.ccAddresses,
-				bcc: draft.bccAddresses,
-				subject: draft.subject,
-				body: clip(text, PREVIEW_MAX_CHARS),
-			};
-		}
-		case 'archive_thread':
-			return base;
-		case 'move_thread': {
-			const folder = await ctx.db.get(action.folderId);
-			return { ...base, ...(folder ? { folderName: folder.name } : {}) };
-		}
-		case 'label_thread': {
-			const label = await ctx.db.get(action.labelId);
-			return { ...base, isRemoval: !action.add, ...(label ? { labelName: label.name } : {}) };
-		}
-	}
-}
-
-// authz: self-scope — the caller's own pending actions, read by their userId.
+// authz: self-scope — the caller's own pending actions, read by their userId; what
+// each describes is shown only while its client can still reach the mailbox.
 export const listPending = mcpQuery({
 	args: {},
 	handler: async (ctx, _args, session) => {
@@ -350,10 +303,13 @@ export const listPending = mcpQuery({
 			)
 			.order('desc')
 			.take(50);
+		const reach = new Map<Id<'mcpClients'>, Set<Id<'mailboxes'>>>();
 		const result = [];
 		for (const row of rows) {
 			const client = await ctx.db.get(row.clientId);
-			const mailbox = await ctx.db.get(row.mailboxId);
+			const isReachable = await canReach(ctx, row, reach);
+			const mailbox = isReachable ? await ctx.db.get(row.mailboxId) : null;
+			const { details, reviewDigest } = await review(ctx, row, isReachable);
 			result.push({
 				_id: row._id,
 				tool: row.action.tool,
@@ -361,7 +317,8 @@ export const listPending = mcpQuery({
 				mailboxAddress: mailbox?.address ?? null,
 				createdAt: row.createdAt,
 				expiresAt: row.expiresAt,
-				details: await describe(ctx, row),
+				details,
+				reviewDigest,
 			});
 		}
 		return result;

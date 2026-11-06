@@ -365,6 +365,27 @@ async function drafts(t: Harness) {
 	return t.run((ctx) => ctx.db.query('mailDrafts').collect());
 }
 
+async function cardOf(t: Harness, actionId: Id<'mcpPendingActions'>) {
+	const rows = await t.query(api.mcp.actions.listPending, {});
+	const card = rows.find((row) => row._id === actionId);
+	if (!card) throw new Error('no card for that action');
+	return card;
+}
+
+/** Approve an action as its card showed it. */
+async function approveShown(t: Harness, actionId: Id<'mcpPendingActions'>) {
+	return t.mutation(api.mcp.actions.approve, {
+		actionId,
+		reviewDigest: await digestOf(t, actionId),
+	});
+}
+
+async function digestOf(t: Harness, actionId: Id<'mcpPendingActions'>): Promise<string> {
+	const card = (await cardOf(t, actionId)) as { reviewDigest?: string | null };
+	if (!card.reviewDigest) throw new Error('the card carries no review digest');
+	return card.reviewDigest;
+}
+
 describe('write tools', () => {
 	it('are neither listed for nor callable by a read token', async () => {
 		const { t, orgId } = await harness();
@@ -424,11 +445,7 @@ describe('write tools', () => {
 			details: { to: ['mia@example.com'], subject: 'Payment terms' },
 		});
 
-		expect(
-			await t.mutation(api.mcp.actions.approve, {
-				actionId: draftAction,
-			})
-		).toEqual({ status: 'approved' });
+		expect(await approveShown(t, draftAction)).toEqual({ status: 'approved' });
 		const [draft] = await drafts(t);
 		expect(draft).toMatchObject({ toAddresses: ['mia@example.com'], subject: 'Payment terms' });
 
@@ -441,7 +458,7 @@ describe('write tools', () => {
 		const { action_id: sendAction } = structured(send);
 		expect((await drafts(t))[0]!.state).toBe('draft');
 
-		await t.mutation(api.mcp.actions.approve, { actionId: sendAction });
+		await approveShown(t, sendAction);
 		expect((await drafts(t))[0]!.state).toBe('pending_send');
 		expect((await activity(t)).map((row) => [row.tool, row.outcome])).toEqual([
 			['create_draft', 'pending_approval'],
@@ -464,20 +481,14 @@ describe('write tools', () => {
 				body: 'Hello',
 			})
 		);
-		await t.mutation(api.mcp.actions.approve, {
-			actionId: created.action_id,
-		});
+		await approveShown(t, created.action_id);
 		const [draft] = await drafts(t);
 		const first = structured(await callTool(t, token, 'send_draft', { draft_id: draft!._id }));
 		const second = structured(await callTool(t, token, 'send_draft', { draft_id: draft!._id }));
-		await t.mutation(api.mcp.actions.approve, {
-			actionId: first.action_id,
-		});
+		await approveShown(t, first.action_id);
 		const { undoToken } = (await drafts(t))[0]!;
 		expect(undoToken).toBeDefined();
-		const failed = await t.mutation(api.mcp.actions.approve, {
-			actionId: second.action_id,
-		});
+		const failed = await approveShown(t, second.action_id);
 		expect(failed).toMatchObject({ status: 'failed', failureMessage: expect.any(String) });
 		expect((await drafts(t))[0]!.undoToken).toBe(undoToken);
 		const status = structured(
@@ -503,7 +514,9 @@ describe('write tools', () => {
 		expect(await t.mutation(api.mcp.actions.reject, { actionId: rejected })).toEqual({
 			status: 'rejected',
 		});
-		expect(await t.mutation(api.mcp.actions.approve, { actionId: rejected })).toEqual({
+		expect(
+			await t.mutation(api.mcp.actions.approve, { actionId: rejected, reviewDigest: '' })
+		).toEqual({
 			status: 'rejected',
 		});
 
@@ -512,7 +525,9 @@ describe('write tools', () => {
 		await t.run((ctx) => ctx.db.patch(lapsed, { expiresAt: Date.now() - 1 }));
 		await t.mutation(internal.mcp.actions.sweep, {});
 		expect((await t.run((ctx) => ctx.db.get(lapsed)))!.status).toBe('expired');
-		expect(await t.mutation(api.mcp.actions.approve, { actionId: lapsed })).toEqual({
+		expect(
+			await t.mutation(api.mcp.actions.approve, { actionId: lapsed, reviewDigest: '' })
+		).toEqual({
 			status: 'expired',
 		});
 
@@ -528,9 +543,7 @@ describe('write tools', () => {
 		const threadId = (await t.run((ctx) => ctx.db.get(message)))!.threadId;
 		const { token } = await readWriteClient(t, [own]);
 		const asked = structured(await callTool(t, token, 'archive_thread', { thread_id: threadId }));
-		await t.mutation(api.mcp.actions.approve, {
-			actionId: asked.action_id,
-		});
+		await approveShown(t, asked.action_id);
 		const folder = await t.run(async (ctx) => ctx.db.get((await ctx.db.get(message))!.folderId));
 		expect(folder!.role).toBe('archive');
 	});
@@ -562,9 +575,11 @@ describe('write tools', () => {
 				body: 'Hello',
 			})
 		);
+		const reviewDigest = await digestOf(t, asked.action_id);
 		await t.run((ctx) => ctx.db.delete(membershipId));
 		const decided = await t.mutation(api.mcp.actions.approve, {
 			actionId: asked.action_id,
+			reviewDigest,
 		});
 		expect(decided.status).toBe('failed');
 		expect(await drafts(t)).toEqual([]);
@@ -585,7 +600,9 @@ describe('write tools', () => {
 		);
 		sessionMock.value = { userId: 'user-b', activeOrganizationId: orgId, role: 'owner' };
 		const actionId = asked.action_id;
-		await expect(t.mutation(api.mcp.actions.approve, { actionId })).rejects.toThrow(/not found/i);
+		await expect(
+			t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: '' })
+		).rejects.toThrow(/not found/i);
 		expect(await t.query(api.mcp.actions.listPending, {})).toEqual([]);
 		expect(await drafts(t)).toEqual([]);
 	});
@@ -622,6 +639,154 @@ describe('write tools', () => {
 		});
 		expect(badAddress.body.result.isError).toBe(true);
 		expect(await pendingRows(t)).toEqual([]);
+	});
+});
+
+/** A draft the owner approved, and a pending send of it; the card for that send. */
+async function pendingSend(
+	t: Harness,
+	token: string,
+	mailboxId: Id<'mailboxes'>,
+	body = 'Net 30 works for us.'
+) {
+	const created = structured(
+		await callTool(t, token, 'create_draft', {
+			mailbox_id: mailboxId,
+			to: ['mia@example.com'],
+			subject: 'Payment terms',
+			body,
+		})
+	);
+	await approveShown(t, created.action_id);
+	const draftId = (await drafts(t))[0]!._id;
+	const send = structured(await callTool(t, token, 'send_draft', { draft_id: draftId }));
+	return { draftId, actionId: send.action_id };
+}
+
+describe('send approval', () => {
+	it('refuses a digest the draft no longer matches, sends nothing, and sends once re-reviewed', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own);
+		const reviewed = await digestOf(t, actionId);
+
+		// Another session adds a hidden recipient after the card loaded.
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bccAddresses: ['someone@elsewhere.test'],
+		});
+		const refused = await t.mutation(api.mcp.actions.approve, {
+			actionId,
+			reviewDigest: reviewed,
+		});
+		expect(refused).toMatchObject({ status: 'pending', isChanged: true });
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.state).toBe('draft');
+		expect((await t.run((ctx) => ctx.db.get(actionId)))!.status).toBe('pending');
+
+		const refreshed = await cardOf(t, actionId);
+		expect(refreshed.details).toMatchObject({ bcc: ['someone@elsewhere.test'] });
+		const again = await digestOf(t, actionId);
+		expect(again).not.toBe(reviewed);
+		expect(await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: again })).toEqual({
+			status: 'approved',
+		});
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.state).toBe('pending_send');
+	});
+
+	it('shows the whole of a 50,000 character body, and its digest covers the last character', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const body = `${'a'.repeat(49_990)}TAIL-12345`;
+		const created = structured(
+			await callTool(t, token, 'create_draft', {
+				mailbox_id: own,
+				to: ['mia@example.com'],
+				subject: 'Long',
+				body,
+			})
+		);
+		expect((await cardOf(t, created.action_id)).details).toMatchObject({ body });
+
+		const { draftId, actionId } = await pendingSend(t, token, own, body);
+		const card = await cardOf(t, actionId);
+		expect((card.details as { body?: string }).body).toBe(body);
+		const reviewed = await digestOf(t, actionId);
+		const edited = `${body.slice(0, -1)}6`;
+		await t.mutation(api.mail.drafts.update, { draftId, bodyText: edited, bodyHtml: edited });
+		expect(await digestOf(t, actionId)).not.toBe(reviewed);
+	});
+
+	it('withholds the content once the owner lost the team inbox, and refuses approval', async () => {
+		const { t, orgId } = await harness();
+		const team = await seedMailbox(t, {
+			userId: 'user-b',
+			organizationId: orgId,
+			address: 'team@owlat.test',
+			scope: 'shared',
+		});
+		await seedFolder(t, team, 'inbox');
+		const membershipId = await t.run((ctx) =>
+			ctx.db.insert('mailboxMembers', {
+				mailboxId: team,
+				authUserId: 'user-a',
+				role: 'member',
+				addedBy: 'user-b',
+				createdAt: 0,
+			})
+		);
+		const { token } = await readWriteClient(t, [team]);
+		const { draftId, actionId } = await pendingSend(t, token, team);
+		const reviewed = await digestOf(t, actionId);
+		await t.run((ctx) => ctx.db.delete(membershipId));
+		// A teammate keeps writing the draft after the member left.
+		await t.run((ctx) => ctx.db.patch(draftId, { subject: 'Confidential pricing' }));
+
+		const card = await cardOf(t, actionId);
+		expect(card.details).toEqual({ isInaccessible: true });
+		expect(card.mailboxAddress).toBeNull();
+		expect(JSON.stringify(card)).not.toMatch(/Confidential pricing|Payment terms|mia@example/);
+
+		const decided = await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: reviewed });
+		expect(decided.status).toBe('failed');
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.state).toBe('draft');
+	});
+
+	it('shows the attachments and the From identity, and a change to either changes the digest', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		await t.run((ctx) => ctx.db.patch(own, { displayName: 'Ada Example' }));
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own);
+		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['%PDF-1.4'])));
+		const invoice = {
+			storageId,
+			filename: 'invoice.pdf',
+			contentType: 'application/pdf',
+			size: 2048,
+			isInline: false,
+		};
+		await t.run((ctx) => ctx.db.patch(draftId, { attachments: [invoice] }));
+
+		const card = await cardOf(t, actionId);
+		expect(card.details).toMatchObject({
+			from: { address: 'a@owlat.test', mailboxName: 'Ada Example', isSendAs: false },
+			attachments: [{ filename: 'invoice.pdf', size: 2048 }],
+		});
+		const withInvoice = await digestOf(t, actionId);
+
+		await t.run((ctx) =>
+			ctx.db.patch(draftId, { attachments: [invoice, { ...invoice, filename: 'more.pdf' }] })
+		);
+		const withTwo = await digestOf(t, actionId);
+		expect(withTwo).not.toBe(withInvoice);
+
+		await t.run((ctx) => ctx.db.patch(draftId, { fromAddress: 'alias@owlat.test' }));
+		expect((await cardOf(t, actionId)).details).toMatchObject({
+			from: { address: 'alias@owlat.test' },
+		});
+		expect(await digestOf(t, actionId)).not.toBe(withTwo);
 	});
 });
 
