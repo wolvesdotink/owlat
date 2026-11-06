@@ -303,6 +303,38 @@ describe('askMailbox: mailbox scope', () => {
 		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
 	});
 
+	it('still searches the Inbox of a mailbox with more folders than it reads', async () => {
+		// The Inbox is created after the other folders, so a plain cut of the
+		// mailbox's folder rows would leave it out.
+		const own = await seedMailbox(t, { userId: 'user-A' });
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			for (let i = 0; i < 80; i++) {
+				await ctx.db.insert('mailFolders', {
+					mailboxId: own,
+					name: `Archive ${i}`,
+					uidNext: 1,
+					uidValidity: now,
+					highestModseq: 1,
+					totalCount: 0,
+					unseenCount: 0,
+					subscribed: true,
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+		await seedFolder(t, own, 'inbox');
+		const inbox = await seedMessage(t, own, {
+			subject: 'Your flight',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
+	});
+
 	it('finds a match filed in a folder the user created', async () => {
 		const own = await mailbox({ userId: 'user-A' });
 		await seedJunk(own, 70, 'own');

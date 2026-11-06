@@ -43,7 +43,8 @@ import {
  * Reads stay bounded: at most `MAX_MAILBOXES` mailboxes, at most
  * `MAX_FOLDER_SEARCHES` folder searches across them, and
  * `ASK_MAILBOX_MAX_MESSAGES` matches from each, so at most 64 × 8 = 512 rows of
- * about 10 KB (the body excerpt), well under what one query may read. A
+ * about 10 KB (the body excerpt), well under what one query may read. Folder
+ * rows are read with the same bound: 67 at most per mailbox. A
  * folder never contributes more than the answer cites, so the per-folder take
  * loses nothing the final cap would keep.
  */
@@ -88,10 +89,18 @@ async function askableFolders(
 ): Promise<Doc<'mailFolders'>[]> {
 	const folders: Doc<'mailFolders'>[] = [];
 	for (const mailbox of mailboxes) {
-		const own = await ctx.db
+		// A mailbox may hold any number of folders, so the read is cut here, not
+		// after loading them. The Inbox comes through its own index so the cut
+		// can never drop it; the two extra rows leave room for Spam and Trash.
+		const inbox = await ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailbox._id).eq('role', 'inbox'))
+			.first();
+		const rest = await ctx.db
 			.query('mailFolders')
 			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
-			.collect(); // bounded: one mailbox's folders
+			.take(MAX_FOLDER_SEARCHES + 2);
+		const own = inbox ? [inbox, ...rest.filter((folder) => folder._id !== inbox._id)] : rest;
 		folders.push(...own.filter((folder) => folder.role !== 'spam' && folder.role !== 'trash'));
 	}
 	// A stable sort keeps the mailbox order inside a tier, so a mailbox with many
