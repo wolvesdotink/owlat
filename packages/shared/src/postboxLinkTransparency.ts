@@ -71,7 +71,11 @@ function decodeBasicEntities(value: string): string {
 		.replace(/&amp;/gi, '&');
 }
 
-/** Lowercased host of an http(s) URL string, or null when not parseable. */
+/**
+ * Lowercased host of an http(s) URL string, or null when not parseable. The
+ * URL parser writes an internationalized host as punycode, so both sides of a
+ * comparison read a lookalike the same way.
+ */
 function hostOf(url: string): string | null {
 	if (!/^https?:\/\//i.test(url)) return null;
 	try {
@@ -126,14 +130,23 @@ function textClaimedHost(visibleText: string): string | null {
 		return host ? normalizeHost(host) : null;
 	}
 	// Bare domain (optionally with path/query): must start with a plausible
-	// hostname followed by end-of-text or a URL delimiter. Require a letter in
-	// the TLD so "1.5" or "v2.0" never match.
-	const m = text.match(
-		/^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,24})(?:[/?#:]|$)/i
-	);
+	// hostname followed by end-of-text or a URL delimiter. Require letters in
+	// the TLD (or a punycode one) so "1.5" or "v2.0" never match.
+	const m = text.match(BARE_DOMAIN_RE);
 	if (!m?.[1]) return null;
-	return normalizeHost(m[1]);
+	const host = hostOf(`https://${m[1]}/`);
+	return host ? normalizeHost(host) : null;
 }
+
+/**
+ * A bare domain at the start of a link's text. Labels may be Unicode, because
+ * a lookalike such as "аpple.com" (Cyrillic а) reads as a domain to the
+ * recipient; the URL parser then turns it into the punycode the href is
+ * compared in. The ideographic and fullwidth full stops count as dots, as
+ * they do in a hostname.
+ */
+const BARE_DOMAIN_RE =
+	/^((?:[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}-]*[\p{L}\p{N}\p{M}])?[.\u3002\uFF0E\uFF61])+(?:\p{L}[\p{L}\p{M}]{1,23}|xn--[a-z0-9-]{1,59}))(?:[/?#:]|$)/iu;
 
 /**
  * Visible text of an anchor's inner HTML (tags removed, named and numeric

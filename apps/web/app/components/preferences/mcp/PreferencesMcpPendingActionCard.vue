@@ -89,15 +89,19 @@ const summaryLine = computed(() => {
 });
 
 /**
- * A send previews its HTML part as the recipient sees it and lists its links;
- * the parts as text are the secondary view. A drafted body is text only.
+ * A send previews its HTML part as the recipient sees it, with all of its text
+ * beside it and its links below. The preview cannot show what the outgoing
+ * stylesheet reveals only in some clients or modes, so the text is never
+ * behind a click. A drafted body is text only.
  */
 const html = computed(() =>
 	details.value && 'html' in details.value && details.value.html ? details.value.html : null
 );
 const previewSrcdoc = computed(() => (html.value ? mcpReviewPreviewSrcdoc(html.value) : ''));
-const view = ref<'preview' | 'text'>('preview');
-const isPreviewShown = computed(() => html.value !== null && view.value === 'preview');
+const hasHiddenContent = computed(
+	() =>
+		details.value !== null && 'hasHiddenContent' in details.value && details.value.hasHiddenContent
+);
 const links = computed(() =>
 	details.value && 'links' in details.value ? details.value.links : []
 );
@@ -202,61 +206,54 @@ function approve() {
 			</template>
 		</dl>
 		<template v-if="isMessage && details && !isDraftGone && !isInaccessible">
-			<div v-if="html" class="mt-3 flex items-center gap-1" role="tablist">
-				<button
-					v-for="option in ['preview', 'text'] as const"
-					:key="option"
-					type="button"
-					role="tab"
-					:data-test="`view-${option}`"
-					class="rounded-full px-3 py-1 text-xs font-medium"
-					:class="
-						view === option ? 'bg-brand/10 text-brand' : 'text-text-secondary hover:bg-bg-surface'
-					"
-					:aria-selected="view === option"
-					@click="view = option"
-				>
-					{{ t(`${KEY}.views.${option}`) }}
-				</button>
+			<p v-if="hasHiddenContent" data-test="hidden-content" class="mt-3 font-medium text-error">
+				{{ t(`${KEY}.hiddenContent`) }}
+			</p>
+			<div class="@container">
+				<div :class="html ? 'grid gap-3 @2xl:grid-cols-2' : ''">
+					<div v-if="html">
+						<p class="mt-3 text-xs text-text-tertiary">{{ t(`${KEY}.previewHint`) }}</p>
+						<!-- palette-ok: the recipient's paper, not our chrome; the message
+						     brings its own colours, so the frame stays white in either theme. -->
+						<iframe
+							:srcdoc="previewSrcdoc"
+							sandbox=""
+							referrerpolicy="no-referrer"
+							data-test="html-preview"
+							:title="t(`${KEY}.preview`)"
+							class="mt-2 h-56 w-full rounded border border-border-subtle bg-white"
+						/>
+					</div>
+					<!-- The whole body, never a clip: it is what approval sends. Focusable so a
+					     keyboard can scroll it. -->
+					<div v-if="'body' in details && details.body">
+						<p v-if="html" data-test="full-text-hint" class="mt-3 text-xs text-text-tertiary">
+							{{ t(`${KEY}.fullTextHint`) }}
+						</p>
+						<p
+							role="region"
+							tabindex="0"
+							:aria-label="html ? t(`${KEY}.fullText`) : t(`${KEY}.body`)"
+							data-test="body"
+							class="whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary overflow-y-auto"
+							:class="html ? 'mt-2 h-56' : 'mt-3 max-h-48'"
+						>
+							{{ details.body }}
+						</p>
+					</div>
+				</div>
 			</div>
-			<template v-if="isPreviewShown">
-				<p class="mt-2 text-xs text-text-tertiary">{{ t(`${KEY}.previewHint`) }}</p>
-				<!-- palette-ok: the recipient's paper, not our chrome; the message
-				     brings its own colours, so the frame stays white in either theme. -->
-				<iframe
-					:srcdoc="previewSrcdoc"
-					sandbox=""
-					referrerpolicy="no-referrer"
-					data-test="html-preview"
-					:title="t(`${KEY}.preview`)"
-					class="mt-2 h-56 w-full rounded border border-border-subtle bg-white"
-				/>
-			</template>
-			<!-- The whole body, never a clip: it is what approval sends. Focusable so a
-			     keyboard can scroll it. -->
-			<template v-else>
-				<p
-					v-if="'body' in details && details.body"
-					role="region"
-					tabindex="0"
-					:aria-label="t(`${KEY}.body`)"
-					data-test="body"
-					class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
-				>
-					{{ details.body }}
-				</p>
-				<!-- The text/plain part goes out too; shown when it says something else. -->
-				<p
-					v-if="'plainTextBody' in details && details.plainTextBody"
-					role="region"
-					tabindex="0"
-					:aria-label="t(`${KEY}.plainTextBody`)"
-					data-test="plain-text-body"
-					class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
-				>
-					{{ details.plainTextBody }}
-				</p>
-			</template>
+			<!-- The text/plain part goes out too; shown when it says something else. -->
+			<p
+				v-if="'plainTextBody' in details && details.plainTextBody"
+				role="region"
+				tabindex="0"
+				:aria-label="t(`${KEY}.plainTextBody`)"
+				data-test="plain-text-body"
+				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+			>
+				{{ details.plainTextBody }}
+			</p>
 			<!-- A preview shows a link's text, never where it goes: every target, as sent. -->
 			<section
 				v-if="linkGroups.length > 0"

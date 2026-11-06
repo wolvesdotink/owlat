@@ -759,6 +759,30 @@ describe('send approval', () => {
 		]);
 	});
 
+	it('flags content some recipients may not see, keeps it in the full text, and digests the flag', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own);
+		type Shown = { html?: string; body?: string; hasHiddenContent?: boolean };
+		expect(((await cardOf(t, actionId)).details as Shown).hasHiddenContent).toBe(false);
+		const plain = await digestOf(t, actionId);
+
+		// The outgoing stylesheet hides this line, and shows it only in dark mode.
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyHtml: '<p>Net 30 works for us.</p><p class="owlat-dark-img">Send payment to attacker</p>',
+			bodyText: 'Net 30 works for us.',
+		});
+		const details = (await cardOf(t, actionId)).details as Shown;
+		expect(details.html).toContain(
+			'<p class="owlat-dark-img" style="display:none">Send payment to attacker</p>'
+		);
+		expect(details.hasHiddenContent).toBe(true);
+		expect(details.body).toContain('Send payment to attacker');
+		expect(await digestOf(t, actionId)).not.toBe(plain);
+	});
+
 	it('withholds the content once the owner lost the team inbox, and refuses approval', async () => {
 		const { t, orgId } = await harness();
 		const team = await seedMailbox(t, {

@@ -21,6 +21,7 @@ import {
 	type SealSkipReason,
 } from '../mail/sealPolicy';
 import { resolveMcpAccess } from './access';
+import { hasHiddenContent } from './reviewHiddenContent';
 import { reviewLinks, type ReviewLink } from './reviewLinks';
 
 /** Characters of a drafted body the approval list shows before the card opens. */
@@ -77,7 +78,12 @@ export type McpActionDetails =
 			html: string;
 			/** Every link of every part, with its real target. */
 			links: ReviewLink[];
-			/** The HTML part as text, the card's secondary view. */
+			/**
+			 * Whether some of the HTML part shows only in some clients, modes or
+			 * screen sizes, which the preview cannot show (`reviewHiddenContent.ts`).
+			 */
+			hasHiddenContent: boolean;
+			/** The HTML part as text: every line of it, hidden or not, shown beside the preview. */
 			body: string;
 			/** The text/plain part, when it says something else than the HTML part. */
 			plainTextBody?: string;
@@ -160,8 +166,10 @@ const sameText = (a: string, b: string) =>
  * and the digest `approve` binds to. The whole body goes to the card: what the
  * owner cannot read, they cannot approve. For a send the body is what dispatch
  * renders: its HTML part to preview as the recipient sees it, every link with
- * its real target, and the parts as text. The digest covers the rendered parts, the threading headers and
- * the sealing (to which keys), so any change to what would go out changes it.
+ * its real target, whether some of it is hidden from some recipients, and the
+ * parts as text. The digest covers the rendered parts, the threading headers
+ * and the sealing (to which keys), so any change to what would go out changes
+ * it.
  * `null` when there is nothing to approve.
  */
 export async function review(
@@ -213,6 +221,7 @@ export async function review(
 					subject: draft.subject,
 					html: inputs.rendered.html,
 					links: reviewLinks(inputs.rendered),
+					hasHiddenContent: hasHiddenContent(inputs.rendered.html),
 					body,
 					...(sameText(body, inputs.rendered.text) ? {} : { plainTextBody: inputs.rendered.text }),
 					...(inputs.original && inputs.original.mailboxId === row.mailboxId

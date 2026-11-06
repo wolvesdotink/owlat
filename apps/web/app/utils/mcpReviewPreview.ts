@@ -9,15 +9,39 @@
  * The preview keeps inline styles, so text the sender made tiny or the colour
  * of the page looks that way here too. The card lists every link's real target
  * beside it, because a preview shows a link's text, not where it goes.
+ *
+ * Nothing in the preview can navigate: `sandbox=""` and the CSP still let a
+ * click follow a link inside the frame, which would reach the sender's server
+ * before the owner approved anything. So the preview's allowlist keeps no
+ * `href` (the shared one allows no other navigating attribute), and the
+ * anchor keeps its look through `data-owlat-link`. `form-action 'none'` is a
+ * second guard; browsers never shipped a CSP directive for link navigation.
  */
 
+import sanitizeHtml from 'sanitize-html';
+import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { buildBaseStyle } from '~/utils/postboxBaseStyle';
-import {
-	POSTBOX_BODY_META_CSP_NO_REMOTE,
-	POSTBOX_SRCDOC_HEAD,
-} from '~/utils/postboxBodyPlaceholder';
-import { sanitizePostboxHtml } from '~/utils/postboxSanitizeHtml';
+import { POSTBOX_SRCDOC_HEAD } from '~/utils/postboxBodyPlaceholder';
+
+const PREVIEW_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; form-action 'none';">`;
+
+/** A link without `href` loses the browser's link underline; this puts it back. */
+const LINK_STYLE = '<style>a[data-owlat-link]{text-decoration:underline;cursor:default;}</style>';
+
+const PREVIEW_SANITIZE_CONFIG: sanitizeHtml.IOptions = {
+	...POSTBOX_SANITIZE_CONFIG,
+	allowedAttributes: {
+		...POSTBOX_SANITIZE_CONFIG.allowedAttributes,
+		a: ['title', 'name', 'data-owlat-link'],
+	},
+	transformTags: {
+		a: (tagName, attribs) => ({
+			tagName,
+			attribs: 'href' in attribs ? { ...attribs, 'data-owlat-link': '' } : attribs,
+		}),
+	},
+};
 
 export function mcpReviewPreviewSrcdoc(html: string): string {
-	return `${POSTBOX_SRCDOC_HEAD}${POSTBOX_BODY_META_CSP_NO_REMOTE}${buildBaseStyle('light')}</head><body>${sanitizePostboxHtml(html)}</body></html>`;
+	return `${POSTBOX_SRCDOC_HEAD}${PREVIEW_CSP}${buildBaseStyle('light')}${LINK_STYLE}</head><body>${sanitizeHtml(html, PREVIEW_SANITIZE_CONFIG)}</body></html>`;
 }

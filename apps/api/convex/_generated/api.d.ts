@@ -1623,6 +1623,7 @@ import type * as mcp_clients from '../mcp/clients.js';
 import type * as mcp_erasure from '../mcp/erasure.js';
 import type * as mcp_protocol from '../mcp/protocol.js';
 import type * as mcp_reads from '../mcp/reads.js';
+import type * as mcp_reviewHiddenContent from '../mcp/reviewHiddenContent.js';
 import type * as mcp_reviewLinks from '../mcp/reviewLinks.js';
 import type * as mcp_serverHttp from '../mcp/serverHttp.js';
 import type * as mcp_toolArgs from '../mcp/toolArgs.js';
@@ -3762,6 +3763,7 @@ declare const fullApi: ApiFromModules<{
 	'mcp/erasure': typeof mcp_erasure;
 	'mcp/protocol': typeof mcp_protocol;
 	'mcp/reads': typeof mcp_reads;
+	'mcp/reviewHiddenContent': typeof mcp_reviewHiddenContent;
 	'mcp/reviewLinks': typeof mcp_reviewLinks;
 	'mcp/serverHttp': typeof mcp_serverHttp;
 	'mcp/toolArgs': typeof mcp_toolArgs;

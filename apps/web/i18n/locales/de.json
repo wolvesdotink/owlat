@@ -6752,10 +6752,9 @@
 				"attachments": "Anhänge",
 				"body": "Vollständige Nachricht",
 				"plainTextBody": "Nur-Text-Version",
-				"views": {
-					"preview": "Vorschau",
-					"text": "Als Text"
-				},
+				"fullText": "Der ganze Text der Nachricht",
+				"fullTextHint": "Auch Text, der nur in manchen Mail-Apps, Modi oder Bildschirmgrößen erscheint.",
+				"hiddenContent": "Diese Nachricht hat Inhalte, die manche Empfänger nicht sehen – sieh dir den ganzen Text an.",
 				"preview": "Nachricht, wie sie beim Empfänger ankommt",
 				"previewHint": "So sieht der Empfänger die Nachricht. Bilder aus dem Netz bleiben blockiert, und nichts darin wird ausgeführt.",
 				"links": "Links und ihre Ziele",
