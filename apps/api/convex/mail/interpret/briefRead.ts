@@ -17,7 +17,8 @@ import { openMessageBody } from '../../lib/messageBody';
 import { rowFactKeyLabel } from './factKeys';
 import { isPurgeActive } from './purgeActive';
 import { mailboxOwnAddresses } from '../identities';
-import { readResult, recentlyClosedItems } from './load';
+import { recentlyClosedItems } from './itemReads';
+import { readResult } from './load';
 import type { EXACT_WORDING_REASONS } from './schema';
 import type { SourceCounts } from './counters';
 

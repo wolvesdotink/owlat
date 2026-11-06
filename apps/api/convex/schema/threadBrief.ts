@@ -321,7 +321,14 @@ export const threadBriefTables = {
 		.index('by_duplicate_of', ['possibleDuplicateOfId'])
 		.index('by_disposition_source', ['dispositionSource.sourceKey']) // sendFailure.ts
 		// A message's withdrawn items: restored by a read of it (scopeReconcile.ts).
-		.index('by_mail_thread_withdrawn', ['mailThreadId', 'withdrawal.messageId']),
+		// With `withdrawal.messageId` undefined it reads the live items by status
+		// and update time, so withdrawn ones never use up a bounded read (load.ts).
+		.index('by_mail_thread_withdrawn', [
+			'mailThreadId',
+			'withdrawal.messageId',
+			'status',
+			'updatedAt',
+		]),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({

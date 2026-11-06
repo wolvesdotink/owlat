@@ -125,7 +125,11 @@ export type PurgeCursor = NonNullable<PurgeJob['cursor']>;
 
 /** The job's findings, carried across slices. */
 export interface JobState {
-	/** The purged sources (`sources` jobs); a range may add to them (a message's team replies). */
+	/**
+	 * The purged sources (`sources` jobs) or withdrawn reads (`withdraw` jobs);
+	 * a range may add to them (a message's team replies, a scanned thread's
+	 * narrowed reads).
+	 */
 	sources: InterpretationSource[];
 	isInterpreted: boolean;
 	isItemDeleted: boolean;
@@ -246,6 +250,8 @@ export interface NewPurgeJob {
 	/** Postbox `sources` jobs: the purged messages' mailbox (see `threadPurgeJobs.mailboxId`). */
 	mailboxId?: Id<'mailboxes'>;
 	mode?: InterpretMode;
+	/** `withdraw` jobs: page the thread's messages for narrowed reads first (see `threadPurgeJobs.isScanNeeded`). */
+	isScanNeeded?: boolean;
 }
 
 export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promise<PurgeJob> {
@@ -258,6 +264,7 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		...(job.inboundMessageId ? { inboundMessageId: job.inboundMessageId } : {}),
 		...(job.mailboxId ? { mailboxId: job.mailboxId } : {}),
 		...(job.mode ? { mode: job.mode } : {}),
+		...(job.isScanNeeded ? { isScanNeeded: true } : {}),
 		rangeIndex: 0,
 		isInterpreted: false,
 		isItemDeleted: false,
@@ -318,7 +325,8 @@ export async function runJobPlan(
 	await ctx.db.patch(job._id, {
 		rangeIndex: index,
 		cursor,
-		...(job.kind === 'sources' ? { sources } : {}),
+		// Ranges of these kinds add sources across slices.
+		...(job.kind === 'sources' || job.kind === 'withdraw' ? { sources } : {}),
 		...findings,
 		updatedAt: Date.now(),
 	});

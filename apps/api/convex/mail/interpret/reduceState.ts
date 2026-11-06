@@ -17,9 +17,8 @@ import type { ThreadRef } from '../../lib/validators/threadRef';
 import { openMessageBody } from '../../lib/messageBody';
 import { exactValueKey } from './factEquivalence';
 import { rowFactKeyHash } from './factKeys';
-import { threadItemsWithStatus } from './load';
+import { threadItemsWithStatus } from './itemReads';
 import { teamReplyContext } from './sources';
-import { isWithdrawnItem } from './staleFence';
 import type { MemFact, MemItem, MemState } from './fold';
 import type { ReduceResult } from './reduceInput';
 
@@ -157,8 +156,8 @@ async function currentFacts(ctx: MutationCtx, ref: ThreadRef, limit: number) {
 export const FOLD_MAX_ITEMS = 500;
 
 /**
- * The rows a fold starts from: every item of the thread (all statuses, up to
- * {@link FOLD_MAX_ITEMS}) and the current facts. Past the bound the open
+ * The rows a fold starts from: every item of the thread that is not withdrawn
+ * (all statuses, up to {@link FOLD_MAX_ITEMS}) and the current facts. Past the bound the open
  * items come first, so a match to an open item always resolves.
  */
 export async function loadFoldState(
@@ -178,12 +177,10 @@ export async function loadFoldState(
 	let isItemScanCut = false;
 	for (const status of ITEM_STATUSES) {
 		const left = FOLD_MAX_ITEMS - rows.size;
-		const page = await threadItemsWithStatus(ctx, ref, status, left + 1);
+		// A withdrawn item is folded into by nothing (scopeReconcile.ts).
+		const page = await threadItemsWithStatus(ctx, ref, status, left + 1, { isLiveOnly: true });
 		if (page.length > left) isItemScanCut = true;
-		for (const row of page.slice(0, left)) {
-			// A withdrawn item is folded into by nothing (scopeReconcile.ts).
-			if (!isWithdrawnItem(row)) rows.set(row._id, row);
-		}
+		for (const row of page.slice(0, left)) rows.set(row._id, row);
 		if (isItemScanCut) break;
 	}
 	const factRows = new Map<string, Doc<'threadFacts'>>();

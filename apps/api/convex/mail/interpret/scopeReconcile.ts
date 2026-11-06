@@ -13,6 +13,10 @@
  * restarted with the new reads added. The fence holds until the walk has
  * reconciled every row, however many the thread has:
  *
+ *  0. a thread fenced without saying which message narrowed (an earlier
+ *     release's fence, migration 0070) has its messages paged first: each
+ *     one whose current read no longer matches its stored body fingerprint
+ *     joins the withdrawn reads, and nothing below runs before the last page;
  *  1. the old reads' extractions go (their latest lines, facts, waiting
  *     transitions and exact-wording flag with them; nothing can replay them);
  *  2. the reducer's activity rows of those reads go (`interp:<source>:…`);
@@ -25,7 +29,9 @@
  *  4. facts: one supported only by a withdrawn read is deleted (facts carry
  *     no human state), a survivor is redacted;
  *  5. response plans go stale; claim records lose the deleted facts;
- *  6. the fence lifts: the needs-reply flag loses what the model derived
+ *  6. the fence lifts (unless the walk has no withdrawn read at all: a scan
+ *     that found none leaves the thread fenced for the operator,
+ *     `staleFence:release`): the needs-reply flag loses what the model derived
  *     (the Daily Brief subtitle reads it), a gist from a withdrawn read goes,
  *     and the withdrawn messages wait for the thread's next open to be read
  *     again under their new scope (deferred, `scope_reread`, `lazy.ts`);
@@ -91,9 +97,11 @@ import {
 } from './purgeDrain';
 import { reinterpretRange, settleSourcesJob } from './purgeQuestions';
 import { bumpDeletionEpoch } from './purgeRows';
-import { deferSource, settleSource } from './outstanding';
+import { deferSource, isSourceDeferred, settleSource } from './outstanding';
 import { clearGistOf } from './gistState';
 import { fenceThreadInterpretation, withoutInterpretationCache } from './staleFence';
+import { narrowedReadsRange } from './scopeScan';
+import { logInfo } from '../../lib/runtimeLog';
 import type { ReduceItem, ReduceResult } from './reduceInput';
 
 /** A message's withdrawn items a restore considers (one read yields far fewer). */
@@ -114,16 +122,36 @@ export async function startScopeReconcile(
 	threadId: Id<'mailThreads'>,
 	messageId: Id<'mailMessages'>
 ): Promise<void> {
+	await startWithdraw(ctx, threadId, { sources: mailMessageSources(messageId) });
+}
+
+/**
+ * A fenced thread whose narrowed messages are not known: its walk pages every
+ * message for reads that no longer hold before it withdraws anything (step 0
+ * of the module doc).
+ */
+export async function startFencedThreadScan(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>
+): Promise<void> {
+	await startWithdraw(ctx, threadId, { sources: [], isScanNeeded: true });
+}
+
+async function startWithdraw(
+	ctx: MutationCtx,
+	threadId: Id<'mailThreads'>,
+	start: { sources: InterpretationSource[]; isScanNeeded?: boolean }
+): Promise<void> {
 	const ref: ThreadRef = { kind: 'mail', id: threadId };
 	await fenceThreadInterpretation(ctx, threadId);
 	await bumpDeletionEpoch(ctx, ref);
-	const sources = mailMessageSources(messageId);
 	const job = await findPurgeJob(ctx, jobKeyOf(threadId));
 	if (job) {
 		const known = new Set((job.sources ?? []).map(interpretationSourceKey));
-		const added = sources.filter((s) => !known.has(interpretationSourceKey(s)));
+		const added = start.sources.filter((s) => !known.has(interpretationSourceKey(s)));
 		await ctx.db.patch(job._id, {
 			sources: [...(job.sources ?? []), ...added],
+			...(start.isScanNeeded ? { isScanNeeded: true } : {}),
 			rangeIndex: 0,
 			cursor: undefined,
 			updatedAt: Date.now(),
@@ -133,8 +161,9 @@ export async function startScopeReconcile(
 	const created = await createPurgeJob(ctx, {
 		ref,
 		kind: 'withdraw',
-		sources,
+		sources: start.sources,
 		jobKey: jobKeyOf(threadId),
+		...(start.isScanNeeded ? { isScanNeeded: true } : {}),
 	});
 	await ctx.scheduler.runAfter(0, internal.mail.interpret.purgeJobs.continueJob, {
 		jobId: created._id,
@@ -245,6 +274,12 @@ const liftRange: PurgeRange = async (ctx, { ref, state }) => {
 	if (ref.kind !== 'mail') return { isDone: true };
 	const thread = await ctx.db.get(ref.id);
 	if (!thread) return { isDone: true };
+	if (state.sources.length === 0) {
+		// A scan found no read that no longer holds: what the fence hides is not
+		// known to be safe, so it stays for the operator (`staleFence:release`).
+		logInfo('mail.interpret.scope_reconcile.unresolved', { threadId: ref.id });
+		return { isDone: true };
+	}
 	for (const key of purgedOf(state).keys) {
 		await clearGistOf(ctx, ref, key);
 		await deferSource(ctx, key, 'scope_reread');
@@ -263,6 +298,7 @@ const liftRange: PurgeRange = async (ctx, { ref, state }) => {
 /** The walk of a `withdraw` job (see the module doc); it settles like a purge. */
 export const withdrawPlan: JobPlan = {
 	ranges: [
+		narrowedReadsRange,
 		extractionsRange,
 		withdrawnActivityRange,
 		withdrawItemsRange,
@@ -278,14 +314,17 @@ export const withdrawPlan: JobPlan = {
 /**
  * A run of a fenced thread's source reads nothing (`runOnce.ts`): the source
  * waits for the thread's next open, so the reads the fence held back happen
- * once the reconciliation lifted it. A source that cannot wait (no Postbox
- * message behind it) is settled instead.
+ * once the reconciliation lifted it. A source already waiting keeps its
+ * deferral (the lift re-defers only the withdrawn messages, so settling it
+ * would drop it from the re-read queue). A source that cannot wait (no
+ * Postbox message behind it) is settled instead.
  */
 export const deferFencedSource = internalMutation({
 	args: { source: interpretationSourceValidator },
 	returns: v.null(),
 	handler: async (ctx, args) => {
 		const key = interpretationSourceKey(args.source);
+		if (await isSourceDeferred(ctx, key)) return null;
 		if (!(await deferSource(ctx, key, 'scope_reread'))) await settleSource(ctx, key, 'recorded');
 		return null;
 	},

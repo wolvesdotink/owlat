@@ -44,6 +44,7 @@ import { captureInterpretSource } from '../sources';
 import { listBucketOf } from '../counters';
 import { refreshBriefTop } from '../briefTop';
 import { sourceVersionOf } from '../sourceVersion';
+import { deferSource } from '../outstanding';
 import type { ReduceResult } from '../reduceInput';
 import {
 	addMessageToThread,
@@ -941,5 +942,93 @@ describe('per-row reconciliation of a narrowed read', () => {
 		expect((await t.run((ctx) => ctx.db.get(threadId)))!.interpretationStaleSince).toBeUndefined();
 		expect((await itemById(t, signedId)).withdrawal).toMatchObject({ messageId });
 		expect(await factTexts(t, threadId)).toEqual(['Venue still open']);
+	});
+
+	it('migration 0070 withdraws every narrowed read of a long thread before it lifts the fence', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedLegacy(t);
+		await interpret(t, messageId, threadId, {
+			contentRevision: 'rev-old-read',
+			result: reduceResult({ items: [trailerItem] }),
+		});
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+		const job = (await withdrawJobOf(t, threadId))!;
+		await t.run((ctx) => ctx.db.delete(job._id));
+		// 310 later messages; the last is narrowed too, its old read and item left as they were.
+		const lateId = await t.run(async (ctx) => {
+			const { _id, _creationTime, ...message } = (await ctx.db.get(messageId))!;
+			for (let i = 0; i < 309; i++) {
+				await ctx.db.insert('mailMessages', { ...message, inboundSignatureInfo: undefined });
+			}
+			const late = await ctx.db.insert('mailMessages', message);
+			const key = interpretationSourceKey({ kind: 'mail', id: messageId });
+			const read = (await ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_source_current', (q) => q.eq('sourceKey', key).eq('isCurrent', true))
+				.first())!;
+			const { _id: _r, _creationTime: _rc, ...row } = read;
+			await ctx.db.insert('messageInterpretations', {
+				...row,
+				source: { kind: 'mail', id: late },
+				sourceKey: interpretationSourceKey({ kind: 'mail', id: late }),
+			});
+			const [item] = await ctx.db
+				.query('threadItems')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.collect();
+			const { _id: _i, _creationTime: _ic, ...fields } = item!;
+			await ctx.db.insert('threadItems', {
+				...fields,
+				evidence: fields.evidence.map((e) => ({ ...e, source: { kind: 'mail', id: late } })),
+			});
+			return late;
+		});
+
+		await t.mutation(internal.migrations['0070_reconcile_fenced_threads'].run, {});
+		// The migration's page only (the job's own continuation stays pending).
+		vi.runOnlyPendingTimers();
+		await t.finishInProgressScheduledFunctions();
+		const jobId = (await withdrawJobOf(t, threadId))!._id;
+		let slices = 0;
+		for (let isDone = false; !isDone; slices++) {
+			isDone = await t.run((ctx) => runPurgeJob(ctx, jobId, unitBudget(100)));
+			const thread = (await t.run((ctx) => ctx.db.get(threadId)))!;
+			expect(thread.interpretationStaleSince === undefined).toBe(isDone);
+		}
+		expect(slices).toBeGreaterThan(3);
+		const items = await itemsOf(t, threadId);
+		expect(items.map((i) => i.withdrawal?.messageId).sort()).toEqual([messageId, lateId].sort());
+		const reads = await t.run((ctx) =>
+			ctx.db
+				.query('messageInterpretations')
+				.withIndex('by_mail_thread', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(reads).toEqual([]);
+	});
+
+	it('keeps a source that was already deferred deferred when a fenced run meets it', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId, otherId } = await seedTwoMessages(t);
+		const otherKey = interpretationSourceKey({ kind: 'mail', id: otherId });
+		const snapshotOf = () =>
+			t.run((ctx) =>
+				ctx.db
+					.query('interpretSources')
+					.withIndex('by_source_key', (q) => q.eq('sourceKey', otherKey))
+					.first()
+			);
+		await t.run((ctx) => deferSource(ctx, otherKey, 'display_only'));
+		await t.action(internal.mail.mailbox.signatureReverify.run, { messageId });
+
+		// A run of the deferred predecessor while the thread is fenced.
+		await t.mutation(internal.mail.interpret.scopeReconcile.deferFencedSource, {
+			source: { kind: 'mail', id: otherId },
+		});
+		expect(await snapshotOf()).toMatchObject({ isDeferred: true, deferReason: 'display_only' });
+
+		await reconcile(t);
+		expect((await t.run((ctx) => ctx.db.get(threadId)))!.interpretationStaleSince).toBeUndefined();
+		expect(await snapshotOf()).toMatchObject({ isDeferred: true, deferReason: 'display_only' });
 	});
 });

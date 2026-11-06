@@ -63,6 +63,11 @@ export const threadPurgeJobTables = {
 		// job starts, while the thread still exists (read on arrival's digest
 		// ranges, mail/arrival/purgeRanges.ts, run after it may be gone).
 		mailboxId: v.optional(v.id('mailboxes')),
+		// `withdraw` jobs of a thread fenced without saying which message
+		// narrowed: its messages are paged for reads that no longer hold, which
+		// join `sources`, before any other range, so the fence never lifts on a
+		// partial scan (mail/interpret/scopeReconcile.ts).
+		isScanNeeded: v.optional(v.boolean()),
 		// `scope` jobs: the thread's new mode.
 		mode: v.optional(interpretModeValidator),
 		// The range being drained (index into the kind's range list) and its cursor.
