@@ -427,6 +427,44 @@ describe('mail.mailboxTransfer.transfer', () => {
 		]);
 	});
 
+	it('refuses to move mail out of Gmail All Mail, where the provider would keep it', async () => {
+		const t = convexTest(schema, modules);
+		const { work } = await setup(t);
+		const connected = await connectedMailbox(t);
+		await t.run(async (ctx) => {
+			const archive = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) =>
+					q.eq('mailboxId', connected.mailboxId).eq('role', 'archive')
+				)
+				.first();
+			await ctx.db.insert('externalMailFolderSync', {
+				accountId: connected.accountId,
+				mailboxId: connected.mailboxId,
+				folderId: archive!._id,
+				remoteName: '[Gmail]/All Mail',
+				remoteUidValidity: 1,
+				lastSeenUid: 0,
+				lastSyncedAt: Date.now(),
+			});
+		});
+		const messageId = await seedMessage(t, connected.mailboxId, {
+			rfc822MessageId: 'archived@x',
+			role: 'archive',
+		});
+
+		await expect(
+			t.mutation(api.mail.mailboxTransfer.transfer, {
+				messageIds: [messageId],
+				targetMailboxId: work.mailboxId,
+				mode: 'move',
+			})
+		).rejects.toThrow(/All Mail/);
+		expect((await messagesIn(t, connected.mailboxId)).map((m) => m._id)).toEqual([messageId]);
+		expect(await messagesIn(t, work.mailboxId)).toEqual([]);
+		expect(await remoteOps(t)).toEqual([]);
+	});
+
 	describe('into a connected account', () => {
 		async function moveIn(mode: 'move' | 'copy' = 'move') {
 			const t = convexTest(schema, modules);

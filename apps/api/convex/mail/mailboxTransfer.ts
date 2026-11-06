@@ -28,6 +28,9 @@
  *   - `sending`: a sent message with a recipient still queued; the
  *     transport's updates address the source row.
  *   - `over_quota`: the target has no room for the batch.
+ *   - `all_mail`: a move out of a connected account's Gmail All Mail (its
+ *     archive). Gmail ignores a delete there, so the source would stay at the
+ *     provider and come back with the next sync. A copy is fine.
  *
  * Mailbox scope: the target must be on the caller's own rail (their mailbox,
  * or a team inbox they are a member of), never a teammate's personal mailbox
@@ -52,6 +55,7 @@ import {
 	hasSyntheticMessageId,
 	liveAccountFor,
 	recordRemoteChanges,
+	remoteNamesByFolder,
 	type RemoteChange,
 } from './external/remoteOps';
 import { pendingAppendOf } from './external/remoteAppend';
@@ -70,7 +74,8 @@ export type TransferRefusal =
 	| 'no_message_id'
 	| 'sealed'
 	| 'sending'
-	| 'over_quota';
+	| 'over_quota'
+	| 'all_mail';
 
 type TransferResult = {
 	ok: true;
@@ -94,6 +99,28 @@ type Recall = {
 
 function refuse(reason: TransferRefusal, message: string): never {
 	throwInvalidState(message, { reason });
+}
+
+/** Gmail's All Mail, by the names the worker maps to the archive (`apps/mail-sync/src/folders.ts`). */
+const ALL_MAIL_NAMES = new Set(['[gmail]/all mail', '[google mail]/all mail']);
+
+/**
+ * The mailbox's local folders that mirror Gmail's All Mail. The provider never
+ * runs a delete there: the worker retires it, since a message leaves All Mail
+ * only through Trash (`apps/mail-sync/src/remoteOps.ts`). The worker mirrors no
+ * other `\All` folder, so the name decides. Empty for a mailbox nothing is
+ * written back for.
+ */
+async function allMailFolderIds(
+	ctx: MutationCtx,
+	mailboxId: Id<'mailboxes'>
+): Promise<Set<Id<'mailFolders'>>> {
+	const accountId = await liveAccountFor(ctx, mailboxId);
+	if (!accountId) return new Set();
+	const names = await remoteNamesByFolder(ctx, accountId);
+	return new Set(
+		[...names].filter(([, name]) => ALL_MAIL_NAMES.has(name.toLowerCase())).map(([id]) => id)
+	);
 }
 
 /** Is `mailbox` on the caller's own rail: theirs, or a team inbox they belong to? */
@@ -157,6 +184,7 @@ async function collectSources(
 	const seen = new Set<Id<'mailMessages'>>();
 	const messageIds = new Set<string>();
 	const skipped: Id<'mailMessages'>[] = [];
+	const allMail = new Map<Id<'mailboxes'>, Set<Id<'mailFolders'>>>();
 	for (const id of args.messageIds) {
 		if (seen.has(id)) continue;
 		seen.add(id);
@@ -191,6 +219,14 @@ async function collectSources(
 		if (duplicate || messageIds.has(message.rfc822MessageId)) {
 			skipped.push(id);
 			continue;
+		}
+		if (args.mode === 'move') {
+			if (!allMail.has(message.mailboxId)) {
+				allMail.set(message.mailboxId, await allMailFolderIds(ctx, message.mailboxId));
+			}
+			if (allMail.get(message.mailboxId)!.has(message.folderId)) {
+				refuse('all_mail', 'Gmail keeps archived mail in All Mail, so it cannot be moved out');
+			}
 		}
 		messageIds.add(message.rfc822MessageId);
 		sources.push(message);

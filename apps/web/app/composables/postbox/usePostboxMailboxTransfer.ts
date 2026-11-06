@@ -39,7 +39,14 @@ export const POSTBOX_MESSAGES_PER_TRANSFER = 25;
 /** Team inboxes this browser already confirmed filing mail into. */
 const CONFIRMED_KEY = 'postbox-transfer-confirmed-team-inboxes';
 
-const REFUSALS = new Set(['external_target', 'no_message_id', 'sealed', 'sending', 'over_quota']);
+const REFUSALS = new Set([
+	'external_target',
+	'no_message_id',
+	'sealed',
+	'sending',
+	'over_quota',
+	'all_mail',
+]);
 
 function chunks<T>(items: readonly T[]): T[][] {
 	const out: T[][] = [];
@@ -157,7 +164,10 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 
 	/**
 	 * Move or copy `ids` into `targetId`. A move hides the rows at once and
-	 * brings back any the server did not take. Resolves to whether every call
+	 * brings back any the server did not take. A move into a connected account
+	 * hides nothing: its sources stay until the provider has each copy, and an
+	 * upload that fails for good leaves its source where it was, with nothing on
+	 * this side told of it. Resolves to whether every call
 	 * landed. The caller confirms the target first ({@link confirmTarget}).
 	 */
 	async function transfer(
@@ -168,7 +178,8 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 		if (ids.length === 0) return false;
 		const sourceMailboxId = mailboxId() as Id<'mailboxes'>;
 		const target = targets.value.find((m) => m.mailboxId === targetId);
-		if (mode === 'move') for (const id of ids) hidePostboxRowEverywhere(id);
+		const hides = mode === 'move' && target?.isConnected !== true;
+		if (hides) for (const id of ids) hidePostboxRowEverywhere(id);
 		const moved: Array<{ messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> }> = [];
 		const kept: Id<'mailMessages'>[] = [];
 		let uploading = false;
@@ -185,8 +196,9 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 			kept.push(...outcome.result.skipped);
 			uploading ||= outcome.result.uploading;
 		}
-		const restored = [...ids.slice(landed), ...kept];
-		if (mode === 'move') for (const id of restored) unhidePostboxRowEverywhere(id);
+		// The target list may predate the account's connection: the server's answer decides.
+		const restored = uploading ? ids : [...ids.slice(landed), ...kept];
+		if (hides) for (const id of restored) unhidePostboxRowEverywhere(id);
 		if (kept.length > 0) {
 			showToast(
 				t(
@@ -198,7 +210,8 @@ export function usePostboxMailboxTransfer(mailboxId: () => string) {
 			);
 		}
 		if (moved.length > 0) {
-			const hidden = ids.slice(0, landed).filter((id) => !kept.includes(id));
+			const hidden =
+				hides && !uploading ? ids.slice(0, landed).filter((id) => !kept.includes(id)) : [];
 			registerUndo(mode, target, sourceMailboxId, moved, hidden, uploading);
 		}
 		return isAllLanded;

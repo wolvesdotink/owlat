@@ -5341,6 +5341,7 @@
 				"noOtherFolders": "No other folders",
 				"otherMailboxes": "Other mailboxes",
 				"refused": {
+					"all_mail": "Gmail keeps archived mail in All Mail, so it can't be moved out of this account. Copy it instead.",
 					"external_target": "This connected account doesn't take mail from Owlat. It's disconnected or set to receive new mail only.",
 					"no_message_id": "This message has no Message-ID, so a connected account couldn't keep track of it.",
 					"over_quota": "That mailbox is full.",

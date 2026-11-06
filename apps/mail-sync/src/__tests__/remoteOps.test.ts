@@ -1497,9 +1497,13 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 	 * The backend as remoteSync.ts calls it: queued renames are listed 50 to a
 	 * page in source-name order, a recorded rename rewrites the ops naming the
 	 * old folder or one below it, and a backed-off rename is not due.
-	 * `pageFails` makes the listing fail from that page on.
+	 * `pageFails` makes the listing fail from that page on; `noAppends` is the
+	 * backend from before uploads, whose validator rejects the `appends` argument.
 	 */
-	function convexBackend(queue: RemoteOp[], opts: { pageFails?: number } = {}) {
+	function convexBackend(
+		queue: RemoteOp[],
+		opts: { pageFails?: number; noAppends?: boolean } = {}
+	) {
 		const settled: RemoteOpResult[] = [];
 		const open = () => queue.filter((o) => !settled.some((r) => r.opId === o.opId));
 		const named = (ref: unknown) => getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
@@ -1521,6 +1525,11 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 					};
 				}
 				if (named(ref) === getFunctionName(fn.listDueRemoteOps)) {
+					if (opts.noAppends && 'appends' in args) {
+						throw new Error(
+							'[Request ID: 3c4d] Server Error\nArgumentValidationError: Object contains extra field `appends` that is not in the validator.\n\nObject: {accountId: "acct_1", appends: true}\nValidator: v.object({accountId: v.id("externalMailAccounts")})'
+						);
+					}
 					return open().filter((o) => o.kind !== 'renameFolder');
 				}
 				throw new Error(`unexpected query ${named(ref)}`);
@@ -1615,6 +1624,17 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 		expect(deletion.source).toEqual({ remote: 'Projects/Clients' });
 		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
 		expect(imap.ids('Projects/Clients')).toEqual([]);
+	});
+
+	it('keeps writing back against a backend that does not take the appends argument', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		const deletion = op({ kind: 'delete', rfc822MessageId: 'a@x', source: { remote: 'INBOX' } });
+		const { convex, settled } = convexBackend([deletion], { noAppends: true });
+
+		await (await restartedConnection(convex, imap)).drainQueue(imap);
+
+		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
+		expect(imap.ids('INBOX')).toEqual([]);
 	});
 
 	it('drains nothing while a page of the queued renames could not be read', async () => {

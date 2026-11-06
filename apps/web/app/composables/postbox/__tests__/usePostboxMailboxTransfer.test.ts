@@ -187,7 +187,6 @@ describe('usePostboxMailboxTransfer', () => {
 			true
 		);
 
-		expect([...hidden]).toEqual(['a', 'b']);
 		const [{ label, inverse }] = register.mock.calls[0]!;
 		expect(label).toBe('Moving 2 messages to Gmail');
 
@@ -202,6 +201,30 @@ describe('usePostboxMailboxTransfer', () => {
 			targetFolderId: 'inbox',
 			mode: 'move',
 		});
+		expect(hidden.size).toBe(0);
+	});
+
+	it('keeps the sources of a move into a connected account visible while they upload', async () => {
+		// An upload that later fails for good drops the copy and leaves the
+		// source; nothing on this side hears of it, so the source never hides.
+		const hiddenOnCall: string[][] = [];
+		transferRun.mockImplementationOnce(async () => {
+			hiddenOnCall.push([...hidden]);
+			return {
+				ok: true,
+				result: {
+					ok: true,
+					moved: [{ messageId: id('copy-a'), sourceFolderId: folder('inbox') }],
+					skipped: [],
+					uploading: true,
+				},
+			};
+		});
+		const transfer = usePostboxMailboxTransfer(() => 'mine');
+
+		await transfer.transfer([id('a')], 'gmail' as Id<'mailboxes'>, 'move');
+
+		expect(hiddenOnCall).toEqual([[]]);
 		expect(hidden.size).toBe(0);
 	});
 

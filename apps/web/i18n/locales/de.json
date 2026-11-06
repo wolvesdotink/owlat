@@ -5341,6 +5341,7 @@
 				"noOtherFolders": "Keine weiteren Ordner",
 				"otherMailboxes": "Andere Postfächer",
 				"refused": {
+					"all_mail": "Gmail behält archivierte Mail in „Alle Nachrichten“, deshalb kannst du sie nicht aus diesem Konto verschieben. Kopier sie stattdessen.",
 					"external_target": "Dieses verbundene Konto nimmt keine Mail aus Owlat an. Es ist getrennt oder empfängt nur neue Mail.",
 					"no_message_id": "Diese Nachricht hat keine Message-ID, deshalb kann ein verbundenes Konto sie nicht zuordnen.",
 					"over_quota": "Dieses Postfach ist voll.",
