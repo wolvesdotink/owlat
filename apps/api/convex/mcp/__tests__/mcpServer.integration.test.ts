@@ -9,7 +9,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import betterAuthSchema from '../../betterAuth/schema';
-import { api, components } from '../../_generated/api';
+import { api, components, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { betterAuthModules } from '../../__tests__/testModules';
 import { enableFeatures } from '../../__tests__/factories';
@@ -331,6 +331,297 @@ describe('POST /mcp/postbox', () => {
 		await t.run((ctx) => ctx.db.delete(membershipId));
 		const after = await callTool(t, token, 'list_mailboxes');
 		expect(after.body.result.structuredContent.mailboxes).toEqual([]);
+	});
+});
+
+async function readWriteClient(t: Harness, mailboxIds: Id<'mailboxes'>[]) {
+	return t.mutation(api.mcp.clients.create, {
+		label: 'Claude',
+		mailboxIds,
+		access: 'read_write',
+	});
+}
+
+type ActionAnswer = {
+	action_id: Id<'mcpPendingActions'>;
+	status: string;
+	draft_id?: string;
+	error?: string;
+};
+
+function structured(result: { body: { result: { structuredContent: unknown } } }) {
+	return result.body.result.structuredContent as ActionAnswer;
+}
+
+function last<T>(rows: T[]): T | undefined {
+	return rows[rows.length - 1];
+}
+
+async function pendingRows(t: Harness) {
+	return t.run((ctx) => ctx.db.query('mcpPendingActions').collect());
+}
+
+async function drafts(t: Harness) {
+	return t.run((ctx) => ctx.db.query('mailDrafts').collect());
+}
+
+describe('write tools', () => {
+	it('are neither listed for nor callable by a read token', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await t.mutation(api.mcp.clients.create, {
+			label: 'Claude',
+			mailboxIds: [own],
+		});
+		const tools = await rpc(t, token, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+		const names = tools.body.result.tools.map((tool: { name: string }) => tool.name);
+		expect(names).not.toContain('create_draft');
+		expect(names).not.toContain('get_action_status');
+
+		const call = await callTool(t, token, 'create_draft', {
+			mailbox_id: own,
+			to: ['mia@example.com'],
+			subject: 'Hi',
+			body: 'Hello',
+		});
+		expect(call.body.result.isError).toBe(true);
+		expect(await pendingRows(t)).toEqual([]);
+		expect((await activity(t)).map((row) => [row.tool, row.outcome])).toEqual([
+			['create_draft', 'denied'],
+		]);
+	});
+
+	it('are listed for a read-write token, with send marked as reaching outside', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const tools = await rpc(t, token, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+		const send = tools.body.result.tools.find(
+			(tool: { name: string }) => tool.name === 'send_draft'
+		);
+		expect(send.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+	});
+
+	it('creates a draft only once the owner approves, then sends it only on a second approval', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+
+		const asked = await callTool(t, token, 'create_draft', {
+			mailbox_id: own,
+			to: ['Mia@Example.com'],
+			subject: 'Payment terms',
+			body: 'Net 30 works for us.',
+		});
+		const { action_id: draftAction } = structured(asked);
+		expect(structured(asked).status).toBe('pending');
+		expect(await drafts(t)).toEqual([]);
+
+		const [waiting] = await t.query(api.mcp.actions.listPending, {});
+		expect(waiting).toMatchObject({
+			tool: 'create_draft',
+			clientLabel: 'Claude',
+			details: { to: ['mia@example.com'], subject: 'Payment terms' },
+		});
+
+		expect(
+			await t.mutation(api.mcp.actions.approve, {
+				actionId: draftAction,
+			})
+		).toEqual({ status: 'approved' });
+		const [draft] = await drafts(t);
+		expect(draft).toMatchObject({ toAddresses: ['mia@example.com'], subject: 'Payment terms' });
+
+		const status = structured(
+			await callTool(t, token, 'get_action_status', { action_id: draftAction })
+		);
+		expect(status).toMatchObject({ status: 'approved', draft_id: draft!._id });
+
+		const send = await callTool(t, token, 'send_draft', { draft_id: draft!._id });
+		const { action_id: sendAction } = structured(send);
+		expect((await drafts(t))[0]!.state).toBe('draft');
+
+		await t.mutation(api.mcp.actions.approve, { actionId: sendAction });
+		expect((await drafts(t))[0]!.state).toBe('pending_send');
+		expect((await activity(t)).map((row) => [row.tool, row.outcome])).toEqual([
+			['create_draft', 'pending_approval'],
+			['create_draft', 'approved'],
+			['get_action_status', 'ok'],
+			['send_draft', 'pending_approval'],
+			['send_draft', 'approved'],
+		]);
+	});
+
+	it('records a failure, and keeps nothing of the run, when an approved action cannot run', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const created = structured(
+			await callTool(t, token, 'create_draft', {
+				mailbox_id: own,
+				to: ['mia@example.com'],
+				subject: 'Hi',
+				body: 'Hello',
+			})
+		);
+		await t.mutation(api.mcp.actions.approve, {
+			actionId: created.action_id,
+		});
+		const [draft] = await drafts(t);
+		const first = structured(await callTool(t, token, 'send_draft', { draft_id: draft!._id }));
+		const second = structured(await callTool(t, token, 'send_draft', { draft_id: draft!._id }));
+		await t.mutation(api.mcp.actions.approve, {
+			actionId: first.action_id,
+		});
+		const { undoToken } = (await drafts(t))[0]!;
+		expect(undoToken).toBeDefined();
+		const failed = await t.mutation(api.mcp.actions.approve, {
+			actionId: second.action_id,
+		});
+		expect(failed).toMatchObject({ status: 'failed', failureMessage: expect.any(String) });
+		expect((await drafts(t))[0]!.undoToken).toBe(undoToken);
+		const status = structured(
+			await callTool(t, token, 'get_action_status', { action_id: second.action_id })
+		);
+		expect(status).toMatchObject({ status: 'failed', error: failed.failureMessage });
+		expect((await activity(t)).slice(-2)[0]).toMatchObject({
+			tool: 'send_draft',
+			outcome: 'error',
+		});
+	});
+
+	it('runs nothing on reject or once the action has lapsed', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		await seedFolder(t, own, 'archive');
+		const message = await seedMessage(t, own, { subject: 'Newsletter' });
+		const threadId = (await t.run((ctx) => ctx.db.get(message)))!.threadId;
+		const { token } = await readWriteClient(t, [own]);
+
+		const first = structured(await callTool(t, token, 'archive_thread', { thread_id: threadId }));
+		const rejected = first.action_id;
+		expect(await t.mutation(api.mcp.actions.reject, { actionId: rejected })).toEqual({
+			status: 'rejected',
+		});
+		expect(await t.mutation(api.mcp.actions.approve, { actionId: rejected })).toEqual({
+			status: 'rejected',
+		});
+
+		const second = structured(await callTool(t, token, 'archive_thread', { thread_id: threadId }));
+		const lapsed = second.action_id;
+		await t.run((ctx) => ctx.db.patch(lapsed, { expiresAt: Date.now() - 1 }));
+		await t.mutation(internal.mcp.actions.sweep, {});
+		expect((await t.run((ctx) => ctx.db.get(lapsed)))!.status).toBe('expired');
+		expect(await t.mutation(api.mcp.actions.approve, { actionId: lapsed })).toEqual({
+			status: 'expired',
+		});
+
+		const folder = await t.run(async (ctx) => ctx.db.get((await ctx.db.get(message))!.folderId));
+		expect(folder!.role).toBe('inbox');
+	});
+
+	it('archives a conversation once approved', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		await seedFolder(t, own, 'archive');
+		const message = await seedMessage(t, own, { subject: 'Newsletter' });
+		const threadId = (await t.run((ctx) => ctx.db.get(message)))!.threadId;
+		const { token } = await readWriteClient(t, [own]);
+		const asked = structured(await callTool(t, token, 'archive_thread', { thread_id: threadId }));
+		await t.mutation(api.mcp.actions.approve, {
+			actionId: asked.action_id,
+		});
+		const folder = await t.run(async (ctx) => ctx.db.get((await ctx.db.get(message))!.folderId));
+		expect(folder!.role).toBe('archive');
+	});
+
+	it('refuses approval once the owner lost the team inbox, and runs nothing', async () => {
+		const { t, orgId } = await harness();
+		const team = await seedMailbox(t, {
+			userId: 'user-b',
+			organizationId: orgId,
+			address: 'team@owlat.test',
+			scope: 'shared',
+		});
+		await seedFolder(t, team, 'inbox');
+		const membershipId = await t.run((ctx) =>
+			ctx.db.insert('mailboxMembers', {
+				mailboxId: team,
+				authUserId: 'user-a',
+				role: 'member',
+				addedBy: 'user-b',
+				createdAt: 0,
+			})
+		);
+		const { token } = await readWriteClient(t, [team]);
+		const asked = structured(
+			await callTool(t, token, 'create_draft', {
+				mailbox_id: team,
+				to: ['mia@example.com'],
+				subject: 'Hi',
+				body: 'Hello',
+			})
+		);
+		await t.run((ctx) => ctx.db.delete(membershipId));
+		const decided = await t.mutation(api.mcp.actions.approve, {
+			actionId: asked.action_id,
+		});
+		expect(decided.status).toBe('failed');
+		expect(await drafts(t)).toEqual([]);
+		expect(last(await activity(t))).toMatchObject({ tool: 'create_draft', outcome: 'denied' });
+	});
+
+	it('lets only the client’s owner decide', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const asked = structured(
+			await callTool(t, token, 'create_draft', {
+				mailbox_id: own,
+				to: ['mia@example.com'],
+				subject: 'Hi',
+				body: 'Hello',
+			})
+		);
+		sessionMock.value = { userId: 'user-b', activeOrganizationId: orgId, role: 'owner' };
+		const actionId = asked.action_id;
+		await expect(t.mutation(api.mcp.actions.approve, { actionId })).rejects.toThrow(/not found/i);
+		expect(await t.query(api.mcp.actions.listPending, {})).toEqual([]);
+		expect(await drafts(t)).toEqual([]);
+	});
+
+	it('cancels what is still waiting when the token is revoked', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { clientId, token } = await readWriteClient(t, [own]);
+		await callTool(t, token, 'create_draft', {
+			mailbox_id: own,
+			to: ['mia@example.com'],
+			subject: 'Hi',
+			body: 'Hello',
+		});
+		await t.mutation(api.mcp.clients.revoke, { clientId });
+		expect((await pendingRows(t)).map((row) => row.status)).toEqual(['cancelled']);
+		expect(await t.query(api.mcp.actions.listPending, {})).toEqual([]);
+	});
+
+	it('refuses targets outside the token’s mailboxes and bad addresses', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const other = await mailbox(t, orgId, 'user-a', 'side@owlat.test');
+		const elsewhere = await seedMessage(t, other, { subject: 'Elsewhere' });
+		const threadId = (await t.run((ctx) => ctx.db.get(elsewhere)))!.threadId;
+		const { token } = await readWriteClient(t, [own]);
+		const outside = await callTool(t, token, 'archive_thread', { thread_id: threadId });
+		expect(outside.body.result.isError).toBe(true);
+		const badAddress = await callTool(t, token, 'create_draft', {
+			mailbox_id: own,
+			to: ['not an address'],
+			subject: 'Hi',
+			body: 'Hello',
+		});
+		expect(badAddress.body.result.isError).toBe(true);
+		expect(await pendingRows(t)).toEqual([]);
 	});
 });
 

@@ -1,6 +1,8 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
+	mcpActionStatusValidator,
+	mcpActionValidator,
 	mcpActivityOutcomeValidator,
 	mcpClientAccessValidator,
 	mcpToolNameValidator,
@@ -53,8 +55,33 @@ export const mcpTables = {
 	})
 		.index('by_client_and_at', ['clientId', 'at'])
 		.index('by_user', ['userId']),
+
+	// A write a read-write client asked for, waiting for its owner to approve or
+	// reject it in Owlat (`mcp/actions.ts`). Nothing in `action` runs before
+	// that. Decided rows stay for the client to read the outcome, then the
+	// retention sweep deletes them.
+	mcpPendingActions: defineTable({
+		organizationId: v.string(),
+		clientId: v.id('mcpClients'),
+		userId: v.string(),
+		mailboxId: v.id('mailboxes'),
+		action: mcpActionValidator,
+		status: mcpActionStatusValidator,
+		createdAt: v.number(),
+		expiresAt: v.number(),
+		decidedAt: v.optional(v.number()),
+		// What an approved `create_draft` made, for `get_action_status`.
+		resultDraftId: v.optional(v.id('mailDrafts')),
+		// Why an approved action could not run, as the client and the owner read it.
+		failureMessage: v.optional(v.string()),
+	})
+		.index('by_client_and_status', ['clientId', 'status'])
+		.index('by_user_org_and_status', ['userId', 'organizationId', 'status', 'createdAt'])
+		.index('by_status_and_expires', ['status', 'expiresAt'])
+		.index('by_decided_at', ['decidedAt'])
+		.index('by_user', ['userId']),
 };
 
-/** Wiped with the workspace and with the member, activity first. */
-export const MCP_TABLES = ['mcpClientActivity', 'mcpClients'] as const;
+/** Wiped with the workspace and with the member: actions, then activity, then the clients. */
+export const MCP_TABLES = ['mcpPendingActions', 'mcpClientActivity', 'mcpClients'] as const;
 export type McpTable = (typeof MCP_TABLES)[number];

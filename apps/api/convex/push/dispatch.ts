@@ -59,6 +59,7 @@ import { getMembership, isMailThreadDiscussion } from '../chat/_helpers';
 import { isSharedInboxReader } from '../inbox/access';
 import { isWebPushConfigured } from './config';
 import { resolveMarketingPush } from './marketing';
+import { resolveMcpActionPush } from './mcpAction';
 import {
 	assignmentPayload,
 	chatPayload,
@@ -307,6 +308,8 @@ async function resolveEvent(
 			);
 			return marketing && { ...marketing, rule: { kind: 'quiet-hours' } };
 		}
+		case 'mcpAction':
+			return resolveMcpActionPush(ctx, userId, event.actionId, prefs);
 		case 'test':
 			return {
 				payload: testPayload(prefs.locale),

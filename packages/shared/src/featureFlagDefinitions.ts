@@ -302,7 +302,7 @@ const FEATURE_FLAG_DETAILS: { readonly [Key in CoreFeatureFlagKey]: CoreFeatureF
 		category: 'integrations',
 		label: 'AI clients (MCP)',
 		description:
-			'Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP. Read-only, with a token each member creates and can revoke.',
+			'Let members connect an AI client such as Claude Desktop, Claude Code or Cursor to their mail over MCP, with a token each member creates and can revoke. Any write it asks for waits for the member’s approval.',
 	},
 
 	'scan.content': {

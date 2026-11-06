@@ -6720,8 +6720,36 @@
 				"namePlaceholder": "Claude auf meinem Laptop",
 				"mailboxesLegend": "Postfächer, die es lesen darf",
 				"noMailboxes": "Du hast noch kein Postfach, das du teilen kannst.",
-				"readOnlyHint": "Das Programm kann Mail in diesen Postfächern durchsuchen und lesen. Es kann nichts senden oder ändern.",
+				"accessLegend": "Was es tun darf",
+				"readOption": "Nur lesen",
+				"readHint": "Mail in diesen Postfächern durchsuchen und lesen. Es kann nichts senden oder ändern.",
+				"readWriteOption": "Lesen und um Schreiben bitten",
+				"readWriteHint": "Außerdem darum bitten, Entwürfe anzulegen und zu senden und Unterhaltungen zu archivieren, zu verschieben oder zu labeln. Nichts passiert, bevor du es in Owlat freigibst.",
 				"submit": "Token erstellen"
+			},
+			"mcpPendingActionCard": {
+				"titles": {
+					"createDraft": "{client} möchte einen Entwurf anlegen",
+					"sendDraft": "{client} möchte eine E-Mail senden",
+					"archiveThread": "{client} möchte eine Unterhaltung archivieren",
+					"moveThread": "{client} möchte eine Unterhaltung verschieben",
+					"labelThread": "{client} möchte eine Unterhaltung labeln",
+					"unlabelThread": "{client} möchte ein Label entfernen"
+				},
+				"asked": "Gefragt {time}",
+				"to": "An",
+				"cc": "Cc",
+				"bcc": "Bcc",
+				"subject": "Betreff",
+				"inReplyTo": "Antwort auf",
+				"conversation": "Unterhaltung",
+				"folder": "Ordner",
+				"label": "Label",
+				"noSubject": "(kein Betreff)",
+				"draftGone": "Den Entwurf gibt es nicht mehr.",
+				"approve": "Freigeben",
+				"approveSend": "Freigeben und senden",
+				"reject": "Ablehnen"
 			},
 			"mcpClientTokenReveal": {
 				"title": "Token für {name}",
@@ -6739,13 +6767,24 @@
 					"listFolders": "Ordner aufgelistet",
 					"listLabels": "Labels aufgelistet",
 					"searchMail": "Gesucht",
-					"readThread": "Unterhaltung gelesen"
+					"readThread": "Unterhaltung gelesen",
+					"getActionStatus": "Aktion geprüft",
+					"createDraft": "Entwurf",
+					"sendDraft": "Senden",
+					"archiveThread": "Archivieren",
+					"moveThread": "Verschieben",
+					"labelThread": "Label"
 				},
 				"outcomes": {
 					"ok": "Erledigt",
 					"denied": "Abgelehnt",
 					"invalid": "Ungültige Anfrage",
-					"error": "Fehlgeschlagen"
+					"error": "Fehlgeschlagen",
+					"pendingApproval": "Wartet auf Freigabe",
+					"approved": "Freigegeben",
+					"rejected": "Von dir abgelehnt",
+					"expired": "Abgelaufen",
+					"cancelled": "Abgebrochen"
 				}
 			}
 		},
@@ -7623,6 +7662,11 @@
 				"entered": "Zen-Modus an. Nur die Aufgabe ist zu sehen.",
 				"left": "Zen-Modus aus.",
 				"paletteSubtitle": "Alles außer der Aufgabe ausblenden"
+			},
+			"mcpApprovalPrompt": {
+				"label": "Freigabe für ein KI-Programm",
+				"waiting": "{count} Aktion wartet auf Freigabe | {count} Aktionen warten auf Freigabe",
+				"seeAll": "Alle ansehen"
 			}
 		},
 		"today": {
@@ -12972,11 +13016,14 @@
 				"subheading": "Verbinde eine KI-App wie Claude Desktop, Claude Code oder Cursor, damit sie deine Mail durchsuchen und lesen kann. Jede Verbindung bekommt ein eigenes Token und sieht nur die Postfächer, die du auswählst.",
 				"connect": "Programm verbinden",
 				"serverHeading": "Serveradresse",
-				"readOnlyNote": "Verbindungen sind nur lesend: Sie können Mail durchsuchen und lesen, aber nichts senden, verschieben, labeln oder löschen. Mail, die du so teilst, verlässt Owlat und geht an die KI-App und ihren Anbieter.",
+				"accessNote": "Eine lesende Verbindung kann Mail durchsuchen und lesen. Eine Verbindung mit Schreibrecht kann außerdem darum bitten, Entwürfe anzulegen und zu senden und Unterhaltungen zu archivieren, zu verschieben und zu labeln. Jede dieser Bitten wartet unten, bis du sie freigibst. Keine Verbindung kann Mail löschen. Mail, die du so teilst, verlässt Owlat und geht an die KI-App und ihren Anbieter.",
 				"clientsHeading": "Verbundene Programme",
+				"approvalsHeading": "Wartet auf deine Freigabe",
+				"approvalsEmpty": "Gerade wartet nichts. Wenn ein Programm mit Schreibrecht deine Mail ändern möchte, erscheint die Bitte hier.",
 				"empty": "Noch keine KI-Programme. Verbinde eines, um ein Token zu bekommen.",
 				"revoked": "Widerrufen",
 				"readOnly": "Nur lesend",
+				"readWrite": "Lesen und schreiben",
 				"mailboxUnavailable": "Ein Postfach, auf das du keinen Zugriff mehr hast",
 				"usageLine": "Erstellt {created} · Zuletzt benutzt {lastUsed}",
 				"activity": "Aktivität",
@@ -17154,8 +17201,8 @@
 				},
 				"aiClients": {
 					"title": "KI-Programme",
-					"description": "Lass eine KI-App deine Mail lesen, nur lesend",
-					"keywords": "MCP, Claude, Cursor, ChatGPT, KI-Assistent, Token, Model Context Protocol"
+					"description": "Lass eine KI-App deine Mail lesen und frag dich, bevor sie handelt",
+					"keywords": "MCP, Claude, Cursor, ChatGPT, KI-Assistent, Token, Model Context Protocol, Freigabe"
 				}
 			},
 			"controls": {
@@ -17330,6 +17377,10 @@
 				"pushNotifications": {
 					"title": "Push-Benachrichtigungen",
 					"keywords": "web push, browser-benachrichtigungen, handy, smartphone, pwa, benachrichtigen, geräte"
+				},
+				"aiClientApprovals": {
+					"title": "Offene Freigaben für KI-Programme",
+					"keywords": "freigeben, ablehnen, KI-Programm, MCP, wartet, Entwurf senden"
 				}
 			},
 			"adminControls": {
@@ -18929,6 +18980,13 @@
 		"useMcpClients": {
 			"createOperation": "KI-Programm verbinden",
 			"revokeOperation": "KI-Programm widerrufen"
+		},
+		"useMcpPendingActions": {
+			"approveOperation": "Aktion des KI-Programms freigeben",
+			"rejectOperation": "Aktion des KI-Programms ablehnen",
+			"failed": "Die Aktion konnte nicht ausgeführt werden: {reason}",
+			"failedUnknown": "unbekannter Fehler",
+			"expired": "Die Aktion ist abgelaufen, bevor du sie freigegeben hast."
 		}
 	},
 	"sharedPkg": {
@@ -19241,7 +19299,7 @@
 					},
 					"mcp": {
 						"label": "KI-Programme (MCP)",
-						"description": "Mitglieder verbinden ein KI-Programm wie Claude Desktop, Claude Code oder Cursor über MCP mit ihrer Mail. Nur lesend, mit einem Token, das jedes Mitglied selbst erstellt und widerrufen kann."
+						"description": "Mitglieder verbinden ein KI-Programm wie Claude Desktop, Claude Code oder Cursor über MCP mit ihrer Mail, mit einem Token, das jedes Mitglied selbst erstellt und widerrufen kann. Jede Änderung, um die es bittet, wartet auf die Freigabe des Mitglieds."
 					}
 				},
 				"multiTenancy": {

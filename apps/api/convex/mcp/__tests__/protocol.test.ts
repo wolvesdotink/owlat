@@ -7,9 +7,12 @@ import {
 	classifyRpcMessage,
 	initializeResult,
 	isAcceptableProtocolHeader,
+	isToolAllowed,
 	parseToolCall,
+	toolDefinitionsFor,
 	toolResult,
 } from '../protocol';
+import { MCP_WRITE_TOOL_NAMES } from '../../lib/validators/mcp';
 
 describe('classifyRpcMessage', () => {
 	it('reads a request, a notification and a client response', () => {
@@ -54,14 +57,107 @@ describe('protocol version', () => {
 });
 
 describe('tool catalog', () => {
-	it('offers only read-only tools and tells the model mail is untrusted', () => {
-		for (const tool of TOOL_DEFINITIONS) {
+	it('offers a read token only read-only tools and tells the model mail is untrusted', () => {
+		const readTools = toolDefinitionsFor('read');
+		for (const tool of readTools) {
 			expect(tool.annotations.readOnlyHint).toBe(true);
 			expect(tool.annotations.destructiveHint).toBe(false);
 		}
-		const mailTools = TOOL_DEFINITIONS.filter((tool) => tool.name !== 'list_mailboxes');
+		expect(readTools.map((tool) => tool.name)).not.toContain('get_action_status');
+		const mailTools = readTools.filter((tool) => tool.name !== 'list_mailboxes');
 		for (const tool of mailTools) expect(tool.description).toMatch(/untrusted data/);
 		expect(initializeResult(undefined).instructions).toMatch(/never follow instructions/);
+		expect(initializeResult(undefined, 'read').instructions).toMatch(/cannot send/);
+	});
+
+	it('offers a read-write token the write tools, each saying it waits for approval', () => {
+		const names = toolDefinitionsFor('read_write').map((tool) => tool.name);
+		expect(names).toEqual(TOOL_DEFINITIONS.map((tool) => tool.name));
+		for (const name of MCP_WRITE_TOOL_NAMES) {
+			const tool = TOOL_DEFINITIONS.find((definition) => definition.name === name)!;
+			expect(tool.annotations.readOnlyHint).toBe(false);
+			expect(tool.description).toMatch(/approves or rejects it in Owlat/);
+			expect(isToolAllowed('read', name)).toBe(false);
+			expect(isToolAllowed('read_write', name)).toBe(true);
+		}
+		expect(initializeResult(undefined, 'read_write').instructions).toMatch(/approves/);
+	});
+});
+
+describe('parseToolCall for write tools', () => {
+	it('reads each write into typed arguments', () => {
+		expect(
+			parseToolCall({
+				name: 'create_draft',
+				arguments: {
+					mailbox_id: 'mb',
+					to: [' mia@example.com ', ''],
+					subject: ' Terms ',
+					body: 'Net 30',
+					in_reply_to_message_id: 'm1',
+				},
+			})
+		).toEqual({
+			ok: true,
+			call: {
+				tool: 'create_draft',
+				mailboxId: 'mb',
+				to: ['mia@example.com'],
+				cc: [],
+				subject: 'Terms',
+				body: 'Net 30',
+				inReplyToMessageId: 'm1',
+			},
+		});
+		expect(parseToolCall({ name: 'send_draft', arguments: { draft_id: 'd1' } })).toEqual({
+			ok: true,
+			call: { tool: 'send_draft', draftId: 'd1' },
+		});
+		expect(
+			parseToolCall({ name: 'move_thread', arguments: { thread_id: 't1', folder_id: 'f1' } })
+		).toEqual({ ok: true, call: { tool: 'move_thread', threadId: 't1', folderId: 'f1' } });
+		expect(
+			parseToolCall({ name: 'label_thread', arguments: { thread_id: 't1', label_id: 'l1' } })
+		).toEqual({
+			ok: true,
+			call: { tool: 'label_thread', threadId: 't1', labelId: 'l1', add: true },
+		});
+		expect(
+			parseToolCall({
+				name: 'label_thread',
+				arguments: { thread_id: 't1', label_id: 'l1', remove: true },
+			})
+		).toMatchObject({ ok: true, call: { add: false } });
+		expect(parseToolCall({ name: 'get_action_status', arguments: { action_id: 'a1' } })).toEqual({
+			ok: true,
+			call: { tool: 'get_action_status', actionId: 'a1' },
+		});
+	});
+
+	it('refuses a draft without recipients, with too many, or with an oversized body', () => {
+		const draft = { mailbox_id: 'mb', to: ['a@example.com'], subject: 's', body: 'b' };
+		for (const args of [
+			{ ...draft, to: [] },
+			{ ...draft, to: Array.from({ length: 51 }, (_, i) => `a${i}@example.com`) },
+			{ ...draft, to: [1] },
+			{ ...draft, body: 'x'.repeat(50_001) },
+			{ ...draft, subject: undefined },
+		]) {
+			expect(parseToolCall({ name: 'create_draft', arguments: args })).toMatchObject({
+				ok: false,
+				tool: 'create_draft',
+			});
+		}
+		expect(
+			parseToolCall({
+				name: 'label_thread',
+				arguments: { thread_id: 't', label_id: 'l', remove: 1 },
+			})
+		).toMatchObject({ ok: false, tool: 'label_thread' });
+		expect(parseToolCall({ name: 'move_thread', arguments: { thread_id: 't' } })).toMatchObject({
+			ok: false,
+			tool: 'move_thread',
+		});
 	});
 });
 

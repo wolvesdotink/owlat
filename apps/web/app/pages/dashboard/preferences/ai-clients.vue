@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { McpClientAccess } from '~/composables/useMcpClients';
 import { CheckIcon, CopyIcon, PlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -14,6 +15,15 @@ definePageMeta({
 });
 
 const { clients, isLoading, error, refetch, serverUrl, create, revoke } = useMcpClients();
+const {
+	pending,
+	isLoading: isPendingLoading,
+	error: pendingError,
+	refetch: refetchPending,
+	busyId,
+	approve,
+	reject,
+} = useMcpPendingActions();
 const { copy, copiedKey } = useCopyToClipboard();
 
 const showCreate = ref(false);
@@ -21,10 +31,14 @@ const isCreating = ref(false);
 const reveal = ref<{ token: string; label: string } | null>(null);
 const expandedClientId = ref<Id<'mcpClients'> | null>(null);
 
-async function handleCreate(input: { label: string; mailboxIds: Id<'mailboxes'>[] }) {
+async function handleCreate(input: {
+	label: string;
+	mailboxIds: Id<'mailboxes'>[];
+	access: McpClientAccess;
+}) {
 	isCreating.value = true;
 	try {
-		const result = await create(input.label, input.mailboxIds);
+		const result = await create(input.label, input.mailboxIds, input.access);
 		if (!result.ok) return;
 		showCreate.value = false;
 		reveal.value = { token: result.result.token, label: input.label };
@@ -87,7 +101,30 @@ function formatTime(ts?: number) {
 						{{ copiedKey === 'mcp-server-url' ? t('common.copied') : t('common.copy') }}
 					</UiButton>
 				</div>
-				<p class="text-text-secondary">{{ t('dashboard.preferences.aiClients.readOnlyNote') }}</p>
+				<p class="text-text-secondary">{{ t('dashboard.preferences.aiClients.accessNote') }}</p>
+			</div>
+		</section>
+
+		<section id="approvals" class="card !p-0 mb-6">
+			<header class="px-5 py-3 border-b border-border-subtle">
+				<h2 class="font-semibold">{{ t('dashboard.preferences.aiClients.approvalsHeading') }}</h2>
+			</header>
+			<div v-if="isPendingLoading" class="p-8 flex justify-center">
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
+			</div>
+			<UiQueryBoundary v-else-if="pendingError" :error="pendingError" @retry="refetchPending" />
+			<p v-else-if="pending.length === 0" class="px-5 py-4 text-sm text-text-secondary">
+				{{ t('dashboard.preferences.aiClients.approvalsEmpty') }}
+			</p>
+			<div v-else class="p-4 space-y-3">
+				<PreferencesMcpPendingActionCard
+					v-for="action in pending"
+					:key="action._id"
+					:action="action"
+					:busy="busyId === action._id"
+					@approve="approve(action._id)"
+					@reject="reject(action._id)"
+				/>
 			</div>
 		</section>
 
@@ -115,7 +152,9 @@ function formatTime(ts?: number) {
 									>{{ t('dashboard.preferences.aiClients.revoked') }}</span
 								>
 								<span class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-secondary">{{
-									t('dashboard.preferences.aiClients.readOnly')
+									client.access === 'read_write'
+										? t('dashboard.preferences.aiClients.readWrite')
+										: t('dashboard.preferences.aiClients.readOnly')
 								}}</span>
 							</div>
 							<p class="text-xs text-text-secondary mt-1 break-words">

@@ -1613,12 +1613,17 @@ import type * as marketing_noticeUrls from '../marketing/noticeUrls.js';
 import type * as marketing_notifications from '../marketing/notifications.js';
 import type * as mcp__helpers from '../mcp/_helpers.js';
 import type * as mcp_access from '../mcp/access.js';
+import type * as mcp_actionRequests from '../mcp/actionRequests.js';
+import type * as mcp_actionRun from '../mcp/actionRun.js';
+import type * as mcp_actions from '../mcp/actions.js';
 import type * as mcp_activity from '../mcp/activity.js';
 import type * as mcp_clients from '../mcp/clients.js';
 import type * as mcp_erasure from '../mcp/erasure.js';
 import type * as mcp_protocol from '../mcp/protocol.js';
 import type * as mcp_reads from '../mcp/reads.js';
 import type * as mcp_serverHttp from '../mcp/serverHttp.js';
+import type * as mcp_toolArgs from '../mcp/toolArgs.js';
+import type * as mcp_writeTools from '../mcp/writeTools.js';
 import type * as lib_validators_mcp from '../lib/validators/mcp.js';
 import type * as schema_mcp from '../schema/mcp.js';
 import type * as maintenance_retention from '../maintenance/retention.js';
@@ -1727,6 +1732,7 @@ import type * as push_dispatch from '../push/dispatch.js';
 import type * as push_events from '../push/events.js';
 import type * as push_marketing from '../push/marketing.js';
 import type * as push_marketingCopy from '../push/marketingCopy.js';
+import type * as push_mcpAction from '../push/mcpAction.js';
 import type * as push_send from '../push/send.js';
 import type * as push_subscriptions from '../push/subscriptions.js';
 import type * as sampleData_index from '../sampleData/index.js';
@@ -3743,12 +3749,17 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'mcp/_helpers': typeof mcp__helpers;
 	'mcp/access': typeof mcp_access;
+	'mcp/actionRequests': typeof mcp_actionRequests;
+	'mcp/actionRun': typeof mcp_actionRun;
+	'mcp/actions': typeof mcp_actions;
 	'mcp/activity': typeof mcp_activity;
 	'mcp/clients': typeof mcp_clients;
 	'mcp/erasure': typeof mcp_erasure;
 	'mcp/protocol': typeof mcp_protocol;
 	'mcp/reads': typeof mcp_reads;
 	'mcp/serverHttp': typeof mcp_serverHttp;
+	'mcp/toolArgs': typeof mcp_toolArgs;
+	'mcp/writeTools': typeof mcp_writeTools;
 }> & ApiFromModules<{
 	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
 	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
@@ -3867,6 +3878,7 @@ declare const fullApi: ApiFromModules<{
 	'push/events': typeof push_events;
 	'push/marketing': typeof push_marketing;
 	'push/marketingCopy': typeof push_marketingCopy;
+	'push/mcpAction': typeof push_mcpAction;
 	'push/send': typeof push_send;
 	'push/subscriptions': typeof push_subscriptions;
 }> & ApiFromModules<{
