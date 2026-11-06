@@ -4691,6 +4691,26 @@
 				"title": "All inboxes",
 				"inboxesHeading": "Inboxes",
 				"openInbox": "Open {name}",
+				"roles": {
+					"inbox": "All inboxes",
+					"sent": "All sent",
+					"drafts": "All drafts",
+					"archive": "All archive",
+					"spam": "All spam",
+					"trash": "All trash"
+				},
+				"foldersHeading": "Folders",
+				"expandFolder": "Show {folder} of each mailbox",
+				"collapseFolder": "Hide {folder} of each mailbox",
+				"mailboxFolder": "{folder} of {name}",
+				"narrow": {
+					"title": "Show one mailbox or provider",
+					"all": "All mailboxes",
+					"mailboxesHeading": "Mailbox",
+					"providersHeading": "Provider",
+					"owlat": "Hosted on Owlat",
+					"clear": "Show every mailbox"
+				},
 				"clearCategory": "Show every category",
 				"category": {
 					"newsletter": "Newsletters",
@@ -15254,7 +15274,12 @@
 					"spam": "Spam",
 					"trash": "Trash",
 					"answerQueue": "Answer queue",
-					"allInboxes": "All inboxes"
+					"allInboxes": "All inboxes",
+					"allSent": "All sent",
+					"allDrafts": "All drafts",
+					"allArchive": "All archive",
+					"allSpam": "All spam",
+					"allTrash": "All trash"
 				},
 				"send": {
 					"automations": "Automations",

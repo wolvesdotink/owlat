@@ -14,12 +14,13 @@ import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { v, type Infer } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
 import { mailSortOrderValidator } from '../../lib/validators/mailSettings';
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Id } from '../../_generated/dataModel';
 import { loadReadableMailbox, loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
+import { providerHostOf, providerOf, readRoleFolders, type InboxProvider } from './accessibleRow';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
 import type { SenderLogoField } from '../senderLogos/cache';
 import { toThreadListRow, type ThreadListRow } from './threadListRow';
@@ -307,28 +308,12 @@ export const listFolders = publicQuery({
  * suspended rows and returns full mailbox docs. Suspended/deleted rows are
  * filtered out here, so there are no dead-end targets.
  *
- * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
- * state is a single shared truth per message,
- * so every member of a shared inbox sees the same count.
+ * Constant work per mailbox: its six system folders by role (the Inbox's
+ * denormalized `mailFolders.unseenCount` is the badge) and, for a connected
+ * mailbox, its account row for the provider (`accessibleRow.ts`). Read state is
+ * a single shared truth per message, so every member of a shared inbox sees the
+ * same count.
  */
-/** A connected account's provider, for the logo its inbox chip can show. */
-export type InboxProvider = 'gmail' | 'microsoft';
-
-// A provider sign-in names its provider; an app-password account is known by
-// the IMAP host its provider publishes.
-const GMAIL_IMAP_HOSTS = new Set(['imap.gmail.com']);
-const MICROSOFT_IMAP_HOSTS = new Set(['outlook.office365.com', 'imap-mail.outlook.com']);
-
-function providerOf(account: Doc<'externalMailAccounts'> | null): InboxProvider | null {
-	if (!account) return null;
-	if (account.oauthProvider === 'google') return 'gmail';
-	if (account.oauthProvider === 'microsoft') return 'microsoft';
-	const host = account.imapHost.trim().toLowerCase();
-	if (GMAIL_IMAP_HOSTS.has(host)) return 'gmail';
-	if (MICROSOFT_IMAP_HOSTS.has(host)) return 'microsoft';
-	return null;
-}
-
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const accessible = publicQuery({
 	args: {},
@@ -353,15 +338,20 @@ export const accessible = publicQuery({
 			/** The provider of a connected Gmail or Microsoft account. */
 			provider: InboxProvider | null;
 			unread: number;
-			/** The Inbox folder, which All inboxes (`allInboxes.ts`) reads by id. */
-			inboxFolderId: Id<'mailFolders'> | null;
+			/**
+			 * Each system folder by role, which All inboxes and the unified
+			 * folders (`allInboxes.ts`) read by id. Null where the mailbox has none.
+			 */
+			folderIds: Record<FolderRole, Id<'mailFolders'> | null>;
+			/**
+			 * The IMAP host a connected mailbox syncs from, lowercased: what the
+			 * unified folders narrow by provider on. Null for a hosted mailbox.
+			 */
+			providerHost: string | null;
 		}> = [];
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
-			const inbox = await ctx.db
-				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
-				.first();
+			const { folderIds, inboxUnread } = await readRoleFolders(ctx, mb._id);
 			const displayName = mb.displayName?.trim();
 			const account =
 				mb.kind === 'external' && mb.externalAccountId
@@ -376,8 +366,9 @@ export const accessible = publicQuery({
 				colorSlot: mb.colorSlot ?? null,
 				mark: mb.mark ?? null,
 				provider: providerOf(account),
-				unread: inbox?.unseenCount ?? 0,
-				inboxFolderId: inbox?._id ?? null,
+				unread: inboxUnread,
+				folderIds,
+				providerHost: providerHostOf(account),
 			});
 		}
 		return rows;

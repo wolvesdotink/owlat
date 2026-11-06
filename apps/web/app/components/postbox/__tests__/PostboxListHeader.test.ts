@@ -195,7 +195,13 @@ describe('PostboxListHeader select-all', () => {
 	it('reads as mixed while only some of the page is picked', async () => {
 		const w = mountHeader({ mailboxId: 'mbx', pageIds: ['a', 'b', 'c'] });
 		// A row toggled from the list writes into the same per-mailbox bucket.
-		stateBuckets.get('postbox:bulk:mbx').value = new Set(['b']);
+		stateBuckets.get('postbox:bulk').value = {
+			mbx: {
+				selected: new Set(['b']),
+				anchorId: null,
+				selectAllMatching: { active: false, capped: false },
+			},
+		};
 		await w.vm.$nextTick();
 		expect(selectAllBox(w).attributes('aria-checked')).toBe('mixed');
 	});

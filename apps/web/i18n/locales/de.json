@@ -4691,6 +4691,26 @@
 				"title": "Alle Postfächer",
 				"inboxesHeading": "Postfächer",
 				"openInbox": "{name} öffnen",
+				"roles": {
+					"inbox": "Alle Postfächer",
+					"sent": "Alles Gesendete",
+					"drafts": "Alle Entwürfe",
+					"archive": "Gesamtes Archiv",
+					"spam": "Gesamter Spam",
+					"trash": "Gesamter Papierkorb"
+				},
+				"foldersHeading": "Ordner",
+				"expandFolder": "{folder} jedes Postfachs zeigen",
+				"collapseFolder": "{folder} jedes Postfachs ausblenden",
+				"mailboxFolder": "{folder} von {name}",
+				"narrow": {
+					"title": "Ein Postfach oder einen Anbieter zeigen",
+					"all": "Alle Postfächer",
+					"mailboxesHeading": "Postfach",
+					"providersHeading": "Anbieter",
+					"owlat": "Bei Owlat gehostet",
+					"clear": "Alle Postfächer zeigen"
+				},
 				"clearCategory": "Alle Kategorien anzeigen",
 				"category": {
 					"newsletter": "Newsletter",
@@ -15254,7 +15274,12 @@
 					"spam": "Spam",
 					"trash": "Papierkorb",
 					"answerQueue": "Antwortliste",
-					"allInboxes": "Alle Postfächer"
+					"allInboxes": "Alle Postfächer",
+					"allSent": "Alles Gesendete",
+					"allDrafts": "Alle Entwürfe",
+					"allArchive": "Gesamtes Archiv",
+					"allSpam": "Gesamter Spam",
+					"allTrash": "Gesamter Papierkorb"
 				},
 				"send": {
 					"automations": "Automationen",

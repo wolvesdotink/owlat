@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
-import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
+import { ALL_INBOXES_PATH, isUnifiedFolderPath } from '~/utils/postboxAllInboxes';
 import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 import { uniqueRailLabels } from '~/utils/inboxIdentity';
@@ -82,8 +82,9 @@ const railLabels = computed(() => {
 const { activeMailboxId } = usePostboxActiveMailbox();
 const openMailboxId = computed(() => {
 	if (!route.path.startsWith('/dashboard/postbox')) return null;
-	// All inboxes shows every inbox at once; its own pinned row is the one lit.
-	if (route.path === ALL_INBOXES_PATH || route.path.startsWith(`${ALL_INBOXES_PATH}/`)) return null;
+	// All inboxes and the unified folders show every mailbox at once; their
+	// pinned row is the one lit.
+	if (isUnifiedFolderPath(route.path)) return null;
 	const requested = route.query['mailbox'];
 	return typeof requested === 'string' ? requested : activeMailboxId.value;
 });
@@ -95,6 +96,8 @@ function railInboxLabel(inbox: { name: string; unread: number }): string {
 }
 
 function isActive(to: string, exact: boolean): boolean {
+	// The unified folders are All inboxes' own folders, so its row stays lit there.
+	if (to === ALL_INBOXES_PATH) return isUnifiedFolderPath(route.path);
 	return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`);
 }
 </script>
