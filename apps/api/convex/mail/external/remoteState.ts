@@ -36,13 +36,8 @@ import { applyFlagDelta } from '../flagWrites';
 import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from '../messagePurge';
 import { dropFolderMembership } from '../folderMembership';
 import { rebuildThreadAggregates } from '../threadAggregates';
-import {
-	enqueueRemoteOp,
-	nudgeWorker,
-	remoteNamesByFolder,
-	writesBack,
-	type RemoteFlagChanges,
-} from './remoteOps';
+import { enqueueRemoteOp, nudgeWorker, type RemoteFlagChanges } from './remoteOps';
+import { remoteNamesByFolder, writesBack } from './remoteAccount';
 import {
 	applyRemoteObservations as applyRemoteObservationsContract,
 	forgetRemoteFolders as forgetRemoteFoldersContract,

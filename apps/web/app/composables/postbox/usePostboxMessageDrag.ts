@@ -2,6 +2,8 @@
  * Drag a thread-list row (or the whole bulk selection) onto the folder rail:
  * drop on a folder to move it there, drop on a label to apply the label. The
  * Inbox's pinned band is a target too: a drop there pins the conversations.
+ * An inbox in the sidebar takes the drag into that mailbox (Shift copies),
+ * through the move picker's own transfer (`usePostboxMailboxTransfer`).
  *
  * The source list starts a SESSION carrying the dragged ids and its own move
  * verb, so a drop runs the exact path `v` and the bulk bar's Move run —
@@ -26,6 +28,7 @@ import {
 	dragMessageIds,
 	POSTBOX_MESSAGE_DRAG_TYPE,
 } from '~/utils/postboxMessageDrag';
+import { usePostboxMailboxTransfer, type PostboxTransferMode } from './usePostboxMailboxTransfer';
 
 export interface PostboxMessageDragSession {
 	mailboxId: Id<'mailboxes'>;
@@ -37,6 +40,8 @@ export interface PostboxMessageDragSession {
 	 * Null for a pin-only source: the rail's folders and labels refuse it.
 	 */
 	moveTo: ((folderId: Id<'mailFolders'>) => Promise<unknown>) | null;
+	/** Clear the bulk selection a landed move into another mailbox spent. */
+	spent?: () => void;
 }
 
 const session = shallowRef<PostboxMessageDragSession | null>(null);
@@ -129,6 +134,7 @@ export function usePostboxListRowDrag(opts: {
 						opts.bulk.clear();
 					}
 				},
+				...(carriesSelection ? { spent: () => opts.bulk.clear() } : {}),
 			},
 			messageIds.length > 1
 				? t('components.postbox.postboxThreadList.dragCount', { count: messageIds.length })
@@ -184,6 +190,52 @@ export function usePostboxPinRowDrag() {
 }
 
 /**
+ * The listener object one drop target binds with `v-on`. `overKey` is the
+ * highlight of the one row the pointer is over; `effect` picks the cursor for
+ * the event (a Shift drop copies where that means something).
+ */
+function dropListeners(
+	overKey: Ref<string | null>,
+	end: () => void,
+	key: string,
+	accepts: (drag: PostboxMessageDragSession) => boolean,
+	effect: (event: DragEvent) => 'move' | 'copy',
+	onDrop: (drag: PostboxMessageDragSession, event: DragEvent) => unknown
+) {
+	const accepting = () => {
+		const drag = session.value;
+		return drag && accepts(drag) ? drag : null;
+	};
+	// Not calling preventDefault is how a row refuses a drop: the browser
+	// then shows the no-drop cursor and never fires `drop` here.
+	const over = (event: DragEvent) => {
+		if (!accepting()) return;
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = effect(event);
+		overKey.value = key;
+	};
+	return {
+		dragenter: over,
+		dragover: over,
+		dragleave: (event: DragEvent) => {
+			// Moving between a row's own children fires leave on the row.
+			const into = event.relatedTarget as Node | null;
+			if (into && (event.currentTarget as Node).contains(into)) return;
+			if (overKey.value === key) overKey.value = null;
+		},
+		drop: (event: DragEvent) => {
+			const drag = accepting();
+			if (!drag) return;
+			event.preventDefault();
+			// The source row may be hidden (and unmounted) by the move before its
+			// dragend fires, so the drop closes the session itself.
+			end();
+			void onDrop(drag, event);
+		},
+	};
+}
+
+/**
  * Drop-target wiring for the rail. `folder(row)` and `label(id, apply)` each
  * return a listener object for `v-on`, and `isOverFolder` / `isOverLabel` drive
  * the highlight of the one row the pointer is over.
@@ -197,44 +249,12 @@ export function usePostboxMessageDropTargets(mailboxId: Ref<Id<'mailboxes'> | nu
 		if (!value) overKey.value = null;
 	});
 
-	function listeners(
+	const listeners = (
 		key: string,
 		accepts: (drag: PostboxMessageDragSession) => boolean,
 		effect: 'move' | 'copy',
 		onDrop: (drag: PostboxMessageDragSession) => unknown
-	) {
-		const accepting = () => {
-			const drag = session.value;
-			return drag && accepts(drag) ? drag : null;
-		};
-		// Not calling preventDefault is how a row refuses a drop: the browser
-		// then shows the no-drop cursor and never fires `drop` here.
-		const over = (event: DragEvent) => {
-			if (!accepting()) return;
-			event.preventDefault();
-			if (event.dataTransfer) event.dataTransfer.dropEffect = effect;
-			overKey.value = key;
-		};
-		return {
-			dragenter: over,
-			dragover: over,
-			dragleave: (event: DragEvent) => {
-				// Moving between a row's own children fires leave on the row.
-				const into = event.relatedTarget as Node | null;
-				if (into && (event.currentTarget as Node).contains(into)) return;
-				if (overKey.value === key) overKey.value = null;
-			},
-			drop: (event: DragEvent) => {
-				const drag = accepting();
-				if (!drag) return;
-				event.preventDefault();
-				// The source row may be hidden (and unmounted) by the move before its
-				// dragend fires, so the drop closes the session itself.
-				end();
-				void onDrop(drag);
-			},
-		};
-	}
+	) => dropListeners(overKey, end, key, accepts, () => effect, onDrop);
 
 	function folder(row: { _id: string; role?: string | null }) {
 		return listeners(
@@ -277,5 +297,53 @@ export function usePostboxMessageDropTargets(mailboxId: Ref<Id<'mailboxes'> | nu
 		folder,
 		label,
 		pin,
+	};
+}
+
+/**
+ * Drop-target wiring for the sidebar's inboxes: a list drag dropped on another
+ * mailbox moves the rows there, or copies them with Shift held, through the
+ * same transfer the move picker's "Other mailboxes" runs (the team inbox
+ * confirmation, the server's refusals, the undo). `mailbox(id)` is the
+ * listener object for `v-on`, `isOver(id)` the highlight. A pin-only drag
+ * (one conversation row of a grouped view) is refused, as the folder rail
+ * refuses it.
+ */
+export function usePostboxMailboxDropTargets() {
+	const { end } = usePostboxMessageDrag();
+	const overKey = ref<string | null>(null);
+	// The mailbox the drop came from, which the transfer reads its targets against.
+	const source = ref('');
+	const transfer = usePostboxMailboxTransfer(() => source.value);
+
+	watch(session, (value) => {
+		if (!value) overKey.value = null;
+	});
+
+	async function dropped(
+		drag: PostboxMessageDragSession,
+		targetId: Id<'mailboxes'>,
+		mode: PostboxTransferMode
+	) {
+		source.value = drag.mailboxId;
+		if (!(await transfer.confirmTarget(targetId))) return;
+		const landed = await transfer.transfer(drag.messageIds, targetId, mode);
+		if (landed && mode === 'move') drag.spent?.();
+	}
+
+	function mailbox(targetId: Id<'mailboxes'>) {
+		return dropListeners(
+			overKey,
+			end,
+			`mailbox:${targetId}`,
+			(drag) => !!drag.moveTo && drag.mailboxId !== targetId,
+			(event) => (event.shiftKey ? 'copy' : 'move'),
+			(drag, event) => dropped(drag, targetId, event.shiftKey ? 'copy' : 'move')
+		);
+	}
+
+	return {
+		isOver: (mailboxId: string) => overKey.value === `mailbox:${mailboxId}`,
+		mailbox,
 	};
 }

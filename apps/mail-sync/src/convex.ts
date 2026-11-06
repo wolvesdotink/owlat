@@ -124,6 +124,17 @@ export function isMissingFunction(
 	return named?.replace(/\.js(?=:|$)/, '') === getFunctionName(ref);
 }
 
+/**
+ * Whether `err` is the backend's argument validator rejecting `field` as
+ * unknown: a backend older than this worker, mid-rollout.
+ */
+export function rejectsArgument(err: unknown, field: string): boolean {
+	const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+	return (
+		message.includes('ArgumentValidationError') && message.includes(`extra field \`${field}\``)
+	);
+}
+
 /** Summary row from listConnectableAccounts. */
 export type ConnectableAccount = EndpointResult<typeof listConnectableAccounts>[number];
 

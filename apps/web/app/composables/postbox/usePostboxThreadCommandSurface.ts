@@ -54,12 +54,8 @@ export interface PostboxThreadCommandSources {
 	snoozeUntilReply: (capUntil: number) => void;
 	applyLabel: (labelId: Id<'mailLabels'>) => void;
 	moveTo: (folderId: Id<'mailFolders'>) => void;
-	/**
-	 * The caller's other mailboxes, whether the open message may leave its own,
-	 * and the transfer; absent where the reader offers none.
-	 */
+	/** The caller's other mailboxes and the transfer; absent where the reader offers none. */
 	mailboxes?: () => ReadonlyArray<PostboxTransferTarget>;
-	canMoveToMailbox?: () => boolean;
 	transferTo?: (mailboxId: Id<'mailboxes'>, mode: PostboxTransferMode) => void;
 	toggleMute: () => void;
 	toggleAlert: () => void;
@@ -134,18 +130,15 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 		}));
 	}
 
-	/** One submenu row per mailbox that can take the message; connected accounts cannot yet. */
+	/** One submenu row per other mailbox, connected accounts included. */
 	function mailboxOptions(mode: PostboxTransferMode): PaletteArgumentOption[] {
-		const { mailboxes, canMoveToMailbox, transferTo } = sources;
+		const { mailboxes, transferTo } = sources;
 		if (!mailboxes || !transferTo) return [];
-		if (mode === 'move' && canMoveToMailbox?.() === false) return [];
-		return mailboxes()
-			.filter((mailbox) => !mailbox.isConnected)
-			.map((mailbox) => ({
-				id: `mailbox-${mode}-${mailbox.mailboxId}`,
-				label: mailbox.name,
-				run: () => transferTo(mailbox.mailboxId, mode),
-			}));
+		return mailboxes().map((mailbox) => ({
+			id: `mailbox-${mode}-${mailbox.mailboxId}`,
+			label: mailbox.name,
+			run: () => transferTo(mailbox.mailboxId, mode),
+		}));
 	}
 
 	registerCommandPaletteProvider({

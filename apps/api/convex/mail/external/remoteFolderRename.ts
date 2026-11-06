@@ -27,7 +27,8 @@ import type { Doc } from '../../_generated/dataModel';
 import { internalMutation } from '../../lib/writeFence';
 import { internal } from '../../_generated/api';
 import { FOLDER_KINDS, MESSAGE_KINDS } from './remoteFolderOpOrder';
-import { nudgeWorker, workerOp, writesBack } from './remoteOps';
+import { nudgeWorker, workerOp } from './remoteOps';
+import { writesBack } from './remoteAccount';
 import {
 	listQueuedFolderRenames as listQueuedFolderRenamesContract,
 	recordRemoteFolderRename as recordRemoteFolderRenameContract,

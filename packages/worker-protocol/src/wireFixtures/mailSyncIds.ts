@@ -15,6 +15,7 @@ export const MAIL_SYNC_WIRE_IDS = {
 	moveOp: id('externalMailRemoteOps/move'),
 	flagsOp: id('externalMailRemoteOps/flags'),
 	renameOp: id('externalMailRemoteOps/rename'),
+	appendOp: id('externalMailRemoteOps/append'),
 	localCursor: id('cursor/local'),
 	localPartialCursor: id('cursor/local-partial'),
 	renamesCursor: id('cursor/renames'),

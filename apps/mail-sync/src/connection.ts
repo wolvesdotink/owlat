@@ -85,7 +85,7 @@ export class AccountConnection {
 			connectOnce: () => this.connectOnce(),
 			setStatus: (status, lastError) => this.setStatus(status, lastError),
 		});
-		this.remote = new RemoteSync(account.accountId, convex);
+		this.remote = new RemoteSync(account.accountId, convex, this.rawUploadConfig);
 		this.inboxPoll = new InboxPoller({
 			accountId: account.accountId,
 			client: () => this.client,

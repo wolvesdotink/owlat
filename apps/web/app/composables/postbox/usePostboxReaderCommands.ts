@@ -125,7 +125,6 @@ export function usePostboxReaderCommands(source: {
 	}
 	const moves = {
 		targets: transfer.targets,
-		canMove: computed(() => !transfer.isSourceConnected.value),
 		pick: (targetId: Id<'mailboxes'>, mode: PostboxTransferMode) =>
 			void transferOpenMessage(targetId, mode),
 	};
@@ -195,7 +194,6 @@ export function usePostboxReaderCommands(source: {
 		applyLabel: (labelId) => void actions.applyLabelToOpenMessage(labelId),
 		moveTo: (folderId) => void actions.moveOpenMessageTo(folderId),
 		mailboxes: () => moves.targets.value,
-		canMoveToMailbox: () => moves.canMove.value,
 		transferTo: moves.pick,
 		toggleMute: actions.toggleOpenThreadMute,
 		toggleAlert: actions.toggleOpenThreadAlert,
