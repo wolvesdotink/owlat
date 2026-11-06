@@ -79,7 +79,6 @@ beforeAll(() => {
 	// The move picker's other mailboxes: none here.
 	vi.stubGlobal('usePostboxMailboxTransfer', () => ({
 		targets: ref([]),
-		isSourceConnected: ref(false),
 	}));
 	// Inert: these cases never pick a row up.
 	vi.stubGlobal('usePostboxListRowDrag', () => ({ start: vi.fn() }));

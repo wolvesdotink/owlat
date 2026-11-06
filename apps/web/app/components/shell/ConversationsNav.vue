@@ -4,6 +4,7 @@ import { ALL_INBOXES_PATH, isUnifiedFolderPath } from '~/utils/postboxAllInboxes
 import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 import { uniqueRailLabels } from '~/utils/inboxIdentity';
+import { usePostboxMailboxDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
@@ -12,7 +13,8 @@ import { uniqueRailLabels } from '~/utils/inboxIdentity';
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
  * per inbox with its mark or initials, its unread count and a highlight on the
- * inbox that is open.
+ * inbox that is open. Every inbox, folded or not, takes a message drag from a
+ * Postbox list into that mailbox (`usePostboxMailboxDropTargets`).
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -27,6 +29,7 @@ const { isAdmin, isRoleLoading } = usePermissions();
 const { inboxes, hasPersonalMail } = useInboxes();
 const { count: answerCount } = useAnswerQueueCount();
 const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
+const mailboxDrop = usePostboxMailboxDropTargets();
 
 const showTeamInbox = computed(() => isAdmin.value && isEnabled('inbox'));
 const showChat = computed(() => isAdmin.value && isEnabled('chat'));
@@ -150,11 +153,13 @@ function isActive(to: string, exact: boolean): boolean {
 					:aria-label="railInboxLabel(inbox)"
 					:aria-current="openMailboxId === inbox.mailboxId ? 'page' : undefined"
 					class="relative flex justify-center rounded-lg py-2 transition-colors"
-					:class="
+					:class="[
 						openMailboxId === inbox.mailboxId
 							? 'bg-(--surface-2-selected)'
-							: 'hover:bg-(--surface-2-hover)'
-					"
+							: 'hover:bg-(--surface-2-hover)',
+						{ 'pbx-drop-target': mailboxDrop.isOver(inbox.mailboxId) },
+					]"
+					v-on="mailboxDrop.mailbox(inbox.mailboxId)"
 				>
 					<InboxChip
 						:name="railLabels.get(inbox.mailboxId) ?? inbox.name.charAt(0)"
@@ -237,6 +242,8 @@ function isActive(to: string, exact: boolean): boolean {
 				:limit="perInbox"
 				:sort="sort"
 				:collapsed="isCollapsed(`inbox:${inbox.mailboxId}`)"
+				:drop="mailboxDrop.mailbox(inbox.mailboxId)"
+				:is-drop-target="mailboxDrop.isOver(inbox.mailboxId)"
 				@toggle="toggleGroup(`inbox:${inbox.mailboxId}`)"
 			/>
 			<ShellTeamInboxGroup

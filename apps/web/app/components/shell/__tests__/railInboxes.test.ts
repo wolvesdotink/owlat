@@ -4,13 +4,18 @@
  * or the rail cannot be scanned for "where is new mail", and two inboxes must
  * never look the same.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
 import InboxChip from '../../inbox/InboxChip.vue';
 import { resolveInboxIdentities, type AccessibleInboxRow } from '~/utils/inboxIdentity';
+
+// The inbox drop targets are their own test (railMailboxDrop.test.ts).
+vi.mock('~/composables/postbox/usePostboxMessageDrag', () => ({
+	usePostboxMailboxDropTargets: () => ({ isOver: () => false, mailbox: () => ({}) }),
+}));
 
 let route: { path: string; query: Record<string, unknown> };
 let activeMailboxId: ReturnType<typeof ref<string | null>>;

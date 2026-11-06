@@ -56,7 +56,6 @@ const shareImageMessage = defineModel<PostboxReaderMessage | null>('shareImageMe
 		:open="actions.moveDialogOpen.value"
 		:folders="actions.movableFolders.value"
 		:mailboxes="moves.targets.value"
-		:can-move="moves.canMove.value"
 		@update:open="actions.moveDialogOpen.value = $event"
 		@pick="actions.moveOpenMessageTo"
 		@pick-mailbox="moves.pick"

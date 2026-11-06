@@ -1,7 +1,8 @@
 /**
  * The client half of moving mail to another mailbox: which mailboxes are
  * offered, the one-time team inbox confirmation, the rows a move hides and
- * brings back, and the undo (move the copies back, or purge them).
+ * brings back, the undo (move the copies back, or purge them), and the wording
+ * while copies are still on their way to a connected account's provider.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
@@ -67,8 +68,6 @@ describe('usePostboxMailboxTransfer', () => {
 			['team', true, false],
 			['gmail', false, true],
 		]);
-		expect(transfer.isSourceConnected.value).toBe(false);
-		expect(usePostboxMailboxTransfer(() => 'gmail').isSourceConnected.value).toBe(true);
 	});
 
 	it('asks once before filing into a team inbox, and never for a personal one', async () => {
@@ -167,5 +166,59 @@ describe('usePostboxMailboxTransfer', () => {
 		expect(label).toBe('Copied to Support');
 		await inverse();
 		expect(purgeRun).toHaveBeenCalledWith({ messageIds: ['copy-a'] });
+	});
+
+	it('moves into a connected account, says it is under way, and undoes by moving back', async () => {
+		transferRun.mockResolvedValueOnce({
+			ok: true,
+			result: {
+				ok: true,
+				moved: [
+					{ messageId: id('copy-a'), sourceFolderId: folder('inbox') },
+					{ messageId: id('copy-b'), sourceFolderId: folder('inbox') },
+				],
+				skipped: [],
+				uploading: true,
+			},
+		});
+		const transfer = usePostboxMailboxTransfer(() => 'mine');
+
+		expect(await transfer.transfer([id('a'), id('b')], 'gmail' as Id<'mailboxes'>, 'move')).toBe(
+			true
+		);
+
+		expect([...hidden]).toEqual(['a', 'b']);
+		const [{ label, inverse }] = register.mock.calls[0]!;
+		expect(label).toBe('Moving 2 messages to Gmail');
+
+		transferRun.mockResolvedValueOnce({
+			ok: true,
+			result: { ok: true, moved: [], skipped: [], uploading: false },
+		});
+		await inverse();
+		expect(transferRun).toHaveBeenLastCalledWith({
+			messageIds: ['copy-a', 'copy-b'],
+			targetMailboxId: 'mine',
+			targetFolderId: 'inbox',
+			mode: 'move',
+		});
+		expect(hidden.size).toBe(0);
+	});
+
+	it('words a copy into a connected account as under way', async () => {
+		transferRun.mockResolvedValueOnce({
+			ok: true,
+			result: {
+				ok: true,
+				moved: [{ messageId: id('copy-a'), sourceFolderId: folder('inbox') }],
+				skipped: [],
+				uploading: true,
+			},
+		});
+		const transfer = usePostboxMailboxTransfer(() => 'mine');
+
+		await transfer.transfer([id('a')], 'gmail' as Id<'mailboxes'>, 'copy');
+
+		expect(register.mock.calls[0]![0].label).toBe('Copying to Gmail');
 	});
 });
