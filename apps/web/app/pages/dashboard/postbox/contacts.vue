@@ -38,6 +38,7 @@ const {
 	save,
 	remove,
 	restore,
+	resumeCardDav,
 } = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
 const composeNav = usePostboxComposeNav();
@@ -139,6 +140,15 @@ async function removeContact(c: MailContact) {
 	);
 }
 
+async function resumeCardDavUpdates(c: MailContact) {
+	const result = await resumeCardDav(c._id);
+	if (!result.ok) return;
+	showToast(
+		t('dashboard.postbox.contacts.resumedToast', { contact: c.displayName || c.email }),
+		'success'
+	);
+}
+
 function composeTo(email: string) {
 	if (!mailboxId.value) return;
 	void composeNav.open({ mailboxId: mailboxId.value, prefillTo: [email] });
@@ -152,9 +162,13 @@ const isTeamInbox = computed(() => currentMailbox.value?.scope === 'shared');
 
 // Where a row came from: a CardDAV sync, a vCard import, or mail and the
 // add-contact form. A synced row that a vCard import also touched counts as
-// synced, since the sync keeps it up to date.
-type ContactSource = 'carddav' | 'vcard' | 'mail';
+// synced, since the sync keeps it up to date. A synced row edited here no
+// longer follows its card until the person resumes it.
+type ContactSource = 'carddav' | 'carddavEdited' | 'vcard' | 'mail';
 function sourceOf(c: MailContact): ContactSource {
+	if (c.cardDavSource?.editedAt !== undefined && !c.cardDavSource.isRowCreatedBySync) {
+		return 'carddavEdited';
+	}
 	if (c.cardDavSource) return 'carddav';
 	if (c.importedAt !== undefined) return 'vcard';
 	return 'mail';
@@ -253,6 +267,17 @@ function sourceOf(c: MailContact): ContactSource {
 							><span v-if="c.phones?.[0]"> · {{ c.phones[0].value }}</span>
 						</p>
 					</div>
+					<!-- Always shown: it is the only way back to following the card. -->
+					<UiButton
+						v-if="sourceOf(c) === 'carddavEdited'"
+						variant="ghost"
+						size="sm"
+						type="button"
+						class="flex-shrink-0"
+						@click="resumeCardDavUpdates(c)"
+					>
+						{{ t('dashboard.postbox.contacts.resumeCardDav') }}
+					</UiButton>
 					<!-- Row actions stay reachable for keyboard and touch users: they
 					     only fade in on hover, never leave the tab order. -->
 					<div

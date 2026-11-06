@@ -359,15 +359,17 @@ export const upsert = postboxMutation({
 			const organization = args.organization ?? existing.organization;
 			const isEdited =
 				displayName !== existing.displayName || organization !== existing.organization;
+			const source = existing.cardDavSource;
 			await ctx.db.patch(existing._id, {
 				displayName,
 				organization,
 				useCount: existing.useCount + 1,
 				lastUsedAt: now,
 				// A person's edit makes a synced row theirs: later versions of the card
-				// merge into it (fill gaps, add numbers) instead of replacing its name.
-				...(isEdited && existing.cardDavSource?.isRowCreatedBySync
-					? { cardDavSource: { ...existing.cardDavSource, isRowCreatedBySync: false } }
+				// merge into it (fill gaps, add numbers) instead of replacing its name,
+				// until `contactsCardDav.resumeCardDavUpdates` hands it back.
+				...(isEdited && source?.isRowCreatedBySync
+					? { cardDavSource: { ...source, isRowCreatedBySync: false, editedAt: now } }
 					: {}),
 			});
 			return existing._id;

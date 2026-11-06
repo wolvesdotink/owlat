@@ -1,6 +1,7 @@
 /**
- * Personal address book (mailContacts) — list + upsert + remove, and the
- * restore that undoes a removal.
+ * Personal address book (mailContacts) — list + upsert + remove, the
+ * restore that undoes a removal, and handing an edited synced row back to its
+ * CardDAV card.
  * The autocomplete/recording backend already exists; this is the management UI's
  * data layer.
  */
@@ -24,6 +25,9 @@ export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	});
 	const restoreOp = useBackendOperation(api.mail.contactsUndo.restore, {
 		label: () => t('shared.postbox.usePostboxContacts.restoreContact'),
+	});
+	const resumeCardDavOp = useBackendOperation(api.mail.contactsCardDav.resumeCardDavUpdates, {
+		label: () => t('shared.postbox.usePostboxContacts.resumeCardDav'),
 	});
 
 	async function save(input: { email: string; displayName?: string; organization?: string }) {
@@ -70,5 +74,10 @@ export function usePostboxContacts(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		});
 	}
 
-	return { contacts, isLoading, error, refetch, save, remove, restore };
+	/** Let the CardDAV card replace a synced row the person edited again. */
+	async function resumeCardDav(contactId: Id<'mailContacts'>) {
+		return resumeCardDavOp.run({ contactId });
+	}
+
+	return { contacts, isLoading, error, refetch, save, remove, restore, resumeCardDav };
 }

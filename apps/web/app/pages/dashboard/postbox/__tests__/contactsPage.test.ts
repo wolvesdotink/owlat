@@ -24,12 +24,19 @@ type Contact = {
 	phones?: Array<{ value: string; type?: string }>;
 	importedAt?: number;
 	postalAddresses?: Array<{ street?: string }>;
-	cardDavSource?: { accountId: string; href: string; etag: string; isRowCreatedBySync: boolean };
+	cardDavSource?: {
+		accountId: string;
+		href: string;
+		etag: string;
+		isRowCreatedBySync: boolean;
+		editedAt?: number;
+	};
 };
 
 const save = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
 const remove = vi.fn(async () => ({ ok: true, result: { photoRemovalId: 'job-1' } }));
 const restore = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
+const resumeCardDav = vi.fn(async () => ({ ok: true, result: { isSyncScheduled: true } }));
 const composerOpen = vi.fn();
 const showToast = vi.fn();
 const contacts = ref<Contact[]>([]);
@@ -46,7 +53,14 @@ beforeAll(() => {
 			currentMailbox: ref({ _id: 'mailbox-1' }),
 			isLoading: ref(false),
 		}),
-		usePostboxContacts: () => ({ contacts, isLoading: ref(false), save, remove, restore }),
+		usePostboxContacts: () => ({
+			contacts,
+			isLoading: ref(false),
+			save,
+			remove,
+			restore,
+			resumeCardDav,
+		}),
 		usePostboxComposeNav: () => ({ open: composerOpen }),
 		useToast: () => ({ showToast }),
 	});
@@ -280,6 +294,40 @@ describe('postbox contacts page', () => {
 		options.action.onAction();
 		expect(restore).toHaveBeenCalledWith(ada, 'job-1');
 		expect(save).not.toHaveBeenCalled();
+	});
+
+	it('shows a synced contact edited here as not following CardDAV, and resumes it', async () => {
+		const link = { accountId: 'a1', href: 'https://dav/ada.vcf', etag: '"1"' };
+		contacts.value = [
+			{
+				_id: 'c5',
+				email: 'ada@example.com',
+				displayName: 'Ada (mine)',
+				cardDavSource: { ...link, isRowCreatedBySync: false, editedAt: 1 },
+			},
+			{
+				_id: 'c6',
+				email: 'linus@example.net',
+				displayName: 'Linus',
+				cardDavSource: { ...link, isRowCreatedBySync: true },
+			},
+		];
+		const w = mountPage();
+		const [edited, following] = w.findAll('li');
+		expect(edited!.text()).toContain('Edited here, not following CardDAV');
+		expect(following!.text()).toContain('CardDAV');
+		expect(following!.text()).not.toContain('Edited here');
+		expect(following!.text()).not.toContain('Resume CardDAV updates');
+
+		const resume = edited!.findAll('button').find((b) => b.text() === 'Resume CardDAV updates');
+		await resume!.trigger('click');
+		expect(resumeCardDav).toHaveBeenCalledWith('c5');
+		await vi.waitFor(() =>
+			expect(showToast).toHaveBeenCalledWith(
+				'Ada (mine) follows CardDAV again. The next sync brings back the card’s details.',
+				'success'
+			)
+		);
 	});
 
 	it('opens the composer prefilled to the contact', async () => {

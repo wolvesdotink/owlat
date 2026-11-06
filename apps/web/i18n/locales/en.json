@@ -12371,6 +12371,8 @@
 				"pageTitle": "Contacts — Owlat",
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
+				"resumeCardDav": "Resume CardDAV updates",
+				"resumedToast": "{contact} follows CardDAV again. The next sync brings back the card’s details.",
 				"searchPlaceholder": "Search contacts",
 				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
@@ -12393,6 +12395,8 @@
 				"source": {
 					"carddav": "CardDAV",
 					"carddavTooltip": "Synced from the connected CardDAV address book",
+					"carddavEdited": "Edited here, not following CardDAV",
+					"carddavEditedTooltip": "You changed this contact here, so changes on the CardDAV server no longer replace it.",
 					"vcard": "vCard",
 					"vcardTooltip": "Added or updated by a vCard import",
 					"mail": "Mail",
@@ -16525,7 +16529,8 @@
 				"saveContact": "Save contact",
 				"importContacts": "Import contacts",
 				"importPhotos": "Import contact pictures",
-				"restoreContact": "Restore contact"
+				"restoreContact": "Restore contact",
+				"resumeCardDav": "Resume CardDAV updates"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",

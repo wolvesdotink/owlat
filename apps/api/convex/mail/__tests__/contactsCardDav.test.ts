@@ -444,6 +444,59 @@ describe('CardDAV address-book sync', () => {
 		expect(ada.cardDavSource!.etag).toBe(server.cards.get(`${BOOK}ada.vcf`)!.etag);
 	});
 
+	it('resumes following the card after the person edited it', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		putCard('ada', ['FN:Ada Lovelace', 'EMAIL:ada@example.com', 'ORG:Analytical']);
+		await connect(t, mailboxId);
+		await t.mutation(api.mail.contacts.upsert, {
+			mailboxId,
+			email: 'ada@example.com',
+			displayName: 'Ada (mine)',
+		});
+		const edited = (await contactsOf(t, mailboxId)).get('ada@example.com')!;
+		expect(edited.cardDavSource).toMatchObject({ isRowCreatedBySync: false });
+		expect(edited.cardDavSource!.editedAt).toEqual(expect.any(Number));
+
+		const result = await t.mutation(api.mail.contactsCardDav.resumeCardDavUpdates, {
+			contactId: edited._id,
+		});
+		expect(result).toEqual({ isSyncScheduled: true });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		// The card did not change, yet the sync fetched it and put the server's name back.
+		const resumed = (await contactsOf(t, mailboxId)).get('ada@example.com')!;
+		expect(resumed.displayName).toBe('Ada Lovelace');
+		expect(resumed.cardDavSource).toEqual({
+			accountId: edited.cardDavSource!.accountId,
+			href: edited.cardDavSource!.href,
+			etag: server.cards.get(`${BOOK}ada.vcf`)!.etag,
+			isRowCreatedBySync: true,
+		});
+
+		putCard('ada', ['FN:Ada King', 'EMAIL:ada@example.com', 'ORG:Babbage']);
+		await sync(t, mailboxId);
+		const ada = (await contactsOf(t, mailboxId)).get('ada@example.com')!;
+		expect(ada.displayName).toBe('Ada King');
+		expect(ada.organization).toBe('Babbage');
+	});
+
+	it('refuses to resume CardDAV updates of a row no card is linked to', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });
+		const contactId = await t.mutation(api.mail.contacts.upsert, {
+			mailboxId,
+			email: 'grace@example.com',
+			displayName: 'Grace',
+		});
+
+		await expect(
+			t.mutation(api.mail.contactsCardDav.resumeCardDavUpdates, { contactId })
+		).rejects.toThrow(/not linked/);
+		expect((await contactsOf(t, mailboxId)).get('grace@example.com')!.cardDavSource).toBe(
+			undefined
+		);
+	});
+
 	it('runs one sync of an account at a time', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t, { userId: 'owner-user' });

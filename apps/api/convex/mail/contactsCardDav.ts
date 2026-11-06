@@ -25,7 +25,7 @@ import {
 	mailCardDavErrorCodeValidator,
 	mailContactImportEntryValidator,
 } from '../lib/validators/mailContacts';
-import { throwForbidden } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import { postboxMutation, postboxQuery } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { detachSyncedRow, writeAddressBookEntry } from './contactsMerge';
@@ -88,19 +88,68 @@ export const syncNow = postboxMutation({
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
 		const account = await accountOfMailbox(ctx, args.mailboxId);
 		if (!account) return { isScheduled: false };
-		const now = Date.now();
-		if (account.syncRequestedAt && now - account.syncRequestedAt < SYNC_NOW_COOLDOWN_MS) {
-			return { isScheduled: false };
+		return { isScheduled: await requestSync(ctx, account, Date.now()) };
+	},
+});
+
+/**
+ * Schedule a sync of the account now, unless one was asked for within the
+ * cooldown; the hourly pick-up then reads the book instead.
+ */
+async function requestSync(
+	ctx: MutationCtx,
+	account: Doc<'mailCardDavAccounts'>,
+	now: number
+): Promise<boolean> {
+	if (account.syncRequestedAt && now - account.syncRequestedAt < SYNC_NOW_COOLDOWN_MS) {
+		return false;
+	}
+	await ctx.db.patch(account._id, {
+		syncRequestedAt: now,
+		nextSyncAt: now + CARDDAV_SYNC_INTERVAL_MS,
+		updatedAt: now,
+	});
+	await ctx.scheduler.runAfter(0, internal.mail.contactsCardDavActions._sync, {
+		accountId: account._id,
+	});
+	return true;
+}
+
+/**
+ * Hand a synced row a person edited back to its card: the row is the sync's
+ * copy again, and the next sync fetches the card and replaces the row's
+ * details with the server's, even when the card has not changed since. Every
+ * row of the card gets the empty etag, because the sync keys a card's etag by
+ * href, not by row. A sync is asked for at once (within the "Sync now"
+ * cooldown, the hourly one does it).
+ */
+// authz: mailbox access via requireMailboxAccess; org membership via the postbox builder.
+export const resumeCardDavUpdates = postboxMutation({
+	args: { contactId: v.id('mailContacts') },
+	handler: async (ctx, args) => {
+		const row = await ctx.db.get(args.contactId);
+		if (!row) throwNotFound('Contact');
+		const owned = await requireMailboxAccess(ctx, row.mailboxId);
+		if (!owned.ok) throwForbidden('Not accessible');
+		const source = row.cardDavSource;
+		const account = source ? await ctx.db.get(source.accountId) : null;
+		if (!source || !account || account.mailboxId !== row.mailboxId) {
+			throwInvalidInput('This contact is not linked to a CardDAV card');
 		}
-		await ctx.db.patch(account._id, {
-			syncRequestedAt: now,
-			nextSyncAt: now + CARDDAV_SYNC_INTERVAL_MS,
-			updatedAt: now,
+		if (source.isRowCreatedBySync) return { isSyncScheduled: false };
+		await ctx.db.patch(row._id, {
+			cardDavSource: {
+				accountId: source.accountId,
+				href: source.href,
+				etag: '',
+				isRowCreatedBySync: true,
+			},
 		});
-		await ctx.scheduler.runAfter(0, internal.mail.contactsCardDavActions._sync, {
-			accountId: account._id,
-		});
-		return { isScheduled: true };
+		for (const other of await rowsOfCard(ctx, source.accountId, source.href)) {
+			if (other._id === row._id || !other.cardDavSource) continue;
+			await ctx.db.patch(other._id, { cardDavSource: { ...other.cardDavSource, etag: '' } });
+		}
+		return { isSyncScheduled: await requestSync(ctx, account, Date.now()) };
 	},
 });
 

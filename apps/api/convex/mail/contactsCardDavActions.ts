@@ -200,6 +200,15 @@ interface SyncPlan {
 	isTruncated: boolean;
 }
 
+/**
+ * Cards a row asked to have fetched again (`resumeCardDavUpdates` cleared the
+ * etag). The sync report names only cards the server changed, and an
+ * unchanged change tag skips the listing, so neither would fetch them.
+ */
+function refetchUrls(known: Map<string, string>): string[] {
+	return [...known].filter(([, etag]) => etag === '').map(([url]) => url);
+}
+
 /** The cards the book holds, by URL, with the etag each was written at. */
 async function loadKnownCards(
 	ctx: ActionCtx,
@@ -278,7 +287,7 @@ async function listingPlan(
 		})
 	);
 	const ctag = (tagStatus.responses[0] && propText(tagStatus.responses[0], 'getctag')) ?? undefined;
-	if (ctag && ctag === account.ctag) {
+	if (ctag && ctag === account.ctag && refetchUrls(known).length === 0) {
 		return { changed: [], removed: [], ctag, isTruncated: account.isTruncated === true };
 	}
 	const listing = listedCardEtags(
@@ -322,6 +331,9 @@ async function planSync(
 	// A full listing names every card, so a card it leaves out is gone.
 	if (report.isFullListing) {
 		for (const url of known.keys()) if (!latest.has(url)) removed.push(url);
+	} else {
+		// The multiget answers with the card's current etag, which the commit stores.
+		for (const url of refetchUrls(known)) if (!latest.has(url)) changed.push({ url, etag: '' });
 	}
 	return { changed, removed, syncToken: report.syncToken ?? undefined, isTruncated: false };
 }

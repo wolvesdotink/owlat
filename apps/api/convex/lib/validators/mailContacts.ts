@@ -38,12 +38,17 @@ export const mailContactImportEntryValidator = v.object({
  * a row the sync inserted from one it merged into (built from mail or a vCard
  * import first, or edited by a person since), which a removal of the card or a
  * disconnect leaves in place and a changed card only merges into.
+ *
+ * `editedAt` marks a sync copy a person edited, which stopped it following the
+ * card; `contactsCardDav.resumeCardDavUpdates` hands it back. An empty `etag`
+ * makes the next sync fetch the card whether or not the server changed it.
  */
 export const mailContactCardDavSourceValidator = v.object({
 	accountId: v.id('mailCardDavAccounts'),
 	href: v.string(),
 	etag: v.string(),
 	isRowCreatedBySync: v.boolean(),
+	editedAt: v.optional(v.number()),
 });
 
 /** How the last CardDAV sync of an account went. */
