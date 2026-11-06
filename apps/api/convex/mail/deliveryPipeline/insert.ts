@@ -283,6 +283,7 @@ export async function insertDeliveredMessage(
 			firstMessageAt: params.receivedAt,
 			latestSnippet: snippet,
 			latestFromAddress: fromAddress,
+			...(fromName ? { latestFromName: fromName } : {}),
 			latestSubject: params.subject,
 			folderRoles: [],
 			labelIds: [],
@@ -426,6 +427,8 @@ export async function insertDeliveredMessage(
 						lastMessageAt: params.receivedAt,
 						latestSnippet: snippet,
 						latestFromAddress: fromAddress,
+						// Cleared when the newest sender gives no name.
+						latestFromName: fromName,
 						latestSubject: params.subject,
 						latestMessageId: messageId,
 						// A just-delivered message is never snoozed (plan C8).

@@ -18,6 +18,7 @@ import { modules, seedMailbox, seedFolder, type SeededFolderRole } from './helpe
 import { enableFeatures } from '../../__tests__/factories';
 import { MARK_THREAD_READ_BATCH } from '../flagWrites';
 import { THREAD_READ_CAP } from '../mailbox/threadReads';
+import { rebuildThreadAggregates } from '../threadAggregates';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -421,6 +422,29 @@ describe('thread aggregates stay exact under deltas (plan 3.3)', () => {
 		expect(reply.flagSeen).toBe(false);
 		expect(thread.unreadCount).toBe(1);
 		await expectConsistent(t, mailboxId);
+	});
+});
+
+describe('rebuildThreadAggregates names the latest sender', () => {
+	it("takes the newest message's display name, and drops it when that message has none", async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, folders } = await seedBox(t);
+		const { threadId, messageIds } = await seedThread(t, mailboxId, folders, [{}, {}], 'named');
+		const [older, newest] = messageIds as [Id<'mailMessages'>, Id<'mailMessages'>];
+		const rebuilt = async () =>
+			await t.run(async (ctx) => {
+				await rebuildThreadAggregates(ctx, threadId);
+				return (await ctx.db.get(threadId))!;
+			});
+
+		await t.run(async (ctx) => {
+			await ctx.db.patch(older, { fromName: 'Ann Older' });
+			await ctx.db.patch(newest, { fromName: 'Ben Ortiz' });
+		});
+		expect(await rebuilt()).toMatchObject({ latestMessageId: newest, latestFromName: 'Ben Ortiz' });
+
+		await t.run((ctx) => ctx.db.patch(newest, { fromName: undefined }));
+		expect(await rebuilt()).not.toHaveProperty('latestFromName');
 	});
 });
 

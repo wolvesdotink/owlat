@@ -146,6 +146,7 @@ import type * as migrations_0067_empty_retired_summaries from '../migrations/006
 import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fact_keys.js';
 import type * as migrations_0069_restrict_captured_file_knowledge from '../migrations/0069_restrict_captured_file_knowledge.js';
 import type * as migrations_0070_reconcile_fenced_threads from '../migrations/0070_reconcile_fenced_threads.js';
+import type * as migrations_0071_backfill_thread_sender_names from '../migrations/0071_backfill_thread_sender_names.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -3809,6 +3810,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
 	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
 	'migrations/0070_reconcile_fenced_threads': typeof migrations_0070_reconcile_fenced_threads;
+	'migrations/0071_backfill_thread_sender_names': typeof migrations_0071_backfill_thread_sender_names;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
