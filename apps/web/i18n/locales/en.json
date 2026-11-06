@@ -1091,13 +1091,24 @@
 					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
 					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it.",
 					"aiOff": "{done} of {total} messages are in this brief. AI isn't available in this workspace, so the rest hasn't been read.",
-					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet."
+					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet.",
+					"aiProvider": "{done} of {total} messages are in this brief. The AI provider isn't accepting this workspace's API key, so the rest hasn't been read."
+				},
+				"partialMessage": {
+					"tooLong": "{done} of {total} messages are in this brief. The message from {from} on {date} is too long to summarise.",
+					"failed": "{done} of {total} messages are in this brief. The message from {from} on {date} couldn't be summarised.",
+					"undecryptable": "{done} of {total} messages are in this brief. The message from {from} on {date} couldn't be decrypted."
+				},
+				"noneMessage": {
+					"failed": "The message from {from} on {date} couldn't be summarised, so there is no brief. The conversation shows everything.",
+					"undecryptable": "The message from {from} on {date} couldn't be decrypted, so there is no brief."
 				},
 				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
 					"default": "There is no brief for this thread yet. The conversation shows everything.",
 					"aiOff": "AI isn't available in this workspace, so there is no brief. The conversation shows everything.",
 					"budget": "The AI budget for this period is used up, so there is no brief yet. The conversation shows everything.",
+					"aiProvider": "The AI provider isn't accepting this workspace's API key, so there is no brief. The conversation shows everything.",
 					"undecryptable": "This message could not be decrypted, so there is no brief.",
 					"ineligible": "Mail like this is not summarised, so there is no brief.",
 					"failed": "Reading this thread failed, so there is no brief.",
@@ -8814,6 +8825,11 @@
 						"reindexBody": "Vectors from two models can't be compared. After saving, keyword search finds older items until they are re-embedded: on its own with a local model, or when you start it under Embedding search with a hosted one. To change without that gap, use Rebuild with another model there, where the change allows it.",
 						"reindexTitle": "Changing the model takes older items out of vector search",
 						"title": "Embeddings"
+					},
+					"keyRefused": {
+						"body": "Since {since}, the provider has turned down every AI call, so thread briefs and the other AI features don't work. Save a working key below to bring them back.",
+						"lastSeen": "Last refused {time}.",
+						"title": "The AI provider is refusing this workspace's API key"
 					},
 					"language": {
 						"apiKeyHelp": "Sent once over TLS, encrypted at rest, and never shown again.",
@@ -18555,7 +18571,9 @@
 			"waitingSince": "Waiting since {time}",
 			"changeCount": "{count} change | {count} changes",
 			"nothingWaiting": "Nothing is waiting to be saved.",
-			"allSaved": "All changes saved"
+			"allSaved": "All changes saved",
+			"aiKeyRefused": "The AI provider is refusing this workspace's API key, so AI features don't work.",
+			"aiSettings": "AI settings"
 		},
 		"appUpdated": {
 			"title": "Owlat was updated",

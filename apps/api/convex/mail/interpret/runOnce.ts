@@ -48,6 +48,7 @@ import {
 import type { InterpretGateVerdict } from './gate';
 import { runGist } from './gist';
 import { isRetryDue } from './retry';
+import { noteProviderKey } from './runProviderKey';
 import { guardAllowsInterpretation } from '../../agent/steps/security_scan/guard';
 
 type Loaded = NonNullable<Awaited<ReturnType<typeof loadState>>>;
@@ -433,6 +434,7 @@ export async function runOnce(
 			...attempt,
 			...(verifyRefusal ? { budgetRefusal: verifyRefusal } : {}),
 		});
+		if (loaded.isProviderKeyRefused) await noteProviderKey(ctx, 'accepted');
 		return finish(outcome, {
 			projection: needsReplyProjectionOf(result, loaded.ownerLocale),
 			...(runErrorCode ? { errorCode: runErrorCode } : {}),
@@ -443,6 +445,7 @@ export async function runOnce(
 		if (admissionRefusalOf(error) && countOnRefusal)
 			return await countOnRefusal().catch(() => ({ status: 'gone' as const }));
 		const { retryCount: attempts, ...failure } = runFailureOf(error, retryCount);
+		if (failure.errorCode === 'provider_auth') await noteProviderKey(ctx, 'refused');
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
 			'[interpret] run failed:',

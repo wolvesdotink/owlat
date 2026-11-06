@@ -254,6 +254,81 @@ describe('briefBanners', () => {
 		).not.toHaveProperty('offersAiSettings');
 	});
 
+	it('says a rejected provider key quietly, as the state of the instance, pointing to AI settings', () => {
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'none',
+					gap: { interpretedMessages: 0, totalMessages: 2, reason: 'aiProvider' },
+				})
+			)
+		).toEqual([
+			{
+				key: 'none',
+				tone: 'neutral',
+				text: 'components.brief.incomplete.none.aiProvider',
+				offersConversation: true,
+				offersAiSettings: true,
+			},
+		]);
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'partial',
+					gap: { interpretedMessages: 1, totalMessages: 3, reason: 'aiProvider' },
+				})
+			)
+		).toMatchObject([
+			{
+				key: 'instance',
+				tone: 'neutral',
+				text: { key: 'components.brief.incomplete.partialReason.aiProvider' },
+				offersAiSettings: true,
+			},
+		]);
+	});
+
+	it('names the message a per-thread gap left out, by sender and date', () => {
+		const at = Date.UTC(2026, 10, 2, 9, 0);
+		const formatDate = (value: number) => `day ${value}`;
+		for (const reason of ['tooLong', 'failed', 'undecryptable'] as const) {
+			expect(
+				briefBanners(
+					briefView({
+						completeness: 'partial',
+						gap: {
+							interpretedMessages: 1,
+							totalMessages: 2,
+							reason,
+							message: { from: 'Mia Nguyen', at },
+						},
+					}),
+					{ formatDate }
+				)[0]?.text
+			).toEqual({
+				key: `components.brief.incomplete.partialMessage.${reason}`,
+				params: { done: 1, total: 2, from: 'Mia Nguyen', date: `day ${at}` },
+			});
+		}
+		expect(
+			briefBanners(
+				briefView({
+					completeness: 'none',
+					gap: {
+						interpretedMessages: 0,
+						totalMessages: 1,
+						reason: 'failed',
+						message: { from: 'Mia Nguyen', at },
+					},
+				}),
+				{ formatDate }
+			)[0]?.text
+		).toEqual({
+			key: 'components.brief.incomplete.noneMessage.failed',
+			params: { from: 'Mia Nguyen', date: `day ${at}` },
+		});
+	});
+
 	it('notes the signed scope, and nothing for a complete brief', () => {
 		expect(briefBanners(briefView())).toEqual([]);
 		expect(briefBanners(briefView(), { isSigned: true }).map((b) => b.key)).toEqual(['signed']);

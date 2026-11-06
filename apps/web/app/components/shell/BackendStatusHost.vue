@@ -1,14 +1,17 @@
 <script setup lang="ts">
 /**
  * Mounted once, beside the global toast host: runs the backend status notices
- * (`useBackendStatusNotices`) and owns the slow-save Details dialog.
+ * (`useBackendStatusNotices`), the admin notice of a refused AI provider key
+ * (`useAiKeyRefusedNotice`), and owns the slow-save Details dialog.
  */
 import { useBackendStatusNotices } from '~/composables/useBackendStatusNotices';
+import { useAiKeyRefusedNotice } from '~/composables/useAiKeyRefusedNotice';
 import ShellConnectionIndicator from './ConnectionIndicator.vue';
 
 const { t } = useI18n();
 const { formatTime } = useFormat();
 const { detailsOpen, groups, phase, hint } = useBackendStatusNotices();
+useAiKeyRefusedNotice();
 </script>
 
 <template>

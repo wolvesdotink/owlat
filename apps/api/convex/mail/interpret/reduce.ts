@@ -202,6 +202,9 @@ async function applyLeased(
 		// Another refused hold is a new deferral: written, so its backoff moves on.
 		existing.budgetDeferrals === args.budgetDeferrals &&
 		existing.status === args.status &&
+		// A different refusal (AI off, then a refused key) changes what the
+		// thread says, so it is a new outcome.
+		existing.errorCode === args.errorCode &&
 		existing.mode === mode &&
 		existing.isCounted !== false &&
 		(!args.result || existing.isCurrent === true)

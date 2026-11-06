@@ -38,6 +38,7 @@ import { projectBrief } from './briefProject';
 import { countThreadOpen } from '../senders/opens';
 import { readResult } from './load';
 import {
+	gapMessageOf,
 	gapOf,
 	readFacts,
 	readInterpretations,
@@ -144,12 +145,14 @@ export const get = publicQuery({
 				: undefined;
 
 		const history = historyGapOf(brief);
-		const gap = gapOf(interpretations, {
+		const { source: gapSource, ...gapCounts } = gapOf(interpretations, {
 			totalMessages,
 			isPending: brief?.completeness === 'pending',
 			...(brief?.sourceCounts ? { sourceCounts: brief.sourceCounts } : {}),
 			suppressed: latest.suppressed,
 		});
+		const gapMessage = gapSource ? await gapMessageOf(ctx, gapSource) : undefined;
+		const gap = { ...gapCounts, ...(gapMessage ? { message: gapMessage } : {}) };
 		if (isFenced) {
 			return projectBrief({
 				threadRef: ref,

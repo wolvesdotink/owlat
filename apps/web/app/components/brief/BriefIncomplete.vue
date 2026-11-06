@@ -3,17 +3,19 @@
  * Says what the Overview does NOT know. The worst failure is a brief
  * that reads as reassuring when it should not, so every gap is said out loud:
  *
- *  - partly read: how many messages are in the overview, why the rest is
- *    not, and the way to the original;
+ *  - partly read: how many messages are in the overview, which message is
+ *    not and why, and the way to the original;
  *  - still reading, or no overview at all (and why: AI off, undecryptable,
  *    not eligible, failed);
- *  - AI the instance cannot run (off, no provider, budget used up): a quiet
- *    note, the same on every thread, with the way to AI settings for admins;
+ *  - AI the instance cannot run (off, no provider, the key refused, budget
+ *    used up): a quiet note, the same on every thread, with the way to AI
+ *    settings for admins;
  *  - short mail and security mail, shown as written;
  *  - signed mail: only the signed part was read.
  */
 import { briefBanners, type BriefGapInput } from '~/utils/threadBriefBanners';
 import { useLocalized } from '~/composables/useLocalized';
+import { formatDate } from '~/utils/formatters';
 import {
 	CircleInfoIcon,
 	FileTextIcon,
@@ -34,7 +36,9 @@ const emit = defineEmits<{ 'open-conversation': [] }>();
 const { t } = useI18n();
 const localized = useLocalized();
 const { isAdmin } = usePermissions();
-const banners = computed(() => briefBanners(props.brief, { isSigned: props.isSigned }));
+const banners = computed(() =>
+	briefBanners(props.brief, { isSigned: props.isSigned, formatDate: (at) => formatDate(at) })
+);
 
 const TONE: Record<string, string> = {
 	warn: 'bg-warning-subtle text-warning',
