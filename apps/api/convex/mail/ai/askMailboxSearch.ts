@@ -9,8 +9,8 @@
  *     returns mailboxes reached through a membership row, and a personal
  *     mailbox's only legitimate row is its owner's, so any other is ignored;
  *   - a team inbox only for its members (the membership rows), and only when
- *     the caller allows team inbox mail at all (the assistant drops it for an
- *     audience that may not read it);
+ *     the caller allows team inbox mail at all;
+ *   - mailboxes of the reader's active organization only;
  *   - active mailboxes only, and never Spam or Trash, whose text is the most
  *     likely to be written by an attacker.
  *
@@ -37,8 +37,14 @@ import {
 	type AskMailboxSource,
 } from './askMailboxText';
 
-/** Matches read per mailbox before Spam and Trash are dropped. */
-const SCAN_PER_MAILBOX = ASK_MAILBOX_MAX_MESSAGES * 2;
+/**
+ * Matches read per mailbox before Spam and Trash are dropped. The search index
+ * can filter a folder in but not out, so a window the size of the answer
+ * would fill with junk before an Inbox match is reached. The over-fetch stays
+ * bounded: a fan-out reads at most ten mailboxes, and 640 rows of about 10 KB
+ * (the body excerpt) is well under what one query may read.
+ */
+const SCAN_PER_MAILBOX = ASK_MAILBOX_MAX_MESSAGES * 8;
 
 interface Reader {
 	userId: string;
@@ -54,6 +60,9 @@ async function askableMailboxes(
 	const reachable = await loadAccessibleMailboxes(ctx, reader.userId, reader.organizationId);
 	return reachable.filter((mailbox) => {
 		if (mailbox.status !== 'active') return false;
+		// `loadAccessibleMailboxes` checks the organization only for membership
+		// rows; a mailbox the user owns in another organization is not this turn's.
+		if (mailbox.organizationId !== reader.organizationId) return false;
 		if (mailbox.scope === 'shared') return includeTeamInboxes;
 		return mailbox.userId === reader.userId;
 	});

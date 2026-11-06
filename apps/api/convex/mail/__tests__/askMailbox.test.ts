@@ -203,6 +203,55 @@ describe('askMailbox: mailbox scope', () => {
 		expect(result.citations.map((c) => c.mailboxId)).toEqual([own]);
 	});
 
+	it('never reads a mailbox the user owns in another organization', async () => {
+		const elsewhere = await mailbox({
+			userId: 'user-A',
+			organizationId: 'org-2',
+			address: 'a@elsewhere.test',
+		});
+		await seedMessage(t, elsewhere, {
+			subject: 'Other org Lisbon trip',
+			snippet: 'Other org Lisbon flight at 6:00',
+		});
+		const own = await mailbox({ userId: 'user-A', address: 'a@owlat.test' });
+		await seedMessage(t, own, {
+			subject: 'Booking confirmed',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(llm.prompts[0]!.prompt).not.toContain('Other org');
+		expect(result.citations.map((c) => c.mailboxId)).toEqual([own]);
+	});
+
+	it('still finds an Inbox match behind more Spam and Trash matches than it cites', async () => {
+		const own = await mailbox({ userId: 'user-A' });
+		await seedFolder(t, own, 'spam');
+		await seedFolder(t, own, 'trash');
+		// The test search index returns hits in insertion order, so the Inbox
+		// message, seeded last, ranks behind every junk match.
+		for (let i = 0; i < 40; i++) {
+			await seedMessage(t, own, {
+				role: i % 2 === 0 ? 'spam' : 'trash',
+				subject: `Cheap Lisbon flight ${i}`,
+				snippet: `Lisbon flight deal ${i}`,
+				receivedAt: Date.parse('2026-10-02T09:00:00Z') + i,
+			});
+		}
+		const inbox = await seedMessage(t, own, {
+			subject: 'Booking confirmed',
+			snippet: 'Your Lisbon flight leaves at 7:40',
+			receivedAt: Date.parse('2026-10-01T09:00:00Z'),
+		});
+
+		const result = await ask('When does my flight to Lisbon leave?');
+
+		expect(llm.prompts).toHaveLength(1);
+		expect(llm.prompts[0]!.prompt).not.toContain('Cheap');
+		expect(result.citations.map((c) => c.messageId)).toEqual([inbox]);
+	});
+
 	it('calls no model, resolves none and cites nothing when no message matches', async () => {
 		const own = await mailbox({ userId: 'user-A' });
 		await seedMessage(t, own, { subject: 'Lunch', snippet: 'Pizza on Thursday' });

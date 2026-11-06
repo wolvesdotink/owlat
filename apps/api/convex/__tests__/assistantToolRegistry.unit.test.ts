@@ -322,7 +322,7 @@ describe('buildAssistantTools', () => {
 		}
 	});
 
-	it('searches only the mail of the turn’s own user, and team inboxes only for a reader', async () => {
+	it('searches the mail of the turn’s own user, team inboxes included for any member', async () => {
 		const SEARCH = 'mail/ai/askMailboxSearch:searchForReader';
 		for (const canReadInbox of [false, true]) {
 			const runQuery = vi.fn(async (ref: unknown) =>
@@ -343,7 +343,8 @@ describe('buildAssistantTools', () => {
 				question: 'When does my flight to Lisbon leave?',
 				userId: 'user-B',
 				organizationId: 'org-1',
-				includeTeamInboxes: canReadInbox,
+				// Membership is checked by the search, not by the Team Inbox role.
+				includeTeamInboxes: true,
 			});
 			// Nothing matched: no model call, and the model is told so.
 			expect(result).toMatchObject({ answer: '', citations: [], answeredFromHeadersOnly: true });

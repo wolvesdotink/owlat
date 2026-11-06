@@ -155,8 +155,11 @@ function buildAskMailbox(ctx: ActionCtx, audience: AssistantAudience, root?: Llm
 				question: trimmed,
 				userId: reader.userId,
 				organizationId: reader.organizationId,
-				// Team inbox mail only for an audience that may read the Team Inbox.
-				includeTeamInboxes: audience.canReadInbox,
+				// A mail reader is set only on the user's own turn, where their team
+				// inboxes are theirs to ask about; the search admits a team inbox only
+				// through its membership rows, which is the Postbox read rule. The Team
+				// Inbox role (`canReadInbox`) governs a different feature.
+				includeTeamInboxes: true,
 			});
 			const result = await answerFromMail(ctx, {
 				question: trimmed,
