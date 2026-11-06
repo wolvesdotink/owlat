@@ -4,24 +4,17 @@
  *
  * The wizard's provider picker ({@link MAIL_PROVIDERS}) offers a handful of
  * one-click providers, but for the generic IMAP path the user types a bare
- * address. This module derives the same preset shape straight from the email
- * DOMAIN so the server fields can be pre-filled as the address is typed:
+ * address. `presetForEmail` matches its domain against a small, curated table
+ * of the big consumer providers (Gmail, Outlook.com, iCloud, Fastmail, Yahoo):
+ * instant, offline, no network.
  *
- *  - `presetForEmail` matches the domain against a small, curated table of the
- *    big consumer providers (Gmail, Outlook.com, iCloud, Fastmail) — instant,
- *    offline, no network.
- *  - `autodiscover` is an optional FAIL-SOFT fallback for unknown domains: it
- *    queries the Thunderbird autoconfig service (used by every mainstream mail
- *    client) over HTTPS and parses the returned IMAP/SMTP host/port/socketType.
- *
- * Fail-soft by design, modelled on `spfCoexistence.ts`: any network / parse /
- * timeout error resolves to `null` (the user just fills the fields manually) —
- * a lookup hiccup must never throw into the settings UI. Request hosts are
- * fixed; the domain is only ever interpolated as an encoded path/query value.
+ * Any other domain is looked up by the backend
+ * (`mail/external/autodiscoverActions.ts`), never from here: the web app's CSP
+ * lets the browser reach no third-party endpoint, so a browser-side fetch of
+ * an autoconfig document would never answer.
  */
 
 import { MailIcon, ServerIcon, type IconComponent } from '@coolicons/vue';
-import { fetchTextSoft, parseAutoconfigXml } from '~/lib/mailAutoconfig';
 
 /** The subset of connect-form server fields a preset fills. */
 export type MailPreset = {
@@ -397,45 +390,4 @@ export function providerForImapHost(host: string | null | undefined): MailProvid
 /** The IMAP/SMTP preset for a provider id, or `null` (generic IMAP / unknown). */
 export function providerPreset(id: string): MailPreset | null {
 	return providerById(id)?.preset ?? null;
-}
-
-/**
- * FAIL-SOFT autodiscover for domains not in the curated table. Tries the
- * Thunderbird autoconfig service, then the domain's own well-known autoconfig
- * endpoint, and parses the first valid response. Returns `null` on ANY error
- * (network, timeout, malformed XML, missing fields) — callers treat that as
- * "no suggestion, fill it in manually".
- *
- * @param email      the address whose domain to look up
- * @param timeoutMs  per-request timeout (default 3s)
- */
-export async function autodiscover(email: string, timeoutMs = 3000): Promise<MailPreset | null> {
-	const domain = domainOfEmail(email);
-	if (!domain) return null;
-
-	const encoded = encodeURIComponent(domain);
-	const endpoints = [
-		`https://autoconfig.thunderbird.net/v1.1/${encoded}`,
-		`https://autoconfig.${domain}/mail/config-v1.1.xml?emailaddress=${encodeURIComponent(email)}`,
-	];
-
-	for (const url of endpoints) {
-		const xml = await fetchTextSoft(url, timeoutMs);
-		if (!xml) continue;
-		const preset = parseAutoconfigXml(xml);
-		if (preset) return preset;
-	}
-	return null;
-}
-
-/**
- * Resolve a preset for an email address: the curated table first (instant),
- * falling back to fail-soft {@link autodiscover} for unknown domains. Always
- * resolves — `null` when nothing could be determined.
- */
-export async function resolveMailPreset(
-	email: string,
-	timeoutMs = 3000
-): Promise<MailPreset | null> {
-	return presetForEmail(email) ?? (await autodiscover(email, timeoutMs));
 }
