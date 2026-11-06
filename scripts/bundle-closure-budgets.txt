@@ -198,6 +198,7 @@ deferred 3 ../../../packages/ui/i18n/locales/de.json
 deferred 3 ../../desktop/src/autostart.ts
 deferred 7 ../../desktop/src/compose.ts
 deferred 4 ../../desktop/src/deeplink.ts
+deferred 3 ../../desktop/src/dictation.ts
 deferred 9 ../../desktop/src/dialog.ts
 deferred 4 ../../desktop/src/keychain.ts
 deferred 4 ../../desktop/src/menu.ts

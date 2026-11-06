@@ -1,21 +1,25 @@
 /**
- * Speech to text through the Web Speech API, one finished phrase at a time.
+ * Speech to text, one finished phrase at a time.
  *
- * Owlat never receives or stores audio: the engine belongs to the browser (or
- * the desktop app's webview) and only its text reaches the page. Where the
- * engine can run on this device for the language (Chromium's `processLocally`)
- * it is asked to, and `onDevice` says so. Otherwise the browser's own speech
- * service hears the audio, which for most browsers means a cloud service, and
- * the UI has to say that.
+ * Owlat never receives or stores audio: the engine belongs to the browser or
+ * the desktop app, and only its text reaches the page. In a browser it is the
+ * Web Speech API. Where that engine can run on this device for the language
+ * (Chromium's `processLocally`) it is asked to, and `onDevice` says so.
+ * Otherwise the browser's own speech service hears the audio, which for most
+ * browsers means a cloud service, and the UI has to say that.
  *
  * The desktop app offers dictation only on-device. Its macOS webview has no
- * on-device mode and the app declares no microphone or speech-recognition
- * usage, which macOS requires before it lets an app listen.
+ * on-device mode, so there the shell's own engine (the Speech framework with
+ * on-device recognition required, `@owlat/desktop/src/dictation`) does the
+ * work. Where the shell has no engine for the language, a webview engine that
+ * can run on-device is used, and otherwise the mic stays hidden.
  *
  * Hidden, not broken: `available` stays false until a mounted check finds an
  * engine (never during SSR, so server and client markup agree).
  */
 import { onMounted, onScopeDispose, readonly, ref } from 'vue';
+import type * as DictationBridge from '@owlat/desktop/src/dictation';
+import type { NativeDictationEvent } from '@owlat/desktop/src/dictation';
 import { useDesktopContext } from '~/composables/useDesktopContext';
 
 interface RecognitionAlternative {
@@ -59,6 +63,31 @@ const ERRORS: Record<string, DictationError> = {
 	'language-not-supported': 'language',
 };
 
+const NATIVE_ERRORS: Record<string, DictationError> = {
+	blocked: 'blocked',
+	'no-speech': 'no-speech',
+	language: 'language',
+};
+
+type NativeBridge = typeof DictationBridge;
+
+/** The desktop shell's engine, if it can dictate `lang` on-device. An older shell has no such command. */
+async function nativeOnDevice(lang: string): Promise<NativeBridge | null> {
+	try {
+		const bridge = await import('@owlat/desktop/src/dictation');
+		return (await bridge.dictationAvailable(lang)) === true ? bridge : null;
+	} catch {
+		return null;
+	}
+}
+
+/** One run of the shell's engine; `id` arrives once the shell has started it. */
+interface NativeSession {
+	id: number | null;
+	/** Cancelled before the shell said which session it started. */
+	cancelled: boolean;
+}
+
 function recognitionConstructor(): RecognitionConstructor | null {
 	if (typeof window === 'undefined') return null;
 	const w = window as unknown as {
@@ -90,6 +119,9 @@ export function useSpeechDictation(opts: {
 	const interim = ref('');
 	const error = ref<DictationError | null>(null);
 	let recognition: Recognition | null = null;
+	/** Set when the desktop shell's engine is the one in use. */
+	let native: NativeBridge | null = null;
+	let session: NativeSession | null = null;
 	let disposed = false;
 
 	// The language people speak most often matches their browser's, not the
@@ -97,15 +129,69 @@ export function useSpeechDictation(opts: {
 	const lang = () => (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
 
 	onMounted(async () => {
+		const shell = isDesktop.value ? await nativeOnDevice(lang()) : null;
+		if (disposed) return;
+		if (shell) {
+			native = shell;
+			onDevice.value = true;
+			available.value = true;
+			return;
+		}
 		const Ctor = recognitionConstructor();
-		if (!Ctor) return;
+		if (!Ctor || disposed) return;
 		const local = await canRunOnDevice(Ctor, lang());
 		if (disposed) return;
 		onDevice.value = local;
 		available.value = local || !isDesktop.value;
 	});
 
+	function finishNative(run: NativeSession) {
+		if (run !== session) return;
+		session = null;
+		listening.value = false;
+		interim.value = '';
+	}
+
+	function heardNative(run: NativeSession, event: NativeDictationEvent) {
+		if (run !== session) return;
+		if (event.kind === 'partial') interim.value = event.text.trim();
+		else if (event.kind === 'phrase') {
+			interim.value = '';
+			if (event.text.trim()) opts.onPhrase(event.text);
+		} else if (event.kind === 'error') error.value = NATIVE_ERRORS[event.reason] ?? 'failed';
+		else finishNative(run);
+	}
+
+	function startNative(shell: NativeBridge) {
+		if (session) return;
+		const run: NativeSession = { id: null, cancelled: false };
+		session = run;
+		error.value = null;
+		interim.value = '';
+		listening.value = true;
+		shell
+			.dictationStart(lang(), (event) => heardNative(run, event))
+			.then((id) => {
+				run.id = id;
+				if (run.cancelled) cancelNativeRun(shell, id);
+			})
+			.catch(() => {
+				if (run !== session) return;
+				error.value = 'failed';
+				finishNative(run);
+			});
+	}
+
+	function cancelNativeRun(shell: NativeBridge, id: number) {
+		// A rejection means the shell had already ended it.
+		shell.dictationCancel(id).catch(() => {});
+	}
+
 	function start() {
+		if (native) {
+			startNative(native);
+			return;
+		}
 		const Ctor = recognitionConstructor();
 		if (!Ctor || !available.value || recognition) return;
 		const rec = new Ctor();
@@ -152,11 +238,25 @@ export function useSpeechDictation(opts: {
 
 	/** Stop listening; the phrase being heard still finishes and goes in. */
 	function stop() {
+		const run = session;
+		if (native && run) {
+			// Not started yet: nothing was heard, so stopping is cancelling.
+			if (run.id === null) cancel();
+			else native.dictationStop(run.id).catch(() => finishNative(run));
+			return;
+		}
 		recognition?.stop();
 	}
 
 	/** Stop listening and drop the phrase being heard. Phrases already in stay. */
 	function cancel() {
+		const run = session;
+		if (native && run) {
+			finishNative(run);
+			run.cancelled = true;
+			if (run.id !== null) cancelNativeRun(native, run.id);
+			return;
+		}
 		const rec = recognition;
 		if (!rec) return;
 		recognition = null;
@@ -165,8 +265,23 @@ export function useSpeechDictation(opts: {
 		rec.abort();
 	}
 
+	// Nobody dictates to a page they cannot see, and the mic must not keep
+	// listening once its indicator is out of sight: a minimized window, a hidden
+	// app, a background tab. The desktop shell ends its session for these too;
+	// this covers any way out of sight it does not hear about. A field hidden
+	// inside a page that is still shown is `DictationButton`'s to notice.
+	function onVisibilityChange() {
+		if (document.hidden) cancel();
+	}
+	if (typeof document !== 'undefined') {
+		document.addEventListener('visibilitychange', onVisibilityChange);
+	}
+
 	onScopeDispose(() => {
 		disposed = true;
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+		}
 		cancel();
 	});
 

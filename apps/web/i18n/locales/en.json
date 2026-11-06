@@ -3543,6 +3543,7 @@
 			},
 			"errors": {
 				"blocked": "Dictation can't use the microphone. Allow microphone access for this site and try again.",
+				"blockedDesktop": "Dictation can't use the microphone or speech recognition. Allow both for Owlat in your system's privacy settings and try again.",
 				"noSpeech": "Didn't catch anything. Press the microphone and speak again.",
 				"network": "The speech service couldn't be reached. Check your connection and try again.",
 				"language": "Dictation doesn't support your browser's language here.",
