@@ -16,6 +16,7 @@ compile_error!(
     "the `e2e-fixture` feature is for the debug fixture builds of scripts/desktop-smoke.ts only"
 );
 
+mod dictation;
 #[cfg(feature = "e2e-fixture")]
 mod e2e;
 mod files;
@@ -134,7 +135,18 @@ fn main() {
             updater::updater_install,
             updater::updater_restart,
             updater::updater_notify_ready,
+            dictation::dictation_available,
+            dictation::dictation_start,
+            dictation::dictation_stop,
+            dictation::dictation_cancel,
         ])
+        // A new document in a webview (a reload, a workspace switch) ends the
+        // dictation session the old one started.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                dictation::release(webview.label());
+            }
+        })
         // Capture OS-level file drops in Rust so `read_authorized_file` will
         // serve their bytes. This runs synchronously in the event loop before
         // the webview's drag-drop event is delivered, so by the time JS invokes
@@ -151,6 +163,7 @@ fn main() {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 window::hide_main_on_close(window, api);
             }
+            tauri::WindowEvent::Destroyed => dictation::release(window.label()),
             _ => {}
         })
         .setup(|app| {

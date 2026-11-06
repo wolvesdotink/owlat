@@ -14,6 +14,7 @@
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import { useToast } from '@owlat/ui/composables/useToast';
 import { useAnnounce } from '~/composables/useAnnounce';
+import { useDesktopContext } from '~/composables/useDesktopContext';
 import { useSpeechDictation, type DictationError } from '~/composables/useSpeechDictation';
 import { insertDictated, type DictationTarget } from '~/utils/dictation';
 import { MicrophoneIcon } from '@coolicons/vue';
@@ -31,6 +32,7 @@ const props = withDefaults(
 );
 
 const { t } = useI18n();
+const { isDesktop } = useDesktopContext();
 const { announce } = useAnnounce();
 const { showToast } = useToast();
 
@@ -65,8 +67,12 @@ watch(listening, (on) =>
 	)
 );
 
+// The desktop app asks the OS for the microphone and speech recognition, not
+// a site permission.
 const ERROR_KEYS: Record<DictationError, string> = {
-	blocked: 'components.dictationButton.errors.blocked',
+	blocked: isDesktop.value
+		? 'components.dictationButton.errors.blockedDesktop'
+		: 'components.dictationButton.errors.blocked',
 	'no-speech': 'components.dictationButton.errors.noSpeech',
 	network: 'components.dictationButton.errors.network',
 	language: 'components.dictationButton.errors.language',

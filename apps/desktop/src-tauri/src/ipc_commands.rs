@@ -11,7 +11,8 @@
 // reading these three lists as plain string-literal arrays.
 
 /// Commands every app window uses (`main` and `compose`): notifications, the
-/// tray icon, the keychain, user-picked files, window chrome, zoom and updates.
+/// tray icon, the keychain, user-picked files, window chrome, zoom, updates and
+/// dictation.
 pub const WINDOW_COMMANDS: &[&str] = &[
     "update_unread_badge",
     "send_native_notification",
@@ -35,6 +36,10 @@ pub const WINDOW_COMMANDS: &[&str] = &[
     "updater_install",
     "updater_restart",
     "updater_notify_ready",
+    "dictation_available",
+    "dictation_start",
+    "dictation_stop",
+    "dictation_cancel",
 ];
 
 /// The server wizard's SSH transport (ssh.rs). Granted to the `main` window

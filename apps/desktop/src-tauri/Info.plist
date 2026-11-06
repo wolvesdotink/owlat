@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the bundle's Info.plist by the Tauri bundler (and embedded in
+     `tauri dev` builds). macOS refuses microphone and speech-recognition access
+     to an app that declares no reason for it. -->
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Owlat listens to the microphone while you dictate, and only then.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Owlat turns your dictation into text on this Mac. The audio never leaves it.</string>
+</dict>
+</plist>
