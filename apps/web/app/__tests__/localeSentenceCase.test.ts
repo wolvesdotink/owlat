@@ -59,6 +59,7 @@ const PROPER_NOUNS = new Set([
 	'Beijing',
 	'Claude',
 	'Convex',
+	'Dock', // the macOS Dock
 	'Docker',
 	'Emailit',
 	'Gemini',

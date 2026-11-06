@@ -24,7 +24,7 @@ import {
 import { pluginFeedbackWebhook } from './webhooks/pluginFeedbackHttp';
 import { handleMailWebhook } from './mail/webhookHttp';
 import { handleInboundWebhook } from './inbox/inboundWebhookHttp';
-import { handleRawMessageUpload } from './mail/external/rawUploadHttp';
+import { handleRawMessageDownload, handleRawMessageUpload } from './mail/external/rawUploadHttp';
 import { serveSealedBlob } from './mail/sealedBlobHttp';
 import { serveAttachmentShare } from './mail/attachmentShareHttp';
 import { handleVerifyCredential } from './mail/authHttp';
@@ -246,6 +246,14 @@ http.route({
 	path: '/mail-sync/raw-message',
 	method: 'POST',
 	handler: handleRawMessageUpload,
+});
+
+// GET /mail-sync/raw-message?opId= - the raw `.eml` an `append` write-back
+// uploads to the provider (see mail/external/rawUploadHttp.ts).
+http.route({
+	path: '/mail-sync/raw-message',
+	method: 'GET',
+	handler: handleRawMessageDownload,
 });
 
 // POST /webhooks/mta-verify-credential - app-password verification for MTA SMTP submission

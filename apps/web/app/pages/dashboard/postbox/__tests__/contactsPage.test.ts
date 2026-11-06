@@ -23,14 +23,20 @@ type Contact = {
 	organization?: string;
 	phones?: Array<{ value: string; type?: string }>;
 	importedAt?: number;
+	postalAddresses?: Array<{ street?: string }>;
+	cardDavSource?: {
+		accountId: string;
+		href: string;
+		etag: string;
+		isRowCreatedBySync: boolean;
+		editedAt?: number;
+	};
 };
 
 const save = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
-const remove = vi.fn(async () => ({ ok: true, result: null }));
-const restoreEntry = vi.fn(async () => ({
-	ok: true,
-	result: { created: 1, merged: 0, skipped: 0 },
-}));
+const remove = vi.fn(async () => ({ ok: true, result: { photoRemovalId: 'job-1' } }));
+const restore = vi.fn(async () => ({ ok: true, result: 'contact-id' }));
+const resumeCardDav = vi.fn(async () => ({ ok: true, result: { isSyncScheduled: true } }));
 const composerOpen = vi.fn();
 const showToast = vi.fn();
 const contacts = ref<Contact[]>([]);
@@ -47,9 +53,15 @@ beforeAll(() => {
 			currentMailbox: ref({ _id: 'mailbox-1' }),
 			isLoading: ref(false),
 		}),
-		usePostboxContacts: () => ({ contacts, isLoading: ref(false), save, remove }),
+		usePostboxContacts: () => ({
+			contacts,
+			isLoading: ref(false),
+			save,
+			remove,
+			restore,
+			resumeCardDav,
+		}),
 		usePostboxComposeNav: () => ({ open: composerOpen }),
-		usePostboxVcardTransfer: () => ({ restoreEntry }),
 		useToast: () => ({ showToast }),
 	});
 });
@@ -80,6 +92,8 @@ function mountPage() {
 			UiModal: modalStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
 			PostboxContactsVcardActions: passthrough('PostboxContactsVcardActions'),
+			PostboxContactsCardDavPanel: passthrough('PostboxContactsCardDavPanel'),
+			LazyPostboxContactsCardDavPanel: passthrough('PostboxContactsCardDavPanel'),
 			UiBadge: passthrough('UiBadge'),
 		},
 	});
@@ -218,7 +232,7 @@ describe('postbox contacts page', () => {
 		expect((w.get('#form-organization').element as HTMLInputElement).value).toBe('Analytical');
 	});
 
-	it('removes a contact and offers an undo that re-adds it', async () => {
+	it('removes a contact and offers an undo that restores the whole row', async () => {
 		const w = mountPage();
 		await w.get('button[aria-label="Remove contact"]').trigger('click');
 
@@ -233,14 +247,11 @@ describe('postbox contacts page', () => {
 		expect(options.action.label).toBe('Undo');
 
 		options.action.onAction();
-		expect(save).toHaveBeenCalledWith({
-			email: 'ada@example.com',
-			displayName: 'Ada Lovelace',
-			organization: 'Analytical',
-		});
+		expect(restore).toHaveBeenCalledWith(contacts.value[0], 'job-1');
+		expect(save).not.toHaveBeenCalled();
 	});
 
-	it('marks an imported contact and shows its first phone number', () => {
+	it('marks where each contact came from and shows its first phone number', () => {
 		contacts.value = [
 			{
 				_id: 'c3',
@@ -253,20 +264,27 @@ describe('postbox contacts page', () => {
 		];
 		const w = mountPage();
 		const [imported, fromMail] = w.findAll('li');
-		expect(imported!.text()).toContain('Imported');
+		expect(imported!.text()).toContain('vCard');
 		expect(imported!.text()).toContain('+1 555 0100');
-		expect(fromMail!.text()).not.toContain('Imported');
+		expect(fromMail!.text()).toContain('Mail');
+		expect(fromMail!.text()).not.toContain('vCard');
 	});
 
-	it('undoes the removal of an imported contact through the import, details and all', async () => {
-		const linus = {
-			_id: 'c3',
-			email: 'linus@example.net',
-			displayName: 'Linus',
+	it('undoes the removal of a synced contact with its details and picture', async () => {
+		const ada = {
+			_id: 'c4',
+			email: 'ada@example.com',
+			displayName: 'Ada',
 			phones: [{ value: '+1 555 0100', type: 'cell' }],
-			importedAt: 1,
+			postalAddresses: [{ street: '12 St James Sq' }],
+			cardDavSource: {
+				accountId: 'a1',
+				href: 'https://dav/ada.vcf',
+				etag: '"1"',
+				isRowCreatedBySync: true,
+			},
 		};
-		contacts.value = [linus];
+		contacts.value = [ada];
 		const w = mountPage();
 		await w.get('button[aria-label="Remove contact"]').trigger('click');
 		const [, , options] = showToast.mock.calls[0] as [
@@ -275,8 +293,42 @@ describe('postbox contacts page', () => {
 			{ action: { onAction: () => void } },
 		];
 		options.action.onAction();
-		expect(restoreEntry).toHaveBeenCalledWith(linus);
+		expect(restore).toHaveBeenCalledWith(ada, 'job-1');
 		expect(save).not.toHaveBeenCalled();
+	});
+
+	it('shows a synced contact edited here as not following CardDAV, and resumes it', async () => {
+		const link = { accountId: 'a1', href: 'https://dav/ada.vcf', etag: '"1"' };
+		contacts.value = [
+			{
+				_id: 'c5',
+				email: 'ada@example.com',
+				displayName: 'Ada (mine)',
+				cardDavSource: { ...link, isRowCreatedBySync: false, editedAt: 1 },
+			},
+			{
+				_id: 'c6',
+				email: 'linus@example.net',
+				displayName: 'Linus',
+				cardDavSource: { ...link, isRowCreatedBySync: true },
+			},
+		];
+		const w = mountPage();
+		const [edited, following] = w.findAll('li');
+		expect(edited!.text()).toContain('Edited here, not following CardDAV');
+		expect(following!.text()).toContain('CardDAV');
+		expect(following!.text()).not.toContain('Edited here');
+		expect(following!.text()).not.toContain('Resume CardDAV updates');
+
+		const resume = edited!.findAll('button').find((b) => b.text() === 'Resume CardDAV updates');
+		await resume!.trigger('click');
+		expect(resumeCardDav).toHaveBeenCalledWith('c5');
+		await vi.waitFor(() =>
+			expect(showToast).toHaveBeenCalledWith(
+				'Ada (mine) follows CardDAV again. The next sync brings back the card’s details.',
+				'success'
+			)
+		);
 	});
 
 	it('opens the composer prefilled to the contact', async () => {

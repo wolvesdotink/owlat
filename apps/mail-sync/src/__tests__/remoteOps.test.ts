@@ -59,7 +59,7 @@ interface FakeMessage {
 }
 
 /** The commands a FakeImap can be told to refuse, by the name its log uses. */
-type Refusable = 'MOVE' | 'COPY' | '+FLAGS' | '-FLAGS' | 'EXPUNGE';
+type Refusable = 'MOVE' | 'COPY' | '+FLAGS' | '-FLAGS' | 'EXPUNGE' | 'APPEND';
 
 /**
  * An IMAP server behind ImapFlow: an action command the server refuses is
@@ -201,6 +201,16 @@ class FakeImap implements RemoteOpsClient {
 			if (m.flags.has('\\Deleted')) box.splice(box.indexOf(m), 1);
 		}
 		return true;
+	}
+
+	/** Uploads land with the Message-ID of their header and the flags given. */
+	async append(path: string, content: Buffer, flags: string[], idate?: Date) {
+		const refusal = this.refused('APPEND', path);
+		if (refusal !== null) return refusal;
+		this.log.push(`APPEND ${path} ${flags.join(' ')} ${idate?.toISOString() ?? '-'}`.trim());
+		const messageId = /^Message-ID:\s*(\S+)/im.exec(content.toString())?.[1] ?? '';
+		this.boxes.get(path)!.push({ uid: this.nextUid++, messageId, flags: new Set(flags) });
+		return { destination: path };
 	}
 
 	async mailboxCreate(segments: string[]) {
@@ -472,6 +482,103 @@ describe('RemoteOpReplayer', () => {
 		);
 
 		expect(gmail.log).toEqual([]);
+	});
+});
+
+describe('RemoteOpReplayer — append', () => {
+	const RAW = Buffer.from('Message-ID: <moved@x>\r\nSubject: Moved in\r\n\r\nHello\r\n');
+	const RECEIVED = Date.UTC(2026, 9, 1, 8, 30);
+
+	function appendOp(fields: Partial<RemoteOp> = {}): RemoteOp {
+		return op({
+			kind: 'append',
+			rfc822MessageId: 'moved@x',
+			source: { role: 'archive' },
+			target: { role: 'archive' },
+			flags: { seen: true, flagged: true, answered: false },
+			receivedAt: RECEIVED,
+			...fields,
+		});
+	}
+
+	it('uploads the message into its folder with the flags it carries and its received time', async () => {
+		const imap = new FakeImap({ INBOX: [], Archive: [] });
+		const fetched: string[] = [];
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX', archive: 'Archive' }), {
+			raw: async (o) => {
+				fetched.push(o.opId);
+				return RAW;
+			},
+		});
+		const queued = appendOp();
+
+		const outcome = await replayer.apply(queued);
+
+		expect(outcome).toBe('done');
+		expect(fetched).toEqual([queued.opId]);
+		expect(imap.ids('Archive')).toEqual(['<moved@x>']);
+		expect(imap.log).toEqual([
+			`APPEND Archive \\Seen \\Flagged ${new Date(RECEIVED).toISOString()}`,
+		]);
+	});
+
+	it('uploads into a user folder, creating it when the provider lacks it', async () => {
+		const imap = new FakeImap({ INBOX: [] });
+		const replayer = replayerFor(imap, folderMap({ inbox: 'INBOX' }), { raw: async () => RAW });
+
+		const outcome = await replayer.apply(
+			appendOp({ source: { path: ['Clients'] }, target: { path: ['Clients'] }, flags: {} })
+		);
+
+		expect(outcome).toBe('done');
+		expect(imap.ids('Clients')).toEqual(['<moved@x>']);
+	});
+
+	it('does not upload twice when an earlier APPEND already put the message there', async () => {
+		const imap = new FakeImap({ Archive: [[4, '<moved@x>']] });
+		let fetches = 0;
+		const replayer = replayerFor(imap, folderMap({ archive: 'Archive' }), {
+			raw: async () => {
+				fetches += 1;
+				return RAW;
+			},
+		});
+
+		const outcome = await replayer.apply(appendOp());
+
+		expect(outcome).toBe('done');
+		expect(fetches).toBe(0);
+		expect(imap.ids('Archive')).toEqual(['<moved@x>']);
+	});
+
+	it('retires the op when the backend no longer has the message', async () => {
+		const imap = new FakeImap({ Archive: [] });
+		const replayer = replayerFor(imap, folderMap({ archive: 'Archive' }), {
+			raw: async () => null,
+		});
+
+		expect(await replayer.apply(appendOp())).toBe('not_found');
+		expect(imap.ids('Archive')).toEqual([]);
+	});
+
+	it('fails an APPEND the server refuses, so the op is retried', async () => {
+		const imap = new FakeImap({ Archive: [] });
+		imap.refuse.set('APPEND', refused('NO', 'OVERQUOTA', 'Mailbox is full'));
+		const replayer = replayerFor(imap, folderMap({ archive: 'Archive' }), { raw: async () => RAW });
+
+		await expect(replayer.apply(appendOp())).rejects.toThrow(/APPEND/);
+		expect(imap.ids('Archive')).toEqual([]);
+	});
+
+	it('fails the op when the message could not be fetched', async () => {
+		const imap = new FakeImap({ Archive: [] });
+		const replayer = replayerFor(imap, folderMap({ archive: 'Archive' }), {
+			raw: async () => {
+				throw new Error('raw download failed: HTTP 503');
+			},
+		});
+
+		await expect(replayer.apply(appendOp())).rejects.toThrow(/HTTP 503/);
 	});
 });
 
@@ -1390,9 +1497,13 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 	 * The backend as remoteSync.ts calls it: queued renames are listed 50 to a
 	 * page in source-name order, a recorded rename rewrites the ops naming the
 	 * old folder or one below it, and a backed-off rename is not due.
-	 * `pageFails` makes the listing fail from that page on.
+	 * `pageFails` makes the listing fail from that page on; `noAppends` is the
+	 * backend from before uploads, whose validator rejects the `appends` argument.
 	 */
-	function convexBackend(queue: RemoteOp[], opts: { pageFails?: number } = {}) {
+	function convexBackend(
+		queue: RemoteOp[],
+		opts: { pageFails?: number; noAppends?: boolean } = {}
+	) {
 		const settled: RemoteOpResult[] = [];
 		const open = () => queue.filter((o) => !settled.some((r) => r.opId === o.opId));
 		const named = (ref: unknown) => getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
@@ -1414,6 +1525,11 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 					};
 				}
 				if (named(ref) === getFunctionName(fn.listDueRemoteOps)) {
+					if (opts.noAppends && 'appends' in args) {
+						throw new Error(
+							'[Request ID: 3c4d] Server Error\nArgumentValidationError: Object contains extra field `appends` that is not in the validator.\n\nObject: {accountId: "acct_1", appends: true}\nValidator: v.object({accountId: v.id("externalMailAccounts")})'
+						);
+					}
 					return open().filter((o) => o.kind !== 'renameFolder');
 				}
 				throw new Error(`unexpected query ${named(ref)}`);
@@ -1508,6 +1624,17 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 		expect(deletion.source).toEqual({ remote: 'Projects/Clients' });
 		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
 		expect(imap.ids('Projects/Clients')).toEqual([]);
+	});
+
+	it('keeps writing back against a backend that does not take the appends argument', async () => {
+		const imap = new FakeImap({ INBOX: [[1, '<a@x>']] });
+		const deletion = op({ kind: 'delete', rfc822MessageId: 'a@x', source: { remote: 'INBOX' } });
+		const { convex, settled } = convexBackend([deletion], { noAppends: true });
+
+		await (await restartedConnection(convex, imap)).drainQueue(imap);
+
+		expect(settled).toEqual([{ opId: deletion.opId, outcome: 'done' }]);
+		expect(imap.ids('INBOX')).toEqual([]);
 	});
 
 	it('drains nothing while a page of the queued renames could not be read', async () => {

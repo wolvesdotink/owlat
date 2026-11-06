@@ -55,6 +55,29 @@ describe('normalizeDesktopSettings', () => {
 		expect(s.global.closeToTray).toBe(false);
 	});
 
+	it('keeps the Dock icon unless the file asks to hide it', () => {
+		expect(normalizeDesktopSettings({ global: {} }).global.hideDockIcon).toBe(false);
+		expect(normalizeDesktopSettings({ global: { hideDockIcon: true } }).global.hideDockIcon).toBe(
+			true
+		);
+		expect(normalizeDesktopSettings({ global: { hideDockIcon: 'yes' } }).global.hideDockIcon).toBe(
+			false
+		);
+	});
+
+	it('counts all inboxes in the tray unless a workspace names one mailbox', () => {
+		const s = normalizeDesktopSettings({
+			workspaces: {
+				'ws-1': { trayMailboxId: 'mb-1' },
+				'ws-2': { trayMailboxId: 42 },
+				'ws-3': { trayMailboxId: '' },
+			},
+		});
+		expect(s.workspaces['ws-1']?.trayMailboxId).toBe('mb-1');
+		expect(s.workspaces['ws-2']?.trayMailboxId).toBeNull();
+		expect(s.workspaces['ws-3']?.trayMailboxId).toBeNull();
+	});
+
 	it('keeps valid per-workspace entries and drops junk ones', () => {
 		const s = normalizeDesktopSettings({
 			workspaces: {
@@ -63,8 +86,8 @@ describe('normalizeDesktopSettings', () => {
 				'ws-3': 'not-an-object',
 			},
 		});
-		expect(s.workspaces['ws-1']).toEqual({ muteNotifications: true });
-		expect(s.workspaces['ws-2']).toEqual({ muteNotifications: false });
+		expect(s.workspaces['ws-1']).toEqual({ muteNotifications: true, trayMailboxId: null });
+		expect(s.workspaces['ws-2']).toEqual({ muteNotifications: false, trayMailboxId: null });
 		expect(s.workspaces['ws-3']).toBeUndefined();
 	});
 
@@ -77,9 +100,10 @@ describe('normalizeDesktopSettings', () => {
 				showUnreadBadge: false,
 				showTrayIcon: false,
 				closeToTray: false,
+				hideDockIcon: true,
 				startupWorkspaceId: 'ws-9',
 			},
-			workspaces: { 'ws-9': { muteNotifications: true } },
+			workspaces: { 'ws-9': { muteNotifications: true, trayMailboxId: 'mb-9' } },
 		};
 		expect(normalizeDesktopSettings(full)).toEqual(full);
 	});

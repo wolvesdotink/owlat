@@ -107,3 +107,43 @@ describe('PostboxThreadBundleList focus ring', () => {
 		wrapper.unmount();
 	});
 });
+
+describe('PostboxThreadBundleList mark read', () => {
+	it("marks only the bundle's unread messages read, and only offers it while some are", async () => {
+		const unread = {
+			...bundle('b-new', ['m-7', 'm-8', 'm-9']),
+			unreadCount: 2,
+		} as PostboxFeedEntry<PostboxThreadRowMessage> & { kind: 'bundle' };
+		unread.messages = unread.messages.map((message) => ({
+			...message,
+			flagSeen: message._id === 'm-8',
+		}));
+		const w = mount(PostboxThreadBundleList, {
+			props: {
+				entries: [unread, bundle('b-read', ['m-10', 'm-11'])],
+				expanded: {},
+				loading: false,
+				folderRole: 'inbox',
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+					PostboxThreadRowBody: { template: '<span />' },
+					PostboxThreadListSkeleton: true,
+					PostboxEmptyState: true,
+					UiButton: true,
+				},
+			},
+		});
+
+		const buttons = w.findAll('button').filter((button) => button.text() === 'Mark read');
+		expect(buttons).toHaveLength(1);
+		expect(buttons[0]!.attributes('aria-label')).toBe(
+			'Mark the 2 unread messages in this bundle as read'
+		);
+		await buttons[0]!.trigger('click');
+
+		expect(w.emitted('mark-bundle-read')).toEqual([[['m-7', 'm-9']]]);
+	});
+});

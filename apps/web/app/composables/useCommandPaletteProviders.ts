@@ -9,6 +9,7 @@ import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 import { usePostboxSignInCode } from '~/composables/postbox/usePostboxSignInCode';
+import { checkForMail } from '~/lib/postboxCheckForMail';
 import {
 	CloudDownloadIcon,
 	ExpandIcon,
@@ -17,6 +18,7 @@ import {
 	ListChecklistIcon,
 	LogInIcon,
 	MegaphoneIcon,
+	ReloadIcon,
 	ShrinkIcon,
 	SparklesIcon,
 } from '@coolicons/vue';
@@ -24,7 +26,7 @@ import {
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
  *   - verbs — New campaign, Compose, New contact, Copy latest sign-in code,
- *     Ask knowledge, Zen, the setup checklist, updates;
+ *     Check for mail, Ask knowledge, Zen, the setup checklist, updates;
  *   - sidebar-context switch — offers the OTHER context (Inbox ↔ Marketing),
  *     only while the sidebar toggle itself exists (both contexts survived the
  *     feature flags); runs the same last-visited navigation as the toggle;
@@ -90,6 +92,8 @@ export function useCommandPaletteProviders() {
 		hasPersonalMail.value ? {} : 'skip'
 	);
 	const { copyOrOpen } = usePostboxSignInCode();
+	const convex = useConvex();
+	const { showToast } = useToast();
 
 	const verbItems = computed<PaletteItem[]>(() => {
 		const environment = {
@@ -133,6 +137,16 @@ export function useCommandPaletteProviders() {
 						: signInCode.senderDomain,
 				icon: signInCode.kind === 'code' ? KeyIcon : LogInIcon,
 				run: () => void copyOrOpen(signInCode),
+			});
+		}
+		// The desktop tray's "Check for Mail", for every client with personal mail.
+		if (hasPersonalMail.value) {
+			verbs.push({
+				id: 'verb:check-mail',
+				label: t('shared.useCommandPaletteProviders.checkForMail'),
+				subtitle: t('shared.useCommandPaletteProviders.checkForMailSubtitle'),
+				icon: ReloadIcon,
+				run: () => void checkForMail({ client: convex, t, showToast }),
 			});
 		}
 		if (isFeatureEnabled('ai.knowledge')) {

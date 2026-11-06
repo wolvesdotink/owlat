@@ -12,8 +12,8 @@
  *    comes back short empties it, so it needs no cursor.
  *  - {@link scanRange}: a range whose rows STAY (patched in place, or
  *    skipped). It walks by an index position that a handled row never
- *    changes and that is unique in the range (creation time, activity seq,
- *    an ask session's owner) and keeps the last handled position as its
+ *    changes and that is unique in the range (creation time with the row's
+ *    id, activity seq, an ask session's owner) and keeps the last handled position as its
  *    cursor; the next read starts strictly after it.
  *  - {@link drainSteps}: a list of sub-ranges, with the first unfinished
  *    one in the cursor, so emptied sub-ranges are never queried again.
@@ -27,11 +27,13 @@
  * go before their parent.
  *
  * The job's kind (its range list and how it settles) lives in `purge.ts`,
- * `purgeThread.ts` and `scopeChange.ts`; `purgeRun.ts` dispatches.
+ * `purgeThread.ts`, `scopeChange.ts` and `scopeReconcile.ts`; `purgeRun.ts`
+ * dispatches.
  *
  * Isolate-safe helpers, no Convex functions.
  */
 
+import type { IndexRange } from 'convex/server';
 import { getConvexSize, type Value } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
@@ -124,7 +126,11 @@ export type PurgeCursor = NonNullable<PurgeJob['cursor']>;
 
 /** The job's findings, carried across slices. */
 export interface JobState {
-	/** The purged sources (`sources` jobs); a range may add to them (a message's team replies). */
+	/**
+	 * The purged sources (`sources` jobs) or withdrawn reads (`withdraw` jobs);
+	 * a range may add to them (a message's team replies, a scanned thread's
+	 * narrowed reads).
+	 */
 	sources: InterpretationSource[];
 	isInterpreted: boolean;
 	isItemDeleted: boolean;
@@ -175,13 +181,90 @@ export async function drainShrinking<Row>(
 	}
 }
 
-/** A row's place in a range that keeps its rows: a number (creation time, seq) or a string (owner). */
-export type RangePosition = number | string;
+/**
+ * A row's place in a range that keeps its rows: a number (creation time, seq),
+ * a string (owner), or a creation time with the row's id, for a range where
+ * many rows share one creation time (documents written in one millisecond).
+ */
+export type RangePosition = number | string | TiedPosition;
+
+/**
+ * A row of an index range that ends in `_creationTime`: the index orders rows
+ * of one creation time by id, so `(at, key)` is unique where `at` alone is not.
+ */
+export interface TiedPosition {
+	at: number;
+	key: string;
+}
+
+/** A row's place in an index range that ends in `_creationTime`. */
+export function tiedPositionOf(row: { _id: string; _creationTime: number }): TiedPosition {
+	return { at: row._creationTime, key: row._id };
+}
+
+/** Which creation times of an index range to read: all, exactly one, or every later one. */
+export type CreationTimeBound = { eq: number } | { gt: number } | undefined;
+
+type CreationTimeRange = IndexRange & {
+	eq(field: '_creationTime', value: number): IndexRange;
+	gt(field: '_creationTime', value: number): IndexRange;
+};
+
+/** `range` narrowed to the creation times `bound` names. */
+export function withinCreationTime(range: CreationTimeRange, bound: CreationTimeBound): IndexRange {
+	if (bound === undefined) return range;
+	return 'eq' in bound ? range.eq('_creationTime', bound.eq) : range.gt('_creationTime', bound.gt);
+}
+
+/**
+ * The first `n` rows of an index range that ends in `_creationTime`, strictly
+ * after `after`, for {@link scanRange}. Many rows can share one creation time
+ * (an import batch, one millisecond), so the rest of that creation time is read
+ * past the id first, then every later one. The index orders the rows of one
+ * creation time by id, and the ids of one table compare as strings in that
+ * order (as `lib/keysetMerge.ts` relies on). The rows passed over are charged,
+ * as every fetched row is. A position without an id (a cursor a
+ * creation-time-only walk wrote) reads its whole creation time again.
+ */
+export async function rowsAfterTied<Row extends { _id: string; _creationTime: number }>(
+	budget: DrainBudget,
+	after: RangePosition | undefined,
+	n: number,
+	query: (bound: CreationTimeBound) => AsyncIterable<Row> & { take(n: number): Promise<Row[]> }
+): Promise<Row[]> {
+	if (after === undefined) return query(undefined).take(n);
+	const { at, key } = typeof after === 'object' ? after : { at: Number(after), key: '' };
+	const rows: Row[] = [];
+	for await (const row of query({ eq: at })) {
+		if (row._id <= key) {
+			budget.charge(row);
+			continue;
+		}
+		rows.push(row);
+		if (rows.length === n) return rows;
+	}
+	budget.range();
+	return [...rows, ...(await query({ gt: at }).take(n - rows.length))];
+}
+
+function cursorPosition(cursor: PurgeCursor | undefined): RangePosition | undefined {
+	if (cursor?.at !== undefined && cursor.key !== undefined) {
+		return { at: cursor.at, key: cursor.key };
+	}
+	return cursor?.key ?? cursor?.at;
+}
+
+function positionCursor(position: RangePosition | undefined): PurgeCursor {
+	if (position === undefined) return {};
+	if (typeof position === 'string') return { key: position };
+	if (typeof position === 'number') return { at: position };
+	return { at: position.at, key: position.key };
+}
 
 /**
  * Walk a range whose rows stay, from `cursor`, by a position that is unique
- * within the range and that a handled row never changes (creation time,
- * activity seq, an ask session's owner per target). `read(after, n)` returns
+ * within the range and that a handled row never changes (creation time with
+ * the row's id, activity seq, an ask session's owner per target). `read(after, n)` returns
  * the first `n` rows strictly after position `after` (from the start when
  * undefined), in position order. The cursor is the last handled position.
  */
@@ -192,14 +275,14 @@ export async function scanRange<Row>(
 	position: (row: Row) => RangePosition,
 	each: (row: Row) => Promise<boolean>
 ): Promise<RangeOutcome> {
-	let after: RangePosition | undefined = cursor?.key ?? cursor?.at;
+	let after = cursorPosition(cursor);
 	// A slice that stopped inside a row (its children outlasted the budget):
 	// the next reads this range a row at a time, so the bytes go to children.
 	const isNarrow = cursor?.isNarrow === true;
 	const save = (isStopped = false): RangeOutcome => ({
 		isDone: false,
 		cursor: {
-			...(typeof after === 'string' ? { key: after } : after !== undefined ? { at: after } : {}),
+			...positionCursor(after),
 			...(isStopped || isNarrow ? { isNarrow: true } : {}),
 		},
 	});
@@ -245,6 +328,8 @@ export interface NewPurgeJob {
 	/** Postbox `sources` jobs: the purged messages' mailbox (see `threadPurgeJobs.mailboxId`). */
 	mailboxId?: Id<'mailboxes'>;
 	mode?: InterpretMode;
+	/** `withdraw` jobs: page the thread's messages for narrowed reads first (see `threadPurgeJobs.isScanNeeded`). */
+	isScanNeeded?: boolean;
 }
 
 export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promise<PurgeJob> {
@@ -257,6 +342,7 @@ export async function createPurgeJob(ctx: MutationCtx, job: NewPurgeJob): Promis
 		...(job.inboundMessageId ? { inboundMessageId: job.inboundMessageId } : {}),
 		...(job.mailboxId ? { mailboxId: job.mailboxId } : {}),
 		...(job.mode ? { mode: job.mode } : {}),
+		...(job.isScanNeeded ? { isScanNeeded: true } : {}),
 		rangeIndex: 0,
 		isInterpreted: false,
 		isItemDeleted: false,
@@ -317,7 +403,8 @@ export async function runJobPlan(
 	await ctx.db.patch(job._id, {
 		rangeIndex: index,
 		cursor,
-		...(job.kind === 'sources' ? { sources } : {}),
+		// Ranges of these kinds add sources across slices.
+		...(job.kind === 'sources' || job.kind === 'withdraw' ? { sources } : {}),
 		...findings,
 		updatedAt: Date.now(),
 	});

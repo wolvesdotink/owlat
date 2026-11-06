@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
+import { usePostboxMarkReadCommands } from '~/composables/postbox/usePostboxCommandSurface';
 
 const { t } = useI18n();
 
@@ -44,6 +45,27 @@ const {
 const labelMessages = computed(() => labelData.value?.messages ?? []);
 /** Matches exist beyond the display slice (within the backend's scan window). */
 const overCap = computed(() => labelData.value?.hasMore ?? false);
+
+// "Mark all as read" covers every unread message carrying the label, in any
+// folder, not only the rows this bounded view lists.
+const { unreadCounts } = usePostboxLabels(mailboxId);
+const labelUnread = computed(() => unreadCounts.value[labelId.value] ?? 0);
+const markReadTarget = computed(() =>
+	mailboxId.value
+		? { kind: 'label' as const, mailboxId: mailboxId.value, labelId: labelId.value }
+		: null
+);
+usePostboxMarkReadCommands('label', mailboxId, () =>
+	markReadTarget.value && labelUnread.value > 0
+		? [
+				{
+					key: 'label',
+					label: t('components.postbox.postboxFolderActions.markAllRead'),
+					target: markReadTarget.value,
+				},
+			]
+		: []
+);
 </script>
 
 <template>
@@ -58,10 +80,22 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 				<aside
 					class="w-full lg:w-96 lg:flex-shrink-0 border-r border-border-subtle flex flex-col bg-bg-surface"
 				>
-					<header class="border-b border-border-subtle px-4 py-3">
+					<header
+						class="border-b border-border-subtle px-4 py-3 flex items-center justify-between gap-2"
+					>
 						<h2 class="text-sm font-semibold text-text-primary">
 							{{ t('dashboard.postbox.label.detail.heading') }}
 						</h2>
+						<!-- The 36px trigger would grow the 20px title row: the negative
+						     margin keeps the header the height it has without it. -->
+						<PostboxMarkReadMenu
+							v-if="markReadTarget"
+							class="-my-2"
+							:target="markReadTarget"
+							:enabled="labelUnread > 0"
+							:label="t('components.postbox.postboxFolderActions.labelMenuLabel')"
+							:mailbox-id="mailboxId"
+						/>
 					</header>
 					<PostboxQuickActionsBar :mailbox-id="mailboxId!" />
 					<UiErrorAlert

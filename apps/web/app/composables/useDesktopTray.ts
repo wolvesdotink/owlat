@@ -1,7 +1,12 @@
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { getActiveWorkspace } from '~/lib/desktop/activeWorkspace';
 import { emptyTrayContent, trayContent } from '~/lib/desktop/trayContent';
-import type { UnreadPeekMessage } from '~/lib/desktop/notificationRules';
+import { badgeCount, type UnreadPeekMessage } from '~/lib/desktop/notificationRules';
 import type { UnreadBadge } from '~/composables/useUnreadBadge';
+
+/** The menu lists five rows; the badge's peek carries the same window. */
+const TRAY_PEEK_LIMIT = 5;
 
 /**
  * Mounted owners. A layout switch (dashboard ↔ preferences) can mount the new
@@ -13,8 +18,14 @@ let owners = 0;
 /**
  * Feeds the desktop tray icon (src-tauri tray.rs) from the shared unread peek:
  * the badge count, the newest unread messages and whether notifications are
- * paused, plus the device settings that show the icon and decide what closing
- * the window does. The dashboard layout owns it, next to the dock badge.
+ * paused, plus the device settings that show the icon, decide what closing
+ * the window does and hide the Dock icon. The dashboard layout owns it, next
+ * to the dock badge.
+ *
+ * When the workspace's device settings name one mailbox for the tray, the tray
+ * reads that mailbox through a subscription of its own, and the dock badge
+ * keeps counting every inbox. A mailbox that can no longer be read (removed,
+ * or access withdrawn) sends the tray back to all inboxes.
  *
  * Leaving the dashboard inside the SPA (signing out) clears what it reported;
  * a new document is cleared by the Rust side. No-op in the browser.
@@ -43,8 +54,8 @@ export function useDesktopTray(unread: UnreadBadge) {
 	watch(
 		() => {
 			if (!isDesktop.value || !isReady.value) return null;
-			const { showTrayIcon, closeToTray } = settings.value.global;
-			return { visible: showTrayIcon, closeToTray };
+			const { showTrayIcon, closeToTray, hideDockIcon } = settings.value.global;
+			return { visible: showTrayIcon, closeToTray, hideDockIcon };
 		},
 		async (preferences) => {
 			if (!preferences) return;
@@ -57,12 +68,37 @@ export function useDesktopTray(unread: UnreadBadge) {
 		{ immediate: true }
 	);
 
+	const trayMailboxId = computed(() => {
+		if (!isDesktop.value) return null;
+		const workspaceId = getActiveWorkspace()?.id;
+		return workspaceId ? (settings.value.workspaces[workspaceId]?.trayMailboxId ?? null) : null;
+	});
+	const { data: mailboxPeek } = useConvexQuery(api.mail.mailbox.queries.newestUnreadInbox, () =>
+		trayMailboxId.value
+			? { limit: TRAY_PEEK_LIMIT, mailboxId: trayMailboxId.value as Id<'mailboxes'> }
+			: 'skip'
+	);
+
+	/** The count and rows the tray shows: the chosen mailbox's, or the badge's. */
+	const source = computed<{ count: number | null; messages: UnreadPeekMessage[] }>(() => {
+		const badge = {
+			count: unread.count.value,
+			messages: (unread.data.value?.messages ?? []) as UnreadPeekMessage[],
+		};
+		if (!trayMailboxId.value) return badge;
+		const peek = mailboxPeek.value;
+		if (!peek) return { count: null, messages: [] };
+		if (peek.unavailable) return badge;
+		const messages = peek.messages as UnreadPeekMessage[];
+		return { count: badgeCount(peek.total, messages, badgeNonPeople.value), messages };
+	});
+
 	watch(
 		() => {
 			if (!isDesktop.value) return null;
 			return trayContent({
-				count: unread.count.value,
-				messages: (unread.data.value?.messages ?? []) as UnreadPeekMessage[],
+				count: source.value.count,
+				messages: source.value.messages,
 				badgeNonPeople: badgeNonPeople.value,
 				hidePreview: hidePreview.value,
 				notificationsEnabled: settings.value.global.notificationsEnabled,

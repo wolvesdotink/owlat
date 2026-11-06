@@ -13,13 +13,15 @@
  * would navigate both windows. Runs after the `0.desktop-workspace` boot
  * plugin (filename order); registration is non-blocking. No-op on web.
  *
- * The tray icon's "Pause Notifications" item lands here too, so it works on
- * every screen, like Settings.
+ * The tray icon's "Pause Notifications" and "Check for Mail" items land here
+ * too, so they work on every screen, like Settings, and while the window is
+ * hidden to the tray.
  *
  * The deep-link handler is imported when a mailto: arrives, not statically:
  * this file is in every browser's boot bundle, and the handler brings the
  * workspace connect flow with it. The device settings load the same way.
  */
+import type { ConvexClient } from 'convex/browser';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 
 async function toggleNotifications(): Promise<void> {
@@ -31,7 +33,7 @@ async function toggleNotifications(): Promise<void> {
 
 export default defineNuxtPlugin({
 	name: 'owlat:desktop-menu',
-	setup() {
+	setup(nuxtApp) {
 		if (!isDesktopRuntime()) return;
 		const router = useRouter();
 		const palette = useCommandPalette();
@@ -57,12 +59,27 @@ export default defineNuxtPlugin({
 				// The tray's "Pause Notifications" flips the master switch the
 				// device settings show. Read the stored settings first: before
 				// they load, the flip would act on the defaults.
-				const { onTrayToggleNotifications } = await import('@owlat/desktop/src/tray');
+				const { onTrayCheckMail, onTrayToggleNotifications } =
+					await import('@owlat/desktop/src/tray');
 				await onTrayToggleNotifications(
 					() =>
 						void toggleNotifications().catch((e: unknown) =>
 							console.warn('[desktop] tray toggle failed:', e)
 						)
+				);
+				// The convex client and i18n are read at click time: this plugin runs
+				// before the Convex plugin provides its client.
+				await onTrayCheckMail(
+					() =>
+						void import('~/lib/postboxCheckForMail')
+							.then(({ checkForMail }) =>
+								checkForMail({
+									client: nuxtApp.$convex as ConvexClient | null,
+									t: (key) => nuxtApp.$i18n.t(key),
+									showToast: useToast().showToast,
+								})
+							)
+							.catch((e: unknown) => console.warn('[desktop] tray mail check failed:', e))
 				);
 				// A mailto: clicked in any Owlat window (the Rust link policy keeps
 				// it from the OS) opens our compose window, through the same parser

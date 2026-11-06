@@ -37,6 +37,7 @@ import {
 	itemStatusValidator,
 	itemConfirmedFromValidator,
 	itemListBucketValidator,
+	itemWithdrawalValidator,
 	itemVerifyValidator,
 	localizedSealedTextValidator,
 	participantRefValidator,
@@ -277,6 +278,9 @@ export const threadBriefTables = {
 		confirmedFrom: v.optional(itemConfirmedFromValidator),
 		// Changes held apart until confirmed ("Check this change"), each with its source.
 		pendingUpdate: v.optional(pendingUpdateValidator),
+		// Its only support was a withdrawn read (mail/interpret/scopeReconcile.ts):
+		// kept for people, out of every machine consumer, `verify: 'proposal'`.
+		withdrawal: v.optional(itemWithdrawalValidator),
 		// Which source set each shown field (purge redacts exactly those).
 		fieldSources: v.optional(itemFieldSourcesValidator),
 		// Message date of the transition that set the current status or
@@ -315,7 +319,16 @@ export const threadBriefTables = {
 		.index('by_conversation_thread', ['conversationThreadId'])
 		.index('by_replaced_by', ['replacedById'])
 		.index('by_duplicate_of', ['possibleDuplicateOfId'])
-		.index('by_disposition_source', ['dispositionSource.sourceKey']), // sendFailure.ts
+		.index('by_disposition_source', ['dispositionSource.sourceKey']) // sendFailure.ts
+		// A message's withdrawn items: restored by a read of it (scopeReconcile.ts).
+		// With `withdrawal.messageId` undefined it reads the live items by status
+		// and update time, so withdrawn ones never use up a bounded read (load.ts).
+		.index('by_mail_thread_withdrawn', [
+			'mailThreadId',
+			'withdrawal.messageId',
+			'status',
+			'updatedAt',
+		]),
 
 	// Append-only per-thread log.
 	threadActivity: defineTable({

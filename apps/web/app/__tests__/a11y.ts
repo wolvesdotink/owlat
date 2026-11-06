@@ -502,6 +502,20 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			refetch: vi.fn(),
 		}),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
+		// The rail's inboxes take dropped rows (`usePostboxMailboxDropTargets`),
+		// whose transfer registers with the triage undo stack.
+		usePostboxTriageUndo: () => ({
+			entries: ref([]),
+			depth: ref(0),
+			canUndo: ref(false),
+			register: vi.fn(),
+			registerMoveBack: vi.fn(),
+			undo: vi.fn(),
+			undoGroup: vi.fn(),
+			dismiss: vi.fn(),
+		}),
+		useConfirm: () => vi.fn(async () => true),
+		useLocalStorage: (_key: string, fallback: unknown) => ({ data: ref(fallback), set: vi.fn() }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),

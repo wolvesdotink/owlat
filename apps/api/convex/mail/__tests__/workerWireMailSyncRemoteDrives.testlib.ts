@@ -20,6 +20,34 @@ export const MAIL_SYNC_REMOTE_DRIVES = {
 	listDueRemoteOps: {
 		'a move and a flag change': (w) =>
 			w.t.query(internal.mail.external.remoteOps.listDueRemoteOps, { accountId: w.accountId }),
+		'with an upload, to a worker that runs them': async (w) => {
+			const opId = await w.t.run(async (ctx) => {
+				const copy = await ctx.db
+					.query('mailMessages')
+					.withIndex('by_mailbox_and_rfc822_message_id', (q) =>
+						q.eq('mailboxId', w.mailboxId).eq('rfc822MessageId', 'sent-3@owlat.example')
+					)
+					.unique();
+				const now = Date.now();
+				return await ctx.db.insert('externalMailRemoteOps', {
+					accountId: w.accountId,
+					kind: 'append',
+					rfc822MessageId: 'sent-3@owlat.example',
+					source: { role: 'sent' },
+					target: { role: 'sent' },
+					flags: { seen: true, flagged: false, answered: false },
+					append: { messageId: copy!._id, receivedAt: 1_700_000_000_000 },
+					attempts: 0,
+					nextAttemptAt: now - 10_000,
+					createdAt: now - 10_000,
+				});
+			});
+			bindMinted(w, M.appendOp, opId);
+			return w.t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
+				accountId: w.accountId,
+				appends: true,
+			});
+		},
 		'not writing back': (w) =>
 			w.t.query(internal.mail.external.remoteOps.listDueRemoteOps, {
 				accountId: w.oauthAccountId,

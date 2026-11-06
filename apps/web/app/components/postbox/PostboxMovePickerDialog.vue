@@ -6,9 +6,9 @@
  * non-destination folders (sent/drafts/current).
  *
  * With `mailboxes`, an "Other mailboxes" section follows: each row moves the
- * message there, its Copy button copies it. A connected account is listed but
- * not pickable, and `canMove: false` (the message sits in a connected account)
- * leaves only Copy; `usePostboxMailboxTransfer` explains why.
+ * message there, its Copy button copies it. A connected account is marked, and
+ * a note says that mail moved into one stays put until the provider has it
+ * (`usePostboxMailboxTransfer`).
  */
 
 import type { Id } from '@owlat/api/dataModel';
@@ -23,9 +23,8 @@ withDefaults(
 		open: boolean;
 		folders: Array<{ _id: Id<'mailFolders'>; name: string; role?: string }>;
 		mailboxes?: PostboxTransferTarget[];
-		canMove?: boolean;
 	}>(),
-	{ mailboxes: () => [], canMove: true }
+	{ mailboxes: () => [] }
 );
 
 const emit = defineEmits<{
@@ -67,8 +66,7 @@ const { t } = useI18n();
 				<li v-for="mailbox in mailboxes" :key="mailbox.mailboxId" class="flex items-center gap-1">
 					<button
 						type="button"
-						class="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded text-left text-sm enabled:hover:bg-bg-surface disabled:text-text-tertiary disabled:cursor-not-allowed"
-						:disabled="mailbox.isConnected || !canMove"
+						class="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded text-left text-sm hover:bg-bg-surface"
 						:aria-label="
 							t('components.postbox.postboxMovePickerDialog.moveTo', { name: mailbox.name })
 						"
@@ -81,7 +79,6 @@ const { t } = useI18n();
 						<span class="truncate">{{ mailbox.name }}</span>
 					</button>
 					<button
-						v-if="!mailbox.isConnected"
 						type="button"
 						class="px-2 py-1 rounded text-xs text-text-secondary hover:bg-bg-surface"
 						:aria-label="
@@ -95,9 +92,6 @@ const { t } = useI18n();
 			</ul>
 			<p v-if="mailboxes.some((m) => m.isConnected)" class="mt-2 px-3 text-xs text-text-tertiary">
 				{{ t('components.postbox.postboxMovePickerDialog.connectedNote') }}
-			</p>
-			<p v-if="!canMove" class="mt-2 px-3 text-xs text-text-tertiary">
-				{{ t('components.postbox.postboxMovePickerDialog.copyOnlyNote') }}
 			</p>
 		</template>
 	</UiModal>

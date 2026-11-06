@@ -25,6 +25,14 @@ fn main() {
         "./capabilities/**/*"
     };
 
+    // Dictation's frameworks are weakly linked, so the app still starts on a
+    // macOS that lacks one (Speech arrived in 10.15); dictation.rs looks up
+    // each class before using it.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg=-Wl,-weak_framework,Speech");
+        println!("cargo:rustc-link-arg=-Wl,-weak_framework,AVFAudio");
+    }
+
     tauri_build::try_build(
         tauri_build::Attributes::new()
             .capabilities_path_pattern(capabilities)

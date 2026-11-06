@@ -231,6 +231,20 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailboxes', 'mailContacts', 'mailboxId', 'delete', 'The private address book.'),
 	desc(
 		'mailboxes',
+		'mailCardDavAccounts',
+		'mailboxId',
+		'delete',
+		'The address book’s CardDAV server and sealed password.'
+	),
+	desc(
+		'mailCardDavAccounts',
+		'mailContacts',
+		'cardDavSource.accountId',
+		'delete',
+		'Rows synced into the private address book; deleted with it.'
+	),
+	desc(
+		'mailboxes',
 		'mailSenderCategoryOverrides',
 		'mailboxId',
 		'delete',
@@ -310,6 +324,20 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'messageId',
 		'delete',
 		'Attachment index rows go with their message.'
+	),
+	desc(
+		'mailMessages',
+		'externalMailRemoteOps',
+		'append.messageId',
+		'retain',
+		'The copy an upload sends: it sits in the op’s own account, and the op is deleted with that account.'
+	),
+	desc(
+		'mailMessages',
+		'externalMailRemoteOps',
+		'append.sourceMessageId',
+		'retain',
+		'A move’s source: a move out of the member’s mailbox into another account keeps a dangling id, and settling the upload finds no source and purges nothing.'
 	),
 	desc('mailMessages', 'mailAttachmentShares', 'sourceMessageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailCommitments', 'messageId', 'delete', SAME_MAILBOX),

@@ -948,6 +948,9 @@
 			"item": {
 				"due": "due {date}",
 				"checkThis": "Check this:",
+				"reviewAgain": "Needs review again:",
+				"withdrawn": "The signature covers less of this message than was read",
+				"confirmedEarlier": "Confirmed on {date}",
 				"proposal": "proposal · not tracked yet",
 				"pendingChange": "Check this change:",
 				"pendingOptions": "options: {options}",
@@ -1130,7 +1133,7 @@
 				"securityLead": "Security email.",
 				"security": "Shown as written, never summarised.",
 				"signed": "Only the signed part is summarised.",
-				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
+				"stale": "The brief is paused while a signature check updates what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
 				"aiSettings": "AI settings",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
@@ -3540,6 +3543,7 @@
 			},
 			"errors": {
 				"blocked": "Dictation can't use the microphone. Allow microphone access for this site and try again.",
+				"blockedDesktop": "Dictation can't use the microphone or speech recognition. Allow both for Owlat in your system's privacy settings and try again.",
 				"noSpeech": "Didn't catch anything. Press the microphone and speak again.",
 				"network": "The speech service couldn't be reached. Check your connection and try again.",
 				"language": "Dictation doesn't support your browser's language here.",
@@ -5342,18 +5346,20 @@
 				"confirmTeamAction": "Continue",
 				"confirmTeamBody": "Everyone with access to {name} will see the mail you put there.",
 				"confirmTeamTitle": "Put mail in {name}?",
-				"connectedNote": "Mail can't be moved into a connected account yet.",
+				"connectedNote": "Mail moved into a connected account stays where it is until the account's server has it.",
 				"copiedTo": "Copied to {name} | Copied {count} messages to {name}",
 				"copy": "Copy",
-				"copyOnlyNote": "This message is in a connected account, so it can be copied but not moved for now.",
 				"copyTo": "Copy to {name}",
+				"copyingTo": "Copying to {name} | Copying {count} messages to {name}",
 				"movedTo": "Moved to {name} | Moved {count} messages to {name}",
 				"moveTo": "Move to {name}",
+				"movingTo": "Moving to {name} | Moving {count} messages to {name}",
 				"noOtherFolders": "No other folders",
 				"otherMailboxes": "Other mailboxes",
 				"refused": {
-					"external_source": "Mail in a connected account can be copied, not moved, for now.",
-					"external_target": "Mail can't be moved into a connected account yet.",
+					"all_mail": "Gmail keeps archived mail in All Mail, so it can't be moved out of this account. Copy it instead.",
+					"external_target": "This connected account doesn't take mail from Owlat. It's disconnected or set to receive new mail only.",
+					"no_message_id": "This message has no Message-ID, so a connected account couldn't keep track of it.",
 					"over_quota": "That mailbox is full.",
 					"sealed": "This message is end-to-end encrypted. It can only go to a mailbox on the same address, which holds its key.",
 					"sending": "This message is still being sent. Try again once it's delivered."
@@ -6102,6 +6108,8 @@
 				"listLabel": "Bundled messages",
 				"loadMore": "Load more",
 				"latestFrom": "latest from {sender}",
+				"markRead": "Mark read",
+				"markReadLabel": "Mark the {count} unread message in this bundle as read | Mark the {count} unread messages in this bundle as read",
 				"archiveAll": "Archive all",
 				"archiveAllLabel": "Archive all {count} messages in this bundle",
 				"unsubscribe": "Unsubscribe",
@@ -6419,7 +6427,9 @@
 			},
 			"postboxFolderActions": {
 				"menuLabel": "Folder actions",
+				"labelMenuLabel": "Label actions",
 				"markAllRead": "Mark all as read",
+				"markCategoryRead": "Mark {category} as read",
 				"empty": {
 					"trash": "Empty trash",
 					"spam": "Empty spam"
@@ -12378,6 +12388,8 @@
 				"pageTitle": "Contacts — Owlat",
 				"removeAria": "Remove contact",
 				"removedToast": "Removed {contact}",
+				"resumeCardDav": "Resume CardDAV updates",
+				"resumedToast": "{contact} follows CardDAV again. The next sync brings back the card’s details.",
 				"searchPlaceholder": "Search contacts",
 				"subtitle": "People you mail or import, for autocomplete",
 				"title": "Contacts",
@@ -12387,8 +12399,6 @@
 					"export": "Export .vcf",
 					"importHint": "Add people from a .vcf file, such as your phone's address book",
 					"pickerTitle": "Choose a vCard file",
-					"importedBadge": "Imported",
-					"importedTooltip": "Added or updated by a vCard import",
 					"imported": "Imported: {created} new, {merged} merged with existing contacts.",
 					"stopped": "The import stopped. No contacts were saved. | The import stopped after one contact, which is saved. | The import stopped after {count} contacts. Those are saved.",
 					"skipped": "Skipped one card without an email address. | Skipped {count} cards without an email address.",
@@ -12398,6 +12408,51 @@
 					"empty": "That file has no contacts with an email address.",
 					"exportFailed": "The address book could not be exported. Try again.",
 					"unreadable": "That file could not be read. Try again."
+				},
+				"source": {
+					"carddav": "CardDAV",
+					"carddavTooltip": "Synced from the connected CardDAV address book",
+					"carddavEdited": "Edited here, not following CardDAV",
+					"carddavEditedTooltip": "You changed this contact here, so changes on the CardDAV server no longer replace it.",
+					"vcard": "vCard",
+					"vcardTooltip": "Added or updated by a vCard import",
+					"mail": "Mail",
+					"mailTooltip": "Added from mail or by hand"
+				},
+				"carddav": {
+					"title": "CardDAV address book",
+					"description": "Read the contacts of an address book on another server, such as Nextcloud, Fastmail or iCloud. Owlat only reads it and checks for changes every hour. These are this mailbox's contacts, not the Audience contacts.",
+					"sharedNote": "Every member of this team inbox sees the synced contacts.",
+					"connect": "Connect CardDAV address book",
+					"serverUrl": "Server URL",
+					"serverUrlPlaceholder": "https://dav.example.com",
+					"username": "Username",
+					"password": "Password",
+					"passwordHint": "Use an app password if your provider offers one. Owlat stores it encrypted.",
+					"connectAction": "Connect",
+					"connectedToast": "Address book connected. The first sync is running.",
+					"syncing": "Syncing {name} from {server}",
+					"lastSynced": "Last synced {time}",
+					"firstSync": "First sync in progress",
+					"syncNow": "Sync now",
+					"syncStarted": "Sync started.",
+					"disconnect": "Disconnect",
+					"disconnectTitle": "Disconnect this address book?",
+					"disconnectBody": "Contacts the sync added are removed unless you have mailed them since. Contacts that were already in the address book stay.",
+					"disconnectedToast": "Address book disconnected.",
+					"truncated": "The address book has more cards than one sync reads ({max}). The rest were skipped.",
+					"syncFailed": "The last sync failed: {reason}",
+					"errors": {
+						"auth": "The server did not accept the username and password.",
+						"unreachable": "The server could not be reached.",
+						"not_carddav": "That server did not answer as a CardDAV server.",
+						"no_address_book": "No address book was found for this account.",
+						"too_large": "The server sent more than one sync reads.",
+						"failed": "Something went wrong. Try again later.",
+						"invalid_url": "Enter the server address, starting with https://.",
+						"forbidden": "You can't change this mailbox's address book.",
+						"already_connected": "This mailbox already has an address book connected."
+					}
 				}
 			},
 			"detail": {
@@ -13484,6 +13539,16 @@
 					"needsIcon": "Turn on the tray icon first. Without it, closing the window quits Owlat.",
 					"title": "Keep running when the window is closed"
 				},
+				"hideDockIcon": {
+					"description": "Run Owlat from the menu bar icon alone, without a Dock icon or a menu bar of its own.",
+					"needsIcon": "Turn on the menu bar icon first. Without it, the Dock icon is the way back to Owlat.",
+					"title": "Hide the Dock icon"
+				},
+				"mailbox": {
+					"all": "All inboxes",
+					"description": "Which inbox the icon counts and lists.",
+					"title": "Count unread in"
+				},
 				"menuBarIcon": {
 					"description": "Show the unread count and your newest unread mail in the menu bar.",
 					"heading": "Menu bar",
@@ -14265,6 +14330,12 @@
 			"unpinNamed": "Unpin “{subject}”",
 			"full": "You can pin up to 5 conversations. Unpin one to make room.",
 			"dropHint": "Drop here to pin"
+		},
+		"checkForMail": {
+			"busy": "Already checking for new mail.",
+			"checking": "Checking your connected accounts for new mail.",
+			"failed": "Couldn't check for new mail. Try again in a moment.",
+			"nothing": "No connected accounts to check. Mail to your Owlat addresses arrives on its own."
 		}
 	},
 	"recipient": {
@@ -16489,7 +16560,10 @@
 			"usePostboxContacts": {
 				"removeContact": "Remove contact",
 				"saveContact": "Save contact",
-				"importContacts": "Import contacts"
+				"importContacts": "Import contacts",
+				"importPhotos": "Import contact pictures",
+				"restoreContact": "Restore contact",
+				"resumeCardDav": "Resume CardDAV updates"
 			},
 			"usePostboxFilters": {
 				"createFilter": "Create filter",
@@ -17289,7 +17363,7 @@
 				},
 				"trayIcon": {
 					"title": "Tray icon",
-					"keywords": "menu bar, system tray, notification area, close to tray, keep running"
+					"keywords": "menu bar, system tray, notification area, close to tray, keep running, dock icon, hide dock, unread count, mailbox"
 				},
 				"unreadBadge": {
 					"title": "Unread badge",
@@ -18134,7 +18208,9 @@
 			"switchToInbox": "Switch to Inbox",
 			"switchToMarketing": "Switch to marketing",
 			"copySignInCode": "Copy latest sign-in code",
-			"openSignInLink": "Open latest sign-in link"
+			"openSignInLink": "Open latest sign-in link",
+			"checkForMail": "Check for mail",
+			"checkForMailSubtitle": "Connected accounts"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Add contacts to topic",

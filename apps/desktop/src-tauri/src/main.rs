@@ -16,6 +16,7 @@ compile_error!(
     "the `e2e-fixture` feature is for the debug fixture builds of scripts/desktop-smoke.ts only"
 );
 
+mod dictation;
 #[cfg(feature = "e2e-fixture")]
 mod e2e;
 mod files;
@@ -134,7 +135,18 @@ fn main() {
             updater::updater_install,
             updater::updater_restart,
             updater::updater_notify_ready,
+            dictation::dictation_available,
+            dictation::dictation_start,
+            dictation::dictation_stop,
+            dictation::dictation_cancel,
         ])
+        // A new document in a webview (a reload, a workspace switch) ends the
+        // dictation session the old one started.
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                dictation::release(webview.app_handle(), webview.label());
+            }
+        })
         // Capture OS-level file drops in Rust so `read_authorized_file` will
         // serve their bytes. This runs synchronously in the event loop before
         // the webview's drag-drop event is delivered, so by the time JS invokes
@@ -147,9 +159,14 @@ fn main() {
                 files::remember_dropped_paths(&allow, paths);
             }
             // macOS hides the main window on close; Windows and Linux hide it
-            // to the tray icon when there is one (window.rs).
+            // to the tray icon when there is one (window.rs). Hidden or gone,
+            // the window stops dictating: `Destroyed` never comes for a hidden one.
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                dictation::release(window.app_handle(), window.label());
                 window::hide_main_on_close(window, api);
+            }
+            tauri::WindowEvent::Destroyed => {
+                dictation::release(window.app_handle(), window.label())
             }
             _ => {}
         })
@@ -167,6 +184,11 @@ fn main() {
             window::create_main_window(app.handle())?;
             // The tray icon (menu bar extra on macOS), unless turned off.
             tray::setup(app.handle());
+
+            // Minimizing a window or hiding the app ends its dictation, as
+            // closing and hiding a window do (below and in shortcuts.rs).
+            #[cfg(target_os = "macos")]
+            dictation::watch_out_of_sight(app.handle());
 
             // Native application menu. macOS gets the app-global menu bar; on
             // Windows/Linux we drop the native frame (the branded

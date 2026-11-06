@@ -37,7 +37,11 @@ describe('workerWireWindow', () => {
 
 	it('still serves the first reporting mail-sync worker, which sends through SMTP only', () => {
 		expect(workerWireVerdict(1, workerWireWindow('mail-sync'))).toBe('supported');
-		expect(workerWireVerdict(2, workerWireWindow('mail-sync'))).toBe('current');
+	});
+
+	it('still serves a mail-sync worker that cannot upload, which is listed no uploads', () => {
+		expect(workerWireVerdict(2, workerWireWindow('mail-sync'))).toBe('supported');
+		expect(workerWireVerdict(3, workerWireWindow('mail-sync'))).toBe('current');
 	});
 
 	it('has a window for every service', () => {

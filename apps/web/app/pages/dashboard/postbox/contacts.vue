@@ -37,9 +37,10 @@ const {
 	refetch: refetchList,
 	save,
 	remove,
+	restore,
+	resumeCardDav,
 } = usePostboxContacts(mailboxId);
 type MailContact = (typeof contacts.value)[number];
-const { restoreEntry } = usePostboxVcardTransfer(mailboxId);
 const composeNav = usePostboxComposeNav();
 const { showToast } = useToast();
 
@@ -119,11 +120,12 @@ async function submit() {
 }
 
 // Removing a contact confirms with a toast that offers an immediate Undo, which
-// re-adds the contact from the captured details. An imported row goes back
-// through the import, so its phone numbers and addresses come back with it.
+// puts the whole row back from the copy the page holds: details, source and,
+// while the server still keeps it, the picture.
 async function removeContact(c: MailContact) {
 	const result = await remove(c._id);
 	if (!result.ok) return;
+	const photoRemovalId = result.result?.photoRemovalId;
 	showToast(
 		t('dashboard.postbox.contacts.removedToast', { contact: c.displayName || c.email }),
 		'success',
@@ -131,18 +133,19 @@ async function removeContact(c: MailContact) {
 			action: {
 				label: t('dashboard.postbox.contacts.undo'),
 				onAction: () => {
-					if (c.importedAt !== undefined) {
-						void restoreEntry(c);
-						return;
-					}
-					void save({
-						email: c.email,
-						displayName: c.displayName,
-						organization: c.organization,
-					});
+					void restore(c, photoRemovalId);
 				},
 			},
 		}
+	);
+}
+
+async function resumeCardDavUpdates(c: MailContact) {
+	const result = await resumeCardDav(c._id);
+	if (!result.ok) return;
+	showToast(
+		t('dashboard.postbox.contacts.resumedToast', { contact: c.displayName || c.email }),
+		'success'
 	);
 }
 
@@ -153,6 +156,22 @@ function composeTo(email: string) {
 
 function initial(c: { displayName?: string; email: string }) {
 	return (c.displayName || c.email).charAt(0).toUpperCase();
+}
+
+const isTeamInbox = computed(() => currentMailbox.value?.scope === 'shared');
+
+// Where a row came from: a CardDAV sync, a vCard import, or mail and the
+// add-contact form. A synced row that a vCard import also touched counts as
+// synced, since the sync keeps it up to date. A synced row edited here no
+// longer follows its card until the person resumes it.
+type ContactSource = 'carddav' | 'carddavEdited' | 'vcard' | 'mail';
+function sourceOf(c: MailContact): ContactSource {
+	if (c.cardDavSource?.editedAt !== undefined && !c.cardDavSource.isRowCreatedBySync) {
+		return 'carddavEdited';
+	}
+	if (c.cardDavSource) return 'carddav';
+	if (c.importedAt !== undefined) return 'vcard';
+	return 'mail';
 }
 </script>
 
@@ -175,6 +194,8 @@ function initial(c: { displayName?: string; email: string }) {
 				</UiButton>
 			</div>
 		</header>
+
+		<LazyPostboxContactsCardDavPanel :mailbox-id="mailboxId" :is-team-inbox="isTeamInbox" />
 
 		<div class="relative mb-4">
 			<SearchIcon class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
@@ -219,7 +240,15 @@ function initial(c: { displayName?: string; email: string }) {
 					class="group flex items-center gap-3 h-16 px-4 hover:bg-bg-surface"
 					style="content-visibility: auto; contain-intrinsic-size: auto 64px"
 				>
+					<img
+						v-if="c.photoUrl"
+						:src="c.photoUrl"
+						alt=""
+						class="w-9 h-9 rounded-full object-cover flex-shrink-0"
+						loading="lazy"
+					/>
 					<div
+						v-else
 						class="w-9 h-9 rounded-full bg-brand-subtle text-brand flex items-center justify-center font-semibold flex-shrink-0"
 					>
 						{{ initial(c) }}
@@ -227,12 +256,9 @@ function initial(c: { displayName?: string; email: string }) {
 					<div class="flex-1 min-w-0">
 						<p class="flex items-center gap-2 text-sm font-medium text-text-primary">
 							<span class="truncate">{{ c.displayName || c.email }}</span>
-							<UiTooltip
-								v-if="c.importedAt !== undefined"
-								:text="t('dashboard.postbox.contacts.vcard.importedTooltip')"
-							>
+							<UiTooltip :text="t(`dashboard.postbox.contacts.source.${sourceOf(c)}Tooltip`)">
 								<UiBadge variant="neutral" class="flex-shrink-0">
-									{{ t('dashboard.postbox.contacts.vcard.importedBadge') }}
+									{{ t(`dashboard.postbox.contacts.source.${sourceOf(c)}`) }}
 								</UiBadge>
 							</UiTooltip>
 						</p>
@@ -241,6 +267,17 @@ function initial(c: { displayName?: string; email: string }) {
 							><span v-if="c.phones?.[0]"> · {{ c.phones[0].value }}</span>
 						</p>
 					</div>
+					<!-- Always shown: it is the only way back to following the card. -->
+					<UiButton
+						v-if="sourceOf(c) === 'carddavEdited'"
+						variant="ghost"
+						size="sm"
+						type="button"
+						class="flex-shrink-0"
+						@click="resumeCardDavUpdates(c)"
+					>
+						{{ t('dashboard.postbox.contacts.resumeCardDav') }}
+					</UiButton>
 					<!-- Row actions stay reachable for keyboard and touch users: they
 					     only fade in on hover, never leave the tab order. -->
 					<div

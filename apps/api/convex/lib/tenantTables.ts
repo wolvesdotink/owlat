@@ -256,6 +256,8 @@ export const TENANT_TABLES = [
 	// MCP client tokens and their activity log: credentials over the mail above.
 	...MCP_TABLES,
 	'mailContacts',
+	// Sealed CardDAV passwords, after the address-book rows that name them.
+	'mailCardDavAccounts',
 	'mailSenderCategoryOverrides',
 	'mailSenderImageAllowlist',
 	// Attachment share links (idea 10). Each row is one of this org's files —

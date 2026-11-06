@@ -63,7 +63,9 @@ export const SCHEDULER_RESCAN_MARGIN_MS = 5_000;
  *   - instance key material (Sealed Mail `keyVault`), which is outside the
  *     sweep;
  *   - the push of the inbound TLS policy to the MTA, which is instance
- *     infrastructure, not workspace data.
+ *     infrastructure, not workspace data;
+ *   - the deletion of a removed contact's picture after its Undo window,
+ *     which writes nothing and would otherwise leave the blob behind.
  */
 export const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
 	'workspaces/deletion/',
@@ -73,6 +75,7 @@ export const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
 	'auth/accountDeletionEmail:sendAccountDeletionEmail',
 	'e2ee/',
 	'mail/mailboxActions:pushInboundTlsPolicy',
+	'mail/contactsUndo:_deleteRemovedContactPhoto',
 ];
 
 /** `workspaces/deletion/walker.js:drive` and `…/walker:drive` read the same. */

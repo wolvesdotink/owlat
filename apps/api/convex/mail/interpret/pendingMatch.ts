@@ -43,7 +43,7 @@ import { readResult } from './load';
 import { textSimilarity } from './reducePlan';
 import { pendingFieldsOf } from './reduceIdentity';
 import type { ReduceTransition } from './reduceInput';
-import { isInterpretationFenced } from './staleFence';
+import { isInterpretationFenced, isWithdrawnItem } from './staleFence';
 
 /** Pending rows one run reads. */
 const PAGE = 20;
@@ -218,6 +218,8 @@ export const matchPendingTransitions = internalMutation({
 		for (const id of args.itemIds) {
 			const item = await ctx.db.get(id);
 			if (!item || !rowMatchesThreadRef(item, ref) || item.status !== 'open') continue;
+			// A withdrawn item takes no proposed transition (scopeReconcile.ts).
+			if (isWithdrawnItem(item)) continue;
 			candidates.push({ id, text: await openMessageBody(item.assertion) });
 		}
 		const rows = await pendingPage(ctx, ref, args.after, PAGE);

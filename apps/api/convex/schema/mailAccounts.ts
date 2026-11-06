@@ -321,7 +321,8 @@ export const mailAccountsTables = {
 		.index('by_folder', ['folderId']),
 
 	// Local → remote write-back queue. Every move, flag change and permanent
-	// delete a member makes in an external mailbox is recorded here, in the same
+	// delete a member makes in an external mailbox, and every message moved or
+	// copied into one from another mailbox, is recorded here, in the same
 	// transaction, and the mail-sync worker replays it on the provider over IMAP
 	// (`mail/external/remoteOps.ts`). A row is deleted once applied, once the
 	// message turns out not to be on the server, or when its retries run out.
@@ -332,9 +333,23 @@ export const mailAccountsTables = {
 		// message. Absent on the two folder kinds.
 		rfc822MessageId: v.optional(v.string()),
 		source: remoteFolderRefValidator, // the message's folder, or the folder itself
-		// 'move': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
+		// 'move' and 'append': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
 		target: v.optional(remoteFolderRefValidator),
-		flags: v.optional(remoteFlagChangesValidator), // 'flags' only
+		// 'flags': the changes. 'append': the flags the upload carries.
+		flags: v.optional(remoteFlagChangesValidator),
+		// 'append' only: the transfer it carries out (mail/external/remoteAppend.ts).
+		// `messageId`: the copy this account already holds in Owlat, which the
+		// upload is of. `sourceMessageId`: for a move, the original, purged once
+		// the provider has the copy, unless `isRecalled` (the move was undone
+		// while the upload was queued). `receivedAt`: sent as the INTERNALDATE.
+		append: v.optional(
+			v.object({
+				messageId: v.id('mailMessages'),
+				sourceMessageId: v.optional(v.id('mailMessages')),
+				isRecalled: v.optional(v.boolean()),
+				receivedAt: v.number(),
+			})
+		),
 		attempts: v.number(),
 		// The enqueue time until a failed attempt pushes it back. An op that waits
 		// behind an older one for its message is not due before it

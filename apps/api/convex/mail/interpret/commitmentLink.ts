@@ -28,7 +28,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { InterpretationSource } from '../../lib/validators/threadBrief';
-import { isInterpretationFenced } from './staleFence';
+import { isInterpretationFenced, isWithdrawnItem } from './staleFence';
 
 /** Items of one thread read per status when matching (a thread has a handful). */
 const ITEM_READ_LIMIT = 100;
@@ -86,7 +86,11 @@ export async function linkCommitmentsForMessage(
 					.take(ITEM_READ_LIMIT))
 			);
 		}
-		const item = pickCommitmentItem(commitment, items);
+		// A withdrawn item links nothing (scopeReconcile.ts).
+		const item = pickCommitmentItem(
+			commitment,
+			items.filter((i) => !isWithdrawnItem(i))
+		);
 		if (!item) continue;
 		await ctx.db.patch(commitment._id, { threadItemId: item._id, updatedAt: Date.now() });
 		if (item.commitmentId === undefined) {

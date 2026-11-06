@@ -111,6 +111,9 @@ export const remoteOpKindValidator = v.union(
 	v.literal('move'),
 	v.literal('flags'),
 	v.literal('delete'),
+	// A message moved or copied into this account from another mailbox: the
+	// worker uploads it with APPEND.
+	v.literal('append'),
 	// A mirrored folder renamed or deleted in Owlat.
 	v.literal('renameFolder'),
 	v.literal('deleteFolder')

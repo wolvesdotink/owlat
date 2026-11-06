@@ -59,6 +59,14 @@ function snapshotOf(ctx: Pick<MutationCtx, 'db'>, sourceKey: string) {
 		.first();
 }
 
+/** Does the source wait for its thread's next open (`deferSource`)? */
+export async function isSourceDeferred(
+	ctx: Pick<MutationCtx, 'db'>,
+	sourceKey: string
+): Promise<boolean> {
+	return (await snapshotOf(ctx, sourceKey))?.isDeferred === true;
+}
+
 /** The run that reads a source: sends go through the outbound run (failure reconciliation). */
 export function runOf(source: InterpretationSource) {
 	return source.kind === 'outboundMail' || source.kind === 'teamReply'

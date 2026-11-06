@@ -34,6 +34,40 @@ export const listMailboxContacts = internalQuery({
 	},
 });
 
+/**
+ * The CardDAV account syncing into one of the member's personal address
+ * books: the server, the username and the sync state. The sealed password
+ * never leaves the table.
+ */
+export const listMailboxCardDavAccounts = internalQuery({
+	args: {
+		userId: v.string(),
+		mailboxId: v.id('mailboxes'),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args) => {
+		await requireSelf(ctx, args.userId);
+		const mailbox = await loadPersonalMailboxForUser(ctx, args.mailboxId, args.userId);
+		if (!mailbox) throwNotFound('Personal mailbox');
+		const result = await ctx.db
+			.query('mailCardDavAccounts')
+			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
+			.paginate(args.paginationOpts);
+		return {
+			...result,
+			page: result.page.map(
+				({
+					secretCiphertext: _ciphertext,
+					secretIv: _iv,
+					secretAuthTag: _tag,
+					secretEnvelopeVersion: _version,
+					...account
+				}) => account
+			),
+		};
+	},
+});
+
 /** The address-book line of the pre-run manifest (`getExportPlan`). */
 export const countPersonalMailContacts = internalQuery({
 	args: { userId: v.string() },
