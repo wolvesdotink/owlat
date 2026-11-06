@@ -12714,14 +12714,26 @@
 				"noMailboxes": "No mailboxes yet. Add your first account to start receiving mail.",
 				"pageTitle": "General — Owlat",
 				"renameIntro": "Display name for {address}. The address itself can't be changed.",
-				"renameMailbox": "Name and colour",
+				"renameMailbox": "Name, colour and mark",
 				"renameOperation": "Rename mailbox",
 				"subtitle": "How Owlat looks and how your mail reads.",
 				"teamManage": "Team · manage",
 				"colour": "Colour",
 				"colourAutomatic": "Automatic",
 				"colourSlot": "Colour {n}",
-				"colourHelp": "The chip this inbox wears in the sidebar, on the Workbench, in the Answer queue and next to Send — always together with its name."
+				"colourHelp": "The chip this inbox wears in the sidebar, on the Workbench, in the Answer queue and next to Send — always together with its name.",
+				"mark": "Mark",
+				"markHelp": "Shown before the name, and instead of the initials when the sidebar is collapsed. Every member of the inbox sees it. Without one, a connected Gmail or Microsoft account shows its logo.",
+				"markDefault": "Default",
+				"markIcons": {
+					"home": "Home",
+					"work": "Work",
+					"team": "Team",
+					"shop": "Shop"
+				},
+				"markEmoji": "Or an emoji",
+				"markEmojiPlaceholder": "Type or paste one emoji",
+				"markEmojiInvalid": "Use a single emoji."
 			},
 			"members": {
 				"detail": {

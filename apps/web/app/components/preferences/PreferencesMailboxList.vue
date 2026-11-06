@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * My settings → Connected mailboxes → Mailboxes, with colour, rename and (for
+ * My settings → Connected mailboxes → Mailboxes, with colour, mark, rename and (for
  * admins) delete and the hosted-decision opt-out. Members see
  * the mailboxes they can use (their own plus the team inboxes they belong to). Admins see every mailbox in the organization
  * from `identity.listOrgMailboxes`, so they can rename or retire a teammate's;
@@ -9,7 +9,14 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { INBOX_COLOR_SLOTS, INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
+import {
+	INBOX_COLOR_SLOTS,
+	INBOX_MARK_ICONS,
+	INBOX_SLOT_SWATCH,
+	isInboxMarkIcon,
+	type InboxMarkIcon,
+} from '~/utils/inboxIdentity';
+import { INBOX_MARK_ICON_COMPONENTS } from '~/lib/inboxMarkIcons';
 import { PencilIcon, TrashIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -56,21 +63,59 @@ const setAppearance = useBackendOperation(api.mail.mailbox.appearance.setAppeara
 	inlineTarget: renameError,
 });
 
+// The inbox's mark: one of the icons, one emoji, or `null` for the default
+// (a connected account's provider logo, else initials on the icon rail).
+const markIcon = ref<InboxMarkIcon | null>(null);
+const markEmoji = ref('');
+const markValue = computed<string | null>(() => markIcon.value ?? (markEmoji.value.trim() || null));
+
+// A quick check so a typo is caught before saving; the backend has the final word.
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const markEmojiInvalid = computed(() => {
+	const emoji = markEmoji.value.trim();
+	if (markIcon.value !== null || emoji.length === 0) return false;
+	const count = Array.from(graphemes.segment(emoji)).length;
+	return count !== 1 || !/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(emoji);
+});
+
+function pickMarkIcon(icon: InboxMarkIcon) {
+	markIcon.value = icon;
+	markEmoji.value = '';
+}
+
+function resetMark() {
+	markIcon.value = null;
+	markEmoji.value = '';
+}
+
+function onMarkEmojiInput() {
+	if (markEmoji.value.trim().length > 0) markIcon.value = null;
+}
+
 function openRename(mb: MailboxRow) {
 	renameTarget.value = mb;
 	renameValue.value = mb.displayName ?? '';
 	colorValue.value = mb.colorSlot ?? null;
+	const mark = mb.mark ?? null;
+	markIcon.value = mark !== null && isInboxMarkIcon(mark) ? mark : null;
+	markEmoji.value = mark !== null && !isInboxMarkIcon(mark) ? mark : '';
 	renameError.value = null;
 }
 
 async function handleRename() {
-	if (!renameTarget.value) return;
+	if (!renameTarget.value || markEmojiInvalid.value) return;
 	const mailboxId = renameTarget.value._id as Id<'mailboxes'>;
 	const res = await setDisplayName.run({ mailboxId, displayName: renameValue.value });
 	if (!res.ok) return;
-	if ((renameTarget.value.colorSlot ?? null) !== colorValue.value) {
-		const colour = await setAppearance.run({ mailboxId, colorSlot: colorValue.value });
-		if (!colour.ok) return;
+	const colourChanged = (renameTarget.value.colorSlot ?? null) !== colorValue.value;
+	const markChanged = (renameTarget.value.mark ?? null) !== markValue.value;
+	if (colourChanged || markChanged) {
+		const appearance = await setAppearance.run({
+			mailboxId,
+			...(colourChanged ? { colorSlot: colorValue.value } : {}),
+			...(markChanged ? { mark: markValue.value } : {}),
+		});
+		if (!appearance.ok) return;
 	}
 	renameTarget.value = null;
 }
@@ -117,6 +162,7 @@ async function handleDelete() {
 								v-if="inboxById.get(mb._id)"
 								:name="inboxById.get(mb._id)!.name"
 								:slot="inboxById.get(mb._id)!.slot"
+								:mark="inboxById.get(mb._id)!.mark"
 							/>
 							<span class="truncate">{{ mb.address }}</span>
 						</p>
@@ -253,6 +299,65 @@ async function handleDelete() {
 						{{ t('dashboard.preferences.index.colourHelp') }}
 					</p>
 				</fieldset>
+				<fieldset>
+					<legend class="text-sm font-medium mb-1">
+						{{ t('dashboard.preferences.index.mark') }}
+					</legend>
+					<div class="flex flex-wrap items-center gap-2">
+						<button
+							type="button"
+							class="rounded-full border px-2.5 py-1 text-xs"
+							:class="
+								markValue === null
+									? 'border-brand text-text-primary'
+									: 'border-border-default text-text-secondary'
+							"
+							:aria-pressed="markValue === null"
+							data-testid="mailbox-mark-default"
+							@click="resetMark"
+						>
+							{{ t('dashboard.preferences.index.markDefault') }}
+						</button>
+						<UiTooltip
+							v-for="icon in INBOX_MARK_ICONS"
+							:key="icon"
+							:text="t(`dashboard.preferences.index.markIcons.${icon}`)"
+						>
+							<button
+								type="button"
+								class="flex size-7 items-center justify-center rounded-md border text-text-secondary"
+								:class="markIcon === icon ? 'border-text-primary' : 'border-transparent'"
+								:aria-pressed="markIcon === icon"
+								:aria-label="t(`dashboard.preferences.index.markIcons.${icon}`)"
+								:data-testid="`mailbox-mark-${icon}`"
+								@click="pickMarkIcon(icon)"
+							>
+								<component :is="INBOX_MARK_ICON_COMPONENTS[icon]" class="size-4" />
+							</button>
+						</UiTooltip>
+					</div>
+					<label for="mb-mark-emoji" class="text-xs text-text-secondary block mt-2 mb-1">
+						{{ t('dashboard.preferences.index.markEmoji') }}
+					</label>
+					<input
+						id="mb-mark-emoji"
+						v-model="markEmoji"
+						type="text"
+						maxlength="32"
+						autocomplete="off"
+						:placeholder="t('dashboard.preferences.index.markEmojiPlaceholder')"
+						:aria-invalid="markEmojiInvalid"
+						class="input w-56"
+						data-testid="mailbox-mark-emoji"
+						@input="onMarkEmojiInput"
+					/>
+					<p v-if="markEmojiInvalid" class="text-xs text-error mt-1">
+						{{ t('dashboard.preferences.index.markEmojiInvalid') }}
+					</p>
+					<p class="text-xs text-text-tertiary mt-1">
+						{{ t('dashboard.preferences.index.markHelp') }}
+					</p>
+				</fieldset>
 				<p v-if="renameError" class="text-sm text-error">{{ renameError }}</p>
 			</form>
 			<template #footer>
@@ -263,7 +368,11 @@ async function handleDelete() {
 				>
 					{{ t('common.cancel') }}
 				</UiButton>
-				<UiButton :loading="setDisplayName.isLoading.value" @click="handleRename">
+				<UiButton
+					:loading="setDisplayName.isLoading.value"
+					:disabled="markEmojiInvalid"
+					@click="handleRename"
+				>
 					{{ t('common.save') }}
 				</UiButton>
 			</template>

@@ -111,3 +111,84 @@ describe('PreferencesMailboxList', () => {
 		expect(metaLines(wrapper)[0]).toContain('5 MB used');
 	});
 });
+
+describe('PreferencesMailboxList mark picker', () => {
+	const APPEARANCE = getFunctionName(api.mail.mailbox.appearance.setAppearance);
+	let appearanceCalls: unknown[];
+
+	function mountDialog(mark?: string) {
+		isAdmin.value = false;
+		appearanceCalls = [];
+		const own = [{ ...row('mb_own', 'me@owlat.test'), ...(mark ? { mark } : {}) }];
+		vi.stubGlobal('usePostboxMailbox', () => ({
+			mailboxes: computed(() => own),
+			isLoading: ref(false),
+		}));
+		vi.stubGlobal('useBackendOperation', (fn: Parameters<typeof getFunctionName>[0]) => ({
+			run: vi.fn(async (args: unknown) => {
+				if (getFunctionName(fn) === APPEARANCE) appearanceCalls.push(args);
+				return { ok: true };
+			}),
+			isLoading: ref(false),
+		}));
+		return mount(PreferencesMailboxList, {
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+					UiModal: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
+					UiTooltip: { template: '<div><slot /></div>' },
+					UiConfirmationDialog: true,
+					UiButton: true,
+					I18nT: true,
+					SettingsHostedDecisionExclusion: true,
+				},
+			},
+		});
+	}
+
+	async function openAndSave(
+		wrapper: ReturnType<typeof mountDialog>,
+		edit: (w: ReturnType<typeof mountDialog>) => Promise<void>
+	) {
+		await wrapper.find('button[aria-label="Name, colour and mark"]').trigger('click');
+		await edit(wrapper);
+		await wrapper.find('form').trigger('submit');
+		await vi.waitFor(() => expect(wrapper.find('form').exists()).toBe(false));
+	}
+
+	it('saves the icon picked for the inbox', async () => {
+		const wrapper = mountDialog();
+		await openAndSave(wrapper, (w) => w.find('[data-testid="mailbox-mark-team"]').trigger('click'));
+		expect(appearanceCalls).toEqual([{ mailboxId: 'mb_own', mark: 'team' }]);
+	});
+
+	it('saves a typed emoji, and resets a mark to the default', async () => {
+		const typed = mountDialog();
+		await openAndSave(typed, (w) => w.find('[data-testid="mailbox-mark-emoji"]').setValue('🦉'));
+		expect(appearanceCalls).toEqual([{ mailboxId: 'mb_own', mark: '🦉' }]);
+
+		const reset = mountDialog('shop');
+		await openAndSave(reset, (w) =>
+			w.find('[data-testid="mailbox-mark-default"]').trigger('click')
+		);
+		expect(appearanceCalls).toEqual([{ mailboxId: 'mb_own', mark: null }]);
+	});
+
+	it('does not save more than one emoji', async () => {
+		const wrapper = mountDialog();
+		await wrapper.find('button[aria-label="Name, colour and mark"]').trigger('click');
+		await wrapper.find('[data-testid="mailbox-mark-emoji"]').setValue('🦉🦉');
+		await wrapper.find('form').trigger('submit');
+		expect(wrapper.text()).toContain('Use a single emoji.');
+		expect(wrapper.find('form').exists()).toBe(true);
+		expect(appearanceCalls).toEqual([]);
+	});
+
+	it('leaves the mark out when only the name changes', async () => {
+		const wrapper = mountDialog('work');
+		await openAndSave(wrapper, (w) => w.find('#mb-display-name').setValue('Me'));
+		expect(appearanceCalls).toEqual([]);
+	});
+});

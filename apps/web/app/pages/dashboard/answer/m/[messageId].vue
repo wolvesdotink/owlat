@@ -336,7 +336,7 @@ useAnswerModeKeys({
 					:title="`${answeringAs} · ${inbox.address}`"
 					data-testid="answer-identity"
 				>
-					<InboxChip :name="inbox.name" :slot="inbox.slot" aria-hidden="true" />
+					<InboxChip :name="inbox.name" :slot="inbox.slot" :mark="inbox.mark" aria-hidden="true" />
 					<span class="sr-only">{{ answeringAs }} · {{ inbox.address }}</span>
 				</span>
 			</template>

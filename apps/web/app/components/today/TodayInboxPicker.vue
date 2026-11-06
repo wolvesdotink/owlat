@@ -69,7 +69,13 @@ const triggerLabel = computed(() =>
 					:class="hiddenSet.has(inbox.mailboxId) ? 'text-text-tertiary' : 'text-text-primary'"
 					aria-hidden="true"
 				/>
-				<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+				<InboxChip
+					:name="inbox.name"
+					:slot="inbox.slot"
+					:mark="inbox.mark"
+					variant="plain"
+					size="md"
+				/>
 			</button>
 		</UiTooltip>
 		<UiDropdownDivider />

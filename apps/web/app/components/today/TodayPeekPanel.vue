@@ -228,7 +228,13 @@ watch(target, async (value, previous) => {
 			</div>
 			<div v-else class="min-h-0 flex-1 overflow-y-auto p-5">
 				<div class="flex items-start gap-2">
-					<InboxChip v-if="inbox" :name="inbox.name" :slot="inbox.slot" class="mt-0.5" />
+					<InboxChip
+						v-if="inbox"
+						:name="inbox.name"
+						:slot="inbox.slot"
+						:mark="inbox.mark"
+						class="mt-0.5"
+					/>
 					<span
 						v-else-if="source?.kind === 'team'"
 						class="mt-0.5 inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
