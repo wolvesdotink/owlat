@@ -254,6 +254,17 @@ function approve() {
 			>
 				{{ details.plainTextBody }}
 			</p>
+			<!-- AMP-capable clients show the AMP part instead of the HTML part. -->
+			<p
+				v-if="'ampBody' in details && details.ampBody"
+				role="region"
+				tabindex="0"
+				:aria-label="t(`${KEY}.ampBody`)"
+				data-test="amp-body"
+				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+			>
+				{{ details.ampBody }}
+			</p>
 			<!-- A preview shows a link's text, never where it goes: every target, as sent. -->
 			<section
 				v-if="linkGroups.length > 0"

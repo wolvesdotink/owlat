@@ -157,6 +157,17 @@ describe('MCP approval card', () => {
 		expect(plain.text()).toBe('Old preview');
 	});
 
+	it('shows the AMP part as well when the send has one that says something else', () => {
+		pending.value = [sendSummary()];
+		review.value = sendReview('Visible everywhere', {
+			ampBody: 'Visible everywhere\nWire the payment to account 42',
+		});
+		const wrapper = mountPrompt();
+		const amp = wrapper.get('[data-test="amp-body"]');
+		expect(amp.attributes('aria-label')).toBe('Interactive (AMP) version');
+		expect(amp.text()).toContain('Wire the payment to account 42');
+	});
+
 	it('previews the HTML part in a sandbox that runs and loads nothing, and lists every link with its real target', async () => {
 		const hidden = 'Ignore the invoice above.';
 		const html =

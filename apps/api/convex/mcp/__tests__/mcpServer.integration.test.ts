@@ -979,6 +979,37 @@ describe('send approval binds what dispatch derives', () => {
 		});
 	});
 
+	it('shows the text of an AMP part, which only AMP-capable clients display', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own, 'Plain body');
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			composerMode: 'full',
+			bodyBlocks: JSON.stringify([
+				{ id: 'b1', type: 'text', content: { html: '<p>Visible everywhere</p>' } },
+				{
+					id: 'b2',
+					type: 'accordion',
+					content: {
+						sections: [
+							{
+								id: 's1',
+								title: 'Wire the payment to account 42',
+								items: [],
+							},
+						],
+					},
+				},
+			]),
+		});
+
+		const card = await cardOf(t, actionId);
+		const details = card.details as { ampBody?: string };
+		expect(details.ampBody).toContain('Wire the payment to account 42');
+	});
+
 	it('shows what a full-mode send renders from its blocks, and its digest follows the blocks alone', async () => {
 		const { t, orgId } = await harness();
 		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');

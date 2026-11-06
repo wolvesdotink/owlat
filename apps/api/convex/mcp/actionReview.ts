@@ -87,6 +87,11 @@ export type McpActionDetails =
 			body: string;
 			/** The text/plain part, when it says something else than the HTML part. */
 			plainTextBody?: string;
+			/**
+			 * The AMP part as text, when the send has one and it says something else
+			 * than the HTML part: AMP-capable clients show it instead.
+			 */
+			ampBody?: string;
 			inReplyToSubject?: string;
 			sealing: { isSealed: true } | { isSealed: false; reason: SealSkipReason };
 			attachments: Array<{ filename: string; size: number; isInline: boolean }>;
@@ -211,6 +216,9 @@ export async function review(
 			}
 			const inputs = await sendInputs(ctx, draft);
 			const body = htmlToPlainText(inputs.rendered.html, { preserveBreaks: true });
+			const ampBody = inputs.rendered.amp
+				? htmlToPlainText(inputs.rendered.amp, { preserveBreaks: true })
+				: undefined;
 			return sealed(
 				{
 					...base,
@@ -224,6 +232,7 @@ export async function review(
 					hasHiddenContent: hasHiddenContent(inputs.rendered.html),
 					body,
 					...(sameText(body, inputs.rendered.text) ? {} : { plainTextBody: inputs.rendered.text }),
+					...(ampBody !== undefined && !sameText(body, ampBody) ? { ampBody } : {}),
 					...(inputs.original && inputs.original.mailboxId === row.mailboxId
 						? { inReplyToSubject: inputs.original.subject }
 						: {}),

@@ -6752,6 +6752,7 @@
 				"attachments": "Attachments",
 				"body": "Full message",
 				"plainTextBody": "Plain-text version",
+				"ampBody": "Interactive (AMP) version",
 				"fullText": "All text in the message",
 				"fullTextHint": "Includes text that shows only in some mail apps, modes or screen sizes.",
 				"hiddenContent": "This message has content some recipients may not see — check the full text.",

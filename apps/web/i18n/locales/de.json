@@ -6752,6 +6752,7 @@
 				"attachments": "Anhänge",
 				"body": "Vollständige Nachricht",
 				"plainTextBody": "Nur-Text-Version",
+				"ampBody": "Interaktive Version (AMP)",
 				"fullText": "Der ganze Text der Nachricht",
 				"fullTextHint": "Auch Text, der nur in manchen Mail-Apps, Modi oder Bildschirmgrößen erscheint.",
 				"hiddenContent": "Diese Nachricht hat Inhalte, die manche Empfänger nicht sehen – sieh dir den ganzen Text an.",
