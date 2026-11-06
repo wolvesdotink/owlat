@@ -17,6 +17,7 @@ import { internalMutation } from '../lib/writeFence';
 import { replyBodyToHtml } from '@owlat/shared/html';
 import { throwInvalidState, throwNotFound } from '../_utils/errors';
 import { isMessageSnoozed } from '../lib/mailSnooze';
+import { approvedSendOf, sendInputs } from './actionReview';
 
 /** Messages one conversation action reaches; a longer conversation gets its newest. */
 const THREAD_MESSAGES_MAX = 200;
@@ -50,7 +51,11 @@ export const run = internalMutation({
 				const draft = await ctx.db.get(action.draftId);
 				if (!draft || draft.mailboxId !== row.mailboxId) throwNotFound('Draft');
 				if (draft.state !== 'draft') throwInvalidState('That draft is already being sent');
+				// Derived in the transaction whose digest check passed, so these are
+				// the values the owner approved. Dispatch reads them again later.
+				const inputs = await sendInputs(ctx, draft);
 				await ctx.runMutation(api.mail.drafts.send, { draftId: draft._id });
+				await ctx.db.patch(draft._id, { approvedSend: approvedSendOf(inputs) });
 				return {};
 			}
 			case 'archive_thread': {

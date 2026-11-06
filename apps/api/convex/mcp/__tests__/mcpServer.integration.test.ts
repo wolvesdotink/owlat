@@ -365,9 +365,9 @@ async function drafts(t: Harness) {
 	return t.run((ctx) => ctx.db.query('mailDrafts').collect());
 }
 
+/** The full review the approval card loads for one action. */
 async function cardOf(t: Harness, actionId: Id<'mcpPendingActions'>) {
-	const rows = await t.query(api.mcp.actions.listPending, {});
-	const card = rows.find((row) => row._id === actionId);
+	const card = await t.query(api.mcp.actions.getReview, { actionId });
 	if (!card) throw new Error('no card for that action');
 	return card;
 }
@@ -442,7 +442,11 @@ describe('write tools', () => {
 		expect(waiting).toMatchObject({
 			tool: 'create_draft',
 			clientLabel: 'Claude',
-			details: { to: ['mia@example.com'], subject: 'Payment terms' },
+			summary: { firstRecipient: 'mia@example.com', subject: 'Payment terms' },
+		});
+		expect((await cardOf(t, draftAction)).details).toMatchObject({
+			to: ['mia@example.com'],
+			subject: 'Payment terms',
 		});
 
 		expect(await approveShown(t, draftAction)).toEqual({ status: 'approved' });
@@ -745,8 +749,12 @@ describe('send approval', () => {
 
 		const card = await cardOf(t, actionId);
 		expect(card.details).toEqual({ isInaccessible: true });
-		expect(card.mailboxAddress).toBeNull();
-		expect(JSON.stringify(card)).not.toMatch(/Confidential pricing|Payment terms|mia@example/);
+		expect(card.reviewDigest).toBeNull();
+		const [listed] = await t.query(api.mcp.actions.listPending, {});
+		expect(listed).toMatchObject({ mailboxAddress: null, summary: { isInaccessible: true } });
+		expect(JSON.stringify([card, listed])).not.toMatch(
+			/Confidential pricing|Payment terms|mia@example/
+		);
 
 		const decided = await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: reviewed });
 		expect(decided.status).toBe('failed');
@@ -787,6 +795,212 @@ describe('send approval', () => {
 			from: { address: 'alias@owlat.test' },
 		});
 		expect(await digestOf(t, actionId)).not.toBe(withTwo);
+	});
+});
+
+/** Sealed Mail on, the From address able to sign, and `mia@example.com` holding `key`. */
+async function sealable(t: Harness, key: string) {
+	await enableFeatures(t, ['sealedMail']);
+	const now = Date.now();
+	await t.run(async (ctx) => {
+		await ctx.db.insert('keyVault', {
+			kind: 'address',
+			address: 'a@owlat.test',
+			domain: 'owlat.test',
+			wkdHash: 'hash',
+			fingerprint: 'FPR-A',
+			algorithm: 'eddsaLegacy',
+			publicKeyArmored: 'PUB',
+			publicKeyBinaryBase64: 'UFVC',
+			sealedPrivateKey: { ciphertext: 'c', iv: 'i', authTag: 'a' },
+			isActive: true,
+			createdAt: now,
+			updatedAt: now,
+		});
+		await ctx.db.insert('recipientKeys', {
+			address: 'mia@example.com',
+			domain: 'example.com',
+			outcome: 'trusted',
+			pinnedPublicKeyArmored: key,
+			pinnedFingerprint: 'FPR-MIA',
+			expiresAt: now + 24 * 60 * 60 * 1000,
+			discoveredAt: now,
+			updatedAt: now,
+		});
+	});
+}
+
+describe('send approval binds what dispatch derives', () => {
+	it('covers the reply target’s Message-ID and References, and binds the approved ones to the send', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const original = await seedMessage(t, own, {
+			subject: 'Contract',
+			rfc822MessageId: 'orig@example.com',
+		});
+		await t.run((ctx) => ctx.db.patch(original, { references: ['root@example.com'] }));
+		const { token } = await readWriteClient(t, [own]);
+		const created = structured(
+			await callTool(t, token, 'create_draft', {
+				mailbox_id: own,
+				to: ['mia@example.com'],
+				subject: 'Re: Contract',
+				body: 'Signed and attached.',
+				in_reply_to_message_id: original,
+			})
+		);
+		await approveShown(t, created.action_id);
+		const draftId = (await drafts(t))[0]!._id;
+		const { action_id: actionId } = structured(
+			await callTool(t, token, 'send_draft', { draft_id: draftId })
+		);
+		const reviewed = await digestOf(t, actionId);
+
+		await t.run((ctx) =>
+			ctx.db.patch(original, { references: ['root@example.com', 'inserted@example.com'] })
+		);
+		const withReferences = await digestOf(t, actionId);
+		expect(withReferences).not.toBe(reviewed);
+		await t.run((ctx) => ctx.db.patch(original, { rfc822MessageId: 'other@example.com' }));
+		expect(await digestOf(t, actionId)).not.toBe(withReferences);
+
+		const refused = await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: reviewed });
+		expect(refused).toMatchObject({ status: 'pending', isChanged: true });
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.state).toBe('draft');
+
+		expect(await approveShown(t, actionId)).toEqual({ status: 'approved' });
+		const sending = await t.run((ctx) => ctx.db.get(draftId));
+		expect(sending!.state).toBe('pending_send');
+		expect(sending!.approvedSend).toMatchObject({
+			inReplyToHeaderValue: '<other@example.com>',
+			referencesHeaderValue: '<root@example.com> <inserted@example.com> <other@example.com>',
+		});
+	});
+
+	it('shows whether the send will be sealed, covers that and the keys it seals to, and binds it', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		await sealable(t, 'MIA-KEY-1');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own);
+
+		expect((await cardOf(t, actionId)).details).toMatchObject({ sealing: { isSealed: true } });
+		const reviewed = await digestOf(t, actionId);
+
+		// Still sealed, but to another key.
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query('recipientKeys').first();
+			await ctx.db.patch(row!._id, { pinnedPublicKeyArmored: 'MIA-KEY-2' });
+		});
+		const otherKey = await digestOf(t, actionId);
+		expect(otherKey).not.toBe(reviewed);
+		const refused = await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: reviewed });
+		expect(refused).toMatchObject({ status: 'pending', isChanged: true });
+
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { sealPolicy: 'off' });
+		});
+		expect((await cardOf(t, actionId)).details).toMatchObject({
+			sealing: { isSealed: false, reason: 'policy_off' },
+		});
+		const unsealed = await digestOf(t, actionId);
+		expect(unsealed).not.toBe(otherKey);
+		expect(
+			await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: otherKey })
+		).toMatchObject({ status: 'pending', isChanged: true });
+
+		expect(await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: unsealed })).toEqual(
+			{ status: 'approved' }
+		);
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.approvedSend).toMatchObject({
+			sealing: { isSealed: false },
+		});
+	});
+
+	it('shows what a full-mode send renders from its blocks, and its digest follows the blocks alone', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const { token } = await readWriteClient(t, [own]);
+		const { draftId, actionId } = await pendingSend(t, token, own, 'Old preview');
+		const blocks = (text: string) =>
+			JSON.stringify([{ id: 'b1', type: 'text', content: { html: `<p>${text}</p>` } }]);
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			composerMode: 'full',
+			bodyBlocks: blocks('Actual outgoing content'),
+		});
+
+		const card = await cardOf(t, actionId);
+		// The HTML part comes from the blocks; the stored text stays the plain-text part.
+		expect(card.details).toMatchObject({
+			body: 'Actual outgoing content',
+			plainTextBody: 'Old preview',
+		});
+		const reviewed = await digestOf(t, actionId);
+
+		await t.mutation(api.mail.drafts.update, {
+			draftId,
+			bodyBlocks: blocks('Changed outgoing content'),
+		});
+		expect((await cardOf(t, actionId)).details).toMatchObject({
+			body: 'Changed outgoing content',
+		});
+		expect(await digestOf(t, actionId)).not.toBe(reviewed);
+		const refused = await t.mutation(api.mcp.actions.approve, { actionId, reviewDigest: reviewed });
+		expect(refused).toMatchObject({ status: 'pending', isChanged: true });
+		expect((await t.run((ctx) => ctx.db.get(draftId)))!.state).toBe('draft');
+	});
+});
+
+describe('approval list', () => {
+	it('lists 50 large sends as small summaries, and loads one full review on request', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const large = 'x'.repeat(100_000);
+		// One client's request rate allows 15 calls in a burst, so four clients ask for the 50.
+		for (const count of [13, 13, 12, 12]) {
+			const { token } = await readWriteClient(t, [own]);
+			for (let index = 0; index < count; index++) {
+				const draftId = await t.run((ctx) =>
+					ctx.db.insert('mailDrafts', {
+						mailboxId: own,
+						toAddresses: ['mia@example.com'],
+						ccAddresses: [],
+						bccAddresses: [],
+						fromAddress: 'a@owlat.test',
+						subject: `Report ${count}-${index}`,
+						bodyHtml: `<p>${index} ${large}</p>`,
+						bodyText: `${index} ${large}`,
+						attachments: [],
+						state: 'draft',
+						lastEditedAt: 0,
+						createdAt: 0,
+					})
+				);
+				await callTool(t, token, 'send_draft', { draft_id: draftId });
+			}
+		}
+
+		const list = await t.query(api.mcp.actions.listPending, {});
+		expect(list).toHaveLength(50);
+		expect(JSON.stringify(list).length).toBeLessThan(50 * 1_000);
+		expect(JSON.stringify(list)).not.toContain(large.slice(0, 1_000));
+		for (const row of list) {
+			expect(row).not.toHaveProperty('reviewDigest');
+			expect(row).not.toHaveProperty('details');
+		}
+
+		const actionId = list[0]!._id;
+		const review = await t.query(api.mcp.actions.getReview, { actionId });
+		const body = (review!.details as { body?: string }).body ?? '';
+		expect(body.endsWith(` ${large}`)).toBe(true);
+		expect(body.length).toBeGreaterThan(large.length);
+		expect(review!.reviewDigest).toMatch(/^[0-9a-f]{64}$/);
+
+		// Someone else's action is not theirs to review.
+		sessionMock.value = { ...sessionMock.value, userId: 'user-b', role: 'owner' };
+		expect(await t.query(api.mcp.actions.getReview, { actionId })).toBeNull();
 	});
 });
 

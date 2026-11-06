@@ -38,6 +38,7 @@ import {
 } from './outbound/build';
 import { dispatchViaExternalWorker, dispatchViaMta } from './outbound/dispatch';
 import {
+	breaksApprovedSealing,
 	decideAfterSent,
 	decideDispatchStart,
 	dispatchRecipients,
@@ -100,11 +101,19 @@ export const dispatchDraft = internalAction({
 		// Sealed Mail (E3): signed+encrypted PGP/MIME when policy and every
 		// recipient's pinned key allow it; honest plaintext with a recorded reason
 		// otherwise.
-		const { storedBytes, sealed, encryptionInfo, isFlagEnabled } = await sealOutboundMessage(
-			ctx,
-			draft,
-			raw
-		);
+		const { storedBytes, sealed, encryptionInfo, sealOutcome, isFlagEnabled } =
+			await sealOutboundMessage(ctx, draft, raw);
+		if (breaksApprovedSealing(draft.approvedSend, sealOutcome)) {
+			logError(
+				`[Outbound] Refusing dispatch for draft ${args.draftId}: sealing differs from the approved send`
+			);
+			await ctx.runMutation(internal.mail.draftLifecycle.transition, {
+				draftId: args.draftId,
+				expectedUndoToken: args.undoToken,
+				input: { to: 'draft', at: Date.now(), reason: 'seal_consent_required' },
+			});
+			return;
+		}
 		if (
 			isUnsealedConsentMissing({
 				isFlagEnabled,

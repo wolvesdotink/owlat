@@ -8,7 +8,10 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 
+/** One waiting action as the list summarizes it; its card loads the full review. */
 export type McpPendingAction = FunctionReturnType<typeof api.mcp.actions.listPending>[number];
+/** What the card shows of one action, with the digest approval takes. */
+export type McpActionReview = NonNullable<FunctionReturnType<typeof api.mcp.actions.getReview>>;
 
 export function useMcpPendingActions() {
 	const { t } = useI18n();
@@ -30,17 +33,16 @@ export function useMcpPendingActions() {
 	const { showToast } = useToast();
 
 	/**
-	 * Approve the action as its card shows it. The server refuses when what
-	 * would run changed since (`isChanged`); the list has refreshed by then, so
-	 * the card says why and waits for another look.
+	 * Approve the action as its card shows it, by the digest of the review the
+	 * card loaded. The server refuses when what would run changed since
+	 * (`isChanged`); the review has refreshed by then, so the card says why and
+	 * waits for another look.
 	 */
-	async function approve(action: Pick<McpPendingAction, '_id' | 'reviewDigest'>) {
-		const actionId = action._id;
-		if (!action.reviewDigest) return;
+	async function approve(actionId: Id<'mcpPendingActions'>, reviewDigest: string) {
 		busyId.value = actionId;
 		delete notices.value[actionId];
 		try {
-			const outcome = await approveOperation.run({ actionId, reviewDigest: action.reviewDigest });
+			const outcome = await approveOperation.run({ actionId, reviewDigest });
 			if (!outcome.ok) return;
 			const { status, failureMessage, isChanged } = outcome.result;
 			if (isChanged) {

@@ -12,6 +12,10 @@ const APPROVALS_PATH = '/dashboard/preferences/ai-clients';
 
 const current = computed(() => pending.value[0] ?? null);
 const isShown = computed(() => current.value !== null && route.path !== APPROVALS_PATH);
+
+function approveCurrent(reviewDigest: string) {
+	if (current.value) void approve(current.value._id, reviewDigest);
+}
 </script>
 
 <template>
@@ -29,11 +33,12 @@ const isShown = computed(() => current.value !== null && route.path !== APPROVAL
 			</NuxtLink>
 		</div>
 		<PreferencesMcpPendingActionCard
+			:key="current._id"
 			:action="current"
 			:busy="busyId === current._id"
 			:notice="notices[current._id]"
 			class="!rounded-t-none"
-			@approve="approve(current)"
+			@approve="approveCurrent"
 			@reject="reject(current._id)"
 		/>
 	</aside>

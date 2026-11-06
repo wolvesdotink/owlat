@@ -1554,6 +1554,7 @@ import type * as mail_needsReplyTrigger from '../mail/needsReplyTrigger.js';
 import type * as mail_outbound from '../mail/outbound.js';
 import type * as mail_outbound_build from '../mail/outbound/build.js';
 import type * as mail_outbound_decision from '../mail/outbound/decision.js';
+import type * as mail_outbound_derive from '../mail/outbound/derive.js';
 import type * as mail_outbound_dispatch from '../mail/outbound/dispatch.js';
 import type * as mail_outboundCron from '../mail/outboundCron.js';
 import type * as mail_outboundQueries from '../mail/outboundQueries.js';
@@ -3605,6 +3606,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/outbound': typeof mail_outbound;
 	'mail/outbound/build': typeof mail_outbound_build;
 	'mail/outbound/decision': typeof mail_outbound_decision;
+	'mail/outbound/derive': typeof mail_outbound_derive;
 	'mail/outbound/dispatch': typeof mail_outbound_dispatch;
 	'mail/outboundCron': typeof mail_outboundCron;
 	'mail/outboundQueries': typeof mail_outboundQueries;

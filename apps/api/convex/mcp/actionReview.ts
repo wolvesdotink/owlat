@@ -1,6 +1,7 @@
 /**
  * What the owner reviews before approving an MCP action, and the digest that
- * binds the approval to it (`approve` and `listPending` in `mcp/actions.ts`).
+ * binds the approval to it (`approve`, `getReview` and `listPending` in
+ * `mcp/actions.ts`).
  *
  * Not a Convex function module.
  */
@@ -10,7 +11,19 @@ import type { QueryCtx } from '../_generated/server';
 import { htmlToPlainText } from '@owlat/shared/html';
 import { openMailDraftBody } from '../lib/messageBody';
 import { sha256Hex } from '../lib/aiRouting/routeDigest';
+import type { MailApprovedSend } from '../lib/validators/mailContent';
+import { renderOutgoingBodies, threadingHeaders } from '../mail/outbound/derive';
+import { loadSealInputs } from '../mail/outboundQueries';
+import {
+	decideSeal,
+	sealOutcomeOf,
+	type SealOutcome,
+	type SealSkipReason,
+} from '../mail/sealPolicy';
 import { resolveMcpAccess } from './access';
+
+/** Characters of a drafted body the approval list shows before the card opens. */
+const SUMMARY_PREVIEW_MAX = 160;
 
 /**
  * Can the action's client still reach its mailbox: the bound `approve`
@@ -55,11 +68,27 @@ export type McpActionDetails =
 			cc: string[];
 			bcc: string[];
 			subject: string;
+			/** The HTML part as text: what most recipients read. */
 			body: string;
+			/** The text/plain part, when it says something else than the HTML part. */
+			plainTextBody?: string;
+			inReplyToSubject?: string;
+			sealing: { isSealed: true } | { isSealed: false; reason: SealSkipReason };
 			attachments: Array<{ filename: string; size: number; isInline: boolean }>;
 	  })
 	| (ThreadBase & { folderName?: string })
 	| (ThreadBase & { isRemoval: boolean; labelName?: string });
+
+/** What the approval list shows of an action before its card loads the review. */
+export type McpActionSummary =
+	| typeof INACCESSIBLE
+	| (ThreadBase & {
+			subject?: string;
+			firstRecipient?: string;
+			recipientCount?: number;
+			preview?: string;
+			isRemoval?: boolean;
+	  });
 
 /** The From identity a draft goes out under; the header carries the address alone. */
 async function fromIdentity(ctx: QueryCtx, draft: Doc<'mailDrafts'>) {
@@ -72,12 +101,58 @@ async function fromIdentity(ctx: QueryCtx, draft: Doc<'mailDrafts'>) {
 }
 
 /**
+ * What dispatch will derive for this draft's send, computed the way dispatch
+ * computes it: the bodies through its renderer, the threading headers from
+ * the live reply target, and the sealing from its seal decision on the
+ * current key state. The review shows and digests these, and the approval run
+ * binds the threading and sealing to the send (`approvedSendOf`).
+ */
+export async function sendInputs(ctx: QueryCtx, draft: Doc<'mailDrafts'>) {
+	const opened = await openMailDraftBody(draft);
+	const rendered = renderOutgoingBodies(opened);
+	const original = draft.inReplyToMessageId ? await ctx.db.get(draft.inReplyToMessageId) : null;
+	const sealInputs = await loadSealInputs(ctx, draft.fromAddress, [
+		...draft.toAddresses,
+		...draft.ccAddresses,
+		...draft.bccAddresses,
+	]);
+	return {
+		rendered,
+		original,
+		threading: threadingHeaders(original),
+		sealing: sealOutcomeOf(decideSeal(sealInputs)),
+	};
+}
+
+/** The part of a send's inputs that dispatch reads again later, as the approval binds it. */
+export function approvedSendOf(
+	inputs: Pick<Awaited<ReturnType<typeof sendInputs>>, 'threading' | 'sealing'>
+): MailApprovedSend {
+	return {
+		...inputs.threading,
+		sealing: inputs.sealing.isSealed
+			? { isSealed: true, keysDigest: inputs.sealing.keysDigest }
+			: { isSealed: false },
+	};
+}
+
+/** The sealing as the card states it; which keys stays in the digest. */
+function shownSealing(sealing: SealOutcome) {
+	return sealing.isSealed
+		? { isSealed: true as const }
+		: { isSealed: false as const, reason: sealing.reason };
+}
+
+const sameText = (a: string, b: string) =>
+	a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
+
+/**
  * What the approval card shows for one action, the live names behind its ids,
  * and the digest `approve` binds to. The whole body goes to the card: what the
- * owner cannot read, they cannot approve. The digest also covers what the card
- * cannot show as text (the stored HTML and blocks, attachment blobs, send-as
- * mailbox), so any change to what would go out changes it. `null` when there
- * is nothing to approve.
+ * owner cannot read, they cannot approve. For a send the body is what dispatch
+ * renders, and the digest covers the rendered parts, the threading headers and
+ * the sealing (to which keys), so any change to what would go out changes it.
+ * `null` when there is nothing to approve.
  */
 export async function review(
 	ctx: QueryCtx,
@@ -116,10 +191,8 @@ export async function review(
 			if (!draft || draft.mailboxId !== row.mailboxId) {
 				return { details: { ...base, isDraftGone: true }, reviewDigest: null };
 			}
-			const opened = await openMailDraftBody(draft);
-			const text =
-				opened.bodyText ||
-				(opened.bodyHtml ? htmlToPlainText(opened.bodyHtml, { preserveBreaks: true }) : '');
+			const inputs = await sendInputs(ctx, draft);
+			const body = htmlToPlainText(inputs.rendered.html, { preserveBreaks: true });
 			return sealed(
 				{
 					...base,
@@ -128,7 +201,12 @@ export async function review(
 					cc: draft.ccAddresses,
 					bcc: draft.bccAddresses,
 					subject: draft.subject,
-					body: text,
+					body,
+					...(sameText(body, inputs.rendered.text) ? {} : { plainTextBody: inputs.rendered.text }),
+					...(inputs.original && inputs.original.mailboxId === row.mailboxId
+						? { inReplyToSubject: inputs.original.subject }
+						: {}),
+					sealing: shownSealing(inputs.sealing),
 					attachments: draft.attachments.map((file) => ({
 						filename: file.filename,
 						size: file.size,
@@ -136,17 +214,15 @@ export async function review(
 					})),
 				},
 				{
-					bodyHtml: opened.bodyHtml,
-					bodyText: opened.bodyText,
-					bodyBlocks: opened.bodyBlocks,
-					composerMode: draft.composerMode,
+					rendered: inputs.rendered,
+					threading: inputs.threading,
+					sealing: inputs.sealing,
 					attachments: draft.attachments.map((file) => [
 						file.storageId,
 						file.contentType,
 						file.contentId,
 					]),
 					sendAsMailboxId: draft.sendAsMailboxId,
-					inReplyToMessageId: draft.inReplyToMessageId,
 					isReadReceiptRequested: draft.isReadReceiptRequested,
 				}
 			);
@@ -165,5 +241,39 @@ export async function review(
 				...(label ? { labelName: label.name } : {}),
 			});
 		}
+	}
+}
+
+/**
+ * What the approval list shows of one action, from the pending row and its
+ * conversation alone. A send's draft is not read here: its body may be large,
+ * and the list reads up to fifty actions in one query. The card loads the
+ * full review (`review`) when it opens.
+ */
+export async function summarize(
+	ctx: QueryCtx,
+	row: Doc<'mcpPendingActions'>,
+	isReachable: boolean
+): Promise<McpActionSummary> {
+	const { action } = row;
+	if (!isReachable) return INACCESSIBLE;
+	const thread = 'threadId' in action ? await ctx.db.get(action.threadId) : null;
+	if (thread && thread.mailboxId !== row.mailboxId) return INACCESSIBLE;
+	const base: ThreadBase = thread ? { threadSubject: thread.latestSubject } : {};
+	switch (action.tool) {
+		case 'create_draft':
+			return {
+				...base,
+				subject: action.subject,
+				...(action.to[0] ? { firstRecipient: action.to[0] } : {}),
+				recipientCount: action.to.length + action.cc.length,
+				preview: action.body.slice(0, SUMMARY_PREVIEW_MAX),
+			};
+		case 'label_thread':
+			return { ...base, isRemoval: !action.add };
+		case 'send_draft':
+		case 'archive_thread':
+		case 'move_thread':
+			return base;
 	}
 }

@@ -124,7 +124,7 @@ function formatTime(ts?: number) {
 					:action="action"
 					:busy="busyId === action._id"
 					:notice="notices[action._id]"
-					@approve="approve(action)"
+					@approve="(reviewDigest) => approve(action._id, reviewDigest)"
 					@reject="reject(action._id)"
 				/>
 			</div>

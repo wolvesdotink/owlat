@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import type { McpPendingAction } from '~/composables/useMcpPendingActions';
+import { api } from '@owlat/api';
+import type { McpActionReview, McpPendingAction } from '~/composables/useMcpPendingActions';
 import { formatCompactFileSize } from '~/utils/formatters';
 
-/** `notice`: why the last approval was refused, shown until the next try. */
+/**
+ * `action` is the list's summary; the card loads the full review (every
+ * recipient, the whole body as it goes out, the digest approval takes) when
+ * it opens. `notice`: why the last approval was refused, shown until the next
+ * try.
+ */
 const props = defineProps<{ action: McpPendingAction; busy: boolean; notice?: string | null }>();
 
-const emit = defineEmits<{ (e: 'approve'): void; (e: 'reject'): void }>();
+const emit = defineEmits<{ (e: 'approve', reviewDigest: string): void; (e: 'reject'): void }>();
 
 const { t } = useI18n();
 const { formatRelativeTime } = useFormat();
@@ -20,10 +26,24 @@ const TITLE_KEYS = {
 	label_thread: `${KEY}.titles.labelThread`,
 } as const;
 
-const details = computed(() => props.action.details);
+const { data: loaded } = useConvexQuery(api.mcp.actions.getReview, () => ({
+	actionId: props.action._id,
+}));
+/** The review of this card's action only, never one still held for another. */
+const review = computed(() =>
+	loaded.value === null || loaded.value?._id === props.action._id ? loaded.value : undefined
+);
+
+const summary = computed(() => props.action.summary);
+/**
+ * Null until the review loaded; what the card shows of the action from then on.
+ * Typed by its declared union: an inferred `??` union drops the send's shape
+ * into the all-optional ones, and `in` checks then stop narrowing.
+ */
+const details = computed<McpActionReview['details'] | null>(() => review.value?.details ?? null);
 const title = computed(() => {
 	const tool = props.action.tool;
-	if (tool === 'label_thread' && 'isRemoval' in details.value && details.value.isRemoval) {
+	if (tool === 'label_thread' && 'isRemoval' in summary.value && summary.value.isRemoval) {
 		return t(`${KEY}.titles.unlabelThread`, { client: props.action.clientLabel });
 	}
 	return t(TITLE_KEYS[tool], { client: props.action.clientLabel });
@@ -32,22 +52,47 @@ const title = computed(() => {
 const isMessage = computed(
 	() => props.action.tool === 'create_draft' || props.action.tool === 'send_draft'
 );
-const isDraftGone = computed(() => 'isDraftGone' in details.value && details.value.isDraftGone);
+const isDraftGone = computed(
+	() => details.value !== null && 'isDraftGone' in details.value && details.value.isDraftGone
+);
 const isInaccessible = computed(
-	() => 'isInaccessible' in details.value && details.value.isInaccessible
+	() =>
+		('isInaccessible' in summary.value && summary.value.isInaccessible) ||
+		(details.value !== null && 'isInaccessible' in details.value && details.value.isInaccessible)
 );
-// Approval is bound to the digest of what this card shows; without one there
-// is nothing the owner could have reviewed.
+const isLoadingReview = computed(() => review.value === undefined && !isInaccessible.value);
+/**
+ * Approval is bound to the digest of the review this card shows; until that
+ * loaded, or without one, there is nothing the owner could have reviewed.
+ */
+const reviewDigest = computed(() => review.value?.reviewDigest ?? null);
 const canApprove = computed(
-	() => !isDraftGone.value && !isInaccessible.value && Boolean(props.action.reviewDigest)
+	() => !isDraftGone.value && !isInaccessible.value && reviewDigest.value !== null
 );
-const from = computed(() => ('from' in details.value ? details.value.from : null));
+const from = computed(() => (details.value && 'from' in details.value ? details.value.from : null));
 const attachments = computed(() =>
-	'attachments' in details.value ? details.value.attachments : []
+	details.value && 'attachments' in details.value ? details.value.attachments : []
 );
+// Sealing is only a choice where Sealed mail is on; elsewhere every send is ordinary mail.
+const sealing = computed(() =>
+	details.value &&
+	'sealing' in details.value &&
+	!(!details.value.sealing.isSealed && details.value.sealing.reason === 'flag_off')
+		? details.value.sealing
+		: null
+);
+const summaryLine = computed(() => {
+	const value = summary.value;
+	if ('isInaccessible' in value) return '';
+	return value.subject || value.threadSubject || '';
+});
 
 function list(addresses: string[] | undefined) {
 	return addresses && addresses.length > 0 ? addresses.join(', ') : '';
+}
+
+function approve() {
+	if (reviewDigest.value !== null) emit('approve', reviewDigest.value);
 }
 </script>
 
@@ -66,6 +111,11 @@ function list(addresses: string[] | undefined) {
 		<p v-if="isInaccessible" class="mt-3 text-text-secondary">
 			{{ t(`${KEY}.inaccessible`) }}
 		</p>
+		<div v-else-if="isLoadingReview" class="mt-3 text-text-secondary" data-test="loading">
+			<p v-if="summaryLine" class="break-words text-text-primary">{{ summaryLine }}</p>
+			<p>{{ t(`${KEY}.loadingReview`) }}</p>
+		</div>
+		<p v-else-if="!details" class="mt-3 text-text-secondary">{{ t(`${KEY}.reviewGone`) }}</p>
 		<p v-else-if="isDraftGone" class="mt-3 text-text-secondary">{{ t(`${KEY}.draftGone`) }}</p>
 		<dl v-else class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 			<template v-if="isMessage">
@@ -96,6 +146,12 @@ function list(addresses: string[] | undefined) {
 					<dt class="text-text-tertiary">{{ t(`${KEY}.inReplyTo`) }}</dt>
 					<dd class="break-words">{{ details.inReplyToSubject }}</dd>
 				</template>
+				<template v-if="sealing">
+					<dt class="text-text-tertiary">{{ t(`${KEY}.sealing`) }}</dt>
+					<dd data-test="sealing">
+						{{ sealing.isSealed ? t(`${KEY}.sealed`) : t(`${KEY}.notSealed`) }}
+					</dd>
+				</template>
 				<template v-if="attachments.length > 0">
 					<dt class="text-text-tertiary">{{ t(`${KEY}.attachments`) }}</dt>
 					<dd>
@@ -125,23 +181,36 @@ function list(addresses: string[] | undefined) {
 		</dl>
 		<!-- The whole body, never a clip: it is what approval sends. Focusable so a
 		     keyboard can scroll it. -->
-		<p
-			v-if="isMessage && !isDraftGone && !isInaccessible && 'body' in details && details.body"
-			role="region"
-			tabindex="0"
-			:aria-label="t(`${KEY}.body`)"
-			data-test="body"
-			class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
-		>
-			{{ details.body }}
-		</p>
+		<template v-if="isMessage && details && !isDraftGone && !isInaccessible">
+			<p
+				v-if="'body' in details && details.body"
+				role="region"
+				tabindex="0"
+				:aria-label="t(`${KEY}.body`)"
+				data-test="body"
+				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+			>
+				{{ details.body }}
+			</p>
+			<!-- The text/plain part goes out too; shown when it says something else. -->
+			<p
+				v-if="'plainTextBody' in details && details.plainTextBody"
+				role="region"
+				tabindex="0"
+				:aria-label="t(`${KEY}.plainTextBody`)"
+				data-test="plain-text-body"
+				class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-3 text-text-secondary"
+			>
+				{{ details.plainTextBody }}
+			</p>
+		</template>
 		<p v-if="notice" role="alert" class="mt-3 text-error">{{ notice }}</p>
 
 		<footer class="mt-4 flex items-center justify-end gap-2">
 			<UiButton variant="ghost" type="button" :disabled="busy" @click="emit('reject')">
 				{{ t(`${KEY}.reject`) }}
 			</UiButton>
-			<UiButton type="button" :disabled="busy || !canApprove" @click="emit('approve')">
+			<UiButton type="button" :disabled="busy || !canApprove" @click="approve">
 				{{ action.tool === 'send_draft' ? t(`${KEY}.approveSend`) : t(`${KEY}.approve`) }}
 			</UiButton>
 		</footer>

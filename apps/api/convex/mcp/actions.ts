@@ -34,7 +34,7 @@ import { appendActivity } from './activity';
 import { mcpMutation, mcpQuery } from './_helpers';
 import type { ToolOutcome } from './reads';
 import { checkRequest, writeRequestValidator } from './actionRequests';
-import { canReach, review } from './actionReview';
+import { canReach, review, summarize } from './actionReview';
 
 /** How long an action waits for the owner before it lapses. */
 export const PENDING_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -288,6 +288,11 @@ export async function cancelPendingForClient(
 	for (const row of waiting) await settle(ctx, row, 'cancelled', 'cancelled');
 }
 
+/**
+ * The caller's waiting actions as short summaries. The full review of one,
+ * and the digest approval needs, come from `getReview`: fifty drafts with
+ * their bodies would not fit in one query's reads or its answer.
+ */
 // authz: self-scope — the caller's own pending actions, read by their userId; what
 // each describes is shown only while its client can still reach the mailbox.
 export const listPending = mcpQuery({
@@ -309,7 +314,6 @@ export const listPending = mcpQuery({
 			const client = await ctx.db.get(row.clientId);
 			const isReachable = await canReach(ctx, row, reach);
 			const mailbox = isReachable ? await ctx.db.get(row.mailboxId) : null;
-			const { details, reviewDigest } = await review(ctx, row, isReachable);
 			result.push({
 				_id: row._id,
 				tool: row.action.tool,
@@ -317,11 +321,34 @@ export const listPending = mcpQuery({
 				mailboxAddress: mailbox?.address ?? null,
 				createdAt: row.createdAt,
 				expiresAt: row.expiresAt,
-				details,
-				reviewDigest,
+				summary: await summarize(ctx, row, isReachable),
 			});
 		}
 		return result;
+	},
+});
+
+/**
+ * Everything the approval card shows for one waiting action, and the digest
+ * `approve` takes. `null` for an action that is not the caller's or no longer
+ * waits, without saying which.
+ */
+// authz: self-scope — the caller's own action (row.userId === session.userId); what it
+// describes is shown only while its client can still reach the mailbox.
+export const getReview = mcpQuery({
+	args: { actionId: v.id('mcpPendingActions') },
+	handler: async (ctx, args, session) => {
+		const row = await ctx.db.get(args.actionId);
+		if (
+			!row ||
+			row.userId !== session.userId ||
+			row.organizationId !== session.activeOrganizationId ||
+			row.status !== 'pending'
+		) {
+			return null;
+		}
+		const { details, reviewDigest } = await review(ctx, row, await canReach(ctx, row));
+		return { _id: row._id, tool: row.action.tool, details, reviewDigest };
 	},
 });
 
