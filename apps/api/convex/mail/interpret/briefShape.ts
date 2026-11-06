@@ -228,6 +228,8 @@ export const briefGapViewValidator = v.object({
 			v.literal('aiOff'),
 			// The AI spend budget is used up: the same on every thread.
 			v.literal('budget'),
+			// The AI provider refused the instance's key: the same on every thread.
+			v.literal('aiProvider'),
 			v.literal('undecryptable'),
 			v.literal('ineligible'),
 			v.literal('security'),
@@ -236,6 +238,10 @@ export const briefGapViewValidator = v.object({
 			v.literal('stale')
 		)
 	),
+	// The message `reason` is about, so the banner can name it: its sender's
+	// name (else address) and when it arrived. Only for a reason that is about
+	// one message of this thread.
+	message: v.optional(v.object({ from: v.string(), at: v.number() })),
 });
 
 // ── The brief ──────────────────────────────────────────────────────────────

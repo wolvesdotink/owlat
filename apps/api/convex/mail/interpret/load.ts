@@ -48,6 +48,7 @@ import {
 } from './schema';
 import { reduceResultValidator, type ReduceResult } from './reduceInput';
 import { decodeJsonString } from '../../lib/jsonText';
+import { readProviderAuthFailure } from '../../lib/providerAuthFailure';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -493,6 +494,7 @@ export const loadForInterpretation = internalQuery({
 			// stored extraction only on an exact match of both (run.ts).
 			current: current ? extractionSummary(current) : null,
 			counted: counted ? extractionSummary(counted) : null,
+			isProviderKeyRefused: (await readProviderAuthFailure(ctx.db)) !== null,
 		};
 	},
 });

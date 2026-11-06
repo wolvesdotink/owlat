@@ -219,6 +219,43 @@ describe('brief.get', () => {
 		).toMatchObject({ completeness: 'none', gap: { reason: 'budget' } });
 	});
 
+	it('reads as no brief, with the provider named as the cause, when the provider rejected the key', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await interpretMail(t, messageId, threadId, {
+			status: 'failed',
+			errorCode: 'provider_auth',
+			result: undefined,
+		});
+		const view = await t.query(api.mail.interpret.brief.get, {
+			threadRef: { kind: 'mail', id: threadId },
+			locale: 'en',
+		});
+		expect(view).toMatchObject({
+			completeness: 'none',
+			gap: { interpretedMessages: 0, reason: 'aiProvider' },
+		});
+		expect(view?.activity.map((row) => row.type)).toEqual(['message_received']);
+	});
+
+	it('names the message a failed read left out', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		await interpretMail(t, messageId, threadId, {
+			status: 'failed',
+			errorCode: 'model_error',
+			result: undefined,
+		});
+		const view = await t.query(api.mail.interpret.brief.get, {
+			threadRef: { kind: 'mail', id: threadId },
+			locale: 'en',
+		});
+		expect(view?.gap).toMatchObject({
+			reason: 'failed',
+			message: { from: 'jonas@example.com', at: Date.UTC(2026, 9, 7, 9, 0) },
+		});
+	});
+
 	it('keeps a brief partial when part of it was read before the instance stopped running AI', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedMailThread(t);

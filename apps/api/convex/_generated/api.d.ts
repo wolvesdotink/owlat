@@ -236,6 +236,7 @@ import type * as agent_walkerTransition from '../agent/walkerTransition.js';
 import type * as aiRouting_admission from '../aiRouting/admission.js';
 import type * as aiRouting_providerConfigActions from '../aiRouting/providerConfigActions.js';
 import type * as aiRouting_providerConfig from '../aiRouting/providerConfig.js';
+import type * as aiRouting_providerHealth from '../aiRouting/providerHealth.js';
 import type * as aiRouting_admissionState from '../aiRouting/admissionState.js';
 import type * as aiRouting_batchContinuation from '../aiRouting/batchContinuation.js';
 import type * as aiRouting_batchItems from '../aiRouting/batchItems.js';
@@ -1099,6 +1100,7 @@ import type * as lib_inboundClassification from '../lib/inboundClassification.js
 import type * as lib_inboxStats from '../lib/inboxStats.js';
 import type * as lib_inputGuards from '../lib/inputGuards.js';
 import type * as lib_instanceCounters from '../lib/instanceCounters.js';
+import type * as lib_providerAuthFailure from '../lib/providerAuthFailure.js';
 import type * as lib_instanceSecret from '../lib/instanceSecret.js';
 import type * as lib_instanceSettings from '../lib/instanceSettings.js';
 import type * as lib_ipBlocklist from '../lib/ipBlocklist.js';
@@ -1965,6 +1967,7 @@ import type * as mail_arrival_r2 from '../mail/arrival/r2.js';
 import type * as mail_interpret_gistState from '../mail/interpret/gistState.js';
 import type * as mail_ai_categoryQuestions from '../mail/ai/categoryQuestions.js';
 import type * as mail_interpret_runOnce from '../mail/interpret/runOnce.js';
+import type * as mail_interpret_runProviderKey from '../mail/interpret/runProviderKey.js';
 import type * as mail_interpret_arrivalDecide from '../mail/interpret/arrivalDecide.js';
 import type * as mail_interpret_arrivalRun from '../mail/interpret/arrivalRun.js';
 import type * as mail_interpret_gist from '../mail/interpret/gist.js';
@@ -2103,6 +2106,7 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/admission': typeof aiRouting_admission;
 	'aiRouting/providerConfigActions': typeof aiRouting_providerConfigActions;
 	'aiRouting/providerConfig': typeof aiRouting_providerConfig;
+	'aiRouting/providerHealth': typeof aiRouting_providerHealth;
 	'aiRouting/admissionState': typeof aiRouting_admissionState;
 	'aiRouting/batchContinuation': typeof aiRouting_batchContinuation;
 	'aiRouting/batchItems': typeof aiRouting_batchItems;
@@ -3033,6 +3037,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/inboxStats': typeof lib_inboxStats;
 	'lib/inputGuards': typeof lib_inputGuards;
 	'lib/instanceCounters': typeof lib_instanceCounters;
+	'lib/providerAuthFailure': typeof lib_providerAuthFailure;
 	'lib/instanceSecret': typeof lib_instanceSecret;
 	'lib/instanceSettings': typeof lib_instanceSettings;
 	'lib/ipBlocklist': typeof lib_ipBlocklist;
@@ -3636,6 +3641,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/gistState': typeof mail_interpret_gistState;
 	'mail/ai/categoryQuestions': typeof mail_ai_categoryQuestions;
 	'mail/interpret/runOnce': typeof mail_interpret_runOnce;
+	'mail/interpret/runProviderKey': typeof mail_interpret_runProviderKey;
 	'mail/interpret/arrivalDecide': typeof mail_interpret_arrivalDecide;
 	'mail/interpret/arrivalRun': typeof mail_interpret_arrivalRun;
 	'mail/interpret/gist': typeof mail_interpret_gist;

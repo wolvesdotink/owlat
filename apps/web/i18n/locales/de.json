@@ -1091,13 +1091,24 @@
 					"pending": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest wird noch gelesen.",
 					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie.",
 					"aiOff": "{done} von {total} Nachrichten sind in dieser Übersicht. KI ist in diesem Workspace nicht verfügbar, deshalb wurde der Rest nicht gelesen.",
-					"budget": "{done} von {total} Nachrichten sind in dieser Übersicht. Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb wurde der Rest noch nicht gelesen."
+					"budget": "{done} von {total} Nachrichten sind in dieser Übersicht. Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb wurde der Rest noch nicht gelesen.",
+					"aiProvider": "{done} von {total} Nachrichten sind in dieser Übersicht. Der KI-Anbieter nimmt den API-Schlüssel dieses Workspaces nicht an, deshalb wurde der Rest nicht gelesen."
+				},
+				"partialMessage": {
+					"tooLong": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} ist zu lang zum Zusammenfassen.",
+					"failed": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} konnte nicht zusammengefasst werden.",
+					"undecryptable": "{done} von {total} Nachrichten sind in dieser Übersicht. Die Nachricht von {from} vom {date} ließ sich nicht entschlüsseln."
+				},
+				"noneMessage": {
+					"failed": "Die Nachricht von {from} vom {date} konnte nicht zusammengefasst werden, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"undecryptable": "Die Nachricht von {from} vom {date} ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht."
 				},
 				"pending": "Dieser Verlauf wird gerade gelesen. Die Übersicht folgt gleich.",
 				"none": {
 					"default": "Für diesen Verlauf gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"aiOff": "KI ist in diesem Workspace nicht verfügbar, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"budget": "Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"aiProvider": "Der KI-Anbieter nimmt den API-Schlüssel dieses Workspaces nicht an, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht.",
 					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keine Übersicht.",
 					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keine Übersicht.",
@@ -8814,6 +8825,11 @@
 						"reindexBody": "Vektoren zweier Modelle sind nicht vergleichbar. Nach dem Speichern findet die Stichwortsuche ältere Elemente, bis sie neu eingebettet sind: von selbst mit einem lokalen Modell, oder wenn du es unter „Embedding-Suche“ startest mit einem gehosteten. Für einen Wechsel ohne diese Lücke nutze dort „Mit einem anderen Modell neu aufbauen“, wo der Wechsel das erlaubt.",
 						"reindexTitle": "Ein Modellwechsel nimmt ältere Elemente aus der Vektorsuche",
 						"title": "Embeddings"
+					},
+					"keyRefused": {
+						"body": "Seit {since} lehnt der Anbieter jeden KI-Aufruf ab, deshalb funktionieren Verlaufsübersichten und die anderen KI-Funktionen nicht. Speichere unten einen funktionierenden Schlüssel, damit sie wieder laufen.",
+						"lastSeen": "Zuletzt abgelehnt: {time}.",
+						"title": "Der KI-Anbieter lehnt den API-Schlüssel dieses Workspaces ab"
 					},
 					"language": {
 						"apiKeyHelp": "Einmal über TLS übertragen, verschlüsselt gespeichert und nie wieder angezeigt.",
@@ -18555,7 +18571,9 @@
 			"waitingSince": "Wartet seit {time}",
 			"changeCount": "{count} Änderung | {count} Änderungen",
 			"nothingWaiting": "Nichts wartet mehr aufs Speichern.",
-			"allSaved": "Alle Änderungen gespeichert"
+			"allSaved": "Alle Änderungen gespeichert",
+			"aiKeyRefused": "Der KI-Anbieter lehnt den API-Schlüssel dieses Workspaces ab, deshalb funktionieren die KI-Funktionen nicht.",
+			"aiSettings": "KI-Einstellungen"
 		},
 		"appUpdated": {
 			"title": "Owlat wurde aktualisiert",

@@ -27,7 +27,7 @@ type CounterField = Exclude<keyof CounterRow, '_id' | '_creationTime' | 'key' | 
 
 /**
  * The fields each row owns; also the deprecated columns it is seeded from. A
- * family added after the split (`imapLegacy`) has no deprecated column and
+ * family added after the split (`imapLegacy`, `aiProvider`) has no deprecated column and
  * starts empty.
  */
 export const INSTANCE_COUNTER_FIELDS = {
@@ -37,6 +37,7 @@ export const INSTANCE_COUNTER_FIELDS = {
 	mtaHealth: ['mtaHealth'],
 	deliveryTest: ['deliveryTestLastSucceededAt'],
 	imapLegacy: ['legacyImapSeenAt'],
+	aiProvider: ['aiProviderAuthFailure'],
 } as const satisfies Record<InstanceCounterKey, readonly CounterField[]>;
 
 export type InstanceCounterFields<K extends InstanceCounterKey> = Pick<

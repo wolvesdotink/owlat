@@ -136,6 +136,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'SettingsAiEmbeddingSpaceCard',
 		'SettingsAiKeyField',
 		'SettingsAiModelPicker',
+		'SettingsAiProviderKeyRefused',
 		'SettingsAiRemoveConfigCard',
 		'SettingsAiRoutingPolicyCard',
 		'SettingsBodySearchIndexCard',

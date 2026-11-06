@@ -103,6 +103,23 @@ export function errorStatus(error: unknown): number | undefined {
 }
 
 /**
+ * Whether the provider refused the call's credentials: a 401/403, or a
+ * provider that reports a bad key without a status. That is the instance's
+ * setup, not the request: every call fails the same way until an admin fixes
+ * the key, so callers record it once for the instance instead of per item.
+ */
+export function isProviderAuthError(error: unknown): boolean {
+	const status = errorStatus(error);
+	if (status === 401 || status === 403) return true;
+	if (status !== undefined) return false;
+	const e = providerError(error) as { message?: unknown; code?: unknown } | null;
+	const text = `${String(e?.code ?? '')} ${String(e?.message ?? '')}`.toLowerCase();
+	return /invalid.?api.?key|incorrect api key|invalid x-api-key|authentication.?(error|failed)/.test(
+		text
+	);
+}
+
+/**
  * Whether an LLM call error is worth retrying. Transient — rate limits (429),
  * server/overload (5xx, "overloaded"), timeouts, network resets — retry with
  * backoff. Hard client errors — bad/expired API key (401/403), malformed

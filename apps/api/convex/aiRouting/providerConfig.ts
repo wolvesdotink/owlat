@@ -54,6 +54,7 @@ import {
 	throwEmbeddingKindRequired,
 } from '../lib/embeddingSpace';
 import { endReembedJobs } from '../lib/aiRouting/embeddingActivation';
+import { clearProviderAuthFailure } from '../lib/providerAuthFailure';
 import {
 	decisionProviderKindValidator,
 	embeddingProviderKindValidator,
@@ -266,6 +267,10 @@ export async function persistProviderConfig(
 		}
 	}
 
+	// The saved settings are what the next call uses: a refusal of the earlier
+	// key no longer says anything, and the next refusal records itself again.
+	await clearProviderAuthFailure(ctx);
+
 	// The new target's space activates with its first vector; a local embedder
 	// is measured and re-embeds the corpus right away (aiRouting/embeddingReembed).
 	if (isEmbeddingTargetChanged) {
@@ -339,6 +344,8 @@ export async function removeProviderConfig(
 	// so removal no longer loses them. The env fallback's target, if any, is a
 	// switch like any other.
 	await ctx.db.delete(existing._id);
+	// Another key (or none) is in charge now: the old one's refusal is moot.
+	await clearProviderAuthFailure(ctx);
 	await endReembedJobs(ctx);
 	await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
 		isForced: true,
