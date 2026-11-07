@@ -4,7 +4,8 @@ import { colleagueLine } from '~/utils/companies';
 /**
  * The "Taylor is also in touch with Northwind." line of a company, naming the
  * colleagues the server reports (`colleagueUserIds`) from the workspace roster.
- * Null when no colleague is in touch.
+ * Null when no colleague is in touch. `short` gives "Taylor also in touch", for
+ * a summary that names the company already.
  */
 export function useCompanyColleagues() {
 	const { t } = useI18n();
@@ -22,7 +23,10 @@ export function useCompanyColleagues() {
 		return map;
 	});
 
-	function lineFor(company: { name: string; colleagueUserIds: readonly string[] }): string | null {
+	function lineFor(
+		company: { name: string; colleagueUserIds: readonly string[] },
+		opts: { short?: boolean } = {}
+	): string | null {
 		const names: string[] = [];
 		let unnamed = 0;
 		for (const id of company.colleagueUserIds) {
@@ -30,7 +34,7 @@ export function useCompanyColleagues() {
 			if (name) names.push(name);
 			else unnamed += 1;
 		}
-		const message = colleagueLine(names, unnamed, company.name);
+		const message = colleagueLine(names, unnamed, company.name, opts);
 		if (!message) return null;
 		return message.plural === undefined
 			? t(message.key, message.params)

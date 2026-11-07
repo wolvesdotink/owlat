@@ -1,5 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
+import { mergeOpenWork } from '~/utils/companies';
 
 export interface ConversationRef {
 	mailThreadId?: Id<'mailThreads'>;
@@ -8,7 +10,9 @@ export interface ConversationRef {
 
 /**
  * What the company panel beside a conversation shows: the companies in it
- * (`companies.forThread`) and the tasks taken from it (`tasks.forThread`).
+ * (`companies.forThread`), the tasks taken from it (`tasks.forThread`) and the
+ * open work: those tasks plus each company's open tasks the viewer can see
+ * (`tasks.forCompany`), once each.
  *
  * The panel and its host both call this; identical queries share one
  * subscription, so the host can lay itself out by the answer without a second
@@ -26,6 +30,17 @@ export function useConversationContext(ref: () => ConversationRef) {
 
 	const companies = computed(() => companiesQuery.data.value ?? []);
 	const tasks = computed(() => tasksQuery.data.value ?? []);
+	const companyKeys = computed(() => companies.value.map((c) => c.key));
+	const companyTasks = useConvexQueryMap(api.tasks.tasks.forCompany, companyKeys, (companyKey) => ({
+		companyKey,
+	}));
+	const openWork = computed(() =>
+		mergeOpenWork(
+			tasks.value,
+			companyKeys.value.map((key) => companyTasks.get(key)?.data.value ?? [])
+		)
+	);
+	const openCount = computed(() => openWork.value.filter((t) => t.status === 'open').length);
 	const isLoading = computed(
 		() => companiesQuery.data.value === undefined || tasksQuery.data.value === undefined
 	);
@@ -38,5 +53,5 @@ export function useConversationContext(ref: () => ConversationRef) {
 		if (tasksQuery.error.value) tasksQuery.refetch();
 	}
 
-	return { companies, tasks, isLoading, hasError, hasContext, refetch };
+	return { companies, tasks, openWork, openCount, isLoading, hasError, hasContext, refetch };
 }

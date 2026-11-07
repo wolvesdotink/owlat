@@ -74,7 +74,7 @@ async function mountPage() {
 }
 
 describe('Company page', () => {
-	it('shows the conversations, the colleague, the tasks and the people', async () => {
+	it('leads with the open work, then the conversations and the people', async () => {
 		routeKey.value = 'mail.northwind.example';
 		results['companies.get']!.value = {
 			key: 'northwind.example',
@@ -116,6 +116,9 @@ describe('Company page', () => {
 		expect(conversation.text()).toContain('Mia Weber');
 		expect(w.get('[data-testid="company-conversation-source"]').text()).toBe('Team Inbox');
 		expect(w.get('[data-testid="company-no-tasks"]').exists()).toBe(true);
+		// The open work leads; the conversations follow as its history.
+		const sections = w.findAll('h2').map((el) => el.text().replace(/\s*\d+$/, ''));
+		expect(sections).toEqual(['Open work', 'Conversations', 'People']);
 		expect(w.get('[data-testid="company-people"] a').attributes('href')).toBe(
 			'/dashboard/compose?to=mia%40northwind.example'
 		);

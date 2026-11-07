@@ -1192,6 +1192,30 @@
 			"evidence": {
 				"label": "Show the source: {name}, {date}",
 				"unknown": "Show the source"
+			},
+			"purpose": {
+				"review": "Review this conversation",
+				"who": {
+					"forYou": "For you",
+					"forTeam": "Open for the team",
+					"assignedToYou": "Assigned to you",
+					"assignedTo": "{name} has it",
+					"waitingOn": "Waiting on {name}",
+					"waiting": "Waiting on them",
+					"needsReview": "Needs review"
+				},
+				"due": "Due {date}",
+				"more": "1 more | {count} more",
+				"ownerAndNotes": "Owner and notes",
+				"unlisted": "1 more in the full brief | {count} more in the full brief",
+				"reply": "Reply",
+				"claim": "Claim",
+				"done": "Done",
+				"gotIt": "Got it",
+				"seen": "Marked as seen",
+				"operation": "Mark as seen",
+				"noSubject": "(no subject)",
+				"messages": "1 message | {count} messages"
 			}
 		},
 		"campaigns": {
@@ -7701,29 +7725,15 @@
 		},
 		"today": {
 			"answer": {
-				"title": "{count} needs an answer from you | {count} need an answer from you",
-				"cta": "Review Answer queue",
 				"drafts": "{count} draft ready | {count} drafts ready",
 				"mail": "{count} in your inboxes",
 				"team": "{count} in the team inbox",
 				"mentions": "{count} mention | {count} mentions",
 				"minutes": "about {count} minute | about {count} minutes",
-				"clearTitle": "Nothing needs an answer",
-				"clearBody": "New questions land in the Answer queue as they arrive.",
-				"needsTitle": "Needs an answer",
-				"allInQueue": "All {count} in the queue",
 				"draftReady": "draft ready",
 				"question": "needs your input",
 				"mention": "mention",
-				"mentionTitle": "#{room}: {preview}",
-				"clearTitleIn": "Nothing in {inbox} needs an answer"
-			},
-			"todo": {
-				"title": "To do, no reply needed · {count}",
-				"titlePlain": "To do, no reply needed",
-				"due": "by {date}",
-				"more": "There is more to do in this inbox.",
-				"openInbox": "Open the inbox"
+				"mentionTitle": "#{room}: {preview}"
 			},
 			"changed": {
 				"title": "What changed",
@@ -7868,12 +7878,16 @@
 				"showMore": "Show more",
 				"moreThanShown": "More is scheduled than the Workbench lists."
 			},
-			"myTasks": {
-				"title": "Your tasks",
-				"all": "All tasks",
-				"empty": "No open tasks. Make one from any conversation, or add one here.",
-				"add": "Add task",
-				"more": "{count} more task | {count} more tasks"
+			"work": {
+				"title": "What needs you",
+				"workThrough": "Work through {count} reply | Work through {count} replies",
+				"clearTitle": "Nothing needs you right now",
+				"clearBody": "Replies, requests and tasks show up here as they arrive.",
+				"complete": "Mark “{title}” done",
+				"reply": "Reply",
+				"open": "Open",
+				"showMore": "Show {count} more | Show {count} more",
+				"showFewer": "Show fewer"
 			}
 		},
 		"answer": {
@@ -8089,7 +8103,9 @@
 				"peopleMore": "{names} +{count}",
 				"tasks": "Tasks",
 				"noTasks": "No tasks from this conversation yet.",
-				"loadFailed": "The company and tasks couldn't be loaded."
+				"loadFailed": "The company and tasks couldn't be loaded.",
+				"openWork": "Open work",
+				"noOpenWork": "No open tasks with {company}."
 			},
 			"rail": {
 				"title": "Company & tasks",
@@ -8105,6 +8121,17 @@
 					"everyone": "Everyone",
 					"group": "A group"
 				}
+			},
+			"colleaguesShort": {
+				"someone": "a colleague also in touch | {count} colleagues also in touch",
+				"one": "{first} also in touch",
+				"two": "{first} and {second} also in touch",
+				"three": "{first}, {second} and {third} also in touch",
+				"oneAndOthers": "{first} and one other also in touch | {first} and {count} others also in touch",
+				"twoAndOthers": "{first}, {second} and one other also in touch | {first}, {second} and {count} others also in touch"
+			},
+			"disclosure": {
+				"openTasks": "1 open task | {count} open tasks"
 			}
 		},
 		"tasks": {
@@ -8177,7 +8204,8 @@
 				"done": "Done",
 				"drop": "Won't do",
 				"reopen": "Reopen",
-				"restore": "Restore"
+				"restore": "Restore",
+				"replyAbout": "Reply about this"
 			},
 			"toast": {
 				"done": "Task done",
@@ -13729,14 +13757,15 @@
 			},
 			"lanes": {
 				"do": {
-					"title": "To do",
-					"hint": "Replies, asks and your tasks."
+					"title": "What needs you",
+					"hint": "Replies, requests and your tasks, each with its next step."
 				},
 				"acknowledge": {
 					"title": "To acknowledge",
 					"hint": "What people told you. Nothing to do but know it."
 				}
-			}
+			},
+			"allInboxes": "All inboxes"
 		},
 		"answer": {
 			"pageTitle": "Answer queue",
@@ -13768,11 +13797,11 @@
 				"makeTask": "Make task",
 				"conversations": "Conversations",
 				"noConversations": "No conversations you can open.",
-				"openTasks": "Open tasks",
 				"noTasks": "No open tasks about this company.",
 				"people": "People",
 				"writeTo": "Write to {name}",
-				"personConversations": "1 conversation | {count} conversations"
+				"personConversations": "1 conversation | {count} conversations",
+				"openWork": "Open work"
 			}
 		},
 		"tasks": {

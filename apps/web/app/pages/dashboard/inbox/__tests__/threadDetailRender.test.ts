@@ -33,8 +33,8 @@ describe('Team Inbox thread page rendering', () => {
 		expect(page).not.toMatch(/followUpSecondsLeft/);
 	});
 
-	it('reads as the team stream with the open actions pinned, and no AI line in the header', () => {
-		expect(template).toContain('<TeamPinnedItems');
+	it('reads as the team stream led by its purpose, and no AI line in the header', () => {
+		expect(template).toContain('<TeamThreadPurpose');
 		expect(template).toContain('<TeamThreadStream');
 		expect(template).toContain('<TeamNoteComposer');
 		expect(template).not.toContain('thread-classification');

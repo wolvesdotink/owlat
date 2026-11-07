@@ -32,8 +32,10 @@ const props = withDefaults(
 		hideActions?: boolean;
 		/** Who sent a message of the thread and when (the source markers). */
 		sourceOf?: (messageId: string) => BriefSource | undefined;
+		/** Start unfolded on a phone (a host that already put the list behind its own disclosure). */
+		startOpen?: boolean;
 	}>(),
-	{ noteCounts: () => new Map(), hideActions: false, sourceOf: () => undefined }
+	{ noteCounts: () => new Map(), hideActions: false, sourceOf: () => undefined, startOpen: false }
 );
 
 const emit = defineEmits<{
@@ -49,7 +51,7 @@ provide(BRIEF_CONTEXT, {
 });
 
 const { t } = useI18n();
-const open = ref(false);
+const open = ref(props.startOpen);
 
 const forTeam = computed(() => props.view?.forTeam.filter((i) => i.status === 'open') ?? []);
 const unclear = computed(() => props.view?.unclear.filter((i) => i.status === 'open') ?? []);

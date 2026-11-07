@@ -34,7 +34,7 @@ describe('workbench scope', () => {
 		).toBe(null);
 	});
 
-	it('lists inboxes that are not hidden, keeps the open one, then the team inbox', () => {
+	it('leads with All, lists inboxes that are not hidden, keeps the open one, then the team inbox', () => {
 		expect(
 			workbenchTabs({
 				inboxIds: ['mb_me', 'mb_support', 'mb_sales'],
@@ -42,7 +42,7 @@ describe('workbench scope', () => {
 				teamOn: true,
 				current: 'mb_sales',
 			})
-		).toEqual(['mb_me', 'mb_sales', 'team']);
+		).toEqual(['all', 'mb_me', 'mb_sales', 'team']);
 		expect(
 			workbenchTabs({ inboxIds: ['mb_me'], hidden: [], teamOn: false, current: 'mb_me' })
 		).toEqual(['mb_me']);

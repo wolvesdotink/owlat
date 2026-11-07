@@ -123,6 +123,8 @@ afterEach(() => {
 function mountPage() {
 	return mountDashboardPage(TeamPage, {
 		stubs: {
+			// The member groups section has its own test (TeamMemberGroups.test.ts).
+			TeamMemberGroups: true,
 			UiPageHeader: { template: '<header><slot name="actions" /></header>' },
 			UiButton: { template: '<button v-bind="$attrs"><slot /></button>', inheritAttrs: false },
 			UiTooltip: { template: '<span><slot /></span>' },

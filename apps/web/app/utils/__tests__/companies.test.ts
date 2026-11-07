@@ -8,14 +8,20 @@ import {
 	companyHref,
 	conversationPeople,
 	filterCompanies,
+	mergeOpenWork,
 	personLabel,
 	taskAudienceLabel,
 } from '../companies';
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en, de } });
 
-function render(names: string[], unnamed: number, locale: 'en' | 'de' = 'en'): string | null {
-	const message = colleagueLine(names, unnamed, 'Northwind');
+function render(
+	names: string[],
+	unnamed: number,
+	locale: 'en' | 'de' = 'en',
+	short = false
+): string | null {
+	const message = colleagueLine(names, unnamed, 'Northwind', { short });
 	if (!message) return null;
 	i18n.global.locale.value = locale;
 	const { t } = i18n.global;
@@ -64,6 +70,37 @@ describe('colleagueLine', () => {
 		expect(render(['Taylor', 'Jordan', 'Sam', 'Alex'], 0, 'de')).toBe(
 			'Taylor, Jordan und 2 weitere sind auch mit Northwind in Kontakt.'
 		);
+	});
+});
+
+describe('colleagueLine, short', () => {
+	it('drops the company for a summary that already names it', () => {
+		expect(render(['Taylor'], 0, 'en', true)).toBe('Taylor also in touch');
+		expect(render(['Taylor', 'Jordan', 'Sam', 'Alex'], 0, 'en', true)).toBe(
+			'Taylor, Jordan and 2 others also in touch'
+		);
+		expect(render([], 2, 'en', true)).toBe('2 colleagues also in touch');
+		expect(render(['Taylor'], 0, 'de', true)).toBe('Taylor auch in Kontakt');
+	});
+
+	it('still carries names only', () => {
+		const message = colleagueLine(['Taylor'], 0, 'Northwind', { short: true });
+		expect(Object.keys(message!.params).sort()).toEqual(['company', 'first']);
+	});
+});
+
+describe('mergeOpenWork', () => {
+	const task = (id: string, status = 'open') => ({ _id: id, status });
+
+	it('keeps each task once, the conversation’s first, open before done', () => {
+		const merged = mergeOpenWork(
+			[task('a', 'done'), task('b')],
+			[
+				[task('b'), task('c')],
+				[task('a', 'done'), task('d')],
+			]
+		);
+		expect(merged.map((t) => t._id)).toEqual(['b', 'c', 'd', 'a']);
 	});
 });
 

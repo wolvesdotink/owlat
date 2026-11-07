@@ -3,7 +3,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { answerCounts } from '~/composables/useAnswerQueue';
 import { answerItemMatches } from '~/utils/answerQueue';
-import { allInboxesHref } from '~/utils/postboxAllInboxes';
+import { ALL_INBOXES_PATH, allInboxesHref } from '~/utils/postboxAllInboxes';
+import { useWorkbenchWork } from '~/composables/useWorkbenchWork';
 import { useWorkbenchLineActions } from '~/composables/useWorkbenchLineActions';
 import { useWorkbenchKeyboard } from '~/composables/useWorkbenchKeyboard';
 import { useZenMode } from '~/composables/useZenMode';
@@ -11,6 +12,7 @@ import { useWorkbenchDwell } from '~/composables/useWorkbenchDwell';
 import type { TodayChange, TodayLine, TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, peekKey, threadHref } from '~/utils/todayPeek';
 import {
+	ALL_SCOPE,
 	TEAM_SCOPE,
 	WORKBENCH_SCOPE_STORAGE_KEY,
 	pickWorkbenchScope,
@@ -21,13 +23,14 @@ import {
 import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
 
 /**
- * The Workbench — the home screen, one tab per inbox. Everything that arrives
- * either tells you something or asks something of you, so each tab answers
- * two questions side by side:
+ * The Workbench — the home screen. Everything that arrives either tells you
+ * something or asks something of you, so it answers two questions side by
+ * side, across every inbox at once (the All tab, the default) or narrowed to
+ * one inbox's tab:
  *
- *   - To do: what needs an answer (one button into the Answer queue, narrowed
- *     to this inbox), what was asked of you without needing a reply, and your
- *     own tasks (the same on every tab: a task belongs to you, not an inbox);
+ *   - What needs you: one list of work, whatever it arrived as (a reply the
+ *     Answer queue holds, a request that needs no reply, a task), each card
+ *     with its next step on it (TodayWork);
  *   - To acknowledge: what moved in the conversations you already know, what
  *     you should know (important updates, one sentence each, then routine
  *     mail), and what was filed away. "Got it" on a line acknowledges it; any
@@ -35,9 +38,10 @@ import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
  *
  * Every summarised phrase links, quietly, to the email it came from.
  *
- * Each tab has its own "since you last looked" watermark. It only moves on
- * purpose: "Mark as seen", finishing the Answer queue (which catches every tab
- * up), or a deliberate stay on a tab of at least half a minute before leaving.
+ * Each inbox tab has its own "since you last looked" watermark; All reads the
+ * global one, so marking All as seen catches every tab up. A watermark only
+ * moves on purpose: "Mark as seen", finishing the Answer queue, or a
+ * deliberate stay on a tab of at least half a minute before leaving.
  */
 const { t } = useI18n();
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
@@ -66,14 +70,22 @@ const remembered = ref<string | null>(null);
 onMounted(() => {
 	remembered.value = localStorage.getItem(WORKBENCH_SCOPE_STORAGE_KEY);
 });
-const allScopes = computed<WorkbenchScope[]>(() => [
+const inboxScopes = computed<WorkbenchScope[]>(() => [
 	...inboxes.value.map((i) => i.mailboxId as string),
 	...(teamOn.value ? [TEAM_SCOPE] : []),
 ]);
+// All combines what there is to combine: with one inbox it is that inbox.
+const allScopes = computed<WorkbenchScope[]>(() =>
+	inboxScopes.value.length > 1 ? [ALL_SCOPE, ...inboxScopes.value] : inboxScopes.value
+);
 const shownScopes = computed(() => {
 	const hidden = new Set<string>(choice.hiddenMailboxIds.value);
 	return allScopes.value.filter((s) => !hidden.has(s));
 });
+/** The mailboxes All combines: the ones the viewer did not leave out of the Workbench. */
+const shownMailboxIds = computed(
+	() => shownScopes.value.filter((s) => s !== ALL_SCOPE && s !== TEAM_SCOPE) as Id<'mailboxes'>[]
+);
 const scope = computed(() =>
 	pickWorkbenchScope({
 		requested: route.query['inbox'],
@@ -91,11 +103,18 @@ function selectScope(next: WorkbenchScope) {
 }
 
 const isTeam = computed(() => scope.value === TEAM_SCOPE);
+const isAll = computed(() => scope.value === ALL_SCOPE);
 const inbox = computed(() =>
-	scope.value && !isTeam.value ? (byId.value.get(scope.value as Id<'mailboxes'>) ?? null) : null
+	scope.value && !isTeam.value && !isAll.value
+		? (byId.value.get(scope.value as Id<'mailboxes'>) ?? null)
+		: null
 );
 const scopeName = computed(() =>
-	isTeam.value ? t('components.shell.teamInbox') : (inbox.value?.name ?? '')
+	isAll.value
+		? t('dashboard.today.allInboxes')
+		: isTeam.value
+			? t('components.shell.teamInbox')
+			: (inbox.value?.name ?? '')
 );
 useHead({
 	title: () =>
@@ -106,41 +125,60 @@ useHead({
 
 const tabs = computed<WorkbenchTab[]>(() =>
 	workbenchTabs({
-		inboxIds: allScopes.value.filter((s) => s !== TEAM_SCOPE),
+		inboxIds: inboxScopes.value.filter((s) => s !== TEAM_SCOPE),
 		hidden: choice.hiddenMailboxIds.value,
 		teamOn: teamOn.value,
 		current: scope.value,
 	}).map((s) => {
-		const identity = s === TEAM_SCOPE ? null : byId.value.get(s as Id<'mailboxes'>);
+		const identity =
+			s === TEAM_SCOPE || s === ALL_SCOPE ? null : byId.value.get(s as Id<'mailboxes'>);
 		return {
 			scope: s,
-			name: identity?.name ?? t('components.shell.teamInbox'),
+			name:
+				s === ALL_SCOPE
+					? t('dashboard.today.allInboxes')
+					: (identity?.name ?? t('components.shell.teamInbox')),
 			slot: identity?.slot ?? null,
 			address: identity?.address ?? null,
 			isTeam: s === TEAM_SCOPE,
 			answer: answer.items.value.filter((item) => answerItemMatches(item, s)).length,
-			unread: identity?.unread ?? 0,
+			unread:
+				s === ALL_SCOPE
+					? inboxes.value.reduce((sum, i) => sum + (i.unread ?? 0), 0)
+					: (identity?.unread ?? 0),
 		};
 	})
 );
 
 // ── This tab ───────────────────────────────────────────────────────────────
-const workbench = useWorkbench(scope);
+const workbench = useWorkbench(scope, shownMailboxIds);
 const scopedAnswer = computed(() =>
 	scope.value ? answer.items.value.filter((item) => answerItemMatches(item, scope.value!)) : []
 );
 const scopedCounts = computed(() => answerCounts(scopedAnswer.value));
-// Shares the subscription TodayMyTasks opens (same function, same args).
-const myTasks = useConvexQuery(api.tasks.tasks.list, { view: 'mine' });
+const { myTasks, scopedTasks, scopedTodo, workCount } = useWorkbenchWork({
+	scope,
+	inbox,
+	shownMailboxIds,
+	answer: scopedAnswer,
+});
 const mentions = computed(() => answer.counts.value.mention);
 const answerHref = computed(() =>
 	scope.value ? `/dashboard/answer?in=${encodeURIComponent(scope.value)}` : '/dashboard/answer'
 );
 const inboxHref = computed(() =>
-	isTeam.value ? '/dashboard/inbox' : `/dashboard/postbox/inbox?mailbox=${scope.value}`
+	isAll.value
+		? ALL_INBOXES_PATH
+		: isTeam.value
+			? '/dashboard/inbox'
+			: `/dashboard/postbox/inbox?mailbox=${scope.value}`
 );
 const moreHref = computed(() =>
-	isTeam.value ? '/dashboard/inbox' : allInboxesHref({ in: scope.value })
+	isAll.value
+		? ALL_INBOXES_PATH
+		: isTeam.value
+			? '/dashboard/inbox'
+			: allInboxesHref({ in: scope.value })
 );
 
 // Greeting
@@ -156,22 +194,7 @@ const model = computed(() => {
 	return { ...m, changed: keep(m.changed), worth: keep(m.worth), also: keep(m.also) };
 });
 
-// The numbers live in the header's tiles; the sentence only says "since when".
-const sinceLabel = computed(() => {
-	const at = workbench.since.value;
-	if (at === undefined) return '';
-	if (workbench.isFallback.value) return t('components.today.scope.sinceFallback');
-	const date = new Date(at);
-	const sameDay = date.toDateString() === new Date().toDateString();
-	const when = new Intl.DateTimeFormat(undefined, {
-		...(sameDay ? {} : { weekday: 'long' }),
-		hour: 'numeric',
-		minute: '2-digit',
-	}).format(date);
-	return t('components.today.scope.since', { when });
-});
-
-const doCount = computed(() => scopedAnswer.value.length + (myTasks.data.value?.length ?? 0));
+const { sinceLabel } = workbench;
 const ackCount = computed(
 	() => model.value.changed.length + model.value.worth.length + model.value.also.length
 );
@@ -372,7 +395,7 @@ useWorkbenchKeyboard({
 					}"
 					:can-mark-seen="hasAnything && !workbench.isStale.value"
 					:inbox-href="inboxHref"
-					:compose-href="isTeam ? null : `/compose?mailbox=${scope}`"
+					:compose-href="isTeam ? null : isAll ? '/compose' : `/compose?mailbox=${scope}`"
 					@mark-seen="markAllSeen"
 				/>
 
@@ -383,21 +406,22 @@ useWorkbenchKeyboard({
 						id="workbench-lane-do"
 						:title="t('dashboard.today.lanes.do.title')"
 						:hint="t('dashboard.today.lanes.do.hint')"
-						:count="doCount"
+						:count="workCount"
 						data-workbench-lane="do"
 					>
 						<h1 v-if="isZen" class="mb-3 text-sm font-medium text-text-secondary">
 							{{ scopeName }}
 						</h1>
-						<TodayAnswerCard
-							:items="scopedAnswer"
+						<!-- Zen keeps only what needs an answer. -->
+						<TodayWork
+							:answer="scopedAnswer"
+							:todo="isZen ? [] : scopedTodo"
+							:tasks="isZen ? [] : scopedTasks"
 							:counts="scopedCounts"
-							:is-loading="answer.isLoading.value"
+							:is-loading="answer.isLoading.value || myTasks.isLoading.value"
 							:queue-href="answerHref"
-							:inbox-name="scopeName"
+							:show-inbox="isAll"
 						/>
-						<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
-						<TodayMyTasks v-if="!isZen" />
 					</TodayLane>
 
 					<TodayLane

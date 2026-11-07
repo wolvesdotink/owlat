@@ -160,7 +160,7 @@ const CHROME = [
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
 	'PostboxTeamInterlude',
-	'TeamPinnedItems',
+	'PostboxReaderPurpose',
 	'PostboxTrustChip',
 	'PostboxUnsubscribeChip',
 ];

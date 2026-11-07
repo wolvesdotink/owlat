@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * One company: the conversations the viewer had with anyone there, the
- * people, and the open tasks about it. The colleague line is the one thing
+ * One company, led by the open work about it (the tasks the viewer can see),
+ * then the conversations with anyone there as its history and evidence, and
+ * the people beside them. The colleague line is the one thing
  * that comes from mail the viewer cannot open, and it carries names only
  * (`companies/read.ts`).
  *
@@ -175,87 +176,13 @@ function retry() {
 				</p>
 
 				<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-					<section aria-labelledby="company-conversations">
-						<h2
-							id="company-conversations"
-							class="mb-2 flex items-center text-2xs font-medium uppercase tracking-wider text-text-tertiary"
-						>
-							{{ t('dashboard.companies.detail.conversations') }}
-							<span class="ml-auto text-xs font-normal normal-case tracking-normal">{{
-								company.conversations.length
-							}}</span>
-						</h2>
-						<ul
-							v-if="company.conversations.length > 0"
-							class="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
-							data-testid="company-conversations"
-						>
-							<li
-								v-for="conversation in company.conversations"
-								:key="
-									conversation.mailThreadId ??
-									conversation.conversationThreadId ??
-									conversation.subject
-								"
-							>
-								<component
-									:is="companyConversationHref(conversation) ? 'NuxtLink' : 'div'"
-									:to="companyConversationHref(conversation) ?? undefined"
-									class="flex items-start gap-3 px-4 py-3 outline-none transition-colors"
-									:class="
-										companyConversationHref(conversation)
-											? 'hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand'
-											: ''
-									"
-									data-testid="company-conversation"
-								>
-									<component
-										:is="conversation.kind === 'team' ? InboxIcon : MailIcon"
-										class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary"
-										aria-hidden="true"
-									/>
-									<span class="min-w-0 flex-1">
-										<span class="block truncate text-sm font-medium text-text-primary">{{
-											conversation.subject || t('components.companies.noSubject')
-										}}</span>
-										<span
-											v-if="conversation.snippet"
-											class="block truncate text-xs text-text-tertiary"
-											>{{ conversation.snippet }}</span
-										>
-										<span class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-											<span class="truncate text-text-secondary">{{ peopleOf(conversation) }}</span>
-											<UiBadge variant="neutral" data-testid="company-conversation-source">{{
-												conversation.kind === 'team'
-													? t('components.companies.teamInbox')
-													: (conversation.mailboxName ?? t('components.companies.mailbox'))
-											}}</UiBadge>
-										</span>
-									</span>
-									<time
-										class="shrink-0 text-xs text-text-tertiary"
-										:datetime="new Date(conversation.lastMessageAt).toISOString()"
-										:title="formatRelativeTime(conversation.lastMessageAt)"
-										>{{ formatCompactRelativeTime(conversation.lastMessageAt) }}</time
-									>
-								</component>
-							</li>
-						</ul>
-						<p
-							v-else
-							class="rounded-xl border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-text-tertiary"
-						>
-							{{ t('dashboard.companies.detail.noConversations') }}
-						</p>
-					</section>
-
-					<div class="space-y-8">
-						<section aria-labelledby="company-tasks">
+					<div class="min-w-0 space-y-8">
+						<section aria-labelledby="company-tasks" data-testid="company-open-work">
 							<h2
 								id="company-tasks"
 								class="mb-2 flex items-center text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 							>
-								{{ t('dashboard.companies.detail.openTasks') }}
+								{{ t('dashboard.companies.detail.openWork') }}
 								<span
 									v-if="tasks.length > 0"
 									class="ml-auto text-xs font-normal normal-case tracking-normal"
@@ -268,6 +195,86 @@ function retry() {
 							</p>
 						</section>
 
+						<section aria-labelledby="company-conversations">
+							<h2
+								id="company-conversations"
+								class="mb-2 flex items-center text-2xs font-medium uppercase tracking-wider text-text-tertiary"
+							>
+								{{ t('dashboard.companies.detail.conversations') }}
+								<span class="ml-auto text-xs font-normal normal-case tracking-normal">{{
+									company.conversations.length
+								}}</span>
+							</h2>
+							<ul
+								v-if="company.conversations.length > 0"
+								class="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
+								data-testid="company-conversations"
+							>
+								<li
+									v-for="conversation in company.conversations"
+									:key="
+										conversation.mailThreadId ??
+										conversation.conversationThreadId ??
+										conversation.subject
+									"
+								>
+									<component
+										:is="companyConversationHref(conversation) ? 'NuxtLink' : 'div'"
+										:to="companyConversationHref(conversation) ?? undefined"
+										class="flex items-start gap-3 px-4 py-3 outline-none transition-colors"
+										:class="
+											companyConversationHref(conversation)
+												? 'hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand'
+												: ''
+										"
+										data-testid="company-conversation"
+									>
+										<component
+											:is="conversation.kind === 'team' ? InboxIcon : MailIcon"
+											class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary"
+											aria-hidden="true"
+										/>
+										<span class="min-w-0 flex-1">
+											<span class="block truncate text-sm font-medium text-text-primary">{{
+												conversation.subject || t('components.companies.noSubject')
+											}}</span>
+											<span
+												v-if="conversation.snippet"
+												class="block truncate text-xs text-text-tertiary"
+												>{{ conversation.snippet }}</span
+											>
+											<span
+												class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+											>
+												<span class="truncate text-text-secondary">{{
+													peopleOf(conversation)
+												}}</span>
+												<UiBadge variant="neutral" data-testid="company-conversation-source">{{
+													conversation.kind === 'team'
+														? t('components.companies.teamInbox')
+														: (conversation.mailboxName ?? t('components.companies.mailbox'))
+												}}</UiBadge>
+											</span>
+										</span>
+										<time
+											class="shrink-0 text-xs text-text-tertiary"
+											:datetime="new Date(conversation.lastMessageAt).toISOString()"
+											:title="formatRelativeTime(conversation.lastMessageAt)"
+											>{{ formatCompactRelativeTime(conversation.lastMessageAt) }}</time
+										>
+									</component>
+								</li>
+							</ul>
+							<p
+								v-else
+								class="rounded-xl border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-text-tertiary"
+							>
+								{{ t('dashboard.companies.detail.noConversations') }}
+							</p>
+						</section>
+					</div>
+
+					<div class="space-y-8">
 						<section v-if="company.people.length > 0" aria-labelledby="company-people">
 							<h2
 								id="company-people"

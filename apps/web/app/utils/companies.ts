@@ -25,11 +25,16 @@ export interface CompanyMessage {
 export function colleagueLine(
 	names: readonly string[],
 	unnamed: number,
-	company: string
+	company: string,
+	opts: { short?: boolean } = {}
 ): CompanyMessage | null {
 	const total = names.length + unnamed;
 	if (total === 0) return null;
-	const base = 'components.companies.colleagues';
+	// The short form ("Taylor also in touch") is for a summary that already
+	// names the company; it carries the same names and nothing more.
+	const base = opts.short
+		? 'components.companies.colleaguesShort'
+		: 'components.companies.colleagues';
 	if (names.length === 0) {
 		return { key: `${base}.someone`, params: { company, count: total }, plural: total };
 	}
@@ -49,6 +54,25 @@ export function colleagueLine(
 		params: { first, second, company, count: rest },
 		plural: rest,
 	};
+}
+
+/**
+ * The open work beside a conversation: its own tasks first (done ones too, so
+ * one ticked off here can be reopened), then the open tasks about its
+ * companies that it does not already hold, open before done.
+ */
+export function mergeOpenWork<T extends { _id: string; status: string }>(
+	threadTasks: readonly T[],
+	companyTasks: readonly (readonly T[])[]
+): T[] {
+	const seen = new Set<string>();
+	const all: T[] = [];
+	for (const task of [...threadTasks, ...companyTasks.flat()]) {
+		if (seen.has(task._id)) continue;
+		seen.add(task._id);
+		all.push(task);
+	}
+	return [...all.filter((t) => t.status === 'open'), ...all.filter((t) => t.status !== 'open')];
 }
 
 /** Companies whose name or domain contains every word of `query`, in their order. */

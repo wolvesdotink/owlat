@@ -1,8 +1,9 @@
 /**
- * The company context beside a conversation: the company with its people, the
- * colleague line (names only), the earlier conversations linked to where they
- * open, and the conversation's tasks with Make task. A conversation without a
- * company keeps only the tasks block.
+ * The company context beside a conversation, in decision order: the company
+ * and the colleague line (names only), the open work (the conversation's tasks
+ * and the company's open ones, once each) with Make task, then the earlier
+ * conversations linked to where they open, then the people. A conversation
+ * without a company keeps only the tasks block.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -14,7 +15,10 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 vi.mock('@owlat/api', () => ({
 	api: {
 		companies: { companies: { forThread: 'companies.forThread' } },
-		tasks: { tasks: { forThread: 'tasks.forThread' }, mutations: { setStatus: 'tasks.setStatus' } },
+		tasks: {
+			tasks: { forThread: 'tasks.forThread', forCompany: 'tasks.forCompany' },
+			mutations: { setStatus: 'tasks.setStatus' },
+		},
 	},
 }));
 
@@ -31,6 +35,7 @@ vi.mock('~/composables/useTaskActions', () => ({ useTaskActions: () => ({ setSta
 const results: Record<string, ReturnType<typeof ref<unknown>>> = {
 	'companies.forThread': ref<unknown>(undefined),
 	'tasks.forThread': ref<unknown>(undefined),
+	'tasks.forCompany': ref<unknown>(undefined),
 };
 const queriedWith = vi.fn();
 
@@ -45,6 +50,7 @@ beforeAll(() => {
 beforeEach(() => {
 	results['companies.forThread']!.value = [];
 	results['tasks.forThread']!.value = [];
+	results['tasks.forCompany']!.value = [];
 	queriedWith.mockReset();
 	setStatus.mockClear();
 });
@@ -189,6 +195,42 @@ describe('CompanyContextPanel', () => {
 		expect(w.find('[data-testid="make-task"]').exists()).toBe(true);
 		expect(popoverProps).toHaveBeenLastCalledWith(
 			expect.not.objectContaining({ 'company-key': expect.anything() })
+		);
+	});
+
+	it('leads with the open work: this conversation’s tasks and the company’s, once each', async () => {
+		results['companies.forThread']!.value = [NORTHWIND];
+		results['tasks.forThread']!.value = [{ ...TASK, status: 'done' }];
+		results['tasks.forCompany']!.value = [
+			{ ...TASK, status: 'done' },
+			{ ...TASK, _id: 'task2', title: 'Renew the framework agreement' },
+		];
+		const w = mountPanel();
+		await nextTick();
+
+		expect(queriedWith).toHaveBeenCalledWith('tasks.forCompany', {
+			companyKey: 'northwind.example',
+		});
+		expect(w.findAll('[data-testid="company-task"]').map((li) => li.text())).toEqual([
+			expect.stringContaining('Renew the framework agreement'),
+			expect.stringContaining('Send the signed NDA'),
+		]);
+		const headings = w.findAll('h2, h3').map((el) => el.text());
+		expect(headings).toEqual([
+			'Northwind',
+			expect.stringMatching(/^Open work/),
+			'Earlier with Northwind',
+			'People at Northwind',
+		]);
+		expectFullyLocalized(w);
+	});
+
+	it('says there is no open work with the company, rather than no tasks at all', async () => {
+		results['companies.forThread']!.value = [NORTHWIND];
+		const w = mountPanel();
+		await nextTick();
+		expect(w.get('[data-testid="company-context-no-tasks"]').text()).toBe(
+			'No open tasks with Northwind.'
 		);
 	});
 });

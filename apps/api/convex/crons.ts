@@ -8,17 +8,9 @@ import { registerTeamInboxCrons } from './inbox/cronRegistration';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 import { registerWebhookCrons } from './webhooks/cronRegistration';
 import { registerAutomationCrons } from './automations/cronRegistration';
+import { registerCompanyCrons } from './companies/cronRegistration';
 
 const crons = cronJobs();
-
-// The company index trails the mail by at most this interval; its first
-// runs on an existing install are the backfill (companies/indexer.ts).
-crons.interval(
-	'index conversations by company',
-	{ minutes: 2 },
-	internal.companies.indexer.sweep,
-	{}
-);
 
 crons.interval(
 	'cleanup abandoned storage uploads',
@@ -285,6 +277,7 @@ crons.interval(
 // Team-inbox thread sweeps (snooze wake, presence expiry, response-target
 // breaches). Grouped in `inbox/cronRegistration.ts`.
 registerTeamInboxCrons(crons);
+registerCompanyCrons(crons);
 
 // Channel health checks every 5 minutes
 // Monitors SMS, WhatsApp, webhook channel connectivity

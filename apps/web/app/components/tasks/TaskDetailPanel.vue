@@ -10,7 +10,15 @@
  * panel; the list underneath stays put.
  */
 import { api } from '@owlat/api';
-import { ArrowLeftIcon, ChatIcon, CloseIcon, ExternalLinkIcon, MailIcon } from '@coolicons/vue';
+import {
+	ArrowLeftIcon,
+	ChatIcon,
+	CloseIcon,
+	ExternalLinkIcon,
+	MailIcon,
+	ReplyIcon,
+} from '@coolicons/vue';
+import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import TaskAudiencePicker from '~/components/tasks/TaskAudiencePicker.vue';
 import TaskAssigneePicker from '~/components/tasks/TaskAssigneePicker.vue';
@@ -153,6 +161,21 @@ function setAssignee(userId: string) {
 }
 
 const sourceHref = computed(() => taskSourceHref(props.task?.source ?? null));
+
+// Doing the work often means telling them: Answer mode on the conversation the
+// task came from, with the reply composer open. Finishing the task stays its own step.
+const answerNav = useAnswerModeNav();
+const canReplyAbout = computed(() => {
+	const source = props.task?.source;
+	if (!source?.canOpen || props.task?.status !== 'open') return false;
+	return source.kind === 'team' || !!source.messageId;
+});
+function replyAbout() {
+	const source = props.task?.source;
+	if (!source?.canOpen) return;
+	if (source.kind === 'team') void answerNav.openTeam(source.conversationThreadId);
+	else if (source.messageId) void answerNav.open(source.messageId);
+}
 const sourceLabel = computed(() => {
 	const source = props.task?.source;
 	if (!source) return '';
@@ -387,6 +410,16 @@ watch(
 						<span class="min-w-0 flex-1 truncate">{{ sourceLabel }}</span>
 						<ExternalLinkIcon class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
 					</NuxtLink>
+					<UiButton
+						v-if="canReplyAbout"
+						size="sm"
+						variant="secondary"
+						data-testid="task-detail-reply"
+						@click="replyAbout"
+					>
+						<ReplyIcon class="size-3.5" aria-hidden="true" />
+						{{ t('components.tasks.detail.replyAbout') }}
+					</UiButton>
 					<p
 						v-else
 						class="flex items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-2 text-sm text-text-secondary"

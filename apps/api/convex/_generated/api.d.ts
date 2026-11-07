@@ -1869,6 +1869,7 @@ import type * as topics_subscriptionUndo from '../topics/subscriptionUndo.js';
 import type * as topics_topicReads from '../topics/topicReads.js';
 import type * as topics_topics from '../topics/topics.js';
 import type * as companies_companies from '../companies/companies.js';
+import type * as companies_cronRegistration from '../companies/cronRegistration.js';
 import type * as companies_eligibility from '../companies/eligibility.js';
 import type * as companies_indexer from '../companies/indexer.js';
 import type * as companies_ownDomains from '../companies/ownDomains.js';
@@ -2410,6 +2411,7 @@ declare const fullApi: ApiFromModules<{
 	'chat/rooms': typeof chat_rooms;
 }> & ApiFromModules<{
 	'companies/companies': typeof companies_companies;
+	'companies/cronRegistration': typeof companies_cronRegistration;
 	'companies/eligibility': typeof companies_eligibility;
 	'companies/indexer': typeof companies_indexer;
 	'companies/ownDomains': typeof companies_ownDomains;

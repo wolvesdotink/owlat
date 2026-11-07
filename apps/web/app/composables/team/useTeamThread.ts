@@ -111,6 +111,8 @@ export function useTeamThread(opts: {
 	});
 
 	return {
+		/** The thread this surface reads, or null while it reads nothing. */
+		target,
 		stream,
 		cite,
 		openItems: openItems.view,

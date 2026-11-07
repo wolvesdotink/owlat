@@ -1192,6 +1192,30 @@
 			"evidence": {
 				"label": "Quelle zeigen: {name}, {date}",
 				"unknown": "Quelle zeigen"
+			},
+			"purpose": {
+				"review": "Sieh dir diese Unterhaltung an",
+				"who": {
+					"forYou": "Für dich",
+					"forTeam": "Offen fürs Team",
+					"assignedToYou": "Dir zugewiesen",
+					"assignedTo": "{name} kümmert sich darum",
+					"waitingOn": "Du wartest auf {name}",
+					"waiting": "Du wartest auf die andere Seite",
+					"needsReview": "Muss geprüft werden"
+				},
+				"due": "Fällig {date}",
+				"more": "1 weiteres | {count} weitere",
+				"ownerAndNotes": "Zuständig und Notizen",
+				"unlisted": "1 weiteres in der ganzen Übersicht | {count} weitere in der ganzen Übersicht",
+				"reply": "Antworten",
+				"claim": "Übernehmen",
+				"done": "Erledigt",
+				"gotIt": "Verstanden",
+				"seen": "Als gesehen markiert",
+				"operation": "Als gesehen markieren",
+				"noSubject": "(kein Betreff)",
+				"messages": "1 Nachricht | {count} Nachrichten"
 			}
 		},
 		"campaigns": {
@@ -7701,29 +7725,15 @@
 		},
 		"today": {
 			"answer": {
-				"title": "{count} wartet auf deine Antwort | {count} warten auf deine Antwort",
-				"cta": "Antwortliste durchgehen",
 				"drafts": "{count} Entwurf fertig | {count} Entwürfe fertig",
 				"mail": "{count} in deinen Postfächern",
 				"team": "{count} im Team-Postfach",
 				"mentions": "{count} Erwähnung | {count} Erwähnungen",
 				"minutes": "etwa {count} Minute | etwa {count} Minuten",
-				"clearTitle": "Nichts wartet auf eine Antwort",
-				"clearBody": "Neue Fragen landen in der Antwortliste, sobald sie ankommen.",
-				"needsTitle": "Wartet auf Antwort",
-				"allInQueue": "Alle {count} in der Liste",
 				"draftReady": "Entwurf bereit",
 				"question": "Braucht deine Angabe",
 				"mention": "Erwähnung",
-				"mentionTitle": "#{room}: „{preview}“",
-				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
-			},
-			"todo": {
-				"title": "Zu erledigen, keine Antwort nötig · {count}",
-				"titlePlain": "Zu erledigen, keine Antwort nötig",
-				"due": "bis {date}",
-				"more": "In diesem Postfach ist noch mehr zu erledigen.",
-				"openInbox": "Postfach öffnen"
+				"mentionTitle": "#{room}: „{preview}“"
 			},
 			"changed": {
 				"title": "Was sich getan hat",
@@ -7868,12 +7878,16 @@
 				"showMore": "Mehr anzeigen",
 				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
 			},
-			"myTasks": {
-				"title": "Deine Aufgaben",
-				"all": "Alle Aufgaben",
-				"empty": "Keine offenen Aufgaben. Mach aus einer Unterhaltung eine Aufgabe oder leg hier eine an.",
-				"add": "Aufgabe anlegen",
-				"more": "{count} weitere Aufgabe | {count} weitere Aufgaben"
+			"work": {
+				"title": "Was dich braucht",
+				"workThrough": "{count} Antwort durchgehen | {count} Antworten durchgehen",
+				"clearTitle": "Gerade braucht dich nichts",
+				"clearBody": "Antworten, Bitten und Aufgaben erscheinen hier, sobald sie ankommen.",
+				"complete": "„{title}“ als erledigt markieren",
+				"reply": "Antworten",
+				"open": "Öffnen",
+				"showMore": "{count} weitere anzeigen | {count} weitere anzeigen",
+				"showFewer": "Weniger anzeigen"
 			}
 		},
 		"answer": {
@@ -8089,7 +8103,9 @@
 				"peopleMore": "{names} und {count} weitere",
 				"tasks": "Aufgaben",
 				"noTasks": "Noch keine Aufgaben aus diesem Gespräch.",
-				"loadFailed": "Firma und Aufgaben konnten nicht geladen werden."
+				"loadFailed": "Firma und Aufgaben konnten nicht geladen werden.",
+				"openWork": "Offene Arbeit",
+				"noOpenWork": "Keine offenen Aufgaben mit {company}."
 			},
 			"rail": {
 				"title": "Firma & Aufgaben",
@@ -8105,6 +8121,17 @@
 					"everyone": "Alle",
 					"group": "Eine Gruppe"
 				}
+			},
+			"colleaguesShort": {
+				"someone": "jemand aus deinem Team auch in Kontakt | {count} aus deinem Team auch in Kontakt",
+				"one": "{first} auch in Kontakt",
+				"two": "{first} und {second} auch in Kontakt",
+				"three": "{first}, {second} und {third} auch in Kontakt",
+				"oneAndOthers": "{first} und eine weitere Person auch in Kontakt | {first} und {count} weitere auch in Kontakt",
+				"twoAndOthers": "{first}, {second} und eine weitere Person auch in Kontakt | {first}, {second} und {count} weitere auch in Kontakt"
+			},
+			"disclosure": {
+				"openTasks": "1 offene Aufgabe | {count} offene Aufgaben"
 			}
 		},
 		"tasks": {
@@ -8177,7 +8204,8 @@
 				"done": "Erledigt",
 				"drop": "Nicht machen",
 				"reopen": "Wieder öffnen",
-				"restore": "Wiederherstellen"
+				"restore": "Wiederherstellen",
+				"replyAbout": "Dazu antworten"
 			},
 			"toast": {
 				"done": "Aufgabe erledigt",
@@ -13729,14 +13757,15 @@
 			},
 			"lanes": {
 				"do": {
-					"title": "Zu erledigen",
-					"hint": "Antworten, Bitten an dich und deine Aufgaben."
+					"title": "Was dich braucht",
+					"hint": "Antworten, Bitten und deine Aufgaben, jeweils mit dem nächsten Schritt."
 				},
 				"acknowledge": {
 					"title": "Zur Kenntnis",
 					"hint": "Was man dir mitgeteilt hat. Nichts zu tun, außer es zu wissen."
 				}
-			}
+			},
+			"allInboxes": "Alle Postfächer"
 		},
 		"answer": {
 			"pageTitle": "Antwortliste",
@@ -13768,11 +13797,11 @@
 				"makeTask": "Aufgabe anlegen",
 				"conversations": "Gespräche",
 				"noConversations": "Keine Gespräche, die du öffnen kannst.",
-				"openTasks": "Offene Aufgaben",
 				"noTasks": "Keine offenen Aufgaben zu dieser Firma.",
 				"people": "Leute",
 				"writeTo": "An {name} schreiben",
-				"personConversations": "1 Gespräch | {count} Gespräche"
+				"personConversations": "1 Gespräch | {count} Gespräche",
+				"openWork": "Offene Arbeit"
 			}
 		},
 		"tasks": {

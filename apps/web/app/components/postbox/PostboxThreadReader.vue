@@ -95,9 +95,8 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
 }
 
-// The thread brief (personal mailboxes): the strip, cites, latest lines, reactions.
-// Per-user reader preferences (auto-advance, reply default, mark-read policy, the
-// brief), read before the brief and the mark-read watcher, which both run immediately.
+// Per-user reader preferences, read before the brief (purpose, strip, cites, latest
+// lines, reactions) and the mark-read watcher, which both run immediately.
 const { autoAdvance, replyDefault, markReadPolicy, autoSummarize, autoLoadImages } =
 	usePostboxSettings();
 
@@ -133,14 +132,12 @@ const { mountAll: mountAllBodies, preparePrint } = usePostboxMountAllBodies({
 // Adaptive dark rendering: whether the app is dark, for every card's body.
 const { isDark: appIsDark } = useAppTheme();
 
-// Sender-authentication badge (Sealed Mail A3, flag `senderAuthBadges`). The
-// derivation is honest — absent verdicts yield no badge — so this is safe to
-// compute for every message; the flag only decides whether it renders.
+// Sender-authentication badge (flag `senderAuthBadges`): absent verdicts yield no
+// badge, so it is safe to compute for every message; the flag decides if it renders.
 const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 
-// Sealed-Mail reader badge (E5, flag `sealedMail`). Gates the honest "Sealed —
-// sender verified / not verified" / "can't decrypt" chip driven by the inbound
-// sealing record. When off, sealed messages fall back to the structural badge.
+// Sealed-Mail reader badge (flag `sealedMail`): the "Sealed" / "can't decrypt" chip
+// from the inbound sealing record. Off, sealed messages get the structural badge.
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
 // Reply / reply-all / forward open Answer mode; every reply and reply-all goes
@@ -202,10 +199,9 @@ const calm = usePostboxCalmReader({
 	detailsEl: computed(() => stripEl.value?.detailsEl ?? null),
 });
 
-// Thread-level triage of the OPEN message (archive / trash / star / snooze /
-// mute / pin / label / move / spam / block), the auto-advance that follows it and
-// the pickers it opens. Reply / reply-all / forward route back through the
-// composer layer above so they stay behind the sender-auth reply guard.
+// Thread-level triage of the OPEN message (archive, trash, star, snooze, mute, pin,
+// label, move, spam, block), the auto-advance after it and its pickers. Reply, reply-all
+// and forward route back through the composer layer, behind the sender-auth reply guard.
 const readerActions = usePostboxReaderActions({
 	getMessage: () => props.message,
 	messageId,
@@ -287,8 +283,9 @@ providePostboxReaderContext({
 		class="pbx-reader-article p-6 max-w-4xl mx-auto [--pbx-reader-bar-h:2.75rem]"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
-		<!-- One page (read on arrival §3): header line, the strip (or the slim
-		     "Why here? · Details" line), one notice, then the conversation. -->
+		<!-- One page (read on arrival §3): the header line led by what the
+		     conversation is for, the strip (or the slim "Why here? · Details"
+		     line), one notice, then the conversation as its evidence. -->
 		<PostboxThreadHeader
 			:subject="message.subject"
 			:message-count="threadMessageCount"
@@ -313,6 +310,16 @@ providePostboxReaderContext({
 			@full-brief="calm.sheetOpen.value = true"
 			@why-here="calm.openWhyHere"
 		>
+			<template #title>
+				<PostboxReaderPurpose
+					:brief="rb"
+					:team="team"
+					:subject="message.subject"
+					:message-count="threadMessageCount"
+					:thread-id="discussionThreadId"
+					@reply="readerActions.runReaderAction('reply')"
+				/>
+			</template>
 			<template #actions>
 				<PostboxThreadFindButton @click="find.open()" />
 				<PostboxThreadChatToggle :chat="chat" />
@@ -386,13 +393,6 @@ providePostboxReaderContext({
 		<div class="space-y-2">
 			<PostboxThreadCiteNote :state="rb" />
 
-			<TeamPinnedItems
-				v-if="team.isActive.value"
-				class="mb-3"
-				:team="team.team"
-				:cite-message="rb.citeMessage"
-				:cite-unreachable="rb.messageCiteState.value === 'unreachable'"
-			/>
 			<PostboxThreadEarlier
 				v-if="hasEarlier || loadingEarlier || earlierFailed"
 				:remaining="Math.max(0, threadMessageCount - allMessages.length)"

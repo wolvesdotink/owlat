@@ -11,6 +11,11 @@ import { ArchiveIcon, ReplyIcon } from '@coolicons/vue';
  * the subject and the strip: the follow-up chip, the team badge, the labels and
  * the cross-surface link moved into the strip's Details row.
  *
+ * A host with a purpose header (BriefPurposeHeader) passes it as `#title`: it
+ * takes the subject's place, carries the subject as its metadata and owns
+ * Reply, so the line keeps only Archive and the ⋯ menu. The sticky bar keeps
+ * the subject and Reply.
+ *
  * It also renders the sticky bar that stands in for this line once it scrolls
  * away (PostboxReaderStickyBar), as the sibling before the <header>: the bar's
  * anchor has to be a direct child of the article, ahead of the line it
@@ -154,7 +159,8 @@ const subjectParts = computed(() => {
 			<!-- The verbs stay siblings of the header rather than its #actions: on a
 			     phone they shrink to icons and keep to the subject's line, where the
 			     header's actions row would drop them below it. -->
-			<UiPageHeader class="flex-1 min-w-0">
+			<div v-if="$slots['title']" class="min-w-0 flex-1"><slot name="title" /></div>
+			<UiPageHeader v-else class="flex-1 min-w-0">
 				<template #title>
 					<template v-if="messageCount > 1"
 						>{{ subjectParts.head
@@ -169,7 +175,7 @@ const subjectParts = computed(() => {
 				</template>
 			</UiPageHeader>
 			<!-- The thread's two verbs. On a phone they shrink to icons. -->
-			<UiTooltip :text="t('postbox.reader.header.reply')">
+			<UiTooltip v-if="!$slots['title']" :text="t('postbox.reader.header.reply')">
 				<template #shortcut><UiShortcut id="postbox.reply" /></template>
 				<UiButton
 					variant="ghost"

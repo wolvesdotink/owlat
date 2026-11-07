@@ -1,8 +1,8 @@
 /**
- * The Workbench: one tab per mailbox the viewer reads (and one for the team
- * inbox, for owners/admins), each summarising only that mailbox. This module
- * holds the pure parts — which tab opens, and where each "Filed away" count
- * leads — so they stay unit-testable.
+ * The Workbench: what needs the viewer across every inbox they read, with one
+ * tab per mailbox (and one for the team inbox, for owners/admins) to narrow
+ * it down. This module holds the pure parts — which tab opens, and where each
+ * "Filed away" count leads — so they stay unit-testable.
  */
 
 import type { FiledCategory } from '@owlat/shared/threadStatus';
@@ -11,6 +11,11 @@ import { allInboxesHref } from './postboxAllInboxes';
 /** A mailbox id, or `team` for the team inbox. */
 export type WorkbenchScope = string;
 export const TEAM_SCOPE = 'team';
+/**
+ * Every inbox at once, the Workbench's first tab. The same value the Answer
+ * queue uses for its unfiltered view (`?in=all`).
+ */
+export const ALL_SCOPE = 'all';
 
 /** One tab in the Workbench's tab row. */
 export interface WorkbenchTab {
@@ -31,7 +36,8 @@ export const WORKBENCH_SCOPE_STORAGE_KEY = 'owlat.workbench.scope';
 /**
  * The tab to show: the one in the URL when the viewer can open it (even an
  * inbox they hid — a link is deliberate), else the one they used last, else
- * the first tab they did not hide. `null` when there is nothing to show.
+ * the first tab they did not hide, which is All when there is one. `null`
+ * when there is nothing to show.
  */
 export function pickWorkbenchScope(input: {
 	requested: unknown;
@@ -48,9 +54,10 @@ export function pickWorkbenchScope(input: {
 }
 
 /**
- * The tabs in order: every readable inbox the viewer has not hidden, then the
- * team inbox. A hidden inbox that is open right now (a direct link) keeps its
- * tab until the viewer moves on.
+ * The tabs in order: All first, then every readable inbox the viewer has not
+ * hidden, then the team inbox. A hidden inbox that is open right now (a direct
+ * link) keeps its tab until the viewer moves on. With a single inbox there is
+ * nothing to combine, so there is no All tab.
  */
 export function workbenchTabs(input: {
 	inboxIds: readonly string[];
@@ -61,7 +68,7 @@ export function workbenchTabs(input: {
 	const hidden = new Set(input.hidden);
 	const tabs = input.inboxIds.filter((id) => !hidden.has(id) || id === input.current);
 	if (input.teamOn) tabs.push(TEAM_SCOPE);
-	return tabs;
+	return tabs.length > 1 ? [ALL_SCOPE, ...tabs] : tabs;
 }
 
 /** Where a "Filed away" count opens: that exact list, in that inbox. */
