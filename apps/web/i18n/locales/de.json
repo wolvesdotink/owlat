@@ -7887,7 +7887,8 @@
 				"reply": "Antworten",
 				"open": "Öffnen",
 				"showMore": "{count} weitere anzeigen | {count} weitere anzeigen",
-				"showFewer": "Weniger anzeigen"
+				"showFewer": "Weniger anzeigen",
+				"task": "Aufgabe"
 			}
 		},
 		"answer": {

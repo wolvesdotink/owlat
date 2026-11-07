@@ -249,13 +249,6 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 								class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
 								>{{ more(card) }}</span
 							>
-							<span
-								v-if="card.dueAt !== null"
-								class="ml-auto shrink-0 text-2xs"
-								:class="dueTone(card.dueAt)"
-								data-testid="today-work-due"
-								>{{ text.dueLabel(card.dueAt) }}</span
-							>
 						</div>
 						<div
 							class="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-text-tertiary"
@@ -287,10 +280,29 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 							compact
 							class="mt-2 border-l-2 border-border-subtle pl-3"
 						/>
+					</div>
 
-						<div
-							class="mt-2 flex flex-wrap items-center gap-1.5 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
+					<!-- When it is due, then the next step. The step shows on hover or
+					     focus on a desktop, always on touch, and takes no room unseen. -->
+					<div class="flex shrink-0 flex-col items-end gap-1.5">
+						<span
+							v-if="card.dueAt !== null"
+							class="text-2xs"
+							:class="dueTone(card.dueAt)"
+							data-testid="today-work-due"
+							>{{ text.dueLabel(card.dueAt) }}</span
 						>
+						<div
+							class="flex items-center gap-1 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
+						>
+							<TaskCreatePopover
+								v-if="taskContext(card)"
+								v-bind="taskContext(card)!"
+								:default-title="title(card)"
+								:label="t('components.today.work.task')"
+								size="sm"
+								variant="ghost"
+							/>
 							<UiButton
 								:to="href(card)"
 								size="sm"
@@ -302,13 +314,6 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 										: t('components.today.work.open')
 								}}
 							</UiButton>
-							<TaskCreatePopover
-								v-if="taskContext(card)"
-								v-bind="taskContext(card)!"
-								:default-title="title(card)"
-								size="sm"
-								variant="ghost"
-							/>
 						</div>
 					</div>
 				</div>
