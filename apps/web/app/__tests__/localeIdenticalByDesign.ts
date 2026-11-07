@@ -133,6 +133,9 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.postbox.postboxFolderRail.replyQueueScopedCount',
 	'components.postbox.postboxLayout.folderRoles.spam',
 	'components.postbox.postboxMailboxConnectForm.ssl',
+	// A product name and a protocol name: how a Microsoft mailbox sends.
+	'components.postbox.postboxMicrosoftSendPath.graph',
+	'components.postbox.postboxMicrosoftSendPath.smtp',
 	// Protocol names and RFC header field names — the same words in both
 	// locales, and translating them would stop them matching the raw message.
 	'components.postbox.postboxMessageDetails.arc',
@@ -156,6 +159,10 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.postbox.postboxVoiceProfileCard.emoji',
 	'components.postbox.postboxVoiceProfileCard.outOfFive',
 	'components.postbox.teamInboxMembersPanel.memberOption',
+	'components.preferences.mcpClientActivity.tools.labelThread',
+	'components.preferences.mcpPendingActionCard.bcc',
+	'components.preferences.mcpPendingActionCard.cc',
+	'components.preferences.mcpPendingActionCard.label',
 	'components.preferences.preferencesAppearance.system.label',
 	'components.query.sourceCitation.knowledgeTooltip',
 	'components.settings.connectedApps.connectedAppRegisterModal.endpointPlaceholder',
@@ -293,6 +300,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.preferences.appPasswords.smtpValue',
 	'dashboard.preferences.forwarding.addressPlaceholder',
 	'dashboard.preferences.index.displayNamePlaceholder',
+	'dashboard.preferences.index.markIcons.team',
 	// Browser and OS names are product names; German uses them verbatim. Only
 	// the two `unknown` fallbacks in those blocks are prose, and both ARE
 	// translated — which is what keeps this run of entries honest.
@@ -472,4 +480,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.breadcrumbRoutes.sections.workspace',
 	'shared.shortcuts.groups.workspace',
 	'shell.admin.areas.overview',
+	'dashboard.postbox.contacts.carddav.serverUrlPlaceholder',
+	'dashboard.postbox.contacts.source.carddav',
+	'dashboard.postbox.contacts.source.mail',
+	'dashboard.postbox.contacts.source.vcard',
 ];

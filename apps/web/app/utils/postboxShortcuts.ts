@@ -37,6 +37,7 @@ export type PostboxShortcutAction =
 	| 'label'
 	| 'move'
 	| 'chatView'
+	| 'copySignInCode'
 	| 'toggleSelect'
 	| 'nextUnread'
 	| 'previousUnread'
@@ -71,6 +72,7 @@ const ACTION_BY_ID: Readonly<Record<string, PostboxShortcutAction>> = {
 	'postbox.label': 'label',
 	'postbox.move': 'move',
 	'postbox.chatView': 'chatView',
+	'postbox.copySignInCode': 'copySignInCode',
 	'postbox.toggleSelect': 'toggleSelect',
 	'postbox.nextUnread': 'nextUnread',
 	'postbox.previousUnread': 'previousUnread',

@@ -17,6 +17,8 @@ import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 import { reconcileSpend } from '../../../aiRouting/__tests__/spend.testlib';
 import { resolveLanguageModel } from '../../../lib/llmProvider';
 import { AiNotConfiguredError } from '../../../lib/aiNotConfigured';
+import { APICallError } from 'ai';
+import { readProviderAuthFailure } from '../../../lib/providerAuthFailure';
 
 /** Seed a message and take its enqueue-time snapshot, as delivery does. */
 async function seedCaptured(
@@ -464,6 +466,63 @@ describe('interpretMessage', () => {
 				.collect()
 		);
 		expect(activity.map((row) => row.type)).not.toContain('interpretation_incomplete');
+	});
+
+	it('records a rejected provider key as provider_auth, with no retry spent and no thread activity', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		llm.runLlmObject.mockRejectedValue(
+			new APICallError({
+				message: 'Incorrect API key provided',
+				url: 'https://provider.test',
+				requestBodyValues: {},
+				statusCode: 401,
+			})
+		);
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+		expect(out).toMatchObject({ status: 'failed', errorCode: 'provider_auth' });
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.find((r) => r.isCounted)).toMatchObject({
+			errorCode: 'provider_auth',
+			retryCount: 0,
+		});
+		const activity = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadActivity')
+				.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(activity.map((row) => row.type)).not.toContain('interpretation_incomplete');
+	});
+
+	it('keeps one record of a refused key for the instance, closed by the next accepted run', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const refused = new APICallError({
+			message: 'Incorrect API key provided',
+			url: 'https://provider.test',
+			requestBodyValues: {},
+			statusCode: 401,
+		});
+		llm.runLlmObject.mockRejectedValueOnce(refused);
+		const first = await seedCaptured(t, { text: TEXT });
+		await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: first.messageId },
+		});
+		const failure = await t.run(async (ctx) => readProviderAuthFailure(ctx.db));
+		expect(failure).toEqual({ firstSeenAt: expect.any(Number), lastSeenAt: expect.any(Number) });
+
+		const second = await seedCaptured(t, { text: TEXT, address: 'two@owlat.test' });
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: second.messageId },
+		});
+		expect(out).toMatchObject({ status: 'complete' });
+		expect(await t.run(async (ctx) => readProviderAuthFailure(ctx.db))).toBeNull();
 	});
 
 	it('skips a muted thread and backfilled mail without a model call', async () => {

@@ -8,7 +8,7 @@
 
 import type { ImapFlow, ListResponse } from 'imapflow';
 import type { ConvexClient } from './convex.js';
-import { fn, isMissingFunction } from './convex.js';
+import { fn, isMissingFunction, rejectsArgument } from './convex.js';
 import { isVirtualView, mapFolderRole, mirroredFolderPath, type FolderRole } from './folders.js';
 import { CommandRefusals } from './imapCommandErrors.js';
 import { isAllMailFolder, RemoteOpReplayer } from './remoteOps.js';
@@ -22,6 +22,7 @@ import {
 	type ModseqCursor,
 } from './remoteState.js';
 import { logger } from './logger.js';
+import { fetchAppendRaw, type RawUploadConfig } from './ingest.js';
 
 /** A synced remote folder: a system role, or (full sync) a mirrored user folder by path. */
 export interface SyncedFolder {
@@ -110,7 +111,8 @@ export class RemoteSync {
 
 	constructor(
 		private readonly accountId: string,
-		private readonly convex: ConvexClient
+		private readonly convex: ConvexClient,
+		private readonly rawConfig: RawUploadConfig
 	) {}
 
 	/**
@@ -168,6 +170,7 @@ export class RemoteSync {
 						);
 					}
 				},
+				raw: (op) => fetchAppendRaw(this.rawConfig, op.opId),
 				skipped: (op, reason) =>
 					logger.warn(
 						{ accountId, opId: op.opId, kind: op.kind, reason },
@@ -194,7 +197,7 @@ export class RemoteSync {
 				}
 			}
 			await drainRemoteOps({
-				listDue: () => this.convex.query(fn.listDueRemoteOps, { accountId }),
+				listDue: () => this.dueRemoteOps(),
 				settle: async (results) => {
 					await this.convex.mutation(fn.settleRemoteOps, { results });
 				},
@@ -206,6 +209,21 @@ export class RemoteSync {
 			});
 		} catch (err) {
 			logger.warn({ accountId, err }, 'remote write-back drain failed');
+		}
+	}
+
+	/**
+	 * The account's due ops, uploads included. A backend from before uploads
+	 * rejects the `appends` argument and is asked again without it, so it keeps
+	 * handing out the ops it does have.
+	 */
+	private async dueRemoteOps() {
+		const accountId = this.accountId;
+		try {
+			return await this.convex.query(fn.listDueRemoteOps, { accountId, appends: true });
+		} catch (err) {
+			if (!rejectsArgument(err, 'appends')) throw err;
+			return await this.convex.query(fn.listDueRemoteOps, { accountId });
 		}
 	}
 

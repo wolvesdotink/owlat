@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/web",
-	"version": "0.6.20",
+	"version": "0.6.21",
 	"private": true,
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
@@ -57,7 +57,7 @@
 	"devDependencies": {
 		"@nuxt/fonts": "catalog:vue",
 		"@owlat/ui": "workspace:*",
-		"@playwright/test": "^1.58.2",
+		"@playwright/test": "^1.65.0",
 		"@types/d3-force": "^3.0.10",
 		"@types/node": "catalog:",
 		"@types/papaparse": "^5.5.2",

@@ -78,6 +78,7 @@ const referencesTo = (target: string) =>
 	schemaFields((validator) => validator.kind === 'id' && validator.tableName === target);
 
 const erasureSource = [
+	'addressBookPhases',
 	'capturedFilePhases',
 	'identityPhases',
 	'mailboxPhases',
@@ -110,6 +111,7 @@ const DELETED_BY_HELPER = new Set([
 	'sendReadyNotices',
 	'platformAdmins',
 	// memberMcpClientRanges (mcp/erasure.ts), drained by eraseMemberRecords.
+	'mcpPendingActions',
 	'mcpClientActivity',
 	'mcpClients',
 	// The thread brief rows of a personal thread: drainThreadBrief, through the

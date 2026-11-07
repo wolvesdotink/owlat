@@ -254,11 +254,15 @@ export async function exportAllUserData(
 	const mailDrafts: ExportRow[] = [];
 	const threadBriefs: ExportRow[] = [];
 	const mailContacts: ExportRow[] = [];
+	const mailCardDavAccounts: ExportRow[] = [];
 	for (const mailbox of mailboxes) {
 		mailMessages.push(...(await loadPages('mailMessages', { mailboxId: mailbox._id })));
 		mailDrafts.push(...(await loadPages('mailDrafts', { mailboxId: mailbox._id })));
 		threadBriefs.push(...(await loadPages('threadBriefs', { mailboxId: mailbox._id })));
 		mailContacts.push(...(await loadPages('mailContacts', { mailboxId: mailbox._id })));
+		mailCardDavAccounts.push(
+			...(await loadPages('mailCardDavAccounts', { mailboxId: mailbox._id }))
+		);
 	}
 	return {
 		...manifest,
@@ -268,6 +272,7 @@ export async function exportAllUserData(
 			mailMessages,
 			mailDrafts,
 			mailContacts,
+			mailCardDavAccounts,
 			externalMailAccounts: await loadPages('externalMailAccounts'),
 			chatMessages: await loadPages('chatMessages'),
 			threadNotes: await loadPages('threadNotes'),

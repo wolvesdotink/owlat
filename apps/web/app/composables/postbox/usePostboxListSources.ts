@@ -24,6 +24,7 @@ import type { PostboxThreadRowMessage } from '~/components/postbox/PostboxThread
 export function usePostboxListSources(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
 	folderRole: Ref<string>;
+	folderId: Ref<Id<'mailFolders'> | undefined>;
 	/** Which renderer the active view mode resolved to for this folder. */
 	renderer: Ref<PostboxViewMode>;
 	/** The flat list's rows — what the bundled view folds. */
@@ -69,6 +70,15 @@ export function usePostboxListSources(args: {
 		enabled: sectionsEnabled,
 	});
 
+	// "Mark … as read" on a Categories section header and a bundle row.
+	const viewMarkRead = usePostboxViewMarkRead({
+		mailboxId: args.mailboxId,
+		folderRole: args.folderRole,
+		folderId: args.folderId,
+		categoriesOnScreen: categoriesEnabled,
+		categorySections: categories.sections,
+	});
+
 	// The read behind the renderer on screen, so a failure shows as the error
 	// state of the view that failed instead of its "All clear". The
 	// grouped renderers each have their own; flat and bundled read the flat feed.
@@ -96,5 +106,6 @@ export function usePostboxListSources(args: {
 		categories,
 		bundles,
 		sections,
+		viewMarkRead,
 	};
 }

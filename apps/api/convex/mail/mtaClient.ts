@@ -121,6 +121,36 @@ export async function pokeMailSyncReconcile(): Promise<boolean> {
 	return false;
 }
 
+/**
+ * Ask the mail-sync worker to sync these accounts now (its `POST /sync`): the
+ * user pressed "Check for mail". Never throws; false when the worker is not
+ * configured, unreachable or answered with an error, which the caller reports
+ * to the user, since the click otherwise looks like it worked.
+ */
+export async function pokeMailSyncCheck(accountIds: readonly string[]): Promise<boolean> {
+	const mailSync = getMailSyncConfig();
+	if (!mailSync || accountIds.length === 0) return false;
+	try {
+		const res = await fetchWithTimeout(
+			`${mailSync.baseUrl}/sync`,
+			{
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${mailSync.apiKey}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ accountIds }),
+			},
+			FETCH_TIMEOUTS.internalPush
+		);
+		if (res.ok) return true;
+		logWarn(`[mail-sync] check-for-mail poke answered HTTP ${res.status}`);
+	} catch (err) {
+		logWarn('[mail-sync] check-for-mail poke failed:', err);
+	}
+	return false;
+}
+
 /** The scanner's answer to `POST /scan/attachment`. */
 const decodeAttachmentScanResponse = validatorDecoder(
 	v.object({

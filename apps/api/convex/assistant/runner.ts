@@ -277,6 +277,10 @@ export const run = internalAction({
 		// Optional so a turn scheduled before this field existed still runs;
 		// absent counts as not a reader.
 		includeInboxDerived: v.optional(v.boolean()),
+		// The owner's organization when they sent the turn, which the mail tool
+		// needs to resolve their mailboxes. Absent (a turn scheduled before it
+		// existed): the tool reads no mail.
+		organizationId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
@@ -297,7 +301,12 @@ export const run = internalAction({
 		const lastUser = [...runCtx.messages].reverse().find((m) => m.role === 'user');
 		await streamAssistantTurn(ctx, {
 			surface: 'personal',
-			audience: { canReadInbox: args.includeInboxDerived === true },
+			audience: {
+				canReadInbox: args.includeInboxDerived === true,
+				...(args.organizationId
+					? { mailReader: { userId: args.ownerId, organizationId: args.organizationId } }
+					: {}),
+			},
 			system: buildAssistantSystemPrompt({ surface: 'personal', userName: runCtx.userName }),
 			messages: runCtx.messages.map(toModelMessage),
 			lastUserText: lastUser?.text ?? '',

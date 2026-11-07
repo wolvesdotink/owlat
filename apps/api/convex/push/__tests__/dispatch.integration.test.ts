@@ -563,3 +563,62 @@ describe('push.dispatch outcomes and producers', () => {
 		]);
 	});
 });
+
+describe('push.dispatch AI client approvals', () => {
+	async function approvalSetup(t: T) {
+		await enableFeatures(t, ['mail.external', 'mail.mcp']);
+		const { mailboxId } = await seedMailbox(t, USER);
+		const actionId = await t.run(async (ctx) => {
+			const clientId = await ctx.db.insert('mcpClients', {
+				organizationId: 'test-org',
+				userId: USER,
+				label: 'Claude',
+				tokenHash: 'hash',
+				tokenPrefix: 'omcp_abcdef',
+				access: 'read_write',
+				mailboxIds: [mailboxId],
+				activityCount: 0,
+				createdAt: Date.now(),
+			});
+			return ctx.db.insert('mcpPendingActions', {
+				organizationId: 'test-org',
+				clientId,
+				userId: USER,
+				mailboxId,
+				action: { tool: 'create_draft', to: ['mia@example.com'], cc: [], subject: 'Hi', body: 'x' },
+				status: 'pending',
+				createdAt: Date.now(),
+				expiresAt: Date.now() + 60_000,
+			});
+		});
+		await seedDevice(t, USER);
+		return actionId;
+	}
+
+	it('names the client and what it wants, and opens the approvals', async () => {
+		const t = await pushHarness(modules);
+		const actionId = await approvalSetup(t);
+		const [delivery] = await prepare(t, { kind: 'mcpAction', actionId });
+		expect(delivery!.payload).toEqual({
+			title: 'Approval needed',
+			body: 'Claude wants to create a draft',
+			tag: `mcp:${actionId}`,
+			url: '/dashboard/preferences/ai-clients#approvals',
+		});
+	});
+
+	it('says only that something waits when previews are hidden', async () => {
+		const t = await pushHarness(modules);
+		const actionId = await approvalSetup(t);
+		await setSettings(t, { isHidePreviewOn: true });
+		const [delivery] = await prepare(t, { kind: 'mcpAction', actionId });
+		expect(delivery!.payload.body).toBe('An AI client is waiting for your approval');
+	});
+
+	it('sends nothing once the action was decided', async () => {
+		const t = await pushHarness(modules);
+		const actionId = await approvalSetup(t);
+		await t.run((ctx) => ctx.db.patch(actionId, { status: 'rejected', decidedAt: Date.now() }));
+		expect(await prepare(t, { kind: 'mcpAction', actionId })).toEqual([]);
+	});
+});

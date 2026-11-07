@@ -18,6 +18,12 @@ const TOOL_KEYS = {
 	list_labels: 'components.preferences.mcpClientActivity.tools.listLabels',
 	search_mail: 'components.preferences.mcpClientActivity.tools.searchMail',
 	read_thread: 'components.preferences.mcpClientActivity.tools.readThread',
+	get_action_status: 'components.preferences.mcpClientActivity.tools.getActionStatus',
+	create_draft: 'components.preferences.mcpClientActivity.tools.createDraft',
+	send_draft: 'components.preferences.mcpClientActivity.tools.sendDraft',
+	archive_thread: 'components.preferences.mcpClientActivity.tools.archiveThread',
+	move_thread: 'components.preferences.mcpClientActivity.tools.moveThread',
+	label_thread: 'components.preferences.mcpClientActivity.tools.labelThread',
 } as const;
 
 const OUTCOME_KEYS = {
@@ -25,6 +31,11 @@ const OUTCOME_KEYS = {
 	denied: 'components.preferences.mcpClientActivity.outcomes.denied',
 	invalid: 'components.preferences.mcpClientActivity.outcomes.invalid',
 	error: 'components.preferences.mcpClientActivity.outcomes.error',
+	pending_approval: 'components.preferences.mcpClientActivity.outcomes.pendingApproval',
+	approved: 'components.preferences.mcpClientActivity.outcomes.approved',
+	rejected: 'components.preferences.mcpClientActivity.outcomes.rejected',
+	expired: 'components.preferences.mcpClientActivity.outcomes.expired',
+	cancelled: 'components.preferences.mcpClientActivity.outcomes.cancelled',
 } as const;
 
 function formatTime(ts: number) {

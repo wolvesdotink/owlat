@@ -61,7 +61,7 @@ import {
 	settleHeldTransitions,
 } from './pendingMatch';
 import { reconcileSendFailure } from './sendFailure';
-import { isInterpretationFenced } from './staleFence';
+import { isInterpretationFenced, isWithdrawnItem } from './staleFence';
 
 /** How far ahead a reminder may be set. */
 const MAX_REMIND_AHEAD_MS = 400 * 24 * 60 * 60 * 1000;
@@ -118,6 +118,11 @@ async function runLifecycle(
 	// (staleFence.ts). Everything a person decides alone still works.
 	if (reaction === 'confirmProposal' && (await isInterpretationFenced(ctx, ref))) {
 		throwInvalidState('This conversation is being checked again; its suggestions are paused.');
+	}
+	// A withdrawn item's fields came from a read that no longer holds
+	// (scopeReconcile.ts): only a new read of its message can restore it.
+	if (reaction === 'confirmProposal' && isWithdrawnItem(row)) {
+		throwInvalidState('This item needs its message read again before it can be confirmed.');
 	}
 	// A held transition whose message was re-read (or confirmed elsewhere)
 	// since no longer stands: it is not applied (pendingMatch.ts).

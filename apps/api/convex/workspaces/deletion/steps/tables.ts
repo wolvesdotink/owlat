@@ -180,6 +180,7 @@ export type OrganizationDeletionTable =
 	| 'agentShadowScorecard'
 	| 'mailThreads'
 	| 'mailContacts'
+	| 'mailCardDavAccounts'
 	| 'mailSenderCategoryOverrides'
 	| 'mailSenderImageAllowlist'
 	| 'mailAttachmentShares'
@@ -407,6 +408,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('agentShadowScorecard'),
 	v.literal('mailThreads'),
 	v.literal('mailContacts'),
+	v.literal('mailCardDavAccounts'),
 	v.literal('mailSenderCategoryOverrides'),
 	v.literal('mailSenderImageAllowlist'),
 	v.literal('mailAttachmentShares'),

@@ -1,7 +1,10 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { destinationProviderValidator } from '../lib/validators/deliverability';
-import { externalAccountStatusValidator } from '@owlat/worker-protocol/fields';
+import {
+	externalAccountStatusValidator,
+	externalSendPathValidator,
+} from '@owlat/worker-protocol/fields';
 import {
 	externalSyncModeValidator,
 	remoteFlagChangesValidator,
@@ -179,6 +182,18 @@ export const mailAccountsTables = {
 		// merged rather than pulled; see `applyRemoteObservations`.
 		fullSyncAlignedAt: v.optional(v.number()),
 
+		// Microsoft sign-in rows only. How the account last submitted mail: absent
+		// or 'smtp' is SMTP AUTH with XOAUTH2, 'graph' is Microsoft Graph's
+		// `sendMail`, which the mail-sync worker falls back to (and records here)
+		// when Exchange Online refuses SMTP AUTH for the mailbox.
+		sendPath: v.optional(externalSendPathValidator),
+		// Microsoft sign-in rows only. Whether the grant covers Graph `Mail.Send`,
+		// as the last token request for it found: 'missing' on a connection made
+		// before Owlat asked for the scope, or where the tenant withheld it. Absent
+		// means not yet asked. Reconnecting with Microsoft clears it, which is the
+		// way to grant the scope.
+		graphConsent: v.optional(v.union(v.literal('granted'), v.literal('missing'))),
+
 		// Connection/sync status — the mail-sync worker is the writer.
 		status: externalAccountStatusValidator,
 		lastError: v.optional(v.string()),
@@ -245,15 +260,20 @@ export const mailAccountsTables = {
 	//
 	// A cache, not state: `getCredentialsForWorker` reuses it until a minute
 	// before `expiresAt` instead of asking the provider for a new token on every
-	// worker connect and every /send. At most one row per account, kept off the
-	// account row so the hourly write neither re-runs the account's subscribers
-	// nor contends with the worker's status writes. `sourceIv` is the IV of the
+	// worker connect and every /send. At most one row per account and audience,
+	// kept off the account row so the hourly write neither re-runs the account's
+	// subscribers nor contends with the worker's status writes. `sourceIv` is the IV of the
 	// refresh-token envelope it was minted from: a reconnect re-seals that
 	// envelope under a fresh IV, so a token from the previous grant can never be
 	// served. Deleted when the account is disconnected, purged or erased, and
 	// when the provider reports the grant revoked.
 	externalMailAccessTokens: defineTable({
 		accountId: v.id('externalMailAccounts'),
+		// Which resource the token is for. Absent: the mail token the IMAP and SMTP
+		// logins use. 'graph': a Microsoft Graph token, minted from the same refresh
+		// token, since one token request can name only one resource. At most one
+		// row per account and audience.
+		audience: v.optional(v.literal('graph')),
 		sourceIv: v.string(),
 		secretCiphertext: v.string(),
 		secretIv: v.string(),
@@ -301,7 +321,8 @@ export const mailAccountsTables = {
 		.index('by_folder', ['folderId']),
 
 	// Local → remote write-back queue. Every move, flag change and permanent
-	// delete a member makes in an external mailbox is recorded here, in the same
+	// delete a member makes in an external mailbox, and every message moved or
+	// copied into one from another mailbox, is recorded here, in the same
 	// transaction, and the mail-sync worker replays it on the provider over IMAP
 	// (`mail/external/remoteOps.ts`). A row is deleted once applied, once the
 	// message turns out not to be on the server, or when its retries run out.
@@ -312,9 +333,23 @@ export const mailAccountsTables = {
 		// message. Absent on the two folder kinds.
 		rfc822MessageId: v.optional(v.string()),
 		source: remoteFolderRefValidator, // the message's folder, or the folder itself
-		// 'move': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
+		// 'move' and 'append': where to. 'renameFolder': `{ path: [newName] }`, the new leaf name.
 		target: v.optional(remoteFolderRefValidator),
-		flags: v.optional(remoteFlagChangesValidator), // 'flags' only
+		// 'flags': the changes. 'append': the flags the upload carries.
+		flags: v.optional(remoteFlagChangesValidator),
+		// 'append' only: the transfer it carries out (mail/external/remoteAppend.ts).
+		// `messageId`: the copy this account already holds in Owlat, which the
+		// upload is of. `sourceMessageId`: for a move, the original, purged once
+		// the provider has the copy, unless `isRecalled` (the move was undone
+		// while the upload was queued). `receivedAt`: sent as the INTERNALDATE.
+		append: v.optional(
+			v.object({
+				messageId: v.id('mailMessages'),
+				sourceMessageId: v.optional(v.id('mailMessages')),
+				isRecalled: v.optional(v.boolean()),
+				receivedAt: v.number(),
+			})
+		),
 		attempts: v.number(),
 		// The enqueue time until a failed attempt pushes it back. An op that waits
 		// behind an older one for its message is not due before it

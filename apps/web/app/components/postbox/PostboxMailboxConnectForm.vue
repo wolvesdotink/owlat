@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
-import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
+import { presetForEmail } from '~/utils/mailAutodiscover';
 import { buildCredentialArgs, buildSharedConnectArgs } from '~/utils/postboxConnectArgs';
 import { usePostboxConnectOAuth } from '~/composables/postbox/usePostboxConnectOAuth';
 import { CheckIcon, CloseIcon } from '@coolicons/vue';
@@ -135,24 +135,39 @@ function markServerFieldsTouched() {
 
 // Autodiscover only helps the generic IMAP provider — guided providers already
 // carry a preset. As the address is typed we fill untouched server fields from
-// the domain (instant curated match, then a fail-soft network lookup).
+// the domain: the curated table at once, any other domain through the backend
+// (the CSP lets the browser reach no autoconfig host itself).
+const discoverOp = useBackendOperation(
+	api.mail.external.autodiscoverActions.autodiscoverMailServer,
+	{
+		type: 'action',
+		label: () => t('components.postbox.postboxMailboxConnectForm.discoverOperation'),
+		// It runs on a timer while the address is typed; the filled fields speak
+		// for themselves.
+		announce: false,
+		// A failed lookup only means the user types the servers in; never a toast.
+		onError: () => true,
+	}
+);
 let autodiscoverTimer: ReturnType<typeof setTimeout> | undefined;
 let autodiscoverSeq = 0;
 watch(
 	() => form.emailAddress,
-	(email) => {
+	(raw) => {
 		if (autodiscoverTimer) clearTimeout(autodiscoverTimer);
+		const seq = ++autodiscoverSeq;
 		if (!props.provider.manualServer || serverFieldsTouched.value) return;
+		const email = raw.trim();
 		const known = presetForEmail(email);
 		if (known) {
 			fillServerFields(known);
 			return;
 		}
-		const seq = ++autodiscoverSeq;
+		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
 		autodiscoverTimer = setTimeout(() => {
-			void resolveMailPreset(email).then((preset) => {
-				if (seq !== autodiscoverSeq || serverFieldsTouched.value || !preset) return;
-				fillServerFields(preset);
+			void discoverOp.run({ email }).then((res) => {
+				if (seq !== autodiscoverSeq || serverFieldsTouched.value) return;
+				if (res.ok && res.result) fillServerFields(res.result);
 			});
 		}, 500);
 	}

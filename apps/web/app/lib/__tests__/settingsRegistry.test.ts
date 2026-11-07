@@ -179,6 +179,19 @@ describe('gates', () => {
 		);
 	});
 
+	it('offers the pending AI client approvals to the palette only with the flag on', () => {
+		const withFlag = (on: boolean): SettingsEnvironment => ({
+			isFeatureEnabled: (flag) => flag !== 'mail.mcp' || on,
+			isDesktop: false,
+		});
+		const approvals = (on: boolean) =>
+			settingsControlTargets(withFlag(on)).find(
+				(target) => target.id === 'aiClients:aiClientApprovals'
+			);
+		expect(approvals(true)?.href).toBe('/dashboard/preferences/ai-clients#approvals');
+		expect(approvals(false)).toBeUndefined();
+	});
+
 	it('shows the booking page only while its flag is on', () => {
 		const noBooking: SettingsEnvironment = {
 			isFeatureEnabled: (flag) => flag !== 'calendar.booking',

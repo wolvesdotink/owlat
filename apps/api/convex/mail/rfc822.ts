@@ -15,6 +15,7 @@
 
 import { buildRfc822 as buildRfc822Message, type ComposeInput } from '@owlat/mail-message';
 import type { Id } from '../_generated/dataModel';
+import type { MailApprovedSend } from '../lib/validators/mailContent';
 
 export {
 	escapeHeader,
@@ -68,6 +69,8 @@ export interface DraftRow {
 	}>;
 	state: 'draft' | 'pending_send' | 'scheduled';
 	isUnsealedSendAllowed?: boolean;
+	/** What the owner approved for an AI client's send; dispatch holds the send to it. */
+	approvedSend?: MailApprovedSend;
 	isReadReceiptRequested?: boolean;
 	undoToken?: string;
 	scheduledSendAt?: number;

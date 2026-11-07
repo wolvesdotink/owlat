@@ -15,3 +15,14 @@ export const VCARD_IMPORT_BATCH_SIZE = 100;
 export const VCARD_MAX_EMAILS_PER_CARD = 10;
 export const VCARD_MAX_PHONES = 10;
 export const VCARD_MAX_ADDRESSES = 3;
+/**
+ * Largest picture a card's PHOTO may carry, decoded. A contact picture is a
+ * small square; a bigger one is skipped as it streams past, so a file of large
+ * embedded images still costs a line scan and no more.
+ */
+export const VCARD_MAX_PHOTO_BYTES = 128 * 1024;
+/**
+ * Pictures per upload call (`mail/contactsPhotos.ts`): a few hundred
+ * kilobytes of base64, well inside one call's arguments.
+ */
+export const VCARD_PHOTO_BATCH_SIZE = 8;

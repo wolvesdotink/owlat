@@ -1087,3 +1087,52 @@ describe('aiRouting/providerConfigActions.testConnection', () => {
 		}
 	});
 });
+
+describe('aiRouting/providerHealth: a refused provider key', () => {
+	const refuse = (t: ReturnType<typeof setup>) =>
+		t.mutation(internal.aiRouting.providerHealth.noteAuthFailure, {});
+
+	it('is shown to admins only', async () => {
+		const t = setup();
+		expect(await t.query(api.aiRouting.providerHealth.getAuthFailure, {})).toBeNull();
+		await refuse(t);
+		expect(await t.query(api.aiRouting.providerHealth.getAuthFailure, {})).toEqual({
+			firstSeenAt: expect.any(Number),
+			lastSeenAt: expect.any(Number),
+		});
+		sessionMocks.session = { userId: 'editor-user', role: 'editor' };
+		await expect(t.query(api.aiRouting.providerHealth.getAuthFailure, {})).rejects.toThrow(
+			/forbidden/i
+		);
+	});
+
+	it('keeps its first time while the key stays refused', async () => {
+		vi.useFakeTimers();
+		try {
+			const t = setup();
+			vi.setSystemTime(1_000_000);
+			await refuse(t);
+			vi.setSystemTime(1_000_000 + 60 * 60_000);
+			await refuse(t);
+			expect(await t.query(api.aiRouting.providerHealth.getAuthFailure, {})).toEqual({
+				firstSeenAt: 1_000_000,
+				lastSeenAt: 1_000_000 + 60 * 60_000,
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('is closed by saving the AI settings, and by removing them', async () => {
+		const t = setup();
+		await refuse(t);
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
+			languageProviderKind: 'anthropic',
+			apiKey: 'sk-ant-secret-key-1234',
+		});
+		expect(await t.query(api.aiRouting.providerHealth.getAuthFailure, {})).toBeNull();
+		await refuse(t);
+		await t.mutation(api.aiRouting.providerConfig.removeConfig, {});
+		expect(await t.query(api.aiRouting.providerHealth.getAuthFailure, {})).toBeNull();
+	});
+});

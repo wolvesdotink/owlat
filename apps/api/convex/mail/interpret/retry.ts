@@ -5,8 +5,8 @@
  *     that kept moving, a body that changed under the run) are retried with
  *     backoff, at most {@link MAX_RETRIES} times; the run that comes next
  *     repairs the extraction and the reducer replays the thread.
- *   - A gate refusal (`ai_off`, `budget`) costs nothing to re-check, so it is
- *     due on every call and never runs out.
+ *   - A gate refusal (`ai_off`, `budget`, `provider_auth`) spends no tokens
+ *     to re-check, so it is due on every call and never runs out.
  *   - A run whose one spend hold was refused (`budget` with
  *     `budgetDeferrals`, Sol r4) spent nothing, but the hold is the run's whole
  *     paid path: it backs off from 5 minutes, doubling to 6 hours, for at most
@@ -31,11 +31,12 @@ const BACKOFF_CODES: ReadonlySet<string> = new Set([
 	'mode_changed',
 	'body_unavailable',
 ]);
-const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget']);
+const GATE_CODES: ReadonlySet<string> = new Set(['ai_off', 'budget', 'provider_auth']);
 
 /**
  * Whether an extraction's `errorCode` is a gate refusal: the instance could not
- * run AI (off, no provider, budget used up), whatever the thread holds.
+ * run AI (off, no provider, the key refused, budget used up), whatever the
+ * thread holds.
  */
 export function isGateRefusalCode(code: string | undefined): boolean {
 	return code !== undefined && GATE_CODES.has(code);

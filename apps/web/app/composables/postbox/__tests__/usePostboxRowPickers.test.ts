@@ -22,7 +22,6 @@ beforeAll(() => {
 	});
 	vi.stubGlobal('usePostboxMailboxTransfer', () => ({
 		targets: ref([]),
-		isSourceConnected: ref(false),
 		confirmTarget: vi.fn(),
 		transfer: vi.fn(),
 	}));

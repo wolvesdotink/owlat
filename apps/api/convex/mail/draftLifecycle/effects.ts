@@ -218,6 +218,9 @@ async function runSentEffects(
 		lastMessageAt: now,
 		latestSnippet: snippet,
 		latestFromAddress: draft.fromAddress,
+		// The Sent copy stores no display name, and the thread's name follows its
+		// newest message, so the previous sender's name must not stay behind.
+		latestFromName: undefined,
 		latestSubject: draft.subject || '(no subject)',
 		// Any outbound answers the Reply Queue: clear the flag and any pending marker.
 		needsReply: undefined,

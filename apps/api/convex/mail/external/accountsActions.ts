@@ -32,6 +32,7 @@ import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
 import { refreshMicrosoftAccessToken } from './microsoftOAuthTokens';
+import { microsoftSendCredentials } from './microsoftGraphSend';
 import { getCredentialsForWorker as getCredentialsForWorkerContract } from '@owlat/worker-protocol/mailSync';
 import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { decodeJsonString } from '../../lib/jsonText';
@@ -412,9 +413,14 @@ export const getCredentialsForWorker = internalAction({
 					reason: token.kind === 'revoked' ? 'auth_revoked' : 'refresh_failed',
 				};
 			}
+			const microsoftSend =
+				row.oauthProvider === 'microsoft'
+					? await microsoftSendCredentials(ctx, row, refreshToken, secretIv)
+					: {};
 			return {
 				kind: 'credentials',
 				credentials: {
+					...microsoftSend,
 					imapHost: row.imapHost,
 					imapPort: row.imapPort,
 					isImapSecure: row.isImapSecure,

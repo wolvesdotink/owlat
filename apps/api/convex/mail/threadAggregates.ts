@@ -107,6 +107,7 @@ export async function rebuildThreadAggregates(
 		firstMessageAt: oldest.receivedAt,
 		latestSnippet: latest.snippet,
 		latestFromAddress: latest.fromAddress,
+		latestFromName: latest.fromName || undefined,
 		latestSubject: latest.subject,
 		latestMessageId: latest._id,
 		latestSnoozedUntil: latest.snoozedUntil ?? null,

@@ -44,12 +44,16 @@ import { scopedIdempotencyKey } from './activity';
 import { recordItemChange } from './counters';
 import { deleteExtractions } from './purgeRows';
 import { drainFactLinks, drainItemLinks } from './purgeLinks';
-import { stripFact, stripItem, type PurgedSources } from './purgeClaims';
+import { redactedTextOf, stripFact, stripItem, type PurgedSources } from './purgeClaims';
 import {
 	DRAIN_CHUNK,
 	drainShrinking,
 	drainSteps,
+	rowsAfterTied,
 	scanRange,
+	tiedPositionOf,
+	withinCreationTime,
+	type DrainBudget,
 	type JobPlan,
 	type PurgeRange,
 	type RangePosition,
@@ -194,7 +198,7 @@ const followUpRepliesRange: PurgeRange = async (ctx, { job, ref, cursor, budget,
 };
 
 /** 1. Every extraction of every purged source. */
-const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
+export const extractionsRange: PurgeRange = (ctx, { cursor, budget, state }) =>
 	drainSteps(
 		budget,
 		cursor,
@@ -287,31 +291,24 @@ const sourceActivityRange: PurgeRange = (ctx, { ref, cursor, budget, state }) =>
 	]);
 };
 
-/** A thread's items in creation order, strictly after `after`. */
+/** A thread's items in creation order, strictly after `after` (`rowsAfterTied`). */
 export function itemsAfter(
 	ctx: MutationCtx,
 	ref: ThreadRef,
 	after: RangePosition | undefined,
-	n: number
+	n: number,
+	budget: DrainBudget
 ) {
-	const at = afterTime(after);
-	return ref.kind === 'mail'
-		? ctx.db
-				.query('threadItems')
-				.withIndex('by_mail_thread', (q) =>
-					at === undefined
-						? q.eq('mailThreadId', ref.id)
-						: q.eq('mailThreadId', ref.id).gt('_creationTime', at)
+	const items = ctx.db.query('threadItems');
+	return rowsAfterTied(budget, after, n, (bound) =>
+		ref.kind === 'mail'
+			? items.withIndex('by_mail_thread', (q) =>
+					withinCreationTime(q.eq('mailThreadId', ref.id), bound)
 				)
-				.take(n)
-		: ctx.db
-				.query('threadItems')
-				.withIndex('by_conversation_thread', (q) =>
-					at === undefined
-						? q.eq('conversationThreadId', ref.id)
-						: q.eq('conversationThreadId', ref.id).gt('_creationTime', at)
+			: items.withIndex('by_conversation_thread', (q) =>
+					withinCreationTime(q.eq('conversationThreadId', ref.id), bound)
 				)
-				.take(n);
+	);
 }
 
 /** 4. The thread's items: strip and rebuild, or clear the links and delete. */
@@ -320,8 +317,8 @@ const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => itemsAfter(ctx, run.ref, after, n),
-		(row) => row._creationTime,
+		(after, n) => itemsAfter(ctx, run.ref, after, n, run.budget),
+		tiedPositionOf,
 		async (item) => {
 			const fate = await stripItem(ctx, run.ref, item, purged, run.budget);
 			if (fate === 'untouched') return true;
@@ -342,27 +339,24 @@ const itemsRange: PurgeRange = (ctx, run: RangeRun) => {
 };
 
 /** 5. The thread's facts (mail threads only). */
-const factsRange: PurgeRange = async (ctx, run) => {
+export const factsRange: PurgeRange = async (ctx, run) => {
 	if (run.ref.kind !== 'mail') return { isDone: true };
 	const threadId = run.ref.id;
 	const purged = purgedOf(run.state);
 	return scanRange(
 		run.budget,
 		run.cursor,
-		(after, n) => {
-			const at = afterTime(after);
-			return ctx.db
-				.query('threadFacts')
-				.withIndex('by_mail_thread', (q) =>
-					at === undefined
-						? q.eq('mailThreadId', threadId)
-						: q.eq('mailThreadId', threadId).gt('_creationTime', at)
-				)
-				.take(n);
-		},
-		(row) => row._creationTime,
+		(after, n) =>
+			rowsAfterTied(run.budget, after, n, (bound) =>
+				ctx.db
+					.query('threadFacts')
+					.withIndex('by_mail_thread', (q) =>
+						withinCreationTime(q.eq('mailThreadId', threadId), bound)
+					)
+			),
+		tiedPositionOf,
 		async (fact) => {
-			const fate = await stripFact(ctx, fact, purged);
+			const fate = await stripFact(ctx, fact, purged, redactedTextOf(run.job.kind));
 			if (fate === 'untouched') return true;
 			run.state.isClaimChanged = true;
 			if (fate === 'survived') {
@@ -377,7 +371,7 @@ const factsRange: PurgeRange = async (ctx, run) => {
 };
 
 /** 6. The thread's response plans: deleted items out, every plan stale. */
-const plansRange: PurgeRange = async (ctx, run) => {
+export const plansRange: PurgeRange = async (ctx, run) => {
 	if (!run.state.isClaimChanged) return { isDone: true };
 	const ref = run.ref;
 	return scanRange(
@@ -426,7 +420,7 @@ const plansRange: PurgeRange = async (ctx, run) => {
  * 7. The surviving sources' claim records (`interpretSources.claimIds`) lose
  * their entries for deleted items and facts.
  */
-const claimRecordsRange: PurgeRange = async (ctx, run) => {
+export const claimRecordsRange: PurgeRange = async (ctx, run) => {
 	if (!run.state.isClaimChanged) return { isDone: true };
 	const ref = run.ref;
 	const gone = new Map<string, boolean>();

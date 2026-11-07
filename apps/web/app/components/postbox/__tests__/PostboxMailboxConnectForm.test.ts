@@ -147,6 +147,8 @@ const UiButtonStub = {
 	template: '<button :type="type || \'submit\'"><slot /></button>',
 };
 const UiErrorAlertStub = { props: ['message'], template: '<div class="err">{{ message }}</div>' };
+// Declares the model as a prop so a case can read the servers the form filled.
+const ServerFieldsStub = { props: ['modelValue', 'open'], template: '<div />' };
 type FormProps = {
 	provider?: MailProvider;
 	seedProvider?: DestinationProviderKey;
@@ -168,7 +170,7 @@ function mountForm(props: FormProps) {
 			// behaviour and their disclosure markup is audited in its own suite.
 			components: { PostboxOAuthSignIn },
 			stubs: {
-				PostboxMailboxServerFields: true,
+				PostboxMailboxServerFields: ServerFieldsStub,
 				UiInput: UiInputStub,
 				UiButton: UiButtonStub,
 				UiErrorAlert: UiErrorAlertStub,
@@ -564,6 +566,95 @@ describe('PostboxMailboxConnectForm Microsoft branch', () => {
 			await vi.advanceTimersByTimeAsync(500);
 
 			expect(detect).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
+
+// ── Server autodiscovery ────────────────────────────────────────────────────
+
+describe('PostboxMailboxConnectForm autodiscovery', () => {
+	const DISCOVER = 'Look up the mail servers for this address';
+	const discovered = {
+		imapHost: 'imap.example.net',
+		imapPort: 993,
+		isImapSecure: true,
+		smtpHost: 'smtp.example.net',
+		smtpPort: 587,
+		isSmtpSecure: false,
+	};
+
+	/** The server fields the form hands its (stubbed) server-fields block. */
+	function serverFields(wrapper: VueWrapper) {
+		return wrapper.findComponent(ServerFieldsStub).props('modelValue') as {
+			imapHost: string;
+			smtpHost: string;
+			smtpPort: number;
+			isSmtpSecure: boolean;
+		};
+	}
+
+	it('asks the backend for an unknown domain and fills the servers, never fetching from the browser', async () => {
+		vi.useFakeTimers();
+		// The web build's CSP allows the browser no third-party endpoint, so a
+		// direct lookup from here is a lookup that never answers.
+		const browserFetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('CSP'));
+		try {
+			const discover = vi.fn(async () => ({ ok: true, result: discovered }));
+			runs.set(DISCOVER, discover);
+			const wrapper = mountForm({ provider: genericProvider, mode: 'connect' });
+
+			await wrapper.find('input[type="email"]').setValue('ada@example.net');
+			await vi.advanceTimersByTimeAsync(500);
+			await flushPromises();
+
+			expect(discover).toHaveBeenCalledWith({ email: 'ada@example.net' });
+			expect(browserFetch).not.toHaveBeenCalled();
+			expect(serverFields(wrapper)).toMatchObject({
+				imapHost: 'imap.example.net',
+				smtpHost: 'smtp.example.net',
+				smtpPort: 587,
+				isSmtpSecure: false,
+			});
+		} finally {
+			browserFetch.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
+	it('leaves the servers to the user, without an error, when the backend finds nothing', async () => {
+		vi.useFakeTimers();
+		try {
+			runs.set(
+				DISCOVER,
+				vi.fn(async () => ({ ok: true, result: null }))
+			);
+			const wrapper = mountForm({ provider: genericProvider, mode: 'connect' });
+
+			await wrapper.find('input[type="email"]').setValue('ada@example.net');
+			await vi.advanceTimersByTimeAsync(500);
+			await flushPromises();
+
+			expect(serverFields(wrapper).imapHost).toBe('');
+			expect(wrapper.find('.err').exists()).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('fills a curated domain at once and asks the backend nothing', async () => {
+		vi.useFakeTimers();
+		try {
+			const discover = vi.fn();
+			runs.set(DISCOVER, discover);
+			const wrapper = mountForm({ provider: genericProvider, mode: 'connect' });
+
+			await wrapper.find('input[type="email"]').setValue('ada@gmail.com');
+			await vi.advanceTimersByTimeAsync(500);
+
+			expect(serverFields(wrapper).imapHost).toBe('imap.gmail.com');
+			expect(discover).not.toHaveBeenCalled();
 		} finally {
 			vi.useRealTimers();
 		}

@@ -389,7 +389,14 @@ export const mailMessagesTables = {
 		// lib/atRestBodies.ts and apps/docs/content/en/3.developer/21.sealed-mail-at-rest.md.
 		.searchIndex('search_messages', {
 			searchField: 'snippet',
-			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
+			filterFields: [
+				'mailboxId',
+				'folderId',
+				'fromAddress',
+				'flagSeen',
+				'flagFlagged',
+				'flagDeleted',
+			],
 		})
 		// THE WIDENED CARVE-OUT (idea 32). Same exception as above, one
 		// order of magnitude deeper: `searchBody` is a ~8KB normalized excerpt
@@ -408,7 +415,14 @@ export const mailMessagesTables = {
 		// back.
 		.searchIndex('search_message_bodies', {
 			searchField: 'searchBody',
-			filterFields: ['mailboxId', 'folderId', 'fromAddress', 'flagSeen', 'flagFlagged'],
+			filterFields: [
+				'mailboxId',
+				'folderId',
+				'fromAddress',
+				'flagSeen',
+				'flagFlagged',
+				'flagDeleted',
+			],
 		}),
 
 	// Inline message bodies, 1:1 with `mailMessages` (plan 3.2). Convex reads

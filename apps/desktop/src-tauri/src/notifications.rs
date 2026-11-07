@@ -98,6 +98,11 @@ struct ActionTarget {
     /// Process-unique id of this notification. Each notification emits at most
     /// one action, so the webview can drop a duplicate delivery of the same one.
     notification_id: u64,
+    /// The message carries a live one-time code: the notification offers
+    /// "Copy code", which the webview answers by copying it (the code itself
+    /// never reaches the native side).
+    #[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
+    has_sign_in_code: bool,
 }
 
 /// Source of [`ActionTarget::notification_id`].
@@ -110,7 +115,57 @@ impl ActionTarget {
             folder_role,
             workspace_id: workspace_id.filter(|id| !id.is_empty()),
             notification_id: NEXT_NOTIFICATION_ID.fetch_add(1, Ordering::Relaxed),
+            has_sign_in_code: false,
         }
+    }
+
+    fn with_sign_in_code(mut self, has_sign_in_code: bool) -> Self {
+        self.has_sign_in_code = has_sign_in_code;
+        self
+    }
+}
+
+/// Label of the "Copy code" button. macOS answers a button press with its
+/// label, so the label is also how the press is recognised.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", test)),
+    allow(dead_code)
+)]
+const COPY_CODE_LABEL: &str = "Copy code";
+
+/// The Linux notification's buttons, as (action id, label). A message with a
+/// sign-in code offers "Copy code" first: nobody replies to a code.
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn linux_actions(has_sign_in_code: bool) -> Vec<(&'static str, &'static str)> {
+    let mut actions = vec![("default", "Open")];
+    if has_sign_in_code {
+        actions.push(("copy", COPY_CODE_LABEL));
+    }
+    actions.push(("archive", "Archive"));
+    actions.push(("read", "Mark read"));
+    actions
+}
+
+/// The `notification-action` a Linux button press emits, or `None` for an id
+/// this notification never offered (a dismissal reports "__closed").
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn linux_action_event(action: &str, target: &ActionTarget) -> Option<&'static str> {
+    match action {
+        "archive" => Some("archive"),
+        "read" => Some("read"),
+        "default" => Some("open"),
+        "copy" if target.has_sign_in_code => Some("copy"),
+        _ => None,
+    }
+}
+
+/// The `notification-action` a macOS action button emits, by its label.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn mac_button_event(label: &str) -> &'static str {
+    match label {
+        COPY_CODE_LABEL => "copy",
+        "Mark read" => "read",
+        _ => "archive",
     }
 }
 
@@ -118,7 +173,8 @@ impl ActionTarget {
 #[serde(rename_all = "camelCase")]
 struct NotificationActionEvent {
     /// "open" (notification clicked), "archive" (Archive button), "read"
-    /// (Mark read button), or "reply" (text typed into the inline reply field).
+    /// (Mark read button), "copy" (Copy code button), or "reply" (text typed
+    /// into the inline reply field).
     action: String,
     message_id: String,
     folder_role: String,
@@ -179,9 +235,14 @@ fn notify_with_actions(app: &AppHandle, title: String, body: String, target: Act
         let mut options = Notification::new();
         // A macOS notification renders a SINGLE main button. We spend it on an
         // inline reply text field (the headline "answer from the notification"
-        // moment) and keep Archive reachable as the alternate (close) button.
+        // moment), or on "Copy code" for a sign-in code, which nobody replies
+        // to, and keep Archive reachable as the alternate (close) button.
         // Mark-read isn't offered here — it's a tap away in-app.
-        options.main_button(MainButton::Response("Reply"));
+        if target.has_sign_in_code {
+            options.main_button(MainButton::SingleAction(COPY_CODE_LABEL));
+        } else {
+            options.main_button(MainButton::Response("Reply"));
+        }
         options.close_button("Archive");
         match send_notification(&title, None, &body, Some(&options)) {
             Ok(NotificationResponse::Reply(text)) => {
@@ -190,15 +251,10 @@ fn notify_with_actions(app: &AppHandle, title: String, body: String, target: Act
             Ok(NotificationResponse::CloseButton(_)) => {
                 emit_notification_action(&app, "archive", &target, None)
             }
-            // Defensive: an explicit action button (should not occur without a
-            // dropdown) still maps to a sensible triage effect.
+            // "Copy code" on a sign-in code; anything else is defensive and
+            // still maps to a sensible triage effect.
             Ok(NotificationResponse::ActionButton(label)) => {
-                let action = if label == "Mark read" {
-                    "read"
-                } else {
-                    "archive"
-                };
-                emit_notification_action(&app, action, &target, None)
+                emit_notification_action(&app, mac_button_event(&label), &target, None)
             }
             Ok(NotificationResponse::Click) => {
                 emit_notification_action(&app, "open", &target, None)
@@ -212,24 +268,18 @@ fn notify_with_actions(app: &AppHandle, title: String, body: String, target: Act
 fn notify_with_actions(app: &AppHandle, title: String, body: String, target: ActionTarget) {
     let app = app.clone();
     std::thread::spawn(move || {
-        let handle = notify_rust::Notification::new()
-            .summary(&title)
-            .body(&body)
-            .action("default", "Open")
-            .action("archive", "Archive")
-            .action("read", "Mark read")
-            .show();
-        if let Ok(handle) = handle {
+        let mut notification = notify_rust::Notification::new();
+        notification.summary(&title).body(&body);
+        for (id, label) in linux_actions(target.has_sign_in_code) {
+            notification.action(id, label);
+        }
+        if let Ok(handle) = notification.show() {
             handle.wait_for_action(|action| {
-                let mapped = match action {
-                    "archive" => "archive",
-                    "read" => "read",
-                    "default" => "open",
-                    _ => return,
-                };
                 // Linux (notify-rust/zbus) has no inline text-input capability,
                 // so reply is macOS-only; these actions never carry reply text.
-                emit_notification_action(&app, mapped, &target, None);
+                if let Some(mapped) = linux_action_event(action, &target) {
+                    emit_notification_action(&app, mapped, &target, None);
+                }
             });
         }
     });
@@ -250,8 +300,10 @@ fn notify_with_actions(app: &AppHandle, title: String, body: String, _target: Ac
 /// Tauri command: send a per-message notification with inline actions
 /// (macOS/Linux). macOS offers an inline **Reply** field (→ "reply" + text)
 /// plus an Archive alternate button (→ "archive"); Linux offers Open / Archive
-/// / Mark read. A click → "open". All are delivered to the webview via the
-/// `notification-action` event, which carries `workspace_id` back unchanged.
+/// / Mark read. With `has_sign_in_code`, macOS spends its main button on
+/// **Copy code** instead of Reply and Linux adds it (→ "copy"). A click →
+/// "open". All are delivered to the webview via the `notification-action`
+/// event, which carries `workspace_id` back unchanged.
 #[command]
 pub fn send_actionable_notification(
     app: AppHandle,
@@ -260,8 +312,10 @@ pub fn send_actionable_notification(
     message_id: String,
     folder_role: String,
     workspace_id: Option<String>,
+    has_sign_in_code: Option<bool>,
 ) -> Result<(), String> {
-    let target = ActionTarget::new(message_id, folder_role, workspace_id);
+    let target = ActionTarget::new(message_id, folder_role, workspace_id)
+        .with_sign_in_code(has_sign_in_code.unwrap_or(false));
     notify_with_actions(&app, title, body, target);
     Ok(())
 }
@@ -441,7 +495,8 @@ pub fn send_link_notification(
 #[cfg(test)]
 mod tests {
     use super::{
-        badge_dot_rgba, ActionTarget, LinkActionEvent, LinkTarget, NotificationActionEvent,
+        badge_dot_rgba, linux_action_event, linux_actions, mac_button_event, ActionTarget,
+        LinkActionEvent, LinkTarget, NotificationActionEvent,
     };
 
     fn pixel(rgba: &[u8], size: u32, x: u32, y: u32) -> [u8; 4] {
@@ -502,5 +557,36 @@ mod tests {
         assert_ne!(other.notification_id, target.notification_id);
         let event = serde_json::to_value(LinkActionEvent::clicked(&other)).unwrap();
         assert!(event.get("workspaceId").is_none());
+    }
+
+    #[test]
+    fn a_sign_in_code_offers_copy_code_and_its_press_emits_copy() {
+        let plain = ActionTarget::new("m1".into(), "inbox".into(), None);
+        let code = ActionTarget::new("m2".into(), "inbox".into(), None).with_sign_in_code(true);
+
+        let ids = |has_code| {
+            linux_actions(has_code)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(false), ["default", "archive", "read"]);
+        assert_eq!(ids(true), ["default", "copy", "archive", "read"]);
+
+        assert_eq!(linux_action_event("copy", &code), Some("copy"));
+        assert_eq!(linux_action_event("default", &code), Some("open"));
+        // A notification that offered no Copy code never emits one.
+        assert_eq!(linux_action_event("copy", &plain), None);
+        assert_eq!(linux_action_event("__closed", &code), None);
+
+        assert_eq!(mac_button_event("Copy code"), "copy");
+        assert_eq!(mac_button_event("Mark read"), "read");
+        assert_eq!(mac_button_event("Something else"), "archive");
+
+        let event =
+            serde_json::to_value(NotificationActionEvent::new("copy", &code, None)).unwrap();
+        assert_eq!(event["action"], "copy");
+        assert_eq!(event["messageId"], "m2");
+        assert!(event.get("reply").is_none());
     }
 }

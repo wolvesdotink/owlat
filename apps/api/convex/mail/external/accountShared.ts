@@ -236,6 +236,10 @@ export function toPublicAccountView(account: Doc<'externalMailAccounts'>) {
 		lastConnectedAt: account.lastConnectedAt,
 		// Two-way ('full', the default) or new mail only ('incoming').
 		syncMode: account.syncMode ?? 'full',
+		// Microsoft sign-in only: how the account sends, and whether the grant
+		// lets it fall back to Microsoft Graph when SMTP AUTH is off.
+		sendPath: account.sendPath,
+		graphConsent: account.graphConsent,
 	};
 }
 
@@ -325,6 +329,14 @@ export async function applyCredentialRotation(
 		// Reset to pending so the worker re-validates with the new creds.
 		status: 'pending',
 		lastError: undefined,
+		// A new grant may cover Graph `Mail.Send` where the old one did not, so
+		// the next credential fetch asks again. The send path belongs to the
+		// tenant's SMTP AUTH setting, which a Microsoft reconnect does not
+		// change; any other rotation leaves the path meaningless.
+		graphConsent: undefined,
+		...(fields.authMethod === 'oauth2' && fields.oauthProvider === 'microsoft'
+			? {}
+			: { sendPath: undefined }),
 		updatedAt: now,
 	});
 	// The access token minted from the replaced grant goes with it: forgetting a

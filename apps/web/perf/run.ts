@@ -29,7 +29,13 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { chromium, type CDPSession } from '@playwright/test';
 import { build, preview } from 'vite';
-import { assertPinned, newScenarioContext, SCENARIO_CONTEXT, SCENARIO_NOW } from './browserContext';
+import {
+	assertPinned,
+	newScenarioContext,
+	primePinnedClock,
+	SCENARIO_CONTEXT,
+	SCENARIO_NOW,
+} from './browserContext';
 import { BUDGETS, checkBudgets, formatBudgetFailure } from './budgets';
 import type { FidelitySentinels } from './fixtureApi';
 import { formatReport, type Environment, type Report, type ScenarioResult } from './report';
@@ -127,6 +133,7 @@ try {
 				now: Date.now(),
 			}));
 			assertPinned(resolved);
+			await primePinnedClock(page);
 			const cdp = await context.newCDPSession(page);
 			await cdp.send('Performance.enable');
 			if (cpuThrottle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });

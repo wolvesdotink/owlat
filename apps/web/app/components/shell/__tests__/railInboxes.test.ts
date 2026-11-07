@@ -1,16 +1,25 @@
 /**
- * Collapsed to the icon rail, each inbox is a swatch and its initials. The
- * entry still has to say which inbox has new mail and which one is open, or
- * the rail cannot be scanned for "where is new mail".
+ * Collapsed to the icon rail, each inbox is a swatch and its mark or initials.
+ * The entry still has to say which inbox has new mail and which one is open,
+ * or the rail cannot be scanned for "where is new mail", and two inboxes must
+ * never look the same.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
+import InboxChip from '../../inbox/InboxChip.vue';
+import { resolveInboxIdentities, type AccessibleInboxRow } from '~/utils/inboxIdentity';
+
+// The inbox drop targets are their own test (railMailboxDrop.test.ts).
+vi.mock('~/composables/postbox/usePostboxMessageDrag', () => ({
+	usePostboxMailboxDropTargets: () => ({ isOver: () => false, mailbox: () => ({}) }),
+}));
 
 let route: { path: string; query: Record<string, unknown> };
 let activeMailboxId: ReturnType<typeof ref<string | null>>;
+let railInboxes: ReturnType<typeof ref<unknown[]>>;
 
 const inboxes = [
 	{
@@ -47,12 +56,13 @@ const NuxtLinkStub = {
 beforeEach(() => {
 	route = { path: '/dashboard', query: {} };
 	activeMailboxId = ref(null);
+	railInboxes = ref<unknown[]>(inboxes);
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
 		useRoute: () => route,
 		useFeatureFlag: () => ({ isEnabled: () => false }),
 		usePermissions: () => ({ isAdmin: ref(false), isRoleLoading: ref(false) }),
-		useInboxes: () => ({ inboxes: ref(inboxes), hasPersonalMail: ref(true) }),
+		useInboxes: () => ({ inboxes: railInboxes, hasPersonalMail: ref(true) }),
 		usePostboxActiveMailbox: () => ({ activeMailboxId }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useTaskOpenCount: () => ({ count: ref(0) }),
@@ -65,15 +75,15 @@ beforeEach(() => {
 	});
 });
 
-function mountRail() {
+function mountRail({ realChip = false } = {}) {
 	return mount(ConversationsNav, {
 		props: { collapsed: true, extraItems: [] },
 		global: {
 			plugins: [createTestI18n()],
-			components: { NuxtLink: NuxtLinkStub },
+			components: { NuxtLink: NuxtLinkStub, InboxChip },
 			stubs: {
 				UiTooltip: { template: '<div><slot /></div>' },
-				InboxChip: true,
+				...(realChip ? {} : { InboxChip: true }),
 				ShellSidebarOptions: true,
 				ShellInboxGroup: true,
 				ShellTeamInboxGroup: true,
@@ -125,5 +135,67 @@ describe('Collapsed rail inbox entries', () => {
 		for (const inbox of inboxes) {
 			expect(entry(wrapper, inbox.mailboxId).attributes('aria-current')).toBeUndefined();
 		}
+	});
+});
+
+function accessibleRow(
+	mailboxId: string,
+	label: string,
+	extra: Partial<AccessibleInboxRow> = {}
+): AccessibleInboxRow {
+	return {
+		mailboxId,
+		label,
+		address: `${mailboxId}@owlat.dev`,
+		scope: 'shared',
+		colorSlot: null,
+		unread: 0,
+		...extra,
+	};
+}
+
+describe('Collapsed rail inbox marks', () => {
+	it('tells inboxes that share their first letters apart', () => {
+		railInboxes.value = resolveInboxIdentities([
+			accessibleRow('mb_work', 'Work'),
+			accessibleRow('mb_wolves', 'Wolves'),
+			accessibleRow('mb_webshop', 'Webshop'),
+		]);
+		const wrapper = mountRail({ realChip: true });
+		expect(entry(wrapper, 'mb_work').text()).toBe('Wor');
+		expect(entry(wrapper, 'mb_wolves').text()).toBe('Wol');
+		expect(entry(wrapper, 'mb_webshop').text()).toBe('We');
+	});
+
+	it('shows the icon or emoji the owner picked instead of initials', () => {
+		railInboxes.value = resolveInboxIdentities([
+			accessibleRow('mb_work', 'Work', { mark: 'work' }),
+			accessibleRow('mb_wolves', 'Wolves', { mark: '🐺' }),
+		]);
+		const wrapper = mountRail({ realChip: true });
+		const work = entry(wrapper, 'mb_work');
+		expect(work.find('[data-mark="icon:work"]').exists()).toBe(true);
+		expect(work.text()).toBe('');
+		const wolves = entry(wrapper, 'mb_wolves');
+		expect(wolves.find('[data-mark="emoji"]').text()).toBe('🐺');
+		expect(wolves.attributes('aria-label')).toBe('Wolves');
+	});
+
+	it('falls back to the provider logo of a connected account, and to initials without one', () => {
+		railInboxes.value = resolveInboxIdentities([
+			accessibleRow('mb_gmail', 'Private', { provider: 'gmail', isConnected: true }),
+			accessibleRow('mb_ms', 'Office', { provider: 'microsoft', isConnected: true }),
+			accessibleRow('mb_picked', 'Shop', { provider: 'gmail', mark: 'shop' }),
+			accessibleRow('mb_plain', 'Team'),
+		]);
+		const wrapper = mountRail({ realChip: true });
+		expect(entry(wrapper, 'mb_gmail').find('[data-mark="provider:gmail"]').exists()).toBe(true);
+		expect(entry(wrapper, 'mb_ms').find('[data-mark="provider:microsoft"]').exists()).toBe(true);
+		const picked = entry(wrapper, 'mb_picked');
+		expect(picked.find('[data-mark="icon:shop"]').exists()).toBe(true);
+		expect(picked.find('[data-mark^="provider"]').exists()).toBe(false);
+		const plain = entry(wrapper, 'mb_plain');
+		expect(plain.find('[data-mark]').exists()).toBe(false);
+		expect(plain.text()).toBe('T');
 	});
 });

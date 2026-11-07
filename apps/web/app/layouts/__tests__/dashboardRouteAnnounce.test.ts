@@ -79,6 +79,7 @@ function mountLayout(): VueWrapper {
 				LazyAppCommandPalette: true,
 				ShellComposerOverlay: true,
 				AnswerReviewApproveUndoToast: true,
+				ShellMcpApprovalPrompt: true,
 				LazyKeyboardShortcutsHelp: true,
 				UiBadge: true,
 				UiSkeleton: true,

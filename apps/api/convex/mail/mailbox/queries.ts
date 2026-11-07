@@ -20,6 +20,7 @@ import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { isThreadMuted } from '../../lib/mailMute';
 import { readSession } from './shared';
 import type { FolderRole } from '../../lib/validators/mail';
+import { providerHostOf, providerOf, readRoleFolders, type InboxProvider } from './accessibleRow';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
 import type { SenderLogoField } from '../senderLogos/cache';
 import { toThreadListRow, type ThreadListRow } from './threadListRow';
@@ -307,9 +308,11 @@ export const listFolders = publicQuery({
  * suspended rows and returns full mailbox docs. Suspended/deleted rows are
  * filtered out here, so there are no dead-end targets.
  *
- * O(1) per mailbox: reads the denormalized `mailFolders.unseenCount`. Read
- * state is a single shared truth per message,
- * so every member of a shared inbox sees the same count.
+ * Constant work per mailbox: its six system folders by role (the Inbox's
+ * denormalized `mailFolders.unseenCount` is the badge) and, for a connected
+ * mailbox, its account row for the provider (`accessibleRow.ts`). Read state is
+ * a single shared truth per message, so every member of a shared inbox sees the
+ * same count.
  */
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const accessible = publicQuery({
@@ -330,17 +333,30 @@ export const accessible = publicQuery({
 			/** Backed by a connected IMAP account rather than hosted here. */
 			isConnected: boolean;
 			colorSlot: number | null;
+			/** An icon key or one emoji the owner picked (`appearance.ts`). */
+			mark: string | null;
+			/** The provider of a connected Gmail or Microsoft account. */
+			provider: InboxProvider | null;
 			unread: number;
-			/** The Inbox folder, which All inboxes (`allInboxes.ts`) reads by id. */
-			inboxFolderId: Id<'mailFolders'> | null;
+			/**
+			 * Each system folder by role, which All inboxes and the unified
+			 * folders (`allInboxes.ts`) read by id. Null where the mailbox has none.
+			 */
+			folderIds: Record<FolderRole, Id<'mailFolders'> | null>;
+			/**
+			 * The IMAP host a connected mailbox syncs from, lowercased: what the
+			 * unified folders narrow by provider on. Null for a hosted mailbox.
+			 */
+			providerHost: string | null;
 		}> = [];
 		for (const mb of mailboxes) {
 			if (mb.status !== 'active') continue;
-			const inbox = await ctx.db
-				.query('mailFolders')
-				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mb._id).eq('role', 'inbox'))
-				.first();
+			const { folderIds, inboxUnread } = await readRoleFolders(ctx, mb._id);
 			const displayName = mb.displayName?.trim();
+			const account =
+				mb.kind === 'external' && mb.externalAccountId
+					? await ctx.db.get(mb.externalAccountId)
+					: null;
 			rows.push({
 				mailboxId: mb._id,
 				label: displayName && displayName.length > 0 ? displayName : mb.address,
@@ -348,8 +364,11 @@ export const accessible = publicQuery({
 				scope: mb.scope === 'shared' ? 'shared' : 'personal',
 				isConnected: mb.kind === 'external',
 				colorSlot: mb.colorSlot ?? null,
-				unread: inbox?.unseenCount ?? 0,
-				inboxFolderId: inbox?._id ?? null,
+				mark: mb.mark ?? null,
+				provider: providerOf(account),
+				unread: inboxUnread,
+				folderIds,
+				providerHost: providerHostOf(account),
 			});
 		}
 		return rows;
@@ -364,10 +383,14 @@ export const accessible = publicQuery({
  * `messages` is a bounded, best-effort newest-first window used only for
  * category-aware toast decisions — it never drives `total`.
  * Minimal, plain-text fields only.
+ *
+ * `mailboxId` narrows both to one accessible mailbox (the desktop tray). One the
+ * caller cannot read or that is not active gets the empty peek with
+ * `unavailable`, not an error: the id is a device setting that can outlive both.
  */
 // public: soft-auth — returns an empty peek for anonymous; access via loadAccessibleMailboxes (own + shared memberships)
 export const newestUnreadInbox = publicQuery({
-	args: { limit: v.optional(v.number()) },
+	args: { limit: v.optional(v.number()), mailboxId: v.optional(v.id('mailboxes')) },
 	handler: async (ctx, args) => {
 		const empty = {
 			total: 0,
@@ -385,21 +408,35 @@ export const newestUnreadInbox = publicQuery({
 				 * — pierces the people-only scope AND quiet hours.
 				 */
 				alerted?: boolean;
+				/**
+				 * A live one-time code (mail/signInCodes.ts) the desktop notification
+				 * offers to copy. Only that it exists: the value stays on the message.
+				 */
+				hasSignInCode?: boolean;
 				receivedAt: number;
 			}>,
+			/** Set when `mailboxId` names a mailbox the caller cannot read or that is not active. */
+			unavailable: undefined as true | undefined,
 		};
+		const unavailable = { ...empty, unavailable: true as const };
 		const session = await readSession(ctx);
-		if (!session) return empty;
+		if (!session) return args.mailboxId ? unavailable : empty;
 		// Clamp the window so a caller can't force an unbounded scan.
 		const limit = Math.max(1, Math.min(50, Math.round(args.limit ?? 5)));
 		const now = Date.now();
 		// The caller's own mailboxes plus any shared mailbox they belong to; the
 		// per-mailbox `status !== 'active'` guard below keeps the status filtering.
-		const mailboxes = await loadAccessibleMailboxes(
+		const accessible = await loadAccessibleMailboxes(
 			ctx,
 			session.userId,
 			session.activeOrganizationId
 		);
+		// Not active (deleted, suspended, or disconnected, which soft-deletes it)
+		// counts as unreadable, so the tray falls back to all inboxes.
+		const mailboxes = args.mailboxId
+			? accessible.filter((mb) => mb._id === args.mailboxId && mb.status === 'active')
+			: accessible;
+		if (args.mailboxId && mailboxes.length === 0) return unavailable;
 		let total = 0;
 		const collected: (typeof empty)['messages'] = [];
 		for (const mb of mailboxes) {
@@ -450,11 +487,14 @@ export const newestUnreadInbox = publicQuery({
 					category: state.category,
 					muted: state.muted,
 					alerted: state.alerted,
+					...(m.signInCode?.kind === 'code' && m.signInCode.expiresAt > now
+						? { hasSignInCode: true }
+						: {}),
 					receivedAt: m.receivedAt,
 				});
 			}
 		}
 		collected.sort((a, b) => b.receivedAt - a.receivedAt);
-		return { total, messages: collected.slice(0, limit) };
+		return { ...empty, total, messages: collected.slice(0, limit) };
 	},
 });

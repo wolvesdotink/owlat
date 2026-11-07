@@ -85,7 +85,7 @@ export class AccountConnection {
 			connectOnce: () => this.connectOnce(),
 			setStatus: (status, lastError) => this.setStatus(status, lastError),
 		});
-		this.remote = new RemoteSync(account.accountId, convex);
+		this.remote = new RemoteSync(account.accountId, convex, this.rawUploadConfig);
 		this.inboxPoll = new InboxPoller({
 			accountId: account.accountId,
 			client: () => this.client,
@@ -299,6 +299,14 @@ export class AccountConnection {
 	 */
 	requestRemoteOps(): void {
 		void this.runCycle('drain');
+	}
+
+	/**
+	 * The user asked to check for mail (server.ts `/sync`): a full cycle now,
+	 * rather than on the folder timer. It joins a cycle already running.
+	 */
+	requestSync(): void {
+		void this.runCycle('full');
 	}
 
 	/**

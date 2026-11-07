@@ -1,8 +1,10 @@
 /**
- * All inboxes: the Inbox folders of every mailbox the caller reads, as one
- * newest-first list that pages like a single folder.
+ * All inboxes and the unified folders (All Sent, All Archive, All Spam, All
+ * Trash): one system folder of every mailbox the caller reads, as one
+ * newest-first list that pages like a single folder. All Drafts is
+ * `listDrafts`, since drafts are `mailDrafts` rows rather than filed messages.
  *
- * Each Inbox is read along its own `by_folder_and_received` index from the
+ * Each folder is read along its own `by_folder_and_received` index from the
  * page cursor down and the pieces are merged with the keyset rules in
  * `lib/keysetMerge.ts`: a position is `(receivedAt,
  * _creationTime, id)`, the order every source's index serves its rows in, so
@@ -22,6 +24,7 @@ import type { QueryCtx } from '../../_generated/server';
 import { loadAccessibleMailboxes } from '../permissions';
 import { isMessageSnoozed } from '../../lib/mailSnooze';
 import { readSession } from './shared';
+import { openMailDraftBody } from '../../lib/messageBody';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
 import type { SenderLogoField } from '../senderLogos/cache';
 import {
@@ -45,44 +48,45 @@ function positionOf(message: Doc<'mailMessages'>): StreamPosition {
 }
 
 /**
- * One Inbox's rows before the cursor. The folder doc is not read (IMAP
+ * One folder's rows before the cursor. The folder doc is not read (IMAP
  * bookkeeping patches it on every delivery and flag change, which would re-run
  * the subscribed first page); ownership is checked on the rows instead: a
  * folder belongs to one mailbox, so a row from any other mailbox means the id
  * was not that mailbox's folder, and the source then contributes nothing.
  */
-async function readInbox(
+async function readFolder(
 	ctx: QueryCtx,
 	source: { mailboxId: Id<'mailboxes'>; folderId: Id<'mailFolders'> },
 	before: StreamPosition | null,
 	now: number,
 	limit: number
 ): Promise<SourceBatch<Entry>> {
-	const inbox = (range?: { at: number; tie?: number }) =>
+	const folder = (range?: { at: number; tie?: number }) =>
 		ctx.db
 			.query('mailMessages')
 			.withIndex('by_folder_and_received', (q) => {
-				const folder = q.eq('folderId', source.folderId);
-				if (!range) return folder;
+				const rows = q.eq('folderId', source.folderId);
+				if (!range) return rows;
 				// The cursor's own `receivedAt` from its creation time down; the
 				// position filter in readSourceBatch drops what the page already showed.
 				if (range.tie !== undefined) {
-					return folder.eq('receivedAt', range.at).lte('_creationTime', range.tie);
+					return rows.eq('receivedAt', range.at).lte('_creationTime', range.tie);
 				}
-				return folder.lt('receivedAt', range.at);
+				return rows.lt('receivedAt', range.at);
 			})
 			.order('desc');
 	const rows = rangesBefore(before, {
-		all: () => inbox(),
-		tied: (at, tie) => inbox({ at, tie }),
-		older: (at) => inbox({ at }),
+		all: () => folder(),
+		tied: (at, tie) => folder({ at, tie }),
+		older: (at) => folder({ at }),
 	});
 	let foreign = false;
 	const batch = await readSourceBatch(rows, {
 		before,
 		limit,
-		// Snoozed rows stay in the Inbox but yield nothing; the budget keeps a
-		// long snoozed run from turning one page into a folder scan.
+		// Snoozed rows stay in their folder but yield nothing, as in the
+		// single-folder list; the budget keeps a long snoozed run from turning
+		// one page into a folder scan.
 		budget: limit * 2,
 		positionOf,
 		toEntries: (message) => {
@@ -96,9 +100,10 @@ async function readInbox(
 
 /**
  * One page of the merged list, newest first. `sources` names each mailbox
- * with its Inbox folder id (the `accessible` rows carry it); a source whose
- * mailbox the caller does not read is dropped. Pass `nextCursor` back for
- * the next page; `hasMore` is false once every Inbox is exhausted.
+ * with the folder id of the one role the list shows (the `accessible` rows
+ * carry each role's id); a source whose mailbox the caller does not read is
+ * dropped. Pass `nextCursor` back for the next page; `hasMore` is false once
+ * every folder is exhausted.
  */
 // public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + team-inbox memberships)
 export const listMessages = publicQuery({
@@ -134,7 +139,7 @@ export const listMessages = publicQuery({
 		const before = decodeStreamCursor(args.cursor);
 		const now = Date.now();
 		const batches: SourceBatch<Entry>[] = [];
-		for (const source of sources) batches.push(await readInbox(ctx, source, before, now, limit));
+		for (const source of sources) batches.push(await readFolder(ctx, source, before, now, limit));
 		const page = mergeStreamPage(batches, limit);
 		// The merge hands its page back oldest first; the list shows newest first.
 		const messages = page.entries.map((entry) => entry.message).reverse();
@@ -143,5 +148,47 @@ export const listMessages = publicQuery({
 			hasMore: !page.isDone,
 			nextCursor: page.cursor,
 		};
+	},
+});
+
+/** The single-mailbox Drafts list's own bound, kept for the merged one. */
+const DRAFTS_LIMIT = 100;
+
+/**
+ * All Drafts: the live drafts of every named mailbox the caller reads, last
+ * edited first, as the single-mailbox Drafts list shows them. Each mailbox is
+ * read along `by_mailbox_live_and_edited` up to the list's bound, and the merge
+ * keeps every one of them, so it lists what each mailbox's own Drafts would.
+ */
+// public: soft-auth — returns empty for anonymous; access via loadAccessibleMailboxes (own + team-inbox memberships)
+export const listDrafts = publicQuery({
+	args: { mailboxIds: v.array(v.id('mailboxes')) },
+	handler: async (ctx, args) => {
+		const session = await readSession(ctx);
+		if (!session) return [];
+		const readable = new Set(
+			(await loadAccessibleMailboxes(ctx, session.userId, session.activeOrganizationId))
+				.filter((mailbox) => mailbox.status === 'active')
+				.map((mailbox) => mailbox._id)
+		);
+		const mailboxIds = [...new Set(args.mailboxIds)]
+			.filter((id) => readable.has(id))
+			.slice(0, ALL_INBOXES_MAX_SOURCES);
+		const drafts: Doc<'mailDrafts'>[] = [];
+		for (const mailboxId of mailboxIds) {
+			drafts.push(
+				...(await ctx.db
+					.query('mailDrafts')
+					.withIndex('by_mailbox_live_and_edited', (q) =>
+						q.eq('mailboxId', mailboxId).eq('obsoleted.at', undefined)
+					)
+					.order('desc')
+					.take(DRAFTS_LIMIT))
+			);
+		}
+		// No cap on the merge: each mailbox is already held to its own bound, and
+		// a global one would hide drafts no other view reaches.
+		drafts.sort((a, b) => b.lastEditedAt - a.lastEditedAt);
+		return await Promise.all(drafts.map((draft) => openMailDraftBody(draft)));
 	},
 });

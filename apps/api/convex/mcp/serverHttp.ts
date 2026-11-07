@@ -22,18 +22,25 @@ import {
 	RPC_INVALID_REQUEST,
 	RPC_METHOD_NOT_FOUND,
 	RPC_PARSE_ERROR,
-	TOOL_DEFINITIONS,
+	actionResult,
 	classifyRpcMessage,
 	initializeResult,
 	isAcceptableProtocolHeader,
+	isToolAllowed,
 	parseToolCall,
 	rpcError,
 	rpcResult,
 	toolError,
 	toolResult,
+	toolDefinitionsFor,
 	type ToolArgs,
+	type WriteToolArgs,
 } from './protocol';
+import { isMcpWriteTool, type McpClientAccess } from '../lib/validators/mcp';
 import type { ToolOutcome } from './reads';
+
+const READ_ONLY_MESSAGE =
+	'This connection is read-only. Its owner can connect a read-write client in Owlat.';
 
 /** One JSON-RPC message is small; anything bigger is not a request we serve. */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -51,7 +58,17 @@ function unauthorized(message: string): Response {
 	});
 }
 
-function runTool(ctx: ActionCtx, clientId: Id<'mcpClients'>, call: ToolArgs): Promise<ToolOutcome> {
+type ReadToolArgs = Exclude<ToolArgs, WriteToolArgs>;
+
+function isWriteCall(call: ToolArgs): call is WriteToolArgs {
+	return isMcpWriteTool(call.tool);
+}
+
+function runTool(
+	ctx: ActionCtx,
+	clientId: Id<'mcpClients'>,
+	call: ReadToolArgs
+): Promise<ToolOutcome> {
 	switch (call.tool) {
 		case 'list_mailboxes':
 			return ctx.runQuery(internal.mcp.reads.listMailboxes, { clientId });
@@ -73,6 +90,26 @@ function runTool(ctx: ActionCtx, clientId: Id<'mcpClients'>, call: ToolArgs): Pr
 				messageId: call.messageId,
 				maxMessages: call.maxMessages,
 			});
+		case 'get_action_status':
+			return ctx.runQuery(internal.mcp.actions.getStatus, { clientId, actionId: call.actionId });
+	}
+}
+
+/** Ask for a write: one mutation checks it, records it and logs the step. */
+async function proposeWrite(
+	ctx: ActionCtx,
+	clientId: Id<'mcpClients'>,
+	request: WriteToolArgs
+): Promise<{ ok: true; result: unknown }> {
+	try {
+		const outcome = await ctx.runMutation(internal.mcp.actions.propose, { clientId, request });
+		return {
+			ok: true,
+			result: outcome.status === 'ok' ? actionResult(outcome.payload) : toolError(outcome.message),
+		};
+	} catch (error) {
+		logError('[MCP] write request failed', { tool: request.tool, clientId, error: String(error) });
+		return { ok: true, result: toolError('The tool failed. Try again later.') };
 	}
 }
 
@@ -80,9 +117,18 @@ function runTool(ctx: ActionCtx, clientId: Id<'mcpClients'>, call: ToolArgs): Pr
 async function callTool(
 	ctx: ActionCtx,
 	clientId: Id<'mcpClients'>,
+	access: McpClientAccess,
 	params: Record<string, unknown>
 ): Promise<{ ok: true; result: unknown } | { ok: false; code: number; message: string }> {
 	const parsed = parseToolCall(params);
+	// A tool this token is not shown (a write, for a read token) is refused and
+	// logged, so the owner sees the attempt. `propose` checks the stored access
+	// again on its own.
+	const tool = parsed.ok ? parsed.call.tool : parsed.tool;
+	if (tool && !isToolAllowed(access, tool)) {
+		await ctx.runMutation(internal.mcp.activity.record, { clientId, tool, outcome: 'denied' });
+		return { ok: true, result: toolError(READ_ONLY_MESSAGE) };
+	}
 	if (!parsed.ok) {
 		if (!parsed.tool) return { ok: false, code: parsed.code, message: parsed.message };
 		await ctx.runMutation(internal.mcp.activity.record, {
@@ -93,6 +139,7 @@ async function callTool(
 		return { ok: true, result: toolError(parsed.message) };
 	}
 	const { call } = parsed;
+	if (isWriteCall(call)) return proposeWrite(ctx, clientId, call);
 	let outcome: ToolOutcome | null = null;
 	try {
 		outcome = await runTool(ctx, clientId, call);
@@ -109,7 +156,12 @@ async function callTool(
 	if (!outcome) return { ok: true, result: toolError('The tool failed. Try again later.') };
 	return {
 		ok: true,
-		result: outcome.status === 'ok' ? toolResult(outcome.payload) : toolError(outcome.message),
+		result:
+			outcome.status !== 'ok'
+				? toolError(outcome.message)
+				: outcome.isAction
+					? actionResult(outcome.payload)
+					: toolResult(outcome.payload),
 	};
 }
 
@@ -165,14 +217,16 @@ export const postboxMcp = httpAction(async (ctx, request) => {
 
 	switch (message.method) {
 		case 'initialize':
-			return json(rpcResult(message.id, initializeResult(message.params['protocolVersion'])));
+			return json(
+				rpcResult(message.id, initializeResult(message.params['protocolVersion'], auth.access))
+			);
 		case 'ping':
 			return json(rpcResult(message.id, {}));
 		case 'tools/list':
-			return json(rpcResult(message.id, { tools: TOOL_DEFINITIONS }));
+			return json(rpcResult(message.id, { tools: toolDefinitionsFor(auth.access) }));
 		case 'tools/call': {
 			try {
-				const outcome = await callTool(ctx, auth.clientId, message.params);
+				const outcome = await callTool(ctx, auth.clientId, auth.access, message.params);
 				return outcome.ok
 					? json(rpcResult(message.id, outcome.result))
 					: json(rpcError(message.id, outcome.code, outcome.message));

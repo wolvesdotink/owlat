@@ -4,10 +4,27 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import { enableFeatures } from '../../__tests__/factories';
 import { modules } from '../../__tests__/testModulesWithoutNodeActions';
 import { extractSignInCode, SIGN_IN_CODE_TTL_MS } from '../signInCodes';
+
+const session = vi.hoisted(() => ({ userId: 'test-user' }));
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	const current = async () => ({
+		userId: session.userId,
+		role: 'member' as const,
+		activeOrganizationId: 'test-org',
+	});
+	return {
+		...actual,
+		requireOrgMember: vi.fn(current),
+		getBetterAuthSessionWithRole: vi.fn(current),
+	};
+});
 
 const CODE_TEXT =
 	'Hi,\n\nUse this code to sign in to your Northwind account:\n\n482913\n\nThe code expires in 10 minutes.';
@@ -290,5 +307,95 @@ describe('recordSignInCode at delivery', () => {
 		);
 		expect(copy?.subject).toBe('Your Northwind verification code');
 		expect(copy?.signInCode).toBeUndefined();
+	});
+});
+
+describe('the live code outside the message', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		session.userId = 'test-user';
+	});
+
+	async function deployment() {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['mail.external']);
+		return { t, raw: await setup(t) };
+	}
+
+	it('offers the newest live code of the caller’s mailboxes until it expires', async () => {
+		const { t, raw } = await deployment();
+		const receivedAt = Date.now();
+		await deliver(t, raw, { receivedAt: receivedAt - 60_000, textBodyInline: 'Your code: 111222' });
+		const newest = await deliver(t, raw, { receivedAt });
+
+		expect(await t.query(api.mail.signInCodes.latestSignInCode, {})).toMatchObject({
+			messageId: newest,
+			kind: 'code',
+			value: '482913',
+			senderDomain: 'northwind.example',
+		});
+		expect(
+			await t.query(api.mail.signInCodes.messageSignInCode, { messageId: newest })
+		).toMatchObject({ value: '482913' });
+
+		vi.setSystemTime(receivedAt + SIGN_IN_CODE_TTL_MS);
+		expect(await t.query(api.mail.signInCodes.latestSignInCode, {})).toBeNull();
+		expect(await t.query(api.mail.signInCodes.messageSignInCode, { messageId: newest })).toBeNull();
+	});
+
+	it('offers nothing from another person’s personal mailbox', async () => {
+		const { t, raw } = await deployment();
+		const id = await deliver(t, raw);
+		session.userId = 'someone-else';
+
+		expect(await t.query(api.mail.signInCodes.latestSignInCode, {})).toBeNull();
+		expect(await t.query(api.mail.signInCodes.messageSignInCode, { messageId: id })).toBeNull();
+	});
+
+	it('offers a team inbox’s code to its members', async () => {
+		const { t, raw } = await deployment();
+		const id = await deliver(t, raw);
+		await t.run(async (ctx) => {
+			const mailbox = await ctx.db.query('mailboxes').first();
+			if (!mailbox) throw new Error('mailbox missing');
+			await ctx.db.patch(mailbox._id, { scope: 'shared' });
+			await ctx.db.insert('mailboxMembers', {
+				mailboxId: mailbox._id,
+				authUserId: 'teammate',
+				role: 'member',
+				addedBy: 'test-user',
+				createdAt: Date.now(),
+			});
+		});
+		session.userId = 'teammate';
+
+		expect(await t.query(api.mail.signInCodes.latestSignInCode, {})).toMatchObject({
+			messageId: id,
+			value: '482913',
+		});
+	});
+
+	it('stops offering a code once its message went to the bin', async () => {
+		const { t, raw } = await deployment();
+		const id = await deliver(t, raw);
+		await t.run(async (ctx) => {
+			const trash = await ctx.db.insert('mailFolders', {
+				mailboxId: (await ctx.db.get(id))!.mailboxId,
+				name: 'Trash',
+				role: 'trash',
+				uidValidity: 1,
+				uidNext: 1,
+				highestModseq: 1,
+				totalCount: 0,
+				unseenCount: 0,
+				subscribed: true,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.patch(id, { folderId: trash });
+		});
+
+		expect(await t.query(api.mail.signInCodes.latestSignInCode, {})).toBeNull();
 	});
 });

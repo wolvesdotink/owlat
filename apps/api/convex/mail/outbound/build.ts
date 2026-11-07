@@ -13,11 +13,16 @@
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { logError } from '../../lib/runtimeLog';
-import { renderDraftBodies } from '@owlat/email-renderer';
+import { renderOutgoingBodies, threadingHeaders } from './derive';
 import { getMtaConfig, scanAttachmentBytes } from '../mtaClient';
 import { buildMessageId, buildRfc822, type DraftRow } from '../rfc822';
 import { rewriteInlineImageCids, isInlineImageReferenced } from '@owlat/shared/inlineImages';
-import { decideSeal, type OutboundEncryptionInfo } from '../sealPolicy';
+import {
+	decideSeal,
+	sealOutcomeOf,
+	type OutboundEncryptionInfo,
+	type SealOutcome,
+} from '../sealPolicy';
 import { sealMime, type SealedMime } from '../../e2ee/seal';
 import { openPrivateKey } from '../../e2ee/sealing';
 import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
@@ -170,27 +175,24 @@ export async function buildOutboundMime(
 	const domain = draft.fromAddress.split('@')[1] ?? 'localhost';
 	const rfc822MessageId = buildMessageId(domain);
 
-	// Threading headers
-	let inReplyToHeaderValue: string | undefined;
-	let referencesHeaderValue: string | undefined;
-	if (draft.inReplyToMessageId) {
-		const original = await ctx.runQuery(internal.mail.outboundQueries.getMessage, {
-			messageId: draft.inReplyToMessageId,
-		});
-		if (original) {
-			inReplyToHeaderValue = `<${original.rfc822MessageId}>`;
-			const refsList = [...(original.references ?? []), original.rfc822MessageId];
-			referencesHeaderValue = refsList.map((r) => `<${r}>`).join(' ');
-		}
-	}
+	// Threading headers. An approved send carries the ones its owner approved:
+	// the reply target may have changed since.
+	const { inReplyToHeaderValue, referencesHeaderValue } = draft.approvedSend
+		? draft.approvedSend
+		: threadingHeaders(
+				draft.inReplyToMessageId
+					? await ctx.runQuery(internal.mail.outboundQueries.getMessage, {
+							messageId: draft.inReplyToMessageId,
+						})
+					: null
+			);
 
-	// Same derivation the composer's "Preview as sent" shows (idea 14): one
-	// implementation in @owlat/email-renderer, so the preview cannot drift from
-	// what actually goes on the wire.
-	const rendered = renderDraftBodies(draft, {
-		onBlockParseError: (err) =>
-			logError('[Outbound] Failed to parse block-based body, falling back to bodyHtml:', err),
-	});
+	// Same derivation the composer's "Preview as sent" shows (idea 14) and the
+	// approval card of an AI client's send: one implementation in
+	// @owlat/email-renderer, so neither can drift from what goes on the wire.
+	const rendered = renderOutgoingBodies(draft, (err) =>
+		logError('[Outbound] Failed to parse block-based body, falling back to bodyHtml:', err)
+	);
 	draft.bodyHtml = rendered.html;
 	draft.bodyText = rendered.text;
 	draft.bodyAmp = rendered.amp;
@@ -228,6 +230,8 @@ export async function sealOutboundMessage(
 	storedBytes: Buffer;
 	sealed: SealedMime | null;
 	encryptionInfo: OutboundEncryptionInfo;
+	/** What the sealing came to, for the check against an approved send. */
+	sealOutcome: SealOutcome;
 	isFlagEnabled: boolean;
 }> {
 	const sealRecipients = [...draft.toAddresses, ...draft.ccAddresses, ...draft.bccAddresses];
@@ -290,5 +294,14 @@ export async function sealOutboundMessage(
 		encryptionInfo = { isSealed: false, reason: sealDecision.reason };
 	}
 
-	return { storedBytes, sealed, encryptionInfo, isFlagEnabled: sealInputs.flagEnabled };
+	const sealOutcome: SealOutcome = encryptionInfo.isSealed
+		? sealOutcomeOf(sealDecision)
+		: { isSealed: false, reason: encryptionInfo.reason };
+	return {
+		storedBytes,
+		sealed,
+		encryptionInfo,
+		sealOutcome,
+		isFlagEnabled: sealInputs.flagEnabled,
+	};
 }

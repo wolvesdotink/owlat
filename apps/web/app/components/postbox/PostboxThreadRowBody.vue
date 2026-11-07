@@ -202,6 +202,7 @@ function onCancelFollowUp(event: MouseEvent) {
 				class="flex-shrink-0"
 				:name="rowInbox.name"
 				:slot="rowInbox.slot"
+				:mark="rowInbox.mark"
 				data-testid="row-inbox-chip"
 			/>
 			<!-- Danger-only sender marker: failed / misaligned / look-alike of a

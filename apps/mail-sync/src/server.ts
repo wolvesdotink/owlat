@@ -9,6 +9,8 @@
  *   POST /reconcile — re-read the connectable accounts now (a mailbox was just
  *                    connected or re-authorized); answers 202 at once
  *   POST /remote-ops — an account has queued write-backs; replay them now
+ *   POST /sync — the user asked to check for mail; run a sync cycle on the
+ *                named accounts now
  *   GET  /health
  *   GET  /metrics — Prometheus process metrics; unauthenticated like the MTA's,
  *                   since the port is not published
@@ -33,10 +35,17 @@ export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean 
 }
 import { serve, type ServerType } from '@hono/node-server';
 import { isSmtpError } from '@owlat/smtp-client';
-import type { ConvexClient } from './convex.js';
-import { fetchWorkerCredentials } from './convex.js';
+import type { ConvexClient, WorkerCredentials } from './convex.js';
+import { fetchWorkerCredentials, fn, isMissingFunction } from './convex.js';
 import type { MailSyncConfig } from './config.js';
-import { fileSentCopyInBackground, sendViaExternal, testConnection } from './send.js';
+import {
+	fileSentCopyInBackground,
+	GraphSendError,
+	isSmtpAuthRefusedByExchange,
+	sendViaExternal,
+	sendViaGraph,
+	testConnection,
+} from './send.js';
 import type { RecipientResult } from './send.js';
 import { logger } from './logger.js';
 
@@ -56,6 +65,7 @@ const sendBody = v.object({
 	rawEmlUrl: v.string(),
 });
 const remoteOpsBody = v.object({ accountId: v.string() });
+const syncBody = v.object({ accountIds: v.array(v.string()) });
 
 /** Every body here is a few fields, or one message's recipient list. */
 const BODY_MAX_BYTES = 1024 * 1024;
@@ -88,10 +98,59 @@ async function readBody<C extends JsonChecker>(
 const RAW_EML_FETCH_TIMEOUT_MS = 30_000;
 
 /**
+ * What the /send route answers when Exchange Online refused SMTP AUTH and the
+ * account's Microsoft grant does not cover Graph `Mail.Send`. The outbound
+ * dispatcher records it as the send's failure reason, so it names the fix.
+ */
+export const GRAPH_CONSENT_NEEDED_MESSAGE =
+	'Microsoft turned off SMTP sign-in for this mailbox. Sign in with Microsoft again and allow Owlat to send mail, then send again.';
+
+/**
+ * Record a Microsoft account's send path. Best-effort: the message is already
+ * sent, a backend from before the call has no such function, and the next
+ * send that takes the other path records it again.
+ */
+async function recordSendPath(
+	convex: ConvexClient,
+	accountId: string,
+	sendPath: 'smtp' | 'graph'
+): Promise<void> {
+	try {
+		await convex.mutation(fn.setSendPath, { accountId, sendPath });
+	} catch (err) {
+		if (!isMissingFunction(err, fn.setSendPath)) {
+			logger.warn({ accountId, err }, 'could not record the send path');
+		}
+	}
+}
+
+/** A Graph refusal as the route's answer: a permanent one bounces, the rest are retryable. */
+function graphFailure(c: Context, accountId: string, recipients: string[], err: unknown): Response {
+	const message = err instanceof Error ? err.message : String(err);
+	logger.warn({ accountId, err }, 'external send through Microsoft Graph failed');
+	if (err instanceof GraphSendError && err.permanent) {
+		return c.json({
+			recipients: recipients.map((address): RecipientResult => ({
+				address,
+				status: 'bounced',
+				error: message,
+			})),
+		});
+	}
+	return c.json({ error: message }, 502);
+}
+
+/**
  * Asks the account's live connection to replay its write-back queue; false when
  * the worker holds no connection for it (`AccountManager.requestRemoteOps`).
  */
 export type RemoteOpsRequester = (accountId: string) => boolean;
+
+/**
+ * Starts a sync cycle on each named account's live connection; answers how
+ * many of them the worker holds (`AccountManager.requestSync`).
+ */
+export type SyncRequester = (accountIds: string[]) => number;
 
 /** What the routes need from the rest of the worker, beyond Convex. */
 export interface ServerHooks {
@@ -99,6 +158,8 @@ export interface ServerHooks {
 	requestReconcile?: () => void;
 	/** Replay one account's write-back queue (AccountManager.requestRemoteOps). */
 	requestRemoteOps?: RemoteOpsRequester;
+	/** Check the named accounts for new mail now (AccountManager.requestSync). */
+	requestSync?: SyncRequester;
 	/** The process registry served on `GET /metrics`; the route is absent without it. */
 	metrics?: MetricsSource;
 }
@@ -122,6 +183,7 @@ export function createApp(
 	app.use('/test', auth);
 	app.use('/reconcile', auth);
 	app.use('/remote-ops', auth);
+	app.use('/sync', auth);
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
 
@@ -155,6 +217,14 @@ export function createApp(
 		const { accountId } = read.value;
 		if (!accountId) return c.json({ error: 'accountId required' }, 400);
 		return c.json({ accepted: hooks.requestRemoteOps?.(accountId) ?? false }, 202);
+	});
+
+	// Fire-and-forget like /remote-ops: the cycle runs on each connection, and
+	// the new mail reaches the user through Convex, not through this answer.
+	app.post('/sync', async (c) => {
+		const read = await readBody(c, syncBody, 'accountIds required');
+		if (!read.ok) return read.response;
+		return c.json({ accepted: hooks.requestSync?.(read.value.accountIds) ?? 0 }, 202);
 	});
 
 	app.post('/send', async (c) => {
@@ -204,6 +274,17 @@ export function createApp(
 			return c.json({ error: `failed to fetch raw eml: ${message}` }, 502);
 		}
 
+		// A Microsoft account whose tenant refused SMTP AUTH before goes straight
+		// to Graph. Graph files the Sent copy itself, so there is no APPEND.
+		const graphToken = creds.graphAccessToken;
+		if (creds.sendPath === 'graph' && graphToken) {
+			try {
+				return c.json(await sendViaGraph(graphToken, { recipients: body.recipients, raw }));
+			} catch (err) {
+				return graphFailure(c, body.externalAccountId, body.recipients, err);
+			}
+		}
+
 		try {
 			const result = await sendViaExternal(creds, {
 				from: body.from,
@@ -214,8 +295,34 @@ export function createApp(
 			// on a second login to the IMAP server. The copy never rejects (a
 			// failure is logged at warn, as before), and shutdown waits for it.
 			fileSentCopyInBackground(creds, raw);
+			// On the Graph path without a Graph token, and SMTP took it: the tenant
+			// turned SMTP AUTH back on.
+			if (creds.sendPath === 'graph') {
+				await recordSendPath(convex, body.externalAccountId, 'smtp');
+			}
 			return c.json(result);
 		} catch (err) {
+			if (isMicrosoftAccount(creds) && isSmtpAuthRefusedByExchange(err)) {
+				if (!graphToken) {
+					logger.warn(
+						{ accountId: body.externalAccountId },
+						'external send refused: SMTP AUTH is off and Graph Mail.Send is not granted'
+					);
+					return c.json({ error: GRAPH_CONSENT_NEEDED_MESSAGE }, 502);
+				}
+				let result: { recipients: RecipientResult[] };
+				try {
+					result = await sendViaGraph(graphToken, { recipients: body.recipients, raw });
+				} catch (graphErr) {
+					return graphFailure(c, body.externalAccountId, body.recipients, graphErr);
+				}
+				logger.info(
+					{ accountId: body.externalAccountId },
+					'SMTP AUTH is off for this Microsoft mailbox; sent through Microsoft Graph'
+				);
+				await recordSendPath(convex, body.externalAccountId, 'graph');
+				return c.json(result);
+			}
 			// A client-side SMTPUTF8 refusal (the external server does not advertise
 			// RFC 6531 for an internationalized envelope) is a PERMANENT condition —
 			// there is no ASCII downgrade for a non-ASCII local-part. Surface it like a
@@ -242,6 +349,11 @@ export function createApp(
 	});
 
 	return app;
+}
+
+/** Only a Microsoft sign-in account's credentials carry a send path. */
+function isMicrosoftAccount(creds: WorkerCredentials): boolean {
+	return creds.sendPath !== undefined;
 }
 
 export function startServer(

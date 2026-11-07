@@ -12,11 +12,13 @@ import type { QueryCtx } from '../../_generated/server';
 import { normalizeEmail } from '@owlat/shared';
 import type { AppLocale } from '@owlat/shared/appLocales';
 import type { ThreadRef } from '../../lib/validators/threadRef';
+import type { InterpretationSource } from '../../lib/validators/threadBrief';
 import { openMessageBody } from '../../lib/messageBody';
 import { rowFactKeyLabel } from './factKeys';
 import { isPurgeActive } from './purgeActive';
 import { mailboxOwnAddresses } from '../identities';
-import { readResult, recentlyClosedItems } from './load';
+import { recentlyClosedItems } from './itemReads';
+import { readResult } from './load';
 import type { EXACT_WORDING_REASONS } from './schema';
 import type { SourceCounts } from './counters';
 
@@ -121,6 +123,14 @@ export async function openItem(row: Doc<'threadItems'>, locale: AppLocale): Prom
 		...(row.possibleDuplicateOfId ? { possibleDuplicateOfId: row.possibleDuplicateOfId } : {}),
 		...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
 		...(row.pendingUpdate ? { pendingUpdate: await openHeld(row.pendingUpdate, locale) } : {}),
+		...(row.withdrawal
+			? {
+					withdrawn: {
+						at: row.withdrawal.at,
+						...(row.withdrawal.confirmation ? { confirmedAt: row.withdrawal.confirmation.at } : {}),
+					},
+				}
+			: {}),
 		askedAt: row.askedAt,
 		updatedAt: row.updatedAt,
 	};
@@ -295,12 +305,22 @@ export async function readLatest(
 	};
 }
 
-/** The incomplete-banner numbers and reason. Pure over the extraction rows. */
+/** Gap reasons that are about one message of the thread, which the banner names. */
+const MESSAGE_GAP_REASONS: ReadonlySet<GapReason> = new Set<GapReason>([
+	'tooLong',
+	'failed',
+	'undecryptable',
+]);
+
+/**
+ * The incomplete-banner numbers and reason, and the message the reason is
+ * about when it is about one (`source`). Pure over the extraction rows.
+ */
 export function gapOf(
-	rows: readonly Pick<
+	rows: readonly (Pick<
 		Doc<'messageInterpretations'>,
 		'sourceKey' | 'status' | 'skipReason' | 'errorCode' | 'updatedAt'
-	>[],
+	> & { source?: InterpretationSource })[],
 	opts: {
 		totalMessages: number;
 		isPending: boolean;
@@ -308,7 +328,12 @@ export function gapOf(
 		/** The brief's maintained source counters: the authority on counts. */
 		sourceCounts?: SourceCounts;
 	}
-): { interpretedMessages: number; totalMessages: number; reason?: GapReason } {
+): {
+	interpretedMessages: number;
+	totalMessages: number;
+	reason?: GapReason;
+	source?: InterpretationSource;
+} {
 	const newest = new Map<string, (typeof rows)[number]>();
 	for (const row of rows) {
 		const seen = newest.get(row.sourceKey);
@@ -335,11 +360,36 @@ export function gapOf(
 			: opts.isPending
 				? 'pending'
 				: opts.suppressed;
+	const source =
+		problem?.source && reason && MESSAGE_GAP_REASONS.has(reason) ? problem.source : undefined;
 	return {
 		interpretedMessages,
 		totalMessages: Math.max(opts.totalMessages, interpretedMessages),
 		...(reason ? { reason } : {}),
+		...(source ? { source } : {}),
 	};
+}
+
+/**
+ * Who sent the message a gap is about and when it arrived, for the banner to
+ * name it. Mail rows carry the sender's name when the header had one; an
+ * inbound team message has only its address. A team reply is the team's own
+ * send and is not named.
+ */
+export async function gapMessageOf(
+	ctx: ReadCtx,
+	source: InterpretationSource
+): Promise<{ from: string; at: number } | undefined> {
+	if (source.kind === 'mail' || source.kind === 'outboundMail') {
+		const message = await ctx.db.get(source.id);
+		if (!message) return undefined;
+		return { from: message.fromName?.trim() || message.fromAddress, at: message.receivedAt };
+	}
+	if (source.kind === 'inbound') {
+		const message = await ctx.db.get(source.id);
+		return message ? { from: message.from, at: message.receivedAt } : undefined;
+	}
+	return undefined;
 }
 
 /** Interpretation rows read for the per-message "Latest update" lines. */

@@ -101,6 +101,7 @@ const failedNames = computed(() =>
 					v-if="chip.slot !== undefined"
 					:name="chip.label"
 					:slot="chip.slot ?? null"
+					:mark="chip.mark"
 					variant="plain"
 					class="!text-inherit"
 				/>

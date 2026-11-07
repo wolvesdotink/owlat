@@ -17,18 +17,35 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, type MutationCtx } from '../../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
-import type { Id } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
+
+/**
+ * Which token a row holds: absent for the mail token, 'graph' for a Microsoft
+ * Graph one (see the table's comment in `schema/mailAccounts.ts`).
+ */
+export const accessTokenAudienceValidator = v.optional(v.literal('graph'));
+export type AccessTokenAudience = 'graph' | undefined;
+
+/** An account's rows for one audience; extras only come from a lost race. */
+async function rowsForAudience(
+	ctx: QueryCtx | MutationCtx,
+	accountId: Id<'externalMailAccounts'>,
+	audience: AccessTokenAudience
+): Promise<Doc<'externalMailAccessTokens'>[]> {
+	const rows = await ctx.db
+		.query('externalMailAccessTokens')
+		.withIndex('by_account', (q) => q.eq('accountId', accountId))
+		.take(10); // bounded: one row per account and audience
+	return rows.filter((row) => row.audience === audience);
+}
 
 /** The sealed token for an account, or null. Callers still check `sourceIv` and expiry. */
 export const _getStoredAccessToken = internalQuery({
-	args: { accountId: v.id('externalMailAccounts') },
+	args: { accountId: v.id('externalMailAccounts'), audience: accessTokenAudienceValidator },
 	handler: async (ctx, args) => {
-		const row = await ctx.db
-			.query('externalMailAccessTokens')
-			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
-			.first(); // bounded: at most one row per account
+		const [row] = await rowsForAudience(ctx, args.accountId, args.audience);
 		if (!row) return null;
 		return {
 			sourceIv: row.sourceIv,
@@ -53,6 +70,7 @@ export const _getStoredAccessToken = internalQuery({
 export const _storeAccessToken = internalMutation({
 	args: {
 		accountId: v.id('externalMailAccounts'),
+		audience: accessTokenAudienceValidator,
 		sourceIv: v.string(),
 		ciphertext: v.string(),
 		iv: v.string(),
@@ -79,22 +97,22 @@ export const _storeAccessToken = internalMutation({
 			expiresAt: args.expiresAt,
 			updatedAt: Date.now(),
 		};
-		const rows = await ctx.db
-			.query('externalMailAccessTokens')
-			.withIndex('by_account', (q) => q.eq('accountId', args.accountId))
-			.take(10); // bounded: one row per account; extras only from a lost race
-		const [first, ...extra] = rows;
+		const [first, ...extra] = await rowsForAudience(ctx, args.accountId, args.audience);
 		if (first) {
 			await ctx.db.patch(first._id, fields);
 		} else {
-			await ctx.db.insert('externalMailAccessTokens', { accountId: args.accountId, ...fields });
+			await ctx.db.insert('externalMailAccessTokens', {
+				accountId: args.accountId,
+				...(args.audience ? { audience: args.audience } : {}),
+				...fields,
+			});
 		}
 		for (const row of extra) await ctx.db.delete(row._id);
 		return { stored: true };
 	},
 });
 
-/** Forget an account's cached token (the provider reported the grant revoked). */
+/** Forget every cached token of an account (the provider reported the grant revoked). */
 export const _clearStoredAccessToken = internalMutation({
 	args: { accountId: v.id('externalMailAccounts') },
 	handler: async (ctx, args) => {
@@ -111,7 +129,7 @@ export const _clearStoredAccessToken = internalMutation({
  * forgotten) or a concurrent rotation may have landed in between, and each of
  * those must win. Only the four envelope columns change; the account's status
  * and connection settings are not this write's business. The cached access
- * token keyed to the old IV is dropped with it.
+ * tokens keyed to the old IV are dropped with it.
  */
 export const _rotateRefreshTokenInternal = internalMutation({
 	args: {
@@ -151,6 +169,6 @@ export async function deleteStoredAccessToken(
 	const rows = await ctx.db
 		.query('externalMailAccessTokens')
 		.withIndex('by_account', (q) => q.eq('accountId', accountId))
-		.take(10); // bounded: one row per account
+		.take(10); // bounded: one row per account and audience
 	for (const row of rows) await ctx.db.delete(row._id);
 }

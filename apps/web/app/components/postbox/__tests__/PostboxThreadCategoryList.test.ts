@@ -121,8 +121,44 @@ describe('PostboxThreadCategoryList', () => {
 		expect(headers[1]!.find('[data-testid="section-unread"]').exists()).toBe(false);
 	});
 
+	it('names the latest sender like the flat list, with the address in the tooltip', () => {
+		const w = mount(PostboxThreadGroupList, {
+			props: {
+				threads: [
+					{ ...thread('named', 0), latestFromName: 'Ben Ortiz' },
+					{ ...thread('blank', 0), latestFromName: '  ' },
+					thread('bare', 0),
+				],
+				loading: false,
+				folderRole: 'inbox',
+			},
+			global: globalOptions,
+		});
+		const sender = (id: string) => w.get(`#postbox-thread-${id} [data-testid="row-sender"]`);
+		expect(sender('named').text()).toContain('Ben Ortiz');
+		expect(sender('named').text()).not.toContain('named@example.com');
+		expect(sender('named').attributes('title')).toBe('named@example.com');
+		// No usable name: the address stands in, as it does in the flat list.
+		expect(sender('blank').text()).toContain('blank@example.com');
+		expect(sender('bare').text()).toContain('bare@example.com');
+		expect(sender('bare').attributes('title')).toBe('bare@example.com');
+	});
+
 	it('keeps the recategorize action on every row', () => {
 		const w = mountCategories();
 		expect(w.findAll('button[aria-label="Recategorize as…"]')).toHaveLength(4);
+	});
+
+	it('offers mark-read on a section header with unread mail, and says which category', async () => {
+		const w = mountCategories();
+		const headers = w.findAll('li.sticky');
+		const button = headers[0]!.get('[data-testid="section-mark-read"]');
+		expect(button.attributes('aria-label')).toBe('Mark People as read');
+		expect(headers[1]!.find('[data-testid="section-mark-read"]').exists()).toBe(false);
+
+		await button.trigger('click');
+
+		expect(w.emitted('mark-read')).toEqual([['person']]);
+		expect(w.emitted('toggle')).toBeUndefined();
 	});
 });

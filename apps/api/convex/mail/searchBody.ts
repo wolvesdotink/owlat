@@ -129,12 +129,13 @@ interface TextSearchNarrowing {
 	folderId?: Id<'mailFolders'>;
 	flagSeen?: boolean;
 	flagFlagged?: boolean;
+	flagDeleted?: boolean;
 }
 
 /** The `.eq()` chain both search indexes share, structurally. */
 interface SearchFilterable<Self> {
 	eq(fieldName: 'folderId', value: Id<'mailFolders'>): Self;
-	eq(fieldName: 'flagSeen' | 'flagFlagged', value: boolean): Self;
+	eq(fieldName: 'flagSeen' | 'flagFlagged' | 'flagDeleted', value: boolean): Self;
 }
 
 /**
@@ -158,6 +159,8 @@ export function textSearchQuery(
 		if (narrowing.flagSeen !== undefined) filtered = filtered.eq('flagSeen', narrowing.flagSeen);
 		if (narrowing.flagFlagged !== undefined)
 			filtered = filtered.eq('flagFlagged', narrowing.flagFlagged);
+		if (narrowing.flagDeleted !== undefined)
+			filtered = filtered.eq('flagDeleted', narrowing.flagDeleted);
 		return filtered;
 	};
 	return mode === 'body'

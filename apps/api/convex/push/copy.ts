@@ -10,11 +10,14 @@
  *
  * Privacy is decided here, once: a private notification (the shared "hide
  * message preview" preference) and any sealed (E2EE) message carry only a
- * generic line, never a sender, subject or chat text.
+ * generic line, never a sender, subject or chat text. A sign-in code never
+ * travels in a payload at all: its "Copy code" button opens the message, and
+ * the reader copies the code from there.
  */
 
 import type { AppLocale } from '@owlat/shared/appLocales';
 import { systemEmailLocale } from '../lib/systemEmailCopy';
+import type { McpWriteToolName } from '../lib/validators/mcp';
 
 /** The JSON the service worker (`apps/web/service-worker/sw.js`) turns into a notification. */
 export interface PushPayload {
@@ -43,6 +46,7 @@ interface Copy {
 	newMessage: string;
 	noSubject: string;
 	encryptedMail: string;
+	copyCode: string;
 	assignedTitle: string;
 	assignedBody: (subject: string, by: string) => string;
 	assignedPrivate: string;
@@ -57,6 +61,10 @@ interface Copy {
 	quietBody: (count: number) => string;
 	testTitle: string;
 	testBody: string;
+	mcpTitle: string;
+	mcpBody: (client: string, verb: string) => string;
+	mcpPrivate: string;
+	mcpVerbs: Record<McpWriteToolName, string>;
 }
 
 const COPY: Record<AppLocale, Copy> = {
@@ -65,6 +73,7 @@ const COPY: Record<AppLocale, Copy> = {
 		newMessage: 'New message',
 		noSubject: '(no subject)',
 		encryptedMail: 'New encrypted message',
+		copyCode: 'Copy code',
 		assignedTitle: 'Assigned to you',
 		assignedBody: (subject, by) => `${subject} · from ${by}`,
 		assignedPrivate: 'A conversation was assigned to you',
@@ -82,12 +91,23 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} notifications arrived during quiet hours`,
 		testTitle: 'Notifications are on',
 		testBody: 'This device will show Owlat notifications.',
+		mcpTitle: 'Approval needed',
+		mcpBody: (client, verb) => `${client} wants to ${verb}`,
+		mcpPrivate: 'An AI client is waiting for your approval',
+		mcpVerbs: {
+			create_draft: 'create a draft',
+			send_draft: 'send an email',
+			archive_thread: 'archive a conversation',
+			move_thread: 'move a conversation',
+			label_thread: 'label a conversation',
+		},
 	},
 	de: {
 		newMail: 'Neue E-Mail',
 		newMessage: 'Neue Nachricht',
 		noSubject: '(kein Betreff)',
 		encryptedMail: 'Neue verschlüsselte Nachricht',
+		copyCode: 'Code kopieren',
 		assignedTitle: 'Dir zugewiesen',
 		assignedBody: (subject, by) => `${subject} · von ${by}`,
 		assignedPrivate: 'Dir wurde eine Konversation zugewiesen',
@@ -105,6 +125,16 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} Benachrichtigungen sind während der Ruhezeiten eingegangen`,
 		testTitle: 'Benachrichtigungen sind an',
 		testBody: 'Dieses Gerät zeigt Owlat-Benachrichtigungen an.',
+		mcpTitle: 'Freigabe nötig',
+		mcpBody: (client, verb) => `${client} möchte ${verb}`,
+		mcpPrivate: 'Ein KI-Client wartet auf deine Freigabe',
+		mcpVerbs: {
+			create_draft: 'einen Entwurf anlegen',
+			send_draft: 'eine E-Mail senden',
+			archive_thread: 'eine Konversation archivieren',
+			move_thread: 'eine Konversation verschieben',
+			label_thread: 'eine Konversation mit einem Label versehen',
+		},
 	},
 };
 
@@ -134,7 +164,16 @@ export interface MailNotice {
 	subject: string;
 	/** The message arrived sealed (PGP/MIME): never show anything from it. */
 	isSealed: boolean;
+	/** The message carries a live one-time code (mail/signInCodes.ts). */
+	hasSignInCode?: boolean;
 }
+
+/**
+ * The reader copies the open message's code once when its route carries this
+ * query (`usePostboxSignInCodeIntent` in the web app). A service worker cannot
+ * write to the clipboard, so the button can only hand the copy to the page.
+ */
+export const SIGN_IN_CODE_COPY_QUERY = 'signInCode=copy';
 
 export function mailPayload(
 	notice: MailNotice,
@@ -145,13 +184,18 @@ export function mailPayload(
 	const tag = `mail:${notice.threadId}`;
 	const url = `/dashboard/postbox/inbox/${notice.messageId}?mailbox=${notice.mailboxId}`;
 	if (notice.isSealed) return { title: copy.newMail, body: copy.encryptedMail, tag, url };
-	if (isPrivate) return { title: copy.newMail, body: copy.newMessage, tag, url };
-	return {
-		title: clip(notice.senderName, MAX_TITLE),
-		body: clip(notice.subject, MAX_BODY) || copy.noSubject,
-		tag,
-		url,
-	};
+	// A sign-in link gets no button: opening the message is already one click
+	// from its chip, and the link itself never leaves the server in a payload.
+	const actions: PushAction[] | undefined = notice.hasSignInCode
+		? [{ action: 'copy-code', title: copy.copyCode, url: `${url}&${SIGN_IN_CODE_COPY_QUERY}` }]
+		: undefined;
+	const text = isPrivate
+		? { title: copy.newMail, body: copy.newMessage }
+		: {
+				title: clip(notice.senderName, MAX_TITLE),
+				body: clip(notice.subject, MAX_BODY) || copy.noSubject,
+			};
+	return { ...text, tag, url, ...(actions ? { actions } : {}) };
 }
 
 export interface AssignmentNoticeCopy {
@@ -237,5 +281,24 @@ export function testPayload(locale: string | undefined): PushPayload {
 		body: copy.testBody,
 		tag: 'test',
 		url: '/dashboard/preferences/device#push',
+	};
+}
+
+/** Where an approval notification opens: the waiting actions on the AI clients page. */
+export const MCP_APPROVALS_URL = '/dashboard/preferences/ai-clients#approvals';
+
+export function mcpActionPayload(
+	notice: { actionId: string; clientLabel: string; tool: McpWriteToolName },
+	locale: string | undefined,
+	isPrivate: boolean
+): PushPayload {
+	const copy = copyFor(locale);
+	return {
+		title: copy.mcpTitle,
+		body: isPrivate
+			? copy.mcpPrivate
+			: clip(copy.mcpBody(clip(notice.clientLabel, 40), copy.mcpVerbs[notice.tool]), MAX_BODY),
+		tag: `mcp:${notice.actionId}`,
+		url: MCP_APPROVALS_URL,
 	};
 }

@@ -1,11 +1,13 @@
 /**
- * The member's MCP clients (AI clients reading their mail over MCP): list,
+ * The member's MCP clients (AI clients reaching their mail over MCP): list,
  * connect and revoke, plus the server address a client is pointed at.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getActiveWorkspace, isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+
+export type McpClientAccess = 'read' | 'read_write';
 
 /** Shown instead of a host when the instance has no public site URL configured. */
 const SITE_URL_PLACEHOLDER = 'https://<your-convex-site-url>';
@@ -33,8 +35,8 @@ export function useMcpClients() {
 		label: () => t('shared.useMcpClients.revokeOperation'),
 	});
 
-	function create(label: string, mailboxIds: Id<'mailboxes'>[]) {
-		return createOperation.run({ label, mailboxIds });
+	function create(label: string, mailboxIds: Id<'mailboxes'>[], access: McpClientAccess) {
+		return createOperation.run({ label, mailboxIds, access });
 	}
 
 	async function revoke(clientId: Id<'mcpClients'>) {

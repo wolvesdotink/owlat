@@ -124,6 +124,7 @@ export const appendMessage = internalMutation({
 				firstMessageAt: internalDate,
 				latestSnippet: snippet,
 				latestFromAddress: args.fromAddress,
+				...(args.fromName ? { latestFromName: args.fromName } : {}),
 				latestSubject: args.subject,
 				folderRoles: folder.role ? [folder.role] : [],
 				labelIds: [],

@@ -8,8 +8,8 @@
  *   - `global`: one value for the whole install (update checks, notification
  *     toggles, startup workspace);
  *   - `workspaces`: device-local per-workspace preferences keyed by workspace
- *     id (currently notification mute). Server-side workspace settings stay in
- *     Convex and are NOT mirrored here.
+ *     id (notification mute, the mailbox the tray counts). Server-side
+ *     workspace settings stay in Convex and are NOT mirrored here.
  *
  * The store is read with `normalizeDesktopSettings`, which merges any raw
  * value over the defaults — a missing, corrupt, or older-versioned file can
@@ -35,6 +35,12 @@ export interface GlobalDesktopSettings {
 	 * instead of quitting. macOS always hides it. Also read by tray.rs.
 	 */
 	closeToTray: boolean;
+	/**
+	 * macOS: leave the Dock and run from the menu bar icon alone. Applies only
+	 * while `showTrayIcon` is on, since nothing else could bring the app back.
+	 * Also read by tray.rs.
+	 */
+	hideDockIcon: boolean;
 	/** Workspace to activate on a cold app launch; null = last active. */
 	startupWorkspaceId: string | null;
 }
@@ -43,6 +49,11 @@ export interface GlobalDesktopSettings {
 export interface WorkspaceLocalSettings {
 	/** Suppress notification toasts while this workspace is active. */
 	muteNotifications: boolean;
+	/**
+	 * The one mailbox the tray icon counts and lists, or null for all inboxes.
+	 * Per workspace because a mailbox id belongs to one workspace's backend.
+	 */
+	trayMailboxId: string | null;
 }
 
 /** Shape persisted to `settings.json` (key `state`). */
@@ -61,6 +72,7 @@ export function defaultDesktopSettings(): DesktopSettings {
 			showUnreadBadge: true,
 			showTrayIcon: true,
 			closeToTray: true,
+			hideDockIcon: false,
 			startupWorkspaceId: null,
 		},
 		workspaces: {},
@@ -68,7 +80,7 @@ export function defaultDesktopSettings(): DesktopSettings {
 }
 
 export function defaultWorkspaceLocalSettings(): WorkspaceLocalSettings {
-	return { muteNotifications: false };
+	return { muteNotifications: false, trayMailboxId: null };
 }
 
 function pickBoolean(value: unknown, fallback: boolean): boolean {
@@ -97,6 +109,7 @@ export function normalizeDesktopSettings(raw: unknown): DesktopSettings {
 	base.global.showUnreadBadge = pickBoolean(g['showUnreadBadge'], base.global.showUnreadBadge);
 	base.global.showTrayIcon = pickBoolean(g['showTrayIcon'], base.global.showTrayIcon);
 	base.global.closeToTray = pickBoolean(g['closeToTray'], base.global.closeToTray);
+	base.global.hideDockIcon = pickBoolean(g['hideDockIcon'], base.global.hideDockIcon);
 	base.global.startupWorkspaceId =
 		typeof g['startupWorkspaceId'] === 'string' ? g['startupWorkspaceId'] : null;
 
@@ -107,6 +120,10 @@ export function normalizeDesktopSettings(raw: unknown): DesktopSettings {
 			const v = value as Record<string, unknown>;
 			base.workspaces[id] = {
 				muteNotifications: pickBoolean(v['muteNotifications'], false),
+				trayMailboxId:
+					typeof v['trayMailboxId'] === 'string' && v['trayMailboxId'] !== ''
+						? v['trayMailboxId']
+						: null,
 			};
 		}
 	}

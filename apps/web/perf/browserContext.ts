@@ -14,7 +14,7 @@
  * one run to the next. Only `Date` is pinned; timers and animation frames run
  * at real speed, which the streaming scenarios' cadence depends on.
  */
-import type { Browser, BrowserContext, BrowserContextOptions } from '@playwright/test';
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 
 export const SCENARIO_CONTEXT = {
 	viewport: { width: 1280, height: 800 },
@@ -34,6 +34,20 @@ export const SCENARIO_NOW = Date.UTC(2026, 8, 15, 12, 0, 0);
 /** A fresh context for one run, with {@link SCENARIO_CONTEXT}. */
 export function newScenarioContext(browser: Pick<Browser, 'newContext'>): Promise<BrowserContext> {
 	return browser.newContext({ ...SCENARIO_CONTEXT, viewport: { ...SCENARIO_CONTEXT.viewport } });
+}
+
+/**
+ * Fire one timer through the pinned clock before the runner takes its
+ * baseline. Playwright's fake clock (1.65 and later) yields after every timer
+ * callback through a `MessageChannel` it creates on the first one, and the
+ * port's `onmessage` handler lives as long as the page. Without this the first
+ * timer a component sets registers that handler between the baseline and the
+ * teardown reading, and every scenario seems to leave one JS event listener
+ * behind. Fired here, the handler belongs to the baseline, so "listeners left"
+ * counts only what the components kept.
+ */
+export async function primePinnedClock(page: Pick<Page, 'evaluate'>): Promise<void> {
+	await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 }
 
 /** What the page reports it runs in; a run whose page disagrees with the context is refused. */

@@ -20,6 +20,7 @@ export type ThreadListRow = Pick<
 	| '_id'
 	| 'latestMessageId'
 	| 'latestFromAddress'
+	| 'latestFromName'
 	| 'latestSubject'
 	| 'latestSnippet'
 	| 'lastMessageAt'
@@ -55,6 +56,7 @@ export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
 	// Optional keys ride only when set, so an absent field never travels as a
 	// present `undefined`.
 	if (thread.latestMessageId) row.latestMessageId = thread.latestMessageId;
+	if (thread.latestFromName) row.latestFromName = thread.latestFromName;
 	if (thread.category) row.category = { label: thread.category.label };
 	if (thread.pinnedAt !== undefined) row.pinnedAt = thread.pinnedAt;
 	const flag = thread.needsReply;

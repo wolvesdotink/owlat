@@ -17,6 +17,7 @@ import type { SectionKey } from '~/composables/useSidebarState';
 import type { OrganizationRole } from '~/composables/useOrganization';
 import { SETTINGS_REGISTRY } from './settingsRegistry';
 import {
+	ArchiveIcon,
 	BrainIcon,
 	BriefcaseIcon,
 	ChartBarVerticalIcon,
@@ -173,6 +174,32 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				name: 'shared.dashboardNavigation.items.postbox.allInboxes',
 				href: '/dashboard/postbox/all-inboxes',
 				icon: InboxIcon,
+			},
+			// The unified folders: one system folder of every mailbox, merged.
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allSent',
+				href: '/dashboard/postbox/all-sent',
+				icon: PaperPlaneIcon,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allDrafts',
+				href: '/dashboard/postbox/all-drafts',
+				icon: FileEditIcon,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allArchive',
+				href: '/dashboard/postbox/all-archive',
+				icon: ArchiveIcon,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allSpam',
+				href: '/dashboard/postbox/all-spam',
+				icon: ShieldWarningIcon,
+			},
+			{
+				name: 'shared.dashboardNavigation.items.postbox.allTrash',
+				href: '/dashboard/postbox/all-trash',
+				icon: TrashIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.inbox',

@@ -3,12 +3,17 @@
  * for it), so the sidebar's admin-only parts hold their place with a skeleton
  * while the role loads instead of popping in afterwards.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
 import MarketingNav from '../MarketingNav.vue';
+
+// The inbox drop targets are their own test (railMailboxDrop.test.ts).
+vi.mock('~/composables/postbox/usePostboxMessageDrag', () => ({
+	usePostboxMailboxDropTargets: () => ({ isOver: () => false, mailbox: () => ({}) }),
+}));
 
 let flags: Set<string>;
 let isAdmin: ReturnType<typeof ref<boolean>>;

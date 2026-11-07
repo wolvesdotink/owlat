@@ -218,6 +218,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				v-if="fromInbox"
 				:name="fromInbox.name"
 				:slot="fromInbox.slot"
+				:mark="fromInbox.mark"
 				data-testid="postbox-from-inbox"
 			/>
 			<span v-if="!showFromDropdown" class="truncate text-text-secondary">{{

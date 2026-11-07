@@ -19,6 +19,7 @@ type GapReason = NonNullable<NonNullable<BriefModeView['gap']>['reason']>;
 
 const NONE_TEXT: Partial<Record<GapReason, string>> = {
 	aiOff: 'components.brief.incomplete.none.aiOff',
+	aiProvider: 'components.brief.incomplete.none.aiProvider',
 	budget: 'components.brief.incomplete.none.budget',
 	undecryptable: 'components.brief.incomplete.none.undecryptable',
 	ineligible: 'components.brief.incomplete.none.ineligible',
@@ -36,14 +37,45 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 
 /**
  * Reasons that are the instance's state, not the thread's: AI is off or has
- * no provider, or its budget is used up. Every thread reads the same, so the
- * banner is a quiet note that points an admin to AI settings, never a
- * warning about this thread.
+ * no provider, the provider refused the key, or its budget is used up. Every
+ * thread reads the same, so the banner is a quiet note that points an admin
+ * to AI settings, never a warning about this thread.
  */
 const INSTANCE_REASON: Partial<Record<GapReason, string>> = {
 	aiOff: 'components.brief.incomplete.partialReason.aiOff',
+	aiProvider: 'components.brief.incomplete.partialReason.aiProvider',
 	budget: 'components.brief.incomplete.partialReason.budget',
 };
+
+/**
+ * Reasons about one message of the thread. With the gap's message known, the
+ * banner names it (sender and date) instead of saying "the rest".
+ */
+const PARTIAL_MESSAGE: Partial<Record<GapReason, string>> = {
+	tooLong: 'components.brief.incomplete.partialMessage.tooLong',
+	failed: 'components.brief.incomplete.partialMessage.failed',
+	undecryptable: 'components.brief.incomplete.partialMessage.undecryptable',
+};
+const NONE_MESSAGE: Partial<Record<GapReason, string>> = {
+	failed: 'components.brief.incomplete.noneMessage.failed',
+	undecryptable: 'components.brief.incomplete.noneMessage.undecryptable',
+};
+
+export interface BriefBannerOptions {
+	isSigned?: boolean;
+	/** Renders the date of a message a banner names; without it the banner names none. */
+	formatDate?: (at: number) => string;
+}
+
+/** The sender and date params of the message the gap is about, if it can be named. */
+function messageParams(
+	brief: BriefGapInput | null,
+	formatDate: BriefBannerOptions['formatDate']
+): { from: string; date: string } | null {
+	const message = brief?.gap?.message;
+	if (!message || !formatDate) return null;
+	return { from: message.from, date: formatDate(message.at) };
+}
 
 /** What the banners read: the same on a personal brief and a team view. */
 export type BriefGapInput = Pick<ThreadBriefView, 'completeness' | 'gap' | 'deferredSources'>;
@@ -63,10 +95,11 @@ function isReadingDeferred(brief: BriefGapInput): boolean {
 
 export function briefBanners(
 	brief: BriefGapInput | null,
-	opts: { isSigned?: boolean } = {}
+	opts: BriefBannerOptions = {}
 ): BriefBanner[] {
 	const banners: BriefBanner[] = [];
 	const reason = brief?.gap?.reason;
+	const named = messageParams(brief, opts.formatDate);
 	if (reason === 'security') {
 		banners.push({
 			key: 'security',
@@ -92,10 +125,14 @@ export function briefBanners(
 			offersConversation: true,
 		});
 	} else if (!brief || brief.completeness === 'none') {
+		const namedKey = named && reason ? NONE_MESSAGE[reason] : undefined;
 		banners.push({
 			key: 'none',
 			tone: 'neutral',
-			text: (reason && NONE_TEXT[reason]) || 'components.brief.incomplete.none.default',
+			text:
+				namedKey && named
+					? { key: namedKey, params: named }
+					: (reason && NONE_TEXT[reason]) || 'components.brief.incomplete.none.default',
 			offersConversation: true,
 			...(reason && INSTANCE_REASON[reason] ? { offersAiSettings: true } : {}),
 		});
@@ -126,6 +163,7 @@ export function briefBanners(
 		});
 	} else if (brief.completeness === 'partial') {
 		const gap = brief.gap;
+		const namedKey = named && reason ? PARTIAL_MESSAGE[reason] : undefined;
 		banners.push({
 			key: 'partial',
 			tone: 'warn',
@@ -133,8 +171,15 @@ export function briefBanners(
 			// Every partial text names the counts, so one without a gap says less.
 			text: gap
 				? {
-						key: (reason && PARTIAL_REASON[reason]) ?? 'components.brief.incomplete.partialCount',
-						params: { done: gap.interpretedMessages, total: gap.totalMessages },
+						key:
+							namedKey ??
+							(reason && PARTIAL_REASON[reason]) ??
+							'components.brief.incomplete.partialCount',
+						params: {
+							done: gap.interpretedMessages,
+							total: gap.totalMessages,
+							...(namedKey ? named : {}),
+						},
 					}
 				: 'components.brief.incomplete.partialPlain',
 			offersConversation: true,

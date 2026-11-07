@@ -7,6 +7,7 @@ import type {
 	SendMessageOptions,
 	VerifyOptions,
 } from '@owlat/smtp-client';
+import type * as SmtpClient from '@owlat/smtp-client';
 
 // --- Mocks ------------------------------------------------------------------
 // vi.mock factories are hoisted above the file, so the shared mock fns they
@@ -28,7 +29,11 @@ const { sendMessage, verify, imapConnect, imapList, imapAppend, imapLogout, warn
 
 // The in-house SMTP client replaces the old library: sendMessage does the one-shot
 // connect → AUTH → MAIL/RCPT/DATA → QUIT; verify does connect → AUTH → QUIT.
-vi.mock('@owlat/smtp-client', () => ({ sendMessage, verify }));
+vi.mock('@owlat/smtp-client', async (importOriginal) => ({
+	...(await importOriginal<typeof SmtpClient>()),
+	sendMessage,
+	verify,
+}));
 
 // ImapFlow is a named export used with `new`; the mock must be constructible,
 // so use a `function` (not an arrow) and assign the shared spies onto `this`.
@@ -47,9 +52,22 @@ vi.mock('../logger.js', () => ({
 }));
 
 // Imported after mocks so the module picks up the mocked deps.
-import { sendMessage as clientSendMessage, verify as clientVerify } from '@owlat/smtp-client';
+import {
+	SmtpError,
+	sendMessage as clientSendMessage,
+	verify as clientVerify,
+} from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
-import { fileSentCopy, sendViaExternal, testConnection } from '../send.js';
+import {
+	fileSentCopy,
+	GRAPH_SEND_MAIL_URL,
+	GraphSendError,
+	isSmtpAuthRefusedByExchange,
+	sendViaExternal,
+	sendViaGraph,
+	testConnection,
+	withEnvelopeBcc,
+} from '../send.js';
 
 const CREDS: WorkerCredentials = {
 	imapHost: 'imap.example.com',
@@ -620,5 +638,117 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		expect(testImap.secure).toBe(liveImap.secure);
 		expect(testImap.doSTARTTLS).toBe(liveImap.doSTARTTLS);
 		expect(testImap.tls).toEqual(liveImap.tls);
+	});
+});
+
+describe('sendViaGraph', () => {
+	const MIME = Buffer.from(
+		[
+			'From: Ada <ada@contoso.com>',
+			'To: Bob <bob@example.com>,',
+			'\tcarol@example.com',
+			'Cc: "Dan, the reviewer" <dan@example.com>',
+			'Subject: hi',
+			'',
+			'body to: eve@example.com',
+		].join('\r\n')
+	);
+
+	function stubGraph(response: Response) {
+		const calls: { url: string; init: RequestInit }[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init: RequestInit) => {
+				calls.push({ url, init });
+				return response;
+			})
+		);
+		return calls;
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('posts the base64 MIME with a Bcc header for the envelope-only recipients', async () => {
+		const calls = stubGraph(new Response(null, { status: 202 }));
+
+		const result = await sendViaGraph('graph-token', {
+			recipients: ['bob@example.com', 'Carol@example.com', 'dan@example.com', 'eve@example.com'],
+			raw: MIME,
+		});
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.url).toBe(GRAPH_SEND_MAIL_URL);
+		expect(calls[0]?.init.method).toBe('POST');
+		expect(calls[0]?.init.headers).toEqual({
+			Authorization: 'Bearer graph-token',
+			'Content-Type': 'text/plain',
+		});
+		const sent = Buffer.from(String(calls[0]?.init.body), 'base64');
+		// Only eve is missing from the headers (the body's "to:" is not a header).
+		expect(sent.toString()).toBe(`Bcc: eve@example.com\r\n${MIME.toString()}`);
+		expect(result.recipients).toEqual([
+			{ address: 'bob@example.com', status: 'sent' },
+			{ address: 'Carol@example.com', status: 'sent' },
+			{ address: 'dan@example.com', status: 'sent' },
+			{ address: 'eve@example.com', status: 'sent' },
+		]);
+	});
+
+	it('leaves a message whose headers name every recipient untouched', () => {
+		expect(withEnvelopeBcc(MIME, ['bob@example.com'])).toBe(MIME);
+	});
+
+	it('keeps a bare-LF message in its own line ending', () => {
+		const raw = Buffer.from('From: a@example.com\nTo: b@example.com\n\nhi');
+		expect(withEnvelopeBcc(raw, ['b@example.com', 'c@example.com']).toString()).toBe(
+			'Bcc: c@example.com\nFrom: a@example.com\nTo: b@example.com\n\nhi'
+		);
+	});
+
+	it("reports Graph's refusal with its code, as retryable", async () => {
+		stubGraph(
+			Response.json(
+				{ error: { code: 'ErrorAccessDenied', message: 'Access is denied.' } },
+				{ status: 403 }
+			)
+		);
+
+		const err = await sendViaGraph('graph-token', {
+			recipients: ['b@example.com'],
+			raw: MIME,
+		}).catch((e: unknown) => e);
+
+		expect(err).toBeInstanceOf(GraphSendError);
+		expect((err as GraphSendError).message).toBe(
+			'Microsoft Graph refused the message (403 ErrorAccessDenied: Access is denied.)'
+		);
+		expect((err as GraphSendError).permanent).toBe(false);
+	});
+
+	it('refuses a message over Graph’s request limit without calling it', async () => {
+		const calls = stubGraph(new Response(null, { status: 202 }));
+		const big = Buffer.concat([MIME, Buffer.alloc(3 * 1024 * 1024 + 1, 'a')]);
+
+		const err = await sendViaGraph('graph-token', {
+			recipients: ['b@example.com'],
+			raw: big,
+		}).catch((e: unknown) => e);
+
+		expect(calls).toHaveLength(0);
+		expect((err as GraphSendError).permanent).toBe(true);
+	});
+});
+
+describe('isSmtpAuthRefusedByExchange', () => {
+	it("recognises Exchange Online's SMTP AUTH refusal and nothing else", () => {
+		const refusal = (phase: 'auth' | 'mail', enhancedCode: string) =>
+			new SmtpError({ phase, message: 'rejected', replyCode: 535, enhancedCode, secured: true });
+
+		expect(isSmtpAuthRefusedByExchange(refusal('auth', '5.7.139'))).toBe(true);
+		expect(isSmtpAuthRefusedByExchange(refusal('auth', '5.7.8'))).toBe(false);
+		expect(isSmtpAuthRefusedByExchange(refusal('mail', '5.7.139'))).toBe(false);
+		expect(isSmtpAuthRefusedByExchange(new Error('5.7.139'))).toBe(false);
 	});
 });

@@ -11,6 +11,11 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import SidebarFooter from '../SidebarFooter.vue';
 import ConversationsNav from '../ConversationsNav.vue';
 
+// The inbox drop targets are their own test (railMailboxDrop.test.ts).
+vi.mock('~/composables/postbox/usePostboxMessageDrag', () => ({
+	usePostboxMailboxDropTargets: () => ({ isOver: () => false, mailbox: () => ({}) }),
+}));
+
 // The account menu's "Show setup checklist" needs a Convex client; not under test here.
 vi.mock('~/composables/useGettingStartedControls', () => ({
 	useGettingStartedControls: () => ({ showChecklist: vi.fn() }),

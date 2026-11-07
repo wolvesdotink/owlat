@@ -57,6 +57,8 @@ function mountPostboxHelp() {
 beforeEach(() => {
 	postboxHelpOpen.value = false;
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
+	// The mailbox `g` chords read the route to stay inside the unified folders.
+	vi.stubGlobal('useRoute', () => ({ params: {}, query: {} }));
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useState', () => postboxHelpOpen);
 	vi.stubGlobal('isEditableTarget', isEditableTarget);

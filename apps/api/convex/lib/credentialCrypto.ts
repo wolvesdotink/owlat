@@ -203,3 +203,31 @@ export function encryptSecret(plaintext: string): EncryptedEnvelope {
 export function decryptSecret(envelope: EncryptedEnvelope): string {
 	return externalMailBox().open(envelope);
 }
+
+// The CardDAV address-book password box (mail/contactsCardDavActions.ts). Its
+// own labels, so a CardDAV envelope never opens under the external-mail key
+// and the other way round. Changing either label is a KDF change: bump
+// CARDDAV_CRED_VERSION and re-seal the stored envelopes.
+const CARDDAV_HKDF_SALT = 'owlat:carddav:salt:v1';
+const CARDDAV_HKDF_INFO = 'owlat:carddav:password:v1';
+export const CARDDAV_CRED_VERSION = 1;
+
+function cardDavBox(): SecretBox {
+	return createSecretBox(requireStrongInstanceSecret(), {
+		salt: CARDDAV_HKDF_SALT,
+		info: CARDDAV_HKDF_INFO,
+	});
+}
+
+/** Seal a CardDAV password into a versioned, authenticated envelope. */
+export function sealCardDavPassword(password: string): EncryptedEnvelope {
+	return { ...cardDavBox().seal(password), version: CARDDAV_CRED_VERSION };
+}
+
+/** Open a CardDAV password envelope. Throws on tamper or a wrong key. */
+export function openCardDavPassword(envelope: EncryptedEnvelope): string {
+	if (envelope.version !== CARDDAV_CRED_VERSION) {
+		throw new Error(`Unknown CardDAV credential version ${envelope.version}`);
+	}
+	return cardDavBox().open(envelope);
+}

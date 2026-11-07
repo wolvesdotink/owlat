@@ -55,9 +55,12 @@ const localSelected = ref<string[]>([]);
 watch(
 	() => (teamView.value ? teamView.value.forTeam : brief.value?.forYou),
 	(items) => {
-		// Every open item for the reader starts selected ("Reply to all 4").
+		// Every open item for the reader starts selected ("Reply to all 4"), but
+		// one that needs review again: its message has to be read again first.
 		if (localSelected.value.length === 0 && items) {
-			localSelected.value = items.filter((i) => i.status === 'open').map((i) => i.id);
+			localSelected.value = items
+				.filter((i) => i.status === 'open' && !i.withdrawn)
+				.map((i) => i.id);
 		}
 	},
 	{ immediate: true }

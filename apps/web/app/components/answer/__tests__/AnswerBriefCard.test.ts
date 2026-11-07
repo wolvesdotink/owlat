@@ -53,6 +53,36 @@ describe('AnswerBriefCard', () => {
 		expect(boxes.map((b) => (b.element as HTMLInputElement).checked)).toEqual([true, true]);
 	});
 
+	it('marks an item that needs review again, with its earlier confirmation, and leaves it unselected', async () => {
+		view.value = briefView({
+			forYou: [
+				item({ id: 'a', text: 'Send the signed contract' }),
+				item({
+					id: 'w',
+					text: 'Pay account 999',
+					verify: 'proposal',
+					isReviewNeeded: true,
+					evidence: [],
+					withdrawn: { at: Date.UTC(2026, 9, 8), confirmedAt: Date.UTC(2026, 9, 7, 12) },
+				}),
+			],
+		});
+		const w = mountCard();
+		await flushPromises();
+		const rows = w.findAll('[data-testid="brief-item"]');
+		const withdrawn = rows.find((r) => r.text().includes('Pay account 999'))!;
+		expect(withdrawn.text()).toContain('Needs review again:');
+		expect(withdrawn.text()).not.toContain('Check this:');
+		expect(withdrawn.get('[data-testid="brief-item-withdrawn"]').text()).toContain(
+			'The signature covers less of this message'
+		);
+		expect(withdrawn.get('[data-testid="brief-item-confirmed-earlier"]').text()).toMatch(
+			/Confirmed on .*7/
+		);
+		const boxes = w.findAll('[data-testid="brief-item-select"]');
+		expect(boxes.map((b) => (b.element as HTMLInputElement).checked)).toEqual([true, false]);
+	});
+
 	it('shows a shared mailbox its actions only, never a summary', async () => {
 		const base = briefView();
 		view.value = {

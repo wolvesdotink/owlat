@@ -129,6 +129,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	// Postbox sidecar family (children + logs before mailboxes)
 	'mailThreads',
 	'mailContacts',
+	// Sealed CardDAV passwords; after the rows that name the account.
+	'mailCardDavAccounts',
 	'mailSenderCategoryOverrides',
 	'mailSenderImageAllowlist',
 	'mailTriageTallies',

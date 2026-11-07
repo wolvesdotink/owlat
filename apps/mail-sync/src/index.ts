@@ -49,6 +49,7 @@ export async function main(): Promise<void> {
 			void manager.requestReconcile();
 		},
 		requestRemoteOps: (accountId) => manager.requestRemoteOps(accountId),
+		requestSync: (accountIds) => manager.requestSync(accountIds),
 		metrics: metrics.registry,
 	});
 	// Deliverability seed-probe sweep. With no seed mailboxes connected — the

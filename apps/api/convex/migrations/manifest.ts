@@ -168,4 +168,18 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		isSteppingStone: false,
 		run: internal.migrations['0069_restrict_captured_file_knowledge'].run,
 	},
+	{
+		migration: '0070_reconcile_fenced_threads',
+		introducedIn: '0.6.20',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0070_reconcile_fenced_threads'].run,
+	},
+	{
+		migration: '0071_backfill_thread_sender_names',
+		introducedIn: '0.6.21',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0071_backfill_thread_sender_names'].run,
+	},
 ];

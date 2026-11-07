@@ -23,12 +23,14 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxThreadCategories', () => reads.categories);
 	vi.stubGlobal('usePostboxThreadSections', () => reads.sections);
 	vi.stubGlobal('usePostboxThreadBundles', () => ({}));
+	vi.stubGlobal('usePostboxViewMarkRead', () => ({}));
 });
 
 function sources(renderer: Ref<PostboxViewMode>, showingCached = ref(false)) {
 	return usePostboxListSources({
 		mailboxId: ref(null),
 		folderRole: ref('inbox'),
+		folderId: ref(undefined),
 		renderer,
 		listMessages: ref([]),
 		flatRead: reads.flat,

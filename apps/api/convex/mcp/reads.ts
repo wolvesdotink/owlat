@@ -21,6 +21,7 @@ import { openStoredInlineBody } from '../lib/messageBodyStore';
 import { normalizeClause } from '../mail/mailbox/searchClause';
 import { searchMailbox, searchMailboxes } from '../mail/mailbox/search';
 import { resolveMcpAccess } from './access';
+import type { McpActivityOutcome } from '../lib/validators/mcp';
 
 /** Longest body one message returns; the rest is cut and flagged. */
 const BODY_MAX_CHARS = 20_000;
@@ -28,7 +29,15 @@ const BODY_MAX_CHARS = 20_000;
 type Audit = { mailboxId?: Id<'mailboxes'>; threadId?: Id<'mailThreads'>; resultCount?: number };
 
 export type ToolOutcome =
-	| { status: 'ok'; payload: Record<string, unknown>; audit: Audit }
+	| {
+			status: 'ok';
+			payload: Record<string, unknown>;
+			audit: Audit;
+			// A write's answer is logged as the step it reached, not as `ok`.
+			logAs?: McpActivityOutcome;
+			// Owlat's own words about an action, not mail: sent without the untrusted fence.
+			isAction?: true;
+	  }
 	| { status: 'denied' | 'invalid'; message: string; audit: Audit };
 
 const NO_ACCESS = 'This connection no longer has access. Ask its owner to check it in Owlat.';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
-import { ALL_INBOXES_PATH } from '~/utils/postboxAllInboxes';
+import { ALL_INBOXES_PATH, isUnifiedFolderPath } from '~/utils/postboxAllInboxes';
 import {
 	BrainIcon,
 	BriefcaseIcon,
@@ -11,6 +11,8 @@ import {
 	ReplyAllIcon,
 } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
+import { uniqueRailLabels } from '~/utils/inboxIdentity';
+import { usePostboxMailboxDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
@@ -18,7 +20,9 @@ import { navIcon } from '~/lib/navIcons';
  * (one tab per inbox), the Answer queue, Tasks, Companies, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
- * per inbox, with its unread count and a highlight on the inbox that is open.
+ * per inbox with its mark or initials, its unread count and a highlight on the
+ * inbox that is open. Every inbox, folded or not, takes a message drag from a
+ * Postbox list into that mailbox (`usePostboxMailboxDropTargets`).
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -34,6 +38,7 @@ const { inboxes, hasPersonalMail } = useInboxes();
 const { count: answerCount } = useAnswerQueueCount();
 const { count: taskCount } = useTaskOpenCount();
 const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
+const mailboxDrop = usePostboxMailboxDropTargets();
 
 const showTeamInbox = computed(() => isAdmin.value && isEnabled('inbox'));
 const showChat = computed(() => isAdmin.value && isEnabled('chat'));
@@ -108,17 +113,10 @@ const pinned = computed(() => [
 		: []),
 ]);
 
-/** Icon-rail labels: the first letter, or two where two inboxes share one. */
+/** Icon-rail labels: the shortest start of each name that tells it apart. */
 const railLabels = computed(() => {
-	const firsts = inboxes.value.map((i) => i.name.charAt(0).toUpperCase());
-	return new Map(
-		inboxes.value.map((inbox, index) => [
-			inbox.mailboxId,
-			firsts.filter((f) => f === firsts[index]).length > 1
-				? inbox.name.slice(0, 2)
-				: firsts[index]!,
-		])
-	);
+	const labels = uniqueRailLabels(inboxes.value.map((inbox) => inbox.name));
+	return new Map(inboxes.value.map((inbox, index) => [inbox.mailboxId, labels[index]!]));
 });
 
 // The mailbox the Postbox is showing: the one its URL names, else the shared
@@ -127,8 +125,9 @@ const railLabels = computed(() => {
 const { activeMailboxId } = usePostboxActiveMailbox();
 const openMailboxId = computed(() => {
 	if (!route.path.startsWith('/dashboard/postbox')) return null;
-	// All inboxes shows every inbox at once; its own pinned row is the one lit.
-	if (route.path === ALL_INBOXES_PATH || route.path.startsWith(`${ALL_INBOXES_PATH}/`)) return null;
+	// All inboxes and the unified folders show every mailbox at once; their
+	// pinned row is the one lit.
+	if (isUnifiedFolderPath(route.path)) return null;
 	const requested = route.query['mailbox'];
 	return typeof requested === 'string' ? requested : activeMailboxId.value;
 });
@@ -140,6 +139,8 @@ function railInboxLabel(inbox: { name: string; unread: number }): string {
 }
 
 function isActive(to: string, exact: boolean): boolean {
+	// The unified folders are All inboxes' own folders, so its row stays lit there.
+	if (to === ALL_INBOXES_PATH) return isUnifiedFolderPath(route.path);
 	return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`);
 }
 </script>
@@ -192,15 +193,19 @@ function isActive(to: string, exact: boolean): boolean {
 					:aria-label="railInboxLabel(inbox)"
 					:aria-current="openMailboxId === inbox.mailboxId ? 'page' : undefined"
 					class="relative flex justify-center rounded-lg py-2 transition-colors"
-					:class="
+					:class="[
 						openMailboxId === inbox.mailboxId
 							? 'bg-(--surface-2-selected)'
-							: 'hover:bg-(--surface-2-hover)'
-					"
+							: 'hover:bg-(--surface-2-hover)',
+						{ 'pbx-drop-target': mailboxDrop.isOver(inbox.mailboxId) },
+					]"
+					v-on="mailboxDrop.mailbox(inbox.mailboxId)"
 				>
 					<InboxChip
 						:name="railLabels.get(inbox.mailboxId) ?? inbox.name.charAt(0)"
 						:slot="inbox.slot"
+						:mark="inbox.mark"
+						mark-only
 						variant="plain"
 						size="md"
 					/>
@@ -277,6 +282,8 @@ function isActive(to: string, exact: boolean): boolean {
 				:limit="perInbox"
 				:sort="sort"
 				:collapsed="isCollapsed(`inbox:${inbox.mailboxId}`)"
+				:drop="mailboxDrop.mailbox(inbox.mailboxId)"
+				:is-drop-target="mailboxDrop.isOver(inbox.mailboxId)"
 				@toggle="toggleGroup(`inbox:${inbox.mailboxId}`)"
 			/>
 			<ShellTeamInboxGroup

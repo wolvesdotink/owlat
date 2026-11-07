@@ -19,6 +19,7 @@
  */
 
 import { v } from 'convex/values';
+import { sha256Hex } from '../lib/aiRouting/routeDigest';
 
 /** Org-level sealing policy (`instanceSettings.sealPolicy`). Unset ⇒ `auto`. */
 export type SealPolicy = 'auto' | 'ask' | 'off';
@@ -162,7 +163,7 @@ export const sealSkipReasonValidator = v.union(
 );
 
 /** The dispatch-time decision: seal (with the exact recipient keys) or send plaintext. */
-type SealDecision =
+export type SealDecision =
 	| { seal: true; recipientPublicKeysArmored: string[] }
 	| { seal: false; reason: SealSkipReason };
 
@@ -233,6 +234,23 @@ export function decideSeal(inputs: SealInputs): SealDecision {
 	// Keys are ready. `ask` never seals automatically; only `auto` seals now.
 	if (inputs.policy === 'ask') return { seal: false, reason: 'policy_ask' };
 	return { seal: true, recipientPublicKeysArmored: keys };
+}
+
+/**
+ * What a send's sealing comes to, in a form an approval can bind: sealed to
+ * exactly these keys (`keysDigest`, a SHA-256 over the recipient public keys in
+ * order, so a rotated key changes it), or plaintext and why. The approval
+ * review of an AI client's send (`mcp/actionReview.ts`) and dispatch
+ * (`outbound/build.ts`) both derive it from {@link decideSeal}.
+ */
+export type SealOutcome =
+	| { isSealed: true; keysDigest: string }
+	| { isSealed: false; reason: SealSkipReason };
+
+export function sealOutcomeOf(decision: SealDecision): SealOutcome {
+	return decision.seal
+		? { isSealed: true, keysDigest: sha256Hex(JSON.stringify(decision.recipientPublicKeysArmored)) }
+		: { isSealed: false, reason: decision.reason };
 }
 
 /**

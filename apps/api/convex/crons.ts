@@ -388,6 +388,16 @@ crons.interval(
 // stashes it archived, are purged once the bounce window has passed.
 crons.interval('purge answered drafts', { hours: 1 }, internal.mail.answeredReply.purgeExpired, {});
 
+// CardDAV address books (mail/contactsCardDav.ts): hand each account whose
+// hourly sync is due to the sync action. The tick is shorter than the interval
+// so a newly due account waits at most a quarter hour.
+crons.interval(
+	'sync CardDAV address books',
+	{ minutes: 15 },
+	internal.mail.contactsCardDav._scheduleDueSyncs,
+	{}
+);
+
 // Attachment share links (idea 10): release the bytes of every lapsed link, and
 // delete the record once it has sat byte-less through the grace window. The
 // serving route already refuses an expired token, so this is what turns
@@ -399,6 +409,10 @@ crons.interval(
 	internal.mail.attachmentShareRetention.sweepExpiredShares,
 	{}
 );
+
+// AI client (MCP) writes: lapse the ones nobody approved within a day, and
+// delete decided ones once their outcome has been readable for a month.
+crons.interval('mcp pending action sweep', { minutes: 15 }, internal.mcp.actions.sweep, {});
 
 // Postbox Reply Queue reconcile — re-schedule needs-reply classification for
 // threads whose check never reached a verdict (lost, or its run was killed).

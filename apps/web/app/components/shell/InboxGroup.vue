@@ -11,12 +11,16 @@ import { ChevronDownIcon, PlusIcon } from '@coolicons/vue';
  * "+" to write from this inbox) and its latest conversations, each with one
  * status. "Show more" carries the most urgent status that did not fit, so
  * nothing urgent hides behind the fold. Collapsing keeps the header's dot.
+ * The header takes a message drag from a Postbox list (`drop`, from
+ * `usePostboxMailboxDropTargets`), moving the rows into this inbox.
  */
 const props = defineProps<{
 	inbox: InboxIdentity<Id<'mailboxes'>>;
 	limit: number;
 	sort: SidebarThreadSort;
 	collapsed: boolean;
+	drop?: Record<string, (event: DragEvent) => void>;
+	isDropTarget?: boolean;
 }>();
 const emit = defineEmits<{ toggle: [] }>();
 
@@ -60,7 +64,11 @@ const moreCount = computed(() =>
 
 <template>
 	<div class="mt-0.5">
-		<div class="group/inbox flex items-center gap-1 rounded-md pr-1 hover:bg-(--surface-2-hover)">
+		<div
+			class="group/inbox flex items-center gap-1 rounded-md pr-1 hover:bg-(--surface-2-hover)"
+			:class="{ 'pbx-drop-target': isDropTarget }"
+			v-on="drop ?? {}"
+		>
 			<button
 				type="button"
 				class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
@@ -79,7 +87,13 @@ const moreCount = computed(() =>
 			</button>
 			<UiTooltip :text="inbox.address">
 				<NuxtLink :to="inboxHref" class="flex min-w-0 flex-1 items-center gap-2 py-1">
-					<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+					<InboxChip
+						:name="inbox.name"
+						:slot="inbox.slot"
+						:mark="inbox.mark"
+						variant="plain"
+						size="md"
+					/>
 					<ShellStatusPill v-if="data?.groupStatus" :status="data.groupStatus" dot-only />
 					<span
 						v-if="inbox.unread > 0"

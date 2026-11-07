@@ -22,12 +22,15 @@ import { useCommandPaletteObjectItems } from '~/composables/useCommandPaletteObj
 import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
 import { useCommandPaletteArgument } from '~/composables/useCommandPaletteArgument';
 import { useCommandPaletteAsk } from '~/composables/useCommandPaletteAsk';
+import { useCommandPaletteMailAsk } from '~/composables/useCommandPaletteMailAsk';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
+import { api } from '@owlat/api';
+import { getFunctionName, type FunctionReference } from 'convex/server';
 import QueryResult from '../query/QueryResult.vue';
 import { TagIcon } from '@coolicons/vue';
 
@@ -118,6 +121,7 @@ function installStubs(path: string, overrides: Record<string, unknown> = {}) {
 		useCommandPaletteObjectRecents,
 		useCommandPaletteArgument,
 		useCommandPaletteAsk,
+		useCommandPaletteMailAsk,
 		useDebouncedSearch,
 		useModalFocus: vi.fn(),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId }),
@@ -534,6 +538,64 @@ describe('AppCommandPalette — Ask scope', () => {
 		);
 		await nextTick();
 		expect(scopeChip()).toBe('Ask');
+	});
+});
+
+describe('AppCommandPalette — Ask your mailbox', () => {
+	const mailAnswer = {
+		answer: 'Your flight leaves at 7:40 [1].',
+		citations: [
+			{
+				index: 1,
+				messageId: 'message-7',
+				mailboxId: 'mailbox-team',
+				folderId: 'folder-inbox',
+				threadId: 'thread-7',
+				subject: 'Lisbon flight',
+				from: 'Airline',
+				date: Date.parse('2026-10-02T09:00:00Z'),
+			},
+		],
+		bodySearchUsed: false,
+		isTruncated: false,
+	};
+
+	/** One backend run per action, so the test sees which one a question reached. */
+	function installMailAsk(runs: Record<string, ReturnType<typeof vi.fn>>) {
+		installStubs('/dashboard/postbox/inbox', {
+			useBackendOperation: (fn: FunctionReference<'action'>) => ({
+				run: runs[getFunctionName(fn)] ?? vi.fn(),
+				isLoading: ref(false),
+				error: ref(null),
+			}),
+		});
+	}
+
+	it('answers a `?` question in Postbox from mail, and a source opens its message', async () => {
+		const mailRun = vi.fn(async () => ({ ok: true, result: mailAnswer }));
+		const knowledgeRun = vi.fn();
+		installMailAsk({
+			[getFunctionName(api.mail.ai.askMailbox.askMailbox)]: mailRun,
+			[getFunctionName(api.assistant.quickQuery.ask)]: knowledgeRun,
+		});
+		await openPalette();
+		await type('?when does my flight to lisbon leave');
+		await press('Enter');
+		await nextTick();
+
+		expect(mailRun).toHaveBeenCalledWith({ question: 'when does my flight to lisbon leave' });
+		expect(knowledgeRun).not.toHaveBeenCalled();
+		expect(document.body.textContent).toContain('Your flight leaves at 7:40 [1].');
+		expect(document.body.textContent).toContain('headers and snippets only');
+
+		document.body
+			.querySelector<HTMLButtonElement>('button[aria-label="Open message 1: Lisbon flight"]')
+			?.click();
+		await nextTick();
+		expect(setActiveMailboxId).toHaveBeenCalledWith('mailbox-team');
+		expect(navigateTo).toHaveBeenCalledWith({ path: '/dashboard/postbox/folder-inbox/message-7' });
+		// The palette closed on the way out.
+		expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 	});
 });
 

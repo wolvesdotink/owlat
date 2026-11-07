@@ -64,6 +64,10 @@ export const instanceHotRowTables = {
 	//                   `mail/appPasswords.touch`), written at most hourly.
 	//                   Read by `mail/imap/serverRegistry` and
 	//                   `maintenance/workerRegistry`.
+	//   - aiProvider:   aiProviderAuthFailure, when the language provider first
+	//                   and last refused the instance's key
+	//                   (`aiRouting/providerHealth.ts`). Cleared by the next
+	//                   call it accepts or a save of the AI settings.
 	instanceCounters: defineTable({
 		key: v.union(
 			v.literal('contacts'),
@@ -71,7 +75,8 @@ export const instanceHotRowTables = {
 			v.literal('sends'),
 			v.literal('mtaHealth'),
 			v.literal('deliveryTest'),
-			v.literal('imapLegacy')
+			v.literal('imapLegacy'),
+			v.literal('aiProvider')
 		),
 		contactCount: v.optional(v.number()),
 		inboxStats: v.optional(inboxStatsValidator),
@@ -82,6 +87,9 @@ export const instanceHotRowTables = {
 		mtaHealth: v.optional(mtaHealthSnapshotValidator),
 		deliveryTestLastSucceededAt: v.optional(v.number()),
 		legacyImapSeenAt: v.optional(v.number()),
+		aiProviderAuthFailure: v.optional(
+			v.object({ firstSeenAt: v.number(), lastSeenAt: v.number() })
+		),
 		updatedAt: v.number(),
 	}).index('by_key', ['key']),
 };
