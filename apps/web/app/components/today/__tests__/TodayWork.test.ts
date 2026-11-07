@@ -31,6 +31,7 @@ beforeAll(() => {
 		formatCompactRelativeTime: () => '1m',
 		inject,
 		useConvexQuery: () => ({ data: teamTops }),
+		useConvexQueryMap: () => new Map([['batch', { data: teamTops }]]),
 		useInboxes: () => ({ byId: ref(new Map()), inboxes: ref([]) }),
 		useToast: () => ({ showToast: () => {} }),
 		useBackendOperation: () => ({ run: async () => ({ ok: true }) }),
@@ -349,6 +350,20 @@ describe('TodayWork · requests and tasks', () => {
 		} finally {
 			isBriefShown.value = true;
 		}
+	});
+
+	it('says when more requests wait than it could read, and links the inbox', () => {
+		const w = mountWork({
+			answer: [],
+			todo: [request()],
+			counts,
+			isLoading: false,
+			isTruncated: true,
+			moreHref: '/dashboard/postbox/all-inboxes?in=mb1',
+		});
+		const note = w.find('[data-testid="today-work-truncated"]');
+		expect(note.text()).toContain('More requests are waiting than fit here.');
+		expect(note.find('a').attributes('href')).toBe('/dashboard/postbox/all-inboxes?in=mb1');
 	});
 
 	it('rides a task on the card of the conversation it came from', () => {

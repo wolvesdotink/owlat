@@ -156,15 +156,33 @@ export function buildWorkCards(input: {
 	});
 }
 
-/** A task belongs to a Workbench tab when it came from that inbox; hand-made ones show under All. */
+/**
+ * A task belongs to a Workbench tab when it came from that inbox; hand-made
+ * ones show under All. When the tab is the only one (a single inbox, so no
+ * All), it shows every task: a task must never be left without a tab.
+ */
 export function taskInScope(
 	task: TaskView,
 	scope: string,
 	allScope: string,
-	teamScope: string
+	teamScope: string,
+	options: { isOnlyTab?: boolean } = {}
 ): boolean {
-	if (scope === allScope) return true;
+	if (scope === allScope || options.isOnlyTab) return true;
 	if (!task.source) return false;
 	if (scope === teamScope) return task.source.kind === 'team';
 	return task.source.kind === 'mail' && task.source.mailboxId === scope;
+}
+
+/**
+ * Distinct ids in groups of at most `size`, each joined with commas, for a
+ * read that takes a bounded list (one subscription per group).
+ */
+export function idBatches(ids: readonly string[], size: number): string[] {
+	const distinct = [...new Set(ids)];
+	const batches: string[] = [];
+	for (let i = 0; i < distinct.length; i += size) {
+		batches.push(distinct.slice(i, i + size).join(','));
+	}
+	return batches;
 }

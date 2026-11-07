@@ -7888,7 +7888,8 @@
 				"open": "Open",
 				"showMore": "Show {count} more | Show {count} more",
 				"showFewer": "Show fewer",
-				"task": "Task"
+				"task": "Task",
+				"truncated": "More requests are waiting than fit here."
 			}
 		},
 		"answer": {

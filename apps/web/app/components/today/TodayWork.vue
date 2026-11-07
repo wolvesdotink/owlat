@@ -44,8 +44,12 @@ const props = withDefaults(
 		queueHref: string;
 		/** Name each card's inbox (the All view spans several). */
 		showInbox?: boolean;
+		/** More requests wait in the inboxes than the list could read. */
+		isTruncated?: boolean;
+		/** Where the rest is: the open tab's inbox. */
+		moreHref?: string;
 	}>(),
-	{ showInbox: false }
+	{ showInbox: false, isTruncated: false, moreHref: '/dashboard/postbox/all-inboxes' }
 );
 
 /** Enough to see what comes next without a wall of cards; the rest is one click away. */
@@ -319,6 +323,17 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 				</div>
 			</li>
 		</ul>
+
+		<p
+			v-if="isTruncated"
+			class="mt-2 text-xs text-text-tertiary"
+			data-testid="today-work-truncated"
+		>
+			{{ t('components.today.work.truncated') }}
+			<NuxtLink :to="moreHref" class="text-brand hover:underline">{{
+				t('components.today.openInbox')
+			}}</NuxtLink>
+		</p>
 
 		<button
 			v-if="cards.length > SHOWN"

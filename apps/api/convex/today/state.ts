@@ -34,8 +34,9 @@ type Scope = Id<'mailboxes'> | 'team';
 type Mark = NonNullable<Doc<'todayStates'>['marks']>[number];
 
 /**
- * `previousSeenAt: 0` on a mark means "there was no mark before this one", so
- * Undo removes the mark instead of setting it to the epoch.
+ * `previousSeenAt: 0` on a mark, or on the global watermark, means "there was
+ * no mark before this one", so Undo removes the mark instead of setting it to
+ * the epoch.
  */
 const NO_EARLIER_MARK = 0;
 
@@ -174,17 +175,24 @@ export const markSeen = authedMutation({
 			return { seenAt: at };
 		}
 
+		// The first global mark remembers that there was none, so Undo can go
+		// back to the first-visit fallback, the same way a per-tab mark does.
 		if (!state) {
 			await ctx.db.insert('todayStates', {
 				userId: session.userId,
 				organizationId: session.activeOrganizationId,
 				seenAt: at,
+				previousSeenAt: NO_EARLIER_MARK,
 				updatedAt: now,
 			});
 			return { seenAt: at };
 		}
 		if (state.seenAt === undefined) {
-			await ctx.db.patch(state._id, { seenAt: at, updatedAt: now });
+			await ctx.db.patch(state._id, {
+				seenAt: at,
+				previousSeenAt: NO_EARLIER_MARK,
+				updatedAt: now,
+			});
 			return { seenAt: at };
 		}
 		if (at <= state.seenAt) return { seenAt: state.seenAt };
@@ -214,7 +222,7 @@ export const undoMarkSeen = authedMutation({
 		}
 		if (state.previousSeenAt === undefined) return { restored: false };
 		await ctx.db.patch(state._id, {
-			seenAt: state.previousSeenAt,
+			seenAt: state.previousSeenAt === NO_EARLIER_MARK ? undefined : state.previousSeenAt,
 			previousSeenAt: undefined,
 			updatedAt: Date.now(),
 		});

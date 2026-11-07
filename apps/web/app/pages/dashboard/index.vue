@@ -156,11 +156,12 @@ const scopedAnswer = computed(() =>
 	scope.value ? answer.items.value.filter((item) => answerItemMatches(item, scope.value!)) : []
 );
 const scopedCounts = computed(() => answerCounts(scopedAnswer.value));
-const { myTasks, scopedTasks, scopedTodo, workCount } = useWorkbenchWork({
+const { myTasks, scopedTasks, scopedTodo, isTodoTruncated, workCount } = useWorkbenchWork({
 	scope,
 	inbox,
 	shownMailboxIds,
 	answer: scopedAnswer,
+	isOnlyTab: computed(() => allScopes.value.length <= 1),
 });
 const mentions = computed(() => answer.counts.value.mention);
 const answerHref = computed(() =>
@@ -421,6 +422,8 @@ useWorkbenchKeyboard({
 							:is-loading="answer.isLoading.value || myTasks.isLoading.value"
 							:queue-href="answerHref"
 							:show-inbox="isAll"
+							:is-truncated="!isZen && isTodoTruncated"
+							:more-href="moreHref"
 						/>
 					</TodayLane>
 

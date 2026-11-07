@@ -410,16 +410,6 @@ watch(
 						<span class="min-w-0 flex-1 truncate">{{ sourceLabel }}</span>
 						<ExternalLinkIcon class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
 					</NuxtLink>
-					<UiButton
-						v-if="canReplyAbout"
-						size="sm"
-						variant="secondary"
-						data-testid="task-detail-reply"
-						@click="replyAbout"
-					>
-						<ReplyIcon class="size-3.5" aria-hidden="true" />
-						{{ t('components.tasks.detail.replyAbout') }}
-					</UiButton>
 					<p
 						v-else
 						class="flex items-center gap-2 rounded-lg border border-dashed border-border-subtle px-3 py-2 text-sm text-text-secondary"
@@ -432,6 +422,16 @@ watch(
 						/>
 						{{ sourceLabel }}
 					</p>
+					<UiButton
+						v-if="canReplyAbout"
+						size="sm"
+						variant="secondary"
+						data-testid="task-detail-reply"
+						@click="replyAbout"
+					>
+						<ReplyIcon class="size-3.5" aria-hidden="true" />
+						{{ t('components.tasks.detail.replyAbout') }}
+					</UiButton>
 				</div>
 			</div>
 

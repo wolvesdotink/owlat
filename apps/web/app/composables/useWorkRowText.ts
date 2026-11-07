@@ -1,4 +1,5 @@
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type { Ref } from 'vue';
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import { briefLocale } from '~/composables/threadBrief/briefApi';
@@ -7,7 +8,7 @@ import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { parseFromHeader } from '~/utils/todayDigest';
 import { briefMoreChip, briefRowLatest } from '~/utils/briefRowLine';
 import { briefDueDate } from '~/utils/threadBriefContext';
-import type { WorkTodoRow } from '~/utils/workbenchWork';
+import { idBatches, type WorkTodoRow } from '~/utils/workbenchWork';
 
 /**
  * How a piece of work reads on the Workbench: the sentence it leads with, the
@@ -22,6 +23,9 @@ import type { WorkTodoRow } from '~/utils/workbenchWork';
  *     conversations"), a personal row reads like plain mail: subject, sender
  *     and preview, without AI wording or the "+N more" chip.
  */
+/** The most threads `inbox.teamStream.topItems` takes in one read. */
+export const TEAM_TOP_BATCH = 10;
+
 export function useWorkRowText(answerItems: Ref<readonly AnswerItem[]>) {
 	const { t, locale } = useI18n();
 	const text = useLocalized();
@@ -29,20 +33,28 @@ export function useWorkRowText(answerItems: Ref<readonly AnswerItem[]>) {
 	const { byId } = useInboxes();
 
 	// A team row leads with its top open action (inbox.teamStream.topItems).
-	const teamThreadIds = computed(() =>
-		answerItems.value.flatMap((item) =>
-			item.source === 'team' && item.entry.thread?._id ? [item.entry.thread._id] : []
+	// That read takes at most TEAM_TOP_BATCH threads, so a long queue asks in
+	// batches; one batch failing leaves the others' rows their actions.
+	const teamThreadBatches = computed(() =>
+		idBatches(
+			answerItems.value.flatMap((item) =>
+				item.source === 'team' && item.entry.thread?._id ? [item.entry.thread._id] : []
+			),
+			TEAM_TOP_BATCH
 		)
 	);
-	const { data: teamTops } = useConvexQuery(api.inbox.teamStream.topItems, () =>
-		teamThreadIds.value.length > 0
-			? { threadIds: teamThreadIds.value, locale: briefLocale(locale.value) }
-			: ('skip' as const)
-	);
+	const teamTops = useConvexQueryMap(api.inbox.teamStream.topItems, teamThreadBatches, (batch) => ({
+		threadIds: batch.split(',') as Id<'conversationThreads'>[],
+		locale: briefLocale(locale.value),
+	}));
 	function teamTopOf(item: AnswerItem) {
 		if (item.source !== 'team') return null;
 		const threadId = item.entry.thread?._id;
-		return (teamTops.value ?? []).find((row) => row.threadId === threadId) ?? null;
+		for (const result of teamTops.values()) {
+			const row = (result.data.value ?? []).find((r) => r.threadId === threadId);
+			if (row) return row;
+		}
+		return null;
 	}
 
 	function isSharedRow(item: AnswerItem): boolean {

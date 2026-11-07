@@ -96,9 +96,13 @@ export function useWorkbench(
 			isBriefShown: autoSummarize.value,
 		});
 		const teamTimes = [...model.worth, ...model.also].map((line) => line.at);
-		const digestTime = mailboxIds.value
+		// The latest read among the digests on screen. A digest that has not been
+		// read again since has had nothing change in its mailbox, so marking seen
+		// as of the latest read covers every line All shows.
+		const digestTimes = mailboxIds.value
 			.map((id) => (digests.get(id)?.data.value as MailboxDigest | null | undefined)?.generatedAt)
-			.find((at) => at !== undefined);
+			.filter((at): at is number => at !== undefined);
+		const digestTime = digestTimes.length > 0 ? Math.max(...digestTimes) : undefined;
 		return {
 			model,
 			since: since.value,

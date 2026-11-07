@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import type { TaskView } from '~/types/tasks';
-import { buildWorkCards, taskInScope, type WorkTodoRow } from '../workbenchWork';
+import { buildWorkCards, idBatches, taskInScope, type WorkTodoRow } from '../workbenchWork';
 
 const NOW = new Date(2026, 10, 7, 10, 0).getTime();
 const DAY = 24 * 60 * 60 * 1000;
@@ -113,5 +113,23 @@ describe('taskInScope', () => {
 		expect(taskInScope(fromMb1, 'mb1', 'all', 'team')).toBe(true);
 		expect(taskInScope(fromMb1, 'mb2', 'all', 'team')).toBe(false);
 		expect(taskInScope(fromMb1, 'team', 'all', 'team')).toBe(false);
+	});
+
+	it('shows every task, hand-made ones too, when the tab is the only one there is', () => {
+		const handMade = task('h');
+		const fromMb2 = task('m', { source: mailSource('t1', 'mb2') as never });
+		expect(taskInScope(handMade, 'mb1', 'all', 'team', { isOnlyTab: true })).toBe(true);
+		expect(taskInScope(fromMb2, 'mb1', 'all', 'team', { isOnlyTab: true })).toBe(true);
+	});
+});
+
+describe('idBatches', () => {
+	it('splits distinct ids into groups no larger than the read takes', () => {
+		const ids = Array.from({ length: 11 }, (_, i) => `t${i}`);
+		const batches = idBatches([...ids, 't0'], 10);
+		expect(batches).toHaveLength(2);
+		expect(batches[0]!.split(',')).toHaveLength(10);
+		expect(batches[1]).toBe('t10');
+		expect(idBatches([], 10)).toEqual([]);
 	});
 });

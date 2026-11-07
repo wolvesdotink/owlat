@@ -19,13 +19,15 @@ export function useWorkbenchWork(input: {
 	/** The mailboxes All combines. */
 	shownMailboxIds: Ref<readonly Id<'mailboxes'>[]>;
 	answer: Ref<readonly AnswerItem[]>;
+	/** The open tab is the only one (a single inbox, so there is no All). */
+	isOnlyTab: Ref<boolean>;
 }) {
 	const myTasks = useConvexQuery(api.tasks.tasks.list, { view: 'mine' });
 	const scopedTasks = computed(() => {
 		const scope = input.scope.value;
 		if (!scope) return [];
 		return (myTasks.data.value ?? []).filter((task) =>
-			taskInScope(task, scope, ALL_SCOPE, TEAM_SCOPE)
+			taskInScope(task, scope, ALL_SCOPE, TEAM_SCOPE, { isOnlyTab: input.isOnlyTab.value })
 		);
 	});
 
@@ -48,6 +50,11 @@ export function useWorkbenchWork(input: {
 		)
 	);
 
+	/** More requests wait than the reads return: said, never dropped silently. */
+	const isTodoTruncated = computed(() =>
+		todoMailboxIds.value.some((id) => todoReads.get(id)?.data.value?.isTruncated === true)
+	);
+
 	// The number on the lane: one per card, as TodayWork groups them.
 	const workCount: ComputedRef<number> = computed(
 		() =>
@@ -60,5 +67,5 @@ export function useWorkbenchWork(input: {
 			}).length
 	);
 
-	return { myTasks, scopedTasks, scopedTodo, workCount };
+	return { myTasks, scopedTasks, scopedTodo, isTodoTruncated, workCount };
 }
