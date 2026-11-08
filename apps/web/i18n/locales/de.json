@@ -19363,7 +19363,8 @@
 				"makeTask": "Aufgabe aus dieser Unterhaltung anlegen",
 				"markDone": "„{item}“ als erledigt markieren",
 				"openTasks": "Aufgaben aus dieser Unterhaltung öffnen",
-				"openCount": "1 offen | {count} offen"
+				"openCount": "1 offen | {count} offen",
+				"allDone": "Alles erledigt"
 			}
 		},
 		"conversationLink": {

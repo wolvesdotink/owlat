@@ -45,7 +45,7 @@ const mountedHeaders = shallowRef<readonly string[]>([]);
  * Registers the open conversation's task verbs with the command palette while
  * its purpose header is mounted: Make task from this conversation, Done on
  * the top item (only while the header offers it), and Open tasks from this
- * conversation (only while there are some). They run the header's own
+ * conversation (while any task was taken from it, finished ones included). They run the header's own
  * actions, so the palette and the header can never disagree.
  */
 export function useConversationTaskCommands(sources: ConversationTaskCommandSources): void {
@@ -69,9 +69,7 @@ export function useConversationTaskCommands(sources: ConversationTaskCommandSour
 	};
 	// The same query the company panel beside the conversation reads, so one subscription.
 	const tasksQuery = useConvexQuery(api.tasks.tasks.forThread, args);
-	const openTasks = computed(() =>
-		(tasksQuery.data.value ?? []).filter((task) => task.status === 'open')
-	);
+	const tasks = computed(() => tasksQuery.data.value ?? []);
 
 	function items(): PaletteItem[] {
 		const list: PaletteItem[] = [
@@ -93,13 +91,17 @@ export function useConversationTaskCommands(sources: ConversationTaskCommandSour
 				run: sources.markDone,
 			});
 		}
-		const first = openTasks.value[0];
+		// Finished tasks stay reachable: the first open one leads, else the first finished.
+		const first = tasks.value.find((task) => task.status === 'open') ?? tasks.value[0];
 		if (first) {
-			const count = openTasks.value.length;
+			const count = tasks.value.filter((task) => task.status === 'open').length;
 			list.push({
 				id: 'conversation:open-tasks',
 				label: t('shared.commandPaletteSurfaces.conversationTasks.openTasks'),
-				subtitle: t('shared.commandPaletteSurfaces.conversationTasks.openCount', { count }, count),
+				subtitle:
+					count > 0
+						? t('shared.commandPaletteSurfaces.conversationTasks.openCount', { count }, count)
+						: t('shared.commandPaletteSurfaces.conversationTasks.allDone'),
 				icon: ListUnorderedIcon,
 				run: () => void navigateTo(`/dashboard/tasks?task=${first._id}`),
 			});

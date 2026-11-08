@@ -1,7 +1,7 @@
 /**
  * The open conversation's task verbs in the palette: Make task always, Done
  * on the top item only while the purpose header offers it, the conversation's
- * open tasks only while there are some. Only on the reader and Team Inbox
+ * tasks while any was taken from it, finished ones included. Only on the reader and Team Inbox
  * routes, only for the conversation in front (the Today overlay over the
  * folder reader), and gone once the conversation closes.
  */
@@ -114,10 +114,22 @@ describe('useConversationTaskCommands', () => {
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/tasks?task=task_1');
 	});
 
-	it('leaves out Done when the header does not offer it, and the tasks when none is open', () => {
-		tasks.value = [{ _id: 'task_3', status: 'done' }];
+	it('leaves out Done when the header does not offer it, and the tasks when none was taken', () => {
+		tasks.value = [];
 		mountHeader(sources({ doneItem: () => null }));
 		expect(items().map((item) => item.id)).toEqual(['conversation:make-task']);
+	});
+
+	it('keeps the tasks reachable once all are finished, opening the first finished one', () => {
+		tasks.value = [
+			{ _id: 'task_3', status: 'done' },
+			{ _id: 'task_4', status: 'dropped' },
+		];
+		mountHeader(sources());
+		const entry = byId(items(), 'conversation:open-tasks')!;
+		expect(entry.subtitle).toBe('All done');
+		entry.run();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/tasks?task=task_3');
 	});
 
 	it('reads a Team Inbox thread by its conversation, on the Team Inbox route', () => {

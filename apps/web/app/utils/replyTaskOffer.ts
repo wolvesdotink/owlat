@@ -2,8 +2,8 @@
  * After a reply on a conversation has gone out, the viewer's open tasks taken
  * from that conversation may be finished too. Never automatically: a reply is
  * not proof that the task is done. These are the pure halves of that offer:
- * which toast to show, and the holds that keep it back until the send is
- * final.
+ * which toast to show, and whether the reply has actually gone, read from the
+ * server's record of the send.
  */
 
 interface OfferableTask<Id extends string = string> {
@@ -35,11 +35,9 @@ export function replyTaskOffer<T extends OfferableTask>(
 }
 
 /**
- * Where a mail reply stands once the composer reports it sent. Only a reply
- * held in its undo window (or dispatched at once, with undo-send off) will
- * leave on its own within seconds. A send scheduled for later, or one queued
- * on the device while offline, has not gone and may still be taken back long
- * after this page is gone, so neither is offered.
+ * Whether a mail reply the composer reports sent is worth watching. A send
+ * scheduled for later, or one queued on the device while offline, will not
+ * leave while anyone is looking, so neither is held.
  */
 export function mailReplyWillLeave(outcome: {
 	scheduled: boolean;
@@ -50,30 +48,84 @@ export function mailReplyWillLeave(outcome: {
 }
 
 /**
- * The replies waiting out their undo window, each with what to do once it has
- * gone. A hold ends one of two ways: `release` when the window has run out
- * (the message left), or `cancel` when the sender took it back. Whichever
- * comes first wins; the other then finds nothing.
+ * Where a held reply stands, read from the server's own record of it. Only
+ * `sent` releases the offer; `failed` covers everything that is not a send
+ * that reached the recipient: an Undo, a dispatch the server refused, a
+ * bounce, a reply we can no longer find.
  */
-export function createReplySendHolds<Run>() {
-	const pending = new Map<string, Run>();
-	return {
-		hold(key: string, run: Run): void {
-			pending.set(key, run);
-		},
-		/** The hold's `run`, once: the reply went out. */
-		release(key: string): Run | null {
-			const run = pending.get(key);
-			if (run === undefined) return null;
-			pending.delete(key);
-			return run;
-		},
-		/** The sender took the reply back: nothing will be offered for it. */
-		cancel(key: string): void {
-			pending.delete(key);
-		},
-		has(key: string): boolean {
-			return pending.has(key);
-		},
-	};
+export type ReplySendStatus = 'waiting' | 'sent' | 'failed';
+
+/** A row of `mail.mailbox.messages.listThreadOutboundDelivery`. */
+interface OutboundRow {
+	messageId: string;
+	state: string;
+	recipients: ReadonlyArray<{ state: string }>;
+}
+
+/**
+ * The outbound rows of the thread while the reply's draft was still held:
+ * the sent message the reply becomes is the one row not among them.
+ */
+export function outboundBaseline(rows: readonly OutboundRow[] | null | undefined): string[] | null {
+	return rows ? rows.map((row) => row.messageId) : null;
+}
+
+/**
+ * A Postbox reply. `mail.drafts.get` holds the draft in `pending_send` through
+ * its undo window; the send deletes the row in the same commit that files the
+ * sent message, and an Undo or a refused dispatch puts it back to `draft`.
+ * The sent message's `outbound` record then says whether the transport took
+ * it for every recipient.
+ *
+ * `baseline` is the thread's outbound rows seen in the same snapshot as the
+ * held draft (`outboundBaseline`). Without one the draft was already gone at
+ * the first read, so the reply's message cannot be told from the others, and
+ * nothing is offered.
+ */
+export function mailReplyStatus(o: {
+	/** `undefined` while loading, `null` once the row is gone. */
+	draft: { state: string } | null | undefined;
+	baseline: readonly string[] | null;
+	/** `null`: the mailbox is not readable any more. */
+	delivery: readonly OutboundRow[] | null | undefined;
+}): ReplySendStatus {
+	if (o.draft === undefined) return 'waiting';
+	if (o.draft) return o.draft.state === 'pending_send' ? 'waiting' : 'failed';
+	if (!o.baseline || o.delivery === null) return 'failed';
+	if (o.delivery === undefined) return 'waiting';
+	const known = new Set(o.baseline);
+	const ours = o.delivery.find((row) => !known.has(row.messageId));
+	if (!ours) return 'waiting';
+	if (ours.state === 'sent') return 'sent';
+	return ours.recipients.some((r) => r.state === 'queued') ? 'waiting' : 'failed';
+}
+
+/**
+ * A team draft approved (with or without an undo window): its inbound message
+ * stays `approved` until the Send reaches a terminal edge, then becomes `sent`;
+ * an Undo or a failed Send leaves `approved` for another state.
+ */
+export function teamReplyStatus(
+	messages: ReadonlyArray<{ _id: string; processingStatus: string }> | undefined,
+	inboundMessageId: string
+): ReplySendStatus {
+	if (!messages) return 'waiting';
+	const status = messages.find((m) => m._id === inboundMessageId)?.processingStatus;
+	if (status === 'sent') return 'sent';
+	return status === 'approved' ? 'waiting' : 'failed';
+}
+
+/**
+ * A team follow-up: `scheduled` through its undo window, `sending` while its
+ * Send is out, then `sent` or `failed` (a refusal at dispatch writes no Send).
+ * An undone follow-up is left out of the list.
+ */
+export function followUpStatus(
+	followUps: ReadonlyArray<{ _id: string; status: string }> | undefined,
+	followUpId: string
+): ReplySendStatus {
+	if (!followUps) return 'waiting';
+	const status = followUps.find((f) => f._id === followUpId)?.status;
+	if (status === 'sent') return 'sent';
+	return status === 'scheduled' || status === 'sending' ? 'waiting' : 'failed';
 }

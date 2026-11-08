@@ -3,7 +3,6 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
-import { cancelReplyTaskOffer } from '~/composables/useReplyTaskOffer';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { PaperPlaneIcon } from '@coolicons/vue';
 
@@ -58,8 +57,6 @@ function message(seconds: number): string {
  */
 async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state.value) {
 	if (!undoToken) return;
-	// Taken back: no offer to finish its conversation's tasks.
-	cancelReplyTaskOffer('mail', undoToken);
 	if (isQueuedSendToken(undoToken)) {
 		// Offline queue: undo = un-queue. Reopen the composer seeded from the
 		// queued payload so the message lands back in the editor, nothing lost.

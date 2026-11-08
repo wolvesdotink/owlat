@@ -1,7 +1,8 @@
+import { shallowRef, type ShallowRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useTaskActions } from '~/composables/useTaskActions';
-import { createReplySendHolds, mailReplyWillLeave, replyTaskOffer } from '~/utils/replyTaskOffer';
+import { mailReplyWillLeave, replyTaskOffer } from '~/utils/replyTaskOffer';
 
 /** The conversation a reply went to, as `tasks.forThread` takes it. */
 export interface ReplyTaskTarget {
@@ -10,53 +11,115 @@ export interface ReplyTaskTarget {
 }
 
 /**
- * The undo windows a reply can wait out: a Postbox send (`undoToken`), a team
- * draft approve (`approveHoldToken`) and a team follow-up (its id).
+ * A reply waiting to be confirmed sent, with the server record that will say
+ * so (see `ReplyTaskOfferWatch`, which watches it).
  */
-export type ReplySendWindow = 'mail' | 'approve' | 'followUp';
+export type ReplyTaskHold =
+	/** A Postbox reply: its draft, and a message of its thread to read the thread's sent mail by. */
+	| {
+			kind: 'mail';
+			key: string;
+			target: ReplyTaskTarget;
+			draftId: Id<'mailDrafts'>;
+			threadMessageId: Id<'mailMessages'>;
+	  }
+	/** A team draft approved: the inbound message it answers. */
+	| {
+			kind: 'approve';
+			key: string;
+			target: ReplyTaskTarget;
+			inboundMessageId: Id<'inboundMessages'>;
+	  }
+	/** A team follow-up. */
+	| { kind: 'followUp'; key: string; target: ReplyTaskTarget; followUpId: Id<'inboxFollowUps'> };
 
 /** A Postbox reply as its composer reported it (PostboxComposer's `sent`). */
 export interface MailReplySent {
 	scheduled: boolean;
-	receipt?: { undoToken: string; sendAt: number };
 	/** The receipt is the on-device outbox's (`isQueuedSendToken`). */
 	queuedOffline: boolean;
 }
 
-/** A team reply that went out (useTeamThreadComposer's `onSent`); `sendAt` ends its undo window. */
+/** A team reply that went out (useTeamThreadComposer's `onSent`). */
 export type TeamReplySent =
 	| { kind: 'reply'; messageId: string; sendAt?: number }
 	| { kind: 'followUp'; followUpId: string; sendAt?: number };
 
 /**
  * Module state, not component state: a reply is usually sent from a page that
- * leaves right after (Answer mode goes back), and the offer has to outlive it.
- * The held closure keeps the sending page's own toast and task actions, which
- * do not need the page to stay mounted.
+ * leaves right after (Answer mode goes back). The shell's composer host
+ * (ShellComposerOverlay) mounts one watcher per hold, so a hold lives as long
+ * as the dashboard does and no longer.
  */
-const holds = createReplySendHolds<() => void>();
-const holdKey = (kind: ReplySendWindow, token: string) => `${kind}:${token}`;
+const holds: ShallowRef<readonly ReplyTaskHold[]> = shallowRef([]);
 
-/**
- * An approve's undo window is keyed by its message. The same message can be
- * approved again after an Undo, so the time it leaves tells the two apart.
- */
-export function approveHoldToken(messageId: string, sendAt: number): string {
-	return `${messageId}@${sendAt}`;
+/** The replies waiting to be confirmed sent. Read-only: add through the helpers below. */
+export function useReplyTaskHolds(): Readonly<ShallowRef<readonly ReplyTaskHold[]>> {
+	return holds;
 }
 
-/** The sender took the reply back: Undo on its toast, or on the follow-up. */
-export function cancelReplyTaskOffer(kind: ReplySendWindow, token: string): void {
-	holds.cancel(holdKey(kind, token));
+function hold(entry: ReplyTaskHold): void {
+	if (holds.value.some((h) => h.key === entry.key)) return;
+	holds.value = [...holds.value, entry];
+}
+
+/** The hold has settled (sent and offered, failed, undone, or given up on). */
+export function releaseReplyTaskHold(key: string): void {
+	holds.value = holds.value.filter((h) => h.key !== key);
+}
+
+/** The shell is gone (signed out, left the dashboard): nothing is watched or offered any more. */
+export function clearReplyTaskHolds(): void {
+	holds.value = [];
+}
+
+/** Watch a Postbox reply until the server confirms it sent. */
+export function holdMailReplyOffer(
+	sent: MailReplySent,
+	ids: {
+		draftId: string | null | undefined;
+		threadMessageId: string;
+		mailThreadId: string | null | undefined;
+	}
+): void {
+	if (!ids.draftId || !ids.mailThreadId || !mailReplyWillLeave(sent)) return;
+	hold({
+		kind: 'mail',
+		key: `mail:${ids.draftId}`,
+		target: { mailThreadId: ids.mailThreadId as Id<'mailThreads'> },
+		draftId: ids.draftId as Id<'mailDrafts'>,
+		threadMessageId: ids.threadMessageId as Id<'mailMessages'>,
+	});
+}
+
+/** Watch a team reply until the server confirms its Send went out. */
+export function holdTeamReplyOffer(
+	sent: TeamReplySent,
+	conversationThreadId: Id<'conversationThreads'>
+): void {
+	const target = { conversationThreadId };
+	if (sent.kind === 'reply') {
+		hold({
+			kind: 'approve',
+			// Approved again after an Undo is another send: the window end tells them apart.
+			key: `approve:${sent.messageId}:${sent.sendAt ?? 'now'}`,
+			target,
+			inboundMessageId: sent.messageId as Id<'inboundMessages'>,
+		});
+	} else {
+		hold({
+			kind: 'followUp',
+			key: `followUp:${sent.followUpId}`,
+			target,
+			followUpId: sent.followUpId as Id<'inboxFollowUps'>,
+		});
+	}
 }
 
 /**
- * Offers to finish the viewer's open tasks from a conversation once a reply to
- * it has actually gone (see `utils/replyTaskOffer`). Call from setup.
- *
- * `offerWhenSent` waits for the reply's undo window to close, which is when
- * the server dispatches it; an Undo in the meantime cancels the hold
- * (`cancelReplyTaskOffer`). A reply that left at once uses `offer` directly.
+ * The toast offering to finish the viewer's open tasks from a conversation
+ * (see `utils/replyTaskOffer`), for a reply already confirmed sent. Call from
+ * setup.
  */
 export function useReplyTaskOffer() {
 	const { t } = useI18n();
@@ -103,36 +166,5 @@ export function useReplyTaskOffer() {
 		);
 	}
 
-	/** Offer once `sendAt` (the end of the reply's undo window) has passed without an Undo. */
-	function offerWhenSent(
-		kind: ReplySendWindow,
-		token: string,
-		target: ReplyTaskTarget,
-		sendAt: number
-	): void {
-		const key = holdKey(kind, token);
-		holds.hold(key, () => void offer(target));
-		setTimeout(() => holds.release(key)?.(), Math.max(0, sendAt - Date.now()));
-	}
-
-	function offerAfterMailReply(sent: MailReplySent, mailThreadId: string | null | undefined) {
-		const receipt = sent.receipt;
-		if (!mailThreadId || !receipt || !mailReplyWillLeave(sent)) return;
-		const target = { mailThreadId: mailThreadId as Id<'mailThreads'> };
-		offerWhenSent('mail', receipt.undoToken, target, receipt.sendAt);
-	}
-
-	function offerAfterTeamReply(
-		sent: TeamReplySent,
-		conversationThreadId: Id<'conversationThreads'>
-	) {
-		const target = { conversationThreadId };
-		// No window: the server dispatches it now.
-		if (sent.sendAt === undefined) void offer(target);
-		else if (sent.kind === 'reply') {
-			offerWhenSent('approve', approveHoldToken(sent.messageId, sent.sendAt), target, sent.sendAt);
-		} else offerWhenSent('followUp', sent.followUpId, target, sent.sendAt);
-	}
-
-	return { offer, offerWhenSent, offerAfterMailReply, offerAfterTeamReply };
+	return { offer };
 }

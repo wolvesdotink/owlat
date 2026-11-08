@@ -113,7 +113,6 @@ beforeAll(() => {
 			return state.get(key);
 		},
 		useConvex: () => null,
-		useToast: () => ({ showToast: vi.fn() }),
 		useConvexQuery: useConvexQueryByName,
 		usePostboxActiveMessageRead,
 		usePostboxSettings: () => ({

@@ -1,19 +1,25 @@
 /**
- * The offer to finish a conversation's tasks waits for the reply to leave:
- * nothing while its undo window is open, the offer when it closes, nothing at
- * all after an Undo, for a scheduled send or for one queued offline. It never
- * marks a task done on its own: only the toast's action does.
+ * Which replies are watched for a confirmed send, and the offer once one is:
+ * one open task by name with Mark done, several by count with Review, none
+ * with nothing. A scheduled send, one queued offline and a reply with no draft
+ * or thread are never watched. The offer never marks a task done on its own.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestI18n } from '~/__tests__/i18n';
 
 const setStatus = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('~/composables/useTaskActions', () => ({ useTaskActions: () => ({ setStatus }) }));
 
-import { approveHoldToken, cancelReplyTaskOffer, useReplyTaskOffer } from '../useReplyTaskOffer';
+import {
+	clearReplyTaskHolds,
+	holdMailReplyOffer,
+	holdTeamReplyOffer,
+	releaseReplyTaskHold,
+	useReplyTaskHolds,
+	useReplyTaskOffer,
+} from '../useReplyTaskOffer';
 
 const { t, locale } = createTestI18n().global;
-const T0 = Date.UTC(2026, 10, 8, 9, 0);
 
 let showToast: ReturnType<typeof vi.fn>;
 let query: ReturnType<typeof vi.fn>;
@@ -21,8 +27,7 @@ let navigateTo: ReturnType<typeof vi.fn>;
 let tasks: Array<{ _id: string; title: string; status: string }>;
 
 beforeEach(() => {
-	vi.useFakeTimers();
-	vi.setSystemTime(T0);
+	clearReplyTaskHolds();
 	showToast = vi.fn();
 	navigateTo = vi.fn();
 	tasks = [{ _id: 'task_1', title: 'Send the signed contract', status: 'open' }];
@@ -34,60 +39,69 @@ beforeEach(() => {
 	vi.stubGlobal('navigateTo', navigateTo);
 });
 
-afterEach(() => {
-	vi.useRealTimers();
-});
+const keys = () => useReplyTaskHolds().value.map((h) => h.key);
+const mailIds = { draftId: 'd1', threadMessageId: 'm1', mailThreadId: 'thread_1' };
 
 function lastToast() {
-	const [message, type, options] = showToast.mock.lastCall as [
+	const [message, , options] = showToast.mock.lastCall as [
 		string,
 		string,
 		{ action: { label: string; onAction: () => void } },
 	];
-	return { message, type, action: options.action };
+	return { message, action: options.action };
 }
 
-const mailSend = (
-	undoToken: string,
-	over: { scheduled?: boolean; queuedOffline?: boolean } = {}
-) => ({
-	scheduled: over.scheduled ?? false,
-	queuedOffline: over.queuedOffline ?? false,
-	receipt: { undoToken, sendAt: T0 + 10_000 },
+describe('reply holds', () => {
+	it('watches a reply that leaves on its own, once, until released', () => {
+		holdMailReplyOffer({ scheduled: false, queuedOffline: false }, mailIds);
+		holdMailReplyOffer({ scheduled: false, queuedOffline: false }, mailIds);
+		expect(useReplyTaskHolds().value).toEqual([
+			{
+				kind: 'mail',
+				key: 'mail:d1',
+				target: { mailThreadId: 'thread_1' },
+				draftId: 'd1',
+				threadMessageId: 'm1',
+			},
+		]);
+		releaseReplyTaskHold('mail:d1');
+		expect(keys()).toEqual([]);
+	});
+
+	it('never watches a scheduled send, one queued offline, or a reply without draft or thread', () => {
+		holdMailReplyOffer({ scheduled: true, queuedOffline: false }, mailIds);
+		holdMailReplyOffer({ scheduled: false, queuedOffline: true }, mailIds);
+		holdMailReplyOffer({ scheduled: false, queuedOffline: false }, { ...mailIds, draftId: null });
+		holdMailReplyOffer(
+			{ scheduled: false, queuedOffline: false },
+			{ ...mailIds, mailThreadId: undefined }
+		);
+		expect(keys()).toEqual([]);
+	});
+
+	it('watches a team approve per window, and a follow-up by its id', () => {
+		holdTeamReplyOffer({ kind: 'reply', messageId: 'in_1', sendAt: 5 }, 'conv_1' as never);
+		holdTeamReplyOffer({ kind: 'reply', messageId: 'in_1' }, 'conv_1' as never);
+		holdTeamReplyOffer({ kind: 'followUp', followUpId: 'fu_1', sendAt: 9 }, 'conv_1' as never);
+		expect(keys()).toEqual(['approve:in_1:5', 'approve:in_1:now', 'followUp:fu_1']);
+		expect(useReplyTaskHolds().value[2]).toMatchObject({
+			kind: 'followUp',
+			followUpId: 'fu_1',
+			target: { conversationThreadId: 'conv_1' },
+		});
+	});
 });
 
 describe('useReplyTaskOffer', () => {
-	it('offers the one open task once the undo window has closed, and only then', async () => {
-		useReplyTaskOffer().offerAfterMailReply(mailSend('u1'), 'thread_1');
-		await vi.advanceTimersByTimeAsync(9_999);
-		expect(query).not.toHaveBeenCalled();
-
-		await vi.advanceTimersByTimeAsync(1);
+	it('names the one open task, and only its action marks it done', async () => {
+		await useReplyTaskOffer().offer({ mailThreadId: 'thread_1' as never });
 		expect(query).toHaveBeenCalledExactlyOnceWith(expect.anything(), { mailThreadId: 'thread_1' });
 		const toast = lastToast();
 		expect(toast.message).toBe('Sent. Mark “Send the signed contract” done?');
 		expect(toast.action.label).toBe('Mark done');
 		expect(setStatus).not.toHaveBeenCalled();
-
 		toast.action.onAction();
 		expect(setStatus).toHaveBeenCalledExactlyOnceWith(tasks[0], 'done');
-	});
-
-	it('offers nothing for a reply taken back in its window', async () => {
-		useReplyTaskOffer().offerAfterMailReply(mailSend('u2'), 'thread_1');
-		cancelReplyTaskOffer('mail', 'u2');
-		await vi.advanceTimersByTimeAsync(60_000);
-		expect(query).not.toHaveBeenCalled();
-		expect(showToast).not.toHaveBeenCalled();
-	});
-
-	it('never offers for a scheduled send, one queued offline, or a reply with no thread', async () => {
-		const offer = useReplyTaskOffer();
-		offer.offerAfterMailReply(mailSend('u3', { scheduled: true }), 'thread_1');
-		offer.offerAfterMailReply(mailSend('outbox:ns:1', { queuedOffline: true }), 'thread_1');
-		offer.offerAfterMailReply(mailSend('u4'), undefined);
-		await vi.advanceTimersByTimeAsync(60_000);
-		expect(query).not.toHaveBeenCalled();
 	});
 
 	it('counts several open tasks, and Review opens the first on the Tasks page', async () => {
@@ -97,8 +111,7 @@ describe('useReplyTaskOffer', () => {
 			{ _id: 'task_c', title: 'C', status: 'open' },
 			{ _id: 'task_d', title: 'D', status: 'done' },
 		];
-		useReplyTaskOffer().offerAfterMailReply(mailSend('u5'), 'thread_1');
-		await vi.advanceTimersByTimeAsync(10_000);
+		await useReplyTaskOffer().offer({ conversationThreadId: 'conv_1' as never });
 		const toast = lastToast();
 		expect(toast.message).toBe('Sent. 3 tasks from this conversation are still open.');
 		expect(toast.action.label).toBe('Review');
@@ -109,34 +122,6 @@ describe('useReplyTaskOffer', () => {
 	it('stays quiet when nothing from the conversation is open', async () => {
 		tasks = [{ _id: 'task_1', title: 'Done already', status: 'done' }];
 		await useReplyTaskOffer().offer({ mailThreadId: 'thread_1' as never });
-		expect(query).toHaveBeenCalledOnce();
 		expect(showToast).not.toHaveBeenCalled();
-	});
-
-	it('holds a team approve until its window closes, and an Undo of it drops the offer', async () => {
-		const offer = useReplyTaskOffer();
-		offer.offerAfterTeamReply(
-			{ kind: 'reply', messageId: 'in_1', sendAt: T0 + 5_000 },
-			'conv_1' as never
-		);
-		cancelReplyTaskOffer('approve', approveHoldToken('in_1', T0 + 5_000));
-		offer.offerAfterTeamReply(
-			{ kind: 'followUp', followUpId: 'fu_1', sendAt: T0 + 5_000 },
-			'conv_1' as never
-		);
-		await vi.advanceTimersByTimeAsync(5_000);
-		expect(query).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
-			conversationThreadId: 'conv_1',
-		});
-	});
-
-	it('offers a team reply with no undo window right away', async () => {
-		useReplyTaskOffer().offerAfterTeamReply(
-			{ kind: 'reply', messageId: 'in_2' },
-			'conv_1' as never
-		);
-		await vi.advanceTimersByTimeAsync(0);
-		expect(query).toHaveBeenCalledOnce();
-		expect(lastToast().message).toBe('Sent. Mark “Send the signed contract” done?');
 	});
 });

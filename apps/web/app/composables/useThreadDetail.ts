@@ -6,7 +6,6 @@ import { splitQuotedText } from '@owlat/shared/quotedText';
 import type { TeamThreadReply } from '~/utils/teamThreadReply';
 import type { TeamThreadPriority } from '~/utils/teamThreadPriority';
 import { isDraftGapsRefusal } from '~/utils/answerDraft';
-import { cancelReplyTaskOffer } from '~/composables/useReplyTaskOffer';
 
 export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { t } = useI18n();
@@ -149,8 +148,6 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	};
 
 	const cancelFollowUp = async (followUpId: Id<'inboxFollowUps'>) => {
-		// Taken back before it left: no offer to finish the thread's tasks.
-		cancelReplyTaskOffer('followUp', followUpId);
 		return await cancelFollowUpOperation({ followUpId });
 	};
 

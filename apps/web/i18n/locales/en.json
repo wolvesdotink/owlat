@@ -19363,7 +19363,8 @@
 				"makeTask": "Make task from this conversation",
 				"markDone": "Mark “{item}” done",
 				"openTasks": "Open tasks from this conversation",
-				"openCount": "1 open | {count} open"
+				"openCount": "1 open | {count} open",
+				"allDone": "All done"
 			}
 		},
 		"conversationLink": {
