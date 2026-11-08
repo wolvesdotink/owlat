@@ -60,6 +60,11 @@ const row = (messageId: string, state: string, recipients = [state]) => ({
 describe('mailReplyStatus', () => {
 	const baseline = ['m_old'];
 
+	it('offers nothing when more than one new reply landed, since ours cannot be told apart', () => {
+		const delivery = [row('m_old', 'sent'), row('m_teammate', 'sent'), row('m_ours', 'failed')];
+		expect(mailReplyStatus({ draft: null, baseline, delivery })).toBe('failed');
+	});
+
 	it('waits while the draft is held in its undo window', () => {
 		expect(mailReplyStatus({ draft: undefined, baseline: null, delivery: undefined })).toBe(
 			'waiting'

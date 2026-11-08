@@ -94,8 +94,13 @@ export function mailReplyStatus(o: {
 	if (!o.baseline || o.delivery === null) return 'failed';
 	if (o.delivery === undefined) return 'waiting';
 	const known = new Set(o.baseline);
-	const ours = o.delivery.find((row) => !known.has(row.messageId));
-	if (!ours) return 'waiting';
+	const fresh = o.delivery.filter((row) => !known.has(row.messageId));
+	if (fresh.length === 0) return 'waiting';
+	// Nothing ties the held draft to the message it was filed as, so a second
+	// new reply (a teammate's, landed between two reads) makes ours ambiguous:
+	// offering then could take their success for ours. Missed, never wrong.
+	if (fresh.length > 1) return 'failed';
+	const ours = fresh[0]!;
 	if (ours.state === 'sent') return 'sent';
 	return ours.recipients.some((r) => r.state === 'queued') ? 'waiting' : 'failed';
 }
