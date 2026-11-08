@@ -91,6 +91,35 @@ describe('useTeamThreadComposer', () => {
 		expect(showToast).toHaveBeenCalledWith(t('dashboard.inbox.detail.followUpSentToast'));
 	});
 
+	it('reports each send with the end of its undo window, and no refused one', async () => {
+		const onSent = vi.fn();
+		const armApproveUndo = vi.fn();
+		Object.assign(ops, { onSent, armApproveUndo });
+		ops.approve.mockResolvedValueOnce({ ok: true, result: { success: true, undo: { sendAt: 9 } } });
+		await composer().send(reply, true);
+		expect(armApproveUndo).toHaveBeenCalledWith('in_1', 9);
+		expect(onSent).toHaveBeenLastCalledWith({ kind: 'reply', messageId: 'in_1', sendAt: 9 });
+
+		await composer().send(reply, true);
+		expect(onSent).toHaveBeenLastCalledWith({ kind: 'reply', messageId: 'in_1' });
+
+		status = 'sent';
+		ops.sendFollowUp.mockResolvedValueOnce({
+			ok: true,
+			result: { success: true, followUpId: 'fu_2', undo: { sendAt: 12 } },
+		});
+		await composer().send(reply, false);
+		expect(onSent).toHaveBeenLastCalledWith({ kind: 'followUp', followUpId: 'fu_2', sendAt: 12 });
+
+		onSent.mockClear();
+		ops.sendFollowUp.mockResolvedValueOnce({
+			ok: true,
+			result: { success: false, reason: 'reply_in_progress', heldByName: 'Jordan' },
+		});
+		expect(await composer().send(reply, false)).toBeNull();
+		expect(onSent).not.toHaveBeenCalled();
+	});
+
 	it('reads a teammate’s reply collision as not sent, and says who', async () => {
 		ops.saveAndApprove.mockResolvedValueOnce({
 			ok: true,

@@ -35,6 +35,9 @@ import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerModeKeys } from '~/composables/useAnswerModeKeys';
 import { useAnswerModeAssist } from '~/composables/useAnswerModeAssist';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import type { ComposerSentOutcome } from '~/composables/postbox/usePostboxComposerSendGate';
+import { isQueuedSendToken } from '~/composables/postbox/usePostboxOfflineOutbox';
+import { useReplyTaskOffer } from '~/composables/useReplyTaskOffer';
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 import AnswerBriefCard from '~/components/answer/AnswerBriefCard.vue';
@@ -279,8 +282,14 @@ function leaveMissing() {
 
 // The reader's auto-advance preference, for a reply that marks its conversation done.
 const { autoAdvance } = usePostboxSettings();
-function onSent(outcome: { done: boolean }) {
+// Once the reply has left, the conversation's open tasks may be finished too.
+const replyTaskOffer = useReplyTaskOffer();
+function onSent(outcome: ComposerSentOutcome) {
 	leftDraft.clearFor(draftId.value);
+	if (kind.value !== 'forward') {
+		const queuedOffline = !!outcome.receipt && isQueuedSendToken(outcome.receipt.undoToken);
+		replyTaskOffer.offerAfterMailReply({ ...outcome, queuedOffline }, message.value?.threadId);
+	}
 	if (queueSession?.handleSent()) return;
 	if (outcome.done)
 		answerNav.leaveDone(

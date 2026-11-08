@@ -163,6 +163,8 @@ beforeAll(() => {
 		useFeatureFlag: () => ({ isEnabled: () => true }),
 		useAuth: () => ({ user: ref({ id: 'u_me' }) }),
 		useToast: () => ({ showToast: vi.fn() }),
+		// The offer to finish the thread's tasks after a send reads them once.
+		useConvex: () => null,
 		registerCommandPaletteProvider: vi.fn(),
 		useThreadPresence: () => ({ others: presence }),
 		useThreadNotes: () => ({ notes: ref([]), liveCount: noteCount }),
@@ -454,6 +456,38 @@ describe('Answer mode for a Team inbox thread', () => {
 		undoRun.mockResolvedValueOnce({ ok: true, result: { cancelled: true } });
 		await useReviewApproveUndo().runUndo();
 		expect(undoRun).toHaveBeenCalledWith({ inboundMessageId: 'in_1' });
+	});
+
+	it("offers the thread's open tasks when a held approve's window closes, and not after its Undo", async () => {
+		const query = vi.fn(async () => [{ _id: 'task_1', title: 'Refund', status: 'open' }]);
+		Object.assign(globalThis, { useConvex: () => ({ query }) });
+		vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+		vi.setSystemTime(1_000);
+		async function approveHeldUntil(sendAt: number) {
+			handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt } } });
+			const wrapper = await mountPage();
+			await wrapper.get('[data-testid="composer-send"]').trigger('click');
+			await flushPromises();
+			wrapper.unmount();
+		}
+		try {
+			await approveHeldUntil(6_000);
+			findRun('Undo approval').mockResolvedValueOnce({ ok: true, result: { cancelled: true } });
+			await useReviewApproveUndo().runUndo();
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(query).not.toHaveBeenCalled();
+
+			await approveHeldUntil(11_000);
+			await vi.advanceTimersByTimeAsync(4_999);
+			expect(query).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(query).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+				conversationThreadId: 'ct_1',
+			});
+		} finally {
+			vi.useRealTimers();
+			Object.assign(globalThis, { useConvex: () => null });
+		}
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on', async () => {

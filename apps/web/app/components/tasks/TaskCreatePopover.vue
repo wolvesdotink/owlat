@@ -46,7 +46,8 @@ const { showToast } = useToast();
 const draft = useTaskDraft();
 const { title, audience, assigneeUserId, dueInput } = draft;
 
-const open = ref(false);
+/** Open from outside too (the command palette); the trigger toggles it as well. */
+const open = defineModel<boolean>('open', { default: false });
 const titleId = useId();
 const dueId = useId();
 const triggerLabel = computed(() => props.label ?? t('components.tasks.create.trigger'));

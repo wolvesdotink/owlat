@@ -13,7 +13,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, nextTick } from 'vue';
 import BriefPurposeHeader from '../BriefPurposeHeader.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { briefView, item, T0 } from '~/utils/__tests__/threadBriefFixtures';
@@ -32,6 +32,16 @@ vi.mock('~/components/tasks/TaskCreatePopover.vue', () => ({
 			};
 		},
 	}),
+}));
+
+// The palette's verbs on the open conversation: what the header hands them.
+const paletteSources = vi.hoisted(() => ({
+	current: null as null | Record<string, () => unknown>,
+}));
+vi.mock('~/composables/useConversationTaskCommands', () => ({
+	useConversationTaskCommands: (sources: Record<string, () => unknown>) => {
+		paletteSources.current = sources;
+	},
 }));
 
 vi.mock('~/composables/useShortcutLabels', () => ({
@@ -121,6 +131,35 @@ describe('BriefPurposeHeader', () => {
 		await w.get('[data-testid="purpose-more"]').trigger('click');
 		expect(w.get('[data-testid="purpose-more"]').text()).toBe('5 more');
 		expect(w.get('[data-testid="purpose-unlisted"]').text()).toBe('3 more in the full brief');
+	});
+
+	it('hands the palette its own Make task and Done, Done only while it offers it', async () => {
+		const purpose = resolveThreadPurpose({ isAiOn: true, brief: briefView() });
+		const w = mountHeader({ purpose, mailThreadId: 't1' });
+		const palette = paletteSources.current!;
+		expect(palette.mailThreadId!()).toBe('t1');
+		expect(palette.doneItem!()).toBe('Approve the revised quote of €5,350');
+
+		expect(popoverProps).toHaveBeenLastCalledWith(expect.objectContaining({ open: false }));
+		palette.openMakeTask!();
+		await nextTick();
+		expect(popoverProps).toHaveBeenLastCalledWith(expect.objectContaining({ open: true }));
+
+		palette.markDone!();
+		expect(w.emitted('act')).toEqual([[purpose.item, 'markDone']]);
+
+		const proposal = resolveThreadPurpose({
+			isAiOn: true,
+			brief: briefView({
+				forYou: [item({ id: 'p', text: 'Book the venue', verify: 'proposal' })],
+				waitingOnOthers: [],
+				counts: { forYou: 1, forTeam: 0, waitingOnOthers: 0, unclear: 0, closed: 0, hidden: 0 },
+			}),
+		});
+		mountHeader({ purpose: proposal });
+		expect(paletteSources.current!.doneItem!()).toBeNull();
+		mountHeader({ purpose: resolveThreadPurpose({ isAiOn: false, brief: briefView() }) });
+		expect(paletteSources.current!.doneItem!()).toBeNull();
 	});
 
 	it('offers Track and Not a request on an item the brief only proposes', () => {

@@ -119,6 +119,9 @@ beforeAll(() => {
 		useClickOutside,
 		usePermissions: () => ({ canManageOrganization: canManage }),
 		useBackendOperation: () => ({ run: labelRun, isLoading: ref(false) }),
+		// The offer to finish the thread's tasks after a send.
+		useToast: () => ({ showToast: vi.fn() }),
+		useConvex: () => null,
 		useRoute: () => route,
 		useRouter: () => ({
 			replace: routerReplace,
@@ -465,6 +468,36 @@ describe('Answer mode page', () => {
 		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 		expect(useAnswerLeftDraft().left.value).toBeNull();
+	});
+
+	it("offers the thread's open tasks once the reply's undo window closes, never for a scheduled one", async () => {
+		const query = vi.fn(async () => [
+			{ _id: 'task_1', title: 'Send the contract', status: 'open' },
+		]);
+		Object.assign(globalThis, { useConvex: () => ({ query }) });
+		try {
+			const w = await mountAt({ draft: 'draft_1' });
+			vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] });
+			vi.setSystemTime(1_000);
+			const composer = w.getComponent(ComposerStub);
+			composer.vm.$emit('sent', {
+				scheduled: true,
+				done: false,
+				receipt: { undoToken: 'u_later', sendAt: 1_000 },
+			});
+			composer.vm.$emit('sent', {
+				scheduled: false,
+				done: false,
+				receipt: { undoToken: 'u_now', sendAt: 11_000 },
+			});
+			await vi.advanceTimersByTimeAsync(9_999);
+			expect(query).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(query).toHaveBeenCalledExactlyOnceWith(expect.anything(), { mailThreadId: 'thr_1' });
+		} finally {
+			vi.useRealTimers();
+			Object.assign(globalThis, { useConvex: () => null });
+		}
 	});
 
 	it("keeps another draft's offer when this reply is sent or discarded", async () => {

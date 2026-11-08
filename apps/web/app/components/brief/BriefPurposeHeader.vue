@@ -32,6 +32,7 @@ import { BRIEF_CONTEXT, briefDueDate, type BriefSource } from '~/utils/threadBri
 import { briefActionLabelKey } from '~/utils/threadBriefItems';
 import type { PurposeLine, PurposeWho, ThreadPurpose } from '~/utils/threadPurpose';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { useConversationTaskCommands } from '~/composables/useConversationTaskCommands';
 import { ChevronDownIcon } from '@coolicons/vue';
 
 const props = withDefaults(
@@ -161,6 +162,17 @@ const itemActions = computed<TeamItemAction[]>(() => {
 		? ['claim', 'markDone']
 		: ['markDone'];
 });
+/** Make task's popover: the header's button and the command palette both open it. */
+const isTaskOpen = ref(false);
+useConversationTaskCommands({
+	mailThreadId: () => props.mailThreadId,
+	conversationThreadId: () => props.conversationThreadId,
+	doneItem: () =>
+		item.value && itemActions.value.includes('markDone') ? textOf(item.value) : null,
+	openMakeTask: () => (isTaskOpen.value = true),
+	markDone: () => item.value && emit('act', item.value, 'markDone'),
+});
+
 function actionLabel(action: TeamItemAction): string {
 	if (action === 'claim') return t('components.brief.purpose.claim');
 	if (action === 'markDone') return t('components.brief.purpose.done');
@@ -266,6 +278,7 @@ const lineKey = (line: PurposeLine) => line.item.id;
 				</UiButton>
 			</UiTooltip>
 			<TaskCreatePopover
+				v-model:open="isTaskOpen"
 				:mail-thread-id="mailThreadId"
 				:conversation-thread-id="conversationThreadId"
 				:thread-item-id="item?.id"

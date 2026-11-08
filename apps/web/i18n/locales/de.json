@@ -454,7 +454,9 @@
 					"getEmailStats": "E-Mail-Statistiken abgerufen",
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",
-					"searchKnowledge": "Wissensdatenbank durchsucht"
+					"searchKnowledge": "Wissensdatenbank durchsucht",
+					"getCompanyContext": "Firma nachgesehen",
+					"listMyTasks": "Deine Aufgaben nachgesehen"
 				}
 			}
 		},
@@ -8219,6 +8221,12 @@
 				"create": "Aufgabe anlegen",
 				"update": "Aufgabe ändern",
 				"setStatus": "Status einer Aufgabe ändern"
+			},
+			"replyOffer": {
+				"one": "Gesendet. „{title}“ als erledigt markieren?",
+				"markDone": "Als erledigt markieren",
+				"several": "Gesendet. 1 Aufgabe aus dieser Unterhaltung ist noch offen. | Gesendet. {count} Aufgaben aus dieser Unterhaltung sind noch offen.",
+				"review": "Ansehen"
 			}
 		}
 	},
@@ -19349,6 +19357,13 @@
 				"priority": "Priorität setzen…",
 				"priorityPrompt": "Priorität",
 				"current": "Aktuell"
+			},
+			"conversationTasks": {
+				"heading": "Aufgaben",
+				"makeTask": "Aufgabe aus dieser Unterhaltung anlegen",
+				"markDone": "„{item}“ als erledigt markieren",
+				"openTasks": "Aufgaben aus dieser Unterhaltung öffnen",
+				"openCount": "1 offen | {count} offen"
 			}
 		},
 		"conversationLink": {

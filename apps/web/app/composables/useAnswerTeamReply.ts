@@ -35,6 +35,11 @@ import { useNow } from '~/composables/useNow';
 import type { useThreadDetail } from '~/composables/useThreadDetail';
 import { useTeamThreadComposer } from '~/composables/useTeamThreadComposer';
 import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
+import {
+	approveHoldToken,
+	cancelReplyTaskOffer,
+	useReplyTaskOffer,
+} from '~/composables/useReplyTaskOffer';
 
 type ThreadDetail = ReturnType<typeof useThreadDetail>;
 type ThreadMessage = ThreadDetail['messages']['value'][number];
@@ -142,6 +147,8 @@ export function useAnswerTeamReply(opts: {
 	// A held approve gets the "Approved · Undo" countdown. Its toast lives in the
 	// dashboard layout, so it stays up on the page the reply leaves to.
 	const approveUndo = useReviewApproveUndo();
+	// Once the reply has left, the conversation's open tasks may be finished too.
+	const taskOffer = useReplyTaskOffer();
 	const { run: undoAutoSend } = useBackendOperation(api.inbox.mutations.undoAutoSend, {
 		label: () => t('shared.useReviewQueue.undoApproval'),
 	});
@@ -150,6 +157,7 @@ export function useAnswerTeamReply(opts: {
 			inboundMessageId: messageId,
 			sendAt,
 			onUndo: async () => {
+				cancelReplyTaskOffer('approve', approveHoldToken(messageId, sendAt));
 				const result = await undoAutoSend({ inboundMessageId: messageId });
 				if (!result.ok) return;
 				if (result.result.cancelled) showToast(t('shared.reviewBulkSummary.undoneOne'));
@@ -172,6 +180,7 @@ export function useAnswerTeamReply(opts: {
 			sendFollowUp: opts.detail.sendFollowUp,
 			takeOver: (inboundMessageId) => takeOverReply({ inboundMessageId }),
 			armApproveUndo,
+			onSent: (sent) => taskOffer.offerAfterTeamReply(sent, opts.threadId.value),
 		}
 	);
 

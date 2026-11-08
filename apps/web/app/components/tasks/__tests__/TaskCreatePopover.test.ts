@@ -1,7 +1,8 @@
 /**
  * "Make task": the popover starts with the given title as Only me, sends the
  * conversation and company it was opened for, emits the new id, and offers to
- * open the task from its toast. Only me keeps the assignee picker shut.
+ * open the task from its toast. Only me keeps the assignee picker shut. A
+ * host (the command palette, through the purpose header) can open it too.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -89,6 +90,20 @@ describe('TaskCreatePopover', () => {
 		expect(
 			wrapper.find('[data-testid="task-assignee-picker"]').attributes('disabled')
 		).toBeDefined();
+	});
+
+	it('opens from outside (the command palette) the same way, and reports closing', async () => {
+		const wrapper = mountPopover({ defaultTitle: 'Send the contract', open: false });
+		await wrapper.setProps({ open: true });
+		await flushPromises();
+		const title = wrapper.find<HTMLInputElement>('[data-testid="task-create-title"]');
+		expect(title.element.value).toBe('Send the contract');
+		expect(document.activeElement).toBe(title.element);
+
+		await wrapper.find('form').trigger('submit');
+		await flushPromises();
+		expect(wrapper.emitted('update:open')).toEqual([[false]]);
+		wrapper.unmount();
 	});
 
 	it('creates the task for its conversation and company, then emits the id and offers Open', async () => {

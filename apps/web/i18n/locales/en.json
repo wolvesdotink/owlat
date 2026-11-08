@@ -454,7 +454,9 @@
 					"getEmailStats": "Looked up email stats",
 					"searchEverything": "Searched workspace",
 					"searchFiles": "Searched files",
-					"searchKnowledge": "Searched knowledge"
+					"searchKnowledge": "Searched knowledge",
+					"getCompanyContext": "Looked up a company",
+					"listMyTasks": "Looked up your tasks"
 				}
 			}
 		},
@@ -8219,6 +8221,12 @@
 				"create": "Create a task",
 				"update": "Change a task",
 				"setStatus": "Change a task's status"
+			},
+			"replyOffer": {
+				"one": "Sent. Mark “{title}” done?",
+				"markDone": "Mark done",
+				"several": "Sent. 1 task from this conversation is still open. | Sent. {count} tasks from this conversation are still open.",
+				"review": "Review"
 			}
 		}
 	},
@@ -19349,6 +19357,13 @@
 				"priority": "Set priority…",
 				"priorityPrompt": "Priority",
 				"current": "Current"
+			},
+			"conversationTasks": {
+				"heading": "Tasks",
+				"makeTask": "Make task from this conversation",
+				"markDone": "Mark “{item}” done",
+				"openTasks": "Open tasks from this conversation",
+				"openCount": "1 open | {count} open"
 			}
 		},
 		"conversationLink": {
