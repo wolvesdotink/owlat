@@ -57,6 +57,8 @@ describe('built-in tool registry conformance', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'listMyTasks',
+			'getCompanyContext',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
@@ -79,6 +81,8 @@ describe('built-in tool registry conformance', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'listMyTasks',
+			'getCompanyContext',
 		]) {
 			expect(byName.get(readTool)?.spend).toBeNull();
 		}
@@ -259,6 +263,8 @@ describe('buildAssistantTools', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'listMyTasks',
+			'getCompanyContext',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
@@ -277,6 +283,8 @@ describe('buildAssistantTools', () => {
 				'searchEverything',
 				'getCampaignStats',
 				'getEmailStats',
+				'listMyTasks',
+				'getCompanyContext',
 				'draftEmailReply',
 				'draftCampaignCopy',
 			]);
@@ -349,6 +357,16 @@ describe('buildAssistantTools', () => {
 			// Nothing matched: no model call, and the model is told so.
 			expect(result).toMatchObject({ answer: '', citations: [], answeredFromHeadersOnly: true });
 		}
+	});
+
+	it('reads no tasks or companies for a reply a whole room reads', async () => {
+		const runQuery = vi.fn(async () => ({ ai: true }));
+		const ctx = { runQuery } as unknown as ActionCtx;
+		const set = await buildAssistantTools(ctx, { canReadInbox: true });
+		await set['listMyTasks']?.execute?.({}, options);
+		await set['getCompanyContext']?.execute?.({ company: 'northwind.example' }, options);
+		// Only the flag read; neither tool ran a query.
+		expect(runQuery).toHaveBeenCalledTimes(1);
 	});
 
 	it('reads no mail for a reply a whole room reads', async () => {

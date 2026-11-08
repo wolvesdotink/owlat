@@ -5,12 +5,18 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { isSharedInboxReader } from '../inbox/access';
 import { authedQuery } from '../lib/authedFunctions';
 import { isGroupMember } from './members';
-import { compareOpenTasks, loadViewerContext, toTaskViews, type TaskView } from './view';
+import {
+	compareOpenTasks,
+	loadViewerContext,
+	toTaskViews,
+	type SessionLike,
+	type TaskView,
+} from './view';
 
 /** One list's cap. A person with more open tasks than this sees the first ones by due date. */
 export const LIST_LIMIT = 200;
@@ -77,6 +83,8 @@ async function finishedVisibleTo(ctx: QueryCtx, userId: string, groupIds: Readon
 		.slice(0, DONE_LIMIT);
 }
 
+export type TaskListView = (typeof TASK_LIST_VIEWS)[number];
+
 /**
  * One task list:
  *   - `mine`: open tasks assigned to the viewer, whatever their visibility;
@@ -85,60 +93,70 @@ async function finishedVisibleTo(ctx: QueryCtx, userId: string, groupIds: Readon
  *   - `private`: the viewer's open private tasks;
  *   - `created`: open tasks the viewer handed to someone else;
  *   - `done`: recently finished tasks the viewer can see, done or dropped.
+ *
+ * Shared by the task page and the assistant, so both pick rows the same way
+ * and both hand every row through `toTaskViews`.
  */
+export async function loadTaskList(
+	ctx: QueryCtx,
+	session: SessionLike,
+	request: { view: TaskListView; groupId?: Id<'memberGroups'> }
+): Promise<TaskView[]> {
+	const context = await loadViewerContext(ctx, session);
+	const { userId } = session;
+	let rows: Doc<'tasks'>[];
+	switch (request.view) {
+		case 'mine':
+			rows = await openAssignedTo(ctx, userId);
+			break;
+		case 'everyone':
+			rows = await ctx.db
+				.query('tasks')
+				.withIndex('by_visibility_status_due', (q) =>
+					q.eq('visibility', 'everyone').eq('status', 'open')
+				)
+				.take(LIST_LIMIT);
+			break;
+		case 'group': {
+			if (!request.groupId || !(await isGroupMember(ctx, request.groupId, userId))) return [];
+			const groupId = request.groupId;
+			rows = await ctx.db
+				.query('tasks')
+				.withIndex('by_group_status_due', (q) => q.eq('groupId', groupId).eq('status', 'open'))
+				.take(LIST_LIMIT);
+			break;
+		}
+		case 'private':
+			rows = (
+				await ctx.db
+					.query('tasks')
+					.withIndex('by_creator_status', (q) => q.eq('createdBy', userId).eq('status', 'open'))
+					.take(LIST_LIMIT)
+			).filter((task) => task.visibility === 'private');
+			break;
+		case 'created':
+			rows = (
+				await ctx.db
+					.query('tasks')
+					.withIndex('by_creator_status', (q) => q.eq('createdBy', userId).eq('status', 'open'))
+					.take(LIST_LIMIT)
+			).filter((task) => task.assigneeUserId !== userId);
+			break;
+		case 'done':
+			return await toTaskViews(
+				ctx,
+				context,
+				await finishedVisibleTo(ctx, userId, context.viewer.groupIds)
+			);
+	}
+	return (await toTaskViews(ctx, context, rows)).sort(compareOpenTasks);
+}
+
 // authz: every row passes canSeeTask (tasks/access.ts) in toTaskViews; a group list needs membership.
 export const list = authedQuery({
 	args: { view: listViewValidator, groupId: v.optional(v.id('memberGroups')) },
-	handler: async (ctx, args, session): Promise<TaskView[]> => {
-		const context = await loadViewerContext(ctx, session);
-		const { userId } = session;
-		let rows: Doc<'tasks'>[];
-		switch (args.view) {
-			case 'mine':
-				rows = await openAssignedTo(ctx, userId);
-				break;
-			case 'everyone':
-				rows = await ctx.db
-					.query('tasks')
-					.withIndex('by_visibility_status_due', (q) =>
-						q.eq('visibility', 'everyone').eq('status', 'open')
-					)
-					.take(LIST_LIMIT);
-				break;
-			case 'group': {
-				if (!args.groupId || !(await isGroupMember(ctx, args.groupId, userId))) return [];
-				const groupId = args.groupId;
-				rows = await ctx.db
-					.query('tasks')
-					.withIndex('by_group_status_due', (q) => q.eq('groupId', groupId).eq('status', 'open'))
-					.take(LIST_LIMIT);
-				break;
-			}
-			case 'private':
-				rows = (
-					await ctx.db
-						.query('tasks')
-						.withIndex('by_creator_status', (q) => q.eq('createdBy', userId).eq('status', 'open'))
-						.take(LIST_LIMIT)
-				).filter((task) => task.visibility === 'private');
-				break;
-			case 'created':
-				rows = (
-					await ctx.db
-						.query('tasks')
-						.withIndex('by_creator_status', (q) => q.eq('createdBy', userId).eq('status', 'open'))
-						.take(LIST_LIMIT)
-				).filter((task) => task.assigneeUserId !== userId);
-				break;
-			case 'done':
-				return await toTaskViews(
-					ctx,
-					context,
-					await finishedVisibleTo(ctx, userId, context.viewer.groupIds)
-				);
-		}
-		return (await toTaskViews(ctx, context, rows)).sort(compareOpenTasks);
-	},
+	handler: async (ctx, args, session): Promise<TaskView[]> =>
+		await loadTaskList(ctx, session, args),
 });
 
 /** How many open tasks the viewer owns, for the navigation badge. */
@@ -150,19 +168,24 @@ export const openCount = authedQuery({
 });
 
 /** The open tasks about one company that the viewer can see. */
+export async function loadCompanyTasks(
+	ctx: QueryCtx,
+	session: SessionLike,
+	companyKey: string
+): Promise<TaskView[]> {
+	const context = await loadViewerContext(ctx, session);
+	const rows = await ctx.db
+		.query('tasks')
+		.withIndex('by_company_status', (q) => q.eq('companyKey', companyKey).eq('status', 'open'))
+		.take(LIST_LIMIT);
+	return (await toTaskViews(ctx, context, rows)).sort(compareOpenTasks);
+}
+
 // authz: every row passes canSeeTask (tasks/access.ts) in toTaskViews.
 export const forCompany = authedQuery({
 	args: { companyKey: v.string() },
-	handler: async (ctx, args, session): Promise<TaskView[]> => {
-		const context = await loadViewerContext(ctx, session);
-		const rows = await ctx.db
-			.query('tasks')
-			.withIndex('by_company_status', (q) =>
-				q.eq('companyKey', args.companyKey).eq('status', 'open')
-			)
-			.take(LIST_LIMIT);
-		return (await toTaskViews(ctx, context, rows)).sort(compareOpenTasks);
-	},
+	handler: async (ctx, args, session): Promise<TaskView[]> =>
+		await loadCompanyTasks(ctx, session, args.companyKey),
 });
 
 /**

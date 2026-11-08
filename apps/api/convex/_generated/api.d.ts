@@ -306,6 +306,8 @@ import type * as assistant_prompt from '../assistant/prompt.js';
 import type * as assistant_runner from '../assistant/runner.js';
 import type * as assistant_toolRegistry from '../assistant/toolRegistry.js';
 import type * as assistant_tools from '../assistant/tools.js';
+import type * as assistant_workContext from '../assistant/workContext.js';
+import type * as assistant_workTools from '../assistant/workTools.js';
 import type * as auditActions_catalog from '../auditActions/catalog.js';
 import type * as auditActions_logs from '../auditActions/logs.js';
 import type * as auth_accessRequest from '../auth/accessRequest.js';
@@ -2227,6 +2229,8 @@ declare const fullApi: ApiFromModules<{
 	'assistant/runner': typeof assistant_runner;
 	'assistant/toolRegistry': typeof assistant_toolRegistry;
 	'assistant/tools': typeof assistant_tools;
+	'assistant/workContext': typeof assistant_workContext;
+	'assistant/workTools': typeof assistant_workTools;
 }> & ApiFromModules<{
 	'auditActions/catalog': typeof auditActions_catalog;
 	'auditActions/logs': typeof auditActions_logs;
