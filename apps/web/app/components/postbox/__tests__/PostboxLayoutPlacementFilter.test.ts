@@ -99,6 +99,7 @@ const probe = (name: string, props: string[] = []) =>
 const INERT = Object.fromEntries(
 	[
 		'PostboxBannerSlot',
+		'PostboxContextRail',
 		'PostboxDraftList',
 		'PostboxFolderDrawer',
 		'PostboxListHeader',

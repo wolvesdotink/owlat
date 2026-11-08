@@ -13,7 +13,10 @@
  * Every built-in tool:
  *   - reaches the workspace through INTERNAL functions (the runner is a scheduled
  *     action with no user identity), and reads ORG-WIDE — the trusted-member
- *     scope (decision G4 / the single-org model).
+ *     scope (decision G4 / the single-org model) — except the tools that answer
+ *     for the turn's own user (`askMailbox`, `listMyTasks`, `getCompanyContext`),
+ *     which read as that user (`AssistantAudience.mailReader`) and nothing in a
+ *     room's reply.
  *   - scrubs retrieved text for prompt-injection before returning it to the
  *     model (decision B3), since files/contacts/knowledge are untrusted data.
  *     The host re-scrubs the whole output as a blanket guarantee on top of this.
@@ -44,6 +47,7 @@ import {
 	type AssistantAudience,
 	type HostedAssistantToolModule,
 } from './toolRegistry';
+import { buildGetCompanyContext, buildListMyTasks } from './workTools';
 
 const clampInt = (n: number | undefined, min: number, max: number, dflt: number) =>
 	Math.max(min, Math.min(n ?? dflt, max));
@@ -343,7 +347,8 @@ function buildDraftCampaignCopy(
  * powers both the personal assistant and @assistant-in-chat. The assistant is
  * gated as a whole by `ai.assistant`; `searchKnowledge` is also gated by
  * `ai.knowledge`, like Quick Query, and `askMailbox` by `ai`, like the rest of
- * Postbox AI. No built-in writes or sends.
+ * Postbox AI. Tasks and companies have no flag of their own, so their tools
+ * carry none. No built-in writes or sends.
  */
 export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze([
 	{
@@ -399,6 +404,24 @@ export const TOOL_MODULES: readonly HostedAssistantToolModule[] = Object.freeze(
 		scrubOutput: true,
 		isRetrieval: false,
 		build: buildGetEmailStats,
+	},
+	{
+		// The turn's own user's tasks, through the task page's visibility rule.
+		name: 'listMyTasks',
+		scope: 'workspace:read',
+		spend: null,
+		scrubOutput: true,
+		isRetrieval: false,
+		build: buildListMyTasks,
+	},
+	{
+		// One company as the turn's own user sees it on the company page.
+		name: 'getCompanyContext',
+		scope: 'workspace:read',
+		spend: null,
+		scrubOutput: true,
+		isRetrieval: false,
+		build: buildGetCompanyContext,
 	},
 	{
 		name: 'draftEmailReply',

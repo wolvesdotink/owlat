@@ -35,6 +35,7 @@ import { useNow } from '~/composables/useNow';
 import type { useThreadDetail } from '~/composables/useThreadDetail';
 import { useTeamThreadComposer } from '~/composables/useTeamThreadComposer';
 import { useReviewApproveUndo } from '~/composables/useReviewApproveUndo';
+import { holdTeamReplyOffer } from '~/composables/useReplyTaskOffer';
 
 type ThreadDetail = ReturnType<typeof useThreadDetail>;
 type ThreadMessage = ThreadDetail['messages']['value'][number];
@@ -172,6 +173,8 @@ export function useAnswerTeamReply(opts: {
 			sendFollowUp: opts.detail.sendFollowUp,
 			takeOver: (inboundMessageId) => takeOverReply({ inboundMessageId }),
 			armApproveUndo,
+			// Once its Send has gone, the conversation's open tasks may be finished too.
+			onSent: (sent) => holdTeamReplyOffer(sent, opts.threadId.value),
 		}
 	);
 

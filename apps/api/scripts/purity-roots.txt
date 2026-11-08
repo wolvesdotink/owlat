@@ -133,3 +133,8 @@ convex/auth/seedAdminDecision.ts
 # exportUserDataPage) and the staging commit (auth/accountExportArtifacts.ts
 # stageArtifact) are the shells.
 convex/auth/accountExportDecision.ts
+
+# Task visibility and audience rules; the handlers in tasks/ load and write.
+convex/tasks/access.ts
+# Which companies a conversation is with; companies/indexer.ts is the shell.
+convex/companies/eligibility.ts

@@ -152,6 +152,7 @@ beforeEach(() => {
 		}),
 		usePostboxSettings: () => ({ settings: ref(null), isLoading: ref(false) }),
 		useConvexQuery: () => queryResult(undefined),
+		useConvexQueryMap: () => new Map(),
 		useOrganizationQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),
 	});

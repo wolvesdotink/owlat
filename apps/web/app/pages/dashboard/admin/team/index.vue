@@ -357,6 +357,12 @@ const handleTransferOwnership = async () => {
 				@revoke="(invite) => (inviteToCancel = invite)"
 			/>
 
+			<!-- Member groups: who a task shown to a group reaches. The id is the
+			     palette's deep-link anchor (lib/adminSettingsControls.ts). -->
+			<section id="member-groups">
+				<TeamMemberGroups :members="members" :can-manage="canManageMembers" />
+			</section>
+
 			<SettingsTeamRolesCard />
 		</div>
 

@@ -28,6 +28,7 @@ export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = [
 	'review',
 	'workbench',
 	'peek',
+	'tasks',
 	'answer',
 	'answerQueue',
 	'askCard',

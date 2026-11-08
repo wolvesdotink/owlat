@@ -46,7 +46,10 @@ const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 </script>
 
 <template>
-	<section :style="{ '--pbx-reader-sticky-top': `${backBarHeight}px` }">
+	<!-- `pbx-pane`: the pane's width, which decides whether the company rail fits
+	     beside the conversation (PostboxContextRail) or the reader folds it
+	     into a line under the purpose header. -->
+	<section class="@container/pbx-pane" :style="{ '--pbx-reader-sticky-top': `${backBarHeight}px` }">
 		<!-- Drill-in back (mobile; and in Zen, with previous/next). -->
 		<PostboxReaderBackBar
 			v-if="activeMessageId"
@@ -59,18 +62,27 @@ const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 			@back="emit('back')"
 		/>
 
-		<AppErrorBoundary v-if="message" surface="reader" :reset-keys="[activeMessageId]">
-			<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
-			     mounts in the same frame the previous one goes. -->
-			<PostboxThreadReader
-				:key="activeMessageId ?? undefined"
-				class="pbx-reader-swap"
-				:message="message"
-				:advance-ids="advanceIds"
-				:folder-role="folderPath"
-				:find-seed="findSeed"
-			/>
-		</AppErrorBoundary>
+		<!-- The conversation and its context rail (company, tasks): side by side
+		     from 54rem of pane width; narrower, the reader shows the context as
+		     a disclosure of its own. The reader column is a container of its
+		     own, so the Team discussion measures the room the rail leaves it. -->
+		<div v-if="message" class="@min-[54rem]/pbx-pane:flex @min-[54rem]/pbx-pane:items-start">
+			<div class="@container min-w-0 flex-1">
+				<AppErrorBoundary surface="reader" :reset-keys="[activeMessageId]">
+					<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
+					     mounts in the same frame the previous one goes. -->
+					<PostboxThreadReader
+						:key="activeMessageId ?? undefined"
+						class="pbx-reader-swap"
+						:message="message"
+						:advance-ids="advanceIds"
+						:folder-role="folderPath"
+						:find-seed="findSeed"
+					/>
+				</AppErrorBoundary>
+			</div>
+			<PostboxContextRail v-if="message.threadId" :thread-id="message.threadId" />
+		</div>
 		<PostboxReaderPlaceholder
 			v-else
 			:error="activeMessageId ? error : null"

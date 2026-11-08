@@ -527,6 +527,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		useConfirm: () => vi.fn(async () => true),
 		useLocalStorage: (_key: string, fallback: unknown) => ({ data: ref(fallback), set: vi.fn() }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
+		useTaskOpenCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),
 			count: ref(0),

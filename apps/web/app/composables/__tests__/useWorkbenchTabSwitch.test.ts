@@ -173,6 +173,28 @@ describe('useWorkbench tab switch', () => {
 	});
 });
 
+describe('useWorkbench on All inboxes', () => {
+	it('reads every shown inbox, from the unmarked watermark, as of the latest digest read', async () => {
+		const tab = ref<string | null>('all');
+		const shown = ref(['mailbox-a', 'mailbox-b']);
+		const workbench = scope.run(() => useWorkbench(tab as Ref<never>, shown as Ref<never>))!;
+		deliver(handleFor(isStateRead), state([{ scope: 'mailbox-a', seenAt: 100 }], 70));
+		// The second digest was read later: marking All seen must cover what it shows.
+		deliver(
+			handleFor((a) => a['mailboxId'] === 'mailbox-a'),
+			{ ...digest('mailbox-a', 2), generatedAt: 1_000 }
+		);
+		deliver(
+			handleFor((a) => a['mailboxId'] === 'mailbox-b'),
+			{ ...digest('mailbox-b', 3), generatedAt: 3_000 }
+		);
+		await nextTick();
+		expect(workbench.model.value.newMail).toBe(5);
+		expect(workbench.since.value).toBe(70);
+		expect(workbench.asOf.value).toBe(3_000);
+	});
+});
+
 describe('useWorkbench queries', () => {
 	it('skips the digest until the tab is known', async () => {
 		const tab = ref<string | null>(null);

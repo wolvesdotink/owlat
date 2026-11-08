@@ -30,6 +30,8 @@ const TOOL_LABEL_KEYS: Record<string, string> = {
 	searchEverything: 'components.assistant.assistantToolCalls.tools.searchEverything',
 	getCampaignStats: 'components.assistant.assistantToolCalls.tools.getCampaignStats',
 	getEmailStats: 'components.assistant.assistantToolCalls.tools.getEmailStats',
+	listMyTasks: 'components.assistant.assistantToolCalls.tools.listMyTasks',
+	getCompanyContext: 'components.assistant.assistantToolCalls.tools.getCompanyContext',
 	draftEmailReply: 'components.assistant.assistantToolCalls.tools.draftEmailReply',
 	draftCampaignCopy: 'components.assistant.assistantToolCalls.tools.draftCampaignCopy',
 };

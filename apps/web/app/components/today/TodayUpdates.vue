@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { todayTaskContext } from '~/utils/todayTask';
+import TaskCreatePopover from '~/components/tasks/TaskCreatePopover.vue';
 import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
@@ -13,7 +15,7 @@ import { TriangleWarningIcon, UserPlusCornerIcon, type IconComponent } from '@co
  * like never show up here; `TodayFiledAway` counts them below.
  *
  * Keyboard (the Workbench's `workbench.*` keys, as the person has them bound):
- * j/k move between lines, Enter opens the first source, d marks a line done,
+ * j/k move between lines, Enter opens the first source, d acknowledges a line,
  * r asks for a reply after all (team-inbox lines, which then go to the Answer
  * queue). The legend in the heading reads the same bindings. A right-click
  * or a long-press on a line offers the same verbs, with their keys.
@@ -150,6 +152,11 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 										>
 											{{ t('components.today.line.replyAnyway') }}
 										</button>
+										<TaskCreatePopover
+											v-bind="todayTaskContext(line.text, line.sources)"
+											size="sm"
+											variant="ghost"
+										/>
 										<button
 											type="button"
 											class="rounded border border-border-subtle bg-bg-elevated px-1.5 py-px text-2xs text-text-secondary hover:text-text-primary"

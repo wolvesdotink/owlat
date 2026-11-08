@@ -25,8 +25,8 @@ import {
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
- *   - verbs — New campaign, Compose, New contact, Copy latest sign-in code,
- *     Check for mail, Ask knowledge, Zen, the setup checklist, updates;
+ *   - verbs — New campaign, Compose, New contact, New task, Copy latest sign-in
+ *     code, Check for mail, Ask knowledge, Zen, the setup checklist, updates;
  *   - sidebar-context switch — offers the OTHER context (Inbox ↔ Marketing),
  *     only while the sidebar toggle itself exists (both contexts survived the
  *     feature flags); runs the same last-visited navigation as the toggle;
@@ -68,6 +68,7 @@ const QUICK_CREATE_VERBS: Record<QuickCreateId, { id: string; labelKey: string }
 		id: 'verb:new-automation',
 		labelKey: 'shared.useCommandPaletteProviders.newAutomation',
 	},
+	task: { id: 'verb:new-task', labelKey: 'shared.useCommandPaletteProviders.newTask' },
 };
 export function useCommandPaletteProviders() {
 	const { t } = useI18n();

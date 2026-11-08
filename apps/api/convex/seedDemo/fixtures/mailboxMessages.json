@@ -39,5 +39,54 @@
 		"subject": "Feature request: CSV export for reports",
 		"text": "Hey there,\n\nLoving the product so far. One thing that would help our finance team a lot: a CSV export on the monthly reports page. Is that on the roadmap?\n\nCheers,\nLeo",
 		"minutesAgo": 600
+	},
+	{
+		"messageId": "demo-team-0004@demo.localhost",
+		"recipient": "team@demo.localhost",
+		"from": "Elena Brooks <elena@northwind.example>",
+		"subject": "Security questionnaire before we sign",
+		"text": "Hello,\n\nOur IT team has a short security questionnaire that needs answering before we can sign the order form. The main questions are about data residency, backups and who on your side can access our mailboxes.\n\nCould you send it back by Friday?\n\nBest,\nElena Brooks\nIT Lead, Northwind",
+		"minutesAgo": 240
+	},
+	{
+		"messageId": "demo-dev-0001@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Sam Patel <sam@northwind.example>",
+		"subject": "Pricing for the 40-seat plan",
+		"text": "Hi Dev,\n\nThanks for the demo last week. Before I take this to our CFO: what would the 40-seat plan cost on an annual contract, and is there any room on the price if we commit for two years?\n\nBest,\nSam Patel\nHead of Operations, Northwind",
+		"minutesAgo": 420
+	},
+	{
+		"messageId": "demo-dev-0002@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Sam Patel <sam@northwind.example>",
+		"subject": "Re: Pricing for the 40-seat plan",
+		"text": "One more thing: our finance team asked whether you can invoice quarterly instead of annually. That would make the approval a lot easier.\n\nSam",
+		"minutesAgo": 150,
+		"inReplyTo": "demo-dev-0001@demo.localhost"
+	},
+	{
+		"messageId": "demo-dev-0003@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Chloe Martin <chloe@acmecorp.example>",
+		"subject": "Rollout plan for the Berlin office",
+		"text": "Hi Dev,\n\nWe'd like to roll Owlat out to our Berlin office next month, about 25 people. Could we set up a short call to go through the migration from our current mail provider?\n\nThanks,\nChloe Martin\nAcme Corp",
+		"minutesAgo": 510
+	},
+	{
+		"messageId": "demo-dev-0004@demo.localhost",
+		"recipient": "dev@demo.localhost",
+		"from": "Alex Kim <alex.kim.demo@gmail.com>",
+		"subject": "Your talk at the meetup",
+		"text": "Hey,\n\nReally enjoyed your talk at the meetup on Tuesday. Would you share the slides? A few people at my table asked for them too.\n\nCheers,\nAlex",
+		"minutesAgo": 200
+	},
+	{
+		"messageId": "demo-taylor-0001@demo.localhost",
+		"recipient": "taylor@demo.localhost",
+		"from": "Omar Haddad <omar@northwind.example>",
+		"subject": "Renewal terms for next year",
+		"text": "Hi Taylor,\n\nOur current contract runs out at the end of the quarter. Before we renew, could you send me the terms for next year, including the support hours?\n\nKind regards,\nOmar Haddad\nProcurement, Northwind",
+		"minutesAgo": 330
 	}
 ]

@@ -44,7 +44,7 @@ const peek = { open: vi.fn(), openThread: vi.fn() };
 const global = {
 	plugins: [createTestI18n()],
 	provide: { [TODAY_PEEK as symbol]: peek },
-	stubs: { NuxtLink: true, TodaySourceLink: true },
+	stubs: { NuxtLink: true, TodaySourceLink: true, TaskCreatePopover: true },
 	mocks: { formatCompactRelativeTime: () => '1h' },
 };
 
@@ -77,7 +77,7 @@ describe('Updates line menu', () => {
 			'Peek|Enter',
 			'Open conversation|',
 			'Reply anyway|R',
-			'Done|D',
+			'Got it|D',
 			'Open in new tab|',
 			'Copy link|',
 		]);
@@ -88,7 +88,7 @@ describe('Updates line menu', () => {
 		const wrapper = mountUpdates();
 		const line = wrapper.get('[data-today-line]');
 		await line.trigger('contextmenu', { clientX: 5, clientY: 5 });
-		pick('Done');
+		pick('Got it');
 		await line.trigger('contextmenu', { clientX: 5, clientY: 5 });
 		pick('Reply anyway');
 		await line.trigger('contextmenu', { clientX: 5, clientY: 5 });
@@ -128,11 +128,11 @@ describe('What changed row menu', () => {
 		expect(items().map((i) => i.split('|')[0])).toEqual([
 			'Peek',
 			'Open conversation',
-			'Done',
+			'Got it',
 			'Open in new tab',
 			'Copy link',
 		]);
-		pick('Done');
+		pick('Got it');
 		expect(wrapper.emitted('done')).toEqual([[change]]);
 		wrapper.unmount();
 	});

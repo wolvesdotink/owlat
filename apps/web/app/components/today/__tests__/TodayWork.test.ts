@@ -1,13 +1,15 @@
 /**
- * Today's answer card: the line under the big number splits it by
- * source and ADDS UP to it; drafts ready and the time estimate sit on their
- * own line; every count is a digit. Mounted against the real `en` catalog so
- * the assertions are on the sentences a member reads.
+ * The Workbench's "What needs you" (TodayWork): every reply, request and task
+ * as one list of cards. The answer summary splits the queue by source and adds
+ * up; a card reads by the same privacy rules the Answer queue rows always had
+ * (a team row leads with its action, a shared row never shows an AI summary,
+ * a personal row reads like plain mail with the brief off). Mounted against
+ * the real `en` catalog so the assertions are on the sentences a member reads.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { inject, ref } from 'vue';
-import TodayAnswerCard from '../TodayAnswerCard.vue';
+import TodayWork from '../TodayWork.vue';
 import TodaySourceLink from '../TodaySourceLink.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import {
@@ -29,6 +31,10 @@ beforeAll(() => {
 		formatCompactRelativeTime: () => '1m',
 		inject,
 		useConvexQuery: () => ({ data: teamTops }),
+		useConvexQueryMap: () => new Map([['batch', { data: teamTops }]]),
+		useInboxes: () => ({ byId: ref(new Map()), inboxes: ref([]) }),
+		useToast: () => ({ showToast: () => {} }),
+		useBackendOperation: () => ({ run: async () => ({ ok: true }) }),
 	});
 });
 const say = (parts: { key: string; count: number }[]) =>
@@ -61,7 +67,25 @@ describe('answer summary', () => {
 	});
 });
 
-describe('TodayAnswerCard', () => {
+const STUBS = {
+	UiButton: { template: '<a><slot /></a>' },
+	UiSkeleton: true,
+	InboxChip: true,
+	TaskCreatePopover: true,
+	CompanyTaskList: {
+		props: ['tasks'],
+		template: '<ul><li v-for="t in tasks">{{ t.title }}</li></ul>',
+	},
+	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+};
+function mountWork(props: Record<string, unknown>) {
+	return mount(TodayWork, {
+		props: { todo: [], tasks: [], queueHref: '/dashboard/answer?in=all', ...props },
+		global: { plugins: [createTestI18n()], stubs: STUBS },
+	});
+}
+
+describe('TodayWork', () => {
 	const item = (id: string) =>
 		({
 			id,
@@ -70,50 +94,27 @@ describe('TodayAnswerCard', () => {
 			mention: { roomName: 'r', messagePreview: 'p' },
 		}) as never;
 
-	it('renders the number, the source line and the effort line with digits', () => {
-		const w = mount(TodayAnswerCard, {
-			props: {
-				items: [item('a'), item('b')],
-				counts: { mail: 1, team: 0, mention: 1, drafts: 1 },
-				isLoading: false,
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+	it('offers to work through the replies, with drafts ready and the time it takes in digits', () => {
+		const w = mountWork({
+			answer: [item('a'), item('b')],
+			counts: { mail: 1, team: 0, mention: 1, drafts: 1 },
+			isLoading: false,
 		});
-		const text = w.text();
-		expect(text).toContain('2 need an answer from you');
-		expect(text).toContain('1 in your inboxes · 1 mention');
-		expect(text).toContain('1 draft ready · about 3 minutes');
-		expect(text).not.toMatch(/\bone\b/);
+		const button = w.find('[data-testid="today-work-queue"]').text();
+		expect(button).toContain('Work through 2 replies');
+		expect(button).toContain('1 draft ready · about 3 minutes');
+		expect(w.text()).not.toMatch(/\bone\b/);
+		expect(w.findAll('[data-testid="today-work-card"]')).toHaveLength(2);
 	});
 
-	it('links to the whole queue when inboxes left out of Today hold more', () => {
-		const w = mount(TodayAnswerCard, {
-			props: {
-				items: [item('a')],
-				counts: { mail: 0, team: 0, mention: 1, drafts: 0 },
-				isLoading: false,
-				queueTotal: 6,
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+	it('says so when nothing needs you', () => {
+		const w = mountWork({
+			answer: [],
+			counts: { mail: 0, team: 0, mention: 0, drafts: 0 },
+			isLoading: false,
 		});
-		expect(w.text()).toContain('1 needs an answer from you');
-		expect(w.text()).toContain('All 6 in the queue');
+		expect(w.text()).toContain('Nothing needs you right now');
+		expect(w.find('[data-testid="today-work-queue"]').exists()).toBe(false);
 	});
 
 	it('shows a team row sender by its decoded display name', () => {
@@ -129,23 +130,12 @@ describe('TodayAnswerCard', () => {
 				},
 			},
 		} as never;
-		const w = mount(TodayAnswerCard, {
-			props: {
-				items: [team],
-				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
-				isLoading: false,
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+		const w = mountWork({
+			answer: [team],
+			counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+			isLoading: false,
 		});
-		const line = w.find('[data-today-line]').text();
+		const line = w.find('[data-testid="today-work-card"]').text();
 		expect(line).toContain('Contract renewal');
 		expect(line).toContain('Inès Weber');
 		expect(line).not.toContain('=?utf-8?');
@@ -165,21 +155,10 @@ describe('TodayAnswerCard', () => {
 				},
 			},
 		} as never;
-		const w = mount(TodayAnswerCard, {
-			props: {
-				items: [held],
-				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
-				isLoading: false,
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+		const w = mountWork({
+			answer: [held],
+			counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+			isLoading: false,
 		});
 		expect(w.text()).toContain('needs your input');
 		expect(w.text()).not.toContain('draft ready');
@@ -200,23 +179,12 @@ describe('TodayAnswerCard', () => {
 				},
 			},
 		} as never;
-		const w = mount(TodayAnswerCard, {
-			props: {
-				items: [team],
-				counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
-				isLoading: false,
-			},
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+		const w = mountWork({
+			answer: [team],
+			counts: { mail: 0, team: 1, mention: 0, drafts: 0 },
+			isLoading: false,
 		});
-		const line = w.find('[data-today-line]').text();
+		const line = w.find('[data-testid="today-work-card"]').text();
 		expect(line).toContain('Refund €129.00 for order #4471');
 		expect(line).toContain('+1 more');
 		expect(line).toContain('Ana · “The replacement arrived broken too.”');
@@ -248,7 +216,7 @@ describe('TodaySourceLink', () => {
 	});
 });
 
-describe('TodayAnswerCard · brief rows', () => {
+describe('TodayWork · brief rows', () => {
 	const row = (over: Record<string, unknown>) => ({
 		threadId: 't1',
 		messageId: 'm1',
@@ -273,17 +241,10 @@ describe('TodayAnswerCard · brief rows', () => {
 			row: row(over),
 		}) as never;
 	function mountRows(items: never[]) {
-		return mount(TodayAnswerCard, {
-			props: { items, counts: { mail: 1, team: 0, mention: 0, drafts: 0 }, isLoading: false },
-			global: {
-				plugins: [createTestI18n()],
-				stubs: {
-					UiButton: { template: '<a><slot /></a>' },
-					UiSkeleton: true,
-					InboxChip: true,
-					NuxtLink: { template: '<a><slot /></a>' },
-				},
-			},
+		return mountWork({
+			answer: items,
+			counts: { mail: 1, team: 0, mention: 0, drafts: 0 },
+			isLoading: false,
 		});
 	}
 	const top = {
@@ -346,5 +307,77 @@ describe('TodayAnswerCard · brief rows', () => {
 		expect(text).toContain('Approve the revised quote');
 		expect(text).toContain('“The replacement arrived with a cracked base too”');
 		expect(text).not.toContain('Launch moved');
+	});
+});
+
+describe('TodayWork · requests and tasks', () => {
+	const request = (over: Record<string, unknown> = {}) => ({
+		threadId: 't9',
+		messageId: 'm9',
+		itemId: 'i9',
+		text: { en: 'Pay invoice #2041', de: 'Rechnung #2041 bezahlen' },
+		count: 1,
+		fromAddress: 'ben@acmecorp.example',
+		fromName: 'Ben Ortiz',
+		subject: 'Invoice #2041',
+		lastMessageAt: Date.now(),
+		mailboxId: 'mb1',
+		...over,
+	});
+	const counts = { mail: 0, team: 0, mention: 0, drafts: 0 };
+
+	it('leads a request with what it asks, names who and the company, and opens it on its Overview', () => {
+		const w = mountWork({ answer: [], todo: [request()], counts, isLoading: false });
+		const card = w.find('[data-testid="today-work-card"]');
+		expect(card.find('[data-testid="today-work-title"]').text()).toBe('Pay invoice #2041');
+		expect(card.find('[data-testid="today-work-detail"]').text()).toBe('Ben Ortiz · Invoice #2041');
+		const company = card.find('[data-testid="today-work-company"]');
+		expect(company.text()).toBe('Acmecorp');
+		expect(company.attributes('href')).toBe('/dashboard/companies/acmecorp.example');
+		expect(card.find('[data-testid="today-work-title"]').attributes('href')).toBe(
+			'/dashboard/postbox/inbox/m9?mailbox=mb1&view=overview'
+		);
+	});
+
+	it('reads a personal request like plain mail when the viewer turned the brief off', () => {
+		isBriefShown.value = false;
+		try {
+			const w = mountWork({ answer: [], todo: [request({ count: 3 })], counts, isLoading: false });
+			const card = w.find('[data-testid="today-work-card"]');
+			expect(card.find('[data-testid="today-work-title"]').text()).toBe('Invoice #2041');
+			expect(card.text()).not.toContain('Pay invoice');
+			expect(card.text()).not.toContain('more');
+		} finally {
+			isBriefShown.value = true;
+		}
+	});
+
+	it('says when more requests wait than it could read, and links the inbox', () => {
+		const w = mountWork({
+			answer: [],
+			todo: [request()],
+			counts,
+			isLoading: false,
+			isTruncated: true,
+			moreHref: '/dashboard/postbox/all-inboxes?in=mb1',
+		});
+		const note = w.find('[data-testid="today-work-truncated"]');
+		expect(note.text()).toContain('More requests are waiting than fit here.');
+		expect(note.find('a').attributes('href')).toBe('/dashboard/postbox/all-inboxes?in=mb1');
+	});
+
+	it('rides a task on the card of the conversation it came from', () => {
+		const task = {
+			_id: 'task1',
+			title: 'Send the corrected invoice',
+			dueAt: null,
+			createdAt: Date.now(),
+			companyKey: null,
+			source: { kind: 'mail', mailThreadId: 't9', mailboxId: 'mb1', canOpen: true, subject: null },
+		};
+		const w = mountWork({ answer: [], todo: [request()], tasks: [task], counts, isLoading: false });
+		const cards = w.findAll('[data-testid="today-work-card"]');
+		expect(cards).toHaveLength(1);
+		expect(cards[0]!.text()).toContain('Send the corrected invoice');
 	});
 });

@@ -154,6 +154,20 @@ describe('today watermark', () => {
 		setSession('user-B');
 		expect((await t.query(api.today.state.get, {})).isFallback).toBe(true);
 	});
+
+	it('undoes the very first mark back to no watermark at all', async () => {
+		const t = convexTest(schema, modules);
+		setSession('user-A');
+		const now = Date.now();
+		await t.mutation(api.today.state.markSeen, { at: now - HOUR });
+		expect((await t.query(api.today.state.get, {})).isFallback).toBe(false);
+
+		expect((await t.mutation(api.today.state.undoMarkSeen, {})).restored).toBe(true);
+		const undone = await t.query(api.today.state.get, {});
+		expect(undone.isFallback).toBe(true);
+		expect(undone.previousSeenAt).toBeNull();
+		expect((await t.mutation(api.today.state.undoMarkSeen, {})).restored).toBe(false);
+	});
 });
 
 describe('today inbox choice', () => {

@@ -23,6 +23,18 @@ import type { AlignableIdentity } from '~/utils/senderAlignment';
 import type { SendOpts } from './usePostboxComposeOfflineSend';
 
 type SendOptions = Omit<SendOpts, 'undoSendDelayMs'>;
+type SendReceipt = { undoToken: string; sendAt: number };
+
+/**
+ * A send that went out (or was queued offline). `done`: the reply marks its
+ * conversation done once it goes out. `receipt`: the undo window it is held
+ * in, when `send` returned one.
+ */
+export interface ComposerSentOutcome {
+	scheduled: boolean;
+	done: boolean;
+	receipt?: SendReceipt;
+}
 
 export function usePostboxComposerSendGate(opts: {
 	seed: () => ComposerSeed;
@@ -36,12 +48,9 @@ export function usePostboxComposerSendGate(opts: {
 	canSend: () => boolean;
 	/** The seal lock (a getter: it is wired with this gate's own `handleSend`). */
 	seal: () => { blockSend: (opts?: SendOptions) => Promise<boolean> };
-	send: (opts?: SendOptions) => Promise<unknown>;
-	/**
-	 * Reached only when it sent (or queued offline); the undo window is armed.
-	 * `done`: the reply marks its conversation done once it goes out.
-	 */
-	onSent: (outcome: { scheduled: boolean; done: boolean }) => void;
+	send: (opts?: SendOptions) => Promise<SendReceipt | void>;
+	/** Reached only when it sent (or queued offline); the undo window is armed. */
+	onSent: (outcome: ComposerSentOutcome) => void;
 }) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -81,10 +90,11 @@ export function usePostboxComposerSendGate(opts: {
 		try {
 			// `send()` throws on a backend reject, already toasted by the operation
 			// module (SurfacedOperationError): stay put and do not report `sent`.
-			await opts.send(sendOpts);
+			const receipt = await opts.send(sendOpts);
 			opts.onSent({
 				scheduled: sendOpts?.scheduledSendAt !== undefined,
 				done: sendOpts?.afterSend === 'done',
+				...(receipt ? { receipt } : {}),
 			});
 		} catch (err) {
 			// Anything not already surfaced (the draft row could not be created, a

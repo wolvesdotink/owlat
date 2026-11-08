@@ -15,7 +15,10 @@ export type SidebarThreadSort = (typeof SIDEBAR_THREAD_SORTS)[number];
 
 export const SIDEBAR_THREADS_MIN = 0;
 export const SIDEBAR_THREADS_MAX = 10;
-export const SIDEBAR_THREADS_DEFAULT = 3;
+// None by default: the sidebar is a list of places to go, and the Workbench
+// is where the work waiting in each inbox shows. Sidebar options brings
+// conversation rows back for anyone who wants them.
+export const SIDEBAR_THREADS_DEFAULT = 0;
 
 // Module-level singletons (one set of preferences per tab), created on first
 // use so importing the constants above never touches storage.

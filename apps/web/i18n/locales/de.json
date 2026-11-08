@@ -454,7 +454,9 @@
 					"getEmailStats": "E-Mail-Statistiken abgerufen",
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",
-					"searchKnowledge": "Wissensdatenbank durchsucht"
+					"searchKnowledge": "Wissensdatenbank durchsucht",
+					"getCompanyContext": "Firma nachgesehen",
+					"listMyTasks": "Deine Aufgaben nachgesehen"
 				}
 			}
 		},
@@ -1192,6 +1194,30 @@
 			"evidence": {
 				"label": "Quelle zeigen: {name}, {date}",
 				"unknown": "Quelle zeigen"
+			},
+			"purpose": {
+				"review": "Sieh dir diese Unterhaltung an",
+				"who": {
+					"forYou": "Für dich",
+					"forTeam": "Offen fürs Team",
+					"assignedToYou": "Dir zugewiesen",
+					"assignedTo": "{name} kümmert sich darum",
+					"waitingOn": "Du wartest auf {name}",
+					"waiting": "Du wartest auf die andere Seite",
+					"needsReview": "Muss geprüft werden"
+				},
+				"due": "Fällig {date}",
+				"more": "1 weiteres | {count} weitere",
+				"ownerAndNotes": "Zuständig und Notizen",
+				"unlisted": "1 weiteres in der ganzen Übersicht | {count} weitere in der ganzen Übersicht",
+				"reply": "Antworten",
+				"claim": "Übernehmen",
+				"done": "Erledigt",
+				"gotIt": "Verstanden",
+				"seen": "Als gesehen markiert",
+				"operation": "Als gesehen markieren",
+				"noSubject": "(kein Betreff)",
+				"messages": "1 Nachricht | {count} Nachrichten"
 			}
 		},
 		"campaigns": {
@@ -6616,7 +6642,8 @@
 					"askCard": "Fragen der KI",
 					"mailCard": "Antwortliste: Nachfassen",
 					"teamCard": "Antwortliste: Entwürfe aus dem Team-Postfach",
-					"mentionCard": "Antwortliste: Erwähnungen"
+					"mentionCard": "Antwortliste: Erwähnungen",
+					"tasks": "Aufgaben"
 				}
 			},
 			"preferencesYourData": {
@@ -7647,7 +7674,10 @@
 				"inboxes": "Postfächer",
 				"more": "Mehr",
 				"answerCount": "eine wartet auf Antwort | {count} warten auf Antwort",
-				"inboxUnread": "{name}, {count} ungelesen"
+				"inboxUnread": "{name}, {count} ungelesen",
+				"tasks": "Aufgaben",
+				"companies": "Firmen",
+				"taskCount": "eine offene Aufgabe | {count} offene Aufgaben"
 			},
 			"marketing": {
 				"overview": "Übersicht",
@@ -7697,29 +7727,15 @@
 		},
 		"today": {
 			"answer": {
-				"title": "{count} wartet auf deine Antwort | {count} warten auf deine Antwort",
-				"cta": "Antwortliste durchgehen",
 				"drafts": "{count} Entwurf fertig | {count} Entwürfe fertig",
 				"mail": "{count} in deinen Postfächern",
 				"team": "{count} im Team-Postfach",
 				"mentions": "{count} Erwähnung | {count} Erwähnungen",
 				"minutes": "etwa {count} Minute | etwa {count} Minuten",
-				"clearTitle": "Nichts wartet auf eine Antwort",
-				"clearBody": "Neue Fragen landen in der Antwortliste, sobald sie ankommen.",
-				"needsTitle": "Wartet auf Antwort",
-				"allInQueue": "Alle {count} in der Liste",
 				"draftReady": "Entwurf bereit",
 				"question": "Braucht deine Angabe",
 				"mention": "Erwähnung",
-				"mentionTitle": "#{room}: „{preview}“",
-				"clearTitleIn": "In {inbox} wartet nichts auf eine Antwort"
-			},
-			"todo": {
-				"title": "Zu erledigen, keine Antwort nötig · {count}",
-				"titlePlain": "Zu erledigen, keine Antwort nötig",
-				"due": "bis {date}",
-				"more": "In diesem Postfach ist noch mehr zu erledigen.",
-				"openInbox": "Postfach öffnen"
+				"mentionTitle": "#{room}: „{preview}“"
 			},
 			"changed": {
 				"title": "Was sich getan hat",
@@ -7752,7 +7768,7 @@
 				"empty": "Seit deinem letzten Besuch wurde nichts abgelegt."
 			},
 			"line": {
-				"done": "Erledigt",
+				"done": "Verstanden",
 				"replyAnyway": "Trotzdem antworten",
 				"open": "Vorschau",
 				"openThread": "Unterhaltung öffnen"
@@ -7863,6 +7879,19 @@
 				"cancelled": "Nicht mehr geplant. Du findest die Nachricht in den Entwürfen.",
 				"showMore": "Mehr anzeigen",
 				"moreThanShown": "Es ist mehr geplant, als die Werkbank anzeigt."
+			},
+			"work": {
+				"title": "Was dich braucht",
+				"workThrough": "{count} Antwort durchgehen | {count} Antworten durchgehen",
+				"clearTitle": "Gerade braucht dich nichts",
+				"clearBody": "Antworten, Bitten und Aufgaben erscheinen hier, sobald sie ankommen.",
+				"complete": "„{title}“ als erledigt markieren",
+				"reply": "Antworten",
+				"open": "Öffnen",
+				"showMore": "{count} weitere anzeigen | {count} weitere anzeigen",
+				"showFewer": "Weniger anzeigen",
+				"task": "Aufgabe",
+				"truncated": "Es warten mehr Bitten, als hier Platz haben."
 			}
 		},
 		"answer": {
@@ -8058,6 +8087,146 @@
 						"failed": "Entferne die Datei, die nicht kopiert werden konnte, und sende dann."
 					}
 				}
+			}
+		},
+		"companies": {
+			"teamInbox": "Team-Postfach",
+			"mailbox": "Postfach",
+			"noSubject": "(kein Betreff)",
+			"colleagues": {
+				"someone": "Jemand aus deinem Team ist auch mit {company} in Kontakt. | {count} Leute aus deinem Team sind auch mit {company} in Kontakt.",
+				"one": "{first} ist auch mit {company} in Kontakt.",
+				"two": "{first} und {second} sind auch mit {company} in Kontakt.",
+				"three": "{first}, {second} und {third} sind auch mit {company} in Kontakt.",
+				"oneAndOthers": "{first} und eine weitere Person sind auch mit {company} in Kontakt. | {first} und {count} weitere sind auch mit {company} in Kontakt.",
+				"twoAndOthers": "{first}, {second} und eine weitere Person sind auch mit {company} in Kontakt. | {first}, {second} und {count} weitere sind auch mit {company} in Kontakt."
+			},
+			"context": {
+				"people": "Leute bei {company}",
+				"earlier": "Früher mit {company}",
+				"peopleMore": "{names} und {count} weitere",
+				"tasks": "Aufgaben",
+				"noTasks": "Noch keine Aufgaben aus diesem Gespräch.",
+				"loadFailed": "Firma und Aufgaben konnten nicht geladen werden.",
+				"openWork": "Offene Arbeit",
+				"noOpenWork": "Keine offenen Aufgaben mit {company}."
+			},
+			"rail": {
+				"title": "Firma & Aufgaben",
+				"show": "Firma und Aufgaben einblenden",
+				"hide": "Firma und Aufgaben ausblenden"
+			},
+			"tasks": {
+				"complete": "„{title}“ als erledigt markieren",
+				"reopen": "„{title}“ wieder öffnen",
+				"due": "fällig {date}",
+				"audience": {
+					"private": "Privat",
+					"everyone": "Alle",
+					"group": "Eine Gruppe"
+				}
+			},
+			"colleaguesShort": {
+				"someone": "jemand aus deinem Team auch in Kontakt | {count} aus deinem Team auch in Kontakt",
+				"one": "{first} auch in Kontakt",
+				"two": "{first} und {second} auch in Kontakt",
+				"three": "{first}, {second} und {third} auch in Kontakt",
+				"oneAndOthers": "{first} und eine weitere Person auch in Kontakt | {first} und {count} weitere auch in Kontakt",
+				"twoAndOthers": "{first}, {second} und eine weitere Person auch in Kontakt | {first}, {second} und {count} weitere auch in Kontakt"
+			},
+			"disclosure": {
+				"openTasks": "1 offene Aufgabe | {count} offene Aufgaben"
+			}
+		},
+		"tasks": {
+			"people": {
+				"someone": "Jemand"
+			},
+			"audience": {
+				"label": "Wer diese Aufgabe sieht",
+				"private": "Nur ich",
+				"privateChip": "Privat",
+				"everyone": "Alle",
+				"unknownGroup": "Eine Gruppe"
+			},
+			"assignee": {
+				"label": "Zuständig: {name}",
+				"listLabel": "Mitglieder",
+				"search": "Mitglied suchen",
+				"noMatch": "Kein Mitglied passt.",
+				"me": "Ich",
+				"you": "dir",
+				"privateReason": "Eine Aufgabe, die nur du siehst, bleibt bei dir."
+			},
+			"fields": {
+				"title": "Titel",
+				"titlePlaceholder": "Was ist zu tun?",
+				"notes": "Notizen",
+				"notesPlaceholder": "Details hinzufügen",
+				"audience": "Wer sie sieht",
+				"assignee": "Zuständig",
+				"due": "Fällig",
+				"company": "Firma",
+				"companyPlaceholder": "z. B. northwind.example",
+				"source": "Aus der Unterhaltung"
+			},
+			"create": {
+				"trigger": "Aufgabe anlegen",
+				"title": "Neue Aufgabe",
+				"submit": "Anlegen",
+				"created": "Aufgabe angelegt",
+				"open": "Öffnen"
+			},
+			"row": {
+				"complete": "„{title}“ als erledigt markieren",
+				"reopen": "„{title}“ wieder öffnen",
+				"from": "von {name}",
+				"assignedTo": "{name} ist zuständig",
+				"dropped": "Verworfen"
+			},
+			"due": {
+				"today": "Heute",
+				"tomorrow": "Morgen",
+				"yesterday": "Gestern",
+				"overdue": "Überfällig:"
+			},
+			"source": {
+				"fromEmail": "Aus einer E-Mail",
+				"fromTeamInbox": "Aus dem Team-Postfach"
+			},
+			"detail": {
+				"label": "Aufgabe",
+				"back": "Zurück zur Liste",
+				"gone": "Diese Aufgabe gibt es nicht mehr, oder du kannst sie nicht sehen.",
+				"createdBy": "Angelegt von {name} am {date}",
+				"doneBy": "Erledigt von {name} am {date}",
+				"droppedBy": "Verworfen von {name} am {date}",
+				"privateReason": "Privat machen kannst du nur eine Aufgabe, die du angelegt hast und für die du selbst zuständig bist.",
+				"clearCompany": "Firma entfernen",
+				"openCompany": "{name} öffnen",
+				"sourceClosed": "Eine Unterhaltung, die du nicht öffnen kannst",
+				"done": "Erledigt",
+				"drop": "Nicht machen",
+				"reopen": "Wieder öffnen",
+				"restore": "Wiederherstellen",
+				"replyAbout": "Dazu antworten"
+			},
+			"toast": {
+				"done": "Aufgabe erledigt",
+				"dropped": "Aufgabe verworfen",
+				"reopened": "Aufgabe wieder offen",
+				"restored": "Aufgabe wiederhergestellt"
+			},
+			"operations": {
+				"create": "Aufgabe anlegen",
+				"update": "Aufgabe ändern",
+				"setStatus": "Status einer Aufgabe ändern"
+			},
+			"replyOffer": {
+				"one": "Gesendet. „{title}“ als erledigt markieren?",
+				"markDone": "Als erledigt markieren",
+				"several": "Gesendet. 1 Aufgabe aus dieser Unterhaltung ist noch offen. | Gesendet. {count} Aufgaben aus dieser Unterhaltung sind noch offen.",
+				"review": "Ansehen"
 			}
 		}
 	},
@@ -10619,6 +10788,66 @@
 					"title": "Eigentümerschaft übertragen",
 					"transferring": "Wird übertragen...",
 					"typeToConfirm": "Gib zur Bestätigung {phrase} ein"
+				},
+				"groups": {
+					"title": "Gruppen",
+					"lede": "Zeig eine Aufgabe nur den Personen in einer Gruppe, zum Beispiel der Geschäftsleitung.",
+					"newGroup": "Neue Gruppe",
+					"loading": "Gruppen werden geladen …",
+					"loadError": "Die Gruppen konnten nicht geladen werden.",
+					"empty": {
+						"title": "Noch keine Gruppen",
+						"description": "Leg eine Gruppe wie Geschäftsleitung oder Produkt an und zeig Aufgaben dann nur ihren Mitgliedern.",
+						"descriptionReadOnly": "Inhaber und Admins können Gruppen anlegen, zum Beispiel Geschäftsleitung oder Produkt.",
+						"action": "Gruppe anlegen"
+					},
+					"youAreIn": "Du bist dabei",
+					"memberCount": "Keine Mitglieder | {count} Mitglied | {count} Mitglieder",
+					"rowActions": "Aktionen für {name}",
+					"edit": "Gruppe bearbeiten",
+					"delete": "Gruppe löschen",
+					"noMembers": "In dieser Gruppe ist noch niemand.",
+					"addMembers": "Mitglieder hinzufügen",
+					"removeMember": "{member} aus {name} entfernen",
+					"formerMembers": "{count} ehemaliges Mitglied | {count} ehemalige Mitglieder",
+					"operations": {
+						"create": "Gruppe anlegen",
+						"rename": "Gruppe umbenennen",
+						"addMember": "Gruppenmitglied hinzufügen",
+						"removeMember": "Gruppenmitglied entfernen",
+						"remove": "Gruppe löschen"
+					},
+					"toasts": {
+						"created": "Gruppe {name} angelegt",
+						"saved": "Gruppe {name} gespeichert",
+						"deleted": "Gruppe {name} gelöscht",
+						"memberRemoved": "{member} aus {name} entfernt"
+					},
+					"dialog": {
+						"createTitle": "Neue Gruppe",
+						"editTitle": "Gruppe bearbeiten",
+						"namePlaceholder": "z. B. Geschäftsleitung",
+						"nameEmpty": "Eine Gruppe braucht einen Namen.",
+						"nameTooLong": "Ein Gruppenname hat höchstens {max} Zeichen.",
+						"nameTaken": "Es gibt schon eine Gruppe namens {name}.",
+						"membersLabel": "Mitglieder",
+						"membersHelp": "Eine Aufgabe für diese Gruppe erreicht diese Personen, dazu die Person, die sie angelegt hat, und die zugewiesene Person.",
+						"save": "Änderungen speichern",
+						"create": "Gruppe anlegen"
+					},
+					"picker": {
+						"label": "Mitglieder des Workspace",
+						"search": "Mitglieder suchen",
+						"searchPlaceholder": "Nach Name oder E-Mail suchen",
+						"noMatches": "Niemand passt zu „{query}“.",
+						"selected": "Niemand ausgewählt | {count} ausgewählt | {count} ausgewählt"
+					},
+					"deleteDialog": {
+						"title": "{name} löschen?",
+						"description": "Die Gruppe verschwindet für alle. Ihre Mitglieder bleiben im Workspace.",
+						"hasTasks": "Diese Gruppe hat noch Aufgaben. Verschieb sie zuerst in eine andere Gruppe.",
+						"confirm": "Gruppe löschen"
+					}
 				}
 			}
 		},
@@ -13535,12 +13764,110 @@
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
 				"cta": "Postfach verbinden"
-			}
+			},
+			"lanes": {
+				"do": {
+					"title": "Was dich braucht",
+					"hint": "Antworten, Bitten und deine Aufgaben, jeweils mit dem nächsten Schritt."
+				},
+				"acknowledge": {
+					"title": "Zur Kenntnis",
+					"hint": "Was man dir mitgeteilt hat. Nichts zu tun, außer es zu wissen."
+				}
+			},
+			"allInboxes": "Alle Postfächer"
 		},
 		"answer": {
 			"pageTitle": "Antwortliste",
 			"mode": {
 				"pageTitle": "Antwortmodus"
+			}
+		},
+		"companies": {
+			"index": {
+				"pageTitle": "Firmen",
+				"title": "Firmen",
+				"subtitle": "Die Leute, mit denen du schreibst, gruppiert nach der Firma hinter ihrer E-Mail-Adresse.",
+				"emptyTitle": "Noch keine Firmen",
+				"emptyDescription": "Firmen entstehen aus den E-Mail-Domains der Leute, mit denen du sprichst. Freemail-Adressen wie Gmail werden nicht gruppiert, und neue Gespräche erscheinen hier innerhalb von ein paar Minuten.",
+				"searchPlaceholder": "Nach Name oder Domain suchen",
+				"searchLabel": "Firmen durchsuchen",
+				"noResults": "Keine Firma passt zu „{query}“",
+				"listLabel": "Firmen",
+				"peopleCount": "eine Person | {count} Personen",
+				"conversations": "1 Gespräch | {count} Gespräche",
+				"footnote": "Freemail-Adressen und eure eigenen Domains werden nicht gruppiert. Neue Gespräche erscheinen innerhalb von ein paar Minuten."
+			},
+			"detail": {
+				"back": "Firmen",
+				"allCompanies": "Alle Firmen",
+				"emptyTitle": "Noch nichts mit {company}",
+				"emptyDescription": "Es gibt kein Gespräch mit jemandem dort, das du öffnen kannst. Ist gerade eins angekommen, erscheint es innerhalb von ein paar Minuten.",
+				"lastContact": "zuletzt {time}",
+				"makeTask": "Aufgabe anlegen",
+				"conversations": "Gespräche",
+				"noConversations": "Keine Gespräche, die du öffnen kannst.",
+				"noTasks": "Keine offenen Aufgaben zu dieser Firma.",
+				"people": "Leute",
+				"writeTo": "An {name} schreiben",
+				"personConversations": "1 Gespräch | {count} Gespräche",
+				"openWork": "Offene Arbeit"
+			}
+		},
+		"tasks": {
+			"pageTitle": "Aufgaben",
+			"title": "Aufgaben",
+			"subtitle": "Was deine Unterhaltungen zu tun übrig lassen, und was du selbst einträgst.",
+			"addedElsewhere": "Aufgabe angelegt. Sie steht nicht in dieser Liste.",
+			"views": {
+				"mine": "Meine",
+				"everyone": "Alle",
+				"private": "Privat",
+				"created": "Abgegeben",
+				"done": "Erledigt"
+			},
+			"quickAdd": {
+				"placeholder": "Aufgabe hinzufügen …",
+				"submit": "Hinzufügen"
+			},
+			"dueBuckets": {
+				"overdue": "Überfällig",
+				"today": "Heute",
+				"thisWeek": "Diese Woche",
+				"later": "Später",
+				"none": "Ohne Datum"
+			},
+			"doneBuckets": {
+				"today": "Heute",
+				"yesterday": "Gestern",
+				"thisWeek": "Früher in dieser Woche",
+				"earlier": "Früher"
+			},
+			"empty": {
+				"mine": {
+					"title": "Nichts zu tun",
+					"body": "Aufgaben, die dir zugewiesen sind, stehen hier. Leg oben eine an oder mach eine aus einer Unterhaltung."
+				},
+				"everyone": {
+					"title": "Keine Aufgaben für alle",
+					"body": "Aufgaben, die der ganze Workspace sieht, stehen hier."
+				},
+				"group": {
+					"title": "Nichts für {group}",
+					"body": "Aufgaben, die mit {group} geteilt sind, stehen hier. Nur ihre Mitglieder sehen sie."
+				},
+				"private": {
+					"title": "Keine privaten Aufgaben",
+					"body": "Aufgaben, die nur du siehst, stehen hier."
+				},
+				"created": {
+					"title": "Nichts abgegeben",
+					"body": "Aufgaben, die du jemand anderem gegeben hast, stehen hier, bis sie erledigt sind."
+				},
+				"done": {
+					"title": "Noch nichts erledigt",
+					"body": "Aufgaben, die du erledigst, stehen hier."
+				}
 			}
 		}
 	},
@@ -15086,7 +15413,9 @@
 				"visualizations": "Visualisierungen",
 				"chat": "Chat",
 				"assistant": "Assistent",
-				"knowledge": "Wissen"
+				"knowledge": "Wissen",
+				"companies": "Firmen",
+				"tasks": "Aufgaben"
 			}
 		},
 		"campaignAttention": {
@@ -15431,6 +15760,10 @@
 					"templates": "Vorlagen",
 					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
+				},
+				"work": {
+					"tasks": "Aufgaben",
+					"companies": "Firmen"
 				}
 			},
 			"sections": {
@@ -15441,7 +15774,8 @@
 				"customers": "Kundschaft",
 				"inbox": "Team-Postfach",
 				"knowledge": "Wissen",
-				"postbox": "Postfächer"
+				"postbox": "Postfächer",
+				"work": "Arbeit"
 			}
 		},
 		"data": {
@@ -16912,7 +17246,8 @@
 			"automation": "Automatisierung",
 			"campaign": "Kampagne",
 			"compose": "E-Mail verfassen",
-			"contact": "Kontakt"
+			"contact": "Kontakt",
+			"task": "Aufgabe"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -17497,6 +17832,10 @@
 				"brandColors": {
 					"title": "Markenfarben",
 					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
+				},
+				"memberGroups": {
+					"title": "Mitgliedergruppen",
+					"keywords": "Gruppen, Mitgliedergruppen, Geschäftsleitung, Sichtbarkeit von Aufgaben, wer sieht eine Aufgabe, groups"
 				}
 			}
 		},
@@ -17541,7 +17880,8 @@
 				"review": "Updates-Liste",
 				"teamInbox": "Team-Postfach",
 				"workbench": "Werkbank",
-				"answer": "Antwortmodus"
+				"answer": "Antwortmodus",
+				"tasks": "Aufgaben"
 			},
 			"labels": {
 				"addLabel": "Label hinzufügen",
@@ -17638,7 +17978,15 @@
 				"resolveThread": "Thread erledigen",
 				"assignThread": "Thread zuweisen an …",
 				"chatView": "Chat-Ansicht",
-				"copySignInCode": "Anmeldecode kopieren (oder Anmeldelink öffnen)"
+				"copySignInCode": "Anmeldecode kopieren (oder Anmeldelink öffnen)",
+				"goToTasks": "Zu den Aufgaben",
+				"goToCompanies": "Zu den Firmen",
+				"nextTask": "Nächste Aufgabe",
+				"previousTask": "Vorherige Aufgabe",
+				"openTask": "Aufgabe öffnen",
+				"toggleTaskDone": "Aufgabe erledigen oder wieder öffnen",
+				"newTask": "Aufgabe hinzufügen",
+				"closeTask": "Aufgabe schließen"
 			}
 		},
 		"signatureBadge": {
@@ -18257,7 +18605,8 @@
 			"copySignInCode": "Neuesten Anmeldecode kopieren",
 			"openSignInLink": "Neuesten Anmeldelink öffnen",
 			"checkForMail": "Nach neuer Mail suchen",
-			"checkForMailSubtitle": "Verbundene Konten"
+			"checkForMailSubtitle": "Verbundene Konten",
+			"newTask": "Neue Aufgabe"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",
@@ -19008,6 +19357,14 @@
 				"priority": "Priorität setzen…",
 				"priorityPrompt": "Priorität",
 				"current": "Aktuell"
+			},
+			"conversationTasks": {
+				"heading": "Aufgaben",
+				"makeTask": "Aufgabe aus dieser Unterhaltung anlegen",
+				"markDone": "„{item}“ als erledigt markieren",
+				"openTasks": "Aufgaben aus dieser Unterhaltung öffnen",
+				"openCount": "1 offen | {count} offen",
+				"allDone": "Alles erledigt"
 			}
 		},
 		"conversationLink": {

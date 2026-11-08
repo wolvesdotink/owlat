@@ -71,6 +71,7 @@ describe('useSidebarState persisted sections', () => {
 			'postbox',
 			'preferences',
 			'send',
+			'work',
 		]);
 	});
 

@@ -34,8 +34,10 @@ vi.stubGlobal(
 
 import { usePostboxComposerSendGate } from '../usePostboxComposerSendGate';
 
+const RECEIPT = { undoToken: 't', sendAt: 1 };
+
 function makeGate(over: { uploading?: boolean; canSend?: boolean; sealBlocks?: boolean } = {}) {
-	const send = vi.fn(async () => ({ undoToken: 't', sendAt: 1 }));
+	const send = vi.fn(async () => RECEIPT);
 	const onSent = vi.fn();
 	const sealBlock = vi.fn(async () => over.sealBlocks === true);
 	const gate = effectScope().run(() =>
@@ -65,11 +67,11 @@ beforeEach(() => {
 });
 
 describe('usePostboxComposerSendGate', () => {
-	it('sends through every gate and reports the send', async () => {
+	it('sends through every gate and reports the send with its undo window', async () => {
 		const { gate, send, onSent } = makeGate();
 		await gate.handleSend({ scheduledSendAt: 42 });
 		expect(send).toHaveBeenCalledWith({ scheduledSendAt: 42 });
-		expect(onSent).toHaveBeenCalledWith({ scheduled: true, done: false });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: true, done: false, receipt: RECEIPT });
 		expect(gate.sending.value).toBe(false);
 	});
 
@@ -77,7 +79,7 @@ describe('usePostboxComposerSendGate', () => {
 		const { gate, send, onSent } = makeGate();
 		await gate.handleSend({ afterSend: 'done' });
 		expect(send).toHaveBeenCalledWith({ afterSend: 'done' });
-		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true, receipt: RECEIPT });
 	});
 
 	it('replays a parked send with the action and the time chosen when Send was pressed', async () => {
@@ -94,7 +96,7 @@ describe('usePostboxComposerSendGate', () => {
 		guardsConfirm(parked);
 		await flushPromises();
 		expect(send).toHaveBeenCalledWith({ afterSend: 'done', afterSendChosenAt: 1_000 });
-		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true });
+		expect(onSent).toHaveBeenCalledWith({ scheduled: false, done: true, receipt: RECEIPT });
 	});
 
 	it('explains an upload in flight instead of sending', async () => {

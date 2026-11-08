@@ -35,17 +35,17 @@ const ids = (environment: NavigationEnvironment) =>
 
 describe('quickCreateEntriesFor', () => {
 	it('offers an owner every verb, in registry order', () => {
-		expect(ids(env('owner'))).toEqual(['compose', 'campaign', 'contact', 'automation']);
+		expect(ids(env('owner'))).toEqual(['compose', 'campaign', 'contact', 'automation', 'task']);
 	});
 
 	it('keeps an editor to the verbs an editor may actually complete', () => {
 		// Contacts and automations are admin work (`canManageContacts`, the
 		// administration rail); campaigns are the editor's whole job.
-		expect(ids(env('editor'))).toEqual(['compose', 'campaign']);
+		expect(ids(env('editor'))).toEqual(['compose', 'campaign', 'task']);
 	});
 
 	it('fails closed while the role is still unresolved', () => {
-		expect(ids(env(null))).toEqual(['compose', 'campaign']);
+		expect(ids(env(null))).toEqual(['compose', 'campaign', 'task']);
 	});
 
 	it('drops compose on an instance with no mail at all', () => {
@@ -53,6 +53,7 @@ describe('quickCreateEntriesFor', () => {
 			'campaign',
 			'contact',
 			'automation',
+			'task',
 		]);
 	});
 
@@ -62,11 +63,11 @@ describe('quickCreateEntriesFor', () => {
 	});
 
 	it('drops the flag-gated verbs when their features are off', () => {
-		expect(ids(env('owner', ['postbox']))).toEqual(['compose', 'contact']);
+		expect(ids(env('owner', ['postbox']))).toEqual(['compose', 'contact', 'task']);
 	});
 
-	it('offers nothing to an editor on an instance with neither mail nor campaigns', () => {
-		expect(ids(env('editor', []))).toEqual([]);
+	it('leaves an editor on an instance with neither mail nor campaigns only a task', () => {
+		expect(ids(env('editor', []))).toEqual(['task']);
 	});
 });
 
@@ -79,7 +80,7 @@ describe('defaultQuickCreateEntry', () => {
 
 	it('falls through to the next allowed verb rather than a dead button', () => {
 		expect(defaultQuickCreateEntry(env('owner', ['campaigns']))?.id).toBe('campaign');
-		expect(defaultQuickCreateEntry(env('editor', []))).toBeNull();
+		expect(defaultQuickCreateEntry(env('editor', []))?.id).toBe('task');
 	});
 
 	it("leads with the workspace's own verb", () => {
@@ -110,5 +111,6 @@ describe('the registry itself', () => {
 		expect(byId.get('contact')?.href).toBeUndefined();
 		expect(byId.get('campaign')?.href).toBe('/dashboard/campaigns/new');
 		expect(byId.get('automation')?.href).toBe('/dashboard/automations/new');
+		expect(byId.get('task')?.href).toBe('/dashboard/tasks?new=1');
 	});
 });

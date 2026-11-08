@@ -37,7 +37,7 @@ interface MailboxFixture {
 type AdapterArgs = Parameters<MutationCtx['runQuery']>[1];
 
 /** BetterAuth user id (`_id`) for a login email, or null when not seeded. */
-async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<string | null> {
+export async function authUserIdByEmail(ctx: MutationCtx, email: string): Promise<string | null> {
 	const result = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'user',
 		where: [{ field: 'email', value: email }],

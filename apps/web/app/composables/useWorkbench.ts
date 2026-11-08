@@ -1,7 +1,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { Ref } from 'vue';
-import { TEAM_SCOPE, type WorkbenchScope } from '~/utils/workbench';
+import { ALL_SCOPE, TEAM_SCOPE, type WorkbenchScope } from '~/utils/workbench';
 import { buildTodayModel, type MailboxDigest, type TodayModel } from '~/utils/todayDigest';
 
 /** What one Workbench tab renders: its model and the watermark it counts from. */
@@ -34,7 +34,8 @@ function useTodayState() {
  * looked" watermark for that tab, and either that mailbox's digest or — on the
  * team inbox tab (owners/admins with the team inbox on) — its informational
  * updates. Only the open tab subscribes, so a viewer with many inboxes pays
- * for one digest at a time.
+ * for one digest at a time, except on the All tab, which reads every inbox the
+ * viewer shows (and the team inbox's updates) and is marked seen as a whole.
  *
  * The digest reads the watermark on the server, so it only waits for the tab
  * to be known and loads alongside the state read, not after it.
@@ -42,7 +43,11 @@ function useTodayState() {
  * The watermark only moves on purpose (`markSeen`), so opening a tab by
  * accident never erases what changed.
  */
-export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
+export function useWorkbench(
+	scope: Ref<WorkbenchScope | null>,
+	/** The mailboxes the All tab combines: the ones the viewer shows on the Workbench. */
+	allMailboxIds: Ref<readonly Id<'mailboxes'>[]> = ref([])
+) {
 	const { t, locale } = useI18n();
 	const { isEnabled } = useFeatureFlag();
 	const { isAdmin } = usePermissions();
@@ -60,16 +65,18 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 	const since = computed(() => watermark.value?.seenAt);
 
 	const isTeam = computed(() => scope.value === TEAM_SCOPE);
-	const mailboxIds = computed<Id<'mailboxes'>[]>(() =>
-		scope.value && !isTeam.value ? [scope.value as Id<'mailboxes'>] : []
-	);
+	const isAll = computed(() => scope.value === ALL_SCOPE);
+	const mailboxIds = computed<Id<'mailboxes'>[]>(() => {
+		if (isAll.value) return [...allMailboxIds.value];
+		return scope.value && !isTeam.value ? [scope.value as Id<'mailboxes'>] : [];
+	});
 	const digests = useConvexQueryMap(api.today.mailbox.digest, mailboxIds, (mailboxId) => ({
 		mailboxId,
 		locale: locale.value,
 	}));
 
 	const teamOn = computed(() => isAdmin.value && isEnabled('inbox'));
-	const teamTab = computed(() => teamOn.value && isTeam.value);
+	const teamTab = computed(() => teamOn.value && (isTeam.value || isAll.value));
 	const { data: teamUpdates, isLoading: teamLoading } = useConvexQuery(
 		api.inbox.updates.listUpdates,
 		() => (teamTab.value ? { view: 'updates' as const, limit: 40 } : 'skip')
@@ -89,19 +96,23 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 			isBriefShown: autoSummarize.value,
 		});
 		const teamTimes = [...model.worth, ...model.also].map((line) => line.at);
-		const digestTime = mailboxIds.value
+		// The latest read among the digests on screen. A digest that has not been
+		// read again since has had nothing change in its mailbox, so marking seen
+		// as of the latest read covers every line All shows.
+		const digestTimes = mailboxIds.value
 			.map((id) => (digests.get(id)?.data.value as MailboxDigest | null | undefined)?.generatedAt)
-			.find((at) => at !== undefined);
+			.filter((at): at is number => at !== undefined);
+		const digestTime = digestTimes.length > 0 ? Math.max(...digestTimes) : undefined;
 		return {
 			model,
 			since: since.value,
 			isFallback: watermark.value?.isFallback ?? false,
 			previousSeenAt: watermark.value?.previousSeenAt ?? null,
-			asOf: teamTab.value
+			asOf: isTeam.value
 				? teamTimes.length > 0
 					? Math.max(...teamTimes)
 					: null
-				: (digestTime ?? null),
+				: (digestTime ?? (teamTimes.length > 0 ? Math.max(...teamTimes) : null)),
 		};
 	});
 
@@ -141,8 +152,24 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 	const { run: undoMarkSeenRun } = useBackendOperation(api.today.state.undoMarkSeen, {
 		label: () => t('dashboard.today.operations.markSeen'),
 	});
+	// The numbers live in the header's tiles; the sentence only says "since when".
+	const sinceLabel = computed(() => {
+		const at = view.value.since;
+		if (at === undefined) return '';
+		if (view.value.isFallback) return t('components.today.scope.sinceFallback');
+		const date = new Date(at);
+		const sameDay = date.toDateString() === new Date().toDateString();
+		const when = new Intl.DateTimeFormat(undefined, {
+			...(sameDay ? {} : { weekday: 'long' }),
+			hour: 'numeric',
+			minute: '2-digit',
+		}).format(date);
+		return t('components.today.scope.since', { when });
+	});
+
 	return {
 		since: computed(() => view.value.since),
+		sinceLabel,
 		isFallback: computed(() => view.value.isFallback),
 		previousSeenAt: computed(() => view.value.previousSeenAt),
 		model: computed(() => view.value.model),
@@ -162,11 +189,13 @@ export function useWorkbench(scope: Ref<WorkbenchScope | null>) {
 		 */
 		markSeen: (target: WorkbenchScope | null = scope.value, at?: number) =>
 			markSeenRun({
-				...(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+				...(target && target !== ALL_SCOPE ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
 				...(at === undefined ? {} : { at }),
 			}),
 		undoMarkSeen: (target: WorkbenchScope | null = scope.value) =>
-			undoMarkSeenRun(target ? { scope: target as Id<'mailboxes'> | 'team' } : {}),
+			undoMarkSeenRun(
+				target && target !== ALL_SCOPE ? { scope: target as Id<'mailboxes'> | 'team' } : {}
+			),
 	};
 }
 

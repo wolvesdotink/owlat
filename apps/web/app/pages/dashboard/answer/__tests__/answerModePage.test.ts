@@ -14,6 +14,7 @@
  *     "Draft" button (useAnswerModeAssist has its own suite).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearReplyTaskHolds, useReplyTaskHolds } from '~/composables/useReplyTaskOffer';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, reactive, ref, computed, useId, shallowRef } from 'vue';
 
@@ -465,6 +466,38 @@ describe('Answer mode page', () => {
 		w.getComponent(ComposerStub).vm.$emit('sent', { scheduled: false });
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox', { replace: true });
 		expect(useAnswerLeftDraft().left.value).toBeNull();
+	});
+
+	it("watches a sent reply's draft for its task offer, never a scheduled or queued one", async () => {
+		clearReplyTaskHolds();
+		const w = await mountAt({ draft: 'draft_1' });
+		const composer = w.getComponent(ComposerStub);
+		composer.vm.$emit('sent', {
+			scheduled: true,
+			done: false,
+			receipt: { undoToken: 'u_later', sendAt: 1_000 },
+		});
+		composer.vm.$emit('sent', {
+			scheduled: false,
+			done: false,
+			receipt: { undoToken: 'outbox:ns:1', sendAt: 1_000 },
+		});
+		expect(useReplyTaskHolds().value).toEqual([]);
+		composer.vm.$emit('sent', {
+			scheduled: false,
+			done: false,
+			receipt: { undoToken: 'u_now', sendAt: 11_000 },
+		});
+		expect(useReplyTaskHolds().value).toEqual([
+			{
+				kind: 'mail',
+				key: 'mail:draft_1',
+				target: { mailThreadId: 'thr_1' },
+				draftId: 'draft_1',
+				threadMessageId: 'msg_1',
+			},
+		]);
+		clearReplyTaskHolds();
 	});
 
 	it("keeps another draft's offer when this reply is sent or discarded", async () => {

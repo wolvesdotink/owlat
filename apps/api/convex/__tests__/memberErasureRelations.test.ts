@@ -84,6 +84,7 @@ const erasureSource = [
 	'mailboxPhases',
 	'memberPhases',
 	'phases',
+	'taskPhases',
 	'threadBriefPhases',
 ]
 	.map((file) => readFileSync(join(__dirname, '..', 'auth', 'erasure', `${file}.ts`), 'utf8'))

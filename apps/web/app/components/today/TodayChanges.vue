@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { todayTaskContext } from '~/utils/todayTask';
+import TaskCreatePopover from '~/components/tasks/TaskCreatePopover.vue';
 import type { TodayChange } from '~/utils/todayDigest';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
 import RowContextMenu from '~/components/RowContextMenu.vue';
@@ -71,13 +73,27 @@ function latestName(change: TodayChange): string {
 						<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
 							formatCompactRelativeTime(change.at)
 						}}</span>
-						<button
-							type="button"
-							class="absolute right-14 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
-							@click="emit('done', change)"
+						<span
+							class="absolute right-14 top-2 flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
 						>
-							{{ t('components.today.line.done') }}
-						</button>
+							<TaskCreatePopover
+								v-bind="
+									todayTaskContext(
+										change.latest?.snippet || change.latest?.subject || '',
+										change.sources
+									)
+								"
+								size="sm"
+								variant="ghost"
+							/>
+							<button
+								type="button"
+								class="rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary hover:text-text-primary"
+								@click="emit('done', change)"
+							>
+								{{ t('components.today.line.done') }}
+							</button>
+						</span>
 					</li>
 				</template>
 			</RowContextMenu>

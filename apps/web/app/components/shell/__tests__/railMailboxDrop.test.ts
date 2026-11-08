@@ -57,6 +57,7 @@ beforeEach(() => {
 		useInboxes: () => ({ inboxes: ref(inboxes), hasPersonalMail: ref(true) }),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref('mb_dev') }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
+		useTaskOpenCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({
 			perInbox: ref(5),
 			sort: ref('recent'),

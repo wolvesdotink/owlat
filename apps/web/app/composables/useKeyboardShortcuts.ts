@@ -246,6 +246,8 @@ export function useKeyboardShortcuts() {
 		const routes: Record<string, string> = {
 			'global.goToDashboard': '/dashboard',
 			'global.goToAnswer': '/dashboard/answer',
+			'global.goToTasks': '/dashboard/tasks',
+			'global.goToCompanies': '/dashboard/companies',
 			'global.goToContacts': '/dashboard/audience/contacts',
 			'global.goToEmails': '/dashboard/send',
 			'global.goToAutomations': '/dashboard/automations',

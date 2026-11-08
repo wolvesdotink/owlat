@@ -186,6 +186,15 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: '/dashboard/knowledge',
 		page: 'shared.breadcrumbRoutes.pages.knowledgeGraph',
 	},
+	'/dashboard/tasks': {
+		section: 'shared.breadcrumbRoutes.sections.tasks',
+		sectionHref: '/dashboard/tasks',
+	},
+	// A company's own page sets its trail from the company's name.
+	'/dashboard/companies': {
+		section: 'shared.breadcrumbRoutes.sections.companies',
+		sectionHref: '/dashboard/companies',
+	},
 
 	// The mailbox's own pages. Same section crumb as its folders and messages
 	// (`breadcrumbPatterns.ts`), so the area has one name wherever you are in it

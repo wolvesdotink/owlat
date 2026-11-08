@@ -412,14 +412,14 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 				class="grid grid-cols-1 gap-6"
 				:class="isZen ? '' : 'lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_20rem]'"
 			>
-				<!-- The thread as one stream; the open actions pinned above it. -->
+				<!-- The thread as one stream, led by what it asks of the team. -->
 				<div
 					v-reply-drop="replyDrop"
 					class="space-y-4"
 					:class="isZen ? '' : 'lg:col-span-2 xl:col-span-1'"
 					data-testid="team-thread-main"
 				>
-					<TeamPinnedItems v-if="isAdmin" :team="team" />
+					<TeamThreadPurpose v-if="isAdmin" :team="team" @reply="openReply()" />
 					<TeamThreadStream
 						:entries="team.stream.entries.value"
 						:has-earlier="team.stream.hasEarlier.value"

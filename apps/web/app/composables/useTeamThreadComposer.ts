@@ -23,6 +23,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
 import { approveUndoWindow, isApproveAlreadyHandled } from '~/composables/useReviewApproveUndo';
 import { useLocalized } from '~/composables/useLocalized';
+import type { TeamReplySent } from '~/composables/useReplyTaskOffer';
 import type { TeamThreadComposerTarget } from '~/utils/composerTarget';
 import {
 	GENERIC_TEAMMATE_NAME,
@@ -32,6 +33,13 @@ import {
 import { isFollowUp, needsTakeOver, type TeamThreadReply } from '~/utils/teamThreadReply';
 
 type OperationResult = BackendOperationResult<unknown>;
+
+/** A follow-up's id from `sendFollowUp`'s result. */
+function followUpIdOf(result: unknown): string | null {
+	if (typeof result !== 'object' || result === null) return null;
+	const id = (result as { followUpId?: unknown }).followUpId;
+	return typeof id === 'string' ? id : null;
+}
 
 /** The mutations a reply rides, bound by the page (see `useThreadDetail`). */
 interface TeamThreadComposerOps {
@@ -52,6 +60,8 @@ interface TeamThreadComposerOps {
 	 * "Reply sent" toast. Without it the toast is the plain one.
 	 */
 	armApproveUndo?: (messageId: Id<'inboundMessages'>, sendAt: number) => void;
+	/** The reply went out; `sendAt` is the end of the server's undo window, when it has one. */
+	onSent?: (sent: TeamReplySent) => void;
 }
 
 interface TeamThreadComposerSources {
@@ -101,6 +111,11 @@ export function useTeamThreadComposer(
 			const sent = await ops.sendFollowUp(reply);
 			if (!sent.ok || refused(sent.result)) return null;
 			showToast(t('dashboard.inbox.detail.followUpSentToast'));
+			const followUpId = followUpIdOf(sent.result);
+			if (followUpId) {
+				const sendAt = approveUndoWindow(sent.result)?.sendAt;
+				ops.onSent?.({ kind: 'followUp', followUpId, ...(sendAt ? { sendAt } : {}) });
+			}
 			return 'followUp';
 		}
 		if (needsTakeOver(status)) {
@@ -114,6 +129,7 @@ export function useTeamThreadComposer(
 		const undo = approveUndoWindow(result.result);
 		if (undo && ops.armApproveUndo) ops.armApproveUndo(messageId, undo.sendAt);
 		else showToast(t('dashboard.inbox.detail.replySentToast'));
+		ops.onSent?.({ kind: 'reply', messageId, ...(undo ? { sendAt: undo.sendAt } : {}) });
 		return 'reply';
 	}
 

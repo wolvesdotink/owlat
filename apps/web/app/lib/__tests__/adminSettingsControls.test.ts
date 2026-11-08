@@ -44,7 +44,7 @@ function lookup(catalog: unknown, key: string): unknown {
 }
 
 describe('admin settings controls', () => {
-	it('indexes the six anchored admin topics', () => {
+	it('indexes the seven anchored admin topics', () => {
 		expect(ids(FULL)).toEqual([
 			'dkim',
 			'aiProviderKey',
@@ -52,6 +52,7 @@ describe('admin settings controls', () => {
 			'rampPace',
 			'webhookSecret',
 			'brandColors',
+			'memberGroups',
 		]);
 	});
 
@@ -84,8 +85,11 @@ describe('admin settings controls', () => {
 		async (_id, control) => {
 			const entry = adminEntryById(control.entryId);
 			expect(entry, `no admin entry ${control.entryId}`).toBeDefined();
-			const file = join(pagesRoot, `${entry!.path.replace(/^\//, '')}.vue`);
-			const source = await readFile(file, 'utf8');
+			// A route is either `<path>.vue` or `<path>/index.vue` (the Team page).
+			const base = join(pagesRoot, entry!.path.replace(/^\//, ''));
+			const source = await readFile(`${base}.vue`, 'utf8').catch(() =>
+				readFile(join(base, 'index.vue'), 'utf8')
+			);
 			expect(source).toContain(`id="${control.anchor}"`);
 		}
 	);
@@ -116,6 +120,7 @@ describe('admin settings controls', () => {
 		expect(first('warm-up')).toBe('rampPace');
 		expect(first('webhook secret')).toBe('webhookSecret');
 		expect(first('brand colors')).toBe('brandColors');
+		expect(first('member groups')).toBe('memberGroups');
 	});
 });
 

@@ -30,6 +30,16 @@ import PostboxThreadHeader from '../PostboxThreadHeader.vue';
 import PostboxReaderStrip from '../PostboxReaderStrip.vue';
 import PostboxReaderStripLinks from '../PostboxReaderStripLinks.vue';
 import PostboxReaderNotice from '../PostboxReaderNotice.vue';
+import PostboxReaderPurpose from '../PostboxReaderPurpose.vue';
+
+// The purpose header is real; what it opens (the task form, the company
+// context) reads its own data and is covered in its own suites.
+vi.mock('~/components/tasks/TaskCreatePopover.vue', () => ({
+	default: defineComponent({ setup: () => () => h('button', { 'data-testid': 'make-task' }) }),
+}));
+vi.mock('~/components/companies/CompanyContextDisclosure.vue', () => ({
+	default: defineComponent({ setup: () => () => h('div', { 'data-testid': 'company-line' }) }),
+}));
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BRIEF = 'mail/interpret/brief:get';
@@ -287,6 +297,7 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 				PostboxReaderStrip,
 				PostboxReaderStripLinks,
 				PostboxReaderNotice,
+				PostboxReaderPurpose,
 				PostboxOverflowMenu: overflowMenu,
 				PostboxReaderMessage: PostboxReaderMessageCard,
 				// Real: with the chat layout off it renders the card above.
@@ -543,9 +554,19 @@ describe('Details and the header ⋯', () => {
 		);
 	});
 
-	it('the header carries Reply, Archive and the ⋯ entries', async () => {
+	it('the header leads with the purpose, its Reply, then Archive and the ⋯ entries', async () => {
 		const w = await mountReader({ messages: [message('m3')], brief: briefView() });
-		expect(w.find('[data-testid="thread-header-reply"]').exists()).toBe(true);
+		const header = w.get('header');
+		expect(header.get('h1[data-testid="purpose-sentence"]').text()).toContain(
+			'Approve the revised quote of €5,350'
+		);
+		expect(header.get('[data-testid="purpose-subject"]').text()).toBe(
+			'Print run for the autumn catalogue'
+		);
+		// The strip does not repeat the item the header names.
+		expect(w.find('[data-testid="strip-owe"]').exists()).toBe(false);
+		expect(header.find('[data-testid="purpose-reply"]').exists()).toBe(true);
+		expect(w.find('[data-testid="thread-header-reply"]').exists()).toBe(false);
 		expect(w.find('[data-testid="thread-header-archive"]').exists()).toBe(true);
 		expect(w.get('[data-testid="thread-menu-why-here"]').text()).toBe('Why is this here?');
 		expect(w.get('[data-testid="thread-menu-details"]').text()).toBe('Details');

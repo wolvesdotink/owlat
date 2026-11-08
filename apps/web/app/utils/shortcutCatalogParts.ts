@@ -19,6 +19,7 @@ export const SHORTCUT_GROUPS = {
 	review: 'shared.shortcuts.groups.review',
 	teamInbox: 'shared.shortcuts.groups.teamInbox',
 	workbench: 'shared.shortcuts.groups.workbench',
+	tasks: 'shared.shortcuts.groups.tasks',
 	workspace: 'shared.shortcuts.groups.workspace',
 	answer: 'shared.shortcuts.groups.answer',
 } as const;

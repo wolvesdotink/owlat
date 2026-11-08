@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 import { ALL_INBOXES_PATH, isUnifiedFolderPath } from '~/utils/postboxAllInboxes';
-import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
+import {
+	BrainIcon,
+	BriefcaseIcon,
+	ChatCircleIcon,
+	DashboardIcon,
+	InboxIcon,
+	ListChecklistIcon,
+	ReplyAllIcon,
+} from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 import { uniqueRailLabels } from '~/utils/inboxIdentity';
 import { usePostboxMailboxDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
- * sidebar lists the work, not pages). Three pinned destinations — the
- * Workbench (one tab per inbox), the Answer queue, All inboxes — then every inbox the viewer reads with its
+ * sidebar lists the work, not pages). Pinned destinations — the Workbench
+ * (one tab per inbox), the Answer queue, Tasks, Companies, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
  * per inbox with its mark or initials, its unread count and a highlight on the
@@ -28,6 +36,7 @@ const { isEnabled } = useFeatureFlag();
 const { isAdmin, isRoleLoading } = usePermissions();
 const { inboxes, hasPersonalMail } = useInboxes();
 const { count: answerCount } = useAnswerQueueCount();
+const { count: taskCount } = useTaskOpenCount();
 const { perInbox, sort, isCollapsed, toggleGroup } = useShellSidebarPrefs();
 const mailboxDrop = usePostboxMailboxDropTargets();
 
@@ -43,6 +52,10 @@ const showRoleSkeleton = computed(
 // the sidebar and ⌘K say the same word.
 const showKnowledge = computed(() => isEnabled('ai.knowledge'));
 const KNOWLEDGE_HREF = '/dashboard/knowledge';
+// Companies come from mailbox and Team Inbox conversations, so they need one of them.
+const showCompanies = computed(
+	() => isEnabled('postbox') || isEnabled('mail.external') || isEnabled('inbox')
+);
 
 const pinned = computed(() => [
 	{
@@ -51,6 +64,7 @@ const pinned = computed(() => [
 		label: t('components.shell.nav.today'),
 		exact: true,
 		count: 0,
+		countLabel: '',
 	},
 	{
 		to: '/dashboard/answer',
@@ -58,7 +72,32 @@ const pinned = computed(() => [
 		label: t('components.shell.nav.answer'),
 		exact: false,
 		count: answerCount.value,
+		countLabel: t(
+			'components.shell.nav.answerCount',
+			{ count: answerCount.value },
+			answerCount.value
+		),
 	},
+	{
+		to: '/dashboard/tasks',
+		icon: ListChecklistIcon,
+		label: t('components.shell.nav.tasks'),
+		exact: false,
+		count: taskCount.value,
+		countLabel: t('components.shell.nav.taskCount', { count: taskCount.value }, taskCount.value),
+	},
+	...(showCompanies.value
+		? [
+				{
+					to: '/dashboard/companies',
+					icon: BriefcaseIcon,
+					label: t('components.shell.nav.companies'),
+					exact: false,
+					count: 0,
+					countLabel: '',
+				},
+			]
+		: []),
 	// All inboxes merges the mailboxes; the team inbox has its own row below.
 	...(hasPersonalMail.value
 		? [
@@ -68,6 +107,7 @@ const pinned = computed(() => [
 					label: t('components.shell.nav.allInboxes'),
 					exact: false,
 					count: 0,
+					countLabel: '',
 				},
 			]
 		: []),
@@ -138,7 +178,7 @@ function isActive(to: string, exact: boolean): boolean {
 				<span
 					v-else-if="item.count > 0"
 					class="absolute right-1.5 top-1 size-2 rounded-full bg-text-primary ring-2 ring-bg-elevated"
-					:aria-label="t('components.shell.nav.answerCount', { count: item.count }, item.count)"
+					:aria-label="item.countLabel"
 				/>
 			</NuxtLink>
 		</UiTooltip>

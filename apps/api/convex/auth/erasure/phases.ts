@@ -57,6 +57,7 @@ import {
 	eraseThreadViewerState,
 } from './threadBriefPhases';
 import { eraseSavedReplies } from './savedReplyPhases';
+import { eraseMailboxTaskLinks, eraseMemberGroups, eraseTasks, taskProbes } from './taskPhases';
 import type { MemberPhaseRunner } from './phaseKit';
 
 const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
@@ -74,6 +75,7 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	mailboxShares: eraseShares,
 	savedReplies: eraseSavedReplies,
 	mailboxRecords: eraseMailboxRecords,
+	mailboxTaskLinks: eraseMailboxTaskLinks,
 	mailboxRows: eraseMailboxRows,
 	memberRecords: eraseMemberRecords,
 	sharedMemberships: eraseSharedMemberships,
@@ -92,6 +94,8 @@ const PHASE_RUNNERS: Record<MemberErasurePhase, MemberPhaseRunner> = {
 	threadItemAssignments: eraseThreadItemAssignments,
 	noteReactions: eraseNoteReactions,
 	threadItemCorrections: eraseThreadItemCorrections,
+	tasks: eraseTasks,
+	memberGroups: eraseMemberGroups,
 };
 
 export const FIRST_MEMBER_ERASURE_PHASE: MemberErasurePhase = MEMBER_ERASURE_PHASES[0];
@@ -261,6 +265,7 @@ export async function remainingMemberData(
 					.withIndex('by_assignee', (q) => q.eq('assigneeUserId', authUserId))
 					.first(),
 		],
+		...taskProbes(ctx, authUserId),
 	];
 	for (const [name, probe] of probes) {
 		if ((await probe()) !== null) remaining.push(name);

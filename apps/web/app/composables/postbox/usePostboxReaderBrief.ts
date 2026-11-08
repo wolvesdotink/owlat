@@ -17,7 +17,9 @@
  *  - the viewer's "Show the brief above conversations" (`showBrief`): off, no
  *    strip and no latest lines, only the slim line; the brief stays reachable
  *    as the Full brief sheet from the header's ⋯;
- *  - marking the brief seen once the strip has shown it;
+ *  - what the conversation is for (`purpose`, utils/threadPurpose), which the
+ *    purpose header leads with; the strip then leaves out what it says;
+ *  - marking the brief seen once the strip or the purpose header has shown it;
  *  - running item reactions, with the replying ones handed to the reader.
  */
 import { api } from '@owlat/api';
@@ -30,6 +32,7 @@ import { messageLatestMap, resolveCite, type BriefAction } from '~/utils/threadB
 import type { BriefSource } from '~/utils/threadBriefContext';
 import { formatCite, parseCite } from '~/utils/threadBriefView';
 import { briefHasContent, readerGistOf, resolveReaderStrip } from '~/utils/postboxReaderStrip';
+import { resolveThreadPurpose, stripBesidePurpose } from '~/utils/threadPurpose';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { SecureMessageClass } from '@owlat/shared/secureMessage';
 
@@ -81,8 +84,8 @@ export function usePostboxReaderBrief(opts: {
 		api.mail.interpret.preferences.getArrivalPreference,
 		() => ({})
 	);
-	/** The one element under the header: the brief strip or the slim meta line. */
-	const strip = computed(() =>
+	/** What the brief would put under the header on its own. */
+	const fullStrip = computed(() =>
 		resolveReaderStrip({
 			isShared: isShared.value,
 			brief: read.brief.value,
@@ -92,6 +95,16 @@ export function usePostboxReaderBrief(opts: {
 			isBriefShown: isBriefShown.value,
 		})
 	);
+	/** What a personal conversation leads with; a shared one reads its team view instead. */
+	const purpose = computed(() =>
+		resolveThreadPurpose({
+			isAiOn: isAiEnabled('ai'),
+			isBriefShown: isBriefShown.value,
+			brief: isShared.value ? null : read.brief.value,
+		})
+	);
+	/** The one element under the header: the brief strip or the slim meta line. */
+	const strip = computed(() => stripBesidePurpose(fullStrip.value, purpose.value));
 
 	/** "Full brief" opens whenever the brief holds anything, whatever the strip shows. */
 	const hasFullBrief = computed(() => !isShared.value && briefHasContent(read.brief.value));
@@ -192,11 +205,12 @@ export function usePostboxReaderBrief(opts: {
 		}
 	);
 
-	// Seen once the strip actually shows the brief.
+	// Seen once the strip or the purpose header actually shows the brief.
 	watch(
-		() => [strip.value.kind, read.brief.value?.interpretationRevision] as const,
-		([kind]) => {
-			if (kind !== 'meta' && !isShared.value) read.markSeen();
+		() =>
+			[fullStrip.value.kind, purpose.value.kind, read.brief.value?.interpretationRevision] as const,
+		([kind, lead]) => {
+			if ((kind !== 'meta' || lead !== 'review') && !isShared.value) read.markSeen();
 		},
 		{ immediate: true }
 	);
@@ -249,6 +263,7 @@ export function usePostboxReaderBrief(opts: {
 		itemsState: read.itemsState,
 		isClosedTruncated: read.isClosedTruncated,
 		strip,
+		purpose,
 		isBriefShown,
 		hasFullBrief,
 		gistAttribution,

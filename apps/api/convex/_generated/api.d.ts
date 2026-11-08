@@ -306,6 +306,8 @@ import type * as assistant_prompt from '../assistant/prompt.js';
 import type * as assistant_runner from '../assistant/runner.js';
 import type * as assistant_toolRegistry from '../assistant/toolRegistry.js';
 import type * as assistant_tools from '../assistant/tools.js';
+import type * as assistant_workContext from '../assistant/workContext.js';
+import type * as assistant_workTools from '../assistant/workTools.js';
 import type * as auditActions_catalog from '../auditActions/catalog.js';
 import type * as auditActions_logs from '../auditActions/logs.js';
 import type * as auth_accessRequest from '../auth/accessRequest.js';
@@ -1868,6 +1870,24 @@ import type * as topics_subscriptionOps from '../topics/subscriptionOps.js';
 import type * as topics_subscriptionUndo from '../topics/subscriptionUndo.js';
 import type * as topics_topicReads from '../topics/topicReads.js';
 import type * as topics_topics from '../topics/topics.js';
+import type * as companies_companies from '../companies/companies.js';
+import type * as companies_cronRegistration from '../companies/cronRegistration.js';
+import type * as companies_eligibility from '../companies/eligibility.js';
+import type * as companies_indexer from '../companies/indexer.js';
+import type * as companies_ownDomains from '../companies/ownDomains.js';
+import type * as companies_read from '../companies/read.js';
+import type * as tasks_access from '../tasks/access.js';
+import type * as tasks_groups from '../tasks/groups.js';
+import type * as tasks_members from '../tasks/members.js';
+import type * as tasks_mutations from '../tasks/mutations.js';
+import type * as tasks_tasks from '../tasks/tasks.js';
+import type * as tasks_view from '../tasks/view.js';
+import type * as lib_validators_tasks from '../lib/validators/tasks.js';
+import type * as schema_companies from '../schema/companies.js';
+import type * as schema_tasks from '../schema/tasks.js';
+import type * as auth_erasure_taskPhases from '../auth/erasure/taskPhases.js';
+import type * as auth_erasure_taskRelations from '../auth/erasure/taskRelations.js';
+import type * as seedDemo_work from '../seedDemo/work.js';
 import type * as today_mailbox from '../today/mailbox.js';
 import type * as today_state from '../today/state.js';
 import type * as today_triage from '../today/triage.js';
@@ -2209,6 +2229,8 @@ declare const fullApi: ApiFromModules<{
 	'assistant/runner': typeof assistant_runner;
 	'assistant/toolRegistry': typeof assistant_toolRegistry;
 	'assistant/tools': typeof assistant_tools;
+	'assistant/workContext': typeof assistant_workContext;
+	'assistant/workTools': typeof assistant_workTools;
 }> & ApiFromModules<{
 	'auditActions/catalog': typeof auditActions_catalog;
 	'auditActions/logs': typeof auditActions_logs;
@@ -2250,6 +2272,8 @@ declare const fullApi: ApiFromModules<{
 	'auth/erasure/schedule': typeof auth_erasure_schedule;
 	'auth/erasure/threadBriefPhases': typeof auth_erasure_threadBriefPhases;
 	'auth/erasure/threadBriefRelations': typeof auth_erasure_threadBriefRelations;
+	'auth/erasure/taskPhases': typeof auth_erasure_taskPhases;
+	'auth/erasure/taskRelations': typeof auth_erasure_taskRelations;
 	'auth/erasure/walker': typeof auth_erasure_walker;
 	'auth/invitationResend': typeof auth_invitationResend;
 	'auth/ipAddress': typeof auth_ipAddress;
@@ -2389,6 +2413,13 @@ declare const fullApi: ApiFromModules<{
 	'chat/messageInsert': typeof chat_messageInsert;
 	'chat/messages': typeof chat_messages;
 	'chat/rooms': typeof chat_rooms;
+}> & ApiFromModules<{
+	'companies/companies': typeof companies_companies;
+	'companies/cronRegistration': typeof companies_cronRegistration;
+	'companies/eligibility': typeof companies_eligibility;
+	'companies/indexer': typeof companies_indexer;
+	'companies/ownDomains': typeof companies_ownDomains;
+	'companies/read': typeof companies_read;
 }> & ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
@@ -3279,6 +3310,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/xmlSubset': typeof lib_xmlSubset;
 	'lib/validators/arrival': typeof lib_validators_arrival;
 	'lib/validators/mcp': typeof lib_validators_mcp;
+	'lib/validators/tasks': typeof lib_validators_tasks;
 }> & ApiFromModules<{
 	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
 	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
@@ -4007,6 +4039,8 @@ declare const fullApi: ApiFromModules<{
 	'schema/mailArrival': typeof schema_mailArrival;
 	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
 	'schema/senderLogos': typeof schema_senderLogos;
+	'schema/companies': typeof schema_companies;
+	'schema/tasks': typeof schema_tasks;
 }> & ApiFromModules<{
 	'search/global': typeof search_global;
 }> & ApiFromModules<{
@@ -4028,6 +4062,7 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/loaders/webhooks': typeof seedDemo_loaders_webhooks;
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
+	'seedDemo/work': typeof seedDemo_work;
 }> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
@@ -4040,6 +4075,13 @@ declare const fullApi: ApiFromModules<{
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;
 	'storage/files': typeof storage_files;
+}> & ApiFromModules<{
+	'tasks/access': typeof tasks_access;
+	'tasks/groups': typeof tasks_groups;
+	'tasks/members': typeof tasks_members;
+	'tasks/mutations': typeof tasks_mutations;
+	'tasks/tasks': typeof tasks_tasks;
+	'tasks/view': typeof tasks_view;
 }> & ApiFromModules<{
 	'today/mailbox': typeof today_mailbox;
 	'today/state': typeof today_state;

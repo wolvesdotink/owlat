@@ -37,6 +37,7 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 	const reset = url.searchParams.get('reset') === 'true';
 
 	try {
+		// checkpoint: the loaders' rows stand on their own; a re-run of the seed dedupes them.
 		const summary = await ctx.runMutation(internal.seedDemo.index.runSeedDemo, { reset });
 		// Demo threads for the seeded team inboxes run action-side (not as a
 		// Loader): the raw message blob must land in `_storage` first, and only
@@ -47,6 +48,12 @@ export const seedDemoHttp = httpAction(async (ctx, request) => {
 		);
 		summary.inserted['mailboxMessages'] = messages.inserted;
 		summary.skipped['mailboxMessages'] = messages.skipped;
+		// Groups, tasks and the company index come last: tasks point at the
+		// threads the messages above created, and the index is built from them.
+		const work = await ctx.runMutation(internal.seedDemo.work.seedWork, {});
+		summary.inserted['memberGroups'] = work.groups;
+		summary.inserted['tasks'] = work.tasks;
+		summary.inserted['companyIndex'] = work.indexed;
 		return jsonResponse(summary);
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed message.

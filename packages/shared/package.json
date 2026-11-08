@@ -94,6 +94,10 @@
 			"types": "./src/freemailDomains.ts",
 			"import": "./src/freemailDomains.ts"
 		},
+		"./companyKey": {
+			"types": "./src/companyKey.ts",
+			"import": "./src/companyKey.ts"
+		},
 		"./workspaceLogo": {
 			"types": "./src/workspaceLogo.ts",
 			"import": "./src/workspaceLogo.ts"

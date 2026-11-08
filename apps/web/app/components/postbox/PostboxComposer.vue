@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 import type { BeforeReady } from '~/composables/postbox/usePostboxComposeRow';
+import type { ComposerSentOutcome } from '~/composables/postbox/usePostboxComposerSendGate';
 import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
 import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxComposerAnswerFrame';
 import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
@@ -46,11 +47,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	/**
-	 * The send went out (or was queued offline). The undo window is already
-	 * armed; hosts only do their own bookkeeping (close, collapse, and for a
-	 * reply marked `done`, moving on).
+	 * The send went out (or was queued offline), its undo window armed. Hosts
+	 * only do their own bookkeeping: close, collapse, move on after `done`.
 	 */
-	(e: 'sent', outcome: { scheduled: boolean; done: boolean }): void;
+	(e: 'sent', outcome: ComposerSentOutcome): void;
 	(e: 'discarded'): void;
 	/** Esc from inside the composer; the host decides what it means. */
 	(e: 'minimize'): void;

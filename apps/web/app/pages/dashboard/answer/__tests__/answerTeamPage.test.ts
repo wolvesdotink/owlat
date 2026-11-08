@@ -12,6 +12,7 @@
  *   - a send leaves (or, in the Answer queue, moves on).
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearReplyTaskHolds, useReplyTaskHolds } from '~/composables/useReplyTaskOffer';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref, useId } from 'vue';
 
@@ -454,6 +455,23 @@ describe('Answer mode for a Team inbox thread', () => {
 		undoRun.mockResolvedValueOnce({ ok: true, result: { cancelled: true } });
 		await useReviewApproveUndo().runUndo();
 		expect(undoRun).toHaveBeenCalledWith({ inboundMessageId: 'in_1' });
+	});
+
+	it("watches a held approve's message for its task offer", async () => {
+		clearReplyTaskHolds();
+		handleApprove.mockResolvedValueOnce({ ok: true, result: { undo: { sendAt: 6_000 } } });
+		const wrapper = await mountPage();
+		await wrapper.get('[data-testid="composer-send"]').trigger('click');
+		await flushPromises();
+		expect(useReplyTaskHolds().value).toEqual([
+			{
+				kind: 'approve',
+				key: 'approve:in_1:6000',
+				target: { conversationThreadId: 'ct_1' },
+				inboundMessageId: 'in_1',
+			},
+		]);
+		clearReplyTaskHolds();
 	});
 
 	it('in the Answer queue, a send finishes the item and moves on', async () => {
