@@ -14,10 +14,15 @@ interface WorkbenchKeyboardActions {
 
 /**
  * The Workbench's keys, as catalog ids in the `workbench` scope: next/previous
- * move between lines (j/k), open shows the peek (Enter), done marks a line
+ * move between rows (j/k), open shows the peek (Enter), done marks a line
  * done and moves on (d), reply sends a team-inbox update to the Answer queue
- * (r). Lines are found by their `data-today-key` attribute, so focus follows
+ * (r). Rows are found by their `data-today-key` attribute, so focus follows
  * the rendered order whatever the column layout.
+ *
+ * The work cards of "What needs you" are rows too (`data-today-key="work:…"`,
+ * TodayWork.vue), first in reading order. On a card the keys use the card's
+ * own controls: Enter opens it, r takes its next step (Reply, or Open), and d
+ * ticks off a task card; so a key does exactly what its button does.
  *
  * Each command says when it can run (`when`), so a press it cannot act on is
  * left alone rather than swallowed, exactly as before the keys were remappable.
@@ -34,6 +39,14 @@ export function useWorkbenchKeyboard(actions: WorkbenchKeyboardActions) {
 		return actions.lines().find((l) => l.key === row.dataset['todayKey']) ?? null;
 	}
 	const free = () => !actions.peekOpen();
+
+	/** The focused work card, when focus is on one. */
+	function activeCard(): HTMLElement | null {
+		const row = activeRow();
+		return row?.dataset['todayKey']?.startsWith('work:') ? row : null;
+	}
+	const cardControl = (name: 'open' | 'step' | 'complete') =>
+		activeCard()?.querySelector<HTMLElement>(`[data-work-key="${name}"]`) ?? null;
 
 	function move(delta: 1 | -1) {
 		const all = rows();
@@ -53,34 +66,48 @@ export function useWorkbenchKeyboard(actions: WorkbenchKeyboardActions) {
 		handler: () => move(-1),
 		when: () => free() && rows().length > 0,
 	});
+	function focusNext() {
+		const all = rows();
+		const row = activeRow();
+		all[(row ? all.indexOf(row) : -1) + 1]?.focus();
+	}
+
 	registerShortcut({
 		id: 'workbench.open',
 		handler: () => {
+			const card = cardControl('open');
+			if (card) return card.click();
 			const line = activeLine();
 			if (line) actions.open(line);
 		},
-		when: () => free() && activeLine() !== null,
+		when: () => free() && (cardControl('open') !== null || activeLine() !== null),
 	});
 	registerShortcut({
 		id: 'workbench.done',
 		handler: () => {
+			const complete = cardControl('complete');
+			if (complete) {
+				focusNext();
+				return complete.click();
+			}
 			const line = activeLine();
 			if (!line) return;
-			const all = rows();
-			const row = activeRow();
-			all[(row ? all.indexOf(row) : -1) + 1]?.focus();
+			focusNext();
 			actions.done(line);
 		},
-		when: () => free() && activeLine() !== null,
+		when: () => free() && (cardControl('complete') !== null || activeLine() !== null),
 	});
 	registerShortcut({
 		id: 'workbench.reply',
 		handler: () => {
+			const step = cardControl('step');
+			if (step) return step.click();
 			const line = activeLine();
 			if (line && 'inboundMessageId' in line && line.inboundMessageId) actions.replyAnyway(line);
 		},
 		when: () => {
 			if (!free()) return false;
+			if (cardControl('step') !== null) return true;
 			const line = activeLine();
 			return line !== null && 'inboundMessageId' in line && !!line.inboundMessageId;
 		},

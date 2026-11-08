@@ -131,3 +131,49 @@ describe('useWorkbenchKeyboard', () => {
 		expect(actions.done).not.toHaveBeenCalled();
 	});
 });
+
+describe('useWorkbenchKeyboard on work cards', () => {
+	function mountWithCard() {
+		const clicks = { open: vi.fn(), step: vi.fn(), complete: vi.fn() };
+		const lines = [line('l1')];
+		const actions = { open: vi.fn(), done: vi.fn(), replyAnyway: vi.fn() };
+		const Host = defineComponent({
+			setup() {
+				useWorkbenchKeyboard({ lines: () => lines, peekOpen: () => false, ...actions });
+				return () =>
+					h('div', [
+						h('li', { 'data-today-key': 'work:task:t1', tabindex: -1 }, [
+							h('a', { 'data-work-key': 'open', onClick: clicks.open }, 'Send the slides'),
+							h('button', { 'data-work-key': 'step', onClick: clicks.step }, 'Open'),
+							h('button', { 'data-work-key': 'complete', onClick: clicks.complete }, 'Done'),
+						]),
+						h('button', { 'data-today-key': 'l1' }, 'l1'),
+					]);
+			},
+		});
+		wrapper = mount(Host, { attachTo: document.body });
+		return { clicks, actions };
+	}
+
+	it('walks the cards first, then the lines', () => {
+		mountWithCard();
+		press('j');
+		expect(focused()).toBe('work:task:t1');
+		press('j');
+		expect(focused()).toBe('l1');
+	});
+
+	it('opens a card, takes its next step and ticks off a task with its own controls', () => {
+		const { clicks, actions } = mountWithCard();
+		press('j');
+		press('Enter');
+		expect(clicks.open).toHaveBeenCalledOnce();
+		press('r');
+		expect(clicks.step).toHaveBeenCalledOnce();
+		press('d');
+		expect(clicks.complete).toHaveBeenCalledOnce();
+		expect(focused()).toBe('l1');
+		expect(actions.open).not.toHaveBeenCalled();
+		expect(actions.done).not.toHaveBeenCalled();
+	});
+});

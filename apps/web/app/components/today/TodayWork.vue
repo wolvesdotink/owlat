@@ -209,8 +209,10 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 			<li
 				v-for="card in shown"
 				:key="card.key"
-				class="group rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3 transition-colors focus-within:border-border-default hover:border-border-default"
+				class="group rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3 transition-colors outline-none focus-within:border-border-default hover:border-border-default focus-visible:ring-2 focus-visible:ring-brand/40"
 				:data-work-kind="card.kind"
+				:data-today-key="`work:${card.key}`"
+				tabindex="-1"
 				data-testid="today-work-card"
 			>
 				<div class="flex items-start gap-3">
@@ -221,6 +223,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 						class="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-border-strong text-transparent transition-colors hover:border-brand hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
 						:aria-label="t('components.today.work.complete', { title: card.task.title })"
 						data-testid="today-work-complete"
+						data-work-key="complete"
 						@click="setStatus(card.task, 'done')"
 					>
 						<CheckIcon class="size-3" aria-hidden="true" />
@@ -245,6 +248,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 								:to="href(card)"
 								class="min-w-0 truncate text-sm font-medium text-text-primary outline-none hover:underline focus-visible:underline"
 								data-testid="today-work-title"
+								data-work-key="open"
 							>
 								{{ title(card) }}
 							</NuxtLink>
@@ -311,6 +315,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.answ
 								:to="href(card)"
 								size="sm"
 								:variant="card.kind === 'reply' ? 'primary' : 'secondary'"
+								data-work-key="step"
 							>
 								{{
 									card.kind === 'reply'
