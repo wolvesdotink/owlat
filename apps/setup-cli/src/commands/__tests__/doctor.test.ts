@@ -3,6 +3,7 @@ import {
 	evaluateIpAuditReport,
 	evaluateMtaHealth,
 	evaluateMtaIdentityHealth,
+	evaluateOutboundPort25,
 	evaluateSendPath,
 	probeMtaIdentityHealth,
 } from '../doctor';
@@ -479,5 +480,66 @@ describe('doctor — identity probe freshness', () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(fetchMock.mock.calls[0]?.[0]).toBe('http://mta:3100/health');
+	});
+});
+
+/**
+ * The verdict quickstart prints about outbound port 25. It reads the same
+ * `smtpOutbound` block doctor's TCP/25 rows come from, and it may only call the
+ * port blocked when a connect attempt to a resolved MX actually failed: every
+ * other failure is a probe that could not answer, which must not read as a
+ * blocked port.
+ */
+describe('doctor — outbound port 25 verdict for quickstart', () => {
+	const health = (ips: unknown[], extra: Record<string, unknown> = {}) => ({
+		smtpOutbound: { status: 'degraded', targetMx: 'mx.example.net', ips, ...extra },
+	});
+
+	it('is open when every sending IP connected', () => {
+		expect(
+			evaluateOutboundPort25(health([{ ip: '203.0.113.10', status: 'ok', connectMs: 40 }]))
+		).toEqual({ status: 'open' });
+	});
+
+	it.each(['timeout', 'connection_refused', 'network_unreachable', 'connection_error'])(
+		'is blocked for the IP whose connect failed with %s',
+		(reason) => {
+			expect(
+				evaluateOutboundPort25(
+					health([
+						{ ip: '203.0.113.10', status: 'ok' },
+						{ ip: '203.0.113.11', status: 'failed', reason },
+					])
+				)
+			).toEqual({ status: 'blocked', ips: ['203.0.113.11'] });
+		}
+	);
+
+	it('is unknown when the MX lookup failed, since no connect was attempted', () => {
+		const body = {
+			smtpOutbound: {
+				status: 'degraded',
+				ips: [{ ip: '203.0.113.10', status: 'failed', reason: 'connection_error' }],
+			},
+		};
+		expect(evaluateOutboundPort25(body)).toEqual({ status: 'unknown' });
+	});
+
+	it.each(['shared_nat_egress', 'source_ip_unavailable', 'target_resolution_error'])(
+		'is unknown, not blocked, for %s',
+		(reason) => {
+			expect(
+				evaluateOutboundPort25(health([{ ip: '203.0.113.10', status: 'failed', reason }]))
+			).toEqual({ status: 'unknown' });
+		}
+	);
+
+	it.each([
+		['no body', undefined],
+		['no smtpOutbound block', { status: 'ok' }],
+		['no sending IPs', health([])],
+		['an unreadable row', health(['203.0.113.10'])],
+	])('is unknown for %s', (_label, body) => {
+		expect(evaluateOutboundPort25(body)).toEqual({ status: 'unknown' });
 	});
 });

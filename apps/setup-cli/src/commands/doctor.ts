@@ -248,6 +248,51 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 	return findings;
 }
 
+export type OutboundPort25 =
+	| { status: 'open' }
+	| { status: 'blocked'; ips: string[] }
+	| { status: 'unknown' };
+
+/**
+ * Connect failures that mean the network refused TCP/25. `connection_error` is
+ * also what the MTA reports for every IP when the MX lookup failed before any
+ * connect, so it counts only once a target MX was resolved.
+ */
+const PORT25_BLOCKED_REASONS = new Set(['timeout', 'connection_refused', 'network_unreachable']);
+
+/**
+ * Whether outbound TCP/25 is open, from the same `smtpOutbound` block doctor's
+ * TCP/25 rows read. `unknown` covers everything that is not a failed connect
+ * to a resolved MX (shared NAT egress, an unbound source IP, DNS trouble, an
+ * unreadable body), so a probe that could not answer never reads as a block.
+ */
+export function evaluateOutboundPort25(value: unknown): OutboundPort25 {
+	const smtp = isRecord(value) && isRecord(value['smtpOutbound']) ? value['smtpOutbound'] : null;
+	if (!smtp || !Array.isArray(smtp['ips']) || smtp['ips'].length === 0) {
+		return { status: 'unknown' };
+	}
+	const mxResolved = typeof smtp['targetMx'] === 'string';
+	const blocked: string[] = [];
+	let allOpen = true;
+	for (const item of smtp['ips']) {
+		if (!isRecord(item) || typeof item['ip'] !== 'string') {
+			allOpen = false;
+			continue;
+		}
+		if (item['status'] === 'ok') continue;
+		allOpen = false;
+		const reason = item['reason'];
+		if (
+			typeof reason === 'string' &&
+			(PORT25_BLOCKED_REASONS.has(reason) || (mxResolved && reason === 'connection_error'))
+		) {
+			blocked.push(item['ip']);
+		}
+	}
+	if (blocked.length > 0) return { status: 'blocked', ips: blocked };
+	return allOpen ? { status: 'open' } : { status: 'unknown' };
+}
+
 /**
  * Render the pre-flight IP audit for the installer.
  *
@@ -312,10 +357,10 @@ export async function probeIpAudit(baseUrl: string, apiKey?: string): Promise<Mt
 	}
 }
 
-type MtaHealthBody = { ok: true; body: unknown } | { ok: false; finding: MtaHealthFinding };
+export type MtaHealthBody = { ok: true; body: unknown } | { ok: false; finding: MtaHealthFinding };
 
 /** GET `/health`; a failure comes back as the finding to report, never as a throw. */
-async function fetchMtaHealth(baseUrl: string): Promise<MtaHealthBody> {
+export async function fetchMtaHealth(baseUrl: string, timeoutMs = 3000): Promise<MtaHealthBody> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
 	// The configured URL may carry credentials; only its sanitized form is printed.
 	const unreachable = (detail: string): MtaHealthBody => ({
@@ -327,7 +372,7 @@ async function fetchMtaHealth(baseUrl: string): Promise<MtaHealthBody> {
 		},
 	});
 	const ctrl = new AbortController();
-	const timer = setTimeout(() => ctrl.abort(), 3000);
+	const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 	try {
 		const resp = await fetch(url, { signal: ctrl.signal });
 		if (!resp.ok) return unreachable(`${urlValue(url)} returned HTTP ${resp.status}`);
