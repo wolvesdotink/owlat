@@ -12,6 +12,8 @@ The migration manifest adds the resumable background migration `0072_backfill_th
 
 The migration manifest adds the resumable background migration `0073_backfill_label_membership`. Until it completes for a mailbox, that mailbox's label view keeps scanning its newest 1,000 messages, so labeled mail older than that stays out of the view; run it from Settings → System & updates.
 
+The migration manifest adds the resumable background migration `0074_backfill_review_queue_counts`. It counts the Team Inbox review queue onto each conversation; until it completes, the Answer badge counts the queue the slower way it always has.
+
 <!-- Add released versions below this line, newest first. -->
 
 ## [0.6.21] - 2026-11-06

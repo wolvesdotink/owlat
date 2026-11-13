@@ -196,4 +196,11 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		isSteppingStone: false,
 		run: internal.migrations['0073_backfill_label_membership'].run,
 	},
+	{
+		migration: '0074_backfill_review_queue_counts',
+		introducedIn: '0.6.22',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0074_backfill_review_queue_counts'].run,
+	},
 ];

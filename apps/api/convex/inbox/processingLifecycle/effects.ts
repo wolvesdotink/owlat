@@ -39,6 +39,7 @@ import {
 import { enqueuePush } from '../../push/events';
 import { recordTeamSendQueued } from '../../mail/interpret/sendActivity';
 import { countAutoReply } from '../../agent/autoReplyUsage';
+import { moveReviewQueueCount } from '../reviewQueueCount';
 import { deletePlansForDraft, retirePlansForDraft } from '../../mail/interpret/responsePlanState';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -389,6 +390,8 @@ export async function dispatch(
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(message._id, result.patch as Partial<Doc<'inboundMessages'>>);
 	}
+	// The Answer badge's per-thread counts (../reviewQueueCount.ts).
+	await moveReviewQueueCount(ctx, message.threadId, from, input.to);
 	await applyEffects(ctx, result.effects);
 	// The agent's questions (../clarificationHold.ts): answered, dismissed or
 	// taken over, their reminder rows go; parked, they join the Answer queue's

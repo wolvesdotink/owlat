@@ -30,6 +30,7 @@ import {
 	ledgerRowMicrousd,
 	spendPeriodKeys,
 } from '../../lib/aiRouting/spendPeriods';
+import { recountReviewQueue } from '../../inbox/reviewQueueCount';
 import { derived, recountWithin, type DerivedFieldEntry, type RecountResult } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -370,7 +371,27 @@ const threadInboxRecency = derived({
 	},
 });
 
+const teamReviewQueue = derived({
+	kind: 'derived',
+	id: 'teamReviewQueue',
+	table: 'conversationThreads',
+	fields: ['reviewDraftCount', 'reviewHeldCount'],
+	source:
+		'inboundMessages of the thread in draft_ready and in awaiting_clarification ' +
+		'(by_thread_and_processing_status)',
+	policy: 'exact',
+	current: (thread) => ({
+		reviewDraftCount: thread.reviewDraftCount,
+		reviewHeldCount: thread.reviewHeldCount,
+	}),
+	recompute: async (ctx, thread, budget) => {
+		const counts = await recountReviewQueue(ctx, thread._id, budget);
+		return counts ? { status: 'counted', expected: counts } : OVER_BUDGET;
+	},
+});
+
 export const DERIVED_FIELD_ENTRIES: readonly DerivedFieldEntry[] = [
+	teamReviewQueue,
 	chatRoomActivity,
 	assistantConversationMessages,
 	transactionalTemplateSends,

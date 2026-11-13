@@ -28,6 +28,7 @@ import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
 import { liveNotices, readPendingReview } from './clarificationHold';
+import { countPendingReview } from './reviewQueueCount';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -306,9 +307,8 @@ export const getReviewQueue = publicQuery({
 
 /**
  * How many rows `getReviewQueue` returns for the same `limit` (at most 200),
- * without the
- * thread and contact joins (plan 2.11). Feeds the shell's Answer badge; the
- * Answer and Today pages read the list itself.
+ * from the threads' counts (./reviewQueueCount.ts). Feeds the shell's Answer
+ * badge; the Answer and Today pages read the list itself.
  */
 // public: soft-auth — admin-only shared inbox; returns 0 for non-admins
 export const countReviewQueue = publicQuery({
@@ -316,7 +316,7 @@ export const countReviewQueue = publicQuery({
 	handler: async (ctx, args): Promise<number> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return 0;
-		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
+		return await countPendingReview(ctx, Math.min(args.limit ?? 50, 200));
 	},
 });
 

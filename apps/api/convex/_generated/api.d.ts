@@ -149,6 +149,7 @@ import type * as migrations_0070_reconcile_fenced_threads from '../migrations/00
 import type * as migrations_0071_backfill_thread_sender_names from '../migrations/0071_backfill_thread_sender_names.js';
 import type * as migrations_0072_backfill_thread_inbox_recency from '../migrations/0072_backfill_thread_inbox_recency.js';
 import type * as migrations_0073_backfill_label_membership from '../migrations/0073_backfill_label_membership.js';
+import type * as migrations_0074_backfill_review_queue_counts from '../migrations/0074_backfill_review_queue_counts.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -943,6 +944,7 @@ import type * as inbox_processingLifecycle_takeover from '../inbox/processingLif
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
 import type * as inbox_queries from '../inbox/queries.js';
 import type * as inbox_rawMessage from '../inbox/rawMessage.js';
+import type * as inbox_reviewQueueCount from '../inbox/reviewQueueCount.js';
 import type * as inbox_reads from '../inbox/reads.js';
 import type * as inbox_receiveDecision from '../inbox/receiveDecision.js';
 import type * as inbox_receiveInbound from '../inbox/receiveInbound.js';
@@ -2885,6 +2887,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
 	'inbox/queries': typeof inbox_queries;
 	'inbox/rawMessage': typeof inbox_rawMessage;
+	'inbox/reviewQueueCount': typeof inbox_reviewQueueCount;
 	'inbox/reads': typeof inbox_reads;
 	'inbox/receiveDecision': typeof inbox_receiveDecision;
 	'inbox/receiveInbound': typeof inbox_receiveInbound;
@@ -3828,6 +3831,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0071_backfill_thread_sender_names': typeof migrations_0071_backfill_thread_sender_names;
 	'migrations/0072_backfill_thread_inbox_recency': typeof migrations_0072_backfill_thread_inbox_recency;
 	'migrations/0073_backfill_label_membership': typeof migrations_0073_backfill_label_membership;
+	'migrations/0074_backfill_review_queue_counts': typeof migrations_0074_backfill_review_queue_counts;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;

@@ -70,6 +70,12 @@ export const conversationThreadTables = {
 		// gates no query and orders no list.
 		priority: v.optional(teamThreadPriorityValidator),
 		replyAttachments: v.optional(teamReplyAttachmentsValidator), // the composer's, see validator
+		// AGGREGATED [teamReviewQueue] — the thread's inboundMessages in
+		// `draft_ready` and in `awaiting_clarification`, moved by one in the
+		// status transition and on erasure (inbox/reviewQueueCount.ts). The
+		// Answer badge sums them instead of reading the messages; absent is zero.
+		reviewDraftCount: v.optional(v.number()),
+		reviewHeldCount: v.optional(v.number()),
 		// Response targets (SLA) clock + reply metrics, see lib/validators/inboxSla.ts.
 		...conversationThreadSlaFields,
 		// Auto-close of quiet waiting threads, see lib/validators/inboxAutoClose.ts.
@@ -77,6 +83,10 @@ export const conversationThreadTables = {
 		createdAt: v.number(),
 	})
 		.index('by_status', ['status'])
+		// The Answer badge: threads with a draft to review, and open threads
+		// with questions held (inbox/reviewQueueCount.ts).
+		.index('by_review_draft_count', ['reviewDraftCount'])
+		.index('by_status_and_review_held_count', ['status', 'reviewHeldCount'])
 		// Status (optionally after the assignee) + recency: the status tabs, with or
 		// without Me / Unassigned, page in lastMessageAt order (inbox/threadFilters.ts).
 		.index('by_status_and_last_message_at', ['status', 'lastMessageAt'])
