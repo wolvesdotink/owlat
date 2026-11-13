@@ -1271,6 +1271,7 @@ import type * as lib_suppression from '../lib/suppression.js';
 import type * as lib_systemEmailCopy from '../lib/systemEmailCopy.js';
 import type * as lib_systemEmails from '../lib/systemEmails.js';
 import type * as lib_systemMailOutcome from '../lib/systemMailOutcome.js';
+import type * as lib_systemSender from '../lib/systemSender.js';
 import type * as lib_nonTenantTables from '../lib/nonTenantTables.js';
 import type * as lib_tenantTables from '../lib/tenantTables.js';
 import type * as lib_textPreview from '../lib/textPreview.js';
@@ -3257,6 +3258,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/systemEmailCopy': typeof lib_systemEmailCopy;
 	'lib/systemEmails': typeof lib_systemEmails;
 	'lib/systemMailOutcome': typeof lib_systemMailOutcome;
+	'lib/systemSender': typeof lib_systemSender;
 	'lib/nonTenantTables': typeof lib_nonTenantTables;
 	'lib/tenantTables': typeof lib_tenantTables;
 	'lib/textPreview': typeof lib_textPreview;

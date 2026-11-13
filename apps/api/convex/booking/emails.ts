@@ -34,7 +34,7 @@ import { buildEventICalendar } from '@owlat/shared/ical';
 import { APP_LOCALE_BCP47 } from '@owlat/shared/appLocales';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { attemptSystemEmail } from '../maintenance/systemMail';
-import { getOptional } from '../lib/env';
+import { systemSenderAddress } from '../lib/systemSender';
 import { sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { logWarn } from '../lib/runtimeLog';
 import { renderSystemEmail } from '../lib/systemEmails';
@@ -54,6 +54,16 @@ function phrase(value: string): string {
 		.replace(/[\r\n"\\<>]/g, '')
 		.trim()
 		.slice(0, 80);
+}
+
+/**
+ * The From of both invite mails, or null when the install has no system
+ * sender. The booking stands either way, so a missing sender skips the mails
+ * with a logged reason rather than failing the booking.
+ */
+export function bookingInviteFrom(hostName: string): string | null {
+	const address = systemSenderAddress();
+	return address ? `"${phrase(hostName)} via Owlat" <${address}>` : null;
 }
 
 function formatWhen(start: number, end: number, locale: string, timeZone: string): string {
@@ -161,8 +171,13 @@ export const send = internalAction({
 				contentBase64: Buffer.from(ics, 'utf-8').toString('base64'),
 			},
 		];
-		const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
-		const from = `"${phrase(host.name)} via Owlat" <noreply@${fromDomain}>`;
+		const from = bookingInviteFrom(host.name);
+		if (!from) {
+			logWarn('[Booking] invite mails skipped: no system mail sender is configured', {
+				bookingId: booking._id,
+			});
+			return;
+		}
 
 		// The guest, in the language their browser asked the page for.
 		const guestLocale = systemEmailLocale(booking.guestLocale?.split('-')[0]);

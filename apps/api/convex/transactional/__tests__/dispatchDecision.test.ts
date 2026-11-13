@@ -90,19 +90,27 @@ describe('decideTemplate', () => {
 });
 
 describe('the sender and the variables', () => {
-	it('takes the sender from settings, then the environment, then the fallback', () => {
+	it('takes the sender from settings, then the environment', () => {
 		expect(senderDefaults({ defaultFromEmail: 'a@x.test', defaultFromName: 'A' }, {})).toEqual({
+			ok: true,
 			fromEmail: 'a@x.test',
 			fromName: 'A',
 		});
 		expect(senderDefaults(null, { defaultFromEmail: 'env@x.test' })).toEqual({
+			ok: true,
 			fromEmail: 'env@x.test',
 			fromName: 'Owlat',
 		});
-		expect(senderDefaults(null, {})).toEqual({
-			fromEmail: 'noreply@example.com',
-			fromName: 'Owlat',
-		});
+	});
+
+	it('refuses when no sender is configured, rather than sending from a domain nobody here owns', () => {
+		for (const environment of [{}, { defaultFromEmail: ' ' }]) {
+			expect(senderDefaults(null, environment)).toMatchObject({
+				ok: false,
+				reason: 'sender_not_configured',
+				detail: expect.stringContaining('DEFAULT_FROM_EMAIL'),
+			});
+		}
 	});
 
 	it('refuses an unverified domain before it looks at the variables', () => {

@@ -19,7 +19,8 @@ import pc from 'picocolors';
 import { readFile } from 'node:fs/promises';
 import { readEnv, type EnvMap } from '../lib/env';
 import { generateSecret } from '@owlat/shared/setupSecrets';
-import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
+import { OWN_SEND_PROVIDER_KIND, isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { isSetupSendingKind, sendingConfigFromCredentials } from '@owlat/shared/setupSendingConfig';
 import { persistResolvedSetup } from '../lib/persistSetup';
 import { createReporter, SetupStep } from '../lib/progress';
@@ -118,6 +119,16 @@ export async function applyAssumeYes({
 	try {
 		const config = buildAssumeYesConfig(existingEnv);
 		resolved = buildSetupFromConfig(config, existingEnv);
+		// The mapper proposes noreply@<EHLO hostname>; an address the operator
+		// gave replaces it, the way the terminal wizard's From prompt does.
+		const read = assumeYesReader(existingEnv);
+		const fromEmail = read('DEFAULT_FROM_EMAIL');
+		if (config.domain && fromEmail) {
+			Object.assign(
+				resolved.env,
+				systemFromIdentityEnv(config.domain.ehloHostname, fromEmail, read('DEFAULT_FROM_NAME'))
+			);
+		}
 	} catch (e) {
 		log.error(`Headless setup could not assemble a config: ${(e as Error).message}`);
 		return 1;
@@ -159,18 +170,17 @@ export async function applyAssumeYes({
  *                       (the historical hardcoded default is public knowledge,
  *                       so it must never be silently provisioned; bootstrap-org
  *                       additionally refuses placeholder passwords outright)
+ *   • mail identity   → for the self-hosted MTA, `EHLO_HOSTNAME` and
+ *                       `RETURN_PATH_DOMAIN`, with no default (see
+ *                       `resolveMailIdentity`); the system From follows the
+ *                       EHLO hostname unless `DEFAULT_FROM_EMAIL` is given
  *
  * Pure and prompt-free: it calls no clack function, so it structurally cannot
  * block a non-TTY. Exported for the regression test. `process.env` takes
  * precedence over the existing `.env`, so a re-run honors live overrides.
  */
 export function buildAssumeYesConfig(existingEnv: EnvMap): SetupConfig {
-	const read = (key: string): string | undefined => {
-		const fromProcess = process.env[key];
-		if (fromProcess !== undefined && fromProcess !== '') return fromProcess;
-		const fromEnv = existingEnv[key];
-		return fromEnv !== undefined && fromEnv !== '' ? fromEnv : undefined;
-	};
+	const read = assumeYesReader(existingEnv);
 
 	const modeRaw = read('OWLAT_DEPLOYMENT_MODE');
 	const deploymentMode: DeploymentMode =
@@ -192,7 +202,40 @@ export function buildAssumeYesConfig(existingEnv: EnvMap): SetupConfig {
 	const ai = resolveAi(read);
 	if (ai) config.ai = ai;
 
+	if (isOwnSendProviderKind(config.sending?.provider)) {
+		config.domain = resolveMailIdentity(read);
+	}
+
 	return config;
+}
+
+/** An answer from `process.env`, else from the existing `.env`; empty counts as unset. */
+function assumeYesReader(existingEnv: EnvMap): (key: string) => string | undefined {
+	return (key) => process.env[key] || existingEnv[key] || undefined;
+}
+
+/**
+ * The built-in mail server's sending identity. Nothing can stand in for it: the
+ * EHLO hostname must be the name this server's reverse DNS gives, and the
+ * system From follows it, so a made-up default would either fail the identity
+ * gate after the stack is up or send mail under a domain the operator does not
+ * own. Refuse up front and name the answers instead.
+ */
+function resolveMailIdentity(
+	read: (key: string) => string | undefined
+): NonNullable<SetupConfig['domain']> {
+	const ehloHostname = read('EHLO_HOSTNAME');
+	const bounceDomain = read('RETURN_PATH_DOMAIN');
+	if (ehloHostname && bounceDomain) return { ehloHostname, bounceDomain };
+	const missing = [
+		...(ehloHostname ? [] : ['EHLO_HOSTNAME']),
+		...(bounceDomain ? [] : ['RETURN_PATH_DOMAIN']),
+	].join(' and ');
+	throw new Error(
+		`the built-in mail server needs ${missing}: the hostname this server's reverse DNS (PTR) names, and the bounce domain. ` +
+			'Set them in the environment, or install from a config file (--config, OWLAT_CONFIG_FILE) with a `domain` section. ' +
+			'System mail is then sent as noreply@<EHLO_HOSTNAME> unless DEFAULT_FROM_EMAIL is set.'
+	);
 }
 
 /**

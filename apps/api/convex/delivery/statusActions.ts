@@ -14,6 +14,7 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
+import { systemSenderAddress } from '../lib/systemSender';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { throwInternal } from '../_utils/errors';
 import {
@@ -84,7 +85,7 @@ export const sendTest = authedAction({
 						kind: 'loaded',
 						defaultFromEmail: team?.defaultFromEmail ?? null,
 						defaultFromName: team?.defaultFromName ?? null,
-						defaultFromDomain: getOptional('DEFAULT_FROM_DOMAIN'),
+						systemSender: systemSenderAddress(),
 					},
 				};
 			} catch {

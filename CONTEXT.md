@@ -2104,7 +2104,8 @@ queued: true }`
     `SendIntakeRejectionReason` (`'abuse_blocked' |
 'no_delivery_provider' | 'recipient_blocked'`) plus this intake's own
     `'template_not_found' | 'template_not_published' |
-'template_no_content' | 'domain_unverified' | 'invalid_variables'`.
+'template_no_content' | 'sender_not_configured' | 'domain_unverified' |
+'invalid_variables'`.
 
 The HTTP shell pre-validates input before calling `dispatch`:
 JSON-shape validation (required fields, types, email format, language
@@ -2124,8 +2125,8 @@ Per-call order of operations:
    discriminator). Missing → `template_not_found`. Not published →
    `template_not_published`. No `htmlContent` → `template_no_content`.
 3. Sender + domain resolution (`defaultFromEmail` →
-   `domains.domains.getEmailDomainVerificationStatus`). Unverified →
-   `domain_unverified`.
+   `domains.domains.getEmailDomainVerificationStatus`). No sender →
+   `sender_not_configured`. Unverified → `domain_unverified`.
 4. Validate `dataVariables` against
    `transactionalEmail.dataVariablesSchema` → `invalid_variables`.
 5. **Contact resolution (module)** (`mode: 'upsert'`, `source:

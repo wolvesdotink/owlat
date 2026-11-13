@@ -32,6 +32,7 @@ type SentEmail = { to: string; subject: string; html: string };
 function harness() {
 	vi.stubEnv('OWLAT_DEV_MODE', 'true');
 	vi.stubEnv('SITE_URL', 'https://owlat.example');
+	vi.stubEnv('DEFAULT_FROM_DOMAIN', 'owlat.example');
 	vi.stubEnv('CONVEX_SITE_URL', 'https://api.owlat.example');
 	const t = newBetterAuthHarness();
 	const sent: SentEmail[] = [];

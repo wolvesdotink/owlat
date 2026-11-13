@@ -151,6 +151,10 @@ const REJECTION_RESPONSE_MAP: Record<
 		category: 'invalid_state',
 		defaultMessage: 'Transactional email has no HTML content. Please save and publish it first.',
 	},
+	sender_not_configured: {
+		category: 'invalid_state',
+		defaultMessage: 'No default sender is configured for this instance.',
+	},
 	domain_unverified: {
 		category: 'invalid_state',
 		defaultMessage: 'Sending domain is not verified.',

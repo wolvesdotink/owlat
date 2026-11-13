@@ -63,8 +63,8 @@ export interface DeliveryTestFacts {
 				readonly kind: 'loaded';
 				readonly defaultFromEmail: string | null;
 				readonly defaultFromName: string | null;
-				/** `DEFAULT_FROM_DOMAIN`, for the noreply fallback. */
-				readonly defaultFromDomain: string | undefined;
+				/** The system sender (`lib/systemSender.ts`), when one is configured. */
+				readonly systemSender: string | null;
 		  };
 	readonly dispatch?:
 		| { readonly kind: 'refused' }
@@ -168,8 +168,15 @@ export function nextDeliveryTestStep(facts: DeliveryTestFacts): DeliveryTestStep
 		);
 	}
 	const { sender } = facts;
-	const fromEmail =
-		sender.defaultFromEmail || `noreply@${sender.defaultFromDomain || 'mail.owlat.app'}`;
+	const fromEmail = sender.defaultFromEmail || sender.systemSender;
+	if (!fromEmail) {
+		return answer(
+			[...reached, ['failed', 'No sender is configured']],
+			refused(
+				'No sender is configured. Set a default From address for this instance, or DEFAULT_FROM_DOMAIN in the deployment environment, and try again.'
+			)
+		);
+	}
 	const fromName = sender.defaultFromName || 'Owlat';
 	if (!isValidEmail(fromEmail)) {
 		return answer(

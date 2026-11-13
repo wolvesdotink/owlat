@@ -20,6 +20,7 @@ describe('doctor report — stable ids', () => {
 			  "env.file",
 			  "flags.state",
 			  "env.required",
+			  "env.site_url",
 			  "send_path.provider",
 			  "send_path.credential",
 			  "mta.health",

@@ -143,6 +143,9 @@ const FIXTURES: Record<string, Fixture> = {
 			`MTA_API_URL=http://admin:${URL_PASSWORD}@mta:3100`,
 			`MTA_API_KEY=${MTA_KEY}`,
 			'OWLAT_VERSION=0.6.15',
+			// Sends as a public domain while mail links still point at localhost.
+			'EHLO_HOSTNAME=mail.example.com',
+			'SITE_URL=http://localhost:3000',
 		].join('\n'),
 		flags: JSON.stringify({ campaigns: true, ai: true }),
 		compose: composeRows([
@@ -596,6 +599,7 @@ describe('doctor --json — report contents', () => {
 			  "pass env.file",
 			  "fail env.required LLM_API_KEY set_env_var",
 			  "fail env.required LLM_PROVIDER set_env_var",
+			  "fail env.site_url set_public_url",
 			  "pass send_path.credential MTA_API_URL",
 			  "pass send_path.credential MTA_API_KEY",
 			  "fail mta.queue_store check_mta",
