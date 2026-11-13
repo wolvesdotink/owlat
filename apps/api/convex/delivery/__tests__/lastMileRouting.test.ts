@@ -141,7 +141,99 @@ describe('last-mile governance boundary', () => {
 				),
 				input
 			)
-		).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+		).toMatchObject({ kind: 'defer', hold: 'routing_policy', origin: 'local' });
+	});
+
+	it('routes a send queued during a hold, with no provider named, once the circuit closes', async () => {
+		// Intake queues a send without a route while the circuit is open, so the
+		// envelope carries no `providerType`; the worker's own resolution is the
+		// only source of the transport.
+		const heldInput = { ...input, messageType: 'transactional' as const, providerType: undefined };
+		const held = {
+			route: null,
+			baseRoute: null,
+			isMtaGoverned: false,
+			deferralCode: 'GLOBAL_DELIVERY_CIRCUIT_OPEN',
+		};
+		expect(await resolveLastMileRouting(context(held, 'org-1'), heldInput)).toMatchObject({
+			kind: 'defer',
+			hold: 'routing_policy',
+		});
+
+		const route = { providerType: 'ses' as const, source: 'org_config' as const };
+		expect(
+			await resolveLastMileRouting(
+				context({ route, baseRoute: route, isMtaGoverned: false }, 'org-1'),
+				heldInput
+			)
+		).toMatchObject({ kind: 'ready', providerKind: 'ses', route });
+	});
+
+	/**
+	 * AN MTA THAT CANNOT BE REACHED IS WAITED FOR, NOT COUNTED DOWN.
+	 *
+	 * A container restart takes minutes; eight one-minute routing attempts would
+	 * fail every send accepted in that window. The hold is bounded by the
+	 * delivery deadline instead, and it re-asks on a widening interval so a long
+	 * outage does not turn every queued send into a once-a-minute poll.
+	 */
+	describe('an unreachable MTA decision endpoint', () => {
+		const governedRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+		const NOW = Date.UTC(2026, 10, 1);
+		const MINUTE = 60_000;
+
+		afterEach(() => vi.useRealTimers());
+
+		async function unreachableAt(ageMs: number) {
+			vi.useFakeTimers();
+			vi.setSystemTime(NOW);
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({
+				kind: 'defer',
+				retryAfterMs: MINUTE,
+				origin: 'local',
+				isUnreachable: true,
+			});
+			return await resolveLastMileRouting(
+				context({ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true }, 'org-1'),
+				{ ...input, startedAt: NOW - ageMs }
+			);
+		}
+
+		it('holds the send as our own outage rather than spending an attempt', async () => {
+			expect(await unreachableAt(0)).toEqual({
+				kind: 'defer',
+				retryAfterMs: MINUTE,
+				hold: 'mta_unreachable',
+				origin: 'local',
+			});
+		});
+
+		it.each([
+			{ ageMs: 0, retryAfterMs: MINUTE },
+			{ ageMs: 3 * MINUTE, retryAfterMs: 3 * MINUTE },
+			{ ageMs: 30 * MINUTE, retryAfterMs: 10 * MINUTE },
+			{ ageMs: 3 * 24 * 60 * MINUTE, retryAfterMs: 10 * MINUTE },
+		])('waits $retryAfterMs ms once the send is $ageMs ms old', async ({ ageMs, retryAfterMs }) => {
+			expect(await unreachableAt(ageMs)).toMatchObject({ retryAfterMs });
+		});
+
+		it('keeps an MTA that answered “defer” on the attempt budget', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({
+				kind: 'defer',
+				retryAfterMs: 30_000,
+				origin: 'governed',
+			});
+			const result = await resolveLastMileRouting(
+				context({ route: governedRoute, baseRoute: governedRoute, isMtaGoverned: true }, 'org-1'),
+				input
+			);
+			expect(result).toMatchObject({ kind: 'defer', retryAfterMs: 30_000 });
+			expect(result).not.toHaveProperty('hold');
+		});
 	});
 
 	/**
@@ -203,7 +295,7 @@ describe('last-mile governance boundary', () => {
 					),
 					input
 				)
-			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'governed' });
+			).toMatchObject({ kind: 'defer', hold: 'routing_policy', origin: 'governed' });
 		});
 
 		/**
@@ -226,7 +318,7 @@ describe('last-mile governance boundary', () => {
 					),
 					input
 				)
-			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+			).toMatchObject({ kind: 'defer', hold: 'routing_policy', origin: 'local' });
 		});
 
 		it('calls an unverified relay identity our own configuration', async () => {
@@ -241,7 +333,7 @@ describe('last-mile governance boundary', () => {
 					),
 					input
 				)
-			).toMatchObject({ kind: 'defer', isPolicyHold: true, origin: 'local' });
+			).toMatchObject({ kind: 'defer', hold: 'routing_policy', origin: 'local' });
 		});
 	});
 

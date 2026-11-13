@@ -45,10 +45,10 @@ export interface GovernedRetryBudgetState {
 
 export interface GovernedRetryBudgetOptions {
 	/**
-	 * THE ONE EXEMPTION, STATED RATHER THAN IMPLIED. A deliberate safety hold
-	 * (`isPolicyHold` on a routing deferral) consumes no attempt budget: eight
-	 * 60-second attempts would terminalize a send ~7 minutes into a pause meant
-	 * to outlast them. The dispatch boundary therefore hands a held message its
+	 * THE ONE EXEMPTION, STATED RATHER THAN IMPLIED. A hold on a routing
+	 * deferral (a deliberate safety pause, or an MTA that cannot be reached)
+	 * consumes no attempt budget: eight 60-second attempts would terminalize a
+	 * send ~7 minutes into a wait meant to outlast them. The dispatch boundary therefore hands a held message its
 	 * attempt number UNCHANGED (see `nextGovernedAttempt`), and a cap check on a
 	 * held message is `exempt` rather than silently passing — so the exemption is
 	 * visible at the predicate, not just at the increment that produced it.

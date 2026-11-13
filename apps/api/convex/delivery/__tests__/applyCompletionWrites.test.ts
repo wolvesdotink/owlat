@@ -256,7 +256,14 @@ describe('applyCompletion — acceptanceUnknown replays the attempt', () => {
 
 describe('applyCompletion — deferred', () => {
 	const deferred =
-		(origin: 'governed' | 'local', options: { attempt?: number; startedAt?: number } = {}) =>
+		(
+			origin: 'governed' | 'local',
+			options: {
+				attempt?: number;
+				startedAt?: number;
+				hold?: 'routing_policy' | 'mta_unreachable';
+			} = {}
+		) =>
 		(sendId: Id<'emailSends'>) => ({
 			kind: 'success' as const,
 			returnValue: {
@@ -265,6 +272,7 @@ describe('applyCompletion — deferred', () => {
 				retryAfterMs: 60_000,
 				envelopeInput: envelope(sendId),
 				retryState: retryState(sendId, options.startedAt ?? NOW, options.attempt ?? 2),
+				...(options.hold ? { hold: options.hold } : {}),
 			},
 		});
 
@@ -286,8 +294,7 @@ describe('applyCompletion — deferred', () => {
 		const observed = await complete({}, deferred('governed', { attempt: 9 }));
 		expect(observed).toMatchObject({
 			status: 'failed',
-			errorCode: 'WORKPOOL_FAILED',
-			errorMessage: 'Unknown error',
+			errorCode: 'ROUTING_RETRY_LIMIT_EXHAUSTED',
 			isDeferralCounted: true,
 			jobs: [],
 		});
@@ -295,7 +302,24 @@ describe('applyCompletion — deferred', () => {
 
 	it('terminalizes past the delivery deadline', async () => {
 		const observed = await complete({}, deferred('local', { startedAt: EXPIRED }));
-		expect(observed).toMatchObject({ status: 'failed', errorCode: 'WORKPOOL_FAILED', jobs: [] });
+		expect(observed).toMatchObject({
+			status: 'failed',
+			errorCode: 'DELIVERY_DEADLINE_EXPIRED',
+			jobs: [],
+		});
+	});
+
+	it('names an unreachable mail server when its hold outlives the deadline', async () => {
+		const observed = await complete(
+			{},
+			deferred('local', { startedAt: EXPIRED, hold: 'mta_unreachable' })
+		);
+		expect(observed).toMatchObject({
+			status: 'failed',
+			errorCode: 'MTA_UNREACHABLE',
+			errorMessage: expect.stringMatching(/mail server could not be reached/i),
+			jobs: [],
+		});
 	});
 
 	it('refuses a re-entry whose envelope was not stored, rolling back the count', async () => {

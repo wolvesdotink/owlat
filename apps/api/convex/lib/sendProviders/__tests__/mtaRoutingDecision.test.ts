@@ -37,10 +37,11 @@ describe('MTA routing decision client', () => {
 	});
 
 	it.each([
-		new Response('upstream failed', { status: 503 }),
+		new Response('bad request', { status: 400 }),
+		new Response('unauthorized', { status: 401 }),
 		new Response(JSON.stringify({ decision: 'mta', lease: {} }), { status: 200 }),
 		new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
-	])('fails closed on a non-2xx or malformed routing decision', async (response) => {
+	])('fails closed on a refused or malformed routing decision', async (response) => {
 		global.fetch = vi.fn().mockResolvedValue(response);
 		// LOCAL, not governed: we never got an answer, so nothing was observed about
 		// this sending identity and gate 2 must not count it (`deferralOutcome.ts`).
@@ -62,7 +63,46 @@ describe('MTA routing decision client', () => {
 		) as typeof fetch;
 		const pending = resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput);
 		await vi.advanceTimersByTimeAsync(5_001);
-		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000, origin: 'local' });
+		expect(await pending).toEqual({
+			kind: 'defer',
+			retryAfterMs: 60_000,
+			origin: 'local',
+			isUnreachable: true,
+		});
+	});
+
+	// An MTA that is restarting refuses the connection, or a proxy in front of it
+	// answers 5xx. Nobody judged the message, and the outage is expected to end,
+	// so the caller holds the send rather than spending its routing attempts.
+	it.each([
+		{ label: 'a refused connection', fetch: () => Promise.reject(new TypeError('fetch failed')) },
+		{
+			label: 'a 502 from the proxy',
+			fetch: () => Promise.resolve(new Response('bad gateway', { status: 502 })),
+		},
+		{
+			label: 'a 503 while starting',
+			fetch: () => Promise.resolve(new Response('upstream failed', { status: 503 })),
+		},
+	])('marks $label as an unreachable decision endpoint', async ({ fetch }) => {
+		global.fetch = vi.fn(fetch) as unknown as typeof global.fetch;
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
+			kind: 'defer',
+			retryAfterMs: 60_000,
+			origin: 'local',
+			isUnreachable: true,
+		});
+	});
+
+	it('does not call an unconfigured decision endpoint unreachable', async () => {
+		vi.stubEnv('MTA_API_URL', '');
+		global.fetch = vi.fn();
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
+			kind: 'defer',
+			retryAfterMs: 60_000,
+			origin: 'local',
+		});
+		expect(global.fetch).not.toHaveBeenCalled();
 	});
 
 	// `invented_reason` is the fall-through this list exists to pin: a defer
