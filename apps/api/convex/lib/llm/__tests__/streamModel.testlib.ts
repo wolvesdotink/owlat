@@ -5,9 +5,9 @@
  */
 
 import { simulateReadableStream } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 
-type StreamResult = Awaited<ReturnType<MockLanguageModelV3['doStream']>>;
+type StreamResult = Awaited<ReturnType<MockLanguageModelV4['doStream']>>;
 type StreamPart = StreamResult['stream'] extends ReadableStream<infer P> ? P : never;
 
 export interface ScriptedStep {
@@ -50,9 +50,9 @@ function stepStream(step: ScriptedStep, index: number): StreamResult {
  * A model whose n-th stream call plays the n-th step. (The mock's own array
  * form reads the entry after the one for the current call.)
  */
-export function scriptedStreamModel(steps: readonly ScriptedStep[]): MockLanguageModelV3 {
+export function scriptedStreamModel(steps: readonly ScriptedStep[]): MockLanguageModelV4 {
 	let calls = 0;
-	return new MockLanguageModelV3({
+	return new MockLanguageModelV4({
 		modelId: 'scripted-model',
 		doStream: async () => {
 			const step = steps[calls];

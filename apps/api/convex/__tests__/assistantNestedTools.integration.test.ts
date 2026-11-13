@@ -16,7 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 import { getFunctionName } from 'convex/server';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import type * as LlmProviderModule from '../lib/llmProvider';
 
 const llm = vi.hoisted(() => ({ model: undefined as unknown }));
@@ -60,9 +60,10 @@ const usage = {
 	outputTokens: { total: 5, text: 5, reasoning: undefined },
 };
 
-const toolOptions = (abortSignal?: AbortSignal): ToolExecutionOptions => ({
+const toolOptions = (abortSignal?: AbortSignal): ToolExecutionOptions<unknown> => ({
 	toolCallId: 'call-1',
 	messages: [],
+	context: undefined,
 	...(abortSignal ? { abortSignal } : {}),
 });
 
@@ -73,9 +74,9 @@ const turnRoot: LlmRootContext = {
 	priority: 'interactive',
 };
 
-function draftModel(doGenerate?: MockLanguageModelV3['doGenerate']) {
+function draftModel(doGenerate?: MockLanguageModelV4['doGenerate']) {
 	return stampModelEndpoint(
-		new MockLanguageModelV3({
+		new MockLanguageModelV4({
 			modelId: 'gpt-4o',
 			doGenerate:
 				doGenerate ??
@@ -367,7 +368,7 @@ describe('the assistant turn', () => {
 		const { conversationId, assistantMessageId } = await seedTurn(t);
 		let streamCalls = 0;
 		llm.model = stampModelEndpoint(
-			new MockLanguageModelV3({
+			new MockLanguageModelV4({
 				modelId: 'gpt-4o',
 				doStream: async (options) => {
 					streamCalls += 1;
@@ -435,7 +436,7 @@ describe('the assistant turn', () => {
 		let abortedBeforeCheck: boolean | undefined;
 		let abortReason: unknown;
 		llm.model = stampModelEndpoint(
-			new MockLanguageModelV3({
+			new MockLanguageModelV4({
 				modelId: 'gpt-4o',
 				doStream: async () => ({
 					stream: streamOf([

@@ -114,7 +114,10 @@ describe('interpretOutputSchema', () => {
 	});
 
 	it('bounds every array', () => {
-		const tooManyItems = { ...actionsPayload, items: Array(MAX_INTERPRET_ITEMS + 1).fill(item) };
+		const tooManyItems = {
+			...actionsPayload,
+			items: Array.from({ length: MAX_INTERPRET_ITEMS + 1 }, () => item),
+		};
 		expect(interpretOutputSchema.safeParse(tooManyItems).success).toBe(false);
 		const tooManyFacts = {
 			...briefPayload,

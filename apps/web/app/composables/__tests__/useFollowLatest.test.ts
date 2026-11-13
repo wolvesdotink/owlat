@@ -16,7 +16,9 @@ function fakeFeed(initial: { scrollHeight: number; clientHeight: number }) {
 	Object.defineProperty(el, 'clientHeight', { get: () => box.clientHeight });
 	Object.defineProperty(el, 'scrollTop', {
 		get: () => box.scrollTop,
-		set: (v: number) => (box.scrollTop = Math.min(v, box.scrollHeight - box.clientHeight)),
+		set: (v: number) => {
+			box.scrollTop = Math.min(v, box.scrollHeight - box.clientHeight);
+		},
 	});
 	const scrollTo = vi.fn((opts: ScrollToOptions) => {
 		el.scrollTop = opts.top ?? 0;

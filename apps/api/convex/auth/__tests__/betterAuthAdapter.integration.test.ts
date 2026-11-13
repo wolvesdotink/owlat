@@ -158,6 +158,37 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 		expect(signIn.user.email).toBe('ada@owlat.example');
 	});
 
+	it('redeems a desktop connect token on the cross-domain verify route, once', async () => {
+		const { auth } = harness();
+		await auth.api.signUpEmail({
+			body: { email: 'ada@owlat.example', password: PASSWORD, name: 'Ada' },
+		});
+		const signIn = await auth.api.signInEmail({
+			body: { email: 'ada@owlat.example', password: PASSWORD },
+			returnHeaders: true,
+		});
+
+		// /desktop/connect mints the token; the desktop app redeems it on the
+		// route shipped desktop builds call.
+		const { token } = await auth.api.generateOneTimeToken({
+			headers: cookieHeaders(signIn.headers),
+		});
+		const redeem = () =>
+			auth.handler(
+				new Request('https://owlat.example/api/auth/cross-domain/one-time-token/verify', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json', origin: 'https://owlat.example' },
+					body: JSON.stringify({ token }),
+				})
+			);
+		const redeemed = await redeem();
+		expect(redeemed.status).toBe(200);
+		expect(((await redeemed.json()) as { user: { email: string } }).user.email).toBe(
+			'ada@owlat.example'
+		);
+		expect((await redeem()).status).toBe(400);
+	});
+
 	it('counts failed two-factor codes through incrementOne', async () => {
 		const { t, auth } = harness();
 		await auth.api.signUpEmail({

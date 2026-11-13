@@ -357,7 +357,7 @@ services:
   # hard requirement if you ever do publish the port).
   redis:
     logging: *default-logging
-    image: redis:${REDIS_VERSION:-7.4-alpine}
+    image: redis:${REDIS_VERSION:-8.8-alpine}
     # Run directly as the image's redis user (uid 999, gid 1000). With
     # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
     # traverse an appendonlydir created (and owned as 999) by a previous run —
@@ -477,7 +477,7 @@ services:
   # Backported from the production VPS template (infra/templates).
   docker-socket-proxy:
     logging: *default-logging
-    image: tecnativa/docker-socket-proxy:${DOCKER_SOCKET_PROXY_VERSION:-0.3}
+    image: tecnativa/docker-socket-proxy:${DOCKER_SOCKET_PROXY_VERSION:-v0.5.0}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
@@ -599,7 +599,7 @@ services:
   # Edit Caddyfile to match your domains before bringing this up.
   caddy:
     logging: *default-logging
-    image: caddy:${CADDY_VERSION:-2.8-alpine}
+    image: caddy:${CADDY_VERSION:-2.11-alpine}
     ports:
       - '80:80'
       - '443:443'
@@ -915,7 +915,7 @@ services:
   # `no space left on device`. Bump the default with the release.
   ollama:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.16}
     volumes:
       - ollama-data:/root/.ollama
     environment:
@@ -947,7 +947,7 @@ services:
   # readiness check. The next `up` retries it.
   ollama-models:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.16}
     entrypoint: ['/bin/sh', '-c']
     command:
       - |
@@ -1052,7 +1052,7 @@ services:
   # scripts/check-compose-invariants.sh fails the build if either side drifts.
   imap-cert-init:
     logging: *default-logging
-    image: alpine:${ALPINE_VERSION:-3.20}
+    image: alpine:${ALPINE_VERSION:-3.24}
     command:
       - /bin/sh
       - -ec

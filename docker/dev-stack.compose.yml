@@ -59,7 +59,7 @@ services:
   # For the MTA and the IMAP server when a developer runs them by hand next to
   # the stack; `bun run dev:stack ports` prints the URL.
   redis:
-    image: redis:${REDIS_VERSION:-7.4-alpine}
+    image: redis:${REDIS_VERSION:-8.8-alpine}
     user: '999:1000'
     command: >-
       redis-server --appendonly yes

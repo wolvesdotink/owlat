@@ -8,10 +8,10 @@
 # and lets DECISION_LOCAL_MODEL pick a different checkpoint without a rebuild.
 #
 # requirements.txt is a full lock resolved from requirements.in on this base:
-#   docker run --rm -v "$PWD:/w" -w /w python:3.12-slim-bookworm sh -c \
+#   docker run --rm -v "$PWD:/w" -w /w python:3.15-slim-trixie sh -c \
 #     'pip install -q -r requirements.in && pip freeze > requirements.txt'
 # then put the --extra-index-url line back at the top.
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.15-slim-trixie AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

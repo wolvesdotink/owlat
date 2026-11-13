@@ -1,6 +1,6 @@
-import type { MockLanguageModelV3 } from 'ai/test';
+import type { MockLanguageModelV4 } from 'ai/test';
 
-type ProviderGenerationResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+type ProviderGenerationResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 
 export function providerGenerationResult(
 	response: unknown,

@@ -182,7 +182,7 @@ async function* scrubAsyncIterable(
 export function withHostScrub(built: Tool): Tool {
 	const original = built.execute;
 	if (typeof original !== 'function') return built;
-	const execute: ToolExecuteFunction<unknown, unknown> = (input, options) => {
+	const execute: ToolExecuteFunction<unknown, unknown, unknown> = (input, options) => {
 		const result = original(input, options);
 		if (isAsyncIterable(result)) return scrubAsyncIterable(result);
 		return Promise.resolve(result).then(scrubToolOutput);
@@ -209,7 +209,7 @@ export const RETRIEVAL_LIMIT_MESSAGE =
 export function withRetrievalAllowance(built: Tool, allowance: RetrievalAllowance): Tool {
 	const original = built.execute;
 	if (typeof original !== 'function') return built;
-	const execute: ToolExecuteFunction<unknown, unknown> = (input, options) => {
+	const execute: ToolExecuteFunction<unknown, unknown, unknown> = (input, options) => {
 		if (allowance.remaining <= 0) return Promise.reject(new Error(RETRIEVAL_LIMIT_MESSAGE));
 		allowance.remaining -= 1;
 		return original(input, options);

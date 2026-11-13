@@ -20,10 +20,10 @@
 import { wrapLanguageModel, type LanguageModel } from 'ai';
 import type { TokenUsage } from '../../agent/steps/types';
 import { addTokenUsage } from './tokenUsage';
-import { providerReportedUsage, type ProviderUsageV3 } from './providerUsage';
+import { providerReportedUsage, type ProviderUsageV4 } from './providerUsage';
 import { startRequest, type LlmCallMeter, type LlmRequestInput } from './requestMeter';
 
-type LanguageModelV3 = Extract<LanguageModel, { specificationVersion: 'v3' }>;
+type LanguageModelV4 = Extract<LanguageModel, { specificationVersion: 'v4' }>;
 type RequestBase = Pick<LlmRequestInput, 'modelUsed' | 'endpoint' | 'isLocalEngine'>;
 
 export interface StreamMeter {
@@ -42,8 +42,8 @@ export interface StreamMeter {
 /** How long a reader that stopped early waits for the provider's own report. */
 export const STREAM_SETTLE_MS = 2_000;
 
-function isLanguageModelV3(model: LanguageModel): model is LanguageModelV3 {
-	return typeof model === 'object' && model !== null && model.specificationVersion === 'v3';
+function isLanguageModelV4(model: LanguageModel): model is LanguageModelV4 {
+	return typeof model === 'object' && model !== null && model.specificationVersion === 'v4';
 }
 
 /** Wrap `model` so each of its stream requests is one request on `meter`. */
@@ -74,7 +74,7 @@ export function meterStreamModel(
 			for (const close of open) close();
 		},
 	};
-	if (!isLanguageModelV3(model)) return base;
+	if (!isLanguageModelV4(model)) return base;
 
 	const openRequest = () => {
 		const finish = startRequest(meter);
@@ -96,7 +96,7 @@ export function meterStreamModel(
 		model: wrapLanguageModel({
 			model,
 			middleware: {
-				specificationVersion: 'v3',
+				specificationVersion: 'v4',
 				wrapStream: async ({ doStream }) => {
 					const request = openRequest();
 					let result;
@@ -114,7 +114,7 @@ export function meterStreamModel(
 								const { done, value: part } = await reader.read();
 								if (done) return;
 								if (part.type !== 'finish') continue;
-								const reported = providerReportedUsage(part.usage as ProviderUsageV3);
+								const reported = providerReportedUsage(part.usage as ProviderUsageV4);
 								if (reported) spent = addTokenUsage(spent, reported.usage);
 								request.close({
 									...requestBase,

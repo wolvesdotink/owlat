@@ -50,11 +50,11 @@
 	},
 	"dependencies": {
 		"@owlat/shared": "workspace:*",
-		"sanitize-html": "^2.17.6"
+		"sanitize-html": "^2.18.2"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"@types/sanitize-html": "^2.13.0",
+		"@types/sanitize-html": "^2.16.2",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

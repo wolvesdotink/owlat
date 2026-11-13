@@ -118,7 +118,6 @@ function instreamScan(socket: Socket, data: Buffer, scanTimeout: number): Promis
  */
 export function parseResponse(response: string): ClamScanResult {
 	// Remove null bytes (clamd's INSTREAM terminator)
-	// eslint-disable-next-line no-control-regex
 	const cleaned = response.replace(/\0/g, '').trim();
 
 	if (cleaned.endsWith('OK')) {
@@ -220,7 +219,7 @@ export async function ping(
 			socket!.write('zPING\0');
 		});
 
-		// eslint-disable-next-line no-control-regex -- clamd terminates every reply with NUL
+		// clamd terminates every reply with NUL.
 		return response.replace(/\0/g, '').trim() === 'PONG';
 	} catch {
 		return false;

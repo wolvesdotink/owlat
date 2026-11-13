@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { NoObjectGeneratedError, tool } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
 import {
 	errorStatus,
@@ -27,7 +27,7 @@ import { withFakeBackoff } from './backoffClock.testlib';
 import { providerGenerationResult } from './providerModel.testlib';
 import { scriptedStreamModel } from './streamModel.testlib';
 
-type GenerationResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+type GenerationResult = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 
 /** What every finished scripted step reports (providerModel.testlib's usage). */
 const STEP_USAGE = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
@@ -64,9 +64,9 @@ function badRequest(): Error {
 }
 
 /** A generate model that plays `steps` in order; an Error entry is thrown. */
-function generateModel(steps: ReadonlyArray<GenerationResult | Error>): MockLanguageModelV3 {
+function generateModel(steps: ReadonlyArray<GenerationResult | Error>): MockLanguageModelV4 {
 	let calls = 0;
-	return new MockLanguageModelV3({
+	return new MockLanguageModelV4({
 		modelId: 'tool-model',
 		doGenerate: async () => {
 			const step = steps[calls];

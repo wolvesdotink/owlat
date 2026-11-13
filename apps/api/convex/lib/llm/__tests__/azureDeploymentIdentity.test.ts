@@ -28,8 +28,8 @@ async function capturedRequest(deployment: string): Promise<Record<string, unkno
 		},
 	});
 	const model = modelForRequest(azure(deployment));
-	if (typeof model !== 'object' || model.specificationVersion !== 'v3') {
-		throw new Error('v3 expected');
+	if (typeof model !== 'object' || model.specificationVersion !== 'v4') {
+		throw new Error('v4 expected');
 	}
 	await expect(model.doGenerate({ prompt, temperature: 0.2 })).rejects.toThrow('request captured');
 	if (!request) throw new Error('no request');

@@ -16,6 +16,11 @@
  * request. The meter's task sets the limits this file enforces
  * (`./taskLimits.ts`): an output ceiling covering reasoning, a deadline for
  * the whole call, and the attempt allowance.
+ *
+ * SYSTEM TURNS. Callers put system messages in `messages` (the system prompt,
+ * and instructions added later in a thread), which the AI SDK refuses unless
+ * each call sets `allowSystemInMessages`. Every SDK call here and in
+ * `./dispatchStream.ts` sets it.
  */
 
 import {
@@ -88,21 +93,21 @@ interface ProviderModelIdentityCapture {
 	read(): string | undefined;
 }
 
-type LanguageModelV3 = Extract<LanguageModel, { specificationVersion: 'v3' }>;
+type LanguageModelV4 = Extract<LanguageModel, { specificationVersion: 'v4' }>;
 
-function isLanguageModelV3(model: LanguageModel): model is LanguageModelV3 {
-	return typeof model === 'object' && model !== null && model.specificationVersion === 'v3';
+function isLanguageModelV4(model: LanguageModel): model is LanguageModelV4 {
+	return typeof model === 'object' && model !== null && model.specificationVersion === 'v4';
 }
 
 /** Capture raw provider metadata before AI SDK fills a missing ID from the request. */
 function captureProviderModelIdentity(model: LanguageModel): ProviderModelIdentityCapture {
-	if (!isLanguageModelV3(model)) return { model, read: () => undefined };
+	if (!isLanguageModelV4(model)) return { model, read: () => undefined };
 	let rawModelId: unknown;
 	return {
 		model: wrapLanguageModel({
 			model,
 			middleware: {
-				specificationVersion: 'v3',
+				specificationVersion: 'v4',
 				wrapGenerate: async ({ doGenerate }) => {
 					rawModelId = undefined;
 					const result = await doGenerate();
@@ -180,6 +185,7 @@ export async function runLlmTextWithAttemptMetadata(
 				try {
 					const generated = await generateText({
 						model: providerModelIdentity.model,
+						allowSystemInMessages: true,
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...limitArgs(call),
@@ -267,6 +273,7 @@ export async function runLlmTextWithTools(opts: LlmTextWithToolsOptions): Promis
 					return await generateText({
 						model: toolModel,
 						messages: opts.messages,
+						allowSystemInMessages: true,
 						tools: opts.tools,
 						stopWhen: stepCountIs(maxSteps),
 						temperature: opts.temperature,
@@ -380,6 +387,7 @@ export async function runLlmObject<S extends z.ZodTypeAny>(
 						model: objectModel,
 						schema: opts.schema,
 						...(opts.messages ? { messages: opts.messages } : { prompt: opts.prompt }),
+						allowSystemInMessages: true,
 						temperature: opts.temperature,
 						maxRetries: SDK_MAX_RETRIES,
 						...limitArgs(call),

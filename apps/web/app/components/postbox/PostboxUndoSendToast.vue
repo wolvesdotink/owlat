@@ -40,7 +40,7 @@ const isQueued = computed(
 	() => !!state.value.undoToken && isQueuedSendToken(state.value.undoToken)
 );
 
-function reopen(spec: ComposeSpec) {
+function reopenDraft(spec: ComposeSpec) {
 	if (props.reopen) props.reopen(spec);
 	else void composeNav.open(spec);
 }
@@ -64,7 +64,7 @@ async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state
 		// claimed or already sent) — the composable said so.
 		const item = await offlineOutbox.undoQueuedSend(undoToken);
 		if (item && mailboxId) {
-			reopen({
+			reopenDraft({
 				mailboxId,
 				...(item.payload.draftId ? { draftId: item.payload.draftId as Id<'mailDrafts'> } : {}),
 				prefillTo: item.payload.toAddresses,
@@ -86,7 +86,7 @@ async function undoSend({ undoToken, mailboxId, replyToMessageId }: typeof state
 	if (result.ok && result.result.ok && mailboxId) {
 		const draftId = result.result.draftId as Id<'mailDrafts'>;
 		if (replyToMessageId) void answerNav.open(replyToMessageId, { draftId });
-		else reopen({ mailboxId, draftId });
+		else reopenDraft({ mailboxId, draftId });
 	}
 }
 

@@ -41,11 +41,6 @@ export class OwlatError extends Error {
 		this.statusCode = statusCode;
 		this.rateLimit = rateLimit;
 		this.data = data;
-
-		// Maintains proper stack trace for where error was thrown
-		if (Error.captureStackTrace) {
-			Error.captureStackTrace(this, OwlatError);
-		}
 	}
 }
 

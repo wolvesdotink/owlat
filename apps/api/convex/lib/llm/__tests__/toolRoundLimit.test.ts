@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { tool } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
 import { DEFAULT_MAX_TOOL_STEPS, runLlmStream, runLlmTextWithTools } from '../dispatch';
 import { LlmCallMeter } from '../requestMeter';
@@ -30,9 +30,9 @@ const usage = {
 	outputTokens: { total: 5, text: 5, reasoning: undefined },
 };
 
-function toolCallingGenerateModel(): MockLanguageModelV3 {
+function toolCallingGenerateModel(): MockLanguageModelV4 {
 	let call = 0;
-	return new MockLanguageModelV3({
+	return new MockLanguageModelV4({
 		modelId: 'scripted-model',
 		doGenerate: async () => {
 			call += 1;

@@ -14,7 +14,7 @@
 		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"@coolicons/vue": "^5.2.0",
+		"@coolicons/vue": "^5.3.0",
 		"reka-ui": "^2.11.0"
 	},
 	"devDependencies": {

@@ -201,7 +201,9 @@ describe('Quote in reply', () => {
 		});
 		const [first, second] = wrapper.findAll('iframe').map((w) => w.element as HTMLIFrameElement);
 		const pills = () => document.querySelectorAll<HTMLElement>('[data-testid="quote-reply-pill"]');
-		const other = page.frameLocator(page.elementLocator(second!)).getByText('Another message');
+		const other = page
+			.frameLocator(page.elementLocator(second!))
+			.getByText('Another message entirely.');
 		await loaded(second!);
 
 		// Focus in the selection's frame, then a click in the other message.

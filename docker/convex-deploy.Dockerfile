@@ -3,7 +3,7 @@
 # One-shot container that deploys Convex functions to a self-hosted backend.
 # Usage: docker compose --profile deploy run --rm convex-deploy
 
-FROM oven/bun:1.4.2-alpine AS deps
+FROM oven/bun:1.4.4-alpine AS deps
 
 # Build tools needed for native deps that may show up transitively from the
 # full workspace install (apps/docs uses better-sqlite3 as a devDep). Matches
@@ -56,7 +56,7 @@ FROM node:26-alpine
 # this image with a newer `convex@latest` has bitten us before — CLI schema-diff
 # behaviour changes between minors. Bump this deliberately via a PR after
 # testing, don't let `latest` float.
-ARG CONVEX_CLI_VERSION=1.43.0
+ARG CONVEX_CLI_VERSION=1.50.0
 RUN npm install -g convex@${CONVEX_CLI_VERSION}
 
 WORKDIR /app

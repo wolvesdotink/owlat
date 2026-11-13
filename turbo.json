@@ -97,7 +97,11 @@
 				"!**/.nuxt/**",
 				"!{build,dist,.output,coverage,.turbo}/**",
 				"!../*/{build,dist,.output,coverage,.turbo}/**",
-				"!$TURBO_ROOT$/packages/*/{build,dist,.output,coverage,.turbo}/**"
+				"!$TURBO_ROOT$/packages/*/{build,dist,.output,coverage,.turbo}/**",
+				// `**/.nuxt/**` does not match a root glob's path outside this
+				// package, so those trees are named.
+				"!../*/.nuxt/**",
+				"!$TURBO_ROOT$/packages/*/.nuxt/**"
 			]
 		},
 		"@owlat/web#lint": {
@@ -115,7 +119,9 @@
 				"!**/node_modules/**",
 				"!**/.nuxt/**",
 				"!{build,dist,.output,coverage,.turbo}/**",
-				"!$TURBO_ROOT$/packages/ui/{build,dist,.output,coverage,.turbo}/**"
+				"!$TURBO_ROOT$/packages/ui/{build,dist,.output,coverage,.turbo}/**",
+				"!$TURBO_ROOT$/packages/ui/.nuxt/**",
+				"!$TURBO_ROOT$/packages/ui/node_modules/**"
 			]
 		},
 		"@owlat/setup-cli#lint": {

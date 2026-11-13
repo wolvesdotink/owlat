@@ -18,19 +18,19 @@
 		"test:coverage": "vitest run --coverage --passWithNoTests"
 	},
 	"dependencies": {
-		"@hono/node-server": "^2.1.0",
+		"@hono/node-server": "^2.1.8",
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/worker-protocol": "workspace:*",
 		"convex": "catalog:convex",
-		"hono": "^4.13.1",
-		"imapflow": "^2.0.5",
-		"pino": "^10.3.1"
+		"hono": "^4.13.18",
+		"imapflow": "^2.11.0",
+		"pino": "^10.4.0"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"tsx": "^4.19.0",
+		"tsx": "^4.23.15",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

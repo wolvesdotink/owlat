@@ -1,4 +1,4 @@
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { describe, expect, it } from 'vitest';
 import { runLlmTextWithAttemptMetadata } from '../dispatch';
 import { withFakeBackoff } from './backoffClock.testlib';
@@ -6,8 +6,8 @@ import { providerGenerationResult } from './providerModel.testlib';
 
 const REQUESTED_MODEL_ID = 'requested-model';
 
-function providerModel(response: unknown): MockLanguageModelV3 {
-	return new MockLanguageModelV3({
+function providerModel(response: unknown): MockLanguageModelV4 {
+	return new MockLanguageModelV4({
 		modelId: REQUESTED_MODEL_ID,
 		doGenerate: async () => providerGenerationResult(response),
 	});
@@ -43,7 +43,7 @@ describe('provider-reported model identity', () => {
 
 	it('uses raw identity from the successful retry attempt', async () => {
 		let providerAttempts = 0;
-		const model = new MockLanguageModelV3({
+		const model = new MockLanguageModelV4({
 			modelId: REQUESTED_MODEL_ID,
 			doGenerate: async () => {
 				providerAttempts += 1;

@@ -85,8 +85,8 @@ describe('env OpenAI-compatible routes', () => {
 		vi.stubEnv('LLM_API_KEY', 'env-key');
 		vi.stubEnv('LLM_MODEL_FAST', 'openai/gpt-6-luna');
 		const model = modelForRequest(await resolveLanguageModel(envCtx, 'mail.classify'));
-		if (typeof model !== 'object' || model.specificationVersion !== 'v3') {
-			throw new Error('v3 expected');
+		if (typeof model !== 'object' || model.specificationVersion !== 'v4') {
+			throw new Error('v4 expected');
 		}
 		expect(model.provider).toBe('openai-compatible.chat');
 		await model.doGenerate({

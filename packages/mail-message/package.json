@@ -84,13 +84,13 @@
 		"@owlat/mail-canon": "workspace:*"
 	},
 	"devDependencies": {
-		"@types/mailparser": "^3.4.5",
+		"@types/mailparser": "^3.9.0",
 		"@types/node": "catalog:",
-		"@types/nodemailer": "^8.0.0",
+		"@types/nodemailer": "^8.0.2",
 		"@vitest/coverage-v8": "catalog:",
-		"mailauth": "^5.0.0",
-		"mailparser": "^3.7.0",
-		"nodemailer": "^10.0.10",
+		"mailauth": "^8.0.6",
+		"mailparser": "3.9.39",
+		"nodemailer": "^10.5.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

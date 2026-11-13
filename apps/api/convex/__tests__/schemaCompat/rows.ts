@@ -56,6 +56,8 @@ function valueFor(validator: ValidatorJSON, path: string, plan: RowPlan): JSONVa
 		case 'boolean':
 			return (plan.choices.get(path) ?? 0) === 0;
 		case 'string':
+		case 'function':
+			// A function handle is stored as its string reference.
 			return FIXTURE_STRING;
 		case 'bytes':
 			return { $bytes: 'Zml4dHVyZQ==' };

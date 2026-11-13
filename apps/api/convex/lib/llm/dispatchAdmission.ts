@@ -13,7 +13,7 @@
  * charged at that request's bound (`aiRouting/settlement.ts`). A refusal stops
  * the call before the request leaves. The embedding dispatch, which makes its
  * requests itself, calls {@link DispatchHold.beforeRequest} once per attempt.
- * A model the middleware cannot wrap (not a v3 model object) is held at the
+ * A model the middleware cannot wrap (not a v4 model object) is held at the
  * call's worst case before its first request instead.
  *
  * Every request the call records carries the hold's id (the meter stamps it
@@ -46,7 +46,7 @@ export interface DispatchShape {
 	readonly plane?: LlmUsagePlane;
 	/**
 	 * Whether every request will pass through {@link DispatchHold.beforeRequest}
-	 * with its own size (a wrapped v3 model, or the embedding dispatch). False:
+	 * with its own size (a wrapped v4 model, or the embedding dispatch). False:
 	 * hold the worst case, from {@link DispatchShape.size}, before the first request.
 	 */
 	readonly isIncremental: boolean;
@@ -82,14 +82,14 @@ const NO_HOLD: DispatchHold = Object.freeze({
 	end: async () => {},
 });
 
-type LanguageModelV3 = Extract<LanguageModel, { specificationVersion: 'v3' }>;
+type LanguageModelV4 = Extract<LanguageModel, { specificationVersion: 'v4' }>;
 
 /** Whether the admission middleware can wrap `model`. */
-export function isWrappableModel(model: unknown): model is LanguageModelV3 {
+export function isWrappableModel(model: unknown): model is LanguageModelV4 {
 	return (
 		typeof model === 'object' &&
 		model !== null &&
-		(model as { specificationVersion?: unknown }).specificationVersion === 'v3'
+		(model as { specificationVersion?: unknown }).specificationVersion === 'v4'
 	);
 }
 
@@ -210,7 +210,7 @@ function heldUntilEnd(
 				? wrapLanguageModel({
 						model,
 						middleware: {
-							specificationVersion: 'v3',
+							specificationVersion: 'v4',
 							wrapGenerate: async ({ doGenerate, params }) => {
 								await beforeRequest(providerRequestSize(params));
 								return doGenerate();

@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TestConvex } from 'convex-test';
+import type { FunctionReference } from 'convex/server';
 import type schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -36,7 +37,7 @@ afterEach(() => {
 /** Run an inbound event through the real dispatcher on the harness's mutations. */
 function dispatch(t: T, event: InboundEvent): Promise<void> {
 	const actionCtx = {
-		runMutation: (mutation: Parameters<ActionCtx['runMutation']>[0], args: unknown) =>
+		runMutation: (mutation: FunctionReference<'mutation', 'public' | 'internal'>, args: unknown) =>
 			t.mutation(mutation, args as never),
 	} as unknown as ActionCtx;
 	return dispatchInboundEvent(actionCtx, event);

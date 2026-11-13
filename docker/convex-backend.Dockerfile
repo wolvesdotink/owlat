@@ -21,4 +21,4 @@
 #   docker buildx imagetools inspect ghcr.io/convex/convex-backend:latest
 # and keep docker/convex-dashboard.Dockerfile at a build from the same time.
 # Dependabot (docker, /docker) proposes the same bump when `latest` moves.
-FROM ghcr.io/convex/convex-backend:latest@sha256:d715e9ec088784407ca4ba2d3db592702cd328d02c76cdca3852c0018f2a76b4
+FROM ghcr.io/convex/convex-backend:latest@sha256:e9c084e8bd6c1f249012c672193f0988c748824f55a24cdad45f6185a8462f9a

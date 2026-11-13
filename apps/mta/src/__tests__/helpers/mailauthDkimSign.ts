@@ -1,11 +1,11 @@
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
-import type { DKIMSignOptions } from 'mailauth';
+import type { DKIMSignatureData } from 'mailauth';
 
-/** The options mailauth's signer actually reads: the key set lives on `signatureData`. */
+/** The signer options fixtures use: one key set per `signatureData` entry. */
 export interface SignatureDataOptions {
 	canonicalization: string;
 	algorithm: string;
-	signatureData: DKIMSignOptions[];
+	signatureData: DKIMSignatureData[];
 	/** The `t=` stamp for every signature. Defaults to `FIXTURE_SIGN_TIME`. */
 	signTime?: Date;
 }
@@ -20,14 +20,10 @@ export interface SignatureDataOptions {
  */
 export const FIXTURE_SIGN_TIME = new Date('2026-06-17T12:00:00Z');
 
-/**
- * mailauth's `dkimSign`, typed the way it runs. Its type definitions require
- * flat top-level `signingDomain` / `selector` / `privateKey`, but the signer
- * ignores those and signs once per `signatureData` entry.
- */
+/** mailauth's `dkimSign` with the fixture `t=` stamp. */
 export function mailauthDkimSign(message: Buffer, options: SignatureDataOptions) {
 	return dkimSign(message, {
 		...options,
 		signTime: options.signTime ?? FIXTURE_SIGN_TIME,
-	} as unknown as DKIMSignOptions);
+	});
 }

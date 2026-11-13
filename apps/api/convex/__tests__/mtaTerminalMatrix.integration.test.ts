@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test';
+import type { FunctionReference } from 'convex/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -270,8 +271,10 @@ describe('member-test delayed FBL isolation', () => {
 			providerMessageId,
 		});
 		const ctx = {
-			runMutation: (mutation: Parameters<ActionCtx['runMutation']>[0], args: unknown) =>
-				value.t.mutation(mutation, args),
+			runMutation: (
+				mutation: FunctionReference<'mutation', 'public' | 'internal'>,
+				args: unknown
+			) => value.t.mutation(mutation, args),
 		} as unknown as ActionCtx;
 
 		await dispatchInboundEvent(ctx, {
