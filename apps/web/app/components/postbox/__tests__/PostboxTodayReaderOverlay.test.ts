@@ -72,7 +72,7 @@ function mountOverlay(id = 'm2', advanceIds = ['m1', 'm2', 'm3']) {
 		props: { message: msg(id) as never, advanceIds },
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxThreadReader: readerStub },
+			components: { LazyPostboxThreadReader: readerStub },
 			stubs: overlayStubs,
 		},
 	});
@@ -144,7 +144,7 @@ describe('PostboxTodayReaderOverlay', () => {
 			props: { messageId: 'm-old', advanceIds: ['m-old'] },
 			global: {
 				plugins: [createTestI18n()],
-				components: { PostboxThreadReader: readerStub },
+				components: { LazyPostboxThreadReader: readerStub },
 				stubs: overlayStubs,
 			},
 		});

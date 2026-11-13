@@ -61,8 +61,11 @@ const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 
 		<AppErrorBoundary v-if="message" surface="reader" :reset-keys="[activeMessageId]">
 			<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
-			     mounts in the same frame the previous one goes. -->
-			<PostboxThreadReader
+			     mounts in the same frame the previous one goes. Lazy, so the
+			     list does not wait for the reader's code; the page, the rows and
+			     the idle warm-up fetch it ahead of the first open
+			     (warmPostboxThreadReader). -->
+			<LazyPostboxThreadReader
 				:key="activeMessageId ?? undefined"
 				class="pbx-reader-swap"
 				:message="message"

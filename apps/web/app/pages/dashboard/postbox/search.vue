@@ -4,6 +4,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
 import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { warmPostboxThreadReader } from '~/composables/postbox/usePostboxChunkWarmup';
 import {
 	ArrowLeftIcon,
 	BookmarkPlusIcon,
@@ -98,6 +99,8 @@ watch(results, (rows) => {
 	if (activeMessageId.value && !rows.some((m) => m._id === activeMessageId.value)) {
 		activeMessageId.value = null;
 	}
+	// The reader mounts lazily; with hits on screen, the next click opens one.
+	if (rows.length > 0) void warmPostboxThreadReader();
 });
 
 // `undefined` while the hit's full message loads, `null` once it is gone for
@@ -423,7 +426,9 @@ async function confirmSave() {
 						</button>
 					</div>
 					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
-						<PostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
+						<!-- Lazy: the screen opens on its results, so the reader loads
+						     with the first hit opened, or ahead of it (warmPostboxThreadReader). -->
+						<LazyPostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
 					</AppErrorBoundary>
 					<UiQueryBoundary
 						v-else-if="activeMessageId && activeMessageError"

@@ -191,9 +191,10 @@ onUnmounted(() => {
 			     place with the same enter-only fade the three-pane reader uses
 			     (postbox-motion.css); nothing waits for the old thread to leave.
 			     The boundary keeps a thread that fails to render inside the
-			     overlay, which still closes and still steps to the next one. -->
+			     overlay, which still closes and still steps to the next one.
+			     Lazy for the same reason as in PostboxReaderPane. -->
 			<AppErrorBoundary v-if="message" surface="reader" :reset-keys="[message._id]">
-				<PostboxThreadReader
+				<LazyPostboxThreadReader
 					:key="message._id"
 					class="pbx-reader-swap"
 					:message="message"
