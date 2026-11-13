@@ -86,7 +86,6 @@ const threadMessages = usePostboxEnvelopeBodies({
 			: undefined;
 	},
 	expanded: () => expanded.value,
-	bodyIds: () => threadPages.bodyIds.value,
 });
 const allMessages = computed(() => threadMessages.value ?? [openRow.value]);
 

@@ -9,9 +9,13 @@
  * means a pointer sweeping down the list warms only where it comes to rest, and
  * its LRU cap bounds what a long sweep can accumulate, so this needs no
  * throttle of its own.
+ *
+ * Both halves also start the reader's own code, which the list does not load
+ * with it: a focused or hovered row is the open that comes next.
  */
 
 import { watch, type Ref } from 'vue';
+import { warmPostboxThreadReader } from './usePostboxChunkWarmup';
 
 export function usePostboxListReadAhead(args: {
 	focusedIndex: Ref<number>;
@@ -26,8 +30,14 @@ export function usePostboxListReadAhead(args: {
 		let anchor = args.focusedIndex.value;
 		if (anchor < 0 && open) anchor = ids.findIndex((id) => id === open);
 		if (anchor < 0) return;
+		void warmPostboxThreadReader();
 		prefetch([ids[anchor + 1], ids[anchor - 1]]);
 	});
 
-	return { prefetchRow: (id: string) => prefetch([id]) };
+	return {
+		prefetchRow: (id: string) => {
+			void warmPostboxThreadReader();
+			prefetch([id]);
+		},
+	};
 }

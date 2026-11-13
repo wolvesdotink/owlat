@@ -3,8 +3,9 @@
  *
  * Convex allows exactly one `.paginate()` per function execution, so a search
  * over N mailboxes cannot paginate each one natively — it walks every mailbox
- * with a MANUAL keyset (`by_mailbox_and_received`, descending) and carries one
- * position per mailbox in a single opaque cursor string.
+ * with a MANUAL keyset (an arrival index, descending: the mailbox's, or a
+ * folder's, see `./searchSource`) and carries one position per mailbox in a
+ * single opaque cursor string.
  *
  * A position is `receivedAt` PLUS a count, never `receivedAt` alone: the index
  * range API cannot express a `(receivedAt, _id)` compound bound, so resuming
@@ -20,7 +21,8 @@
  *
  * The rules the merge upholds:
  *   - the returned page is the newest `limit` rows across all mailboxes, so
- *     ordering is by `receivedAt` (descending), never by mailbox;
+ *     ordering is by `receivedAt` (descending), never by mailbox, and a row
+ *     waits while any unfinished mailbox has not read down to its timestamp;
  *   - a mailbox's position only advances past rows the caller was actually
  *     handed, or past rows the post-filter rejected — a row is never skipped;
  *   - a mailbox absent from the cursor is EXHAUSTED, and a mailbox present with
@@ -44,6 +46,12 @@ export interface MailboxScanPosition {
 	at: number;
 	/** How many rows AT that timestamp are already consumed (1-based count). */
 	skip: number;
+	/**
+	 * The folder whose arrival index the walk reads; absent = the mailbox's.
+	 * `skip` counts a tie group within that index, so a position never resumes
+	 * a walk over another one.
+	 */
+	folderId?: string;
 }
 
 /**
@@ -54,14 +62,23 @@ export interface MailboxScanPosition {
  */
 type MultiSearchCursor = Record<string, MailboxScanPosition | null>;
 
-/** Version tag, so a cursor minted by an older deployment is rejected rather than misread. */
-const CURSOR_VERSION = 1;
+/**
+ * Version tag, so a cursor from a deployment that reads it differently is
+ * rejected rather than misread. Version 2 adds the folder to a position;
+ * version 1 positions are all mailbox-wide and still decode as such.
+ */
+const CURSOR_VERSION = 2;
+const MAILBOX_WIDE_CURSOR_VERSION = 1;
 
 /** Encode per-mailbox positions into the single opaque cursor string. */
 export function encodeMultiCursor(cursor: MultiSearchCursor): string {
-	const positions: Record<string, [number, number] | null> = {};
+	const positions: Record<string, [number, number] | [number, number, string] | null> = {};
 	for (const [mailboxId, position] of Object.entries(cursor)) {
-		positions[mailboxId] = position ? [position.at, position.skip] : null;
+		positions[mailboxId] = !position
+			? null
+			: position.folderId !== undefined
+				? [position.at, position.skip, position.folderId]
+				: [position.at, position.skip];
 	}
 	return JSON.stringify({ v: CURSOR_VERSION, p: positions });
 }
@@ -82,7 +99,7 @@ export function decodeMultiCursor(raw: string | undefined | null): MultiSearchCu
 	}
 	if (typeof parsed !== 'object' || parsed === null) return null;
 	const envelope = parsed as { v?: unknown; p?: unknown };
-	if (envelope.v !== CURSOR_VERSION) return null;
+	if (envelope.v !== CURSOR_VERSION && envelope.v !== MAILBOX_WIDE_CURSOR_VERSION) return null;
 	if (typeof envelope.p !== 'object' || envelope.p === null) return null;
 	const cursor: MultiSearchCursor = {};
 	for (const [mailboxId, value] of Object.entries(envelope.p as Record<string, unknown>)) {
@@ -93,7 +110,13 @@ export function decodeMultiCursor(raw: string | undefined | null): MultiSearchCu
 		if (!Array.isArray(value) || typeof value[0] !== 'number' || typeof value[1] !== 'number') {
 			return null;
 		}
-		cursor[mailboxId] = { at: value[0], skip: value[1] };
+		const folderId: unknown = envelope.v === CURSOR_VERSION ? value[2] : undefined;
+		if (folderId !== undefined && typeof folderId !== 'string') return null;
+		cursor[mailboxId] = {
+			at: value[0],
+			skip: value[1],
+			...(folderId !== undefined ? { folderId } : {}),
+		};
 	}
 	return cursor;
 }
@@ -117,9 +140,13 @@ interface PositionedRow<T extends ScannedRow> {
  *
  * The rank is counted over the RAW page, which always starts at the first row
  * of the boundary tie group (the range bound is `receivedAt <= at`), so ranks
- * are stable across pages. Pure.
+ * are stable across pages. `folderId` names the folder index the scan read,
+ * stamped on every position. Pure.
  */
-export function positionRows<T extends ScannedRow>(rows: readonly T[]): PositionedRow<T>[] {
+export function positionRows<T extends ScannedRow>(
+	rows: readonly T[],
+	folderId?: string
+): PositionedRow<T>[] {
 	const positioned: PositionedRow<T>[] = [];
 	let currentAt: number | null = null;
 	let rank = 0;
@@ -129,7 +156,10 @@ export function positionRows<T extends ScannedRow>(rows: readonly T[]): Position
 			rank = 0;
 		}
 		rank += 1;
-		positioned.push({ row, position: { at: row.receivedAt, skip: rank } });
+		positioned.push({
+			row,
+			position: { at: row.receivedAt, skip: rank, ...(folderId !== undefined ? { folderId } : {}) },
+		});
 	}
 	return positioned;
 }
@@ -198,8 +228,24 @@ export function mergeMailboxPages<T extends ScannedRow>(
 	pages: readonly MailboxPage<T>[],
 	limit: number
 ): MergedSearchPage<T> {
+	// A mailbox still being walked has unread rows at or below the last row it
+	// read, so a row older than that could be overtaken by one of them on a
+	// later page. A row is ready only when every unfinished walk has read down
+	// to its timestamp. The newest such frontier walk always has its own rows
+	// ready, so every page still advances it. Pages without a keyset position
+	// never wait: they leave the cursor below and their held rows would be lost.
+	let frontier = Number.NEGATIVE_INFINITY;
+	for (const mailboxPage of pages) {
+		if (!mailboxPage.done && mailboxPage.scanned) {
+			frontier = Math.max(frontier, mailboxPage.scanned.at);
+		}
+	}
 	const merged = pages
-		.flatMap((mailboxPage) => mailboxPage.rows.slice())
+		.flatMap((mailboxPage) =>
+			mailboxPage.done && !mailboxPage.scanned
+				? mailboxPage.rows.slice()
+				: mailboxPage.rows.filter((entry) => entry.row.receivedAt >= frontier)
+		)
 		.sort(newestFirst)
 		.slice(0, Math.max(0, limit));
 	const emitted = new Set(merged.map((entry) => entry.row._id));

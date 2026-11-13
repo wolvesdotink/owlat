@@ -21,11 +21,55 @@
  * preference, and `playAlertSound` is only reached once the alert rules
  * (`lib/alertSoundRules`) said yes. AI/sanitizer rules do not apply — this
  * touches no mail content.
+ *
+ * The sounds themselves are base64 WAV data URIs, which gzip cannot shrink, and
+ * both are off by default, so they are imported on first use instead of riding
+ * every dashboard page: when the preference is on (`useUiSound`, `useAlertSounds`
+ * and the alert switches load them ahead), or at the first play. A play that
+ * comes before its sound has loaded starts once it has.
  */
 
-import { POSTBOX_SEND_SOUND_DATA_URI } from '~/utils/postboxSendSound';
-import { ALERT_SOUND_DATA_URI } from '~/utils/alertSound';
+import { watch } from 'vue';
 import { isNewAlertBurst } from '~/lib/alertSoundRules';
+
+/** One data URI, imported once; a failed import is forgotten so the next use retries. */
+function lazySound(load: () => Promise<string>) {
+	let uri: string | null = null;
+	let pending: Promise<void> | null = null;
+	return {
+		get: (): string | null => uri,
+		load(): Promise<void> {
+			// No `Audio` (server render): nothing could play it.
+			if (typeof Audio === 'undefined') return Promise.resolve();
+			pending ??= load().then(
+				(value) => {
+					uri = value;
+				},
+				() => {
+					pending = null;
+				}
+			);
+			return pending;
+		},
+	};
+}
+
+const sendSound = lazySound(() =>
+	import('~/utils/postboxSendSound').then((m) => m.POSTBOX_SEND_SOUND_DATA_URI)
+);
+const alertSound = lazySound(() =>
+	import('~/utils/alertSound').then((m) => m.ALERT_SOUND_DATA_URI)
+);
+
+/** Fetch the alert chime ahead of the first alert, so that one plays on time. */
+export function loadAlertSound(): Promise<void> {
+	return alertSound.load();
+}
+
+/** Fetch the send sound; `useUiSound` does this once its preference is on. */
+export function loadSendSound(): Promise<void> {
+	return sendSound.load();
+}
 
 // Reduced volume so the confirmation stays subtle.
 const SEND_SOUND_VOLUME = 0.4;
@@ -37,8 +81,10 @@ function getSendAudio(): HTMLAudioElement | null {
 	// `typeof Audio` is undefined during SSR, so this is inherently no-op on the
 	// server without needing an explicit client guard.
 	if (typeof Audio === 'undefined') return null;
+	const uri = sendSound.get();
+	if (uri === null) return null;
 	if (!sharedAudio) {
-		sharedAudio = new Audio(POSTBOX_SEND_SOUND_DATA_URI);
+		sharedAudio = new Audio(uri);
 		sharedAudio.volume = SEND_SOUND_VOLUME;
 		sharedAudio.preload = 'auto';
 	}
@@ -63,19 +109,37 @@ function startFromTop(audio: HTMLAudioElement): void {
 	}
 }
 
+/** Don't intrude when the user isn't looking at the tab. */
+function tabHidden(): boolean {
+	return typeof document !== 'undefined' && document.hidden;
+}
+
 export function useUiSound(enabled: MaybeRefOrGetter<boolean>) {
+	// Loaded as soon as the preference is on, so the first send sounds on time.
+	watch(
+		() => toValue(enabled),
+		(on) => {
+			if (on) void loadSendSound();
+		},
+		{ immediate: true }
+	);
+
 	/**
 	 * Play the send-confirmation sound once, if enabled and the tab is visible.
 	 * Safe to call from any environment: it no-ops server-side and swallows
 	 * both synchronous throws and the async autoplay-policy rejection.
 	 */
 	function playSend() {
-		if (!toValue(enabled)) return;
-		// Don't intrude when the user isn't looking at the tab.
-		if (typeof document !== 'undefined' && document.hidden) return;
+		if (!toValue(enabled) || tabHidden() || typeof Audio === 'undefined') return;
 		const audio = getSendAudio();
-		if (!audio) return;
-		startFromTop(audio);
+		if (audio) {
+			startFromTop(audio);
+			return;
+		}
+		void sendSound.load().then(() => {
+			const loaded = tabHidden() ? null : getSendAudio();
+			if (loaded) startFromTop(loaded);
+		});
 	}
 
 	return { playSend };
@@ -97,8 +161,10 @@ let alertPrimed = false;
 
 function getAlertAudio(): HTMLAudioElement | null {
 	if (typeof Audio === 'undefined') return null;
+	const uri = alertSound.get();
+	if (uri === null) return null;
 	if (!alertAudio) {
-		alertAudio = new Audio(ALERT_SOUND_DATA_URI);
+		alertAudio = new Audio(uri);
 		alertAudio.volume = ALERT_SOUND_VOLUME;
 		alertAudio.preload = 'auto';
 	}
@@ -136,12 +202,22 @@ function claimAlertBurst(now: number): boolean {
  * the burst it would have opened stays quiet rather than retrying per arrival.
  */
 export function playAlertSound(now: number = Date.now()): boolean {
+	if (typeof Audio === 'undefined' || !claimAlertBurst(now)) return false;
 	const audio = getAlertAudio();
-	if (!audio || !claimAlertBurst(now)) return false;
+	if (audio) soundAlert(audio);
+	else void alertSound.load().then(() => withAlertAudio(soundAlert));
+	return true;
+}
+
+function soundAlert(audio: HTMLAudioElement): void {
 	// Un-muting first is what tells a pending prime (below) not to pause us.
 	audio.muted = false;
 	startFromTop(audio);
-	return true;
+}
+
+function withAlertAudio(use: (audio: HTMLAudioElement) => void): void {
+	const audio = getAlertAudio();
+	if (audio) use(audio);
 }
 
 /**
@@ -151,11 +227,17 @@ export function playAlertSound(now: number = Date.now()): boolean {
  * inside one. So the first click or key press plays the element muted and
  * stops it again. A real alert that starts meanwhile un-mutes the element,
  * and the prime then leaves it playing.
+ *
+ * The unlock only counts inside the gesture, so a chime that has not loaded
+ * yet is fetched now and unlocked by the next gesture.
  */
 export function primeAlertSound(): void {
 	if (alertPrimed) return;
 	const audio = getAlertAudio();
-	if (!audio) return;
+	if (!audio) {
+		void alertSound.load();
+		return;
+	}
 	alertPrimed = true;
 	// Already sounding: it could play, so it is unlocked, and muting it now
 	// would silence a real alert mid-chime.
@@ -187,11 +269,15 @@ export function primeAlertSound(): void {
  * Play the chime once so the user hears what they just switched on. Called
  * from the switch's own click, so it also unlocks the element for later
  * alerts; it opens no burst, so a real alert a moment later still sounds.
+ * A chime that has not loaded yet plays once it has, outside the click, so it
+ * does not count as the unlock and the next gesture still primes it.
  */
 export function previewAlertSound(): void {
 	const audio = getAlertAudio();
-	if (!audio) return;
+	if (!audio) {
+		void alertSound.load().then(() => withAlertAudio(soundAlert));
+		return;
+	}
 	alertPrimed = true;
-	audio.muted = false;
-	startFromTop(audio);
+	soundAlert(audio);
 }

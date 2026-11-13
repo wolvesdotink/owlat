@@ -75,6 +75,28 @@ export function postboxList(scenario: PostboxListScenario) {
 		const liveMutations = probe.takeMutations();
 		const landed = wasUnread && !isUnread() ? 1 : 0;
 
+		// A row mounts its quick actions on its first hover, and from then on the
+		// cluster re-renders with the row. Hover the next unread row, then mark
+		// it read: what the first hover mounts, and what an update costs on a
+		// row the pointer has visited (the usual row a user marks read).
+		const hovered = firstUnread(rows, changed + 1);
+		const hoveredRow = stage
+			.querySelector(`#postbox-row-${rows[hovered]?._id}`)
+			?.closest<HTMLElement>(ROW_SELECTOR);
+		if (!hoveredRow) throw new Error(`row ${hovered} is not mounted`);
+		const liveBeforeHover = probe.live();
+		hoveredRow.dispatchEvent(new MouseEvent('mouseenter'));
+		await nextTick();
+		await nextFrame();
+		const hoverMounted = probe.live() - liveBeforeHover;
+		const hoverMutations = probe.takeMutations();
+		probe.takeUpdates();
+		deliver(markRead(markRead(rows, changed), hovered));
+		await nextTick();
+		await nextFrame();
+		const hoveredUpdates = probe.takeUpdates();
+		const hoveredMutations = probe.takeMutations();
+
 		const scrollHeight = scroller.scrollHeight;
 		const stepMs: number[] = [];
 		const seen = new Set<string>();
@@ -108,6 +130,12 @@ export function postboxList(scenario: PostboxListScenario) {
 			'rows re-rendered by a one-row update': counter(liveUpdates.get('PostboxThreadRow') ?? 0),
 			'component updates for a one-row update': counter(sum(liveUpdates.values())),
 			'DOM mutations for a one-row update': counter(total(liveMutations)),
+			'components mounted by a first hover': counter(hoverMounted),
+			'DOM mutations for a first hover': counter(total(hoverMutations)),
+			'component updates for a one-row update on a hovered row': counter(
+				sum(hoveredUpdates.values())
+			),
+			'DOM mutations for a one-row update on a hovered row': counter(total(hoveredMutations)),
 			'scroll height': counter(scrollHeight, 'px'),
 			'scroll steps': counter(stepMs.length),
 			'rows shown while scrolling': counter(seen.size),

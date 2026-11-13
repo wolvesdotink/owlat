@@ -69,6 +69,7 @@ export function routedOutcome(
 				kind: 'transition',
 				input: assembleTransition(route.transition, actionId, result, durationMs),
 				...(route.nextStep ? { nextStep: route.nextStep } : {}),
+				...(route.dailyCap ? { dailyCap: route.dailyCap } : {}),
 			};
 	}
 }

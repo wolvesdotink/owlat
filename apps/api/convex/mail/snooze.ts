@@ -20,6 +20,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { syncThreadLatestSnooze } from './threadLatestSnooze';
+import { inboxLastMessageAt } from './threadInboxRecency';
 import { recordMessageCounters } from './messageCounters';
 import { recordMailSnoozed } from './interpret/threadEvents';
 
@@ -108,14 +109,16 @@ export async function clearSnoozeUntilReplyForThread(
 	threadId: Id<'mailThreads'>,
 	now: number
 ): Promise<void> {
-	const messages = await ctx.db
+	// Only the thread's live watches: the same test as `isSnoozeUntilReply` plus
+	// `isMessageSnoozed`, answered by the index instead of reading the thread.
+	const watched = await ctx.db
 		.query('mailMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's messages
+		.withIndex('by_thread_and_until_reply', (q) =>
+			q.eq('threadId', threadId).eq('isSnoozeUntilReply', true).gt('snoozedUntil', now)
+		)
+		.collect(); // bounded: the owner sets these one message at a time
 	let woke = false;
-	for (const m of messages) {
-		if (m.isSnoozeUntilReply !== true) continue;
-		if (!isMessageSnoozed(m, now)) continue;
+	for (const m of watched) {
 		woke = true;
 		await ctx.db.patch(m._id, {
 			snoozedUntil: undefined,
@@ -382,6 +385,7 @@ export const internalSweep = internalMutation({
 			if (!t) continue;
 			await ctx.db.patch(tid, {
 				lastMessageAt: now,
+				inboxLastMessageAt: inboxLastMessageAt({ folderRoles: t.folderRoles, lastMessageAt: now }),
 				// Transient recognition cue; the reader clears it on open.
 				snoozeReturnedAt: now,
 				updatedAt: now,

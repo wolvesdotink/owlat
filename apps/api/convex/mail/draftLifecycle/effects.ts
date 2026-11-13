@@ -21,6 +21,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { isSanctionedSendAsForUser } from '../identities';
 import { followUpWaitingOn } from '../followUps';
 import { mergeThreadParticipants } from '../threadAggregates';
+import { inboxLastMessageAt } from '../threadInboxRecency';
 import { normalizeSubject } from '../../lib/emailAddress';
 import { insertMessageBody } from '../../lib/messageBodyStore';
 import { indexMessageAttachments } from '../attachmentIndex';
@@ -111,6 +112,7 @@ async function runSentEffects(
 			latestFromAddress: draft.fromAddress,
 			latestSubject: draft.subject || '(no subject)',
 			folderRoles: [],
+			inboxLastMessageAt: null,
 			labelIds: [],
 			createdAt: now,
 			updatedAt: now,
@@ -253,6 +255,10 @@ async function runSentEffects(
 			// before a duplicate send (mail/mailbox/messages.ts::latestReplyState).
 			latestReply: { messageId, byUserId: draft.sentByUserId, at: now },
 			folderRoles: Array.from(folderRoles),
+			inboxLastMessageAt: inboxLastMessageAt({
+				folderRoles: Array.from(folderRoles),
+				lastMessageAt: threadSummaryPatch.lastMessageAt,
+			}),
 			...(followUpRemindAt !== undefined
 				? {
 						followUp: {
@@ -279,6 +285,10 @@ async function runSentEffects(
 		if (teamThread) {
 			await ctx.db.patch(draft.threadId, {
 				...threadSummaryPatch,
+				inboxLastMessageAt: inboxLastMessageAt({
+					folderRoles: teamThread.folderRoles,
+					lastMessageAt: threadSummaryPatch.lastMessageAt,
+				}),
 				latestReply: {
 					messageId,
 					byUserId: draft.sentByUserId,

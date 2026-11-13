@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { resolvePostboxFolderParam } from '~/utils/postboxFolderParam';
 import { unifiedFolderRole } from '~/utils/postboxAllInboxes';
-import PostboxAllInboxesLayout from '~/components/postbox/PostboxAllInboxesLayout.vue';
+import { warmPostboxThreadReader } from '~/composables/postbox/usePostboxChunkWarmup';
 import { POSTBOX_PAGE_KEY, postboxPageTransition } from '~/utils/postboxPageTransition';
 
 // One page for the folder list and the open message (/inbox and /inbox/<id>).
@@ -46,6 +46,10 @@ useHead({
 // The open message's thread and body start loading from the route right away,
 // in parallel with the mailbox and the list (plan 2.5); the reader joins them.
 usePostboxOpenMessage(messageId);
+// The reader's code is not part of this page (PostboxReaderPane mounts it
+// lazily), so a route that names a message starts that download here too,
+// instead of after the list and the message have arrived.
+watch(messageId, (id) => id && void warmPostboxThreadReader(), { immediate: true });
 
 // Seeded from the persisted choice once the shell's accessible mailboxes vouch
 // for it, so the list does not wait for the mailbox list (plan 2.5).
@@ -81,7 +85,9 @@ const showGettingStarted = computed(() => !mailboxId.value && !mailboxesLoading.
 		     minimum width and the Postbox scrolled sideways on a phone. -->
 		<div v-else class="min-w-0 flex-1" :class="showGettingStarted ? 'overflow-y-auto' : 'flex'">
 			<PostboxMailboxGuard :mailbox-id="mailboxId" :loading="guardLoading">
-				<PostboxAllInboxesLayout
+				<!-- Lazy: only the unified folders render it, and every other folder
+				     would otherwise download it with the page. -->
+				<LazyPostboxAllInboxesLayout
 					v-if="unifiedRole"
 					:role="unifiedRole"
 					:active-message-id="messageId"

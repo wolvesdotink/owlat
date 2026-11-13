@@ -18,6 +18,12 @@ import {
 	mergeMailboxPages,
 	positionRows,
 } from '../mailbox/searchCursor';
+import {
+	decodeSourceCursor,
+	encodeSourceCursor,
+	resumableSource,
+	type ScanSource,
+} from '../mailbox/searchSource';
 
 function row(id: string, mailboxId: string, receivedAt: number): ScannedRow {
 	return { _id: id, mailboxId, receivedAt };
@@ -43,10 +49,24 @@ describe('encodeMultiCursor / decodeMultiCursor', () => {
 		expect(decodeMultiCursor('')).toBeNull();
 	});
 
+	it('round-trips a position on a folder index', () => {
+		const cursor = {
+			mb1: { at: 1_700, skip: 2, folderId: 'folder-sent' },
+			mb2: { at: 9, skip: 1 },
+		};
+		expect(decodeMultiCursor(encodeMultiCursor(cursor))).toEqual(cursor);
+	});
+
+	it('reads a version-1 position as a mailbox-wide walk', () => {
+		const legacy = JSON.stringify({ v: 1, p: { mb1: [1_700, 2, 'ignored'], mb2: null } });
+		expect(decodeMultiCursor(legacy)).toEqual({ mb1: { at: 1_700, skip: 2 }, mb2: null });
+	});
+
 	it('rejects garbage and foreign versions instead of misreading them', () => {
 		expect(decodeMultiCursor('not json')).toBeNull();
 		expect(decodeMultiCursor(JSON.stringify({ v: 99, p: {} }))).toBeNull();
 		expect(decodeMultiCursor(JSON.stringify({ v: 1, p: { mb1: ['nope'] } }))).toBeNull();
+		expect(decodeMultiCursor(JSON.stringify({ v: 2, p: { mb1: [1, 1, 7] } }))).toBeNull();
 	});
 });
 
@@ -230,6 +250,35 @@ describe('mergeMailboxPages', () => {
 		expect(merged.cursor).toEqual({ mb1: { at: 300, skip: 1 } });
 	});
 
+	it('holds a row older than where an unfinished mailbox has read to', () => {
+		// mb1 has read down to 500 and may still hold rows between 500 and 300,
+		// so mb2's finished row at 300 waits; the row AT 500 is as new as anything
+		// mb1 has left. A free-text page has no position to come back to and
+		// is never held.
+		const merged = mergeMailboxPages(
+			[
+				page({
+					mailboxId: 'mb1',
+					rows: scan('mb1', [['a', 600]]),
+					scanned: { at: 500, skip: 1 },
+				}),
+				page({
+					mailboxId: 'mb2',
+					rows: scan('mb2', [
+						['b', 500],
+						['c', 300],
+					]),
+					scanned: { at: 300, skip: 1 },
+					done: true,
+				}),
+				page({ mailboxId: 'mb3', rows: scan('mb3', [['t', 100]]), done: true }),
+			],
+			10
+		);
+		expect(merged.page.map((r) => r._id)).toEqual(['a', 'b', 't']);
+		expect(merged.cursor).toEqual({ mb1: { at: 500, skip: 1 }, mb2: { at: 500, skip: 1 } });
+	});
+
 	it('never steps over a gap when the limit cuts inside a receivedAt tie', () => {
 		// Both rows share a timestamp; the merge tie-break hands out `y` (higher
 		// `_id`) first, but the scan order was x, y — so the cursor must stop
@@ -248,5 +297,40 @@ describe('mergeMailboxPages', () => {
 		);
 		expect(merged.page.map((r) => r._id)).toEqual(['y']);
 		expect(merged.cursor).toEqual({ mb1: null });
+	});
+});
+
+describe('encodeSourceCursor / decodeSourceCursor', () => {
+	const folder = { folderId: 'folder-sent', afterMs: 10, beforeMs: 20 } as unknown as ScanSource;
+
+	it('leaves a mailbox-wide cursor untagged, as every cursor was before sources narrowed', () => {
+		expect(encodeSourceCursor({}, 'native')).toBe('native');
+		expect(decodeSourceCursor('native')).toEqual({ source: {}, native: 'native' });
+	});
+
+	it('round-trips the folder and bounds a cursor was minted on', () => {
+		expect(decodeSourceCursor(encodeSourceCursor(folder, 'native'))).toEqual({
+			source: folder,
+			native: 'native',
+		});
+		const bounded = { beforeMs: 20 };
+		expect(decodeSourceCursor(encodeSourceCursor(bounded, 'n'))).toEqual({
+			source: bounded,
+			native: 'n',
+		});
+	});
+
+	it('rejects a tagged cursor that does not decode', () => {
+		expect(decodeSourceCursor('src1:not json')).toBeNull();
+		expect(decodeSourceCursor('src1:{"f":1,"c":"n"}')).toBeNull();
+		expect(decodeSourceCursor('src1:{"f":"x"}')).toBeNull();
+	});
+
+	it('resumes a folder cursor only on the folder the request resolves', () => {
+		expect(resumableSource(folder, folder)).toEqual(folder);
+		const other = { ...folder, folderId: 'folder-other' } as unknown as ScanSource;
+		expect(resumableSource(folder, other)).toBeNull();
+		expect(resumableSource(folder, {})).toBeNull();
+		expect(resumableSource({}, folder)).toEqual({});
 	});
 });

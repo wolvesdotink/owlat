@@ -23,12 +23,14 @@ import {
 	summarizeCampaignStats,
 } from '../../campaigns/statShards';
 import { deriveAggregateState } from '../../mail/postboxOutboundLifecycle';
+import { inboxLastMessageAt } from '../../mail/threadInboxRecency';
 import { rebuildStart } from '../../aiRouting/spendAggregate';
 import {
 	ledgerRowBudgetClass,
 	ledgerRowMicrousd,
 	spendPeriodKeys,
 } from '../../lib/aiRouting/spendPeriods';
+import { recountReviewQueue } from '../../inbox/reviewQueueCount';
 import { derived, recountWithin, type DerivedFieldEntry, type RecountResult } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -344,7 +346,52 @@ const postboxOutboundState = derived({
 	},
 });
 
+/** `null` (not in the Inbox) as a comparable value; DerivedValues holds no null. */
+const NOT_IN_INBOX = 'not_in_inbox';
+
+const threadInboxRecency = derived({
+	kind: 'derived',
+	id: 'threadInboxRecency',
+	table: 'mailThreads',
+	fields: ['inboxLastMessageAt'],
+	source: 'folderRoles and lastMessageAt of the same row (mail/threadInboxRecency.ts)',
+	policy: 'exact',
+	// A row the 0072 backfill has not reached yet is the backfill's to fill.
+	isEligible: (thread) => thread.inboxLastMessageAt !== undefined,
+	current: (thread) => ({ inboxLastMessageAt: thread.inboxLastMessageAt ?? NOT_IN_INBOX }),
+	recompute: async (_ctx, thread, budget) => {
+		if (!budget.charge(thread.folderRoles)) return OVER_BUDGET;
+		return {
+			status: 'counted',
+			expected: { inboxLastMessageAt: inboxLastMessageAt(thread) ?? NOT_IN_INBOX },
+		};
+	},
+	repair: async (ctx, thread) => {
+		await ctx.db.patch(thread._id, { inboxLastMessageAt: inboxLastMessageAt(thread) });
+	},
+});
+
+const teamReviewQueue = derived({
+	kind: 'derived',
+	id: 'teamReviewQueue',
+	table: 'conversationThreads',
+	fields: ['reviewDraftCount', 'reviewHeldCount'],
+	source:
+		'inboundMessages of the thread in draft_ready and in awaiting_clarification ' +
+		'(by_thread_and_processing_status)',
+	policy: 'exact',
+	current: (thread) => ({
+		reviewDraftCount: thread.reviewDraftCount,
+		reviewHeldCount: thread.reviewHeldCount,
+	}),
+	recompute: async (ctx, thread, budget) => {
+		const counts = await recountReviewQueue(ctx, thread._id, budget);
+		return counts ? { status: 'counted', expected: counts } : OVER_BUDGET;
+	},
+});
+
 export const DERIVED_FIELD_ENTRIES: readonly DerivedFieldEntry[] = [
+	teamReviewQueue,
 	chatRoomActivity,
 	assistantConversationMessages,
 	transactionalTemplateSends,
@@ -353,4 +400,5 @@ export const DERIVED_FIELD_ENTRIES: readonly DerivedFieldEntry[] = [
 	pluginLlmDailySpend,
 	llmSpendBuckets,
 	postboxOutboundState,
+	threadInboxRecency,
 ];

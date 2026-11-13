@@ -395,7 +395,13 @@ export default defineNuxtConfig({
 					// hundred bytes that compress poorly and cost a request each, over a
 					// hundred of them on a Postbox visit. The shared glyphs go in one
 					// chunk instead; a glyph only one page or lazy feature uses stays
-					// with it.
+					// with it. Boot code names a few glyphs, so this chunk (with the
+					// Vue runtime helpers the glyph factory pulls in) is part of the
+					// entry closure. Keep it one chunk: all shared glyphs together are
+					// under 20 KiB gzip, and split by who loads them (a boot group,
+					// `entriesAware`) the small chunks compress so much worse that a
+					// dashboard cold load pays more, in bytes and requests, than the
+					// sign-in page saves.
 					codeSplitting: {
 						groups: [
 							{
