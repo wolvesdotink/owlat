@@ -10,7 +10,7 @@
 import type { MetricOutcome } from '../types.js';
 import type { DispatchEffect } from './effects.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
-import { smtpRefusalCause } from '../intelligence/bounceCause.js';
+import { dispatchOutcomeCause } from '../intelligence/bounceCause.js';
 import { classifiedResponseEffect } from './outcomeClassifiedResponse.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { AttemptCtx } from './types.js';
@@ -45,12 +45,7 @@ export function terminalBounceEffects(
 ): DispatchEffect[] {
 	const { job, ip, domain } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
-	const senderRefused =
-		smtpRefusalCause({
-			phase: outcome.smtpPhase,
-			enhancedCode: outcome.enhancedCode,
-			category: outcome.classification.category,
-		}) === 'sender';
+	const senderRefused = dispatchOutcomeCause(outcome) === 'sender';
 	return [
 		circuitBreakerEffect(ctx, 'bounced'),
 		{

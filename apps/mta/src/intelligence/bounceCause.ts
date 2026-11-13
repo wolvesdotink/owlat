@@ -14,6 +14,7 @@
 import type { SmtpPhase } from '@owlat/smtp-client';
 import { SMTP_BLOCK_CATEGORIES, type BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { SmtpFailureCategory } from './smtpClassifier.js';
+import type { DispatchOutcome } from '../dispatch/outcomeClassification.js';
 
 /**
  * Phases that end before the server has accepted a recipient. A reply in one of
@@ -85,4 +86,19 @@ export function smtpRefusalCause(refusal: {
 	const fromCode = enhancedCodeCause(refusal.enhancedCode);
 	if (fromCode !== undefined) return fromCode;
 	return SMTP_BLOCK_CATEGORIES.has(refusal.category) ? 'sender' : 'recipient';
+}
+
+/**
+ * The cause of a dispatch outcome: a server refusal is judged by
+ * {@link smtpRefusalCause}; everything else (a delivery, a connection failure,
+ * an ambiguous drop) is no refusal of the sender. Read both where a refusal ends
+ * the message and where a retried refusal outlives the message's age limit.
+ */
+export function dispatchOutcomeCause(outcome: DispatchOutcome): BounceCause {
+	if (outcome.kind !== 'hard_bounce' && outcome.kind !== 'deferred') return 'recipient';
+	return smtpRefusalCause({
+		phase: outcome.smtpPhase,
+		enhancedCode: outcome.enhancedCode,
+		category: outcome.classification.category,
+	});
 }
