@@ -34,12 +34,10 @@ export function usePostboxOpenMessage(messageId: MaybeRefOrGetter<string | null 
 		return thread.data.value?.messages.find((m) => m._id === id);
 	});
 
-	// The body, in parallel with the thread; released once the thread row
-	// (which carries the body) is here.
+	// The body, in parallel with the thread. The thread's rows carry no body,
+	// so the reader reads this same query for the open message all along.
 	const { data: inlineBody } = useConvexQuery(api.mail.mailbox.messages.getMessageInlineBody, () =>
-		openId.value && !threadMessage.value
-			? { messageId: openId.value as Id<'mailMessages'> }
-			: 'skip'
+		openId.value ? { messageId: openId.value as Id<'mailMessages'> } : 'skip'
 	);
 
 	// A body over the inline threshold only exists as a blob, which needs the

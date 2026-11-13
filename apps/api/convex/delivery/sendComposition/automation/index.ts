@@ -1,23 +1,20 @@
 /**
  * Send composition (module) — `automation` composer.
  *
- * Owns subject + html personalization for automation-step email sends.
- * Returns `transformConfig: null` — automation emails ship without
- * view-in-browser, in-body unsubscribe footer, tracking pixel, or link
- * wrapping.
+ * Owns subject + html personalization for automation-step email sends. The
+ * step uses only the personalized subject and html: it hands them to the
+ * non-campaign intake, and the worker composes the delivered envelope as the
+ * `transactional` kind. That is where an automation step gets its
+ * `List-Unsubscribe` header pair and, with it, the unsubscribe footer
+ * (`delivery/worker.ts`). This composer therefore returns
+ * `transformConfig: null`.
  *
- * Marketing automation steps (drip series, broadcasts) DO carry a
- * `List-Unsubscribe` header: when the caller supplies a pre-built
- * `listUnsubscribeHeader` the composer slots both `List-Unsubscribe` and
- * `List-Unsubscribe-Post` into the envelope, satisfying Gmail/Yahoo's 2024
- * bulk-sender requirement. Omitted → no header (transactional-style step).
+ * When a caller supplies a pre-built `listUnsubscribeHeader`, the composer
+ * slots both `List-Unsubscribe` and `List-Unsubscribe-Post` into the headers.
  */
 
 import { personalize } from '../personalization';
-import type {
-	AutomationComposeInput,
-	ComposerOutput,
-} from '../types';
+import type { AutomationComposeInput, ComposerOutput } from '../types';
 
 export function composeAutomation(input: AutomationComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, {

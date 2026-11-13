@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { webhookPayloadValidator } from '../lib/convexValidators';
 import {
+	bounceCauseValidator,
 	bounceTypeValidator,
 	unresolvedFeedbackSuppressionValidator,
 } from '../lib/literalValidators';
@@ -289,6 +290,9 @@ export const webhookTables = {
 		// The adapter's `providerType`; `mta` replays through the MTA resolver.
 		providerType: v.optional(v.string()),
 		bounceType: v.optional(bounceTypeValidator),
+		// `sender` when the bounce refused our sending identity, so its replay
+		// must not blocklist the address. Absent means the recipient's bounce.
+		bounceCause: v.optional(bounceCauseValidator),
 		// The SMTP status code read out of the diagnostic (`5.1.1`, or `550`),
 		// never the diagnostic text itself.
 		bounceStatusCode: v.optional(v.string()),

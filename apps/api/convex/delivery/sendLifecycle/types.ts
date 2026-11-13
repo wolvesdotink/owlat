@@ -1,3 +1,4 @@
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { LifecycleReason } from '../../lib/lifecycle';
 import type { OpenAgent } from '../automatedOpens';
@@ -44,6 +45,8 @@ export type TransitionInput =
 			to: 'bounced';
 			at: number;
 			bounceType: 'hard' | 'soft';
+			/** `sender`: the receiver refused our identity, so the address is kept. */
+			bounceCause?: BounceCause;
 			bounceMessage?: string;
 	  }
 	| { to: 'complained'; at: number };

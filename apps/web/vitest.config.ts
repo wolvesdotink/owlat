@@ -89,6 +89,15 @@ export default defineConfig({
 				find: '#components',
 				replacement: resolve(__dirname, 'app/__tests__/shims/nuxtComponents.ts'),
 			},
+			// Nuxt's virtual layout and middleware registries — see app/__tests__/shims/.
+			{
+				find: '#build/layouts',
+				replacement: resolve(__dirname, 'app/__tests__/shims/nuxtLayouts.ts'),
+			},
+			{
+				find: '#build/middleware',
+				replacement: resolve(__dirname, 'app/__tests__/shims/nuxtMiddleware.ts'),
+			},
 			// The build's area-catalog manifest — see app/__tests__/shims/i18nAreas.ts.
 			{
 				find: '#build/owlat-i18n-areas.mjs',

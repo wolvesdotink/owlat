@@ -10,7 +10,7 @@
 import type { LocalizedText } from '~/utils/localizedText';
 import { findBlockIdContaining } from './blockLocator';
 import { darkContrastItems, lightContrastItems } from './contrast';
-import { hasUnsubscribeLink, planImages, planLinks } from './links';
+import { planImages, planLinks } from './links';
 import { imageAltCheck, imageLoadCheck, imageWidthCheck } from './imageChecks';
 import type { PresendInput, PresendScan } from './input';
 import { hasPostalAddress } from './postalAddress';
@@ -44,12 +44,8 @@ const PIXEL_BYTES = 250;
 const TRACKED_LINK_OVERHEAD_BYTES = 130;
 
 /** The stored HTML's size plus what the send path adds to every copy. */
-export function estimateDeliveredBytes(
-	scanned: ScannedHtml,
-	audienceKind: 'topic' | 'segment' | undefined
-): number {
-	let bytes = scanned.bytes + VIEW_IN_BROWSER_BYTES + PIXEL_BYTES;
-	if (audienceKind !== 'segment') bytes += FOOTER_BYTES;
+export function estimateDeliveredBytes(scanned: ScannedHtml): number {
+	let bytes = scanned.bytes + VIEW_IN_BROWSER_BYTES + PIXEL_BYTES + FOOTER_BYTES;
 	for (const { href } of scanned.links) {
 		if (!/^https?:\/\//i.test(href.trim())) continue;
 		bytes += TRACKED_LINK_OVERHEAD_BYTES + Math.ceil(href.length / 3);
@@ -79,7 +75,7 @@ function sendingCheck(input: PresendInput): PresendCheck | null {
 }
 
 function sizeCheck(input: PresendInput, scan: PresendScan): PresendCheck {
-	const bytes = estimateDeliveredBytes(scan.html, input.audienceKind);
+	const bytes = estimateDeliveredBytes(scan.html);
 	const params = { size: kb(bytes), limit: kb(GMAIL_CLIP_BYTES) };
 	const summary: LocalizedText =
 		bytes > GMAIL_CLIP_BYTES
@@ -251,23 +247,16 @@ function subjectCheck(input: PresendInput): PresendCheck {
 	};
 }
 
-function unsubscribeCheck(input: PresendInput, scan: PresendScan): PresendCheck {
-	const own = hasUnsubscribeLink(scan.html.links);
-	const base: Pick<PresendCheck, 'id' | 'category' | 'items'> = {
+// The send path appends the unsubscribe footer to every campaign, whatever its
+// audience (`delivery/worker.ts`), so this check states that rather than look
+// for a link of the email's own.
+function unsubscribeCheck(): PresendCheck {
+	return {
 		id: 'unsubscribe',
 		category: 'compliance',
-		items: [],
-	};
-	if (input.audienceKind === 'segment') {
-		return own
-			? { ...base, status: 'pass', summary: `${KEY}.unsubscribe.ownLink` }
-			: { ...base, status: 'warning', summary: `${KEY}.unsubscribe.segmentMissing` };
-	}
-	return {
-		...base,
 		status: 'pass',
 		summary: `${KEY}.unsubscribe.footer`,
-		...(input.audienceKind === undefined && !own ? { note: `${KEY}.unsubscribe.segmentNote` } : {}),
+		items: [],
 	};
 }
 
@@ -297,7 +286,7 @@ export function buildPresendChecks(input: PresendInput, scan: PresendScan): Pres
 		contrastCheck('contrastDark', darkContrastItems(input.blocks, input.theme)),
 		screeningCheck(input, scan),
 		subjectCheck(input),
-		unsubscribeCheck(input, scan),
+		unsubscribeCheck(),
 		postalAddressCheck(scan),
 	];
 }

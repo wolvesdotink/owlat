@@ -3,6 +3,7 @@ import { mailAccountsTables } from './mailAccounts';
 import { mailboxJobsTables } from './mailboxJobs';
 import { mailMessagesTables } from './mailMessages';
 import { mailFolderMembershipTables } from './mailFolderMembership';
+import { mailLabelMembershipTables } from './mailLabelMembership';
 import { mailThreadsTables } from './mailThreads';
 import { mailCompositionTables } from './mailComposition';
 import { mailRulesTables } from './mailRules';
@@ -30,6 +31,7 @@ export const mailTables = {
 	...mailboxJobsTables,
 	...mailMessagesTables,
 	...mailFolderMembershipTables,
+	...mailLabelMembershipTables,
 	...mailThreadsTables,
 	...mailCompositionTables,
 	...mailRulesTables,

@@ -28,6 +28,7 @@ import { compareResponseDue, isSlaSlice, slaSliceNow } from './sla/slices';
 import { searchThreads } from './threadSearch';
 import { takeOverViewFor } from './manualReply';
 import { liveNotices, readPendingReview } from './clarificationHold';
+import { countPendingReview } from './reviewQueueCount';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { openConversationThreadPreview } from '../lib/messageBody';
 import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBodyInbound';
@@ -41,7 +42,7 @@ import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBod
  *    on `threadReads.by_user_thread`.
  *  - `assignee`: the assigned member's display name/email/image so the row can
  *    render a deterministic-colour avatar without the client joining to the
- *    member directory. Cached per call so repeat assignees cost one read.
+ *    member directory. Cached per call so each distinct assignee costs one read.
  *
  * Presence is deliberately NOT read here: a heartbeat would re-run every
  * admin's list, including the shell sidebar's. The Team Inbox page asks
@@ -52,18 +53,22 @@ export async function enrichThreadRows(
 	rows: ReadonlyArray<Doc<'conversationThreads'>>,
 	viewerId: string
 ) {
-	const assigneeCache = new Map<string, { name?: string; email: string; image?: string } | null>();
-	const resolveAssignee = async (userId: string) => {
-		if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
+	type Assignee = { name?: string; email: string; image?: string } | null;
+	// Holds the pending read, not its result: the rows below are enriched
+	// concurrently, so a result cached after the await would let every row with
+	// the same assignee start its own read before the first one resolves.
+	const assigneeCache = new Map<string, Promise<Assignee>>();
+	const readAssignee = async (userId: string): Promise<Assignee> => {
 		const profile = await ctx.db
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
 			.first();
-		const resolved = profile
-			? { name: profile.name, email: profile.email, image: profile.image }
-			: null;
-		assigneeCache.set(userId, resolved);
-		return resolved;
+		return profile ? { name: profile.name, email: profile.email, image: profile.image } : null;
+	};
+	const resolveAssignee = (userId: string): Promise<Assignee> => {
+		const pending = assigneeCache.get(userId) ?? readAssignee(userId);
+		assigneeCache.set(userId, pending);
+		return pending;
 	};
 
 	return Promise.all(
@@ -302,9 +307,8 @@ export const getReviewQueue = publicQuery({
 
 /**
  * How many rows `getReviewQueue` returns for the same `limit` (at most 200),
- * without the
- * thread and contact joins (plan 2.11). Feeds the shell's Answer badge; the
- * Answer and Today pages read the list itself.
+ * from the threads' counts (./reviewQueueCount.ts). Feeds the shell's Answer
+ * badge; the Answer and Today pages read the list itself.
  */
 // public: soft-auth — admin-only shared inbox; returns 0 for non-admins
 export const countReviewQueue = publicQuery({
@@ -312,7 +316,7 @@ export const countReviewQueue = publicQuery({
 	handler: async (ctx, args): Promise<number> => {
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!isSharedInboxReader(session)) return 0;
-		return (await readPendingReview(ctx, Math.min(args.limit ?? 50, 200))).length;
+		return await countPendingReview(ctx, Math.min(args.limit ?? 50, 200));
 	},
 });
 

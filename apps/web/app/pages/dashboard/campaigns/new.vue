@@ -289,7 +289,6 @@ const reviewData = computed(() => {
 					? persistedTemplate.value!.htmlContent!
 					: null,
 		emailContent: persistedTemplate.value?.content,
-		audienceKind: setup?.audience?.kind ?? c?.audience?.kind,
 		abTestEnabled: setup?.abTestEnabled ?? !!cfg,
 		abTestType: setup?.abTestType ?? cfg?.testType ?? 'subject',
 		abVariantBSubject: setup?.abVariantBSubject ?? cfg?.variantBSubject ?? '',

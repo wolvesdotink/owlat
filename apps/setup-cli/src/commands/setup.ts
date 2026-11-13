@@ -202,7 +202,7 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// than spelled again, or a sending install that has not picked one yet.
 	const chosenProvider = envPatch['EMAIL_PROVIDER'];
 	if (isOwnSendProviderKind(chosenProvider) || (sendingEnabled && !chosenProvider)) {
-		const dom = await collectDomain();
+		const dom = await collectDomain(existingEnv);
 		if (!dom) return 1;
 		envPatch = { ...envPatch, ...dom };
 	}

@@ -31,7 +31,7 @@ describe('composeForSend — campaign', () => {
 
 	const baseTemplate = {
 		subject: 'Hi {{firstName}}',
-		htmlContent: '<p>Hello {{firstName}} from {{company|\'Owlat\'}}</p>',
+		htmlContent: "<p>Hello {{firstName}} from {{company|'Owlat'}}</p>",
 	};
 
 	it('topic audience: full envelope with footer + List-Unsubscribe + tracking', () => {
@@ -69,7 +69,7 @@ describe('composeForSend — campaign', () => {
 		});
 	});
 
-	it('segment audience: emits List-Unsubscribe header but no in-body footer', () => {
+	it('segment audience: emits the List-Unsubscribe header AND the in-body footer', () => {
 		const composed = composeForSend({
 			kind: 'campaign',
 			template: baseTemplate,
@@ -85,23 +85,58 @@ describe('composeForSend — campaign', () => {
 			trackingBaseUrl: 'https://track.example.com',
 		});
 
-		// Gmail/Yahoo 2024 bulk rule: segment blasts MUST still carry the
-		// List-Unsubscribe header. The one-click endpoint removes by contactId
-		// across all topics, so it is valid for a computed segment. They are also
-		// bulk, machine-generated mail (Precedence: bulk + Auto-Submitted).
+		// Gmail/Yahoo bulk rule: segment blasts carry the List-Unsubscribe header.
+		// The one-click endpoint removes by contactId across all topics, so it is
+		// valid for a computed segment. They are also bulk, machine-generated mail
+		// (Precedence: bulk + Auto-Submitted).
 		expect(composed.headers).toEqual({
 			Precedence: 'bulk',
 			'Auto-Submitted': 'auto-generated',
 			'List-Unsubscribe': '<https://convex.example/unsub/abc>',
 			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
 		});
-		// The in-body footer stays topic-only (no single topic to render).
-		expect(composed.transformConfig).toMatchObject({
+		// The bulk-sender rules and CAN-SPAM also want a visible opt-out in the
+		// body. The footer names no topic, so a segment gets the same one.
+		expect(composed.transformConfig).toEqual({
+			unsubscribeUrl: 'https://site.example/unsubscribe?token=u',
+			preferenceUrl: 'https://site.example/preferences?token=p',
 			trackingPixelUrl: 'https://track.example.com/t/o/send1',
 			trackedLinkBase: { siteUrl: 'https://track.example.com', emailSendId: SEND_ID },
 		});
-		expect(composed.transformConfig?.unsubscribeUrl).toBeUndefined();
-		expect(composed.transformConfig?.preferenceUrl).toBeUndefined();
+	});
+
+	it('the text/plain alternative carries the footer links whenever the html gets the footer', () => {
+		for (const audienceType of ['topic', 'segment'] as const) {
+			const composed = composeForSend({
+				kind: 'campaign',
+				template: baseTemplate,
+				contactInfo: baseContactInfo,
+				audienceType,
+				emailSendId: SEND_ID,
+				unsubscribeUrl: 'https://site.example/unsubscribe?token=u',
+				preferenceUrl: 'https://site.example/preferences?token=p',
+			});
+			expect(composed.text).toBe(
+				'Hello Jane from Owlat\n\n' +
+					'Manage Preferences: https://site.example/preferences?token=p\n' +
+					'Unsubscribe: https://site.example/unsubscribe?token=u'
+			);
+		}
+	});
+
+	it('the footer follows a stored text/plain body too', () => {
+		const composed = composeForSend({
+			kind: 'campaign',
+			template: { ...baseTemplate, plainTextContent: 'Hello {{firstName}}\n' },
+			contactInfo: baseContactInfo,
+			unsubscribeUrl: 'https://site.example/unsubscribe?token=u',
+			preferenceUrl: 'https://site.example/preferences?token=p',
+		});
+		expect(composed.text).toBe(
+			'Hello Jane\n\n' +
+				'Manage Preferences: https://site.example/preferences?token=p\n' +
+				'Unsubscribe: https://site.example/unsubscribe?token=u'
+		);
 	});
 
 	it('segment audience without a supplied header emits no List-Unsubscribe', () => {
@@ -169,7 +204,8 @@ describe('composeForSend — campaign', () => {
 			kind: 'campaign',
 			template: {
 				subject: 'Hi {{firstName}}',
-				htmlContent: '<body><p>Hello {{firstName}}</p><a href="https://shop.example/sale">Shop the sale</a></body>',
+				htmlContent:
+					'<body><p>Hello {{firstName}}</p><a href="https://shop.example/sale">Shop the sale</a></body>',
 			},
 			contactInfo: baseContactInfo,
 			audienceType: 'topic',
@@ -179,9 +215,7 @@ describe('composeForSend — campaign', () => {
 
 		// The tracking config is present (pixel + tracked-link base) on the
 		// composer output, proving the html WOULD be tracked downstream …
-		expect(composed.transformConfig?.trackingPixelUrl).toBe(
-			'https://track.example.com/t/o/send1',
-		);
+		expect(composed.transformConfig?.trackingPixelUrl).toBe('https://track.example.com/t/o/send1');
 		// … yet the text part is clean: no pixel URL, no /t/c/ redirect, no <img>.
 		expect(composed.text).not.toContain('/t/o/');
 		expect(composed.text).not.toContain('track.example.com');
@@ -290,12 +324,10 @@ describe('composeForSend — campaign Feedback-ID (Gmail FBL)', () => {
 					audienceType: 'topic',
 					campaignId,
 					organizationId: ORG_ID,
-				}).headers,
+				}).headers
 			)[3];
 		// Same org, different campaigns → identical SenderId anchor.
-		expect(sendForCampaign(CAMPAIGN_ID)).toBe(
-			sendForCampaign('campaign99' as Id<'campaigns'>),
-		);
+		expect(sendForCampaign(CAMPAIGN_ID)).toBe(sendForCampaign('campaign99' as Id<'campaigns'>));
 	});
 
 	it('different organizations yield different senderids', () => {
@@ -308,7 +340,7 @@ describe('composeForSend — campaign Feedback-ID (Gmail FBL)', () => {
 					audienceType: 'topic',
 					campaignId: CAMPAIGN_ID,
 					organizationId,
-				}).headers,
+				}).headers
 			)[3];
 		expect(senderFor('org_one')).not.toBe(senderFor('org_two'));
 	});
@@ -325,7 +357,7 @@ describe('composeForSend — campaign Feedback-ID (Gmail FBL)', () => {
 	});
 
 	it('stays within 127 bytes even for a long campaignId', () => {
-		const longCampaignId = ('c'.repeat(200)) as Id<'campaigns'>;
+		const longCampaignId = 'c'.repeat(200) as Id<'campaigns'>;
 		const composed = composeForSend({
 			kind: 'campaign',
 			template: baseTemplate,
@@ -335,9 +367,9 @@ describe('composeForSend — campaign Feedback-ID (Gmail FBL)', () => {
 			organizationId: ORG_ID,
 		});
 		const fields = feedbackFields(composed.headers);
-		expect(
-			new TextEncoder().encode(composed.headers['Feedback-ID']!).length,
-		).toBeLessThanOrEqual(127);
+		expect(new TextEncoder().encode(composed.headers['Feedback-ID']!).length).toBeLessThanOrEqual(
+			127
+		);
 		// The SenderId anchor (last field) is preserved despite trimming.
 		expect(fields[3].length).toBeGreaterThanOrEqual(5);
 	});
@@ -376,9 +408,7 @@ describe('composeForSend — transactional', () => {
 		const composed = composeForSend({
 			kind: 'transactional',
 			template: { subject: 's', htmlContent: '<p></p>' },
-			attachmentRefs: [
-				{ filename: 'invoice.pdf', url: 'https://storage/invoice.pdf' },
-			],
+			attachmentRefs: [{ filename: 'invoice.pdf', url: 'https://storage/invoice.pdf' }],
 		});
 		expect(composed.attachmentRefs).toEqual([
 			{ filename: 'invoice.pdf', url: 'https://storage/invoice.pdf' },
@@ -414,6 +444,25 @@ describe('composeForSend — transactional', () => {
 			unsubscribeUrl: 'https://site.example/unsubscribe?token=u',
 			preferenceUrl: 'https://site.example/preferences?token=p',
 		});
+	});
+
+	it('puts the footer links into the text/plain alternative as well', () => {
+		const composed = composeForSend({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent: '<p>Your order shipped</p>' },
+			unsubscribeUrl: 'https://site.example/unsubscribe?token=u',
+			preferenceUrl: 'https://site.example/preferences?token=p',
+		});
+		expect(composed.text).toContain('Unsubscribe: https://site.example/unsubscribe?token=u');
+	});
+
+	it('a transactional send without the footer has no unsubscribe line in either part', () => {
+		const composed = composeForSend({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent: '<p>Your order shipped</p>' },
+		});
+		expect(composed.transformConfig).toBeNull();
+		expect(composed.text).toBe('Your order shipped');
 	});
 
 	it('no footer when only one of the two URLs is supplied', () => {
@@ -520,9 +569,9 @@ describe('composeForSend — transactional Feedback-ID (Gmail FBL)', () => {
 		const fields = feedbackFields(composed.headers);
 		expect(fields[3].length).toBeGreaterThanOrEqual(5);
 		expect(fields[3].length).toBeLessThanOrEqual(15);
-		expect(
-			new TextEncoder().encode(composed.headers['Feedback-ID']!).length,
-		).toBeLessThanOrEqual(127);
+		expect(new TextEncoder().encode(composed.headers['Feedback-ID']!).length).toBeLessThanOrEqual(
+			127
+		);
 	});
 });
 
@@ -567,7 +616,7 @@ describe('composeForSend — archive_snapshot', () => {
 			kind: 'archive_snapshot',
 			template: {
 				subject: 'Newsletter for {{firstName}}',
-				htmlContent: '<p>Hi {{firstName}}, from {{company|\'Owlat\'}}</p>',
+				htmlContent: "<p>Hi {{firstName}}, from {{company|'Owlat'}}</p>",
 			},
 		});
 
@@ -709,7 +758,7 @@ describe('personalizeSubject', () => {
 				kind: 'campaign',
 				template: { subject: 'Hi {{firstName}}', htmlContent: '' },
 				contactInfo: { email: 'jane@x', firstName: 'Jane' },
-			}),
+			})
 		).toBe('Hi Jane');
 	});
 
@@ -719,7 +768,7 @@ describe('personalizeSubject', () => {
 				kind: 'transactional',
 				template: { subject: 'Order {{id}}', htmlContent: '' },
 				dataVariables: { id: 'A1' },
-			}),
+			})
 		).toBe('Order A1');
 	});
 
@@ -729,7 +778,7 @@ describe('personalizeSubject', () => {
 				kind: 'test',
 				template: { subject: 'Hi {{firstName}}', htmlContent: '' },
 				sampleContact: { email: 't@x', firstName: 'T' },
-			}),
+			})
 		).toBe('Hi T');
 	});
 
@@ -738,7 +787,7 @@ describe('personalizeSubject', () => {
 			personalizeSubject({
 				kind: 'archive_snapshot',
 				template: { subject: "Hi {{firstName|'friend'}}", htmlContent: '' },
-			}),
+			})
 		).toBe('Hi friend');
 	});
 
@@ -748,7 +797,7 @@ describe('personalizeSubject', () => {
 				kind: 'automation',
 				template: { subject: 'Hi {{firstName}}', htmlContent: '' },
 				contactInfo: { email: 'x@y', firstName: 'X' },
-			}),
+			})
 		).toBe('Hi X');
 	});
 
@@ -758,7 +807,7 @@ describe('personalizeSubject', () => {
 				kind: 'campaign',
 				template: { subject: 'Hi {{firstName}}', htmlContent: '' },
 				contactInfo: { email: 'x@y', firstName: 'A & B' },
-			}),
+			})
 		).toBe('Hi A & B');
 	});
 });

@@ -40,14 +40,37 @@ function defaultIdleScheduler(cb: () => void): void {
 	else window.setTimeout(cb, 200);
 }
 
+let readerChunk: Promise<void> | null = null;
+
+/**
+ * Start downloading the thread reader. The Postbox hosts mount it lazily so
+ * the list does not wait for the reader's code, which makes the first open pay
+ * for the download unless something fetched it before: a route that already
+ * names a message, a hovered or focused row, or the idle warm-up below. One
+ * request however often it is called; a failed load is forgotten so the next
+ * call tries again, and the reader's own lazy mount still surfaces the error.
+ */
+export function warmPostboxThreadReader(): Promise<void> {
+	if (import.meta.server) return Promise.resolve();
+	readerChunk ??= import('~/components/postbox/PostboxThreadReader.vue').then(
+		() => undefined,
+		() => {
+			readerChunk = null;
+		}
+	);
+	return readerChunk;
+}
+
 /**
  * Default chunks to warm: the command palette (the Postbox `/` search opens
- * it, mounted lazily by the dashboard shell) and the compose page Compose
- * navigates to. NOT the EmailBuilder.
+ * it, mounted lazily by the dashboard shell), the compose page Compose
+ * navigates to, and the thread reader the next open mounts. NOT the
+ * EmailBuilder.
  */
 const DEFAULT_LOADERS: ChunkLoader[] = [
 	() => import('~/components/AppCommandPalette.vue'),
 	() => import('~/pages/dashboard/compose.vue'),
+	warmPostboxThreadReader,
 ];
 
 export function usePostboxChunkWarmup(options?: {

@@ -26,6 +26,7 @@ import {
 } from '../messagePurge';
 import { applyMailboxUsageDelta } from '../mailboxUsage';
 import { recordMessageCounters } from '../messageCounters';
+import { recordLabelMembership } from '../labelMessageIndex';
 import { recordFolderMembership } from '../folderMembership';
 import { copyMessageBody } from '../../lib/messageBodyStore';
 import { recordRemoteChanges, type RemoteChange } from '../external/remoteOps';
@@ -98,6 +99,7 @@ export const copyMessages = internalMutation({
 			});
 			await copyMessageBody(ctx.db, m._id, copyId);
 			await recordMessageCounters(ctx, null, { ...rest, folderId: target._id });
+			await recordLabelMembership(ctx, null, { ...rest, _id: copyId });
 			await recordFolderMembership(ctx, null, { folderId: target._id, uid: newUid });
 			// The copy is its own message row, so it gets its own junction rows —
 			// otherwise a COPY into a folder would silently drop the copy's files

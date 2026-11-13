@@ -154,6 +154,32 @@ export async function openInboundMessageRow<
 	};
 }
 
+/**
+ * A row without its body columns: what a client gets for a message whose body
+ * it asks for separately (`inbox/threadPage.ts`). Nothing is opened, so a long
+ * history costs no decryption for the messages nobody expands. The draft
+ * columns follow the same rules as in {@link openInboundMessageRow}.
+ * `isBodyDeferred` tells the client the body is missing on purpose, not empty.
+ */
+export type InboundMessageEnvelope<T> = Omit<T, 'textBody' | 'htmlBody' | 'bodyExcerpt'> & {
+	textBody?: undefined;
+	htmlBody?: undefined;
+	bodyExcerpt?: undefined;
+	isBodyDeferred: true;
+};
+
+export function inboundMessageEnvelope<
+	T extends InboundMessageBodyFields & DraftVariantFields & HeldGapDraftFields,
+>(stored: T): InboundMessageEnvelope<T> {
+	const {
+		textBody: _text,
+		htmlBody: _html,
+		bodyExcerpt: _excerpt,
+		...rest
+	} = withHeldGapDraft(withShownDraftVariants(stored));
+	return { ...rest, isBodyDeferred: true };
+}
+
 /** {@link openInboundMessageRow} over a page of rows, preserving order. */
 export async function openInboundMessageRows<
 	T extends InboundMessageBodyFields & DraftVariantFields & HeldGapDraftFields,

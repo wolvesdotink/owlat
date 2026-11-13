@@ -286,6 +286,52 @@ describe('ipPool', () => {
 			expect(ip).toBeNull();
 		});
 
+		it('sends campaign mail from the campaign pool while it has an eligible IP', async () => {
+			await initializePools(redis, testConfig);
+			await setIpPoolBlock(redis, '10.0.1.1', 'fcrdns', true);
+
+			for (let i = 0; i < 4; i++) {
+				expect(await selectIp(redis, 'campaign', testConfig)).toBe('10.0.1.2');
+			}
+		});
+
+		it('borrows a transactional IP when no campaign IP is eligible, instead of queueing', async () => {
+			await initializePools(redis, testConfig);
+			for (const ip of testConfig.campaign) await setIpPoolBlock(redis, ip, 'spf', true);
+
+			const lease = await selectIpWithLease(redis, 'campaign', testConfig);
+			expect(lease).not.toBeNull();
+			expect(testConfig.transactional).toContain(lease!.ip);
+			expect(await isIpEligibilityLeaseValid(redis, lease!)).toBe(true);
+		});
+
+		it('borrows only eligible transactional IPs', async () => {
+			await initializePools(redis, testConfig);
+			for (const ip of testConfig.campaign) await setIpPoolBlock(redis, ip, 'fcrdns', true);
+			await setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', true);
+			await setIpPoolBlock(redis, '10.0.0.2', 'dnsbl', true);
+
+			for (let i = 0; i < 4; i++) {
+				expect(await selectIp(redis, 'campaign', testConfig)).toBe('10.0.0.3');
+			}
+		});
+
+		it('never moves transactional mail onto campaign IPs', async () => {
+			await initializePools(redis, testConfig);
+			for (const ip of testConfig.transactional) await setIpPoolBlock(redis, ip, 'fcrdns', true);
+
+			expect(await selectIp(redis, 'transactional', testConfig)).toBeNull();
+		});
+
+		it('fails closed for campaign mail when neither pool has an eligible IP', async () => {
+			await initializePools(redis, testConfig);
+			for (const ip of [...testConfig.transactional, ...testConfig.campaign]) {
+				await setIpPoolBlock(redis, ip, 'dnsbl', true);
+			}
+
+			expect(await selectIp(redis, 'campaign', testConfig)).toBeNull();
+		});
+
 		it('invalidates a selected lease when the IP is quarantined before SMTP acquisition', async () => {
 			await initializePools(redis, testConfig);
 			const lease = await selectIpWithLease(redis, 'transactional', testConfig, '10.0.0.1');

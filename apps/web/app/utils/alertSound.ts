@@ -5,8 +5,9 @@
  * quiet octave partial, a 6 ms attack and an exponential decay) — not sampled
  * from any third party, so it carries no external license obligation and is
  * dedicated to the public domain (CC0). Mono, 11 kHz, 16-bit PCM WAV, ~8 KB,
- * embedded as a data: URI so it ships in the bundle with no network fetch
- * (CSP-safe and unit-testable), like the send sound.
+ * embedded as a data: URI so playing it fetches no media file (CSP-safe and
+ * unit-testable), like the send sound. `useUiSound` imports this module on
+ * first use, so it is a chunk of its own rather than part of every page.
  *
  * Distinct from the send "whoosh" on purpose: a send is something you did, an
  * alert is something that happened to you. Consumed only by `useUiSound`'s

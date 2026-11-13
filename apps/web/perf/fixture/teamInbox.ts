@@ -6,12 +6,13 @@
  *
  * Threads arrive like the page's `listThreads` rows, through `shareStructure`.
  * Two live changes follow the mount: one thread read by the viewer (one row's
- * data changes) and one tick of the list's clock (the page hands every row the
- * same `now`, so a tick reaches each row with a waiting or deadline chip).
+ * data changes) and one tick of the list's clock (the page provides it and the
+ * rows read it in their chips, so a tick re-renders only a row whose chip moved).
  */
 import { computed, defineComponent, h, nextTick, shallowRef, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { shareStructure } from '~/lib/structuralSharing';
+import { provideInboxListNow } from '~/composables/useInboxListClock';
 import { SCENARIO_NOW } from '../browserContext';
 import {
 	INBOX_MEMBERS,
@@ -60,6 +61,7 @@ export function teamInbox(scenario: TeamInboxScenario) {
 		name: 'TeamInboxHost',
 		setup() {
 			const { t } = useI18n();
+			provideInboxListNow(now);
 			const visible = computed(() => data.value ?? []);
 			// The page's reset key: filter, assignee, sort and the mentions view.
 			const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
@@ -92,7 +94,6 @@ export function teamInbox(scenario: TeamInboxScenario) {
 									members: INBOX_MEMBERS,
 									currentUserId: INBOX_MEMBERS[0]?.userId ?? null,
 									canManage: true,
-									now: now.value,
 									assigneePresent: false,
 									noteCount: index % 7 === 0 ? 2 : 0,
 									hasDraft: false,

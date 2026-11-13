@@ -29,7 +29,6 @@ import dns from 'node:dns/promises';
 import { logError } from '../lib/runtimeLog';
 import { isOwnPrimarySendingDomain, isSendingDomainProviderKind, providerFor } from './providers';
 import type { ProviderCheckResult } from './providers';
-import { detectMultipleSpf, isSpfRecord, mergeSpfRecords } from './spf';
 import {
 	formatTlsaRecord,
 	parseTlsaRecord,
@@ -37,7 +36,8 @@ import {
 	type TlsaRecord,
 } from '@owlat/shared/dane';
 import { throwNotFound, throwInvalidState, throwInternal } from '../_utils/errors';
-import { txtRecordMatches } from './dnsMatch';
+import { isSpfRecord } from './spf';
+import { duplicatePolicyRecordFailure, txtRecordMatches } from './dnsMatch';
 import { isDmarcRecord } from './dmarc';
 import {
 	inspectExternalReceivingMx,
@@ -95,29 +95,9 @@ async function verifyTxtRecord(
 		const records = await dns.resolveTxt(hostname);
 		const txtValues = records.map((record) => record.join(''));
 
-		// Publishing a second `v=spf1` record at a host that already has one is a
-		// PermError at every receiver (RFC 7208 §3.2) — flag it as a hard
-		// failure even if one of them matches the expected value, since the
-		// duplicate breaks SPF evaluation entirely.
-		if (isSpfRecord(expectedValue) && detectMultipleSpf(txtValues)) {
-			// When a foreign SPF record is present (a domain that already sends
-			// through another provider), fold our mechanisms into it and offer the
-			// concrete single record the operator should publish instead.
-			const spfRecords = txtValues.filter((value) => isSpfRecord(value));
-			const foreign = spfRecords.find((value) => value.trim() !== expectedValue.trim());
-			const mergeHint = foreign
-				? ` Merge them into a single record: "${mergeSpfRecords(foreign, expectedValue)}".`
-				: '';
-			return {
-				verified: false,
-				lastChecked: now,
-				error:
-					'Multiple v=spf1 records found at this hostname (duplicate SPF). ' +
-					'Only one SPF record is allowed — merge them into a single record ' +
-					`(RFC 7208 §3.2 PermError).${mergeHint}`,
-				foundValue: spfRecords.join(' | '),
-			};
-		}
+		// A duplicated policy record is a failure even when one copy matches.
+		const duplicate = duplicatePolicyRecordFailure(txtValues, expectedValue);
+		if (duplicate) return { verified: false, lastChecked: now, ...duplicate };
 
 		// Match the way the relevant RFCs define record equality, not byte-for-byte:
 		// nameservers normalise whitespace around the `;`-separated DKIM/DMARC tags

@@ -50,6 +50,7 @@ import {
 	restrictedAutoApproveScore,
 	type AdmittedVerdictScore,
 } from '../../../lib/decision/autoSendContract';
+import { dailyLimitReason } from '../../autoReplyUsage';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -138,13 +139,21 @@ export type RouteOutput = {
 	reason: string;
 	confidence: number;
 	category: string;
+	// Set on an approval that takes a slot of the legacy global daily cap. The
+	// check below reads the count in this action, so the step's commit checks
+	// the cap again in the transaction that counts the reply.
+	dailyCap?: 'global';
 };
 
 export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 	kind: 'route',
 
 	async execute(ctx, input) {
-		type Decision = { decision: 'auto_approve' | 'human_review'; reason: string };
+		type Decision = {
+			decision: 'auto_approve' | 'human_review';
+			reason: string;
+			dailyCap?: 'global';
+		};
 		// What the step records, applied by its commit: the gates' observations,
 		// the shadow observation and the decision itself.
 		const writes: StepWrite[] = [];
@@ -262,14 +271,14 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 				const isNewDay = Date.now() > resetAt;
 
 				if (isNewDay || dailyCount < maxDaily) {
-					return await autoApprove(
+					const approved = await autoApprove(
 						`Draft quality ${gateScore} >= threshold ${cfg.confidenceThreshold}. Auto-approving.`
 					);
+					return approved.decision === 'auto_approve'
+						? { ...approved, dailyCap: 'global' }
+						: approved;
 				}
-				return {
-					decision: 'human_review',
-					reason: `Daily auto-reply limit reached (${dailyCount}/${maxDaily}). Routing to human review.`,
-				};
+				return { decision: 'human_review', reason: dailyLimitReason(dailyCount, maxDaily) };
 			}
 
 			return {
@@ -280,7 +289,8 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			};
 		};
 
-		let { decision, reason } = await decide();
+		const decided = await decide();
+		let { decision, reason } = decided;
 
 		// SHADOW ("would-have-sent") MODE — the entire send-side safety net for a
 		// slice that hasn't earned real auto-send yet. When shadow is on (the
@@ -323,7 +333,13 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		});
 
 		return {
-			output: { decision, reason, confidence: input.confidence, category: input.category },
+			output: {
+				decision,
+				reason,
+				confidence: input.confidence,
+				category: input.category,
+				...(decision === 'auto_approve' && decided.dailyCap ? { dailyCap: decided.dailyCap } : {}),
+			},
 			writes,
 		};
 	},
@@ -333,6 +349,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			return {
 				kind: 'transition',
 				transition: { to: 'approved', source: 'auto' },
+				...(output.dailyCap ? { dailyCap: output.dailyCap } : {}),
 			};
 		}
 

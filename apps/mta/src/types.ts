@@ -4,6 +4,8 @@
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
 import type { DeliveryDomain } from '@owlat/shared';
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
+import type { SmtpPhase } from '@owlat/smtp-client';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
@@ -149,6 +151,12 @@ export interface EmailJobResult {
 	smtpCode?: number;
 	/** Enhanced status code (e.g., 5.1.1) */
 	enhancedCode?: string;
+	/**
+	 * The protocol phase the server's reply came in. Set only on a real 4xx/5xx
+	 * reply; a synthetic refusal (no MX, Null MX, no SMTPUTF8) has none. A reply
+	 * before RCPT TO is about our sending identity, never the recipient.
+	 */
+	smtpPhase?: SmtpPhase;
 }
 
 // ============ Webhook Event Types ============
@@ -351,6 +359,11 @@ export interface DkimKeyConfig {
 export interface BounceClassification {
 	type: 'bounced' | 'complained';
 	bounceType: 'hard' | 'soft';
+	/**
+	 * Set to `sender` when the DSN's status code refuses our sending identity
+	 * rather than the address. Absent means the recipient's bounce.
+	 */
+	bounceCause?: BounceCause;
 	message: string;
 	diagnosticCode?: string;
 	originalMessageId?: string;

@@ -25,8 +25,11 @@ export function usePostboxListSources(args: {
 	mailboxId: Ref<Id<'mailboxes'> | null>;
 	folderRole: Ref<string>;
 	folderId: Ref<Id<'mailFolders'> | undefined>;
-	/** Which renderer the active view mode resolved to for this folder. */
-	renderer: Ref<PostboxViewMode>;
+	/**
+	 * Which renderer the active view mode resolved to for this folder; null
+	 * while no list is on screen (the Priority view), so no grouped feed opens.
+	 */
+	renderer: Ref<PostboxViewMode | null>;
 	/** The flat list's rows — what the bundled view folds. */
 	listMessages: Ref<PostboxThreadRowMessage[]>;
 	/** The flat feed's read, behind the flat and bundled renderers. */
@@ -39,7 +42,7 @@ export function usePostboxListSources(args: {
 	const bundlesEnabled = computed(() => args.renderer.value === 'bundled');
 	const sectionsEnabled = computed(() => args.renderer.value === 'sections');
 	/** True for every renderer that is not the plain flat list. */
-	const grouped = computed(() => args.renderer.value !== 'flat');
+	const grouped = computed(() => args.renderer.value !== null && args.renderer.value !== 'flat');
 
 	const conversations = usePostboxThreadGroups({
 		mailboxId: args.mailboxId,

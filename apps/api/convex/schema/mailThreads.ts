@@ -166,6 +166,12 @@ export const mailThreadsTables = {
 			})
 		),
 		folderRoles: v.array(v.string()),
+		// AGGREGATED [threadInboxRecency] — `lastMessageAt` while `folderRoles`
+		// holds 'inbox', `null` while it does not, set in the same write as either
+		// (mail/threadInboxRecency.ts). An array cannot be indexed, so this scalar
+		// is what pages a mailbox's Inbox threads newest first. `undefined` = not
+		// recorded yet; readers use the index only once its backfill completed.
+		inboxLastMessageAt: v.optional(v.union(v.number(), v.null())),
 		labelIds: v.array(v.id('mailLabels')),
 		// Reply Queue (advisory AI): set when the latest inbound message looks like
 		// it needs a reply from the mailbox owner. A deterministic heuristic flags
@@ -287,6 +293,9 @@ export const mailThreadsTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_mailbox_and_last_message', ['mailboxId', 'lastMessageAt'])
+		// The conversation list's Inbox, newest first (lower-bounded gt(0), since
+		// a thread outside the Inbox holds null and an unrecorded one nothing).
+		.index('by_mailbox_inbox_recency', ['mailboxId', 'inboxLastMessageAt'])
 		.index('by_mailbox_and_subject', ['mailboxId', 'normalizedSubject'])
 		// Backs the needs-reply reconcile cron — range scan on needsReplyPendingAt.
 		.index('by_needs_reply_pending', ['needsReplyPendingAt'])

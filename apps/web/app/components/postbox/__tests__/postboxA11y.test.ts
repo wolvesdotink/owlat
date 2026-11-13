@@ -233,8 +233,12 @@ describe('postbox thread list — accessibility', () => {
 			...withCatalog(rowComponents),
 			props: { mailboxId: 'mbx1', messages: ROWS, loading: false, folderRole: 'inbox' },
 			// A list that rendered zero rows would sail through every rule here.
-			prepare: (wrapper) => {
+			// Each row is hovered, which mounts its quick actions, so their
+			// icon-only buttons are audited too.
+			prepare: async (wrapper) => {
 				expect(wrapper.findAll('[role="option"]').length).toBe(ROWS.length);
+				for (const row of wrapper.findAll('li.pbx-row-li')) await row.trigger('mouseenter');
+				expect(wrapper.findAll('.pbx-row-actions').length).toBe(ROWS.length);
 			},
 		});
 		// Everything except the two composite-row gaps, which are a listbox

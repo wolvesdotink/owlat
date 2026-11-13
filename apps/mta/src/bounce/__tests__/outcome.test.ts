@@ -265,6 +265,45 @@ describe('reduce(dsn_attributed)', () => {
 	});
 });
 
+describe('reduce(dsn_attributed) — a refusal of the sender', () => {
+	it("tells Convex the bounce is the sender's", () => {
+		const attempt: BounceAttempt = {
+			kind: 'dsn_attributed',
+			bounce: {
+				type: 'bounced',
+				bounceType: 'hard',
+				bounceCause: 'sender',
+				message: '550 5.7.1 blocked using Spamhaus',
+				originalMessageId: 'orig-1',
+				organizationId: 'org-1',
+			},
+		};
+		const notify = reduce(attempt, makeCtx()).effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('expected a bounced notification');
+		expect(notify.event).toMatchObject({
+			event: 'bounced',
+			bounceType: 'hard',
+			bounceCause: 'sender',
+		});
+	});
+
+	it('leaves the cause off a recipient bounce', () => {
+		const attempt: BounceAttempt = {
+			kind: 'dsn_attributed',
+			bounce: {
+				type: 'bounced',
+				bounceType: 'hard',
+				message: '550 5.1.1 user unknown',
+				originalMessageId: 'orig-1',
+				organizationId: 'org-1',
+			},
+		};
+		const notify = reduce(attempt, makeCtx()).effects.find((e) => e.kind === 'notify_convex');
+		if (notify?.kind !== 'notify_convex') throw new Error('expected a bounced notification');
+		expect(notify.event).not.toHaveProperty('bounceCause');
+	});
+});
+
 describe('reduce(dsn_unattributed)', () => {
 	it('emits the unattributed_bounce metric only', () => {
 		const { effects } = reduce({ kind: 'dsn_unattributed' }, makeCtx());

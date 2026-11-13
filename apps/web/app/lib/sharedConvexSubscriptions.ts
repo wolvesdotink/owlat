@@ -41,10 +41,11 @@ export const SUBSCRIPTION_LINGER_MS = 45_000;
 export const MAX_LINGERING_SUBSCRIPTIONS = 64;
 
 /**
- * Queries whose value carries message bodies: a thread page holds up to ten
- * inline bodies, so one lingering copy can run to several hundred KB, and the
- * reader's read-ahead and j/k browsing release exactly these. They linger for
- * less time and fewer of them at once, so what is kept (and kept live on the
+ * The queries the reader opens a message with: the bodies (up to 64 KB of HTML
+ * and 64 KB of text each) and the thread page beside them, which a client that
+ * does not ask for `omitBodies` gets with bodies too. The reader's read-ahead
+ * and j/k browsing release exactly these, a few per step. They linger for less
+ * time and fewer of them at once, so what is kept (and kept live on the
  * server) after the reader has moved on stays a few MB, not tens.
  */
 const BODY_BEARING_QUERIES: ReadonlySet<string> = new Set([

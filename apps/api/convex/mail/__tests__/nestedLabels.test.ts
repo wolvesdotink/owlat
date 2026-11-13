@@ -5,7 +5,8 @@
  * The properties worth pinning are the ones a flat wall of labels cannot
  * have: two branches may hold the same leaf name, a reparent may
  * never close a cycle, and deleting a branch promotes its children instead of
- * quietly destroying them.
+ * quietly destroying them. The last block pins how a label toggle re-derives
+ * the thread's label, and that every label write keeps the label rows exact.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -14,6 +15,10 @@ import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api } from '../../_generated/api';
 import { modules, seedMailbox, seedFolder, seedMessage } from './helpers.testlib';
+import type { MutationCtx } from '../../_generated/server';
+import { toggleOnMessage } from '../labels';
+import { tableCountingDb, type QueriedDocuments } from '../../__tests__/indexRecorder.testlib';
+import { labelRowsOf, readyLabelRows } from '../../__tests__/labelRows.testlib';
 
 const sessionMocks = vi.hoisted(() => ({
 	userId: 'user-A',
@@ -245,5 +250,161 @@ describe('mail.labels.unreadCounts', () => {
 			counts: {},
 			isTruncated: false,
 		});
+	});
+});
+
+/** A `size`-message thread in the seeded inbox, raw-inserted like an existing mailbox's mail. */
+async function seedThread(
+	t: TestConvex<typeof schema>,
+	mailboxId: Id<'mailboxes'>,
+	size: number
+): Promise<{ threadId: Id<'mailThreads'>; messageIds: Id<'mailMessages'>[] }> {
+	return await t.run(async (ctx) => {
+		const now = Date.now();
+		const folder = (await ctx.db
+			.query('mailFolders')
+			.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+			.first())!;
+		const threadId = await ctx.db.insert('mailThreads', {
+			mailboxId,
+			normalizedSubject: 'long',
+			participants: ['someone@example.com'],
+			messageCount: size,
+			unreadCount: 0,
+			hasFlagged: false,
+			hasAttachments: false,
+			lastMessageAt: now,
+			firstMessageAt: now,
+			latestSnippet: 'long',
+			latestFromAddress: 'someone@example.com',
+			latestSubject: 'long',
+			folderRoles: ['inbox'],
+			labelIds: [],
+			createdAt: now,
+			updatedAt: now,
+		});
+		const rawStorageId = await ctx.storage.store(new Blob(['raw']));
+		const messageIds: Id<'mailMessages'>[] = [];
+		for (let i = 0; i < size; i++) {
+			messageIds.push(
+				await ctx.db.insert('mailMessages', {
+					mailboxId,
+					folderId: folder._id,
+					uid: i + 1,
+					modseq: 1,
+					rfc822MessageId: `<long-${i}@example.com>`,
+					threadId,
+					fromAddress: 'someone@example.com',
+					toAddresses: ['me@example.com'],
+					ccAddresses: [],
+					bccAddresses: [],
+					subject: `long ${i}`,
+					normalizedSubject: 'long',
+					snippet: `long ${i}`,
+					rawStorageId,
+					rawSize: 3,
+					attachments: [],
+					hasAttachments: false,
+					flagSeen: true,
+					flagFlagged: false,
+					flagAnswered: false,
+					flagDraft: false,
+					flagDeleted: false,
+					customFlags: [],
+					labelIds: [],
+					receivedAt: now + i,
+					internalDate: now,
+					createdAt: now,
+					updatedAt: now,
+				})
+			);
+		}
+		return { threadId, messageIds };
+	});
+}
+
+const toggleHandler = toggleOnMessage as unknown as {
+	_handler: (
+		ctx: MutationCtx,
+		args: { messageId: Id<'mailMessages'>; labelId: Id<'mailLabels'>; add: boolean }
+	) => Promise<unknown>;
+};
+
+/** Documents per table that one label toggle's queries hand back. */
+async function countedToggle(
+	t: TestConvex<typeof schema>,
+	args: { messageId: Id<'mailMessages'>; labelId: Id<'mailLabels'>; add: boolean }
+): Promise<QueriedDocuments> {
+	const queried: QueriedDocuments = {};
+	await t.run((ctx) =>
+		toggleHandler._handler({ ...ctx, db: tableCountingDb(ctx.db, queried) } as MutationCtx, args)
+	);
+	return queried;
+}
+
+async function threadLabels(t: TestConvex<typeof schema>, threadId: Id<'mailThreads'>) {
+	return (await t.run((ctx) => ctx.db.get(threadId)))!.labelIds;
+}
+
+describe('thread label reconciliation and the label rows', () => {
+	it('answers "does a sibling still carry it" with one probe once the rows are ready', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const work = await t.mutation(api.mail.labels.create, { mailboxId, name: 'Work' });
+		const { threadId, messageIds } = await seedThread(t, mailboxId, 200);
+		const [first, second] = messageIds as [Id<'mailMessages'>, Id<'mailMessages'>];
+		await t.run(async (ctx) => {
+			await ctx.db.patch(first, { labelIds: [work] });
+			await ctx.db.patch(second, { labelIds: [work] });
+			await ctx.db.patch(threadId, { labelIds: [work] });
+		});
+
+		// Before the backfill: the toggle reads every message of the thread.
+		const scan = await countedToggle(t, { messageId: first, labelId: work, add: false });
+		expect(scan['mailMessages']).toBe(200);
+		expect(await threadLabels(t, threadId)).toEqual([work]);
+
+		await readyLabelRows(t, mailboxId);
+		const indexed = await countedToggle(t, { messageId: second, labelId: work, add: false });
+		expect(indexed['mailMessages'] ?? 0).toBe(0);
+		// The removed pair's own row, then an empty probe for any other.
+		expect(indexed['mailLabelMessages']).toBe(1);
+		expect(await threadLabels(t, threadId)).toEqual([]);
+		expect(await labelRowsOf(t, second)).toEqual([]);
+
+		await countedToggle(t, { messageId: first, labelId: work, add: true });
+		expect(await threadLabels(t, threadId)).toEqual([work]);
+		expect((await labelRowsOf(t, first)).map((row) => row.labelId)).toEqual([work]);
+	});
+
+	it('keeps the rows exact across writes made before and after the backfill', async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailbox(t);
+		await seedFolder(t, mailboxId);
+		const work = await t.mutation(api.mail.labels.create, { mailboxId, name: 'Work' });
+		const home = await t.mutation(api.mail.labels.create, { mailboxId, name: 'Home' });
+		const { threadId, messageIds } = await seedThread(t, mailboxId, 3);
+		const [a, b, c] = messageIds as [Id<'mailMessages'>, Id<'mailMessages'>, Id<'mailMessages'>];
+		// An existing label the rows never saw, then a toggle before the walk.
+		await t.run((ctx) => ctx.db.patch(a, { labelIds: [home] }));
+		await t.mutation(api.mail.labels.toggleOnMessage, { messageId: a, labelId: work, add: true });
+		expect((await labelRowsOf(t, a)).map((row) => row.labelId)).toEqual([work]);
+
+		await readyLabelRows(t, mailboxId);
+		expect((await labelRowsOf(t, a)).map((row) => row.labelId).sort()).toEqual([work, home].sort());
+
+		await t.mutation(api.mail.labels.setOnMessages, {
+			messageIds: [b, c],
+			labelId: work,
+			add: true,
+		});
+		await t.mutation(api.mail.labels.toggleOnThread, { threadId, labelId: home, add: false });
+		for (const id of [a, b, c]) {
+			expect((await labelRowsOf(t, id)).map((row) => row.labelId)).toEqual([work]);
+		}
+		await t.mutation(api.mail.labels.toggleOnThread, { threadId, labelId: work, add: false });
+		for (const id of [a, b, c]) expect(await labelRowsOf(t, id)).toEqual([]);
+		expect(await threadLabels(t, threadId)).toEqual([]);
 	});
 });

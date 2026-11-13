@@ -30,7 +30,7 @@ import { isAnchorInView, placeAnchoredPanel } from '@owlat/ui/utils/anchoredPane
 const target = defineModel<PostboxWhyHereTarget | null>('target', { required: true });
 const emit = defineEmits<{ fix: [target: PostboxFixTarget] }>();
 
-const { t, te } = useI18n();
+const { t } = useI18n();
 const titleId = useId();
 const panel = ref<HTMLElement | null>(null);
 
@@ -184,11 +184,36 @@ const readAsLine = computed(() => {
 	return `${depth} · ${calls}`;
 });
 
+/**
+ * The message for each reason key a record can carry, spelled out in full: the
+ * catalog planner places a message only where a file naming its whole key (or
+ * a dotted stem) renders, and `postbox.${key}` names neither. A key missing
+ * here (one a newer backend writes) is left out rather than shown raw.
+ */
+const REASON_MESSAGES: Readonly<Record<string, string>> = {
+	'arrival.reason.aiOff': 'postbox.arrival.reason.aiOff',
+	'arrival.reason.ineligible': 'postbox.arrival.reason.ineligible',
+	'arrival.reason.openWork': 'postbox.arrival.reason.openWork',
+	'arrival.reason.readOnArrivalOff': 'postbox.arrival.reason.readOnArrivalOff',
+	'arrival.reason.senderStatus': 'postbox.arrival.reason.senderStatus',
+	'arrival.reason.security': 'postbox.arrival.reason.security',
+	'arrival.reason.budget': 'postbox.arrival.reason.budget',
+	'arrival.reason.digest': 'postbox.arrival.reason.digest',
+	'arrival.reason.override': 'postbox.arrival.reason.override',
+	'arrival.reason.category': 'postbox.arrival.reason.category',
+	'arrival.reason.exactWording': 'postbox.arrival.reason.exactWording',
+	'arrival.reason.ownerLimit': 'postbox.arrival.reason.ownerLimit',
+	'arrival.reason.categoryTimeout': 'postbox.arrival.reason.categoryTimeout',
+	'arrival.reason.gistUnavailable': 'postbox.arrival.reason.gistUnavailable',
+	'arrival.reason.gistFailed': 'postbox.arrival.reason.gistFailed',
+};
+
 const localized = useLocalized();
 const reasonLines = computed(() =>
-	(why.value?.reasons ?? [])
-		.filter((reason) => te(`postbox.${reason.key}`))
-		.map((reason) => localized({ ...reason, key: `postbox.${reason.key}` }))
+	(why.value?.reasons ?? []).flatMap((reason) => {
+		const key = Object.hasOwn(REASON_MESSAGES, reason.key) ? REASON_MESSAGES[reason.key] : null;
+		return key ? [localized({ ...reason, key })] : [];
+	})
 );
 
 function openFix() {
