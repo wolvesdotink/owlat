@@ -104,9 +104,13 @@ export async function resolveMtaRoutingDecision(
 		let value: unknown;
 		try {
 			value = await response.json();
-		} catch {
-			// The MTA answered; we could not read the body. Not an outage.
-			return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+		} catch (error) {
+			// A body that is not JSON is an answer we cannot read, not an outage. A
+			// body cut off by a reset or by the timeout above is the outage.
+			if (error instanceof SyntaxError) {
+				return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+			}
+			return UNREACHABLE_DEFER;
 		}
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 			return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };

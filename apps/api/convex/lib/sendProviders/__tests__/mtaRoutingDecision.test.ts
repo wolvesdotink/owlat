@@ -94,6 +94,28 @@ describe('MTA routing decision client', () => {
 		});
 	});
 
+	it('tells a body cut off mid-read from a body that is not JSON', async () => {
+		const cutOff = new Response(
+			new ReadableStream({
+				start(controller) {
+					controller.error(new TypeError('terminated'));
+				},
+			}),
+			{ status: 200 }
+		);
+		global.fetch = vi.fn().mockResolvedValue(cutOff);
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toMatchObject({
+			isUnreachable: true,
+		});
+
+		global.fetch = vi.fn().mockResolvedValue(new Response('not json', { status: 200 }));
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
+			kind: 'defer',
+			retryAfterMs: 60_000,
+			origin: 'local',
+		});
+	});
+
 	it('does not call an unconfigured decision endpoint unreachable', async () => {
 		vi.stubEnv('MTA_API_URL', '');
 		global.fetch = vi.fn();
