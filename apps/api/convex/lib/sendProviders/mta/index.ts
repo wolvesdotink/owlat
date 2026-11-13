@@ -8,11 +8,7 @@
  * code derived from the HTTP response.
  */
 
-import {
-	extractDomainOrNull,
-	ROUTING_LEASE_TOKEN_MAX_LENGTH,
-	type GovernedMessageType,
-} from '@owlat/shared';
+import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import { correlationHeader } from '@owlat/shared/correlation';
 import {
 	MTA_RELAY_ALLOWED_REASON,
@@ -36,6 +32,7 @@ import {
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
 import { decodeMtaRefusal, mtaConflictOf } from './refusal';
 import { readMtaSendAnswer } from './answer';
+import { mtaIpPoolFor } from './ipPool';
 import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
@@ -62,27 +59,6 @@ const UNREACHABLE_DEFER: MtaRoutingDecisionResult = {
 	origin: 'local',
 	isUnreachable: true,
 };
-
-/**
- * The IP pool a send asks the MTA for: the route's pool when it names one,
- * else the one its stream belongs to. Campaign and automation mail is bulk
- * marketing traffic and goes to `campaign`, where the MTA paces it through
- * warm-up and holds back the transactional reserve; everything else (the
- * transactional API, replies, system and personal mail) goes to
- * `transactional`. `delivery/rampCapacityInputs.ts` measures campaign-pool
- * headroom against the same two streams, so the two must change together.
- *
- * Both the routing decision and the intake body take their pool from here: the
- * MTA binds a lease to the pool it was decided for and refuses an intake that
- * names another one. An empty pool name counts as no pool.
- */
-export function mtaIpPoolFor(
-	routePool: MtaIpPool | '' | undefined,
-	messageType: GovernedMessageType | undefined
-): MtaIpPool {
-	if (routePool) return routePool;
-	return messageType === 'campaign' || messageType === 'automation' ? 'campaign' : 'transactional';
-}
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -251,6 +227,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// what a warming schedule is pacing, so the route's permission alone
 			// never grants it.
 			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
+			...(input.requireDkimSignature === true ? { requireDkimSignature: true } : {}),
 			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
 			...(input.correlationId ? { correlationId: input.correlationId } : {}),
 			// Omitted, never zeroed, when the recipient has no score: the MTA reads
@@ -328,6 +305,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			ipPool: mtaIpPoolFor(extras?.ipPool, extras?.messageType),
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
+			requireDkimSignature: extras?.requireDkimSignature,
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
 			deliveryDomain: extras?.deliveryDomain,

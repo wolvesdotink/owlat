@@ -70,6 +70,7 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 vi.mock('../../monitoring/collector.js', () => ({
 	registry: { registerMetric: vi.fn() },
 	emailsSentTotal: { inc: vi.fn() },
+	dkimSignatureWithheldTotal: { inc: vi.fn() },
 	record: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../monitoring/deliveryLogger.js', () => ({
@@ -88,6 +89,10 @@ import type { CtxWithProviderPressure } from '../../dispatch/types.js';
 import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 import { deferBudgetKey, MAX_DEFER_SUCCESSORS_PER_MESSAGE } from '../deferBudget.js';
 import { MAX_GREYLIST_DELAY_MS } from '../../intelligence/smtpClassifier.js';
+import { generateKeyPairSync } from 'crypto';
+import { clearCache as clearDkimCache, setDkimKey } from '../../smtp/dkimStore.js';
+import { DkimSignatureUnavailableError, clearDkimPublicationCache } from '../../smtp/dkim.js';
+import { readDkimSigningHolds } from '../../smtp/dkimSigningHold.js';
 
 const createConfig = (overrides: Partial<MtaConfig> = {}): MtaConfig =>
 	createOwlatHostConfig({ maxMessageAgeMs: 4 * 24 * 60 * 60 * 1000, ...overrides });
@@ -1600,5 +1605,105 @@ describe('handleEmailJob', () => {
 			expect.objectContaining({ status: 'expired', provider: 'other' }),
 			config
 		);
+	});
+
+	describe('a send that requires a DKIM signature', () => {
+		const pem = () =>
+			generateKeyPairSync('rsa', {
+				modulusLength: 1024,
+				publicKeyEncoding: { type: 'spki', format: 'pem' },
+				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			}).privateKey;
+
+		beforeEach(() => {
+			clearDkimCache();
+			clearDkimPublicationCache();
+		});
+
+		it('is held, not sent and not suppressed, when the domain has no key', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			const { suppress } = await import('../../intelligence/suppressionList.js');
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+
+			await run(createJob({ requireDkimSignature: true }));
+
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(suppress).not.toHaveBeenCalled();
+			expect(notifyConvex).not.toHaveBeenCalled();
+			expect(queue.add).toHaveBeenCalledOnce();
+			expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, 5 * 60_000);
+			expect(await readDkimSigningHolds(redis)).toEqual([
+				{ domain: 'owlat.com', cause: 'no_key', since: expect.any(Number) },
+			]);
+		});
+
+		it('is held the same way when the stored key is corrupt', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			await setDkimKey(redis, 'owlat.com', 's1', 'not a private key', 'org-1');
+
+			await run(createJob({ requireDkimSignature: true }));
+
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(queue.add).toHaveBeenCalledOnce();
+			expect((await readDkimSigningHolds(redis))[0]?.cause).toBe('unusable');
+		});
+
+		it('goes out once the key is back, and the hold clears', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			await run(createJob({ requireDkimSignature: true }));
+			expect(sendToMx).not.toHaveBeenCalled();
+
+			// The held message comes back as the successor the defer enqueued.
+			const successor = queue.add.mock.calls[0]![0] as { jobId: string; data: EmailJob };
+			await setDkimKey(redis, 'owlat.com', 's1', pem(), 'org-1');
+			queue.add.mockClear();
+			await run(successor.data, { id: successor.jobId });
+
+			expect(sendToMx).toHaveBeenCalledOnce();
+			expect(queue.add).not.toHaveBeenCalled();
+			expect(await readDkimSigningHolds(redis)).toEqual([]);
+		});
+
+		it('still goes out unsigned when the requirement is absent', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+
+			await run(createJob());
+
+			expect(sendToMx).toHaveBeenCalledOnce();
+			expect(await readDkimSigningHolds(redis)).toEqual([]);
+		});
+
+		it("expires as the sender's problem, so the recipient keeps no soft bounce", async () => {
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+			const { suppress } = await import('../../intelligence/suppressionList.js');
+			const firstEnqueuedAt = Date.now() - 5 * DAY_MS;
+
+			await run(createJob({ requireDkimSignature: true, firstEnqueuedAt }), {
+				timestamp: firstEnqueuedAt,
+			});
+
+			expect(queue.add).not.toHaveBeenCalled();
+			expect(suppress).not.toHaveBeenCalled();
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({ event: 'bounced', bounceType: 'soft', bounceCause: 'sender' }),
+				config,
+				redis
+			);
+		});
+
+		it('is held when compose refuses to sign after the phase passed', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			const { suppress } = await import('../../intelligence/suppressionList.js');
+			await setDkimKey(redis, 'owlat.com', 's1', pem(), 'org-1');
+			vi.mocked(sendToMx).mockRejectedValue(
+				new DkimSignatureUnavailableError('owlat.com', 'sign_failed')
+			);
+
+			await expect(run(createJob({ requireDkimSignature: true }))).resolves.toBeUndefined();
+
+			expect(suppress).not.toHaveBeenCalled();
+			expect(queue.add).toHaveBeenCalledOnce();
+			expect((await readDkimSigningHolds(redis))[0]?.cause).toBe('sign_failed');
+		});
 	});
 });

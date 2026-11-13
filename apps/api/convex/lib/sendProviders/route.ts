@@ -31,6 +31,7 @@ import {
 } from './routeMixContext';
 import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isDkimSignatureRequired } from '../../delivery/dkimSignatureRequirement';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import { routeCarriesOwnArm } from './fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
@@ -321,8 +322,15 @@ export async function resolveLastMileRoutePlanFromDb(
 	 * in a second round trip from the dispatcher.
 	 */
 	relayReturnPathHost?: string | undefined;
+	/**
+	 * Whether the From domain is owed a DKIM signature by the built-in MTA
+	 * (`delivery/dkimSignatureRequirement.ts`). One indexed read, here for the
+	 * same reason as `relayReturnPathHost`.
+	 */
+	requireDkimSignature: boolean;
 }> {
 	const now = addressContext.now ?? Date.now();
+	const requireDkimSignature = await isDkimSignatureRequired(ctx, addressContext.from);
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -384,6 +392,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			baseRoute,
 			isMtaGoverned: isHybrid || baseRoute?.providerType === OWN_ARM_TRANSPORT_KIND,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
@@ -394,6 +403,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			isMtaGoverned: isHybrid,
 			deferralCode,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	}
 }

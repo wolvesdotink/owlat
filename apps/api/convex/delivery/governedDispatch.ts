@@ -230,7 +230,7 @@ export async function dispatchGovernedEmail(
 		};
 	}
 
-	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
+	const { providerKind, route, routingLease, relayReturnPathHost, requireDkimSignature } = routing;
 	// A CAPABILITY, NOT A KIND. Both facts below are declared by the
 	// transport's catalog entry, so a new provider kind never edits this file:
 	//   · does its provider message id exist before the send (ours, not theirs)?
@@ -286,6 +286,7 @@ export async function dispatchGovernedEmail(
 		warmupOverflowEnabled: route?.warmupOverflowEnabled,
 		engagementScore,
 		relayReturnPathHost,
+		requireDkimSignature,
 		correlationId,
 	});
 	const dispatched = await sendProviderDispatch(

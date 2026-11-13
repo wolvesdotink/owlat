@@ -613,6 +613,8 @@ import type * as delivery_deliverabilityDashboardHelpers from '../delivery/deliv
 import type * as delivery_deliverabilityDashboardView from '../delivery/deliverabilityDashboardView.js';
 import type * as delivery_deliverabilityRouting from '../delivery/deliverabilityRouting.js';
 import type * as delivery_deliveryTestDecision from '../delivery/deliveryTestDecision.js';
+import type * as delivery_dkimKeyRecovery from '../delivery/dkimKeyRecovery.js';
+import type * as delivery_dkimSignatureRequirement from '../delivery/dkimSignatureRequirement.js';
 import type * as delivery_dnsblAccess from '../delivery/dnsblAccess.js';
 import type * as delivery_enqueue from '../delivery/enqueue.js';
 import type * as delivery_enqueueTestSend from '../delivery/enqueueTestSend.js';
@@ -1225,6 +1227,7 @@ import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/man
 import type * as lib_sendProviders_mandrill_subaccounts from '../lib/sendProviders/mandrill/subaccounts.js';
 import type * as lib_sendProviders_mta_answer from '../lib/sendProviders/mta/answer.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
+import type * as lib_sendProviders_mta_ipPool from '../lib/sendProviders/mta/ipPool.js';
 import type * as lib_sendProviders_mta_refusal from '../lib/sendProviders/mta/refusal.js';
 import type * as lib_sendProviders_pluginEnvNamespace from '../lib/sendProviders/pluginEnvNamespace.js';
 import type * as lib_sendProviders_pluginProvider from '../lib/sendProviders/pluginProvider.js';
@@ -2554,6 +2557,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/deliverabilityDashboardView': typeof delivery_deliverabilityDashboardView;
 	'delivery/deliverabilityRouting': typeof delivery_deliverabilityRouting;
 	'delivery/deliveryTestDecision': typeof delivery_deliveryTestDecision;
+	'delivery/dkimKeyRecovery': typeof delivery_dkimKeyRecovery;
+	'delivery/dkimSignatureRequirement': typeof delivery_dkimSignatureRequirement;
 	'delivery/dnsblAccess': typeof delivery_dnsblAccess;
 	'delivery/enqueue': typeof delivery_enqueue;
 	'delivery/enqueueTestSend': typeof delivery_enqueueTestSend;
@@ -3208,6 +3213,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/mandrill/subaccounts': typeof lib_sendProviders_mandrill_subaccounts;
 	'lib/sendProviders/mta/answer': typeof lib_sendProviders_mta_answer;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;
+	'lib/sendProviders/mta/ipPool': typeof lib_sendProviders_mta_ipPool;
 	'lib/sendProviders/mta/refusal': typeof lib_sendProviders_mta_refusal;
 	'lib/sendProviders/pluginEnvNamespace': typeof lib_sendProviders_pluginEnvNamespace;
 	'lib/sendProviders/pluginProvider': typeof lib_sendProviders_pluginProvider;

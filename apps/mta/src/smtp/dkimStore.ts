@@ -36,6 +36,14 @@ export type DkimOwnershipOutcome = 'assigned' | 'unchanged' | 'unowned';
 const RETURN_PATH_FIELD = 'returnPathHost';
 
 /**
+ * Hash field marking key material the MTA minted itself and has not yet seen in
+ * DNS (see `DkimKeyConfig.awaitingDnsSince`). Every write of new key material
+ * either sets it or deletes it, so a stale mark never survives onto a key that
+ * did not earn it.
+ */
+const AWAITING_DNS_FIELD = 'awaitingDnsSince';
+
+/**
  * Unseal a stored DKIM private-key value, migrating a legacy plaintext value in
  * place. Private keys are sealed at rest (secretBox) so a Redis dump never
  * exposes a PEM. Pre-sealing installs — and keys written by an older MTA — hold
@@ -100,6 +108,7 @@ export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimK
 		selector: data['selector'],
 		privateKey: await unsealPrivateKey(redis, domain, data['privateKey']),
 		...(data['organizationId'] ? { organizationId: data['organizationId'] } : {}),
+		...(data[AWAITING_DNS_FIELD] ? { awaitingDnsSince: Number(data[AWAITING_DNS_FIELD]) } : {}),
 	};
 
 	// Update cache
@@ -114,28 +123,58 @@ export async function getDkimConfig(redis: Redis, domain: string): Promise<DkimK
  * guard). When omitted the existing `organizationId` field (if any) is preserved
  * — `hset` only writes the fields it is given — so a rotation activation that
  * does not re-supply the owner never silently drops the binding.
+ *
+ * `awaitingDns` marks material the MTA generated itself, whose public record no
+ * DNS zone can hold yet. Without it the mark is removed: the caller vouches
+ * that the record is published (operator-supplied keys, DNS-gated rotation).
  */
 export async function setDkimKey(
 	redis: Redis,
 	domain: string,
 	selector: string,
 	privateKey: string,
-	organizationId?: string
+	organizationId?: string,
+	options: { awaitingDns?: boolean } = {}
 ): Promise<void> {
 	// Seal the private key at rest so a Redis dump never exposes a PEM. The
 	// selector and timestamps stay plaintext (non-secret). getDkimConfig unseals
 	// transparently on read, so callers still see the raw PEM.
-	await redis.hset(`${DKIM_PREFIX}${domain}`, {
+	const key = `${DKIM_PREFIX}${domain}`;
+	const now = String(Date.now());
+	const write = redis.multi().hset(key, {
 		selector,
 		privateKey: getMtaSecretBox().seal(privateKey),
-		addedAt: String(Date.now()),
-		rotatedAt: String(Date.now()),
+		addedAt: now,
+		rotatedAt: now,
 		...(organizationId ? { organizationId } : {}),
+		...(options.awaitingDns ? { [AWAITING_DNS_FIELD]: now } : {}),
 	});
+	if (!options.awaitingDns) write.hdel(key, AWAITING_DNS_FIELD);
+	await write.exec();
 
 	// Invalidate cache
 	cache.delete(domain);
 	logger.info({ domain, selector }, 'DKIM key stored');
+}
+
+/**
+ * Record that the domain's DKIM record for `selector` was seen published, so a
+ * send that requires a signature may use the key. Compare-and-delete on the
+ * selector: a rotation that replaced the key since the lookup keeps its own mark.
+ */
+export async function markDkimKeyPublished(
+	redis: Redis,
+	domain: string,
+	selector: string
+): Promise<void> {
+	await redis.eval(
+		"if redis.call('HGET', KEYS[1], 'selector') == ARGV[1] then redis.call('HDEL', KEYS[1], ARGV[2]) end return 0",
+		1,
+		`${DKIM_PREFIX}${domain}`,
+		selector,
+		AWAITING_DNS_FIELD
+	);
+	cache.delete(domain);
 }
 
 /**
@@ -261,7 +300,8 @@ export async function rotateKey(
 		privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 	});
 
-	await setDkimKey(redis, domain, newSelector, privateKey, organizationId);
+	// A key generated here is in no DNS zone yet, whatever the caller does next.
+	await setDkimKey(redis, domain, newSelector, privateKey, organizationId, { awaitingDns: true });
 
 	// Format public key for DNS TXT record
 	const pubKeyBase64 = publicKey
@@ -338,9 +378,10 @@ export async function registerDomainKey(
 
 /**
  * Derive the public DNS TXT record value from a stored private key.
- * Used when surfacing an already-registered domain's DKIM record.
+ * Used when surfacing an already-registered domain's DKIM record, and to check
+ * that the record a required signature depends on is published.
  */
-function dnsRecordFromPrivateKey(privateKeyPem: string): string {
+export function dnsRecordFromPrivateKey(privateKeyPem: string): string {
 	const publicKey = createPublicKey(privateKeyPem).export({
 		type: 'spki',
 		format: 'pem',

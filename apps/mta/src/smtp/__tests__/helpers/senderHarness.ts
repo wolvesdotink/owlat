@@ -124,7 +124,19 @@ export function createSenderHarness(): SenderHarness {
 		// STS-specific result types it emits are exercised end-to-end.
 		mtaStsModule: (actual) => ({ ...actual, getStsTlsOptions: vi.fn() }),
 
-		dkimModule: () => ({ getDkimOptions: vi.fn().mockResolvedValue(undefined) }),
+		dkimModule: () => ({
+			getDkimOptions: vi.fn().mockResolvedValue(undefined),
+			resolveRequiredDkimKey: vi.fn().mockResolvedValue({ kind: 'unavailable', cause: 'no_key' }),
+			DkimSignatureUnavailableError: class DkimSignatureUnavailableError extends Error {
+				constructor(
+					readonly domain: string,
+					readonly reason: string
+				) {
+					super(`DKIM signature unavailable for ${domain} (${reason})`);
+					this.name = 'DkimSignatureUnavailableError';
+				}
+			},
+		}),
 
 		// DANE TLSA resolver is stubbed per-test (default: no TLSA, so the DANE
 		// branch is inert and the non-DANE path is unchanged).

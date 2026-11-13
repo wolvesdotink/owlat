@@ -60,6 +60,9 @@ import { emitExpiredBounce, emitRunawayDeferBounce, handleDrop } from './nonDeli
 import { claimDeferSuccessor } from './deferBudget.js';
 import { dispatchOutcomeCause } from '../intelligence/bounceCause.js';
 import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
+import { DkimSignatureUnavailableError } from '../smtp/dkim.js';
+import { DKIM_HOLD_RETRY_DELAY_MS, recordDkimSigningHold } from '../smtp/dkimSigningHold.js';
+import { dkimHoldReason } from '../dispatch/phases/dkimSignature.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -150,7 +153,8 @@ export async function handleEmailJob(
 			providerKey,
 			'self_throttle',
 			piped.delayMs,
-			piped.reason
+			piped.reason,
+			piped.bounceCause
 		);
 		return;
 	}
@@ -198,15 +202,36 @@ export async function handleEmailJob(
 		);
 		return;
 	}
-	const smtpAttempt = await runJournaledSmtpAttempt({
-		redis,
-		config,
-		jobId: journalJobId,
-		job: piped.ctx.job,
-		attempt: piped.ctx,
-		eligibilityLease,
-		startedAt: startTime,
-	});
+	let smtpAttempt: Awaited<ReturnType<typeof runJournaledSmtpAttempt>>;
+	try {
+		smtpAttempt = await runJournaledSmtpAttempt({
+			redis,
+			config,
+			jobId: journalJobId,
+			job: piped.ctx.job,
+			attempt: piped.ctx,
+			eligibilityLease,
+			startedAt: startTime,
+		});
+	} catch (error) {
+		// Compose refused to build the bytes before any connection opened, and the
+		// journal released its pre-DATA reservation: nothing left, so the message
+		// waits for its key exactly as the pipeline's DKIM phase would hold it.
+		if (!(error instanceof DkimSignatureUnavailableError)) throw error;
+		await recordDkimSigningHold(redis, error.domain, error.reason);
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'self_throttle',
+			DKIM_HOLD_RETRY_DELAY_MS,
+			dkimHoldReason(error.domain, error.reason),
+			'sender'
+		);
+		return;
+	}
 	if (smtpAttempt.kind === 'capacity') {
 		await disposeDefer(
 			job,
