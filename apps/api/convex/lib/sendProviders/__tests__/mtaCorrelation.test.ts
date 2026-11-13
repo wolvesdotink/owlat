@@ -58,6 +58,7 @@ function governedExtras(correlationId?: string) {
 		ipPool: GOVERNED.ipPool,
 		engagementScore: GOVERNED.engagementScore as number,
 		dkimDomain: GOVERNED.dkimDomain,
+		requireDkimSignature: GOVERNED.requireDkimSignature,
 		organizationId: GOVERNED.organizationId,
 		messageType: GOVERNED.messageType,
 		deliveryDomain: GOVERNED.deliveryDomain,

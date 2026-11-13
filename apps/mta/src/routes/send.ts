@@ -400,6 +400,7 @@ export function createSendHandler(
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
 			engagementScore,
 			dkimDomain: body.dkimDomain,
+			...(body.requireDkimSignature === true ? { requireDkimSignature: true } : {}),
 			firstEnqueuedAt: mode === 'governed' ? body.routingReentry!.retryState.startedAt : Date.now(),
 			...(routingLease ? { routingLease } : {}),
 			...(mode === 'governed' && body.routingReentryToken

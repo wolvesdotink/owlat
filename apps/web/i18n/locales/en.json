@@ -16436,6 +16436,8 @@
 					"action": "Check the mail server",
 					"degraded": "The mail server reports a fault, so mail can't reliably go out through it.",
 					"healthy": "The mail server is reachable and reports healthy.",
+					"signingHeld": "The mail server is holding mail because a sending domain has no usable DKIM key to sign it with. Restore the key, or publish the domain's new DKIM record.",
+					"signingHeldAction": "Open sending domains",
 					"stale": "The mail server's last health check is out of date, so the check itself may have stopped.",
 					"title": "Mail server",
 					"unchecked": "The mail server's health hasn't been checked yet.",

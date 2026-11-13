@@ -13,6 +13,7 @@ import type { MailStream, ReadinessGate } from '~/utils/readinessGate';
 
 export const READINESS_TRANSPORT_HREF = '/dashboard/admin/delivery/transport';
 export const READINESS_DELIVERABILITY_HREF = '/dashboard/admin/delivery/deliverability';
+const READINESS_DOMAINS_HREF = '/dashboard/admin/delivery/domains';
 export const OWN_MAIL_SERVER_LABEL: LocalizedText = 'shared.deliveryReadiness.transport.ownServer';
 
 export const READINESS_STREAMS: readonly MailStream[] = ['transactional', 'marketing'];
@@ -32,7 +33,9 @@ export function ownMtaStreams(input: ReadinessInput): MailStream[] {
 /**
  * The built-in MTA's own health, for the streams it carries. Degraded or
  * unreachable stops mail; a stale or never-run check asks for a look, exactly
- * as the Delivery health roll-up grades it.
+ * as the Delivery health roll-up grades it. Mail held for a missing DKIM key
+ * stops mail too, and its fix is on the Domains page (restore the key, or
+ * publish the regenerated record), not on the transport.
  */
 export function mailServerGate(input: ReadinessInput): ReadinessGate | null {
 	const streams = ownMtaStreams(input);
@@ -41,12 +44,25 @@ export function mailServerGate(input: ReadinessInput): ReadinessGate | null {
 	const base = {
 		key: 'mail-server' as const,
 		title: 'shared.deliveryReadiness.gates.mailServer.title',
-		detail: `shared.deliveryReadiness.gates.mailServer.${state}`,
+		detail:
+			state === 'signing_held'
+				? 'shared.deliveryReadiness.gates.mailServer.signingHeld'
+				: `shared.deliveryReadiness.gates.mailServer.${state}`,
 		streams,
 		transport: OWN_MAIL_SERVER_LABEL,
 	};
 	if (state === 'healthy') {
 		return { ...base, status: 'ready', tone: 'success', actionHref: null, actionLabel: null };
+	}
+	if (state === 'signing_held') {
+		return {
+			...base,
+			status: 'attention',
+			tone: 'error',
+			actionHref: READINESS_DOMAINS_HREF,
+			actionLabel: 'shared.deliveryReadiness.gates.mailServer.signingHeldAction',
+			isBlocking: true,
+		};
 	}
 	const isBlocking = state === 'degraded' || state === 'unreachable';
 	return {

@@ -14,6 +14,7 @@
  * See CONTEXT.md's MTA dispatch section.
  */
 
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { BasePhaseCtx, PhaseDeps } from './types.js';
 import {
 	compose as composeGeneric,
@@ -27,12 +28,14 @@ import {
 /**
  * A dispatch terminal outcome.
  *
- * - `defer` re-queues the attempt with the given delay.
+ * - `defer` re-queues the attempt with the given delay. `bounceCause` is whose
+ *   problem the hold is, read if the message expires while held; absent means
+ *   the recipient's, the default every other expiry carries.
  * - `drop` ends the attempt without a re-queue (used by content screening
  *   and the suppression check).
  */
 export type DispatchTerminal =
-	| { kind: 'defer'; delayMs: number; reason: string }
+	| { kind: 'defer'; delayMs: number; reason: string; bounceCause?: BounceCause }
 	| { kind: 'routing_reentry'; reason: string }
 	| { kind: 'drop'; status: 'screened' | 'suppressed'; reason: string };
 

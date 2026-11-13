@@ -670,6 +670,15 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		);
 	});
 
+	it('blocks both streams and points at the domains when mail is held for a DKIM key', () => {
+		const r = deriveDeliveryReadiness(streamInput(viaOwnMta, { mailServer: 'signing_held' }));
+		expect(verdict(r, 'transactional').level).toBe('blocked');
+		expect(verdict(r, 'marketing').level).toBe('blocked');
+		const g = gate(r, 'mail-server');
+		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
+		expect(localized(g.detail)).toContain('no usable DKIM key');
+	});
+
 	it('blocks only the stream whose every sending IP is held', () => {
 		const result = readinessInputFromSources(
 			{ canSend: true },

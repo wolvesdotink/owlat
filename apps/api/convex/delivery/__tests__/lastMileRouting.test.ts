@@ -127,6 +127,29 @@ describe('last-mile governance boundary', () => {
 		).toMatchObject({ kind: 'ready', providerKind: 'ses', route });
 	});
 
+	it('carries the DKIM signature requirement the routing query answered onto the MTA route', async () => {
+		vi.stubEnv('MTA_API_URL', 'https://mta.test');
+		vi.stubEnv('MTA_API_KEY', 'key');
+		resolveMtaRoutingDecision.mockResolvedValue({
+			kind: 'mta',
+			leaseToken: 'lease-1',
+			isProviderProbe: false,
+			isGlobalProbe: false,
+		});
+		const route = { providerType: 'mta' as const, source: 'org_config' as const };
+		const plan = { route, baseRoute: route, isMtaGoverned: true };
+
+		expect(
+			await resolveLastMileRouting(context({ ...plan, requireDkimSignature: true }, 'org-1'), input)
+		).toMatchObject({ kind: 'ready', providerKind: 'mta', requireDkimSignature: true });
+		expect(
+			await resolveLastMileRouting(
+				context({ ...plan, requireDkimSignature: false }, 'org-1'),
+				input
+			)
+		).not.toHaveProperty('requireDkimSignature');
+	});
+
 	it('marks a safety refusal as a hold rather than ordinary routing churn', async () => {
 		expect(
 			await resolveLastMileRouting(

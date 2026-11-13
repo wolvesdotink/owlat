@@ -192,6 +192,18 @@ export const cfblRejectionsTotal = new Counter({
 });
 
 /**
+ * Sends held because the sending domain is owed a DKIM signature and no usable
+ * key produced one, by bounded cause (`DKIM_UNAVAILABLE_CAUSES` in
+ * `smtp/dkim.ts`). The message is deferred, never sent unsigned.
+ */
+export const dkimSignatureWithheldTotal = new Counter({
+	name: 'mta_dkim_signature_withheld_total',
+	help: 'Sends deferred because a required DKIM signature could not be produced, by cause',
+	labelNames: ['cause'] as const,
+	registers: [registry],
+});
+
+/**
  * Record a delivery outcome in both Redis (persistent) and Prometheus (in-memory)
  */
 export async function record(

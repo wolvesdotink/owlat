@@ -137,13 +137,18 @@ export interface MtaExtras {
 	};
 	/**
 	 * IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). Unset, the
-	 * adapter picks it from `messageType` (`mtaIpPoolFor` in `./mta`).
+	 * adapter picks it from `messageType` (`mtaIpPoolFor` in `./mta/ipPool`).
 	 */
 	ipPool?: MtaIpPool;
 	/** Engagement score 0-100 for priority ordering */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
 	dkimDomain?: string;
+	/**
+	 * The From domain is owed a DKIM signature: the MTA holds the message rather
+	 * than send it unsigned. Absent ⇒ signed when a key resolves.
+	 */
+	requireDkimSignature?: boolean;
 	organizationId?: string;
 	messageType?: GovernedMessageType;
 	deliveryDomain?: DeliveryDomain;
@@ -296,6 +301,12 @@ export interface DispatchExtrasInput {
 	 * authorises it — see `SmtpExtras.returnPathHost`.
 	 */
 	readonly relayReturnPathHost?: string | undefined;
+	/**
+	 * The From domain is a sending domain registered with the built-in MTA, so a
+	 * transport that signs with our keys must not send it unsigned
+	 * (`delivery/dkimSignatureRequirement.ts`). Only the MTA module reads it.
+	 */
+	readonly requireDkimSignature?: boolean | undefined;
 	/**
 	 * The cross-service log key for this send (`@owlat/shared/correlation`). A
 	 * transport that can carry it (the owned MTA) sends it as a header; it never

@@ -62,7 +62,13 @@ export interface StreamTransportFacts {
 }
 
 /** The built-in MTA's health, classified as the Delivery health roll-up does. */
-export type MailServerState = 'healthy' | 'degraded' | 'unreachable' | 'stale' | 'unchecked';
+export type MailServerState =
+	| 'healthy'
+	| 'degraded'
+	| 'signing_held'
+	| 'unreachable'
+	| 'stale'
+	| 'unchecked';
 
 /** Today's campaign capacity: paced by warm-up, or not capped at all. */
 export type MarketingCapacity = { paced: true; today: number } | { paced: false };

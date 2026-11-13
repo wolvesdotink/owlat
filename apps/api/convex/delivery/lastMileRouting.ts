@@ -8,6 +8,7 @@ import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { isRelayTransportKind } from './relayConfiguration';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
+import type { resolveLastMileRoutePlanFromDb } from '../lib/sendProviders/route';
 import { transportEnvOptional } from '../lib/sendProviders/transportEnv';
 import { defaultSendTransportId, resolveSendTransport } from '../lib/sendProviders/transports';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
@@ -52,6 +53,11 @@ interface LastMileRoutingReady {
 	 * domain's return-path host authorises it.
 	 */
 	relayReturnPathHost?: string | undefined;
+	/**
+	 * The From domain is owed a DKIM signature by the built-in MTA; see
+	 * `delivery/dkimSignatureRequirement.ts`. Answered by the same routing query.
+	 */
+	requireDkimSignature?: boolean;
 }
 
 export interface LastMileRoutingDeferred {
@@ -139,6 +145,19 @@ export async function resolveLastMileRouting(
 		from: input.from,
 		...(input.sendId !== undefined ? { sendId: input.sendId } : {}),
 	});
+	const result = await routeFromPlan(ctx, input, plan);
+	return result.kind === 'ready' && plan.requireDkimSignature
+		? { ...result, requireDkimSignature: true }
+		: result;
+}
+
+type LastMileRoutePlan = Awaited<ReturnType<typeof resolveLastMileRoutePlanFromDb>>;
+
+async function routeFromPlan(
+	ctx: ActionCtx,
+	input: LastMileInput,
+	plan: LastMileRoutePlan
+): Promise<LastMileRoutingResult> {
 	// An open org-wide safety circuit, or a fallback whose relay identity is
 	// unverified, is a "not right now" — holding keeps the message alive until
 	// the deadline instead of burning every in-flight send the moment a safety

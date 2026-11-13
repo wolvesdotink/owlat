@@ -16436,6 +16436,8 @@
 					"action": "Mailserver prüfen",
 					"degraded": "Der Mailserver meldet einen Fehler, Mail geht über ihn also nicht zuverlässig raus.",
 					"healthy": "Der Mailserver ist erreichbar und meldet keine Probleme.",
+					"signingHeld": "Der Mailserver hält Mails zurück, weil eine Versanddomain keinen nutzbaren DKIM-Schlüssel zum Signieren hat. Stell den Schlüssel wieder her oder veröffentliche den neuen DKIM-Eintrag der Domain.",
+					"signingHeldAction": "Versanddomains öffnen",
 					"stale": "Die letzte Statusprüfung des Mailservers ist veraltet, die Prüfung selbst ist also vielleicht stehen geblieben.",
 					"title": "Mailserver",
 					"unchecked": "Der Status des Mailservers wurde noch nicht geprüft.",

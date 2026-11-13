@@ -89,6 +89,14 @@ export interface MtaSendRequest {
 	engagementScore?: unknown;
 	dkimDomain: string;
 	/**
+	 * Set by Convex when `dkimDomain` is a sending domain registered with the
+	 * MTA. The MTA then never sends the message unsigned: with no usable key it
+	 * defers it (internal hold, not a bounce) until a key signs it or the message
+	 * ages out. Absent ⇒ sign when a key resolves, otherwise send unsigned. Every
+	 * intake accepts it; only the governed producer sets it.
+	 */
+	requireDkimSignature?: boolean;
+	/**
 	 * Postbox-only: the allowed-from set for the originating mailbox.
 	 * Convex computes this at dispatch time (`resolveAllowedFromAddresses`)
 	 * and passes it in so the MTA can refuse forged-From requests without

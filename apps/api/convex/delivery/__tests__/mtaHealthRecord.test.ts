@@ -202,3 +202,59 @@ describe('canSkipMtaHealthWrite', () => {
 		expect(MTA_HEALTH_MAX_AGE_MS).toBeGreaterThanOrEqual(worstCaseAge);
 	});
 });
+
+describe('mtaHealth.record with a domain whose DKIM key the MTA lost', () => {
+	async function seedDomain(
+		t: TestConvex<typeof schema>,
+		row: { status: 'verified' | 'pending'; providerType: string }
+	) {
+		return await t.run(async (ctx) =>
+			ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				dnsRecords: { dkim: [{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; p=old' }] },
+				verifiedAt: T0 - 86_400_000,
+				createdAt: T0,
+				updatedAt: T0,
+				...row,
+			})
+		);
+	}
+
+	const held = (cause: string) =>
+		poll(T0, {
+			status: 'degraded',
+			dkimSigningHeld: [{ domain: 'mail.example.com', cause, since: T0 - 60_000 }],
+		});
+
+	it('regenerates a verified domain so its new DKIM record is shown to publish', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedDomain(t, { status: 'verified', providerType: 'mta' });
+
+		await t.mutation(internal.delivery.mtaHealth.record, { snapshot: held('no_key') });
+
+		const domain = await t.run((ctx) => ctx.db.get(domainId));
+		expect(domain).toMatchObject({ status: 'registering', dnsRecords: {} });
+		expect(domain?.verifiedAt).toBeUndefined();
+	});
+
+	it.each(['unreadable', 'unpublished', 'org_mismatch'])(
+		'leaves the domain alone when the key exists but is %s',
+		async (cause) => {
+			const t = convexTest(schema, modules);
+			const domainId = await seedDomain(t, { status: 'verified', providerType: 'mta' });
+
+			await t.mutation(internal.delivery.mtaHealth.record, { snapshot: held(cause) });
+
+			expect((await t.run((ctx) => ctx.db.get(domainId)))?.status).toBe('verified');
+		}
+	);
+
+	it('does not regenerate a domain that is already waiting for its records', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedDomain(t, { status: 'pending', providerType: 'mta' });
+
+		await t.mutation(internal.delivery.mtaHealth.record, { snapshot: held('no_key') });
+
+		expect((await t.run((ctx) => ctx.db.get(domainId)))?.status).toBe('pending');
+	});
+});
