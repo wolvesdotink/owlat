@@ -711,6 +711,7 @@ import type * as delivery_sendComposition_archive_snapshot_index from '../delive
 import type * as delivery_sendComposition_automation_index from '../delivery/sendComposition/automation/index.js';
 import type * as delivery_sendComposition_campaign_index from '../delivery/sendComposition/campaign/index.js';
 import type * as delivery_sendComposition_feedbackId from '../delivery/sendComposition/feedbackId.js';
+import type * as delivery_sendComposition_footer from '../delivery/sendComposition/footer.js';
 import type * as delivery_sendComposition_index from '../delivery/sendComposition/index.js';
 import type * as delivery_sendComposition_listId from '../delivery/sendComposition/listId.js';
 import type * as delivery_sendComposition_personalization from '../delivery/sendComposition/personalization.js';
@@ -2636,6 +2637,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendComposition/automation/index': typeof delivery_sendComposition_automation_index;
 	'delivery/sendComposition/campaign/index': typeof delivery_sendComposition_campaign_index;
 	'delivery/sendComposition/feedbackId': typeof delivery_sendComposition_feedbackId;
+	'delivery/sendComposition/footer': typeof delivery_sendComposition_footer;
 	'delivery/sendComposition/index': typeof delivery_sendComposition_index;
 	'delivery/sendComposition/listId': typeof delivery_sendComposition_listId;
 	'delivery/sendComposition/personalization': typeof delivery_sendComposition_personalization;
