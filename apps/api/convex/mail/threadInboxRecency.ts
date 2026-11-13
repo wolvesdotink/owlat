@@ -10,7 +10,7 @@
  *
  * Every write of `folderRoles` or `lastMessageAt` sets it in the same patch,
  * from the values that patch leaves on the row. A thread written before the
- * field has none until `migrations/0073_backfill_thread_inbox_recency`
+ * field has none until `migrations/0072_backfill_thread_inbox_recency`
  * reaches it, so the list reads the index only once that migration completed
  * ({@link isInboxRecencyIndexReady}) and scans by recency before.
  *
@@ -21,7 +21,7 @@ import type { QueryCtx } from '../_generated/server';
 import { readMigrationRun } from '../lib/migrationLedger';
 
 /** The ledger row whose completion makes the index safe to read. */
-export const INBOX_RECENCY_MIGRATION = '0073_backfill_thread_inbox_recency';
+export const INBOX_RECENCY_MIGRATION = '0072_backfill_thread_inbox_recency';
 
 /** The value `inboxLastMessageAt` holds for these folder roles and recency. */
 export function inboxLastMessageAt(thread: {

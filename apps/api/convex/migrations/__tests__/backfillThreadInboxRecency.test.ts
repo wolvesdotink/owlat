@@ -1,5 +1,5 @@
 /**
- * Migration 0073: a thread stored before `inboxLastMessageAt` existed gets its
+ * Migration 0072: a thread stored before `inboxLastMessageAt` existed gets its
  * `lastMessageAt` when it is in the Inbox and `null` when it is not; a thread
  * whose value is already right is not written. The conversation list reads
  * the Inbox index only once the ledger row says the walk completed.
@@ -12,7 +12,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { modules, seedMailbox } from '../../mail/__tests__/helpers.testlib';
 import { isInboxRecencyIndexReady } from '../../mail/threadInboxRecency';
-import { MIGRATION, PAGE_SIZE } from '../0073_backfill_thread_inbox_recency';
+import { MIGRATION, PAGE_SIZE } from '../0072_backfill_thread_inbox_recency';
 
 const migration = internal.migrations[MIGRATION];
 type T = TestConvex<typeof schema>;
@@ -50,7 +50,7 @@ async function seedThread(
 	);
 }
 
-describe('0073_backfill_thread_inbox_recency', () => {
+describe('0072_backfill_thread_inbox_recency', () => {
 	it('sets the Inbox recency on every thread, over several pages, then opens the index', async () => {
 		const t = convexTest(schema, modules);
 		const mailboxId = await seedMailbox(t);

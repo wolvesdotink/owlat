@@ -355,7 +355,7 @@ const threadInboxRecency = derived({
 	fields: ['inboxLastMessageAt'],
 	source: 'folderRoles and lastMessageAt of the same row (mail/threadInboxRecency.ts)',
 	policy: 'exact',
-	// A row the 0073 backfill has not reached yet is the backfill's to fill.
+	// A row the 0072 backfill has not reached yet is the backfill's to fill.
 	isEligible: (thread) => thread.inboxLastMessageAt !== undefined,
 	current: (thread) => ({ inboxLastMessageAt: thread.inboxLastMessageAt ?? NOT_IN_INBOX }),
 	recompute: async (_ctx, thread, budget) => {

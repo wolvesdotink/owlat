@@ -1,7 +1,7 @@
 /**
- * Backfill the label membership rows (migration 0074).
+ * Backfill the label membership rows (migration 0073).
  *
- *   npx convex run migrations/0074_backfill_label_membership:run
+ *   npx convex run migrations/0073_backfill_label_membership:run
  *
  * Every write that inserts a labeled message, changes `labelIds` or deletes a
  * message keeps `mailLabelMessages` in step (`mail/labelMessageIndex.ts`), and
@@ -36,7 +36,7 @@ import {
 } from '../lib/migrationLedger';
 import { backfillLabelMembershipStep } from '../mail/labelMessageIndex';
 
-export const MIGRATION = '0074_backfill_label_membership';
+export const MIGRATION = '0073_backfill_label_membership';
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.22';
 /**
@@ -59,7 +59,7 @@ export const processPage = internalMutation({
 	handler: async (ctx, args): Promise<{ isDone: boolean; isSuperseded?: boolean }> => {
 		const run = await readMigrationRun(ctx, MIGRATION);
 		if (!isCurrentMigrationPage(run, args.generation)) {
-			logInfo('migration.0074_backfill_label_membership.superseded', {
+			logInfo('migration.0073_backfill_label_membership.superseded', {
 				generation: args.generation,
 			});
 			return { isDone: false, isSuperseded: true };
@@ -81,7 +81,7 @@ export const processPage = internalMutation({
 			scanned: step.scanned,
 			changed: step.changed,
 		});
-		logInfo('migration.0074_backfill_label_membership.page', {
+		logInfo('migration.0073_backfill_label_membership.page', {
 			scanned: step.scanned,
 			changed: step.changed,
 			isMailboxReady: step.isReady,
@@ -93,7 +93,7 @@ export const processPage = internalMutation({
 				ctx,
 				run,
 				0,
-				internal.migrations['0074_backfill_label_membership'].processPage,
+				internal.migrations['0073_backfill_label_membership'].processPage,
 				{ cursor: next, generation: run.generation }
 			);
 		}
@@ -124,10 +124,10 @@ export const run = internalMutation({
 			ctx,
 			begun,
 			0,
-			internal.migrations['0074_backfill_label_membership'].processPage,
+			internal.migrations['0073_backfill_label_membership'].processPage,
 			{ cursor, generation: begun.generation }
 		);
-		logInfo('migration.0074_backfill_label_membership.started', {
+		logInfo('migration.0073_backfill_label_membership.started', {
 			generation: begun.generation,
 		});
 		return { started: true, generation: begun.generation };

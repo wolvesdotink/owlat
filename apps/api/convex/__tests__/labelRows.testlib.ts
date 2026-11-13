@@ -2,7 +2,7 @@
  * Label membership rows for tests that seed `mailMessages` directly: a raw
  * insert bypasses the writers that keep `mailLabelMessages`, so a fixture
  * reaches the indexed label reads only by running the mailbox's backfill, the
- * same walk migration 0074 runs.
+ * same walk migration 0073 runs.
  */
 
 import type { TestConvex } from 'convex-test';

@@ -1,7 +1,7 @@
 /**
- * Give stored threads their Inbox recency (migration 0073).
+ * Give stored threads their Inbox recency (migration 0072).
  *
- *   npx convex run migrations/0073_backfill_thread_inbox_recency:run
+ *   npx convex run migrations/0072_backfill_thread_inbox_recency:run
  *
  * Every write of a thread's `folderRoles` or `lastMessageAt` sets
  * `inboxLastMessageAt` beside them (mail/threadInboxRecency.ts). Threads
@@ -11,7 +11,7 @@
  *
  * ONE SWEEP over `mailThreads`. A thread whose value is already right is left
  * untouched. Each page records its cursor in the migration ledger
- * (`migrationRuns` row `0073_backfill_thread_inbox_recency`,
+ * (`migrationRuns` row `0072_backfill_thread_inbox_recency`,
  * lib/migrationLedger.ts) before the next is scheduled. Running `run` again on
  * an unfinished walk resumes it; on a finished one it does nothing
  * (`'{"restart":true}'` starts over, and the list scans again until it ends).
@@ -62,7 +62,7 @@ export const processPage = internalMutation({
 	handler: async (ctx, args): Promise<{ isDone: boolean; isSuperseded?: boolean }> => {
 		const run = await readMigrationRun(ctx, MIGRATION);
 		if (!isCurrentMigrationPage(run, args.generation)) {
-			logInfo('migration.0073_backfill_thread_inbox_recency.superseded', {
+			logInfo('migration.0072_backfill_thread_inbox_recency.superseded', {
 				generation: args.generation,
 			});
 			return { isDone: false, isSuperseded: true };
@@ -74,7 +74,7 @@ export const processPage = internalMutation({
 			scanned: result.scanned,
 			changed: result.changed,
 		});
-		logInfo('migration.0073_backfill_thread_inbox_recency.page', {
+		logInfo('migration.0072_backfill_thread_inbox_recency.page', {
 			scanned: result.scanned,
 			changed: result.changed,
 			isDone: result.isDone,
@@ -85,7 +85,7 @@ export const processPage = internalMutation({
 				ctx,
 				run,
 				0,
-				internal.migrations['0073_backfill_thread_inbox_recency'].processPage,
+				internal.migrations['0072_backfill_thread_inbox_recency'].processPage,
 				{ cursor: result.cursor, generation: run.generation }
 			);
 		}
@@ -121,10 +121,10 @@ export const run = internalMutation({
 			ctx,
 			begun,
 			0,
-			internal.migrations['0073_backfill_thread_inbox_recency'].processPage,
+			internal.migrations['0072_backfill_thread_inbox_recency'].processPage,
 			{ cursor, generation: begun.generation }
 		);
-		logInfo('migration.0073_backfill_thread_inbox_recency.started', {
+		logInfo('migration.0072_backfill_thread_inbox_recency.started', {
 			cursor,
 			generation: begun.generation,
 		});

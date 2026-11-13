@@ -1,5 +1,5 @@
 /**
- * Migration 0074: every (message, label) pair of mail stored before the label
+ * Migration 0073: every (message, label) pair of mail stored before the label
  * rows were maintained gets its `mailLabelMessages` row, each mailbox is marked
  * ready once its walk is done, and the pass completes only when every mailbox
  * is. A pair already stored is not written twice.
@@ -16,7 +16,7 @@ import {
 	seedMailbox,
 	seedMessage,
 } from '../../mail/__tests__/helpers.testlib';
-import { MESSAGES_PER_PAGE, MIGRATION } from '../0074_backfill_label_membership';
+import { MESSAGES_PER_PAGE, MIGRATION } from '../0073_backfill_label_membership';
 import { isLabelMembershipReady } from '../../mail/labelMessageIndex';
 
 const migration = internal.migrations[MIGRATION];
@@ -28,7 +28,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe('0074_backfill_label_membership', () => {
+describe('0073_backfill_label_membership', () => {
 	it('adds every pair, mailbox by mailbox over several pages, and marks each ready', async () => {
 		const t = convexTest(schema, modules);
 		const big = await seedMailbox(t, { address: 'big@owlat.test' });

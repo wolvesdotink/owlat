@@ -299,7 +299,7 @@ describe('listThreads in a mostly archived mailbox', () => {
 			const t = convexTest(schema, modules);
 			await enableFeatures(t, ['mail.external']);
 			const mailboxId = await seedMostlyArchived(t);
-			await t.mutation(internal.migrations['0073_backfill_thread_inbox_recency'].run, {});
+			await t.mutation(internal.migrations['0072_backfill_thread_inbox_recency'].run, {});
 			await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 			const firstPage = await pageLikeTheClient(t, mailboxId, 50);
