@@ -954,6 +954,7 @@ import type * as inbox_stepOutputs from '../inbox/stepOutputs.js';
 import type * as inbox_teamStream from '../inbox/teamStream.js';
 import type * as inbox_teamStreamSources from '../inbox/teamStreamSources.js';
 import type * as inbox_threadFilters from '../inbox/threadFilters.js';
+import type * as inbox_threadPage from '../inbox/threadPage.js';
 import type * as inbox_threadSearch from '../inbox/threadSearch.js';
 import type * as inbox_threadSort from '../inbox/threadSort.js';
 import type * as inbox_updates from '../inbox/updates.js';
@@ -2895,6 +2896,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/teamStream': typeof inbox_teamStream;
 	'inbox/teamStreamSources': typeof inbox_teamStreamSources;
 	'inbox/threadFilters': typeof inbox_threadFilters;
+	'inbox/threadPage': typeof inbox_threadPage;
 	'inbox/threadSearch': typeof inbox_threadSearch;
 	'inbox/threadSort': typeof inbox_threadSort;
 	'inbox/updates': typeof inbox_updates;
