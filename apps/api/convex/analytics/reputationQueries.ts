@@ -100,6 +100,9 @@ export const getSendingOverview = authedQuery({
 						remainingToday: Math.max(0, warmingState.totalDailyCap - warmingState.totalSentToday),
 						ipCount: warmingState.ipCount,
 						ips: warmingState.ips,
+						// The full pool lists: a row's own `pool` names only the first
+						// pool of an address that serves both.
+						pools: warmingState.pools ?? null,
 						syncedAt: warmingState.syncedAt,
 					}
 				: null,

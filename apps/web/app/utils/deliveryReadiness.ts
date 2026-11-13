@@ -1,16 +1,53 @@
-import { summarizeOutboundAlignment, type OutboundTransportFacts } from '@owlat/shared';
-import type { HealthTone } from '~/utils/healthTone';
+import { summarizeOutboundAlignment } from '@owlat/shared';
+import { sendingIpPosture, type SendingIpPosture } from '@owlat/shared/ipReadiness';
+import { buildReadinessGates, enabledReadinessStreams } from '~/utils/deliveryReadinessGates';
+import type {
+	DeliveryReadiness,
+	MailServerState,
+	MarketingCapacity,
+	ReadinessAlignmentSource,
+	ReadinessDomainRow,
+	ReadinessInput,
+	ReadinessLevel,
+	ReadinessMtaStsSource,
+	ReadinessStreamSources,
+	ReadinessTransportSummary,
+	StreamLevel,
+	StreamTransportFacts,
+	StreamVerdict,
+} from '~/utils/deliveryReadinessTypes';
 import {
-	dualArmAlignmentGate,
 	summarizeDualArmAlignment,
 	type ReadinessDualArmRow,
 	type ReadinessDualArmSummary,
 } from '~/utils/dualArmAlignment';
-import type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus } from '~/utils/readinessGate';
+import type { HealthTone } from '~/utils/healthTone';
 import type { LocalizedText } from '~/utils/localizedText';
+import type {
+	MailStream,
+	ReadinessGate,
+	ReadinessGateKey,
+	ReadinessGateStatus,
+} from '~/utils/readinessGate';
 
 export type { ReadinessDualArmRow, ReadinessDualArmSummary };
-export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
+export type { MailStream, ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
+export type { SendingIpPosture };
+export type {
+	DeliveryReadiness,
+	MailServerState,
+	MarketingCapacity,
+	ReadinessAlignmentSource,
+	ReadinessDomainRow,
+	ReadinessInput,
+	ReadinessLevel,
+	ReadinessMtaStsSource,
+	ReadinessStreamSources,
+	ReadinessTransportSummary,
+	StreamLevel,
+	StreamTransportFacts,
+	StreamVerdict,
+};
 
 /**
  * The single source of truth for "can this instance actually send mail, and if
@@ -30,116 +67,6 @@ export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
  * mapping is unit-testable without mounting anything or reaching the Convex
  * client.
  */
-
-/** Overall readiness level for the panel's headline chip. */
-export type ReadinessLevel = 'ready' | 'blocked' | 'incomplete';
-
-export interface DeliveryReadiness {
-	/** The real gate: transport configured AND a verified sending domain. */
-	canSend: boolean;
-	level: ReadinessLevel;
-	tone: HealthTone;
-	/** Headline verdict, e.g. "Ready to send". */
-	headline: LocalizedText;
-	/** One sentence naming the single next thing to do (or an all-clear line). */
-	summary: LocalizedText;
-	gates: ReadinessGate[];
-}
-
-/** The derived facts the readiness verdict is computed from. */
-export interface ReadinessInput {
-	/**
-	 * The real send-path gate — `getTransportSummary.canSend`, itself
-	 * `isDeliveryConfigured` on the backend. True only when a usable transport
-	 * (provider + credentials, or an advanced route) is configured.
-	 */
-	transportConfigured: boolean;
-	/** Whether any sending domain is configured at all. */
-	hasDomains: boolean;
-	/** Whether at least one sending domain has fully verified. */
-	domainVerified: boolean;
-	/** For the best-configured domain: are SPF, DKIM AND DMARC all present? */
-	authComplete: boolean;
-	/** Auth record names still missing for that domain, in display order. */
-	authMissing: string[];
-	/**
-	 * The deployment is publishing an MTA-STS policy in `enforce` mode, but the
-	 * `_mta-sts` TXT record / served policy isn't verified yet. Optional and
-	 * defaults to "no warning" — deployments that publish nothing (the default)
-	 * or are still in `testing` leave it unset, so this never touches their
-	 * verdict. When true it downgrades an otherwise-ready instance to a warning:
-	 * enforce without the record in place can bounce inbound mail from senders
-	 * that honour the policy.
-	 */
-	mtaStsEnforceWithoutRecord?: boolean;
-	/**
-	 * The active transport signs/bounces mail as a domain that doesn't align with
-	 * one or more of the configured sending domains, so DMARC fails for that mail
-	 * (RFC 7489). Typical cause: a generic SMTP relay signing as its OWN domain
-	 * instead of the operator's. Optional and defaults to "no warning" — the
-	 * built-in MTA and a correctly-configured relay leave it unset. When true it
-	 * downgrades an otherwise-ready instance to a warning: the instance CAN send,
-	 * but that mail is at risk of being treated as spam.
-	 */
-	transportMisaligned?: boolean;
-	/** The sending domains the active transport is misaligned for, in display order. */
-	misalignedDomains?: string[];
-	/** One plain-language line on WHY the transport is misaligned (per-transport guidance). */
-	alignmentReason?: string | null;
-	/**
-	 * The dual-transport ramp's alignment pre-flight, or `undefined` when
-	 * there is nothing to say — no reference transport, no verdict yet, or every
-	 * domain reporting `single_arm`. Undefined renders NO gate at all: running on
-	 * the own MTA alone is a supported configuration, never an unfinished setup.
-	 */
-	dualArmAlignment?: ReadinessDualArmSummary | undefined;
-}
-
-/**
- * The transport half of the two go-live sources: the non-secret
- * `getTransportSummary` — only `canSend` (the real send-path gate) matters here.
- */
-export interface ReadinessTransportSummary {
-	canSend: boolean;
-}
-
-/**
- * The domain half: one row of `getDeliveryDomainTable`, narrowed to the two
- * facts readiness needs — whether it's verified and which auth records are still
- * missing. Structural on purpose so this stays free of the Convex client.
- */
-export interface ReadinessDomainRow {
-	status: 'registering' | 'pending' | 'verified' | 'failed';
-	missing: string[];
-}
-
-/**
- * The MTA-STS half: the deployment's current inbound-TLS publishing state,
- * narrowed to the two facts readiness needs. Structural on purpose (no import of
- * the shared `MtaStsMode`) so this stays a pure primitive-in helper. Optional —
- * a viewer who can't read the admin-gated guidance (or a deployment that
- * publishes nothing) passes `null` and the MTA-STS gate never appears.
- */
-export interface ReadinessMtaStsSource {
-	/** Current publishing mode (`none` | `testing` | `enforce`). */
-	mode: 'none' | 'testing' | 'enforce';
-	/** The `_mta-sts` record + served policy verified live against what we serve. */
-	recordVerified: boolean;
-}
-
-/**
- * The outbound-alignment half: the active transport's effective identities plus
- * the sending domains to check them against. Optional — a viewer or deployment
- * without the transport facts (or with no sending domains yet) passes `null` and
- * the alignment gate never appears. Structural on purpose so this stays a pure
- * primitive-in helper.
- */
-export interface ReadinessAlignmentSource {
-	/** The active transport's effective DKIM / return-path identities. */
-	facts: OutboundTransportFacts;
-	/** The configured sending domains to test alignment against. */
-	fromDomains: readonly string[];
-}
 
 /**
  * Fold the live query results into the flat `ReadinessInput` the verdict is
@@ -162,7 +89,8 @@ export function readinessInputFromSources(
 	rows: readonly ReadinessDomainRow[],
 	mtaSts?: ReadinessMtaStsSource | null,
 	alignment?: ReadinessAlignmentSource | null,
-	dualArmRows?: readonly ReadinessDualArmRow[] | null
+	dualArmRows?: readonly ReadinessDualArmRow[] | null,
+	streamSources?: ReadinessStreamSources | null
 ): ReadinessInput {
 	const verified = rows.filter((row) => row.status === 'verified');
 	const primary = verified[0] ?? rows[0] ?? null;
@@ -180,159 +108,45 @@ export function readinessInputFromSources(
 		misalignedDomains: alignmentSummary?.misalignedDomains ?? [],
 		alignmentReason: alignmentSummary?.reason ?? null,
 		dualArmAlignment: summarizeDualArmAlignment(dualArmRows),
+		...(streamSources ? streamInputFromSources(streamSources) : {}),
 	};
 }
 
-const DOMAINS_HREF = '/dashboard/admin/delivery/domains';
-const CONFIG_HREF = '/dashboard/admin/delivery/transport';
-
-/** The transport gate: reads the same `canSend` the send path itself uses. */
-function transportGate(input: ReadinessInput): ReadinessGate {
-	if (input.transportConfigured) {
-		return {
-			key: 'transport',
-			title: 'shared.deliveryReadiness.gates.transport.title',
-			detail: 'shared.deliveryReadiness.gates.transport.configured',
-			status: 'ready',
-			tone: 'success',
-			actionHref: null,
-			actionLabel: null,
-		};
-	}
-	return {
-		key: 'transport',
-		title: 'shared.deliveryReadiness.gates.transport.title',
-		detail: 'shared.deliveryReadiness.gates.transport.missing',
-		status: 'attention',
-		tone: 'error',
-		actionHref: CONFIG_HREF,
-		actionLabel: 'shared.deliveryReadiness.gates.transport.action',
+/**
+ * The stream facts of a {@link ReadinessInput}. Sending IPs are judged per
+ * pool (`transactional`, `campaign`) and only for a stream the MTA carries; the
+ * warm-up only paces campaigns, so only the marketing stream reads it.
+ */
+function streamInputFromSources(sources: ReadinessStreamSources): Partial<ReadinessInput> {
+	const streamTransport = {
+		transactional: sources.streams.transactional,
+		marketing: sources.streams.campaign,
 	};
-}
-
-/** The sending-domain gate: needs a domain, then that domain to verify. */
-function domainGate(input: ReadinessInput): ReadinessGate {
-	if (input.domainVerified) {
-		return {
-			key: 'domain',
-			title: 'shared.deliveryReadiness.gates.domain.title',
-			detail: 'shared.deliveryReadiness.gates.domain.verified',
-			status: 'ready',
-			tone: 'success',
-			actionHref: null,
-			actionLabel: null,
-		};
-	}
-	if (input.hasDomains) {
-		return {
-			key: 'domain',
-			title: 'shared.deliveryReadiness.gates.domain.title',
-			detail: 'shared.deliveryReadiness.gates.domain.unverified',
-			status: 'pending',
-			tone: 'warning',
-			actionHref: DOMAINS_HREF,
-			actionLabel: 'shared.deliveryReadiness.gates.domain.actionCheck',
-		};
-	}
+	const ips = sources.warming?.ips ?? [];
+	const pools = sources.warming?.pools ?? null;
+	const capacity = sources.sendingReadiness;
 	return {
-		key: 'domain',
-		title: 'shared.deliveryReadiness.gates.domain.title',
-		detail: 'shared.deliveryReadiness.gates.domain.missing',
-		status: 'attention',
-		tone: 'warning',
-		actionHref: DOMAINS_HREF,
-		actionLabel: 'shared.deliveryReadiness.gates.domain.actionAdd',
-	};
-}
-
-/** The email-authentication gate (SPF · DKIM · DMARC on the sending domain). */
-function authenticationGate(input: ReadinessInput): ReadinessGate {
-	// Nothing to authenticate until a domain exists — stay pending, not red, so a
-	// brand-new instance doesn't read as broken before the domain step is even done.
-	if (!input.hasDomains) {
-		return {
-			key: 'authentication',
-			title: 'shared.deliveryReadiness.gates.authentication.title',
-			detail: 'shared.deliveryReadiness.gates.authentication.awaitingDomain',
-			status: 'pending',
-			tone: 'neutral',
-			actionHref: null,
-			actionLabel: null,
-		};
-	}
-	if (input.authComplete) {
-		return {
-			key: 'authentication',
-			title: 'shared.deliveryReadiness.gates.authentication.title',
-			detail: 'shared.deliveryReadiness.gates.authentication.complete',
-			status: 'ready',
-			tone: 'success',
-			actionHref: null,
-			actionLabel: null,
-		};
-	}
-	// The record names are the protocol acronyms, identical in every language, so
-	// they travel as a parameter rather than as keys of their own.
-	const missing = input.authMissing.length > 0 ? input.authMissing.join(', ') : 'SPF, DKIM, DMARC';
-	return {
-		key: 'authentication',
-		title: 'shared.deliveryReadiness.gates.authentication.title',
-		detail: {
-			key: 'shared.deliveryReadiness.gates.authentication.missing',
-			params: { records: missing },
+		streamTransport,
+		streamsEnabled: sources.enabled ?? {},
+		mailServer: sources.mailServer,
+		sendingIps: {
+			transactional: streamTransport.transactional.usesOwnMta
+				? sendingIpPosture(ips, 'transactional', pools)
+				: null,
+			marketing: streamTransport.marketing.usesOwnMta
+				? sendingIpPosture(ips, 'campaign', pools)
+				: null,
 		},
-		status: 'attention',
-		tone: 'warning',
-		actionHref: DOMAINS_HREF,
-		actionLabel: 'shared.deliveryReadiness.gates.authentication.action',
-	};
-}
-
-/**
- * The outbound-alignment gate — surfaced only when the active transport is
- * misaligned for a configured sending domain. A warning (not a hard block): the
- * instance can still send, but that mail can be treated as spam because the
- * address it's from and the way the transport signs/bounces it disagree. The fix
- * is a transport-config change, so it links to the transport editor.
- */
-function alignmentGate(input: ReadinessInput): ReadinessGate {
-	const domains = input.misalignedDomains ?? [];
-	// `alignmentReason` is the backend's own per-transport sentence, already in
-	// words — it rides through as itself, the way every server-authored line does.
-	const detail: LocalizedText =
-		input.alignmentReason ??
-		(domains.length > 0
-			? {
-					key: 'shared.deliveryReadiness.gates.alignment.misalignedDomains',
-					params: { domains: domains.join(', ') },
-				}
-			: 'shared.deliveryReadiness.gates.alignment.misaligned');
-	return {
-		key: 'alignment',
-		title: 'shared.deliveryReadiness.gates.alignment.title',
-		detail,
-		status: 'attention',
-		tone: 'warning',
-		actionHref: CONFIG_HREF,
-		actionLabel: 'shared.deliveryReadiness.gates.alignment.action',
-	};
-}
-
-/**
- * The MTA-STS gate — surfaced only when `enforce` is published without the
- * record verified. A warning (not a hard block): the instance can still send;
- * the risk is on the INBOUND side, where senders honouring the policy may bounce
- * mail until the record + served policy are live.
- */
-function mtaStsGate(): ReadinessGate {
-	return {
-		key: 'mta-sts',
-		title: 'shared.deliveryReadiness.gates.mtaSts.title',
-		detail: 'shared.deliveryReadiness.gates.mtaSts.detail',
-		status: 'attention',
-		tone: 'warning',
-		actionHref: DOMAINS_HREF,
-		actionLabel: 'shared.deliveryReadiness.gates.mtaSts.action',
+		warmupHalted: streamTransport.marketing.usesOwnMta && sources.warming?.phase === 'plateau',
+		defaultSender: sources.transactionalSender,
+		marketingCapacity:
+			capacity == null
+				? null
+				: capacity.capped
+					? { paced: true, today: capacity.today }
+					: { paced: false },
+		complaintRate: sources.reputation?.complaintRate ?? null,
+		oneClickUnsubscribe: sources.oneClickUnsubscribe ?? null,
 	};
 }
 
@@ -348,53 +162,79 @@ const LEVEL_HEADLINE: Record<ReadinessLevel, LocalizedText> = {
 	blocked: 'shared.deliveryReadiness.headline.blocked',
 };
 
+const STREAM_TONE: Record<StreamLevel, HealthTone> = {
+	ready: 'success',
+	attention: 'warning',
+	blocked: 'error',
+};
+
+const STREAM_TO_LEVEL: Record<StreamLevel, ReadinessLevel> = {
+	ready: 'ready',
+	attention: 'incomplete',
+	blocked: 'blocked',
+};
+
+function appliesTo(gate: ReadinessGate, stream: MailStream): boolean {
+	return gate.streams === undefined || gate.streams.includes(stream);
+}
+
 /**
- * Derive the one combined readiness verdict.
+ * The verdict for one stream, from the gates that apply to it. An open blocking
+ * gate blocks it; any other gate in `attention` asks for attention. The
+ * dual-transport gate is advisory: what it gates is the ramp, not the send
+ * path, so it never feeds a verdict.
+ */
+function streamVerdict(gates: readonly ReadinessGate[], stream: MailStream): StreamVerdict {
+	const own = gates.filter((gate) => appliesTo(gate, stream) && gate.key !== 'dual-arm-alignment');
+	const blocking = own.find((gate) => gate.isBlocking === true && gate.status !== 'ready');
+	const attention = own.find((gate) => gate.status === 'attention');
+	const open = blocking ?? attention;
+	const level: StreamLevel = blocking ? 'blocked' : attention ? 'attention' : 'ready';
+	// The transport gate's label is a provider name, never a catalog key.
+	const transport = own.find((gate) => gate.key === 'transport')?.transport;
+	const paced = own.find((gate) => gate.key === 'capacity' && gate.tone === 'neutral');
+	const readySentence: LocalizedText =
+		paced?.detail ??
+		(typeof transport === 'string'
+			? {
+					key: `shared.deliveryReadiness.streams.${stream}.readyVia`,
+					params: { transport },
+				}
+			: `shared.deliveryReadiness.streams.${stream}.ready`);
+	return {
+		stream,
+		level,
+		tone: STREAM_TONE[level],
+		label: `shared.deliveryReadiness.streams.level.${level}`,
+		sentence: open ? open.detail : readySentence,
+		actionHref: open?.actionHref ?? null,
+		actionLabel: open?.actionLabel ?? null,
+	};
+}
+
+/**
+ * Derive the readiness verdicts: one per enabled stream, and the worst of them
+ * as the panel's single level.
  *
- * `canSend` is the honest gate — a transport AND a verified sending domain — so
- * the panel never claims "ready" while a real send would fail. Email
- * authentication is a deliverability gate, not a hard block: with a transport and
- * a verified domain the instance CAN send, but until SPF/DKIM/DMARC are in place
- * that mail is at risk, which is exactly the `incomplete` state.
+ * `canSend` is the honest instance-wide gate — a transport AND a verified
+ * sending domain. Email authentication is a deliverability gate, not a hard
+ * block: with a transport and a verified domain the instance CAN send, but until
+ * SPF/DKIM are in place that mail is at risk, which is the `attention` state.
  */
 export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadiness {
-	const gates = [transportGate(input), domainGate(input), authenticationGate(input)];
-	// The alignment gate is conditional: only a transport that's definitely
-	// misaligned for a configured sending domain adds it, so the built-in MTA and
-	// a correctly-configured relay see the same gates as before.
-	if (input.transportMisaligned) {
-		gates.push(alignmentGate(input));
-	}
-	// The MTA-STS gate is conditional: only publishing `enforce` without the
-	// record verified adds it, so a deployment that publishes nothing sees the
-	// same three gates as before.
-	if (input.mtaStsEnforceWithoutRecord) {
-		gates.push(mtaStsGate());
-	}
-	// The dual-transport alignment gate is conditional AND advisory: it appears
-	// only when a reference transport is really in play, and it deliberately does
-	// NOT feed `level` below — what it gates is the ramp, not the send path, so it
-	// can never turn a ready instance into an unfinished one.
-	if (input.dualArmAlignment !== undefined) {
-		gates.push(dualArmAlignmentGate(input.dualArmAlignment));
-	}
+	const gates = buildReadinessGates(input);
 
+	const streams = enabledReadinessStreams(input).map((stream) => streamVerdict(gates, stream));
 	const canSend = input.transportConfigured && input.domainVerified;
-
-	let level: ReadinessLevel;
-	if (!canSend) {
-		level = 'blocked';
-	} else if (!input.authComplete || input.transportMisaligned || input.mtaStsEnforceWithoutRecord) {
-		// CAN send, but something deliverability-adjacent is unfinished — either
-		// SPF/DKIM/DMARC, a misaligned transport, or the enforced inbound MTA-STS
-		// record.
-		level = 'incomplete';
-	} else {
-		level = 'ready';
-	}
+	const worst = streams.some((v) => v.level === 'blocked')
+		? 'blocked'
+		: streams.some((v) => v.level === 'attention')
+			? 'attention'
+			: 'ready';
+	const level = STREAM_TO_LEVEL[worst];
 
 	// The summary names the single most important next step: the first gate that
-	// isn't ready (transport → domain → authentication), or an all-clear line.
+	// isn't ready, or an all-clear line.
 	const nextGate = gates.find((gate) => gate.status !== 'ready');
 	const summary: LocalizedText =
 		level === 'ready'
@@ -408,5 +248,6 @@ export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadines
 		headline: LEVEL_HEADLINE[level],
 		summary,
 		gates,
+		streams,
 	};
 }

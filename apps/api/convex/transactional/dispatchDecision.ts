@@ -107,13 +107,26 @@ export function decideTemplate(
 	return { ok: true, template, isHtmlStale: template.htmlRenderState?.stale === true };
 }
 
+/**
+ * The default sender address an operator actually configured (settings, then
+ * environment), or `null` when neither is set. The readiness surfaces read this
+ * rather than {@link senderDefaults}: its placeholder fallback is never on a
+ * verified domain, so a send that reaches it is refused as `domain_unverified`.
+ */
+export function configuredDefaultFromEmail(
+	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail'> | null,
+	environment: { readonly defaultFromEmail?: string }
+): string | null {
+	return settings?.defaultFromEmail ?? environment.defaultFromEmail ?? null;
+}
+
 /** The sender every transactional send uses: settings → environment → fallback. */
 export function senderDefaults(
 	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail' | 'defaultFromName'> | null,
 	environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string }
 ): { fromEmail: string; fromName: string } {
 	return {
-		fromEmail: settings?.defaultFromEmail ?? environment.defaultFromEmail ?? 'noreply@example.com',
+		fromEmail: configuredDefaultFromEmail(settings, environment) ?? 'noreply@example.com',
 		fromName: settings?.defaultFromName ?? environment.defaultFromName ?? 'Owlat',
 	};
 }
