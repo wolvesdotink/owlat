@@ -244,7 +244,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 		// (copy this app owns) or the backend's own sentence, which must NOT go
 		// through `t()` — it is arbitrary text the compiler would read as syntax.
 		const copySource = operationCopy(op, copyOptions());
-		const copy = 'key' in copySource ? t(copySource.key) : copySource.text;
+		const copy = 'key' in copySource ? t(copySource.key, copySource.params) : copySource.text;
 
 		if (treatment.report) {
 			posthog.captureError(e, {

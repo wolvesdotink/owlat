@@ -1570,8 +1570,6 @@
 					"abTesting": "A/B-Test",
 					"audience": "Zielgruppe",
 					"blocked": {
-						"domainMissing": "Der Versand ist deaktiviert, weil \"{domain}\" nicht registriert ist. Füge die Domain unter Einstellungen → Domains hinzu und verifiziere sie.",
-						"domainUnverified": "Der Versand ist deaktiviert, weil \"{domain}\" nicht verifiziert ist. Schließe die DNS-Verifizierung unter Einstellungen → Domains ab.",
 						"emptyBody": "Der E-Mail-Inhalt ist leer. Gestalte die E-Mail, bevor du sie sendest."
 					},
 					"campaignName": "Kampagnenname",
@@ -11824,14 +11822,15 @@
 						"title": "Kampagne in Prüfung"
 					},
 					"warmup": {
-						"dayOf": "Tag {day} von ca. 30",
-						"estimateDetail": "Diese Kampagne hat {count} Empfänger. {message}",
+						"dayOf": "Tag {day} von {total}",
+						"estimateDetail": "Diese Kampagne hat {count} Empfänger, mehr als deine Warmup-Kapazität an einem Tag sendet, deshalb geht sie über mehrere Tage raus. | Diese Kampagne hat {count} Empfänger, mehr als deine Warmup-Kapazität an einem Tag sendet, deshalb geht sie über mehrere Tage raus.",
 						"estimatedDays": "Geschätzte Sendedauer: ca. 1 Tag | Geschätzte Sendedauer: ca. {days} Tage",
+						"estimatedDaysMoreThan": "Geschätzte Sendedauer: mehr als {days} Tage",
 						"graduatedDescription": "Deine IPs sind vollständig aufgewärmt. Kampagnen werden mit voller Geschwindigkeit versendet.",
 						"graduatedTitle": "Vollständig aufgewärmt",
 						"progress": "Warmup-Fortschritt",
 						"remainingCapacity": "Heute verbleibende Kapazität",
-						"remainingOfCap": "{remaining} von {cap} E-Mails",
+						"remainingToday": "{remaining} E-Mail | {remaining} E-Mails",
 						"subtitle": "Deine Sendekapazität basierend auf dem Aufwärmen der IP-Reputation",
 						"title": "IP-Warmup-Status"
 					}
@@ -19537,6 +19536,31 @@
 			"failedUnknown": "unbekannter Fehler",
 			"expired": "Die Aktion ist abgelaufen, bevor du sie freigegeben hast.",
 			"changed": "Das hat sich geändert, nachdem du es geöffnet hast. Prüf die neuen Angaben und gib es dann erneut frei."
+		},
+		"campaignRefusal": {
+			"accountBanned": "Der Versand ist für diesen Workspace dauerhaft gesperrt. Wende dich für Details an den Support.",
+			"accountSuspended": "Der Versand ist für diesen Workspace wegen eines Richtlinienverstoßes ausgesetzt. Wende dich an den Support, um ihn wiederherzustellen.",
+			"askAdmin": "Bitte eine Person mit Admin-Rechten in diesem Workspace, das zu beheben.",
+			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
+			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",
+			"capacityTruncated": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität würde es mehr als {maxDays} Tage dauern, bis alle erreicht sind. Sende sie in Etappen oder verkleinere die Zielgruppe.",
+			"domainInvalidAddress": "\"{email}\" ist keine gültige Absenderadresse. Wähle einen anderen Absender.",
+			"domainMissing": "\"{domain}\" ist in diesem Workspace noch keine Absenderdomain. Füge sie hinzu und verifiziere sie, bevor du sendest.",
+			"domainUnverified": "\"{domain}\" ist noch nicht verifiziert. Schließe die DNS-Verifizierung ab, bevor du sendest.",
+			"fix": {
+				"deliveryHub": "Zustellstatus öffnen",
+				"domains": "Domains öffnen",
+				"senders": "Kampagnenabsender öffnen",
+				"transport": "Versand einrichten"
+			},
+			"noAudience": "Wähle aus, wer diese Kampagne bekommt, bevor du sie sendest.",
+			"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet: Für Kampagnen-Mails gibt es keinen Versanddienst. Ein verbundenes Postfach versendet keine Kampagnen.",
+			"noFromEmail": "Wähle aus, von wem diese Kampagne kommt, bevor du sie sendest.",
+			"noTemplate": "Wähle die E-Mail aus, die diese Kampagne sendet, bevor du sie sendest.",
+			"notFound": "Diese Kampagne gibt es nicht mehr.",
+			"scheduledInPast": "Dieser Zeitpunkt ist schon vorbei. Wähle einen Zeitpunkt in der Zukunft.",
+			"senderNotAllowed": "\"{email}\" ist kein freigegebener Kampagnenabsender. Füge die Adresse zu den Kampagnenabsendern hinzu oder erlaube eigene Absender.",
+			"templateDeleted": "Die E-Mail, die diese Kampagne sendet, wurde gelöscht. Stelle sie wieder her oder wähle eine andere."
 		}
 	},
 	"sharedPkg": {

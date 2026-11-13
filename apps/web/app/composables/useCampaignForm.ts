@@ -434,6 +434,7 @@ export function useCampaignForm(
 		handleBack: actions.handleBack,
 		capacitySchedule: actions.capacitySchedule,
 		dismissCapacitySchedule: actions.dismissCapacitySchedule,
+		sendRefusal: actions.sendRefusal,
 
 		// Helpers
 		validateForm,

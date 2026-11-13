@@ -4,7 +4,11 @@ import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
 import { CircleCheckIcon, PaperPlaneIcon, TranslateIcon } from '@coolicons/vue';
-import { normalizeToOperationError, operationCopy } from '~/lib/operationError';
+import {
+	normalizeToOperationError,
+	operationCopy,
+	resolveOperationCopy,
+} from '~/lib/operationError';
 
 interface Props {
 	open: boolean;
@@ -86,7 +90,7 @@ const handleSendTestEmail = async () => {
 		});
 		testEmailError.value =
 			'key' in copy
-				? t(copy.key)
+				? resolveOperationCopy(copy, t)
 				: copy.text || t('components.campaigns.testEmailModal.sendFailed');
 	} finally {
 		isSending.value = false;

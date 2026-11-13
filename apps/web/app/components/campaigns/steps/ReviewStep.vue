@@ -4,6 +4,9 @@ import { isValidEmail } from '@owlat/shared';
 import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
 import type { ReviewCampaignData, ReviewSchedule } from '~/lib/campaignCompose';
 import { readStoredBlocks } from '~/lib/presendChecks/blockLocator';
+import type { SendBlocker } from '~/lib/campaignRefusal';
+import { useCampaignSendBlocker } from '~/composables/campaigns/useCampaignSendBlocker';
+import { useLocalized } from '~/composables/useLocalized';
 import { sendTimingFromCampaign, sendTimingScheduleArgs, type SendTiming } from '~/lib/sendTiming';
 import ReviewSendOptions from '~/components/campaigns/steps/review/ReviewSendOptions.vue';
 import ReviewSummary from '~/components/campaigns/steps/review/ReviewSummary.vue';
@@ -99,34 +102,30 @@ const requiresSendConfirmation = computed(
 const { arm: armUndoSend } = useCampaignUndoSend();
 
 /**
- * Pre-flight refused the send and handed back the multi-day schedule it would
- * take instead. Capacity is a SCHEDULE, not a failure, so
- * the refusal is claimed here and rendered as a calm panel rather than
- * left to the generic red `invalid_state` toast.
+ * Pre-flight refused the send. A capacity refusal hands back the multi-day
+ * schedule it would take instead, rendered as a calm panel (capacity is a
+ * schedule, not a failure); any other reason renders beside the send button
+ * with a link to where it is fixed. Neither is left to the generic toast.
  */
-const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
+const { capacitySchedule, sendRefusal, claimSendRefusal, dismissSendRefusal } =
+	useCampaignSendRefusal();
+const { presend: presendBlocker, refusal: refusalBlocker } = useCampaignSendBlocker({
+	fromEmail: () => props.data.fromEmail,
+	sendRefusal,
+});
 
 // Mutations. There is deliberately no `sendNow` here: "send now" schedules the
 // campaign one undo window out instead, so the send is a real, cancellable
 // scheduled campaign rather than a fire-and-forget the operator cannot recall.
 const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 	label: () => t('components.campaigns.steps.reviewStep.scheduleOperation'),
-	onError: claimCapacityRefusal,
+	onError: claimSendRefusal,
 });
 
 // Modal state — `error`/`setError` carry the send-blocked reason and local
 // schedule validation; `isLoading` gates the button. Backend errors are
 // surfaced by the operation module.
 const { isLoading, error, setError, setLoading } = useModal();
-
-const { data: domainVerificationStatus } = useOrganizationQuery(
-	api.domains.domains.getEmailDomainVerificationStatus,
-	() => {
-		const email = props.data.fromEmail.trim();
-		if (!email || !isValidEmail(email)) return undefined;
-		return { email };
-	}
-);
 
 // TODAY'S HEADROOM, shown with the send options rather than after the send is
 // attempted. Same paced projection the binding gate meters against
@@ -140,30 +139,23 @@ const { data: sendingReadiness } = useOrganizationQuery(
 	}
 );
 
-const sendBlockedReason = computed(() => {
+const sendBlocker = computed<SendBlocker | null>(() => {
 	// The send pipeline refuses an email without HTML; say so here, not after
 	// the click.
 	if (props.data.emailBodyHtml === null) {
-		return t('components.campaigns.steps.reviewStep.blocked.emptyBody');
+		return {
+			message: { key: 'components.campaigns.steps.reviewStep.blocked.emptyBody' },
+			fix: null,
+		};
 	}
-
-	const status = domainVerificationStatus.value;
-	if (!status) return null;
-
-	if (!status.exists) {
-		return t('components.campaigns.steps.reviewStep.blocked.domainMissing', {
-			domain: status.domain,
-		});
-	}
-
-	if (!status.verified) {
-		return t('components.campaigns.steps.reviewStep.blocked.domainUnverified', {
-			domain: status.domain,
-		});
-	}
-
-	return null;
+	return presendBlocker.value;
 });
+
+/** The same blocker as one sentence, for the pre-send checks' summary row. */
+const localized = useLocalized();
+const sendBlockedReason = computed(() =>
+	sendBlocker.value ? localized(sendBlocker.value.message) : null
+);
 
 // PRE-SEND CHECKS on the email as it will go out: size, links, images,
 // contrast, the MTA's content screening, the unsubscribe and postal-address
@@ -231,7 +223,7 @@ const validate = (): boolean => {
  * once the scary button is pressed.
  */
 const submitSend = async () => {
-	dismissCapacitySchedule();
+	dismissSendRefusal();
 	setLoading(true);
 	try {
 		if (sendOption.value === 'now') {
@@ -373,7 +365,7 @@ const handleConfirmSend = async () => {
 			v-model:timing="timing"
 			:campaign-id="data.campaignId"
 			:is-ab-test="data.abTestEnabled"
-			:send-blocked-reason="sendBlockedReason"
+			:send-blocker="sendBlocker"
 			:readiness="sendingReadiness"
 			:audience-size="decisionAudienceCount"
 		/>
@@ -381,6 +373,7 @@ const handleConfirmSend = async () => {
 		<!-- A send/schedule error appears next to the button that raised it, not
 		     at the top of a long page where nothing seems to change. -->
 		<UiErrorAlert v-if="error" role="alert" :message="error" />
+		<CampaignsSendBlockedNote v-if="refusalBlocker" role="alert" :blocker="refusalBlocker" />
 
 		<!-- Actions -->
 		<div class="flex items-center justify-between pt-2">

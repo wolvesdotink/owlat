@@ -16,9 +16,12 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, h, ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import type { OperationError } from '@owlat/shared/operationError';
 
 import ReviewStep from '../steps/ReviewStep.vue';
-import { useCapacityRefusal } from '~/composables/useCapacityRefusal';
+import { useCampaignSendRefusal } from '~/composables/useCampaignSendRefusal';
+import SendBlockedNote from '~/components/campaigns/SendBlockedNote.vue';
 import { useModal } from '~/composables/useModal';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
@@ -95,7 +98,10 @@ const passthroughStub = defineComponent({
 	},
 });
 
+let isAdmin = true;
+
 beforeEach(() => {
+	isAdmin = true;
 	scheduleRuns.length = 0;
 	pushed.length = 0;
 	toasts.length = 0;
@@ -109,7 +115,8 @@ beforeEach(() => {
 	vi.stubGlobal('useConvex', () => null);
 	// The real capacity-refusal claim: it is pure ref state, and stubbing it out
 	// would quietly disable the one error path this screen renders itself.
-	vi.stubGlobal('useCapacityRefusal', useCapacityRefusal);
+	vi.stubGlobal('useCampaignSendRefusal', useCampaignSendRefusal);
+	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(isAdmin) }));
 	vi.stubGlobal('useModal', useModal);
 	presend.checks.value = [];
 	presend.summary.value = { warnings: 0, blocking: 0, pending: 0, signature: '' };
@@ -170,7 +177,9 @@ function mountStep(
 		},
 		global: {
 			plugins: [createTestI18n()],
+			components: { CampaignsSendBlockedNote: SendBlockedNote },
 			stubs: {
+				NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
 				UiConfirmationDialog: confirmationDialogStub,
 				UiErrorAlert: true,
 				UiIconBox: true,
@@ -377,6 +386,82 @@ describe('ReviewStep post-send navigation', () => {
 		expect(pushed).toEqual([]);
 		expect(armed).toEqual([]);
 		expect(wrapper.emitted('complete')).toBeUndefined();
+	});
+});
+
+describe('ReviewStep send blockers', () => {
+	/** The queries answer per reference; everything else stays unresolved. */
+	function answerQueries(answers: Record<string, unknown>) {
+		vi.stubGlobal('useOrganizationQuery', (reference: FunctionReference<'query'>) => ({
+			data: ref(answers[getFunctionName(reference)]),
+		}));
+	}
+
+	it('says sending is not set up before the click, links to the fix, and holds the send', async () => {
+		answerQueries({ 'campaigns/preflight:getCampaignDeliveryConfigured': false });
+		const wrapper = mountStep({ audienceCount: 12 });
+
+		const note = wrapper.find('[role="status"] [data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('Sending is not set up yet');
+		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery/transport');
+		const send = wrapper.findAll('button').find((button) => button.text() === 'Send campaign');
+		expect(send?.attributes('disabled')).toBeDefined();
+		await clickSend(wrapper);
+		expect(scheduleRuns).toEqual([]);
+	});
+
+	it('names an unverified From domain and links to the domains page', () => {
+		answerQueries({
+			'campaigns/preflight:getCampaignDeliveryConfigured': true,
+			'domains/domains:getEmailDomainVerificationStatus': {
+				domain: 'example.com',
+				exists: true,
+				verified: false,
+				stale: false,
+			},
+		});
+		const note = mountStep({ audienceCount: 12 }).find('[data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('"example.com" is not verified yet.');
+		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery/domains');
+	});
+
+	it('gives a member the sentence and no admin link', () => {
+		isAdmin = false;
+		answerQueries({ 'campaigns/preflight:getCampaignDeliveryConfigured': false });
+		const note = mountStep({ audienceCount: 12 }).find('[data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('Ask an admin of this workspace to fix this.');
+		expect(note.find('a').exists()).toBe(false);
+	});
+
+	it('renders a refused send beside the button instead of leaving it to a toast', async () => {
+		const refusal: OperationError = {
+			category: 'invalid_state',
+			message: 'Your account has been suspended due to policy violations.',
+			data: {
+				reason: 'sending_not_allowed',
+				messageKey: 'shared.campaignRefusal.accountSuspended',
+			},
+		};
+		const claimed: boolean[] = [];
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_reference: unknown, options: { onError?: (error: OperationError) => boolean }) => ({
+				run: async () => {
+					claimed.push(options.onError?.(refusal) ?? false);
+					return { ok: false };
+				},
+			})
+		);
+		const wrapper = mountStep({ audienceCount: 12 });
+		expect(wrapper.find('[role="alert"][data-testid="send-blocked-note"]').exists()).toBe(false);
+
+		await clickSend(wrapper);
+
+		expect(claimed).toEqual([true]);
+		const note = wrapper.find('[role="alert"][data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('Sending is suspended for this workspace');
+		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery');
+		expect(pushed).toEqual([]);
 	});
 });
 
