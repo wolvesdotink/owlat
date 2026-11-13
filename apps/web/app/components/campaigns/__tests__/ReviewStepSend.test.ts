@@ -463,6 +463,42 @@ describe('ReviewStep send blockers', () => {
 		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery');
 		expect(pushed).toEqual([]);
 	});
+
+	it('announces a capacity refusal as the multi-day schedule it offers', async () => {
+		const refusal: OperationError = {
+			category: 'invalid_state',
+			message: 'This campaign is larger than your sending capacity allows in one go.',
+			data: {
+				reason: 'exceeds_sending_capacity',
+				messageKey: 'shared.campaignRefusal.capacityAbout',
+				messageParams: { days: 3 },
+				capacityPlan: {
+					days: 3,
+					slices: [100, 200, 300],
+					finishesAt: Date.UTC(2026, 2, 13),
+					covered: 600,
+					truncated: false,
+					audienceUnderCounted: false,
+				},
+			},
+		};
+		vi.stubGlobal(
+			'useBackendOperation',
+			(_reference: unknown, options: { onError?: (error: OperationError) => boolean }) => ({
+				run: async () => {
+					options.onError?.(refusal);
+					return { ok: false };
+				},
+			})
+		);
+		const wrapper = mountStep({ audienceCount: 12 });
+
+		await clickSend(wrapper);
+
+		const panel = wrapper.find('campaigns-capacity-schedule-panel-stub');
+		expect(panel.attributes('role')).toBe('alert');
+		expect(wrapper.find('[data-testid="send-blocked-note"]').exists()).toBe(false);
+	});
 });
 
 describe('ReviewStep layout', () => {

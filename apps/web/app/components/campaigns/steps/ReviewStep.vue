@@ -308,8 +308,10 @@ const handleConfirmSend = async () => {
 				</p>
 			</div>
 
+			<!-- Only ever a refusal here, so it is announced like one. -->
 			<CampaignsCapacitySchedulePanel
 				v-if="capacitySchedule"
+				role="alert"
 				:plan="capacitySchedule"
 				class="mb-6"
 			/>

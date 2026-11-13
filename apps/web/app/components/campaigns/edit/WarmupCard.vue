@@ -139,8 +139,10 @@ const remainingToday = computed(() =>
 			<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
 			     from the refusal itself when pre-flight hands one back. Capacity is a
 			     schedule, not a failure. -->
+			<!-- A refused send is announced; the preview before it is not. -->
 			<CampaignsCapacitySchedulePanel
 				v-if="capacityPlan"
+				:role="capacityDismissible ? 'alert' : undefined"
 				:plan="capacityPlan"
 				:dismissible="capacityDismissible"
 				@dismiss="emit('dismissCapacity')"

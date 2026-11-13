@@ -351,6 +351,23 @@ describe('campaign editor wiring', () => {
 		expect(text).not.toContain('Backend English');
 	});
 
+	it('announces the schedule a refused send came back with, but not the preview', async () => {
+		warming = { phase: 'warming', ips: [{ currentDay: 3 }], totalDailyCap: 500, totalSentToday: 0 };
+		const plan = {
+			days: 3,
+			slices: [100, 200, 300],
+			finishesAt: Date.UTC(2026, 2, 13),
+			covered: 600,
+			truncated: false,
+			audienceUnderCounted: false,
+		};
+		const wrapper = mountPage(
+			{ _id: 'campaign_1', name: 'Spring launch', status: 'draft' },
+			{ capacitySchedule: ref(plan) as Form['capacitySchedule'] }
+		);
+		expect(wrapper.find('campaigns-capacity-schedule-panel-stub').attributes('role')).toBe('alert');
+	});
+
 	it('quotes no remaining figure the send gate does not stand behind', () => {
 		warming = { phase: 'warming', ips: [{ currentDay: 3 }], totalDailyCap: 500, totalSentToday: 0 };
 		readiness = { capped: false, reason: 'not_own_mta' };
