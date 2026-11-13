@@ -252,7 +252,15 @@ export function dmarcRecordMatches(published: string, expected: string): boolean
 	const expectedTags = parseRecordTags(expected);
 	if (expectedTags.size === 0) return false;
 	const publishedTags = parseRecordTags(published);
-	for (const [tag, value] of expectedTags) {
+	// A tag our record leaves out still asks for its RFC 7489 §6.3 default, so
+	// `p=reject` alone rules out a published `sp=none` or `pct=0`.
+	const expectedP = expectedTags.get('p');
+	const effectiveExpected = new Map([
+		...(expectedP === undefined ? [] : [['sp', expectedP] as const]),
+		['pct', '100'],
+		...expectedTags,
+	]);
+	for (const [tag, value] of effectiveExpected) {
 		if (tag === 'v') continue;
 		if (!dmarcTagSatisfied(tag, value, publishedTags)) return false;
 	}

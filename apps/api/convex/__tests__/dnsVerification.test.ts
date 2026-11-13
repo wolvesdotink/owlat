@@ -84,6 +84,15 @@ describe('dmarcRecordMatches', () => {
 		expect(dmarcRecordMatches('v=DMARC1; p=reject; sp=none', expected)).toBe(false);
 	});
 
+	it('holds an omitted sp= and pct= to their defaults', () => {
+		expect(dmarcRecordMatches('v=DMARC1; p=reject; sp=none', 'v=DMARC1; p=reject')).toBe(false);
+		expect(dmarcRecordMatches('v=DMARC1; p=reject; pct=0', 'v=DMARC1; p=reject')).toBe(false);
+		expect(dmarcRecordMatches('v=DMARC1; p=reject; sp=reject; pct=100', 'v=DMARC1; p=reject')).toBe(
+			true
+		);
+		expect(dmarcRecordMatches('v=DMARC1; p=none; sp=quarantine', 'v=DMARC1; p=none')).toBe(true);
+	});
+
 	it('accepts a rua= list that contains our address next to other recipients', () => {
 		const expected = 'v=DMARC1; p=none; rua=mailto:dmarc-reports@bounce.example.test';
 		expect(
