@@ -7,6 +7,7 @@
  * boot catalogs exist before that module reads (and hashes) its locale files.
  */
 import { addTemplate, addTypeTemplate, defineNuxtModule } from 'nuxt/kit';
+import { LOCALE_COOKIE } from './areaRuntime';
 import { i18nBuildLocales } from './completeCatalogs';
 import { AREA_MANIFEST_TYPES, areaManifestModule, writeBuildCatalogs } from './writeCatalogs';
 
@@ -48,5 +49,5 @@ export const I18N_OPTIONS = {
 	// reload would re-run detection and undo the picker
 	// (components/LanguagePicker.vue) for anyone whose browser disagrees with
 	// them. `owlat-locale` is read back by that picker's `setLocale`.
-	detectBrowserLanguage: { useCookie: true, cookieKey: 'owlat-locale' },
+	detectBrowserLanguage: { useCookie: true, cookieKey: LOCALE_COOKIE },
 } as const;

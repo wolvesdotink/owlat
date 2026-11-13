@@ -157,7 +157,7 @@ async function mountLayout(activeMessageId?: string) {
 				PostboxThreadRow,
 				PostboxReaderBackBar,
 				PostboxReaderPane,
-				PostboxThreadReader: readerProbe,
+				LazyPostboxThreadReader: readerProbe,
 				PostboxThreadRowBody,
 				PostboxRowCore,
 				PostboxSwipeTrack,

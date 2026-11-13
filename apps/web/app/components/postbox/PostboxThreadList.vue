@@ -12,6 +12,7 @@ import PostboxThreadListEmpty from './PostboxThreadListEmpty.vue';
 import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThreadListWindow';
 import { usePostboxListSweep } from '~/composables/postbox/usePostboxListSweep';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import { useMediaQuery } from '~/composables/useMediaQuery';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxListDeletedOpenRow } from '~/composables/postbox/usePostboxDeletedOpenRow';
@@ -74,6 +75,7 @@ usePostboxListNow(); // one minute clock for every row's timestamp
 // Row trust markers (idea 51) ride the badge's flag, resolved once for the list.
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const trustMarkers = computed(() => isFlagEnabled('senderAuthBadges'));
+const hoverless = useMediaQuery('(hover: none)');
 
 const mailboxIdRef = computed(() => props.mailboxId ?? null);
 // Which folder the rows belong to. The page stays mounted across folder
@@ -405,6 +407,7 @@ useListAnswerRoundTrip({
 					:trust-markers="trustMarkers"
 					:swipe-left="swipeLeftAction"
 					:swipe-right="swipeRightAction"
+					:hoverless="hoverless"
 					:folder-role="folderKey"
 					:virtualize="virtualize"
 					:selected="bulk.isSelected(msg._id)"

@@ -109,6 +109,41 @@ describe('usePostboxPrefetch', () => {
 		expect(threadArgs).toEqual([threadPageArgs('next-id')]);
 	});
 
+	it("holds the body of the thread's newest message, which the reader expands beside the row", async () => {
+		const fake = makeFakeClient();
+		const { prefetch, dispose } = usePostboxPrefetch({ client: fake.client, debounceMs: 0 });
+
+		prefetch(['older']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fake.open(BODY)).toEqual(['older']);
+
+		// The page carries no bodies: the newest message's body is its own query.
+		const page = (ids: string[]) => ({ messages: ids.map((_id) => ({ _id })), envelopes: [] });
+		fake.find(THREAD, 'older')!.deliver(page(['older', 'newest']));
+		expect(fake.open(BODY)).toEqual(['older', 'newest']);
+
+		// A delivery that names the same newest message opens nothing more; a
+		// reply moves the hold to the new newest message.
+		fake.find(THREAD, 'older')!.deliver(page(['older', 'newest']));
+		fake.find(THREAD, 'older')!.deliver(page(['older', 'newest', 'reply']));
+		expect(fake.subscriptions.filter((s) => s.name === BODY)).toHaveLength(3);
+
+		dispose();
+		await vi.advanceTimersByTimeAsync(SUBSCRIPTION_LINGER_MS);
+		expect(fake.open(BODY)).toEqual([]);
+	});
+
+	it('holds no second body when the warmed row is the newest message', async () => {
+		const fake = makeFakeClient();
+		const { prefetch } = usePostboxPrefetch({ client: fake.client, debounceMs: 0 });
+
+		prefetch(['newest']);
+		await vi.advanceTimersByTimeAsync(1);
+		fake.find(THREAD, 'newest')!.deliver({ messages: [{ _id: 'older' }, { _id: 'newest' }] });
+
+		expect(fake.open(BODY)).toEqual(['newest']);
+	});
+
 	it('coalesces rapid focus changes so only the last targets are held', async () => {
 		const fake = makeFakeClient();
 		const { prefetch } = usePostboxPrefetch({ client: fake.client, debounceMs: 150 });

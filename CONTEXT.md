@@ -2555,6 +2555,13 @@ per-recipient on `contacts.softBounceCount` (so it accumulates across the
 recipient's whole send history) and reset to 0 on the next `delivered`. This is
 the standard ESP "suppress-after-N-soft" practice.
 
+A bounce has a cause: the recipient, or the sender. A sender bounce is a
+receiver refusing our sending identity (IP or domain reputation, SPF/DKIM/DMARC,
+PTR/HELO, a spam verdict, or any reply before `RCPT TO`), not the address. It
+still ends the Send as `bounced` and still counts against the sender's
+reputation, but it never blocklists the address and never counts toward the
+soft-bounce threshold. A bounce that names no cause is the recipient's.
+
 `bounceType: 'hard' | 'soft'` is the canonical encoding of bounce class.
 `errorCode` is reserved for the `failed` state (worker-side classification:
 `WORKPOOL_FAILED`, `PROVIDER_REJECTED`, etc.) and is not written on
@@ -2662,22 +2669,22 @@ One Node entry point:
 - `transformHtml(html, transformConfig) → string` at
   `sendComposition/transform.ts` (`'use node'`). Single cheerio pass
   performing view-in-browser injection, footer injection, link
-  wrapping, and tracking-pixel injection in the order that lets footer
-  links be tracked. Called by the worker after `composeForSend`.
+  wrapping, and tracking-pixel injection. The footer and view-in-browser
+  links are never wrapped. Called by the worker after `composeForSend`.
 
 Per-kind composer module exports a `SendComposerModule<K>` with the
 typed `Input<K>` shape and the per-kind `compose` function. The four
 kinds and their policies:
 
 - `campaign` — variable substitution against contact fields; tracking
-  pixel + click tracking; footer (unsubscribe + preference) only when
-  `audienceType !== 'segment'`; List-Unsubscribe header pair only for
-  topic campaigns; view-in-browser link when archive is enabled. The
-  one composer that emits a non-empty `transformConfig`.
+  pixel + click tracking; footer (unsubscribe + preference) and the
+  List-Unsubscribe header pair for every audience, topic or segment;
+  view-in-browser link when archive is enabled.
 - `transactional` — variable substitution against `dataVariables` (not
-  contact fields); merged template + request attachments; **no
-  tracking, no footer, no list-unsubscribe header** — policy declared
-  by the composer returning an empty `transformConfig`.
+  contact fields); merged template + request attachments; no tracking.
+  The footer only when the template opts in (`showUnsubscribe`), except
+  for marketing mail: an automation step reaches the worker as this
+  kind and gets the List-Unsubscribe pair and the footer together.
 - `test` — variable substitution against a sample/test contact;
   `[TEST]` subject prefix when applicable; no tracking, no footer
   (sync dispatch path; never enters the workpool).
@@ -2687,13 +2694,10 @@ kinds and their policies:
   raw); no transform config. Produces the html written to
   `campaignArchives.archiveHtmlContent`.
 - `automation` — variable substitution against contact fields (same
-  shape as `campaign`); subject + html personalized; no tracking
-  pixel, no footer, no list-unsubscribe header (matching today's
-  automation email step behaviour). Used by the synchronous
-  `automations/steps/email/index.ts` dispatch path that bypasses the
-  workpool. The policy is declared by this composer returning an empty
-  `transformConfig`; if automation emails ever gain unsubscribe links,
-  the change lives here.
+  shape as `campaign`); subject + html personalized, nothing else.
+  Used by `automations/steps/email/index.ts`, which hands the result to
+  the non-campaign intake; the delivered message is composed by the
+  worker as `transactional`.
 
 Shared V8 leaves under the module:
 

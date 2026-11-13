@@ -68,8 +68,8 @@ describe('reader swap motion', () => {
 	});
 
 	it('is applied to the keyed reader in both hosts and to the Today overlay', () => {
-		expect(hosts.layout).toMatch(/<PostboxThreadReader[^>]*class="pbx-reader-swap"/);
-		expect(hosts.overlay).toMatch(/<PostboxThreadReader[^>]*class="pbx-reader-swap"/);
+		expect(hosts.layout).toMatch(/<LazyPostboxThreadReader[^>]*class="pbx-reader-swap"/);
+		expect(hosts.overlay).toMatch(/<LazyPostboxThreadReader[^>]*class="pbx-reader-swap"/);
 		expect(hosts.today).toMatch(/<PostboxTodayReaderOverlay[^>]*class="pbx-reader-swap"/);
 	});
 });

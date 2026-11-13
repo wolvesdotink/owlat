@@ -87,12 +87,13 @@ describe('size (Gmail clipping)', () => {
 		expect(words(clipped.summary)).toContain('Gmail clips messages above 102 KB');
 	});
 
-	it('counts what the send path adds: tracking per link, the footer only for topics', () => {
-		const scanned = scanForPresend(doc('<a href="https://example.com/a">a</a>')).html;
-		const topic = estimateDeliveredBytes(scanned, 'topic');
-		const segment = estimateDeliveredBytes(scanned, 'segment');
-		expect(topic).toBeGreaterThan(segment);
-		expect(segment).toBeGreaterThan(scanned.bytes + 130);
+	it('counts what the send path adds: the footer on every copy, tracking per link', () => {
+		const bare = scanForPresend(doc('<p>a</p>')).html;
+		const linked = scanForPresend(doc('<p>a</p><a href="https://example.com/a">a</a>')).html;
+		expect(estimateDeliveredBytes(bare)).toBeGreaterThan(bare.bytes + 1200);
+		expect(estimateDeliveredBytes(linked) - linked.bytes).toBeGreaterThan(
+			estimateDeliveredBytes(bare) - bare.bytes + 130
+		);
 	});
 });
 
@@ -342,13 +343,13 @@ describe('subject, unsubscribe and postal address', () => {
 		expect(find(run(doc(ADDRESS), { subject: 'Hello there' }), 'subject').status).toBe('pass');
 	});
 
-	it('needs an own unsubscribe link only for a segment campaign', () => {
-		expect(find(run(doc(ADDRESS), { audienceKind: 'topic' }), 'unsubscribe').status).toBe('pass');
-		expect(find(run(doc(ADDRESS), { audienceKind: 'segment' }), 'unsubscribe').status).toBe(
-			'warning'
+	it('needs no unsubscribe link of its own: every campaign gets the footer', () => {
+		const check = find(run(doc(ADDRESS)), 'unsubscribe');
+		expect(check.status).toBe('pass');
+		expect(words(check.summary)).toBe(
+			'Owlat adds an unsubscribe and a preferences link to every campaign.'
 		);
-		const own = doc(`<a href="https://example.com/u">Unsubscribe</a>${ADDRESS}`);
-		expect(find(run(own, { audienceKind: 'segment' }), 'unsubscribe').status).toBe('pass');
+		expect(check.note).toBeUndefined();
 	});
 
 	it('looks for a postal address and does not mistake a copyright year for one', () => {

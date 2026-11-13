@@ -131,6 +131,11 @@ export function newestPosition(
 	return last ? { at: last.at, tie: last.tie, key: last.key } : null;
 }
 
+/** The inbound messages the stream shows as customer emails. */
+export function customerEmailIds(entries: readonly TeamStreamEntry[]): string[] {
+	return entries.flatMap((e) => (e.kind === 'customerEmail' ? [e.source.id as string] : []));
+}
+
 /** Live notes linked to each item: the "· 2 notes" on a pinned item. */
 export function noteCountsByItem(entries: readonly TeamStreamEntry[]): Map<string, number> {
 	const counts = new Map<string, number>();

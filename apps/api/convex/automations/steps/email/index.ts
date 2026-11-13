@@ -126,10 +126,10 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		const fromName = orgSettings.defaultFromName;
 		const subject = config.subjectOverride || template.subject;
 
-		// Compose subject + body for the automation kind (no tracking, no footer).
-		// The composer personalizes against the contact (firstName/lastName); the
-		// resulting subject + html are already fully substituted and are passed
-		// straight to the Send producer below.
+		// Personalize subject + body for the automation kind. The composer
+		// substitutes the contact's variables (firstName/lastName); the result is
+		// passed straight to the Send producer below, and the worker adds the
+		// unsubscribe header pair and footer at dispatch.
 		const composed = composeForSend({
 			kind: 'automation',
 			template: {
@@ -170,8 +170,11 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// the worker `convexSiteUrl` + `contactId` and let it build + merge the
 		// RFC 8058 one-click header. The one-click endpoint removes the contact
 		// across all topics, so it is valid even though an automation has no
-		// single owning topic.
+		// single owning topic. The same bulk-sender rules and CAN-SPAM want a
+		// visible opt-out in the body too; the worker renders that footer from
+		// `siteUrl`, the web app whose unsubscribe and preference pages it links.
 		const convexSiteUrl = getOptional('CONVEX_SITE_URL');
+		const siteUrl = getOptional('SITE_URL');
 		let outcome: NonCampaignIntakeOutcome;
 		try {
 			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
@@ -183,6 +186,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 				html: personalizedHtml,
 				from,
 				...(convexSiteUrl ? { listUnsubscribe: true, convexSiteUrl } : {}),
+				...(siteUrl ? { siteUrl } : {}),
 				// The step run is the intake's idempotency key: a retried or
 				// recovered attempt of this step gets its first Send back.
 				automationStepRunId: args.stepRunId,

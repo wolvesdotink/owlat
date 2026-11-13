@@ -20,11 +20,13 @@
  * `loadWarmingCapacity` sums `ip.active && ip.pool === 'campaign'` — CAMPAIGN
  * POOL headroom, nothing else. The numerator and the denominator must describe
  * the same population, so the denominator sums only the streams that dispatch
- * through that pool: `campaign` and `automation`. The `transactional` stream is
- * excluded on both sides — every transactional dispatch site in this codebase
- * (`systemMail`, `mail/outbound`, `mail/deliveryHooks`) sends `ipPool:
- * 'transactional'`, and the MTA adapter's default is `'transactional'` too — so
- * a transactional cell is NOT bounded by this reading at all. Bounding it by a
+ * through that pool: `campaign` and `automation`. That is the MTA adapter's
+ * rule (`mtaIpPoolFor` in `lib/sendProviders/mta/index.ts`): with no route
+ * pool, those two streams go to `campaign` and everything else to
+ * `transactional`, and the system, outbound and delivery-hook dispatch sites
+ * (`systemMail`, `mail/outbound`, `mail/deliveryHooks`) name `'transactional'`
+ * outright. The `transactional` stream is excluded on both sides, so a
+ * transactional cell is NOT bounded by this reading at all. Bounding it by a
  * cap that does not govern it would throttle the stream that should ramp last
  * and fastest, for no measured reason.
  *

@@ -17,6 +17,7 @@ import { composeAutomation } from './automation';
 import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
+import { footerText } from './footer';
 import { personalize } from './personalization';
 import type {
 	ComposeInput,
@@ -82,10 +83,21 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	//     text part is built here and not by the MTA's `htmlToPlainText` fallback,
 	//     which only ever sees the tracked html. `preserveBreaks` keeps the
 	//     paragraph layout a reader expects from an RFC 2046 alternative.
+	//
+	// The footer `transformHtml` appends to the html is appended here too, so a
+	// reader of the text part has the same visible opt-out.
 	const stored = input.template.plainTextContent?.trim();
-	const text = stored
+	const body = stored
 		? personalize(stored, variablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
+	const config = composed.transformConfig;
+	const text =
+		config?.unsubscribeUrl && config.preferenceUrl
+			? `${body.trimEnd()}\n\n${footerText({
+					unsubscribeUrl: config.unsubscribeUrl,
+					preferenceUrl: config.preferenceUrl,
+				})}`
+			: body;
 	return { ...composed, text };
 }
 

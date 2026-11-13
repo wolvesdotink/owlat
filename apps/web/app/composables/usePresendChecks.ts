@@ -23,7 +23,6 @@ export interface PresendSource {
 	subject: string;
 	/** The From address the send would use, for the content screening. */
 	fromEmail?: string;
-	audienceKind?: 'topic' | 'segment';
 	blockedReason?: string | null;
 }
 
@@ -136,7 +135,6 @@ export function usePresendChecks(source: () => PresendSource | null) {
 				blocks: current.blocks,
 				subject: current.subject,
 				theme: { ...DEFAULT_EMAIL_THEME, ...emailTheme.value },
-				...(current.audienceKind ? { audienceKind: current.audienceKind } : {}),
 				...(current.blockedReason !== undefined ? { blockedReason: current.blockedReason } : {}),
 				remote: remote.value,
 			},

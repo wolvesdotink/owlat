@@ -81,12 +81,20 @@ export function reduceBounced(
 
 	const effects: Effect[] = [];
 
+	// A bounce the receiver gave because it refused OUR sending identity (IP or
+	// domain reputation, SPF/DKIM/DMARC, PTR/HELO, a spam verdict, a reply before
+	// RCPT TO) says nothing about the address. The Send still ends as bounced and
+	// the sender's reputation and stats still take it, but the address is neither
+	// blocklisted nor counted toward its soft-bounce escalation: one blocklisting
+	// would otherwise suppress every recipient at the affected providers.
+	const recipientAtFault = args.bounceCause !== 'sender';
+
 	// ── Per-recipient soft-bounce counter + suppress-after-N escalation ──────
 	// Increment on every soft bounce; escalate to the blocklist exactly once,
 	// at the moment the running count first reaches the threshold. Hardening a
 	// soft bounce blocklists via the hard path below, so it does not also
 	// trip the soft escalation.
-	if (!isHard && recipientContact) {
+	if (!isHard && recipientAtFault && recipientContact) {
 		const newCount = (recipientContact.softBounceCount ?? 0) + 1;
 		effects.push({
 			kind: 'contact_soft_bounce_count',
@@ -104,7 +112,7 @@ export function reduceBounced(
 		}
 	}
 
-	if (isHard) {
+	if (isHard && recipientAtFault) {
 		effects.push({
 			kind: 'blocklist_insert',
 			email: contactEmail,

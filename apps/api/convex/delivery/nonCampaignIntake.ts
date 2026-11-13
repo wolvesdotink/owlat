@@ -174,6 +174,10 @@ export const intake = internalMutation({
 		// stamped by the transactional composer (see below).
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
+		// The web app origin the worker builds the in-body unsubscribe footer
+		// against (its links are pages there, not the one-click endpoint). A
+		// marketing step that gets the header pair gets the footer too.
+		siteUrl: v.optional(v.string()),
 		// Idempotency key for automation email steps: the step run producing the
 		// send. A retried or recovered step re-enters with the same key and gets
 		// the Send it already created back, instead of a second Send.
@@ -320,6 +324,7 @@ export const intake = internalMutation({
 					...(args.contactId ? { contactId: args.contactId } : {}),
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
+					...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
 					...(engagementScore !== undefined ? { engagementScore } : {}),
 				},
 			}

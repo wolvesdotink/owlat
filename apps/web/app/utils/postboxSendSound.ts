@@ -5,11 +5,12 @@
  * through a raised-sine swell/fade envelope) — not sampled from any third
  * party, so it carries no external license obligation and is dedicated to
  * the public domain (CC0). Mono, 16 kHz, 16-bit PCM WAV, ~9.6 KB, embedded
- * as a data: URI so it ships in the bundle with no network fetch (which also
- * keeps it CSP-safe and unit-testable).
+ * as a data: URI so playing it fetches no media file (which also keeps it
+ * CSP-safe and unit-testable).
  *
- * Consumed only by `useUiSound`, which plays it at reduced volume on a
- * successful send dispatch when the user has opted in. The generator script
+ * Consumed only by `useUiSound`, which imports it once the user has opted in
+ * (a chunk of its own, not part of every page) and plays it at reduced volume
+ * on a successful send dispatch. The generator script
  * lives in the PR description for reproducibility.
  */
 export const POSTBOX_SEND_SOUND_DATA_URI =

@@ -35,6 +35,7 @@ import { adjustFolderUnseen } from './folders';
 import { rebuildThreadAggregates } from './messageActions';
 import { recordMessageCounters } from './messageCounters';
 import { recordFolderMembership } from './folderMembership';
+import { inboxLastMessageAt } from './threadInboxRecency';
 
 // ─── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -241,6 +242,10 @@ export const internalSweep = internalMutation({
 				followUp: { ...flag, dueAt: now },
 				followUpRemindAt: undefined,
 				lastMessageAt: now,
+				inboxLastMessageAt: inboxLastMessageAt({
+					folderRoles: stillThere.folderRoles,
+					lastMessageAt: now,
+				}),
 				updatedAt: now,
 			});
 			resurfaced++;

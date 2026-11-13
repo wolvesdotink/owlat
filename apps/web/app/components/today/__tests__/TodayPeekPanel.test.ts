@@ -18,12 +18,14 @@ import {
 } from '~/utils/shortcutScope';
 import TodayPeekPanel from '../TodayPeekPanel.vue';
 
+// Any `api.…` reference, answering `path` with the dotted path that reached it.
 vi.mock('@owlat/api', () => {
-	const anyPath: unknown = new Proxy(function () {}, {
-		get: () => anyPath,
-		apply: () => anyPath,
-	});
-	return { api: anyPath };
+	const at = (path: string[]): unknown =>
+		new Proxy(function () {}, {
+			get: (_target, key) => (key === 'path' ? path.join('.') : at([...path, String(key)])),
+			apply: () => at(path),
+		});
+	return { api: at([]) };
 });
 
 const open = vi.fn();
@@ -34,7 +36,7 @@ vi.mock('~/composables/useAnswerMode', () => ({
 
 const route = reactive({ query: {} as Record<string, string> });
 const mailMessage = ref<unknown>(null);
-const teamThread = ref<unknown>(null);
+const teamMessage = ref<unknown>(null);
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -42,12 +44,12 @@ beforeAll(() => {
 		useRoute: () => route,
 		useInboxes: () => ({ byId: ref(new Map()) }),
 		useBackendOperation: () => ({ run: vi.fn(async () => ({ ok: true })) }),
-		useConvexQuery: (_q: unknown, args: () => unknown) => {
+		useConvexQuery: (q: { path: string }, args: () => unknown) => {
 			const a = args();
-			const isMail = !!a && typeof a === 'object' && 'messageId' in a;
+			const isTeam = q.path === 'inbox.threadPage.getMessage';
 			return {
 				data: computed(() =>
-					a === 'skip' ? undefined : isMail ? mailMessage.value : teamThread.value
+					a === 'skip' ? undefined : isTeam ? teamMessage.value : mailMessage.value
 				),
 				isLoading: ref(false),
 			};
@@ -60,7 +62,7 @@ beforeEach(() => {
 	open.mockClear();
 	openTeam.mockClear();
 	mailMessage.value = null;
-	teamThread.value = null;
+	teamMessage.value = null;
 	route.query = {};
 	resetShortcutScopes();
 	resetShortcutPreferences();
@@ -116,18 +118,14 @@ describe('TodayPeekPanel replies in Answer mode', () => {
 
 	it('Reply on a team message opens Answer mode on its thread, answering that message', async () => {
 		route.query = { peek: 'team:in_1' };
-		teamThread.value = {
-			messages: [
-				{
-					_id: 'in_1',
-					subject: 'Invoice',
-					from: 'ana@example.org',
-					to: 'support@example.com',
-					receivedAt: 1,
-					textBody: 'Could you send it?',
-					processingStatus: 'draft_ready',
-				},
-			],
+		teamMessage.value = {
+			_id: 'in_1',
+			subject: 'Invoice',
+			from: 'ana@example.org',
+			to: 'support@example.com',
+			receivedAt: 1,
+			textBody: 'Could you send it?',
+			processingStatus: 'draft_ready',
 		};
 		const wrapper = mountPanel([teamSource]);
 		await flushPromises();
@@ -138,18 +136,14 @@ describe('TodayPeekPanel replies in Answer mode', () => {
 
 	it('a team update offers no Reply of its own; the page shows "Reply anyway"', async () => {
 		route.query = { peek: 'team:in_1' };
-		teamThread.value = {
-			messages: [
-				{
-					_id: 'in_1',
-					subject: 'Newsletter',
-					from: 'news@example.org',
-					to: 'support@example.com',
-					receivedAt: 1,
-					textBody: 'FYI',
-					processingStatus: 'informational',
-				},
-			],
+		teamMessage.value = {
+			_id: 'in_1',
+			subject: 'Newsletter',
+			from: 'news@example.org',
+			to: 'support@example.com',
+			receivedAt: 1,
+			textBody: 'FYI',
+			processingStatus: 'informational',
 		};
 		const wrapper = mountPanel([teamSource]);
 		await flushPromises();

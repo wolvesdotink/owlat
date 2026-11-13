@@ -171,6 +171,8 @@ async function sweep(
 	release = true
 ) {
 	const rows = w.findAll('[data-sweep-row]');
+	// The pointer reaches the row before it presses, which mounts its quick actions.
+	await rows[from]!.trigger('mouseenter');
 	rows[from]!.find(`[data-sweep-handle="${handle}"]`).element.dispatchEvent(
 		pointer('pointerdown', midOf(from))
 	);

@@ -143,6 +143,8 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'A draft in another mailbox is that mailbox’s; a vanished send-as identity fails validation at send.'
 	),
 	desc('mailboxes', 'mailAttachments', 'mailboxId', 'delete', WITH_MAILBOX),
+	desc('mailboxes', 'mailLabelMembership', 'mailboxId', 'delete', WITH_MAILBOX),
+	desc('mailboxes', 'mailLabelMessages', 'mailboxId', 'delete', WITH_MAILBOX),
 	desc(
 		'mailboxes',
 		'semanticFiles',
@@ -341,10 +343,12 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 		'A move’s source: a move out of the member’s mailbox into another account keeps a dangling id, and settling the upload finds no source and purges nothing.'
 	),
 	desc('mailMessages', 'mailAttachmentShares', 'sourceMessageId', 'delete', SAME_MAILBOX),
+	desc('mailMessages', 'mailLabelMessages', 'messageId', 'delete', SAME_MAILBOX),
 	desc('mailMessages', 'mailCommitments', 'messageId', 'delete', SAME_MAILBOX),
 	desc('mailThreads', 'mailMessages', 'threadId', 'delete', SAME_MAILBOX),
 	desc('mailThreads', 'mailDrafts', 'threadId', 'delete', SAME_MAILBOX),
 	desc('mailThreads', 'mailCommitments', 'threadId', 'delete', SAME_MAILBOX),
+	desc('mailThreads', 'mailLabelMessages', 'threadId', 'delete', SAME_MAILBOX),
 	desc('mailThreads', 'mailDailyBriefs', 'items[].threadId', 'delete', SAME_MAILBOX),
 	desc('mailThreads', 'mailDailyBriefs', 'bundled[].threadId', 'delete', SAME_MAILBOX),
 	desc(
@@ -393,6 +397,7 @@ export const DESCENDANT_RELATIONS: readonly DescendantRelation[] = [
 	desc('mailLabels', 'mailMessages', 'labelIds[]', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailThreads', 'labelIds[]', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailLabels', 'parentId', 'delete', SAME_MAILBOX),
+	desc('mailLabels', 'mailLabelMessages', 'labelId', 'delete', SAME_MAILBOX),
 	desc('mailLabels', 'mailFilters', 'actions[].labelId', 'delete', SAME_MAILBOX),
 	desc('mailDrafts', 'mailAttachmentShares', 'sourceDraftId', 'delete', SAME_MAILBOX),
 	desc(

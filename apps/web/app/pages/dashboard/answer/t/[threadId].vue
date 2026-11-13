@@ -38,6 +38,7 @@ import { useLocalized } from '~/composables/useLocalized';
 import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { isChannelMessage } from '~/utils/teamThreadReply';
+import { customerEmailIds } from '~/utils/teamStream';
 import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 import { ChatConversationIcon, RobotIcon, SparklesIcon } from '@coolicons/vue';
 
@@ -149,6 +150,12 @@ const team = useTeamThread({
 	reveal: (id) => ((tab.value = 'conversation'), conversation.value?.reveal(id) ?? false),
 });
 const conversation = ref<{ reveal: (id: string) => boolean } | null>(null);
+// The stream's emails and the message picked by link need their rows: older
+// message pages load until they are in.
+detail.coverMessages(() => {
+	const chosen = singleQueryValue(route.query['message']);
+	return [...customerEmailIds(team.stream.entries.value), ...(chosen ? [chosen] : [])];
+});
 // Draft with AI, and the agent's questions
 const assist = useAnswerTeamAssist({
 	threadId: () => threadId.value,
@@ -244,7 +251,7 @@ useAnswerModeKeys({
 			v-model:tab="tab"
 			:back-label="backLabel"
 			:subject="thread?.subject ?? ''"
-			:message-count="thread ? messages.length : undefined"
+			:message-count="thread?.messageCount"
 			:counterpart="reply.senderLabel.value"
 			:counterpart-to="contact ? `/dashboard/audience/contacts/${contact._id}` : undefined"
 			@back="leave"

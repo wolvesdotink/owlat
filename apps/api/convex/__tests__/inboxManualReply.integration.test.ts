@@ -630,7 +630,11 @@ describe('manualReply.takeOverReply', () => {
 				updatedAt: Date.now(),
 			});
 		});
-		const view = await t.run((ctx) => takeOverViewFor(ctx, []));
+		const idle = await seed(t, 'received');
+		const view = await t.run(async (ctx) => {
+			const message = await ctx.db.get(idle);
+			return takeOverViewFor(ctx, message ? [message] : []);
+		});
 		expect(view.receivedWaitMs).toBe(11 * 60 * 1000);
 	});
 

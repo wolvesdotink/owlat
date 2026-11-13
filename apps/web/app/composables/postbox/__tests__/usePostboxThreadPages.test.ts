@@ -1,8 +1,8 @@
 /**
  * Plan 3.3: the reader reads a long thread in pages. The newest page comes
- * with the newest bodies, older messages as envelopes, earlier pages load on
- * demand (or by themselves to reach the opened message), and an expanded
- * envelope loads its own body.
+ * with the newest messages as full rows, older ones as envelopes, none with a
+ * body; earlier pages load on demand (or by themselves to reach the opened
+ * message), and an expanded message loads its own body.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -111,7 +111,6 @@ describe('usePostboxThreadPages', () => {
 		await nextTick();
 
 		expect(ids(pages.rows.value)).toEqual(['m6', 'm7', 'm8', 'm9']);
-		expect([...pages.bodyIds.value]).toEqual(['m8', 'm9']);
 		expect(pages.hasEarlier.value).toBe(true);
 		expect(pages.startsThread.value).toBe(false);
 		expect(live(THREAD)).toHaveLength(1);
@@ -223,14 +222,13 @@ describe('usePostboxThreadPages', () => {
 });
 
 describe('usePostboxEnvelopeBodies', () => {
-	function mountBodies(rows: Array<ReturnType<typeof row>>, bodyIds: string[]) {
+	function mountBodies(rows: Array<ReturnType<typeof row>>) {
 		const expanded = ref(new Set<string>());
 		const scope = effectScope();
 		const out = scope.run(() =>
 			usePostboxEnvelopeBodies({
 				rows: () => rows,
 				expanded: () => expanded.value,
-				bodyIds: () => new Set(bodyIds),
 			})
 		);
 		if (!out) throw new Error('no bodies');
@@ -239,7 +237,7 @@ describe('usePostboxEnvelopeBodies', () => {
 
 	it('loads the body of an expanded envelope only, and releases it on collapse', async () => {
 		const withBody = row('m9', 9, { textBodyInline: 'Newest' });
-		const { out, expanded } = mountBodies([row('m1', 1), row('m2', 2), withBody], ['m9']);
+		const { out, expanded } = mountBodies([row('m1', 1), row('m2', 2), withBody]);
 		expect(live(BODY)).toEqual([]);
 
 		expanded.value = new Set(['m1', 'm9']);
@@ -261,5 +259,15 @@ describe('usePostboxEnvelopeBodies', () => {
 		expanded.value = new Set(['m9']);
 		await nextTick();
 		expect(live(BODY)).toEqual([]);
+	});
+
+	it('loads the body of an expanded full row, which the newest page sends without one', async () => {
+		const full = row('m9', 9, { rfc822MessageId: '<m9@example.com>' });
+		const { out, expanded } = mountBodies([row('m8', 8), full]);
+
+		expanded.value = new Set(['m9']);
+		await nextTick();
+		expect(live(BODY)).toEqual([{ messageId: 'm9' }]);
+		expect(out.value?.[1]).toMatchObject({ _id: 'm9', bodyPending: true });
 	});
 });

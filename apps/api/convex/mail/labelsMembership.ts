@@ -15,6 +15,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordMessageCounters } from './messageCounters';
+import { recordLabelMembership, threadHasLabel } from './labelMessageIndex';
 
 /**
  * Write one message's label membership. Returns false when the message already
@@ -42,14 +43,16 @@ export async function applyLabelToMessage(
 		: message.labelIds.filter((id) => id !== labelId);
 	await ctx.db.patch(message._id, { labelIds, modseq, updatedAt: now });
 	await recordMessageCounters(ctx, message, { ...message, labelIds });
+	await recordLabelMembership(ctx, message, { ...message, labelIds });
 	return true;
 }
 
 /**
  * Re-derive whether a thread still carries a label from its messages, AFTER
- * their rows have been written. Done once per touched thread (not once per
- * message) so a batch that labels twenty messages of one conversation pays a
- * single sibling scan. True when the thread's label set changed.
+ * their rows have been written. With the mailbox's label rows ready that is
+ * one indexed probe; before, a sibling scan, which is why this runs once per
+ * touched thread (not once per message). True when the thread's label set
+ * changed.
  */
 export async function reconcileThreadLabel(
 	ctx: MutationCtx,
@@ -59,11 +62,16 @@ export async function reconcileThreadLabel(
 ): Promise<boolean> {
 	const thread = await ctx.db.get(threadId);
 	if (!thread) return false;
-	const siblings = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's messages
-	const stillUsed = siblings.some((m) => m.labelIds.includes(labelId));
+	const stillUsed =
+		(await threadHasLabel(ctx.db, thread, labelId)) ??
+		// The mailbox's label rows are not backfilled yet: scan the thread.
+		(
+			await ctx.db
+				.query('mailMessages')
+				.withIndex('by_thread', (q) => q.eq('threadId', threadId))
+				.collect()
+		) // bounded: one thread's messages
+			.some((m) => m.labelIds.includes(labelId));
 	if (stillUsed === thread.labelIds.includes(labelId)) return false;
 	const threadLabels = new Set(thread.labelIds);
 	if (stillUsed) threadLabels.add(labelId);

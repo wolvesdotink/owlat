@@ -27,6 +27,7 @@ import { mergeEnv, readEnv, writeEnv } from '../lib/env';
 import { waitForUrl } from '../lib/dockerHealth';
 import { createReporter, progressSpinner, SetupStep } from '../lib/progress';
 import { resolveLocalUrls } from '../lib/localHost';
+import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
 import { runSetup } from './setup';
@@ -56,6 +57,8 @@ import {
 	verifyMonorepo,
 } from './quickstartStack';
 import { deployBackend, verifyMtaIdentity } from './quickstartBackend';
+import { checkOutboundPort25, outboundPort25Warning } from './quickstartOutbound';
+import type { OutboundPort25 } from './doctor';
 
 interface RunOptions extends CliOptions {
 	/** Build the stack images from this source tree instead of pulling published tags. */
@@ -413,6 +416,26 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		}
 	}
 
+	// Step 7b: outbound port 25. The identity gate above cannot see a provider
+	// block, so ask the MTA's own TCP/25 probe. Advisory: a blocked port is
+	// fixed at the provider or by switching to a relay, never by reinstalling.
+	let outbound: OutboundPort25 = { status: 'unknown' };
+	if (composeProfilesUnion.includes('mta') && isOwnSendProviderKind(env['EMAIL_PROVIDER'])) {
+		s.start('Checking outbound port 25');
+		outbound = await checkOutboundPort25(env);
+		s.stop(
+			outbound.status === 'blocked'
+				? pc.yellow('Outbound port 25 is blocked')
+				: outbound.status === 'open'
+					? pc.green('Outbound port 25 is open')
+					: pc.dim(
+							'Outbound port 25 was not checked; `owlat doctor` reports it once the MTA answers'
+						)
+		);
+	}
+	const outboundWarning = outboundPort25Warning(outbound, env);
+	for (const line of outboundWarning) reporter.log(line, 'stderr');
+
 	// Step 8: summary.
 	reporter.done(true, {
 		mode,
@@ -420,7 +443,15 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		siteUrl: env['SITE_URL'] || 'http://localhost:3000',
 		convexUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud,
 		convexSiteUrl: env['NUXT_PUBLIC_CONVEX_SITE_URL'] || env['CONVEX_SITE_URL'] || localSite,
+		outboundPort25: outbound.status,
 	});
-	outro(formatSummary({ mode, adminEmail, baseUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud }));
+	outro(
+		formatSummary({
+			mode,
+			adminEmail,
+			baseUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud,
+			outboundWarning,
+		})
+	);
 	return 0;
 }

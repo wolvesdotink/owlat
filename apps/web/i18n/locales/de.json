@@ -1460,10 +1460,7 @@
 				},
 				"title": "Prüfungen vor dem Versand",
 				"unsubscribe": {
-					"footer": "Owlat fügt jeder Themen-Kampagne einen Abmelde- und einen Einstellungslink hinzu.",
-					"ownLink": "Die E-Mail hat einen eigenen Abmeldelink.",
-					"segmentMissing": "Segment-Kampagnen bekommen keine Abmelde-Fußzeile von Owlat, und diese E-Mail hat keinen Abmeldelink. Mail-Apps bieten trotzdem die Abmeldung per Klick an, aber die meisten Gesetze verlangen einen sichtbaren Link.",
-					"segmentNote": "Geht die E-Mail an ein Segment, braucht sie einen eigenen Abmeldelink."
+					"footer": "Owlat fügt jeder Kampagne einen Abmelde- und einen Einstellungslink hinzu."
 				},
 				"warningsDontBlock": "Warnungen halten den Versand nicht auf. Markiere sie als geprüft oder sende trotzdem.",
 				"showMeItem": "{item} im Editor zeigen"

@@ -108,7 +108,14 @@ export type NextStep = { kind: AgentStepKind; input: unknown };
 
 export type AgentRoute =
 	| { kind: 'in_state'; nextStep: NextStep }
-	| { kind: 'transition'; transition: RouteTransition; nextStep?: NextStep }
+	| {
+			kind: 'transition';
+			transition: RouteTransition;
+			nextStep?: NextStep;
+			// The approval takes a slot of the legacy global daily cap, which the
+			// step's commit admits (`agent/autoReplyUsage.ts` dailyLimitReached).
+			dailyCap?: 'global';
+	  }
 	| { kind: 'done' };
 
 /**

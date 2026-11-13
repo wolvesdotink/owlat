@@ -1,9 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import { parseFlags, dnsInstructions, formatSummary } from '../quickstartPrompts.js';
 import { resolveComposeVersionPin, composeImageSource, composeUpArgs } from '../quickstartStack.js';
+import { checkOutboundPort25, outboundPort25Warning } from '../quickstartOutbound.js';
+import type { MtaHealthBody } from '../doctor.js';
+import { doctorText } from '../../lib/doctorText.js';
 import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
 
@@ -190,5 +194,84 @@ describe('formatSummary', () => {
 		const out = formatSummary({ mode: 'blank', baseUrl: 'http://localhost:3210' });
 		expect(out).toContain('owlat backup');
 		expect(out).toContain('owlat backup-schedule enable');
+	});
+});
+
+/**
+ * The closing summary after the port-25 probe. Most VPS providers block
+ * outbound TCP/25 on new accounts; an install that ends on "Quickstart
+ * complete!" there leaves mail queued with no hint why. A probe that could not
+ * run says nothing, so it never alarms an install that is fine.
+ */
+describe('quickstart — outbound port 25 in the summary', () => {
+	const plain = (s: string) => stripVTControlCharacters(s);
+	const headline = (out: string) => plain(out).split('\n')[0];
+	const mtaEnv = { EMAIL_PROVIDER: 'mta', MTA_HTTP_PORT: '3100' };
+	const blockedHealth = {
+		ok: true as const,
+		body: {
+			smtpOutbound: {
+				status: 'degraded',
+				targetMx: 'mx.example.net',
+				ips: [{ ip: '203.0.113.10', status: 'failed', reason: 'timeout' }],
+			},
+		},
+	};
+
+	it('reports a blocked port in plain words, with both ways out and the guide', async () => {
+		const fetchHealth = vi.fn(async () => blockedHealth);
+		const result = await checkOutboundPort25(mtaEnv, fetchHealth);
+		expect(fetchHealth).toHaveBeenCalledWith('http://localhost:3100');
+		expect(result).toEqual({ status: 'blocked', ips: ['203.0.113.10'] });
+
+		const warning = outboundPort25Warning(result, mtaEnv).join('\n');
+		expect(warning).toContain('Outbound port 25 is blocked from 203.0.113.10');
+		expect(warning).toContain('ask your hosting provider to unblock outbound port 25');
+		expect(warning).toContain('EMAIL_PROVIDER=smtp');
+		expect(warning).toContain('https://docs.owlat.app/guide/sending-from-a-vps');
+	});
+
+	it('names the VPS provider when the install knows it', () => {
+		const warning = outboundPort25Warning(
+			{ status: 'blocked', ips: ['203.0.113.10'] },
+			{ ...mtaEnv, MTA_VPS_PROVIDER: 'hetzner' }
+		).join('\n');
+		expect(warning).toContain('Hetzner');
+	});
+
+	it('does not print an unqualified success line when the port is blocked', () => {
+		const out = formatSummary({
+			mode: 'populated',
+			adminEmail: 'admin@example.com',
+			baseUrl: 'http://localhost:3210',
+			outboundWarning: outboundPort25Warning({ status: 'blocked', ips: ['203.0.113.10'] }, mtaEnv),
+		});
+		expect(headline(out)).not.toBe('Quickstart complete!');
+		expect(headline(out)).toContain('port 25 is blocked');
+		expect(plain(out)).toContain('Outbound port 25 is blocked from 203.0.113.10');
+	});
+
+	it('stays quiet when the MTA health probe could not run', async () => {
+		const fetchHealth = vi.fn(async (): Promise<MtaHealthBody> => ({
+			ok: false,
+			finding: { check: 'mta.health', ok: false, message: doctorText`MTA is unreachable` },
+		}));
+		const result = await checkOutboundPort25(mtaEnv, fetchHealth);
+		expect(result).toEqual({ status: 'unknown' });
+		expect(outboundPort25Warning(result, mtaEnv)).toEqual([]);
+		const out = formatSummary({
+			mode: 'populated',
+			baseUrl: 'http://localhost:3210',
+			outboundWarning: outboundPort25Warning(result, mtaEnv),
+		});
+		expect(headline(out)).toBe('Quickstart complete!');
+	});
+
+	it('does not probe when the built-in MTA is not the delivery provider', async () => {
+		const fetchHealth = vi.fn(async () => blockedHealth);
+		const env = { EMAIL_PROVIDER: 'smtp' };
+		const result = await checkOutboundPort25(env, fetchHealth);
+		expect(fetchHealth).not.toHaveBeenCalled();
+		expect(outboundPort25Warning(result, env)).toEqual([]);
 	});
 });
