@@ -6,7 +6,7 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { api } from '../_generated/api';
+import { checkEmailDomainVerification } from '../domains/domains';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
@@ -227,9 +227,10 @@ export async function validateReadyToSend(
 		);
 	}
 
-	const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-		email: campaign.fromEmail,
-	});
+	// The helper, not the public query: the scheduler and the send orchestrator
+	// run this with no signed-in member, and the query's member check would
+	// throw there and leave the campaign unstarted.
+	const domainStatus = await checkEmailDomainVerification(ctx, campaign.fromEmail);
 
 	if (!domainStatus.verified) {
 		const message =

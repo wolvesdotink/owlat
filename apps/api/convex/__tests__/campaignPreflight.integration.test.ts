@@ -9,6 +9,7 @@ import {
 	createTestEmailTemplate,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { requireOrgMember } from '../lib/sessionOrganization';
 import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 import { writeInstanceCounter } from '../lib/instanceCounters';
 import { MTA_HEALTH_MAX_AGE_MS } from '../delivery/mtaHealthFreshness';
@@ -273,6 +274,43 @@ describe('validateReadyToSend pre-flight', () => {
 		});
 
 		expect(result.ok).toBe(true);
+	});
+
+	it('answers with no signed-in member, as the scheduler and the orchestrator run it', async () => {
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		const topicId = await seedTopic(t);
+		await seedVerifiedDomain(t, 'verified.example.com');
+		let campaignId: Id<'campaigns'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'scheduled',
+					emailTemplateId: templateId,
+					fromEmail: 'sender@verified.example.com',
+					audience: { kind: 'topic', topicId },
+				})
+			);
+		});
+		// A scheduled function carries no identity: any member check on the way
+		// would refuse it.
+		vi.mocked(requireOrgMember).mockRejectedValue(new Error('Not authenticated'));
+		try {
+			const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+				campaignId: campaignId!,
+			});
+			expect(result.ok).toBe(true);
+		} finally {
+			vi.mocked(requireOrgMember).mockResolvedValue({
+				userId: 'test-user',
+				role: 'owner',
+			} as never);
+		}
 	});
 
 	it('not_found (unknown campaign) — campaign not found path', async () => {
