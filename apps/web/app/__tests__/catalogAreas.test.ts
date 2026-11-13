@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { areasForPath } from '~~/i18n/areaRuntime';
 import {
@@ -14,7 +14,13 @@ import {
 	type CatalogPlan,
 } from '~~/i18n/catalogAreas';
 import { completeCatalogs, type MessageCatalog } from '~~/i18n/completeCatalogs';
-import { componentKey, listSourceFiles, type SourceGraph } from '~~/i18n/sourceGraph';
+import {
+	buildSourceGraph,
+	componentKey,
+	listSourceFiles,
+	reachableFrom,
+	type SourceGraph,
+} from '~~/i18n/sourceGraph';
 import { planSourceCatalog, SOURCE_ROOTS } from '~~/i18n/writeCatalogs';
 
 /**
@@ -282,6 +288,43 @@ describe('the real catalogs', () => {
 		// About 170 today; a handful would mean the scan broke.
 		expect(named.length).toBeGreaterThan(100);
 		expect(named.filter((entry) => !boot.has(entry.split(': ')[1]!))).toEqual([]);
+	});
+
+	it('ships every arrival reason the "Why here?" popover renders wherever it renders', () => {
+		// The record carries a backend key (`arrival.reason.budget`) and the
+		// popover renders it under `postbox.`, so the scan sees these messages only
+		// if the popover names each full key.
+		const { appDir } = SOURCE_ROOTS;
+		const popover = join(appDir, 'components/postbox/PostboxWhyHerePopover.vue');
+		const written = new Set(
+			['apps/api/convex', 'packages/shared/src']
+				.flatMap((dir) => listSourceFiles(join(appDir, '../../..', dir)))
+				.filter((file) => !file.endsWith('.test.ts'))
+				.flatMap((file) => readFileSync(file, 'utf8').match(/\barrival\.reason\.\w+/g) ?? [])
+		);
+		const reasonKeys = [...written].map((key) => `postbox.${key}`).sort();
+		expect(reasonKeys.length).toBeGreaterThan(10);
+		expect(reasonKeys.filter((key) => !leafKeys(en).includes(key))).toEqual([]);
+
+		const named = keyReferences(en, readFileSync(popover, 'utf8')).leaves;
+		expect(reasonKeys.filter((key) => !named.has(key))).toEqual([]);
+
+		const graph = buildSourceGraph(SOURCE_ROOTS);
+		const pagesDir = join(appDir, 'pages');
+		const rendering = new Set(
+			listSourceFiles(pagesDir)
+				.filter((page) => page.endsWith('.vue') && reachableFrom(graph, [page]).has(popover))
+				.map((page) => pageArea(relative(pagesDir, page))?.area ?? null)
+		);
+		expect(rendering.size).toBeGreaterThan(0);
+		const boot = new Set(leafKeys(splits.get('en')!.boot));
+		const missing = [...rendering].flatMap((area) => {
+			const chunk = new Set(area ? leafKeys(splits.get('en')!.areas[area] ?? {}) : []);
+			return reasonKeys
+				.filter((key) => !boot.has(key) && !chunk.has(key))
+				.map((key) => `${area ?? 'boot'}: ${key}`);
+		});
+		expect(missing).toEqual([]);
 	});
 
 	it('loads the admin console’s copy with the admin console', () => {
