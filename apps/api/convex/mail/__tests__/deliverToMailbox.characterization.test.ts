@@ -16,6 +16,7 @@ import type schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { liveMailTest, seedFolder, seedMailbox } from './helpers.testlib';
+import { labelRowsOf } from '../../__tests__/labelRows.testlib';
 
 type Harness = TestConvex<typeof schema>;
 
@@ -193,6 +194,8 @@ describe('deliverToMailbox: where the message lands', () => {
 			flagFlagged: true,
 			labelIds: [labelId],
 		});
+		// The label rows are written with the message.
+		expect((await labelRowsOf(t, row!._id)).map((r) => r.labelId)).toEqual([labelId]);
 		const [job] = await hookJobs(t);
 		expect(job?.args[0]).toEqual({
 			mailboxId,

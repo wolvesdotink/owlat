@@ -505,7 +505,7 @@ describe('reduce(deferred) — non-retryable classification', () => {
 		expect(defer).toBeUndefined();
 	});
 
-	it('emits a terminal hard-bounce effect set with suppress_recipient last', () => {
+	it('emits the terminal hard-bounce effect set but keeps a recipient a spam verdict refused', () => {
 		const { effects } = reduce(deferredNonRetryable(), makeCtx());
 		expect(effects.map((e) => e.kind)).toEqual([
 			'circuit_breaker_outcome',
@@ -516,14 +516,7 @@ describe('reduce(deferred) — non-retryable classification', () => {
 			'log_delivery_event',
 			'notify_convex',
 			'notify_convex',
-			'suppress_recipient',
 		]);
-		const suppress = effects.find((e) => e.kind === 'suppress_recipient');
-		expect(suppress).toEqual({
-			kind: 'suppress_recipient',
-			address: 'user@example.com',
-			reason: 'hard_bounce',
-		});
 		// TWO notifications, and they are not interchangeable. The bounce moves the
 		// send to a terminal status; the classified response moves a counter. The
 		// retryable branch above emits only the second, which is what lets it report
@@ -586,6 +579,163 @@ describe('reduce(deferred) — non-retryable classification', () => {
 		const { defer, effects } = reduce(outcome, makeCtx());
 		expect(defer).toBeDefined();
 		expect(effects[0]?.kind).toBe('domain_throttle_defer');
+	});
+});
+
+describe('reduce — a refusal of our sending identity keeps the recipient', () => {
+	// A receiver refusing OUR IP, domain, authentication or content says nothing
+	// about the address. The attempt still ends and still trains every sender-side
+	// signal, but the recipient is not suppressed and Convex is told the bounce is
+	// the sender's, so it does not blocklist the address either.
+	function rejection(sample: {
+		smtpCode: number;
+		response: string;
+		enhancedCode?: string;
+		smtpPhase: EmailJobResult['smtpPhase'];
+	}): EmailJobResult {
+		return {
+			success: false,
+			bounceType: sample.smtpCode >= 500 ? 'hard' : 'deferred',
+			smtpCode: sample.smtpCode,
+			error: sample.response,
+			smtpPhase: sample.smtpPhase,
+			...(sample.enhancedCode === undefined ? {} : { enhancedCode: sample.enhancedCode }),
+		};
+	}
+
+	const bouncedEvent = (effects: ReturnType<typeof reduce>['effects']) => {
+		const bounce = effects.find((e) => e.kind === 'notify_convex' && e.event.event === 'bounced');
+		if (bounce?.kind !== 'notify_convex') throw new Error('expected a bounced notification');
+		return bounce.event;
+	};
+
+	const SENDER_REFUSALS = [
+		{
+			name: '550 5.7.1 Spamhaus blocklisting at RCPT',
+			smtpCode: 550,
+			response: '550 5.7.1 Service unavailable; client host [203.0.113.10] blocked using Spamhaus',
+			enhancedCode: '5.7.1',
+			smtpPhase: 'rcpt',
+		},
+		{
+			name: '550 5.7.26 unauthenticated mail after DATA',
+			smtpCode: 550,
+			response: '550 5.7.26 This mail is unauthenticated, which poses a security risk',
+			enhancedCode: '5.7.26',
+			smtpPhase: 'data-final',
+		},
+		{
+			name: '554 at the greeting',
+			smtpCode: 554,
+			response: '554 IP=203.0.113.10 - A problem occurred.',
+			smtpPhase: 'greeting',
+		},
+		{
+			name: '550 at MAIL FROM with no enhanced code',
+			smtpCode: 550,
+			response: '550 Access denied',
+			smtpPhase: 'mail',
+		},
+		{
+			name: '451 4.7.1 zen.spamhaus.org listing',
+			smtpCode: 451,
+			response: '451 4.7.1 Client host rejected: blocked using zen.spamhaus.org',
+			enhancedCode: '4.7.1',
+			smtpPhase: 'rcpt',
+		},
+		{
+			name: '450 4.7.1 HELO rejection',
+			smtpCode: 450,
+			response: '450 4.7.1 <mta.example.org>: Helo command rejected: Host not found',
+			enhancedCode: '4.7.1',
+			smtpPhase: 'rcpt',
+		},
+	] as const;
+
+	it.each(SENDER_REFUSALS)('$name: terminal, recipient kept', (sample) => {
+		const outcome = classifyResult(rejection(sample));
+		const { effects, defer } = reduce(outcome, makeCtx());
+		expect(defer).toBeUndefined();
+		expect(effects.some((e) => e.kind === 'suppress_recipient')).toBe(false);
+		expect(bouncedEvent(effects)).toMatchObject({ bounceType: 'hard', bounceCause: 'sender' });
+		// Every sender-side signal still sees the refusal.
+		expect(effects.map((e) => e.kind)).toEqual([
+			'circuit_breaker_outcome',
+			'smtp_response',
+			'domain_throttle_reject',
+			'warming_record',
+			'metrics_record',
+			'log_delivery_event',
+			'notify_convex',
+			'notify_convex',
+		]);
+	});
+
+	it('still counts a Spamhaus refusal toward the ramp block clause', () => {
+		const outcome = classifyResult(rejection(SENDER_REFUSALS[0]));
+		const classified = reduce(outcome, makeCtx()).effects.find(
+			(e) => e.kind === 'notify_convex' && e.event.event === 'smtp.classified'
+		);
+		if (classified?.kind !== 'notify_convex') throw new Error('expected a classified response');
+		expect(isBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
+	});
+
+	const RECIPIENT_REFUSALS = [
+		{
+			name: '550 5.1.1 unknown user at RCPT',
+			smtpCode: 550,
+			response: '550 5.1.1 <user@example.com>: Recipient address rejected: User unknown',
+			enhancedCode: '5.1.1',
+			smtpPhase: 'rcpt',
+		},
+		{
+			name: '550 5.2.1 disabled mailbox at RCPT',
+			smtpCode: 550,
+			response: '550 5.2.1 The email account that you tried to reach is disabled',
+			enhancedCode: '5.2.1',
+			smtpPhase: 'rcpt',
+		},
+		{
+			name: 'an unclassified 550 at RCPT',
+			smtpCode: 550,
+			response: '550 Requested action not taken',
+			smtpPhase: 'rcpt',
+		},
+		{
+			name: 'an unclassified 554 after DATA',
+			smtpCode: 554,
+			response: '554 Transaction failed',
+			smtpPhase: 'data-final',
+		},
+		{
+			name: 'a 5.1.1 that also says spam',
+			smtpCode: 550,
+			response: '550 5.1.1 <spam-trap@example.com>: user unknown',
+			enhancedCode: '5.1.1',
+			smtpPhase: 'rcpt',
+		},
+	] as const;
+
+	it.each(RECIPIENT_REFUSALS)('$name: recipient suppressed', (sample) => {
+		const { effects } = reduce(classifyResult(rejection(sample)), makeCtx());
+		expect(effects.at(-1)).toEqual({
+			kind: 'suppress_recipient',
+			address: 'user@example.com',
+			reason: 'hard_bounce',
+		});
+		expect(bouncedEvent(effects).bounceCause).toBeUndefined();
+	});
+
+	it('a synthetic Null MX refusal still suppresses the recipient', () => {
+		const nullMx: EmailJobResult = {
+			success: false,
+			error: 'Recipient domain example.com explicitly does not accept email (Null MX)',
+			bounceType: 'hard',
+			smtpCode: 556,
+			enhancedCode: '5.1.10',
+		};
+		const { effects } = reduce(classifyResult(nullMx), makeCtx());
+		expect(effects.at(-1)?.kind).toBe('suppress_recipient');
 	});
 });
 

@@ -30,10 +30,15 @@ class MockAudio {
 	}
 }
 
-/** Re-import so the module-level element, burst stamp and prime flag reset. */
-async function loadSound() {
+/**
+ * Re-import so the module-level element, burst stamp and prime flag reset,
+ * with the chime already fetched unless the case is about the fetch.
+ */
+async function loadSound({ fetched = true } = {}) {
 	vi.resetModules();
-	return import('../useUiSound');
+	const mod = await import('../useUiSound');
+	if (fetched) await mod.loadAlertSound();
+	return mod;
 }
 
 const STAMP_KEY = 'owlat:alert-sound-at';
@@ -117,6 +122,50 @@ describe('playAlertSound', () => {
 
 		expect(playAlertSound(1_000)).toBe(false);
 		expect(localStorage.getItem(STAMP_KEY)).toBeNull();
+	});
+});
+
+describe('before the chime has loaded', () => {
+	it('claims the burst and plays the alert once the chime arrives', async () => {
+		const { playAlertSound, loadAlertSound } = await loadSound({ fetched: false });
+
+		expect(playAlertSound(1_000)).toBe(true);
+		expect(created).toHaveLength(0);
+		expect(playAlertSound(1_001)).toBe(false);
+
+		await loadAlertSound();
+		expect(created).toHaveLength(1);
+		expect(created[0]!.src).toBe(ALERT_SOUND_DATA_URI);
+		expect(created[0]!.muted).toBe(false);
+		expect(created[0]!.play).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves the unlock to the next gesture, once the chime has loaded', async () => {
+		const { primeAlertSound, loadAlertSound } = await loadSound({ fetched: false });
+
+		primeAlertSound();
+		await loadAlertSound();
+		expect(created).toHaveLength(0);
+
+		primeAlertSound();
+		expect(created[0]!.play).toHaveBeenCalledTimes(1);
+		expect(created[0]!.muted).toBe(true);
+	});
+
+	it('plays a preview once loaded, without counting it as the unlock', async () => {
+		const { previewAlertSound, primeAlertSound, loadAlertSound } = await loadSound({
+			fetched: false,
+		});
+
+		previewAlertSound();
+		await loadAlertSound();
+		const audio = created[0]!;
+		expect(audio.play).toHaveBeenCalledTimes(1);
+		expect(audio.muted).toBe(false);
+
+		audio.paused = true;
+		primeAlertSound();
+		expect(audio.play).toHaveBeenCalledTimes(2);
 	});
 });
 

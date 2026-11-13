@@ -67,7 +67,6 @@ export function usePostboxReaderConversation(message: () => PostboxReaderMessage
 				: undefined;
 		},
 		expanded: () => expanded.value,
-		bodyIds: () => threadPages.bodyIds.value,
 	});
 	const allMessages = computed(() => threadMessages.value ?? [openRow.value]);
 	/** What the header counts: the whole thread once part of it is not loaded. */

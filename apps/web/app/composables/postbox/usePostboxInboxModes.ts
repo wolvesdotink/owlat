@@ -85,7 +85,6 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 			if (!saved && pendingViewMode.value === mode) pendingViewMode.value = null;
 		});
 	}
-	const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRole.value));
 	// The mode registry stays a plain module-scope constant (non-UI code reads it
 	// too); its labels and one-line descriptions are localized here, where they
 	// are rendered. Five views with bare names cannot be told apart without
@@ -122,6 +121,13 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	}
 	const todayActive = computed(
 		() => folderRole.value === 'inbox' && !folderId.value && inboxMode.value === 'today'
+	);
+	// The list renderer on screen, and so the one grouped feed that subscribes.
+	// None under the Priority view: it renders from the flat feed, and a grouped
+	// feed left open there re-runs on every delivery and mark-read for a list
+	// nobody sees.
+	const activeListRenderer = computed<PostboxViewMode | null>(() =>
+		todayActive.value ? null : postboxListRenderer(viewMode.value, folderRole.value)
 	);
 
 	// The Today roll-up line's "view" opens the auto-filed mail where it lives:

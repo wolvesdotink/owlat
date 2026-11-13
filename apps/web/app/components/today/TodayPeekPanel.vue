@@ -65,17 +65,20 @@ const source = computed<TodaySource | null>(() => {
 		at: m.receivedAt,
 	};
 });
-const teamThreadId = computed(() =>
+// The one message the peek shows, not its whole thread.
+const teamMessageId = computed(() =>
 	target.value?.kind === 'team' && source.value?.threadId
-		? (source.value.threadId as Id<'conversationThreads'>)
+		? (target.value.id as Id<'inboundMessages'>)
 		: null
 );
-const { data: teamThread, isLoading: teamLoading } = useConvexQuery(
-	api.inbox.queries.getThread,
-	() => (teamThreadId.value ? { threadId: teamThreadId.value } : 'skip')
+const { data: teamMessageRow, isLoading: teamLoading } = useConvexQuery(
+	api.inbox.threadPage.getMessage,
+	() => (teamMessageId.value ? { messageId: teamMessageId.value } : 'skip')
 );
-const teamMessage = computed(
-	() => teamThread.value?.messages.find((m) => m._id === target.value?.id) ?? null
+const teamMessage = computed(() =>
+	teamMessageRow.value && teamMessageRow.value._id === teamMessageId.value
+		? teamMessageRow.value
+		: null
 );
 
 const isLoading = computed(() =>

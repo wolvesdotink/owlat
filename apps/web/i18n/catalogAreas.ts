@@ -6,14 +6,19 @@
  * source files stay whole: translators keep editing `en.json` / `de.json`):
  *
  * - the BOOT catalog, registered with @nuxtjs/i18n and loaded at start, keeps
- *   the `common`, `shell`, `auth`, `shared` and `sharedPkg` namespaces, every
- *   message a layout, plugin, middleware or auth page can reach, every message
- *   under a key prefix some file assembles at runtime (a template literal such
- *   as `dashboard.inbox.detail.${x}`), every message the backend or another
- *   package names, and every message no scanned file names at all;
+ *   the `common`, `shell` and `auth` namespaces, every message a layout,
+ *   plugin, middleware or auth page can reach, every message the backend or
+ *   another package names (by its full key or by a prefix it builds keys
+ *   under), and every message no scanned file names at all;
  * - each AREA chunk (`/dashboard/admin/**`, `/dashboard/postbox/**`, `/setup/**`,
  *   ...) carries the remaining messages that the area's pages can reach. A
  *   message two areas reach is in both chunks.
+ *
+ * A file names a message either by its full key or by a prefix it assembles
+ * keys under at runtime (a template literal such as
+ * `dashboard.inbox.detail.${x}`), and both count the same way: the message
+ * goes where every file that names it can render. The `shared` namespaces
+ * follow that rule too; most of them are named by always-on code anyway.
  *
  * "Reach" is ./sourceGraph.ts: imports, auto-imported components and
  * composables. The runtime half (./areaRuntime.ts) loads an area's chunk before
@@ -32,14 +37,7 @@ export interface CatalogPlan {
 }
 
 /** Namespaces every screen shares; the plan keeps them in the boot catalog whole. */
-export const BOOT_NAMESPACES = [
-	'common',
-	'shell',
-	'auth',
-	'shared',
-	'sharedPkg',
-	'components.shell',
-];
+export const BOOT_NAMESPACES = ['common', 'shell', 'auth', 'components.shell'];
 
 /** Files that run on every route, in the app and in each layer. */
 const ALWAYS_ON_DIRS = ['layouts', 'plugins', 'middleware'];
@@ -106,7 +104,11 @@ export function keyReferences(catalog: MessageCatalog, source: string): KeyRefer
 	return refs;
 }
 
-const isUnder = (key: string, prefix: string) => key === prefix || key.startsWith(`${prefix}.`);
+/** The namespaces `key` sits under, outermost first: `a.b.c` → `a`, `a.b`. */
+function ancestorsOf(key: string): string[] {
+	const segments = key.split('.');
+	return segments.slice(1).map((_, index) => segments.slice(0, index + 1).join('.'));
+}
 
 export interface PlanInput {
 	readonly catalog: MessageCatalog;
@@ -156,13 +158,17 @@ export function planCatalogAreas(input: PlanInput): CatalogPlan {
 		}
 	}
 
+	// The backend and the packages hand the app keys over the wire or through a
+	// registry: no route of the app tells where those render, so they ship at boot.
 	const bootPrefixes = new Set(BOOT_NAMESPACES);
 	const bootKeys = new Set<string>();
-	const filesByKey = new Map<string, string[]>();
+	/** Leaf key or key prefix → the app files that name it. */
+	const filesByName = new Map<string, string[]>();
+	const addName = (name: string, file: string) =>
+		filesByName.set(name, [...(filesByName.get(name) ?? []), file]);
 	for (const [file, source] of graph.sources) {
 		const refs = keyReferences(catalog, source);
-		for (const prefix of refs.prefixes) bootPrefixes.add(prefix);
-		for (const key of refs.leaves) filesByKey.set(key, [...(filesByKey.get(key) ?? []), file]);
+		for (const name of [...refs.prefixes, ...refs.leaves]) addName(name, file);
 	}
 	for (const source of input.externalSources) {
 		const refs = keyReferences(catalog, source);
@@ -172,8 +178,9 @@ export function planCatalogAreas(input: PlanInput): CatalogPlan {
 
 	const areasByKey = new Map<string, Set<string>>();
 	for (const key of leafKeys(catalog)) {
-		if (bootKeys.has(key) || [...bootPrefixes].some((prefix) => isUnder(key, prefix))) continue;
-		const referencing = filesByKey.get(key) ?? [];
+		const names = [...ancestorsOf(key), key];
+		if (bootKeys.has(key) || names.some((name) => bootPrefixes.has(name))) continue;
+		const referencing = names.flatMap((name) => filesByName.get(name) ?? []);
 		// Named nowhere, or by a file every route or no route can render: boot.
 		if (referencing.length === 0 || referencing.some((file) => !areasOfFile.has(file))) continue;
 		areasByKey.set(key, new Set(referencing.flatMap((file) => [...areasOfFile.get(file)!])));

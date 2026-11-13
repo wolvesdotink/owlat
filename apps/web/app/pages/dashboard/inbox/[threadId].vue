@@ -10,7 +10,7 @@ import {
 } from '~/utils/teamThreadReply';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import type { ReplyDropTarget } from '~/utils/replyFileDrop';
-import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
+import { countMentionsOf, customerEmailIds, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
@@ -48,7 +48,7 @@ const threadId = useRouteId<'conversationThreads'>('threadId');
 // The Team Inbox row this thread was opened from, if the list loaded it.
 const threadPreview = computed(() => teamThreadPreview(threadId.value));
 
-const detail = useThreadDetail(threadId);
+const detail = useThreadDetail(threadId, { withBodies: true }); // every message shows open here
 const {
 	thread,
 	messages,
@@ -170,6 +170,7 @@ const team = useTeamThread({
 	onReply: () => openReply(),
 });
 const messageById = computed(() => new Map(messages.value.map((m) => [m._id as string, m])));
+detail.coverMessages(() => customerEmailIds(team.stream.entries.value)); // the stream's emails
 // A note mentioning me lands while I have the thread open: I have seen it, so
 // the Mentions badge must not keep counting it until the next visit.
 watch(

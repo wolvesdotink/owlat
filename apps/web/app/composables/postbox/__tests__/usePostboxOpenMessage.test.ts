@@ -79,11 +79,11 @@ describe('usePostboxOpenMessage', () => {
 		expect(stubs[BODY]?.args.value).toBe('skip');
 	});
 
-	it('releases the inline body once the thread row, which carries it, is here', () => {
+	it('keeps the inline body once the thread row is here, since the row carries none', () => {
 		const { threadMessage } = run(() => usePostboxOpenMessage(ref('m1')));
 		answerThread([{ _id: 'm0' }, { _id: 'm1' }]);
 		expect(threadMessage.value).toEqual({ _id: 'm1' });
-		expect(stubs[BODY]?.args.value).toBe('skip');
+		expect(stubs[BODY]?.args.value).toEqual({ messageId: 'm1' });
 	});
 
 	it('starts a blob body download as soon as the inline query reports one', async () => {

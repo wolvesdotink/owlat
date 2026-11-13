@@ -1460,10 +1460,7 @@
 				},
 				"title": "Pre-send checks",
 				"unsubscribe": {
-					"footer": "Owlat adds an unsubscribe and a preferences link to every topic campaign.",
-					"ownLink": "The email has its own unsubscribe link.",
-					"segmentMissing": "Segment campaigns don't get Owlat's unsubscribe footer, and this email has no unsubscribe link. Mail apps still offer one-click unsubscribe, but most laws expect a visible link.",
-					"segmentNote": "Sent to a segment, the email needs its own unsubscribe link."
+					"footer": "Owlat adds an unsubscribe and a preferences link to every campaign."
 				},
 				"warningsDontBlock": "Warnings don't stop the send. Mark them as reviewed, or send anyway.",
 				"showMeItem": "Show {item} in the editor"

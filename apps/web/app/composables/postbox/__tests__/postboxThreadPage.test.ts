@@ -11,11 +11,12 @@ import {
 const row = (id: string, receivedAt = 0, note = '') => ({ _id: id, receivedAt, note });
 
 describe('thread page args', () => {
-	it('asks the newest page for the newest bodies and earlier pages for envelopes only', () => {
+	it('asks the newest page for full rows without bodies and earlier pages for envelopes', () => {
 		expect(threadPageArgs('m1')).toEqual({
 			messageId: 'm1',
 			pageSize: THREAD_PAGE_SIZE,
 			withBodies: THREAD_PAGE_BODIES,
+			omitBodies: true,
 		});
 		expect(earlierThreadPageArgs('m1', 'c1')).toEqual({
 			messageId: 'm1',

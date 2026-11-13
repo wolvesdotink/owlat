@@ -9,9 +9,11 @@ import { threadPageArgs } from './postboxThreadPage';
 /**
  * Read-ahead for the Postbox reader (plan 2.5).
  *
- * For each warmed row it holds the two queries the reader opens with, the
+ * For each warmed row it holds the queries the reader opens with, the
  * thread's newest page (`listThreadMessages`) and the inline body (`getMessageInlineBody`),
- * as subscriptions in the shared registry. Opening that row then joins live,
+ * as subscriptions in the shared registry. The page carries no bodies, and the
+ * reader also expands the thread's newest message, so that message's inline
+ * body is held too once the page names it. Opening that row then joins live,
  * loaded subscriptions and renders in the same tick. A hold is released when
  * the row falls out of the small LRU or the list unmounts, and the registry
  * then keeps the query warm for its linger window before it closes.
@@ -145,10 +147,25 @@ export function usePostboxPrefetch(options?: {
 		const entry: CacheEntry = { token, release: () => {}, blob: 'none' };
 		cache.set(messageId, entry);
 		const args = { messageId: messageId as Id<'mailMessages'> };
+		let released = false;
+		let newestId: string | null = null;
+		let releaseNewestBody = () => {};
 		const releaseThread = holdConvexQuery(
 			client,
 			api.mail.mailbox.messages.listThreadMessages,
-			threadPageArgs(messageId)
+			threadPageArgs(messageId),
+			(page) => {
+				const newest = page?.messages[page.messages.length - 1]?._id ?? null;
+				const next = newest && newest !== messageId ? newest : null;
+				if (released || next === newestId) return;
+				releaseNewestBody();
+				newestId = next;
+				releaseNewestBody = next
+					? holdConvexQuery(client, api.mail.mailbox.messages.getMessageInlineBody, {
+							messageId: next,
+						})
+					: () => {};
+			}
 		);
 		const releaseBody = holdConvexQuery(
 			client,
@@ -159,8 +176,10 @@ export function usePostboxPrefetch(options?: {
 			}
 		);
 		entry.release = () => {
+			released = true;
 			releaseThread();
 			releaseBody();
+			releaseNewestBody();
 		};
 		enforceLimit();
 	}

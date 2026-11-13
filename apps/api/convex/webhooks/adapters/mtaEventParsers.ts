@@ -130,6 +130,7 @@ export const MTA_EVENT_PARSERS = {
 			providerMessageId: payload.messageId,
 			at: payload.timestamp,
 			bounceType: payload.bounceType === 'hard' ? 'hard' : 'soft',
+			...(payload.bounceCause ? { bounceCause: payload.bounceCause } : {}),
 			...(payload.message ? { bounceMessage: payload.message } : {}),
 			...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 			providerType: 'mta',

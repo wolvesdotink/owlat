@@ -12,7 +12,7 @@ import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
 } from '@owlat/mta-protocol/webhookEvent';
-import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import type { BounceCause, SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
@@ -268,6 +268,8 @@ export type InboundEvent =
 			providerMessageId: string;
 			at: number;
 			bounceType: 'hard' | 'soft';
+			/** `sender`: the receiver refused our identity; the address is not blocklisted. */
+			bounceCause?: BounceCause;
 			bounceMessage?: string;
 			providerType?: string;
 			deliveryDomain?: DeliveryDomain;

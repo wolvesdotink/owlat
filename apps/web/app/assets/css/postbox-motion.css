@@ -120,7 +120,21 @@
  * Hover-action reveal in list rows moved to the shared micro-interaction kit:
  * use `.ui-hover-reveal` (packages/ui/assets/css/motion.css). Same recipe —
  * opacity-only, pointer-events gated, zero layout shift, moderate tier.
+ *
+ * A thread row mounts its quick actions on the first hover or focus
+ * (PostboxThreadRow.vue), so the cluster is inserted already revealed, and an
+ * element's first style never transitions. Starting it transparent keeps the
+ * fade the reveal plays on every later hover. Hover devices only: without hover
+ * the cluster mounts with its row and is shown at rest, with no fade. The
+ * selector out-ranks the kit's `.group:hover .ui-hover-reveal`.
  */
+@media (hover: hover) {
+	@starting-style {
+		.pbx-row-li.group .pbx-row-actions.ui-hover-reveal {
+			opacity: 0;
+		}
+	}
+}
 
 /*
  * Swipe-to-triage on a thread row (UX plan idea 21).

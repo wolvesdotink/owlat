@@ -34,6 +34,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'counterBuckets',
 	'mailFolderMembership',
 	'mailFolderUidBlocks',
+	'mailLabelMembership',
+	'mailLabelMessages',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -90,6 +92,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeExtractionProgress',
 	'agentCircuitBreakers',
 	'agentConfig',
+	'agentAutoReplyUsage',
 	'autonomyFeedback',
 	'autonomyRules',
 	'autonomySuggestions',

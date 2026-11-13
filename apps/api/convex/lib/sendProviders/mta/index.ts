@@ -8,7 +8,11 @@
  * code derived from the HTTP response.
  */
 
-import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import {
+	extractDomainOrNull,
+	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	type GovernedMessageType,
+} from '@owlat/shared';
 import { correlationHeader } from '@owlat/shared/correlation';
 import {
 	MTA_RELAY_ALLOWED_REASON,
@@ -41,6 +45,27 @@ const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
 
 /**
+ * The IP pool a send asks the MTA for: the route's pool when it names one,
+ * else the one its stream belongs to. Campaign and automation mail is bulk
+ * marketing traffic and goes to `campaign`, where the MTA paces it through
+ * warm-up and holds back the transactional reserve; everything else (the
+ * transactional API, replies, system and personal mail) goes to
+ * `transactional`. `delivery/rampCapacityInputs.ts` measures campaign-pool
+ * headroom against the same two streams, so the two must change together.
+ *
+ * Both the routing decision and the intake body take their pool from here: the
+ * MTA binds a lease to the pool it was decided for and refuses an intake that
+ * names another one. An empty pool name counts as no pool.
+ */
+export function mtaIpPoolFor(
+	routePool: MtaIpPool | '' | undefined,
+	messageType: GovernedMessageType | undefined
+): MtaIpPool {
+	if (routePool) return routePool;
+	return messageType === 'campaign' || messageType === 'automation' ? 'campaign' : 'transactional';
+}
+
+/**
  * Take a last-mile routing lease from ONE configured MTA transport.
  *
  * `transport` names WHICH one, for the same reason `sendEmail` takes it: a
@@ -55,8 +80,8 @@ const MTA_DECISION_TIMEOUT_MS = 5_000;
  * this producer still emitted the old body would be answered 400 — and a 400 is
  * indistinguishable here from an unreachable endpoint, so every governed
  * own-MTA send would defer with nothing failing to compile. The one divergence
- * is `ipPool`: the wire requires it, this caller may omit it, and the `??`
- * below is where the default has always been applied.
+ * is `ipPool`: the wire requires it, this caller may omit it, and
+ * {@link mtaIpPoolFor} fills it in from the message type.
  */
 export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
@@ -77,7 +102,7 @@ export async function resolveMtaRoutingDecision(
 				// A header, never a body key: the decision intake checks an exact key list.
 				...correlationHeader(correlationId, 'mta'),
 			},
-			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
+			body: JSON.stringify({ ...input, ipPool: mtaIpPoolFor(input.ipPool, input.messageType) }),
 			signal: controller.signal,
 		});
 		if (!response.ok) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
@@ -268,7 +293,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			text: params.text,
 			replyTo: params.replyTo,
 			headers: params.headers,
-			ipPool: extras?.ipPool ?? 'transactional',
+			ipPool: mtaIpPoolFor(extras?.ipPool, extras?.messageType),
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
 			organizationId: extras?.organizationId,

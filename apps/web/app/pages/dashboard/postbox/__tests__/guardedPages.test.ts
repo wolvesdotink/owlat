@@ -101,6 +101,7 @@ function mountPage(page: Component) {
 			PostboxSubscriptionsPanel: marker('PostboxSubscriptionsPanel'),
 			PostboxSendersPanel: marker('PostboxSendersPanel'),
 			PostboxLayout: marker('PostboxLayout'),
+			LazyPostboxAllInboxesLayout: marker('PostboxAllInboxesLayout'),
 			DashboardGettingStarted: marker('DashboardGettingStarted'),
 			UiErrorAlert: marker('UiErrorAlert'),
 		},

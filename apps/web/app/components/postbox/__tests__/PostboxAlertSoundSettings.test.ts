@@ -5,7 +5,7 @@
  * later), and resets a switch to off.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import type { AlertSoundPrefs } from '~/lib/alertSoundRules';
@@ -14,7 +14,11 @@ import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import PostboxAlertSoundSettings from '../PostboxAlertSoundSettings.vue';
 
 const preview = vi.hoisted(() => vi.fn());
-vi.mock('~/composables/postbox/useUiSound', () => ({ previewAlertSound: preview }));
+const load = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('~/composables/postbox/useUiSound', () => ({
+	previewAlertSound: preview,
+	loadAlertSound: load,
+}));
 
 const setAlertSound = vi.fn(async () => {});
 let prefs: AlertSoundPrefs;
@@ -23,6 +27,7 @@ let role: 'owner' | 'admin' | 'editor' | null;
 
 beforeEach(() => {
 	preview.mockClear();
+	load.mockClear();
 	setAlertSound.mockClear();
 	prefs = { reply: false, assignment: false, question: false };
 	flags = new Set(['postbox', 'inbox']);
@@ -80,6 +85,27 @@ describe('PostboxAlertSoundSettings', () => {
 	it('hides itself when no alert it covers can reach this person', () => {
 		flags = new Set(['campaigns']);
 		expect(mountCard().find('#alert-sounds').exists()).toBe(false);
+		expect(load).not.toHaveBeenCalled();
+	});
+
+	// The preview must play inside the click to unlock later alerts, so the
+	// chime cannot wait for that click to start downloading.
+	it('fetches the chime as soon as it shows a switch', () => {
+		mountCard();
+		expect(load).toHaveBeenCalledTimes(1);
+	});
+
+	it('fetches the chime when the switches appear after mount', async () => {
+		flags = new Set(['inbox']);
+		const lateRole = ref<typeof role>(null);
+		vi.stubGlobal('usePermissions', () => ({ role: lateRole }));
+		const card = mountCard();
+		expect(load).not.toHaveBeenCalled();
+
+		lateRole.value = 'admin';
+		await nextTick();
+		expect(card.find('#alert-sounds').exists()).toBe(true);
+		expect(load).toHaveBeenCalledTimes(1);
 	});
 
 	it('previews the chime when a sound is switched on, not when it is switched off', async () => {

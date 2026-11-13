@@ -325,6 +325,44 @@ describe('replaying unresolved feedback', () => {
 		expect(await blockedReason(t, email)).toBe('bounced');
 	});
 
+	it('replays a bounce caused by our sending identity without blocking the recipient', async () => {
+		const t = newHarness();
+		await dispatch(t, {
+			...orphanBounce('ses-sender'),
+			bounceCause: 'sender',
+			bounceMessage: 'smtp; 550 5.7.1 blocked using Spamhaus',
+		});
+		const [row] = await rows(t);
+		expect(row).toMatchObject({ bounceType: 'hard', bounceCause: 'sender' });
+
+		const { sendId, email } = await seedSentSend(t, 'ses-sender');
+		await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: row!._id });
+
+		expect(await t.run(async (ctx) => await ctx.db.get(sendId))).toMatchObject({
+			status: 'bounced',
+			bounceType: 'hard',
+		});
+		expect(await blockedReason(t, email)).toBeNull();
+	});
+
+	it('a recipient hard bounce escalating a stored sender soft bounce takes its cause too', async () => {
+		const t = newHarness();
+		await dispatch(t, {
+			...orphanBounce('ses-mixed'),
+			bounceType: 'soft',
+			bounceCause: 'sender',
+			bounceMessage: '451 4.7.1 try later',
+		});
+		await dispatch(t, orphanBounce('ses-mixed'));
+		const [row] = await rows(t);
+		expect(row).toMatchObject({ bounceType: 'hard' });
+		expect(row?.bounceCause).toBeUndefined();
+
+		const { email } = await seedSentSend(t, 'ses-mixed');
+		await t.mutation(internal.webhooks.unresolvedFeedback.replay, { feedbackId: row!._id });
+		expect(await blockedReason(t, email)).toBe('bounced');
+	});
+
 	it('schedules every automatic replay from when the row was first seen', async () => {
 		const t = newHarness();
 		const firstSeenAt = Date.now();
