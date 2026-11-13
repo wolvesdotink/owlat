@@ -247,6 +247,61 @@ describe('reduceBounced', () => {
 		expect(block).toMatchObject({ reason: 'bounced', bounceType: 'soft' });
 	});
 
+	it('a hard bounce caused by our sending identity ends the send but blocklists no one', () => {
+		const result = reduceBounced(
+			campaignSend({ status: 'sent' }),
+			{ to: 'bounced', at: 4000, bounceType: 'hard', bounceCause: 'sender' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			recipient
+		);
+		expect(result.applied).toBe('transitioned');
+		expect(result.patch).toMatchObject({ status: 'bounced', bounceType: 'hard' });
+		expect(result.effects.map((e) => e.kind)).not.toContain('blocklist_insert');
+		expect(result.effects.map((e) => e.kind)).not.toContain('contact_soft_bounce_count');
+		// The send still counts as a hard bounce everywhere else.
+		expect(result.effects.find((e) => e.kind === 'campaign_stats_bounced')).toMatchObject({
+			isHard: true,
+		});
+		expect(result.effects.find((e) => e.kind === 'reputation_update')).toMatchObject({
+			eventType: 'hard_bounce',
+		});
+		expect(result.effects.find((e) => e.kind === 'customer_webhook')).toMatchObject({
+			spec: { literal: 'email.bounced', input: { bounceType: 'hard' } },
+		});
+	});
+
+	it('a soft bounce caused by our sending identity does not move the soft-bounce counter', () => {
+		// softBounceCount 4 would reach the threshold on a recipient soft bounce.
+		const result = reduceBounced(
+			campaignSend({ status: 'sent' }),
+			{ to: 'bounced', at: 5000, bounceType: 'soft', bounceCause: 'sender' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			recipient
+		);
+		expect(result.applied).toBe('transitioned');
+		expect(result.effects.map((e) => e.kind)).not.toContain('contact_soft_bounce_count');
+		expect(result.effects.map((e) => e.kind)).not.toContain('blocklist_insert');
+	});
+
+	it('a hard bounce the recipient caused still blocklists', () => {
+		const result = reduceBounced(
+			campaignSend({ status: 'sent' }),
+			{ to: 'bounced', at: 4000, bounceType: 'hard', bounceCause: 'recipient' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			null
+		);
+		expect(result.effects.find((e) => e.kind === 'blocklist_insert')).toMatchObject({
+			reason: 'bounced',
+			bounceType: 'hard',
+		});
+	});
+
 	it('a duplicate hard bounce on an already-hard-bounced row is a no-op', () => {
 		const result = reduceBounced(
 			campaignSend({ status: 'bounced', bounceType: 'hard' }),

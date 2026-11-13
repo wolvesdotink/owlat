@@ -516,6 +516,30 @@ describe('delivery.nonCampaignIntake.intake — Auto-Submitted stamping', () => 
 		expect(envelopeInput?.['messageType']).toBe('automation');
 		expect(envelopeInput?.['autoSubmittedType']).toBeUndefined();
 	});
+
+	it('threads the site URL and the one-click flag onto an automation envelope, for the footer', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+
+		await t.mutation(internal.delivery.nonCampaignIntake.intake, {
+			kind: 'automation' as const,
+			email: 'allowed@example.com',
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			from: 'Owlat <noreply@example.com>',
+			listUnsubscribe: true,
+			convexSiteUrl: 'https://convex.example',
+			siteUrl: 'https://app.example',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput?.['listUnsubscribe']).toBe(true);
+		expect(envelopeInput?.['siteUrl']).toBe('https://app.example');
+	});
 });
 
 // ─── G-02: the engagement score is put ON THE ENVELOPE by the intake ─────────

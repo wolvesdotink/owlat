@@ -14,6 +14,7 @@ import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
 import { logError, logWarn } from '../lib/runtimeLog';
 import { scopeRecipientHash } from './sendingScopeQueries';
 import type { InboundEventOf } from './types';
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 
 /**
  * `transitionByProviderMessageId` returns `{ ok: false, reason:
@@ -74,6 +75,7 @@ export async function recordUnresolvedFeedback(
 			? {
 					kind: 'bounce' as const,
 					bounceType: e.bounceType,
+					...(e.bounceCause ? { bounceCause: e.bounceCause } : {}),
 					...(bounceStatusCode ? { bounceStatusCode } : {}),
 				}
 			: { kind: 'complaint' as const };
@@ -116,6 +118,7 @@ async function store(
 		suppression: UnresolvedFeedbackSuppression;
 		providerMessageId?: string;
 		bounceType?: 'hard' | 'soft';
+		bounceCause?: BounceCause;
 		bounceStatusCode?: string;
 	}
 ): Promise<void> {

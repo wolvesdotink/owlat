@@ -135,8 +135,22 @@ export function dnsInstructions(config: SetupConfig): string[] {
 	return lines;
 }
 
-export function formatSummary(args: { mode: Mode; adminEmail?: string; baseUrl: string }): string {
-	const lines: string[] = [pc.green('Quickstart complete!')];
+export function formatSummary(args: {
+	mode: Mode;
+	adminEmail?: string;
+	baseUrl: string;
+	/** Lines explaining why mail cannot leave yet; they replace the plain success headline. */
+	outboundWarning?: string[];
+}): string {
+	const warning = args.outboundWarning ?? [];
+	const lines: string[] =
+		warning.length > 0
+			? [
+					pc.yellow('Quickstart finished, but outbound port 25 is blocked: mail cannot leave yet.'),
+					'',
+					...warning.map((line) => pc.yellow(line)),
+				]
+			: [pc.green('Quickstart complete!')];
 	lines.push('');
 	lines.push(`Web app:   ${pc.cyan('http://localhost:3000')}`);
 	lines.push(`Convex:    ${pc.cyan(args.baseUrl)}`);

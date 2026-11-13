@@ -127,7 +127,7 @@ const INERT = Object.fromEntries(
 		'PostboxThreadCategoryList',
 		'PostboxThreadGroupList',
 		'PostboxThreadList',
-		'PostboxThreadReader',
+		'LazyPostboxThreadReader',
 		'PostboxThreadSectionList',
 		'PostboxTodayView',
 		'PostboxTriageFilterChips',

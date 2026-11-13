@@ -9,6 +9,7 @@ import {
 	type InboxListThread,
 } from '~/composables/useInboxListActions';
 import { useInboxRowMenu } from '~/composables/useInboxRowMenu';
+import { provideInboxListNow } from '~/composables/useInboxListClock';
 import { isChordPending, resolveActiveChord, resolveActiveShortcut } from '~/utils/shortcutScope';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
@@ -77,6 +78,8 @@ const {
 	stats,
 	loadMoreThreads,
 } = useInbox(computed(() => isAdmin.value));
+// The rows read the clock for their chips; see useInboxListClock.
+provideInboxListNow(now);
 
 // ── Row triage (shared with the thread detail view) ──
 const { user } = useAuth();
@@ -454,7 +457,6 @@ const showOldestFirst = () => setSort('oldest-waiting');
 							:members="assignMembers"
 							:current-user-id="user?.id ?? null"
 							:can-manage="isAdmin"
-							:now="now"
 							:assignee-present="isAssigneePresent(thread._id)"
 							:note-count="noteCountOf(thread._id)"
 							:has-draft="teamThreadHasDraft(drafts, thread._id)"

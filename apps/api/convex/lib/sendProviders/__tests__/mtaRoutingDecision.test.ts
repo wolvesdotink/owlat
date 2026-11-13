@@ -249,3 +249,97 @@ describe('MTA routing decision client', () => {
 		).toBe(EmailErrorCode.ROUTING_LEASE_UNREADABLE);
 	});
 });
+
+describe('the IP pool the MTA adapter puts on the wire', () => {
+	const originalFetch = global.fetch;
+	let bodies: Array<{ path: string; body: Record<string, unknown> }>;
+
+	beforeEach(() => {
+		vi.stubEnv('MTA_API_URL', 'https://mta.test');
+		vi.stubEnv('MTA_API_KEY', 'test-key');
+		bodies = [];
+		global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+			bodies.push({
+				path: new URL(String(url)).pathname,
+				body: JSON.parse(init!.body as string) as Record<string, unknown>,
+			});
+			return new Response(JSON.stringify({ success: true, id: 'mta-1' }), { status: 200 });
+		}) as typeof fetch;
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		global.fetch = originalFetch;
+	});
+
+	const unrouted = { ...decisionInput, ipPool: undefined };
+	const params = { to: 'to@example.com', from: 'from@example.com', subject: 's', html: '<p>s</p>' };
+
+	it.each([
+		{ messageType: 'campaign', pool: 'campaign' },
+		{ messageType: 'automation', pool: 'campaign' },
+		{ messageType: 'transactional', pool: 'transactional' },
+	] as const)('defaults an unrouted $messageType decision to the $pool pool', async (row) => {
+		await resolveMtaRoutingDecision(MTA_TRANSPORT, { ...unrouted, messageType: row.messageType });
+		expect(bodies[0]!.body['ipPool']).toBe(row.pool);
+	});
+
+	it.each([
+		{ messageType: 'campaign', pool: 'campaign' },
+		{ messageType: 'automation', pool: 'campaign' },
+		{ messageType: 'transactional', pool: 'transactional' },
+	] as const)('defaults an unrouted $messageType send to the $pool pool', async (row) => {
+		await mtaSendProvider.sendEmail(MTA_TRANSPORT, params, { messageType: row.messageType });
+		expect(bodies[0]!.body['ipPool']).toBe(row.pool);
+	});
+
+	it('lets a route pool override the stream default on both calls', async () => {
+		await resolveMtaRoutingDecision(MTA_TRANSPORT, { ...unrouted, ipPool: 'transactional' });
+		await mtaSendProvider.sendEmail(MTA_TRANSPORT, params, {
+			messageType: 'campaign',
+			ipPool: 'transactional',
+		});
+		expect(bodies.map((b) => b.body['ipPool'])).toEqual(['transactional', 'transactional']);
+	});
+
+	it('treats an empty route pool as unset, so the decision and the send agree', async () => {
+		await resolveMtaRoutingDecision(MTA_TRANSPORT, {
+			...unrouted,
+			ipPool: '' as unknown as 'campaign',
+		});
+		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
+			params,
+			mtaSendProvider.buildDispatchExtras!({
+				idempotencyKey: 'send-1',
+				workAttemptId: 'work-1',
+				organizationId: 'org-1',
+				messageType: 'campaign',
+				deliveryDomain: 'production',
+				routingReentryToken: 'reentry-1',
+				routingReentry: {
+					envelopeInput: {
+						kind: 'campaign',
+						to: 'to@example.com',
+						from: 'from@example.com',
+						template: { subject: 's', htmlContent: '<p>s</p>' },
+						contactInfo: { email: 'to@example.com' },
+					},
+					retryState: { attempt: 1, idempotencyKey: 'send-1', startedAt: 1 },
+				},
+				ipPool: '',
+			})
+		);
+		expect(bodies.map((b) => b.body['ipPool'])).toEqual(['campaign', 'campaign']);
+	});
+
+	it('keeps mail without a stream, and system mail, on the transactional pool', async () => {
+		await mtaSendProvider.sendEmail(MTA_TRANSPORT, params);
+		await mtaSendProvider.sendEmail(
+			MTA_TRANSPORT,
+			params,
+			mtaSendProvider.buildSystemMailExtras!({})
+		);
+		expect(bodies.map((b) => b.body['ipPool'])).toEqual(['transactional', 'transactional']);
+	});
+});

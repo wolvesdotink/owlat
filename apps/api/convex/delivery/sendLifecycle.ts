@@ -43,7 +43,7 @@ import { refuse } from '../lib/lifecycle';
 import { finalizeSendSource } from './sendLifecycle/sourceFinalization';
 import { applyProviderFeedback } from './sendCompletionFailures';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
-import { bounceTypeValidator } from '../lib/literalValidators';
+import { bounceCauseValidator, bounceTypeValidator } from '../lib/literalValidators';
 import { openAgentValidator } from './automatedOpens';
 import { clickAgentValidator } from './automatedClicks';
 
@@ -119,6 +119,7 @@ const transitionInputValidator = v.union(
 		to: v.literal('bounced'),
 		at: v.number(),
 		bounceType: bounceTypeValidator,
+		bounceCause: v.optional(bounceCauseValidator),
 		bounceMessage: v.optional(v.string()),
 	}),
 	v.object({ to: v.literal('complained'), at: v.number() })

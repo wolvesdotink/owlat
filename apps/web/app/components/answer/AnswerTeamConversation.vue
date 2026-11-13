@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import type { api } from '@owlat/api';
-import type { FunctionReturnType } from 'convex/server';
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { teamConversationOpenIds } from '~/utils/answerTeamConversation';
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import type { ReplyEntry } from '~/utils/teamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
+import AnswerTeamMessageBody from '~/components/answer/AnswerTeamMessageBody.vue';
+import type {
+	TeamThreadContact,
+	TeamThreadMessage,
+} from '~/composables/team/useTeamThreadMessages';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
-type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
-type ThreadMessage = ThreadData['messages'][number];
-type ThreadContact = ThreadData['contact'];
+type ThreadMessage = TeamThreadMessage;
+type ThreadContact = TeamThreadContact;
 
 /**
  * Answer mode's left column for a Team inbox thread: the
@@ -133,27 +135,11 @@ function senderName(message: ThreadMessage): string | null {
 	return `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || null;
 }
 
-function bodyOf(message: ThreadMessage) {
-	return {
-		_id: message._id,
-		htmlBodyInline: message.htmlBody || undefined,
-		textBodyInline: message.htmlBody ? undefined : message.textBody || undefined,
-		fromAddress: message.from,
-	};
-}
-
-function preview(message: ThreadMessage): string {
-	return (message.textBody || message.bodyExcerpt || '').replace(/\s+/g, ' ').trim().slice(0, 160);
-}
-
-// A body too large for its row is in storage and the query only has its
-// excerpt; the thread page's body component shows that, marked as the start of
-// the message, until the full text arrives.
-function hasInlineBody(message: ThreadMessage): boolean {
-	return Boolean(message.htmlBody || message.textBody?.trim());
-}
-function hasStoredBody(message: ThreadMessage): boolean {
-	return message.textBodyStorageId !== undefined || message.htmlBodyStorageId !== undefined;
+// A collapsed row previews the text it has, else the stream's preview: a page
+// hands over envelopes, and a body is read only when its row opens.
+function preview(message: ThreadMessage, entry: TeamStreamEntry): string {
+	const text = (message.textBody || message.bodyExcerpt || '').replace(/\s+/g, ' ').trim();
+	return text ? text.slice(0, 160) : entry.kind === 'customerEmail' ? entry.preview : '';
 }
 
 const showViewToggle = computed(() => props.messages.length > 1);
@@ -250,7 +236,7 @@ const viewKey = computed(() => labelFor('answer.toggleView'));
 								class="block truncate text-xs text-text-tertiary"
 								data-testid="answer-team-message-preview"
 							>
-								{{ preview(messageOf(entry)!) }}
+								{{ preview(messageOf(entry)!, entry) }}
 							</span>
 						</span>
 						<time
@@ -260,26 +246,7 @@ const viewKey = computed(() => labelFor('answer.toggleView'));
 							{{ formatCompactRelativeTime(messageOf(entry)!._creationTime) }}
 						</time>
 					</button>
-					<div
-						v-if="isOpen(entry.source.id)"
-						class="px-4 pb-4"
-						data-testid="answer-team-message-body"
-					>
-						<AppErrorBoundary surface="messageBody" :reset-keys="[entry.source.id]">
-							<PostboxMessageBody
-								v-if="hasInlineBody(messageOf(entry)!)"
-								:message="bodyOf(messageOf(entry)!)"
-							/>
-							<InboxMessageBody
-								v-else-if="hasStoredBody(messageOf(entry)!)"
-								:message="messageOf(entry)!"
-							/>
-							<p v-else class="text-sm text-text-tertiary">
-								{{ t('dashboard.inbox.detail.noTextContent') }}
-							</p>
-						</AppErrorBoundary>
-						<InboxMessageAttachments :message="messageOf(entry)!" />
-					</div>
+					<AnswerTeamMessageBody v-if="isOpen(entry.source.id)" :message="messageOf(entry)!" />
 				</article>
 				<article
 					v-else

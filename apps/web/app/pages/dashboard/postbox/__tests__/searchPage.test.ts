@@ -188,7 +188,7 @@ function mountPage() {
 			PostboxThreadListSkeleton: true,
 			PostboxEmptyState: true,
 			PostboxThreadList: true,
-			PostboxThreadReader: true,
+			LazyPostboxThreadReader: true,
 			PostboxMessageNotFound: true,
 			PostboxReaderSkeleton: true,
 			PostboxShortcutHelp: true,
@@ -264,7 +264,8 @@ describe('mail search page', () => {
 		page.findComponent({ name: 'PostboxThreadList' }).vm.$emit('select', 'mm1');
 		await nextTick();
 		// The reader is stubbed, so the seed arrives as a plain attribute.
-		const seed = () => page.findComponent({ name: 'PostboxThreadReader' }).vm.$attrs['find-seed'];
+		const seed = () =>
+			page.findComponent({ name: 'LazyPostboxThreadReader' }).vm.$attrs['find-seed'];
 		expect(seed()).toEqual({ query: 'refund', messageId: 'mm1' });
 
 		parsed.value = parseSearchQuery('from:ines@example.com is:unread');

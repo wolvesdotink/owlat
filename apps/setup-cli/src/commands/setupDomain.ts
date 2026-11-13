@@ -8,14 +8,20 @@
  * operator can do, and something the installer's identity gate will later refuse
  * to bring the stack up without. Asking for it at the moment the hostname is
  * chosen is the only point where it is still cheap.
+ *
+ * The same step settles the From address of system mail, because this is the
+ * only domain the terminal wizard learns. Unset, verification and invitation
+ * mail leaves under a placeholder domain and fails SPF and DMARC.
  */
 
-import { group, text } from '@clack/prompts';
+import { group, isCancel, text } from '@clack/prompts';
+import { proposedSystemFromEmail, systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import type { EnvMap } from '../lib/env';
 import { detectPrimaryIpv4 } from '../lib/outboundIp';
 import { announceReverseDns, plannedOutboundIdentities } from '../lib/reverseDns';
+import { isValidEmail } from '../lib/validators';
 
-export async function collectDomain(): Promise<EnvMap | null> {
+export async function collectDomain(existingEnv: EnvMap = {}): Promise<EnvMap | null> {
 	const result = await group({
 		ehlo: () =>
 			text({
@@ -29,6 +35,19 @@ export async function collectDomain(): Promise<EnvMap | null> {
 		EHLO_HOSTNAME: result.ehlo,
 		RETURN_PATH_DOMAIN: result.bounceDomain,
 	};
+	const ehlo = result.ehlo?.trim();
+	if (ehlo) {
+		const fromEmail = await text({
+			message: 'From address for system mail (sign-up verification, password resets, invitations)',
+			initialValue: existingEnv['DEFAULT_FROM_EMAIL'] || proposedSystemFromEmail(ehlo),
+			validate: (v) => (isValidEmail(v?.trim() ?? '') ? undefined : 'Enter a valid email'),
+		});
+		if (isCancel(fromEmail)) return null;
+		Object.assign(
+			env,
+			systemFromIdentityEnv(ehlo, fromEmail, existingEnv['DEFAULT_FROM_NAME'] || undefined)
+		);
+	}
 	// The sending pools are not configured yet — `quickstart` defaults them to
 	// this box's primary IPv4 — so check the PTR of the address they will get.
 	const ip = detectPrimaryIpv4();

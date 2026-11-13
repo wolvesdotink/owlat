@@ -39,6 +39,9 @@ export const TENANT_TABLES = [
 	// IMAP folder membership: derived from mailMessages the same way.
 	'mailFolderMembership',
 	'mailFolderUidBlocks',
+	// Label membership rows: derived from mailMessages the same way.
+	'mailLabelMembership',
+	'mailLabelMessages',
 
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
@@ -199,6 +202,7 @@ export const TENANT_TABLES = [
 	'llmUsageEvents',
 	'agentCircuitBreakers',
 	'agentConfig',
+	'agentAutoReplyUsage',
 	'autonomyFeedback',
 	'autonomyRules',
 	'handlingRules',

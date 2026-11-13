@@ -18,6 +18,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { removeMessageAttachments } from './attachmentIndex';
 import { applyMailboxUsageDelta } from './mailboxUsage';
 import { recordMessageCounters } from './messageCounters';
+import { recordLabelMembership } from './labelMessageIndex';
 import { recordFolderMembership } from './folderMembership';
 import { deleteMessageBody } from '../lib/messageBodyStore';
 import { deleteMessagePartsForRaw } from './messageParts';
@@ -120,6 +121,7 @@ export async function deleteMessageRowAndBlobs(
 	// Decision artifacts are content-derived labels about this message.
 	await deleteMailMessageArtifacts(ctx, message._id);
 	await recordMessageCounters(ctx, message, null);
+	await recordLabelMembership(ctx, message, null);
 	await recordFolderMembership(ctx, message, null);
 
 	const blobs: ReadonlyArray<readonly [SharedBlobColumn, Id<'_storage'> | undefined]> = [

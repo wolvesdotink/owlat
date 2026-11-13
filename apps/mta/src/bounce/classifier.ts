@@ -9,9 +9,11 @@ import type { BounceClassification } from '../types.js';
 // Hard/soft free-text patterns are shared with the Resend webhook adapter so the
 // two can't drift. The DSN-code precedence + complaint detection below stay local.
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
+import { enhancedCodeCause } from '../intelligence/bounceCause.js';
 
 // Complaint patterns — spam report
-const COMPLAINT_PATTERNS = /feedback-report|feedback-type:\s*abuse|spam complaint|complaint about message/i;
+const COMPLAINT_PATTERNS =
+	/feedback-report|feedback-type:\s*abuse|spam complaint|complaint about message/i;
 
 /**
  * Classify a bounce/DSN message
@@ -53,7 +55,12 @@ export function classifyBounce(
 	// An explicit `Action: failed` with no enhanced status code is still a
 	// permanent failure per RFC 3464 §2.3.3.
 	if (structured.action === 'failed') {
-		return { type: 'bounced', bounceType: 'hard', message: truncate(bodyText), diagnosticCode: structured.diagnosticCode };
+		return {
+			type: 'bounced',
+			bounceType: 'hard',
+			message: truncate(bodyText),
+			diagnosticCode: structured.diagnosticCode,
+		};
 	}
 
 	// 3. Fall back to a loose enhanced-status-code scan over the whole body.
@@ -126,29 +133,33 @@ function classifyByEnhancedCode(
 	bodyText: string,
 	_action?: string
 ): BounceClassification | null {
-	const [classDigit, subject] = code.split('.').map(Number);
+	const [classDigit] = code.split('.').map(Number);
+	// X.7.x (security/policy) and the X.1.x codes about the sender's own address
+	// refuse our sending identity, not the recipient. The disposition below is
+	// unchanged; the cause tells Convex not to blocklist or count the address.
+	const cause = enhancedCodeCause(code) === 'sender' ? { bounceCause: 'sender' as const } : {};
 
-	// Class 5 = permanent failure
+	// Class 5 = permanent failure, except 5.2.2 mailbox full (soft despite 5xx).
 	if (classDigit === 5) {
-		// 5.1.x = address-related
-		if (subject === 1) {
-			return { type: 'bounced', bounceType: 'hard', message: truncate(bodyText), diagnosticCode: code };
-		}
-		// 5.2.2 = mailbox full (soft despite 5xx class)
-		if (code === '5.2.2') {
-			return { type: 'bounced', bounceType: 'soft', message: truncate(bodyText), diagnosticCode: code };
-		}
-		// 5.7.x = security/policy
-		if (subject === 7) {
-			return { type: 'bounced', bounceType: 'hard', message: truncate(bodyText), diagnosticCode: code };
-		}
-		// Other 5.x.x = hard bounce
-		return { type: 'bounced', bounceType: 'hard', message: truncate(bodyText), diagnosticCode: code };
+		const bounceType = code === '5.2.2' ? 'soft' : 'hard';
+		return {
+			type: 'bounced',
+			bounceType,
+			...cause,
+			message: truncate(bodyText),
+			diagnosticCode: code,
+		};
 	}
 
 	// Class 4 = temporary failure
 	if (classDigit === 4) {
-		return { type: 'bounced', bounceType: 'soft', message: truncate(bodyText), diagnosticCode: code };
+		return {
+			type: 'bounced',
+			bounceType: 'soft',
+			...cause,
+			message: truncate(bodyText),
+			diagnosticCode: code,
+		};
 	}
 
 	return null;

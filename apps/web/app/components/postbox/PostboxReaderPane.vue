@@ -10,7 +10,8 @@
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { PostboxFindSeed } from '~/composables/postbox/usePostboxThreadFind';
 import { POSTBOX_FIND_QUERY_PARAM } from '~/utils/postboxFindSeed';
-import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { useBlockSize } from '~/composables/postbox/useBlockSize';
+import PostboxReaderSkeleton from '~/components/postbox/PostboxReaderSkeleton.vue';
 
 const props = defineProps<{
 	activeMessageId?: string | null;
@@ -61,15 +62,23 @@ const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 
 		<AppErrorBoundary v-if="message" surface="reader" :reset-keys="[activeMessageId]">
 			<!-- Keyed, enter-only swap (postbox-motion.css): the next thread
-			     mounts in the same frame the previous one goes. -->
-			<PostboxThreadReader
-				:key="activeMessageId ?? undefined"
-				class="pbx-reader-swap"
-				:message="message"
-				:advance-ids="advanceIds"
-				:folder-role="folderPath"
-				:find-seed="findSeed"
-			/>
+			     mounts in the same frame the previous one goes. Lazy, so the
+			     list does not wait for the reader's code; the page, the rows and
+			     the idle warm-up fetch it ahead of the first open
+			     (warmPostboxThreadReader). Until its code has arrived the
+			     skeleton holds the pane; once it has, a swap renders in the
+			     same frame and the fallback never shows again. -->
+			<Suspense>
+				<LazyPostboxThreadReader
+					:key="activeMessageId ?? undefined"
+					class="pbx-reader-swap"
+					:message="message"
+					:advance-ids="advanceIds"
+					:folder-role="folderPath"
+					:find-seed="findSeed"
+				/>
+				<template #fallback><PostboxReaderSkeleton /></template>
+			</Suspense>
 		</AppErrorBoundary>
 		<PostboxReaderPlaceholder
 			v-else

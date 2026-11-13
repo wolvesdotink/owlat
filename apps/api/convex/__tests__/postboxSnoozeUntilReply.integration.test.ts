@@ -15,8 +15,10 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 import { clearSnoozeUntilReplyForThread } from '../mail/snooze';
 import { enableFeatures } from './factories';
+import { tableCountingDb, type QueriedDocuments } from './indexRecorder.testlib';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -201,5 +203,83 @@ describe('snooze until they reply', () => {
 		// Fires exactly once — a second sweep wakes nothing.
 		const second = await t.mutation(internal.mail.snooze.internalSweep, {});
 		expect(second.woken).toBe(0);
+	});
+});
+
+/**
+ * One thread of `size` messages in the inbox. The newest `watched` messages
+ * are snoozed until a reply; every other one carries a plain snooze, so only
+ * the until-reply flag tells them apart.
+ */
+async function seedLongThread(
+	t: ReturnType<typeof convexTest>,
+	opts: { mailboxId: Id<'mailboxes'>; folderId: Id<'mailFolders'>; size: number; watched: number }
+): Promise<{ threadId: Id<'mailThreads'>; watchedIds: Id<'mailMessages'>[] }> {
+	const { messageId, threadId } = await seedMessage(t, {
+		mailboxId: opts.mailboxId,
+		folderId: opts.folderId,
+		subject: 'long',
+	});
+	const watchedIds: Id<'mailMessages'>[] = [];
+	await t.run(async (ctx) => {
+		const first = (await ctx.db.get(messageId))!;
+		const { _id, _creationTime, ...fields } = first;
+		const now = Date.now();
+		const ids = [messageId];
+		for (let i = 1; i < opts.size; i++) {
+			ids.push(
+				await ctx.db.insert('mailMessages', {
+					...fields,
+					uid: i + 1,
+					rfc822MessageId: `<long-${i}@example.com>`,
+					receivedAt: first.receivedAt + i,
+				})
+			);
+		}
+		for (const [i, id] of ids.entries()) {
+			const isWatched = i >= ids.length - opts.watched;
+			await ctx.db.patch(id, {
+				snoozedUntil: now + 86_400_000,
+				snoozedFromFolderId: opts.folderId,
+				...(isWatched ? { isSnoozeUntilReply: true } : {}),
+			});
+			if (isWatched) watchedIds.push(id);
+		}
+	});
+	return { threadId, watchedIds };
+}
+
+describe('an arriving reply reads only the watched messages of its thread', () => {
+	it.each([
+		{ size: 10, watched: 0 },
+		{ size: 100, watched: 0 },
+		{ size: 1000, watched: 0 },
+		{ size: 10, watched: 1 },
+		{ size: 100, watched: 1 },
+		{ size: 1000, watched: 1 },
+	])('$size messages, $watched watched', async ({ size, watched }) => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, inboxId } = await seed(t);
+		const { threadId, watchedIds } = await seedLongThread(t, {
+			mailboxId,
+			folderId: inboxId,
+			size,
+			watched,
+		});
+
+		const queried: QueriedDocuments = {};
+		await t.run((ctx) =>
+			clearSnoozeUntilReplyForThread(
+				{ ...ctx, db: tableCountingDb(ctx.db, queried) } as MutationCtx,
+				threadId,
+				Date.now()
+			)
+		);
+
+		expect(queried['mailMessages'] ?? 0).toBe(watched);
+		const after = await t.run(async (ctx) =>
+			Promise.all(watchedIds.map(async (id) => (await ctx.db.get(id))?.isSnoozeUntilReply === true))
+		);
+		expect(after).toEqual(watchedIds.map(() => false));
 	});
 });

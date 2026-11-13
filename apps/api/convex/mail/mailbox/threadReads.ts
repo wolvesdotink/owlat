@@ -24,16 +24,23 @@ export const THREAD_READ_CAP = 250;
 export type ThreadPageArgs = {
 	/** Messages per page, newest first. Absent: {@link THREAD_READ_CAP}. */
 	pageSize?: number;
-	/** How many of the page's newest messages carry bodies. Absent: all of them. */
+	/** How many of the page's newest messages come as full rows. Absent: all of them. */
 	withBodies?: number;
+	/**
+	 * True: those full rows come without their body, which the reader reads
+	 * through `getMessageInlineBody`. A flag, label or thread change re-sends
+	 * the whole page, and that must not carry bodies that did not change.
+	 */
+	omitBodies?: boolean;
 	/** `olderCursor` from the previous page; absent or null for the newest page. */
 	cursor?: string | null;
 };
 
 export type ThreadPage = {
 	/**
-	 * The page's newest `withBodies` messages, bodies unsealed, oldest first.
-	 * Both lists carry the sender's brand logo where a message may show one.
+	 * The page's newest `withBodies` messages, bodies unsealed (or left out with
+	 * `omitBodies`), oldest first. Both lists carry the sender's brand logo
+	 * where a message may show one.
 	 */
 	messages: Array<Doc<'mailMessages'> & SenderLogoField>;
 	/** The page's older messages as body-less envelopes (list rows), oldest first. */
@@ -68,10 +75,30 @@ export async function loadThreadPage(
 	const newest = page.page.slice(0, withBodies).reverse();
 	const older = page.page.slice(withBodies).reverse();
 	return {
-		messages: await withSenderLogos(ctx, await openStoredMailMessageRows(ctx.db, newest)),
+		messages: await withSenderLogos(
+			ctx,
+			args.omitBodies ? newest.map(withoutBody) : await openStoredMailMessageRows(ctx.db, newest)
+		),
 		envelopes: await withSenderLogos(ctx, older.map(toMailListRow)),
 		olderCursor: page.isDone ? null : page.continueCursor,
 	};
+}
+
+/**
+ * A full row with every body column left out, the storage handles too: a row
+ * that names a blob reads as carrying its body to the reader, which then skips
+ * the body query that would also have returned the inline part beside it.
+ */
+function withoutBody(message: Doc<'mailMessages'>): Doc<'mailMessages'> {
+	const {
+		textBodyInline: _text,
+		htmlBodyInline: _html,
+		textBodyStorageId: _textBlob,
+		htmlBodyStorageId: _htmlBlob,
+		searchBody: _search,
+		...row
+	} = message;
+	return row;
 }
 
 type OutboundState = NonNullable<Doc<'mailMessages'>['outbound']>['state'];

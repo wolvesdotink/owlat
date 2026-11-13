@@ -4,6 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type DatabaseReader, type MutationCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import {
+	bounceCauseValidator,
 	bounceTypeValidator,
 	unresolvedFeedbackSuppressionValidator,
 	type UnresolvedFeedbackSuppression,
@@ -93,9 +94,9 @@ function strongerSuppression(
  * the table holds at most one row per message id and kind.
  *
  * A BOUNCE ONLY ESCALATES. A hard bounce arriving for an id whose open row
- * holds a soft one replaces the type, status code and event time, so the replay
- * applies the hard bounce (and its suppression) once the Send turns up. A soft
- * bounce never downgrades a hard one.
+ * holds a soft one replaces the type, cause, status code and event time, so the
+ * replay applies the hard bounce (and its suppression) once the Send turns up. A
+ * soft bounce never downgrades a hard one.
  *
  * A ROW WITHOUT A MESSAGE ID is a complaint the provider sent with the id
  * redacted. Nothing identifies a redelivery of it without the address,
@@ -112,6 +113,7 @@ export const record = internalMutation({
 		providerMessageId: v.optional(v.string()),
 		providerType: v.optional(v.string()),
 		bounceType: v.optional(bounceTypeValidator),
+		bounceCause: v.optional(bounceCauseValidator),
 		bounceStatusCode: v.optional(v.string()),
 		deliveryDomain: v.optional(v.string()),
 		at: v.number(),
@@ -139,7 +141,16 @@ export const record = internalMutation({
 				occurrences: existing.occurrences + 1,
 				lastSeenAt: now,
 				suppression: strongerSuppression(existing.suppression, args.suppression),
-				...(escalates ? { bounceType: 'hard' as const, bounceStatusCode, at: args.at } : {}),
+				// The cause travels with the type it explains; `undefined` clears a
+				// stored `sender` when a recipient hard bounce takes its place.
+				...(escalates
+					? {
+							bounceType: 'hard' as const,
+							bounceCause: args.bounceCause,
+							bounceStatusCode,
+							at: args.at,
+						}
+					: {}),
 			});
 			return existing._id;
 		}
@@ -148,6 +159,7 @@ export const record = internalMutation({
 			...(providerMessageId ? { providerMessageId } : {}),
 			...(args.providerType ? { providerType: clamp(args.providerType, TOKEN_MAX_LENGTH) } : {}),
 			...(args.bounceType ? { bounceType: args.bounceType } : {}),
+			...(args.bounceCause ? { bounceCause: args.bounceCause } : {}),
 			...(bounceStatusCode ? { bounceStatusCode } : {}),
 			...(args.deliveryDomain
 				? { deliveryDomain: clamp(args.deliveryDomain, TOKEN_MAX_LENGTH) }
@@ -182,6 +194,7 @@ async function transitionFor(
 					to: 'bounced' as const,
 					at: row.at,
 					bounceType: row.bounceType ?? ('soft' as const),
+					...(row.bounceCause ? { bounceCause: row.bounceCause } : {}),
 					// The status code stands in for the diagnostic, which is not kept.
 					...(row.bounceStatusCode ? { bounceMessage: row.bounceStatusCode } : {}),
 				}

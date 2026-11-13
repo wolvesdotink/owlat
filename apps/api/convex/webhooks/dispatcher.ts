@@ -207,6 +207,7 @@ const DISPATCH: DispatchTable = {
 					to: 'bounced',
 					at: e.at,
 					bounceType: e.bounceType,
+					...(e.bounceCause ? { bounceCause: e.bounceCause } : {}),
 					...(e.bounceMessage ? { bounceMessage: e.bounceMessage } : {}),
 				},
 			}

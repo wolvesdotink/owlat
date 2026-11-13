@@ -125,6 +125,7 @@ describe('the pure run core', () => {
 			sentAt: 1,
 			timezone: 'UTC',
 			contentRevision: 'r',
+			isOurs: false,
 			participants,
 			openItems: [],
 			isItemsOverflow: false,
@@ -228,6 +229,89 @@ describe('the pure run core', () => {
 		});
 		expect(result.items[0]?.verify).toBe('proposal');
 		for (const transition of result.transitions) expect(transition.isVerified).toBe(false);
+	});
+
+	describe('a message we wrote', () => {
+		// Our reply to Jonas: "That's fine, as long as you delete the data."
+		const ourParticipants: InterpretInputParticipant[] = [
+			{ ref: 'p1', role: 'from', email: 'me@owlat.example', isUs: true },
+			{ ref: 'p2', role: 'to', email: 'jonas@example.com', name: 'Jonas', isUs: false },
+		];
+		function ourReply(replyIntent: InterpretBriefOutput['replyIntent']) {
+			const base = output();
+			const [first, second] = base.items;
+			return clampOutput(
+				output({
+					replyIntent,
+					items: [
+						// Asked of Jonas.
+						{
+							...first!,
+							intent: 'request',
+							assertion: 'Delete the data',
+							requester: { ref: 'p1', name: null, email: null },
+							responsible: { ref: 'p2', name: null, email: null },
+						},
+						// Our own promise.
+						{
+							...second!,
+							intent: 'promise',
+							assertion: 'Send the signed contract',
+							requester: { ref: 'p2', name: null, email: null },
+							responsible: { ref: 'p1', name: null, email: null },
+							quotes: first!.quotes,
+						},
+					],
+					transitions: [
+						{
+							itemId: 'item_a',
+							to: null,
+							disposition: 'answered',
+							about: null,
+							quotes: first!.quotes,
+						},
+					],
+				})
+			);
+		}
+		const opts = {
+			mode: 'brief' as const,
+			canonicalText: segmented.canonicalText,
+			participants: ourParticipants,
+			ownAddresses: own,
+			timezone: 'UTC',
+			sentAt: SENT,
+			verdicts: new Map(),
+			checked: new Set<string>(),
+			isOurs: true,
+		};
+
+		it('keeps no one owing us anything when it expects nothing back', () => {
+			const out = ourReply('acknowledgement');
+			const result = toReduceResult(out, groundProposals(out, segmented), opts);
+			expect(result.items.map((i) => i.assertion)).toEqual(['Send the signed contract']);
+			expect(result.items[0]?.responsible.isUs).toBe(true);
+			// What it answered still moves.
+			expect(result.transitions).toHaveLength(1);
+		});
+
+		it('waits on the other side when it asks them something', () => {
+			const out = ourReply('request_for_action');
+			const result = toReduceResult(out, groundProposals(out, segmented), opts);
+			expect(result.items.map((i) => i.assertion)).toEqual([
+				'Delete the data',
+				'Send the signed contract',
+			]);
+		});
+
+		it('leaves a received acknowledgement alone', () => {
+			const out = ourReply('acknowledgement');
+			const result = toReduceResult(out, groundProposals(out, segmented), {
+				...opts,
+				isOurs: false,
+			});
+			expect(result.items).toHaveLength(2);
+		});
 	});
 
 	it('withholds the latest update for short or security mail', () => {

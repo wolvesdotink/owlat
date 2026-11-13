@@ -25,6 +25,7 @@ import { removeMessageAttachments } from '../../mail/attachmentIndex';
 import { deleteMessageRowAndBlobs } from '../../mail/messagePurge';
 import { deleteMailboxUsage } from '../../mail/mailboxUsage';
 import { deleteFolderCounters, deleteMailboxCounters } from '../../mail/messageCounters';
+import { deleteLabelMembershipState } from '../../mail/labelMessageIndex';
 import { dropFolderMembership } from '../../mail/folderMembership';
 import { isOrgInfrastructureAccount } from '../../mail/external/personalAccount';
 import { deleteStoredAccessToken } from '../../mail/external/accessTokenStore';
@@ -492,6 +493,7 @@ export const eraseMailboxRows: MemberPhaseRunner = (phase) =>
 		if (!isLabelsEmpty) return false;
 		await deleteMailboxUsage(ctx, mailbox._id);
 		await deleteMailboxCounters(ctx, mailbox._id);
+		await deleteLabelMembershipState(ctx, mailbox._id);
 		await ctx.db.delete(mailbox._id);
 		budget.chargeRows(1);
 		return true;

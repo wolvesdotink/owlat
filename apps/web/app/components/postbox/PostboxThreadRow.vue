@@ -129,6 +129,12 @@ const props = defineProps<{
 	swipeRight?: PostboxSwipeAction;
 	/** What a sweep in progress will do to this row on release; null when none covers it. */
 	sweepMark?: PostboxSweepMark | null;
+	/**
+	 * The device has no hover (touch), where the quick actions are visible at
+	 * rest. Resolved once by the list, so a page does not hold one media query
+	 * listener per row.
+	 */
+	hoverless?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -219,6 +225,17 @@ function rowAction(event: MouseEvent, e: 'toggle-star' | 'toggle-read' | 'archiv
 	event.stopPropagation();
 	event.preventDefault();
 	triage(e);
+}
+
+// The quick actions and their tooltips are most of a row's components, and are
+// invisible until the row is hovered or holds focus. They mount on the first
+// pointer or focus visit and then stay, so the reveal never waits on a mount and
+// Tab moves from the focused link straight into the mounted buttons. A device
+// without hover shows them at rest (motion.css), so it mounts them up front.
+const actionsVisited = ref(false);
+function onRowVisit() {
+	actionsVisited.value = true;
+	emit('prefetch');
 }
 
 // Read on arrival §4.1: a Priority row explains its placement from the hover bar.
@@ -374,8 +391,8 @@ function onCapturedClick(event: MouseEvent) {
 				"
 				@contextmenu="onContextmenu"
 				@keydown="onKeydown"
-				@mouseenter="emit('prefetch')"
-				@focusin="emit('prefetch')"
+				@mouseenter="onRowVisit"
+				@focusin="onRowVisit"
 				@pointerdown="onRowPointerdown"
 				@pointermove="gestures.onPointermove"
 				@pointerup="gestures.onPointerup"
@@ -436,6 +453,7 @@ function onCapturedClick(event: MouseEvent) {
 					</div>
 				</component>
 				<PostboxThreadRowQuickActions
+					v-if="actionsVisited || hoverless"
 					:flagged="msg.flagFlagged"
 					:seen="msg.flagSeen"
 					:why-here-shown="isWhyHereShown"
