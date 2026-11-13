@@ -69,7 +69,7 @@ async function seedMailbox(t: Ctx, address: string): Promise<SeededMailbox> {
 async function seedMessages(
 	t: Ctx,
 	box: SeededMailbox,
-	rows: ReadonlyArray<{ role: FolderRole; receivedAt: number; subject: string }>
+	rows: ReadonlyArray<{ role: FolderRole; receivedAt: number; subject: string; from?: string }>
 ): Promise<Id<'mailMessages'>[]> {
 	return await t.run(async (ctx) => {
 		const threadId = await ctx.db.insert('mailThreads', {
@@ -101,7 +101,7 @@ async function seedMessages(
 					modseq: 1,
 					rfc822MessageId: `<${row.subject}@owlat.test>`,
 					threadId,
-					fromAddress: 'someone@owlat.test',
+					fromAddress: row.from ?? 'someone@owlat.test',
 					toAddresses: ['me@owlat.test'],
 					ccAddresses: [],
 					bccAddresses: [],
@@ -278,6 +278,49 @@ describe('operator-only search — `in:` reads the folder, not the mailbox', () 
 		expect(fanOut.subjects).toHaveLength(7);
 		expect(messageReads(fanOut)).toBeGreaterThanOrEqual(7);
 		expect(fanOut.reads.get('mailMessages:by_mailbox_and_received') ?? 0).toBe(0);
+	});
+});
+
+describe('operator-only search — the fan-out merge waits for every mailbox', () => {
+	it('holds an old match back until the larger mailbox is scanned past it', async () => {
+		// `from:` narrows no source, so the large mailbox is walked a page at a
+		// time while the small one is read to its end on the first page. Its old
+		// match must not lead a page that the large mailbox's newer, deeper
+		// matches have not reached yet.
+		const t = convexTest(schema, modules);
+		const big = await seedMailbox(t, 'me@owlat.test');
+		const small = await seedMailbox(t, 'team@owlat.test');
+		const deep = new Set([40, 25, 10]);
+		await seedMessages(
+			t,
+			big,
+			Array.from({ length: 200 }, (_, i) => ({
+				role: 'inbox' as const,
+				receivedAt: 10_000 + i,
+				subject: deep.has(i) ? `big-match-${i}` : `big-${i}`,
+				...(deep.has(i) ? { from: 'alice@owlat.test' } : {}),
+			}))
+		);
+		await seedMessages(t, small, [
+			{ role: 'inbox', receivedAt: 9_000, subject: 'small-noise' },
+			{ role: 'inbox', receivedAt: 1_000, subject: 'small-match', from: 'alice@owlat.test' },
+		]);
+
+		const result = await walk(t, (ctx, cursor) =>
+			searchMailboxes(ctx, [big.mailboxId, small.mailboxId], clause({ from: 'alice' }), 4, cursor)
+		);
+
+		expect(result.subjects).toEqual([
+			'big-match-40',
+			'big-match-25',
+			'big-match-10',
+			'small-match',
+		]);
+		// The large mailbox reads its 200 rows plus one re-read boundary row per
+		// resumed page (250). The small mailbox stays in the cursor while its
+		// match is held and re-reads its two rows on each of the 51 pages (102).
+		expect(result.pages).toBe(51);
+		expect(messageReads(result)).toBe(250 + 2 * 51);
 	});
 });
 

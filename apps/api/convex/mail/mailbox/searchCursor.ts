@@ -21,7 +21,8 @@
  *
  * The rules the merge upholds:
  *   - the returned page is the newest `limit` rows across all mailboxes, so
- *     ordering is by `receivedAt` (descending), never by mailbox;
+ *     ordering is by `receivedAt` (descending), never by mailbox, and a row
+ *     waits while any unfinished mailbox has not read down to its timestamp;
  *   - a mailbox's position only advances past rows the caller was actually
  *     handed, or past rows the post-filter rejected — a row is never skipped;
  *   - a mailbox absent from the cursor is EXHAUSTED, and a mailbox present with
@@ -227,8 +228,24 @@ export function mergeMailboxPages<T extends ScannedRow>(
 	pages: readonly MailboxPage<T>[],
 	limit: number
 ): MergedSearchPage<T> {
+	// A mailbox still being walked has unread rows at or below the last row it
+	// read, so a row older than that could be overtaken by one of them on a
+	// later page. A row is ready only when every unfinished walk has read down
+	// to its timestamp. The newest such frontier walk always has its own rows
+	// ready, so every page still advances it. Pages without a keyset position
+	// never wait: they leave the cursor below and their held rows would be lost.
+	let frontier = Number.NEGATIVE_INFINITY;
+	for (const mailboxPage of pages) {
+		if (!mailboxPage.done && mailboxPage.scanned) {
+			frontier = Math.max(frontier, mailboxPage.scanned.at);
+		}
+	}
 	const merged = pages
-		.flatMap((mailboxPage) => mailboxPage.rows.slice())
+		.flatMap((mailboxPage) =>
+			mailboxPage.done && !mailboxPage.scanned
+				? mailboxPage.rows.slice()
+				: mailboxPage.rows.filter((entry) => entry.row.receivedAt >= frontier)
+		)
 		.sort(newestFirst)
 		.slice(0, Math.max(0, limit));
 	const emitted = new Set(merged.map((entry) => entry.row._id));
