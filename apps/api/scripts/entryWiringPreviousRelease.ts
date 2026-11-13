@@ -107,4 +107,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// All inboxes archives messages through mail/messageActions.ts `archive`, as
 	// a single inbox does; the conversation archive was the digest page's.
 	'mail/threadArchive.ts#archiveThreads': 'old web clients with the All inboxes digest open',
+	// A Team Inbox conversation now opens a page at a time (inbox/threadPage.ts).
+	'inbox/queries.ts#getThread': 'old web clients and desktop builds with a Team Inbox thread open',
 };

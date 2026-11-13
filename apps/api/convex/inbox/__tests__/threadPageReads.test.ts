@@ -12,6 +12,7 @@ import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
+import type * as MessageBody from '../../lib/messageBody';
 import { modules } from '../../__tests__/testModules';
 import { observingDb } from '../../__tests__/indexRecorder.testlib';
 import { getThread } from '../queries';
@@ -20,8 +21,7 @@ import { getMessage, getThreadPage, THREAD_PAGE_SIZE } from '../threadPage';
 const opened = vi.hoisted(() => ({ count: 0 }));
 
 vi.mock('../../lib/messageBody', async () => {
-	const actual =
-		await vi.importActual<typeof import('../../lib/messageBody')>('../../lib/messageBody');
+	const actual = await vi.importActual<typeof MessageBody>('../../lib/messageBody');
 	return {
 		...actual,
 		openMessageBody: (stored: string) => {
@@ -56,8 +56,9 @@ type PageResult = {
 	isDone: boolean;
 };
 
-const readThread = (getThread as unknown as Handler<{ threadId: string }, { messages: unknown[] }>)
-	._handler;
+const readThread = (
+	getThread as unknown as Handler<{ threadId: string }, { messages: unknown[]; takeOver: unknown }>
+)._handler;
 const readPage = (
 	getThreadPage as unknown as Handler<
 		{ threadId: string; cursor?: string | null; limit?: number; withBodies?: boolean },
@@ -143,7 +144,7 @@ describe('opening a Team Inbox conversation', () => {
 
 		// The thread page shows every loaded message open: one body per message of the page.
 		const withBodies = await counted(t, (ctx) => readPage(ctx, { threadId, withBodies: true }));
-		expect(withBodies.result.messages.at(-1)?.textBody).toBe(bodyOf(size - 1));
+		expect(withBodies.result.messages[page - 1]?.textBody).toBe(bodyOf(size - 1));
 		expect(withBodies).toMatchObject({ messagesRead: page + 1, bodiesOpened: page + 1 });
 
 		// Expanding the oldest message: one point read, one body.
@@ -223,9 +224,7 @@ describe('opening a Team Inbox conversation', () => {
 			i === 0 ? 'security_check' : 'sent'
 		);
 
-		const legacy = (await counted(t, (ctx) => readThread(ctx, { threadId }))).result as {
-			takeOver: unknown;
-		};
+		const legacy = (await counted(t, (ctx) => readThread(ctx, { threadId }))).result;
 		const paged = await counted(t, (ctx) => readPage(ctx, { threadId }));
 
 		expect(paged.result.head.takeOver).toEqual(legacy.takeOver);
