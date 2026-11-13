@@ -46,7 +46,7 @@ function warmRoute(): void {
 
 	const route = useRouter().currentRoute.value;
 	void preloadRouteComponents(route.fullPath).catch(ignore);
-	const messageId = route.params.messageId;
+	const messageId = route.params['messageId'];
 	if (route.path.startsWith('/dashboard/postbox/') && typeof messageId === 'string' && messageId) {
 		void warmPostboxThreadReader();
 	}
