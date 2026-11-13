@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSendingIpHeld, sendingIpPosture } from '../ipReadiness';
+import { sendingIpPosture } from '../ipReadiness';
 
 describe('sendingIpPosture', () => {
 	it('is null before any address is synced', () => {
@@ -37,12 +37,10 @@ describe('sendingIpPosture', () => {
 	});
 
 	it('holds an address out of rotation or with a block reason', () => {
-		expect(isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: false })).toBe(true);
-		expect(
-			isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: ['spf'] })
-		).toBe(true);
-		expect(
-			isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: [] })
-		).toBe(false);
+		const posture = (ip: { active: boolean; blockReasons?: readonly ['spf'] | readonly [] }) =>
+			sendingIpPosture([{ ip: '192.0.2.1', pool: 'campaign', ...ip }], 'campaign');
+		expect(posture({ active: false })).toBe('all_held');
+		expect(posture({ active: true, blockReasons: ['spf'] })).toBe('all_held');
+		expect(posture({ active: true, blockReasons: [] })).toBe('ready');
 	});
 });

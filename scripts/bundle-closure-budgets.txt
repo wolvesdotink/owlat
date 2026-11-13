@@ -296,6 +296,7 @@ deferred 7 components/contacts/BulkDeleteModal.vue
 deferred 36 components/contacts/CsvImportModal.vue
 deferred 15 components/contacts/ExportModal.vue
 deferred 13 components/contacts/IntegrationImportModal.vue
+deferred 138 components/delivery/TransactionalReadinessLine.vue
 deferred 12 components/mail/TemplateLibraryModal.vue
 deferred 7 components/postbox/PostboxArrivalUndoHost.vue
 deferred 11 components/postbox/PostboxContactsCardDavPanel.vue

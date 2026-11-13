@@ -119,7 +119,7 @@ export type SendingIpPosture = 'ready' | 'some_held' | 'all_held';
  * Whether the MTA keeps mail off this address: it carries a readiness block
  * reason (blocklist, PTR, SPF, source address), or it is out of rotation.
  */
-export function isSendingIpHeld(ip: SendingIpPostureInput): boolean {
+function isSendingIpHeld(ip: SendingIpPostureInput): boolean {
 	return !ip.active || (ip.blockReasons?.length ?? 0) > 0;
 }
 
