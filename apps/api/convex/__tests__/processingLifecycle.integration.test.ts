@@ -261,13 +261,17 @@ describe('processingLifecycle.transition — human review', () => {
 		});
 	});
 
-	it('auto-approve transition increments dailyAutoReplyCount', async () => {
+	it('auto-approve transition counts one reply on the usage row, carrying the legacy count', async () => {
 		const t = convexTest(schema, modules);
+		// A reset a day ahead keeps the seeded count on the current day whatever
+		// the wall clock says, so the count must go from exactly 5 to 6.
+		const resetAt = Date.now() + 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('agentConfig', {
 				isAutoReplyEnabled: true,
 				confidenceThreshold: 0.8,
 				dailyAutoReplyCount: 5,
+				dailyAutoReplyResetAt: resetAt,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			});
@@ -280,9 +284,12 @@ describe('processingLifecycle.transition — human review', () => {
 		});
 
 		await t.run(async (ctx) => {
-			const configs = await ctx.db.query('agentConfig').take(1);
-			// Either incremented (same day) or reset to 1 (new day after midnight).
-			expect(configs[0]!.dailyAutoReplyCount).toBeGreaterThanOrEqual(1);
+			const usage = await ctx.db.query('agentAutoReplyUsage').collect();
+			expect(usage).toHaveLength(1);
+			expect(usage[0]!.dailyAutoReplyCount).toBe(6);
+			expect(usage[0]!.dailyAutoReplyResetAt).toBe(resetAt);
+			const config = await ctx.db.query('agentConfig').first();
+			expect(config!.dailyAutoReplyCount).toBe(5);
 		});
 	});
 
