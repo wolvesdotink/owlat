@@ -111,12 +111,28 @@ export function normalizeToOperationError(e: unknown): OperationError {
  * this app owns, or the backend's own `message` text, which is already a
  * sentence and has no key to look up.
  */
-export type OperationCopy = { key: string } | { text: string };
+export type OperationCopy =
+	| { key: string; params?: Record<string, string | number> }
+	| { text: string };
 
 /** Locale is read at the time of failure; only known catalog keys may be translated. */
 export interface OperationCopyOptions {
 	locale?: string;
 	hasMessage?: (key: string) => boolean;
+}
+
+/**
+ * The named values a backend refusal sends with its `messageKey`. Strings and
+ * numbers only: anything else would reach the message compiler as an object.
+ */
+function messageParamsOf(op: OperationError): Record<string, string | number> | undefined {
+	const raw = op.data?.['messageParams'];
+	if (!raw || typeof raw !== 'object') return undefined;
+	const params: Record<string, string | number> = {};
+	for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+		if (typeof value === 'string' || typeof value === 'number') params[name] = value;
+	}
+	return params;
 }
 
 /**
@@ -136,7 +152,8 @@ export function operationCopy(
 	if (budgetReason) return { key: BUDGET_REASON_KEYS[budgetReason] };
 	const messageKey = op.data?.['messageKey'];
 	if (typeof messageKey === 'string' && options.hasMessage?.(messageKey)) {
-		return { key: messageKey };
+		const params = messageParamsOf(op);
+		return params ? { key: messageKey, params } : { key: messageKey };
 	}
 	if (options.locale && options.locale.split('-')[0]?.toLowerCase() !== 'en') {
 		return { key: `shared.operationError.categories.${op.category}` };
@@ -147,9 +164,10 @@ export function operationCopy(
 /** Resolve {@link operationCopy} at a render boundary that holds a `t`. */
 export function resolveOperationCopy(
 	copy: OperationCopy,
-	translate: (key: string) => string
+	translate: (key: string, params?: Record<string, string | number>) => string
 ): string {
-	return 'text' in copy ? copy.text : translate(copy.key);
+	if ('text' in copy) return copy.text;
+	return copy.params ? translate(copy.key, copy.params) : translate(copy.key);
 }
 
 /**

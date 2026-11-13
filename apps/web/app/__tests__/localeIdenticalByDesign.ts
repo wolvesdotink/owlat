@@ -68,6 +68,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.delivery.dmarcSources.kind.owlat',
 	'components.delivery.domainTable.authAllPass',
 	'components.delivery.independenceTrendChart.relay',
+	// "{stream}: {level}." is two placeholders and punctuation in German too.
+	'components.delivery.readinessPanel.streamAnnouncement',
 	'components.delivery.migrationImportStep.apiKeyPlaceholder',
 	'components.delivery.migrationImportStep.carriedEntry',
 	'components.delivery.migrationImportStep.listIdPlaceholder',
@@ -389,6 +391,8 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shared.dashboardNavigation.items.knowledge.graph',
 	'shared.dashboardNavigation.items.postbox.spam',
 	'shared.dataRetention.spamLabel',
+	'shared.deliveryReadiness.gates.dmarc.title',
+	'shared.deliveryReadiness.streams.marketing.name',
 	'shared.dashboardNavigation.sections.chat',
 	'shared.data.languageOptions.languages.hi',
 	'shared.data.languageOptions.timezones.americaAnchorage',

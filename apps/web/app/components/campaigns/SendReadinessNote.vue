@@ -18,6 +18,10 @@ import { sendReadinessNote, type SendingReadiness } from '~/lib/sendReadiness';
 import { useLocalized } from '~/composables/useLocalized';
 import { CalendarClockCornerIcon, CircleCheckIcon, ClockIcon } from '@coolicons/vue';
 
+// The caller's class (spacing) belongs on the note, not on the live region
+// that stays in the DOM while there is no note.
+defineOptions({ inheritAttrs: false });
+
 const props = defineProps<{
 	readiness: SendingReadiness | null | undefined;
 	/** Eligible recipients, when this surface knows them. */
@@ -67,18 +71,23 @@ const tone = computed(() => TONE[note.value?.tone ?? 'ready']);
 </script>
 
 <template>
-	<div
-		v-if="note"
-		class="flex items-start gap-3 p-3 border rounded-lg"
-		:class="tone.box"
-		data-testid="send-readiness-note"
-	>
-		<component :is="tone.name" class="w-5 h-5 shrink-0 mt-0.5" :class="tone.icon" />
-		<div class="min-w-0">
-			<p class="text-sm font-medium text-text-primary">{{ message(note.headline) }}</p>
-			<p v-if="note.detail" class="text-sm text-text-secondary mt-0.5">
-				{{ message(note.detail) }}
-			</p>
+	<!-- Always in the DOM, so a note that changes as the audience or sender is
+	     edited is announced. Empty, it takes no space. -->
+	<div role="status" class="empty:hidden">
+		<div
+			v-if="note"
+			v-bind="$attrs"
+			class="flex items-start gap-3 p-3 border rounded-lg"
+			:class="tone.box"
+			data-testid="send-readiness-note"
+		>
+			<component :is="tone.name" class="w-5 h-5 shrink-0 mt-0.5" :class="tone.icon" />
+			<div class="min-w-0">
+				<p class="text-sm font-medium text-text-primary">{{ message(note.headline) }}</p>
+				<p v-if="note.detail" class="text-sm text-text-secondary mt-0.5">
+					{{ message(note.detail) }}
+				</p>
+			</div>
 		</div>
 	</div>
 </template>

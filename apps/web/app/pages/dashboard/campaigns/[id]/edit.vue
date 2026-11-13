@@ -3,6 +3,7 @@ import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import { useCampaignSendCapacity } from '~/composables/campaigns/useCampaignSendCapacity';
+import { useCampaignSendBlocker } from '~/composables/campaigns/useCampaignSendBlocker';
 import CampaignContentCard from '~/components/campaigns/edit/ContentCard.vue';
 import CampaignDetailsCard from '~/components/campaigns/edit/DetailsCard.vue';
 import CampaignEditActions from '~/components/campaigns/edit/EditActions.vue';
@@ -84,6 +85,7 @@ const {
 	handleBack,
 	capacitySchedule,
 	dismissCapacitySchedule,
+	sendRefusal,
 
 	// Helpers
 	formatDate,
@@ -205,6 +207,14 @@ const {
 	scheduledStartAt,
 	capacitySchedule,
 });
+
+// What stops this campaign from going out: before the click (shown with the
+// page's notices) and the reason a send or schedule was just refused with
+// (shown beside the buttons that raised it).
+const { presend: sendBlocker, refusal: refusalBlocker } = useCampaignSendBlocker({
+	fromEmail: () => fromEmail.value,
+	sendRefusal,
+});
 </script>
 
 <template>
@@ -268,6 +278,7 @@ const {
 						:scheduled-at="campaignData.scheduledAt"
 						:scheduled-at-display="scheduledAtDisplay"
 						:is-saving="isSaving"
+						:send-blocker="sendBlocker"
 						@unschedule="handleUnschedule"
 						@cancel="confirmCancelCampaign"
 					/>
@@ -388,6 +399,7 @@ const {
 					<CampaignWarmupCard
 						v-if="warmingOverview?.warming"
 						:warming="warmingOverview.warming"
+						:readiness="sendingReadiness"
 						:capacity-plan="shownCapacityPlan"
 						:capacity-dismissible="Boolean(capacitySchedule)"
 						:send-estimate="sendEstimate"
@@ -403,6 +415,8 @@ const {
 						:readiness="sendingReadiness"
 						:audience-size="exactAudienceSize"
 					/>
+
+					<CampaignsSendBlockedNote v-if="refusalBlocker" role="alert" :blocker="refusalBlocker" />
 
 					<CampaignEditActions
 						:is-draft="isDraft"

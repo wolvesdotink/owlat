@@ -27,6 +27,7 @@ import {
 } from './preflightFixtures';
 import type { Id } from '../_generated/dataModel';
 import { validateReadyToSend } from '../campaigns/preflight';
+import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const { sessionOrganizationMock, MOCK_SINGLETON_ORG } = await import('./sessionOrganizationMock');
@@ -65,6 +66,8 @@ describe('pre-flight capacity gate — binding refusal', () => {
 		});
 		// The copy is a schedule, not an error.
 		expect(result.message).toContain('5 days');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.exceeds_sending_capacity.about);
+		expect(result.messageParams).toEqual({ days: 5 });
 	});
 
 	it('leaves a campaign that fits untouched', async () => {

@@ -19,6 +19,7 @@
 		},
 		"./automations": "./convex/automations/automations.ts",
 		"./auditActions": "./convex/auditActions/catalog.ts",
+		"./campaignRefusal": "./convex/campaigns/refusalCopy.ts",
 		"./translationMerge": "./convex/emailTemplates/translationMerge.ts"
 	},
 	"scripts": {

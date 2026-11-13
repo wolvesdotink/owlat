@@ -82,6 +82,7 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 			totalDailyCap: 0,
 			remainingToday: 0,
 			estimatedDays: 1,
+			isTruncated: false,
 			isFullyWarmed: false,
 			message: 'Warming data not available yet. Your emails will be paced automatically.',
 		});
@@ -223,6 +224,7 @@ describe('getCampaignSendEstimate — day counts', () => {
 		});
 
 		expect(estimate.estimatedDays).toBe(5);
+		expect(estimate.isTruncated).toBe(false);
 		expect(estimate.message).toBe(
 			'Based on your IP warmup progress, this campaign will take approximately 5 days to complete.'
 		);
@@ -287,6 +289,7 @@ describe('getCampaignSendEstimate — day counts', () => {
 		});
 
 		expect(estimate.estimatedDays).toBe(MAX_PLAN_DAYS);
+		expect(estimate.isTruncated).toBe(true);
 		expect(estimate.message).toBe(
 			`Campaign will take approximately ${MAX_PLAN_DAYS}+ days based on current warmup progress.`
 		);

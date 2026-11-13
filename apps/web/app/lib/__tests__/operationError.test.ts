@@ -242,6 +242,25 @@ describe('localized operation copy', () => {
 		});
 	});
 
+	it('carries the named values a backend key comes with, and nothing else', () => {
+		const op = {
+			category: 'invalid_state' as const,
+			message: 'Cannot send campaign: domain "acme.com" is not verified.',
+			data: {
+				messageKey: 'shared.campaignRefusal.domainUnverified',
+				messageParams: { domain: 'acme.com', days: 3, nested: { no: true } },
+			},
+		};
+		const copy = operationCopy(op, { locale: 'de', hasMessage: () => true });
+		expect(copy).toEqual({
+			key: 'shared.campaignRefusal.domainUnverified',
+			params: { domain: 'acme.com', days: 3 },
+		});
+		expect(resolveOperationCopy(copy, (key, params) => `${key}:${JSON.stringify(params)}`)).toBe(
+			'shared.campaignRefusal.domainUnverified:{"domain":"acme.com","days":3}'
+		);
+	});
+
 	it('never overrides generic fault copy with a backend key', () => {
 		expect(
 			operationCopy(

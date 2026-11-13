@@ -18,6 +18,7 @@ import {
 	type PreflightResult,
 } from '../campaigns/preflight';
 import type { Doc, Id } from '../_generated/dataModel';
+import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 import type schema from '../schema';
 import {
 	createTestCampaign,
@@ -305,7 +306,14 @@ export async function runPreflight(
 ): Promise<PreflightResult> {
 	return await t.run(async (ctx): Promise<PreflightResult> => {
 		const campaign = await ctx.db.get(campaignId);
-		if (!campaign) return { ok: false, reason: 'not_found', message: 'Campaign not found' };
+		if (!campaign) {
+			return {
+				ok: false,
+				reason: 'not_found',
+				message: 'Campaign not found',
+				messageKey: PREFLIGHT_MESSAGE_KEYS.not_found.default,
+			};
+		}
 		return await validateReadyToSend(ctx, campaign, { now: MIDNIGHT, ...options });
 	});
 }

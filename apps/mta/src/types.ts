@@ -90,6 +90,13 @@ export interface EmailJob {
 	 * GroupMQ `ReservedJob.timestamp` of the current attempt.
 	 */
 	firstEnqueuedAt?: number;
+	/**
+	 * How many times a receiver has deferred this message (a retryable 4xx or
+	 * every MX host failing), carried across defer re-enqueues. Self-throttle
+	 * defers never reached the receiver and do not count. The retry delay
+	 * escalates with it (`dispatch/retryEscalation.ts`). Absent means none.
+	 */
+	remoteDeferrals?: number;
 	/** Authenticated last-mile routing lease issued by this MTA. */
 	routingLease?: {
 		token: string;

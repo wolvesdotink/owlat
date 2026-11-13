@@ -8,8 +8,9 @@
  * `#grid`, `#table` and `#cards` slots. Before this, each list page assembled
  * the same frame by copying its nearest neighbour, and every fix — the mobile
  * card list, the listbox semantics, the shortcuts — landed on one copy only.
- * `#before-header` takes a section's tab bar and `#loading` a content-shaped
- * skeleton in place of the default spinner. `#delete-extra` adds a line under
+ * `#before-header` takes a section's tab bar, `#after-header` a status line
+ * that belongs to the whole list (the transactional readiness verdict) and
+ * `#loading` a content-shaped skeleton in place of the default spinner. `#delete-extra` adds a line under
  * the delete dialog's description (the blocks list warns how many emails use
  * the block). `deleteBlocked` refuses the delete outright — the confirm button
  * stays disabled, and `#delete-extra` says why. A page whose delete is undoable
@@ -146,6 +147,10 @@ const onDeleteOpenChange = (open: boolean) => {
 				<slot name="actions" />
 			</template>
 		</UiPageHeader>
+
+		<div v-if="$slots['after-header']" class="mb-6">
+			<slot name="after-header" />
+		</div>
 
 		<!-- Stacks below lg: a status strip with counts beside a 256px search does
 		     not fit a tablet row, and squeezing it clipped the strip. -->

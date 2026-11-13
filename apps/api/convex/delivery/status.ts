@@ -26,7 +26,11 @@ import { internalMutation } from '../lib/writeFence';
 import { getOptional, isEnvPresent } from '../lib/env';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { isSendProviderKind } from '../lib/sendProviders/types';
-import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
+import {
+	isDeliveryConfigured,
+	isSendProviderReady,
+	messageTypeTransportKinds,
+} from '../lib/sendProviders/capability';
 import {
 	isCoreSendProviderKind,
 	sendProviderCatalogEntry,
@@ -34,6 +38,10 @@ import {
 } from '../lib/sendProviders/catalog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
+import { checkEmailDomainVerification } from '../domains/domains';
+import { configuredDefaultFromEmail } from '../transactional/dispatchDecision';
+import type { Doc } from '../_generated/dataModel';
+import { mtaInfrastructureState } from './health';
 import { providerFeedbackFor } from '../providers/feedback';
 import {
 	deriveProviderFeedbackStatus,
@@ -153,6 +161,49 @@ async function lastFeedbackEventAt(ctx: QueryCtx, kind: SendProviderKind): Promi
 	return latest?.receivedAt ?? null;
 }
 
+/** The two message types the readiness panel gives a verdict for. */
+type ReadinessMessageType = 'transactional' | 'campaign';
+
+/**
+ * Which transport carries one message type, as the readiness panel needs it.
+ *
+ * `canSend` is `isDeliveryConfigured(ctx, messageType)`, the gate the send path
+ * applies to that type, because advanced routing can configure the two types
+ * differently. `usesOwnMta` decides whether mail-server, IP and warm-up gates
+ * apply to the type at all: an instance that sends a type only through an
+ * external provider must not be told its own MTA is a problem.
+ */
+async function streamTransport(
+	ctx: QueryCtx,
+	routes: readonly Doc<'providerRoutes'>[],
+	messageType: ReadinessMessageType
+): Promise<{ canSend: boolean; providerLabels: string[]; usesOwnMta: boolean }> {
+	const kinds = await messageTypeTransportKinds(ctx, routes, messageType);
+	return {
+		canSend: await isDeliveryConfigured(ctx, messageType),
+		providerLabels: kinds.map((kind) => sendProviderCatalogEntry(kind).label),
+		usesOwnMta: kinds.includes(OWN_ARM_TRANSPORT_KIND),
+	};
+}
+
+/**
+ * The instance default sender every transactional send uses, and whether its
+ * domain is verified. `address` is null when neither the settings row nor the
+ * environment sets one: dispatch then falls back to a placeholder that no
+ * domain verifies, so the first API call is refused.
+ */
+async function transactionalSender(
+	ctx: QueryCtx
+): Promise<{ address: string | null; isDomainVerified: boolean }> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	const address = configuredDefaultFromEmail(settings, {
+		defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
+	});
+	if (address === null) return { address: null, isDomainVerified: false };
+	const status = await checkEmailDomainVerification(ctx, address);
+	return { address, isDomainVerified: status.verified };
+}
+
 /**
  * Non-secret transport summary for the Delivery hub's single transport card and
  * the per-transport DNS guidance on the domains page. Member-readable
@@ -168,6 +219,12 @@ async function lastFeedbackEventAt(ctx: QueryCtx, kind: SendProviderKind): Promi
  * last checked). `advancedRoutingActive` is true when a `providerRoutes` row has
  * at least one enabled provider — the signal that the instance-level transport
  * is being overridden by the advanced escape hatch.
+ *
+ * `streams` answers the same questions per message type (transactional and
+ * campaign can be routed differently), `mailServer` classifies the built-in
+ * MTA's health whenever any route carries mail through it, and
+ * `transactionalSender` is the default From address every transactional send
+ * uses, which members can already read from the settings row.
  */
 // all-members: non-secret transport state (kind, canSend, routing flag, rolling
 // health); credentials/env-presence stay behind admin-gated getStatus.
@@ -218,14 +275,30 @@ export const getTransportSummary = authedQuery({
 		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
 		const facts = outboundTransportFacts();
 		const { mtaHealth } = await readInstanceCounter(ctx.db, 'mtaHealth');
+		const usesOwnMtaAnywhere =
+			provider === OWN_ARM_TRANSPORT_KIND ||
+			routes.some((route) =>
+				route.providers.some(
+					(entry) => entry.isEnabled && entry.providerType === OWN_ARM_TRANSPORT_KIND
+				)
+			);
 
 		return {
 			provider,
 			providerLabel: isSendProviderKind(provider) ? sendProviderCatalogEntry(provider).label : null,
 			canSend,
+			streams: {
+				transactional: await streamTransport(ctx, routes, 'transactional'),
+				campaign: await streamTransport(ctx, routes, 'campaign'),
+			},
+			transactionalSender: await transactionalSender(ctx),
 			advancedRoutingActive,
 			health,
 			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (mtaHealth ?? null) : null,
+			// The built-in MTA's posture whenever any route or the default carries
+			// mail through it, classified exactly as the Delivery health roll-up
+			// classifies it, so the readiness panel and the header chip agree.
+			mailServer: usesOwnMtaAnywhere ? mtaInfrastructureState(mtaHealth, Date.now()) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,

@@ -122,7 +122,7 @@ route 3 pages/dashboard/inboxes.vue
 route 94 pages/dashboard/index.vue
 route 34 pages/dashboard/knowledge/[id].vue
 route 26 pages/dashboard/knowledge/graph.vue
-route 24 pages/dashboard/knowledge/index.vue
+route 25 pages/dashboard/knowledge/index.vue
 route 16 pages/dashboard/marketing/deleted.vue
 route 22 pages/dashboard/marketing/index.vue
 route 210 pages/dashboard/postbox/[folder]/[[messageId]].vue
@@ -297,6 +297,7 @@ deferred 7 components/contacts/BulkDeleteModal.vue
 deferred 36 components/contacts/CsvImportModal.vue
 deferred 15 components/contacts/ExportModal.vue
 deferred 13 components/contacts/IntegrationImportModal.vue
+deferred 138 components/delivery/TransactionalReadinessLine.vue
 deferred 12 components/mail/TemplateLibraryModal.vue
 deferred 162 components/postbox/PostboxAllInboxesLayout.vue
 deferred 7 components/postbox/PostboxArrivalUndoHost.vue

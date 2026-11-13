@@ -17,6 +17,7 @@ import { pool, PoolOverCapError } from '../connectionPool.js';
 import type { DanePlan } from '../daneVerify.js';
 import type { TlsPolicyContext } from '../tlsRpt.js';
 import {
+	asHostRefusal,
 	classifyFailure,
 	type AttemptOutcome,
 	type FailureClassificationContext,
@@ -138,6 +139,9 @@ export async function openMxConnection(
 		return { kind: 'ready', key, conn };
 	} catch (err) {
 		pool.release(key);
-		return { kind: 'failed', outcome: classifyFailure(ctx, err, mxHost, tlsContext, daneRequired) };
+		return {
+			kind: 'failed',
+			outcome: asHostRefusal(err, classifyFailure(ctx, err, mxHost, tlsContext, daneRequired)),
+		};
 	}
 }

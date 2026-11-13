@@ -13,29 +13,46 @@ import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
 import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
 import { getLive } from '../lib/softDelete';
+import { campaignsQuery } from './_helpers';
+import {
+	preflightMessageKey,
+	type PreflightFailureReason,
+	type PreflightMessageKey,
+	type PreflightMessageParams,
+	type PreflightMessageVariant,
+} from './refusalCopy';
 
 export type PreflightResult =
 	| { ok: true }
 	| {
 			ok: false;
-			reason:
-				| 'not_found'
-				| 'no_template'
-				| 'no_audience'
-				| 'no_from_email'
-				| 'no_delivery_provider'
-				| 'domain_not_verified'
-				| 'sender_not_allowed'
-				| 'sending_not_allowed'
-				| 'scheduled_in_past'
-				| 'exceeds_sending_capacity';
+			reason: PreflightFailureReason;
+			/** English, for API consumers and logs. */
 			message: string;
+			/** The catalog key a client renders instead of `message` (`refusalCopy.ts`). */
+			messageKey: PreflightMessageKey;
+			messageParams?: PreflightMessageParams;
 			/** Present only on `exceeds_sending_capacity`. */
 			capacityPlan?: CampaignCapacitySchedule;
 	  };
 
-/** The discriminant a failed pre-flight carries, for clients that branch on it. */
-type PreflightFailureReason = Extract<PreflightResult, { ok: false }>['reason'];
+type PreflightFailure = Extract<PreflightResult, { ok: false }>;
+
+/** One refusal, with its English sentence and the catalog key for the same words. */
+function refuse<R extends PreflightFailureReason>(
+	reason: R,
+	variant: PreflightMessageVariant<R>,
+	message: string,
+	messageParams?: PreflightMessageParams
+): PreflightFailure {
+	return {
+		ok: false,
+		reason,
+		message,
+		messageKey: preflightMessageKey(reason, variant),
+		...(messageParams ? { messageParams } : {}),
+	};
+}
 
 /**
  * Structured error payload for a failed pre-flight. `capacityPlan` is what
@@ -44,12 +61,16 @@ type PreflightFailureReason = Extract<PreflightResult, { ok: false }>['reason'];
  * union type — widening it to `string` would throw away the discriminant the
  * client needs to branch on.
  */
-export function preflightErrorData(result: Extract<PreflightResult, { ok: false }>): {
+export function preflightErrorData(result: PreflightFailure): {
 	reason: PreflightFailureReason;
+	messageKey: PreflightMessageKey;
+	messageParams?: PreflightMessageParams;
 	capacityPlan?: CampaignCapacitySchedule;
 } {
 	return {
 		reason: result.reason,
+		messageKey: result.messageKey,
+		...(result.messageParams ? { messageParams: result.messageParams } : {}),
 		...(result.capacityPlan ? { capacityPlan: result.capacityPlan } : {}),
 	};
 }
@@ -120,6 +141,20 @@ export function describeCapacitySchedule(schedule: CampaignCapacitySchedule): st
 	);
 }
 
+/**
+ * The catalog form of {@link describeCapacitySchedule}: the same three tails,
+ * picked by the same rules.
+ */
+function capacityRefusal(schedule: CampaignCapacitySchedule): PreflightFailure {
+	const message = describeCapacitySchedule(schedule);
+	const failure = schedule.truncated
+		? refuse('exceeds_sending_capacity', 'truncated', message, { maxDays: MAX_PLAN_DAYS })
+		: schedule.audienceUnderCounted
+			? refuse('exceeds_sending_capacity', 'atLeast', message, { days: schedule.days })
+			: refuse('exceeds_sending_capacity', 'about', message, { days: schedule.days });
+	return { ...failure, capacityPlan: schedule };
+}
+
 type Ctx = MutationCtx | QueryCtx;
 
 /**
@@ -136,55 +171,37 @@ export async function validateReadyToSend(
 	options: PreflightOptions = {}
 ): Promise<PreflightResult> {
 	if (!campaign.emailTemplateId) {
-		return {
-			ok: false,
-			reason: 'no_template',
-			message: 'Campaign must have an email template selected',
-		};
+		return refuse('no_template', 'missing', 'Campaign must have an email template selected');
 	}
 	// A template in Recently deleted cannot be sent; restoring it, or picking
 	// another, clears this.
 	if (!(await getLive(ctx, campaign.emailTemplateId))) {
-		return {
-			ok: false,
-			reason: 'no_template',
-			message: "The campaign's email template was deleted",
-		};
+		return refuse('no_template', 'deleted', "The campaign's email template was deleted");
 	}
 
 	if (!campaign.audience) {
-		return {
-			ok: false,
-			reason: 'no_audience',
-			message: 'Campaign must have an audience configured',
-		};
+		return refuse('no_audience', 'default', 'Campaign must have an audience configured');
 	}
 
 	if (!campaign.fromEmail) {
-		return {
-			ok: false,
-			reason: 'no_from_email',
-			message: 'Campaign must have a from email address',
-		};
+		return refuse('no_from_email', 'default', 'Campaign must have a from email address');
 	}
 
 	const settings = await ctx.db.query('instanceSettings').first();
 	const status = settings?.abuseStatus;
 	if (status === 'suspended') {
-		return {
-			ok: false,
-			reason: 'sending_not_allowed',
-			message:
-				'Your account has been suspended due to policy violations. Please contact support for assistance.',
-		};
+		return refuse(
+			'sending_not_allowed',
+			'suspended',
+			'Your account has been suspended due to policy violations. Please contact support for assistance.'
+		);
 	}
 	if (status === 'banned') {
-		return {
-			ok: false,
-			reason: 'sending_not_allowed',
-			message:
-				'Your account has been permanently disabled. Please contact support for more information.',
-		};
+		return refuse(
+			'sending_not_allowed',
+			'banned',
+			'Your account has been permanently disabled. Please contact support for more information.'
+		);
 	}
 
 	// A delivery provider must actually be configured before the domain check —
@@ -193,12 +210,11 @@ export async function validateReadyToSend(
 	// zero `emailSends` rows are written instead of marching every recipient to
 	// `failed` against a provider that was never set up.
 	if (!(await isDeliveryConfigured(ctx, 'campaign'))) {
-		return {
-			ok: false,
-			reason: 'no_delivery_provider',
-			message:
-				'Cannot send campaign: no email delivery provider is configured. Set a delivery provider (EMAIL_PROVIDER + credentials, or a provider route) in Settings. A connected external mailbox does not provide bulk delivery.',
-		};
+		return refuse(
+			'no_delivery_provider',
+			'default',
+			'Cannot send campaign: no email delivery provider is configured. Set a delivery provider (EMAIL_PROVIDER + credentials, or a provider route) in Settings. A connected external mailbox does not provide bulk delivery.'
+		);
 	}
 
 	const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
@@ -206,13 +222,18 @@ export async function validateReadyToSend(
 	});
 
 	if (!domainStatus.verified) {
-		return {
-			ok: false,
-			reason: 'domain_not_verified',
-			message:
-				domainStatus.error ??
-				`Cannot send campaign: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`,
-		};
+		const message =
+			domainStatus.error ??
+			`Cannot send campaign: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`;
+		// An address with no domain part has no domain to name.
+		if (!domainStatus.domain) {
+			return refuse('domain_not_verified', 'invalidAddress', message, {
+				email: campaign.fromEmail,
+			});
+		}
+		return refuse('domain_not_verified', domainStatus.exists ? 'unverified' : 'missing', message, {
+			domain: domainStatus.domain,
+		});
 	}
 
 	// Curated-sender gate. The from-address must be
@@ -220,22 +241,19 @@ export async function validateReadyToSend(
 	// verified-domain check above stays the floor for BOTH branches, so a custom
 	// sender still cannot spoof an unverified domain.
 	if (!(await isCampaignSenderAllowed(ctx, campaign.fromEmail))) {
-		return {
-			ok: false,
-			reason: 'sender_not_allowed',
-			message: `Cannot send campaign: ${senderNotAllowedMessage(campaign.fromEmail)}`,
-		};
+		return refuse(
+			'sender_not_allowed',
+			'default',
+			`Cannot send campaign: ${senderNotAllowedMessage(campaign.fromEmail)}`,
+			{ email: campaign.fromEmail }
+		);
 	}
 
 	const now = options.now ?? Date.now();
 
 	if (options.scheduledAt !== undefined) {
 		if (options.scheduledAt <= now) {
-			return {
-				ok: false,
-				reason: 'scheduled_in_past',
-				message: 'Scheduled time must be in the future',
-			};
+			return refuse('scheduled_in_past', 'default', 'Scheduled time must be in the future');
 		}
 	}
 
@@ -255,14 +273,7 @@ export async function validateReadyToSend(
 			now,
 			...(options.scheduledAt !== undefined ? { startsAt: options.scheduledAt } : {}),
 		});
-		if (!capacity.fits) {
-			return {
-				ok: false,
-				reason: 'exceeds_sending_capacity',
-				message: describeCapacitySchedule(capacity.schedule),
-				capacityPlan: capacity.schedule,
-			};
-		}
+		if (!capacity.fits) return capacityRefusal(capacity.schedule);
 	}
 
 	return { ok: true };
@@ -283,13 +294,7 @@ export const validateReadyToSendQuery = internalQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args): Promise<PreflightResult> => {
 		const campaign = await getLive(ctx, args.campaignId);
-		if (!campaign) {
-			return {
-				ok: false,
-				reason: 'not_found',
-				message: 'Campaign not found',
-			};
-		}
+		if (!campaign) return refuse('not_found', 'default', 'Campaign not found');
 		// The BINDING capacity gate is deliberately NOT re-run here: see
 		// `PreflightOptions.checkCapacity`. A capacity refusal at fire time has no
 		// consumer — it becomes `{ skipped: true }` and the campaign sits
@@ -297,4 +302,19 @@ export const validateReadyToSendQuery = internalQuery({
 		// gate exists to prevent. Every shipped fire-time check still runs.
 		return await validateReadyToSend(ctx, campaign, { checkCapacity: false });
 	},
+});
+
+/**
+ * Whether campaign mail has a delivery provider at all: the pre-flight's own
+ * `no_delivery_provider` check, so the campaign editor and the wizard can say
+ * "sending is not set up" before the click instead of after it. The onboarding
+ * signal (`auth/sendReadyNotices.getState`) answers a different question (can
+ * the caller's own mailbox send), and would disagree with the gate on an
+ * instance whose MTA serves personal mail but has no campaign route.
+ */
+// all-members: a capability boolean with no provider, credential or route
+// detail, the same answer a schedule attempt by any member would reveal.
+export const getCampaignDeliveryConfigured = campaignsQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => await isDeliveryConfigured(ctx, 'campaign'),
 });

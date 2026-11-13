@@ -1567,8 +1567,6 @@
 					"abTesting": "A/B-Test",
 					"audience": "Zielgruppe",
 					"blocked": {
-						"domainMissing": "Der Versand ist deaktiviert, weil \"{domain}\" nicht registriert ist. Füge die Domain unter Einstellungen → Domains hinzu und verifiziere sie.",
-						"domainUnverified": "Der Versand ist deaktiviert, weil \"{domain}\" nicht verifiziert ist. Schließe die DNS-Verifizierung unter Einstellungen → Domains ab.",
 						"emptyBody": "Der E-Mail-Inhalt ist leer. Gestalte die E-Mail, bevor du sie sendest."
 					},
 					"campaignName": "Kampagnenname",
@@ -3326,9 +3324,23 @@
 				"useDefaultDescription": "Folgt dem Standard der Installation, auch wenn dieser sich später ändert."
 			},
 			"readinessPanel": {
+				"compact": {
+					"askAdmin": "Ein Admin kann das unter Zustellungsgesundheit beheben.",
+					"error": "Konnte nicht prüfen, ob Transaktionsmails raus können.",
+					"heading": "Transaktionsmails",
+					"hub": "Zustellungsgesundheit",
+					"loading": "Prüfe, ob Transaktionsmails raus können …",
+					"retry": "Erneut versuchen",
+					"title": "Transaktionsmails: {level}"
+				},
 				"error": "Die Versandbereitschaft konnte gerade nicht geprüft werden. Lade die Seite neu, um es erneut zu versuchen.",
 				"eyebrow": "Versandbereitschaft",
-				"title": "Kann diese Instanz senden?"
+				"gateFor": "nur {stream}",
+				"passedChecks": "Bestandene Prüfungen ({count})",
+				"streamAnnouncement": "{stream}: {level}.",
+				"streamsLabel": "Bereitschaft nach Art der Mail",
+				"title": "Kann diese Instanz senden?",
+				"via": "über {transport}"
 			},
 			"relayDomainStatus": {
 				"dkimError": "DKIM: {error}",
@@ -11821,14 +11833,15 @@
 						"title": "Kampagne in Prüfung"
 					},
 					"warmup": {
-						"dayOf": "Tag {day} von ca. 30",
-						"estimateDetail": "Diese Kampagne hat {count} Empfänger. {message}",
+						"dayOf": "Tag {day} von {total}",
+						"estimateDetail": "Diese Kampagne hat {count} Empfänger, mehr als deine Warmup-Kapazität an einem Tag sendet, deshalb geht sie über mehrere Tage raus. | Diese Kampagne hat {count} Empfänger, mehr als deine Warmup-Kapazität an einem Tag sendet, deshalb geht sie über mehrere Tage raus.",
 						"estimatedDays": "Geschätzte Sendedauer: ca. 1 Tag | Geschätzte Sendedauer: ca. {days} Tage",
+						"estimatedDaysMoreThan": "Geschätzte Sendedauer: mehr als {days} Tage",
 						"graduatedDescription": "Deine IPs sind vollständig aufgewärmt. Kampagnen werden mit voller Geschwindigkeit versendet.",
 						"graduatedTitle": "Vollständig aufgewärmt",
 						"progress": "Warmup-Fortschritt",
 						"remainingCapacity": "Heute verbleibende Kapazität",
-						"remainingOfCap": "{remaining} von {cap} E-Mails",
+						"remainingToday": "{remaining} E-Mail | {remaining} E-Mails",
 						"subtitle": "Deine Sendekapazität basierend auf dem Aufwärmen der IP-Reputation",
 						"title": "IP-Warmup-Status"
 					}
@@ -16375,10 +16388,38 @@
 				},
 				"authentication": {
 					"action": "Einträge einrichten",
-					"awaitingDomain": "SPF, DKIM und DMARC werden geprüft, sobald du eine Versanddomain hinzufügst.",
-					"complete": "SPF, DKIM und DMARC sind vollständig eingerichtet — Postfächer können deiner Mail vertrauen.",
+					"awaitingDomain": "SPF und DKIM werden geprüft, sobald du eine Versanddomain hinzufügst.",
+					"complete": "SPF und DKIM sind eingerichtet, Postfächer können deiner Mail also vertrauen.",
 					"missing": "Füge {records} hinzu, damit Postfächer deiner Mail vertrauen und sie im Posteingang landet.",
 					"title": "E-Mail-Authentifizierung"
+				},
+				"capacity": {
+					"action": "Warm-up-Prüfungen ansehen",
+					"halted": "Das Warm-up ist nach zu vielen Bounces oder Zurückstellungen angehalten, das Kampagnenvolumen wächst also erst wieder, wenn es sich erholt.",
+					"paced": "Vom Warm-up dosiert: heute können noch etwa {count} Kampagnenmails raus.",
+					"title": "Kapazität heute",
+					"unpaced": "Das Warm-up begrenzt Kampagnen heute nicht.",
+					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
+				},
+				"complaints": {
+					"action": "Sperrliste prüfen",
+					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
+					"title": "Beschwerderate",
+					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
+				},
+				"defaultSender": {
+					"actionChange": "Absender ändern",
+					"actionSet": "Standardabsender festlegen",
+					"missing": "Es ist kein Standardabsender gesetzt, jede Transaktionsmail wird also abgelehnt.",
+					"title": "Standardabsender",
+					"unverified": "{address} liegt auf keiner verifizierten Domain, jede Transaktionsmail wird also abgelehnt.",
+					"verified": "Transaktionsmails gehen von {address} raus."
+				},
+				"dmarc": {
+					"action": "Eintrag hinzufügen",
+					"missing": "Veröffentliche einen DMARC-Eintrag. Gmail und Yahoo verlangen ihn für Massenversand.",
+					"published": "Ein DMARC-Eintrag ist veröffentlicht, wie Massenversender ihn brauchen.",
+					"title": "DMARC"
 				},
 				"domain": {
 					"actionAdd": "Domain hinzufügen",
@@ -16388,16 +16429,42 @@
 					"unverified": "Deine Domain ist hinzugefügt, aber noch nicht verifiziert — DNS-Änderungen können etwas dauern.",
 					"verified": "Deine Versanddomain ist verifiziert, deine Mail kommt also von deiner eigenen Adresse."
 				},
+				"mailServer": {
+					"action": "Mailserver prüfen",
+					"degraded": "Der Mailserver meldet einen Fehler, Mail geht über ihn also nicht zuverlässig raus.",
+					"healthy": "Der Mailserver ist erreichbar und meldet keine Probleme.",
+					"stale": "Die letzte Statusprüfung des Mailservers ist veraltet, die Prüfung selbst ist also vielleicht stehen geblieben.",
+					"title": "Mailserver",
+					"unchecked": "Der Status des Mailservers wurde noch nicht geprüft.",
+					"unreachable": "Owlat erreicht den Mailserver nicht, über ihn geht also nichts raus."
+				},
 				"mtaSts": {
 					"action": "Eintrag veröffentlichen",
 					"detail": "MTA-STS steht auf „enforce“, der zugehörige DNS-Eintrag ist aber noch nicht veröffentlicht — veröffentliche ihn, damit Absender verschlüsselte Zustellung verlangen können.",
 					"title": "Eingehende TLS-Richtlinie (MTA-STS)"
 				},
+				"sendingIps": {
+					"action": "IP-Prüfungen ansehen",
+					"all_held": "Alle Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb, der Mailserver kann also nicht senden.",
+					"ready": "Alle Versand-IPs sind im Einsatz.",
+					"some_held": "Einige Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb; die anderen übernehmen die Mail.",
+					"title": "Versand-IPs"
+				},
 				"transport": {
 					"action": "Versand einrichten",
 					"configured": "Ein Versandtransport ist konfiguriert, Mail hat also einen Weg nach draußen.",
 					"missing": "Es ist noch kein Transport konfiguriert, es kann also nichts versendet werden.",
+					"missingFor": {
+						"marketing": "Für Kampagnen ist kein Transport konfiguriert, sie gehen also nicht raus.",
+						"transactional": "Für Transaktionsmails ist kein Transport konfiguriert, Belege und API-Sendungen gehen also nicht raus."
+					},
 					"title": "Versandtransport"
+				},
+				"unsubscribe": {
+					"action": "Prüfung ansehen",
+					"fail": "Die Prüfung der Ein-Klick-Abmeldung ist fehlgeschlagen, Massenversand kann also abgelehnt werden.",
+					"pass": "Kampagnen tragen eine signierte Ein-Klick-Abmeldung, wie Gmail und Yahoo sie verlangen.",
+					"title": "Abmeldung mit einem Klick"
 				}
 			},
 			"headline": {
@@ -16405,8 +16472,28 @@
 				"incomplete": "Versandbereit — Einrichtung abschließen",
 				"ready": "Versandbereit"
 			},
+			"streams": {
+				"level": {
+					"attention": "Braucht Aufmerksamkeit",
+					"blocked": "Blockiert",
+					"ready": "Bereit"
+				},
+				"marketing": {
+					"name": "Marketing",
+					"ready": "Kampagnen können raus.",
+					"readyVia": "Kampagnen können über {transport} raus."
+				},
+				"transactional": {
+					"name": "Transaktional",
+					"ready": "Transaktionsmails können raus.",
+					"readyVia": "Transaktionsmails können über {transport} raus."
+				}
+			},
 			"summary": {
 				"ready": "Alles in Ordnung — diese Instanz kann versenden."
+			},
+			"transport": {
+				"ownServer": "Dein eigener Mailserver"
 			}
 		},
 		"desktop": {
@@ -19534,6 +19621,31 @@
 			"failedUnknown": "unbekannter Fehler",
 			"expired": "Die Aktion ist abgelaufen, bevor du sie freigegeben hast.",
 			"changed": "Das hat sich geändert, nachdem du es geöffnet hast. Prüf die neuen Angaben und gib es dann erneut frei."
+		},
+		"campaignRefusal": {
+			"accountBanned": "Der Versand ist für diesen Workspace dauerhaft gesperrt. Wende dich für Details an den Support.",
+			"accountSuspended": "Der Versand ist für diesen Workspace wegen eines Richtlinienverstoßes ausgesetzt. Wende dich an den Support, um ihn wiederherzustellen.",
+			"askAdmin": "Bitte eine Person mit Admin-Rechten in diesem Workspace, das zu beheben.",
+			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
+			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",
+			"capacityTruncated": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität würde es mehr als {maxDays} Tage dauern, bis alle erreicht sind. Sende sie in Etappen oder verkleinere die Zielgruppe.",
+			"domainInvalidAddress": "\"{email}\" ist keine gültige Absenderadresse. Wähle einen anderen Absender.",
+			"domainMissing": "\"{domain}\" ist in diesem Workspace noch keine Absenderdomain. Füge sie hinzu und verifiziere sie, bevor du sendest.",
+			"domainUnverified": "\"{domain}\" ist noch nicht verifiziert. Schließe die DNS-Verifizierung ab, bevor du sendest.",
+			"fix": {
+				"deliveryHub": "Zustellstatus öffnen",
+				"domains": "Domains öffnen",
+				"senders": "Kampagnenabsender öffnen",
+				"transport": "Versand einrichten"
+			},
+			"noAudience": "Wähle aus, wer diese Kampagne bekommt, bevor du sie sendest.",
+			"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet: Für Kampagnen-Mails gibt es keinen Versanddienst. Ein verbundenes Postfach versendet keine Kampagnen.",
+			"noFromEmail": "Wähle aus, von wem diese Kampagne kommt, bevor du sie sendest.",
+			"noTemplate": "Wähle die E-Mail aus, die diese Kampagne sendet, bevor du sie sendest.",
+			"notFound": "Diese Kampagne gibt es nicht mehr.",
+			"scheduledInPast": "Dieser Zeitpunkt ist schon vorbei. Wähle einen Zeitpunkt in der Zukunft.",
+			"senderNotAllowed": "\"{email}\" ist kein freigegebener Kampagnenabsender. Füge die Adresse zu den Kampagnenabsendern hinzu oder erlaube eigene Absender.",
+			"templateDeleted": "Die E-Mail, die diese Kampagne sendet, wurde gelöscht. Stelle sie wieder her oder wähle eine andere."
 		}
 	},
 	"sharedPkg": {

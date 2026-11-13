@@ -38,7 +38,16 @@ export interface WarmupInput {
 }
 
 /** Total number of days an IP takes to fully warm (MTA convention). */
-const WARMUP_DAYS = 30;
+export const WARMUP_DAYS = 30;
+
+/**
+ * The warm-up day to quote: the furthest-along IP's. Every surface that names
+ * a day uses this, so the campaign editor and the delivery hub agree.
+ */
+export function warmupDay(ips: ReadonlyArray<{ currentDay?: number }>): number {
+	const days = ips.map((ip) => ip.currentDay ?? 0);
+	return days.length ? Math.max(...days) : 0;
+}
 
 /**
  * One human line describing where IP warm-up stands, or `null` when there's no
@@ -50,7 +59,7 @@ export function warmupSentence(warming: WarmupInput | null): LocalizedText | nul
 	if (warming.phase === 'graduated') return 'shared.deliveryHub.warmup.graduated';
 	if (warming.phase === 'plateau') return 'shared.deliveryHub.warmup.plateau';
 
-	const day = warming.ips.length ? Math.max(...warming.ips.map((ip) => ip.currentDay)) : 0;
+	const day = warmupDay(warming.ips);
 	const pct = Math.min(100, Math.max(0, Math.round((day / WARMUP_DAYS) * 100)));
 	return {
 		key: 'shared.deliveryHub.warmup.warming',

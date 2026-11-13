@@ -129,6 +129,83 @@ describe('delivery.status.getStatus — can-send', () => {
 	});
 });
 
+describe('delivery.status.getTransportSummary — per-stream readiness facts', () => {
+	it('reports can-send per message type when only campaigns have a route', async () => {
+		setEnv({ RESEND_API_KEY: 're_test' });
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'resend', isEnabled: true }],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const summary = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(summary.canSend).toBe(true);
+		expect(summary.streams.campaign).toEqual({
+			canSend: true,
+			providerLabels: ['Resend'],
+			usesOwnMta: false,
+		});
+		expect(summary.streams.transactional).toEqual({
+			canSend: false,
+			providerLabels: [],
+			usesOwnMta: false,
+		});
+		expect(summary.mailServer).toBeNull();
+	});
+
+	it('marks both streams as sent through the built-in MTA when it is the default', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+
+		const summary = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(summary.streams.transactional.usesOwnMta).toBe(true);
+		expect(summary.streams.campaign.usesOwnMta).toBe(true);
+		// No health snapshot synced yet: the mail server is unchecked, not healthy.
+		expect(summary.mailServer).toBe('unchecked');
+	});
+
+	it('reports no default sender when neither settings nor environment set one', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+
+		const summary = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(summary.transactionalSender).toEqual({ address: null, isDomainVerified: false });
+	});
+
+	it('reports the default sender and whether its domain is verified', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				defaultFromEmail: 'hello@mail.example.com',
+				createdAt: Date.now(),
+			});
+		});
+		const unverified = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(unverified.transactionalSender).toEqual({
+			address: 'hello@mail.example.com',
+			isDomainVerified: false,
+		});
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const verified = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(verified.transactionalSender.isDomainVerified).toBe(true);
+	});
+});
+
 describe('delivery.status.getStatus — admin-gated', () => {
 	it('rejects when the organization:manage gate denies the caller', async () => {
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });

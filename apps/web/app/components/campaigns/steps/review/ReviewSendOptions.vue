@@ -4,14 +4,15 @@
 // delivery-time choice and preview.
 import type { Id } from '@owlat/api/dataModel';
 import { parseScheduledStart } from '~/lib/campaignSchedule';
+import type { SendBlocker } from '~/lib/campaignRefusal';
 import type { SendingReadiness } from '~/lib/sendReadiness';
 import type { SendTiming } from '~/lib/sendTiming';
-import { CalendarIcon, CircleWarningIcon, ClockIcon, PaperPlaneIcon } from '@coolicons/vue';
+import { CalendarIcon, ClockIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 defineProps<{
 	campaignId: Id<'campaigns'>;
 	isAbTest: boolean;
-	sendBlockedReason: string | null;
+	sendBlocker: SendBlocker | null;
 	readiness: SendingReadiness | null | undefined;
 	/** The size a decision may be taken on: `null` (unknown) for a lower bound. */
 	audienceSize: number | null;
@@ -57,12 +58,10 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 			{{ t('components.campaigns.steps.reviewStep.whenToSend') }}
 		</h3>
 
-		<div
-			v-if="sendBlockedReason"
-			class="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
-		>
-			<CircleWarningIcon class="mt-0.5 h-4 w-4 shrink-0" />
-			<p>{{ sendBlockedReason }}</p>
+		<!-- Always in the DOM, so a blocker that appears or clears while the
+		     sender is edited is announced. -->
+		<div role="status">
+			<CampaignsSendBlockedNote v-if="sendBlocker" :blocker="sendBlocker" class="mb-4" />
 		</div>
 
 		<!-- What can actually go out today, before either option is chosen. -->

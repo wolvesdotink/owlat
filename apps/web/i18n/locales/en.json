@@ -1567,8 +1567,6 @@
 					"abTesting": "A/B testing",
 					"audience": "Audience",
 					"blocked": {
-						"domainMissing": "Sending is disabled because \"{domain}\" is not registered. Add and verify it in Settings → Domains.",
-						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains.",
 						"emptyBody": "Email body is empty. Design the email before sending it."
 					},
 					"campaignName": "Campaign name",
@@ -3326,9 +3324,23 @@
 				"useDefaultDescription": "Follows the deployment default, including if that changes later."
 			},
 			"readinessPanel": {
+				"compact": {
+					"askAdmin": "An admin can fix this under Delivery health.",
+					"error": "Couldn't check whether transactional mail can go out.",
+					"heading": "Transactional mail",
+					"hub": "Delivery health",
+					"loading": "Checking whether transactional mail can go out…",
+					"retry": "Try again",
+					"title": "Transactional mail: {level}"
+				},
 				"error": "Couldn't check delivery readiness just now. Reload to try again.",
 				"eyebrow": "Delivery readiness",
-				"title": "Can this instance send?"
+				"gateFor": "{stream} only",
+				"passedChecks": "Passed checks ({count})",
+				"streamAnnouncement": "{stream}: {level}.",
+				"streamsLabel": "Readiness by kind of mail",
+				"title": "Can this instance send?",
+				"via": "via {transport}"
 			},
 			"relayDomainStatus": {
 				"dkimError": "DKIM: {error}",
@@ -11821,14 +11833,15 @@
 						"title": "Campaign under review"
 					},
 					"warmup": {
-						"dayOf": "Day {day} of ~30",
-						"estimateDetail": "This campaign has {count} recipients. {message}",
+						"dayOf": "Day {day} of {total}",
+						"estimateDetail": "This campaign has {count} recipient, more than your warm-up capacity sends in a day, so it goes out over several days. | This campaign has {count} recipients, more than your warm-up capacity sends in a day, so it goes out over several days.",
 						"estimatedDays": "Estimated send time: ~1 day | Estimated send time: ~{days} days",
+						"estimatedDaysMoreThan": "Estimated send time: more than {days} days",
 						"graduatedDescription": "Your IPs are fully warmed. Campaigns will send at full speed.",
 						"graduatedTitle": "Fully warmed",
 						"progress": "Warmup progress",
 						"remainingCapacity": "Today's remaining capacity",
-						"remainingOfCap": "{remaining} of {cap} emails",
+						"remainingToday": "{remaining} email | {remaining} emails",
 						"subtitle": "Your sending capacity based on IP reputation warming",
 						"title": "IP warmup status"
 					}
@@ -16375,10 +16388,38 @@
 				},
 				"authentication": {
 					"action": "Set up records",
-					"awaitingDomain": "SPF, DKIM and DMARC are checked once you add a sending domain.",
-					"complete": "SPF, DKIM and DMARC are all in place — inboxes can trust your mail.",
+					"awaitingDomain": "SPF and DKIM are checked once you add a sending domain.",
+					"complete": "SPF and DKIM are in place, so inboxes can trust your mail.",
 					"missing": "Add {records} so mailboxes trust your mail and it lands in the inbox.",
 					"title": "Email authentication"
+				},
+				"capacity": {
+					"action": "See warm-up checks",
+					"halted": "Warm-up is halted after too many bounces or deferrals, so campaign volume won't grow until it recovers.",
+					"paced": "Paced by warm-up: about {count} more campaign emails can go out today.",
+					"title": "Today's capacity",
+					"unpaced": "Warm-up doesn't cap campaigns today.",
+					"usedUp": "Today's warm-up capacity is used up; campaigns continue tomorrow."
+				},
+				"complaints": {
+					"action": "Review suppressions",
+					"over": "{rate} of recipients complained, over the {limit} limit. Clean your list before the next campaign.",
+					"title": "Complaint rate",
+					"under": "{rate} of recipients complained, under the {limit} limit."
+				},
+				"defaultSender": {
+					"actionChange": "Change the sender",
+					"actionSet": "Set a default sender",
+					"missing": "No default sender is set, so every transactional send is refused.",
+					"title": "Default sender",
+					"unverified": "{address} isn't on a verified domain, so every transactional send is refused.",
+					"verified": "Transactional mail goes out from {address}."
+				},
+				"dmarc": {
+					"action": "Add the record",
+					"missing": "Publish a DMARC record. Gmail and Yahoo require one for bulk mail.",
+					"published": "A DMARC record is published, as bulk senders need.",
+					"title": "DMARC"
 				},
 				"domain": {
 					"actionAdd": "Add a domain",
@@ -16388,16 +16429,42 @@
 					"unverified": "Your domain is added but not verified yet — DNS changes can take a little while.",
 					"verified": "Your sending domain is verified, so mail comes from your own address."
 				},
+				"mailServer": {
+					"action": "Check the mail server",
+					"degraded": "The mail server reports a fault, so mail can't reliably go out through it.",
+					"healthy": "The mail server is reachable and reports healthy.",
+					"stale": "The mail server's last health check is out of date, so the check itself may have stopped.",
+					"title": "Mail server",
+					"unchecked": "The mail server's health hasn't been checked yet.",
+					"unreachable": "Owlat can't reach the mail server, so nothing goes out through it."
+				},
 				"mtaSts": {
 					"action": "Publish record",
 					"detail": "MTA-STS is set to enforce, but its DNS record isn’t in place yet — publish it so senders can require encrypted delivery.",
 					"title": "Inbound TLS policy (MTA-STS)"
 				},
+				"sendingIps": {
+					"action": "See IP checks",
+					"all_held": "Every sending IP is held back by a failed check or is out of rotation, so the mail server can't send.",
+					"ready": "Every sending IP is in rotation.",
+					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
+					"title": "Sending IPs"
+				},
 				"transport": {
 					"action": "Set up sending",
 					"configured": "A delivery transport is configured, so mail has a way out.",
 					"missing": "No transport is configured yet, so nothing can be sent.",
+					"missingFor": {
+						"marketing": "No transport is configured for campaigns, so they can't go out.",
+						"transactional": "No transport is configured for transactional mail, so receipts and API sends can't go out."
+					},
 					"title": "Sending transport"
+				},
+				"unsubscribe": {
+					"action": "See the check",
+					"fail": "The one-click unsubscribe check failed, so bulk mail can be rejected.",
+					"pass": "Campaigns carry a signed one-click unsubscribe, as Gmail and Yahoo require.",
+					"title": "One-click unsubscribe"
 				}
 			},
 			"headline": {
@@ -16405,8 +16472,28 @@
 				"incomplete": "Ready to send — finish setup",
 				"ready": "Ready to send"
 			},
+			"streams": {
+				"level": {
+					"attention": "Needs attention",
+					"blocked": "Blocked",
+					"ready": "Ready"
+				},
+				"marketing": {
+					"name": "Marketing",
+					"ready": "Campaigns can go out.",
+					"readyVia": "Campaigns can go out via {transport}."
+				},
+				"transactional": {
+					"name": "Transactional",
+					"ready": "Transactional mail can go out.",
+					"readyVia": "Transactional mail can go out via {transport}."
+				}
+			},
 			"summary": {
 				"ready": "Everything checks out — this instance can send."
+			},
+			"transport": {
+				"ownServer": "Your own mail server"
 			}
 		},
 		"desktop": {
@@ -19534,6 +19621,31 @@
 			"failedUnknown": "unknown error",
 			"expired": "The action expired before you approved it.",
 			"changed": "This changed after you opened it. Check the updated details, then approve again."
+		},
+		"campaignRefusal": {
+			"accountBanned": "Sending is permanently disabled for this workspace. Contact support for details.",
+			"accountSuspended": "Sending is suspended for this workspace because of a policy violation. Contact support to restore it.",
+			"askAdmin": "Ask an admin of this workspace to fix this.",
+			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
+			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",
+			"capacityTruncated": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it would take more than {maxDays} days to reach everyone. Send it in stages, or reduce the audience.",
+			"domainInvalidAddress": "\"{email}\" is not a valid sender address. Choose another sender.",
+			"domainMissing": "\"{domain}\" is not a sending domain on this workspace yet. Add and verify it before you send.",
+			"domainUnverified": "\"{domain}\" is not verified yet. Finish its DNS verification before you send.",
+			"fix": {
+				"deliveryHub": "Open delivery health",
+				"domains": "Open domains",
+				"senders": "Open campaign senders",
+				"transport": "Set up sending"
+			},
+			"noAudience": "Choose who gets this campaign before you send it.",
+			"noDeliveryProvider": "Sending is not set up yet: campaign mail has no delivery provider. A connected mailbox does not send campaigns.",
+			"noFromEmail": "Choose who this campaign sends from before you send it.",
+			"noTemplate": "Choose the email this campaign sends before you send it.",
+			"notFound": "This campaign no longer exists.",
+			"scheduledInPast": "That time has already passed. Pick a time in the future.",
+			"senderNotAllowed": "\"{email}\" is not an approved campaign sender. Add it to the campaign senders, or allow custom senders.",
+			"templateDeleted": "The email this campaign sends was deleted. Restore it, or choose another one."
 		}
 	},
 	"sharedPkg": {

@@ -29,11 +29,26 @@ export type { LocalizedText };
  */
 export type ReadinessGateKey =
 	| 'transport'
+	| 'mail-server'
+	| 'sending-ips'
 	| 'domain'
 	| 'authentication'
+	| 'default-sender'
+	| 'dmarc'
+	| 'unsubscribe'
+	| 'capacity'
+	| 'complaints'
 	| 'alignment'
 	| 'dual-arm-alignment'
 	| 'mta-sts';
+
+/**
+ * The two kinds of mail a readiness verdict is given for. Transactional mail
+ * (receipts, password resets) goes out one message at a time from the default
+ * sender; marketing mail (campaigns) is bulk mail, which mailbox providers hold
+ * to more: DMARC, one-click unsubscribe, warm-up pacing, a low complaint rate.
+ */
+export type MailStream = 'transactional' | 'marketing';
 
 /**
  * A gate's state:
@@ -57,4 +72,17 @@ export interface ReadinessGate {
 	actionHref: string | null;
 	/** Label for the fix link, or `null` when `actionHref` is `null`. */
 	actionLabel: LocalizedText | null;
+	/** The streams this gate applies to; absent means both. */
+	streams?: readonly MailStream[];
+	/**
+	 * The transport the gate belongs to ("Amazon SES", "your own mail server"),
+	 * so own-server and external-provider readiness read differently; absent
+	 * for gates that hold whatever the transport.
+	 */
+	transport?: LocalizedText | null;
+	/**
+	 * True when an open gate stops its streams from sending at all. Open
+	 * non-blocking gates only ask for attention.
+	 */
+	isBlocking?: boolean;
 }

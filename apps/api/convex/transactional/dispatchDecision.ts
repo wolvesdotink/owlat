@@ -109,15 +109,26 @@ export function decideTemplate(
 }
 
 /**
- * The sender every transactional send uses: settings, then the environment.
- * With neither the request is refused; a stand-in address would be one on a
- * domain nobody here owns.
+ * The default sender address an operator configured (settings, then the
+ * environment), or `null` when neither is set. The readiness surfaces and
+ * {@link senderDefaults} both read it, so they agree on whether a sender exists.
+ */
+export function configuredDefaultFromEmail(
+	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail'> | null,
+	environment: { readonly defaultFromEmail?: string }
+): string | null {
+	return settings?.defaultFromEmail?.trim() || environment.defaultFromEmail?.trim() || null;
+}
+
+/**
+ * The sender every transactional send uses. With none configured the request
+ * is refused; a stand-in address would be one on a domain nobody here owns.
  */
 export function senderDefaults(
 	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail' | 'defaultFromName'> | null,
 	environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string }
 ): { ok: true; fromEmail: string; fromName: string } | DispatchRefusal {
-	const fromEmail = settings?.defaultFromEmail?.trim() || environment.defaultFromEmail?.trim();
+	const fromEmail = configuredDefaultFromEmail(settings, environment);
 	if (!fromEmail) {
 		return {
 			ok: false,

@@ -22,6 +22,7 @@ import { isCoreSendProviderKind, sendProviderCatalogEntry } from './catalog';
 import { isSendProviderKind, selectSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
+import type { Doc } from '../../_generated/dataModel';
 
 /**
  * True iff the given provider kind has the credentials it needs in the
@@ -104,4 +105,37 @@ export async function isDeliveryConfigured(
 		}
 	}
 	return await deliveryConfiguredFromEnv(ctx);
+}
+
+/**
+ * The transport kinds one message type dispatches through: the enabled, ready
+ * entries of that type's route, or the `EMAIL_PROVIDER` default when the route
+ * offers none (the fallback `isDeliveryConfigured` and the route resolver
+ * take). Empty when nothing can carry the type.
+ *
+ * The readiness surfaces read this to decide whether the built-in MTA's gates
+ * (mail server, sending IPs, warm-up) apply to a type at all.
+ */
+export async function messageTypeTransportKinds(
+	ctx: QueryCtx | MutationCtx,
+	routes: readonly Doc<'providerRoutes'>[],
+	messageType: DeliveryMessageType
+): Promise<SendProviderKind[]> {
+	const kinds: SendProviderKind[] = [];
+	for (const route of routes) {
+		if (route.messageType !== messageType) continue;
+		for (const entry of route.providers) {
+			if (
+				entry.isEnabled &&
+				isSendProviderKind(entry.providerType) &&
+				!kinds.includes(entry.providerType) &&
+				(await isSendProviderReady(ctx, entry.providerType))
+			) {
+				kinds.push(entry.providerType);
+			}
+		}
+	}
+	if (kinds.length > 0) return kinds;
+	const fallback = selectSendProviderKind(undefined);
+	return fallback !== null && (await isSendProviderReady(ctx, fallback)) ? [fallback] : [];
 }

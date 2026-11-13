@@ -2,28 +2,22 @@
 /**
  * The one delivery-readiness panel that leads the Delivery hub.
  *
- * It answers a single question — "can this instance actually send mail, and if
- * not, what's the next thing to do?" — by DERIVING one verdict from the real
- * backend state: the send transport (`getTransportSummary.canSend`, the same
- * gate the send path uses) and every sending domain's verification + SPF/DKIM/
- * DMARC (`getDeliveryDomainTable`). This is where the two halves of go-live meet,
- * so the self-host onboarding banner can point here instead of re-listing
- * "configure a provider" / "verify a domain" as if the wizard never ran.
+ * It answers "can this instance send, and if not, what's the next thing to
+ * do?" once per kind of mail: transactional mail goes out from the default
+ * sender one message at a time, marketing mail is bulk mail and is held to
+ * more (DMARC, one-click unsubscribe, warm-up pacing, complaint headroom). Both
+ * verdicts and the gate list come from `useDeliveryReadiness`, the same fold
+ * the transactional pages read, and the gates that only matter for the
+ * built-in MTA appear only for a stream it carries.
  *
- * Member-readable: both queries are non-secret (transport kind + booleans, domain
- * names + verification state) — editing still happens on the admin-gated pages
- * each gate links to.
+ * Member-readable: every source is non-secret, and the two admin-only ones are
+ * read only for admins. Editing still happens on the admin-gated pages each
+ * gate links to.
  */
-import { api } from '@owlat/api';
-import {
-	deriveDeliveryReadiness,
-	readinessInputFromSources,
-	type ReadinessAlignmentSource,
-	type ReadinessGateStatus,
-	type ReadinessMtaStsSource,
-} from '~/utils/deliveryReadiness';
-import { healthChipClass, healthTextClass } from '~/utils/healthTone';
+import type { ReadinessGate, ReadinessGateStatus } from '~/utils/deliveryReadiness';
+import { healthTextClass } from '~/utils/healthTone';
 import { useLocalized } from '~/composables/useLocalized';
+import { useDeliveryReadiness } from '~/composables/useDeliveryReadiness';
 import {
 	ArrowRightIcon,
 	CircleCheckIcon,
@@ -32,8 +26,6 @@ import {
 	RocketIcon,
 	type IconComponent,
 } from '@coolicons/vue';
-
-const { canManageOrganization } = usePermissions();
 
 const { t } = useI18n();
 
@@ -45,112 +37,49 @@ const { t } = useI18n();
  */
 const localized = useLocalized();
 
-const {
-	data: transport,
-	isLoading: transportLoading,
-	error: transportError,
-	refetch: refetchTransport,
-} = useOrganizationQuery(api.delivery.status.getTransportSummary);
+const { readiness, isLoading, error: loadError, retry } = useDeliveryReadiness();
 
-const {
-	data: domainRows,
-	isLoading: domainsLoading,
-	error: domainsError,
-	refetch: refetchDomains,
-} = useOrganizationQuery(api.analytics.reputationQueries.getDeliveryDomainTable);
+// Open gates lead; the passed ones sit one interaction away, so a ready
+// instance reads as two quiet verdict lines rather than a wall of green.
+const openGates = computed(() => readiness.value?.gates.filter((g) => g.status !== 'ready') ?? []);
+const passedGates = computed(
+	() => readiness.value?.gates.filter((g) => g.status === 'ready') ?? []
+);
+const showPassed = ref(false);
 
-// MTA-STS publishing is an admin-gated inbound-TLS concern; `getMtaStsGuidance`
-// requires `organization:manage`, so subscribe only for admins (conditional
-// args). A member sees the same three gates as before — they can't fix an
-// inbound-TLS record anyway, and the readiness input treats a `null` source as
-// "no warning".
-const { data: mtaStsGuidance } = useConvexQuery(api.domains.mtaSts.getMtaStsGuidance, () =>
-	canManageOrganization.value ? {} : 'skip'
+/** Both verdicts in one sentence, announced when a re-check changes them. */
+const announcement = computed(() =>
+	(readiness.value?.streams ?? [])
+		.map((verdict) =>
+			t('components.delivery.readinessPanel.streamAnnouncement', {
+				stream: t(`shared.deliveryReadiness.streams.${verdict.stream}.name`),
+				level: localized(verdict.label),
+			})
+		)
+		.join(' ')
 );
 
-// The domain whose published MTA-STS records we verify: the most-active verified
-// sending domain (the one readiness already reports auth against), falling back
-// to the most-active configured domain.
-const mtaStsDomain = computed<string | null>(() => {
-	const rows = domainRows.value ?? [];
-	return rows.find((row) => row.status === 'verified')?.domain ?? rows[0]?.domain ?? null;
-});
-
-// Live verify of the published policy vs what we serve. Admin-gated + fail-soft
-// (never throws); the shared composable runs it once `enforce` is published and
-// a domain is available, so deployments not enforcing make no backend call.
-const { verification: mtaStsVerification } = useMtaStsVerification(() =>
-	canManageOrganization.value && mtaStsGuidance.value?.mode === 'enforce'
-		? mtaStsDomain.value
-		: null
-);
-
-// Only claim "enforce without record" once the mode is known AND we have a
-// verdict; before the verify resolves (or for a non-admin) leave it null so the
-// gate never flashes an unconfirmed warning.
-const mtaStsSource = computed<ReadinessMtaStsSource | null>(() => {
-	const mode = mtaStsGuidance.value?.mode;
-	if (!mode) return null;
-	if (mode !== 'enforce') return { mode, recordVerified: true };
-	if (!mtaStsVerification.value) return null;
-	return { mode, recordVerified: mtaStsVerification.value.verified };
-});
-
-const isLoading = computed(() => transportLoading.value || domainsLoading.value);
-const loadError = computed(() => transportError.value ?? domainsError.value ?? null);
-
-function retryFailedReads() {
-	if (transportError.value) refetchTransport();
-	if (domainsError.value) refetchDomains();
+/** "Marketing only · via Amazon SES": which stream and transport a gate belongs to. */
+function gateMeta(gate: ReadinessGate): string | null {
+	const parts: string[] = [];
+	if (gate.streams?.length === 1) {
+		parts.push(
+			t('components.delivery.readinessPanel.gateFor', {
+				stream: t(`shared.deliveryReadiness.streams.${gate.streams[0]}.name`),
+			})
+		);
+	}
+	if (gate.transport) {
+		parts.push(
+			t('components.delivery.readinessPanel.via', { transport: localized(gate.transport) })
+		);
+	}
+	return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-// The active transport's outbound identities (non-secret) + the VERIFIED sending
-// domains — the ones mail actually sends from — so the alignment gate warns only
-// when a domain you really send from is misaligned. Null until the transport
-// summary loads (it never flashes an unconfirmed warning).
-const alignmentSource = computed<ReadinessAlignmentSource | null>(() => {
-	const summary = transport.value;
-	if (!summary) return null;
-	const fromDomains = (domainRows.value ?? [])
-		.filter((row) => row.status === 'verified')
-		.map((row) => row.domain);
-	return { facts: summary.alignment, fromDomains };
-});
-
-// The dual-transport ramp's alignment pre-flight: non-secret DNS-facing
-// verdicts, one row per sending domain, member-readable like the rest of this
-// panel. A deployment with no reference transport has only `single_arm` rows (or
-// none at all), which the readiness fold treats as "nothing to say" — so no gate
-// appears and nothing reads as an unfinished setup.
-const { data: dualArmRows } = useOrganizationQuery(
-	api.delivery.alignmentPreflight.getAlignmentReadiness
-);
-
-const readiness = computed(() => {
-	const summary = transport.value;
-	if (!summary) return null;
-	return deriveDeliveryReadiness(
-		readinessInputFromSources(
-			summary,
-			domainRows.value ?? [],
-			mtaStsSource.value,
-			alignmentSource.value,
-			dualArmRows.value ?? null
-		)
-	);
-});
-
-/**
- * The summary line, unless it only repeats the first gate that needs work:
- * with no transport, the summary and that gate say the same sentence.
- */
-const summaryLine = computed(() => {
-	const r = readiness.value;
-	if (!r) return null;
-	const summary = localized(r.summary);
-	const firstOpen = r.gates.find((g) => g.status !== 'ready');
-	return firstOpen && localized(firstOpen.detail) === summary ? null : summary;
-});
+function gateKey(gate: ReadinessGate): string {
+	return `${gate.key}:${(gate.streams ?? []).join(',')}`;
+}
 
 // Per-gate glyph; the text colour reuses the shared tone → class map so it can't
 // drift from the dot/chip renderings (never the brand terracotta for state).
@@ -184,39 +113,45 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 			v-else-if="loadError"
 			:error="loadError"
 			:error-message="t('components.delivery.readinessPanel.error')"
-			@retry="retryFailedReads"
+			@retry="retry"
 		/>
 
 		<div v-else-if="readiness" class="p-6 space-y-5">
-			<!-- Headline verdict -->
-			<div class="flex items-start justify-between gap-4">
-				<div class="flex items-start gap-3 min-w-0">
-					<UiIconBox :icon="RocketIcon" size="md" variant="brand" rounded="lg" />
-					<div class="min-w-0">
-						<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
-							{{ t('components.delivery.readinessPanel.eyebrow') }}
-						</p>
-						<div class="flex items-center gap-2.5 mt-0.5">
-							<h2 class="text-lg font-semibold text-text-primary">
-								{{ t('components.delivery.readinessPanel.title') }}
-							</h2>
-							<span
-								class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
-								:class="healthChipClass[readiness.tone]"
-							>
-								{{ localized(readiness.headline) }}
-							</span>
-						</div>
-						<p v-if="summaryLine" class="text-sm text-text-secondary mt-1">{{ summaryLine }}</p>
-					</div>
+			<div class="flex items-start gap-3 min-w-0">
+				<UiIconBox :icon="RocketIcon" size="md" variant="brand" rounded="lg" />
+				<div class="min-w-0">
+					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
+						{{ t('components.delivery.readinessPanel.eyebrow') }}
+					</p>
+					<h2 class="text-lg font-semibold text-text-primary mt-0.5">
+						{{ t('components.delivery.readinessPanel.title') }}
+					</h2>
 				</div>
 			</div>
 
-			<!-- The one gate list: transport · domain · authentication, one truth. -->
-			<ul class="space-y-2">
+			<!-- One verdict per kind of mail: what blocks receipts is not what
+				 holds back a campaign. -->
+			<ul
+				v-if="readiness.streams.length > 0"
+				class="space-y-2"
+				:aria-label="t('components.delivery.readinessPanel.streamsLabel')"
+			>
 				<li
-					v-for="g in readiness.gates"
-					:key="g.key"
+					v-for="verdict in readiness.streams"
+					:key="verdict.stream"
+					class="rounded-lg border border-border-subtle px-3 py-3"
+				>
+					<DeliveryStreamVerdict :verdict="verdict" />
+				</li>
+			</ul>
+			<p class="sr-only" role="status">{{ announcement }}</p>
+
+			<!-- The gates that are not ready, each labelled with the stream and
+				 transport it belongs to. -->
+			<ul v-if="openGates.length > 0" class="space-y-2" data-testid="readiness-open-gates">
+				<li
+					v-for="g in openGates"
+					:key="gateKey(g)"
 					class="flex items-start gap-3 rounded-lg bg-bg-surface px-3 py-3"
 				>
 					<component
@@ -226,6 +161,7 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 					/>
 					<div class="flex-1 min-w-0">
 						<p class="text-sm font-medium text-text-primary">{{ localized(g.title) }}</p>
+						<p v-if="gateMeta(g)" class="text-xs text-text-tertiary mt-0.5">{{ gateMeta(g) }}</p>
 						<p class="text-sm text-text-secondary mt-0.5">{{ localized(g.detail) }}</p>
 					</div>
 					<NuxtLink
@@ -240,6 +176,33 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 					</NuxtLink>
 				</li>
 			</ul>
+
+			<UiDisclosure
+				v-if="passedGates.length > 0"
+				v-model="showPassed"
+				:label="t('components.delivery.readinessPanel.passedChecks', { count: passedGates.length })"
+			>
+				<ul class="space-y-2" data-testid="readiness-passed-gates">
+					<li
+						v-for="g in passedGates"
+						:key="gateKey(g)"
+						class="flex items-start gap-3 rounded-lg bg-bg-surface px-3 py-3"
+					>
+						<component
+							:is="GATE_ICON[g.status]"
+							class="w-5 h-5 mt-0.5 shrink-0"
+							:class="healthTextClass[g.tone]"
+						/>
+						<div class="flex-1 min-w-0">
+							<p class="text-sm font-medium text-text-primary">{{ localized(g.title) }}</p>
+							<p v-if="gateMeta(g)" class="text-xs text-text-tertiary mt-0.5">
+								{{ gateMeta(g) }}
+							</p>
+							<p class="text-sm text-text-secondary mt-0.5">{{ localized(g.detail) }}</p>
+						</div>
+					</li>
+				</ul>
+			</UiDisclosure>
 		</div>
 	</UiCard>
 </template>

@@ -30,6 +30,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { extractOperationError } from '@owlat/shared/operationError';
+import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 import {
 	createTestCampaign,
 	createTestCampaignSender,
@@ -509,6 +511,34 @@ describe('campaigns.scheduling.schedule', () => {
 				scheduledAt: Date.now() + 24 * HOUR,
 			})
 		).rejects.toThrow();
+	});
+
+	it('carries the refusal reason, its catalog key and the English sentence in the error', async () => {
+		const t = setupTest();
+		const campaignId = await seedCampaign(t, {
+			status: 'draft',
+			emailTemplateId: undefined,
+			audience: undefined,
+		});
+
+		const error = await t
+			.mutation(api.campaigns.scheduling.schedule, {
+				campaignId,
+				scheduledAt: Date.now() + 24 * HOUR,
+			})
+			.then(
+				() => null,
+				(caught: unknown) => caught
+			);
+
+		expect(extractOperationError(error)).toEqual({
+			category: 'invalid_state',
+			message: 'Campaign must have an email template selected',
+			data: {
+				reason: 'no_template',
+				messageKey: PREFLIGHT_MESSAGE_KEYS.no_template.missing,
+			},
+		});
 	});
 });
 

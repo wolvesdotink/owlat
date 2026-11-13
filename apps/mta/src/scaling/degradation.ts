@@ -95,7 +95,12 @@ export async function checkSystemHealth(
 
 /**
  * Check if sends to a specific domain should be backed off
- * (connection-level failures, distinct from SMTP-level throttle/intel)
+ * (connection-level failures, distinct from SMTP-level throttle/intel).
+ *
+ * An elapsed window lets the next attempt through but keeps the failure count,
+ * so a domain that fails again takes the next step of the backoff instead of
+ * restarting at its base. Only a delivery (`clearDomainFailure`) resets it, or
+ * the key's TTL once the domain has had no failure for an hour.
  */
 export async function shouldBackoffDomain(
 	redis: Redis,
@@ -110,10 +115,7 @@ export async function shouldBackoffDomain(
 
 	const retryAt = parseInt(data, 10);
 	const now = Date.now();
-	if (now >= retryAt) {
-		await redis.del(key);
-		return { backoff: false };
-	}
+	if (!Number.isFinite(retryAt) || now >= retryAt) return { backoff: false };
 
 	return { backoff: true, retryAfter: retryAt - now };
 }

@@ -100,6 +100,9 @@ export const getSendingOverview = authedQuery({
 						remainingToday: Math.max(0, warmingState.totalDailyCap - warmingState.totalSentToday),
 						ipCount: warmingState.ipCount,
 						ips: warmingState.ips,
+						// The full pool lists: a row's own `pool` names only the first
+						// pool of an address that serves both.
+						pools: warmingState.pools ?? null,
 						syncedAt: warmingState.syncedAt,
 					}
 				: null,
@@ -127,6 +130,7 @@ export const getCampaignSendEstimate = authedQuery({
 				totalDailyCap: 0,
 				remainingToday: 0,
 				estimatedDays: 1,
+				isTruncated: false,
 				isFullyWarmed: false,
 				message: 'Warming data not available yet. Your emails will be paced automatically.',
 			};
@@ -175,6 +179,7 @@ export const getCampaignSendEstimate = authedQuery({
 				totalDailyCap,
 				remainingToday,
 				estimatedDays: 1,
+				isTruncated: false,
 				isFullyWarmed: true,
 				message: 'Your IPs are fully warmed. Campaign will send at full speed.',
 			};
@@ -187,6 +192,7 @@ export const getCampaignSendEstimate = authedQuery({
 				totalDailyCap,
 				remainingToday,
 				estimatedDays: 1,
+				isTruncated: false,
 				isFullyWarmed: false,
 				message: `Campaign fits within today's remaining capacity (${remainingToday.toLocaleString()} emails).`,
 			};
@@ -197,6 +203,7 @@ export const getCampaignSendEstimate = authedQuery({
 				totalDailyCap,
 				remainingToday,
 				estimatedDays: 1,
+				isTruncated: false,
 				isFullyWarmed: false,
 				message: 'Warming data not available yet. Your emails will be paced automatically.',
 			};
@@ -219,6 +226,7 @@ export const getCampaignSendEstimate = authedQuery({
 				totalDailyCap,
 				remainingToday,
 				estimatedDays: 1,
+				isTruncated: false,
 				isFullyWarmed: false,
 				message: 'Your emails will be paced automatically against your current warm-up capacity.',
 			};
@@ -232,6 +240,9 @@ export const getCampaignSendEstimate = authedQuery({
 			totalDailyCap,
 			remainingToday,
 			estimatedDays: plan.days,
+			// The walk stopped at MAX_PLAN_DAYS with recipients left, so
+			// `estimatedDays` is a floor, not a finish.
+			isTruncated: plan.truncated,
 			isFullyWarmed: false,
 			message,
 		};

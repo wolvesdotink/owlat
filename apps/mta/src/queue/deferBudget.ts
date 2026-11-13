@@ -38,6 +38,12 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
  * soft-bounce before the max-age deadline. That is the trade this number
  * encodes, and the reason to revisit it is a lower pacing floor, not a lower
  * individual defer.
+ *
+ * A receiver that keeps deferring is not what fills the budget: its retry delay
+ * escalates per message to an hour (`dispatch/retryEscalation.ts`), about a
+ * hundred rungs over the whole lifetime. A flat delay would not fit: a 30s
+ * ladder needs over 13,000 rungs for four days and would be refused as a
+ * runaway halfway through.
  */
 const SUSTAINED_DEFER_INTERVAL_MS = 60_000;
 

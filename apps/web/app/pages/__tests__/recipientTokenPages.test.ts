@@ -157,6 +157,16 @@ describe('unsubscribe', () => {
 		expect(w.text()).not.toContain('Invalid or expired unsubscribe link');
 	});
 
+	it('shows "already unsubscribed" without a button only when verify says so', async () => {
+		answers['GET /unsub/verify/'] = {
+			status: 200,
+			body: { ok: true, data: { ...contact, subscribed: false } },
+		};
+		const w = await mountPage(UnsubscribePage);
+		expect(w.find('h2').text()).toBe('Already unsubscribed');
+		expect(w.findAll('button')).toHaveLength(0);
+	});
+
 	it('maps an expired verify link to the expired copy', async () => {
 		answers['GET /unsub/verify/'] = { status: 200, body: { ok: false, reason: 'expired' } };
 		const w = await mountPage(UnsubscribePage);
