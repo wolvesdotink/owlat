@@ -262,4 +262,31 @@ describe('contact changes between the claim and the enqueue', () => {
 		expect(outcome).toEqual({ status: 'contact_ineligible', reason: 'contact_deleted' });
 		expect(runMutation.mock.calls[0]?.[1]).toMatchObject({ automationStepRunId: 'step-run-1' });
 	});
+
+	it('the email step hands the intake both URLs the unsubscribe footer is built from', async () => {
+		vi.stubEnv('SITE_URL', 'https://app.example');
+		vi.stubEnv('CONVEX_SITE_URL', 'https://convex.example');
+		try {
+			const runMutation = vi.fn().mockResolvedValue({ ok: true, sendId: 'send-1', queued: true });
+			const runQuery = vi
+				.fn()
+				.mockResolvedValueOnce({ subject: 'Hi', htmlContent: '<p>Hi</p>' })
+				.mockResolvedValueOnce({ defaultFromEmail: 'noreply@example.com' });
+
+			await emailStepModule.execute({ runQuery, runMutation } as never, {
+				config: { emailTemplateId: 'template-1' },
+				contact: { _id: 'contact-1', email: 'reader@example.com' } as never,
+				automation: { _id: 'automation-1' } as never,
+				stepRunId: 'step-run-1' as never,
+			});
+
+			expect(runMutation.mock.calls[0]?.[1]).toMatchObject({
+				listUnsubscribe: true,
+				convexSiteUrl: 'https://convex.example',
+				siteUrl: 'https://app.example',
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
 });
