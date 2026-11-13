@@ -29,14 +29,18 @@ beforeAll(() => {
 	});
 });
 
-function mountFooter(bodyPending: boolean, dictationTarget?: { insertText: () => void }) {
+function mountFooter(
+	bodyPending: boolean,
+	dictationTarget?: { insertText: () => void },
+	isScheduled = false
+) {
 	return mount(PostboxComposerFooter, {
 		props: {
 			capabilities: mailboxCapabilities,
 			canSend: false,
 			sending: false,
 			isUploading: false,
-			isScheduled: false,
+			isScheduled,
 			sendShortcutHint: 'Cmd+Enter',
 			scheduleShortcutHint: 'Cmd+Shift+Enter',
 			showSignaturePicker: true,
@@ -114,5 +118,17 @@ describe('PostboxComposerFooter while the body is loading', () => {
 		const wrapper = mountFooter(false);
 		expect(wrapper.get('select').attributes('disabled')).toBeUndefined();
 		expect(modeSwitch(wrapper).attributes('disabled')).toBeUndefined();
+	});
+});
+
+describe('PostboxComposerFooter on a scheduled draft', () => {
+	// drafts.update rejects a scheduled row, so a body change made here would
+	// show in the composer but never reach the email that goes out.
+	it('locks the signature picker and availability until the draft is unscheduled', () => {
+		const wrapper = mountFooter(false, undefined, true);
+		expect(wrapper.get('select').attributes('disabled')).toBeDefined();
+		expect(
+			wrapper.get('[data-testid="composer-insert-availability"]').attributes('disabled')
+		).toBeDefined();
 	});
 });

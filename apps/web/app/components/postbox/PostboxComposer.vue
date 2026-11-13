@@ -405,7 +405,7 @@ function onKeydown(event: KeyboardEvent) {
 		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
 		<PostboxComposerAdvisory
 			v-if="frameView.advisoryOpen.value"
-			:inert="draftMirror.busy"
+			:inert="draftMirror.busy || isScheduled"
 			v-model:body-html="bodyHtml"
 			:ai-enabled="aiRewriteEnabled"
 			:mailbox-id="seed.mailboxId"

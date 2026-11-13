@@ -276,7 +276,7 @@ function onPickFiles(event: Event) {
 							<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
 							<select
 								:value="activeSignatureId ?? ''"
-								:disabled="bodyPending"
+								:disabled="bodyPending || isScheduled"
 								class="input input-sm ml-auto w-auto"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
@@ -309,7 +309,7 @@ function onPickFiles(event: Event) {
 								type="button"
 								role="menuitem"
 								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
-								:disabled="bodyPending || availability.isInserting.value"
+								:disabled="bodyPending || isScheduled || availability.isInserting.value"
 								data-testid="composer-insert-availability"
 								@click="
 									availability.insertAvailability();
