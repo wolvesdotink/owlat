@@ -4,8 +4,9 @@
  * Every mutation that changes a message bumps the containing folder's
  * `highestModseq` so IMAP CONDSTORE clients pick up the change. Folder
  * counters (`totalCount`, `unseenCount`) and thread aggregates are kept
- * in sync inline: flag changes apply deltas (`flagWrites.ts`), moves and
- * purges re-derive the thread (`threadAggregates.ts`).
+ * in sync inline: flag changes apply deltas (`flagWrites.ts`), a user's move
+ * updates only the thread's folder roles, and purges re-derive the thread
+ * (`threadAggregates.ts`).
  */
 
 import { v } from 'convex/values';
@@ -49,10 +50,7 @@ export { rebuildThreadAggregates };
  * archive / trash / reportSpam / notSpam) so the client can offer an
  * "Undo" that moves each message back to the folder it came from.
  */
-type MovedMessage = {
-	messageId: Id<'mailMessages'>;
-	sourceFolderId: Id<'mailFolders'>;
-};
+type MovedMessage = { messageId: Id<'mailMessages'>; sourceFolderId: Id<'mailFolders'> };
 
 type MoveResult = { ok: true; moved: MovedMessage[] };
 
@@ -160,10 +158,8 @@ export async function moveMessagesToFolder(
 	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> },
 	// writeBack false: mirrors a provider's own move (external/remoteState.ts).
 	// isNeedsReplyKept: keep the thread's Reply Queue state (it still has Inbox mail).
-	// isFolderRolesOnly: bounded thread update (applyThreadFolderMove), no
-	// whole-thread re-read. Correct when the move is the only change to the
-	// thread's messages; a caller that also rewrites them (labels, flags, rows
-	// added or removed) in the same mutation keeps the full rebuild.
+	// isFolderRolesOnly: bounded thread update, no whole-thread re-read. Only when
+	// the move is the mutation's sole change to the thread's messages.
 	options: { writeBack?: boolean; isNeedsReplyKept?: boolean; isFolderRolesOnly?: boolean } = {}
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
@@ -276,8 +272,7 @@ async function moveWithAccess(
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 	const owned = await access(target.mailboxId);
 	if (!owned.ok) throwForbidden('Folder not accessible');
-	// A user's move changes only where the messages sit, so archiving one
-	// message of a long conversation must not re-read all of it.
+	// A user's move changes only placement: no re-read of a long conversation.
 	return moveMessagesToFolder(ctx, args, { isFolderRolesOnly: true });
 }
 

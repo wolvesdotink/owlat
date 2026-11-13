@@ -10,6 +10,10 @@
  * `agentConfig.dailyAutoReplyCount` / `dailyAutoReplyResetAt`. Until the first
  * reply after the deploy creates the row, those fields are the count, and that
  * first reply carries them over, so the deploy does not reset the day.
+ *
+ * No ledger migration moves them: a count only matters until its
+ * `dailyAutoReplyResetAt`, so one UTC day after the deploy the legacy fields
+ * hold nothing a reply would read, and removing them loses no data.
  */
 
 import type { Doc } from '../_generated/dataModel';

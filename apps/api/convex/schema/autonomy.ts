@@ -152,6 +152,8 @@ export const autonomyTables = {
 	// Team Inbox thread reads `agentConfig` for its coalescing window; on the
 	// settings row each reply would re-run all of those readers.
 	agentAutoReplyUsage: defineTable({
+		// COUNTER [agentAutoReplyUsage] — bumped by agent/autoReplyUsage.ts in the
+		// transaction that approves an autonomous reply; restarts each UTC day.
 		dailyAutoReplyCount: v.number(),
 		// End of the counted UTC day; the next reply after it starts a new day.
 		dailyAutoReplyResetAt: v.number(),

@@ -65,11 +65,8 @@ export async function enrichThreadRows(
 		return profile ? { name: profile.name, email: profile.email, image: profile.image } : null;
 	};
 	const resolveAssignee = (userId: string): Promise<Assignee> => {
-		let pending = assigneeCache.get(userId);
-		if (!pending) {
-			pending = readAssignee(userId);
-			assigneeCache.set(userId, pending);
-		}
+		const pending = assigneeCache.get(userId) ?? readAssignee(userId);
+		assigneeCache.set(userId, pending);
 		return pending;
 	};
 

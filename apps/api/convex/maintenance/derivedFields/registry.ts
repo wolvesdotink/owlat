@@ -92,6 +92,17 @@ const COUNTER_FIELD_ENTRIES: readonly CounterFieldEntry[] = [
 			'erasure deletes those runs and the bucket keeps their events, so a recount from the ' +
 			'runs would lower the window for every erased contact.',
 	}),
+	counter({
+		kind: 'counter',
+		id: 'agentAutoReplyUsage',
+		table: 'agentAutoReplyUsage',
+		fields: ['dailyAutoReplyCount'],
+		why:
+			'One bump per autonomous approval of the current UTC day. A message keeps only the ' +
+			'source of its last approval (`approvalSource`), may be deleted the same day, and a ' +
+			'deployment that counted on `agentConfig` carries that count over, so a recount from ' +
+			'the messages would undercount.',
+	}),
 ];
 
 export const DERIVED_FIELD_REGISTRY: readonly RegistryEntry[] = [
