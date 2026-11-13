@@ -40,42 +40,49 @@ type NamedMiddleware = Record<string, (() => Promise<unknown>) | undefined>;
 /** The navigation asks again and handles its own failure. */
 const ignore = () => {};
 
+function warmRoute(): void {
+	if (isDesktopRuntime()) return;
+	if (useRuntimeConfig().public.setupMode || isPublicRoute()) return;
+
+	const route = useRouter().currentRoute.value;
+	void preloadRouteComponents(route.fullPath).catch(ignore);
+	const messageId = route.params.messageId;
+	if (route.path.startsWith('/dashboard/postbox/') && typeof messageId === 'string' && messageId) {
+		void warmPostboxThreadReader();
+	}
+
+	const layout = route.meta.layout;
+	if (typeof layout === 'string') {
+		(layouts as Layouts)[layout]?.__asyncLoader?.().catch(ignore);
+	}
+
+	const middleware = new Set(
+		route.matched.flatMap((record) => [record.meta.middleware ?? []].flat())
+	);
+	for (const name of middleware) {
+		if (typeof name === 'string') (namedMiddleware as NamedMiddleware)[name]?.().catch(ignore);
+	}
+
+	const areas = areasForPath(areaRoutes, route.path);
+	if (areas.length === 0) return;
+	const chunks: AreaChunks = areaChunks;
+	const locales = [...new Set(Object.values(chunks).flatMap((chunk) => Object.keys(chunk)))];
+	const locale = guessLocale(document.cookie, navigator.languages, locales, 'en');
+	for (const area of areas) chunks[area]?.[locale]?.().catch(ignore);
+}
+
 export default defineNuxtPlugin({
 	name: 'owlat:route-warmup',
 	enforce: 'pre',
 	parallel: true,
 	setup() {
-		if (isDesktopRuntime()) return;
-		if (useRuntimeConfig().public.setupMode || isPublicRoute()) return;
-
-		const route = useRouter().currentRoute.value;
-		void preloadRouteComponents(route.fullPath).catch(ignore);
-		const messageId = route.params.messageId;
-		if (
-			route.path.startsWith('/dashboard/postbox/') &&
-			typeof messageId === 'string' &&
-			messageId
-		) {
-			void warmPostboxThreadReader();
+		// A warm-up is only ever an early start: whatever it throws (a blocked
+		// cookie read, a registry shape this build does not have), the
+		// navigation loads the same chunks itself, so boot must not fail here.
+		try {
+			warmRoute();
+		} catch {
+			// The navigation takes over.
 		}
-
-		const layout = route.meta.layout;
-		if (typeof layout === 'string') {
-			(layouts as Layouts)[layout]?.__asyncLoader?.().catch(ignore);
-		}
-
-		const middleware = new Set(
-			route.matched.flatMap((record) => [record.meta.middleware ?? []].flat())
-		);
-		for (const name of middleware) {
-			if (typeof name === 'string') (namedMiddleware as NamedMiddleware)[name]?.().catch(ignore);
-		}
-
-		const areas = areasForPath(areaRoutes, route.path);
-		if (areas.length === 0) return;
-		const chunks: AreaChunks = areaChunks;
-		const locales = [...new Set(Object.values(chunks).flatMap((chunk) => Object.keys(chunk)))];
-		const locale = guessLocale(document.cookie, navigator.languages, locales, 'en');
-		for (const area of areas) chunks[area]?.[locale]?.().catch(ignore);
 	},
 });

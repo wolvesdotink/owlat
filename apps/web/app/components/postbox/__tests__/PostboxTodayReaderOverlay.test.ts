@@ -11,8 +11,8 @@
  * these tests pin the overlay's keyboard/focus contract.
  */
 import { describe, it, expect, vi, afterEach, beforeAll, onTestFinished } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { defineAsyncComponent, nextTick } from 'vue';
 
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -103,6 +103,34 @@ describe('PostboxTodayReaderOverlay', () => {
 		expect(readers).toHaveLength(1);
 		expect(readers[0]!.attributes('data-id')).toBe('m3');
 		expect(readers[0]!.classes()).toContain('pbx-reader-swap');
+	});
+
+	it("holds the pane with the skeleton until the reader's code arrives, then never again", async () => {
+		let arrive: (reader: typeof readerStub) => void = () => {};
+		const lazyReader = defineAsyncComponent(
+			() => new Promise<typeof readerStub>((resolve) => (arrive = resolve))
+		);
+		wrapper = mount(PostboxTodayReaderOverlay, {
+			attachTo: document.body,
+			props: { message: msg('m2') as never, advanceIds: ['m1', 'm2', 'm3'] },
+			global: {
+				plugins: [createTestI18n()],
+				components: { LazyPostboxThreadReader: lazyReader },
+				stubs: overlayStubs,
+			},
+		});
+		await nextTick();
+		expect(wrapper.find('.skeleton-stub').exists()).toBe(true);
+		expect(wrapper.find('.reader-stub').exists()).toBe(false);
+
+		arrive(readerStub);
+		await flushPromises();
+		expect(wrapper.find('.reader-stub').attributes('data-id')).toBe('m2');
+		expect(wrapper.find('.skeleton-stub').exists()).toBe(false);
+
+		await wrapper.setProps({ message: msg('m3') as never });
+		expect(wrapper.find('.skeleton-stub').exists()).toBe(false);
+		expect(wrapper.find('.reader-stub').attributes('data-id')).toBe('m3');
 	});
 
 	it('arrow keys mirror j/k and the ends are a no-op', () => {

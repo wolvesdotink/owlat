@@ -5,7 +5,7 @@
  * later), and resets a switch to off.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import type { AlertSoundPrefs } from '~/lib/alertSoundRules';
@@ -92,6 +92,19 @@ describe('PostboxAlertSoundSettings', () => {
 	// chime cannot wait for that click to start downloading.
 	it('fetches the chime as soon as it shows a switch', () => {
 		mountCard();
+		expect(load).toHaveBeenCalledTimes(1);
+	});
+
+	it('fetches the chime when the switches appear after mount', async () => {
+		flags = new Set(['inbox']);
+		const lateRole = ref<typeof role>(null);
+		vi.stubGlobal('usePermissions', () => ({ role: lateRole }));
+		const card = mountCard();
+		expect(load).not.toHaveBeenCalled();
+
+		lateRole.value = 'admin';
+		await nextTick();
+		expect(card.find('#alert-sounds').exists()).toBe(true);
 		expect(load).toHaveBeenCalledTimes(1);
 	});
 

@@ -31,10 +31,15 @@ const kinds = computed<AlertSoundKind[]>(() =>
 );
 
 // The preview has to play inside the switch's click to unlock later alerts,
-// so the chime loads with the card rather than with that click.
-onMounted(() => {
-	if (kinds.value.length > 0) void loadAlertSound();
-});
+// so the chime loads as soon as the card shows rather than with that click.
+// Flags and role can arrive after mount, so this follows them.
+watch(
+	() => kinds.value.length > 0,
+	(shown) => {
+		if (shown) void loadAlertSound();
+	},
+	{ immediate: true }
+);
 
 function toggle(kind: AlertSoundKind, enabled: boolean): void {
 	if (enabled) previewAlertSound();

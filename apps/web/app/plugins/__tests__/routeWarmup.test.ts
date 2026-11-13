@@ -196,6 +196,16 @@ describe('route warm-up plugin', () => {
 		expect(events).not.toContain('area:dashboard-postbox:de');
 	});
 
+	it('never fails boot: a throw while warming leaves the work to the navigation', async () => {
+		stub('useRouter', () => {
+			throw new Error('router not ready');
+		});
+		const { warmup } = await loadPlugins();
+
+		expect(() => warmup.setup()).not.toThrow();
+		expect(events).toEqual([]);
+	});
+
 	it('starts the thread reader when the URL names a message', async () => {
 		route = dashboardRoute('/dashboard/postbox/inbox/m1', { folder: 'inbox', messageId: 'm1' });
 		const { warmup } = await loadPlugins();

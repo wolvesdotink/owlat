@@ -428,7 +428,10 @@ async function confirmSave() {
 					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
 						<!-- Lazy: the screen opens on its results, so the reader loads
 						     with the first hit opened, or ahead of it (warmPostboxThreadReader). -->
-						<LazyPostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
+						<Suspense>
+							<LazyPostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
+							<template #fallback><PostboxReaderSkeleton /></template>
+						</Suspense>
 					</AppErrorBoundary>
 					<UiQueryBoundary
 						v-else-if="activeMessageId && activeMessageError"
