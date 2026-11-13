@@ -6,15 +6,11 @@
  * config (view-in-browser, tracking pixel, link-wrapping base, unsubscribe
  * + preference footer URLs).
  *
- * Topic vs segment audiences:
- *  - `audienceType: 'segment'` campaigns skip the in-body unsubscribe footer
- *    (segments are computed audiences with no single topic to render in the
- *    footer copy) but STILL emit the `List-Unsubscribe` header when the caller
- *    supplies one — the RFC 8058 one-click endpoint removes the contact across
- *    all topics by contactId, so it is meaningful for any audience. Gmail/Yahoo
- *    require the header on bulk mail regardless of how the audience was built.
- *  - `audienceType: 'topic'` (or undefined for backwards compat) campaigns
- *    get the full footer + List-Unsubscribe header.
+ * Topic and segment audiences get the same unsubscribe footer and the same
+ * `List-Unsubscribe` header pair when the caller supplies them. Both are
+ * contact-scoped: the footer copy names no topic, and the RFC 8058 one-click
+ * endpoint removes the contact across all topics, so either is correct for a
+ * computed segment. Only `List-Id` is topic-only (see below).
  */
 
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
@@ -81,7 +77,7 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 		transformConfig.viewInBrowserUrl = input.viewInBrowserUrl;
 	}
 
-	if (input.audienceType !== 'segment' && input.unsubscribeUrl && input.preferenceUrl) {
+	if (input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
 	}

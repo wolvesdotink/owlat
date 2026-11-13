@@ -4,7 +4,8 @@ import {
 	buildTransactionalListUnsubscribe,
 	resolveWorkerMessageType,
 } from '../worker';
-import { composeForSend } from '../sendComposition';
+import { composeForSend, type TransformConfig } from '../sendComposition';
+import { transformHtml } from '../sendComposition/transform';
 import { isAutomatedMail } from '../../lib/inboundClassification';
 import type { Id } from '../../_generated/dataModel';
 
@@ -39,7 +40,7 @@ const baseCampaign = {
 };
 
 describe('worker.buildComposeInput — campaign List-Unsubscribe', () => {
-	it('builds the List-Unsubscribe header for a SEGMENT audience', () => {
+	it('builds the List-Unsubscribe header and the footer for a SEGMENT audience', () => {
 		const composeInput = buildComposeInput({
 			...baseCampaign,
 			audienceType: 'segment',
@@ -56,9 +57,10 @@ describe('worker.buildComposeInput — campaign List-Unsubscribe', () => {
 		expect(composeInput.listUnsubscribeHeader?.listUnsubscribePost).toBe(
 			'List-Unsubscribe=One-Click'
 		);
-		// The in-body footer stays topic-only for segments.
-		expect(composeInput.unsubscribeUrl).toBeUndefined();
-		expect(composeInput.preferenceUrl).toBeUndefined();
+		// A segment gets the same visible footer a topic does: the footer names
+		// no topic, and its unsubscribe link is contact-scoped.
+		expect(composeInput.unsubscribeUrl).toMatch(/^https:\/\/app\.example\/unsubscribe\?token=/);
+		expect(composeInput.preferenceUrl).toMatch(/^https:\/\/app\.example\/preferences\?token=/);
 	});
 
 	it('builds header + footer for a TOPIC audience', () => {
@@ -170,6 +172,105 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 	});
 });
 
+describe('worker.buildComposeInput — the visible footer on marketing mail', () => {
+	// What `delivery/nonCampaignIntake.intake` hands the pool for an automation
+	// email step.
+	const automationEnvelope = {
+		kind: 'transactional' as const,
+		deliveryDomain: 'production' as const,
+		messageType: 'automation' as const,
+		emailPurpose: 'marketing' as const,
+		to: 'jane@example.com',
+		from: 'drip@org.example',
+		template: { subject: 'Welcome', htmlContent: '<body><p>Welcome aboard</p></body>' },
+		contactId: CONTACT_ID,
+		listUnsubscribe: true,
+		convexSiteUrl: 'https://convex.example',
+		siteUrl: 'https://app.example',
+	};
+
+	function deliveredHtml(envelope: Parameters<typeof buildComposeInput>[0]): string {
+		const composed = composeForSend(buildComposeInput(envelope));
+		return composed.transformConfig
+			? transformHtml(composed.html, composed.transformConfig)
+			: composed.html;
+	}
+
+	it('a segment campaign is delivered with the footer, its links left unwrapped', () => {
+		const html = deliveredHtml({
+			...baseCampaign,
+			audienceType: 'segment',
+			trackingBaseUrl: 'https://track.example',
+		});
+		expect(html).toContain('Unsubscribe</a>');
+		expect(html).toMatch(/href="https:\/\/app\.example\/unsubscribe\?token=[^"]+"/);
+		expect(html).toMatch(/href="https:\/\/app\.example\/preferences\?token=[^"]+"/);
+	});
+
+	it('an automation email step is delivered with the footer in both parts', () => {
+		const composed = composeForSend(buildComposeInput(automationEnvelope));
+		expect(composed.transformConfig?.unsubscribeUrl).toMatch(
+			/^https:\/\/app\.example\/unsubscribe\?token=/
+		);
+		expect(composed.text).toContain(`Unsubscribe: ${composed.transformConfig?.unsubscribeUrl}`);
+		const html = deliveredHtml(automationEnvelope);
+		expect(html).toContain('Manage Preferences</a>');
+		expect(html).toContain('Unsubscribe</a>');
+	});
+
+	it('the footer rides with the header pair: no one-click header, no footer', () => {
+		expect(buildTransactionalListUnsubscribe(automationEnvelope)['List-Unsubscribe']).toBeDefined();
+		const { contactId: _contact, ...anonymous } = automationEnvelope;
+		expect(buildTransactionalListUnsubscribe(anonymous)).toEqual({});
+		expect(composeForSend(buildComposeInput(anonymous)).transformConfig).toBeNull();
+	});
+
+	it('an automation seed probe renders the footer against its own probe token', () => {
+		const { contactId: _contact, siteUrl: _site, ...probeBase } = automationEnvelope;
+		const composed = composeForSend(
+			buildComposeInput({
+				...probeBase,
+				organizationId: 'org_1',
+				seedProbeId: 'sp_a1b2c3d4e5f60718293a4b',
+				seedProbeRef: 'probe1' as Id<'seedPlacementProbes'>,
+			})
+		);
+		expect(composed.transformConfig?.unsubscribeUrl).toContain(
+			'https://convex.example/unsub/probe/'
+		);
+		expect(composed.transformConfig?.preferenceUrl).toContain(
+			'https://convex.example/unsub/probe/'
+		);
+	});
+
+	it('transactional mail without showUnsubscribe still gets no footer', () => {
+		const html = deliveredHtml({
+			kind: 'transactional',
+			emailPurpose: 'transactional',
+			to: 'jane@example.com',
+			from: 'system@org.example',
+			template: { subject: 'Receipt', htmlContent: '<body><p>Thanks</p></body>' },
+			contactId: CONTACT_ID,
+			siteUrl: 'https://app.example',
+		});
+		expect(html).not.toContain('Unsubscribe');
+	});
+
+	it('transactional mail with showUnsubscribe keeps its opt-in footer', () => {
+		const html = deliveredHtml({
+			kind: 'transactional',
+			emailPurpose: 'transactional',
+			to: 'jane@example.com',
+			from: 'system@org.example',
+			template: { subject: 'Digest', htmlContent: '<body><p>Your digest</p></body>' },
+			contactId: CONTACT_ID,
+			siteUrl: 'https://app.example',
+			showUnsubscribe: true,
+		});
+		expect(html).toContain('Unsubscribe</a>');
+	});
+});
+
 describe('worker legacy message-type derivation', () => {
 	it('keeps an old marketing transactional envelope on the automation route', () => {
 		expect(
@@ -238,6 +339,11 @@ describe('worker — agent_reply vs transactional Auto-Submitted (RFC 3834)', ()
 });
 
 describe('worker — the envelope carries the template text/plain body to the composer', () => {
+	// The footer's two links, as the text part spells them out.
+	function footerText(config: TransformConfig | null): string {
+		return `Manage Preferences: ${config?.preferenceUrl}\nUnsubscribe: ${config?.unsubscribeUrl}`;
+	}
+
 	it('campaign: the stored body becomes the text part', () => {
 		const composed = composeForSend(
 			buildComposeInput({
@@ -248,11 +354,13 @@ describe('worker — the envelope carries the template text/plain body to the co
 				},
 			})
 		);
-		expect(composed.text).toBe('Hi Jane\n\nRead more (https://docs.example)');
+		expect(composed.text).toBe(
+			'Hi Jane\n\nRead more (https://docs.example)\n\n' + footerText(composed.transformConfig)
+		);
 	});
 
 	it('campaign: an envelope without one still gets a text part from the html', () => {
 		const composed = composeForSend(buildComposeInput(baseCampaign));
-		expect(composed.text).toBe('Hi Jane');
+		expect(composed.text).toBe('Hi Jane\n\n' + footerText(composed.transformConfig));
 	});
 });

@@ -84,11 +84,11 @@ describe('PresendChecksPanel', () => {
 		const wrapper = mountPanel({
 			checks: [
 				{
-					id: 'unsubscribe',
-					category: 'compliance',
+					id: 'links',
+					category: 'links',
 					status: 'pass',
-					summary: `${KEY}.unsubscribe.footer`,
-					note: `${KEY}.unsubscribe.segmentNote`,
+					summary: { key: `${KEY}.links.pass`, params: { count: 3 } },
+					note: { key: `${KEY}.links.notChecked`, params: { count: 1 } },
 					items: [],
 				},
 			],
@@ -96,8 +96,8 @@ describe('PresendChecksPanel', () => {
 		});
 
 		await wrapper.find('[data-testid="presend-toggle-passed"]').trigger('click');
-		expect(wrapper.find('[data-testid="presend-check-unsubscribe"]').text()).toBe(
-			'Unsubscribe link: Owlat adds an unsubscribe and a preferences link to every topic campaign. Sent to a segment, the email needs its own unsubscribe link.'
+		expect(wrapper.find('[data-testid="presend-check-links"]').text()).toBe(
+			'Links: Every checked link works (3). Not verified: 1 (personalized, or the site refused an automated check).'
 		);
 	});
 

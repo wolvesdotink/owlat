@@ -178,7 +178,6 @@ const presendSource = computed(() => {
 		blocks: readStoredBlocks(props.data.emailContent),
 		subject: props.data.campaignSubject,
 		fromEmail: props.data.fromEmail.trim(),
-		...(props.data.audienceKind ? { audienceKind: props.data.audienceKind } : {}),
 		blockedReason: sendBlockedReason.value,
 	};
 });

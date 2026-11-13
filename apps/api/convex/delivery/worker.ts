@@ -11,6 +11,7 @@ import {
 } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { transformHtml } from './sendComposition/transform';
+import type { FooterUrls } from './sendComposition/footer';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { resolveAttachments } from './attachmentFetch';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
@@ -56,21 +57,21 @@ export function resolveWorkerMessageType(
 }
 
 /**
- * Build the RFC 8058 one-click `List-Unsubscribe` header for a MARKETING
- * non-campaign send (automation drip/broadcast). Returns `{}` for every other
- * envelope (campaigns carry the header via the composer; transactional/agent
- * 1:1 mail must NOT carry it). The HMAC token is built here so the Node-only
- * crypto in `getListUnsubscribeHeader` stays in the Node worker runtime.
+ * Who the RFC 8058 one-click pair on a MARKETING non-campaign send (an
+ * automation step) belongs to. `none` for every other envelope: campaigns carry
+ * the pair via the composer, and transactional/agent 1:1 mail must NOT carry it.
+ * The HMAC token is built here so the Node-only crypto in
+ * `getListUnsubscribeHeader` stays in the Node worker runtime.
  */
-export function buildTransactionalListUnsubscribe(
+export function resolveTransactionalListUnsubscribe(
 	envelopeInput: WorkerEnvelopeInput
-): Record<string, string> {
+): ListUnsubscribeResolution {
 	if (
 		envelopeInput.kind !== 'transactional' ||
 		envelopeInput.listUnsubscribe !== true ||
 		!envelopeInput.convexSiteUrl
 	) {
-		return {};
+		return { scope: 'none' };
 	}
 	// A seed probe on the automation stream is marketing-shaped mail with no
 	// contact to unsubscribe, and the RFC 8058 pair is exactly the kind of
@@ -79,20 +80,46 @@ export function buildTransactionalListUnsubscribe(
 	// `assertMarketingOneClickHeaders` besides. Same header shape as a
 	// subscriber's, minted against the probe's own token namespace, so it can no
 	// more reach a contact record than the campaign shadow copy's can.
-	const header =
-		envelopeInput.seedProbeId !== undefined
-			? getSeedProbeListUnsubscribeHeader(
-					envelopeInput.convexSiteUrl,
-					envelopeInput.organizationId ?? '',
-					envelopeInput.seedProbeId
-				)
-			: envelopeInput.contactId !== undefined
-				? getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId)
-				: undefined;
-	if (header === undefined) return {};
+	if (envelopeInput.seedProbeId !== undefined) {
+		return {
+			scope: 'seedProbe',
+			header: getSeedProbeListUnsubscribeHeader(
+				envelopeInput.convexSiteUrl,
+				envelopeInput.organizationId ?? '',
+				envelopeInput.seedProbeId
+			),
+			footer: getSeedProbeFooterUrls(
+				envelopeInput.convexSiteUrl,
+				envelopeInput.organizationId ?? '',
+				envelopeInput.seedProbeId
+			),
+		};
+	}
+	if (envelopeInput.contactId === undefined) return { scope: 'none' };
 	return {
-		'List-Unsubscribe': header.listUnsubscribe,
-		'List-Unsubscribe-Post': header.listUnsubscribePost,
+		scope: 'contact',
+		contactId: envelopeInput.contactId,
+		header: getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId),
+	};
+}
+
+/** The one-click header pair `resolveTransactionalListUnsubscribe` resolved, as headers. */
+export function buildTransactionalListUnsubscribe(
+	envelopeInput: WorkerEnvelopeInput
+): Record<string, string> {
+	const resolution = resolveTransactionalListUnsubscribe(envelopeInput);
+	if (resolution.scope === 'none') return {};
+	return {
+		'List-Unsubscribe': resolution.header.listUnsubscribe,
+		'List-Unsubscribe-Post': resolution.header.listUnsubscribePost,
+	};
+}
+
+/** A subscriber's footer: both links are contact-scoped pages on the web app. */
+function contactFooterUrls(siteUrl: string, contactId: string): FooterUrls {
+	return {
+		unsubscribeUrl: getUnsubscribeUrl(siteUrl, contactId),
+		preferenceUrl: getPreferenceUrl(siteUrl, contactId),
 	};
 }
 
@@ -140,11 +167,15 @@ interface ListUnsubscribePair {
  * pair on every campaign-shaped message, and a probe without it would measure
  * a materially different message); or neither, when there is no site URL to
  * build one against.
+ *
+ * A probe's footer is resolved with its header because both are minted from
+ * the same probe token: the footer cannot be the contact footer, as a probe has
+ * no contact.
  */
 type ListUnsubscribeResolution =
 	| { scope: 'none' }
-	| { scope: 'contact'; header: ListUnsubscribePair }
-	| { scope: 'seedProbe'; header: ListUnsubscribePair };
+	| { scope: 'contact'; contactId: string; header: ListUnsubscribePair }
+	| { scope: 'seedProbe'; header: ListUnsubscribePair; footer: FooterUrls };
 
 export function resolveListUnsubscribeHeader(
 	envelopeInput: Extract<WorkerEnvelopeInput, { kind: 'campaign' }>
@@ -165,11 +196,20 @@ export function resolveListUnsubscribeHeader(
 				envelopeInput.organizationId ?? '',
 				seedProbeId
 			),
+			footer: getSeedProbeFooterUrls(
+				convexSiteUrl,
+				envelopeInput.organizationId ?? '',
+				seedProbeId
+			),
 		};
 	}
 	const contactId = envelopeInput.contactInfo.contactId;
 	if (contactId === undefined) return { scope: 'none' };
-	return { scope: 'contact', header: getListUnsubscribeHeader(convexSiteUrl, contactId) };
+	return {
+		scope: 'contact',
+		contactId,
+		header: getListUnsubscribeHeader(convexSiteUrl, contactId),
+	};
 }
 
 export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeInput {
@@ -177,27 +217,34 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	// so asserting it inside one branch would leave the other unchecked.
 	assertSeedShadowExclusion(envelopeInput);
 	if (envelopeInput.kind === 'transactional') {
-		// Build the unsubscribe + preference footer URLs only when the template
-		// opted in (`showUnsubscribe`) AND the send has a resolvable contact +
-		// site URL — same prebuild-HMAC-in-Node idiom as the campaign branch.
-		const showFooter =
-			envelopeInput.showUnsubscribe === true &&
-			envelopeInput.contactId !== undefined &&
-			!!envelopeInput.siteUrl;
-		const unsubscribeUrl = showFooter
-			? getUnsubscribeUrl(envelopeInput.siteUrl!, envelopeInput.contactId!)
-			: undefined;
-		const preferenceUrl = showFooter
-			? getPreferenceUrl(envelopeInput.siteUrl!, envelopeInput.contactId!)
-			: undefined;
+		// The unsubscribe footer. Marketing mail (an automation step) gets it
+		// whenever it gets the one-click header pair: the bulk-sender rules and
+		// CAN-SPAM want a visible opt-out in the body as well. A scheduled seed
+		// probe on that stream renders it against its own probe token, so it stays
+		// the same message. Other transactional mail gets it only when the
+		// template opted in (`showUnsubscribe`). Either way a contact's footer
+		// needs the web app's `siteUrl` to point at.
+		const oneClick = resolveTransactionalListUnsubscribe(envelopeInput);
+		const footerContactId =
+			oneClick.scope === 'contact'
+				? oneClick.contactId
+				: envelopeInput.showUnsubscribe === true
+					? envelopeInput.contactId
+					: undefined;
+		const footer =
+			oneClick.scope === 'seedProbe'
+				? oneClick.footer
+				: footerContactId !== undefined && envelopeInput.siteUrl
+					? contactFooterUrls(envelopeInput.siteUrl, footerContactId)
+					: undefined;
 		return {
 			kind: 'transactional',
 			template: envelopeInput.template,
 			dataVariables: envelopeInput.dataVariables,
 			attachmentRefs: envelopeInput.attachmentRefs,
 			autoSubmittedType: envelopeInput.autoSubmittedType,
-			unsubscribeUrl,
-			preferenceUrl,
+			unsubscribeUrl: footer?.unsubscribeUrl,
+			preferenceUrl: footer?.preferenceUrl,
 			organizationId: envelopeInput.organizationId,
 			// The join key between this send and the IMAP observation. Absent on
 			// every envelope bound for a real recipient; without it a scheduled
@@ -209,42 +256,28 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 	// Campaign — prebuild the HMAC URLs (Node-only) before the composer slots
 	// them into the envelope's headers and transformConfig.
 	//
-	// The in-body unsubscribe footer (unsubscribe/preference URLs) is topic-only:
-	// segments are computed audiences with no single topic to render in the
-	// footer copy. The `List-Unsubscribe` HEADER, however, is built for ALL
-	// audiences (topic AND segment) — the RFC 8058 one-click endpoint removes the
-	// contact by id across every topic, and Gmail/Yahoo's 2024 bulk-sender rule
-	// requires the header on segment blasts just as much as topic newsletters.
-	const isTopic = envelopeInput.audienceType !== 'segment';
-	const hasContact = envelopeInput.contactInfo.contactId !== undefined;
+	// Every audience, topic or segment, gets the `List-Unsubscribe` header pair
+	// and the in-body footer: both are contact-scoped (the RFC 8058 endpoint
+	// removes the contact across every topic, and the footer copy names no
+	// topic), and Gmail/Yahoo's bulk-sender rules want both on any bulk mail.
+	const listUnsubscribe = resolveListUnsubscribeHeader(envelopeInput);
+	const listUnsubscribeHeader =
+		listUnsubscribe.scope === 'none' ? undefined : listUnsubscribe.header;
 
 	// The in-body footer, for a subscriber's copy and for a seed shadow copy
 	// alike. A probe has no contact and no `siteUrl`, but it MUST still render
 	// the footer: it is a feature filters weigh, and its absence would make the
 	// probe a materially different message than the one being measured. The probe
 	// footer is keyed by the opaque probe id, so it can no more reach a contact
-	// record than the header pair can.
-	const seedProbeFooter =
-		isTopic && envelopeInput.seedProbeId !== undefined && envelopeInput.convexSiteUrl !== undefined
-			? getSeedProbeFooterUrls(
-					envelopeInput.convexSiteUrl,
-					envelopeInput.organizationId ?? '',
-					envelopeInput.seedProbeId
-				)
-			: undefined;
-	const unsubscribeUrl =
-		seedProbeFooter?.unsubscribeUrl ??
-		(isTopic && hasContact && envelopeInput.siteUrl
-			? getUnsubscribeUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined);
-	const preferenceUrl =
-		seedProbeFooter?.preferenceUrl ??
-		(isTopic && hasContact && envelopeInput.siteUrl
-			? getPreferenceUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
-			: undefined);
-	const listUnsubscribe = resolveListUnsubscribeHeader(envelopeInput);
-	const listUnsubscribeHeader =
-		listUnsubscribe.scope === 'none' ? undefined : listUnsubscribe.header;
+	// record than the header pair can. A subscriber's footer needs only the
+	// contact and `siteUrl`, not the header's `convexSiteUrl`.
+	const contactId = envelopeInput.contactInfo.contactId;
+	const footer =
+		listUnsubscribe.scope === 'seedProbe'
+			? listUnsubscribe.footer
+			: contactId !== undefined && envelopeInput.siteUrl
+				? contactFooterUrls(envelopeInput.siteUrl, contactId)
+				: undefined;
 
 	// Tracking is keyed by the Send for real mail and by the opaque probe id for
 	// a shadow copy; the shipped `/t/o` and `/t/c` handlers reject a probe id by
@@ -262,8 +295,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		emailSendId: envelopeInput.emailSendId,
 		campaignId: envelopeInput.campaignId,
 		organizationId: envelopeInput.organizationId,
-		unsubscribeUrl,
-		preferenceUrl,
+		unsubscribeUrl: footer?.unsubscribeUrl,
+		preferenceUrl: footer?.preferenceUrl,
 		listUnsubscribeHeader,
 		// RFC 2919 List-Id — the orchestrator pre-builds it from the topic +
 		// sending domain (`getListIdHeader`) and threads it through the envelope.
