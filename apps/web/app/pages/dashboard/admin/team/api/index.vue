@@ -5,14 +5,7 @@ import ApiKeysCreatedKeyModal from '~/components/apiKeys/CreatedKeyModal.vue';
 import ApiKeysCreateKeyModal from '~/components/apiKeys/CreateKeyModal.vue';
 import ApiKeysTable from '~/components/apiKeys/KeysTable.vue';
 import ApiKeysRateLimitInfo from '~/components/apiKeys/RateLimitInfo.vue';
-import {
-	BookIcon,
-	ExternalLinkIcon,
-	KeyIcon,
-	LockIcon,
-	PlusIcon,
-	ShieldIcon,
-} from '@coolicons/vue';
+import { BookIcon, ArrowRightIcon, KeyIcon, LockIcon, PlusIcon, ShieldIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -98,7 +91,7 @@ const createdKey = ref<{
 	keyPrefix: string;
 } | null>(null);
 const showCreatedKey = ref(false);
-const { copy, isCopied, reset: resetCopiedKey } = useCopyToClipboard();
+const { copy, isCopied, reset: resetCopiedKey } = useCopyToClipboard({ notify: false });
 const CREATED_API_KEY_COPY_KEY = 'created-api-key';
 const copiedKey = computed(() => isCopied(CREATED_API_KEY_COPY_KEY));
 
@@ -238,7 +231,13 @@ const activeKeysCount = computed(() => {
 			:description="t('dashboard.admin.team.api.index.subtitle')"
 		>
 			<template v-if="canManage" #actions>
-				<UiButton class="gap-2" @click="openCreateModal">
+				<!-- While the list is empty its empty state carries the primary create
+				     button, so this one steps down rather than showing two. -->
+				<UiButton
+					:variant="apiKeys && apiKeys.length === 0 ? 'secondary' : 'primary'"
+					class="gap-2"
+					@click="openCreateModal"
+				>
 					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.api.index.createKey') }}
 				</UiButton>
@@ -264,17 +263,12 @@ const activeKeysCount = computed(() => {
 		     docs reference used to sit above them, pushing the list below the fold. -->
 		<div class="mb-6">
 			<!-- Admins-only gate (editors lack organization:manage) -->
-			<div
-				v-if="showAdminGate"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.team.api.index.adminGate.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.team.api.index.adminGate.description') }}
-				</p>
+			<div v-if="showAdminGate" class="card">
+				<UiEmptyState
+					:icon="LockIcon"
+					:title="t('dashboard.admin.team.api.index.adminGate.title')"
+					:description="t('dashboard.admin.team.api.index.adminGate.description')"
+				/>
 			</div>
 
 			<!-- First-load skeleton (shaped like the API-key list) -->
@@ -283,38 +277,31 @@ const activeKeysCount = computed(() => {
 			</div>
 
 			<!-- Empty State (no organization) -->
-			<div
-				v-else-if="!hasActiveOrganization"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox :icon="KeyIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.team.api.index.noWorkspace.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.team.api.index.noWorkspace.description') }}
-				</p>
+			<div v-else-if="!hasActiveOrganization" class="card">
+				<UiEmptyState
+					:icon="KeyIcon"
+					:title="t('dashboard.admin.team.api.index.noWorkspace.title')"
+					:description="t('dashboard.admin.team.api.index.noWorkspace.description')"
+				/>
 			</div>
 
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="keysError" :error="keysError" @retry="refetchKeys" />
 
 			<!-- Empty State (no API keys) -->
-			<div
-				v-else-if="!isLoading && (!apiKeys || apiKeys.length === 0)"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox :icon="KeyIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.team.api.index.empty.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.team.api.index.empty.description') }}
-				</p>
-				<UiButton class="gap-2 mt-6" @click="openCreateModal">
-					<PlusIcon class="w-4 h-4" />
-					{{ t('dashboard.admin.team.api.index.createKey') }}
-				</UiButton>
+			<div v-else-if="!isLoading && (!apiKeys || apiKeys.length === 0)" class="card">
+				<UiEmptyState
+					:icon="KeyIcon"
+					:title="t('dashboard.admin.team.api.index.empty.title')"
+					:description="t('dashboard.admin.team.api.index.empty.description')"
+				>
+					<template #action>
+						<UiButton class="gap-2" @click="openCreateModal">
+							<PlusIcon class="w-4 h-4" />
+							{{ t('dashboard.admin.team.api.index.createKey') }}
+						</UiButton>
+					</template>
+				</UiEmptyState>
 			</div>
 
 			<!-- API Keys Table -->
@@ -354,7 +341,7 @@ const activeKeysCount = computed(() => {
 				class="shrink-0 gap-2 self-start whitespace-nowrap sm:self-auto"
 			>
 				{{ t('dashboard.admin.team.api.index.docs.view') }}
-				<ExternalLinkIcon class="w-4 h-4" />
+				<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
 			</UiButton>
 		</div>
 

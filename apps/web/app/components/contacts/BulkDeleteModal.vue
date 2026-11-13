@@ -11,6 +11,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+const titleId = useId();
+
 const isOpen = defineModel<boolean>('open', { default: false });
 
 const close = () => {
@@ -23,13 +25,22 @@ const handleConfirm = () => {
 </script>
 
 <template>
-	<UiModal :open="isOpen" size="md" @update:open="(v) => { if (!v) close(); }">
+	<UiModal
+		:open="isOpen"
+		size="md"
+		:labelled-by="titleId"
+		@update:open="
+			(v) => {
+				if (!v) close();
+			}
+		"
+	>
 		<div class="flex items-center gap-3 mb-6">
 			<div class="p-2 rounded-lg flex items-center justify-center bg-error-subtle">
 				<TrashIcon class="w-5 h-5 text-error" />
 			</div>
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.bulkDeleteModal.title') }}
 				</h2>
 				<p class="text-sm text-text-tertiary">

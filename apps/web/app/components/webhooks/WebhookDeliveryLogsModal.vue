@@ -1,6 +1,13 @@
 <script setup lang="ts">
 // --- Created Webhook Secret Modal ---
-import { CheckIcon, CircleWarningIcon, CopyIcon, ReloadIcon, TrashIcon, WebhookIcon } from '@coolicons/vue';
+import {
+	CheckIcon,
+	CircleWarningIcon,
+	CopyIcon,
+	ReloadIcon,
+	TrashIcon,
+	WebhookIcon,
+} from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface CreatedWebhookProps {
@@ -31,6 +38,9 @@ defineProps<Props>();
 
 const { t } = useI18n();
 
+// The body draws its own heading, so the dialog is named by it.
+const titleId = useId();
+
 const emit = defineEmits<{
 	closeCreatedWebhook: [];
 	copySecret: [];
@@ -47,16 +57,15 @@ const emit = defineEmits<{
 	<UiModal
 		:open="showCreatedWebhook && !!createdWebhook"
 		size="lg"
+		:labelled-by="titleId"
 		:closable="false"
 		:persistent="true"
 	>
 		<template v-if="createdWebhook">
 			<!-- Header -->
 			<div class="flex items-center gap-3 mb-6">
-				<div class="p-2 rounded-lg bg-success/10">
-					<WebhookIcon class="w-5 h-5 text-success" />
-				</div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<UiIconBox :icon="WebhookIcon" size="sm" variant="success" rounded="lg" />
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.webhooks.webhookDeliveryLogsModal.created.title') }}
 				</h2>
 			</div>
@@ -69,7 +78,7 @@ const emit = defineEmits<{
 						<p class="text-sm font-medium text-warning">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.created.copyNow') }}
 						</p>
-						<p class="text-sm text-warning/80 mt-1">
+						<p class="text-sm text-text-secondary mt-1">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.created.copyNowBody') }}
 						</p>
 					</div>
@@ -77,21 +86,21 @@ const emit = defineEmits<{
 			</div>
 
 			<div class="mb-4">
-				<label class="label">{{ t('common.name') }}</label>
+				<p class="label">{{ t('common.name') }}</p>
 				<p class="text-text-primary font-medium">{{ createdWebhook.name }}</p>
 			</div>
 
 			<div class="mb-4">
-				<label class="label">
+				<p class="label">
 					{{ t('components.webhooks.webhookDeliveryLogsModal.created.endpointUrl') }}
-				</label>
+				</p>
 				<p class="text-text-secondary text-sm break-all">{{ createdWebhook.url }}</p>
 			</div>
 
 			<div>
-				<label class="label">
+				<p class="label">
 					{{ t('components.webhooks.webhookDeliveryLogsModal.created.signingSecret') }}
-				</label>
+				</p>
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"
@@ -164,7 +173,7 @@ const emit = defineEmits<{
 						<p class="text-sm font-medium text-warning">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.copyNow') }}
 						</p>
-						<p class="text-sm text-warning/80 mt-1">
+						<p class="text-sm text-text-secondary mt-1">
 							{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.copyNowBody') }}
 						</p>
 					</div>
@@ -172,9 +181,9 @@ const emit = defineEmits<{
 			</div>
 
 			<div>
-				<label class="label">
+				<p class="label">
 					{{ t('components.webhooks.webhookDeliveryLogsModal.regenerate.newSigningSecret') }}
-				</label>
+				</p>
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"

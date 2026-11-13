@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { CheckIcon, CloseIcon, PlusIcon, TrashIcon, UsersIcon } from '@coolicons/vue';
 
@@ -6,7 +7,7 @@ const props = defineProps<{
 	contactId: Id<'contacts'>;
 }>();
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 const contactIdRef = computed(() => props.contactId);
 
@@ -23,8 +24,6 @@ const {
 	selectTargetContact,
 	clearTargetContact,
 	handleAddRelationship,
-	handleRemoveRelationship,
-	handleUpdateConfidence,
 	getRelationshipIcon,
 	getDirectionLabel,
 } = useContactRelationships(contactIdRef);
@@ -32,6 +31,32 @@ const {
 const emit = defineEmits<{
 	toast: [message: string];
 }>();
+
+// The operation helper presents a failure itself and resolves with `ok: false`
+// instead of throwing, so a success toast must wait for `ok`.
+const { run: removeRelationship } = useBackendOperation(api.contacts.relationships.remove, {
+	label: () => t('shared.useContactRelationships.removeRelationshipOperation'),
+});
+const { run: updateConfidence } = useBackendOperation(api.contacts.relationships.updateConfidence, {
+	label: () => t('shared.useContactRelationships.updateConfidenceOperation'),
+});
+
+const confidenceSliderId = useId();
+
+// Confidence is stored as 0..1 but shown in words: the UI never prints a raw
+// confidence percentage.
+const confidenceLabel = (confidence: number) => {
+	if (confidence >= 0.9) return t('components.contacts.relationshipsTab.confidenceLevels.certain');
+	if (confidence >= 0.6) return t('components.contacts.relationshipsTab.confidenceLevels.likely');
+	return t('components.contacts.relationshipsTab.confidenceLevels.possible');
+};
+
+// Known types read as words in the viewer's language; an unknown stored value
+// falls back to its own spelling.
+const relationshipLabel = (type: string) => {
+	const key = `components.contacts.relationshipsTab.types.${type}`;
+	return te(key) ? t(key) : type.replace(/_/g, ' ');
+};
 
 // Which relationship row currently has its confidence slider open for editing.
 const editingConfidenceId = ref<Id<'contactRelationships'> | null>(null);
@@ -46,33 +71,22 @@ const cancelEditConfidence = () => {
 	editingConfidenceId.value = null;
 };
 
-const saveConfidence = async (id: Id<'contactRelationships'>) => {
-	try {
-		await handleUpdateConfidence(id, editingConfidence.value);
-		emit('toast', t('components.contacts.relationshipsTab.toasts.confidenceUpdated'));
-	} catch {
-		emit('toast', t('components.contacts.relationshipsTab.toasts.confidenceUpdateFailed'));
-	} finally {
-		editingConfidenceId.value = null;
-	}
+const saveConfidence = async (relationshipId: Id<'contactRelationships'>) => {
+	const confidence = Math.min(1, Math.max(0, editingConfidence.value));
+	const result = await updateConfidence({ relationshipId, confidence });
+	editingConfidenceId.value = null;
+	if (result.ok) emit('toast', t('components.contacts.relationshipsTab.toasts.confidenceUpdated'));
 };
 
 const onAdd = async () => {
-	try {
-		await handleAddRelationship();
-		emit('toast', t('components.contacts.relationshipsTab.toasts.added'));
-	} catch {
-		emit('toast', t('components.contacts.relationshipsTab.toasts.addFailed'));
-	}
+	await handleAddRelationship();
+	// The composable closes the form only after a successful write.
+	if (!showAddForm.value) emit('toast', t('components.contacts.relationshipsTab.toasts.added'));
 };
 
-const onRemove = async (id: Id<'contactRelationships'>) => {
-	try {
-		await handleRemoveRelationship(id);
-		emit('toast', t('components.contacts.relationshipsTab.toasts.removed'));
-	} catch {
-		emit('toast', t('components.contacts.relationshipsTab.toasts.removeFailed'));
-	}
+const onRemove = async (relationshipId: Id<'contactRelationships'>) => {
+	const result = await removeRelationship({ relationshipId });
+	if (result.ok) emit('toast', t('components.contacts.relationshipsTab.toasts.removed'));
 };
 </script>
 
@@ -164,23 +178,27 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 						}}</label>
 						<select id="addform-relationship" v-model="addForm.relationship" class="input w-full">
 							<option v-for="type in relationshipTypes" :key="type" :value="type">
-								{{ type.replace(/_/g, ' ') }}
+								{{ relationshipLabel(type) }}
 							</option>
 						</select>
 					</div>
 					<div>
-						<label class="label">{{ t('components.contacts.relationshipsTab.confidence') }}</label>
+						<label :for="confidenceSliderId" class="label">{{
+							t('components.contacts.relationshipsTab.confidence')
+						}}</label>
 						<div class="flex items-center gap-2">
 							<input
+								:id="confidenceSliderId"
 								v-model.number="addForm.confidence"
 								type="range"
+								:aria-valuetext="confidenceLabel(addForm.confidence)"
 								min="0"
 								max="1"
 								step="0.1"
 								class="flex-1 h-2 bg-bg-elevated rounded-lg appearance-none cursor-pointer accent-brand"
 							/>
-							<span class="text-sm text-text-secondary font-mono w-12 text-right">
-								{{ Math.round(addForm.confidence * 100) }}%
+							<span class="text-sm text-text-secondary w-20 text-right">
+								{{ confidenceLabel(addForm.confidence) }}
 							</span>
 						</div>
 					</div>
@@ -249,14 +267,12 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							<span class="text-xs text-text-tertiary">
 								{{ t(getDirectionLabel(rel.direction)) }}
 							</span>
-							<span
-								class="text-xs px-1.5 py-0.5 rounded bg-bg-elevated text-text-secondary capitalize"
-							>
+							<span class="text-xs px-1.5 py-0.5 rounded bg-bg-elevated text-text-secondary">
 								{{
-									(
+									relationshipLabel(
 										('displayRelationship' in rel ? rel.displayRelationship : undefined) ||
-										rel.relationship
-									).replace(/_/g, ' ')
+											rel.relationship
+									)
 								}}
 							</span>
 							<!-- Inline confidence editor: percentage is a button that
@@ -265,6 +281,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								<input
 									v-model.number="editingConfidence"
 									type="range"
+									:aria-valuetext="confidenceLabel(editingConfidence)"
 									min="0"
 									max="1"
 									step="0.1"
@@ -277,8 +294,8 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 										})
 									"
 								/>
-								<span class="text-xs text-text-secondary font-mono w-9 text-right">
-									{{ Math.round(editingConfidence * 100) }}%
+								<span class="text-xs text-text-secondary w-16 text-right">
+									{{ confidenceLabel(editingConfidence) }}
 								</span>
 								<UiTooltip :text="t('components.contacts.relationshipsTab.saveConfidence')">
 									<button
@@ -305,20 +322,21 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								<!-- The value is all it shows; the action is named for assistive tech. -->
 								<button
 									type="button"
-									class="text-xs text-text-tertiary font-mono hover:text-brand transition-colors"
+									class="text-xs text-text-tertiary hover:text-brand transition-colors"
 									@click="startEditConfidence(rel._id, rel.confidence ?? 1)"
 								>
 									<span class="sr-only">{{
 										t('components.contacts.relationshipsTab.editConfidence')
 									}}</span>
-									{{ Math.round((rel.confidence ?? 1) * 100) }}%
+									{{ confidenceLabel(rel.confidence ?? 1) }}
 								</button>
 							</UiTooltip>
 						</div>
 					</div>
 					<UiTooltip :text="t('components.contacts.relationshipsTab.removeRelationship')">
 						<button
-							class="p-1.5 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
+							type="button"
+							class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded text-text-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
 							:aria-label="t('components.contacts.relationshipsTab.removeRelationship')"
 							@click="onRemove(rel._id)"
 						>

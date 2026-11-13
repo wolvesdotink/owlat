@@ -7,6 +7,7 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 const stubs = {
 	UiCard: { template: '<div><slot /></div>' },
 	UiIconBox: { template: '<i />' },
+	UiQueryBoundary: { template: '<div data-testid="compliance-error" />' },
 };
 
 function telemetryFixture() {
@@ -55,6 +56,20 @@ beforeEach(() => {
 });
 
 describe('ComplianceTelemetryCard', () => {
+	it('says a failed read failed instead of dropping its sections', () => {
+		vi.stubGlobal('useI18n', i18nStubs.useI18n);
+		vi.stubGlobal('useOrganizationQuery', () => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(new Error('boom')),
+			refetch: vi.fn(),
+		}));
+		const wrapper = mount(ComplianceTelemetryCard, {
+			global: { plugins: [createTestI18n()], stubs },
+		});
+		expect(wrapper.find('[data-testid="compliance-error"]').exists()).toBe(true);
+	});
+
 	it('holds the page figures under its own heading, in one card (#793)', () => {
 		vi.stubGlobal('useI18n', i18nStubs.useI18n);
 		vi.stubGlobal('useOrganizationQuery', () => ({

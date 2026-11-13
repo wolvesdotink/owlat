@@ -107,7 +107,7 @@ function remove(file: SavedReplyFile) {
 				class="inline-flex items-center gap-1.5 rounded bg-bg-surface py-1 pl-1.5 pr-1 text-xs"
 			>
 				<PaperclipIcon class="h-3 w-3 text-text-tertiary" aria-hidden="true" />
-				<span class="max-w-[180px] truncate">{{ file.filename }}</span>
+				<span class="max-w-[180px] truncate" :title="file.filename">{{ file.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(file.size) }}</span>
 				<button
 					type="button"

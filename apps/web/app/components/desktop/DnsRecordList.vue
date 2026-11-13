@@ -36,7 +36,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 		<template v-for="r in records" :key="keyOf(r)">
 			<span class="select-all whitespace-nowrap text-text-primary">{{ r.name }}</span>
 			<span
-				class="select-none rounded bg-bg-surface px-1.5 py-0.5 text-[10px] font-semibold uppercase text-text-secondary"
+				class="select-none rounded bg-bg-surface px-1.5 py-0.5 text-2xs font-semibold uppercase text-text-secondary"
 			>
 				{{ r.type }}
 			</span>
@@ -75,7 +75,7 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 			</span>
 			<p
 				v-if="r.note"
-				class="col-span-4 -mt-0.5 font-sans text-[11px] leading-snug text-text-tertiary"
+				class="col-span-4 -mt-0.5 font-sans text-2xs leading-snug text-text-tertiary"
 			>
 				{{ t(r.note) }}
 			</p>

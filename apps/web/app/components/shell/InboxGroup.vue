@@ -71,7 +71,7 @@ const moreCount = computed(() =>
 		>
 			<button
 				type="button"
-				class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
+				class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:size-11"
 				:aria-expanded="!collapsed"
 				:aria-label="
 					collapsed
@@ -86,7 +86,10 @@ const moreCount = computed(() =>
 				/>
 			</button>
 			<UiTooltip :text="inbox.address">
-				<NuxtLink :to="inboxHref" class="flex min-w-0 flex-1 items-center gap-2 py-1">
+				<NuxtLink
+					:to="inboxHref"
+					class="flex min-w-0 flex-1 items-center gap-2 py-1 pointer-coarse:min-h-11"
+				>
 					<InboxChip
 						:name="inbox.name"
 						:slot="inbox.slot"
@@ -106,7 +109,7 @@ const moreCount = computed(() =>
 			<UiTooltip :text="t('components.shell.inboxGroup.compose', { name: inbox.name })">
 				<NuxtLink
 					:to="composeHref"
-					class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover/inbox:opacity-100 max-lg:opacity-100"
+					class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand group-hover/inbox:opacity-100 max-lg:opacity-100 pointer-coarse:size-11 pointer-coarse:opacity-100"
 					:aria-label="t('components.shell.inboxGroup.compose', { name: inbox.name })"
 				>
 					<PlusIcon class="size-3.5" />

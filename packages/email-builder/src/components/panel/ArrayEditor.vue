@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import type { PropertyField } from '../../schema/types';
 import { createArrayItem } from '../../schema/arrayItem';
-import { DragVerticalIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
+import { ArrowDownIcon, ArrowUpIcon, DragVerticalIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
@@ -66,13 +66,33 @@ function updateItemField(index: number, key: string, value: unknown) {
 	emit('update', updated);
 }
 
+// The keyboard route for reordering (the drag handle is pointer-only). Rows
+// are keyed by index, so after a move focus is put back on the same button of
+// the row the item moved to.
+const rootRef = ref<HTMLElement | null>(null);
+
+function moveItem(index: number, delta: -1 | 1) {
+	const target = index + delta;
+	if (target < 0 || target >= items.value.length) return;
+	const updated = [...items.value];
+	[updated[index], updated[target]] = [updated[target], updated[index]];
+	emit('update', updated);
+	const direction = delta < 0 ? 'up' : 'down';
+	nextTick(() => {
+		const button = rootRef.value?.querySelector<HTMLButtonElement>(
+			`[data-move="${direction}"][data-index="${target}"] button, button[data-move="${direction}"][data-index="${target}"]`
+		);
+		button?.focus();
+	});
+}
+
 function handleReorder(newItems: unknown[]) {
 	emit('update', [...newItems]);
 }
 </script>
 
 <template>
-	<div class="flex flex-col gap-1">
+	<div ref="rootRef" class="flex flex-col gap-1">
 		<VueDraggable
 			:model-value="items"
 			handle=".array-editor-drag-handle"
@@ -81,7 +101,7 @@ function handleReorder(newItems: unknown[]) {
 			@update:model-value="handleReorder"
 		>
 			<div v-for="(item, index) in items" :key="index" class="group/item flex items-start gap-1 p-1.5 border border-border-subtle rounded-lg bg-bg-surface transition-[border-color] duration-(--motion-fast) hover:border-border-strong">
-				<div class="array-editor-drag-handle flex items-center py-1 cursor-grab text-text-tertiary opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast) active:cursor-grabbing">
+				<div class="array-editor-drag-handle flex items-center py-1 cursor-grab text-text-tertiary opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-(--motion-fast) active:cursor-grabbing" aria-hidden="true">
 					<DragVerticalIcon :size="12" />
 				</div>
 
@@ -91,7 +111,7 @@ function handleReorder(newItems: unknown[]) {
 						<input
 							type="text"
 							:aria-label="t('builder.panel.array.item', { index: index + 1 })"
-							class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
+							class="w-full py-1 px-1.5 text-xs border border-border-strong rounded bg-bg-surface text-text-primary outline-none pointer-coarse:text-base transition-[border-color] duration-(--motion-fast) focus:border-brand"
 							:value="item as string"
 							@input="(e) => updateItem(index, (e.target as HTMLInputElement).value)"
 						/>
@@ -105,7 +125,7 @@ function handleReorder(newItems: unknown[]) {
 								:key="cellIndex"
 								type="text"
 								:aria-label="t('builder.panel.array.cell', { row: index + 1, cell: cellIndex + 1 })"
-								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
+								class="min-w-0 flex-1 py-1 px-1.5 text-xs border border-border-strong rounded bg-bg-surface text-text-primary outline-none pointer-coarse:text-base transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="cell"
 								@input="(e) => updateCell(index, cellIndex, (e.target as HTMLInputElement).value)"
 							/>
@@ -130,7 +150,7 @@ function handleReorder(newItems: unknown[]) {
 										index: index + 1,
 									})
 								"
-								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
+								class="w-full py-1 px-1.5 text-xs border border-border-strong rounded bg-bg-surface text-text-primary outline-none pointer-coarse:text-base transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								:placeholder="subField.placeholder && label(subField.placeholder)"
 								@input="
@@ -141,7 +161,7 @@ function handleReorder(newItems: unknown[]) {
 							<button
 								v-else-if="subField.type === 'toggle'"
 								class="relative w-7 h-4 rounded-lg border-none cursor-pointer p-0 transition-[background] duration-(--motion-moderate)"
-								:class="(item as Record<string, unknown>)[subField.key] ? 'bg-brand' : 'bg-border-default'"
+								:class="(item as Record<string, unknown>)[subField.key] ? 'bg-brand' : 'bg-text-tertiary/70'"
 								type="button"
 								role="switch"
 								:aria-label="label(subField.label)"
@@ -157,7 +177,7 @@ function handleReorder(newItems: unknown[]) {
 							<select
 								v-else-if="subField.type === 'select'"
 								:aria-label="label(subField.label)"
-								class="w-full py-1 px-1.5 text-xs border border-border-subtle rounded bg-bg-surface text-text-primary outline-none transition-[border-color] duration-(--motion-fast) focus:border-brand"
+								class="w-full py-1 px-1.5 text-xs border border-border-strong rounded bg-bg-surface text-text-primary outline-none pointer-coarse:text-base transition-[border-color] duration-(--motion-fast) focus:border-brand"
 								:value="(item as Record<string, unknown>)[subField.key] ?? ''"
 								@change="(e) => updateItemField(index, subField.key, (e.target as HTMLSelectElement).value)"
 							>
@@ -169,15 +189,41 @@ function handleReorder(newItems: unknown[]) {
 					</template>
 				</div>
 
-				<IconButton
-					:icon="TrashIcon"
-					:title="t('builder.panel.array.remove')"
-					:aria-label="t('builder.panel.array.removeItem', { index: index + 1 })"
-					size="sm"
-					variant="destructive"
-					class="shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
-					@click="removeItem(index)"
-				/>
+				<!-- Row actions: shown on hover, while focus is inside the row (so a
+				     keyboard user never lands on an invisible button), and always on
+				     touch, where there is no hover. -->
+				<div
+					class="flex shrink-0 flex-col items-center opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-(--motion-fast)"
+				>
+					<IconButton
+						v-if="items.length > 1"
+						:icon="ArrowUpIcon"
+						:title="t('builder.panel.array.moveUp', { index: index + 1 })"
+						size="sm"
+						data-move="up"
+						:data-index="index"
+						:class="{ invisible: index === 0 }"
+						@click="moveItem(index, -1)"
+					/>
+					<IconButton
+						v-if="items.length > 1"
+						:icon="ArrowDownIcon"
+						:title="t('builder.panel.array.moveDown', { index: index + 1 })"
+						size="sm"
+						data-move="down"
+						:data-index="index"
+						:class="{ invisible: index === items.length - 1 }"
+						@click="moveItem(index, 1)"
+					/>
+					<IconButton
+						:icon="TrashIcon"
+						:title="t('builder.panel.array.remove')"
+						:aria-label="t('builder.panel.array.removeItem', { index: index + 1 })"
+						size="sm"
+						variant="destructive"
+						@click="removeItem(index)"
+					/>
+				</div>
 			</div>
 		</VueDraggable>
 

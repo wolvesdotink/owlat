@@ -47,7 +47,7 @@ defineExpose({
 		:anchor="anchor"
 		:field="field"
 		class="postbox-emoji-picker max-h-56 w-64 py-1"
-		option-class="flex items-center gap-2 px-2.5 py-1.5 text-sm data-highlighted:bg-bg-subtle"
+		option-class="flex items-center gap-2 px-2.5 py-1.5 text-sm data-highlighted:bg-bg-surface"
 		@select="(emoji: PostboxEmoji) => emit('select', emoji)"
 		@update:open="(open: boolean) => !open && emit('dismiss')"
 	>

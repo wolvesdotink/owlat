@@ -7,7 +7,7 @@ import InviteSuccessPanel, {
 	type InviteSuccess,
 } from '~/components/settings/team/InviteSuccessPanel.vue';
 import PostboxMailboxAddressField from '~/components/postbox/PostboxMailboxAddressField.vue';
-import { UserPlusCornerIcon } from '@coolicons/vue';
+import { CheckIcon, UserPlusCornerIcon } from '@coolicons/vue';
 
 // Use BetterAuth organization management (shared useState-backed store — the
 // same invitations/invite the parent page reads).
@@ -309,31 +309,44 @@ defineExpose({ open: openInviteModal });
 
 				<!-- Role — copy comes from the single ROLE_DEFINITIONS source so it
 				     stays honest to the permission map (owner is never invitable). -->
-				<div>
-					<label class="label">{{ t('components.settings.team.inviteModal.roleLabel') }}</label>
-					<div class="grid grid-cols-2 gap-3">
-						<button
+				<!-- A radio group: the role is the most consequential choice here, so
+				     the selected one must be announced, not only tinted. -->
+				<fieldset>
+					<legend class="label">{{ t('components.settings.team.inviteModal.roleLabel') }}</legend>
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<label
 							v-for="def in inviteRoleOptions"
 							:key="def.role"
-							type="button"
 							:class="[
-								'p-3 rounded-xl border text-left transition-colors',
+								'relative p-3 rounded-xl border text-left transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 								inviteForm.role === def.role
 									? 'border-brand bg-brand/10'
 									: 'border-border-subtle hover:border-border-default',
+								isInviting ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
 							]"
-							:disabled="isInviting"
-							@click="inviteForm.role = def.role"
 						>
+							<input
+								v-model="inviteForm.role"
+								type="radio"
+								name="invite-role"
+								:value="def.role"
+								class="sr-only"
+								:disabled="isInviting"
+							/>
 							<div class="flex items-center gap-2 mb-1">
 								<component :is="def.icon" class="w-4 h-4 text-text-secondary" />
 								<span class="font-medium text-text-primary text-sm">{{ t(def.label) }}</span>
+								<CheckIcon
+									v-if="inviteForm.role === def.role"
+									class="ml-auto w-4 h-4 text-brand"
+									aria-hidden="true"
+								/>
 							</div>
 							<p class="text-xs text-text-secondary">{{ t(def.summary) }}</p>
 							<p class="mt-0.5 text-xs text-text-tertiary">{{ t(def.detail) }}</p>
-						</button>
+						</label>
 					</div>
-				</div>
+				</fieldset>
 
 				<!-- Reserve a personal mailbox (Postbox). On by default when hosted
 				     mail is configured; shown disabled with an explanation when it
@@ -371,7 +384,7 @@ defineExpose({ open: openInviteModal });
 
 					<div v-if="canOfferMailbox && inviteForm.addMailbox" class="space-y-3 pl-6">
 						<div>
-							<label for="inviteform-mailboxlocalpart" class="text-sm font-medium block mb-1">{{
+							<label for="inviteform-mailboxlocalpart" class="label">{{
 								t('components.settings.team.inviteModal.addressLabel')
 							}}</label>
 							<PostboxMailboxAddressField

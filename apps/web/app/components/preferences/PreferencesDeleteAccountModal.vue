@@ -16,6 +16,9 @@ const { showToast: showNotification } = useToast();
 const deleteReason = ref('');
 const deleteConfirmText = ref('');
 const isDeleting = ref(false);
+// The word the user types to confirm, in their own language: asking a German
+// user, in German, to type an English word reads as a mistake.
+const confirmWord = computed(() => t('dashboard.preferences.account.confirmWord'));
 
 const { run: requestDeletion } = useBackendOperation(
 	api.auth.accountManagement.requestAccountDeletion,
@@ -27,7 +30,7 @@ const { run: requestDeletion } = useBackendOperation(
 // Request account deletion
 const handleDeleteAccount = async () => {
 	if (!props.userId) return;
-	if (deleteConfirmText.value !== 'DELETE') return;
+	if (deleteConfirmText.value !== confirmWord.value) return;
 
 	isDeleting.value = true;
 
@@ -59,6 +62,8 @@ const handleDeleteAccount = async () => {
 		size="lg"
 		:closable="!isDeleting"
 		:persistent="isDeleting"
+		labelled-by="delete-account-title"
+		described-by="delete-account-subtitle"
 		@update:open="
 			(v) => {
 				if (!v) open = false;
@@ -69,10 +74,10 @@ const handleDeleteAccount = async () => {
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="error" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 id="delete-account-title" class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.preferences.account.deleteModalTitle') }}
 				</h2>
-				<p class="text-sm text-text-secondary">
+				<p id="delete-account-subtitle" class="text-sm text-text-secondary">
 					{{ t('dashboard.preferences.account.deleteModalSubtitle') }}
 				</p>
 			</div>
@@ -114,14 +119,16 @@ const handleDeleteAccount = async () => {
 				class="label"
 				for="confirm-delete"
 			>
-				<template #word><strong class="text-error">DELETE</strong></template>
+				<template #word
+					><strong class="text-error">{{ confirmWord }}</strong></template
+				>
 			</I18nT>
 			<input
 				id="confirm-delete"
 				v-model="deleteConfirmText"
 				type="text"
 				class="input"
-				placeholder="DELETE"
+				:placeholder="confirmWord"
 				autocomplete="off"
 			/>
 		</div>
@@ -134,7 +141,7 @@ const handleDeleteAccount = async () => {
 				variant="danger"
 				type="button"
 				class="gap-2"
-				:disabled="isDeleting || deleteConfirmText !== 'DELETE'"
+				:disabled="isDeleting || deleteConfirmText !== confirmWord"
 				@click="handleDeleteAccount"
 			>
 				<SpinnerIcon v-if="isDeleting" class="w-4 h-4" />

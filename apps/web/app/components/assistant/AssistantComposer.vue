@@ -222,7 +222,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 					</button>
 				</p>
 			</div>
-			<p :id="hintId" class="text-[11px] text-text-tertiary mt-1.5 px-1">
+			<p :id="hintId" class="text-2xs text-text-tertiary mt-1.5 px-1">
 				{{ t('components.assistant.assistantComposer.hint') }}
 			</p>
 		</div>

@@ -87,9 +87,21 @@ const handleVersionUploaded = (newFileId: Id<'semanticFiles'>) => {
 const showSummary = ref(true);
 const showExtractedText = ref(false);
 
-const startEditTitle = () => {
+// Focus moves into the field on entry and back to the Rename button when the
+// edit ends, so a keyboard user keeps their place.
+const titleInputRef = ref<HTMLInputElement | null>(null);
+const renameButtonRef = ref<{ $el?: HTMLElement } | null>(null);
+const startEditTitle = async () => {
 	editTitleInput.value = file.value?.title || '';
 	isEditingTitle.value = true;
+	await nextTick();
+	titleInputRef.value?.focus();
+	titleInputRef.value?.select();
+};
+const endEditTitle = async () => {
+	isEditingTitle.value = false;
+	await nextTick();
+	renameButtonRef.value?.$el?.focus();
 };
 
 const saveTitle = async () => {
@@ -99,12 +111,12 @@ const saveTitle = async () => {
 		title: editTitleInput.value || undefined,
 	});
 	if (!result.ok) return;
-	isEditingTitle.value = false;
+	void endEditTitle();
 	showToast(t('dashboard.files.detail.toasts.titleUpdated'));
 };
 
 const cancelEditTitle = () => {
-	isEditingTitle.value = false;
+	void endEditTitle();
 };
 
 const handleDelete = async () => {
@@ -136,13 +148,13 @@ const mimeIcon = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8 max-w-4xl">
+	<div class="mx-auto w-full max-w-4xl p-6 lg:p-8">
 		<!-- Back link -->
 		<NuxtLink
 			to="/dashboard/files"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
-			<ArrowLeftIcon class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" aria-hidden="true" />
 			{{ t('dashboard.files.detail.backToFiles') }}
 		</NuxtLink>
 
@@ -184,14 +196,17 @@ const mimeIcon = computed(() => {
 					<template #title>
 						<span v-if="isEditingTitle" class="inline-flex items-center gap-2">
 							<input
+								ref="titleInputRef"
 								v-model="editTitleInput"
 								type="text"
 								class="input input-sm font-semibold"
+								:aria-label="t('dashboard.files.detail.titleLabel')"
 								:placeholder="t('dashboard.files.detail.titlePlaceholder')"
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"
 							/>
 							<button
+								type="button"
 								class="p-1 rounded text-brand hover:bg-brand-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="saveTitle"
 								:aria-label="t('dashboard.files.detail.saveTitle')"
@@ -199,6 +214,7 @@ const mimeIcon = computed(() => {
 								<CheckIcon class="w-4 h-4" />
 							</button>
 							<button
+								type="button"
 								class="p-1 rounded text-text-tertiary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="cancelEditTitle"
 								:aria-label="t('dashboard.files.detail.cancelEditingTitle')"
@@ -206,17 +222,20 @@ const mimeIcon = computed(() => {
 								<CloseIcon class="w-4 h-4" />
 							</button>
 						</span>
-						<span
-							v-else
-							class="block group"
-							:class="{ 'cursor-pointer': isAdmin }"
-							@click="isAdmin && startEditTitle()"
-						>
-							{{ file.title || file.filename }}
-							<PencilIcon
-								v-if="isAdmin"
-								class="w-3.5 h-3.5 text-text-tertiary inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-							/>
+						<span v-else class="inline-flex items-center gap-1.5">
+							<span>{{ file.title || file.filename }}</span>
+							<UiTooltip v-if="isAdmin" :text="t('dashboard.files.detail.renameFile')">
+								<UiButton
+									ref="renameButtonRef"
+									variant="ghost"
+									size="sm"
+									class="text-text-tertiary"
+									:aria-label="t('dashboard.files.detail.renameFile')"
+									@click="startEditTitle"
+								>
+									<PencilIcon class="w-3.5 h-3.5" aria-hidden="true" />
+								</UiButton>
+							</UiTooltip>
 						</span>
 					</template>
 					<!--
@@ -259,11 +278,14 @@ const mimeIcon = computed(() => {
 					<!-- AI Summary -->
 					<div v-if="file.summary" class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)">
 						<button
-							class="w-full flex items-center justify-between px-5 py-4"
+							type="button"
+							class="w-full flex items-center justify-between px-5 py-4 rounded-(--radius-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:aria-expanded="showSummary"
+							aria-controls="file-summary-panel"
 							@click="showSummary = !showSummary"
 						>
 							<div class="flex items-center gap-2">
-								<SparklesIcon class="w-4 h-4 text-brand" />
+								<SparklesIcon class="w-4 h-4 text-brand" aria-hidden="true" />
 								<span class="text-sm font-medium text-text-primary">{{
 									t('dashboard.files.detail.aiSummary')
 								}}</span>
@@ -271,9 +293,10 @@ const mimeIcon = computed(() => {
 							<ChevronDownIcon
 								class="w-4 h-4 text-text-tertiary transition-transform"
 								:class="{ '-rotate-180': showSummary }"
+								aria-hidden="true"
 							/>
 						</button>
-						<div v-if="showSummary" class="px-5 pb-4">
+						<div v-if="showSummary" id="file-summary-panel" class="px-5 pb-4">
 							<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
 								{{ file.summary }}
 							</p>
@@ -286,11 +309,14 @@ const mimeIcon = computed(() => {
 						class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)"
 					>
 						<button
-							class="w-full flex items-center justify-between px-5 py-4"
+							type="button"
+							class="w-full flex items-center justify-between px-5 py-4 rounded-(--radius-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:aria-expanded="showExtractedText"
+							aria-controls="file-extracted-text-panel"
 							@click="showExtractedText = !showExtractedText"
 						>
 							<div class="flex items-center gap-2">
-								<FileTextIcon class="w-4 h-4 text-text-tertiary" />
+								<FileTextIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
 								<span class="text-sm font-medium text-text-primary">{{
 									t('dashboard.files.detail.extractedText')
 								}}</span>
@@ -298,9 +324,10 @@ const mimeIcon = computed(() => {
 							<ChevronDownIcon
 								class="w-4 h-4 text-text-tertiary transition-transform"
 								:class="{ '-rotate-180': showExtractedText }"
+								aria-hidden="true"
 							/>
 						</button>
-						<div v-if="showExtractedText" class="px-5 pb-4">
+						<div v-if="showExtractedText" id="file-extracted-text-panel" class="px-5 pb-4">
 							<pre
 								class="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap font-mono bg-bg-surface rounded-lg p-4 max-h-96 overflow-y-auto"
 								>{{ file.extractedText }}</pre>
@@ -356,38 +383,15 @@ const mimeIcon = computed(() => {
 		/>
 
 		<!-- Delete confirmation -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showDeleteConfirm"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4"
-				>
-					<div class="absolute inset-0 bg-scrim/60" @click="showDeleteConfirm = false" />
-					<div class="relative card w-full max-w-sm">
-						<h3 class="text-lg font-semibold text-text-primary mb-2">
-							{{ t('dashboard.files.detail.deleteDialog.title') }}
-						</h3>
-						<p class="text-sm text-text-secondary mb-6">
-							{{ t('dashboard.files.detail.deleteDialog.description') }}
-						</p>
-						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showDeleteConfirm = false">
-								{{ t('common.cancel') }}
-							</UiButton>
-							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
-								{{ isDeleting ? t('dashboard.files.detail.deleting') : t('common.delete') }}
-							</UiButton>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<UiConfirmationDialog
+			:open="showDeleteConfirm"
+			variant="danger"
+			:title="t('dashboard.files.detail.deleteDialog.title')"
+			:description="t('dashboard.files.detail.deleteDialog.description')"
+			:confirm-text="t('common.delete')"
+			:is-loading="isDeleting"
+			@update:open="showDeleteConfirm = $event"
+			@confirm="handleDelete"
+		/>
 	</div>
 </template>

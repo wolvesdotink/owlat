@@ -14,8 +14,11 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { SparklesIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import { autonomyCategoryName } from '~/utils/autonomyCategory';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+const categoryName = (category: string) => autonomyCategoryName(category, t, te);
 
 const { data: rules, isLoading } = useConvexQuery(api.mail.handlingRules.list, () => ({}));
 
@@ -44,17 +47,24 @@ async function teachRule() {
 	if (!text || busy.value) return;
 	const compiled = await compileOp.run({ instruction: text });
 	if (!compiled.ok) return; // errors are surfaced by useBackendOperation
-	await createOp.run({
+	const created = await createOp.run({
 		instruction: text,
 		matcher: compiled.result.matcher,
 		action: compiled.result.action,
 		compiledModel: compiled.result.compiledModel,
 	});
-	instruction.value = '';
+	// Keep the sentence when saving failed, so the person can retry it.
+	if (created.ok) instruction.value = '';
 }
 
-async function remove(ruleId: Id<'handlingRules'>) {
-	await removeOp.run({ ruleId });
+// A rule took an LLM compile to make and would have to be taught again, so
+// removing one asks first.
+const pendingRemove = ref<{ _id: Id<'handlingRules'>; instruction: string } | null>(null);
+async function confirmRemove() {
+	const rule = pendingRemove.value;
+	if (!rule) return;
+	const result = await removeOp.run({ ruleId: rule._id });
+	if (result.ok) pendingRemove.value = null;
 }
 
 async function toggle(ruleId: Id<'handlingRules'>, isEnabled: boolean) {
@@ -90,7 +100,9 @@ function matcherSummary(matcher: {
 	if (matcher.bodyContains?.length)
 		parts.push(t(`${prefix}.body`, { terms: matcher.bodyContains.join(', ') }));
 	if (matcher.categories?.length)
-		parts.push(t(`${prefix}.categories`, { categories: matcher.categories.join(', ') }));
+		parts.push(
+			t(`${prefix}.categories`, { categories: matcher.categories.map(categoryName).join(', ') })
+		);
 	return parts.join(' · ');
 }
 </script>
@@ -130,7 +142,8 @@ function matcherSummary(matcher: {
 			{{ compileOp.inlineError.value }}
 		</p>
 
-		<div v-if="isLoading" class="text-xs text-text-secondary">
+		<div v-if="isLoading" class="flex items-center gap-2 text-xs text-text-secondary" role="status">
+			<UiSpinner size="xs" />
 			{{ t('components.autonomy.handlingRulesManager.loading') }}
 		</div>
 		<ul v-else-if="rules && rules.length" class="space-y-2">
@@ -138,44 +151,57 @@ function matcherSummary(matcher: {
 				v-for="rule in rules"
 				:key="rule._id"
 				class="flex items-start justify-between gap-3 p-2.5 rounded-md bg-surface-2 shadow-surface-1"
-				:class="{ 'opacity-60': !rule.isEnabled }"
 			>
-				<div class="min-w-0">
-					<p class="text-sm text-text-primary truncate">{{ rule.instruction }}</p>
+				<div class="min-w-0" :class="{ 'opacity-60': !rule.isEnabled }">
+					<p class="text-sm text-text-primary truncate" :title="rule.instruction">
+						{{ rule.instruction }}
+					</p>
 					<p class="text-xs text-text-secondary">
 						<span class="font-medium">{{ actionLabel(rule.action.type) }}</span>
 						<template v-if="rule.action.stance"> · “{{ rule.action.stance }}”</template>
-						<template v-if="rule.action.category"> · {{ rule.action.category }}</template>
+						<template v-if="rule.action.category">
+							· {{ categoryName(rule.action.category) }}</template
+						>
 						<template v-if="matcherSummary(rule.matcher)">
 							— {{ matcherSummary(rule.matcher) }}</template
 						>
 					</p>
 				</div>
 				<div class="flex items-center gap-2 shrink-0">
-					<button
-						type="button"
-						class="text-xs text-text-secondary hover:text-text-primary"
-						@click="toggle(rule._id, !rule.isEnabled)"
-					>
-						{{
-							rule.isEnabled
-								? t('components.autonomy.handlingRulesManager.disable')
-								: t('components.autonomy.handlingRulesManager.enable')
-						}}
-					</button>
-					<button
-						type="button"
-						class="text-xs text-error hover:underline"
+					<UiSwitch
+						:model-value="rule.isEnabled"
+						:label="rule.instruction"
+						:disabled="toggleOp.isLoading.value"
+						@update:model-value="(value: boolean) => toggle(rule._id, value)"
+					/>
+					<UiButton
+						variant="danger-ghost"
+						size="sm"
 						:aria-label="t('components.autonomy.handlingRulesManager.deleteRule')"
-						@click="remove(rule._id)"
+						@click="pendingRemove = { _id: rule._id, instruction: rule.instruction }"
 					>
 						{{ t('common.delete') }}
-					</button>
+					</UiButton>
 				</div>
 			</li>
 		</ul>
 		<p v-else class="text-xs text-text-secondary">
 			{{ t('components.autonomy.handlingRulesManager.emptyState') }}
 		</p>
+
+		<UiConfirmationDialog
+			:open="pendingRemove !== null"
+			variant="danger"
+			:title="t('components.autonomy.handlingRulesManager.deleteRule')"
+			:description="
+				t('components.autonomy.handlingRulesManager.deleteConfirmBody', {
+					instruction: pendingRemove?.instruction ?? '',
+				})
+			"
+			:confirm-text="t('common.delete')"
+			:is-loading="removeOp.isLoading.value"
+			@update:open="(open: boolean) => !open && (pendingRemove = null)"
+			@confirm="confirmRemove"
+		/>
 	</section>
 </template>

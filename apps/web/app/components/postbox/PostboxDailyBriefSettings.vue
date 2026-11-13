@@ -114,7 +114,7 @@ watch(
 			/>
 		</div>
 
-		<div v-if="enabled" class="mt-3 flex items-center gap-2">
+		<div v-if="enabled" class="mt-3 flex flex-wrap items-center gap-2">
 			<label for="daily-brief-time" class="text-sm text-text-secondary">
 				{{ t('components.postbox.postboxDailyBriefSettings.timeLabel') }}
 			</label>

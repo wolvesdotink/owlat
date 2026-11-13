@@ -44,6 +44,7 @@ beforeEach(() => {
 		useAuth: () => ({ user: ref({ id: 'user_me' }) }),
 		useRouteId: () => ref('room_a'),
 		useChatShell: () => ({ railOpen: ref(false), openRail: vi.fn() }),
+		useMediaQuery: () => ref(true),
 		useChatActions: () => ({ archiveChannel: vi.fn(), unarchiveChannel: vi.fn() }),
 		useChatRoom: () => ({
 			room: ref({ _id: 'room_a', name: 'general', kind: 'channel', isMember: true }),
@@ -78,6 +79,7 @@ function mountPage() {
 				ChatLinkedEmailPanel: true,
 				ChatMemberList: true,
 				ChatLinkEmailDialog: true,
+				UiModal: true,
 				ChatEditChannelDialog: true,
 				ChatRoomSkeleton: true,
 				UiConfirmationDialog: true,

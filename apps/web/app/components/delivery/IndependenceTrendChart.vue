@@ -16,7 +16,15 @@
  * deployment — both render a calm sentence instead of an axis with nothing on it.
  */
 import { isUsablePoint, type IndependenceDayPoint } from '@owlat/shared/deliverabilityIndependence';
-import { formatNumber, formatShortDate } from '~/utils/formatters';
+import { formatNumber, formatUtcDayKey } from '~/utils/formatters';
+
+/**
+ * A point's `day` is a UTC day start, so it is labelled in UTC: a local-time
+ * label shows every reader west of UTC the previous day's date.
+ */
+function formatUtcDay(dayStart: number, locale: string): string {
+	return formatUtcDayKey(new Date(dayStart).toISOString().slice(0, 10), locale);
+}
 
 const props = defineProps<{
 	points: readonly IndependenceDayPoint[];
@@ -103,11 +111,11 @@ const referenceArea = computed(() =>
 
 const firstLabel = computed(() => {
 	const point = usable.value[0];
-	return point === undefined ? '' : formatShortDate(point.day, locale.value);
+	return point === undefined ? '' : formatUtcDay(point.day, locale.value);
 });
 const lastLabel = computed(() => {
 	const point = usable.value[usable.value.length - 1];
-	return point === undefined ? '' : formatShortDate(point.day, locale.value);
+	return point === undefined ? '' : formatUtcDay(point.day, locale.value);
 });
 
 const summary = computed(() => {
@@ -189,10 +197,8 @@ const summary = computed(() => {
 					{{ t('components.delivery.independenceTrendChart.ownServer') }}
 				</span>
 				<span v-if="hasReference" class="flex items-center gap-1">
-					<span
-						class="inline-block h-2 w-4 rounded-sm border border-dashed border-text-secondary"
-						aria-hidden="true"
-					/>
+					<!-- The same 45° hatch as the band it names. -->
+					<span class="relay-swatch inline-block h-2 w-4 rounded-sm" aria-hidden="true" />
 					{{ t('components.delivery.independenceTrendChart.relay') }}
 				</span>
 			</span>
@@ -217,7 +223,7 @@ const summary = computed(() => {
 			</thead>
 			<tbody>
 				<tr v-for="point in usable" :key="point.day">
-					<th scope="row">{{ formatShortDate(point.day, locale) }}</th>
+					<th scope="row">{{ formatUtcDay(point.day, locale) }}</th>
 					<td>{{ formatNumber(point.own, locale) }}</td>
 					<td v-if="hasReference">{{ formatNumber(point.reference, locale) }}</td>
 				</tr>
@@ -225,3 +231,14 @@ const summary = computed(() => {
 		</table>
 	</figure>
 </template>
+
+<style scoped>
+.relay-swatch {
+	background-image: repeating-linear-gradient(
+		45deg,
+		color-mix(in srgb, var(--color-text-secondary) 50%, transparent) 0 2px,
+		transparent 2px 4px
+	);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text-secondary) 50%, transparent);
+}
+</style>

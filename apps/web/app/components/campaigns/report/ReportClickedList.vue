@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The campaign report's "Clicked" tab: one page of contacts who clicked, each
-// with up to three of their links, and Previous / Next. The page owns the query
-// and the offset.
+// with up to three of their links, and Previous / Next. The contacts section
+// owns the query and the offset.
 import type { FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
 // TYPE-ONLY: the list needs the query's return shape, never the client.

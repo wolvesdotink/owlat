@@ -22,7 +22,7 @@ function approveCurrent(reviewDigest: string) {
 <template>
 	<aside
 		v-if="isShown && current"
-		class="fixed bottom-4 right-4 z-40 max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto shadow-2xl"
+		class="fixed bottom-[calc(1rem+var(--ui-bottom-chrome-height,0px))] right-4 z-(--z-float) max-h-[calc(100dvh-2rem-var(--ui-bottom-chrome-height,0px))] w-[calc(100vw-2rem)] max-w-md overflow-y-auto shadow-surface-6"
 		:aria-label="t('components.shell.mcpApprovalPrompt.label')"
 	>
 		<div

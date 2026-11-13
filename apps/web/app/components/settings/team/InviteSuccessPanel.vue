@@ -24,6 +24,8 @@ defineProps<{
 
 const { t } = useI18n();
 const { copyLinkText } = useInviteLinks();
+// One id per mount, so the label and hint never point at another panel's field.
+const acceptLinkId = useId();
 </script>
 
 <template>
@@ -67,13 +69,15 @@ const { copyLinkText } = useInviteLinks();
 		</I18nT>
 
 		<div>
-			<label class="text-sm font-medium block mb-1">{{
+			<label :for="acceptLinkId" class="label">{{
 				t('components.settings.team.inviteModal.acceptLinkLabel')
 			}}</label>
 			<div class="flex items-center gap-2">
 				<input
+					:id="acceptLinkId"
 					:value="success.acceptUrl"
 					readonly
+					:aria-describedby="`${acceptLinkId}-hint`"
 					class="input flex-1 font-mono"
 					@focus="($event.target as HTMLInputElement).select()"
 				/>
@@ -84,7 +88,7 @@ const { copyLinkText } = useInviteLinks();
 					{{ t('common.copy') }}
 				</UiButton>
 			</div>
-			<p class="text-xs text-text-tertiary mt-1">
+			<p :id="`${acceptLinkId}-hint`" class="text-xs text-text-tertiary mt-1">
 				{{ t('components.settings.team.inviteModal.acceptLinkHint') }}
 			</p>
 		</div>

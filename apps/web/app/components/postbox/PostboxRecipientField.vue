@@ -172,6 +172,14 @@ const inputValue = ref('');
 const showSuggestions = ref(false);
 const highlightIdx = ref(0);
 const inputEl = ref<HTMLInputElement | null>(null);
+const inputId = useId();
+const listboxId = useId();
+const invalidId = useId();
+const optionId = (idx: number) => `${listboxId}-opt-${idx}`;
+// Typed text that is not an address stays in the input rather than becoming a
+// chip; this names it, so the envelope never looks complete while that person
+// is missing from it. Cleared by the next edit.
+const invalidTyped = ref('');
 
 defineExpose({ focus: () => inputEl.value?.focus() });
 
@@ -206,7 +214,11 @@ watch(suggestions, () => {
 function addRecipient(email: string) {
 	const trimmed = normalizeEmail(email);
 	if (!trimmed) return;
-	if (!isValidEmail(trimmed)) return;
+	if (!isValidEmail(trimmed)) {
+		invalidTyped.value = email.trim();
+		return;
+	}
+	invalidTyped.value = '';
 	if (props.modelValue.includes(trimmed)) return;
 	emit('update:modelValue', [...props.modelValue, trimmed]);
 	inputValue.value = '';
@@ -275,20 +287,25 @@ function onInput() {
 	showSuggestions.value = !!inputValue.value.trim();
 }
 
+function onEdit() {
+	invalidTyped.value = '';
+	onInput();
+}
+
+const listOpen = computed(() => showSuggestions.value && suggestions.value.length > 0);
+
 function onBlur() {
 	// Defer so click on suggestion still fires
 	setTimeout(() => {
 		showSuggestions.value = false;
-		if (inputValue.value.trim() && isValidEmail(inputValue.value.trim())) {
-			addRecipient(inputValue.value);
-		}
+		if (inputValue.value.trim()) addRecipient(inputValue.value);
 	}, 150);
 }
 </script>
 
 <template>
 	<div class="flex items-baseline gap-2 relative">
-		<label class="text-text-tertiary w-12 flex-shrink-0">{{ label }}</label>
+		<label :for="inputId" class="text-text-tertiary w-12 flex-shrink-0">{{ label }}</label>
 		<div
 			class="flex flex-wrap items-center gap-1 flex-1 min-h-[1.5rem]"
 			@dragover.prevent
@@ -352,18 +369,37 @@ function onBlur() {
 				</button>
 			</span>
 			<input
+				:id="inputId"
 				ref="inputEl"
 				v-model="inputValue"
 				type="text"
+				role="combobox"
+				aria-autocomplete="list"
+				:aria-expanded="listOpen ? 'true' : 'false'"
+				:aria-controls="listOpen ? listboxId : undefined"
+				:aria-activedescendant="listOpen ? optionId(highlightIdx) : undefined"
+				:aria-invalid="invalidTyped ? 'true' : undefined"
+				:aria-describedby="invalidTyped ? invalidId : undefined"
 				class="input-bare flex-1 min-w-[120px] text-sm"
 				:placeholder="
 					modelValue.length === 0 ? t('components.postbox.postboxRecipientField.placeholder') : ''
 				"
-				@input="onInput"
+				@input="onEdit"
 				@focus="onInput"
 				@blur="onBlur"
 				@keydown="onKeydown"
 			/>
+			<p
+				v-if="invalidTyped"
+				:id="invalidId"
+				class="basis-full pt-1 text-xs text-error"
+				role="alert"
+				data-testid="postbox-recipient-invalid"
+			>
+				{{
+					t('components.postbox.postboxRecipientField.invalidAddress', { address: invalidTyped })
+				}}
+			</p>
 			<!-- Plan idea 4: the committed chip's domain is one or two slips away
 			     from a domain this mailbox writes to (or a common provider). Inline,
 			     one click to fix, one to keep — it never blocks the send. -->
@@ -394,14 +430,21 @@ function onBlur() {
 			</div>
 		</div>
 		<div
-			v-if="showSuggestions && suggestions.length > 0"
+			v-if="listOpen"
+			:id="listboxId"
+			role="listbox"
+			:aria-label="label"
 			data-postbox-overlay-open
 			class="absolute top-full left-12 mt-1 bg-bg-elevated border border-border-subtle rounded shadow-lg w-80 max-w-[90%] z-20"
 		>
 			<button
 				v-for="(s, idx) in suggestions"
+				:id="optionId(idx)"
 				:key="s.email"
 				type="button"
+				role="option"
+				tabindex="-1"
+				:aria-selected="idx === highlightIdx"
 				class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface flex items-center gap-2"
 				:class="idx === highlightIdx ? 'bg-bg-surface-hover' : ''"
 				@mouseenter="highlightIdx = idx"

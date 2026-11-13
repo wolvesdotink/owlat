@@ -55,6 +55,15 @@ beforeAll(() => {
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	// Inert: the real leave guard needs a router the page is not mounted under.
+	vi.stubGlobal('useUnsavedChanges', () => ({
+		showDialog: ref(false),
+		isSavingBeforeLeave: ref(false),
+		confirmDiscard: vi.fn(),
+		confirmSave: vi.fn(),
+		cancelNavigation: vi.fn(),
+		setHasChanges: vi.fn(),
+	}));
 	vi.stubGlobal('useRoute', () => ({ params: { id: 'slack-approvals' } }));
 	vi.stubGlobal('useConvexQuery', () => ({
 		data: overview,
@@ -99,6 +108,7 @@ const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 function mountPage() {
 	return mountDashboardPage(PluginSettingsPage, {
 		stubs: {
+			UiUnsavedChangesDialog: true,
 			UiQueryBoundary: passthroughStub,
 			UiCard: passthroughStub,
 			UiEmptyState: passthroughStub,

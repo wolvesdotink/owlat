@@ -138,8 +138,13 @@ const {
 
 const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
 const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
+// "All campaigns loaded" closes a list someone paged through; when everything
+// fit on the first page it is noise.
+const hasLoadedMore = ref(false);
 function handleLoadMore() {
-	if (canLoadMore.value) loadMore(100);
+	if (!canLoadMore.value) return;
+	hasLoadedMore.value = true;
+	loadMore(100);
 }
 
 // --- Row model: campaign + its attention roll-up + derived rates ------------
@@ -358,7 +363,10 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 			</ul>
 
 			<div
-				v-if="selectedPill !== 'attention' && (canLoadMore || paginationStatus === 'Exhausted')"
+				v-if="
+					selectedPill !== 'attention' &&
+					(canLoadMore || (paginationStatus === 'Exhausted' && hasLoadedMore))
+				"
 				class="flex items-center justify-center px-6 py-4 border-t border-border-subtle"
 			>
 				<UiButton

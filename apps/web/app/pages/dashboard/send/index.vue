@@ -17,6 +17,7 @@ import {
 	type TemplateTypeFilter,
 } from '~/utils/templateListFilter';
 import { FileTextIcon, GridIcon, MailIcon, PlusIcon } from '@coolicons/vue';
+import SendTemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
 
 const { t, locale } = useI18n();
 
@@ -199,11 +200,20 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 						>
 							<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
 							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium">{{ template.name }}</p>
+								<p class="text-sm text-text-primary truncate font-medium" :title="template.name">
+									{{ template.name }}
+								</p>
 								<p v-if="template.subject" class="text-xs text-text-tertiary truncate">
 									{{ template.subject }}
 								</p>
 							</div>
+							<!-- Published is the norm; an unpublished template says so, so the
+							     hub shows which templates are live without opening each one. -->
+							<SendTemplateStatusBadge
+								v-if="template.status && template.status !== 'published'"
+								:status="template.status"
+								class="shrink-0"
+							/>
 							<!-- Marketing is the default type; only the exception gets a badge -->
 							<span
 								v-if="template.type !== 'marketing'"

@@ -110,11 +110,20 @@ watch(stage, (s) => {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep text-text-primary" :class="{ 'pt-[38px]': isDesktop }">
+	<div
+		class="min-h-screen bg-bg-deep text-text-primary"
+		:class="{ 'pt-[var(--titlebar-h,44px)]': isDesktop }"
+	>
 		<DesktopTitlebar />
 		<div class="mx-auto max-w-xl px-4 py-10">
 			<div v-if="!isDesktop" class="card p-8 text-sm text-text-secondary">
-				{{ t('desktop.setup.desktopOnly') }}
+				<h1 class="mb-2 text-lg font-medium text-text-primary">
+					{{ t('desktop.web.desktopOnlyHeading') }}
+				</h1>
+				<p>{{ t('desktop.setup.desktopOnly') }}</p>
+				<UiButton variant="secondary" size="sm" class="mt-4" to="/dashboard">
+					{{ t('desktop.web.backToDashboard') }}
+				</UiButton>
 			</div>
 
 			<template v-else>
@@ -123,7 +132,7 @@ watch(stage, (s) => {
 						to="/desktop/welcome"
 						class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 					>
-						<ArrowLeftIcon class="size-3.5" /> {{ t('common.back') }}
+						<ArrowLeftIcon class="size-3.5" aria-hidden="true" /> {{ t('common.back') }}
 					</NuxtLink>
 					<I18nT
 						keypath="desktop.setup.heading"
@@ -171,6 +180,7 @@ watch(stage, (s) => {
 					<div
 						v-if="stage === 'done' && canOpenWorkspace"
 						class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4"
+						role="status"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-success">
 							<PartyPopperIcon class="size-4" />
@@ -186,6 +196,7 @@ watch(stage, (s) => {
 					<div
 						v-else-if="stage === 'done' && !siteIsLoopback"
 						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
+						role="status"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
 							<SpinnerIcon
@@ -241,6 +252,7 @@ watch(stage, (s) => {
 					<div
 						v-else-if="stage === 'done'"
 						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
+						role="status"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
 							<CircleCheckIcon class="size-4" />
@@ -288,6 +300,7 @@ watch(stage, (s) => {
 					<div
 						v-else-if="stage === 'error'"
 						class="mt-6 rounded-xl border border-error/40 bg-error/5 p-4"
+						role="alert"
 					>
 						<p class="text-sm font-medium text-error">{{ t('desktop.setup.failure.title') }}</p>
 						<p class="mt-1 text-xs text-text-secondary">{{ error }}</p>
@@ -297,7 +310,7 @@ watch(stage, (s) => {
 								{{ t('desktop.setup.failure.lastOutput') }}
 							</p>
 							<pre
-								class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-[11px] leading-snug text-error"
+								class="max-h-40 overflow-auto rounded bg-bg-deep p-2 font-mono text-2xs leading-snug text-error"
 								>{{ failureTail.join('\n') }}</pre>
 						</div>
 						<p class="mt-2 text-xs text-text-secondary">{{ t('desktop.setup.failure.hint') }}</p>

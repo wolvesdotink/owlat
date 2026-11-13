@@ -26,6 +26,8 @@ const pickerValue = computed(() => (isValid.value ? expand(color.value) : '#0000
 function expand(hex: string): string {
 	return hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
 }
+
+const messageId = useId();
 </script>
 
 <template>
@@ -56,12 +58,13 @@ function expand(hex: string): string {
 				spellcheck="false"
 				:class="['input flex-1 font-mono', !isValid && 'input-error']"
 				:aria-invalid="!isValid"
+				:aria-describedby="messageId"
 				:disabled="disabled"
 			/>
 		</div>
-		<p v-if="!isValid" class="mt-1 text-xs text-error">
+		<p v-if="!isValid" :id="messageId" class="mt-1 text-xs text-error">
 			{{ t('dashboard.admin.instance.brandKit.errors.invalidColor') }}
 		</p>
-		<p v-else class="mt-1 text-xs text-text-tertiary">{{ help }}</p>
+		<p v-else :id="messageId" class="mt-1 text-xs text-text-tertiary">{{ help }}</p>
 	</div>
 </template>

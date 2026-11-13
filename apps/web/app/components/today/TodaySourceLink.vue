@@ -43,6 +43,15 @@ function hidePreview() {
 }
 onBeforeUnmount(hidePreview);
 
+// Several sources make the preview a list of buttons. Focus moving from the
+// phrase into that list keeps it open; it closes once focus leaves both.
+const rootRef = ref<HTMLElement | null>(null);
+function onFocusOut(event: FocusEvent) {
+	const next = event.relatedTarget;
+	if (next instanceof Node && rootRef.value?.contains(next)) return;
+	hidePreview();
+}
+
 function open(event: MouseEvent | KeyboardEvent, index = 0) {
 	hidePreview();
 	const fullThread = 'metaKey' in event && (event.metaKey || event.ctrlKey);
@@ -59,7 +68,7 @@ function when(at: number): string {
 </script>
 
 <template>
-	<span class="relative" @mouseleave="hidePreview">
+	<span ref="rootRef" class="relative" @mouseleave="hidePreview" @focusout="onFocusOut">
 		<a
 			href="#"
 			class="cursor-pointer rounded-sm decoration-brand underline-offset-[3px] transition-colors hover:bg-brand-subtle hover:underline focus-visible:bg-brand-subtle focus-visible:underline focus-visible:outline-none"
@@ -68,7 +77,6 @@ function when(at: number): string {
 			@keydown.enter.prevent="open($event)"
 			@mouseenter="schedulePreview"
 			@focus="schedulePreview"
-			@blur="hidePreview"
 			>{{ text }}</a
 		>
 
@@ -80,8 +88,9 @@ function when(at: number): string {
 		>
 			<span
 				v-if="previewOpen && first"
-				role="tooltip"
-				class="absolute left-0 top-full z-(--z-dropdown,40) mt-2 block w-80 rounded-xl border border-border-subtle bg-bg-elevated p-3 text-left shadow-lg"
+				:role="sources.length === 1 ? 'tooltip' : 'group'"
+				:aria-label="sources.length === 1 ? undefined : accessibleLabel"
+				class="absolute left-0 top-full z-(--z-menu) mt-2 block w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-border-subtle bg-bg-elevated p-3 text-left shadow-lg"
 				@mouseenter="previewOpen = true"
 			>
 				<template v-if="sources.length === 1">
@@ -108,7 +117,7 @@ function when(at: number): string {
 						v-for="(source, index) in sources"
 						:key="source.id"
 						type="button"
-						class="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-bg-surface"
+						class="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="open($event, index)"
 					>
 						<span class="truncate text-xs text-text-primary">{{

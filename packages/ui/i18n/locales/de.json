@@ -46,7 +46,8 @@
 		},
 		"stepIndicator": {
 			"label": "Fortschritt",
-			"goBackTo": "Zurück zu {step}"
+			"goBackTo": "Zurück zu {step}",
+			"completed": "abgeschlossen"
 		},
 		"themeToggle": {
 			"system": "Systemeinstellung",

@@ -104,7 +104,11 @@ const noticeId = useId();
 
 const hasNotice = computed(() => (props.notice?.length ?? 0) > 0);
 
-/** The disabled state is advisory (see `isDownloadDisabled`), so the click is refused here. */
+/**
+ * The disabled state is advisory (see `isDownloadDisabled`), so the click is
+ * refused here. A download in flight is refused the same way rather than with
+ * `disabled`, which would drop focus from the button the person just pressed.
+ */
 function onDownload(att: AttachmentMeta): void {
 	if (props.isDownloadDisabled === true || isDownloading(att)) return;
 	emit('download', att);
@@ -137,7 +141,7 @@ function onDownload(att: AttachmentMeta): void {
 			>
 				<PaperclipIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm">{{ att.filename }}</p>
+					<p class="truncate text-sm" :title="att.filename">{{ att.filename }}</p>
 					<p class="truncate text-xs text-text-tertiary" :title="att.contentType">
 						{{ metaLine(att) }}
 					</p>
@@ -165,8 +169,8 @@ function onDownload(att: AttachmentMeta): void {
 						class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
 						:aria-label="downloadLabel(att.filename)"
 						:aria-describedby="hasNotice ? noticeId : undefined"
-						:aria-disabled="isDownloadDisabled === true ? 'true' : undefined"
-						:disabled="isDownloading(att)"
+						:aria-disabled="isDownloadDisabled === true || isDownloading(att) ? 'true' : undefined"
+						:aria-busy="isDownloading(att) || undefined"
 						data-testid="message-attachment-download"
 						@click="onDownload(att)"
 					>

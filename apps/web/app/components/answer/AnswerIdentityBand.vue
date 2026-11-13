@@ -47,7 +47,13 @@ const band = computed(() => {
 		};
 	}
 	return {
-		label: t('components.answer.band.replyingIn', { room: item.mention.roomName }),
+		// Only a channel is a "#name"; a DM or an email's discussion is not.
+		label: t('components.answer.band.replyingIn', {
+			room:
+				item.mention.mailThread || item.mention.roomKind === 'dm'
+					? item.mention.roomName
+					: `#${item.mention.roomName}`,
+		}),
 		detail: t('components.answer.band.chatDetail'),
 		kind: t('components.answer.band.mention'),
 		swatch: null,
@@ -63,13 +69,15 @@ const band = computed(() => {
 	>
 		<span
 			v-if="band.swatch"
-			class="size-2.5 shrink-0 rounded-[3px]"
+			class="size-2.5 shrink-0 rounded-sm"
 			:class="band.swatch"
 			aria-hidden="true"
 		/>
 		<component v-else-if="band.icon" :is="band.icon" class="size-3.5 shrink-0 text-text-tertiary" />
 		<span class="font-medium text-text-primary">{{ band.label }}</span>
-		<span v-if="band.detail" class="truncate text-text-tertiary">{{ band.detail }}</span>
+		<span v-if="band.detail" class="truncate text-text-tertiary" :title="band.detail">{{
+			band.detail
+		}}</span>
 		<span class="ml-auto rounded-full bg-bg-surface px-2 py-0.5 text-text-secondary">{{
 			band.kind
 		}}</span>

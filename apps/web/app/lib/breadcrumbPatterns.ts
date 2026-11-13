@@ -224,6 +224,14 @@ export const patternConfigs: PatternConfig[] = [
 			page: 'shared.breadcrumbPatterns.pages.pluginSettings',
 		}),
 	},
+	// A Team inbox thread: the page names the thread itself once it has loaded.
+	{
+		pattern: /^\/dashboard\/inbox\/([^/]+)$/,
+		getConfig: () => ({
+			section: 'shared.breadcrumbRoutes.sections.teamInbox',
+			sectionHref: '/dashboard/inbox',
+		}),
+	},
 	// Team inbox members
 	{
 		pattern: /^\/dashboard\/preferences\/members\/([^/]+)$/,

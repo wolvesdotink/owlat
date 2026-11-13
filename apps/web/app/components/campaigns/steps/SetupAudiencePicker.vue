@@ -126,7 +126,10 @@ const selectedSegment = computed(() =>
 const hasSelection = computed(() => selectedValue.value !== '');
 
 const formattedEligibleRecipients = computed(() => {
-	const eligible = props.audienceCount?.eligible ?? 0;
+	// No count yet (nothing picked, or a fresh pick still counting): a dash, not
+	// a bold "0" that then jumps to the real number.
+	if (!props.audienceCount) return '—';
+	const eligible = props.audienceCount.eligible;
 	// A capped or budget-stopped enumeration is an "at least" reading, so it earns
 	// the `+`. `suppression_truncated` is an OVER-count, not a lower bound — never
 	// render it as "at least" (it cannot reach this screen today: the wizard's

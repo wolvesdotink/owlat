@@ -76,7 +76,9 @@ const confirmRemove = async () => {
 			</span>
 			<button
 				v-if="canManage"
-				class="text-xs text-brand hover:underline"
+				type="button"
+				class="text-xs text-brand hover:underline pointer-coarse:min-h-11 pointer-coarse:px-2"
+				:aria-expanded="showAdd"
 				@click="showAdd = !showAdd"
 			>
 				{{ showAdd ? t('common.cancel') : t('common.add') }}
@@ -89,13 +91,15 @@ const confirmRemove = async () => {
 				v-model="addQuery"
 				type="text"
 				:placeholder="t('components.chat.chatMemberList.searchPlaceholder')"
+				:aria-label="t('components.chat.chatMemberList.searchPlaceholder')"
 				class="w-full input"
 			/>
 			<div v-if="addCandidates.length > 0" class="mt-2 max-h-40 overflow-y-auto space-y-1">
 				<button
 					v-for="candidate in addCandidates"
 					:key="candidate.memberId"
-					class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface text-sm"
+					type="button"
+					class="w-full text-left flex items-center gap-2 px-2 py-1.5 pointer-coarse:min-h-11 rounded hover:bg-bg-surface text-sm"
 					@click="handleAdd(candidate.memberId)"
 				>
 					<UiAvatar
@@ -134,18 +138,24 @@ const confirmRemove = async () => {
 					</div>
 					<div
 						v-if="member.role === 'admin'"
-						class="text-[10px] text-text-tertiary uppercase tracking-wider"
+						class="text-2xs text-text-tertiary uppercase tracking-wider"
 					>
 						{{ t('components.chat.chatMemberList.admin') }}
 					</div>
 				</div>
+				<!-- Revealed on hover, on keyboard focus, and always on a touch screen,
+				     which has no hover. -->
 				<div
 					v-if="canManage && member.memberId !== currentUserId"
-					class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+					class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity flex items-center gap-1"
 				>
-					<UiTooltip v-if="member.role === 'member'" :text="t('components.chat.chatMemberList.promote')">
+					<UiTooltip
+						v-if="member.role === 'member'"
+						:text="t('components.chat.chatMemberList.promote')"
+					>
 						<button
-							class="text-xs text-text-tertiary hover:text-brand"
+							type="button"
+							class="size-7 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-brand"
 							:aria-label="t('components.chat.chatMemberList.promote')"
 							@click="handlePromote(member.memberId)"
 						>
@@ -154,7 +164,8 @@ const confirmRemove = async () => {
 					</UiTooltip>
 					<UiTooltip v-else :text="t('components.chat.chatMemberList.demote')">
 						<button
-							class="text-xs text-text-tertiary hover:text-text-primary"
+							type="button"
+							class="size-7 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary"
 							:aria-label="t('components.chat.chatMemberList.demote')"
 							@click="handleDemote(member.memberId)"
 						>
@@ -163,7 +174,8 @@ const confirmRemove = async () => {
 					</UiTooltip>
 					<UiTooltip :text="t('common.remove')">
 						<button
-							class="text-xs text-text-tertiary hover:text-error"
+							type="button"
+							class="size-7 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-error"
 							:aria-label="t('common.remove')"
 							@click="memberToRemove = member"
 						>

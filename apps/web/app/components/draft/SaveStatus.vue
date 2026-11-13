@@ -87,9 +87,8 @@ const icon = computed(() => {
 <template>
 	<div class="flex shrink-0 items-center gap-2" data-testid="draft-save-status">
 		<span
-			class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap"
+			class="inline-flex min-w-0 items-center gap-1.5 text-xs whitespace-nowrap"
 			:class="status === 'error' ? 'text-error' : 'text-text-secondary'"
-			:title="errorDetail || undefined"
 		>
 			<component
 				:is="icon"
@@ -98,9 +97,17 @@ const icon = computed(() => {
 				aria-hidden="true"
 			/>
 			<span>
-				<span role="status">
+				<!-- The reason is visible text, not only a hover title: on touch there is
+				     no hover, and "Not saved" alone does not say what to fix. Long
+				     reasons truncate; the title carries the whole sentence. -->
+				<span role="status" class="inline-flex min-w-0 items-baseline gap-1">
 					{{ label }}
-					<span v-if="errorDetail" class="sr-only">{{ errorDetail }}</span>
+					<template v-if="errorDetail">
+						<span aria-hidden="true">·</span>
+						<span class="max-w-48 truncate text-text-secondary" :title="errorDetail">{{
+							errorDetail
+						}}</span>
+					</template>
 				</span>
 				<template v-if="age">{{ ` ${age}` }}</template>
 			</span>

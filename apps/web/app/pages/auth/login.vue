@@ -124,18 +124,20 @@ async function handleTwoFactorSubmit() {
 		<!-- Post-setup success banner -->
 		<div
 			v-if="justCompletedSetup"
+			role="status"
 			class="mb-6 p-4 bg-success-subtle border border-success/30 rounded-lg text-success text-sm"
 		>
 			{{ t('auth.login.postSetupBanner') }}
 		</div>
 
-		<!-- Error Message (the code stage shows its own, on the code field) -->
-		<div
+		<!-- Error Message (the code stage shows its own, on the code field). Announced,
+		     since focus stays on the submit button. -->
+		<UiErrorAlert
 			v-if="errorMessage && stage === 'credentials'"
-			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-		>
-			{{ errorMessage }}
-		</div>
+			:message="errorMessage"
+			role="alert"
+			class="mb-6"
+		/>
 
 		<form v-if="stage === 'credentials'" class="space-y-5" @submit.prevent="handleSubmit">
 			<!-- Email Field -->

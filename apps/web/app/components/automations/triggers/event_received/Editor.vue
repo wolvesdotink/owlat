@@ -17,6 +17,9 @@ const updateEventName = (event: Event) => {
 	const eventName = (event.target as HTMLInputElement).value;
 	emit('update:modelValue', { ...props.modelValue, eventName });
 };
+
+const hintId = useId();
+const errorId = useId();
 </script>
 
 <template>
@@ -24,20 +27,23 @@ const updateEventName = (event: Event) => {
 		<label for="eventName" class="label flex items-center gap-2">
 			<BroadcastIcon class="w-4 h-4 text-warning" />
 			{{ t('components.automations.triggers.eventReceived.editor.eventNameLabel') }}
-			<span class="text-error">*</span>
+			<span class="text-error" aria-hidden="true">*</span>
 		</label>
-		<p class="text-sm text-text-tertiary mt-1 mb-3">
+		<p :id="hintId" class="text-sm text-text-tertiary mt-1 mb-3">
 			{{ t('components.automations.triggers.eventReceived.editor.eventNameHint') }}
 		</p>
 		<input
 			id="eventName"
+			aria-required="true"
+			:aria-invalid="error ? true : undefined"
+			:aria-describedby="error ? `${errorId} ${hintId}` : hintId"
 			:value="modelValue.eventName"
 			type="text"
 			:placeholder="t('components.automations.triggers.eventReceived.editor.eventNamePlaceholder')"
 			:class="['input', error ? 'input-error' : '']"
 			@input="updateEventName"
 		/>
-		<p v-if="error" class="mt-2 text-sm text-error">{{ error }}</p>
+		<p v-if="error" :id="errorId" class="mt-2 text-sm text-error">{{ error }}</p>
 		<div class="mt-3 p-3 bg-bg-elevated border border-border-subtle rounded-lg">
 			<p class="text-xs text-text-tertiary font-mono">
 				POST /api/v1/events<br />

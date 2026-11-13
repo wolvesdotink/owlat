@@ -42,26 +42,26 @@ const isDevBuild = computed(() => version.value === 'dev' || version.value === '
 </script>
 
 <template>
-	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+	<div class="card">
 		<div class="flex items-start justify-between gap-6 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="font-semibold text-text-primary mb-2">
+				<h2 class="font-semibold text-text-primary mb-2">
 					{{ t('components.system.versionCard.currentVersion') }}
-				</h3>
+				</h2>
 				<div class="flex items-baseline gap-3 flex-wrap">
 					<span class="font-display text-3xl font-semibold text-text-primary tracking-tight">
 						{{ version }}
 					</span>
 					<span
 						v-if="isDevBuild"
-						class="text-[0.6875rem] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-warning/10 text-warning"
+						class="text-2xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-warning/10 text-warning"
 					>
 						{{ t('components.system.versionCard.devBuild') }}
 					</span>
 				</div>
 			</div>
 
-			<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-[0.8125rem] min-w-[260px]">
+			<dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-caption min-w-[260px]">
 				<dt class="text-text-tertiary">{{ t('components.system.versionCard.gitSha') }}</dt>
 				<dd class="text-text-primary font-mono">{{ shortSha }}</dd>
 

@@ -45,8 +45,9 @@ function openEdit(type: EditableMeetingType) {
 
 async function confirmDelete() {
 	if (!deleting.value) return;
-	await remove.run({ meetingTypeId: deleting.value._id });
-	deleting.value = null;
+	// A failed delete keeps the confirmation open: the meeting type still exists.
+	const result = await remove.run({ meetingTypeId: deleting.value._id });
+	if (result.ok) deleting.value = null;
 }
 </script>
 

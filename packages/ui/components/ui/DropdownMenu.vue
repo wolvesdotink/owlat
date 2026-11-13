@@ -62,7 +62,7 @@ watch(
  * inside the window on every edge.
  */
 const MENU_GAP = 4;
-const MENU_WIDTH = 176; // w-44, until the menu has rendered
+const MENU_WIDTH = 176; // min-w-44, until the menu has rendered
 
 /**
  * The menu's full border-box height: its content box, which is never capped,
@@ -354,7 +354,7 @@ provide('dropdownClose', close);
 					v-if="isOpen"
 					ref="menuRef"
 					role="menu"
-					class="fixed w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-50 py-1"
+					class="fixed min-w-44 max-w-72 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-(--z-menu) py-1"
 					:class="{ 'overflow-y-auto': menuScrolls }"
 					:style="{
 						...menuStyle,

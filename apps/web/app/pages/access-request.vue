@@ -61,13 +61,14 @@ async function requestAccess() {
 
 <template>
 	<div
-		class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col items-center justify-center px-4 py-12"
+		class="relative isolate min-h-dvh overflow-hidden bg-bg-base flex flex-col items-center justify-center px-4 py-12"
 	>
 		<UiHeroField />
 
 		<!-- Show loading while checking organization status -->
-		<div v-if="orgLoading" class="relative flex flex-col items-center">
-			<SpinnerIcon class="w-8 h-8 text-text-tertiary" />
+		<div v-if="orgLoading" class="relative flex flex-col items-center" role="status">
+			<SpinnerIcon class="w-8 h-8 text-text-tertiary" aria-hidden="true" />
+			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 
 		<!-- Invite-only: no organization yet, but the door isn't locked. -->
@@ -79,8 +80,15 @@ async function requestAccess() {
 
 			<UiCard class="relative w-full max-w-md">
 				<!-- After asking: a clear, honest confirmation. -->
-				<div v-if="requested" class="text-center space-y-4">
-					<CircleCheckIcon class="w-12 h-12 text-brand mx-auto" :stroke-width="1.5" />
+				<div v-if="requested" class="text-center space-y-4" role="status">
+					<UiIconBox
+						:icon="CircleCheckIcon"
+						size="xl"
+						variant="success"
+						rounded="full"
+						class="mx-auto"
+						aria-hidden="true"
+					/>
 					<div class="space-y-1">
 						<p class="font-medium text-text-primary">{{ t('accessRequest.requestSentTitle') }}</p>
 						<p class="text-text-secondary">
@@ -95,7 +103,14 @@ async function requestAccess() {
 				<!-- Before asking: request access, or sign out. -->
 				<div v-else class="space-y-4">
 					<div class="text-center space-y-3">
-						<MailIcon class="w-12 h-12 text-text-tertiary mx-auto" :stroke-width="1.5" />
+						<UiIconBox
+							:icon="MailIcon"
+							size="xl"
+							variant="surface"
+							rounded="full"
+							class="mx-auto"
+							aria-hidden="true"
+						/>
 						<p class="text-text-secondary">
 							{{ t('accessRequest.inviteExplainer') }}
 						</p>

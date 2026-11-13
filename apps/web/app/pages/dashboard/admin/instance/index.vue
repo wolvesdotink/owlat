@@ -8,6 +8,7 @@ import {
 } from '@owlat/shared/operatingModes';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
+import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import {
 	ActivityIcon,
 	BroadcastIcon,
@@ -29,6 +30,20 @@ useHead({ title: () => t('dashboard.admin.instance.index.pageTitle') });
 definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
 const { flags, isEnabled } = useFeatureFlag();
+const { flagKeyLabel } = useFeatureCopy();
+
+// The mode whose flag set the workspace runs on right now, if any: a mixed set
+// matches no mode, and then none is marked.
+const currentMode = computed<OperatingModeKey | null>(() => {
+	for (const key of OPERATING_MODE_KEYS) {
+		const preset = operatingModeFlags(key);
+		const matches = (Object.keys(preset) as CoreFeatureFlagKey[]).every(
+			(flag) => (flags.value[flag] === true) === (preset[flag] === true)
+		);
+		if (matches) return key;
+	}
+	return null;
+});
 const { data: pluginSettingsOverview } = useConvexQuery(
 	api.plugins.settings.getPluginSettingsOverview,
 	() => (bundledPluginComposition.length === 0 ? {} : 'skip')
@@ -56,8 +71,8 @@ const flagDiff = computed(() => {
 	for (const key of Object.keys(desired) as CoreFeatureFlagKey[]) {
 		const value = desired[key];
 		const current = flags.value[key] === true;
-		if (value && !current) enabled.push(key);
-		if (!value && current) disabled.push(key);
+		if (value && !current) enabled.push(flagKeyLabel(key));
+		if (!value && current) disabled.push(flagKeyLabel(key));
 	}
 	return { enabled, disabled };
 });
@@ -198,10 +213,19 @@ const groups = computed(() => [
 						v-for="key in OPERATING_MODE_KEYS"
 						:key="key"
 						type="button"
-						class="text-left rounded-xl border border-border-subtle p-4 hover:border-brand hover:bg-brand-subtle transition-colors"
+						class="text-left rounded-xl border p-4 hover:border-brand hover:bg-brand-subtle transition-colors"
+						:class="key === currentMode ? 'border-brand' : 'border-border-subtle'"
+						:aria-current="key === currentMode ? 'true' : undefined"
 						@click="chooseMode(key)"
 					>
-						<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
+						<span class="flex items-center gap-2">
+							<span class="font-medium text-text-primary">{{ t(OPERATING_MODES[key].label) }}</span>
+							<span
+								v-if="key === currentMode"
+								class="rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
+								>{{ t('dashboard.admin.instance.index.currentMode') }}</span
+							>
+						</span>
 						<span class="mt-1 block text-xs text-text-secondary">{{
 							t(OPERATING_MODES[key].audience)
 						}}</span>

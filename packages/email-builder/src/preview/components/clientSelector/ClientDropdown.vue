@@ -39,8 +39,13 @@ function selectClient(client: EmailClient | null) {
 	<div class="ep-dropdown ep-dropdown-clients">
 		<div class="ep-dropdown-header">
 			<span>{{ t('builder.preview.clients.title') }}</span>
-			<button v-if="selectedClient" class="ep-clear-button" @click="selectClient(null)">
-				<CloseIcon class="ep-clear-icon" />
+			<button
+				v-if="selectedClient"
+				type="button"
+				class="ep-clear-button"
+				@click="selectClient(null)"
+			>
+				<CloseIcon class="ep-clear-icon" aria-hidden="true" />
 				{{ t('builder.preview.clients.clear') }}
 			</button>
 		</div>
@@ -49,15 +54,21 @@ function selectClient(client: EmailClient | null) {
 		<div class="ep-dropdown-section">
 			<div class="ep-dropdown-section-title">{{ t('builder.preview.clients.popular') }}</div>
 			<div class="ep-client-grid">
+				<!-- native-title: the full client name, for a chip whose name is truncated -->
 				<button
 					v-for="client in popularClientsList"
 					:key="client.id"
+					type="button"
 					class="ep-client-chip"
 					:class="{ 'ep-client-selected': selectedClient?.id === client.id }"
+					:aria-pressed="selectedClient?.id === client.id"
+					:title="client.name"
 					@click="selectClient(client)"
 				>
-					<component :is="getIcon(client.icon)" class="ep-client-chip-icon" />
-					<span>{{ client.name.split(' ')[0] }}</span>
+					<component :is="getIcon(client.icon)" class="ep-client-chip-icon" aria-hidden="true" />
+					<!-- The full name: a first word alone turned "Outlook (Windows)" and
+					     "Outlook.com", or both Apple Mail clients, into look-alikes. -->
+					<span class="ep-client-chip-name">{{ client.name }}</span>
 				</button>
 			</div>
 		</div>
@@ -76,8 +87,10 @@ function selectClient(client: EmailClient | null) {
 					<button
 						v-for="client in group.clients"
 						:key="client.id"
+						type="button"
 						class="ep-client-item"
 						:class="{ 'ep-client-selected': selectedClient?.id === client.id }"
+						:aria-pressed="selectedClient?.id === client.id"
 						@click="selectClient(client)"
 					>
 						<component :is="getIcon(client.icon)" class="ep-client-item-icon" />
@@ -148,6 +161,18 @@ function selectClient(client: EmailClient | null) {
 	transition-property: color, background-color, border-color;
 	transition-duration: var(--motion-fast, 80ms);
 	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+}
+
+.ep-client-chip {
+	max-width: 100%;
+	min-width: 0;
+}
+
+.ep-client-chip-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .ep-client-chip:hover {

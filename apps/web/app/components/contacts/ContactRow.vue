@@ -136,10 +136,10 @@ function menuItems(): ContextMenuItem[] {
 				}}</span>
 			</td>
 			<td class="px-6 py-4 density-compact:py-2">
-				<span class="text-text-secondary">{{ contact.firstName || '-' }}</span>
+				<span class="text-text-secondary">{{ contact.firstName || '—' }}</span>
 			</td>
 			<td class="px-6 py-4 density-compact:py-2">
-				<span class="text-text-secondary">{{ contact.lastName || '-' }}</span>
+				<span class="text-text-secondary">{{ contact.lastName || '—' }}</span>
 			</td>
 			<td class="px-6 py-4 density-compact:py-2">
 				<span class="text-text-tertiary text-sm">{{ formatDate(contact.createdAt) }}</span>

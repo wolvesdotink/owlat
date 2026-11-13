@@ -77,7 +77,7 @@ async function discard() {
 			:aria-expanded="open"
 			@click="toggle"
 		>
-			<MagicWandIcon class="w-3 h-3" />
+			<MagicWandIcon class="w-3 h-3" aria-hidden="true" />
 			{{ t('components.ai.reviseBox.toggle') }}
 		</UiButton>
 
@@ -89,6 +89,7 @@ async function discard() {
 					type="text"
 					class="input input-sm flex-1"
 					:placeholder="t('components.ai.reviseBox.instructionPlaceholder')"
+					:aria-label="t('components.ai.reviseBox.instructionPlaceholder')"
 					:disabled="revise.isStreaming.value"
 					@keydown.enter.prevent="submit"
 				/>
@@ -107,12 +108,15 @@ async function discard() {
 			</div>
 
 			<!-- Progressive streamed output / final result -->
+			<!-- Announced once, when the stream settles, not per token. -->
 			<div
 				v-if="revise.isStreaming.value || revise.hasResult.value"
-				class="ai-revise__output rounded-md border border-border bg-bg-surface p-2 text-sm whitespace-pre-wrap"
+				class="ai-revise__output rounded-md border border-border-subtle bg-bg-surface p-2 text-sm whitespace-pre-wrap"
+				aria-live="polite"
+				:aria-busy="revise.isStreaming.value"
 			>
 				{{ revise.displayText.value
-				}}<span v-if="revise.isStreaming.value" class="ai-revise__caret">▍</span>
+				}}<span v-if="revise.isStreaming.value" class="ai-revise__caret" aria-hidden="true">▍</span>
 			</div>
 
 			<p v-if="revise.injectionFlagged.value" class="text-xs text-warning">

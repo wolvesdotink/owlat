@@ -93,6 +93,7 @@ const hasChanges = computed(
 
 // Toggle topic subscription
 function toggleTopicSubscription(listId: string) {
+	topicsBeforeGlobalOff = null;
 	const list = localTopics.value.find((l) => l._id === listId);
 	if (list) {
 		list.subscribed = !list.subscribed;
@@ -102,16 +103,29 @@ function toggleTopicSubscription(listId: string) {
 	localSubscribed.value = anySubscribed(localTopics.value);
 }
 
+// The topic choice the global switch cleared, so switching it straight back on
+// undoes the click instead of leaving every topic off under an "on" switch.
+let topicsBeforeGlobalOff: Map<string, boolean> | null = null;
+
 // Handle global unsubscribe toggle. Turning it off is a one-click
 // "unsubscribe from everything" — reflect that by clearing every per-topic
-// toggle so the UI matches what will be saved. Turning it back on does NOT
-// auto-resubscribe; the contact re-opts in per topic.
+// toggle so the UI matches what will be saved. Turning it back on restores the
+// topics that were on a moment ago, and nothing more: it does NOT subscribe the
+// contact to topics they never chose; they re-opt in per topic.
 function toggleGlobalSubscription() {
 	localSubscribed.value = !localSubscribed.value;
 	if (!localSubscribed.value) {
+		topicsBeforeGlobalOff = new Map(localTopics.value.map((list) => [list._id, list.subscribed]));
 		for (const list of localTopics.value) {
 			list.subscribed = false;
 		}
+		return;
+	}
+	if (topicsBeforeGlobalOff) {
+		for (const list of localTopics.value) {
+			list.subscribed = topicsBeforeGlobalOff.get(list._id) ?? list.subscribed;
+		}
+		topicsBeforeGlobalOff = null;
 	}
 }
 
@@ -143,7 +157,9 @@ async function savePreferences() {
 	);
 	if (!result?.ok) return;
 
-	// What was just saved is the new baseline.
+	// What was just saved is the new baseline. The switches are disabled while
+	// the request runs, so there is no later edit for this to overwrite.
+	topicsBeforeGlobalOff = null;
 	resetBaseline(nextSubscribed, nextTopics);
 	successMessage.value = t('recipient.preferences.saved');
 	successTimer = setTimeout(() => {
@@ -272,6 +288,7 @@ async function savePreferences() {
 				</div>
 				<UiSwitch
 					:model-value="localSubscribed"
+					:disabled="isSaving"
 					:label="t('recipient.preferences.globalSwitchLabel')"
 					@update:model-value="toggleGlobalSubscription"
 				/>
@@ -296,6 +313,7 @@ async function savePreferences() {
 						</div>
 						<UiSwitch
 							:model-value="list.subscribed"
+							:disabled="isSaving"
 							:label="t('recipient.preferences.topicSwitchLabel', { topic: list.name })"
 							@update:model-value="toggleTopicSubscription(list._id)"
 						/>

@@ -269,3 +269,30 @@ describe('PostboxRecipientField — chip drops', () => {
 		expect(await drop(JSON.stringify({ email: 'anna@example.com', from: 'to' }))).toBeUndefined();
 	});
 });
+
+describe('PostboxRecipientField — accessible name and invalid text', () => {
+	it('names the input by its visible label', () => {
+		const wrapper = mountField();
+		const input = wrapper.get('input');
+		const label = wrapper.get('label');
+		expect(label.attributes('for')).toBe(input.attributes('id'));
+		expect(input.attributes('role')).toBe('combobox');
+		expect(input.attributes('aria-expanded')).toBe('false');
+	});
+
+	it('says why an address that is not an email stays out of the envelope', async () => {
+		const wrapper = mountField();
+		const input = wrapper.get('input');
+		await input.setValue('anna@');
+		await input.trigger('keydown', { key: 'Enter' });
+
+		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+		const error = wrapper.get('[data-testid="postbox-recipient-invalid"]');
+		expect(error.text()).toContain('anna@');
+		expect(input.attributes('aria-invalid')).toBe('true');
+		expect(input.attributes('aria-describedby')).toBe(error.attributes('id'));
+
+		await input.setValue('anna@example.com');
+		expect(wrapper.find('[data-testid="postbox-recipient-invalid"]').exists()).toBe(false);
+	});
+});

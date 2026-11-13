@@ -24,7 +24,8 @@ const { t } = useI18n();
 		v-model:open="isEditModalOpen"
 		:title="t('dashboard.admin.instance.properties.editModal.title')"
 	>
-		<div class="space-y-4">
+		<!-- A form, so Enter in the label field saves. -->
+		<form class="space-y-4" @submit.prevent="emit('submit')">
 			<!-- Property Info (Read-only) -->
 			<div v-if="property" class="p-4 rounded-xl bg-bg-surface border border-border-subtle">
 				<div class="flex items-center gap-3">
@@ -52,7 +53,7 @@ const { t } = useI18n();
 				:disabled="isSaving"
 				:required="true"
 			/>
-		</div>
+		</form>
 
 		<template #footer>
 			<UiButton variant="secondary" :disabled="isSaving" @click="isEditModalOpen = false">

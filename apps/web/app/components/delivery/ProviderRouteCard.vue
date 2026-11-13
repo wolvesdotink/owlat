@@ -61,11 +61,9 @@ const description = computed(() => localized(props.messageType.description));
 	<div class="card p-6">
 		<div class="flex items-start justify-between gap-4">
 			<div class="flex items-start gap-4">
-				<div class="p-3 rounded-lg bg-bg-surface flex items-center justify-center">
-					<component :is="messageType.icon" class="w-6 h-6 text-text-secondary" />
-				</div>
+				<UiIconBox :icon="messageType.icon" size="md" variant="surface" rounded="lg" />
 				<div>
-					<h3 class="text-lg font-medium text-text-primary">{{ label }}</h3>
+					<h3 class="text-lg font-semibold text-text-primary">{{ label }}</h3>
 					<p class="text-sm text-text-secondary mt-0.5">{{ description }}</p>
 
 					<!-- Configured route summary -->
@@ -96,8 +94,8 @@ const description = computed(() => localized(props.messageType.description));
 					:text="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
 				>
 					<UiButton
-						variant="ghost"
-						class="p-2 text-error hover:bg-error/10"
+						variant="danger-ghost"
+						class="px-2.5"
 						:aria-label="t('dashboard.admin.delivery.providerRouting.resetToDefault')"
 						@click="emit('reset')"
 					>

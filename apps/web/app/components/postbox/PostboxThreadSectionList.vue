@@ -125,9 +125,10 @@ const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[
 		<!-- Per-section paging: this button grows THIS section only. -->
 		<template #section-footer="{ section }">
 			<li v-if="section.canLoadMore" class="px-4 py-2">
-				<button
+				<UiButton
+					variant="secondary"
+					size="sm"
 					type="button"
-					class="text-sm text-brand hover:underline"
 					@click="emit('load-more', section.key)"
 				>
 					{{
@@ -135,7 +136,7 @@ const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[
 							section: section.label,
 						})
 					}}
-				</button>
+				</UiButton>
 			</li>
 		</template>
 	</PostboxSectionedThreadList>

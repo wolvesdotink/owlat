@@ -28,12 +28,13 @@ const tooltip = computed(() =>
 </script>
 
 <template>
-	<UiTooltip :text="tooltip">
-		<button
-			class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors"
-		>
-			<component :is="icon" class="w-3 h-3 text-text-tertiary" />
-			<span class="truncate max-w-[200px]">{{ title }}</span>
-		</button>
-	</UiTooltip>
+	<!-- A citation, not a control: nothing happens on a press, so it is not a
+	     button. The full source name is in the title. -->
+	<span
+		class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-bg-surface border border-border-subtle text-text-secondary"
+		:title="tooltip"
+	>
+		<component :is="icon" class="w-3 h-3 text-text-tertiary" aria-hidden="true" />
+		<span class="truncate max-w-[200px]">{{ title }}</span>
+	</span>
 </template>

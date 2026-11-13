@@ -80,7 +80,7 @@ const preview = computed(() => deriveHostnames(props.domain, labels.value));
 			>
 				<label :for="`hostname-${f.key}`" class="pt-2 text-xs text-text-secondary">
 					{{ t(f.label) }}
-					<span class="block text-[11px] text-text-tertiary">{{ t(f.hint) }}</span>
+					<span class="block text-2xs text-text-tertiary">{{ t(f.hint) }}</span>
 				</label>
 				<div>
 					<input
@@ -99,21 +99,21 @@ const preview = computed(() => deriveHostnames(props.domain, labels.value));
 					<p
 						v-if="isDisabled(f.key)"
 						:id="`hostname-${f.key}-hint`"
-						class="mt-1 text-[11px] leading-snug text-text-tertiary"
+						class="mt-1 text-2xs leading-snug text-text-tertiary"
 					>
 						{{ disabledHint }}
 					</p>
 					<p
 						v-else-if="errors[f.key]"
 						:id="`hostname-${f.key}-hint`"
-						class="mt-1 text-[11px] leading-snug text-error"
+						class="mt-1 text-2xs leading-snug text-error"
 					>
 						{{ errors[f.key] }}
 					</p>
 					<p
 						v-else-if="domain.trim()"
 						:id="`hostname-${f.key}-hint`"
-						class="mt-1 truncate font-mono text-[11px] text-text-tertiary"
+						class="mt-1 truncate font-mono text-2xs text-text-tertiary"
 					>
 						{{ preview[f.key] }}
 					</p>

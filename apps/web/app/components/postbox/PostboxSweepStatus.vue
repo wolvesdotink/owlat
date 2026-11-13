@@ -23,7 +23,7 @@ const { t } = useI18n();
 		v-if="status"
 		role="status"
 		data-testid="postbox-sweep-status"
-		class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-text-primary px-3 py-1.5 text-xs text-text-inverse shadow-lg"
+		class="pointer-events-none fixed bottom-6 left-1/2 z-(--z-toast) -translate-x-1/2 rounded-full bg-text-primary px-3 py-1.5 text-xs text-text-inverse shadow-lg"
 	>
 		<span class="font-medium">{{
 			t(

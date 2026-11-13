@@ -62,7 +62,7 @@ const themeOptions = computed<
 		<div
 			role="group"
 			:aria-label="t('components.preferences.preferencesAppearance.groupLabel')"
-			class="grid grid-cols-3 gap-3"
+			class="grid grid-cols-1 gap-3 sm:grid-cols-3"
 		>
 			<button
 				v-for="option in themeOptions"

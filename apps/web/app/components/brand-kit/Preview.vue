@@ -117,7 +117,13 @@ const usesWebFont = computed(
 					{{ t('dashboard.admin.instance.brandKit.preview.subtitle') }}
 				</p>
 			</div>
-			<UiSegmentedControl v-model="mode" :options="modeOptions" size="sm" fit="content" />
+			<UiSegmentedControl
+				v-model="mode"
+				:options="modeOptions"
+				size="sm"
+				fit="content"
+				:aria-label="t('dashboard.admin.instance.brandKit.preview.modeLabel')"
+			/>
 		</div>
 		<div class="p-4 bg-bg-surface">
 			<!-- palette-ok: the email document paints its own background; white until it loads -->

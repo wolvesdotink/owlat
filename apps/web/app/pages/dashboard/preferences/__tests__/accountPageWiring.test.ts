@@ -114,6 +114,7 @@ function mountPage() {
 			mocks: { formatDate },
 			stubs: {
 				UiIconBox: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				UiButton: { template: '<button v-bind="$attrs"><slot /></button>', inheritAttrs: false },
 				UiInput: FieldStub,
 				AuthPasswordInput: FieldStub,

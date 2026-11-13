@@ -124,7 +124,7 @@ function folderLabel(role: UnifiedFolderRole): string {
 					<UiTooltip :text="t('components.postbox.allInboxes.openInbox', { name: inbox.name })">
 						<NuxtLink
 							:to="mailboxFolderHref(role, inbox.mailboxId)"
-							class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-text-primary"
+							class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:p-2.5 hover:text-text-primary"
 							:aria-label="t('components.postbox.allInboxes.openInbox', { name: inbox.name })"
 						>
 							<ArrowUpRightIcon class="w-3.5 h-3.5" />

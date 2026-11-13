@@ -27,7 +27,11 @@ const props = withDefaults(
 const { t } = useI18n();
 
 const open = ref(props.embedded);
-const { data: actions } = useConvexQuery(api.inbox.queries.getMessageActions, () =>
+const {
+	data: actions,
+	error: actionsError,
+	refetch: refetchActions,
+} = useConvexQuery(api.inbox.queries.getMessageActions, () =>
 	open.value ? { inboundMessageId: props.inboundMessageId } : 'skip'
 );
 
@@ -89,6 +93,7 @@ function statusLabel(status: string): string {
 			v-if="!embedded"
 			type="button"
 			class="text-xs text-text-tertiary hover:text-text-secondary flex items-center gap-1"
+			:aria-expanded="open"
 			@click="open = !open"
 		>
 			<component :is="open ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3" />
@@ -99,7 +104,13 @@ function statusLabel(status: string): string {
 			class="pl-3 border-l border-border-subtle space-y-1.5"
 			:class="embedded ? '' : 'mt-2'"
 		>
-			<div v-if="!actions || actions.length === 0" class="text-xs text-text-tertiary">
+			<!-- Not read yet is not "nothing recorded"; a failed read says so. -->
+			<UiQueryBoundary v-if="actionsError" :error="actionsError" @retry="refetchActions" />
+			<div v-else-if="actions === undefined" class="space-y-1.5" aria-busy="true">
+				<span class="sr-only">{{ t('common.loading') }}</span>
+				<UiSkeleton v-for="row in 3" :key="row" class="h-3.5 w-40" aria-hidden="true" />
+			</div>
+			<div v-else-if="actions.length === 0" class="text-xs text-text-tertiary">
 				{{ t('components.inbox.agentActionTimeline.empty') }}
 			</div>
 			<div v-for="a in actions" :key="a._id" class="flex items-center gap-2 text-xs">

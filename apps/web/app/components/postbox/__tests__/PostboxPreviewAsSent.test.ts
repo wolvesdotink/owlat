@@ -27,7 +27,13 @@ function srcdocOf(inlineImageSources?: { scope: string; urls: Map<string, string
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiModal: { template: '<div><slot /></div>' } },
+			stubs: {
+				UiModal: { template: '<div><slot /></div>' },
+				UiSegmentedControl: {
+					props: ['options', 'modelValue'],
+					template: '<div role="tablist" />',
+				},
+			},
 		},
 	});
 	const srcdoc = wrapper.get('iframe').attributes('srcdoc') ?? '';

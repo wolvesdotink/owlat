@@ -70,7 +70,7 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton },
-			stubs: { WorkspaceLogo: true },
+			stubs: { WorkspaceLogo: true, UiIconBox: true },
 		},
 	});
 }
@@ -212,5 +212,22 @@ describe('accepting an invitation with a new account', () => {
 		expect(signOut).toHaveBeenCalledWith({
 			redirectTo: `/auth/login?redirect=${encodeURIComponent('/invite/accept?id=inv-1')}`,
 		});
+	});
+
+	it('explains an expired invitation in its own words and offers another account', async () => {
+		sessionUser = { email: 'new@owlat.example', emailVerified: true };
+		acceptInvitation.mockResolvedValueOnce({
+			data: null,
+			error: { code: 'INVITATION_NOT_FOUND', message: 'Invitation not found', status: 400 },
+		});
+		const wrapper = mountPage();
+		await flushPromises();
+
+		expect(wrapper.text()).toContain('This invitation has expired or was already used.');
+		expect(wrapper.text()).not.toContain('Invitation not found');
+		expect(wrapper.text()).not.toContain('Go to dashboard');
+		expect(
+			wrapper.findAll('button').some((b) => b.text().includes('Use a different account'))
+		).toBe(true);
 	});
 });

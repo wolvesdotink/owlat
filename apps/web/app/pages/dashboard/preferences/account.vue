@@ -180,7 +180,7 @@ const daysRemaining = computed(() => {
 		-->
 		<div
 			v-if="deletionLoading && !pendingDeletion"
-			class="space-y-8 max-w-4xl"
+			class="space-y-6 max-w-4xl"
 			role="status"
 			aria-busy="true"
 			:aria-label="t('common.loading')"
@@ -195,7 +195,22 @@ const daysRemaining = computed(() => {
 			</div>
 		</div>
 
-		<div v-else class="space-y-8 max-w-4xl">
+		<div v-else class="space-y-6 max-w-4xl">
+			<!-- A pending deletion is the one time-critical state here: someone
+			     who came back to cancel it finds it first. -->
+			<!-- A failed read says nothing about a pending deletion: neither the
+			     banner nor "Request deletion" may stand in for the answer. -->
+			<UiQueryBoundary v-if="deletionError" :error="deletionError" @retry="refetchDeletion" />
+
+			<!-- Pending Deletion Banner -->
+			<PreferencesPendingDeletion
+				v-else-if="pendingDeletion"
+				:scheduled-for-deletion="pendingDeletion.scheduledForDeletion"
+				:days-remaining="daysRemaining"
+				:is-cancelling="isCancelling"
+				@cancel="handleCancelDeletion"
+			/>
+
 			<!-- Profile -->
 			<div class="card">
 				<h2 class="text-lg font-semibold text-text-primary mb-1">
@@ -238,19 +253,6 @@ const daysRemaining = computed(() => {
 			<!-- Daily brief by email: opt-in delivery of the digest that otherwise
 			     only exists at the top of Today. -->
 			<PostboxDailyBriefSettings v-if="hasMail" />
-
-			<!-- A failed read says nothing about a pending deletion: neither the
-			     banner nor "Request deletion" may stand in for the answer. -->
-			<UiQueryBoundary v-if="deletionError" :error="deletionError" @retry="refetchDeletion" />
-
-			<!-- Pending Deletion Banner -->
-			<PreferencesPendingDeletion
-				v-else-if="pendingDeletion"
-				:scheduled-for-deletion="pendingDeletion.scheduledForDeletion"
-				:days-remaining="daysRemaining"
-				:is-cancelling="isCancelling"
-				@cancel="handleCancelDeletion"
-			/>
 
 			<!-- Data Export Section -->
 			<PreferencesDataExport

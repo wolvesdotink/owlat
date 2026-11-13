@@ -261,7 +261,7 @@ function handleClickOutside(event: MouseEvent) {
 			<!-- Preview Mode -->
 			<div v-if="viewMode === 'preview'" class="ep-preview-area">
 				<div class="ep-preview-scroll">
-					<DeviceFrame :device="selectedDevice">
+					<DeviceFrame :device="selectedDevice" :dark-mode="darkMode">
 						<iframe
 							:key="iframeKey"
 							:srcdoc="displayHtml"
@@ -318,7 +318,7 @@ function handleClickOutside(event: MouseEvent) {
 			<!-- AMP Mode -->
 			<div v-else-if="viewMode === 'amp'" class="ep-preview-area">
 				<div class="ep-preview-scroll">
-					<DeviceFrame :device="selectedDevice">
+					<DeviceFrame :device="selectedDevice" :dark-mode="darkMode">
 						<iframe
 							:key="iframeKey"
 							:srcdoc="ampHtml"

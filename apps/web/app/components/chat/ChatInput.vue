@@ -233,7 +233,7 @@ const handlePaste = async (event: ClipboardEvent) => {
 	const files = Array.from(event.clipboardData?.files ?? []);
 	if (files.length === 0) return;
 	event.preventDefault();
-	await uploadAll(files, 'pasted-file');
+	await uploadAll(files, t('components.chat.chatInput.pastedFile'));
 };
 
 const removeAttachment = (id: Id<'mediaAssets'>) => {
@@ -277,9 +277,12 @@ const handleSend = async () => {
 				class="flex items-center gap-2 px-2 py-1 bg-bg-surface border border-border-subtle rounded text-xs"
 			>
 				<PaperclipIcon class="w-3 h-3 text-text-tertiary" />
-				<span class="text-text-secondary truncate max-w-[180px]">{{ attachment.filename }}</span>
+				<span class="text-text-secondary truncate max-w-[180px]" :title="attachment.filename">{{
+					attachment.filename
+				}}</span>
 				<button
-					class="text-text-tertiary hover:text-error"
+					type="button"
+					class="-m-1 p-1 pointer-coarse:p-3 pointer-coarse:-m-3 rounded text-text-tertiary hover:text-error"
 					@click="removeAttachment(attachment.id)"
 					:aria-label="
 						t('components.chat.chatInput.removeAttachment', { filename: attachment.filename })
@@ -292,15 +295,16 @@ const handleSend = async () => {
 
 		<div class="flex items-end gap-2">
 			<UiTooltip :text="t('components.chat.chatInput.attachFile')">
-				<button
-					class="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+				<UiButton
+					variant="ghost"
+					class="flex-shrink-0 w-10 h-10 p-0"
 					:disabled="isUploading"
 					:aria-label="t('components.chat.chatInput.attachFile')"
 					@click="fileInputRef?.click()"
 				>
 					<PaperclipIcon v-if="!isUploading" class="w-4 h-4" />
 					<UiSpinner v-else size="xs" />
-				</button>
+				</UiButton>
 			</UiTooltip>
 			<input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFilePick" />
 
@@ -308,8 +312,9 @@ const handleSend = async () => {
 				ref="textareaRef"
 				v-model="text"
 				:placeholder="t('components.chat.chatInput.placeholder')"
+				:aria-label="t('components.chat.chatInput.messageLabel')"
 				rows="1"
-				class="input flex-1 resize-none"
+				class="input flex-1 resize-none min-h-10"
 				v-bind="mentionPicker?.fieldAttrs"
 				@keydown="handleKeydown"
 				@input="handleInput"
@@ -345,7 +350,8 @@ const handleSend = async () => {
 				{{ recallNotice }}
 			</p>
 		</div>
-		<p class="text-[11px] text-text-tertiary mt-1.5 px-1">
+		<!-- Keyboard hints; a touch keyboard has no Shift+Enter or ↑. -->
+		<p class="text-2xs text-text-tertiary mt-1.5 px-1 pointer-coarse:hidden">
 			{{ t('components.chat.chatInput.hint') }}
 		</p>
 	</div>

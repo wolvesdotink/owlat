@@ -51,7 +51,7 @@ const addLanguageDropdownOpen = ref(false);
 					<tr class="border-b border-border-subtle bg-bg-surface/50">
 						<!-- Field column -->
 						<th
-							class="px-4 py-3 text-left text-sm font-medium text-text-secondary sticky left-0 bg-bg-surface/50 min-w-[200px]"
+							class="px-4 py-3 text-left text-sm font-medium text-text-secondary sticky left-0 bg-bg-elevated min-w-[200px]"
 						>
 							{{ t('components.translation.manager.fieldColumn') }}
 						</th>
@@ -80,8 +80,13 @@ const addLanguageDropdownOpen = ref(false);
 										:text="t('components.translation.manager.autoTranslateTitle')"
 									>
 										<button
-											class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:aria-label="t('components.translation.manager.autoTranslateTitle')"
+											class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:p-2.5"
+											type="button"
+											:aria-label="
+												t('components.translation.manager.autoTranslateNamed', {
+													language: nativeLabelOf(lang),
+												})
+											"
 											@click="emit('autoTranslate', lang)"
 										>
 											<SparklesIcon class="w-4 h-4" />
@@ -90,8 +95,13 @@ const addLanguageDropdownOpen = ref(false);
 									<UiSpinner v-else size="xs" />
 									<UiTooltip :text="t('components.translation.manager.removeLanguageTitle')">
 										<button
-											class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:aria-label="t('components.translation.manager.removeLanguageTitle')"
+											class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:p-2.5"
+											type="button"
+											:aria-label="
+												t('components.translation.manager.removeLanguageNamed', {
+													language: nativeLabelOf(lang),
+												})
+											"
 											@click="emit('removeLanguage', lang)"
 										>
 											<TrashIcon class="w-4 h-4" />

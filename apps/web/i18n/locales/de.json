@@ -168,7 +168,8 @@
 			"pageTitle": "Termin buchen",
 			"pickHeading": "Zeit wählen",
 			"seoTitle": "{meeting} mit {host}",
-			"unreachableHeading": "Seite konnte nicht geladen werden"
+			"unreachableHeading": "Seite konnte nicht geladen werden",
+			"timesFailed": "Die freien Termine für diesen Monat konnten nicht geladen werden."
 		}
 	},
 	"cancelDeletion": {
@@ -179,7 +180,7 @@
 		"goToDashboard": "Zum Dashboard",
 		"loadingBody": "Bitte warte, während wir deine Anfrage verarbeiten.",
 		"loadingTitle": "Löschung wird abgebrochen...",
-		"noTokenBody": "Dieser Abbruchlink ist ungültig oder es fehlt das erforderliche Token. Bitte verwende den Link aus deiner E-Mail oder melde dich an, um dein Konto zu verwalten.",
+		"noTokenBody": "Dieser Link ist unvollständig. Öffne ihn noch einmal aus der E-Mail oder melde dich an, um dein Konto zu verwalten.",
 		"noTokenTitle": "Ungültiger Link",
 		"operationLabel": "Kontolöschung abbrechen",
 		"pageTitle": "Löschung abbrechen — Owlat",
@@ -249,7 +250,8 @@
 			"member": "Mitglied",
 			"admin": "Administrator",
 			"owner": "Inhaber"
-		}
+		},
+		"copyFailed": "Kopieren hat nicht geklappt. Markiere den Text und kopiere ihn selbst."
 	},
 	"components": {
 		"agent": {
@@ -285,7 +287,15 @@
 				"trippedAgo": "Ausgelöst {ago}"
 			},
 			"metricChart": {
-				"noData": "Keine Daten verfügbar"
+				"noData": "Keine Daten verfügbar",
+				"summary": "{label}: zuletzt {latest}, zwischen {min} und {max}, von {from} bis {to}"
+			},
+			"agentMetricCard": {
+				"trend": {
+					"up": "Gestiegen gegenüber dem vorherigen Zeitraum",
+					"down": "Gesunken gegenüber dem vorherigen Zeitraum",
+					"stable": "Unverändert gegenüber dem vorherigen Zeitraum"
+				}
 			}
 		},
 		"agentTasks": {
@@ -314,7 +324,8 @@
 				},
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
-				"undoTitle": "Letzte Aktion rückgängig machen"
+				"undoTitle": "Letzte Aktion rückgängig machen",
+				"progressLabel": "Erledigte Aufgaben"
 			},
 			"clarificationQuestions": {
 				"questionCounter": "Frage {index} von {total}"
@@ -426,7 +437,9 @@
 				"labels": "Labels",
 				"ask": "Frag deine Wissensdatenbank",
 				"askMail": "Frag deine E-Mails"
-			}
+			},
+			"resultCount": "{count} Ergebnis | {count} Ergebnisse",
+			"answerReady": "Antwort ist da"
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -455,7 +468,13 @@
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",
 					"searchKnowledge": "Wissensdatenbank durchsucht"
-				}
+				},
+				"status": {
+					"running": "läuft",
+					"done": "erledigt",
+					"error": "fehlgeschlagen"
+				},
+				"failedCount": "{count} fehlgeschlagen | {count} fehlgeschlagen"
 			}
 		},
 		"attachmentPanel": {
@@ -495,7 +514,11 @@
 				"setExemptionOperation": "Bereinigungsausnahme ändern",
 				"suppressAfterDays": "Sperrung nach Tagen",
 				"title": "Automatische Listenbereinigung",
-				"enabledLabel": "Inaktive Kontakte automatisch bereinigen"
+				"enabledLabel": "Inaktive Kontakte automatisch bereinigen",
+				"unsaved": "Nicht gespeicherte Änderungen",
+				"showMore": "Mehr anzeigen",
+				"trackError": "Diese Liste konnte nicht geladen werden. Lade die Seite neu, um es noch einmal zu versuchen.",
+				"restoreNotNeededToast": "Dieser Kontakt ist nicht mehr automatisch gesperrt"
 			},
 			"suppressionsImportModal": {
 				"added": "Hinzugefügt",
@@ -524,7 +547,8 @@
 					"upload": "Lade eine Adressliste hoch"
 				},
 				"title": "Sperrliste importieren",
-				"validAddresses": "Gültige Adressen"
+				"validAddresses": "Gültige Adressen",
+				"completeWithProblemsTitle": "Import mit Problemen abgeschlossen"
 			}
 		},
 		"automations": {
@@ -594,7 +618,8 @@
 							"hours": "Stunden",
 							"minutes": "Minuten",
 							"weeks": "Wochen"
-						}
+						},
+						"unitLabel": "Einheit"
 					}
 				},
 				"email": {
@@ -768,7 +793,8 @@
 					"tue": "Di",
 					"wed": "Mi"
 				},
-				"windowLabel": "Arbeitszeitfenster"
+				"windowLabel": "Arbeitszeitfenster",
+				"unsaved": "Ungespeicherte Änderungen"
 			},
 			"feedbackStatsCard": {
 				"approved": "Freigegeben",
@@ -806,7 +832,8 @@
 				"saveOperation": "Regel speichern",
 				"teach": "Regel beibringen",
 				"title": "Regeln in natürlicher Sprache",
-				"updateOperation": "Regel aktualisieren"
+				"updateOperation": "Regel aktualisieren",
+				"deleteConfirmBody": "Der Assistent befolgt „{instruction}“ dann nicht mehr. Um die Regel zurückzubekommen, musst du sie neu beibringen."
 			}
 		},
 		"backupCommandRow": {
@@ -872,7 +899,8 @@
 				"slugHint": "3 bis 40 Kleinbuchstaben, Ziffern und Bindestriche.",
 				"timeZone": "Deine Zeitzone",
 				"weeklyHeading": "Wöchentliche Zeiten",
-				"weeklyIntro": "Wann man dich buchen kann, in deiner Zeitzone. Mit mehreren Zeiträumen lässt du eine Mittagspause frei."
+				"weeklyIntro": "Wann man dich buchen kann, in deiner Zeitzone. Mit mehreren Zeiträumen lässt du eine Mittagspause frei.",
+				"unsaved": "Ungespeicherte Änderungen"
 			},
 			"ranges": {
 				"add": "Zeiten hinzufügen",
@@ -1168,7 +1196,8 @@
 				"truncated": "Hier brauchen mehr Nachrichten ihren genauen Wortlaut, als diese Liste zeigt."
 			},
 			"phone": {
-				"more": "Stand der Dinge, Aktivitäten, Personen, Dateien"
+				"more": "Stand der Dinge, Aktivitäten, Personen, Dateien",
+				"less": "Weniger anzeigen"
 			},
 			"row": {
 				"forYou": "{count} für dich | {count} für dich",
@@ -1230,7 +1259,10 @@
 				"winnerManual": "Manuell",
 				"winnerManualHint": "Du entscheidest",
 				"winnerOpenRate": "Öffnungsrate",
-				"winnerOpenRateHint": "Die meisten Öffnungen gewinnen"
+				"winnerOpenRateHint": "Die meisten Öffnungen gewinnen",
+				"splitValueText": "{percent} % pro Variante, {remaining} % bekommen die Gewinnerversion",
+				"variantASubjectLater": "Nutzt den Betreff, den du im Inhaltsschritt festlegst",
+				"variantATemplateLater": "Nutzt die E-Mail, die du im Inhaltsschritt auswählst"
 			},
 			"automatedOpens": {
 				"excluded": "{count} E-Mail wurde automatisch von Apple Mail Privacy Protection oder einem Sicherheitsscanner abgerufen. Diese Abrufe zählen nicht als Öffnungen. | {count} E-Mails wurden automatisch von Apple Mail Privacy Protection oder Sicherheitsscannern abgerufen. Diese Abrufe zählen nicht als Öffnungen.",
@@ -1279,7 +1311,8 @@
 					"sent": "Gesendet {at} · {count} Empfänger",
 					"updated": "Aktualisiert {updated}",
 					"variantLeads": "Variante {variant} führt mit {points} Punkten",
-					"variantsEven": "Die Varianten liegen gleichauf"
+					"variantsEven": "Die Varianten liegen gleichauf",
+					"sentAt": "Gesendet {at}"
 				},
 				"moreActions": "Weitere Aktionen",
 				"openCampaign": "{name} öffnen",
@@ -1432,7 +1465,8 @@
 					"segmentMissing": "Segment-Kampagnen bekommen keine Abmelde-Fußzeile von Owlat, und diese E-Mail hat keinen Abmeldelink. Mail-Apps bieten trotzdem die Abmeldung per Klick an, aber die meisten Gesetze verlangen einen sichtbaren Link.",
 					"segmentNote": "Geht die E-Mail an ein Segment, braucht sie einen eigenen Abmeldelink."
 				},
-				"warningsDontBlock": "Warnungen halten den Versand nicht auf. Markiere sie als geprüft oder sende trotzdem."
+				"warningsDontBlock": "Warnungen halten den Versand nicht auf. Markiere sie als geprüft oder sende trotzdem.",
+				"showMeItem": "{item} im Editor zeigen"
 			},
 			"reportHeadline": {
 				"aboveClick": "{open} geöffnet und {click} geklickt — Klickrate über deinem Durchschnitt.",
@@ -1602,7 +1636,12 @@
 						"clickRate": "Beste Klickrate",
 						"manual": "Manuelle Auswahl",
 						"openRate": "Beste Öffnungsrate"
-					}
+					},
+					"editCampaignName": "Kampagnennamen bearbeiten",
+					"editSender": "Absender bearbeiten",
+					"editAudience": "Zielgruppe bearbeiten",
+					"editEmailContent": "E-Mail-Inhalt bearbeiten",
+					"editAbTest": "A/B-Test bearbeiten"
 				},
 				"setupAddSenderInline": {
 					"emailLabel": "Absenderadresse",
@@ -1817,7 +1856,6 @@
 						"placeholder": "Eine beliebige Zeichenfolge, die du auch bei Meta einträgst"
 					}
 				},
-				"hideValue": "Wert verbergen",
 				"info": {
 					"chat": "Chat ist nativ integriert und erfordert keine zusätzliche Konfiguration.",
 					"email": "E-Mail ist integriert — hier gibt es keine Zugangsdaten zu hinterlegen. Den E-Mail-Versand konfigurierst du unter Sendedomains und deinen Zustellungsanbieter in den technischen Einstellungen."
@@ -1860,7 +1898,9 @@
 				"placeholder": "Nachricht schreiben… mit {'@'} erwähnen",
 				"recallNotInHistory": "Unter den hier angezeigten Nachrichten ist keine von dir, die du bearbeiten kannst.",
 				"recallNotLoaded": "Unter den letzten Nachrichten ist keine von dir, die du bearbeiten kannst. Lade frühere Nachrichten, um weiter zurückzugehen.",
-				"removeAttachment": "Anhang {filename} entfernen"
+				"removeAttachment": "Anhang {filename} entfernen",
+				"messageLabel": "Nachricht",
+				"pastedFile": "Eingefügte Datei"
 			},
 			"chatLinkEmailDialog": {
 				"empty": "Keine Posteingangs-Konversationen gefunden.",
@@ -1922,11 +1962,14 @@
 			"chatMessage": {
 				"assistantTyping": "Assistent schreibt",
 				"deleted": "(diese Nachricht wurde gelöscht)",
-				"edited": "bearbeitet"
+				"edited": "bearbeitet",
+				"editLabel": "Nachricht bearbeiten"
 			},
 			"chatMessageList": {
 				"emptyBody": "Sende die erste.",
-				"emptyTitle": "Noch keine Nachrichten"
+				"emptyTitle": "Noch keine Nachrichten",
+				"newMessageFrom": "Neue Nachricht von {name}",
+				"newMessages": "Neue Nachrichten"
 			},
 			"chatNewChannelDialog": {
 				"createFailed": "Kanal konnte nicht erstellt werden",
@@ -1938,7 +1981,11 @@
 				"private": "Privat",
 				"public": "Öffentlich",
 				"title": "Neuer Kanal",
-				"visibility": "Sichtbarkeit"
+				"visibility": "Sichtbarkeit",
+				"visibilityHint": {
+					"private": "Nur Mitglieder sehen ihn. Andere finden ihn nicht und können nur beitreten, wenn sie hinzugefügt werden.",
+					"public": "Alle im Workspace können ihn finden und beitreten."
+				}
 			},
 			"chatNewDmDialog": {
 				"hint": "Wähle ein Teammitglied für eine 1:1-Direktnachricht oder mehrere für einen Gruppenchat.",
@@ -1971,13 +2018,19 @@
 				"noChannels": "Noch keine Kanäle.",
 				"noDms": "Noch keine Unterhaltungen.",
 				"searchPlaceholder": "Suchen…",
-				"title": "Chat"
+				"title": "Chat",
+				"mentionedYou": "hat dich erwähnt",
+				"noMatches": "Keine Treffer.",
+				"searchLabel": "Unterhaltungen durchsuchen",
+				"unreadCount": "{count} ungelesen"
 			}
 		},
 		"codeTasks": {
 			"codeTaskCard": {
 				"cancelOperation": "Aufgabe abbrechen",
-				"cancelling": "Wird abgebrochen..."
+				"cancelling": "Wird abgebrochen...",
+				"cancelConfirmBody": "Der Coding-Agent hört auf, an dieser Aufgabe zu arbeiten. Das lässt sich nicht rückgängig machen.",
+				"keepRunning": "Weiterlaufen lassen"
 			},
 			"codeTaskStatusBadge": {
 				"failed": "Fehlgeschlagen",
@@ -2045,15 +2098,16 @@
 					"emailAttachment": "E-Mail-Anhang",
 					"upload": "Hochgeladen"
 				},
-				"title": "Dateien"
+				"title": "Dateien",
+				"limitNote": "Es werden die ersten {count} Dateien angezeigt."
 			},
 			"contactKnowledgeTab": {
-				"confidence": "{percent} % Konfidenz",
 				"count": "{count} Eintrag | {count} Einträge",
 				"emptyBody": "Wissen wird automatisch aus Konversationen mit diesem Kontakt extrahiert.",
 				"emptyTitle": "Noch keine Wissenseinträge",
 				"loading": "Wissen wird geladen...",
-				"title": "Wissen"
+				"title": "Wissen",
+				"limitNote": "Es werden die ersten {count} Einträge angezeigt."
 			},
 			"csvImportModal": {
 				"complete": {
@@ -2099,7 +2153,8 @@
 				"listMapping": {
 					"found": "Wir haben {count} eindeutigen Themennamen in deiner CSV gefunden. Ordne ihn einem vorhandenen Owlat-Thema zu oder überspringe ihn. | Wir haben {count} eindeutige Themennamen in deiner CSV gefunden. Ordne jeden einem vorhandenen Owlat-Thema zu oder überspringe ihn.",
 					"noneFound": "In der zugeordneten Spalte wurden keine Themennamen gefunden. Alle Zellen waren leer.",
-					"skip": "— Überspringen"
+					"skip": "— Überspringen",
+					"selectLabel": "Thema für „{name}“"
 				},
 				"mapping": {
 					"addToTopic": "Zu Thema hinzufügen",
@@ -2135,7 +2190,13 @@
 					"summaryProperties": "{count} benutzerdefinierte Eigenschaft wird importiert: {keys} | {count} benutzerdefinierte Eigenschaften werden importiert: {keys}",
 					"summaryTitle": "Import-Zusammenfassung",
 					"validContacts": "Gültige Kontakte",
-					"viewIssues": "Details zu den Problemen anzeigen"
+					"viewIssues": "Details zu den Problemen anzeigen",
+					"rowStatus": {
+						"valid": "Gültig",
+						"missing": "E-Mail fehlt",
+						"invalid": "Ungültige E-Mail",
+						"duplicate": "Doppelte E-Mail"
+					}
 				},
 				"steps": {
 					"complete": "Import abgeschlossen",
@@ -2181,7 +2242,8 @@
 				"submit": "Als CSV exportieren",
 				"subtitle": "Als CSV-Datei herunterladen",
 				"title": "Kontakte exportieren",
-				"whatToExport": "Was exportiert werden soll"
+				"whatToExport": "Was exportiert werden soll",
+				"allContactsDescriptionUnknown": "Alle Kontakte in diesem Workspace exportieren"
 			},
 			"identitiesTab": {
 				"addIdentity": "Identität hinzufügen",
@@ -2204,16 +2266,16 @@
 				"setPrimary": "Als primär festlegen",
 				"title": "Kanal-Identitäten",
 				"toasts": {
-					"addFailed": "Identität konnte nicht hinzugefügt werden",
 					"added": "Identität hinzugefügt",
-					"mergeFailed": "Kontakte konnten nicht zusammengeführt werden",
 					"merged": "Kontakte zusammengeführt",
-					"removeFailed": "Identität konnte nicht entfernt werden",
 					"removed": "Identität entfernt",
-					"verified": "Identität verifiziert",
-					"verifyFailed": "Identität konnte nicht verifiziert werden"
+					"verified": "Identität verifiziert"
 				},
-				"verified": "Verifiziert"
+				"verified": "Verifiziert",
+				"mergeConfirm": {
+					"title": "Kontakte zusammenführen?",
+					"body": "{contact} wird mit diesem Kontakt zusammengeführt: Identitäten, Nachrichten, Themen und Verlauf wandern hierher, und der andere Kontakt wird gelöscht. Das lässt sich nicht rückgängig machen."
+				}
 			},
 			"integrationImportModal": {
 				"complete": {
@@ -2250,7 +2312,9 @@
 					"stripeApiKeyHint": "Deinen API-Schlüssel findest du im Stripe-Dashboard: Developers {chevron} API keys",
 					"stripeSecretKey": "Stripe-Secret-Key",
 					"stripeSecretKeyPlaceholder": "sk_live_...",
-					"updateExisting": "Vorhandene aktualisieren"
+					"updateExisting": "Vorhandene aktualisieren",
+					"showKey": "Schlüssel anzeigen",
+					"hideKey": "Schlüssel verbergen"
 				},
 				"errors": {
 					"audienceListIdRequired": "Audience-List-ID ist erforderlich",
@@ -2338,14 +2402,34 @@
 				"searchPlaceholder": "Kontakte nach Name oder E-Mail-Adresse suchen…",
 				"title": "Beziehungen",
 				"toasts": {
-					"addFailed": "Beziehung konnte nicht hinzugefügt werden",
 					"added": "Beziehung hinzugefügt",
-					"confidenceUpdateFailed": "Konfidenz konnte nicht aktualisiert werden",
 					"confidenceUpdated": "Konfidenz aktualisiert",
-					"removeFailed": "Beziehung konnte nicht entfernt werden",
 					"removed": "Beziehung entfernt"
 				},
-				"unknownContact": "Unbekannter Kontakt"
+				"unknownContact": "Unbekannter Kontakt",
+				"confidenceLevels": {
+					"certain": "Sicher",
+					"likely": "Wahrscheinlich",
+					"possible": "Möglich"
+				},
+				"types": {
+					"colleague": "Kollege/Kollegin",
+					"manager_of": "Führungskraft von",
+					"reports_to": "Berichtet an",
+					"client": "Kunde",
+					"client_of": "Kunde von",
+					"vendor": "Anbieter",
+					"vendor_for": "Anbieter für",
+					"partner": "Partner",
+					"partner_of": "Partner von",
+					"advisor": "Berater",
+					"investor": "Investor",
+					"friend": "Freund/Freundin",
+					"referred": "Hat empfohlen",
+					"referred_by": "Empfohlen von",
+					"knows": "Kennt",
+					"other": "Sonstiges"
+				}
 			},
 			"sunsetClockBanner": {
 				"body": "Die Uhr dieser Installation weicht von den Zeitstempeln ab, die sie zuvor geschrieben hat, daher wird niemand wegen Inaktivität automatisch gesperrt. Es hat sich nichts geändert und es wird sich nichts ändern, bis dies behoben ist. Prüfe die Serveruhr (NTP) — und wenn sie korrekt ist (eine Installation, die einfach lange pausiert war, sieht von hier aus genauso aus), bestätige sie unten, um den stündlichen Durchlauf fortzusetzen.",
@@ -2357,9 +2441,9 @@
 			},
 			"suppressionNotice": {
 				"detail": "{headline} — {reason}.",
-				"remove": "Sperrung aufheben?",
+				"remove": "Sperrung aufheben",
 				"removing": "Wird aufgehoben …",
-				"title": "Abgemeldet",
+				"title": "Gesperrt",
 				"why": "Warum?"
 			},
 			"timelineStatsCard": {
@@ -2407,7 +2491,9 @@
 					"read": "gelesen"
 				},
 				"subtitle": "Jede Nachricht über alle Kanäle hinweg, neueste zuerst.",
-				"title": "Nachrichten"
+				"title": "Nachrichten",
+				"filterLabel": "Nachrichten anzeigen aus",
+				"messageLabel": "Nachricht"
 			}
 		},
 		"dashboard": {
@@ -2448,7 +2534,9 @@
 				"variantLabel": "Variante {variant}",
 				"winnerChip": "Variante {variant} hat gewonnen",
 				"winnerSummary": "Variante {variant} hat mit {difference} höherer {metric} gewonnen.",
-				"winnerSummaryPicked": "Variante {variant} hat mit {difference} höherer {metric} gewonnen · ausgewählt nach {criteria} am {date}."
+				"winnerSummaryPicked": "Variante {variant} hat mit {difference} höherer {metric} gewonnen · ausgewählt nach {criteria} am {date}.",
+				"confirmTitle": "Variante {variant} an den Rest der Zielgruppe senden?",
+				"confirmBody": "Damit endet der Test. Alle, die die Kampagne noch nicht bekommen haben, erhalten Variante {variant}. Den Gewinner kannst du danach nicht mehr ändern."
 			},
 			"cards": {
 				"accuracyTrend": {
@@ -2593,7 +2681,9 @@
 				"noClicksHint": "Linkklicks erscheinen hier, sobald Empfänger mit deiner E-Mail interagieren",
 				"noLinks": "Keine nachverfolgbaren Links in dieser E-Mail gefunden",
 				"rate": "Rate",
-				"unique": "eindeutig"
+				"unique": "eindeutig",
+				"medium": "Mittel",
+				"tierNone": "Keine Klicks"
 			},
 			"dashboardCardRenderer": {
 				"unknownCardType": "Unbekannter Kartentyp: {type}"
@@ -2694,7 +2784,8 @@
 				"subtitle": "Alles, was noch zu tun ist, damit Owlat für dich arbeitet — an einem Ort.",
 				"title": "Erste Schritte",
 				"undoing": "Wird rückgängig gemacht…",
-				"continue": "Einrichtung fortsetzen"
+				"continue": "Einrichtung fortsetzen",
+				"collapse": "Einklappen"
 			},
 			"gettingStartedResources": {
 				"convexCta": "Dashboard starten ↗",
@@ -2711,7 +2802,6 @@
 				"urlPlaceholder": "http://localhost:6791"
 			},
 			"mailboxRequests": {
-				"emailWithNote": "{email} — „{note}“",
 				"markDone": "Als erledigt markieren",
 				"provision": "Jetzt einrichten",
 				"provisionOperation": "Postfach einrichten",
@@ -2784,7 +2874,7 @@
 				}
 			},
 			"advancedEmptyState": {
-				"migrateAction": "Mit „Von Mailchimp umziehen“ beginnen"
+				"migrateAction": "Mailchimp-Umzug starten"
 			},
 			"deliverabilityChecklistGroups": {
 				"copyDiagnostic": "Diagnose kopieren",
@@ -2886,7 +2976,9 @@
 				},
 				"subtitle": "Sende eine echte Testnachricht und prüfe, was der empfangende Server sieht",
 				"title": "Den gesamten Sendeweg nachweisen",
-				"tlsVersion": "Verschlüsselte Verbindung"
+				"tlsVersion": "Verschlüsselte Verbindung",
+				"noDomains": "Füge zuerst eine Versanddomain hinzu, dann kannst du den Test hier starten.",
+				"noDomainsLink": "Zu den Versanddomains"
 			},
 			"deliverabilityNextActionCard": {
 				"checkAgain": "Jetzt erneut prüfen",
@@ -3040,7 +3132,14 @@
 				},
 				"subtitle": "Verifizierung, internes Feedback und Google-Postmaster-Signale pro Domain · {guide}",
 				"title": "Versanddomains",
-				"window30d": "30 T"
+				"window30d": "30 T",
+				"risk": {
+					"low": "Reputationsrisiko: niedrig",
+					"medium": "Reputationsrisiko: mittel",
+					"high": "Reputationsrisiko: hoch",
+					"critical": "Reputationsrisiko: kritisch",
+					"none": "Kein aktueller Versand, an dem sich die Reputation messen lässt"
+				}
 			},
 			"envSetupSteps": {
 				"blankValues": "Trage jeden Wert nach dem =-Zeichen ein. Die Werte bleiben auf deinem Server; diese Seite prüft nur, ob sie vorhanden sind.",
@@ -3120,7 +3219,7 @@
 				"bulletPace": "Jeder Stream rampt im Tempo {pace} — kleinere Schritte, mehr saubere Zeitfenster pro Schritt. Du kannst das später auf dem Bildschirm für die Ramp-Steuerung ändern.",
 				"bulletPaceName": "konservativ",
 				"bulletStart": "Dein eigener MTA startet bei {share} des Verkehrs. An der heutigen Zustellung ändert sich nichts; Owlat beginnt, beide Arme mit identischer Instrumentierung zu messen.",
-				"bulletStreams": "{streams} wechseln alle auf die gemessene Aufteilung ({strategy}) über deinen eigenen MTA und Mailchimp Transactional.",
+				"bulletStreams": "{streams} wechseln alle auf die gemessene Aufteilung „{strategy}“ über deinen eigenen MTA und Mailchimp Transactional.",
 				"bulletStreamsNames": "Transaktional, Kampagne und Automation",
 				"paceWrite": "{stream}-Ramp-Tempo",
 				"reapply": "Migrationsvoreinstellung erneut anwenden",
@@ -3333,7 +3432,20 @@
 				"subtitle": "Tägliche Berichte anderer Mailserver darüber, wie eingehende Mail verschlüsselt wurde.",
 				"title": "Wie Partner uns über TLS erreichen",
 				"volumeSummary": "{sessions} Verbindungen · {reports} Berichte · letzte {days} Tage",
-				"whatWentWrong": "Was schiefgelaufen ist"
+				"whatWentWrong": "Was schiefgelaufen ist",
+				"failureTypes": {
+					"starttlsNotSupported": "STARTTLS unterwegs entfernt",
+					"certificateHostMismatch": "Zertifikat passte nicht zum Servernamen",
+					"certificateExpired": "Serverzertifikat war abgelaufen",
+					"certificateNotTrusted": "Serverzertifikat war nicht vertrauenswürdig",
+					"validationFailure": "TLS-Prüfung fehlgeschlagen",
+					"tlsaInvalid": "DANE-Eintrag (TLSA) war ungültig",
+					"dnssecInvalid": "DNSSEC-Prüfung fehlgeschlagen",
+					"daneRequired": "DANE war verlangt, aber nicht verfügbar",
+					"stsPolicyFetchError": "Die MTA-STS-Richtlinie des Partners konnte nicht abgerufen werden",
+					"stsPolicyInvalid": "Die MTA-STS-Richtlinie des Partners war ungültig",
+					"stsWebpkiInvalid": "Zertifikat erfüllte die MTA-STS-Richtlinie des Partners nicht"
+				}
 			},
 			"transportCard": {
 				"advancedRouting": "Erweitertes Routing",
@@ -3343,13 +3455,14 @@
 					"deliveryWorker": "Versand-Worker",
 					"dnsResolver": "DNS-Resolver",
 					"outboundSmtp": "Ausgehendes SMTP",
-					"queueStore": "Warteschlangenspeicher"
+					"queueStore": "Warteschlangenspeicher",
+					"up": "OK",
+					"down": "Reagiert nicht"
 				},
 				"error": "Der Versandtransport konnte gerade nicht geladen werden. Lade die Seite neu, um es erneut zu versuchen.",
 				"eyebrow": "Versandtransport",
 				"lastChecked": "Geprüft {when}",
 				"loading": "Es wird geprüft, wie diese Instanz sendet…",
-				"notConfigured": "Es ist noch kein nutzbarer Transport eingerichtet, daher können Kampagnen und Antworten nicht hinausgehen. Wähle einen Transport, um mit dem Senden zu beginnen.",
 				"setUpSending": "Versand einrichten"
 			},
 			"transportConnectionWizard": {
@@ -3366,7 +3479,10 @@
 				"position": "Schritt {index} von {total}: {title}",
 				"readingDomain": "Die Versanddomain wird gelesen…",
 				"readingReturnPath": "Die erfasste Return-Path-Fähigkeit wird gelesen…",
-				"stepsLabel": "Verbindungsschritte"
+				"stepsLabel": "Verbindungsschritte",
+				"stepPassed": "bestanden",
+				"stepFailed": "fehlgeschlagen",
+				"nextHint": "Weiter wird frei, sobald dieser Schritt gelaufen ist."
 			},
 			"transportCredentialFields": {
 				"implicitTls": "Implizites TLS (Port 465). Für STARTTLS auf {port} deaktiviert lassen.",
@@ -3429,7 +3545,8 @@
 				"resetToDefaults": "Auf Standardwerte zurücksetzen",
 				"savedToast": "Vertrauenswürdige Weiterleiter gespeichert.",
 				"subtitle": "Halte Mailinglisten- und weitergeleitete Mail aus dem Spam-Ordner, wenn der Weiterleiter dafür bürgt",
-				"title": "Vertrauenswürdige Weiterleiter"
+				"title": "Vertrauenswürdige Weiterleiter",
+				"invalidDomain": "Gib eine reine Domain wie lists.example.com ein, ohne Leerzeichen und ohne E-Mail-Adresse."
 			},
 			"ehloOverrides": {
 				"title": "EHLO-Namen pro IP-Adresse",
@@ -3489,7 +3606,8 @@
 					"resolver_unreachable": "Owlat konnte Spamhaus nicht erreichen, um den Schlüssel zu testen. Versuche es in ein paar Minuten erneut.",
 					"unusable_answer": "Der DNS-Resolver hat beim Testen des Schlüssels eine unbrauchbare Antwort geliefert.",
 					"mta_unavailable": "Die MTA ist nicht erreichbar, deshalb wurde der Schlüssel nicht gespeichert."
-				}
+				},
+				"loadFailed": "Die Einrichtung der Blocklist-Abfragen konnte nicht geladen werden."
 			}
 		},
 		"desktop": {
@@ -3522,7 +3640,15 @@
 				"progressLabel": "Fortschritt der Server-Bereitstellung",
 				"serverLog": "Serverprotokoll",
 				"trimmed": "{count} frühere Zeile entfernt | {count} frühere Zeilen entfernt",
-				"waitingForOutput": "Warten auf Ausgabe…"
+				"waitingForOutput": "Warten auf Ausgabe…",
+				"states": {
+					"pending": "wartet",
+					"running": "läuft",
+					"ok": "erledigt",
+					"warn": "erledigt, mit Warnung",
+					"failed": "fehlgeschlagen",
+					"skipped": "übersprungen"
+				}
 			},
 			"workspaceMenu": {
 				"addWorkspace": "Workspace hinzufügen",
@@ -3655,7 +3781,9 @@
 					"missing": "Noch nicht gefunden",
 					"verified": "Bestätigt"
 				},
-				"value": "Wert"
+				"value": "Wert",
+				"copyFullNameOf": "Vollständigen Namen des {label}-Eintrags kopieren",
+				"copyFoundValueOf": "Gefundenen Wert des {label}-Eintrags kopieren"
 			},
 			"externalReceiving": {
 				"providers": {
@@ -3823,6 +3951,12 @@
 				},
 				"returnPath": {
 					"description": "Bounces kommen an diesen Namen zurück, und sein SPF-Eintrag lässt die Bounce-Adresse die SPF-Prüfung bestehen."
+				},
+				"dmarcRaise": {
+					"title": "DMARC auf {policy} umstellen?",
+					"quarantine": "Empfänger legen Mails von {domain}, die bei SPF und DKIM nicht ausgerichtet sind, im Spam ab. Prüfe vorher, dass jeder Dienst, der als diese Domain sendet, ausgerichtet ist.",
+					"reject": "Empfänger lehnen Mails von {domain} ab, die bei SPF und DKIM nicht ausgerichtet sind. Prüfe vorher, dass jeder Dienst, der als diese Domain sendet, ausgerichtet ist.",
+					"confirm": "Richtlinie ändern"
 				}
 			},
 			"streamSubdomainPlanPanel": {
@@ -3844,7 +3978,16 @@
 					"bulk": "Marketing & Lifecycle",
 					"transactional": "Transaktional"
 				},
-				"warming": "{count} Absendername(n) starten jeweils vom ersten Tag an ihre eigene Aufwärmphase."
+				"warming": "{count} Absendername(n) starten jeweils vom ersten Tag an ihre eigene Aufwärmphase.",
+				"recordsDisclosure": "DNS-Einträge für diese Subdomains ({count})",
+				"advice": {
+					"no_reputation_inheritance": "Eine Subdomain erbt nicht die Reputation der Hauptdomain. Jede sendende Subdomain braucht ihren eigenen SPF-Eintrag, ihren eigenen DKIM-Selektor und ihr eigenes Warm-up.",
+					"each_subdomain_warms_separately": "Jede sendende Subdomain beginnt ihr Warm-up am ersten Tag – Reputation wird pro Name verdient, nicht vererbt.",
+					"automation_shares_the_bulk_subdomain": "Lifecycle- und Kampagnen-Mails teilen sich news. mit Absicht: gleichmäßiges Automations-Volumen ist der beste Treibstoff für das Warm-up einer Bulk-Subdomain.",
+					"pools_separated": "Transaktionale Mails gehen über einen eigenen IP-Pool, damit eine schlechte Kampagne nie einen Passwort-Reset verzögert.",
+					"pools_collapsed_single_ip": "Diese Installation hat eine sendende IP, daher sind der transaktionale und der Kampagnen-Pool dieselbe Adresse. Die Aufteilung in Subdomains gibt dir trotzdem die Isolation, auf die es ankommt – hier leistet die Domain-Reputation die Arbeit.",
+					"bounce_host_is_the_return_path": "bounces. ist der Return-Path-Host (VERP). Er trägt SPF für den Bounce-Umschlag und versendet nie eigene Mails, braucht also weder DKIM noch ein Warm-up."
+				}
 			},
 			"trackingDomainsSection": {
 				"addButton": "Tracking-Domain hinzufügen",
@@ -3898,7 +4041,8 @@
 				"verifiedAt": "Bestätigt {date}",
 				"verify": "Prüfen",
 				"verifyTitle": "DNS dieser Tracking-Domain prüfen",
-				"verifying": "Wird geprüft…"
+				"verifying": "Wird geprüft…",
+				"rowLabel": "CNAME-Eintrag für {domain}"
 			},
 			"yahooCflPanel": {
 				"confirmButton": "Yahoo hat die Domain akzeptiert",
@@ -3942,7 +4086,8 @@
 					"unsubscribe": "der Abmelde-Einstellung"
 				},
 				"inHistory": "Deine Version ist auch im Versionsverlauf gespeichert.",
-				"restore": "Meine zurückholen"
+				"restore": "Meine zurückholen",
+				"more": "+{count} weitere ersetzte Änderung | +{count} weitere ersetzte Änderungen"
 			},
 			"editorConflictDialog": {
 				"description": "Sie wurde an anderer Stelle gespeichert, nachdem du sie geöffnet hast: in einem anderen Tab, auf der Seite „Übersetzungen“ oder über einen gespeicherten Block, den sie verwendet. Deine Änderungen sind noch nicht gespeichert. Behalte deine Version, um sie über die neuere zu speichern, oder lade die aktuelle Version und verwirf deine Änderungen.",
@@ -4064,7 +4209,10 @@
 					"publish": "Veröffentlicht",
 					"save": "Gespeichert",
 					"send": "Gesendet"
-				}
+				},
+				"previewActionNamed": "Version ansehen: {version}",
+				"compareActionNamed": "Mit dem aktuellen Editor vergleichen: {version}",
+				"restoreActionNamed": "Im Editor wiederherstellen: {version}"
 			},
 			"templatePicker": {
 				"listLabel": "Vorlagen",
@@ -4127,6 +4275,9 @@
 				"olderUnavailable": "Es gibt ältere Versionen, sie lassen sich hier aber nicht laden.",
 				"restarted": "Die Liste hat sich geändert, während du sie gelesen hast. Sie beginnt deshalb wieder bei der neuesten Version.",
 				"showOlder": "Ältere Versionen anzeigen"
+			},
+			"picker": {
+				"searching": "Suche läuft…"
 			}
 		},
 		"forms": {
@@ -4158,7 +4309,8 @@
 					"spam": "Spam",
 					"success": "erfolgreich"
 				},
-				"title": "Aktuelle Einsendungen"
+				"title": "Aktuelle Einsendungen",
+				"loadError": "Einsendungen konnten nicht geladen werden"
 			}
 		},
 		"globalSearch": {
@@ -4279,7 +4431,9 @@
 					"read": "gelesen"
 				},
 				"subtitle": "Alle Nachrichten dieser Konversation über sämtliche Kanäle hinweg.",
-				"title": "Alle Kanäle"
+				"title": "Alle Kanäle",
+				"showAll": "Alles anzeigen",
+				"showLess": "Weniger anzeigen"
 			},
 			"trustChip": {
 				"seeWhy": "{label} — Begründung anzeigen"
@@ -4451,7 +4605,9 @@
 				"relations": "Beziehungen",
 				"surprising": "Überraschende Verbindungen",
 				"surprisingEmpty": "Keine gefunden.",
-				"title": "Graph-Einblicke"
+				"title": "Graph-Einblicke",
+				"distributionToggle": "Konfidenz und Cluster",
+				"communitySize": "Cluster mit {count} Eintrag | Cluster mit {count} Einträgen"
 			},
 			"graphView": {
 				"analyticsOffBody": "Aktiviere {setting} in den Einstellungen, um den Graphen und seine Einblicke zu sehen.",
@@ -4474,7 +4630,8 @@
 				"legendAmbiguous": "Mehrdeutig",
 				"legendExtracted": "Extrahiert",
 				"legendHub": "Knotenpunkt",
-				"legendInferred": "Abgeleitet"
+				"legendInferred": "Abgeleitet",
+				"depthLabel": "Graphtiefe"
 			},
 			"knowledgeEntryCard": {
 				"confidence": "Konfidenz",
@@ -4562,7 +4719,9 @@
 					"supersedes": "Ersetzt",
 					"supports": "Unterstützt"
 				},
-				"removeRelation": "Beziehung entfernen"
+				"removeRelation": "Beziehung entfernen",
+				"removeRelationNamed": "Beziehung zu {title} entfernen",
+				"unknownEntry": "Nicht verfügbarer Eintrag"
 			},
 			"shareWithMembers": {
 				"action": "Mit Mitgliedern teilen",
@@ -4599,7 +4758,6 @@
 		},
 		"mail": {
 			"templateLibraryModal": {
-				"backToTemplates": "Zurück zu den Vorlagen",
 				"createFailed": "Vorlage konnte nicht erstellt werden",
 				"customizeTitle": "Vorlage anpassen",
 				"emptyCanvas": "Leere Arbeitsfläche",
@@ -4713,7 +4871,8 @@
 					"mailboxesHeading": "Postfach",
 					"providersHeading": "Anbieter",
 					"owlat": "Bei Owlat gehostet",
-					"clear": "Alle Postfächer zeigen"
+					"clear": "Alle Postfächer zeigen",
+					"triggerLabel": "{current}. Ein Postfach oder einen Anbieter zeigen"
 				},
 				"clearCategory": "Alle Kategorien anzeigen",
 				"category": {
@@ -4724,7 +4883,8 @@
 					"spam": "Spam",
 					"person": "Von Menschen",
 					"other": "Sonstiges"
-				}
+				},
+				"clearCategoryNamed": "{category}, alle Kategorien anzeigen"
 			},
 			"postboxAiStrip": {
 				"ask": "Fragen",
@@ -4794,7 +4954,13 @@
 				"savedAt": "Gespeichert {time}",
 				"scheduledFor": "Geplant für {datetime}",
 				"unschedule": "Planung aufheben zum Bearbeiten",
-				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…"
+				"uploadingToast": "Warten, bis die Anhänge vollständig hochgeladen sind…",
+				"discardConfirm": {
+					"title": "Diesen Entwurf verwerfen?",
+					"body": "Der Entwurf wird mit seinen Anhängen gelöscht. Das lässt sich nicht rückgängig machen.",
+					"confirm": "Entwurf verwerfen"
+				},
+				"scheduledPending": "Senden ist geplant"
 			},
 			"postboxComposerAttachments": {
 				"cancel": "{filename} abbrechen",
@@ -4822,7 +4988,8 @@
 				"switchToAll": "an alle antworten",
 				"to": "An",
 				"leavesTeamInbox": "Diese Unterhaltung kam an {team}. Eine Antwort von deiner eigenen Adresse nimmt sie aus dem geteilten Postfach.",
-				"switchBack": "Stattdessen als {team} antworten"
+				"switchBack": "Stattdessen als {team} antworten",
+				"subjectPlaceholder": "Betreff hinzufügen"
 			},
 			"postboxComposerFollowUp": {
 				"armedTitle": "Erinnerung, falls bis {datetime} keine Antwort kommt — zum Entfernen klicken",
@@ -4990,7 +5157,22 @@
 				"previewRunning": "Aktuelle E-Mails werden geprüft …",
 				"previewSummary": "Trifft auf {count} der letzten {scanned} Nachrichten zu.",
 				"previewNeedsValue": "Gib einen Bedingungswert ein, um zu sehen, was diese Regel erfassen würde.",
-				"sectionNamePlaceholder": "Bereichsname (z. B. Deploys)"
+				"sectionNamePlaceholder": "Bereichsname (z. B. Deploys)",
+				"a11y": {
+					"condition": {
+						"field": "Bedingung {n}: Feld",
+						"headerName": "Bedingung {n}: Header-Name",
+						"operator": "Bedingung {n}: Vergleich",
+						"value": "Bedingung {n}: Wert"
+					},
+					"action": {
+						"type": "Aktion {n}",
+						"folder": "Aktion {n}: Ordner",
+						"label": "Aktion {n}: Label",
+						"forwardTo": "Aktion {n}: weiterleiten an",
+						"section": "Aktion {n}: Name des Abschnitts"
+					}
+				}
 			},
 			"postboxFloatingFormatBar": {
 				"toolbarLabel": "Auswahl formatieren"
@@ -5102,7 +5284,16 @@
 				"deleteLabel": "Label löschen",
 				"newNamePlaceholder": "Name des neuen Labels",
 				"setColor": "Farbe {color} festlegen",
-				"title": "Ordner & Labels verwalten"
+				"title": "Ordner & Labels verwalten",
+				"colors": {
+					"brand": "Terrakotta",
+					"accent": "Sand",
+					"success": "Grün",
+					"info": "Blau",
+					"warning": "Ocker",
+					"error": "Rot",
+					"brandDim": "Rost"
+				}
 			},
 			"postboxLabelPickerDialog": {
 				"empty": "Noch keine Labels",
@@ -5263,7 +5454,11 @@
 					"done": "Fertig. {address} liegt jetzt bei Owlat, und dein altes Konto ist ein schreibgeschütztes Archiv — sein Verlauf ist weiterhin hier und durchsuchbar.",
 					"locked": "Der letzte Schritt, sobald die Post hierher zeigt.",
 					"title": "3. Dein altes Konto archivieren",
-					"warning": "Tu das erst, wenn die Post für {domain} auf Owlat zeigt, damit keine Nachricht durch die Lücke rutscht."
+					"warning": "Tu das erst, wenn die Post für {domain} auf Owlat zeigt, damit keine Nachricht durch die Lücke rutscht.",
+					"confirm": {
+						"title": "Altes Konto jetzt archivieren?",
+						"body": "Die Prüfung hat noch nicht gesehen, dass die Post für {domain} auf Owlat zeigt. Sobald das alte Konto nicht mehr synchronisiert, erreicht dich hier nichts mehr, was noch dort ankommt."
+					}
 				},
 				"start": "Umzug von {address} starten"
 			},
@@ -5275,7 +5470,8 @@
 					"heading": "Team"
 				},
 				"switchTitle": "Postfach: {label}. Postfach wechseln",
-				"fallbackLabel": "Postfach"
+				"fallbackLabel": "Postfach",
+				"elsewhereUnread": "ungelesene Mails in deinen anderen Postfächern"
 			},
 			"postboxMessageBody": {
 				"alwaysForSender": "Immer für {host}",
@@ -5294,7 +5490,9 @@
 				"showOnce": "Einmalig anzeigen",
 				"showQuoted": "Zitierten Text anzeigen",
 				"stopTrustingSender": "Wieder blockieren",
-				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert."
+				"trackersKeptBlocked": "{count} Trackingpixel bleibt blockiert. | {count} Trackingpixel bleiben blockiert.",
+				"frameTitle": "Nachricht von {sender}",
+				"frameTitleAnonymous": "Nachricht"
 			},
 			"postboxMessageNotFound": {
 				"title": "Diese Nachricht ist nicht mehr verfügbar",
@@ -5463,7 +5661,8 @@
 			},
 			"postboxPresetTimeDialog": {
 				"custom": "Benutzerdefiniert",
-				"suggested": "Vorgeschlagen"
+				"suggested": "Vorgeschlagen",
+				"customPast": "Wähle einen Zeitpunkt in der Zukunft"
 			},
 			"postboxQuickActionsBar": {
 				"archive": "Archivieren",
@@ -5511,7 +5710,8 @@
 				"keepAsTyped": "So lassen",
 				"outsideDomain": "außerhalb von {domain}",
 				"placeholder": "empfaenger{'@'}beispiel.de",
-				"removeRecipient": "{address} entfernen"
+				"removeRecipient": "{address} entfernen",
+				"invalidAddress": "„{address}“ ist keine gültige E-Mail-Adresse"
 			},
 			"postboxReplyFlow": {
 				"done": {
@@ -5652,7 +5852,8 @@
 			},
 			"postboxSendingHealthCard": {
 				"heading": "Kommt meine Mail an?",
-				"ratio": "{failures} von {attempts} Zustellungen sind fehlgeschlagen."
+				"ratio": "{failures} von {attempts} Zustellungen sind fehlgeschlagen.",
+				"showChecks": "Die Prüfungen dahinter"
 			},
 			"postboxSendingSettings": {
 				"changeOperation": "Versand ändern",
@@ -5868,7 +6069,9 @@
 				"unpin": "Unterhaltung lösen",
 				"pinnedChip": "Oben im Posteingang angeheftet",
 				"selectSweepHint": "Auswählen – über Zeilen ziehen, um mehrere auszuwählen",
-				"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren"
+				"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren",
+				"starredChip": "Mit Stern",
+				"attachmentChip": "Mit Anhang"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",
@@ -5879,7 +6082,8 @@
 				"reminderTitle": "Antwort-Erinnerung {when} — klicken zum Abbrechen"
 			},
 			"postboxTodayReaderOverlay": {
-				"conversation": "Konversation"
+				"conversation": "Konversation",
+				"close": "Unterhaltung schließen"
 			},
 			"postboxUnreadMark": {
 				"unread": "Ungelesen."
@@ -5957,7 +6161,8 @@
 				"saveRules": "Regeln speichern",
 				"signOffs": "Grußformeln",
 				"updateOperation": "Personalisierung des Schreibstils aktualisieren",
-				"updated": "Aktualisiert {when}"
+				"updated": "Aktualisiert {when}",
+				"showProfile": "Was über deinen Schreibstil gelernt wurde"
 			},
 			"teamInboxMembersPanel": {
 				"addMemberOperation": "Mitglied hinzufügen",
@@ -5987,7 +6192,10 @@
 				"transferOwnershipOperation": "Inhaberschaft übertragen",
 				"transferTitle": "Inhaberschaft des Postfachs übertragen?",
 				"undoReservationOperation": "Team-Postfach-Reservierung rückgängig machen",
-				"you": "(du)"
+				"you": "(du)",
+				"removeConfirmTitle": "{member} aus diesem Postfach entfernen?",
+				"removeConfirmBody": "Die Person verliert sofort den Zugriff auf die Mails. Du kannst sie später wieder hinzufügen.",
+				"removeMemberNamed": "{member} entfernen"
 			},
 			"teamInboxConvertDialog": {
 				"confirm": "Zum Team-Postfach machen",
@@ -6065,7 +6273,8 @@
 					"month": "Letzte 30 Tage",
 					"year": "Letztes Jahr"
 				},
-				"loadMore": "Mehr laden"
+				"loadMore": "Mehr laden",
+				"backfillFailed": "Der Aufbau des Dateiindex hat vor dem Ende abgebrochen, deshalb fehlen ältere Anhänge eventuell. Versuch es noch einmal, um dort weiterzumachen."
 			},
 			"postboxLabelTree": {
 				"expand": "{name} ausklappen",
@@ -6077,7 +6286,12 @@
 				"renameAriaLabel": "Label {name} umbenennen",
 				"deleteAriaLabel": "Label {name} löschen",
 				"labelApplied": "„{name}“ zu {count} Nachricht hinzugefügt | „{name}“ zu {count} Nachrichten hinzugefügt",
-				"labelAlreadyApplied": "Bereits mit „{name}“ gekennzeichnet"
+				"labelAlreadyApplied": "Bereits mit „{name}“ gekennzeichnet",
+				"deleteConfirm": {
+					"title": "Label „{name}“ löschen?",
+					"body": "Es wird von jeder Nachricht entfernt, die es trägt. Die Nachrichten selbst bleiben, wo sie sind. Wenn du das Label neu anlegst, kommt es nicht auf sie zurück.",
+					"confirm": "Label löschen"
+				}
 			},
 			"postboxFilterRunControl": {
 				"run": "Auf vorhandene E-Mails anwenden",
@@ -6228,7 +6442,8 @@
 				"progressLabel": "Import-Fortschritt",
 				"subtitle": "Für ein Konto, in das du dich nicht mehr einloggen kannst",
 				"title": "Aus einer Datei importieren",
-				"uploading": "Wird hochgeladen…"
+				"uploading": "Wird hochgeladen…",
+				"errorDetails": "Zeigen, was der Server gemeldet hat"
 			},
 			"postboxSharedLinksSettings": {
 				"copied": "Kopiert",
@@ -6338,7 +6553,7 @@
 			"postboxConversationRow": {
 				"noSubject": "(kein Betreff)",
 				"noSubjectLabel": "Kein Betreff",
-				"rowLabel": "{subject}, {count} ungelesen"
+				"unreadCount": "{count} ungelesen"
 			},
 			"threadDiscussion": {
 				"close": "Diskussion ausblenden",
@@ -6394,7 +6609,9 @@
 				"shareFailed": "Das Bild konnte nicht geteilt werden",
 				"loading": "Nachricht wird geladen…",
 				"truncated": "Die Nachricht ist lang, deshalb endet das Bild nach ihrem ersten Teil.",
-				"noSubject": "(kein Betreff)"
+				"noSubject": "(kein Betreff)",
+				"activeWordShown": "{word}, sichtbar. Wort {position} von {total}.",
+				"activeWordHidden": "{word}, ausgeblendet. Wort {position} von {total}."
 			},
 			"postboxComposerEnvelopeLine": {
 				"label": "Empfänger, Absender und Betreff. Zum Bearbeiten öffnen",
@@ -6559,7 +6776,8 @@
 				"swipeLeftLabel": "Nach links wischen",
 				"swipeRightLabel": "Nach rechts wischen",
 				"swipeHelp": "Ziehe eine Zeile auf dem Touchscreen zur Seite, um sie abzuarbeiten. Mit der Maus passiert nichts.",
-				"swipeRightHelp": "Dieselbe Geste, andere Richtung."
+				"swipeRightHelp": "Dieselbe Geste, andere Richtung.",
+				"saveOperation": "Leseeinstellungen speichern"
 			},
 			"preferencesShortcuts": {
 				"heading": "Tastenkürzel",
@@ -6617,7 +6835,10 @@
 					"mailCard": "Antwortliste: Nachfassen",
 					"teamCard": "Antwortliste: Entwürfe aus dem Team-Postfach",
 					"mentionCard": "Antwortliste: Erwähnungen"
-				}
+				},
+				"listeningAriaLabel": "Drück die neuen Tasten für {shortcut} oder Escape zum Abbrechen",
+				"resetAllTitle": "Alle deine Tastenkürzel-Änderungen zurücksetzen?",
+				"resetAllDescription": "{count} Tastenkürzel bekommt wieder die Tasten deiner Tastaturbelegung. Das lässt sich nicht rückgängig machen. | {count} Tastenkürzel bekommen wieder die Tasten deiner Tastaturbelegung. Das lässt sich nicht rückgängig machen."
 			},
 			"preferencesYourData": {
 				"mailExportAction": ".mbox herunterladen",
@@ -6685,7 +6906,8 @@
 					"lastNotified": "zuletzt benachrichtigt {when}",
 					"test": "Test senden",
 					"remove": "Entfernen",
-					"removeLabel": "{device} entfernen"
+					"removeLabel": "{device} entfernen",
+					"testLabel": "Testbenachrichtigung an {device} senden"
 				},
 				"testSent": "Testbenachrichtigung gesendet. Sie sollte in ein paar Sekunden ankommen.",
 				"enableFailed": "Benachrichtigungen konnten in diesem Browser nicht eingeschaltet werden. Versuch es noch einmal oder prüfe die Website-Einstellungen des Browsers.",
@@ -6850,7 +7072,9 @@
 			"sampleDataLabel": "Beispieldaten für Variablen",
 			"sendToLabel": "Senden an (max. 5 Adressen)",
 			"subtitle": "Sieh, wie deine E-Mail aussehen wird",
-			"title": "Test-E-Mail einreihen"
+			"title": "Test-E-Mail einreihen",
+			"recipientLabel": "Empfänger {n}",
+			"removeRecipient": "Empfänger {n} entfernen"
 		},
 		"settings": {
 			"aiKeyField": {
@@ -6859,7 +7083,8 @@
 				"savedKey": "Gespeicherter Schlüssel: {preview}"
 			},
 			"aiModelPicker": {
-				"customPlaceholder": "Modell-ID eingeben"
+				"customPlaceholder": "Modell-ID eingeben",
+				"customLabel": "Eigene Modell-ID"
 			},
 			"aiReplyModeControl": {
 				"defaultBadge": "Standard",
@@ -6898,7 +7123,8 @@
 				"title": "In Nachrichtentexten suchen",
 				"toastOff": "Tiefensuche ist aus. Die bereits gespeicherten Auszüge werden gelöscht.",
 				"toastOn": "Tiefensuche ist aktiv. Neue E-Mails werden ab sofort indexiert — starte unten die Indexierung für bereits vorhandene E-Mails.",
-				"updateOperation": "Einstellung zur Textsuche aktualisieren"
+				"updateOperation": "Einstellung zur Textsuche aktualisieren",
+				"backfillStop": "Indexierung stoppen"
 			},
 			"connectedApps": {
 				"connectedAppRegisterModal": {
@@ -7018,7 +7244,18 @@
 				"fallback": "Ausweichweg: Führe auf dem Host für jede Änderung {featureCommand} aus und danach {applyCommand}.",
 				"pendingBody": "Deine Flag-Änderungen betreffen {services}. Die laufenden Dienste behalten ihren bisherigen Stand, bis du die Änderungen anwendest. Beim Anwenden werden die genannten Dienste kurz neu gestartet.",
 				"title": "Dienste nicht synchron — anwenden & neu starten",
-				"updaterUnreachable": "Der Updater war nicht erreichbar: {error}"
+				"updaterUnreachable": "Der Updater war nicht erreichbar: {error}",
+				"states": {
+					"healthy": "Läuft und ist gesund",
+					"unhealthy": "Läuft, aber nicht gesund",
+					"starting": "Startet",
+					"running": "Läuft",
+					"restarting": "Startet neu",
+					"exited": "Gestoppt",
+					"created": "Angelegt, nicht gestartet",
+					"paused": "Pausiert",
+					"dead": "Fehlgeschlagen"
+				}
 			},
 			"team": {
 				"inviteModal": {
@@ -7123,7 +7360,13 @@
 			"saveFirst": "Speichere zuerst deine Änderungen",
 			"share": "Teilen",
 			"triggerTitle": "Vorschaulink teilen",
-			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst."
+			"unsavedHint": "Speichere deine Änderungen, bevor du einen Freigabelink erstellst.",
+			"createdNotCopiedToast": "Freigabelink erstellt. Kopiere ihn aus der Liste.",
+			"copyFailed": "Der Link konnte nicht kopiert werden. Markiere ihn unten und kopiere ihn selbst.",
+			"linkUrlLabel": "Freigabelink",
+			"revokeConfirmTitle": "Diesen Freigabelink widerrufen?",
+			"revokeConfirmBody": "Wer den Link schon hat, verliert sofort den Zugriff auf die Vorschau.",
+			"createdAt": "Erstellt {time}"
 		},
 		"system": {
 			"workerVersionsCard": {
@@ -7280,7 +7523,13 @@
 					"writeCompose": "Fixierte Compose-Vorlage schreiben"
 				},
 				"timedOut": "Zeitüberschreitung beim Warten auf die neue Version. Prüfe `owlat logs web` auf dem Host.",
-				"verifyingNotice": "Die neue Version läuft. Es wird gewartet, bis jeder Dienst seine Zustandsprüfung besteht; das kann einige Minuten dauern."
+				"verifyingNotice": "Die neue Version läuft. Es wird gewartet, bis jeder Dienst seine Zustandsprüfung besteht; das kann einige Minuten dauern.",
+				"stepState": {
+					"failed": "fehlgeschlagen",
+					"pending": "wartet",
+					"running": "läuft",
+					"success": "erledigt"
+				}
 			},
 			"versionCard": {
 				"built": "Erstellt",
@@ -7457,7 +7706,9 @@
 				"savingChanges": "Wird gespeichert…",
 				"subjectLine": "Betreffzeile",
 				"textBlock": "{prefix}Textblock {index}",
-				"unsavedChanges": "Nicht gespeicherte Änderungen"
+				"unsavedChanges": "Nicht gespeicherte Änderungen",
+				"autoTranslateNamed": "{language} mit KI automatisch übersetzen",
+				"removeLanguageNamed": "{language} entfernen"
 			}
 		},
 		"ui": {
@@ -7573,7 +7824,8 @@
 					"pending": "ausstehend",
 					"retrying": "Wiederholung",
 					"success": "erfolgreich"
-				}
+				},
+				"detailMissing": "Dieses Zustellprotokoll ist nicht mehr verfügbar."
 			},
 			"webhookFormModal": {
 				"clear": "Auswahl aufheben",
@@ -7734,7 +7986,7 @@
 				"keysMove": "bewegen",
 				"worth": "Wichtig",
 				"also": "Außerdem angekommen",
-				"empty": "Hier gibt es nichts Neues ohne Antwortbedarf. Was Menschen dir mitteilen und Hinweise mit Handlungsbedarf erscheinen hier.",
+				"empty": "Noch keine Updates. Was Menschen dir mitteilen und Hinweise mit Handlungsbedarf landen hier.",
 				"more": "{count} weitere Neuigkeit wartet. | {count} weitere Neuigkeiten warten."
 			},
 			"filed": {
@@ -7852,7 +8104,7 @@
 				"actions": {
 					"sendNow": "Jetzt senden",
 					"edit": "Bearbeiten",
-					"cancel": "Abbrechen"
+					"cancel": "Nicht senden"
 				},
 				"operations": {
 					"sendNow": "Jetzt senden",
@@ -7872,7 +8124,7 @@
 			},
 			"band": {
 				"answeringAs": "Antwort als {name}",
-				"replyingIn": "Antwort in #{room}",
+				"replyingIn": "Antwort in {room}",
 				"teamDetail": "Antworten gehen von der Adresse des Team-Postfachs raus",
 				"chatDetail": "intern, wird nicht per E-Mail verschickt",
 				"followUp": "Nachfassen",
@@ -7960,7 +8212,8 @@
 				"banner": {
 					"title": "Eins noch vor dem Senden.",
 					"body": "Der Entwurf sagt „{claim}“, aber es ist noch keine Datei angehängt.",
-					"pick": "Datei auswählen"
+					"pick": "Datei auswählen",
+					"bodyMany": "Der Entwurf erwähnt {claims}, aber davon ist noch nichts angehängt."
 				}
 			},
 			"aiBar": {
@@ -8022,7 +8275,8 @@
 				"search": "Nach Namen suchen",
 				"files": "Dateien",
 				"mail": "E-Mail-Anhänge",
-				"empty": "Keine Dateien gefunden."
+				"empty": "Keine Dateien gefunden.",
+				"loadMore": "Mehr Dateien anzeigen"
 			},
 			"queueBar": {
 				"position": "{position} von {total}",
@@ -8038,7 +8292,7 @@
 				"more": "Mehr zu dieser Antwort",
 				"showChanges": "Änderungen am Entwurf des Agenten zeigen",
 				"hideChanges": "Änderungen ausblenden",
-				"discardDraft": "Entwurf verwerfen",
+				"discardDraft": "Entwurf ablehnen",
 				"clear": "Leeren",
 				"attachments": {
 					"attach": "Anhängen",
@@ -8056,8 +8310,22 @@
 						"uploading": "Senden wartet, bis der Upload fertig ist.",
 						"copying": "Senden wartet, bis die Datei kopiert ist.",
 						"failed": "Entferne die Datei, die nicht kopiert werden konnte, und sende dann."
-					}
+					},
+					"fromThisContact": "Weitere Dateien für diesen Kontakt",
+					"uploadFailed": "Upload fehlgeschlagen"
+				},
+				"cleared": "Antwort geleert.",
+				"rejectConfirm": {
+					"dismissBody": "Es wird keine Antwort verschickt und der Eintrag verlässt die Warteschlange.",
+					"dismissTitle": "Ohne Antwort verwerfen?",
+					"rejectBody": "Der Entwurf des Agenten wird verworfen und der Eintrag verlässt die Warteschlange.",
+					"rejectTitle": "Diesen Entwurf ablehnen?"
 				}
+			}
+		},
+		"contactProperties": {
+			"propertyRow": {
+				"actionsFor": "Aktionen für {label}"
 			}
 		}
 	},
@@ -8116,7 +8384,7 @@
 					"cells": {
 						"controlsLink": "Diese Zelle pausieren, begrenzen oder zurücksetzen",
 						"empty": {
-							"description": "Diese Tabelle erscheint, sobald ein Relay und dein eigener Server sich den Verkehr teilen oder das Aufwärmen eine Zelle übernimmt. Beginne mit „Von Mailchimp umziehen“.",
+							"description": "Diese Tabelle erscheint, sobald ein Relay und dein eigener Server sich den Verkehr teilen oder das Aufwärmen eine Zelle übernimmt.",
 							"title": "Noch keine Zustellzellen in Gebrauch"
 						},
 						"errorMessage": "Die Zellzustände konnten nicht geladen werden. Deine Mail ist davon nicht betroffen — diese Seite liest nur.",
@@ -8140,7 +8408,7 @@
 						"errorMessage": "Die Steuerung konnte nicht geladen werden. Deine Mail ist davon nicht betroffen — es hat sich nichts geändert.",
 						"errorTitle": "Die Zustellungssteuerung konnte nicht geladen werden",
 						"empty": {
-							"description": "Die Steuerung erscheint, sobald ein Relay und dein eigener Server sich den Verkehr teilen oder das Aufwärmen Zellen verwaltet. Beginne mit „Von Mailchimp umziehen“.",
+							"description": "Die Steuerung erscheint, sobald ein Relay und dein eigener Server sich den Verkehr teilen oder das Aufwärmen Zellen verwaltet.",
 							"title": "Noch keine Zellen zu steuern"
 						},
 						"forceDialog": {
@@ -8184,7 +8452,7 @@
 							"title": "Das Relay trennen?"
 						},
 						"empty": {
-							"description": "Diese Seite zeigt, wie viel deiner Mail dein eigener Server trägt und wann du kein Relay mehr bezahlen müsstest. Sie füllt sich, sobald Mail versendet wird. Beginne mit „Von Mailchimp umziehen“.",
+							"description": "Diese Seite zeigt, wie viel deiner Mail dein eigener Server trägt und wann du kein Relay mehr bezahlen müsstest. Sie füllt sich, sobald Mail versendet wird.",
 							"title": "Noch nichts gesendet"
 						},
 						"disconnectAction": "Das Relay trennen…",
@@ -8203,7 +8471,7 @@
 						"errorTitle": "Zustellungsmessungen konnten nicht geladen werden",
 						"loadingLabel": "Zustellungsmessungen werden geladen",
 						"empty": {
-							"description": "Diese Seite vergleicht die Zustellergebnisse Zelle für Zelle, sobald Mail versendet wird. Mit einem verbundenen Relay stellt sie Relay und eigenen Server nebeneinander. Beginne mit „Von Mailchimp umziehen“.",
+							"description": "Diese Seite vergleicht die Zustellergebnisse Zelle für Zelle, sobald Mail versendet wird. Mit einem verbundenen Relay stellt sie Relay und eigenen Server nebeneinander.",
 							"title": "Noch nichts gemessen"
 						},
 						"pageTitle": "Zustellungsmessung — Owlat",
@@ -8250,6 +8518,12 @@
 						"reportCopied": "Einrichtungsbericht kopiert",
 						"reportCopyFailed": "Der Bericht konnte nicht kopiert werden",
 						"resolved": "Rückschritt geschlossen"
+					},
+					"summary": {
+						"atRisk": "Deine Zustellung ist gefährdet. Behebe den blockierenden Punkt unten, bevor du sendest.",
+						"needsAttention": "Deine Zustellung braucht Aufmerksamkeit. Folge dem nächsten Einrichtungsschritt unten.",
+						"ready": "Dein Mail-Setup ist verifiziert und bereit.",
+						"readyWithRecommended": "Deine Mails werden zugestellt. {count} empfohlene Verbesserung verfügbar. | Deine Mails werden zugestellt. {count} empfohlene Verbesserungen verfügbar."
 					}
 				},
 				"dmarc": {
@@ -8338,7 +8612,8 @@
 						"regenerating": "DNS-Einträge werden neu erzeugt...",
 						"removed": "Domain erfolgreich entfernt",
 						"verificationIncomplete": "Verifizierung abgeschlossen. Einige DNS-Einträge brauchen Aufmerksamkeit – prüfe die Details unten.",
-						"verified": "Domain erfolgreich verifiziert! Alle DNS-Einträge sind korrekt konfiguriert."
+						"verified": "Domain erfolgreich verifiziert! Alle DNS-Einträge sind korrekt konfiguriert.",
+						"dmarcLowered": "DMARC-Richtlinie auf {policy} gesenkt. Veröffentliche den aktualisierten _dmarc-Eintrag erneut und verifiziere dann."
 					},
 					"whyCustom": {
 						"body": "E-Mails von deiner eigenen Domain zu versenden verbessert die Zustellbarkeit und die Markenwiedererkennung. Konfiguriere nach dem Hinzufügen einer Domain die DNS-Einträge bei deinem Domain-Anbieter, um den Besitz nachzuweisen.",
@@ -8410,6 +8685,12 @@
 						"cells": "Zellen — jeder Anteil und warum er sich bewegt hat",
 						"controls": "Ramp-Steuerung — eine Zelle pausieren, begrenzen oder hochstufen",
 						"independence": "Unabhängigkeit — wie viel Mail bereits deine eigene ist"
+					},
+					"stepState": {
+						"blocked": "blockiert",
+						"complete": "erledigt",
+						"current": "nächster Schritt",
+						"upcoming": "später"
 					}
 				},
 				"providerRouting": {
@@ -8432,7 +8713,8 @@
 						"strategy": "Strategie",
 						"title": "Route — {messageType}",
 						"unavailable": "Nicht verfügbar",
-						"weightUnit": "Gew."
+						"weightUnit": "Gew.",
+						"weightFor": "Gewichtung für {provider}"
 					},
 					"errors": {
 						"noProvider": "Aktiviere vor dem Speichern mindestens einen Anbieter"
@@ -8657,7 +8939,12 @@
 					},
 					"pageTitle": "Agentenzustand — Owlat",
 					"subtitle": "Überwache die Leistung der KI-Agenten-Pipeline, die Zustände der Schutzschalter und die wichtigsten Kennzahlen.",
-					"title": "Agentenzustand"
+					"title": "Agentenzustand",
+					"verdict": {
+						"healthy": "Agent läuft normal: kein Schutzschalter ist ausgelöst.",
+						"recovering": "{count} Schutzschalter erholt sich. | {count} Schutzschalter erholen sich.",
+						"tripped": "{count} Schutzschalter ausgelöst: die Pipeline ist dafür angehalten. | {count} Schutzschalter ausgelöst: die Pipeline ist dafür angehalten."
+					}
 				},
 				"aiProvider": {
 					"connectionWorks": "Verbindung funktioniert",
@@ -8933,7 +9220,8 @@
 							"rollback": "Auf das vorherige Embedding-Modell zurückgesetzt.",
 							"startRebuild": "Neuaufbau gestartet.",
 							"startReembed": "Neueinbetten gestartet."
-						}
+						},
+						"advancedTitle": "Bestätigung und Neuaufbau"
 					},
 					"embeddings": {
 						"apiKeyHelp": "Verschlüsselt gespeichert, wird nie wieder angezeigt.",
@@ -9287,7 +9575,8 @@
 						"light": "Hell",
 						"link": "so aus",
 						"subtitle": "Eine Beispiel-E-Mail in deiner Marke, so gerendert, wie sie verschickt wird.",
-						"title": "Vorschau"
+						"title": "Vorschau",
+						"modeLabel": "Darstellung der Vorschau"
 					},
 					"px": "px",
 					"resetToDefaults": "Auf Standard zurücksetzen",
@@ -9501,7 +9790,7 @@
 					"fields": {
 						"doubleOptIn": "Double-Opt-in aktivieren",
 						"doubleOptInHelp": "Vor dem Abonnieren eine E-Mail-Bestätigung verlangen. Für die DSGVO-Konformität empfohlen.",
-						"honeypot": "Name des Honeypot-Felds (optional)",
+						"honeypot": "Name des Spamfallen-Felds (optional)",
 						"honeypotHelp": "Ein verstecktes Feld zur Spam-Abwehr. Bots füllen es aus, Menschen nicht.",
 						"honeypotPlaceholder": "z. B. website_url",
 						"name": "Formularname",
@@ -9539,7 +9828,7 @@
 					"connectedWorkspacesHelp": "Wechsle zwischen den Owlat-Workspaces, die du auf diesem Gerät verbunden hast, oder verbinde einen weiteren.",
 					"errors": {
 						"emailInvalid": "Bitte gib eine gültige E-Mail-Adresse ein",
-						"nameRequired": "Der Teamname ist erforderlich"
+						"nameRequired": "Der Workspace-Name ist erforderlich"
 					},
 					"fromEmail": "Standard-Absenderadresse",
 					"fromEmailHelp": "Die E-Mail-Adresse, von der deine Kampagnen versendet werden.",
@@ -9564,9 +9853,9 @@
 					"senderSectionHelp": "Diese Werte sind die Vorgabe, von der aus die App System-Mails versendet (Bestätigungen, Passwort-Zurücksetzungen), und sie füllen neue Kampagnen vor.",
 					"setUpVerifiedDomain": "Eine verifizierte Domain einrichten",
 					"subtitle": "Workspace-weite Identität und Versandvorgaben",
-					"teamName": "Teamname",
-					"teamNameHelp": "Dieser Name erscheint in den E-Mails und im Dashboard deines Teams.",
-					"teamNamePlaceholder": "Mein Team",
+					"teamName": "Workspace-Name",
+					"teamNameHelp": "Dieser Name erscheint in den E-Mails und im Dashboard deines Workspace.",
+					"teamNamePlaceholder": "Mein Workspace",
 					"timezone": "Zeitzone",
 					"timezoneHelp": "Ersatzzeitzone für sendezeitoptimierte Kampagnen, wenn die Zeitzone einer Empfängerin oder eines Empfängers unbekannt ist.",
 					"timezones": {
@@ -9607,7 +9896,8 @@
 					"title": "Allgemein",
 					"toggleArchivesOperation": "Kampagnenarchive umschalten",
 					"unsavedChanges": "Du hast ungespeicherte Änderungen",
-					"verifiedLabel": "Verifiziert:"
+					"verifiedLabel": "Verifiziert:",
+					"nameSaveFailed": "Die übrigen Einstellungen sind gespeichert, aber der Workspace-Name konnte nicht geändert werden. Versuch es noch einmal."
 				},
 				"index": {
 					"applyChanges": "Änderungen anwenden",
@@ -9672,7 +9962,8 @@
 					"pageTitle": "Instanz — Owlat",
 					"reviewTitle": "Änderungen am Betriebsmodus prüfen",
 					"subtitle": "Konfiguration, die alle in diesem Workspace betrifft.",
-					"title": "Instanz"
+					"title": "Instanz",
+					"currentMode": "Aktuell"
 				},
 				"plugins": {
 					"detail": {
@@ -9877,7 +10168,8 @@
 						"importKeyPlaceholder": "Füge den ASCII-armierten privaten Schlüssel aus deinem Wiederherstellungs-Kit ein",
 						"restoreDescription": "Füge ein zuvor heruntergeladenes Wiederherstellungs-Kit ein, um den Zugriff für dessen Adresse wiederherzustellen.",
 						"restoreLabel": "Aus einem Wiederherstellungs-Kit wiederherstellen",
-						"title": "Wiederherstellungs-Kit"
+						"title": "Wiederherstellungs-Kit",
+						"importKeyLabel": "Privater Schlüssel aus dem Wiederherstellungs-Kit"
 					},
 					"title": "Versiegelte Mail",
 					"toasts": {
@@ -9947,7 +10239,8 @@
 						"recentlyReviewed": "Kürzlich geprüft",
 						"reject": "Ablehnen",
 						"title": "Zur Prüfung zurückgehalten",
-						"updated": "Aktualisiert {time}"
+						"updated": "Aktualisiert {time}",
+						"scanScore": "{level} · Wert {score}"
 					},
 					"roleOptions": {
 						"admin": "Admin",
@@ -9969,7 +10262,8 @@
 					},
 					"statusModal": {
 						"reasonPlaceholder": "Grund für diese Änderung",
-						"title": "Versandstatus setzen"
+						"title": "Versandstatus setzen",
+						"confirmBlock": "Versand sperren"
 					},
 					"statusOptions": {
 						"banned": "Gebannt — dauerhafte Sperre",
@@ -10000,6 +10294,33 @@
 						"risk": "Risiko",
 						"sender": "Absender",
 						"title": "Workspaces"
+					},
+					"abuseStatus": {
+						"banned": "Dauerhaft gesperrt",
+						"clean": "Unauffällig",
+						"suspended": "Gesperrt",
+						"warned": "Verwarnt"
+					},
+					"removeAdminDialog": {
+						"description": "{email} verliert sofort den Zugriff auf die Betreiberkonsole.",
+						"title": "Plattform-Admin entfernen?"
+					},
+					"resourceType": {
+						"attachment": "Anhang",
+						"campaign": "Kampagne",
+						"media_upload": "Medien-Upload",
+						"transactional": "Transaktionale E-Mail"
+					},
+					"riskLevel": {
+						"critical": "Kritisch",
+						"high": "Hoch",
+						"low": "Niedrig",
+						"medium": "Mittel"
+					},
+					"scanLevel": {
+						"blocked": "Blockiert",
+						"clean": "Unauffällig",
+						"suspicious": "Verdächtig"
 					}
 				}
 			},
@@ -10019,7 +10340,16 @@
 						"loading": "Container-Status wird geladen…",
 						"service": "Dienst",
 						"state": "Zustand",
-						"title": "Container-Zustand"
+						"title": "Container-Zustand",
+						"states": {
+							"created": "Erstellt, nicht gestartet",
+							"dead": "Abgestürzt",
+							"exited": "Gestoppt",
+							"paused": "Pausiert",
+							"removing": "Wird entfernt",
+							"restarting": "Startet neu",
+							"running": "Läuft"
+						}
 					},
 					"duration": {
 						"minutes": "{minutes}m {seconds}s",
@@ -10035,7 +10365,13 @@
 						"empty": "Noch keine Updates eingespielt.",
 						"fromTo": "Von → Nach",
 						"started": "Gestartet",
-						"title": "Update-Verlauf"
+						"title": "Update-Verlauf",
+						"status": {
+							"failed": "Fehlgeschlagen",
+							"running": "Läuft",
+							"success": "Erfolgreich",
+							"superseded": "Durch neueren Lauf ersetzt"
+						}
 					},
 					"intro": "Aktuelle Owlat-Version, Container-Zustand und Update-Verlauf in der App.",
 					"pageTitle": "System & Updates — Owlat",
@@ -10111,7 +10447,9 @@
 							"endpoint": "Endpunkt",
 							"method": "Methode"
 						},
-						"title": "API-Schnellstart"
+						"title": "API-Schnellstart",
+						"copyBaseUrl": "Basis-URL kopieren",
+						"copyRequest": "Anfrage kopieren"
 					},
 					"index": {
 						"actions": {
@@ -10253,7 +10591,8 @@
 					"errorTitle": "Das Audit-Protokoll konnte nicht geladen werden",
 					"noResults": {
 						"description": "Keine Audit-Einträge passen zu „{query}“. Versuche einen anderen Suchbegriff oder passe die Filter an.",
-						"title": "Keine Ergebnisse gefunden"
+						"title": "Keine Ergebnisse gefunden",
+						"loadedOnly": "Keiner der bisher geladenen Einträge passt zu „{query}“. Lade ältere Einträge, um auch sie zu durchsuchen."
 					},
 					"noWorkspace": {
 						"description": "Erstelle oder wähle einen Workspace, um das Audit-Protokoll anzusehen.",
@@ -10265,10 +10604,18 @@
 					"stats": {
 						"campaigns": "Kampagnen",
 						"contacts": "Kontakte",
-						"totalActions": "Aktionen gesamt"
+						"totalActions": "Aktionen gesamt",
+						"summary": "Aktivitätsübersicht"
 					},
 					"subtitle": "Verfolge alle Aktionen und Änderungen deiner Teammitglieder",
-					"title": "Audit-Protokoll"
+					"title": "Audit-Protokoll",
+					"filters": {
+						"action": "Nach Aktion filtern",
+						"dateRange": "Zeitraum",
+						"resource": "Nach Bereich filtern",
+						"search": "Audit-Protokoll durchsuchen",
+						"user": "Nach Person filtern"
+					}
 				},
 				"cancelInviteModal": {
 					"body": "Möchtest du die Einladung an {email} wirklich zurückziehen? Die Person kann dem Team mit diesem Einladungslink dann nicht mehr beitreten.",
@@ -10423,7 +10770,8 @@
 						"title": "Vorhandene Mail importieren",
 						"toastCancelled": "Import gestoppt",
 						"toastLearnStarted": "Lernen aus der importierten Mail gestartet",
-						"toastStarted": "Import gestartet"
+						"toastStarted": "Import gestartet",
+						"close": "Import schließen"
 					},
 					"intro": "Gemeinsame Adressen, die dein Team zusammen liest und von denen es sendet — etwa {supportAddress} oder {salesAddress}.",
 					"loadError": "Team-Postfächer konnten nicht geladen werden. Bitte versuche es erneut.",
@@ -10451,7 +10799,8 @@
 					"reconnectBlocked": "Die Mailverbindung dieses Postfachs funktioniert nicht mehr, aber es ist gesperrt — stelle es zuerst wieder her, um das Postfach neu zu verbinden.",
 					"reconnectPanel": {
 						"description": "Seine Mailverbindung funktioniert nicht mehr. Gib das Postfach-Passwort erneut ein (ein App-Passwort, falls der Anbieter eines verlangt), um die Synchronisierung fortzusetzen. Dein Team und dessen Mail bleiben erhalten.",
-						"title": "Dieses Postfach neu verbinden"
+						"title": "Dieses Postfach neu verbinden",
+						"errorDetails": "Was der Server gemeldet hat"
 					},
 					"revokeKeyDialog": {
 						"confirm": "Schlüssel widerrufen",
@@ -10466,7 +10815,8 @@
 						"keyRevoked": "Verschlüsselungsschlüssel für {address} widerrufen",
 						"keysScheduled": "Veröffentlichung der Verschlüsselungsschlüssel eingeplant",
 						"rotationScheduled": "Schlüsselrotation für {address} eingeplant"
-					}
+					},
+					"closeMembers": "Mitglieder schließen"
 				},
 				"inviteMember": "Einladen",
 				"invites": {
@@ -10644,7 +10994,8 @@
 				"pageTitle": "Assistent — Owlat",
 				"renameConversation": "Unterhaltung umbenennen",
 				"welcomeBody": "Frag nach deinen Kontakten, Kampagnen, Wissensinhalten und Dateien — oder lass mich eine E-Mail oder einen Kampagnentext entwerfen. Ich kann deinen Workspace durchsuchen, um meine Antworten zu belegen.",
-				"welcomeTitle": "Wie kann ich helfen?"
+				"welcomeTitle": "Wie kann ich helfen?",
+				"heading": "Assistent"
 			}
 		},
 		"audience": {
@@ -10663,8 +11014,8 @@
 					"customProperties": "Eigene Eigenschaften",
 					"deleteDialog": {
 						"body": "Möchtest du {email} wirklich löschen? Der Kontakt wird sofort ausgeblendet und nach der Aufbewahrungsfrist von 30 Tagen endgültig gelöscht — zusammen mit seinen Themen-Mitgliedschaften und eigenen Eigenschaften.",
-						"subtitle": "Sofort ausgeblendet, nach 30 Tagen endgültig gelöscht.",
-						"title": "Kontakt löschen"
+						"title": "Kontakt löschen",
+						"thisContact": "diesen Kontakt"
 					},
 					"deleting": "Wird gelöscht...",
 					"details": "Details",
@@ -10733,6 +11084,18 @@
 						"noneCreated": "Noch keine Themen erstellt",
 						"remove": "Aus dem Thema entfernen",
 						"title": "Themen"
+					},
+					"sources": {
+						"api": "API",
+						"import": "Import",
+						"form": "Formular oder von Hand angelegt",
+						"transactional": "Transaktionale E-Mail",
+						"inbound": "Eingehende Nachricht"
+					},
+					"removeSuppressionConfirm": {
+						"title": "Sperrung aufheben?",
+						"complainedBody": "Diese Person hat eine deiner E-Mails als Spam markiert. Erneute E-Mails können deiner Absenderreputation schaden.",
+						"bouncedBody": "E-Mails an diese Adresse sind zurückgekommen, weil das Postfach nicht existiert. Erneutes Senden kann deiner Absenderreputation schaden."
 					}
 				},
 				"index": {
@@ -10821,7 +11184,8 @@
 						"emailCopied": "E-Mail-Adresse kopiert",
 						"imported": "{count} Kontakt erfolgreich verarbeitet | {count} Kontakte erfolgreich verarbeitet"
 					},
-					"unnamedContact": "Unbenannter Kontakt"
+					"unnamedContact": "Unbenannter Kontakt",
+					"selectAllMatchingUnknown": "Alle passenden Kontakte auswählen"
 				}
 			},
 			"segments": {
@@ -10960,13 +11324,6 @@
 					"notes": "Notizen",
 					"reason": "Grund"
 				},
-				"tiles": {
-					"bounced": "Unzustellbar",
-					"complained": "Beschwert",
-					"manual": "Manuell",
-					"total": "Unterdrückt gesamt",
-					"unengaged": "Inaktiv"
-				},
 				"title": "Unterdrückungen",
 				"toasts": {
 					"added": "Adresse unterdrückt",
@@ -10977,6 +11334,12 @@
 				},
 				"validation": {
 					"emailRequired": "E-Mail-Adresse ist erforderlich"
+				},
+				"readOnly": "Nur Admins können Unterdrückungen ändern.",
+				"filterLabel": "Unterdrückungen filtern",
+				"noReasonResults": {
+					"title": "Nichts unter „{reason}“",
+					"showAll": "Alle Gründe anzeigen"
 				}
 			},
 			"topics": {
@@ -11211,6 +11574,10 @@
 					"trigger": "Auslöser",
 					"validation": {
 						"title": "Behebe diese Punkte vor dem Aktivieren:"
+					},
+					"deleteStepConfirm": {
+						"title": "Schritt {position} löschen?",
+						"body": "Der Schritt und seine Einstellungen werden entfernt. Das kann nicht rückgängig gemacht werden."
 					}
 				},
 				"index": {
@@ -11231,7 +11598,8 @@
 						"step": "Schritt {number}",
 						"stepSummary": "{label} · {completed} abgeschlossen",
 						"title": "Schritt-Funnel",
-						"trigger": "Auslöser"
+						"trigger": "Auslöser",
+						"loadError": "Schritt-Trichter konnte nicht geladen werden"
 					},
 					"loading": "Automatisierung wird geladen …",
 					"notFoundDescription": "Diese Automatisierung wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
@@ -11261,7 +11629,8 @@
 						"completed": "Abgeschlossen",
 						"contactsEntered": "Eingetretene Kontakte",
 						"emailsSent": "Gesendete E-Mails"
-					}
+					},
+					"statsLoadError": "Statistiken konnten nicht geladen werden"
 				}
 			},
 			"index": {
@@ -11319,6 +11688,10 @@
 					"draftNotToggleable": "Bitte vervollständige und aktiviere diese Automation im Builder",
 					"duplicated": "Automation wurde dupliziert",
 					"paused": "„{name}“ wurde pausiert"
+				},
+				"noStatusResults": {
+					"title": "Keine Automationen mit dem Status „{status}“",
+					"description": "Zeig alle an, um deine anderen Automationen zu sehen."
 				}
 			},
 			"new": {
@@ -11343,7 +11716,8 @@
 				},
 				"operations": {
 					"create": "Automation erstellen",
-					"updateTrigger": "Auslöser der Automation aktualisieren"
+					"updateTrigger": "Auslöser der Automation aktualisieren",
+					"updateDetails": "Automationsdetails aktualisieren"
 				},
 				"pageTitle": "Automation erstellen — Owlat",
 				"steps": {
@@ -11354,8 +11728,10 @@
 				"title": "Automation erstellen",
 				"validation": {
 					"nameRequired": "Ein Name für die Automation ist erforderlich",
-					"triggerRequired": "Bitte wähle einen Auslösertyp"
-				}
+					"triggerRequired": "Bitte wähle einen Auslösertyp",
+					"triggerConfigIncomplete": "Richte den Auslöser vollständig ein"
+				},
+				"saveTrigger": "Auslöser speichern"
 			}
 		},
 		"campaigns": {
@@ -11520,7 +11896,8 @@
 						"emptyDescription": "Öffnungen erscheinen hier, sobald Empfänger deine E-Mail ansehen.",
 						"emptyTitle": "Noch keine Öffnungen erfasst",
 						"title": "Öffnungen im Zeitverlauf",
-						"window": "Erste 48 Stunden"
+						"window": "Erste 48 Stunden",
+						"singleBucket": "Bisher {count} Öffnung, in der ersten Stunde | Bisher {count} Öffnungen, alle in der ersten Stunde"
 					},
 					"toasts": {
 						"duplicated": "Kampagne erfolgreich dupliziert",
@@ -11617,7 +11994,18 @@
 				"pageTitleForRoom": "{room} — Chat — Owlat",
 				"previewNotice": "Du siehst eine Vorschau dieses Kanals. Tritt bei, um Nachrichten zu senden.",
 				"unavailableDescription": "Dieser Raum wurde möglicherweise archiviert oder du hast keinen Zugriff mehr.",
-				"unavailableTitle": "Raum nicht verfügbar"
+				"unavailableTitle": "Raum nicht verfügbar",
+				"deleteConfirm": {
+					"description": "Alle im Raum sehen, dass eine Nachricht gelöscht wurde. Das lässt sich nicht rückgängig machen.",
+					"title": "Diese Nachricht löschen?"
+				},
+				"historyCapped": "Es werden die neuesten {count} Nachrichten angezeigt. Ältere Nachrichten werden hier nicht geladen.",
+				"leaveConfirm": {
+					"confirm": "Kanal verlassen",
+					"description": "Du bekommst seine Nachrichten nicht mehr. Über „Kanäle durchsuchen“ kannst du wieder beitreten.",
+					"privateDescription": "Dieser Kanal ist privat. Wenn du ihn verlässt, kann dich nur ein Kanal-Admin wieder hinzufügen.",
+					"title": "Diesen Kanal verlassen?"
+				}
 			},
 			"index": {
 				"browseChannels": "Kanäle durchsuchen",
@@ -11676,7 +12064,22 @@
 					"titleUpdated": "Titel aktualisiert"
 				},
 				"updateOperation": "Datei aktualisieren",
-				"versionHistory": "Versionsverlauf"
+				"versionHistory": "Versionsverlauf",
+				"renameFile": "Datei umbenennen",
+				"titleLabel": "Dateititel",
+				"editTags": "Tags bearbeiten",
+				"fileType": "Typ",
+				"fileKinds": {
+					"pdf": "PDF-Dokument",
+					"image": "Bild",
+					"video": "Video",
+					"audio": "Audio",
+					"spreadsheet": "Tabelle",
+					"presentation": "Präsentation",
+					"document": "Textdokument",
+					"archive": "Archiv",
+					"text": "Nur-Text"
+				}
 			},
 			"index": {
 				"columns": {
@@ -11992,7 +12395,9 @@
 					"urgent": "Dringend",
 					"low": "Niedrige Priorität"
 				},
-				"priorityToast": "Priorität geändert"
+				"priorityToast": "Priorität geändert",
+				"bodyLoadFailed": "Der Rest dieser Nachricht konnte nicht geladen werden.",
+				"bodyLoadingFull": "Die ganze Nachricht wird geladen …"
 			},
 			"failed": {
 				"emptyBody": "Jede eingehende Nachricht wurde erfolgreich verarbeitet.",
@@ -12363,7 +12768,8 @@
 				"questionPlaceholder": "Wie lauten unsere Rückgabebedingungen?",
 				"searchPlaceholder": "Wissenseinträge durchsuchen …",
 				"subtitle": "Durchsuche und verwalte das Wissen, das aus deinen Gesprächen und Dateien gewonnen wurde.",
-				"title": "Wissen"
+				"title": "Wissen",
+				"graphView": "Graphansicht"
 			}
 		},
 		"marketing": {
@@ -12401,8 +12807,9 @@
 				"title": "So erscheinen deine Kampagnen hier"
 			},
 			"latest": {
-				"subtitle": "Verglichen mit deinem Durchschnitt der letzten {count} verschickten Kampagnen",
-				"title": "Neueste Kampagnen"
+				"subtitle": "Verglichen mit deinem Durchschnitt der letzten {count} verschickten Kampagne | Verglichen mit deinem Durchschnitt der letzten {count} verschickten Kampagnen",
+				"title": "Neueste Kampagnen",
+				"subtitleNoBaseline": "Dein neuester Versand. Vergleiche gibt es ab deiner zweiten Kampagne."
 			},
 			"newCampaign": "Neue Kampagne",
 			"nextUp": {
@@ -12420,7 +12827,9 @@
 				"opensPerDayNote": "Kampagnen und Transaktions-E-Mails zusammen; die Tagessummen trennen sie nicht.",
 				"sameOrderNote": "Dieselben Kampagnen, dieselbe Reihenfolge.",
 				"subtitle": "{campaigns} Kampagnen · {delivered} E-Mails zugestellt",
-				"title": "Alle Kampagnen, letzte 30 Tage"
+				"title": "Alle Kampagnen, letzte 30 Tage",
+				"campaignCount": "{count} Kampagne | {count} Kampagnen",
+				"deliveredCount": "{count} E-Mail zugestellt | {count} E-Mails zugestellt"
 			},
 			"title": "Marketing-Übersicht",
 			"todoChip": "{count} offen"
@@ -12429,8 +12838,8 @@
 			"contacts": {
 				"addContact": "Kontakt hinzufügen",
 				"compose": "Verfassen",
-				"composeAria": "Nachricht an Kontakt verfassen",
-				"editAria": "Kontakt bearbeiten",
+				"composeAria": "Nachricht an {name} verfassen",
+				"editAria": "{name} bearbeiten",
 				"editContact": "Kontakt bearbeiten",
 				"emailPlaceholder": "name{'@'}example.com",
 				"empty": "Noch keine Kontakte",
@@ -12439,7 +12848,7 @@
 				"organization": "Organisation",
 				"organizationPlaceholder": "Firma",
 				"pageTitle": "Kontakte — Owlat",
-				"removeAria": "Kontakt entfernen",
+				"removeAria": "{name} entfernen",
 				"removedToast": "{contact} entfernt",
 				"resumeCardDav": "CardDAV-Änderungen wieder übernehmen",
 				"resumedToast": "{contact} folgt wieder CardDAV. Die nächste Synchronisierung holt die Angaben der Karte zurück.",
@@ -12524,7 +12933,8 @@
 					"heading": "Label-Ansicht",
 					"loadError": "Die Nachrichten für dieses Label konnten nicht geladen werden. Lade neu, um es erneut zu versuchen.",
 					"pageTitle": "E-Mail — Owlat",
-					"selectMessage": "Wähle eine Nachricht"
+					"selectMessage": "Wähle eine Nachricht",
+					"pageTitleNamed": "{label} — E-Mail — Owlat"
 				}
 			},
 			"migrate": {
@@ -12658,7 +13068,7 @@
 				"confirmationSentApprove": "Wir haben einen Bestätigungslink an {email} gesendet. Folge ihm, um die Änderung deiner Anmelde-E-Mail zu genehmigen.",
 				"confirmationSentFinish": "Wir haben einen Bestätigungslink an {email} gesendet. Folge ihm, um die Änderung deiner Anmelde-E-Mail abzuschließen.",
 				"currentPasswordLabel": "Aktuelles Passwort",
-				"daysRemaining": "Noch {days} Tage",
+				"daysRemaining": "Noch {days} Tag | Noch {days} Tage",
 				"deleteAccountBody": "Beim Löschen deines Kontos werden alle deine Daten nach einer Frist von 30 Tagen dauerhaft entfernt. Innerhalb dieses Zeitraums kannst du die Löschung jederzeit abbrechen.",
 				"deleteAccountSubtitle": "Lösche dein Konto und alle zugehörigen Daten dauerhaft",
 				"deleteAccountTitle": "Konto löschen",
@@ -12727,7 +13137,9 @@
 				"signedInAs": "Angemeldet als {email}.",
 				"subheading": "Verwalte dein Profil, dein Passwort, deine Daten und dein Konto",
 				"warningLabel": "Achtung:",
-				"whatWillBeDeleted": "Was gelöscht wird:"
+				"whatWillBeDeleted": "Was gelöscht wird:",
+				"confirmWord": "LÖSCHEN",
+				"exportCsvNeedsWorkspace": "Kontakte gehören zu einem Workspace. Tritt einem bei oder öffne einen, um sie zu exportieren."
 			},
 			"addAccount": {
 				"addressLabel": "Adresse",
@@ -12769,7 +13181,10 @@
 				"transportExternal": "Bestehendes Postfach verbinden",
 				"transportHosted": "Gehostete Adresse",
 				"verifyDomainFirst": "Zuerst eine Domain verifizieren",
-				"willBeCreatedAs": "Wird angelegt als: {address}"
+				"willBeCreatedAs": "Wird angelegt als: {address}",
+				"modeLabel": "Art des Postfachs",
+				"transportLabel": "Wie das Team-Postfach seine Mail bekommt",
+				"submitHint": "Gib eine Adresse ein und wähle eine Domain, um fortzufahren."
 			},
 			"aliases": {
 				"activeAliases": "Aktive Aliasse",
@@ -12783,7 +13198,8 @@
 				"removeAliasOperation": "Alias entfernen",
 				"removeDialogDescription": "E-Mails an diesen Alias werden künftig zurückgewiesen.",
 				"removeDialogTitle": "Alias entfernen?",
-				"subheading": "Alternative Adressen, die in {address} zugestellt werden."
+				"subheading": "Alternative Adressen, die in {address} zugestellt werden.",
+				"aliasLabel": "Neuer Alias"
 			},
 			"appPasswords": {
 				"activePasswords": "Aktive Passwörter",
@@ -12812,7 +13228,8 @@
 				"smtpValue": "{host}:465 (TLS) / 587 (STARTTLS)",
 				"subheading": "Erzeuge Zugangsdaten pro Gerät für native E-Mail-Programme (Apple Mail, Thunderbird, Gmail mobil, …).",
 				"usageLine": "Erstellt {created} · Zuletzt verwendet {lastUsed}",
-				"usernameLabel": "Benutzername"
+				"usernameLabel": "Benutzername",
+				"revokeNamed": "{name} widerrufen"
 			},
 			"booking": {
 				"copied": "Kopiert",
@@ -12872,9 +13289,9 @@
 				"displayNamePlaceholder": "Alex Morgan",
 				"mailboxMeta": "{displayName} · {megabytes} MB belegt",
 				"mailboxStatus": {
-					"active": "aktiv",
-					"deleted": "gelöscht",
-					"suspended": "gesperrt"
+					"active": "Aktiv",
+					"deleted": "Gelöscht",
+					"suspended": "Gesperrt"
 				},
 				"mailboxes": "Postfächer",
 				"noDisplayName": "(kein Anzeigename)",
@@ -12884,7 +13301,7 @@
 				"renameMailbox": "Name, Farbe und Zeichen",
 				"renameOperation": "Postfach umbenennen",
 				"subtitle": "Wie Owlat aussieht und wie sich deine Post liest.",
-				"teamManage": "Team · verwalten",
+				"teamManage": "Mitglieder verwalten",
 				"colour": "Farbe",
 				"colourAutomatic": "Automatisch",
 				"colourSlot": "Farbe {n}",
@@ -12904,12 +13321,12 @@
 			},
 			"members": {
 				"detail": {
-					"backToPreferences": "Zurück zu den Einstellungen",
 					"intro": "Wer {address} lesen und darüber senden darf.",
 					"notFoundBody": "Es existiert nicht, oder du hast keinen Zugriff auf die Verwaltung seiner Mitglieder.",
 					"notFoundTitle": "Dieses Team-Postfach ist nicht verfügbar",
 					"pageTitle": "Mitglieder des Team-Postfachs — Owlat",
-					"title": "Mitglieder des Team-Postfachs"
+					"title": "Mitglieder des Team-Postfachs",
+					"backToMailboxes": "Zurück zu den verbundenen Postfächern"
 				}
 			},
 			"security": {
@@ -12963,7 +13380,9 @@
 					"signOutOthersDialogDescription": "Alle Sitzungen außer dieser enden sofort. Hier bleibst du angemeldet.",
 					"signOutOthersConfirm": "Überall sonst abmelden",
 					"signedOutOthers": "Alle anderen Sitzungen wurden abgemeldet.",
-					"signOutOthersFailed": "Die anderen Sitzungen konnten nicht abgemeldet werden."
+					"signOutOthersFailed": "Die anderen Sitzungen konnten nicht abgemeldet werden.",
+					"showAll": "Alle {count} Sitzungen anzeigen",
+					"showFewer": "Weniger Sitzungen anzeigen"
 				},
 				"twoFactor": {
 					"heading": "Zwei-Faktor-Authentifizierung",
@@ -12994,7 +13413,8 @@
 						"confirmBody": "Tippe die sechs Ziffern ein, die deine App gerade zeigt. Vorher ist Zwei-Faktor nicht aktiv.",
 						"codeLabel": "Sechsstelliger Code",
 						"confirm": "Zwei-Faktor aktivieren",
-						"enabled": "Zwei-Faktor-Authentifizierung ist aktiv."
+						"enabled": "Zwei-Faktor-Authentifizierung ist aktiv.",
+						"stepOf": "Schritt {step} von {total}"
 					},
 					"errors": {
 						"wrongPassword": "Dieses Passwort stimmt nicht.",
@@ -13031,7 +13451,7 @@
 				"pageTitle": "Tastenkürzel — Owlat"
 			},
 			"signatures": {
-				"bodyPlaceholder": "— Marcel",
+				"bodyPlaceholder": "Deine Signatur",
 				"deleteConfirm": "Signatur löschen",
 				"deleteDescription": "Diese Signatur wird entfernt. Diese Aktion kann nicht rückgängig gemacht werden.",
 				"deleteTitle": "Signatur löschen?",
@@ -13065,10 +13485,10 @@
 				"saveOperation": "Abwesenheitsnotiz speichern",
 				"start": "Beginn (optional)",
 				"subject": "Betreff",
-				"turnOff": "Ausschalten",
-				"turnOffDescription": "Der Abwesenheits-Autoresponder antwortet nicht mehr auf eingehende Mail.",
-				"turnOffOperation": "Abwesenheitsnotiz ausschalten",
-				"turnOffTitle": "Abwesenheitsnotiz ausschalten?"
+				"turnOff": "Abwesenheitsnotiz löschen",
+				"turnOffDescription": "Die automatische Antwort stoppt, und Betreff und Nachricht werden gelöscht. Wenn du sie nur pausieren und den Text behalten willst, schalte sie aus und speichere.",
+				"turnOffOperation": "Abwesenheitsnotiz löschen",
+				"turnOffTitle": "Abwesenheitsnotiz löschen?"
 			},
 			"writingVoice": {
 				"aiDisabled": "KI-Funktionen sind für diesen Workspace deaktiviert, daher gibt es keinen Schreibstil zu personalisieren.",
@@ -13100,7 +13520,9 @@
 				"activity": "Aktivität",
 				"revoke": "Widerrufen",
 				"revokeDialogTitle": "Diese Verbindung widerrufen?",
-				"revokeDialogDescription": "Das KI-Programm verliert sofort den Zugriff. Seine Aktivität bleibt hier sichtbar."
+				"revokeDialogDescription": "Das KI-Programm verliert sofort den Zugriff. Seine Aktivität bleibt hier sichtbar.",
+				"revokeNamed": "{name} widerrufen",
+				"activityNamed": "Aktivität von {name}"
 			}
 		},
 		"send": {
@@ -13241,13 +13663,17 @@
 							"subjectHelp": "Leer lassen, um den Standardbetreff zu verwenden.",
 							"subjectLabel": "Betreffzeile",
 							"subjectPlaceholder": "Betreff auf {language}",
-							"title": "Übersetzungen"
+							"title": "Übersetzungen",
+							"removeConfirmTitle": "{language} entfernen?",
+							"removeConfirmBody": "Betreff, Vorschautext und übersetzter Inhalt dieser Sprache werden beim Speichern entfernt.",
+							"removeLanguageNamed": "{language} entfernen"
 						},
 						"unreadableTranslations": {
 							"body": "Die gespeicherten Übersetzungen dieser E-Mail sind beschädigt, deshalb kann diese Seite sie nicht anzeigen. Speichern ist ausgeschaltet, damit sie nicht überschrieben werden.",
 							"title": "Übersetzungen konnten nicht gelesen werden"
 						},
-						"unsavedChanges": "Nicht gespeicherte Änderungen"
+						"unsavedChanges": "Nicht gespeicherte Änderungen",
+						"titleNamed": "Einstellungen · {name}"
 					},
 					"translations": {
 						"pageTitle": "E-Mail-Übersetzungen — Owlat"
@@ -13338,7 +13764,7 @@
 				"deleteTitle": "Ausgewählte Medien löschen",
 				"detailTitle": "Asset-Details",
 				"dropToUpload": "Dateien zum Hochladen ablegen",
-				"emptyDescriptionAdmin": "Lade Bilder hoch, um sie in deinen E-Mail-Vorlagen zu verwenden.",
+				"emptyDescriptionAdmin": "Lade Bilder, PDFs, Videos oder Audio hoch, um sie in deinen E-Mail-Vorlagen zu verwenden.",
 				"emptyDescriptionMember": "Medien erscheinen hier, sobald eine Administratorin oder ein Administrator sie hochlädt.",
 				"emptyTitle": "Noch keine Medien",
 				"loadError": "Medien konnten nicht geladen werden",
@@ -13359,7 +13785,14 @@
 				"uploadFirst": "Lade dein erstes Bild hoch",
 				"urlCopied": "URL in die Zwischenablage kopiert",
 				"usageCount": "In {count} E-Mail verwendet | In {count} E-Mails verwendet",
-				"usageNone": "Noch in keiner E-Mail verwendet"
+				"usageNone": "Noch in keiner E-Mail verwendet",
+				"deleteOneTitle": "{name} löschen?",
+				"deleteOneBody": "Das kann nicht rückgängig gemacht werden.",
+				"deleteOneInUse": "Die Datei wird in {count} E-Mail verwendet, die dann ein fehlendes Bild zeigt. Das kann nicht rückgängig gemacht werden. | Die Datei wird in {count} E-Mails verwendet, die dann ein fehlendes Bild zeigen. Das kann nicht rückgängig gemacht werden.",
+				"urlCopyFailed": "URL konnte nicht kopiert werden",
+				"searchLabel": "Medien durchsuchen",
+				"selectAsset": "{name} auswählen",
+				"openAsset": "{name} öffnen"
 			},
 			"transactional": {
 				"detail": {
@@ -13410,7 +13843,11 @@
 							"description": "Hängt jeder Sendung dieser E-Mail eine Fußzeile mit „Einstellungen verwalten“ und „Abmelden“ an. Lass die Option aus für Belege, Passwort-Zurücksetzungen und andere E-Mails, von denen Empfänger sich nicht abmelden können.",
 							"title": "Abmeldelink anzeigen"
 						},
-						"variableGroup": "Datenvariablen"
+						"variableGroup": "Datenvariablen",
+						"unpublishConfirm": {
+							"title": "Diese E-Mail zurückziehen?",
+							"description": "Sie wird sofort wieder zum Entwurf. Jeder API-Versand mit dieser E-Mail schlägt fehl, bis du sie wieder veröffentlichst, auch Passwort-Resets und Belege."
+						}
 					},
 					"sends": {
 						"detail": {
@@ -13677,7 +14114,11 @@
 				"namePlaceholder": "Dein Name",
 				"passwordPlaceholder": "Passwort (mind. {min} Zeichen)",
 				"seedDemo": "Demodaten anlegen (zum Ausprobieren)",
-				"showPassword": "Passwort anzeigen"
+				"showPassword": "Passwort anzeigen",
+				"emailLabel": "E-Mail",
+				"nameLabel": "Name",
+				"passwordLabel": "Passwort",
+				"confirmPasswordLabel": "Passwort bestätigen"
 			},
 			"ai": {
 				"keyPlaceholder": "API-Schlüssel",
@@ -13763,7 +14204,8 @@
 				"useKeyFileInstead": "Stattdessen eine Schlüsseldatei verwenden",
 				"version": "Version",
 				"versionHint": "Das neueste veröffentlichte Server-Release, wird beim Start der Installation ermittelt.",
-				"versionLatest": "Neuestes Release"
+				"versionLatest": "Neuestes Release",
+				"privateKey": "Privater Schlüssel"
 			},
 			"finishing": {
 				"body": "Owlat ist unter {url} installiert, aber die Adresse ist noch nicht erreichbar. Lege die untenstehenden Einträge an; sobald sie auflösen und TLS ausgestellt ist, wird hieraus automatisch „Workspace öffnen“.",
@@ -13861,7 +14303,15 @@
 				"description": "Für Administratoren: Owlat per SSH auf einem frischen Linux-Server installieren.",
 				"title": "Neuen Server einrichten"
 			},
-			"tagline": "Dein selbst gehostetes Zuhause für E-Mail, Kontakte und Marketing."
+			"tagline": "Dein selbst gehostetes Zuhause für E-Mail, Kontakte und Marketing.",
+			"remove": {
+				"title": "Diesen Server entfernen?",
+				"body": "{name} wird abgemeldet und aus dieser App entfernt. Du kannst den Server über seine Adresse wieder verbinden."
+			}
+		},
+		"web": {
+			"desktopOnlyHeading": "Öffne das in der Desktop-App",
+			"backToDashboard": "Zurück zum Dashboard"
 		}
 	},
 	"home": {
@@ -13921,13 +14371,14 @@
 			"heading": "Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV"
 		},
 		"signIn": "Anmelden",
-		"title": "Impressum"
+		"title": "Impressum",
+		"openApp": "App öffnen",
+		"unpublished": "Der Betreiber dieser Instanz hat kein Impressum veröffentlicht."
 	},
 	"invite": {
 		"accept": {
 			"acceptingBody": "Dein Teamzugang wird eingerichtet...",
 			"acceptingTitle": "Einladung wird angenommen...",
-			"backToHome": "Zurück zur Startseite",
 			"claimMailboxOperation": "Postfach übernehmen",
 			"createAccount": "Konto erstellen",
 			"defaultOrganization": "dem Team",
@@ -13935,11 +14386,12 @@
 			"errorTitle": "Fehler bei der Einladung",
 			"errors": {
 				"acceptFailed": "Die Einladung konnte nicht angenommen werden",
-				"missingId": "Ungültiger Einladungslink. Es wurde keine Einladungs-ID übergeben.",
-				"unexpected": "Ein unerwarteter Fehler ist aufgetreten"
+				"unexpected": "Ein unerwarteter Fehler ist aufgetreten",
+				"incompleteLink": "Dieser Einladungslink ist unvollständig. Öffne ihn noch einmal aus der Einladungs-E-Mail.",
+				"notFound": "Diese Einladung ist abgelaufen oder wurde schon verwendet.",
+				"wrongRecipient": "Diese Einladung ging an eine andere Adresse als {email}. Melde dich mit der eingeladenen Adresse an, um sie anzunehmen."
 			},
 			"getStarted": "Loslegen",
-			"goToDashboard": "Zum Dashboard",
 			"joinTeamInboxOperation": "Team-Postfach beitreten",
 			"loadingBody": "Bitte warten...",
 			"loadingTitle": "Wird geladen...",
@@ -13959,7 +14411,8 @@
 			"verifyEmailResend": "E-Mail erneut senden",
 			"verifyEmailResendFailed": "Die E-Mail konnte nicht gesendet werden. Versuch es gleich noch einmal.",
 			"verifyEmailResent": "Wir haben einen neuen Link geschickt. Es kann eine Minute dauern, bis er ankommt.",
-			"verifyEmailTitle": "Bestätige deine E-Mail-Adresse"
+			"verifyEmailTitle": "Bestätige deine E-Mail-Adresse",
+			"askForNewLink": "Wenn es weiterhin nicht klappt, bitte die Person, die dich eingeladen hat, um einen neuen Link."
 		}
 	},
 	"oauth": {
@@ -14168,7 +14621,8 @@
 				"foldOne": "{count} weitere Neuigkeit von {a} | {count} weitere Neuigkeiten von {a}",
 				"foldTwo": "{count} weitere Neuigkeiten von {a} und {b}",
 				"foldOneOther": "{count} weitere Neuigkeiten von {a}, {b} und einem weiteren Absender",
-				"foldOthers": "{count} weitere Neuigkeiten von {a}, {b} und {others} weiteren"
+				"foldOthers": "{count} weitere Neuigkeiten von {a}, {b} und {others} weiteren",
+				"showFewer": "weniger anzeigen"
 			},
 			"digest": {
 				"count": "{count} Newsletter oder Werbemail | {count} Newsletter und Werbemails",
@@ -15160,7 +15614,8 @@
 			},
 			"useChatAttachments": {
 				"prepareUpload": "Anhang-Upload vorbereiten",
-				"registerAttachment": "Anhang registrieren"
+				"registerAttachment": "Anhang registrieren",
+				"uploadFailed": "{filename} konnte nicht hochgeladen werden."
 			},
 			"useChatMentions": {
 				"assistantName": "Assistent",
@@ -17783,7 +18238,8 @@
 				"pendingReview": "Prüfung ausstehend",
 				"published": "Veröffentlicht"
 			},
-			"updatedAt": "Aktualisiert {date}"
+			"updatedAt": "Aktualisiert {date}",
+			"moreActionsFor": "Weitere Aktionen für {name}"
 		},
 		"threadStatusChip": {
 			"draftReady": "Entwurf bereit",
@@ -18091,7 +18547,8 @@
 				"settings": "Einstellungen",
 				"teamMember": "Teammitglied",
 				"topic": "Thema",
-				"webhook": "Webhook"
+				"webhook": "Webhook",
+				"platformAdmin": "Plattform-Admin"
 			},
 			"timestamp": {
 				"days": {
@@ -19728,6 +20185,11 @@
 		"warranties": {
 			"body": "DER DIENST WIRD „WIE BESEHEN“ UND „WIE VERFÜGBAR“ OHNE JEGLICHE AUSDRÜCKLICHE ODER STILLSCHWEIGENDE GEWÄHRLEISTUNG BEREITGESTELLT, INSBESONDERE OHNE STILLSCHWEIGENDE GEWÄHRLEISTUNG DER MARKTGÄNGIGKEIT, DER EIGNUNG FÜR EINEN BESTIMMTEN ZWECK UND DER NICHTVERLETZUNG VON RECHTEN. WIR GEWÄHRLEISTEN NICHT, DASS DER DIENST UNUNTERBROCHEN, FEHLERFREI ODER SICHER IST.",
 			"heading": "9. Gewährleistungsausschluss"
+		},
+		"openApp": "App öffnen",
+		"unpublished": {
+			"body": "Der Betreiber dieser Instanz hat auf dieser Seite keine Nutzungsbedingungen veröffentlicht.",
+			"contact": "Wenn du Fragen zur Nutzung dieser Instanz hast, schreib an {email}."
 		}
 	},
 	"welcome": {
@@ -19784,7 +20246,6 @@
 		},
 		"heading": "Willkommen bei {instance}",
 		"headingWithName": "Willkommen bei {instance}, {name}",
-		"later": "Das mache ich später",
 		"loading": "Alles wird vorbereitet…",
 		"migrate": {
 			"body": "Importiere dein bestehendes Postfach, damit nichts zurückbleibt.",

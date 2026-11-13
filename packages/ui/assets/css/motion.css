@@ -49,6 +49,17 @@
 }
 
 /*
+ * A device without hover never reveals a hover action, and a touch user has no
+ * focus to move into the row first, so the actions stay visible there.
+ */
+@media (hover: none) {
+	.ui-hover-reveal {
+		opacity: 1;
+		pointer-events: auto;
+	}
+}
+
+/*
  * Spring press for interactive elements that don't already come from .btn
  * (which carries its own active:scale). Scale only — no color or shadow —
  * so it composes with any styling.

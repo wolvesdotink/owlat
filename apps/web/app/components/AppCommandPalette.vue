@@ -24,7 +24,7 @@ import {
 	buildCorePaletteProviders,
 } from '~/lib/commandPaletteCore';
 import { isImeComposing } from '~/utils/imeComposition';
-import { CloseIcon } from '@coolicons/vue';
+import { useAnnounce } from '~/composables/useAnnounce';
 
 /**
  * The app's ONE search overlay, mounted by the dashboard layout the first time
@@ -68,7 +68,8 @@ const route = useRoute();
 
 const open = ref(false);
 const activeIndex = ref(0);
-const inputEl = ref<HTMLInputElement | null>(null);
+const searchBar = ref<{ input: HTMLInputElement | null } | null>(null);
+const inputEl = computed(() => searchBar.value?.input ?? null);
 const dialogRef = ref<HTMLElement | null>(null);
 /** Caret offset in the box — the Mail grammar completes a TOKEN, not the box. */
 const caret = ref(0);
@@ -261,6 +262,32 @@ watch(flatItems, () => {
 
 const scopeLabel = computed(() => t(PALETTE_SCOPE_LABEL_KEYS[scope.value]));
 
+// The rows, the spinner and the answers repaint silently, and focus stays in
+// the box: say what a search found and when an answer arrives.
+const { announce } = useAnnounce();
+watch([() => open.value && !isSearching.value, debouncedTerm], ([settled, term]) => {
+	if (!settled || pendingArgument.value || term.trim().length < SEARCH_MIN_QUERY) return;
+	if (prompt.value === 'ask' || prompt.value === 'mailAsk') return;
+	const count = flatItems.value.length;
+	announce(
+		count > 0
+			? t('components.appCommandPalette.resultCount', { count }, count)
+			: t('components.appCommandPalette.noResults', { query: term.trim() })
+	);
+});
+watch(
+	() => (open.value ? (askScope.answer.value ?? mailAskScope.answer.value) : null),
+	(answer, previous) => {
+		if (answer && answer !== previous) announce(t('components.appCommandPalette.answerReady'));
+	}
+);
+/** An answer on screen has citations to reach, so Tab leaves the box for it. */
+const hasAnswerOnScreen = computed(
+	() =>
+		(prompt.value === 'ask' && !!askScope.answer.value) ||
+		(prompt.value === 'mailAsk' && !!mailAskScope.answer.value)
+);
+
 function syncCaret() {
 	caret.value = inputEl.value?.selectionStart ?? searchQuery.value.length;
 }
@@ -343,8 +370,10 @@ function onInputKeydown(event: KeyboardEvent) {
 		return;
 	}
 	// Tab cycles the SCOPE rather than moving focus: the overlay is one input, and
-	// the argument step is a sub-list of one scope, so it opts out.
-	if (event.key === 'Tab' && !pendingArgument.value) {
+	// the argument step is a sub-list of one scope, so it opts out. With an answer
+	// on screen Tab moves focus as usual, into the answer's sources, and the focus
+	// trap keeps it inside the palette.
+	if (event.key === 'Tab' && !pendingArgument.value && !hasAnswerOnScreen.value) {
 		event.preventDefault();
 		cycleScope();
 		activeIndex.value = restingIndex.value;
@@ -398,7 +427,7 @@ onBeforeUnmount(() => detachTriggers?.());
 			leave-from-class="opacity-100"
 			leave-to-class="opacity-0"
 		>
-			<div v-if="open" class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-50" @click="close" />
+			<div v-if="open" class="fixed inset-0 bg-scrim/50 z-(--z-modal)" @click="close" />
 		</Transition>
 
 		<Transition
@@ -415,63 +444,20 @@ onBeforeUnmount(() => detachTriggers?.());
 				role="dialog"
 				aria-modal="true"
 				:aria-label="t('components.appCommandPalette.dialogLabel')"
-				class="fixed inset-x-4 top-[12%] mx-auto max-w-xl xl:max-w-2xl bg-bg-elevated rounded-xl shadow-surface-6 z-50 overflow-hidden"
+				class="fixed inset-x-4 top-[12%] mx-auto max-w-xl xl:max-w-2xl bg-bg-elevated rounded-xl shadow-surface-6 z-(--z-modal) overflow-hidden"
 			>
 				<!-- Search input -->
-				<div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
-					<!-- The scope chip. `tabindex="-1"` on purpose: Tab inside the overlay
-					     is bound to cycling the scope, so the chip could never be reached
-					     by it anyway, and leaving it out of the tab ring keeps the focus
-					     trap's "first focusable" on the input, where typing belongs. -->
-					<UiTooltip v-if="!pendingArgument" :text="t('components.appCommandPalette.scopeLabel')">
-						<button
-							type="button"
-							tabindex="-1"
-							class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
-							:aria-label="t('components.appCommandPalette.scopeLabel')"
-							@click="cycleScope"
-						>
-							{{ scopeLabel }}
-						</button>
-					</UiTooltip>
-					<span
-						v-else
-						class="flex-shrink-0 text-xs px-2 py-1 rounded bg-bg-surface text-text-secondary"
-					>
-						{{ t(pendingArgument.spec.promptKey) }}
-					</span>
-					<input
-						ref="inputEl"
-						v-model="searchQuery"
-						type="text"
-						:placeholder="t(paletteScope.placeholderKey.value)"
-						class="input-bare flex-1 text-base"
-						role="combobox"
-						aria-expanded="true"
-						aria-controls="app-cmdk-list"
-						:aria-label="t('components.appCommandPalette.dialogLabel')"
-						:aria-activedescendant="
-							flatItems[activeIndex] ? `app-cmdk-opt-${activeIndex}` : undefined
-						"
-						@keydown="onInputKeydown"
-						@keyup="syncCaret"
-						@click="syncCaret"
-						@input="syncCaret"
-					/>
-					<button
-						v-if="searchQuery"
-						class="p-1 text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:aria-label="t('components.appCommandPalette.clearQuery')"
-						@click="searchQuery = ''"
-					>
-						<CloseIcon class="w-4 h-4" />
-					</button>
-					<kbd
-						class="hidden sm:inline-flex items-center px-2 py-1 text-xs text-text-tertiary bg-bg-surface border border-border-subtle rounded"
-					>
-						esc
-					</kbd>
-				</div>
+				<AppCommandPaletteSearchBar
+					ref="searchBar"
+					v-model:query="searchQuery"
+					:scope-label="scopeLabel"
+					:pending-prompt-key="pendingArgument?.spec.promptKey ?? null"
+					:placeholder-key="paletteScope.placeholderKey.value"
+					:active-descendant="flatItems[activeIndex] ? `app-cmdk-opt-${activeIndex}` : undefined"
+					@keydown="onInputKeydown"
+					@caret="syncCaret"
+					@cycle-scope="cycleScope"
+				/>
 
 				<AppCommandPaletteResults
 					:groups="groups"

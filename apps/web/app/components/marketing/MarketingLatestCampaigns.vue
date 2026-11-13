@@ -30,8 +30,10 @@ interface MetricRow {
 	label: string;
 	value: string;
 	delta: string;
-	/** 1 = better than average, -1 = worse, 0 = level. */
+	/** 1 = better than average, -1 = worse, 0 = level. Picks the colour. */
 	quality: -1 | 0 | 1;
+	/** The numeric direction of the change. Picks the arrow. */
+	direction: -1 | 0 | 1;
 }
 
 const METRICS: { key: MetricKey; labelKey: string; lowerIsBetter: boolean }[] = [
@@ -53,9 +55,12 @@ function metricRows(campaign: LatestCampaign): MetricRow[] {
 		return {
 			key: m.key,
 			label: t(m.labelKey),
-			value: formatPercentage(rates[m.key], m.key === 'openRate' ? 0 : 1),
+			// One precision for all three rates, so "0%" never sits beside "0.0%".
+			value: formatPercentage(rates[m.key], 1),
 			delta: hasBaseline ? t('components.marketing.latest.vsAverage', { points: delta.text }) : '',
 			quality,
+			// An unsubscribe rise is bad (red) but still points up, like its "+x pp".
+			direction: delta.sign as -1 | 0 | 1,
 		};
 	});
 }
@@ -103,11 +108,13 @@ const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
 			]"
 		>
 			<div class="min-w-0">
-				<p class="text-sm font-medium text-text-primary truncate">{{ card.campaign.name }}</p>
+				<p class="text-sm font-medium text-text-primary truncate" :title="card.campaign.name">
+					{{ card.campaign.name }}
+				</p>
 				<p class="mt-0.5 text-xs text-text-tertiary tabular-nums">
 					<template v-if="card.campaign.isSending">
 						<span class="inline-flex items-center gap-1 text-info">
-							<SpinnerIcon class="w-3 h-3" />
+							<SpinnerIcon class="w-3 h-3" aria-hidden="true" />
 							{{
 								card.campaign.progress === undefined
 									? t('components.marketing.latest.sending')
@@ -134,7 +141,7 @@ const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
 
 			<dl v-if="card.campaign.isSending" class="grid grid-cols-3 gap-2 mt-auto">
 				<div>
-					<dt class="text-[11px] text-text-tertiary">
+					<dt class="text-2xs text-text-tertiary">
 						{{ t('components.marketing.latest.delivered') }}
 					</dt>
 					<dd class="text-sm font-medium text-text-primary tabular-nums">
@@ -142,7 +149,7 @@ const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
 					</dd>
 				</div>
 				<div>
-					<dt class="text-[11px] text-text-tertiary">
+					<dt class="text-2xs text-text-tertiary">
 						{{ t('components.marketing.latest.opened') }}
 					</dt>
 					<dd class="text-sm font-medium text-text-primary tabular-nums">
@@ -150,7 +157,7 @@ const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
 					</dd>
 				</div>
 				<div>
-					<dt class="text-[11px] text-text-tertiary">
+					<dt class="text-2xs text-text-tertiary">
 						{{ t('components.marketing.latest.clicked') }}
 					</dt>
 					<dd class="text-sm font-medium text-text-primary tabular-nums">
@@ -161,16 +168,16 @@ const qualityIcon: Record<-1 | 0 | 1, IconComponent> = {
 
 			<dl v-else class="grid grid-cols-3 gap-2 mt-auto">
 				<div v-for="metric in card.metrics" :key="metric.key">
-					<dt class="text-[11px] text-text-tertiary">{{ metric.label }}</dt>
+					<dt class="text-2xs text-text-tertiary">{{ metric.label }}</dt>
 					<dd class="text-sm font-medium text-text-primary tabular-nums">{{ metric.value }}</dd>
 					<dd
 						v-if="metric.delta"
 						:class="[
-							'text-[11px] tabular-nums inline-flex items-center gap-0.5',
+							'text-2xs tabular-nums inline-flex items-center gap-0.5',
 							qualityClass[metric.quality],
 						]"
 					>
-						<component :is="qualityIcon[metric.quality]" class="w-3 h-3" aria-hidden="true" />
+						<component :is="qualityIcon[metric.direction]" class="w-3 h-3" aria-hidden="true" />
 						{{ metric.delta }}
 					</dd>
 				</div>

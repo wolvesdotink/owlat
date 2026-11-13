@@ -91,6 +91,7 @@ beforeEach(() => {
 	vi.stubGlobal('approveUndoWindow', () => undefined);
 	vi.stubGlobal('isApproveAlreadyHandled', () => false);
 	vi.stubGlobal('capitalize', (s: string) => s);
+	vi.stubGlobal('useConfirm', () => async () => true);
 	for (const fn of Object.values(controls)) vi.mocked(fn).mockClear();
 });
 

@@ -120,7 +120,7 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 							index > 0 ? 'border-l border-l-border-subtle' : '',
 							mode === m
 								? 'bg-brand text-white'
-								: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary',
+								: 'bg-transparent text-text-tertiary hover:bg-bg-surface-hover hover:text-text-secondary',
 						]"
 						type="button"
 						:aria-label="modeTitle(m)"
@@ -273,22 +273,22 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 		<template v-else>
 			<div class="grid grid-cols-2 gap-2">
 				<div v-for="side in sides" :key="side" class="flex flex-col gap-1">
-					<span class="text-[10px] font-medium text-text-tertiary select-none">{{
+					<span class="text-2xs font-medium text-text-tertiary select-none">{{
 						sideLabel(side)
 					}}</span>
 					<div
-						class="flex items-center border border-border-subtle rounded-lg bg-bg-surface eb-input-ring"
+						class="flex items-center border border-border-strong rounded-lg bg-bg-surface eb-input-ring"
 					>
 						<input
 							type="number"
 							:aria-label="boxText(side.toLowerCase())"
-							class="w-full py-1.5 px-2 text-[13px] font-medium tabular-nums text-text-primary bg-transparent border-none outline-none appearance-number-plain"
+							class="w-full py-1.5 px-2 text-caption font-medium tabular-nums text-text-primary bg-transparent border-none outline-none appearance-number-plain"
 							:value="values[side]"
 							min="0"
 							:max="max"
 							@input="(e) => handleCompactInput(e, side)"
 						/>
-						<span class="text-[11px] font-medium text-text-tertiary pr-2 select-none shrink-0"
+						<span class="text-2xs font-medium text-text-tertiary pr-2 select-none shrink-0"
 							>px</span
 						>
 					</div>

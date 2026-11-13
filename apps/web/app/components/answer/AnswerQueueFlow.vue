@@ -48,7 +48,10 @@ function headline(item: AnswerItem): string {
 		);
 	}
 	if (item.source === 'team') return item.entry.message.subject;
-	return `#${item.mention.roomName}: ${item.mention.messagePreview}`;
+	const { mention } = item;
+	const place =
+		mention.mailThread || mention.roomKind === 'dm' ? mention.roomName : `#${mention.roomName}`;
+	return `${place}: ${mention.messagePreview}`;
 }
 const peekLabel = computed(() => (flow.nextItem.value ? headline(flow.nextItem.value) : ''));
 
@@ -89,7 +92,7 @@ const failedNames = computed(() =>
 				:key="chip.id"
 				type="button"
 				:aria-pressed="filter === chip.id"
-				class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors"
+				class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3.5 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:class="
 					filter === chip.id
 						? 'bg-text-primary text-text-inverse'

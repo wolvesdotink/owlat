@@ -107,6 +107,21 @@ describe('useBreadcrumbs', () => {
 			expect(uncovered).toEqual([]);
 		});
 
+		it('every Team inbox page starts at Team inbox', async () => {
+			const uncovered: string[] = [];
+			for (const route of await routesUnder('inbox')) {
+				if (labelsFor(route)[0] !== 'Team inbox') uncovered.push(route);
+			}
+			expect(uncovered).toEqual([]);
+		});
+
+		it.each([
+			['/dashboard/inbox/updates', ['Team inbox', 'Updates']],
+			['/dashboard/inbox/code-tasks', ['Team inbox', 'Code tasks']],
+		])('names %s as the page does', (route, trail) => {
+			expect(labelsFor(route)).toEqual(trail);
+		});
+
 		it('every My settings page has a configured trail', async () => {
 			const uncovered: string[] = [];
 			for (const route of await routesUnder('preferences')) {

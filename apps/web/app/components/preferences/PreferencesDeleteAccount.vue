@@ -65,10 +65,7 @@ const { t } = useI18n();
 				</p>
 			</div>
 
-			<UiButton
-				class="gap-2 bg-error/10 text-error hover:bg-error/20 border border-error/20"
-				@click="emit('request')"
-			>
+			<UiButton variant="danger-outline" class="gap-2" @click="emit('request')">
 				<TrashIcon class="w-4 h-4" />
 				{{ t('dashboard.preferences.account.requestDeletionAction') }}
 			</UiButton>

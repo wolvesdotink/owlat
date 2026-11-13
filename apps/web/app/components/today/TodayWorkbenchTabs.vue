@@ -103,7 +103,7 @@ function onKeydown(event: KeyboardEvent) {
 					:aria-controls="tab.scope === selected ? panelId : undefined"
 					:tabindex="tab.scope === selected ? 0 : -1"
 					:data-workbench-tab="tab.scope"
-					class="relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-2 pb-2.5 sm:gap-2 sm:px-3 pt-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+					class="relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-2 pb-2.5 sm:gap-2 sm:px-3 pt-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="
 						tab.scope === selected
 							? 'text-text-primary'

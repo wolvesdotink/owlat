@@ -24,7 +24,7 @@ function rowText(row: ActivityView): string {
 		:title="t('components.brief.activity.title')"
 		heading-id="brief-activity"
 	>
-		<ul class="text-[13px]" data-testid="brief-activity">
+		<ul class="text-caption" data-testid="brief-activity">
 			<li
 				v-for="row in activity"
 				:key="row.id"
@@ -35,13 +35,19 @@ function rowText(row: ActivityView): string {
 				}}</span>
 				<span
 					>{{ rowText(row) }}
-					<span
+					<!-- The hint in a tooltip, which keyboard focus opens too: a title
+					     never showed on touch or focus. -->
+					<UiTooltip
 						v-if="row.provenance !== 'recorded'"
-						class="ml-1 rounded border border-border-subtle px-1 text-[10px] text-text-tertiary"
-						:title="t(`components.brief.activity.provenanceHint.${row.provenance}`)"
-						data-testid="brief-activity-provenance"
-						>{{ t(`components.brief.activity.provenance.${row.provenance}`) }}</span
-					></span
+						:text="t(`components.brief.activity.provenanceHint.${row.provenance}`)"
+					>
+						<span
+							tabindex="0"
+							class="ml-1 rounded border border-border-subtle px-1 text-2xs text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							data-testid="brief-activity-provenance"
+							>{{ t(`components.brief.activity.provenance.${row.provenance}`) }}</span
+						>
+					</UiTooltip></span
 				>
 			</li>
 		</ul>

@@ -289,29 +289,32 @@ const handleBack = () => {
 </script>
 
 <template>
-	<div class="h-[calc(100vh-64px)] flex flex-col bg-bg-base">
+	<!-- dvh and the titlebar offset, like the email settings page: with 100vh the
+	     table's bottom sits under a phone browser's toolbar. -->
+	<div class="h-[calc(100dvh-var(--titlebar-h,0px)-64px)] flex flex-col bg-bg-base">
 		<!-- Header -->
 		<div
 			class="shrink-0 h-14 border-b border-border-subtle bg-bg-elevated flex items-center justify-between px-4"
 		>
-			<div class="flex items-center gap-4">
+			<div class="flex min-w-0 items-center gap-4">
 				<button
-					class="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					type="button"
+					class="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="handleBack"
 					:aria-label="t('common.back')"
 				>
 					<ArrowLeftIcon class="w-5 h-5" />
 				</button>
 
-				<div class="flex items-center gap-2">
-					<GlobeIcon class="w-5 h-5 text-text-tertiary" />
-					<span class="text-text-primary font-medium">
+				<div class="flex min-w-0 items-center gap-2">
+					<GlobeIcon class="w-5 h-5 shrink-0 text-text-tertiary" />
+					<h1 class="truncate text-text-primary font-medium">
 						{{
 							t('components.translation.manager.heading', {
 								name: email?.name || t('components.translation.manager.emailFallbackName'),
 							})
 						}}
-					</span>
+					</h1>
 				</div>
 			</div>
 
@@ -347,7 +350,11 @@ const handleBack = () => {
 		<!-- Not Found State -->
 		<div v-else-if="!email" class="flex-1 flex items-center justify-center">
 			<div class="text-center">
-				<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+				<CircleWarningIcon
+					class="w-12 h-12 text-error mx-auto mb-4"
+					:stroke-width="1.5"
+					aria-hidden="true"
+				/>
 				<h2 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('components.translation.manager.notFoundTitle') }}
 				</h2>

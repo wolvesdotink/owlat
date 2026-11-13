@@ -10,6 +10,13 @@
  * archive), which centre the state on the page instead of in a card.
  */
 import { computed } from 'vue';
+import {
+	CheckIcon,
+	ClockIcon,
+	MailIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 type Variant = 'loading' | 'error' | 'success' | 'already' | 'prompt' | 'expired';
 type Glyph = 'warning' | 'check' | 'mail' | 'clock';
@@ -29,12 +36,12 @@ const props = withDefaults(
 	{ heading: undefined, message: undefined, tone: undefined, width: 'md', bare: false }
 );
 
-const GLYPHS: Record<Glyph, string> = {
-	warning:
-		'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
-	check: 'M5 13l4 4L19 7',
-	mail: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
-	clock: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+// The app's own icon set, so these states match every other surface.
+const GLYPHS: Record<Glyph, IconComponent> = {
+	warning: TriangleWarningIcon,
+	check: CheckIcon,
+	mail: MailIcon,
+	clock: ClockIcon,
 };
 
 const TONES: Record<Tone, { circle: string; icon: string }> = {
@@ -56,7 +63,15 @@ const LOOKS: Record<Exclude<Variant, 'loading'>, { glyph: Glyph; tone: Tone }> =
 const look = computed(() => {
 	if (props.variant === 'loading') return null;
 	const base = LOOKS[props.variant];
-	return { path: GLYPHS[base.glyph], ...TONES[props.tone ?? base.tone] };
+	return { glyph: GLYPHS[base.glyph], ...TONES[props.tone ?? base.tone] };
+});
+
+// A failed or expired link is news the reader has to hear; the other states
+// are what they asked for.
+const role = computed(() => {
+	if (props.variant === 'loading') return 'status';
+	if (props.variant === 'error' || props.variant === 'expired') return 'alert';
+	return undefined;
 });
 
 const rootClass = computed(() => [
@@ -68,7 +83,7 @@ const rootClass = computed(() => [
 </script>
 
 <template>
-	<div :class="rootClass" :role="variant === 'loading' ? 'status' : undefined">
+	<div :class="rootClass" :role="role">
 		<div v-if="variant === 'loading'" class="flex flex-col items-center gap-4">
 			<UiSpinner size="lg" />
 			<p class="text-text-secondary" :class="{ 'text-sm': bare }">{{ message }}</p>
@@ -78,17 +93,12 @@ const rootClass = computed(() => [
 				class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full sm:h-16 sm:w-16"
 				:class="look.circle"
 			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
+				<component
+					:is="look.glyph"
 					class="h-7 w-7 sm:h-8 sm:w-8"
 					:class="look.icon"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
 					aria-hidden="true"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="look.path" />
-				</svg>
+				/>
 			</div>
 			<h2 v-if="heading" class="mb-2 text-lg font-semibold text-text-primary">{{ heading }}</h2>
 			<p v-if="message" class="text-text-secondary">{{ message }}</p>

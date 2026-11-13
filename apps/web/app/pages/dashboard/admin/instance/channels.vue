@@ -190,8 +190,9 @@ const handleChannelError = (message: string) => {
 
 				<!-- Sidebar: two columns under the list while stacked -->
 				<div class="grid gap-4 content-start items-start md:grid-cols-2 xl:grid-cols-1">
-					<!-- Channel Overview -->
-					<UiCard>
+					<!-- Channel Overview: counters of nothing say nothing, so it waits for
+					     a first channel. -->
+					<UiCard v-if="totalChannels > 0">
 						<div class="flex items-center gap-3 mb-4">
 							<UiIconBox :icon="ChartBarVerticalIcon" size="sm" variant="surface" />
 							<h3 class="text-base font-medium text-text-primary">

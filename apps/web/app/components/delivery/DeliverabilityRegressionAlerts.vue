@@ -7,7 +7,7 @@ import type {
 } from '~/utils/deliverabilityCenter';
 import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
-import { DownloadIcon, SirenIcon } from '@coolicons/vue';
+import { ArrowRightIcon, SirenIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
@@ -46,12 +46,17 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 		v-if="rows.length"
 		class="overflow-hidden rounded-xl border border-error/35 bg-error/5"
 		aria-labelledby="deliverability-alerts-heading"
-		aria-live="polite"
 	>
 		<header class="flex items-start gap-3 border-b border-error/20 px-5 py-4 sm:px-6">
 			<UiIconBox :icon="SirenIcon" size="sm" variant="error" rounded="lg" />
 			<div>
-				<h2 id="deliverability-alerts-heading" class="font-semibold text-text-primary">
+				<!-- The live region is the count only: on the whole section every re-render
+     would re-read every alert. -->
+				<h2
+					id="deliverability-alerts-heading"
+					class="font-semibold text-text-primary"
+					aria-live="polite"
+				>
 					{{ t('components.delivery.deliverabilityRegressionAlerts.heading', rows.length) }}
 				</h2>
 				<p class="mt-0.5 text-sm text-text-secondary">
@@ -96,7 +101,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton size="sm" variant="secondary" @click="emit('view', alert)">
 						<template #iconLeft>
-							<DownloadIcon class="h-3.5 w-3.5" />
+							<ArrowRightIcon class="h-3.5 w-3.5" />
 						</template>
 						{{ t('components.delivery.deliverabilityRegressionAlerts.openCheck') }}
 					</UiButton>

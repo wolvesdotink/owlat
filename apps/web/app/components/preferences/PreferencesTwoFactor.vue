@@ -66,6 +66,18 @@ const totpUri = ref<string | null>(null);
 const backupCodes = ref<string[]>([]);
 
 const enrolment = computed(() => parseTotpUri(totpUri.value));
+const ENROL_STEPS: EnrolStep[] = ['password', 'save', 'confirm'];
+const enrolStepNumber = computed(() =>
+	enrolStep.value ? ENROL_STEPS.indexOf(enrolStep.value) + 1 : 0
+);
+/**
+ * Once the secret and backup codes are on screen, a stray backdrop click or
+ * Escape would throw them away and force a fresh start, so from then on only
+ * the dialog's own buttons close it. While a request runs nothing closes it:
+ * a late answer would otherwise reopen the flow or change the account behind
+ * a closed dialog.
+ */
+const enrolPersistent = computed(() => enrolBusy.value || enrolStep.value !== 'password');
 const qr = computed(() => (totpUri.value ? totpQrCode(totpUri.value) : null));
 const manualKey = computed(() => (enrolment.value ? groupSecret(enrolment.value.secret) : ''));
 
@@ -218,20 +230,13 @@ async function copyManualKey() {
 				<div class="min-w-0">
 					<p class="font-medium text-sm flex items-center gap-2">
 						{{ t('dashboard.preferences.security.twoFactor.authenticatorApp') }}
-						<span
-							class="text-xs px-1.5 py-0.5 rounded"
-							:class="
-								isTwoFactorOn
-									? 'bg-success-subtle text-success'
-									: 'bg-bg-surface text-text-tertiary'
-							"
-						>
+						<UiBadge :variant="isTwoFactorOn ? 'success' : 'neutral'">
 							{{
 								isTwoFactorOn
 									? t('dashboard.preferences.security.twoFactor.statusOn')
 									: t('dashboard.preferences.security.twoFactor.statusOff')
 							}}
-						</span>
+						</UiBadge>
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
 						{{
@@ -246,7 +251,7 @@ async function copyManualKey() {
 						<UiButton variant="ghost" type="button" @click="showRegenerate = true">
 							{{ t('dashboard.preferences.security.twoFactor.regenerate') }}
 						</UiButton>
-						<UiButton variant="ghost" type="button" class="text-error" @click="showDisable = true">
+						<UiButton variant="danger-ghost" type="button" @click="showDisable = true">
 							{{ t('dashboard.preferences.security.twoFactor.disable') }}
 						</UiButton>
 					</template>
@@ -262,8 +267,18 @@ async function copyManualKey() {
 			:open="enrolStep !== null"
 			size="lg"
 			:title="t('dashboard.preferences.security.twoFactor.setup.title')"
+			:persistent="enrolPersistent"
+			:closable="!enrolBusy"
 			@update:open="(open: boolean) => !open && closeEnrolment()"
 		>
+			<p class="mb-3 text-xs font-medium text-text-tertiary" data-testid="twofactor-step">
+				{{
+					t('dashboard.preferences.security.twoFactor.setup.stepOf', {
+						step: enrolStepNumber,
+						total: ENROL_STEPS.length,
+					})
+				}}
+			</p>
 			<!-- Step 1: confirm the password that guards the account today. -->
 			<form v-if="enrolStep === 'password'" class="space-y-3" @submit.prevent="startEnrolment">
 				<p class="text-sm text-text-secondary">
@@ -365,8 +380,18 @@ async function copyManualKey() {
 			</form>
 
 			<template #footer>
-				<UiButton variant="ghost" type="button" @click="closeEnrolment">
+				<UiButton variant="ghost" type="button" :disabled="enrolBusy" @click="closeEnrolment">
 					{{ t('common.cancel') }}
+				</UiButton>
+				<!-- Back to the QR and codes, for someone who has not finished scanning. -->
+				<UiButton
+					v-if="enrolStep === 'confirm'"
+					variant="secondary"
+					type="button"
+					:disabled="enrolBusy"
+					@click="enrolStep = 'save'"
+				>
+					{{ t('common.back') }}
 				</UiButton>
 				<UiButton
 					v-if="enrolStep === 'password'"
@@ -396,6 +421,8 @@ async function copyManualKey() {
 		<UiModal
 			:open="showDisable"
 			:title="t('dashboard.preferences.security.twoFactor.disableDialog.title')"
+			:persistent="disableBusy"
+			:closable="!disableBusy"
 			@update:open="(open: boolean) => !open && closeDisable()"
 		>
 			<form class="space-y-3" @submit.prevent="confirmDisable">
@@ -411,10 +438,11 @@ async function copyManualKey() {
 				/>
 			</form>
 			<template #footer>
-				<UiButton variant="ghost" type="button" @click="closeDisable">
+				<UiButton variant="ghost" type="button" :disabled="disableBusy" @click="closeDisable">
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
+					variant="danger"
 					type="button"
 					:loading="disableBusy"
 					:disabled="!disablePassword"
@@ -429,6 +457,8 @@ async function copyManualKey() {
 		<UiModal
 			:open="showRegenerate"
 			:title="t('dashboard.preferences.security.twoFactor.regenerateDialog.title')"
+			:persistent="regenerateBusy"
+			:closable="!regenerateBusy"
 			@update:open="(open: boolean) => !open && closeRegenerate()"
 		>
 			<form class="space-y-3" @submit.prevent="confirmRegenerate">
@@ -444,7 +474,7 @@ async function copyManualKey() {
 				/>
 			</form>
 			<template #footer>
-				<UiButton variant="ghost" type="button" @click="closeRegenerate">
+				<UiButton variant="ghost" type="button" :disabled="regenerateBusy" @click="closeRegenerate">
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton

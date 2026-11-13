@@ -114,6 +114,23 @@ const scheduledAtDisplay = computed(() => {
 	return at ? new Date(at).toLocaleString(locale.value) : '';
 });
 
+// Cancelling is terminal (a cancelled campaign cannot be scheduled again), so
+// the notice's button asks with the same copy as the notification's intent.
+const askConfirm = useConfirm();
+const confirmCancelCampaign = async () => {
+	const confirmed = await askConfirm({
+		title: t('components.campaigns.cancelIntentDialog.title'),
+		body: t('components.campaigns.cancelIntentDialog.description', {
+			name: campaignData.value?.name ?? '',
+			date: scheduledAtDisplay.value,
+		}),
+		confirmText: t('components.campaigns.cancelIntentDialog.confirm'),
+		cancelText: t('components.campaigns.cancelIntentDialog.keep'),
+		variant: 'danger',
+	});
+	if (confirmed) await handleCancel();
+};
+
 // Guard the "Edit Email" link. In a browser it opens the linked email editor in
 // a NEW tab, so the SPA route guard never fires — intercept the click and, when
 // the campaign form has unsaved edits, prompt to save them first (so the
@@ -252,7 +269,7 @@ const {
 						:scheduled-at-display="scheduledAtDisplay"
 						:is-saving="isSaving"
 						@unschedule="handleUnschedule"
-						@cancel="handleCancel"
+						@cancel="confirmCancelCampaign"
 					/>
 
 					<CampaignDetailsCard

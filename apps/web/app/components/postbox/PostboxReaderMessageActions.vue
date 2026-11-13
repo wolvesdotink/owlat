@@ -86,6 +86,18 @@ const zoomControls: ReadonlyArray<{
 
 const MENU_ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-60';
+
+// Compact density hides Reply all and Forward in the row until the message is
+// hovered (postbox-density.css), which a keyboard never does. There the ⋯
+// carries them too, so both stay reachable without a pointer. The menu reads
+// the density off the Postbox root when it opens (its items render only then);
+// at the comfortable default, and on touch where the row pins them open, the
+// row already shows them and the menu leaves them out.
+const rowEl = ref<HTMLElement | null>(null);
+function rowHidesSecondaryActions(): boolean {
+	if (!rowEl.value?.closest('[data-density="compact"]')) return false;
+	return !(typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches);
+}
 </script>
 
 <template>
@@ -93,7 +105,7 @@ const MENU_ITEM_CLASS =
 	     forward reveal on row hover in compact density (pointer) and are
 	     pinned open everywhere hover never fires. The ⋯ holds what is left
 	     once the duplicates are gone. -->
-	<div class="mt-4 flex items-center gap-2">
+	<div ref="rowEl" class="mt-4 flex items-center gap-2">
 		<UiTooltip :text="starLabel">
 			<UiButton
 				variant="ghost"
@@ -162,6 +174,33 @@ const MENU_ITEM_CLASS =
 						}}</template>
 					</button>
 				</div>
+				<template v-if="rowHidesSecondaryActions()">
+					<button
+						v-if="showReplyAll"
+						type="button"
+						role="menuitem"
+						:class="MENU_ITEM_CLASS"
+						@click="
+							emit('reply-all');
+							close();
+						"
+					>
+						<ReplyAllIcon class="w-4 h-4 text-text-tertiary" />
+						{{ t('components.postbox.postboxThreadReader.replyAll') }}
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="MENU_ITEM_CLASS"
+						@click="
+							emit('forward');
+							close();
+						"
+					>
+						<ForwardIcon class="w-4 h-4 text-text-tertiary" />
+						{{ t('components.postbox.postboxThreadReader.forward') }}
+					</button>
+				</template>
 				<button
 					type="button"
 					role="menuitem"

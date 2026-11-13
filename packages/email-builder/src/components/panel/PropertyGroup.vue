@@ -59,16 +59,16 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 					:is="groupIcon"
 					:size="11"
 					class="shrink-0 transition-colors duration-(--motion-fast)"
-					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-disabled'"
+					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'"
 				/>
 				<span
-					class="text-[10px] font-semibold uppercase tracking-[0.08em]"
+					class="text-2xs font-semibold uppercase tracking-[0.08em]"
 					:class="!isCollapsed && !hideHeader ? 'text-text-secondary' : 'text-text-tertiary'"
 					>{{ label(group.label) }}</span
 				>
 			</div>
 			<ChevronDownIcon
-				class="text-text-disabled transition-transform duration-(--motion-moderate) ease-spring"
+				class="text-text-tertiary transition-transform duration-(--motion-moderate) ease-spring"
 				:class="{ '-rotate-90': isCollapsed }"
 				:size="12"
 			/>

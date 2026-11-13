@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { holdPendingWork } from '~/lib/pendingOperations';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import {
 	registerUploadedMediaReference,
 	type StoredMediaReference,
@@ -49,6 +50,11 @@ const resolvedTitle = computed(() => props.title ?? t('components.mediaPickerMod
 // Debounced so each keystroke doesn't re-subscribe the paginated query.
 const { searchQuery, debouncedSearch } = useDebouncedSearch(300);
 const activeTab = ref<'library' | 'upload'>('library');
+const tabPanelId = useId();
+const tabOptions = computed(() => [
+	{ value: 'library', label: t('components.mediaPickerModal.tabs.library') },
+	{ value: 'upload', label: t('components.mediaPickerModal.tabs.upload') },
+]);
 
 const PAGE_SIZE = 20;
 const {
@@ -186,38 +192,22 @@ const getFileIcon = (mimeType: string) => {
 <template>
 	<UiModal :open="open" :title="resolvedTitle" size="xl" @update:open="emit('update:open', $event)">
 		<!-- Tabs -->
-		<div class="flex border-b border-border-subtle mb-4">
-			<button
-				class="px-4 py-2 text-sm font-medium transition-colors"
-				:class="
-					activeTab === 'library'
-						? 'text-brand border-b-2 border-brand'
-						: 'text-text-secondary hover:text-text-primary'
-				"
-				@click="activeTab = 'library'"
-			>
-				{{ t('components.mediaPickerModal.tabs.library') }}
-			</button>
-			<button
-				class="px-4 py-2 text-sm font-medium transition-colors"
-				:class="
-					activeTab === 'upload'
-						? 'text-brand border-b-2 border-brand'
-						: 'text-text-secondary hover:text-text-primary'
-				"
-				@click="activeTab = 'upload'"
-			>
-				{{ t('components.mediaPickerModal.tabs.upload') }}
-			</button>
-		</div>
+		<UiTabs
+			class="mb-4"
+			:model-value="activeTab"
+			:tabs="tabOptions"
+			:panel-id="tabPanelId"
+			@update:model-value="activeTab = $event as 'library' | 'upload'"
+		/>
 
 		<!-- Library tab -->
-		<div v-if="activeTab === 'library'">
+		<div v-if="activeTab === 'library'" v-bind="tabPanelAttrs(tabPanelId, tabOptions, activeTab)">
 			<!-- Search -->
 			<div class="mb-4">
 				<UiInput
 					v-model="searchQuery"
 					:placeholder="t('components.mediaPickerModal.searchPlaceholder')"
+					:aria-label="t('components.mediaPickerModal.searchPlaceholder')"
 				/>
 			</div>
 
@@ -240,7 +230,8 @@ const getFileIcon = (mimeType: string) => {
 				<button
 					v-for="asset in assets"
 					:key="asset._id"
-					class="group relative aspect-square bg-checker border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-[border-color,box-shadow] hover:border-brand hover:ring-2 hover:ring-brand/30"
+					type="button"
+					class="group relative aspect-square bg-checker border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-[border-color,box-shadow] hover:border-brand hover:ring-2 hover:ring-brand/30 focus-visible:outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand"
 					@click="selectAsset(asset)"
 				>
 					<img
@@ -259,7 +250,7 @@ const getFileIcon = (mimeType: string) => {
 							class="w-8 h-8 text-text-tertiary"
 							:stroke-width="1.5"
 						/>
-						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
+						<span class="text-2xs text-text-secondary text-center truncate max-w-full px-1">{{
 							asset.filename
 						}}</span>
 					</div>
@@ -267,10 +258,10 @@ const getFileIcon = (mimeType: string) => {
 					     the asset thumbnail, not on an app surface, so it stays white in
 					     both themes — a text token would go unreadable in light mode. -->
 					<div
-						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
 					>
-						<p class="text-[10px] text-white truncate">{{ asset.filename }}</p>
-						<p class="text-[9px] text-white/70">{{ formatCompactFileSize(asset.fileSize) }}</p>
+						<p class="text-2xs text-white truncate">{{ asset.filename }}</p>
+						<p class="text-2xs text-white/70">{{ formatCompactFileSize(asset.fileSize) }}</p>
 					</div>
 					<!-- palette-ok-end -->
 				</button>
@@ -285,7 +276,7 @@ const getFileIcon = (mimeType: string) => {
 		</div>
 
 		<!-- Upload tab -->
-		<div v-else>
+		<div v-else v-bind="tabPanelAttrs(tabPanelId, tabOptions, activeTab)">
 			<div
 				class="flex flex-col items-center justify-center gap-4 p-12 border-2 border-dashed rounded-xl transition-colors"
 				:class="isDragOver ? 'border-brand bg-brand-subtle' : 'border-border-subtle'"

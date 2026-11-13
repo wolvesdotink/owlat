@@ -24,6 +24,7 @@ vi.mock('@owlat/email-builder', () => ({
 }));
 
 import TemplateHistoryPanel from '../TemplateHistoryPanel.vue';
+import TemplateHistoryPreviewModal from '../TemplateHistoryPreviewModal.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const VERSION = {
@@ -77,6 +78,7 @@ function mountPanel(
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
+			components: { EmailTemplateHistoryPreviewModal: TemplateHistoryPreviewModal },
 			// Auto-imported utils are read off the render context in templates, so a
 			// global stub alone does not reach them.
 			mocks: { formatRelativeTime: () => '2 days ago' },
@@ -96,7 +98,7 @@ function mountPanel(
 async function openPreview(wrapper: ReturnType<typeof mountPanel>) {
 	await wrapper.get('button').trigger('click');
 	await flushPromises();
-	const preview = document.querySelector<HTMLElement>('[aria-label="Preview this version"]');
+	const preview = document.querySelector<HTMLElement>('[aria-label^="Preview version:"]');
 	preview?.click();
 	await flushPromises();
 }
@@ -208,7 +210,7 @@ describe('TemplateHistoryPanel — compare with the editor', () => {
 
 	function compareButtons() {
 		return [
-			...document.querySelectorAll<HTMLElement>('[aria-label="Compare with the current editor"]'),
+			...document.querySelectorAll<HTMLElement>('[aria-label^="Compare with the current editor:"]'),
 		];
 	}
 

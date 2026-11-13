@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { buildContactsCsv, downloadCsv, fetchPropertyValuesChunked, type CsvContact } from '~/utils/contactsCsv';
+import {
+	buildContactsCsv,
+	downloadCsv,
+	fetchPropertyValuesChunked,
+	type CsvContact,
+} from '~/utils/contactsCsv';
 import { DownloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
-	totalCount: number;
+	/** Every contact in the workspace, or null when the list has not loaded them all. */
+	totalCount: number | null;
 	searchQuery: string;
 	contactProperties:
 		| ReadonlyArray<{ readonly _id: Id<'contactProperties'>; readonly label: string }>
@@ -18,6 +24,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const titleId = useId();
 
 const convex = useConvex();
 const { showToast } = useToast();
@@ -49,9 +57,12 @@ const handleExport = async () => {
 
 	try {
 		const searchTerm = exportOption.value === 'filtered' ? props.searchQuery : undefined;
-		const contactsToExport = await convex.query(api.contacts.organization.listForExportByOrganization, {
-			search: searchTerm || undefined,
-		});
+		const contactsToExport = await convex.query(
+			api.contacts.organization.listForExportByOrganization,
+			{
+				search: searchTerm || undefined,
+			}
+		);
 
 		if (!contactsToExport || contactsToExport.length === 0) {
 			showToast(t('components.contacts.exportModal.noContacts'));
@@ -65,13 +76,13 @@ const handleExport = async () => {
 		const propertyValues = await fetchPropertyValuesChunked(contactExportIds, (chunk) =>
 			convex.query(api.contacts.organization.getPropertyValuesForContacts, {
 				contactIds: chunk,
-			}),
+			})
 		);
 
 		const csv = buildContactsCsv(
 			contactsToExport as CsvContact[],
 			propertyValues,
-			props.contactProperties || [],
+			props.contactProperties || []
 		);
 		const timestamp = new Date().toISOString().slice(0, 10);
 		const filename = `contacts-export-${timestamp}.csv`;
@@ -105,14 +116,19 @@ const close = () => {
 		size="md"
 		:closable="!isExporting"
 		:persistent="isExporting"
-		@update:open="(v) => { if (!v) close(); }"
+		:labelled-by="titleId"
+		@update:open="
+			(v) => {
+				if (!v) close();
+			}
+		"
 	>
 		<div class="flex items-center gap-3 mb-6">
 			<div class="p-2 rounded-lg flex items-center justify-center bg-bg-surface">
 				<DownloadIcon class="w-5 h-5 text-brand" />
 			</div>
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.exportModal.title') }}
 				</h2>
 				<p class="text-sm text-text-tertiary">
@@ -132,7 +148,9 @@ const close = () => {
 					name="exportOption"
 					:label="t('components.contacts.exportModal.allContacts')"
 					:description="
-						t('components.contacts.exportModal.allContactsDescription', { count: totalCount })
+						totalCount === null
+							? t('components.contacts.exportModal.allContactsDescriptionUnknown')
+							: t('components.contacts.exportModal.allContactsDescription', { count: totalCount })
 					"
 					:disabled="isExporting"
 				/>

@@ -11,7 +11,7 @@ export function useWebhookActions(
 	showNotification: (message: string, type?: 'success' | 'error') => void
 ) {
 	const { t } = useI18n();
-	const { copy, isCopied, reset: resetCopied } = useCopyToClipboard();
+	const { copy, isCopied, reset: resetCopied } = useCopyToClipboard({ notify: false });
 	const { run: toggleWebhookMutation } = useBackendOperation(api.webhooks.endpoints.toggle, {
 		label: () => t('shared.useWebhookActions.toggleWebhook'),
 	});

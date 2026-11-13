@@ -41,20 +41,37 @@
  * `UiPageHeader` renders the page's `h1` and lead on most dashboard pages, so it
  * is real: a suite reading the title, the lead or a header action finds them
  * where the browser does.
+ *
+ * The rest of the commonly mounted kit is real for the same reason, and so a
+ * component can use its auto-registered name without every suite that mounts
+ * it importing the kit file: `UiBadge`, `UiSelectableListItem`, `UiDisclosure`,
+ * `UiSegmentedControl`, the skeletons, and the dialogs (`UiModal`,
+ * `UiModalFooter`, `UiConfirmationDialog`). A dialog stays closed until a suite
+ * opens it, and its content is teleported to `document.body`.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiCombobox from '@owlat/ui/components/ui/Combobox.vue';
+import UiConfirmationDialog from '@owlat/ui/components/ui/ConfirmationDialog.vue';
+import UiDisclosure from '@owlat/ui/components/ui/Disclosure.vue';
 import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
 import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiErrorBoundary from '@owlat/ui/components/ui/ErrorBoundary.vue';
 import UiListbox from '@owlat/ui/components/ui/Listbox.vue';
+import UiModal from '@owlat/ui/components/ui/Modal.vue';
+import UiModalFooter from '@owlat/ui/components/ui/ModalFooter.vue';
 import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import UiPopover from '@owlat/ui/components/ui/Popover.vue';
+import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
+import UiSelectableListItem from '@owlat/ui/components/ui/SelectableListItem.vue';
+import UiSkeleton from '@owlat/ui/components/ui/Skeleton.vue';
+import UiSkeletonRow from '@owlat/ui/components/ui/SkeletonRow.vue';
+import UiSkeletonText from '@owlat/ui/components/ui/SkeletonText.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiSuggestionPopover from '@owlat/ui/components/ui/SuggestionPopover.vue';
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
@@ -96,5 +113,15 @@ export function registerNuxtComponents(): void {
 		UiListbox,
 		UiCombobox,
 		UiSuggestionPopover,
+		UiBadge,
+		UiSelectableListItem,
+		UiDisclosure,
+		UiSegmentedControl,
+		UiSkeleton,
+		UiSkeletonRow,
+		UiSkeletonText,
+		UiModal,
+		UiModalFooter,
+		UiConfirmationDialog,
 	});
 }

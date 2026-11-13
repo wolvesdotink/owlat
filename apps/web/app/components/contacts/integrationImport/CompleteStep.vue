@@ -50,73 +50,48 @@ const suppressionSummary = computed(() => {
 			</p>
 		</div>
 		<div v-if="!isSuppressionOnly" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-success">
-					{{ importProgress?.imported || 0 }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.imported') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-brand">
-					{{ importProgress?.updated || 0 }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.updated') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-					{{ importProgress?.skipped || 0 }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.skipped') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-error">
-					{{ importProgress?.failed || 0 }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.failed') }}
-				</p>
-			</div>
+			<UiStatCard
+				:value="importProgress?.imported || 0"
+				:label="t('components.contacts.integrationImportModal.complete.imported')"
+				variant="success"
+			/>
+			<UiStatCard
+				:value="importProgress?.updated || 0"
+				:label="t('components.contacts.integrationImportModal.complete.updated')"
+			/>
+			<UiStatCard
+				:value="importProgress?.skipped || 0"
+				:label="t('components.contacts.integrationImportModal.complete.skipped')"
+				variant="secondary"
+			/>
+			<!-- Red only when something actually failed. -->
+			<UiStatCard
+				:value="importProgress?.failed || 0"
+				:label="t('components.contacts.integrationImportModal.complete.failed')"
+				:variant="(importProgress?.failed || 0) > 0 ? 'error' : 'secondary'"
+			/>
 		</div>
 		<!-- Suppression carry-over -->
 		<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-warning">
-					{{ suppressionSummary.blocked }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.suppressed') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-brand">
-					{{ suppressionSummary.unsubscribed }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.unsubscribed') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-					{{ suppressionSummary.alreadySuppressed }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.alreadySuppressed') }}
-				</p>
-			</div>
-			<div class="p-4 rounded-lg bg-bg-surface text-center">
-				<p class="text-2xl font-medium tracking-[-0.02em] text-text-secondary">
-					{{ suppressionSummary.skipped }}
-				</p>
-				<p class="text-xs text-text-tertiary mt-1">
-					{{ t('components.contacts.integrationImportModal.complete.notApplicable') }}
-				</p>
-			</div>
+			<UiStatCard
+				:value="suppressionSummary.blocked"
+				:label="t('components.contacts.integrationImportModal.complete.suppressed')"
+				variant="warning"
+			/>
+			<UiStatCard
+				:value="suppressionSummary.unsubscribed"
+				:label="t('components.contacts.integrationImportModal.complete.unsubscribed')"
+			/>
+			<UiStatCard
+				:value="suppressionSummary.alreadySuppressed"
+				:label="t('components.contacts.integrationImportModal.complete.alreadySuppressed')"
+				variant="secondary"
+			/>
+			<UiStatCard
+				:value="suppressionSummary.skipped"
+				:label="t('components.contacts.integrationImportModal.complete.notApplicable')"
+				variant="secondary"
+			/>
 		</div>
 
 		<div

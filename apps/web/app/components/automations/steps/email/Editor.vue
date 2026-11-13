@@ -66,7 +66,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 						scope="global"
 					>
 						<template #link>
-							<NuxtLink to="/dashboard/send/marketing" class="underline">
+							<NuxtLink to="/dashboard/send/marketing" class="link underline">
 								{{ t('components.automations.steps.email.editor.noTemplatesLink') }}
 							</NuxtLink>
 						</template>
@@ -74,7 +74,11 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 				</template>
 			</EmailTemplatePicker>
 
-			<div class="mt-3 p-3 bg-bg-surface border border-border-subtle rounded-lg">
+			<!-- Only while nothing is chosen: once a template is picked, "create one" is noise. -->
+			<div
+				v-if="!selectedTemplateId"
+				class="mt-3 p-3 bg-bg-surface border border-border-subtle rounded-lg"
+			>
 				<p class="text-sm text-text-secondary mb-2">
 					{{ t('components.automations.steps.email.editor.createPrompt') }}
 				</p>
@@ -121,10 +125,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 						})
 					}}
 				</p>
-				<NuxtLink
-					:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
-					class="text-sm text-brand hover:underline"
-				>
+				<NuxtLink :to="`/dashboard/send/emails/${selectedTemplate._id}/edit`" class="link text-sm">
 					{{ t('components.automations.steps.email.editor.editTemplate') }}
 				</NuxtLink>
 			</div>

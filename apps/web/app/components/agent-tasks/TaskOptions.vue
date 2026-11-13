@@ -37,6 +37,11 @@ const props = withDefaults(
 		/** data-testid overrides so refactored consumers keep their contract. */
 		chipTestId?: string;
 		inputTestId?: string;
+		/**
+		 * Id of the question this answers (TaskAsk's `askId`). Names the chip group
+		 * and the field; without it the field is named by its placeholder.
+		 */
+		labelledBy?: string;
 	}>(),
 	{
 		options: () => [],
@@ -46,6 +51,7 @@ const props = withDefaults(
 		remembered: undefined,
 		chipTestId: 'task-option-chip',
 		inputTestId: 'task-option-input',
+		labelledBy: undefined,
 	}
 );
 
@@ -101,16 +107,24 @@ const isRememberedAnswer = computed(
 	() => props.remembered !== undefined && effectiveAnswer.value === props.remembered
 );
 
+const inputPlaceholder = computed(
+	() =>
+		props.placeholder ??
+		(props.options.length > 0
+			? t('components.agentTasks.taskOptions.orTypeAnswerPlaceholder')
+			: t('components.agentTasks.taskOptions.typeAnswerPlaceholder'))
+);
+
 defineExpose({ pickIndex });
 </script>
 
 <template>
 	<div data-testid="task-options">
 		<template v-if="options.length > 0">
-			<p class="text-[11px] text-text-tertiary mb-1" data-testid="task-options-lead">
+			<p class="text-2xs text-text-tertiary mb-1" data-testid="task-options-lead">
 				{{ t('components.agentTasks.taskOptions.lead') }}
 			</p>
-			<div class="flex flex-wrap gap-1.5" role="group">
+			<div class="flex flex-wrap gap-1.5" role="group" :aria-labelledby="labelledBy">
 				<button
 					v-for="(option, i) in options"
 					:key="option"
@@ -118,7 +132,7 @@ defineExpose({ pickIndex });
 					:data-testid="chipTestId"
 					:aria-pressed="selectedChip === option"
 					:disabled="disabled"
-					class="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border cursor-pointer transition-colors duration-(--motion-fast) disabled:opacity-50"
+					class="inline-flex items-center gap-1 text-xs px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:px-3 rounded-full border cursor-pointer transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50"
 					:class="
 						selectedChip === option
 							? 'bg-text-primary text-text-inverse border-text-primary'
@@ -148,12 +162,9 @@ defineExpose({ pickIndex });
 			type="text"
 			:data-testid="inputTestId"
 			:disabled="disabled"
-			:placeholder="
-				placeholder ??
-				(options.length > 0
-					? t('components.agentTasks.taskOptions.orTypeAnswerPlaceholder')
-					: t('components.agentTasks.taskOptions.typeAnswerPlaceholder'))
-			"
+			:placeholder="inputPlaceholder"
+			:aria-labelledby="labelledBy"
+			:aria-label="labelledBy ? undefined : inputPlaceholder"
 			class="input input-sm"
 			:class="options.length > 0 ? 'mt-1.5' : ''"
 			@input="onTextInput"
@@ -162,7 +173,7 @@ defineExpose({ pickIndex });
 		/>
 		<p
 			v-if="effectiveAnswer.length > 0"
-			class="mt-1 text-[11px] text-text-secondary"
+			class="mt-1 text-2xs text-text-secondary"
 			data-testid="task-options-readback"
 		>
 			<CircleCheckIcon

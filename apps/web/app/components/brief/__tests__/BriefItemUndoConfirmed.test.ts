@@ -86,3 +86,23 @@ describe('Undo after a confirmation', () => {
 		expect(undoCalls.length).toBe(2);
 	});
 });
+
+describe('the due date', () => {
+	const DAY = 86_400_000;
+
+	it('is red once it has passed', () => {
+		const w = mountItem({
+			due: { phrase: 'by Monday', at: Date.now() - 2 * DAY, isAmbiguous: false },
+		});
+		expect(w.get('[data-testid="brief-item-due"]').classes()).toContain('text-error');
+	});
+
+	it('reads as plain metadata while it is still days away', () => {
+		const w = mountItem({
+			due: { phrase: 'by Monday', at: Date.now() + 3 * DAY, isAmbiguous: false },
+		});
+		const due = w.get('[data-testid="brief-item-due"]');
+		expect(due.classes()).not.toContain('text-error');
+		expect(due.classes()).toContain('text-text-secondary');
+	});
+});

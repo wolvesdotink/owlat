@@ -82,20 +82,30 @@ async function confirmRemove() {
 
 		<form
 			v-if="mailboxId"
-			class="card p-4 mb-4 flex items-center gap-2"
+			class="card p-4 mb-4 flex flex-wrap items-end gap-2"
 			@submit.prevent="handleCreate"
 		>
-			<input
-				v-model="newAlias"
-				type="text"
-				class="input flex-1"
-				:placeholder="t('dashboard.preferences.aliases.aliasPlaceholder')"
-			/>
-			<UiButton type="submit" :disabled="!newAlias.trim() || submitting">
+			<div class="min-w-0 flex-[1_1_16rem]">
+				<label for="new-alias" class="label">{{
+					t('dashboard.preferences.aliases.aliasLabel')
+				}}</label>
+				<input
+					id="new-alias"
+					v-model="newAlias"
+					type="text"
+					inputmode="email"
+					autocomplete="off"
+					class="input w-full"
+					:placeholder="t('dashboard.preferences.aliases.aliasPlaceholder')"
+					:aria-invalid="!!error"
+					:aria-describedby="error ? 'new-alias-error' : undefined"
+				/>
+			</div>
+			<UiButton type="submit" :disabled="!newAlias.trim()" :loading="submitting">
 				{{ t('dashboard.preferences.aliases.addAlias') }}
 			</UiButton>
 		</form>
-		<p v-if="error" class="text-sm text-error mb-4">{{ error }}</p>
+		<p v-if="error" id="new-alias-error" class="text-sm text-error mb-4">{{ error }}</p>
 
 		<section v-if="mailboxId" class="card !p-0">
 			<header class="px-5 py-3 border-b border-border-subtle">
@@ -113,13 +123,14 @@ async function confirmRemove() {
 				<li
 					v-for="alias in aliases"
 					:key="alias._id"
-					class="px-5 py-3 flex items-center justify-between"
+					class="px-5 py-3 flex items-center justify-between gap-3"
 				>
-					<span class="font-mono text-sm">{{ alias.alias }}</span>
+					<span class="min-w-0 font-mono text-sm break-all">{{ alias.alias }}</span>
 					<UiButton
-						variant="ghost"
+						variant="danger-ghost"
 						type="button"
-						class="text-error"
+						class="shrink-0"
+						:aria-label="`${t('common.remove')}: ${alias.alias}`"
 						@click="aliasToRemove = alias._id"
 					>
 						{{ t('common.remove') }}

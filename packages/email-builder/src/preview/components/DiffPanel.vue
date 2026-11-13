@@ -87,8 +87,13 @@ function getTypeIcon(type: PreviewEmailDiffChange['type']) {
 					{{ sizeDeltaFormatted }}
 				</span>
 			</div>
-			<button class="ep-diff-close" @click="emit('close')">
-				<CloseIcon class="ep-diff-close-icon" />
+			<button
+				type="button"
+				class="ep-diff-close"
+				:aria-label="t('builder.diff.close')"
+				@click="emit('close')"
+			>
+				<CloseIcon class="ep-diff-close-icon" aria-hidden="true" />
 			</button>
 		</div>
 

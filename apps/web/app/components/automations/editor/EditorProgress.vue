@@ -14,16 +14,17 @@ const { t } = useI18n();
 					<div
 						class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
 					>
-						<CheckIcon class="w-4 h-4" />
+						<CheckIcon class="w-4 h-4" aria-hidden="true" />
 					</div>
 					<span class="text-sm font-medium text-text-primary">{{
 						t('dashboard.automations.detail.edit.steps.chooseTrigger')
 					}}</span>
 				</div>
-				<div class="flex-1 h-0.5 bg-brand" />
-				<div class="flex items-center gap-2">
+				<div class="flex-1 h-0.5 bg-brand" aria-hidden="true" />
+				<!-- Current step: filled, where the done step is only ringed. -->
+				<div class="flex items-center gap-2" aria-current="step">
 					<div
-						class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
+						class="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-text-inverse border-2 border-brand text-sm font-medium"
 					>
 						2
 					</div>

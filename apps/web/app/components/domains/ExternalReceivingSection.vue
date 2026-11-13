@@ -193,9 +193,9 @@ const missingSpfInclude = computed(() => {
 
 <template>
 	<div class="pt-2" data-testid="external-receiving">
-		<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+		<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
 			{{ t('components.domains.externalReceivingSection.heading') }}
-		</p>
+		</h4>
 
 		<!-- The headline promise. Everything below is detail; this is the sentence
 		     an operator has to be able to read without expanding anything. -->

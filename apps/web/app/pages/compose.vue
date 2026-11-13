@@ -104,10 +104,16 @@ function onUndone() {
 				/>
 			</AppErrorBoundary>
 		</template>
-		<p v-else-if="isLoading" class="text-sm text-text-secondary">
+		<!-- Centred like the sent notice: the window has nothing else in it. -->
+		<p v-else-if="isLoading" class="m-auto text-sm text-text-secondary" role="status">
 			{{ t('compose.loadingMailbox') }}
 		</p>
-		<p v-else class="text-sm text-text-secondary">{{ t('compose.noMailbox') }}</p>
+		<div v-else class="m-auto flex flex-col items-center gap-3 text-center">
+			<p class="text-sm text-text-secondary">{{ t('compose.noMailbox') }}</p>
+			<UiButton variant="secondary" size="sm" @click="closeWindow">{{
+				t('common.close')
+			}}</UiButton>
+		</div>
 		<PostboxUndoSendToast :reopen="onReopen" @expired="onExpired" @undone="onUndone" />
 	</div>
 </template>

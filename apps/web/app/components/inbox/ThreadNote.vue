@@ -80,7 +80,7 @@ async function saveEdit(body: string): Promise<boolean> {
 		:aria-label="t('components.inbox.notes.ariaLabel', { name: author })"
 		data-testid="thread-note"
 	>
-		<header class="flex items-center gap-2 text-xs">
+		<header class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
 			<UiAvatar
 				:name="note.authorName ?? undefined"
 				:email="note.authorEmail ?? undefined"
@@ -108,10 +108,12 @@ async function saveEdit(body: string): Promise<boolean> {
 				v-if="!note.isDeleted && !editing && (canEdit || canDelete)"
 				class="ui-hover-reveal ml-auto flex shrink-0 items-center gap-0.5"
 			>
+				<!-- A touch screen never hovers, so there the actions stay shown;
+				     `!` outranks the reveal rule, which sits outside the layers. -->
 				<UiTooltip v-if="canEdit && save" :text="t('components.inbox.notes.edit')">
 					<button
 						type="button"
-						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
+						class="rounded p-1 pointer-coarse:p-3 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
 						:aria-label="t('components.inbox.notes.edit')"
 						data-testid="thread-note-edit"
 						@click="editing = true"
@@ -122,7 +124,7 @@ async function saveEdit(body: string): Promise<boolean> {
 				<UiTooltip v-if="canDelete" :text="t('components.inbox.notes.delete')">
 					<button
 						type="button"
-						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
+						class="rounded p-1 pointer-coarse:p-3 text-text-tertiary hover:bg-bg-surface hover:text-error"
 						:aria-label="t('components.inbox.notes.delete')"
 						data-testid="thread-note-delete"
 						@click="emit('delete')"
@@ -157,9 +159,11 @@ async function saveEdit(body: string): Promise<boolean> {
 			data-testid="thread-note-body"
 		>
 			<template v-for="(segment, index) in segments" :key="index">
-				<span v-if="segment.kind === 'mention'" class="font-medium text-brand">{{
-					segment.value
-				}}</span>
+				<span
+					v-if="segment.kind === 'mention'"
+					class="px-1 py-0.5 rounded bg-brand-subtle text-brand font-medium"
+					>{{ segment.value }}</span
+				>
 				<template v-else>{{ segment.value }}</template>
 			</template>
 		</p>

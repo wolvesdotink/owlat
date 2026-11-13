@@ -61,6 +61,23 @@ interface DraftFilter {
 }
 
 const editor = ref<DraftFilter | null>(null);
+const saving = ref(false);
+const editorSection = ref<HTMLElement | null>(null);
+
+// The editor opens above the list, so Edit on a lower row would otherwise open
+// it off-screen with focus left on the button: bring it into view and focus
+// its first field.
+watch(
+	() => editor.value !== null,
+	async (isOpen) => {
+		if (!isOpen) return;
+		await nextTick();
+		const section = editorSection.value;
+		if (!section) return;
+		section.scrollIntoView?.({ block: 'start' });
+		section.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+	}
+);
 
 // Plain-language and AI rules live in their own section above (read on
 // arrival) and run after the manual filters; this list is the rest.
@@ -156,28 +173,38 @@ function startEdit(f: (typeof filters.value)[number]) {
 }
 
 async function save() {
-	if (!editor.value || !mailboxId.value) return;
+	if (!editor.value || !mailboxId.value || saving.value) return;
 	const payload = editor.value;
 	if (!payload.name.trim()) return;
 	if (payload.conditions.length === 0 || payload.actions.length === 0) return;
-	if (payload.id) {
-		await update(payload.id, {
-			name: payload.name,
-			conditions: payload.conditions,
-			actions: payload.actions,
-			matchType: payload.matchType,
-			stopProcessing: payload.stopProcessing,
-		});
-	} else {
-		await create({
-			name: payload.name,
-			conditions: payload.conditions,
-			actions: payload.actions,
-			matchType: payload.matchType,
-			stopProcessing: payload.stopProcessing,
-		});
+	saving.value = true;
+	try {
+		if (payload.id) {
+			const result = await update(payload.id, {
+				name: payload.name,
+				conditions: payload.conditions,
+				actions: payload.actions,
+				matchType: payload.matchType,
+				stopProcessing: payload.stopProcessing,
+			});
+			// A refused save keeps the editor and the rule in it, as for create.
+			if (!result.ok) return;
+		} else {
+			const result = await create({
+				name: payload.name,
+				conditions: payload.conditions,
+				actions: payload.actions,
+				matchType: payload.matchType,
+				stopProcessing: payload.stopProcessing,
+			});
+			// A refused create keeps the editor and the rule in it; the
+			// operation has already said why.
+			if (!result.ok) return;
+		}
+		editor.value = null;
+	} finally {
+		saving.value = false;
 	}
-	editor.value = null;
 }
 
 // ── Run order ──────────────────────────────────────────────────────────────
@@ -220,14 +247,8 @@ async function confirmRemove() {
 
 <template>
 	<div>
-		<PostboxPlainRules
-			v-if="mailboxId && isPersonalMailbox && !editor"
-			:mailbox-id="mailboxId"
-			:filters="filters"
-			@toggle="setEnabled"
-			@remove="(id: Id<'mailFilters'>) => (filterToRemove = id)"
-		/>
-
+		<!-- The page's own intro leads, as on every Preferences page; the
+		     plain-language rules card follows it as its own section. -->
 		<header
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>
@@ -240,10 +261,18 @@ async function confirmRemove() {
 			</UiButton>
 		</header>
 
-		<section v-if="editor" class="card p-5 mb-6">
+		<PostboxPlainRules
+			v-if="mailboxId && isPersonalMailbox && !editor"
+			:mailbox-id="mailboxId"
+			:filters="filters"
+			@toggle="setEnabled"
+			@remove="(id: Id<'mailFilters'>) => (filterToRemove = id)"
+		/>
+
+		<section v-if="editor" ref="editorSection" class="card p-5 mb-6 scroll-mt-6">
 			<PostboxFilterRuleBuilder v-model="editor" :mailbox-id="mailboxId!" />
 			<div class="flex items-center justify-end gap-2 mt-5">
-				<UiButton variant="ghost" type="button" @click="editor = null">
+				<UiButton variant="ghost" type="button" :disabled="saving" @click="editor = null">
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
@@ -251,6 +280,7 @@ async function confirmRemove() {
 					:disabled="
 						!editor.name.trim() || editor.conditions.length === 0 || editor.actions.length === 0
 					"
+					:loading="saving"
 					@click="save"
 				>
 					{{
@@ -276,9 +306,9 @@ async function confirmRemove() {
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
-					v-for="f in manualFilters"
+					v-for="(f, index) in manualFilters"
 					:key="f._id"
-					class="px-5 py-3 flex items-center justify-between gap-3"
+					class="px-5 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2"
 					:class="{ 'opacity-50': draggingId === f._id }"
 					draggable="true"
 					@dragstart="draggingId = f._id"
@@ -287,78 +317,90 @@ async function confirmRemove() {
 					@dragend="draggingId = null"
 				>
 					<!-- The ▲/▼ pair is the keyboard-reachable equivalent of the drag:
-					     both write the same whole-run order. -->
-					<span class="flex flex-col flex-shrink-0">
-						<button
-							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary"
-							:aria-label="t('dashboard.preferences.filters.moveUp', { name: f.name })"
-							@click="moveFilter(f._id, -1)"
-						>
-							<ChevronUpIcon class="w-3.5 h-3.5" />
-						</button>
-						<button
-							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary"
-							:aria-label="t('dashboard.preferences.filters.moveDown', { name: f.name })"
-							@click="moveFilter(f._id, 1)"
-						>
-							<ChevronDownIcon class="w-3.5 h-3.5" />
-						</button>
-					</span>
-					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2">
-							<span class="font-medium">{{ f.name }}</span>
-							<span
-								v-if="!f.isEnabled"
-								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary"
-								>{{ t('common.disabled') }}</span
+					     both write the same whole-run order. The ends are disabled, since
+					     the first rule cannot run any earlier. -->
+					<div class="flex flex-[1_1_16rem] min-w-0 items-center gap-3">
+						<span class="flex flex-col shrink-0">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								class="min-h-6 px-1 py-0.5"
+								:disabled="index === 0"
+								:aria-label="t('dashboard.preferences.filters.moveUp', { name: f.name })"
+								@click="moveFilter(f._id, -1)"
 							>
-							<span
-								v-if="f.stopProcessing"
-								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-secondary"
-								:title="t('dashboard.preferences.filters.stopTitle')"
-								>{{ t('dashboard.preferences.filters.stopBadge') }}</span
+								<ChevronUpIcon class="w-4 h-4" />
+							</UiButton>
+							<UiButton
+								variant="ghost"
+								size="sm"
+								class="min-h-6 px-1 py-0.5"
+								:disabled="index === manualFilters.length - 1"
+								:aria-label="t('dashboard.preferences.filters.moveDown', { name: f.name })"
+								@click="moveFilter(f._id, 1)"
 							>
+								<ChevronDownIcon class="w-4 h-4" />
+							</UiButton>
+						</span>
+						<div class="flex-1 min-w-0">
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="font-medium break-words">{{ f.name }}</span>
+								<UiBadge v-if="!f.isEnabled" variant="neutral">{{ t('common.disabled') }}</UiBadge>
+								<UiBadge
+									v-if="f.stopProcessing"
+									variant="neutral"
+									:title="t('dashboard.preferences.filters.stopTitle')"
+									>{{ t('dashboard.preferences.filters.stopBadge') }}</UiBadge
+								>
+							</div>
+							<p class="text-xs text-text-tertiary mt-0.5">
+								{{
+									t(
+										f.matchType === 'any'
+											? 'dashboard.preferences.filters.ruleSummaryAny'
+											: 'dashboard.preferences.filters.ruleSummary',
+										{
+											conditions: f.conditions.length,
+											actions: f.actions.length,
+										}
+									)
+								}}
+							</p>
+							<PostboxFilterRunControl
+								class="mt-1"
+								:filter-id="f._id"
+								:can-run="hasRetroactiveActions(f.actions as FilterAction[])"
+							/>
 						</div>
-						<p class="text-xs text-text-tertiary mt-0.5">
-							{{
-								t(
-									f.matchType === 'any'
-										? 'dashboard.preferences.filters.ruleSummaryAny'
-										: 'dashboard.preferences.filters.ruleSummary',
-									{
-										conditions: f.conditions.length,
-										actions: f.actions.length,
-									}
-								)
-							}}
-						</p>
-						<PostboxFilterRunControl
-							class="mt-1"
-							:filter-id="f._id"
-							:can-run="hasRetroactiveActions(f.actions as FilterAction[])"
-						/>
 					</div>
-					<span class="flex items-center gap-1.5 text-sm">
-						<UiSwitch
-							:model-value="f.isEnabled"
-							:label="`${t('common.enabled')}: ${f.name}`"
-							@update:model-value="(on: boolean) => setEnabled(f._id, on)"
-						/>
-						<span aria-hidden="true">{{ t('common.enabled') }}</span>
-					</span>
-					<UiButton variant="ghost" type="button" @click="startEdit(f)">
-						{{ t('common.edit') }}
-					</UiButton>
-					<UiButton
-						variant="ghost"
-						type="button"
-						class="text-error"
-						@click="filterToRemove = f._id"
-					>
-						{{ t('common.delete') }}
-					</UiButton>
+					<div class="flex flex-wrap items-center gap-1 shrink-0">
+						<span class="flex items-center gap-1.5 text-sm mr-1">
+							<UiSwitch
+								:model-value="f.isEnabled"
+								:label="`${t('common.enabled')}: ${f.name}`"
+								@update:model-value="(on: boolean) => setEnabled(f._id, on)"
+							/>
+							<span aria-hidden="true">{{ t('common.enabled') }}</span>
+						</span>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							type="button"
+							:aria-label="`${t('common.edit')}: ${f.name}`"
+							@click="startEdit(f)"
+						>
+							{{ t('common.edit') }}
+						</UiButton>
+						<UiButton
+							variant="danger-ghost"
+							size="sm"
+							type="button"
+							:aria-label="`${t('common.delete')}: ${f.name}`"
+							@click="filterToRemove = f._id"
+						>
+							{{ t('common.delete') }}
+						</UiButton>
+					</div>
 				</li>
 			</ul>
 		</section>

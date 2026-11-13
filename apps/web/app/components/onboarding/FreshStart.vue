@@ -172,31 +172,44 @@ async function sendTestEmail() {
 	}
 }
 
-/** Apply the setup and land on Today. Each write is best-effort/idempotent. */
+/**
+ * Apply the setup and land on Today. A write that fails (already toasted by its
+ * operation) keeps the member here, so they do not arrive with half their setup
+ * missing; pressing the button again retries only what has not been saved.
+ */
+const signatureSaved = ref(false);
+
 async function finishSetup() {
 	const mb = mailbox.value;
 	if (finishing.value) return;
 	finishing.value = true;
 	try {
 		if (mb) {
+			let failed = false;
 			const name = displayName.value.trim();
 			if (name !== (mb.displayName ?? '')) {
-				await setDisplayNameOp.run({ mailboxId: mb._id, displayName: name });
+				const result = await setDisplayNameOp.run({ mailboxId: mb._id, displayName: name });
+				if (!result.ok) failed = true;
 			}
 			const sig = signatureText.value.trim();
-			if (sig) {
-				await createSignatureOp.run({
+			if (sig && !signatureSaved.value) {
+				const result = await createSignatureOp.run({
 					mailboxId: mb._id,
 					name: t('welcome.freshStart.defaultSignatureName'),
 					html: signatureToHtml(sig),
 					isDefault: true,
 				});
+				if (result.ok) signatureSaved.value = true;
+				else failed = true;
 			}
 			if (notifyChoice.value !== notifyAbout.value) {
-				await setNotifyAbout(notifyChoice.value);
+				const saved = await setNotifyAbout(notifyChoice.value);
+				if (!saved.ok) failed = true;
 			}
+			if (failed) return;
 			if (userId.value) {
-				await completeOp.run({ userId: userId.value });
+				const result = await completeOp.run({ userId: userId.value });
+				if (!result.ok) return;
 			}
 		}
 		await navigateTo('/dashboard');
@@ -250,8 +263,11 @@ function skipToToday() {
 						type="text"
 						:placeholder="t('welcome.freshStart.namePlaceholder')"
 						class="input input-sm"
+						aria-describedby="fresh-display-name-hint"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.nameHint') }}</p>
+					<p id="fresh-display-name-hint" class="mt-1 text-xs text-text-tertiary">
+						{{ t('welcome.freshStart.nameHint') }}
+					</p>
 				</div>
 
 				<!-- Signature -->
@@ -275,8 +291,11 @@ function skipToToday() {
 						rows="3"
 						:placeholder="t('welcome.freshStart.signaturePlaceholder')"
 						class="input input-sm"
+						aria-describedby="fresh-signature-hint"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.signatureHint') }}</p>
+					<p id="fresh-signature-hint" class="mt-1 text-xs text-text-tertiary">
+						{{ t('welcome.freshStart.signatureHint') }}
+					</p>
 				</div>
 
 				<!-- Notification preference -->
@@ -284,12 +303,19 @@ function skipToToday() {
 					<label for="fresh-notify" class="mb-1.5 block text-sm font-medium">
 						{{ t('welcome.freshStart.notifyLabel') }}
 					</label>
-					<select id="fresh-notify" v-model="notifyChoice" class="input input-sm">
+					<select
+						id="fresh-notify"
+						v-model="notifyChoice"
+						class="input input-sm"
+						aria-describedby="fresh-notify-hint"
+					>
 						<option v-for="opt in POSTBOX_NOTIFY_ABOUT_OPTIONS" :key="opt" :value="opt">
 							{{ notifyOptionLabel(opt) }}
 						</option>
 					</select>
-					<p class="mt-1 text-xs text-text-tertiary">{{ t('welcome.freshStart.notifyHint') }}</p>
+					<p id="fresh-notify-hint" class="mt-1 text-xs text-text-tertiary">
+						{{ t('welcome.freshStart.notifyHint') }}
+					</p>
 				</div>
 
 				<!-- Optional test email — only an honest option when a transport exists. -->
@@ -354,6 +380,20 @@ function skipToToday() {
 				</div>
 			</div>
 
+			<!-- The action sits right under the fields, above the tips, so it is on the
+			     first screen; the tips are reading for after. -->
+			<div class="flex items-center justify-between">
+				<button
+					type="button"
+					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
+					@click="skipToToday"
+				>
+					{{ t('welcome.freshStart.skip') }}
+				</button>
+				<UiButton :loading="finishing" @click="finishSetup">
+					{{ t('welcome.freshStart.finish') }}
+				</UiButton>
+			</div>
 			<!-- Teach-the-product: a few things worth knowing on day one. The
 			     keyboard tips are meaningless on a phone or tablet, so they (and the
 			     card, when they are all it holds) hide on touch and small screens. -->
@@ -404,19 +444,6 @@ function skipToToday() {
 						</I18nT>
 					</li>
 				</ul>
-			</div>
-
-			<div class="flex items-center justify-between">
-				<button
-					type="button"
-					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
-					@click="skipToToday"
-				>
-					{{ t('welcome.freshStart.skip') }}
-				</button>
-				<UiButton :loading="finishing" @click="finishSetup">
-					{{ t('welcome.freshStart.finish') }}
-				</UiButton>
 			</div>
 		</div>
 	</div>

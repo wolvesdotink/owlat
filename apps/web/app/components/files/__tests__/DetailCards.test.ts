@@ -12,6 +12,7 @@ import { contactPickerLabel } from '~/utils/contactPicker';
 import { threadPickerLabel } from '~/utils/threadPicker';
 import FilesDetailTagsCard from '../DetailTagsCard.vue';
 import FilesDetailThreadCard from '../DetailThreadCard.vue';
+import UiButton from '@owlat/ui/components/ui/Button.vue';
 
 const updateFile = vi.fn(async () => ({ ok: true as const, result: null }));
 const showToast = vi.fn();
@@ -38,6 +39,7 @@ function mountCard(component: unknown, props: Record<string, unknown>) {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { contactPickerLabel, threadPickerLabel },
+			components: { UiButton },
 			stubs: { FilesThreadPicker: ThreadPickerStub },
 		},
 	});

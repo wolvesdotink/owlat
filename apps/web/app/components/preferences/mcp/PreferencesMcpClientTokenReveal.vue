@@ -57,9 +57,15 @@ const snippets = computed(() => [
 </script>
 
 <template>
+	<!--
+		The token is shown once: a stray backdrop click or Escape would lose it and
+		force a revoke-and-recreate, so only the explicit "saved" button closes.
+	-->
 	<UiModal
 		:open="open && !!token"
 		size="lg"
+		persistent
+		:closable="false"
 		:title="t('components.preferences.mcpClientTokenReveal.title', { name: label ?? '' })"
 		@update:open="emit('update:open', $event)"
 	>

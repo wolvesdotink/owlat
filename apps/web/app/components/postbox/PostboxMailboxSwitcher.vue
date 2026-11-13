@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { ChevronDownIcon, MailIcon, UsersIcon } from '@coolicons/vue';
+import { CheckIcon, ChevronDownIcon, MailIcon, UsersIcon } from '@coolicons/vue';
 
 /**
  * The mailbox identity chip: which mailbox you are reading, and the menu that
@@ -97,7 +97,9 @@ function switchTo(id: Id<'mailboxes'>) {
 							: 'flex items-center gap-1 pl-2 pr-1.5 py-0.5 max-w-full min-w-0'
 					"
 					:aria-label="
-						t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })
+						elsewhereUnread > 0
+							? `${t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })}, ${t('components.postbox.postboxMailboxSwitcher.elsewhereUnread')}`
+							: t('components.postbox.postboxMailboxSwitcher.switchTitle', { label: chipLabel })
 					"
 				>
 					<MailIcon class="w-4 h-4 flex-shrink-0" />
@@ -126,6 +128,7 @@ function switchTo(id: Id<'mailboxes'>) {
 					v-for="mb in section.items"
 					:key="mb.mailboxId"
 					:icon="section.icon"
+					:aria-current="mb.mailboxId === mailboxId ? 'true' : undefined"
 					@click="switchTo(mb.mailboxId)"
 				>
 					<span
@@ -134,6 +137,12 @@ function switchTo(id: Id<'mailboxes'>) {
 					>
 						{{ mb.label }}
 					</span>
+					<!-- Not colour alone: the open mailbox carries a check. -->
+					<CheckIcon
+						v-if="mb.mailboxId === mailboxId"
+						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+						aria-hidden="true"
+					/>
 					<span v-if="mb.unread > 0" class="text-xs font-medium text-text-secondary">{{
 						mb.unread > 99 ? '99+' : mb.unread
 					}}</span>

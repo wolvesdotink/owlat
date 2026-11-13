@@ -191,18 +191,21 @@ const hostedFeatures = [
 					<table class="w-full text-caption">
 						<thead>
 							<tr class="border-b border-border-subtle">
-								<th class="px-3.5 py-2.5 text-left text-text-tertiary font-medium" />
-								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
+								<!-- Corner cell: the rows carry their own headers. -->
+								<td class="px-3.5 py-2.5" />
+								<th scope="col" class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
 									{{ t('pricing.resources.minimum') }}
 								</th>
-								<th class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
+								<th scope="col" class="px-3.5 py-2.5 text-right text-text-tertiary font-medium">
 									{{ t('pricing.resources.recommended') }}
 								</th>
 							</tr>
 						</thead>
 						<tbody class="divide-y divide-border-subtle">
 							<tr v-for="row in resourceRows" :key="row.labelKey">
-								<td class="px-3.5 py-2 text-text-primary font-medium">{{ t(row.labelKey) }}</td>
+								<th scope="row" class="px-3.5 py-2 text-left text-text-primary font-medium">
+									{{ t(row.labelKey) }}
+								</th>
 								<td class="px-3.5 py-2 text-right text-text-secondary">{{ t(row.minKey) }}</td>
 								<td class="px-3.5 py-2 text-right text-text-primary font-medium">
 									{{ t(row.recommendedKey) }}
@@ -243,15 +246,11 @@ const hostedFeatures = [
 	transition-delay: calc(var(--i, 0) * 0.05s);
 }
 
-.price-card:hover {
-	border-color: var(--color-border-default);
-	box-shadow: var(--shadow-3);
-	transition-delay: 0s;
-}
+/* No hover lift: the card is not a link (its CTA is), and lifting it would
+   promise a click target the card does not have. */
 
 /* Featured tier: slightly stronger hairline */
-.price-card-highlight,
-.price-card-highlight:hover {
+.price-card-highlight {
 	border-color: var(--color-border-strong);
 }
 

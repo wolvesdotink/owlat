@@ -99,7 +99,7 @@ describe('ContactsContactRow', () => {
 	it('renders the contact cells, with a dash for a missing name part', () => {
 		const { host } = mountRow();
 		const cells = host.findAll('td').map((td) => td.text());
-		expect(cells).toEqual(['', 'ada@example.com', 'Ada', '-', 'Mar 3, 2026']);
+		expect(cells).toEqual(['', 'ada@example.com', 'Ada', '—', 'Mar 3, 2026']);
 		host.unmount();
 	});
 

@@ -32,7 +32,7 @@ const contactName = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- A failed read is not a missing send. -->
 		<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
 

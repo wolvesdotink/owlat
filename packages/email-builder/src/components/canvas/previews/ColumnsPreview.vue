@@ -150,9 +150,9 @@ function handleChildDoubleClick(item: { id: string; type: string }) {
 				</VueDraggable>
 				<div
 					v-if="col.length === 0"
-					class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-[11px] text-text-tertiary bg-bg-surface"
+					class="flex items-center justify-center h-[60px] border-2 border-dashed border-border-subtle rounded text-2xs px-2 text-center text-text-tertiary bg-bg-surface"
 				>
-					{{ t('builder.canvas.preview.dropHere') }}
+					{{ t('builder.canvas.preview.emptyColumn') }}
 				</div>
 			</div>
 		</div>

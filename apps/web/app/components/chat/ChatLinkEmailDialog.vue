@@ -16,6 +16,8 @@ interface Props {
 	conversation?: ConversationLinkTarget;
 	/** Who can open the shared link (see ChatShareConversationPicker). */
 	audience?: 'personal' | 'shared' | 'team';
+	/** The room already discusses a thread, so "Remove link" has something to remove. */
+	linked?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -29,7 +31,12 @@ const { t, locale } = useI18n();
 // thread outside the newest hundred was unlinkable however exactly you spelt it.
 const { query: search, debouncedQuery } = useDebouncedSearch();
 
-const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () =>
+const {
+	data: threadsData,
+	isLoading,
+	error: threadsError,
+	refetch: refetchThreads,
+} = useConvexQuery(api.inbox.queries.listThreads, () =>
 	props.roomId
 		? {
 				...(debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim() } : {}),
@@ -97,6 +104,7 @@ const formatTime = (timestamp: number) => {
 					v-model="search"
 					type="text"
 					:placeholder="t('components.chat.chatLinkEmailDialog.searchPlaceholder')"
+					:aria-label="t('components.chat.chatLinkEmailDialog.searchPlaceholder')"
 					class="input w-full"
 				/>
 			</div>
@@ -105,6 +113,7 @@ const formatTime = (timestamp: number) => {
 				<div v-if="isLoading" class="flex items-center justify-center py-8">
 					<UiSpinner size="md" delay />
 				</div>
+				<UiQueryBoundary v-else-if="threadsError" :error="threadsError" @retry="refetchThreads" />
 				<div v-else-if="threads.length === 0" class="text-center py-8 text-text-tertiary text-sm">
 					{{ t('components.chat.chatLinkEmailDialog.empty') }}
 				</div>
@@ -112,7 +121,9 @@ const formatTime = (timestamp: number) => {
 					<button
 						v-for="thread in threads"
 						:key="thread._id"
-						class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors"
+						type="button"
+						class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors disabled:opacity-50 disabled:pointer-events-none"
+						:disabled="isSubmitting"
 						@click="linkAndClose(thread._id)"
 					>
 						<MailIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
@@ -129,9 +140,16 @@ const formatTime = (timestamp: number) => {
 			</div>
 
 			<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
-				<UiButton variant="danger-ghost" size="sm" :disabled="isSubmitting" @click="unlinkAndClose">
+				<UiButton
+					v-if="linked !== false"
+					variant="danger-ghost"
+					size="sm"
+					:disabled="isSubmitting"
+					@click="unlinkAndClose"
+				>
 					{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
 				</UiButton>
+				<span v-else />
 				<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>
 			</div>
 		</template>

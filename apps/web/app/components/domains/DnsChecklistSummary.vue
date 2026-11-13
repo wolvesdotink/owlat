@@ -136,8 +136,9 @@ const jumpTo = (entry: ChecklistEntry) => {
 			</div>
 			<UiTooltip :text="t('components.domains.dnsChecklistSummary.copyTitle')">
 				<UiButton
+					size="sm"
 					variant="secondary"
-					class="gap-1.5 text-sm py-1.5 px-3 shrink-0 self-start"
+					class="gap-1.5 shrink-0 self-start"
 					data-testid="dns-copy-zone"
 					@click="handleCopy"
 				>
@@ -164,7 +165,7 @@ const jumpTo = (entry: ChecklistEntry) => {
 				v-for="entry in summary.outstanding"
 				:key="entry.id"
 				type="button"
-				class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-error/30 bg-error/10 text-error text-xs font-medium hover:bg-error/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				class="inline-flex min-h-7 items-center gap-1 px-2 py-0.5 rounded-full border border-error/30 bg-error/10 text-error text-xs font-medium hover:bg-error/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:px-3.5"
 				:aria-label="t('components.domains.dnsChecklistSummary.jumpTo', { label: entry.label })"
 				data-testid="dns-outstanding-link"
 				@click="jumpTo(entry)"

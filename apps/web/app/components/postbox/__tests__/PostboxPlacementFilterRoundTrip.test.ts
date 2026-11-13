@@ -205,7 +205,7 @@ describe('the filtered All mail list, opened and closed', () => {
 		);
 		const back = wrapper
 			.findAll('button')
-			.find((b) => b.text().includes('Inbox') && !b.attributes('aria-label'));
+			.find((b) => b.attributes('aria-label') === 'Back to Inbox');
 		expect(back).toBeDefined();
 		await back!.trigger('click');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox?placement=digest', {

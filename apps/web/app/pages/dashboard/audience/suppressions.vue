@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '@owlat/shared';
-import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import type { BlockReason } from '~/utils/suppressionReasons';
 import {
 	CircleSlashIcon,
 	FileUploadIcon,
@@ -10,7 +10,6 @@ import {
 	ListFilterIcon,
 	PlusIcon,
 	SearchIcon,
-	TriangleWarningIcon,
 } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -23,6 +22,9 @@ definePageMeta({
 });
 
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
+// Adding, importing and removing need contacts:manage (the backend checks it
+// too); everyone else reads the list.
+const { canManageContacts } = usePermissions();
 
 // Filter state
 const reasonFilter = ref<'all' | BlockReason>('all');
@@ -159,33 +161,40 @@ const handleDeleteBlockedEmail = async () => {
 	emailToDelete.value = null;
 };
 
-// The reason -> badge/icon/label decision lives in ONE place (see
-// `~/utils/suppressionReasons`), shared with the contact-profile notice. The
-// parameter is the closed `BlockReason` union, so the lookup is total: a fifth
-// schema literal fails the build instead of silently rendering as "manual".
-const presentation = (reason: BlockReason) => suppressionReasonPresentation(reason);
-
-// The stat row, driven by the shared reason table rather than four hand-written
-// cards. Typed as `BlockReason` so the icons and tones come from that same
-// total lookup instead of a widened string.
-const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[]>(() => {
+// The per-reason counts ride on the reason filter's options, so the page leads
+// with the list rather than a row of counters.
+const reasonOptions = computed<{ value: 'all' | BlockReason; label: string }[]>(() => {
 	const c = countsData.value;
-	if (!c) return [];
+	const withCount = (label: string, count: number | undefined) =>
+		count === undefined ? label : `${label} (${count})`;
 	return [
-		{ key: 'bounced', label: t('dashboard.audience.suppressions.tiles.bounced'), count: c.bounced },
+		{ value: 'all', label: withCount(t('dashboard.audience.suppressions.filters.all'), c?.total) },
 		{
-			key: 'complained',
-			label: t('dashboard.audience.suppressions.tiles.complained'),
-			count: c.complained,
+			value: 'bounced',
+			label: withCount(t('dashboard.audience.suppressions.filters.bounced'), c?.bounced),
 		},
-		{ key: 'manual', label: t('dashboard.audience.suppressions.tiles.manual'), count: c.manual },
 		{
-			key: 'unengaged',
-			label: t('dashboard.audience.suppressions.tiles.unengaged'),
-			count: c.unengaged,
+			value: 'complained',
+			label: withCount(t('dashboard.audience.suppressions.filters.complained'), c?.complained),
+		},
+		{
+			value: 'manual',
+			label: withCount(t('dashboard.audience.suppressions.filters.manual'), c?.manual),
+		},
+		{
+			value: 'unengaged',
+			label: withCount(t('dashboard.audience.suppressions.filters.unengaged'), c?.unengaged),
 		},
 	];
 });
+
+const reasonFilterLabel = computed(() =>
+	reasonFilter.value === 'all'
+		? ''
+		: t(`dashboard.audience.suppressions.filters.${reasonFilter.value}`)
+);
+
+const showInfo = ref(false);
 </script>
 
 <template>
@@ -198,11 +207,19 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				:description="t('dashboard.audience.suppressions.subtitle')"
 			>
 				<template #actions>
-					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
+					<p v-if="!canManageContacts" class="text-sm text-text-tertiary">
+						{{ t('dashboard.audience.suppressions.readOnly') }}
+					</p>
+					<UiButton
+						v-if="canManageContacts"
+						variant="secondary"
+						class="gap-2"
+						@click="blocklistImport.open()"
+					>
 						<FileUploadIcon class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.import') }}
 					</UiButton>
-					<UiButton class="gap-2" @click="addModal.open()">
+					<UiButton v-if="canManageContacts" class="gap-2" @click="addModal.open()">
 						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.addSuppression') }}
 					</UiButton>
@@ -232,47 +249,12 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				     renders nothing at all on a healthy deployment. -->
 				<ContactsSunsetClockBanner />
 
-				<!-- Info Card -->
-				<div class="card p-6 bg-warning/5 border-warning/20">
-					<div class="flex gap-4">
-						<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="warning" rounded="lg" />
-						<div>
-							<h3 class="font-medium text-text-primary mb-1">
-								{{ t('dashboard.audience.suppressions.info.title') }}
-							</h3>
-							<p class="text-sm text-text-secondary max-w-prose">
-								{{ t('dashboard.audience.suppressions.info.body') }}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<AudienceSuppressionSunsetControls />
-
-				<!-- Stats Cards -->
-				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
-					<div class="card p-4">
-						<p class="text-sm text-text-secondary">
-							{{ t('dashboard.audience.suppressions.tiles.total') }}
-						</p>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ countsData.total }}
-						</p>
-					</div>
-					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
-						<div class="flex items-center gap-2">
-							<component
-								:is="presentation(tile.key).icon"
-								class="w-4 h-4"
-								:class="presentation(tile.key).tone"
-							/>
-							<p class="text-sm text-text-secondary">{{ tile.label }}</p>
-						</div>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ tile.count }}
-						</p>
-					</div>
-				</div>
+				<!-- What suppressions are: help on request, not a standing banner. -->
+				<UiDisclosure v-model="showInfo" :label="t('dashboard.audience.suppressions.info.title')">
+					<p class="text-sm text-text-secondary max-w-prose">
+						{{ t('dashboard.audience.suppressions.info.body') }}
+					</p>
+				</UiDisclosure>
 
 				<!-- Filters and Search -->
 				<div class="flex flex-col sm:flex-row gap-4">
@@ -285,34 +267,47 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 							v-model="searchQuery"
 							type="text"
 							:placeholder="t('common.filterPlaceholder')"
+							:aria-label="t('dashboard.audience.suppressions.filterLabel')"
 							class="input pl-10"
 						/>
 					</div>
 
 					<!-- Filter by reason -->
 					<div class="flex items-center gap-2">
-						<FilterIcon class="w-4 h-4 text-text-tertiary" />
-						<select v-model="reasonFilter" class="input w-40">
-							<option value="all">{{ t('dashboard.audience.suppressions.filters.all') }}</option>
-							<option value="bounced">
-								{{ t('dashboard.audience.suppressions.filters.bounced') }}
-							</option>
-							<option value="complained">
-								{{ t('dashboard.audience.suppressions.filters.complained') }}
-							</option>
-							<option value="manual">
-								{{ t('dashboard.audience.suppressions.filters.manual') }}
-							</option>
-							<option value="unengaged">
-								{{ t('dashboard.audience.suppressions.filters.unengaged') }}
+						<FilterIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+						<select
+							v-model="reasonFilter"
+							class="input w-full sm:w-56"
+							:aria-label="t('dashboard.audience.suppressions.table.reason')"
+						>
+							<option v-for="option in reasonOptions" :key="option.value" :value="option.value">
+								{{ option.label }}
 							</option>
 						</select>
 					</div>
 				</div>
 
+				<!-- No rows for the chosen reason: the list is not empty, the filter is. -->
+				<div
+					v-if="blockedEmailsData && blockedEmailsData.length === 0 && reasonFilter !== 'all'"
+					class="card p-0 overflow-hidden"
+				>
+					<UiEmptyState
+						variant="no-results"
+						:icon="FilterIcon"
+						:title="
+							t('dashboard.audience.suppressions.noReasonResults.title', {
+								reason: reasonFilterLabel,
+							})
+						"
+						:clear-label="t('dashboard.audience.suppressions.noReasonResults.showAll')"
+						@clear="reasonFilter = 'all'"
+					/>
+				</div>
+
 				<!-- Empty State -->
 				<div
-					v-if="blockedEmailsData && blockedEmailsData.length === 0"
+					v-else-if="blockedEmailsData && blockedEmailsData.length === 0"
 					class="card p-0 overflow-hidden"
 				>
 					<UiEmptyState
@@ -320,7 +315,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 						:title="t('dashboard.audience.suppressions.empty.title')"
 						:description="t('dashboard.audience.suppressions.empty.description')"
 					>
-						<template #action>
+						<template v-if="canManageContacts" #action>
 							<UiButton @click="addModal.open()">
 								<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 								{{ t('dashboard.audience.suppressions.addSuppression') }}
@@ -347,9 +342,13 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<div v-else-if="filteredBlockedEmails.length > 0" class="card p-0 overflow-hidden">
 					<AudienceSuppressionsTable
 						:rows="filteredBlockedEmails"
+						:can-manage="canManageContacts"
 						@remove="emailToDelete = $event"
 					/>
 				</div>
+
+				<!-- Policy management comes after the list it acts on. -->
+				<AudienceSuppressionSunsetControls />
 			</div>
 		</UiQueryBoundary>
 

@@ -99,6 +99,10 @@ onBeforeUnmount(stopPolling);
 		</p>
 
 		<template v-else-if="showBlocks">
+			<!-- A focused button's changed name is not announced, so the copy is. -->
+			<p class="sr-only" aria-live="polite">
+				{{ isCopied('env-setup-env') || isCopied('env-setup-cli') ? t('common.copied') : '' }}
+			</p>
 			<div>
 				<div class="mb-2 flex items-center justify-between gap-3">
 					<p class="text-xs font-medium text-text-primary">
@@ -107,7 +111,11 @@ onBeforeUnmount(stopPolling);
 					<UiButton
 						variant="ghost"
 						size="sm"
-						:aria-label="t('components.delivery.envSetupSteps.copyEnv')"
+						:aria-label="
+							isCopied('env-setup-env')
+								? t('common.copied')
+								: t('components.delivery.envSetupSteps.copyEnv')
+						"
 						data-testid="env-setup-copy-env"
 						@click="copy(envSnippet, 'env-setup-env')"
 					>
@@ -136,7 +144,11 @@ onBeforeUnmount(stopPolling);
 					<UiButton
 						variant="ghost"
 						size="sm"
-						:aria-label="t('components.delivery.envSetupSteps.copyCommands')"
+						:aria-label="
+							isCopied('env-setup-cli')
+								? t('common.copied')
+								: t('components.delivery.envSetupSteps.copyCommands')
+						"
 						data-testid="env-setup-copy-cli"
 						@click="copy(cliCommands, 'env-setup-cli')"
 					>

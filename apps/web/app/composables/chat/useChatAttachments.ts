@@ -11,6 +11,7 @@ import { holdPendingWork } from '~/lib/pendingOperations';
  */
 export function useChatAttachments() {
 	const { t } = useI18n();
+	const { showToast } = useToast();
 
 	const { run: generateUploadUrlMutation } = useBackendOperation(
 		api.chat.attachments.generateUploadUrl,
@@ -31,7 +32,14 @@ export function useChatAttachments() {
 		let registered = false;
 		try {
 			// Raw blob POST — not a backend operation, so it isn't covered by the
-			// operation module. A transport failure here just aborts this upload.
+			// operation module and nothing else reports it. A transport failure
+			// aborts this upload with a toast naming the file. A missing upload URL
+			// is the operation's own failure, which it has already toasted.
+			const toastTransferFailed = () =>
+				showToast(
+					t('shared.chat.useChatAttachments.uploadFailed', { filename: file.name }),
+					'error'
+				);
 			let storageId: Id<'_storage'>;
 			try {
 				const upload = await uploadFileToStorage(
@@ -39,9 +47,13 @@ export function useChatAttachments() {
 					() => generateUploadUrlMutation({}),
 					file.type || 'application/octet-stream'
 				);
-				if (!upload.ok) return null;
+				if (!upload.ok) {
+					if (upload.reason !== 'no-url') toastTransferFailed();
+					return null;
+				}
 				storageId = upload.storageId;
 			} catch {
+				toastTransferFailed();
 				return null;
 			}
 

@@ -85,32 +85,34 @@ const isShown = computed(() => {
 		:aria-label="t('components.team.items.title')"
 		data-testid="team-open-items"
 	>
-		<button
-			type="button"
-			class="flex w-full items-center gap-2 text-left sm:pointer-events-none"
-			:aria-expanded="open"
-			data-testid="team-open-items-toggle"
-			@click="open = !open"
-		>
-			<h2 class="text-xs font-medium text-text-secondary">
-				<span class="hidden uppercase tracking-wide sm:inline">{{
-					t('components.team.items.title')
-				}}</span>
-				<span class="text-sm text-text-primary sm:hidden">{{
+		<!-- From sm up the list is always shown, so a plain heading names it; the
+		     disclosure exists only on a phone, where the list starts collapsed. -->
+		<div class="hidden w-full items-center gap-2 sm:flex">
+			<h2 class="text-xs font-medium uppercase tracking-wide text-text-secondary">
+				{{ t('components.team.items.title') }}
+			</h2>
+			<span class="ml-auto text-xs text-text-tertiary" data-testid="team-open-items-count">{{
+				t('components.team.items.openCount', { count: openCount }, openCount)
+			}}</span>
+		</div>
+		<h2 class="sm:hidden">
+			<button
+				type="button"
+				class="flex w-full items-center gap-2 text-left"
+				:aria-expanded="open"
+				data-testid="team-open-items-toggle"
+				@click="open = !open"
+			>
+				<span class="text-sm font-medium text-text-primary">{{
 					t('components.team.items.phoneSummary', { count: openCount }, openCount)
 				}}</span>
-			</h2>
-			<span
-				class="ml-auto hidden text-xs text-text-tertiary sm:inline"
-				data-testid="team-open-items-count"
-				>{{ t('components.team.items.openCount', { count: openCount }, openCount) }}</span
-			>
-			<ChevronDownIcon
-				class="ml-auto size-4 text-text-tertiary transition-transform sm:hidden"
-				:class="{ 'rotate-180': open }"
-				aria-hidden="true"
-			/>
-		</button>
+				<ChevronDownIcon
+					class="ml-auto size-4 text-text-tertiary transition-transform"
+					:class="{ 'rotate-180': open }"
+					aria-hidden="true"
+				/>
+			</button>
+		</h2>
 
 		<div :class="{ 'hidden sm:block': !open }" class="mt-2">
 			<BriefIncomplete v-if="!isComplete" :brief="view" class="mb-2" />

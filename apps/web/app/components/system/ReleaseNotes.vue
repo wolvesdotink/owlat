@@ -59,9 +59,9 @@ const hiddenCount = computed(() => {
 
 <template>
 	<section class="space-y-5">
-		<h4 class="text-base font-semibold text-text-primary">
+		<h3 class="text-base font-semibold text-text-primary">
 			{{ t('dashboard.admin.system.index.updates.whatsNew', { version }) }}
-		</h4>
+		</h3>
 
 		<div v-if="notes.summary.length" class="space-y-2 text-sm leading-relaxed text-text-secondary">
 			<template v-for="(block, bi) in notes.summary" :key="bi">

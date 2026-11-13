@@ -24,6 +24,6 @@ const height = computed(() => content.value.height ?? 20);
 		}"
 	>
 		<div class="absolute inset-0 border border-dashed border-border-subtle rounded" />
-		<span class="text-[10px] font-semibold text-text-tertiary bg-bg-elevated/80 px-1.5 py-0.5 rounded z-[1]">{{ height }}px</span>
+		<span class="text-2xs font-semibold text-text-tertiary bg-bg-elevated/80 px-1.5 py-0.5 rounded z-[1]">{{ height }}px</span>
 	</div>
 </template>

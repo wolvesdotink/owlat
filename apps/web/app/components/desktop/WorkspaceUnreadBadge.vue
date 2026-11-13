@@ -20,7 +20,7 @@ const label = computed(() => formatBadgeCount(props.count));
 <template>
 	<span
 		v-if="count > 0"
-		class="min-w-4 h-4 px-1 rounded-full bg-error text-text-inverse text-[10px] font-semibold flex items-center justify-center shrink-0 tabular-nums"
+		class="min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-2xs font-semibold flex items-center justify-center shrink-0 tabular-nums"
 	>
 		{{ label }}
 	</span>

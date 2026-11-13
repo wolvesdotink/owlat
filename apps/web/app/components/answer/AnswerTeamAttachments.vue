@@ -116,7 +116,22 @@ function statusLine(attachment: TeamReplyAttachmentView): string {
 const queueStatus = useUploadQueueStatus(() => props.uploads);
 
 const menuItem =
-	'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-bg-surface disabled:opacity-50';
+	'flex w-full items-center gap-2 px-3 py-1.5 pointer-coarse:min-h-11 text-left text-sm hover:bg-bg-surface focus-visible:bg-bg-surface outline-none disabled:opacity-50';
+
+// A menu moves by arrow keys (Home and End to the ends), not only by Tab.
+function onMenuKeydown(event: KeyboardEvent) {
+	const items = Array.from(menuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+	if (items.length === 0) return;
+	const at = items.indexOf(document.activeElement as HTMLElement);
+	let next: number;
+	if (event.key === 'ArrowDown') next = at < 0 ? 0 : (at + 1) % items.length;
+	else if (event.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1;
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = items.length - 1;
+	else return;
+	event.preventDefault();
+	items[next]?.focus();
+}
 </script>
 
 <template>
@@ -158,11 +173,13 @@ const menuItem =
 					:class="{ 'animate-spin motion-reduce:animate-none': attachment.status === 'copying' }"
 					aria-hidden="true"
 				/>
-				<span class="truncate font-medium text-text-primary">{{ attachment.filename }}</span>
+				<span class="truncate font-medium text-text-primary" :title="attachment.filename">{{
+					attachment.filename
+				}}</span>
 				<span class="shrink-0 text-text-tertiary">{{ statusLine(attachment) }}</span>
 				<button
 					type="button"
-					class="-mr-1 rounded-full p-0.5 hover:bg-bg-elevated disabled:opacity-50"
+					class="-my-1 -mr-1.5 rounded-full p-1 pointer-coarse:p-2.5 hover:bg-bg-elevated disabled:opacity-50"
 					:disabled="busy"
 					:aria-label="
 						t('components.answer.team.attachments.remove', { file: attachment.filename })
@@ -195,7 +212,11 @@ const menuItem =
 					}"
 					aria-hidden="true"
 				/>
-				<span class="truncate">{{ upload.filename }}</span>
+				<span class="truncate" :title="upload.filename">{{ upload.filename }}</span>
+				<!-- The red mark alone is not read out. -->
+				<span v-if="upload.status === 'failed'" class="shrink-0 text-error">
+					{{ t('components.answer.team.attachments.uploadFailed') }}
+				</span>
 				<!-- Waiting for a transfer slot; nothing has been sent yet. -->
 				<span v-if="upload.status === 'queued'" class="shrink-0 text-text-tertiary">
 					{{ t('components.answer.team.attachments.queued') }}
@@ -213,7 +234,7 @@ const menuItem =
 				</button>
 				<button
 					type="button"
-					class="-mr-1 rounded-full p-0.5 hover:bg-bg-elevated"
+					class="-my-1 -mr-1.5 rounded-full p-1 pointer-coarse:p-2.5 hover:bg-bg-elevated"
 					:aria-label="
 						t('components.answer.team.attachments.cancelUpload', { file: upload.filename })
 					"
@@ -242,7 +263,8 @@ const menuItem =
 				v-if="menuOpen"
 				ref="menuEl"
 				role="menu"
-				class="absolute bottom-full left-0 z-20 mb-1 max-h-72 w-72 overflow-y-auto rounded border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+				class="absolute bottom-full left-0 z-(--z-menu) mb-1 max-h-72 w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+				@keydown="onMenuKeydown"
 			>
 				<button
 					type="button"
@@ -265,9 +287,11 @@ const menuItem =
 							{
 								key: 'contact',
 								files: fromContact,
-								label: t('components.answer.team.attachments.fromContact', {
-									name: contactName || '',
-								}),
+								label: contactName
+									? t('components.answer.team.attachments.fromContact', {
+											name: contactName,
+										})
+									: t('components.answer.team.attachments.fromThisContact'),
 							},
 						]"
 						:key="group.key"

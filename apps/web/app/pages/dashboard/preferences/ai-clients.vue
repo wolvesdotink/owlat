@@ -27,6 +27,13 @@ const {
 } = useMcpPendingActions();
 const { copy, copiedKey } = useCopyToClipboard();
 
+// The quiet "nothing is waiting" line (and its first load) sits below the
+// setup card; anything that still needs an answer, or a read that failed,
+// moves above it.
+const approvalsLead = computed(
+	() => !isPendingLoading.value && (!!pendingError.value || pending.value.length > 0)
+);
+
 const showCreate = ref(false);
 const isCreating = ref(false);
 const reveal = ref<{ token: string; label: string } | null>(null);
@@ -87,6 +94,25 @@ function formatTime(ts?: number) {
 			</UiButton>
 		</header>
 
+		<!-- Approvals wait on the user, so they lead the page whenever any are open. -->
+		<section v-if="approvalsLead" id="approvals" class="card !p-0 mb-6">
+			<header class="px-5 py-3 border-b border-border-subtle">
+				<h2 class="font-semibold">{{ t('dashboard.preferences.aiClients.approvalsHeading') }}</h2>
+			</header>
+			<UiQueryBoundary v-if="pendingError" :error="pendingError" @retry="refetchPending" />
+			<div v-else class="p-4 space-y-3">
+				<LazyPreferencesMcpPendingActionCard
+					v-for="action in pending"
+					:key="action._id"
+					:action="action"
+					:busy="busyId === action._id"
+					:notice="notices[action._id]"
+					@approve="(reviewDigest) => approve(action._id, reviewDigest)"
+					@reject="reject(action._id)"
+				/>
+			</div>
+		</section>
+
 		<section class="card !p-0 mb-6">
 			<header class="px-5 py-3 border-b border-border-subtle">
 				<h2 class="font-semibold">{{ t('dashboard.preferences.aiClients.serverHeading') }}</h2>
@@ -106,28 +132,16 @@ function formatTime(ts?: number) {
 			</div>
 		</section>
 
-		<section id="approvals" class="card !p-0 mb-6">
+		<section v-if="!approvalsLead" id="approvals" class="card !p-0 mb-6">
 			<header class="px-5 py-3 border-b border-border-subtle">
 				<h2 class="font-semibold">{{ t('dashboard.preferences.aiClients.approvalsHeading') }}</h2>
 			</header>
 			<div v-if="isPendingLoading" class="p-8 flex justify-center">
 				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
-			<UiQueryBoundary v-else-if="pendingError" :error="pendingError" @retry="refetchPending" />
-			<p v-else-if="pending.length === 0" class="px-5 py-4 text-sm text-text-secondary">
+			<p v-else class="px-5 py-4 text-sm text-text-secondary">
 				{{ t('dashboard.preferences.aiClients.approvalsEmpty') }}
 			</p>
-			<div v-else class="p-4 space-y-3">
-				<LazyPreferencesMcpPendingActionCard
-					v-for="action in pending"
-					:key="action._id"
-					:action="action"
-					:busy="busyId === action._id"
-					:notice="notices[action._id]"
-					@approve="(reviewDigest) => approve(action._id, reviewDigest)"
-					@reject="reject(action._id)"
-				/>
-			</div>
 		</section>
 
 		<section class="card !p-0">
@@ -143,21 +157,19 @@ function formatTime(ts?: number) {
 			</div>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li v-for="client in clients" :key="client._id" class="px-5 py-3">
-					<div class="flex items-start justify-between gap-3">
-						<div class="min-w-0">
+					<div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+						<div class="min-w-0 flex-1">
 							<div class="flex flex-wrap items-center gap-2">
-								<span class="font-medium">{{ client.label }}</span>
+								<span class="font-medium break-words">{{ client.label }}</span>
 								<span class="text-xs text-text-tertiary font-mono">{{ client.tokenPrefix }}…</span>
-								<span
-									v-if="client.revokedAt"
-									class="text-xs px-1.5 py-0.5 rounded bg-error/10 text-error"
-									>{{ t('dashboard.preferences.aiClients.revoked') }}</span
-								>
-								<span class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-secondary">{{
+								<UiBadge v-if="client.revokedAt" variant="error">{{
+									t('dashboard.preferences.aiClients.revoked')
+								}}</UiBadge>
+								<UiBadge variant="neutral">{{
 									client.access === 'read_write'
 										? t('dashboard.preferences.aiClients.readWrite')
 										: t('dashboard.preferences.aiClients.readOnly')
-								}}</span>
+								}}</UiBadge>
 							</div>
 							<p class="text-xs text-text-secondary mt-1 break-words">
 								<template v-for="(mailbox, index) in client.mailboxes" :key="mailbox.mailboxId">
@@ -182,15 +194,20 @@ function formatTime(ts?: number) {
 								variant="ghost"
 								type="button"
 								:aria-expanded="expandedClientId === client._id"
+								:aria-label="
+									t('dashboard.preferences.aiClients.activityNamed', { name: client.label })
+								"
 								@click="toggleActivity(client._id)"
 							>
 								{{ t('dashboard.preferences.aiClients.activity') }}
 							</UiButton>
 							<UiButton
 								v-if="!client.revokedAt"
-								variant="ghost"
+								variant="danger-ghost"
 								type="button"
-								class="text-error"
+								:aria-label="
+									t('dashboard.preferences.aiClients.revokeNamed', { name: client.label })
+								"
 								@click="clientToRevoke = client._id"
 							>
 								{{ t('dashboard.preferences.aiClients.revoke') }}

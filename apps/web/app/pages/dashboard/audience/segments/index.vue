@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Condition } from '~/composables/conditions';
-import { CloseIcon, FilterIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
+import AudienceSegmentConditions from '~/components/audience/AudienceSegmentConditions.vue';
+import { FilterIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
@@ -235,7 +236,7 @@ onMounted(() => {
 		</template>
 
 		<template #loading>
-			<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+			<DashboardListSkeleton variant="table" :columns="5" :rows="6" />
 		</template>
 
 		<template v-if="canManage" #empty-action>
@@ -251,9 +252,12 @@ onMounted(() => {
 					{{ t('dashboard.audience.segments.index.table.filters') }}
 				</template>
 				<template #extra-cell="{ item }">
-					<span class="text-text-secondary text-sm whitespace-nowrap">{{
-						filterSummaryOf(item as SegmentRow)
-					}}</span>
+					<!-- One line however many conditions; the full summary is in the title. -->
+					<span
+						class="block max-w-xs truncate text-text-secondary text-sm"
+						:title="filterSummaryOf(item as SegmentRow)"
+						>{{ filterSummaryOf(item as SegmentRow) }}</span
+					>
 				</template>
 				<template #actions="{ item }">
 					<UiTooltip :text="t('dashboard.audience.segments.index.actions.viewContacts')">
@@ -295,6 +299,7 @@ onMounted(() => {
 				<!-- General Error -->
 				<div
 					v-if="segmentErrors.general"
+					role="alert"
 					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20"
 				>
 					<p class="text-sm text-error">{{ segmentErrors.general }}</p>
@@ -311,9 +316,11 @@ onMounted(() => {
 						type="text"
 						:placeholder="t('dashboard.audience.segments.index.modal.namePlaceholder')"
 						:class="['input', segmentErrors.name ? 'input-error' : '']"
+						:aria-invalid="segmentErrors.name ? 'true' : undefined"
+						:aria-describedby="segmentErrors.name ? 'segment-name-error' : undefined"
 						:disabled="isSaving"
 					/>
-					<p v-if="segmentErrors.name" class="error-message">
+					<p v-if="segmentErrors.name" id="segment-name-error" class="error-message">
 						{{ segmentErrors.name }}
 					</p>
 				</div>
@@ -333,12 +340,15 @@ onMounted(() => {
 
 				<!-- Filter Logic -->
 				<div class="mb-4">
-					<label class="label">{{ t('dashboard.audience.segments.index.modal.matchLabel') }}</label>
-					<div class="flex gap-2">
+					<p id="segment-logic-label" class="label">
+						{{ t('dashboard.audience.segments.index.modal.matchLabel') }}
+					</p>
+					<div role="group" aria-labelledby="segment-logic-label" class="flex gap-2">
 						<button
 							type="button"
+							:aria-pressed="segmentForm.filters.logic === 'AND'"
 							:class="[
-								'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+								'px-4 py-2 pointer-coarse:min-h-11 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 								segmentForm.filters.logic === 'AND'
 									? 'bg-text-primary text-text-inverse'
 									: 'bg-bg-surface text-text-secondary hover:text-text-primary',
@@ -349,8 +359,9 @@ onMounted(() => {
 						</button>
 						<button
 							type="button"
+							:aria-pressed="segmentForm.filters.logic === 'OR'"
 							:class="[
-								'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+								'px-4 py-2 pointer-coarse:min-h-11 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 								segmentForm.filters.logic === 'OR'
 									? 'bg-text-primary text-text-inverse'
 									: 'bg-bg-surface text-text-secondary hover:text-text-primary',
@@ -363,84 +374,13 @@ onMounted(() => {
 				</div>
 
 				<!-- Conditions -->
-				<div class="mb-6">
-					<div class="flex items-center justify-between mb-3">
-						<label class="label mb-0">{{
-							t('dashboard.audience.segments.index.modal.conditions')
-						}}</label>
-						<UiButton
-							variant="secondary"
-							size="sm"
-							type="button"
-							class="gap-1"
-							@click="addCondition"
-						>
-							<PlusIcon class="w-3 h-3" />
-							{{ t('dashboard.audience.segments.index.modal.addCondition') }}
-						</UiButton>
-					</div>
-
-					<!-- Conditions Error -->
-					<div
-						v-if="segmentErrors.conditions"
-						class="mb-3 p-3 rounded-lg bg-error-subtle border border-error/20"
-					>
-						<p class="text-sm text-error">{{ segmentErrors.conditions }}</p>
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-if="segmentForm.filters.conditions.length === 0"
-						class="p-8 border-2 border-dashed border-border-subtle rounded-xl text-center"
-					>
-						<FilterIcon class="w-8 h-8 text-text-tertiary mx-auto mb-2" :stroke-width="1.5" />
-						<p class="text-text-secondary text-sm">
-							{{ t('dashboard.audience.segments.index.modal.noConditions') }}
-						</p>
-						<p class="text-text-tertiary text-xs mt-1">
-							{{ t('dashboard.audience.segments.index.modal.noConditionsHint') }}
-						</p>
-					</div>
-
-					<!-- Condition rows -->
-					<div class="space-y-3">
-						<div
-							v-for="(condition, index) in segmentForm.filters.conditions"
-							:key="index"
-							class="p-4 bg-bg-surface rounded-xl border border-border-subtle"
-						>
-							<div class="flex items-start gap-3">
-								<!-- Condition number -->
-								<div
-									class="shrink-0 w-6 h-6 rounded-full bg-bg-elevated text-text-tertiary text-xs flex items-center justify-center"
-								>
-									{{ index + 1 }}
-								</div>
-
-								<!-- Condition fields (per-kind editor via the Condition editor module) -->
-								<div class="flex-1 space-y-3">
-									<ConditionsConditionEditor
-										:model-value="condition"
-										variant="row"
-										@update:model-value="updateConditionAt(index, $event)"
-									/>
-								</div>
-
-								<!-- Remove button -->
-								<UiTooltip :text="t('dashboard.audience.segments.index.modal.removeCondition')">
-									<button
-										type="button"
-										class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:aria-label="t('dashboard.audience.segments.index.modal.removeCondition')"
-										@click="removeCondition(index)"
-									>
-										<CloseIcon class="w-4 h-4" />
-									</button>
-								</UiTooltip>
-							</div>
-						</div>
-					</div>
-				</div>
+				<AudienceSegmentConditions
+					:conditions="segmentForm.filters.conditions"
+					:error="segmentErrors.conditions"
+					@add="addCondition"
+					@remove="removeCondition"
+					@update="updateConditionAt"
+				/>
 
 				<!-- Matching contacts count -->
 				<div class="mb-6 p-4 bg-bg-surface rounded-xl border border-border-subtle">
@@ -467,7 +407,7 @@ onMounted(() => {
 
 			<!-- Footer Actions -->
 			<template #footer>
-				<UiButton variant="secondary" :disabled="isSaving" @click="closeSegmentModal">
+				<UiButton variant="secondary" :disabled="isSaving" @click="requestCloseSegmentModal">
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton type="submit" form="segment-form" :loading="isSaving">

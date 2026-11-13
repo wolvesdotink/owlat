@@ -20,6 +20,7 @@ import MeasurementGateList from '~/components/delivery/MeasurementGateList.vue';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
+import { DELIVERY_MIGRATE_ROUTE } from '~/utils/deliveryAdvancedEmpty';
 
 const WINDOW_END = Date.UTC(2026, 6, 16);
 const WINDOW_START = WINDOW_END - 7 * 24 * 60 * 60 * 1000;
@@ -56,9 +57,10 @@ beforeEach(() => {
 	vi.stubGlobal('useOrganizationQuery', () => ({ data, isLoading, error, refetch: vi.fn() }));
 });
 
-function mountPage() {
+function mountPage(stubs: Record<string, unknown> = {}) {
 	return mountDashboardPage(MeasurementPage, {
 		stubs: {
+			...stubs,
 			UiErrorAlert: {
 				props: ['title', 'message'],
 				template: '<div>{{ title }} {{ message }}</div>',
@@ -320,13 +322,21 @@ describe('measurement page — nothing measured yet', () => {
 				}),
 			],
 		});
-		const wrapper = mountPage();
+		const wrapper = mountPage({
+			// Renders the action slot, where the empty state says where to start.
+			UiEmptyState: {
+				props: ['title', 'description'],
+				template: '<div><p>{{ title }}</p><p>{{ description }}</p><slot name="action" /></div>',
+			},
+		});
 		const empty = wrapper.find('[data-testid="delivery-advanced-empty"]');
 		expect(empty.exists()).toBe(true);
-		expect(empty.find('ui-empty-state-stub').attributes('title')).toBe('Nothing measured yet');
-		expect(empty.find('ui-empty-state-stub').attributes('description')).toContain(
-			'Migrate from Mailchimp'
-		);
+		expect(empty.text()).toContain('Nothing measured yet');
+		expect(empty.text()).toContain('compares delivery results cell by cell');
+		const start = empty.find('[data-testid="delivery-advanced-empty-migrate"]');
+		expect(start.exists()).toBe(true);
+		expect(start.attributes('to')).toBe(DELIVERY_MIGRATE_ROUTE);
+		expect(start.text()).toBe('Start the Mailchimp migration');
 		expect(wrapper.findAllComponents(MeasurementCellCard)).toHaveLength(0);
 		// Still one h1: the empty state does not replace the page's heading.
 		expect(wrapper.findAll('h1')).toHaveLength(1);

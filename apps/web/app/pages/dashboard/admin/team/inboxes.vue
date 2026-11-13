@@ -27,6 +27,7 @@ const {
 	data: inboxes,
 	isLoading,
 	error,
+	refetch,
 } = useConvexQuery(api.mail.mailboxMembers.listShared, () => (isAdmin.value ? {} : 'skip'));
 
 type SharedInbox = NonNullable<typeof inboxes.value>[number];
@@ -156,7 +157,7 @@ async function confirmPurge() {
 					:loading="publishKeysOp.isLoading.value"
 					@click="publishMissingKeys"
 				>
-					<KeyIcon class="w-4 h-4 mr-1.5" />
+					<KeyIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.inboxes.publishKeys') }}
 				</UiButton>
 				<UiButton
@@ -165,42 +166,32 @@ async function confirmPurge() {
 					data-testid="team-inbox-convert-open"
 					@click="isConvertOpen = true"
 				>
-					<UsersIcon class="w-4 h-4 mr-1.5" />
+					<UsersIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.inboxes.convert.action') }}
 				</UiButton>
 				<UiButton to="/dashboard/preferences/add-account?mode=team">
-					<PlusIcon class="w-4 h-4 mr-1.5" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.inboxes.newInbox') }}
 				</UiButton>
 			</template>
 		</UiPageHeader>
 
 		<!-- Admins-only gate -->
-		<div
-			v-if="showAdminGate"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.inboxes.adminGate.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.inboxes.adminGate.description') }}
-			</p>
+		<div v-if="showAdminGate" class="card">
+			<UiEmptyState
+				:icon="LockIcon"
+				:title="t('dashboard.admin.team.inboxes.adminGate.title')"
+				:description="t('dashboard.admin.team.inboxes.adminGate.description')"
+			/>
 		</div>
 
 		<!-- No organization -->
-		<div
-			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="MailsIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.inboxes.noWorkspace.description') }}
-			</p>
+		<div v-else-if="!hasActiveOrganization" class="card">
+			<UiEmptyState
+				:icon="MailsIcon"
+				:title="t('dashboard.admin.team.inboxes.noWorkspace.title')"
+				:description="t('dashboard.admin.team.inboxes.noWorkspace.description')"
+			/>
 		</div>
 
 		<!-- First-load skeleton -->
@@ -209,7 +200,12 @@ async function confirmPurge() {
 		</div>
 
 		<!-- Error -->
-		<UiErrorAlert v-else-if="error" :message="t('dashboard.admin.team.inboxes.loadError')" />
+		<UiQueryBoundary
+			v-else-if="error"
+			:error="error"
+			:error-message="t('dashboard.admin.team.inboxes.loadError')"
+			@retry="refetch"
+		/>
 
 		<!-- Empty state -->
 		<div v-else-if="(inboxes?.length ?? 0) === 0" class="card py-16 px-6 text-center">
@@ -232,7 +228,7 @@ async function confirmPurge() {
 				<template #supportAddress><code>support@</code></template>
 			</I18nT>
 			<UiButton to="/dashboard/preferences/add-account?mode=team" class="mt-6">
-				<PlusIcon class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('dashboard.admin.team.inboxes.empty.action') }}
 			</UiButton>
 		</div>

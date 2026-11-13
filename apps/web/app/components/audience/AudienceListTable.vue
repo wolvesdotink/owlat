@@ -84,8 +84,14 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 		<ul v-if="layout === 'cards'" class="divide-y divide-border-subtle">
 			<li v-for="item in items" :key="item._id" class="flex items-center gap-1 px-4 py-2">
 				<NuxtLink :to="itemTo(item)" :class="['flex-1 min-w-0 py-1 rounded', focusRing]">
-					<span class="block text-text-primary font-medium truncate">{{ item.name }}</span>
-					<span v-if="subtitle(item)" class="block text-sm text-text-secondary truncate">
+					<span class="block text-text-primary font-medium truncate" :title="item.name">{{
+						item.name
+					}}</span>
+					<span
+						v-if="subtitle(item)"
+						class="block text-sm text-text-secondary truncate"
+						:title="subtitle(item)"
+					>
 						{{ subtitle(item) }}
 					</span>
 					<span class="flex items-center gap-1.5 text-xs text-text-tertiary mt-0.5">
@@ -199,7 +205,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 										<button
 											type="button"
 											:class="[
-												'p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
+												'p-2 pointer-coarse:p-3.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
 												focusRing,
 											]"
 											:aria-label="editLabel"
@@ -212,7 +218,7 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 										<button
 											type="button"
 											:class="[
-												'p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
+												'p-2 pointer-coarse:p-3.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
 												focusRing,
 											]"
 											:aria-label="deleteLabel"

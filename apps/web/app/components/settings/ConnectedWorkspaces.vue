@@ -40,10 +40,7 @@ function addWorkspace(): void {
 
 <template>
 	<div class="rounded-lg border border-border-subtle divide-y divide-border-subtle">
-		<div
-			v-if="!workspaces.length"
-			class="flex flex-col items-start gap-3 p-4"
-		>
+		<div v-if="!workspaces.length" class="flex flex-col items-start gap-3 p-4">
 			<p class="text-sm text-text-secondary">
 				{{ t('components.settings.connectedWorkspaces.empty') }}
 			</p>
@@ -59,7 +56,7 @@ function addWorkspace(): void {
 			<div
 				v-for="ws in workspaces"
 				:key="ws.id"
-				class="flex items-center gap-3 p-4"
+				class="flex flex-wrap items-center gap-x-3 gap-y-2 p-4"
 			>
 				<!-- palette-ok: hairline on the workspace's own accent colour, as in
 				     WorkspaceMenu — it edges an arbitrary user value, not a token surface. -->
@@ -67,9 +64,10 @@ function addWorkspace(): void {
 					class="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-inset ring-black/10"
 					:style="{ backgroundColor: ws.accentColor }"
 				/>
-				<div class="min-w-0 flex-1">
+				<div class="min-w-0 flex-[1_1_10rem]">
 					<span
 						class="block text-sm truncate"
+						:title="ws.label"
 						:class="ws.id === activeId ? 'font-semibold text-text-primary' : 'text-text-primary'"
 					>
 						{{ ws.label }}
@@ -78,11 +76,22 @@ function addWorkspace(): void {
 				</div>
 
 				<UiBadge v-if="ws.id === activeId" variant="success">{{ t('common.active') }}</UiBadge>
-				<UiButton v-else variant="secondary" size="sm" @click="switchTo(ws.id)">
+				<UiButton
+					v-else
+					variant="secondary"
+					size="sm"
+					:aria-label="`${t('components.settings.connectedWorkspaces.switch')}: ${ws.label}`"
+					@click="switchTo(ws.id)"
+				>
 					{{ t('components.settings.connectedWorkspaces.switch') }}
 				</UiButton>
 
-				<UiButton variant="danger-ghost" size="sm" @click="askRemove(ws)">
+				<UiButton
+					variant="danger-ghost"
+					size="sm"
+					:aria-label="`${t('components.settings.connectedWorkspaces.disconnect')}: ${ws.label}`"
+					@click="askRemove(ws)"
+				>
 					{{ t('components.settings.connectedWorkspaces.disconnect') }}
 				</UiButton>
 			</div>
@@ -103,7 +112,9 @@ function addWorkspace(): void {
 			:title="t('components.settings.connectedWorkspaces.confirmTitle')"
 			:description="
 				pendingRemove
-					? t('components.settings.connectedWorkspaces.confirmDescription', { label: pendingRemove.label })
+					? t('components.settings.connectedWorkspaces.confirmDescription', {
+							label: pendingRemove.label,
+						})
 					: ''
 			"
 			:confirm-text="t('components.settings.connectedWorkspaces.disconnect')"

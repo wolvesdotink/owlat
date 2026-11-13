@@ -102,15 +102,21 @@ function isValidHttpsUrl(value: string): boolean {
 function goToCapabilities() {
 	detailsError.value = null;
 	if (!pluginId.value) {
-		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.choosePluginError');
+		detailsError.value = t(
+			'components.settings.connectedApps.connectedAppRegisterModal.choosePluginError'
+		);
 		return;
 	}
 	if (!name.value.trim()) {
-		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.nameRequiredError');
+		detailsError.value = t(
+			'components.settings.connectedApps.connectedAppRegisterModal.nameRequiredError'
+		);
 		return;
 	}
 	if (!isValidHttpsUrl(endpointUrl.value.trim())) {
-		detailsError.value = t('components.settings.connectedApps.connectedAppRegisterModal.endpointError');
+		detailsError.value = t(
+			'components.settings.connectedApps.connectedAppRegisterModal.endpointError'
+		);
 		return;
 	}
 	step.value = 'capabilities';
@@ -139,9 +145,7 @@ function submit() {
 	});
 }
 
-const canSubmit = computed(
-	() => selectedCapabilities.value.length > 0 && !props.isSubmitting
-);
+const canSubmit = computed(() => selectedCapabilities.value.length > 0 && !props.isSubmitting);
 </script>
 
 <template>
@@ -158,13 +162,17 @@ const canSubmit = computed(
 			<UiEmptyState
 				:icon="PuzzleIcon"
 				:title="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsTitle')"
-				:description="t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsDescription')"
+				:description="
+					t('components.settings.connectedApps.connectedAppRegisterModal.noPluginsDescription')
+				"
 			/>
 		</div>
 
 		<!-- Step 1 — details -->
 		<form v-else-if="step === 'details'" @submit.prevent="goToCapabilities">
-			<h3 ref="detailsHeading" tabindex="-1" class="sr-only">{{ t('components.settings.connectedApps.connectedAppRegisterModal.detailsStepHeading') }}</h3>
+			<h3 ref="detailsHeading" tabindex="-1" class="sr-only">
+				{{ t('components.settings.connectedApps.connectedAppRegisterModal.detailsStepHeading') }}
+			</h3>
 			<div
 				v-if="detailsError"
 				role="alert"
@@ -176,15 +184,13 @@ const canSubmit = computed(
 
 			<div v-if="plugins.length > 1" class="mb-5">
 				<label for="connected-app-plugin" class="label">
-					{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginLabel') }} <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginLabel') }}
+					<span class="text-error">*</span>
 				</label>
-				<select
-					id="connected-app-plugin"
-					v-model="pluginId"
-					class="input"
-					:disabled="isSubmitting"
-				>
-					<option value="" disabled>{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginPlaceholder') }}</option>
+				<select id="connected-app-plugin" v-model="pluginId" class="input" :disabled="isSubmitting">
+					<option value="" disabled>
+						{{ t('components.settings.connectedApps.connectedAppRegisterModal.pluginPlaceholder') }}
+					</option>
 					<option v-for="plugin in plugins" :key="plugin.pluginId" :value="plugin.pluginId">
 						{{ plugin.pluginId }}
 					</option>
@@ -200,7 +206,9 @@ const canSubmit = computed(
 					v-model="name"
 					type="text"
 					class="input"
-					:placeholder="t('components.settings.connectedApps.connectedAppRegisterModal.namePlaceholder')"
+					:placeholder="
+						t('components.settings.connectedApps.connectedAppRegisterModal.namePlaceholder')
+					"
 					:disabled="isSubmitting"
 				/>
 				<p class="mt-1 text-xs text-text-tertiary">
@@ -210,7 +218,8 @@ const canSubmit = computed(
 
 			<div>
 				<label for="connected-app-endpoint" class="label">
-					{{ t('components.settings.connectedApps.connectedAppRegisterModal.endpointLabel') }} <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.endpointLabel') }}
+					<span class="text-error">*</span>
 				</label>
 				<input
 					id="connected-app-endpoint"
@@ -218,7 +227,9 @@ const canSubmit = computed(
 					type="url"
 					inputmode="url"
 					class="input"
-					:placeholder="t('components.settings.connectedApps.connectedAppRegisterModal.endpointPlaceholder')"
+					:placeholder="
+						t('components.settings.connectedApps.connectedAppRegisterModal.endpointPlaceholder')
+					"
 					:disabled="isSubmitting"
 				/>
 				<p class="mt-1 text-xs text-text-tertiary">
@@ -234,18 +245,30 @@ const canSubmit = computed(
 				tabindex="-1"
 				class="mb-5 p-4 rounded-lg bg-warning/10 border border-warning/20 outline-none focus-visible:ring-2 focus-visible:ring-warning/50"
 				role="note"
-				:aria-label="t('components.settings.connectedApps.connectedAppRegisterModal.riskDisclosureLabel')"
+				:aria-label="
+					t('components.settings.connectedApps.connectedAppRegisterModal.riskDisclosureLabel')
+				"
 			>
 				<div class="flex items-start gap-3">
 					<ShieldWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div class="text-sm text-warning/90 space-y-1">
-						<p class="font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskTitle') }}</p>
+						<p class="font-medium text-warning">
+							{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskTitle') }}
+						</p>
 						<p>
 							{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskBody') }}
 						</p>
-						<I18nT keypath="components.settings.connectedApps.connectedAppRegisterModal.riskLimits" tag="p" scope="global">
+						<I18nT
+							keypath="components.settings.connectedApps.connectedAppRegisterModal.riskLimits"
+							tag="p"
+							scope="global"
+						>
 							<template #emphasis>
-								<strong>{{ t('components.settings.connectedApps.connectedAppRegisterModal.riskLimitsEmphasis') }}</strong>
+								<strong>{{
+									t(
+										'components.settings.connectedApps.connectedAppRegisterModal.riskLimitsEmphasis'
+									)
+								}}</strong>
 							</template>
 						</I18nT>
 					</div>
@@ -263,7 +286,8 @@ const canSubmit = computed(
 
 			<fieldset :disabled="isSubmitting">
 				<legend class="label">
-					{{ t('components.settings.connectedApps.connectedAppRegisterModal.capabilitiesLegend') }} <span class="text-error">*</span>
+					{{ t('components.settings.connectedApps.connectedAppRegisterModal.capabilitiesLegend') }}
+					<span class="text-error">*</span>
 				</legend>
 				<p class="mb-2 text-xs text-text-tertiary">
 					{{ t('components.settings.connectedApps.connectedAppRegisterModal.capabilitiesHint') }}
@@ -275,7 +299,7 @@ const canSubmit = computed(
 					<label
 						v-for="capability in availableCapabilities"
 						:key="capability"
-						class="flex items-start gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-bg-surface"
+						class="flex items-start gap-3 p-3 rounded-lg border border-border-subtle cursor-pointer hover:bg-bg-surface"
 						:class="{ 'opacity-60 cursor-not-allowed': isSubmitting }"
 					>
 						<input

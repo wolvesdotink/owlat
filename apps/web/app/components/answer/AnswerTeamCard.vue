@@ -232,8 +232,25 @@ async function approve() {
 	}
 }
 
+const confirm = useConfirm();
+
+// The card's reject finishes the queue item at once, so it asks first, as the
+// threaded reject does with its own dialog.
 async function reject() {
 	if (busy.value) return;
+	const yes = await confirm({
+		title: draftless.value
+			? t('components.answer.team.rejectConfirm.dismissTitle')
+			: t('components.answer.team.rejectConfirm.rejectTitle'),
+		body: draftless.value
+			? t('components.answer.team.rejectConfirm.dismissBody')
+			: t('components.answer.team.rejectConfirm.rejectBody'),
+		confirmText: draftless.value
+			? t('common.dismiss')
+			: t('components.agentTasks.reviewFocusFlow.reject'),
+		variant: 'danger',
+	});
+	if (!yes || busy.value) return;
 	busy.value = true;
 	try {
 		const result = await onReject(message.value._id);
@@ -290,24 +307,18 @@ registerShortcut({
 	when: () => !heldQuestions.value,
 });
 const { keyHints } = useShortcutLabels();
-
-const secondaryButton =
-	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)';
-// The way to fill the gaps leads while they hold Approve.
-const primaryButton =
-	'inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded bg-brand text-text-inverse hover:bg-brand/90 transition-colors duration-(--motion-fast)';
 </script>
 
 <template>
 	<TaskCardShell>
-		<TaskContext :who="message.from" :icon="MailIcon">
+		<!-- One chip (trust) on the card's head; the category is detail. -->
+		<TaskContext
+			:who="message.from"
+			:icon="MailIcon"
+			:meta="message.classification ? categoryLabel : undefined"
+		>
 			<template #trailing>
-				<div v-if="message.classification" class="flex items-center gap-2">
-					<InboxTrustChip :trust="trust" />
-					<span class="text-xs px-2 py-0.5 rounded-full bg-brand-subtle text-brand">
-						{{ categoryLabel }}
-					</span>
-				</div>
+				<InboxTrustChip :trust="trust" align="end" />
 			</template>
 		</TaskContext>
 
@@ -348,6 +359,7 @@ const primaryButton =
 				rows="6"
 				class="input w-full resize-y mb-4"
 				:placeholder="t('components.agentTasks.reviewFocusFlow.replyPlaceholder')"
+				:aria-label="t('components.agentTasks.reviewFocusFlow.replyPlaceholder')"
 			/>
 			<TaskActions
 				:primary-label="t('components.agentTasks.reviewFocusFlow.sendReply')"
@@ -387,9 +399,9 @@ const primaryButton =
 				@primary="sendReply"
 				@skip="reject"
 			>
-				<button type="button" :class="secondaryButton" :disabled="busy" @click="cancelFill">
+				<UiButton size="sm" variant="outline" :disabled="busy" @click="cancelFill">
 					{{ t('common.cancel') }}
-				</button>
+				</UiButton>
 			</TaskActions>
 		</template>
 
@@ -438,16 +450,18 @@ const primaryButton =
 				@primary="approve"
 				@skip="reject"
 			>
-				<button
+				<!-- The way to fill the gaps leads while they hold Approve. -->
+				<UiButton
 					v-if="gapHeld"
-					type="button"
-					:class="primaryButton"
+					size="sm"
+					variant="primary"
+					class="gap-1.5"
 					data-testid="team-card-fill-gaps"
 					@click="startFill"
 				>
-					<PencilIcon class="w-3.5 h-3.5" />
+					<PencilIcon class="w-3.5 h-3.5" aria-hidden="true" />
 					{{ t('components.agentTasks.reviewFocusFlow.fillGaps') }}
-				</button>
+				</UiButton>
 			</TaskActions>
 		</template>
 	</TaskCardShell>

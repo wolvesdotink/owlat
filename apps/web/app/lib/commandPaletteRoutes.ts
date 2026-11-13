@@ -74,6 +74,7 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 	['/dashboard/audience', adminOnly],
 	['/dashboard/campaigns', (env) => env.isFeatureEnabled('campaigns')],
 	['/dashboard/automations', (env) => adminOnly(env) && env.isFeatureEnabled('automations')],
+	['/dashboard/inbox', (env) => env.isFeatureEnabled('inbox')],
 	['/dashboard/marketing/deleted', recentlyDeletedGate],
 	// Owned by the settings registry (see the module doc).
 	['/dashboard/preferences', never],

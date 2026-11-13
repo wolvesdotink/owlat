@@ -11,6 +11,26 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+// The raw MIME type ("application/vnd.openxmlformats-…") means nothing to most
+// people; show the kind of file and keep the exact type in the tooltip.
+const fileKind = computed(() => {
+	const mime = props.mimeType.toLowerCase();
+	const kind = (key: string) => t(`dashboard.files.detail.fileKinds.${key}`);
+	if (mime === 'application/pdf') return kind('pdf');
+	if (mime.startsWith('image/')) return kind('image');
+	if (mime.startsWith('video/')) return kind('video');
+	if (mime.startsWith('audio/')) return kind('audio');
+	if (mime.includes('csv') || mime.includes('spreadsheet') || mime.includes('excel'))
+		return kind('spreadsheet');
+	if (mime.includes('presentation') || mime.includes('powerpoint')) return kind('presentation');
+	if (mime.includes('word') || mime.includes('opendocument.text') || mime.includes('rtf'))
+		return kind('document');
+	if (mime.includes('zip') || mime.includes('compressed') || mime.includes('tar'))
+		return kind('archive');
+	if (mime.startsWith('text/')) return kind('text');
+	return props.mimeType;
+});
+
 const sourceLabel = computed(() => {
 	switch (props.sourceType) {
 		case 'upload':
@@ -26,7 +46,7 @@ const sourceLabel = computed(() => {
 </script>
 
 <template>
-	<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5 space-y-4">
+	<div class="bg-surface-2 shadow-surface-1 rounded-(--radius-card) p-5 space-y-4">
 		<h3 class="text-sm font-semibold text-text-primary">
 			{{ t('dashboard.files.detail.details') }}
 		</h3>
@@ -34,9 +54,9 @@ const sourceLabel = computed(() => {
 		<div class="space-y-3">
 			<div>
 				<p class="text-xs text-text-tertiary mb-0.5">
-					{{ t('dashboard.files.detail.mimeType') }}
+					{{ t('dashboard.files.detail.fileType') }}
 				</p>
-				<p class="text-sm text-text-secondary">{{ mimeType }}</p>
+				<p class="text-sm text-text-secondary truncate" :title="mimeType">{{ fileKind }}</p>
 			</div>
 			<div>
 				<p class="text-xs text-text-tertiary mb-0.5">
@@ -73,6 +93,7 @@ const sourceLabel = computed(() => {
 									: SparklesIcon
 						"
 						class="w-3.5 h-3.5"
+						aria-hidden="true"
 					/>
 					{{ sourceLabel }}
 				</span>

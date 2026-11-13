@@ -16,6 +16,7 @@ import {
 	TriangleWarningIcon,
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 const { t, te } = useI18n();
 const { showToast } = useToast();
@@ -110,6 +111,21 @@ const {
 	onUpdateStarted,
 	onUpdateFailed,
 } = useSystemUpdateRun(() => latestRelease.value?.latestVersion);
+
+// The confirm block renders under the long update card, often below the fold.
+// Bring it into view and move focus to its heading, or "Update now" looks like
+// it did nothing.
+const confirmHeading = ref<HTMLElement | null>(null);
+watch(updateState, (state) => {
+	if (state !== 'confirming') return;
+	void nextTick(() => {
+		confirmHeading.value?.scrollIntoView({
+			block: 'center',
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		});
+		confirmHeading.value?.focus({ preventScroll: true });
+	});
+});
 </script>
 
 <template>
@@ -122,32 +138,13 @@ const {
 		<!-- Current version -->
 		<SystemVersionCard />
 
-		<!-- Container health -->
-		<SystemContainerHealthCard />
-
-		<!-- Worker versions: which releases of each worker (IMAP server,
-		     mail-sync, MTA, code-worker) call this backend, and whether it still
-		     serves them. Sits under container health: the worker containers are
-		     updated after the backend, and this is where an operator sees
-		     whether they were. -->
-		<SystemWorkerVersionsCard />
-
-		<!-- Network ports: which ports this instance's features need, and whether
-		     the host's provider actually lets them through. Sits next to container
-		     health because it answers the same question one layer down — a service
-		     can be "running" and still be unreachable. -->
-		<SystemPortChecksCard />
-
-		<!-- LLM spend card (spend by feature + by provider + budget headroom) -->
-		<SystemLlmSpendCard />
-
 		<!-- Update check card -->
 		<div class="card">
 			<div class="flex items-start justify-between gap-4 flex-wrap">
 				<div class="min-w-0">
-					<h3 class="font-semibold text-text-primary mb-2">
+					<h2 class="font-semibold text-text-primary mb-2">
 						{{ t('dashboard.admin.system.index.updates.title') }}
-					</h3>
+					</h2>
 
 					<!-- A failed read is not "never checked": show the error. -->
 					<UiQueryBoundary
@@ -226,9 +223,9 @@ const {
 						<div class="flex items-start gap-3">
 							<CircleInfoIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" aria-hidden="true" />
 							<div class="min-w-0 space-y-2 text-sm leading-relaxed text-text-secondary">
-								<h4 class="font-semibold text-text-primary">
+								<h3 class="font-semibold text-text-primary">
 									{{ t('dashboard.admin.system.index.updates.beforeUpdate') }}
-								</h4>
+								</h3>
 								<template v-for="(block, bi) in releaseNotes.upgrading" :key="bi">
 									<p v-if="block.type === 'paragraph'" class="break-words">
 										<AssistantInline :inlines="block.inlines" />
@@ -314,11 +311,15 @@ const {
 		<!-- Confirm dialog -->
 		<div
 			v-if="updateState === 'confirming'"
-			class="rounded-xl border border-warning/40 bg-warning/5 p-6"
+			class="rounded-(--radius-card) border border-warning/40 bg-warning/5 p-6"
 		>
-			<h3 class="text-base font-semibold text-text-primary mb-2">
+			<h2
+				ref="confirmHeading"
+				tabindex="-1"
+				class="text-base font-semibold text-text-primary mb-2 focus:outline-none"
+			>
 				{{ t('dashboard.admin.system.index.confirm.title', { version: pendingTargetVersion }) }}
-			</h3>
+			</h2>
 			<p class="text-sm text-text-secondary mb-4">
 				{{ t('dashboard.admin.system.index.confirm.body') }}
 				<br /><br />
@@ -352,14 +353,14 @@ const {
 		<!-- Success / failure banners -->
 		<div
 			v-if="updateState === 'success'"
-			class="rounded-xl border border-success/40 bg-success/5 p-6"
+			class="rounded-(--radius-card) border border-success/40 bg-success/5 p-6"
 		>
 			<div class="flex items-start gap-3">
 				<CircleCheckIcon class="w-6 h-6 text-success shrink-0" />
 				<div>
-					<h3 class="font-semibold text-text-primary">
+					<h2 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.success.title') }}
-					</h3>
+					</h2>
 					<p class="mt-1 text-sm text-text-secondary">
 						{{ t('dashboard.admin.system.index.success.body', { version: pendingTargetVersion }) }}
 					</p>
@@ -371,15 +372,15 @@ const {
 		     warning, not a failure, so no retry is suggested. -->
 		<div
 			v-if="updateState === 'started'"
-			class="rounded-xl border border-warning/40 bg-warning/5 p-6"
+			class="rounded-(--radius-card) border border-warning/40 bg-warning/5 p-6"
 			role="status"
 		>
 			<div class="flex items-start gap-3">
 				<TriangleWarningIcon class="w-6 h-6 text-warning shrink-0" aria-hidden="true" />
 				<div class="flex-1 min-w-0">
-					<h3 class="font-semibold text-text-primary">
+					<h2 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.started.title') }}
-					</h3>
+					</h2>
 					<I18nT
 						keypath="dashboard.admin.system.index.started.body"
 						tag="p"
@@ -400,13 +401,16 @@ const {
 			</div>
 		</div>
 
-		<div v-if="updateState === 'failed'" class="rounded-xl border border-error/40 bg-error/5 p-6">
+		<div
+			v-if="updateState === 'failed'"
+			class="rounded-(--radius-card) border border-error/40 bg-error/5 p-6"
+		>
 			<div class="flex items-start gap-3">
 				<CircleCloseIcon class="w-6 h-6 text-error shrink-0" />
 				<div class="flex-1 min-w-0">
-					<h3 class="font-semibold text-text-primary">
+					<h2 class="font-semibold text-text-primary">
 						{{ t('dashboard.admin.system.index.failure.title') }}
-					</h3>
+					</h2>
 					<p class="mt-1 text-sm text-error break-words">{{ updateError }}</p>
 					<I18nT
 						keypath="dashboard.admin.system.index.failure.recovery"
@@ -433,6 +437,24 @@ const {
 			</div>
 		</div>
 
+		<!-- Health detail follows the update flow: the page exists to show the
+		     version and get to the next one, so those lead. -->
+		<!-- Container health -->
+		<SystemContainerHealthCard />
+
+		<!-- Worker versions: which releases of each worker (IMAP server,
+		     mail-sync, MTA, code-worker) call this backend, and whether it still
+		     serves them. Sits under container health: the worker containers are
+		     updated after the backend, and this is where an operator sees
+		     whether they were. -->
+		<SystemWorkerVersionsCard />
+
+		<!-- Network ports: which ports this instance's features need, and whether
+		     the host's provider actually lets them through. Sits next to container
+		     health because it answers the same question one layer down — a service
+		     can be "running" and still be unreachable. -->
+		<SystemPortChecksCard />
+
 		<!-- Data migrations: what this release (and any release it skipped)
 		     still has to convert, and the action that runs it. Below the update
 		     flow because it is what an update leaves behind. -->
@@ -440,5 +462,8 @@ const {
 
 		<!-- Update history -->
 		<SystemUpdateHistoryCard />
+
+		<!-- LLM spend card (spend by feature + by provider + budget headroom) -->
+		<SystemLlmSpendCard />
 	</div>
 </template>

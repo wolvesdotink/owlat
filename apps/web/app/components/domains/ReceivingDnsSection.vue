@@ -121,9 +121,9 @@ watch(
 
 <template>
 	<div v-if="mxRecords.length > 0" class="pt-2">
-		<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+		<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
 			{{ t('components.domains.receivingDnsSection.heading') }}
-		</p>
+		</h4>
 
 		<!-- Honest "not turned on yet" state — receiving is off, but we still show
 		     the enable path + MX record so setup isn't a chicken-and-egg. -->

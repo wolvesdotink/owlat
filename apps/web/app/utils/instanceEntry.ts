@@ -45,6 +45,16 @@ export function hasOperatorLegalPages(config: InstanceEntryConfig): boolean {
 }
 
 /**
+ * Whether the instance publishes Terms of Service. The terms name the vendor as
+ * the contracting party, so they describe only the hosted deployment the vendor
+ * runs; a self-hosted operator's own terms are unknown to the app. The Terms
+ * page, the register checkbox and the auth footer link all ask this.
+ */
+export function hasPublishedTerms(config: InstanceEntryConfig): boolean {
+	return config.deploymentMode === 'hosted';
+}
+
+/**
  * Whether the sign-in page may offer "Create an account".
  *
  * Registration is invite-only past the first admin (enforced on the server in

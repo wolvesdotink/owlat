@@ -15,6 +15,7 @@ import {
 	type IconComponent,
 } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
+import { postboxFolderLabel } from '~/composables/postbox/usePostboxFolderName';
 
 type PostboxFolderRow = {
 	_id: string;
@@ -78,20 +79,10 @@ const ICON_BY_ROLE: Record<string, IconComponent> = {
 	archive: ArchiveIcon,
 };
 
-// System folders arrive with a role, not a translated name; a custom/unknown
-// role keeps rendering the server-provided value verbatim.
-const ROLE_LABEL_KEYS: Record<string, string> = {
-	inbox: 'components.postbox.postboxFolderList.roles.inbox',
-	sent: 'components.postbox.postboxFolderList.roles.sent',
-	drafts: 'components.postbox.postboxFolderList.roles.drafts',
-	trash: 'components.postbox.postboxFolderList.roles.trash',
-	spam: 'components.postbox.postboxFolderList.roles.spam',
-	archive: 'components.postbox.postboxFolderList.roles.archive',
-};
-
+// The same names every folder picker shows; an unknown role keeps the
+// server-provided name.
 function folderLabel(folder: PostboxFolderRow): string {
-	const key = folder.role ? ROLE_LABEL_KEYS[folder.role] : undefined;
-	return key ? t(key) : (folder.role ?? folder.name);
+	return postboxFolderLabel(t, folder);
 }
 
 function folderAriaLabel(folder: PostboxFolderRow): string {
@@ -121,6 +112,7 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 							{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
 						]"
 						:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
+						:aria-current="activeFolder === folder.role ? 'page' : undefined"
 						v-on="drop.folder(folder)"
 						@contextmenu="onContextmenu"
 						@keydown="onKeydown"
@@ -132,7 +124,7 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 							class="w-4 h-4"
 						/>
 						<template v-if="!collapsed">
-							<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
+							<span class="flex-1">{{ folderLabel(folder) }}</span>
 							<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
 								folder.unseenCount
 							}}</span>

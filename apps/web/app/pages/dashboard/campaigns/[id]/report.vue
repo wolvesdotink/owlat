@@ -8,14 +8,12 @@ import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadlin
 import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchiveLink.vue';
-import CampaignReportClickedList from '~/components/campaigns/report/ReportClickedList.vue';
+import CampaignReportContacts from '~/components/campaigns/report/ReportContacts.vue';
 import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
-import CampaignReportOpenedList from '~/components/campaigns/report/ReportOpenedList.vue';
 import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
-import { formatNumber } from '~/utils/formatters';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { ChartBarVerticalIcon, CursorClickIcon, EyeIcon, FlameIcon } from '@coolicons/vue';
+import { ChartBarVerticalIcon, FlameIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -126,33 +124,6 @@ const handleSelectWinner = async (winner: 'A' | 'B') => {
 	}
 };
 
-// Tab state for contacts list
-type ContactTab = 'opened' | 'clicked';
-const selectedTab = ref<ContactTab>('opened');
-
-// Pagination state
-const openedOffset = ref(0);
-const clickedOffset = ref(0);
-const pageSize = 10;
-
-// Fetch contacts who opened / clicked — only the active tab's list scans
-// emailSends; the other is skipped until its tab is selected.
-const { data: openedContacts, isLoading: openedLoading } = useConvexQuery(
-	api.delivery.sends.getOpenedContacts,
-	() =>
-		selectedTab.value === 'opened'
-			? { campaignId: campaignId.value, limit: pageSize, offset: openedOffset.value }
-			: 'skip'
-);
-
-const { data: clickedContacts, isLoading: clickedLoading } = useConvexQuery(
-	api.delivery.sends.getClickedContacts,
-	() =>
-		selectedTab.value === 'clicked'
-			? { campaignId: campaignId.value, limit: pageSize, offset: clickedOffset.value }
-			: 'skip'
-);
-
 const isLoading = computed(() => campaignLoading.value || statsLoading.value);
 
 /**
@@ -224,20 +195,6 @@ const currentSnapshot = computed(() => ({
 	clicked: stats.value?.uniqueClicks ?? 0,
 	bounced: stats.value?.bounced ?? 0,
 }));
-
-// Pagination handlers
-const loadMoreOpened = () => {
-	if (openedContacts.value?.hasMore) openedOffset.value += pageSize;
-};
-const loadMoreClicked = () => {
-	if (clickedContacts.value?.hasMore) clickedOffset.value += pageSize;
-};
-const loadPrevOpened = () => {
-	if (openedOffset.value > 0) openedOffset.value = Math.max(0, openedOffset.value - pageSize);
-};
-const loadPrevClicked = () => {
-	if (clickedOffset.value > 0) clickedOffset.value = Math.max(0, clickedOffset.value - pageSize);
-};
 </script>
 
 <template>
@@ -368,67 +325,11 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Contacts List -->
-				<div class="card p-0 overflow-hidden">
-					<!-- Tabs -->
-					<div class="flex border-b border-border-subtle">
-						<button
-							:class="[
-								'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
-								selectedTab === 'opened'
-									? 'text-text-primary font-semibold border-b-2 border-brand'
-									: 'text-text-secondary font-medium hover:text-text-primary',
-							]"
-							@click="selectedTab = 'opened'"
-						>
-							<EyeIcon class="w-4 h-4" />
-							{{
-								t('dashboard.campaigns.detail.report.tabs.opened', {
-									count: formatNumber(openedContacts?.total ?? 0),
-								})
-							}}
-						</button>
-						<button
-							:class="[
-								'flex-1 px-3 sm:px-6 py-4 text-sm transition-colors duration-(--motion-fast) flex items-center justify-center gap-2',
-								selectedTab === 'clicked'
-									? 'text-text-primary font-semibold border-b-2 border-brand'
-									: 'text-text-secondary font-medium hover:text-text-primary',
-							]"
-							@click="selectedTab = 'clicked'"
-						>
-							<CursorClickIcon class="w-4 h-4" />
-							{{
-								t('dashboard.campaigns.detail.report.tabs.clicked', {
-									count: formatNumber(clickedContacts?.total ?? 0),
-								})
-							}}
-						</button>
-					</div>
-
-					<!-- Opened Contacts Tab -->
-					<CampaignReportOpenedList
-						v-if="selectedTab === 'opened'"
-						:campaign-id="campaignId"
-						:contacts="openedContacts"
-						:loading="openedLoading"
-						:offset="openedOffset"
-						:page-size="pageSize"
-						@previous="loadPrevOpened"
-						@next="loadMoreOpened"
-					/>
-
-					<!-- Clicked Contacts Tab -->
-					<CampaignReportClickedList
-						v-if="selectedTab === 'clicked'"
-						:campaign-id="campaignId"
-						:contacts="clickedContacts"
-						:loading="clickedLoading"
-						:offset="clickedOffset"
-						:page-size="pageSize"
-						@previous="loadPrevClicked"
-						@next="loadMoreClicked"
-					/>
-				</div>
+				<CampaignReportContacts
+					:campaign-id="campaignId"
+					:unique-opens="stats?.uniqueOpens"
+					:unique-clicks="stats?.uniqueClicks"
+				/>
 			</div>
 		</UiQueryBoundary>
 

@@ -275,7 +275,7 @@ async function runCheck() {
 								form.mode === mode
 									? 'border-brand bg-brand/5'
 									: 'border-transparent shadow-surface-1',
-								canManageSettings ? 'cursor-pointer hover:bg-bg-elevated' : 'opacity-70',
+								canManageSettings ? 'cursor-pointer hover:bg-(--surface-2-hover)' : 'opacity-70',
 							]"
 						>
 							<input

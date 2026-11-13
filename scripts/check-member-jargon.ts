@@ -8,7 +8,9 @@ const roots = [
 	join(workspace, 'apps/web/app/pages/dashboard/postbox/migrate.vue'),
 ];
 const allowlisted = new Set([
-	'apps/web/app/components/postbox/PostboxMailboxMove.vue',
+	// The "point your MX record at Owlat" stage of moving a mailbox, split out of
+	// PostboxMailboxMove.vue; the record it asks for is an MX record by name.
+	'apps/web/app/components/postbox/PostboxMailboxMoveMxStage.vue',
 	// The IMAP/SMTP server fields the connect form used to inline, split out of
 	// it when the Google sign-in branch landed; the jargon moved with them.
 	'apps/web/app/components/postbox/PostboxMailboxServerFields.vue',

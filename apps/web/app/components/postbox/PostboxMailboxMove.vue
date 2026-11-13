@@ -20,7 +20,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { ArchiveIcon, CheckIcon, CircleCheckIcon, CopyIcon, GlobeIcon, PauseIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { ArchiveIcon, CircleCheckIcon, PauseIcon, TriangleWarningIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type MoveMxCheck = {
@@ -41,8 +41,6 @@ const {
 	error,
 } = useConvexQuery(api.mail.mailboxMove.moveStatus, () => (flagEnabled.value ? {} : 'skip'));
 
-const { copy, isCopied } = useCopyToClipboard();
-
 // Narrow the discriminated union once, in the script, so the template only ever
 // touches plain primitives.
 const data = computed(() => (status.value?.eligible ? status.value : null));
@@ -60,11 +58,6 @@ const mxHost = computed(() => data.value?.mxHost ?? null);
 const mxPriority = computed(() => data.value?.mxPriority);
 const canProvisionSelf = computed(() => data.value?.canProvisionSelf ?? false);
 const awaitingAdmin = computed(() => move.value?.awaitingAdminProvision ?? false);
-
-// The exact MX record a DNS admin publishes to receive mail through Owlat.
-const mxRecordLine = computed(() =>
-	mxHost.value ? `${domain.value}.\t\tIN\tMX\t${mxPriority.value}\t${mxHost.value}.` : ''
-);
 
 function formatTimestamp(ts: number | null | undefined): string {
 	if (!ts) return t('components.postbox.postboxMailboxMove.never');
@@ -101,7 +94,6 @@ const checkMx = useBackendOperation(api.mail.mailboxMoveActions.checkCutoverMx, 
 
 const mxCheck = ref<MoveMxCheck>(null);
 const showCancel = ref(false);
-const dnsDetailsOpen = ref(false);
 
 async function onStart() {
 	opError.value = null;
@@ -116,7 +108,22 @@ async function onCheckMx() {
 	const res = await checkMx.run({});
 	if (res.ok) mxCheck.value = res.result;
 }
+// Archiving stops the old provider's sync. Before the MX check has seen mail
+// point here, a message sent in the gap would be missed, so it asks first.
+const confirm = useConfirm();
 async function onArchive() {
+	if (
+		!mxCheck.value?.verified &&
+		!(await confirm({
+			title: t('components.postbox.postboxMailboxMove.stage3.confirm.title'),
+			body: t('components.postbox.postboxMailboxMove.stage3.confirm.body', {
+				domain: domain.value,
+			}),
+			confirmText: t('components.postbox.postboxMailboxMove.stage3.action'),
+			variant: 'warning',
+		}))
+	)
+		return;
 	opError.value = null;
 	// A stale "points at Owlat" verdict must not survive into the archived state.
 	mxCheck.value = null;
@@ -262,110 +269,16 @@ async function onCancel() {
 					</div>
 
 					<!-- Stage 2 — Point MX -->
-					<div
-						class="rounded-md border px-4 py-3"
-						:class="
-							stage === 'cutover_pending'
-								? 'border-brand/40 bg-brand-subtle'
-								: 'border-border-subtle'
-						"
-					>
-						<div class="flex items-center gap-2">
-							<component
-								:is="stage === 'archived' ? CircleCheckIcon : GlobeIcon"
-								class="w-4 h-4 shrink-0"
-								:class="stage === 'archived' ? 'text-success' : 'text-text-secondary'"
-							/>
-							<span class="font-medium text-sm">
-								{{ t('components.postbox.postboxMailboxMove.stage2.title') }}
-							</span>
-						</div>
-
-						<div v-if="stage === 'cutover_pending'" class="mt-2 pl-6 space-y-3">
-							<p class="text-xs text-text-secondary">
-								{{ t('components.postbox.postboxMailboxMove.stage2.body') }}
-							</p>
-							<UiDisclosure
-								v-if="mxHost"
-								v-model="dnsDetailsOpen"
-								:label="t('components.postbox.postboxMailboxMove.stage2.advanced')"
-							>
-								<I18nT
-									keypath="components.postbox.postboxMailboxMove.stage2.recordIntro"
-									tag="p"
-									scope="global"
-									class="text-xs text-text-secondary"
-								>
-									<template #domain>
-										<code>{{ domain }}</code>
-									</template>
-								</I18nT>
-								<div class="flex items-center gap-2">
-									<code class="flex-1 min-w-0 truncate rounded bg-bg-surface px-2 py-1.5 text-xs">{{
-										mxRecordLine
-									}}</code>
-									<UiTooltip :text="
-											t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })
-										">
-										<button
-											type="button"
-											class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface shrink-0"
-											:aria-label="
-												t('components.postbox.postboxMailboxMove.stage2.copyRecord', { domain })
-											"
-											@click="copy(mxRecordLine, 'mx')"
-										>
-											<component :is="isCopied('mx') ? CheckIcon : CopyIcon" class="w-4 h-4" />
-										</button>
-									</UiTooltip>
-								</div>
-								<div class="flex items-center gap-2 flex-wrap">
-									<UiButton
-										size="sm"
-										variant="secondary"
-										:loading="checkMx.isLoading.value"
-										@click="onCheckMx"
-									>
-										{{ t('components.postbox.postboxMailboxMove.stage2.checkPropagation') }}
-									</UiButton>
-									<span
-										v-if="mxCheck?.verified"
-										class="text-xs text-success flex items-center gap-1"
-									>
-										<CircleCheckIcon class="w-3.5 h-3.5" />
-										{{ t('components.postbox.postboxMailboxMove.stage2.pointsHere', { domain }) }}
-									</span>
-									<span v-else-if="mxCheck" class="text-xs text-text-tertiary">
-										{{
-											t('components.postbox.postboxMailboxMove.stage2.notPointing', {
-												checked: formatTimestamp(mxCheck.checkedAt),
-											})
-										}}
-									</span>
-								</div>
-								<p class="text-xs text-text-tertiary">
-									{{ t('components.postbox.postboxMailboxMove.stage2.afterMx') }}
-								</p>
-							</UiDisclosure>
-							<p v-else class="text-xs text-warning">
-								{{ t('components.postbox.postboxMailboxMove.stage2.noInboundHost') }}
-							</p>
-						</div>
-						<I18nT
-							v-else-if="stage === 'archived'"
-							keypath="components.postbox.postboxMailboxMove.stage2.delivered"
-							tag="p"
-							scope="global"
-							class="mt-1 pl-6 text-xs text-text-tertiary"
-						>
-							<template #domain>
-								<code>{{ domain }}</code>
-							</template>
-						</I18nT>
-						<p v-else class="mt-1 pl-6 text-xs text-text-tertiary">
-							{{ t('components.postbox.postboxMailboxMove.stage2.locked') }}
-						</p>
-					</div>
+					<PostboxMailboxMoveMxStage
+						:stage="stage"
+						:domain="domain"
+						:mx-host="mxHost"
+						:mx-priority="mxPriority"
+						:mx-check="mxCheck"
+						:is-checking="checkMx.isLoading.value"
+						:format-timestamp="formatTimestamp"
+						@check-mx="onCheckMx"
+					/>
 
 					<!-- Stage 3 — Archive -->
 					<div
@@ -403,7 +316,12 @@ async function onCancel() {
 									<code>{{ domain }}</code>
 								</template>
 							</I18nT>
-							<UiButton size="sm" :loading="archiveMove.isLoading.value" @click="onArchive">
+							<UiButton
+								size="sm"
+								:variant="mxCheck?.verified ? 'primary' : 'secondary'"
+								:loading="archiveMove.isLoading.value"
+								@click="onArchive"
+							>
 								{{ t('components.postbox.postboxMailboxMove.stage3.action') }}
 							</UiButton>
 						</div>

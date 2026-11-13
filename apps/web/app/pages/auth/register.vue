@@ -2,7 +2,7 @@
 import { api } from '@owlat/api';
 import { isValidEmail } from '@owlat/shared';
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
-import { registrationOpenFor } from '~/utils/instanceEntry';
+import { hasPublishedTerms, registrationOpenFor } from '~/utils/instanceEntry';
 import { LockIcon, MailIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -34,6 +34,9 @@ const awaitingConfirmationFor = ref('');
 
 // Field-level validation errors
 const termsAccepted = ref(false);
+// Only the hosted deployment publishes terms (see `pages/terms.vue`); on a
+// self-hosted instance there is nothing to accept, so the checkbox is not asked.
+const termsRequired = hasPublishedTerms(useRuntimeConfig().public);
 
 const errors = reactive({
 	name: '',
@@ -86,7 +89,7 @@ function validatePassword(): boolean {
 
 // Validate terms acceptance
 function validateTerms(): boolean {
-	if (!termsAccepted.value) {
+	if (termsRequired && !termsAccepted.value) {
 		errors.terms = t('auth.validation.termsRequired');
 		return false;
 	}
@@ -147,7 +150,14 @@ async function handleSubmit() {
 		</template>
 
 		<div class="text-center space-y-4">
-			<LockIcon class="w-12 h-12 text-text-tertiary mx-auto" :stroke-width="1.5" />
+			<UiIconBox
+				:icon="LockIcon"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mx-auto"
+				aria-hidden="true"
+			/>
 			<p class="text-text-secondary">{{ t('auth.register.inviteOnlyBody') }}</p>
 		</div>
 
@@ -166,7 +176,7 @@ async function handleSubmit() {
 		</template>
 
 		<div v-if="awaitingConfirmationFor" class="text-center space-y-4" role="status">
-			<MailIcon class="w-12 h-12 text-brand mx-auto" :stroke-width="1.5" />
+			<UiIconBox :icon="MailIcon" size="xl" rounded="full" class="mx-auto" aria-hidden="true" />
 			<h2 class="text-lg font-semibold text-text-primary">
 				{{ t('auth.register.checkInboxTitle') }}
 			</h2>
@@ -182,13 +192,8 @@ async function handleSubmit() {
 			</I18nT>
 		</div>
 
-		<!-- Error Message -->
-		<div
-			v-else-if="errorMessage"
-			class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-		>
-			{{ errorMessage }}
-		</div>
+		<!-- Error Message: announced, since focus stays on the submit button. -->
+		<UiErrorAlert v-else-if="errorMessage" :message="errorMessage" role="alert" class="mb-6" />
 
 		<form v-if="!awaitingConfirmationFor" class="space-y-5" @submit.prevent="handleSubmit">
 			<!-- Name Field -->
@@ -227,13 +232,16 @@ async function handleSubmit() {
 				@blur="validatePassword"
 			/>
 
-			<!-- Terms Checkbox -->
-			<div>
-				<label class="flex items-start gap-2 cursor-pointer">
+			<!-- Terms Checkbox. Native rather than UiCheckbox: its label carries a link. -->
+			<div v-if="termsRequired">
+				<label for="register-terms" class="flex items-start gap-2 cursor-pointer">
 					<input
+						id="register-terms"
 						v-model="termsAccepted"
 						type="checkbox"
-						class="mt-1 h-4 w-4 rounded border-border-primary text-brand focus:ring-brand"
+						class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand"
+						:aria-invalid="errors.terms ? 'true' : undefined"
+						:aria-describedby="errors.terms ? 'register-terms-error' : undefined"
 						@change="errors.terms = ''"
 					/>
 					<I18nT
@@ -249,7 +257,9 @@ async function handleSubmit() {
 						</template>
 					</I18nT>
 				</label>
-				<p v-if="errors.terms" class="mt-1 text-sm text-error">{{ errors.terms }}</p>
+				<p v-if="errors.terms" id="register-terms-error" class="mt-1 text-sm text-error">
+					{{ errors.terms }}
+				</p>
 			</div>
 
 			<!-- Submit Button -->
@@ -259,10 +269,13 @@ async function handleSubmit() {
 		</form>
 
 		<template #footer>
-			{{ t('auth.register.haveAccount') }}
-			<NuxtLink to="/auth/login" class="link font-medium">
-				{{ t('auth.register.signIn') }}
-			</NuxtLink>
+			<p>
+				{{ t('auth.register.haveAccount') }}
+				<NuxtLink to="/auth/login" class="link font-medium">
+					{{ t('auth.register.signIn') }}
+				</NuxtLink>
+			</p>
+			<AuthLegalFooter />
 		</template>
 	</AuthShell>
 </template>

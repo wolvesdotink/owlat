@@ -46,6 +46,7 @@ import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
 import { usePostboxFindInFrame } from '~/composables/postbox/usePostboxFindInFrame';
+import { usePostboxQuotedToggle } from '~/composables/postbox/usePostboxQuotedToggle';
 import type { PostboxMessageFind } from '~/composables/postbox/usePostboxThreadFind';
 import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRenderedBody';
 import { usePostboxFrameSelection } from '~/composables/postbox/usePostboxFrameSelection';
@@ -168,27 +169,8 @@ const { showImages, loadEverything, loadEverythingNow } = usePostboxImageConsent
 	messageId: () => props.message._id,
 	images: () => props,
 });
-const showQuoted = ref(false);
-// Find shows the quote while a match sits in it, apart from the reader's own
-// toggle: closing find folds it away again unless the reader opened it. Hiding
-// it by hand while find holds it open wins until find lets go.
-const quoteHiddenByHand = ref(false);
-const findForcesQuote = computed(() => !!props.find?.forceQuoted && !quoteHiddenByHand.value);
-watch(
-	() => !!props.find?.forceQuoted,
-	(forced) => {
-		if (!forced) quoteHiddenByHand.value = false;
-	}
-);
-const quotedShown = computed(() => showQuoted.value || findForcesQuote.value);
-function toggleQuoted() {
-	if (quotedShown.value) {
-		showQuoted.value = false;
-		if (findForcesQuote.value) quoteHiddenByHand.value = true;
-	} else {
-		showQuoted.value = true;
-	}
-}
+// Quoted part: the reader's toggle, held open while find has a match in it.
+const { quotedShown, toggleQuoted } = usePostboxQuotedToggle(() => props.find);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 usePostboxQuoteHighlight({
 	frame: iframeRef,
@@ -448,6 +430,13 @@ usePostboxFrameAutosize({
 			     behind a frame whose scheme differs from its embedder's. -->
 			<iframe
 				ref="iframeRef"
+				:title="
+					message.fromAddress
+						? t('components.postbox.postboxMessageBody.frameTitle', {
+								sender: message.fromAddress,
+							})
+						: t('components.postbox.postboxMessageBody.frameTitleAnonymous')
+				"
 				:srcdoc="displaySrcdoc"
 				sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 				class="block w-full"
@@ -480,7 +469,8 @@ usePostboxFrameAutosize({
 		<button
 			v-if="hasQuotedContent"
 			type="button"
-			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
+			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface pointer-coarse:min-h-11"
+			:aria-expanded="quotedShown"
 			@click="toggleQuoted"
 		>
 			<component :is="quotedShown ? ChevronUpIcon : ChevronDownIcon" class="w-3.5 h-3.5" />

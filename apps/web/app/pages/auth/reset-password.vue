@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { useUrlCredential } from '~/composables/useUrlCredential';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -92,8 +93,15 @@ async function handleSubmit() {
 		</div>
 
 		<!-- Success State -->
-		<div v-else-if="isSuccess" class="text-center">
-			<div class="mb-4 text-4xl">&#10003;</div>
+		<div v-else-if="isSuccess" class="text-center" role="status">
+			<UiIconBox
+				:icon="CircleCheckIcon"
+				size="xl"
+				variant="success"
+				rounded="full"
+				class="mx-auto mb-4"
+				aria-hidden="true"
+			/>
 			<h2 class="text-lg font-semibold text-text-primary mb-2">
 				{{ t('auth.resetPassword.successHeading') }}
 			</h2>
@@ -105,13 +113,8 @@ async function handleSubmit() {
 
 		<!-- Form State -->
 		<template v-else>
-			<!-- Error Message -->
-			<div
-				v-if="errorMessage"
-				class="mb-6 p-4 bg-error-subtle border border-error/30 rounded-lg text-error text-sm"
-			>
-				{{ errorMessage }}
-			</div>
+			<!-- Error Message: announced, since focus stays on the submit button. -->
+			<UiErrorAlert v-if="errorMessage" :message="errorMessage" role="alert" class="mb-6" />
 
 			<form class="space-y-5" @submit.prevent="handleSubmit">
 				<AuthPasswordInput

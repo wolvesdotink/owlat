@@ -26,12 +26,18 @@ watch(
 	{ immediate: true }
 );
 
-async function saveCommitmentStatus() {
+// A single choice saves the moment it changes, like the other pickers in the
+// app; a failed save puts the picker back on the stored status.
+async function saveCommitmentStatus(next: CommitmentStatus) {
+	const stored = props.entry.commitmentStatus ?? 'open';
+	commitmentStatus.value = next;
+	if (next === stored) return;
 	const result = await setCommitmentStatus.run({
 		entryId: props.entry._id,
-		commitmentStatus: commitmentStatus.value,
+		commitmentStatus: next,
 	});
 	if (result.ok) showToast(t('dashboard.knowledge.detail.commitmentStatusToast'));
+	else commitmentStatus.value = stored;
 }
 </script>
 
@@ -41,8 +47,9 @@ async function saveCommitmentStatus() {
 			{{ t('dashboard.knowledge.detail.commitmentStatus') }}
 		</h3>
 		<UiSelect
-			v-model="commitmentStatus"
+			:model-value="commitmentStatus"
 			:aria-label="t('dashboard.knowledge.detail.commitmentStatus')"
+			:disabled="setCommitmentStatus.isLoading.value"
 			:options="[
 				{ value: 'open', label: t('dashboard.knowledge.detail.commitmentStatuses.open') },
 				{
@@ -54,14 +61,7 @@ async function saveCommitmentStatus() {
 					label: t('dashboard.knowledge.detail.commitmentStatuses.cancelled'),
 				},
 			]"
+			@update:model-value="(value) => value && saveCommitmentStatus(value as CommitmentStatus)"
 		/>
-		<UiButton
-			class="mt-3"
-			size="sm"
-			:loading="setCommitmentStatus.isLoading.value"
-			@click="saveCommitmentStatus"
-		>
-			{{ t('dashboard.knowledge.detail.saveStatus') }}
-		</UiButton>
 	</div>
 </template>

@@ -31,13 +31,18 @@ class ScriptedImage extends EventTarget {
 
 const registered: Array<Record<string, unknown>> = [];
 const revoked: string[] = [];
+const toasts: Array<[string, string]> = [];
 
 beforeEach(() => {
 	ScriptedImage.reset();
 	registered.length = 0;
 	revoked.length = 0;
+	toasts.length = 0;
 	vi.stubGlobal('Image', ScriptedImage);
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+	vi.stubGlobal('useToast', () => ({
+		showToast: (message: string, type: string) => void toasts.push([message, type]),
+	}));
 	vi.stubGlobal('useBackendOperation', () => ({
 		run: async (args: Record<string, unknown>) => {
 			if ('storageId' in args) registered.push(args);
@@ -98,5 +103,36 @@ describe('useChatAttachments image probe', () => {
 		);
 		expect(ScriptedImage.last).toBeNull();
 		expect(registered).toEqual([expect.objectContaining({ width: undefined, height: undefined })]);
+	});
+});
+
+describe('useChatAttachments upload failure', () => {
+	const txt = () => new File(['x'], 'notes.txt', { type: 'text/plain' });
+
+	it('toasts a blob transfer the storage refused', async () => {
+		vi.stubGlobal('uploadFileToStorage', async () => ({ ok: false, reason: 'upload-failed' }));
+		const { uploadFile } = await loadUploader();
+
+		await expect(uploadFile(txt())).resolves.toBeNull();
+		expect(toasts).toEqual([['shared.chat.useChatAttachments.uploadFailed', 'error']]);
+		expect(registered).toHaveLength(0);
+	});
+
+	it('toasts a transfer that threw on the network', async () => {
+		vi.stubGlobal('uploadFileToStorage', async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		const { uploadFile } = await loadUploader();
+
+		await expect(uploadFile(txt())).resolves.toBeNull();
+		expect(toasts).toEqual([['shared.chat.useChatAttachments.uploadFailed', 'error']]);
+	});
+
+	it('leaves a missing upload URL to the operation that already reported it', async () => {
+		vi.stubGlobal('uploadFileToStorage', async () => ({ ok: false, reason: 'no-url' }));
+		const { uploadFile } = await loadUploader();
+
+		await expect(uploadFile(txt())).resolves.toBeNull();
+		expect(toasts).toEqual([]);
 	});
 });

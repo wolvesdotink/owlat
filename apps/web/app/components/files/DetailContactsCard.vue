@@ -13,7 +13,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-const { run: updateFile } = useBackendOperation(api.files.library.update, {
+const { run: updateFile, isLoading: isSaving } = useBackendOperation(api.files.library.update, {
 	label: () => t('dashboard.files.detail.updateOperation'),
 });
 
@@ -33,6 +33,7 @@ const startEditContacts = () => {
 };
 
 const saveContacts = async () => {
+	if (isSaving.value) return;
 	const contactIds = editContacts.value.map((c) => c._id);
 	const result = await updateFile({ fileId: props.fileId, contactIds });
 	if (!result.ok) return;
@@ -46,18 +47,19 @@ const cancelEditContacts = () => {
 </script>
 
 <template>
-	<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
+	<div class="bg-surface-2 shadow-surface-1 rounded-(--radius-card) p-5">
 		<div class="flex items-center justify-between mb-3">
 			<h3 class="text-sm font-semibold text-text-primary">
 				{{ t('dashboard.files.detail.linkedContacts') }}
 			</h3>
 			<button
 				v-if="!isEditingContacts && isAdmin"
+				type="button"
 				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:aria-label="t('dashboard.files.detail.editLinkedContacts')"
 				@click="startEditContacts"
 			>
-				<PencilIcon class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" aria-hidden="true" />
 			</button>
 		</div>
 
@@ -65,15 +67,12 @@ const cancelEditContacts = () => {
 		<div v-if="isEditingContacts" class="space-y-3">
 			<FilesContactPicker v-model="editContacts" />
 			<div class="flex items-center gap-2">
-				<button class="text-xs text-brand font-medium hover:underline" @click="saveContacts">
+				<UiButton size="sm" :loading="isSaving" @click="saveContacts">
 					{{ t('common.save') }}
-				</button>
-				<button
-					class="text-xs text-text-tertiary hover:text-text-primary"
-					@click="cancelEditContacts"
-				>
+				</UiButton>
+				<UiButton variant="ghost" size="sm" :disabled="isSaving" @click="cancelEditContacts">
 					{{ t('common.cancel') }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 
@@ -86,10 +85,12 @@ const cancelEditContacts = () => {
 					:to="`/dashboard/audience/contacts/${contact._id}`"
 					class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
 				>
-					<UserIcon class="w-4 h-4 text-text-tertiary" />
-					<span class="text-sm text-brand hover:underline truncate">{{
-						contactPickerLabel(contact)
-					}}</span>
+					<UserIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" aria-hidden="true" />
+					<span
+						class="text-sm text-brand hover:underline truncate"
+						:title="contactPickerLabel(contact)"
+						>{{ contactPickerLabel(contact) }}</span
+					>
 				</NuxtLink>
 			</div>
 			<p v-else class="text-sm text-text-tertiary">

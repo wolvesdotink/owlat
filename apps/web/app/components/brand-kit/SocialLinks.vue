@@ -76,11 +76,10 @@ const platformLabel = (platform: SocialPlatform) => SOCIAL_PLATFORMS[platform].l
 						{{ t('dashboard.admin.instance.brandKit.errors.invalidSocialUrl') }}
 					</p>
 				</div>
+				<!-- Default size: the same 36px height as the URL field beside it. -->
 				<UiButton
 					variant="ghost"
-					size="sm"
 					type="button"
-					class="h-[38px]"
 					:aria-label="
 						t('dashboard.admin.instance.brandKit.footer.removeSocialLink', {
 							platform: platformLabel(link.platform),

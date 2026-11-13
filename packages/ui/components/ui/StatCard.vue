@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const variantClasses: Record<StatCardVariant, string> = {
-	default: 'text-brand',
+	default: 'text-text-primary',
 	success: 'text-success',
 	warning: 'text-warning',
 	error: 'text-error',

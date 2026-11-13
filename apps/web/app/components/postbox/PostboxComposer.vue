@@ -2,8 +2,10 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposerMode, ComposerSeed } from '~/composables/postbox/usePostboxCompose';
 import type { BeforeReady } from '~/composables/postbox/usePostboxComposeRow';
-import { SIMPLE_BLOCK_TYPES } from '~/composables/postbox/postboxBlockTypes';
-import { usePostboxComposerAnswerFrame } from '~/composables/postbox/usePostboxComposerAnswerFrame';
+import {
+	usePostboxComposerAnswerFrame,
+	type BasicEditorHandle,
+} from '~/composables/postbox/usePostboxComposerAnswerFrame';
 import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
 import { usePostboxComposerGaps } from '~/composables/postbox/usePostboxComposerGaps';
 import { usePostboxComposerHandoff } from '~/composables/postbox/usePostboxComposerHandoff';
@@ -12,10 +14,7 @@ import { convertReplyToReplyAll } from '~/utils/postboxReplyDefault';
 import { mailboxComposerTarget } from '~/utils/composerTarget';
 import PostboxComposerShell from './PostboxComposerShell.vue';
 import PostboxComposerReadReceipt from './PostboxComposerReadReceipt.vue';
-
-const EmailBuilder = defineAsyncComponent(() =>
-	import('@owlat/email-builder').then((m) => m.EmailBuilder)
-);
+import PostboxComposerBody from './PostboxComposerBody.vue';
 
 const props = defineProps<{
 	/** The one-time seed; handed to usePostboxCompose whole. */
@@ -65,7 +64,7 @@ const emit = defineEmits<{
 	(e: 'saved'): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const { showOperationError } = useOperationErrorToast();
 // The seed names the target; the shell and footer read its capabilities.
 const target = mailboxComposerTarget(props.seed);
@@ -116,9 +115,6 @@ const {
 	discard,
 } = compose;
 const inlineImageSources = usePostboxDraftInlineImages(activeDraftId, bodyHtml);
-// Inline ghost-text autocomplete: gated by the `ai` flag AND the per-user
-// toggle; the subject line is the bounded thread context for the prompt.
-const { ghostSuggestionsEnabled } = usePostboxGhostGate();
 // The selection-rewrite pill is gated on the `ai` flag ONLY (no per-user toggle).
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const aiRewriteEnabled = computed(() => isFeatureEnabled('ai'));
@@ -167,18 +163,6 @@ function onApplyReplyAll() {
 	ccAddresses.value = converted.cc;
 }
 
-const composerName = ref(
-	t('components.postbox.postboxComposer.composerName', {
-		timestamp: new Date().toLocaleString(locale.value),
-	})
-);
-const backgroundColor = ref('#ffffff');
-
-const builderConfig = computed(() => ({
-	hideSubject: true,
-	blockTypes: composerMode.value === 'simple' ? SIMPLE_BLOCK_TYPES : undefined,
-}));
-
 function switchMode(target: ComposerMode) {
 	// The mode decides which body goes out; it waits for the saved one to load.
 	if (bodyPending.value) return;
@@ -218,6 +202,10 @@ const frameView = usePostboxComposerAnswerFrame({
 		toAddresses.value.length + ccAddresses.value.length + bccAddresses.value.length > 0,
 });
 const { envelopeRef, basicEditor, focusBody, onLineReplyAll } = frameView;
+// The body child mounts the basic editor; the frame's handle follows it.
+function bindEditor(editor: BasicEditorHandle | null) {
+	basicEditor.value = editor;
+}
 
 // The draft id for the host's URL, discard, and what the host reads as it leaves.
 const { handleDiscard, snapshot } = usePostboxComposerHandoff({
@@ -229,6 +217,23 @@ const { handleDiscard, snapshot } = usePostboxComposerHandoff({
 	emitDiscarded: () => emit('discarded'),
 	emitDraftId: (id) => emit('draft-id', id),
 });
+// Discard deletes the saved row, and the hosts leave the composer right after:
+// a draft that holds anything asks first, an empty one goes at once.
+const confirm = useConfirm();
+async function onDiscard() {
+	const holdsContent = snapshot().hasContent || subject.value.trim() !== '';
+	if (
+		holdsContent &&
+		!(await confirm({
+			title: t('components.postbox.postboxComposer.discardConfirm.title'),
+			body: t('components.postbox.postboxComposer.discardConfirm.body'),
+			confirmText: t('components.postbox.postboxComposer.discardConfirm.confirm'),
+			variant: 'danger',
+		}))
+	)
+		return;
+	await handleDiscard();
+}
 watch(subject, (value) => emit('subject', value), { immediate: true });
 watch(lastSavedAt, (at) => {
 	if (at !== null) emit('saved');
@@ -301,37 +306,41 @@ function onKeydown(event: KeyboardEvent) {
 		@keydown.capture="onKeydown"
 	>
 		<template #envelope>
-			<PostboxComposerEnvelopeLine
-				v-if="!frameView.envelopeOpen.value"
-				:to-addresses="toAddresses"
-				:cc-addresses="ccAddresses"
-				:bcc-addresses="bccAddresses"
-				:from="fromAddress || availableIdentities[0]?.address || ''"
-				:identities="availableIdentities"
-				:recipient-names="recipientNames"
-				:subject="subject"
-				:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
-				@expand="frameView.openEnvelope()"
-				@reply-all="onLineReplyAll"
-			/>
-			<!-- Folded, not unmounted: its guard dialogs must stay live. -->
-			<PostboxComposerEnvelope
-				v-show="frameView.envelopeOpen.value"
-				ref="envelopeRef"
-				v-model:to-addresses="toAddresses"
-				v-model:cc-addresses="ccAddresses"
-				v-model:bcc-addresses="bccAddresses"
-				v-model:subject="subject"
-				:mailbox-id="seed.mailboxId"
-				:from-address="fromAddress"
-				:available-identities="availableIdentities"
-				:reply-all-recipients="replyAllRecipients"
-				:guards="guards"
-				:seal-states="chipSealStates"
-				@from-change="onFromChange"
-				@apply-reply-all="onApplyReplyAll"
-				@attention="frameView.envelopeAttention.value = $event"
-			/>
+			<!-- A scheduled row is read-only (drafts.update rejects it); the banner
+			     below is the way back to editing. -->
+			<div class="contents" :inert="isScheduled">
+				<PostboxComposerEnvelopeLine
+					v-if="!frameView.envelopeOpen.value"
+					:to-addresses="toAddresses"
+					:cc-addresses="ccAddresses"
+					:bcc-addresses="bccAddresses"
+					:from="fromAddress || availableIdentities[0]?.address || ''"
+					:identities="availableIdentities"
+					:recipient-names="recipientNames"
+					:subject="subject"
+					:can-reply-all="(replyAllRecipients?.length ?? 0) > 0"
+					@expand="frameView.openEnvelope()"
+					@reply-all="onLineReplyAll"
+				/>
+				<!-- Folded, not unmounted: its guard dialogs must stay live. -->
+				<PostboxComposerEnvelope
+					v-show="frameView.envelopeOpen.value"
+					ref="envelopeRef"
+					v-model:to-addresses="toAddresses"
+					v-model:cc-addresses="ccAddresses"
+					v-model:bcc-addresses="bccAddresses"
+					v-model:subject="subject"
+					:mailbox-id="seed.mailboxId"
+					:from-address="fromAddress"
+					:available-identities="availableIdentities"
+					:reply-all-recipients="replyAllRecipients"
+					:guards="guards"
+					:seal-states="chipSealStates"
+					@from-change="onFromChange"
+					@apply-reply-all="onApplyReplyAll"
+					@attention="frameView.envelopeAttention.value = $event"
+				/>
+			</div>
 		</template>
 
 		<!-- The shell's scroll region: the strips keep their height (the draft
@@ -357,54 +366,29 @@ function onKeydown(event: KeyboardEvent) {
 		<div
 			class="min-h-24 flex-1 overflow-hidden"
 			:class="{ 'pbx-quote-folded': frameView.quoteFolded.value && frameView.hasQuote.value }"
-			:inert="draftMirror.busy"
+			:inert="draftMirror.busy || isScheduled"
 			:aria-busy="draftMirror.busy || undefined"
 			data-testid="composer-body"
 		>
-			<!-- Withheld until a reopened draft's body loads (see usePostboxCompose). -->
-			<div
-				v-if="bodyPending"
-				class="h-full"
-				role="group"
-				aria-busy="true"
-				:aria-label="t('components.postbox.postboxComposer.bodyLoading')"
-			/>
-			<PostboxBasicEditor
-				v-else-if="composerMode === 'simple'"
-				:key="inlineImageSources.scope"
-				ref="basicEditor"
-				v-model="bodyHtml"
-				:placeholder="t('components.postbox.postboxComposer.bodyPlaceholder')"
-				:suggestions-enabled="ghostSuggestionsEnabled"
-				:ghost-thread-context="subject"
-				:rewrite-enabled="aiRewriteEnabled"
-				:rewrite-mailbox-id="seed.mailboxId"
+			<PostboxComposerBody
+				v-model:body-html="bodyHtml"
+				v-model:body-blocks="bodyBlocks"
+				v-model:subject="subject"
+				:mailbox-id="seed.mailboxId"
+				:composer-mode="composerMode"
+				:body-pending="bodyPending"
+				:inline-image-sources="inlineImageSources"
 				:persistent-toolbar="persistentToolbar"
-				:emoji-shortcodes-enabled="true"
-				:inline-images-enabled="true"
+				:rewrite-enabled="aiRewriteEnabled"
 				:embed-image="addInlineImage"
 				:on-remove-embedded-image="removeInlineImage"
-				:inline-image-sources="inlineImageSources"
 				:snippets="savedReplies.editorSnippets.value"
 				:snippet-insert="savedReplies.snippetInsert.value"
-			/>
-			<EmailBuilder
-				v-else
-				:blocks="bodyBlocks"
-				:subject="subject"
-				:name="composerName"
-				:background-color="backgroundColor"
-				:variables="[]"
-				:config="builderConfig"
-				class="h-full"
-				@update:blocks="bodyBlocks = $event"
-				@update:subject="subject = $event"
-				@update:name="composerName = $event"
-				@update:background-color="backgroundColor = $event"
+				:bind-editor="bindEditor"
 			/>
 		</div>
 		<PostboxComposerAttachments
-			:inert="draftMirror.busy"
+			:inert="draftMirror.busy || isScheduled"
 			:attachments="attachments"
 			:uploads="uploads"
 			:meter="attachmentSizeMeter"
@@ -461,7 +445,7 @@ function onKeydown(event: KeyboardEvent) {
 				@send="sendWith"
 				@toggle-quote="frameView.toggleQuote()"
 				@toggle-advisory="frameView.toggleAdvisory()"
-				@discard="handleDiscard"
+				@discard="onDiscard"
 				@schedule="scheduleOpen = true"
 				@add-files="addFiles"
 				@signature-change="onSignatureChange"

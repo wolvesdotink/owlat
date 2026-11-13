@@ -11,6 +11,7 @@ import { api } from '@owlat/api';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PreferencesMailboxList from '../PreferencesMailboxList.vue';
 import HostedDecisionExclusion from '~/components/settings/HostedDecisionExclusion.vue';
+import UiDisclosure from '@owlat/ui/components/ui/Disclosure.vue';
 
 const ORG_LIST = getFunctionName(api.mail.mailbox.identity.listOrgMailboxes);
 const EXCLUSION = getFunctionName(api.decision.exclusion.setHostedDecisionExclusion);
@@ -40,6 +41,8 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxMailbox', () => ({
 		mailboxes: computed(() => [ORG[0]]),
 		isLoading: ref(false),
+		error: ref(null),
+		refetch: vi.fn(),
 	}));
 	vi.stubGlobal('useConvexQuery', (fn: Parameters<typeof getFunctionName>[0], args: unknown) => {
 		const resolved = computed(() => (typeof args === 'function' ? args() : args));
@@ -47,6 +50,8 @@ beforeEach(() => {
 		return {
 			data: computed(() => (resolved.value === 'skip' ? undefined : rows)),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 		};
 	});
 	vi.stubGlobal('useBackendOperation', (fn: Parameters<typeof getFunctionName>[0]) => ({
@@ -63,13 +68,14 @@ function mountList() {
 	return mount(PreferencesMailboxList, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { SettingsHostedDecisionExclusion: HostedDecisionExclusion },
+			components: { SettingsHostedDecisionExclusion: HostedDecisionExclusion, UiDisclosure },
 			stubs: {
 				InboxChip: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiModal: true,
 				UiConfirmationDialog: true,
 				UiButton: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				I18nT: true,
 				UiSwitch: {
 					props: ['modelValue', 'disabled'],
@@ -87,6 +93,7 @@ describe('PreferencesMailboxList hosted-decision opt-out', () => {
 		const w = mountList();
 		const rows = w.findAll('[data-testid="hosted-decision-exclusion-mailbox"]');
 		expect(rows).toHaveLength(2);
+		await rows[1]!.get('button[aria-expanded]').trigger('click');
 		expect(rows[1]!.text()).toContain('jonas@northwind.studio');
 		const mateSwitch = rows[1]!.get('[data-testid="switch"]');
 		expect((mateSwitch.element as HTMLInputElement).checked).toBe(true);

@@ -65,7 +65,7 @@ function toConversation() {
 			leave-active-class="transition-opacity duration-(--motion-moderate-exit)"
 			leave-to-class="opacity-0"
 		>
-			<div v-if="open" class="fixed inset-0 z-40 bg-scrim/50" @click="close" />
+			<div v-if="open" class="fixed inset-0 z-(--z-modal) bg-scrim/50" @click="close" />
 		</Transition>
 		<Transition
 			enter-active-class="transition-transform duration-(--motion-moderate)"
@@ -76,7 +76,7 @@ function toConversation() {
 			<aside
 				v-if="open"
 				ref="dialogEl"
-				class="fixed top-0 right-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-border-subtle bg-bg-base"
+				class="fixed top-0 right-0 z-(--z-modal) flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-border-subtle bg-bg-base"
 				tabindex="-1"
 				role="dialog"
 				aria-modal="true"
@@ -87,14 +87,16 @@ function toConversation() {
 					<h2 class="flex-1 text-sm font-medium text-text-primary">
 						{{ t('postbox.reader.sheet.title') }}
 					</h2>
-					<button
+					<UiButton
+						variant="ghost"
+						size="sm"
 						type="button"
-						class="text-text-tertiary hover:text-text-primary"
+						class="-my-1 -mr-2"
 						:aria-label="t('common.close')"
 						@click="close"
 					>
 						<CloseIcon class="h-4 w-4" />
-					</button>
+					</UiButton>
 				</header>
 				<div class="space-y-3 p-4">
 					<ThreadBrief

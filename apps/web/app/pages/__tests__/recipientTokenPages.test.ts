@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useNow } from '~/composables/useNow';
 import UnsubscribePage from '../unsubscribe.vue';
 import PreferencesPage from '../preferences.vue';
 import ConfirmPage from '../confirm.vue';
@@ -56,6 +57,7 @@ beforeEach(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('fetch', fetchMock);
 	vi.stubGlobal('useSeoMeta', vi.fn());
+	vi.stubGlobal('useNow', useNow);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	vi.stubGlobal('useRoute', () => ({ path: '/', query: { token: 'tok' }, hash: '' }));
@@ -205,6 +207,24 @@ describe('preferences', () => {
 		} finally {
 			clear.mockRestore();
 		}
+	});
+	it('restores the topics the global switch cleared when it is turned straight back on', async () => {
+		answers['GET /prefs/verify/'] = { status: 200, body: { ok: true, data: contact } };
+		const w = await mountPage(PreferencesPage);
+		// UiSwitch is stubbed, so its model value arrives as an attribute.
+		const topicOn = () =>
+			w.findAllComponents({ name: 'UiSwitch' }).at(1)!.attributes('model-value');
+		const globalSwitch = () => w.findAllComponents({ name: 'UiSwitch' }).at(0)!;
+
+		globalSwitch().vm.$emit('update:modelValue', false);
+		await flushPromises();
+		expect(topicOn()).toBe('false');
+
+		globalSwitch().vm.$emit('update:modelValue', true);
+		await flushPromises();
+		// Back where it started: the topic is on again and there is nothing to save.
+		expect(topicOn()).toBe('true');
+		expect(w.text()).toContain('No changes to save');
 	});
 });
 

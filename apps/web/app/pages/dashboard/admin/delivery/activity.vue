@@ -119,6 +119,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		<!-- Channel filter pills (with per-channel health dots) -->
 		<div class="flex flex-wrap gap-2 mb-6">
 			<button
+				type="button"
+				:aria-pressed="!channelFilter"
 				:class="[
 					'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
 					!channelFilter
@@ -132,6 +134,8 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 			<button
 				v-for="ch in channels"
 				:key="ch"
+				type="button"
+				:aria-pressed="channelFilter === ch"
 				:class="[
 					'px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5',
 					channelFilter === ch
@@ -140,19 +144,23 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				]"
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
-				<component :is="channelIcon(ch)" class="w-3 h-3" />
+				<component :is="channelIcon(ch)" class="w-3 h-3" aria-hidden="true" />
 				{{ channelName(ch) }}
-				<span
-					v-if="channelHealth(ch)"
-					class="w-1.5 h-1.5 rounded-full"
-					:class="channelHealth(ch)!.dotClass"
-					:title="
-						t('dashboard.inbox.activity.channelHealthTitle', {
-							channel: channelName(ch),
-							status: healthName(channelHealth(ch)!),
-						})
-					"
-				/>
+				<template v-if="channelHealth(ch)">
+					<span
+						class="w-1.5 h-1.5 rounded-full"
+						:class="channelHealth(ch)!.dotClass"
+						aria-hidden="true"
+						:title="
+							t('dashboard.inbox.activity.channelHealthTitle', {
+								channel: channelName(ch),
+								status: healthName(channelHealth(ch)!),
+							})
+						"
+					/>
+					<!-- The dot's colour is the only visible signal; say it in words. -->
+					<span class="sr-only">{{ healthName(channelHealth(ch)!) }}</span>
+				</template>
 			</button>
 		</div>
 
@@ -177,7 +185,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				<li v-for="item in timeline" :key="item._id" class="group relative">
 					<NuxtLink
 						:to="`/dashboard/inbox/${item.threadId}`"
-						class="card !p-4 flex items-start gap-4 hover:border-brand transition-colors cursor-pointer block"
+						class="activity-card card !p-4 flex items-start gap-4 hover:border-brand transition-colors cursor-pointer block"
 					>
 						<!-- Channel icon -->
 						<div
@@ -212,13 +220,18 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 								</UiBadge>
 
 								<!-- Delivery state — one small mark, detail in its title (one-chip rule) -->
-								<component
-									v-if="deliveryStatusMeta(item.status)"
-									:is="deliveryStatusMeta(item.status)!.icon"
-									class="w-3.5 h-3.5"
-									:class="deliveryStatusMeta(item.status)!.class"
-									:title="deliveryStatusName(deliveryStatusMeta(item.status)!, item.status ?? '')"
-								/>
+								<template v-if="deliveryStatusMeta(item.status)">
+									<component
+										:is="deliveryStatusMeta(item.status)!.icon"
+										class="w-3.5 h-3.5"
+										:class="deliveryStatusMeta(item.status)!.class"
+										aria-hidden="true"
+										:title="deliveryStatusName(deliveryStatusMeta(item.status)!, item.status ?? '')"
+									/>
+									<span class="sr-only">{{
+										deliveryStatusName(deliveryStatusMeta(item.status)!, item.status ?? '')
+									}}</span>
+								</template>
 							</div>
 
 							<!-- Subject (for email) -->
@@ -247,7 +260,7 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 					     Opacity-only overlay, pointer-events gated, also revealed on
 					     keyboard focus-within. No DOM/layout shift. -->
 					<div
-						class="absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+						class="activity-rail absolute top-1/2 right-4 -translate-y-1/2 flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-elevated px-1 py-1 shadow-lg opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 					>
 						<UiTooltip :text="t('dashboard.inbox.activity.openConversation')">
 							<UiButton
@@ -279,3 +292,21 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 		</UiQueryBoundary>
 	</div>
 </template>
+
+<style scoped>
+/* A touch screen never hovers, so the Open / Resolve rail would never appear.
+   There it stays visible, pinned to the card's bottom-right corner, and the
+   card leaves room for it so it covers neither the time nor the preview. */
+@media (hover: none) {
+	.activity-rail {
+		opacity: 1;
+		pointer-events: auto;
+		top: auto;
+		bottom: 0.5rem;
+		transform: none;
+	}
+	.activity-card {
+		padding-bottom: 3.75rem !important;
+	}
+}
+</style>

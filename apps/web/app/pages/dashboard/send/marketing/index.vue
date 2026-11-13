@@ -219,7 +219,9 @@ const handleCreateSubmit = async () => {
 						<span class="text-text-primary font-medium">{{ item.name }}</span>
 					</td>
 					<td class="px-6 py-4">
-						<span class="text-text-secondary">{{ item.subject || '-' }}</span>
+						<span class="text-text-secondary">{{
+							item.subject || t('shared.templateList.noSubject')
+						}}</span>
 					</td>
 					<td class="px-6 py-4">
 						<SendTemplateStatusBadge :status="item.status" />

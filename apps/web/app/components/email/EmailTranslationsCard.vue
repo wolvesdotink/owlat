@@ -37,6 +37,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const askConfirm = useConfirm();
 
 /** Currently open language tab; null until one is picked. */
 const selectedLanguage = ref<string | null>(null);
@@ -78,7 +79,18 @@ const addLanguage = (langCode: string) => {
 	selectedLanguage.value = langCode;
 };
 
-const removeLanguage = (langCode: string) => {
+// Removal drops the whole overlay, translated body included, and saving
+// persists that, so it is asked first like on the Translations page.
+const removeLanguage = async (langCode: string) => {
+	const confirmed = await askConfirm({
+		title: t('dashboard.send.emails.detail.settings.translations.removeConfirmTitle', {
+			language: getLanguageNativeLabel(langCode),
+		}),
+		body: t('dashboard.send.emails.detail.settings.translations.removeConfirmBody'),
+		confirmText: t('dashboard.send.emails.detail.settings.translations.removeLanguage'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
 	emit('remove-language', langCode);
 	if (selectedLanguage.value === langCode) {
 		selectedLanguage.value = null;
@@ -154,21 +166,32 @@ const removeLanguage = (langCode: string) => {
 					v-for="langCode in supportedLanguages"
 					:key="langCode"
 					:class="[
-						'group flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors cursor-pointer',
+						'flex items-center rounded-lg border transition-colors',
 						selectedLanguage === langCode
 							? 'bg-brand/10 border-brand text-brand'
 							: 'bg-bg-surface border-border-default text-text-secondary hover:border-border-strong',
 					]"
-					@click="selectedLanguage = langCode"
 				>
-					<span class="text-sm font-medium">{{ getLanguageNativeLabel(langCode) }}</span>
+					<button
+						type="button"
+						class="rounded-l-lg py-1.5 pl-3 pr-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
+						:aria-pressed="selectedLanguage === langCode"
+						@click="selectedLanguage = langCode"
+					>
+						{{ getLanguageNativeLabel(langCode) }}
+					</button>
 					<UiTooltip :text="t('dashboard.send.emails.detail.settings.translations.removeLanguage')">
 						<button
-							class="p-0.5 rounded hover:bg-error/20 hover:text-error transition-colors"
-							:aria-label="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
-							@click.stop="removeLanguage(langCode)"
+							type="button"
+							class="mr-1 flex size-6 items-center justify-center rounded hover:bg-error/20 hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:size-11"
+							:aria-label="
+								t('dashboard.send.emails.detail.settings.translations.removeLanguageNamed', {
+									language: getLanguageNativeLabel(langCode),
+								})
+							"
+							@click="removeLanguage(langCode)"
 						>
-							<TrashIcon class="w-3 h-3" />
+							<TrashIcon class="w-3.5 h-3.5" />
 						</button>
 					</UiTooltip>
 				</div>

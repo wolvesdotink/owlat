@@ -115,4 +115,21 @@ describe('setup review step', () => {
 		expect(wrapper.find('[data-testid="launch-blockers"]').exists()).toBe(false);
 		expect(wrapper.get('[data-testid="launch-button"]').attributes('disabled')).toBeUndefined();
 	});
+
+	it('does not tick a wizard step whose value still blocks launch', () => {
+		install({
+			setupFlags: { ...getDefaultFlags(), campaigns: true },
+			setupEnv: {},
+			setupAdmin: { email: '', name: '', password: '' },
+			setupToken: '',
+		});
+		const wrapper = mountStep();
+		// The indicator is stubbed, so its prop arrives as a fallthrough attribute.
+		const indicator = wrapper.getComponent({ name: 'UiStepIndicator' });
+		const getStepStatus = indicator.vm.$attrs['get-step-status'] as (id: string) => string;
+		expect(getStepStatus('features')).toBe('completed');
+		expect(getStepStatus('email')).not.toBe('completed');
+		expect(getStepStatus('admin')).not.toBe('completed');
+		expect(getStepStatus('review')).toBe('current');
+	});
 });

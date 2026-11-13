@@ -86,6 +86,24 @@ useShortcutScope('answer');
 const conversationPanelId = useId();
 const replyPanelId = useId();
 const sheetHintId = useId();
+const tabIds: Record<AnswerTab, string> = { conversation: useId(), reply: useId() };
+const tabEls = ref<HTMLElement[]>([]);
+// The phone tabs follow the tab pattern: one stop in the tab order, and the
+// arrow keys (Home/End too) move between them.
+function onTabKeydown(event: KeyboardEvent) {
+	const order: AnswerTab[] = ['conversation', 'reply'];
+	const at = order.indexOf(tab.value);
+	let next: AnswerTab | undefined;
+	if (event.key === 'ArrowRight') next = order[(at + 1) % order.length];
+	else if (event.key === 'ArrowLeft') next = order[(at - 1 + order.length) % order.length];
+	else if (event.key === 'Home') next = order[0];
+	else if (event.key === 'End') next = order[order.length - 1];
+	if (!next) return;
+	event.preventDefault();
+	const index = order.indexOf(next);
+	tab.value = next;
+	void nextTick(() => tabEls.value[index]?.focus());
+}
 
 const layout = useAnswerLayout();
 // On a phone or tablet, open with the message being answered in view.
@@ -187,7 +205,7 @@ function startReply() {
 		>
 			<button
 				type="button"
-				class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+				class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand outline-none"
 				:aria-label="t('components.answer.mode.back', { page: backLabel })"
 				data-testid="answer-back"
 				@click="emit('back')"
@@ -235,10 +253,13 @@ function startReply() {
 		>
 			<button
 				v-for="item in ['conversation', 'reply'] as const"
+				:id="tabIds[item]"
 				:key="item"
+				ref="tabEls"
 				type="button"
 				role="tab"
 				:aria-selected="tab === item"
+				:tabindex="tab === item ? 0 : -1"
 				:aria-controls="item === 'conversation' ? conversationPanelId : replyPanelId"
 				class="flex-1 border-b-2 px-3 py-2.5 text-sm font-medium"
 				:class="
@@ -248,6 +269,7 @@ function startReply() {
 				"
 				:data-testid="`answer-tab-${item}`"
 				@click="tab = item"
+				@keydown="onTabKeydown"
 			>
 				{{ t(`components.answer.mode.tabs.${item}`) }}
 			</button>
@@ -266,6 +288,8 @@ function startReply() {
 					{ hidden: conversationHidden },
 					layout === 'split' ? 'basis-[52%] pb-(--answer-bottom-inset)' : '',
 				]"
+				:role="layout === 'phone' ? 'tabpanel' : undefined"
+				:aria-labelledby="layout === 'phone' ? tabIds.conversation : undefined"
 				:aria-label="t('components.answer.mode.tabs.conversation')"
 				data-testid="answer-conversation-column"
 			>
@@ -277,6 +301,8 @@ function startReply() {
 				class="flex flex-col overflow-hidden border-border-subtle bg-bg-elevated pb-(--answer-bottom-inset)"
 				:class="sheetClass"
 				:style="sheetStyle"
+				:role="layout === 'phone' ? 'tabpanel' : undefined"
+				:aria-labelledby="layout === 'phone' ? tabIds.reply : undefined"
 				:aria-label="t('components.answer.mode.tabs.reply')"
 				:data-sheet-state="isSheet ? sheet.state.value : undefined"
 				data-testid="answer-composer-column"
@@ -294,7 +320,7 @@ function startReply() {
 				>
 					<button
 						type="button"
-						class="group flex h-6 w-full cursor-grab items-center justify-center outline-none active:cursor-grabbing"
+						class="group flex h-6 pointer-coarse:h-11 w-full cursor-grab items-center justify-center outline-none active:cursor-grabbing"
 						:aria-label="handleLabel"
 						:aria-expanded="sheet.state.value !== 'peek'"
 						:aria-controls="replyPanelId"
@@ -315,6 +341,7 @@ function startReply() {
 					<div v-if="sheet.state.value === 'peek'" class="flex items-center gap-2 px-3 pb-2.5">
 						<!-- Waiting on something (peekText) it reads as the next step,
 						     not as an empty field. -->
+						<!-- native-title: the full text of a reply preview the button truncates -->
 						<button
 							type="button"
 							class="min-w-0 flex-1 truncate rounded-md border px-3 py-2 text-left text-sm"
@@ -323,6 +350,7 @@ function startReply() {
 									? 'border-brand/30 bg-brand/5 font-medium text-text-primary hover:bg-brand/10'
 									: 'border-border-subtle bg-bg-base text-text-tertiary hover:text-text-primary'
 							"
+							:title="peekLabel"
 							data-testid="answer-sheet-peek"
 							@click="startReply"
 						>

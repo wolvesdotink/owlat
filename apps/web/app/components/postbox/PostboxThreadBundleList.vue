@@ -149,10 +149,13 @@ function focusIndexOf(messageId: string): number {
 
 				<!-- A bundle: one row standing for a run, with its own two verbs. -->
 				<li v-else :key="entry.id" class="bg-bg-surface">
-					<div class="flex items-center gap-2 px-4 py-3">
+					<!-- The summary keeps a 14rem floor, so on a phone (and with longer
+					     German labels) the batch verbs wrap onto a line of their own
+					     instead of squeezing the summary away. -->
+					<div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3">
 						<button
 							type="button"
-							class="flex min-w-0 flex-1 items-center gap-2 text-left outline-none rounded focus-visible:ring-1 focus-visible:ring-brand/50"
+							class="flex min-w-[min(100%,14rem)] flex-1 items-center gap-2 text-left outline-none rounded focus-visible:ring-1 focus-visible:ring-brand/50"
 							:aria-expanded="expanded[entry.id] === true"
 							@click="emit('toggle', entry.id)"
 						>

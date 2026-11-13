@@ -32,9 +32,11 @@ const mailboxLoading = ref(false);
 const canSendData = ref<boolean | undefined>(undefined);
 const transportLoading = ref(true);
 const notifyAbout = ref<'everything' | 'people-important' | 'nothing'>('everything');
-const setNotifyAbout = vi.fn(async () => undefined);
+const setNotifyAbout = vi.fn(async (_mode?: unknown) => ({ ok: true as boolean, result: null }));
 const knowledgeOn = ref(true);
 const navigateTo = vi.fn();
+/** What every backend write answers; a test flips it to a refusal. */
+const runOp = vi.fn(async (_args?: unknown) => ({ ok: true as boolean, result: null }));
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -51,7 +53,7 @@ beforeAll(() => {
 			setNotifyAbout,
 			isLoading: ref(false),
 		}),
-		useBackendOperation: () => ({ run: vi.fn(async () => null), isLoading: ref(false) }),
+		useBackendOperation: () => ({ run: runOp, isLoading: ref(false) }),
 	});
 });
 
@@ -143,6 +145,33 @@ describe('FreshStart copy', () => {
 			.find((b) => b.text() === 'Skip for now')!
 			.trigger('click');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard');
+	});
+
+	it('stays on the setup when a write fails, instead of landing with it half done', async () => {
+		await settleTransport(true);
+		runOp.mockResolvedValueOnce({ ok: false, result: null });
+		const w = mountFreshStart();
+		await w.find('#fresh-signature').setValue('Ada');
+		await w
+			.findAll('button')
+			.find((b) => b.text() === 'Go to the Workbench')!
+			.trigger('click');
+		await flushPromises();
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
+
+	it('stays on the setup when the notification choice fails to save', async () => {
+		await settleTransport(true);
+		setNotifyAbout.mockResolvedValueOnce({ ok: false, result: null });
+		const w = mountFreshStart();
+		await w.get('#fresh-notify').setValue('nothing');
+		await w
+			.findAll('button')
+			.find((b) => b.text() === 'Go to the Workbench')!
+			.trigger('click');
+		await flushPromises();
+		expect(setNotifyAbout).toHaveBeenCalledWith('nothing');
+		expect(navigateTo).not.toHaveBeenCalled();
 	});
 
 	it('hands a member with no mailbox to the honest next-step guard', async () => {

@@ -150,8 +150,13 @@ export function useMediaLibrary() {
 	};
 
 	// Update metadata
-	const updateAsset = async (id: Id<'mediaAssets'>, patch: { alt?: string; tags?: string[] }) => {
-		await updateMediaAsset({ assetId: id, ...patch });
+	/** Whether the change was saved; a refusal has already been toasted. */
+	const updateAsset = async (
+		id: Id<'mediaAssets'>,
+		patch: { alt?: string; tags?: string[] }
+	): Promise<boolean> => {
+		const result = await updateMediaAsset({ assetId: id, ...patch });
+		return result.ok;
 	};
 
 	return {

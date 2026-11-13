@@ -17,7 +17,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-const { run: updateFile } = useBackendOperation(api.files.library.update, {
+const { run: updateFile, isLoading: isSaving } = useBackendOperation(api.files.library.update, {
 	label: () => t('dashboard.files.detail.updateOperation'),
 });
 
@@ -30,6 +30,7 @@ const startEditTags = () => {
 };
 
 const saveTags = async () => {
+	if (isSaving.value) return;
 	const tags = editTagsInput.value
 		.split(',')
 		.map((tag: string) => tag.trim())
@@ -46,18 +47,19 @@ const cancelEditTags = () => {
 </script>
 
 <template>
-	<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
+	<div class="bg-surface-2 shadow-surface-1 rounded-(--radius-card) p-5">
 		<div class="flex items-center justify-between mb-3">
 			<h3 class="text-sm font-semibold text-text-primary">
 				{{ t('dashboard.files.detail.tags') }}
 			</h3>
 			<button
 				v-if="!isEditingTags && isAdmin"
+				type="button"
 				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="startEditTags"
-				:aria-label="t('common.edit')"
+				:aria-label="t('dashboard.files.detail.editTags')"
 			>
-				<PencilIcon class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" aria-hidden="true" />
 			</button>
 		</div>
 
@@ -66,16 +68,17 @@ const cancelEditTags = () => {
 				v-model="editTagsInput"
 				type="text"
 				class="input input-sm"
+				:aria-label="t('dashboard.files.detail.tags')"
 				:placeholder="t('dashboard.files.detail.tagsPlaceholder')"
 				@keyup.enter="saveTags"
 			/>
 			<div class="flex items-center gap-2">
-				<button class="text-xs text-brand font-medium hover:underline" @click="saveTags">
+				<UiButton size="sm" :loading="isSaving" @click="saveTags">
 					{{ t('common.save') }}
-				</button>
-				<button class="text-xs text-text-tertiary hover:text-text-primary" @click="cancelEditTags">
+				</UiButton>
+				<UiButton variant="ghost" size="sm" :disabled="isSaving" @click="cancelEditTags">
 					{{ t('common.cancel') }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 
@@ -104,7 +107,7 @@ const cancelEditTags = () => {
 						:key="tag"
 						class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-brand-subtle/50 text-brand"
 					>
-						<SparklesIcon class="w-3 h-3" />
+						<SparklesIcon class="w-3 h-3" aria-hidden="true" />
 						{{ tag }}
 					</span>
 				</div>

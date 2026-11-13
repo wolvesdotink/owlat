@@ -30,6 +30,8 @@ interface Props {
 	 * prompt the user opened precisely to say yes to.
 	 */
 	initialFocus?: 'cancel' | 'confirm';
+	/** Pin the dialog to one theme; see UiModal's `colorScheme`. */
+	colorScheme?: 'light' | 'dark';
 }
 
 // The copy props have no defaults: prop defaults are evaluated outside the
@@ -132,6 +134,7 @@ const handleBackdropClick = () => {
 		:closable="!isLoading"
 		:labelled-by="titleId"
 		:described-by="descriptionId"
+		:color-scheme="colorScheme"
 		@update:open="close"
 	>
 		<div class="flex flex-col items-center text-center">

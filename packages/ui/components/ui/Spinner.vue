@@ -37,11 +37,19 @@ const props = withDefaults(
 		 * feedback, and should show at once.
 		 */
 		delay?: boolean | number;
+		/**
+		 * Announce the wait: a spinner that stands alone as a page or panel loader
+		 * passes a label ("Loading inbox"), rendered as a polite status. Without
+		 * one the ring is decorative and hidden from assistive tech, which is right
+		 * inside a button that already says what it is doing.
+		 */
+		label?: string;
 	}>(),
 	{
 		size: 'lg',
 		tone: 'brand',
 		delay: false,
+		label: undefined,
 	}
 );
 
@@ -60,5 +68,9 @@ const visible = useDelayedLoading(true, { delay: delayMs, minVisible: 0 });
 </script>
 
 <template>
-	<SpinnerIcon :class="[sizeClass, toneClass, { invisible: !visible }]" />
+	<span v-if="label" role="status" class="inline-flex">
+		<SpinnerIcon :class="[sizeClass, toneClass, { invisible: !visible }]" />
+		<span class="sr-only">{{ label }}</span>
+	</span>
+	<SpinnerIcon v-else :class="[sizeClass, toneClass, { invisible: !visible }]" />
 </template>

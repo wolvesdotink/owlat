@@ -20,15 +20,15 @@ await owlat.transactional.send({
   dataVariables: { firstName: 'Mira' }
 })
 
-// Create a contact and add to a list
+// Create a contact and add it to a topic
 const contact = await owlat.contacts.create({
   email: 'mira@acme.io',
   firstName: 'Mira'
 })
 
-await owlat.lists.addContact({
-  listId: 'list_abc123',
-  email:  'mira@acme.io'
+await owlat.topics.addContact({
+  topicId: 'topic_abc123',
+  email:   'mira@acme.io'
 })`,
 	curl: `# Send a transactional email
 curl -X POST https://your-deployment.convex.site/api/v1/transactional \\
@@ -50,7 +50,11 @@ async function copyCode() {
 		setTimeout(() => {
 			copied.value = false;
 		}, 2000);
-	} catch {}
+	} catch (err) {
+		// Clipboard access is refused outside a secure context or without a
+		// user gesture; the button simply does not switch to "Copied".
+		console.warn('[developers] copy failed:', err);
+	}
 }
 </script>
 
@@ -132,10 +136,7 @@ async function copyCode() {
 
 			<!-- Right: Terminal window -->
 			<div class="dev-code">
-				<div
-					class="rounded-2xl border border-border-subtle overflow-hidden"
-					style="background: rgba(255, 255, 255, 0.03)"
-				>
+				<div class="rounded-2xl border border-border-subtle overflow-hidden bg-(--owlat-code-bg)">
 					<!-- Header: dots + tabs + copy -->
 					<div class="flex items-center gap-1 px-3 py-2 border-b border-border-subtle">
 						<div class="flex items-center gap-1.5 pl-1 pr-3" aria-hidden="true">
@@ -149,7 +150,9 @@ async function copyCode() {
 						<button
 							v-for="tab in ['sdk', 'curl'] as const"
 							:key="tab"
-							class="px-3 py-1.5 font-mono text-[0.625rem] font-medium tracking-[0.04em] uppercase cursor-pointer transition-colors duration-(--motion-fast) border-none rounded-md bg-transparent"
+							type="button"
+							:aria-pressed="activeTab === tab"
+							class="px-3 py-1.5 pointer-coarse:min-h-11 font-mono text-2xs font-medium tracking-[0.04em] uppercase cursor-pointer transition-colors duration-(--motion-fast) border-none rounded-md bg-transparent"
 							:class="
 								activeTab === tab
 									? 'text-text-primary bg-white/10'
@@ -160,7 +163,8 @@ async function copyCode() {
 							{{ tab === 'sdk' ? t('developers.tabSdk') : t('developers.tabCurl') }}
 						</button>
 						<button
-							class="ml-auto flex items-center gap-1.5 px-2 py-1.5 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-white/10 transition-colors duration-(--motion-fast) cursor-pointer border-none bg-transparent"
+							type="button"
+							class="ml-auto flex items-center gap-1.5 px-2 py-1.5 pointer-coarse:min-h-11 rounded-md text-text-tertiary hover:text-text-secondary hover:bg-white/10 transition-colors duration-(--motion-fast) cursor-pointer border-none bg-transparent"
 							:class="{ 'text-success!': copied }"
 							@click="copyCode"
 						>
@@ -193,10 +197,14 @@ async function copyCode() {
 							>
 								<path d="M20 6 9 17l-5-5" />
 							</svg>
-							<span class="text-[0.6rem] font-medium font-mono">{{
+							<span class="text-2xs font-medium font-mono">{{
 								copied ? t('developers.copied') : t('developers.copy')
 							}}</span>
 						</button>
+						<!-- The button's own label change is not announced; this region is. -->
+						<span class="sr-only" aria-live="polite">{{
+							copied ? t('developers.copied') : ''
+						}}</span>
 					</div>
 
 					<!-- Code content -->
@@ -215,15 +223,15 @@ async function copyCode() {
   <span class="c-prop">dataVariables</span>: { <span class="c-prop">firstName</span>: <span class="c-str">'Mira'</span> }
 })
 
-<span class="c-comment">// Create a contact and add to a list</span>
+<span class="c-comment">// Create a contact and add it to a topic</span>
 <span class="c-kw">const</span> contact = <span class="c-kw">await</span> owlat.contacts.<span class="c-fn">create</span>({
   <span class="c-prop">email</span>: <span class="c-str">'mira@acme.io'</span>,
   <span class="c-prop">firstName</span>: <span class="c-str">'Mira'</span>
 })
 
-<span class="c-kw">await</span> owlat.lists.<span class="c-fn">addContact</span>({
-  <span class="c-prop">listId</span>: <span class="c-str">'list_abc123'</span>,
-  <span class="c-prop">email</span>:  <span class="c-str">'mira@acme.io'</span>
+<span class="c-kw">await</span> owlat.topics.<span class="c-fn">addContact</span>({
+  <span class="c-prop">topicId</span>: <span class="c-str">'topic_abc123'</span>,
+  <span class="c-prop">email</span>:   <span class="c-str">'mira@acme.io'</span>
 })</code></pre>
 					<!-- cURL code -->
 					<pre

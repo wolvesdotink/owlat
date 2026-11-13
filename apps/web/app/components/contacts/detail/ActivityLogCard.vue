@@ -87,6 +87,7 @@ const { t } = useI18n();
 						<p
 							v-if="getActivityDescription(activity.activityType, activity.metadata)"
 							class="text-text-secondary text-sm mt-0.5 truncate"
+							:title="getActivityDescription(activity.activityType, activity.metadata)"
 						>
 							{{ getActivityDescription(activity.activityType, activity.metadata) }}
 						</p>

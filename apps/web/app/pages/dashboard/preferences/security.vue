@@ -42,6 +42,22 @@ const { sessions, otherSessionCount, isLoading, hasLoadError, refresh, revoke, r
 onMounted(refresh);
 
 /**
+ * The list leads with this device and the most recent others; the rest is one
+ * click away, so two-factor below is not several screens down for someone with
+ * a dozen browser sessions.
+ */
+const SESSION_PREVIEW = 5;
+const showAllSessions = ref(false);
+const visibleSessions = computed(() => {
+	if (showAllSessions.value || sessions.value.length <= SESSION_PREVIEW) return sessions.value;
+	const current = sessions.value.filter((row) => row.isCurrent);
+	const others = sessions.value
+		.filter((row) => !row.isCurrent)
+		.slice(0, SESSION_PREVIEW - current.length);
+	return [...current, ...others];
+});
+
+/**
  * A ticking clock, so "3 min ago" does not sit frozen on a page people leave
  * open. One interval for the whole list; the descriptors are pure functions of
  * it, so nothing else has to know that time passed.
@@ -139,17 +155,22 @@ async function confirmSignOutOthers() {
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
-			<p v-else-if="hasLoadError" class="p-8 text-center text-text-secondary">
-				{{ t('dashboard.preferences.security.sessions.loadFailed') }}
-			</p>
+			<div v-else-if="hasLoadError" class="p-8 flex flex-col items-center gap-3 text-center">
+				<p class="text-text-secondary">
+					{{ t('dashboard.preferences.security.sessions.loadFailed') }}
+				</p>
+				<UiButton variant="secondary" size="sm" type="button" @click="refresh">
+					{{ t('common.tryAgain') }}
+				</UiButton>
+			</div>
 			<p v-else-if="sessions.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.security.sessions.empty') }}
 			</p>
 			<ul v-else class="divide-y divide-border-subtle">
 				<li
-					v-for="row in sessions"
+					v-for="row in visibleSessions"
 					:key="row.id"
-					class="px-5 py-3 flex items-center justify-between gap-4"
+					class="px-5 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
 				>
 					<div class="flex items-start gap-3 min-w-0">
 						<component :is="row.icon" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
@@ -157,12 +178,9 @@ async function confirmSignOutOthers() {
 							<p class="font-medium text-sm flex items-center gap-2 flex-wrap">
 								<span>{{ say(row.browser) }}</span>
 								<span class="text-text-tertiary font-normal">{{ say(row.platform) }}</span>
-								<span
-									v-if="row.isCurrent"
-									class="text-xs px-1.5 py-0.5 rounded bg-success-subtle text-success"
-								>
+								<UiBadge v-if="row.isCurrent" variant="success">
 									{{ t('dashboard.preferences.security.sessions.currentBadge') }}
-								</span>
+								</UiBadge>
 							</p>
 							<p class="text-xs text-text-tertiary mt-0.5">
 								{{
@@ -190,15 +208,34 @@ async function confirmSignOutOthers() {
 					</div>
 					<UiButton
 						v-if="!row.isCurrent"
-						variant="ghost"
+						variant="danger-ghost"
 						type="button"
-						class="text-error shrink-0"
+						class="shrink-0"
+						:aria-label="`${t('dashboard.preferences.security.sessions.revoke')}: ${say(row.browser)} ${say(row.platform)}`"
 						@click="sessionToRevoke = row"
 					>
 						{{ t('dashboard.preferences.security.sessions.revoke') }}
 					</UiButton>
 				</li>
 			</ul>
+			<div
+				v-if="sessions.length > SESSION_PREVIEW && !isLoading && !hasLoadError"
+				class="px-5 py-3 border-t border-border-subtle"
+			>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					type="button"
+					:aria-expanded="showAllSessions"
+					@click="showAllSessions = !showAllSessions"
+				>
+					{{
+						showAllSessions
+							? t('dashboard.preferences.security.sessions.showFewer')
+							: t('dashboard.preferences.security.sessions.showAll', { count: sessions.length })
+					}}
+				</UiButton>
+			</div>
 		</section>
 
 		<!--

@@ -194,7 +194,7 @@ const {
 						v-for="suggestion in suggestions"
 						:key="suggestion"
 						type="button"
-						class="rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
+						class="inline-flex min-h-7 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:px-3.5"
 						:class="
 							normalizedSub === suggestion
 								? 'border-brand bg-brand/10 text-brand'
@@ -208,7 +208,7 @@ const {
 					</button>
 					<button
 						type="button"
-						class="rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
+						class="inline-flex min-h-7 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:px-3.5"
 						:class="
 							isApex
 								? 'border-brand bg-brand/10 text-brand'

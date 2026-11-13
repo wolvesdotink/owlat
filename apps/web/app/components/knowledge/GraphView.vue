@@ -8,6 +8,7 @@
  * insight layer, and a click-through side panel that reuses `getEntry` +
  * <KnowledgeRelationsList> exactly like the entry detail page.
  */
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { ENTRY_TYPES, TYPE_CONFIG, type EntryType } from '~/utils/knowledgeEntryTypes';
 import { ChartBarVerticalIcon, CloseIcon, ExternalLinkIcon, LocateIcon } from '@coolicons/vue';
 
@@ -22,6 +23,7 @@ const {
 	isLoading,
 	error,
 	refetch,
+	rootEntryId,
 	selectedNodeId,
 	selectedEntry,
 	selectedOutgoing,
@@ -52,6 +54,30 @@ const typeFilters = computed(() => [
 			: TYPE_CONFIG[entryType].label,
 	})),
 ]);
+
+// The subgraph read is skipped until a hub seeds the BFS, and a skipped read
+// that never delivered keeps reporting loading. With no hub to start from the
+// canvas shows its empty state instead of an endless spinner.
+const showSpinner = computed(
+	() => rootEntryId.value !== null && isLoading.value && graph.value.nodes.length === 0
+);
+
+// Below `lg` the side panel stacks under the canvas and the legend, out of view,
+// so a node click scrolls it in and moves focus to it.
+const panelRef = ref<HTMLElement | null>(null);
+watch(
+	() => selectedEntry.value?._id,
+	async (id, previous) => {
+		if (!id || id === previous || !import.meta.client) return;
+		if (!window.matchMedia('(max-width: 1023px)').matches) return;
+		await nextTick();
+		panelRef.value?.scrollIntoView({
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+			block: 'start',
+		});
+		panelRef.value?.focus({ preventScroll: true });
+	}
+);
 </script>
 
 <template>
@@ -87,6 +113,8 @@ const typeFilters = computed(() => [
 				<button
 					v-for="f in typeFilters"
 					:key="f.key ?? 'all'"
+					type="button"
+					:aria-pressed="entryTypeFilter === f.key"
 					class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors"
 					:class="
 						entryTypeFilter === f.key
@@ -102,10 +130,16 @@ const typeFilters = computed(() => [
 			<div class="flex-1" />
 
 			<!-- depth toggle -->
-			<div class="flex items-center gap-1 rounded-lg bg-bg-surface p-0.5">
+			<div
+				class="flex items-center gap-1 rounded-lg bg-bg-surface p-0.5"
+				role="group"
+				:aria-label="t('components.knowledge.graphView.depthLabel')"
+			>
 				<button
 					v-for="d in [1, 2] as const"
 					:key="d"
+					type="button"
+					:aria-pressed="depth === d"
 					class="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
 					:class="
 						depth === d
@@ -123,10 +157,7 @@ const typeFilters = computed(() => [
 			<!-- Canvas -->
 			<div class="lg:col-span-2 space-y-3">
 				<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
-				<div
-					v-else-if="isLoading && graph.nodes.length === 0"
-					class="flex items-center justify-center py-24"
-				>
+				<div v-else-if="showSpinner" class="flex items-center justify-center py-24">
 					<UiSpinner delay />
 				</div>
 				<KnowledgeGraphCanvas
@@ -184,7 +215,14 @@ const typeFilters = computed(() => [
 			<!-- Sidebar: selection (click-through) + insights -->
 			<div class="space-y-4">
 				<!-- Click-through side panel -->
-				<div v-if="selectedEntry" class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
+				<div
+					v-if="selectedEntry"
+					ref="panelRef"
+					tabindex="-1"
+					role="region"
+					:aria-label="selectedEntry.title"
+					class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5 scroll-mt-4 focus:outline-none"
+				>
 					<div class="flex items-start justify-between gap-2 mb-3">
 						<div class="flex items-center gap-2 min-w-0">
 							<div
@@ -202,7 +240,10 @@ const typeFilters = computed(() => [
 								<component :is="typeIcon(selectedEntry.entryType)" class="w-4 h-4" />
 							</div>
 							<div class="min-w-0">
-								<p class="text-sm font-semibold text-text-primary truncate">
+								<p
+									class="text-sm font-semibold text-text-primary truncate"
+									:title="selectedEntry.title"
+								>
 									{{ selectedEntry.title }}
 								</p>
 								<p class="text-2xs text-text-tertiary">

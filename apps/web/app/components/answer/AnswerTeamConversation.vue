@@ -181,7 +181,7 @@ const viewKey = computed(() => labelFor('answer.toggleView'));
 				>
 					<button
 						type="button"
-						class="rounded px-2.5 py-1"
+						class="rounded px-2.5 py-1 pointer-coarse:min-h-11"
 						:class="
 							view === option
 								? 'bg-(--surface-2-selected) text-text-primary'
@@ -191,7 +191,7 @@ const viewKey = computed(() => labelFor('answer.toggleView'));
 						:data-testid="`answer-view-${option}`"
 						@click="view = option"
 					>
-						{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
+						{{ t(`components.answer.mode.view.${option}`) }}
 					</button>
 				</UiTooltip>
 			</div>

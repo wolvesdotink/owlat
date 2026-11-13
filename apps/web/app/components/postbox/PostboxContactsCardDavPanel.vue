@@ -181,7 +181,7 @@ const statusLine = computed(() => {
 					{{ t('dashboard.postbox.contacts.carddav.description') }}
 				</p>
 				<div>
-					<label for="carddav-server" class="text-xs font-medium text-text-tertiary block mb-1">
+					<label for="carddav-server" class="label">
 						{{ t('dashboard.postbox.contacts.carddav.serverUrl') }}
 					</label>
 					<input
@@ -196,7 +196,7 @@ const statusLine = computed(() => {
 					/>
 				</div>
 				<div>
-					<label for="carddav-username" class="text-xs font-medium text-text-tertiary block mb-1">
+					<label for="carddav-username" class="label">
 						{{ t('dashboard.postbox.contacts.carddav.username') }}
 					</label>
 					<input
@@ -209,7 +209,7 @@ const statusLine = computed(() => {
 					/>
 				</div>
 				<div>
-					<label for="carddav-password" class="text-xs font-medium text-text-tertiary block mb-1">
+					<label for="carddav-password" class="label">
 						{{ t('dashboard.postbox.contacts.carddav.password') }}
 					</label>
 					<input

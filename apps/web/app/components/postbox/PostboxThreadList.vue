@@ -8,15 +8,15 @@ import type { PostboxSweepKind } from '~/utils/postboxSweep';
 import { POSTBOX_ROW_HEIGHT } from '~/utils/postboxDensity';
 import type { PostboxThreadRowMessage } from './PostboxThreadRow.vue';
 import PostboxSweepStatus from './PostboxSweepStatus.vue';
+import PostboxThreadListEmpty from './PostboxThreadListEmpty.vue';
 import { usePostboxThreadListWindow } from '~/composables/postbox/usePostboxThreadListWindow';
 import { usePostboxListSweep } from '~/composables/postbox/usePostboxListSweep';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
-import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
-import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxListDeletedOpenRow } from '~/composables/postbox/usePostboxDeletedOpenRow';
 import { usePostboxListReadAhead } from '~/composables/postbox/usePostboxListReadAhead';
+import { optimisticSnoozeUntilReply } from '~/lib/mailOptimistic/mailUpdaters';
 
 const props = defineProps<{
 	/** None for a list that spans mailboxes (All inboxes); `selectionScope` names its selection. */
@@ -171,30 +171,31 @@ const {
 	moveMsg,
 });
 
+// The snooze dialog also offers "Until they reply", which the row pickers do
+// not carry. Its target is captured on open for the same reason theirs is, and
+// the subject + snippet feed the dialog's suggested wake time, as in the reader.
+const snoozeRowId = ref<Id<'mailMessages'> | null>(null);
+const snoozeHintText = ref('');
+function openSnoozeFor(id: Id<'mailMessages'>, threadId: string | null) {
+	snoozeRowId.value = id;
+	const row = visibleMessages.value.find((m) => m._id === id);
+	snoozeHintText.value = [row?.subject, row?.snippet].filter(Boolean).join(' ');
+	openSnooze(id, threadId);
+}
+const snoozeUntilReplyOp = useBackendOperation(api.mail.snooze.snoozeUntilReply, {
+	label: () => t('components.postbox.postboxThreadList.snoozeOperation'),
+	optimisticUpdate: optimisticSnoozeUntilReply,
+});
+async function snoozeFocusedUntilReply(capUntil: number) {
+	const id = snoozeRowId.value;
+	snoozeRowId.value = null;
+	if (!id) return;
+	hideRow(id);
+	if (!(await snoozeUntilReplyOp.run({ messageId: id, capUntil })).ok) unhideRow(id);
+}
+
 // Drag a row (or the selection it belongs to) onto a rail folder or label.
 const rowDrag = usePostboxListRowDrag({ mailboxId: mailboxIdRef, bulk, moveMany });
-
-// Context-aware empty state — a filtered-to-zero folder, inbox zero, an empty
-// label and an empty custom folder each say something different. The choice is
-// a pure derivation (utils/postboxListEmptyState.ts); this is the render
-// boundary that resolves its catalog keys.
-const { labelFor, labelParams } = useShortcutLabels();
-const emptyState = computed(() => {
-	const state = postboxListEmptyState({
-		filterActive: props.filterActive === true,
-		hasMore: props.hasMore === true,
-		emptyContext: props.emptyContext,
-		folderRole: props.folderRole,
-		isShortcutLive: (id) => labelFor(id) !== null,
-	});
-	const hintParams = labelParams(state.hintShortcuts);
-	return {
-		icon: state.icon,
-		title: t(state.titleKey),
-		hint: state.hintKey && hintParams ? t(state.hintKey, hintParams) : undefined,
-		showFilterAction: state.showFilterAction,
-	};
-});
 
 // Keyboard triage (Gmail/Superhuman-style): j/k move, Enter opens; single-key
 // actions resolve through the one shortcut registry via
@@ -270,7 +271,7 @@ const {
 				}
 				break;
 			case 'snooze':
-				openSnooze(m._id, m.threadId ?? null);
+				openSnoozeFor(m._id, m.threadId ?? null);
 				break;
 			case 'mute':
 				toggleMuteRow(m);
@@ -367,30 +368,14 @@ useListAnswerRoundTrip({
 		<!-- Skeleton only on FIRST load (no rows yet): live-query refreshes keep
 	     `keepPreviousData` rows visible, so they never flash the skeleton. -->
 		<PostboxThreadListSkeleton v-if="loading && visibleMessages.length === 0" />
-		<PostboxEmptyState
+		<PostboxThreadListEmpty
 			v-else-if="visibleMessages.length === 0"
-			:icon="emptyState.icon"
-			:title="emptyState.title"
-			:hint="emptyState.hint"
-		>
-			<template v-if="filterActive" #action>
-				<button
-					type="button"
-					class="inline-block mt-2 text-xs text-brand hover:underline"
-					@click="emit('clear-filter')"
-				>
-					{{ t('components.postbox.postboxThreadList.showAllMessages') }}
-				</button>
-			</template>
-			<template v-else-if="emptyState.showFilterAction" #action>
-				<NuxtLink
-					to="/dashboard/preferences/filters"
-					class="inline-block mt-2 text-xs text-brand hover:underline"
-				>
-					{{ t('components.postbox.postboxThreadList.setUpFilter') }}
-				</NuxtLink>
-			</template>
-		</PostboxEmptyState>
+			:filter-active="filterActive"
+			:has-more="hasMore"
+			:empty-context="emptyContext"
+			:folder-role="folderRole"
+			@clear-filter="emit('clear-filter')"
+		/>
 		<!-- role=listbox owns the full scroll height (so the scrollbar reflects all
 	     rows even while only a window is mounted); the inner container is
 	     translate-positioned to the window's offset. Small folders render every
@@ -440,7 +425,7 @@ useListAnswerRoundTrip({
 					@prefetch="prefetchRow(msg._id)"
 					@cancel-follow-up="cancelFollowUp(msg)"
 					@swipe="
-						(action: Exclude<PostboxSwipeAction, 'none'>) => swipeRow(msg, action, openSnooze)
+						(action: Exclude<PostboxSwipeAction, 'none'>) => swipeRow(msg, action, openSnoozeFor)
 					"
 					@drag-start="(event: DragEvent) => rowDrag.start(msg, event)"
 					@sweep-start="(kind: PostboxSweepKind, e: PointerEvent) => sweep.start(kind, msg._id, e)"
@@ -453,9 +438,9 @@ useListAnswerRoundTrip({
 			{{ t('components.postbox.postboxThreadList.loadingMore') }}
 		</div>
 		<div v-else-if="!loading && hasMore" class="p-3 text-center">
-			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
+			<UiButton variant="secondary" size="sm" type="button" @click="emit('load-more')">
 				{{ t('components.postbox.postboxThreadList.loadMore') }}
-			</button>
+			</UiButton>
 		</div>
 		<p
 			v-else-if="capped && visibleMessages.length > 0"
@@ -469,9 +454,11 @@ useListAnswerRoundTrip({
 	<!-- Keyboard-flow pickers for the focused row (h / l / v). -->
 	<PostboxSnoozeDialog
 		:open="snoozeOpen"
+		:hint-text="snoozeHintText"
 		scoped
 		@update:open="snoozeOpen = $event"
 		@confirm="snoozeFocused"
+		@confirm-until-reply="snoozeFocusedUntilReply"
 	/>
 	<PostboxLabelPickerDialog
 		:open="labelOpen"

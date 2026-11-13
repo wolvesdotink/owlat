@@ -42,6 +42,28 @@ describe('DmarcTrendChart', () => {
 		expect(rows[2]).toContain('1,200');
 	});
 
+	it('is one tab stop, walked with the arrow keys', async () => {
+		const wrapper = mount(DmarcTrendChart, {
+			props: { points },
+			global: { plugins: [createTestI18n()] },
+			attachTo: document.body,
+		});
+		const tabbable = () =>
+			wrapper.findAll('[data-testid="dmarc-trend-bar"]').map((bar) => bar.attributes('tabindex'));
+		// The latest day is the stop until another one is focused.
+		expect(tabbable()).toEqual(['-1', '-1', '0']);
+		const bars = wrapper.findAll('[data-testid="dmarc-trend-bar"]');
+		expect(bars[0]?.attributes('role')).toBe('img');
+
+		(bars[2]!.element as HTMLElement).focus();
+		await bars[2]!.trigger('keydown', { key: 'ArrowLeft' });
+		expect(document.activeElement).toBe(bars[1]!.element);
+		expect(tabbable()).toEqual(['-1', '0', '-1']);
+		await bars[1]!.trigger('keydown', { key: 'Home' });
+		expect(document.activeElement).toBe(bars[0]!.element);
+		wrapper.unmount();
+	});
+
 	it('says so when the window has no mail', () => {
 		const wrapper = mount(DmarcTrendChart, {
 			props: { points: [{ date: '2026-09-03', messageCount: 0, alignedCount: 0 }] },

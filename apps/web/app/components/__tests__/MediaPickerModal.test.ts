@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import MediaPickerModal from '../MediaPickerModal.vue';
+import UiTabs from '@owlat/ui/components/ui/Tabs.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import {
 	EPISODE_QUIET_MS,
@@ -61,6 +62,7 @@ describe('MediaPickerModal upload provenance', () => {
 			props: { open: true, allowAllFiles: true },
 			global: {
 				plugins: [createTestI18n()],
+				components: { UiTabs },
 				stubs: {
 					UiInput: true,
 					UiSpinner: true,
@@ -107,6 +109,7 @@ describe('MediaPickerModal and the slow-save episode', () => {
 			props: { open: true, allowAllFiles: true },
 			global: {
 				plugins: [createTestI18n()],
+				components: { UiTabs },
 				stubs: {
 					UiInput: true,
 					UiSpinner: true,

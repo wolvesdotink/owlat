@@ -109,6 +109,20 @@ const COLOR: Record<StepState, string> = {
 	skipped: 'text-text-secondary',
 };
 
+/** Each step's state in words, so it is not carried by icon and colour alone. */
+const stateLabel = (state: StepState) =>
+	t(`components.desktop.provisioningTimeline.states.${state}`);
+
+// One polite line for assistive tech: the step that failed, else the one
+// running. The log stream itself is not announced.
+const announcement = computed(() => {
+	const steps = rows.value.flatMap((row) => (row.kind === 'header' ? [] : [row.step]));
+	const failed = steps.find((step) => step.state === 'failed');
+	if (failed) return `${t(failed.title)}: ${stateLabel('failed')}`;
+	const running = steps.find((step) => step.state === 'running');
+	return running ? `${t(running.title)}: ${stateLabel('running')}` : '';
+});
+
 watch(
 	() => props.logs.length,
 	async () => {
@@ -136,11 +150,13 @@ watch(showLogs, async (open) => {
 			:aria-label="t('components.desktop.provisioningTimeline.progressLabel')"
 		/>
 
+		<p class="sr-only" role="status" aria-live="polite">{{ announcement }}</p>
+
 		<ol class="space-y-0.5">
 			<template v-for="(row, i) in rows" :key="i">
 				<li
 					v-if="row.kind === 'header'"
-					class="px-1 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-text-secondary first:pt-0"
+					class="px-1 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wider text-text-secondary first:pt-0"
 				>
 					{{ row.label }}
 				</li>
@@ -148,9 +164,11 @@ watch(showLogs, async (open) => {
 					v-else
 					class="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors duration-(--motion-moderate)"
 					:class="row.step.state === 'running' ? 'bg-bg-surface' : ''"
+					:aria-current="row.step.state === 'running' ? 'step' : undefined"
 				>
 					<component
 						:is="ICON[row.step.state]"
+						aria-hidden="true"
 						class="size-[18px] shrink-0 transition-colors duration-(--motion-moderate)"
 						:class="[
 							COLOR[row.step.state],
@@ -168,6 +186,7 @@ watch(showLogs, async (open) => {
 						"
 					>
 						{{ t(row.step.title) }}
+						<span class="sr-only">({{ stateLabel(row.step.state) }})</span>
 					</span>
 					<span
 						v-if="row.step.detail"
@@ -184,11 +203,16 @@ watch(showLogs, async (open) => {
 		<div class="rounded-lg border border-border-default">
 			<button
 				type="button"
-				class="flex w-full items-center justify-between px-3 py-2 text-xs text-text-secondary hover:text-text-primary"
+				class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+				:aria-expanded="showLogs"
 				@click="showLogs = !showLogs"
 			>
 				<span class="flex items-center gap-1.5">
-					<component :is="showLogs ? ChevronDownIcon : ChevronRightIcon" class="size-3.5" />
+					<component
+						:is="showLogs ? ChevronDownIcon : ChevronRightIcon"
+						class="size-3.5"
+						aria-hidden="true"
+					/>
 					{{ t('components.desktop.provisioningTimeline.serverLog') }}
 					<span class="text-text-secondary/60">({{ logs.length }})</span>
 				</span>
@@ -210,7 +234,7 @@ watch(showLogs, async (open) => {
 						role="log"
 						tabindex="0"
 						:aria-label="t('components.desktop.provisioningTimeline.logRegionLabel')"
-						class="max-h-64 overflow-y-auto overscroll-contain px-3 py-2 font-mono text-[11px] leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+						class="max-h-64 overflow-y-auto overscroll-contain px-3 py-2 font-mono text-2xs leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
 						@scroll.passive="onLogScroll"
 					>
 						<p v-if="!logs.length" class="text-text-secondary/60">
@@ -236,10 +260,10 @@ watch(showLogs, async (open) => {
 					<button
 						v-if="!following"
 						type="button"
-						class="absolute bottom-2 right-3 flex items-center gap-1 rounded-full border border-border-default bg-bg-surface px-2.5 py-1 text-[11px] text-text-secondary shadow-sm transition-colors duration-(--motion-fast) hover:text-text-primary"
+						class="absolute bottom-2 right-3 flex items-center gap-1 rounded-full border border-border-default bg-bg-surface px-2.5 py-1 text-2xs text-text-secondary shadow-sm transition-colors duration-(--motion-fast) hover:text-text-primary"
 						@click="jumpToLatest"
 					>
-						<ArrowDownIcon class="size-3" />
+						<ArrowDownIcon class="size-3" aria-hidden="true" />
 						{{ t('components.desktop.provisioningTimeline.jumpToLatest') }}
 					</button>
 				</div>

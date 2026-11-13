@@ -137,7 +137,7 @@ async function handleTwoFactorSubmit() {
 				{{ t('desktop.connect.subtitle') }}
 			</p>
 
-			<div v-if="!redirectValid" class="text-sm text-error">
+			<div v-if="!redirectValid" class="text-sm text-error" role="alert">
 				{{ t('desktop.connect.invalidReturnLink') }}
 			</div>
 
@@ -159,8 +159,9 @@ async function handleTwoFactorSubmit() {
 						{{ t('desktop.connect.fallbackCodeHint') }}
 					</p>
 					<div class="flex items-center gap-2">
+						<!-- Wrapped, not truncated: the person has to see what they copy. -->
 						<code
-							class="min-w-0 flex-1 truncate rounded-xl bg-bg-deep px-3 py-2 text-xs select-all shadow-surface-1"
+							class="min-w-0 flex-1 break-all rounded-xl bg-bg-deep px-3 py-2 text-xs select-all shadow-surface-1"
 						>
 							{{ connectionCode }}
 						</code>
@@ -177,7 +178,6 @@ async function handleTwoFactorSubmit() {
 					v-model="email"
 					type="email"
 					autocomplete="email"
-					size="sm"
 					:label="t('common.email')"
 					:error="errors.email"
 					@blur="validateEmail"
@@ -190,7 +190,7 @@ async function handleTwoFactorSubmit() {
 					:error="errors.password"
 					@blur="validatePassword"
 				/>
-				<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+				<p v-if="errorMessage" class="text-sm text-error" role="alert">{{ errorMessage }}</p>
 				<UiButton type="submit" :loading="isLoading" full-width>
 					{{ isLoading ? t('desktop.connect.signingInButton') : t('desktop.connect.submit') }}
 				</UiButton>

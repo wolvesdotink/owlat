@@ -76,7 +76,7 @@ const subject = (c: PostboxPinnedConversation) =>
 		v-on="dropListeners"
 	>
 		<h2
-			class="flex items-center gap-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-tertiary"
+			class="flex items-center gap-1.5 px-1.5 text-2xs font-semibold uppercase tracking-wider text-text-tertiary"
 		>
 			<PinIcon class="w-3 h-3" aria-hidden="true" />
 			{{ t('postbox.pins.title') }}
@@ -106,6 +106,9 @@ const subject = (c: PostboxPinnedConversation) =>
 						:class="c.unreadCount > 0 ? 'bg-brand' : 'bg-transparent'"
 						aria-hidden="true"
 					/>
+					<span v-if="c.unreadCount > 0" class="sr-only">{{
+						t('components.postbox.postboxConversationRow.unreadCount', { count: c.unreadCount })
+					}}</span>
 					<span
 						class="max-w-[40%] flex-shrink-0 truncate"
 						:class="c.unreadCount > 0 ? 'font-semibold text-text-primary' : 'text-text-primary'"

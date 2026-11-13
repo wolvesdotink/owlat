@@ -21,6 +21,10 @@ const props = defineProps<{ toolCalls: AssistantToolCall[] }>();
 const { t } = useI18n();
 
 const open = ref(false);
+const panelId = useId();
+const failedCount = computed(() => props.toolCalls.filter((tc) => tc.status === 'error').length);
+const statusLabel = (status: 'running' | 'done' | 'error') =>
+	t(`components.assistant.assistantToolCalls.status.${status}`);
 
 /** Tool name → message key; an unknown tool falls back to its raw name. */
 const TOOL_LABEL_KEYS: Record<string, string> = {
@@ -51,33 +55,56 @@ const summary = computed(() =>
 		class="mb-2 rounded-lg border border-border-subtle bg-bg-surface/50"
 	>
 		<button
-			class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary"
+			type="button"
+			class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+			:aria-expanded="open"
+			:aria-controls="panelId"
 			@click="open = !open"
 		>
-			<WrenchIcon class="w-3.5 h-3.5 flex-shrink-0" />
+			<WrenchIcon class="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
 			<span class="truncate">{{ summary }}</span>
+			<span v-if="failedCount > 0" class="flex-shrink-0 text-error">
+				·
+				{{
+					t(
+						'components.assistant.assistantToolCalls.failedCount',
+						{ count: failedCount },
+						failedCount
+					)
+				}}
+			</span>
 			<component
 				:is="open ? ChevronDownIcon : ChevronRightIcon"
 				class="w-3.5 h-3.5 ml-auto flex-shrink-0"
+				aria-hidden="true"
 			/>
 		</button>
 
-		<div v-if="open" class="border-t border-border-subtle px-3 py-2 space-y-2">
+		<div v-if="open" :id="panelId" class="border-t border-border-subtle px-3 py-2 space-y-2">
 			<div v-for="tc in toolCalls" :key="tc.toolCallId" class="text-xs">
 				<div class="flex items-center gap-2 font-medium text-text-secondary">
-					<SpinnerIcon v-if="tc.status === 'running'" class="w-3.5 h-3.5 text-brand" />
-					<CheckIcon v-else-if="tc.status === 'done'" class="w-3.5 h-3.5 text-success" />
-					<CloseIcon v-else class="w-3.5 h-3.5 text-error" />
+					<SpinnerIcon
+						v-if="tc.status === 'running'"
+						class="w-3.5 h-3.5 text-brand"
+						aria-hidden="true"
+					/>
+					<CheckIcon
+						v-else-if="tc.status === 'done'"
+						class="w-3.5 h-3.5 text-success"
+						aria-hidden="true"
+					/>
+					<CloseIcon v-else class="w-3.5 h-3.5 text-error" aria-hidden="true" />
 					<span>{{ label(tc.toolName) }}</span>
-					<code class="text-[10px] text-text-tertiary">{{ tc.toolName }}</code>
+					<span class="sr-only">({{ statusLabel(tc.status) }})</span>
+					<code class="text-2xs text-text-tertiary">{{ tc.toolName }}</code>
 				</div>
 				<pre
 					v-if="tc.argsJson"
-					class="mt-1 overflow-x-auto rounded bg-bg-surface border border-border-subtle p-2 text-[11px] font-mono text-text-tertiary"
+					class="mt-1 overflow-x-auto rounded bg-bg-surface border border-border-subtle p-2 text-2xs font-mono text-text-tertiary"
 					>{{ tc.argsJson }}</pre>
 				<pre
 					v-if="tc.resultJson"
-					class="mt-1 overflow-x-auto rounded bg-bg-surface border border-border-subtle p-2 text-[11px] font-mono text-text-tertiary max-h-40"
+					class="mt-1 overflow-x-auto rounded bg-bg-surface border border-border-subtle p-2 text-2xs font-mono text-text-tertiary max-h-40"
 					>{{ tc.resultJson }}</pre>
 			</div>
 		</div>

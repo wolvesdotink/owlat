@@ -52,9 +52,20 @@ const convex = useConvex();
 
 // Only subscribe while the panel is open — history is a rarely-opened side
 // surface and the editor page is already subscription-heavy.
-const { data: versions, isLoading } = useConvexQuery(api.emailTemplates.versions.list, () =>
+const {
+	data: versions,
+	isLoading,
+	error: versionsError,
+	refetch: refetchVersions,
+} = useConvexQuery(api.emailTemplates.versions.list, () =>
 	isOpen.value ? { templateId: props.templateId } : ('skip' as const)
 );
+
+const panelTitleId = useId();
+
+/** One version's name in its row actions: "Restore Saved, 2 hours ago". */
+const versionLabel = (version: VersionSummary) =>
+	`${triggerLabel(version.trigger)}, ${formatRelativeTime(version.createdAt)}`;
 
 type VersionSummary = NonNullable<typeof versions.value>[number];
 
@@ -231,7 +242,18 @@ async function applyRestore(version: VersionSummary) {
 const hasOverlay = () =>
 	previewVersion.value !== null || compareVersion.value !== null || pendingRestore.value !== null;
 
+// The panel is fixed to the trigger's position; a resize moves the trigger,
+// so the position is read again then instead of once at open.
+const layoutTick = ref(0);
+const onResize = () => {
+	layoutTick.value += 1;
+};
+const panelTopPx = computed(() => {
+	void layoutTick.value;
+	return triggerRef.value ? `${triggerRef.value.getBoundingClientRect().bottom + 8}px` : '0';
+});
 const panelRightPx = computed(() => {
+	void layoutTick.value;
 	if (!triggerRef.value) return '0';
 	return `${document.documentElement.clientWidth - triggerRef.value.getBoundingClientRect().right}px`;
 });
@@ -246,12 +268,30 @@ const handleEscape = (event: KeyboardEvent) => {
 	// Escape belongs to whichever overlay sits on top of the panel.
 	if (event.key === 'Escape' && !hasOverlay()) isOpen.value = false;
 };
-watch(isOpen, (open) => {
+watch(isOpen, async (open) => {
 	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the panel
 	if (open) document.addEventListener('keydown', handleEscape);
 	else document.removeEventListener('keydown', handleEscape);
+	if (open) {
+		window.addEventListener('resize', onResize);
+		// Teleported to <body>: without moving focus, a keyboard user would
+		// have to tab past the rest of the toolbar to reach it.
+		await nextTick();
+		panelRef.value?.focus();
+	} else {
+		window.removeEventListener('resize', onResize);
+		if (
+			panelRef.value?.contains(document.activeElement) ||
+			document.activeElement === document.body
+		) {
+			triggerRef.value?.querySelector<HTMLElement>('button')?.focus();
+		}
+	}
 });
-onUnmounted(() => document.removeEventListener('keydown', handleEscape));
+onUnmounted(() => {
+	document.removeEventListener('keydown', handleEscape);
+	window.removeEventListener('resize', onResize);
+});
 </script>
 
 <template>
@@ -283,14 +323,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				<div
 					v-if="isOpen"
 					ref="panelRef"
-					class="fixed z-50 w-96 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg"
-					:style="{
-						top: triggerRef ? `${triggerRef.getBoundingClientRect().bottom + 8}px` : '0',
-						right: panelRightPx,
-					}"
+					role="dialog"
+					:aria-labelledby="panelTitleId"
+					tabindex="-1"
+					class="fixed z-50 w-96 max-w-[calc(100vw-2rem)] bg-bg-elevated border border-border-subtle rounded-lg shadow-lg focus:outline-none"
+					:style="{ top: panelTopPx, right: panelRightPx }"
 				>
 					<div class="p-3 border-b border-border-subtle">
-						<h3 class="text-sm font-medium text-text-primary">
+						<h3 :id="panelTitleId" class="text-sm font-medium text-text-primary">
 							{{ t('components.email.templateHistoryPanel.title') }}
 						</h3>
 						<p class="text-xs text-text-tertiary mt-0.5">
@@ -299,7 +339,12 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 					</div>
 
 					<div class="max-h-96 overflow-y-auto">
-						<div v-if="isLoading" class="px-3 py-6 flex justify-center">
+						<!-- A failed read is not "no versions yet". -->
+						<div v-if="versionsError" class="p-3">
+							<UiQueryBoundary :error="versionsError" @retry="refetchVersions" />
+						</div>
+
+						<div v-else-if="isLoading" class="px-3 py-6 flex justify-center">
 							<UiSpinner />
 						</div>
 
@@ -341,8 +386,13 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								<div class="flex items-center gap-1 shrink-0">
 									<UiTooltip :text="t('components.email.templateHistoryPanel.previewAction')">
 										<button
-											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-											:aria-label="t('components.email.templateHistoryPanel.previewAction')"
+											type="button"
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:p-2.5"
+											:aria-label="
+												t('components.email.templateHistoryPanel.previewActionNamed', {
+													version: versionLabel(version),
+												})
+											"
 											@click="openPreview(version)"
 										>
 											<EyeIcon class="w-3.5 h-3.5" />
@@ -353,8 +403,13 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 										:text="t('components.email.templateHistoryPanel.compareAction')"
 									>
 										<button
-											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-											:aria-label="t('components.email.templateHistoryPanel.compareAction')"
+											type="button"
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:p-2.5"
+											:aria-label="
+												t('components.email.templateHistoryPanel.compareActionNamed', {
+													version: versionLabel(version),
+												})
+											"
 											@click="openCompare(version)"
 										>
 											<GitCompareIcon class="w-3.5 h-3.5" />
@@ -362,8 +417,13 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 									</UiTooltip>
 									<UiTooltip :text="t('components.email.templateHistoryPanel.restoreAction')">
 										<button
-											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors"
-											:aria-label="t('components.email.templateHistoryPanel.restoreAction')"
+											type="button"
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:p-2.5"
+											:aria-label="
+												t('components.email.templateHistoryPanel.restoreActionNamed', {
+													version: versionLabel(version),
+												})
+											"
 											:disabled="isRestoring"
 											@click="requestRestore(version)"
 										>
@@ -379,65 +439,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 		</Teleport>
 
 		<!-- Snapshot preview -->
-		<UiModal v-model:open="isPreviewOpen" size="3xl">
-			<div class="flex items-center gap-3 mb-4">
-				<UiIconBox :icon="HistoryIcon" size="sm" variant="brand" rounded="lg" />
-				<div class="min-w-0">
-					<h2 class="text-lg font-semibold text-text-primary truncate">
-						{{ previewVersion?.name }}
-					</h2>
-					<p class="text-sm text-text-secondary truncate">
-						{{ previewVersion ? triggerLabel(previewVersion.trigger) : '' }}
-						{{ previewVersion ? formatRelativeTime(previewVersion.createdAt) : '' }}
-						&middot; {{ previewVersion?.subject }}
-					</p>
-				</div>
-			</div>
-
-			<div
-				class="h-[60vh] rounded-lg border border-border-subtle overflow-hidden bg-bg-deep flex items-center justify-center"
-			>
-				<UiSpinner v-if="isPreviewLoading" />
-				<!-- palette-ok-start: the paper stays literally white in both app themes —
-				     the snapshot's own HTML carries its (light) colors, so a theme token
-				     here would only show as a mismatched flash behind the frame. -->
-				<iframe
-					v-else
-					:srcdoc="previewHtml"
-					sandbox=""
-					:title="t('components.email.templateHistoryPanel.frameTitle')"
-					class="w-full h-full bg-white"
-				/>
-				<!-- palette-ok-end -->
-			</div>
-
-			<UiModalFooter>
-				<UiButton variant="secondary" @click="isPreviewOpen = false">
-					{{ t('common.close') }}
-				</UiButton>
-				<UiButton
-					v-if="readCurrent"
-					variant="secondary"
-					:disabled="!previewVersion"
-					@click="previewVersion && openCompare(previewVersion)"
-				>
-					<template #iconLeft>
-						<GitCompareIcon class="w-4 h-4" />
-					</template>
-					{{ t('components.email.templateHistoryPanel.compare') }}
-				</UiButton>
-				<UiButton
-					:loading="isRestoring"
-					:disabled="!previewVersion"
-					@click="previewVersion && requestRestore(previewVersion)"
-				>
-					<template #iconLeft>
-						<RotateLeftIcon class="w-4 h-4" />
-					</template>
-					{{ t('components.email.templateHistoryPanel.restore') }}
-				</UiButton>
-			</UiModalFooter>
-		</UiModal>
+		<EmailTemplateHistoryPreviewModal
+			v-model:open="isPreviewOpen"
+			:version="previewVersion"
+			:trigger-label="previewVersion ? triggerLabel(previewVersion.trigger) : ''"
+			:html="previewHtml"
+			:loading="isPreviewLoading"
+			:can-compare="!!readCurrent"
+			:restoring="isRestoring"
+			@compare="previewVersion && openCompare(previewVersion)"
+			@restore="previewVersion && requestRestore(previewVersion)"
+		/>
 
 		<EmailTemplateCompareModal
 			v-model:open="isCompareOpen"

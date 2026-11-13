@@ -43,8 +43,10 @@ const open = ref(false);
 			@click="open = !open"
 		>
 			<span class="flex items-center gap-2.5 min-w-0">
-				<ShieldCheckIcon class="w-4 h-4 text-text-tertiary shrink-0" />
-				<span class="text-sm text-text-secondary truncate">
+				<ShieldCheckIcon class="w-4 h-4 text-text-tertiary shrink-0 self-start mt-0.5" />
+				<!-- Clamped, not truncated: the lead sentence must stay readable without
+     opening the panel on a narrow screen. -->
+				<span class="text-sm text-text-secondary line-clamp-2">
 					<span class="font-medium text-text-primary">{{
 						t('components.delivery.domainDnsGuidance.heading', {
 							transport: message(guidance.label),

@@ -88,10 +88,31 @@ const handleAddRelation = async () => {
 	}
 };
 
+// Removal takes one tap, so the toast offers an undo that re-adds the same
+// typed edge between the same two entries.
 const handleRemoveRelation = async (relationId: string) => {
+	const removed = [...props.outgoingRelations, ...props.incomingRelations].find(
+		(r) => r._id === relationId
+	);
 	const result = await removeRelation({ relationId: relationId as Id<'knowledgeRelations'> });
 	if (!result.ok) return;
-	showToast(t('dashboard.knowledge.detail.relationRemovedToast'));
+	showToast(
+		t('dashboard.knowledge.detail.relationRemovedToast'),
+		'success',
+		removed
+			? {
+					action: {
+						label: t('common.undo'),
+						onAction: () =>
+							void addRelation({
+								fromEntryId: removed.fromEntryId as Id<'knowledgeEntries'>,
+								toEntryId: removed.toEntryId as Id<'knowledgeEntries'>,
+								relationType: removed.relationType as RelationType,
+							}),
+					},
+				}
+			: undefined
+	);
 };
 </script>
 
@@ -165,7 +186,7 @@ const handleRemoveRelation = async (relationId: string) => {
 							v-for="candidate in relationCandidates"
 							:key="candidate._id"
 							type="button"
-							class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-surface transition-colors"
+							class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none transition-colors"
 							@click="selectTarget(candidate)"
 						>
 							<component

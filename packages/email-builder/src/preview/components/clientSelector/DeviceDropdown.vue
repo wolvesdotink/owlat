@@ -40,8 +40,10 @@ function selectDevice(device: DevicePreset) {
 				<button
 					v-for="device in devicesByType.desktop"
 					:key="device.id"
+					type="button"
 					class="ep-device-item"
 					:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
+					:aria-pressed="selectedDevice.id === device.id"
 					@click="selectDevice(device)"
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>
@@ -61,8 +63,10 @@ function selectDevice(device: DevicePreset) {
 				<button
 					v-for="device in devicesByType.tablet"
 					:key="device.id"
+					type="button"
 					class="ep-device-item"
 					:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
+					:aria-pressed="selectedDevice.id === device.id"
 					@click="selectDevice(device)"
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>
@@ -82,8 +86,10 @@ function selectDevice(device: DevicePreset) {
 				<button
 					v-for="device in devicesByType.mobile"
 					:key="device.id"
+					type="button"
 					class="ep-device-item"
 					:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
+					:aria-pressed="selectedDevice.id === device.id"
 					@click="selectDevice(device)"
 				>
 					<span class="ep-device-name">{{ label(device.name) }}</span>

@@ -108,39 +108,46 @@ const CATEGORY_DOT: Record<string, string> = {
 			}}</span>
 		</div>
 
-		<!-- Clean draft: nothing to flag. -->
-		<p
-			v-if="coach.isClean()"
-			class="mt-2 flex items-center gap-1.5 text-xs text-success"
-			data-testid="postbox-coach-clean"
-		>
-			<CircleCheckIcon class="w-3.5 h-3.5" />
-			{{ t('components.postbox.postboxCoachPanel.clean') }}
-		</p>
+		<!-- Always mounted, so a screen reader hears the result of "Coach my draft". -->
+		<div aria-live="polite">
+			<!-- Clean draft: nothing to flag. -->
+			<p
+				v-if="coach.isClean()"
+				class="mt-2 flex items-center gap-1.5 text-xs text-success"
+				data-testid="postbox-coach-clean"
+			>
+				<CircleCheckIcon class="w-3.5 h-3.5" />
+				{{ t('components.postbox.postboxCoachPanel.clean') }}
+			</p>
 
-		<!-- Advisory critique of the user's OWN text. Never replaces the draft. -->
-		<ul
-			v-else-if="coach.isReady()"
-			class="mt-2 space-y-1.5"
-			data-testid="postbox-coach-suggestions"
-		>
-			<li v-for="(s, i) in coach.suggestions.value" :key="i" class="flex items-start gap-2 text-xs">
-				<span
-					class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
-					:class="CATEGORY_DOT[s.category] ?? 'bg-info'"
-				/>
-				<span>
-					<template v-if="categoryLabel(s.category)"
-						><span class="font-medium text-text-secondary">{{
-							t('components.postbox.postboxCoachPanel.suggestionCategory', {
-								category: categoryLabel(s.category),
-							})
-						}}</span
-						>{{ ' ' }}</template
-					>
-					<span class="text-text-secondary">{{ s.message }}</span>
-				</span>
-			</li>
-		</ul>
+			<!-- Advisory critique of the user's OWN text. Never replaces the draft. -->
+			<ul
+				v-else-if="coach.isReady()"
+				class="mt-2 space-y-1.5"
+				data-testid="postbox-coach-suggestions"
+			>
+				<li
+					v-for="(s, i) in coach.suggestions.value"
+					:key="i"
+					class="flex items-start gap-2 text-xs"
+				>
+					<span
+						class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
+						:class="CATEGORY_DOT[s.category] ?? 'bg-info'"
+					/>
+					<span>
+						<template v-if="categoryLabel(s.category)"
+							><span class="font-medium text-text-secondary">{{
+								t('components.postbox.postboxCoachPanel.suggestionCategory', {
+									category: categoryLabel(s.category),
+								})
+							}}</span
+							>{{ ' ' }}</template
+						>
+						<span class="text-text-secondary">{{ s.message }}</span>
+					</span>
+				</li>
+			</ul>
+		</div>
 	</div>
 </template>

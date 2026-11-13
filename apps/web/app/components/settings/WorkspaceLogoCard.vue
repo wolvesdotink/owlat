@@ -28,7 +28,12 @@ const { t } = useI18n();
 const { canManageSettings } = usePermissions();
 const { showToast } = useToast();
 
-const { data: logo, isLoading } = useConvexQuery(api.workspaces.branding.get, {});
+const {
+	data: logo,
+	isLoading,
+	error: logoError,
+	refetch: refetchLogo,
+} = useConvexQuery(api.workspaces.branding.get, {});
 
 const sizeKb = MAX_WORKSPACE_LOGO_BYTES / 1024;
 const accept = WORKSPACE_LOGO_MIME_TYPES.join(',');
@@ -143,6 +148,10 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 			<UiSpinner size="sm" />
 		</div>
 
+		<!-- A failed read is not "no logo": empty and locked slots would claim
+		     there is nothing uploaded. -->
+		<UiQueryBoundary v-else-if="logoError" :error="logoError" @retry="refetchLogo" />
+
 		<ul v-else class="mt-4 divide-y divide-border-subtle">
 			<li
 				v-for="slot in slots"
@@ -176,7 +185,12 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 				</div>
 
 				<div class="min-w-0 flex-1">
-					<p class="text-sm font-medium text-text-primary">{{ slot.label }}</p>
+					<p
+						:id="`workspace-logo-label-${slot.variant}`"
+						class="text-sm font-medium text-text-primary"
+					>
+						{{ slot.label }}
+					</p>
 					<p class="mt-0.5 text-xs text-text-tertiary">{{ slot.help }}</p>
 				</div>
 
@@ -195,6 +209,7 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 						size="sm"
 						:loading="busy[slot.variant]"
 						:disabled="slot.isLocked"
+						:aria-describedby="`workspace-logo-label-${slot.variant}`"
 						@click="pick(slot.variant)"
 					>
 						{{
@@ -205,9 +220,10 @@ async function onRemove(variant: WorkspaceLogoVariant) {
 					</UiButton>
 					<UiButton
 						v-if="slot.url"
-						variant="ghost"
+						variant="danger-ghost"
 						size="sm"
 						:disabled="busy[slot.variant]"
+						:aria-describedby="`workspace-logo-label-${slot.variant}`"
 						@click="onRemove(slot.variant)"
 					>
 						{{ t('components.settings.workspaceLogoCard.remove') }}

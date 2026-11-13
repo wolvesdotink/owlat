@@ -9,13 +9,14 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxBulkSelectAllRow from '../PostboxBulkSelectAllRow.vue';
 import { usePostboxBulkActions } from '~/composables/postbox/usePostboxBulkActions';
 
 let stateBuckets: Map<string, any>;
 const listMessageIds = vi.fn(async () => ({ ids: ['a', 'b', 'c'], capped: false }));
+const showOperationError = vi.fn();
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -24,6 +25,8 @@ beforeAll(() => {
 beforeEach(() => {
 	stateBuckets = new Map();
 	listMessageIds.mockClear();
+	showOperationError.mockClear();
+	vi.stubGlobal('useOperationErrorToast', () => ({ showOperationError }));
 	vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 		if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 		return stateBuckets.get(key);
@@ -142,5 +145,18 @@ describe('PostboxBulkSelectAllRow', () => {
 		await vm.selectAllMatching();
 
 		expect(listMessageIds).not.toHaveBeenCalled();
+	});
+
+	it('says so when the folder scope cannot be read', async () => {
+		const failure = new Error('Server Error');
+		listMessageIds.mockRejectedValueOnce(failure);
+		const w = mountRow();
+		selectWholePage();
+		await w.vm.$nextTick();
+		await hatchOf(w)!.trigger('click');
+		await flushPromises();
+
+		expect(showOperationError).toHaveBeenCalledWith(failure);
+		expect(hatchOf(w)).toBeDefined();
 	});
 });

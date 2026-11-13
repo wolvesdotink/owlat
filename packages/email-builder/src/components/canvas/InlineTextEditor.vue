@@ -16,8 +16,11 @@ import {
 	useVariableTrigger,
 } from '../../composables/useVariableTrigger';
 import { useRichText } from '@owlat/ui/composables/useRichText';
-import SlashCommandMenu from './SlashCommandMenu.vue';
+import SlashCommandMenu, { orderSlashCommands, SLASH_MENU_ID } from './SlashCommandMenu.vue';
 import VariablePickerMenu from './VariablePickerMenu.vue';
+import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+
+const { t } = useBuilderI18n();
 
 const props = defineProps<{
 	block: EditorBlock;
@@ -52,6 +55,23 @@ const content = computed(() => {
 
 // Slash commands
 const slashCommands = useSlashCommands();
+// The menu's display order; Enter and Tab confirm against it, not the registry
+// order, so they insert the highlighted row.
+const orderedSlashCommands = computed(() =>
+	orderSlashCommands(slashCommands.filteredCommands.value)
+);
+
+// One inline editor is active at a time, so a fixed id is unique on the page.
+const VARIABLE_MENU_ID = 'eb-inline-variable-menu';
+const variableMenuOpen = computed(
+	() => variablePicker.open.value && variablePicker.filteredVariables.value.length > 0
+);
+
+function confirmSlashCommand(): SlashCommand | null {
+	const cmd = orderedSlashCommands.value[slashCommands.state.selectedIndex] ?? null;
+	slashCommands.close();
+	return cmd;
+}
 
 // Track the position in text where "/" was typed
 let slashStartOffset = -1;
@@ -203,7 +223,7 @@ function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			event.stopPropagation();
-			const cmd = slashCommands.confirm();
+			const cmd = confirmSlashCommand();
 			if (cmd) {
 				cleanupSlashText();
 				emit('slash-command-select', cmd);
@@ -219,7 +239,7 @@ function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Tab') {
 			event.preventDefault();
 			event.stopPropagation();
-			const cmd = slashCommands.confirm();
+			const cmd = confirmSlashCommand();
 			if (cmd) {
 				cleanupSlashText();
 				emit('slash-command-select', cmd);
@@ -316,6 +336,19 @@ defineExpose({
 			data-inline-text
 			:style="editorStyles"
 			contenteditable="true"
+			role="textbox"
+			aria-multiline="true"
+			:aria-label="t('builder.canvas.textEditor')"
+			:aria-controls="
+				slashCommands.isOpen.value ? SLASH_MENU_ID : variableMenuOpen ? VARIABLE_MENU_ID : undefined
+			"
+			:aria-activedescendant="
+				slashCommands.isOpen.value && orderedSlashCommands.length > 0
+					? `${SLASH_MENU_ID}-option-${slashCommands.state.selectedIndex}`
+					: variableMenuOpen
+						? `${VARIABLE_MENU_ID}-option-${variablePicker.selectedIndex.value}`
+						: undefined
+			"
 			@blur="handleBlur"
 			@focus="handleFocus"
 			@keydown="handleKeydown"
@@ -323,13 +356,14 @@ defineExpose({
 		/>
 		<SlashCommandMenu
 			v-if="slashCommands.isOpen.value"
-			:commands="slashCommands.filteredCommands.value"
+			:commands="orderedSlashCommands"
 			:selected-index="slashCommands.state.selectedIndex"
 			:position="slashCommands.state.position"
 			@select="handleSlashSelect"
 		/>
 		<VariablePickerMenu
-			v-if="variablePicker.open.value && variablePicker.filteredVariables.value.length > 0"
+			v-if="variableMenuOpen"
+			:id="VARIABLE_MENU_ID"
 			:variables="variablePicker.filteredVariables.value"
 			:query="variablePicker.query.value"
 			:selected-index="variablePicker.selectedIndex.value"

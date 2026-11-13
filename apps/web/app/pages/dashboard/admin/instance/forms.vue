@@ -107,7 +107,13 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 			class="mb-6"
 		>
 			<template #actions>
-				<UiButton class="gap-2" @click="isAddModalOpen = true">
+				<!-- While the list is empty its empty state carries the primary create
+				     button, so this one steps down rather than showing two. -->
+				<UiButton
+					:variant="formsData && formsData.length === 0 ? 'secondary' : 'primary'"
+					class="gap-2"
+					@click="isAddModalOpen = true"
+				>
 					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.instance.forms.newForm') }}
 				</UiButton>
@@ -130,17 +136,12 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 		</div>
 
 		<!-- No Organization State -->
-		<div
-			v-else-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="FileTextIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.instance.forms.noWorkspaceTitle') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.instance.forms.noWorkspaceBody') }}
-			</p>
+		<div v-else-if="!hasActiveOrganization" class="card">
+			<UiEmptyState
+				:icon="FileTextIcon"
+				:title="t('dashboard.admin.instance.forms.noWorkspaceTitle')"
+				:description="t('dashboard.admin.instance.forms.noWorkspaceBody')"
+			/>
 		</div>
 
 		<!-- Content -->
@@ -164,21 +165,19 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 			<UiQueryBoundary v-if="formsError" :error="formsError" @retry="refetchForms" />
 
 			<!-- Empty State -->
-			<div
-				v-else-if="formsData && formsData.length === 0"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox :icon="FileTextIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.instance.forms.emptyTitle') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.instance.forms.emptyBody') }}
-				</p>
-				<UiButton class="gap-2 mt-4" @click="isAddModalOpen = true">
-					<PlusIcon class="w-4 h-4" />
-					{{ t('dashboard.admin.instance.forms.createFirst') }}
-				</UiButton>
+			<div v-else-if="formsData && formsData.length === 0" class="card">
+				<UiEmptyState
+					:icon="FileTextIcon"
+					:title="t('dashboard.admin.instance.forms.emptyTitle')"
+					:description="t('dashboard.admin.instance.forms.emptyBody')"
+				>
+					<template #action>
+						<UiButton class="gap-2" @click="isAddModalOpen = true">
+							<PlusIcon class="w-4 h-4" />
+							{{ t('dashboard.admin.instance.forms.createFirst') }}
+						</UiButton>
+					</template>
+				</UiEmptyState>
 			</div>
 
 			<!-- Forms List -->

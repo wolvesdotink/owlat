@@ -1,8 +1,8 @@
 /**
  * The categories view renders the shared conversation row, so a conversation
  * with unread mail carries the same unread-aware accessible name the
- * conversation view gives it. It used to render its own copy of the row
- * without the label, and a screen reader heard the subject with no count.
+ * conversation view gives it: the row's own text, with a screen-reader-only
+ * "N unread" beside the pill, and no aria-label hiding the sender.
  *
  * Its section headers count unread mail, like the split inbox, not the number
  * of conversations: a total would read as a size.
@@ -88,16 +88,22 @@ function mountCategories() {
 	});
 }
 
-const labelOf = (w: ReturnType<typeof mountCategories>, id: string) =>
-	w.get(`#postbox-cat-thread-${id}`).attributes('aria-label');
+const unreadOf = (w: ReturnType<typeof mountCategories>, id: string) =>
+	w.get(`#postbox-cat-thread-${id}`).find('[data-testid="row-unread-count"]');
+const labelOf = (w: ReturnType<typeof mountCategories>, id: string) => {
+	const row = w.get(`#postbox-cat-thread-${id}`);
+	return { aria: row.attributes('aria-label'), text: row.text() };
+};
 
 describe('PostboxThreadCategoryList', () => {
-	it('names an unread conversation with its unread count', () => {
+	it('names an unread conversation with its unread count, and keeps the sender in the name', () => {
 		const w = mountCategories();
-		expect(labelOf(w, 't1')).toBe('Subject t1, 3 unread');
-		expect(labelOf(w, 't3')).toBe('No subject, 1 unread');
-		// A read row keeps its visible text as its name.
-		expect(labelOf(w, 't2')).toBeUndefined();
+		expect(unreadOf(w, 't1').text()).toBe('3 unread');
+		expect(unreadOf(w, 't3').text()).toBe('1 unread');
+		expect(unreadOf(w, 't2').exists()).toBe(false);
+		// The visible text stays the accessible name.
+		expect(labelOf(w, 't1').aria).toBeUndefined();
+		expect(labelOf(w, 't1').text).toContain('Subject t1');
 	});
 
 	it('gives a row the same accessible name the conversation view does', () => {
@@ -107,9 +113,11 @@ describe('PostboxThreadCategoryList', () => {
 		});
 		const categories = mountCategories();
 		for (const t of THREADS) {
-			expect(labelOf(categories, t._id)).toBe(
-				group.get(`#postbox-thread-${t._id}`).attributes('aria-label')
-			);
+			const row = group.get(`#postbox-thread-${t._id}`);
+			expect(labelOf(categories, t._id)).toEqual({
+				aria: row.attributes('aria-label'),
+				text: row.text(),
+			});
 		}
 	});
 

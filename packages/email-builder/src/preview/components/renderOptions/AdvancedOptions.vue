@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { useId } from 'vue';
 import { PlusIcon, TrashIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 import SettingsAccordion from './SettingsAccordion.vue';
 import { useRenderOptionsDraft } from './useRenderOptionsDraft';
 
 const { t } = useBuilderI18n();
+
+const uid = useId();
+const fieldId = (name: string) => `ep-render-${name}-${uid}`;
 
 const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft();
 </script>
@@ -15,8 +19,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Breakpoint -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.breakpoint') }}</label>
+			<label :for="fieldId('breakpoint')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.breakpoint')
+			}}</label>
 			<input
+				:id="fieldId('breakpoint')"
 				v-model.number="local.breakpoint"
 				type="number"
 				class="ep-settings-input ep-settings-input-number"
@@ -28,8 +35,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Language -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.language') }}</label>
+			<label :for="fieldId('lang')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.language')
+			}}</label>
 			<input
+				:id="fieldId('lang')"
 				v-model="local.lang"
 				type="text"
 				class="ep-settings-input"
@@ -40,10 +50,15 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Validation Level -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{
+			<label :for="fieldId('validation')" class="ep-settings-label">{{
 				t('builder.preview.renderOptions.validationLevel')
 			}}</label>
-			<select v-model="local.validationLevel" class="ep-settings-select" @change="emitUpdate()">
+			<select
+				:id="fieldId('validation')"
+				v-model="local.validationLevel"
+				class="ep-settings-select"
+				@change="emitUpdate()"
+			>
 				<option value="skip">{{ t('builder.preview.renderOptions.validation.skip') }}</option>
 				<option value="soft">{{ t('builder.preview.renderOptions.validation.soft') }}</option>
 				<option value="strict">
@@ -54,8 +69,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Title -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.emailTitle') }}</label>
+			<label :for="fieldId('title')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.emailTitle')
+			}}</label>
 			<input
+				:id="fieldId('title')"
 				v-model="local.title"
 				type="text"
 				class="ep-settings-input"
@@ -66,8 +84,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Preheader Text -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.preheader') }}</label>
+			<label :for="fieldId('preheader')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.preheader')
+			}}</label>
 			<input
+				:id="fieldId('preheader')"
 				v-model="local.preheaderText"
 				type="text"
 				class="ep-settings-input"
@@ -78,8 +99,11 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Custom CSS -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.customCss') }}</label>
+			<label :for="fieldId('css')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.customCss')
+			}}</label>
 			<textarea
+				:id="fieldId('css')"
 				v-model="local.customCss"
 				class="ep-settings-textarea"
 				rows="4"
@@ -90,22 +114,30 @@ const { local, emitUpdate, addFontUrl, removeFontUrl } = useRenderOptionsDraft()
 
 		<!-- Font URLs -->
 		<div class="ep-settings-field">
-			<label class="ep-settings-label">{{ t('builder.preview.renderOptions.fontUrls') }}</label>
-			<div class="ep-settings-list">
+			<span :id="fieldId('fonts')" class="ep-settings-label">{{
+				t('builder.preview.renderOptions.fontUrls')
+			}}</span>
+			<div class="ep-settings-list" role="group" :aria-labelledby="fieldId('fonts')">
 				<div v-for="(url, idx) in local.fontUrls" :key="idx" class="ep-settings-list-item">
 					<input
 						v-model="local.fontUrls[idx]"
 						type="text"
 						class="ep-settings-input"
+						:aria-label="t('builder.preview.renderOptions.fontUrl', { index: idx + 1 })"
 						placeholder="https://fonts.googleapis.com/css2?family=..."
 						@change="emitUpdate()"
 					/>
-					<button class="ep-settings-list-remove" @click="removeFontUrl(idx)">
-						<TrashIcon class="ep-settings-list-remove-icon" />
+					<button
+						type="button"
+						class="ep-settings-list-remove"
+						:aria-label="t('builder.preview.renderOptions.removeFontUrl', { index: idx + 1 })"
+						@click="removeFontUrl(idx)"
+					>
+						<TrashIcon class="ep-settings-list-remove-icon" aria-hidden="true" />
 					</button>
 				</div>
-				<button class="ep-settings-list-add" @click="addFontUrl">
-					<PlusIcon class="ep-settings-list-add-icon" />
+				<button type="button" class="ep-settings-list-add" @click="addFontUrl">
+					<PlusIcon class="ep-settings-list-add-icon" aria-hidden="true" />
 					{{ t('builder.preview.renderOptions.addFontUrl') }}
 				</button>
 			</div>

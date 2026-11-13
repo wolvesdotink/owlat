@@ -68,12 +68,21 @@ const { t } = useI18n();
 					<label for="edit-form-topic" class="label">
 						{{ t('dashboard.admin.instance.forms.fields.topic') }}
 					</label>
-					<select id="edit-form-topic" v-model="form.topicId" class="input" :disabled="isSaving">
+					<select
+						id="edit-form-topic"
+						v-model="form.topicId"
+						class="input"
+						aria-describedby="edit-form-topic-help"
+						:disabled="isSaving"
+					>
 						<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
 						<option v-for="list in topics" :key="list._id" :value="list._id">
 							{{ list.name }}
 						</option>
 					</select>
+					<p id="edit-form-topic-help" class="mt-1 text-xs text-text-tertiary">
+						{{ t('dashboard.admin.instance.forms.fields.topicHelp') }}
+					</p>
 				</div>
 
 				<!-- Fields Editor -->
@@ -96,8 +105,12 @@ const { t } = useI18n();
 						type="url"
 						placeholder="https://example.com/thank-you"
 						class="input"
+						aria-describedby="edit-form-redirect-help"
 						:disabled="isSaving"
 					/>
+					<p id="edit-form-redirect-help" class="mt-1 text-xs text-text-tertiary">
+						{{ t('dashboard.admin.instance.forms.fields.redirectHelp') }}
+					</p>
 				</div>
 
 				<!-- Honeypot Field -->
@@ -111,8 +124,12 @@ const { t } = useI18n();
 						type="text"
 						:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
 						class="input"
+						aria-describedby="edit-form-honeypot-help"
 						:disabled="isSaving"
 					/>
+					<p id="edit-form-honeypot-help" class="mt-1 text-xs text-text-tertiary">
+						{{ t('dashboard.admin.instance.forms.fields.honeypotHelp') }}
+					</p>
 				</div>
 
 				<!-- Double Opt-In -->

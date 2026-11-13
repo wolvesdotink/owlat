@@ -226,7 +226,7 @@ const title = computed(() => {
 				data-testid="ask-submit"
 				@click="emit('answer', [])"
 			>
-				<SpinnerIcon v-if="submitting" class="mr-1 size-3.5" aria-hidden="true" />
+				<SpinnerIcon v-if="submitting" class="size-3.5" aria-hidden="true" />
 				{{ t('components.answer.askCard.draftNow') }}
 			</UiButton>
 		</template>
@@ -301,7 +301,7 @@ const title = computed(() => {
 						data-testid="ask-submit"
 						@click="submit"
 					>
-						<SpinnerIcon v-if="submitting" class="mr-1 size-3.5" aria-hidden="true" />
+						<SpinnerIcon v-if="submitting" class="size-3.5" aria-hidden="true" />
 						{{ t('components.answer.askCard.answerAndDraft') }}
 					</UiButton>
 					<UiButton

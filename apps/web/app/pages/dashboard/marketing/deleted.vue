@@ -187,7 +187,9 @@ function meta(row: DeletedRow): string {
 							data-testid="recently-deleted-row"
 						>
 							<div class="min-w-0 flex-1">
-								<p class="truncate font-medium text-text-primary">{{ row.name }}</p>
+								<p class="truncate font-medium text-text-primary" :title="row.name">
+									{{ row.name }}
+								</p>
 								<p class="text-sm text-text-tertiary">{{ meta(row) }}</p>
 							</div>
 							<UiButton

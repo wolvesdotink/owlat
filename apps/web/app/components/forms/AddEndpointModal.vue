@@ -74,13 +74,19 @@ const { t } = useI18n();
 					<label for="form-topic" class="label">
 						{{ t('dashboard.admin.instance.forms.fields.topic') }}
 					</label>
-					<select id="form-topic" v-model="form.topicId" class="input" :disabled="isAdding">
+					<select
+						id="form-topic"
+						v-model="form.topicId"
+						class="input"
+						aria-describedby="form-topic-help"
+						:disabled="isAdding"
+					>
 						<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
 						<option v-for="list in topics" :key="list._id" :value="list._id">
 							{{ list.name }}
 						</option>
 					</select>
-					<p class="mt-1 text-xs text-text-tertiary">
+					<p id="form-topic-help" class="mt-1 text-xs text-text-tertiary">
 						{{ t('dashboard.admin.instance.forms.fields.topicHelp') }}
 					</p>
 				</div>
@@ -102,12 +108,13 @@ const { t } = useI18n();
 					<input
 						id="form-redirect"
 						v-model="form.redirectUrl"
+						aria-describedby="form-redirect-help"
 						type="url"
 						placeholder="https://example.com/thank-you"
 						class="input"
 						:disabled="isAdding"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">
+					<p id="form-redirect-help" class="mt-1 text-xs text-text-tertiary">
 						{{ t('dashboard.admin.instance.forms.fields.redirectHelp') }}
 					</p>
 				</div>
@@ -120,12 +127,13 @@ const { t } = useI18n();
 					<input
 						id="form-honeypot"
 						v-model="form.honeypotFieldName"
+						aria-describedby="form-honeypot-help"
 						type="text"
 						:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
 						class="input"
 						:disabled="isAdding"
 					/>
-					<p class="mt-1 text-xs text-text-tertiary">
+					<p id="form-honeypot-help" class="mt-1 text-xs text-text-tertiary">
 						{{ t('dashboard.admin.instance.forms.fields.honeypotHelp') }}
 					</p>
 				</div>

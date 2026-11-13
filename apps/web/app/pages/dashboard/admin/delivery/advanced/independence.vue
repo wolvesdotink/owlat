@@ -194,8 +194,12 @@ function confirmRelayRemoval(): void {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.independence.loading')"
 				>
-					<div class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
-					<div class="h-44 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div
+						class="h-32 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
+					/>
+					<div
+						class="h-44 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
+					/>
 				</div>
 			</template>
 

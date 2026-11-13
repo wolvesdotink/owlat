@@ -59,7 +59,7 @@ const { run: claimInboxMemberships } = useBackendOperation(
 onMounted(async () => {
 	if (!invitationId.value) {
 		status.value = 'error';
-		errorMessage.value = t('invite.accept.errors.missingId');
+		errorMessage.value = t('invite.accept.errors.incompleteLink');
 		return;
 	}
 
@@ -142,7 +142,7 @@ async function handleAcceptInvitation({ joinedElsewhere = false } = {}) {
 
 		if (result.error) {
 			status.value = 'error';
-			errorMessage.value = result.error.message || t('invite.accept.errors.acceptFailed');
+			errorMessage.value = acceptErrorCopy(result.error.code);
 			return;
 		}
 
@@ -189,13 +189,43 @@ async function handleAcceptInvitation({ joinedElsewhere = false } = {}) {
 		// Send freshly-joined members into the first-login welcome flow rather than
 		// the bare dashboard, so they get the product welcome + resumable onboarding
 		// checklist. The welcome middleware would route them there anyway; going
-		// straight there avoids a visible bounce.
-		setTimeout(() => {
-			router.push('/welcome');
-		}, 2000);
+		// straight there avoids a visible bounce. When the card names an address
+		// (a claimed mailbox, a team inbox) two seconds is too short to read it, so
+		// the person moves on with "Get started" instead.
+		if (!hasClaims.value) {
+			setTimeout(() => {
+				router.push('/welcome');
+			}, 2000);
+		}
 	} catch (err) {
+		// Raw client errors are English and technical; they go to the console.
+		console.error('[invite] accept failed', err);
 		status.value = 'error';
-		errorMessage.value = err instanceof Error ? err.message : t('invite.accept.errors.unexpected');
+		errorMessage.value = t('invite.accept.errors.unexpected');
+	}
+}
+
+const hasClaims = computed(
+	() =>
+		!!claimedMailboxAddress.value ||
+		!!reservedAwaitingAddress.value ||
+		claimedInboxAddresses.value.length > 0
+);
+
+/**
+ * The server's refusal in the reader's language. better-auth answers an
+ * expired, used or unknown invitation with one code, and a signed-in account
+ * that is not the invited address with another; anything else keeps the
+ * generic line rather than better-auth's English message.
+ */
+function acceptErrorCopy(code: string | undefined): string {
+	switch (code) {
+		case 'INVITATION_NOT_FOUND':
+			return t('invite.accept.errors.notFound');
+		case 'YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION':
+			return t('invite.accept.errors.wrongRecipient', { email: sessionEmail.value });
+		default:
+			return t('invite.accept.errors.acceptFailed');
 	}
 }
 
@@ -209,15 +239,16 @@ function redirectToRegister() {
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex items-center justify-center p-6">
+	<div class="min-h-dvh bg-bg-deep flex items-center justify-center p-6">
 		<div class="w-full max-w-md">
 			<WorkspaceLogo v-if="logo" :url="logo.url" :dark-url="logo.darkUrl" class="mb-6" />
 			<!-- Card -->
 			<div class="card text-center">
 				<!-- Loading State -->
-				<template v-if="status === 'loading' || status === 'accepting'">
+				<div v-if="status === 'loading' || status === 'accepting'" role="status">
 					<div
 						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
+						aria-hidden="true"
 					>
 						<SpinnerIcon class="w-8 h-8 text-brand" />
 					</div>
@@ -235,15 +266,17 @@ function redirectToRegister() {
 								: t('invite.accept.acceptingBody')
 						}}
 					</p>
-				</template>
+				</div>
 
 				<!-- Login Required State -->
 				<template v-else-if="status === 'login-required'">
-					<div
-						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
-					>
-						<UsersIcon class="w-8 h-8 text-brand" :stroke-width="1.5" />
-					</div>
+					<UiIconBox
+						:icon="UsersIcon"
+						size="xl"
+						rounded="2xl"
+						class="mx-auto mb-6"
+						aria-hidden="true"
+					/>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.loginRequiredTitle') }}
 					</h1>
@@ -262,11 +295,13 @@ function redirectToRegister() {
 
 				<!-- Email confirmation pending -->
 				<template v-else-if="status === 'verify-email'">
-					<div
-						class="p-4 rounded-2xl bg-bg-surface mx-auto w-fit mb-6 flex items-center justify-center"
-					>
-						<MailIcon class="w-8 h-8 text-brand" :stroke-width="1.5" />
-					</div>
+					<UiIconBox
+						:icon="MailIcon"
+						size="xl"
+						rounded="2xl"
+						class="mx-auto mb-6"
+						aria-hidden="true"
+					/>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.verifyEmailTitle') }}
 					</h1>
@@ -312,11 +347,14 @@ function redirectToRegister() {
 
 				<!-- Success State -->
 				<template v-else-if="status === 'success'">
-					<div
-						class="p-4 rounded-2xl bg-success/10 mx-auto w-fit mb-6 flex items-center justify-center"
-					>
-						<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
-					</div>
+					<UiIconBox
+						:icon="CheckIcon"
+						size="xl"
+						variant="success"
+						rounded="2xl"
+						class="mx-auto mb-6"
+						aria-hidden="true"
+					/>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.successTitle') }}
 					</h1>
@@ -361,28 +399,40 @@ function redirectToRegister() {
 							<code class="text-text-primary">{{ addr }}</code>
 						</template>
 					</I18nT>
-					<p class="text-text-tertiary text-sm mb-6">{{ t('invite.accept.redirecting') }}</p>
+					<p v-if="!hasClaims" class="text-text-tertiary text-sm mb-6">
+						{{ t('invite.accept.redirecting') }}
+					</p>
+					<div v-else class="mb-6" />
 					<UiButton full-width to="/welcome">{{ t('invite.accept.getStarted') }}</UiButton>
 				</template>
 
 				<!-- Error State -->
 				<template v-else-if="status === 'error'">
-					<div
-						class="p-4 rounded-2xl bg-error/10 mx-auto w-fit mb-6 flex items-center justify-center"
-					>
-						<CircleWarningIcon class="w-8 h-8 text-error" :stroke-width="1.5" />
-					</div>
+					<UiIconBox
+						:icon="CircleWarningIcon"
+						size="xl"
+						variant="error"
+						rounded="2xl"
+						class="mx-auto mb-6"
+						aria-hidden="true"
+					/>
 					<h1 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('invite.accept.errorTitle') }}
 					</h1>
-					<p class="text-text-secondary mb-6">
+					<p class="text-text-secondary mb-2" role="alert">
 						{{ errorMessage }}
 					</p>
-					<div class="flex flex-col gap-3">
-						<UiButton full-width to="/dashboard">{{ t('invite.accept.goToDashboard') }}</UiButton>
-						<UiButton variant="secondary" full-width to="/">{{
-							t('invite.accept.backToHome')
-						}}</UiButton>
+					<p class="text-sm text-text-tertiary mb-6">{{ t('invite.accept.askForNewLink') }}</p>
+					<!-- Neither the dashboard nor the home page helps with a bad invitation
+					     (an account with no workspace is bounced from both); signing in as
+					     the invited address is the one thing that might. -->
+					<div v-if="invitationId" class="flex flex-col gap-3">
+						<UiButton v-if="sessionEmail" full-width variant="secondary" @click="switchAccount">
+							{{ t('invite.accept.useDifferentAccount') }}
+						</UiButton>
+						<UiButton v-else full-width variant="secondary" @click="redirectToLogin">
+							{{ t('invite.accept.signInToAccept') }}
+						</UiButton>
 					</div>
 				</template>
 			</div>

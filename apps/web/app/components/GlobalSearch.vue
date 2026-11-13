@@ -14,8 +14,10 @@ const { ariaFor } = useShortcutLabels();
 </script>
 
 <template>
+	<!-- min-h-8: the height of the size="sm" Compose button beside it. -->
 	<button
-		class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary bg-bg-surface hover:bg-bg-surface-hover border border-border-subtle rounded-lg transition-colors duration-(--motion-fast)"
+		type="button"
+		class="flex min-h-8 items-center gap-2 px-3 py-1 text-sm text-text-secondary hover:text-text-primary bg-bg-surface hover:bg-bg-surface-hover border border-border-subtle rounded-lg transition-colors duration-(--motion-fast)"
 		:aria-keyshortcuts="ariaFor('global.commandPalette')"
 		@click="() => openSearch()"
 	>
@@ -23,7 +25,7 @@ const { ariaFor } = useShortcutLabels();
 		<span class="hidden sm:inline">{{ t('components.globalSearch.search') }}</span>
 		<UiShortcut
 			id="global.commandPalette"
-			class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
+			class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
 		/>
 	</button>
 </template>

@@ -50,6 +50,14 @@ describe('reader reply-all / forward visibility', () => {
 		).toContain('display: inline-flex');
 	});
 
+	it('reveals them in compact when focus moves into the message', () => {
+		expect(
+			block(
+				"[data-density='compact'] .pbx-reader-message:focus-within .pbx-reader-secondary-action"
+			)
+		).toContain('display: inline-flex');
+	});
+
 	it('pins them open where hover never fires, so touch is not left with the ⋯ menu', () => {
 		const touch = /@media \(hover: none\) \{([\s\S]*?)\n\}/.exec(density)?.[1] ?? '';
 		expect(touch).toContain('.pbx-reader-secondary-action');

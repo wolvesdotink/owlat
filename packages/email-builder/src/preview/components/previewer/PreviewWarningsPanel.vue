@@ -17,11 +17,16 @@ const emit = defineEmits<{
 	<div class="ep-warnings-panel">
 		<div class="ep-warnings-header">
 			<span class="ep-warnings-title">
-				<TriangleWarningIcon class="ep-warnings-title-icon" />
+				<TriangleWarningIcon class="ep-warnings-title-icon" aria-hidden="true" />
 				{{ t('builder.preview.warnings.title', { count: renderWarnings.length }) }}
 			</span>
-			<button class="ep-warnings-close" @click="emit('close')">
-				<CloseIcon class="ep-warnings-close-icon" />
+			<button
+				type="button"
+				class="ep-warnings-close"
+				:aria-label="t('builder.preview.warnings.close')"
+				@click="emit('close')"
+			>
+				<CloseIcon class="ep-warnings-close-icon" aria-hidden="true" />
 			</button>
 		</div>
 		<ul class="ep-warnings-list">

@@ -138,9 +138,9 @@ const threadListStub = defineComponent({
 	},
 });
 const overlayStub = {
-	props: ['message', 'advanceIds'],
-	emits: ['close', 'open'],
-	template: '<div class="reader-overlay" :data-id="message._id" />',
+	props: ['message', 'messageId', 'advanceIds', 'error', 'notFound'],
+	emits: ['close', 'open', 'retry'],
+	template: '<div class="reader-overlay" :data-id="messageId" :data-has-message="!!message" />',
 };
 const skeletonStub = { template: '<div class="skeleton" />' };
 // The Daily Brief card owns its own Convex wiring — covered by its own tests.
@@ -396,6 +396,27 @@ describe('PostboxTodayView', () => {
 		expect(w.find('.reader-overlay').attributes('data-id')).toBe('m-deep');
 	});
 
+	it('opens a deep link outside the feed while it loads, and says when it is gone', async () => {
+		feed.messages.value = [todayMsg('m-a')];
+		queue.items.value = [];
+		const fetched = ref<unknown>(undefined);
+		convexQuery.mockImplementation(() => ({ data: fetched, isLoading: ref(true) }) as never);
+		try {
+			const w = mountView({ initialMessageId: 'm-old' });
+			const overlay = () => w.findComponent(overlayStub);
+			expect(overlay().exists()).toBe(true);
+			expect(overlay().props('messageId')).toBe('m-old');
+			expect(overlay().props('message')).toBeUndefined();
+			expect(overlay().props('notFound')).toBe(false);
+
+			fetched.value = null;
+			await nextTick();
+			expect(overlay().props('notFound')).toBe(true);
+		} finally {
+			convexQuery.mockImplementation(() => ({ data: ref(undefined), isLoading: ref(false) }));
+		}
+	});
+
 	it('follows a later deep link while it stays mounted, and closes on back', async () => {
 		// The Postbox page keeps this view mounted across /inbox ↔ /inbox/<id>,
 		// so the route's message id arrives as a prop change, not a fresh mount.
@@ -485,6 +506,10 @@ describe('PostboxTodayView', () => {
 		await fold.trigger('click');
 		expect(w.find('#postbox-updates .thread-list').attributes('data-count')).toBe('5');
 		expect(w.find('[data-testid="priority-updates-fold"]').exists()).toBe(false);
+		// The way back: the opened group folds again from where it opened.
+		await w.get('[data-testid="priority-updates-collapse"]').trigger('click');
+		expect(w.find('#postbox-updates .thread-list').attributes('data-count')).toBe('3');
+		expect(w.find('[data-testid="priority-updates-fold"]').exists()).toBe(true);
 
 		const digest = w.get('[data-testid="priority-digest-fold"]');
 		expect(digest.text()).toContain('2 newsletters and promotions');

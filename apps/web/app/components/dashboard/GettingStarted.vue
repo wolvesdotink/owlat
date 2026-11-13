@@ -312,7 +312,8 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 			</UiButton>
 			<UiTooltip :text="t('common.dismiss')">
 				<button
-					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
+					type="button"
+					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
 					@click="handleDismiss"
 				>
@@ -341,15 +342,23 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 						</p>
 					</div>
 				</div>
-				<UiTooltip :text="t('common.dismiss')">
-					<button
-						class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-						:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
-						@click="handleDismiss"
-					>
-						<CloseIcon class="h-4 w-4" />
-					</button>
-				</UiTooltip>
+				<div class="flex shrink-0 items-center gap-1">
+					<!-- Opened from the strip, the card folds back into it; dismissing
+					     is a different decision. -->
+					<UiButton v-if="compact" variant="ghost" size="sm" @click="expanded = false">
+						{{ t('components.dashboard.gettingStarted.collapse') }}
+					</UiButton>
+					<UiTooltip :text="t('common.dismiss')">
+						<button
+							type="button"
+							class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+							@click="handleDismiss"
+						>
+							<CloseIcon class="h-4 w-4" />
+						</button>
+					</UiTooltip>
+				</div>
 			</div>
 
 			<!-- Progress -->
@@ -478,6 +487,7 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 			<!-- Skip -->
 			<div class="mt-4 text-center">
 				<button
+					type="button"
 					class="text-sm text-text-tertiary transition-colors hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					@click="handleDismiss"
 				>

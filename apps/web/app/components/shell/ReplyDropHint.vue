@@ -48,7 +48,7 @@ const box = computed(() => {
 	<Teleport to="body">
 		<div
 			v-if="hover"
-			class="pointer-events-none fixed z-50 flex items-center justify-center rounded-md border-2 border-dashed border-brand bg-bg-base/80 p-2"
+			class="pointer-events-none fixed z-(--z-overlay) flex items-center justify-center rounded-md border-2 border-dashed border-brand bg-bg-base/80 p-2"
 			:style="box"
 			aria-hidden="true"
 			data-testid="reply-drop-hint"

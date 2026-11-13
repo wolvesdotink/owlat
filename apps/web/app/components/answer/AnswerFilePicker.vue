@@ -51,8 +51,10 @@ const filesSearch = usePaginatedQuery(
 	() => (props.open && debouncedQuery.value ? { query: debouncedQuery.value } : 'skip'),
 	{ initialNumItems: PAGE }
 );
+// The Files read on screen: the search while there is a query, else the list.
+const filesRead = computed(() => (debouncedQuery.value ? filesSearch : filesList));
 const files = computed(() =>
-	(debouncedQuery.value ? filesSearch.results.value : filesList.results.value)
+	filesRead.value.results.value
 		.filter((f) => f.hasBytes)
 		.map((f) => ({
 			key: `sf:${f._id}`,
@@ -80,11 +82,40 @@ const mailFiles = computed(() =>
 	}))
 );
 
+// Both reads start out as empty lists, so "nothing found" waits until they
+// have answered; a failed read says so with a retry instead of looking empty.
+const filesLoading = computed(() => filesRead.value.status.value === 'LoadingFirstPage');
+const mailLoading = computed(() => !!props.mailboxId && mailQuery.isLoading.value);
+const isLoading = computed(() => filesLoading.value || mailLoading.value);
+
 const sections = computed(() => [
-	{ id: 'files', title: t('components.answer.filePicker.files'), rows: files.value },
-	{ id: 'mail', title: t('components.answer.filePicker.mail'), rows: mailFiles.value },
+	{
+		id: 'files',
+		title: t('components.answer.filePicker.files'),
+		rows: files.value,
+		error: filesRead.value.error.value,
+		retry: () => filesRead.value.refetch(),
+		canLoadMore: filesRead.value.status.value === 'CanLoadMore',
+		loadingMore: filesRead.value.status.value === 'LoadingMore',
+	},
+	{
+		id: 'mail',
+		title: t('components.answer.filePicker.mail'),
+		rows: mailFiles.value,
+		error: props.mailboxId ? mailQuery.error.value : null,
+		retry: () => mailQuery.refetch(),
+		canLoadMore: false,
+		loadingMore: false,
+	},
 ]);
-const isEmpty = computed(() => files.value.length === 0 && mailFiles.value.length === 0);
+const isEmpty = computed(
+	() =>
+		!isLoading.value &&
+		sections.value.every((section) => !section.error && section.rows.length === 0)
+);
+function loadMoreFiles() {
+	filesRead.value.loadMore(PAGE);
+}
 
 function pick(ref: PickedFile) {
 	emit('pick', ref);
@@ -117,11 +148,32 @@ const searchId = useId();
 			:placeholder="t('components.answer.filePicker.search')"
 			data-testid="file-picker-search"
 		/>
-		<p v-if="isEmpty" class="mt-4 text-sm text-text-tertiary" data-testid="file-picker-empty">
+		<div
+			v-if="isLoading && files.length === 0 && mailFiles.length === 0"
+			class="mt-4 space-y-2"
+			aria-busy="true"
+			data-testid="file-picker-loading"
+		>
+			<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+			<div
+				v-for="row in 4"
+				:key="row"
+				class="flex items-center gap-2 px-2 py-1.5"
+				aria-hidden="true"
+			>
+				<UiSkeleton class="size-4 shrink-0" />
+				<UiSkeleton class="h-3.5" :class="row % 2 ? 'w-48' : 'w-32'" />
+			</div>
+		</div>
+		<p v-else-if="isEmpty" class="mt-4 text-sm text-text-tertiary" data-testid="file-picker-empty">
 			{{ t('components.answer.filePicker.empty') }}
 		</p>
 		<template v-for="section in sections" :key="section.id">
-			<section v-if="section.rows.length > 0" class="mt-4">
+			<section v-if="section.error" class="mt-4">
+				<h3 class="text-xs font-semibold text-text-secondary">{{ section.title }}</h3>
+				<UiQueryBoundary :error="section.error" @retry="section.retry" />
+			</section>
+			<section v-else-if="section.rows.length > 0" class="mt-4">
 				<h3 class="text-xs font-semibold text-text-secondary">{{ section.title }}</h3>
 				<ul class="mt-1.5 max-h-56 space-y-0.5 overflow-y-auto">
 					<li v-for="row in section.rows" :key="row.key">
@@ -132,9 +184,27 @@ const searchId = useId();
 							@click="pick(row.ref)"
 						>
 							<FileIcon class="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-							<span class="min-w-0 flex-1 truncate text-text-primary">{{ row.label }}</span>
-							<span class="shrink-0 text-xs text-text-tertiary">{{ row.detail }}</span>
+							<span class="min-w-0 flex-1 truncate text-text-primary" :title="row.label">{{
+								row.label
+							}}</span>
+							<span
+								class="min-w-0 max-w-[45%] truncate text-xs text-text-tertiary"
+								:title="row.detail"
+								>{{ row.detail }}</span
+							>
 						</button>
+					</li>
+					<li v-if="section.canLoadMore || section.loadingMore">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="w-full"
+							:loading="section.loadingMore"
+							data-testid="file-picker-more"
+							@click="loadMoreFiles"
+						>
+							{{ t('components.answer.filePicker.loadMore') }}
+						</UiButton>
 					</li>
 				</ul>
 			</section>

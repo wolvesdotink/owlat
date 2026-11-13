@@ -14,6 +14,7 @@ import {
 	UsersIcon,
 } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
+import { useNow } from '~/composables/useNow';
 
 /**
  * The Marketing workspace's sidebar: Overview first, then the campaigns and
@@ -49,7 +50,9 @@ const { data: automationPage } = useConvexQuery(api.automations.automations.list
 );
 
 const RESULTS_WINDOW_MS = 48 * 60 * 60 * 1000;
-const now = Date.now();
+// Ticks once a minute, so "Results in" expires and a scheduled send's time
+// flips while the shell stays mounted.
+const nowRef = useNow({ intervalMs: 60_000 });
 
 function campaignStatus(c: {
 	status: string;
@@ -64,7 +67,8 @@ function campaignStatus(c: {
 	if (c.isABTest && c.abTestStatus === 'testing' && !c.abWinner) return 'needs_review';
 	if (c.status === 'sending') return 'running';
 	if (c.status === 'scheduled') return 'scheduled';
-	if (c.status === 'sent' && c.sentAt && now - c.sentAt < RESULTS_WINDOW_MS) return 'results_in';
+	if (c.status === 'sent' && c.sentAt && nowRef.value - c.sentAt < RESULTS_WINDOW_MS)
+		return 'results_in';
 	return null;
 }
 
@@ -83,7 +87,8 @@ const campaignRows = computed(() => {
 		if (seen.has(c._id) || c.status === 'cancelled') return;
 		seen.add(c._id);
 		// A send still ahead of us shows when it goes out; anything else, when it did.
-		const upcoming = c.scheduledAt !== undefined && c.scheduledAt > now ? c.scheduledAt : undefined;
+		const upcoming =
+			c.scheduledAt !== undefined && c.scheduledAt > nowRef.value ? c.scheduledAt : undefined;
 		const at = upcoming ?? c.sentAt ?? c.updatedAt;
 		rows.push({
 			id: c._id,
@@ -191,7 +196,7 @@ const activeAutomationId = computed(
 					<UiTooltip :text="t('components.shell.marketing.newCampaign')">
 						<NuxtLink
 							to="/dashboard/campaigns/new"
-							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
+							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary pointer-coarse:size-11"
 							:aria-label="t('components.shell.marketing.newCampaign')"
 						>
 							<PlusIcon class="size-3.5" />
@@ -242,7 +247,6 @@ const activeAutomationId = computed(
 						:to="`/dashboard/automations/${row.id}`"
 						:jump-key="`automation:${row.id}`"
 						:title="row.name"
-						status="running"
 						:is-active="activeAutomationId === row.id"
 					/>
 					<NuxtLink
@@ -331,9 +335,15 @@ const activeAutomationId = computed(
 				<NuxtLink
 					:to="link.to"
 					:aria-label="link.label"
-					class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+					:aria-current="isActive(link.to) ? 'page' : undefined"
+					class="flex justify-center rounded-lg py-2 transition-colors"
+					:class="
+						isActive(link.to)
+							? 'bg-(--surface-2-selected) text-brand'
+							: 'text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary'
+					"
 				>
-					<component :is="link.icon" class="size-4.5" />
+					<component :is="navIcon(link.icon, isActive(link.to))" class="size-4.5" />
 				</NuxtLink>
 			</UiTooltip>
 		</template>

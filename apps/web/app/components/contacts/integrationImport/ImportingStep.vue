@@ -14,16 +14,14 @@ const { t, locale } = useI18n();
 
 const formatCount = (value: number) => new Intl.NumberFormat(locale.value).format(value);
 
-// Computed progress percentage
-const progressPercent = computed(() => {
+// A percentage needs a total. Without one (Stripe reports none) the bar is
+// indeterminate and the count beside it carries the progress.
+const progressPercent = computed<number | null>(() => {
 	const p = props.importProgress;
 	if (!p || p.status !== 'running') return 0;
+	if (!p.totalEstimate || p.totalEstimate <= 0) return null;
 	const processed = p.imported + p.updated + p.skipped + p.failed;
-	if (p.totalEstimate && p.totalEstimate > 0) {
-		return Math.min(Math.round((processed / p.totalEstimate) * 100), 99);
-	}
-	// Stripe doesn't provide total — show indeterminate-ish progress
-	return processed > 0 ? Math.min(processed, 99) : 5;
+	return Math.min(Math.round((processed / p.totalEstimate) * 100), 99);
 });
 
 // Computed progress text
@@ -68,12 +66,6 @@ const progressText = computed(() => {
 <template>
 	<div class="py-8">
 		<div class="flex flex-col items-center gap-6">
-			<div class="relative">
-				<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
-				<div
-					class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
-				/>
-			</div>
 			<div class="text-center">
 				<p class="text-lg font-medium text-text-primary">
 					{{
@@ -89,7 +81,8 @@ const progressText = computed(() => {
 			<UiProgressBar
 				class="max-w-xs"
 				size="sm"
-				:value="progressPercent"
+				:value="progressPercent ?? 0"
+				:indeterminate="progressPercent === null"
 				:aria-label="t('components.contacts.integrationImportModal.importing.progressLabel')"
 			/>
 			<p class="text-xs text-text-tertiary">

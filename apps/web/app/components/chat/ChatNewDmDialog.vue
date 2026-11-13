@@ -32,8 +32,9 @@ const handleSubmit = async () => {
 	try {
 		const id = await findOrCreateDm(selectedMembers.value.map((m) => m.memberId));
 		if (id.ok) emit('created', id.result);
-	} catch (e) {
-		error.value = e instanceof Error ? e.message : t('components.chat.chatNewDmDialog.startFailed');
+	} catch {
+		// The server's own message is English and internal; say it in the reader's language.
+		error.value = t('components.chat.chatNewDmDialog.startFailed');
 	} finally {
 		isCreating.value = false;
 	}

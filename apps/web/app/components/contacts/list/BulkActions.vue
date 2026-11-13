@@ -4,6 +4,7 @@ import type { useBulkSelection } from '~/composables/useBulkSelection';
 import type { useContactBulkOperations } from '~/composables/useContactBulkOperations';
 import {
 	ChevronDownIcon,
+	ChevronLeftIcon,
 	ChevronRightIcon,
 	CloseIcon,
 	DownloadIcon,
@@ -22,22 +23,65 @@ const props = defineProps<{
 	bulkOps: ReturnType<typeof useContactBulkOperations>;
 	topics: ReadonlyArray<{ _id: Id<'topics'>; name: string }> | null | undefined;
 	canManage: boolean;
-	totalCount: number;
+	/** Every matching contact, when the list knows it; null while more pages remain unread. */
+	totalCount: number | null;
 	loadedCount: number;
+	/** More matching contacts exist than are loaded. */
+	hasMore?: boolean;
 }>();
 
 const { t } = useI18n();
 
-// Any click outside the Actions menu closes it and its submenus. The listener
-// lives with this bar, which the page always renders, so a menu left open when
-// the selection emptied is closed by the next click too.
-const bulkActionDropdownRef = ref<HTMLElement | null>(null);
+// "Select all matching" is offered whenever the selection can grow past the
+// loaded rows. The number is named only when it is known.
+const canSelectMore = computed(
+	() => props.hasMore || (props.totalCount !== null && props.totalCount > props.loadedCount)
+);
 
-useClickOutside(bulkActionDropdownRef, () => {
-	props.bulkOps.isBulkActionDropdownOpen.value = false;
-	props.bulkOps.isAddToListDropdownOpen.value = false;
-	props.bulkOps.isRemoveFromListDropdownOpen.value = false;
+// The topic pickers are a second view inside the one Actions menu rather than
+// flyouts beside it: a flyout off a right-aligned menu leaves the viewport on
+// narrow screens.
+const menuView = computed<'root' | 'add' | 'remove'>(() => {
+	if (props.bulkOps.isAddToListDropdownOpen.value) return 'add';
+	if (props.bulkOps.isRemoveFromListDropdownOpen.value) return 'remove';
+	return 'root';
 });
+
+const menuContentRef = ref<HTMLElement | null>(null);
+
+async function showMenuView(view: 'root' | 'add' | 'remove') {
+	props.bulkOps.isAddToListDropdownOpen.value = view === 'add';
+	props.bulkOps.isRemoveFromListDropdownOpen.value = view === 'remove';
+	// The item that was pressed is gone, so focus moves to the new view's first item.
+	await nextTick();
+	menuContentRef.value?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus();
+}
+
+watch(
+	() => props.bulkOps.isBulkActionDropdownOpen.value,
+	(open) => {
+		if (open) return;
+		props.bulkOps.isAddToListDropdownOpen.value = false;
+		props.bulkOps.isRemoveFromListDropdownOpen.value = false;
+	}
+);
+
+// No menu while a bulk operation runs: its items would start a second one.
+function setMenuOpen(open: boolean) {
+	if (open && props.bulkOps.isBulkOperationInProgress.value) return;
+	props.bulkOps.isBulkActionDropdownOpen.value = open;
+}
+
+// The bar unmounts with the selection; a menu left open would come back open.
+watch(
+	() => props.bulkSelection.hasSelected.value,
+	(hasSelected) => {
+		if (!hasSelected) props.bulkOps.isBulkActionDropdownOpen.value = false;
+	}
+);
+
+const menuItemClass =
+	'w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none flex items-center gap-2 transition-colors';
 </script>
 
 <template>
@@ -49,163 +93,131 @@ useClickOutside(bulkActionDropdownRef, () => {
 		leave-from-class="opacity-100 scale-100"
 		leave-to-class="opacity-0 scale-95"
 	>
-		<div v-if="canManage && bulkSelection.hasSelected.value" class="flex items-center gap-2">
+		<div
+			v-if="canManage && bulkSelection.hasSelected.value"
+			class="flex flex-wrap items-center gap-2"
+		>
 			<span class="text-sm text-text-secondary">{{ bulkSelection.selectedCountText.value }}</span>
 
 			<button
-				v-if="!bulkSelection.isSelectAllMatching.value && totalCount > loadedCount"
-				class="text-sm text-brand hover:underline"
+				v-if="!bulkSelection.isSelectAllMatching.value && canSelectMore"
+				type="button"
+				class="text-sm text-brand hover:underline pointer-coarse:min-h-11"
 				:disabled="bulkOps.isLoadingAllMatching.value"
 				@click="bulkOps.selectAllMatchingFilter"
 			>
 				<SpinnerIcon v-if="bulkOps.isLoadingAllMatching.value" class="w-3 h-3 inline mr-1" />
-				{{ t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount }) }}
+				{{
+					totalCount !== null && !hasMore
+						? t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount })
+						: t('dashboard.audience.contacts.index.selectAllMatchingUnknown')
+				}}
 			</button>
 
 			<!-- Bulk Action Dropdown -->
-			<div ref="bulkActionDropdownRef" class="relative">
-				<UiButton
-					variant="secondary"
-					:disabled="bulkOps.isBulkOperationInProgress.value"
-					@click.stop="
-						bulkOps.isBulkActionDropdownOpen.value = !bulkOps.isBulkActionDropdownOpen.value
-					"
-				>
-					<template #iconLeft><MoreHorizontalIcon class="w-4 h-4" /></template>
-					{{ t('common.actions') }}
-					<template #iconRight><ChevronDownIcon class="w-4 h-4" /></template>
-				</UiButton>
+			<UiDropdownMenu
+				:open="bulkOps.isBulkActionDropdownOpen.value"
+				position="right"
+				@update:open="setMenuOpen"
+			>
+				<template #trigger>
+					<UiButton variant="secondary" :disabled="bulkOps.isBulkOperationInProgress.value">
+						<template #iconLeft><MoreHorizontalIcon class="w-4 h-4" /></template>
+						{{ t('common.actions') }}
+						<template #iconRight><ChevronDownIcon class="w-4 h-4" /></template>
+					</UiButton>
+				</template>
 
-				<Transition
-					enter-active-class="duration-(--motion-moderate) ease-spring"
-					enter-from-class="opacity-0 translate-y-1"
-					enter-to-class="opacity-100 translate-y-0"
-					leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-					leave-from-class="opacity-100 translate-y-0"
-					leave-to-class="opacity-0 translate-y-1"
-				>
-					<div
-						v-if="bulkOps.isBulkActionDropdownOpen.value"
-						class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-20 py-1"
-					>
-						<!-- Add to Topic submenu -->
-						<div class="relative">
-							<button
-								class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
-								@click.stop="
-									bulkOps.isAddToListDropdownOpen.value = !bulkOps.isAddToListDropdownOpen.value;
-									bulkOps.isRemoveFromListDropdownOpen.value = false;
-								"
-							>
-								<span class="flex items-center gap-2">
-									<TagIcon class="w-4 h-4 text-brand" />
-									{{ t('dashboard.audience.contacts.index.bulk.addToTopic') }}
-								</span>
-								<ChevronRightIcon class="w-4 h-4" />
-							</button>
-
-							<Transition
-								enter-active-class="duration-(--motion-moderate) ease-spring"
-								enter-from-class="opacity-0 -translate-x-1"
-								enter-to-class="opacity-100 translate-x-0"
-								leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-								leave-from-class="opacity-100 translate-x-0"
-								leave-to-class="opacity-0 -translate-x-1"
-							>
-								<div
-									v-if="bulkOps.isAddToListDropdownOpen.value"
-									class="absolute left-full top-0 ml-1 w-48 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg py-1 max-h-64 overflow-y-auto"
-								>
-									<template v-if="topics && topics.length > 0">
-										<button
-											v-for="list in topics"
-											:key="list._id"
-											class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-											@click="bulkOps.handleBulkAddToList(list._id)"
-										>
-											<span class="truncate">{{ list.name }}</span>
-										</button>
-									</template>
-									<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-										{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
-									</div>
-								</div>
-							</Transition>
-						</div>
-
-						<!-- Remove from Topic submenu -->
-						<div class="relative">
-							<button
-								class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
-								@click.stop="
-									bulkOps.isRemoveFromListDropdownOpen.value =
-										!bulkOps.isRemoveFromListDropdownOpen.value;
-									bulkOps.isAddToListDropdownOpen.value = false;
-								"
-							>
-								<span class="flex items-center gap-2">
-									<ListMinusIcon class="w-4 h-4 text-text-secondary" />
-									{{ t('dashboard.audience.contacts.index.bulk.removeFromTopic') }}
-								</span>
-								<ChevronRightIcon class="w-4 h-4" />
-							</button>
-
-							<Transition
-								enter-active-class="duration-(--motion-moderate) ease-spring"
-								enter-from-class="opacity-0 -translate-x-1"
-								enter-to-class="opacity-100 translate-x-0"
-								leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-								leave-from-class="opacity-100 translate-x-0"
-								leave-to-class="opacity-0 -translate-x-1"
-							>
-								<div
-									v-if="bulkOps.isRemoveFromListDropdownOpen.value"
-									class="absolute left-full top-0 ml-1 w-48 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg py-1 max-h-64 overflow-y-auto"
-								>
-									<template v-if="topics && topics.length > 0">
-										<button
-											v-for="list in topics"
-											:key="list._id"
-											class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-											@click="bulkOps.handleBulkRemoveFromList(list._id)"
-										>
-											<span class="truncate">{{ list.name }}</span>
-										</button>
-									</template>
-									<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-										{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
-									</div>
-								</div>
-							</Transition>
-						</div>
-
-						<div class="h-px bg-border-subtle my-1" />
-
+				<div ref="menuContentRef">
+					<template v-if="menuView === 'root'">
+						<!-- These two open a view, so they stop the click before the
+						     menu's outside-click check sees an item that is already gone. -->
 						<button
-							class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-							@click="bulkOps.handleBulkExport"
+							type="button"
+							role="menuitem"
+							tabindex="-1"
+							aria-haspopup="menu"
+							:class="[menuItemClass, 'justify-between']"
+							@click.stop="showMenuView('add')"
 						>
-							<DownloadIcon class="w-4 h-4 text-text-secondary" />
+							<span class="flex items-center gap-2">
+								<TagIcon class="w-4 h-4 text-brand" />
+								{{ t('dashboard.audience.contacts.index.bulk.addToTopic') }}
+							</span>
+							<ChevronRightIcon class="w-4 h-4" />
+						</button>
+						<button
+							type="button"
+							role="menuitem"
+							tabindex="-1"
+							aria-haspopup="menu"
+							:class="[menuItemClass, 'justify-between']"
+							@click.stop="showMenuView('remove')"
+						>
+							<span class="flex items-center gap-2">
+								<ListMinusIcon class="w-4 h-4 text-text-secondary" />
+								{{ t('dashboard.audience.contacts.index.bulk.removeFromTopic') }}
+							</span>
+							<ChevronRightIcon class="w-4 h-4" />
+						</button>
+
+						<UiDropdownDivider />
+
+						<UiDropdownMenuItem :icon="DownloadIcon" @click="bulkOps.handleBulkExport">
 							{{ t('dashboard.audience.contacts.index.bulk.exportSelected') }}
-						</button>
+						</UiDropdownMenuItem>
 
-						<div class="h-px bg-border-subtle my-1" />
+						<UiDropdownDivider />
 
-						<button
-							class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error-subtle flex items-center gap-2 transition-colors"
-							@click="bulkOps.openBulkDeleteModal"
-						>
-							<TrashIcon class="w-4 h-4" />
+						<UiDropdownMenuItem :icon="TrashIcon" danger @click="bulkOps.openBulkDeleteModal">
 							{{ t('dashboard.audience.contacts.index.bulk.deleteSelected') }}
+						</UiDropdownMenuItem>
+					</template>
+
+					<template v-else>
+						<button
+							type="button"
+							role="menuitem"
+							tabindex="-1"
+							:class="[menuItemClass, 'text-text-secondary']"
+							@click.stop="showMenuView('root')"
+						>
+							<ChevronLeftIcon class="w-4 h-4" />
+							{{
+								menuView === 'add'
+									? t('dashboard.audience.contacts.index.bulk.addToTopic')
+									: t('dashboard.audience.contacts.index.bulk.removeFromTopic')
+							}}
 						</button>
-					</div>
-				</Transition>
-			</div>
+						<UiDropdownDivider />
+						<div class="max-h-64 overflow-y-auto">
+							<template v-if="topics && topics.length > 0">
+								<UiDropdownMenuItem
+									v-for="list in topics"
+									:key="list._id"
+									:icon="TagIcon"
+									@click="
+										menuView === 'add'
+											? bulkOps.handleBulkAddToList(list._id)
+											: bulkOps.handleBulkRemoveFromList(list._id)
+									"
+								>
+									<span class="truncate">{{ list.name }}</span>
+								</UiDropdownMenuItem>
+							</template>
+							<p v-else class="px-3 py-2 text-sm text-text-tertiary">
+								{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
+							</p>
+						</div>
+					</template>
+				</div>
+			</UiDropdownMenu>
 
 			<button
-				class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				@click="bulkSelection.clearSelection()"
+				type="button"
+				class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:aria-label="t('dashboard.audience.contacts.index.clearSelection')"
+				@click="bulkSelection.clearSelection()"
 			>
 				<CloseIcon class="w-4 h-4" />
 			</button>

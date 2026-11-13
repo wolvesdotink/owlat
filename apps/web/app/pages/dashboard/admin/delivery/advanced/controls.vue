@@ -318,7 +318,9 @@ async function changePreset(
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.controls.loading')"
 				>
-					<div class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div
+						class="h-40 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
+					/>
 				</div>
 			</template>
 
@@ -343,10 +345,12 @@ async function changePreset(
 						{{ t('dashboard.admin.delivery.advanced.controls.pickCell') }}
 					</h2>
 					<div class="mt-3 flex flex-wrap gap-2">
+						<!-- The picked cell takes the filled variant: the outline recipe
+						     draws no pressed state of its own. -->
 						<UiButton
 							v-for="cell in cells"
 							:key="cell.cellKey"
-							variant="outline"
+							:variant="cell.cellKey === selectedCellKey ? 'primary' : 'outline'"
 							size="sm"
 							:aria-pressed="cell.cellKey === selectedCellKey"
 							:data-testid="`ramp-select-${cell.cellKey}`"
@@ -365,10 +369,10 @@ async function changePreset(
 						operator chose for a different cell.
 					-->
 					<!--
-						AND THE FACT THE SERVER CUTS ON, not the one the preset picker gets: a
-						rung bounds the SHARE dial, and `referenceTransportId` is null on a
-						deployment with TWO relays, where the server does cut. Reading it here
-						promised that operator the 75% move would not happen.
+						AND THE FACT THE SERVER CUTS ON (the preset picker below reads it too):
+						a rung bounds the SHARE dial, and `referenceTransportId` is null on a
+						deployment with TWO relays, where the server does cut. Reading that
+						here would promise the operator the 75% move does not happen.
 					-->
 					<DeliveryRampCellControls
 						:key="selectedCell.cellKey"
@@ -430,7 +434,7 @@ async function changePreset(
 							:stream="stream"
 							:preset="presetFor(stream)"
 							:default-preset="controls.defaultPreset"
-							:has-reference-arm="controls.referenceTransportId !== null"
+							:has-reference-arm="controls.isRelayConfigured"
 							:busy="isChangingPreset"
 							@change="(preset) => changePreset(stream, preset)"
 						/>

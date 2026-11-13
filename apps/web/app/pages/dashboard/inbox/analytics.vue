@@ -19,7 +19,7 @@ import {
 	inboxSlaDurationLabel,
 	type InboxAnalyticsPreset,
 } from '~/utils/inboxSla';
-import { AlarmIcon, InboxIcon } from '@coolicons/vue';
+import { AlarmIcon, InboxIcon, LockIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -178,8 +178,18 @@ const labelEvery = computed(() => inboxAnalyticsLabelStep(volumeSeries.value.len
 			</template>
 		</UiPageHeader>
 
-		<div v-if="showAdminGate" class="py-20 text-center text-text-secondary">
-			{{ t('dashboard.inbox.analytics.adminOnly') }}
+		<!-- The same gate as Response targets beside it. -->
+		<div
+			v-if="showAdminGate"
+			class="card flex flex-col items-center justify-center py-16 text-center px-6"
+		>
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<p class="text-text-secondary font-medium">
+				{{ t('dashboard.inbox.responseTargets.adminGate.title') }}
+			</p>
+			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
+				{{ t('dashboard.inbox.analytics.adminOnly') }}
+			</p>
 		</div>
 
 		<template v-else>
@@ -212,12 +222,16 @@ const labelEvery = computed(() => inboxAnalyticsLabelStep(volumeSeries.value.len
 				@retry="refetch"
 			>
 				<template #loading>
-					<div class="grid grid-cols-2 lg:grid-cols-4 gap-6" role="status" aria-live="polite">
-						<div
-							v-for="n in 4"
-							:key="n"
-							class="h-20 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
-						/>
+					<!-- The page's shape: four tiles, the two chart cards, the table. -->
+					<div class="space-y-6" role="status" aria-live="polite">
+						<span class="sr-only">{{ t('common.loading') }}</span>
+						<div class="grid grid-cols-2 lg:grid-cols-4 gap-6" aria-hidden="true">
+							<UiSkeleton v-for="n in 4" :key="n" class="h-20 rounded-xl" />
+						</div>
+						<div class="grid gap-6 lg:grid-cols-2" aria-hidden="true">
+							<UiSkeleton v-for="n in 2" :key="n" class="h-56 rounded-(--radius-card)" />
+						</div>
+						<UiSkeleton class="h-40 rounded-(--radius-card)" aria-hidden="true" />
 					</div>
 				</template>
 

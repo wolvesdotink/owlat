@@ -157,7 +157,7 @@ function pickCategory(label: MailCategory) {
 			<UiTooltip :text="t('components.postbox.postboxThreadCategoryList.recategorize')">
 				<button
 					type="button"
-					class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded bg-bg-surface/80 text-text-tertiary hover:text-text-primary"
+					class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 pointer-coarse:opacity-100 p-1 rounded bg-bg-surface/80 text-text-tertiary hover:text-text-primary"
 					:aria-label="t('components.postbox.postboxThreadCategoryList.recategorize')"
 					@click.prevent.stop="recategorizeTarget = thread._id"
 				>

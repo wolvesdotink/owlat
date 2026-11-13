@@ -26,6 +26,10 @@ const stubs = {
 	},
 	DeliveryRelayDomainStatus: { template: '<div data-testid="domain-status-stub" />' },
 	UiButton: { template: '<button type="button"><slot /></button>' },
+	UiQueryBoundary: {
+		props: ['loading', 'error'],
+		template: '<div data-testid="migration-reads" :data-error="String(!!error)" />',
+	},
 };
 
 interface Identity {
@@ -76,7 +80,10 @@ function migrationRoutes(): PageState['routes'] {
 	}));
 }
 
-async function mountPage(over: Partial<PageState> = {}) {
+async function mountPage(
+	over: Partial<PageState> = {},
+	failing: FunctionReference<'query'>[] = []
+) {
 	const state: PageState = {
 		catalog: [
 			{ kind: 'mta', label: 'Own MTA', isAvailable: true },
@@ -96,12 +103,16 @@ async function mountPage(over: Partial<PageState> = {}) {
 		[getFunctionName(api.delivery.providerRoutes.listRoutes), state.routes],
 		[getFunctionName(api.domains.mandrillRelayQueries.listIdentities), state.identities],
 	]);
-	vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({
-		data: ref(answers.get(getFunctionName(query))),
-		isLoading: ref(false),
-		error: ref(null),
-		refetch: vi.fn(),
-	}));
+	const failingNames = new Set(failing.map((query) => getFunctionName(query)));
+	vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => {
+		const fails = failingNames.has(getFunctionName(query));
+		return {
+			data: ref(fails ? undefined : answers.get(getFunctionName(query))),
+			isLoading: ref(false),
+			error: ref(fails ? new Error('read failed') : null),
+			refetch: vi.fn(),
+		};
+	});
 	vi.stubGlobal('useCopyToClipboard', () => ({ copy: vi.fn(), isCopied: () => false }));
 	const component = (await import('../migrate.vue')).default;
 	const EnvSetupSteps = (await import('~/components/delivery/EnvSetupSteps.vue')).default;
@@ -160,6 +171,15 @@ describe('the flow renders the runbook in order', () => {
 		// Everything downstream of the key is locked, and says why.
 		expect(stepState(wrapper, 'history')).toBe('blocked');
 		expect(stepState(wrapper, 'preset')).toBe('blocked');
+	});
+});
+
+describe('the checklist waits for its reads', () => {
+	it('shows the failed read, not a missing key, when the catalog read fails', async () => {
+		const wrapper = await mountPage({}, [api.delivery.providerRoutes.listTransportCatalog]);
+		expect(wrapper.get('[data-testid="migration-reads"]').attributes('data-error')).toBe('true');
+		expect(wrapper.find('[data-testid="migration-key-missing"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="migration-steps"]').exists()).toBe(false);
 	});
 });
 

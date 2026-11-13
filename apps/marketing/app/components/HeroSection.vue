@@ -142,13 +142,14 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 				>
 					{{ t('hero.standards') }}
 				</p>
-				<div class="lp-marquee">
+				<!-- Hovering stops the scroll, so a name can be read. -->
+				<div class="lp-marquee hover:[&_.lp-marquee-track]:[animation-play-state:paused]">
 					<div class="lp-marquee-track">
 						<div class="lp-marquee-half">
 							<span
 								v-for="std in standards"
 								:key="std"
-								class="font-mono text-caption font-medium text-text-primary/50 whitespace-nowrap"
+								class="font-mono text-caption font-medium text-text-tertiary whitespace-nowrap"
 							>
 								{{ std }}
 							</span>
@@ -157,7 +158,7 @@ const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload
 							<span
 								v-for="std in standards"
 								:key="std"
-								class="font-mono text-caption font-medium text-text-primary/50 whitespace-nowrap"
+								class="font-mono text-caption font-medium text-text-tertiary whitespace-nowrap"
 							>
 								{{ std }}
 							</span>

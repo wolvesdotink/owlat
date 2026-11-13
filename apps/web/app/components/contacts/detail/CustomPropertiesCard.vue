@@ -15,6 +15,8 @@ defineProps<{
 }>();
 
 const { t } = useI18n();
+
+const fieldId = useId();
 </script>
 
 <template>
@@ -26,14 +28,20 @@ const { t } = useI18n();
 		<!-- Edit mode: one input per property -->
 		<div v-if="isEditing" class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
 			<div v-for="property in properties" :key="property._id">
-				<label class="label">{{ property.label }}</label>
-				<select v-if="property.type === 'boolean'" v-model="form[property._id]" class="input">
+				<label class="label" :for="`${fieldId}-${property._id}`">{{ property.label }}</label>
+				<select
+					v-if="property.type === 'boolean'"
+					:id="`${fieldId}-${property._id}`"
+					v-model="form[property._id]"
+					class="input"
+				>
 					<option value="">{{ t('dashboard.audience.contacts.detail.notSet') }}</option>
 					<option value="true">{{ t('common.yes') }}</option>
 					<option value="false">{{ t('common.no') }}</option>
 				</select>
 				<input
 					v-else
+					:id="`${fieldId}-${property._id}`"
 					v-model="form[property._id]"
 					:type="property.type === 'number' ? 'number' : property.type === 'date' ? 'date' : 'text'"
 					class="input"

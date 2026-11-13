@@ -30,6 +30,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+const titleId = useId();
+
 const stepDescription = computed(() => {
 	switch (props.csvImport.step.value) {
 		case 'upload':
@@ -165,6 +167,7 @@ watch(
 		size="2xl"
 		:closable="canClose"
 		:persistent="!canClose"
+		:labelled-by="titleId"
 		@update:open="
 			(v) => {
 				if (!v) requestClose();
@@ -175,7 +178,7 @@ watch(
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="FileSpreadsheetIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.csvImportModal.title') }}
 				</h2>
 				<p class="text-sm text-text-tertiary">{{ stepDescription }}</p>
@@ -245,12 +248,6 @@ watch(
 		<!-- Step 4: Importing -->
 		<div v-else-if="csvImport.step.value === 'importing'" class="py-8">
 			<div class="flex flex-col items-center gap-6">
-				<div class="relative">
-					<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
-					<div
-						class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
-					/>
-				</div>
 				<div class="text-center">
 					<p class="text-lg font-medium text-text-primary">
 						{{ t('components.contacts.csvImportModal.importing.title') }}

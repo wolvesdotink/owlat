@@ -6,7 +6,11 @@ import OperatorAdminsTab from '~/components/operator/AdminsTab.vue';
 import OperatorOrganizationsTab from '~/components/operator/OrganizationsTab.vue';
 import OperatorOverviewTab from '~/components/operator/OverviewTab.vue';
 import OperatorReviewTab from '~/components/operator/ReviewTab.vue';
-import { operatorConsoleLayout, type OperatorReviewItem } from '~/utils/operatorConsole';
+import {
+	isBlockingAbuseStatus,
+	operatorConsoleLayout,
+	type OperatorReviewItem,
+} from '~/utils/operatorConsole';
 
 const { t } = useI18n();
 
@@ -56,6 +60,10 @@ const tabReads = computed(
 		})[activeTab.value]
 );
 const tabError = computed(() => tabReads.value.find((q) => q.error.value)?.error.value ?? null);
+// Until every read behind the tab has answered, the tab would claim "nothing to
+// review", a clean status or an empty roster, which on a moderation console
+// reads as an all-clear.
+const tabLoading = computed(() => tabReads.value.some((q) => q.data.value === undefined));
 function retryTab() {
 	for (const q of tabReads.value) if (q.error.value) q.refetch();
 }
@@ -68,17 +76,17 @@ const allTabs = computed(() => [
 	{
 		value: 'review',
 		label: t('dashboard.admin.operator.index.tabs.review'),
-		count: reviewQueue.value?.pendingCount ?? 0,
+		count: reviewQueue.value?.pendingCount,
 	},
 	{
 		value: 'organizations',
 		label: t('dashboard.admin.operator.index.tabs.organizations'),
-		count: flaggedOrgs.value?.length ?? 0,
+		count: flaggedOrgs.value?.length,
 	},
 	{
 		value: 'admins',
 		label: t('dashboard.admin.operator.index.tabs.admins'),
-		count: admins.value?.length ?? 0,
+		count: admins.value?.length,
 	},
 ]);
 const tabs = computed(() =>
@@ -116,7 +124,19 @@ const { run: removePlatformAdmin, isLoading: removingAdmin } = useBackendOperati
 );
 
 // ── Content review actions ────────────────────────────────────────────────────
+// The row whose approval is in flight, so only its button spins.
+const approvingKey = ref<string | null>(null);
+
 async function onApprove(item: OperatorReviewItem) {
+	approvingKey.value = `${item.type}-${item.id}`;
+	try {
+		await approveItem(item);
+	} finally {
+		approvingKey.value = null;
+	}
+}
+
+async function approveItem(item: OperatorReviewItem) {
 	if (item.type === 'campaign') {
 		const r = await approveCampaign({ campaignId: item.id as Id<'campaigns'> });
 		if (r.ok)
@@ -200,7 +220,9 @@ async function confirmStatus() {
 	});
 	if (r.ok) {
 		showToast(
-			t('dashboard.admin.operator.index.toasts.statusSet', { status: statusTargetValue.value })
+			t('dashboard.admin.operator.index.toasts.statusSet', {
+				status: t(`dashboard.admin.operator.index.abuseStatus.${statusTargetValue.value}`),
+			})
 		);
 		statusModalOpen.value = false;
 	}
@@ -213,10 +235,15 @@ const currentAbuseStatus = computed(() => orgDetail.value?.settings?.abuseStatus
 // the operator can choose to escalate to a suspension.
 const isWarnedAbuseStatus = computed(() => currentAbuseStatus.value === 'warned');
 
+// Suspending or banning stops a workspace's mail, so the confirm says so and
+// takes the danger treatment instead of a neutral "Apply".
+const statusTargetBlocks = computed(() => isBlockingAbuseStatus(statusTargetValue.value));
+
 // ── Admin roster ──────────────────────────────────────────────────────────────
 const addAdminModalOpen = ref(false);
 const addAdminUserId = ref('');
 const addAdminRole = ref<'admin' | 'superadmin'>('admin');
+const addAdminUserSelectId = useId();
 
 // Anyone already on the roster is not a candidate — `addPlatformAdmin` refuses a
 // duplicate, so offering them here could only ever produce an error toast.
@@ -273,9 +300,21 @@ async function confirmAddAdmin() {
 	}
 }
 
-async function onRemoveAdmin(adminId: string, email: string) {
-	const r = await removePlatformAdmin({ adminId: adminId as Id<'platformAdmins'> });
-	if (r.ok) showToast(t('dashboard.admin.operator.index.toasts.adminRemoved', { email }));
+// Removing platform access is confirmed first, naming the account it affects.
+const removeAdminTarget = ref<{ adminId: string; email: string } | null>(null);
+
+function onRemoveAdmin(adminId: string, email: string) {
+	removeAdminTarget.value = { adminId, email };
+}
+
+async function confirmRemoveAdmin() {
+	const target = removeAdminTarget.value;
+	if (!target) return;
+	const r = await removePlatformAdmin({ adminId: target.adminId as Id<'platformAdmins'> });
+	if (r.ok) {
+		showToast(t('dashboard.admin.operator.index.toasts.adminRemoved', { email: target.email }));
+		removeAdminTarget.value = null;
+	}
 }
 
 const anyMutationLoading = computed(
@@ -300,7 +339,12 @@ const anyMutationLoading = computed(
 		<UiTabs v-model="activeTab" :tabs="tabs" :panel-id="tabPanelId" class="mb-6" />
 
 		<div v-bind="tabPanelAttrs(tabPanelId, tabs, activeTab)">
-			<UiQueryBoundary v-if="tabError" :error="tabError" @retry="retryTab" />
+			<UiQueryBoundary
+				v-if="tabError || tabLoading"
+				:loading="tabLoading"
+				:error="tabError"
+				@retry="retryTab"
+			/>
 
 			<OperatorOverviewTab
 				v-else-if="activeTab === 'overview'"
@@ -312,7 +356,7 @@ const anyMutationLoading = computed(
 			<OperatorReviewTab
 				v-else-if="activeTab === 'review'"
 				:review-queue="reviewQueue"
-				:approving="approvingCampaign || approvingTransactional"
+				:approving-key="approvingKey"
 				:busy="anyMutationLoading"
 				@approve="onApprove"
 				@reject="openReject"
@@ -387,9 +431,16 @@ const anyMutationLoading = computed(
 				<UiButton variant="ghost" @click="statusModalOpen = false">{{
 					t('common.cancel')
 				}}</UiButton>
-				<UiButton variant="primary" :loading="settingStatus" @click="confirmStatus">{{
-					t('common.apply')
-				}}</UiButton>
+				<UiButton
+					:variant="statusTargetBlocks ? 'danger' : 'primary'"
+					:loading="settingStatus"
+					@click="confirmStatus"
+					>{{
+						statusTargetBlocks
+							? t('dashboard.admin.operator.index.statusModal.confirmBlock')
+							: t('common.apply')
+					}}</UiButton
+				>
 			</template>
 		</UiModal>
 
@@ -399,11 +450,18 @@ const anyMutationLoading = computed(
 			:title="t('dashboard.admin.operator.index.addAdminModal.title')"
 		>
 			<div class="space-y-3">
-				<UiSelect
-					v-model="addAdminUserId"
-					:label="t('dashboard.admin.operator.index.addAdminModal.userLabel')"
-					:options="userOptions"
-				/>
+				<!-- Every user on the instance is a candidate, so this is a native
+				     select: it has typeahead and the system picker on phones. -->
+				<div>
+					<label :for="addAdminUserSelectId" class="label">{{
+						t('dashboard.admin.operator.index.addAdminModal.userLabel')
+					}}</label>
+					<select :id="addAdminUserSelectId" v-model="addAdminUserId" class="input">
+						<option v-for="opt in userOptions" :key="opt.value" :value="opt.value">
+							{{ opt.label }}
+						</option>
+					</select>
+				</div>
 				<UiSelect
 					v-model="addAdminRole"
 					:label="t('dashboard.admin.operator.index.admins.role')"
@@ -419,5 +477,20 @@ const anyMutationLoading = computed(
 				}}</UiButton>
 			</template>
 		</UiModal>
+
+		<UiConfirmationDialog
+			:open="removeAdminTarget !== null"
+			variant="danger"
+			:title="t('dashboard.admin.operator.index.removeAdminDialog.title')"
+			:description="
+				t('dashboard.admin.operator.index.removeAdminDialog.description', {
+					email: removeAdminTarget?.email ?? '',
+				})
+			"
+			:confirm-text="t('common.remove')"
+			:is-loading="removingAdmin"
+			@confirm="confirmRemoveAdmin"
+			@update:open="removeAdminTarget = null"
+		/>
 	</div>
 </template>

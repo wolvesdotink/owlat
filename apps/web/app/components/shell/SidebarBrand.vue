@@ -21,7 +21,8 @@ const { t } = useI18n();
 			:class="{ 'justify-center w-full': collapsed }"
 		>
 			<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-				<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
+				<!-- The wordmark beside it names the link; folded, the mark has to. -->
+				<img src="/owlat.svg" :alt="collapsed ? 'Owlat' : ''" class="w-8 h-8 dark:invert" />
 			</div>
 			<span v-if="!collapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
 			<UiBadge v-if="!collapsed" size="sm">{{ t('shell.dashboard.alphaBadge') }}</UiBadge>
@@ -30,7 +31,8 @@ const { t } = useI18n();
 		<!-- Mobile close button -->
 		<button
 			v-if="!collapsed"
-			class="lg:hidden p-2 text-text-secondary hover:text-text-primary"
+			type="button"
+			class="lg:hidden flex size-11 items-center justify-center rounded-xl text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			@click="emit('close')"
 			:aria-label="t('common.close')"
 		>

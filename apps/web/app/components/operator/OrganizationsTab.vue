@@ -26,7 +26,17 @@ defineProps<{
 
 const emit = defineEmits<{ setStatus: [initial: AbuseStatus] }>();
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+/**
+ * The words for a backend enum value. A value with no copy of its own falls
+ * back to the raw value, which beats a blank badge.
+ */
+function enumLabel(group: 'abuseStatus' | 'riskLevel', value: string | undefined): string {
+	if (!value) return '—';
+	const key = `dashboard.admin.operator.index.${group}.${value}`;
+	return te(key) ? t(key) : value;
+}
 
 /** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
 const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
@@ -44,7 +54,7 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 					</h3>
 					<div class="flex items-center gap-2">
 						<UiBadge :variant="abuseStatusVariant(currentAbuseStatus)" size="md">{{
-							currentAbuseStatus
+							enumLabel('abuseStatus', currentAbuseStatus)
 						}}</UiBadge>
 						<span v-if="isBlockingAbuseStatus(currentAbuseStatus)" class="text-caption text-error">
 							{{ t('dashboard.admin.operator.index.sending.blocked') }}
@@ -100,9 +110,15 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 				>
 					<div>
 						<div class="flex items-center gap-2">
-							<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
+							<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
+								enumLabel('abuseStatus', o.abuseStatus)
+							}}</UiBadge>
 							<UiBadge :variant="riskLevelVariant(o.riskLevel)">
-								{{ t('dashboard.admin.operator.index.flagged.risk', { level: o.riskLevel }) }}
+								{{
+									t('dashboard.admin.operator.index.flagged.risk', {
+										level: enumLabel('riskLevel', o.riskLevel),
+									})
+								}}
 							</UiBadge>
 						</div>
 						<p class="mt-1 text-xs text-text-tertiary">
@@ -153,10 +169,14 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 								{{ o.defaultFromName || o.defaultFromEmail || '—' }}
 							</td>
 							<td class="py-2">
-								<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{ o.abuseStatus }}</UiBadge>
+								<UiBadge :variant="abuseStatusVariant(o.abuseStatus)">{{
+									enumLabel('abuseStatus', o.abuseStatus)
+								}}</UiBadge>
 							</td>
 							<td class="py-2">
-								<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{ o.riskLevel }}</UiBadge>
+								<UiBadge :variant="riskLevelVariant(o.riskLevel)">{{
+									enumLabel('riskLevel', o.riskLevel)
+								}}</UiBadge>
 							</td>
 							<td class="py-2 text-right text-text-secondary">
 								{{ formatCount(o.contactCount) }}

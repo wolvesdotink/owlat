@@ -56,7 +56,12 @@ watch(
 </script>
 
 <template>
-	<UiModal :open="show" :title="t('builder.variableDialog.title')" @update:open="handleClose">
+	<UiModal
+		color-scheme="light"
+		:open="show"
+		:title="t('builder.variableDialog.title')"
+		@update:open="handleClose"
+	>
 		<div class="space-y-4">
 			<div>
 				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-name">{{
@@ -66,14 +71,27 @@ watch(
 					id="variable-name"
 					v-model="variableKey"
 					type="text"
-					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand focus:ring-1 focus:ring-brand"
+					class="input"
+					:class="{ 'input-error': normalizedKey && !isValidKey }"
 					placeholder="order_id"
+					:aria-invalid="normalizedKey && !isValidKey ? true : undefined"
+					:aria-describedby="
+						normalizedKey && !isValidKey
+							? 'variable-name-error'
+							: isDuplicate
+								? 'variable-name-duplicate'
+								: undefined
+					"
 					@keyup.enter="handleCreate"
 				/>
-				<p v-if="normalizedKey && !isValidKey" class="text-xs text-error mt-2">
+				<p
+					v-if="normalizedKey && !isValidKey"
+					id="variable-name-error"
+					class="text-xs text-error mt-2"
+				>
 					{{ t('builder.variableDialog.invalid') }}
 				</p>
-				<p v-else-if="isDuplicate" class="text-xs text-warning mt-2">
+				<p v-else-if="isDuplicate" id="variable-name-duplicate" class="text-xs text-warning mt-2">
 					{{ t('builder.variableDialog.duplicate') }}
 				</p>
 			</div>
@@ -82,11 +100,7 @@ watch(
 				<label class="block text-sm font-medium text-text-secondary mb-2" for="variable-type">{{
 					t('builder.variableDialog.type')
 				}}</label>
-				<select
-					id="variable-type"
-					v-model="variableType"
-					class="w-full px-4 py-3 bg-white/[0.04] border border-border-subtle rounded-lg text-text-primary outline-none transition-[border-color,box-shadow] duration-(--motion-fast) focus:border-brand"
-				>
+				<select id="variable-type" v-model="variableType" class="input">
 					<option value="string">{{ t('builder.variableDialog.types.string') }}</option>
 					<option value="number">{{ t('builder.variableDialog.types.number') }}</option>
 					<option value="boolean">{{ t('builder.variableDialog.types.boolean') }}</option>
@@ -95,7 +109,7 @@ watch(
 			</div>
 
 			<div
-				class="flex items-center justify-between rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2"
+				class="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-surface px-3 py-2"
 			>
 				<div>
 					<p class="text-xs text-text-tertiary">{{ t('builder.variableDialog.preview') }}</p>

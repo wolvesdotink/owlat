@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { CircleCheckIcon, CloseIcon, GitMergeIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 
@@ -19,9 +20,6 @@ const {
 	isAdding,
 	channelOptions,
 	handleAddIdentity,
-	handleRemoveIdentity,
-	handleVerifyIdentity,
-	handleMergeContacts,
 	getChannelIcon,
 	getChannelLabel,
 } = useContactIdentities(contactIdRef);
@@ -30,41 +28,58 @@ const emit = defineEmits<{
 	toast: [message: string];
 }>();
 
+// The operation helper presents a failure itself and resolves with `ok: false`
+// instead of throwing, so a success toast must wait for `ok`.
+const { run: removeIdentity } = useBackendOperation(api.contacts.identities.removeIdentity, {
+	label: () => t('shared.useContactIdentities.removeIdentityOperation'),
+});
+const { run: verifyIdentity } = useBackendOperation(api.contacts.identities.verifyIdentity, {
+	label: () => t('shared.useContactIdentities.verifyIdentityOperation'),
+});
+const { run: mergeContacts, isLoading: isMerging } = useBackendOperation(
+	api.contacts.identities.mergeContacts,
+	{ label: () => t('shared.useContactIdentities.mergeContactsOperation') }
+);
+
 const onAdd = async () => {
-	try {
-		await handleAddIdentity();
-		emit('toast', t('components.contacts.identitiesTab.toasts.added'));
-	} catch {
-		emit('toast', t('components.contacts.identitiesTab.toasts.addFailed'));
-	}
+	await handleAddIdentity();
+	// The composable closes the form only after a successful write.
+	if (!showAddForm.value) emit('toast', t('components.contacts.identitiesTab.toasts.added'));
 };
 
-const onRemove = async (id: Id<'contactIdentities'>) => {
-	try {
-		await handleRemoveIdentity(id);
-		emit('toast', t('components.contacts.identitiesTab.toasts.removed'));
-	} catch {
-		emit('toast', t('components.contacts.identitiesTab.toasts.removeFailed'));
-	}
+const onRemove = async (identityId: Id<'contactIdentities'>) => {
+	const result = await removeIdentity({ identityId });
+	if (result.ok) emit('toast', t('components.contacts.identitiesTab.toasts.removed'));
 };
 
-const onVerify = async (id: Id<'contactIdentities'>) => {
-	try {
-		await handleVerifyIdentity(id);
-		emit('toast', t('components.contacts.identitiesTab.toasts.verified'));
-	} catch {
-		emit('toast', t('components.contacts.identitiesTab.toasts.verifyFailed'));
-	}
+const onVerify = async (identityId: Id<'contactIdentities'>) => {
+	const result = await verifyIdentity({ identityId });
+	if (result.ok) emit('toast', t('components.contacts.identitiesTab.toasts.verified'));
 };
 
-const onMerge = async (sourceId: Id<'contacts'>) => {
-	try {
-		await handleMergeContacts(sourceId);
-		emit('toast', t('components.contacts.identitiesTab.toasts.merged'));
-	} catch {
-		emit('toast', t('components.contacts.identitiesTab.toasts.mergeFailed'));
-	}
+// A merge moves the other contact's records here and deletes it, with no undo,
+// so it asks first and names the contact that goes away.
+const pendingMerge = ref<{ id: Id<'contacts'>; label: string } | null>(null);
+const isMergeConfirmOpen = computed({
+	get: () => pendingMerge.value !== null,
+	set: (open) => {
+		if (!open) pendingMerge.value = null;
+	},
+});
+
+const confirmMerge = async () => {
+	const target = pendingMerge.value;
+	if (!target) return;
+	const result = await mergeContacts({
+		targetContactId: props.contactId,
+		sourceContactId: target.id,
+	});
+	pendingMerge.value = null;
+	if (result.ok) emit('toast', t('components.contacts.identitiesTab.toasts.merged'));
 };
+
+const describeMatches = (matched: Array<{ channel: string; identifier: string }>) =>
+	matched.map((i) => `${t(getChannelLabel(i.channel))}: ${i.identifier}`).join(', ');
 
 const identifierPlaceholder = computed(() => {
 	if (addForm.channel === 'email')
@@ -85,7 +100,9 @@ const identifierPlaceholder = computed(() => {
 				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
 					<component :is="showAddForm ? CloseIcon : PlusIcon" class="w-3 h-3" />
-					{{ showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity') }}
+					{{
+						showAddForm ? t('common.cancel') : t('components.contacts.identitiesTab.addIdentity')
+					}}
 				</UiButton>
 			</div>
 
@@ -116,14 +133,10 @@ const identifierPlaceholder = computed(() => {
 					</div>
 				</div>
 				<div class="flex items-center gap-4">
-					<label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-						<input
-							v-model="addForm.isPrimary"
-							type="checkbox"
-							class="rounded border-border-subtle"
-						/>
-						{{ t('components.contacts.identitiesTab.setPrimary') }}
-					</label>
+					<UiCheckbox
+						v-model="addForm.isPrimary"
+						:label="t('components.contacts.identitiesTab.setPrimary')"
+					/>
 					<UiButton size="sm" :disabled="!addForm.identifier.trim() || isAdding" @click="onAdd">
 						{{ isAdding ? t('components.contacts.identitiesTab.adding') : t('common.add') }}
 					</UiButton>
@@ -149,10 +162,16 @@ const identifierPlaceholder = computed(() => {
 					:key="identity._id"
 					class="group flex items-center gap-3 p-3 rounded-lg bg-bg-surface"
 				>
-					<component :is="getChannelIcon(identity.channel)" class="w-5 h-5 text-brand flex-shrink-0" />
+					<component
+						:is="getChannelIcon(identity.channel)"
+						class="w-5 h-5 text-brand flex-shrink-0"
+					/>
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2">
-							<p class="text-text-primary text-sm font-medium truncate">
+							<p
+								class="text-text-primary text-sm font-medium truncate"
+								:title="identity.identifier"
+							>
 								{{ identity.identifier }}
 							</p>
 							<span
@@ -171,10 +190,16 @@ const identifierPlaceholder = computed(() => {
 						</div>
 						<p class="text-xs text-text-tertiary">{{ t(getChannelLabel(identity.channel)) }}</p>
 					</div>
-					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-						<UiTooltip v-if="!identity.verifiedAt" :text="t('components.contacts.identitiesTab.markVerified')">
+					<div
+						class="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity"
+					>
+						<UiTooltip
+							v-if="!identity.verifiedAt"
+							:text="t('components.contacts.identitiesTab.markVerified')"
+						>
 							<button
-								class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
+								type="button"
+								class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
 								:aria-label="t('components.contacts.identitiesTab.markVerified')"
 								@click="onVerify(identity._id)"
 							>
@@ -183,7 +208,8 @@ const identifierPlaceholder = computed(() => {
 						</UiTooltip>
 						<UiTooltip :text="t('components.contacts.identitiesTab.removeIdentity')">
 							<button
-								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								type="button"
+								class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 								:aria-label="t('components.contacts.identitiesTab.removeIdentity')"
 								@click="onRemove(identity._id)"
 							>
@@ -219,9 +245,7 @@ const identifierPlaceholder = computed(() => {
 						<p class="text-xs text-text-tertiary">
 							{{
 								t('components.contacts.identitiesTab.matching', {
-									identifiers: suggestion.matchedIdentities
-										.map((i) => `${i.channel}: ${i.identifier}`)
-										.join(', '),
+									identifiers: describeMatches(suggestion.matchedIdentities),
 								})
 							}}
 						</p>
@@ -230,7 +254,13 @@ const identifierPlaceholder = computed(() => {
 						variant="secondary"
 						size="sm"
 						class="gap-1"
-						@click="onMerge(suggestion.contact._id)"
+						:disabled="isMerging"
+						@click="
+							pendingMerge = {
+								id: suggestion.contact._id,
+								label: suggestion.contact.email || describeMatches(suggestion.matchedIdentities),
+							}
+						"
 					>
 						<GitMergeIcon class="w-3 h-3" />
 						{{ t('components.contacts.identitiesTab.merge') }}
@@ -238,5 +268,19 @@ const identifierPlaceholder = computed(() => {
 				</div>
 			</div>
 		</div>
+
+		<UiConfirmationDialog
+			v-model:open="isMergeConfirmOpen"
+			variant="warning"
+			:title="t('components.contacts.identitiesTab.mergeConfirm.title')"
+			:description="
+				t('components.contacts.identitiesTab.mergeConfirm.body', {
+					contact: pendingMerge?.label ?? '',
+				})
+			"
+			:confirm-text="t('components.contacts.identitiesTab.merge')"
+			:is-loading="isMerging"
+			@confirm="confirmMerge"
+		/>
 	</div>
 </template>

@@ -6,7 +6,7 @@
 import { ClockIcon, PaperPlaneIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
-defineProps<{
+const props = defineProps<{
 	isDraft: boolean;
 	isScheduled: boolean;
 	isSaving: boolean;
@@ -16,6 +16,24 @@ defineProps<{
 const emit = defineEmits<{ back: []; save: []; schedule: []; sendNow: [] }>();
 
 const { t } = useI18n();
+
+// The three actions share one saving flag, so the spinner goes on the one that
+// was pressed; the others are only disabled.
+type Action = 'save' | 'schedule' | 'sendNow';
+const pressed = ref<Action | null>(null);
+const press = (action: Action) => {
+	pressed.value = action;
+	if (action === 'save') emit('save');
+	else if (action === 'schedule') emit('schedule');
+	else emit('sendNow');
+};
+watch(
+	() => props.isSaving,
+	(saving) => {
+		if (!saving) pressed.value = null;
+	}
+);
+const spinning = (action: Action) => props.isSaving && pressed.value === action;
 </script>
 
 <template>
@@ -30,9 +48,9 @@ const { t } = useI18n();
 				v-if="isDraft"
 				class="gap-2"
 				:disabled="isSaving"
-				@click="emit('save')"
+				@click="press('save')"
 			>
-				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+				<SpinnerIcon v-if="spinning('save')" class="w-4 h-4" />
 				{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
 			</UiButton>
 
@@ -41,9 +59,9 @@ const { t } = useI18n();
 				variant="secondary"
 				class="gap-2"
 				:disabled="isSaving || !canSchedule"
-				@click="emit('schedule')"
+				@click="press('schedule')"
 			>
-				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+				<SpinnerIcon v-if="spinning('schedule')" class="w-4 h-4" />
 				<ClockIcon v-else class="w-4 h-4" />
 				{{
 					isScheduled
@@ -53,8 +71,8 @@ const { t } = useI18n();
 			</UiButton>
 
 			<!-- Send Now button -->
-			<UiButton class="gap-2" :disabled="isSaving" @click="emit('sendNow')">
-				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+			<UiButton class="gap-2" :disabled="isSaving" @click="press('sendNow')">
+				<SpinnerIcon v-if="spinning('sendNow')" class="w-4 h-4" />
 				<PaperPlaneIcon v-else class="w-4 h-4" />
 				{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
 			</UiButton>

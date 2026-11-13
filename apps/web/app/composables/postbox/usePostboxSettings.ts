@@ -376,7 +376,7 @@ export function usePostboxSettings() {
 	}
 
 	async function setNotifyAbout(mode: PostboxNotifyAbout) {
-		await updateOp.run({ notifyAbout: mode });
+		return updateOp.run({ notifyAbout: mode });
 	}
 
 	async function setBadgeNonPeople(enabled: boolean) {

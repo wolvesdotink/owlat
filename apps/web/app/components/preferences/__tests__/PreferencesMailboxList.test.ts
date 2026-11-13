@@ -41,6 +41,8 @@ beforeEach(() => {
 	vi.stubGlobal('usePostboxMailbox', () => ({
 		mailboxes: computed(() => OWN),
 		isLoading: ref(false),
+		error: ref(null),
+		refetch: vi.fn(),
 	}));
 	vi.stubGlobal('useConvexQuery', (fn: Parameters<typeof getFunctionName>[0], args: unknown) => {
 		const name = getFunctionName(fn);
@@ -51,6 +53,8 @@ beforeEach(() => {
 		return {
 			data: computed(() => (resolved.value === 'skip' ? undefined : rows)),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 		};
 	});
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
@@ -67,6 +71,7 @@ function mountList() {
 				UiModal: true,
 				UiConfirmationDialog: true,
 				UiButton: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				I18nT: true,
 				SettingsHostedDecisionExclusion: true,
 			},
@@ -110,6 +115,23 @@ describe('PreferencesMailboxList', () => {
 		expect(usageQueryArgs).toEqual(['skip']);
 		expect(metaLines(wrapper)[0]).toContain('5 MB used');
 	});
+
+	it('shows a failed mailbox read as an error with a retry, not as "no mailboxes"', async () => {
+		isAdmin.value = false;
+		const refetch = vi.fn();
+		vi.stubGlobal('usePostboxMailbox', () => ({
+			mailboxes: computed(() => []),
+			isLoading: ref(false),
+			error: ref(new Error('boom')),
+			refetch,
+		}));
+		const wrapper = mountList();
+		expect(wrapper.text()).not.toContain('No mailboxes yet');
+		const boundary = wrapper.findComponent({ name: 'QueryBoundary' });
+		expect(boundary.exists()).toBe(true);
+		boundary.vm.$emit('retry');
+		expect(refetch).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('PreferencesMailboxList mark picker', () => {
@@ -123,6 +145,8 @@ describe('PreferencesMailboxList mark picker', () => {
 		vi.stubGlobal('usePostboxMailbox', () => ({
 			mailboxes: computed(() => own),
 			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
 		}));
 		vi.stubGlobal('useBackendOperation', (fn: Parameters<typeof getFunctionName>[0]) => ({
 			run: vi.fn(async (args: unknown) => {
@@ -140,7 +164,8 @@ describe('PreferencesMailboxList mark picker', () => {
 					UiModal: { props: ['open'], template: '<div v-if="open"><slot /></div>' },
 					UiTooltip: { template: '<div><slot /></div>' },
 					UiConfirmationDialog: true,
-					UiButton: true,
+					UiButton: { template: '<button type="button"><slot /></button>' },
+					UiBadge: { template: '<span><slot /></span>' },
 					I18nT: true,
 					SettingsHostedDecisionExclusion: true,
 				},
@@ -152,7 +177,7 @@ describe('PreferencesMailboxList mark picker', () => {
 		wrapper: ReturnType<typeof mountDialog>,
 		edit: (w: ReturnType<typeof mountDialog>) => Promise<void>
 	) {
-		await wrapper.find('button[aria-label="Name, colour and mark"]').trigger('click');
+		await wrapper.find('button[aria-label^="Name, colour and mark"]').trigger('click');
 		await edit(wrapper);
 		await wrapper.find('form').trigger('submit');
 		await vi.waitFor(() => expect(wrapper.find('form').exists()).toBe(false));
@@ -178,7 +203,7 @@ describe('PreferencesMailboxList mark picker', () => {
 
 	it('does not save more than one emoji', async () => {
 		const wrapper = mountDialog();
-		await wrapper.find('button[aria-label="Name, colour and mark"]').trigger('click');
+		await wrapper.find('button[aria-label^="Name, colour and mark"]').trigger('click');
 		await wrapper.find('[data-testid="mailbox-mark-emoji"]').setValue('🦉🦉');
 		await wrapper.find('form').trigger('submit');
 		expect(wrapper.text()).toContain('Use a single emoji.');

@@ -100,7 +100,14 @@ watch(results, (rows) => {
 	}
 });
 
-const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
+// `undefined` while the hit's full message loads, `null` once it is gone for
+// this viewer; the pane says which instead of falling back to "Select a result"
+// for a result that is already selected.
+const {
+	data: activeMessage,
+	error: activeMessageError,
+	refetch: refetchActiveMessage,
+} = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
 // The reader's sticky bar sticks below the back bar (hidden at lg, 0 there).
@@ -178,7 +185,9 @@ async function confirmSave() {
 </script>
 
 <template>
-	<div class="flex h-[calc(100vh-var(--shell-chrome-h,4rem))]">
+	<div
+		class="flex h-[calc(100dvh-var(--shell-chrome-mobile-h))] lg:h-[calc(100dvh-var(--titlebar-h,0px)-var(--shell-chrome-h,4rem))]"
+	>
 		<PostboxMailboxGuard
 			:mailbox-id="mailboxId"
 			:loading="mailboxesLoading"
@@ -212,7 +221,7 @@ async function confirmSave() {
 							<span class="sr-only">{{ t('dashboard.postbox.search.changeSearch') }}</span>
 							<UiShortcut
 								id="global.commandPalette"
-								class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
+								class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium text-text-tertiary bg-bg-elevated border border-border-subtle rounded"
 								aria-hidden="true"
 							/>
 						</button>
@@ -229,21 +238,18 @@ async function confirmSave() {
 									@keyup.enter="confirmSave"
 									@keyup.esc="isNamingSave = false"
 								/>
-								<button
+								<UiButton
+									size="sm"
 									type="button"
-									class="text-xs text-brand hover:underline disabled:opacity-50"
-									:disabled="!saveName.trim() || isSaving"
+									:disabled="!saveName.trim()"
+									:loading="isSaving"
 									@click="confirmSave"
 								>
 									{{ t('common.save') }}
-								</button>
-								<button
-									type="button"
-									class="text-xs text-text-tertiary hover:text-text-primary"
-									@click="isNamingSave = false"
-								>
+								</UiButton>
+								<UiButton variant="ghost" size="sm" type="button" @click="isNamingSave = false">
 									{{ t('common.cancel') }}
-								</button>
+								</UiButton>
 							</template>
 							<p v-else-if="existingSave" class="text-xs text-text-tertiary" role="status">
 								{{ t('dashboard.postbox.search.alreadySaved', { name: existingSave.name }) }}
@@ -286,10 +292,11 @@ async function confirmSave() {
 								:key="`${chip.key} ${chip.label}`"
 								type="button"
 								class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-bg-elevated text-text-secondary hover:text-text-primary"
+								:aria-label="t('dashboard.postbox.search.removeChip', { chip: chip.label })"
 								@click="removeChip(chip.key)"
 							>
 								{{ chip.label }}
-								<CloseIcon class="w-3 h-3" />
+								<CloseIcon class="w-3 h-3" aria-hidden="true" />
 							</button>
 						</div>
 					</header>
@@ -418,6 +425,21 @@ async function confirmSave() {
 					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
 						<PostboxThreadReader :message="activeMessage" :find-seed="findSeed" />
 					</AppErrorBoundary>
+					<UiQueryBoundary
+						v-else-if="activeMessageId && activeMessageError"
+						:error="activeMessageError"
+						@retry="refetchActiveMessage"
+					/>
+					<PostboxMessageNotFound v-else-if="activeMessageId && activeMessage === null">
+						<template #action>
+							<UiButton variant="secondary" @click="activeMessageId = null">
+								{{ t('dashboard.postbox.search.backToResults') }}
+							</UiButton>
+						</template>
+					</PostboxMessageNotFound>
+					<div v-else-if="activeMessageId" class="p-6" data-testid="search-reader-loading">
+						<PostboxReaderSkeleton />
+					</div>
 					<!-- Only invite a pick when there is something to pick; with no
 					     results the list pane already says why, so this stays blank. -->
 					<div v-else-if="results.length > 0" class="h-full flex items-center justify-center">

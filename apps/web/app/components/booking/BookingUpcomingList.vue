@@ -21,8 +21,9 @@ const cancel = useBackendOperation(api.booking.hostBookings.cancel, {
 
 async function confirmCancel() {
 	if (!cancelling.value) return;
-	await cancel.run({ bookingId: cancelling.value._id });
-	cancelling.value = null;
+	// A rejected cancel keeps the confirmation open: the booking still stands.
+	const result = await cancel.run({ bookingId: cancelling.value._id });
+	if (result.ok) cancelling.value = null;
 }
 </script>
 

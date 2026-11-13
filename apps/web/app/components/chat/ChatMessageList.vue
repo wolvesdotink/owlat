@@ -3,11 +3,13 @@ import type { Id } from '@owlat/api/dataModel';
 import { useReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { useVirtualList } from '@owlat/ui/composables/useVirtualList';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
-import { ChatCircleIcon } from '@coolicons/vue';
+import { ArrowDownIcon, ChatCircleIcon } from '@coolicons/vue';
 
 interface Props {
 	messages: ChatMessageRow[];
 	currentUserId: string;
+	/** Passed to each row: an edit that fails keeps its editor open. */
+	saveEdit?: (messageId: Id<'chatMessages'>, text: string) => Promise<{ ok: boolean }>;
 }
 
 const props = defineProps<Props>();
@@ -147,6 +149,22 @@ const rowClass = (row: ChatListRow): string => {
 	return row.firstInDay ? '' : 'pt-0.5';
 };
 
+// A message that lands while the reader is scrolled up stays below them; the
+// pill says so and takes them there. The polite live region names who wrote
+// each arrival, since the rows themselves are not a live region (mounting
+// virtualized history while scrolling would be announced too).
+const newBelow = ref(false);
+const announcement = ref('');
+const authorName = (message: ChatMessageRow) =>
+	message.author.name ?? message.author.email ?? t('common.unknown');
+const onScroll = () => {
+	if (newBelow.value && distanceFromEnd() <= STICK_TO_BOTTOM_PX) newBelow.value = false;
+};
+const jumpToLatest = () => {
+	newBelow.value = false;
+	scrollToEnd(reducedMotion.value ? 'auto' : 'smooth');
+};
+
 // A new message at the end follows the conversation only if the viewer was
 // already at the bottom, or it is their own (they just sent it). This watcher
 // runs before the DOM patch, so the distance is measured on the old content.
@@ -161,7 +179,17 @@ watch(
 		if (!scrollerRef.value) return;
 		const wasNearBottom = distanceFromEnd() <= STICK_TO_BOTTOM_PX;
 		const newest = props.messages.at(-1);
-		if (!wasNearBottom && !(newest && isOwnMessage(newest))) return;
+		const own = !!newest && isOwnMessage(newest);
+		if (newest && !own) {
+			announcement.value = t('components.chat.chatMessageList.newMessageFrom', {
+				name: authorName(newest),
+			});
+		}
+		if (!wasNearBottom && !own) {
+			newBelow.value = true;
+			return;
+		}
+		newBelow.value = false;
 		const behavior: ScrollBehavior = reducedMotion.value ? 'auto' : 'smooth';
 		nextTick(() => scrollToEnd(behavior));
 	}
@@ -169,7 +197,8 @@ watch(
 </script>
 
 <template>
-	<div ref="scrollerRef" class="flex-1 overflow-y-auto px-4 py-4">
+	<div ref="scrollerRef" class="flex-1 overflow-y-auto px-4 py-4" @scroll.passive="onScroll">
+		<p role="status" class="sr-only">{{ announcement }}</p>
 		<div
 			v-if="messages.length === 0"
 			class="flex flex-col items-center justify-center h-full text-center py-12"
@@ -201,7 +230,7 @@ watch(
 			>
 				<div v-if="row.item.kind === 'date'" class="flex items-center gap-4">
 					<div class="flex-1 h-px bg-border-subtle" />
-					<span class="text-[11px] text-text-tertiary font-medium flex-shrink-0">
+					<span class="text-2xs text-text-tertiary font-medium flex-shrink-0">
 						{{ row.item.label }}
 					</span>
 					<div class="flex-1 h-px bg-border-subtle" />
@@ -212,12 +241,27 @@ watch(
 					:is-own-message="isOwnMessage(row.item.message)"
 					:current-user-id="currentUserId"
 					:edit-requested="row.item.message._id === requestedEditId"
+					:save-edit="saveEdit"
 					@edit="(id, text) => emit('edit', id, text)"
 					@delete="(id) => emit('delete', id)"
 					@editing="onEditing"
 				/>
 			</div>
 			<div :style="{ height: `${paddingBottom}px` }" />
+		</div>
+
+		<!-- Zero height at the end of the content, so it adds nothing to the
+		     scroll height; sticky keeps the pill at the bottom of the view. -->
+		<div v-if="newBelow" class="sticky bottom-2 h-0 flex justify-center">
+			<UiButton
+				variant="secondary"
+				size="sm"
+				class="-translate-y-full rounded-full"
+				@click="jumpToLatest"
+			>
+				<ArrowDownIcon class="w-4 h-4" />
+				{{ t('components.chat.chatMessageList.newMessages') }}
+			</UiButton>
 		</div>
 	</div>
 </template>

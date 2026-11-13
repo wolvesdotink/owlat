@@ -155,8 +155,43 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onPointerLeave() {
+	if (!keyboardActive.value) hoverIndex.value = null;
+}
+
+// Keyboard reading: the plot is one tab stop, and ← → Home End step the same
+// crosshair the pointer drives. The value under it is announced politely,
+// because the visual tooltip is aria-hidden.
+const keyboardActive = ref(false);
+
+function onPlotFocus() {
+	keyboardActive.value = true;
+	if (hoverIndex.value === null) hoverIndex.value = points.value.length - 1;
+}
+
+function onPlotBlur() {
+	keyboardActive.value = false;
 	hoverIndex.value = null;
 }
+
+function onPlotKeydown(event: KeyboardEvent) {
+	const last = points.value.length - 1;
+	const current = hoverIndex.value ?? last;
+	let next: number;
+	if (event.key === 'ArrowRight' || event.key === 'ArrowUp') next = Math.min(current + 1, last);
+	else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') next = Math.max(current - 1, 0);
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = last;
+	else return;
+	event.preventDefault();
+	keyboardActive.value = true;
+	hoverIndex.value = next;
+}
+
+const announcement = computed(() =>
+	keyboardActive.value && hoverPoint.value
+		? `${hoverPoint.value.label}: ${props.formatValue(hoverPoint.value.value)}`
+		: ''
+);
 </script>
 
 <template>
@@ -167,7 +202,15 @@ function onPointerLeave() {
 		>
 			<p class="text-sm text-text-tertiary">{{ t('ui.chart.empty') }}</p>
 		</div>
-		<div v-else ref="containerRef" class="relative">
+		<div
+			v-else
+			ref="containerRef"
+			class="relative rounded focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+			tabindex="0"
+			@focus="onPlotFocus"
+			@blur="onPlotBlur"
+			@keydown="onPlotKeydown"
+		>
 			<svg
 				:viewBox="`0 0 ${viewWidth} ${viewHeight}`"
 				class="w-full block"
@@ -331,11 +374,12 @@ function onPointerLeave() {
 				:style="{ left: `${((hoverPoint?.x ?? 0) / viewWidth) * 100}%` }"
 				aria-hidden="true"
 			>
-				<p class="text-[10px] text-text-tertiary leading-tight">{{ hoverPoint?.label }}</p>
+				<p class="text-2xs text-text-tertiary leading-tight">{{ hoverPoint?.label }}</p>
 				<p class="text-xs font-semibold text-text-primary tabular-nums leading-tight">
 					{{ hoverPoint ? formatValue(hoverPoint.value) : '' }}
 				</p>
 			</div>
+			<p class="sr-only" aria-live="polite">{{ announcement }}</p>
 		</div>
 	</div>
 </template>

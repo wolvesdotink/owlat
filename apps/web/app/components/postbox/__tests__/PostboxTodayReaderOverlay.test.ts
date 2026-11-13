@@ -55,6 +55,17 @@ afterEach(() => {
 	wrapper = undefined;
 });
 
+const overlayStubs = {
+	UiTooltip: { template: '<span><slot /></span>' },
+	UiButton: { template: '<button type="button"><slot /></button>' },
+	PostboxReaderSkeleton: { template: '<div class="skeleton-stub" />' },
+	UiQueryBoundary: {
+		emits: ['retry'],
+		template: '<button class="retry-stub" @click="$emit(\'retry\')" />',
+	},
+	PostboxMessageNotFound: { template: '<div class="gone-stub"><slot name="action" /></div>' },
+};
+
 function mountOverlay(id = 'm2', advanceIds = ['m1', 'm2', 'm3']) {
 	wrapper = mount(PostboxTodayReaderOverlay, {
 		attachTo: document.body,
@@ -62,6 +73,7 @@ function mountOverlay(id = 'm2', advanceIds = ['m1', 'm2', 'm3']) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxThreadReader: readerStub },
+			stubs: overlayStubs,
 		},
 	});
 	return wrapper;
@@ -116,6 +128,35 @@ describe('PostboxTodayReaderOverlay', () => {
 		w.unmount();
 		wrapper = undefined;
 		expect(document.activeElement).toBe(opener);
+	});
+
+	it('offers a labelled Close button, the exit a touch user can reach', async () => {
+		const w = mountOverlay();
+		const button = w.get('[data-testid="postbox-today-overlay-close"]');
+		expect(button.attributes('aria-label')).toBe('Close conversation');
+		await button.trigger('click');
+		expect(w.emitted('close')).toHaveLength(1);
+	});
+
+	it('shows the loading, failed and gone states while it has no message', async () => {
+		wrapper = mount(PostboxTodayReaderOverlay, {
+			attachTo: document.body,
+			props: { messageId: 'm-old', advanceIds: ['m-old'] },
+			global: {
+				plugins: [createTestI18n()],
+				components: { PostboxThreadReader: readerStub },
+				stubs: overlayStubs,
+			},
+		});
+		expect(wrapper.find('[data-testid="postbox-today-overlay-loading"]').exists()).toBe(true);
+
+		await wrapper.setProps({ error: new Error('boom') });
+		await wrapper.get('.retry-stub').trigger('click');
+		expect(wrapper.emitted('retry')).toHaveLength(1);
+
+		await wrapper.setProps({ error: null, notFound: true });
+		expect(wrapper.find('.gone-stub').exists()).toBe(true);
+		expect(wrapper.find('.reader-stub').exists()).toBe(false);
 	});
 
 	it('scrim click closes', async () => {

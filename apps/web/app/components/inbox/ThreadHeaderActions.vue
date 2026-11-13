@@ -73,6 +73,7 @@ const { ariaFor } = useShortcutLabels();
 const assignMenuOpen = ref(false);
 const statusMenuOpen = ref(false);
 const moreMenuOpen = ref(false);
+const narrowAssignOpen = ref(false);
 
 const assignedToMe = computed(
 	() => !!props.currentUserId && props.assignedTo === props.currentUserId
@@ -181,13 +182,10 @@ const snoozeAction = computed<SimpleAction>(() =>
 
 		<div class="hidden sm:flex items-center gap-2">
 			<UiTooltip v-for="action in inlineActions" :key="action.key" :text="action.title">
-				<NuxtLink
-					:to="action.to!"
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
-				>
-					<component :is="action.icon" class="w-3.5 h-3.5 text-brand" />
+				<UiButton variant="secondary" size="sm" class="gap-1.5" :to="action.to!">
+					<component :is="action.icon" class="w-4 h-4" />
 					{{ action.label }}
-				</NuxtLink>
+				</UiButton>
 			</UiTooltip>
 			<!-- Assignee picker — avatar popover (Me / members / Unassign). `open`
 			     is a controlled prop: without the binding the popover never opens. -->
@@ -281,6 +279,41 @@ const snoozeAction = computed<SimpleAction>(() =>
 			</UiDropdownMenu>
 		</div>
 
+		<!-- Narrow screens: the assignee picker on its own, so a teammate can be
+		     chosen here too, then everything else in one menu. -->
+		<InboxAssignPopover
+			v-if="isAdmin"
+			v-model:open="narrowAssignOpen"
+			class="sm:hidden"
+			:members="members"
+			:current-user-id="currentUserId"
+			:assigned-to="assignedTo"
+			position="right"
+			@assign="(userId: string | undefined) => emit('assign', userId)"
+		>
+			<template #trigger>
+				<UiButton
+					variant="secondary"
+					size="sm"
+					type="button"
+					class="w-8 px-0"
+					data-testid="thread-assign-narrow"
+					:aria-label="
+						assignedMemberName
+							? t('dashboard.inbox.detail.assignedToAria', { name: assignedMemberName })
+							: t('dashboard.inbox.detail.assignThreadAria')
+					"
+				>
+					<UiAvatar
+						v-if="assignedTo"
+						:name="assignedMemberName ?? undefined"
+						deterministic-color
+						size="xs"
+					/>
+					<UserPlusCornerIcon v-else class="w-4 h-4" />
+				</UiButton>
+			</template>
+		</InboxAssignPopover>
 		<!-- Narrow screens: everything but Reply in one menu. -->
 		<UiDropdownMenu v-model:open="moreMenuOpen" position="right" class="sm:hidden">
 			<template #trigger>

@@ -42,7 +42,7 @@ function cycle() {
 
 <template>
 	<UiTooltip :text="label">
-		<button :aria-label="ariaLabel" @click="cycle">
+		<button type="button" :aria-label="ariaLabel" @click="cycle">
 			<MonitorIcon v-if="current === 'system'" class="w-[18px] h-[18px]" />
 			<SunIcon v-else-if="current === 'light'" class="w-[18px] h-[18px]" />
 			<MoonIcon v-else class="w-[18px] h-[18px]" />

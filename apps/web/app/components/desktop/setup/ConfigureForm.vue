@@ -12,7 +12,6 @@ import { hintClass, labelClass, sectionClass } from '~/composables/desktopSetup/
 import { useLocalized } from '~/composables/useLocalized';
 import TransportCredentialFields from '~/components/delivery/TransportCredentialFields.vue';
 import {
-	CheckIcon,
 	ChevronDownIcon,
 	CircleInfoIcon,
 	EyeIcon,
@@ -73,6 +72,11 @@ const {
 	prevStep,
 	onProvision,
 } = props.form;
+
+// Fields are named by visible labels (for/id), and section titles are headings
+// that name the controls under them, not labels bound to nothing.
+const uid = useId();
+const fid = (name: string) => `${uid}-${name}`;
 </script>
 
 <template>
@@ -85,43 +89,53 @@ const {
 				@update:model-value="goStep($event as ConfigStep)"
 			>
 				<template v-for="st in configSteps" :key="st.id" #[`option-${st.id}`]>
-					<component :is="st.icon" class="size-3.5 shrink-0" />
-					<span class="hidden sm:inline">{{ t(st.label) }}</span>
+					<component :is="st.icon" class="size-3.5 shrink-0" aria-hidden="true" />
+					<!-- Hidden visually on a phone, never from a screen reader. -->
+					<span class="sr-only sm:not-sr-only">{{ t(st.label) }}</span>
 				</template>
 			</UiSegmentedControl>
 		</nav>
 
 		<form @submit.prevent="onProvision">
 			<div v-show="configStep === 'features'">
-				<label :class="sectionClass">{{ t('desktop.setup.sections.featurePacks') }}</label>
-				<div class="space-y-1.5">
+				<h3 :id="fid('packs')" :class="sectionClass">
+					{{ t('desktop.setup.sections.featurePacks') }}
+				</h3>
+				<!-- Native checkboxes in the shared UiCheckbox look (accent-brand),
+				     matching the ones on the Connect step. -->
+				<div class="space-y-1.5" role="group" :aria-labelledby="fid('packs')">
 					<label
 						v-for="opt in packOptions"
 						:key="opt.key"
 						class="flex cursor-pointer items-center gap-2.5 text-sm"
 					>
-						<input v-model="packs[opt.key]" type="checkbox" class="peer sr-only" />
-						<span
-							class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
-							:class="packs[opt.key] ? 'border-brand bg-brand' : 'border-border-default'"
-						>
-							<CheckIcon v-if="packs[opt.key]" class="size-3 text-text-inverse" />
-						</span>
+						<input
+							v-model="packs[opt.key]"
+							type="checkbox"
+							class="h-4 w-4 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+						/>
 						<span>{{ t(opt.label) }}</span>
 					</label>
 				</div>
 			</div>
 
 			<div v-show="configStep === 'providers'">
-				<label :class="sectionClass">{{ t('desktop.setup.sections.emailSending') }}</label>
+				<h3 :id="fid('sending')" :class="sectionClass">
+					{{ t('desktop.setup.sections.emailSending') }}
+				</h3>
 				<div class="relative">
-					<select v-model="sendingProvider" class="input input-sm appearance-none pr-8">
+					<select
+						v-model="sendingProvider"
+						class="input input-sm appearance-none pr-8"
+						:aria-labelledby="fid('sending')"
+					>
 						<option v-for="opt in sendingOptions" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
 						</option>
 					</select>
 					<ChevronDownIcon
 						class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
+						aria-hidden="true"
 					/>
 				</div>
 				<!-- The selected kind's catalog credential fields; no per-provider markup. -->
@@ -150,9 +164,13 @@ const {
 			</div>
 
 			<div v-show="configStep === 'providers'" class="mt-5">
-				<label :class="sectionClass">{{ t('desktop.setup.sections.ai') }}</label>
+				<h3 :id="fid('ai')" :class="sectionClass">{{ t('desktop.setup.sections.ai') }}</h3>
 				<div class="relative">
-					<select v-model="aiProvider" class="input input-sm appearance-none pr-8">
+					<select
+						v-model="aiProvider"
+						class="input input-sm appearance-none pr-8"
+						:aria-labelledby="fid('ai')"
+					>
 						<option value="none">{{ t('common.none') }}</option>
 						<option value="openrouter">{{ t('desktop.setup.ai.openrouter') }}</option>
 						<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
@@ -160,27 +178,60 @@ const {
 					</select>
 					<ChevronDownIcon
 						class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
+						aria-hidden="true"
 					/>
 				</div>
+				<!-- A secret: masked like a password, and never offered to autofill. -->
 				<input
 					v-if="aiProvider === 'openrouter' || aiProvider === 'openai'"
 					v-model="aiKey"
+					type="password"
+					autocomplete="off"
+					spellcheck="false"
 					class="input input-sm mt-2"
 					:placeholder="t('desktop.setup.ai.keyPlaceholder')"
+					:aria-label="t('desktop.setup.ai.keyPlaceholder')"
 				/>
 			</div>
 
 			<div v-show="configStep === 'admin'">
-				<label :class="sectionClass">{{ t('desktop.setup.sections.admin') }}</label>
+				<h3 :class="sectionClass">{{ t('desktop.setup.sections.admin') }}</h3>
 				<div class="space-y-2">
-					<input v-model="adminEmail" class="input input-sm" placeholder="admin@example.com" />
-					<input
-						v-model="adminName"
-						class="input input-sm"
-						:placeholder="t('desktop.setup.admin.namePlaceholder')"
-					/>
+					<div>
+						<label :for="fid('admin-email')" :class="labelClass">{{
+							t('desktop.setup.admin.emailLabel')
+						}}</label>
+						<!-- Not type="email": the wizard validates and explains a bad address
+						     itself, where the browser's popup would pre-empt it. -->
+						<input
+							:id="fid('admin-email')"
+							v-model="adminEmail"
+							class="input input-sm"
+							inputmode="email"
+							autocomplete="email"
+							autocapitalize="off"
+							spellcheck="false"
+							placeholder="admin@example.com"
+						/>
+					</div>
+					<div>
+						<label :for="fid('admin-name')" :class="labelClass">{{
+							t('desktop.setup.admin.nameLabel')
+						}}</label>
+						<input
+							:id="fid('admin-name')"
+							v-model="adminName"
+							class="input input-sm"
+							autocomplete="name"
+							:placeholder="t('desktop.setup.admin.namePlaceholder')"
+						/>
+					</div>
+					<label :for="fid('admin-password')" :class="labelClass">{{
+						t('desktop.setup.admin.passwordLabel')
+					}}</label>
 					<div class="relative">
 						<input
+							:id="fid('admin-password')"
 							v-model="adminPassword"
 							:type="revealPassword ? 'text' : 'password'"
 							class="input input-sm pr-10"
@@ -200,10 +251,18 @@ const {
 							:aria-pressed="revealPassword"
 							@click="revealPassword = !revealPassword"
 						>
-							<component :is="revealPassword ? EyeOffIcon : EyeIcon" class="size-4" />
+							<component
+								:is="revealPassword ? EyeOffIcon : EyeIcon"
+								class="size-4"
+								aria-hidden="true"
+							/>
 						</button>
 					</div>
+					<label :for="fid('admin-password-confirm')" :class="labelClass">{{
+						t('desktop.setup.admin.confirmPasswordLabel')
+					}}</label>
 					<input
+						:id="fid('admin-password-confirm')"
 						v-model="adminPasswordConfirm"
 						:type="revealPassword ? 'text' : 'password'"
 						class="input input-sm"
@@ -234,18 +293,21 @@ const {
 							>{{ tk(passwordAssessment.label) }}</span
 						>
 					</div>
-					<p v-if="adminPasswordError" class="text-xs text-error">
+					<p v-if="adminPasswordError" class="text-xs text-error" role="alert">
 						{{ tk(adminPasswordError) }}
 					</p>
 				</div>
 			</div>
 
 			<div v-show="configStep === 'domain'">
-				<label :class="sectionClass">{{
+				<label :for="fid('domain')" :class="sectionClass">{{
 					isRemoteTarget ? t('desktop.setup.domain.labelRequired') : t('desktop.setup.domain.label')
 				}}</label>
 				<input
+					:id="fid('domain')"
 					v-model="domain"
+					autocapitalize="off"
+					spellcheck="false"
 					class="input input-sm"
 					:placeholder="
 						isRemoteTarget
@@ -263,7 +325,7 @@ const {
 					</template>
 				</p>
 				<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-warning">
-					<TriangleWarningIcon class="mb-0.5 mr-1 inline size-3.5" />
+					<TriangleWarningIcon class="mb-0.5 mr-1 inline size-3.5" aria-hidden="true" />
 					{{ t('desktop.setup.domain.noDomainWarning') }}
 				</p>
 
@@ -271,8 +333,11 @@ const {
 				     auto-detects the public IP over the SSH session; this field lets
 				     the operator override it if detection failed or was wrong. -->
 				<div v-if="hasDomain && !hostIsIp" class="mt-3">
-					<label :class="labelClass">{{ t('desktop.setup.domain.publicIpLabel') }}</label>
+					<label :for="fid('public-ip')" :class="labelClass">{{
+						t('desktop.setup.domain.publicIpLabel')
+					}}</label>
 					<input
+						:id="fid('public-ip')"
 						v-model="publicIp"
 						class="input input-sm font-mono"
 						placeholder="203.0.113.5"
@@ -309,7 +374,7 @@ const {
 							{{ t('desktop.setup.dns.tlsHint') }}
 						</p>
 						<p v-if="usesOwnMta && dnsRecords.length" class="mt-1.5 text-xs text-warning">
-							<CircleInfoIcon class="mb-0.5 mr-1 inline size-3.5" />
+							<CircleInfoIcon class="mb-0.5 mr-1 inline size-3.5" aria-hidden="true" />
 							<I18nT keypath="desktop.setup.dns.deliverabilityHint" scope="global">
 								<template #settings
 									><span class="font-medium">{{
@@ -326,17 +391,15 @@ const {
 				v-show="configStep === 'admin'"
 				class="mt-4 flex cursor-pointer items-center gap-2.5 text-sm"
 			>
-				<input v-model="seedDemo" type="checkbox" class="peer sr-only" />
-				<span
-					class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
-					:class="seedDemo ? 'border-brand bg-brand' : 'border-border-default'"
-				>
-					<CheckIcon v-if="seedDemo" class="size-3 text-text-inverse" />
-				</span>
+				<input
+					v-model="seedDemo"
+					type="checkbox"
+					class="h-4 w-4 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+				/>
 				<span>{{ t('desktop.setup.admin.seedDemo') }}</span>
 			</label>
 
-			<p v-if="configError" class="mt-4 text-sm text-error">{{ configError }}</p>
+			<p v-if="configError" class="mt-4 text-sm text-error" role="alert">{{ configError }}</p>
 			<div class="mt-5 flex items-center gap-3 border-t border-border-subtle pt-4">
 				<UiButton v-if="stepIndex > 0" variant="outline" size="sm" @click="prevStep">
 					{{ t('common.back') }}

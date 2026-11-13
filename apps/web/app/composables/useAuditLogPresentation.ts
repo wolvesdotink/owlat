@@ -131,6 +131,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	plugin: `${RESOURCES}.plugin`,
 	connected_app: `${RESOURCES}.connectedApp`,
 	deliverability_ramp: `${RESOURCES}.deliverabilityRamp`,
+	platform_admin: `${RESOURCES}.platformAdmin`,
 };
 
 const ACTIONS = 'shared.useAuditLogPresentation.actions';
@@ -257,11 +258,13 @@ export function getResourceIcon(resource: string): IconComponent {
 }
 
 /**
- * A message key for a known resource; an UNKNOWN resource falls back to the raw
- * backend key, which `t()` renders unchanged — the pre-extraction behaviour.
+ * A message key for a known resource; an UNKNOWN resource falls back to the
+ * humanised backend name ("Feature flag" for `feature_flag`), which `t()`
+ * renders unchanged, so a resource the catalog has not caught up with still
+ * reads as words rather than as an enum string.
  */
 export function getResourceLabel(resource: string): string {
-	return RESOURCE_LABELS[resource] ?? resource;
+	return RESOURCE_LABELS[resource] ?? capitalize(resource.replace(/[_-]+/g, ' ').trim());
 }
 
 /**

@@ -50,58 +50,75 @@ function onKeydown(event: KeyboardEvent) {
 
 <template>
 	<li class="px-5 py-2.5" :data-shortcut-id="row.def.id">
-		<div class="flex items-center gap-3">
-			<div class="min-w-0 flex-1">
+		<!-- The binding and its actions wrap below the description on a narrow
+		     card instead of squeezing it: long chords and German labels are wide. -->
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+			<div class="min-w-0 flex-[1_1_12rem]">
 				<p class="text-sm text-text-secondary">{{ label }}</p>
 				<p v-if="row.fixed && row.def.fixedReason" class="text-xs text-text-tertiary mt-0.5">
 					{{ t(`${ns}.fixedReasons.${row.def.fixedReason}`) }}
 				</p>
 			</div>
 
-			<span v-if="!capturing" class="flex flex-wrap items-center justify-end gap-1 shrink-0">
-				<span v-for="(run, runIndex) in keyRuns" :key="runIndex" class="flex items-center gap-0.5">
-					<kbd
-						v-for="(key, index) in run"
-						:key="index"
-						class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface text-xs font-mono text-text-primary"
-						>{{ key }}</kbd
+			<div class="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+				<span v-if="!capturing" class="flex flex-wrap items-center justify-end gap-1">
+					<span
+						v-for="(run, runIndex) in keyRuns"
+						:key="runIndex"
+						class="flex items-center gap-0.5"
 					>
+						<kbd
+							v-for="(key, index) in run"
+							:key="index"
+							class="px-1.5 py-0.5 rounded border border-border-subtle bg-bg-surface text-xs font-mono text-text-primary"
+							>{{ key }}</kbd
+						>
+					</span>
+					<span v-if="keyRuns.length === 0" class="text-xs text-text-tertiary">{{
+						t(`${ns}.unbound`)
+					}}</span>
 				</span>
-				<span v-if="keyRuns.length === 0" class="text-xs text-text-tertiary">{{
-					t(`${ns}.unbound`)
-				}}</span>
-			</span>
 
-			<UiBadge v-if="row.fixed" variant="neutral" class="shrink-0">{{ t(`${ns}.fixed`) }}</UiBadge>
-			<template v-else>
-				<UiButton
-					variant="secondary"
-					size="sm"
-					class="shrink-0"
-					:disabled="saving"
-					:aria-label="t(`${ns}.changeAriaLabel`, { shortcut: label })"
-					@click="emit('capture')"
-					@keydown="onKeydown"
-				>
-					{{ capturing ? t(`${ns}.listening`) : t(`${ns}.change`) }}
-				</UiButton>
-				<UiButton
-					v-if="row.overridden"
-					variant="ghost"
-					size="sm"
-					class="shrink-0"
-					:disabled="saving"
-					:aria-label="t(`${ns}.resetAriaLabel`, { shortcut: label })"
-					@click="emit('reset')"
-				>
-					{{ t(`${ns}.reset`) }}
-				</UiButton>
-			</template>
+				<UiBadge v-if="row.fixed" variant="neutral" class="shrink-0">{{
+					t(`${ns}.fixed`)
+				}}</UiBadge>
+				<template v-else>
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="shrink-0"
+						:disabled="saving"
+						:aria-label="
+							capturing
+								? t(`${ns}.listeningAriaLabel`, { shortcut: label })
+								: t(`${ns}.changeAriaLabel`, { shortcut: label })
+						"
+						@click="emit('capture')"
+						@keydown="onKeydown"
+					>
+						{{ capturing ? t(`${ns}.listening`) : t(`${ns}.change`) }}
+					</UiButton>
+					<UiButton
+						v-if="row.overridden"
+						variant="ghost"
+						size="sm"
+						class="shrink-0"
+						:disabled="saving"
+						:aria-label="t(`${ns}.resetAriaLabel`, { shortcut: label })"
+						@click="emit('reset')"
+					>
+						{{ t(`${ns}.reset`) }}
+					</UiButton>
+				</template>
+			</div>
 		</div>
 
-		<p v-if="refusal" class="text-xs text-error mt-1">{{ refusalText }}</p>
-		<p v-if="clashNames.length > 0" class="text-xs text-warning mt-1">
-			{{ t(`${ns}.clashesWith`, { shortcuts: clashNames.join(', ') }) }}
-		</p>
+		<!-- Announced: a keyboard user pressing a refused chord hears why. -->
+		<div aria-live="polite">
+			<p v-if="refusal" class="text-xs text-error mt-1">{{ refusalText }}</p>
+			<p v-if="clashNames.length > 0" class="text-xs text-warning mt-1">
+				{{ t(`${ns}.clashesWith`, { shortcuts: clashNames.join(', ') }) }}
+			</p>
+		</div>
 	</li>
 </template>

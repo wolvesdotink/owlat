@@ -37,12 +37,17 @@ const handleToggle = () => {
 		:disabled="disabled"
 		:class="[
 			'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-(--motion-moderate) ease-spring',
+			'pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-2.5',
 			'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elevated',
-			modelValue ? 'bg-brand' : 'bg-bg-surface-hover',
+			modelValue ? 'bg-brand' : 'bg-text-tertiary/70',
 			disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
 		]"
 		@click="handleToggle"
 	>
+		<!-- The track stays 24px; on touch an invisible box above and below grows the
+		     target to 44px. The off track is a 3:1 neutral (text-tertiary at 70%), not a
+		     surface step: a surface step is ~1.2:1 against a card, and the white knob
+		     vanishes into it. -->
 		<!-- palette-ok: the knob is a fixed light puck in both themes — it has to stay
 		     lighter than BOTH the brand on-track and the neutral off-track, which no
 		     single theme token does (text-inverse goes near-black in dark). -->

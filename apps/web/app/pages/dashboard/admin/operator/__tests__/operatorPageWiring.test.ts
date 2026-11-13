@@ -154,6 +154,12 @@ async function mountOn(tab: string) {
 				UiModal: ModalStub,
 				UiTextarea: FieldStub('textarea'),
 				UiSelect: FieldStub('select'),
+				UiConfirmationDialog: {
+					props: ['open', 'description'],
+					emits: ['confirm'],
+					template:
+						'<div v-if="open" data-testid="confirm-remove-admin"><p>{{ description }}</p><button @click="$emit(\'confirm\')">Confirm</button></div>',
+				},
 			},
 		},
 	});
@@ -176,7 +182,7 @@ describe('operator console', () => {
 		expect(text).toContain('0.58%');
 		expect(text).toContain('Pending review (1)');
 		expect(text).toContain('Late summer sale');
-		expect(text).toContain('campaign · score 72');
+		expect(text).toContain('Campaign · score 72');
 		wrapper.unmount();
 	});
 
@@ -216,24 +222,25 @@ describe('operator console', () => {
 		const text = wrapper.text();
 		expect(text).toContain('Flagged — sending still allowed.');
 		expect(text).toContain('Reason: High bounce rate');
-		expect(text).toContain('risk: high');
+		expect(text).toContain('Risk: High');
 		expect(text).toContain('news@harbor.example');
 		expect(text).toContain('4,820');
 
 		await button(wrapper, 'Suspend sending')[0]!.trigger('click');
 		const modal = wrapper.get('[role="dialog"][aria-label="Set sending status"]');
 		expect((modal.get('select').element as HTMLSelectElement).value).toBe('suspended');
-		await button(wrapper, 'Apply')[0]!.trigger('click');
+		// A status that blocks sending is confirmed with the verb, not "Apply".
+		await button(wrapper, 'Block sending')[0]!.trigger('click');
 		expect(showToast).toHaveBeenLastCalledWith('A reason is required.', 'error');
 
 		await modal.get('textarea').setValue('Spam complaints');
-		await button(wrapper, 'Apply')[0]!.trigger('click');
+		await button(wrapper, 'Block sending')[0]!.trigger('click');
 		await flushPromises();
 		expect(ops['Set workspace status']).toHaveBeenCalledWith({
 			abuseStatus: 'suspended',
 			reason: 'Spam complaints',
 		});
-		expect(showToast).toHaveBeenLastCalledWith('Workspace status set to "suspended".');
+		expect(showToast).toHaveBeenLastCalledWith('Workspace status set to "Suspended".');
 		wrapper.unmount();
 	});
 
@@ -242,6 +249,12 @@ describe('operator console', () => {
 		expect(wrapper.text()).toContain('lin@owlat.example');
 
 		await button(wrapper, 'Remove')[1]!.trigger('click');
+		await flushPromises();
+		// Removal asks first, naming the account.
+		expect(ops['Remove platform admin']).not.toHaveBeenCalled();
+		const confirm = wrapper.get('[data-testid="confirm-remove-admin"]');
+		expect(confirm.text()).toContain('lin@owlat.example');
+		await confirm.get('button').trigger('click');
 		await flushPromises();
 		expect(ops['Remove platform admin']).toHaveBeenCalledWith({ adminId: 'pa_2' });
 		expect(showToast).toHaveBeenLastCalledWith('Removed lin@owlat.example from platform admins.');

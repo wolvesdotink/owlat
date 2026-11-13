@@ -135,6 +135,11 @@
 	display: inline-flex;
 }
 
+/* A keyboard user tabbing through the message reaches them the same way. */
+[data-density='compact'] .pbx-reader-message:focus-within .pbx-reader-secondary-action {
+	display: inline-flex;
+}
+
 @media (hover: none) {
 	[data-density='compact'] .pbx-reader-secondary-action {
 		display: inline-flex;
@@ -142,39 +147,37 @@
 }
 
 /*
- * Touch devices (stack mode): hover never fires, so the two hover-gated
- * affordances must be permanently reachable —
- *   - the row's quick-action cluster (.ui-hover-reveal) stays visible at rest,
- *     and
- *   - the bulk-select checkbox (opacity-0 group-hover:opacity-100) shows too.
- * Desktop is untouched: both rules are scoped to (hover: none), which no
- * mouse-driven device matches. Rows also get a comfortable touch floor — 44px
+ * Touch devices (stack mode): hover never fires, so the hover-gated
+ * affordances must be permanently reachable. The row's quick-action cluster
+ * (.ui-hover-reveal) is shown by the kit's own (hover: none) rule in
+ * motion.css; the bulk-select checkbox (opacity-0 group-hover:opacity-100)
+ * is shown here. Desktop is untouched: these rules are scoped to
+ * (hover: none), which no mouse-driven device matches. Rows also get a comfortable touch floor — 44px
  * is the minimum target size; the comfortable density already clears it, so
  * only compact needs lifting.
+ *
+ * The selectors key off the row classes, not one list's wrapper: the same rows
+ * render in the sectioned, bundled and category lists and in Today's queues,
+ * and touch needs the same reach in each of them.
  */
 @media (hover: none) {
-	.postbox-thread-list .ui-hover-reveal {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.postbox-thread-list .pbx-row-checkbox {
+	.pbx-row-li .pbx-row-checkbox {
 		opacity: 1;
 	}
 
-	[data-density='compact'] .postbox-thread-list .pbx-row-link {
+	[data-density='compact'] .pbx-row-link {
 		padding-top: 0.65rem;
 		padding-bottom: 0.65rem;
 	}
 
-	[data-density='compact'] .postbox-thread-list .pbx-row-actions {
+	[data-density='compact'] .pbx-row-li .pbx-row-actions {
 		top: calc(0.65rem + 10px);
 	}
 
 	/* That touch floor buys back the vertical room compact traded away, so the
 	   trust marker's label comes back with it — a bare icon is a poor
 	   explanation on the surface with no hover and no title tooltip. */
-	[data-density='compact'] .postbox-thread-list .pbx-row-trust-label {
+	[data-density='compact'] .pbx-row-trust-label {
 		display: inline;
 	}
 

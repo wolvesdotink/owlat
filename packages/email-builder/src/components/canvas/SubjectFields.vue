@@ -210,6 +210,9 @@ const subjectPlaceholder = computed(() =>
 							aria-autocomplete="list"
 							:aria-expanded="pickerVisible"
 							:aria-controls="pickerVisible ? pickerId : undefined"
+							:aria-activedescendant="
+								pickerVisible ? `${pickerId}-option-${pickerIndex}` : undefined
+							"
 							:aria-describedby="isSubjectEmpty || unknownKeys.length ? hintId : undefined"
 							autocomplete="off"
 							class="flex-1 min-w-0 bg-transparent px-2 py-1 text-text-primary text-sm focus:outline-none"
@@ -223,7 +226,7 @@ const subjectPlaceholder = computed(() =>
 							<button
 								type="button"
 								data-testid="subject-insert-variable"
-								class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
+								class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
 								:aria-label="t('builder.subject.insertVariable')"
 								@mousedown.prevent
 								@click="handleInsertButton"

@@ -106,7 +106,15 @@ const progressPercent = computed(() => {
 						t('components.agent.circuitBreakerStatus.threshold', { value: thresholdPercent })
 					}}</span>
 				</div>
-				<div class="w-full h-2 bg-bg-surface rounded-full overflow-hidden">
+				<div
+					class="w-full h-2 bg-bg-surface rounded-full overflow-hidden"
+					role="meter"
+					aria-valuemin="0"
+					aria-valuemax="100"
+					:aria-valuenow="Math.round(progressPercent)"
+					:aria-valuetext="`${t('components.agent.circuitBreakerStatus.current', { value: currentPercent })}, ${t('components.agent.circuitBreakerStatus.threshold', { value: thresholdPercent })}`"
+					:aria-label="formattedName"
+				>
 					<div
 						class="ui-meter-fill h-full rounded-full transition-transform duration-(--motion-slow)"
 						:class="

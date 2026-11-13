@@ -160,9 +160,9 @@ const { handleScroll } = usePostboxListAutoLoad({
 		<!-- Fallback trigger: the scroll auto-grows the page, but the button stays
 	     so a user can still advance if the auto-load stalls. -->
 		<div v-if="!loading && hasMore" class="p-3 text-center">
-			<button type="button" class="text-sm text-brand hover:underline" @click="emit('load-more')">
+			<UiButton variant="secondary" size="sm" type="button" @click="emit('load-more')">
 				{{ t('components.postbox.postboxThreadGroupList.loadMore') }}
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

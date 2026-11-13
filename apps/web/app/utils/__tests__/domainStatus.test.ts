@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	dmarcChangeToastKey,
 	getStatusBadgeClass,
 	getStatusIcon,
 	normalizeDnsRecord,
@@ -76,5 +77,21 @@ describe('hasDnsRecords', () => {
 		expect(hasDnsRecords({ dkim: [{ value: 'k=rsa' }] })).toBe(true);
 		expect(hasDnsRecords({ dmarc: { value: 'v=DMARC1' } })).toBe(true);
 		expect(hasDnsRecords({ mailFrom: [{ value: 'x' }] })).toBe(true);
+	});
+});
+
+describe('dmarcChangeToastKey', () => {
+	it('says monitor-only for p=none, whatever came before', () => {
+		expect(dmarcChangeToastKey('reject', 'none')).toBe('dmarcMonitorOnly');
+		expect(dmarcChangeToastKey('none', 'none')).toBe('dmarcMonitorOnly');
+	});
+
+	it('calls a move to a stricter policy a raise', () => {
+		expect(dmarcChangeToastKey('none', 'quarantine')).toBe('dmarcRaised');
+		expect(dmarcChangeToastKey('quarantine', 'reject')).toBe('dmarcRaised');
+	});
+
+	it('calls reject → quarantine a lowering', () => {
+		expect(dmarcChangeToastKey('reject', 'quarantine')).toBe('dmarcLowered');
 	});
 });

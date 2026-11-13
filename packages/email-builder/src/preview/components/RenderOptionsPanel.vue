@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useId } from 'vue';
 import { CloseIcon } from '@coolicons/vue';
 import type { PreviewRenderOptions } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -7,6 +8,9 @@ import VariableOptions from './renderOptions/VariableOptions.vue';
 import { provideRenderOptionsDraft } from './renderOptions/useRenderOptionsDraft';
 
 const { t } = useBuilderI18n();
+
+const uid = useId();
+const fieldId = (name: string) => `ep-render-${name}-${uid}`;
 
 const props = defineProps<{
 	options: Partial<PreviewRenderOptions>;
@@ -28,8 +32,13 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 	<div class="ep-settings-panel">
 		<div class="ep-settings-header">
 			<span class="ep-settings-title">{{ t('builder.preview.renderOptions.title') }}</span>
-			<button class="ep-settings-close" @click="emit('close')">
-				<CloseIcon class="ep-settings-close-icon" />
+			<button
+				type="button"
+				class="ep-settings-close"
+				:aria-label="t('builder.preview.renderOptions.close')"
+				@click="emit('close')"
+			>
+				<CloseIcon class="ep-settings-close-icon" aria-hidden="true" />
 			</button>
 		</div>
 
@@ -38,10 +47,11 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 			<div class="ep-settings-group">
 				<!-- Base Width -->
 				<div class="ep-settings-field">
-					<label class="ep-settings-label">{{
+					<label :for="fieldId('width')" class="ep-settings-label">{{
 						t('builder.preview.renderOptions.baseWidth')
 					}}</label>
 					<input
+						:id="fieldId('width')"
 						v-model.number="local.baseWidth"
 						type="number"
 						class="ep-settings-input ep-settings-input-number"
@@ -54,13 +64,19 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 
 				<!-- Direction -->
 				<div class="ep-settings-field">
-					<label class="ep-settings-label">{{
+					<span :id="fieldId('direction')" class="ep-settings-label">{{
 						t('builder.preview.renderOptions.direction')
-					}}</label>
-					<div class="ep-settings-toggle-group">
+					}}</span>
+					<div
+						class="ep-settings-toggle-group"
+						role="group"
+						:aria-labelledby="fieldId('direction')"
+					>
 						<button
+							type="button"
 							class="ep-settings-toggle"
 							:class="{ 'ep-settings-toggle-active': local.direction === 'ltr' }"
+							:aria-pressed="local.direction === 'ltr'"
 							@click="
 								local.direction = 'ltr';
 								emitUpdate();
@@ -69,8 +85,10 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 							LTR
 						</button>
 						<button
+							type="button"
 							class="ep-settings-toggle"
 							:class="{ 'ep-settings-toggle-active': local.direction === 'rtl' }"
+							:aria-pressed="local.direction === 'rtl'"
 							@click="
 								local.direction = 'rtl';
 								emitUpdate();
@@ -83,8 +101,14 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 
 				<!-- Minify -->
 				<div class="ep-settings-field ep-settings-field-inline">
-					<label class="ep-settings-label">{{ t('builder.preview.renderOptions.minify') }}</label>
+					<label :for="fieldId('minify')" class="ep-settings-label">{{
+						t('builder.preview.renderOptions.minify')
+					}}</label>
 					<button
+						:id="fieldId('minify')"
+						type="button"
+						role="switch"
+						:aria-checked="local.minify"
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.minify }"
 						@click="
@@ -92,16 +116,20 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 							emitUpdate();
 						"
 					>
-						<span class="ep-settings-checkbox-dot"></span>
+						<span class="ep-settings-checkbox-dot" aria-hidden="true"></span>
 					</button>
 				</div>
 
 				<!-- CSS Inlining -->
 				<div class="ep-settings-field ep-settings-field-inline">
-					<label class="ep-settings-label">{{
+					<label :for="fieldId('inline-css')" class="ep-settings-label">{{
 						t('builder.preview.renderOptions.inlineCss')
 					}}</label>
 					<button
+						:id="fieldId('inline-css')"
+						type="button"
+						role="switch"
+						:aria-checked="local.inlineCss"
 						class="ep-settings-checkbox"
 						:class="{ 'ep-settings-checkbox-active': local.inlineCss }"
 						@click="
@@ -109,7 +137,7 @@ const { local, emitUpdate } = provideRenderOptionsDraft(
 							emitUpdate();
 						"
 					>
-						<span class="ep-settings-checkbox-dot"></span>
+						<span class="ep-settings-checkbox-dot" aria-hidden="true"></span>
 					</button>
 				</div>
 			</div>

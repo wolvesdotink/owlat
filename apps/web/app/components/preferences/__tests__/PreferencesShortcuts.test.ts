@@ -6,7 +6,7 @@
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ref, useSlots } from 'vue';
+import { defineComponent, ref, useSlots } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { StoredShortcutOverride } from '~/utils/shortcutPresets';
 import { resetShortcutPreferences } from '~/utils/shortcutScope';
@@ -42,6 +42,14 @@ const save = vi.fn(
 );
 let flags: string[];
 
+/** The confirmation's open state and its two outcomes, nothing else. */
+const ConfirmStub = defineComponent({
+	props: { open: Boolean, confirmText: String },
+	emits: ['confirm', 'update:open'],
+	template:
+		'<div v-if="open" data-testid="reset-all-confirm"><button data-testid="reset-all-yes" @click="$emit(\'confirm\')">{{ confirmText }}</button></div>',
+});
+
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
@@ -65,7 +73,7 @@ function mountPage() {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			components: { UiBadge, UiInput, UiSelect },
+			components: { UiBadge, UiInput, UiSelect, UiConfirmationDialog: ConfirmStub },
 		},
 	});
 }
@@ -270,5 +278,20 @@ describe('PreferencesShortcuts', () => {
 		);
 		expect(row(wrapper, 'postbox.star').text()).toContain('Shares a key with Archive');
 		expect(row(wrapper, 'postbox.archive').text()).toContain('Shares a key with Star / unstar');
+	});
+
+	it('asks before resetting every changed shortcut, and only then clears them', async () => {
+		shortcutOverrides.value = [{ id: 'global.settings', keys: ['mod+.'] }];
+		const wrapper = mountPage();
+		await flushPromises();
+		const resetAll = wrapper
+			.findAll('footer button')
+			.find((b) => b.text() === 'Reset all my changes');
+		await resetAll!.trigger('click');
+		expect(save).not.toHaveBeenCalled();
+		expect(wrapper.find('[data-testid="reset-all-confirm"]').exists()).toBe(true);
+		await wrapper.get('[data-testid="reset-all-yes"]').trigger('click');
+		await flushPromises();
+		expect(save).toHaveBeenCalledWith({ shortcutOverrides: [] });
 	});
 });

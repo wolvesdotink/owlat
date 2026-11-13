@@ -33,7 +33,7 @@ const fold = computed(() => (isOpen.value ? null : updatesFoldLine(props.rows.sl
 		:aria-label="t('postbox.priority.updates.title')"
 	>
 		<h2
-			class="flex items-baseline text-[11px] font-semibold uppercase tracking-wider text-text-tertiary"
+			class="flex items-baseline text-2xs font-semibold uppercase tracking-wider text-text-tertiary"
 		>
 			{{ t('postbox.priority.updates.title') }}
 			<span class="ml-auto tabular-nums">{{ rows.length }}</span>
@@ -54,12 +54,24 @@ const fold = computed(() => (isOpen.value ? null : updatesFoldLine(props.rows.sl
 				type="button"
 				class="flex w-full items-baseline gap-2 border-t border-border-subtle px-4 py-2.5 text-left text-sm text-text-secondary hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
 				data-testid="priority-updates-fold"
+				aria-expanded="false"
 				@click="isOpen = true"
 			>
 				<span class="flex-1 min-w-0 truncate">{{ t(fold.key, fold.params, fold.count) }}</span>
 				<span class="flex-shrink-0 text-xs text-brand">{{
 					t('postbox.priority.updates.show')
 				}}</span>
+			</button>
+			<!-- Opening is not one-way: the same place folds them back. -->
+			<button
+				v-else-if="isOpen && rows.length > SHOWN"
+				type="button"
+				class="flex w-full items-baseline justify-end border-t border-border-subtle px-4 py-2.5 text-xs text-brand hover:bg-(--surface-1-hover) focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand/40 outline-none"
+				data-testid="priority-updates-collapse"
+				aria-expanded="true"
+				@click="isOpen = false"
+			>
+				{{ t('postbox.priority.updates.showFewer') }}
 			</button>
 		</div>
 	</section>

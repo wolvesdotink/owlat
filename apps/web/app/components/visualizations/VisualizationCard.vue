@@ -79,8 +79,13 @@ const handleRemove = async () => {
 		<!-- Header -->
 		<div class="flex items-start justify-between mb-4">
 			<div class="min-w-0">
-				<h3 class="text-text-primary font-medium truncate">{{ title }}</h3>
-				<p v-if="description" class="text-sm text-text-secondary mt-0.5 line-clamp-2">
+				<!-- h2: the cards are the page's sections under its h1. -->
+				<h2 class="text-text-primary font-medium truncate" :title="title">{{ title }}</h2>
+				<p
+					v-if="description"
+					class="text-sm text-text-secondary mt-0.5 line-clamp-2"
+					:title="description"
+				>
 					{{ description }}
 				</p>
 				<div class="flex items-center gap-2 mt-1">
@@ -101,7 +106,8 @@ const handleRemove = async () => {
 					:text="t('components.visualizations.visualizationCard.refreshTooltip')"
 				>
 					<button
-						class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors disabled:opacity-50"
+						type="button"
+						class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors disabled:opacity-50"
 						:aria-label="t('components.visualizations.visualizationCard.refreshTooltip')"
 						:disabled="isRefreshing"
 						@click="handleRefresh"
@@ -120,7 +126,8 @@ const handleRemove = async () => {
 					"
 				>
 					<button
-						class="p-1.5 rounded transition-colors"
+						type="button"
+						class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded transition-colors"
 						:class="
 							pinned
 								? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
@@ -139,7 +146,8 @@ const handleRemove = async () => {
 				</UiTooltip>
 				<UiTooltip :text="t('components.visualizations.visualizationCard.removeTooltip')">
 					<button
-						class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+						type="button"
+						class="inline-flex items-center justify-center p-1.5 pointer-coarse:size-11 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 						:aria-label="t('components.visualizations.visualizationCard.removeTooltip')"
 						@click="showConfirmRemove = true"
 					>
@@ -151,47 +159,17 @@ const handleRemove = async () => {
 
 		<!-- Visualization iframe, or why there is none -->
 		<AiBudgetRefusal v-if="isBudgetRefused" :refusal="budgetRefusal" variant="panel" />
-		<VisualizationsVisualizationRenderer v-else :html="html" min-height="250px" />
+		<VisualizationsVisualizationRenderer v-else :html="html" :title="title" min-height="250px" />
 
 		<!-- Remove confirmation -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showConfirmRemove"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4"
-				>
-					<div class="absolute inset-0 bg-scrim/60" @click="showConfirmRemove = false" />
-					<div
-						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
-					>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">
-							{{ t('components.visualizations.visualizationCard.confirmRemoveTitle') }}
-						</h3>
-						<p class="text-sm text-text-secondary mb-6">
-							{{ t('components.visualizations.visualizationCard.confirmRemoveBody') }}
-						</p>
-						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showConfirmRemove = false">
-								{{ t('common.cancel') }}
-							</UiButton>
-							<UiButton variant="danger" :disabled="isRemoving" @click="handleRemove">
-								{{
-									isRemoving
-										? t('components.visualizations.visualizationCard.removing')
-										: t('common.remove')
-								}}
-							</UiButton>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<UiConfirmationDialog
+			v-model:open="showConfirmRemove"
+			variant="danger"
+			:title="t('components.visualizations.visualizationCard.confirmRemoveTitle')"
+			:description="t('components.visualizations.visualizationCard.confirmRemoveBody')"
+			:confirm-text="t('common.remove')"
+			:is-loading="isRemoving"
+			@confirm="handleRemove"
+		/>
 	</div>
 </template>

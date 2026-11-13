@@ -35,11 +35,25 @@ const comparison = computed(() => compareSendTimeArms(props.campaign, now.value)
 const settings = computed(() => props.campaign.sendTimeOptimization);
 
 const numberFormat = computed(() => new Intl.NumberFormat(locale.value));
-const formatRate = (value: number) => `${(value * 100).toFixed(1)}%`;
+// Locale-aware like the counts: "38,4 %" in German, not "38.4%".
+const percentFormat = computed(
+	() =>
+		new Intl.NumberFormat(locale.value, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+);
+const pointsFormat = computed(
+	() => new Intl.NumberFormat(locale.value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+);
+const formatRate = (value: number) => percentFormat.value.format(value);
 
 function changeText(metric: SendTimeMetricComparison): string {
 	const sign = metric.pointsChange > 0 ? '+' : metric.pointsChange < 0 ? '−' : '±';
-	return t(`${prefix}.points`, { change: `${sign}${Math.abs(metric.pointsChange).toFixed(1)}` });
+	return t(`${prefix}.points`, {
+		change: `${sign}${pointsFormat.value.format(Math.abs(metric.pointsChange))}`,
+	});
 }
 
 function verdictTone(metric: SendTimeMetricComparison): string {

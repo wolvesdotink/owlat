@@ -34,6 +34,8 @@ const { isAdmin, enabledProviderChannels, isSending, send: sendOnChannel } = use
 
 const { t, te } = useI18n();
 
+const composeTextId = useId();
+
 // The channel set is closed in the shared config, but timeline rows carry
 // whatever was stored — an unknown value falls back to the shared display label.
 function channelName(channel: string): string {
@@ -116,10 +118,16 @@ async function send() {
 		</div>
 
 		<!-- Channel filter pills -->
-		<div class="flex flex-wrap gap-2 mb-4">
+		<div
+			class="flex flex-wrap gap-2 mb-4"
+			role="group"
+			:aria-label="t('components.contacts.unifiedTimelineTab.filterLabel')"
+		>
 			<button
+				type="button"
+				:aria-pressed="!channelFilter"
 				:class="[
-					'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+					'px-3 py-1.5 pointer-coarse:min-h-11 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 					!channelFilter
 						? 'bg-brand-subtle text-brand'
 						: 'bg-bg-surface text-text-secondary hover:text-text-primary',
@@ -131,8 +139,10 @@ async function send() {
 			<button
 				v-for="ch in channels"
 				:key="ch"
+				type="button"
+				:aria-pressed="channelFilter === ch"
 				:class="[
-					'px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5',
+					'px-3 py-1.5 pointer-coarse:min-h-11 rounded-full text-xs font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 					channelFilter === ch
 						? 'bg-brand-subtle text-brand'
 						: 'bg-bg-surface text-text-secondary hover:text-text-primary',
@@ -161,10 +171,15 @@ async function send() {
 						v-model="composeChannel"
 						:options="sendableChannels"
 						size="sm"
+						:aria-label="t('components.contacts.unifiedTimelineTab.channelPlaceholder')"
 						:placeholder="t('components.contacts.unifiedTimelineTab.channelPlaceholder')"
 					/>
 				</div>
+				<label :for="composeTextId" class="sr-only">{{
+					t('components.contacts.unifiedTimelineTab.messageLabel')
+				}}</label>
 				<UiTextarea
+					:id="composeTextId"
 					v-model="composeText"
 					:rows="2"
 					size="sm"
@@ -236,37 +251,27 @@ async function send() {
 
 					<!-- Content -->
 					<div class="flex-1 min-w-0">
+						<!-- One chip at most: the channel is the icon beside the row, the
+						     direction and a routine status are plain text, and only a
+						     failure earns a badge. -->
 						<div class="flex items-center gap-2 mb-0.5">
-							<!-- Direction badge -->
-							<span
-								:class="[
-									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-									item.direction === 'inbound'
-										? 'bg-info-subtle text-info'
-										: 'bg-success-subtle text-success',
-								]"
-							>
+							<span class="sr-only">{{ channelName(item.channel) }}</span>
+							<span class="inline-flex items-center gap-1 text-xs text-text-tertiary">
 								<component :is="directionIcon(item.direction)" class="w-3 h-3" />
 								{{ directionName(item.direction) }}
+								<template
+									v-if="
+										item.status &&
+										item.status !== 'received' &&
+										item.status !== 'sent' &&
+										item.status !== 'failed'
+									"
+								>
+									<span aria-hidden="true">·</span>
+									{{ statusName(item.status) }}
+								</template>
 							</span>
-
-							<!-- Channel badge -->
-							<UiBadge variant="neutral" size="sm">
-								{{ channelName(item.channel) }}
-							</UiBadge>
-
-							<!-- Status -->
-							<UiBadge
-								v-if="item.status && item.status !== 'received' && item.status !== 'sent'"
-								:variant="
-									item.status === 'delivered' || item.status === 'read'
-										? 'success'
-										: item.status === 'failed'
-											? 'error'
-											: 'neutral'
-								"
-								size="sm"
-							>
+							<UiBadge v-if="item.status === 'failed'" variant="error" size="sm">
 								{{ statusName(item.status) }}
 							</UiBadge>
 						</div>

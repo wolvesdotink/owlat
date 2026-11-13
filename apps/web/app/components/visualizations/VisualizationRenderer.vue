@@ -2,6 +2,8 @@
 const props = defineProps<{
 	html: string;
 	minHeight?: string;
+	/** Names the embedded document for assistive tech, usually the chart's title. */
+	title?: string;
 }>();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
@@ -74,6 +76,7 @@ ${closeScriptTag}`;
 		:srcdoc="enhancedHtml"
 		sandbox="allow-scripts"
 		referrerpolicy="no-referrer"
+		:title="title"
 		class="w-full border-0 rounded-lg bg-white"
 		:style="{ height: iframeHeight, minHeight: minHeight ?? '200px' }"
 	/>

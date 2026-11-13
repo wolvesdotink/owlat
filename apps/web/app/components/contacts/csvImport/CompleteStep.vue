@@ -11,6 +11,8 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+const fieldId = useId();
+
 const {
 	errorRows,
 	previewedErrorRows,
@@ -77,7 +79,7 @@ const {
 			<UiStatCard
 				:value="failedCount"
 				:label="t('components.contacts.csvImportModal.complete.failed')"
-				variant="error"
+				:variant="failedCount > 0 ? 'error' : 'secondary'"
 			/>
 		</div>
 		<!-- A batch the backend did not commit: which rows, why, and that a retry
@@ -120,10 +122,10 @@ const {
 		</div>
 		<!-- Add the rows that just landed to a topic, without leaving the modal. -->
 		<div v-if="isAddToTopicOpen" class="mb-4 p-4 rounded-lg bg-bg-surface">
-			<h4 class="text-sm font-medium text-text-primary mb-3">
+			<label :for="`${fieldId}-topic`" class="block text-sm font-medium text-text-primary mb-3">
 				{{ t('components.contacts.csvImportModal.complete.addToTopicTitle') }}
-			</h4>
-			<select v-model="addToTopicId" class="input w-full">
+			</label>
+			<select :id="`${fieldId}-topic`" v-model="addToTopicId" class="input w-full">
 				<option value="">
 					{{ t('components.contacts.csvImportModal.complete.chooseTopic') }}
 				</option>

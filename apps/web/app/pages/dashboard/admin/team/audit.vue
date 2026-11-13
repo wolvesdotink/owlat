@@ -168,6 +168,10 @@ const dateRangeOptions = computed(() => [
 	{ value: 'week', label: t('dashboard.admin.team.audit.dateRange.week') },
 	{ value: 'month', label: t('dashboard.admin.team.audit.dateRange.month') },
 ]);
+
+// The counters say how much happened, not what to do about it, so they stay
+// collapsed and the filters and the log lead the page.
+const showStats = ref(false);
 </script>
 
 <template>
@@ -179,17 +183,12 @@ const dateRangeOptions = computed(() => [
 		/>
 
 		<!-- Admins-only gate (audit trail is privileged) -->
-		<div
-			v-if="showAdminGate"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.audit.adminGate.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.audit.adminGate.description') }}
-			</p>
+		<div v-if="showAdminGate" class="card">
+			<UiEmptyState
+				:icon="LockIcon"
+				:title="t('dashboard.admin.team.audit.adminGate.title')"
+				:description="t('dashboard.admin.team.audit.adminGate.description')"
+			/>
 		</div>
 
 		<UiQueryBoundary
@@ -212,69 +211,64 @@ const dateRangeOptions = computed(() => [
 			</template>
 
 			<!-- No Organization State -->
-			<div
-				v-if="!hasActiveOrganization"
-				class="card flex flex-col items-center justify-center py-16 text-center px-6"
-			>
-				<UiIconBox
+			<div v-if="!hasActiveOrganization" class="card">
+				<UiEmptyState
 					:icon="ClipboardListIcon"
-					size="xl"
-					variant="surface"
-					rounded="full"
-					class="mb-4"
+					:title="t('dashboard.admin.team.audit.noWorkspace.title')"
+					:description="t('dashboard.admin.team.audit.noWorkspace.description')"
 				/>
-				<p class="text-text-secondary font-medium">
-					{{ t('dashboard.admin.team.audit.noWorkspace.title') }}
-				</p>
-				<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-					{{ t('dashboard.admin.team.audit.noWorkspace.description') }}
-				</p>
 			</div>
 
 			<!-- Content -->
 			<div v-else class="space-y-6">
-				<!-- Stats Cards -->
-				<div v-if="statsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-					<div class="card p-4">
-						<p class="text-sm text-text-secondary">
-							{{ t('dashboard.admin.team.audit.stats.totalActions') }}
-						</p>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ statsData.total }}
-						</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<PaperPlaneIcon class="w-4 h-4 text-brand" />
+				<!-- Stats: counters of what happened, one click away. -->
+				<UiDisclosure
+					v-if="statsData"
+					v-model="showStats"
+					:label="t('dashboard.admin.team.audit.stats.summary')"
+				>
+					<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+						<div class="card p-4">
 							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.admin.team.audit.stats.campaigns') }}
+								{{ t('dashboard.admin.team.audit.stats.totalActions') }}
+							</p>
+							<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+								{{ statsData.total }}
 							</p>
 						</div>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ statsData.byResource['campaign'] ?? 0 }}
-						</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<UsersIcon class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.admin.team.audit.stats.contacts') }}
+						<div class="card p-4">
+							<div class="flex items-center gap-2">
+								<PaperPlaneIcon class="w-4 h-4 text-brand" />
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.team.audit.stats.campaigns') }}
+								</p>
+							</div>
+							<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+								{{ statsData.byResource['campaign'] ?? 0 }}
 							</p>
 						</div>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ statsData.byResource['contact'] ?? 0 }}
-						</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<SettingsIcon class="w-4 h-4 text-warning" />
-							<p class="text-sm text-text-secondary">{{ t('common.settings') }}</p>
+						<div class="card p-4">
+							<div class="flex items-center gap-2">
+								<UsersIcon class="w-4 h-4 text-brand" />
+								<p class="text-sm text-text-secondary">
+									{{ t('dashboard.admin.team.audit.stats.contacts') }}
+								</p>
+							</div>
+							<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+								{{ statsData.byResource['contact'] ?? 0 }}
+							</p>
 						</div>
-						<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
-							{{ statsData.byResource['settings'] ?? 0 }}
-						</p>
+						<div class="card p-4">
+							<div class="flex items-center gap-2">
+								<SettingsIcon class="w-4 h-4 text-warning" />
+								<p class="text-sm text-text-secondary">{{ t('common.settings') }}</p>
+							</div>
+							<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary mt-1">
+								{{ statsData.byResource['settings'] ?? 0 }}
+							</p>
+						</div>
 					</div>
-				</div>
+				</UiDisclosure>
 
 				<!-- Filters. The search takes its own row and the selects wrap below it:
 				     in one `lg:flex-row` line inside the settings column the search
@@ -291,14 +285,19 @@ const dateRangeOptions = computed(() => [
 								v-model="searchQuery"
 								type="text"
 								:placeholder="t('dashboard.admin.team.audit.searchPlaceholder')"
+								:aria-label="t('dashboard.admin.team.audit.filters.search')"
 								class="input pl-10"
 							/>
 						</div>
 
 						<!-- Resource Filter -->
 						<div class="flex items-center gap-2">
-							<FilterIcon class="w-4 h-4 text-text-tertiary" />
-							<select v-model="selectedResource" class="input w-40">
+							<FilterIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+							<select
+								v-model="selectedResource"
+								class="input w-40"
+								:aria-label="t('dashboard.admin.team.audit.filters.resource')"
+							>
 								<option
 									v-for="resource in resourceTypes"
 									:key="resource.value"
@@ -311,8 +310,12 @@ const dateRangeOptions = computed(() => [
 
 						<!-- Action Filter -->
 						<div class="flex items-center gap-2">
-							<ActivityIcon class="w-4 h-4 text-text-tertiary" />
-							<select v-model="selectedAction" class="input w-44">
+							<ActivityIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+							<select
+								v-model="selectedAction"
+								class="input w-44"
+								:aria-label="t('dashboard.admin.team.audit.filters.action')"
+							>
 								<option value="">{{ t('dashboard.admin.team.audit.allActions') }}</option>
 								<optgroup
 									v-for="group in actionTypeGroups"
@@ -335,8 +338,12 @@ const dateRangeOptions = computed(() => [
 							v-if="activeUsersData && activeUsersData.length > 0"
 							class="flex items-center gap-2"
 						>
-							<UserIcon class="w-4 h-4 text-text-tertiary" />
-							<select v-model="selectedUserId" class="input w-40">
+							<UserIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+							<select
+								v-model="selectedUserId"
+								class="input w-40"
+								:aria-label="t('dashboard.admin.team.audit.filters.user')"
+							>
 								<option value="">{{ t('dashboard.admin.team.audit.allUsers') }}</option>
 								<option v-for="user in activeUsersData" :key="user._id" :value="user.authUserId">
 									{{ user.name ?? user.email }}
@@ -346,8 +353,12 @@ const dateRangeOptions = computed(() => [
 
 						<!-- Date Range Filter -->
 						<div class="flex items-center gap-2">
-							<CalendarIcon class="w-4 h-4 text-text-tertiary" />
-							<select v-model="dateRange" class="input w-44">
+							<CalendarIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+							<select
+								v-model="dateRange"
+								class="input w-44"
+								:aria-label="t('dashboard.admin.team.audit.filters.dateRange')"
+							>
 								<option
 									v-for="option in dateRangeOptions"
 									:key="option.value"
@@ -378,37 +389,38 @@ const dateRangeOptions = computed(() => [
 				</div>
 
 				<!-- Empty State -->
-				<div
-					v-if="auditLogsData && auditLogsData.logs.length === 0"
-					class="card flex flex-col items-center justify-center py-16 text-center px-6"
-				>
-					<UiIconBox
+				<div v-if="auditLogsData && auditLogsData.logs.length === 0" class="card">
+					<UiEmptyState
 						:icon="ClipboardListIcon"
-						size="xl"
-						variant="surface"
-						rounded="full"
-						class="mb-4"
+						:title="t('dashboard.admin.team.audit.empty.title')"
+						:description="t('dashboard.admin.team.audit.empty.description')"
 					/>
-					<p class="text-text-secondary font-medium">
-						{{ t('dashboard.admin.team.audit.empty.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						{{ t('dashboard.admin.team.audit.empty.description') }}
-					</p>
 				</div>
 
 				<!-- No Search Results -->
-				<div
-					v-else-if="filteredLogs.length === 0 && searchQuery.trim()"
-					class="card flex flex-col items-center justify-center py-16 text-center px-6"
-				>
-					<UiIconBox :icon="SearchIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-					<p class="text-text-secondary font-medium">
-						{{ t('dashboard.admin.team.audit.noResults.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						{{ t('dashboard.admin.team.audit.noResults.description', { query: searchQuery }) }}
-					</p>
+				<!-- Search runs over the pages loaded so far. While older pages remain,
+				     say so and keep Load more here, or a match on a later page could
+				     never be reached while the search is active. -->
+				<div v-else-if="filteredLogs.length === 0 && searchQuery.trim()" class="card">
+					<UiEmptyState
+						variant="no-results"
+						:icon="SearchIcon"
+						:title="t('dashboard.admin.team.audit.noResults.title')"
+						:description="
+							auditLogsData?.hasMore
+								? t('dashboard.admin.team.audit.noResults.loadedOnly', { query: searchQuery })
+								: t('dashboard.admin.team.audit.noResults.description', { query: searchQuery })
+						"
+					>
+						<template #action>
+							<UiButton v-if="auditLogsData?.hasMore" variant="secondary" @click="loadMore">
+								{{ t('components.dashboard.auditLogList.loadMore') }}
+							</UiButton>
+							<UiButton v-else variant="secondary" @click="resetFilters">
+								{{ t('dashboard.admin.team.audit.resetFilters') }}
+							</UiButton>
+						</template>
+					</UiEmptyState>
 				</div>
 
 				<!-- Audit Log List -->

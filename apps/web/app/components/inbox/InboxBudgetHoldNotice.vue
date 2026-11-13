@@ -53,10 +53,10 @@ const missing = computed(() => props.hold.missingJudgments.map((j) => t(MISSING_
 				variant="secondary"
 				size="sm"
 				class="gap-1"
-				:disabled="retrying"
+				:loading="retrying"
 				@click="emit('retry')"
 			>
-				<ReloadIcon class="w-3 h-3" />
+				<ReloadIcon v-if="!retrying" class="w-3 h-3" />
 				{{ t(`${K}.retry`) }}
 			</UiButton>
 			<p class="text-xs text-text-secondary">{{ t(`${K}.retryHint`) }}</p>

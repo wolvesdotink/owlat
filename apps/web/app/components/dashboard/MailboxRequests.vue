@@ -75,7 +75,7 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 </script>
 
 <template>
-	<div v-if="!isLoading && openRequests.length" class="card mb-8">
+	<div v-if="!isLoading && openRequests.length" class="card">
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox :icon="MailboxIcon" variant="surface" />
 			<div>
@@ -98,22 +98,22 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 			<li
 				v-for="req in openRequests"
 				:key="req.id"
-				class="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-bg-surface/50 px-4 py-3"
+				class="flex flex-col gap-3 rounded-xl border border-border-subtle bg-bg-surface/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 			>
 				<div class="min-w-0">
-					<p class="font-medium text-text-primary truncate">{{ req.name || req.email }}</p>
-					<p class="text-sm text-text-secondary truncate">
-						<template v-if="req.note">{{
-							t('components.dashboard.mailboxRequests.emailWithNote', {
-								email: req.name ? req.email : '',
-								note: req.note,
-							})
-						}}</template>
-						<template v-else>{{ req.name ? req.email : '' }}</template>
+					<p class="font-medium text-text-primary truncate" :title="req.name || req.email">
+						{{ req.name || req.email }}
+					</p>
+					<p v-if="req.name" class="text-sm text-text-secondary truncate" :title="req.email">
+						{{ req.email }}
+					</p>
+					<!-- The reason in full, before the actions that resolve it. -->
+					<p v-if="req.note" class="mt-0.5 text-sm text-text-secondary break-words">
+						“{{ req.note }}”
 					</p>
 				</div>
-				<div class="flex shrink-0 items-center gap-2">
-					<div class="flex flex-col items-end gap-1">
+				<div class="flex shrink-0 items-start gap-2 sm:items-center">
+					<div class="flex flex-col items-start gap-1 sm:items-end">
 						<UiButton
 							variant="primary"
 							size="sm"

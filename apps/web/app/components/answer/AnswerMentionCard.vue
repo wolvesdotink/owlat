@@ -10,7 +10,7 @@ import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import type { AnswerCardControls } from '~/utils/answerCard';
-import { ChatCircleIcon } from '@coolicons/vue';
+import { ChatCircleIcon, MailIcon, UserIcon } from '@coolicons/vue';
 
 type MentionEntry = FunctionReturnType<typeof api.chat.mentions.listMyUnreadMentions>[number];
 
@@ -31,13 +31,24 @@ const { run: markRead } = useBackendOperation(api.chat.mentions.markMentionRead,
 
 const target = computed(() => {
 	// A mention inside an email's team discussion carries that email's thread.
-	const thread = (
-		props.mention as { mailThread?: { latestMessageId: string; mailboxId: string } | null }
-	).mailThread;
-	if (thread)
+	// A thread with no message yet has nothing to open in the reader; its
+	// discussion room is still there.
+	const thread = props.mention.mailThread;
+	if (thread?.latestMessageId)
 		return `/dashboard/postbox/inbox/${thread.latestMessageId}?mailbox=${thread.mailboxId}`;
 	return `/dashboard/chat/${props.mention.roomId}`;
 });
+
+// Only a channel is a "#name". A DM is named by its people, and an email's
+// team discussion by the email's subject.
+const place = computed(() =>
+	props.mention.mailThread || props.mention.roomKind === 'dm'
+		? props.mention.roomName
+		: `#${props.mention.roomName}`
+);
+const placeIcon = computed(() =>
+	props.mention.mailThread ? MailIcon : props.mention.roomKind === 'dm' ? UserIcon : ChatCircleIcon
+);
 
 async function reply() {
 	await markRead({ mentionId: props.mention._id as Id<'chatMentions'> });
@@ -68,8 +79,8 @@ const hints = computed(() =>
 <template>
 	<TaskCardShell>
 		<TaskContext
-			:who="`#${mention.roomName}`"
-			:icon="ChatCircleIcon"
+			:who="place"
+			:icon="placeIcon"
 			:meta="formatCompactRelativeTime(mention.createdAt)"
 		/>
 		<TaskAsk class="mt-3 mb-4" :ask="mention.messagePreview" />

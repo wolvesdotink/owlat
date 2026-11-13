@@ -166,6 +166,21 @@ describe('AnswerModeFrame on a phone', () => {
 		expect(sheet(w).attributes('data-sheet-state')).toBe('peek');
 	});
 
+	it('works its tabs as tabs: labelled panels, one tab stop, arrow keys move', async () => {
+		setWidth(390);
+		const w = mountFrame();
+		const convTab = w.get('[data-testid="answer-tab-conversation"]');
+		const replyTab = w.get('[data-testid="answer-tab-reply"]');
+		expect(conversation(w).attributes('role')).toBe('tabpanel');
+		expect(conversation(w).attributes('aria-labelledby')).toBe(convTab.attributes('id'));
+		expect(sheet(w).attributes('aria-labelledby')).toBe(replyTab.attributes('id'));
+		expect(convTab.attributes('tabindex')).toBe('0');
+		expect(replyTab.attributes('tabindex')).toBe('-1');
+
+		await convTab.trigger('keydown', { key: 'ArrowRight' });
+		expect(lastTab(w)).toBe('reply');
+	});
+
 	it('goes straight to the Reply tab when the page asks (Cmd/Ctrl+J)', async () => {
 		setWidth(390);
 		const w = mountFrame({ tab: 'conversation' });

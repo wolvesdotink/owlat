@@ -24,16 +24,28 @@
 		@apply bg-text-primary text-text-inverse hover:bg-text-primary/85;
 	}
 
+	/* A link button has no `:disabled`, so `disabled:` never matches it; UiButton
+	   marks it aria-disabled instead. Native buttons are left out on purpose: a
+	   held button keeps aria-disabled to stay focusable and draws its own held
+	   look, and an opacity here would also fade its focus ring. */
+	a.btn[aria-disabled='true'] {
+		@apply pointer-events-none opacity-50;
+	}
+
+	/* Toggle buttons (aria-pressed) show their on state without a caller class. */
 	.btn-secondary {
-		@apply bg-surface-3 text-text-primary shadow-surface-1 hover:bg-bg-surface-hover;
+		@apply bg-surface-3 text-text-primary shadow-surface-1 hover:bg-bg-surface-hover aria-pressed:bg-bg-surface-hover;
 	}
 
 	.btn-ghost {
-		@apply bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-surface;
+		@apply bg-transparent text-text-secondary hover:text-text-primary hover:bg-bg-surface aria-pressed:bg-bg-surface aria-pressed:text-text-primary;
 	}
 
+	/* The ring is the only edge an outline button has, so it is the border
+	   token (which the Higher contrast setting raises past 3:1), not the 6%
+	   elevation ring a filled control can afford. */
 	.btn-outline {
-		@apply bg-transparent text-text-secondary shadow-surface-1 hover:text-text-primary hover:shadow-surface-2;
+		@apply bg-transparent text-text-secondary shadow-[0_0_0_1px_var(--color-border-strong)] hover:text-text-primary hover:bg-bg-surface aria-pressed:bg-bg-surface aria-pressed:text-text-primary;
 	}
 
 	/* Solid danger: the SEPARATE error-strong fill (--color-error reads as brand
@@ -55,7 +67,21 @@
 		@apply bg-error/10 text-error border border-error/20 hover:bg-error/20;
 	}
 
-	/* Single source of the field look, as `.btn` is for buttons. UiInput,
+	/* Amber actions that need care but are not destructive (force verify,
+	   regenerate, revoke). Tinted like .btn-danger-outline rather than filled:
+	   a solid amber button would outshout the page's primary action. */
+	.btn-warning {
+		@apply bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20;
+	}
+
+	.btn-warning-ghost {
+		@apply bg-transparent text-warning hover:bg-warning/10 hover:text-warning;
+	}
+
+	/* Single source of the field look, as `.btn` is for buttons. The edge is
+	   the strong border token, not the elevation ring: a field has to show
+	   where it is on the page it sits on, and the 2% dark-mode ring left a
+	   field on the page background with no visible boundary at all. UiInput,
 	   UiTextarea and the UiSelect trigger compose it; a native <input>, <select>
 	   or <textarea> carries it directly, adding layout classes only
 	   (scripts/check-ui-controls.ts, docs/web-ui.md). The focus ring is
@@ -63,7 +89,7 @@
 	   wrapper whose bare control has focus, so a field with a prefix or chips is
 	   a `.input` wrapper around an `.input-bare` control. */
 	.input {
-		@apply w-full px-3 py-2 min-h-9 text-sm leading-5 bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus-within:ring-1 focus-within:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
+		@apply w-full px-3 py-2 min-h-9 text-sm leading-5 bg-surface-1 shadow-[0_0_0_1px_var(--color-border-strong)] rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus-within:ring-1 focus-within:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
 	}
 
 	.input-sm {
@@ -84,6 +110,13 @@
 	   chrome of its own, and the surrounding surface shows focus. */
 	.input-bare {
 		@apply bg-transparent text-text-primary placeholder:text-text-tertiary outline-none;
+	}
+
+	/* Default highlight for UiListbox / UiSuggestionPopover options, so a caller
+	   that passes no highlight class still shows where the arrow keys are. A
+	   caller's own `data-[highlighted]:` utility wins (utilities layer). */
+	.ui-listbox-option[data-highlighted] {
+		@apply bg-bg-surface;
 	}
 
 	.label {

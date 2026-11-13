@@ -18,6 +18,8 @@ const importSuppressions = defineModel<boolean>('importSuppressions', { required
 
 const { t } = useI18n();
 
+const fieldId = useId();
+
 /** `>` cannot live in a message value (the catalog guard rejects markup), so the
  *  breadcrumb separator is passed in as a value. */
 const chevron = '>';
@@ -28,22 +30,31 @@ const chevron = '>';
 		<!-- Mailchimp Config -->
 		<div v-if="selectedIntegration === 'mailchimp'" class="space-y-4">
 			<div>
-				<label class="label"
+				<label for="credentials-mailchimp-apikey" class="label"
 					>{{ t('components.contacts.integrationImportModal.configure.mailchimpApiKey') }}
 					<span class="text-error">*</span></label
 				>
 				<div class="relative">
 					<input
+						id="credentials-mailchimp-apikey"
 						v-model="credentials.mailchimp.apiKey"
+						autocomplete="off"
 						:type="credentials.mailchimp.showApiKey ? 'text' : 'password'"
 						:placeholder="
 							t('components.contacts.integrationImportModal.configure.mailchimpApiKeyPlaceholder')
 						"
-						class="input pr-10"
+						class="input pr-10 pointer-coarse:pr-12"
 					/>
 					<button
 						type="button"
-						class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+						class="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 pointer-coarse:size-11 rounded text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="
+							credentials.mailchimp.showApiKey
+								? t('components.contacts.integrationImportModal.configure.hideKey')
+								: t('components.contacts.integrationImportModal.configure.showKey')
+						"
+						:aria-pressed="credentials.mailchimp.showApiKey"
+						:aria-controls="'credentials-mailchimp-apikey'"
 						@click="credentials.mailchimp.showApiKey = !credentials.mailchimp.showApiKey"
 					>
 						<EyeIcon v-if="!credentials.mailchimp.showApiKey" class="w-4 h-4" />
@@ -80,17 +91,15 @@ const chevron = '>';
 					}}
 				</p>
 			</div>
-			<label class="flex items-start gap-3 p-4 rounded-lg bg-bg-surface cursor-pointer">
-				<input v-model="importSuppressions" type="checkbox" class="w-4 h-4 mt-0.5 text-brand" />
-				<span>
-					<span class="block text-sm font-medium text-text-primary">{{
-						t('components.contacts.integrationImportModal.configure.carrySuppressions')
-					}}</span>
-					<span class="block text-xs text-text-tertiary mt-1">
-						{{ t('components.contacts.integrationImportModal.configure.carrySuppressionsHint') }}
-					</span>
-				</span>
-			</label>
+			<div class="p-4 rounded-lg bg-bg-surface">
+				<UiCheckbox
+					v-model="importSuppressions"
+					:label="t('components.contacts.integrationImportModal.configure.carrySuppressions')"
+					:description="
+						t('components.contacts.integrationImportModal.configure.carrySuppressionsHint')
+					"
+				/>
+			</div>
 		</div>
 
 		<!-- Mandrill Config — nothing to configure: the key is an
@@ -115,22 +124,31 @@ const chevron = '>';
 		<!-- Stripe Config -->
 		<div v-else-if="selectedIntegration === 'stripe'" class="space-y-4">
 			<div>
-				<label class="label"
+				<label for="credentials-stripe-apikey" class="label"
 					>{{ t('components.contacts.integrationImportModal.configure.stripeSecretKey') }}
 					<span class="text-error">*</span></label
 				>
 				<div class="relative">
 					<input
+						id="credentials-stripe-apikey"
 						v-model="credentials.stripe.apiKey"
+						autocomplete="off"
 						:type="credentials.stripe.showApiKey ? 'text' : 'password'"
 						:placeholder="
 							t('components.contacts.integrationImportModal.configure.stripeSecretKeyPlaceholder')
 						"
-						class="input pr-10"
+						class="input pr-10 pointer-coarse:pr-12"
 					/>
 					<button
 						type="button"
-						class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
+						class="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center size-8 pointer-coarse:size-11 rounded text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="
+							credentials.stripe.showApiKey
+								? t('components.contacts.integrationImportModal.configure.hideKey')
+								: t('components.contacts.integrationImportModal.configure.showKey')
+						"
+						:aria-pressed="credentials.stripe.showApiKey"
+						:aria-controls="'credentials-stripe-apikey'"
 						@click="credentials.stripe.showApiKey = !credentials.stripe.showApiKey"
 					>
 						<EyeIcon v-if="!credentials.stripe.showApiKey" class="w-4 h-4" />
@@ -162,17 +180,21 @@ const chevron = '>';
 
 		<!-- Handle Duplicates (contact imports only) -->
 		<div v-if="selectedIntegration !== 'mandrill'" class="mt-6 p-4 rounded-lg bg-bg-surface">
-			<h4 class="text-sm font-medium text-text-primary mb-3">
+			<h4 :id="`${fieldId}-duplicates`" class="text-sm font-medium text-text-primary mb-3">
 				{{ t('components.contacts.integrationImportModal.configure.handleDuplicates') }}
 			</h4>
-			<div class="flex gap-4">
-				<label class="flex items-center gap-2 cursor-pointer">
+			<div
+				role="radiogroup"
+				:aria-labelledby="`${fieldId}-duplicates`"
+				class="flex flex-wrap gap-x-4 gap-y-2"
+			>
+				<label class="flex items-center gap-2 cursor-pointer pointer-coarse:min-h-11">
 					<input v-model="handleDuplicates" type="radio" value="skip" class="w-4 h-4 text-brand" />
 					<span class="text-sm text-text-secondary">{{
 						t('components.contacts.integrationImportModal.configure.skipDuplicates')
 					}}</span>
 				</label>
-				<label class="flex items-center gap-2 cursor-pointer">
+				<label class="flex items-center gap-2 cursor-pointer pointer-coarse:min-h-11">
 					<input
 						v-model="handleDuplicates"
 						type="radio"
@@ -191,10 +213,11 @@ const chevron = '>';
 			v-if="availableLists.length > 0 && selectedIntegration !== 'mandrill'"
 			class="mt-4 p-4 rounded-lg bg-bg-surface"
 		>
-			<h4 class="text-sm font-medium text-text-primary mb-3">
+			<label :for="`${fieldId}-topic`" class="block text-sm font-medium text-text-primary mb-3">
 				{{ t('components.contacts.integrationImportModal.configure.addToTopic') }}
-			</h4>
+			</label>
 			<select
+				:id="`${fieldId}-topic`"
 				:value="selectedTopicId ?? ''"
 				class="input w-full"
 				@change="selectedTopicId = ($event.target as HTMLSelectElement).value || null"

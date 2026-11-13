@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import PluginSettingsField from '~/components/settings/PluginSettingsField.vue';
+import { connectedAppCapabilityLabel } from '~/utils/connectedAppCapabilities';
 import {
 	hasPluginSettingsChanges,
 	missingRequiredPluginSettings,
@@ -108,23 +109,41 @@ const unsetSecrets = computed(() => unsetRequiredPluginSecrets(schema.value, ser
 const showResetConfirm = ref(false);
 const showOrphanClearConfirm = ref(false);
 
-async function save() {
+async function save(): Promise<boolean> {
 	const missing = missingRequiredPluginSettings(schema.value, form.value);
 	if (missing.length > 0) {
 		const labels = missing
 			.map((key) => schema.value.find((field) => field.key === key)?.label ?? key)
 			.join(', ');
 		showToast(t('dashboard.admin.instance.plugins.detail.toasts.fillRequired', { fields: labels }));
-		return;
+		return false;
 	}
 	const changes = pluginSettingsChanges(schema.value, form.value, baseline.value);
 	const res = await setPluginSettings({ pluginId: pluginId.value, values: changes });
-	if (!res.ok) return; // failure already toasted
+	if (!res.ok) return false; // failure already toasted
 	// Seed from the returned redacted state synchronously, not via a live-query
 	// round-trip, so edits typed before the refresh arrives are not clobbered.
 	seedForm(res.result);
 	showToast(t('dashboard.admin.instance.plugins.detail.toasts.saved'));
+	return true;
 }
+
+// Leaving with edited settings asks first, like the other settings forms. A
+// save that fails or is refused throws, which keeps the reader here with the
+// draft intact.
+const {
+	showDialog: showUnsavedDialog,
+	isSavingBeforeLeave,
+	confirmDiscard,
+	confirmSave,
+	cancelNavigation,
+	setHasChanges,
+} = useUnsavedChanges({
+	onSave: async () => {
+		if (!(await save())) throw new Error('Save failed');
+	},
+});
+watch(isDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 // Both confirm paths run the same reset mutation but report different outcomes:
 // the in-form reset restores schema defaults, while the orphan path is a purge
@@ -159,34 +178,41 @@ function confirmOrphanClear() {
 
 		<UiQueryBoundary :loading="isLoading && !overview" :error="error" @retry="refetch">
 			<!-- Uninstalled plugin with residual settings: purge-only state. -->
-			<UiCard v-if="isOrphaned">
-				<UiEmptyState
-					:icon="PuzzleIcon"
-					:title="t('dashboard.admin.instance.plugins.detail.orphaned.title', { pluginId })"
-					:description="t('dashboard.admin.instance.plugins.detail.orphaned.description')"
-				>
-					<UiButton
-						variant="secondary"
-						:loading="isResetting"
-						@click="showOrphanClearConfirm = true"
+			<!-- Every branch keeps the page's h1, named after the plugin id. -->
+			<template v-if="isOrphaned">
+				<UiPageHeader class="mb-6" :title="pluginId" />
+				<UiCard>
+					<UiEmptyState
+						:icon="PuzzleIcon"
+						:title="t('dashboard.admin.instance.plugins.detail.orphaned.title', { pluginId })"
+						:description="t('dashboard.admin.instance.plugins.detail.orphaned.description')"
 					>
-						{{ t('dashboard.admin.instance.plugins.detail.orphaned.clear') }}
-					</UiButton>
-				</UiEmptyState>
-			</UiCard>
+						<UiButton
+							variant="secondary"
+							:loading="isResetting"
+							@click="showOrphanClearConfirm = true"
+						>
+							{{ t('dashboard.admin.instance.plugins.detail.orphaned.clear') }}
+						</UiButton>
+					</UiEmptyState>
+				</UiCard>
+			</template>
 
 			<!-- Unknown plugin id. -->
-			<UiCard v-else-if="!manifest || !entry">
-				<UiEmptyState
-					:icon="PuzzleIcon"
-					:title="t('dashboard.admin.instance.plugins.detail.notFound.title')"
-					:description="t('dashboard.admin.instance.plugins.detail.notFound.description')"
-				>
-					<UiButton variant="secondary" to="/dashboard/admin/instance/plugins">{{
-						t('dashboard.admin.instance.plugins.detail.notFound.back')
-					}}</UiButton>
-				</UiEmptyState>
-			</UiCard>
+			<template v-else-if="!manifest || !entry">
+				<UiPageHeader class="mb-6" :title="pluginId" />
+				<UiCard>
+					<UiEmptyState
+						:icon="PuzzleIcon"
+						:title="t('dashboard.admin.instance.plugins.detail.notFound.title')"
+						:description="t('dashboard.admin.instance.plugins.detail.notFound.description')"
+					>
+						<UiButton variant="secondary" to="/dashboard/admin/instance/plugins">{{
+							t('dashboard.admin.instance.plugins.detail.notFound.back')
+						}}</UiButton>
+					</UiEmptyState>
+				</UiCard>
+			</template>
 
 			<template v-else>
 				<UiPageHeader
@@ -250,7 +276,12 @@ function confirmOrphanClear() {
 								:key="capability.capability"
 								class="px-6 py-3 flex items-center justify-between gap-4"
 							>
-								<code class="text-sm text-text-secondary">{{ capability.capability }}</code>
+								<div class="min-w-0">
+									<p class="text-sm text-text-primary">
+										{{ connectedAppCapabilityLabel(capability.capability) }}
+									</p>
+									<code class="text-xs text-text-tertiary">{{ capability.capability }}</code>
+								</div>
 								<UiBadge :variant="capability.granted ? 'success' : 'neutral'">
 									{{
 										capability.granted
@@ -374,6 +405,14 @@ function confirmOrphanClear() {
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showOrphanClearConfirm = v)"
 			@confirm="confirmOrphanClear"
+		/>
+
+		<UiUnsavedChangesDialog
+			:show="showUnsavedDialog"
+			:saving="isSavingBeforeLeave"
+			@close="cancelNavigation"
+			@discard="confirmDiscard"
+			@save="confirmSave"
 		/>
 	</div>
 </template>

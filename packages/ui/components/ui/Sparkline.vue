@@ -66,5 +66,5 @@ const endpoint = computed(() => points.value[points.value.length - 1]);
 			stroke-width="1"
 		/>
 	</svg>
-	<span v-else class="text-[10px] text-text-tertiary" :aria-label="ariaLabel">&mdash;</span>
+	<span v-else class="text-2xs text-text-tertiary" :aria-label="ariaLabel">&mdash;</span>
 </template>

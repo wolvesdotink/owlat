@@ -88,7 +88,8 @@
 		"diff": {
 			"title": "Changes",
 			"identical": "No changes detected.",
-			"summary": "{count} change detected | {count} changes detected"
+			"summary": "{count} change detected | {count} changes detected",
+			"close": "Close changes"
 		},
 		"preview": {
 			"clients": {
@@ -133,7 +134,8 @@
 				"download": "Download {file}"
 			},
 			"warnings": {
-				"title": "{count} Render Warning | {count} Render Warnings"
+				"title": "{count} Render Warning | {count} Render Warnings",
+				"close": "Close render warnings"
 			},
 			"frame": {
 				"email": "Email preview",
@@ -179,7 +181,15 @@
 				"variables": "Variable Values",
 				"variableName": "Variable name",
 				"variableValue": "Value",
-				"addVariable": "Add Variable"
+				"addVariable": "Add Variable",
+				"close": "Close render options",
+				"fontUrl": "Font URL {index}",
+				"removeFontUrl": "Remove font URL {index}",
+				"variableNameOf": "Variable {index} name",
+				"variableValueOf": "Value of {name}",
+				"variableValueOfIndex": "Variable {index} value",
+				"removeVariable": "Remove {name}",
+				"removeVariableIndex": "Remove variable {index}"
 			},
 			"generating": "Generating preview..."
 		},
@@ -261,16 +271,18 @@
 			"preview": {
 				"untitledSection": "Untitled Section",
 				"buttonText": "Click here",
-				"dropHere": "Drop here",
-				"dropBlocksHere": "Drop blocks here",
 				"socialNoUrl": "No URL yet — this icon will not appear in the sent email",
 				"socialDimmed": "Dimmed icons have no URL and won't appear in the sent email",
 				"textPlaceholder": "Enter your text here...",
 				"sectionPlaceholder": "Content goes here...",
 				"heroImage": "Set background image",
 				"noImage": "No image selected",
-				"configure": "{block} — select to configure"
-			}
+				"configure": "{block} — select to configure",
+				"frameTitle": "{block} preview",
+				"emptyColumn": "Empty column. Select the block and add one under Content.",
+				"emptyContainer": "Empty. Select the block and add one under Content."
+			},
+			"textEditor": "Text block content"
 		},
 		"toolbar": {
 			"categories": {
@@ -373,7 +385,9 @@
 				"fieldOfItem": "{field}, item {index}",
 				"remove": "Remove",
 				"removeItem": "Remove item {index}",
-				"add": "Add item"
+				"add": "Add item",
+				"moveUp": "Move item {index} up",
+				"moveDown": "Move item {index} down"
 			},
 			"border": {
 				"width": "Width",

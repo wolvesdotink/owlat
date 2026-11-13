@@ -90,7 +90,7 @@ const groups = computed(() => {
 				<I18nT keypath="components.keyboardShortcutsHelp.footer" tag="span" scope="global">
 					<template #key>
 						<kbd
-							class="px-1.5 py-0.5 text-[10px] font-medium bg-bg-elevated border border-border-subtle rounded mx-1"
+							class="px-1.5 py-0.5 text-2xs font-medium bg-bg-elevated border border-border-subtle rounded mx-1"
 							>{{ helpKey }}</kbd
 						>
 					</template>

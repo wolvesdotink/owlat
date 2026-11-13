@@ -42,6 +42,16 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 const { t } = useI18n();
 
 const activePane = ref<SentPreviewPaneId>('html');
+const paneOptions = computed(() =>
+	SENT_PREVIEW_PANES.map((pane) => ({ value: pane.id, label: t(pane.labelKey) }))
+);
+const paneModel = computed({
+	get: () => activePane.value,
+	set: (value: string) => {
+		const pane = SENT_PREVIEW_PANES.find((p) => p.id === value);
+		if (pane) activePane.value = pane.id;
+	},
+});
 
 // Derived only while the dialog is open: rendering a whole email document on
 // every keystroke of a composer nobody is previewing would be pure waste.
@@ -81,28 +91,21 @@ const plainIsEmpty = computed(() => isEmptyPlainText(plainText.value));
 				{{ t('components.postbox.postboxPreviewAsSent.hint') }}
 			</p>
 
-			<div class="flex items-center gap-1" role="tablist">
-				<button
-					v-for="pane in SENT_PREVIEW_PANES"
-					:key="pane.id"
-					type="button"
-					role="tab"
-					class="rounded-full px-3 py-1 text-xs font-medium"
-					:class="
-						activePane === pane.id
-							? 'bg-brand/10 text-brand'
-							: 'text-text-secondary hover:bg-bg-surface'
-					"
-					:aria-selected="activePane === pane.id"
-					@click="activePane = pane.id"
-				>
-					{{ t(pane.labelKey) }}
-				</button>
+			<div class="flex items-center gap-1">
+				<!-- The shared segmented control: one tab stop, arrow keys between the
+				     views, the selected one announced. -->
+				<UiSegmentedControl
+					v-model="paneModel"
+					size="sm"
+					fit="content"
+					:options="paneOptions"
+					:aria-label="t('components.postbox.postboxPreviewAsSent.title')"
+				/>
 				<!-- An AMP alternative only exists for designs with an interactive
 				     block; say so rather than silently omitting a part that ships. -->
 				<span
 					v-if="preview?.hasAmp"
-					class="ml-auto text-[11px] text-text-tertiary"
+					class="ml-auto text-2xs text-text-tertiary"
 					:title="t('components.postbox.postboxPreviewAsSent.ampNoteTitle')"
 				>
 					{{ t('components.postbox.postboxPreviewAsSent.ampNote') }}

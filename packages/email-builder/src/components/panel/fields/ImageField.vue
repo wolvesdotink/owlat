@@ -2,6 +2,7 @@
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, computed } from 'vue';
 import { ImageIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import { useEmailBuilderHandlers } from '../../../composables/useEmailBuilderHandlers';
 import type { ImageUploadResult } from '../../../types';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -79,14 +80,14 @@ async function handleFileSelect(event: Event) {
 			<input
 				type="text"
 				:aria-label="t('builder.panel.image.url')"
-				class="flex-1 py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
+				class="flex-1 py-2 px-2.5 text-caption pointer-coarse:text-base border border-border-strong rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 				:value="value"
 				:placeholder="t('builder.panel.image.url')"
 				@input="handleTextInput"
 			/>
 			<UiTooltip v-if="hasMediaLibrary" :text="t('builder.panel.image.browse')">
 				<button
-					class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+					class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 					type="button"
 					:aria-label="t('builder.panel.image.browse')"
 					@click="handleBrowse"
@@ -96,13 +97,15 @@ async function handleFileSelect(event: Event) {
 			</UiTooltip>
 			<UiTooltip v-else :text="uploadLabel">
 				<button
-					class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
+					class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center transition-[color,background-color,opacity] duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 					type="button"
 					:aria-label="uploadLabel"
 					:disabled="isUploading"
+					:aria-busy="isUploading || undefined"
 					@click="openFilePicker"
 				>
-					<ImageIcon :size="14" />
+					<SpinnerIcon v-if="isUploading" :size="14" />
+					<ImageIcon v-else :size="14" />
 				</button>
 			</UiTooltip>
 			<input
@@ -120,7 +123,7 @@ async function handleFileSelect(event: Event) {
 		<div
 			v-if="uploadError"
 			role="alert"
-			class="flex items-center gap-1.5 p-2 border border-red-300 rounded-lg bg-red-50 text-red-700 text-xs"
+			class="flex items-center gap-1.5 p-2 border border-error/20 rounded-lg bg-error-subtle text-error text-xs"
 		>
 			<span>{{ uploadError }}</span>
 		</div>
@@ -128,7 +131,7 @@ async function handleFileSelect(event: Event) {
 		<!-- Drop zone hint -->
 		<div
 			v-if="!hasPreview"
-			class="flex items-center justify-center gap-1.5 p-3 border border-dashed border-border-subtle rounded-lg text-text-disabled text-xs"
+			class="flex items-center justify-center gap-1.5 p-3 border border-dashed border-border-strong rounded-lg text-text-tertiary text-xs"
 		>
 			<ImageIcon :size="16" />
 			<span>{{ t('builder.panel.image.hint') }}</span>

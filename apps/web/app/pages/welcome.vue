@@ -118,7 +118,7 @@ onBeforeUnmount(abortStamp);
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex items-center justify-center p-6">
+	<div class="min-h-dvh bg-bg-deep flex items-center justify-center p-6">
 		<div class="w-full max-w-2xl">
 			<!-- Loading the instance mode -->
 			<div v-if="isLoadingSettings" class="card flex items-center justify-center gap-3 py-16">
@@ -150,7 +150,10 @@ onBeforeUnmount(abortStamp);
 					</div>
 				</div>
 
-				<!-- MIGRATION MODE: two equal choices -->
+				<!-- MIGRATION MODE: two equal choices. No third "later" link: it went to
+				     the same place as "Start fresh", and the import stays reachable from
+				     the postbox. Each card's CTA line is always shown, since touch has no
+				     hover to reveal it. -->
 				<template v-if="isMigrationMode">
 					<div class="mt-8 grid gap-4 sm:grid-cols-2">
 						<NuxtLink
@@ -160,11 +163,9 @@ onBeforeUnmount(abortStamp);
 							<UiIconBox :icon="ImportIcon" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.migrate.title') }}</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.migrate.body') }}</p>
-							<span
-								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-							>
+							<span class="mt-4 inline-flex items-center gap-1 text-sm text-brand">
 								{{ t('welcome.migrate.cta') }}
-								<ChevronRightIcon class="h-4 w-4" />
+								<ChevronRightIcon class="h-4 w-4" aria-hidden="true" />
 							</span>
 						</NuxtLink>
 
@@ -175,21 +176,10 @@ onBeforeUnmount(abortStamp);
 							<UiIconBox :icon="SparklesIcon" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.fresh.title') }}</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.fresh.body') }}</p>
-							<span
-								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-							>
+							<span class="mt-4 inline-flex items-center gap-1 text-sm text-brand">
 								{{ t('welcome.fresh.cta') }}
-								<ChevronRightIcon class="h-4 w-4" />
+								<ChevronRightIcon class="h-4 w-4" aria-hidden="true" />
 							</span>
-						</NuxtLink>
-					</div>
-
-					<div class="mt-6 text-center">
-						<NuxtLink
-							to="/dashboard"
-							class="text-sm text-text-tertiary transition-colors hover:text-text-secondary"
-						>
-							{{ t('welcome.later') }}
 						</NuxtLink>
 					</div>
 				</template>

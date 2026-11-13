@@ -16,12 +16,12 @@
  */
 import { api } from '@owlat/api';
 import { deriveTransportDisplay } from '~/utils/transportState';
-import { healthChipClass, healthDotClass } from '~/utils/healthTone';
+import { healthChipClass, healthDotClass, healthTextClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 import {
-	CircleInfoIcon,
-	CircleWarningIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
 	PaperPlaneIcon,
 	RouteIcon,
 	Slider1Icon,
@@ -43,6 +43,7 @@ const {
 	data: summary,
 	isLoading,
 	error,
+	refetch,
 } = useOrganizationQuery(api.delivery.status.getTransportSummary);
 
 const display = computed(() => (summary.value ? deriveTransportDisplay(summary.value) : null));
@@ -82,12 +83,12 @@ const infrastructureChecks = computed(() => {
 		</div>
 
 		<!-- Error (e.g. transiently unavailable) -->
-		<div v-else-if="error" class="p-6 flex items-start gap-3">
-			<CircleWarningIcon class="w-5 h-5 text-warning mt-0.5 shrink-0" />
-			<p class="text-sm text-text-secondary">
-				{{ t('components.delivery.transportCard.error') }}
-			</p>
-		</div>
+		<UiQueryBoundary
+			v-else-if="error"
+			:error="error"
+			:error-message="t('components.delivery.transportCard.error')"
+			@retry="refetch"
+		/>
 
 		<div v-else-if="display && summary" class="p-6 space-y-5">
 			<!-- Headline: transport + state chips -->
@@ -132,31 +133,40 @@ const infrastructureChecks = computed(() => {
 				v-if="infrastructureChecks.length"
 				class="grid grid-cols-2 lg:grid-cols-4 gap-2 rounded-lg bg-bg-surface p-3"
 			>
+				<!-- The glyph and the hidden word carry the state, not the colour alone. -->
 				<div
 					v-for="check in infrastructureChecks"
 					:key="check.label"
 					class="flex items-center gap-2 text-xs text-text-secondary"
 				>
-					<span
-						class="w-1.5 h-1.5 rounded-full shrink-0"
-						:class="healthDotClass[check.ok ? 'success' : 'error']"
+					<component
+						:is="check.ok ? CircleCheckIcon : CircleCloseIcon"
+						aria-hidden="true"
+						class="w-3.5 h-3.5 shrink-0"
+						:class="healthTextClass[check.ok ? 'success' : 'error']"
 					/>
-					{{ check.label }}
+					<span>
+						{{ check.label
+						}}<span class="sr-only"
+							>:
+							{{
+								check.ok
+									? t('components.delivery.transportCard.checks.up')
+									: t('components.delivery.transportCard.checks.down')
+							}}</span
+						>
+					</span>
+					<span v-if="!check.ok" class="text-error" aria-hidden="true">{{
+						t('components.delivery.transportCard.checks.down')
+					}}</span>
 				</div>
 			</div>
 
-			<!-- Not-ready nudge (plain language, no lecture) -->
+			<!-- Advanced-routing-in-use note. A missing transport gets no nudge here:
+			     the readiness panel directly above already names it as the first
+			     gate, with its action. -->
 			<p
-				v-if="!display.isConfigured"
-				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
-			>
-				<CircleInfoIcon class="w-4 h-4 text-warning mt-0.5 shrink-0" />
-				<span>{{ t('components.delivery.transportCard.notConfigured') }}</span>
-			</p>
-
-			<!-- Advanced-routing-in-use note -->
-			<p
-				v-else-if="summary.advancedRoutingActive"
+				v-if="display.isConfigured && summary.advancedRoutingActive"
 				class="flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-2"
 			>
 				<RouteIcon class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />

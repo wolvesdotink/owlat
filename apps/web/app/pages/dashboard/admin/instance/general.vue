@@ -159,14 +159,17 @@ async function saveGeneral(draft: GeneralForm): Promise<boolean> {
 		}
 	}
 
-	// Also update the BetterAuth organization name if it exists and the name changed
+	// Also update the BetterAuth organization name if it exists and the name
+	// changed. The other writes have landed by now, but a name that did not save
+	// must not be reported as saved: say so and keep the form dirty.
 	const name = draft.name.trim();
 	if (organization.value && name !== organization.value.name) {
 		try {
 			await updateOrganization({ name });
 			savedName.value = name;
 		} catch {
-			// Don't fail the whole operation if organization update fails
+			showToast(t('dashboard.admin.instance.general.nameSaveFailed'), 'error');
+			return false;
 		}
 	}
 
@@ -351,7 +354,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 										:key="d._id"
 										type="button"
 										:disabled="isSaving"
-										class="px-1.5 py-0.5 rounded bg-bg-surface border border-border-subtle hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+										class="domain-chip px-1.5 py-0.5 rounded bg-bg-surface border border-border-subtle hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
 										@click="applyVerifiedDomain(d.domain)"
 									>
 										{{ d.domain }}
@@ -473,3 +476,12 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 		</div>
 	</div>
 </template>
+
+<style scoped>
+/* A finger needs a 44px target; a mouse keeps the compact domain chip. */
+@media (pointer: coarse) {
+	.domain-chip {
+		min-height: 44px;
+	}
+}
+</style>

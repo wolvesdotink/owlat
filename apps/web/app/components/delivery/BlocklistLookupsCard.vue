@@ -38,6 +38,12 @@ const route = useRoute();
 const view = ref<DnsblAccessView | null>(null);
 const key = ref('');
 const keyError = ref<string | null>(null);
+/**
+ * The read itself failed (not the MTA saying "unavailable"): nothing is known
+ * about the resolver or the key, so the card says only that and offers a retry.
+ */
+const loadFailed = ref(false);
+const loading = ref(true);
 
 const { run: load } = useBackendOperation(api.delivery.dnsblAccess.get, {
 	type: 'action',
@@ -53,8 +59,19 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshes = 0;
 async function refresh() {
 	const result = await load({});
-	if (result.ok) view.value = result.result;
+	loading.value = false;
+	if (result.ok) {
+		view.value = result.result;
+		loadFailed.value = false;
+	} else if (!view.value) {
+		loadFailed.value = true;
+	}
 	scheduleRefreshWhilePending();
+}
+async function retryLoad() {
+	loading.value = true;
+	loadFailed.value = false;
+	await refresh();
 }
 function scheduleRefreshWhilePending() {
 	if (refreshTimer) clearTimeout(refreshTimer);
@@ -133,6 +150,7 @@ async function submit(value: string | null) {
 					</div>
 				</div>
 				<span
+					v-if="view"
 					class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
 					:class="healthChipClass[status.tone]"
 					data-testid="blocklist-lookups-status"
@@ -143,6 +161,22 @@ async function submit(value: string | null) {
 		</template>
 
 		<div class="p-6 space-y-5">
+			<div v-if="loading && !view" aria-busy="true" class="grid grid-cols-1 md:grid-cols-3 gap-2">
+				<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+				<UiSkeleton v-for="n in 3" :key="n" class="h-12 rounded-lg" />
+			</div>
+			<div
+				v-else-if="loadFailed && !view"
+				class="flex flex-wrap items-center justify-between gap-3"
+				data-testid="blocklist-lookups-load-failed"
+			>
+				<p class="text-sm text-text-secondary">
+					{{ t('components.delivery.blocklistLookups.loadFailed') }}
+				</p>
+				<UiButton variant="secondary" size="sm" @click="retryLoad">
+					{{ t('common.retry') }}
+				</UiButton>
+			</div>
 			<p v-if="view?.status === 'unavailable'" class="text-sm text-text-secondary">
 				{{ t('components.delivery.blocklistLookups.unavailable') }}
 			</p>

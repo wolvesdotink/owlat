@@ -151,7 +151,7 @@ async function stopBackfill() {
 			<p class="text-sm text-text-secondary">
 				{{ t('components.settings.bodySearchIndexCard.backfillDescription') }}
 			</p>
-			<div class="mt-3 flex items-center gap-3">
+			<div class="mt-3 flex flex-wrap items-center gap-3">
 				<template v-if="isWalking">
 					<UiSpinner size="sm" />
 					<span class="text-sm text-text-secondary" role="status">
@@ -161,14 +161,9 @@ async function stopBackfill() {
 							})
 						}}
 					</span>
-					<button
-						type="button"
-						class="text-sm text-text-tertiary hover:text-text-primary"
-						:disabled="isCancelling"
-						@click="stopBackfill"
-					>
-						{{ t('common.cancel') }}
-					</button>
+					<UiButton variant="ghost" size="sm" :loading="isCancelling" @click="stopBackfill">
+						{{ t('components.settings.bodySearchIndexCard.backfillStop') }}
+					</UiButton>
 				</template>
 				<template v-else>
 					<span v-if="isIndexed" class="text-sm text-success" role="status">
@@ -184,10 +179,10 @@ async function stopBackfill() {
 					<span v-else class="text-sm text-text-tertiary" role="status">
 						{{ t('components.settings.bodySearchIndexCard.backfillPending') }}
 					</span>
-					<button
-						type="button"
-						class="text-sm text-brand hover:underline disabled:opacity-50"
-						:disabled="isStarting"
+					<UiButton
+						variant="secondary"
+						size="sm"
+						:loading="isStarting"
 						data-testid="body-search-backfill-start"
 						@click="runBackfill"
 					>
@@ -196,7 +191,7 @@ async function stopBackfill() {
 								? t('components.settings.bodySearchIndexCard.backfillAgain')
 								: t('components.settings.bodySearchIndexCard.backfillStart')
 						}}
-					</button>
+					</UiButton>
 				</template>
 			</div>
 		</div>

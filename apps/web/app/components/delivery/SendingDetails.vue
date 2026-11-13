@@ -144,14 +144,16 @@ const DOCS_BASE = 'https://docs.owlat.app';
 					</div>
 				</div>
 
+				<!-- Only a problem earns a tinted callout; a healthy IP gets one quiet
+     line, so a multi-IP server is not a wall of green. -->
 				<div
-					class="rounded-lg border px-3 py-2.5 text-sm"
+					class="text-sm"
 					:class="
 						ip.presentation.tone === 'error'
-							? 'border-error/20 bg-error/10 text-error'
+							? 'rounded-lg border px-3 py-2.5 border-error/20 bg-error/10 text-error'
 							: ip.presentation.tone === 'warning'
-								? 'border-warning/20 bg-warning/10 text-warning'
-								: 'border-success/20 bg-success/10 text-success'
+								? 'rounded-lg border px-3 py-2.5 border-warning/20 bg-warning/10 text-warning'
+								: 'text-text-secondary'
 					"
 				>
 					<p>

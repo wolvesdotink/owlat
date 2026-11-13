@@ -24,11 +24,9 @@ import type { PresencePerson } from '~/components/inbox/InboxThreadPresence.vue'
 import type { AnswerConversationView } from '~/components/answer/AnswerConversation.vue';
 import { useAnswerAiFocus, useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { AnswerComposerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
-import type { AskAnswer, AskQuestion } from '~/composables/useAnswerAskSession';
 import { useAnswerTeamAssist } from '~/composables/useAnswerTeamAssist';
 import { useTeamThread } from '~/composables/team/useTeamThread';
-import AnswerAiBar from '~/components/answer/AnswerAiBar.vue';
-import AskCard from '~/components/answer/AskCard.vue';
+import AnswerTeamReplyAssist from '~/components/answer/AnswerTeamReplyAssist.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import { useAnswerQueueSession } from '~/composables/useAnswerQueueSession';
 import { useAnswerModeKeys } from '~/composables/useAnswerModeKeys';
@@ -50,7 +48,7 @@ definePageMeta({
 	answerMode: true,
 });
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const route = useRoute();
 
 const threadId = useRouteId<'conversationThreads'>('threadId');
@@ -161,28 +159,8 @@ const assist = useAnswerTeamAssist({
 		if (attachmentsAllowed.value) void files.attachAnswerFile(file);
 	},
 });
-// The agent's questions carry the ask card's shape (lib/validators/clarification.ts).
-const clarificationQuestions = computed(
-	() => (reply.clarification.value?.questions ?? []) as unknown as AskQuestion[]
-);
-// The sender's language as a readable name in the reader's locale ("German").
-const replyLanguage = computed(() => {
-	const code = reply.target.value?.classification?.language;
-	if (!code) return undefined;
-	try {
-		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? code;
-	} catch {
-		return code;
-	}
-});
+// While the agent waits on its questions, they take the place of Draft with AI.
 const showClarification = computed(() => !!reply.clarification.value);
-// A file given as an answer goes on the reply on the server, in the same
-// transaction as the answer (inbox.clarification.answerClarification); the
-// attachment list then updates through its subscription. "Draft with what I
-// have" sends what was answered and lets the rest become highlighted gaps.
-async function onClarificationAnswers(answers: AskAnswer[], withGaps = false) {
-	await reply.submitClarification(answers, withGaps);
-}
 
 /** The resting phone/tablet sheet's "✦ Draft": open the reply and draft with AI. */
 function draftFromPeek() {
@@ -200,6 +178,17 @@ const backLabel = computed(() => t(answerBackLabelKey(answerNav.returnPath.value
 
 function leave() {
 	answerNav.leave();
+}
+
+// A thread that is gone strands a queue run unless the way out skips it.
+const skipsInQueue = computed(
+	() => !!queueSession && queueSession.engaged.value && queueSession.flow.active.value
+);
+function leaveMissing() {
+	const item = queueSession?.flow.current.value;
+	if (!queueSession || !skipsInQueue.value) answerNav.leave();
+	else if (item && queueSession.isCurrentRoute.value) queueSession.controlsFor(item).skip();
+	else queueSession.goCurrent();
 }
 
 async function onSend(body: string, fromDraft: boolean, subject: string, gapGuarded: boolean) {
@@ -333,9 +322,18 @@ useAnswerModeKeys({
 					<UiSkeleton class="h-4 w-1/3" />
 					<UiSkeleton class="h-40 w-full rounded-(--radius-card)" />
 				</div>
-				<p v-else class="p-6 text-sm text-text-secondary" data-testid="answer-team-not-found">
-					{{ t('dashboard.inbox.detail.notFound') }}
-				</p>
+				<div v-else class="space-y-3 p-6" data-testid="answer-team-not-found">
+					<p class="text-sm text-text-secondary">
+						{{ t('dashboard.inbox.detail.notFound') }}
+					</p>
+					<UiButton variant="secondary" data-testid="answer-not-found-leave" @click="leaveMissing">
+						{{
+							skipsInQueue
+								? t('components.answer.mode.skipMissing')
+								: t('components.answer.mode.back', { page: backLabel })
+						}}
+					</UiButton>
+				</div>
 			</template>
 
 			<template #composer>
@@ -379,55 +377,15 @@ useAnswerModeKeys({
 					@typing="composerTyping = $event"
 				>
 					<template #above-editor="{ composer }">
-						<!-- The agent's own questions come first: answering resumes its draft. -->
-						<div v-if="showClarification" data-testid="answer-team-clarification">
-							<p
-								v-if="replyLanguage"
-								class="px-3 pt-3 text-xs text-text-tertiary"
-								data-testid="answer-team-reply-language"
-							>
-								{{ t('dashboard.inbox.detail.replyLanguageNote', { language: replyLanguage }) }}
-							</p>
-							<AskCard
-								:questions="clarificationQuestions"
-								:copy-policy="copyPolicy"
-								:submitting="reply.isAnsweringClarification.value"
-								@answer="onClarificationAnswers"
-								@skip="onClarificationAnswers($event, true)"
-							/>
-						</div>
-						<template v-else>
-							<AnswerTeamPlan
-								:plan="assist.plan"
-								:can-attach="attachmentsAllowed"
-								:cite-context="team.cite"
-								@files="files.addFiles"
-							/>
-							<AnswerTeamReusedAnswers
-								v-if="reply.reusedAnswers.value.length > 0"
-								:questions="reply.reusedAnswers.value"
-							/>
-							<template v-if="assist.draftWithAi.value">
-								<AskCard
-									v-if="assist.ask.phase.value === 'asking' && assist.ask.session.value"
-									:questions="assist.ask.session.value.questions"
-									:copy-policy="copyPolicy"
-									:submitting="assist.ask.busy.value"
-									:budget-refused="assist.ask.isBudgetRefused.value"
-									@answer="assist.ask.answer($event)"
-									@skip="assist.ask.answer($event, true)"
-								/>
-								<AnswerAiBar
-									v-else
-									:phase="assist.ask.phase.value"
-									:busy="assist.ask.busy.value"
-									:has-ai-draft="composer.aiDraft.value !== null"
-									:injection-flagged="assist.ask.injectionFlagged.value"
-									@draft="assist.ask.start"
-									@discard="composer.discardAiDraft()"
-								/>
-							</template>
-						</template>
+						<AnswerTeamReplyAssist
+							:reply="reply"
+							:assist="assist"
+							:composer="composer"
+							:copy-policy="copyPolicy"
+							:can-attach="attachmentsAllowed"
+							:cite-context="team.cite"
+							@files="files.addFiles"
+						/>
 					</template>
 					<template v-if="attachmentsAllowed" #attachments>
 						<AnswerTeamAttachments
@@ -457,8 +415,10 @@ useAnswerModeKeys({
 						</UiButton>
 					</template>
 				</InboxThreadComposer>
+				<!-- Loading only while there is a reply on its way: a missing or
+				     failed thread, or a viewer who cannot reply, has none. -->
 				<div
-					v-else
+					v-else-if="threadLoading || (isAdmin && thread && !threadError)"
 					v-show="composeMode === 'reply'"
 					class="flex-1 space-y-3 p-4"
 					aria-hidden="true"
@@ -466,6 +426,13 @@ useAnswerModeKeys({
 					<UiSkeleton class="h-4 w-2/3" />
 					<UiSkeleton class="h-32 w-full" />
 				</div>
+				<p
+					v-else-if="!isAdmin && thread"
+					class="p-4 text-sm text-text-secondary"
+					data-testid="answer-team-no-reply"
+				>
+					{{ t('dashboard.inbox.index.accessTitle') }}
+				</p>
 			</template>
 		</AnswerModeFrame>
 

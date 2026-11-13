@@ -60,3 +60,47 @@ describe('PostboxReaderMessageActions link verbs', () => {
 		expect(item(wrapper, 'Share in chat…')).toBeUndefined();
 	});
 });
+
+describe('PostboxReaderMessageActions in compact density', () => {
+	// The row hides Reply all and Forward until hover there, so the ⋯ carries
+	// them; it renders its items when it opens, as the real menu does.
+	function mountInDensity(density: 'compact' | 'comfortable') {
+		const host = document.createElement('div');
+		host.setAttribute('data-density', density);
+		document.body.appendChild(host);
+		return mount(PostboxReaderMessageActions, {
+			attachTo: host,
+			props: { messageId: 'm1', starred: false, showReplyAll: true },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<button type="button"><slot /></button>' },
+					PostboxOverflowMenu: {
+						data: () => ({ open: false }),
+						setup: () => ({ close }),
+						template:
+							'<div><button data-testid="open" @click="open = true" /><div v-if="open" role="menu"><slot :close="close" /></div></div>',
+					},
+				},
+			},
+		});
+	}
+
+	it('offers Reply all and Forward from the ⋯ menu', async () => {
+		const wrapper = mountInDensity('compact');
+		await wrapper.get('[data-testid="open"]').trigger('click');
+		await item(wrapper, 'Reply all')!.trigger('click');
+		await item(wrapper, 'Forward')!.trigger('click');
+		expect(wrapper.emitted('reply-all')).toHaveLength(1);
+		expect(wrapper.emitted('forward')).toHaveLength(1);
+		wrapper.unmount();
+	});
+
+	it('leaves them out of the menu at the comfortable default, where the row shows them', async () => {
+		const wrapper = mountInDensity('comfortable');
+		await wrapper.get('[data-testid="open"]').trigger('click');
+		expect(item(wrapper, 'Reply all')).toBeUndefined();
+		expect(item(wrapper, 'Forward')).toBeUndefined();
+		wrapper.unmount();
+	});
+});

@@ -2,7 +2,7 @@
 // The campaign editor's "Email content" card: the linked email (with its Edit
 // link) and the subject line. The Edit link's click goes back to the page,
 // which decides whether unsaved form edits need a prompt first.
-import { EyeIcon, MailIcon } from '@coolicons/vue';
+import { ExternalLinkIcon, MailIcon } from '@coolicons/vue';
 
 defineProps<{
 	template: { _id: string; name: string; subject?: string } | null;
@@ -27,10 +27,10 @@ const { t } = useI18n();
 		<div class="space-y-6">
 			<!-- Selected Template -->
 			<div>
-				<label class="label">
+				<p class="label">
 					{{ t('dashboard.campaigns.detail.edit.content.template') }}
-					<span class="text-error">*</span>
-				</label>
+					<span class="text-error" aria-hidden="true">*</span>
+				</p>
 				<div v-if="template" class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 					<div class="flex flex-wrap items-center justify-between gap-3">
 						<div class="flex min-w-0 flex-1 basis-56 items-center gap-3">
@@ -54,8 +54,9 @@ const { t } = useI18n();
 							target="_blank"
 							@click="emit('editEmailClick', $event, `/dashboard/send/emails/${template._id}/edit`)"
 						>
-							<EyeIcon class="w-4 h-4" />
+							<ExternalLinkIcon class="w-4 h-4" aria-hidden="true" />
 							{{ t('dashboard.campaigns.detail.edit.content.editEmail') }}
+							<span class="sr-only">{{ t('shared.appUpdated.opensInNewTab') }}</span>
 						</NuxtLink>
 					</div>
 				</div>

@@ -72,9 +72,9 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 
 <template>
 	<div class="card">
-		<h3 class="font-semibold text-text-primary mb-1">
+		<h2 class="font-semibold text-text-primary mb-1">
 			{{ t('components.system.workerVersionsCard.title') }}
-		</h3>
+		</h2>
 		<p class="text-caption text-text-tertiary mb-4">
 			{{ t('components.system.workerVersionsCard.intro') }}
 		</p>
@@ -93,7 +93,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 				:data-test="`worker-service-${entry.service}`"
 			>
 				<div class="flex items-baseline justify-between gap-3 flex-wrap mb-2">
-					<h4 class="text-sm font-medium text-text-primary">{{ serviceName(entry.service) }}</h4>
+					<h3 class="text-sm font-medium text-text-primary">{{ serviceName(entry.service) }}</h3>
 					<p class="text-caption text-text-tertiary">
 						{{
 							entry.minSupportedWireVersion < entry.backendWireVersion

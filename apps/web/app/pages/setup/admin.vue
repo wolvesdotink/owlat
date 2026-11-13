@@ -86,7 +86,7 @@ function next() {
 			</header>
 
 			<UiCard padding="lg">
-				<form class="space-y-5" @submit.prevent="next">
+				<form id="setup-admin-form" class="space-y-5" @submit.prevent="next">
 					<UiInput
 						v-model="admin.email"
 						type="email"
@@ -121,7 +121,9 @@ function next() {
 					<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
-				<UiButton @click="next">
+				<!-- The form's submit button (via `form`), so Enter in a field advances:
+				     a form with several fields and no submit button does not submit. -->
+				<UiButton type="submit" form="setup-admin-form">
 					{{ t('setup.admin.next') }}
 					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>

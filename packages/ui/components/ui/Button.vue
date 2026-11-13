@@ -11,7 +11,9 @@ type ButtonVariant =
 	| 'ghost'
 	| 'danger'
 	| 'danger-ghost'
-	| 'danger-outline';
+	| 'danger-outline'
+	| 'warning'
+	| 'warning-ghost';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface Props {
@@ -60,6 +62,8 @@ const variantClasses: Record<ButtonVariant, string> = {
 	danger: 'btn-danger',
 	'danger-ghost': 'btn-danger-ghost',
 	'danger-outline': 'btn-danger-outline',
+	warning: 'btn-warning',
+	'warning-ghost': 'btn-warning-ghost',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -105,10 +109,11 @@ const element = computed(() => {
 		:class="buttonClasses"
 		:disabled="!to && !href ? disabled || loading : undefined"
 		:aria-disabled="to || href ? disabled || loading : ($attrs['aria-disabled'] as Booleanish)"
+		:aria-busy="loading || ($attrs['aria-busy'] as Booleanish)"
 		@click="handleClick"
 	>
 		<slot name="iconLeft" />
-		<SpinnerIcon v-if="loading" class="w-4 h-4" :class="{ 'mr-2': $slots['default'] }" />
+		<SpinnerIcon v-if="loading" class="w-4 h-4" aria-hidden="true" />
 		<slot />
 		<slot name="iconRight" />
 	</component>

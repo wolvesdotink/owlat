@@ -40,7 +40,7 @@ const { t } = useI18n();
 				>
 					<span
 						class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-						:style="{ backgroundColor: label.color || '#6b7280' }"
+						:style="{ backgroundColor: label.color || 'var(--color-text-tertiary)' }"
 					/>
 					<span class="flex-1">{{ label.name }}</span>
 					<CheckIcon

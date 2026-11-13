@@ -95,14 +95,16 @@ watch(
 			<p class="flex-1 text-xs font-medium text-text-secondary">
 				{{ t('components.postbox.postboxAiStrip.askAbout') }}
 			</p>
-			<button
+			<UiButton
+				variant="ghost"
+				size="sm"
 				type="button"
-				class="shrink-0 text-xs text-text-tertiary hover:text-text-primary"
+				class="shrink-0 -my-1 -mr-2"
 				data-testid="postbox-ask-close"
 				@click="emit('close')"
 			>
 				{{ t('common.close') }}
-			</button>
+			</UiButton>
 		</div>
 		<!-- Ask: grounded Q&A about THIS thread (ephemeral history). -->
 		<div class="px-3 pb-3 space-y-3" data-testid="postbox-ask-thread">

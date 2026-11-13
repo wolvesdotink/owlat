@@ -198,7 +198,7 @@ onMounted(() => {
 		</template>
 
 		<template #loading>
-			<DashboardListSkeleton variant="table" :columns="6" :rows="6" />
+			<DashboardListSkeleton variant="table" :columns="4" :rows="6" />
 		</template>
 
 		<template v-if="canManage" #empty-action>

@@ -26,7 +26,8 @@ const { t } = useI18n();
 </script>
 
 <template>
-	<div class="border-t border-border-subtle">
+	<!-- The id is what the header's expander points aria-controls at. -->
+	<div :id="`form-endpoint-details-${form._id}`" class="border-t border-border-subtle">
 		<div class="px-6 py-4 bg-bg-surface/30 space-y-6">
 			<!-- Stats Section -->
 			<div>

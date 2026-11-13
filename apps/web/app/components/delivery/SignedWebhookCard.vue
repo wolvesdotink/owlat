@@ -22,6 +22,7 @@
  * rendered as a NAME and a present/missing chip.
  */
 
+import { formatDateTime } from '~/utils/formatters';
 import {
 	BroadcastIcon,
 	CheckIcon,
@@ -124,8 +125,9 @@ const keyIssuance = computed(() => {
 			})
 		: t(key);
 });
+// The same formatter as the SNS card beside it, so the two read alike.
 const lastEventLabel = computed(() =>
-	props.lastEventAt === null ? null : new Date(props.lastEventAt).toLocaleString(locale.value)
+	props.lastEventAt === null ? null : formatDateTime(props.lastEventAt, locale.value)
 );
 </script>
 

@@ -195,8 +195,16 @@ const cancelRename = () => {
 					</UiButton>
 				</div>
 				<div class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-					<div v-if="conversationsLoading" class="px-3 py-2 text-sm text-text-tertiary">
-						{{ t('common.loading') }}
+					<div v-if="conversationsLoading" aria-busy="true">
+						<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+						<div aria-hidden="true" class="space-y-0.5">
+							<UiSkeletonRow
+								v-for="(width, i) in ['w-3/4', 'w-1/2', 'w-2/3', 'w-3/5']"
+								:key="i"
+								:title-width="width"
+								class="px-3 py-2"
+							/>
+						</div>
 					</div>
 					<UiQueryBoundary
 						v-else-if="conversationsError"
@@ -327,11 +335,16 @@ const cancelRename = () => {
 				</button>
 			</div>
 
+			<!-- The page always has an h1: the open chat's title, or a visually
+			     hidden "Assistant" over the welcome state. -->
+			<h1 v-if="!activeConversation" class="sr-only">
+				{{ t('dashboard.assistant.index.heading') }}
+			</h1>
 			<header
 				v-if="activeConversation"
 				class="border-b border-border-subtle px-4 py-2.5 flex items-center gap-2"
 			>
-				<SparklesIcon class="w-4 h-4 text-brand flex-shrink-0" />
+				<SparklesIcon class="w-4 h-4 text-brand flex-shrink-0" aria-hidden="true" />
 				<h1 class="text-sm font-semibold text-text-primary truncate">
 					{{ activeConversation.title }}
 				</h1>
@@ -353,7 +366,7 @@ const cancelRename = () => {
 						<div
 							class="w-16 h-16 rounded-full bg-brand-subtle text-brand flex items-center justify-center mb-4"
 						>
-							<SparklesIcon class="w-8 h-8" :stroke-width="1.5" />
+							<SparklesIcon class="w-8 h-8" :stroke-width="1.5" aria-hidden="true" />
 						</div>
 						<h2 class="text-lg font-medium text-text-primary">
 							{{ t('dashboard.assistant.index.welcomeTitle') }}
@@ -365,6 +378,7 @@ const cancelRename = () => {
 							<button
 								v-for="prompt in examplePrompts"
 								:key="prompt"
+								type="button"
 								class="text-left text-sm px-4 py-2.5 rounded-xl bg-surface-1 shadow-surface-1 text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="onExample(prompt)"
 							>

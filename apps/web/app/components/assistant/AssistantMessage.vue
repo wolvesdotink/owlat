@@ -55,7 +55,7 @@ const showTyping = computed(
 		<div
 			class="w-8 h-8 rounded-full bg-brand-subtle text-brand flex-shrink-0 flex items-center justify-center"
 		>
-			<SparklesIcon class="w-4 h-4" />
+			<SparklesIcon class="w-4 h-4" aria-hidden="true" />
 		</div>
 		<div class="flex-1 min-w-0">
 			<div class="text-xs font-semibold text-text-secondary mb-1">
@@ -68,6 +68,7 @@ const showTyping = computed(
 			<div
 				v-if="showTyping"
 				class="flex items-center gap-1 py-1"
+				role="status"
 				:aria-label="t('components.assistant.assistantMessage.typing')"
 			>
 				<span

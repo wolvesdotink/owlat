@@ -1,11 +1,14 @@
 <script setup lang="ts">
 const { t, locale, locales } = useI18n();
 const switchLocalePath = useSwitchLocalePath();
+const localePath = useLocalePath();
 
-const footerLinks = {
+// The footer also frames /waitlist, which has no #features or #pricing; the
+// localized home path keeps these links working from every page.
+const footerLinks = computed(() => ({
 	product: [
-		{ key: 'footer.links.features', href: '#features' },
-		{ key: 'footer.links.pricing', href: '#pricing' },
+		{ key: 'footer.links.features', href: `${localePath('/')}#features` },
+		{ key: 'footer.links.pricing', href: `${localePath('/')}#pricing` },
 		{ key: 'footer.links.changelog', href: 'https://docs.owlat.app/changelog' },
 	],
 	developers: [
@@ -17,7 +20,7 @@ const footerLinks = {
 		{ key: 'footer.links.contact', href: 'mailto:hello@owlat.app' },
 		{ key: 'footer.links.builtBy', href: 'https://wolves.ink' },
 	],
-};
+}));
 
 // Driven by the i18n module's own locale list, so adding a locale in
 // nuxt.config is the only step needed to make it appear here. This is the site's
@@ -46,11 +49,11 @@ const languages = computed(() =>
 
 				<!-- Product -->
 				<div>
-					<h4
-						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+					<h3
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary mb-5"
 					>
 						{{ t('footer.product') }}
-					</h4>
+					</h3>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.product" :key="link.key">
 							<a
@@ -65,11 +68,11 @@ const languages = computed(() =>
 
 				<!-- Developers -->
 				<div>
-					<h4
-						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+					<h3
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary mb-5"
 					>
 						{{ t('footer.developers') }}
-					</h4>
+					</h3>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.developers" :key="link.key">
 							<a
@@ -84,11 +87,11 @@ const languages = computed(() =>
 
 				<!-- Company -->
 				<div>
-					<h4
-						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-disabled mb-5"
+					<h3
+						class="font-mono text-2xs font-medium uppercase tracking-[0.1em] text-text-tertiary mb-5"
 					>
 						{{ t('footer.company') }}
-					</h4>
+					</h3>
 					<ul class="space-y-3">
 						<li v-for="link in footerLinks.company" :key="link.key">
 							<a
@@ -122,10 +125,10 @@ const languages = computed(() =>
 					</template>
 				</I18nT>
 				<div class="flex items-center gap-4 max-sm:flex-col max-sm:gap-2">
-					<!-- Bordered pill group carried over from the header, which used to
-					     hold the only switcher. The visible label is the short code; the
-					     endonym ("Deutsch") rides on aria-label so a visitor who cannot
-					     read the current language still gets it announced. -->
+					<!-- The visible label is the short code; the endonym ("Deutsch") rides on
+					     aria-label so a visitor who cannot read the current language still
+					     gets it announced. The name starts with the visible code, so voice
+					     control users can say what they see. -->
 					<nav
 						class="flex items-center gap-0.5 rounded-full border border-border-subtle p-0.5"
 						:aria-label="t('language.label')"
@@ -134,7 +137,7 @@ const languages = computed(() =>
 							v-for="lang in languages"
 							:key="lang.code"
 							:href="switchLocalePath(lang.code)"
-							:aria-label="t('language.switchTo', { language: lang.name })"
+							:aria-label="`${lang.code}, ${t('language.switchTo', { language: lang.name })}`"
 							:aria-current="lang.code === locale ? 'true' : undefined"
 							class="px-2.5 py-1.5 rounded-full font-mono text-2xs font-medium uppercase transition-colors duration-(--motion-fast) no-underline"
 							:class="

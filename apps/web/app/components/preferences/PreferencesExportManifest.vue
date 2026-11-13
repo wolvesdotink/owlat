@@ -61,7 +61,7 @@ function countLabel(row: AccountExportManifestRow): string {
 			</div>
 		</dl>
 
-		<p v-if="!isLoading && rows.length > 0" class="text-[11px] text-text-tertiary mt-2">
+		<p v-if="!isLoading && rows.length > 0" class="text-2xs text-text-tertiary mt-2">
 			{{ t('components.preferences.preferencesExportManifest.uncountedNote') }}
 		</p>
 
@@ -75,7 +75,7 @@ function countLabel(row: AccountExportManifestRow): string {
 				:aria-label="t('components.preferences.preferencesExportManifest.progressLabel')"
 			>
 				<div
-					class="ui-meter-fill h-full bg-brand transition-transform duration-300 motion-reduce:transition-none"
+					class="ui-meter-fill h-full bg-brand transition-transform duration-(--motion-slow) motion-reduce:transition-none"
 					:class="percent === null ? 'animate-pulse motion-reduce:animate-none' : ''"
 					:style="meterFillStyle(percent ?? 100)"
 				/>

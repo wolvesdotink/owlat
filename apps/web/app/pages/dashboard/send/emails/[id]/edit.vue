@@ -11,7 +11,7 @@ import { plainClone } from '@owlat/email-builder/plain-clone';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
 import type { PresendSource } from '~/composables/usePresendChecks';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { ArrowLeftIcon, ListChecklistIcon, TranslateIcon } from '@coolicons/vue';
+import { ArrowLeftIcon, CircleWarningIcon, ListChecklistIcon, TranslateIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -290,7 +290,11 @@ const { isPublished, isChangingPublication, togglePublication } = useTemplatePub
 				<!-- Not Found State -->
 				<div v-if="!template" class="h-full flex items-center justify-center bg-bg-deep">
 					<div class="text-center">
-						<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+						<CircleWarningIcon
+							class="w-12 h-12 text-error mx-auto mb-4"
+							:stroke-width="1.5"
+							aria-hidden="true"
+						/>
 						<h2 class="text-xl font-semibold text-text-primary mb-2">
 							{{ t('dashboard.send.emails.detail.edit.notFound.title') }}
 						</h2>

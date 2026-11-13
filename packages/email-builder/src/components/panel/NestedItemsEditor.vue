@@ -67,14 +67,14 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 <template>
 	<div class="border-t border-border-subtle py-3 px-4">
 		<div class="flex items-center justify-between mb-2">
-			<span class="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.08em]">
+			<span class="text-2xs font-bold text-text-tertiary uppercase tracking-[0.08em]">
 				{{
 					blockType === 'accordion'
 						? t('builder.panel.nested.sections')
 						: t('builder.panel.nested.children')
 				}}
 			</span>
-			<span class="text-[10px] font-medium tabular-nums text-text-disabled">{{ children.length }}</span>
+			<span class="text-2xs font-medium tabular-nums text-text-tertiary">{{ children.length }}</span>
 		</div>
 
 		<div class="flex flex-col gap-1 mb-2">
@@ -124,12 +124,12 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 				</button>
 				<UiTooltip v-if="childrenAreBlocks" :text="t('builder.panel.nested.remove', { item: childLabel(child) })">
 					<button
-						class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
+						class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:w-11 pointer-coarse:h-11 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
 						type="button"
 						:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
 						@click.stop="emit('remove-child', child.id)"
 					>
-						<TrashIcon :size="12" />
+						<TrashIcon :size="12" aria-hidden="true" />
 					</button>
 				</UiTooltip>
 			</div>
@@ -147,7 +147,7 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						? t('builder.panel.nested.addSection')
 						: t('builder.panel.nested.addChild')
 				"
-				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary"
+				class="w-full py-[7px] px-2 text-xs font-medium border border-dashed border-border-strong rounded-lg bg-bg-surface text-text-secondary cursor-pointer outline-none appearance-none bg-no-repeat bg-[right_8px_center] transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:border-text-tertiary hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:text-base"
 				:style="{ backgroundImage: chevronBgImage }"
 				@change="(e) => { const val = (e.target as HTMLSelectElement).value; if (val) { emit('add-child', val as BlockType); (e.target as HTMLSelectElement).value = ''; } }"
 			>

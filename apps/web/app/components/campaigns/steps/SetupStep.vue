@@ -390,7 +390,7 @@ defineExpose({
 		<div v-if="!abTestExpanded" class="card p-6">
 			<button
 				type="button"
-				class="flex w-full items-center gap-2 text-left text-text-primary font-medium hover:opacity-80 transition-opacity"
+				class="flex w-full items-center gap-2 rounded-md text-left text-text-primary font-medium hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
 				@click="addABTest"
 			>
 				<PlusIcon class="w-4 h-4" />
@@ -414,15 +414,12 @@ defineExpose({
 				:email-templates="emailTemplates"
 				:templates-load-failed="!!emailTemplatesError"
 				:selected-template-id="selectedTemplateId"
+				hide-enable-toggle
 				@retry-templates="refetchEmailTemplates"
 			/>
-			<button
-				type="button"
-				class="mt-3 text-sm text-text-tertiary hover:text-text-primary transition-colors"
-				@click="removeABTest"
-			>
+			<UiButton variant="ghost" size="sm" class="mt-3" @click="removeABTest">
 				{{ t('components.campaigns.steps.setupStep.removeABTest') }}
-			</button>
+			</UiButton>
 		</div>
 
 		<!-- Actions -->

@@ -43,6 +43,9 @@ const textStyle = computed(() => {
 
 const fullText = ref<string | null>(null);
 const isLoading = ref(false);
+// The full text could not be read: the excerpt stays, and the reader is told
+// with a way to try again.
+const loadFailed = ref(false);
 
 /** An inline text part with something in it — the only case that needs nothing more. */
 const hasInlineText = computed(() => Boolean(props.message.textBody?.trim()));
@@ -59,6 +62,7 @@ async function loadFullText(): Promise<void> {
 	// one no longer owns either flag (its answer is dropped by id below).
 	fullText.value = null;
 	isLoading.value = false;
+	loadFailed.value = false;
 	if (!isReadableStored.value) return;
 	const messageId = props.message._id;
 	isLoading.value = true;
@@ -70,6 +74,7 @@ async function loadFullText(): Promise<void> {
 		if (messageId === props.message._id) fullText.value = text;
 	} catch {
 		// Keep the excerpt and its note.
+		if (messageId === props.message._id) loadFailed.value = true;
 	} finally {
 		if (messageId === props.message._id) isLoading.value = false;
 	}
@@ -89,7 +94,9 @@ const isShowingExcerpt = computed(
 </script>
 
 <template>
-	<div aria-live="polite" :aria-busy="isLoading">
+	<!-- Only the short status line below is a live region: on the body itself a
+	     screen reader read the whole email aloud the moment its text arrived. -->
+	<div :aria-busy="isLoading">
 		<!-- The Postbox reader's measure (72ch by default), so a wide thread page
 		     does not run a line of mail across the whole screen. -->
 		<div
@@ -106,5 +113,18 @@ const isShowingExcerpt = computed(
 		>
 			{{ t('dashboard.inbox.detail.bodyExcerptNotice') }}
 		</p>
+		<div role="status" class="empty:hidden">
+			<span v-if="isLoading" class="sr-only">{{
+				t('dashboard.inbox.detail.bodyLoadingFull')
+			}}</span>
+			<p
+				v-else-if="loadFailed"
+				class="mt-1 flex flex-wrap items-center gap-2 text-xs text-error"
+				data-testid="inbox-message-body-failed"
+			>
+				{{ t('dashboard.inbox.detail.bodyLoadFailed') }}
+				<UiButton variant="ghost" size="sm" @click="loadFullText">{{ t('common.retry') }}</UiButton>
+			</p>
+		</div>
 	</div>
 </template>

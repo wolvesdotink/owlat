@@ -20,7 +20,14 @@ import { TrashIcon } from '@coolicons/vue';
 /** One blocklist row, exactly as `blockedEmails/blocklist.listByTeam` returns it. */
 type SuppressionRow = FunctionReturnType<typeof api.blockedEmails.blocklist.listByTeam>[number];
 
-defineProps<{ rows: SuppressionRow[] }>();
+withDefaults(
+	defineProps<{
+		rows: SuppressionRow[];
+		/** Removing needs contacts:manage; without it the action column is left out. */
+		canManage?: boolean;
+	}>(),
+	{ canManage: true }
+);
 
 const emit = defineEmits<{ remove: [row: SuppressionRow] }>();
 
@@ -75,6 +82,7 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 					{{ t('dashboard.audience.suppressions.table.dateAdded') }}
 				</th>
 				<th
+					v-if="canManage"
 					class="text-right text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 sm:px-6 py-3"
 				>
 					<span class="max-sm:sr-only">{{ t('common.actions') }}</span>
@@ -144,12 +152,12 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 						{{ formatDateTime(blockedEmail.createdAt) }}
 					</span>
 				</td>
-				<td class="px-4 sm:px-6 py-4 text-right">
+				<td v-if="canManage" class="px-4 sm:px-6 py-4 text-right">
 					<UiTooltip :text="t('dashboard.audience.suppressions.removeSuppression')">
 						<UiButton
-							variant="ghost"
-							class="p-2 text-error hover:bg-error/10"
-							:aria-label="t('dashboard.audience.suppressions.removeSuppression')"
+							variant="danger-ghost"
+							class="p-2"
+							:aria-label="`${t('dashboard.audience.suppressions.removeSuppression')}: ${blockedEmail.email}`"
 							@click="emit('remove', blockedEmail)"
 						>
 							<TrashIcon class="w-4 h-4" />

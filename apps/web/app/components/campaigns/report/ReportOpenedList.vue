@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The campaign report's "Opened" tab: one page of contacts who opened, with
-// Previous / Next. The page owns the query and the offset.
+// Previous / Next. The contacts section owns the query and the offset.
 import type { FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
 // TYPE-ONLY: the list needs the query's return shape, never the client.

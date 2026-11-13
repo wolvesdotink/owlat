@@ -113,6 +113,18 @@ watch(campaignError, (error) => {
 });
 const recipientCount = useRecipientCount(() => campaignDetails.value?.audience);
 const persistedTemplate = computed(() => campaignDetails.value?.emailTemplate ?? null);
+// The attached email's languages, default first, so the Review step's test send
+// can offer them like the campaign editor does.
+const templateDefaultLanguage = computed(() => persistedTemplate.value?.defaultLanguage ?? 'en');
+const templateLanguages = computed(() => {
+	const template = persistedTemplate.value;
+	if (!template) return [];
+	const langs = [templateDefaultLanguage.value];
+	for (const lang of template.supportedLanguages ?? []) {
+		if (!langs.includes(lang)) langs.push(lang);
+	}
+	return langs;
+});
 
 // Templates power the review step's A/B variant-B name lookup.
 const {
@@ -301,7 +313,8 @@ const reviewData = computed(() => {
 			<div class="max-w-4xl mx-auto px-6 py-4">
 				<div class="flex items-center gap-4">
 					<button
-						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						type="button"
+						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:aria-label="t('common.back')"
 						@click="handleCancel"
 					>
@@ -354,6 +367,8 @@ const reviewData = computed(() => {
 					v-else-if="currentStep === 'review' && campaignId"
 					:data="reviewData"
 					:initial-schedule="initialReviewSchedule"
+					:template-languages="templateLanguages"
+					:template-default-language="templateDefaultLanguage"
 					@back="goToPrevious"
 					@edit-step="handleEditStep"
 					@complete="handleComplete"

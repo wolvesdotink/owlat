@@ -38,9 +38,10 @@ const { t } = useI18n();
 				</div>
 			</div>
 			<button
+				type="button"
 				class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="emit('editStep', 'setup')"
-				:aria-label="t('common.edit')"
+				:aria-label="t('components.campaigns.steps.reviewStep.editCampaignName')"
 			>
 				<PencilIcon class="w-4 h-4" />
 			</button>
@@ -62,9 +63,10 @@ const { t } = useI18n();
 				</div>
 			</div>
 			<button
+				type="button"
 				class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="emit('editStep', 'setup')"
-				:aria-label="t('common.edit')"
+				:aria-label="t('components.campaigns.steps.reviewStep.editSender')"
 			>
 				<PencilIcon class="w-4 h-4" />
 			</button>
@@ -92,9 +94,10 @@ const { t } = useI18n();
 				</div>
 			</div>
 			<button
+				type="button"
 				class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="emit('editStep', 'setup')"
-				:aria-label="t('common.edit')"
+				:aria-label="t('components.campaigns.steps.reviewStep.editAudience')"
 			>
 				<PencilIcon class="w-4 h-4" />
 			</button>
@@ -119,9 +122,10 @@ const { t } = useI18n();
 					</div>
 				</div>
 				<button
+					type="button"
 					class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="emit('editStep', 'content')"
-					:aria-label="t('common.edit')"
+					:aria-label="t('components.campaigns.steps.reviewStep.editEmailContent')"
 				>
 					<PencilIcon class="w-4 h-4" />
 				</button>

@@ -20,13 +20,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>();
 
-const { copy, isCopied, reset } = useCopyToClipboard();
+const { copy, isCopied, reset } = useCopyToClipboard({ notify: false });
 const { showToast } = useToast();
 const COPY_KEY = 'connected-app-secret';
 const copied = computed(() => isCopied(COPY_KEY));
 
 const heading = computed(() =>
-	props.context === 'created' ? t('components.settings.connectedApps.connectedAppSecretReveal.headingCreated') : t('components.settings.connectedApps.connectedAppSecretReveal.headingRotated')
+	props.context === 'created'
+		? t('components.settings.connectedApps.connectedAppSecretReveal.headingCreated')
+		: t('components.settings.connectedApps.connectedAppSecretReveal.headingRotated')
 );
 
 // Reset the copied indicator whenever a fresh secret is shown so a prior "Copied!"
@@ -39,7 +41,8 @@ watch(
 async function copySecret() {
 	if (!props.secret) return;
 	const ok = await copy(props.secret, COPY_KEY);
-	if (!ok) showToast(t('components.settings.connectedApps.connectedAppSecretReveal.copyFailed'), 'error');
+	if (!ok)
+		showToast(t('components.settings.connectedApps.connectedAppSecretReveal.copyFailed'), 'error');
 }
 
 function done() {
@@ -53,23 +56,32 @@ function done() {
 		size="lg"
 		:closable="false"
 		persistent
+		labelled-by="connected-app-secret-title"
 		@update:open="(v: boolean) => !v && done()"
 	>
 		<template v-if="secret">
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox :icon="KeyIcon" size="sm" variant="success" rounded="lg" />
-				<h2 class="text-lg font-semibold text-text-primary">{{ heading }}</h2>
+				<h2 id="connected-app-secret-title" class="text-lg font-semibold text-text-primary">
+					{{ heading }}
+				</h2>
 			</div>
 
 			<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
 				<div class="flex items-start gap-3">
 					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-warning">{{ t('components.settings.connectedApps.connectedAppSecretReveal.copyNow') }}</p>
+						<p class="text-sm font-medium text-warning">
+							{{ t('components.settings.connectedApps.connectedAppSecretReveal.copyNow') }}
+						</p>
 						<p class="text-sm text-warning/80 mt-1">
 							{{ t('components.settings.connectedApps.connectedAppSecretReveal.onlyTimeShown') }}
 							<template v-if="context === 'rotated'">
-								{{ t('components.settings.connectedApps.connectedAppSecretReveal.previousSecretStopped') }}
+								{{
+									t(
+										'components.settings.connectedApps.connectedAppSecretReveal.previousSecretStopped'
+									)
+								}}
 							</template>
 						</p>
 					</div>
@@ -77,12 +89,16 @@ function done() {
 			</div>
 
 			<div v-if="appName" class="mb-4">
-				<label class="label">{{ t('components.settings.connectedApps.connectedAppSecretReveal.appLabel') }}</label>
+				<label class="label">{{
+					t('components.settings.connectedApps.connectedAppSecretReveal.appLabel')
+				}}</label>
 				<p class="text-text-primary font-medium">{{ appName }}</p>
 			</div>
 
 			<div>
-				<label id="connected-app-secret-label" class="label">{{ t('components.settings.connectedApps.connectedAppSecretReveal.secretLabel') }}</label>
+				<label id="connected-app-secret-label" class="label">{{
+					t('components.settings.connectedApps.connectedAppSecretReveal.secretLabel')
+				}}</label>
 				<div class="flex items-center gap-2">
 					<code
 						aria-labelledby="connected-app-secret-label"
@@ -96,7 +112,11 @@ function done() {
 							class="w-4 h-4"
 							:class="copied ? 'text-success' : ''"
 						/>
-						{{ copied ? t('components.settings.connectedApps.connectedAppSecretReveal.copied') : t('common.copy') }}
+						{{
+							copied
+								? t('components.settings.connectedApps.connectedAppSecretReveal.copied')
+								: t('common.copy')
+						}}
 					</UiButton>
 				</div>
 			</div>

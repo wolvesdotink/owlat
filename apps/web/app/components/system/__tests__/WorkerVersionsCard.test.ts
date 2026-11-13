@@ -121,7 +121,7 @@ describe('WorkerVersionsCard', () => {
 			})
 		);
 
-		expect(wrapper.findAll('section').map((s) => s.find('h4').text())).toEqual([
+		expect(wrapper.findAll('section').map((s) => s.find('h3').text())).toEqual([
 			'IMAP server',
 			'Mail sync',
 			'MTA',

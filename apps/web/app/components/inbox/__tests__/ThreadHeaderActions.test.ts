@@ -14,10 +14,12 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, navigateTo: () => undefined });
 });
 
+// A button, or with `to` the link UiButton renders.
 const button = {
+	props: ['to'],
 	emits: ['click'],
 	template:
-		'<button type="button" @click="$emit(\'click\', $event)"><slot /><slot name="iconLeft" /></button>',
+		'<a v-if="to" :href="to"><slot /></a><button v-else type="button" @click="$emit(\'click\', $event)"><slot /><slot name="iconLeft" /></button>',
 };
 
 function mountActions(props: Record<string, unknown> = {}) {

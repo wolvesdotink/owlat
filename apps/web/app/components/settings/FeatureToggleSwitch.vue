@@ -37,7 +37,7 @@ const ariaChecked = computed(() =>
 		role="checkbox"
 		:aria-checked="ariaChecked"
 		:aria-label="t('dashboard.admin.instance.features.toggleAria', { label: props.label })"
-		class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
+		class="relative pointer-coarse:after:absolute pointer-coarse:after:-inset-y-2.5 pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 		:class="
 			props.state === 'on'
 				? 'bg-brand border-brand'

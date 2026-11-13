@@ -16,6 +16,7 @@ import type {
 	PostboxTransferMode,
 	PostboxTransferTarget,
 } from '~/composables/postbox/usePostboxMailboxTransfer';
+import { postboxFolderLabel } from '~/composables/postbox/usePostboxFolderName';
 import { FolderIcon, InboxIcon, LinkIcon, UsersIcon } from '@coolicons/vue';
 
 withDefaults(
@@ -47,11 +48,11 @@ const { t } = useI18n();
 			<li v-for="folder in folders" :key="folder._id">
 				<button
 					type="button"
-					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm capitalize"
+					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm"
 					@click="emit('pick', folder._id)"
 				>
 					<FolderIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
-					{{ folder.role ?? folder.name }}
+					{{ postboxFolderLabel(t, folder) }}
 				</button>
 			</li>
 		</ul>

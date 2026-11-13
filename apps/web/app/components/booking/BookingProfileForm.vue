@@ -103,6 +103,10 @@ function removeOverride(date: string) {
 }
 
 const savedAt = ref<number | null>(null);
+// "Saved" holds only while the form still matches the stored page; the next
+// edit turns it into "Unsaved changes". (Convex resolves the save after the
+// settings query has the new page, so the two never disagree in between.)
+const matchesStored = computed(() => JSON.stringify(form) === JSON.stringify(seed()));
 async function submit() {
 	if (!canSave.value) return;
 	const result = await save.run({
@@ -127,13 +131,20 @@ async function submit() {
 				<label for="booking-slug" class="mb-1 block text-sm font-medium">
 					{{ t('components.booking.profile.slug') }}
 				</label>
-				<div class="input flex items-center">
-					<span class="shrink-0 truncate text-sm text-text-tertiary">{{ siteOrigin }}/book/</span>
+				<div class="input flex items-center" :class="{ 'input-error': form.slug && !slugValid }">
+					<!-- The prefix gives way before the field does on a narrow screen. -->
+					<span
+						class="min-w-0 max-w-[60%] shrink truncate text-sm text-text-tertiary"
+						:title="`${siteOrigin}/book/`"
+						>{{ siteOrigin }}/book/</span
+					>
 					<input
 						id="booking-slug"
 						v-model="form.slug"
 						type="text"
-						class="input-bare min-w-0 flex-1 px-1 text-sm"
+						class="input-bare min-w-[6rem] flex-1 px-1 text-sm"
+						:aria-invalid="form.slug && !slugValid ? 'true' : undefined"
+						aria-describedby="booking-slug-hint"
 						:maxlength="BOOKING_LIMITS.slugMaxLength"
 						autocapitalize="off"
 						spellcheck="false"
@@ -141,6 +152,7 @@ async function submit() {
 					/>
 				</div>
 				<p
+					id="booking-slug-hint"
 					class="mt-1 text-xs"
 					:class="slugValid || !form.slug ? 'text-text-tertiary' : 'text-error'"
 				>
@@ -272,8 +284,11 @@ async function submit() {
 				{{ profile ? t('common.save') : t('components.booking.profile.create') }}
 			</UiButton>
 			<p v-if="error" class="text-sm text-error" role="alert">{{ error }}</p>
-			<p v-else-if="savedAt" class="text-sm text-text-tertiary" role="status">
+			<p v-else-if="savedAt && matchesStored" class="text-sm text-text-tertiary" role="status">
 				{{ t('components.booking.profile.saved') }}
+			</p>
+			<p v-else-if="profile && !matchesStored" class="text-sm text-text-tertiary" role="status">
+				{{ t('components.booking.profile.unsaved') }}
 			</p>
 		</div>
 	</form>

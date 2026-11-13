@@ -100,6 +100,10 @@ function mountCard(overrides: Partial<SharedInbox> = {}) {
 				PostboxTeamInboxMembersPanel: panelStub,
 				PostboxTeamInboxImportCard: panelStub,
 				PostboxMailboxConnectForm: panelStub,
+				PostboxOverflowMenu: {
+					setup: () => ({ close: () => {} }),
+					template: '<div role="menu"><slot :close="close" /></div>',
+				},
 				PostboxSyncModeToggle: {
 					props: ['mode', 'mailboxId'],
 					template:
@@ -124,6 +128,14 @@ describe('TeamInboxCard', () => {
 		expect(wrapper.find(toggle).exists()).toBe(true);
 		expect(wrapper.find(toggle).text()).toContain('Import history');
 		expectFullyLocalized(wrapper);
+	});
+
+	it('keeps the rare and destructive verbs in the ⋯ menu, named in words', async () => {
+		const wrapper = mountCard();
+		const items = wrapper.findAll('[role="menuitem"]');
+		expect(items.map((item) => item.text())).toEqual(['Delete this team inbox permanently']);
+		await items[0]!.trigger('click');
+		expect(wrapper.emitted('purge')).toHaveLength(1);
 	});
 
 	it('keeps a space before the members the avatar row leaves out', () => {

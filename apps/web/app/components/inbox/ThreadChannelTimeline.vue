@@ -70,6 +70,16 @@ function canReplyTo(item: TimelineMessage): boolean {
 // device until it is sent or cancelled, so a reload reopens it as it was.
 const NO_REPLY = { text: '', replyToId: '' };
 const { draft: reply, pin } = useComposerDraft('channel-reply', () => props.threadId, NO_REPLY);
+// Long channel messages show a preview; "Show all" opens the rest in place.
+const TIMELINE_PREVIEW_CHARS = 120;
+const expandedIds = ref(new Set<string>());
+function toggleExpanded(id: string) {
+	const next = new Set(expandedIds.value);
+	if (next.has(id)) next.delete(id);
+	else next.add(id);
+	expandedIds.value = next;
+}
+
 const replyToId = computed(() => reply.value.replyToId || null);
 const replyText = computed({
 	get: () => reply.value.text,
@@ -141,7 +151,7 @@ async function submitReply(item: TimelineMessage) {
 							<!-- Direction badge -->
 							<span
 								:class="[
-									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+									'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium',
 									item.direction === 'inbound'
 										? 'bg-info-subtle text-info'
 										: 'bg-success-subtle text-success',
@@ -175,7 +185,7 @@ async function submitReply(item: TimelineMessage) {
 							<button
 								v-if="canReplyTo(item) && replyToId !== item._id"
 								type="button"
-								class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								:aria-label="
 									t('components.inbox.threadChannelTimeline.replyOn', {
 										channel: channelName(item.channel),
@@ -194,9 +204,26 @@ async function submitReply(item: TimelineMessage) {
 						</p>
 
 						<!-- Content preview -->
-						<p class="text-text-secondary text-sm mt-0.5">
-							{{ truncateTimelineText(item.content.text || '') }}
+						<p class="text-text-secondary text-sm mt-0.5 whitespace-pre-wrap break-words">
+							{{
+								expandedIds.has(item._id)
+									? item.content.text || ''
+									: truncateTimelineText(item.content.text || '', TIMELINE_PREVIEW_CHARS)
+							}}
 						</p>
+						<button
+							v-if="(item.content.text?.length ?? 0) > TIMELINE_PREVIEW_CHARS"
+							type="button"
+							class="mt-0.5 text-xs text-brand hover:underline pointer-coarse:min-h-11"
+							:aria-expanded="expandedIds.has(item._id)"
+							@click="toggleExpanded(item._id)"
+						>
+							{{
+								expandedIds.has(item._id)
+									? t('components.inbox.threadChannelTimeline.showLess')
+									: t('components.inbox.threadChannelTimeline.showAll')
+							}}
+						</button>
 						<p v-if="item.content.isBodyTruncated" class="text-text-tertiary text-xs mt-0.5">
 							{{ t('components.inbox.threadChannelTimeline.longMessage') }}
 						</p>

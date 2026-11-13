@@ -138,7 +138,7 @@ const toneClass: Record<RowTone, string> = {
 				:height="64"
 				:ariaLabel="t('components.marketing.audience.newContactsAria')"
 			/>
-			<p v-if="growth?.truncated" class="mt-2 text-[11px] text-text-tertiary">
+			<p v-if="growth?.truncated" class="mt-2 text-2xs text-text-tertiary">
 				{{ t('components.marketing.audience.truncated') }}
 			</p>
 		</div>

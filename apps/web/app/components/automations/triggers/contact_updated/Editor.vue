@@ -19,6 +19,9 @@ const updatePropertyKey = (event: Event) => {
 	const propertyKey = (event.target as HTMLSelectElement).value;
 	emit('update:modelValue', { ...props.modelValue, propertyKey });
 };
+
+const hintId = useId();
+const errorId = useId();
 </script>
 
 <template>
@@ -26,13 +29,16 @@ const updatePropertyKey = (event: Event) => {
 		<label for="propertyKey" class="label flex items-center gap-2">
 			<UserSettingsCornerIcon class="w-4 h-4 text-brand" />
 			{{ t('components.automations.triggers.contactUpdated.editor.propertyLabel') }}
-			<span class="text-error">*</span>
+			<span class="text-error" aria-hidden="true">*</span>
 		</label>
-		<p class="text-sm text-text-tertiary mt-1 mb-3">
+		<p :id="hintId" class="text-sm text-text-tertiary mt-1 mb-3">
 			{{ t('components.automations.triggers.contactUpdated.editor.propertyHint') }}
 		</p>
 		<select
 			id="propertyKey"
+			aria-required="true"
+			:aria-invalid="error ? true : undefined"
+			:aria-describedby="error ? `${errorId} ${hintId}` : hintId"
 			:value="modelValue.propertyKey"
 			:class="['input', error ? 'input-error' : '']"
 			@change="updatePropertyKey"
@@ -62,6 +68,6 @@ const updatePropertyKey = (event: Event) => {
 				</option>
 			</optgroup>
 		</select>
-		<p v-if="error" class="mt-2 text-sm text-error">{{ error }}</p>
+		<p v-if="error" :id="errorId" class="mt-2 text-sm text-error">{{ error }}</p>
 	</div>
 </template>

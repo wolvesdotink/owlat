@@ -4,7 +4,17 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
 import { GENERIC_IMAP_PROVIDER, providerById, type MailProvider } from '~/utils/mailAutodiscover';
 
 const { t } = useI18n();
-const { data: status } = useOrganizationQuery(api.delivery.observabilityStatus.get);
+const {
+	data: status,
+	isLoading: statusLoading,
+	error: statusError,
+	refetch: refetchStatus,
+} = useOrganizationQuery(api.delivery.observabilityStatus.get);
+/**
+ * Counts are read only from a delivered status: before it arrives (or when it
+ * failed) "0 test mailboxes" would be a claim about connections that may exist.
+ */
+const statusPending = computed(() => !status.value && !statusError.value);
 const { showToast } = useToast();
 const acknowledgeRotation = useBackendOperation(
 	api.mail.external.accountsSeed.acknowledgeSeedRotation,
@@ -17,6 +27,16 @@ const disconnectSeedOp = useBackendOperation(api.mail.external.accountsSeed.disc
 	label: () => t('components.delivery.deliveryMeasurementCoverageCard.disconnectOperation'),
 });
 type SeedAccount = NonNullable<typeof status.value>['seedMailboxes']['accounts'][number];
+/** The row whose "credentials rotated" write is in flight, so only it spins. */
+const acknowledgingId = ref<SeedAccount['accountId'] | null>(null);
+async function acknowledge(account: SeedAccount) {
+	acknowledgingId.value = account.accountId;
+	try {
+		await acknowledgeRotation.run({ accountId: account.accountId });
+	} finally {
+		acknowledgingId.value = null;
+	}
+}
 const seedToDisconnect = ref<SeedAccount | null>(null);
 async function confirmDisconnectSeed() {
 	const target = seedToDisconnect.value;
@@ -66,6 +86,11 @@ const microsoftFeedback = computed(() => {
 	);
 });
 
+/** The provider as its product name, never the raw key. */
+function providerName(provider: string): string {
+	return providerOptions.value.find((option) => option.key === provider)?.label ?? provider;
+}
+
 function finishConnect() {
 	showConnect.value = false;
 	selectedProvider.value = null;
@@ -79,7 +104,8 @@ function finishConnect() {
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.delivery.deliveryMeasurementCoverageCard.title') }}
 				</h2>
-				<p class="mt-1 text-sm text-text-secondary">
+				<UiSkeleton v-if="statusPending" class="mt-2 h-4 w-64 max-w-full" />
+				<p v-else-if="status" class="mt-1 text-sm text-text-secondary">
 					{{
 						t('components.delivery.deliveryMeasurementCoverageCard.summary', {
 							count: status?.seedMailboxes.connected ?? 0,
@@ -90,7 +116,7 @@ function finishConnect() {
 					}}
 				</p>
 			</div>
-			<UiBadge :variant="status?.seedMailboxes.connected ? 'success' : 'neutral'">
+			<UiBadge v-if="status" :variant="status.seedMailboxes.connected ? 'success' : 'neutral'">
 				{{
 					status?.seedMailboxes.connected
 						? t('components.delivery.deliveryMeasurementCoverageCard.measured')
@@ -98,7 +124,9 @@ function finishConnect() {
 				}}
 			</UiBadge>
 		</div>
+		<UiQueryBoundary v-if="statusError && !status" :error="statusError" @retry="refetchStatus" />
 		<UiDisclosure
+			v-else-if="status"
 			v-model="detailsOpen"
 			class="mt-4"
 			:label="t('components.delivery.deliveryMeasurementCoverageCard.detailsLabel')"
@@ -141,22 +169,21 @@ function finishConnect() {
 					>
 						<div class="min-w-0">
 							<p class="truncate text-sm font-medium text-text-primary">{{ account.address }}</p>
-							<p class="text-xs capitalize text-text-tertiary">{{ account.provider }}</p>
+							<p class="text-xs text-text-tertiary">{{ providerName(account.provider) }}</p>
 						</div>
 						<div class="flex items-center gap-2 shrink-0">
 							<UiButton
 								v-if="account.rotationReminderDue"
 								size="sm"
 								variant="secondary"
-								:loading="acknowledgeRotation.isLoading.value"
-								@click="acknowledgeRotation.run({ accountId: account.accountId })"
+								:loading="acknowledgingId === account.accountId"
+								@click="acknowledge(account)"
 							>
 								{{ t('components.delivery.deliveryMeasurementCoverageCard.credentialsRotated') }}
 							</UiButton>
 							<UiButton
 								size="sm"
-								variant="ghost"
-								class="text-error"
+								variant="danger-ghost"
 								data-testid="seed-disconnect"
 								:aria-label="
 									t('components.delivery.deliveryMeasurementCoverageCard.disconnectAriaLabel', {
@@ -171,16 +198,28 @@ function finishConnect() {
 					</div>
 				</div>
 				<div v-if="showConnect" class="mt-4 rounded-lg border border-border-subtle p-4">
-					<div v-if="!selectedProvider" class="grid gap-2 sm:grid-cols-3">
-						<UiButton
-							v-for="provider in providerOptions"
-							:key="provider.key"
-							variant="secondary"
-							@click="selectedProvider = provider.key"
-						>
-							{{ provider.label }}
-						</UiButton>
-					</div>
+					<template v-if="!selectedProvider">
+						<div class="grid gap-2 sm:grid-cols-3">
+							<UiButton
+								v-for="provider in providerOptions"
+								:key="provider.key"
+								variant="secondary"
+								@click="selectedProvider = provider.key"
+							>
+								{{ provider.label }}
+							</UiButton>
+						</div>
+						<div class="mt-3 flex justify-end">
+							<UiButton
+								size="sm"
+								variant="ghost"
+								data-testid="seed-connect-cancel"
+								@click="finishConnect"
+							>
+								{{ t('common.cancel') }}
+							</UiButton>
+						</div>
+					</template>
 					<PostboxMailboxConnectForm
 						v-else
 						:provider="selectedMailProvider"

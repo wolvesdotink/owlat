@@ -119,7 +119,7 @@ const handleCreate = async () => {
 					!errors.slug ? t('dashboard.send.transactional.index.create.slugHelp') : undefined
 				"
 				:disabled="isCreating"
-				class="mb-4 font-mono"
+				class="mb-4 [&_input]:font-mono"
 			/>
 
 			<!-- Default Language — the language the body you author here is

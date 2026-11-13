@@ -131,3 +131,13 @@ describe('the ramp controls are admin-only, and the route is the gate', () => {
 		wrapper.unmount();
 	});
 });
+
+describe('the pace picker on a deployment with two relays', () => {
+	it('does not warn that no relay is connected', () => {
+		// Two relays: no single reference arm to name, but a second sender exists.
+		stubPage(controlsView({ referenceTransportId: null, isRelayConfigured: true }));
+		const wrapper = mount(ControlsPage, { global: globalOptions });
+		expect(wrapper.find('[data-testid^="ramp-preset-standalone-note-"]').exists()).toBe(false);
+		wrapper.unmount();
+	});
+});

@@ -125,7 +125,9 @@ describe('property panel', () => {
 		});
 		expect(w.text()).toContain('Typ');
 		expect(w.text()).toContain('Absatz');
-		expect(w.get('button[aria-haspopup="listbox"]').attributes('aria-label')).toBe('Typ');
+		// The trigger's name carries the current value too, so a screen reader
+		// hears what is set and not only which setting this is.
+		expect(w.get('button[aria-haspopup="listbox"]').attributes('aria-label')).toBe('Typ: Absatz');
 		// The registry entry keeps its English source and value.
 		expect(typeField.label).toBe('Type');
 		expect(typeField.options?.[0]).toEqual({ label: 'Paragraph', value: 'paragraph' });

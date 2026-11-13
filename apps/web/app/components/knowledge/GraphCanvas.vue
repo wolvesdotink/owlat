@@ -187,11 +187,11 @@ onBeforeUnmount(() => {
 			:viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
 			class="block h-auto max-h-[75vh] w-full"
 			:style="{ aspectRatio: `${WIDTH} / ${HEIGHT}` }"
-			role="img"
+			role="group"
 			:aria-label="t('components.knowledge.graphCanvas.ariaLabel')"
 		>
 			<!-- Edges -->
-			<g>
+			<g aria-hidden="true">
 				<line
 					v-for="line in edgeLines"
 					:key="line.edge.id"
@@ -213,11 +213,26 @@ onBeforeUnmount(() => {
 					v-for="node in layout"
 					:key="node.id"
 					:transform="`translate(${node.x}, ${node.y})`"
-					class="cursor-pointer"
+					class="graph-node cursor-pointer focus:outline-none"
 					:opacity="node.dimmed ? 0.2 : 1"
+					role="button"
+					tabindex="0"
+					:aria-label="node.title"
+					:aria-pressed="selectedId === node.id"
 					@click="emit('nodeClick', node.id)"
+					@keydown.enter.prevent="emit('nodeClick', node.id)"
+					@keydown.space.prevent="emit('nodeClick', node.id)"
 				>
 					<title>{{ node.title }}</title>
+					<!-- Keyboard focus ring, shown only on :focus-visible (scoped style) -->
+					<circle
+						:r="node.radius + 10"
+						fill="none"
+						stroke="currentColor"
+						class="graph-node-focus text-brand"
+						stroke-width="2"
+						stroke-dasharray="3 3"
+					/>
 					<!-- God-node ring -->
 					<circle
 						v-if="node.isGod"
@@ -277,3 +292,12 @@ onBeforeUnmount(() => {
 		</svg>
 	</div>
 </template>
+
+<style scoped>
+.graph-node-focus {
+	opacity: 0;
+}
+.graph-node:focus-visible .graph-node-focus {
+	opacity: 1;
+}
+</style>

@@ -21,7 +21,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{ save: [policy: SlaPolicyShape] }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+// A closed day is a calendar date ("2026-12-25"), shown in the reader's own
+// format; read in UTC so it never slips to the day before.
+function formatHoliday(day: string): string {
+	const date = new Date(`${day}T00:00:00Z`);
+	if (Number.isNaN(date.getTime())) return day;
+	return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeZone: 'UTC' }).format(
+		date
+	);
+}
 
 const form = reactive(policyToForm(props.policy));
 watch(
@@ -94,152 +104,161 @@ function save() {
 				/>
 			</div>
 		</UiCard>
-
-		<UiCard>
-			<h2 class="text-base font-medium text-text-primary mb-4">
-				{{ t('components.inbox.inboxSlaPolicyForm.targetsTitle') }}
-			</h2>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<div v-for="which in ['first', 'next'] as const" :key="which">
-					<p class="text-sm font-medium text-text-primary">
-						{{ t(`components.inbox.inboxSlaPolicyForm.${which}Label`) }}
-					</p>
-					<p class="text-xs text-text-tertiary mb-2">
-						{{ t(`components.inbox.inboxSlaPolicyForm.${which}Hint`) }}
-					</p>
-					<div class="flex items-center gap-2">
-						<input
-							v-model.number="form[which].amount"
-							type="number"
-							min="1"
-							class="input w-24"
-							:aria-label="t(`components.inbox.inboxSlaPolicyForm.${which}Label`)"
-						/>
-						<UiSelect
-							v-model="form[which].unit"
-							:options="unitOptions"
-							size="sm"
-							:aria-label="t('components.inbox.inboxSlaPolicyForm.unitLabel')"
-						/>
+		<!-- With targets off nothing below applies yet: dimmed, still editable,
+		     so a policy can be set up before switching it on. -->
+		<div class="space-y-6 transition-opacity" :class="{ 'opacity-60': !form.isEnabled }">
+			<UiCard>
+				<h2 class="text-base font-medium text-text-primary mb-4">
+					{{ t('components.inbox.inboxSlaPolicyForm.targetsTitle') }}
+				</h2>
+				<div class="grid gap-4 sm:grid-cols-2">
+					<div v-for="which in ['first', 'next'] as const" :key="which">
+						<p class="text-sm font-medium text-text-primary">
+							{{ t(`components.inbox.inboxSlaPolicyForm.${which}Label`) }}
+						</p>
+						<p class="text-xs text-text-tertiary mb-2">
+							{{ t(`components.inbox.inboxSlaPolicyForm.${which}Hint`) }}
+						</p>
+						<div class="flex items-center gap-2">
+							<input
+								v-model.number="form[which].amount"
+								type="number"
+								min="1"
+								class="input w-24"
+								:aria-label="t(`components.inbox.inboxSlaPolicyForm.${which}Label`)"
+							/>
+							<UiSelect
+								v-model="form[which].unit"
+								:options="unitOptions"
+								size="sm"
+								:aria-label="t('components.inbox.inboxSlaPolicyForm.unitLabel')"
+							/>
+						</div>
 					</div>
 				</div>
-			</div>
-		</UiCard>
+			</UiCard>
 
-		<UiCard>
-			<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-				<h2 class="text-base font-medium text-text-primary">
-					{{ t('components.inbox.inboxSlaPolicyForm.hoursTitle') }}
-				</h2>
-				<UiSegmentedControl
-					v-model="form.hoursMode"
-					:options="modeOptions"
-					size="sm"
-					fit="content"
-				/>
-			</div>
-			<p class="text-sm text-text-secondary mb-4">
-				{{
-					form.hoursMode === 'business'
-						? t('components.inbox.inboxSlaPolicyForm.mode.businessHint')
-						: t('components.inbox.inboxSlaPolicyForm.mode.calendarHint')
-				}}
-			</p>
+			<UiCard>
+				<div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+					<h2 class="text-base font-medium text-text-primary">
+						{{ t('components.inbox.inboxSlaPolicyForm.hoursTitle') }}
+					</h2>
+					<UiSegmentedControl
+						v-model="form.hoursMode"
+						:options="modeOptions"
+						size="sm"
+						fit="content"
+					/>
+				</div>
+				<p class="text-sm text-text-secondary mb-4">
+					{{
+						form.hoursMode === 'business'
+							? t('components.inbox.inboxSlaPolicyForm.mode.businessHint')
+							: t('components.inbox.inboxSlaPolicyForm.mode.calendarHint')
+					}}
+				</p>
 
-			<div class="mb-4">
-				<label for="sla-time-zone" class="text-sm font-medium text-text-primary">
-					{{ t('components.inbox.inboxSlaPolicyForm.timeZone') }}
-				</label>
-				<input
-					id="sla-time-zone"
-					v-model="form.timeZone"
-					type="text"
-					list="sla-time-zones"
-					class="input w-full max-w-sm mt-1 block"
-					autocomplete="off"
-				/>
-				<datalist id="sla-time-zones">
-					<option v-for="zone in timeZones" :key="zone" :value="zone" />
-				</datalist>
-			</div>
+				<div class="mb-4">
+					<label for="sla-time-zone" class="text-sm font-medium text-text-primary">
+						{{ t('components.inbox.inboxSlaPolicyForm.timeZone') }}
+					</label>
+					<input
+						id="sla-time-zone"
+						v-model="form.timeZone"
+						type="text"
+						list="sla-time-zones"
+						class="input w-full max-w-sm mt-1 block"
+						autocomplete="off"
+					/>
+					<datalist id="sla-time-zones">
+						<option v-for="zone in timeZones" :key="zone" :value="zone" />
+					</datalist>
+				</div>
 
-			<template v-if="form.hoursMode === 'business'">
-				<ul class="divide-y divide-border-subtle" data-testid="inbox-sla-days">
-					<li
-						v-for="row in form.days"
-						:key="row.day"
-						class="flex flex-wrap items-center gap-3 py-2"
-					>
-						<UiCheckbox v-model="row.isOpen" :label="weekdayLabel(row.day)" class="w-32" />
-						<template v-if="row.isOpen">
-							<input
-								v-model="row.start"
-								type="time"
-								class="input w-36"
-								:aria-label="
-									t('components.inbox.inboxSlaPolicyForm.opensAt', { day: weekdayLabel(row.day) })
-								"
-							/>
-							<span class="text-text-tertiary" aria-hidden="true">–</span>
-							<input
-								v-model="row.end"
-								type="time"
-								class="input w-36"
-								:aria-label="
-									t('components.inbox.inboxSlaPolicyForm.closesAt', { day: weekdayLabel(row.day) })
-								"
-							/>
-						</template>
-						<span v-else class="text-sm text-text-tertiary">
-							{{ t('components.inbox.inboxSlaPolicyForm.closed') }}
-						</span>
-					</li>
-				</ul>
-
-				<div class="mt-6">
-					<p class="text-sm font-medium text-text-primary">
-						{{ t('components.inbox.inboxSlaPolicyForm.holidaysTitle') }}
-					</p>
-					<p class="text-xs text-text-tertiary mb-2">
-						{{ t('components.inbox.inboxSlaPolicyForm.holidaysHint') }}
-					</p>
-					<div class="flex items-center gap-2">
-						<input
-							v-model="newHoliday"
-							type="date"
-							class="input w-48"
-							:aria-label="t('components.inbox.inboxSlaPolicyForm.holidayDate')"
-						/>
-						<UiButton
-							variant="secondary"
-							size="sm"
-							class="whitespace-nowrap"
-							:disabled="!newHoliday"
-							@click="addHoliday"
-						>
-							{{ t('components.inbox.inboxSlaPolicyForm.addHoliday') }}
-						</UiButton>
-					</div>
-					<ul v-if="form.holidays.length > 0" class="mt-3 flex flex-wrap gap-2">
+				<template v-if="form.hoursMode === 'business'">
+					<ul class="divide-y divide-border-subtle" data-testid="inbox-sla-days">
 						<li
-							v-for="day in form.holidays"
-							:key="day"
-							class="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary tabular-nums"
+							v-for="row in form.days"
+							:key="row.day"
+							class="flex flex-wrap items-center gap-3 py-2"
 						>
-							{{ day }}
-							<button
-								type="button"
-								class="text-text-tertiary hover:text-error"
-								:aria-label="t('components.inbox.inboxSlaPolicyForm.removeHoliday', { day })"
-								@click="removeHoliday(day)"
-							>
-								<CloseIcon class="w-3 h-3" />
-							</button>
+							<UiCheckbox v-model="row.isOpen" :label="weekdayLabel(row.day)" class="w-32" />
+							<template v-if="row.isOpen">
+								<input
+									v-model="row.start"
+									type="time"
+									class="input w-36"
+									:aria-label="
+										t('components.inbox.inboxSlaPolicyForm.opensAt', { day: weekdayLabel(row.day) })
+									"
+								/>
+								<span class="text-text-tertiary" aria-hidden="true">–</span>
+								<input
+									v-model="row.end"
+									type="time"
+									class="input w-36"
+									:aria-label="
+										t('components.inbox.inboxSlaPolicyForm.closesAt', {
+											day: weekdayLabel(row.day),
+										})
+									"
+								/>
+							</template>
+							<span v-else class="text-sm text-text-tertiary">
+								{{ t('components.inbox.inboxSlaPolicyForm.closed') }}
+							</span>
 						</li>
 					</ul>
-				</div>
-			</template>
-		</UiCard>
+
+					<div class="mt-6">
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('components.inbox.inboxSlaPolicyForm.holidaysTitle') }}
+						</p>
+						<p class="text-xs text-text-tertiary mb-2">
+							{{ t('components.inbox.inboxSlaPolicyForm.holidaysHint') }}
+						</p>
+						<div class="flex items-center gap-2">
+							<input
+								v-model="newHoliday"
+								type="date"
+								class="input w-48"
+								:aria-label="t('components.inbox.inboxSlaPolicyForm.holidayDate')"
+							/>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								class="whitespace-nowrap"
+								:disabled="!newHoliday"
+								@click="addHoliday"
+							>
+								{{ t('components.inbox.inboxSlaPolicyForm.addHoliday') }}
+							</UiButton>
+						</div>
+						<ul v-if="form.holidays.length > 0" class="mt-3 flex flex-wrap gap-2">
+							<li
+								v-for="day in form.holidays"
+								:key="day"
+								class="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary tabular-nums"
+							>
+								<time :datetime="day">{{ formatHoliday(day) }}</time>
+								<button
+									type="button"
+									class="-my-1 -mr-1.5 rounded-full p-1 pointer-coarse:p-2.5 text-text-tertiary hover:text-error"
+									:aria-label="
+										t('components.inbox.inboxSlaPolicyForm.removeHoliday', {
+											day: formatHoliday(day),
+										})
+									"
+									@click="removeHoliday(day)"
+								>
+									<CloseIcon class="w-3 h-3" />
+								</button>
+							</li>
+						</ul>
+					</div>
+				</template>
+			</UiCard>
+		</div>
 
 		<div class="flex items-center justify-end gap-3">
 			<p v-if="problem" class="text-sm text-error" role="alert">{{ problem }}</p>

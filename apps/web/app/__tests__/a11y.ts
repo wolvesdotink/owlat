@@ -533,6 +533,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			counts: ref({ mail: 0, team: 0, mention: 0, drafts: 0 }),
 			isLoading: ref(false),
 			error: ref(null),
+			failures: ref([]),
 			refetch: vi.fn(),
 			teamEnabled: ref(false),
 			chatEnabled: ref(false),

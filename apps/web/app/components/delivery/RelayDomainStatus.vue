@@ -163,7 +163,7 @@ function ownershipRecord(records: readonly RelayDomainRecord[]): RelayDomainReco
 <template>
 	<div v-if="rows.length" class="card p-6 space-y-4" data-testid="relay-domain-status">
 		<div>
-			<h2 class="text-lg font-medium text-text-primary">
+			<h2 class="text-lg font-semibold text-text-primary">
 				{{ t('components.delivery.relayDomainStatus.title') }}
 			</h2>
 			<p class="mt-1 text-sm text-text-secondary">

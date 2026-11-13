@@ -57,7 +57,7 @@ const shown = computed(() =>
 				</span>
 				<span class="min-w-0 flex-1 truncate">
 					<b class="font-medium">{{ row.fromName || row.fromAddress }}</b>
-					{{ row.subject }}
+					<span class="text-text-secondary"> · {{ row.subject }}</span>
 				</span>
 				<span class="shrink-0 text-xs" :class="row.isMatch ? 'text-brand' : 'text-text-tertiary'">
 					{{ t(SOURCE_KEYS[row.source]) }}

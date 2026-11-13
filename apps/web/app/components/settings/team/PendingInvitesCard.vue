@@ -69,18 +69,29 @@ const formatExpiryTime = (expiresAt: Date) => {
 			<div
 				v-for="invite in invitations"
 				:key="invite.id"
-				class="px-6 py-4 flex items-center justify-between"
+				class="px-6 py-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
 			>
-				<div class="flex items-center gap-4">
+				<!-- The actions wrap below the address on a phone instead of being
+				     pushed out of the card by a long one. -->
+				<div class="flex min-w-0 flex-[1_1_16rem] items-center gap-4">
 					<!-- Email Icon -->
-					<div class="w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center">
+					<div
+						class="w-10 h-10 shrink-0 rounded-full bg-bg-surface flex items-center justify-center"
+					>
 						<MailIcon class="w-5 h-5 text-text-tertiary" />
 					</div>
 
 					<!-- Email and Status -->
-					<div>
-						<div class="flex items-center gap-2">
-							<p class="font-medium text-text-primary">{{ invite.email }}</p>
+					<div class="min-w-0">
+						<div class="flex flex-wrap items-center gap-2">
+							<!-- Describes the row's icon buttons, so a list does not read
+							     "Revoke, Revoke…" without saying whose. -->
+							<p
+								:id="`invite-email-${invite.id}`"
+								class="min-w-0 break-all font-medium text-text-primary"
+							>
+								{{ invite.email }}
+							</p>
 							<!-- Role Badge -->
 							<span
 								:class="[
@@ -100,12 +111,13 @@ const formatExpiryTime = (expiresAt: Date) => {
 				</div>
 
 				<!-- Row actions: copy link / resend / revoke -->
-				<div v-if="canManageMembers" class="flex items-center gap-1">
+				<div v-if="canManageMembers" class="ml-auto flex shrink-0 items-center gap-1">
 					<UiTooltip :text="t('dashboard.admin.team.invites.copyLink')">
 						<UiButton
 							variant="ghost"
 							size="sm"
 							:aria-label="t('dashboard.admin.team.invites.copyLink')"
+							:aria-describedby="`invite-email-${invite.id}`"
 							@click="emit('copyLink', invite.id)"
 						>
 							<LinkIcon class="w-4 h-4 text-text-secondary" />
@@ -134,6 +146,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							variant="ghost"
 							size="sm"
 							:aria-label="t('dashboard.admin.team.invites.resend')"
+							:aria-describedby="`invite-email-${invite.id}`"
 							:loading="resendingId === invite.id"
 							:disabled="resendingId === invite.id"
 							@click="emit('resend', invite)"
@@ -149,6 +162,7 @@ const formatExpiryTime = (expiresAt: Date) => {
 							variant="ghost"
 							size="sm"
 							:aria-label="t('dashboard.admin.team.invites.revoke')"
+							:aria-describedby="`invite-email-${invite.id}`"
 							@click="emit('revoke', invite)"
 						>
 							<CloseIcon class="w-4 h-4 text-text-secondary hover:text-error" />

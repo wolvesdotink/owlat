@@ -318,7 +318,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.preferences.security.device.platforms.windows',
 	// "IP {address}" — the abbreviation and the placeholder, nothing else.
 	'dashboard.preferences.security.sessions.ipLabel',
-	'dashboard.preferences.signatures.bodyPlaceholder',
 	'dashboard.send.blocks.index.sort.name',
 	'dashboard.send.emails.detail.settings.languageWithNative',
 	'dashboard.send.index.filters.marketing',
@@ -484,4 +483,14 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.postbox.contacts.source.carddav',
 	'dashboard.postbox.contacts.source.mail',
 	'dashboard.postbox.contacts.source.vcard',
+	// Words German uses unchanged: relationship types, media kinds, a colour name.
+	'components.contacts.relationshipsTab.types.partner',
+	'components.contacts.relationshipsTab.types.investor',
+	'components.delivery.transportCard.checks.up',
+	'components.postbox.postboxLabelManager.colors.accent',
+	'dashboard.audience.contacts.detail.sources.api',
+	'dashboard.audience.contacts.detail.sources.import',
+	'dashboard.files.detail.fileKinds.video',
+	'dashboard.files.detail.fileKinds.audio',
+	'desktop.setup.admin.nameLabel',
 ];

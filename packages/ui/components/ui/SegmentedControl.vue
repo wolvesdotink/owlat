@@ -227,7 +227,9 @@ const indicatorStyle = computed(() => {
 		width var(--motion-moderate) var(--ease-spring),
 		transform var(--motion-moderate) var(--ease-spring);
 	z-index: 0;
-	box-shadow: var(--shadow-2);
+	/* One step more than the track's ring, so the selected pill reads in light
+	   mode, where both surfaces are near white. */
+	box-shadow: var(--shadow-3);
 }
 
 .segmented-control__btn {
@@ -273,5 +275,17 @@ const indicatorStyle = computed(() => {
 .segmented-control__btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+/* A segment is ~21px tall (19px small), well under a finger. On touch an
+   invisible box above and below grows each target to 44px without changing the
+   control's compact look; segments sit side by side, so it grows vertically
+   only. */
+@media (pointer: coarse) {
+	.segmented-control__btn::after {
+		content: '';
+		position: absolute;
+		inset: -12px 0;
+	}
 }
 </style>

@@ -44,49 +44,53 @@ const { t } = useI18n();
 			</UiButton>
 		</UiEmptyState>
 
-		<table v-else class="mt-3 w-full text-sm" data-testid="desktop-updates-releases">
-			<thead>
-				<tr class="text-left text-xs uppercase tracking-wider text-text-tertiary">
-					<th class="py-2 font-medium">
-						{{ t('dashboard.admin.instance.desktopUpdates.releases.version') }}
-					</th>
-					<th class="py-2 font-medium">
-						{{ t('dashboard.admin.instance.desktopUpdates.releases.line') }}
-					</th>
-					<th class="py-2 font-medium">
-						{{ t('dashboard.admin.instance.desktopUpdates.releases.published') }}
-					</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr
-					v-for="release in releases"
-					:key="release.tag"
-					class="border-t border-border-subtle align-top"
-					:data-testid="`desktop-updates-release-${release.version}`"
-				>
-					<td class="py-2 font-mono text-text-primary">
-						{{ release.version }}
-						<span v-if="release.isPrerelease" class="ml-1 text-xs text-text-tertiary">
-							{{ t('dashboard.admin.instance.desktopUpdates.releases.prerelease') }}
-						</span>
-					</td>
-					<td class="py-2 text-text-secondary">{{ t(releaseLineKey(release.line)) }}</td>
-					<td class="py-2 text-text-secondary">
-						{{ formatDateTime(release.publishedAt) }}
-						<details v-if="release.notes" class="mt-1">
-							<summary
-								class="text-xs font-medium text-text-primary cursor-pointer hover:text-brand"
-							>
-								{{ t('dashboard.admin.instance.desktopUpdates.releases.notes') }}
-							</summary>
-							<pre
-								class="mt-2 text-xs text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
-								>{{ release.notes }}</pre>
-						</details>
-					</td>
-				</tr>
-			</tbody>
-		</table>
+		<!-- Scrolls sideways inside the card on a phone; the notes stay in the
+		     date cell, so an expanded one cannot stretch the page. -->
+		<div v-else class="mt-3 overflow-x-auto">
+			<table class="w-full text-sm" data-testid="desktop-updates-releases">
+				<thead>
+					<tr class="text-left text-xs uppercase tracking-wider text-text-tertiary">
+						<th class="py-2 font-medium">
+							{{ t('dashboard.admin.instance.desktopUpdates.releases.version') }}
+						</th>
+						<th class="py-2 font-medium">
+							{{ t('dashboard.admin.instance.desktopUpdates.releases.line') }}
+						</th>
+						<th class="py-2 font-medium">
+							{{ t('dashboard.admin.instance.desktopUpdates.releases.published') }}
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr
+						v-for="release in releases"
+						:key="release.tag"
+						class="border-t border-border-subtle align-top"
+						:data-testid="`desktop-updates-release-${release.version}`"
+					>
+						<td class="py-2 font-mono text-text-primary">
+							{{ release.version }}
+							<span v-if="release.isPrerelease" class="ml-1 text-xs text-text-tertiary">
+								{{ t('dashboard.admin.instance.desktopUpdates.releases.prerelease') }}
+							</span>
+						</td>
+						<td class="py-2 text-text-secondary">{{ t(releaseLineKey(release.line)) }}</td>
+						<td class="py-2 text-text-secondary">
+							{{ formatDateTime(release.publishedAt) }}
+							<details v-if="release.notes" class="mt-1">
+								<summary
+									class="text-xs font-medium text-text-primary cursor-pointer hover:text-brand"
+								>
+									{{ t('dashboard.admin.instance.desktopUpdates.releases.notes') }}
+								</summary>
+								<pre
+									class="mt-2 text-xs text-text-secondary whitespace-pre-wrap font-sans leading-relaxed"
+									>{{ release.notes }}</pre>
+							</details>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
 	</section>
 </template>

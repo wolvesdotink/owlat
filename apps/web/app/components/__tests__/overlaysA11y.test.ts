@@ -26,6 +26,7 @@ import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
+import AppCommandPaletteSearchBar from '../AppCommandPaletteSearchBar.vue';
 import KeyboardShortcutsHelp from '../KeyboardShortcutsHelp.vue';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import Breadcrumbs from '../Breadcrumbs.vue';
@@ -151,7 +152,10 @@ describe('command palette — accessibility', () => {
 		const violations = await auditA11y(AppCommandPalette, {
 			// The result region is a child component; unresolved, the audit would
 			// scan an overlay with no rows in it.
-			global: { plugins: [createTestI18n()], components: { AppCommandPaletteResults } },
+			global: {
+				plugins: [createTestI18n()],
+				components: { AppCommandPaletteResults, AppCommandPaletteSearchBar },
+			},
 			prepare: async () => {
 				await openPalette();
 				// Without rows there is no listbox to audit — no `role="option"`,
@@ -171,7 +175,10 @@ describe('command palette — accessibility', () => {
 		const violations = await auditA11y(AppCommandPalette, {
 			// The result region is a child component; unresolved, the audit would
 			// scan an overlay with no rows in it.
-			global: { plugins: [createTestI18n()], components: { AppCommandPaletteResults } },
+			global: {
+				plugins: [createTestI18n()],
+				components: { AppCommandPaletteResults, AppCommandPaletteSearchBar },
+			},
 			// The results branch is different markup: object-search groups with
 			// subtitled rows, rendered only once the query passes the minimum.
 			prepare: async () => {

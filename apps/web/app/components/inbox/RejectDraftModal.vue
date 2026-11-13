@@ -19,6 +19,7 @@ const { showToast } = useToast();
 
 const isRejecting = ref(false);
 const rejectReason = ref('');
+const reasonId = useId();
 
 // Each opening starts from an empty reason.
 watch(
@@ -54,11 +55,14 @@ const onReject = async () => {
 		<p class="text-sm text-text-secondary mb-4">
 			{{ t('dashboard.inbox.detail.rejectModalBody') }}
 		</p>
+		<label :for="reasonId" class="label">
+			{{ t('dashboard.inbox.detail.rejectReasonPlaceholder') }}
+		</label>
 		<textarea
+			:id="reasonId"
 			v-model="rejectReason"
 			rows="3"
 			class="input w-full resize-y"
-			:placeholder="t('dashboard.inbox.detail.rejectReasonPlaceholder')"
 			:disabled="isRejecting"
 		/>
 

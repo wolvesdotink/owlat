@@ -106,7 +106,7 @@ const press = async (wrapper: EditPageWrapper, id: string, key: string) => {
 /** Add a step through the "+" under the step at `index` on screen. */
 const addStepAfter = async (wrapper: EditPageWrapper, index: number) => {
 	const card = wrapper.findAll('[data-testid="automation-step"]')[index]!;
-	await card.find('button[aria-label="Add"]').trigger('click');
+	await card.find('button[aria-label="Add step"]').trigger('click');
 	await wrapper.get('[data-testid="add-step-menu"] button').trigger('click');
 	await flushPromises();
 };

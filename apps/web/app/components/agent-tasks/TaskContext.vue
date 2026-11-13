@@ -73,7 +73,7 @@ const hasAvatar = computed(() => Boolean(props.name || props.email));
 					<span
 						v-if="status"
 						data-testid="task-status-chip"
-						class="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
+						class="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wide px-1.5 py-px rounded-full"
 						:class="statusClass"
 					>
 						<component v-if="status.icon" :is="status.icon" class="w-3 h-3" aria-hidden="true" />
@@ -83,7 +83,7 @@ const hasAvatar = computed(() => Boolean(props.name || props.email));
 				<span
 					v-if="due"
 					data-testid="task-due-chip"
-					class="flex-shrink-0 text-[10px] font-medium px-1.5 py-px rounded-full bg-warning/10 text-warning"
+					class="flex-shrink-0 text-2xs font-medium px-1.5 py-px rounded-full bg-warning/10 text-warning"
 				>
 					{{ due }}
 				</span>

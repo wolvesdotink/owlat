@@ -170,7 +170,11 @@ async function confirmRevoke() {
 			</li>
 		</ul>
 
-		<footer class="px-5 py-3 border-t border-border-subtle flex items-center gap-2">
+		<!-- Wraps on a phone: the hint takes a line of its own under the select,
+		     and the reset stays at the end of whichever line it lands on. -->
+		<footer
+			class="px-5 py-3 border-t border-border-subtle flex flex-wrap items-center gap-x-2 gap-y-1.5"
+		>
 			<label for="share-link-expiry" class="text-sm text-text-secondary">
 				{{ t('components.postbox.postboxSharedLinksSettings.expiryLabel') }}
 			</label>
@@ -188,7 +192,7 @@ async function confirmRevoke() {
 					{{ t('components.postbox.postboxSharedLinksSettings.expiryDays', { days }) }}
 				</option>
 			</select>
-			<span class="text-xs text-text-tertiary">
+			<span class="text-xs text-text-tertiary basis-full sm:basis-auto">
 				{{ t('components.postbox.postboxSharedLinksSettings.expiryHint') }}
 			</span>
 			<SettingsResetToDefault

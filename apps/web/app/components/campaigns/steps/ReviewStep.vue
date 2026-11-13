@@ -15,6 +15,9 @@ interface Props {
 	data: ReviewCampaignData;
 	/** A "Schedule for later" choice made before a trip to the email editor. */
 	initialSchedule?: ReviewSchedule | null;
+	/** The attached email's languages (default first), for the test send's language picker. */
+	templateLanguages?: string[];
+	templateDefaultLanguage?: string;
 }
 
 const props = defineProps<Props>();
@@ -313,9 +316,6 @@ const handleConfirmSend = async () => {
 				</p>
 			</div>
 
-			<!-- Error Alert -->
-			<UiErrorAlert v-if="error" :message="error" class="mb-6" />
-
 			<CampaignsCapacitySchedulePanel
 				v-if="capacitySchedule"
 				:plan="capacitySchedule"
@@ -349,8 +349,8 @@ const handleConfirmSend = async () => {
 			the step before the real send, not a footnote after it.
 		-->
 		<div class="card p-6">
-			<div class="flex items-center justify-between">
-				<div>
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<div class="min-w-0 flex-1 basis-64">
 					<h3 class="text-lg font-semibold text-text-primary">
 						{{ t('components.campaigns.steps.reviewStep.testEmailTitle') }}
 					</h3>
@@ -377,6 +377,10 @@ const handleConfirmSend = async () => {
 			:readiness="sendingReadiness"
 			:audience-size="decisionAudienceCount"
 		/>
+
+		<!-- A send/schedule error appears next to the button that raised it, not
+		     at the top of a long page where nothing seems to change. -->
+		<UiErrorAlert v-if="error" role="alert" :message="error" />
 
 		<!-- Actions -->
 		<div class="flex items-center justify-between pt-2">
@@ -442,6 +446,8 @@ const handleConfirmSend = async () => {
 			:subject="data.campaignSubject"
 			:from-name="data.fromName"
 			:from-email="data.fromEmail"
+			:languages="templateLanguages"
+			:default-language="templateDefaultLanguage"
 		/>
 	</div>
 </template>

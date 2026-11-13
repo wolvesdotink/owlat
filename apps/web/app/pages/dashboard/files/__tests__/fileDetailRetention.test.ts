@@ -91,6 +91,7 @@ async function mountPage(file: FileRow) {
 				UiCard: true,
 				UiModal: true,
 				UiConfirmDialog: true,
+				UiConfirmationDialog: true,
 				UiSelect: true,
 				UiInput: true,
 				FilesVersionUploadModal: true,

@@ -92,6 +92,14 @@ const openMailboxId = computed(() => {
 	return typeof requested === 'string' ? requested : activeMailboxId.value;
 });
 
+// Collapsed, the link's own label replaces its content, so the waiting count
+// (a dot) has to be part of it to be heard.
+function railPinnedLabel(item: { label: string; count: number }): string {
+	return item.count > 0
+		? `${item.label}, ${t('components.shell.nav.answerCount', { count: item.count }, item.count)}`
+		: item.label;
+}
+
 function railInboxLabel(inbox: { name: string; unread: number }): string {
 	return inbox.unread > 0
 		? t('components.shell.nav.inboxUnread', { name: inbox.name, count: inbox.unread })
@@ -115,7 +123,7 @@ function isActive(to: string, exact: boolean): boolean {
 			<NuxtLink
 				:to="item.to"
 				:aria-current="isActive(item.to, item.exact) ? 'page' : undefined"
-				:aria-label="props.collapsed ? item.label : undefined"
+				:aria-label="props.collapsed ? railPinnedLabel(item) : undefined"
 				class="relative flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
 				:class="[
 					isActive(item.to, item.exact)
@@ -138,7 +146,7 @@ function isActive(to: string, exact: boolean): boolean {
 				<span
 					v-else-if="item.count > 0"
 					class="absolute right-1.5 top-1 size-2 rounded-full bg-text-primary ring-2 ring-bg-elevated"
-					:aria-label="t('components.shell.nav.answerCount', { count: item.count }, item.count)"
+					aria-hidden="true"
 				/>
 			</NuxtLink>
 		</UiTooltip>

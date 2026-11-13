@@ -2,6 +2,7 @@
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { DecoratedRow } from '~/utils/campaignCommandRow';
 import { useLocalized } from '~/composables/useLocalized';
+import { useFormat } from '~/composables/useFormat';
 import { ArrowRightIcon, CopyIcon, MoreVerticalIcon, SplitIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{ row: DecoratedRow }>();
@@ -17,6 +18,10 @@ const emit = defineEmits<{
 const dropdownOpen = ref(false);
 
 const { t, locale } = useI18n();
+const { formatPercentage } = useFormat();
+const pointsFormat = computed(
+	() => new Intl.NumberFormat(locale.value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+);
 
 /**
  * The row model is decorated by the page (and by `~/utils/campaignAttention`),
@@ -63,7 +68,10 @@ const metaLine = computed(() => {
 			const diff = Math.abs(a - b);
 			const leader = b >= a ? 'B' : 'A';
 			if (diff >= 0.1)
-				return t(`${meta}.variantLeads`, { variant: leader, points: diff.toFixed(1) });
+				return t(`${meta}.variantLeads`, {
+					variant: leader,
+					points: pointsFormat.value.format(diff),
+				});
 			return t(`${meta}.variantsEven`);
 		}
 		return t(`${meta}.abInProgress`);
@@ -78,6 +86,9 @@ const metaLine = computed(() => {
 	if (c.status === 'sending' || c.status === 'cancelled') return '';
 	if (c.status === 'sent') {
 		const recipients = c.statsDelivered ?? c.statsSent ?? 0;
+		// The counters can lag the send records the report counts; "0 recipients"
+		// next to a report that shows five is wrong, so a zero says only when.
+		if (recipients === 0) return t(`${meta}.sentAt`, { at: formatDate(c.sentAt) });
 		return t(`${meta}.sent`, {
 			at: formatDate(c.sentAt),
 			count: recipients.toLocaleString(locale.value),
@@ -93,14 +104,12 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 <template>
 	<UiContextMenu :items="contextItems">
 		<template #default="{ onContextmenu, onKeydown }">
+			<!-- The name is the keyboard control that opens the campaign; the row
+			     click is a larger pointer target for it. The row keeps its list-item
+			     role, and the buttons on the right stay siblings, not children of a link. -->
 			<li
-				class="group flex items-center gap-4 px-4 sm:px-6 py-4 density-compact:py-2 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
-				tabindex="0"
-				role="link"
-				:aria-label="t('components.campaigns.commandRow.openCampaign', { name: row.campaign.name })"
+				class="group flex items-center gap-4 px-4 sm:px-6 py-4 density-compact:py-2 hover:bg-bg-surface transition-colors duration-(--motion-fast) ease-spring cursor-pointer has-[.campaign-open:focus-visible]:ring-2 has-[.campaign-open:focus-visible]:ring-brand has-[.campaign-open:focus-visible]:ring-inset"
 				@click="emit('open')"
-				@keydown.enter="emit('open')"
-				@keydown.space.prevent="emit('open')"
 				@contextmenu="onContextmenu"
 				@keydown="onKeydown"
 			>
@@ -108,14 +117,22 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					<!-- Phones: the name wraps and the badge flows inline after it;
 					     wider screens keep one truncated line. -->
 					<div class="min-w-0 sm:flex sm:items-center sm:gap-2">
-						<span
+						<!-- native-title: the full name of a campaign the button truncates -->
+						<button
+							type="button"
+							role="link"
 							:class="[
-								'min-w-0 sm:truncate text-text-primary',
+								'campaign-open min-w-0 sm:truncate text-left text-text-primary focus-visible:outline-none',
 								row.needsAttention ? 'font-semibold' : 'font-medium',
 							]"
+							:title="row.campaign.name"
+							:aria-label="
+								t('components.campaigns.commandRow.openCampaign', { name: row.campaign.name })
+							"
+							@click.stop="emit('open')"
 						>
 							{{ row.campaign.name }}
-						</span>
+						</button>
 						<span
 							v-if="row.campaign.isABTest"
 							class="inline-flex items-center gap-1 ml-1.5 sm:ml-0 px-1.5 py-0.5 rounded text-xs font-medium text-text-secondary bg-bg-elevated shrink-0 align-middle"
@@ -173,17 +190,17 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 				<div :class="['hidden sm:flex items-center gap-6 shrink-0', hasMetrics ? '' : 'invisible']">
 					<div class="text-right w-16">
 						<p class="text-sm font-semibold tabular-nums text-text-primary">
-							{{ row.openRate != null ? `${row.openRate.toFixed(1)}%` : '—' }}
+							{{ row.openRate != null ? formatPercentage(row.openRate, 1, false) : '—' }}
 						</p>
-						<p class="text-[11px] text-text-tertiary">
+						<p class="text-2xs text-text-tertiary">
 							{{ t('components.campaigns.commandRow.openRate') }}
 						</p>
 					</div>
 					<div class="text-right w-16">
 						<p class="text-sm font-semibold tabular-nums text-text-primary">
-							{{ row.clickRate != null ? `${row.clickRate.toFixed(1)}%` : '—' }}
+							{{ row.clickRate != null ? formatPercentage(row.clickRate, 1, false) : '—' }}
 						</p>
-						<p class="text-[11px] text-text-tertiary">
+						<p class="text-2xs text-text-tertiary">
 							{{ t('components.campaigns.commandRow.clickRate') }}
 						</p>
 					</div>
@@ -204,14 +221,16 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					<!-- Completed A/B tests keep a discoverable path to their results -->
 					<button
 						v-else-if="row.campaign.isABTest"
-						class="text-xs font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand rounded px-1 py-1"
+						type="button"
+						class="text-xs font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1 py-1 pointer-coarse:min-h-11"
 						@click="emit('abResults')"
 					>
 						{{ t('components.campaigns.commandRow.abResults') }}
 					</button>
 					<UiTooltip v-else :text="t('components.campaigns.commandRow.viewCampaign')">
 						<button
-							class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+							type="button"
+							class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							:aria-label="t('components.campaigns.commandRow.viewCampaign')"
 							@click="emit('open')"
 						>
@@ -224,7 +243,8 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					<UiDropdownMenu v-model:open="dropdownOpen">
 						<template #trigger>
 							<button
-								class="ui-hover-reveal pointer-coarse:opacity-100! pointer-coarse:pointer-events-auto! p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+								type="button"
+								class="ui-hover-reveal pointer-coarse:opacity-100! pointer-coarse:pointer-events-auto! p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								:aria-label="t('components.campaigns.commandRow.moreActions')"
 							>
 								<MoreVerticalIcon class="w-4 h-4" />

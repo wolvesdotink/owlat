@@ -35,9 +35,14 @@ const {
 	data: senders,
 	isLoading: sendersLoading,
 	error: sendersError,
+	refetch: refetchSenders,
 } = useOrganizationQuery(api.campaigns.senders.list);
 
-const { data: settings } = useOrganizationQuery(api.workspaces.settings.get);
+const {
+	data: settings,
+	error: settingsError,
+	refetch: refetchSettings,
+} = useOrganizationQuery(api.workspaces.settings.get);
 
 // --- "Allow custom from-addresses" toggle -----------------------------------
 // Local mirror of the instance setting so the switch feels instant; the query
@@ -185,17 +190,12 @@ async function onSubmitAdd() {
 		/>
 
 		<!-- No organization -->
-		<div
-			v-if="!hasActiveOrganization"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="MailIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.senders.noWorkspace.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.senders.noWorkspace.description') }}
-			</p>
+		<div v-if="!hasActiveOrganization" class="card">
+			<UiEmptyState
+				:icon="MailIcon"
+				:title="t('dashboard.admin.team.senders.noWorkspace.title')"
+				:description="t('dashboard.admin.team.senders.noWorkspace.description')"
+			/>
 		</div>
 
 		<!-- First-load skeleton (shaped like the sender list) -->
@@ -204,7 +204,12 @@ async function onSubmitAdd() {
 		</div>
 
 		<!-- Error -->
-		<UiErrorAlert v-else-if="sendersError" :message="t('dashboard.admin.team.senders.loadError')" />
+		<UiQueryBoundary
+			v-else-if="sendersError"
+			:error="sendersError"
+			:error-message="t('dashboard.admin.team.senders.loadError')"
+			@retry="refetchSenders"
+		/>
 
 		<template v-else>
 			<!-- Sender list -->
@@ -229,20 +234,19 @@ async function onSubmitAdd() {
 				</template>
 
 				<!-- Empty state -->
-				<div
-					v-if="(senders?.length ?? 0) === 0"
-					class="flex flex-col items-center justify-center py-14 text-center px-6"
-				>
-					<UiIconBox :icon="MentionIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
-					<p class="text-text-secondary font-medium">
-						{{ t('dashboard.admin.team.senders.empty.title') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-						{{ t('dashboard.admin.team.senders.empty.description') }}
-					</p>
-					<UiButton size="sm" variant="secondary" class="mt-4" @click="openAdd">
-						{{ t('dashboard.admin.team.senders.empty.action') }}
-					</UiButton>
+				<div v-if="(senders?.length ?? 0) === 0">
+					<UiEmptyState
+						:icon="MentionIcon"
+						:heading-level="3"
+						:title="t('dashboard.admin.team.senders.empty.title')"
+						:description="t('dashboard.admin.team.senders.empty.description')"
+					>
+						<template #action>
+							<UiButton size="sm" variant="secondary" @click="openAdd">
+								{{ t('dashboard.admin.team.senders.empty.action') }}
+							</UiButton>
+						</template>
+					</UiEmptyState>
 				</div>
 
 				<!-- Rows -->
@@ -271,14 +275,14 @@ async function onSubmitAdd() {
 							</p>
 						</div>
 
-						<button
+						<UiButton
 							v-if="!sender.isDefault"
-							type="button"
-							class="text-xs text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded px-1.5 py-1"
+							variant="ghost"
+							size="sm"
 							@click="setDefaultSender({ id: sender._id })"
 						>
 							{{ t('dashboard.admin.team.senders.makeDefault') }}
-						</button>
+						</UiButton>
 
 						<UiSwitch
 							:model-value="isSenderEnabled(sender)"
@@ -286,20 +290,24 @@ async function onSubmitAdd() {
 							@update:model-value="(v) => onToggleEnabled(sender, v)"
 						/>
 
-						<button
-							type="button"
-							class="text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error rounded p-1"
+						<UiButton
+							variant="danger-ghost"
+							size="sm"
+							class="px-2"
 							:aria-label="t('dashboard.admin.team.senders.removeSender', { email: sender.email })"
 							@click="requestRemove(sender)"
 						>
-							<TrashIcon class="w-4 h-4" />
-						</button>
+							<TrashIcon class="w-4 h-4" aria-hidden="true" />
+						</UiButton>
 					</li>
 				</ul>
 			</UiCard>
 
-			<!-- Custom senders policy -->
-			<UiCard padding="none" overflow="hidden">
+			<!-- Custom senders policy. Held until the settings row is read: off is
+			     only the fallback, so a failed read must not show an allowed policy
+			     as switched off. -->
+			<UiQueryBoundary v-if="settingsError" :error="settingsError" @retry="refetchSettings" />
+			<UiCard v-else padding="none" overflow="hidden">
 				<div class="flex items-start justify-between gap-4 p-5">
 					<div>
 						<div class="flex items-center gap-2">
@@ -320,7 +328,7 @@ async function onSubmitAdd() {
 					</div>
 					<UiSwitch
 						:model-value="allowCustom"
-						:disabled="savingSettings"
+						:disabled="savingSettings || settings === undefined"
 						:label="t('dashboard.admin.team.senders.allowCustom.title')"
 						@update:model-value="onToggleAllowCustom"
 					/>
@@ -334,7 +342,7 @@ async function onSubmitAdd() {
 				class="text-xs text-text-tertiary"
 			>
 				<template #generalSettingsLink>
-					<NuxtLink to="/dashboard/admin" class="text-brand hover:underline">{{
+					<NuxtLink to="/dashboard/admin/instance/general" class="text-brand hover:underline">{{
 						t('dashboard.admin.team.senders.appSenderHintLink')
 					}}</NuxtLink>
 				</template>

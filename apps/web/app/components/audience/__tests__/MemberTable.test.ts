@@ -72,6 +72,7 @@ function render(props: Partial<typeof baseProps> = {}, slots: Record<string, str
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiEmptyState, UiCard, UiInput, UiErrorAlert, UiSpinner, UiQueryBoundary },
+			stubs: { DashboardListSkeleton: { template: '<div data-testid="list-skeleton" />' } },
 		},
 	});
 }
@@ -191,6 +192,19 @@ describe('MemberTable states', () => {
 	it('shows no empty state while the first page loads', () => {
 		const wrapper = render({ rows: [], showingRange: null, loading: true });
 		expect(wrapper.find('h2').exists()).toBe(false);
+	});
+
+	it('shows a placeholder, not an empty table, while the first page loads', () => {
+		const wrapper = render({ rows: [], showingRange: null, loading: true });
+		expect(wrapper.find('[data-testid="list-skeleton"]').exists()).toBe(true);
+		expect(wrapper.find('table').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('Showing');
+	});
+
+	it('keeps the loaded rows on screen while a later page loads', () => {
+		const wrapper = render({ loading: true });
+		expect(wrapper.find('[data-testid="list-skeleton"]').exists()).toBe(false);
+		expect(wrapper.findAll('tbody tr')).toHaveLength(2);
 	});
 
 	it('forwards the search input', async () => {

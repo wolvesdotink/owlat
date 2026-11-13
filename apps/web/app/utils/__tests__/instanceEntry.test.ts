@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	hasOperatorLegalPages,
+	hasPublishedTerms,
 	instanceRootRedirect,
 	registrationOpenFor,
 	workspaceDisplayName,
@@ -46,5 +47,15 @@ describe('registrationOpenFor', () => {
 		expect(registrationOpenFor(['/invite/accept'])).toBe(false);
 		// A malformed escape must not throw out of a computed.
 		expect(registrationOpenFor('%E0%A4%A')).toBe(false);
+	});
+});
+
+describe('hasPublishedTerms', () => {
+	it('publishes terms only on the hosted deployment', () => {
+		expect(hasPublishedTerms({ deploymentMode: 'hosted' })).toBe(true);
+		expect(hasPublishedTerms({ deploymentMode: 'selfhost', companyName: 'Northwind Studio' })).toBe(
+			false
+		);
+		expect(hasPublishedTerms({})).toBe(false);
 	});
 });

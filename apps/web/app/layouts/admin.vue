@@ -118,23 +118,25 @@ registerCommandPaletteProvider({
 				</DashboardNavigationPortal>
 
 				<div class="min-w-0 flex-1">
-					<!-- Same destinations, laid out for a narrow viewport. Both rails are in
-					     the DOM at once (the swap is a media query, not a branch), so they
-					     need DISTINGUISHABLE landmark names. -->
-					<ShellSettingsCompactNav
-						class="px-4 pt-6 sm:px-6"
-						:label="t('shell.admin.navLabelCompact')"
-						:entries="compactPills"
-						:current-path="railPath"
-						:across="{
-							path: '/dashboard/preferences',
-							title: t('components.shell.settings.tabs.mine'),
-						}"
-					/>
-
 					<SettingsPageShell :wide="wide">
-						<template v-if="tabs.length > 0" #above>
+						<template #above>
+							<!-- Same destinations, laid out for a narrow viewport, and in the
+							     same place as My settings' row, so switching halves with the
+							     "across" pill does not move it. Both rails are in the DOM at
+							     once (the swap is a media query, not a branch), so they need
+							     DISTINGUISHABLE landmark names. -->
+							<ShellSettingsCompactNav
+								class="-mx-1 mb-5"
+								:label="t('shell.admin.navLabelCompact')"
+								:entries="compactPills"
+								:current-path="railPath"
+								:across="{
+									path: '/dashboard/preferences',
+									title: t('components.shell.settings.tabs.mine'),
+								}"
+							/>
 							<nav
+								v-if="tabs.length > 0"
 								class="mb-6 flex gap-1 overflow-x-auto border-b border-border-subtle"
 								:aria-label="t('shell.admin.tabsLabel')"
 							>

@@ -53,7 +53,8 @@ const { ariaFor } = useShortcutLabels();
 		<div class="h-16 flex items-center justify-between px-4">
 			<div class="flex items-center">
 				<button
-					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					type="button"
+					class="flex size-11 items-center justify-center rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
 					@click="emit('openNavigation')"
 				>
@@ -62,7 +63,7 @@ const { ariaFor } = useShortcutLabels();
 
 				<NuxtLink to="/dashboard" class="ml-3 flex items-center gap-2">
 					<div class="w-8 h-8 rounded-lg flex items-center justify-center">
-						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
+						<img src="/owlat.svg" alt="" class="w-8 h-8 dark:invert" />
 					</div>
 					<span class="text-lg font-semibold text-text-primary">Owlat</span>
 				</NuxtLink>
@@ -70,14 +71,16 @@ const { ariaFor } = useShortcutLabels();
 
 			<div class="flex items-center">
 				<button
-					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					type="button"
+					class="flex size-11 items-center justify-center rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="t('common.search')"
 					@click="emit('openSearch')"
 				>
 					<SearchIcon class="w-5 h-5" />
 				</button>
 				<button
-					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					type="button"
+					class="flex size-11 items-center justify-center rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="t('components.shell.zen.enter')"
 					@click="enterZen"
 				>

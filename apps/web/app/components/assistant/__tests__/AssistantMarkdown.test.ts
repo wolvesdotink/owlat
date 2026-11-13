@@ -109,7 +109,7 @@ describe('AssistantMarkdown streaming', () => {
 		expect(wrapper.findAll('p').map((p) => p.text())).toEqual(['Intro.', 'After the code.']);
 
 		await wrapper.setProps({ source: '# Intro.\n\nSomething else entirely.' });
-		expect(wrapper.find('h1').text()).toBe('Intro.');
+		expect(wrapper.find('h3').text()).toBe('Intro.');
 		expect(wrapper.find('pre').exists()).toBe(false);
 		expect(wrapper.findAll('p').map((p) => p.text())).toEqual(['Something else entirely.']);
 

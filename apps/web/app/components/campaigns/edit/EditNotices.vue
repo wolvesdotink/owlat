@@ -23,6 +23,7 @@ const { t } = useI18n();
 	<!-- Content Block Reason Alert (shown when campaign was blocked and reverted to draft) -->
 	<div
 		v-if="contentBlockReason"
+		role="alert"
 		class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
 	>
 		<ShieldWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
@@ -41,12 +42,13 @@ const { t } = useI18n();
 	<!-- Error Alert -->
 	<div
 		v-if="saveError"
+		role="alert"
 		class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
 	>
 		<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 		<div>
 			<p class="text-sm font-medium text-error">{{ t('common.error') }}</p>
-			<p class="text-sm text-error/80">{{ saveError }}</p>
+			<p class="text-sm text-text-secondary">{{ saveError }}</p>
 		</div>
 	</div>
 
@@ -55,35 +57,27 @@ const { t } = useI18n();
 		<div class="flex items-start gap-3">
 			<ClockIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 			<div class="flex-1">
-				<p class="text-sm font-medium text-brand">
+				<p class="text-sm font-medium text-text-primary">
 					{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}
 				</p>
 				<I18nT
 					keypath="dashboard.campaigns.detail.edit.scheduledNotice.description"
 					tag="p"
-					class="text-sm text-brand/80 mt-1"
+					class="text-sm text-text-secondary mt-1"
 					scope="global"
 				>
 					<template #date>
 						<span class="font-medium">{{ scheduledAtDisplay }}</span>
 					</template>
 				</I18nT>
-				<div class="flex gap-2 mt-3">
-					<button
-						class="text-sm text-brand hover:text-brand/80 font-medium"
-						:disabled="isSaving"
-						@click="emit('unschedule')"
-					>
+				<!-- Unschedule is the reversible way out; Cancel is terminal and asks first (the page confirms). -->
+				<div class="flex flex-wrap gap-2 mt-3">
+					<UiButton variant="secondary" size="sm" :disabled="isSaving" @click="emit('unschedule')">
 						{{ t('dashboard.campaigns.detail.edit.scheduledNotice.unschedule') }}
-					</button>
-					<span class="text-brand/40">|</span>
-					<button
-						class="text-sm text-error hover:text-error/80 font-medium"
-						:disabled="isSaving"
-						@click="emit('cancel')"
-					>
+					</UiButton>
+					<UiButton variant="danger-ghost" size="sm" :disabled="isSaving" @click="emit('cancel')">
 						{{ t('dashboard.campaigns.detail.edit.scheduledNotice.cancelCampaign') }}
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>

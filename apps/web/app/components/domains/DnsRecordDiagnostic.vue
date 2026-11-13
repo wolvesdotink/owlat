@@ -8,7 +8,10 @@ import { CheckIcon, CircleWarningIcon, CopyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	verification?: { verified: boolean; error?: string; foundValue?: string };
-	/** Prefix for the copied-state key, unique per record. */
+	/**
+	 * Prefix for the copied-state key, unique per record. It is the record's
+	 * label, so it also names the copy button.
+	 */
 	copyKey: string;
 }>();
 
@@ -56,7 +59,9 @@ const handleCopyFound = () => {
 					<UiButton
 						variant="ghost"
 						class="p-2"
-						:aria-label="t('components.domains.dnsRecordPanel.copyFoundValue')"
+						:aria-label="
+							t('components.domains.dnsRecordPanel.copyFoundValueOf', { label: copyKey })
+						"
 						@click="handleCopyFound"
 					>
 						<CheckIcon v-if="isCopied(`${copyKey}-found`)" class="w-4 h-4 text-success" />

@@ -6,7 +6,7 @@ const props = defineProps<{ command: string }>();
 
 const { t } = useI18n();
 const { showToast } = useToast();
-const { copy, isCopied } = useCopyToClipboard();
+const { copy, isCopied } = useCopyToClipboard({ notify: false });
 
 async function copyCommand() {
 	const ok = await copy(props.command);

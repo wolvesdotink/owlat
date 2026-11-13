@@ -43,7 +43,7 @@ const externalEnabled = computed(() => isEnabled('mail.external'));
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.externalAccount.subheading') }}
 			</p>
-			<UiButton class="shrink-0" @click="navigateTo('/dashboard/preferences/add-account')">
+			<UiButton class="shrink-0" to="/dashboard/preferences/add-account">
 				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.index.addAccount') }}
 			</UiButton>

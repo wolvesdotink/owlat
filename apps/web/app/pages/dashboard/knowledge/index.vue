@@ -3,9 +3,8 @@ import { api } from '@owlat/api';
 import type { EntryType } from '~/utils/knowledgeEntryTypes';
 import {
 	BrainIcon,
-	CircleInfoIcon,
-	CloseIcon,
 	LayersIcon,
+	ShareAltIcon,
 	PlusIcon,
 	SearchCloseIcon,
 	SearchIcon,
@@ -35,6 +34,12 @@ const {
 } = useKnowledgeGraph();
 
 const showCreateForm = ref(false);
+const { isEnabled } = useFeatureFlag();
+const graphEnabled = computed(() => isEnabled('ai.knowledge.analytics'));
+// Secondary detail on a browsing page: the canonical-answer form and the
+// how-it-works guide each open on demand.
+const showPolicyForm = ref(false);
+const showGuide = ref(false);
 // Curated answers are admin-authored (knowledge.graph.createPolicyEntry);
 // members read them but do not see the form.
 const { isAdmin } = usePermissions();
@@ -53,6 +58,7 @@ async function handleCreatePolicy() {
 	if (!result.ok) return;
 	policyTitle.value = '';
 	policyContent.value = '';
+	showPolicyForm.value = false;
 }
 
 // Entry-type labels are translated here; the shared presentation map
@@ -93,6 +99,15 @@ const handleCancelled = () => {
 			:description="t('dashboard.knowledge.index.subtitle')"
 		>
 			<template #actions>
+				<UiButton
+					v-if="graphEnabled"
+					variant="secondary"
+					class="gap-2"
+					to="/dashboard/knowledge/graph"
+				>
+					<ShareAltIcon class="w-4 h-4" aria-hidden="true" />
+					{{ t('dashboard.knowledge.index.graphView') }}
+				</UiButton>
 				<UiButton class="gap-2" @click="showCreateForm = true">
 					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.knowledge.index.createEntry') }}
@@ -107,8 +122,9 @@ const handleCancelled = () => {
 			/>
 			<input
 				v-model="searchQuery"
-				type="text"
+				type="search"
 				:placeholder="t('dashboard.knowledge.index.searchPlaceholder')"
+				:aria-label="t('dashboard.knowledge.index.searchPlaceholder')"
 				class="input w-full pl-10"
 			/>
 		</div>
@@ -118,6 +134,8 @@ const handleCancelled = () => {
 			<button
 				v-for="tab in tabs"
 				:key="tab.key ?? 'all'"
+				type="button"
+				:aria-pressed="(tab.key === null && selectedType === null) || tab.key === selectedType"
 				class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
 				:class="
 					(tab.key === null && selectedType === null) || tab.key === selectedType
@@ -126,7 +144,7 @@ const handleCancelled = () => {
 				"
 				@click="handleTabChange(tab.key)"
 			>
-				<component :is="tab.icon" class="w-3.5 h-3.5" />
+				<component :is="tab.icon" class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ tab.label }}
 			</button>
 		</div>
@@ -188,9 +206,7 @@ const handleCancelled = () => {
 						:entry-type="entry.entryType"
 						:title="entry.title"
 						:content="entry.content"
-						:confidence="entry.confidence"
 						:tags="entry.tags"
-						:source-type="entry.sourceType"
 						:created-at="entry.createdAt"
 					/>
 				</template>
@@ -198,7 +214,7 @@ const handleCancelled = () => {
 
 			<!-- Sidebar -->
 			<div class="space-y-4">
-				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
+				<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 					<h3 class="flex items-center gap-2 text-sm font-semibold text-text-primary">
 						<WavyCheckIcon class="h-4 w-4 text-brand" />
 						{{ t('dashboard.knowledge.index.canonicalAnswers') }}
@@ -206,7 +222,17 @@ const handleCancelled = () => {
 					<p class="mt-2 text-sm text-text-secondary">
 						{{ t('dashboard.knowledge.index.canonicalAnswersBody') }}
 					</p>
-					<div v-if="isAdmin" class="mt-4 space-y-2">
+					<UiButton
+						v-if="isAdmin && !showPolicyForm"
+						variant="secondary"
+						size="sm"
+						class="mt-4 gap-1.5"
+						@click="showPolicyForm = true"
+					>
+						<PlusIcon class="w-3.5 h-3.5" aria-hidden="true" />
+						{{ t('dashboard.knowledge.index.addCanonicalAnswer') }}
+					</UiButton>
+					<div v-if="isAdmin && showPolicyForm" class="mt-4 space-y-2">
 						<UiInput
 							v-model="policyTitle"
 							:label="t('dashboard.knowledge.index.questionLabel')"
@@ -217,20 +243,27 @@ const handleCancelled = () => {
 							:label="t('dashboard.knowledge.index.answerLabel')"
 							:rows="3"
 						/>
-						<UiButton
-							size="sm"
-							:loading="createPolicy.isLoading.value"
-							:disabled="!policyTitle.trim() || !policyContent.trim()"
-							@click="handleCreatePolicy"
-						>
-							{{ t('dashboard.knowledge.index.addCanonicalAnswer') }}
-						</UiButton>
+						<div class="flex items-center gap-2">
+							<UiButton
+								size="sm"
+								:loading="createPolicy.isLoading.value"
+								:disabled="!policyTitle.trim() || !policyContent.trim()"
+								@click="handleCreatePolicy"
+							>
+								{{ t('dashboard.knowledge.index.addCanonicalAnswer') }}
+							</UiButton>
+							<UiButton variant="ghost" size="sm" @click="showPolicyForm = false">
+								{{ t('common.cancel') }}
+							</UiButton>
+						</div>
 					</div>
 					<ul v-if="policies?.length" class="mt-4 space-y-2 border-t border-border-subtle pt-4">
 						<li v-for="policy in policies" :key="policy._id">
+							<!-- native-title: the full title of a canonical answer the link truncates -->
 							<NuxtLink
 								:to="`/dashboard/knowledge/${policy._id}`"
 								class="block truncate text-sm font-medium text-text-primary hover:text-brand"
+								:title="policy.title"
 							>
 								{{ policy.title }}
 							</NuxtLink>
@@ -238,118 +271,76 @@ const handleCancelled = () => {
 					</ul>
 				</div>
 
-				<!-- How it works -->
-				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
-					<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-						<CircleInfoIcon class="w-4 h-4 text-text-tertiary" />
-						{{ t('dashboard.knowledge.index.howItWorks') }}
-					</h3>
-					<div class="space-y-3 text-sm text-text-secondary">
-						<div class="flex items-start gap-2.5">
-							<div
-								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+				<!-- How it works + entry types, collapsed by default -->
+				<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
+					<UiDisclosure v-model="showGuide" :label="t('dashboard.knowledge.index.howItWorks')">
+						<ol class="space-y-3 text-sm text-text-secondary">
+							<li class="flex items-start gap-2.5">
+								<span
+									class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+									aria-hidden="true"
+								>
+									1
+								</span>
+								<p>{{ t('dashboard.knowledge.index.howItWorksStep1') }}</p>
+							</li>
+							<li class="flex items-start gap-2.5">
+								<span
+									class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+									aria-hidden="true"
+								>
+									2
+								</span>
+								<p>{{ t('dashboard.knowledge.index.howItWorksStep2') }}</p>
+							</li>
+							<li class="flex items-start gap-2.5">
+								<span
+									class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
+									aria-hidden="true"
+								>
+									3
+								</span>
+								<p>{{ t('dashboard.knowledge.index.howItWorksStep3') }}</p>
+							</li>
+						</ol>
+						<h4 class="text-sm font-semibold text-text-primary mt-5 mb-3">
+							{{ t('dashboard.knowledge.index.entryTypesTitle') }}
+						</h4>
+						<ul class="space-y-2">
+							<li
+								v-for="entryType in ENTRY_TYPES"
+								:key="entryType"
+								class="flex items-center gap-2.5"
 							>
-								1
-							</div>
-							<p>{{ t('dashboard.knowledge.index.howItWorksStep1') }}</p>
-						</div>
-						<div class="flex items-start gap-2.5">
-							<div
-								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
-							>
-								2
-							</div>
-							<p>{{ t('dashboard.knowledge.index.howItWorksStep2') }}</p>
-						</div>
-						<div class="flex items-start gap-2.5">
-							<div
-								class="w-5 h-5 rounded-full bg-brand-subtle text-brand flex items-center justify-center flex-shrink-0 text-xs font-bold mt-0.5"
-							>
-								3
-							</div>
-							<p>{{ t('dashboard.knowledge.index.howItWorksStep3') }}</p>
-						</div>
-					</div>
-				</div>
-
-				<!-- Entry Types Legend -->
-				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
-					<h3 class="text-sm font-semibold text-text-primary mb-3">
-						{{ t('dashboard.knowledge.index.entryTypesTitle') }}
-					</h3>
-					<div class="space-y-2">
-						<div
-							v-for="entryType in ENTRY_TYPES"
-							:key="entryType"
-							class="flex items-center gap-2.5"
-						>
-							<div
-								class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-								:class="{
-									'bg-brand-subtle text-brand': typeVariant(entryType) === 'default',
-									'bg-warning/10 text-warning': typeVariant(entryType) === 'warning',
-									'bg-bg-surface text-text-secondary': typeVariant(entryType) === 'neutral',
-									'bg-success-subtle text-success': typeVariant(entryType) === 'success',
-									'bg-error/10 text-error': typeVariant(entryType) === 'error',
-								}"
-							>
-								<component :is="typeIcon(entryType)" class="w-3.5 h-3.5" />
-							</div>
-							<span class="text-sm text-text-secondary">{{ entryTypeLabel(entryType) }}</span>
-						</div>
-					</div>
+								<span
+									class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+									:class="{
+										'bg-brand-subtle text-brand': typeVariant(entryType) === 'default',
+										'bg-warning/10 text-warning': typeVariant(entryType) === 'warning',
+										'bg-bg-surface text-text-secondary': typeVariant(entryType) === 'neutral',
+										'bg-success-subtle text-success': typeVariant(entryType) === 'success',
+										'bg-error/10 text-error': typeVariant(entryType) === 'error',
+									}"
+									aria-hidden="true"
+								>
+									<component :is="typeIcon(entryType)" class="w-3.5 h-3.5" />
+								</span>
+								<span class="text-sm text-text-secondary">{{ entryTypeLabel(entryType) }}</span>
+							</li>
+						</ul>
+					</UiDisclosure>
 				</div>
 			</div>
 		</div>
 
 		<!-- Create Entry Modal -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="transition-opacity duration-(--motion-fast)"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showCreateForm"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-deep/80"
-					@click.self="handleCancelled"
-				>
-					<Transition
-						enter-active-class="transition-[opacity,scale] duration-(--motion-moderate)"
-						enter-from-class="opacity-0 scale-95"
-						enter-to-class="opacity-100 scale-100"
-						leave-active-class="transition-[opacity,scale] duration-(--motion-moderate-exit)"
-						leave-from-class="opacity-100 scale-100"
-						leave-to-class="opacity-0 scale-95"
-					>
-						<div
-							v-if="showCreateForm"
-							class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-lg max-h-[90vh] overflow-y-auto"
-						>
-							<div
-								class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
-							>
-								<h3 class="text-base font-semibold text-text-primary">
-									{{ t('dashboard.knowledge.index.createModalTitle') }}
-								</h3>
-								<button
-									class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-									@click="handleCancelled"
-									:aria-label="t('common.close')"
-								>
-									<CloseIcon class="w-4 h-4" />
-								</button>
-							</div>
-							<div class="px-5 py-4">
-								<KnowledgeEntryForm @saved="handleSaved" @cancelled="handleCancelled" />
-							</div>
-						</div>
-					</Transition>
-				</div>
-			</Transition>
-		</Teleport>
+		<UiModal
+			:open="showCreateForm"
+			:title="t('dashboard.knowledge.index.createModalTitle')"
+			size="lg"
+			@update:open="showCreateForm = $event"
+		>
+			<KnowledgeEntryForm @saved="handleSaved" @cancelled="handleCancelled" />
+		</UiModal>
 	</div>
 </template>

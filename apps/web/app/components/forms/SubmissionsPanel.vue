@@ -10,10 +10,15 @@ const props = defineProps<{ formEndpointId: Id<'formEndpoints'> }>();
 
 const { t } = useI18n();
 
-const { data: submissions, isLoading } = useConvexQuery(
-	api.forms.endpoints.getSubmissions,
-	() => ({ formEndpointId: props.formEndpointId, limit: 50 }),
-);
+const {
+	data: submissions,
+	isLoading,
+	error,
+	refetch,
+} = useConvexQuery(api.forms.endpoints.getSubmissions, () => ({
+	formEndpointId: props.formEndpointId,
+	limit: 50,
+}));
 
 // Keyed by the schema's submission-status literals; anything outside that union
 // falls back to the raw value rather than painting a missing key path.
@@ -50,8 +55,20 @@ function statusClass(status: string): string {
 		<h4 class="text-sm font-medium text-text-primary mb-3">
 			{{ t('components.forms.submissionsPanel.title') }}
 		</h4>
-		<div v-if="isLoading" class="text-text-tertiary text-sm py-4">{{ t('common.loading') }}</div>
-		<div v-else-if="!submissions || submissions.length === 0" class="text-text-tertiary text-sm py-4">
+		<!-- A failed read is not "no submissions yet". -->
+		<UiQueryBoundary
+			v-if="error"
+			:error="error"
+			:error-title="t('components.forms.submissionsPanel.loadError')"
+			@retry="refetch"
+		/>
+		<div v-else-if="isLoading" class="text-text-tertiary text-sm py-4">
+			{{ t('common.loading') }}
+		</div>
+		<div
+			v-else-if="!submissions || submissions.length === 0"
+			class="text-text-tertiary text-sm py-4"
+		>
 			{{ t('components.forms.submissionsPanel.empty') }}
 		</div>
 		<div v-else class="space-y-2 max-h-80 overflow-y-auto">
@@ -68,8 +85,8 @@ function statusClass(status: string): string {
 				</div>
 				<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
 					<template v-for="(value, key) in s.data" :key="key">
-						<dt class="text-text-tertiary truncate">{{ key }}</dt>
-						<dd class="text-text-primary truncate">{{ value }}</dd>
+						<dt class="text-text-tertiary truncate" :title="String(key)">{{ key }}</dt>
+						<dd class="text-text-primary break-words min-w-0">{{ value }}</dd>
 					</template>
 				</dl>
 				<p v-if="s.confirmationEmailSentAt" class="text-text-tertiary text-xs mt-1.5">

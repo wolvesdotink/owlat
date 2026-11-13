@@ -98,7 +98,7 @@ function choose(assignedTo: string | undefined) {
 			<span class="flex-1 truncate">{{ t('components.inbox.assignPopover.assignToMe') }}</span>
 			<kbd
 				v-if="assignKey"
-				class="ml-auto text-[10px] text-text-tertiary border border-border-subtle rounded px-1 py-0.5 leading-none"
+				class="ml-auto text-2xs text-text-tertiary border border-border-subtle rounded px-1 py-0.5 leading-none"
 			>
 				{{ assignKey }}
 			</kbd>

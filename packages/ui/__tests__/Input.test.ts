@@ -138,3 +138,12 @@ describe('UiInput attribute forwarding', () => {
 		expect(wrapper.get('input').attributes('min')).toBe('180');
 	});
 });
+
+describe('UiInput help text', () => {
+	it('describes the field by its error only while the error replaces the help text', () => {
+		const wrapper = mount(UiInput, {
+			props: { id: 'f', error: 'Required', helpText: 'Your work address' },
+		});
+		expect(wrapper.get('input').attributes('aria-describedby')).toBe('f-error');
+	});
+});

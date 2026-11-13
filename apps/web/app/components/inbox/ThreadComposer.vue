@@ -39,6 +39,7 @@ import PostboxComposerShell from '~/components/postbox/PostboxComposerShell.vue'
 import PostboxSnippetPicker from '~/components/postbox/PostboxSnippetPicker.vue';
 import PostboxSnippetVariableDialog from '~/components/postbox/PostboxSnippetVariableDialog.vue';
 import ThreadComposerBlocked from './ThreadComposerBlocked.vue';
+import ThreadComposerEnvelope from './ThreadComposerEnvelope.vue';
 import ThreadComposerMenu from './ThreadComposerMenu.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
@@ -50,7 +51,7 @@ import {
 import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
 import { REPLY_NOTICE_KEYS, type ReplyBlocker, type ReplyNotice } from '~/utils/teamThreadReply';
-import { ChevronDownIcon, CircleInfoIcon, PencilIcon, SparklesIcon } from '@coolicons/vue';
+import { CircleInfoIcon, PencilIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -193,11 +194,32 @@ function send() {
 	emit('send', body.value, fromDraft, subject.value, savedReplies.gapGuarded.value);
 }
 
+const { showToast } = useToast();
+
+// Clearing is one click with no question, so it can be taken back: the toast
+// puts the text (and whether it was the untouched draft) back as it was.
 function writeOwn() {
+	const before = {
+		body: body.value,
+		touched: touched.value,
+		gapGuarded: savedReplies.gapGuarded.value,
+	};
 	touched.value = true;
 	body.value = '';
 	savedReplies.gapGuarded.value = false;
 	focus();
+	if (!before.body.trim()) return;
+	showToast(t('components.answer.team.cleared'), 'info', {
+		action: {
+			label: t('common.undo'),
+			onAction: () => {
+				body.value = before.body;
+				touched.value = before.touched;
+				savedReplies.gapGuarded.value = before.gapGuarded;
+				focus();
+			},
+		},
+	});
 }
 
 function restoreDraft() {
@@ -302,58 +324,16 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 		</ThreadComposerBlocked>
 
 		<PostboxComposerShell v-else :target="target" class="min-h-0 flex-1">
-			<!-- The envelope, folded to one line like the Postbox composer's; the
-			     recipient is fixed, so only the subject opens on a click. -->
 			<template #envelope>
-				<div class="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-sm">
-					<button
-						type="button"
-						class="flex min-w-0 flex-1 items-center gap-1.5 text-left hover:text-text-primary"
-						:aria-expanded="subjectOpen"
-						data-testid="thread-composer-envelope"
-						@click="subjectOpen = !subjectOpen"
-					>
-						<span class="min-w-0 truncate">
-							<span class="font-medium text-text-primary">{{
-								t('components.answer.team.to', { name: senderLabel })
-							}}</span>
-							<template v-if="subject">
-								<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
-								<span class="text-text-secondary">{{ subject }}</span>
-							</template>
-						</span>
-						<ChevronDownIcon
-							class="size-3 shrink-0 text-text-tertiary"
-							:class="{ 'rotate-180': subjectOpen }"
-							aria-hidden="true"
-						/>
-					</button>
-					<span
-						v-if="hasDraft"
-						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
-						data-testid="thread-composer-draft-hint"
-					>
-						<SparklesIcon class="size-3" aria-hidden="true" />
-						{{
-							edited
-								? t('dashboard.inbox.detail.composer.editedDraft')
-								: t('dashboard.inbox.detail.composer.agentDraft')
-						}}
-					</span>
-				</div>
-
-				<div v-if="subjectOpen" class="border-b border-border-subtle px-4 py-2">
-					<input
-						:value="subject"
-						type="text"
-						class="input"
-						:aria-label="t('dashboard.inbox.detail.composer.subjectLabel')"
-						:placeholder="t('dashboard.inbox.detail.composer.subjectLabel')"
-						data-testid="thread-composer-subject"
-						@input="onSubjectInput"
-						@keydown="onKeydown"
-					/>
-				</div>
+				<ThreadComposerEnvelope
+					v-model:subject-open="subjectOpen"
+					:sender-label="senderLabel"
+					:subject="subject"
+					:has-draft="hasDraft"
+					:edited="edited"
+					@subject-input="onSubjectInput"
+					@keydown="onKeydown"
+				/>
 			</template>
 
 			<div class="flex flex-1 flex-col gap-3 px-4 py-3">
@@ -405,7 +385,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					class="rounded-lg border border-border-subtle bg-bg-surface p-3"
 					data-testid="thread-composer-diff"
 				>
-					<p class="mb-1 text-[11px] font-medium text-text-tertiary">
+					<p class="mb-1 text-2xs font-medium text-text-tertiary">
 						{{ t('dashboard.inbox.detail.composer.originalDraft') }}
 					</p>
 					<p
@@ -459,7 +439,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					<template #notes>
 						<p
 							v-if="held && heldReason"
-							class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+							class="inline-flex items-center gap-1.5 text-2xs text-text-tertiary"
 							data-testid="thread-composer-held"
 							role="status"
 						>
@@ -468,7 +448,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						</p>
 						<p
 							v-else-if="sendHold"
-							class="text-[11px] text-text-tertiary"
+							class="text-2xs text-text-tertiary"
 							data-testid="thread-composer-send-hold"
 							role="status"
 						>

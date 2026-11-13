@@ -98,8 +98,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 		right cluster, whose Save must stay reachable, keeps its natural width.
 	-->
 	<div
-		class="shrink-0 h-14 border-b border-border-subtle bg-bg-base flex items-center justify-between gap-3 px-4"
-		style="box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15)"
+		class="shrink-0 h-14 border-b border-border-subtle bg-bg-base flex items-center justify-between gap-2 px-2 sm:gap-3 sm:px-4"
 	>
 		<div class="flex min-w-0 flex-1 items-center gap-2 lg:gap-4">
 			<UiTooltip :text="t('builder.header.back')">
@@ -118,7 +117,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:value="name"
 					type="text"
 					:aria-label="nameLabel"
-					class="w-full min-w-0 truncate bg-transparent text-text-primary font-medium text-sm focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1"
+					class="w-full min-w-0 truncate bg-transparent text-text-primary font-medium text-sm pointer-coarse:text-base focus:outline-none border-b border-border-default hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1"
 					:placeholder="nameLabel"
 					@input="emit('update:name', ($event.target as HTMLInputElement).value)"
 				/>
@@ -127,14 +126,17 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 					:value="subject"
 					type="text"
 					:aria-label="t('builder.header.subject')"
-					class="w-full min-w-0 truncate bg-transparent text-text-secondary text-xs focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1 mt-0.5"
+					class="w-full min-w-0 truncate bg-transparent text-text-secondary text-xs pointer-coarse:text-base focus:outline-none border-b border-transparent hover:border-border-strong focus:border-brand transition-colors px-1 -mx-1 mt-0.5"
 					:placeholder="t('builder.header.subject')"
 					@input="emit('update:subject', ($event.target as HTMLInputElement).value)"
 				/>
 			</div>
 		</div>
 
-		<div class="flex shrink-0 items-center gap-2 xl:gap-3">
+		<!-- Below `sm` the labels of Edit/Preview and Save become screen-reader
+		     text and focus mode (a desktop writing aid) steps aside, so Save stays
+		     on a 375px phone. -->
+		<div class="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-3">
 			<!-- Preview Mode Toggle -->
 			<UiSegmentedControl
 				:model-value="previewMode"
@@ -142,13 +144,13 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				@update:model-value="emit('toggle-preview')"
 			>
 				<template #option-edit>
-					<CodeIcon class="w-4 h-4" />
-					{{ t('builder.header.edit') }}
+					<CodeIcon class="w-4 h-4" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('builder.header.edit') }}</span>
 				</template>
 				<template #option-preview>
 					<SpinnerIcon v-if="isGeneratingHtml" class="w-4 h-4" />
-					<EyeIcon v-else class="w-4 h-4" />
-					{{ t('builder.header.preview') }}
+					<EyeIcon v-else class="w-4 h-4" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('builder.header.preview') }}</span>
 				</template>
 			</UiSegmentedControl>
 
@@ -156,7 +158,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<UiTooltip :text="focusModeLabel">
 				<UiButton
 					:variant="isFocusMode ? 'primary' : 'ghost'"
-					class="!px-2 !py-2"
+					class="!px-2 !py-2 max-sm:!hidden"
 					:aria-label="focusModeLabel"
 					:aria-pressed="isFocusMode"
 					@click="emit('toggle-focus-mode')"
@@ -218,7 +220,7 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 				</UiButton>
 			</UiTooltip>
 
-			<div class="w-px h-6 bg-border-default" />
+			<div class="w-px h-6 bg-border-default max-sm:hidden" />
 
 			<!-- Toolbar actions slot -->
 			<slot name="toolbar-actions" />
@@ -239,8 +241,10 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<slot name="save-status">
 				<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
 					<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
-					<SaveIcon v-else class="w-4 h-4" />
-					{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
+					<SaveIcon v-else class="w-4 h-4" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{
+						isSaving ? t('builder.header.saving') : t('builder.header.save')
+					}}</span>
 				</UiButton>
 			</slot>
 		</div>

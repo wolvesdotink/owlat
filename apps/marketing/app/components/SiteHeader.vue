@@ -7,14 +7,39 @@ const localePath = useLocalePath();
 
 const { platformLabel, downloadAriaLabel, onDownloadClick } = useDesktopDownload();
 
-const navLinks = [
-	{ key: 'nav.features', href: '#features' },
-	{ key: 'nav.developers', href: '#developers' },
-	{ key: 'nav.pricing', href: '#pricing' },
-	{ key: 'nav.docs', href: 'https://docs.owlat.app' },
-];
+// The sections live on the home page, and this header also frames /waitlist,
+// so a bare `#features` would point at nothing there. Prefixing the localized
+// home path keeps it an in-page jump on the home page and a real link elsewhere.
+const navLinks = computed(() => [
+	{ key: 'nav.features', href: `${localePath('/')}#features`, section: 'features' },
+	{ key: 'nav.developers', href: `${localePath('/')}#developers`, section: 'developers' },
+	{ key: 'nav.pricing', href: `${localePath('/')}#pricing`, section: 'pricing' },
+	{ key: 'nav.docs', href: 'https://docs.owlat.app', section: '' },
+]);
+
+// The web app's sign-in route.
+const signInHref = 'https://app.owlat.app/auth/login';
+
+const headerEl = ref<HTMLElement | null>(null);
+
+function onDocumentKeydown(event: KeyboardEvent) {
+	if (event.key === 'Escape' && mobileOpen.value) mobileOpen.value = false;
+}
+
+function onDocumentPointerdown(event: PointerEvent) {
+	if (!mobileOpen.value) return;
+	if (headerEl.value && !headerEl.value.contains(event.target as Node)) mobileOpen.value = false;
+}
+
+onBeforeUnmount(() => {
+	document.removeEventListener('keydown', onDocumentKeydown);
+	document.removeEventListener('pointerdown', onDocumentPointerdown);
+});
 
 onMounted(() => {
+	document.addEventListener('keydown', onDocumentKeydown);
+	document.addEventListener('pointerdown', onDocumentPointerdown);
+
 	const sections = ['features', 'developers', 'pricing'];
 	const observer = new IntersectionObserver(
 		(entries) => {
@@ -36,6 +61,7 @@ onMounted(() => {
 
 <template>
 	<header
+		ref="headerEl"
 		class="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.875rem)] z-(--z-header) px-4 pointer-events-none"
 	>
 		<div class="pointer-events-auto mx-auto w-fit max-lg:w-full max-lg:max-w-[480px]">
@@ -62,8 +88,9 @@ onMounted(() => {
 						:key="link.key"
 						:href="link.href"
 						class="px-3 py-1.5 text-caption font-medium rounded-full transition-colors duration-(--motion-fast) no-underline"
+						:aria-current="link.section && activeSection === link.section ? 'true' : undefined"
 						:class="
-							activeSection === link.href.replace('#', '')
+							link.section && activeSection === link.section
 								? 'text-text-primary'
 								: 'text-text-secondary hover:text-text-primary'
 						"
@@ -76,7 +103,7 @@ onMounted(() => {
 				     every breakpoint, which keeps the pill inside its width budget. -->
 				<div class="hidden lg:flex items-center gap-2">
 					<a
-						href="https://app.owlat.app/login"
+						:href="signInHref"
 						class="px-3 py-1.5 text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline"
 					>
 						{{ t('nav.signIn') }}
@@ -95,9 +122,11 @@ onMounted(() => {
 
 				<!-- Mobile hamburger -->
 				<button
-					class="lg:hidden flex items-center justify-center w-9 h-9 rounded-full text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) bg-transparent border-none cursor-pointer"
+					type="button"
+					class="lg:hidden flex items-center justify-center size-9 pointer-coarse:size-11 rounded-full text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) bg-transparent border-none cursor-pointer"
 					:aria-label="mobileOpen ? t('nav.closeMenu') : t('nav.openMenu')"
 					:aria-expanded="mobileOpen"
+					aria-controls="site-mobile-menu"
 					@click="mobileOpen = !mobileOpen"
 				>
 					<svg
@@ -133,7 +162,11 @@ onMounted(() => {
 
 			<!-- Mobile dropdown panel -->
 			<Transition name="drawer">
-				<div v-if="mobileOpen" class="lg:hidden nav-panel mt-2 rounded-3xl p-3">
+				<div
+					v-if="mobileOpen"
+					id="site-mobile-menu"
+					class="lg:hidden nav-panel mt-2 rounded-3xl p-3"
+				>
 					<nav class="flex flex-col">
 						<a
 							v-for="link in navLinks"
@@ -150,7 +183,7 @@ onMounted(() => {
 					     enough to stay on screen. -->
 					<div class="flex flex-col gap-2 pt-3 mt-2 border-t border-border-subtle">
 						<a
-							href="https://app.owlat.app/login"
+							:href="signInHref"
 							class="text-caption font-medium text-text-secondary hover:text-text-primary transition-colors duration-(--motion-fast) no-underline text-center py-2"
 						>
 							{{ t('nav.signIn') }}

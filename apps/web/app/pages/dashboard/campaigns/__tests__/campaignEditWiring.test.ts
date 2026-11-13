@@ -278,7 +278,29 @@ describe('campaign editor wiring', () => {
 
 		await button(wrapper, 'Unschedule to edit').trigger('click');
 		expect(form.handleUnschedule).toHaveBeenCalledOnce();
+	});
+
+	it('cancels a scheduled campaign only after the confirmation says yes', async () => {
+		let answer = false;
+		const confirm = vi.fn(async () => answer);
+		vi.stubGlobal('useConfirm', () => confirm);
+		const wrapper = mountPage({
+			_id: 'campaign_1',
+			name: 'Spring launch',
+			status: 'scheduled',
+			scheduledAt: new Date('2026-03-20T09:30:00').getTime(),
+		});
+
 		await button(wrapper, 'Cancel campaign').trigger('click');
+		await flushPromises();
+		expect(confirm).toHaveBeenCalledWith(
+			expect.objectContaining({ title: 'Cancel this scheduled campaign?', variant: 'danger' })
+		);
+		expect(form.handleCancel).not.toHaveBeenCalled();
+
+		answer = true;
+		await button(wrapper, 'Cancel campaign').trigger('click');
+		await flushPromises();
 		expect(form.handleCancel).toHaveBeenCalledOnce();
 	});
 

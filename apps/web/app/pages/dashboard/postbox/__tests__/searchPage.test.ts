@@ -48,6 +48,8 @@ const searchError = ref<Error | null>(null);
 const refetchSearch = vi.fn();
 const parsed = ref<object>({});
 const aiEnabled = ref(false);
+/** The picked hit's full message: a row by default, `null` once it is gone, `undefined` while loading. */
+const pickedMessage = ref<'row' | null | undefined>('row');
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -87,7 +89,9 @@ beforeAll(() => {
 					if (resolved === 'skip') return undefined;
 					// The picked result's message (search preview).
 					if (resolved && typeof resolved === 'object' && 'messageId' in resolved) {
-						return { _id: (resolved as { messageId: string }).messageId };
+						return pickedMessage.value === 'row'
+							? { _id: (resolved as { messageId: string }).messageId }
+							: pickedMessage.value;
 					}
 					return resolved && typeof resolved === 'object' && 'mailboxId' in resolved
 						? null
@@ -125,6 +129,7 @@ beforeEach(() => {
 	refetchSearch.mockClear();
 	parsed.value = {};
 	aiEnabled.value = false;
+	pickedMessage.value = 'row';
 });
 
 const passthrough = (name: string) =>
@@ -184,6 +189,8 @@ function mountPage() {
 			PostboxEmptyState: true,
 			PostboxThreadList: true,
 			PostboxThreadReader: true,
+			PostboxMessageNotFound: true,
+			PostboxReaderSkeleton: true,
 			PostboxShortcutHelp: true,
 		},
 	});
@@ -263,6 +270,22 @@ describe('mail search page', () => {
 		parsed.value = parseSearchQuery('from:ines@example.com is:unread');
 		await nextTick();
 		expect(seed()).toBeNull();
+	});
+
+	it('says a picked hit is loading or gone instead of asking to pick one', async () => {
+		results.value = [{ _id: 'mm1' }];
+		pickedMessage.value = undefined;
+		const page = mountPage();
+		await nextTick();
+		page.findComponent({ name: 'PostboxThreadList' }).vm.$emit('select', 'mm1');
+		await nextTick();
+		expect(page.find('[data-testid="search-reader-loading"]').exists()).toBe(true);
+		expect(page.text()).not.toContain('Select a result');
+
+		pickedMessage.value = null;
+		await nextTick();
+		expect(page.findComponent({ name: 'PostboxMessageNotFound' }).exists()).toBe(true);
+		expect(page.find('[data-testid="search-reader-loading"]').exists()).toBe(false);
 	});
 
 	it('offers to rewrite a plain-words search that found little, and runs the rewrite', async () => {

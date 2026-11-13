@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { ChevronDownIcon, GlobeIcon } from '@coolicons/vue';
 import type { EmailClient, DevicePreset } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -36,15 +36,33 @@ function closeDropdowns() {
 	showClientDropdown.value = false;
 	showDeviceDropdown.value = false;
 }
+
+const clientButtonRef = ref<HTMLButtonElement | null>(null);
+const deviceButtonRef = ref<HTMLButtonElement | null>(null);
+
+// Escape closes an open list and puts focus back on the button that opened it.
+function onKeydown(event: KeyboardEvent) {
+	if (event.key !== 'Escape') return;
+	if (!showClientDropdown.value && !showDeviceDropdown.value) return;
+	event.preventDefault();
+	event.stopPropagation();
+	const opener = showClientDropdown.value ? clientButtonRef.value : deviceButtonRef.value;
+	closeDropdowns();
+	nextTick(() => opener?.focus());
+}
 </script>
 
 <template>
-	<div class="ep-selectors" @click.stop>
+	<div class="ep-selectors" @click.stop @keydown="onKeydown">
 		<!-- Client Selector -->
 		<div class="ep-selector">
 			<button
+				ref="clientButtonRef"
+				type="button"
 				class="ep-selector-button"
 				:class="{ 'ep-selector-active': showClientDropdown }"
+				aria-haspopup="true"
+				:aria-expanded="showClientDropdown"
 				@click="
 					showClientDropdown = !showClientDropdown;
 					showDeviceDropdown = false;
@@ -76,8 +94,12 @@ function closeDropdowns() {
 		<!-- Device Selector -->
 		<div class="ep-selector">
 			<button
+				ref="deviceButtonRef"
+				type="button"
 				class="ep-selector-button"
 				:class="{ 'ep-selector-active': showDeviceDropdown }"
+				aria-haspopup="true"
+				:aria-expanded="showDeviceDropdown"
 				@click="
 					showDeviceDropdown = !showDeviceDropdown;
 					showClientDropdown = false;

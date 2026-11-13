@@ -112,6 +112,8 @@ async function apply() {
 	emit('apply', selection);
 	open.value = false;
 }
+
+const logoLabelId = useId();
 </script>
 
 <template>
@@ -183,15 +185,22 @@ async function apply() {
 			</section>
 
 			<section>
-				<p class="label">{{ t('dashboard.admin.instance.brandKit.logo.title') }}</p>
+				<p :id="logoLabelId" class="label">
+					{{ t('dashboard.admin.instance.brandKit.logo.title') }}
+				</p>
 				<p v-if="proposal.logoCandidates.length === 0" class="text-sm text-text-tertiary">
 					{{ t('dashboard.admin.instance.brandKit.import.noCandidates') }}
 				</p>
-				<div v-else class="grid grid-cols-2 sm:grid-cols-3 gap-3" role="radiogroup">
+				<div
+					v-else
+					class="grid grid-cols-2 sm:grid-cols-3 gap-3"
+					role="radiogroup"
+					:aria-labelledby="logoLabelId"
+				>
 					<label
 						v-for="candidate in proposal.logoCandidates"
 						:key="candidate.url"
-						class="flex flex-col gap-2 rounded-lg border p-2 cursor-pointer"
+						class="flex flex-col gap-2 rounded-lg border p-2 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand"
 						:class="
 							chosenLogo === candidate.url
 								? 'border-brand ring-1 ring-brand'
@@ -213,7 +222,7 @@ async function apply() {
 						</span>
 					</label>
 					<label
-						class="flex items-center justify-center rounded-lg border p-2 cursor-pointer text-xs text-text-secondary text-center"
+						class="flex items-center justify-center rounded-lg border p-2 cursor-pointer text-xs text-text-secondary text-center has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand"
 						:class="chosenLogo === '' ? 'border-brand ring-1 ring-brand' : 'border-border-subtle'"
 					>
 						<input v-model="chosenLogo" type="radio" value="" class="sr-only" />

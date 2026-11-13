@@ -32,7 +32,7 @@ const { isVip, canAccept, toggleVip, acceptSender, busy } = usePostboxSenderStat
 		<UiTooltip v-if="canAccept" :text="t('components.postbox.postboxSenderControls.acceptTitle')">
 			<button
 				type="button"
-				class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-50"
+				class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-50 pointer-coarse:min-h-11"
 				:aria-label="t('components.postbox.postboxSenderControls.accept')"
 				:disabled="busy"
 				@click.stop.prevent="acceptSender"
@@ -50,7 +50,7 @@ const { isVip, canAccept, toggleVip, acceptSender, busy } = usePostboxSenderStat
 		>
 			<button
 				type="button"
-				class="text-text-tertiary hover:text-warning disabled:opacity-50"
+				class="-m-1.5 inline-flex items-center justify-center rounded p-1.5 text-text-tertiary hover:text-warning disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'text-warning': isVip }"
 				:aria-label="
 					isVip

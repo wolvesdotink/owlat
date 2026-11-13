@@ -83,10 +83,6 @@ const lastChecked = computed(() => {
 	});
 });
 
-function checked(event: Event): boolean {
-	return (event.target as HTMLInputElement).checked;
-}
-
 function checkForUpdatesNow() {
 	window.dispatchEvent(new Event('owlat:check-updates'));
 }
@@ -109,7 +105,9 @@ async function restart() {
 		<div class="flex items-center justify-between gap-4">
 			<span>
 				<span class="flex items-center gap-2">
-					<span class="block text-sm font-medium">{{ t('desktop.settings.updates.title') }}</span>
+					<label for="desktop-auto-check-updates" class="block text-sm font-medium">{{
+						t('desktop.settings.updates.title')
+					}}</label>
 					<SettingsResetToDefault
 						:changed="autoCheckChanged"
 						:label="t('components.settings.resetToDefault.names.autoCheckUpdates')"
@@ -122,13 +120,12 @@ async function restart() {
 					{{ managedBy || t('desktop.settings.updates.description') }}
 				</span>
 			</span>
-			<input
-				type="checkbox"
-				class="h-5 w-5 shrink-0 accent-brand"
-				:aria-label="t('desktop.settings.updates.description')"
-				:checked="settings.global.autoCheckUpdates"
+			<!-- A switch like every tray setting beside it, named by the row's label. -->
+			<UiSwitch
+				id="desktop-auto-check-updates"
+				:model-value="settings.global.autoCheckUpdates"
 				:disabled="!isReady"
-				@change="setGlobal('autoCheckUpdates', checked($event))"
+				@update:model-value="setGlobal('autoCheckUpdates', $event)"
 			/>
 		</div>
 

@@ -30,9 +30,11 @@ const { t } = useI18n();
 		data-testid="setting-reset"
 	>
 		<span class="size-1.5 rounded-full bg-brand" aria-hidden="true" />
+		<!-- The visible control stays text-sized beside the label; on a touch
+		     screen an invisible ::after grows its hit area to 44px. -->
 		<button
 			type="button"
-			class="inline-flex items-center gap-1 rounded text-xs text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
+			class="relative pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-3.5 pointer-coarse:after:content-[''] inline-flex items-center gap-1 rounded text-xs text-text-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:cursor-not-allowed disabled:opacity-50"
 			:aria-label="t('components.settings.resetToDefault.resetLabel', { setting: label })"
 			:disabled="disabled"
 			@click.stop.prevent="emit('reset')"

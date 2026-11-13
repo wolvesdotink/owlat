@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import SendMediaAssetDetailModal, {
+	getFileIcon,
+} from '~/components/send/MediaAssetDetailModal.vue';
 import {
 	CloudUploadIcon,
-	CopyIcon,
-	FileIcon,
 	FileTextIcon,
 	FilmIcon,
 	ImageIcon,
@@ -68,16 +68,12 @@ const toggleTypeFilter = (value: string) => {
 	}
 };
 
-const tagFilterOptions = computed(() =>
-	(tags.value || []).map((tag: string) => ({ value: tag, label: tag }))
-);
-
-const getFileIcon = (mimeType: string) => {
-	if (mimeType === 'application/pdf') return FileTextIcon;
-	if (mimeType.startsWith('video/')) return FilmIcon;
-	if (mimeType.startsWith('audio/')) return MusicNoteIcon;
-	return FileIcon;
-};
+// "All tags" is an option, not only the placeholder: once a tag is picked,
+// the select has no other way back to the unfiltered library.
+const tagFilterOptions = computed(() => [
+	{ value: '', label: t('dashboard.send.media.allTags') },
+	...(tags.value || []).map((tag: string) => ({ value: tag, label: tag })),
+]);
 
 // File input ref
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -92,33 +88,8 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 
 // Detail modal
 const detailAsset = ref<(typeof assets.value)[0] | null>(null);
-const editAlt = ref('');
-const editTags = ref('');
-
 const openDetail = (asset: (typeof assets.value)[0]) => {
 	detailAsset.value = asset;
-	editAlt.value = asset.alt || '';
-	editTags.value = (asset.tags || []).join(', ');
-};
-
-// How many templates / transactional emails reference the open asset. Reactive
-// one-shot query, skipped until a detail asset is selected.
-const { data: usage } = useConvexQuery(api.workspaces.mediaAssets.countUsage, () =>
-	detailAsset.value ? { assetId: detailAsset.value._id } : 'skip'
-);
-const usageCount = computed(() => usage.value?.count ?? null);
-
-const saveDetail = async () => {
-	if (!detailAsset.value) return;
-	const tagArray = editTags.value
-		.split(',')
-		.map((t) => t.trim())
-		.filter(Boolean);
-	await updateAsset(detailAsset.value._id, {
-		alt: editAlt.value,
-		tags: tagArray,
-	});
-	detailAsset.value = null;
 };
 
 // Delete confirmation
@@ -136,13 +107,6 @@ const handleFileSelect = (event: Event) => {
 		uploadFiles(Array.from(input.files));
 		input.value = '';
 	}
-};
-
-const { copy: copyToClipboard } = useCopyToClipboard();
-const copyUrl = async (url: string) => {
-	await copyToClipboard(url);
-	const { showToast } = useToast();
-	showToast(t('dashboard.send.media.urlCopied'));
 };
 </script>
 
@@ -168,9 +132,8 @@ const copyUrl = async (url: string) => {
 			<template v-if="isAdmin" #actions>
 				<UiButton
 					v-if="selectedAssets.size > 0"
-					variant="outline"
+					variant="danger-outline"
 					size="sm"
-					class="!text-error !border-error"
 					@click="showDeleteConfirm = true"
 				>
 					<template #iconLeft>
@@ -199,14 +162,19 @@ const copyUrl = async (url: string) => {
 		     instead of being squeezed to nothing by the type chips. -->
 		<div class="flex flex-wrap items-center gap-3 mb-6">
 			<div class="w-full sm:w-auto sm:flex-1 sm:max-w-sm">
-				<UiInput v-model="searchQuery" :placeholder="t('dashboard.send.media.searchPlaceholder')" />
+				<UiInput
+					v-model="searchQuery"
+					:placeholder="t('dashboard.send.media.searchPlaceholder')"
+					:aria-label="t('dashboard.send.media.searchLabel')"
+				/>
 			</div>
 			<div class="flex flex-wrap items-center gap-1.5">
 				<button
 					v-for="opt in typeFilterOptions"
 					:key="opt.value"
 					type="button"
-					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+					:aria-pressed="selectedTypes.includes(opt.value)"
+					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 					:class="
 						selectedTypes.includes(opt.value)
 							? 'bg-brand/10 border-brand text-brand'
@@ -299,57 +267,68 @@ const copyUrl = async (url: string) => {
 			<div
 				v-for="asset in assets"
 				:key="asset._id"
-				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden cursor-pointer transition-[border-color,box-shadow] duration-(--motion-moderate) hover:border-border-default hover:shadow-sm"
+				class="group relative bg-bg-elevated border border-border-subtle rounded-lg overflow-hidden transition-[border-color,box-shadow] duration-(--motion-moderate) hover:border-border-default hover:shadow-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand"
 				:class="{ 'ring-2 ring-brand border-brand': selectedAssets.has(asset._id) }"
-				@click="openDetail(asset)"
 			>
 				<!-- Checkbox (selection only drives bulk delete, which is admin-only) -->
 				<div v-if="isAdmin" class="absolute top-2 left-2 z-10">
 					<UiCheckbox
 						:model-value="selectedAssets.has(asset._id)"
-						class="opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity"
+						:aria-label="t('dashboard.send.media.selectAsset', { name: asset.filename })"
+						class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity"
 						:class="{ '!opacity-100': selectedAssets.has(asset._id) }"
 						@update:model-value="toggleSelect(asset._id)"
-						@click.stop
 					/>
 				</div>
 
-				<!-- Thumbnail -->
-				<div class="aspect-square bg-checker flex items-center justify-center overflow-hidden">
-					<img
-						v-if="asset.mimeType?.startsWith('image/')"
-						:src="asset.url"
-						:alt="asset.alt || asset.filename"
-						class="w-full h-full object-contain"
-						loading="lazy"
-					/>
-					<div
-						v-else
-						class="flex flex-col items-center justify-center gap-2 bg-bg-surface w-full h-full p-3"
-					>
-						<component
-							:is="getFileIcon(asset.mimeType || '')"
-							class="w-10 h-10 text-text-tertiary"
-							:stroke-width="1.5"
+				<!-- The tile opens the asset's details: alt text, tags, URL, delete. -->
+				<button
+					type="button"
+					class="block w-full cursor-pointer text-left focus-visible:outline-none"
+					:aria-label="t('dashboard.send.media.openAsset', { name: asset.filename })"
+					@click="openDetail(asset)"
+				>
+					<!-- Thumbnail -->
+					<span class="aspect-square bg-checker flex items-center justify-center overflow-hidden">
+						<img
+							v-if="asset.mimeType?.startsWith('image/')"
+							:src="asset.url"
+							:alt="asset.alt || asset.filename"
+							class="w-full h-full object-contain"
+							loading="lazy"
 						/>
-						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
-							asset.filename
-						}}</span>
-					</div>
-				</div>
-
-				<!-- Info -->
-				<div class="px-3 py-2">
-					<p class="text-xs font-medium text-text-primary truncate">{{ asset.filename }}</p>
-					<div class="flex items-center gap-2 mt-0.5">
-						<span v-if="asset.width && asset.height" class="text-[10px] text-text-tertiary">
-							{{ asset.width }}&times;{{ asset.height }}
+						<span
+							v-else
+							class="flex flex-col items-center justify-center gap-2 bg-bg-surface w-full h-full p-3"
+						>
+							<component
+								:is="getFileIcon(asset.mimeType || '')"
+								class="w-10 h-10 text-text-tertiary"
+								:stroke-width="1.5"
+							/>
+							<span class="text-2xs text-text-secondary text-center truncate max-w-full px-1">{{
+								asset.filename
+							}}</span>
 						</span>
-						<span class="text-[10px] text-text-tertiary">{{
-							formatCompactFileSize(asset.fileSize)
-						}}</span>
-					</div>
-				</div>
+					</span>
+
+					<!-- Info -->
+					<span class="block px-3 py-2">
+						<span
+							class="block text-xs font-medium text-text-primary truncate"
+							:title="asset.filename"
+							>{{ asset.filename }}</span
+						>
+						<span class="flex items-center gap-2 mt-0.5">
+							<span v-if="asset.width && asset.height" class="text-2xs text-text-tertiary">
+								{{ asset.width }}&times;{{ asset.height }}
+							</span>
+							<span class="text-2xs text-text-tertiary">{{
+								formatCompactFileSize(asset.fileSize)
+							}}</span>
+						</span>
+					</span>
+				</button>
 			</div>
 		</div>
 
@@ -361,121 +340,12 @@ const copyUrl = async (url: string) => {
 		</div>
 
 		<!-- Detail Modal -->
-		<UiModal
-			:open="!!detailAsset"
-			:title="t('dashboard.send.media.detailTitle')"
-			size="lg"
-			@update:open="
-				(v: boolean) => {
-					if (!v) detailAsset = null;
-				}
-			"
-		>
-			<template v-if="detailAsset">
-				<div class="flex flex-col md:flex-row gap-6">
-					<!-- Preview -->
-					<div class="md:w-1/2 flex-shrink-0">
-						<div
-							class="aspect-square bg-checker rounded-lg overflow-hidden flex items-center justify-center"
-						>
-							<img
-								v-if="detailAsset.mimeType?.startsWith('image/')"
-								:src="detailAsset.url"
-								:alt="detailAsset.alt || detailAsset.filename"
-								class="max-w-full max-h-full object-contain"
-							/>
-							<div v-else class="flex flex-col items-center justify-center gap-3">
-								<component
-									:is="getFileIcon(detailAsset.mimeType || '')"
-									class="w-16 h-16 text-text-tertiary"
-									:stroke-width="1.5"
-								/>
-								<span class="text-sm text-text-secondary">{{ detailAsset.filename }}</span>
-							</div>
-						</div>
-					</div>
-					<!-- Fields -->
-					<div class="flex-1 space-y-4">
-						<div>
-							<p class="text-sm font-medium text-text-primary">{{ detailAsset.filename }}</p>
-							<p class="text-xs text-text-tertiary mt-1">
-								{{ formatCompactFileSize(detailAsset.fileSize) }}
-								<template v-if="detailAsset.width && detailAsset.height">
-									&middot; {{ detailAsset.width }}&times;{{ detailAsset.height }}
-								</template>
-							</p>
-							<p v-if="usageCount !== null" class="text-xs text-text-secondary mt-1">
-								{{
-									usageCount === 0
-										? t('dashboard.send.media.usageNone')
-										: t('dashboard.send.media.usageCount', { count: usageCount }, usageCount)
-								}}
-							</p>
-						</div>
-
-						<template v-if="isAdmin">
-							<UiInput
-								v-model="editAlt"
-								:label="t('dashboard.send.media.altText')"
-								:placeholder="t('dashboard.send.media.altPlaceholder')"
-							/>
-							<UiInput
-								v-model="editTags"
-								:label="t('dashboard.send.media.tags')"
-								:placeholder="t('dashboard.send.media.tagsPlaceholder')"
-							/>
-						</template>
-						<template v-else>
-							<div v-if="detailAsset.alt">
-								<p class="text-xs font-medium text-text-secondary mb-1">
-									{{ t('dashboard.send.media.altText') }}
-								</p>
-								<p class="text-sm text-text-primary">{{ detailAsset.alt }}</p>
-							</div>
-							<div v-if="detailAsset.tags && detailAsset.tags.length">
-								<p class="text-xs font-medium text-text-secondary mb-1">
-									{{ t('dashboard.send.media.tags') }}
-								</p>
-								<p class="text-sm text-text-primary">{{ detailAsset.tags.join(', ') }}</p>
-							</div>
-						</template>
-
-						<div class="flex items-center gap-2 pt-2">
-							<UiButton variant="outline" size="sm" @click="copyUrl(detailAsset.url)">
-								<template #iconLeft>
-									<CopyIcon class="w-3.5 h-3.5" />
-								</template>
-								{{ t('dashboard.send.media.copyUrl') }}
-							</UiButton>
-							<UiButton
-								v-if="isAdmin"
-								variant="outline"
-								size="sm"
-								class="!text-error !border-error"
-								@click="
-									deleteAssets([detailAsset!._id]);
-									detailAsset = null;
-								"
-							>
-								<template #iconLeft>
-									<TrashIcon class="w-3.5 h-3.5" />
-								</template>
-								{{ t('common.delete') }}
-							</UiButton>
-						</div>
-					</div>
-				</div>
-			</template>
-
-			<template #footer>
-				<UiButton variant="secondary" @click="detailAsset = null">{{
-					isAdmin ? t('common.cancel') : t('common.close')
-				}}</UiButton>
-				<UiButton v-if="isAdmin" variant="primary" @click="saveDetail">
-					{{ t('common.save') }}
-				</UiButton>
-			</template>
-		</UiModal>
+		<SendMediaAssetDetailModal
+			v-model:asset="detailAsset"
+			:is-admin="isAdmin"
+			:update-asset="updateAsset"
+			:delete-assets="deleteAssets"
+		/>
 
 		<!-- Bulk delete confirmation -->
 		<UiConfirmationDialog

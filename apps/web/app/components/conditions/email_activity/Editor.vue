@@ -27,15 +27,19 @@ const onChange = (event: Event) => {
 	});
 	emit('save');
 };
+
+// The row variant repeats in the segment editor, so ids are per instance.
+const activityId = useId();
+const helpId = useId();
 </script>
 
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">{{
+			<label :for="activityId" class="text-xs text-text-tertiary mb-1 block">{{
 				t('components.conditions.emailActivity.editor.activityType')
 			}}</label>
-			<select :value="activityKey(modelValue)" class="input" @change="onChange">
+			<select :id="activityId" :value="activityKey(modelValue)" class="input" @change="onChange">
 				<option value="">
 					{{ t('components.conditions.emailActivity.editor.selectActivity') }}
 				</option>
@@ -53,13 +57,14 @@ const onChange = (event: Event) => {
 	<template v-else>
 		<div class="space-y-4">
 			<div>
-				<label for="emailActivity" class="label">{{
+				<label :for="activityId" class="label">{{
 					t('components.conditions.emailActivity.editor.activity')
 				}}</label>
 				<select
-					id="emailActivity"
+					:id="activityId"
 					:value="activityKey(modelValue)"
 					class="input mt-1.5"
+					:aria-describedby="helpId"
 					@change="onChange"
 				>
 					<option
@@ -70,7 +75,7 @@ const onChange = (event: Event) => {
 						{{ t(option.label) }}
 					</option>
 				</select>
-				<p class="text-xs text-text-tertiary mt-1.5">
+				<p :id="helpId" class="text-xs text-text-tertiary mt-1.5">
 					{{ t('components.conditions.emailActivity.editor.help') }}
 				</p>
 			</div>

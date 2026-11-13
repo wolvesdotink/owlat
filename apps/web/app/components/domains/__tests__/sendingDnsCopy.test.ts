@@ -49,6 +49,7 @@ function mountSection(spfCoexistence: { existing: string; merged: string } | nul
 				DomainsDNSRecordPanel: true,
 				DomainsReturnPathEditor: true,
 				DomainsDmarcReportingPanel: true,
+				UiConfirmationDialog: true,
 			},
 		},
 	});

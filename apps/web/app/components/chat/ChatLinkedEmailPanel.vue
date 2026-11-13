@@ -38,15 +38,16 @@ defineProps<Props>();
 const { t } = useI18n();
 
 const isExpanded = ref(false);
+const recentId = useId();
 </script>
 
 <template>
-	<div class="border-b border-border-subtle bg-brand-subtle/30">
+	<div class="border-b border-border-subtle bg-bg-surface">
 		<div class="px-4 py-3 flex items-center gap-3">
 			<MailIcon class="w-4 h-4 text-brand flex-shrink-0" />
 			<div class="flex-1 min-w-0">
 				<div class="flex items-center gap-2">
-					<span class="text-xs uppercase tracking-wider font-semibold text-brand">{{
+					<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">{{
 						t('components.chat.chatLinkedEmailPanel.heading')
 					}}</span>
 					<InboxStatusChip
@@ -71,7 +72,10 @@ const isExpanded = ref(false);
 				</p>
 			</div>
 			<button
-				class="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-surface transition-colors"
+				type="button"
+				class="text-xs text-text-secondary hover:text-text-primary px-2 py-1 pointer-coarse:min-h-11 rounded hover:bg-bg-elevated transition-colors"
+				:aria-expanded="isExpanded"
+				:aria-controls="recentId"
 				@click="isExpanded = !isExpanded"
 			>
 				{{
@@ -82,7 +86,7 @@ const isExpanded = ref(false);
 			</button>
 			<NuxtLink
 				:to="`/dashboard/inbox/${data.thread._id}`"
-				class="text-xs text-brand hover:underline px-2 py-1"
+				class="text-xs text-brand hover:underline px-2 py-1 pointer-coarse:min-h-11 pointer-coarse:inline-flex pointer-coarse:items-center"
 			>
 				{{ t('components.chat.chatLinkedEmailPanel.openInInbox') }}
 			</NuxtLink>
@@ -90,6 +94,7 @@ const isExpanded = ref(false);
 
 		<div
 			v-if="isExpanded"
+			:id="recentId"
 			class="px-4 pb-3 space-y-2 max-h-72 overflow-y-auto border-t border-border-subtle"
 		>
 			<div v-if="data.recentMessages.length === 0" class="text-xs text-text-tertiary py-2">

@@ -10,6 +10,7 @@
  * for straightforward unit testing.
  */
 import { TrendingUpIcon } from '@coolicons/vue';
+import { autonomyCategoryName } from '~/utils/autonomyCategory';
 
 interface ScorecardOffer {
 	category: string;
@@ -34,7 +35,9 @@ interface Props {
 	// Key ("category::sender" or suggestion id) currently being accepted.
 	pendingKey?: string | null;
 }
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+const categoryName = (category: string) => autonomyCategoryName(category, t, te);
 
 const props = withDefaults(defineProps<Props>(), {
 	offers: () => [],
@@ -93,7 +96,7 @@ const pct = (n: number) =>
 							<template #total>
 								<strong>{{ offer.wouldHaveSent }}</strong>
 							</template>
-							<template #category>{{ offer.category }}</template>
+							<template #category>{{ categoryName(offer.category) }}</template>
 							<template #sender>
 								<strong class="break-all">{{ offer.sender }}</strong>
 							</template>
@@ -132,7 +135,7 @@ const pct = (n: number) =>
 							scope="global"
 						>
 							<template #category>
-								<strong>{{ s.category }}</strong>
+								<strong>{{ categoryName(s.category) }}</strong>
 							</template>
 							<template #current>
 								<strong>{{ pct(s.currentThreshold) }}</strong>

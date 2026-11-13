@@ -12,7 +12,7 @@
  * and an operator would have no way to tell which the controller acted on.
  */
 import { rampReasonLabel, shareLabel, type RampCellDecision } from '~/utils/deliverabilityRamp';
-import { formatShortDate } from '~/utils/formatters';
+import { formatDateTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 
 defineProps<{
@@ -51,7 +51,7 @@ const localized = useLocalized();
 			>
 				<p class="text-xs text-text-secondary">
 					<time :datetime="new Date(decision.at).toISOString()">
-						{{ formatShortDate(decision.at, locale) }}
+						{{ formatDateTime(decision.at, locale) }}
 					</time>
 					·
 					<span data-testid="ramp-decision-move">

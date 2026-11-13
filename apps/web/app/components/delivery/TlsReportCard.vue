@@ -28,7 +28,17 @@ const props = defineProps<{
 	error?: unknown;
 }>();
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+/**
+ * The failure type is an RFC 8460 code; its explanation from the shared module
+ * is English. The code picks the translated line, and a code the catalog does
+ * not know keeps that explanation.
+ */
+function failureLabel(row: { type: string; label: string }): string {
+	const key = `components.delivery.tlsReportCard.failureTypes.${row.type.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}`;
+	return te(key) ? t(key) : row.label;
+}
 
 const hasData = computed(() => !!props.summary && props.summary.reportCount > 0);
 const overallTone = computed(() => successRateTone(props.summary?.overallSuccessRate ?? null));
@@ -45,9 +55,9 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
 						{{ t('components.delivery.tlsReportCard.eyebrow') }}
 					</p>
-					<h2 class="text-lg font-semibold text-text-primary">
+					<h3 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.tlsReportCard.title') }}
-					</h2>
+					</h3>
 					<p class="text-sm text-text-secondary mt-0.5">
 						{{ t('components.delivery.tlsReportCard.subtitle') }}
 					</p>
@@ -150,7 +160,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 						>
 							<span class="flex items-center gap-2 text-text-secondary">
 								<ShieldOffIcon class="w-4 h-4 text-warning shrink-0" />
-								{{ row.label }}
+								{{ failureLabel(row) }}
 							</span>
 							<span class="text-text-tertiary shrink-0">{{ row.count }}</span>
 						</li>

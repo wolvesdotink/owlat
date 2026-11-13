@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { defineComponent, h } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 
@@ -20,6 +21,21 @@ import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18
 import { tooltipOf } from '~/__tests__/tooltip';
 
 let wrapper: VueWrapper | undefined;
+
+/** Stands in for the teleported dialog: renders a confirm button while open. */
+const ConfirmationDialogStub = defineComponent({
+	props: { open: Boolean, title: String },
+	emits: ['confirm', 'update:open'],
+	setup(props, { emit }) {
+		return () =>
+			props.open
+				? h('div', { 'data-testid': 'confirm-dialog' }, [
+						h('p', props.title),
+						h('button', { 'data-testid': 'confirm', onClick: () => emit('confirm') }, 'Confirm'),
+					])
+				: null;
+	},
+});
 
 beforeEach(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -47,7 +63,7 @@ function mountToolbar(props: {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton },
-			stubs: { ShareLinksPopover: true },
+			stubs: { ShareLinksPopover: true, UiConfirmationDialog: ConfirmationDialogStub },
 		},
 	});
 	return wrapper;
@@ -110,7 +126,21 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 		expect(tooltipOf(w, button)).toBe('Return this email to draft (stops new sends)');
 		expect(button.attributes('title')).toBeUndefined();
 		await button.trigger('click');
+		await w.get('[data-testid="confirm"]').trigger('click');
 		expect(w.emitted('toggle-publish')).toHaveLength(1);
+	});
+
+	it('asks before Unpublish, which stops every API send of a live email', async () => {
+		const w = mountToolbar({ hasChanges: false, isPublished: true });
+		expect(w.find('[data-testid="confirm-dialog"]').exists()).toBe(false);
+
+		await publishButton(w, 'Unpublish').trigger('click');
+		expect(w.emitted('toggle-publish')).toBeUndefined();
+		expect(w.find('[data-testid="confirm-dialog"]').exists()).toBe(true);
+
+		await w.get('[data-testid="confirm"]').trigger('click');
+		expect(w.emitted('toggle-publish')).toHaveLength(1);
+		expect(w.find('[data-testid="confirm-dialog"]').exists()).toBe(false);
 	});
 
 	it('enables Publish once the edits are saved, with no unavailable reason left behind', async () => {

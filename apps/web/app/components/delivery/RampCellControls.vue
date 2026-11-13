@@ -259,7 +259,8 @@ function clampPercent(value: number): number {
 					type="number"
 					min="0"
 					max="100"
-					class="input input-sm w-24"
+					class="input input-sm w-24 disabled:cursor-not-allowed disabled:opacity-50"
+					:disabled="isDisabled"
 					data-testid="ramp-control-pin-input"
 				/>
 			</div>
@@ -302,12 +303,13 @@ function clampPercent(value: number): number {
 					type="number"
 					min="0"
 					max="100"
-					class="input input-sm w-24"
+					class="input input-sm w-24 disabled:cursor-not-allowed disabled:opacity-50"
+					:disabled="isDisabled"
 					data-testid="ramp-control-force-input"
 				/>
 			</div>
 			<UiButton
-				variant="outline"
+				variant="danger-outline"
 				size="sm"
 				:disabled="isDisabled"
 				data-testid="ramp-control-force-advance"

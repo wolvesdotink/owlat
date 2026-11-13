@@ -18,7 +18,7 @@ import { ArrowRightIcon, ExternalLinkIcon, LinkIcon } from '@coolicons/vue';
  */
 export function useRowLinkMenu() {
 	const { t } = useI18n();
-	const { copy } = useCopyToClipboard();
+	const { copy } = useCopyToClipboard({ notify: false });
 	const { showToast } = useToast();
 
 	/** The origin a shareable link lives on; null on a desktop with no instance. */

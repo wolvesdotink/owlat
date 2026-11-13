@@ -89,8 +89,8 @@ describe('SetupAudiencePicker — the eligible-recipient readout', () => {
 		).toBe('600');
 	});
 
-	it('renders zero while the count is still loading', () => {
-		expect(renderCount(null)).toBe('0');
+	it('renders a dash, not zero, while the count is still loading', () => {
+		expect(renderCount(null)).toBe('—');
 	});
 });
 

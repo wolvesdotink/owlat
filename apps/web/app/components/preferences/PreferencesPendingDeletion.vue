@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { formatDate } from '~/utils/formatters';
 import { CalendarIcon, CircleCloseIcon, TriangleWarningIcon } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	/** When the account is erased, epoch ms. */
@@ -32,7 +31,7 @@ const { t } = useI18n();
 		</div>
 
 		<div class="p-6">
-			<div class="flex items-center gap-6 mb-6">
+			<div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-6">
 				<div class="flex items-center gap-2 text-text-secondary">
 					<CalendarIcon class="w-4 h-4" />
 					<I18nT
@@ -48,18 +47,19 @@ const { t } = useI18n();
 						</template>
 					</I18nT>
 				</div>
-				<div class="px-3 py-1 rounded-full bg-warning/20 text-warning text-sm font-medium">
-					{{ t('dashboard.preferences.account.daysRemaining', { days: daysRemaining }) }}
-				</div>
+				<UiBadge variant="warning" size="md" pill>
+					{{
+						t('dashboard.preferences.account.daysRemaining', { days: daysRemaining }, daysRemaining)
+					}}
+				</UiBadge>
 			</div>
 
 			<p class="text-text-secondary text-sm mb-6">
 				{{ t('dashboard.preferences.account.deletionPendingBody') }}
 			</p>
 
-			<UiButton class="gap-2" :disabled="isCancelling" @click="emit('cancel')">
-				<SpinnerIcon v-if="isCancelling" class="w-4 h-4" />
-				<CircleCloseIcon v-else class="w-4 h-4" />
+			<UiButton class="gap-2" :loading="isCancelling" @click="emit('cancel')">
+				<CircleCloseIcon v-if="!isCancelling" class="w-4 h-4" />
 				{{
 					isCancelling
 						? t('dashboard.preferences.account.cancellingDeletion')

@@ -111,6 +111,10 @@ function setValue(questionId: string, value: string) {
 	values[questionId] = value;
 }
 
+// Each question's sentence names its answer field and chip group.
+const questionIdBase = useId();
+const askIdFor = (index: number) => `${questionIdBase}-ask-${index}`;
+
 defineExpose({ pickIndex, submit, setValue });
 </script>
 
@@ -138,13 +142,14 @@ defineExpose({ pickIndex, submit, setValue });
 					})
 				}}
 			</p>
-			<TaskAsk :ask="copyFor(question).text" />
+			<TaskAsk :ask="copyFor(question).text" :ask-id="askIdFor(qi)" />
 			<slot
 				name="answer"
 				:question="question"
 				:index="qi"
 				:copy="copyFor(question)"
 				:remembered="rememberedFor(question)"
+				:ask-id="askIdFor(qi)"
 				:value="values[question.id] ?? ''"
 				:set-value="(value: string) => setValue(question.id, value)"
 			>
@@ -157,6 +162,7 @@ defineExpose({ pickIndex, submit, setValue });
 					:placeholder="placeholder"
 					:chip-test-id="`${testIdPrefix}-chip`"
 					:input-test-id="`${testIdPrefix}-input`"
+					:labelled-by="askIdFor(qi)"
 					@submit="submit"
 				/>
 			</slot>

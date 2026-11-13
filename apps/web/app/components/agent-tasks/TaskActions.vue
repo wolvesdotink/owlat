@@ -7,7 +7,9 @@
  * action path.
  */
 import { PencilIcon, type IconComponent } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+// Imported, not auto-registered: every card that mounts this row (and its
+// tests) gets the shared button without registering it.
+import UiButton from '@owlat/ui/components/ui/Button.vue';
 
 withDefaults(
 	defineProps<{
@@ -64,54 +66,46 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 <template>
 	<div class="flex flex-col gap-1.5" data-testid="task-actions">
 		<div class="flex flex-wrap items-center gap-2">
-			<button
-				type="button"
+			<UiButton
 				:data-testid="primaryTestId"
-				class="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded transition-colors duration-(--motion-fast) disabled:opacity-50 disabled:cursor-not-allowed"
-				:class="
-					quiet
-						? 'border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
-						: 'bg-brand text-text-inverse hover:bg-brand/90'
-				"
-				:disabled="primaryDisabled || primaryLoading || held"
+				size="sm"
+				:variant="quiet ? 'secondary' : 'primary'"
+				class="gap-1.5"
+				:disabled="primaryDisabled || held"
+				:loading="primaryLoading"
 				:aria-disabled="held ? 'true' : undefined"
+				:aria-describedby="held && heldReason && heldReasonId ? heldReasonId : undefined"
 				@click.stop.prevent="emit('primary')"
 			>
-				<SpinnerIcon v-if="primaryLoading" class="w-3.5 h-3.5" aria-hidden="true" />
 				<component
-					v-else-if="primaryIcon"
 					:is="primaryIcon"
+					v-if="primaryIcon && !primaryLoading"
 					class="w-3.5 h-3.5"
 					aria-hidden="true"
 				/>
 				{{ primaryLabel }}
-			</button>
+			</UiButton>
 			<slot />
-			<button
+			<UiButton
 				v-if="skipLabel"
-				type="button"
 				:data-testid="skipTestId"
-				class="text-xs px-2 py-1.5 rounded transition-colors duration-(--motion-fast) disabled:opacity-50"
-				:class="
-					skipDestructive
-						? 'text-error hover:bg-error-subtle'
-						: 'text-text-tertiary hover:text-text-primary hover:bg-bg-elevated'
-				"
+				size="sm"
+				:variant="skipDestructive ? 'danger-ghost' : 'ghost'"
 				:disabled="skipDisabled"
 				@click.stop.prevent="emit('skip')"
 			>
 				{{ skipLabel }}
-			</button>
+			</UiButton>
 			<span
 				v-if="hints?.length"
-				class="ml-auto hidden sm:flex items-center gap-x-3 text-[10px] text-text-tertiary"
+				class="ml-auto hidden sm:flex items-center gap-x-3 text-2xs text-text-tertiary"
 				aria-hidden="true"
 			>
 				<span v-for="hint in hints" :key="hint.label" class="inline-flex items-center gap-1">
 					<kbd
 						v-for="k in hint.keys"
 						:key="k"
-						class="px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-[9px] text-text-secondary"
+						class="px-1 py-px rounded border border-border-subtle bg-bg-surface font-mono text-2xs text-text-secondary"
 						>{{ k }}</kbd
 					>
 					<span>{{ hint.label }}</span>
@@ -123,7 +117,7 @@ const emit = defineEmits<{ (e: 'primary'): void; (e: 'skip'): void }>();
 		<p
 			v-if="held && heldReason"
 			:id="heldReasonId"
-			class="inline-flex items-center gap-1.5 text-[11px] text-text-tertiary"
+			class="inline-flex items-center gap-1.5 text-2xs text-text-tertiary"
 			data-testid="task-held-reason"
 			role="status"
 		>

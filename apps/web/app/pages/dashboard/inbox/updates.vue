@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import type { FunctionReturnType } from 'convex/server';
-import { categoryIcon } from '~/utils/agentCategories';
-import { formatDateTime } from '~/utils/formatters';
+import InboxUpdateRow, {
+	DOT_CLASS,
+	TONE_ORDER,
+	importanceTone,
+	type Tone,
+	type UpdateItem,
+} from '~/components/inbox/InboxUpdateRow.vue';
 import { useReviewListKeys } from '~/composables/useReviewListKeys';
 import { useUpdatesDismissSweep } from '~/composables/useUpdatesDismissSweep';
 import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
-import {
-	ArrowLeftIcon,
-	CheckIcon,
-	CircleSlashIcon,
-	ExternalLinkIcon,
-	ReplyIcon,
-} from '@coolicons/vue';
+import { ArrowLeftIcon } from '@coolicons/vue';
 import { UPDATE_VIEWS, type UpdateView } from '~/lib/inboxUpdateViews';
 
 /**
@@ -57,7 +55,25 @@ function setView(next: UpdateView) {
 	void router.replace({ query: { ...route.query, view: next === 'updates' ? undefined : next } });
 }
 
-type UpdateItem = FunctionReturnType<typeof api.inbox.updates.listUpdates>[number];
+// The tabs follow the tab pattern: one tab stop, arrow keys (Home/End too)
+// move to the next view, and the list below is the panel they label.
+const updatesPanelId = useId();
+const tabDomId = (key: UpdateView) => `updates-tab-${key}`;
+function onTabKeydown(event: KeyboardEvent) {
+	const keys = UPDATE_VIEWS.map((v) => v.key);
+	const at = keys.indexOf(view.value);
+	let next: UpdateView | undefined;
+	if (event.key === 'ArrowRight') next = keys[(at + 1) % keys.length];
+	else if (event.key === 'ArrowLeft') next = keys[(at - 1 + keys.length) % keys.length];
+	else if (event.key === 'Home') next = keys[0];
+	else if (event.key === 'End') next = keys[keys.length - 1];
+	if (!next) return;
+	event.preventDefault();
+	setView(next);
+	const id = tabDomId(next);
+	void nextTick(() => document.getElementById(id)?.focus());
+}
+
 interface UpdateRow {
 	_id: Id<'inboundMessages'>;
 	item: UpdateItem;
@@ -156,28 +172,6 @@ function openThread(row: UpdateRow) {
 	if (threadId) navigateTo(`/dashboard/inbox/${threadId}`);
 }
 
-function senderLabel(item: UpdateItem): string {
-	const contact = item.contact;
-	const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
-	return name || item.message.from;
-}
-
-type Tone = 'high' | 'normal' | 'low';
-function importanceTone(item: UpdateItem): Tone {
-	const importance = item.message.classification?.importance ?? 0;
-	if (item.message.classification?.priority === 'urgent' || importance >= 0.7) return 'high';
-	if (importance >= 0.4) return 'normal';
-	return 'low';
-}
-
-/** Quiet status dot per importance — a tint, never a fill. */
-const DOT_CLASS: Record<Tone, string> = {
-	high: 'bg-warning',
-	normal: 'bg-brand',
-	low: 'bg-text-tertiary/50',
-};
-const TONE_ORDER: readonly Tone[] = ['high', 'normal', 'low'];
-
 /**
  * The list grouped by importance in a fixed order, so the eye lands on what
  * matters first and the keyboard walks the same order the groups render in.
@@ -216,17 +210,6 @@ const dismissSweep = useUpdatesDismissSweep({
 	actionInProgress,
 	rowHide: { hide: hideRow, unhide: unhideRow },
 });
-
-function categoryLabel(category: string | undefined): string {
-	const key = `dashboard.inbox.detail.categories.${category ?? 'other'}`;
-	return t(key) === key ? (category ?? '') : t(key);
-}
-
-function kindLabel(kind: string | undefined): string | undefined {
-	if (!kind) return undefined;
-	const key = `dashboard.inbox.updates.kinds.${kind}`;
-	return t(key) === key ? undefined : t(key);
-}
 </script>
 
 <template>
@@ -281,11 +264,15 @@ function kindLabel(kind: string | undefined): string | undefined {
 		>
 			<button
 				v-for="tab in UPDATE_VIEWS"
+				:id="tabDomId(tab.key)"
 				:key="tab.key"
 				type="button"
 				role="tab"
 				:aria-selected="view === tab.key"
+				:aria-controls="updatesPanelId"
+				:tabindex="view === tab.key ? 0 : -1"
 				:data-testid="`updates-tab-${tab.key}`"
+				@keydown="onTabKeydown"
 				class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors duration-(--motion-moderate) ease-spring"
 				:class="
 					view === tab.key
@@ -306,175 +293,76 @@ function kindLabel(kind: string | undefined): string | undefined {
 
 		<p
 			v-if="isSpamView"
-			class="mb-4 max-w-[540px] text-caption text-text-tertiary"
+			class="mb-4 max-w-prose text-caption text-text-tertiary"
 			data-testid="spam-note"
 		>
 			{{ t('dashboard.inbox.updates.spamNote') }}
 		</p>
 
-		<UiQueryBoundary
-			:loading="isLoading"
-			:error="error"
-			@retry="refetch"
-			:empty="!updates || visibleRows.length === 0"
-			:error-title="t('dashboard.inbox.updates.errorTitle')"
-			:error-message="t('dashboard.inbox.updates.errorMessage')"
-			:loading-label="t('dashboard.inbox.updates.loading')"
-		>
-			<template #empty>
-				<!-- Caught up / no spam is the good outcome: "all clear", not "nothing yet". -->
-				<UiEmptyState
-					:tone="view === 'updates' || view === 'spam' ? 'clear' : 'default'"
-					:title="t(`dashboard.inbox.updates.empty.${view}.title`)"
-					:description="t(`dashboard.inbox.updates.empty.${view}.body`)"
-				/>
-			</template>
-
-			<ul
-				role="listbox"
-				:aria-label="t('dashboard.inbox.updates.listAriaLabel')"
-				:aria-activedescendant="activeId"
-				tabindex="0"
-				:ref="dismissSweep.listEl"
-				class="space-y-8 outline-none"
-				:class="{ 'select-none': dismissSweep.active.value }"
-				@keydown="onKeydown"
+		<div :id="updatesPanelId" role="tabpanel" :aria-labelledby="tabDomId(view)">
+			<UiQueryBoundary
+				:loading="isLoading"
+				:error="error"
+				@retry="refetch"
+				:empty="!updates || visibleRows.length === 0"
+				:error-title="t('dashboard.inbox.updates.errorTitle')"
+				:error-message="t('dashboard.inbox.updates.errorMessage')"
+				:loading-label="t('dashboard.inbox.updates.loading')"
 			>
-				<li v-for="group in groups" :key="group.tone ?? 'all'" role="presentation">
-					<div v-if="group.tone" class="mb-3 flex items-center gap-2">
-						<span
-							class="h-1.5 w-1.5 rounded-full"
-							:class="DOT_CLASS[group.tone]"
-							aria-hidden="true"
-						/>
-						<span class="lp-eyebrow">{{
-							t(`dashboard.inbox.updates.importance.${group.tone}`)
-						}}</span>
-						<span class="text-2xs tabular-nums text-text-tertiary">{{ group.rows.length }}</span>
-					</div>
-					<ul role="presentation" class="space-y-3">
-						<li
-							v-for="row in group.rows"
-							:id="rowDomId(row)"
-							:key="row._id"
-							role="option"
-							:aria-selected="flatIndex(row) === focusedIndex"
-							class="group lp-card p-4 outline-none"
-							:class="flatIndex(row) === focusedIndex ? 'ring-2 ring-brand/60' : ''"
-							:data-sweep-row="row._id"
-							data-testid="update-row"
-						>
-							<div
-								class="flex items-start gap-3"
-								:class="{ 'opacity-40': dismissSweep.markOf(row._id) === 'dismiss' }"
-							>
-								<UiAvatar
-									:name="senderLabel(row.item)"
-									:email="row.item.message.from"
-									size="md"
-									deterministic-color
-									class="mt-0.5 shrink-0"
-								/>
-								<div class="min-w-0 flex-1">
-									<div class="flex items-start justify-between gap-4">
-										<div class="min-w-0">
-											<p class="flex items-center gap-2 text-sm font-semibold text-text-primary">
-												<span
-													v-if="!isSpamView"
-													class="h-1.5 w-1.5 shrink-0 rounded-full"
-													:class="DOT_CLASS[importanceTone(row.item)]"
-													:title="
-														t(`dashboard.inbox.updates.importance.${importanceTone(row.item)}`)
-													"
-												/>
-												<span class="truncate">{{
-													row.item.message.subject || t('dashboard.inbox.updates.noSubject')
-												}}</span>
-											</p>
-											<p class="mt-0.5 truncate text-caption text-text-tertiary">
-												<span class="text-text-secondary">{{ senderLabel(row.item) }}</span>
-												<span class="mx-1 opacity-50">·</span>
-												{{ formatDateTime(row.item.message.receivedAt) }}
-												<template v-if="kindLabel(row.item.message.classification?.kind)">
-													<span class="mx-1 opacity-50">·</span>
-													{{ kindLabel(row.item.message.classification?.kind) }}
-												</template>
-												<template v-if="row.item.message.classification?.category">
-													<span class="mx-1 opacity-50">·</span>
-													<component
-														:is="categoryIcon(row.item.message.classification.category)"
-														class="inline-block h-3 w-3 align-[-2px]"
-													/>
-													{{ categoryLabel(row.item.message.classification.category) }}
-												</template>
-											</p>
-										</div>
-										<div
-											v-if="isAdmin"
-											class="flex shrink-0 items-center gap-1 opacity-70 transition-opacity duration-(--motion-fast) group-hover:opacity-100 group-focus-within:opacity-100"
-										>
-											<UiButton
-												variant="ghost"
-												size="sm"
-												class="gap-1"
-												:disabled="actionInProgress === row._id"
-												@click.stop="openThread(row)"
-											>
-												<ExternalLinkIcon class="h-3 w-3" />
-												{{ t('dashboard.inbox.updates.open') }}
-											</UiButton>
-											<UiButton
-												v-if="isSpamView"
-												variant="ghost"
-												size="sm"
-												class="gap-1 text-error hover:bg-error-subtle"
-												:disabled="actionInProgress === row._id"
-												@click.stop="pendingBlock = row"
-											>
-												<CircleSlashIcon class="h-3 w-3" />
-												{{ t('dashboard.inbox.updates.blockSender') }}
-											</UiButton>
-											<template v-else>
-												<UiButton
-													variant="ghost"
-													size="sm"
-													class="gap-1"
-													:disabled="actionInProgress === row._id"
-													@click.stop="onRequestReply(row)"
-												>
-													<ReplyIcon class="h-3 w-3" />
-													{{ t('dashboard.inbox.updates.requestReply') }}
-												</UiButton>
-												<UiTooltip :text="t('dashboard.inbox.updates.dismissSweepHint')">
-													<UiButton
-														variant="secondary"
-														size="sm"
-														class="gap-1"
-														:disabled="actionInProgress === row._id"
-														@pointerdown="dismissSweep.start(row._id, $event)"
-														@click.stop="onDismiss(row)"
-													>
-														<CheckIcon class="h-3 w-3" />
-														{{ t('dashboard.inbox.updates.dismiss') }}
-													</UiButton>
-												</UiTooltip>
-											</template>
-										</div>
-									</div>
-									<p
-										v-if="row.item.message.preview"
-										class="mt-2 line-clamp-2 text-sm leading-snug text-text-secondary"
-										data-testid="update-preview"
-									>
-										{{ row.item.message.preview }}
-									</p>
-								</div>
-							</div>
-						</li>
-					</ul>
-				</li>
-			</ul>
-		</UiQueryBoundary>
+				<template #empty>
+					<!-- Caught up / no spam is the good outcome: "all clear", not "nothing yet". -->
+					<UiEmptyState
+						:tone="view === 'updates' || view === 'spam' ? 'clear' : 'default'"
+						:title="t(`dashboard.inbox.updates.empty.${view}.title`)"
+						:description="t(`dashboard.inbox.updates.empty.${view}.body`)"
+					/>
+				</template>
+
+				<ul
+					role="listbox"
+					:aria-label="t('dashboard.inbox.updates.listAriaLabel')"
+					:aria-activedescendant="activeId"
+					tabindex="0"
+					:ref="dismissSweep.listEl"
+					class="space-y-8 outline-none"
+					:class="{ 'select-none': dismissSweep.active.value }"
+					@keydown="onKeydown"
+				>
+					<li v-for="group in groups" :key="group.tone ?? 'all'" role="presentation">
+						<div v-if="group.tone" class="mb-3 flex items-center gap-2">
+							<span
+								class="h-1.5 w-1.5 rounded-full"
+								:class="DOT_CLASS[group.tone]"
+								aria-hidden="true"
+							/>
+							<span class="text-2xs font-medium uppercase tracking-wide text-text-tertiary">{{
+								t(`dashboard.inbox.updates.importance.${group.tone}`)
+							}}</span>
+							<span class="text-2xs tabular-nums text-text-tertiary">{{ group.rows.length }}</span>
+						</div>
+						<ul role="presentation" class="space-y-3">
+							<InboxUpdateRow
+								v-for="row in group.rows"
+								:key="row._id"
+								:row-id="row._id"
+								:item="row.item"
+								:option-id="rowDomId(row)"
+								:focused="flatIndex(row) === focusedIndex"
+								:is-spam-view="isSpamView"
+								:is-admin="isAdmin"
+								:busy="actionInProgress === row._id"
+								:swept-for-dismiss="dismissSweep.markOf(row._id) === 'dismiss'"
+								@open="openThread(row)"
+								@block="pendingBlock = row"
+								@request-reply="onRequestReply(row)"
+								@dismiss="onDismiss(row)"
+								@sweep-start="dismissSweep.start(row._id, $event)"
+							/>
+						</ul>
+					</li>
+				</ul>
+			</UiQueryBoundary>
+		</div>
 		<PostboxSweepStatus :status="dismissSweep.status.value" />
 
 		<UiConfirmationDialog

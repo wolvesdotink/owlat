@@ -10,7 +10,7 @@ import type { LocalizedText } from '~/utils/localizedText';
 import AddStepMenu from '~/components/automations/editor/AddStepMenu.vue';
 
 const props = defineProps<{
-	automation: { _id: string; triggerType: string; triggerConfig?: unknown };
+	automation: { _id: string; triggerType: string; triggerConfig?: unknown; status?: string };
 	topics: Doc<'topics'>[] | undefined;
 	addStepOpen: boolean;
 	stepTypes: ReadonlyArray<{ id: StepKind; label: string; description: string; color: string }>;
@@ -64,9 +64,13 @@ const triggerSummary = computed(() => {
 						{{ triggerSummary }}
 					</p>
 				</div>
+				<!-- The trigger can only be changed on a draft (the backend refuses
+				     otherwise), so a live automation offers no editor it cannot save. -->
 				<NuxtLink
+					v-if="!automation.status || automation.status === 'draft'"
 					:to="`/dashboard/automations/new?edit=${automation._id}`"
-					class="text-sm text-brand hover:underline"
+					class="link text-sm"
+					:aria-label="t('dashboard.automations.new.editTriggerTitle')"
 				>
 					{{ t('common.edit') }}
 				</NuxtLink>

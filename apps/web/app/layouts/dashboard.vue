@@ -7,11 +7,13 @@ import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
-import { useZenMode } from '~/composables/useZenMode';
 import { useRouteAnnounce } from '~/composables/shell/useRouteAnnounce';
+import { useShellFocusMode } from '~/composables/shell/useShellFocusMode';
+import { useShellNotices } from '~/composables/shell/useShellNotices';
 import { useShellSidebarLayout } from '~/composables/shell/useShellSidebarLayout';
 import { useShellWindowChrome } from '~/composables/shell/useShellWindowChrome';
 import { useSidebarPeek } from '~/composables/shell/useSidebarPeek';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -101,28 +103,15 @@ watch(
 const removePageFinishHook = useNuxtApp().hooks.hook('page:finish', revealCurrentSection);
 onBeforeUnmount(() => removePageFinishHook?.());
 
-// Focus mode state for distraction-free editing. Answer mode (a reply being
-// written, `definePageMeta({ answerMode: true })`) takes the whole screen the
-// same way, so both hide the sidebar and the shell header through one flag.
-// Zen mode (useZenMode) is the app-wide version of the same: one task, no chrome.
-const { isFocusMode: isEditorFocusMode } = useFocusMode();
-const { isZen } = useZenMode();
-const isAnswerMode = computed(() => route.meta.answerMode === true);
-const isFocusMode = computed(() => isEditorFocusMode.value || isAnswerMode.value || isZen.value);
-// Zen keeps one slim bar for its exit, except where the page is chrome-less on
-// its own terms and brings its own way out.
-const pageOwnsEscape = computed(() => isAnswerMode.value || isEditorFocusMode.value);
-const showZenBar = computed(() => isZen.value && !pageOwnsEscape.value);
-const shellChromeHeight = computed(() => {
-	if (!isFocusMode.value) return '4rem';
-	return showZenBar.value ? 'calc(2.75rem + env(safe-area-inset-top, 0px))' : '0px';
-});
-// Below lg the shell is taller: bar, breadcrumb strip, hairline and tab bar.
-const shellChromeMobileHeight = computed(() =>
-	isFocusMode.value
-		? `calc(${shellChromeHeight.value} + env(safe-area-inset-bottom, 0px))`
-		: 'calc(10.25rem + 1px + env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))'
-);
+// Focus, Answer and Zen mode hide the sidebar and the shell header.
+const {
+	isAnswerMode,
+	isFocusMode,
+	pageOwnsEscape,
+	showZenBar,
+	shellChromeHeight,
+	shellChromeMobileHeight,
+} = useShellFocusMode(route);
 
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
@@ -150,9 +139,13 @@ useRouteAnnounce();
 // Keep the sidebar's desktop-viewport flag in sync with the `lg` breakpoint so
 // the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
 // drawer). Mirrors Tailwind's `lg` = 1024px.
+const isDesktopViewport = ref(true);
 onMounted(() => {
 	const mql = window.matchMedia('(min-width: 1024px)');
-	const sync = () => setDesktopViewport(mql.matches);
+	const sync = () => {
+		isDesktopViewport.value = mql.matches;
+		setDesktopViewport(mql.matches);
+	};
 	sync();
 	mql.addEventListener('change', sync);
 	onUnmounted(() => mql.removeEventListener('change', sync));
@@ -183,6 +176,21 @@ const { onPeekPointerEnter, onPeekPointerLeave, onPeekFocusOut, onPeekKeydown } 
 
 // Mobile sidebar state
 const isSidebarOpen = ref(false);
+const sidebarRef = ref<HTMLElement | null>(null);
+
+// Below lg the aside is an off-canvas drawer. Closed, it is only translated off
+// screen, so it must also leave the tab order; open, it holds focus like a
+// dialog, closes on Escape and hands focus back to the menu button.
+const isMobileDrawerOpen = computed(() => isSidebarOpen.value && !isDesktopViewport.value);
+const isSidebarInert = computed(
+	() =>
+		(effectiveHidden.value && !isPeeking.value) ||
+		isFocusMode.value ||
+		(!isDesktopViewport.value && !isSidebarOpen.value)
+);
+useModalFocus(sidebarRef, isMobileDrawerOpen, () => {
+	isSidebarOpen.value = false;
+});
 
 // The sidebar renders one workspace at a time (Conversations ↔ Marketing). The
 // toggle is emergent: it only exists while both workspaces survived the flags.
@@ -201,9 +209,10 @@ const pluginItems = computed(() =>
 const appNavigationRef = ref<HTMLElement | null>(null);
 useSidebarJumpHints(appNavigationRef);
 
-// Close sidebar when route changes (mobile)
+// Close sidebar when the destination changes (mobile). The full path, because
+// picking another mailbox only changes the query on the same inbox route.
 watch(
-	() => route.path,
+	() => route.fullPath,
 	() => {
 		isSidebarOpen.value = false;
 	}
@@ -221,27 +230,8 @@ watch(isFocusMode, (active) => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Unread mail is read once and badged everywhere from the same count: the
-// browser tab (title prefix + dotted favicon) and, in the desktop app, the
-// dock/taskbar icon plus native notifications. The desktop app has no tab and
-// paints the count natively, so the tab badge stays browser-only.
-const unreadBadge = useUnreadBadge();
-const { isDesktop: isDesktopApp } = useDesktopContext();
-useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
-useDesktopNotifications(unreadBadge);
-// The tray icon's count and newest unread messages, from the same peek.
-useDesktopTray(unreadBadge);
-// The opt-in alert chimes (armed replies, assignments, agent questions) read
-// the same unread peek, in the browser and the desktop app alike.
-useAlertSounds(unreadBadge);
-
-// Campaign, delivery, automation and sending-domain notices: in-app toast
-// everywhere, native notification on the desktop app.
-useMarketingNotices();
-
-// "You can send now" — one in-app toast for a member whose onboarding first-send
-// step was blocked while the instance had no outbound transport.
-useSendReadyNotice();
+// The unread badge, the desktop tray and the in-app notices.
+useShellNotices();
 
 // Quick Query has no modal, shortcut handler or open event of its own: it is
 // `AppCommandPalette` opened pre-switched to its Ask scope behind the same
@@ -259,8 +249,11 @@ useSendReadyNotice();
 		}"
 	>
 		<!-- --shell-chrome-h / --shell-chrome-mobile-h: the shell chrome around the
-		     page, for full-height pages that size against it (from lg / below
-		     lg). In Zen it is the slim bar, in a chrome-less page 0. -->
+		     page, for full-height pages that size against it. --shell-chrome-h is
+		     the lg-and-up value only (the 4rem bar): below lg the chrome also
+		     holds the breadcrumb strip and the bottom bar, so a full-height page
+		     must use --shell-chrome-mobile-h there, or it overflows the viewport
+		     by that difference. In Zen it is the slim bar, in a chrome-less page 0. -->
 		<!-- Skip link: first tab stop, visible only when focused -->
 		<a
 			href="#main-content"
@@ -291,7 +284,7 @@ useSendReadyNotice();
 		>
 			<div
 				v-if="isSidebarOpen"
-				class="fixed inset-0 bg-scrim/50 z-40 lg:hidden"
+				class="fixed inset-0 bg-scrim/50 z-(--z-modal) lg:hidden"
 				@click="isSidebarOpen = false"
 			/>
 		</Transition>
@@ -307,13 +300,14 @@ useSendReadyNotice();
 
 		<!-- Sidebar -->
 		<aside
+			ref="sidebarRef"
 			:class="[
-				'fixed top-0 left-0 z-50 h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-[translate,box-shadow] motion-reduce:transition-none pt-[env(safe-area-inset-top)] lg:pt-0',
+				'fixed top-0 left-0 z-(--z-modal) h-full bg-bg-elevated border-r border-border-subtle flex flex-col transition-[translate,box-shadow] motion-reduce:transition-none pt-[env(safe-area-inset-top)] lg:pt-0',
 				sidebarWidthClass,
 				isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
 				isFocusMode ? 'lg:-translate-x-full duration-(--motion-moderate)' : sidebarDesktopClass,
 			]"
-			:inert="(effectiveHidden && !isPeeking) || isFocusMode ? true : undefined"
+			:inert="isSidebarInert ? true : undefined"
 			@mouseenter="onPeekPointerEnter"
 			@mouseleave="onPeekPointerLeave"
 			@focusout="onPeekFocusOut"
@@ -424,7 +418,12 @@ useSendReadyNotice();
 		<!-- Where every undo countdown toast lands (mail send, review approve,
 		     campaign send): one bottom-left column, so two live windows stack
 		     instead of covering each other's Undo button. -->
-		<div :id="UNDO_TOAST_REGION_ID" class="fixed bottom-4 left-4 z-50 flex flex-col gap-2" />
+		<!-- Above the phone's bottom bar (--ui-bottom-chrome-height) and on the
+		     toast layer, so an Undo raised from inside a dialog stays reachable. -->
+		<div
+			:id="UNDO_TOAST_REGION_ID"
+			class="fixed bottom-[calc(1rem+var(--ui-bottom-chrome-height,0px))] left-4 z-(--z-toast) flex max-w-[calc(100vw-2rem)] flex-col gap-2"
+		/>
 		<!-- A team draft's approve countdown: armed in Answer mode, it outlives
 		     the page the reply leaves from. -->
 		<AnswerReviewApproveUndoToast />

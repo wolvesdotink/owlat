@@ -10,7 +10,7 @@ import { api } from '@owlat/api';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 import type { StoredAttachment } from '~/components/AttachmentPanel.vue';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { ShieldWarningIcon } from '@coolicons/vue';
+import { CircleWarningIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -332,7 +332,11 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			<!-- Not Found State -->
 			<div v-if="!email" class="h-full flex items-center justify-center bg-bg-deep">
 				<div class="text-center">
-					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+					<CircleWarningIcon
+						class="w-12 h-12 text-error mx-auto mb-4"
+						:stroke-width="1.5"
+						aria-hidden="true"
+					/>
 					<h2 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('dashboard.send.transactional.detail.edit.notFound.title') }}
 					</h2>

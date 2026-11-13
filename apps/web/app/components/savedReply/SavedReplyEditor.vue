@@ -61,7 +61,7 @@ function save() {
 	<form class="card p-5 space-y-4" data-testid="saved-reply-editor" @submit.prevent="save">
 		<div class="flex flex-col gap-3 sm:flex-row">
 			<label class="flex-1">
-				<span class="mb-1 block text-sm text-text-secondary">
+				<span class="label">
 					{{ t('shared.savedReplies.fields.name') }}
 				</span>
 				<input
@@ -73,7 +73,7 @@ function save() {
 				/>
 			</label>
 			<label class="sm:w-48">
-				<span class="mb-1 block text-sm text-text-secondary">
+				<span class="label">
 					{{ t('shared.savedReplies.fields.shortcut') }}
 				</span>
 				<input
@@ -86,7 +86,7 @@ function save() {
 			</label>
 		</div>
 		<div>
-			<span class="mb-1 block text-sm text-text-secondary">
+			<span class="label">
 				{{ t('shared.savedReplies.fields.text') }}
 			</span>
 			<PostboxBasicEditor
@@ -119,31 +119,26 @@ function save() {
 		</details>
 		<PostboxSnippetVariableEditor v-model="variables" :body-html="bodyHtml" />
 		<fieldset v-if="teamInboxes" class="space-y-1.5">
-			<legend class="mb-1 text-sm text-text-secondary">
+			<legend class="label">
 				{{ t('shared.savedReplies.fields.limit') }}
 			</legend>
 			<p class="text-xs text-text-tertiary">{{ t('shared.savedReplies.fields.limitHint') }}</p>
 			<p v-if="teamInboxes.length === 0" class="text-xs text-text-tertiary">
 				{{ t('shared.savedReplies.fields.noTeamInboxes') }}
 			</p>
-			<label
+			<UiCheckbox
 				v-for="inbox in teamInboxes"
 				:key="inbox._id"
-				class="flex items-center gap-2 text-sm text-text-primary"
-			>
-				<input
-					type="checkbox"
-					:checked="mailboxIds.includes(inbox._id)"
-					@change="toggleInbox(inbox._id, ($event.target as HTMLInputElement).checked)"
-				/>
-				{{ inbox.label }}
-			</label>
+				:model-value="mailboxIds.includes(inbox._id)"
+				:label="inbox.label"
+				@update:model-value="(checked: boolean) => toggleInbox(inbox._id, checked)"
+			/>
 		</fieldset>
 		<div class="flex items-center justify-end gap-2">
-			<UiButton variant="ghost" type="button" @click="emit('cancel')">
+			<UiButton variant="ghost" type="button" :disabled="saving" @click="emit('cancel')">
 				{{ t('common.cancel') }}
 			</UiButton>
-			<UiButton type="submit" :disabled="!name.trim() || saving || uploading">
+			<UiButton type="submit" :disabled="!name.trim() || uploading" :loading="saving">
 				{{ initial ? t('shared.savedReplies.saveChanges') : t('common.create') }}
 			</UiButton>
 		</div>

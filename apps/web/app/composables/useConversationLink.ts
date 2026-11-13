@@ -33,7 +33,7 @@ export function conversationLinkUrl(target: ConversationLinkTarget): string | nu
 export function useConversationLink() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
-	const { copy } = useCopyToClipboard();
+	const { copy } = useCopyToClipboard({ notify: false });
 
 	async function copyConversationLink(target: ConversationLinkTarget): Promise<boolean> {
 		const url = conversationLinkUrl(target);

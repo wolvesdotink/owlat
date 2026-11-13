@@ -98,7 +98,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 						<UiTooltip :text="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')">
 							<button
 								type="button"
-								class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
+								class="inline-flex items-center justify-center rounded p-1 text-text-tertiary hover:text-text-primary disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 								:disabled="index === 0"
 								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')"
 								@click="moveProvider(index, -1)"
@@ -109,7 +109,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 						<UiTooltip :text="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')">
 							<button
 								type="button"
-								class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
+								class="inline-flex items-center justify-center rounded p-1 text-text-tertiary hover:text-text-primary disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 								:disabled="index === providers.length - 1"
 								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')"
 								@click="moveProvider(index, 1)"
@@ -145,7 +145,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 								openSetup.has(provider.providerType))
 						"
 						type="button"
-						class="text-xs text-brand hover:underline"
+						class="rounded text-xs text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:aria-expanded="openSetup.has(provider.providerType)"
 						:data-testid="`route-provider-setup-${provider.providerType}`"
 						@click="toggleSetup(provider.providerType)"
@@ -165,6 +165,11 @@ function moveProvider(index: number, direction: -1 | 1) {
 							min="0"
 							max="100"
 							class="input w-20"
+							:aria-label="
+								t('dashboard.admin.delivery.providerRouting.editModal.weightFor', {
+									provider: props.providerLabel(provider.providerType),
+								})
+							"
 							:disabled="!provider.isEnabled"
 						/>
 						<span class="text-xs text-text-tertiary">{{

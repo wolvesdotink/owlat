@@ -170,6 +170,7 @@ const headline = computed(() => {
 									type="button"
 									class="shrink-0 text-sm font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded"
 									data-testid="presend-show-block"
+									:aria-label="t(`${KEY}.showMeItem`, { item: localized(item.label) })"
 									@click="emit('showBlock', item.blockId)"
 								>
 									{{ t(`${KEY}.showMe`) }}

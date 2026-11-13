@@ -22,7 +22,7 @@ export interface PresetTimeAction {
 	sub: string;
 }
 
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		open: boolean;
 		title: string;
@@ -43,6 +43,37 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const customDate = ref('');
+const customInputId = useId();
+const customErrorId = useId();
+
+// The clock the custom value is checked against. It is re-read when the
+// dialog opens, on every edit and on confirm: `min` on the native picker is
+// only a hint, so a past time still has to say why it cannot be used.
+const validationNow = ref(Date.now());
+watch(
+	() => props.open,
+	(open) => {
+		if (open) validationNow.value = Date.now();
+	}
+);
+watch(customDate, () => {
+	validationNow.value = Date.now();
+});
+
+/** `YYYY-MM-DDTHH:mm` in the local clock: the picker's floor, this minute. */
+const customMin = computed(() => {
+	const local = new Date(
+		validationNow.value - new Date(validationNow.value).getTimezoneOffset() * 60_000
+	);
+	return local.toISOString().slice(0, 16);
+});
+
+/** A value is there but it is not a future time. */
+const customInvalid = computed(() => {
+	if (!customDate.value) return false;
+	const ts = new Date(customDate.value).getTime();
+	return Number.isNaN(ts) || ts <= validationNow.value;
+});
 
 function close() {
 	emit('update:open', false);
@@ -60,8 +91,9 @@ function pickAction(id: string) {
 
 function pickCustom() {
 	if (!customDate.value) return;
+	validationNow.value = Date.now();
 	const ts = new Date(customDate.value).getTime();
-	if (Number.isNaN(ts) || ts <= Date.now()) return;
+	if (Number.isNaN(ts) || ts <= validationNow.value) return;
 	emit('confirm', ts);
 	close();
 }
@@ -92,7 +124,7 @@ function pickCustom() {
 						{{ preset.label }}
 						<span
 							v-if="preset.suggested"
-							class="text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
+							class="text-2xs uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded border border-border-subtle text-brand"
 							>{{ t('components.postbox.postboxPresetTimeDialog.suggested') }}</span
 						>
 					</span>
@@ -111,15 +143,26 @@ function pickCustom() {
 			</li>
 		</ul>
 		<div class="border-t border-border-subtle pt-3">
-			<label class="text-xs font-medium text-text-tertiary block mb-1">
+			<label :for="customInputId" class="text-xs font-medium text-text-tertiary block mb-1">
 				{{ t('components.postbox.postboxPresetTimeDialog.custom') }}
 			</label>
 			<div class="flex items-center gap-2">
-				<input v-model="customDate" type="datetime-local" class="input flex-1" />
-				<UiButton type="button" :disabled="!customDate" @click="pickCustom">
+				<input
+					:id="customInputId"
+					v-model="customDate"
+					type="datetime-local"
+					class="input flex-1"
+					:min="customMin"
+					:aria-invalid="customInvalid ? 'true' : undefined"
+					:aria-describedby="customInvalid ? customErrorId : undefined"
+				/>
+				<UiButton type="button" :disabled="!customDate || customInvalid" @click="pickCustom">
 					{{ confirmLabel }}
 				</UiButton>
 			</div>
+			<p v-if="customInvalid" :id="customErrorId" class="text-xs mt-1.5 text-error" role="alert">
+				{{ t('components.postbox.postboxPresetTimeDialog.customPast') }}
+			</p>
 		</div>
 	</UiModal>
 </template>

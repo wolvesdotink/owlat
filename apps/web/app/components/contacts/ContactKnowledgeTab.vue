@@ -10,10 +10,16 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const { data: entries, isLoading } = useConvexQuery(
-	api.knowledge.graph.getByContact,
-	() => ({ contactId: props.contactId, limit: 50 }),
-);
+const ENTRY_LIMIT = 50;
+const {
+	data: entries,
+	isLoading,
+	error,
+	refetch,
+} = useConvexQuery(api.knowledge.graph.getByContact, () => ({
+	contactId: props.contactId,
+	limit: ENTRY_LIMIT,
+}));
 
 const typeVariant = entryTypeVariant;
 const typeIcon = entryTypeIcon;
@@ -22,7 +28,6 @@ const typeLabel = entryTypeLabel;
 const truncate = (text: string, max = 100): string => {
 	return text.length > max ? text.slice(0, max) + '…' : text;
 };
-
 </script>
 
 <template>
@@ -36,14 +41,17 @@ const truncate = (text: string, max = 100): string => {
 					t(
 						'components.contacts.contactKnowledgeTab.count',
 						{ count: entries.length },
-						entries.length,
+						entries.length
 					)
 				}}
 			</span>
 		</div>
 
+		<!-- A failed read is not an empty list. -->
+		<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
+
 		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-8">
+		<div v-else-if="isLoading" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
 				<p class="text-text-tertiary text-sm">
@@ -72,7 +80,7 @@ const truncate = (text: string, max = 100): string => {
 				v-for="entry in entries"
 				:key="entry._id"
 				:to="`/dashboard/knowledge/${entry._id}`"
-				class="block p-3 rounded-lg bg-bg-surface hover:bg-bg-surface/80 border border-border-subtle hover:border-brand/30 transition-colors"
+				class="block p-3 rounded-lg bg-bg-surface hover:bg-bg-surface-hover border border-border-subtle hover:border-brand/30 transition-colors"
 			>
 				<div class="flex items-start gap-3">
 					<!-- Type icon -->
@@ -86,13 +94,6 @@ const truncate = (text: string, max = 100): string => {
 							<UiBadge :variant="typeVariant(entry.entryType)" size="sm">
 								{{ typeLabel(entry.entryType) }}
 							</UiBadge>
-							<span class="text-xs text-text-tertiary">
-								{{
-									t('components.contacts.contactKnowledgeTab.confidence', {
-										percent: Math.round(entry.confidence * 100),
-									})
-								}}
-							</span>
 						</div>
 
 						<!-- Title -->
@@ -108,17 +109,21 @@ const truncate = (text: string, max = 100): string => {
 							<span
 								v-for="tag in (entry.tags || []).slice(0, 3)"
 								:key="tag"
-								class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-bg-elevated text-text-tertiary"
+								class="inline-block px-1.5 py-0.5 rounded text-2xs bg-bg-elevated text-text-tertiary"
 							>
 								{{ tag }}
 							</span>
-							<span class="text-[10px] text-text-tertiary ml-auto">
+							<span class="text-2xs text-text-tertiary ml-auto">
 								{{ formatDate(entry.createdAt) }}
 							</span>
 						</div>
 					</div>
 				</div>
 			</NuxtLink>
+			<!-- The read stops at the limit; say so rather than imply that is all. -->
+			<p v-if="entries.length >= ENTRY_LIMIT" class="text-xs text-text-tertiary">
+				{{ t('components.contacts.contactKnowledgeTab.limitNote', { count: ENTRY_LIMIT }) }}
+			</p>
 		</div>
 	</div>
 </template>

@@ -141,7 +141,7 @@ async function next() {
 			<UiCard padding="lg">
 				<!-- A real <form> so Enter in any credential field advances the step, the
 				     same affordance the Admin step already has. -->
-				<form @submit.prevent="next">
+				<form id="setup-email-form" @submit.prevent="next">
 					<!-- A neutral hint, and only while nothing is picked: once a provider
 					     is selected there is nothing left to tell the operator. -->
 					<p
@@ -168,8 +168,9 @@ async function next() {
 							<input
 								v-model="provider"
 								type="radio"
+								name="setup-email-provider"
 								:value="opt.value"
-								class="mt-1 h-4 w-4 border-border-default bg-bg-deep text-brand focus:ring-brand"
+								class="mt-1 h-4 w-4 accent-brand"
 							/>
 							<UiIconBox
 								:icon="opt.icon"
@@ -296,7 +297,7 @@ async function next() {
 								:label="t('setup.email.fromAddressLabel')"
 								:placeholder="t('setup.email.fromAddressPlaceholder')"
 								autocomplete="off"
-								:error="errorText(errors.fromEmail)"
+								:error="showErrors ? errorText(errors.fromEmail) : undefined"
 								:help-text="t('setup.email.fromAddressHelp')"
 							/>
 							<UiInput
@@ -309,12 +310,8 @@ async function next() {
 					</div>
 
 					<div v-if="generalError" class="mt-5">
-						<UiErrorAlert variant="error" :message="generalError" />
+						<UiErrorAlert variant="error" :message="generalError" role="alert" />
 					</div>
-
-					<!-- Lets the browser submit the form on Enter; the visible advance
-				     control is the footer button below, which calls the same handler. -->
-					<button type="submit" class="sr-only">{{ t('common.continue') }}</button>
 				</form>
 			</UiCard>
 
@@ -323,7 +320,9 @@ async function next() {
 					<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
-				<UiButton :loading="submitting" @click="next">
+				<!-- The form's submit button, outside it via `form`: Enter in a field and
+				     this button run the same handler, with no hidden control in the tab order. -->
+				<UiButton type="submit" form="setup-email-form" :loading="submitting">
 					{{ submitting ? t('setup.email.validating') : t('setup.email.next') }}
 					<template v-if="!submitting" #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>

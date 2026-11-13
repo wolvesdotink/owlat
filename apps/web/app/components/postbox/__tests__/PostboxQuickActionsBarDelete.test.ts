@@ -95,9 +95,9 @@ describe('PostboxQuickActionsBar deletes', () => {
 
 	it('marks a move into Trash as a delete, and no other move', async () => {
 		const wrapper = mountBar();
-		await moveTo(wrapper, 'trash');
+		await moveTo(wrapper, 'Trash');
 		expect(moveSelected).toHaveBeenLastCalledWith('fld_trash', true);
-		await moveTo(wrapper, 'archive');
+		await moveTo(wrapper, 'Archive');
 		expect(moveSelected).toHaveBeenLastCalledWith('fld_archive', false);
 		await moveTo(wrapper, 'Receipts');
 		expect(moveSelected).toHaveBeenLastCalledWith('fld_custom', false);

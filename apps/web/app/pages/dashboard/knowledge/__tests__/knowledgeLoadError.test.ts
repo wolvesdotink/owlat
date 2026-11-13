@@ -50,6 +50,8 @@ function render(): VueWrapper {
 			stubs: {
 				NuxtLink: { template: '<a><slot /></a>' },
 				Teleport: true,
+				UiModal: true,
+				UiDisclosure: true,
 				UiInput: true,
 				UiTextarea: true,
 				UiSpinner: true,

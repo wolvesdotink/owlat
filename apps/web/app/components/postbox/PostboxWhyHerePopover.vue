@@ -224,7 +224,7 @@ async function keepHere() {
 			role="dialog"
 			tabindex="-1"
 			:aria-labelledby="titleId"
-			class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg outline-none"
+			class="fixed z-(--z-menu) w-[22rem] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-xl border border-border-subtle bg-bg-elevated p-4 text-sm shadow-lg outline-none"
 			data-testid="why-here-popover"
 		>
 			<h3 :id="titleId" class="mb-3 font-semibold text-text-primary">{{ title }}</h3>

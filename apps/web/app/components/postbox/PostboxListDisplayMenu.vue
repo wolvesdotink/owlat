@@ -72,138 +72,150 @@ const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 			     past the bottom of the screen. -->
 			<div class="max-h-[calc(100dvh-10rem)] overflow-y-auto">
 				<template v-if="viewModeOptions">
-					<p :class="HEADING_CLASS">{{ t('components.postbox.postboxLayout.inboxView') }}</p>
-					<button
-						v-for="option in viewModeOptions"
-						:key="option.value"
-						type="button"
-						role="menuitemradio"
-						:aria-checked="viewMode === option.value"
-						:aria-describedby="
-							option.description ? `${descriptionIdPrefix}-${option.value}` : undefined
-						"
-						:class="VIEW_MODE_ITEM_CLASS"
-						@click="
-							emit('select-view-mode', option.value);
-							close();
-						"
-					>
-						<CheckIcon
-							class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-brand"
-							:class="{ invisible: viewMode !== option.value }"
-							aria-hidden="true"
-						/>
-						<span class="flex flex-col">
-							{{ option.label }}
-							<span
-								v-if="option.description"
-								:id="`${descriptionIdPrefix}-${option.value}`"
+					<p :id="`${descriptionIdPrefix}-group-view`" :class="HEADING_CLASS">
+						{{ t('components.postbox.postboxLayout.inboxView') }}
+					</p>
+					<div role="group" :aria-labelledby="`${descriptionIdPrefix}-group-view`">
+						<button
+							v-for="option in viewModeOptions"
+							:key="option.value"
+							type="button"
+							role="menuitemradio"
+							:aria-checked="viewMode === option.value"
+							:aria-describedby="
+								option.description ? `${descriptionIdPrefix}-${option.value}` : undefined
+							"
+							:class="VIEW_MODE_ITEM_CLASS"
+							@click="
+								emit('select-view-mode', option.value);
+								close();
+							"
+						>
+							<CheckIcon
+								class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-brand"
+								:class="{ invisible: viewMode !== option.value }"
 								aria-hidden="true"
-								class="max-w-60 whitespace-normal text-xs text-text-tertiary"
-							>
-								{{ option.description }}
+							/>
+							<span class="flex flex-col">
+								{{ option.label }}
+								<span
+									v-if="option.description"
+									:id="`${descriptionIdPrefix}-${option.value}`"
+									aria-hidden="true"
+									class="max-w-60 whitespace-normal text-xs text-text-tertiary"
+								>
+									{{ option.description }}
+								</span>
 							</span>
-						</span>
-					</button>
+						</button>
+					</div>
 					<div class="my-1 border-t border-border-subtle" />
 				</template>
 
 				<template v-if="sortOrder">
-					<p :class="HEADING_CLASS">
+					<p :id="`${descriptionIdPrefix}-group-sort`" :class="HEADING_CLASS">
 						{{ t('components.postbox.postboxListDisplayMenu.sortOrder') }}
 					</p>
+					<div role="group" :aria-labelledby="`${descriptionIdPrefix}-group-sort`">
+						<button
+							v-for="option in POSTBOX_SORT_ORDER_OPTIONS"
+							:key="option.value"
+							type="button"
+							role="menuitemradio"
+							:aria-checked="sortOrder === option.value"
+							:class="ITEM_CLASS"
+							@click="
+								emit('select-sort-order', option.value);
+								close();
+							"
+						>
+							<CheckIcon
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: sortOrder !== option.value }"
+								aria-hidden="true"
+							/>
+							{{ t(option.label) }}
+						</button>
+					</div>
+					<div class="my-1 border-t border-border-subtle" />
+				</template>
+
+				<p :id="`${descriptionIdPrefix}-group-density`" :class="HEADING_CLASS">
+					{{ t('components.postbox.postboxListDisplayMenu.density') }}
+				</p>
+				<div role="group" :aria-labelledby="`${descriptionIdPrefix}-group-density`">
 					<button
-						v-for="option in POSTBOX_SORT_ORDER_OPTIONS"
+						v-for="option in POSTBOX_DENSITY_OPTIONS"
 						:key="option.value"
 						type="button"
 						role="menuitemradio"
-						:aria-checked="sortOrder === option.value"
+						:aria-checked="density === option.value"
 						:class="ITEM_CLASS"
 						@click="
-							emit('select-sort-order', option.value);
+							emit('select-density', option.value);
 							close();
 						"
 					>
 						<CheckIcon
 							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: sortOrder !== option.value }"
+							:class="{ invisible: density !== option.value }"
 							aria-hidden="true"
 						/>
 						{{ t(option.label) }}
 					</button>
-					<div class="my-1 border-t border-border-subtle" />
-				</template>
-
-				<p :class="HEADING_CLASS">
-					{{ t('components.postbox.postboxListDisplayMenu.density') }}
-				</p>
-				<button
-					v-for="option in POSTBOX_DENSITY_OPTIONS"
-					:key="option.value"
-					type="button"
-					role="menuitemradio"
-					:aria-checked="density === option.value"
-					:class="ITEM_CLASS"
-					@click="
-						emit('select-density', option.value);
-						close();
-					"
-				>
-					<CheckIcon
-						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-						:class="{ invisible: density !== option.value }"
-						aria-hidden="true"
-					/>
-					{{ t(option.label) }}
-				</button>
+				</div>
 				<div class="my-1 border-t border-border-subtle" />
 
-				<p :class="HEADING_CLASS">
+				<p :id="`${descriptionIdPrefix}-group-unread`" :class="HEADING_CLASS">
 					{{ t('components.postbox.postboxListDisplayMenu.unreadStyle') }}
 				</p>
-				<button
-					v-for="option in POSTBOX_UNREAD_STYLE_OPTIONS"
-					:key="option.value"
-					type="button"
-					role="menuitemradio"
-					:aria-checked="unreadStyle === option.value"
-					:class="ITEM_CLASS"
-					@click="
-						emit('select-unread-style', option.value);
-						close();
-					"
-				>
-					<CheckIcon
-						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-						:class="{ invisible: unreadStyle !== option.value }"
-						aria-hidden="true"
-					/>
-					{{ t(option.label) }}
-				</button>
+				<div role="group" :aria-labelledby="`${descriptionIdPrefix}-group-unread`">
+					<button
+						v-for="option in POSTBOX_UNREAD_STYLE_OPTIONS"
+						:key="option.value"
+						type="button"
+						role="menuitemradio"
+						:aria-checked="unreadStyle === option.value"
+						:class="ITEM_CLASS"
+						@click="
+							emit('select-unread-style', option.value);
+							close();
+						"
+					>
+						<CheckIcon
+							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+							:class="{ invisible: unreadStyle !== option.value }"
+							aria-hidden="true"
+						/>
+						{{ t(option.label) }}
+					</button>
+				</div>
 				<div class="my-1 border-t border-border-subtle" />
 
-				<p :class="HEADING_CLASS">
+				<p :id="`${descriptionIdPrefix}-group-pane`" :class="HEADING_CLASS">
 					{{ t('components.postbox.postboxListDisplayMenu.readingPane') }}
 				</p>
-				<button
-					v-for="option in POSTBOX_READING_PANE_OPTIONS"
-					:key="option.value"
-					type="button"
-					role="menuitemradio"
-					:aria-checked="readingPane === option.value"
-					:class="ITEM_CLASS"
-					@click="
-						emit('select-reading-pane', option.value);
-						close();
-					"
-				>
-					<CheckIcon
-						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-						:class="{ invisible: readingPane !== option.value }"
-						aria-hidden="true"
-					/>
-					{{ t(option.label) }}
-				</button>
+				<div role="group" :aria-labelledby="`${descriptionIdPrefix}-group-pane`">
+					<button
+						v-for="option in POSTBOX_READING_PANE_OPTIONS"
+						:key="option.value"
+						type="button"
+						role="menuitemradio"
+						:aria-checked="readingPane === option.value"
+						:class="ITEM_CLASS"
+						@click="
+							emit('select-reading-pane', option.value);
+							close();
+						"
+					>
+						<CheckIcon
+							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+							:class="{ invisible: readingPane !== option.value }"
+							aria-hidden="true"
+						/>
+						{{ t(option.label) }}
+					</button>
+				</div>
 			</div>
 		</template>
 	</PostboxOverflowMenu>

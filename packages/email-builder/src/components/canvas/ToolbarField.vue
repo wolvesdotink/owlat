@@ -59,7 +59,7 @@ function handleSelectChange(event: Event) {
 
 		<!-- Number / Slider inline -->
 		<template v-else-if="field.type === 'number' || field.type === 'slider'">
-			<label class="text-[11px] text-text-tertiary mr-1 whitespace-nowrap">{{
+			<label class="text-2xs text-text-tertiary mr-1 whitespace-nowrap">{{
 				label(field.label)
 			}}</label>
 			<input
@@ -73,7 +73,7 @@ function handleSelectChange(event: Event) {
 				@input="handleNumberChange"
 				@click.stop
 			/>
-			<span v-if="field.unit" class="text-[10px] text-text-tertiary">{{ field.unit }}</span>
+			<span v-if="field.unit" class="text-2xs text-text-tertiary">{{ field.unit }}</span>
 		</template>
 
 		<!-- Select -->

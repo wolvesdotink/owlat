@@ -65,7 +65,12 @@ const scope = computed(() =>
 		: ('skip' as const)
 );
 
-const { data: profile } = useConvexQuery(api.mail.senderProfile.profile, () => scope.value);
+const {
+	data: profile,
+	isLoading: profileLoading,
+	error: profileError,
+	refetch: refetchProfile,
+} = useConvexQuery(api.mail.senderProfile.profile, () => scope.value);
 const { data: files } = useConvexQuery(api.mail.mailbox.attachments.list, () =>
 	scope.value === 'skip'
 		? ('skip' as const)
@@ -112,7 +117,7 @@ function close() {
 			leave-active-class="transition-opacity duration-(--motion-moderate-exit)"
 			leave-to-class="opacity-0"
 		>
-			<div v-if="open" class="fixed inset-0 z-40 bg-scrim/50" @click="close" />
+			<div v-if="open" class="fixed inset-0 z-(--z-modal) bg-scrim/50" @click="close" />
 		</Transition>
 		<Transition
 			enter-active-class="transition-transform duration-(--motion-moderate)"
@@ -122,7 +127,7 @@ function close() {
 		>
 			<aside
 				v-if="open"
-				class="fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border-subtle bg-bg-elevated"
+				class="fixed top-0 right-0 z-(--z-modal) flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border-subtle bg-bg-elevated"
 				ref="dialogEl"
 				tabindex="-1"
 				role="dialog"
@@ -160,7 +165,7 @@ function close() {
 					</div>
 					<button
 						type="button"
-						class="text-text-tertiary hover:text-text-primary"
+						class="-m-1.5 rounded p-1.5 text-text-tertiary hover:bg-bg-surface hover:text-text-primary inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 						:aria-label="t('common.close')"
 						@click="close"
 					>
@@ -212,7 +217,25 @@ function close() {
 						</span>
 					</div>
 
-					<section v-if="profile?.threads.length">
+					<!-- The history is the panel's body: a placeholder of its shape while
+					     it loads (so the sections do not push in), and a retry when the
+					     read failed rather than a blank that reads as "no history". -->
+					<div
+						v-if="profile === undefined && profileLoading"
+						class="space-y-2"
+						role="status"
+						data-testid="sender-profile-loading"
+					>
+						<span class="sr-only">{{ t('common.loading') }}</span>
+						<UiSkeleton class="h-3 w-28" />
+						<UiSkeleton v-for="n in 3" :key="n" class="h-9 w-full" />
+					</div>
+					<UiQueryBoundary
+						v-else-if="profileError && profile === undefined"
+						:error="profileError"
+						@retry="refetchProfile"
+					/>
+					<section v-else-if="profile?.threads.length">
 						<h3 class="mb-1.5 text-xs font-medium tracking-wide text-text-tertiary uppercase">
 							{{ t('components.postbox.postboxSenderProfile.recentThreads') }}
 						</h3>

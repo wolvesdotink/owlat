@@ -24,6 +24,7 @@ beforeAll(() => {
 // Static imports are hoisted above `beforeAll`, which is fine: the SFCs only
 // call the auto-imported composables at setup() time, i.e. during mount.
 import DNSRecordPanel from '../DNSRecordPanel.vue';
+import UiDisclosure from '@owlat/ui/components/ui/Disclosure.vue';
 import StreamSubdomainPlanPanel from '../StreamSubdomainPlanPanel.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -126,6 +127,9 @@ function mountPanel(plan: unknown, canManage = true) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { DomainsDNSRecordPanel: DNSRecordPanel },
+			// Open by default here: these suites read the records themselves. The
+			// real disclosure is mounted by the suite that checks it is closed.
+			stubs: { UiDisclosure: { template: '<div><slot /></div>' } },
 		},
 	});
 }
@@ -296,12 +300,42 @@ describe('the panel does not duplicate the shipped table for this domain', () =>
 });
 
 describe('the proposal and its advice', () => {
-	it('renders the advice lines from the backend copy, keyed', () => {
+	it('renders the advice lines translated by their key', () => {
 		const w = mountPanel(planFixture());
 		const lines = w.findAll('[data-advice-key]');
 		expect(lines).toHaveLength(2);
 		expect(lines[0]?.attributes('data-advice-key')).toBe('no_reputation_inheritance');
-		expect(lines[0]?.text()).toContain('does not inherit anything');
+		expect(lines[0]?.text()).toContain('does not inherit the root domain’s reputation');
+	});
+
+	it('keeps the backend sentence for an advice key the catalog does not know', () => {
+		const w = mountPanel(
+			planFixture({ advice: [{ key: 'some_future_advice', text: 'Backend sentence.' }] })
+		);
+		expect(w.get('[data-advice-key]').text()).toBe('Backend sentence.');
+	});
+
+	it('names the streams a subdomain carries in words, not enum ids', () => {
+		const w = mountPanel(planFixture());
+		expect(w.text()).toContain('Carries: Campaign and Automation');
+		expect(w.text()).not.toContain('campaign, automation');
+	});
+
+	it('keeps the proposed records one click down, closed by default', async () => {
+		queryArgs = undefined;
+		vi.stubGlobal('useConvexQuery', () => ({ data: ref(planFixture()), isLoading: ref(false) }));
+		const w = mount(StreamSubdomainPlanPanel, {
+			props: { domainId: 'domain_1', canManage: true },
+			global: {
+				plugins: [createTestI18n()],
+				components: { DomainsDNSRecordPanel: DNSRecordPanel, UiDisclosure },
+			},
+		});
+		expect(w.find('[data-testid="stream-subdomain-list"]').exists()).toBe(true);
+		expect(w.find('[data-testid="stream-subdomain-records"]').exists()).toBe(false);
+		const trigger = w.get('button[aria-expanded="false"]');
+		await trigger.trigger('click');
+		expect(w.find('[data-testid="stream-subdomain-records"]').exists()).toBe(true);
 	});
 
 	it('shows a name that already exists as DONE rather than as work', () => {

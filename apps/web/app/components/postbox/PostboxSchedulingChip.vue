@@ -70,7 +70,7 @@ async function draft() {
 			<UiTooltip :text="t('common.dismiss')">
 				<button
 					type="button"
-					class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+					class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 					:aria-label="t('components.postbox.postboxSchedulingChip.dismissLabel')"
 					@click="emit('dismiss')"
 				>

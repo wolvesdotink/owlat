@@ -64,7 +64,7 @@ function selectSwatch(color: string) {
 	<div class="flex flex-col gap-2">
 		<!-- Main: swatch + hex input + picker button -->
 		<div
-			class="flex items-center gap-0 border border-border-subtle rounded-lg overflow-hidden bg-bg-surface eb-input-ring"
+			class="flex items-center gap-0 border border-border-strong rounded-lg overflow-hidden bg-bg-surface eb-input-ring"
 		>
 			<UiTooltip :text="t('builder.panel.color.open')">
 				<button
@@ -85,7 +85,7 @@ function selectSwatch(color: string) {
 				:aria-label="
 					label ? t('builder.panel.color.hexFor', { field: label }) : t('builder.panel.color.hex')
 				"
-				class="flex-1 py-2 px-2 text-[13px] font-mono border-none bg-transparent text-text-primary outline-none min-w-0"
+				class="flex-1 py-2 px-2 text-caption pointer-coarse:text-base font-mono border-none bg-transparent text-text-primary outline-none min-w-0"
 				:value="value"
 				:placeholder="placeholder ?? '#000000'"
 				spellcheck="false"
@@ -94,7 +94,7 @@ function selectSwatch(color: string) {
 			/>
 			<UiTooltip :text="t('builder.panel.color.pick')">
 				<button
-					class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
+					class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-tertiary cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
 					type="button"
 					:aria-label="
 						label
@@ -125,7 +125,7 @@ function selectSwatch(color: string) {
 			:aria-label="t('builder.panel.color.brandColors')"
 			data-testid="brand-swatches"
 		>
-			<span class="text-[10px] font-medium uppercase tracking-wide text-text-tertiary mr-0.5">
+			<span class="text-2xs font-medium uppercase tracking-wide text-text-tertiary mr-0.5">
 				{{ t('builder.panel.color.brand') }}
 			</span>
 			<ColorSwatch

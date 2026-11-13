@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick, toRef } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, nextTick, toRef } from 'vue';
 import { FileCodeIcon } from '@coolicons/vue';
 import type { EditorBlock, EmailTheme } from '../../../types';
 import { useBlockRenderer } from '../../../composables/useBlockRenderer';
@@ -73,10 +73,32 @@ watch(srcdoc, () => {
 	});
 });
 
-onMounted(() => {
-	if (iframeRef.value) {
-		iframeRef.value.addEventListener('load', resizeIframe);
+// Bound on the element (not once in onMounted, when an empty block has no
+// iframe yet), and followed by a size observer on the frame's body: images
+// that load after the document would otherwise grow past the fixed height,
+// with scrolling off, and be clipped.
+let bodyObserver: ResizeObserver | null = null;
+
+function handleLoad() {
+	resizeIframe();
+	bodyObserver?.disconnect();
+	bodyObserver = null;
+	try {
+		const doc = iframeRef.value?.contentDocument;
+		if (!doc?.body) return;
+		doc.addEventListener('load', resizeIframe, true);
+		if (typeof ResizeObserver !== 'undefined') {
+			bodyObserver = new ResizeObserver(resizeIframe);
+			bodyObserver.observe(doc.body);
+		}
+	} catch {
+		// cross-origin safety
 	}
+}
+
+onBeforeUnmount(() => {
+	bodyObserver?.disconnect();
+	bodyObserver = null;
 });
 </script>
 
@@ -98,8 +120,10 @@ onMounted(() => {
 			:srcdoc="srcdoc"
 			sandbox="allow-same-origin"
 			:style="{ height: `${iframeHeight}px` }"
+			:title="t('builder.canvas.preview.frameTitle', { block: blockLabel })"
 			frameborder="0"
 			scrolling="no"
+			@load="handleLoad"
 		/>
 	</div>
 </template>

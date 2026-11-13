@@ -50,7 +50,10 @@ const asyncComponent = computed(() => {
 	return defineAsyncComponent(props.module.component);
 });
 
-const regionLabel = computed(() => props.module.label ?? props.module.kind);
+// A region landmark needs a name a person can read. `kind` is an internal id,
+// so an unlabelled contribution is a plain group rather than a landmark named
+// "raw_kind" in the screen reader's landmark list.
+const regionLabel = computed(() => props.module.label ?? null);
 const boundProps = computed(() => (props.context === undefined ? {} : { context: props.context }));
 
 function retry(clearFailure: () => void) {
@@ -67,7 +70,12 @@ function retry(clearFailure: () => void) {
 </script>
 
 <template>
-	<section ref="regionRef" role="region" tabindex="-1" :aria-label="regionLabel">
+	<section
+		ref="regionRef"
+		:role="regionLabel ? 'region' : 'group'"
+		tabindex="-1"
+		:aria-label="regionLabel ?? undefined"
+	>
 		<!-- No `capture` filter: every error from a contribution stops here, not
 		     only render failures, because a broken widget (often a plugin) must
 		     never reach the page. Reset keys: a host handed a different module
@@ -79,7 +87,9 @@ function retry(clearFailure: () => void) {
 					<div class="p-4 flex items-center justify-center gap-2" aria-busy="true">
 						<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 						<span class="sr-only">{{
-							t('components.widget.host.loading', { label: regionLabel })
+							regionLabel
+								? t('components.widget.host.loading', { label: regionLabel })
+								: t('common.loading')
 						}}</span>
 					</div>
 				</template>

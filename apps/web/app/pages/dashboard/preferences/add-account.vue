@@ -5,6 +5,7 @@ import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 import { CheckIcon, MailPlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import PostboxMailboxAddressField from '~/components/postbox/PostboxMailboxAddressField.vue';
+import UiSegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
 
 const { t } = useI18n();
 
@@ -63,6 +64,15 @@ const isTeam = computed(() => mode.value === 'team');
 // an external IMAP account connected in one motion. The external option
 // only appears when the instance has external mailboxes enabled.
 const teamTransport = ref<'hosted' | 'external'>('hosted');
+
+const modeOptions = computed(() => [
+	{ value: 'personal', label: t('dashboard.preferences.addAccount.modePersonal') },
+	{ value: 'team', label: t('dashboard.preferences.addAccount.modeTeam') },
+]);
+const transportOptions = computed(() => [
+	{ value: 'hosted', label: t('dashboard.preferences.addAccount.transportHosted') },
+	{ value: 'external', label: t('dashboard.preferences.addAccount.transportExternal') },
+]);
 const canConnectExternal = computed(() => isEnabled('mail.external'));
 const isExternalTeam = computed(() => isTeam.value && teamTransport.value === 'external');
 
@@ -147,54 +157,25 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 		<!-- Step 1: choose address -->
 		<section v-if="step === 1" class="card p-6">
 			<!-- Personal vs team inbox. Only admins can create a shared team inbox. -->
-			<div v-if="isAdmin" class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit">
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm rounded transition-colors"
-					:class="mode === 'personal' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'"
-					@click="mode = 'personal'"
-				>
-					{{ t('dashboard.preferences.addAccount.modePersonal') }}
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm rounded transition-colors"
-					:class="mode === 'team' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'"
-					@click="mode = 'team'"
-				>
-					{{ t('dashboard.preferences.addAccount.modeTeam') }}
-				</button>
-			</div>
+			<UiSegmentedControl
+				v-if="isAdmin"
+				class="mb-5 w-fit"
+				:aria-label="t('dashboard.preferences.addAccount.modeLabel')"
+				:options="modeOptions"
+				:model-value="mode"
+				@update:model-value="(value: string) => (mode = value as typeof mode)"
+			/>
 
 			<!-- Team transport: hosted on a verified domain or an
 			     external IMAP account connected as a shared inbox in one motion. -->
-			<div
+			<UiSegmentedControl
 				v-if="isTeam && canConnectExternal"
-				class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit"
-			>
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm rounded transition-colors"
-					:class="
-						teamTransport === 'hosted' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'
-					"
-					@click="teamTransport = 'hosted'"
-				>
-					{{ t('dashboard.preferences.addAccount.transportHosted') }}
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm rounded transition-colors"
-					:class="
-						teamTransport === 'external'
-							? 'bg-bg-base shadow-sm font-medium'
-							: 'text-text-secondary'
-					"
-					@click="teamTransport = 'external'"
-				>
-					{{ t('dashboard.preferences.addAccount.transportExternal') }}
-				</button>
-			</div>
+				class="mb-5 w-fit"
+				:aria-label="t('dashboard.preferences.addAccount.transportLabel')"
+				:options="transportOptions"
+				:model-value="teamTransport"
+				@update:model-value="(value: string) => (teamTransport = value as typeof teamTransport)"
+			/>
 
 			<h2 class="font-semibold mb-1">
 				{{
@@ -236,7 +217,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					@toggle="toggleMember"
 				/>
 				<div>
-					<label for="ext-team-displayname" class="text-sm font-medium block mb-1">
+					<label for="ext-team-displayname" class="label">
 						{{ t('dashboard.preferences.addAccount.displayNameLabel') }}
 					</label>
 					<input
@@ -302,7 +283,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				</div>
 				<div v-else class="space-y-4">
 					<div>
-						<label for="add-account-localpart" class="text-sm font-medium block mb-1">{{
+						<label for="add-account-localpart" class="label">{{
 							t('dashboard.preferences.addAccount.addressLabel')
 						}}</label>
 						<PostboxMailboxAddressField
@@ -331,7 +312,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 					</div>
 
 					<div>
-						<label for="displayname" class="text-sm font-medium block mb-1">
+						<label for="displayname" class="label">
 							{{ t('dashboard.preferences.addAccount.displayNameLabel') }}
 						</label>
 						<input
@@ -360,10 +341,11 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 
 					<UiButton
 						type="button"
-						:disabled="!selectedAddress || provisioning"
+						:disabled="!selectedAddress"
+						:loading="provisioning"
+						:aria-describedby="!selectedAddress ? 'add-account-submit-hint' : undefined"
 						@click="handleSubmit"
 					>
-						<SpinnerIcon v-if="provisioning" class="w-4 h-4 mr-1.5" />
 						{{
 							provisioning
 								? t('dashboard.preferences.addAccount.creating')
@@ -372,6 +354,13 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 									: t('dashboard.preferences.addAccount.createMailbox')
 						}}
 					</UiButton>
+					<p
+						v-if="!selectedAddress"
+						id="add-account-submit-hint"
+						class="text-xs text-text-tertiary"
+					>
+						{{ t('dashboard.preferences.addAccount.submitHint') }}
+					</p>
 				</div>
 			</UiQueryBoundary>
 		</section>

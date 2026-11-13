@@ -33,6 +33,7 @@ import { COMMAND_PALETTE_OPEN_EVENT } from '~/composables/useCommandPalette';
 import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 import AppCommandPalette from '~/components/AppCommandPalette.vue';
 import AppCommandPaletteResults from '~/components/AppCommandPaletteResults.vue';
+import AppCommandPaletteSearchBar from '~/components/AppCommandPaletteSearchBar.vue';
 import DashboardLayout from '../dashboard.vue';
 
 vi.mock('@owlat/api', () => {
@@ -107,6 +108,7 @@ function mountLayout(): VueWrapper {
 			components: {
 				...shellComponents,
 				AppCommandPaletteResults,
+				AppCommandPaletteSearchBar,
 				// Nuxt's `Lazy*` components are async components over the same module.
 				LazyAppCommandPalette: defineAsyncComponent(async () => {
 					paletteLoads += 1;

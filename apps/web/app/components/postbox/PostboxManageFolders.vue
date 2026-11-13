@@ -28,20 +28,46 @@ const newName = ref('');
 const newInput = ref<HTMLInputElement | null>(null);
 const renamingId = ref<Id<'mailFolders'> | null>(null);
 const renameName = ref('');
+// The pencil unmounts when the field mounts, so focus is moved by hand: into
+// the field on start, back to the row's pencil once the rename ends.
+const listEl = ref<HTMLElement | null>(null);
+const renameInput = ref<HTMLInputElement | null>(null);
+function bindRenameInput(el: unknown) {
+	renameInput.value = el instanceof HTMLInputElement ? el : null;
+}
+async function focusRenameButton(folderId: string) {
+	await nextTick();
+	listEl.value
+		?.querySelector<HTMLElement>(`[data-folder-rename="${CSS.escape(folderId)}"]`)
+		?.focus();
+}
 
 async function handleCreate() {
 	if (await folderActions.create(newName.value)) newName.value = '';
 }
 
-function startRename(folder: { _id: Id<'mailFolders'>; name: string }) {
+async function startRename(folder: { _id: Id<'mailFolders'>; name: string }) {
 	renamingId.value = folder._id;
 	renameName.value = folder.name;
+	await nextTick();
+	renameInput.value?.focus();
+	renameInput.value?.select();
 }
 
 async function commitRename() {
 	const id = renamingId.value;
 	if (!id) return;
-	if (await folderActions.rename(id, renameName.value)) renamingId.value = null;
+	const hadFocus = renameInput.value === document.activeElement;
+	if (await folderActions.rename(id, renameName.value)) {
+		renamingId.value = null;
+		if (hadFocus) void focusRenameButton(id);
+	}
+}
+
+function cancelRename() {
+	const id = renamingId.value;
+	renamingId.value = null;
+	if (id) void focusRenameButton(id);
 }
 
 // A context menu can ask for a specific row in edit mode; consume the request so
@@ -87,7 +113,7 @@ watch(
 			<UiButton type="submit" :disabled="!newName.trim()">{{ t('common.add') }}</UiButton>
 		</form>
 
-		<ul v-if="customFolders.length > 0" class="space-y-2 max-h-56 overflow-auto">
+		<ul v-if="customFolders.length > 0" ref="listEl" class="space-y-2 max-h-56 overflow-auto">
 			<li
 				v-for="folder in customFolders"
 				:key="folder._id"
@@ -96,13 +122,14 @@ watch(
 				<FolderIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 				<input
 					v-if="renamingId === folder._id"
+					:ref="bindRenameInput"
 					v-model="renameName"
 					type="text"
 					class="input input-sm flex-1"
 					:aria-label="t('components.postbox.postboxManageFolders.nameAriaLabel')"
 					@blur="commitRename"
 					@keyup.enter="commitRename"
-					@keyup.escape="renamingId = null"
+					@keyup.escape="cancelRename"
 				/>
 				<span v-else class="flex-1 truncate">{{ folder.name }}</span>
 				<span v-if="renamingId !== folder._id" class="text-xs text-text-tertiary">
@@ -114,7 +141,8 @@ watch(
 				>
 					<button
 						type="button"
-						class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+						:data-folder-rename="folder._id"
+						class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface pointer-coarse:p-2.5"
 						:aria-label="
 							t('components.postbox.postboxManageFolders.renameAriaLabel', { name: folder.name })
 						"
@@ -126,7 +154,7 @@ watch(
 				<UiTooltip :text="t('components.postbox.postboxManageFolders.delete')">
 					<button
 						type="button"
-						class="p-1 rounded hover:bg-error/10 text-error"
+						class="p-1 rounded text-text-tertiary hover:text-error hover:bg-error/10 pointer-coarse:p-2.5"
 						:aria-label="
 							t('components.postbox.postboxManageFolders.deleteAriaLabel', { name: folder.name })
 						"

@@ -69,6 +69,7 @@ const AVAILABLE_SCOPES = computed<
 			<!-- Error -->
 			<div
 				v-if="error"
+				role="alert"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
 				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
@@ -78,7 +79,7 @@ const AVAILABLE_SCOPES = computed<
 			<!-- Name Field -->
 			<div class="mb-6">
 				<label for="key-name" class="label">
-					{{ t('common.name') }} <span class="text-error">*</span>
+					{{ t('common.name') }} <span class="text-error" aria-hidden="true">*</span>
 				</label>
 				<input
 					id="key-name"
@@ -86,18 +87,20 @@ const AVAILABLE_SCOPES = computed<
 					type="text"
 					:placeholder="t('dashboard.admin.team.api.index.form.namePlaceholder')"
 					class="input"
+					aria-required="true"
+					aria-describedby="key-name-help"
 					:disabled="isCreating"
 				/>
-				<p class="mt-1 text-xs text-text-tertiary">
+				<p id="key-name-help" class="mt-1 text-xs text-text-tertiary">
 					{{ t('dashboard.admin.team.api.index.form.nameHelp') }}
 				</p>
 			</div>
 
 			<!-- Scopes Field -->
-			<div>
-				<span class="label"
+			<div role="group" aria-labelledby="key-scopes-label">
+				<span id="key-scopes-label" class="label"
 					>{{ t('dashboard.admin.team.api.index.form.scopesLabel') }}
-					<span class="text-error">*</span></span
+					<span class="text-error" aria-hidden="true">*</span></span
 				>
 				<p class="mb-2 text-xs text-text-tertiary">
 					{{ t('dashboard.admin.team.api.index.form.scopesHelp') }}
@@ -106,7 +109,7 @@ const AVAILABLE_SCOPES = computed<
 					<label
 						v-for="scope in AVAILABLE_SCOPES"
 						:key="scope.value"
-						class="flex items-start gap-3 p-3 rounded-lg shadow-surface-1 cursor-pointer hover:bg-bg-surface-hover"
+						class="flex items-start gap-3 p-3 rounded-lg shadow-surface-1 cursor-pointer hover:bg-bg-surface-hover has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand"
 						:class="{ 'opacity-60 cursor-not-allowed': isCreating }"
 					>
 						<input

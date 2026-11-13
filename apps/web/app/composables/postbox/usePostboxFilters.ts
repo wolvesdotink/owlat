@@ -140,7 +140,7 @@ export function usePostboxFilters(mailboxId: Ref<Id<'mailboxes'> | null>) {
 			priority?: number;
 		}
 	) {
-		await updateMutation.run({ filterId, ...patch });
+		return updateMutation.run({ filterId, ...patch });
 	}
 
 	async function remove(filterId: Id<'mailFilters'>) {

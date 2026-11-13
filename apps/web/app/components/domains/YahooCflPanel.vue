@@ -164,9 +164,9 @@ async function reset() {
 	     bordered strip. -->
 	<div v-if="guide" class="mt-4 pt-4 border-t border-border-subtle" data-testid="yahoocfl-panel">
 		<div class="flex items-center justify-between gap-3">
-			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
+			<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 				{{ t('components.domains.yahooCflPanel.heading') }}
-			</p>
+			</h4>
 			<span
 				class="text-xs px-2 py-0.5 rounded-full"
 				:class="stateClass"
@@ -221,9 +221,9 @@ async function reset() {
 		<!-- The controls that record what the operator actually did. -->
 		<div v-if="canManage" class="mt-3 flex flex-wrap items-center gap-2">
 			<UiButton
+				size="sm"
 				v-if="canSubmit"
 				type="button"
-				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-submit"
 				:disabled="isBusy || submitBlockedByDkim"
 				:aria-describedby="submitBlockedByDkim ? 'yahoocfl-submit-blocked' : undefined"
@@ -242,9 +242,9 @@ async function reset() {
 				{{ t('components.domains.yahooCflPanel.submitBlocked') }}
 			</p>
 			<UiButton
+				size="sm"
 				v-if="canConfirm"
 				type="button"
-				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-confirm"
 				:disabled="isBusy"
 				@click="confirm"
@@ -254,10 +254,10 @@ async function reset() {
 				}}
 			</UiButton>
 			<UiButton
+				size="sm"
 				variant="secondary"
 				v-if="canReset"
 				type="button"
-				class="text-sm py-1.5 px-3"
 				data-testid="yahoocfl-reset"
 				:disabled="isBusy"
 				@click="reset"

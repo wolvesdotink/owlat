@@ -34,7 +34,12 @@ const handleChange = (event: Event) => {
 	<label
 		:for="checkboxId"
 		class="flex items-start gap-3 cursor-pointer"
-		:class="{ 'opacity-50 cursor-not-allowed': disabled }"
+		:class="{
+			'opacity-50 cursor-not-allowed': disabled,
+			// A bare box is a 16px target; on touch the label around it grows to 44px.
+			'pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center':
+				!label && !description,
+		}"
 	>
 		<!-- Checkbox input -->
 		<input
@@ -44,7 +49,7 @@ const handleChange = (event: Event) => {
 			:indeterminate="indeterminate"
 			:disabled="disabled"
 			:aria-label="ariaLabel"
-			class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0"
+			class="mt-1 h-4 w-4 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
 			@change="handleChange"
 		/>
 

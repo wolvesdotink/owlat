@@ -65,6 +65,11 @@ const health = computed(() =>
 
 const localized = useLocalized();
 
+// The verdict and the next step answer "is my mail arriving?". The checks behind
+// it are the why: open on their own when one of them needs attention, one click
+// away when all of them pass.
+const needsAttention = computed(() => health.value.gates.some((gate) => gate.status !== 'ready'));
+
 const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 	ready: CircleCheckIcon,
 	attention: CircleWarningIcon,
@@ -103,34 +108,39 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 				</p>
 			</div>
 
-			<ul class="space-y-2">
-				<li
-					v-for="gate in health.gates"
-					:key="gate.key"
-					class="flex items-start gap-2.5 rounded-lg bg-bg-surface px-3 py-2.5"
-				>
-					<component
-						:is="GATE_ICON[gate.status]"
-						class="w-4 h-4 mt-0.5 shrink-0"
-						:class="healthTextClass[gate.tone]"
-					/>
-					<div class="min-w-0 flex-1">
-						<p class="text-sm font-medium text-text-primary">{{ localized(gate.title) }}</p>
-						<p class="text-xs text-text-secondary mt-0.5">{{ localized(gate.detail) }}</p>
-					</div>
-				</li>
-			</ul>
+			<details :open="needsAttention" data-testid="sending-health-checks">
+				<summary class="cursor-pointer text-sm text-text-secondary hover:text-text-primary">
+					{{ t('components.postbox.postboxSendingHealthCard.showChecks') }}
+				</summary>
+				<ul class="mt-2 space-y-2">
+					<li
+						v-for="gate in health.gates"
+						:key="gate.key"
+						class="flex items-start gap-2.5 rounded-lg bg-bg-surface px-3 py-2.5"
+					>
+						<component
+							:is="GATE_ICON[gate.status]"
+							class="w-4 h-4 mt-0.5 shrink-0"
+							:class="healthTextClass[gate.tone]"
+						/>
+						<div class="min-w-0 flex-1">
+							<p class="text-sm font-medium text-text-primary">{{ localized(gate.title) }}</p>
+							<p class="text-xs text-text-secondary mt-0.5">{{ localized(gate.detail) }}</p>
+						</div>
+					</li>
+				</ul>
 
-			<!-- A share, only once there are enough attempts for a share to mean
+				<!-- A share, only once there are enough attempts for a share to mean
 			     anything; below that the gate above already reports the raw counts. -->
-			<p v-if="health.ratio" class="text-xs text-text-tertiary">
-				{{
-					t('components.postbox.postboxSendingHealthCard.ratio', {
-						failures: health.ratio.failures,
-						attempts: health.ratio.attempts,
-					})
-				}}
-			</p>
+				<p v-if="health.ratio" class="mt-2 text-xs text-text-tertiary">
+					{{
+						t('components.postbox.postboxSendingHealthCard.ratio', {
+							failures: health.ratio.failures,
+							attempts: health.ratio.attempts,
+						})
+					}}
+				</p>
+			</details>
 		</div>
 	</section>
 </template>

@@ -50,6 +50,7 @@ function handleStepClick(stepId: Step['id']): void {
 				:key="step.id"
 				class="flex items-center"
 				:class="index < steps.length - 1 ? 'flex-auto' : 'shrink-0'"
+				:aria-current="getStepStatus(step.id) === 'current' ? 'step' : undefined"
 			>
 				<component
 					:is="stepIsClickable(step.id) ? 'button' : 'div'"
@@ -78,11 +79,15 @@ function handleStepClick(stepId: Step['id']): void {
 								? 'bg-text-primary text-text-inverse'
 								: getStepStatus(step.id) === 'current'
 									? 'bg-bg-surface text-text-primary ring-1 ring-brand'
-									: 'bg-bg-surface text-text-tertiary border border-border-subtle',
+									: 'bg-bg-surface text-text-tertiary border border-border-default',
 						]"
 					>
-						<CheckIcon v-if="getStepStatus(step.id) === 'completed'" class="w-4 h-4" />
-						<span v-else>{{ step.number }}</span>
+						<CheckIcon
+							v-if="getStepStatus(step.id) === 'completed'"
+							class="w-4 h-4"
+							aria-hidden="true"
+						/>
+						<span v-else aria-hidden="true">{{ step.number }}</span>
 					</div>
 					<!-- Step Label. Below `sm` five labelled steps are wider than a phone,
 					     so only the current step keeps its visible label; the others stay
@@ -99,6 +104,9 @@ function handleStepClick(stepId: Step['id']): void {
 						]"
 					>
 						{{ step.label }}
+						<span v-if="getStepStatus(step.id) === 'completed'" class="sr-only">
+							({{ t('ui.stepIndicator.completed') }})</span
+						>
 					</span>
 				</component>
 				<!-- Connector Line -->
@@ -106,7 +114,7 @@ function handleStepClick(stepId: Step['id']): void {
 					v-if="index < steps.length - 1"
 					:class="[
 						'flex-1 h-0.5 mx-2 sm:mx-4',
-						isConnectorHighlighted(index) ? 'bg-text-primary/30' : 'bg-border-subtle',
+						isConnectorHighlighted(index) ? 'bg-text-primary/30' : 'bg-border-default',
 					]"
 				/>
 			</li>

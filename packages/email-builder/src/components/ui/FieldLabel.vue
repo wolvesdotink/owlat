@@ -8,8 +8,8 @@ defineProps<{
 	<label
 		class="font-medium leading-none"
 		:class="size === 'sm'
-			? 'text-[10px] text-text-tertiary'
-			: 'text-[12.5px] text-text-primary tracking-[-0.01em]'"
+			? 'text-2xs text-text-tertiary'
+			: 'text-caption text-text-primary tracking-[-0.01em]'"
 	>
 		<slot />
 	</label>

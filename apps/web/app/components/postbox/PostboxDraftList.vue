@@ -6,9 +6,11 @@ import {
 	usePostboxThreadTimestamp,
 } from '~/composables/postbox/usePostboxListClock';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
+import { draftPlainText } from '~/utils/postboxDraftText';
 import { ClockIcon, FileEditIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import InboxChip from '~/components/inbox/InboxChip.vue';
+import PostboxEmptyState from './PostboxEmptyState.vue';
 
 /**
  * One mailbox's drafts (`mailboxId`), or All Drafts (`mailboxIds`): the live
@@ -39,6 +41,12 @@ const drafts = computed(() => (isMerged.value ? merged.data.value : single.data.
 const isLoading = computed(() =>
 	isMerged.value ? merged.isLoading.value : single.isLoading.value
 );
+// A failed read is not an empty folder: "No drafts" would say the work is gone.
+const error = computed(() => (isMerged.value ? merged.error.value : single.error.value));
+function retry() {
+	if (isMerged.value) merged.refetch();
+	else single.refetch();
+}
 const { byId: inboxById } = useInboxes();
 
 // A reply draft is continued where replies are written (Answer mode, on the
@@ -57,12 +65,7 @@ function openDraft(draft: {
 }
 
 function preview(bodyHtml: string | undefined): string {
-	return (bodyHtml ?? '')
-		.replace(/<[^>]+>/g, ' ')
-		.replace(/&nbsp;/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, 100);
+	return draftPlainText(bodyHtml ?? '').slice(0, 100);
 }
 </script>
 
@@ -70,17 +73,19 @@ function preview(bodyHtml: string | undefined): string {
 	<div v-if="isLoading" class="p-6 flex justify-center">
 		<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 	</div>
-	<div v-else-if="drafts.length === 0" class="p-12 text-center">
-		<FileEditIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
-		<p class="text-sm text-text-secondary mt-3">
-			{{ t('components.postbox.postboxDraftList.empty') }}
-		</p>
+	<div v-else-if="error && drafts.length === 0" class="p-4">
+		<UiQueryBoundary :error="error" @retry="retry" />
 	</div>
+	<PostboxEmptyState
+		v-else-if="drafts.length === 0"
+		:icon="FileEditIcon"
+		:title="t('components.postbox.postboxDraftList.empty')"
+	/>
 	<ul v-else class="divide-y divide-border-subtle">
 		<li v-for="d in drafts" :key="d._id">
 			<button
 				type="button"
-				class="w-full text-left block px-4 py-3 hover:bg-bg-elevated"
+				class="w-full text-left block px-4 py-3 hover:bg-(--surface-1-hover)"
 				@click="openDraft(d)"
 			>
 				<div class="flex items-baseline justify-between gap-3">

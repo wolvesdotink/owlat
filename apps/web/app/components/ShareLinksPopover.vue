@@ -3,6 +3,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { CheckIcon, CloseIcon, CopyIcon, PlusIcon, ShareAltIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
+import { formatCompactRelativeTime } from '~/utils/formatters';
 
 const props = defineProps<{
 	emailTemplateId?: Id<'emailTemplates'>;
@@ -13,7 +15,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const isOpen = ref(false);
 const isCreating = ref(false);
-const { copy: copyToClipboard, copiedKey: copiedId } = useCopyToClipboard();
+const { copy: copyToClipboard, copiedKey: copiedId } = useCopyToClipboard({ notify: false });
 const triggerRef = ref<HTMLElement | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 
@@ -23,6 +25,7 @@ const panelRightPx = computed(() => {
 });
 
 const { showToast } = useToast();
+const confirm = useConfirm();
 
 // The whole popover is an admin surface: minting, revoking AND listing are all
 // held to `shareLinks:manage` (a row carries the bearer token for the public
@@ -55,6 +58,14 @@ const { run: revokeShareLink } = useBackendOperation(api.shareLinks.links.revoke
 
 const config = useRuntimeConfig();
 
+const shareUrl = (token: string) => {
+	const siteUrl = config.public['siteUrl'] || window.location.origin;
+	return `${siteUrl}/share?token=${encodeURIComponent(token)}`;
+};
+
+// The link whose copy the browser refused: its row shows the URL to select by hand.
+const copyFailedUrl = ref<string | null>(null);
+
 const handleCreate = async () => {
 	isCreating.value = true;
 	try {
@@ -63,24 +74,40 @@ const handleCreate = async () => {
 			transactionalEmailId: props.transactionalEmailId,
 		});
 		if (result.ok && result.result.url) {
-			await copyToClipboard(result.result.url);
-			showToast(t('components.shareLinksPopover.createdToast'), 'success');
+			const copied = await copyToClipboard(result.result.url);
+			copyFailedUrl.value = copied ? null : result.result.url;
+			showToast(
+				copied
+					? t('components.shareLinksPopover.createdToast')
+					: t('components.shareLinksPopover.createdNotCopiedToast'),
+				'success'
+			);
 		}
 	} finally {
 		isCreating.value = false;
 	}
 };
 
+// Revoking cuts off everyone the link already went to, and there is no way to
+// bring the same link back: ask first.
 const handleRevoke = async (shareLinkId: Id<'shareLinks'>) => {
+	const confirmed = await confirm({
+		title: t('components.shareLinksPopover.revokeConfirmTitle'),
+		body: t('components.shareLinksPopover.revokeConfirmBody'),
+		confirmText: t('components.shareLinksPopover.revokeLink'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
 	const result = await revokeShareLink({ shareLinkId });
 	if (!result.ok) return;
 	showToast(t('components.shareLinksPopover.revokedToast'), 'success');
 };
 
 const handleCopy = async (token: string) => {
-	const siteUrl = config.public['siteUrl'] || window.location.origin;
-	const url = `${siteUrl}/share?token=${encodeURIComponent(token)}`;
-	await copyToClipboard(url, token);
+	const url = shareUrl(token);
+	const copied = await copyToClipboard(url, token);
+	copyFailedUrl.value = copied ? null : url;
+	if (!copied) showToast(t('components.shareLinksPopover.copyFailed'), 'error');
 };
 
 const getLinkStatus = (link: { expiresAt: number; revokedAt?: number }) => {
@@ -95,26 +122,39 @@ const getHoursRemaining = (expiresAt: number) => {
 };
 
 // Close on outside click (shared composable owns the listener lifecycle)
-// and on Escape.
+// and on Escape (the shared Escape stack, so the builder's own Esc stays put).
 useClickOutside([panelRef, triggerRef], () => {
 	if (isOpen.value) isOpen.value = false;
 });
-const handleEscape = (event: KeyboardEvent) => {
-	if (event.key === 'Escape') isOpen.value = false;
-};
-watch(isOpen, (open) => {
-	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the popover
-	if (open) document.addEventListener('keydown', handleEscape);
-	else document.removeEventListener('keydown', handleEscape);
+useEscapeToClose(isOpen);
+
+// The panel is teleported to the end of <body>: move focus into it on open, and
+// back to the trigger when it closes with focus inside, or a keyboard user would
+// have to tab through the whole page to reach it.
+watch(isOpen, async (open) => {
+	if (open) {
+		await nextTick();
+		panelRef.value?.querySelector<HTMLElement>('button:not([disabled]), input')?.focus();
+		return;
+	}
+	copyFailedUrl.value = null;
+	if (!panelRef.value || panelRef.value.contains(document.activeElement)) {
+		triggerRef.value?.querySelector<HTMLElement>('button')?.focus();
+	}
 });
-onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 </script>
 
 <template>
 	<div v-if="canShare" class="relative inline-block">
 		<div ref="triggerRef">
 			<UiTooltip :text="t('components.shareLinksPopover.triggerTitle')">
-				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
+				<UiButton
+					variant="outline"
+					size="sm"
+					aria-haspopup="dialog"
+					:aria-expanded="isOpen"
+					@click.stop="isOpen = !isOpen"
+				>
 					<template #iconLeft>
 						<ShareAltIcon class="w-4 h-4" />
 					</template>
@@ -137,7 +177,9 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 				<div
 					v-if="isOpen"
 					ref="panelRef"
-					class="fixed z-50 w-80 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg"
+					role="dialog"
+					:aria-label="t('components.shareLinksPopover.panelTitle')"
+					class="fixed z-(--z-menu) w-[min(20rem,calc(100vw-2rem))] bg-bg-elevated border border-border-subtle rounded-lg shadow-lg"
 					:style="{
 						top: triggerRef ? `${triggerRef.getBoundingClientRect().bottom + 8}px` : '0',
 						right: panelRightPx,
@@ -181,6 +223,16 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 						<p v-if="hasUnsavedChanges" class="text-xs text-text-tertiary mt-1.5">
 							{{ t('components.shareLinksPopover.unsavedHint') }}
 						</p>
+						<!-- The browser refused the copy: the link to select by hand. -->
+						<input
+							v-if="copyFailedUrl"
+							type="text"
+							readonly
+							class="input input-sm mt-2 w-full font-mono"
+							:value="copyFailedUrl"
+							:aria-label="t('components.shareLinksPopover.linkUrlLabel')"
+							@focus="($event.target as HTMLInputElement).select()"
+						/>
 					</div>
 
 					<!-- Link list -->
@@ -218,6 +270,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								<span v-else class="text-xs text-error font-medium">
 									{{ t('components.shareLinksPopover.revoked') }}
 								</span>
+								<!-- Tells two links apart: they share a status line otherwise. -->
+								<span class="min-w-0 flex-1 truncate text-2xs text-text-tertiary">
+									{{
+										t('components.shareLinksPopover.createdAt', {
+											time: formatCompactRelativeTime(link._creationTime),
+										})
+									}}
+								</span>
 
 								<!-- Actions -->
 								<div class="flex items-center gap-1">
@@ -226,7 +286,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 										:text="t('components.shareLinksPopover.copyLink')"
 									>
 										<button
-											class="p-1 rounded hover:bg-bg-subtle text-text-secondary hover:text-text-primary transition-colors"
+											type="button"
+											class="p-1 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 											:aria-label="t('components.shareLinksPopover.copyLink')"
 											@click="handleCopy(link.token)"
 										>
@@ -241,7 +302,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 										:text="t('components.shareLinksPopover.revokeLink')"
 									>
 										<button
-											class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors"
+											type="button"
+											class="p-1 rounded hover:bg-error/10 text-text-secondary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 											:aria-label="t('components.shareLinksPopover.revokeLink')"
 											@click="handleRevoke(link._id)"
 										>

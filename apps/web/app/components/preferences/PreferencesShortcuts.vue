@@ -136,6 +136,14 @@ const presetOptions = computed(() =>
 
 const hasOverrides = computed(() => overridesById.value.size > 0);
 
+// Every custom binding goes at once and there is no undo, so it asks first and
+// says how many revert.
+const showResetAll = ref(false);
+async function confirmResetAll() {
+	await clearAllShortcutOverrides();
+	showResetAll.value = false;
+}
+
 // Hidden while the settings row loads: the shipped map is then only the fallback.
 const presetChanged = computed(
 	() => !isLoading.value && preset.value !== POSTBOX_PREFERENCE_DEFAULTS.shortcutPreset
@@ -230,14 +238,22 @@ const presetChanged = computed(
 		</p>
 
 		<footer v-if="hasOverrides" class="px-5 py-3 border-t border-border-subtle">
-			<UiButton
-				variant="secondary"
-				size="sm"
-				:disabled="isSaving"
-				@click="clearAllShortcutOverrides"
-			>
+			<UiButton variant="secondary" size="sm" :disabled="isSaving" @click="showResetAll = true">
 				{{ t(`${ns}.resetAll`) }}
 			</UiButton>
 		</footer>
+
+		<UiConfirmationDialog
+			:open="showResetAll"
+			variant="warning"
+			:title="t(`${ns}.resetAllTitle`)"
+			:description="
+				t(`${ns}.resetAllDescription`, { count: overridesById.size }, overridesById.size)
+			"
+			:confirm-text="t(`${ns}.resetAll`)"
+			:is-loading="isSaving"
+			@update:open="(open: boolean) => (showResetAll = open)"
+			@confirm="confirmResetAll"
+		/>
 	</section>
 </template>

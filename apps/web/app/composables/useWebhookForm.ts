@@ -94,7 +94,7 @@ export function useWebhookForm() {
 
 	// ─── Clipboard ────────────────────────────────────────────────────────
 
-	const { copy, isCopied, reset: resetCopied } = useCopyToClipboard();
+	const { copy, isCopied, reset: resetCopied } = useCopyToClipboard({ notify: false });
 
 	// ─── Create ─────────────────────────────────────────────────────────
 

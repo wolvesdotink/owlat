@@ -2,7 +2,6 @@
 import { api } from '@owlat/api';
 import { rules } from '~/composables/useFormValidation';
 import { ArrowLeftIcon, CodeIcon, PlusIcon } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -162,9 +161,8 @@ const handleCreate = async () => {
 					>
 						{{ t('common.cancel') }}
 					</UiButton>
-					<UiButton type="submit" class="gap-2" :disabled="createModal.isLoading.value">
-						<SpinnerIcon v-if="createModal.isLoading.value" class="w-4 h-4" />
-						<PlusIcon v-else class="w-4 h-4" />
+					<UiButton type="submit" class="gap-2" :loading="createModal.isLoading.value">
+						<PlusIcon v-if="!createModal.isLoading.value" class="w-4 h-4" />
 						{{
 							createModal.isLoading.value
 								? t('dashboard.inbox.codeTasks.creating')

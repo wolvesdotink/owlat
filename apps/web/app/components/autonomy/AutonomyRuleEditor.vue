@@ -61,6 +61,8 @@ const isDeleting = ref(false);
 const showDeleteConfirm = ref(false);
 
 const categoryIcon = computed(() => resolveCategoryIcon(form.category));
+// Per-instance ids: the settings page lists one editor per category.
+const fieldId = useId();
 const categoryLabel = computed(() => {
 	const cat = categories.value.find((c) => c.value === form.category);
 	return cat?.label ?? titleCaseEnum(form.category);
@@ -100,11 +102,12 @@ const handleDelete = async () => {
 	isDeleting.value = true;
 	try {
 		const result = await deleteRule({ ruleId: props.rule._id as Id<'autonomyRules'> });
+		// A failed delete keeps the confirmation open; the rule is still there.
 		if (!result.ok) return;
+		showDeleteConfirm.value = false;
 		emit('deleted');
 	} finally {
 		isDeleting.value = false;
-		showDeleteConfirm.value = false;
 	}
 };
 
@@ -119,7 +122,11 @@ const handleCancel = () => {
 		<div class="flex items-center justify-between mb-6">
 			<div v-if="isNew" class="flex items-center gap-3 flex-1">
 				<UiIconBox :icon="categoryIcon" size="sm" variant="surface" />
-				<select v-model="form.category" class="input flex-1 max-w-xs">
+				<select
+					v-model="form.category"
+					class="input flex-1 max-w-xs"
+					:aria-label="t('components.autonomy.autonomyRuleEditor.categoryPlaceholder')"
+				>
 					<option value="" disabled>
 						{{ t('components.autonomy.autonomyRuleEditor.categoryPlaceholder') }}
 					</option>
@@ -144,18 +151,24 @@ const handleCancel = () => {
 			<!-- Auto-Approve Threshold -->
 			<div>
 				<div class="flex items-center justify-between mb-2">
-					<label class="text-sm font-medium text-text-primary">
+					<label :for="`${fieldId}-threshold`" class="text-sm font-medium text-text-primary">
 						{{ t('components.autonomy.autonomyRuleEditor.thresholdLabel') }}
 					</label>
-					<span class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded">
+					<span
+						class="text-sm font-mono text-brand bg-brand-subtle px-2 py-0.5 rounded"
+						aria-hidden="true"
+					>
 						{{ thresholdPercent }}
 					</span>
 				</div>
-				<p class="text-xs text-text-tertiary mb-2">
+				<p :id="`${fieldId}-threshold-hint`" class="text-xs text-text-tertiary mb-2">
 					{{ t('components.autonomy.autonomyRuleEditor.thresholdHint') }}
 				</p>
 				<input
+					:id="`${fieldId}-threshold`"
 					v-model.number="form.autoApproveThreshold"
+					:aria-valuetext="thresholdPercent"
+					:aria-describedby="`${fieldId}-threshold-hint`"
 					type="range"
 					min="0"
 					max="1"
@@ -170,15 +183,17 @@ const handleCancel = () => {
 
 			<!-- Max Daily Auto-Actions -->
 			<div>
-				<label class="text-sm font-medium text-text-primary">
+				<label :for="`${fieldId}-max-daily`" class="text-sm font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyRuleEditor.maxDailyLabel') }}
 				</label>
-				<p class="text-xs text-text-tertiary mt-1 mb-2">
+				<p :id="`${fieldId}-max-daily-hint`" class="text-xs text-text-tertiary mt-1 mb-2">
 					{{ t('components.autonomy.autonomyRuleEditor.maxDailyHint') }}
 				</p>
 				<div class="flex items-center gap-4">
 					<input
+						:id="`${fieldId}-max-daily`"
 						v-model.number="form.maxDailyAutoActions"
+						:aria-describedby="`${fieldId}-max-daily-hint`"
 						type="number"
 						min="0"
 						max="10000"
@@ -195,21 +210,18 @@ const handleCancel = () => {
 		<!-- Actions -->
 		<div class="flex items-center justify-between mt-6 pt-4 border-t border-border-subtle">
 			<div>
-				<button
+				<UiButton
 					v-if="!isNew"
-					class="text-sm text-error hover:text-error/80 transition-colors"
+					variant="danger-ghost"
+					size="sm"
 					:disabled="isDeleting"
 					@click="showDeleteConfirm = true"
 				>
 					{{ t('components.autonomy.autonomyRuleEditor.deleteRule') }}
-				</button>
-				<button
-					v-else
-					class="text-sm text-text-secondary hover:text-text-primary transition-colors"
-					@click="handleCancel"
-				>
+				</UiButton>
+				<UiButton v-else variant="ghost" size="sm" @click="handleCancel">
 					{{ t('common.cancel') }}
-				</button>
+				</UiButton>
 			</div>
 			<UiButton class="gap-2" :disabled="isSaving || (!form.category && isNew)" @click="handleSave">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />

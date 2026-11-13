@@ -100,7 +100,7 @@ describe('useAuditLogPresentation presentation helpers', () => {
 		expect(getResourceIcon('campaign')).toBe(PaperPlaneIcon);
 		expect(getResourceIcon('unknown_resource')).toBe(ClipboardListIcon);
 		expect(t(getResourceLabel('api_key'))).toBe('API key');
-		expect(t(getResourceLabel('unknown_resource'))).toBe('unknown_resource');
+		expect(t(getResourceLabel('unknown_resource'))).toBe('Unknown resource');
 	});
 
 	it('formats relative timestamps with the audit page wording', () => {

@@ -21,8 +21,10 @@ const TABS: Array<{ id: ComposeMode; icon: IconComponent; label: string }> = [
 </script>
 
 <template>
+	<!-- A two-way switch, not a tab widget: the panels it swaps live in the
+	     page, so the buttons say which one is pressed. -->
 	<div
-		role="tablist"
+		role="group"
 		:aria-label="t('components.inbox.notes.tabs.label')"
 		class="flex shrink-0 items-center gap-1 border-b border-border-subtle px-3 py-1.5"
 		data-testid="compose-mode-tabs"
@@ -31,9 +33,8 @@ const TABS: Array<{ id: ComposeMode; icon: IconComponent; label: string }> = [
 			v-for="tab in TABS"
 			:key="tab.id"
 			type="button"
-			role="tab"
-			:aria-selected="mode === tab.id"
-			class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+			:aria-pressed="mode === tab.id"
+			class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 pointer-coarse:min-h-11 text-xs font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			:class="
 				mode === tab.id
 					? tab.id === 'note'

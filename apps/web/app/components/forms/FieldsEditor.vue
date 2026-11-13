@@ -152,9 +152,9 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 						</UiTooltip>
 						<UiTooltip :text="t('components.forms.fieldsEditor.removeField')">
 							<UiButton
-								variant="ghost"
+								variant="danger-ghost"
 								type="button"
-								class="p-1.5 text-error hover:bg-error/10"
+								class="p-1.5"
 								:aria-label="t('components.forms.fieldsEditor.removeField')"
 								:disabled="disabled || fields.length === 1"
 								@click="editor.removeField(index)"

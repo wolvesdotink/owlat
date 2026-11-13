@@ -31,6 +31,9 @@ import {
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
+const MENU_ITEM_CLASS =
+	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface whitespace-nowrap';
+
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
 
 const props = defineProps<{
@@ -235,7 +238,11 @@ const createdOn = computed(() =>
 							@click="emit('toggleImport')"
 						>
 							<component :is="importing ? ChevronUpIcon : DownloadIcon" class="w-4 h-4 mr-1.5" />
-							{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
+							{{
+								importing
+									? t('dashboard.admin.team.inboxes.import.close')
+									: t('dashboard.admin.team.inboxes.import.action')
+							}}
 						</UiButton>
 					</UiTooltip>
 					<UiButton
@@ -245,49 +252,61 @@ const createdOn = computed(() =>
 						@click="emit('toggleExpanded')"
 					>
 						<component :is="expanded ? ChevronUpIcon : UsersIcon" class="w-4 h-4 mr-1.5" />
-						{{ expanded ? t('common.done') : t('dashboard.admin.team.inboxes.manageMembers') }}
+						{{
+							expanded
+								? t('dashboard.admin.team.inboxes.closeMembers')
+								: t('dashboard.admin.team.inboxes.manageMembers')
+						}}
 					</UiButton>
-					<UiTooltip
-						v-if="sealedMailEnabled"
-						:text="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
+					<!-- The key and delete verbs are rare and two of them are destructive,
+					     so they sit behind one ⋯ with words, not as adjacent icon buttons
+					     told apart only by a red tint. -->
+					<PostboxOverflowMenu
+						v-if="sealedMailEnabled || inbox.kind === 'external'"
+						data-testid="team-inbox-more"
 					>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							:aria-label="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
-							@click="emit('rotateKey')"
-						>
-							<KeyIcon class="w-4 h-4" />
-						</UiButton>
-					</UiTooltip>
-					<UiTooltip
-						v-if="sealedMailEnabled"
-						:text="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
-					>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							class="text-error hover:text-error"
-							:aria-label="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
-							@click="emit('revokeKey')"
-						>
-							<ShieldOffIcon class="w-4 h-4" />
-						</UiButton>
-					</UiTooltip>
-					<UiTooltip
-						v-if="inbox.kind === 'external'"
-						:text="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
-					>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							class="text-error hover:text-error"
-							:aria-label="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
-							@click="emit('purge')"
-						>
-							<TrashIcon class="w-4 h-4" />
-						</UiButton>
-					</UiTooltip>
+						<template #default="{ close }">
+							<button
+								v-if="sealedMailEnabled"
+								type="button"
+								role="menuitem"
+								:class="MENU_ITEM_CLASS"
+								@click="
+									emit('rotateKey');
+									close();
+								"
+							>
+								<KeyIcon class="w-4 h-4 text-text-tertiary" />
+								{{ t('dashboard.admin.team.inboxes.rotateKeyTitle') }}
+							</button>
+							<button
+								v-if="sealedMailEnabled"
+								type="button"
+								role="menuitem"
+								:class="[MENU_ITEM_CLASS, 'text-error']"
+								@click="
+									emit('revokeKey');
+									close();
+								"
+							>
+								<ShieldOffIcon class="w-4 h-4" />
+								{{ t('dashboard.admin.team.inboxes.revokeKeyTitle') }}
+							</button>
+							<button
+								v-if="inbox.kind === 'external'"
+								type="button"
+								role="menuitem"
+								:class="[MENU_ITEM_CLASS, 'text-error']"
+								@click="
+									emit('purge');
+									close();
+								"
+							>
+								<TrashIcon class="w-4 h-4" />
+								{{ t('dashboard.admin.team.inboxes.deleteInboxTitle') }}
+							</button>
+						</template>
+					</PostboxOverflowMenu>
 				</div>
 			</div>
 
@@ -396,9 +415,14 @@ const createdOn = computed(() =>
 				<p class="text-sm text-text-secondary mt-1">
 					{{ t('dashboard.admin.team.inboxes.reconnectPanel.description') }}
 				</p>
-				<p v-if="inbox.externalLastError" class="text-xs text-error mt-2">
-					{{ inbox.externalLastError }}
-				</p>
+				<!-- The server's own words are for whoever debugs the connection; the
+				     description above already says what to do. -->
+				<details v-if="inbox.externalLastError" class="mt-2 text-xs">
+					<summary class="cursor-pointer text-text-tertiary hover:text-text-primary">
+						{{ t('dashboard.admin.team.inboxes.reconnectPanel.errorDetails') }}
+					</summary>
+					<p class="mt-1 break-words text-error">{{ inbox.externalLastError }}</p>
+				</details>
 			</div>
 			<!-- The form's non-secret prefill (servers, username) comes from the
 			     getSharedExternalAccount subscription; show a pending state until it

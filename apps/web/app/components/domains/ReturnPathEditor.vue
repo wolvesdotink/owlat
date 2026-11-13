@@ -106,9 +106,9 @@ async function save() {
 <template>
 	<div class="pt-2" data-testid="returnpath-editor">
 		<div class="flex items-center justify-between gap-3">
-			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
+			<h5 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 				{{ t('components.domains.returnPathEditor.heading') }}
-			</p>
+			</h5>
 			<UiButton
 				variant="ghost"
 				v-if="canManage && !editing"
@@ -171,7 +171,9 @@ async function save() {
 			<label :for="`returnpath-input-${domainId}`" class="sr-only">
 				{{ t('components.domains.returnPathEditor.inputLabel') }}
 			</label>
-			<div class="flex items-center gap-2">
+			<!-- Below `sm` the buttons wrap under the field, which keeps its width
+			     for the hostname being edited. -->
+			<div class="flex flex-wrap items-center gap-2">
 				<input
 					:id="`returnpath-input-${domainId}`"
 					v-model="sub"
@@ -180,7 +182,7 @@ async function save() {
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
-					class="input flex-1"
+					class="input sm:w-auto sm:flex-1"
 					:class="error && 'input-error'"
 					:disabled="isSaving"
 					:aria-invalid="error ? 'true' : undefined"
@@ -188,8 +190,9 @@ async function save() {
 					@blur="handleBlur"
 				/>
 				<UiButton
+					size="sm"
 					type="button"
-					class="text-sm py-1.5 px-3 gap-1.5"
+					class="gap-1.5"
 					data-testid="returnpath-save"
 					:disabled="isSaving"
 					@click="save"
@@ -197,13 +200,7 @@ async function save() {
 					<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
 					{{ isSaving ? t('common.saving') : t('common.save') }}
 				</UiButton>
-				<UiButton
-					variant="secondary"
-					type="button"
-					class="text-sm py-1.5 px-3"
-					:disabled="isSaving"
-					@click="cancel"
-				>
+				<UiButton size="sm" variant="secondary" type="button" :disabled="isSaving" @click="cancel">
 					{{ t('common.cancel') }}
 				</UiButton>
 			</div>

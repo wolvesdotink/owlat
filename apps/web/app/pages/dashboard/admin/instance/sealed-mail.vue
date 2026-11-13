@@ -203,7 +203,7 @@ async function runReSeal() {
 						:class="
 							policy === opt.value
 								? 'border-brand bg-brand/5'
-								: 'border-transparent shadow-surface-1 hover:bg-bg-elevated'
+								: 'border-transparent shadow-surface-1 hover:bg-(--surface-2-hover)'
 						"
 					>
 						<input
@@ -289,6 +289,7 @@ async function runReSeal() {
 						rows="4"
 						spellcheck="false"
 						:placeholder="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyPlaceholder')"
+						:aria-label="t('dashboard.admin.instance.sealedMail.recoveryKit.importKeyLabel')"
 						data-testid="recovery-kit.result-import-key"
 						class="input input-sm font-mono"
 					/>

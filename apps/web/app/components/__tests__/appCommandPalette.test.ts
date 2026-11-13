@@ -29,6 +29,7 @@ import type { CommandPaletteProvider } from '~/lib/commandPaletteRegistry';
 import type { SearchResults } from '~/lib/commandPaletteCore';
 import AppCommandPalette from '../AppCommandPalette.vue';
 import AppCommandPaletteResults from '../AppCommandPaletteResults.vue';
+import AppCommandPaletteSearchBar from '../AppCommandPaletteSearchBar.vue';
 import { api } from '@owlat/api';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import QueryResult from '../query/QueryResult.vue';
@@ -155,7 +156,7 @@ async function openPalette() {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			components: { AppCommandPaletteResults, QueryResult },
+			components: { AppCommandPaletteResults, AppCommandPaletteSearchBar, QueryResult },
 			stubs: {
 				UiSpinner: true,
 				AppCommandPaletteFooter: true,
@@ -609,7 +610,7 @@ describe('AppCommandPalette — while closed and across sessions (plan 1.6)', ()
 			attachTo: document.body,
 			global: {
 				plugins: [createTestI18n()],
-				components: { AppCommandPaletteResults, QueryResult },
+				components: { AppCommandPaletteResults, AppCommandPaletteSearchBar, QueryResult },
 				stubs: { UiSpinner: true, AppCommandPaletteFooter: true },
 			},
 		});

@@ -4,8 +4,7 @@ import { api } from '@owlat/api';
 // `unifiedMessageChannelValidator` must break the exhaustive Records below
 // rather than silently render a channel with no credential fields.
 import type { ChannelKind } from '~/utils/channelKinds';
-import { CircleInfoIcon, CircleWarningIcon, EyeIcon, EyeOffIcon } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import { CircleInfoIcon, EyeIcon, EyeOffIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	channel: ChannelKind;
@@ -38,6 +37,11 @@ const { run: updateChannelConfig } = useBackendOperation(api.channels.config.upd
 
 // Display name
 const localDisplayName = ref(props.displayName);
+
+// Several channel cards can be open at once, so every label/input/hint id is
+// scoped to this form instance.
+const formId = useId();
+const fieldId = (key: string) => `${formId}-${key}`;
 
 /** Does the backend already hold a value for this credential field? */
 function isStored(key: string): boolean {
@@ -218,20 +222,23 @@ async function handleSave() {
 </script>
 
 <template>
-	<div class="space-y-4">
+	<form class="space-y-4" @submit.prevent="handleSave">
 		<!-- Display Name -->
 		<div>
-			<label for="localdisplayname" class="block text-sm font-medium text-text-primary mb-1.5">{{
-				t('components.channels.channelConfigForm.displayNameLabel')
-			}}</label>
+			<label
+				:for="fieldId('displayname')"
+				class="block text-sm font-medium text-text-primary mb-1.5"
+				>{{ t('components.channels.channelConfigForm.displayNameLabel') }}</label
+			>
 			<input
-				id="localdisplayname"
+				:id="fieldId('displayname')"
 				v-model="localDisplayName"
 				type="text"
 				class="input w-full"
 				:placeholder="t('components.channels.channelConfigForm.displayNamePlaceholder')"
+				:aria-describedby="fieldId('displayname-hint')"
 			/>
-			<p class="text-xs text-text-tertiary mt-1">
+			<p :id="fieldId('displayname-hint')" class="text-xs text-text-tertiary mt-1">
 				{{ t('components.channels.channelConfigForm.displayNameHint') }}
 			</p>
 		</div>
@@ -247,7 +254,10 @@ async function handleSave() {
 				{{ t('components.channels.channelConfigForm.credentialsNotice') }}
 			</p>
 			<div v-for="field in fields" :key="field.key">
-				<label class="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5">
+				<label
+					:for="fieldId(field.key)"
+					class="flex items-center gap-2 text-sm font-medium text-text-primary mb-1.5"
+				>
 					{{ t(field.label) }}
 					<span v-if="isStored(field.key)" class="text-xs font-normal text-text-tertiary">{{
 						t('components.channels.channelConfigForm.stored')
@@ -255,61 +265,58 @@ async function handleSave() {
 				</label>
 				<div class="relative">
 					<input
+						:id="fieldId(field.key)"
 						v-model="fieldValues[field.key]"
 						:type="field.type === 'password' && !visibleFields[field.key] ? 'password' : 'text'"
 						class="input w-full"
-						:class="field.type === 'password' ? 'pr-10' : ''"
+						:class="field.type === 'password' ? 'pr-10 pointer-coarse:pr-12' : ''"
 						:placeholder="inputPlaceholder(field)"
+						:aria-describedby="field.hint ? fieldId(`${field.key}-hint`) : undefined"
+						autocomplete="off"
 					/>
+					<!-- One name, state in aria-pressed (the AuthPasswordInput pattern), so a
+					     screen reader hears "Show value, pressed" rather than a flipping label. -->
 					<button
 						v-if="field.type === 'password'"
 						type="button"
-						:aria-label="
-							visibleFields[field.key]
-								? t('components.channels.channelConfigForm.hideValue')
-								: t('components.channels.channelConfigForm.showValue')
-						"
-						class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-text-tertiary hover:text-text-secondary transition-colors"
+						:aria-label="t('components.channels.channelConfigForm.showValue')"
+						:aria-pressed="!!visibleFields[field.key]"
+						:aria-controls="fieldId(field.key)"
+						class="absolute inset-y-0 right-0 flex w-10 pointer-coarse:w-11 items-center justify-center rounded-r-lg text-text-tertiary hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
 						@click="toggleFieldVisibility(field.key)"
 					>
 						<component :is="visibleFields[field.key] ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
 					</button>
 				</div>
-				<p v-if="field.hint" class="text-xs text-text-tertiary mt-1">
+				<p
+					v-if="field.hint"
+					:id="fieldId(`${field.key}-hint`)"
+					class="text-xs text-text-tertiary mt-1"
+				>
 					{{ t(field.hint) }}
 				</p>
 			</div>
 		</template>
 
 		<!-- Info message for channels with no config -->
-		<div
-			v-else
-			class="flex items-start gap-3 rounded-lg bg-brand-subtle/50 border border-brand/20 p-4"
-		>
-			<CircleInfoIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+		<div v-else class="flex items-start gap-3 rounded-lg bg-info-subtle border border-info/20 p-4">
+			<CircleInfoIcon class="w-5 h-5 text-info shrink-0 mt-0.5" aria-hidden="true" />
 			<p class="text-sm text-text-secondary">
 				{{ channelInfoMessage }}
 			</p>
 		</div>
 
-		<!-- Error Message -->
-		<div
-			v-if="formError"
-			class="flex items-start gap-3 rounded-lg bg-error-subtle border border-error/20 p-4"
-		>
-			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
-			<p class="text-sm text-error">{{ formError }}</p>
-		</div>
+		<!-- Error Message: announced, since focus stays on Save. -->
+		<UiErrorAlert v-if="formError" :message="formError" role="alert" />
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">
 			<UiButton variant="secondary" :disabled="isSaving" @click="emit('cancelled')">
 				{{ t('common.cancel') }}
 			</UiButton>
-			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
-				<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+			<UiButton type="submit" :loading="isSaving">
 				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>
-	</div>
+	</form>
 </template>

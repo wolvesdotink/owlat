@@ -16,6 +16,7 @@ import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
 import { rankSnippets } from '~/utils/postboxSnippets';
 import { BookmarkPlusIcon, ChatQuoteIcon, PaperclipIcon } from '@coolicons/vue';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 
 const props = defineProps<{
 	replies: EditorSnippet[];
@@ -47,6 +48,14 @@ watch(open, (isOpen) => {
 });
 watch(items, (next) => {
 	active.value = Math.min(active.value, Math.max(0, next.length - 1));
+});
+
+// The list scrolls inside its max height: keep the highlighted reply in view,
+// or Enter would insert one the person cannot see.
+watch([active, items], async () => {
+	await nextTick();
+	if (typeof document === 'undefined') return;
+	document.getElementById(`${listId}-${active.value}`)?.scrollIntoView?.({ block: 'nearest' });
 });
 
 function preview(reply: EditorSnippet): string {
@@ -133,7 +142,9 @@ function saveCurrent() {
 					@click="pick(reply)"
 				>
 					<div class="flex items-center gap-2">
-						<span class="truncate text-sm font-medium text-text-primary">{{ reply.name }}</span>
+						<span class="truncate text-sm font-medium text-text-primary" :title="reply.name">{{
+							reply.name
+						}}</span>
 						<span v-if="reply.shortcut" class="shrink-0 font-mono text-xs text-text-tertiary"
 							>;{{ reply.shortcut }}</span
 						>
@@ -143,12 +154,9 @@ function saveCurrent() {
 							:aria-label="t('shared.savedReplies.files', reply.attachmentCount)"
 							data-testid="saved-reply-has-files"
 						/>
-						<span
-							v-if="reply.isShared"
-							class="ml-auto shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand"
-						>
+						<UiBadge v-if="reply.isShared" class="ml-auto shrink-0">
 							{{ t('shared.savedReplies.sharedBadge') }}
-						</span>
+						</UiBadge>
 					</div>
 					<p class="mt-0.5 line-clamp-2 text-xs text-text-tertiary">{{ preview(reply) }}</p>
 				</li>

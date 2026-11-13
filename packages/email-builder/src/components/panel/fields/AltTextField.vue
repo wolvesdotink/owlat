@@ -41,8 +41,8 @@ function focusInput() {
 			ref="inputRef"
 			type="text"
 			:aria-label="t('builder.panel.altText.label')"
-			class="w-full py-2 px-2.5 text-[13px] border rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-disabled"
-			:class="showNudge ? 'border-warning/50' : 'border-border-subtle'"
+			class="w-full py-2 px-2.5 text-caption pointer-coarse:text-base border rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-tertiary"
+			:class="showNudge ? 'border-warning/50' : 'border-border-strong'"
 			:value="value"
 			:placeholder="placeholder"
 			@input="handleInput"
@@ -55,21 +55,21 @@ function focusInput() {
 		>
 			<div class="flex items-start gap-1.5">
 				<TriangleWarningIcon :size="13" class="shrink-0 mt-px text-warning" />
-				<p class="text-[11px] leading-[1.4] text-text-secondary m-0">
+				<p class="text-2xs leading-[1.4] text-text-secondary m-0">
 					{{ t('builder.panel.altText.missing') }}
 				</p>
 			</div>
 			<div class="flex items-center gap-1.5">
 				<button
 					type="button"
-					class="py-1 px-2 rounded-md text-[11px] font-medium border border-border-subtle bg-bg-surface text-text-primary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover"
+					class="py-1 px-2 rounded-md text-2xs font-medium border border-border-subtle bg-bg-surface text-text-primary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover"
 					@click="focusInput"
 				>
 					{{ t('builder.panel.altText.add') }}
 				</button>
 				<button
 					type="button"
-					class="py-1 px-2 rounded-md text-[11px] font-medium border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+					class="py-1 px-2 rounded-md text-2xs font-medium border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
 					@click="emit('mark-decorative')"
 				>
 					{{ t('builder.panel.altText.decorative') }}

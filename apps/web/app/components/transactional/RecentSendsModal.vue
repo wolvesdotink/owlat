@@ -11,8 +11,10 @@ const props = defineProps<{
 
 const isOpen = defineModel<boolean>('open', { default: false });
 
-const { data, isLoading } = useConvexQuery(api.transactional.sends.listByTransactionalEmail, () =>
-	isOpen.value && props.emailId ? { transactionalEmailId: props.emailId, limit: 25 } : 'skip'
+const { data, isLoading, error, refetch } = useConvexQuery(
+	api.transactional.sends.listByTransactionalEmail,
+	() =>
+		isOpen.value && props.emailId ? { transactionalEmailId: props.emailId, limit: 25 } : 'skip'
 );
 
 const sends = computed(() => data.value?.sends ?? []);
@@ -52,9 +54,16 @@ const statusStyles: Record<string, string> = {
 <template>
 	<UiModal
 		v-model:open="isOpen"
-		:title="emailName ? t('components.transactional.recentSendsModal.titleNamed', { name: emailName }) : t('components.transactional.recentSendsModal.title')"
+		:title="
+			emailName
+				? t('components.transactional.recentSendsModal.titleNamed', { name: emailName })
+				: t('components.transactional.recentSendsModal.title')
+		"
 	>
-		<div v-if="isLoading" class="py-10 flex justify-center">
+		<!-- A failed read is not an empty history. -->
+		<UiQueryBoundary v-if="error && !data" :error="error" @retry="refetch" />
+
+		<div v-else-if="isLoading" class="py-10 flex justify-center">
 			<UiSpinner size="md" />
 		</div>
 
@@ -66,21 +75,28 @@ const statusStyles: Record<string, string> = {
 			<li v-for="send in sends" :key="send._id">
 				<NuxtLink
 					:to="`/dashboard/send/transactional/${emailId}/sends/${send._id}`"
-					class="flex items-center justify-between gap-3 px-2 py-2.5 rounded hover:bg-bg-surface transition-colors"
+					class="flex items-center justify-between gap-3 px-2 py-2.5 rounded hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click="isOpen = false"
 				>
 					<div class="min-w-0">
 						<p class="text-sm text-text-primary truncate">
-							{{ send.contact?.email ?? send.email ?? t('components.transactional.recentSendsModal.unknownRecipient') }}
+							{{
+								send.contact?.email ??
+								send.email ??
+								t('components.transactional.recentSendsModal.unknownRecipient')
+							}}
 						</p>
 						<p class="text-xs text-text-tertiary mt-0.5">
 							{{ formatDateTime(send.sentAt ?? send.queuedAt ?? send._creationTime) }}
 						</p>
 					</div>
+					<!-- Only the raw fallback is capitalized: translated labels carry their
+					     own casing, and CSS would capitalize every word of a German one. -->
 					<span
 						:class="[
-							'inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize flex-shrink-0',
+							'inline-flex px-2 py-0.5 rounded text-xs font-medium flex-shrink-0',
 							statusStyles[send.status] ?? 'bg-bg-surface text-text-secondary',
+							STATUS_LABEL_KEYS[send.status] ? '' : 'capitalize',
 						]"
 					>
 						{{ statusLabel(send.status) }}

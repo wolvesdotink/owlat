@@ -151,9 +151,9 @@ const confirmBlock = async () => {
 							{{ t('dashboard.inbox.quarantine.release') }}
 						</UiButton>
 						<UiButton
-							variant="ghost"
+							variant="danger-ghost"
 							size="sm"
-							class="gap-1 text-error hover:bg-error-subtle"
+							class="gap-1"
 							:disabled="actionInProgress === message._id"
 							@click="pendingBlock = { _id: message._id, from: message.from }"
 						>

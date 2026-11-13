@@ -266,16 +266,21 @@ const totalElapsedDisplay = computed(() => {
 </script>
 
 <template>
-	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+	<div class="card">
 		<div class="flex items-center justify-between mb-4">
-			<h3 class="text-base font-semibold text-text-primary">
+			<h2 class="text-base font-semibold text-text-primary">
 				{{ t('components.system.updateProgress.heading', { version: targetVersion }) }}
-			</h3>
-			<span class="text-[0.75rem] text-text-tertiary font-mono">{{ totalElapsedDisplay }}</span>
+			</h2>
+			<span class="text-xs text-text-tertiary font-mono">{{ totalElapsedDisplay }}</span>
 		</div>
 
 		<ol class="space-y-3">
-			<li v-for="(step, idx) in stepOrder" :key="step" class="flex items-start gap-3">
+			<li
+				v-for="(step, idx) in stepOrder"
+				:key="step"
+				class="flex items-start gap-3"
+				:aria-current="stepStatuses[step] === 'running' ? 'step' : undefined"
+			>
 				<component
 					:is="iconForStatus(stepStatuses[step] ?? 'pending')"
 					class="w-5 h-5 shrink-0 mt-0.5"
@@ -284,13 +289,20 @@ const totalElapsedDisplay = computed(() => {
 				/>
 				<div class="flex-1 min-w-0">
 					<p
-						class="text-[0.875rem] text-text-primary"
+						class="text-sm text-text-primary"
 						:class="stepStatuses[step] === 'running' ? 'font-medium' : ''"
 					>
 						<span class="text-text-tertiary mr-2">{{ idx + 1 }}.</span>
 						{{ stepLabel(step) }}
+						<!-- The icon and its colour are hidden from assistive tech; this
+						     says the same thing in words. -->
+						<span class="sr-only">
+							({{
+								t(`components.system.updateProgress.stepState.${stepStatuses[step] ?? 'pending'}`)
+							}})</span
+						>
 					</p>
-					<p v-if="stepStatuses[step] === 'failed'" class="text-[0.75rem] text-error mt-1">
+					<p v-if="stepStatuses[step] === 'failed'" class="text-xs text-error mt-1">
 						{{
 							props.steps?.find((s) => s.step === step)?.stderr ??
 							t('components.system.updateProgress.stepFailed')
@@ -302,7 +314,7 @@ const totalElapsedDisplay = computed(() => {
 
 		<div
 			v-if="polling"
-			class="mt-4 pt-4 border-t border-border-subtle flex items-start gap-2 text-[0.75rem] text-text-tertiary"
+			class="mt-4 pt-4 border-t border-border-subtle flex items-start gap-2 text-xs text-text-tertiary"
 			role="status"
 		>
 			<SpinnerIcon class="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />

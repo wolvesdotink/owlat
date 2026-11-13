@@ -330,7 +330,7 @@ const busy = computed(() => uploading.value || resolving.value);
 					v-for="candidate in candidates"
 					:key="`${candidate.source}:${candidate.id}`"
 					type="button"
-					class="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-brand"
+					class="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 pointer-coarse:min-h-11 text-xs focus-visible:outline-2 focus-visible:outline-brand"
 					:class="
 						isPickedCandidate(candidate)
 							? 'border-text-primary bg-text-primary text-text-inverse'
@@ -354,7 +354,7 @@ const busy = computed(() => uploading.value || resolving.value);
 		<div class="flex flex-wrap items-center gap-1.5">
 			<button
 				type="button"
-				class="inline-flex items-center gap-1.5 rounded-full border border-border-subtle px-2.5 py-1 text-xs text-text-secondary hover:border-text-tertiary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand"
+				class="inline-flex items-center gap-1.5 rounded-full border border-border-subtle px-2.5 py-1 pointer-coarse:min-h-11 text-xs text-text-secondary hover:border-text-tertiary hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-brand"
 				:disabled="disabled || isFull"
 				data-testid="file-ask-pick-files"
 				@click="pickerOpen = true"
@@ -366,7 +366,7 @@ const busy = computed(() => uploading.value || resolving.value);
 				v-for="option in optionChips"
 				:key="option"
 				type="button"
-				class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs focus-visible:outline-2 focus-visible:outline-brand"
+				class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 pointer-coarse:min-h-11 text-xs focus-visible:outline-2 focus-visible:outline-brand"
 				:class="
 					pickedOption === option
 						? 'border-text-primary bg-text-primary text-text-inverse'

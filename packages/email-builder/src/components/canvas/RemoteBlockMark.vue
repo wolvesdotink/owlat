@@ -19,7 +19,7 @@ defineProps<{ mark: RemoteBlockMark }>();
 		data-testid="remote-block-outline"
 	/>
 	<div
-		class="pointer-events-none absolute -top-2.5 right-2 z-[5] inline-flex max-w-[60%] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+		class="pointer-events-none absolute -top-2.5 right-2 z-[5] inline-flex max-w-[60%] items-center gap-1 truncate rounded px-1.5 py-0.5 text-2xs font-semibold text-white shadow-sm"
 		:style="{ backgroundColor: mark.color }"
 		data-testid="remote-block-label"
 	>

@@ -37,7 +37,7 @@ const { t, locale } = useI18n();
 const menuOpen = ref(false);
 
 const overlayButton =
-	'p-2 rounded-lg bg-bg-elevated text-text-primary hover:text-text-inverse transition-colors';
+	'p-2 rounded-lg bg-bg-elevated text-text-primary hover:text-text-inverse transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
 </script>
 
 <template>
@@ -51,8 +51,12 @@ const overlayButton =
 	>
 		<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
 			<BlocksIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
+			<!-- ui-hover-reveal: shown on hover and while focus is inside, and not
+			     clickable while invisible. Without hover the actions are always shown,
+			     so there they drop the dimming layer and sit in the corner: a dimmed
+			     card on every phone would hide every thumbnail. -->
 			<div
-				class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+				class="ui-hover-reveal absolute inset-0 bg-bg-deep/80 flex items-center justify-center gap-2 [@media(hover:none)]:inset-auto [@media(hover:none)]:top-2 [@media(hover:none)]:right-2 [@media(hover:none)]:bg-transparent"
 			>
 				<UiTooltip :text="t('dashboard.send.blocks.index.editContent')">
 					<button
@@ -98,14 +102,33 @@ const overlayButton =
 		<div class="p-4">
 			<div class="flex items-start justify-between gap-2">
 				<div class="min-w-0 flex-1">
-					<h3 class="font-medium text-text-primary truncate">{{ block.name }}</h3>
-					<p class="text-sm text-text-tertiary truncate mt-0.5">
+					<!-- The name is the keyboard route into the block; the card click
+					     is a larger pointer target for it. -->
+					<h3 class="font-medium text-text-primary truncate">
+						<!-- native-title: the full name of a block the button truncates -->
+						<button
+							type="button"
+							class="max-w-full truncate rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:title="block.name"
+							@click.stop="emit('open', block)"
+						>
+							{{ block.name }}
+						</button>
+					</h3>
+					<p
+						class="text-sm text-text-tertiary truncate mt-0.5"
+						:title="block.description || undefined"
+					>
 						{{ block.description || t('dashboard.send.blocks.index.noDescription') }}
 					</p>
 				</div>
 				<UiDropdownMenu v-model:open="menuOpen" @click.stop>
 					<template #trigger>
-						<UiButton variant="ghost" size="sm">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							:aria-label="t('shared.templateList.moreActionsFor', { name: block.name })"
+						>
 							<MoreVerticalIcon class="w-4 h-4" />
 						</UiButton>
 					</template>

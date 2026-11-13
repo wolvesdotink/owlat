@@ -101,37 +101,39 @@ const localUrl = computed({
 				</p>
 			</div>
 
-			<!-- Events Field -->
-			<div>
+			<!-- Events Field. A named group, not a <label>: there is no single
+			     control for the heading to label. -->
+			<div role="group" aria-labelledby="webhook-form-events-label">
 				<div class="flex items-center justify-between mb-2">
-					<label class="label mb-0">
+					<p id="webhook-form-events-label" class="label mb-0">
 						{{ t('components.webhooks.webhookFormModal.eventsLabel') }}
-						<span class="text-error">*</span>
-					</label>
+						<span class="text-error" aria-hidden="true">*</span>
+					</p>
 					<div v-if="showEventActions" class="flex items-center gap-2">
 						<button
 							type="button"
-							class="text-xs text-brand hover:text-brand-hover"
+							class="rounded text-xs text-brand hover:text-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="emit('selectAllEvents')"
 						>
 							{{ t('components.webhooks.webhookFormModal.selectAll') }}
 						</button>
-						<span class="text-text-tertiary">|</span>
+						<span class="text-text-tertiary" aria-hidden="true">|</span>
 						<button
 							type="button"
-							class="text-xs text-text-secondary hover:text-text-primary"
+							class="rounded text-xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="emit('clearAllEvents')"
 						>
 							{{ t('components.webhooks.webhookFormModal.clear') }}
 						</button>
 					</div>
 				</div>
+				<!-- The native checkbox is visually hidden, so the row shows its focus. -->
 				<div class="grid gap-2">
 					<label
 						v-for="event in WEBHOOK_EVENTS"
 						:key="event.value"
 						:class="[
-							'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+							'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 							formEvents.includes(event.value)
 								? 'border-brand bg-brand/5'
 								: 'border-border-subtle hover:border-border-default',
