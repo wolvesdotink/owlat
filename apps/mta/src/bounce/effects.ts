@@ -100,6 +100,11 @@ export type BounceEffect =
 			metric: 'unattributed_bounce';
 	  }
 	| {
+			kind: 'metric_inc';
+			metric: 'fbl_complaint_unknown_provenance';
+			isp: string;
+	  }
+	| {
 			kind: 'fbl_stats_record';
 	  }
 	| {
@@ -251,6 +256,12 @@ function applyOne(
 				metrics.fblComplaintsTotal.inc({ isp: effect.isp, attributed: effect.attributed });
 			} else if (effect.metric === 'fbl_complaint_by_campaign') {
 				metrics.recordFblComplaintByCampaign(effect.campaign, effect.isp);
+			} else if (effect.metric === 'fbl_complaint_unknown_provenance') {
+				metrics.fblComplaintsUnknownProvenanceTotal.inc({ isp: effect.isp });
+				logger.warn(
+					{ isp: effect.isp },
+					'Complaint report dropped: no signed handle ties it to a send of ours'
+				);
 			} else {
 				metrics.unattributedBouncesTotal.inc();
 			}

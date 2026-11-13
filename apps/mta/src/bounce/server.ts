@@ -11,8 +11,8 @@
  * tarpit for admitted external peers (onConnect); the inbound-TLS gate + SPF authentication of
  * a non-null MAIL FROM (onMailFrom), stashing the RFC 7208 verdict on the typed
  * {@link BounceTransaction} state (replacing the old `SessionWithSpf` widening);
- * the VERP / personal-mailbox / route RCPT gate with structured 552/550 replies
- * (onRcptTo); and the Bounce intake pipeline over a `ParsedMessage` (onData),
+ * the VERP / personal-mailbox / route / `postmaster@`+`abuse@` RCPT gate with
+ * structured 552/550 replies (onRcptTo); and the Bounce intake pipeline over a `ParsedMessage` (onData),
  * which ACKs malformed/unattributed input but returns a transient 451 when
  * authenticated feedback cannot reach durable storage.
  */

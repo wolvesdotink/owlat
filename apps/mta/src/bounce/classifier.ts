@@ -49,7 +49,12 @@ export function classifyBounce(
 	// without one, so this must take precedence over the loose free-text scan.
 	const structured = parseStructuredDsn(bodyText);
 	if (structured.status) {
-		const classification = classifyByEnhancedCode(structured.status, bodyText, structured.action);
+		const classification = classifyByEnhancedCode(
+			structured.status,
+			bodyText,
+			structured.action,
+			structured.diagnosticEnhancedCode
+		);
 		if (classification) return classification;
 	}
 	// An explicit `Action: failed` with no enhanced status code is still a
@@ -91,6 +96,12 @@ interface StructuredDsn {
 	action?: string;
 	/** Raw `Diagnostic-Code:` field value, if present. */
 	diagnosticCode?: string;
+	/**
+	 * The enhanced code inside an `smtp`-typed `Diagnostic-Code`, which holds
+	 * the remote server's reply verbatim (RFC 3464 §2.3.6), e.g. `5.7.1` from
+	 * `smtp; 550 5.7.1 Client host blocked`.
+	 */
+	diagnosticEnhancedCode?: string;
 }
 
 /**
@@ -106,7 +117,21 @@ function parseStructuredDsn(text: string): StructuredDsn {
 		status: statusMatch?.[1],
 		action: actionMatch?.[1]?.toLowerCase(),
 		diagnosticCode: diagMatch?.[1]?.trim(),
+		diagnosticEnhancedCode: smtpDiagnosticEnhancedCode(text),
 	};
+}
+
+/**
+ * The enhanced code of the SMTP reply in an `smtp`-typed Diagnostic-Code. The
+ * field may be folded onto continuation lines, so those are joined first. Any
+ * other diagnostic type (`X-Postfix`, `X-Exim`) is the reporting MTA's own text
+ * and is not read.
+ */
+function smtpDiagnosticEnhancedCode(text: string): string | undefined {
+	const field = text.match(/^[ \t]*Diagnostic-Code:[ \t]*(.*(?:\r?\n[ \t]+.*)*)/im)?.[1];
+	if (!field) return undefined;
+	const unfolded = field.replace(/\r?\n[ \t]+/g, ' ');
+	return unfolded.match(/^smtp[ \t]*;[ \t]*[245]\d\d[ \t-]+([245]\.\d{1,3}\.\d{1,3})\b/i)?.[1];
 }
 
 /**
@@ -131,13 +156,17 @@ function extractEnhancedCode(text: string): string | undefined {
 function classifyByEnhancedCode(
 	code: string,
 	bodyText: string,
-	_action?: string
+	_action?: string,
+	diagnosticEnhancedCode?: string
 ): BounceClassification | null {
 	const [classDigit] = code.split('.').map(Number);
 	// X.7.x (security/policy) and the X.1.x codes about the sender's own address
 	// refuse our sending identity, not the recipient. The disposition below is
 	// unchanged; the cause tells Convex not to blocklist or count the address.
-	const cause = enhancedCodeCause(code) === 'sender' ? { bounceCause: 'sender' as const } : {};
+	// A generic `X.0.0` Status names nobody, so the remote server's own enhanced
+	// code from the Diagnostic-Code decides; a specific Status stays authoritative.
+	const causeCode = /^[245]\.0\.0$/.test(code) ? (diagnosticEnhancedCode ?? code) : code;
+	const cause = enhancedCodeCause(causeCode) === 'sender' ? { bounceCause: 'sender' as const } : {};
 
 	// Class 5 = permanent failure, except 5.2.2 mailbox full (soft despite 5xx).
 	if (classDigit === 5) {

@@ -4,6 +4,7 @@ import { isReturnPathProbeRecipient } from '@owlat/shared/verp';
 import type { MtaConfig } from '../config.js';
 import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { findRoute } from '../inbound/router.js';
+import { systemMailboxHosts } from '../inbound/systemMailboxes.js';
 import { deliverabilityProbeRecipientDecision } from './deliverabilityProbe.js';
 
 export interface RecipientGateTransaction {
@@ -78,6 +79,7 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 					dmarcReportAddress: config.dmarcReportAddress,
 					convexSiteUrl: config.convexSiteUrl,
 					webhookSecret: config.webhookSecret,
+					systemMailboxHosts: systemMailboxHosts(config),
 				})
 					.then((route): SmtpHandlerResult => {
 						if (route && route.mode !== 'reject') return;

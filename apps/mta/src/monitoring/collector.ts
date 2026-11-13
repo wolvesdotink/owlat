@@ -70,6 +70,20 @@ export const fblComplaintsTotal = new Counter({
 });
 
 /**
+ * Complaint reports that reached the MTA but carried no signed handle tying them
+ * to a send: no verified CFBL address or feedback id, no verified VERP in the
+ * report or in the re-attached original, or a verified handle whose send-time
+ * record has expired. They change no suppression or reputation state, so this
+ * counter is the only trace of a feedback loop that delivers to us unusably.
+ */
+export const fblComplaintsUnknownProvenanceTotal = new Counter({
+	name: 'mta_fbl_complaints_unknown_provenance_total',
+	help: 'FBL/ARF complaints dropped because no signed handle attributes them to a send',
+	labelNames: ['isp'] as const,
+	registers: [registry],
+});
+
+/**
  * Per-campaign FBL complaints. The org-level circuit breaker only computes a
  * per-ORG complaint rate, so a campaign whose ARF carried a `Feedback-ID`
  * campaignId (but whose org was not extractable) was previously invisible. This

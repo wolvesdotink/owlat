@@ -50,6 +50,7 @@ import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { FBL_OPERATOR_DOMAINS } from '../../__tests__/helpers/destinationDomainCorpus.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { reduce } from '../outcome.js';
+import { stateChangingEffects } from './helpers/feedbackEffects.js';
 import type { BasePhaseCtx, BounceAttempt } from '../types.js';
 import type { EmailJob } from '../../types.js';
 
@@ -413,7 +414,7 @@ describe('adversarial reports', () => {
 		// `apps/api/convex/webhooks/__tests__/dispatcher.test.ts`. If a future change
 		// to the reducer's recipient-only fallback opened this path, this fails here
 		// rather than silently widening what can mark an enrollment live.
-		expect(reduce(attributed, makeCtx()).effects).toEqual([]);
+		expect(stateChangingEffects(reduce(attributed, makeCtx()).effects)).toEqual([]);
 	});
 
 	it('deduplicates a replayed report through the SHIPPED reservation path', async () => {

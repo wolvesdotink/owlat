@@ -66,6 +66,23 @@ describe('reduce(fbl) — attributed complaint', () => {
 		]);
 	});
 
+	it('counts a complaint whose provenance stays unknown, and emits nothing else', () => {
+		const unknown: BounceAttempt = {
+			kind: 'fbl',
+			arf: {
+				...arf,
+				originalMessageId: undefined,
+				organizationId: undefined,
+				recipient: 'someone@isp.example',
+				feedbackProvenance: 'unknown',
+			},
+		};
+		const { effects } = reduce(unknown, makeCtx());
+		expect(effects).toEqual([
+			{ kind: 'metric_inc', metric: 'fbl_complaint_unknown_provenance', isp: 'microsoft' },
+		]);
+	});
+
 	it('circuit_breaker_outcome targets the org with outcome=complained', () => {
 		const { effects } = reduce(attempt, makeCtx());
 		const cb = effects.find((e) => e.kind === 'circuit_breaker_outcome');

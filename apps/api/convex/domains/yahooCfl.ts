@@ -41,6 +41,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
+import { getOptional } from '../lib/env';
 import {
 	getSingletonOrganizationId,
 	hasPermission,
@@ -148,6 +149,16 @@ async function preconditionFor(
 		isVerified: domain.status === 'verified',
 		...(identity ? { dkimSelector: identity.dkimSelector } : {}),
 	};
+}
+
+/**
+ * `abuse@` the deployment's return-path domain: one of the addresses the
+ * built-in mail server accepts complaint reports on. Unset when Convex does not
+ * know that domain.
+ */
+function complaintReportAddress(): string | undefined {
+	const host = getOptional('MTA_RETURN_PATH_DOMAIN')?.trim().toLowerCase().replace(/\.$/, '');
+	return host ? `abuse@${host}` : undefined;
 }
 
 async function persist(
@@ -295,7 +306,7 @@ export const getGuide = authedQuery({
 			// CONSTANT, so without this the panel could only ever say "90 days"
 			// whether the true figure is 91 days or 400. The panel renders it.
 			silentMs,
-			steps: yahooCflGuidedSteps(record, precondition, now),
+			steps: yahooCflGuidedSteps(record, precondition, now, complaintReportAddress()),
 			// WHICH CONTROLS TO OFFER, decided by the pure core alongside the state
 			// machine that will service them. The panel renders this verbatim: a
 			// component that re-derived the affordances could offer one the state
