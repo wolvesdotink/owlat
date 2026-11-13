@@ -109,13 +109,12 @@ export const applySuppressionBatch = internalMutation({
 
 			if (entry.reason === 'unsubscribe') {
 				// Read the opt-out stamp BEFORE the write, for the same reason as the
-				// blocklist pre-read below — and because the consent mutation's return
-				// value cannot answer this question. A global opt-out stamps
+				// blocklist pre-read below. A global opt-out stamps
 				// `contacts.unsubscribedAt` even when the contact belongs to no topic
-				// (a segment campaign can still reach them), but reports
-				// `alreadyUnsubscribed` because no MEMBERSHIP was removed. Counting
-				// off that would report "nothing changed" for a run that just opted a
-				// thousand people out.
+				// (a segment campaign can still reach them), so "already
+				// unsubscribed" has to mean the stamp was there before this run, or
+				// a run that just opted a thousand people out reads as "nothing
+				// changed".
 				//
 				// The lookup is `processUnsubscribeByEmail`'s own join
 				// (`findLiveContactByEmail`), deliberately: a different one here would

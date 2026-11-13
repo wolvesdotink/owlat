@@ -60,20 +60,16 @@ export const getContactForUnsubscribe = internalQuery({
 		// Get instance display name from settings
 		const settings = await ctx.db.query('instanceSettings').first();
 
-		// Check if contact is subscribed to any topics
-		const memberships = await ctx.db
-			.query('contactTopics')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect(); // bounded: one contact's topic memberships
-
-		const hasActiveSubscriptions = memberships.length > 0;
-
 		return {
 			_id: contact._id,
 			email: contact.email,
 			firstName: contact.firstName,
 			lastName: contact.lastName,
-			subscribed: hasActiveSubscriptions,
+			// Whether the page still offers the opt-out. Only the global opt-out
+			// stamp answers that: a contact with no topic memberships still gets
+			// segment campaigns and automation mail, and every marketing audience
+			// already skips a contact that carries the stamp.
+			subscribed: contact.unsubscribedAt === undefined,
 			organizationName: settings?.defaultFromName ?? 'Unknown',
 		};
 	},
@@ -113,6 +109,11 @@ async function applyPublicUnsubscribe(
 	ctx: MutationCtx,
 	args: { contactId: Id<'contacts'>; topicId?: Id<'topics'>; topicIds?: Id<'topics'>[] }
 ): Promise<ProcessUnsubscribeResult> {
+	// Read before the write: a global opt-out stamps `unsubscribedAt`, and the
+	// stamp is the change a contact without memberships gets from it.
+	const isGlobal = args.topicId === undefined && args.topicIds === undefined;
+	const wasOptedOut = isGlobal && (await ctx.db.get(args.contactId))?.unsubscribedAt !== undefined;
+
 	const { outcomes }: { outcomes: UnsubscribeOutcome[] } = await ctx.runMutation(
 		internal.topics.subscription.unsubscribeAllForContact,
 		{
@@ -124,11 +125,11 @@ async function applyPublicUnsubscribe(
 		}
 	);
 
-	// Preserve the legacy response shape.
 	// - contact_not_found maps to { success: false, reason: 'not_found' }.
-	// - no memberships removed (already not a member, or empty memberships):
-	//   { success: true, alreadyUnsubscribed: true }.
-	// - removals happened: { success: true, alreadyUnsubscribed: false, listsRemoved }.
+	// - nothing changed (no membership removed and, for a global opt-out, the
+	//   contact was already opted out): { success: true, alreadyUnsubscribed: true }.
+	// - memberships removed, or a global opt-out stamped on a contact without
+	//   any: { success: true, alreadyUnsubscribed: false, listsRemoved }.
 	for (const outcome of outcomes) {
 		if (!outcome.ok && outcome.reason === 'contact_not_found') {
 			return { success: false, reason: 'not_found' };
@@ -137,7 +138,7 @@ async function applyPublicUnsubscribe(
 
 	const removedCount = outcomes.filter((o) => o.ok && o.action === 'unsubscribed').length;
 
-	if (removedCount === 0) {
+	if (removedCount === 0 && (!isGlobal || wasOptedOut)) {
 		return { success: true, alreadyUnsubscribed: true };
 	}
 

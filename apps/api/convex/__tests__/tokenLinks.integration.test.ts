@@ -484,7 +484,7 @@ describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 		expect(res.status).toBe(200);
 		const json = (await res.json()) as { ok: boolean; data: { listsRemoved: number } };
 		expect(json.ok).toBe(true);
-		// No topic memberships seeded → "already unsubscribed", 0 removed.
+		// No topic memberships seeded → 0 removed (the opt-out stamp is the change).
 		expect(json.data.listsRemoved).toBe(0);
 	});
 
@@ -831,6 +831,103 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 			audience: { kind: 'topic' as const, topicId },
 		});
 		expect(after).toHaveLength(0);
+	});
+});
+
+// ============================================================================
+// The recipient page reaches the same endpoints from a browser on another
+// origin (the web app and the Convex site URL are separate hosts in every
+// documented deployment), and people open the header URL directly.
+// ============================================================================
+
+async function readContact(t: ReturnType<typeof setupTest>, contactId: Id<'contacts'>) {
+	return await t.run(async (ctx) => ctx.db.get(contactId));
+}
+
+describe('unsubscribe endpoints seen from the recipient page', () => {
+	it('answers the browser preflight for the one-click POST', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://owlat.example.com', 'Access-Control-Request-Method': 'POST' },
+		});
+		expect(res.status).toBe(204);
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+	});
+
+	it('lets the page read the one-click POST answer (CORS on the response)', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		await seedTopicMembership(t, contactId, { name: 'Cross-origin' });
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
+			method: 'POST',
+			headers: { Origin: 'https://owlat.example.com' },
+		});
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		expect(await countMemberships(t, contactId)).toBe(0);
+	});
+
+	it('sends a GET on the header URL to the confirm page and changes nothing', async () => {
+		process.env['SITE_URL'] = 'https://owlat.example.com';
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		await seedTopicMembership(t, contactId, { name: 'Scanner-safe' });
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
+			method: 'GET',
+			redirect: 'manual',
+		});
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe(
+			`https://owlat.example.com/unsubscribe?token=${encodeURIComponent(token)}`
+		);
+		// A link scanner fetching the URL must not unsubscribe anyone.
+		expect(await countMemberships(t, contactId)).toBe(1);
+		expect((await readContact(t, contactId))?.unsubscribedAt).toBeUndefined();
+	});
+
+	it('offers the opt-out to a contact with no memberships and no opt-out', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/verify/${encodeURIComponent(token)}`, { method: 'GET' });
+		const json = (await res.json()) as { ok: boolean; data: { subscribed: boolean } };
+		expect(json.ok).toBe(true);
+		expect(json.data.subscribed).toBe(true);
+	});
+
+	it('reports a globally opted-out contact as already unsubscribed', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t, { unsubscribedAt: Date.now() });
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/verify/${encodeURIComponent(token)}`, { method: 'GET' });
+		const json = (await res.json()) as { ok: boolean; data: { subscribed: boolean } };
+		expect(json.data.subscribed).toBe(false);
+	});
+
+	it('reports the first opt-out of a contact with no memberships as a fresh unsubscribe', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		const token = await makeUnsubToken(contactId);
+
+		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const firstJson = (await first.json()) as { data: { alreadyUnsubscribed: boolean } };
+		expect(firstJson.data.alreadyUnsubscribed).toBe(false);
+		expect((await readContact(t, contactId))?.unsubscribedAt).toBeGreaterThan(0);
+
+		const second = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		const secondJson = (await second.json()) as { data: { alreadyUnsubscribed: boolean } };
+		expect(secondJson.data.alreadyUnsubscribed).toBe(true);
 	});
 });
 

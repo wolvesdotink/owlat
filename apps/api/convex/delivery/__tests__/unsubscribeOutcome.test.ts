@@ -206,11 +206,12 @@ describe('a processed one-click unsubscribe reaches the (cell, arm) counter', ()
 		if (!contactId || !sendId) throw new Error('seed failed');
 		const attributedSendId = sendId;
 
-		// The endpoint's own answer for this contact: nothing to remove.
+		// The endpoint's own answer for this contact: no list removed, but the
+		// opt-out itself is new.
 		const result = await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, {
 			contactId,
 		});
-		expect(result).toEqual({ success: true, alreadyUnsubscribed: true });
+		expect(result).toEqual({ success: true, alreadyUnsubscribed: false, listsRemoved: 0 });
 		await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
 		await t.run(async (ctx) => {

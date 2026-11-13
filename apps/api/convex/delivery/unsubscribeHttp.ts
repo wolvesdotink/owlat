@@ -1,7 +1,8 @@
 /**
- * Unsubscribe HTTP endpoints — RFC 8058 one-click POST and the verify GET.
+ * Unsubscribe HTTP endpoints — RFC 8058 one-click POST, the verify GET, and
+ * the GET on the header URL that sends a person to the confirm page.
  *
- * Both are public, token-keyed `httpAction`s wrapped by the **Public token
+ * All are public, token-keyed `httpAction`s wrapped by the **Public token
  * endpoint (module)**: the shell owns CORS, rate-limit, token extract, body
  * parse, and response envelope; the handlers below just decide what each
  * specific token does.
@@ -13,6 +14,7 @@ import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoi
 import type { TokenValidation } from './tokenValidation';
 import type { SeedProbeTokenValidation } from './unsubscribe';
 import { logWarn } from '../lib/runtimeLog';
+import { getOptional } from '../lib/env';
 
 interface ContactUnsubInfo {
 	email: string;
@@ -30,7 +32,12 @@ interface ProcessOutcome {
 /**
  * RFC 8058 one-click unsubscribe — POST /unsub/{token}.
  *
- * No CORS — this is a server-to-server POST initiated by the mail client.
+ * Two callers: the mail provider's server-to-server one-click POST, which
+ * ignores CORS, and the recipient page's button, which runs on the web app's
+ * origin. The Convex site URL is a different origin in every deployment shape
+ * (its own host behind Caddy, its own port in the default compose), so without
+ * CORS headers the browser drops the answer to a POST that was already applied
+ * and the page reports a failure.
  */
 export const handleOneClickUnsubscribe = publicTokenEndpoint(
 	{
@@ -38,7 +45,7 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 		method: 'POST',
 		rateLimit: 'subscriptionManagement',
 		rateLimitKeyMode: 'ip+token',
-		cors: false,
+		cors: 'POST, OPTIONS',
 		resultMode: 'action',
 	},
 	async (ctx, { token, admit }) => {
@@ -75,7 +82,9 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 		const listsRemoved = result.alreadyUnsubscribed ? 0 : (result.listsRemoved ?? 0);
 		const message = result.alreadyUnsubscribed
 			? 'You were already unsubscribed from all topics'
-			: `You have been successfully unsubscribed from ${listsRemoved} topic${listsRemoved === 1 ? '' : 's'}`;
+			: listsRemoved === 0
+				? 'You have been unsubscribed'
+				: `You have been successfully unsubscribed from ${listsRemoved} topic${listsRemoved === 1 ? '' : 's'}`;
 
 		// Only successful/idempotent valid unsubscribe operations belong in this
 		// business-latency metric. Invalid public traffic must not dilute its p95.
@@ -96,6 +105,56 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 		return {
 			ok: true,
 			data: { message, listsRemoved, alreadyUnsubscribed: result.alreadyUnsubscribed === true },
+		};
+	}
+);
+
+/**
+ * GET on the List-Unsubscribe header URL — GET /unsub/{token}.
+ *
+ * Mail providers POST that URL, but people and some tools open it. A GET must
+ * never unsubscribe: link scanners fetch every URL in a message. It answers
+ * with a redirect to the web confirm page, where the person presses the
+ * button. The token is verified and charged like the POST's, so the URL is no
+ * cheaper to hammer than the endpoint it fronts.
+ */
+export const redirectUnsubscribeLinkToPage = publicTokenEndpoint(
+	{
+		path: '/unsub/:token',
+		method: 'GET',
+		rateLimit: 'subscriptionManagement',
+		rateLimitKeyMode: 'ip+token',
+		cors: false,
+		resultMode: 'action',
+	},
+	async (ctx, { token, admit }) => {
+		const validation = await ctx.runAction<TokenValidation>(
+			internal.delivery.unsubscribe.validateToken,
+			{ token }
+		);
+		if (!validation.valid) {
+			return {
+				ok: false,
+				reason: validation.reason ?? 'invalid_token',
+				message: 'Invalid or expired unsubscribe link',
+				status: 400,
+			};
+		}
+		if (!(await admit())) return ADMISSION_REFUSED;
+
+		// The web app's own origin, the one the footer's unsubscribe link is built
+		// on. Without it no page exists to send the person to.
+		const siteUrl = getOptional('SITE_URL')?.replace(/\/+$/, '');
+		if (!siteUrl) {
+			return { ok: false, reason: 'not_found', message: 'Not found', status: 404 };
+		}
+		const location = `${siteUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
+		return {
+			ok: true,
+			raw: new Response(null, {
+				status: 302,
+				headers: { Location: location, 'Cache-Control': 'no-store' },
+			}),
 		};
 	}
 );
