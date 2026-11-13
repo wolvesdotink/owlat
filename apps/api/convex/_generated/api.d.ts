@@ -429,6 +429,7 @@ import type * as campaigns_guards from '../campaigns/guards.js';
 import type * as campaigns_lifecycle from '../campaigns/lifecycle.js';
 import type * as campaigns_lifecycleReducer from '../campaigns/lifecycleReducer.js';
 import type * as campaigns_listing from '../campaigns/listing.js';
+import type * as campaigns_mailServerPreflight from '../campaigns/mailServerPreflight.js';
 import type * as campaigns_deletion from '../campaigns/deletion.js';
 import type * as campaigns_multiDaySendPlan from '../campaigns/multiDaySendPlan.js';
 import type * as campaigns_organization from '../campaigns/organization.js';
@@ -451,6 +452,7 @@ import type * as campaigns_sendTimeQueries from '../campaigns/sendTimeQueries.js
 import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.js';
 import type * as campaigns_senders from '../campaigns/senders.js';
 import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
+import type * as campaigns_startGate from '../campaigns/startGate.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
 import type * as campaigns_testSendCommit from '../campaigns/testSendCommit.js';
@@ -2366,6 +2368,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/lifecycle': typeof campaigns_lifecycle;
 	'campaigns/lifecycleReducer': typeof campaigns_lifecycleReducer;
 	'campaigns/listing': typeof campaigns_listing;
+	'campaigns/mailServerPreflight': typeof campaigns_mailServerPreflight;
 	'campaigns/deletion': typeof campaigns_deletion;
 	'campaigns/multiDaySendPlan': typeof campaigns_multiDaySendPlan;
 	'campaigns/organization': typeof campaigns_organization;
@@ -2388,6 +2391,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendVariantSplit': typeof campaigns_sendVariantSplit;
 	'campaigns/senders': typeof campaigns_senders;
 	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
+	'campaigns/startGate': typeof campaigns_startGate;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
 	'campaigns/testSendCommit': typeof campaigns_testSendCommit;

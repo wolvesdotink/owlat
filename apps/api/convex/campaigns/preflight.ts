@@ -11,6 +11,7 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/se
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
+import { assessCampaignMailServer, type MailServerBlock } from './mailServerPreflight';
 import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
 import { getLive } from '../lib/softDelete';
 import { campaignsQuery } from './_helpers';
@@ -157,6 +158,15 @@ function capacityRefusal(schedule: CampaignCapacitySchedule): PreflightFailure {
 
 type Ctx = MutationCtx | QueryCtx;
 
+const MAIL_SERVER_BLOCK_MESSAGE: Record<MailServerBlock, string> = {
+	unreachable:
+		'Cannot send campaign: the built-in mail server is not answering its health check, so the mail would wait in its queue. Check the mail server under Delivery.',
+	port25Blocked:
+		'Cannot send campaign: the built-in mail server cannot reach other mail servers on port 25 from any campaign sending IP. Many hosts block port 25 until you ask them to open it.',
+	allIpsHeld:
+		'Cannot send campaign: every campaign sending IP of the built-in mail server is held back (blocklist, PTR or SPF problem). Fix the held IPs under Delivery.',
+};
+
 /**
  * Validate that a campaign is ready to be scheduled or sent. The reducer
  * inside `lifecycle.transition` assumes pre-flight passed; callers must
@@ -250,6 +260,18 @@ export async function validateReadyToSend(
 	}
 
 	const now = options.now ?? Date.now();
+
+	// The built-in mail server must be able to deliver right now, judged from
+	// its last fresh health snapshot exactly as the Delivery hub judges it.
+	// Stale or missing health never refuses.
+	const mailServerBlock = await assessCampaignMailServer(ctx, now);
+	if (mailServerBlock) {
+		return refuse(
+			'mail_server_not_ready',
+			mailServerBlock,
+			MAIL_SERVER_BLOCK_MESSAGE[mailServerBlock]
+		);
+	}
 
 	if (options.scheduledAt !== undefined) {
 		if (options.scheduledAt <= now) {

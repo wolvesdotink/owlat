@@ -27,8 +27,10 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
-import { readInstanceCounter } from '../lib/instanceCounters';
+import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { hashFraction, testFractionForSplit, variantForHash } from '../campaigns/sendVariantSplit';
+import { SCHEDULED_START_MAX_WAIT_MS } from '../campaigns/startGate';
+import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -38,6 +40,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The org-wide safety circuit is read per organization.
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),
 	};
 });
 
@@ -637,6 +641,218 @@ describe('startCampaignSend — fire-time guard', () => {
 		expect(await countSends(t, data.campaignId)).toBe(0);
 		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
 		expect(campaign?.status).toBe('scheduled'); // not transitioned to sending
+	});
+});
+
+// The org-wide safety circuit, as the MTA snapshot writes it: a fresh
+// `breaker_open` signal on the stream-less `all` row holds every send.
+async function openDeliveryCircuit(t: TestConvex<typeof schema>): Promise<void> {
+	const now = Date.now();
+	await t.run(async (ctx) => {
+		await ctx.db.insert('deliverabilityRouteStates', {
+			organizationId: 'org-a',
+			destinationProvider: 'all',
+			isFallbackActive: true,
+			signals: [{ source: 'breaker_open', severity: 'critical', observedAt: now }],
+			fallbackActiveSince: now,
+			snapshotGeneratedAt: now,
+			expiresAt: now + 86_400_000,
+			updatedAt: now,
+		});
+	});
+}
+
+async function closeDeliveryCircuit(t: TestConvex<typeof schema>): Promise<void> {
+	await t.run(async (ctx) => {
+		for (const row of await ctx.db.query('deliverabilityRouteStates').collect()) {
+			await ctx.db.delete(row._id);
+		}
+	});
+}
+
+async function makeScheduled(
+	t: TestConvex<typeof schema>,
+	campaignId: Id<'campaigns'>,
+	scheduledAt: number
+): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.patch(campaignId, {
+			status: 'scheduled' as const,
+			scheduledAt,
+			sentAt: undefined,
+		});
+	});
+}
+
+async function pendingNotices(t: TestConvex<typeof schema>) {
+	return await t.run(async (ctx) =>
+		(await ctx.db.system.query('_scheduled_functions').collect())
+			.filter((job) => job.name === 'marketing/notifications:fanOut')
+			.map((job) => (job.args[0] as { event: { kind: string; campaignId?: string } }).event)
+	);
+}
+
+describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
+	it('a refusal at fire time sends the campaign back to draft with the reason, and notifies', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		const scheduledAt = Date.now() - 60_000;
+		await makeScheduled(t, data.campaignId, scheduledAt);
+		// The sending domain was removed after the schedule was accepted.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+		});
+
+		const result = await t.action(internal.campaigns.send.startCampaignSend, {
+			campaignId: data.campaignId,
+		});
+
+		expect(result.skipped).toBe(true);
+		expect(await countSends(t, data.campaignId)).toBe(0);
+		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.startRefusal).toMatchObject({
+			reason: 'domain_not_verified',
+			messageKey: PREFLIGHT_MESSAGE_KEYS.domain_not_verified.missing,
+			messageParams: { domain: 'example.com' },
+			scheduledAt,
+		});
+		expect(await pendingNotices(t)).toContainEqual({
+			kind: 'campaign_not_started',
+			campaignId: data.campaignId,
+			refusedAt: campaign?.startRefusal?.refusedAt,
+		});
+	});
+
+	it('scheduling the campaign again clears the recorded refusal', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+		});
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		await t.mutation(internal.campaigns.lifecycle.transition, {
+			campaignId: data.campaignId,
+			input: { to: 'scheduled', at: Date.now(), scheduledAt: Date.now() + 60 * 60 * 1000 },
+			userId: 'test-user',
+		});
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(campaign?.status).toBe('scheduled');
+		expect(campaign?.startRefusal).toBeUndefined();
+	});
+
+	it('an open safety circuit at fire time holds the start, which later sends exactly once', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 3);
+		await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+		await openDeliveryCircuit(t);
+
+		const held = await t.action(internal.campaigns.send.startCampaignSend, {
+			campaignId: data.campaignId,
+		});
+		expect(held.skipped).toBe(true);
+		expect(held.reason).toMatch(/safety circuit/i);
+		const waiting = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(waiting?.status).toBe('scheduled');
+		expect(waiting?.startRefusal).toBeUndefined();
+		expect(await getJob(t, data.campaignId)).toBeNull();
+
+		await closeDeliveryCircuit(t);
+		// The per-minute tick and the lifecycle's own hop may both fire.
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		expect((await getJob(t, data.campaignId))?.phase).toBe('done');
+		expect(await countSends(t, data.campaignId)).toBe(3);
+	});
+
+	it('a mail server that cannot deliver holds the start rather than refusing it outright', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		const prev = { ...process.env };
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		process.env['MTA_API_URL'] = 'http://mta:3100';
+		process.env['MTA_API_KEY'] = 'test-key';
+		try {
+			await t.run(async (ctx) => {
+				await writeInstanceCounter(ctx, 'mtaHealth', {
+					mtaHealth: { status: 'unreachable', observedAt: Date.now() },
+				});
+			});
+			await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+
+			const held = await t.action(internal.campaigns.send.startCampaignSend, {
+				campaignId: data.campaignId,
+			});
+			expect(held.reason).toMatch(/waiting for delivery/i);
+			expect((await t.run(async (ctx) => ctx.db.get(data.campaignId)))?.status).toBe('scheduled');
+
+			// The same server, still down once the wait is over: now it is a refusal.
+			await makeScheduled(t, data.campaignId, Date.now() - SCHEDULED_START_MAX_WAIT_MS - 60_000);
+			await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+			const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+			expect(campaign?.status).toBe('draft');
+			expect(campaign?.startRefusal?.messageKey).toBe(
+				PREFLIGHT_MESSAGE_KEYS.mail_server_not_ready.unreachable
+			);
+		} finally {
+			for (const key of ['EMAIL_PROVIDER', 'MTA_API_URL', 'MTA_API_KEY']) {
+				if (prev[key] === undefined) delete process.env[key];
+				else process.env[key] = prev[key];
+			}
+		}
+	});
+
+	it('a hold that outlasts the wait gives up visibly', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		await makeScheduled(t, data.campaignId, Date.now() - SCHEDULED_START_MAX_WAIT_MS - 60_000);
+		await openDeliveryCircuit(t);
+
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.startRefusal).toMatchObject({
+			reason: 'delivery_on_hold',
+			messageKey: PREFLIGHT_MESSAGE_KEYS.delivery_on_hold.default,
+		});
+		expect(await countSends(t, data.campaignId)).toBe(0);
+	});
+});
+
+describe('Campaign send walker — a routing hold mid-walk', () => {
+	it('an open safety circuit holds the hop without throwing, and the walk resumes exactly once', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 3);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await openDeliveryCircuit(t);
+
+		const held = await t.action(internal.campaigns.send.resolveCampaignPage, {
+			campaignId: data.campaignId,
+		});
+
+		expect(held).toEqual({ done: false, pageEnqueued: 0 });
+		expect(await countSends(t, data.campaignId)).toBe(0);
+		expect((await getJob(t, data.campaignId))?.phase).toBe('resolving');
+		const retries = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.name === 'campaigns/send:resolveCampaignPage' && job.state.kind === 'pending'
+			)
+		);
+		expect(retries.length).toBeGreaterThan(0);
+
+		await closeDeliveryCircuit(t);
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+		expect((await getJob(t, data.campaignId))?.phase).toBe('done');
+		expect(await countSends(t, data.campaignId)).toBe(3);
 	});
 });
 

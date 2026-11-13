@@ -84,7 +84,7 @@ export type { AttachmentRef } from './dispatchContent';
 
 /**
  * The route stamped on the row and the envelope, through the shared
- * `resolveSendRoute` seam. Its `providerType`/`ipPool` are advisory for the
+ * `resolveSendRouteFromDb` seam. Its `providerType`/`ipPool` are advisory for the
  * worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative for the
  * `providerType` stamped on the row, so it runs before the insert.
  *

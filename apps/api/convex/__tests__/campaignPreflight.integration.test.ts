@@ -10,6 +10,8 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
+import { writeInstanceCounter } from '../lib/instanceCounters';
+import { MTA_HEALTH_MAX_AGE_MS } from '../delivery/mtaHealthFreshness';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -291,6 +293,162 @@ describe('validateReadyToSend pre-flight', () => {
 		// mislabelled as a missing template.
 		expect(result.reason).toBe('not_found');
 		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.not_found.default);
+	});
+});
+
+describe('validateReadyToSend — the built-in mail server', () => {
+	const NOW = Date.UTC(2026, 10, 2, 9, 0, 0);
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(NOW);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		delete process.env['RESEND_API_KEY'];
+	});
+
+	/** A campaign every other check passes, sending from `sender@verified.example.com`. */
+	async function seedReadyCampaign(t: TestRunner): Promise<Id<'campaigns'>> {
+		const templateId = await seedTemplate(t);
+		const topicId = await seedTopic(t);
+		await seedVerifiedDomain(t, 'verified.example.com');
+		let campaignId: Id<'campaigns'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'draft',
+					emailTemplateId: templateId,
+					fromEmail: 'sender@verified.example.com',
+					audience: { kind: 'topic', topicId },
+				})
+			);
+		});
+		return campaignId!;
+	}
+
+	/** The MTA's health as the sync records it: port 25 refused from every address. */
+	async function seedPort25Blocked(t: TestRunner, observedAt: number): Promise<void> {
+		await t.run(async (ctx) => {
+			await writeInstanceCounter(ctx, 'mtaHealth', {
+				mtaHealth: {
+					status: 'degraded',
+					smtpOutbound: {
+						status: 'degraded',
+						checkedAt: observedAt,
+						ips: [
+							{ ip: '192.0.2.10', status: 'failed', reason: 'connect ETIMEDOUT' },
+							{ ip: '192.0.2.11', status: 'failed', reason: 'connect ETIMEDOUT' },
+						],
+					},
+					observedAt,
+				},
+			});
+		});
+	}
+
+	it('refuses a campaign on the own MTA when a fresh snapshot says port 25 is blocked', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		await seedPort25Blocked(t, NOW - 60_000);
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('mail_server_not_ready');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.mail_server_not_ready.port25Blocked);
+	});
+
+	it('refuses when the mail server does not answer its health check', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		await t.run(async (ctx) => {
+			await writeInstanceCounter(ctx, 'mtaHealth', {
+				mtaHealth: { status: 'unreachable', observedAt: NOW - 60_000 },
+			});
+		});
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.mail_server_not_ready.unreachable);
+	});
+
+	it('refuses when every campaign sending IP is held, as the hub grades it', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		await t.run(async (ctx) => {
+			await writeInstanceCounter(ctx, 'mtaHealth', {
+				mtaHealth: { status: 'degraded', observedAt: NOW - 60_000 },
+			});
+			const ip = {
+				phase: 'ramp',
+				currentDay: 3,
+				dailyCap: 100,
+				sentToday: 0,
+				bounceRate: 0,
+				deferralRate: 0,
+				active: true,
+				blockReasons: ['dnsbl' as const],
+			};
+			await ctx.db.insert('warmingState', {
+				pools: { transactional: ['192.0.2.20'], campaign: ['192.0.2.10'] },
+				phase: 'ramp',
+				totalDailyCap: 100,
+				totalSentToday: 0,
+				ipCount: 2,
+				ips: [
+					{ ...ip, ip: '192.0.2.10', pool: 'campaign' },
+					{ ...ip, ip: '192.0.2.20', pool: 'transactional', blockReasons: [] },
+				],
+				syncedAt: NOW - 60_000,
+			});
+		});
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.mail_server_not_ready.allIpsHeld);
+	});
+
+	it('does not refuse on a stale snapshot: a stopped sync says nothing about the server', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		await seedPort25Blocked(t, NOW - MTA_HEALTH_MAX_AGE_MS - 60_000);
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('does not judge a relay route by the built-in MTA', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		await seedPort25Blocked(t, NOW - 60_000);
+		process.env['EMAIL_PROVIDER'] = 'resend';
+		process.env['RESEND_API_KEY'] = 're_test';
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(true);
 	});
 });
 

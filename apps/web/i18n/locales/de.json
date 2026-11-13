@@ -11833,6 +11833,10 @@
 						"description": "Damit wird sofort an {count} Empfänger gesendet; das lässt sich nicht rückgängig machen.",
 						"title": "Kampagne jetzt senden?"
 					},
+					"startRefused": {
+						"title": "Diese Kampagne ist nicht gestartet",
+						"description": "Sie war für {date} geplant und ist aus diesem Grund wieder ein Entwurf. Behebe das und plane oder sende die Kampagne dann erneut."
+					},
 					"test": {
 						"button": "Test senden",
 						"description": "Sieh dir an, wie deine E-Mail aussehen wird.",
@@ -18941,6 +18945,11 @@
 				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
 				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
 				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			},
+			"campaignNotStarted": {
+				"title": "Geplante Kampagne nicht gestartet",
+				"body": "{name} ist wieder ein Entwurf. Öffne sie, um den Grund zu sehen",
+				"private": "Eine geplante Kampagne ist wieder ein Entwurf. Öffne sie, um den Grund zu sehen"
 			}
 		},
 		"useDesktopNotifications": {
@@ -19644,6 +19653,7 @@
 			"capacityAbout": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es etwa {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf {days} Tage.",
 			"capacityAtLeast": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität dauert es mindestens {days} Tage, bis alle erreicht sind. Verteile den Versand deshalb auf mehrere Tage.",
 			"capacityTruncated": "Diese Kampagne ist größer, als deine Sendekapazität auf einmal zulässt. Mit deiner aktuellen Warmup-Kapazität würde es mehr als {maxDays} Tage dauern, bis alle erreicht sind. Sende sie in Etappen oder verkleinere die Zielgruppe.",
+			"deliveryOnHold": "Der Versand blieb nach dem geplanten Zeitpunkt die ganze Wartezeit über angehalten, weil der Versandschutz aktiv war. Prüfe den Zustellstatus und plane die Kampagne dann neu.",
 			"domainInvalidAddress": "\"{email}\" ist keine gültige Absenderadresse. Wähle einen anderen Absender.",
 			"domainMissing": "\"{domain}\" ist in diesem Workspace noch keine Absenderdomain. Füge sie hinzu und verifiziere sie, bevor du sendest.",
 			"domainUnverified": "\"{domain}\" ist noch nicht verifiziert. Schließe die DNS-Verifizierung ab, bevor du sendest.",
@@ -19653,6 +19663,9 @@
 				"senders": "Kampagnenabsender öffnen",
 				"transport": "Versand einrichten"
 			},
+			"mailServerAllIpsHeld": "Alle Kampagnen-IPs des eingebauten Mailservers sind zurückgehalten (Blocklist, PTR oder SPF). Behebe das bei den betroffenen IPs und sende dann erneut.",
+			"mailServerPort25Blocked": "Der eingebaute Mailserver erreicht von keiner Kampagnen-IP andere Mailserver über Port 25. Viele Hoster sperren Port 25, bis du die Freigabe beantragst.",
+			"mailServerUnreachable": "Der eingebaute Mailserver antwortet nicht auf seine Statusprüfung, Kampagnen-Mails würden also nur in seiner Warteschlange liegen. Prüfe den Mailserver und sende dann erneut.",
 			"noAudience": "Wähle aus, wer diese Kampagne bekommt, bevor du sie sendest.",
 			"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet: Für Kampagnen-Mails gibt es keinen Versanddienst. Ein verbundenes Postfach versendet keine Kampagnen.",
 			"noFromEmail": "Wähle aus, von wem diese Kampagne kommt, bevor du sie sendest.",
