@@ -30,6 +30,7 @@ import type {
 	SendProviderHostPortField,
 } from '@owlat/shared/sendProviderCatalog';
 import { SETUP_SENDING_CATALOG_ENTRIES, sendingConfigEnv } from '@owlat/shared/setupSendingConfig';
+import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { mergeEnv, type EnvMap } from './env';
 import { applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
@@ -347,16 +348,12 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 	if (config.domain) {
 		patch['EHLO_HOSTNAME'] = config.domain.ehloHostname;
 		patch['RETURN_PATH_DOMAIN'] = config.domain.bounceDomain;
-		// Wire the system/auth From-identity off the configured sending/EHLO
-		// domain. Without these the Convex runtime never receives DEFAULT_FROM_*,
-		// so system mail falls back to placeholders (noreply@mail.owlat.app /
-		// noreply@example.com — auth/auth.ts, contacts/confirmationEmail.ts,
-		// transactional/dispatch.ts). The EHLO hostname is the DKIM-signed sending
-		// domain the MTA identifies as, so it is the correct From domain. Mirrors
-		// the legacy bash wizard (scripts/setup.sh: DEFAULT_FROM_{DOMAIN,EMAIL,NAME}).
-		patch['DEFAULT_FROM_DOMAIN'] = config.domain.ehloHostname;
-		patch['DEFAULT_FROM_EMAIL'] = `noreply@${config.domain.ehloHostname}`;
-		patch['DEFAULT_FROM_NAME'] = 'Owlat';
+		// Without DEFAULT_FROM_* the Convex runtime sends system mail from a
+		// placeholder domain the operator does not own (auth/auth.ts,
+		// transactional/dispatchDecision.ts). The EHLO hostname is the domain the
+		// MTA identifies as, but it is not DKIM-signed until it is added as a
+		// domain in the app: the MTA signs only domains registered there.
+		Object.assign(patch, systemFromIdentityEnv(config.domain.ehloHostname));
 	}
 
 	if (config.network) {

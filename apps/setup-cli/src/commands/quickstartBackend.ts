@@ -16,7 +16,6 @@ import {
 	looksLikeRealAdminKey,
 } from '../lib/convexDeploy';
 import { progressSpinner, SetupStep, type Reporter } from '../lib/progress';
-import { resolveLocalHost } from '../lib/localHost';
 import type { ProvisioningCheckpoint } from '../lib/provisioningCheckpoint';
 import { probeMtaIdentityHealth } from './doctor';
 import { createDoctorRedactor } from '../lib/doctorText';
@@ -26,6 +25,7 @@ import {
 	checkReverseDns,
 } from '../lib/reverseDns';
 import { reapplyEnvToRunningStack } from './quickstartStack';
+import { localMtaUrl as localMtaUrlFor } from './quickstartOutbound';
 
 /**
  * A direct-delivery install is not complete until the MTA's own live
@@ -37,7 +37,7 @@ export async function verifyMtaIdentity(
 	envAfterCompose: Record<string, string>,
 	reporter: Reporter
 ): Promise<boolean> {
-	const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
+	const localMtaUrl = localMtaUrlFor(envAfterCompose);
 	reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
 	// The MTA finishes its boot-time identity, source-address and DNSBL
 	// sweeps before it opens the listener, and each sweep may wait on DNS

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createEnvBackupBox, isEnvBackupSealedValue } from '@owlat/shared/envBackupBox';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
+import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
 import type * as SetupEnvModule from '@owlat/shared/setupEnv';
 import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
@@ -352,5 +353,41 @@ describe('POST /api/setup/apply — the real setup-token gate', () => {
 		expect(fetch).not.toHaveBeenCalled();
 		expect(pushMock).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('POST /api/setup/apply — system From identity', () => {
+	const withDomain = (extra: Record<string, string> = {}) => {
+		body = {
+			flags: getDefaultFlags({ hosted: false }),
+			env: {
+				EMAIL_PROVIDER: 'smtp',
+				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
+				EHLO_HOSTNAME: 'mail.example.com',
+				...extra,
+			},
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+	};
+	const fromKeys = (env: Record<string, string>) => ({
+		DEFAULT_FROM_DOMAIN: env['DEFAULT_FROM_DOMAIN'],
+		DEFAULT_FROM_EMAIL: env['DEFAULT_FROM_EMAIL'],
+		DEFAULT_FROM_NAME: env['DEFAULT_FROM_NAME'],
+	});
+
+	it('writes the same DEFAULT_FROM_* the terminal and config-file setup write', async () => {
+		withDomain();
+		expect((await callRoute()).ok).toBe(true);
+		expect(fromKeys(writtenEnv())).toEqual(systemFromIdentityEnv('mail.example.com'));
+	});
+
+	it('takes the From domain from an address the operator supplied', async () => {
+		withDomain({ DEFAULT_FROM_EMAIL: 'hello@example.com' });
+		expect((await callRoute()).ok).toBe(true);
+		expect(fromKeys(writtenEnv())).toEqual({
+			DEFAULT_FROM_DOMAIN: 'example.com',
+			DEFAULT_FROM_EMAIL: 'hello@example.com',
+			DEFAULT_FROM_NAME: 'Owlat',
+		});
 	});
 });
