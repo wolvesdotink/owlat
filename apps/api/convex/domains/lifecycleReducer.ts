@@ -25,6 +25,7 @@ import {
 	type ProviderIdentity,
 	type SendingDomainProviderKind,
 } from './providers';
+import { REGRESSION_CONFIRM_DELAY_MS } from './lifecycleVerdict';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,13 @@ export type SendingDomainTransitionInput =
 			/** Verify-completion path. */
 			verificationResults?: VerificationResults;
 	  }
-	| { to: 'verified'; at: number; verificationResults: VerificationResults }
+	| {
+			to: 'verified';
+			at: number;
+			verificationResults: VerificationResults;
+			/** Set while an authoritative failure awaits its confirming check. */
+			regressionSuspectedAt?: number;
+	  }
 	| {
 			to: 'failed';
 			at: number;
@@ -123,6 +130,7 @@ export const transitionInputValidator = v.union(
 		to: v.literal('verified'),
 		at: v.number(),
 		verificationResults: verificationResultsValidator,
+		regressionSuspectedAt: v.optional(v.number()),
 	}),
 	v.object({
 		to: v.literal('failed'),
@@ -137,54 +145,12 @@ export const providerCheckResultValidator = v.object({
 	lastError: v.optional(v.string()),
 });
 
-type ProviderCheckResult = { verified: boolean; lastError?: string };
-
-/**
- * The verification verdict, pure. Combines DNS results + the per-provider
- * check into the `verified | failed | pending` decision the verifier callback
- * lands as a transition. Kept out of the handler so the module docstring's
- * "Reducer combines DNS results + per-provider check to derive
- * `verified | failed | pending`" invariant is true and unit-testable.
- *
- * Rules:
- *   - DKIM: every published selector must verify.
- *   - MAIL FROM: when present, every record must verify (absent ⇒ satisfied).
- *   - SPF: optional — an absent SPF record counts as verified; a present one
- *     must report `verified === true`.
- *   - DMARC: must report `verified === true`.
- *   - TLS-RPT / TLSA are deliberately NOT part of the verdict (advisory
- *     reporting / operator-owned cert lifecycle); their results are recorded
- *     for the builder UI but never gate or fail the domain.
- *
- * A domain is `verified` only when DNS is fully aligned AND the provider
- * check passes; `failed` when any authentication record failed or the
- * provider reported an error; otherwise `pending` (records still propagating,
- * none failed).
- */
-export function deriveVerificationVerdict(
-	dns: VerificationResults,
-	providerCheck: ProviderCheckResult
-): 'verified' | 'failed' | 'pending' {
-	const dkimAllVerified = dns.dkim?.every((r) => r.verified) ?? false;
-	const mailFromAllVerified = !dns.mailFrom || dns.mailFrom.every((r) => r.verified);
-	// SPF is optional — when no SPF record is configured, it counts as verified.
-	const spfVerified = dns.spf ? dns.spf.verified === true : true;
-	const dnsAllVerified =
-		spfVerified && dkimAllVerified && dns.dmarc?.verified === true && mailFromAllVerified;
-
-	const dnsAnyFailed =
-		dns.spf?.verified === false ||
-		(dns.dkim?.some((r) => r.verified === false) ?? false) ||
-		dns.dmarc?.verified === false ||
-		(dns.mailFrom?.some((r) => r.verified === false) ?? false);
-
-	const allVerified = dnsAllVerified && providerCheck.verified;
-	const anyFailed = dnsAnyFailed || providerCheck.lastError !== undefined;
-
-	if (allVerified) return 'verified';
-	if (anyFailed) return 'failed';
-	return 'pending';
-}
+export {
+	deriveVerificationVerdict,
+	planVerificationTransition,
+	REGRESSION_CONFIRM_DELAY_MS,
+	type VerificationVerdict,
+} from './lifecycleVerdict';
 
 // ─── Legal-edges graph ──────────────────────────────────────────────────────
 //
@@ -248,6 +214,13 @@ export type Effect =
 			// is the two-subjects-for-one-rule seam the move removed.
 			kind: 'provision_relay_identity_if_enabled';
 			domainId: Id<'domains'>;
+	  }
+	| {
+			// A verified domain's first authoritative failure: re-check it once the
+			// confirmation delay has passed.
+			kind: 'schedule_confirming_check';
+			domainId: Id<'domains'>;
+			delayMs: number;
 	  };
 
 type ReducerResult = {
@@ -264,7 +237,7 @@ export function reduce(domain: Doc<'domains'>, input: SendingDomainTransitionInp
 	const isSelfLoop = from === to;
 
 	if (isSelfLoop) {
-		return reduceSelfLoop(input);
+		return reduceSelfLoop(domain, input);
 	}
 
 	const patch = buildPatch(domain, input);
@@ -272,7 +245,10 @@ export function reduce(domain: Doc<'domains'>, input: SendingDomainTransitionInp
 	return { patch, effects, applied: 'transitioned' };
 }
 
-function reduceSelfLoop(input: SendingDomainTransitionInput): ReducerResult {
+function reduceSelfLoop(
+	domain: Doc<'domains'>,
+	input: SendingDomainTransitionInput
+): ReducerResult {
 	// Verification self-loops carry fresh results — patch them, skip audit; all
 	// other self-loops are no-op records. A `verified` self-loop always patches
 	// (re-verification); `pending`/`failed` self-loops patch only when they carry
@@ -282,13 +258,26 @@ function reduceSelfLoop(input: SendingDomainTransitionInput): ReducerResult {
 		((input.to === 'pending' || input.to === 'failed') && input.verificationResults !== undefined);
 
 	if (carriesResults) {
+		const effects: Effect[] = [];
+		if (
+			input.to === 'verified' &&
+			input.regressionSuspectedAt !== undefined &&
+			domain.regressionSuspectedAt === undefined
+		) {
+			effects.push({
+				kind: 'schedule_confirming_check',
+				domainId: domain._id,
+				delayMs: REGRESSION_CONFIRM_DELAY_MS,
+			});
+		}
 		return {
 			patch: {
 				verificationResults: input.verificationResults,
 				lastVerifiedAt: input.at,
 				updatedAt: input.at,
+				regressionSuspectedAt: input.to === 'verified' ? input.regressionSuspectedAt : undefined,
 			},
-			effects: [],
+			effects,
 			applied: 'recorded',
 		};
 	}
@@ -309,6 +298,7 @@ function buildPatch(
 				verifiedAt: undefined,
 				lastVerifiedAt: undefined,
 				lastRegistrationError: undefined,
+				regressionSuspectedAt: undefined,
 				updatedAt,
 			};
 
@@ -317,6 +307,7 @@ function buildPatch(
 				status: 'pending',
 				updatedAt,
 				lastRegistrationError: undefined,
+				regressionSuspectedAt: undefined,
 			};
 			// Register-completion: publish fresh DNS records.
 			if (input.dnsRecords !== undefined) {
@@ -336,6 +327,7 @@ function buildPatch(
 				verificationResults: input.verificationResults,
 				lastVerifiedAt: input.at,
 				updatedAt,
+				regressionSuspectedAt: undefined,
 			};
 			// Preserve the first-verified timestamp — only set when never
 			// previously verified.
@@ -349,6 +341,7 @@ function buildPatch(
 			const patch: Record<string, unknown> = {
 				status: 'failed',
 				updatedAt,
+				regressionSuspectedAt: undefined,
 			};
 			if (input.verificationResults !== undefined) {
 				patch['verificationResults'] = input.verificationResults;

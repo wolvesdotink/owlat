@@ -163,6 +163,8 @@ const handleVerifyDomain = async (domainId: Id<'domains'>) => {
 		if (!result.ok) return; // run() already surfaced the failure
 		if (result.result.allVerified) {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verified'));
+		} else if (result.result.inconclusive) {
+			showToast(t('dashboard.admin.delivery.domains.toasts.checkInconclusive'), 'error');
 		} else {
 			showToast(t('dashboard.admin.delivery.domains.toasts.verificationIncomplete'), 'error');
 		}

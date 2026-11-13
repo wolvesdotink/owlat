@@ -6,6 +6,8 @@ type VerificationResults = NonNullable<Doc<'domains'>['verificationResults']>;
 
 const ok = { verified: true, lastChecked: 0 } as const;
 const bad = { verified: false, lastChecked: 0 } as const;
+// The resolver could not answer (SERVFAIL, timeout): no evidence either way.
+const unanswered = { verified: false, lastChecked: 0, inconclusive: true } as const;
 
 /** A fully-aligned DNS bundle: SPF + DKIM + DMARC + MAIL FROM all verified. */
 function fullyAlignedDns(): VerificationResults {
@@ -72,5 +74,29 @@ describe('deriveVerificationVerdict', () => {
 	it('ignores TLS-RPT — a failed tlsRpt does not gate or fail the verdict', () => {
 		const dns: VerificationResults = { ...fullyAlignedDns(), tlsRpt: bad };
 		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('verified');
+	});
+
+	it('is inconclusive, not failed, when a lookup went unanswered', () => {
+		const dns: VerificationResults = { spf: ok, dkim: [unanswered], dmarc: ok };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('inconclusive');
+	});
+
+	it('still fails on an authoritative failure next to an unanswered lookup', () => {
+		const dns: VerificationResults = { spf: ok, dkim: [bad], dmarc: unanswered };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('failed');
+	});
+});
+
+describe('deriveVerificationVerdict during a DKIM rotation', () => {
+	it('ignores a pending selector that is not published yet', () => {
+		const pending = { verified: false, lastChecked: 0, rotationPending: true } as const;
+		const dns: VerificationResults = { spf: ok, dkim: [ok, pending], dmarc: ok };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('verified');
+	});
+
+	it('fails when the active selector is gone, whatever the pending one says', () => {
+		const pending = { verified: true, lastChecked: 0, rotationPending: true } as const;
+		const dns: VerificationResults = { spf: ok, dkim: [bad, pending], dmarc: ok };
+		expect(deriveVerificationVerdict(dns, { verified: true })).toBe('failed');
 	});
 });

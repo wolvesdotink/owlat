@@ -44,6 +44,16 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.relayReturnPathProbe.sweepReturnPathProbes,
 		{}
 	);
+	// Re-check every once-verified sending domain's DNS through the same
+	// lifecycle path as the manual Verify, so a deleted DKIM or DMARC record
+	// takes the domain out of `verified` (after a confirming check) instead of
+	// letting it send mail that fails DMARC. One scheduled check per domain.
+	crons.interval(
+		'reverify sending domains',
+		{ hours: 24 },
+		internal.domains.reverificationSweep.scheduleReverification,
+		{}
+	);
 	crons.interval(
 		'refresh SES relay verification proofs',
 		{ hours: 24 },

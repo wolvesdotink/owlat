@@ -8606,6 +8606,7 @@
 					},
 					"title": "Versanddomains",
 					"toasts": {
+						"checkInconclusive": "Die DNS-Prüfung konnte nicht abgeschlossen werden: Der Resolver hat nicht geantwortet. Es hat sich nichts geändert; versuch es in ein paar Minuten noch einmal.",
 						"dmarcMonitorOnly": "DMARC auf reines Beobachten gesetzt. Veröffentliche den aktualisierten _dmarc-Eintrag erneut und verifiziere dann.",
 						"dmarcRaised": "DMARC-Richtlinie auf {policy} angehoben. Veröffentliche den aktualisierten _dmarc-Eintrag erneut und verifiziere dann.",
 						"forceVerified": "Domain-Verifizierung erzwungen (Entwickler-Abkürzung).",

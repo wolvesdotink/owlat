@@ -104,13 +104,20 @@ export const domainTables = {
 		// the next `registering → pending` succeeds. Replaces the old
 		// fields `registrationError` and `sesRegistrationError`.
 		lastRegistrationError: v.optional(v.string()),
-		// Last verification attempt timestamp (patched on every
-		// `recordVerification` call, including same-state self-loops).
+		// Last conclusive verification timestamp (patched on every
+		// `recordVerification` call that reached a verdict, including same-state
+		// self-loops; a check the resolver could not answer leaves it).
 		lastVerifiedAt: v.optional(v.number()),
 		// When the domain was *first* successfully verified. Preserved through
 		// later DNS instability — never re-set on subsequent `→ verified`
 		// edges.
 		verifiedAt: v.optional(v.number()),
+		// When a verified domain first failed a check on authoritative DNS
+		// evidence. The domain stays `verified` (and keeps sending) until a
+		// confirming check at least an hour later fails too; a passing check or
+		// any status change clears it. Absent on every other row, so no backfill.
+		// Written only by the **Sending domain lifecycle (module)**.
+		regressionSuspectedAt: v.optional(v.number()),
 		// Marks rows inserted by /seed/demo or by dev shortcuts (e.g. force-verify)
 		// so they can be wiped on reset. Values: 'demo' | 'dev-forced'.
 		seedTag: v.optional(v.string()),
