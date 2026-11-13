@@ -300,6 +300,8 @@ describe('the real catalogs', () => {
 		// Every screen downloads this before it mounts. A rise past the ceiling
 		// usually means a namespace or prefix fell back to boot; find out why
 		// before raising it.
-		expect(JSON.stringify(splits.get('en')!.boot).length).toBeLessThan(BOOT_CATALOG_CEILING);
+		expect(Buffer.byteLength(JSON.stringify(splits.get('en')!.boot), 'utf8')).toBeLessThan(
+			BOOT_CATALOG_CEILING
+		);
 	});
 });

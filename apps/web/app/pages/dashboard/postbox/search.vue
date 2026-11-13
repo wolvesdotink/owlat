@@ -3,7 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
-import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { useBlockSize } from '~/composables/postbox/useBlockSize';
 import { warmPostboxThreadReader } from '~/composables/postbox/usePostboxChunkWarmup';
 import {
 	ArrowLeftIcon,

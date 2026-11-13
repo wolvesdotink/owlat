@@ -31,6 +31,12 @@ vi.mock('#build/middleware', () => ({
 	},
 	globalMiddleware: [],
 }));
+vi.mock('~/composables/postbox/usePostboxChunkWarmup', () => ({
+	warmPostboxThreadReader: () => {
+		events.push('reader');
+		return Promise.resolve();
+	},
+}));
 vi.mock('#build/owlat-i18n-areas.mjs', () => ({
 	get areaRoutes() {
 		return build.areaRoutes;
@@ -44,6 +50,7 @@ vi.mock('#build/owlat-i18n-areas.mjs', () => ({
 interface FakeRoute {
 	path: string;
 	fullPath: string;
+	params: Record<string, string | string[]>;
 	meta: Record<string, unknown>;
 	matched: Array<{ meta: Record<string, unknown> }>;
 }
@@ -88,9 +95,9 @@ async function loadPlugins() {
 	return { auth, warmup, useAuth };
 }
 
-function dashboardRoute(path: string): FakeRoute {
+function dashboardRoute(path: string, params: FakeRoute['params'] = {}): FakeRoute {
 	const meta = { layout: 'dashboard', middleware: ['auth', () => true] };
-	return { path, fullPath: path, meta, matched: [{ meta: {} }, { meta }] };
+	return { path, fullPath: path, params, meta, matched: [{ meta: {} }, { meta }] };
 }
 
 describe('route warm-up plugin', () => {
@@ -181,12 +188,20 @@ describe('route warm-up plugin', () => {
 				'area:dashboard-postbox:en',
 			])
 		);
-		expect(events.indexOf('session:answered')).toBeGreaterThan(events.indexOf('setup returned'));
 		// Only what this route needs.
+		expect(events).not.toContain('reader');
 		expect(events).not.toContain('layout:admin');
 		expect(events).not.toContain('middleware:admin');
 		expect(events).not.toContain('area:dashboard-admin:en');
 		expect(events).not.toContain('area:dashboard-postbox:de');
+	});
+
+	it('starts the thread reader when the URL names a message', async () => {
+		route = dashboardRoute('/dashboard/postbox/inbox/m1', { folder: 'inbox', messageId: 'm1' });
+		const { warmup } = await loadPlugins();
+
+		warmup.setup();
+		expect(events).toContain('reader');
 	});
 
 	it('asks for the area catalog in the locale the picker saved', async () => {
@@ -202,6 +217,7 @@ describe('route warm-up plugin', () => {
 		route = {
 			path: '/dashboard/welcome-tour',
 			fullPath: '/dashboard/welcome-tour',
+			params: {},
 			meta: { layout: false, middleware: 'auth' },
 			matched: [{ meta: { layout: false, middleware: 'auth' } }],
 		};

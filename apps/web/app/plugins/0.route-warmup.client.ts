@@ -13,6 +13,10 @@
  * Each call is the same loader the navigation makes later, which then finds the
  * module in flight or loaded.
  *
+ * A Postbox URL that names a message also starts the thread reader: the folder
+ * page mounts it lazily, so on a deep link its code would otherwise start only
+ * after the page chunk has downloaded and run.
+ *
  * i18n has not picked a locale yet, so the area catalog is fetched in the
  * locale it will most likely pick (`guessLocale`); a wrong guess costs one
  * unused chunk, never wrong copy.
@@ -26,6 +30,7 @@ import layouts from '#build/layouts';
 import { namedMiddleware } from '#build/middleware';
 import { areaChunks, areaRoutes } from '#build/owlat-i18n-areas.mjs';
 import { areasForPath, guessLocale, type AreaChunks } from '~~/i18n/areaRuntime';
+import { warmPostboxThreadReader } from '~/composables/postbox/usePostboxChunkWarmup';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isPublicRoute } from '~/utils/publicRoutes';
 
@@ -45,6 +50,14 @@ export default defineNuxtPlugin({
 
 		const route = useRouter().currentRoute.value;
 		void preloadRouteComponents(route.fullPath).catch(ignore);
+		const messageId = route.params.messageId;
+		if (
+			route.path.startsWith('/dashboard/postbox/') &&
+			typeof messageId === 'string' &&
+			messageId
+		) {
+			void warmPostboxThreadReader();
+		}
 
 		const layout = route.meta.layout;
 		if (typeof layout === 'string') {

@@ -3,7 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxMarkReadCommands } from '~/composables/postbox/usePostboxCommandSurface';
-import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { useBlockSize } from '~/composables/postbox/useBlockSize';
 import { ArrowLeftIcon, MailOpenIcon } from '@coolicons/vue';
 
 const { t } = useI18n();

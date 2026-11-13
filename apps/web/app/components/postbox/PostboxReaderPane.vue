@@ -10,7 +10,7 @@
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { PostboxFindSeed } from '~/composables/postbox/usePostboxThreadFind';
 import { POSTBOX_FIND_QUERY_PARAM } from '~/utils/postboxFindSeed';
-import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { useBlockSize } from '~/composables/postbox/useBlockSize';
 
 const props = defineProps<{
 	activeMessageId?: string | null;
