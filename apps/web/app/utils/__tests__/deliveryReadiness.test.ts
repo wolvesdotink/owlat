@@ -4,8 +4,10 @@ import {
 	deriveDeliveryReadiness,
 	readinessInputFromSources,
 	type ReadinessDomainRow,
+	type MailStream,
 	type ReadinessGateKey,
 	type ReadinessInput,
+	type StreamTransportFacts,
 } from '../deliveryReadiness';
 import { summarizeDualArmAlignment, type ReadinessDualArmRow } from '../dualArmAlignment';
 import { createTestI18n, localizedWith } from '~/__tests__/i18n';
@@ -128,13 +130,16 @@ describe('deriveDeliveryReadiness — authentication gate', () => {
 		expect(g.actionHref).toBeNull();
 	});
 
-	it('names the specific missing records', () => {
+	it('names the specific missing records, leaving DMARC to the marketing gate', () => {
 		const g = gate(
-			deriveDeliveryReadiness(input({ authComplete: false, authMissing: ['DKIM', 'DMARC'] })),
+			deriveDeliveryReadiness(
+				input({ authComplete: false, authMissing: ['SPF', 'DKIM', 'DMARC'] })
+			),
 			'authentication'
 		);
 		expect(g.status).toBe('attention');
-		expect(localized(g.detail)).toContain('DKIM, DMARC');
+		expect(localized(g.detail)).toContain('SPF, DKIM');
+		expect(localized(g.detail)).not.toContain('DMARC');
 		expect(g.actionHref).toBe('/dashboard/admin/delivery/domains');
 	});
 
@@ -529,5 +534,210 @@ describe('the dual-transport alignment gate', () => {
 		expect(localized(gate(readiness, 'dual-arm-alignment').detail)).toContain(
 			'Measurement confidence is lowered'
 		);
+	});
+});
+
+describe('deriveDeliveryReadiness — stream verdicts', () => {
+	const viaProvider: StreamTransportFacts = {
+		canSend: true,
+		providerLabels: ['Amazon SES'],
+		usesOwnMta: false,
+	};
+	const viaOwnMta: StreamTransportFacts = {
+		canSend: true,
+		providerLabels: ['Owlat MTA'],
+		usesOwnMta: true,
+	};
+	const verifiedSender = { address: 'hello@acme.com', isDomainVerified: true };
+
+	/** A ready instance whose two streams are described by the given transport facts. */
+	function streamInput(
+		transport: StreamTransportFacts,
+		overrides: Partial<ReadinessInput> = {}
+	): ReadinessInput {
+		return input({
+			streamTransport: { transactional: transport, marketing: transport },
+			defaultSender: verifiedSender,
+			...overrides,
+		});
+	}
+
+	function verdict(readiness: ReturnType<typeof deriveDeliveryReadiness>, stream: MailStream) {
+		const found = readiness.streams.find((v) => v.stream === stream);
+		if (!found) throw new Error(`missing verdict ${stream}`);
+		return found;
+	}
+
+	it('blocks transactional mail when no default sender is set, although transport and a verified domain exist', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaProvider, { defaultSender: { address: null, isDomainVerified: false } })
+		);
+		const transactional = verdict(r, 'transactional');
+		expect(transactional.level).toBe('blocked');
+		expect(localized(transactional.label)).toBe('Blocked');
+		expect(localized(transactional.sentence)).toContain('No default sender is set');
+		expect(transactional.actionHref).toBe('/dashboard/admin/instance/general');
+		// Campaigns use their own senders, so the marketing stream is unaffected.
+		expect(verdict(r, 'marketing').level).toBe('ready');
+		expect(r.level).toBe('blocked');
+	});
+
+	it('blocks transactional mail when the default sender is on an unverified domain', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaProvider, {
+				defaultSender: { address: 'noreply@example.com', isDomainVerified: false },
+			})
+		);
+		expect(verdict(r, 'transactional').level).toBe('blocked');
+		expect(localized(verdict(r, 'transactional').sentence)).toContain('noreply@example.com');
+	});
+
+	it('asks for attention on marketing when the warm-up is halted, and leaves transactional ready', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaOwnMta, {
+				mailServer: 'healthy',
+				warmupHalted: true,
+				marketingCapacity: { paced: true, today: 400 },
+			})
+		);
+		const marketing = verdict(r, 'marketing');
+		expect(marketing.level).toBe('attention');
+		expect(localized(marketing.label)).toBe('Needs attention');
+		expect(localized(marketing.sentence)).toContain('Warm-up is halted');
+		expect(verdict(r, 'transactional').level).toBe('ready');
+	});
+
+	it('reads a capped warm-up day as paced, not as a problem', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaOwnMta, {
+				mailServer: 'healthy',
+				marketingCapacity: { paced: true, today: 1200 },
+			})
+		);
+		const marketing = verdict(r, 'marketing');
+		expect(marketing.level).toBe('ready');
+		expect(localized(marketing.sentence)).toContain('Paced by warm-up');
+		const capacity = gate(r, 'capacity');
+		expect(capacity.status).toBe('ready');
+		expect(capacity.tone).toBe('neutral');
+	});
+
+	it('asks for attention when today has no campaign capacity left', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaOwnMta, {
+				mailServer: 'healthy',
+				marketingCapacity: { paced: true, today: 0 },
+			})
+		);
+		expect(verdict(r, 'marketing').level).toBe('attention');
+	});
+
+	it('shows no mail-server, sending-IP or warm-up gate on an instance that sends only through a provider', () => {
+		const result = readinessInputFromSources(
+			{ canSend: true },
+			[{ status: 'verified', missing: [] }],
+			null,
+			null,
+			null,
+			{
+				streams: { transactional: viaProvider, campaign: viaProvider },
+				mailServer: null,
+				transactionalSender: verifiedSender,
+				warming: {
+					phase: 'plateau',
+					ips: [{ pool: 'campaign', active: true, blockReasons: ['dnsbl'] }],
+				},
+				sendingReadiness: { capped: true, today: 0 },
+			}
+		);
+		const r = deriveDeliveryReadiness(result);
+		const keys = r.gates.map((g) => g.key);
+		expect(keys).not.toContain('mail-server');
+		expect(keys).not.toContain('sending-ips');
+		expect(keys).not.toContain('capacity');
+		expect(r.streams.map((v) => v.level)).toEqual(['ready', 'ready']);
+		expect(localized(verdict(r, 'transactional').sentence)).toContain('via Amazon SES');
+	});
+
+	it('blocks both streams when the own mail server is unreachable', () => {
+		const r = deriveDeliveryReadiness(streamInput(viaOwnMta, { mailServer: 'unreachable' }));
+		expect(verdict(r, 'transactional').level).toBe('blocked');
+		expect(verdict(r, 'marketing').level).toBe('blocked');
+		const g = gate(r, 'mail-server');
+		expect(g.transport).toBe('shared.deliveryReadiness.transport.ownServer');
+		expect(localized(verdict(r, 'transactional').sentence)).toContain(
+			"can't reach the mail server"
+		);
+	});
+
+	it('blocks only the stream whose every sending IP is held', () => {
+		const result = readinessInputFromSources(
+			{ canSend: true },
+			[{ status: 'verified', missing: [] }],
+			null,
+			null,
+			null,
+			{
+				streams: { transactional: viaOwnMta, campaign: viaOwnMta },
+				mailServer: 'healthy',
+				transactionalSender: verifiedSender,
+				warming: {
+					phase: 'ramp',
+					ips: [
+						{ pool: 'campaign', active: true, blockReasons: ['fcrdns'] },
+						{ pool: 'transactional', active: true },
+					],
+				},
+			}
+		);
+		const r = deriveDeliveryReadiness(result);
+		expect(verdict(r, 'marketing').level).toBe('blocked');
+		expect(verdict(r, 'transactional').level).toBe('ready');
+	});
+
+	it('asks for DMARC on the marketing stream only', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaProvider, { authComplete: false, authMissing: ['DMARC'] })
+		);
+		expect(verdict(r, 'transactional').level).toBe('ready');
+		expect(verdict(r, 'marketing').level).toBe('attention');
+		expect(gate(r, 'dmarc').streams).toEqual(['marketing']);
+	});
+
+	it('flags complaints over the limit on marketing, and an unknown unsubscribe check adds no gate', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaProvider, { complaintRate: 0.004, oneClickUnsubscribe: null })
+		);
+		expect(verdict(r, 'marketing').level).toBe('attention');
+		expect(r.gates.find((g) => g.key === 'unsubscribe')).toBeUndefined();
+	});
+
+	it('gives each stream its own transport gate when only one of them can send', () => {
+		const r = deriveDeliveryReadiness(
+			input({
+				streamTransport: {
+					transactional: { canSend: false, providerLabels: [], usesOwnMta: false },
+					marketing: viaProvider,
+				},
+				defaultSender: verifiedSender,
+			})
+		);
+		const transports = r.gates.filter((g) => g.key === 'transport');
+		expect(transports.map((g) => g.streams)).toEqual([['transactional'], ['marketing']]);
+		expect(verdict(r, 'transactional').level).toBe('blocked');
+		expect(localized(verdict(r, 'transactional').sentence)).toContain('for transactional mail');
+		expect(verdict(r, 'marketing').level).toBe('ready');
+	});
+
+	it('gives no verdict to a stream whose feature is switched off', () => {
+		const r = deriveDeliveryReadiness(
+			streamInput(viaProvider, {
+				streamsEnabled: { transactional: false },
+				defaultSender: { address: null, isDomainVerified: false },
+			})
+		);
+		expect(r.streams.map((v) => v.stream)).toEqual(['marketing']);
+		expect(r.gates.find((g) => g.key === 'default-sender')).toBeUndefined();
+		expect(r.level).toBe('ready');
 	});
 });

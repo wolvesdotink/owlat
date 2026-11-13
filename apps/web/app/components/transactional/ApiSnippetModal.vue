@@ -44,6 +44,10 @@ const onOpenChange = (open: boolean) => {
 			{{ t('dashboard.send.transactional.index.apiUsage.subtitle', { name: email?.name }) }}
 		</p>
 
+		<!-- A snippet handed over while the default sender or the transport is
+		     missing would only return a refusal; say so before the code. -->
+		<DeliveryTransactionalReadinessLine v-if="email !== null" class="mb-4" />
+
 		<div class="space-y-4">
 			<div v-for="language in SNIPPET_LANGUAGES" :key="language.value">
 				<div class="flex items-center justify-between mb-2">

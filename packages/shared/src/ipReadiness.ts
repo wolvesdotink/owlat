@@ -99,3 +99,45 @@ export async function observeIpv6SpfReadiness(
 		};
 	}
 }
+
+/** The facts of one synced warm-up row that a sending-IP posture is judged on. */
+export interface SendingIpPostureInput {
+	readonly pool: string;
+	readonly active: boolean;
+	readonly blockReasons?: readonly IpReadinessBlockReason[];
+}
+
+/**
+ * Whether the addresses of one pool can carry mail: all of them, only some of
+ * them (the MTA rotates around the held ones), or none.
+ */
+export type SendingIpPosture = 'ready' | 'some_held' | 'all_held';
+
+/**
+ * Whether the MTA keeps mail off this address: it carries a readiness block
+ * reason (blocklist, PTR, SPF, source address), or it is out of rotation.
+ */
+export function isSendingIpHeld(ip: SendingIpPostureInput): boolean {
+	return !ip.active || (ip.blockReasons?.length ?? 0) > 0;
+}
+
+/**
+ * The posture of the addresses one pool (`transactional` or `campaign`) sends
+ * from, or `null` when no address has been synced yet, which is not a failure.
+ * An MTA that lists no address under the pool sends that pool from every
+ * address, so the posture is then judged over all of them.
+ *
+ * The Delivery health roll-up and the readiness panel both read this, so the
+ * header chip and the panel cannot disagree about a held address.
+ */
+export function sendingIpPosture(
+	ips: readonly SendingIpPostureInput[],
+	pool: 'transactional' | 'campaign'
+): SendingIpPosture | null {
+	const inPool = ips.filter((ip) => ip.pool === pool);
+	const candidates = inPool.length > 0 ? inPool : ips;
+	if (candidates.length === 0) return null;
+	const held = candidates.filter(isSendingIpHeld).length;
+	if (held === 0) return 'ready';
+	return held === candidates.length ? 'all_held' : 'some_held';
+}

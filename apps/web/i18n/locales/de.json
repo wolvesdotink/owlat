@@ -3329,9 +3329,23 @@
 				"useDefaultDescription": "Folgt dem Standard der Installation, auch wenn dieser sich später ändert."
 			},
 			"readinessPanel": {
+				"compact": {
+					"askAdmin": "Ein Admin kann das unter Zustellungsgesundheit beheben.",
+					"error": "Konnte nicht prüfen, ob Transaktionsmails raus können.",
+					"heading": "Transaktionsmails",
+					"hub": "Zustellungsgesundheit",
+					"loading": "Prüfe, ob Transaktionsmails raus können …",
+					"retry": "Erneut versuchen",
+					"title": "Transaktionsmails: {level}"
+				},
 				"error": "Die Versandbereitschaft konnte gerade nicht geprüft werden. Lade die Seite neu, um es erneut zu versuchen.",
 				"eyebrow": "Versandbereitschaft",
-				"title": "Kann diese Instanz senden?"
+				"gateFor": "nur {stream}",
+				"passedChecks": "Bestandene Prüfungen ({count})",
+				"streamAnnouncement": "{stream}: {level}.",
+				"streamsLabel": "Bereitschaft nach Art der Mail",
+				"title": "Kann diese Instanz senden?",
+				"via": "über {transport}"
 			},
 			"relayDomainStatus": {
 				"dkimError": "DKIM: {error}",
@@ -16378,10 +16392,38 @@
 				},
 				"authentication": {
 					"action": "Einträge einrichten",
-					"awaitingDomain": "SPF, DKIM und DMARC werden geprüft, sobald du eine Versanddomain hinzufügst.",
-					"complete": "SPF, DKIM und DMARC sind vollständig eingerichtet — Postfächer können deiner Mail vertrauen.",
+					"awaitingDomain": "SPF und DKIM werden geprüft, sobald du eine Versanddomain hinzufügst.",
+					"complete": "SPF und DKIM sind eingerichtet, Postfächer können deiner Mail also vertrauen.",
 					"missing": "Füge {records} hinzu, damit Postfächer deiner Mail vertrauen und sie im Posteingang landet.",
 					"title": "E-Mail-Authentifizierung"
+				},
+				"capacity": {
+					"action": "Warm-up-Prüfungen ansehen",
+					"halted": "Das Warm-up ist nach zu vielen Bounces oder Zurückstellungen angehalten, das Kampagnenvolumen wächst also erst wieder, wenn es sich erholt.",
+					"paced": "Vom Warm-up dosiert: heute können noch etwa {count} Kampagnenmails raus.",
+					"title": "Kapazität heute",
+					"unpaced": "Das Warm-up begrenzt Kampagnen heute nicht.",
+					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
+				},
+				"complaints": {
+					"action": "Sperrliste prüfen",
+					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
+					"title": "Beschwerderate",
+					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
+				},
+				"defaultSender": {
+					"actionChange": "Absender ändern",
+					"actionSet": "Standardabsender festlegen",
+					"missing": "Es ist kein Standardabsender gesetzt, jede Transaktionsmail wird also abgelehnt.",
+					"title": "Standardabsender",
+					"unverified": "{address} liegt auf keiner verifizierten Domain, jede Transaktionsmail wird also abgelehnt.",
+					"verified": "Transaktionsmails gehen von {address} raus."
+				},
+				"dmarc": {
+					"action": "Eintrag hinzufügen",
+					"missing": "Veröffentliche einen DMARC-Eintrag. Gmail und Yahoo verlangen ihn für Massenversand.",
+					"published": "Ein DMARC-Eintrag ist veröffentlicht, wie Massenversender ihn brauchen.",
+					"title": "DMARC"
 				},
 				"domain": {
 					"actionAdd": "Domain hinzufügen",
@@ -16391,16 +16433,42 @@
 					"unverified": "Deine Domain ist hinzugefügt, aber noch nicht verifiziert — DNS-Änderungen können etwas dauern.",
 					"verified": "Deine Versanddomain ist verifiziert, deine Mail kommt also von deiner eigenen Adresse."
 				},
+				"mailServer": {
+					"action": "Mailserver prüfen",
+					"degraded": "Der Mailserver meldet einen Fehler, Mail geht über ihn also nicht zuverlässig raus.",
+					"healthy": "Der Mailserver ist erreichbar und meldet keine Probleme.",
+					"stale": "Die letzte Statusprüfung des Mailservers ist veraltet, die Prüfung selbst ist also vielleicht stehen geblieben.",
+					"title": "Mailserver",
+					"unchecked": "Der Status des Mailservers wurde noch nicht geprüft.",
+					"unreachable": "Owlat erreicht den Mailserver nicht, über ihn geht also nichts raus."
+				},
 				"mtaSts": {
 					"action": "Eintrag veröffentlichen",
 					"detail": "MTA-STS steht auf „enforce“, der zugehörige DNS-Eintrag ist aber noch nicht veröffentlicht — veröffentliche ihn, damit Absender verschlüsselte Zustellung verlangen können.",
 					"title": "Eingehende TLS-Richtlinie (MTA-STS)"
 				},
+				"sendingIps": {
+					"action": "IP-Prüfungen ansehen",
+					"all_held": "Alle Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb, der Mailserver kann also nicht senden.",
+					"ready": "Alle Versand-IPs sind im Einsatz.",
+					"some_held": "Einige Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb; die anderen übernehmen die Mail.",
+					"title": "Versand-IPs"
+				},
 				"transport": {
 					"action": "Versand einrichten",
 					"configured": "Ein Versandtransport ist konfiguriert, Mail hat also einen Weg nach draußen.",
 					"missing": "Es ist noch kein Transport konfiguriert, es kann also nichts versendet werden.",
+					"missingFor": {
+						"marketing": "Für Kampagnen ist kein Transport konfiguriert, sie gehen also nicht raus.",
+						"transactional": "Für Transaktionsmails ist kein Transport konfiguriert, Belege und API-Sendungen gehen also nicht raus."
+					},
 					"title": "Versandtransport"
+				},
+				"unsubscribe": {
+					"action": "Prüfung ansehen",
+					"fail": "Die Prüfung der Ein-Klick-Abmeldung ist fehlgeschlagen, Massenversand kann also abgelehnt werden.",
+					"pass": "Kampagnen tragen eine signierte Ein-Klick-Abmeldung, wie Gmail und Yahoo sie verlangen.",
+					"title": "Abmeldung mit einem Klick"
 				}
 			},
 			"headline": {
@@ -16408,8 +16476,28 @@
 				"incomplete": "Versandbereit — Einrichtung abschließen",
 				"ready": "Versandbereit"
 			},
+			"streams": {
+				"level": {
+					"attention": "Braucht Aufmerksamkeit",
+					"blocked": "Blockiert",
+					"ready": "Bereit"
+				},
+				"marketing": {
+					"name": "Marketing",
+					"ready": "Kampagnen können raus.",
+					"readyVia": "Kampagnen können über {transport} raus."
+				},
+				"transactional": {
+					"name": "Transaktional",
+					"ready": "Transaktionsmails können raus.",
+					"readyVia": "Transaktionsmails können über {transport} raus."
+				}
+			},
 			"summary": {
 				"ready": "Alles in Ordnung — diese Instanz kann versenden."
+			},
+			"transport": {
+				"ownServer": "Dein eigener Mailserver"
 			}
 		},
 		"desktop": {

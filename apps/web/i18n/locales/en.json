@@ -3329,9 +3329,23 @@
 				"useDefaultDescription": "Follows the deployment default, including if that changes later."
 			},
 			"readinessPanel": {
+				"compact": {
+					"askAdmin": "An admin can fix this under Delivery health.",
+					"error": "Couldn't check whether transactional mail can go out.",
+					"heading": "Transactional mail",
+					"hub": "Delivery health",
+					"loading": "Checking whether transactional mail can go out…",
+					"retry": "Try again",
+					"title": "Transactional mail: {level}"
+				},
 				"error": "Couldn't check delivery readiness just now. Reload to try again.",
 				"eyebrow": "Delivery readiness",
-				"title": "Can this instance send?"
+				"gateFor": "{stream} only",
+				"passedChecks": "Passed checks ({count})",
+				"streamAnnouncement": "{stream}: {level}.",
+				"streamsLabel": "Readiness by kind of mail",
+				"title": "Can this instance send?",
+				"via": "via {transport}"
 			},
 			"relayDomainStatus": {
 				"dkimError": "DKIM: {error}",
@@ -16378,10 +16392,38 @@
 				},
 				"authentication": {
 					"action": "Set up records",
-					"awaitingDomain": "SPF, DKIM and DMARC are checked once you add a sending domain.",
-					"complete": "SPF, DKIM and DMARC are all in place — inboxes can trust your mail.",
+					"awaitingDomain": "SPF and DKIM are checked once you add a sending domain.",
+					"complete": "SPF and DKIM are in place, so inboxes can trust your mail.",
 					"missing": "Add {records} so mailboxes trust your mail and it lands in the inbox.",
 					"title": "Email authentication"
+				},
+				"capacity": {
+					"action": "See warm-up checks",
+					"halted": "Warm-up is halted after too many bounces or deferrals, so campaign volume won't grow until it recovers.",
+					"paced": "Paced by warm-up: about {count} more campaign emails can go out today.",
+					"title": "Today's capacity",
+					"unpaced": "Warm-up doesn't cap campaigns today.",
+					"usedUp": "Today's warm-up capacity is used up; campaigns continue tomorrow."
+				},
+				"complaints": {
+					"action": "Review suppressions",
+					"over": "{rate} of recipients complained, over the {limit} limit. Clean your list before the next campaign.",
+					"title": "Complaint rate",
+					"under": "{rate} of recipients complained, under the {limit} limit."
+				},
+				"defaultSender": {
+					"actionChange": "Change the sender",
+					"actionSet": "Set a default sender",
+					"missing": "No default sender is set, so every transactional send is refused.",
+					"title": "Default sender",
+					"unverified": "{address} isn't on a verified domain, so every transactional send is refused.",
+					"verified": "Transactional mail goes out from {address}."
+				},
+				"dmarc": {
+					"action": "Add the record",
+					"missing": "Publish a DMARC record. Gmail and Yahoo require one for bulk mail.",
+					"published": "A DMARC record is published, as bulk senders need.",
+					"title": "DMARC"
 				},
 				"domain": {
 					"actionAdd": "Add a domain",
@@ -16391,16 +16433,42 @@
 					"unverified": "Your domain is added but not verified yet — DNS changes can take a little while.",
 					"verified": "Your sending domain is verified, so mail comes from your own address."
 				},
+				"mailServer": {
+					"action": "Check the mail server",
+					"degraded": "The mail server reports a fault, so mail can't reliably go out through it.",
+					"healthy": "The mail server is reachable and reports healthy.",
+					"stale": "The mail server's last health check is out of date, so the check itself may have stopped.",
+					"title": "Mail server",
+					"unchecked": "The mail server's health hasn't been checked yet.",
+					"unreachable": "Owlat can't reach the mail server, so nothing goes out through it."
+				},
 				"mtaSts": {
 					"action": "Publish record",
 					"detail": "MTA-STS is set to enforce, but its DNS record isn’t in place yet — publish it so senders can require encrypted delivery.",
 					"title": "Inbound TLS policy (MTA-STS)"
 				},
+				"sendingIps": {
+					"action": "See IP checks",
+					"all_held": "Every sending IP is held back by a failed check or is out of rotation, so the mail server can't send.",
+					"ready": "Every sending IP is in rotation.",
+					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
+					"title": "Sending IPs"
+				},
 				"transport": {
 					"action": "Set up sending",
 					"configured": "A delivery transport is configured, so mail has a way out.",
 					"missing": "No transport is configured yet, so nothing can be sent.",
+					"missingFor": {
+						"marketing": "No transport is configured for campaigns, so they can't go out.",
+						"transactional": "No transport is configured for transactional mail, so receipts and API sends can't go out."
+					},
 					"title": "Sending transport"
+				},
+				"unsubscribe": {
+					"action": "See the check",
+					"fail": "The one-click unsubscribe check failed, so bulk mail can be rejected.",
+					"pass": "Campaigns carry a signed one-click unsubscribe, as Gmail and Yahoo require.",
+					"title": "One-click unsubscribe"
 				}
 			},
 			"headline": {
@@ -16408,8 +16476,28 @@
 				"incomplete": "Ready to send — finish setup",
 				"ready": "Ready to send"
 			},
+			"streams": {
+				"level": {
+					"attention": "Needs attention",
+					"blocked": "Blocked",
+					"ready": "Ready"
+				},
+				"marketing": {
+					"name": "Marketing",
+					"ready": "Campaigns can go out.",
+					"readyVia": "Campaigns can go out via {transport}."
+				},
+				"transactional": {
+					"name": "Transactional",
+					"ready": "Transactional mail can go out.",
+					"readyVia": "Transactional mail can go out via {transport}."
+				}
+			},
 			"summary": {
 				"ready": "Everything checks out — this instance can send."
+			},
+			"transport": {
+				"ownServer": "Your own mail server"
 			}
 		},
 		"desktop": {

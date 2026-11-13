@@ -120,4 +120,35 @@ describe('rollUpDeliveryHealth', () => {
 		expect(r.level).toBe('error');
 		expect(r.reason).toMatch(/provider/i);
 	});
+
+	// --- per-stream dimensions the readiness panel shares ---
+	it('errors when one enabled stream has no transport of its own', () => {
+		const r = rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutTransport: ['transactional'] });
+		expect(r).toEqual({
+			level: 'error',
+			reason: 'No delivery provider is configured for transactional mail',
+		});
+	});
+
+	it('errors when the transactional default sender is missing or unverified', () => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, transactionalSender: 'missing' }).level).toBe(
+			'error'
+		);
+		expect(rollUpDeliveryHealth({ ...HEALTHY, transactionalSender: 'unverified' }).level).toBe(
+			'error'
+		);
+	});
+
+	it('errors when every sending IP is held and warns when only some are', () => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'all_held' }).level).toBe('error');
+		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'some_held' }).level).toBe('warn');
+		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'ready' }).level).toBe('ok');
+	});
+
+	it('warns on a halted warm-up', () => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, isWarmupHalted: true })).toEqual({
+			level: 'warn',
+			reason: 'IP warm-up is halted',
+		});
+	});
 });

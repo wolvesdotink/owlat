@@ -107,6 +107,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 					},
 					observedAt: Date.now(),
 				},
+				defaultFromEmail: 'hello@mail.example.com',
 				createdAt: Date.now(),
 			});
 			await ctx.db.insert('domains', {
@@ -190,6 +191,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 					},
 					observedAt,
 				},
+				defaultFromEmail: 'hello@mail.example.com',
 				createdAt: observedAt,
 			});
 			await ctx.db.insert('domains', {
@@ -220,5 +222,134 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({ level: 'warn', reason: 'Mail server health check is stale' });
+	});
+
+	/** A provider-configured MTA instance with a fresh healthy snapshot and a verified sender. */
+	async function seedReadyMtaInstance(
+		t: ReturnType<typeof convexTest>,
+		settings: { defaultFromEmail?: string } = { defaultFromEmail: 'hello@mail.example.com' }
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: { status: 'ok', observedAt: Date.now() },
+				...settings,
+				createdAt: Date.now(),
+			});
+			await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+	}
+
+	function warmingIp(ip: string, pool: string, held: boolean) {
+		return {
+			ip,
+			phase: 'ramp',
+			currentDay: 3,
+			dailyCap: 500,
+			sentToday: 0,
+			bounceRate: 0,
+			deferralRate: 0,
+			pool,
+			active: true,
+			...(held ? { blockReasons: ['dnsbl' as const] } : {}),
+		};
+	}
+
+	async function seedWarming(
+		t: ReturnType<typeof convexTest>,
+		phase: string,
+		ips: ReturnType<typeof warmingIp>[]
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', {
+				phase,
+				totalDailyCap: 1000,
+				totalSentToday: 0,
+				ipCount: ips.length,
+				ips,
+				syncedAt: Date.now(),
+			});
+		});
+	}
+
+	it('errors when no default sender is set, since every transactional send needs one', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t, {});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({
+			level: 'error',
+			reason: 'No default sender is set for transactional mail',
+		});
+	});
+
+	it("errors when the default sender's domain is not verified", async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t, { defaultFromEmail: 'hello@unverified.example' });
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health.level).toBe('error');
+		expect(health.reason).toMatch(/default sender/i);
+	});
+
+	it('errors when every IP of a pool the MTA carries is held', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t);
+		await seedWarming(t, 'ramp', [
+			warmingIp('192.0.2.10', 'campaign', true),
+			warmingIp('192.0.2.11', 'transactional', false),
+		]);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'error', reason: 'Every sending IP is held back' });
+	});
+
+	it('warns when the campaign warm-up is halted', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t);
+		await seedWarming(t, 'plateau', [warmingIp('192.0.2.10', 'campaign', false)]);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'warn', reason: 'IP warm-up is halted' });
+	});
+
+	it('ignores held IPs and a halted warm-up when no stream is sent through the MTA', async () => {
+		setEnv({ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_test' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t);
+		await seedWarming(t, 'plateau', [warmingIp('192.0.2.10', 'campaign', true)]);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health.level).toBe('ok');
+	});
+
+	it('errors when only campaigns have a route and transactional mail has no transport', async () => {
+		setEnv({ RESEND_API_KEY: 're_test' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers: [{ providerType: 'resend', isEnabled: true }],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({
+			level: 'error',
+			reason: 'No delivery provider is configured for transactional mail',
+		});
 	});
 });

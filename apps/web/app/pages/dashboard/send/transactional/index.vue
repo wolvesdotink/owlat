@@ -159,6 +159,12 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		@confirm-delete="list.confirmDelete"
 		@cancel-delete="list.closeDelete"
 	>
+		<!-- Whether the first API call would go out, before a template is handed
+		     to a developer. -->
+		<template #after-header>
+			<DeliveryTransactionalReadinessLine />
+		</template>
+
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="isCreateOpen = true">
 				<template #iconLeft>
