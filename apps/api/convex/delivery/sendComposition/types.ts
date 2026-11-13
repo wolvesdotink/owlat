@@ -176,9 +176,9 @@ export type AutomationComposeInput = {
 	kind: 'automation';
 	template: SendTemplate;
 	contactInfo: ContactInfo;
-	// Pre-built List-Unsubscribe header (caller owns HMAC). Set for marketing
-	// automation steps (drip series, broadcasts) so Gmail/Yahoo's 2024 bulk-
-	// sender rule is satisfied. Omitted → no header (the composer emits none).
+	// Pre-built List-Unsubscribe header (caller owns HMAC). Omitted → no header.
+	// The automation step itself passes none: the worker adds the pair (and the
+	// footer) to the delivered envelope.
 	listUnsubscribeHeader?: {
 		listUnsubscribe: string;
 		listUnsubscribePost: string;

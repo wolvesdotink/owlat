@@ -1474,12 +1474,13 @@ describe('handleEmailJob', () => {
 
 		// Gave up: no re-enqueue.
 		expect(queue.add).not.toHaveBeenCalled();
-		// Terminal bounce notified to Convex.
+		// Terminal bounce notified to Convex, as the recipient's.
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'bounced' }),
 			config,
 			redis
 		);
+		expect(vi.mocked(notifyConvex).mock.calls[0]?.[0]).not.toHaveProperty('bounceCause');
 		// Delivery log records status 'expired'.
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
@@ -1489,6 +1490,31 @@ describe('handleEmailJob', () => {
 				provider: 'other',
 			}),
 			config
+		);
+	});
+
+	it("expires a message the receiver kept refusing for our sending identity as the sender's", async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		// A retryable refusal of our IP: deferred, never terminal, until the age
+		// limit. The give-up must not count toward the recipient's soft bounces.
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 421,
+			enhancedCode: '4.7.0',
+			smtpPhase: 'rcpt',
+			error: '421 4.7.0 Unusual rate of unsolicited mail from your IP address. Try again later.',
+		});
+
+		const firstEnqueuedAt = Date.now() - 5 * DAY_MS;
+		await run(createJob({ firstEnqueuedAt }), { timestamp: firstEnqueuedAt });
+
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'bounced', bounceType: 'soft', bounceCause: 'sender' }),
+			config,
+			redis
 		);
 	});
 

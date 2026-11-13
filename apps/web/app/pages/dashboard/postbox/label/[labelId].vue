@@ -3,7 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxMarkReadCommands } from '~/composables/postbox/usePostboxCommandSurface';
-import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
+import { useBlockSize } from '~/composables/postbox/useBlockSize';
 import { ArrowLeftIcon, MailOpenIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -23,16 +23,11 @@ const {
 } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 
-// Server-side label view: `listByLabel` scans the mailbox's newest messages
-// server-side and returns only rows carrying this label. Replaces the P3
-// stopgap that fetched up to 500 recent mailbox messages to the browser and
-// filtered labelIds client-side.
-//
-// The view is bounded, not cursor-paged: the backend scans its fixed window
-// (LABEL_SCAN_WINDOW) and slices it to `limit`, so a single fetch at the
-// display cap gets everything the view can reach. When matches overflow even
-// that slice (`hasMore`), the honest cap note renders — there is no deeper
-// page to load, by design, until label membership gets a real index.
+// Server-side label view: `listByLabel` returns only rows carrying this label,
+// newest first. The page fetches once at its display cap; when more matches
+// exist (`hasMore`) the cap note renders. A mailbox whose label rows are not
+// backfilled yet is served from a scan of its newest messages, which never
+// offers a cursor.
 const {
 	data: labelData,
 	isLoading,

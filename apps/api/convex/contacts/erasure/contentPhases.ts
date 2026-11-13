@@ -22,6 +22,7 @@ import {
 	type PhaseContext,
 	type PhaseRunner,
 } from './phaseKit';
+import { moveReviewQueueCount } from '../../inbox/reviewQueueCount';
 
 const LOG_TAG = '[contacts] erasure';
 
@@ -226,6 +227,8 @@ export const eraseInboundMessages: PhaseRunner = (phase) => {
 		async (message) => {
 			if (!(await eraseInboundMessageDescendants(phase, message._id))) return false;
 			if (!(await eraseInboundMessageBrief(ctx, budget, message))) return false;
+			// The thread may be someone else's and stay: it stops counting the message.
+			await moveReviewQueueCount(ctx, message.threadId, message.processingStatus, null);
 			await deleteMessageRow(phase, message);
 			return true;
 		}

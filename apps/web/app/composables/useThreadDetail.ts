@@ -6,8 +6,13 @@ import { splitQuotedText } from '@owlat/shared/quotedText';
 import type { TeamThreadReply } from '~/utils/teamThreadReply';
 import type { TeamThreadPriority } from '~/utils/teamThreadPriority';
 import { isDraftGapsRefusal } from '~/utils/answerDraft';
+import { useTeamThreadMessages } from '~/composables/team/useTeamThreadMessages';
 
-export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
+export function useThreadDetail(
+	threadId: Ref<Id<'conversationThreads'>>,
+	/** `withBodies`: the surface shows every loaded message open (see useTeamThreadMessages). */
+	opts: { withBodies?: boolean } = {}
+) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
 
@@ -23,18 +28,16 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		return true;
 	};
 
-	// Fetch thread with messages
-	const {
-		data: threadData,
-		isLoading: threadLoading,
-		error: threadError,
-		refetch: refetchThread,
-	} = useConvexQuery(api.inbox.queries.getThread, () => ({ threadId: threadId.value }));
+	// The thread and its newest messages; older pages load as the stream needs them.
+	const page = useTeamThreadMessages(threadId, { withBodies: opts.withBodies ?? false });
+	const threadLoading = page.isLoading;
+	const threadError = page.error;
+	const refetchThread = page.refetch;
 
-	const thread = computed(() => threadData.value?.thread ?? null);
-	const messages = computed(() => threadData.value?.messages ?? []);
-	const contact = computed(() => threadData.value?.contact ?? null);
-	const takeOver = computed(() => threadData.value?.takeOver ?? null);
+	const thread = computed(() => page.head.value?.thread ?? null);
+	const messages = page.messages;
+	const contact = computed(() => page.head.value?.contact ?? null);
+	const takeOver = computed(() => page.head.value?.takeOver ?? null);
 
 	// What the team wrote after a message was already answered (inbox/followUps).
 	const { data: followUpData } = useConvexQuery(api.inbox.followUps.listForThread, () => ({
@@ -189,6 +192,9 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		threadLoading,
 		threadError,
 		refetchThread,
+		hasEarlierMessages: page.hasEarlier,
+		/** Load older messages until the given ids are in `messages`. */
+		coverMessages: page.cover,
 		// Actions
 		handleApprove,
 		handleReject,

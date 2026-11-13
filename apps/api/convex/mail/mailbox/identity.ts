@@ -41,6 +41,7 @@ import { findAddressClaim } from './addressResolution';
 import { stopExternalAccountSync } from '../external/accountTeardown';
 import { readMailboxUsage, withMailboxUsage } from '../mailboxUsage';
 import { startEmptyMailboxCounters } from '../messageCounters';
+import { startEmptyLabelMembership } from '../labelMessageIndex';
 import { startFolderMembership } from '../folderMembership';
 
 /**
@@ -187,6 +188,7 @@ export async function provisionMailbox(
 		if (role === 'inbox') await startEmptyMailboxCounters(ctx, mailboxId, folderId);
 		await startFolderMembership(ctx, folderId, { isEmpty: true });
 	}
+	await startEmptyLabelMembership(ctx, mailboxId);
 
 	// External mailboxes are NOT authoritative on the local MTA — mail for an
 	// external address is delivered by the user's own provider and synced in by

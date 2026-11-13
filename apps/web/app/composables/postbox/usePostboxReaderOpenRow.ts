@@ -13,8 +13,8 @@ import { inlineBodyNeedsBlob } from './usePostboxPrefetch';
  * parallel with the list, and the read-ahead holds it for the neighbouring
  * rows, so the reader's own subscription usually joins a loaded one.
  *
- * Once the thread arrives its rows (which carry their bodies) take over and
- * the inline query is released.
+ * Once the thread arrives its rows take over, and the same body query goes on
+ * through usePostboxEnvelopeBodies for every expanded message.
  */
 
 type InlineBody = FunctionReturnType<typeof api.mail.mailbox.messages.getMessageInlineBody>;

@@ -194,6 +194,10 @@
 			"types": "./src/setupSecrets.ts",
 			"import": "./src/setupSecrets.ts"
 		},
+		"./systemFromIdentity": {
+			"types": "./src/systemFromIdentity.ts",
+			"import": "./src/systemFromIdentity.ts"
+		},
 		"./setupToken": {
 			"types": "./src/setupToken.ts",
 			"import": "./src/setupToken.ts"

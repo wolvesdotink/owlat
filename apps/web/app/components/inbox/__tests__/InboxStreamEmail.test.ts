@@ -7,10 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 import InboxStreamEmail from '../InboxStreamEmail.vue';
 
 beforeEach(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+	vi.stubGlobal('useConvexQuery', () => queryResult(undefined));
 	vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => {

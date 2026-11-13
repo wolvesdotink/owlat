@@ -70,7 +70,8 @@ export const getMessage = publicQuery({
  * newest first; only the newest `withBodies` of them come with bodies in
  * `messages`, the older ones arrive as body-less `envelopes`; `olderCursor`
  * fetches the next-older page (pass `withBodies: 0` there and load a body on
- * expand through `getMessageInlineBody`).
+ * expand through `getMessageInlineBody`). `omitBodies` leaves the bodies out of
+ * `messages` too, for a client that reads every body through that query.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreadMessages = publicQuery({
@@ -78,6 +79,7 @@ export const listThreadMessages = publicQuery({
 		messageId: v.id('mailMessages'),
 		pageSize: v.optional(v.number()),
 		withBodies: v.optional(v.number()),
+		omitBodies: v.optional(v.boolean()),
 		cursor: v.optional(v.union(v.string(), v.null())),
 	},
 	handler: async (ctx, args) => {

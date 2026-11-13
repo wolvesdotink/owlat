@@ -126,9 +126,12 @@ export function classifyFailure(
 
 	// 2. A server reply code is the DEFINITIVE verdict. 5xx = permanent (hard
 	//    bounce) unless 5.2.2 "mailbox full" (soft); 4xx = temporary (deferred).
+	//    The phase rides along: dispatch reads it to tell a refusal of our
+	//    sending identity from a refusal of the recipient.
 	if (err.replyCode !== undefined) {
 		const smtpCode = err.replyCode;
 		const enhancedCode = err.enhancedCode;
+		const smtpPhase = err.phase;
 		if (smtpCode >= 500 && smtpCode < 600) {
 			const isSoftDespite5xx = enhancedCode === '5.2.2';
 			return {
@@ -138,6 +141,7 @@ export function classifyFailure(
 					error: response,
 					bounceType: isSoftDespite5xx ? 'soft' : 'hard',
 					smtpCode,
+					smtpPhase,
 					...(enhancedCode !== undefined ? { enhancedCode } : {}),
 				},
 			};
@@ -150,6 +154,7 @@ export function classifyFailure(
 					error: response,
 					bounceType: 'deferred',
 					smtpCode,
+					smtpPhase,
 					...(enhancedCode !== undefined ? { enhancedCode } : {}),
 				},
 			};

@@ -2,10 +2,12 @@
  * How the reader pages a long conversation (plan 3.3), as pure helpers.
  *
  * `listThreadMessages` returns a thread newest first in pages. Of the newest
- * page only the newest {@link THREAD_PAGE_BODIES} messages come with their
- * bodies; the older ones, and every message of an earlier page, arrive as
- * envelopes (list rows without a body). The reader renders an envelope as a
- * collapsed row and loads its body when it is expanded.
+ * page only the newest {@link THREAD_PAGE_BODIES} messages come as full rows;
+ * the older ones, and every message of an earlier page, arrive as envelopes
+ * (list rows). No row carries its body: the reader loads the body of each
+ * message it expands through `getMessageInlineBody`. A body in the page would
+ * cross the socket again on every flag, label or reply in the thread, since a
+ * changed query result is sent whole.
  *
  * The reader, the route-level open (`usePostboxOpenMessage`) and the list
  * read-ahead (`usePostboxPrefetch`) all subscribe the newest page with
@@ -15,7 +17,7 @@ import type { Id } from '@owlat/api/dataModel';
 
 /** Messages per page, newest first. */
 export const THREAD_PAGE_SIZE = 50;
-/** How many of the newest page's messages come with their bodies. */
+/** How many of the newest page's messages come as full rows. */
 export const THREAD_PAGE_BODIES = 10;
 /**
  * How many earlier pages the reader loads by itself to reach the message it
@@ -30,6 +32,7 @@ export function threadPageArgs(messageId: string) {
 		messageId: messageId as Id<'mailMessages'>,
 		pageSize: THREAD_PAGE_SIZE,
 		withBodies: THREAD_PAGE_BODIES,
+		omitBodies: true,
 	};
 }
 
@@ -53,7 +56,7 @@ export interface ThreadPageRows<Row extends { _id: string }> {
  * The loaded pages as one conversation, oldest first. `pages` runs newest
  * first. The newest page is not pinned to a cursor, so a new reply shifts its
  * oldest message into the earlier page; a message both pages hold keeps the
- * newer page's copy, which may carry its body.
+ * newer page's copy, which may be a full row.
  */
 export function mergeThreadPages<Row extends { _id: string }>(
 	pages: ReadonlyArray<ThreadPageRows<Row>>

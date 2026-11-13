@@ -65,6 +65,13 @@ async function mountDashboard(): Promise<void> {
 			},
 		})
 	);
+	await chimeFetched();
+}
+
+/** The chime is imported on first use; have it loaded so a play lands in the same tick. */
+async function chimeFetched(): Promise<void> {
+	const { loadAlertSound } = await import('~/composables/postbox/useUiSound');
+	await loadAlertSound();
 }
 
 /** Let the pre-flush watchers run on the value just assigned. */
@@ -335,6 +342,7 @@ describe('useAlertSounds', () => {
 
 		prefs.value = { reply: true, assignment: false, question: false };
 		await tick();
+		await chimeFetched();
 		window.dispatchEvent(new Event('keydown'));
 		// The unlock plays the element once, muted.
 		expect(plays).toHaveBeenCalledTimes(1);

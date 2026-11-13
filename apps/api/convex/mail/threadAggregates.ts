@@ -15,6 +15,7 @@ import { batchGet } from '../_utils/batchLoader';
 import { deleteMailThreadCatchUps } from './legacySummaryRows';
 import { deleteResourceUploads, mailThreadUploadKey } from '../storage/uploads';
 import { purgeThreadBrief } from './interpret/purgeRun';
+import { inboxLastMessageAt } from './threadInboxRecency';
 
 /**
  * Most addresses a thread's `participants` array holds. Every message adds its
@@ -112,6 +113,10 @@ export async function rebuildThreadAggregates(
 		latestMessageId: latest._id,
 		latestSnoozedUntil: latest.snoozedUntil ?? null,
 		folderRoles: Array.from(folderRoles),
+		inboxLastMessageAt: inboxLastMessageAt({
+			folderRoles: Array.from(folderRoles),
+			lastMessageAt: latest.receivedAt,
+		}),
 		labelIds: Array.from(labelIds),
 		participants,
 		updatedAt: Date.now(),
@@ -147,7 +152,11 @@ export async function applyThreadFolderMove(
 		folderRoles.length === thread.folderRoles.length &&
 		folderRoles.every((role) => thread.folderRoles.includes(role));
 	if (isSame) return;
-	await ctx.db.patch(threadId, { folderRoles, updatedAt: Date.now() });
+	await ctx.db.patch(threadId, {
+		folderRoles,
+		inboxLastMessageAt: inboxLastMessageAt({ folderRoles, lastMessageAt: thread.lastMessageAt }),
+		updatedAt: Date.now(),
+	});
 }
 
 /** Whether a message of the thread sits in a folder of the mailbox with `role`. */

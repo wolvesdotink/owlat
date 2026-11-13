@@ -16,6 +16,12 @@ export const completedOrFailedValidator = v.union(v.literal('completed'), v.lite
 export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
 export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
 /**
+ * Who a bounce is about (`BounceCause` in `@owlat/shared/smtpBlockCategories`).
+ * A `sender` bounce refused our sending identity, so it never blocklists the
+ * address or counts toward its soft-bounce escalation. Absent means `recipient`.
+ */
+export const bounceCauseValidator = v.union(v.literal('sender'), v.literal('recipient'));
+/**
  * What a bounce or complaint whose message id matched no Send did to the
  * address it named (`unresolvedFeedback.suppression`):
  *  - `suppressed`: on the blocklist, because the event proved this deployment

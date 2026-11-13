@@ -41,7 +41,7 @@ import { REPLY_INTENTS } from '../ai/replyIntent';
 // ── Versions and bounds ────────────────────────────────────────────────────
 
 /** Bump when the prompt or the contract changes what is extracted: stored rows are re-run. */
-export const INTERPRET_EXTRACTOR_VERSION = 4;
+export const INTERPRET_EXTRACTOR_VERSION = 5;
 /** Shape version of the sealed `messageInterpretations.payload` JSON. */
 export const INTERPRET_PAYLOAD_VERSION = 1;
 
@@ -361,6 +361,8 @@ export const interpretInputSchema = z.object({
 		sentAt: z.number(),
 		timezone: z.string(),
 		sourceRevision: z.string(),
+		// We wrote it (a sent message or a team reply), not a message we received.
+		isOurs: z.boolean(),
 	}),
 	participants: z.array(inputParticipantSchema),
 	openItems: z.array(inputItemSchema).max(MAX_PROMPT_ITEMS),

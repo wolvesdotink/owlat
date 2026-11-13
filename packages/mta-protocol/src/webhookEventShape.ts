@@ -20,7 +20,7 @@
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared/routingDispatch';
-import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import type { BounceCause, SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
@@ -130,6 +130,12 @@ export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhook
 	/** Bounce classification (for `bounced` events). */
 	bounceType?: 'hard' | 'soft';
 	/**
+	 * Who the bounce is about (for `bounced` events). The MTA sends `sender` for
+	 * a refusal of our sending identity, which Convex must not turn into a
+	 * suppression; absent means the recipient's bounce.
+	 */
+	bounceCause?: BounceCause;
+	/**
 	 * RFC 5965 `Reported-Domain` from the ARF report (for `complained` events) —
 	 * OUR sending/DKIM domain the complaint was filed against, bounded to a
 	 * strict FQDN at the emission site. Optional: many ISPs omit it. Convex uses
@@ -203,16 +209,17 @@ export type MtaWebhookEventDraft<P extends MtaWebhookPayloads = MtaWebhookPayloa
 /**
  * The fields the VALIDATED union carries on every variant.
  *
- * Three fields are subtracted, and the subtraction is the point: `bounceType`,
- * `reportedDomain` and `sourceIsp` belong to `bounced`/`complained` alone, and
- * the Convex union has always forbidden reading them anywhere else. Sharing one field
+ * Four fields are subtracted, and the subtraction is the point: `bounceType`,
+ * `bounceCause`, `reportedDomain` and `sourceIsp` belong to
+ * `bounced`/`complained` alone, and the Convex union has always forbidden
+ * reading them anywhere else. Sharing one field
  * declaration with the producer draft must not quietly hand every variant a
  * `sourceIsp` that is always `undefined` — the variants below re-add each one
  * where it genuinely travels.
  */
 interface EventBase<K extends MtaWebhookEventType> extends Omit<
 	MtaWebhookEventFields,
-	'bounceType' | 'reportedDomain' | 'sourceIsp'
+	'bounceType' | 'bounceCause' | 'reportedDomain' | 'sourceIsp'
 > {
 	event: K;
 	timestamp: number;
@@ -225,6 +232,7 @@ export type ValidatedMtaWebhookEvent =
 			messageId?: string;
 			recipient?: string;
 			bounceType?: 'hard' | 'soft';
+			bounceCause?: BounceCause;
 	  })
 	| (EventBase<'failed'> & { messageId: string; message?: string; errorCode?: string })
 	| (EventBase<'smtp.classified'> & {

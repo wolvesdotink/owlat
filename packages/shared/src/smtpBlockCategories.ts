@@ -23,7 +23,8 @@
  *
  * PURE DATA. No regexes, no classification, no I/O: the pattern matching stays in
  * the MTA where the SMTP session is. This module only names the categories, says
- * which of them mean "the receiver is refusing this sending identity".
+ * which of them mean "the receiver is refusing this sending identity", and names
+ * the two parties a bounce can be about.
  */
 
 /**
@@ -117,3 +118,21 @@ export const SMTP_BLOCK_CATEGORIES: ReadonlySet<SmtpFailureCategory> = new Set<S
 		'gmail_ip_identity',
 	]
 );
+
+/**
+ * WHO A BOUNCE IS ABOUT. `sender` is a refusal of our sending identity: the
+ * receiver blocked our IP or domain, failed our SPF/DKIM/DMARC, PTR or HELO, or
+ * called our content spam, or it refused us before it had heard a recipient.
+ * The address is fine, so such a bounce must never suppress or blocklist it.
+ * `recipient` is everything else, and absent means `recipient`, so relays and
+ * producers that never name a cause keep suppressing exactly as they did.
+ *
+ * The MTA decides it from typed fields (SMTP phase, enhanced status code and
+ * the category above) and sends the verdict, never the prose, to Convex.
+ */
+export type BounceCause = 'sender' | 'recipient';
+
+/** Is this value a {@link BounceCause}? */
+export function isBounceCause(value: unknown): value is BounceCause {
+	return value === 'sender' || value === 'recipient';
+}

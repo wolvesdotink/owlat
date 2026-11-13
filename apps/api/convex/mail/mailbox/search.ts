@@ -39,6 +39,14 @@ import {
 	searchClauseFields,
 	searchClauseValidator,
 } from './searchClause';
+import {
+	arrivalScan,
+	decodeSourceCursor,
+	encodeSourceCursor,
+	mailboxWide,
+	resumableSource,
+	scanSourceFor,
+} from './searchSource';
 
 /**
  * Resolve every `in:` role and `label:` name a clause set mentions — positive
@@ -169,6 +177,16 @@ async function scanMailbox(
 		};
 	}
 
+	// A position counts a tie group inside the index it was read from, so it
+	// resumes only that index. A mailbox-wide position (every position before
+	// folder sources existed) keeps walking the mailbox under the request's
+	// date bounds; a position on another folder ends this mailbox's walk.
+	const derived = scanSourceFor(live, names);
+	if (previous?.folderId !== undefined && previous.folderId !== derived.folderId) {
+		return { mailboxId, previous, rows: [], done: true };
+	}
+	const source = previous && previous.folderId === undefined ? mailboxWide(derived) : derived;
+
 	// The range bound is `<=` because a `(receivedAt, _id)` compound bound is not
 	// expressible, so resuming re-reads the boundary timestamp's whole tie group.
 	// Reading `skip` extra rows covers exactly that re-read prefix, so every page
@@ -176,16 +194,10 @@ async function scanMailbox(
 	// tie group. The overall take stays bounded by MAX_SCAN_ROWS; a tie group
 	// past that bound ends the walk rather than looping on it.
 	const takeCount = Math.min(limit + (previous?.skip ?? 0), MAX_SCAN_ROWS);
-	const scanned = await ctx.db
-		.query('mailMessages')
-		.withIndex('by_mailbox_and_received', (q) =>
-			previous
-				? q.eq('mailboxId', mailboxId).lte('receivedAt', previous.at)
-				: q.eq('mailboxId', mailboxId)
-		)
-		.order('desc')
-		.take(takeCount);
-	const positioned = positionRows(scanned);
+	const range = arrivalScan(ctx, mailboxId, source, previous ?? undefined);
+	if (!range) return { mailboxId, previous, rows: [], done: true };
+	const scanned = await range.take(takeCount);
+	const positioned = positionRows(scanned, source.folderId);
 	const fresh = positioned.filter((entry) => !isConsumed(entry.position, previous));
 	return {
 		mailboxId,
@@ -352,36 +364,51 @@ export async function searchMailbox(
 	}
 
 	// Both branches paginate natively: the text branch over the search index,
-	// the no-text branch over the arrival index. The page may shrink below
+	// the no-text branch over an arrival index. The page may shrink below
 	// `limit` after the post-filter; the cursor still marks the true scan
 	// position, so "Load more" never skips or repeats a row.
 	// `from` is a partial token (e.g. "sara"), not a full address, so it can't
 	// use the search index's exact .eq('fromAddress') — the substring
 	// post-filter below handles it for both the text and no-text branches.
-	const page =
-		single && single.text
-			? await textSearchQuery(ctx, await resolveBodySearchMode(ctx, mailboxId), {
-					mailboxId,
-					text: single.text,
-					folderId,
-					flagSeen: single.flagSeen,
-					flagFlagged: single.flagFlagged,
-				}).paginate({ cursor: cursor ?? null, numItems: limit })
-			: await ctx.db
-					.query('mailMessages')
-					.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailboxId))
-					.order('desc')
-					.paginate({ cursor: cursor ?? null, numItems: limit });
+	if (single && single.text) {
+		const page = await textSearchQuery(ctx, await resolveBodySearchMode(ctx, mailboxId), {
+			mailboxId,
+			text: single.text,
+			folderId,
+			flagSeen: single.flagSeen,
+			flagFlagged: single.flagFlagged,
+		}).paginate({ cursor: cursor ?? null, numItems: limit });
+		return filteredPage(page, live, names, disjunctive, (native) => native);
+	}
 
-	// Final filters that the search index couldn't express.
-	const filtered = page.page.filter((m) =>
-		live.some((clause) => matchesClause(m, clause, names, disjunctive))
+	// No text: the narrowest arrival range the clause allows (`./searchSource`),
+	// resumed on the source the cursor was minted on.
+	const derived = scanSourceFor(live, names);
+	const resumed = cursor ? decodeSourceCursor(cursor) : { source: derived, native: null };
+	const source = resumed && resumableSource(resumed.source, derived);
+	if (!resumed || !source) return { messages: [], hasMore: false, nextCursor: null };
+	const range = arrivalScan(ctx, mailboxId, source);
+	if (!range) return { messages: [], hasMore: false, nextCursor: null };
+	const page = await range.paginate({ cursor: resumed.native, numItems: limit });
+	return filteredPage(page, live, names, disjunctive, (native) =>
+		encodeSourceCursor(source, native)
 	);
+}
 
+/** A native page after the final filters the index couldn't express. */
+function filteredPage(
+	page: { page: Doc<'mailMessages'>[]; isDone: boolean; continueCursor: string },
+	live: readonly SearchClause[],
+	names: ResolvedNames,
+	disjunctive: boolean,
+	encodeCursor: (native: string) => string
+): MailboxSearchPage {
 	return {
-		messages: filtered,
+		messages: page.page.filter((m) =>
+			live.some((clause) => matchesClause(m, clause, names, disjunctive))
+		),
 		hasMore: !page.isDone,
-		nextCursor: page.isDone ? null : page.continueCursor,
+		nextCursor: page.isDone ? null : encodeCursor(page.continueCursor),
 	};
 }
 
@@ -399,8 +426,9 @@ export async function searchMailbox(
  * `or` carries the parser's single-level disjunction: each entry is a full
  * clause and a message matches when ANY clause does. A disjunction gives up
  * the search index (there is no one text every alternative shares) and walks
- * the arrival index instead — still paginated, just unnarrowed, exactly like
- * an operator-only query today.
+ * the mailbox's whole arrival index instead — still paginated, just unnarrowed.
+ * An operator-only clause walks the narrowest arrival range it allows: its
+ * folder for `in:`, bounded by `before:`/`after:` (`./searchSource`).
  *
  * FAN-OUT. `mailboxIds` searches several mailboxes at once — and passing
  * neither `mailboxId` nor `mailboxIds` searches every mailbox the caller can

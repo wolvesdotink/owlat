@@ -189,6 +189,49 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it('carries a bounce caused by our sending identity as a typed cause', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'bounced',
+				messageId: 'msg_1',
+				bounceType: 'hard',
+				bounceCause: 'sender',
+				message: '550 5.7.1 blocked using Spamhaus',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'email.bounced',
+			bounceType: 'hard',
+			bounceCause: 'sender',
+		});
+	});
+
+	it('leaves the cause off a bounce that names none', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'bounced',
+				messageId: 'msg_1',
+				bounceType: 'hard',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).not.toHaveProperty('bounceCause');
+	});
+
+	it('rejects a bounce with a cause outside the vocabulary', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'bounced',
+				messageId: 'msg_1',
+				bounceType: 'hard',
+				bounceCause: 'nobody',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toBeNull();
+	});
+
 	it('defaults bounced to soft when bounceType absent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({

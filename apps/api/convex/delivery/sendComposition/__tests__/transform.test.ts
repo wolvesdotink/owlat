@@ -228,8 +228,8 @@ describe('transformHtml — link tracking', () => {
 		expect(result).not.toContain('/t/c/');
 	});
 
-	it('tracks footer links when both footer and tracking enabled', () => {
-		const html = '<body><p>Content</p></body>';
+	it('never wraps the footer links, even with tracking on', () => {
+		const html = '<body><p>Content</p><a href="https://example.com/read">Read</a></body>';
 		const config: TransformConfig = {
 			unsubscribeUrl: 'https://example.com/unsubscribe',
 			preferenceUrl: 'https://example.com/preferences',
@@ -238,16 +238,21 @@ describe('transformHtml — link tracking', () => {
 
 		const result = transformHtml(html, config);
 
-		// Footer should be present
-		expect(result).toContain('Manage Preferences');
-		expect(result).toContain('Unsubscribe');
+		// The opt-out must not depend on the tracking host, must not count as a
+		// click, and its contact token must not land in click records.
+		expect(result).toContain('href="https://example.com/unsubscribe"');
+		expect(result).toContain('href="https://example.com/preferences"');
+		expect(result.match(/\/t\/c\//g)).toHaveLength(1);
+		expect(result).not.toContain('data-no-track');
+	});
 
-		// Footer links should be tracked (footer injected first, then tracked)
-		expect(result).toContain('https://convex.site/t/c/send123/');
-
-		// Original URLs should not be in href attributes (they should be encoded)
-		expect(result).not.toContain('href="https://example.com/unsubscribe"');
-		expect(result).not.toContain('href="https://example.com/preferences"');
+	it('leaves no data-no-track marker behind when tracking is off', () => {
+		const result = transformHtml('<body><p>Content</p></body>', {
+			unsubscribeUrl: 'https://example.com/unsubscribe',
+			preferenceUrl: 'https://example.com/preferences',
+		});
+		expect(result).toContain('href="https://example.com/unsubscribe"');
+		expect(result).not.toContain('data-no-track');
 	});
 
 	it('skips view-in-browser link from tracking', () => {
@@ -317,7 +322,7 @@ describe('transformHtml — tracking pixel', () => {
 		const result = transformHtml(html, config);
 
 		expect(result).toMatch(
-			/<img src="https:\/\/example\.com\/t\/o\/send123" width="1" height="1" alt="" style="[^"]*display:none[^"]*"/,
+			/<img src="https:\/\/example\.com\/t\/o\/send123" width="1" height="1" alt="" style="[^"]*display:none[^"]*"/
 		);
 	});
 });
@@ -338,7 +343,7 @@ describe('transformHtml — combined transformations', () => {
 		expect(result).toContain('Manage Preferences');
 		expect(result).toContain('Unsubscribe');
 
-		// Links tracked (including footer links)
+		// The body link is tracked
 		expect(result).toContain('https://convex.site/t/c/send123/');
 
 		// Pixel present

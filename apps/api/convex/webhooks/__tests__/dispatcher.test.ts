@@ -303,6 +303,24 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
+	it('carries the bounce cause into the bounced transition', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'email.bounced',
+			providerMessageId: 'msg-bounce',
+			at: 3000,
+			bounceType: 'hard',
+			bounceCause: 'sender',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls[0]?.args).toEqual({
+			providerMessageId: 'msg-bounce',
+			transition: { to: 'bounced', at: 3000, bounceType: 'hard', bounceCause: 'sender' },
+		});
+	});
+
 	it('preserves the optional bounceMessage on email.bounced', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {

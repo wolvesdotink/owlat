@@ -3,6 +3,7 @@
 import * as cheerio from 'cheerio';
 import { createHmac } from 'node:crypto';
 import { getOptional } from '../../lib/env';
+import { footerHtml } from './footer';
 import { encodeTrackedTarget, trackedLinkPath, trackedLinkSigningInput } from './trackingUrl';
 
 /**
@@ -10,10 +11,6 @@ import { encodeTrackedTarget, trackedLinkPath, trackedLinkSigningInput } from '.
  *
  * Single DOM-pass injection of campaign-time transformations onto the
  * personalized HTML body. Runs in Node (cheerio is a Node-only dependency).
- *
- * Replaces the pre-deepening inline `transformEmailHtml` in `emailWorker.ts`
- * (75 LOC) — function body is byte-identical; only the location and the
- * config field names change.
  *
  * Each per-kind composer in `sendComposition/<kind>/` declares the
  * `TransformConfig` for its kind (or returns `null` for kinds that ship
@@ -42,8 +39,10 @@ export interface TransformConfig {
  *
  * Order of operations (load-bearing):
  *   1. View-in-browser link prepended to body
- *   2. Footer appended to body (so footer links can be tracked in step 3)
- *   3. Link wrapping (skips mailto:, tel:, #anchors, javascript:, already-tracked /t/c/)
+ *   2. Footer appended to body (before wrapping, which must see its
+ *      `data-no-track` anchors to leave them alone)
+ *   3. Link wrapping (skips data-no-track, mailto:, tel:, #anchors,
+ *      javascript:, already-tracked /t/c/)
  *   4. Tracking pixel appended to body
  */
 export function transformHtml(html: string, config: TransformConfig): string {
@@ -60,25 +59,21 @@ export function transformHtml(html: string, config: TransformConfig): string {
 		}
 	}
 
-	// 1. Inject footer first (so footer links get tracked in step 2)
+	// 1. Inject the unsubscribe footer (see `footer.ts`).
 	if (config.unsubscribeUrl && config.preferenceUrl) {
-		const footerHtml = `
-<div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #6b7280;">
-  <p style="margin: 0;">
-    <a href="${config.preferenceUrl}" style="color: #6b7280; text-decoration: underline;">Manage Preferences</a>
-    &nbsp;&middot;&nbsp;
-    <a href="${config.unsubscribeUrl}" style="color: #6b7280; text-decoration: underline;">Unsubscribe</a>
-  </p>
-</div>`;
+		const footer = footerHtml({
+			unsubscribeUrl: config.unsubscribeUrl,
+			preferenceUrl: config.preferenceUrl,
+		});
 		const $body = $('body');
 		if ($body.length > 0) {
-			$body.append(footerHtml);
+			$body.append(footer);
 		} else {
-			$.root().append(footerHtml);
+			$.root().append(footer);
 		}
 	}
 
-	// 2. Wrap trackable links (including footer links added above)
+	// 2. Wrap trackable links. Footer and view-in-browser anchors opt out.
 	if (config.trackedLinkBase) {
 		const { siteUrl, emailSendId } = config.trackedLinkBase;
 		// Secret used to HMAC-bind each redirect target to its emailSendId so the
@@ -92,11 +87,7 @@ export function transformHtml(html: string, config: TransformConfig): string {
 			const href = $link.attr('href');
 			if (!href) return;
 
-			// Skip links marked with data-no-track (e.g., view-in-browser)
-			if ($link.attr('data-no-track') !== undefined) {
-				$link.removeAttr('data-no-track');
-				return;
-			}
+			if ($link.attr('data-no-track') !== undefined) return;
 
 			const lowerUrl = href.toLowerCase();
 
@@ -124,6 +115,10 @@ export function transformHtml(html: string, config: TransformConfig): string {
 			$link.attr('href', trackedLinkPath(siteUrl, emailSendId, encodedUrl, sig));
 		});
 	}
+
+	// The marker only steers this pass; it is stripped whether or not the
+	// message is tracked.
+	$('[data-no-track]').removeAttr('data-no-track');
 
 	// 3. Inject tracking pixel last (after all content)
 	if (config.trackingPixelUrl) {

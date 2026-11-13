@@ -7,11 +7,8 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, h, nextTick, shallowRef, type Ref } from 'vue';
-import {
-	isHeaderScrolledPast,
-	useBlockSize,
-	useHeaderScrolledPast,
-} from '../usePostboxReaderStickyBar';
+import { isHeaderScrolledPast, useHeaderScrolledPast } from '../usePostboxReaderStickyBar';
+import { useBlockSize } from '../useBlockSize';
 
 /** happy-dom does no layout: each element's top/bottom come from the test. */
 function placed(el: HTMLElement, rect: () => { top: number; bottom: number }) {

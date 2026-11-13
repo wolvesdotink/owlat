@@ -133,7 +133,8 @@ function reduceDelivered(
 
 /**
  * A 5xx the receiver answered with, or a synthetic permanent refusal (no MX, a
- * Null MX, no SMTPUTF8). Terminal: no defer, and the recipient is suppressed.
+ * Null MX, no SMTPUTF8). Terminal: no defer, and the recipient is suppressed
+ * unless the refusal was about our sending identity (`terminalBounceEffects`).
  * The `bounced` event carries the receiver's text verbatim, and the classified
  * category goes out beside it on `smtp.classified`, so a `550 5.7.1` block
  * counts toward the ramp's block clause.
@@ -156,7 +157,7 @@ function reduceDeferred(
 	// job back into the queue until it exhausts attempts and lands in the
 	// dead-letter — never delivered, never suppressed. When the classifier says
 	// `retryable: false`, drop the message terminally (no defer) and treat it
-	// as a hard bounce so the recipient/domain state is updated correctly.
+	// as a hard bounce so the domain state is updated correctly.
 	if (!outcome.classification.retryable) {
 		return reduceNonRetryableDeferral(outcome, ctx);
 	}
@@ -217,11 +218,12 @@ function reduceDeferred(
  * Terminal handling for a 4xx that the classifier marked non-retryable
  * (`policy_rejected` / `content_rejected`, or an unrecognised 5xx that surfaced
  * via the deferred path). It emits the hard bounce's effect list
- * (`terminalBounceEffects`): no defer, suppress the recipient, and report the
- * failure as a hard bounce so the message stops cycling toward the dead-letter
- * queue (RFC 5321 §4.2.1 — a 4xx is "transient" by code class, but the
- * classifier knows this particular response will never succeed for this
- * message). Only the `bounced` message text differs.
+ * (`terminalBounceEffects`): no defer, and report the failure as a hard bounce
+ * so the message stops cycling toward the dead-letter queue (RFC 5321 §4.2.1 —
+ * a 4xx is "transient" by code class, but the classifier knows this particular
+ * response will never succeed for this message). Only the `bounced` message
+ * text differs. A content or policy verdict is about our sending identity, so it
+ * keeps the recipient.
  */
 function reduceNonRetryableDeferral(
 	outcome: Extract<DispatchOutcome, { kind: 'deferred' }>,

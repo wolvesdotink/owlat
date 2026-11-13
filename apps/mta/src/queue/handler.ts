@@ -58,6 +58,8 @@ import { releaseRoutingReservations } from './routingReservations.js';
 import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
 import { emitExpiredBounce, emitRunawayDeferBounce, handleDrop } from './nonDeliveryOutcomes.js';
 import { claimDeferSuccessor } from './deferBudget.js';
+import { dispatchOutcomeCause } from '../intelligence/bounceCause.js';
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -259,7 +261,8 @@ async function applyCompletedAttempt(
 				attempt.destination.providerKey,
 				'remote_4xx',
 				reduction.defer.delayMs,
-				reduction.defer.reason
+				reduction.defer.reason,
+				dispatchOutcomeCause(outcome)
 			);
 		}
 	} else if (job.data.deliveryDomain === 'member_test') {
@@ -282,7 +285,9 @@ async function applyCompletedAttempt(
  * consume a delivery attempt.
  *
  * Past the max age, give up: emit a terminal expired-bounce (delivery log +
- * Convex notification) and let the job complete so it leaves the queue.
+ * Convex notification) and let the job complete so it leaves the queue. The
+ * bounce carries `bounceCause`, the cause of the deferral that hit the limit, so
+ * a receiver still refusing our sending identity leaves the recipient alone.
  */
 async function disposeDefer(
 	job: ReservedJob<EmailJob>,
@@ -292,14 +297,15 @@ async function disposeDefer(
 	providerKey: DestinationProviderKey,
 	kind: DeferKind,
 	delayMs: number,
-	reason: string
+	reason: string,
+	bounceCause: BounceCause = 'recipient'
 ): Promise<void> {
 	const data = job.data;
 	const now = Date.now();
 	const ageMs = messageAgeMs(job, now);
 
 	if (ageMs >= deps.config.maxMessageAgeMs) {
-		await emitExpiredBounce(job, deps, domain, providerKey, ageMs, reason);
+		await emitExpiredBounce(job, deps, domain, providerKey, ageMs, reason, bounceCause);
 		return;
 	}
 
@@ -308,7 +314,7 @@ async function disposeDefer(
 	// than the delays it asks for. Count the rung before minting it.
 	const budget = await claimDeferSuccessor(deps.redis, data.messageId);
 	if (!budget.granted) {
-		await emitRunawayDeferBounce(job, deps, domain, providerKey, budget.spent, reason);
+		await emitRunawayDeferBounce(job, deps, domain, providerKey, budget.spent, reason, bounceCause);
 		return;
 	}
 

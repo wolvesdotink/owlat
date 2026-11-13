@@ -13,6 +13,8 @@ export const agentConfigFields = {
 	signatureTemplate: v.optional(v.string()),
 	// Rate limiting
 	maxDailyAutoReplies: v.optional(v.number()),
+	// The day's count lives in `agentAutoReplyUsage`. These two are only read
+	// while that row does not exist yet, so a deploy keeps the day's count.
 	dailyAutoReplyCount: v.optional(v.number()),
 	dailyAutoReplyResetAt: v.optional(v.number()),
 	// Message coalescing debounce window. Opt-in: a positive value enables
@@ -144,6 +146,19 @@ export const autonomyTables = {
 	// Agent Config - operational tuning for the agent pipeline (singleton).
 	// The master on/off is the `ai.agent` feature flag — not a column here.
 	agentConfig: defineTable(agentConfigFields),
+
+	// The legacy global fallback's daily auto-reply count (singleton). Kept off
+	// `agentConfig` because every autonomous reply writes it, and every open
+	// Team Inbox thread reads `agentConfig` for its coalescing window; on the
+	// settings row each reply would re-run all of those readers.
+	agentAutoReplyUsage: defineTable({
+		// COUNTER [agentAutoReplyUsage] — bumped by agent/autoReplyUsage.ts in the
+		// transaction that approves an autonomous reply; restarts each UTC day.
+		dailyAutoReplyCount: v.number(),
+		// End of the counted UTC day; the next reply after it starts a new day.
+		dailyAutoReplyResetAt: v.number(),
+		updatedAt: v.number(),
+	}),
 
 	// Agent Circuit Breakers - automated safety mechanisms
 	agentCircuitBreakers: defineTable({

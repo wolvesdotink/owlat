@@ -72,6 +72,8 @@ export type OrganizationDeletionTable =
 	| 'counterBuckets'
 	| 'mailFolderMembership'
 	| 'mailFolderUidBlocks'
+	| 'mailLabelMembership'
+	| 'mailLabelMessages'
 	| 'mailAliases'
 	| 'mailFolders'
 	| 'mailLabels'
@@ -162,6 +164,7 @@ export type OrganizationDeletionTable =
 	| 'llmUsageEvents'
 	| 'agentCircuitBreakers'
 	| 'agentConfig'
+	| 'agentAutoReplyUsage'
 	| 'autonomyFeedback'
 	| 'autonomyRules'
 	| 'autonomySuggestions'
@@ -295,6 +298,8 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('counterBuckets'),
 	v.literal('mailFolderMembership'),
 	v.literal('mailFolderUidBlocks'),
+	v.literal('mailLabelMembership'),
+	v.literal('mailLabelMessages'),
 	v.literal('mailAliases'),
 	v.literal('mailFolders'),
 	v.literal('mailLabels'),
@@ -385,6 +390,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('llmUsageEvents'),
 	v.literal('agentCircuitBreakers'),
 	v.literal('agentConfig'),
+	v.literal('agentAutoReplyUsage'),
 	v.literal('autonomyFeedback'),
 	v.literal('autonomyRules'),
 	v.literal('autonomySuggestions'),

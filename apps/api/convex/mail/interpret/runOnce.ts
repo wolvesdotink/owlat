@@ -279,6 +279,7 @@ export async function runOnce(
 			sentAt: loaded.sourceAt,
 			timezone: loaded.timezone,
 			contentRevision,
+			isOurs: loaded.direction === 'outbound',
 			participants: loaded.participants,
 			openItems: loaded.openItems,
 			isItemsOverflow: loaded.isItemsOverflow,
@@ -400,6 +401,7 @@ export async function runOnce(
 			verdicts: verified.verdicts,
 			checked: new Set(claims.map((c) => c.id)),
 			...(latestSuppressed ? { latestSuppressed } : {}),
+			isOurs: loaded.direction === 'outbound',
 		});
 		const run = runStatusOf({
 			grounding,

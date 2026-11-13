@@ -8,8 +8,6 @@ export interface PresendInput {
 	blocks: EditorBlock[];
 	subject: string;
 	theme: Required<EmailTheme>;
-	/** Known on the Review step; the editor does not know where the email goes. */
-	audienceKind?: 'topic' | 'segment';
 	/** Review step only: why the send is refused today, `null` when it is not. */
 	blockedReason?: string | null;
 	remote: PresendRemote;

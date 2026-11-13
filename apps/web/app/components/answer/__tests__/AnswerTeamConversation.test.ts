@@ -12,6 +12,7 @@ import { mount } from '@vue/test-utils';
 
 import AnswerTeamConversation from '../AnswerTeamConversation.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { queryResult } from '~/__tests__/queryStubs';
 import { focusTooltip } from '~/__tests__/tooltip';
 
 const message = (id: string, creation: number, over: Record<string, unknown> = {}) => ({
@@ -32,8 +33,20 @@ const probe = (name: string) =>
 	});
 const inert = (name: string) => defineComponent({ name, setup: () => () => h('div') });
 
+/** What `inbox.threadPage.getMessage` answers, and the args each body read asked with. */
+const fullRows = new Map<string, unknown>();
+const bodyReads: unknown[] = [];
+
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		useConvexQuery: (_q: unknown, args: () => unknown) => {
+			const a = args();
+			bodyReads.push(a);
+			const id = a === 'skip' ? null : (a as { messageId: string }).messageId;
+			return queryResult(id ? (fullRows.get(id) ?? undefined) : undefined);
+		},
+	});
 });
 
 function mountColumn(
@@ -100,6 +113,58 @@ describe('AnswerTeamConversation, large bodies', () => {
 		);
 		expect(w.get('[data-testid="answer-team-message-preview"]').text()).toBe(
 			'The first part of a very long message'
+		);
+	});
+});
+
+describe('AnswerTeamConversation, envelopes', () => {
+	const envelope = (id: string, creation: number) =>
+		message(id, creation, { isBodyDeferred: true });
+
+	it('reads a body only for the row that opens, and renders it once read', async () => {
+		fullRows.clear();
+		bodyReads.length = 0;
+		fullRows.set('in_new', message('in_new', 2, { htmlBody: '<p>Any news?</p>' }));
+		const w = mountColumn([envelope('in_old', 1), envelope('in_new', 2)], 'summary');
+		await nextTick();
+
+		expect(bodyReads).toEqual([{ messageId: 'in_new' }]);
+		expect(w.get('[data-testid="PostboxMessageBody"]').text()).toBe('in_new');
+		expect(w.findAll('[data-testid="answer-team-message-body"]')).toHaveLength(1);
+
+		fullRows.set('in_old', message('in_old', 1, { textBody: 'Earlier' }));
+		await w.findAll('button[aria-expanded="false"]')[0]!.trigger('click');
+		expect(bodyReads).toEqual([{ messageId: 'in_new' }, { messageId: 'in_old' }]);
+		expect(w.findAll('[data-testid="PostboxMessageBody"]').map((b) => b.text())).toEqual([
+			'in_old',
+			'in_new',
+		]);
+	});
+
+	it('previews a collapsed envelope with the stream entry', () => {
+		const stream = [
+			{
+				kind: 'customerEmail',
+				key: 'email:in_old',
+				at: 1,
+				tie: 1,
+				source: { kind: 'inbound', id: 'in_old' },
+				fromEmail: 'ana@example.org',
+				preview: 'The invoice from March',
+			},
+			{
+				kind: 'customerEmail',
+				key: 'email:in_new',
+				at: 2,
+				tie: 2,
+				source: { kind: 'inbound', id: 'in_new' },
+				fromEmail: 'ana@example.org',
+				preview: 'Any news?',
+			},
+		];
+		const w = mountColumn([envelope('in_old', 1), envelope('in_new', 2)], 'summary', { stream });
+		expect(w.get('[data-testid="answer-team-message-preview"]').text()).toBe(
+			'The invoice from March'
 		);
 	});
 });

@@ -166,8 +166,12 @@ function isAgentOffStop(output: string | undefined): boolean {
 
 /** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */
 export interface TakeOverView {
-	/** How long a `received` message waits before a person may take it over. */
-	receivedWaitMs: number;
+	/**
+	 * How long a `received` message waits before a person may take it over.
+	 * Absent when no message is `received`: the wait comes from `agentConfig`,
+	 * and a thread view that read it would re-run on every settings write.
+	 */
+	receivedWaitMs?: number;
 	/** Facts for each message still `received` or in `security_check`. */
 	messages: Array<{
 		messageId: Doc<'inboundMessages'>['_id'];
@@ -188,8 +192,9 @@ export async function takeOverViewFor(
 	const pending = messages.filter(
 		(m) => m.processingStatus === 'received' || m.processingStatus === 'security_check'
 	);
+	const isAnyReceived = pending.some((m) => m.processingStatus === 'received');
 	return {
-		receivedWaitMs: await receivedWaitMs(ctx),
+		...(isAnyReceived ? { receivedWaitMs: await receivedWaitMs(ctx) } : {}),
 		messages: await Promise.all(
 			pending.map(async (message) => {
 				const actions = await agentActionsFor(ctx, message);
