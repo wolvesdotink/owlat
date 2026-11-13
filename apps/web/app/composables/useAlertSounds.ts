@@ -10,7 +10,7 @@ import {
 } from '~/lib/alertSoundRules';
 import type { AssignmentNotice } from '~/lib/inbox/assignmentNoticeRules';
 import { isWithinQuietHours, type UnreadPeekMessage } from '~/lib/desktop/notificationRules';
-import { playAlertSound, primeAlertSound } from '~/composables/postbox/useUiSound';
+import { loadAlertSound, playAlertSound, primeAlertSound } from '~/composables/postbox/useUiSound';
 import type { UnreadBadge } from '~/composables/useUnreadBadge';
 
 /** Remembered ids per source before the set is re-seeded from the current answer. */
@@ -120,13 +120,15 @@ export function useAlertSounds(unread: UnreadBadge) {
 
 	// An alert never arrives inside a user gesture, and WebKit only lets an
 	// element play on its own after it has played inside one. So while any
-	// sound is on, the next click or key press unlocks the chime (muted).
+	// sound is on, the next click or key press unlocks the chime (muted). The
+	// chime loads when a sound is on, so that gesture finds it ready.
 	const prime = () => primeAlertSound();
 	let listening = false;
 	function listen(on: boolean): void {
 		if (typeof window === 'undefined' || on === listening) return;
 		listening = on;
 		if (on) {
+			void loadAlertSound();
 			window.addEventListener('pointerdown', prime, true);
 			// oxlint-disable-next-line owlat/no-raw-keydown-listener -- any key press unlocks audio; it is not a shortcut
 			window.addEventListener('keydown', prime, true);
