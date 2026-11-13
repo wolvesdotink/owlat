@@ -20,6 +20,11 @@
  * lib/migrationLedger.ts) before the next is scheduled. Running `run` again on
  * an unfinished walk resumes it; on a finished one it does nothing
  * (`'{"restart":true}'` starts over).
+ *
+ * A thread whose queued messages do not fit one recount fails the run instead
+ * of being skipped: completing would switch the badge to counts that leave that
+ * thread out. The page's cursor stays before that message, so a resume retries
+ * it.
  */
 
 import { v } from 'convex/values';
@@ -27,27 +32,32 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { logInfo } from '../lib/runtimeLog';
+import { logInfo, logWarn } from '../lib/runtimeLog';
 import {
 	beginMigrationRun,
 	isCurrentMigrationPage,
 	readMigrationRun,
+	recordMigrationFailure,
 	recordMigrationPage,
 	scheduleMigrationPage,
 } from '../lib/migrationLedger';
-import { RecountBudget } from '../maintenance/derivedFields/types';
+import { RECOUNT_ROW_BUDGET, RecountBudget } from '../maintenance/derivedFields/types';
 import { recountReviewQueue, REVIEW_QUEUE_MIGRATION } from '../inbox/reviewQueueCount';
 
 export const MIGRATION = REVIEW_QUEUE_MIGRATION;
 /** The release this migration ships in, recorded on its ledger row. */
 const INTRODUCED_IN = '0.6.22';
 /**
- * Messages per page, and the bytes a page may read of them: an inline body
- * can be 256 KiB. Each distinct thread is then recounted from its queued
- * messages, within the derived-field recount budget.
+ * One queued message per page, so a page recounts one thread: the recount
+ * reads every queued message of it, bodies included, and several threads'
+ * recounts in one transaction would pass Convex's 16 MiB read limit.
  */
-export const PAGE_SIZE = 20;
-const PAGE_BYTES = 2 * 1024 * 1024;
+export const PAGE_SIZE = 1;
+/**
+ * What that recount may read: the page's own message (one document) and the
+ * batch Convex fetches past the allowance still fit under the read limit.
+ */
+export const RECOUNT_BYTES = 8 * 1024 * 1024;
 
 const SWEEPS = ['draft_ready', 'awaiting_clarification'] as const;
 type Sweep = (typeof SWEEPS)[number];
@@ -61,20 +71,20 @@ function decodeCursor(cursor: string | null): { sweep: Sweep; cursor: string | n
 	return { sweep, cursor: rest === '' ? null : rest };
 }
 
-async function recountThreads(ctx: MutationCtx, messages: Doc<'inboundMessages'>[]) {
+/** The thread too large to recount, or how many threads changed. */
+async function recountThreads(
+	ctx: MutationCtx,
+	messages: Doc<'inboundMessages'>[]
+): Promise<{ changed: number; tooLarge?: Id<'conversationThreads'> }> {
 	const threadIds = new Set<Id<'conversationThreads'>>();
 	for (const message of messages) if (message.threadId) threadIds.add(message.threadId);
 	let changed = 0;
-	let skipped = 0;
 	for (const threadId of threadIds) {
 		const thread = await ctx.db.get(threadId);
 		if (!thread) continue;
-		const counts = await recountReviewQueue(ctx, threadId, new RecountBudget());
-		if (!counts) {
-			// Left to the drift sampler, which recounts within the same budget.
-			skipped++;
-			continue;
-		}
+		const budget = new RecountBudget(RECOUNT_ROW_BUDGET, RECOUNT_BYTES);
+		const counts = await recountReviewQueue(ctx, threadId, budget);
+		if (!counts) return { changed, tooLarge: threadId };
 		if (
 			counts.reviewDraftCount === thread.reviewDraftCount &&
 			counts.reviewHeldCount === thread.reviewHeldCount
@@ -84,7 +94,7 @@ async function recountThreads(ctx: MutationCtx, messages: Doc<'inboundMessages'>
 		await ctx.db.patch(threadId, counts);
 		changed++;
 	}
-	return { changed, skipped };
+	return { changed };
 }
 
 async function backfillPage(ctx: MutationCtx, stored: string | null) {
@@ -92,12 +102,12 @@ async function backfillPage(ctx: MutationCtx, stored: string | null) {
 	const page = await ctx.db
 		.query('inboundMessages')
 		.withIndex('by_processing_status', (q) => q.eq('processingStatus', sweep))
-		.paginate({ numItems: PAGE_SIZE, cursor, maximumBytesRead: PAGE_BYTES });
-	const { changed, skipped } = await recountThreads(ctx, page.page);
+		.paginate({ numItems: PAGE_SIZE, cursor });
+	const { changed, tooLarge } = await recountThreads(ctx, page.page);
 	const next = SWEEPS[SWEEPS.indexOf(sweep) + 1];
 	const isDone = page.isDone && next === undefined;
 	const nextCursor = page.isDone && next ? `${next}:` : `${sweep}:${page.continueCursor}`;
-	return { cursor: nextCursor, isDone, scanned: page.page.length, changed, skipped };
+	return { cursor: nextCursor, isDone, scanned: page.page.length, changed, tooLarge };
 }
 
 /** Run one page and schedule the next one of the same run. */
@@ -112,6 +122,15 @@ export const processPage = internalMutation({
 			return { isDone: false, isSuperseded: true };
 		}
 		const result = await backfillPage(ctx, args.cursor);
+		if (result.tooLarge) {
+			const error = `Thread ${result.tooLarge}: its queued messages do not fit one recount`;
+			await recordMigrationFailure(ctx, run, error);
+			logWarn('migration.0074_backfill_review_queue_counts.failed', {
+				threadId: result.tooLarge,
+				generation: run.generation,
+			});
+			return { isDone: false };
+		}
 		await recordMigrationPage(ctx, run, {
 			cursor: result.cursor,
 			isDone: result.isDone,
@@ -121,7 +140,6 @@ export const processPage = internalMutation({
 		logInfo('migration.0074_backfill_review_queue_counts.page', {
 			scanned: result.scanned,
 			changed: result.changed,
-			skipped: result.skipped,
 			isDone: result.isDone,
 			generation: run.generation,
 		});

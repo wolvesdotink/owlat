@@ -19,7 +19,11 @@ import { _resetSingletonOrgCacheForTests } from '../../lib/sessionOrganization';
 import { countReviewQueue, getReviewQueue } from '../queries';
 import { transition } from '../processingLifecycle';
 import { moveReviewQueueCount } from '../reviewQueueCount';
-import { MIGRATION, PAGE_SIZE } from '../../migrations/0074_backfill_review_queue_counts';
+import {
+	MIGRATION,
+	PAGE_SIZE,
+	RECOUNT_BYTES,
+} from '../../migrations/0074_backfill_review_queue_counts';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -275,5 +279,29 @@ describe('0074_backfill_review_queue_counts', () => {
 				.unique()
 		);
 		expect(run?.status).toBe('completed');
+	});
+
+	it('fails the run on a thread too large to recount, so the badge keeps reading the queue', async () => {
+		const t = convexTest(schema, modules);
+		const small = await seedThread(t);
+		await seedMessage(t, small, 'draft_ready');
+		const large = await seedThread(t);
+		const bodyBytes = 256 * 1024;
+		for (let i = 0; i <= RECOUNT_BYTES / bodyBytes; i++) {
+			await seedMessage(t, large, 'draft_ready', bodyBytes);
+		}
+
+		await backfill(t);
+
+		const run = await t.run((ctx) =>
+			ctx.db
+				.query('migrationRuns')
+				.withIndex('by_migration', (q) => q.eq('migration', MIGRATION))
+				.unique()
+		);
+		expect(run?.status).toBe('running');
+		expect(run?.failure?.error).toContain(large);
+		expect((await t.run((ctx) => ctx.db.get(large)))?.reviewDraftCount).toBeUndefined();
+		expect((await badge(t)).count).toBe(RECOUNT_BYTES / bodyBytes + 2);
 	});
 });
