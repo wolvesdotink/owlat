@@ -209,9 +209,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	 * `report` (evaluate each MX's DNSSEC-authenticated TLSA and emit the TLS-RPT
 	 * result but never require TLS or bounce — observability only), or `enforce`
 	 * (also authenticate the MX cert against the RRset, a require-TLS floor that
-	 * supersedes MTA-STS and defers a mismatch). Default `report`, which keeps
-	 * DANE report-only (zero enforcement/delivery impact). Inert in every mode without a resolver
-	 * URL. Optional only for test doubles; read sites treat an absent value as `off`.
+	 * supersedes MTA-STS and defers a mismatch). Default `off`: operators opt in
+	 * before any TLSA lookup. Inert in every mode without a resolver URL. Optional only for test doubles; read sites treat an absent value as `off`.
 	 */
 	daneMode?: DaneMode;
 	/**
@@ -389,10 +388,9 @@ export function loadConfig(): MtaConfig {
 	}
 	const outboundTlsMode: OutboundTlsMode = outboundTlsModeRaw;
 
-	// DANE (RFC 7672) at send time — `report` by default (report-only
-	// has zero delivery impact). Parsing and validation (mode enum, https-only
-	// channel, inert-without-resolver) lives in daneConfig.ts to keep this module
-	// under the file-size gate.
+	// DANE (RFC 7672) at send time — `off` by default. Parsing and validation
+	// (mode enum, https-only channel, inert-without-resolver) lives in
+	// daneConfig.ts to keep this module under the file-size gate.
 	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
 	const governedDelivery = loadGovernedDeliveryConfig(optionalEnv);
 	const returnPathDomain = requiredEnv('RETURN_PATH_DOMAIN');

@@ -60,8 +60,8 @@ export interface DaneConfig {
  *  - An unrecognised `DANE_MODE` → error (a typo like `enforced` must not silently
  *    fall back to a different posture).
  *  - No `DANE_RESOLVER_URL` → DANE is inert in every mode (no lookups). This is a
- *    graceful no-op, NOT an error: it keeps a fresh install (no resolver) on the
- *    exact historic path even though the default mode is `report`.
+ *    graceful no-op, NOT an error: an operator who sets `report` or `enforce`
+ *    without a resolver gets no lookups rather than a failed boot.
  *  - A malformed resolver URL → error (a typo'd endpoint would otherwise throw on
  *    the hot delivery path).
  *  - A non-`https:` REMOTE resolver → error. DANE trusts the resolver's AD bit, so
