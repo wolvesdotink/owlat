@@ -11,7 +11,8 @@ import { defineComponent, h, ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 
 import ReviewStep from '../steps/ReviewStep.vue';
-import { useCapacityRefusal } from '~/composables/useCapacityRefusal';
+import { useCampaignSendRefusal } from '~/composables/useCampaignSendRefusal';
+import SendBlockedNote from '~/components/campaigns/SendBlockedNote.vue';
 import { useModal } from '~/composables/useModal';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -63,13 +64,17 @@ const errorAlertStub = defineComponent({
 	},
 });
 
+let isAdmin = true;
+
 beforeEach(() => {
+	isAdmin = true;
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-03-10T09:00:00'));
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useRouter', () => ({ push: vi.fn() }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
-	vi.stubGlobal('useCapacityRefusal', useCapacityRefusal);
+	vi.stubGlobal('useCampaignSendRefusal', useCampaignSendRefusal);
+	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(isAdmin) }));
 	vi.stubGlobal('useModal', useModal);
 	vi.stubGlobal('usePresendChecks', () => ({
 		checks: ref([]),
@@ -109,7 +114,9 @@ function mountStep(overrides: Partial<Record<string, unknown>> = {}) {
 		},
 		global: {
 			plugins: [createTestI18n()],
+			components: { CampaignsSendBlockedNote: SendBlockedNote },
 			stubs: {
+				NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
 				UiConfirmationDialog: true,
 				UiErrorAlert: errorAlertStub,
 				UiIconBox: true,

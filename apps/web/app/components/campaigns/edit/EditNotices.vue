@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // The alerts above the campaign editor's form: a screening block that sent the
-// campaign back to draft, the last save's error, and the scheduled-send notice
-// with Unschedule and Cancel. Several roots, so each alert stays a direct child
-// of the form's spaced column.
+// campaign back to draft, the last save's error, what stops the campaign from
+// going out, and the scheduled-send notice with Unschedule and Cancel. Several
+// roots, so each alert stays a direct child of the form's spaced column.
+import type { SendBlocker } from '~/lib/campaignRefusal';
 import { CircleWarningIcon, ClockIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 defineProps<{
@@ -12,6 +13,8 @@ defineProps<{
 	scheduledAt?: number;
 	scheduledAtDisplay: string;
 	isSaving: boolean;
+	/** Why the campaign cannot go out as it stands, or `null`. */
+	sendBlocker?: SendBlocker | null;
 }>();
 
 const emit = defineEmits<{ unschedule: []; cancel: [] }>();
@@ -50,6 +53,12 @@ const { t } = useI18n();
 			<p class="text-sm font-medium text-error">{{ t('common.error') }}</p>
 			<p class="text-sm text-text-secondary">{{ saveError }}</p>
 		</div>
+	</div>
+
+	<!-- Always in the DOM, so a blocker that appears or clears while the sender
+	     is edited is announced. Empty, it takes no space in the spaced column. -->
+	<div role="status" class="empty:hidden">
+		<CampaignsSendBlockedNote v-if="sendBlocker" :blocker="sendBlocker" />
 	</div>
 
 	<!-- Scheduled Campaign Notice -->

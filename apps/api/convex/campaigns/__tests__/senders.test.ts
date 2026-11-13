@@ -4,6 +4,7 @@ import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { isCampaignSenderAllowed, seedDefaultSenderIfNeeded } from '../senders';
+import { PREFLIGHT_MESSAGE_KEYS } from '../refusalCopy';
 import type { Id } from '../../_generated/dataModel';
 import {
 	createTestCampaign,
@@ -370,6 +371,8 @@ describe('validateReadyToSend — curated-sender enforcement site', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('sender_not_allowed');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.sender_not_allowed.default);
+		expect(result.messageParams).toEqual({ email: 'news@acme.com' });
 	});
 
 	it('ok — an enabled curated sender passes', async () => {

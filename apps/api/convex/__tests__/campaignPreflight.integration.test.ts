@@ -1,7 +1,7 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import {
 	createTestCampaign,
 	createTestCampaignSender,
@@ -9,6 +9,7 @@ import {
 	createTestEmailTemplate,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -97,6 +98,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_template');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.no_template.missing);
 	});
 
 	it('no_audience — campaign has no audience', async () => {
@@ -121,6 +123,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_audience');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.no_audience.default);
 	});
 
 	it('no_from_email — campaign has no fromEmail', async () => {
@@ -147,6 +150,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_from_email');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.no_from_email.default);
 	});
 
 	it('sending_not_allowed — instance is suspended', async () => {
@@ -178,6 +182,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('sending_not_allowed');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.sending_not_allowed.suspended);
 	});
 
 	it('domain_not_verified — sending domain has no domains row', async () => {
@@ -204,6 +209,8 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('domain_not_verified');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.domain_not_verified.missing);
+		expect(result.messageParams).toEqual({ domain: 'unverified.example.com' });
 	});
 
 	it('no_delivery_provider — reported before the domain check when no provider is configured', async () => {
@@ -234,6 +241,7 @@ describe('validateReadyToSend pre-flight', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_delivery_provider');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.no_delivery_provider.default);
 	});
 
 	it('ok — all checks pass with verified domain and template+audience+fromEmail', async () => {
@@ -282,5 +290,21 @@ describe('validateReadyToSend pre-flight', () => {
 		// A missing campaign row is reported as not_found rather than being
 		// mislabelled as a missing template.
 		expect(result.reason).toBe('not_found');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.not_found.default);
+	});
+});
+
+describe('getCampaignDeliveryConfigured', () => {
+	it('answers true when campaign mail has a ready provider', async () => {
+		const t = convexTest(schema, modules);
+		expect(await t.query(api.campaigns.preflight.getCampaignDeliveryConfigured, {})).toBe(true);
+	});
+
+	it('answers false exactly where the pre-flight refuses with no_delivery_provider', async () => {
+		const t = convexTest(schema, modules);
+		delete process.env['EMAIL_PROVIDER'];
+		delete process.env['MTA_API_URL'];
+		delete process.env['MTA_API_KEY'];
+		expect(await t.query(api.campaigns.preflight.getCampaignDeliveryConfigured, {})).toBe(false);
 	});
 });

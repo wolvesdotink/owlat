@@ -97,6 +97,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'CampaignsCampaignCancelIntentDialog',
 		'CampaignsCampaignEditLocked',
 		'CampaignsCapacitySchedulePanel',
+		'CampaignsSendBlockedNote',
 		'CampaignsSendReadinessNote',
 		'CampaignsSendTimingOptions',
 		'CampaignsStepsSetupAudiencePicker',

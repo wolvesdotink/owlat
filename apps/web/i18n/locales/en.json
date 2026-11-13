@@ -1567,8 +1567,6 @@
 					"abTesting": "A/B testing",
 					"audience": "Audience",
 					"blocked": {
-						"domainMissing": "Sending is disabled because \"{domain}\" is not registered. Add and verify it in Settings → Domains.",
-						"domainUnverified": "Sending is disabled because \"{domain}\" is not verified. Complete DNS verification in Settings → Domains.",
 						"emptyBody": "Email body is empty. Design the email before sending it."
 					},
 					"campaignName": "Campaign name",
@@ -11821,14 +11819,15 @@
 						"title": "Campaign under review"
 					},
 					"warmup": {
-						"dayOf": "Day {day} of ~30",
-						"estimateDetail": "This campaign has {count} recipients. {message}",
+						"dayOf": "Day {day} of {total}",
+						"estimateDetail": "This campaign has {count} recipient, more than your warm-up capacity sends in a day, so it goes out over several days. | This campaign has {count} recipients, more than your warm-up capacity sends in a day, so it goes out over several days.",
 						"estimatedDays": "Estimated send time: ~1 day | Estimated send time: ~{days} days",
+						"estimatedDaysMoreThan": "Estimated send time: more than {days} days",
 						"graduatedDescription": "Your IPs are fully warmed. Campaigns will send at full speed.",
 						"graduatedTitle": "Fully warmed",
 						"progress": "Warmup progress",
 						"remainingCapacity": "Today's remaining capacity",
-						"remainingOfCap": "{remaining} of {cap} emails",
+						"remainingToday": "{remaining} email | {remaining} emails",
 						"subtitle": "Your sending capacity based on IP reputation warming",
 						"title": "IP warmup status"
 					}
@@ -19534,6 +19533,31 @@
 			"failedUnknown": "unknown error",
 			"expired": "The action expired before you approved it.",
 			"changed": "This changed after you opened it. Check the updated details, then approve again."
+		},
+		"campaignRefusal": {
+			"accountBanned": "Sending is permanently disabled for this workspace. Contact support for details.",
+			"accountSuspended": "Sending is suspended for this workspace because of a policy violation. Contact support to restore it.",
+			"askAdmin": "Ask an admin of this workspace to fix this.",
+			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
+			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",
+			"capacityTruncated": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it would take more than {maxDays} days to reach everyone. Send it in stages, or reduce the audience.",
+			"domainInvalidAddress": "\"{email}\" is not a valid sender address. Choose another sender.",
+			"domainMissing": "\"{domain}\" is not a sending domain on this workspace yet. Add and verify it before you send.",
+			"domainUnverified": "\"{domain}\" is not verified yet. Finish its DNS verification before you send.",
+			"fix": {
+				"deliveryHub": "Open delivery health",
+				"domains": "Open domains",
+				"senders": "Open campaign senders",
+				"transport": "Set up sending"
+			},
+			"noAudience": "Choose who gets this campaign before you send it.",
+			"noDeliveryProvider": "Sending is not set up yet: campaign mail has no delivery provider. A connected mailbox does not send campaigns.",
+			"noFromEmail": "Choose who this campaign sends from before you send it.",
+			"noTemplate": "Choose the email this campaign sends before you send it.",
+			"notFound": "This campaign no longer exists.",
+			"scheduledInPast": "That time has already passed. Pick a time in the future.",
+			"senderNotAllowed": "\"{email}\" is not an approved campaign sender. Add it to the campaign senders, or allow custom senders.",
+			"templateDeleted": "The email this campaign sends was deleted. Restore it, or choose another one."
 		}
 	},
 	"sharedPkg": {

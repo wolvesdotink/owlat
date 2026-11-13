@@ -9,7 +9,7 @@ import {
 	sendTimingScheduleArgs,
 	type SendTiming,
 } from '~/lib/sendTiming';
-import { useCapacityRefusal } from './useCapacityRefusal';
+import { useCampaignSendRefusal } from './useCampaignSendRefusal';
 import type { useCampaignABTest } from './useCampaignABTest';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
@@ -62,11 +62,18 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	const { showToast } = useToast();
 
 	/**
-	 * The multi-day schedule pre-flight handed back instead of starting the
-	 * campaign, or `null`. NOT an error state: capacity is a schedule, and the
-	 * caller renders it as one.
+	 * What pre-flight refused with. `capacitySchedule` is the multi-day schedule
+	 * it handed back instead of starting the campaign (NOT an error state:
+	 * capacity is a schedule, and the caller renders it as one); `sendRefusal`
+	 * is any other reason, which the page renders beside the send buttons.
 	 */
-	const { capacitySchedule, claimCapacityRefusal, dismissCapacitySchedule } = useCapacityRefusal();
+	const {
+		capacitySchedule,
+		sendRefusal,
+		claimSendRefusal,
+		dismissCapacitySchedule,
+		dismissSendRefusal,
+	} = useCampaignSendRefusal();
 
 	// The undo window a "send now" is held for, armed here and counted down by
 	// the toast on the report page.
@@ -77,14 +84,14 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	// schedule.
 	const { run: scheduleCampaign } = useBackendOperation(api.campaigns.scheduling.schedule, {
 		label: () => t('shared.useCampaignActions.operations.schedule'),
-		onError: claimCapacityRefusal,
+		onError: claimSendRefusal,
 	});
 	// `reschedule` runs the same pre-flight as `schedule`, anchored at the new
 	// start, so moving a scheduled campaign earlier can be refused for capacity.
 	// The refusal renders as the same multi-day schedule panel, not a toast.
 	const { run: rescheduleCampaign } = useBackendOperation(api.campaigns.scheduling.reschedule, {
 		label: () => t('shared.useCampaignActions.operations.reschedule'),
-		onError: claimCapacityRefusal,
+		onError: claimSendRefusal,
 	});
 	const { run: unscheduleCampaign } = useBackendOperation(api.campaigns.scheduling.unschedule, {
 		label: () => t('shared.useCampaignActions.operations.unschedule'),
@@ -200,7 +207,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
-		dismissCapacitySchedule();
+		dismissSendRefusal();
 
 		try {
 			const sent = await final('send', async (current) => {
@@ -261,7 +268,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 		isSaving.value = true;
 		saveError.value = '';
-		dismissCapacitySchedule();
+		dismissSendRefusal();
 
 		try {
 			const scheduled = await final('schedule', async (current) => {
@@ -385,5 +392,6 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleBack,
 		capacitySchedule,
 		dismissCapacitySchedule,
+		sendRefusal,
 	};
 }

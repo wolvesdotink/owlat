@@ -2,9 +2,11 @@
  * The campaign editor drives its form through the cards it renders: the
  * details, content and schedule inputs write into the form's state, the
  * notices and the action row reach the form's handlers, the sender picker in
- * the details card is the one every save validates through, and the warm-up
- * card reads the sending posture. `useCampaignForm` is replaced by plain refs
- * so each case can see exactly what the page wrote and called.
+ * the details card is the one every save validates through, the warm-up
+ * card reads the sending posture, and what stops the campaign from going out
+ * shows before the click and beside the buttons after a refusal.
+ * `useCampaignForm` is replaced by plain refs so each case can see exactly what
+ * the page wrote and called.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
@@ -14,6 +16,8 @@ import CampaignEditPage from '../[id]/edit.vue';
 import { installNuxtStubs, mountDashboardPage, queryResult } from '~/__tests__/a11y';
 import { i18nStubs } from '~/__tests__/i18n';
 import { useCampaignABTest } from '~/composables/useCampaignABTest';
+import SendBlockedNote from '~/components/campaigns/SendBlockedNote.vue';
+import type { CampaignRefusal } from '~/lib/campaignRefusal';
 
 type Form = ReturnType<typeof makeForm>;
 
@@ -73,6 +77,7 @@ function makeForm(campaign: Record<string, unknown> | null) {
 		handleBack: vi.fn(),
 		capacitySchedule: ref(null),
 		dismissCapacitySchedule: vi.fn(),
+		sendRefusal: ref<CampaignRefusal | null>(null),
 		formatDate: (date: string, time: string) => `on ${date} at ${time}`,
 		getMinScheduleDate: () => '2026-03-10',
 		getLanguageLabel: (code: string) => code,
@@ -83,6 +88,9 @@ let form: Form;
 let senderPickerRef: Ref<unknown> | null;
 let warming: Record<string, unknown> | null;
 let estimate: Record<string, unknown> | null;
+let readiness: Record<string, unknown> | undefined;
+let deliveryConfigured: boolean | undefined;
+let isAdmin: boolean;
 
 const senderPickerStub = defineComponent({
 	name: 'CampaignsStepsSetupSenderPicker',
@@ -125,8 +133,15 @@ function mountPage(campaign: Record<string, unknown> | null, patch: Partial<Form
 			return form;
 		},
 		useDesktopContext: () => ({ isDesktop: ref(false) }),
+		usePermissions: () => ({ isAdmin: ref(isAdmin) }),
 		useOrganizationQuery: (reference: FunctionReference<'query'>) => {
 			const name = getFunctionName(reference);
+			if (name === 'campaigns/sendingReadiness:getSendingReadiness') {
+				return queryResult(readiness);
+			}
+			if (name === 'campaigns/preflight:getCampaignDeliveryConfigured') {
+				return queryResult(deliveryConfigured);
+			}
 			if (name === 'analytics/reputationQueries:getSendingOverview') {
 				return queryResult(warming ? { warming } : null);
 			}
@@ -137,6 +152,7 @@ function mountPage(campaign: Record<string, unknown> | null, patch: Partial<Form
 		},
 	});
 	return mountDashboardPage(CampaignEditPage, {
+		components: { CampaignsSendBlockedNote: SendBlockedNote },
 		stubs: {
 			UiQueryBoundary: { template: '<div><slot /></div>' },
 			UiPageHeader: {
@@ -182,6 +198,9 @@ beforeEach(() => {
 	senderPickerRef = null;
 	warming = null;
 	estimate = null;
+	readiness = undefined;
+	deliveryConfigured = undefined;
+	isAdmin = true;
 });
 
 describe('campaign editor wiring', () => {
@@ -307,18 +326,115 @@ describe('campaign editor wiring', () => {
 	it('shows the warm-up progress, today’s capacity and a multi-day estimate', () => {
 		warming = {
 			phase: 'warming',
-			ips: [{ currentDay: 12 }],
+			// The furthest-along IP is the day the delivery hub quotes.
+			ips: [{ currentDay: 4 }, { currentDay: 12 }],
+			// The roll-up counts every pool IP; the send gate does not.
 			totalDailyCap: 5000,
 			totalSentToday: 1200,
 		};
-		estimate = { estimatedDays: 3, isFullyWarmed: false, message: 'Warming limits apply.' };
+		readiness = { capped: true, today: 2100, growsTo: null, growsAt: null };
+		estimate = {
+			estimatedDays: 3,
+			isTruncated: false,
+			isFullyWarmed: false,
+			message: 'Backend English the card must not show.',
+		};
 		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
 
 		const text = wrapper.text();
 		expect(text).toContain('IP warmup status');
-		expect(text).toContain('Day 12 of ~30');
-		expect(text).toContain('3,800 of 5,000');
-		expect(text).toContain('Warming limits apply.');
+		expect(text).toContain('Day 12 of 30');
+		expect(wrapper.find('[data-testid="warmup-remaining-today"]').text()).toBe('2,100 emails');
+		expect(text).not.toContain('3,800');
+		expect(text).toContain('Estimated send time: ~3 days');
+		expect(text).toContain('This campaign has 1,284 recipients');
+		expect(text).not.toContain('Backend English');
+	});
+
+	it('announces the schedule a refused send came back with, but not the preview', async () => {
+		warming = { phase: 'warming', ips: [{ currentDay: 3 }], totalDailyCap: 500, totalSentToday: 0 };
+		const plan = {
+			days: 3,
+			slices: [100, 200, 300],
+			finishesAt: Date.UTC(2026, 2, 13),
+			covered: 600,
+			truncated: false,
+			audienceUnderCounted: false,
+		};
+		const wrapper = mountPage(
+			{ _id: 'campaign_1', name: 'Spring launch', status: 'draft' },
+			{ capacitySchedule: ref(plan) as Form['capacitySchedule'] }
+		);
+		expect(wrapper.find('campaigns-capacity-schedule-panel-stub').attributes('role')).toBe('alert');
+	});
+
+	it('quotes no remaining figure the send gate does not stand behind', () => {
+		warming = { phase: 'warming', ips: [{ currentDay: 3 }], totalDailyCap: 500, totalSentToday: 0 };
+		readiness = { capped: false, reason: 'not_own_mta' };
+		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		expect(wrapper.find('[data-testid="warmup-remaining-today"]').exists()).toBe(false);
+	});
+
+	it('shows a halted warm-up as halted, with the way to the delivery hub', () => {
+		warming = { phase: 'plateau', ips: [{ currentDay: 9 }], totalDailyCap: 900, totalSentToday: 0 };
+		readiness = { capped: true, today: 900, growsTo: null, growsAt: null };
+		estimate = { estimatedDays: 3, isTruncated: false, isFullyWarmed: false, message: '' };
+		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+
+		const halted = wrapper.find('[data-testid="warmup-halted"]');
+		expect(halted.text()).toContain('Warm-up paused — sending is temporarily held.');
+		expect(halted.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery');
+		expect(wrapper.text()).not.toContain('Day 9 of 30');
+		expect(wrapper.find('[data-testid="warmup-estimate"]').exists()).toBe(false);
+	});
+
+	it('gives a member the halted sentence without a link they cannot open', () => {
+		isAdmin = false;
+		warming = { phase: 'plateau', ips: [{ currentDay: 9 }], totalDailyCap: 900, totalSentToday: 0 };
+		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		const halted = wrapper.find('[data-testid="warmup-halted"]');
+		expect(halted.text()).toContain('Warm-up paused');
+		expect(halted.find('a').exists()).toBe(false);
+	});
+
+	it('says before the click that sending is not set up, and links to the fix', () => {
+		deliveryConfigured = true;
+		const ready = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		expect(ready.find('[data-testid="send-blocked-note"]').exists()).toBe(false);
+
+		deliveryConfigured = false;
+		const blocked = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		const note = blocked.find('[role="status"] [data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('Sending is not set up yet');
+		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery/transport');
+		expect(note.find('a').text()).toBe('Set up sending');
+	});
+
+	it('renders a refused send beside the buttons, in the reader’s words', async () => {
+		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		expect(wrapper.find('[role="alert"][data-testid="send-blocked-note"]').exists()).toBe(false);
+
+		form.sendRefusal.value = {
+			reason: 'sender_not_allowed',
+			messageKey: 'shared.campaignRefusal.senderNotAllowed',
+			params: { email: 'news@owlat.example' },
+			message: 'Cannot send campaign: "news@owlat.example" is not an approved campaign sender.',
+		};
+		await flushPromises();
+
+		const note = wrapper.find('[role="alert"][data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('"news@owlat.example" is not an approved campaign sender.');
+		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/team/senders');
+	});
+
+	it('tells a member to ask an admin instead of linking to an admin page', () => {
+		isAdmin = false;
+		deliveryConfigured = false;
+		const wrapper = mountPage({ _id: 'campaign_1', name: 'Spring launch', status: 'draft' });
+		const note = wrapper.find('[data-testid="send-blocked-note"]');
+		expect(note.text()).toContain('Sending is not set up yet');
+		expect(note.text()).toContain('Ask an admin of this workspace to fix this.');
+		expect(note.find('a').exists()).toBe(false);
 	});
 
 	it('says a graduated pool is fully warmed', () => {

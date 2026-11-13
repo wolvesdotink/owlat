@@ -435,6 +435,7 @@ import type * as campaigns_organization from '../campaigns/organization.js';
 import type * as campaigns_pageBucketPlan from '../campaigns/pageBucketPlan.js';
 import type * as campaigns_pageDecision from '../campaigns/pageDecision.js';
 import type * as campaigns_preflight from '../campaigns/preflight.js';
+import type * as campaigns_refusalCopy from '../campaigns/refusalCopy.js';
 import type * as campaigns_scheduling from '../campaigns/scheduling.js';
 import type * as campaigns_send from '../campaigns/send.js';
 import type * as campaigns_sendCommit from '../campaigns/sendCommit.js';
@@ -2360,6 +2361,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/pageBucketPlan': typeof campaigns_pageBucketPlan;
 	'campaigns/pageDecision': typeof campaigns_pageDecision;
 	'campaigns/preflight': typeof campaigns_preflight;
+	'campaigns/refusalCopy': typeof campaigns_refusalCopy;
 	'campaigns/scheduling': typeof campaigns_scheduling;
 	'campaigns/send': typeof campaigns_send;
 	'campaigns/sendCommit': typeof campaigns_sendCommit;
