@@ -42,7 +42,7 @@ import { logEvent } from '../lib/runtimeLog';
  * accepted here so the probe travels the IDENTICAL transport as the mail it
  * measures instead of a parallel one.
  */
-type DispatchRef =
+export type DispatchRef =
 	| { kind: 'campaign'; id: Id<'emailSends'> }
 	| { kind: 'transactional'; id: Id<'transactionalSends'> }
 	| { kind: 'seedProbe'; id: Id<'seedPlacementProbes'> };
@@ -134,6 +134,17 @@ function reentryRetryState(current: WorkerRetryState): WorkerRetryState {
 }
 
 /**
+ * The idempotency key the first governed attempt for `sendRef` carries. A hold
+ * before dispatch (the worker's suspension gate) hands the same key forward,
+ * so the attempt that finally dispatches is the one this send always had.
+ */
+export function governedIdempotencyKey(sendRef: DispatchRef | undefined): string {
+	return sendRef
+		? `${sendRef.kind === 'seedProbe' ? 'probe' : 'send'}_${sendRef.id}`
+		: `legacy_${crypto.randomUUID()}`;
+}
+
+/**
  * Resolve the authoritative last-mile route and dispatch one composed message.
  *
  * This boundary owns the stable idempotency key, governed routing lease, MTA
@@ -145,10 +156,7 @@ export async function dispatchGovernedEmail(
 	request: GovernedDispatchRequest
 ): Promise<GovernedDispatchResult> {
 	const idempotencyKey =
-		request.retryState?.idempotencyKey ??
-		(request.sendRef
-			? `${request.sendRef.kind === 'seedProbe' ? 'probe' : 'send'}_${request.sendRef.id}`
-			: `legacy_${crypto.randomUUID()}`);
+		request.retryState?.idempotencyKey ?? governedIdempotencyKey(request.sendRef);
 	const retryState = currentRetryState(request.retryState, idempotencyKey);
 	// BOTH BOUNDS, ONE PREDICATE, CAP FIRST. `attempt` is the ALREADY-INCREMENTED
 	// successor number a re-entry handed us, so the cap refuses the ninth attempt

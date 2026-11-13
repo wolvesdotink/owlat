@@ -19,6 +19,7 @@ import {
 	bucketTemplateId,
 	decideHopPlan,
 	decideHopStart,
+	decideWalkHold,
 	hopSendContext,
 	hopSendSettings,
 	needsSendTimePlanning,
@@ -279,6 +280,21 @@ export const resolveCampaignPage = internalAction({
 		);
 		if (start.kind === 'stop') return { done: true, pageEnqueued: 0 };
 		const { job, campaign } = start;
+
+		// A SUSPENDED DEPLOYMENT HOLDS THE WALK at its cursor (see `decideWalkHold`);
+		// the hold mutation re-checks and schedules the re-check hop.
+		const walkHold = decideWalkHold({
+			job,
+			hold: await ctx.runQuery(internal.campaigns.sendHold.getSendHold, {}),
+			now: Date.now(),
+		});
+		if (walkHold.kind !== 'walk') {
+			await ctx.runMutation(internal.campaigns.sendHold.holdSendWalk, {
+				campaignId,
+				read: { startedAt: job.startedAt, cursor: job.cursor },
+			});
+			return { done: walkHold.kind === 'expire', pageEnqueued: 0 };
+		}
 
 		// THE MULTI-DAY SEND PLAN: today's capacity slice, or a park until the
 		// next cap window (see `decideHopPlan`).

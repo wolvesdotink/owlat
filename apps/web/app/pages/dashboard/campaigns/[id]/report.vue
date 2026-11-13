@@ -6,6 +6,7 @@ import CampaignAutomatedEngagementNote from '~/components/campaigns/CampaignAuto
 import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
 import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
 import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
+import CampaignSendHoldNotice from '~/components/campaigns/CampaignSendHoldNotice.vue';
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
 import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchiveLink.vue';
 import CampaignReportContacts from '~/components/campaigns/report/ReportContacts.vue';
@@ -82,6 +83,12 @@ const { data: sendPlan } = useConvexQuery(
 		campaignId: campaignId.value,
 	})
 );
+
+// Whether a suspension holds this campaign's mail, or ended its send. `null`
+// for every campaign sending normally.
+const { data: sendHold } = useConvexQuery(api.campaigns.sendHold.getCampaignSendHold, () => ({
+	campaignId: campaignId.value,
+}));
 
 // Fetch opens timeline
 const { data: opensTimeline } = useConvexQuery(api.delivery.sends.getOpensTimeline, () => ({
@@ -240,6 +247,8 @@ const currentSnapshot = computed(() => ({
 					:is-duplicating="isDuplicating"
 					@duplicate="handleDuplicate"
 				/>
+
+				<CampaignSendHoldNotice :hold="sendHold" />
 
 				<!-- The story first: one sentence, then the funnel it comes from. -->
 				<div v-if="(hasSendStarted || isSendPending) && stats" class="card p-4 sm:p-6 mb-8">

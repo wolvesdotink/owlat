@@ -1273,6 +1273,14 @@
 				"unfiltered": "Clicks counted before automated clicks were filtered out may include security scanners.",
 				"unfilteredWithOpens": "Opens and clicks counted before automated ones were filtered out may include Apple Mail Privacy Protection and security scanners."
 			},
+			"campaignSendHoldNotice": {
+				"heldBanned": "Sending is disabled for this workspace, so this campaign is not sending. Messages that have not left yet wait up to {days} days and are not sent if sending is still disabled then.",
+				"heldSince": "On hold since {date}",
+				"heldSuspended": "Sending is suspended for this workspace, so this campaign is on hold. Messages that have not left yet go out once sending is restored. Anything still waiting after {days} days is not sent.",
+				"stopped": "Sending stopped on {date}: sending stayed suspended for {days} days, so recipients this campaign had not reached yet were not mailed.",
+				"title": "Sending on hold",
+				"titleStopped": "Sending stopped"
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "at least {total}",
 				"dayOf": "day {day} of {totalDays}",

@@ -118,6 +118,14 @@ const campaignSendJobs = defineTable({
 	// again and schedule ANOTHER resume hop at the same instant. Cleared on every
 	// hop that makes progress, so a walk that genuinely dies is still re-driven.
 	resumeAt: v.optional(v.number()),
+	// A WALK HELD BECAUSE SENDING IS SUSPENDED. Set by the first hop that finds
+	// the deployment suspended or banned, kept while the hold lasts and cleared
+	// by the first hop that commits a page again. The hold re-checks through
+	// `resumeAt`, like a capacity park, and is bounded by the delivery deadline
+	// measured from this instant: past it the walk ends (`holdExpiredAt`) rather
+	// than sending stale mail whenever the suspension is lifted.
+	holdStartedAt: v.optional(v.number()),
+	holdExpiredAt: v.optional(v.number()),
 	startedAt: v.number(),
 	updatedAt: v.number(),
 })

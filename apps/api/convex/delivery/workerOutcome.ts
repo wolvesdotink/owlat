@@ -68,6 +68,10 @@ const deferredArm = v.object({
 	kind: v.literal('deferred'),
 	retryAfterMs: v.number(),
 	deferralOrigin: v.union(v.literal('governed'), v.literal('local')),
+	// Set when the worker's own gate held the envelope before dispatch because
+	// the deployment's sending is suspended, so a send that runs out of time
+	// while held is failed under that name rather than as an unknown error.
+	hold: v.optional(v.literal('sending_suspended')),
 	envelopeInput: envelopeInputValidator,
 	retryState: retryStateValidator,
 });

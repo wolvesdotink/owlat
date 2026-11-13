@@ -6,12 +6,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { utcDayKey } from '../../lib/clock';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { SENDING_HOLD_RECHECK_MS } from '../../workspaces/abuseGate';
 import {
 	bucketContent,
 	bucketTemplateId,
 	decideHopPlan,
 	decideHopStart,
 	decidePageEnd,
+	decideWalkHold,
 	hopSendContext,
 	hopSendSettings,
 	needsSendTimePlanning,
@@ -325,5 +328,41 @@ describe('decidePageEnd', () => {
 		});
 		expect(end.dailySendCount).toBeUndefined();
 		expect(end.isLastPage).toBe(true);
+	});
+});
+
+describe('decideWalkHold', () => {
+	const SUSPENDED = { status: 'suspended' as const };
+
+	it('walks while sending is allowed', () => {
+		expect(decideWalkHold({ job: job(), hold: null, now: NOW })).toEqual({ kind: 'walk' });
+		expect(
+			decideWalkHold({ job: job({ holdStartedAt: NOW - DAY }), hold: null, now: NOW })
+		).toEqual({ kind: 'walk' });
+	});
+
+	it('starts a hold at the first held hop and re-checks after the interval', () => {
+		expect(decideWalkHold({ job: job(), hold: SUSPENDED, now: NOW })).toEqual({
+			kind: 'hold',
+			holdStartedAt: NOW,
+			resumeAt: NOW + SENDING_HOLD_RECHECK_MS,
+		});
+	});
+
+	it('keeps the first held instant across re-checks', () => {
+		const started = NOW - DAY;
+		expect(
+			decideWalkHold({ job: job({ holdStartedAt: started }), hold: { status: 'banned' }, now: NOW })
+		).toMatchObject({ kind: 'hold', holdStartedAt: started });
+	});
+
+	it('ends the walk once the hold reaches the delivery deadline', () => {
+		const started = NOW - GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
+		expect(
+			decideWalkHold({ job: job({ holdStartedAt: started }), hold: SUSPENDED, now: NOW })
+		).toEqual({ kind: 'expire' });
+		expect(
+			decideWalkHold({ job: job({ holdStartedAt: started + 1 }), hold: SUSPENDED, now: NOW })
+		).toMatchObject({ kind: 'hold' });
 	});
 });

@@ -282,7 +282,14 @@ export function planCompletionOutcome(input: {
 			// attempts, or past the cumulative delivery deadline, the wait itself
 			// ran out, which is a real non-delivery — the shipped terminalization.
 			const retry = retryStep(outcome, now, isEnvelopeStripped);
-			return plan(retry ?? fail('Unknown error', 'WORKPOOL_FAILED'), recordsDeferral);
+			const expired =
+				outcome.hold === 'sending_suspended'
+					? fail(
+							'Sending stayed suspended for this workspace until the delivery deadline passed',
+							'SENDING_SUSPENDED'
+						)
+					: fail('Unknown error', 'WORKPOOL_FAILED');
+			return plan(retry ?? expired, recordsDeferral);
 		}
 
 		case 'accepted': {
