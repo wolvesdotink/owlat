@@ -198,6 +198,10 @@ export async function isIpEligibilityLeaseValid(
 	);
 }
 
+/** Every campaign message would log the borrow otherwise; once a minute says it. */
+const BORROW_WARN_INTERVAL_MS = 60_000;
+let lastCampaignBorrowWarnAt = Number.NEGATIVE_INFINITY;
+
 export async function selectIpWithLease(
 	redis: Redis,
 	pool: IpPoolType,
@@ -221,7 +225,26 @@ export async function selectIpWithLease(
 			return null;
 		}
 	} else {
-		const availableIps = config[pool].filter((ip) => activeIps.has(ip));
+		let availableIps = config[pool].filter((ip) => activeIps.has(ip));
+		// A campaign pool with no eligible IP borrows the transactional pool's,
+		// so bulk mail is never parked behind addresses an install has not made
+		// ready (a campaign IP without PTR, SPF or a local binding). The job keeps
+		// its `campaign` label, so the borrowed IP still paces it through warm-up
+		// and holds the transactional reserve against it. Transactional mail never
+		// borrows campaign IPs, so it never inherits a bulk IP's reputation.
+		if (availableIps.length === 0 && pool === 'campaign') {
+			availableIps = config.transactional.filter((ip) => activeIps.has(ip));
+			if (
+				availableIps.length > 0 &&
+				Date.now() - lastCampaignBorrowWarnAt >= BORROW_WARN_INTERVAL_MS
+			) {
+				lastCampaignBorrowWarnAt = Date.now();
+				logger.warn(
+					{ pool, borrowedFrom: 'transactional' },
+					'No eligible IPs in the campaign pool; sending campaign mail from transactional IPs'
+				);
+			}
+		}
 		if (availableIps.length === 0) {
 			logger.error({ pool }, 'No eligible IPs available for pool; delivery remains queued');
 			return null;

@@ -135,7 +135,10 @@ export interface MtaExtras {
 	routingReentry?: Omit<MtaRoutingReentry, 'retryState'> & {
 		retryState: DispatchReentryRetryState;
 	};
-	/** IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). */
+	/**
+	 * IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). Unset, the
+	 * adapter picks it from `messageType` (`mtaIpPoolFor` in `./mta`).
+	 */
 	ipPool?: MtaIpPool;
 	/** Engagement score 0-100 for priority ordering */
 	engagementScore?: number;
