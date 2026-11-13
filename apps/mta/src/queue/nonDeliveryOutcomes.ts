@@ -15,6 +15,7 @@ import type { ReservedJob } from 'groupmq';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { EmailJob } from '../types.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DispatchEffect } from '../dispatch/effects.js';
@@ -30,7 +31,9 @@ type DropResult = Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>;
  * Emit the terminal expired-bounce once the max message age is exceeded.
  * Recorded as a soft bounce (the message kept being transiently deferred) so
  * downstream bounce handling treats it as a give-up rather than a permanent
- * address failure.
+ * address failure. `bounceCause` is the cause of the deferral that hit the age
+ * limit: a receiver still refusing our sending identity must not count toward
+ * the recipient's soft-bounce escalation.
  */
 export async function emitExpiredBounce(
 	job: ReservedJob<EmailJob>,
@@ -38,7 +41,8 @@ export async function emitExpiredBounce(
 	domain: string,
 	providerKey: DestinationProviderKey,
 	ageMs: number,
-	reason: string
+	reason: string,
+	bounceCause: BounceCause = 'recipient'
 ): Promise<void> {
 	const data = job.data;
 	// Anchor the terminal notification to the job's own expiry deadline rather
@@ -74,6 +78,7 @@ export async function emitExpiredBounce(
 				deliveryDomain: data.deliveryDomain,
 				...(data.correlationId ? { correlationId: data.correlationId } : {}),
 				bounceType: 'soft',
+				...(bounceCause === 'sender' ? { bounceCause: 'sender' as const } : {}),
 				message: `Message expired after ${deps.config.maxMessageAgeMs}ms without delivery`,
 				timestamp: expiredAt,
 			},
@@ -108,7 +113,8 @@ export async function emitRunawayDeferBounce(
 	domain: string,
 	providerKey: DestinationProviderKey,
 	successors: number,
-	reason: string
+	reason: string,
+	bounceCause: BounceCause = 'recipient'
 ): Promise<void> {
 	const data = job.data;
 	const startedAt = data.firstEnqueuedAt ?? job.timestamp;
@@ -142,6 +148,7 @@ export async function emitRunawayDeferBounce(
 				deliveryDomain: data.deliveryDomain,
 				...(data.correlationId ? { correlationId: data.correlationId } : {}),
 				bounceType: 'soft',
+				...(bounceCause === 'sender' ? { bounceCause: 'sender' as const } : {}),
 				message: `Message was deferred ${successors} times without delivery`,
 				timestamp: startedAt,
 			},

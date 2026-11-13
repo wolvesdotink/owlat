@@ -237,6 +237,8 @@ function reduceDsnAttributed(
 					messageId: bounce.originalMessageId,
 					organizationId: bounce.organizationId,
 					bounceType: bounce.bounceType,
+					// A DSN refusing our sending identity: Convex keeps the address.
+					...(bounce.bounceCause === 'sender' ? { bounceCause: 'sender' as const } : {}),
 					message: bounce.message,
 					timestamp: Date.now(),
 				},
