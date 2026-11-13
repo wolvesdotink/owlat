@@ -19,6 +19,9 @@ import { enableFeatures } from '../../__tests__/factories';
 import { MARK_THREAD_READ_BATCH } from '../flagWrites';
 import { THREAD_READ_CAP } from '../mailbox/threadReads';
 import { rebuildThreadAggregates } from '../threadAggregates';
+import { archive, move, trash } from '../messageActions';
+import type { MutationCtx } from '../../_generated/server';
+import { countingDb, type QueriedDocuments } from '../../__tests__/indexRecorder.testlib';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -570,4 +573,73 @@ describe('listThreadOutboundDelivery reads only sent rows (plan 3.3)', () => {
 		]);
 		expect(rows[0]!.recipients[0]).not.toHaveProperty('mtaJobId');
 	});
+});
+
+describe('moving one message reads a fixed number of its siblings', () => {
+	type Verb = 'archive' | 'trash' | 'move';
+	const handlers = { archive, trash, move } as unknown as Record<
+		Verb,
+		{ _handler: (ctx: MutationCtx, args: Record<string, unknown>) => Promise<unknown> }
+	>;
+
+	/**
+	 * Run one verb on the newest message of a `size`-message thread, with a
+	 * reader that counts the message documents its queries return. With
+	 * `isLastInInbox` every older message is already archived, so the move takes
+	 * the thread out of the Inbox; `expectConsistent` checks the roles it keeps.
+	 */
+	async function messagesQueriedByMove(
+		verb: Verb,
+		size: number,
+		isLastInInbox: boolean
+	): Promise<number> {
+		const t = convexTest(schema, modules);
+		const { mailboxId, folders } = await seedBox(t);
+		const { messageIds } = await seedThread(
+			t,
+			mailboxId,
+			folders,
+			Array.from({ length: size }, (_, i) => ({
+				seen: true,
+				role: isLastInInbox && i < size - 1 ? ('archive' as const) : ('inbox' as const),
+			})),
+			`long-${verb}`
+		);
+		const messageId = messageIds[messageIds.length - 1]!;
+		const args =
+			verb === 'move'
+				? { messageIds: [messageId], targetFolderId: folders.spam }
+				: { messageIds: [messageId] };
+		const queried: QueriedDocuments = {};
+		await t.run(async (ctx) => {
+			await handlers[verb]._handler(
+				{ ...ctx, db: countingDb(ctx.db, queried) } as MutationCtx,
+				args
+			);
+		});
+		await expectConsistent(t, mailboxId);
+		return queried['mailMessages'] ?? 0;
+	}
+
+	it.each<{ verb: Verb; isLastInInbox: boolean }>([
+		{ verb: 'archive', isLastInInbox: false },
+		{ verb: 'trash', isLastInInbox: false },
+		{ verb: 'move', isLastInInbox: false },
+		{ verb: 'archive', isLastInInbox: true },
+		{ verb: 'trash', isLastInInbox: true },
+		{ verb: 'move', isLastInInbox: true },
+	])(
+		'$verb (last in Inbox: $isLastInInbox): the same reads for 10, 100 and 1000 messages',
+		async ({ verb, isLastInInbox }) => {
+			const reads: Record<number, number> = {};
+			for (const size of [10, 100, 1000]) {
+				reads[size] = await messagesQueriedByMove(verb, size, isLastInInbox);
+			}
+
+			const fixed = reads[10]!;
+			expect(reads).toEqual({ 10: fixed, 100: fixed, 1000: fixed });
+			// At most the one sibling that proves the source folder's role stays.
+			expect(fixed).toBeLessThanOrEqual(1);
+		}
+	);
 });

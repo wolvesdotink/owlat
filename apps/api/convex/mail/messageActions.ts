@@ -160,7 +160,10 @@ export async function moveMessagesToFolder(
 	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> },
 	// writeBack false: mirrors a provider's own move (external/remoteState.ts).
 	// isNeedsReplyKept: keep the thread's Reply Queue state (it still has Inbox mail).
-	// isFolderRolesOnly: bounded thread update, no whole-thread re-read (replyDone.ts).
+	// isFolderRolesOnly: bounded thread update (applyThreadFolderMove), no
+	// whole-thread re-read. Correct when the move is the only change to the
+	// thread's messages; a caller that also rewrites them (labels, flags, rows
+	// added or removed) in the same mutation keeps the full rebuild.
 	options: { writeBack?: boolean; isNeedsReplyKept?: boolean; isFolderRolesOnly?: boolean } = {}
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
@@ -273,7 +276,9 @@ async function moveWithAccess(
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 	const owned = await access(target.mailboxId);
 	if (!owned.ok) throwForbidden('Folder not accessible');
-	return moveMessagesToFolder(ctx, args);
+	// A user's move changes only where the messages sit, so archiving one
+	// message of a long conversation must not re-read all of it.
+	return moveMessagesToFolder(ctx, args, { isFolderRolesOnly: true });
 }
 
 /** Move messages to a destination folder. Allocates new UID per message. */
