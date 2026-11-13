@@ -76,3 +76,31 @@ export async function countAutoReply(ctx: MutationCtx): Promise<void> {
 	if (row) await ctx.db.patch(row._id, next);
 	else await ctx.db.insert('agentAutoReplyUsage', next);
 }
+
+/** Why the legacy global cap held a reply for review. */
+export function dailyLimitReason(count: number, max: number): string {
+	return `Daily auto-reply limit reached (${count}/${max}). Routing to human review.`;
+}
+
+/**
+ * The legacy global cap's verdict on one more autonomous reply: `null` when
+ * there is room, else the count and the limit it reached.
+ *
+ * The route step checks the count in an action, so two route steps can both
+ * see the last free slot. The approval's commit asks again here, in the
+ * mutation whose `increment_auto_reply_count` effect then counts the reply:
+ * of two commits racing for the last slot the second conflicts on the usage
+ * row, re-runs on the first one's count and is refused. The slot is taken by
+ * that effect only, so an admitted reply is counted once. The day boundary is
+ * {@link countAutoReply}'s.
+ */
+export async function dailyLimitReached(
+	ctx: QueryCtx
+): Promise<{ count: number; max: number } | null> {
+	const config = await ctx.db.query('agentConfig').first();
+	const usage = await readAutoReplyUsage(ctx, config);
+	const max = config?.maxDailyAutoReplies ?? 100;
+	const count = usage.dailyAutoReplyCount ?? 0;
+	const isNewDay = Date.now() > (usage.dailyAutoReplyResetAt ?? 0);
+	return isNewDay || count < max ? null : { count, max };
+}

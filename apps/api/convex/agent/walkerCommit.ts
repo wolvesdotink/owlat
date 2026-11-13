@@ -37,6 +37,7 @@ import { agentStepKindValidator } from './steps/catalog';
 import { nextStepValidator, scheduleAfterCoreStep } from './walkerSchedule';
 import { resumeDraftPlan } from './walkerTransition';
 import { applyStepWrites, isStepCurrent, stepWriteValidator, type StepWrite } from './stepWrites';
+import { dailyLimitReached, dailyLimitReason } from './autoReplyUsage';
 
 const stepEndFields = {
 	output: v.optional(v.string()),
@@ -52,6 +53,8 @@ export const stepOutcomeValidator = v.union(
 		kind: v.literal('transition'),
 		input: transitionInputValidator,
 		nextStep: v.optional(nextStepValidator),
+		// An approval that takes a slot of the legacy global daily cap.
+		dailyCap: v.optional(v.literal('global')),
 	}),
 	v.object({ kind: v.literal('done'), ...stepEndFields }),
 	v.object({ kind: v.literal('failed'), errorMessage: v.string() }),
@@ -120,10 +123,12 @@ export const commitStep = internalMutation({
 		v.literal('held'),
 		v.literal('stale')
 	),
-	handler: async (ctx, { inboundMessageId, kind, actionId, outcome, writes, ranIn }) => {
+	handler: async (ctx, args) => {
+		const { inboundMessageId, kind, actionId, ranIn } = args;
+		const { outcome, writes } = await admitDailyCap(ctx, args.outcome, args.writes ?? []);
 		// A caller of the previous release passes no `ranIn` and no writes.
 		if (ranIn !== undefined) {
-			const landed = await landStepWrites(ctx, inboundMessageId, ranIn, writes ?? []);
+			const landed = await landStepWrites(ctx, inboundMessageId, ranIn, writes);
 			if (landed.kind === 'stale') {
 				await abandonStepAction(ctx, actionId, landed.reason);
 				return 'stale';
@@ -180,6 +185,54 @@ export const commitStep = internalMutation({
 		}
 	},
 });
+
+/**
+ * Admit an approval that takes a slot of the legacy global daily cap
+ * (`dailyLimitReached`). A refused one goes to review instead, with the cap's
+ * reason on the message's agent decision and on the step's row, as when the
+ * route step itself saw the cap reached.
+ */
+async function admitDailyCap(
+	ctx: MutationCtx,
+	outcome: StepOutcome,
+	writes: StepWrite[]
+): Promise<{ outcome: StepOutcome; writes: StepWrite[] }> {
+	if (outcome.kind !== 'transition' || outcome.dailyCap !== 'global') return { outcome, writes };
+	if (outcome.input.to !== 'approved') return { outcome, writes };
+	const reached = await dailyLimitReached(ctx);
+	if (!reached) return { outcome, writes };
+	const reason = dailyLimitReason(reached.count, reached.max);
+	const { input } = outcome;
+	return {
+		outcome: {
+			kind: 'transition',
+			input: {
+				to: 'draft_ready',
+				at: input.at,
+				...(input.completedActionId ? { completedActionId: input.completedActionId } : {}),
+				...(input.output !== undefined ? { output: heldOutput(input.output, reason) } : {}),
+			},
+			...(outcome.nextStep ? { nextStep: outcome.nextStep } : {}),
+		},
+		writes: writes.map((write) =>
+			write.kind === 'agent_decision' ? { ...write, decision: 'human_review', reason } : write
+		),
+	};
+}
+
+/** The route step's recorded output, as the review it was sent to. */
+function heldOutput(output: string, reason: string): string {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(output);
+	} catch {
+		// swallowed: an unparsable output is kept as the step recorded it
+		return output;
+	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return output;
+	const { dailyCap: _dailyCap, ...decided } = parsed as { dailyCap?: unknown };
+	return JSON.stringify({ ...decided, decision: 'human_review', reason });
+}
 
 type Landing = { kind: 'current' } | { kind: 'moved' } | { kind: 'stale'; reason: string };
 
