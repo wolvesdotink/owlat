@@ -24,6 +24,7 @@ import { modules } from '../../__tests__/testModules';
 import { createTestContact, enableFeatures } from '../../__tests__/factories';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import { resolveContact } from '../../contacts/resolution';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -351,5 +352,43 @@ describe('integration import page fence (#996)', () => {
 			const hops = await ctx.db.system.query('_scheduled_functions').collect();
 			expect(hops).toHaveLength(0);
 		});
+	});
+});
+
+describe('integration import page counts', () => {
+	it('a page that names an unsubscribed contact keeps it unsubscribed and counts it on the run', async () => {
+		const t = newHarness();
+		const importId = await seedRun(t);
+		const optedOutAt = Date.now() - 60_000;
+		// Through Contact resolution, so the import finds this contact by address.
+		const goneId = await t.run(async (ctx) => {
+			const { contactId } = await resolveContact(ctx, {
+				channel: 'email',
+				identifier: 'gone@example.com',
+				source: 'api',
+				mode: 'upsert',
+			});
+			await ctx.db.patch(contactId, { unsubscribedAt: optedOutAt });
+			return contactId;
+		});
+
+		for (const [page, cursor] of [
+			[0, ''],
+			[1, '100'],
+		] as const) {
+			await t.mutation(internal.integrationImports.pageCommit.commitIntegrationPage, {
+				importId,
+				cursor,
+				page,
+				config: CONFIG,
+				rows: [{ email: 'gone@example.com' }],
+				suppressions: [],
+				suppressionsSkipped: 0,
+				nextCursor: page === 0 ? '100' : '200',
+			});
+		}
+
+		expect((await readRun(t, importId)).keptUnsubscribed).toBe(2);
+		expect((await t.run((ctx) => ctx.db.get(goneId)))?.unsubscribedAt).toBe(optedOutAt);
 	});
 });

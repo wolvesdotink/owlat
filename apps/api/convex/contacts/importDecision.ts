@@ -33,6 +33,8 @@ export type ImportOutcome = {
 	propertiesAutoRegistered: number;
 	propertiesSkipped: number;
 	activitiesRecorded: number;
+	/** Rows whose contact holds a global opt-out, which the import left in place. */
+	keptUnsubscribed: number;
 };
 
 /** Errors past this many are counted but not listed. */
@@ -51,6 +53,7 @@ export function emptyImportOutcome(withinBatchDuplicates: number): ImportOutcome
 		propertiesAutoRegistered: 0,
 		propertiesSkipped: 0,
 		activitiesRecorded: 0,
+		keptUnsubscribed: 0,
 	};
 }
 

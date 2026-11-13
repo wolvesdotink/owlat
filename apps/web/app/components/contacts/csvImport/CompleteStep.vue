@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { CsvImportCompletion } from '~/composables/csvImport/useCsvImportCompletion';
-import { CheckIcon, ListUnorderedIcon, TriangleWarningIcon } from '@coolicons/vue';
+import {
+	CheckIcon,
+	CircleWarningIcon,
+	ListUnorderedIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
@@ -116,6 +121,23 @@ const {
 						'components.contacts.csvImportModal.complete.addedToTopics',
 						{ count: csvImport.results.value.addedToList },
 						csvImport.results.value.addedToList
+					)
+				}}
+			</p>
+		</div>
+		<!-- An import never lifts an opt-out, so say how many rows it left alone. -->
+		<div
+			v-if="csvImport.results.value?.keptUnsubscribed"
+			class="mb-4 p-3 rounded-lg bg-bg-surface border border-border-default flex items-center gap-3"
+			data-testid="kept-unsubscribed"
+		>
+			<CircleWarningIcon class="w-5 h-5 text-text-tertiary shrink-0" />
+			<p class="text-sm text-text-secondary">
+				{{
+					t(
+						'components.contacts.csvImportModal.complete.keptUnsubscribed',
+						{ count: csvImport.results.value.keptUnsubscribed },
+						csvImport.results.value.keptUnsubscribed
 					)
 				}}
 			</p>

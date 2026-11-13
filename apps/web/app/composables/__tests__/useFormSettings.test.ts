@@ -72,6 +72,22 @@ describe('useFormSettings field editor', () => {
 		]);
 	});
 
+	it('starts a new form with double opt-in on, and sends the choice to create()', async () => {
+		const s = useFormSettings();
+		expect(s.addForm.doubleOptIn).toBe(true);
+		s.addForm.name = 'Newsletter';
+		await s.handleAddForm();
+		expect(createCalls[0]!.doubleOptIn).toBe(true);
+	});
+
+	it('sends single opt-in when the operator switches double opt-in off', async () => {
+		const s = useFormSettings();
+		s.addForm.name = 'Newsletter';
+		s.addForm.doubleOptIn = false;
+		await s.handleAddForm();
+		expect(createCalls[0]!.doubleOptIn).toBe(false);
+	});
+
 	it('add/remove/move helpers mutate the field list in place', () => {
 		const s = useFormSettings();
 		s.addFieldEditor.addField();

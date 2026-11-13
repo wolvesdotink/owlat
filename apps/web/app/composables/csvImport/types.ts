@@ -22,6 +22,8 @@ export interface ImportResults {
 	failed: number;
 	errors: string[];
 	addedToList?: number;
+	/** Rows whose contact had unsubscribed; the import left them unsubscribed. */
+	keptUnsubscribed?: number;
 }
 
 export interface ContactListAssignment {

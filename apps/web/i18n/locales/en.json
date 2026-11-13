@@ -2120,6 +2120,7 @@
 					"failed": "Failed",
 					"imported": "Imported",
 					"incompleteTitle": "Import incomplete",
+					"keptUnsubscribed": "{count} contact stayed unsubscribed. An import never re-subscribes someone who opted out. | {count} contacts stayed unsubscribed. An import never re-subscribes someone who opted out.",
 					"notImportedRow": "Not imported (row {row}): {email} – {reason}",
 					"notImportedSummary": "{processed} of {total} rows processed. {count} row was not imported. | {processed} of {total} rows processed. {count} rows were not imported.",
 					"notSent": "Row {first} was not sent after the failure. | Rows {first}–{last} were not sent after the failure.",
@@ -2281,6 +2282,7 @@
 					"failed": "Failed",
 					"failedTitle": "Import failed",
 					"imported": "Imported",
+					"keptUnsubscribed": "{count} contact stayed unsubscribed. An import never re-subscribes someone who opted out. | {count} contacts stayed unsubscribed. An import never re-subscribes someone who opted out.",
 					"notApplicable": "Not applicable",
 					"skipped": "Skipped",
 					"suppressed": "Suppressed",
@@ -9786,7 +9788,7 @@
 					"endpointUrl": "Form endpoint URL",
 					"fields": {
 						"doubleOptIn": "Enable double opt-in",
-						"doubleOptInHelp": "Require email confirmation before subscribing. Recommended for GDPR compliance.",
+						"doubleOptInHelp": "Require email confirmation before subscribing. Without it, anyone can sign up an address that isn't theirs, which leads to spam complaints and hurts deliverability.",
 						"honeypot": "Spam trap field name (optional)",
 						"honeypotHelp": "A hidden field for spam prevention. Bots fill it in, humans don't.",
 						"honeypotPlaceholder": "e.g., website_url",
@@ -11462,7 +11464,7 @@
 					"errorTitle": "Couldn't load topics",
 					"form": {
 						"descriptionPlaceholder": "Optional description for this topic...",
-						"doiDescription": "New subscribers must confirm their email before being added to this topic",
+						"doiDescription": "New subscribers must confirm their email before being added. Without it, anyone can sign up an address that isn't theirs, which leads to spam complaints and hurts deliverability.",
 						"doiLabel": "Require double opt-in",
 						"namePlaceholder": "e.g., Newsletter Subscribers"
 					},
