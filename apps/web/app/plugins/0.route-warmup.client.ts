@@ -9,13 +9,21 @@
  * fetches each named middleware chunk as it reaches it, the `auth` one waits
  * for the session, `i18n-areas` asks for the area catalog after the middleware,
  * and the layout chunk is requested only once `NuxtLayout` renders. Everything
- * here is known from the URL alone, so it starts now and nothing is awaited.
+ * here is known from the URL alone; the plugin awaits nothing, and all of it
+ * but the layout and the area catalog starts now.
  * Each call is the same loader the navigation makes later, which then finds the
  * module in flight or loaded.
  *
  * A Postbox URL that names a message also starts the thread reader: the folder
  * page mounts it lazily, so on a deep link its code would otherwise start only
  * after the page chunk has downloaded and run.
+ *
+ * The layout and the area catalog wait for the session the auth warm-up has
+ * in flight, and start only when it answers signed in: a signed-out visitor is
+ * redirected to sign-in, and the dashboard code would compete with that page.
+ * The session cookie is httpOnly, so nothing earlier tells the two apart. They
+ * still start before the navigation would ask for them, which waits for the
+ * same answer and for the blocking i18n plugin.
  *
  * i18n has not picked a locale yet, so the area catalog is fetched in the
  * locale it will most likely pick (`guessLocale`); a wrong guess costs one
@@ -31,6 +39,7 @@ import { namedMiddleware } from '#build/middleware';
 import { areaChunks, areaRoutes } from '#build/owlat-i18n-areas.mjs';
 import { areasForPath, guessLocale, type AreaChunks } from '~~/i18n/areaRuntime';
 import { warmPostboxThreadReader } from '~/composables/postbox/usePostboxChunkWarmup';
+import { useAuth } from '~/composables/useAuth';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isPublicRoute } from '~/utils/publicRoutes';
 
@@ -51,11 +60,6 @@ function warmRoute(): void {
 		void warmPostboxThreadReader();
 	}
 
-	const layout = route.meta.layout;
-	if (typeof layout === 'string') {
-		(layouts as Layouts)[layout]?.__asyncLoader?.().catch(ignore);
-	}
-
 	const middleware = new Set(
 		route.matched.flatMap((record) => [record.meta.middleware ?? []].flat())
 	);
@@ -63,7 +67,21 @@ function warmRoute(): void {
 		if (typeof name === 'string') (namedMiddleware as NamedMiddleware)[name]?.().catch(ignore);
 	}
 
-	const areas = areasForPath(areaRoutes, route.path);
+	void useAuth()
+		.waitUntilReady()
+		.then((status) => {
+			if (status === 'authenticated') warmSignedIn(route.path, route.meta.layout);
+		})
+		.catch(ignore);
+}
+
+/** The layout chunk and the area catalog, which only a signed-in visit renders. */
+function warmSignedIn(path: string, layout: unknown): void {
+	if (typeof layout === 'string') {
+		(layouts as Layouts)[layout]?.__asyncLoader?.().catch(ignore);
+	}
+
+	const areas = areasForPath(areaRoutes, path);
 	if (areas.length === 0) return;
 	const chunks: AreaChunks = areaChunks;
 	const locales = [...new Set(Object.values(chunks).flatMap((chunk) => Object.keys(chunk)))];

@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The route warm-up plugin must START, during its own setup, every download the
- * first navigation will wait for: the route's components, its layout, its
- * named middleware and its area catalog. The session check is the reason this
- * matters: middleware awaits it, so anything that starts after it queues
- * behind a round trip. The real auth warm-up runs next to it against a stubbed
- * `fetch` whose session answer the test releases, so the assertions are an
- * order of events.
+ * The route warm-up plugin must START every download the first navigation will
+ * wait for: the route's components and its named middleware during its own
+ * setup, since middleware awaits the session check and anything that starts
+ * after it queues behind a round trip; the layout and the area catalog as soon
+ * as that check answers signed in, and never for a signed-out visitor, who is
+ * redirected to sign-in. The real auth warm-up runs next to it against a
+ * stubbed `fetch` whose session answer the test releases, so the assertions
+ * are an order of events.
  */
 
 type Plugin = { enforce?: string; parallel?: boolean; setup: () => void };
@@ -58,6 +59,12 @@ interface FakeRoute {
 let route: FakeRoute;
 let publicConfig: Record<string, unknown>;
 let releaseSession: () => void = () => {};
+/** What `/get-session` answers: a session, or `null` for a signed-out visitor. */
+let sessionBody: unknown;
+const SIGNED_IN = {
+	session: { id: 's1', userId: 'u1', activeOrganizationId: 'o1' },
+	user: { id: 'u1', email: 'owner@owlat.example' },
+};
 /** Resolves once the auth warm-up has sent the session request. */
 let sessionRequested: Promise<void>;
 let markSessionRequested: () => void = () => {};
@@ -95,6 +102,25 @@ async function loadPlugins() {
 	return { auth, warmup, useAuth };
 }
 
+/**
+ * Both warm-ups as the app runs them, through the session answer. The
+ * warm-up's own wait for that answer was registered before the one awaited
+ * here, so whatever it starts on the answer is in `events` on return.
+ */
+async function boot() {
+	const { auth, warmup, useAuth } = await loadPlugins();
+	auth.setup();
+	warmup.setup();
+	events.push('setup returned');
+	await sessionRequested;
+	releaseSession();
+	await useAuth().waitUntilReady();
+	return events.slice();
+}
+
+const before = (list: string[], marker: string) => list.slice(0, list.indexOf(marker));
+const after = (list: string[], marker: string) => list.slice(list.indexOf(marker) + 1);
+
 function dashboardRoute(path: string, params: FakeRoute['params'] = {}): FakeRoute {
 	const meta = { layout: 'dashboard', middleware: ['auth', () => true] };
 	return { path, fullPath: path, params, meta, matched: [{ meta: {} }, { meta }] };
@@ -123,6 +149,7 @@ describe('route warm-up plugin', () => {
 		};
 		document.cookie = 'owlat-locale=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
 		sessionRequested = new Promise((resolve) => (markSessionRequested = resolve));
+		sessionBody = SIGNED_IN;
 
 		stub(
 			'fetch',
@@ -137,7 +164,7 @@ describe('route warm-up plugin', () => {
 					releaseSession = () => {
 						events.push('session:answered');
 						resolve(
-							new Response('null', {
+							new Response(JSON.stringify(sessionBody), {
 								status: 200,
 								headers: { 'content-type': 'application/json' },
 							})
@@ -168,32 +195,37 @@ describe('route warm-up plugin', () => {
 		expect(warmup.parallel).toBe(true);
 	});
 
-	it('starts the route, its layout, its middleware and its area catalog before the session answers', async () => {
-		const { auth, warmup, useAuth } = await loadPlugins();
-
-		auth.setup();
-		warmup.setup();
-		events.push('setup returned');
-
-		await sessionRequested;
-		releaseSession();
-		await useAuth().waitUntilReady();
-
-		const started = events.slice(0, events.indexOf('setup returned'));
+	it('starts the route and its middleware before the session answers', async () => {
+		const started = before(await boot(), 'setup returned');
 		expect(started).toEqual(
-			expect.arrayContaining([
-				'route:/dashboard/postbox/inbox',
-				'layout:dashboard',
-				'middleware:auth',
-				'area:dashboard-postbox:en',
-			])
+			expect.arrayContaining(['route:/dashboard/postbox/inbox', 'middleware:auth'])
 		);
+		expect(started).not.toContain('layout:dashboard');
+		expect(started).not.toContain('area:dashboard-postbox:en');
+	});
+
+	it('starts the layout and the area catalog once the session answers signed in', async () => {
+		const seen = await boot();
+		expect(after(seen, 'session:answered')).toEqual(
+			expect.arrayContaining(['layout:dashboard', 'area:dashboard-postbox:en'])
+		);
+		expect(before(seen, 'session:answered')).not.toContain('layout:dashboard');
 		// Only what this route needs.
-		expect(events).not.toContain('reader');
-		expect(events).not.toContain('layout:admin');
-		expect(events).not.toContain('middleware:admin');
-		expect(events).not.toContain('area:dashboard-admin:en');
-		expect(events).not.toContain('area:dashboard-postbox:de');
+		expect(seen).not.toContain('reader');
+		expect(seen).not.toContain('layout:admin');
+		expect(seen).not.toContain('middleware:admin');
+		expect(seen).not.toContain('area:dashboard-admin:en');
+		expect(seen).not.toContain('area:dashboard-postbox:de');
+	});
+
+	it('starts no layout and no area catalog for a signed-out visitor', async () => {
+		sessionBody = null;
+		const seen = await boot();
+		expect(seen).toContain('session:answered');
+		expect(seen).toEqual(
+			expect.arrayContaining(['route:/dashboard/postbox/inbox', 'middleware:auth'])
+		);
+		expect(seen.filter((event) => /^(layout|area):/.test(event))).toEqual([]);
 	});
 
 	it('never fails boot: a throw while warming leaves the work to the navigation', async () => {
@@ -216,11 +248,9 @@ describe('route warm-up plugin', () => {
 
 	it('asks for the area catalog in the locale the picker saved', async () => {
 		document.cookie = 'owlat-locale=de; path=/';
-		const { warmup } = await loadPlugins();
-
-		warmup.setup();
-		expect(events).toContain('area:dashboard-postbox:de');
-		expect(events).not.toContain('area:dashboard-postbox:en');
+		const seen = await boot();
+		expect(seen).toContain('area:dashboard-postbox:de');
+		expect(seen).not.toContain('area:dashboard-postbox:en');
 	});
 
 	it('starts no layout for a page without one and no catalog outside every area', async () => {
@@ -231,10 +261,12 @@ describe('route warm-up plugin', () => {
 			meta: { layout: false, middleware: 'auth' },
 			matched: [{ meta: { layout: false, middleware: 'auth' } }],
 		};
-		const { warmup } = await loadPlugins();
-
-		warmup.setup();
-		expect(events).toEqual(['route:/dashboard/welcome-tour', 'middleware:auth']);
+		const seen = await boot();
+		expect(seen.filter((event) => !event.startsWith('session:'))).toEqual([
+			'route:/dashboard/welcome-tour',
+			'middleware:auth',
+			'setup returned',
+		]);
 	});
 
 	it('skips public routes, like the auth warm-up does', async () => {
