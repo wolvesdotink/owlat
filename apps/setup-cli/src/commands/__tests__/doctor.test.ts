@@ -501,7 +501,7 @@ describe('doctor — outbound port 25 verdict for quickstart', () => {
 		).toEqual({ status: 'open' });
 	});
 
-	it.each(['timeout', 'connection_refused', 'network_unreachable', 'connection_error'])(
+	it.each(['timeout', 'connection_refused', 'network_unreachable'])(
 		'is blocked for the IP whose connect failed with %s',
 		(reason) => {
 			expect(
@@ -525,14 +525,17 @@ describe('doctor — outbound port 25 verdict for quickstart', () => {
 		expect(evaluateOutboundPort25(body)).toEqual({ status: 'unknown' });
 	});
 
-	it.each(['shared_nat_egress', 'source_ip_unavailable', 'target_resolution_error'])(
-		'is unknown, not blocked, for %s',
-		(reason) => {
-			expect(
-				evaluateOutboundPort25(health([{ ip: '203.0.113.10', status: 'failed', reason }]))
-			).toEqual({ status: 'unknown' });
-		}
-	);
+	it.each([
+		'shared_nat_egress',
+		'source_ip_unavailable',
+		'target_resolution_error',
+		// Also a resolver error on the MX's own address, so not proof of a block.
+		'connection_error',
+	])('is unknown, not blocked, for %s', (reason) => {
+		expect(
+			evaluateOutboundPort25(health([{ ip: '203.0.113.10', status: 'failed', reason }]))
+		).toEqual({ status: 'unknown' });
+	});
 
 	it.each([
 		['no body', undefined],

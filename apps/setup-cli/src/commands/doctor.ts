@@ -255,8 +255,8 @@ export type OutboundPort25 =
 
 /**
  * Connect failures that mean the network refused TCP/25. `connection_error` is
- * also what the MTA reports for every IP when the MX lookup failed before any
- * connect, so it counts only once a target MX was resolved.
+ * not one: the MTA also reports it for a failed MX lookup or a resolver error
+ * on the MX's address, so it cannot tell a blocked port from DNS trouble.
  */
 const PORT25_BLOCKED_REASONS = new Set(['timeout', 'connection_refused', 'network_unreachable']);
 
@@ -271,7 +271,6 @@ export function evaluateOutboundPort25(value: unknown): OutboundPort25 {
 	if (!smtp || !Array.isArray(smtp['ips']) || smtp['ips'].length === 0) {
 		return { status: 'unknown' };
 	}
-	const mxResolved = typeof smtp['targetMx'] === 'string';
 	const blocked: string[] = [];
 	let allOpen = true;
 	for (const item of smtp['ips']) {
@@ -282,12 +281,7 @@ export function evaluateOutboundPort25(value: unknown): OutboundPort25 {
 		if (item['status'] === 'ok') continue;
 		allOpen = false;
 		const reason = item['reason'];
-		if (
-			typeof reason === 'string' &&
-			(PORT25_BLOCKED_REASONS.has(reason) || (mxResolved && reason === 'connection_error'))
-		) {
-			blocked.push(item['ip']);
-		}
+		if (typeof reason === 'string' && PORT25_BLOCKED_REASONS.has(reason)) blocked.push(item['ip']);
 	}
 	if (blocked.length > 0) return { status: 'blocked', ips: blocked };
 	return allOpen ? { status: 'open' } : { status: 'unknown' };
