@@ -13,6 +13,7 @@ import dns from 'node:dns/promises';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
 	tagValueRecordMatches,
+	dmarcRecordMatches,
 	spfRecordMatches,
 	txtRecordMatches,
 	parseSpfTerms,
@@ -49,8 +50,82 @@ describe('tagValueRecordMatches (DKIM / DMARC)', () => {
 		expect(txtRecordMatches('v=DMARC1;  p=none', 'v=DMARC1; p=none')).toBe(true);
 	});
 
-	it('rejects a DMARC record at a different policy', () => {
-		expect(txtRecordMatches('v=DMARC1; p=reject', 'v=DMARC1; p=none')).toBe(false);
+	it('rejects a DMARC record at a weaker policy than the one we generated', () => {
+		expect(txtRecordMatches('v=DMARC1; p=none', 'v=DMARC1; p=reject')).toBe(false);
+		expect(txtRecordMatches('v=DMARC1; p=quarantine', 'v=DMARC1; p=reject')).toBe(false);
+	});
+});
+
+describe('dmarcRecordMatches', () => {
+	it.each(['quarantine', 'reject', 'REJECT'])(
+		'accepts a published p=%s against a generated p=none',
+		(policy) => {
+			expect(dmarcRecordMatches(`v=DMARC1; p=${policy}`, 'v=DMARC1; p=none')).toBe(true);
+			expect(txtRecordMatches(`v=DMARC1; p=${policy}`, 'v=DMARC1; p=none')).toBe(true);
+		}
+	);
+
+	it('accepts p=reject against a generated p=quarantine', () => {
+		expect(dmarcRecordMatches('v=DMARC1; p=reject', 'v=DMARC1; p=quarantine')).toBe(true);
+	});
+
+	it('rejects a record with no policy or an unknown one', () => {
+		expect(dmarcRecordMatches('v=DMARC1; rua=mailto:a@example.test', 'v=DMARC1; p=none')).toBe(
+			false
+		);
+		expect(dmarcRecordMatches('v=DMARC1; p=strict', 'v=DMARC1; p=none')).toBe(false);
+	});
+
+	it('judges a generated sp= against the published sp=, defaulting to p=', () => {
+		const expected = 'v=DMARC1; p=none; sp=quarantine';
+		expect(dmarcRecordMatches('v=DMARC1; p=none; sp=reject', expected)).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=reject', expected)).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=none', expected)).toBe(false);
+		expect(dmarcRecordMatches('v=DMARC1; p=reject; sp=none', expected)).toBe(false);
+	});
+
+	it('accepts a rua= list that contains our address next to other recipients', () => {
+		const expected = 'v=DMARC1; p=none; rua=mailto:dmarc-reports@bounce.example.test';
+		expect(
+			dmarcRecordMatches(
+				'v=DMARC1; p=none; rua=mailto:reports@vendor.test,mailto:DMARC-Reports@bounce.example.test!10m',
+				expected
+			)
+		).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=none; rua=mailto:reports@vendor.test', expected)).toBe(
+			false
+		);
+		expect(dmarcRecordMatches('v=DMARC1; p=none', expected)).toBe(false);
+	});
+
+	it('requires every generated rua= recipient', () => {
+		const expected = 'v=DMARC1; p=none; rua=mailto:a@example.test,mailto:b@example.test';
+		expect(
+			dmarcRecordMatches(
+				'v=DMARC1; p=none; rua=mailto:b@example.test,mailto:a@example.test',
+				expected
+			)
+		).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=none; rua=mailto:a@example.test', expected)).toBe(false);
+	});
+
+	it('accepts a stricter pct= and alignment, defaulting to pct=100 and relaxed', () => {
+		expect(dmarcRecordMatches('v=DMARC1; p=reject', 'v=DMARC1; p=reject; pct=25')).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=reject; pct=10', 'v=DMARC1; p=reject; pct=25')).toBe(
+			false
+		);
+		expect(dmarcRecordMatches('v=DMARC1; p=none', 'v=DMARC1; p=none; adkim=r; aspf=r')).toBe(true);
+		expect(
+			dmarcRecordMatches('v=DMARC1; p=none; adkim=s; aspf=s', 'v=DMARC1; p=none; adkim=r; aspf=r')
+		).toBe(true);
+		expect(dmarcRecordMatches('v=DMARC1; p=none; adkim=r', 'v=DMARC1; p=none; adkim=s')).toBe(
+			false
+		);
+	});
+
+	it('is not fooled by a non-DMARC record', () => {
+		expect(dmarcRecordMatches('v=spf1 -all', 'v=DMARC1; p=none')).toBe(false);
+		expect(dmarcRecordMatches('v=DMARC2; p=reject', 'v=DMARC1; p=none')).toBe(false);
 	});
 });
 
@@ -84,6 +159,53 @@ describe('spfRecordMatches', () => {
 
 	it('is not fooled by a non-SPF record', () => {
 		expect(spfRecordMatches('v=DMARC1; p=none', 'v=spf1 include:amazonses.com ~all')).toBe(false);
+	});
+
+	it('accepts a published -all against a generated ~all', () => {
+		expect(
+			spfRecordMatches('v=spf1 include:amazonses.com -all', 'v=spf1 include:amazonses.com ~all')
+		).toBe(true);
+		expect(
+			txtRecordMatches(
+				'v=spf1 include:_spf.google.com include:amazonses.com -all',
+				'v=spf1 include:amazonses.com ~all'
+			)
+		).toBe(true);
+	});
+
+	it('requires -all when the generated record ends in -all', () => {
+		const expected = 'v=spf1 ip4:203.0.113.10 -all';
+		expect(spfRecordMatches('v=spf1 ip4:203.0.113.10 -all', expected)).toBe(true);
+		expect(spfRecordMatches('v=spf1 ip4:203.0.113.10 ~all', expected)).toBe(false);
+	});
+
+	it.each([
+		'v=spf1 include:amazonses.com +all',
+		'v=spf1 include:amazonses.com all',
+		'v=spf1 include:amazonses.com ?all',
+		'v=spf1 +all include:amazonses.com ~all',
+		'v=spf1 ?all include:amazonses.com -all',
+	])('never verifies a record that lets everyone pass or stay neutral: %s', (published) => {
+		expect(spfRecordMatches(published, 'v=spf1 include:amazonses.com ~all')).toBe(false);
+		expect(spfRecordMatches(published, 'v=spf1 include:amazonses.com ?all')).toBe(false);
+	});
+
+	it('fails when the record has no terminal all at all', () => {
+		expect(
+			spfRecordMatches('v=spf1 include:amazonses.com', 'v=spf1 include:amazonses.com ~all')
+		).toBe(false);
+	});
+
+	it('ignores our mechanism when it sits after the terminal all, where nobody evaluates it', () => {
+		expect(
+			spfRecordMatches('v=spf1 -all include:amazonses.com', 'v=spf1 include:amazonses.com ~all')
+		).toBe(false);
+	});
+
+	it('keeps comparing a generated redirect= literally', () => {
+		const expected = 'v=spf1 redirect=_spf.example.test';
+		expect(spfRecordMatches('v=spf1 redirect=_spf.example.test', expected)).toBe(true);
+		expect(spfRecordMatches('v=spf1 redirect=_spf.other.test', expected)).toBe(false);
 	});
 });
 
@@ -143,16 +265,47 @@ describe('runDnsLookups "found but wrong" hint', () => {
 
 	const PARTIAL = "Record found but value doesn't match expected configuration";
 
-	it('flags a lowercase v=dmarc1 record at the wrong policy as a partial match', async () => {
-		vi.spyOn(dns, 'resolveTxt').mockResolvedValue([['v=dmarc1; p=reject']]);
+	it('flags a lowercase v=dmarc1 record at a weaker policy as a partial match', async () => {
+		vi.spyOn(dns, 'resolveTxt').mockResolvedValue([['v=dmarc1; p=none']]);
+		const results = await runDnsLookups('example.test', {
+			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=reject' },
+		} as never);
+		expect(results.dmarc).toMatchObject({
+			verified: false,
+			foundValue: 'v=dmarc1; p=none',
+			error: PARTIAL,
+		});
+	});
+
+	it('verifies a published p=reject against a generated p=none', async () => {
+		vi.spyOn(dns, 'resolveTxt').mockResolvedValue([['v=DMARC1; p=reject']]);
+		const results = await runDnsLookups('example.test', {
+			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+		} as never);
+		expect(results.dmarc).toMatchObject({ verified: true, foundValue: 'v=DMARC1; p=reject' });
+	});
+
+	it('fails two DMARC records at _dmarc even when one of them matches', async () => {
+		vi.spyOn(dns, 'resolveTxt').mockResolvedValue([
+			['v=DMARC1; p=none'],
+			['v=DMARC1; p=reject; rua=mailto:reports@vendor.test'],
+		]);
 		const results = await runDnsLookups('example.test', {
 			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
 		} as never);
 		expect(results.dmarc).toMatchObject({
 			verified: false,
-			foundValue: 'v=dmarc1; p=reject',
-			error: PARTIAL,
+			error: expect.stringContaining('merge them into a single record'),
+			foundValue: 'v=DMARC1; p=none | v=DMARC1; p=reject; rua=mailto:reports@vendor.test',
 		});
+	});
+
+	it('verifies a published -all SPF record against a generated ~all', async () => {
+		vi.spyOn(dns, 'resolveTxt').mockResolvedValue([['v=spf1 include:amazonses.com -all']]);
+		const results = await runDnsLookups('example.test', {
+			spf: { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all' },
+		} as never);
+		expect(results.spf).toMatchObject({ verified: true });
 	});
 
 	it('does not treat v=spf1:broken as a published SPF record', async () => {

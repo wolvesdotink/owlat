@@ -73,7 +73,7 @@ describe('domain checklist validation', () => {
 		}
 	);
 
-	it('verifies the same strict SPF replacement shown for a staged soft-fail record', async () => {
+	it('verifies the strict SPF replacement shown for a staged soft-fail record', async () => {
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			spf: {
 				verified: true,
@@ -91,12 +91,112 @@ describe('domain checklist validation', () => {
 				false
 			)
 		).resolves.toMatchObject({ status: 'pass' });
-		expect(runDnsLookups).toHaveBeenCalledWith(
-			'example.test',
-			expect.objectContaining({
-				spf: expect.objectContaining({ value: 'v=spf1 include:sender.example -all' }),
-			})
-		);
+	});
+
+	it('looks SPF up against the stored record, the same input the Domains verifier uses', async () => {
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			spf: { verified: true, foundValue: 'v=spf1 include:sender.example -all' },
+		} as never);
+		const records = {
+			spf: { type: 'TXT', host: '@', value: 'v=spf1 include:sender.example ~all' },
+		};
+		await observeDomainCheck({} as never, 'domain.spf', context({}, records), false);
+		expect(runDnsLookups).toHaveBeenCalledWith('example.test', records);
+	});
+
+	describe('a domain whose provider generated no apex SPF record', () => {
+		const bounceSpf = 'v=spf1 ip4:203.0.113.10 ~all';
+		const records = {
+			dkim: [{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; p=key' }],
+			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+			mailFrom: [
+				{ type: 'MX', hostname: 'bounce.example.test', value: 'mail.example.test', priority: 10 },
+				{ type: 'TXT', hostname: 'bounce.example.test', value: bounceSpf },
+			],
+		};
+		const bounceContext = () => context({ returnPathHost: 'bounce.example.test' }, records);
+		const lookups = (bounceSpfFound: string, bounceSpfVerified = true) => ({
+			dkim: [{ verified: true, foundValue: 'v=DKIM1; p=key' }],
+			dmarc: { verified: true, foundValue: 'v=DMARC1; p=none' },
+			mailFrom: [
+				{ verified: true, foundValue: '10 mail.example.test' },
+				bounceSpfVerified
+					? { verified: true, foundValue: bounceSpfFound }
+					: { verified: false, foundValue: bounceSpfFound, error: 'No matching TXT record found' },
+			],
+		});
+
+		it('passes SPF on the return-path host that receivers check', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups('v=spf1 ip4:203.0.113.10 -all') as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.spf',
+				bounceContext(),
+				false
+			);
+			expect(observation.status).toBe('pass');
+			expect(observation.diagnostic).toContain('bounce.example.test');
+			expect(observation.observedValues).toEqual(
+				expect.arrayContaining([expect.stringContaining('"name":"bounce.example.test"')])
+			);
+		});
+
+		it('holds the return-path SPF record to the same -all rule as an apex record', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups(bounceSpf) as never);
+			await expect(
+				observeDomainCheck({} as never, 'domain.spf', bounceContext(), false)
+			).resolves.toMatchObject({
+				status: 'pending-dns',
+				diagnostic: expect.stringContaining('must end in -all'),
+			});
+			await expect(
+				observeDomainCheck({} as never, 'domain.spf', bounceContext(), true)
+			).resolves.toMatchObject({ status: 'fail' });
+		});
+
+		it('reports the return-path SPF lookup error, not that SPF is live', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups('v=spf1 -all', false) as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.spf',
+				bounceContext(),
+				false
+			);
+			expect(observation.status).toBe('pending-dns');
+			expect(observation.diagnostic).toBe('No matching TXT record found');
+		});
+
+		it('fails without claiming SPF is live when no SPF record exists to check', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue({} as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.spf',
+				context({}, { dkim: records.dkim, dmarc: records.dmarc }),
+				false
+			);
+			expect(observation.status).toBe('fail');
+			expect(observation.diagnostic).not.toContain('SPF is live');
+			expect(observation.diagnostic).toContain('MTA_SPF_INCLUDE');
+		});
+
+		it('passes DMARC when DKIM is verified and the return-path SPF record is live', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups(bounceSpf) as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.dmarc',
+				bounceContext(),
+				false
+			);
+			expect(observation.status).toBe('pass');
+			expect(observation.diagnostic).toContain('bounce.example.test');
+		});
+
+		it('keeps DMARC pending while the return-path SPF record is not live', async () => {
+			vi.mocked(runDnsLookups).mockResolvedValue(lookups('v=spf1 -all', false) as never);
+			await expect(
+				observeDomainCheck({} as never, 'domain.dmarc', bounceContext(), false)
+			).resolves.toMatchObject({ status: 'pending-dns' });
+		});
 	});
 
 	it('retries strict SPF carrying a failure diagnostic before failing', async () => {

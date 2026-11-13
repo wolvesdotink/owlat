@@ -119,6 +119,22 @@ async function verifyTxtRecord(
 			};
 		}
 
+		// More than one DMARC record at `_dmarc` makes receivers apply no DMARC
+		// policy at all (RFC 7489 §6.6.3), so a match among them proves nothing.
+		if (isDmarcRecord(expectedValue)) {
+			const dmarcRecords = txtValues.filter((value) => isDmarcRecord(value));
+			if (dmarcRecords.length > 1) {
+				return {
+					verified: false,
+					lastChecked: now,
+					error:
+						'Multiple v=DMARC1 records found at this hostname. Receivers then apply no DMARC ' +
+						'policy (RFC 7489 §6.6.3) — merge them into a single record.',
+					foundValue: dmarcRecords.join(' | '),
+				};
+			}
+		}
+
 		// Match the way the relevant RFCs define record equality, not byte-for-byte:
 		// nameservers normalise whitespace around the `;`-separated DKIM/DMARC tags
 		// and may pad or reorder the space-separated SPF mechanisms, so a raw

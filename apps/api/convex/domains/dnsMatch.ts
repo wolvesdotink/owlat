@@ -11,13 +11,16 @@
  *
  *   - DKIM (RFC 6376 §3.6.1) and DMARC (RFC 7489 §6.3) records are
  *     `tag=value` pairs separated by `;`. Whitespace around the separators and
- *     the `=` is insignificant, so we parse both sides into a tag→value map and
- *     require every tag we asked for to be present with the same value.
+ *     the `=` is insignificant, so we parse both sides into a tag→value map.
+ *     DKIM requires every tag we asked for with the same value. DMARC accepts
+ *     a published policy at least as strict as the generated one and a report
+ *     URI list that contains ours ({@link dmarcRecordMatches}).
  *   - SPF (RFC 7208 §3.2) records are a `v=spf1` version token followed by
  *     space-separated terms (mechanisms/modifiers). A correct record may carry
  *     extra `include:`/`ip4:` mechanisms beyond the one we generated, so we
- *     require every term of the expected record to appear among the published
- *     record's terms rather than demanding a substring or exact match.
+ *     require every mechanism of the expected record to appear among the
+ *     published record's terms, and judge the terminal `all` by strictness
+ *     rather than spelling ({@link spfRecordMatches}).
  *
  * Kept free of the `'use node'` runtime so it can be unit-tested as a pure
  * function without spinning up the Convex action graph. The tag-list grammar
@@ -25,8 +28,10 @@
  * DKIM verifier read a record the same way.
  */
 
+import { normalizeDmarcReportAddress } from '@owlat/shared/dmarcReportAddress';
 import { parseTagList, stripTagValueWhitespace } from '@owlat/shared/dnsTagList';
 import { isSpfRecord } from '@owlat/shared/spf';
+import { isDmarcRecord } from './dmarc';
 
 /** Collapse all runs of ASCII whitespace to a single space and trim the ends. */
 function collapseWhitespace(value: string): string {
@@ -76,19 +81,182 @@ export function parseSpfTerms(record: string): string[] {
 	return collapseWhitespace(record).toLowerCase().split(' ');
 }
 
+const SPF_ALL_TERM_RE = /^([+?~-]?)all$/;
+
 /**
- * True when `published` is an SPF record that contains every term of the
- * `expected` SPF record. Extra mechanisms on the published record (a domain
- * that also sends through another provider) don't fail the match.
+ * How firmly an `all` term turns away everyone the record did not list
+ * (RFC 7208 §4.6.2, §5.1): `+all` (also bare `all`) passes them, `?all` is
+ * neutral, `~all` soft-fails, `-all` fails. `null` for any other term.
+ */
+function spfAllStrictness(term: string): number | null {
+	const match = SPF_ALL_TERM_RE.exec(term);
+	if (!match) return null;
+	switch (match[1]) {
+		case '-':
+			return 3;
+		case '~':
+			return 2;
+		case '?':
+			return 1;
+		default:
+			return 0;
+	}
+}
+
+/**
+ * The weakest terminal policy that verifies. `+all` authorises every host on
+ * the internet and `?all` asserts nothing, so a record carrying either term
+ * gives receivers no way to tell our mail from a forgery, whatever else it
+ * lists.
+ */
+const SPF_MIN_VERIFIABLE_ALL_STRICTNESS = 2;
+
+/**
+ * True when `published` is an SPF record that authorises everything the
+ * `expected` record authorises, with a terminal policy at least as strict:
  *
- * RFC 7208 §3.2.
+ *   - every expected term other than its `all` (mechanisms and modifiers,
+ *     `redirect=` included, compared literally) appears in the published
+ *     record before its first `all`. Receivers stop at that `all`
+ *     (RFC 7208 §4.6.2), so a mechanism after it authorises nothing. Extra
+ *     mechanisms (a domain that also sends through another provider) are fine;
+ *   - when the expected record ends in an `all`, the published one has an
+ *     `all` at least as strict: `-all` satisfies a generated `~all`, a
+ *     generated `-all` needs `-all`;
+ *   - a published `+all`, bare `all` or `?all` term anywhere never verifies.
+ *
+ * The Domains verifier and the deliverability checklist both judge SPF with
+ * this one function; the checklist adds its own `-all` requirement on top.
  */
 export function spfRecordMatches(published: string, expected: string): boolean {
 	const expectedTerms = parseSpfTerms(expected);
 	if (expectedTerms.length === 0) return false;
-	const publishedTerms = new Set(parseSpfTerms(published));
-	if (publishedTerms.size === 0) return false;
-	return expectedTerms.every((term) => publishedTerms.has(term));
+	const publishedTerms = parseSpfTerms(published);
+	if (publishedTerms.length === 0) return false;
+
+	const publishedAll = publishedTerms.map(spfAllStrictness);
+	if (
+		publishedAll.some(
+			(strictness) => strictness !== null && strictness < SPF_MIN_VERIFIABLE_ALL_STRICTNESS
+		)
+	) {
+		return false;
+	}
+	const allIndex = publishedAll.findIndex((strictness) => strictness !== null);
+	const evaluatedTerms = new Set(
+		allIndex === -1 ? publishedTerms : publishedTerms.slice(0, allIndex)
+	);
+
+	let expectedAll: number | null = null;
+	for (const term of expectedTerms) {
+		const strictness = spfAllStrictness(term);
+		if (strictness !== null) {
+			expectedAll ??= strictness;
+			continue;
+		}
+		if (!evaluatedTerms.has(term)) return false;
+	}
+	if (expectedAll === null) return true;
+	const effectiveAll = allIndex === -1 ? null : (publishedAll[allIndex] ?? null);
+	return effectiveAll !== null && effectiveAll >= expectedAll;
+}
+
+const DMARC_POLICY_STRICTNESS: Readonly<Record<string, number>> = {
+	none: 0,
+	quarantine: 1,
+	reject: 2,
+};
+
+const DMARC_ALIGNMENT_STRICTNESS: Readonly<Record<string, number>> = { r: 0, s: 1 };
+
+/** Ordered comparison of two tag values on a strictness scale; unknown values never match. */
+function isAtLeastAsStrict(
+	scale: Readonly<Record<string, number>>,
+	published: string | undefined,
+	expected: string
+): boolean {
+	const publishedRank = published === undefined ? undefined : scale[published.toLowerCase()];
+	const expectedRank = scale[expected.toLowerCase()];
+	return publishedRank !== undefined && expectedRank !== undefined && publishedRank >= expectedRank;
+}
+
+/** One reporting URI, folded so `mailto:A@x!10m` and `mailto:a@x` compare equal. */
+function normalizeDmarcReportUri(uri: string): string {
+	return normalizeDmarcReportAddress(uri) ?? uri.trim().toLowerCase();
+}
+
+function dmarcReportUris(value: string | undefined): Set<string> {
+	return new Set(
+		(value ?? '')
+			.split(',')
+			.filter((uri) => uri.trim() !== '')
+			.map(normalizeDmarcReportUri)
+	);
+}
+
+function dmarcTagSatisfied(
+	tag: string,
+	expectedValue: string,
+	publishedTags: ReadonlyMap<string, string>
+): boolean {
+	const published = publishedTags.get(tag);
+	switch (tag) {
+		case 'p':
+			return isAtLeastAsStrict(DMARC_POLICY_STRICTNESS, published, expectedValue);
+		// An absent `sp=` means subdomains take `p=` (RFC 7489 §6.3).
+		case 'sp':
+			return isAtLeastAsStrict(
+				DMARC_POLICY_STRICTNESS,
+				published ?? publishedTags.get('p'),
+				expectedValue
+			);
+		// Absent alignment tags mean relaxed (RFC 7489 §6.3).
+		case 'adkim':
+		case 'aspf':
+			return isAtLeastAsStrict(DMARC_ALIGNMENT_STRICTNESS, published ?? 'r', expectedValue);
+		// An absent `pct=` applies the policy to all mail (RFC 7489 §6.3).
+		case 'pct': {
+			const publishedPct = Number(published ?? '100');
+			const expectedPct = Number(expectedValue);
+			return (
+				Number.isInteger(publishedPct) &&
+				Number.isInteger(expectedPct) &&
+				publishedPct >= expectedPct
+			);
+		}
+		// The operator may send reports to more recipients than ours.
+		case 'rua':
+		case 'ruf': {
+			const publishedUris = dmarcReportUris(published);
+			const expectedUris = dmarcReportUris(expectedValue);
+			return expectedUris.size > 0 && [...expectedUris].every((uri) => publishedUris.has(uri));
+		}
+		default:
+			return published === expectedValue;
+	}
+}
+
+/**
+ * True when `published` is a DMARC record that asks receivers for at least
+ * what the `expected` record asks for: a policy (`p=`, and `sp=` when we
+ * generated one) at least as strict on none < quarantine < reject, alignment
+ * and `pct=` at least as strict, every `rua=`/`ruf=` recipient of ours among
+ * the published ones. Any other tag must carry the same value. Tag order,
+ * whitespace and extra tags don't matter.
+ *
+ * RFC 7489 §6.3. Two DMARC records at one name are the caller's check:
+ * receivers then apply no policy at all (RFC 7489 §6.6.3).
+ */
+export function dmarcRecordMatches(published: string, expected: string): boolean {
+	if (!isDmarcRecord(published)) return false;
+	const expectedTags = parseRecordTags(expected);
+	if (expectedTags.size === 0) return false;
+	const publishedTags = parseRecordTags(published);
+	for (const [tag, value] of expectedTags) {
+		if (tag === 'v') continue;
+		if (!dmarcTagSatisfied(tag, value, publishedTags)) return false;
+	}
+	return true;
 }
 
 /**
@@ -97,7 +265,8 @@ export function spfRecordMatches(published: string, expected: string): boolean {
  * `expected` record's version token:
  *
  *   - `v=spf1`  → SPF mechanism containment (extra mechanisms allowed)
- *   - `v=DMARC1` / `v=DKIM1` (or any other `tag=value` record) → tag/value map
+ *   - `v=DMARC1` → DMARC policy at least as strict
+ *   - `v=DKIM1` (or any other `tag=value` record) → tag/value map
  *
  * Falls back to a whitespace-normalised exact compare for anything that isn't a
  * recognised record shape.
@@ -105,6 +274,9 @@ export function spfRecordMatches(published: string, expected: string): boolean {
 export function txtRecordMatches(published: string, expected: string): boolean {
 	if (isSpfRecord(expected)) {
 		return spfRecordMatches(published, expected);
+	}
+	if (isDmarcRecord(expected)) {
+		return dmarcRecordMatches(published, expected);
 	}
 	if (expected.includes('=')) {
 		return tagValueRecordMatches(published, expected);

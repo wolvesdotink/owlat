@@ -11,7 +11,12 @@ import { returnPathProviderFor } from '../domains/returnPathProviders';
 import { assertMarketingOneClickSigningContract } from './marketingCompliance';
 import { detectDomainDnsProvider, dnsProviderObservation } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
-import { absoluteDnsRecordName, hardenedSpfRecordValue } from './checklistRecords';
+import {
+	absoluteDnsRecordName,
+	checklistSpfSource,
+	hardenedSpfRecordValue,
+	type ChecklistSpfSource,
+} from './checklistRecords';
 import {
 	dnsBundleObservations,
 	dnsBundleStatus,
@@ -38,6 +43,13 @@ function hasStrictSpfPolicy(value: string | undefined): boolean {
 	return spfTrailingAllQualifier(value ?? '') === '-all';
 }
 
+type DomainDnsResults = Awaited<ReturnType<typeof runDnsLookups>>;
+
+/** The lookup result for the record {@link checklistSpfSource} picked. */
+function spfSourceResult(source: ChecklistSpfSource, results: DomainDnsResults) {
+	return source.kind === 'apex' ? results.spf : results.mailFrom?.[source.mailFromIndex];
+}
+
 export async function observeDomainCheck(
 	ctx: ActionCtx,
 	itemId: DeliverabilityCheckId,
@@ -56,16 +68,6 @@ export async function observeDomainCheck(
 	const providerValues = traits.needsDnsProvider
 		? dnsProviderObservation(await detectDomainDnsProvider(domain.domain))
 		: [];
-	const dnsRecords =
-		itemId === 'domain.spf' && domain.dnsRecords.spf
-			? {
-					...domain.dnsRecords,
-					spf: {
-						...domain.dnsRecords.spf,
-						value: hardenedSpfRecordValue(domain.dnsRecords.spf.value),
-					},
-				}
-			: domain.dnsRecords;
 	// Same reasoning as the `domain.mta_sts` case below, one notch softer, and
 	// answered BEFORE the DNS bundle is fetched because there is nothing to look
 	// up: TLS-RPT solicits reports about TLS on INBOUND delivery, and for a
@@ -83,26 +85,51 @@ export async function observeDomainCheck(
 		);
 	}
 	const results = traits.needsDomainDnsBundle
-		? await runDnsLookups(domain.domain, dnsRecords)
+		? await runDnsLookups(domain.domain, domain.dnsRecords)
 		: null;
 
 	switch (itemId) {
 		case 'domain.spf': {
 			if (!results) throw new Error('SPF DNS observation was not loaded');
-			const observedPolicy = results.spf?.foundValue ?? domain.dnsRecords.spf?.value;
-			const isStrict = hasStrictSpfPolicy(observedPolicy);
-			const status = isSuccessfulDnsResult(results.spf)
-				? isStrict
-					? 'pass'
-					: pendingDnsStatus(isFinalDnsRetry)
-				: dnsResultStatus(results.spf, isFinalDnsRetry);
+			const source = checklistSpfSource(domain);
+			if (!source) {
+				return checklistObservation(
+					'dns.spf',
+					'fail',
+					'No SPF record is generated for this domain: there is no apex record and no SPF record on a return-path host. On the built-in MTA, set MTA_SPF_INCLUDE, or MTA_RETURN_PATH_DOMAIN together with MTA_IP_POOLS.',
+					providerValues
+				);
+			}
+			// The lookup used the stored record, the same input the Domains
+			// verifier uses, so both read one verdict; the -all bar is this
+			// checklist's own, judged on the value that is actually live.
+			const result = spfSourceResult(source, results);
+			const isLive = isSuccessfulDnsResult(result);
+			const isStrict = hasStrictSpfPolicy(result?.foundValue ?? source.record.value);
+			const subject =
+				source.kind === 'apex'
+					? 'SPF'
+					: `SPF on the return-path host ${source.host}, which receivers check for this domain's mail,`;
 			return checklistObservation(
 				'dns.spf',
-				status,
-				isSuccessfulDnsResult(results.spf) && !isStrict
-					? 'SPF is published, but it must end in -all for this checklist.'
-					: (results.spf?.error ?? 'SPF is live and ends in -all.'),
-				[...providerValues, dnsRecordObservation('spf', domain.domain, dnsRecords.spf, results.spf)]
+				isLive
+					? isStrict
+						? 'pass'
+						: pendingDnsStatus(isFinalDnsRetry)
+					: dnsResultStatus(result, isFinalDnsRetry),
+				isLive && !isStrict
+					? `${subject} is published, but it must end in -all for this checklist.`
+					: (result?.error ??
+							(isLive ? `${subject} is live and ends in -all.` : `${subject} is not live yet.`)),
+				[
+					...providerValues,
+					dnsRecordObservation(
+						'spf',
+						domain.domain,
+						{ ...source.record, value: hardenedSpfRecordValue(source.record.value) },
+						result
+					),
+				]
 			);
 		}
 		case 'domain.dkim': {
@@ -176,17 +203,21 @@ export async function observeDomainCheck(
 		}
 		case 'domain.dmarc': {
 			if (!results) throw new Error('DMARC DNS observation was not loaded');
+			// SPF is satisfied by whichever record receivers evaluate: the apex
+			// record, or the return-path host's when no apex record was generated.
+			const spfSource = checklistSpfSource(domain);
+			const spfResult = spfSource ? spfSourceResult(spfSource, results) : undefined;
 			const authenticationReady =
-				isSuccessfulDnsResult(results.spf) &&
+				isSuccessfulDnsResult(spfResult) &&
 				(domain.dnsRecords.dkim?.length ?? 0) > 0 &&
 				results.dkim?.length === (domain.dnsRecords.dkim?.length ?? 0) &&
 				results.dkim?.every((result) => isSuccessfulDnsResult(result)) === true;
 			const pass = isSuccessfulDnsResult(results.dmarc) && authenticationReady;
 			const authenticationInputsPresent =
-				results.spf !== undefined && (results.dkim?.length ?? 0) > 0;
+				spfResult !== undefined && (results.dkim?.length ?? 0) > 0;
 			const authenticationStatus = authenticationInputsPresent
 				? dnsBundleStatus(
-						[...(results.spf ? [results.spf] : []), ...(results.dkim ?? [])],
+						[...(spfResult ? [spfResult] : []), ...(results.dkim ?? [])],
 						isFinalDnsRetry,
 						1 + (domain.dnsRecords.dkim?.length ?? 0)
 					)
@@ -199,18 +230,20 @@ export async function observeDomainCheck(
 						? authenticationStatus
 						: dnsResultStatus(results.dmarc, isFinalDnsRetry),
 				pass
-					? 'DMARC is live and the domain has verified SPF and DKIM alignment evidence.'
+					? spfSource?.kind === 'return-path'
+						? `DMARC is live, DKIM is verified, and SPF is verified on the return-path host ${spfSource.host}.`
+						: 'DMARC is live and the domain has verified SPF and DKIM alignment evidence.'
 					: (results.dmarc?.error ?? 'DMARC or its authentication dependencies are missing.'),
 				[
 					...providerValues,
-					dnsRecordObservation('spf', domain.domain, dnsRecords.spf, results.spf),
+					dnsRecordObservation('spf', domain.domain, spfSource?.record, spfResult),
 					...dnsBundleObservations(
 						'dkim',
 						domain.domain,
 						domain.dnsRecords.dkim ?? [],
 						results.dkim
 					),
-					dnsRecordObservation('dmarc', domain.domain, dnsRecords.dmarc, results.dmarc),
+					dnsRecordObservation('dmarc', domain.domain, domain.dnsRecords.dmarc, results.dmarc),
 				]
 			);
 		}
