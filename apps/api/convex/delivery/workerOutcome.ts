@@ -52,6 +52,26 @@ const acceptedArm = v.object({
 });
 
 /**
+ * Why a deferral is a HOLD: a wait that spends no routing attempt and is
+ * bounded by the delivery deadline alone, because the condition behind it is
+ * expected to clear without anything about the message changing.
+ *
+ *   - `routing_policy` — an open org-wide safety circuit, or a relay this
+ *     route needs that is unverified or unavailable.
+ *   - `mta_unreachable` — our own MTA's decision endpoint could not be
+ *     reached (a refused connection, a timeout, a 5xx), e.g. while its
+ *     container restarts. Nobody judged the message.
+ *
+ * The completion names the hold in the failure code when one outlives the
+ * deadline, so the cause survives on the Send.
+ */
+export const deliveryHoldValidator = v.union(
+	v.literal('routing_policy'),
+	v.literal('mta_unreachable')
+);
+export type DeliveryHold = Infer<typeof deliveryHoldValidator>;
+
+/**
  * A last-mile deferral: the message was NOT dispatched (or was withdrawn at
  * intake) and waits to be re-entered.
  *
@@ -70,6 +90,8 @@ const deferredArm = v.object({
 	deferralOrigin: v.union(v.literal('governed'), v.literal('local')),
 	envelopeInput: envelopeInputValidator,
 	retryState: retryStateValidator,
+	/** Absent for ordinary routing churn, which the attempt cap bounds. */
+	hold: v.optional(deliveryHoldValidator),
 });
 
 /**

@@ -233,6 +233,10 @@ export const dnsRecordValidator = v.object({
 	usage: v.optional(v.number()),
 	selector: v.optional(v.number()),
 	matchingType: v.optional(v.number()),
+	// DKIM only: the selector a key rotation added and the MTA does not sign
+	// with yet. It switches only once this record is in DNS, so until then the
+	// record is the operator's to-do and never decides the domain's verdict.
+	rotationPending: v.optional(v.boolean()),
 });
 export const dnsRecordsValidator = v.object({
 	spf: v.optional(dnsRecordValidator),
@@ -251,6 +255,11 @@ export const verificationResultValidator = v.object({
 	lastChecked: v.number(),
 	error: v.optional(v.string()),
 	foundValue: v.optional(v.string()),
+	// The resolver gave no answer (SERVFAIL, timeout, refused): `verified` is
+	// false, but nothing is known about the record either way.
+	inconclusive: v.optional(v.boolean()),
+	// Copied from the checked record's `rotationPending`.
+	rotationPending: v.optional(v.boolean()),
 });
 export const verificationResultsValidator = v.object({
 	spf: v.optional(verificationResultValidator),

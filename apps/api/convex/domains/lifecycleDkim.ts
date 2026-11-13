@@ -25,11 +25,11 @@ type SendingDomainDkimRotationOutcome =
  *
  * Two phases, mirroring the MTA rotation workflow:
  *   - `'pending'`   (rotation initiated): the new selector's record is
- *                   *added* alongside the active one. Both are published in
- *                   DNS during the overlap, so the customer can publish the
- *                   new record and `verifyDomain` checks BOTH selectors. The
- *                   new record's DKIM verification result is cleared so the UI
- *                   prompts a publish + re-verify of just the new selector.
+ *                   *added* alongside the active one, flagged
+ *                   `rotationPending`. `verifyDomain` checks both selectors,
+ *                   but only the active one decides the verdict. The DKIM
+ *                   verification results are cleared so the UI prompts a
+ *                   publish + re-verify of the new selector.
  *   - `'activated'` (signing switched): the old selector is retired and only
  *                   the new selector's record remains.
  *
@@ -57,7 +57,15 @@ export const recordDkimRotation = internalMutation({
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
 		const newHost = `${args.selector}._domainkey`;
-		const newRecord = { type: 'TXT' as const, host: newHost, value: args.dnsRecord };
+		// The MTA keeps signing with the active key until this record is in DNS
+		// (`activatePendingKey` checks), so during the overlap the new record is
+		// flagged and never decides the domain's verdict.
+		const newRecord = {
+			type: 'TXT' as const,
+			host: newHost,
+			value: args.dnsRecord,
+			...(args.phase === 'pending' ? { rotationPending: true } : {}),
+		};
 
 		const dnsRecords = domain.dnsRecords as DnsRecords;
 		const existingDkim = dnsRecords.dkim ?? [];
@@ -85,7 +93,8 @@ export const recordDkimRotation = internalMutation({
 				(r, i) =>
 					r.host === nextDkim[i]!.host &&
 					r.value === nextDkim[i]!.value &&
-					r.type === nextDkim[i]!.type
+					r.type === nextDkim[i]!.type &&
+					r.rotationPending === nextDkim[i]!.rotationPending
 			);
 		if (unchanged) {
 			return { ok: true, phase: args.phase, selector: args.selector, changed: false };

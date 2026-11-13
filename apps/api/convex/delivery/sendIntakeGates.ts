@@ -25,7 +25,7 @@ import type { MutationCtx } from '../_generated/server';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { isSuppressed, type SuppressionScope } from '../lib/suppression';
 import { isDeliveryConfigured, selectedSendProviderReady } from '../lib/sendProviders/capability';
-import { resolveSendRouteFromDb, type MessageType } from '../lib/sendProviders/route';
+import { resolveSendRouteOrHoldFromDb, type MessageType } from '../lib/sendProviders/route';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
 
 /**
@@ -35,8 +35,8 @@ import type { ResolvedRoute } from '../lib/sendProviders/routing';
  * again in a moment — which is what lets the callers treat a rejection as a
  * terminal outcome instead of feeding it to a retry loop. Transient refusals
  * (an open delivery circuit, an unverified fallback relay) are NOT in this
- * union: they surface as routing deferrals from the send path itself, which is
- * where the bounded retry lives.
+ * union: intake queues the send without a route, and the send path holds it
+ * until the refusal clears or the delivery deadline passes.
  */
 export type SendIntakeRejectionReason =
 	| 'abuse_blocked'
@@ -72,7 +72,11 @@ type ProviderReadinessProbe =
 	| { kind: 'message_type'; messageType: MessageType }
 	| { kind: 'resolved_route'; messageType: MessageType; to: string; from: string };
 
-/** The gates passed. `route` is non-null only for a `resolved_route` probe. */
+/**
+ * The gates passed. `route` is null for a `message_type` probe, and for a
+ * `resolved_route` probe whose resolution is on hold (the send is queued
+ * without a route and the worker resolves one when the hold lifts).
+ */
 interface SendIntakeGatesPassed {
 	ok: true;
 	route: ResolvedRoute | null;
@@ -153,14 +157,21 @@ async function probeProviderReadiness(
 	if (probe.kind === 'message_type') {
 		return { isReady: await isDeliveryConfigured(ctx, probe.messageType), route: null };
 	}
+	const { route, deferralCode } = await resolveSendRouteOrHoldFromDb(ctx, probe.messageType, {
+		to: probe.to,
+		from: probe.from,
+	});
+	// A held resolution selected no provider to judge, and the open circuit is
+	// checked before any provider is looked at, so the route-independent
+	// question decides: a deployment that can deliver this type queues the send
+	// for the worker to hold, and one that cannot is refused as before.
+	if (deferralCode) {
+		return { isReady: await isDeliveryConfigured(ctx, probe.messageType), route: null };
+	}
 	// A null resolution means neither a route table nor the `EMAIL_PROVIDER`
 	// fallback yields a ready transport, which `selectedSendProviderReady`
 	// (called with `undefined`) then reports as not-ready — the same verdict the
 	// pre-C2 producers reached with their own `if (!route)` check on the
 	// advisory resolution they ran in their own action.
-	const route = await resolveSendRouteFromDb(ctx, probe.messageType, {
-		to: probe.to,
-		from: probe.from,
-	});
 	return { isReady: await selectedSendProviderReady(ctx, route?.providerType), route };
 }

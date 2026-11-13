@@ -341,3 +341,52 @@ describe('runDnsLookups "found but wrong" hint', () => {
 		expect(results.dkim).toEqual([expect.objectContaining({ verified: true })]);
 	});
 });
+
+describe('runDnsLookups tells an unanswered lookup from an absent record', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	const DKIM = { type: 'TXT', host: 'sel._domainkey', value: 'v=DKIM1; k=rsa; p=AB' } as const;
+	const dnsError = (code: string) =>
+		Object.assign(new Error(`queryTxt ${code} sel._domainkey.example.test`), { code });
+
+	it.each(['ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED', 'EREFUSED'])(
+		'marks a %s answer inconclusive',
+		async (code) => {
+			vi.spyOn(dns, 'resolveTxt').mockRejectedValue(dnsError(code));
+			const results = await runDnsLookups('example.test', { dkim: [DKIM] } as never);
+			expect(results.dkim).toEqual([
+				expect.objectContaining({ verified: false, inconclusive: true }),
+			]);
+		}
+	);
+
+	it.each(['ENOTFOUND', 'ENODATA'])('treats %s as an authoritative absence', async (code) => {
+		vi.spyOn(dns, 'resolveTxt').mockRejectedValue(dnsError(code));
+		const results = await runDnsLookups('example.test', { dkim: [DKIM] } as never);
+		expect(results.dkim?.[0]).toMatchObject({ verified: false });
+		expect(results.dkim?.[0]?.inconclusive).toBeUndefined();
+	});
+
+	it('carries the rotation flag of a pending selector onto its result', async () => {
+		vi.spyOn(dns, 'resolveTxt').mockImplementation(async (host: string) => {
+			if (host.startsWith('sel.')) return [['v=DKIM1; k=rsa; p=AB']];
+			throw dnsError('ENOTFOUND');
+		});
+		const results = await runDnsLookups('example.test', {
+			dkim: [
+				DKIM,
+				{
+					type: 'TXT',
+					host: 'next._domainkey',
+					value: 'v=DKIM1; k=rsa; p=CD',
+					rotationPending: true,
+				},
+			],
+		} as never);
+		expect(results.dkim).toEqual([
+			expect.objectContaining({ verified: true }),
+			expect.objectContaining({ verified: false, rotationPending: true }),
+		]);
+		expect(results.dkim?.[0]?.rotationPending).toBeUndefined();
+	});
+});

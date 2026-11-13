@@ -24,7 +24,9 @@ import { internal } from '../_generated/api';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
 import { checkEmailDomainVerification } from '../domains/domains';
-import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
+import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
+import type { ResolvedRoute } from '../lib/sendProviders/routing';
+import type { MutationCtx } from '../_generated/server';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
@@ -79,6 +81,30 @@ const attachmentRefValidator = v.object({
 // and the unit tests — keep a stable path.
 export { validateDataVariables, resolveLanguage, selectContent, mergeAttachments };
 export type { AttachmentRef } from './dispatchContent';
+
+/**
+ * The route stamped on the row and the envelope, through the shared
+ * `resolveSendRoute` seam. Its `providerType`/`ipPool` are advisory for the
+ * worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative for the
+ * `providerType` stamped on the row, so it runs before the insert.
+ *
+ * A transient refusal (an open safety circuit, a relay not usable right now)
+ * is a hold, not a refusal: the gates already established that a provider is
+ * configured, and the worker holds the send and delivers it when the hold
+ * lifts. The answer is then `null`, so neither the row nor the envelope names
+ * a provider until the worker picks one.
+ */
+async function resolveIntakeRoute(
+	ctx: MutationCtx,
+	to: string,
+	from: string
+): Promise<ResolvedRoute | null> {
+	const routing = await resolveSendRouteOrHoldFromDb(ctx, 'transactional', { to, from });
+	if (routing.deferralCode) {
+		logWarn(`transactional intake queued on hold: ${routing.deferralCode}`);
+	}
+	return routing.route;
+}
 
 // ============================================================
 // Internal mutation — the intake entry point
@@ -191,15 +217,9 @@ export const dispatch = internalMutation({
 		});
 		const contact = await ctx.db.get(resolved.contactId);
 
-		// 6. Provider route resolution, through the shared `resolveSendRoute`
-		//    seam. KEPT LATE on purpose: it is address-aware, so it needs the
-		//    sender settled above. Its `providerType`/`ipPool` are advisory for the
-		//    worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative
-		//    for the `providerType` stamped on the row, so it runs before the insert.
-		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
-			to: args.email,
-			from: sender.fromEmail,
-		});
+		// 6. Provider route resolution. KEPT LATE on purpose: it is address-aware,
+		//    so it needs the sender settled above (see `resolveIntakeRoute`).
+		const resolvedRoute = await resolveIntakeRoute(ctx, args.email, sender.fromEmail);
 
 		const plan = planTransactionalSend({
 			template,

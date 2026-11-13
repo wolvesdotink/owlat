@@ -40,6 +40,8 @@ import {
 	createTestContact,
 	createTestInstanceSettings,
 } from '../../__tests__/factories';
+import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 
 // Stub the workpool so the intake's `enqueueAction` is a no-op (the Workpool
 // component isn't registered in convexTest, and the worker action would need
@@ -52,6 +54,18 @@ vi.mock('../workpool', () => ({
 		enqueueAction: vi.fn().mockResolvedValue(undefined),
 	},
 }));
+
+// Pass-through by default; the routing-hold tests name the organization whose
+// deliverability state the route resolution reads.
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn(
+			actual.getSingletonOrganizationId as (ctx: unknown) => Promise<string>
+		),
+	};
+});
 
 // Vite's `import.meta.glob` excludes the directory chain it climbed up through
 // to reach the glob base, so `'../../**'` from this `delivery/__tests__` file
@@ -387,6 +401,73 @@ describe('delivery.nonCampaignIntake.intake — route resolution', () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+});
+
+// ─── Temporary routing holds ────────────────────────────────────────────────
+// An open org-wide safety circuit is "not right now": the worker holds the
+// queued send and delivers it once the circuit closes, so the intake queues it
+// rather than throwing out of the automation step or the approved reply.
+
+describe('delivery.nonCampaignIntake.intake — temporary routing holds', () => {
+	const ORG = 'org-hold';
+
+	beforeEach(() => {
+		vi.mocked(getSingletonOrganizationId).mockResolvedValue(ORG);
+	});
+	afterEach(async () => {
+		const actual = await vi.importActual<typeof SessionOrganization>(
+			'../../lib/sessionOrganization'
+		);
+		vi.mocked(getSingletonOrganizationId).mockReset();
+		vi.mocked(getSingletonOrganizationId).mockImplementation(actual.getSingletonOrganizationId);
+		vi.unstubAllEnvs();
+	});
+
+	async function openGlobalBreaker(t: TestConvex<typeof schema>): Promise<void> {
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: now }],
+				fallbackActiveSince: now,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 86_400_000,
+				updatedAt: now,
+			});
+		});
+	}
+
+	it('queues the send without a provider stamp while the circuit is open', async () => {
+		const t = convexTest(schema, modules);
+		await openGlobalBreaker(t);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+
+		const outcome = await enqueueAutomation(t, 'held@example.com');
+
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		const send = await t.run(async (ctx) => ctx.db.get(outcome.sendId));
+		expect(send?.status).toBe('queued');
+		expect(send?.providerType).toBeUndefined();
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput?.['sendId']).toBe(outcome.sendId);
+		expect(envelopeInput && 'providerType' in envelopeInput).toBe(false);
+	});
+
+	it('still refuses no_delivery_provider while the circuit is open and nothing can deliver', async () => {
+		const t = convexTest(schema, modules);
+		await openGlobalBreaker(t);
+		await withNoDeliveryProvider(async () => {
+			const outcome = await enqueueAutomation(t, 'held@example.com');
+			expect(outcome).toMatchObject({ ok: false, reason: 'no_delivery_provider' });
+			await expectNothingWritten(t);
+		});
 	});
 });
 
