@@ -4,6 +4,7 @@ import { isSpfRecord, spfTrailingAllQualifier } from '@owlat/shared/spf';
 import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
+import { returnPathProviderFor } from '../domains/returnPathProviders';
 import { checklistTraits } from './checklistTraits';
 
 export type ChecklistDnsRecord = {
@@ -44,6 +45,39 @@ export function hardenedSpfRecordValue(value: string): string {
 	return `${trimmed} -all`;
 }
 
+/** Where the SPF record that `domain.spf` judges lives, and its index in `mailFrom` if there. */
+export type ChecklistSpfSource =
+	| { kind: 'apex'; record: ChecklistDnsRecord }
+	| { kind: 'return-path'; record: ChecklistDnsRecord; host: string; mailFromIndex: number };
+
+/**
+ * The SPF record receivers evaluate for this domain's mail. Receivers check
+ * SPF against the envelope MAIL FROM domain (RFC 7208 §2.4). That is the apex
+ * when the provider generated an apex record; otherwise it is the active
+ * return-path (bounce) host, whose SPF TXT the `mailFrom` bundle carries. An
+ * own-MTA install without `MTA_SPF_INCLUDE` generates no apex record at all,
+ * and the checklist must not hold it to one nobody asked the operator to
+ * publish. `null` when neither record exists.
+ */
+export function checklistSpfSource(
+	domain: Pick<Doc<'domains'>, 'domain' | 'dnsRecords' | 'providerType' | 'returnPathHost'>
+): ChecklistSpfSource | null {
+	if (domain.dnsRecords.spf) return { kind: 'apex', record: domain.dnsRecords.spf };
+	const configured = domain.returnPathHost?.toLowerCase().replace(/\.$/, '');
+	const host =
+		returnPathProviderFor(domain.providerType)?.activeHost(domain.domain, configured) ?? null;
+	if (!host) return null;
+	const mailFrom = domain.dnsRecords.mailFrom ?? [];
+	const mailFromIndex = mailFrom.findIndex(
+		(record) =>
+			(record.type ?? 'TXT') === 'TXT' &&
+			isSpfRecord(record.value) &&
+			absoluteDnsRecordName(record, domain.domain) === host
+	);
+	const record = mailFrom[mailFromIndex];
+	return record ? { kind: 'return-path', record, host, mailFromIndex } : null;
+}
+
 function dnsSetupValue(
 	itemId: DeliverabilityCheckId,
 	domain: string,
@@ -70,16 +104,13 @@ export function domainSetupValuesForItem(
 ): DeliverabilitySetupValue[] {
 	let records: ChecklistDnsRecord[] = [];
 	switch (itemId) {
-		case 'domain.spf':
-			records = domain.dnsRecords.spf
-				? [
-						{
-							...domain.dnsRecords.spf,
-							value: hardenedSpfRecordValue(domain.dnsRecords.spf.value),
-						},
-					]
+		case 'domain.spf': {
+			const source = checklistSpfSource(domain);
+			records = source
+				? [{ ...source.record, value: hardenedSpfRecordValue(source.record.value) }]
 				: [];
 			break;
+		}
 		case 'domain.dkim':
 			records = domain.dnsRecords.dkim ?? [];
 			break;

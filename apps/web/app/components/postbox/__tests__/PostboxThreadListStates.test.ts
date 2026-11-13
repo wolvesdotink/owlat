@@ -321,9 +321,13 @@ describe('PostboxThreadList keyboard snooze', () => {
 });
 
 describe('PostboxThreadList optimistic star / mark-read', () => {
+	// The quick actions mount on the row's first hover, as the pointer does.
+	const hover = (w: ReturnType<typeof mountList>) => w.find('li').trigger('mouseenter');
+
 	it('paints the star before the subscription confirms it', async () => {
 		runSpy.mockClear();
 		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await hover(w);
 		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
 
 		await w.find('[aria-label="Star"]').trigger('click');
@@ -335,6 +339,7 @@ describe('PostboxThreadList optimistic star / mark-read', () => {
 	it('paints mark-read before the subscription confirms it', async () => {
 		runSpy.mockClear();
 		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await hover(w);
 		await w.find('[aria-label="Mark read"]').trigger('click');
 		expect(w.find('[aria-label="Mark unread"]').exists()).toBe(true);
 		expect(runSpy).toHaveBeenCalledWith({ messageId: 'msg-1', seen: true });
@@ -344,6 +349,7 @@ describe('PostboxThreadList optimistic star / mark-read', () => {
 		runSpy.mockClear();
 		runSpy.mockResolvedValueOnce({ ok: false });
 		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await hover(w);
 		await w.find('[aria-label="Star"]').trigger('click');
 		await nextTick();
 		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
@@ -354,6 +360,7 @@ describe('PostboxThreadList optimistic star / mark-read', () => {
 		runSpy.mockClear();
 		const starred = { ...makeMessage(1), flagFlagged: true };
 		const w = mountList({ loading: false, messages: [makeMessage(1)] });
+		await hover(w);
 		await w.find('[aria-label="Star"]').trigger('click');
 		await w.setProps({ messages: [starred] });
 		expect(w.find('[aria-label="Unstar"]').exists()).toBe(true);

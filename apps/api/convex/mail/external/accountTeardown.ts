@@ -33,6 +33,7 @@ import { deleteMessageRowAndBlobs } from '../messagePurge';
 import { deleteArrivalMailboxPage } from '../arrival/mailboxRows';
 import { deleteMailboxUsage } from '../mailboxUsage';
 import { deleteFolderCounters, deleteMailboxCounters } from '../messageCounters';
+import { deleteLabelMembershipState } from '../labelMessageIndex';
 import { dropFolderMembership } from '../folderMembership';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { cancelActiveMigrationForAccount } from './accountShared';
@@ -312,6 +313,7 @@ export const _purgeChunk = internalMutation({
 		await deleteBackfill(ctx, args.mailboxId);
 		await deleteMailboxUsage(ctx, args.mailboxId);
 		await deleteMailboxCounters(ctx, args.mailboxId);
+		await deleteLabelMembershipState(ctx, args.mailboxId);
 		await ctx.db.delete(args.mailboxId);
 	},
 });

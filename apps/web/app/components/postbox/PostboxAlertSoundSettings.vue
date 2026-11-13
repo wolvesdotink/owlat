@@ -15,7 +15,7 @@
  */
 import type { AlertSoundKind } from '~/lib/alertSoundRules';
 import { alertSoundKindsFor } from '~/lib/alertSoundRules';
-import { previewAlertSound } from '~/composables/postbox/useUiSound';
+import { loadAlertSound, previewAlertSound } from '~/composables/postbox/useUiSound';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const KEY = 'components.postbox.postboxAlertSoundSettings';
@@ -28,6 +28,17 @@ const { alertSounds, setAlertSound, isSaving, isLoading } = useAlertSoundPrefere
 // The same predicate gates the palette's "Alert sounds" control.
 const kinds = computed<AlertSoundKind[]>(() =>
 	alertSoundKindsFor({ isFeatureEnabled: isEnabled, role: role.value })
+);
+
+// The preview has to play inside the switch's click to unlock later alerts,
+// so the chime loads as soon as the card shows rather than with that click.
+// Flags and role can arrive after mount, so this follows them.
+watch(
+	() => kinds.value.length > 0,
+	(shown) => {
+		if (shown) void loadAlertSound();
+	},
+	{ immediate: true }
 );
 
 function toggle(kind: AlertSoundKind, enabled: boolean): void {

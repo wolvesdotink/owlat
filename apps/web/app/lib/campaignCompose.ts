@@ -50,8 +50,6 @@ export interface ReviewCampaignData {
 	emailBodyHtml?: string | null;
 	/** The attached email's stored Blocks (JSON), for the pre-send checks' "Show me". */
 	emailContent?: string;
-	/** Topic campaigns get the unsubscribe footer; segment campaigns do not. */
-	audienceKind?: 'topic' | 'segment';
 	// A/B Test data
 	abTestEnabled: boolean;
 	abTestType: 'subject' | 'content';

@@ -10,7 +10,7 @@
  * passed that line, which needs no knowledge of the scroller or of what the
  * host stacks above the reader.
  */
-import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import { findScrollParent, usePostboxScrollEvent } from './usePostboxScrollHost';
 
 /** Whether the header's bottom edge is at or above the sticky anchor. */
@@ -42,32 +42,4 @@ export function useHeaderScrolledPast(
 	);
 	usePostboxScrollEvent(scroller, measure);
 	return past;
-}
-
-/**
- * The border-box height of `target`, kept current by a ResizeObserver. An
- * element that is not rendered (`display: none`) measures 0.
- */
-export function useBlockSize(target: () => HTMLElement | null | undefined): Ref<number> {
-	const size = ref(0);
-	let observer: ResizeObserver | null = null;
-	const stop = () => {
-		observer?.disconnect();
-		observer = null;
-	};
-	watch(
-		target,
-		(el) => {
-			stop();
-			size.value = el ? el.offsetHeight : 0;
-			if (!el || typeof ResizeObserver === 'undefined') return;
-			observer = new ResizeObserver(() => {
-				size.value = el.offsetHeight;
-			});
-			observer.observe(el);
-		},
-		{ immediate: true, flush: 'post' }
-	);
-	if (getCurrentInstance()) onBeforeUnmount(stop);
-	return size;
 }

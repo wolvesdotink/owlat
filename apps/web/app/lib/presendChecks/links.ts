@@ -96,11 +96,3 @@ export function planImages(sources: readonly string[]): string[] {
 	);
 	return unique.slice(0, MAX_PROBED_IMAGES);
 }
-
-/** Link text or address that reads as an opt-out, in the languages Owlat ships. */
-const UNSUBSCRIBE =
-	/unsubscribe|opt[\s-]?out|manage (your )?(preferences|subscription)|abmelden|abbestellen|austragen|newsletter-einstellungen/i;
-
-export function hasUnsubscribeLink(links: readonly ScannedLink[]): boolean {
-	return links.some((link) => UNSUBSCRIBE.test(`${link.text} ${link.href}`));
-}

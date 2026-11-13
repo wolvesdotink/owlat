@@ -40,6 +40,7 @@ import type {
 	ReduceTransition,
 } from './reduceInput';
 import { resolveDue } from './dueDate';
+import { isReplyExpectingIntent } from '../ai/replyIntent';
 
 // ── Input ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ export function buildInterpretInput(args: {
 	sentAt: number;
 	timezone: string;
 	contentRevision: string;
+	/** We wrote the message (a sent message or a team reply). */
+	isOurs: boolean;
 	participants: InterpretInputParticipant[];
 	openItems: InterpretInputItem[];
 	isItemsOverflow: boolean;
@@ -68,6 +71,7 @@ export function buildInterpretInput(args: {
 			sentAt: args.sentAt,
 			timezone: args.timezone,
 			sourceRevision: args.contentRevision,
+			isOurs: args.isOurs,
 		},
 		participants: args.participants,
 		openItems: args.openItems,
@@ -247,6 +251,8 @@ export interface ToReduceOptions {
 	/** Claim ids that were sent to the verifier. */
 	checked: ReadonlySet<string>;
 	latestSuppressed?: 'short' | 'security';
+	/** We wrote the message (a sent message or a team reply). */
+	isOurs?: boolean;
 }
 
 /** Grounded + verified proposals → the reducer input. Pure. */
@@ -259,10 +265,18 @@ export function toReduceResult(
 	const party = (p: InterpretParticipantProposal | null | undefined) =>
 		resolveParticipant(p, opts.participants, opts.ownAddresses);
 
+	// A message of ours that expects nothing back (an answer, an approval,
+	// thanks) leaves no one owing us anything: an item it names for someone
+	// else would turn into a "you're waiting on them" nudge for a conversation
+	// we closed. Our own promises in it stay, and so do its transitions.
+	const isClosingOurs = opts.isOurs === true && !isReplyExpectingIntent(output.replyIntent);
+
 	const items: ReduceItem[] = [];
 	for (const [i, g] of grounding.items.entries()) {
 		const p = g.claim as InterpretItemProposal;
 		const id = `item:${i}`;
+		const responsible = party(p.responsible);
+		if (isClosingOurs && !responsible.isUs) continue;
 		const verdict = opts.verdicts.get(id);
 		const tracked = isTracked(g, verdict);
 		// A proposal is never dropped by a verdict: it stays for the reader to confirm.
@@ -280,7 +294,7 @@ export function toReduceResult(
 			assertion: p.assertion,
 			display: { en: p.display.en, de: p.display.de },
 			requester: party(p.requester),
-			responsible: party(p.responsible),
+			responsible,
 			...(p.beneficiary ? { beneficiary: party(p.beneficiary) } : {}),
 			...(p.due
 				? {

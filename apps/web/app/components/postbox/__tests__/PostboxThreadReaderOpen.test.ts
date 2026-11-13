@@ -229,4 +229,33 @@ describe('PostboxThreadReader while its thread loads', () => {
 		);
 		expect(w.find('[data-testid="PostboxTriageSuggestion"]').exists()).toBe(true);
 	});
+
+	// The thread's rows carry no body: the opened message's body comes from
+	// the inline body query, which the route and the read-ahead already hold.
+	it('opened on a warm thread, shows the body on the first render, never pending', async () => {
+		thread.data.value = {
+			thread: { _id: 't1' },
+			labels: [],
+			messages: [
+				{ ...listRow, _id: 'm0', flagSeen: true },
+				{ ...listRow, flagSeen: true },
+			],
+			envelopes: [],
+			olderCursor: null,
+		};
+		thread.isLoading.value = false;
+		inlineBody.value = {
+			htmlInline: null,
+			textInline: 'Here are the numbers.',
+			hasHtmlBlob: false,
+			hasTextBlob: false,
+		};
+		const w = mountReader();
+
+		const opened = () => w.findAll('[data-testid="body"]');
+		expect(opened().map((b) => b.attributes('data-pending'))).toEqual(['false']);
+		expect(opened().map((b) => b.attributes('data-text'))).toEqual(['Here are the numbers.']);
+		await flushPromises();
+		expect(opened().map((b) => b.attributes('data-pending'))).toEqual(['false']);
+	});
 });

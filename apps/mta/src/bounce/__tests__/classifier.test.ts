@@ -184,6 +184,62 @@ describe('classifyBounce', () => {
 		});
 	});
 
+	describe('who the refusal is about', () => {
+		// A DSN's 5.7.x / 4.7.x code is a security or policy verdict on OUR
+		// sending identity. It still ends the send, but the address is fine, so the
+		// classification names the sender and Convex keeps the recipient.
+		const dsn = (status: string, diagnostic: string) =>
+			[
+				'Final-Recipient: rfc822; user@example.com',
+				`Action: ${status.startsWith('4') ? 'delayed' : 'failed'}`,
+				`Status: ${status}`,
+				`Diagnostic-Code: smtp; ${diagnostic}`,
+			].join('\n');
+
+		it.each([
+			{
+				status: '5.7.1',
+				diagnostic: '550 5.7.1 Client host blocked using Spamhaus',
+				bounceType: 'hard',
+			},
+			{
+				status: '5.7.26',
+				diagnostic: '550 5.7.26 This mail is unauthenticated',
+				bounceType: 'hard',
+			},
+			{
+				status: '5.1.8',
+				diagnostic: "553 5.1.8 Sender's domain does not exist",
+				bounceType: 'hard',
+			},
+			{ status: '4.7.1', diagnostic: '451 4.7.1 Service unavailable', bounceType: 'soft' },
+		] as const)(
+			"Status: $status is the sender's ($bounceType)",
+			({ status, diagnostic, bounceType }) => {
+				const result = classifyBounce(`Report.\n${dsn(status, diagnostic)}`);
+				expect(result.bounceType).toBe(bounceType);
+				expect(result.bounceCause).toBe('sender');
+			}
+		);
+
+		it("an inline 5.7.1 in prose is the sender's too", () => {
+			const result = classifyBounce('550 5.7.1 Message rejected');
+			expect(result.bounceType).toBe('hard');
+			expect(result.bounceCause).toBe('sender');
+		});
+
+		it.each([
+			{ status: '5.1.1', diagnostic: '550 5.1.1 User unknown' },
+			{ status: '5.2.1', diagnostic: '550 5.2.1 Mailbox disabled' },
+			{ status: '5.7.13', diagnostic: '525 5.7.13 User account disabled' },
+			{ status: '5.0.0', diagnostic: '550 Requested action not taken' },
+		])('Status: $status stays a recipient bounce', ({ status, diagnostic }) => {
+			const result = classifyBounce(`Report.\n${dsn(status, diagnostic)}`);
+			expect(result.bounceType).toBe('hard');
+			expect(result.bounceCause).toBeUndefined();
+		});
+	});
+
 	describe('defaults and edge cases', () => {
 		it('defaults to soft bounce when no patterns match', () => {
 			const result = classifyBounce('some generic error occurred');

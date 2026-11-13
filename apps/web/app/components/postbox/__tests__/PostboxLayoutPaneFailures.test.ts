@@ -169,7 +169,7 @@ async function mountLayout(failures: { list?: Ref<boolean>; reader?: (id: string
 				PostboxReaderPane,
 				PostboxReaderBackBar: pane('back-bar', ref(false)),
 				PostboxThreadList: pane('list', failures.list ?? ref(false)),
-				PostboxThreadReader: Reader,
+				LazyPostboxThreadReader: Reader,
 			},
 		},
 	});

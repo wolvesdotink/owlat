@@ -20,10 +20,14 @@ class MockAudio {
 	}
 }
 
-/** Re-import the composable fresh so its module-level singleton resets. */
-async function loadUseUiSound() {
+/**
+ * Re-import the composable fresh so its module-level singleton resets, with
+ * the sound already fetched unless the case is about the fetch.
+ */
+async function loadUseUiSound({ fetched = true } = {}) {
 	vi.resetModules();
 	const mod = await import('../useUiSound');
+	if (fetched) await mod.loadSendSound();
 	return mod.useUiSound;
 }
 
@@ -89,6 +93,32 @@ describe('useUiSound', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(created[0]!.play).toHaveBeenCalledTimes(1);
+	});
+
+	it('plays a send that comes before the sound has loaded, once it has', async () => {
+		vi.resetModules();
+		const mod = await import('../useUiSound');
+		const { playSend } = mod.useUiSound(true);
+
+		playSend();
+		expect(created).toHaveLength(0);
+
+		await mod.loadSendSound();
+		expect(created).toHaveLength(1);
+		expect(created[0]!.play).toHaveBeenCalledTimes(1);
+	});
+
+	it('drops a send that loads after the tab went hidden', async () => {
+		vi.resetModules();
+		const mod = await import('../useUiSound');
+		const { playSend } = mod.useUiSound(true);
+
+		playSend();
+		const hiddenSpy = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+		await mod.loadSendSound();
+
+		expect(created).toHaveLength(0);
+		hiddenSpy.mockRestore();
 	});
 
 	it('does not play while the tab is hidden', async () => {

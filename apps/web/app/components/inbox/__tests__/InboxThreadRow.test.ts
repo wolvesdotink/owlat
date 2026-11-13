@@ -14,6 +14,8 @@
  */
 import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick, ref } from 'vue';
+import { INBOX_LIST_NOW_KEY } from '~/composables/useInboxListClock';
 
 import InboxThreadRow, { type InboxThreadRowThread } from '../InboxThreadRow.vue';
 import PostboxRowCore from '../../postbox/PostboxRowCore.vue';
@@ -206,7 +208,11 @@ describe('InboxThreadRow selection', () => {
 
 describe('InboxThreadRow response-target chip', () => {
 	const NOW = 10_000_000;
-	function mountAt(thread: Partial<InboxThreadRowThread>) {
+	function mountAt(
+		thread: Partial<InboxThreadRowThread>,
+		clock = ref(NOW),
+		formatCompactRelativeTime: (timestamp: number) => string = () => '5m'
+	) {
 		return mount(InboxThreadRow, {
 			props: {
 				thread: {
@@ -219,11 +225,12 @@ describe('InboxThreadRow response-target chip', () => {
 					...thread,
 				},
 				focused: false,
-				formatCompactRelativeTime: () => '5m',
-				now: NOW,
+				formatCompactRelativeTime,
 			},
 			global: {
 				plugins: [createTestI18n()],
+				// The list's clock, which the page provides to its rows.
+				provide: { [INBOX_LIST_NOW_KEY as symbol]: clock },
 				components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 				stubs: {
 					UiAvatar: UiAvatarStub,
@@ -238,6 +245,46 @@ describe('InboxThreadRow response-target chip', () => {
 		const w = mountAt({});
 		expect(w.find('[data-testid="inbox-sla-chip"]').exists()).toBe(false);
 		expect(w.text()).toContain('waiting 5h');
+	});
+
+	it('ages the chip and re-formats the time on a tick of the list clock', async () => {
+		const clock = ref(NOW);
+		let shown = '5m';
+		const w = mountAt({}, clock, () => shown);
+		expect(w.text()).toContain('5m');
+
+		shown = '1h';
+		clock.value = NOW + 60 * 60 * 1000;
+		await nextTick();
+		expect(w.text()).toContain('waiting 6h');
+		expect(w.text()).toContain('1h');
+	});
+
+	it('shows no age outside a list, where no clock is provided', () => {
+		const w = mount(InboxThreadRow, {
+			props: {
+				thread: {
+					_id: 't1',
+					_creationTime: 1000,
+					subject: 'Refund request',
+					contactIdentifier: 'customer@example.com',
+					status: 'open',
+					lastMessageAt: NOW - 5 * 60 * 60 * 1000,
+				},
+				focused: false,
+				formatCompactRelativeTime: () => '5m',
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
+				stubs: {
+					UiAvatar: UiAvatarStub,
+					NuxtLink: NuxtLinkStub,
+					InboxAssignPopover: AssignPopoverStub,
+				},
+			},
+		});
+		expect(w.text()).not.toContain('waiting');
 	});
 
 	it('replaces the age with the deadline, in its tier colour', () => {

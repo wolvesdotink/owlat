@@ -1,6 +1,7 @@
 /** Pure translation from an SMTP sender result to a typed Dispatch outcome. */
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { SmtpPhase } from '@owlat/smtp-client';
 import type { EmailJobResult } from '../types.js';
 import { classifySmtpResponse, type SmtpClassification } from '../intelligence/smtpClassifier.js';
 
@@ -18,10 +19,16 @@ export type DispatchOutcome =
 			error: string;
 			enhancedCode: string | undefined;
 			/**
-			 * What the reply means, for the ramp's measurement only: the bounce is
-			 * terminal whatever the category says.
+			 * What the reply means. The bounce is terminal whatever the category
+			 * says; the category feeds the ramp and, with the phase, decides whether
+			 * the refusal was about our sending identity (`bounceCause.ts`).
 			 */
 			classification: SmtpClassification;
+			/**
+			 * The phase the reply came in. Optional because a synthetic refusal has
+			 * none, and because journaled outcomes written before it existed lack it.
+			 */
+			smtpPhase?: SmtpPhase;
 	  }
 	| {
 			kind: 'deferred';
@@ -29,6 +36,8 @@ export type DispatchOutcome =
 			error: string;
 			enhancedCode: string | undefined;
 			classification: SmtpClassification;
+			/** See `smtpPhase` on `hard_bounce`. */
+			smtpPhase?: SmtpPhase;
 	  }
 	| { kind: 'soft_bounce'; error: string }
 	| { kind: 'ambiguous'; error: string };
@@ -64,6 +73,7 @@ export function classifyResult(
 				result.enhancedCode,
 				providerKey
 			),
+			...(result.smtpPhase !== undefined ? { smtpPhase: result.smtpPhase } : {}),
 		};
 	}
 
@@ -80,6 +90,7 @@ export function classifyResult(
 				result.enhancedCode,
 				providerKey
 			),
+			...(result.smtpPhase !== undefined ? { smtpPhase: result.smtpPhase } : {}),
 		};
 	}
 

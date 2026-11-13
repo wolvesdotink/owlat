@@ -351,6 +351,11 @@ export const mailMessagesTables = {
 		.index('by_thread_and_seen', ['threadId', 'flagSeen'])
 		.index('by_thread_and_flagged', ['threadId', 'flagFlagged'])
 		.index('by_thread_and_outbound_state', ['threadId', 'outbound.state'])
+		// Every reply arriving in a thread looks for its "snooze until they reply"
+		// watches (mail/snooze.ts). Rows without the flag index it as undefined and
+		// never match `true`, so the lookup reads only the watched messages, and
+		// the `snoozedUntil` range drops a watch whose cap has passed.
+		.index('by_thread_and_until_reply', ['threadId', 'isSnoozeUntilReply', 'snoozedUntil'])
 		// Read on arrival (lane rules): index-backed existence proofs for delayed
 		// actions. "Another message of this thread is still in the Inbox"
 		// (`archiveSingleMessage`) and "the owner replied in this thread since the

@@ -30,6 +30,7 @@ function input(overrides: Partial<InterpretInput> = {}): InterpretInput {
 			sentAt: Date.UTC(2026, 9, 7, 9, 0),
 			timezone: 'Europe/Berlin',
 			sourceRevision: 'rev1',
+			isOurs: false,
 		},
 		participants: [
 			{ ref: 'p1', role: 'from', name: 'Jonas Example', email: 'jonas@example.com', isUs: false },
@@ -168,6 +169,19 @@ describe('buildInterpretPrompt', () => {
 		const prompt = buildInterpretPrompt(input());
 		expect(prompt).toContain('Message date: 2026-10-07T09:00:00.000Z');
 		expect(prompt).toContain('Time zone for deadlines: Europe/Berlin');
+	});
+
+	it('says whether we wrote the message, outside the cached instructions', () => {
+		const received = buildInterpretPromptParts(input());
+		const sent = buildInterpretPromptParts(
+			input({ message: { ...input().message, isOurs: true } })
+		);
+		expect(received.variable).toContain('Author: we received this message.');
+		expect(sent.variable).toContain('Author: we wrote this message and sent it.');
+		expect(sent.stable).toBe(received.stable);
+		// Our answers and the conditions they attach are not items.
+		expect(sent.stable).toContain('A message WE wrote');
+		expect(sent.stable).toContain('as long as you delete the data');
 	});
 });
 

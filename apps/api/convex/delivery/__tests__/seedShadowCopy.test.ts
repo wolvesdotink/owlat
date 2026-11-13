@@ -127,7 +127,15 @@ describe('shadow composition is identical apart from the probe header', () => {
 	it('produces the same subject, html and plain-text alternative', () => {
 		expect(shadowOut.subject).toBe(realOut.subject);
 		expect(shadowOut.html).toBe(realOut.html);
-		expect(shadowOut.text).toBe(realOut.text);
+		// The text part spells out the footer links, so it differs from the real
+		// send in exactly the footer hrefs the html footer differs in (a probe
+		// points both links at its one probe target).
+		const withoutFooterUrls = (out: typeof realOut) =>
+			out.text
+				.replaceAll(out.transformConfig?.unsubscribeUrl ?? '', '<footer link>')
+				.replaceAll(out.transformConfig?.preferenceUrl ?? '', '<footer link>');
+		expect(withoutFooterUrls(shadowOut)).toBe(withoutFooterUrls(realOut));
+		expect(withoutFooterUrls(realOut)).toContain('Unsubscribe: <footer link>');
 	});
 
 	it('produces the same bulk-mail and list headers', () => {
@@ -185,20 +193,20 @@ describe('shadow composition is identical apart from the probe header', () => {
 		expect(probe?.preferenceUrl).not.toContain(CONTACT_ID);
 	});
 
-	it('renders no footer for a SEGMENT campaign, exactly as a real segment send does', () => {
-		// The in-body footer is topic-only on both arms: a segment is a computed
-		// audience with no topic to name in the footer copy.
+	it('renders the footer for a SEGMENT campaign too, on both arms', () => {
+		// Every campaign gets the footer, so a segment probe must carry it for
+		// the same reason a topic probe does.
 		const segmentReal: CampaignEnvelopeInput = { ...realSend, audienceType: 'segment' };
 		const segmentShadow = buildSeedShadowEnvelope(segmentReal, {
 			address: SEED_ADDRESS,
 			probeId: PROBE_ID,
 			probeRef: PROBE_REF,
 		});
-		const out = composeForSend(buildComposeInput(segmentShadow)).transformConfig;
-		expect(out?.unsubscribeUrl).toBeUndefined();
-		expect(composeForSend(buildComposeInput(segmentReal)).transformConfig?.unsubscribeUrl).toBe(
-			undefined
-		);
+		const probe = composeForSend(buildComposeInput(segmentShadow)).transformConfig;
+		const real = composeForSend(buildComposeInput(segmentReal)).transformConfig;
+		expect(real?.unsubscribeUrl).toContain('https://app.example/unsubscribe?token=');
+		expect(probe?.unsubscribeUrl).toContain('/unsub/probe/');
+		expect(probe?.preferenceUrl).toContain('/unsub/probe/');
 	});
 });
 

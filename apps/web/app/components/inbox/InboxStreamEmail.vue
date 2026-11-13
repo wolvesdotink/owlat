@@ -6,17 +6,17 @@
  * questions, an auto-send countdown, and (for admins) the agent's working
  * behind one disclosure.
  */
-import type { api } from '@owlat/api';
-import type { FunctionReturnType } from 'convex/server';
 import { formatRelativeTime } from '~/utils/formatters';
 import { ChatHelpIcon, ReplyIcon } from '@coolicons/vue';
-
-type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
-type ThreadMessage = ThreadData['messages'][number];
+import {
+	useTeamMessageBody,
+	type TeamThreadContact,
+	type TeamThreadMessage,
+} from '~/composables/team/useTeamThreadMessages';
 
 const props = defineProps<{
-	message: ThreadMessage;
-	contact: ThreadData['contact'];
+	message: TeamThreadMessage;
+	contact: TeamThreadContact;
 	isAdmin: boolean;
 	/** Another message of the thread has a draft waiting here too. */
 	hasWaitingDraft: boolean;
@@ -32,6 +32,9 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+// The thread page asks its pages for bodies, so this reads nothing there; a
+// message handed over as an envelope has its body read here.
+const withBody = useTeamMessageBody(() => props.message);
 
 // The sender's name when they are the thread's contact; the address stays beside it.
 const senderName = computed(() => {
@@ -88,7 +91,7 @@ const absoluteTime = computed(() =>
 		<!-- This message also sits in someone's personal mailbox (idea 31). -->
 		<InboxCrossSurfaceStrip :inbound-message-id="message._id" class="mb-3" />
 		<AppErrorBoundary surface="messageBody" :reset-keys="[message._id]">
-			<InboxMessageBody :message="message" />
+			<InboxMessageBody v-if="withBody" :message="withBody" />
 		</AppErrorBoundary>
 		<InboxMessageAttachments :message="message" />
 

@@ -151,6 +151,8 @@ beforeAll(() => {
 			followUps: ref([]),
 			takeOver: ref({ messages: [], receivedWaitMs: 0 }),
 			threadLoading: ref(false),
+			hasEarlierMessages: ref(false),
+			coverMessages: vi.fn(),
 			handleApprove,
 			handleReject: vi.fn(async () => ({ ok: true })),
 			saveEditedDraft: vi.fn(async () => ({ ok: true, result: {} })),

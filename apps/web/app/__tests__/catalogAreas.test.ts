@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { areasForPath } from '~~/i18n/areaRuntime';
 import {
@@ -14,7 +14,13 @@ import {
 	type CatalogPlan,
 } from '~~/i18n/catalogAreas';
 import { completeCatalogs, type MessageCatalog } from '~~/i18n/completeCatalogs';
-import { componentKey, listSourceFiles, type SourceGraph } from '~~/i18n/sourceGraph';
+import {
+	buildSourceGraph,
+	componentKey,
+	listSourceFiles,
+	reachableFrom,
+	type SourceGraph,
+} from '~~/i18n/sourceGraph';
 import { planSourceCatalog, SOURCE_ROOTS } from '~~/i18n/writeCatalogs';
 
 /**
@@ -24,6 +30,9 @@ import { planSourceCatalog, SOURCE_ROOTS } from '~~/i18n/writeCatalogs';
  * and on the real one, where the union must be the source catalog and every
  * key the always-on code names must ship at boot.
  */
+
+/** Bytes of the English boot catalog's JSON, with headroom for new always-on copy. */
+const BOOT_CATALOG_CEILING = 200_000;
 
 function deepMerge(target: MessageCatalog, source: MessageCatalog): MessageCatalog {
 	for (const [key, value] of Object.entries(source)) {
@@ -120,11 +129,14 @@ describe('planCatalogAreas on a known app', () => {
 			"t('dashboard.admin.title'); t('components.table.head')",
 		[f('pages/dashboard/send/index.vue')]: "t('dashboard.send.title'); t('components.table.head')",
 		[f('pages/dashboard/send/built.vue')]: 't(`dashboard.send.status.${s}`)',
+		[f('pages/dashboard/admin/shared.vue')]:
+			"t('shared.adminOnly.title'); t(`shared.adminOnly.kinds.${k}`)",
 		[f('components/table/Table.vue')]: "t('components.table.cell')",
+		[f('components/nav/NavStatus.vue')]: "t(`dashboard.nav.state.${s}`); t('shared.navOnly')",
 		[f('components/orphan/Orphan.vue')]: "t('components.orphan.text')",
 	};
 	const edges: Record<string, string[]> = {
-		[f('layouts/default.vue')]: [f('components/nav/Nav.vue')],
+		[f('layouts/default.vue')]: [f('components/nav/Nav.vue'), f('components/nav/NavStatus.vue')],
 		[f('pages/dashboard/admin/index.vue')]: [f('components/table/Table.vue')],
 		[f('pages/dashboard/send/index.vue')]: [f('components/table/Table.vue')],
 	};
@@ -134,7 +146,12 @@ describe('planCatalogAreas on a known app', () => {
 	};
 	const catalog: MessageCatalog = {
 		common: { save: 'Save' },
-		shared: { thing: 'Shared thing' },
+		shared: {
+			thing: 'Shared thing',
+			navOnly: 'Nav only',
+			adminOnly: { title: 'Admin only', kinds: { a: 'A' } },
+			fromBackend: { b: 'B' },
+		},
 		components: {
 			nav: { title: 'Nav', link: 'Link' },
 			table: { head: 'Head', cell: 'Cell' },
@@ -142,6 +159,7 @@ describe('planCatalogAreas on a known app', () => {
 		},
 		dashboard: {
 			login: { title: 'Sign in' },
+			nav: { state: { open: 'Open' } },
 			admin: { title: 'Admin', backend: 'From the backend', unused: 'Unused' },
 			send: { title: 'Send', status: { queued: 'Queued' } },
 		},
@@ -151,7 +169,10 @@ describe('planCatalogAreas on a known app', () => {
 		graph,
 		appDir: app,
 		layerDirs: [],
-		externalSources: ["throw new Error('dashboard.admin.backend')"],
+		externalSources: [
+			"throw new Error('dashboard.admin.backend')",
+			'return { key: `shared.fromBackend.${code}` }',
+		],
 	});
 	const areas = (key: string) => [...(plan.areasByKey.get(key) ?? [])].sort();
 
@@ -176,12 +197,23 @@ describe('planCatalogAreas on a known app', () => {
 		expect(areas('components.table.cell')).toEqual(['dashboard-admin', 'dashboard-send']);
 	});
 
-	it('ships at boot a runtime-built namespace, a backend key, an unnamed key and a shared namespace', () => {
-		expect(areas('dashboard.send.status.queued')).toEqual([]);
+	it('ships at boot a backend key or prefix, an unnamed key and a key only an orphan names', () => {
 		expect(areas('dashboard.admin.backend')).toEqual([]);
+		expect(areas('shared.fromBackend.b')).toEqual([]);
 		expect(areas('dashboard.admin.unused')).toEqual([]);
 		expect(areas('components.orphan.text')).toEqual([]);
 		expect(areas('shared.thing')).toEqual([]);
+	});
+
+	it('puts a runtime-built namespace in the areas of the files that build it', () => {
+		expect(areas('dashboard.send.status.queued')).toEqual(['dashboard-send']);
+		expect(areas('shared.adminOnly.kinds.a')).toEqual(['dashboard-admin']);
+		expect(areas('dashboard.nav.state.open')).toEqual([]);
+	});
+
+	it('treats the shared namespaces like any other: by the reach of the files that name them', () => {
+		expect(areas('shared.adminOnly.title')).toEqual(['dashboard-admin']);
+		expect(areas('shared.navOnly')).toEqual([]);
 	});
 
 	it('routes only the areas that have a chunk', () => {
@@ -230,12 +262,12 @@ describe('the real catalogs', () => {
 		}
 	});
 
-	it('ships the shared namespaces whole at boot', () => {
+	it('ships the boot namespaces whole at boot', () => {
 		const boot = new Set(leafKeys(splits.get('en')!.boot));
 		const shared = leafKeys(en).filter((key) =>
 			BOOT_NAMESPACES.some((ns) => key === ns || key.startsWith(`${ns}.`))
 		);
-		expect(shared.length).toBeGreaterThan(1000);
+		expect(shared.length).toBeGreaterThan(200);
 		expect(shared.filter((key) => !boot.has(key))).toEqual([]);
 	});
 
@@ -258,6 +290,43 @@ describe('the real catalogs', () => {
 		expect(named.filter((entry) => !boot.has(entry.split(': ')[1]!))).toEqual([]);
 	});
 
+	it('ships every arrival reason the "Why here?" popover renders wherever it renders', () => {
+		// The record carries a backend key (`arrival.reason.budget`) and the
+		// popover renders it under `postbox.`, so the scan sees these messages only
+		// if the popover names each full key.
+		const { appDir } = SOURCE_ROOTS;
+		const popover = join(appDir, 'components/postbox/PostboxWhyHerePopover.vue');
+		const written = new Set(
+			['apps/api/convex', 'packages/shared/src']
+				.flatMap((dir) => listSourceFiles(join(appDir, '../../..', dir)))
+				.filter((file) => !file.endsWith('.test.ts'))
+				.flatMap((file) => readFileSync(file, 'utf8').match(/\barrival\.reason\.\w+/g) ?? [])
+		);
+		const reasonKeys = [...written].map((key) => `postbox.${key}`).sort();
+		expect(reasonKeys.length).toBeGreaterThan(10);
+		expect(reasonKeys.filter((key) => !leafKeys(en).includes(key))).toEqual([]);
+
+		const named = keyReferences(en, readFileSync(popover, 'utf8')).leaves;
+		expect(reasonKeys.filter((key) => !named.has(key))).toEqual([]);
+
+		const graph = buildSourceGraph(SOURCE_ROOTS);
+		const pagesDir = join(appDir, 'pages');
+		const rendering = new Set(
+			listSourceFiles(pagesDir)
+				.filter((page) => page.endsWith('.vue') && reachableFrom(graph, [page]).has(popover))
+				.map((page) => pageArea(relative(pagesDir, page))?.area ?? null)
+		);
+		expect(rendering.size).toBeGreaterThan(0);
+		const boot = new Set(leafKeys(splits.get('en')!.boot));
+		const missing = [...rendering].flatMap((area) => {
+			const chunk = new Set(area ? leafKeys(splits.get('en')!.areas[area] ?? {}) : []);
+			return reasonKeys
+				.filter((key) => !boot.has(key) && !chunk.has(key))
+				.map((key) => `${area ?? 'boot'}: ${key}`);
+		});
+		expect(missing).toEqual([]);
+	});
+
 	it('loads the admin console’s copy with the admin console', () => {
 		const admin = splits.get('en')!.areas['dashboard-admin']!;
 		expect(leafKeys(admin).some((key) => key.startsWith('dashboard.admin.'))).toBe(true);
@@ -268,5 +337,14 @@ describe('the real catalogs', () => {
 	it('keeps the boot catalog well under half of the source catalog', () => {
 		const bytes = (value: unknown) => JSON.stringify(value).length;
 		expect(bytes(splits.get('en')!.boot)).toBeLessThan(bytes(en) / 2);
+	});
+
+	it('keeps the English boot catalog under its byte ceiling', () => {
+		// Every screen downloads this before it mounts. A rise past the ceiling
+		// usually means a namespace or prefix fell back to boot; find out why
+		// before raising it.
+		expect(Buffer.byteLength(JSON.stringify(splits.get('en')!.boot), 'utf8')).toBeLessThan(
+			BOOT_CATALOG_CEILING
+		);
 	});
 });

@@ -28,6 +28,7 @@ import {
 	renderComposeOverrideYaml,
 } from '@owlat/shared/composeOverride';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
+import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { sealRelayPasswordForBackup } from '@owlat/shared/envBackupBox';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
@@ -209,12 +210,17 @@ export default defineEventHandler(
 		// Wire the system/auth From-identity off the configured sending/EHLO domain
 		// when one is present, so system mail isn't sent from the placeholder
 		// noreply@mail.owlat.app. Only fills absent keys — never clobbers a value the
-		// operator supplied. Mirrors buildEnvPatchFromConfig in the setup-cli path.
+		// operator supplied — and a supplied address decides the domain.
 		const ehloHostname = merged['EHLO_HOSTNAME'];
 		if (ehloHostname) {
-			if (!merged['DEFAULT_FROM_DOMAIN']) merged['DEFAULT_FROM_DOMAIN'] = ehloHostname;
-			if (!merged['DEFAULT_FROM_EMAIL']) merged['DEFAULT_FROM_EMAIL'] = `noreply@${ehloHostname}`;
-			if (!merged['DEFAULT_FROM_NAME']) merged['DEFAULT_FROM_NAME'] = 'Owlat';
+			const identity = systemFromIdentityEnv(
+				ehloHostname,
+				merged['DEFAULT_FROM_EMAIL'],
+				merged['DEFAULT_FROM_NAME']
+			);
+			for (const [key, value] of Object.entries(identity)) {
+				if (!merged[key]) merged[key] = value;
+			}
 		}
 
 		if (derivedProfiles.includes('mta')) {

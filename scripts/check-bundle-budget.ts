@@ -37,13 +37,14 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
  * Gzip budget for the entry closure, in KiB (1024 bytes).
  *
  * The entry measured 231.9 KiB when this was set, so it leaves about 18 KiB of
- * headroom. The headroom is deliberate: every icon the app names is bundled
- * into this closure (nuxt.config.ts `icon.clientBundle`, so an offline desktop
- * never fetches one), and every new lazy chunk adds a line to the entry's
- * preload map, so features grow it by a few hundred bytes with nothing turning
- * eager. A budget a kilobyte or two above the measured size turns that drift
- * into a failure in whichever unrelated pull request comes next. Keep at least
- * 12 KiB of room when lowering it.
+ * headroom. The headroom is deliberate: every coolicons glyph that two chunks
+ * use lands in the one shared icon chunk the entry imports (the `icons` group
+ * in nuxt.config.ts), so a glyph a new page shares with another grows this
+ * closure, and every new lazy chunk adds a line to the entry's preload map, so
+ * features grow it by a few hundred bytes with nothing turning eager. A budget
+ * a kilobyte or two above the measured size turns that drift into a failure in
+ * whichever unrelated pull request comes next. Keep at least 12 KiB of room
+ * when lowering it.
  */
 export const GZIP_BUDGET_KB = 250;
 

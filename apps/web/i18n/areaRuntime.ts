@@ -30,6 +30,36 @@ export type AreaChunkLoader = () => Promise<{ default: AreaMessages }>;
 /** Area → locale → the chunk's dynamic import. */
 export type AreaChunks = Readonly<Record<string, Readonly<Record<string, AreaChunkLoader>>>>;
 
+/** The cookie @nuxtjs/i18n and the language picker keep the chosen locale in. */
+export const LOCALE_COOKIE = 'owlat-locale';
+
+/**
+ * The locale @nuxtjs/i18n will most likely settle on, for a download that has
+ * to start before it does: the saved cookie, then the browser's languages (a
+ * region falls back to its language), then `fallback`. A wrong guess only
+ * costs a chunk the app then does not use.
+ */
+export function guessLocale(
+	cookies: string,
+	languages: readonly string[],
+	locales: readonly string[],
+	fallback: string
+): string {
+	const known = new Set(locales);
+	const saved = cookies
+		.split(';')
+		.map((entry) => entry.trim().split('='))
+		.find(([name]) => name === LOCALE_COOKIE)?.[1];
+	if (saved && known.has(saved)) return saved;
+	for (const language of languages) {
+		const code = language.toLowerCase();
+		if (known.has(code)) return code;
+		const base = code.split('-')[0]!;
+		if (known.has(base)) return base;
+	}
+	return fallback;
+}
+
 /** The areas whose chunks `path` needs. */
 export function areasForPath(routes: readonly AreaRouteEntry[], path: string): string[] {
 	const normalized = path.toLowerCase().replace(/\/+$/, '') || '/';
