@@ -166,10 +166,11 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 		// re-renders with the row.
 		'run: component updates for a one-row update': { max: 5 },
 		'run: DOM mutations for a one-row update': { max: 3 },
-		// Every row takes the list's clock as a prop, so a tick re-renders all of
-		// them, chip or not; only the five chips whose text moves touch the DOM.
-		'run: rows re-rendered by a clock tick': { max: 100 },
-		'run: component updates for a clock tick': { max: 186 },
+		// The rows read the provided list clock in computeds that return their
+		// chips' text, so a tick re-renders no row: each of the five chips whose
+		// text moves updates in the row core whose slot holds it.
+		'run: rows re-rendered by a clock tick': { max: 0 },
+		'run: component updates for a clock tick': { max: 5 },
 		'run: DOM mutations for a clock tick': { max: 5 },
 		...NOTHING_LEFT,
 	},

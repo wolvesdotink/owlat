@@ -45,6 +45,7 @@ export interface InboxThreadRowThread {
 import { INBOX_WAITING_TIER_CLASS, inboxWaitingChip } from '~/utils/inboxWaiting';
 import { INBOX_SLA_TIER_CLASS, inboxSlaChip } from '~/utils/inboxSla';
 import DraftMarker from '~/components/shell/DraftMarker.vue';
+import { injectInboxListNow } from '~/composables/useInboxListClock';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import type { ReplyDropTarget } from '~/utils/replyFileDrop';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
@@ -76,11 +77,6 @@ const props = withDefaults(
 		currentUserId?: string | null;
 		/** Admin-only triage controls; editors retain the readable thread row. */
 		canManage?: boolean;
-		/**
-		 * The list's shared clock, in ms. Absent = no waiting chip: a row that
-		 * cannot know the time must not guess at an age.
-		 */
-		now?: number;
 		/**
 		 * The assignee has the thread open right now (the presence ring). The
 		 * list asks for it separately (useInboxAssigneePresence); `listThreads`
@@ -124,16 +120,24 @@ const { t } = useI18n();
 // Waiting time — the one number a shared inbox exists to manage. Derived from
 // the thread's newest INBOUND activity (utils/inboxWaiting explains why
 // `lastMessageAt` is exactly that), so a thread we already answered, resolved
-// or deliberately snoozed shows no chip at all. `now` is injected rather than
-// read inside the derivation so the row is unit-testable and so the whole list
-// re-derives on ONE ticking clock, not one per row.
-const waiting = computed(() =>
-	props.now === undefined ? null : inboxWaitingChip(props.thread, props.now)
-);
+// or deliberately snoozed shows no chip at all. The clock is the list's, so the
+// whole list re-derives on ONE ticking clock, not one per row.
+const now = injectInboxListNow();
+const waiting = computed(() => (now ? inboxWaitingChip(props.thread, now.value) : null));
 // A running reply deadline says more than the age, so it takes the chip's place.
-const sla = computed(() =>
-	props.now === undefined ? null : inboxSlaChip(props.thread, props.now)
-);
+const sla = computed(() => (now ? inboxSlaChip(props.thread, now.value) : null));
+// The template reads the chip only through these strings. Each tick re-derives
+// every row's chip objects; a string that came out the same does not re-render
+// the row, so a tick re-renders only the rows whose chip text or tier moved.
+const ageChipKind = computed(() => (sla.value ? 'sla' : waiting.value ? 'waiting' : null));
+const ageChipClass = computed(() => {
+	if (sla.value) return INBOX_SLA_TIER_CLASS[sla.value.tier];
+	return waiting.value ? INBOX_WAITING_TIER_CLASS[waiting.value.tier] : '';
+});
+const ageChipText = computed(() => {
+	const label = sla.value?.label ?? waiting.value?.label;
+	return label ? t(label.key, label.params) : '';
+});
 
 const rowMembers = computed(() => props.members ?? []);
 
@@ -168,6 +172,13 @@ const rowId = computed(() => `inbox-row-${props.thread._id}`);
 const threadHref = computed(() => `/dashboard/inbox/${props.thread._id}`);
 
 const timestamp = computed(() => props.thread.lastMessageAt ?? props.thread._creationTime);
+// The formatter reads the wall clock, which nothing reactive tracks. Reading the
+// list clock here re-formats the time on each tick, and only a row whose text
+// moved ("5m" to "6m") re-renders.
+const relativeTime = computed(() => {
+	void now?.value;
+	return props.formatCompactRelativeTime(timestamp.value);
+});
 
 /** Channel chip only for non-email threads. */
 const showChannelChip = computed(() => !!props.thread.channel && props.thread.channel !== 'email');
@@ -252,7 +263,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 							<template #identifier>
 								{{ thread.subject || t('components.inbox.inboxThreadRow.noSubject') }}
 							</template>
-							<template #meta>{{ formatCompactRelativeTime(timestamp) }}</template>
+							<template #meta>{{ relativeTime }}</template>
 
 							<!-- Detail row: sender + the single status chip + optional channel chip. -->
 							<div class="flex items-center gap-2 mt-0.5 min-w-0">
@@ -299,21 +310,21 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						     waiting on us, escalating fresh → attention → overdue. Colour is
 						     never the only signal — the duration is spelled out beside it. -->
 								<span
-									v-if="sla"
+									v-if="ageChipKind === 'sla'"
 									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
-									:class="INBOX_SLA_TIER_CLASS[sla.tier]"
+									:class="ageChipClass"
 									data-testid="inbox-sla-chip"
 								>
 									<AlarmIcon class="w-3 h-3" />
-									{{ t(sla.label.key, sla.label.params) }}
+									{{ ageChipText }}
 								</span>
 								<span
-									v-else-if="waiting"
+									v-else-if="ageChipKind === 'waiting'"
 									class="flex-shrink-0 inline-flex max-sm:hidden items-center gap-1 text-xs tabular-nums"
-									:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
+									:class="ageChipClass"
 								>
 									<TimerIcon class="w-3 h-3" />
-									{{ t(waiting.label.key, waiting.label.params) }}
+									{{ ageChipText }}
 								</span>
 							</div>
 
