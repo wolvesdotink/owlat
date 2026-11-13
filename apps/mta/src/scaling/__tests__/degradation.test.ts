@@ -183,19 +183,62 @@ describe('degradation', () => {
 			expect((await shouldBackoffDomain(redis, 'reset.com')).retryAfter).toBe(30_000);
 		});
 
-		it('shouldBackoffDomain auto-clears the key once the backoff window has elapsed', async () => {
+		it('lets the domain through once the window has elapsed but keeps its failure count', async () => {
 			await recordDomainFailure(redis, 'elapse.com'); // 30s window
 			expect((await shouldBackoffDomain(redis, 'elapse.com')).backoff).toBe(true);
 
-			// Advance just past the 30s window: the stored retryAt is now in the
-			// past, so shouldBackoffDomain deletes the key and reports no backoff.
 			vi.setSystemTime(new Date(Date.now() + 30_001));
-			const result = await shouldBackoffDomain(redis, 'elapse.com');
-			expect(result.backoff).toBe(false);
+			expect((await shouldBackoffDomain(redis, 'elapse.com')).backoff).toBe(false);
 
-			// The retry key was actively deleted (not merely expired-by-TTL).
-			const raw = await redis.hget('mta:domain-fail:{elapse.com}:state', 'retryAt');
-			expect(raw).toBeNull();
+			// The probe that the elapsed window let through fails too: the backoff
+			// takes its second step instead of starting over at the 30s base.
+			await recordDomainFailure(redis, 'elapse.com');
+			expect((await shouldBackoffDomain(redis, 'elapse.com')).retryAfter).toBe(60_000);
+		});
+
+		it('escalates across elapsed windows to the cap on both recording paths', async () => {
+			const scheduleAcrossWindows = async (
+				domain: string,
+				record: (n: number) => Promise<void>
+			) => {
+				const delays: Array<number | undefined> = [];
+				for (let n = 0; n < 7; n++) {
+					await record(n);
+					const { retryAfter } = await shouldBackoffDomain(redis, domain);
+					delays.push(retryAfter);
+					vi.setSystemTime(new Date(Date.now() + (retryAfter ?? 0) + 1));
+					expect((await shouldBackoffDomain(redis, domain)).backoff).toBe(false);
+				}
+				return delays;
+			};
+			const expected = [30_000, 60_000, 120_000, 240_000, 480_000, 600_000, 600_000];
+
+			expect(
+				await scheduleAcrossWindows('plain-window.com', () =>
+					recordDomainFailure(redis, 'plain-window.com')
+				)
+			).toEqual(expected);
+			expect(
+				await scheduleAcrossWindows('lua-window.com', (n) =>
+					recordDomainFailure(
+						redis,
+						'lua-window.com',
+						durableEffectIdentity('smtp-attempt:window', `${n}`)
+					)
+				)
+			).toEqual(expected);
+		});
+
+		it('starts over at the base after a success that follows an elapsed window', async () => {
+			await recordDomainFailure(redis, 'recover.com');
+			await recordDomainFailure(redis, 'recover.com');
+			vi.setSystemTime(new Date(Date.now() + 60_001));
+			expect((await shouldBackoffDomain(redis, 'recover.com')).backoff).toBe(false);
+
+			await clearDomainFailure(redis, 'recover.com');
+			await recordDomainFailure(redis, 'recover.com');
+
+			expect((await shouldBackoffDomain(redis, 'recover.com')).retryAfter).toBe(30_000);
 		});
 	});
 });

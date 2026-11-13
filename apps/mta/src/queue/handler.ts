@@ -316,7 +316,11 @@ async function disposeDefer(
 	// would otherwise push a deadline-hugging rung past the receipt's TTL.
 	const requestedDelay = withJitter(delayMs);
 	const delay = boundedDeferDelayMs(requestedDelay, deps.config.maxMessageAgeMs - ageMs);
-	const requeued: EmailJob = { ...data, firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp };
+	const requeued: EmailJob = {
+		...data,
+		firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp,
+		...(kind === 'remote_4xx' ? { remoteDeferrals: (data.remoteDeferrals ?? 0) + 1 } : {}),
+	};
 
 	await handoffDeferredJob(
 		deps.redis,

@@ -29,8 +29,8 @@ import type { DestinationSnapshot } from './destinationProvider.js';
 import { resolveDeliveryRoute } from './send/route.js';
 import { prepareSignedMessage } from './send/compose.js';
 import { resolveSendTlsPlan } from './send/tlsPlan.js';
-import { attemptSend, type AttemptContext } from './send/attempt.js';
-import { terminalResult } from './send/outcome.js';
+import { attemptSend as attemptSendOnce, type AttemptContext } from './send/attempt.js';
+import { terminalResult, type AttemptOutcome } from './send/outcome.js';
 
 /**
  * Send an email directly to the recipient's MX server
@@ -104,6 +104,22 @@ export async function sendToMx(
 	// non-DANE path — we defer this MX. If every MX defers on a lookup failure the
 	// bounce names that (soft/deferred) rather than delivering without DANE.
 	let lastDaneDeferResponse: string | null = null;
+
+	// Remember a host that refused us at the greeting or EHLO, so that when every
+	// host refuses, the job ends on a real reply rather than "all MX failed". A
+	// temporary refusal replaces a permanent one: one host still willing to try
+	// later means the message is not undeliverable.
+	let hostRefusal: EmailJobResult | null = null;
+	const attemptSend = async (...args: Parameters<typeof attemptSendOnce>) => {
+		const outcome: AttemptOutcome = await attemptSendOnce(...args);
+		if (
+			outcome.kind === 'host-refused' &&
+			(hostRefusal === null || outcome.result.bounceType === 'deferred')
+		) {
+			hostRefusal = outcome.result;
+		}
+		return outcome;
+	};
 
 	// Try each MX host in priority order
 	for (const mxHost of mxHosts) {
@@ -266,11 +282,13 @@ export async function sendToMx(
 		continue;
 	}
 
-	// Every MX has been tried (or skipped). Classify the terminal bounce from the
-	// strictest reason recorded along the way — a TLS-required handshake failure,
-	// then a DANE TLSA lookup that could not be completed, else a plain
-	// connection-level failure. All soft/deferred: a TLS-required or DANE floor
-	// never falls back to cleartext (RFC 7672 §2.1).
+	// Every MX has been tried (or skipped). A host's own refusal is the most
+	// specific answer and keeps the verdict its reply code carries. Otherwise
+	// classify the terminal bounce from the strictest reason recorded along the
+	// way — a TLS-required handshake failure, then a DANE TLSA lookup that could
+	// not be completed, else a plain connection-level failure. All soft/deferred:
+	// a TLS-required or DANE floor never falls back to cleartext (RFC 7672 §2.1).
+	if (hostRefusal) return hostRefusal;
 	return buildAllMxFailedResult(
 		recipientDomain,
 		mxHosts,

@@ -25,6 +25,10 @@ export type AttemptOutcome =
 	// accepted, so this is TERMINAL — never a next-MX attempt, never an
 	// auto-retried soft bounce. Carries its own result.
 	| { kind: 'ambiguous'; result: EmailJobResult }
+	// A reply to the greeting or EHLO: this MX host will not talk to us now. The
+	// MX loop tries the next host and keeps the reply for the final result if
+	// every host refuses.
+	| { kind: 'host-refused'; result: EmailJobResult }
 	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
 	| { kind: 'connection'; response: string }
 	| { kind: 'over-cap' };
@@ -193,9 +197,25 @@ export function classifyFailure(
 }
 
 /**
+ * Reclassify a reply verdict given to the greeting or EHLO as a refusal of the
+ * host. Before MAIL FROM the server has not seen the message, so its answer is
+ * about the connection, and another MX host may accept it (RFC 5321 §3.1, §5.1).
+ * Replies from MAIL FROM onward stay the message's verdict.
+ */
+export function asHostRefusal(err: unknown, outcome: AttemptOutcome): AttemptOutcome {
+	const beforeEnvelope =
+		isSmtpError(err) &&
+		err.replyCode !== undefined &&
+		(err.phase === 'greeting' || err.phase === 'ehlo');
+	return beforeEnvelope && outcome.kind === 'smtp'
+		? { kind: 'host-refused', result: outcome.result }
+		: outcome;
+}
+
+/**
  * The result of an outcome that ENDS the job: a delivery, a server verdict, or
  * an ambiguous post-DATA drop. `undefined` for the outcomes that let the MX loop
- * carry on (connection failure, TLS failure, connection cap).
+ * carry on (connection failure, TLS failure, connection cap, a refused host).
  */
 export function terminalResult(outcome: AttemptOutcome): EmailJobResult | undefined {
 	return outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous'

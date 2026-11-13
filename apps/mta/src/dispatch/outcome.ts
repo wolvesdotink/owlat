@@ -21,6 +21,7 @@ import {
 	pressureAdjustedDelayMs,
 } from '../intelligence/warmingProviderPolicy.js';
 import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
+import { escalatedRetryDelayMs } from './retryEscalation.js';
 import { classifiedResponseEffect } from './outcomeClassifiedResponse.js';
 import {
 	circuitBreakerEffect,
@@ -165,9 +166,9 @@ function reduceDeferred(
 	// pressure on this IP, the classifier's suggested backoff is lengthened and
 	// the verdict is fed to the per-provider warming cap gate.
 	const volumePressure = isVolumePressureCategory(outcome.classification.category);
-	const deferDelayMs = pressureAdjustedDelayMs(
-		outcome.classification.suggestedDelayMs,
-		ctx.providerVolumePressure
+	const deferDelayMs = escalatedRetryDelayMs(
+		pressureAdjustedDelayMs(outcome.classification.suggestedDelayMs, ctx.providerVolumePressure),
+		ctx.job.remoteDeferrals ?? 0
 	);
 	return {
 		effects: [
@@ -258,7 +259,7 @@ function reduceSoftBounce(
 			},
 		],
 		defer: {
-			delayMs: 60_000,
+			delayMs: escalatedRetryDelayMs(60_000, ctx.job.remoteDeferrals ?? 0),
 			reason: `Soft bounce: ${outcome.error}`,
 		},
 	};

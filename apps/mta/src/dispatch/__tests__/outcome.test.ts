@@ -631,6 +631,84 @@ describe('reduce(soft_bounce)', () => {
 	});
 });
 
+describe('reduce — the retry delay escalates with the deferrals one message has spent', () => {
+	const ONE_HOUR = 3_600_000;
+
+	/** The defer delay for one message after it has been deferred `remoteDeferrals` times. */
+	function deferDelayAfter(
+		outcome: DispatchOutcome,
+		remoteDeferrals: number,
+		ctx: Partial<AttemptCtx> = {}
+	): number {
+		const job = makeJob(remoteDeferrals === 0 ? {} : { remoteDeferrals });
+		const { defer } = reduce(outcome, makeCtx({ ...ctx, job }));
+		if (!defer) throw new Error('expected a defer');
+		return defer.delayMs;
+	}
+
+	function deferredBy(smtpCode: number, response: string): DispatchOutcome {
+		return {
+			kind: 'deferred',
+			smtpCode,
+			error: response,
+			enhancedCode: undefined,
+			classification: classifySmtpResponse(smtpCode, response, undefined),
+		};
+	}
+
+	const softBounce: DispatchOutcome = { kind: 'soft_bounce', error: 'All MX hosts failed' };
+
+	it('makes the nth soft bounce of one message wait longer than the first, up to an hour', () => {
+		const delays = Array.from({ length: 40 }, (_, n) => deferDelayAfter(softBounce, n));
+
+		expect(delays[0]).toBe(60_000);
+		expect(delays[5]).toBeGreaterThan(delays[0]!);
+		for (let n = 1; n < delays.length; n++) {
+			expect(delays[n]).toBeGreaterThanOrEqual(delays[n - 1]!);
+		}
+		expect(Math.max(...delays)).toBe(ONE_HOUR);
+	});
+
+	it('escalates an unclassified 4xx from its 30s floor to an hour', () => {
+		const generic = deferredBy(451, '451 4.3.0 Temporary local problem');
+		const delays = Array.from({ length: 9 }, (_, n) => deferDelayAfter(generic, n));
+
+		expect(delays).toEqual([
+			30_000,
+			60_000,
+			120_000,
+			240_000,
+			480_000,
+			960_000,
+			1_920_000,
+			ONE_HOUR,
+			ONE_HOUR,
+		]);
+	});
+
+	it('keeps a greylist delay on the early attempts so greylisting still clears in minutes', () => {
+		const greylisted = deferredBy(450, '450 4.7.1 Greylisted, please try again in 300 seconds');
+
+		expect([0, 1, 2, 3].map((n) => deferDelayAfter(greylisted, n))).toEqual([
+			300_000, 300_000, 300_000, 300_000,
+		]);
+		expect(deferDelayAfter(greylisted, 4)).toBe(480_000);
+	});
+
+	it('keeps a provider delay above the ladder, and the volume-pressure lengthening, as the floor', () => {
+		const rateLimited = deferredBy(421, '421 too many connections');
+		expect(deferDelayAfter(rateLimited, 0)).toBe(900_000);
+		expect(deferDelayAfter(rateLimited, 3)).toBe(900_000);
+		expect(deferDelayAfter(rateLimited, 30)).toBe(ONE_HOUR);
+
+		// Three recent pressure events lengthen the 15-minute floor eightfold, past
+		// the ladder's hour, and the ladder never shortens it.
+		const pressure = { providerVolumePressure: 3 };
+		expect(deferDelayAfter(rateLimited, 0, pressure)).toBe(2 * ONE_HOUR);
+		expect(deferDelayAfter(rateLimited, 30, pressure)).toBe(2 * ONE_HOUR);
+	});
+});
+
 describe('reduce(ambiguous)', () => {
 	// W8/I2: the post-DATA ambiguous drop is TERMINAL (no defer, no next-MX) but
 	// must NOT be a bounce — the message may have been delivered. The reducer

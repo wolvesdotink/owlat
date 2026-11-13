@@ -1277,6 +1277,32 @@ describe('handleEmailJob', () => {
 		expectJitteredDelay(queue.add.mock.calls[0]![0].delay as number, 60_000);
 	});
 
+	it('counts a receiver deferral on the successor so its next retry waits longer', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'soft',
+			error: 'All MX hosts failed for example.com',
+		});
+
+		await run(createJob({ remoteDeferrals: 4 }));
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		const opts = queue.add.mock.calls[0]![0];
+		expect(opts.data.remoteDeferrals).toBe(5);
+		expectJitteredDelay(opts.delay as number, 480_000);
+	});
+
+	it('does not count a self-throttle defer as a receiver deferral', async () => {
+		const { checkCap } = await import('../../intelligence/warming.js');
+		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+
+		await run(createJob({ remoteDeferrals: 2 }));
+
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].data.remoteDeferrals).toBe(2);
+	});
+
 	// ── PR-04 (2): self-throttle defers re-enqueue WITHOUT burning an attempt ──
 	// Pre-send pipeline defers (breaker / org-limit / smtp-intel / domain
 	// throttle / warming cap / no-IP) re-enqueue with the computed delay and
