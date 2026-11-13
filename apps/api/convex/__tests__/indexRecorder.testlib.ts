@@ -90,10 +90,20 @@ function observedQuery(query: object, table: string, source: string, observer: D
 			const value: unknown = Reflect.get(target, prop, receiver);
 			if (typeof value !== 'function') return value;
 			if (prop === Symbol.asyncIterator) {
+				// A Convex query's iterator is the query itself, and starting it a
+				// second time throws, so step the iterator it returns instead of
+				// handing that back to `for await`.
 				return async function* () {
-					for await (const doc of value.call(target) as AsyncIterable<{ _id: string }>) {
-						observer.onRead(source, [doc]);
-						yield doc;
+					const rows = value.call(target) as AsyncIterator<{ _id: string }>;
+					try {
+						for (;;) {
+							const step = await rows.next();
+							if (step.done) return;
+							observer.onRead(source, [step.value]);
+							yield step.value;
+						}
+					} finally {
+						await rows.return?.();
 					}
 				};
 			}
