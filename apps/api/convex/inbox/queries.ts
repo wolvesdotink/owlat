@@ -41,7 +41,7 @@ import { openInboundMessageRow, openInboundMessageRows } from '../lib/messageBod
  *    on `threadReads.by_user_thread`.
  *  - `assignee`: the assigned member's display name/email/image so the row can
  *    render a deterministic-colour avatar without the client joining to the
- *    member directory. Cached per call so repeat assignees cost one read.
+ *    member directory. Cached per call so each distinct assignee costs one read.
  *
  * Presence is deliberately NOT read here: a heartbeat would re-run every
  * admin's list, including the shell sidebar's. The Team Inbox page asks
@@ -52,18 +52,25 @@ export async function enrichThreadRows(
 	rows: ReadonlyArray<Doc<'conversationThreads'>>,
 	viewerId: string
 ) {
-	const assigneeCache = new Map<string, { name?: string; email: string; image?: string } | null>();
-	const resolveAssignee = async (userId: string) => {
-		if (assigneeCache.has(userId)) return assigneeCache.get(userId)!;
+	type Assignee = { name?: string; email: string; image?: string } | null;
+	// Holds the pending read, not its result: the rows below are enriched
+	// concurrently, so a result cached after the await would let every row with
+	// the same assignee start its own read before the first one resolves.
+	const assigneeCache = new Map<string, Promise<Assignee>>();
+	const readAssignee = async (userId: string): Promise<Assignee> => {
 		const profile = await ctx.db
 			.query('userProfiles')
 			.withIndex('by_auth_user_id', (idx) => idx.eq('authUserId', userId))
 			.first();
-		const resolved = profile
-			? { name: profile.name, email: profile.email, image: profile.image }
-			: null;
-		assigneeCache.set(userId, resolved);
-		return resolved;
+		return profile ? { name: profile.name, email: profile.email, image: profile.image } : null;
+	};
+	const resolveAssignee = (userId: string): Promise<Assignee> => {
+		let pending = assigneeCache.get(userId);
+		if (!pending) {
+			pending = readAssignee(userId);
+			assigneeCache.set(userId, pending);
+		}
+		return pending;
 	};
 
 	return Promise.all(
