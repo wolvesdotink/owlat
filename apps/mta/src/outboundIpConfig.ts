@@ -13,6 +13,22 @@ export interface OutboundIpConfig {
 	ipPools: IpPoolConfig;
 	ehloHostnames: Record<string, string>;
 	ipv6Enabled: boolean;
+	allowPrivateMxTargets: boolean;
+}
+
+/**
+ * `MTA_ALLOW_PRIVATE_MX`: let outbound SMTP connect to MX addresses that are
+ * loopback, private, link-local or otherwise non-public. Off by default, and
+ * only for a lab or test stack whose catcher sits on such an address; on an
+ * internet sender it lets any recipient domain aim our SMTP sessions at hosts
+ * inside the network (smtp/mxAddresses.ts).
+ */
+function parseAllowPrivateMx(value: string | undefined): boolean {
+	const normalized = value?.trim() || 'false';
+	if (normalized !== 'true' && normalized !== 'false') {
+		throw new Error('MTA_ALLOW_PRIVATE_MX must be true or false');
+	}
+	return normalized === 'true';
 }
 
 function parsePool(
@@ -72,5 +88,6 @@ export function loadOutboundIpConfig(
 		ipPools: { transactional, campaign },
 		ehloHostnames: parseCanonicalEhloHostnames(env['EHLO_HOSTNAMES']),
 		ipv6Enabled,
+		allowPrivateMxTargets: parseAllowPrivateMx(env['MTA_ALLOW_PRIVATE_MX']),
 	};
 }

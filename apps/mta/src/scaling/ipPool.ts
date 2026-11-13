@@ -10,7 +10,7 @@
  */
 
 import type Redis from 'ioredis';
-import { normalizeIpAddress } from '@owlat/shared/ipAddress';
+import { ipAddressFamily, normalizeIpAddress, type IpAddressFamily } from '@owlat/shared/ipAddress';
 import {
 	IP_READINESS_BLOCK_REASONS,
 	isIpReadinessBlockReason,
@@ -202,11 +202,35 @@ export async function isIpEligibilityLeaseValid(
 const BORROW_WARN_INTERVAL_MS = 60_000;
 let lastCampaignBorrowWarnAt = Number.NEGATIVE_INFINITY;
 
+/**
+ * Keep only the IPs of a family the destination can be reached over, when the
+ * candidates span both families. An IPv6 source can only dial an IPv6 MX
+ * address and an IPv4 source an IPv4 one, so an A-only destination sent from
+ * a v6 IP would just defer. The destination is resolved only when there is a
+ * choice to make; when it has no address of either candidate family, or none
+ * at all, the list stays as it is and the send defers as before.
+ */
+async function narrowToReachableFamilies(
+	ips: string[],
+	reachableFamilies: (() => Promise<ReadonlySet<IpAddressFamily> | null>) | undefined
+): Promise<string[]> {
+	if (!reachableFamilies || new Set(ips.map(ipAddressFamily)).size < 2) return ips;
+	const families = await reachableFamilies();
+	if (!families) return ips;
+	const reachable = ips.filter((ip) => {
+		const family = ipAddressFamily(ip);
+		return family !== null && families.has(family);
+	});
+	return reachable.length > 0 ? reachable : ips;
+}
+
 export async function selectIpWithLease(
 	redis: Redis,
 	pool: IpPoolType,
 	config: IpPoolConfig,
-	dedicatedIp?: string
+	dedicatedIp?: string,
+	/** The address families the destination's MX hosts have (smtp/mxAddresses.ts). */
+	reachableFamilies?: () => Promise<ReadonlySet<IpAddressFamily> | null>
 ): Promise<IpEligibilityLease | null> {
 	const configuredLocally = new Set([...config.transactional, ...config.campaign]);
 	const activeIps = new Set(await redis.smembers(IP_POOL_ACTIVE));
@@ -249,6 +273,7 @@ export async function selectIpWithLease(
 			logger.error({ pool }, 'No eligible IPs available for pool; delivery remains queued');
 			return null;
 		}
+		availableIps = await narrowToReachableFamilies(availableIps, reachableFamilies);
 		if (availableIps.length === 1) selectedIp = availableIps[0];
 		else {
 			const counter = await redis.incr(`${COUNTER_PREFIX}${pool}`);

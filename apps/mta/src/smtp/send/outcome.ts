@@ -31,6 +31,14 @@ export type AttemptOutcome =
 	| { kind: 'host-refused'; result: EmailJobResult }
 	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
 	| { kind: 'connection'; response: string }
+	// No address of this MX host may be dialled: every answer was refused by
+	// the non-public screen, the host has no A/AAAA at all, its lookup failed,
+	// or it has no address in the source IP's family. Nothing was sent.
+	| {
+			kind: 'unroutable';
+			reason: 'refused' | 'not-found' | 'lookup-failed' | 'no-family-address';
+			response: string;
+	  }
 	| { kind: 'over-cap' };
 
 /** Everything outcome classification needs to attribute and record a failure. */
@@ -220,7 +228,8 @@ export function asHostRefusal(err: unknown, outcome: AttemptOutcome): AttemptOut
 /**
  * The result of an outcome that ENDS the job: a delivery, a server verdict, or
  * an ambiguous post-DATA drop. `undefined` for the outcomes that let the MX loop
- * carry on (connection failure, TLS failure, connection cap, a refused host).
+ * carry on (connection failure, TLS failure, connection cap, a refused or
+ * unroutable host).
  */
 export function terminalResult(outcome: AttemptOutcome): EmailJobResult | undefined {
 	return outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous'
