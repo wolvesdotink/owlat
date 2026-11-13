@@ -5,8 +5,10 @@
  * changes. The count is written on every autonomous reply, so it must live
  * where no reader of an unrelated thread looks. These tests record the
  * document ids `getThread` reads and the ids the auto-reply lifecycle writes
- * (`dependencyDb`) and require the two sets to be disjoint, which is what a
- * subscription invalidation needs; convex-test does not simulate one.
+ * (`dependencyDb`) and require the two sets to be disjoint. That proves the
+ * reply changes no document the reader read. It does not cover an insert into
+ * an index range the reader scanned, which Convex also re-runs on; ids alone
+ * cannot see that, and convex-test does not simulate a subscription.
  *
  * The count also has to survive the deploy that moves it: a deployment's
  * agentConfig row still carries today's count, and the daily limit must not
@@ -14,7 +16,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -174,6 +176,17 @@ describe('auto-reply usage vs. the Team Inbox thread reader', () => {
 });
 
 describe('auto-reply usage across the deploy that moves it', () => {
+	const MIDDAY = Date.UTC(2026, 10, 13, 12);
+	const MIDNIGHT = Date.UTC(2026, 10, 14);
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(MIDDAY);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	async function reportedUsage(t: T) {
 		const config = await t.query(internal.agent.agentPipeline.getAgentConfig, {});
 		return { count: config?.dailyAutoReplyCount, resetAt: config?.dailyAutoReplyResetAt };
@@ -194,12 +207,23 @@ describe('auto-reply usage across the deploy that moves it', () => {
 
 	it('restarts at one when the stored day has ended', async () => {
 		const t = convexTest(schema, modules);
-		await seedConfig(t, { count: 99, resetAt: Date.now() - 1 });
+		await seedConfig(t, { count: 99, resetAt: MIDDAY - 1 });
 
 		await autoReplyDeps(t, (await seedThread(t, 'drafting')).messageId);
-		const usage = await reportedUsage(t);
-		expect(usage.count).toBe(1);
-		expect(usage.resetAt).toBeGreaterThan(Date.now());
+		expect(await reportedUsage(t)).toEqual({ count: 1, resetAt: MIDNIGHT });
+	});
+
+	it('counts a reply at midnight on the ending day and the next one on the new day', async () => {
+		const t = convexTest(schema, modules);
+		await seedConfig(t, { count: 5, resetAt: MIDNIGHT });
+
+		vi.setSystemTime(MIDNIGHT);
+		await autoReplyDeps(t, (await seedThread(t, 'drafting')).messageId);
+		expect(await reportedUsage(t)).toEqual({ count: 6, resetAt: MIDNIGHT });
+
+		vi.setSystemTime(MIDNIGHT + 1);
+		await autoReplyDeps(t, (await seedThread(t, 'drafting')).messageId);
+		expect(await reportedUsage(t)).toEqual({ count: 1, resetAt: MIDNIGHT + 24 * 60 * 60 * 1000 });
 	});
 
 	it('leaves the agentConfig row untouched while counting', async () => {

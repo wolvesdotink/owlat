@@ -243,6 +243,9 @@ describe('operator-only search — `in:` reads the folder, not the mailbox', () 
 		// Each page re-reads a mailbox's boundary row (the `<=` resume bound) and
 		// a cut-off row it already read, so reads exceed the match count by at
 		// most a few rows per page, never by the Inbox history.
+		// The floor proves the counter saw the walk at all: a read path it cannot
+		// observe would otherwise pass both bounds at zero.
+		expect(messageReads(result)).toBeGreaterThanOrEqual(expected.length);
 		expect(messageReads(result)).toBeLessThanOrEqual((MATCHES + 2) * 2);
 		expect(result.reads.get('mailMessages:by_mailbox_and_received') ?? 0).toBe(0);
 		expect(result.subjects).toEqual(expected);
@@ -273,6 +276,7 @@ describe('operator-only search — `in:` reads the folder, not the mailbox', () 
 		expect(fanOut.subjects.slice(0, 6).sort()).toEqual(ties);
 		expect(fanOut.subjects[6]).toBe('older');
 		expect(fanOut.subjects).toHaveLength(7);
+		expect(messageReads(fanOut)).toBeGreaterThanOrEqual(7);
 		expect(fanOut.reads.get('mailMessages:by_mailbox_and_received') ?? 0).toBe(0);
 	});
 });
@@ -318,6 +322,7 @@ describe('operator-only search — before:/after: bound the arrival range', () =
 		);
 
 		expect(result.subjects).toEqual(newestMatchFirst);
+		expect(messageReads(result)).toBeGreaterThanOrEqual(MATCHES);
 		expect(messageReads(result)).toBeLessThanOrEqual(MATCHES + 4);
 	});
 
