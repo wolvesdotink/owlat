@@ -56,3 +56,77 @@ export function recordingDb<Db extends AnyReader>(db: Db, log: IndexSeek[]): Db 
 		},
 	});
 }
+
+/** Documents a reader handed back, per table, from index and table queries. */
+export type QueriedDocuments = Record<string, number>;
+
+const COUNTED_LIST_TERMINALS = new Set(['collect', 'take']);
+const COUNTED_SINGLE_TERMINALS = new Set(['first', 'unique']);
+
+function countingQuery(query: object, table: string, counts: QueriedDocuments): object {
+	const add = (n: number) => {
+		counts[table] = (counts[table] ?? 0) + n;
+	};
+	return new Proxy(query, {
+		get(target, prop, receiver) {
+			const value: unknown = Reflect.get(target, prop, receiver);
+			if (typeof value !== 'function') return value;
+			if (prop === Symbol.asyncIterator) {
+				return async function* () {
+					for await (const doc of value.call(target) as AsyncIterable<unknown>) {
+						add(1);
+						yield doc;
+					}
+				};
+			}
+			if (typeof prop !== 'string') return value.bind(target);
+			if (COUNTED_LIST_TERMINALS.has(prop)) {
+				return async (...args: unknown[]) => {
+					const docs = (await value.apply(target, args)) as unknown[];
+					add(docs.length);
+					return docs;
+				};
+			}
+			if (COUNTED_SINGLE_TERMINALS.has(prop)) {
+				return async (...args: unknown[]) => {
+					const doc: unknown = await value.apply(target, args);
+					if (doc !== null) add(1);
+					return doc;
+				};
+			}
+			if (prop === 'paginate') {
+				return async (...args: unknown[]) => {
+					const result = (await value.apply(target, args)) as { page: unknown[] };
+					add(result.page.length);
+					return result;
+				};
+			}
+			return (...args: unknown[]) => {
+				const next: unknown = value.apply(target, args);
+				return next !== null && typeof next === 'object' && 'collect' in next
+					? countingQuery(next, table, counts)
+					: next;
+			};
+		},
+	});
+}
+
+/**
+ * `countingDb(db, counts)` wraps a reader and adds, per table, every document a
+ * query returns (`collect`, `take`, `first`, `unique`, `paginate`, async
+ * iteration). Point reads by id (`get`) are not counted. A range with no
+ * `.filter()` returns every document it reads, so this is the documents a
+ * lookup visits.
+ */
+export function countingDb<Db extends AnyReader>(db: Db, counts: QueriedDocuments): Db {
+	return new Proxy(db, {
+		get(target, prop, receiver) {
+			const value: unknown = Reflect.get(target, prop, receiver);
+			if (prop !== 'query' || typeof value !== 'function') {
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
+			return (table: string) =>
+				countingQuery((target.query as (t: string) => object)(table), table, counts);
+		},
+	});
+}

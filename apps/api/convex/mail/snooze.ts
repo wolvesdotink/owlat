@@ -108,14 +108,16 @@ export async function clearSnoozeUntilReplyForThread(
 	threadId: Id<'mailThreads'>,
 	now: number
 ): Promise<void> {
-	const messages = await ctx.db
+	// Only the thread's live watches: the same test as `isSnoozeUntilReply` plus
+	// `isMessageSnoozed`, answered by the index instead of reading the thread.
+	const watched = await ctx.db
 		.query('mailMessages')
-		.withIndex('by_thread', (q) => q.eq('threadId', threadId))
-		.collect(); // bounded: one thread's messages
+		.withIndex('by_thread_and_until_reply', (q) =>
+			q.eq('threadId', threadId).eq('isSnoozeUntilReply', true).gt('snoozedUntil', now)
+		)
+		.collect(); // bounded: the owner sets these one message at a time
 	let woke = false;
-	for (const m of messages) {
-		if (m.isSnoozeUntilReply !== true) continue;
-		if (!isMessageSnoozed(m, now)) continue;
+	for (const m of watched) {
 		woke = true;
 		await ctx.db.patch(m._id, {
 			snoozedUntil: undefined,
