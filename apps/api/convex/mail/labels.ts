@@ -20,6 +20,7 @@ import {
 } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { applyLabelToMessage, reconcileThreadLabel } from './labelsMembership';
+import { recordLabelMembership } from './labelMessageIndex';
 import { recordMailLabelled } from './interpret/threadEvents';
 import { readLabelUnreadCounts, recordMessageCounters } from './messageCounters';
 import {
@@ -305,6 +306,7 @@ export const stripLabelReferences = internalMutation({
 					await ctx.db.patch(m._id, { labelIds, updatedAt: now });
 					// Drains the deleted label's unread bucket down to nothing.
 					await recordMessageCounters(ctx, m, { ...m, labelIds });
+					await recordLabelMembership(ctx, m, { ...m, labelIds });
 				}
 			}
 			await ctx.scheduler.runAfter(0, internal.mail.labels.stripLabelReferences, {
@@ -478,6 +480,7 @@ export const toggleOnThread = postboxMutation({
 				updatedAt: now,
 			});
 			await recordMessageCounters(ctx, m, { ...m, labelIds: newLabels });
+			await recordLabelMembership(ctx, m, { ...m, labelIds: newLabels });
 		}
 
 		const threadLabels = new Set(thread.labelIds);

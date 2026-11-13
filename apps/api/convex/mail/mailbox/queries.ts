@@ -25,6 +25,7 @@ import { attachThreadState, type MailListRow, type RowThreadState } from './rowT
 import type { SenderLogoField } from '../senderLogos/cache';
 import type { ThreadListRow } from './threadListRow';
 import { readThreadList } from './threadListRead';
+import { readLabelPage } from '../labelMessageIndex';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -162,34 +163,25 @@ export const listMessages = publicQuery({
 });
 
 /**
- * How deep into a mailbox's recent history the label view scans. Convex has no
- * element-containment index for array fields (an index over `labelIds` matches
- * whole-array equality only), so the label view reads the mailbox's newest
- * messages off `by_mailbox_and_received` and filters membership in-query. A
- * label whose newest message is inside this window is fully served; anything
- * older is out of view — the same bound the old client-side filter had at 500,
- * now doubled, moved server-side, and honest about its edge.
+ * How deep into a mailbox's recent history the label view scans while the
+ * mailbox's label rows (`mail/labelMessageIndex.ts`) are not backfilled yet.
+ * Convex has no element-containment index for array fields (an index over
+ * `labelIds` matches whole-array equality only), so that fallback reads the
+ * mailbox's newest messages off `by_mailbox_and_received` and filters
+ * membership in-query; anything older is out of its view.
  */
 const LABEL_SCAN_WINDOW = 1000;
 
 /**
- * Server-side label view — messages carrying one label, newest first.
+ * Server-side label view — messages carrying one label, newest first,
+ * snoozed rows hidden. Backs `/dashboard/postbox/label/[labelId]`.
  *
- * Backs `/dashboard/postbox/label/[labelId]`, which previously fetched up to
- * 500 recent mailbox messages to the CLIENT and filtered `labelIds` there
- * (the "P7" debt): every visit paid for 500 rows regardless of hit count, and
- * the filtering logic lived outside the access-controlled read path. This
- * keeps the scan on the server: bounded indexed read, in-query membership
- * filter, only matching rows cross the wire.
- *
- * Contract: a single bounded page, NOT keyset pagination. The scan window is
- * the view's total reach, so `nextCursor` is always null by design — a
- * consumer fetches once at its display cap. `hasMore` means matches exist
- * beyond the returned slice (still inside the window); the UI renders an
- * honest cap note rather than offering a Load-more that has nothing to walk.
- * A membership table with true cursor paging is the eventual fix and needs a
- * migration across every `labelIds` writer, and must keep the Listing engine's
- * one return contract.
+ * Once the mailbox's label rows are ready it reads only the label's rows and
+ * their messages, keyset-paged: `nextCursor` resumes after the page, and
+ * `hasMore` means more visible matches follow. Until then it falls back to the
+ * bounded scan of the newest {@link LABEL_SCAN_WINDOW} messages, which ignores
+ * `cursor`, returns `nextCursor: null`, and sets `hasMore` when matches exist
+ * beyond the slice inside that window.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listByLabel = publicQuery({
@@ -197,12 +189,13 @@ export const listByLabel = publicQuery({
 		mailboxId: v.id('mailboxes'),
 		labelId: v.id('mailLabels'),
 		limit: v.optional(v.number()),
+		cursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const empty = {
 			messages: [] as Array<MailListRow & RowThreadState & SenderLogoField>,
 			hasMore: false,
-			nextCursor: null,
+			nextCursor: null as string | null,
 		};
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
 		if (!mailbox) return empty;
@@ -215,10 +208,16 @@ export const listByLabel = publicQuery({
 		const now = Date.now();
 		const limit = Math.min(Math.max(1, args.limit ?? 200), LABEL_SCAN_WINDOW);
 
-		// Scan of the mailbox's newest messages, filtered to the label. Bounded:
-		// LABEL_SCAN_WINDOW rows off `by_mailbox_and_received` — the documented,
-		// deliberate reach of this view (see above); Convex has no
-		// element-containment index for array fields to do better today.
+		const indexed = await readLabelPage(ctx.db, args.mailboxId, args.labelId, {
+			limit,
+			cursor: args.cursor,
+			now,
+		});
+		if (indexed) {
+			return { ...indexed, messages: await attachThreadState(ctx, indexed.messages) };
+		}
+
+		// Not backfilled yet: the bounded scan of the mailbox's newest messages.
 		const scanned = await ctx.db
 			.query('mailMessages')
 			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))

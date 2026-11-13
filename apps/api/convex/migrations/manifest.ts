@@ -189,4 +189,11 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		isSteppingStone: false,
 		run: internal.migrations['0073_backfill_thread_inbox_recency'].run,
 	},
+	{
+		migration: '0074_backfill_label_membership',
+		introducedIn: '0.6.22',
+		dependsOn: [],
+		isSteppingStone: false,
+		run: internal.migrations['0074_backfill_label_membership'].run,
+	},
 ];

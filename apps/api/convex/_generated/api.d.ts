@@ -148,6 +148,7 @@ import type * as migrations_0069_restrict_captured_file_knowledge from '../migra
 import type * as migrations_0070_reconcile_fenced_threads from '../migrations/0070_reconcile_fenced_threads.js';
 import type * as migrations_0071_backfill_thread_sender_names from '../migrations/0071_backfill_thread_sender_names.js';
 import type * as migrations_0073_backfill_thread_inbox_recency from '../migrations/0073_backfill_thread_inbox_recency.js';
+import type * as migrations_0074_backfill_label_membership from '../migrations/0074_backfill_label_membership.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -1515,6 +1516,7 @@ import type * as mail_interpret_todo from '../mail/interpret/todo.js';
 import type * as mail_knowledgeScreen from '../mail/knowledgeScreen.js';
 import type * as mail_labels from '../mail/labels.js';
 import type * as mail_labelsMembership from '../mail/labelsMembership.js';
+import type * as mail_labelMessageIndex from '../mail/labelMessageIndex.js';
 import type * as mail_labelsTree from '../mail/labelsTree.js';
 import type * as mail_legacySummaryRows from '../mail/legacySummaryRows.js';
 import type * as mail_liveKnowledge from '../mail/liveKnowledge.js';
@@ -1805,6 +1807,7 @@ import type * as schema_mailComposition from '../schema/mailComposition.js';
 import type * as schema_mailContacts from '../schema/mailContacts.js';
 import type * as schema_mailContactsCardDav from '../schema/mailContactsCardDav.js';
 import type * as schema_mailFolderMembership from '../schema/mailFolderMembership.js';
+import type * as schema_mailLabelMembership from '../schema/mailLabelMembership.js';
 import type * as schema_mailMessages from '../schema/mailMessages.js';
 import type * as schema_mailRules from '../schema/mailRules.js';
 import type * as schema_mailSettings from '../schema/mailSettings.js';
@@ -3587,6 +3590,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/knowledgeScreen': typeof mail_knowledgeScreen;
 	'mail/labels': typeof mail_labels;
 	'mail/labelsMembership': typeof mail_labelsMembership;
+	'mail/labelMessageIndex': typeof mail_labelMessageIndex;
 	'mail/labelsTree': typeof mail_labelsTree;
 	'mail/legacySummaryRows': typeof mail_legacySummaryRows;
 	'mail/liveKnowledge': typeof mail_liveKnowledge;
@@ -3821,6 +3825,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0070_reconcile_fenced_threads': typeof migrations_0070_reconcile_fenced_threads;
 	'migrations/0071_backfill_thread_sender_names': typeof migrations_0071_backfill_thread_sender_names;
 	'migrations/0073_backfill_thread_inbox_recency': typeof migrations_0073_backfill_thread_inbox_recency;
+	'migrations/0074_backfill_label_membership': typeof migrations_0074_backfill_label_membership;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
@@ -3982,6 +3987,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/mailContacts': typeof schema_mailContacts;
 	'schema/mailContactsCardDav': typeof schema_mailContactsCardDav;
 	'schema/mailFolderMembership': typeof schema_mailFolderMembership;
+	'schema/mailLabelMembership': typeof schema_mailLabelMembership;
 	'schema/mailMessages': typeof schema_mailMessages;
 	'schema/mailRules': typeof schema_mailRules;
 	'schema/mailSettings': typeof schema_mailSettings;

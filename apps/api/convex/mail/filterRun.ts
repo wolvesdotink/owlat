@@ -30,6 +30,7 @@ import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions'
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { cancelJob, readJob, startJob } from './_jobLifecycle';
 import { recordMessageCounters } from './messageCounters';
+import { recordLabelMembership } from './labelMessageIndex';
 import { changedRemoteFlags, recordRemoteChanges } from './external/remoteOps';
 
 /**
@@ -184,6 +185,7 @@ async function applyActions(
 		}
 		await ctx.db.patch(message._id, { ...flagPatch, labelIds, modseq, updatedAt: now });
 		await recordMessageCounters(ctx, message, { ...message, ...flagPatch, labelIds });
+		await recordLabelMembership(ctx, message, { ...message, labelIds });
 		await rebuildThreadAggregates(ctx, message.threadId);
 		const flags = changedRemoteFlags(message, {
 			seen: flagPatch.flagSeen,

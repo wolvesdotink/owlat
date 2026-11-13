@@ -20,6 +20,7 @@ import { copyMessageBody } from '../lib/messageBodyStore';
 import { indexMessageAttachments } from './attachmentIndex';
 import { recordFolderMembership } from './folderMembership';
 import { recordMessageCounters } from './messageCounters';
+import { recordLabelMembership } from './labelMessageIndex';
 import { applyMailboxUsageDelta } from './mailboxUsage';
 import { mergeThreadParticipants } from './threadAggregates';
 import { conversationRootId, resolveDeliveryThread } from './deliveryPipeline/threading';
@@ -165,6 +166,7 @@ export async function insertMessageCopy(
 	const messageId = await ctx.db.insert('mailMessages', copy);
 	await copyMessageBody(ctx.db, _id, messageId);
 	await recordMessageCounters(ctx, null, copy);
+	await recordLabelMembership(ctx, null, { ...copy, _id: messageId });
 	await recordFolderMembership(ctx, null, copy);
 	await indexMessageAttachments(ctx, { ...copy, _id: messageId });
 	await applyMailboxUsageDelta(ctx, mailbox, message.rawSize, now);

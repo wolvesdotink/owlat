@@ -103,6 +103,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	counterBuckets: makeSweepStep('counterBuckets'),
 	mailFolderMembership: makeSweepStep('mailFolderMembership'),
 	mailFolderUidBlocks: makeSweepStep('mailFolderUidBlocks'),
+	mailLabelMembership: makeSweepStep('mailLabelMembership'),
+	mailLabelMessages: makeSweepStep('mailLabelMessages'),
 	mailAliases: makeSweepStep('mailAliases'),
 	mailFolders: makeSweepStep('mailFolders'),
 	mailLabels: makeSweepStep('mailLabels'),
