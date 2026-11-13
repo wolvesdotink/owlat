@@ -44,6 +44,9 @@ const {
 const showLinkEmail = ref(false);
 const showEditChannel = ref(false);
 const showMembers = ref(false);
+// Below lg there is no room for the member column, so the same toggle opens
+// the list in a dialog instead.
+const membersAsColumn = useMediaQuery('(min-width: 1024px)');
 
 const { archiveChannel, unarchiveChannel } = useChatActions();
 const showArchiveConfirm = ref(false);
@@ -84,9 +87,31 @@ useHead({
 	},
 });
 
+const confirm = useConfirm();
+
 const handleLeave = async () => {
+	const isPrivate = room.value?.visibility === 'private';
+	const leave = await confirm({
+		title: t('dashboard.chat.detail.leaveConfirm.title'),
+		body: isPrivate
+			? t('dashboard.chat.detail.leaveConfirm.privateDescription')
+			: t('dashboard.chat.detail.leaveConfirm.description'),
+		confirmText: t('dashboard.chat.detail.leaveConfirm.confirm'),
+		variant: isPrivate ? 'danger' : 'warning',
+	});
+	if (!leave) return;
 	await leaveRoom();
 	router.push('/dashboard/chat');
+};
+
+const handleDelete = async (messageId: Id<'chatMessages'>) => {
+	const remove = await confirm({
+		title: t('dashboard.chat.detail.deleteConfirm.title'),
+		body: t('dashboard.chat.detail.deleteConfirm.description'),
+		confirmText: t('common.delete'),
+		variant: 'danger',
+	});
+	if (remove) await deleteMessage(messageId);
 };
 </script>
 
@@ -99,7 +124,7 @@ const handleLeave = async () => {
 		<div class="md:hidden px-3 border-b border-border-subtle">
 			<button
 				type="button"
-				class="-mx-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+				class="-mx-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				aria-controls="chat-rail"
 				:aria-expanded="railOpen"
 				@click="openRail"
@@ -123,9 +148,9 @@ const handleLeave = async () => {
 			class="flex-1 flex flex-col items-center justify-center text-center px-6"
 		>
 			<LockIcon class="w-8 h-8 text-text-tertiary mb-3" :stroke-width="1.5" />
-			<h3 class="text-lg font-medium text-text-primary">
+			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.chat.detail.unavailableTitle') }}
-			</h3>
+			</h2>
 			<p class="text-sm text-text-secondary mt-1">
 				{{ t('dashboard.chat.detail.unavailableDescription') }}
 			</p>
@@ -141,6 +166,7 @@ const handleLeave = async () => {
 				:room="room"
 				:member-count="members.length"
 				:can-see-linked-email="!!linkedThread"
+				:members-open="showMembers"
 				@show-members="showMembers = !showMembers"
 				@link-email="showLinkEmail = true"
 				@edit-channel="showEditChannel = true"
@@ -177,6 +203,12 @@ const handleLeave = async () => {
 					>
 						{{ t('dashboard.chat.detail.loadEarlier') }}
 					</button>
+					<p
+						v-else-if="!messagesLoading && hasMoreMessages && atMaxMessages"
+						class="mx-auto my-2 px-3 text-xs text-text-tertiary"
+					>
+						{{ t('dashboard.chat.detail.historyCapped', { count: messages.length }) }}
+					</p>
 					<div v-if="messagesError" class="flex-1 flex items-center justify-center">
 						<UiQueryBoundary :error="messagesError" @retry="refetchMessages" />
 					</div>
@@ -185,8 +217,8 @@ const handleLeave = async () => {
 						ref="messageList"
 						:messages="messages"
 						:current-user-id="currentUserId"
-						@edit="(id, text) => editMessage(id, text)"
-						@delete="(id) => deleteMessage(id)"
+						:save-edit="editMessage"
+						@delete="handleDelete"
 					/>
 					<ChatRoomSkeleton v-else :header="false" />
 					<!-- Keyed by room: a send that resolves after a switch settles its own room's draft. -->
@@ -202,17 +234,26 @@ const handleLeave = async () => {
 
 				<!-- Member panel (right column) -->
 				<div
-					v-if="showMembers"
-					class="hidden lg:block w-72 flex-shrink-0 border-l border-border-subtle bg-bg-elevated"
+					v-if="showMembers && membersAsColumn"
+					class="w-72 flex-shrink-0 border-l border-border-subtle bg-bg-elevated"
 				>
 					<ChatMemberList :room="room" :members="members" :current-user-id="currentUserId" />
 				</div>
 			</div>
+
+			<UiModal
+				:open="showMembers && !membersAsColumn"
+				:title="t('components.chat.chatMemberList.heading', { count: members.length })"
+				@update:open="(v: boolean) => (showMembers = v)"
+			>
+				<ChatMemberList :room="room" :members="members" :current-user-id="currentUserId" />
+			</UiModal>
 		</template>
 
 		<ChatLinkEmailDialog
 			v-if="showLinkEmail && room"
 			:room-id="room._id"
+			:linked="!!room.linkedInboxThreadId"
 			@close="showLinkEmail = false"
 		/>
 		<ChatEditChannelDialog

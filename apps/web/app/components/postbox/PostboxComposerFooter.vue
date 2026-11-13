@@ -189,7 +189,9 @@ function onPickFiles(event: Event) {
 			class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0"
 			data-testid="composer-footer-row"
 		>
-			<div class="flex items-center gap-2 min-w-0">
+			<!-- Wraps: Send plus up to seven 44px icon buttons on a coarse pointer
+			     are wider than a phone. -->
+			<div class="flex flex-wrap items-center gap-2 min-w-0">
 				<PostboxComposerSendButton
 					:disabled="!canSend || sending || isScheduled"
 					:sending="sending"
@@ -274,7 +276,7 @@ function onPickFiles(event: Event) {
 							<span>{{ t('components.postbox.postboxComposerFooter.signature') }}</span>
 							<select
 								:value="activeSignatureId ?? ''"
-								:disabled="bodyPending"
+								:disabled="bodyPending || isScheduled"
 								class="input input-sm ml-auto w-auto"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
@@ -307,7 +309,7 @@ function onPickFiles(event: Event) {
 								type="button"
 								role="menuitem"
 								class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface disabled:opacity-50"
-								:disabled="bodyPending || availability.isInserting.value"
+								:disabled="bodyPending || isScheduled || availability.isInserting.value"
 								data-testid="composer-insert-availability"
 								@click="
 									availability.insertAvailability();
@@ -343,14 +345,14 @@ function onPickFiles(event: Event) {
 							v-if="draftRow"
 							type="button"
 							role="menuitem"
-							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-bg-surface"
+							class="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left text-error hover:bg-error/10"
 							data-testid="composer-discard"
 							@click="
 								emit('discard');
 								close();
 							"
 						>
-							<TrashIcon class="w-4 h-4 text-text-tertiary" />
+							<TrashIcon class="w-4 h-4" />
 							{{ t('components.postbox.postboxComposerFooter.discardDraft') }}
 						</button>
 						<template v-if="richBody">

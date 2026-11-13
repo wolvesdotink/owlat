@@ -185,8 +185,11 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 				>
 					<template v-for="filter in statusFilters" :key="filter.value" #[`option-${filter.value}`]>
 						{{ filter.label }}
-						<span v-if="statusCount(filter.value) !== undefined" class="text-text-tertiary">
-							({{ statusCount(filter.value) }})
+						<span
+							v-if="statusCount(filter.value) !== undefined"
+							class="tabular-nums text-text-tertiary"
+						>
+							{{ statusCount(filter.value) }}
 						</span>
 					</template>
 				</UiSegmentedControl>

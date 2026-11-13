@@ -13,7 +13,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{ files: [files: File[]] }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+// Every claim is named, so attaching one file does not bring the banner back
+// for the next one.
+const claimList = computed(() =>
+	new Intl.ListFormat(locale.value, { style: 'long', type: 'conjunction' }).format([
+		...props.claims,
+	])
+);
 const input = ref<HTMLInputElement | null>(null);
 
 function onPicked(event: Event) {
@@ -33,7 +41,11 @@ function onPicked(event: Event) {
 	>
 		<p class="min-w-0 flex-1">
 			<strong class="font-medium">{{ t('components.answer.plan.banner.title') }}</strong>
-			{{ t('components.answer.plan.banner.body', { claim: props.claims[0] }) }}
+			{{
+				props.claims.length > 1
+					? t('components.answer.plan.banner.bodyMany', { claims: claimList })
+					: t('components.answer.plan.banner.body', { claim: props.claims[0] })
+			}}
 		</p>
 		<template v-if="canAttach">
 			<input ref="input" type="file" multiple class="hidden" @change="onPicked" />

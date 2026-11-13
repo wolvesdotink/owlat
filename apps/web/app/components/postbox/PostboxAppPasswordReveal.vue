@@ -12,6 +12,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// The heading lives in the body, so the dialog is named by pointing at it.
+const titleId = useId();
 
 const { copy, copiedKey } = useCopyToClipboard();
 const copied = computed(() => copiedKey.value === 'app-password');
@@ -27,7 +29,12 @@ function close() {
 </script>
 
 <template>
-	<UiModal :open="open && !!password" size="md" @update:open="emit('update:open', $event)">
+	<UiModal
+		:open="open && !!password"
+		size="md"
+		:labelled-by="titleId"
+		@update:open="emit('update:open', $event)"
+	>
 		<div v-if="password">
 			<header class="flex items-start gap-3 mb-4">
 				<div
@@ -36,7 +43,7 @@ function close() {
 					<KeyIcon class="w-5 h-5" />
 				</div>
 				<div class="flex-1">
-					<h2 class="text-lg font-semibold">
+					<h2 :id="titleId" class="text-lg font-semibold">
 						{{ t('components.postbox.postboxAppPasswordReveal.title') }}
 					</h2>
 					<I18nT
@@ -46,7 +53,9 @@ function close() {
 						class="text-sm text-text-secondary mt-0.5"
 					>
 						<template #client>
-							<strong>{{ label || t('components.postbox.postboxAppPasswordReveal.yourClient') }}</strong>
+							<strong>{{
+								label || t('components.postbox.postboxAppPasswordReveal.yourClient')
+							}}</strong>
 						</template>
 					</I18nT>
 				</div>

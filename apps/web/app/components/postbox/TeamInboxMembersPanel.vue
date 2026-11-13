@@ -122,8 +122,27 @@ async function handleAdd() {
 	memberToAdd.value = '';
 }
 
-async function handleRemove(authUserId: string) {
-	await removeMember.run({ mailboxId: props.mailboxId, authUserId });
+// Removing a member cuts their access to the inbox at once, so it asks first
+// and names the person, like the ownership transfer below.
+const confirm = useConfirm();
+function memberLabel(member: { name: string | null; email: string | null }): string {
+	return member.name || member.email || t('components.postbox.teamInboxMembersPanel.thisMember');
+}
+async function handleRemove(member: {
+	authUserId: string;
+	name: string | null;
+	email: string | null;
+}) {
+	const confirmed = await confirm({
+		title: t('components.postbox.teamInboxMembersPanel.removeConfirmTitle', {
+			member: memberLabel(member),
+		}),
+		body: t('components.postbox.teamInboxMembersPanel.removeConfirmBody'),
+		confirmText: t('components.postbox.teamInboxMembersPanel.removeMember'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
+	await removeMember.run({ mailboxId: props.mailboxId, authUserId: member.authUserId });
 }
 
 // Transferring ownership is irreversible for the current owner (only an org
@@ -132,7 +151,7 @@ const transferTarget = ref<{ authUserId: string; label: string } | null>(null);
 function askTransfer(member: { authUserId: string; name: string | null; email: string | null }) {
 	transferTarget.value = {
 		authUserId: member.authUserId,
-		label: member.name || member.email || t('components.postbox.teamInboxMembersPanel.thisMember'),
+		label: memberLabel(member),
 	};
 }
 async function confirmTransfer() {
@@ -165,7 +184,12 @@ const busy = computed(
 				{{ t('components.postbox.teamInboxMembersPanel.everyoneAdded') }}
 			</div>
 			<div v-else class="flex items-center gap-2">
-				<select v-model="memberToAdd" class="input flex-1" :disabled="busy">
+				<select
+					v-model="memberToAdd"
+					class="input flex-1"
+					:disabled="busy"
+					:aria-label="t('components.postbox.teamInboxMembersPanel.addTitle')"
+				>
 					<option value="">
 						{{ t('components.postbox.teamInboxMembersPanel.selectTeammate') }}
 					</option>
@@ -266,15 +290,19 @@ const busy = computed(
 							v-if="canManage && m.role !== 'owner'"
 							:text="t('components.postbox.teamInboxMembersPanel.removeMember')"
 						>
-							<button
-								type="button"
-								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-								:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
+							<UiButton
+								variant="danger-ghost"
+								size="sm"
+								:aria-label="
+									t('components.postbox.teamInboxMembersPanel.removeMemberNamed', {
+										member: memberLabel(m),
+									})
+								"
 								:disabled="busy"
-								@click="handleRemove(m.authUserId)"
+								@click="handleRemove(m)"
 							>
 								<UserMinusCornerIcon class="w-4 h-4" />
-							</button>
+							</UiButton>
 						</UiTooltip>
 					</div>
 				</li>

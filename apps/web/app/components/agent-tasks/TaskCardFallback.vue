@@ -88,7 +88,7 @@ const copy = computed(() =>
 					{{ copy.body }}
 					<span
 						v-if="kind"
-						class="ml-1 inline-block max-w-full truncate font-mono text-[10px] px-1 py-px rounded bg-bg-elevated text-text-tertiary align-middle"
+						class="ml-1 inline-block max-w-full truncate font-mono text-2xs px-1 py-px rounded bg-bg-elevated text-text-tertiary align-middle"
 						>{{ kindTag }}</span
 					>
 				</p>
@@ -105,20 +105,21 @@ const copy = computed(() =>
 			>
 				{{ t('common.skip') }}
 				<kbd
-					class="ml-1.5 text-[10px] px-1 py-px rounded border border-border-subtle text-text-tertiary"
+					class="ml-1.5 text-2xs px-1 py-px rounded border border-border-subtle text-text-tertiary"
 					>s</kbd
 				>
 			</UiButton>
-			<button
+			<UiButton
 				v-if="canOpen"
+				variant="outline"
 				type="button"
 				data-testid="task-fallback-open"
-				class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+				class="gap-1.5 text-sm"
 				@click="emit('open')"
 			>
-				<ExternalLinkIcon class="w-3.5 h-3.5" />
+				<ExternalLinkIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ t('common.open') }}
-			</button>
+			</UiButton>
 		</div>
 	</TaskCardShell>
 </template>

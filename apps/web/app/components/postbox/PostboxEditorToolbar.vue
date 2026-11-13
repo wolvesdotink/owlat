@@ -44,8 +44,8 @@ const props = withDefaults(
 
 const containerClass = computed(() =>
 	props.variant === 'floating'
-		? 'flex items-center gap-0.5'
-		: 'flex items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface'
+		? 'flex flex-wrap items-center gap-0.5'
+		: 'flex flex-wrap items-center gap-0.5 px-1 py-1 border-b border-border-subtle bg-bg-surface'
 );
 
 const emit = defineEmits<{
@@ -67,8 +67,9 @@ const emit = defineEmits<{
 		>
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
+				:aria-pressed="activeMarks.bold"
 				:aria-label="t('components.postbox.postboxEditorToolbar.bold')"
 				:aria-keyshortcuts="chordAria('mod+b')"
 				@mousedown.prevent
@@ -83,8 +84,9 @@ const emit = defineEmits<{
 		>
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
+				:aria-pressed="activeMarks.italic"
 				:aria-label="t('components.postbox.postboxEditorToolbar.italic')"
 				:aria-keyshortcuts="chordAria('mod+i')"
 				@mousedown.prevent
@@ -99,8 +101,9 @@ const emit = defineEmits<{
 		>
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
+				:aria-pressed="activeMarks.underline"
 				:aria-label="t('components.postbox.postboxEditorToolbar.underline')"
 				:aria-keyshortcuts="chordAria('mod+u')"
 				@mousedown.prevent
@@ -113,8 +116,9 @@ const emit = defineEmits<{
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.heading1')">
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
+				:aria-pressed="activeMarks.h1"
 				:aria-label="t('components.postbox.postboxEditorToolbar.heading1')"
 				@mousedown.prevent
 				@click="emit('heading', 1)"
@@ -125,8 +129,9 @@ const emit = defineEmits<{
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.heading2')">
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
+				:aria-pressed="activeMarks.h2"
 				:aria-label="t('components.postbox.postboxEditorToolbar.heading2')"
 				@mousedown.prevent
 				@click="emit('heading', 2)"
@@ -138,8 +143,9 @@ const emit = defineEmits<{
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.bulletList')">
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
+				:aria-pressed="activeMarks.ul"
 				:aria-label="t('components.postbox.postboxEditorToolbar.bulletList')"
 				@mousedown.prevent
 				@click="emit('list', false)"
@@ -150,8 +156,9 @@ const emit = defineEmits<{
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.orderedList')">
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
+				:aria-pressed="activeMarks.ol"
 				:aria-label="t('components.postbox.postboxEditorToolbar.orderedList')"
 				@mousedown.prevent
 				@click="emit('list', true)"
@@ -162,8 +169,9 @@ const emit = defineEmits<{
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.blockquote')">
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
+				:aria-pressed="activeMarks.quote"
 				:aria-label="t('components.postbox.postboxEditorToolbar.blockquote')"
 				@mousedown.prevent
 				@click="emit('blockquote')"
@@ -178,8 +186,9 @@ const emit = defineEmits<{
 		>
 			<button
 				type="button"
-				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				class="inline-flex items-center justify-center px-1.5 py-1 rounded text-sm hover:bg-bg-elevated pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 				:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
+				:aria-pressed="activeMarks.link"
 				:aria-label="t('components.postbox.postboxEditorToolbar.link')"
 				:aria-keyshortcuts="chordAria('mod+k')"
 				@mousedown.prevent

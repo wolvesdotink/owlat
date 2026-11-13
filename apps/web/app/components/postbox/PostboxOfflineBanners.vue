@@ -6,6 +6,7 @@
 // under the file-size cap; the outbox itself stays mounted in the layout so the
 // drain-on-reconnect watcher runs in Today mode too.
 import { CloudOffIcon, PaperPlaneIcon } from '@coolicons/vue';
+import { formatTime } from '~/utils/formatters';
 
 defineProps<{
 	isOffline: boolean;
@@ -29,32 +30,28 @@ const { t } = useI18n();
 
 <template>
 	<!-- Quiet offline banner: cached list + already-read bodies stay
-	     readable; sends queue on this device and go out on reconnect. -->
+	     readable; sends queue on this device and go out on reconnect. The
+	     sentences wrap: cut off, they would hide what they say. Times use the
+	     app's locale, not the browser's. -->
 	<div
 		v-if="isOffline"
 		class="flex items-center gap-2 px-4 py-2 bg-warning-subtle text-warning text-xs border-b border-border-subtle"
 		role="status"
 	>
 		<CloudOffIcon class="w-3.5 h-3.5 flex-shrink-0" />
-		<span class="truncate">{{
+		<span class="min-w-0">{{
 			cachedAt && queuedCount > 0
 				? t(
 						'components.postbox.postboxOfflineBanners.offlineBannerCachedQueued',
 						{
-							time: new Date(cachedAt).toLocaleTimeString([], {
-								hour: '2-digit',
-								minute: '2-digit',
-							}),
+							time: formatTime(cachedAt),
 							count: queuedCount,
 						},
 						queuedCount
 					)
 				: cachedAt
 					? t('components.postbox.postboxOfflineBanners.offlineBannerCached', {
-							time: new Date(cachedAt).toLocaleTimeString([], {
-								hour: '2-digit',
-								minute: '2-digit',
-							}),
+							time: formatTime(cachedAt),
 						})
 					: queuedCount > 0
 						? t('components.postbox.postboxOfflineBanners.offlineBannerQueued', {
@@ -71,7 +68,7 @@ const { t } = useI18n();
 		role="status"
 	>
 		<PaperPlaneIcon class="w-3.5 h-3.5 flex-shrink-0" />
-		<span class="truncate">{{
+		<span class="min-w-0">{{
 			t(
 				'components.postbox.postboxOfflineBanners.failedSendsBanner',
 				{ count: failedCount },

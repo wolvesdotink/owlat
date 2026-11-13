@@ -59,12 +59,12 @@ const { t } = useI18n();
 					<!-- Version info -->
 					<div class="flex-1 min-w-0 pt-0.5">
 						<div class="flex items-center gap-2">
-							<p class="text-sm font-medium text-text-primary truncate">
+							<p class="text-sm font-medium text-text-primary truncate" :title="version.filename">
 								{{ version.filename }}
 							</p>
 							<span
 								v-if="version._id === currentVersionId"
-								class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-brand-subtle text-brand"
+								class="inline-flex items-center px-1.5 py-0.5 text-2xs font-medium rounded-full bg-brand-subtle text-brand"
 							>
 								{{ t('components.files.versionHistory.current') }}
 							</span>
@@ -89,11 +89,11 @@ const { t } = useI18n();
 							:href="version.url"
 							target="_blank"
 							rel="noopener noreferrer"
-							class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+							class="flex-shrink-0 p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							:aria-label="t('components.files.versionHistory.download')"
 							@click.stop
 						>
-							<DownloadIcon class="w-4 h-4" />
+							<DownloadIcon class="w-4 h-4" aria-hidden="true" />
 						</a>
 					</UiTooltip>
 				</div>

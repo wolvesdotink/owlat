@@ -19,14 +19,16 @@ withDefaults(
 		detail?: string;
 		/** Clamp the detail excerpt to a few lines. */
 		clampDetail?: boolean;
+		/** Id for the ask sentence, so an answer field can be named by it. */
+		askId?: string;
 	}>(),
-	{ ask: undefined, why: undefined, detail: undefined, clampDetail: true }
+	{ ask: undefined, why: undefined, detail: undefined, clampDetail: true, askId: undefined }
 );
 </script>
 
 <template>
 	<div data-testid="task-ask">
-		<p v-if="ask" class="text-sm font-semibold text-text-primary">{{ ask }}</p>
+		<p v-if="ask" :id="askId" class="text-sm font-semibold text-text-primary">{{ ask }}</p>
 		<p
 			v-if="detail"
 			class="text-sm text-text-secondary whitespace-pre-line"
@@ -34,7 +36,7 @@ withDefaults(
 		>
 			{{ detail }}
 		</p>
-		<p v-if="why" data-testid="task-ask-why" class="mt-1 text-[11px] text-text-tertiary">
+		<p v-if="why" data-testid="task-ask-why" class="mt-1 text-2xs text-text-tertiary">
 			{{ why }}
 		</p>
 	</div>

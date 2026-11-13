@@ -76,7 +76,7 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 			<!-- Drag handle: pointer drag, or Space / arrows / Space from the keyboard -->
 			<button
 				type="button"
-				class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 				:class="lifted ? 'text-brand' : 'text-text-tertiary hover:text-text-secondary'"
 				:aria-label="t('dashboard.automations.detail.edit.reorder.handle', { number: index + 1 })"
 				:aria-pressed="lifted"
@@ -116,23 +116,28 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 					</span>
 				</button>
 				<!-- Description: plain text when no pill accent, pill chrome when defined. -->
-				<p v-if="!stepAccent(step.stepType).pill" class="text-sm text-text-secondary truncate">
+				<p
+					v-if="!stepAccent(step.stepType).pill"
+					class="text-sm text-text-secondary truncate"
+					:title="description"
+				>
 					{{ description }}
 				</p>
-				<div v-else class="mt-2">
+				<div v-else class="mt-2 min-w-0">
 					<div
+						:title="description"
 						:class="[
-							'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border',
+							'inline-flex max-w-full items-center gap-2 px-3 py-1.5 rounded-full border',
 							stepAccent(step.stepType).pill!.bg,
 							stepAccent(step.stepType).pill!.border,
 						]"
 					>
 						<component
 							:is="stepInfo(step.stepType).icon"
-							:class="['w-3.5 h-3.5', stepAccent(step.stepType).pill!.text]"
+							:class="['w-3.5 h-3.5 shrink-0', stepAccent(step.stepType).pill!.text]"
 							size="1em"
 						/>
-						<span :class="['text-sm font-medium', stepAccent(step.stepType).pill!.text]">
+						<span :class="['truncate text-sm font-medium', stepAccent(step.stepType).pill!.text]">
 							{{ description }}
 						</span>
 					</div>
@@ -145,7 +150,7 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 					<template #trigger>
 						<button
 							type="button"
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 							:aria-label="
 								t('dashboard.automations.detail.edit.reorder.actions', {
 									number: index + 1,

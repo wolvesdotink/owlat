@@ -94,9 +94,6 @@ const { registerShortcut } = useKeyboardShortcuts();
 registerShortcut({ id: 'mailCard.done', handler: markDone });
 registerShortcut({ id: 'mailCard.previous', handler: () => props.controls.back() });
 registerShortcut({ id: 'mailCard.next', handler: () => props.controls.next() });
-
-const secondaryButton =
-	'inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)';
 </script>
 
 <template>
@@ -110,14 +107,14 @@ const secondaryButton =
 		>
 			<template #chips>
 				<span
-					class="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
+					class="inline-flex items-center gap-1 text-2xs font-medium px-1.5 py-px rounded-full bg-brand/10 text-brand"
 				>
 					<AlarmIcon class="w-3 h-3" />
 					{{ t('components.postbox.postboxReplyFlow.followUp') }}
 				</span>
 				<span
 					v-if="nudgeReason"
-					class="text-[10px] font-medium px-1.5 py-px rounded-full bg-bg-elevated text-text-secondary"
+					class="text-2xs font-medium px-1.5 py-px rounded-full bg-bg-elevated text-text-secondary"
 					data-testid="answer-mail-nudge-reason"
 				>
 					{{ nudgeReason }}
@@ -128,29 +125,32 @@ const secondaryButton =
 		<TaskAsk class="mt-3 mb-4" :ask="headline" :detail="row.snippet" />
 
 		<TaskActions :primary-label="t('common.done')" :primary-icon="CheckIcon" @primary="markDone">
-			<button
+			<!-- The same size and recipe as TaskActions' own buttons beside them. -->
+			<UiButton
 				v-if="canDraftNudge"
-				type="button"
-				:class="secondaryButton"
+				size="sm"
+				variant="outline"
+				class="gap-1.5"
 				data-testid="answer-mail-draft-nudge"
 				@click="draftNudge"
 			>
-				<SparklesIcon class="w-3.5 h-3.5" />
+				<SparklesIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ t('answer.nudge.draft') }}
-			</button>
-			<button
-				type="button"
-				:class="secondaryButton"
+			</UiButton>
+			<UiButton
+				size="sm"
+				variant="outline"
+				class="gap-1.5"
 				data-testid="answer-mail-nudge"
 				@click="answerInAnswerMode"
 			>
-				<ReplyIcon class="w-3.5 h-3.5" />
+				<ReplyIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ t('components.postbox.postboxReplyFlow.reply') }}
-			</button>
-			<button type="button" :class="secondaryButton" @click="openRow">
-				<ExternalLinkIcon class="w-3.5 h-3.5" />
+			</UiButton>
+			<UiButton size="sm" variant="outline" class="gap-1.5" @click="openRow">
+				<ExternalLinkIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				{{ t('common.open') }}
-			</button>
+			</UiButton>
 		</TaskActions>
 	</TaskCardShell>
 </template>

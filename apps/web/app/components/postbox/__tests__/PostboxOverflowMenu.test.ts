@@ -96,4 +96,41 @@ describe('PostboxOverflowMenu', () => {
 		await wrapper.get('.demoted').trigger('click');
 		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
 	});
+
+	it('leaves focus on the trigger when opened with the pointer', async () => {
+		const wrapper = mountMenu({ attachTo: document.body });
+		const trigger = wrapper.get('button[aria-haspopup="menu"]');
+		(trigger.element as HTMLElement).focus();
+		await trigger.trigger('click');
+		await wrapper.vm.$nextTick();
+		expect(document.activeElement).toBe(trigger.element);
+		wrapper.unmount();
+	});
+
+	it('opened from the keyboard, focuses the first item and moves between items with the arrows, Home and End', async () => {
+		const wrapper = mountMenu({ attachTo: document.body });
+		await wrapper.get('button[aria-haspopup="menu"]').trigger('keydown', { key: 'ArrowDown' });
+		await wrapper.vm.$nextTick();
+		await wrapper.vm.$nextTick();
+		const [first, second] = wrapper.findAll('[role="menuitem"]').map((w) => w.element);
+		expect(document.activeElement).toBe(first);
+
+		const press = async (key: string) => {
+			const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+			(document.activeElement as HTMLElement).dispatchEvent(event);
+			await wrapper.vm.$nextTick();
+			return event;
+		};
+		expect((await press('ArrowDown')).defaultPrevented).toBe(true);
+		expect(document.activeElement).toBe(second);
+		await press('ArrowDown');
+		expect(document.activeElement).toBe(first);
+		await press('ArrowUp');
+		expect(document.activeElement).toBe(second);
+		await press('Home');
+		expect(document.activeElement).toBe(first);
+		await press('End');
+		expect(document.activeElement).toBe(second);
+		wrapper.unmount();
+	});
 });

@@ -209,16 +209,22 @@ function toggle(item: BriefItemView) {
 						/>
 					</div>
 				</template>
+				<!-- Rendered open or closed, so the sections it reveals can be folded
+				     away again. -->
 				<button
-					v-else
+					v-if="isPhone"
 					type="button"
-					class="mt-3 flex w-full items-center gap-1 text-left text-xs text-text-tertiary"
+					class="mt-3 flex w-full items-center gap-1 rounded-sm text-left text-xs text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-expanded="moreOpen"
 					data-testid="brief-more"
-					@click="moreOpen = true"
+					@click="moreOpen = !moreOpen"
 				>
-					{{ t('components.brief.phone.more') }}
-					<ChevronRightIcon class="size-3.5" aria-hidden="true" />
+					{{ moreOpen ? t('components.brief.phone.less') : t('components.brief.phone.more') }}
+					<ChevronRightIcon
+						class="size-3.5 transition-transform duration-(--motion-fast)"
+						:class="moreOpen ? '-rotate-90' : ''"
+						aria-hidden="true"
+					/>
 				</button>
 			</template>
 		</template>

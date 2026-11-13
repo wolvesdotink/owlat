@@ -17,12 +17,13 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { defineComponent, h, reactive, ref, defineAsyncComponent, nextTick } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import PostboxComposer from '../PostboxComposer.vue';
 import PostboxComposerEnvelopeLine from '../PostboxComposerEnvelopeLine.vue';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { installConfirm } from '~/__tests__/confirm';
 
 const QUOTED =
 	'<p><br></p><br><br><div class="gmail_quote"><div>On Monday, Jonas wrote:</div>' +
@@ -319,14 +320,32 @@ describe('PostboxComposer frame="answer"', () => {
 	});
 
 	it('shows schedule, the follow-up chip and Discard in its footer', async () => {
+		const confirm = installConfirm();
+		confirm.answerAll(true);
 		const w = mountComposer({ frame: 'answer' });
 		expect(w.find('[data-testid="composer-schedule"]').exists()).toBe(true);
 		expect(w.find('[data-testid="follow-up"]').exists()).toBe(true);
 		await w.get('[data-testid="composer-discard"]').trigger('click');
-		await nextTick();
+		await flushPromises();
+		// The draft holds text, so Discard asked first.
+		expect(confirm.asked).toHaveLength(1);
 		expect(compose.discard).toHaveBeenCalledTimes(1);
 		expect(w.emitted('discarded')).toHaveLength(1);
 		w.unmount();
+		confirm.dispose();
+	});
+
+	it('keeps a draft that holds text when Discard is answered no', async () => {
+		const confirm = installConfirm();
+		confirm.answerAll(false);
+		const w = mountComposer({ frame: 'answer' });
+		await w.get('[data-testid="composer-discard"]').trigger('click');
+		await flushPromises();
+		expect(confirm.asked).toHaveLength(1);
+		expect(compose.discard).not.toHaveBeenCalled();
+		expect(w.emitted('discarded')).toBeUndefined();
+		w.unmount();
+		confirm.dispose();
 	});
 
 	it('lets its footer row wrap, so the status never sits under the buttons on a phone', () => {

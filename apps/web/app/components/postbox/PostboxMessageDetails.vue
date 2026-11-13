@@ -33,9 +33,13 @@ const { t } = useI18n();
 const expanded = ref(false);
 
 // 'skip' while collapsed — the panel is a disclosure, not a preload.
-const { data: details, isLoading } = useConvexQuery(
-	api.mail.mailbox.messages.getMessageDetails,
-	() => (expanded.value ? { messageId: props.messageId as Id<'mailMessages'> } : ('skip' as const))
+const {
+	data: details,
+	isLoading,
+	error: detailsError,
+	refetch: refetchDetails,
+} = useConvexQuery(api.mail.mailbox.messages.getMessageDetails, () =>
+	expanded.value ? { messageId: props.messageId as Id<'mailMessages'> } : ('skip' as const)
 );
 
 const rows = computed(() => (details.value ? buildMessageDetailRows(details.value) : []));
@@ -78,6 +82,13 @@ const { downloading, downloadOriginal } = usePostboxOriginalEml();
 			<p v-if="isLoading" class="text-text-tertiary" role="status">
 				{{ t('components.postbox.postboxMessageDetails.loading') }}
 			</p>
+			<!-- A failed read is not "no details": that would claim the message
+			     carries none. -->
+			<UiQueryBoundary
+				v-else-if="detailsError && !details"
+				:error="detailsError"
+				@retry="refetchDetails"
+			/>
 			<!-- No rows is a real state (a legacy row with no verdicts and no
 			     Reply-To): say so rather than render an empty card. -->
 			<p v-else-if="rows.length === 0" class="text-text-tertiary">

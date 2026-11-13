@@ -99,7 +99,7 @@ const slaPills = computed(() => {
 				:key="f"
 				type="button"
 				:aria-pressed="!mentions && modelValue === f"
-				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 				:class="
 					!mentions && modelValue === f
 						? 'border-brand/30 bg-brand-soft text-brand'
@@ -130,7 +130,7 @@ const slaPills = computed(() => {
 				:key="pill.filter"
 				type="button"
 				:aria-pressed="!mentions && modelValue === pill.filter"
-				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+				class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 				:class="
 					!mentions && modelValue === pill.filter
 						? 'border-brand/30 bg-brand-soft text-brand'
@@ -160,7 +160,7 @@ const slaPills = computed(() => {
 				:key="a"
 				type="button"
 				:aria-pressed="assignee === a"
-				class="rounded-full px-3 py-1 text-xs font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+				class="rounded-full px-3 py-1 text-xs font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 				:class="
 					assignee === a
 						? 'bg-bg-elevated text-text-primary shadow-(--shadow-1)'
@@ -174,7 +174,7 @@ const slaPills = computed(() => {
 		<button
 			type="button"
 			:aria-pressed="mentions"
-			class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50"
+			class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-(--motion-fast) outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 			:class="
 				mentions
 					? 'border-brand/30 bg-brand-soft text-brand'

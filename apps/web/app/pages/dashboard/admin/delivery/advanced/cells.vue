@@ -142,7 +142,9 @@ function select(cellKey: string): void {
 					aria-live="polite"
 					:aria-label="t('dashboard.admin.delivery.advanced.cells.loading')"
 				>
-					<div class="h-64 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<div
+						class="h-64 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
+					/>
 				</div>
 			</template>
 

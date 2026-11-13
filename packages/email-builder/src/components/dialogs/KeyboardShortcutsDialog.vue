@@ -36,6 +36,7 @@ const sections = computed(() =>
 
 <template>
 	<UiModal
+		color-scheme="light"
 		:open="show"
 		:title="t('builder.shortcuts.title')"
 		size="lg"
@@ -43,7 +44,7 @@ const sections = computed(() =>
 	>
 		<div class="flex flex-col gap-5">
 			<section v-for="section in sections" :key="section.group" class="flex flex-col gap-2">
-				<h3 class="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-tertiary m-0">
+				<h3 class="text-2xs font-semibold uppercase tracking-[0.08em] text-text-tertiary m-0">
 					{{ label(section.group) }}
 				</h3>
 				<div
@@ -51,12 +52,12 @@ const sections = computed(() =>
 					:key="shortcut.description"
 					class="flex items-center justify-between gap-4"
 				>
-					<span class="text-[13px] text-text-secondary">{{ label(shortcut.description) }}</span>
+					<span class="text-caption text-text-secondary">{{ label(shortcut.description) }}</span>
 					<span class="flex items-center gap-1 shrink-0">
 						<kbd
 							v-for="key in shortcut.keys"
 							:key="key"
-							class="inline-block py-0.5 px-[7px] rounded bg-bg-surface text-text-primary font-mono text-[11px] font-medium border border-border-subtle"
+							class="inline-block py-0.5 px-[7px] rounded bg-bg-surface text-text-primary font-mono text-2xs font-medium border border-border-subtle"
 							>{{ key }}</kbd
 						>
 					</span>

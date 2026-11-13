@@ -53,6 +53,19 @@ defineEmits<{
 const { t } = useI18n();
 const { labelFor } = useShortcutLabels();
 
+// Focus stays in the box while the arrows move the highlight, so the list has
+// to follow it, or ArrowDown selects rows below the scroll viewport.
+const viewportRef = ref<HTMLElement | null>(null);
+watch(
+	() => props.activeIndex,
+	async (index) => {
+		await nextTick();
+		viewportRef.value
+			?.querySelector(`#app-cmdk-opt-${index}`)
+			?.scrollIntoView?.({ block: 'nearest' });
+	}
+);
+
 interface PrefixLegendEntry {
 	prefix: string;
 	labelKey: string;
@@ -89,7 +102,7 @@ function hintFor(item: PaletteItem): string | null {
 </script>
 
 <template>
-	<div class="max-h-[60vh] overflow-y-auto py-2">
+	<div ref="viewportRef" class="max-h-[60vh] overflow-y-auto py-2">
 		<div id="app-cmdk-list" role="listbox">
 			<div v-for="group in groups" :key="group.key" class="mb-1">
 				<div
@@ -101,6 +114,7 @@ function hintFor(item: PaletteItem): string | null {
 					<span>{{ t(group.heading) }}</span>
 					<button
 						v-if="group.key === 'recent'"
+						type="button"
 						class="text-xs normal-case tracking-normal text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
 						@click="$emit('clearRecent')"
 					>
@@ -147,70 +161,69 @@ function hintFor(item: PaletteItem): string | null {
 					>
 				</button>
 			</div>
+		</div>
 
-			<!-- Ask scope: one synthesized answer with its citations, inside the
+		<!-- The stand-ins sit outside the listbox: an answer, a spinner or an
+		     empty state is not an option to pick. -->
+		<!-- Ask scope: one synthesized answer with its citations, inside the
 		     palette rather than in a modal of its own. -->
-			<template v-if="prompt === 'ask'">
-				<div v-if="askLoading" class="px-4 py-8 text-center text-text-tertiary">
-					<UiSpinner class="mx-auto" size="sm" tone="brand" />
-					<p class="mt-2 text-sm">{{ t('components.query.quickQueryPanel.searching') }}</p>
-				</div>
-				<div v-else-if="askAnswer" class="px-4 py-3">
-					<QueryResult
-						:answer="askAnswer.answer"
-						:sources="askAnswer.sources"
-						:is-truncated="askAnswer.isTruncated === true"
-					/>
-				</div>
-				<div v-else class="px-4 py-8 text-center text-text-tertiary">
-					<SparklesIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
-					<p class="text-sm">{{ t('components.query.quickQueryPanel.emptyTitle') }}</p>
-					<p class="text-xs mt-1">{{ t('components.query.quickQueryPanel.emptyHint') }}</p>
-				</div>
-			</template>
-
-			<!-- Mail ask: the answer from the person's own mail, its sources opening
-		     the messages they cite. -->
-			<template v-else-if="prompt === 'mailAsk'">
-				<div v-if="mailAskLoading" class="px-4 py-8 text-center text-text-tertiary">
-					<UiSpinner class="mx-auto" size="sm" tone="brand" />
-					<p class="mt-2 text-sm">{{ t('components.appCommandPalette.mailAsk.searching') }}</p>
-				</div>
-				<div v-else-if="mailAskAnswer" class="px-4 py-3">
-					<AppCommandPaletteMailAnswer
-						:answer="mailAskAnswer"
-						@open="$emit('openCitation', $event)"
-					/>
-				</div>
-				<div v-else class="px-4 py-8 text-center text-text-tertiary">
-					<MailIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
-					<p class="text-sm">{{ t('components.appCommandPalette.mailAsk.emptyTitle') }}</p>
-					<p class="text-xs mt-1">{{ t('components.appCommandPalette.mailAsk.emptyHint') }}</p>
-				</div>
-			</template>
-
-			<div v-else-if="isSearching && !hasRows" class="px-4 py-8 text-center text-text-tertiary">
+		<template v-if="prompt === 'ask'">
+			<div v-if="askLoading" class="px-4 py-8 text-center text-text-tertiary">
 				<UiSpinner class="mx-auto" size="sm" tone="brand" />
-				<p class="mt-2 text-sm">{{ t('components.appCommandPalette.searching') }}</p>
+				<p class="mt-2 text-sm">{{ t('components.query.quickQueryPanel.searching') }}</p>
 			</div>
+			<div v-else-if="askAnswer" class="px-4 py-3">
+				<QueryResult
+					:answer="askAnswer.answer"
+					:sources="askAnswer.sources"
+					:is-truncated="askAnswer.isTruncated === true"
+				/>
+			</div>
+			<div v-else class="px-4 py-8 text-center text-text-tertiary">
+				<SparklesIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
+				<p class="text-sm">{{ t('components.query.quickQueryPanel.emptyTitle') }}</p>
+				<p class="text-xs mt-1">{{ t('components.query.quickQueryPanel.emptyHint') }}</p>
+			</div>
+		</template>
 
-			<!-- An empty box has searched for nothing, so it never says "no matches".
-			     One Mail character has not searched yet either: the hits wait for two. -->
-			<div
-				v-else-if="!hasRows && matchTerm.trim()"
-				class="px-4 py-8 text-center text-text-tertiary"
-			>
-				<SearchIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
-				<p class="text-sm">
-					{{
-						matchTerm.trim().length >= SEARCH_MIN_QUERY
-							? t('components.appCommandPalette.noResults', { query: matchTerm })
-							: prompt === 'mailSearch'
-								? t('components.appCommandPalette.keepTyping')
-								: t('components.appCommandPalette.noMatches')
-					}}
-				</p>
+		<!-- Mail ask: the answer from the person's own mail, its sources opening
+		     the messages they cite. -->
+		<template v-else-if="prompt === 'mailAsk'">
+			<div v-if="mailAskLoading" class="px-4 py-8 text-center text-text-tertiary">
+				<UiSpinner class="mx-auto" size="sm" tone="brand" />
+				<p class="mt-2 text-sm">{{ t('components.appCommandPalette.mailAsk.searching') }}</p>
 			</div>
+			<div v-else-if="mailAskAnswer" class="px-4 py-3">
+				<AppCommandPaletteMailAnswer
+					:answer="mailAskAnswer"
+					@open="$emit('openCitation', $event)"
+				/>
+			</div>
+			<div v-else class="px-4 py-8 text-center text-text-tertiary">
+				<MailIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
+				<p class="text-sm">{{ t('components.appCommandPalette.mailAsk.emptyTitle') }}</p>
+				<p class="text-xs mt-1">{{ t('components.appCommandPalette.mailAsk.emptyHint') }}</p>
+			</div>
+		</template>
+
+		<div v-else-if="isSearching && !hasRows" class="px-4 py-8 text-center text-text-tertiary">
+			<UiSpinner class="mx-auto" size="sm" tone="brand" />
+			<p class="mt-2 text-sm">{{ t('components.appCommandPalette.searching') }}</p>
+		</div>
+
+		<!-- An empty box has searched for nothing, so it never says "no matches".
+			     One Mail character has not searched yet either: the hits wait for two. -->
+		<div v-else-if="!hasRows && matchTerm.trim()" class="px-4 py-8 text-center text-text-tertiary">
+			<SearchIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
+			<p class="text-sm">
+				{{
+					matchTerm.trim().length >= SEARCH_MIN_QUERY
+						? t('components.appCommandPalette.noResults', { query: matchTerm })
+						: prompt === 'mailSearch'
+							? t('components.appCommandPalette.keepTyping')
+							: t('components.appCommandPalette.noMatches')
+				}}
+			</p>
 		</div>
 
 		<!-- Outside the listbox: a legend is not an option to pick. -->

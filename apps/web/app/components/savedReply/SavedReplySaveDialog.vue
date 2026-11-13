@@ -14,6 +14,7 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import { stripInlineImages } from '@owlat/shared/inlineImages';
 import { useCreateSavedReply, type SavedReplyScope } from '~/composables/useSavedReplies';
 import { ImageOffIcon } from '@coolicons/vue';
+import UiSelectableListItem from '@owlat/ui/components/ui/SelectableListItem.vue';
 
 const props = defineProps<{
 	/** The text to save, as the composer's HTML (no quote, no signature). */
@@ -62,9 +63,14 @@ async function save() {
 				: t('shared.savedReplies.saveDialog.title')
 		"
 	>
-		<form class="space-y-3" data-testid="saved-reply-save-dialog" @submit.prevent="save">
+		<form
+			id="saved-reply-save-form"
+			class="space-y-3"
+			data-testid="saved-reply-save-dialog"
+			@submit.prevent="save"
+		>
 			<label class="block">
-				<span class="mb-1 block text-sm text-text-secondary">
+				<span class="label">
 					{{ t('shared.savedReplies.fields.name') }}
 				</span>
 				<input
@@ -77,7 +83,7 @@ async function save() {
 				/>
 			</label>
 			<label class="block">
-				<span class="mb-1 block text-sm text-text-secondary">
+				<span class="label">
 					{{ t('shared.savedReplies.fields.shortcut') }}
 				</span>
 				<input
@@ -88,21 +94,29 @@ async function save() {
 					:placeholder="t('shared.savedReplies.fields.shortcutPlaceholder')"
 				/>
 			</label>
-			<fieldset v-if="isAdmin" class="space-y-1">
-				<legend class="mb-1 text-sm text-text-secondary">
+			<fieldset v-if="isAdmin" class="space-y-2">
+				<legend class="label">
 					{{ t('shared.savedReplies.fields.scope') }}
 				</legend>
-				<label class="flex items-center gap-2 text-sm">
-					<input v-model="scope" type="radio" value="personal" />
-					{{ t('shared.savedReplies.scopes.personal') }}
-				</label>
-				<label class="flex items-center gap-2 text-sm">
-					<input v-model="scope" type="radio" value="shared" />
-					{{ t('shared.savedReplies.scopes.shared') }}
-				</label>
+				<UiSelectableListItem
+					:model-value="scope"
+					type="radio"
+					name="saved-reply-scope"
+					value="personal"
+					:label="t('shared.savedReplies.scopes.personal')"
+					@update:model-value="scope = 'personal'"
+				/>
+				<UiSelectableListItem
+					:model-value="scope"
+					type="radio"
+					name="saved-reply-scope"
+					value="shared"
+					:label="t('shared.savedReplies.scopes.shared')"
+					@update:model-value="scope = 'shared'"
+				/>
 			</fieldset>
 			<div>
-				<p class="mb-1 text-sm text-text-secondary">{{ t('shared.savedReplies.fields.text') }}</p>
+				<p class="label">{{ t('shared.savedReplies.fields.text') }}</p>
 				<p
 					class="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-bg-surface p-3 text-sm text-text-primary"
 				>
@@ -117,14 +131,20 @@ async function save() {
 					{{ t('shared.savedReplies.saveDialog.imagesLeftOut', kept.removed) }}
 				</p>
 			</div>
-			<div class="flex items-center justify-end gap-2">
-				<UiButton variant="ghost" type="button" @click="open = false">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton type="submit" :disabled="!name.trim() || !preview || saving">
-					{{ t('shared.savedReplies.saveDialog.save') }}
-				</UiButton>
-			</div>
 		</form>
+		<!-- In the footer, so Save stays in view when a long preview scrolls the body. -->
+		<template #footer>
+			<UiButton variant="ghost" type="button" :disabled="saving" @click="open = false">
+				{{ t('common.cancel') }}
+			</UiButton>
+			<UiButton
+				type="submit"
+				form="saved-reply-save-form"
+				:disabled="!name.trim() || !preview"
+				:loading="saving"
+			>
+				{{ t('shared.savedReplies.saveDialog.save') }}
+			</UiButton>
+		</template>
 	</UiModal>
 </template>

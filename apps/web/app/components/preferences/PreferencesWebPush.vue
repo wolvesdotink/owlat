@@ -191,21 +191,31 @@ async function onRemove(id: Id<'pushSubscriptions'>) {
 					{{ t(`${KEY}.devices.empty`) }}
 				</p>
 				<ul v-else class="mt-2 divide-y divide-border-subtle" data-testid="web-push-devices">
-					<li v-for="device in devices" :key="device.id" class="py-2.5 flex items-center gap-3">
+					<li
+						v-for="device in devices"
+						:key="device.id"
+						class="py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1"
+					>
 						<component
 							:is="isPhone(device.label) ? MobileIcon : MonitorIcon"
 							class="w-4 h-4 shrink-0 text-text-secondary"
 						/>
-						<div class="min-w-0 flex-1">
+						<div class="min-w-0 flex-[1_1_12rem]">
 							<p class="text-sm flex items-center gap-2">
-								<span class="truncate">{{ device.label }}</span>
+								<span class="truncate" :title="device.label">{{ device.label }}</span>
 								<UiBadge v-if="device.isCurrent" variant="neutral">
 									{{ t(`${KEY}.devices.current`) }}
 								</UiBadge>
 							</p>
 							<p class="text-xs text-text-tertiary">{{ deviceMeta(device) }}</p>
 						</div>
-						<UiButton size="sm" variant="ghost" @click="sendTest(device.id)">
+						<UiButton
+							size="sm"
+							variant="ghost"
+							class="ml-auto"
+							:aria-label="t(`${KEY}.devices.testLabel`, { device: device.label })"
+							@click="sendTest(device.id)"
+						>
 							{{ t(`${KEY}.devices.test`) }}
 						</UiButton>
 						<UiButton

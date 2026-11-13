@@ -223,7 +223,7 @@ function openColorPicker(index: number) {
 									updateStopPosition(index, parseInt((e.target as HTMLInputElement).value) || 0)
 							"
 						/>
-						<span class="text-[11px] text-text-tertiary select-none">%</span>
+						<span class="text-2xs text-text-tertiary select-none">%</span>
 					</div>
 
 					<!-- Remove button -->

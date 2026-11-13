@@ -189,6 +189,45 @@ describe('AnswerTeamAttachments', () => {
 	});
 });
 
+describe('AnswerTeamAttachments menu keys', () => {
+	it('moves between items with the arrow keys, Home and End', async () => {
+		contactFiles.value = [
+			{ _id: 'sf_2', filename: 'contract.pdf', fileSize: 1, threadId: 'ct_other' },
+			{ _id: 'sf_3', filename: 'here.pdf', fileSize: 1, threadId: 'ct_1' },
+		];
+		const wrapper = mountFiles();
+		await wrapper.get('[data-testid="answer-team-attach"]').trigger('click');
+		await flushPromises();
+		const items = wrapper.findAll('[role="menuitem"]').map((item) => item.element);
+		expect(items).toHaveLength(3);
+		const press = (key: string) =>
+			document.activeElement!.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			);
+
+		press('ArrowDown');
+		expect(document.activeElement).toBe(items[1]);
+		press('End');
+		expect(document.activeElement).toBe(items[2]);
+		press('ArrowDown');
+		expect(document.activeElement).toBe(items[0]);
+		press('ArrowUp');
+		expect(document.activeElement).toBe(items[2]);
+		press('Home');
+		expect(document.activeElement).toBe(items[0]);
+	});
+
+	it('names an unnamed contact instead of leaving "Other files for "', async () => {
+		contactFiles.value = [
+			{ _id: 'sf_2', filename: 'contract.pdf', fileSize: 1, threadId: 'ct_other' },
+		];
+		const wrapper = mountFiles({ contactName: '' });
+		await wrapper.get('[data-testid="answer-team-attach"]').trigger('click');
+		await flushPromises();
+		expect(wrapper.get('[role="menu"]').text()).toContain('Other files for this contact');
+	});
+});
+
 describe('AnswerTeamAttachments upload queue', () => {
 	const upload = (id: string, status: 'queued' | 'uploading', progress = 0) => ({
 		id,

@@ -90,22 +90,24 @@ async function confirmRemove() {
 			@submit.prevent="handleCreate"
 		>
 			<div class="min-w-0 flex-[1_1_16rem]">
-				<label for="newaddress" class="text-sm font-medium block mb-1">
+				<label for="newaddress" class="label">
 					{{ t('dashboard.preferences.forwarding.forwardTo') }}
 				</label>
 				<input
 					id="newaddress"
 					v-model="newAddress"
-					type="text"
+					type="email"
+					autocomplete="email"
 					class="input w-full"
 					:placeholder="t('dashboard.preferences.forwarding.addressPlaceholder')"
 				/>
 			</div>
-			<label class="flex items-center gap-1.5 text-sm pb-2">
-				<input v-model="keepLocal" type="checkbox" />
-				{{ t('dashboard.preferences.forwarding.keepLocalCopy') }}
-			</label>
-			<UiButton type="submit" class="ml-auto" :disabled="!newAddress.trim() || submitting">
+			<UiCheckbox
+				v-model="keepLocal"
+				class="pb-2"
+				:label="t('dashboard.preferences.forwarding.keepLocalCopy')"
+			/>
+			<UiButton type="submit" class="ml-auto" :disabled="!newAddress.trim()" :loading="submitting">
 				{{ t('common.add') }}
 			</UiButton>
 		</form>
@@ -130,7 +132,7 @@ async function confirmRemove() {
 					class="px-5 py-3 flex items-center justify-between gap-3"
 				>
 					<div class="flex-1 min-w-0">
-						<p class="font-mono text-sm">→ {{ rule.forwardTo }}</p>
+						<p class="font-mono text-sm break-all">→ {{ rule.forwardTo }}</p>
 						<p class="text-xs text-text-tertiary">
 							{{
 								rule.keepLocalCopy
@@ -145,9 +147,10 @@ async function confirmRemove() {
 						@update:model-value="handleToggle(rule._id, $event)"
 					/>
 					<UiButton
-						variant="ghost"
+						variant="danger-ghost"
 						type="button"
-						class="text-error"
+						class="shrink-0"
+						:aria-label="`${t('common.remove')}: ${rule.forwardTo}`"
 						@click="ruleToRemove = rule._id"
 					>
 						{{ t('common.remove') }}

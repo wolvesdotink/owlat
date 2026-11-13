@@ -75,17 +75,22 @@ const inputId = useId();
 		<form class="flex items-center gap-2" @submit.prevent="submit">
 			<SparklesIcon class="size-4 shrink-0 text-brand" aria-hidden="true" />
 			<label :for="inputId" class="sr-only">{{ t('components.answer.aiBar.label') }}</label>
-			<input
-				:id="inputId"
-				ref="inputEl"
-				v-model="instruction"
-				type="text"
-				class="input-bare min-w-0 flex-1 text-sm"
-				:placeholder="t('components.answer.aiBar.placeholder')"
-				:disabled="busy"
-				maxlength="500"
-				data-testid="answer-ai-instruction"
-			/>
+			<!-- The bar draws no field, so this wrapper shows the field's focus. -->
+			<div
+				class="-mx-1 flex min-w-0 flex-1 rounded-md px-1 focus-within:ring-1 focus-within:ring-brand"
+			>
+				<input
+					:id="inputId"
+					ref="inputEl"
+					v-model="instruction"
+					type="text"
+					class="input-bare min-w-0 flex-1 text-sm"
+					:placeholder="t('components.answer.aiBar.placeholder')"
+					:disabled="busy"
+					maxlength="500"
+					data-testid="answer-ai-instruction"
+				/>
+			</div>
 			<!-- An instruction goes in as spoken, in the language spoken, untranslated. -->
 			<DictationButton :target="inputEl" bubble="below" size="sm" :disabled="busy" />
 			<UiTooltip
@@ -100,7 +105,7 @@ const inputId = useId();
 					:disabled="busy || isHeld"
 					data-testid="answer-ai-draft"
 				>
-					<SpinnerIcon v-if="busy" class="mr-1 size-3.5" aria-hidden="true" />
+					<SpinnerIcon v-if="busy" class="size-3.5" aria-hidden="true" />
 					{{ t('components.answer.aiBar.draft') }}
 				</UiButton>
 			</UiTooltip>
@@ -129,7 +134,7 @@ const inputId = useId();
 			<span aria-hidden="true">·</span>
 			<button
 				type="button"
-				class="underline-offset-2 hover:text-text-primary hover:underline"
+				class="rounded-sm underline-offset-2 hover:text-text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11 pointer-coarse:px-2"
 				data-testid="answer-ai-discard"
 				@click="emit('discard')"
 			>

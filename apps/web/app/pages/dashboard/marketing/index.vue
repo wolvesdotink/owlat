@@ -176,11 +176,16 @@ function handleNewCampaign() {
 					<h2 id="band-latest" class="text-base font-medium text-text-primary">
 						{{ t('dashboard.marketing.latest.title') }}
 					</h2>
+					<!-- With one send there is no average to compare against yet. -->
 					<p class="text-xs text-text-tertiary">
 						{{
-							t('dashboard.marketing.latest.subtitle', {
-								count: overview.recent.campaigns.length,
-							})
+							overview.recent.campaigns.length > 1
+								? t(
+										'dashboard.marketing.latest.subtitle',
+										{ count: overview.recent.campaigns.length },
+										overview.recent.campaigns.length
+									)
+								: t('dashboard.marketing.latest.subtitleNoBaseline')
 						}}
 					</p>
 				</div>
@@ -195,10 +200,19 @@ function handleNewCampaign() {
 					</h2>
 					<p class="text-xs text-text-tertiary tabular-nums">
 						{{
-							t('dashboard.marketing.period.subtitle', {
-								campaigns: overview.period.campaignCount,
-								delivered: formatNumber(overview.period.current.delivered),
-							})
+							t(
+								'dashboard.marketing.period.campaignCount',
+								{ count: overview.period.campaignCount },
+								overview.period.campaignCount
+							)
+						}}
+						·
+						{{
+							t(
+								'dashboard.marketing.period.deliveredCount',
+								{ count: formatNumber(overview.period.current.delivered) },
+								overview.period.current.delivered
+							)
 						}}
 					</p>
 				</div>

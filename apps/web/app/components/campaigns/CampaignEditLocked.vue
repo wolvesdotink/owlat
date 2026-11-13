@@ -47,9 +47,9 @@ async function handleDuplicate() {
 <template>
 	<div class="max-w-4xl mx-auto px-6 py-16 text-center">
 		<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4 mx-auto" />
-		<p class="text-text-primary font-medium">
+		<h1 class="text-text-primary font-medium">
 			{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}
-		</p>
+		</h1>
 		<p class="text-sm text-text-secondary mt-1">{{ description }}</p>
 		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 			<UiButton :to="`/dashboard/campaigns/${campaignId}/report`">

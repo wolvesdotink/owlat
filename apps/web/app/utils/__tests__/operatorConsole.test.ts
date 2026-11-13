@@ -62,7 +62,7 @@ describe('riskLevelVariant', () => {
 
 describe('scanLevelVariant', () => {
 	it('maps scan levels to badge variants', () => {
-		expect(scanLevelVariant('safe')).toBe('success');
+		expect(scanLevelVariant('clean')).toBe('success');
 		expect(scanLevelVariant('suspicious')).toBe('warning');
 		expect(scanLevelVariant('blocked')).toBe('error');
 		expect(scanLevelVariant('???')).toBe('neutral');

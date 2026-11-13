@@ -71,9 +71,11 @@ definePageMeta({
 // before this page renders. So the steps below are written for an admin reader,
 // with no in-page permission read and no "owners and admins only" card that
 // nobody could reach.
-const { data: catalog, refetch: refetchCatalog } = useOrganizationQuery(
-	api.delivery.providerRoutes.listTransportCatalog
-);
+const {
+	data: catalog,
+	error: catalogError,
+	refetch: refetchCatalog,
+} = useOrganizationQuery(api.delivery.providerRoutes.listTransportCatalog);
 
 /**
  * What step 1 asks for. The key is a credential, so it lives in the server's
@@ -81,8 +83,31 @@ const { data: catalog, refetch: refetchCatalog } = useOrganizationQuery(
  * commands, then re-reads the catalog until the server reports it connected.
  */
 const CONNECT_VARIABLES = ['MANDRILL_API_KEY'] as const;
-const { data: routes } = useOrganizationQuery(api.delivery.providerRoutes.listRoutes);
-const { data: identities } = useOrganizationQuery(api.domains.mandrillRelayQueries.listIdentities);
+const {
+	data: routes,
+	error: routesError,
+	refetch: refetchRoutes,
+} = useOrganizationQuery(api.delivery.providerRoutes.listRoutes);
+const {
+	data: identities,
+	error: identitiesError,
+	refetch: refetchIdentities,
+} = useOrganizationQuery(api.domains.mandrillRelayQueries.listIdentities);
+
+// Every verdict below is derived from these three reads. Until they answer, or
+// when one fails, the steps would claim the key is missing and the domain
+// unverified on a deployment that has both, so the checklist waits for them.
+const readsLoading = computed(
+	() => catalog.value === undefined || routes.value === undefined || identities.value === undefined
+);
+const readError = computed(
+	() => catalogError.value ?? routesError.value ?? identitiesError.value ?? null
+);
+function retryReads() {
+	if (catalogError.value) refetchCatalog();
+	if (routesError.value) refetchRoutes();
+	if (identitiesError.value) refetchIdentities();
+}
 
 /** Set by the carry-over step when its two runs both finish. */
 const isHistoryCarried = ref(false);
@@ -139,7 +164,14 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 			:description="t('dashboard.admin.delivery.migrate.lede')"
 		/>
 
-		<ol class="space-y-4" data-testid="migration-steps">
+		<UiQueryBoundary
+			v-if="readError || readsLoading"
+			:loading="readsLoading"
+			:error="readError"
+			@retry="retryReads"
+		/>
+
+		<ol v-else class="space-y-4" data-testid="migration-steps">
 			<li
 				v-for="step in steps"
 				:key="step.id"
@@ -152,11 +184,16 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 						:is="STATE_ICON[step.state]"
 						class="mt-0.5 h-5 w-5 shrink-0"
 						:class="STATE_CLASS[step.state]"
+						aria-hidden="true"
 					/>
 					<div class="min-w-0 flex-1 space-y-3">
 						<div>
 							<h2 class="text-base font-semibold text-text-primary">
 								{{ localized(step.title) }}
+								<!-- The icon and its colour carry the state; this says it in words. -->
+								<span class="sr-only">
+									({{ t(`dashboard.admin.delivery.migrate.stepState.${step.state}`) }})</span
+								>
 							</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ localized(step.summary) }}</p>
 						</div>

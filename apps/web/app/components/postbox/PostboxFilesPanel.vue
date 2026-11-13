@@ -159,13 +159,25 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 		     once, an empty list would be a lie about the mailbox's contents. -->
 		<div
 			v-if="!backfill || backfill.status === 'cancelled' || backfill.status === 'failed'"
-			class="card p-4 mb-4 flex items-center justify-between gap-4"
+			class="card p-4 mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3"
 		>
-			<p class="text-sm text-text-secondary">
-				{{ t('components.postbox.postboxFilesPanel.backfillPrompt') }}
+			<!-- A stopped run says so; the prompt alone reads as "never ran". -->
+			<p
+				class="text-sm min-w-0 flex-1 basis-64"
+				:class="backfill?.status === 'failed' ? 'text-error' : 'text-text-secondary'"
+			>
+				{{
+					backfill?.status === 'failed'
+						? t('components.postbox.postboxFilesPanel.backfillFailed')
+						: t('components.postbox.postboxFilesPanel.backfillPrompt')
+				}}
 			</p>
 			<UiButton type="button" :disabled="isStarting" @click="startBackfill">
-				{{ t('components.postbox.postboxFilesPanel.backfillStart') }}
+				{{
+					backfill?.status === 'failed'
+						? t('common.tryAgain')
+						: t('components.postbox.postboxFilesPanel.backfillStart')
+				}}
 			</UiButton>
 		</div>
 		<div

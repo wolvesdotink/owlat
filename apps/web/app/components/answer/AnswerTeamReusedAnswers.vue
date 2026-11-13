@@ -22,7 +22,9 @@ const { t, locale } = useI18n();
 
 <template>
 	<div class="surface-1 rounded-(--radius-card) p-4" data-testid="reused-answers">
-		<span class="lp-eyebrow">{{ t('dashboard.inbox.detail.reusedAnswersEyebrow') }}</span>
+		<span class="block text-2xs font-medium uppercase tracking-wide text-text-tertiary">{{
+			t('dashboard.inbox.detail.reusedAnswersEyebrow')
+		}}</span>
 		<p class="mt-1 text-sm font-medium text-text-primary">
 			{{ t('dashboard.inbox.detail.reusedAnswersTitle') }}
 		</p>

@@ -75,12 +75,25 @@ const fromEmail = computed(() => {
 
 const fromName = computed(() => orgSettings.value?.defaultFromName || '');
 
-// Computed: check if we can send (have a verified domain)
+/** A row with something typed in it that is not an address. */
+const isInvalidRow = (row: TestEmailRow) => !!row.address.trim() && !isValidEmail(row.address);
+
+// Computed: check if we can send (have a verified domain). Every filled row must
+// be an address: sending to the valid ones and dropping a typo silently would
+// report success while one recipient never got the test.
 const canSend = computed(() => {
 	const hasVerifiedDomain = domains.value?.some((d) => d.status === 'verified');
 	const hasValidEmails = testEmails.value.some((row) => isValidEmail(row.address));
-	return hasVerifiedDomain && hasValidEmails && fromEmail.value;
+	const hasInvalidEmails = testEmails.value.some(isInvalidRow);
+	return hasVerifiedDomain && hasValidEmails && !hasInvalidEmails && fromEmail.value;
 });
+
+const headingId = useId();
+const subtitleId = useId();
+const sendToId = useId();
+const sampleDataId = useId();
+const dataVariablesId = useId();
+const errorIdFor = (index: number) => `${sendToId}-error-${index}`;
 
 const noVerifiedDomain = computed(() => !domains.value?.some((d) => d.status === 'verified'));
 
@@ -198,6 +211,8 @@ watch(
 	<UiModal
 		:open="open"
 		size="lg"
+		:labelled-by="headingId"
+		:described-by="subtitleId"
 		@update:open="
 			(v) => {
 				if (!v) close();
@@ -208,10 +223,10 @@ watch(
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="PaperPlaneIcon" size="sm" variant="brand" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="headingId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.sendTestEmailModal.title') }}
 				</h2>
-				<p class="text-sm text-text-secondary">
+				<p :id="subtitleId" class="text-sm text-text-secondary">
 					{{ t('components.sendTestEmailModal.subtitle') }}
 				</p>
 			</div>
@@ -252,41 +267,51 @@ watch(
 			</div>
 
 			<!-- Test emails -->
-			<div class="space-y-3">
-				<label class="block text-sm font-medium text-text-primary">
+			<div class="space-y-3" role="group" :aria-labelledby="sendToId">
+				<p :id="sendToId" class="block text-sm font-medium text-text-primary">
 					{{ t('components.sendTestEmailModal.sendToLabel') }}
-				</label>
+				</p>
 				<div class="space-y-2">
-					<div
-						v-for="(row, index) in testEmails"
-						:key="stableRowKey(row)"
-						class="flex items-center gap-2"
-					>
-						<div class="relative flex-1">
-							<input
-								v-model="row.address"
-								type="email"
-								:placeholder="t('components.sendTestEmailModal.emailPlaceholder')"
-								class="input pl-10"
-								:class="{
-									'input-error': row.address && !isValidEmail(row.address),
-								}"
-							/>
-							<MailIcon
-								class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-							/>
+					<div v-for="(row, index) in testEmails" :key="stableRowKey(row)">
+						<div class="flex items-center gap-2">
+							<div class="relative flex-1">
+								<input
+									v-model="row.address"
+									type="email"
+									:placeholder="t('components.sendTestEmailModal.emailPlaceholder')"
+									:aria-label="t('components.sendTestEmailModal.recipientLabel', { n: index + 1 })"
+									:aria-invalid="isInvalidRow(row) ? 'true' : undefined"
+									:aria-describedby="isInvalidRow(row) ? errorIdFor(index) : undefined"
+									class="input pl-10"
+									:class="{ 'input-error': isInvalidRow(row) }"
+								/>
+								<MailIcon
+									class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
+									aria-hidden="true"
+								/>
+							</div>
+							<UiTooltip
+								v-if="testEmails.length > 1"
+								:text="t('components.sendTestEmailModal.removeRecipient', { n: index + 1 })"
+							>
+								<UiButton
+									variant="ghost"
+									size="sm"
+									:aria-label="t('components.sendTestEmailModal.removeRecipient', { n: index + 1 })"
+									@click="removeEmailField(index)"
+								>
+									<TrashIcon class="w-4 h-4" />
+								</UiButton>
+							</UiTooltip>
 						</div>
-						<button
-							v-if="testEmails.length > 1"
-							class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-							@click="removeEmailField(index)"
-						>
-							<TrashIcon class="w-4 h-4" />
-						</button>
+						<p v-if="isInvalidRow(row)" :id="errorIdFor(index)" class="mt-1 text-xs text-error">
+							{{ t('shared.useFormValidation.rules.email') }}
+						</p>
 					</div>
 				</div>
 				<button
 					v-if="testEmails.length < 5"
+					type="button"
 					class="flex items-center gap-2 text-sm text-brand hover:text-brand-hover transition-colors"
 					@click="addEmailField"
 				>
@@ -296,10 +321,15 @@ watch(
 			</div>
 
 			<!-- Sample data for personalization -->
-			<div v-if="variables.length > 0" class="space-y-3">
-				<label class="block text-sm font-medium text-text-primary">
+			<div
+				v-if="variables.length > 0"
+				class="space-y-3"
+				role="group"
+				:aria-labelledby="sampleDataId"
+			>
+				<p :id="sampleDataId" class="block text-sm font-medium text-text-primary">
 					{{ t('components.sendTestEmailModal.sampleDataLabel') }}
-				</label>
+				</p>
 				<p class="text-xs text-text-secondary">
 					<I18nT keypath="components.sendTestEmailModal.sampleDataHelp" tag="span" scope="global">
 						<template #variables
@@ -313,6 +343,7 @@ watch(
 							v-model="sampleData['firstName']"
 							type="text"
 							:placeholder="t('components.sendTestEmailModal.firstNamePlaceholder')"
+							:aria-label="t('components.sendTestEmailModal.firstNamePlaceholder')"
 							class="input input-sm pl-10"
 						/>
 						<UserIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
@@ -322,6 +353,7 @@ watch(
 							v-model="sampleData['lastName']"
 							type="text"
 							:placeholder="t('components.sendTestEmailModal.lastNamePlaceholder')"
+							:aria-label="t('components.sendTestEmailModal.lastNamePlaceholder')"
 							class="input input-sm"
 						/>
 					</div>
@@ -329,10 +361,15 @@ watch(
 			</div>
 
 			<!-- Custom data variables -->
-			<div v-if="dataVariableSchema.length > 0" class="space-y-3">
-				<label class="block text-sm font-medium text-text-primary">
+			<div
+				v-if="dataVariableSchema.length > 0"
+				class="space-y-3"
+				role="group"
+				:aria-labelledby="dataVariablesId"
+			>
+				<p :id="dataVariablesId" class="block text-sm font-medium text-text-primary">
 					{{ t('components.sendTestEmailModal.dataVariablesLabel') }}
-				</label>
+				</p>
 				<p class="text-xs text-text-secondary">
 					{{ t('components.sendTestEmailModal.dataVariablesHelp') }}
 				</p>
@@ -342,6 +379,7 @@ watch(
 							v-model="dataVariableValues[variable.key]"
 							type="text"
 							:placeholder="variable.key"
+							:aria-label="variable.key"
 							class="input input-sm pl-10"
 						/>
 						<VariableIcon

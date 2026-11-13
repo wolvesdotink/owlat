@@ -47,7 +47,7 @@ function onClick() {
 	<UiTooltip :text="evidence.quote ? `“${evidence.quote}”` : label">
 		<button
 			type="button"
-			class="ml-1 inline-flex items-center rounded bg-bg-surface px-1 align-[1px] font-mono text-[10px] leading-4 text-text-tertiary hover:bg-brand hover:text-text-inverse focus-visible:bg-brand focus-visible:text-text-inverse"
+			class="ml-1 inline-flex items-center rounded bg-bg-surface px-1 align-[1px] font-mono text-2xs leading-4 text-text-tertiary hover:bg-brand hover:text-text-inverse focus-visible:bg-brand focus-visible:text-text-inverse focus-visible:outline-none pointer-coarse:min-h-6 pointer-coarse:min-w-6 pointer-coarse:justify-center"
 			:aria-label="label"
 			data-testid="evidence-marker"
 			@click="onClick"

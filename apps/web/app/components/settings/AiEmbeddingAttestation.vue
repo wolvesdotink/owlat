@@ -128,6 +128,9 @@ const canSubmit = computed(
 		!props.spaces.isBusy.value
 );
 
+/** This form's own write, so only its button spins while the shared busy flag is up. */
+const isSubmitting = ref(false);
+
 async function submit() {
 	const target = subject.value;
 	const writtenUntil = cohortEnd(writtenBefore.value, Date.now());
@@ -143,12 +146,17 @@ async function submit() {
 						dimensions: width.value!,
 					},
 				};
-	const isDone = await props.spaces.attest({
-		...space,
-		source: source.value,
-		cohort: { tables: ['knowledgeEntries', 'semanticFiles'], writtenUntil },
-		statement: statement.value.trim(),
-	});
+	isSubmitting.value = true;
+	const isDone = await props.spaces
+		.attest({
+			...space,
+			source: source.value,
+			cohort: { tables: ['knowledgeEntries', 'semanticFiles'], writtenUntil },
+			statement: statement.value.trim(),
+		})
+		.finally(() => {
+			isSubmitting.value = false;
+		});
 	if (isDone) {
 		statement.value = '';
 		isConfirmed.value = false;
@@ -263,6 +271,7 @@ async function confirmRevoke() {
 					variant="secondary"
 					size="sm"
 					:disabled="!canSubmit"
+					:loading="isSubmitting"
 					data-testid="ai-embedding-attest-submit"
 				>
 					{{ t(`${K}.submit`) }}

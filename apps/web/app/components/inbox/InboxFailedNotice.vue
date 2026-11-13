@@ -22,8 +22,8 @@ const copy = computed(() => inboxRetryCopy(props.message));
 </script>
 
 <template>
-	<div class="mt-4 p-3 bg-error-subtle rounded-lg" data-testid="thread-failed-retry">
-		<p class="text-xs text-error font-medium mb-2">{{ t(copy.title) }}</p>
+	<div class="mt-4 p-3 bg-error-subtle rounded-lg" role="status" data-testid="thread-failed-retry">
+		<p class="text-sm text-error font-medium mb-2">{{ t(copy.title) }}</p>
 		<p v-if="message.errorMessage" class="text-sm text-text-primary break-words mb-3">
 			{{ message.errorMessage }}
 		</p>
@@ -43,10 +43,14 @@ const copy = computed(() => inboxRetryCopy(props.message));
 				variant="secondary"
 				size="sm"
 				class="gap-1"
-				:disabled="retrying"
+				:loading="retrying"
 				@click="emit('retry')"
 			>
-				<component :is="copy.plan === 'sendAgain' ? PaperPlaneIcon : ReloadIcon" class="w-3 h-3" />
+				<component
+					:is="copy.plan === 'sendAgain' ? PaperPlaneIcon : ReloadIcon"
+					v-if="!retrying"
+					class="w-3 h-3"
+				/>
 				{{ t(copy.action) }}
 			</UiButton>
 			<p class="text-xs text-text-secondary">{{ t(copy.hint) }}</p>

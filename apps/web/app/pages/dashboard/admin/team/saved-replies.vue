@@ -49,17 +49,12 @@ const teamInboxes = computed(() =>
 			</template>
 		</UiPageHeader>
 
-		<div
-			v-if="showAdminGate"
-			class="card flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.savedReplies.adminGate.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.savedReplies.adminGate.description') }}
-			</p>
+		<div v-if="showAdminGate" class="card">
+			<UiEmptyState
+				:icon="LockIcon"
+				:title="t('dashboard.admin.team.savedReplies.adminGate.title')"
+				:description="t('dashboard.admin.team.savedReplies.adminGate.description')"
+			/>
 		</div>
 		<SavedReplyLibrary v-else scope="shared" :team-inboxes="teamInboxes" />
 	</div>

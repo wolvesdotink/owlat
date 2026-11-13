@@ -49,16 +49,22 @@ const scheduledLabel = computed(() =>
 	>
 		<span class="inline-flex items-center gap-1.5 text-text-secondary">
 			<ClockIcon class="w-4 h-4 text-brand" />
-			{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
+			<!-- The time arrives with the row; until then the line says only that it is scheduled. -->
+			{{
+				scheduledLabel
+					? t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel })
+					: t('components.postbox.postboxComposer.scheduledPending')
+			}}
 		</span>
 		<UiButton
 			variant="ghost"
+			size="sm"
 			type="button"
-			class="text-xs"
+			class="shrink-0"
 			:disabled="unscheduling"
 			@click="handleUnschedule"
 		>
-			<SpinnerIcon v-if="unscheduling" class="w-3.5 h-3.5 mr-1" />
+			<SpinnerIcon v-if="unscheduling" class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxComposer.unschedule') }}
 		</UiButton>
 	</div>

@@ -60,7 +60,7 @@ async function openSettings() {
 		</p>
 		<button
 			type="button"
-			class="p-0.5 rounded text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+			class="p-0.5 rounded text-text-tertiary hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 			:aria-label="t('common.dismiss')"
 			data-testid="sealed-mail-nudge-dismiss"
 			@click="dismiss"

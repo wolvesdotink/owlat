@@ -72,9 +72,18 @@ const { t } = useI18n();
 // useTaskFlow binds Cmd/Ctrl+Z itself, outside the shortcut catalog.
 const { chordLabel } = useShortcutLabels();
 
-// Esc exits from anywhere in the flow (position is preserved by the page).
+// Esc exits from anywhere in the flow (position is preserved by the page),
+// unless something closer owns it: a field (clearing it, dismissing an IME), an
+// open dialog or menu, or a handler that already took the key.
+function escapeBelongsElsewhere(event: KeyboardEvent): boolean {
+	if (event.defaultPrevented || event.isComposing) return true;
+	const target = event.target as HTMLElement | null;
+	if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'))
+		return true;
+	return Boolean(document.querySelector('[aria-modal="true"], [role="menu"]'));
+}
 function onKeydown(event: KeyboardEvent) {
-	if (event.key === 'Escape') {
+	if (event.key === 'Escape' && !escapeBelongsElsewhere(event)) {
 		event.preventDefault();
 		emit('exit');
 	}
@@ -124,7 +133,7 @@ const MAX_DOTS = 9;
 							<button
 								type="button"
 								data-testid="task-flow-back"
-								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								class="inline-flex items-center justify-center w-6 h-6 pointer-coarse:size-11 rounded text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
 								:disabled="!canGoBack"
 								:aria-label="t('components.agentTasks.agentTaskFlow.back')"
 								@click="emit('back')"
@@ -136,7 +145,7 @@ const MAX_DOTS = 9;
 							<button
 								type="button"
 								data-testid="task-flow-next"
-								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								class="inline-flex items-center justify-center w-6 h-6 pointer-coarse:size-11 rounded text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
 								:disabled="!canGoNext"
 								:aria-label="t('components.agentTasks.agentTaskFlow.next')"
 								@click="emit('next')"
@@ -152,10 +161,10 @@ const MAX_DOTS = 9;
 					>
 						<button
 							type="button"
-							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							class="inline-flex items-center gap-1 rounded text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) pointer-coarse:min-h-11 pointer-coarse:px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="emit('undo')"
 						>
-							<UndoIcon class="w-3.5 h-3.5" />
+							<UndoIcon class="w-3.5 h-3.5" aria-hidden="true" />
 							{{ t('components.agentTasks.agentTaskFlow.undo') }}
 						</button>
 					</UiTooltip>
@@ -165,10 +174,10 @@ const MAX_DOTS = 9;
 					>
 						<button
 							type="button"
-							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							class="inline-flex items-center gap-1 rounded text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) pointer-coarse:min-h-11 pointer-coarse:px-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="emit('exit')"
 						>
-							<CloseIcon class="w-3.5 h-3.5" />
+							<CloseIcon class="w-3.5 h-3.5" aria-hidden="true" />
 							{{ t('components.agentTasks.agentTaskFlow.exit') }}
 						</button>
 					</UiTooltip>
@@ -181,6 +190,7 @@ const MAX_DOTS = 9;
 					v-if="total <= MAX_DOTS"
 					class="flex items-center gap-1.5"
 					role="progressbar"
+					:aria-label="t('components.agentTasks.agentTaskFlow.progressLabel')"
 					:aria-valuenow="complete ? total : position - 1"
 					aria-valuemin="0"
 					:aria-valuemax="total"
@@ -202,6 +212,7 @@ const MAX_DOTS = 9;
 					v-else
 					class="h-1.5 rounded-full bg-border-subtle overflow-hidden"
 					role="progressbar"
+					:aria-label="t('components.agentTasks.agentTaskFlow.progressLabel')"
 					:aria-valuenow="complete ? total : position - 1"
 					aria-valuemin="0"
 					:aria-valuemax="total"

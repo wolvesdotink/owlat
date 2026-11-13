@@ -205,7 +205,7 @@ async function copyValue(value: string, key: string) {
 						:href="item.docsHref"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-sm text-text-secondary hover:text-brand"
+						class="text-sm text-text-secondary hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					>
 						{{ t('components.delivery.deliverabilityNextActionCard.howThisWorks') }}
 					</a>

@@ -2,14 +2,7 @@
 import { api } from '@owlat/api';
 import { offersShareWithMembers } from '~/utils/knowledgeSharing';
 import { useKnowledgeDetailLabels } from '~/composables/useKnowledgeDetailLabels';
-import {
-	ArrowLeftIcon,
-	ChatIcon,
-	CloseIcon,
-	FileHelpIcon,
-	PencilIcon,
-	TrashIcon,
-} from '@coolicons/vue';
+import { ArrowLeftIcon, ChatIcon, FileHelpIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -147,7 +140,7 @@ const handleDelete = async () => {
 			to="/dashboard/knowledge"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
 		>
-			<ArrowLeftIcon class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" aria-hidden="true" />
 			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
@@ -308,18 +301,13 @@ const handleDelete = async () => {
 							<div class="w-8 h-8 rounded-lg bg-bg-surface flex items-center justify-center">
 								<component :is="sourceIcon(entry.sourceType)" class="w-4 h-4 text-text-secondary" />
 							</div>
-							<div>
-								<p class="text-sm font-medium text-text-primary">
-									{{ sourceTypeName(entry.sourceType) }}
-								</p>
-								<p v-if="entry.sourceId" class="text-xs text-text-tertiary truncate max-w-[160px]">
-									{{ entry.sourceId }}
-								</p>
-							</div>
+							<p class="text-sm font-medium text-text-primary">
+								{{ sourceTypeName(entry.sourceType) }}
+							</p>
 						</div>
 						<NuxtLink
 							v-if="entry.threadId"
-							:to="`/dashboard/inbox?thread=${entry.threadId}`"
+							:to="`/dashboard/inbox/${entry.threadId}`"
 							class="mt-3 inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand/80 transition-colors"
 						>
 							<ChatIcon class="w-3.5 h-3.5" />
@@ -363,86 +351,31 @@ const handleDelete = async () => {
 		</template>
 
 		<!-- Edit Entry Modal -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="transition-opacity duration-(--motion-fast)"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showEditForm && entry"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-deep/80"
-					@click.self="showEditForm = false"
-				>
-					<div
-						class="w-full max-w-lg bg-bg-elevated border border-border-subtle rounded-xl shadow-lg max-h-[90vh] overflow-y-auto"
-					>
-						<div
-							class="flex items-center justify-between px-5 py-4 border-b border-border-subtle sticky top-0 bg-bg-elevated z-10"
-						>
-							<h3 class="text-base font-semibold text-text-primary">
-								{{ t('dashboard.knowledge.detail.editModalTitle') }}
-							</h3>
-							<button
-								class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								@click="showEditForm = false"
-								:aria-label="t('common.close')"
-							>
-								<CloseIcon class="w-4 h-4" />
-							</button>
-						</div>
-						<div class="px-5 py-4">
-							<KnowledgeEntryForm
-								is-edit
-								:entry-id="entryId"
-								:initial-values="editInitialValues"
-								@saved="handleEdited"
-								@cancelled="showEditForm = false"
-							/>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<UiModal
+			:open="showEditForm && !!entry"
+			:title="t('dashboard.knowledge.detail.editModalTitle')"
+			size="lg"
+			@update:open="showEditForm = $event"
+		>
+			<KnowledgeEntryForm
+				is-edit
+				:entry-id="entryId"
+				:initial-values="editInitialValues"
+				@saved="handleEdited"
+				@cancelled="showEditForm = false"
+			/>
+		</UiModal>
 
 		<!-- Delete confirmation -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showDeleteConfirm"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4"
-				>
-					<div class="absolute inset-0 bg-bg-deep/80" @click="showDeleteConfirm = false" />
-					<div
-						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-sm"
-					>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">
-							{{ t('dashboard.knowledge.detail.deleteModalTitle') }}
-						</h3>
-						<p class="text-sm text-text-secondary mb-6">
-							{{ t('dashboard.knowledge.detail.deleteModalBody') }}
-						</p>
-						<div class="flex items-center justify-end gap-3">
-							<UiButton variant="secondary" @click="showDeleteConfirm = false">
-								{{ t('common.cancel') }}
-							</UiButton>
-							<UiButton variant="danger" :disabled="isDeleting" @click="handleDelete">
-								{{ isDeleting ? t('dashboard.knowledge.detail.deleting') : t('common.delete') }}
-							</UiButton>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<UiConfirmationDialog
+			:open="showDeleteConfirm"
+			variant="danger"
+			:title="t('dashboard.knowledge.detail.deleteModalTitle')"
+			:description="t('dashboard.knowledge.detail.deleteModalBody')"
+			:confirm-text="t('common.delete')"
+			:is-loading="isDeleting"
+			@update:open="showDeleteConfirm = $event"
+			@confirm="handleDelete"
+		/>
 	</div>
 </template>

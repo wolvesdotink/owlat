@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -54,6 +53,18 @@ const defaultDraft = () => ({
 
 const draft = reactive(defaultDraft());
 
+/**
+ * A stored instant as the wall-clock value a `datetime-local` input shows.
+ * The input has no zone and the save parses it as local time, so it must be
+ * rendered in local time too; `toISOString()` would show UTC and shift the
+ * window by the zone offset on every save.
+ */
+function toLocalInputValue(ts: number): string {
+	const d = new Date(ts);
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 watch(
 	data,
 	(stored) => {
@@ -66,8 +77,8 @@ watch(
 		draft.enabled = stored.isEnabled;
 		draft.subject = stored.subject;
 		draft.bodyText = stored.bodyText;
-		draft.startAt = stored.startAt ? new Date(stored.startAt).toISOString().slice(0, 16) : '';
-		draft.endAt = stored.endAt ? new Date(stored.endAt).toISOString().slice(0, 16) : '';
+		draft.startAt = stored.startAt ? toLocalInputValue(stored.startAt) : '';
+		draft.endAt = stored.endAt ? toLocalInputValue(stored.endAt) : '';
 		draft.replyIntervalDays = stored.replyIntervalDays;
 	},
 	{ immediate: true }
@@ -129,14 +140,14 @@ async function confirmDisable() {
 				</label>
 
 				<div>
-					<label for="draft-subject" class="text-sm font-medium block mb-1">
+					<label for="draft-subject" class="label">
 						{{ t('dashboard.preferences.vacation.subject') }}
 					</label>
 					<input id="draft-subject" v-model="draft.subject" type="text" class="input w-full" />
 				</div>
 
 				<div>
-					<label for="draft-bodytext" class="text-sm font-medium block mb-1">
+					<label for="draft-bodytext" class="label">
 						{{ t('dashboard.preferences.vacation.message') }}
 					</label>
 					<textarea
@@ -149,7 +160,7 @@ async function confirmDisable() {
 
 				<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 					<div>
-						<label for="draft-startat" class="text-sm font-medium block mb-1">
+						<label for="draft-startat" class="label">
 							{{ t('dashboard.preferences.vacation.start') }}
 						</label>
 						<input
@@ -160,7 +171,7 @@ async function confirmDisable() {
 						/>
 					</div>
 					<div>
-						<label for="draft-endat" class="text-sm font-medium block mb-1">
+						<label for="draft-endat" class="label">
 							{{ t('dashboard.preferences.vacation.end') }}
 						</label>
 						<input
@@ -171,7 +182,7 @@ async function confirmDisable() {
 						/>
 					</div>
 					<div>
-						<label for="draft-replyintervaldays" class="text-sm font-medium block mb-1">
+						<label for="draft-replyintervaldays" class="label">
 							{{ t('dashboard.preferences.vacation.replyInterval') }}
 						</label>
 						<input
@@ -188,17 +199,17 @@ async function confirmDisable() {
 				<p v-if="error" class="text-sm text-error">{{ error }}</p>
 
 				<div class="flex items-center justify-end gap-2 pt-2">
+					<!-- Deletes the stored responder, text included; the switch above
+					     pauses it and keeps the text. -->
 					<UiButton
-						variant="ghost"
 						v-if="data"
+						variant="danger-ghost"
 						type="button"
-						class="text-error"
 						@click="showDisableConfirm = true"
 					>
 						{{ t('dashboard.preferences.vacation.turnOff') }}
 					</UiButton>
-					<UiButton type="button" :disabled="saving || !loaded" @click="save">
-						<SpinnerIcon v-if="saving" class="w-4 h-4 mr-1.5" />
+					<UiButton type="button" :disabled="!loaded" :loading="saving" @click="save">
 						{{ saving ? t('common.saving') : t('common.save') }}
 					</UiButton>
 				</div>
@@ -212,7 +223,7 @@ async function confirmDisable() {
 
 		<UiConfirmationDialog
 			:open="showDisableConfirm"
-			variant="warning"
+			variant="danger"
 			:title="t('dashboard.preferences.vacation.turnOffTitle')"
 			:description="t('dashboard.preferences.vacation.turnOffDescription')"
 			:confirm-text="t('dashboard.preferences.vacation.turnOff')"

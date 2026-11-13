@@ -11,12 +11,16 @@ defineProps<{
 const emit = defineEmits<{ close: []; copy: [] }>();
 
 const { t } = useI18n();
+
+// The body draws its own heading, so the dialog is named by it.
+const titleId = useId();
 </script>
 
 <template>
 	<UiModal
 		:open="open"
 		size="lg"
+		:labelled-by="titleId"
 		:closable="false"
 		persistent
 		@update:open="
@@ -29,7 +33,7 @@ const { t } = useI18n();
 			<!-- Header -->
 			<div class="flex items-center gap-3 mb-6">
 				<UiIconBox :icon="KeyIcon" size="sm" variant="success" rounded="lg" />
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.api.index.created.title') }}
 				</h2>
 			</div>
@@ -42,7 +46,7 @@ const { t } = useI18n();
 						<p class="text-sm font-medium text-warning">
 							{{ t('dashboard.admin.team.api.index.created.copyNow') }}
 						</p>
-						<p class="text-sm text-warning/80 mt-1">
+						<p class="text-sm text-text-secondary mt-1">
 							{{ t('dashboard.admin.team.api.index.created.copyNowBody') }}
 						</p>
 					</div>
@@ -50,12 +54,12 @@ const { t } = useI18n();
 			</div>
 
 			<div class="mb-4">
-				<label class="label">{{ t('common.name') }}</label>
+				<p class="label">{{ t('common.name') }}</p>
 				<p class="text-text-primary font-medium">{{ createdKey.name }}</p>
 			</div>
 
 			<div>
-				<label class="label">{{ t('dashboard.admin.team.api.index.created.apiKeyLabel') }}</label>
+				<p class="label">{{ t('dashboard.admin.team.api.index.created.apiKeyLabel') }}</p>
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"

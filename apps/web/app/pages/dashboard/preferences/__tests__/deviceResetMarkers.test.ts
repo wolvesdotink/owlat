@@ -64,6 +64,7 @@ function mountPage() {
 				UiButton: true,
 				UiConfirmationDialog: true,
 				UiSwitch: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				I18nT: true,
 				PreferencesWebPush: true,
 				PreferencesMarketingNotifications: true,

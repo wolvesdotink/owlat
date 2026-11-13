@@ -34,6 +34,7 @@ const panelStubs = {
 	DomainsStreamSubdomainPlanPanel: true,
 	DomainsYahooCflPanel: true,
 	DomainsDmarcReportingPanel: true,
+	UiConfirmationDialog: true,
 	DomainsDnsPropagationNote: true,
 };
 
@@ -154,7 +155,7 @@ describe('domain row header text', () => {
 
 	it('toggles the row on a plain click, on the domain name and on the hint line', async () => {
 		const wrapper = mountRow();
-		await wrapper.get('p').trigger('click');
+		await wrapper.get('h3').trigger('click');
 		await text(wrapper).trigger('click');
 		expect(wrapper.emitted('toggle')).toHaveLength(2);
 		wrapper.unmount();
@@ -163,7 +164,7 @@ describe('domain row header text', () => {
 	it('moves focus to the disclosure, so Space and Enter carry on from there', async () => {
 		const wrapper = mountRow();
 		(document.activeElement as HTMLElement | null)?.blur();
-		await wrapper.get('p').trigger('click');
+		await wrapper.get('h3').trigger('click');
 		expect(document.activeElement).toBe(disclosure(wrapper).element);
 		disclosure(wrapper).element.blur();
 		await text(wrapper).trigger('click');
@@ -189,7 +190,7 @@ describe('domain row header text', () => {
 	it('is plain text, not a control', () => {
 		const wrapper = mountRow();
 		expect(text(wrapper).element.closest(INTERACTIVE)).toBeNull();
-		expect(wrapper.get('p').element.closest(INTERACTIVE)).toBeNull();
+		expect(wrapper.get('h3').element.closest(INTERACTIVE)).toBeNull();
 		wrapper.unmount();
 	});
 });

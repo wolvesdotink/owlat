@@ -172,9 +172,11 @@ describe('InboxMessageAttachments', () => {
 
 		const buttons = wrapper.findAll(DOWNLOAD);
 		expect(buttons).toHaveLength(2);
-		expect(buttons[0]!.attributes('disabled')).toBeDefined();
+		// Advisory, not `disabled`: the pressed button keeps focus while it spins.
+		expect(buttons[0]!.attributes('disabled')).toBeUndefined();
+		expect(buttons[0]!.attributes('aria-disabled')).toBe('true');
 		expect(buttons[0]!.findComponent(SpinnerIcon).exists()).toBe(true);
-		expect(buttons[1]!.attributes('disabled')).toBeUndefined();
+		expect(buttons[1]!.attributes('aria-disabled')).toBeUndefined();
 		expect(buttons[1]!.findComponent(DownloadIcon).exists()).toBe(true);
 	});
 
@@ -194,7 +196,7 @@ describe('InboxMessageAttachments', () => {
 
 		expect(wrapper.findAll(ROW)).toHaveLength(2);
 		const buttons = wrapper.findAll(DOWNLOAD);
-		expect(buttons.map((b) => b.attributes('disabled'))).toEqual(['', '']);
+		expect(buttons.map((b) => b.attributes('aria-disabled'))).toEqual(['true', 'true']);
 	});
 
 	it('blocks download entirely when malware was found in the message', () => {

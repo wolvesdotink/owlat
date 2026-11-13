@@ -35,10 +35,8 @@ const variantBTemplateName = computed(() => {
 </script>
 
 <template>
-	<div
-		class="flex items-start justify-between p-4 bg-bg-surface border border-border-default rounded-lg"
-	>
-		<div class="flex items-start gap-3">
+	<div class="flex items-start justify-between gap-3 p-4 bg-bg-surface shadow-surface-1 rounded-lg">
+		<div class="flex min-w-0 flex-1 items-start gap-3">
 			<UiIconBox :icon="SplitIcon" size="sm" rounded="lg" />
 			<div class="flex-1 min-w-0">
 				<p class="text-sm text-text-secondary">
@@ -99,9 +97,10 @@ const variantBTemplateName = computed(() => {
 			</div>
 		</div>
 		<button
+			type="button"
 			class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			@click="emit('editStep', 'setup')"
-			:aria-label="t('common.edit')"
+			:aria-label="t('components.campaigns.steps.reviewStep.editAbTest')"
 		>
 			<PencilIcon class="w-4 h-4" />
 		</button>

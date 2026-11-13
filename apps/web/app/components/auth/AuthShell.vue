@@ -20,7 +20,7 @@ const { logo } = useRecipientSender();
 
 <template>
 	<div
-		class="relative isolate flex min-h-screen flex-col items-center justify-center overflow-hidden bg-bg-base px-4 py-16"
+		class="relative isolate flex min-h-dvh flex-col items-center justify-center overflow-hidden bg-bg-base px-4 py-16"
 	>
 		<!-- Decorative field — behind the content, ignores the pointer, hidden from AT. -->
 		<UiHeroField />

@@ -80,6 +80,53 @@ function toggle() {
 	open.value = !open.value;
 }
 
+// The menu-button pattern: opened from the keyboard, the first enabled item
+// takes focus, and the arrows, Home and End move between the items. A field or
+// switch in the panel (the signature picker, the editor mode) keeps its own
+// keys, because only a press on an item is handled. A pointer open leaves focus
+// on the trigger, so Esc closes the menu without moving focus (and without
+// raising the trigger's tooltip, which would take the next Esc).
+const ITEM_SELECTOR = '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]';
+function enabledItems(): HTMLElement[] {
+	const menu = menuEl.value;
+	if (!menu) return [];
+	return Array.from(menu.querySelectorAll<HTMLElement>(ITEM_SELECTOR)).filter(
+		(item) => !item.matches(':disabled') && item.getAttribute('aria-disabled') !== 'true'
+	);
+}
+let openedByKey = false;
+function onTriggerKeydown(event: KeyboardEvent) {
+	if (event.key === 'Enter' || event.key === ' ') {
+		openedByKey = true;
+	} else if (event.key === 'ArrowDown' && !open.value) {
+		event.preventDefault();
+		openedByKey = true;
+		open.value = true;
+	}
+}
+watch(open, async (isOpen) => {
+	const byKey = openedByKey;
+	openedByKey = false;
+	if (!isOpen || !byKey) return;
+	await nextTick();
+	enabledItems()[0]?.focus();
+});
+function onMenuKeydown(event: KeyboardEvent) {
+	const target = event.target;
+	if (!(target instanceof HTMLElement) || !target.matches(ITEM_SELECTOR)) return;
+	const items = enabledItems();
+	if (items.length === 0) return;
+	const current = items.indexOf(target);
+	let next: HTMLElement | undefined;
+	if (event.key === 'ArrowDown') next = items[(current + 1) % items.length];
+	else if (event.key === 'ArrowUp') next = items[(current - 1 + items.length) % items.length];
+	else if (event.key === 'Home') next = items[0];
+	else if (event.key === 'End') next = items[items.length - 1];
+	else return;
+	event.preventDefault();
+	next?.focus();
+}
+
 // Close on any click outside both the trigger and the panel, and on Esc
 // wherever focus is (the trigger keeps it after a click). The Esc is claimed,
 // so the same press does not also leave Answer mode or close the reader.
@@ -104,24 +151,35 @@ useEscapeToClose(
 				:aria-label="menuLabel"
 				aria-haspopup="menu"
 				:aria-expanded="open"
+				@keydown="onTriggerKeydown"
 				@click="toggle"
 			>
 				<component :is="props.icon" class="w-4 h-4" />
 				<span v-if="props.triggerText" class="ml-1.5 text-xs">{{ props.triggerText }}</span>
 			</UiButton>
 		</UiTooltip>
-		<div
-			v-if="open"
-			ref="menuEl"
-			role="menu"
-			:aria-label="menuLabel"
-			class="absolute min-w-44 bg-bg-elevated border border-border-subtle rounded shadow-lg z-20 py-1"
-			:class="[
-				props.align === 'right' ? 'right-0' : 'left-0',
-				props.direction === 'up' ? 'bottom-full mb-1' : 'top-full mt-1',
-			]"
+		<Transition
+			enter-active-class="duration-(--motion-moderate) ease-spring"
+			enter-from-class="opacity-0 scale-95"
+			enter-to-class="opacity-100 scale-100"
+			leave-active-class="duration-(--motion-moderate-exit) ease-exit"
+			leave-from-class="opacity-100 scale-100"
+			leave-to-class="opacity-0 scale-95"
 		>
-			<slot :close="close" />
-		</div>
+			<div
+				v-if="open"
+				ref="menuEl"
+				role="menu"
+				:aria-label="menuLabel"
+				class="absolute min-w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
+				:class="[
+					props.align === 'right' ? 'right-0' : 'left-0',
+					props.direction === 'up' ? 'bottom-full mb-1 origin-bottom' : 'top-full mt-1 origin-top',
+				]"
+				@keydown="onMenuKeydown"
+			>
+				<slot :close="close" />
+			</div>
+		</Transition>
 	</div>
 </template>

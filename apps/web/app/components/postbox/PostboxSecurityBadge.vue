@@ -255,43 +255,47 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 		</div>
 
 		<!-- Signature-verdict chip (F2, second driver): PGP-signed unencrypted mail
-		     with a server-side verdict. Tooltip carries fingerprint + key source. -->
+		     with a server-side verdict. Tooltip carries fingerprint + key source;
+		     the chip takes focus so a keyboard or touch user can open it too. -->
 		<div v-else-if="signatureBadge" data-testid="signature-badge">
-			<div
-				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
-				:class="signatureTone.chip"
-				:title="signatureTooltip"
-			>
-				<component :is="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
-				<span data-testid="signature-badge-summary">{{ t(signatureBadge.summary) }}</span>
-				<span
-					v-if="signatureBadge.fingerprintShort"
-					class="text-text-tertiary font-mono"
-					data-testid="signature-badge-fingerprint"
-					>{{ signatureBadge.fingerprintShort }}</span
+			<UiTooltip :text="signatureTooltip">
+				<div
+					class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:class="signatureTone.chip"
+					tabindex="0"
 				>
-			</div>
+					<component :is="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
+					<span data-testid="signature-badge-summary">{{ t(signatureBadge.summary) }}</span>
+					<span
+						v-if="signatureBadge.fingerprintShort"
+						class="text-text-tertiary font-mono"
+						data-testid="signature-badge-fingerprint"
+						>{{ signatureBadge.fingerprintShort }}</span
+					>
+				</div>
+			</UiTooltip>
 		</div>
 
 		<!-- Structural PGP/S-MIME chip (fallback): only when no verdict record drives it. -->
-		<div
-			v-else-if="meta"
-			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary"
-			:title="tooltip"
-		>
-			<component
-				:is="meta.icon"
-				class="w-3.5 h-3.5"
-				:class="meta.encrypted ? 'text-brand' : 'text-text-tertiary'"
-			/>
-			{{ meta.label }}
-			<span v-if="meta.encrypted" class="text-text-tertiary">{{
-				t('components.postbox.postboxSecurityBadge.cantDecryptSuffix')
-			}}</span>
-			<span v-else class="text-text-tertiary">{{
-				t('components.postbox.postboxSecurityBadge.notVerifiedSuffix')
-			}}</span>
-		</div>
+		<UiTooltip v-else-if="meta" :text="tooltip">
+			<div
+				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				tabindex="0"
+			>
+				<component
+					:is="meta.icon"
+					class="w-3.5 h-3.5"
+					:class="meta.encrypted ? 'text-brand' : 'text-text-tertiary'"
+				/>
+				{{ meta.label }}
+				<span v-if="meta.encrypted" class="text-text-tertiary">{{
+					t('components.postbox.postboxSecurityBadge.cantDecryptSuffix')
+				}}</span>
+				<span v-else class="text-text-tertiary">{{
+					t('components.postbox.postboxSecurityBadge.notVerifiedSuffix')
+				}}</span>
+			</div>
+		</UiTooltip>
 
 		<!-- Clearsigned: show the signed block's cleartext, and only that. A block
 		     can sign nothing but whitespace, so the note must not depend on it. -->

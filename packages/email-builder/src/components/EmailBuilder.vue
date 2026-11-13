@@ -177,6 +177,7 @@ const canvasInnerElement = computed(
 		<div
 			class="shrink-0 overflow-hidden transition-[max-height,opacity] duration-(--motion-moderate) ease-spring max-h-20"
 			:class="{ '!max-h-0 !opacity-0 !pointer-events-none': isFocusMode }"
+			:inert="isFocusMode || undefined"
 		>
 			<EditorHeader
 				:name="formName"
@@ -382,6 +383,7 @@ const canvasInnerElement = computed(
 
 		<!-- Apply brand kit: restyles the whole email, so it asks first -->
 		<UiConfirmationDialog
+			color-scheme="light"
 			:open="showApplyBrandConfirm"
 			:title="t('builder.brand.applyTitle')"
 			:description="applyBrandDescription"
@@ -394,6 +396,7 @@ const canvasInnerElement = computed(
 
 		<!-- Detach confirmation dialog -->
 		<UiConfirmationDialog
+			color-scheme="light"
 			:open="showDetachConfirm"
 			:title="t('builder.detach.title')"
 			:description="

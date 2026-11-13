@@ -5,9 +5,12 @@ import { GaugeIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
-const { data: telemetry, isLoading } = useOrganizationQuery(
-	api.analytics.complianceTelemetry.getComplianceTelemetry
-);
+const {
+	data: telemetry,
+	isLoading,
+	error,
+	refetch,
+} = useOrganizationQuery(api.analytics.complianceTelemetry.getComplianceTelemetry);
 
 /** The catalog rejects `<` inside a message, so the comparison sign is a value. */
 const LESS_THAN = '<';
@@ -70,6 +73,8 @@ const SPAM_RATE_LABEL = {
 				data-testid="compliance-loading"
 				class="h-24 animate-pulse motion-reduce:animate-none rounded-lg bg-bg-surface"
 			/>
+			<!-- A failed read says so; without this the three sections just vanish. -->
+			<UiQueryBoundary v-else-if="error && !telemetry" :error="error" @retry="refetch" />
 			<div v-else-if="telemetry" class="grid gap-4 lg:grid-cols-3">
 				<section
 					data-testid="spam-rate"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, useId } from 'vue';
 import type { DelayStepConfig } from '~/composables/automations/steps';
 import { ClockIcon } from '@coolicons/vue';
 
@@ -16,8 +16,18 @@ const emit = defineEmits<{
 	save: [];
 }>();
 
+const durationId = useId();
+const hintId = useId();
+const errorId = useId();
+
+// An empty or zero wait would save as 0 (`Number('')`), so it is refused here
+// with a message instead of being saved.
+const durationInvalid = ref(false);
+
 const updateDuration = (event: Event) => {
 	const duration = Number((event.target as HTMLInputElement).value);
+	durationInvalid.value = !Number.isFinite(duration) || duration < 1;
+	if (durationInvalid.value) return;
 	emit('update:modelValue', { ...props.modelValue, duration });
 	emit('save');
 };
@@ -29,6 +39,7 @@ const updateUnit = (event: Event) => {
 };
 
 const applyPreset = (duration: number, unit: Unit) => {
+	durationInvalid.value = false;
 	emit('update:modelValue', { duration, unit });
 	emit('save');
 };
@@ -57,19 +68,27 @@ const presets: { duration: number; unit: Unit; labelKey: string }[] = [
 <template>
 	<div class="space-y-6">
 		<div>
-			<label class="label flex items-center gap-2 mb-2">
+			<label :for="durationId" class="label flex items-center gap-2 mb-2">
 				<ClockIcon class="w-4 h-4 text-brand" />
 				{{ t('components.automations.steps.delay.editor.durationLabel') }}
 			</label>
 			<div class="flex gap-3">
 				<input
+					:id="durationId"
 					:value="modelValue.duration"
 					type="number"
 					min="1"
-					class="input w-24"
+					:class="['input w-24', durationInvalid ? 'input-error' : '']"
+					:aria-invalid="durationInvalid || undefined"
+					:aria-describedby="durationInvalid ? `${errorId} ${hintId}` : hintId"
 					@change="updateDuration"
 				/>
-				<select :value="modelValue.unit" class="input flex-1" @change="updateUnit">
+				<select
+					:value="modelValue.unit"
+					class="input flex-1"
+					:aria-label="t('components.automations.steps.delay.editor.unitLabel')"
+					@change="updateUnit"
+				>
 					<option value="minutes">
 						{{ t('components.automations.steps.delay.editor.unitOptions.minutes') }}
 					</option>
@@ -84,7 +103,10 @@ const presets: { duration: number; unit: Unit; labelKey: string }[] = [
 					</option>
 				</select>
 			</div>
-			<p class="text-xs text-text-tertiary mt-1.5">
+			<p v-if="durationInvalid" :id="errorId" class="error-message">
+				{{ t('shared.automations.steps.delay.durationTooShort') }}
+			</p>
+			<p :id="hintId" class="text-xs text-text-tertiary mt-1.5">
 				{{ t('components.automations.steps.delay.editor.durationHint') }}
 			</p>
 		</div>
@@ -97,6 +119,8 @@ const presets: { duration: number; unit: Unit; labelKey: string }[] = [
 				<button
 					v-for="preset in presets"
 					:key="preset.labelKey"
+					type="button"
+					:aria-pressed="modelValue.duration === preset.duration && modelValue.unit === preset.unit"
 					class="px-3 py-1.5 text-sm rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="
 						modelValue.duration === preset.duration && modelValue.unit === preset.unit

@@ -109,7 +109,7 @@ const groupIcon = {
 							</p>
 						</div>
 						<span
-							class="hidden rounded-full border px-2 py-0.5 text-xs font-medium sm:inline-flex"
+							class="inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium"
 							:class="DELIVERABILITY_STATUS_PRESENTATION[item.status].className"
 						>
 							{{ t(DELIVERABILITY_STATUS_PRESENTATION[item.status].label) }}
@@ -188,7 +188,7 @@ const groupIcon = {
 									:href="item.docsHref"
 									target="_blank"
 									rel="noopener noreferrer"
-									class="text-xs text-brand hover:underline"
+									class="text-xs text-text-secondary hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 								>
 									{{ t('components.delivery.deliverabilityChecklistGroups.howThisWorks') }}
 								</a>

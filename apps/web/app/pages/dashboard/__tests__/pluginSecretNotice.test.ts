@@ -53,10 +53,24 @@ describe('plugin settings page', () => {
 			}),
 			useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false) }),
 			useToast: () => ({ showToast: vi.fn() }),
+			// Inert: the real leave guard needs a router the page is not mounted under.
+			useUnsavedChanges: () => ({
+				showDialog: ref(false),
+				isSavingBeforeLeave: ref(false),
+				confirmDiscard: vi.fn(),
+				confirmSave: vi.fn(),
+				cancelNavigation: vi.fn(),
+				setHasChanges: vi.fn(),
+			}),
 		});
 		const { default: Page } = await import('../admin/instance/plugins/[id].vue');
 		const wrapper = mountDashboardPage(Page, {
-			stubs: { UiBadge: true, UiConfirmationDialog: true, UiSwitch: true },
+			stubs: {
+				UiBadge: true,
+				UiConfirmationDialog: true,
+				UiSwitch: true,
+				UiUnsavedChangesDialog: true,
+			},
 		});
 
 		const row = wrapper

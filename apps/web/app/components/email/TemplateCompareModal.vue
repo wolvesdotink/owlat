@@ -185,7 +185,9 @@ const isOpen = computed({
 					<dd class="min-w-0 break-words">
 						<del class="text-error">{{ change.before || t(`${KEY}.empty`) }}</del>
 						<span class="text-text-tertiary" aria-hidden="true"> → </span>
-						<ins class="text-success no-underline">{{ change.after || t(`${KEY}.empty`) }}</ins>
+						<ins class="text-success underline decoration-success/40 underline-offset-2">{{
+							change.after || t(`${KEY}.empty`)
+						}}</ins>
 					</dd>
 				</div>
 			</dl>
@@ -251,7 +253,9 @@ const isOpen = computed({
 								<del class="text-error">{{ change.before }}</del>
 							</p>
 							<p v-if="change.kind !== 'removed'" class="mt-0.5 break-words">
-								<ins class="text-success no-underline">{{ change.after }}</ins>
+								<ins class="text-success underline decoration-success/40 underline-offset-2">{{
+									change.after
+								}}</ins>
 							</p>
 						</li>
 					</ul>

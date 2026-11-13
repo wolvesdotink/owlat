@@ -273,9 +273,13 @@ const { showToast } = useToast();
 							type="button"
 							:class="[
 								'flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
-								layout === 'card' ? 'w-11 h-11' : 'p-2',
+								layout === 'card' ? 'w-11 h-11' : 'p-2 pointer-coarse:p-3.5',
 							]"
-							:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
+							:aria-label="
+								row.email
+									? `${t('dashboard.audience.topics.detail.index.removeFromTopic')}: ${row.email}`
+									: t('dashboard.audience.topics.detail.index.removeFromTopic')
+							"
 							@click="openRemoveModal(row)"
 						>
 							<TrashIcon class="w-4 h-4" />

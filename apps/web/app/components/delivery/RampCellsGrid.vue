@@ -92,13 +92,15 @@ const TONE_CLASS = {
 					v-for="{ cell, status, constraint } in rows"
 					:key="cell.cellKey"
 					class="border-t border-border-subtle align-top"
+					:class="cell.cellKey === selectedCellKey ? 'bg-(--surface-2-selected)' : ''"
 					:data-testid="`ramp-cell-${cell.cellKey}`"
 					:data-selected="cell.cellKey === selectedCellKey ? 'true' : 'false'"
 				>
 					<th scope="row" class="py-3 pr-4 text-left font-normal text-text-primary">
 						<button
 							type="button"
-							class="text-left underline-offset-2 hover:underline"
+							class="rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:class="cell.cellKey === selectedCellKey ? 'font-medium' : ''"
 							:aria-expanded="cell.cellKey === selectedCellKey"
 							:data-testid="`ramp-cell-open-${cell.cellKey}`"
 							@click="emit('select', cell.cellKey)"

@@ -87,7 +87,7 @@ function presenceTitle(person: PresencePerson): string {
 				     to keep painting on top of the last avatar it overlaps. -->
 				<span
 					v-if="overflow > 0"
-					class="relative w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-[0.625rem] font-medium flex items-center justify-center"
+					class="relative w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-2xs font-medium flex items-center justify-center"
 					:title="t('components.inbox.inboxThreadPresence.moreHere', { count: overflow })"
 				>
 					+{{ overflow }}
@@ -102,17 +102,20 @@ function presenceTitle(person: PresencePerson): string {
 			</span>
 		</div>
 
-		<!-- Replying banner — quiet, warning-subtle, human language. -->
-		<div
-			v-if="repliers.length > 0"
-			class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-text-secondary presence-banner"
-		>
-			<PencilIcon class="w-3.5 h-3.5 text-warning shrink-0" />
-			<I18nT :keypath="replyingBannerKey" tag="span" scope="global">
-				<template #names>
-					<span class="font-medium text-text-primary">{{ replyingLabel }}</span>
-				</template>
-			</I18nT>
+		<!-- Replying banner — quiet, warning-subtle, human language. The live
+		     region stays mounted so a teammate starting to reply is announced. -->
+		<div role="status" class="empty:hidden">
+			<div
+				v-if="repliers.length > 0"
+				class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-text-secondary presence-banner"
+			>
+				<PencilIcon class="w-3.5 h-3.5 text-warning shrink-0" />
+				<I18nT :keypath="replyingBannerKey" tag="span" scope="global">
+					<template #names>
+						<span class="font-medium text-text-primary">{{ replyingLabel }}</span>
+					</template>
+				</I18nT>
+			</div>
 		</div>
 	</div>
 </template>

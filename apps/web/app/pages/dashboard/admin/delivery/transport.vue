@@ -285,7 +285,7 @@ const inboundHeadingId = useId();
 								</p>
 							</div>
 							<UiBadge v-if="status.provider && status.isKnownProvider" variant="default" size="md">
-								{{ status.provider }}
+								{{ localized(transportKindLabel(status.provider)) }}
 							</UiBadge>
 							<UiBadge v-else variant="error" size="md">
 								{{

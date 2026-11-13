@@ -51,6 +51,10 @@ const sourceTypeOptions = computed(() =>
 
 const { t, te } = useI18n();
 
+// Source and confidence default sensibly for a hand-written entry, so they wait
+// behind "Advanced" with the expiry instead of asking up front.
+const showAdvanced = ref(false);
+
 // Option labels are translated here: the shared presentation map
 // (`~/utils/knowledgeEntryTypes`) stays a plain constant, so a type the catalog
 // doesn't know still falls back to its raw label instead of a key path.
@@ -174,43 +178,6 @@ const handleCancel = () => {
 			/>
 		</div>
 
-		<!-- Source Type -->
-		<div>
-			<label for="form-sourcetype" class="block text-sm font-medium text-text-secondary mb-1.5">{{
-				t('components.knowledge.knowledgeEntryForm.source')
-			}}</label>
-			<select id="form-sourcetype" v-model="form.sourceType" class="input w-full">
-				<option v-for="source in sourceTypeOptions" :key="source" :value="source">
-					{{ sourceTypeLabel(source) }}
-				</option>
-			</select>
-		</div>
-
-		<!-- Confidence -->
-		<div>
-			<label for="form-confidence" class="block text-sm font-medium text-text-secondary mb-1.5">
-				{{ t('components.knowledge.knowledgeEntryForm.confidence') }}
-				<span class="font-normal text-text-tertiary">{{
-					t('components.knowledge.knowledgeEntryForm.confidenceValue', {
-						value: Math.round(form.confidence * 100),
-					})
-				}}</span>
-			</label>
-			<input
-				id="form-confidence"
-				v-model.number="form.confidence"
-				type="range"
-				min="0"
-				max="1"
-				step="0.05"
-				class="w-full accent-brand"
-			/>
-			<div class="flex justify-between text-xs text-text-tertiary mt-1">
-				<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceLow') }}</span>
-				<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceHigh') }}</span>
-			</div>
-		</div>
-
 		<!-- Tags -->
 		<div>
 			<label for="form-tagsinput" class="block text-sm font-medium text-text-secondary mb-1.5">
@@ -237,23 +204,74 @@ const handleCancel = () => {
 			</div>
 		</div>
 
-		<!-- Expiration -->
-		<div>
-			<label for="form-expiresindays" class="block text-sm font-medium text-text-secondary mb-1.5">
-				{{ t('components.knowledge.knowledgeEntryForm.expiresIn') }}
-				<span class="text-text-tertiary font-normal">{{
-					t('components.knowledge.knowledgeEntryForm.expiresInHint')
-				}}</span>
-			</label>
-			<input
-				id="form-expiresindays"
-				v-model="form.expiresInDays"
-				type="number"
-				min="1"
-				:placeholder="t('components.knowledge.knowledgeEntryForm.expiresInPlaceholder')"
-				class="input w-full"
-			/>
-		</div>
+		<UiDisclosure v-model="showAdvanced">
+			<div class="space-y-4">
+				<!-- Source Type -->
+				<div>
+					<label
+						for="form-sourcetype"
+						class="block text-sm font-medium text-text-secondary mb-1.5"
+						>{{ t('components.knowledge.knowledgeEntryForm.source') }}</label
+					>
+					<select id="form-sourcetype" v-model="form.sourceType" class="input w-full">
+						<option v-for="source in sourceTypeOptions" :key="source" :value="source">
+							{{ sourceTypeLabel(source) }}
+						</option>
+					</select>
+				</div>
+
+				<!-- Confidence -->
+				<div>
+					<label for="form-confidence" class="block text-sm font-medium text-text-secondary mb-1.5">
+						{{ t('components.knowledge.knowledgeEntryForm.confidence') }}
+						<span class="font-normal text-text-tertiary">{{
+							t('components.knowledge.knowledgeEntryForm.confidenceValue', {
+								value: Math.round(form.confidence * 100),
+							})
+						}}</span>
+					</label>
+					<input
+						id="form-confidence"
+						v-model.number="form.confidence"
+						type="range"
+						min="0"
+						max="1"
+						step="0.05"
+						class="w-full accent-brand"
+						:aria-valuetext="
+							t('components.knowledge.knowledgeEntryForm.confidenceValue', {
+								value: Math.round(form.confidence * 100),
+							})
+						"
+					/>
+					<div class="flex justify-between text-xs text-text-tertiary mt-1">
+						<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceLow') }}</span>
+						<span>{{ t('components.knowledge.knowledgeEntryForm.confidenceHigh') }}</span>
+					</div>
+				</div>
+
+				<!-- Expiration -->
+				<div>
+					<label
+						for="form-expiresindays"
+						class="block text-sm font-medium text-text-secondary mb-1.5"
+					>
+						{{ t('components.knowledge.knowledgeEntryForm.expiresIn') }}
+						<span class="text-text-tertiary font-normal">{{
+							t('components.knowledge.knowledgeEntryForm.expiresInHint')
+						}}</span>
+					</label>
+					<input
+						id="form-expiresindays"
+						v-model="form.expiresInDays"
+						type="number"
+						min="1"
+						:placeholder="t('components.knowledge.knowledgeEntryForm.expiresInPlaceholder')"
+						class="input w-full"
+					/>
+				</div>
+			</div>
+		</UiDisclosure>
 
 		<!-- Actions -->
 		<div class="flex items-center justify-end gap-3 pt-2">

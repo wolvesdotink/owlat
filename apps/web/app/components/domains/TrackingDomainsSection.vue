@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import {
+	ChevronDownIcon,
 	CircleCheckIcon,
 	ClockIcon,
 	LinkIcon,
@@ -28,9 +29,12 @@ const { t } = useI18n();
 const { hasActiveOrganization } = useOrganizationContext();
 
 // Real-time list of tracking domains for the active org.
-const { data: trackingDomains, isLoading } = useOrganizationQuery(
-	api.domains.trackingDomains.listTrackingDomains
-);
+const {
+	data: trackingDomains,
+	isLoading,
+	error: trackingDomainsError,
+	refetch: refetchTrackingDomains,
+} = useOrganizationQuery(api.domains.trackingDomains.listTrackingDomains);
 
 // Mutations / action, routed through the shared Operation module so they share
 // the error vocabulary, toasts and telemetry policy used elsewhere.
@@ -64,6 +68,20 @@ const expandedId = ref<Id<'trackingDomains'> | null>(null);
 
 const toggleExpansion = (id: Id<'trackingDomains'>) => {
 	expandedId.value = expandedId.value === id ? null : id;
+};
+
+/**
+ * A click on the header text toggles the row like the rest of the header, but
+ * not when it ends a text selection, so the domain stays copyable. Focus moves
+ * to the row's disclosure button so the keyboard picks up from there.
+ */
+const toggleFromText = (event: MouseEvent, id: Id<'trackingDomains'>) => {
+	if (window.getSelection()?.isCollapsed === false) return;
+	const header = (event.currentTarget as HTMLElement | null)?.closest('[data-tracking-row]');
+	header
+		?.querySelector<HTMLButtonElement>('[data-testid="tracking-domain-header"]')
+		?.focus({ preventScroll: true });
+	toggleExpansion(id);
 };
 
 // The registrable zone a tracking domain's CNAME goes in — e.g. `example.com`
@@ -168,8 +186,14 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			</div>
 		</div>
 
+		<UiQueryBoundary
+			v-if="trackingDomainsError && !trackingDomains"
+			:error="trackingDomainsError"
+			@retry="refetchTrackingDomains"
+		/>
+
 		<!-- Loading -->
-		<div v-if="isLoading && !trackingDomains" class="flex items-center justify-center py-12">
+		<div v-else-if="isLoading && !trackingDomains" class="flex items-center justify-center py-12">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner />
 				<p class="text-text-secondary text-sm">
@@ -203,17 +227,32 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 		<!-- List -->
 		<div v-else-if="trackingDomains && trackingDomains.length > 0" class="space-y-4">
 			<div v-for="td in trackingDomains" :key="td._id" class="card p-0 overflow-hidden">
-				<!-- Row header -->
+				<!-- Row header: the same layout as the sending-domain row. ONE
+				     disclosure button laid over the whole row is the full-row click
+				     target and the keyboard route; the identity text and the actions
+				     sit above it, so no control is nested inside another. Stacks
+				     below `sm` so the domain name keeps its width on a phone. -->
 				<div
-					class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors"
-					data-testid="tracking-domain-header"
-					@click="toggleExpansion(td._id)"
+					data-tracking-row
+					class="relative px-4 py-4 sm:px-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between hover:bg-bg-surface/50 transition-colors"
 				>
-					<div class="flex items-center gap-4">
+					<button
+						type="button"
+						class="absolute inset-0 w-full h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+						:aria-expanded="expandedId === td._id"
+						:aria-controls="`tracking-domain-records-${td._id}`"
+						:aria-label="
+							t('components.domains.trackingDomainsSection.rowLabel', { domain: td.domain })
+						"
+						data-testid="tracking-domain-header"
+						@click="toggleExpansion(td._id)"
+					/>
+					<div class="flex items-center gap-4 min-w-0">
 						<UiIconBox :icon="LinkIcon" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<div class="flex items-center gap-3">
-								<p class="font-medium text-text-primary">{{ td.domain }}</p>
+						<!-- Mouse-only by design: the disclosure above is the keyboard route. -->
+						<div class="relative min-w-0 cursor-pointer" @click="toggleFromText($event, td._id)">
+							<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+								<h3 class="font-medium text-text-primary break-all">{{ td.domain }}</h3>
 								<span
 									:class="[
 										'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
@@ -245,13 +284,14 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 						</div>
 					</div>
 
-					<div class="flex items-center gap-2">
+					<div class="flex items-center justify-end gap-2 shrink-0">
 						<UiTooltip :text="t('components.domains.trackingDomainsSection.verifyTitle')">
 							<UiButton
 								variant="secondary"
-								class="gap-1.5 text-sm py-1.5 px-3"
+								size="sm"
+								class="relative gap-1.5"
 								:disabled="verifyingId === td._id"
-								@click.stop="handleVerify(td._id)"
+								@click="handleVerify(td._id)"
 							>
 								<SpinnerIcon v-if="verifyingId === td._id" class="w-4 h-4" />
 								<ReloadIcon v-else class="w-4 h-4" />
@@ -264,70 +304,68 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 						</UiTooltip>
 						<UiTooltip :text="t('components.domains.trackingDomainsSection.removeTitle')">
 							<UiButton
-								variant="ghost"
-								class="p-2 text-error hover:bg-error/10"
+								variant="danger-ghost"
+								size="sm"
+								class="relative px-2"
 								:aria-label="t('components.domains.trackingDomainsSection.removeTitle')"
-								@click.stop="deleteModal.open(td)"
+								@click="deleteModal.open(td)"
 							>
 								<TrashIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
+						<!-- Decorative. Its rotation makes it a stacking context painted
+						     above the overlay, so it lets the pointer through. -->
 						<div
+							aria-hidden="true"
 							:class="[
-								'w-5 h-5 flex items-center justify-center transition-transform',
+								'w-5 h-5 flex items-center justify-center transition-transform pointer-events-none',
 								expandedId === td._id ? 'rotate-180' : '',
 							]"
 						>
-							<svg
-								class="w-4 h-4 text-text-tertiary"
-								fill="none"
-								viewBox="0 0 24 24"
-								stroke="currentColor"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M19 9l-7 7-7-7"
-								/>
-							</svg>
+							<ChevronDownIcon class="w-4 h-4 text-text-tertiary" />
 						</div>
 					</div>
 				</div>
 
 				<!-- DNS record (expanded) -->
 				<Transition name="expand">
-					<div v-if="expandedId === td._id" class="border-t border-border-subtle">
-						<div class="px-6 py-4 bg-bg-surface/30">
-							<I18nT
-								keypath="components.domains.trackingDomainsSection.cnameHeading"
-								tag="h4"
-								scope="global"
-								class="text-sm font-medium text-text-primary mb-4"
-							>
-								<template #zone>
-									<strong>{{ zoneFor(td.domain) }}</strong>
-								</template>
-							</I18nT>
-							<DomainsDNSRecordPanel
-								:record="{ type: 'CNAME', host: '@', value: td.cnameTarget }"
-								:label="t('components.domains.trackingDomainsSection.recordLabel')"
-								:domain="td.domain"
-								:verification="{ verified: td.isVerified }"
-							/>
-							<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
+					<div
+						v-if="expandedId === td._id"
+						:id="`tracking-domain-records-${td._id}`"
+						class="expand-panel border-t border-border-subtle"
+					>
+						<div class="expand-panel-inner">
+							<div class="px-4 py-4 sm:px-6 bg-bg-surface/30">
 								<I18nT
-									keypath="components.domains.trackingDomainsSection.note.body"
-									tag="p"
+									keypath="components.domains.trackingDomainsSection.cnameHeading"
+									tag="h4"
 									scope="global"
-									class="text-sm text-text-secondary"
+									class="text-sm font-medium text-text-primary mb-4"
 								>
-									<template #note>
-										<strong class="text-text-primary">
-											{{ t('components.domains.trackingDomainsSection.note.label') }}
-										</strong>
+									<template #zone>
+										<strong>{{ zoneFor(td.domain) }}</strong>
 									</template>
 								</I18nT>
+								<DomainsDNSRecordPanel
+									:record="{ type: 'CNAME', host: '@', value: td.cnameTarget }"
+									:label="t('components.domains.trackingDomainsSection.recordLabel')"
+									:domain="td.domain"
+									:verification="{ verified: td.isVerified }"
+								/>
+								<div class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle">
+									<I18nT
+										keypath="components.domains.trackingDomainsSection.note.body"
+										tag="p"
+										scope="global"
+										class="text-sm text-text-secondary"
+									>
+										<template #note>
+											<strong class="text-text-primary">
+												{{ t('components.domains.trackingDomainsSection.note.label') }}
+											</strong>
+										</template>
+									</I18nT>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -379,23 +417,34 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 </template>
 
 <style scoped>
-/* Expand transition (mirrors the Sending Domains rows) */
+/* Expand transition, shared with the sending-domain rows. It animates the grid
+   row from 0fr to 1fr instead of a fixed max-height, so a panel of any height
+   opens and closes without clipping or snapping. The padded content sits in an
+   unpadded inner wrapper: a padded grid item cannot shrink below its padding. */
+.expand-panel {
+	display: grid;
+	grid-template-rows: 1fr;
+}
+
+.expand-panel-inner {
+	min-height: 0;
+}
+
 .expand-enter-active,
 .expand-leave-active {
-	transition-property: opacity, max-height;
+	transition-property: opacity, grid-template-rows;
 	transition-duration: var(--motion-moderate);
 	transition-timing-function: var(--ease-spring);
+}
+
+.expand-enter-active .expand-panel-inner,
+.expand-leave-active .expand-panel-inner {
 	overflow: hidden;
 }
 
 .expand-enter-from,
 .expand-leave-to {
 	opacity: 0;
-	max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-	max-height: 1000px;
+	grid-template-rows: 0fr;
 }
 </style>

@@ -27,9 +27,15 @@ const { t } = useI18n();
 		<dt class="row-start-1 col-start-1 text-sm font-medium text-text-secondary">{{ label }}</dt>
 		<slot />
 		<dd v-if="to" class="row-start-1 col-start-2 sm:col-start-3">
-			<NuxtLink :to="to" class="link text-sm" :data-testid="linkTestid">{{
-				action ?? t('common.edit')
-			}}</NuxtLink>
+			<!-- Named with its row, so a screen reader's link list reads "Edit Features",
+			     "Add Admin account" rather than a column of bare "Edit"s. -->
+			<NuxtLink
+				:to="to"
+				class="link text-sm"
+				:data-testid="linkTestid"
+				:aria-label="`${action ?? t('common.edit')} ${label}`"
+				>{{ action ?? t('common.edit') }}</NuxtLink
+			>
 		</dd>
 	</div>
 </template>

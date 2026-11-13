@@ -284,14 +284,17 @@ function handleFileInput(event: Event) {
 						<component :is="getFileIcon(att.contentType)" class="w-3.5 h-3.5" />
 					</div>
 					<div class="flex-1 min-w-0">
-						<p class="text-[13px] text-text-primary truncate leading-tight">{{ att.filename }}</p>
-						<p class="text-[11px] text-text-tertiary leading-tight">
+						<p class="text-caption text-text-primary truncate leading-tight" :title="att.filename">
+							{{ att.filename }}
+						</p>
+						<p class="text-2xs text-text-tertiary leading-tight">
 							{{ formatCompactFileSize(att.fileSize) }}
 						</p>
 					</div>
 					<UiTooltip :text="t('components.attachmentPanel.removeAttachment')">
 						<button
-							class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error/10 transition-[color,background-color,opacity]"
+							type="button"
+							class="shrink-0 p-1 rounded-md text-text-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand hover:text-error hover:bg-error/10 transition-[color,background-color,opacity] pointer-coarse:opacity-100 pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 							:aria-label="t('components.attachmentPanel.removeAttachment')"
 							@click.stop="removeAttachment(att.id)"
 						>
@@ -309,7 +312,7 @@ function handleFileInput(event: Event) {
 						:variant="sizePercent > 80 ? 'warning' : 'brand'"
 						:aria-label="t('components.attachmentPanel.sizeUsedLabel')"
 					/>
-					<span class="text-[10px] text-text-tertiary shrink-0">
+					<span class="text-2xs text-text-tertiary shrink-0">
 						{{ formatCompactFileSize(totalSize) }} / {{ formatCompactFileSize(MAX_TOTAL_SIZE) }}
 					</span>
 				</div>
@@ -323,19 +326,25 @@ function handleFileInput(event: Event) {
 				@click="fileInputRef?.click()"
 			>
 				<SpinnerIcon v-if="isUploading" class="w-4 h-4 text-brand" />
-				<template v-else>
-					<PaperclipIcon class="w-4 h-4 text-text-tertiary" />
-					<span class="text-sm text-text-secondary">
-						{{
-							attachments.length > 0
-								? t('components.attachmentPanel.dropMore')
-								: t('components.attachmentPanel.dropFiles')
-						}}
-					</span>
-				</template>
-				<span class="text-text-tertiary mx-1">|</span>
+				<!-- The whole zone is a click target for the pointer; this button is the
+				     keyboard's way to the device's file picker. -->
 				<button
-					class="text-sm text-text-secondary hover:text-brand transition-colors"
+					v-else
+					type="button"
+					class="inline-flex items-center gap-3 rounded-md text-sm text-text-secondary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					@click.stop="fileInputRef?.click()"
+				>
+					<PaperclipIcon class="w-4 h-4 text-text-tertiary" />
+					{{
+						attachments.length > 0
+							? t('components.attachmentPanel.dropMore')
+							: t('components.attachmentPanel.dropFiles')
+					}}
+				</button>
+				<span class="text-text-tertiary mx-1" aria-hidden="true">|</span>
+				<button
+					type="button"
+					class="rounded-md text-sm text-text-secondary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					@click.stop="showMediaPicker = true"
 				>
 					{{ t('components.attachmentPanel.mediaLibrary') }}
@@ -344,7 +353,7 @@ function handleFileInput(event: Event) {
 
 			<!-- Limit reached -->
 			<div v-if="!canAddMore && attachments.length > 0" class="px-4 pb-3 pt-1 text-center">
-				<span class="text-[11px] text-text-tertiary">
+				<span class="text-2xs text-text-tertiary">
 					{{
 						attachments.length >= MAX_ATTACHMENTS
 							? t('components.attachmentPanel.maxFilesReached')

@@ -14,6 +14,7 @@ const stubs = {
 	},
 	UiCard: { template: '<section><slot name="header" /><slot /></section>' },
 	UiIconBox: { template: '<i />' },
+	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 };
 
 beforeAll(() => {
@@ -21,6 +22,17 @@ beforeAll(() => {
 });
 
 describe('DeliverabilityLoopbackCard', () => {
+	it('points at sending domains instead of an empty picker when there are none', () => {
+		const wrapper = mount(DeliverabilityLoopbackCard, {
+			props: { domains: [] },
+			global: { plugins: [createTestI18n()], stubs },
+		});
+		const empty = wrapper.get('[data-testid="loopback-no-domains"]');
+		expect(empty.find('a').attributes('href')).toBe('/dashboard/admin/delivery/domains');
+		expect(wrapper.find('select').exists()).toBe(false);
+		expect(wrapper.find('button').exists()).toBe(false);
+	});
+
 	it('explains why proof is locked before required checks pass', () => {
 		const wrapper = mount(DeliverabilityLoopbackCard, {
 			props: {

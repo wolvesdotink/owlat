@@ -49,12 +49,14 @@ const {
 	data: transport,
 	isLoading: transportLoading,
 	error: transportError,
+	refetch: refetchTransport,
 } = useOrganizationQuery(api.delivery.status.getTransportSummary);
 
 const {
 	data: domainRows,
 	isLoading: domainsLoading,
 	error: domainsError,
+	refetch: refetchDomains,
 } = useOrganizationQuery(api.analytics.reputationQueries.getDeliveryDomainTable);
 
 // MTA-STS publishing is an admin-gated inbound-TLS concern; `getMtaStsGuidance`
@@ -95,7 +97,12 @@ const mtaStsSource = computed<ReadinessMtaStsSource | null>(() => {
 });
 
 const isLoading = computed(() => transportLoading.value || domainsLoading.value);
-const hasError = computed(() => Boolean(transportError.value || domainsError.value));
+const loadError = computed(() => transportError.value ?? domainsError.value ?? null);
+
+function retryFailedReads() {
+	if (transportError.value) refetchTransport();
+	if (domainsError.value) refetchDomains();
+}
 
 // The active transport's outbound identities (non-secret) + the VERIFIED sending
 // domains — the ones mail actually sends from — so the alignment gate warns only
@@ -133,6 +140,18 @@ const readiness = computed(() => {
 	);
 });
 
+/**
+ * The summary line, unless it only repeats the first gate that needs work:
+ * with no transport, the summary and that gate say the same sentence.
+ */
+const summaryLine = computed(() => {
+	const r = readiness.value;
+	if (!r) return null;
+	const summary = localized(r.summary);
+	const firstOpen = r.gates.find((g) => g.status !== 'ready');
+	return firstOpen && localized(firstOpen.detail) === summary ? null : summary;
+});
+
 // Per-gate glyph; the text colour reuses the shared tone → class map so it can't
 // drift from the dot/chip renderings (never the brand terracotta for state).
 const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
@@ -161,12 +180,12 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 		</div>
 
 		<!-- Error -->
-		<div v-else-if="hasError" class="p-6 flex items-start gap-3">
-			<CircleWarningIcon class="w-5 h-5 text-warning mt-0.5 shrink-0" />
-			<p class="text-sm text-text-secondary">
-				{{ t('components.delivery.readinessPanel.error') }}
-			</p>
-		</div>
+		<UiQueryBoundary
+			v-else-if="loadError"
+			:error="loadError"
+			:error-message="t('components.delivery.readinessPanel.error')"
+			@retry="retryFailedReads"
+		/>
 
 		<div v-else-if="readiness" class="p-6 space-y-5">
 			<!-- Headline verdict -->
@@ -188,7 +207,7 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 								{{ localized(readiness.headline) }}
 							</span>
 						</div>
-						<p class="text-sm text-text-secondary mt-1">{{ localized(readiness.summary) }}</p>
+						<p v-if="summaryLine" class="text-sm text-text-secondary mt-1">{{ summaryLine }}</p>
 					</div>
 				</div>
 			</div>

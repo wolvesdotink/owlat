@@ -40,11 +40,16 @@ const computedAtLabel = computed(() =>
 	props.stats ? new Date(props.stats.computedAt).toLocaleString(locale.value) : ''
 );
 const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes ?? [1])));
+// The histogram and the community sizes are the "why" behind the summary, so
+// they sit one click away instead of stacking up the sidebar.
+const showDistribution = ref(false);
 </script>
 
 <template>
 	<div v-if="!stats" class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-		<h3 class="text-sm font-semibold text-text-primary mb-1.5">{{ t('components.knowledge.graphStatsPanel.title') }}</h3>
+		<h3 class="text-sm font-semibold text-text-primary mb-1.5">
+			{{ t('components.knowledge.graphStatsPanel.title') }}
+		</h3>
 		<p class="text-sm text-text-tertiary">
 			{{ t('components.knowledge.graphStatsPanel.emptyBody') }}
 		</p>
@@ -110,6 +115,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 						/>
 						<span
 							class="text-sm text-text-primary truncate group-hover:text-brand transition-colors"
+							:title="g.title"
 						>
 							{{ g.title }}
 						</span>
@@ -127,91 +133,105 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 					</span>
 					<NuxtLink
 						:to="`/dashboard/knowledge/${g.entryId}`"
-						class="text-text-tertiary hover:text-brand transition-colors flex-shrink-0"
+						class="text-text-tertiary hover:text-brand transition-colors flex-shrink-0 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:aria-label="t('components.knowledge.graphStatsPanel.openEntry', { title: g.title })"
 					>
-						<ExternalLinkIcon class="w-3.5 h-3.5" />
+						<ExternalLinkIcon class="w-3.5 h-3.5" aria-hidden="true" />
 					</NuxtLink>
 				</li>
 			</ul>
 		</div>
 
-		<!-- Confidence histogram -->
+		<!-- Confidence histogram + communities, collapsed by default -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-			<h3 class="text-sm font-semibold text-text-primary mb-3">
-				{{ t('components.knowledge.graphStatsPanel.confidenceTitle') }}
-			</h3>
-			<div class="flex items-end gap-1 h-24">
-				<div
-					v-for="bar in bars"
-					:key="bar.index"
-					class="flex-1 flex flex-col justify-end h-full"
-					:title="
-						t('components.knowledge.graphStatsPanel.bucketHint', {
-							range: bar.rangeLabel,
-							count: bar.count,
-						})
-					"
-				>
+			<UiDisclosure
+				v-model="showDistribution"
+				:label="t('components.knowledge.graphStatsPanel.distributionToggle')"
+			>
+				<h3 class="text-sm font-semibold text-text-primary mb-3">
+					{{ t('components.knowledge.graphStatsPanel.confidenceTitle') }}
+				</h3>
+				<div class="flex items-end gap-1 h-24" role="list">
 					<div
-						class="w-full rounded-t bg-brand/70 min-h-[2px]"
-						:style="{ height: `${Math.round(bar.heightFraction * 100)}%` }"
-					/>
+						v-for="bar in bars"
+						:key="bar.index"
+						role="listitem"
+						class="flex-1 flex flex-col justify-end h-full"
+						:aria-label="
+							t('components.knowledge.graphStatsPanel.bucketHint', {
+								range: bar.rangeLabel,
+								count: bar.count,
+							})
+						"
+						:title="
+							t('components.knowledge.graphStatsPanel.bucketHint', {
+								range: bar.rangeLabel,
+								count: bar.count,
+							})
+						"
+					>
+						<div
+							class="w-full rounded-t bg-brand/70 min-h-[2px]"
+							:style="{ height: `${Math.round(bar.heightFraction * 100)}%` }"
+						/>
+					</div>
 				</div>
-			</div>
-			<div class="flex justify-between text-2xs text-text-tertiary mt-1.5">
-				<span>{{ pct(0) }}</span>
-				<span>{{ pct(1) }}</span>
-			</div>
-			<div class="flex items-center justify-between text-xs text-text-secondary mt-3">
-				<span>
-					{{
-						t('components.knowledge.graphStatsPanel.mean', { value: pct(stats.confidenceMean) })
-					}}
-				</span>
-				<span>
-					{{
-						t('components.knowledge.graphStatsPanel.median', {
-							value: pct(stats.confidenceMedian),
-						})
-					}}
-				</span>
-				<span :class="stats.belowReviewThreshold > 0 ? 'text-warning' : 'text-text-tertiary'">
-					{{
-						t('components.knowledge.graphStatsPanel.lowConfidence', {
-							count: stats.belowReviewThreshold,
-						})
-					}}
-				</span>
-			</div>
-		</div>
+				<div class="flex justify-between text-2xs text-text-tertiary mt-1.5" aria-hidden="true">
+					<span>{{ pct(0) }}</span>
+					<span>{{ pct(1) }}</span>
+				</div>
+				<div class="flex items-center justify-between text-xs text-text-secondary mt-3">
+					<span>
+						{{
+							t('components.knowledge.graphStatsPanel.mean', { value: pct(stats.confidenceMean) })
+						}}
+					</span>
+					<span>
+						{{
+							t('components.knowledge.graphStatsPanel.median', {
+								value: pct(stats.confidenceMedian),
+							})
+						}}
+					</span>
+					<span :class="stats.belowReviewThreshold > 0 ? 'text-warning' : 'text-text-tertiary'">
+						{{
+							t('components.knowledge.graphStatsPanel.lowConfidence', {
+								count: stats.belowReviewThreshold,
+							})
+						}}
+					</span>
+				</div>
 
-		<!-- Communities -->
-		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-			<h3 class="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2">
-				<PackagesIcon class="w-4 h-4 text-text-tertiary" />
-				{{ t('components.knowledge.graphStatsPanel.communities') }}
-				<span class="text-text-tertiary font-normal">
-					{{
-						t('components.knowledge.graphStatsPanel.communityCount', {
-							count: stats.communityCount,
-						})
-					}}
-				</span>
-			</h3>
-			<p class="text-xs text-text-tertiary mb-3">
-				{{ t('components.knowledge.graphStatsPanel.communitiesHint') }}
-			</p>
-			<div class="flex flex-wrap gap-1.5">
-				<span
-					v-for="(size, i) in stats.communitySizes.slice(0, 12)"
-					:key="i"
-					class="text-2xs px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary border border-border-subtle"
-					:style="{ opacity: 0.5 + 0.5 * (size / maxCommunity) }"
-				>
-					{{ size }}
-				</span>
-			</div>
+				<!-- Communities -->
+				<h3 class="text-sm font-semibold text-text-primary mt-5 mb-1 flex items-center gap-2">
+					<PackagesIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+					{{ t('components.knowledge.graphStatsPanel.communities') }}
+					<span class="text-text-tertiary font-normal">
+						{{
+							t('components.knowledge.graphStatsPanel.communityCount', {
+								count: stats.communityCount,
+							})
+						}}
+					</span>
+				</h3>
+				<p class="text-xs text-text-tertiary mb-3">
+					{{ t('components.knowledge.graphStatsPanel.communitiesHint') }}
+				</p>
+				<ul class="flex flex-wrap gap-1.5">
+					<li
+						v-for="(size, i) in stats.communitySizes.slice(0, 12)"
+						:key="i"
+						class="text-2xs px-2 py-0.5 rounded-full bg-bg-surface text-text-secondary border border-border-subtle"
+						:style="{ opacity: 0.5 + 0.5 * (size / maxCommunity) }"
+						:title="t('components.knowledge.graphStatsPanel.communitySize', { count: size }, size)"
+					>
+						<span aria-hidden="true">{{ size }}</span>
+						<span class="sr-only">{{
+							t('components.knowledge.graphStatsPanel.communitySize', { count: size }, size)
+						}}</span>
+					</li>
+				</ul>
+			</UiDisclosure>
 		</div>
 
 		<!-- Surprising connections (redacted) -->
@@ -229,18 +249,22 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 					:key="i"
 					class="text-sm text-text-secondary flex items-center gap-1.5 min-w-0"
 				>
+					<!-- native-title: the full title of an entry the link truncates -->
 					<NuxtLink
 						:to="`/dashboard/knowledge/${c.fromEntryId}`"
 						class="truncate text-text-primary hover:text-brand transition-colors max-w-[40%]"
+						:title="c.fromTitle"
 					>
 						{{ c.fromTitle }}
 					</NuxtLink>
 					<span class="text-2xs uppercase tracking-wide text-text-tertiary flex-shrink-0">
 						{{ relationTypeLabel(c.relationType) }}
 					</span>
+					<!-- native-title: the full title of an entry the link truncates -->
 					<NuxtLink
 						:to="`/dashboard/knowledge/${c.toEntryId}`"
 						class="truncate text-text-primary hover:text-brand transition-colors max-w-[40%]"
+						:title="c.toTitle"
 					>
 						{{ c.toTitle }}
 					</NuxtLink>

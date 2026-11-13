@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
 import { CircleCheckIcon, PaperPlaneIcon, TranslateIcon } from '@coolicons/vue';
+import { normalizeToOperationError, operationCopy } from '~/lib/operationError';
 
 interface Props {
 	open: boolean;
@@ -18,7 +19,8 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const { t } = useI18n();
+const { t, locale, te } = useI18n();
+const emailErrorId = useId();
 
 // The catalog is module scope, so `label` is a message key: resolve it here,
 // where a translator is in hand, or the picker renders the raw key.
@@ -76,8 +78,16 @@ const handleSendTestEmail = async () => {
 			close();
 		}, 2000);
 	} catch (error) {
+		// A Convex action error carries the server's raw text ("[CONVEX A(…)]
+		// Uncaught Error: …"); the shared operation copy turns it into a sentence.
+		const copy = operationCopy(normalizeToOperationError(error), {
+			locale: locale.value,
+			hasMessage: (key: string) => te(key),
+		});
 		testEmailError.value =
-			error instanceof Error ? error.message : t('components.campaigns.testEmailModal.sendFailed');
+			'key' in copy
+				? t(copy.key)
+				: copy.text || t('components.campaigns.testEmailModal.sendFailed');
 	} finally {
 		isSending.value = false;
 	}
@@ -159,9 +169,11 @@ const submitForm = () => {
 						type="email"
 						:placeholder="t('components.campaigns.testEmailModal.recipientPlaceholder')"
 						:class="['input mt-1.5', testEmailError ? 'input-error' : '']"
+						:aria-invalid="testEmailError ? true : undefined"
+						:aria-describedby="testEmailError ? emailErrorId : undefined"
 						:disabled="isSending"
 					/>
-					<p v-if="testEmailError" class="mt-1.5 text-sm text-error">
+					<p v-if="testEmailError" :id="emailErrorId" class="mt-1.5 text-sm text-error">
 						{{ testEmailError }}
 					</p>
 				</div>

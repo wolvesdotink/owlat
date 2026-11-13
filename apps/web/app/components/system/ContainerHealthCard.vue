@@ -3,7 +3,7 @@
  * Container health (Settings → System & updates): the services the updater
  * sidecar reports, their state and image tag.
  */
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 // Three outcomes, three states: a null ref alone cannot tell a failed fetch
 // from one still loading (it would show "Loading container status…" forever),
@@ -14,11 +14,15 @@ const containerHealth = ref<{
 	containers?: Array<{ service: string; state: string; imageTag?: string }>;
 } | null>(null);
 const containerHealthStatus = ref<ContainerHealthStatus>('loading');
+// A Refresh keeps the table it already has and spins the button instead, so
+// the card does not collapse to the loading line and grow back.
+const refreshing = ref(false);
 const containerRows = computed(() =>
 	Array.isArray(containerHealth.value?.containers) ? containerHealth.value.containers : []
 );
 async function fetchContainerHealth() {
-	containerHealthStatus.value = 'loading';
+	if (containerHealthStatus.value === 'ready') refreshing.value = true;
+	else containerHealthStatus.value = 'loading';
 	try {
 		containerHealth.value = await $fetch<{
 			containers?: Array<{ service: string; state: string; imageTag?: string }>;
@@ -27,7 +31,35 @@ async function fetchContainerHealth() {
 	} catch {
 		containerHealth.value = null;
 		containerHealthStatus.value = 'failed';
+	} finally {
+		refreshing.value = false;
 	}
+}
+
+// Docker's container states. A stopped or crash-looping container is an error,
+// not the mild warning an unfamiliar state gets.
+type StateTone = 'success' | 'warning' | 'error';
+function stateTone(state: string | undefined): StateTone {
+	if (!state) return 'warning';
+	if (state.includes('running')) return 'success';
+	if (/exited|dead|restarting/.test(state)) return 'error';
+	return 'warning';
+}
+const TONE_PILL: Record<StateTone, string> = {
+	success: 'bg-success/10 text-success',
+	warning: 'bg-warning/10 text-warning',
+	error: 'bg-error/10 text-error',
+};
+const TONE_DOT: Record<StateTone, string> = {
+	success: 'bg-success',
+	warning: 'bg-warning',
+	error: 'bg-error',
+};
+/** The words for a known Docker state; anything else is shown as reported. */
+function stateLabel(state: string | undefined): string {
+	if (!state) return '—';
+	const key = `dashboard.admin.system.index.containers.states.${state}`;
+	return te(key) ? t(key) : state;
 }
 onMounted(fetchContainerHealth);
 </script>
@@ -35,16 +67,18 @@ onMounted(fetchContainerHealth);
 <template>
 	<div class="card">
 		<div class="flex items-center justify-between mb-4">
-			<h3 class="font-semibold text-text-primary">
+			<h2 class="font-semibold text-text-primary">
 				{{ t('dashboard.admin.system.index.containers.title') }}
-			</h3>
-			<button
-				type="button"
-				class="text-xs text-text-tertiary hover:text-brand transition-colors"
+			</h2>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				:loading="refreshing"
+				:disabled="containerHealthStatus === 'loading'"
 				@click="fetchContainerHealth"
 			>
 				{{ t('common.refresh') }}
-			</button>
+			</UiButton>
 		</div>
 
 		<div v-if="containerHealthStatus === 'loading'" class="text-caption text-text-tertiary">
@@ -91,17 +125,14 @@ onMounted(fetchContainerHealth);
 						<td class="py-2">
 							<span
 								class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
-								:class="
-									c.state?.includes('running')
-										? 'bg-success/10 text-success'
-										: 'bg-warning/10 text-warning'
-								"
+								:class="TONE_PILL[stateTone(c.state)]"
 							>
 								<span
 									class="w-1.5 h-1.5 rounded-full"
-									:class="c.state?.includes('running') ? 'bg-success' : 'bg-warning'"
+									:class="TONE_DOT[stateTone(c.state)]"
+									aria-hidden="true"
 								/>
-								{{ c.state }}
+								{{ stateLabel(c.state) }}
 							</span>
 						</td>
 						<td class="py-2 text-text-secondary font-mono">{{ c.imageTag || '—' }}</td>

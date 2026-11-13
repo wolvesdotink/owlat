@@ -9,7 +9,11 @@ const formatUsd = (value: number) =>
 
 // Deployment-wide LLM spend, broken down by feature (last 7 days), as recorded
 // by every priced LLM call.
-const { data: llmSpend } = useOrganizationQuery(api.analytics.llmUsage.getSpendByFeature, () => ({
+const {
+	data: llmSpend,
+	error: llmSpendError,
+	refetch: refetchLlmSpend,
+} = useOrganizationQuery(api.analytics.llmUsage.getSpendByFeature, () => ({
 	hoursBack: 168,
 }));
 
@@ -31,16 +35,21 @@ const { data: spendBudget } = useOrganizationQuery(
 </script>
 
 <template>
-	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+	<div class="card">
 		<div class="flex items-baseline justify-between gap-4 flex-wrap mb-4">
-			<h3 class="font-semibold text-text-primary">
+			<h2 class="font-semibold text-text-primary">
 				{{ t('components.system.llmSpendCard.title') }}
-			</h3>
-			<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ formatUsd(llmSpend?.totalCostUsd ?? 0) }}
+			</h2>
+			<p v-if="llmSpend" class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				{{ formatUsd(llmSpend.totalCostUsd) }}
 			</p>
 		</div>
-		<div v-if="llmSpend && llmSpend.features.length" class="space-y-2">
+		<!-- A failed or unanswered read is not zero spend: say which it is. -->
+		<UiQueryBoundary v-if="llmSpendError" :error="llmSpendError" @retry="refetchLlmSpend" />
+		<p v-else-if="llmSpend === undefined" role="status" class="text-text-tertiary text-sm">
+			{{ t('common.loading') }}
+		</p>
+		<div v-else-if="llmSpend.features.length" class="space-y-2">
 			<div
 				v-for="f in llmSpend.features"
 				:key="f.feature"
@@ -62,7 +71,7 @@ const { data: spendBudget } = useOrganizationQuery(
 		<!-- Same spend, grouped by provider backend -->
 		<div
 			v-if="llmSpendByProvider && llmSpendByProvider.providers.length > 1"
-			class="mt-4 pt-4 border-t border-border-default"
+			class="mt-4 pt-4 border-t border-border-subtle"
 		>
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
 				{{ t('components.system.llmSpendCard.byProvider') }}
@@ -85,11 +94,11 @@ const { data: spendBudget } = useOrganizationQuery(
 		</div>
 
 		<!-- Spend budget: remaining headroom + warn / paused state -->
-		<div v-if="spendBudget?.configured" class="mt-4 pt-4 border-t border-border-default space-y-2">
+		<div v-if="spendBudget?.configured" class="mt-4 pt-4 border-t border-border-subtle space-y-2">
 			<div class="flex items-baseline justify-between gap-2 flex-wrap">
-				<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
+				<h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 					{{ t('components.system.llmSpendCard.spendBudget') }}
-				</h4>
+				</h3>
 				<span
 					v-if="spendBudget.state !== 'ok'"
 					class="text-2xs font-medium px-2 py-0.5 rounded-full"

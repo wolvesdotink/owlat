@@ -39,7 +39,7 @@ function reminderSetTitle(remindAt: number): string {
 	<template v-if="!cancelable">
 		<span
 			v-if="followUp.watched && followUp.dueAt"
-			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium flex-shrink-0"
+			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-2xs font-medium flex-shrink-0"
 		>
 			<AlarmIcon class="w-3 h-3" />
 			{{ t('components.postbox.postboxThreadRowFollowUp.noReplyYet') }}
@@ -47,7 +47,7 @@ function reminderSetTitle(remindAt: number): string {
 		<span
 			v-else-if="followUp.watched"
 			role="img"
-			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium flex-shrink-0"
+			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-2xs font-medium flex-shrink-0"
 			:title="reminderSetTitle(followUp.remindAt)"
 			:aria-label="reminderSetTitle(followUp.remindAt)"
 		>
@@ -60,7 +60,7 @@ function reminderSetTitle(remindAt: number): string {
 	>
 		<button
 			type="button"
-			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-[10px] font-medium hover:bg-warning/20 flex-shrink-0"
+			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-warning/10 text-warning text-2xs font-medium hover:bg-warning/20 flex-shrink-0"
 			:aria-label="t('components.postbox.postboxThreadRowFollowUp.dueLabel')"
 			@click="emit('cancel', $event)"
 		>
@@ -71,7 +71,7 @@ function reminderSetTitle(remindAt: number): string {
 	<UiTooltip v-else-if="followUp.watched" :text="reminderTitle(followUp.remindAt)">
 		<button
 			type="button"
-			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
+			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-2xs font-medium hover:bg-brand/20 flex-shrink-0"
 			:aria-label="t('components.postbox.postboxThreadRowFollowUp.cancelLabel')"
 			@click="emit('cancel', $event)"
 		>

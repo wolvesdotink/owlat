@@ -22,7 +22,7 @@ const { t } = useI18n();
 		data-testid="answer-peek-draft"
 		@click="emit('draft')"
 	>
-		<SparklesIcon class="mr-1 size-3.5 text-brand" aria-hidden="true" />
+		<SparklesIcon class="size-3.5 text-brand" aria-hidden="true" />
 		{{ t('components.answer.aiBar.peekDraft') }}
 	</UiButton>
 </template>

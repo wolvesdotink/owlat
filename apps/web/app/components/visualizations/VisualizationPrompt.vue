@@ -33,6 +33,8 @@ type DatasetValue = (typeof DATASET_OPTIONS)[number]['value'];
 
 const { t } = useI18n();
 
+const titleId = useId();
+
 const { run: createFromPrompt } = useBackendOperation(
 	api.analytics.visualizationAgent.createFromPrompt,
 	{
@@ -48,7 +50,9 @@ const isCreating = ref(false);
 const useLiveData = computed(() => dataset.value !== '');
 
 const handleCreate = async () => {
-	if (!prompt.value.trim()) return;
+	// The shortcut reaches here while a run is in flight; a second run would be
+	// a second paid generation.
+	if (!prompt.value.trim() || isCreating.value) return;
 	isCreating.value = true;
 	const result = await createFromPrompt({
 		prompt: prompt.value.trim(),
@@ -69,18 +73,19 @@ const handleCreate = async () => {
 	<div class="card">
 		<div class="flex items-center gap-2 mb-4">
 			<SparklesIcon class="w-5 h-5 text-brand" />
-			<h3 class="text-lg font-medium text-text-primary">
+			<h2 :id="titleId" class="text-lg font-medium text-text-primary">
 				{{ t('components.visualizations.visualizationPrompt.title') }}
-			</h3>
+			</h2>
 		</div>
 		<div class="space-y-3">
 			<textarea
 				v-model="prompt"
+				:aria-labelledby="titleId"
 				rows="3"
 				class="input w-full resize-y"
 				:placeholder="t('components.visualizations.visualizationPrompt.promptPlaceholder')"
-				@keydown.meta.enter="handleCreate"
-				@keydown.ctrl.enter="handleCreate"
+				@keydown.meta.enter.prevent="handleCreate"
+				@keydown.ctrl.enter.prevent="handleCreate"
 			/>
 
 			<div>
@@ -101,14 +106,18 @@ const handleCreate = async () => {
 			</div>
 
 			<div class="flex items-center justify-between">
-				<label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-					<input v-model="pinToBoard" type="checkbox" class="rounded border-border-subtle" />
-					{{ t('components.visualizations.visualizationPrompt.pinToDashboard') }}
-				</label>
+				<UiCheckbox
+					v-model="pinToBoard"
+					:label="t('components.visualizations.visualizationPrompt.pinToDashboard')"
+				/>
 
-				<UiButton class="gap-2" :disabled="!prompt.trim() || isCreating" @click="handleCreate">
-					<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
-					<SparklesIcon v-else class="w-4 h-4" />
+				<UiButton
+					class="gap-2"
+					:disabled="!prompt.trim()"
+					:loading="isCreating"
+					@click="handleCreate"
+				>
+					<SparklesIcon v-if="!isCreating" class="w-4 h-4" />
 					{{
 						isCreating
 							? t('components.visualizations.visualizationPrompt.generating')

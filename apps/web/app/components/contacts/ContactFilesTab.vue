@@ -23,9 +23,15 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const { data: files, isLoading } = useConvexQuery(api.files.cards.listByContact, () => ({
+const FILE_LIMIT = 50;
+const {
+	data: files,
+	isLoading,
+	error,
+	refetch,
+} = useConvexQuery(api.files.cards.listByContact, () => ({
 	contactId: props.contactId,
-	limit: 50,
+	limit: FILE_LIMIT,
 }));
 
 const mimeIcon = (mimeType: string): IconComponent => {
@@ -74,8 +80,11 @@ const sourceIcon = (sourceType: string): IconComponent => {
 			</span>
 		</div>
 
+		<!-- A failed read is not an empty list. -->
+		<UiQueryBoundary v-if="error" :error="error" @retry="refetch" />
+
 		<!-- Loading -->
-		<div v-if="isLoading" class="flex items-center justify-center py-8">
+		<div v-else-if="isLoading" class="flex items-center justify-center py-8">
 			<div class="flex flex-col items-center gap-3">
 				<UiSpinner size="md" />
 				<p class="text-text-tertiary text-sm">
@@ -104,7 +113,7 @@ const sourceIcon = (sourceType: string): IconComponent => {
 				v-for="file in files"
 				:key="file._id"
 				:to="`/dashboard/files/${file._id}`"
-				class="flex items-center gap-3 p-3 rounded-lg bg-bg-surface hover:bg-bg-surface/80 border border-border-subtle hover:border-brand/30 transition-colors"
+				class="flex items-center gap-3 p-3 rounded-lg bg-bg-surface hover:bg-bg-surface-hover border border-border-subtle hover:border-brand/30 transition-colors"
 			>
 				<!-- File icon -->
 				<div class="flex-shrink-0 p-2 rounded-lg bg-bg-elevated">
@@ -113,7 +122,10 @@ const sourceIcon = (sourceType: string): IconComponent => {
 
 				<!-- File info -->
 				<div class="flex-1 min-w-0">
-					<p class="text-sm font-medium text-text-primary truncate">
+					<p
+						class="text-sm font-medium text-text-primary truncate"
+						:title="file.title || file.filename"
+					>
 						{{ file.title || file.filename }}
 					</p>
 					<div class="flex items-center gap-2 mt-0.5">
@@ -136,12 +148,16 @@ const sourceIcon = (sourceType: string): IconComponent => {
 					<span
 						v-for="tag in (file.tags || file.autoTags || []).slice(0, 2)"
 						:key="tag"
-						class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-bg-elevated text-text-tertiary"
+						class="inline-block px-1.5 py-0.5 rounded text-2xs bg-bg-elevated text-text-tertiary"
 					>
 						{{ tag }}
 					</span>
 				</div>
 			</NuxtLink>
+			<!-- The read stops at the limit; say so rather than imply that is all. -->
+			<p v-if="files.length >= FILE_LIMIT" class="text-xs text-text-tertiary">
+				{{ t('components.contacts.contactFilesTab.limitNote', { count: FILE_LIMIT }) }}
+			</p>
 		</div>
 	</div>
 </template>

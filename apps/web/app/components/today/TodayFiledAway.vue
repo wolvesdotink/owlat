@@ -49,10 +49,7 @@ const tiles = computed(() =>
 			{{ t('components.today.filed.title') }}
 			<span class="normal-case tracking-normal">{{ t('components.today.filed.reassure') }}</span>
 		</h3>
-		<p
-			v-if="tiles.length === 0"
-			class="rounded-xl border border-dashed border-border-subtle px-4 py-4 text-sm text-text-secondary"
-		>
+		<p v-if="tiles.length === 0" class="text-sm text-text-secondary">
 			{{ t('components.today.filed.empty') }}
 		</p>
 		<ul v-else class="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]">

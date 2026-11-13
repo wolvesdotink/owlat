@@ -119,7 +119,7 @@ describe('MigrationsCard', () => {
 			'Starts after Remove retired thread summaries has completed.'
 		);
 		// Newest release first.
-		expect(wrapper.findAll('h4').map((h) => h.text())).toEqual([
+		expect(wrapper.findAll('h3').map((h) => h.text())).toEqual([
 			'Introduced in 0.6.12',
 			'Introduced in 0.6.7',
 			'Introduced in 0.6.6',

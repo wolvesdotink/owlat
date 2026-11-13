@@ -8,6 +8,7 @@
  * operator deliberately re-enables it. Presentational + prop-driven.
  */
 import { ShieldWarningIcon } from '@coolicons/vue';
+import { autonomyCategoryName } from '~/utils/autonomyCategory';
 
 interface DemotionIncident {
 	_id: string;
@@ -22,7 +23,9 @@ interface Props {
 	incidents?: DemotionIncident[] | null;
 	pendingId?: string | null;
 }
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+const categoryName = (category: string) => autonomyCategoryName(category, t, te);
 
 const props = withDefaults(defineProps<Props>(), { incidents: () => [], pendingId: null });
 
@@ -55,17 +58,19 @@ const hasIncidents = computed(() => (props.incidents ?? []).length > 0);
 				<div class="min-w-0">
 					<p class="text-sm text-text-primary">
 						<I18nT
+							v-if="incident.sender"
 							keypath="components.autonomy.autonomyDemotionAlerts.incident"
 							tag="span"
 							scope="global"
 						>
 							<template #sender>
-								<strong class="break-all">{{ incident.sender ?? incident.category }}</strong>
+								<strong class="break-all">{{ incident.sender }}</strong>
 							</template>
 							<template #category>
-								<span class="text-text-tertiary">{{ incident.category }}</span>
+								<span class="text-text-tertiary">{{ categoryName(incident.category) }}</span>
 							</template>
 						</I18nT>
+						<strong v-else>{{ categoryName(incident.category) }}</strong>
 					</p>
 					<p class="text-xs text-text-tertiary mt-0.5">
 						{{

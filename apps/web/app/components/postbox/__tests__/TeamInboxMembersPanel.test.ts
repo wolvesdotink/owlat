@@ -4,7 +4,7 @@
  * short of leaving the page.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
@@ -50,5 +50,70 @@ describe('TeamInboxMembersPanel roster read', () => {
 		await retry!.trigger('click');
 		expect(refetchMembers).toHaveBeenCalledTimes(1);
 		wrapper.unmount();
+	});
+});
+
+describe('TeamInboxMembersPanel remove', () => {
+	function mountRoster(confirmAnswer: boolean) {
+		const run = vi.fn(async () => ({ ok: true, result: null }));
+		const confirm = vi.fn(async () => confirmAnswer);
+		const membersQuery = getFunctionName(api.mail.mailboxMembers.members);
+		installNuxtStubs({
+			...i18nStubs,
+			useConfirm: () => confirm,
+			useBackendOperation: () => ({ run, isLoading: ref(false), error: ref(null) }),
+			useOrganization: () => ({
+				members: ref([]),
+				fetchMembers: vi.fn(),
+				invite: vi.fn(),
+				canManageMembers: ref(false),
+			}),
+			useConvexQuery: (query: Parameters<typeof getFunctionName>[0]) => ({
+				data: ref(
+					getFunctionName(query) === membersQuery
+						? [
+								{
+									_id: 'mm1',
+									authUserId: 'u1',
+									name: 'Grace Hopper',
+									email: 'grace@example.com',
+									role: 'member',
+									isYou: false,
+								},
+							]
+						: 'owner'
+				),
+				isLoading: ref(false),
+				isRefetching: ref(false),
+				error: ref(null),
+				refetch: vi.fn(),
+				reset: vi.fn(),
+			}),
+		});
+		const wrapper = mount(TeamInboxMembersPanel, {
+			props: { mailboxId: 'mbx_team' as Id<'mailboxes'> },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: { UiAvatar: true, UiConfirmationDialog: true },
+			},
+		});
+		return { wrapper, run, confirm };
+	}
+
+	it('asks before cutting a member off, naming them, and removes only on yes', async () => {
+		const declined = mountRoster(false);
+		await declined.wrapper.get('button[aria-label="Remove Grace Hopper"]').trigger('click');
+		await flushPromises();
+		expect(declined.confirm).toHaveBeenCalledWith(
+			expect.objectContaining({ title: 'Remove Grace Hopper from this inbox?' })
+		);
+		expect(declined.run).not.toHaveBeenCalled();
+		declined.wrapper.unmount();
+
+		const accepted = mountRoster(true);
+		await accepted.wrapper.get('button[aria-label="Remove Grace Hopper"]').trigger('click');
+		await flushPromises();
+		expect(accepted.run).toHaveBeenCalledWith({ mailboxId: 'mbx_team', authUserId: 'u1' });
+		accepted.wrapper.unmount();
 	});
 });

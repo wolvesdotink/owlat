@@ -5,7 +5,7 @@ import {
 	getPresetById,
 	type TemplatePreset,
 } from '~/data/marketingTemplatePresets';
-import { ArrowLeftIcon, CircleWarningIcon, EyeIcon, PlusIcon } from '@coolicons/vue';
+import { PlusIcon } from '@coolicons/vue';
 
 interface Props {
 	open: boolean;
@@ -28,10 +28,11 @@ const presetText = (value: string) => t(value);
 // Modal step state
 const step = ref<'library' | 'customize'>('library');
 const selectedPreset = ref<string | null>(null);
-const previewPreset = ref<string | null>(null);
 
 // Form state
 const templateName = ref('');
+// The missing-name error belongs on the field; a failed create is not about it.
+const nameError = ref('');
 const error = ref('');
 const isCreating = ref(false);
 
@@ -48,8 +49,8 @@ watch(
 const resetState = () => {
 	step.value = 'library';
 	selectedPreset.value = null;
-	previewPreset.value = null;
 	templateName.value = '';
+	nameError.value = '';
 	error.value = '';
 	isCreating.value = false;
 };
@@ -88,11 +89,12 @@ const handleCreate = async (
 	}) => Promise<BackendOperationResult<Id<'emailTemplates'>>>
 ) => {
 	if (!templateName.value.trim()) {
-		error.value = t('components.mail.templateLibraryModal.nameRequired');
+		nameError.value = t('components.mail.templateLibraryModal.nameRequired');
 		return;
 	}
 
 	isCreating.value = true;
+	nameError.value = '';
 	error.value = '';
 
 	try {
@@ -155,16 +157,7 @@ defineExpose({
 			}
 		"
 	>
-		<!-- Back navigation (relocated from header — UiModal renders the title row) -->
-		<button
-			v-if="step === 'customize'"
-			class="flex items-center gap-2 mb-4 p-1 -ml-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-			@click="goBackToLibrary"
-		>
-			<ArrowLeftIcon class="w-5 h-5" />
-			<span class="text-sm">{{ t('components.mail.templateLibraryModal.backToTemplates') }}</span>
-		</button>
-
+		<!-- One way back from the customize step: the footer's Back, next to Create. -->
 		<!-- Content -->
 		<div class="-mx-6 -mb-6 max-h-[70vh] overflow-y-auto">
 			<!-- Step 1: Template Library -->
@@ -174,19 +167,16 @@ defineExpose({
 				</p>
 
 				<div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-					<div
-						v-for="preset in marketingTemplatePresets"
-						:key="preset.id"
-						class="group relative"
-						@mouseenter="previewPreset = preset.id"
-						@mouseleave="previewPreset = null"
-					>
+					<!-- Choosing a card opens it in the customize step, beside its full
+					     preview; there is no separate preview control. -->
+					<div v-for="preset in marketingTemplatePresets" :key="preset.id" class="relative">
 						<button
+							type="button"
 							:class="[
 								'w-full text-left rounded-xl border transition-[border-color,box-shadow] overflow-hidden',
 								preset.id === 'blank'
 									? 'border-dashed border-border-default hover:border-brand'
-									: 'border-border-subtle hover:border-brand hover:shadow-lg',
+									: 'border-border-subtle hover:border-brand hover:shadow-surface-3',
 							]"
 							@click="selectPreset(preset.id)"
 						>
@@ -231,16 +221,6 @@ defineExpose({
 								</p>
 							</div>
 						</button>
-
-						<!-- Preview Button -->
-						<button
-							v-if="preset.id !== 'blank'"
-							class="absolute top-2 right-2 p-2 rounded-lg bg-bg-deep/80 text-text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:bg-bg-deep"
-							@click.stop="previewPreset = previewPreset === preset.id ? null : preset.id"
-							:aria-label="t('common.preview')"
-						>
-							<EyeIcon class="w-4 h-4" />
-						</button>
 					</div>
 				</div>
 			</div>
@@ -265,13 +245,7 @@ defineExpose({
 				<div class="lg:w-1/2 p-6">
 					<form @submit.prevent>
 						<!-- Error -->
-						<div
-							v-if="error"
-							class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
-						>
-							<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
-							<p class="text-sm text-error">{{ error }}</p>
-						</div>
+						<UiErrorAlert v-if="error" :message="error" role="alert" class="mb-4" />
 
 						<!-- Selected Template Info -->
 						<div
@@ -294,7 +268,9 @@ defineExpose({
 							required
 							:placeholder="t('components.mail.templateLibraryModal.namePlaceholder')"
 							:disabled="isCreating"
+							:error="nameError"
 							class="mb-6"
+							@update:model-value="nameError = ''"
 						/>
 
 						<!-- Actions -->

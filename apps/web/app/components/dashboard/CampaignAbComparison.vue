@@ -27,6 +27,22 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 
+// Picking the winner decides what the rest of the audience receives and cannot
+// be taken back, so it asks first. The spinner then sits on the chosen button.
+const confirm = useConfirm();
+const pickedVariant = ref<'A' | 'B' | null>(null);
+async function pickWinner(variant: 'A' | 'B') {
+	const confirmed = await confirm({
+		title: t('components.dashboard.campaignAbComparison.confirmTitle', { variant }),
+		body: t('components.dashboard.campaignAbComparison.confirmBody', { variant }),
+		confirmText: t('components.dashboard.campaignAbComparison.pickVariant', { variant }),
+		variant: 'warning',
+	});
+	if (!confirmed) return;
+	pickedVariant.value = variant;
+	emit('select-winner', variant);
+}
+
 const testTypeLabel = computed(() =>
 	t(
 		props.stats.config?.testType === 'content'
@@ -85,9 +101,13 @@ const variants = computed(() => [
 			<div class="flex items-center gap-3">
 				<UiIconBox :icon="SplitIcon" size="sm" rounded="lg" />
 				<div>
-					<h3 class="text-base font-medium text-text-primary">{{ t('components.dashboard.campaignAbComparison.title') }}</h3>
+					<h3 class="text-base font-medium text-text-primary">
+						{{ t('components.dashboard.campaignAbComparison.title') }}
+					</h3>
 					<p class="text-sm text-text-secondary">
-						{{ t('components.dashboard.campaignAbComparison.testing', { testType: testTypeLabel }) }}
+						{{
+							t('components.dashboard.campaignAbComparison.testing', { testType: testTypeLabel })
+						}}
 					</p>
 				</div>
 			</div>
@@ -134,27 +154,26 @@ const variants = computed(() => [
 								stats.winner === variant.key ? 'font-semibold' : 'font-medium',
 							]"
 							>{{
-							t('components.dashboard.campaignAbComparison.variantLabel', {
-								variant: variant.key,
-							})
-						}}</span
+								t('components.dashboard.campaignAbComparison.variantLabel', {
+									variant: variant.key,
+								})
+							}}</span
 						>
-						<TrophyIcon
-							v-if="stats.winner === variant.key"
-							class="w-4 h-4 text-success"
-						/>
+						<TrophyIcon v-if="stats.winner === variant.key" class="w-4 h-4 text-success" />
 					</div>
 					<span class="text-sm text-text-tertiary tabular-nums">
 						{{
-						t('components.dashboard.campaignAbComparison.sentCount', {
-							count: variant.stats.sent.toLocaleString(locale),
-						})
-					}}
+							t('components.dashboard.campaignAbComparison.sentCount', {
+								count: variant.stats.sent.toLocaleString(locale),
+							})
+						}}
 					</span>
 				</div>
 				<div class="space-y-3">
 					<div class="flex justify-between items-center">
-						<span class="text-sm text-text-secondary">{{ t('components.dashboard.campaignAbComparison.openRate') }}</span>
+						<span class="text-sm text-text-secondary">{{
+							t('components.dashboard.campaignAbComparison.openRate')
+						}}</span>
 						<span class="text-sm font-medium text-text-primary tabular-nums"
 							>{{ variant.stats.openRate.toFixed(1) }}%</span
 						>
@@ -166,7 +185,9 @@ const variants = computed(() => [
 						/>
 					</div>
 					<div class="flex justify-between items-center">
-						<span class="text-sm text-text-secondary">{{ t('components.dashboard.campaignAbComparison.clickRate') }}</span>
+						<span class="text-sm text-text-secondary">{{
+							t('components.dashboard.campaignAbComparison.clickRate')
+						}}</span>
 						<span class="text-sm font-medium text-text-primary tabular-nums"
 							>{{ variant.stats.clickRate.toFixed(1) }}%</span
 						>
@@ -194,9 +215,9 @@ const variants = computed(() => [
 					class="gap-2 flex-1"
 					:disabled="isSelectingWinner"
 					data-testid="ab-pick-winner"
-					@click="emit('select-winner', variant.key)"
+					@click="pickWinner(variant.key)"
 				>
-					<SpinnerIcon v-if="isSelectingWinner" class="w-4 h-4" />
+					<SpinnerIcon v-if="isSelectingWinner && pickedVariant === variant.key" class="w-4 h-4" />
 					<TrophyIcon v-else class="w-4 h-4" />
 					{{ t('components.dashboard.campaignAbComparison.pickVariant', { variant: variant.key }) }}
 				</UiButton>

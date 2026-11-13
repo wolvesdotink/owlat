@@ -31,6 +31,7 @@ import DesktopConnectPage from '../pages/desktop/connect.vue';
 
 // ── Nuxt auto-imports the pages reach for ──
 let routeQuery: Record<string, string> = {};
+let deploymentMode: 'selfhost' | 'hosted' = 'selfhost';
 let headOptions: { title?: () => string } = {};
 // Typed as a record so a test can hand back BetterAuth's two-factor answer
 // (`{ twoFactorRedirect: true }`) without widening at the call site.
@@ -76,13 +77,15 @@ beforeAll(() => {
 		useNuxtApp: () => ({ $convex: null }),
 		useState: (_key: string, init: () => unknown) => ref(init()),
 		useSlots: () => ({}),
-		// A stock self-host install: no operator branding or legal details.
-		useRuntimeConfig: () => ({ public: { deploymentMode: 'selfhost', companyName: '' } }),
+		// A stock self-host install by default: no operator branding or legal
+		// details. The register cases that ask for terms switch to hosted.
+		useRuntimeConfig: () => ({ public: { deploymentMode, companyName: '' } }),
 	});
 });
 
 beforeEach(() => {
 	routeQuery = {};
+	deploymentMode = 'selfhost';
 	headOptions = {};
 	organization.value = null;
 	user.value = { id: 'user-1' };
@@ -350,6 +353,8 @@ describe('auth/register', () => {
 	});
 
 	it('renders the form and the interpolated terms sentence for an invited visitor', () => {
+		// Only the hosted deployment publishes terms to agree to.
+		deploymentMode = 'hosted';
 		routeQuery = { redirect: '/invite/accept?token=abc' };
 		const w = mountSurface(RegisterPage);
 
@@ -360,7 +365,18 @@ describe('auth/register', () => {
 		expectFullyLocalized(w);
 	});
 
+	it('asks no terms on a self-hosted instance, which publishes none', async () => {
+		routeQuery = { redirect: '/invite/accept?token=abc' };
+		const w = mountSurface(RegisterPage);
+		await w.get('form').trigger('submit');
+
+		expect(w.text()).not.toContain('I agree to the');
+		expect(w.text()).not.toContain('You must agree to the Terms of Service');
+		expectFullyLocalized(w);
+	});
+
 	it('renders every field-level validation message for an empty submit', async () => {
+		deploymentMode = 'hosted';
 		routeQuery = { redirect: '/invite/accept?token=abc' };
 		const w = mountSurface(RegisterPage);
 		await w.get('form').trigger('submit');
@@ -461,7 +477,7 @@ describe('welcome', () => {
 		expect(w.text()).toContain('Bring my email with me');
 		expect(w.text()).toContain('Import your existing inbox so nothing is left behind.');
 		expect(w.text()).toContain('Start fresh');
-		expect(w.text()).toContain("I'll do this later");
+		expect(w.text()).not.toContain("I'll do this later");
 		expect(w.find('[data-testid="fresh-start"]').exists()).toBe(false);
 		expectFullyLocalized(w);
 	});

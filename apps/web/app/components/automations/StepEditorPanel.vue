@@ -19,6 +19,7 @@ import { stepEditorModuleFor } from '~/composables/automations/steps';
 import type { StepConfigByKind, StepKind } from '~/composables/automations/steps';
 import type { StepCurrentConfig, StepSaveStatus } from '~/composables/useAutomationStepConfig';
 import { ArrowLeftIcon, CloseIcon, TrashIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 
 const props = defineProps<{
 	selectedStep: (Doc<'automationSteps'> & { emailTemplate?: Doc<'emailTemplates'> | null }) | null;
@@ -72,6 +73,12 @@ onUnmounted(() => {
 	if (isOverlay.value) setRailDrawerOpen(false);
 });
 
+// Below lg the sheet covers the canvas behind a scrim, so it is a modal: Tab
+// stays inside it and focus goes back to the step on close. Escape is handled
+// by the aside itself (a menu inside may claim it first).
+const panelRef = ref<HTMLElement | null>(null);
+useModalFocus(panelRef, isOverlay);
+
 // An overlay covers what had focus, so focus moves to its dismiss control.
 const dismissButton = ref<HTMLElement | null>(null);
 const backButton = ref<HTMLElement | null>(null);
@@ -103,6 +110,9 @@ onMounted(() => {
 	</Transition>
 
 	<aside
+		ref="panelRef"
+		:role="isOverlay ? 'dialog' : undefined"
+		:aria-modal="isOverlay ? 'true' : undefined"
 		class="fixed inset-0 z-50 flex flex-col bg-bg-elevated pt-[env(safe-area-inset-top)] md:left-auto md:w-96 md:border-l md:border-border-subtle md:shadow-xl lg:static lg:z-auto lg:shrink-0 lg:pt-0 lg:shadow-none"
 		:aria-label="t('components.automations.stepEditorPanel.title')"
 		data-testid="step-panel"
@@ -179,9 +189,9 @@ onMounted(() => {
 
 				<div class="mt-8">
 					<UiButton
-						variant="ghost"
+						variant="danger-ghost"
 						full-width
-						class="gap-2 text-error hover:bg-error/10"
+						class="gap-2"
 						@click="emit('delete', selectedStep._id)"
 					>
 						<TrashIcon class="w-4 h-4" />

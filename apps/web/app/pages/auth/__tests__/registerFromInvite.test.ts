@@ -18,6 +18,7 @@ import AuthLegalFooter from '~/components/auth/AuthLegalFooter.vue';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiHeroField from '@owlat/ui/components/ui/HeroField.vue';
+import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import RegisterPage from '../register.vue';
 
 const invitePath = '/invite/accept?id=inv-1';
@@ -30,7 +31,7 @@ const signUpWithEmail = vi.fn(async (..._args: unknown[]) => signUpResult);
 const routerPush = vi.fn();
 const createUserProfile = vi.fn(async (_args: unknown) => ({ ok: true }));
 
-function mountPage() {
+function mountPage(deploymentMode = 'selfhost') {
 	installNuxtStubs({
 		...i18nStubs,
 		useRoute: () => ({
@@ -44,7 +45,7 @@ function mountPage() {
 		useRouter: () => ({ push: routerPush, replace: vi.fn() }),
 		safeRedirect: (target: unknown, fallback: string) =>
 			typeof target === 'string' ? target : fallback,
-		useRuntimeConfig: () => ({ public: { deploymentMode: 'selfhost', companyName: '' } }),
+		useRuntimeConfig: () => ({ public: { deploymentMode, companyName: '' } }),
 		useRecipientSender: () => ({ senderName: ref(null) }),
 		useAuth: () => ({ isAuthenticated: ref(false), signUpWithEmail }),
 		useBackendOperation: () => ({ run: createUserProfile }),
@@ -59,16 +60,19 @@ function mountPage() {
 				UiInput,
 				UiHeroField,
 				UiButton,
+				UiErrorAlert,
 			},
+			stubs: { UiIconBox: true },
 		},
 	});
 }
 
-async function fillAndSubmit(wrapper: ReturnType<typeof mountPage>) {
+async function fillAndSubmit(wrapper: ReturnType<typeof mountPage>, acceptTerms = true) {
 	await wrapper.find('#name').setValue('New Colleague');
 	await wrapper.find('#email').setValue('new@owlat.example');
 	await wrapper.find('#password').setValue('a-long-enough-password');
-	await wrapper.find('input[type="checkbox"]').setValue(true);
+	const terms = wrapper.find('input[type="checkbox"]');
+	if (acceptTerms && terms.exists()) await terms.setValue(true);
 	await wrapper.find('form').trigger('submit');
 	await flushPromises();
 }
@@ -105,5 +109,27 @@ describe('registering from an invitation', () => {
 		expect(createUserProfile).not.toHaveBeenCalled();
 		expect(wrapper.text()).toContain('Check your inbox');
 		expect(wrapper.text()).toContain('new@owlat.example');
+	});
+});
+
+describe('the terms checkbox', () => {
+	it('is not asked on a self-hosted instance, which publishes no terms', async () => {
+		const wrapper = mountPage('selfhost');
+		expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+
+		await fillAndSubmit(wrapper, false);
+		expect(signUpWithEmail).toHaveBeenCalled();
+	});
+
+	it('blocks the hosted sign-up until the terms are accepted, and ties the error to the box', async () => {
+		const wrapper = mountPage('hosted');
+		await fillAndSubmit(wrapper, false);
+
+		expect(signUpWithEmail).not.toHaveBeenCalled();
+		const box = wrapper.find('input[type="checkbox"]');
+		expect(box.attributes('aria-invalid')).toBe('true');
+		const errorId = box.attributes('aria-describedby');
+		expect(errorId).toBeTruthy();
+		expect(wrapper.find(`#${errorId}`).text()).not.toBe('');
 	});
 });

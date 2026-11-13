@@ -46,6 +46,18 @@ const undoText = computed(() =>
 	typeof props.undoLabel === 'function' ? props.undoLabel(remainingSec.value) : props.undoLabel
 );
 
+// What the status region says: the message as it read when the window opened.
+// The visible copy ticks every second; a live region that re-reads it would
+// announce "5 s", "4 s", "3 s" as a stream.
+const announcedMessage = ref('');
+watch(
+	() => props.visible && remainingSec.value > 0,
+	(shown, wasShown) => {
+		if (shown && !wasShown) announcedMessage.value = props.message(remainingSec.value);
+	},
+	{ immediate: true }
+);
+
 const busy = ref(false);
 async function handleUndo() {
 	if (busy.value) return;
@@ -63,15 +75,20 @@ async function handleUndo() {
 		<Transition name="pbx-toast">
 			<div
 				v-if="visible && remainingSec > 0"
-				role="status"
-				aria-live="polite"
 				class="bg-text-primary text-text-inverse rounded-md shadow-lg px-4 py-3 flex items-center gap-3"
 			>
-				<component :is="icon" class="w-4 h-4" />
-				<span class="text-sm">{{ message(remainingSec) }}</span>
+				<!-- The Undo button stays outside the live region, so its own
+				     ticking label is not announced either. -->
+				<div role="status" aria-live="polite" class="flex min-w-0 items-center gap-3">
+					<component :is="icon" class="w-4 h-4 shrink-0" aria-hidden="true" />
+					<span class="sr-only">{{ announcedMessage }}</span>
+					<span class="text-sm" aria-hidden="true">{{ message(remainingSec) }}</span>
+				</div>
+				<!-- Inverse text, underlined: the brand accent drops under AA on the
+				     inverse surface (near-white in dark mode). -->
 				<button
 					type="button"
-					class="text-sm font-semibold text-brand hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+					class="shrink-0 text-sm font-semibold text-text-inverse underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-inverse rounded-sm disabled:opacity-60 disabled:cursor-not-allowed"
 					:disabled="busy"
 					@click="handleUndo"
 				>

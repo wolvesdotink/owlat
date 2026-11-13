@@ -238,9 +238,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     Expanded-only, and navigation only — right-click for the verbs. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
-					t('components.postbox.postboxFolderRail.foldersHeading')
-				}}</span>
+				<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+					{{ t('components.postbox.postboxFolderRail.foldersHeading') }}
+				</h3>
 			</header>
 			<ul class="flex flex-col gap-0.5">
 				<UiContextMenu
@@ -252,7 +252,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 						<li class="flex items-center" @contextmenu="onContextmenu" @keydown="onKeydown">
 							<NuxtLink
 								:to="`/dashboard/postbox/${folder._id}`"
-								class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+								class="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface min-w-0"
+								:aria-current="folderId === folder._id ? 'page' : undefined"
 								:class="{
 									'bg-bg-surface text-brand': folderId === folder._id,
 									'pbx-drop-target': drop.isOverFolder(folder._id),
@@ -276,16 +277,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     in a rail that is already dense. -->
 		<div v-if="!railCollapsed && pinnedSearches.length > 0" class="mt-3">
 			<header class="flex items-center justify-between mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
-					t('components.postbox.postboxFolderRail.pinnedSearchesHeading')
-				}}</span>
+				<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+					{{ t('components.postbox.postboxFolderRail.pinnedSearchesHeading') }}
+				</h3>
 			</header>
 			<ul class="flex flex-col gap-0.5">
 				<li v-for="saved in pinnedSearches" :key="saved._id" class="group flex items-center">
 					<UiTooltip :text="saved.rawQuery">
 						<NuxtLink
 							:to="savedSearchPath(saved.rawQuery)"
-							class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+							class="flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-bg-surface min-w-0"
+							:aria-current="activeSavedQuery === saved.rawQuery ? 'page' : undefined"
 							:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
 						>
 							<SearchIcon class="w-4 h-4 flex-shrink-0" />
@@ -295,7 +297,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 					<UiTooltip :text="t('components.postbox.postboxFolderRail.unpinSearch')">
 						<button
 							type="button"
-							class="opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 text-text-tertiary hover:text-text-primary"
+							class="opacity-0 group-hover:opacity-100 focus:opacity-100 pointer-coarse:opacity-100 pointer-coarse:p-2.5 p-1 text-text-tertiary hover:text-text-primary"
 							:aria-label="
 								t('components.postbox.postboxFolderRail.unpinSearchAriaLabel', { name: saved.name })
 							"
@@ -313,9 +315,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     is the shortcut there. -->
 		<div v-if="!railCollapsed" class="mt-3">
 			<header class="flex items-center mb-1 px-2">
-				<span class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">{{
-					t('components.postbox.postboxFolderRail.labelsHeading')
-				}}</span>
+				<h3 class="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+					{{ t('components.postbox.postboxFolderRail.labelsHeading') }}
+				</h3>
 			</header>
 			<PostboxLabelTree :mailbox-id="mailboxId" :active-label-id="activeLabelId" />
 		</div>

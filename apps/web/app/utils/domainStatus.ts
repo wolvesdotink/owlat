@@ -4,6 +4,22 @@ import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 /** DMARC enforcement policy. */
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';
 
+const DMARC_POLICY_RANK: Record<DmarcPolicy, number> = { none: 0, quarantine: 1, reject: 2 };
+
+/**
+ * The toast after a DMARC policy change, as a message key under
+ * `dashboard.admin.delivery.domains.toasts`. It says which way the policy
+ * moved: reject → quarantine is a lowering, and calling it a raise would tell
+ * the operator the opposite of what happened to their mail.
+ */
+export function dmarcChangeToastKey(
+	previous: DmarcPolicy,
+	next: DmarcPolicy
+): 'dmarcMonitorOnly' | 'dmarcRaised' | 'dmarcLowered' {
+	if (next === 'none') return 'dmarcMonitorOnly';
+	return DMARC_POLICY_RANK[next] < DMARC_POLICY_RANK[previous] ? 'dmarcLowered' : 'dmarcRaised';
+}
+
 // Status badge styling
 export function getStatusBadgeClass(status: string): string {
 	switch (status) {

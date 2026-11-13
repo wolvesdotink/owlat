@@ -278,9 +278,11 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 								</span>
 								<DraftMarker v-if="hasDraft" />
 								<!-- Internal notes the team left on the thread. -->
+								<!-- Below sm the note count and the waiting age step aside, so the
+								     sender keeps room beside the status chip; both are in the thread. -->
 								<span
 									v-if="noteCount > 0"
-									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums text-text-tertiary"
+									class="flex-shrink-0 inline-flex max-sm:hidden items-center gap-1 text-xs tabular-nums text-text-tertiary"
 									:title="
 										t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
 									"
@@ -307,7 +309,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 								</span>
 								<span
 									v-else-if="waiting"
-									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
+									class="flex-shrink-0 inline-flex max-sm:hidden items-center gap-1 text-xs tabular-nums"
 									:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
 								>
 									<TimerIcon class="w-3 h-3" />
@@ -349,7 +351,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 				<button
 					v-if="canManage"
 					type="button"
-					class="absolute z-2 left-4 top-3.5 density-compact:top-2 w-4 h-4 rounded border flex items-center justify-center"
+					class="absolute z-2 left-4 top-3.5 density-compact:top-2 w-4 h-4 rounded border flex items-center justify-center pointer-coarse:after:absolute pointer-coarse:after:-inset-3.5 pointer-coarse:after:content-['']"
 					:class="[
 						selected
 							? 'bg-brand border-brand text-text-inverse'

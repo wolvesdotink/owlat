@@ -34,34 +34,28 @@ const emit = defineEmits<{
 		:aria-label="t('components.postbox.postboxRewritePreview.dialogLabel')"
 		@mousedown.prevent
 	>
-		<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-text-tertiary">
+		<p class="mb-1 text-2xs font-medium uppercase tracking-wide text-text-tertiary">
 			{{ t('components.postbox.postboxRewritePreview.original') }}
 		</p>
 		<p class="mb-2 max-h-20 overflow-auto text-xs text-text-tertiary line-through decoration-1">
 			{{ original }}
 		</p>
-		<p class="mb-1 text-[11px] font-medium uppercase tracking-wide text-brand">
+		<p class="mb-1 text-2xs font-medium uppercase tracking-wide text-brand">
 			{{ t('components.postbox.postboxRewritePreview.rewritten') }}
 		</p>
 		<p class="mb-2.5 max-h-32 overflow-auto text-sm text-text-primary">
 			{{ rewritten }}
 		</p>
 		<div class="flex items-center justify-end gap-2">
-			<button
-				type="button"
-				class="rounded px-2 py-1 text-xs text-text-secondary hover:bg-bg-surface"
-				@click="emit('discard')"
-			>
+			<UiButton variant="ghost" size="sm" type="button" @click="emit('discard')">
 				{{ t('common.discard') }}
-			</button>
-			<button
-				type="button"
-				class="inline-flex items-center gap-1 rounded bg-brand px-2.5 py-1 text-xs font-medium text-text-inverse hover:opacity-90"
-				@click="emit('apply')"
-			>
-				<CheckIcon class="h-3.5 w-3.5" />
+			</UiButton>
+			<UiButton size="sm" type="button" @click="emit('apply')">
+				<template #iconLeft>
+					<CheckIcon class="h-3.5 w-3.5" />
+				</template>
 				{{ t('common.apply') }}
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

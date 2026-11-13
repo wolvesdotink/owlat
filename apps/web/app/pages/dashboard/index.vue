@@ -33,7 +33,7 @@ import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
  * purpose: "Mark as seen", finishing the Answer queue (which catches every tab
  * up), or a deliberate stay on a tab of at least half a minute before leaving.
  */
-const { t } = useI18n();
+const { t, locale } = useI18n();
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 
 const { user } = useAuth();
@@ -124,6 +124,11 @@ const scopedAnswer = computed(() =>
 	scope.value ? answer.items.value.filter((item) => answerItemMatches(item, scope.value!)) : []
 );
 const scopedCounts = computed(() => answerCounts(scopedAnswer.value));
+// A failed read behind this tab: its own inbox (or the team inbox), or the
+// inbox list every mail read hangs off. The card must not call that all clear.
+const scopedAnswerError = computed(
+	() => answer.failures.value.find((f) => f.id === 'inboxes' || f.id === scope.value)?.error ?? null
+);
 const mentions = computed(() => answer.counts.value.mention);
 const answerHref = computed(() =>
 	scope.value ? `/dashboard/answer?in=${encodeURIComponent(scope.value)}` : '/dashboard/answer'
@@ -155,7 +160,8 @@ const sinceLabel = computed(() => {
 	if (workbench.isFallback.value) return t('components.today.scope.sinceFallback');
 	const date = new Date(at);
 	const sameDay = date.toDateString() === new Date().toDateString();
-	const when = new Intl.DateTimeFormat(undefined, {
+	// The app's language, not the browser's: the sentence around it is translated.
+	const when = new Intl.DateTimeFormat(locale.value, {
 		...(sameDay ? {} : { weekday: 'long' }),
 		hour: 'numeric',
 		minute: '2-digit',
@@ -332,7 +338,7 @@ useWorkbenchKeyboard({
 		</div>
 
 		<div v-if="inboxesLoading && tabs.length === 0" class="mt-8 space-y-3">
-			<UiSkeleton class="h-9 w-80" />
+			<UiSkeleton class="h-9 w-full max-w-80" />
 			<UiSkeleton class="h-36 w-full rounded-2xl" />
 		</div>
 
@@ -426,6 +432,8 @@ useWorkbenchKeyboard({
 						:is-loading="answer.isLoading.value"
 						:queue-href="answerHref"
 						:inbox-name="scopeName"
+						:error="scopedAnswerError"
+						@retry="answer.refetch"
 					/>
 					<TodayToDo v-if="!isTeam && scope" :mailbox-id="scope" />
 
@@ -456,8 +464,9 @@ useWorkbenchKeyboard({
 						/>
 					</template>
 				</div>
+				<!-- Nothing filed is said once, by the scope line: no empty band. -->
 				<TodayFiledAway
-					v-if="!isZen && !(workbench.isLoading.value && !hasAnything)"
+					v-if="!isZen && model.filedTotal > 0 && !(workbench.isLoading.value && !hasAnything)"
 					class="2xl:col-start-2 2xl:row-start-2"
 					:model="model"
 					:scope="scope"

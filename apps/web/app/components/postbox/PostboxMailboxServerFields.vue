@@ -40,7 +40,7 @@ const { t } = useI18n();
 		:label="t('components.postbox.postboxMailboxConnectForm.advancedSettings')"
 	>
 		<div class="space-y-4">
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="connect-imaphost" class="text-sm font-medium block mb-1">{{
 						t('components.postbox.postboxMailboxConnectForm.imapHost')
@@ -68,16 +68,12 @@ const { t } = useI18n();
 						/>
 					</div>
 					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input
-							v-model="fields.isImapSecure"
-							type="checkbox"
-							@change="emit('touched')"
-						/>
+						<input v-model="fields.isImapSecure" type="checkbox" @change="emit('touched')" />
 						{{ t('components.postbox.postboxMailboxConnectForm.ssl') }}
 					</label>
 				</div>
 			</div>
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div>
 					<label for="connect-smtphost" class="text-sm font-medium block mb-1">{{
 						t('components.postbox.postboxMailboxConnectForm.smtpHost')
@@ -105,11 +101,7 @@ const { t } = useI18n();
 						/>
 					</div>
 					<label class="flex items-center gap-1.5 text-sm self-end pb-2">
-						<input
-							v-model="fields.isSmtpSecure"
-							type="checkbox"
-							@change="emit('touched')"
-						/>
+						<input v-model="fields.isSmtpSecure" type="checkbox" @change="emit('touched')" />
 						{{ t('components.postbox.postboxMailboxConnectForm.ssl') }}
 					</label>
 				</div>

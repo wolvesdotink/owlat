@@ -79,9 +79,10 @@ const stepClass =
 		<button
 			type="button"
 			class="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-3 text-sm text-text-secondary outline-none hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40"
+			:aria-label="t('components.postbox.postboxMessageNotFound.backTo', { folder: folderName })"
 			@click="emit('back')"
 		>
-			<ArrowLeftIcon class="size-4 shrink-0" />
+			<ArrowLeftIcon class="size-4 shrink-0" aria-hidden="true" />
 			<span class="truncate capitalize">{{ folderName }}</span>
 		</button>
 		<template v-if="zen">

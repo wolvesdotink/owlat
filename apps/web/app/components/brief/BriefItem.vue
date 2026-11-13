@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * One item of the brief: a ring that says its state, the text, a
- * line with the due date (in red), what kind of ask it is and its source
+ * line with the due date (red once it is today or past), what kind of ask it is and its source
  * marker, then ONE primary reaction and a ⋯ menu with the rest.
  *
  * None of the reactions sends anything: replying ones open Answer mode, the
@@ -30,7 +30,7 @@ import {
 	showsStateChip,
 	type BriefAction,
 } from '~/utils/threadBriefItems';
-import { briefDueDate } from '~/utils/threadBriefContext';
+import { briefDueDate, isBriefDueUrgent } from '~/utils/threadBriefContext';
 import { inject } from 'vue';
 import { RESPONSE_PLAN } from '~/utils/responsePlan';
 import EvidenceMarker from './EvidenceMarker.vue';
@@ -83,6 +83,10 @@ const isOpen = computed(() => props.item.status === 'open');
 const due = computed(() =>
 	props.item.due?.at !== undefined ? briefDueDate(props.item.due.at, locale.value) : null
 );
+const isDueUrgent = computed(() => {
+	const at = props.item.due?.at;
+	return at !== undefined && isBriefDueUrgent(at);
+});
 const kinds = computed(() =>
 	[
 		t(`components.brief.intent.${props.item.intent}`),
@@ -124,7 +128,6 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 <template>
 	<li
 		class="grid grid-cols-[18px_minmax(0,1fr)_auto] items-start gap-2.5 border-t border-border-subtle py-2 first:border-t-0 first:pt-0.5"
-		:class="{ 'opacity-70': !isOpen }"
 		data-testid="brief-item"
 		:data-state="stateKey"
 	>
@@ -146,11 +149,19 @@ const RING_CLASS: Record<ReturnType<typeof briefRing>, string> = {
 			:data-ring="ring"
 		/>
 		<div class="min-w-0">
-			<p class="text-sm text-text-primary">{{ lead }}</p>
+			<!-- A closed item steps back by text colour, not opacity: opacity would
+			     also drop the tertiary meta line below AA. -->
+			<p class="text-sm" :class="isOpen ? 'text-text-primary' : 'text-text-secondary'">
+				{{ lead }}
+			</p>
 			<p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary">
-				<span v-if="due && isOpen" class="font-medium text-error">{{
-					t('components.brief.item.due', { date: due })
-				}}</span>
+				<span
+					v-if="due && isOpen"
+					class="font-medium"
+					:class="isDueUrgent ? 'text-error' : 'text-text-secondary'"
+					data-testid="brief-item-due"
+					>{{ t('components.brief.item.due', { date: due }) }}</span
+				>
 				<template v-if="isWithdrawn">
 					<span class="text-warning" data-testid="brief-item-withdrawn">{{
 						t('components.brief.item.withdrawn')

@@ -299,7 +299,7 @@ export function useFormSettings() {
 
 	// --- Expansion / embed code ---
 	const expandedFormId = ref<Id<'formEndpoints'> | null>(null);
-	const { copy, copiedKey } = useCopyToClipboard();
+	const { copy, copiedKey } = useCopyToClipboard({ notify: false });
 	const copiedCode = computed(() => copiedKey.value as string | null);
 
 	const toggleFormExpansion = (formId: Id<'formEndpoints'>) => {

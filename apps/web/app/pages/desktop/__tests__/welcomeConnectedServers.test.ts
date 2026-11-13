@@ -69,6 +69,7 @@ function mountPage() {
 				DesktopTitlebar: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot/></a>' },
 				UiButton: { template: '<button><slot/></button>' },
+				UiConfirmationDialog: true,
 			},
 		},
 	});

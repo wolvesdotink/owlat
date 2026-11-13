@@ -54,8 +54,8 @@ const handleChange = (event: Event) => {
 	<label
 		:for="inputId"
 		:class="[
-			'flex items-start gap-3 p-3 rounded-lg bg-bg-surface cursor-pointer transition-colors',
-			disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-surface/80',
+			'flex items-start gap-3 p-3 rounded-lg bg-bg-surface cursor-pointer transition-colors has-[:checked]:ring-1 has-[:checked]:ring-brand/60',
+			disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bg-surface-hover',
 		]"
 	>
 		<input
@@ -65,7 +65,7 @@ const handleChange = (event: Event) => {
 			:value="value"
 			:checked="isChecked"
 			:disabled="disabled"
-			class="w-4 h-4 mt-0.5 text-brand border-border-subtle bg-bg-surface focus:ring-brand"
+			class="w-4 h-4 mt-0.5 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
 			@change="handleChange"
 		/>
 		<div class="flex-1 min-w-0">

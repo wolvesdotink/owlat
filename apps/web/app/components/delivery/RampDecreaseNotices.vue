@@ -18,7 +18,7 @@ import {
 	shareLabel,
 	type RampAdminNotice,
 } from '~/utils/deliverabilityRamp';
-import { formatShortDate } from '~/utils/formatters';
+import { formatDateTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 
 defineProps<{
@@ -55,7 +55,7 @@ const localized = useLocalized();
 			>
 				<p class="text-xs text-text-secondary">
 					<time :datetime="new Date(notice.at).toISOString()">
-						{{ formatShortDate(notice.at, locale) }}
+						{{ formatDateTime(notice.at, locale) }}
 					</time>
 					·
 					<span data-testid="ramp-notice-cell">{{

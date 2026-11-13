@@ -24,7 +24,13 @@ const ME = 'user-me';
 const OTHER = 'user-other';
 
 function row(id: string, authorId: string, createdAt = Date.UTC(2026, 8, 29, 12)): ChatMessageRow {
-	return { _id: id, authorId, createdAt, text: id } as unknown as ChatMessageRow;
+	return {
+		_id: id,
+		authorId,
+		createdAt,
+		text: id,
+		author: { name: authorId, email: null, image: null },
+	} as unknown as ChatMessageRow;
 }
 
 const scrollTo = vi.fn();
@@ -143,6 +149,39 @@ describe('ChatMessageList scrolling', () => {
 
 		expect(scrollTo).not.toHaveBeenCalled();
 		expect(scrollIntoView).not.toHaveBeenCalled();
+	});
+
+	it('tells a reader scrolled up that a message landed, and takes them to it', async () => {
+		const wrapper = mountList([row('a', OTHER)]);
+		placeScroller(wrapper.element as HTMLElement, 100);
+		scrollTo.mockClear();
+
+		await wrapper.setProps({ messages: [row('a', OTHER), row('b', OTHER)] });
+		await flushPromises();
+
+		expect(wrapper.find('[role="status"]').text()).toBe('New message from user-other');
+		const pill = wrapper.findAll('button').find((b) => b.text() === 'New messages');
+		expect(pill).toBeDefined();
+		expect(scrollTo).not.toHaveBeenCalled();
+
+		await pill!.trigger('click');
+		await flushPromises();
+
+		expect(scrollTo).toHaveBeenCalledTimes(1);
+		expect(wrapper.findAll('button').some((b) => b.text() === 'New messages')).toBe(false);
+	});
+
+	it('drops the new-message pill once the reader scrolls back down', async () => {
+		const wrapper = mountList([row('a', OTHER)]);
+		placeScroller(wrapper.element as HTMLElement, 100);
+		await wrapper.setProps({ messages: [row('a', OTHER), row('b', OTHER)] });
+		await flushPromises();
+		expect(wrapper.text()).toContain('New messages');
+
+		placeScroller(wrapper.element as HTMLElement, 600);
+		await flushPromises();
+
+		expect(wrapper.findAll('button').some((b) => b.text() === 'New messages')).toBe(false);
 	});
 
 	it('still scrolls down for the reader’s own new message', async () => {

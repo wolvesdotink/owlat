@@ -23,6 +23,11 @@
  * the flow page stays a composition of steps rather than a controller for them.
  */
 import { api } from '@owlat/api';
+import {
+	normalizeToOperationError,
+	operationCopy,
+	resolveOperationCopy,
+} from '~/lib/operationError';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	carriedSuppressionCounts,
@@ -39,7 +44,18 @@ const emit = defineEmits<{ (event: 'carried', value: boolean): void }>();
 
 type Phase = 'idle' | 'contacts' | 'suppressions' | 'done' | 'failed';
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+/**
+ * A start that threw, in words a person can act on. A raw Convex client message
+ * ("[CONVEX M(…)] Uncaught Error: …") is not copy: an expected refusal keeps
+ * its own sentence, anything else reads as this step's fallback.
+ */
+function startFailureCopy(error: unknown, fallbackKey: string): string {
+	const op = normalizeToOperationError(error);
+	if (op.category === 'internal') return t(fallbackKey);
+	return resolveOperationCopy(operationCopy(op, { locale: locale.value, hasMessage: te }), t);
+}
 
 /** Counts read against the active locale, not the one the browser happens to be in. */
 const count = (value: number): string => new Intl.NumberFormat(locale.value).format(value);
@@ -138,10 +154,7 @@ async function start(): Promise<void> {
 		await startMandrillSuppressions();
 	} catch (error) {
 		phase.value = 'failed';
-		failure.value =
-			error instanceof Error
-				? error.message
-				: t('components.delivery.migrationImportStep.startFailed');
+		failure.value = startFailureCopy(error, 'components.delivery.migrationImportStep.startFailed');
 		showToast(failure.value, 'error');
 	}
 }
@@ -184,10 +197,10 @@ watch(
 			};
 			void startMandrillSuppressions().catch((error: unknown) => {
 				phase.value = 'failed';
-				failure.value =
-					error instanceof Error
-						? error.message
-						: t('components.delivery.migrationImportStep.suppressionStartFailed');
+				failure.value = startFailureCopy(
+					error,
+					'components.delivery.migrationImportStep.suppressionStartFailed'
+				);
 			});
 			return;
 		}
@@ -236,11 +249,9 @@ const progressText = computed(() => {
 
 		<div v-if="isMailchimpEnabled" class="grid gap-3 sm:grid-cols-2">
 			<div>
-				<label for="migration-mailchimp-key" class="block text-sm text-text-secondary mb-1">
-					{{ t('components.delivery.migrationImportStep.apiKeyLabel') }}
-				</label>
 				<UiInput
 					id="migration-mailchimp-key"
+					:label="t('components.delivery.migrationImportStep.apiKeyLabel')"
 					v-model="apiKey"
 					type="password"
 					:placeholder="t('components.delivery.migrationImportStep.apiKeyPlaceholder')"
@@ -249,11 +260,9 @@ const progressText = computed(() => {
 				/>
 			</div>
 			<div>
-				<label for="migration-mailchimp-list" class="block text-sm text-text-secondary mb-1">
-					{{ t('components.delivery.migrationImportStep.listIdLabel') }}
-				</label>
 				<UiInput
 					id="migration-mailchimp-list"
+					:label="t('components.delivery.migrationImportStep.listIdLabel')"
 					v-model="listId"
 					:placeholder="t('components.delivery.migrationImportStep.listIdPlaceholder')"
 					:disabled="isRunning"
@@ -280,6 +289,7 @@ const progressText = computed(() => {
 			</UiButton>
 			<span
 				v-if="isRunning"
+				role="status"
 				class="text-sm text-text-secondary"
 				data-testid="migration-import-progress"
 			>

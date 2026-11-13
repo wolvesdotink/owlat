@@ -30,6 +30,16 @@ const senderProfile = defineModel<{ fromAddress: string; fromName: string | null
 	'senderProfile',
 	{ required: true }
 );
+// The last sender shown, kept after close so the panel has something to render
+// while it slides out.
+const lastSenderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
+watch(
+	senderProfile,
+	(next) => {
+		if (next) lastSenderProfile.value = next;
+	},
+	{ immediate: true }
+);
 const shareTarget = defineModel<ConversationLinkTarget | null>('shareTarget', { required: true });
 const shareImageMessage = defineModel<PostboxReaderMessage | null>('shareImageMessage', {
 	required: true,
@@ -65,12 +75,14 @@ const shareImageMessage = defineModel<PostboxReaderMessage | null>('shareImageMe
 	<PostboxBriefSheet v-model:open="briefOpen" :state="brief" :messages="messages" />
 
 	<!-- Plan idea 45: one slide-over for whichever sender line was clicked. -->
+	<!-- Stays mounted once a sender was opened and follows `senderProfile` for
+	     open, so closing runs the slide-out instead of unmounting mid-panel. -->
 	<PostboxSenderProfile
-		v-if="senderProfile"
-		:open="true"
+		v-if="lastSenderProfile"
+		:open="senderProfile !== null"
 		:mailbox-id="mailboxId"
-		:from-address="senderProfile.fromAddress"
-		:from-name="senderProfile.fromName"
+		:from-address="lastSenderProfile.fromAddress"
+		:from-name="lastSenderProfile.fromName"
 		@update:open="(open: boolean) => !open && (senderProfile = null)"
 	/>
 

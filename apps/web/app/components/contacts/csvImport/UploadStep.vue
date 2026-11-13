@@ -24,14 +24,15 @@ const { t } = useI18n();
 			class="hidden"
 			@change="csvImport.handleFileSelect"
 		/>
-		<div
+		<button
 			:ref="
 				(el) => {
 					csvImport.dropRootRef.value = el as HTMLElement | null;
 				}
 			"
+			type="button"
 			:class="[
-				'border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer',
+				'block w-full border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 				csvImport.isDragging.value
 					? 'border-brand bg-brand/5'
 					: 'border-border-subtle hover:border-border-default',
@@ -41,20 +42,20 @@ const { t } = useI18n();
 			@dragleave="csvImport.handleDragLeave"
 			@drop="csvImport.handleDrop"
 		>
-			<div class="flex flex-col items-center gap-4">
-				<div class="p-4 rounded-full bg-bg-surface">
+			<span class="flex flex-col items-center gap-4">
+				<span class="p-4 rounded-full bg-bg-surface">
 					<UploadIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
-				</div>
-				<div>
-					<p class="text-text-primary font-medium">
+				</span>
+				<span class="block">
+					<span class="block text-text-primary font-medium">
 						{{ t('components.contacts.csvImportModal.upload.dropzone') }}
-					</p>
-					<p class="text-sm text-text-tertiary mt-1">
+					</span>
+					<span class="block text-sm text-text-tertiary mt-1">
 						{{ t('components.contacts.csvImportModal.upload.supports') }}
-					</p>
-				</div>
-			</div>
-		</div>
+					</span>
+				</span>
+			</span>
+		</button>
 		<div class="mt-6 p-4 rounded-lg bg-bg-surface">
 			<h4 class="text-sm font-medium text-text-primary mb-2">
 				{{ t('components.contacts.csvImportModal.upload.tipsTitle') }}

@@ -33,10 +33,10 @@ const props = defineProps<{
 	preset: RampPreset | null;
 	defaultPreset: RampPreset;
 	/**
-	 * Whether the deployment has a reference arm configured. Stated by the view
-	 * object the parent renders from (`RampControlsView.referenceTransportId`)
-	 * rather than inferred from the pace, so the copy below depends on the fact
-	 * instead of on a constant that happens to correlate with it.
+	 * Whether a relay is configured at all. The parent passes
+	 * `RampControlsView.isRelayConfigured`, the fact the standalone note is
+	 * about, rather than inferring it from the pace, so the copy below depends
+	 * on that fact instead of on a constant that happens to correlate with it.
 	 */
 	hasReferenceArm: boolean;
 	busy?: boolean;

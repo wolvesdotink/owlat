@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { CloseIcon } from '@coolicons/vue';
 
 /**
  * One-shot knowledge backfill status for the Instance → Agent settings page:
@@ -69,6 +68,12 @@ const backfillStatusVariant = computed(() => {
 			return 'neutral';
 	}
 });
+const backfillBadgeVariant = computed(
+	() =>
+		(({ brand: 'default', success: 'success', danger: 'error', neutral: 'neutral' }) as const)[
+			backfillStatusVariant.value
+		] ?? 'neutral'
+);
 </script>
 
 <template>
@@ -83,17 +88,9 @@ const backfillStatusVariant = computed(() => {
 					{{ t('dashboard.admin.instance.agent.backfill.description') }}
 				</p>
 			</div>
-			<span
-				:class="[
-					'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap',
-					backfillStatusVariant === 'brand' && 'bg-brand-subtle text-brand',
-					backfillStatusVariant === 'success' && 'bg-success-subtle text-success',
-					backfillStatusVariant === 'danger' && 'bg-error-subtle text-error',
-					backfillStatusVariant === 'neutral' && 'bg-bg-surface text-text-secondary',
-				]"
-			>
+			<UiBadge :variant="backfillBadgeVariant" class="whitespace-nowrap">
 				{{ backfillStatusLabel }}
-			</span>
+			</UiBadge>
 		</div>
 
 		<div class="mt-6 space-y-3">
@@ -161,13 +158,11 @@ const backfillStatusVariant = computed(() => {
 			<div v-if="backfillJob.status === 'running' || backfillJob.status === 'pending'" class="pt-2">
 				<UiButton
 					variant="secondary"
+					size="sm"
 					type="button"
-					class="text-sm gap-2"
-					:disabled="isCancellingBackfill"
+					:loading="isCancellingBackfill"
 					@click="handleCancelBackfill"
 				>
-					<UiSpinner v-if="isCancellingBackfill" size="xs" tone="brand" />
-					<CloseIcon v-else class="w-3.5 h-3.5" />
 					{{ t('dashboard.admin.instance.agent.backfill.cancel') }}
 				</UiButton>
 			</div>
@@ -176,6 +171,7 @@ const backfillStatusVariant = computed(() => {
 			<div
 				v-if="backfillJob.status === 'failed' && backfillJob.errorMessage"
 				class="text-sm text-error bg-error-subtle/50 rounded-lg px-3 py-2"
+				role="alert"
 			>
 				{{ backfillJob.errorMessage }}
 			</div>

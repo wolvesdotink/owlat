@@ -81,6 +81,11 @@ function languageOptionTexts(): string[] {
 				LazyContactsExportModal: true,
 				LazyContactsIntegrationImportModal: true,
 				LazyContactsBulkDeleteModal: true,
+				UiProgressBar: true,
+				// The Import and bulk Actions menus are not the subject here.
+				UiDropdownMenu: true,
+				UiDropdownMenuItem: true,
+				UiDropdownDivider: true,
 			},
 		},
 	});

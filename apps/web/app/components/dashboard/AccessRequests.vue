@@ -44,7 +44,7 @@ async function resolve(requestId: Id<'accessRequests'>) {
 </script>
 
 <template>
-	<div v-if="!isLoading && openRequests.length" class="card mb-8">
+	<div v-if="!isLoading && openRequests.length" class="card">
 		<div class="flex items-center gap-3 mb-4">
 			<UiIconBox :icon="UserPlusCornerIcon" variant="surface" />
 			<div>
@@ -61,15 +61,22 @@ async function resolve(requestId: Id<'accessRequests'>) {
 			<li
 				v-for="req in openRequests"
 				:key="req.id"
-				class="flex items-center justify-between gap-4 rounded-xl border border-border-subtle bg-bg-surface/50 px-4 py-3"
+				class="flex flex-col gap-3 rounded-xl border border-border-subtle bg-bg-surface/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 			>
 				<div class="min-w-0">
-					<p class="font-medium text-text-primary truncate">{{ req.name || req.email }}</p>
-					<p class="text-sm text-text-secondary truncate">
-						{{ req.name ? req.email : '' }}<span v-if="req.note"> — “{{ req.note }}”</span>
+					<p class="font-medium text-text-primary truncate" :title="req.name || req.email">
+						{{ req.name || req.email }}
+					</p>
+					<p v-if="req.name" class="text-sm text-text-secondary truncate" :title="req.email">
+						{{ req.email }}
+					</p>
+					<!-- The reason in full, before the action that resolves it. -->
+					<p v-if="req.note" class="mt-0.5 text-sm text-text-secondary break-words">
+						“{{ req.note }}”
 					</p>
 				</div>
 				<UiButton
+					class="shrink-0 self-start sm:self-auto"
 					variant="outline"
 					size="sm"
 					:loading="resolvingId === req.id"

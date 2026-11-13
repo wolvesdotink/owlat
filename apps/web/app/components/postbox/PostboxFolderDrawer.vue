@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
 
 // Pane 1's responsive shell: a static column at lg+, an off-canvas drawer below
 // it (same pattern as the dashboard shell's mobile sidebar). The rail itself is
@@ -26,11 +27,15 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 // this needs its own viewport check rather than the shell's condition.)
 const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
 const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
-// The open drawer is one layer of the shared Escape stack, above Zen mode.
-useEscapeLayer(
-	() => props.open,
-	() => emit('update:open', false)
-);
+// Below lg the open drawer covers the list and reader behind its scrim, so it
+// is a modal: focus moves into it, stays there, and goes back to the opener on
+// close. Either way the open drawer is one layer of the shared Escape stack,
+// above Zen mode.
+const isOverlay = computed(() => !isDesktopViewport.value && props.open);
+const panelEl = ref<HTMLElement | null>(null);
+const close = () => emit('update:open', false);
+useModalFocus(panelEl, isOverlay, close);
+useEscapeLayer(() => props.open && !isOverlay.value, close);
 </script>
 
 <template>
@@ -42,15 +47,15 @@ useEscapeLayer(
 		leave-from-class="opacity-100"
 		leave-to-class="opacity-0"
 	>
-		<div
-			v-if="open"
-			class="fixed inset-0 bg-scrim/50 z-40 lg:hidden"
-			@click="emit('update:open', false)"
-		/>
+		<div v-if="open" class="fixed inset-0 bg-scrim/50 z-40 lg:hidden" @click="close" />
 	</Transition>
 
 	<DashboardNavigationPortal :title="t('shell.dashboard.mailNavigation')" inline>
 		<div
+			ref="panelEl"
+			:role="isOverlay ? 'dialog' : undefined"
+			:aria-modal="isOverlay ? 'true' : undefined"
+			:aria-label="isOverlay ? t('shell.dashboard.mailNavigation') : undefined"
 			class="fixed top-0 left-0 z-50 h-full flex transition-transform pt-[env(safe-area-inset-top)] lg:pt-0 lg:static lg:z-auto lg:h-auto lg:translate-x-0 lg:transition-none"
 			:class="[
 				open

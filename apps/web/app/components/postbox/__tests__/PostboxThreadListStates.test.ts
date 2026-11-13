@@ -57,6 +57,9 @@ const clearSelection = vi.fn(() => {
 });
 /** The key the list hands its keyboard focus to reset on. */
 let focusResetKey: Ref<unknown> | undefined;
+/** The list's single-key dispatch, and the verb the stubbed registry maps a key to. */
+let listOnAction: ((key: string, row: unknown) => void) | undefined;
+let resolvedShortcut: string | undefined;
 /** Every triage mutation the list runs; resolves like a landed useBackendOperation. */
 const runSpy = vi.fn(async (_args: unknown): Promise<unknown> => ({ ok: true, result: null }));
 
@@ -102,14 +105,18 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxSettings', () => ({ density: ref('comfortable') }));
 	// The list resolves the sender-trust-marker flag once and passes it down.
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
-	vi.stubGlobal('usePostboxListKeyboard', (opts: { resetKey: Ref<unknown> }) => {
-		focusResetKey = opts.resetKey;
-		return { focusedIndex: ref(-1), activeId: ref(undefined), onKeydown: vi.fn() };
-	});
+	vi.stubGlobal(
+		'usePostboxListKeyboard',
+		(opts: { resetKey: Ref<unknown>; onAction: (key: string, row: unknown) => void }) => {
+			focusResetKey = opts.resetKey;
+			listOnAction = opts.onAction;
+			return { focusedIndex: ref(-1), activeId: ref(undefined), onKeydown: vi.fn() };
+		}
+	);
 	vi.stubGlobal('navigateTo', vi.fn());
 	// The delete guard reads the route a failed delete returns from.
 	vi.stubGlobal('useRouter', () => ({ currentRoute: ref({ path: '/dashboard/postbox/inbox' }) }));
-	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
+	vi.stubGlobal('resolvePostboxShortcut', () => resolvedShortcut);
 	// The list's empty-state copy and operation labels flow through vue-i18n now;
 	// `useI18n` is a Nuxt auto-import, so it has to exist as a global.
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -117,6 +124,12 @@ beforeAll(() => {
 
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 const dialogStub = { template: '<span />' };
+const snoozeDialogStub = {
+	name: 'SnoozeDialogStub',
+	props: ['open', 'hintText', 'scoped'],
+	emits: ['confirm', 'confirm-until-reply', 'update:open'],
+	template: '<span />',
+};
 // Renderless: exposes the scoped-slot handlers the row binds, no popover.
 const contextMenuStub = {
 	props: ['items'],
@@ -166,7 +179,7 @@ function mountList(opts: {
 				UiSkeleton,
 				NuxtLink: nuxtLinkStub,
 				UiContextMenu: contextMenuStub,
-				PostboxSnoozeDialog: dialogStub,
+				PostboxSnoozeDialog: snoozeDialogStub,
 				PostboxLabelPickerDialog: dialogStub,
 				PostboxMovePickerDialog: dialogStub,
 				PostboxSwipeTrack: { template: '<div><slot /></div>' },
@@ -282,6 +295,28 @@ describe('PostboxThreadList states', () => {
 		});
 		await w.setProps({ activeMessageId: 'msg-2' });
 		expect(prefetchSpy).toHaveBeenCalledWith(['msg-3', 'msg-1']);
+	});
+});
+
+describe('PostboxThreadList keyboard snooze', () => {
+	afterEach(() => {
+		resolvedShortcut = undefined;
+	});
+
+	it('snoozes the row it was opened on until they reply, with the row text as the hint', async () => {
+		runSpy.mockClear();
+		const w = mountList({ loading: false, messages: [makeMessage(1), makeMessage(2)] });
+		resolvedShortcut = 'snooze';
+		listOnAction?.('h', makeMessage(2));
+		await nextTick();
+
+		const dialog = w.findComponent({ name: 'SnoozeDialogStub' });
+		expect(dialog.props('open')).toBe(true);
+		expect(dialog.props('hintText')).toBe('Subject 2 Snippet 2');
+
+		dialog.vm.$emit('confirm-until-reply', 1_234);
+		await flushPromises();
+		expect(runSpy).toHaveBeenCalledWith({ messageId: 'msg-2', capUntil: 1_234 });
 	});
 });
 

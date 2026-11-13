@@ -157,6 +157,17 @@ const fontFamilyOptions = computed(() => [
 	{ label: 'Trebuchet MS', value: "'Trebuchet MS', sans-serif" },
 	{ label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
 ]);
+
+// A cleared datetime-local input reads '': new Date('') is Invalid Date and
+// toISOString() throws, so the field could never be emptied.
+function emitDate(raw: string) {
+	if (!raw) {
+		emit('update', '');
+		return;
+	}
+	const date = new Date(raw);
+	if (!Number.isNaN(date.getTime())) emit('update', date.toISOString());
+}
 </script>
 
 <template>
@@ -200,7 +211,7 @@ const fontFamilyOptions = computed(() => [
 		<textarea
 			v-else-if="field.type === 'textarea'"
 			:aria-label="fieldLabel"
-			class="w-full py-2 px-2.5 text-xs font-mono border border-border-subtle rounded-lg bg-bg-surface text-text-primary resize-y outline-none eb-input-ring"
+			class="w-full py-2 px-2.5 text-xs font-mono border border-border-strong rounded-lg bg-bg-surface text-text-primary resize-y outline-none eb-input-ring"
 			:value="stringValue"
 			:placeholder="fieldPlaceholder"
 			rows="6"
@@ -272,9 +283,9 @@ const fontFamilyOptions = computed(() => [
 			v-else-if="field.type === 'date'"
 			type="datetime-local"
 			:aria-label="fieldLabel"
-			class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
+			class="w-full py-2 px-2.5 text-caption pointer-coarse:text-base border border-border-strong rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring"
 			:value="stringValue ? stringValue.slice(0, 16) : ''"
-			@input="(e) => emit('update', new Date((e.target as HTMLInputElement).value).toISOString())"
+			@input="(e) => emitDate((e.target as HTMLInputElement).value)"
 		/>
 
 		<!-- Image upload -->
@@ -385,7 +396,7 @@ const fontFamilyOptions = computed(() => [
 					:placeholder="DEFAULT_ITEM_ALIAS"
 					@update="(v) => updateRepeat({ itemAlias: v })"
 				/>
-				<p class="text-[11px] leading-[1.4] text-text-tertiary m-0">
+				<p class="text-2xs leading-[1.4] text-text-tertiary m-0">
 					{{ t('builder.panel.repeat.referenceBefore') }}
 					<code>{{ itemRefExample }}</code
 					>{{ t('builder.panel.repeat.referenceAfter') }}
@@ -398,7 +409,7 @@ const fontFamilyOptions = computed(() => [
 					:aria-label="t('builder.panel.repeat.maxItems')"
 					min="1"
 					step="1"
-					class="w-full py-2 px-2.5 text-[13px] border border-border-subtle rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-disabled appearance-number-plain"
+					class="w-full py-2 px-2.5 text-caption pointer-coarse:text-base border border-border-strong rounded-lg bg-bg-surface text-text-primary outline-none eb-input-ring placeholder:text-text-tertiary appearance-number-plain"
 					:value="repeat.maxItems ?? ''"
 					:placeholder="t('builder.panel.repeat.unlimited')"
 					@input="(e) => updateRepeatMaxItems((e.target as HTMLInputElement).value)"
@@ -407,7 +418,7 @@ const fontFamilyOptions = computed(() => [
 		</div>
 
 		<!-- Help text -->
-		<p v-if="field.helpText" class="text-[11px] leading-[1.4] text-text-tertiary m-0">
+		<p v-if="field.helpText" class="text-2xs leading-[1.4] text-text-tertiary m-0">
 			{{ label(field.helpText) }}
 		</p>
 	</div>

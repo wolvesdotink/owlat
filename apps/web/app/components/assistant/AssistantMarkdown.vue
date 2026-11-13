@@ -11,6 +11,11 @@ const props = defineProps<{ source: string }>();
 const parse = createIncrementalMarkdown();
 const blocks = computed<Block[]>(() => parse(props.source));
 
+// An answer sits under the page's own h1 and the conversation heading, so its
+// "# Title" must not add top-level headings to the page outline: levels shift
+// down by two (h1 -> h3), capped at h6. The look follows the source level.
+const headingTag = (level: number) => `h${Math.min(level + 2, 6)}`;
+
 const headingClass: Record<number, string> = {
 	1: 'text-lg font-semibold mt-1',
 	2: 'text-base font-semibold mt-1',
@@ -25,7 +30,7 @@ const headingClass: Record<number, string> = {
 	<div class="assistant-md text-sm leading-relaxed text-text-primary space-y-2 break-words">
 		<template v-for="(block, bi) in blocks" :key="bi">
 			<component
-				:is="`h${block.level}`"
+				:is="headingTag(block.level)"
 				v-if="block.type === 'heading'"
 				:class="headingClass[block.level] ?? 'text-sm font-semibold'"
 			>

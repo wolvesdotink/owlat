@@ -52,7 +52,7 @@ const taskActionsStub = {
 		'<div><span v-for="hint in hints" :key="hint.label" class="hint"><kbd v-for="k in hint.keys" :key="k">{{ k }}</kbd> {{ hint.label }}</span></div>',
 };
 
-function mountCard() {
+function mountCard(extra: Record<string, unknown> = {}) {
 	return mount(AnswerMentionCard, {
 		props: {
 			mention: {
@@ -61,6 +61,7 @@ function mountCard() {
 				roomName: 'support',
 				messagePreview: 'Can you check this?',
 				createdAt: 1,
+				...extra,
 			} as never,
 			controls,
 		},
@@ -88,6 +89,26 @@ describe('AnswerMentionCard keys', () => {
 		await flushPromises();
 		expect(markRead).toHaveBeenCalledWith({ mentionId: 'men_1' });
 		expect(controls.complete).toHaveBeenCalledWith('opened');
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/chat/room_1');
+	});
+
+	it('opens the email of a mention in its team discussion', async () => {
+		mountCard({
+			roomKind: 'channel',
+			mailThread: { threadId: 't_1', mailboxId: 'mb_1', latestMessageId: 'msg_9' },
+		});
+		press('Enter');
+		await flushPromises();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg_9?mailbox=mb_1');
+	});
+
+	it('opens the discussion room when the email thread has no message to open', async () => {
+		mountCard({
+			roomKind: 'channel',
+			mailThread: { threadId: 't_1', mailboxId: 'mb_1', latestMessageId: null },
+		});
+		press('Enter');
+		await flushPromises();
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/chat/room_1');
 	});
 

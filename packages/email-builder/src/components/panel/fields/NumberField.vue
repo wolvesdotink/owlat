@@ -39,9 +39,9 @@ function clamp(val: number): number {
 </script>
 
 <template>
-	<div class="group flex items-center border border-border-subtle rounded-lg bg-bg-surface min-w-[120px] eb-input-ring">
+	<div class="group flex items-center border border-border-strong rounded-lg bg-bg-surface min-w-[120px] eb-input-ring">
 		<button
-			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
+			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-tertiary cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
 			aria-hidden="true"
@@ -53,16 +53,16 @@ function clamp(val: number): number {
 		<input
 			type="number"
 			:aria-label="label"
-			class="flex-1 w-0 min-w-[2.5rem] py-1.5 px-0 text-[13px] font-medium tabular-nums text-center border-none bg-transparent text-text-primary outline-none appearance-number-plain"
+			class="flex-1 w-0 min-w-[2.5rem] py-1.5 px-0 text-caption pointer-coarse:text-base font-medium tabular-nums text-center border-none bg-transparent text-text-primary outline-none appearance-number-plain"
 			:value="value"
 			:min="min"
 			:max="max"
 			:step="effectiveStep"
 			@input="handleInput"
 		/>
-		<div v-if="unit" class="text-[11px] font-medium text-text-tertiary pr-0.5 select-none tracking-[0.02em]">{{ unit }}</div>
+		<div v-if="unit" class="text-2xs font-medium text-text-tertiary pr-0.5 select-none tracking-[0.02em]">{{ unit }}</div>
 		<button
-			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
+			class="flex items-center justify-center w-[30px] h-8 border-none bg-transparent text-text-tertiary cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:not-disabled:bg-bg-surface-hover hover:not-disabled:text-text-secondary active:not-disabled:bg-bg-overlay disabled:opacity-25 disabled:cursor-not-allowed"
 			type="button"
 			tabindex="-1"
 			aria-hidden="true"

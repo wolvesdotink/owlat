@@ -10,7 +10,20 @@ defineProps<{
 	showDeliveryStats: boolean;
 }>();
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+/**
+ * The words for a backend enum value. A value with no copy of its own falls
+ * back to the raw value, which beats a blank badge.
+ */
+function enumLabel(
+	group: 'abuseStatus' | 'scanLevel' | 'resourceType',
+	value: string | undefined
+): string {
+	if (!value) return '—';
+	const key = `dashboard.admin.operator.index.${group}.${value}`;
+	return te(key) ? t(key) : value;
+}
 
 /** Counts written the way the reader's locale writes them ("128,400", "128.400"). */
 const formatCount = (value: number | undefined | null) => formatNumber(value, locale.value);
@@ -52,7 +65,7 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 				</p>
 				<div class="mt-1.5">
 					<UiBadge :variant="abuseStatusVariant(stats?.abuseStatus)" size="md">
-						{{ stats?.abuseStatus ?? 'clean' }}
+						{{ enumLabel('abuseStatus', stats?.abuseStatus) }}
 					</UiBadge>
 				</div>
 			</div>
@@ -108,12 +121,14 @@ const formatPercent = (value: number | undefined) => formatRate(value, locale.va
 							<span class="text-text-primary">
 								{{
 									t('dashboard.admin.operator.index.abuse.scanEntry', {
-										resourceType: s.resourceType,
+										resourceType: enumLabel('resourceType', s.resourceType),
 										score: s.score,
 									})
 								}}
 							</span>
-							<UiBadge :variant="scanLevelVariant(s.level)">{{ s.level }}</UiBadge>
+							<UiBadge :variant="scanLevelVariant(s.level)">{{
+								enumLabel('scanLevel', s.level)
+							}}</UiBadge>
 						</li>
 					</ul>
 				</div>

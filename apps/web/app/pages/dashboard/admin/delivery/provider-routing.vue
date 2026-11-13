@@ -285,7 +285,29 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 		<!-- Content -->
 		<div v-else class="space-y-6">
-			<!-- Info Card -->
+			<DeliveryReferenceRelayNotice />
+
+			<DeliveryRelayDomainStatus />
+
+			<!-- Message-type route cards: an error in their place while a read has
+			     failed, never the "uses the default" line for every type. -->
+			<UiQueryBoundary v-if="readError" :error="readError" @retry="retryReads" />
+			<div v-else class="grid gap-4">
+				<DeliveryProviderRouteCard
+					v-for="type in MESSAGE_TYPES"
+					:key="type.value"
+					:message-type="type"
+					:route="routeByType.get(type.value)"
+					:strategy-label="strategyLabelFor"
+					:provider-label="providerLabel"
+					:default-provider-name="defaultProviderName"
+					@edit="startEdit(type.value)"
+					@reset="askReset(type.value)"
+				/>
+			</div>
+
+			<!-- How routing works: after the routes, which are what this page
+			     manages. -->
 			<div class="card p-6 bg-brand/5 border-brand/20">
 				<div class="flex gap-4">
 					<UiIconBox :icon="CircleInfoIcon" size="sm" variant="brand" rounded="lg" />
@@ -313,27 +335,6 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 					</div>
 				</div>
 			</div>
-
-			<DeliveryReferenceRelayNotice />
-
-			<DeliveryRelayDomainStatus />
-
-			<!-- Message-type route cards: an error in their place while a read has
-			     failed, never the "uses the default" line for every type. -->
-			<UiQueryBoundary v-if="readError" :error="readError" @retry="retryReads" />
-			<div v-else class="grid gap-4">
-				<DeliveryProviderRouteCard
-					v-for="type in MESSAGE_TYPES"
-					:key="type.value"
-					:message-type="type"
-					:route="routeByType.get(type.value)"
-					:strategy-label="strategyLabelFor"
-					:provider-label="providerLabel"
-					:default-provider-name="defaultProviderName"
-					@edit="startEdit(type.value)"
-					@reset="askReset(type.value)"
-				/>
-			</div>
 		</div>
 
 		<!-- Edit Modal -->
@@ -349,14 +350,17 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 				<!-- Strategy -->
 				<div>
 					<template v-if="isEditStrategyManaged">
-						<span class="label">{{
-							t('dashboard.admin.delivery.providerRouting.editModal.strategy')
-						}}</span>
-						<p class="input flex items-center gap-2">
+						<!-- Read-only: drawn as text and a badge, not a field that looks
+						     editable. -->
+						<p class="label">
+							{{ t('dashboard.admin.delivery.providerRouting.editModal.strategy') }}
+						</p>
+						<p class="flex items-center gap-2 text-sm text-text-primary">
 							<span>{{ strategyLabelFor(editStrategy) }}</span>
-							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">{{
-								t('dashboard.admin.delivery.providerRouting.editModal.managed')
-							}}</span>
+							<span
+								class="rounded-full bg-bg-surface px-2 py-0.5 text-xs font-medium text-text-secondary"
+								>{{ t('dashboard.admin.delivery.providerRouting.editModal.managed') }}</span
+							>
 						</p>
 						<p class="mt-1 text-xs text-text-tertiary">
 							{{ t('dashboard.admin.delivery.providerRouting.editModal.managedNote') }}

@@ -52,14 +52,19 @@ const steps = computed(() =>
 		};
 	})
 );
+
+// What the live region says: the active step only. The list itself stays out of
+// the region, so a poll that moves a step does not re-read every row, and the
+// recovery buttons in the timeout slot are not announced as text.
+const activeAnnouncement = computed(() => {
+	const active = steps.value.find((step) => step.status === 'active');
+	return active ? `${t(active.label)}. ${t(active.detail)}` : '';
+});
 </script>
 
 <template>
-	<div
-		class="rounded-lg border border-border-subtle bg-bg-elevated p-4"
-		role="status"
-		aria-live="polite"
-	>
+	<div class="rounded-lg border border-border-subtle bg-bg-elevated p-4">
+		<span class="sr-only" role="status" aria-live="polite">{{ activeAnnouncement }}</span>
 		<ul class="space-y-3">
 			<li
 				v-for="step in steps"

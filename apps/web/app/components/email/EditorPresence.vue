@@ -70,7 +70,7 @@ function title(person: EditorPerson): string {
 			<span
 				v-if="overflow > 0"
 				role="listitem"
-				class="w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-[0.625rem] font-medium flex items-center justify-center"
+				class="w-6 h-6 rounded-full border border-border-subtle bg-bg-surface text-text-tertiary text-2xs font-medium flex items-center justify-center"
 				:title="t('components.email.editorPresence.more', { count: overflow })"
 			>
 				+{{ overflow }}

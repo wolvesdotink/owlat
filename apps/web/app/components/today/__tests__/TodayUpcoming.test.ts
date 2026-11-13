@@ -256,7 +256,7 @@ describe('TodayUpcoming', () => {
 			result: { ok: true, draftId: 'd1' },
 		});
 		const w = mountBand();
-		await button(w, 'Cancel').trigger('click');
+		await button(w, 'Unschedule').trigger('click');
 		await flushPromises();
 		expect(showToast).toHaveBeenCalledWith('Unscheduled. It is back in Drafts.', 'success');
 		expect(answerOpen).not.toHaveBeenCalled();

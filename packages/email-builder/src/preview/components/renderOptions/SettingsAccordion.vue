@@ -1,20 +1,28 @@
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { reactive, useId } from 'vue';
 import { ChevronDownIcon } from '@coolicons/vue';
 
 const expanded = reactive({ value: false });
+const bodyId = `ep-accordion-${useId()}`;
 </script>
 
 <template>
 	<div class="ep-settings-accordion">
-		<button class="ep-settings-accordion-header" @click="expanded.value = !expanded.value">
+		<button
+			type="button"
+			class="ep-settings-accordion-header"
+			:aria-expanded="expanded.value"
+			:aria-controls="expanded.value ? bodyId : undefined"
+			@click="expanded.value = !expanded.value"
+		>
 			<span><slot name="title" /></span>
 			<ChevronDownIcon
+				aria-hidden="true"
 				class="ep-settings-accordion-chevron"
 				:class="{ 'ep-settings-accordion-open': expanded.value }"
 			/>
 		</button>
-		<div v-if="expanded.value" class="ep-settings-accordion-body">
+		<div v-if="expanded.value" :id="bodyId" class="ep-settings-accordion-body">
 			<slot />
 		</div>
 	</div>

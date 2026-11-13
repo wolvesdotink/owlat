@@ -16,7 +16,7 @@ const { t } = useI18n();
 					{{ t('dashboard.automations.detail.edit.validation.title') }}
 				</p>
 				<ul class="list-disc list-inside space-y-1">
-					<li v-for="(reason, idx) in reasons" :key="idx" class="text-sm text-warning/80">
+					<li v-for="(reason, idx) in reasons" :key="idx" class="text-sm text-text-primary">
 						{{ reason }}
 					</li>
 				</ul>

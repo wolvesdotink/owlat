@@ -148,25 +148,27 @@ const tabs = computed(() => [
 			</button>
 		</div>
 
-		<label
-			class="mx-2 flex items-center gap-2 rounded-lg bg-bg-surface px-2.5 py-1.5 text-xs text-text-tertiary focus-within:ring-2 focus-within:ring-brand"
-		>
-			<SearchIcon class="size-3.5" />
-			<input
-				v-model="query"
-				type="search"
-				class="input-bare min-w-0 flex-1"
-				:placeholder="t('components.shell.settings.search')"
-				:aria-label="t('components.shell.settings.search')"
-				@keydown.enter.prevent="openFirstResult"
-			/>
-		</label>
+		<!-- The shared field recipe around a bare input, like every other search
+		     field with a prefix icon. -->
+		<div class="px-2">
+			<label class="input input-sm flex items-center gap-2 text-text-tertiary">
+				<SearchIcon class="size-3.5 shrink-0" aria-hidden="true" />
+				<input
+					v-model="query"
+					type="search"
+					class="input-bare min-w-0 flex-1"
+					:placeholder="t('components.shell.settings.search')"
+					:aria-label="t('components.shell.settings.search')"
+					@keydown.enter.prevent="openFirstResult"
+				/>
+			</label>
+		</div>
 
 		<ul v-if="normalized" class="px-1" :aria-label="t('components.shell.settings.results')">
 			<li v-for="result in results" :key="result.path">
 				<NuxtLink
 					:to="result.path"
-					class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+					class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary"
 				>
 					<component :is="result.icon" class="size-4 shrink-0" />
 					<span class="truncate">{{ result.title }}</span>
@@ -190,8 +192,8 @@ const tabs = computed(() => [
 							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
 							:class="
 								isCurrent(entry.path)
-									? 'bg-bg-surface font-medium text-text-primary'
-									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+									? 'bg-(--surface-2-selected) font-medium text-text-primary'
+									: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
 							"
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
@@ -223,8 +225,8 @@ const tabs = computed(() => [
 							class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors duration-(--motion-fast)"
 							:class="
 								isCurrent(entry.path)
-									? 'bg-bg-surface font-medium text-text-primary'
-									: 'text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+									? 'bg-(--surface-2-selected) font-medium text-text-primary'
+									: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
 							"
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>

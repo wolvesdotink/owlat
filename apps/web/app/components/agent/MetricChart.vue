@@ -14,14 +14,12 @@ const props = withDefaults(defineProps<Props>(), {
 	color: 'var(--color-brand)',
 });
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const chartHeight = 120;
 const chartPadding = { top: 16, right: 12, bottom: 24, left: 48 };
 
-const sortedData = computed(() =>
-	[...props.data].sort((a, b) => a.timestamp - b.timestamp)
-);
+const sortedData = computed(() => [...props.data].sort((a, b) => a.timestamp - b.timestamp));
 
 const hasData = computed(() => sortedData.value.length >= 2);
 
@@ -34,8 +32,24 @@ const yBounds = computed(() => {
 	return { min: Math.max(0, min - padding), max: max + padding };
 });
 
-const viewWidth = 320;
-const innerWidth = viewWidth - chartPadding.left - chartPadding.right;
+// The viewBox follows the rendered width, so the drawing is never stretched:
+// with a fixed 320-unit box and `preserveAspectRatio="none"` a wide card turned
+// the points into ellipses and smeared the axis labels sideways.
+const containerRef = ref<HTMLElement | null>(null);
+const viewWidth = ref(320);
+let resizeObserver: ResizeObserver | null = null;
+onMounted(() => {
+	const el = containerRef.value;
+	if (!el || typeof ResizeObserver === 'undefined') return;
+	resizeObserver = new ResizeObserver((entries) => {
+		const width = entries[0]?.contentRect.width ?? 0;
+		if (width > 0) viewWidth.value = Math.round(width);
+	});
+	resizeObserver.observe(el);
+});
+onBeforeUnmount(() => resizeObserver?.disconnect());
+
+const innerWidth = computed(() => viewWidth.value - chartPadding.left - chartPadding.right);
 const innerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
 
 const points = computed(() => {
@@ -51,16 +65,14 @@ const points = computed(() => {
 	const yRange = max - min || 1;
 
 	return data.map((d) => ({
-		x: chartPadding.left + ((d.timestamp - xMin) / xRange) * innerWidth,
+		x: chartPadding.left + ((d.timestamp - xMin) / xRange) * innerWidth.value,
 		y: chartPadding.top + innerHeight - ((d.value - min) / yRange) * innerHeight,
 		value: d.value,
 		timestamp: d.timestamp,
 	}));
 });
 
-const polylinePoints = computed(() =>
-	points.value.map((p) => `${p.x},${p.y}`).join(' ')
-);
+const polylinePoints = computed(() => points.value.map((p) => `${p.x},${p.y}`).join(' '));
 
 const areaPath = computed(() => {
 	const pts = points.value;
@@ -106,16 +118,45 @@ function formatValue(v: number): string {
 	return v.toFixed(2);
 }
 
+// Data spanning more than a day gets its date too; a bare "09:00" at both ends
+// of a multi-day range reads as the same moment.
+const spansDays = computed(() => {
+	const data = sortedData.value;
+	const first = data[0];
+	const last = data[data.length - 1];
+	return !!first && !!last && last.timestamp - first.timestamp >= 24 * 60 * 60 * 1000;
+});
 function formatTime(ts: number): string {
-	const d = new Date(ts);
-	return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+	return new Intl.DateTimeFormat(locale.value, {
+		...(spansDays.value ? { month: 'short', day: 'numeric' } : {}),
+		hour: '2-digit',
+		minute: '2-digit',
+	}).format(new Date(ts));
 }
+
+// A one-line summary for screen readers: the range and the latest value.
+const chartSummary = computed(() => {
+	const data = sortedData.value;
+	const last = data[data.length - 1];
+	if (!hasData.value || !last) return props.label;
+	return t('components.agent.metricChart.summary', {
+		label: props.label,
+		latest: formatValue(last.value),
+		min: yLabels.value.min,
+		max: yLabels.value.max,
+		from: xLabels.value.first,
+		to: xLabels.value.last,
+	});
+});
 </script>
 
 <template>
-	<div>
+	<div ref="containerRef">
 		<p class="text-sm font-medium text-text-secondary mb-2">{{ label }}</p>
-		<div v-if="!hasData" class="flex items-center justify-center h-[120px] bg-bg-surface rounded-lg">
+		<div
+			v-if="!hasData"
+			class="flex items-center justify-center h-[120px] bg-bg-surface rounded-lg"
+		>
 			<p class="text-sm text-text-tertiary">{{ t('components.agent.metricChart.noData') }}</p>
 		</div>
 		<svg
@@ -124,22 +165,38 @@ function formatTime(ts: number): string {
 			class="w-full"
 			:style="{ height: `${chartHeight}px` }"
 			preserveAspectRatio="none"
+			role="img"
+			:aria-label="chartSummary"
 		>
 			<!-- Grid lines -->
 			<line
-				:x1="chartPadding.left" :y1="chartPadding.top"
-				:x2="chartPadding.left + innerWidth" :y2="chartPadding.top"
-				stroke="currentColor" class="text-border-subtle" stroke-width="0.5" stroke-dasharray="4 2"
+				:x1="chartPadding.left"
+				:y1="chartPadding.top"
+				:x2="chartPadding.left + innerWidth"
+				:y2="chartPadding.top"
+				stroke="currentColor"
+				class="text-border-subtle"
+				stroke-width="0.5"
+				stroke-dasharray="4 2"
 			/>
 			<line
-				:x1="chartPadding.left" :y1="chartPadding.top + innerHeight / 2"
-				:x2="chartPadding.left + innerWidth" :y2="chartPadding.top + innerHeight / 2"
-				stroke="currentColor" class="text-border-subtle" stroke-width="0.5" stroke-dasharray="4 2"
+				:x1="chartPadding.left"
+				:y1="chartPadding.top + innerHeight / 2"
+				:x2="chartPadding.left + innerWidth"
+				:y2="chartPadding.top + innerHeight / 2"
+				stroke="currentColor"
+				class="text-border-subtle"
+				stroke-width="0.5"
+				stroke-dasharray="4 2"
 			/>
 			<line
-				:x1="chartPadding.left" :y1="chartPadding.top + innerHeight"
-				:x2="chartPadding.left + innerWidth" :y2="chartPadding.top + innerHeight"
-				stroke="currentColor" class="text-border-subtle" stroke-width="0.5"
+				:x1="chartPadding.left"
+				:y1="chartPadding.top + innerHeight"
+				:x2="chartPadding.left + innerWidth"
+				:y2="chartPadding.top + innerHeight"
+				stroke="currentColor"
+				class="text-border-subtle"
+				stroke-width="0.5"
 			/>
 
 			<!-- Area fill -->
@@ -169,27 +226,52 @@ function formatTime(ts: number): string {
 
 			<!-- Y-axis labels -->
 			<text
-				:x="chartPadding.left - 6" :y="chartPadding.top + 4"
-				text-anchor="end" class="fill-text-tertiary" font-size="9"
-			>{{ yLabels.max }}</text>
+				:x="chartPadding.left - 6"
+				:y="chartPadding.top + 4"
+				text-anchor="end"
+				class="fill-text-tertiary"
+				font-size="9"
+			>
+				{{ yLabels.max }}
+			</text>
 			<text
-				:x="chartPadding.left - 6" :y="chartPadding.top + innerHeight / 2 + 3"
-				text-anchor="end" class="fill-text-tertiary" font-size="9"
-			>{{ yLabels.mid }}</text>
+				:x="chartPadding.left - 6"
+				:y="chartPadding.top + innerHeight / 2 + 3"
+				text-anchor="end"
+				class="fill-text-tertiary"
+				font-size="9"
+			>
+				{{ yLabels.mid }}
+			</text>
 			<text
-				:x="chartPadding.left - 6" :y="chartPadding.top + innerHeight + 4"
-				text-anchor="end" class="fill-text-tertiary" font-size="9"
-			>{{ yLabels.min }}</text>
+				:x="chartPadding.left - 6"
+				:y="chartPadding.top + innerHeight + 4"
+				text-anchor="end"
+				class="fill-text-tertiary"
+				font-size="9"
+			>
+				{{ yLabels.min }}
+			</text>
 
 			<!-- X-axis labels -->
 			<text
-				:x="chartPadding.left" :y="chartHeight - 4"
-				text-anchor="start" class="fill-text-tertiary" font-size="9"
-			>{{ xLabels.first }}</text>
+				:x="chartPadding.left"
+				:y="chartHeight - 4"
+				text-anchor="start"
+				class="fill-text-tertiary"
+				font-size="9"
+			>
+				{{ xLabels.first }}
+			</text>
 			<text
-				:x="chartPadding.left + innerWidth" :y="chartHeight - 4"
-				text-anchor="end" class="fill-text-tertiary" font-size="9"
-			>{{ xLabels.last }}</text>
+				:x="chartPadding.left + innerWidth"
+				:y="chartHeight - 4"
+				text-anchor="end"
+				class="fill-text-tertiary"
+				font-size="9"
+			>
+				{{ xLabels.last }}
+			</text>
 		</svg>
 	</div>
 </template>

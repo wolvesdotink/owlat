@@ -59,7 +59,7 @@ export function scanLevelVariant(
 	level: string | undefined
 ): 'success' | 'warning' | 'error' | 'neutral' {
 	switch (level) {
-		case 'safe':
+		case 'clean':
 			return 'success';
 		case 'suspicious':
 			return 'warning';

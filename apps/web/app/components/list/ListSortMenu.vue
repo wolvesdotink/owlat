@@ -37,10 +37,47 @@ const select = (value: string) => {
 useClickOutsideSelector('[data-sort-dropdown]', () => {
 	isOpen.value = false;
 });
+
+const rootRef = ref<HTMLElement | null>(null);
+const optionButtons = () =>
+	Array.from(rootRef.value?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+
+// Escape closes the list and gives focus back to the trigger.
+const closeFromKeyboard = () => {
+	if (!isOpen.value) return;
+	isOpen.value = false;
+	rootRef.value?.querySelector<HTMLElement>('[aria-haspopup="listbox"]')?.focus();
+};
+
+// Arrow keys move between the options; Home and End jump to either end.
+const moveFocus = (event: KeyboardEvent) => {
+	const buttons = optionButtons();
+	if (buttons.length === 0) return;
+	const index = buttons.indexOf(document.activeElement as HTMLElement);
+	let next = index;
+	if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % buttons.length;
+	else if (event.key === 'ArrowUp')
+		next = index < 0 ? buttons.length - 1 : (index - 1 + buttons.length) % buttons.length;
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = buttons.length - 1;
+	else return;
+	event.preventDefault();
+	buttons[next]?.focus();
+};
+
+// Opening moves focus onto the selected option, so the arrows work at once.
+watch(isOpen, async (open) => {
+	if (!open) return;
+	await nextTick();
+	const buttons = optionButtons();
+	(
+		buttons.find((button) => button.getAttribute('aria-selected') === 'true') ?? buttons[0]
+	)?.focus();
+});
 </script>
 
 <template>
-	<div class="relative" data-sort-dropdown>
+	<div ref="rootRef" class="relative" data-sort-dropdown @keydown.escape="closeFromKeyboard">
 		<UiButton
 			variant="outline"
 			size="sm"
@@ -71,6 +108,7 @@ useClickOutsideSelector('[data-sort-dropdown]', () => {
 				:id="listboxId"
 				role="listbox"
 				:aria-label="label"
+				@keydown="moveFocus"
 				class="absolute right-0 top-full mt-1 w-44 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20 py-1"
 			>
 				<button

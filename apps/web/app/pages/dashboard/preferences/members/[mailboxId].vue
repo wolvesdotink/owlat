@@ -27,6 +27,12 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 
 <template>
 	<div>
+		<!-- Team inboxes are managed from the mailbox list on Connected mailboxes,
+		     which is where this page is opened from. -->
+		<PreferencesBackLink
+			to="/dashboard/preferences/external-account#mailboxes"
+			:label="t('dashboard.preferences.members.detail.backToMailboxes')"
+		/>
 		<UiPageHeader :title="t('dashboard.preferences.members.detail.title')">
 			<template v-if="mailbox" #description>
 				<I18nT keypath="dashboard.preferences.members.detail.intro" tag="p" scope="global">
@@ -50,11 +56,14 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 			<p class="text-text-secondary mt-2 text-sm">
 				{{ t('dashboard.preferences.members.detail.notFoundBody') }}
 			</p>
-			<!-- The empty state's own way out stays a button — it is the action this
-			     dead end offers, not the page's back-link (which is still above it).
-			     Only the stale "settings" wording is corrected. -->
-			<UiButton variant="secondary" to="/dashboard/preferences" class="mt-6">
-				{{ t('dashboard.preferences.members.detail.backToPreferences') }}
+			<!-- The empty state's own way out stays a button: it is the action this
+			     dead end offers, beside the page's back-link above. -->
+			<UiButton
+				variant="secondary"
+				to="/dashboard/preferences/external-account#mailboxes"
+				class="mt-6"
+			>
+				{{ t('dashboard.preferences.members.detail.backToMailboxes') }}
 			</UiButton>
 		</div>
 

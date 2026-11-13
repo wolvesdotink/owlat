@@ -94,7 +94,7 @@ defineExpose({
 			{{ t('components.postbox.postboxQuoteReplyPill.action') }}
 			<kbd
 				v-if="shortcut"
-				class="rounded border border-border-subtle px-1 font-sans text-[10px] text-text-tertiary"
+				class="rounded border border-border-subtle px-1 font-sans text-2xs text-text-tertiary"
 				aria-hidden="true"
 				>{{ shortcut }}</kbd
 			>

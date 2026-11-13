@@ -37,10 +37,12 @@ const {
 
 const isExpired = computed(() => state.value === 'error' && reason.value === 'expired');
 
-// Countdown: hours remaining
+// Countdown: hours remaining. Tied to a ticking clock, so a page left open keeps
+// counting down instead of showing the hours it had when it loaded.
+const now = useNow({ intervalMs: 60_000 });
 const hoursRemaining = computed(() => {
 	if (!shareData.value?.expiresAt) return 0;
-	const ms = shareData.value.expiresAt - Date.now();
+	const ms = shareData.value.expiresAt - now.value;
 	return Math.max(0, Math.ceil(ms / (1000 * 60 * 60)));
 });
 

@@ -6,7 +6,6 @@ import {
 	ChartBarVerticalIcon,
 	ClockIcon,
 	CursorIcon,
-	ExternalLinkIcon,
 	EyeIcon,
 	ListUnorderedIcon,
 	MailIcon,
@@ -190,7 +189,7 @@ const contactInitials = computed(() => {
 </script>
 
 <template>
-	<div class="p-6 lg:p-8">
+	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
 		<!-- A failed read is not a missing contact. -->
 		<UiQueryBoundary v-if="detailsError" :error="detailsError" @retry="refetchDetails" />
 
@@ -257,7 +256,6 @@ const contactInitials = computed(() => {
 									class="inline-flex items-center gap-1.5 text-sm text-brand hover:text-brand/80 transition-colors mt-2"
 								>
 									{{ t('dashboard.audience.topics.detail.contacts.detail.viewFullProfileLink') }}
-									<ExternalLinkIcon class="w-3.5 h-3.5" />
 								</NuxtLink>
 							</div>
 						</div>
@@ -446,25 +444,16 @@ const contactInitials = computed(() => {
 						</div>
 					</div>
 
-					<!-- Actions Card -->
-					<div class="card">
+					<!-- Actions Card: removal is its only action, so it is there for managers only.
+					     The full profile is linked once, under the name in the header card. -->
+					<div v-if="canManage" class="card">
 						<h2 class="text-lg font-medium text-text-primary mb-4">{{ t('common.actions') }}</h2>
 
 						<div class="space-y-3">
 							<UiButton
-								variant="secondary"
+								variant="danger-outline"
 								full-width
-								:to="`/dashboard/audience/contacts/${contactId}`"
 								class="gap-2"
-							>
-								<UserIcon class="w-4 h-4" />
-								{{ t('dashboard.audience.topics.detail.contacts.detail.viewFullProfile') }}
-							</UiButton>
-
-							<UiButton
-								v-if="canManage"
-								full-width
-								class="gap-2 text-error bg-error-subtle hover:bg-error/20 border-0"
 								@click="isRemoveModalOpen = true"
 							>
 								<TrashIcon class="w-4 h-4" />

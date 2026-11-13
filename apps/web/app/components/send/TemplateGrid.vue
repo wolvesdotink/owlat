@@ -57,8 +57,12 @@ const overlayButton =
 				<slot name="thumbnail" :item="item">
 					<PaperPlaneIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
 				</slot>
+				<!-- ui-hover-reveal: shown on hover and while focus is inside, and not
+				     clickable while invisible. Without hover the actions are always shown,
+				     so there they drop the dimming layer and sit in the corner: a dimmed
+				     card on every phone would hide every thumbnail. -->
 				<div
-					class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+					class="ui-hover-reveal absolute inset-0 bg-bg-deep/80 flex items-center justify-center gap-2 [@media(hover:none)]:inset-auto [@media(hover:none)]:top-2 [@media(hover:none)]:right-2 [@media(hover:none)]:bg-transparent"
 				>
 					<UiTooltip v-for="action in overlayActions" :key="action.key" :text="action.label">
 						<button
@@ -70,31 +74,37 @@ const overlayButton =
 							<component :is="action.icon" class="w-4 h-4" />
 						</button>
 					</UiTooltip>
-					<button
-						type="button"
-						:class="[overlayButton, 'hover:bg-bg-surface-hover']"
-						:aria-label="t('common.edit')"
-						@click.stop="emit('edit', item)"
-					>
-						<PencilIcon class="w-4 h-4" />
-					</button>
-					<template v-if="canManage">
+					<UiTooltip :text="t('common.edit')">
 						<button
 							type="button"
 							:class="[overlayButton, 'hover:bg-bg-surface-hover']"
-							:aria-label="t('common.duplicate')"
-							@click.stop="emit('duplicate', item)"
+							:aria-label="t('common.edit')"
+							@click.stop="emit('edit', item)"
 						>
-							<CopyIcon class="w-4 h-4" />
+							<PencilIcon class="w-4 h-4" />
 						</button>
-						<button
-							type="button"
-							:class="[overlayButton, 'hover:bg-error hover:text-text-inverse']"
-							:aria-label="t('common.delete')"
-							@click.stop="emit('delete', item)"
-						>
-							<TrashIcon class="w-4 h-4" />
-						</button>
+					</UiTooltip>
+					<template v-if="canManage">
+						<UiTooltip :text="t('common.duplicate')">
+							<button
+								type="button"
+								:class="[overlayButton, 'hover:bg-bg-surface-hover']"
+								:aria-label="t('common.duplicate')"
+								@click.stop="emit('duplicate', item)"
+							>
+								<CopyIcon class="w-4 h-4" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('common.delete')">
+							<button
+								type="button"
+								:class="[overlayButton, 'hover:bg-error hover:text-text-inverse']"
+								:aria-label="t('common.delete')"
+								@click.stop="emit('delete', item)"
+							>
+								<TrashIcon class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</template>
 				</div>
 			</div>
@@ -102,8 +112,13 @@ const overlayButton =
 			<div class="p-4">
 				<div class="flex items-start justify-between gap-2">
 					<div class="min-w-0 flex-1">
-						<h3 class="font-medium text-text-primary truncate">{{ item.name }}</h3>
-						<p class="text-sm text-text-tertiary truncate mt-0.5">
+						<h3 class="font-medium text-text-primary truncate" :title="item.name">
+							{{ item.name }}
+						</h3>
+						<p
+							class="text-sm text-text-tertiary truncate mt-0.5"
+							:title="item.subject || undefined"
+						>
 							{{ item.subject || t('shared.templateList.noSubject') }}
 						</p>
 					</div>

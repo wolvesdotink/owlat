@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { focusTooltip } from '~/__tests__/tooltip';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
@@ -110,5 +110,25 @@ describe('account menu setup checklist', () => {
 
 		expect(showChecklist).toHaveBeenCalledTimes(1);
 		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+	});
+});
+
+describe('account menu keys', () => {
+	it('focuses the first item, moves with the arrows, and Escape returns to the trigger', async () => {
+		const wrapper = await openMenu(WINDOWS_UA);
+		await nextTick();
+		const items = wrapper.findAll('[role="menuitem"]').map((item) => item.element);
+		expect(document.activeElement).toBe(items[0]);
+
+		await wrapper.get('[role="menu"]').trigger('keydown', { key: 'ArrowDown' });
+		expect(document.activeElement).toBe(items[1]);
+		await wrapper.get('[role="menu"]').trigger('keydown', { key: 'End' });
+		expect(document.activeElement).toBe(items.at(-1));
+
+		window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+		await nextTick();
+		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+		expect(document.activeElement).toBe(wrapper.get('button[aria-haspopup="menu"]').element);
+		wrapper.unmount();
 	});
 });

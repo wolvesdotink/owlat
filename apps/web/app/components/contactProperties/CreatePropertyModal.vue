@@ -25,6 +25,8 @@ const emit = defineEmits<{ submit: []; cancel: [] }>();
 const isOpen = defineModel<boolean>('open', { required: true });
 
 const { t } = useI18n();
+
+const typeLabelId = useId();
 </script>
 
 <template>
@@ -76,12 +78,15 @@ const { t } = useI18n();
 
 				<!-- Type -->
 				<div>
-					<label class="label">{{ t('dashboard.admin.instance.properties.fields.type') }}</label>
-					<div class="grid grid-cols-2 gap-3">
+					<p :id="typeLabelId" class="label">
+						{{ t('dashboard.admin.instance.properties.fields.type') }}
+					</p>
+					<div role="group" :aria-labelledby="typeLabelId" class="grid grid-cols-2 gap-3">
 						<button
 							v-for="type in types"
 							:key="type.value"
 							type="button"
+							:aria-pressed="form.type === type.value"
 							:class="[
 								'p-3 rounded-xl border text-left transition-colors',
 								form.type === type.value

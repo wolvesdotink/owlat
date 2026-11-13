@@ -271,7 +271,7 @@ const frameStyle = computed(() => ({
 		>
 			<button
 				type="button"
-				class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+				class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand outline-none"
 				:aria-label="t('components.answer.mode.back', { page: backLabel })"
 				data-testid="compose-back"
 				@click="leave"
@@ -287,7 +287,8 @@ const frameStyle = computed(() => ({
 			</h1>
 		</header>
 
-		<main
+		<!-- A div: the dashboard layout already wraps the page in the one main landmark. -->
+		<div
 			class="flex min-h-0 flex-1 justify-center overflow-hidden pb-(--compose-bottom-inset) md:px-6 md:py-6"
 		>
 			<div
@@ -329,6 +330,6 @@ const frameStyle = computed(() => ({
 				</div>
 				<p v-else class="m-auto p-6 text-sm text-text-secondary">{{ t('compose.noMailbox') }}</p>
 			</div>
-		</main>
+		</div>
 	</div>
 </template>

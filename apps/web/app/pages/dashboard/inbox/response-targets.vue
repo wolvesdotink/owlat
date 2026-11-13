@@ -123,11 +123,10 @@ async function onSaveAutoClose(next: AutoClosePolicyShape) {
 			@retry="refetch"
 		>
 			<template #loading>
-				<div
-					class="h-64 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
-					role="status"
-					aria-live="polite"
-				/>
+				<div role="status" aria-live="polite">
+					<span class="sr-only">{{ t('common.loading') }}</span>
+					<UiSkeleton class="h-64 rounded-xl" aria-hidden="true" />
+				</div>
 			</template>
 			<InboxSlaPolicyForm :policy="policy" :busy="isSaving" @save="onSave" />
 		</UiQueryBoundary>
@@ -139,11 +138,10 @@ async function onSaveAutoClose(next: AutoClosePolicyShape) {
 				@retry="refetchAutoClose"
 			>
 				<template #loading>
-					<div
-						class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
-						role="status"
-						aria-live="polite"
-					/>
+					<div role="status" aria-live="polite">
+						<span class="sr-only">{{ t('common.loading') }}</span>
+						<UiSkeleton class="h-32 rounded-xl" aria-hidden="true" />
+					</div>
 				</template>
 				<InboxAutoClosePolicyForm
 					:policy="autoClosePolicy"

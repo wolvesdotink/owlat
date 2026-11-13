@@ -13,7 +13,7 @@ import {
 } from '~/__tests__/automationEditPageHarness';
 
 const addButtons = (wrapper: Awaited<ReturnType<typeof mountEditPage>>) =>
-	wrapper.findAll('button').filter((b) => b.attributes('aria-label') === 'Add');
+	wrapper.findAll('button').filter((b) => b.attributes('aria-label') === 'Add step');
 
 describe('automation builder canvas', () => {
 	beforeEach(() => {
@@ -82,12 +82,23 @@ describe('automation builder canvas', () => {
 		wrapper.unmount();
 	});
 
-	it('deletes a step from its actions menu', async () => {
+	it('deletes a step from its actions menu once the confirmation says yes', async () => {
 		const { steps } = stubEditPage();
+		let answer = false;
+		const confirm = vi.fn(async () => answer);
+		vi.stubGlobal('useConfirm', () => confirm);
 		const wrapper = await mountEditPage();
-		const deletes = wrapper.findAll('[role="menuitem"]').filter((b) => b.text() === 'Delete');
-		expect(deletes).toHaveLength(3);
-		await deletes[1]!.trigger('click');
+		const deletes = () => wrapper.findAll('[role="menuitem"]').filter((b) => b.text() === 'Delete');
+		expect(deletes()).toHaveLength(3);
+
+		await deletes()[1]!.trigger('click');
+		await flushPromises();
+		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Delete step 2?' }));
+		expect(steps.handleDeleteStep).not.toHaveBeenCalled();
+
+		answer = true;
+		await deletes()[1]!.trigger('click');
+		await flushPromises();
 		expect(steps.handleDeleteStep).toHaveBeenCalledWith('st_2');
 		wrapper.unmount();
 	});

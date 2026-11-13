@@ -22,6 +22,18 @@ const name = ref('');
 const company = ref('');
 const volume = ref('');
 const errorMessage = ref('');
+// Set when the error is about the address itself, so the field is marked too.
+const emailInvalid = ref(false);
+const successHeading = ref<HTMLElement | null>(null);
+
+// The form is swapped for the success card, which would drop focus to <body>;
+// moving it to the card's heading tells keyboard and screen-reader users what
+// happened.
+watch(state, async (next) => {
+	if (next !== 'success') return;
+	await nextTick();
+	successHeading.value?.focus();
+});
 
 // The submitted `value` is the machine-readable bucket and never changes with
 // the locale; only its label is translated.
@@ -41,11 +53,13 @@ async function submit(e: Event) {
 	const emailTrimmed = email.value.trim();
 	if (!emailTrimmed || !emailTrimmed.includes('@')) {
 		state.value = 'error';
+		emailInvalid.value = true;
 		errorMessage.value = t('waitlist.errors.invalidEmail');
 		return;
 	}
 
 	state.value = 'submitting';
+	emailInvalid.value = false;
 	errorMessage.value = '';
 
 	const payload = {
@@ -57,11 +71,18 @@ async function submit(e: Event) {
 		submittedAt: new Date().toISOString(),
 	};
 
-	// If no endpoint configured (e.g. during static generation), show optimistic success.
-	// Real deployment sets NUXT_PUBLIC_WAITLIST_ENDPOINT to the nest-api HTTP route.
+	// Real deployments set NUXT_PUBLIC_WAITLIST_ENDPOINT to the nest-api HTTP
+	// route. Without it nothing is stored, so only a dev server may pretend the
+	// signup worked: a production build must not tell a visitor they are on a
+	// list that does not exist.
 	if (!waitlistEndpoint) {
-		console.info('[waitlist] No endpoint configured; would submit:', payload);
-		state.value = 'success';
+		if (import.meta.dev) {
+			console.info('[waitlist] No endpoint configured; would submit:', payload);
+			state.value = 'success';
+		} else {
+			state.value = 'error';
+			errorMessage.value = t('waitlist.errors.generic');
+		}
 		return;
 	}
 
@@ -71,13 +92,14 @@ async function submit(e: Event) {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(payload),
 		});
-		if (!res.ok) {
-			throw new Error(t('waitlist.errors.requestFailed', { status: res.status }));
-		}
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		state.value = 'success';
 	} catch (err) {
+		// The browser's own message ("Failed to fetch") is English and
+		// meaningless to a visitor; it goes to the console, the visitor gets copy.
+		console.warn('[waitlist] signup failed:', err);
 		state.value = 'error';
-		errorMessage.value = err instanceof Error ? err.message : t('waitlist.errors.generic');
+		errorMessage.value = t('waitlist.errors.generic');
 	}
 }
 </script>
@@ -108,7 +130,10 @@ async function submit(e: Event) {
 				scope="global"
 			>
 				<template #link>
-					<a href="https://docs.owlat.app/developer/self-hosting" class="text-brand hover:underline">
+					<a
+						href="https://docs.owlat.app/developer/self-hosting"
+						class="text-brand hover:underline"
+					>
 						{{ t('waitlist.introLink') }}
 					</a>
 				</template>
@@ -118,7 +143,7 @@ async function submit(e: Event) {
 			<template v-if="state !== 'success'">
 				<form class="lp-card p-8 max-sm:p-6 space-y-4" @submit="submit">
 					<div>
-						<label for="wl-email" class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
+						<label for="wl-email" class="label"
 							>{{ t('waitlist.emailLabel') }} <span class="text-brand">*</span></label
 						>
 						<input
@@ -128,53 +153,40 @@ async function submit(e: Event) {
 							required
 							autocomplete="email"
 							:placeholder="t('waitlist.emailPlaceholder')"
-							class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
+							class="input w-full"
+							:class="emailInvalid ? 'input-error' : ''"
+							:aria-invalid="emailInvalid ? 'true' : undefined"
+							:aria-describedby="state === 'error' ? 'wl-error' : undefined"
 						/>
 					</div>
 
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div>
-							<label
-								for="wl-name"
-								class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-								>{{ t('waitlist.nameLabel') }}</label
-							>
+							<label for="wl-name" class="label">{{ t('waitlist.nameLabel') }}</label>
 							<input
 								id="wl-name"
 								v-model="name"
 								type="text"
 								autocomplete="name"
-								class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
+								class="input w-full"
 							/>
 						</div>
 
 						<div>
-							<label
-								for="wl-company"
-								class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-								>{{ t('waitlist.companyLabel') }}</label
-							>
+							<label for="wl-company" class="label">{{ t('waitlist.companyLabel') }}</label>
 							<input
 								id="wl-company"
 								v-model="company"
 								type="text"
 								autocomplete="organization"
-								class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary placeholder-text-disabled focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
+								class="input w-full"
 							/>
 						</div>
 					</div>
 
 					<div>
-						<label
-							for="wl-volume"
-							class="block text-[0.8125rem] font-medium text-text-primary mb-1.5"
-							>{{ t('waitlist.volumeLabel') }}</label
-						>
-						<select
-							id="wl-volume"
-							v-model="volume"
-							class="w-full rounded-xl border border-border-default bg-bg-elevated px-4 py-2.5 text-[0.9375rem] text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-colors"
-						>
+						<label for="wl-volume" class="label">{{ t('waitlist.volumeLabel') }}</label>
+						<select id="wl-volume" v-model="volume" class="input w-full">
 							<option v-for="opt in volumeOptions" :key="opt.value" :value="opt.value">
 								{{ t(opt.labelKey) }}
 							</option>
@@ -183,6 +195,8 @@ async function submit(e: Event) {
 
 					<div
 						v-if="state === 'error'"
+						id="wl-error"
+						role="alert"
 						class="rounded-lg border border-error/40 bg-error/5 px-4 py-3 text-[0.8125rem] text-error"
 					>
 						{{ errorMessage }}
@@ -198,6 +212,7 @@ async function submit(e: Event) {
 						}}</span>
 						<svg
 							v-if="state !== 'submitting'"
+							aria-hidden="true"
 							class="transition-transform duration-(--motion-fast) group-hover:translate-x-[3px]"
 							width="16"
 							height="16"
@@ -223,6 +238,7 @@ async function submit(e: Event) {
 			<template v-else>
 				<div class="lp-card p-8 text-center">
 					<svg
+						aria-hidden="true"
 						class="mx-auto w-10 h-10 text-success mb-4"
 						viewBox="0 0 24 24"
 						fill="none"
@@ -234,7 +250,11 @@ async function submit(e: Event) {
 						<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
 						<path d="m9 11 3 3L22 4" />
 					</svg>
-					<h2 class="font-display text-2xl text-text-primary mb-2">
+					<h2
+						ref="successHeading"
+						tabindex="-1"
+						class="font-display text-2xl text-text-primary mb-2 focus:outline-none"
+					>
 						{{ t('waitlist.success.title') }}
 					</h2>
 					<I18nT

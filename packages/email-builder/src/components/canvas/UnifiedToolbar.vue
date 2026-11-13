@@ -205,6 +205,9 @@ watch(
 // ---------------------------------------------------------------------------
 
 const subPopoverStyles = computed(() => {
+	// Read the bar's own position so the panel follows it when the canvas
+	// scrolls or the block moves; getBoundingClientRect alone is not reactive.
+	void positionStyles.value;
 	if (!toolbarEl.value || !activeCategory.value) return { display: 'none' };
 	const toolbarRect = toolbarEl.value.getBoundingClientRect();
 	const popoverWidth = 300;
@@ -213,16 +216,23 @@ const subPopoverStyles = computed(() => {
 
 	// Center below toolbar
 	let left = toolbarRect.left + (toolbarRect.width - popoverWidth) / 2;
-	const top = toolbarRect.bottom + 6;
 
 	// Clamp horizontally
 	left = Math.max(8, Math.min(left, viewportWidth - popoverWidth - 8));
 
-	const maxHeight = Math.min(viewportHeight - top - 16, 420);
+	// Below the bar when there is room, otherwise above it: near the bottom
+	// edge the space below can be a few pixels, or negative.
+	const spaceBelow = viewportHeight - toolbarRect.bottom - 6 - 16;
+	const spaceAbove = toolbarRect.top - 6 - 16;
+	const openAbove = spaceBelow < 200 && spaceAbove > spaceBelow;
+	const maxHeight = Math.max(0, Math.min(openAbove ? spaceAbove : spaceBelow, 420));
+	const vertical = openAbove
+		? { bottom: `${Math.round(viewportHeight - toolbarRect.top + 6)}px` }
+		: { top: `${Math.round(toolbarRect.bottom + 6)}px` };
 
 	return {
 		position: 'fixed' as const,
-		top: `${Math.round(top)}px`,
+		...vertical,
 		left: `${Math.round(left)}px`,
 		width: `${popoverWidth}px`,
 		maxHeight: `${maxHeight}px`,
@@ -253,8 +263,14 @@ function handleClickOutside(event: MouseEvent) {
 	const target = event.target as Node;
 	if (subPopoverEl.value.contains(target)) return;
 	if (toolbarEl.value?.contains(target)) return;
-	// Ignore clicks inside modals (e.g. media picker) that are teleported to body
-	if (target instanceof HTMLElement && target.closest('[role="dialog"]')) return;
+	// Ignore clicks inside surfaces the popover's own fields teleport to body: a
+	// modal (the media picker), a SelectField list or a colour panel. Closing
+	// here, on mousedown, unmounts the field before its option's click lands.
+	if (
+		target instanceof Element &&
+		target.closest('[role="dialog"], [role="listbox"], [data-eb-popup]')
+	)
+		return;
 	activeCategory.value = null;
 }
 
@@ -309,18 +325,21 @@ onUnmounted(() => {
 					:icon="TextAlignLeftIcon"
 					:title="t('builder.toolbar.alignLeft')"
 					:aria-label="t('builder.toolbar.alignLeft')"
+					:pressed="getFieldValue('textAlign') === 'left'"
 					@click="emit('update', block.id, 'textAlign', 'left')"
 				/>
 				<IconButton
 					:icon="TextAlignCenterIcon"
 					:title="t('builder.toolbar.alignCenter')"
 					:aria-label="t('builder.toolbar.alignCenter')"
+					:pressed="getFieldValue('textAlign') === 'center'"
 					@click="emit('update', block.id, 'textAlign', 'center')"
 				/>
 				<IconButton
 					:icon="TextAlignRightIcon"
 					:title="t('builder.toolbar.alignRight')"
 					:aria-label="t('builder.toolbar.alignRight')"
+					:pressed="getFieldValue('textAlign') === 'right'"
 					@click="emit('update', block.id, 'textAlign', 'right')"
 				/>
 			</template>
@@ -330,7 +349,7 @@ onUnmounted(() => {
 				<div class="flex items-center gap-1.5 px-1.5">
 					<LinkHorizontalIcon :size="12" class="text-brand/60 shrink-0" />
 					<span
-						class="text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis"
+						class="text-2xs font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis"
 					>
 						{{ linkedBlockName || t('builder.toolbar.linkedBlock') }}
 					</span>
@@ -417,6 +436,7 @@ onUnmounted(() => {
 			class="light bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden flex flex-col animate-eb-fade-in"
 			:style="subPopoverStyles"
 			@mousedown.stop
+			@keydown.esc.stop="activeCategory = null"
 		>
 			<!-- Scrollable content -->
 			<div class="overflow-y-auto overflow-x-hidden flex-1 min-h-0">

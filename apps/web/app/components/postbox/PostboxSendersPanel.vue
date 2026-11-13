@@ -129,8 +129,9 @@ async function applySuggestions() {
 		</header>
 
 		<div v-bind="tabPanelAttrs(tabPanelId, tabs, tab)">
-			<div v-if="isLoading" class="p-8 flex justify-center">
-				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
+			<div v-if="isLoading" class="p-8 flex justify-center" role="status">
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" aria-hidden="true" />
+				<span class="sr-only">{{ t('common.loading') }}</span>
 			</div>
 			<!-- A failed read is not "no senders". -->
 			<UiQueryBoundary v-else-if="error" :error="error" @retry="retry" />

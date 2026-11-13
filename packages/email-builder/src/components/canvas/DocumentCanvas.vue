@@ -65,6 +65,8 @@ const bgColorPopoverRef = ref<HTMLElement | null>(null);
 function toggleBgColorPopover(event: MouseEvent) {
 	event.stopPropagation();
 	showBgColorPopover.value = !showBgColorPopover.value;
+	// Teleported to body, so Tab from the bubble skips it: focus moves in on open.
+	if (showBgColorPopover.value) nextTick(() => bgColorPopoverRef.value?.querySelector('input')?.focus());
 }
 
 function handleBgClickOutside(event: MouseEvent) {
@@ -313,7 +315,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							class="w-4 h-4 rounded-full border border-border-default shrink-0"
 							:style="{ backgroundColor: backgroundColor || '#ffffff' }"
 						/>
-						<span class="text-[11px] font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
+						<span class="text-2xs font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
 					</button>
 				</UiTooltip>
 
@@ -321,21 +323,17 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					<div
 						v-if="showBgColorPopover"
 						ref="bgColorPopoverRef"
+						role="dialog" :aria-label="t('builder.canvas.emailBackground')" data-eb-popup
 						class="light fixed z-(--z-menu) bg-bg-elevated border border-border-subtle rounded-xl shadow-lg p-3 w-[240px]"
-						:style="{
-							top: (bgColorBubbleRef?.getBoundingClientRect().bottom ?? 0) + 6 + 'px',
-							left: (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240 + 'px',
-						}"
+						:style="{ top: (bgColorBubbleRef?.getBoundingClientRect().bottom ?? 0) + 6 + 'px', left: Math.max(8, (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240) + 'px' }"
+						@keydown.esc.stop.prevent="showBgColorPopover = false; bgColorBubbleRef?.focus()"
 					>
-						<div class="text-[11px] font-medium text-text-secondary uppercase tracking-wide mb-2">{{ t('builder.canvas.emailBackground') }}</div>
-						<ColorField
-							:label="t('builder.canvas.emailBackgroundField')"
-							:value="backgroundColor || '#ffffff'"
-							@update="emit('update:backgroundColor', $event)"
-						/>
+						<div class="text-2xs font-medium text-text-secondary uppercase tracking-wide mb-2" aria-hidden="true">{{ t('builder.canvas.emailBackground') }}</div>
+						<ColorField :label="t('builder.canvas.emailBackgroundField')" :value="backgroundColor || '#ffffff'" @update="emit('update:backgroundColor', $event)" />
 					</div>
 				</Teleport>
-				<slot name="subject-fields" />
+				<!-- Its own surface: on a dark email background the subject went dark on dark. -->
+				<div v-if="$slots['subject-fields']" class="-mx-10 -mt-6 mb-2 px-10 pt-6 pb-2 rounded-t-lg bg-bg-elevated"><slot name="subject-fields" /></div>
 
 				<!--
 					The block list is a list, not a listbox: a block is a container of
@@ -397,7 +395,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 							<!-- Block type label -->
 							<div
 								v-if="selectedBlockId === block.id && inlineEditBlockId !== block.id"
-								class="absolute -top-2.5 left-2 text-[10px] font-semibold py-0.5 px-2 rounded bg-brand text-white uppercase z-[5] shadow-sm animate-eb-slide-up"
+								class="absolute -top-2.5 left-2 text-2xs leading-4 font-semibold py-0 px-2 rounded bg-text-primary text-text-inverse uppercase z-[5] shadow-sm animate-eb-slide-up"
 							>
 								{{ label(getBlock(block.type)?.label ?? block.type) }}
 							</div>
@@ -407,7 +405,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								v-if="isLinkedBlockFn(block.id) && isFirstInLinkedGroup(block.id)"
 								class="absolute -top-[9px] left-3 z-[6] inline-flex items-center gap-1 bg-bg-elevated px-1.5"
 							>
-								<span class="text-[10px] font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]">
+								<span class="text-2xs font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]">
 									{{ block.savedBlockRef?.blockName || t('builder.toolbar.linkedBlock') }}
 								</span>
 								<UiTooltip :text="t('builder.toolbar.detach')">
@@ -482,7 +480,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 						<line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 					</svg>
 					<span class="block text-sm font-medium text-text-secondary">{{ t('builder.canvas.emptyTitle') }}</span>
-					<span class="block text-[13px] text-text-tertiary">{{ t('builder.canvas.emptyHint') }}</span>
+					<span class="block text-caption text-text-tertiary">{{ t('builder.canvas.emptyHint') }}</span>
 				</button>
 			</div>
 

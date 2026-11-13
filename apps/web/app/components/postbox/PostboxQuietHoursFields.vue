@@ -138,7 +138,7 @@ function toggleDay(day: number) {
 					v-for="day in POSTBOX_WEEKDAY_ORDER"
 					:key="day"
 					type="button"
-					class="px-2 py-0.5 rounded text-xs border"
+					class="px-2 py-0.5 rounded text-xs border pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-3"
 					:class="
 						value.days.includes(day)
 							? 'border-brand text-brand'

@@ -95,8 +95,14 @@ watch(importProgress, (p) => {
 });
 
 watch(isOpen, (newValue) => {
-	if (newValue) {
-		reset();
+	if (!newValue) return;
+	reset();
+	// A run keeps going after the modal closes; reopening returns to its
+	// progress instead of offering a second import next to it.
+	const p = importProgress.value;
+	if (p?.status === 'running') {
+		selectedIntegration.value = p.provider;
+		step.value = 'importing';
 	}
 });
 
@@ -204,16 +210,24 @@ const startImport = async () => {
 	}
 };
 
+// The run's end arrives through the progress query; this only covers the
+// wait for the cancel itself.
+const isCancelling = ref(false);
 const handleCancel = async () => {
-	if (!convex || !importProgress.value) return;
+	if (!convex || !importProgress.value || isCancelling.value) return;
+	isCancelling.value = true;
 	try {
 		await convex.mutation(api.integrationImports.walker.cancelImport, {
 			importId: importProgress.value._id,
 		});
 	} catch {
-		// Ignore — import may have already completed
+		// The run may already have finished, which the progress query reports.
+	} finally {
+		isCancelling.value = false;
 	}
 };
+
+const titleId = useId();
 
 const PROVIDER_NAMES: Record<'mailchimp' | 'stripe' | 'mandrill', string> = {
 	mailchimp: 'Mailchimp',
@@ -233,6 +247,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 	<UiModal
 		:open="isOpen"
 		size="lg"
+		:labelled-by="titleId"
 		@update:open="
 			(v) => {
 				if (!v) close();
@@ -243,7 +258,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="LinkHorizontalIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.integrationImportModal.title') }}
 				</h2>
 				<p class="text-sm text-text-tertiary">
@@ -270,6 +285,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 		<!-- Error Alert -->
 		<div
 			v-if="error"
+			role="alert"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 		>
 			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
@@ -321,7 +337,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 				</UiButton>
 			</template>
 			<template v-else-if="step === 'importing'">
-				<UiButton variant="secondary" @click="handleCancel">{{
+				<UiButton variant="secondary" :loading="isCancelling" @click="handleCancel">{{
 					t('components.contacts.integrationImportModal.footer.cancelImport')
 				}}</UiButton>
 				<UiButton variant="secondary" @click="close">{{ t('common.close') }}</UiButton>

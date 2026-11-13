@@ -277,7 +277,7 @@ const handleCopyValue = () => {
 					size="1em"
 				/>
 				<span
-					class="shrink-0 px-2 py-0.5 bg-brand/20 text-brand text-xs font-medium rounded font-mono"
+					class="shrink-0 px-2 py-0.5 bg-bg-surface text-text-secondary border border-border-subtle text-xs font-medium rounded font-mono"
 				>
 					{{ record.type }}
 				</span>
@@ -396,7 +396,7 @@ const handleCopyValue = () => {
 						<UiButton
 							variant="ghost"
 							class="p-2"
-							:aria-label="t('components.domains.dnsRecordPanel.copyHost')"
+							:aria-label="t('components.domains.dnsRecordPanel.copyHostOf', { label })"
 							@click="handleCopyHost"
 						>
 							<CheckIcon v-if="isCopied(`${label}-host`)" class="w-4 h-4 text-success" />
@@ -420,7 +420,7 @@ const handleCopyValue = () => {
 						<UiButton
 							variant="ghost"
 							class="p-1"
-							:aria-label="t('components.domains.dnsRecordPanel.copyFullName')"
+							:aria-label="t('components.domains.dnsRecordPanel.copyFullNameOf', { label })"
 							@click="handleCopyFqdn"
 						>
 							<CheckIcon v-if="isCopied(`${label}-fqdn`)" class="w-3.5 h-3.5 text-success" />
@@ -480,7 +480,7 @@ const handleCopyValue = () => {
 						<UiButton
 							variant="ghost"
 							class="p-2"
-							:aria-label="t('components.domains.dnsRecordPanel.copyValue')"
+							:aria-label="t('components.domains.dnsRecordPanel.copyValueOf', { label })"
 							@click="handleCopyValue"
 						>
 							<CheckIcon v-if="isCopied(`${label}-value`)" class="w-4 h-4 text-success" />

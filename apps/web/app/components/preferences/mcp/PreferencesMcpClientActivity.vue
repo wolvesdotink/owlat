@@ -46,7 +46,7 @@ function formatTime(ts: number) {
 </script>
 
 <template>
-	<div class="rounded border border-border-subtle bg-bg-base">
+	<div class="rounded-lg bg-bg-surface">
 		<div v-if="isLoading" class="p-4 flex justify-center">
 			<SpinnerIcon class="w-4 h-4 text-text-tertiary" />
 		</div>

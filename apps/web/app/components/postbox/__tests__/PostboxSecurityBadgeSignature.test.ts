@@ -41,6 +41,12 @@ function mountBadge(opts: {
 		},
 		global: {
 			plugins: [createTestI18n()],
+			stubs: {
+				UiTooltip: {
+					props: ['text'],
+					template: '<span data-testid="tooltip" :data-text="text"><slot /></span>',
+				},
+			},
 		},
 	});
 }
@@ -61,7 +67,9 @@ describe('PostboxSecurityBadge · signature driver', () => {
 		expect(wrapper.find('[data-testid="signature-badge-fingerprint"]').text()).toBe(
 			'0011 2233 AABB CCDD'
 		);
-		const tooltip = wrapper.find('[data-testid="signature-badge"] [title]').attributes('title');
+		const tooltip = wrapper
+			.find('[data-testid="signature-badge"] [data-testid="tooltip"]')
+			.attributes('data-text');
 		expect(tooltip).toContain('AABB CCDD 0011 2233 AABB CCDD 0011 2233 AABB CCDD');
 		expect(tooltip).toContain('key directory (WKD)');
 		// The verdict chip replaces the structural chip and its suffix.

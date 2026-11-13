@@ -27,6 +27,47 @@ const active = computed(() =>
 	activeIndex.value === null ? null : (bars.value[activeIndex.value] ?? null)
 );
 
+/**
+ * ONE tab stop for the whole chart, not one per day: a 90-day range would put
+ * 90 stops between the reader and the sources table. Tab lands on the last
+ * focused day (the latest at first) and the arrow keys walk the days.
+ */
+const focusIndex = ref<number | null>(null);
+const tabStopIndex = computed(() =>
+	focusIndex.value !== null && focusIndex.value < bars.value.length
+		? focusIndex.value
+		: bars.value.length - 1
+);
+// Indexed by bar, not collected through a v-for ref: that array's order is not
+// guaranteed to follow the list.
+const barEls: Array<HTMLElement | null> = [];
+function setBarEl(el: unknown, index: number) {
+	barEls[index] = el instanceof HTMLElement ? el : null;
+}
+
+function moveFocus(event: KeyboardEvent, index: number) {
+	const last = bars.value.length - 1;
+	const next =
+		event.key === 'ArrowLeft'
+			? Math.max(0, index - 1)
+			: event.key === 'ArrowRight'
+				? Math.min(last, index + 1)
+				: event.key === 'Home'
+					? 0
+					: event.key === 'End'
+						? last
+						: null;
+	if (next === null) return;
+	event.preventDefault();
+	focusIndex.value = next;
+	barEls[next]?.focus();
+}
+
+function onBarFocus(index: number) {
+	focusIndex.value = index;
+	activeIndex.value = index;
+}
+
 // Centred over the active bar, kept inside the chart at the edges.
 const tooltipLeft = computed(() => {
 	if (activeIndex.value === null || bars.value.length === 0) return '50%';
@@ -79,7 +120,8 @@ const lastLabel = computed(() => {
 				</div>
 
 				<!-- A group, not an image: its bars take keyboard focus, and an image's
-				     children are presentational. -->
+				     children are presentational. Each bar is an image named by its day
+				     and counts, which a bare focusable div would not announce. -->
 				<div
 					class="flex h-36 items-end gap-0.5 border-b border-border-subtle"
 					role="group"
@@ -89,14 +131,17 @@ const lastLabel = computed(() => {
 					<div
 						v-for="(bar, index) in bars"
 						:key="bar.date"
+						:ref="(el) => setBarEl(el, index)"
 						class="flex h-full min-w-0 flex-1 cursor-default flex-col justify-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						tabindex="0"
+						role="img"
+						:tabindex="index === tabStopIndex ? 0 : -1"
 						:aria-label="`${formatUtcDayKey(bar.date, locale)}: ${countsLine(bar)}`"
 						data-testid="dmarc-trend-bar"
 						@mouseenter="activeIndex = index"
 						@mouseleave="activeIndex = null"
-						@focus="activeIndex = index"
+						@focus="onBarFocus(index)"
 						@blur="activeIndex = null"
+						@keydown="moveFocus($event, index)"
 					>
 						<div
 							v-if="bar.failed > 0"

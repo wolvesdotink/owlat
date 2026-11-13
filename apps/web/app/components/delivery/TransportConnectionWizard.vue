@@ -27,7 +27,7 @@
  * rail marked with `aria-current="step"`; every input labelled; every error in a
  * `role="alert"` region.
  */
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
 import type { AlignmentArm, ReferenceArmInput } from '@owlat/shared/deliverabilityAlignment';
 import {
 	RETURN_PATH_NO_REFERENCE_NOTE,
@@ -59,7 +59,7 @@ import { runAlignmentProbe } from '~/utils/transportAlignmentProbe';
 // wizard with no step 1 and no findings.
 import TransportCredentialsStep from './TransportCredentialsStep.vue';
 import WizardFindingRow from './WizardFindingRow.vue';
-import { PlugIcon } from '@coolicons/vue';
+import { CheckIcon, CloseIcon, PlugIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/**
@@ -135,6 +135,12 @@ const currentIndex = computed(() =>
 	steps.value.findIndex((step) => step.id === state.value.current)
 );
 const currentStep = computed(() => stepById(state.value.current));
+const nextHintId = useId();
+/** A step's settled outcome for the rail; anything unsettled shows its number. */
+function railStatus(id: (typeof steps.value)[number]['id']): 'passed' | 'failed' | null {
+	const status = state.value.statuses[id];
+	return status === 'passed' || status === 'failed' ? status : null;
+}
 const positionLabel = computed(() =>
 	t('components.delivery.transportConnectionWizard.position', {
 		index: currentIndex.value + 1,
@@ -307,16 +313,34 @@ watch(
 						step.id === state.current ? 'text-text-primary font-medium' : 'text-text-tertiary'
 					"
 				>
+					<!-- A settled step shows its outcome, so after Back/Next the rail
+					     still says what already worked. -->
 					<span
 						class="inline-flex h-5 w-5 items-center justify-center rounded-full border text-xs"
 						:class="
-							step.id === state.current
-								? 'border-brand text-brand'
-								: 'border-border-default text-text-tertiary'
+							railStatus(step.id) === 'passed'
+								? 'border-success/40 bg-success/10 text-success'
+								: railStatus(step.id) === 'failed'
+									? 'border-error/40 bg-error/10 text-error'
+									: step.id === state.current
+										? 'border-brand text-brand'
+										: 'border-border-default text-text-tertiary'
 						"
-						>{{ index + 1 }}</span
+						aria-hidden="true"
 					>
-					{{ t(step.title) }}
+						<CheckIcon v-if="railStatus(step.id) === 'passed'" class="h-3 w-3" />
+						<CloseIcon v-else-if="railStatus(step.id) === 'failed'" class="h-3 w-3" />
+						<template v-else>{{ index + 1 }}</template>
+					</span>
+					{{ t(step.title)
+					}}<span v-if="railStatus(step.id)" class="sr-only"
+						>,
+						{{
+							railStatus(step.id) === 'passed'
+								? t('components.delivery.transportConnectionWizard.stepPassed')
+								: t('components.delivery.transportConnectionWizard.stepFailed')
+						}}</span
+					>
 				</li>
 			</ol>
 
@@ -399,12 +423,24 @@ watch(
 				<UiButton variant="ghost" :disabled="!canStepBack" @click="goBack">
 					{{ t('common.back') }}
 				</UiButton>
-				<UiButton v-if="!isLastStep(state)" :disabled="!canAdvance(state)" @click="goNext">
+				<UiButton
+					v-if="!isLastStep(state)"
+					:disabled="!canAdvance(state)"
+					:aria-describedby="!canAdvance(state) ? nextHintId : undefined"
+					@click="goNext"
+				>
 					{{ t('common.next') }}
 				</UiButton>
 				<UiButton variant="ghost" @click="dismiss">
 					{{ isLastStep(state) ? t('common.done') : t(TRANSPORT_WIZARD_ENTRY.dismissLabel) }}
 				</UiButton>
+				<p
+					v-if="!isLastStep(state) && !canAdvance(state)"
+					:id="nextHintId"
+					class="text-xs text-text-tertiary"
+				>
+					{{ t('components.delivery.transportConnectionWizard.nextHint') }}
+				</p>
 			</div>
 		</div>
 	</UiCard>

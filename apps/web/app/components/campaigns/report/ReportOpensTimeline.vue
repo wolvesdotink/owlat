@@ -51,6 +51,22 @@ const timelineData = computed<{ label: string; value: number }[]>(() => {
 			</p>
 		</div>
 
+		<!-- The chart needs two points to draw a line; every open in one hour
+		     is a real result, not "no data yet". -->
+		<p
+			v-else-if="timelineData.length === 1"
+			class="py-12 text-center text-text-secondary"
+			data-testid="opens-timeline-single"
+		>
+			{{
+				t(
+					'dashboard.campaigns.detail.report.timeline.singleBucket',
+					{ count: formatNumber(timelineData[0]!.value) },
+					timelineData[0]!.value
+				)
+			}}
+		</p>
+
 		<UiTrendChart
 			v-else
 			:data="timelineData"

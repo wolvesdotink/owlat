@@ -23,6 +23,21 @@ const progressPercent = computed(() => {
 		Math.max(0, Math.round((job.value.scannedCount / job.value.totalCount) * 100))
 	);
 });
+// Same status -> tone map as the sibling message backfill card: a failed job
+// must not look like an idle one.
+const statusVariant = computed(() => {
+	switch (job.value?.status) {
+		case 'running':
+		case 'pending':
+			return 'default';
+		case 'completed':
+			return 'success';
+		case 'failed':
+			return 'error';
+		default:
+			return 'neutral';
+	}
+});
 async function handleCancel() {
 	const result = await cancel({});
 	if (result.ok) showToast(t('components.agent.agentKnowledgeRelationBackfillCard.cancelledToast'));
@@ -40,7 +55,7 @@ async function handleCancel() {
 					{{ t('components.agent.agentKnowledgeRelationBackfillCard.description') }}
 				</p>
 			</div>
-			<UiBadge :variant="job.status === 'completed' ? 'success' : 'neutral'">
+			<UiBadge :variant="statusVariant" class="whitespace-nowrap">
 				{{ statusLabel }}
 			</UiBadge>
 		</div>
@@ -71,6 +86,13 @@ async function handleCancel() {
 			>
 				{{ t('components.agent.agentKnowledgeRelationBackfillCard.cancel') }}
 			</UiButton>
+			<p
+				v-if="job.status === 'failed' && job.errorMessage"
+				class="mt-4 text-sm text-error bg-error-subtle/50 rounded-lg px-3 py-2"
+				role="alert"
+			>
+				{{ job.errorMessage }}
+			</p>
 		</div>
 	</div>
 </template>

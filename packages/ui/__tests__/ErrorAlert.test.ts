@@ -57,3 +57,23 @@ describe('UiErrorAlert action', () => {
 		expect(onAction).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('UiErrorAlert announcement', () => {
+	it('is an alert for an error and a status for the other tones', () => {
+		expect(mountAlert({ message: 'Save failed.' }).firstElementChild?.getAttribute('role')).toBe(
+			'alert'
+		);
+		mounted?.unmount();
+		const success = mountAlert({ message: 'Saved.', variant: 'success' });
+		expect(success.firstElementChild?.getAttribute('role')).toBe('status');
+	});
+
+	it('gives the message a literal colour class the Tailwind scanner can see', () => {
+		const el = mountAlert({ message: 'Save failed.' });
+		const message = Array.from(el.querySelectorAll('p')).find(
+			(p) => p.textContent === 'Save failed.'
+		);
+		expect(message?.className).not.toMatch(/\/80/);
+		expect(message?.className).toContain('text-text-secondary');
+	});
+});

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { CheckIcon, CircleCheckIcon, CircleWarningIcon, FileUploadIcon, UploadIcon } from '@coolicons/vue';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CircleWarningIcon,
+	FileUploadIcon,
+	TriangleWarningIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	blocklistImport: ReturnType<typeof useBlocklistImport>;
@@ -27,6 +34,14 @@ const stepDescription = computed(() => {
 });
 
 const canClose = computed(() => props.blocklistImport.step.value !== 'importing');
+
+const titleId = useId();
+
+// An import that hit errors or added nothing is not a success, so it does not get the green check.
+const completedWithProblems = computed(() => {
+	const results = props.blocklistImport.results.value;
+	return (results?.errors?.length ?? 0) > 0 || (results?.added ?? 0) === 0;
+});
 </script>
 
 <template>
@@ -35,6 +50,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		size="lg"
 		:closable="canClose"
 		:persistent="!canClose"
+		:labelled-by="titleId"
 		@update:open="
 			(v) => {
 				if (!v) blocklistImport.close();
@@ -45,7 +61,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="FileUploadIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 :id="titleId" class="text-lg font-semibold text-text-primary">
 					{{ t('components.audience.suppressionsImportModal.title') }}
 				</h2>
 				<p class="text-sm text-text-tertiary">{{ stepDescription }}</p>
@@ -55,6 +71,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<!-- Error Alert -->
 		<div
 			v-if="blocklistImport.error.value"
+			role="alert"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 		>
 			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
@@ -74,9 +91,10 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 				class="hidden"
 				@change="blocklistImport.handleFileSelect"
 			/>
-			<div
+			<button
+				type="button"
 				:class="[
-					'border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer',
+					'block w-full border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 					blocklistImport.isDragging.value
 						? 'border-brand bg-brand/5'
 						: 'border-border-subtle hover:border-border-default',
@@ -86,20 +104,20 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 				@dragleave="blocklistImport.handleDragLeave"
 				@drop="blocklistImport.handleDrop"
 			>
-				<div class="flex flex-col items-center gap-4">
-					<div class="p-4 rounded-full bg-bg-surface">
+				<span class="flex flex-col items-center gap-4">
+					<span class="p-4 rounded-full bg-bg-surface">
 						<UploadIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
-					</div>
-					<div>
-						<p class="text-text-primary font-medium">
+					</span>
+					<span class="block">
+						<span class="block text-text-primary font-medium">
 							{{ t('components.audience.suppressionsImportModal.dropzoneTitle') }}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1">
+						</span>
+						<span class="block text-sm text-text-tertiary mt-1">
 							{{ t('components.audience.suppressionsImportModal.dropzoneHint') }}
-						</p>
-					</div>
-				</div>
-			</div>
+						</span>
+					</span>
+				</span>
+			</button>
 			<div class="mt-6 p-4 rounded-lg bg-bg-surface">
 				<h4 class="text-sm font-medium text-text-primary mb-2">
 					{{ t('components.audience.suppressionsImportModal.formatTipsTitle') }}
@@ -234,13 +252,8 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<!-- Step 3: Importing -->
 		<div v-else-if="blocklistImport.step.value === 'importing'" class="py-8">
 			<div class="flex flex-col items-center gap-6">
-				<div class="relative">
-					<div class="w-20 h-20 rounded-full border-4 border-bg-surface" />
-					<div
-						class="absolute inset-0 w-20 h-20 rounded-full border-4 border-brand border-t-transparent animate-spin motion-reduce:animate-none"
-					/>
-				</div>
-				<p class="text-lg font-medium text-text-primary">
+				<UiSpinner size="xl" />
+				<p role="status" class="text-lg font-medium text-text-primary">
 					{{ t('components.audience.suppressionsImportModal.steps.importing') }}
 				</p>
 			</div>
@@ -249,11 +262,18 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<!-- Step 4: Complete -->
 		<div v-else-if="blocklistImport.step.value === 'complete'" class="py-4">
 			<div class="flex flex-col items-center gap-4 mb-6">
-				<div class="p-3 rounded-full bg-success/10">
+				<div v-if="completedWithProblems" class="p-3 rounded-full bg-warning/10">
+					<TriangleWarningIcon class="w-8 h-8 text-warning" :stroke-width="1.5" />
+				</div>
+				<div v-else class="p-3 rounded-full bg-success/10">
 					<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 				</div>
 				<p class="text-lg font-medium text-text-primary">
-					{{ t('components.audience.suppressionsImportModal.completeTitle') }}
+					{{
+						completedWithProblems
+							? t('components.audience.suppressionsImportModal.completeWithProblemsTitle')
+							: t('components.audience.suppressionsImportModal.completeTitle')
+					}}
 				</p>
 			</div>
 			<div class="grid grid-cols-2 gap-4 mb-6">
@@ -282,10 +302,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					}}
 				</h4>
 				<ul class="text-sm text-error/80 space-y-1">
-					<li
-						v-for="(err, index) in blocklistImport.results.value.errors.slice(0, 5)"
-						:key="index"
-					>
+					<li v-for="(err, index) in blocklistImport.results.value.errors.slice(0, 5)" :key="index">
 						{{ err }}
 					</li>
 				</ul>

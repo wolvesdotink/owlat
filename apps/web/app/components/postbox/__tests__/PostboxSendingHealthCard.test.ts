@@ -137,6 +137,14 @@ describe('PostboxSendingHealthCard', () => {
 		expect(text).toContain("haven't sent anything from here yet");
 	});
 
+	it('keeps the checks one click away while all pass, and opens them when one needs a look', () => {
+		const checks = () =>
+			mountCard().get('[data-testid="sending-health-checks"]').attributes('open') !== undefined;
+		expect(checks()).toBe(false);
+		identities.value = [{ address: 'me@owlat.test', domainVerified: false, alignment: 'unknown' }];
+		expect(checks()).toBe(true);
+	});
+
 	it('shows a skeleton while the reads are in flight', () => {
 		loading.value = true;
 		const wrapper = mountCard();

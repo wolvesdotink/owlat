@@ -255,17 +255,22 @@ const advanceIds = computed(
 							:provider="provider"
 							@narrow="setNarrow"
 						/>
-						<button
-							v-if="category"
-							type="button"
-							class="inline-flex items-center gap-1 rounded-full bg-bg-elevated px-2.5 py-1 text-xs font-medium text-text-primary shadow-(--shadow-1)"
-							:aria-label="t('components.postbox.allInboxes.clearCategory')"
-							data-testid="all-inboxes-category"
-							@click="clearCategory"
-						>
-							{{ t(`components.postbox.allInboxes.category.${category}`) }}
-							<CloseIcon class="size-3" />
-						</button>
+						<UiTooltip v-if="category" :text="t('components.postbox.allInboxes.clearCategory')">
+							<button
+								type="button"
+								class="inline-flex items-center gap-1 rounded-full bg-bg-elevated px-2.5 py-1 text-xs font-medium text-text-primary shadow-(--shadow-1)"
+								:aria-label="
+									t('components.postbox.allInboxes.clearCategoryNamed', {
+										category: t(`components.postbox.allInboxes.category.${category}`),
+									})
+								"
+								data-testid="all-inboxes-category"
+								@click="clearCategory"
+							>
+								{{ t(`components.postbox.allInboxes.category.${category}`) }}
+								<CloseIcon class="size-3" />
+							</button>
+						</UiTooltip>
 					</div>
 					<div v-if="role === 'drafts'" class="flex-1 overflow-auto">
 						<PostboxDraftList :mailbox-ids="draftMailboxIds" />

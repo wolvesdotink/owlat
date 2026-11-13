@@ -7,7 +7,9 @@
  * doing-surface.
  *
  * Keyboard contract (window-level, mirroring the list/reader vocabulary):
- *   - Esc / scrim click → `close` (the host restores the list)
+ *   - Esc / scrim click / the Close button → `close` (the host restores the
+ *     list). The button is the one exit a touch or switch user can reach: on
+ *     a phone the scrim is only the thin gutter around the pane.
  *   - j / k (and ↓ / ↑) → `open` the next / previous row WITHOUT closing —
  *     the host swaps `message` and the keyed reader swaps in (enter-only fade)
  *   - every single-key triage/compose shortcut is forwarded to the reader via
@@ -27,12 +29,23 @@ import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget, resolvePostboxShortcut } from '~/utils/postboxShortcuts';
 import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
+import { CloseIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
 const props = defineProps<{
-	/** The open row (full list-row shape — handed straight to the reader). */
-	message: PostboxReaderMessage;
+	/**
+	 * The open row (full list-row shape — handed straight to the reader).
+	 * Absent while a message outside the loaded feed is still being fetched,
+	 * or when that fetch failed or found nothing: the pane then says which.
+	 */
+	message?: PostboxReaderMessage;
+	/** The open id, for the states where `message` has not arrived. */
+	messageId?: string;
+	/** The fetch of a message outside the feed failed. */
+	error?: Error | null;
+	/** That fetch answered that the message is gone for this viewer. */
+	notFound?: boolean;
 	/** Visible Today-list order (today rows + expanded past rows) for j/k + auto-advance. */
 	advanceIds: string[];
 }>();
@@ -42,14 +55,18 @@ const emit = defineEmits<{
 	close: [];
 	/** Swap the reader to this row in place (j/k or triage auto-advance). */
 	open: [messageId: string];
+	/** Read the missing message again after a failed fetch. */
+	retry: [];
 }>();
+
+const currentId = computed(() => props.message?._id ?? props.messageId ?? '');
 
 const paneEl = ref<HTMLElement | null>(null);
 useModalFocus(paneEl, () => true);
 
 /** Step to the adjacent visible row; no-op off the ends or on unknown ids. */
 function step(delta: 1 | -1) {
-	const index = props.advanceIds.indexOf(props.message._id);
+	const index = props.advanceIds.indexOf(currentId.value);
 	if (index === -1) return;
 	const next = props.advanceIds[index + delta];
 	if (next) emit('open', next);
@@ -123,7 +140,7 @@ onUnmounted(() => {
 	}
 	// Click-opened rows aren't focusable — fall back to the row's listbox so
 	// the keyboard flow resumes at the preserved selection.
-	const row = document.getElementById(`postbox-row-${props.message._id}`);
+	const row = document.getElementById(`postbox-row-${currentId.value}`);
 	const listbox = row?.closest('[role="listbox"]');
 	if (listbox instanceof HTMLElement) listbox.focus();
 });
@@ -138,7 +155,7 @@ onUnmounted(() => {
 	>
 		<!-- Scrim: click = back to the list (Esc twin). -->
 		<div
-			class="fixed inset-0 bg-bg-deep/60 backdrop-blur-sm"
+			class="fixed inset-0 bg-scrim/50"
 			aria-hidden="true"
 			data-overlay-scrim
 			@click="emit('close')"
@@ -148,17 +165,34 @@ onUnmounted(() => {
 			role="dialog"
 			aria-modal="true"
 			:aria-label="
-				message.subject || t('components.postbox.postboxTodayReaderOverlay.conversation')
+				message?.subject || t('components.postbox.postboxTodayReaderOverlay.conversation')
 			"
 			tabindex="-1"
 			class="relative mx-auto w-full max-w-2xl rounded-xl border border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
 		>
+			<div
+				class="sticky top-0 z-10 flex justify-end rounded-t-xl bg-bg-elevated/90 px-2 pt-2 backdrop-blur-sm"
+			>
+				<UiTooltip :text="t('components.postbox.postboxTodayReaderOverlay.close')">
+					<UiButton
+						variant="ghost"
+						size="sm"
+						type="button"
+						class="text-text-tertiary"
+						:aria-label="t('components.postbox.postboxTodayReaderOverlay.close')"
+						data-testid="postbox-today-overlay-close"
+						@click="emit('close')"
+					>
+						<CloseIcon class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
+			</div>
 			<!-- Keyed swap: j/k and triage auto-advance replace the thread in
 			     place with the same enter-only fade the three-pane reader uses
 			     (postbox-motion.css); nothing waits for the old thread to leave.
 			     The boundary keeps a thread that fails to render inside the
 			     overlay, which still closes and still steps to the next one. -->
-			<AppErrorBoundary surface="reader" :reset-keys="[message._id]">
+			<AppErrorBoundary v-if="message" surface="reader" :reset-keys="[message._id]">
 				<PostboxThreadReader
 					:key="message._id"
 					class="pbx-reader-swap"
@@ -169,6 +203,17 @@ onUnmounted(() => {
 					@advance="onAdvance"
 				/>
 			</AppErrorBoundary>
+			<UiQueryBoundary v-else-if="error" :error="error" @retry="emit('retry')" />
+			<PostboxMessageNotFound v-else-if="notFound">
+				<template #action>
+					<UiButton variant="secondary" @click="emit('close')">
+						{{ t('components.postbox.postboxTodayReaderOverlay.close') }}
+					</UiButton>
+				</template>
+			</PostboxMessageNotFound>
+			<div v-else class="p-6" data-testid="postbox-today-overlay-loading">
+				<PostboxReaderSkeleton />
+			</div>
 		</div>
 	</div>
 </template>

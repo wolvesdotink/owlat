@@ -117,6 +117,24 @@ async function finish(id: string, over: Partial<Run> = {}): Promise<void> {
 	await nextTick();
 }
 
+describe('a start that throws', () => {
+	it('shows the step’s own sentence, never the raw Convex client message', async () => {
+		mutation.mockImplementationOnce(async () => {
+			throw new Error('[CONVEX M(integrationImports:start)] Uncaught Error: invalid_state');
+		});
+		const wrapper = await mountStep();
+		await startCarryOver(wrapper);
+		await nextTick();
+		const error = wrapper.find('[data-testid="migration-import-error"]').text();
+		expect(error).not.toContain('CONVEX');
+		expect(error).toBe(
+			(createTestI18n().global.t as (key: string) => string)(
+				'components.delivery.migrationImportStep.startFailed'
+			)
+		);
+	});
+});
+
 describe('the two imports run in order', () => {
 	it('starts the audience first, with suppression carry-over switched on', async () => {
 		const wrapper = await mountStep();

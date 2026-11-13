@@ -90,6 +90,37 @@ describe('InboxMessageBody', () => {
 		expect(wrapper.find(EXCERPT_NOTE).exists()).toBe(true);
 	});
 
+	it('says the rest failed to load, and tries again on Retry', async () => {
+		answer = async () => {
+			throw new Error('offline');
+		};
+		const wrapper = mountBody({
+			bodyExcerpt: 'Only the opening',
+			textBodyStorageId: 'storage_1' as InboxMessageText['textBodyStorageId'],
+		});
+		await flushPromises();
+		const failed = wrapper.get('[data-testid="inbox-message-body-failed"]');
+		expect(failed.text()).toContain("couldn't be loaded");
+
+		answer = async () => 'Only the opening, and the rest.';
+		await failed.get('button').trigger('click');
+		await flushPromises();
+		expect(wrapper.text()).toContain('and the rest.');
+		expect(wrapper.find('[data-testid="inbox-message-body-failed"]').exists()).toBe(false);
+	});
+
+	it('keeps the body itself out of the live region', async () => {
+		const wrapper = mountBody({
+			bodyExcerpt: 'Only the opening',
+			textBodyStorageId: 'storage_1' as InboxMessageText['textBodyStorageId'],
+		});
+		await flushPromises();
+		const live = wrapper.findAll('[aria-live], [role="status"]');
+		expect(live.some((el) => el.find('[data-testid="inbox-message-body-text"]').exists())).toBe(
+			false
+		);
+	});
+
 	it('marks and completes an HTML-only message whose HTML is in storage', async () => {
 		answer = async () => 'Monthly newsletter, converted in full.';
 		const wrapper = mountBody({

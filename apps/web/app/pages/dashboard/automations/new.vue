@@ -2,12 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import {
-	listTriggerEditorModules,
 	triggerEditorModuleFor,
 	type TriggerConfigByKind,
 	type TriggerKind,
 } from '~/composables/automations/triggers';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, FileTextIcon, ZapIcon } from '@coolicons/vue';
+import AutomationsTriggerPicker from '~/components/automations/TriggerPicker.vue';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, FileTextIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
@@ -55,6 +55,9 @@ const isSaving = ref(false);
 const { run: createAutomation } = useBackendOperation(api.automations.automations.create, {
 	label: () => t('dashboard.automations.new.operations.create'),
 });
+const { run: updateAutomationDetails } = useBackendOperation(api.automations.automations.update, {
+	label: () => t('dashboard.automations.new.operations.updateDetails'),
+});
 const { run: updateTrigger } = useBackendOperation(api.automations.automations.updateTrigger, {
 	label: () => t('dashboard.automations.new.operations.updateTrigger'),
 });
@@ -82,18 +85,6 @@ watch(
 		triggerConfig.value = (a.triggerConfig as TriggerConfigByKind[TriggerKind] | undefined) ?? null;
 	},
 	{ immediate: true }
-);
-
-// Trigger type catalog — derived from the editor module registry.
-const triggerTypes = computed(() =>
-	listTriggerEditorModules().map((m) => ({
-		id: m.kind,
-		label: m.label,
-		description: m.description,
-		icon: m.icon,
-		color: m.color,
-		requiresConfig: m.requiresConfig,
-	}))
 );
 
 const selectedTriggerModule = computed(() =>
@@ -150,6 +141,24 @@ const handleSubmit = async () => {
 			if (!newAutomationId.ok) return;
 			automationId.value = newAutomationId.result;
 		} else {
+			// The name and description are editable here too, so a change to
+			// them is saved with the trigger instead of being dropped.
+			const name = automationName.value.trim();
+			const description = automationDescription.value.trim();
+			const existing = existingAutomation.value;
+			if (
+				existing &&
+				(name !== existing.name || description !== (existing.description ?? '')) &&
+				!(
+					await updateAutomationDetails({
+						automationId: automationId.value,
+						name,
+						description,
+					})
+				).ok
+			) {
+				return;
+			}
 			// Update trigger if automation already exists
 			if (
 				!(
@@ -190,6 +199,20 @@ const currentTriggerRequiresConfig = computed(
 	() => selectedTriggerModule.value?.requiresConfig ?? false
 );
 
+// What still keeps Continue disabled, said next to it.
+const missingText = computed(() => {
+	const missing: string[] = [];
+	if (!automationName.value.trim()) {
+		missing.push(t('dashboard.automations.new.validation.nameRequired'));
+	}
+	if (!selectedTriggerType.value) {
+		missing.push(t('dashboard.automations.new.validation.triggerRequired'));
+	} else if (currentTriggerRequiresConfig.value && !isTriggerConfigComplete.value) {
+		missing.push(t('dashboard.automations.new.validation.triggerConfigIncomplete'));
+	}
+	return missing.join(' · ');
+});
+
 // Check if trigger configuration is complete
 const isTriggerConfigComplete = computed(() => {
 	if (!selectedTriggerModule.value) return false;
@@ -199,41 +222,6 @@ const isTriggerConfigComplete = computed(() => {
 	);
 	return error === null;
 });
-
-// Get color class for trigger type
-const getTriggerColorClass = (color: string, selected: boolean) => {
-	if (selected) {
-		switch (color) {
-			case 'lime':
-				return 'border-brand bg-brand/5';
-			case 'lavender':
-				return 'border-brand bg-brand/5';
-			case 'warning':
-				return 'border-warning bg-warning/5';
-			case 'success':
-				return 'border-success bg-success/5';
-			default:
-				return 'border-brand bg-brand/5';
-		}
-	}
-	return 'border-border-subtle hover:border-border-default';
-};
-
-// Get icon color class
-const getIconColorClass = (color: string) => {
-	switch (color) {
-		case 'lime':
-			return 'text-brand bg-brand/10';
-		case 'lavender':
-			return 'text-brand bg-brand/10';
-		case 'warning':
-			return 'text-warning bg-warning/10';
-		case 'success':
-			return 'text-success bg-success/10';
-		default:
-			return 'text-brand bg-brand/10';
-	}
-};
 </script>
 
 <template>
@@ -243,7 +231,8 @@ const getIconColorClass = (color: string) => {
 			<div class="max-w-4xl mx-auto px-6 py-4">
 				<div class="flex items-center gap-4">
 					<button
-						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						type="button"
+						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 						@click="handleCancel"
 						:aria-label="t('common.back')"
 					>
@@ -267,9 +256,9 @@ const getIconColorClass = (color: string) => {
 		<div class="bg-bg-elevated border-b border-border-subtle">
 			<div class="max-w-4xl mx-auto px-6 py-4">
 				<div class="flex items-center gap-3">
-					<div class="flex items-center gap-2">
+					<div class="flex items-center gap-2" aria-current="step">
 						<div
-							class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
+							class="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-text-inverse border-2 border-brand text-sm font-medium"
 						>
 							1
 						</div>
@@ -277,7 +266,7 @@ const getIconColorClass = (color: string) => {
 							t('dashboard.automations.new.steps.chooseTrigger')
 						}}</span>
 					</div>
-					<div class="flex-1 h-0.5 bg-border-subtle" />
+					<div class="flex-1 h-0.5 bg-border-subtle" aria-hidden="true" />
 					<div class="flex items-center gap-2">
 						<div
 							class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface text-text-tertiary border border-border-subtle text-sm font-medium"
@@ -348,54 +337,11 @@ const getIconColorClass = (color: string) => {
 						</div>
 
 						<!-- Trigger Selection -->
-						<div>
-							<label class="label flex items-center gap-2 mb-3">
-								<ZapIcon class="w-4 h-4 text-text-tertiary" />
-								{{ t('dashboard.automations.new.form.triggerTypeLabel') }}
-								<span class="text-error">*</span>
-							</label>
-
-							<!-- Trigger Options Grid -->
-							<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-								<button
-									v-for="trigger in triggerTypes"
-									:key="trigger.id"
-									type="button"
-									:class="[
-										'flex items-start gap-4 p-4 border rounded-lg text-left transition-colors',
-										getTriggerColorClass(trigger.color, selectedTriggerType === trigger.id),
-									]"
-									@click="handleTriggerSelect(trigger.id)"
-								>
-									<!-- Icon -->
-									<div
-										:class="[
-											'p-3 rounded-lg shrink-0 flex items-center justify-center',
-											getIconColorClass(trigger.color),
-										]"
-									>
-										<component :is="trigger.icon" class="w-5 h-5" />
-									</div>
-									<!-- Content -->
-									<div class="flex-1 min-w-0">
-										<div class="flex items-center gap-2">
-											<span class="font-medium text-text-primary">{{ t(trigger.label) }}</span>
-											<CheckIcon
-												v-if="selectedTriggerType === trigger.id"
-												class="w-4 h-4 text-brand"
-											/>
-										</div>
-										<p class="text-sm text-text-secondary mt-1">
-											{{ t(trigger.description) }}
-										</p>
-									</div>
-								</button>
-							</div>
-
-							<p v-if="errors.trigger" class="mt-3 text-sm text-error">
-								{{ errors.trigger }}
-							</p>
-						</div>
+						<AutomationsTriggerPicker
+							:model-value="selectedTriggerType"
+							:error="errors.trigger"
+							@select="handleTriggerSelect"
+						/>
 
 						<!-- Trigger Configuration (per-kind editor module dispatch) -->
 						<div
@@ -436,28 +382,44 @@ const getIconColorClass = (color: string) => {
 					</div>
 
 					<!-- Actions -->
-					<div class="flex items-center justify-between mt-8 pt-6 border-t border-border-subtle">
+					<div
+						class="flex flex-wrap items-center justify-between gap-3 mt-8 pt-6 border-t border-border-subtle"
+					>
 						<UiButton variant="secondary" type="button" @click="handleCancel">{{
 							t('common.cancel')
 						}}</UiButton>
-						<UiButton
-							type="submit"
-							class="gap-2"
-							:disabled="
-								isSaving ||
-								!selectedTriggerType ||
-								!automationName.trim() ||
-								(currentTriggerRequiresConfig && !isTriggerConfigComplete)
-							"
-						>
-							<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
-							{{
-								isSaving
-									? t('dashboard.automations.new.creating')
-									: t('dashboard.automations.new.continue')
-							}}
-							<ArrowRightIcon v-if="!isSaving" class="w-4 h-4" />
-						</UiButton>
+						<div class="flex flex-wrap items-center justify-end gap-3 ml-auto">
+							<p
+								v-if="missingText && !isSaving"
+								id="automation-new-missing"
+								class="text-sm text-text-tertiary text-right"
+							>
+								{{ missingText }}
+							</p>
+							<UiButton
+								type="submit"
+								class="gap-2"
+								:aria-describedby="missingText && !isSaving ? 'automation-new-missing' : undefined"
+								:disabled="
+									isSaving ||
+									!selectedTriggerType ||
+									!automationName.trim() ||
+									(currentTriggerRequiresConfig && !isTriggerConfigComplete)
+								"
+							>
+								<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
+								{{
+									isEditMode
+										? isSaving
+											? t('common.saving')
+											: t('dashboard.automations.new.saveTrigger')
+										: isSaving
+											? t('dashboard.automations.new.creating')
+											: t('dashboard.automations.new.continue')
+								}}
+								<ArrowRightIcon v-if="!isSaving" class="w-4 h-4" />
+							</UiButton>
+						</div>
 					</div>
 				</form>
 			</div>

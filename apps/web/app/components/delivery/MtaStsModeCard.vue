@@ -101,9 +101,9 @@ async function selectMode(next: string) {
 			<div class="flex items-center gap-3">
 				<UiIconBox :icon="LockIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">
+					<h3 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.mtaStsModeCard.title') }}
-					</h2>
+					</h3>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.delivery.mtaStsModeCard.subtitle') }}
 					</p>

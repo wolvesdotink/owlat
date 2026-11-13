@@ -50,6 +50,13 @@ async function saveEdit(body: string): Promise<boolean> {
 	return saved;
 }
 const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reactions.length > 0);
+
+// Deleting a note removes it for the whole team, so it is confirmed first.
+const confirmingDelete = ref(false);
+function confirmDelete() {
+	confirmingDelete.value = false;
+	emit('delete');
+}
 </script>
 
 <template>
@@ -105,7 +112,7 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 				<UiTooltip v-if="save" :text="t('components.team.note.edit')">
 					<button
 						type="button"
-						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
+						class="note-action rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
 						:aria-label="t('components.team.note.edit')"
 						data-testid="team-note-edit"
 						@click="editing = true"
@@ -116,10 +123,10 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 				<UiTooltip v-if="canDelete" :text="t('components.team.note.delete')">
 					<button
 						type="button"
-						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
+						class="note-action rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
 						:aria-label="t('components.team.note.delete')"
 						data-testid="team-note-delete"
-						@click="emit('delete')"
+						@click="confirmingDelete = true"
 					>
 						<TrashIcon class="size-3.5" />
 					</button>
@@ -186,5 +193,29 @@ const hasReactions = computed(() => !props.entry.isDeleted && props.entry.reacti
 			</UiTooltip>
 			<TeamReactionPicker v-if="canReact" class="ui-hover-reveal" @pick="emit('react', $event)" />
 		</div>
+
+		<UiConfirmationDialog
+			v-if="canDelete"
+			:open="confirmingDelete"
+			variant="danger"
+			:title="t('components.inbox.notes.deleteDialog.title')"
+			:description="t('components.inbox.notes.deleteDialog.description')"
+			:confirm-text="t('components.team.note.delete')"
+			@confirm="confirmDelete"
+			@update:open="confirmingDelete = $event"
+		/>
 	</article>
 </template>
+
+<style scoped>
+/* A finger needs a 44px target; a mouse keeps the compact icon button. */
+@media (pointer: coarse) {
+	.note-action {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 44px;
+		min-height: 44px;
+	}
+}
+</style>

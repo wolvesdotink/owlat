@@ -62,11 +62,30 @@ async function choose(mode: EagernessMode) {
 	if (isSaving.value || setting.value === undefined || mode === setting.value?.mode) return;
 	isSaving.value = true;
 	try {
-		await setEagerness({ mode });
-		showToast(t('components.autonomy.askEagernessDial.updatedToast'));
+		// A failed save already shows its error toast; never claim success too.
+		const result = await setEagerness({ mode });
+		if (result.ok) showToast(t('components.autonomy.askEagernessDial.updatedToast'));
 	} finally {
 		isSaving.value = false;
 	}
+}
+
+// Radiogroup keyboard model: one tab stop (the checked option), arrows move
+// the choice and the focus together.
+const optionRefs = ref<HTMLButtonElement[]>([]);
+function onArrow(event: KeyboardEvent, index: number) {
+	const step =
+		event.key === 'ArrowDown' || event.key === 'ArrowRight'
+			? 1
+			: event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+				? -1
+				: 0;
+	if (step === 0) return;
+	event.preventDefault();
+	const list = options.value;
+	const next = (index + step + list.length) % list.length;
+	optionRefs.value[next]?.focus();
+	void choose(list[next]!.value);
 }
 </script>
 
@@ -96,23 +115,30 @@ async function choose(mode: EagernessMode) {
 			:aria-label="t('components.autonomy.askEagernessDial.title')"
 		>
 			<button
-				v-for="opt in options"
+				v-for="(opt, index) in options"
 				:key="opt.value"
+				ref="optionRefs"
 				type="button"
 				role="radio"
 				:aria-checked="selected === opt.value"
-				:disabled="isSaving"
-				class="w-full text-left rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				:tabindex="selected === opt.value ? 0 : -1"
+				:aria-disabled="isSaving || undefined"
+				class="w-full text-left rounded-lg border px-3 py-2.5 transition-colors aria-disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:class="
 					selected === opt.value
 						? 'border-brand bg-brand-subtle'
 						: 'border-border-default hover:border-border-strong'
 				"
 				@click="choose(opt.value)"
+				@keydown="onArrow($event, index)"
 			>
 				<div class="flex items-center justify-between gap-3">
 					<span class="text-sm font-medium text-text-primary">{{ opt.label }}</span>
-					<CheckIcon v-if="selected === opt.value" class="w-4 h-4 text-brand shrink-0" />
+					<CheckIcon
+						v-if="selected === opt.value"
+						class="w-4 h-4 text-brand shrink-0"
+						aria-hidden="true"
+					/>
 				</div>
 				<span class="text-xs text-text-tertiary">{{ opt.hint }}</span>
 			</button>

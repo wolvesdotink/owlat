@@ -76,6 +76,19 @@ function onCanvasKeydown(event: KeyboardEvent) {
 		share.toggle(focusedToken.value);
 	}
 }
+// The ring is painted, so a screen reader hears the word under it, and whether
+// it is hidden, through a live line instead: the canvas alone exposes no text.
+const activeWordId = useId();
+const activeTokenAnnouncement = computed(() => {
+	const id = focusedToken.value;
+	if (!canvasFocused.value || id === null) return '';
+	const token = card.value.tokens[id];
+	if (!token) return '';
+	const params = { word: token.text, position: id + 1, total: card.value.tokens.length };
+	return redacted.value.has(id)
+		? t(`${P}.activeWordHidden`, params)
+		: t(`${P}.activeWordShown`, params);
+});
 const focusRing = computed(() => {
 	const current = layout.value;
 	const id = focusedToken.value;
@@ -150,11 +163,15 @@ async function run(action: () => Promise<unknown>, successKey: string | null, fa
 					tabindex="0"
 					role="application"
 					:aria-label="t(`${P}.canvasLabel`)"
+					:aria-describedby="activeWordId"
 					@click="onCanvasClick"
 					@keydown="onCanvasKeydown"
 					@focus="canvasFocused = true"
 					@blur="canvasFocused = false"
 				/>
+				<p :id="activeWordId" class="sr-only" aria-live="polite">
+					{{ activeTokenAnnouncement }}
+				</p>
 				<div
 					v-if="focusRing"
 					class="pointer-events-none absolute rounded ring-2 ring-brand"

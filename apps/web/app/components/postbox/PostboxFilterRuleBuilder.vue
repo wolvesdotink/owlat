@@ -14,6 +14,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ARRIVAL_FILTER_ACTION_TYPES, type ArrivalFilterActionType } from '@owlat/shared/arrival';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import { postboxFolderLabel } from '~/composables/postbox/usePostboxFolderName';
 import type {
 	FilterMatchType,
 	MailFilterCondition,
@@ -162,11 +163,25 @@ const previewArgs = computed(() => {
 	};
 });
 
-const { data: previewData, isLoading: previewLoading } = useConvexQuery(
-	api.mail.filters.preview,
-	() => previewArgs.value
-);
+const {
+	data: previewData,
+	isLoading: previewLoading,
+	error: previewError,
+	refetch: refetchPreview,
+} = useConvexQuery(api.mail.filters.preview, () => previewArgs.value);
 const preview = computed(() => previewData.value ?? null);
+// Skipped (no usable condition yet) is a different answer from a failed read.
+const previewSkipped = computed(() => previewArgs.value === 'skip');
+
+// Each control in a row is named with its row, so a screen reader hears
+// "Condition 2: comparison" rather than a row of unnamed comboboxes.
+const conditionLabel = (part: string, idx: number) =>
+	t(`components.postbox.postboxFilterRuleBuilder.a11y.condition.${part}`, { n: idx + 1 });
+const actionLabel = (part: string, idx: number) =>
+	t(`components.postbox.postboxFilterRuleBuilder.a11y.action.${part}`, { n: idx + 1 });
+
+const REMOVE_CLASS =
+	'p-1 rounded text-text-tertiary hover:text-error hover:bg-error/10 pointer-coarse:p-3 flex-shrink-0';
 
 function addAction() {
 	local.actions.push({ type: 'addLabel' });
@@ -179,7 +194,7 @@ function removeAction(idx: number) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label for="local-name" class="text-sm font-medium block mb-1">{{ t('common.name') }}</label>
+			<label for="local-name" class="label">{{ t('common.name') }}</label>
 			<input
 				id="local-name"
 				v-model="local.name"
@@ -216,10 +231,16 @@ function removeAction(idx: number) {
 				</button>
 			</header>
 			<div class="space-y-2">
-				<div v-for="(cond, idx) in local.conditions" :key="idx" class="flex items-center gap-2">
+				<!-- Wraps: field, operator and value side by side are wider than a phone. -->
+				<div
+					v-for="(cond, idx) in local.conditions"
+					:key="idx"
+					class="flex flex-wrap items-center gap-2"
+				>
 					<select
 						v-model="cond.field"
 						class="input flex-shrink-0 w-36"
+						:aria-label="conditionLabel('field', Number(idx))"
 						@change="onFieldChange(cond)"
 					>
 						<option v-for="opt in FIELD_OPTIONS" :key="opt.value" :value="opt.value">
@@ -231,9 +252,14 @@ function removeAction(idx: number) {
 						v-model="cond.headerName"
 						type="text"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.headerNamePlaceholder')"
+						:aria-label="conditionLabel('headerName', Number(idx))"
 						class="input w-40"
 					/>
-					<select v-model="cond.op" class="input w-32 flex-shrink-0">
+					<select
+						v-model="cond.op"
+						class="input w-32 flex-shrink-0"
+						:aria-label="conditionLabel('operator', Number(idx))"
+					>
 						<option v-for="opt in opsForField(cond.field)" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
 						</option>
@@ -242,22 +268,24 @@ function removeAction(idx: number) {
 						v-if="cond.field === 'size'"
 						v-model.number="cond.valueNumber"
 						type="number"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.sizePlaceholder')"
+						:aria-label="conditionLabel('value', Number(idx))"
 					/>
 					<input
 						v-else-if="cond.field !== 'hasAttachment'"
 						v-model="cond.value"
 						type="text"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.valuePlaceholder')"
+						:aria-label="conditionLabel('value', Number(idx))"
 					/>
 					<span v-else class="flex-1 text-text-tertiary text-sm">
 						{{ t('components.postbox.postboxFilterRuleBuilder.trueValue') }}
 					</span>
 					<button
 						type="button"
-						class="p-1 rounded hover:bg-error/10 text-error"
+						:class="REMOVE_CLASS"
 						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeCondition')"
 						@click="removeCondition(Number(idx))"
 					>
@@ -280,8 +308,16 @@ function removeAction(idx: number) {
 				</button>
 			</header>
 			<div class="space-y-2">
-				<div v-for="(action, idx) in local.actions" :key="idx" class="flex items-center gap-2">
-					<select v-model="action.type" class="input w-44 flex-shrink-0">
+				<div
+					v-for="(action, idx) in local.actions"
+					:key="idx"
+					class="flex flex-wrap items-center gap-2"
+				>
+					<select
+						v-model="action.type"
+						class="input w-44 flex-shrink-0"
+						:aria-label="actionLabel('type', Number(idx))"
+					>
 						<option value="moveToFolder">
 							{{ t('components.postbox.postboxFilterRuleBuilder.actions.moveToFolder') }}
 						</option>
@@ -316,16 +352,18 @@ function removeAction(idx: number) {
 					<select
 						v-if="action.type === 'moveToFolder'"
 						v-model="action.folderId"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
+						:aria-label="actionLabel('folder', Number(idx))"
 					>
 						<option v-for="f in folders" :key="f._id" :value="f._id">
-							{{ f.role ?? f.name }}
+							{{ postboxFolderLabel(t, f) }}
 						</option>
 					</select>
 					<select
 						v-else-if="action.type === 'addLabel'"
 						v-model="action.labelId"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
+						:aria-label="actionLabel('label', Number(idx))"
 					>
 						<option v-for="l in labels" :key="l._id" :value="l._id">
 							{{ l.name }}
@@ -335,8 +373,9 @@ function removeAction(idx: number) {
 						v-else-if="action.type === 'forward'"
 						v-model="action.forwardTo"
 						type="text"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.forwardToPlaceholder')"
+						:aria-label="actionLabel('forwardTo', Number(idx))"
 					/>
 					<!-- Free text, not a picker: there is no section table. A section
 					     exists exactly as long as an enabled rule names it, and typing
@@ -345,14 +384,15 @@ function removeAction(idx: number) {
 						v-else-if="action.type === 'pinToSection'"
 						v-model="action.sectionName"
 						type="text"
-						class="input flex-1"
+						class="input flex-1 min-w-40"
 						:maxlength="MAX_SECTION_NAME_LENGTH"
 						:placeholder="t('components.postbox.postboxFilterRuleBuilder.sectionNamePlaceholder')"
+						:aria-label="actionLabel('section', Number(idx))"
 					/>
 					<span v-else class="flex-1 text-xs text-text-tertiary" />
 					<button
 						type="button"
-						class="p-1 rounded hover:bg-error/10 text-error"
+						:class="REMOVE_CLASS"
 						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeAction')"
 						@click="removeAction(Number(idx))"
 					>
@@ -365,10 +405,10 @@ function removeAction(idx: number) {
 			</div>
 		</section>
 
-		<label class="flex items-center gap-2 text-sm">
-			<input v-model="local.stopProcessing" type="checkbox" />
-			{{ t('components.postbox.postboxFilterRuleBuilder.stopProcessing') }}
-		</label>
+		<UiCheckbox
+			v-model="local.stopProcessing"
+			:label="t('components.postbox.postboxFilterRuleBuilder.stopProcessing')"
+		/>
 
 		<!-- Dry run: what this rule would catch in recent mail, before it governs
 		     anything. Opt-in, so a half-typed rule does not scan per keystroke. -->
@@ -411,9 +451,10 @@ function removeAction(idx: number) {
 						</li>
 					</ul>
 				</template>
-				<p v-else class="text-xs text-text-tertiary">
+				<p v-else-if="previewSkipped" class="text-xs text-text-tertiary">
 					{{ t('components.postbox.postboxFilterRuleBuilder.previewNeedsValue') }}
 				</p>
+				<UiQueryBoundary v-else-if="previewError" :error="previewError" @retry="refetchPreview" />
 			</div>
 		</section>
 	</div>

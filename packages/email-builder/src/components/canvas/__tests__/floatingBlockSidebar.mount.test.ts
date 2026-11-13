@@ -242,6 +242,21 @@ describe('FloatingBlockSidebar scroll-root ownership', () => {
 describe('FloatingBlockSidebar geometry updates', () => {
 	const toolbar = () => document.body.querySelector<HTMLElement>('[role="toolbar"]')!;
 
+	it('docks as a horizontal bar at the bottom of the canvas area when there is no room on the left', async () => {
+		// 40px sidebar + 12px gap do not fit left of a canvas at x = 30.
+		const a = makeRoot(30, 100);
+		mountSidebar(a.canvas);
+		await nextTick();
+
+		expect(toolbar().style.display).not.toBe('none');
+		expect(toolbar().getAttribute('aria-orientation')).toBe('horizontal');
+		// Centred on the 1440px scroll root, 16px above the lower of its bottom
+		// edge (900) and the viewport's.
+		const visibleBottom = Math.min(900, window.innerHeight);
+		expect(toolbar().style.left).toBe('720px');
+		expect(toolbar().style.bottom).toBe(`${window.innerHeight - visibleBottom + 16}px`);
+	});
+
 	it('positions synchronously on mount', async () => {
 		const a = makeRoot(200, 100);
 		mountSidebar(a.canvas);

@@ -27,7 +27,11 @@ const TITLE_KEYS = {
 	label_thread: `${KEY}.titles.labelThread`,
 } as const;
 
-const { data: loaded } = useConvexQuery(api.mcp.actions.getReview, () => ({
+const {
+	data: loaded,
+	error: reviewError,
+	refetch: refetchReview,
+} = useConvexQuery(api.mcp.actions.getReview, () => ({
 	actionId: props.action._id,
 }));
 /** The review of this card's action only, never one still held for another. */
@@ -61,7 +65,9 @@ const isInaccessible = computed(
 		('isInaccessible' in summary.value && summary.value.isInaccessible) ||
 		(details.value !== null && 'isInaccessible' in details.value && details.value.isInaccessible)
 );
-const isLoadingReview = computed(() => review.value === undefined && !isInaccessible.value);
+const isLoadingReview = computed(
+	() => review.value === undefined && !isInaccessible.value && !reviewError.value
+);
 /**
  * Approval is bound to the digest of the review this card shows; until that
  * loaded, or without one, there is nothing the owner could have reviewed.
@@ -137,6 +143,12 @@ function approve() {
 		<p v-if="isInaccessible" class="mt-3 text-text-secondary">
 			{{ t(`${KEY}.inaccessible`) }}
 		</p>
+		<!-- A failed review read is not a review that is still loading: approval
+		     stays off until it loads, so the owner needs a way to ask again. -->
+		<div v-else-if="reviewError && review === undefined" class="mt-3" data-test="review-error">
+			<p v-if="summaryLine" class="break-words">{{ summaryLine }}</p>
+			<UiQueryBoundary :error="reviewError" @retry="refetchReview" />
+		</div>
 		<div v-else-if="isLoadingReview" class="mt-3 text-text-secondary" data-test="loading">
 			<p v-if="summaryLine" class="break-words text-text-primary">{{ summaryLine }}</p>
 			<p>{{ t(`${KEY}.loadingReview`) }}</p>
@@ -304,7 +316,7 @@ function approve() {
 			<UiButton variant="ghost" type="button" :disabled="busy" @click="emit('reject')">
 				{{ t(`${KEY}.reject`) }}
 			</UiButton>
-			<UiButton type="button" :disabled="busy || !canApprove" @click="approve">
+			<UiButton type="button" :disabled="!canApprove" :loading="busy" @click="approve">
 				{{ action.tool === 'send_draft' ? t(`${KEY}.approveSend`) : t(`${KEY}.approve`) }}
 			</UiButton>
 		</footer>

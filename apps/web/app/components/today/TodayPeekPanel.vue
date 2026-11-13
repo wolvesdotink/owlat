@@ -7,6 +7,8 @@ import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { optimisticSetFlags } from '~/lib/mailOptimistic/mailUpdaters';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
+import { useMediaQuery } from '~/composables/useMediaQuery';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import {
@@ -154,12 +156,26 @@ useShortcutScope('peek', isOpen);
 const { registerShortcut } = useKeyboardShortcuts();
 registerShortcut({ id: 'peek.next', handler: () => step(1), when: isOpen });
 registerShortcut({ id: 'peek.previous', handler: () => step(-1), when: isOpen });
-useEscapeLayer(isOpen, (event) => {
-	if (isEditableTarget(event.target)) return false;
+
+// Below lg the panel is a full-screen sheet: it covers the shell header, so it
+// is modal (aria-modal also makes the phone's bottom bar step aside, which
+// would otherwise paint over Done, Reply and Open thread) and holds focus.
+// From lg it is a side panel beside the Workbench, which stays usable.
+const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
+const isSheet = () => isOpen() && !isDesktopViewport.value;
+const panelRef = ref<HTMLElement | null>(null);
+useEscapeLayer(
+	() => isOpen() && isDesktopViewport.value,
+	(event) => {
+		if (isEditableTarget(event.target)) return false;
+		emit('close');
+	}
+);
+useModalFocus(panelRef, isSheet, () => {
+	if (isEditableTarget(document.activeElement)) return false;
 	emit('close');
 });
 
-const panelRef = ref<HTMLElement | null>(null);
 watch(target, async (value, previous) => {
 	if (value && !previous) {
 		await nextTick();
@@ -180,8 +196,9 @@ watch(target, async (value, previous) => {
 			ref="panelRef"
 			tabindex="-1"
 			role="dialog"
+			:aria-modal="isDesktopViewport ? undefined : 'true'"
 			:aria-label="view?.subject || t('components.today.peek.label')"
-			class="fixed bottom-0 right-0 top-[calc(var(--titlebar-h,0px)+var(--shell-chrome-h,4rem))] z-30 flex w-full max-w-md flex-col border-l border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none"
+			class="fixed bottom-0 right-0 top-[calc(var(--titlebar-h,0px)+var(--shell-chrome-h,4rem))] z-30 flex w-full max-w-md flex-col border-l border-border-subtle bg-bg-elevated shadow-(--shadow-6) outline-none max-lg:top-0 max-lg:z-(--z-modal) max-lg:pt-[env(safe-area-inset-top)]"
 		>
 			<header
 				class="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-xs text-text-tertiary"
@@ -267,7 +284,7 @@ watch(target, async (value, previous) => {
 
 			<footer
 				v-if="view && source"
-				class="flex items-center gap-2 border-t border-border-subtle px-5 py-3"
+				class="flex items-center gap-2 border-t border-border-subtle px-5 py-3 max-lg:pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]"
 			>
 				<UiButton size="sm" @click="emit('done', source)">
 					{{ t('components.today.peek.done') }}

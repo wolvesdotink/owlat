@@ -131,8 +131,8 @@ describe('the preset writes the migration shape', () => {
 		const wrapper = await mountStep();
 		await apply(wrapper);
 		const applied = wrapper.find('[data-testid="migration-preset-applied"]').text();
-		expect(applied).toContain('campaign route applied');
-		expect(applied).toContain('automation ramp pace applied');
+		expect(applied).toContain('Campaign route applied');
+		expect(applied).toContain('Automation ramp pace applied');
 	});
 });
 
@@ -187,10 +187,10 @@ describe('the preset declines to write', () => {
 
 		expect(writes).toHaveLength(2);
 		expect(wrapper.find('[data-testid="migration-preset-failure"]').text()).toContain(
-			'campaign route'
+			'Campaign route'
 		);
 		expect(wrapper.find('[data-testid="migration-preset-applied"]').text()).toContain(
-			'transactional route applied'
+			'Transactional route applied'
 		);
 		expect(wrapper.emitted('applied')).toBeUndefined();
 	});

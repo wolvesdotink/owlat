@@ -8,7 +8,9 @@ type ButtonVariant =
 	| 'ghost'
 	| 'danger'
 	| 'danger-ghost'
-	| 'danger-outline';
+	| 'danger-outline'
+	| 'warning'
+	| 'warning-ghost';
 
 interface Props {
 	/** Defaults to the localized "Cancel". */
@@ -42,21 +44,22 @@ defineEmits<{
 </script>
 
 <template>
-	<div class="px-6 py-4 border-t border-border-subtle">
+	<!-- A button row only: UiModal's #footer slot already pads and pins the
+	     footer, so a padding or border here doubles it. Wraps so two long
+	     labels (German) never run past a phone sheet's edge. -->
+	<div class="flex flex-wrap items-center justify-end gap-3">
 		<slot>
-			<div class="flex justify-end gap-3">
-				<UiButton variant="secondary" :disabled="isLoading" @click="$emit('cancel')">
-					{{ resolvedCancelText }}
-				</UiButton>
-				<UiButton
-					:variant="confirmVariant"
-					:loading="isLoading"
-					:disabled="isDisabled"
-					@click="$emit('confirm')"
-				>
-					{{ resolvedConfirmText }}
-				</UiButton>
-			</div>
+			<UiButton variant="secondary" :disabled="isLoading" @click="$emit('cancel')">
+				{{ resolvedCancelText }}
+			</UiButton>
+			<UiButton
+				:variant="confirmVariant"
+				:loading="isLoading"
+				:disabled="isDisabled"
+				@click="$emit('confirm')"
+			>
+				{{ resolvedConfirmText }}
+			</UiButton>
 		</slot>
 	</div>
 </template>

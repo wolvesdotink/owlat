@@ -32,18 +32,45 @@ const maxClicks = computed(() => {
 	return Math.max(...props.linkStats.map((s) => s.clicks), 1);
 });
 
+// The one heat scale, painted on the links in the preview, on each row's dot
+// and in the legend, so the legend explains what the map shows. Literal colours
+// rather than theme tokens: the preview paper is white in both themes.
+type HeatTier = 'none' | 'low' | 'medium' | 'high';
+const HEAT_RGB: Record<Exclude<HeatTier, 'none'>, string> = {
+	low: '250, 204, 21',
+	medium: '249, 115, 22',
+	high: '239, 68, 68',
+};
+const LEGEND_TIERS = ['low', 'medium', 'high'] as const;
+const legendColor = (tier: Exclude<HeatTier, 'none'>) => `rgba(${HEAT_RGB[tier]}, 0.8)`;
+
+function heatTier(clicks: number): HeatTier {
+	if (clicks === 0) return 'none';
+	const intensity = clicks / maxClicks.value;
+	if (intensity < 0.33) return 'low';
+	if (intensity < 0.66) return 'medium';
+	return 'high';
+}
+
 // Get heat color based on click count (higher = more red/warm)
 const getHeatColor = (clicks: number): string => {
-	if (clicks === 0) return 'rgba(156, 163, 175, 0.3)'; // gray for 0 clicks
+	const tier = heatTier(clicks);
+	if (tier === 'none') return 'rgba(156, 163, 175, 0.3)';
 	const intensity = clicks / maxClicks.value;
-	// Gradient from yellow (low) through orange to red (high)
-	if (intensity < 0.33) {
-		return `rgba(250, 204, 21, ${0.4 + intensity * 0.6})`; // yellow
-	} else if (intensity < 0.66) {
-		return `rgba(249, 115, 22, ${0.5 + intensity * 0.5})`; // orange
-	} else {
-		return `rgba(239, 68, 68, ${0.6 + intensity * 0.4})`; // red
-	}
+	const alpha =
+		tier === 'low'
+			? 0.4 + intensity * 0.6
+			: tier === 'medium'
+				? 0.5 + intensity * 0.5
+				: 0.6 + intensity * 0.4;
+	return `rgba(${HEAT_RGB[tier]}, ${alpha})`;
+};
+
+const TIER_LABEL: Record<HeatTier, string> = {
+	none: 'components.dashboard.clickHeatmap.tierNone',
+	low: 'components.dashboard.clickHeatmap.low',
+	medium: 'components.dashboard.clickHeatmap.medium',
+	high: 'components.dashboard.clickHeatmap.high',
 };
 
 // Calculate click rate for a URL
@@ -125,10 +152,13 @@ const previewSrcdoc = computed(() => {
 			</div>
 			<div class="flex items-center gap-2">
 				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.low') }}</span>
-				<div class="flex h-3 rounded overflow-hidden">
-					<div class="w-6 bg-warning/50" />
-					<div class="w-6 bg-chart-cat-1/60" />
-					<div class="w-6 bg-error/70" />
+				<div class="flex h-3 rounded overflow-hidden" aria-hidden="true">
+					<div
+						v-for="tier in LEGEND_TIERS"
+						:key="tier"
+						class="w-6"
+						:style="{ backgroundColor: legendColor(tier) }"
+					/>
 				</div>
 				<span class="text-xs">{{ t('components.dashboard.clickHeatmap.high') }}</span>
 			</div>
@@ -179,8 +209,8 @@ const previewSrcdoc = computed(() => {
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">
 								<ExternalLinkIcon class="w-4 h-4 text-text-tertiary shrink-0" />
-								<span class="text-sm font-medium text-text-primary truncate">
-									{{ link.text.length > 50 ? link.text.substring(0, 50) + '...' : link.text }}
+								<span class="text-sm font-medium text-text-primary truncate" :title="link.text">
+									{{ link.text }}
 								</span>
 							</div>
 							<a
@@ -206,7 +236,7 @@ const previewSrcdoc = computed(() => {
 
 							<!-- Unique Clickers -->
 							<div class="text-right">
-								<div class="text-lg font-semibold text-warning">
+								<div class="text-lg font-semibold text-text-primary">
 									{{ link.stats?.uniqueClickers || 0 }}
 								</div>
 								<div class="text-xs text-text-tertiary">
@@ -216,7 +246,7 @@ const previewSrcdoc = computed(() => {
 
 							<!-- Click Rate -->
 							<div class="text-right min-w-[60px]">
-								<div class="text-lg font-semibold text-brand">
+								<div class="text-lg font-semibold text-text-primary">
 									{{ getClickRate(link.stats?.uniqueClickers || 0).toFixed(1) }}%
 								</div>
 								<div class="text-xs text-text-tertiary">
@@ -224,19 +254,15 @@ const previewSrcdoc = computed(() => {
 								</div>
 							</div>
 
-							<!-- Heat Indicator -->
+							<!-- Heat Indicator: its tier in words for assistive tech. -->
 							<div
 								class="w-4 h-4 rounded-full"
+								role="img"
+								:aria-label="t(TIER_LABEL[heatTier(link.stats?.clicks || 0)])"
 								:style="{ backgroundColor: getHeatColor(link.stats?.clicks || 0) }"
 							/>
 						</div>
 					</div>
-				</div>
-
-				<!-- Empty state for no links -->
-				<div v-if="processedContent.links.length === 0" class="px-6 py-12 text-center">
-					<CircleInfoIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
-					<p class="text-text-secondary">{{ t('components.dashboard.clickHeatmap.noLinks') }}</p>
 				</div>
 			</div>
 		</div>
@@ -251,32 +277,12 @@ const previewSrcdoc = computed(() => {
 				{{ t('components.dashboard.clickHeatmap.noClicksHint') }}
 			</p>
 		</div>
+
+		<!-- Clicks were recorded, but none of them is on a link this HTML still
+		     carries: say so instead of showing nothing. -->
+		<div v-else class="card px-6 py-12 text-center">
+			<CircleInfoIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
+			<p class="text-text-secondary">{{ t('components.dashboard.clickHeatmap.noLinks') }}</p>
+		</div>
 	</div>
 </template>
-
-<style scoped>
-/* Style the email preview container for better readability */
-.email-preview {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-	line-height: 1.5;
-	color: #333;
-}
-
-.email-preview :deep(a) {
-	text-decoration: none;
-	transition: filter var(--motion-moderate) var(--ease-spring);
-}
-
-.email-preview :deep(a:hover) {
-	filter: brightness(1.1);
-}
-
-.email-preview :deep(img) {
-	max-width: 100%;
-	height: auto;
-}
-
-.email-preview :deep(table) {
-	max-width: 100%;
-}
-</style>

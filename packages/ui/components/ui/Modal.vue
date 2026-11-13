@@ -29,6 +29,12 @@ interface Props {
 	labelledBy?: string;
 	/** Id of the element whose text describes the dialog (aria-describedby). */
 	describedBy?: string;
+	/**
+	 * Pin the dialog to one theme. The dialog is teleported to <body>, so it
+	 * leaves any `.light`/`.dark` island its opener sits in (the email builder's
+	 * light editor) and would otherwise follow the app theme.
+	 */
+	colorScheme?: 'light' | 'dark';
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -40,6 +46,7 @@ const props = withDefaults(defineProps<Props>(), {
 	zIndex: undefined,
 	labelledBy: undefined,
 	describedBy: undefined,
+	colorScheme: undefined,
 });
 
 const emit = defineEmits<{
@@ -154,7 +161,8 @@ useModalFocus(
 		<Transition name="modal">
 			<div
 				v-if="open"
-				class="fixed inset-0 bg-bg-deep/80 backdrop-blur-sm z-(--z-modal) flex items-end justify-center sm:items-center sm:p-4"
+				class="fixed inset-0 bg-scrim/50 backdrop-blur-sm z-(--z-modal) flex items-end justify-center sm:items-center sm:p-4"
+				:class="colorScheme"
 				:style="zIndex !== undefined ? { zIndex } : undefined"
 				@click.self="handleBackdropClick"
 			>
@@ -207,12 +215,12 @@ useModalFocus(
 						<div v-else />
 						<button
 							v-if="closable"
-							class="p-2 hover:bg-bg-surface rounded-lg transition-colors"
+							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
 							type="button"
 							:aria-label="t('ui.modal.close')"
 							@click="close"
 						>
-							<CloseIcon class="w-5 h-5 text-text-tertiary" />
+							<CloseIcon class="w-5 h-5" aria-hidden="true" />
 						</button>
 					</div>
 
@@ -222,7 +230,7 @@ useModalFocus(
 					</div>
 
 					<!-- Footer -->
-					<div v-if="$slots['footer']" class="shrink-0 flex justify-end gap-3 p-6 pt-0">
+					<div v-if="$slots['footer']" class="shrink-0 flex flex-wrap justify-end gap-3 p-6 pt-0">
 						<slot name="footer" />
 					</div>
 				</div>

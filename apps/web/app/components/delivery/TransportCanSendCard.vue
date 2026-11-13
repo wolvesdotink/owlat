@@ -42,12 +42,12 @@ const showConnected = computed(() => props.canSend && wasWaiting.value);
 <template>
 	<UiCard padding="none" overflow="hidden">
 		<div class="p-6 flex items-start gap-4" :class="canSend ? 'bg-success/5' : 'bg-error/5'">
-			<div
-				class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
-				:class="canSend ? 'bg-success/15 text-success' : 'bg-error/15 text-error'"
-			>
-				<component :is="canSend ? CircleCheckIcon : TriangleWarningIcon" class="w-6 h-6" />
-			</div>
+			<UiIconBox
+				:icon="canSend ? CircleCheckIcon : TriangleWarningIcon"
+				size="lg"
+				:variant="canSend ? 'success' : 'error'"
+				class="shrink-0"
+			/>
 			<div class="flex-1 min-w-0">
 				<h2 class="text-lg font-semibold" :class="canSend ? 'text-success' : 'text-error'">
 					{{

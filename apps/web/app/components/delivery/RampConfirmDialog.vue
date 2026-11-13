@@ -28,6 +28,9 @@
  * a routing editor rather than a transport change, and gating it belongs with a
  * consequence read of its own rather than with a phrase bolted onto a checkbox.
  *
+ * The overlay and panel copy UiModal's layer, surface and bottom-sheet shape
+ * on a phone, so this reads as the same kind of window as every other dialog.
+ *
  * `aria-modal` IS A PROMISE ABOUT THE KEYBOARD, so this component keeps it:
  * focus moves into the phrase input on open, Tab cycles inside the dialog rather
  * than wandering into the page behind it, Escape cancels, and focus returns to
@@ -89,7 +92,7 @@ function confirm(): void {
 <template>
 	<div
 		v-if="open"
-		class="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+		class="fixed inset-0 z-(--z-modal) flex items-end justify-center bg-bg-deep/80 backdrop-blur-sm sm:items-center sm:p-4"
 		data-testid="ramp-confirm-dialog"
 	>
 		<div
@@ -99,7 +102,7 @@ function confirm(): void {
 			aria-modal="true"
 			:aria-labelledby="headingId"
 			:aria-describedby="descriptionId"
-			class="w-full max-w-lg space-y-4 rounded-xl bg-bg-surface p-6 shadow-lg"
+			class="w-full max-h-[85dvh] overflow-y-auto space-y-4 rounded-t-2xl border border-border-subtle bg-bg-elevated p-6 shadow-xl sm:max-w-lg sm:rounded-2xl"
 		>
 			<h2 :id="headingId" class="text-lg font-semibold text-text-primary">{{ title }}</h2>
 
@@ -142,8 +145,9 @@ function confirm(): void {
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
-					variant="primary"
+					variant="danger"
 					size="sm"
+					:loading="busy"
 					:disabled="!canConfirm"
 					data-testid="ramp-confirm-submit"
 					@click="confirm"

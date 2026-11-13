@@ -54,7 +54,7 @@ const jumpNumber = computed(() =>
 				:to="to"
 				:data-sidebar-jump="jumpKey"
 				:aria-current="isActive ? 'page' : undefined"
-				class="group grid grid-cols-[1fr_auto] items-center gap-x-2 rounded-md py-1 pr-2 text-left transition-colors duration-(--motion-fast)"
+				class="group grid grid-cols-[1fr_auto] items-center gap-x-2 rounded-md py-1 pr-2 text-left transition-colors duration-(--motion-fast) pointer-coarse:min-h-11"
 				:class="[
 					indented ? 'pl-7' : 'pl-3',
 					isActive
@@ -67,6 +67,7 @@ const jumpNumber = computed(() =>
 					<span
 						class="truncate text-xs"
 						:class="isUnread || isActive ? 'font-medium text-text-primary' : ''"
+						:title="title"
 						>{{ title }}</span
 					>
 					<DraftMarker v-if="hasDraft" />

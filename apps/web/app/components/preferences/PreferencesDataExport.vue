@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { AccountExportManifestRow } from '~/utils/accountExportProgress';
 import { DownloadIcon, FileCodeIcon, FileSpreadsheetIcon } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The export card: the JSON export with its manifest and progress, and the
@@ -45,8 +44,8 @@ const { t } = useI18n();
 			</p>
 
 			<div class="grid gap-4 sm:grid-cols-2">
-				<!-- JSON Export -->
-				<div class="card p-5 bg-bg-surface/50">
+				<!-- JSON Export. A plain surface tile, not a card in a card. -->
+				<div class="rounded-lg bg-bg-surface p-5">
 					<div class="flex items-start gap-4">
 						<UiIconBox :icon="FileCodeIcon" size="lg" variant="brand" rounded="lg" />
 						<div class="flex-1">
@@ -60,11 +59,10 @@ const { t } = useI18n();
 								variant="secondary"
 								size="sm"
 								class="gap-2"
-								:disabled="isExportingJson"
+								:loading="isExportingJson"
 								@click="emit('exportJson')"
 							>
-								<SpinnerIcon v-if="isExportingJson" class="w-4 h-4" />
-								<DownloadIcon v-else class="w-4 h-4" />
+								<DownloadIcon v-if="!isExportingJson" class="w-4 h-4" />
 								{{
 									isExportingJson
 										? t('dashboard.preferences.account.exporting')
@@ -83,7 +81,7 @@ const { t } = useI18n();
 				</div>
 
 				<!-- CSV Export -->
-				<div class="card p-5 bg-bg-surface/50">
+				<div class="rounded-lg bg-bg-surface p-5">
 					<div class="flex items-start gap-4">
 						<UiIconBox :icon="FileSpreadsheetIcon" size="lg" variant="brand" rounded="lg" />
 						<div class="flex-1">
@@ -97,17 +95,25 @@ const { t } = useI18n();
 								variant="secondary"
 								size="sm"
 								class="gap-2"
-								:disabled="isExportingCsv || !canExportCsv"
+								:disabled="!canExportCsv"
+								:loading="isExportingCsv"
+								:aria-describedby="!canExportCsv ? 'export-csv-unavailable' : undefined"
 								@click="emit('exportCsv')"
 							>
-								<SpinnerIcon v-if="isExportingCsv" class="w-4 h-4" />
-								<DownloadIcon v-else class="w-4 h-4" />
+								<DownloadIcon v-if="!isExportingCsv" class="w-4 h-4" />
 								{{
 									isExportingCsv
 										? t('dashboard.preferences.account.exporting')
 										: t('dashboard.preferences.account.exportCsvAction')
 								}}
 							</UiButton>
+							<p
+								v-if="!canExportCsv"
+								id="export-csv-unavailable"
+								class="text-xs text-text-tertiary mt-2"
+							>
+								{{ t('dashboard.preferences.account.exportCsvNeedsWorkspace') }}
+							</p>
 						</div>
 					</div>
 				</div>

@@ -388,33 +388,34 @@ async function confirmRemoveWorkspace() {
 										class="size-2.5 shrink-0 rounded-full"
 										:style="{ backgroundColor: ws.accentColor }"
 									/>
-									<span class="truncate text-sm font-medium">{{ ws.label }}</span>
-									<span
-										v-if="ws.id === activeId"
-										class="rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium uppercase tracking-wide text-brand"
-									>
+									<span class="truncate text-sm font-medium" :title="ws.label">{{ ws.label }}</span>
+									<UiBadge v-if="ws.id === activeId" variant="success" pill>
 										{{ t('common.active') }}
-									</span>
+									</UiBadge>
 								</div>
 								<span class="mt-0.5 block truncate text-xs text-text-secondary">
 									{{ ws.siteUrl }}
 								</span>
 							</div>
-							<div class="flex shrink-0 items-center gap-3">
-								<button
+							<div class="flex shrink-0 items-center gap-1">
+								<UiButton
+									variant="ghost"
+									size="sm"
 									type="button"
-									class="text-xs text-brand hover:text-brand-hover"
+									:aria-label="`${t('desktop.settings.workspaces.settings')}: ${ws.label}`"
 									@click="openWorkspaceSettings(ws.id)"
 								>
 									{{ t('desktop.settings.workspaces.settings') }}
-								</button>
-								<button
+								</UiButton>
+								<UiButton
+									variant="danger-ghost"
+									size="sm"
 									type="button"
-									class="text-xs text-text-secondary hover:text-error"
+									:aria-label="`${t('common.remove')}: ${ws.label}`"
 									@click="askRemoveWorkspace(ws)"
 								>
 									{{ t('common.remove') }}
-								</button>
+								</UiButton>
 							</div>
 						</div>
 

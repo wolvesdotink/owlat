@@ -15,6 +15,7 @@ const SET = getFunctionName(api.delivery.dnsblAccess.setSpamhausKey);
 
 const stubs = {
 	UiIconBox: { template: '<span />' },
+	UiSkeleton: { template: '<span />' },
 	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
 	UiInput: {
 		props: ['modelValue', 'error', 'label', 'helpText'],
@@ -45,6 +46,8 @@ const refused = {
 
 let calls: { name: string; args: unknown }[];
 let results: Map<string, unknown>;
+/** Operations whose next calls fail, as a refused or dropped read does. */
+let failing: Set<string>;
 const showToast = vi.fn();
 
 async function mountCard() {
@@ -56,6 +59,7 @@ async function mountCard() {
 		return {
 			run: vi.fn(async (args: unknown) => {
 				calls.push({ name, args });
+				if (failing.has(name)) return { ok: false };
 				return { ok: true, result: results.get(name) };
 			}),
 			isLoading: ref(false),
@@ -71,6 +75,7 @@ async function mountCard() {
 beforeEach(() => {
 	calls = [];
 	results = new Map([[GET, refused]]);
+	failing = new Set();
 	showToast.mockClear();
 });
 afterEach(() => {
@@ -78,6 +83,21 @@ afterEach(() => {
 });
 
 describe('BlocklistLookupsCard', () => {
+	it('says the read failed and offers a retry, claiming nothing about the setup', async () => {
+		failing.add(GET);
+		const wrapper = await mountCard();
+		expect(wrapper.find('[data-testid="blocklist-lookups-load-failed"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="blocklist-lookups-status"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="key-input"]').exists()).toBe(false);
+
+		failing.delete(GET);
+		const retry = wrapper.findAll('button').find((b) => b.text() === 'Retry')!;
+		await retry.trigger('click');
+		await flushPromises();
+		expect(wrapper.find('[data-testid="blocklist-lookups-load-failed"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="key-input"]').exists()).toBe(true);
+	});
+
 	it('says Spamhaus refused the check, and through which path', async () => {
 		const wrapper = await mountCard();
 

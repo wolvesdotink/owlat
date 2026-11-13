@@ -3,12 +3,12 @@
  * One conversation (thread summary) row: latest sender with the message
  * count, timestamp, star and attachment marks, subject with the unread pill,
  * and the snippet. It is the listbox option itself, so it carries the row's
- * id, selection and its unread-aware accessible name.
+ * id and selection, and its visible text is its accessible name.
  *
  * Shared by the conversation view (PostboxThreadGroupList) and the categories
- * view (PostboxThreadCategoryList). The accessible name matters: the unread
- * pill is only a number on screen, so without the label a screen reader hears
- * the subject and no unread count.
+ * view (PostboxThreadCategoryList). The unread pill is only a number on
+ * screen, so it carries a screen-reader-only "N unread" beside it. An
+ * `aria-label` would replace the whole row and drop the sender and snippet.
  */
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
@@ -65,17 +65,6 @@ const replyDrop = computed(() => {
 const senderLabel = computed(
 	() => props.thread.latestFromName?.trim() || props.thread.latestFromAddress
 );
-
-const rowLabel = computed(() =>
-	props.thread.unreadCount > 0
-		? t('components.postbox.postboxConversationRow.rowLabel', {
-				subject:
-					props.thread.latestSubject ||
-					t('components.postbox.postboxConversationRow.noSubjectLabel'),
-				count: props.thread.unreadCount,
-			})
-		: undefined
-);
 </script>
 
 <template>
@@ -84,10 +73,9 @@ const rowLabel = computed(() =>
 		v-reply-drop="replyDrop"
 		role="option"
 		:aria-selected="selected"
-		:aria-label="rowLabel"
 		:to="to"
-		class="pbx-row-link block px-4 py-3 hover:bg-bg-elevated"
-		:class="{ 'bg-bg-elevated': active }"
+		class="pbx-row-link block px-4 py-3 hover:bg-(--surface-1-hover)"
+		:class="{ 'bg-(--surface-1-selected)': active }"
 	>
 		<div class="flex items-baseline justify-between gap-3">
 			<span
@@ -128,11 +116,18 @@ const rowLabel = computed(() =>
 			>
 				{{ thread.latestSubject || t('components.postbox.postboxConversationRow.noSubject') }}
 			</p>
-			<span
-				v-if="thread.unreadCount > 0"
-				class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
-				>{{ thread.unreadCount }}</span
-			>
+			<template v-if="thread.unreadCount > 0">
+				<span
+					aria-hidden="true"
+					class="text-xs bg-brand text-text-inverse rounded-full px-1.5 min-w-[1.25rem] text-center"
+					>{{ thread.unreadCount }}</span
+				>
+				<span class="sr-only" data-testid="row-unread-count">{{
+					t('components.postbox.postboxConversationRow.unreadCount', {
+						count: thread.unreadCount,
+					})
+				}}</span>
+			</template>
 		</div>
 		<p class="pbx-row-snippet text-xs text-text-tertiary truncate mt-0.5">
 			{{ thread.latestSnippet }}

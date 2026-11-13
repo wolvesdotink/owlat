@@ -99,7 +99,17 @@ function rowIcons(wrapper: VueWrapper): (IconComponent | undefined)[] {
 }
 
 function rowLabels(wrapper: VueWrapper): string[] {
-	return wrapper.findAll('ol li p').map((p) => p.text().replace(/^\d+\.\s*/, ''));
+	return wrapper.findAll('ol li p').map((p) => {
+		// The visible label only: the row's state is spoken through an sr-only span.
+		const visible = p.element.cloneNode(true) as HTMLElement;
+		for (const hidden of visible.querySelectorAll('.sr-only')) hidden.remove();
+		return (visible.textContent ?? '').trim().replace(/^\d+\.\s*/, '');
+	});
+}
+
+/** What a screen reader hears as each row's state. */
+function rowStates(wrapper: VueWrapper): string[] {
+	return wrapper.findAll('ol li').map((li) => li.find('.sr-only').text().trim());
 }
 
 /** The error line under a step, if the row shows one. (`p`, because the row's
@@ -110,7 +120,7 @@ function errorTextFor(wrapper: VueWrapper, label: string): string {
 }
 
 function clock(wrapper: VueWrapper): string {
-	return wrapper.find('h3 + span').text();
+	return wrapper.find('h2 + span').text();
 }
 
 const SUCCESS = CircleCheckIcon;
@@ -213,6 +223,23 @@ describe('UpdateProgress — the in-flight indicator', () => {
 
 		expect(rowIcons(wrapper)).toEqual([SUCCESS, FAILED, PENDING, PENDING]);
 		wrapper.unmount();
+	});
+
+	it('says each step state in words and marks the running step current', () => {
+		const wrapper = mountLog([
+			{ step: 'pull', ok: true, stdout: '', stderr: '' },
+			{ step: 'convex-deploy', ok: false, stdout: '', stderr: 'schema push rejected' },
+		]);
+
+		expect(rowStates(wrapper)).toEqual(['(done)', '(failed)', '(waiting)', '(waiting)']);
+		expect(wrapper.findAll('ol li[aria-current="step"]')).toHaveLength(0);
+		wrapper.unmount();
+
+		const running = mountLog([{ step: 'pull', ok: true, stdout: '', stderr: '' }]);
+		const current = running.findAll('ol li[aria-current="step"]');
+		expect(current).toHaveLength(1);
+		expect(current[0]!.find('.sr-only').text()).toBe('(in progress)');
+		running.unmount();
 	});
 
 	it('stops spinning for a failure in a step the list does not show', () => {

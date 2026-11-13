@@ -5,7 +5,14 @@ import type { PreviewValidationIssue } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
-const { t } = useBuilderI18n();
+const { t, label } = useBuilderI18n();
+
+// The block type as the editor names it ("Image", not `image`), through the
+// same registry-label lookup the canvas uses; a type the catalog does not know
+// is shown capitalized.
+function blockTypeLabel(type: string): string {
+	return label(type.charAt(0).toUpperCase() + type.slice(1));
+}
 
 const props = defineProps<{
 	validationIssues: PreviewValidationIssue[];
@@ -41,27 +48,33 @@ function toggleSeverity(severity: string) {
 		<!-- Severity filters -->
 		<div class="ep-validation-filters">
 			<button
+				type="button"
 				class="ep-validation-filter"
 				:class="{ 'ep-filter-active': severityFilter.has('error') }"
+				:aria-pressed="severityFilter.has('error')"
 				@click="toggleSeverity('error')"
 			>
-				<CircleWarningIcon class="ep-filter-icon ep-filter-error" />
+				<CircleWarningIcon class="ep-filter-icon ep-filter-error" aria-hidden="true" />
 				{{ t('builder.analysis.validation.errors', { count: issueCounts.error }) }}
 			</button>
 			<button
+				type="button"
 				class="ep-validation-filter"
 				:class="{ 'ep-filter-active': severityFilter.has('warning') }"
+				:aria-pressed="severityFilter.has('warning')"
 				@click="toggleSeverity('warning')"
 			>
-				<TriangleWarningIcon class="ep-filter-icon ep-filter-warning" />
+				<TriangleWarningIcon class="ep-filter-icon ep-filter-warning" aria-hidden="true" />
 				{{ t('builder.analysis.validation.warnings', { count: issueCounts.warning }) }}
 			</button>
 			<button
+				type="button"
 				class="ep-validation-filter"
 				:class="{ 'ep-filter-active': severityFilter.has('info') }"
+				:aria-pressed="severityFilter.has('info')"
 				@click="toggleSeverity('info')"
 			>
-				<CircleInfoIcon class="ep-filter-icon ep-filter-info" />
+				<CircleInfoIcon class="ep-filter-icon ep-filter-info" aria-hidden="true" />
 				{{ t('builder.analysis.validation.info', { count: issueCounts.info }) }}
 			</button>
 		</div>
@@ -86,9 +99,10 @@ function toggleSeverity(severity: string) {
 				/>
 				<div class="ep-issue-content">
 					<div class="ep-issue-message">{{ issue.message }}</div>
-					<div class="ep-issue-meta">
-						<span v-if="issue.blockType" class="ep-issue-badge">{{ issue.blockType }}</span>
-						<span v-if="issue.code" class="ep-issue-code">{{ issue.code }}</span>
+					<!-- The rule code is internal: kept as a hover title for support,
+					     not shown as a chip. -->
+					<div v-if="issue.blockType" class="ep-issue-meta" :title="issue.code || undefined">
+						<span class="ep-issue-badge">{{ blockTypeLabel(issue.blockType) }}</span>
 					</div>
 				</div>
 			</div>

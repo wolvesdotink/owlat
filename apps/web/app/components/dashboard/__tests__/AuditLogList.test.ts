@@ -62,6 +62,20 @@ describe('AuditLogList badges', () => {
 		expect(text).toContain('Campaign');
 		expect(text).not.toContain('shared.useAuditLogPresentation');
 	});
+
+	it('shows a resource the catalog has no label for as words, not its raw name', () => {
+		const entry: AuditLogEntry = {
+			...auditEntry('completed', { pluginId: 'policy-pack' }),
+			_id: 'audit-unknown-resource' as AuditLogEntry['_id'],
+			action: 'campaign.scheduled',
+			resource: 'some_future_resource',
+			details: {},
+		};
+		const text = mountList([entry]).text();
+
+		expect(text).toContain('Some future resource');
+		expect(text).not.toContain('some_future_resource');
+	});
 });
 
 function mountList(logs: AuditLogEntry[]) {

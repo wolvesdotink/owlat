@@ -1,21 +1,44 @@
 <script setup lang="ts">
-import { workspaceDisplayName } from '~/utils/instanceEntry';
+import { hasPublishedTerms, workspaceDisplayName } from '~/utils/instanceEntry';
 const { t } = useI18n();
 
 useHead({ title: () => t('terms.pageTitle') });
 
 const { public: config } = useRuntimeConfig();
 const operatorName = workspaceDisplayName(config);
+const { isAuthenticated } = useAuth();
+
+// The terms below name the vendor as the contracting party and include its
+// billing clauses, so they only describe the hosted deployment the vendor runs.
+// A self-hosted instance is operated by someone else, whose own terms the app
+// cannot know: it says they are not published here instead of passing off the
+// vendor's contract as the operator's.
+const termsPublished = hasPublishedTerms(config);
+
+// The company fields default to empty; joining only the set ones keeps an
+// unset address from rendering as stray commas.
+const contactAddress = [
+	config.companyStreet,
+	[config.companyPostalCode, config.companyCity].filter(Boolean).join(' '),
+	config.companyCountry,
+]
+	.filter(Boolean)
+	.join(', ');
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col">
+	<div class="min-h-dvh bg-bg-deep flex flex-col">
 		<!-- Navigation: same gutters and width as the article, so the logo and "Sign in" frame
 		     the text instead of sitting at the far edges of a wide screen. -->
 		<div class="px-6 lg:px-12">
 			<nav class="mx-auto flex max-w-3xl items-center justify-between py-4">
-				<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
-				<UiButton variant="ghost" to="/auth/login">{{ t('terms.signIn') }}</UiButton>
+				<NuxtLink to="/" class="font-display text-2xl text-text-primary">{{
+					operatorName ?? 'Owlat'
+				}}</NuxtLink>
+				<UiButton v-if="isAuthenticated" variant="ghost" to="/dashboard">{{
+					t('terms.openApp')
+				}}</UiButton>
+				<UiButton v-else variant="ghost" to="/auth/login">{{ t('terms.signIn') }}</UiButton>
 			</nav>
 		</div>
 
@@ -23,9 +46,30 @@ const operatorName = workspaceDisplayName(config);
 		<main class="flex-1 px-6 py-12 lg:px-12">
 			<article class="mx-auto max-w-3xl prose-legal">
 				<h1 class="font-display text-4xl text-text-primary mb-2">{{ t('terms.title') }}</h1>
-				<p class="text-text-tertiary text-sm mb-10">{{ t('terms.lastUpdated') }}</p>
 
-				<section class="space-y-6 text-text-secondary leading-relaxed">
+				<section
+					v-if="!termsPublished"
+					class="mt-8 space-y-4 text-text-secondary leading-relaxed"
+					data-testid="terms-unpublished"
+				>
+					<p>{{ t('terms.unpublished.body') }}</p>
+					<I18nT
+						v-if="config.companyEmail"
+						keypath="terms.unpublished.contact"
+						tag="p"
+						scope="global"
+					>
+						<template #email>
+							<a :href="`mailto:${config.companyEmail}`" class="link">{{ config.companyEmail }}</a>
+						</template>
+					</I18nT>
+				</section>
+
+				<p v-if="termsPublished" class="text-text-tertiary text-sm mb-10">
+					{{ t('terms.lastUpdated') }}
+				</p>
+
+				<section v-if="termsPublished" class="space-y-6 text-text-secondary leading-relaxed">
 					<h2 class="text-xl font-semibold text-text-primary mt-10">
 						{{ t('terms.service.heading') }}
 					</h2>
@@ -144,9 +188,8 @@ const operatorName = workspaceDisplayName(config);
 					</h2>
 					<p>{{ t('terms.contact.intro') }}</p>
 					<p>
-						{{ config.companyName }}<br />
-						{{ config.companyStreet }}, {{ config.companyPostalCode }} {{ config.companyCity }},
-						{{ config.companyCountry }}<br />
+						<template v-if="config.companyName">{{ config.companyName }}<br /></template>
+						<template v-if="contactAddress">{{ contactAddress }}<br /></template>
 						{{ t('terms.contact.emailLabel') }}
 						<!-- The legal company details default to empty on a self-host install;
 						     an unset address must not leave an empty `mailto:` link in the tab

@@ -55,6 +55,7 @@ const overview = ref<{
 const setPluginSettings = vi.fn();
 const resetPluginSettings = vi.fn();
 const showToast = vi.fn();
+const setHasChanges = vi.fn();
 let operationCall = 0;
 // The reactive args factory the page passes to the overview query: `{}` for an
 // Captured so a test can prove it never answers `'skip'`.
@@ -68,6 +69,7 @@ beforeEach(() => {
 	setPluginSettings.mockReset().mockResolvedValue({ ok: false });
 	resetPluginSettings.mockReset().mockResolvedValue({ ok: false });
 	showToast.mockReset();
+	setHasChanges.mockReset();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
@@ -79,6 +81,16 @@ beforeEach(() => {
 		},
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast }));
+	// The real leave guard needs a router the page is not mounted under; the
+	// stub records what the page reports as unsaved.
+	vi.stubGlobal('useUnsavedChanges', () => ({
+		showDialog: ref(false),
+		isSavingBeforeLeave: ref(false),
+		confirmDiscard: vi.fn(),
+		confirmSave: vi.fn(),
+		cancelNavigation: vi.fn(),
+		setHasChanges,
+	}));
 	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: (() => unknown) | undefined) => {
 		overviewQueryArgs = typeof args === 'function' ? args : undefined;
 		return {
@@ -112,6 +124,7 @@ const buttonStub = { template: '<button v-bind="$attrs"><slot/></button>' };
 function mountPage() {
 	return mountDashboardPage(PluginDetailPage, {
 		stubs: {
+			UiUnsavedChangesDialog: true,
 			UiQueryBoundary: passthroughStub,
 			UiCard: passthroughStub,
 			UiEmptyState: emptyStateStub,
@@ -238,5 +251,25 @@ describe('plugin detail — gated by the route, not by the template', () => {
 	it('shows no "Admins only" card to the only role that can read the page', () => {
 		const wrapper = mountPage();
 		expect(wrapper.text()).not.toContain('Admins only');
+	});
+});
+
+describe('plugin detail — leaving with edited settings', () => {
+	it('reports the form dirty once a setting is edited, and clean again after save', async () => {
+		overview.value = { plugins: [installedEntry('https://old.example')], orphaned: [] };
+		setPluginSettings.mockResolvedValue({
+			ok: true,
+			result: { values: { endpoint: 'https://new.example' }, secretsSet: {} },
+		});
+		const wrapper = mountPage();
+		await flushPromises();
+		expect(setHasChanges).toHaveBeenLastCalledWith(false);
+
+		await wrapper.get('input[type="text"]').setValue('https://new.example');
+		expect(setHasChanges).toHaveBeenLastCalledWith(true);
+
+		await wrapper.get('form').trigger('submit');
+		await flushPromises();
+		expect(setHasChanges).toHaveBeenLastCalledWith(false);
 	});
 });

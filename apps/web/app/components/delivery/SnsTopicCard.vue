@@ -13,6 +13,7 @@
  * backend to render, and no credential value ever reaches this component — the
  * last-event line is a timestamp, never an event body.
  */
+import { formatDateTime } from '~/utils/formatters';
 import { BroadcastIcon, CheckIcon, CircleCheckIcon, ClockIcon, CopyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -28,13 +29,10 @@ const props = defineProps<{
 const { t, locale } = useI18n();
 const { copy, isCopied } = useCopyToClipboard();
 
+// The same formatter as the signed-webhook card, so the two read alike.
 const lastEventLabel = computed(() => {
 	const at = props.lastEventAt;
-	if (!at) return null;
-	return new Intl.DateTimeFormat(locale.value, {
-		dateStyle: 'medium',
-		timeStyle: 'medium',
-	}).format(new Date(at));
+	return at ? formatDateTime(at, locale.value) : null;
 });
 </script>
 

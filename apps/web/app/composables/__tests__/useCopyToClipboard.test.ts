@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useToast } from '@owlat/ui/composables/useToast';
 import { useCopyToClipboard } from '../useCopyToClipboard';
+import { useAnnounce } from '../useAnnounce';
 
 describe('useCopyToClipboard', () => {
 	let writeTextMock: ReturnType<typeof vi.fn>;
@@ -7,6 +9,9 @@ describe('useCopyToClipboard', () => {
 
 	beforeEach(() => {
 		vi.useFakeTimers();
+		vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
+		useToast().clearToasts();
+		useAnnounce().clear();
 		writeTextMock = vi.fn().mockResolvedValue(undefined);
 		Object.defineProperty(globalThis, 'navigator', {
 			value: { clipboard: { writeText: writeTextMock } },
@@ -60,6 +65,43 @@ describe('useCopyToClipboard', () => {
 			expect(result).toBe(false);
 			expect(copiedKey.value).toBe(null);
 		});
+
+		it('toasts a failed copy and announces a successful one', async () => {
+			const { copy } = useCopyToClipboard();
+
+			await copy('text');
+			expect(useAnnounce().politeMessage.value).toContain('common.copied');
+
+			writeTextMock.mockRejectedValue(new Error('Clipboard denied'));
+			await copy('text');
+			expect(useToast().toasts.value.map((toast) => [toast.message, toast.type])).toContainEqual([
+				'common.copyFailed',
+				'error',
+			]);
+		});
+
+		it('toasts a failure when the browser has no clipboard API', async () => {
+			Object.defineProperty(globalThis, 'navigator', {
+				value: {},
+				writable: true,
+				configurable: true,
+			});
+			const { copy } = useCopyToClipboard();
+
+			expect(await copy('text')).toBe(false);
+			expect(useToast().toasts.value.map((toast) => toast.message)).toContain('common.copyFailed');
+		});
+
+		it('stays quiet when the caller words its own feedback', async () => {
+			const { copy } = useCopyToClipboard({ notify: false });
+
+			await copy('text');
+			writeTextMock.mockRejectedValue(new Error('Clipboard denied'));
+			await copy('text');
+
+			expect(useAnnounce().politeMessage.value).toBe('');
+			expect(useToast().toasts.value).toHaveLength(0);
+		});
 	});
 
 	describe('isCopied', () => {
@@ -101,7 +143,7 @@ describe('useCopyToClipboard', () => {
 		});
 
 		it('respects custom timeout', async () => {
-			const { copy, copiedKey } = useCopyToClipboard(5000);
+			const { copy, copiedKey } = useCopyToClipboard({ timeout: 5000 });
 
 			await copy('text');
 			expect(copiedKey.value).toBe('text');

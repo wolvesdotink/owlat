@@ -24,6 +24,12 @@ const props = defineProps<{
 	selectedTemplateId: Id<'emailTemplates'> | null;
 	/** The template list failed to load, so the Variant B select would be empty. */
 	templatesLoadFailed?: boolean;
+	/**
+	 * The parent already owns turning the test on and off (the wizard's
+	 * "Add A/B test" / "Remove A/B test"), so a second switch here would be a
+	 * second control for the same state.
+	 */
+	hideEnableToggle?: boolean;
 }>();
 
 defineEmits<{
@@ -43,6 +49,18 @@ const abWinnerCriteria = defineModel<ABWinnerCriteria>('abWinnerCriteria', { req
 const abTestDuration = defineModel<number>('abTestDuration', { required: true });
 
 const { t } = useI18n();
+
+const splitId = useId();
+const remainingPercentage = computed(() => Math.max(0, 100 - 2 * abSplitPercentage.value));
+const splitValueText = computed(() =>
+	t('components.campaigns.abTestConfig.splitValueText', {
+		percent: abSplitPercentage.value,
+		remaining: remainingPercentage.value,
+	})
+);
+const variantADisplay = computed(() =>
+	abTestType.value === 'subject' ? props.campaignSubject : props.selectedTemplateName
+);
 
 const filteredTemplates = computed(() => {
 	if (!props.emailTemplates) return [];
@@ -65,8 +83,9 @@ const durationOptions = computed(() =>
 		</h2>
 
 		<div class="space-y-6">
-			<!-- Enable A/B Test Toggle -->
+			<!-- Enable A/B Test Toggle: the switch is the control, the card a larger pointer target for it -->
 			<div
+				v-if="!hideEnableToggle"
 				:class="[
 					'flex items-center justify-between gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
 					abTestEnabled
@@ -93,23 +112,25 @@ const durationOptions = computed(() =>
 						</p>
 					</div>
 				</div>
-				<!-- Decorative: the whole card is the click target -->
 				<UiSwitch
-					:model-value="abTestEnabled"
+					v-model="abTestEnabled"
 					:label="t('components.campaigns.abTestConfig.enableSwitchLabel')"
-					class="pointer-events-none shrink-0"
-					tabindex="-1"
+					class="shrink-0"
+					@click.stop
 				/>
 			</div>
 
 			<!-- A/B Test Configuration (shown when enabled) -->
-			<div v-if="abTestEnabled" class="space-y-6 pt-4 border-t border-border-subtle">
+			<div
+				v-if="abTestEnabled || hideEnableToggle"
+				:class="['space-y-6', hideEnableToggle ? '' : 'pt-4 border-t border-border-subtle']"
+			>
 				<!-- Test Type Selection -->
-				<div>
-					<label class="label mb-3">{{
-						t('components.campaigns.abTestConfig.testTypeLabel')
-					}}</label>
-					<div class="grid grid-cols-2 gap-4">
+				<fieldset>
+					<legend class="label mb-3">
+						{{ t('components.campaigns.abTestConfig.testTypeLabel') }}
+					</legend>
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<label
 							:class="[
 								'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
@@ -159,7 +180,7 @@ const durationOptions = computed(() =>
 							</div>
 						</label>
 					</div>
-				</div>
+				</fieldset>
 
 				<!-- Variant A (Current) -->
 				<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
@@ -173,8 +194,15 @@ const durationOptions = computed(() =>
 							t('components.campaigns.abTestConfig.variantAHeading')
 						}}</span>
 					</div>
-					<p class="text-sm text-text-secondary ml-8">
-						{{ abTestType === 'subject' ? campaignSubject : selectedTemplateName }}
+					<p v-if="variantADisplay" class="text-sm text-text-secondary ml-8">
+						{{ variantADisplay }}
+					</p>
+					<p v-else class="text-sm text-text-tertiary ml-8">
+						{{
+							abTestType === 'subject'
+								? t('components.campaigns.abTestConfig.variantASubjectLater')
+								: t('components.campaigns.abTestConfig.variantATemplateLater')
+						}}
 					</p>
 				</div>
 
@@ -238,21 +266,25 @@ const durationOptions = computed(() =>
 
 				<!-- Split Percentage -->
 				<div>
-					<label class="label flex items-center gap-2">
+					<label :for="splitId" class="label flex items-center gap-2">
 						<UsersIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.abTestConfig.splitLabel') }}
 					</label>
 					<div class="space-y-3">
 						<div class="flex items-center gap-4">
 							<input
+								:id="splitId"
 								v-model.number="abSplitPercentage"
 								type="range"
 								min="10"
 								max="50"
 								step="10"
-								class="flex-1 h-2 bg-bg-surface rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:cursor-pointer"
+								:aria-valuetext="splitValueText"
+								class="flex-1 h-2 bg-bg-surface rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-brand [&::-moz-range-thumb]:cursor-pointer"
 							/>
-							<span class="text-lg font-semibold text-brand w-16 text-right"
+							<span
+								class="text-lg font-semibold text-brand w-16 text-right tabular-nums"
+								aria-hidden="true"
 								>{{ abSplitPercentage }}%</span
 							>
 						</div>
@@ -269,22 +301,22 @@ const durationOptions = computed(() =>
 								<span class="text-brand font-medium">{{ abSplitPercentage }}%</span>
 							</template>
 							<template #remaining>
-								<span class="font-medium">{{ Math.max(0, 100 - 2 * abSplitPercentage) }}%</span>
+								<span class="font-medium">{{ remainingPercentage }}%</span>
 							</template>
 						</I18nT>
 					</div>
 				</div>
 
 				<!-- Winner Criteria -->
-				<div>
-					<label class="label flex items-center gap-2">
+				<fieldset>
+					<legend class="label flex items-center gap-2">
 						<CircleCheckIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.abTestConfig.winnerLabel') }}
-					</label>
-					<div class="grid grid-cols-3 gap-3 mt-2">
+					</legend>
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2">
 						<label
 							:class="[
-								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center',
+								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 								abWinnerCriteria === 'open_rate'
 									? 'border-brand bg-brand/5'
 									: 'border-border-subtle hover:border-border-default',
@@ -307,7 +339,7 @@ const durationOptions = computed(() =>
 						</label>
 						<label
 							:class="[
-								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center',
+								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 								abWinnerCriteria === 'click_rate'
 									? 'border-brand bg-brand/5'
 									: 'border-border-subtle hover:border-border-default',
@@ -330,7 +362,7 @@ const durationOptions = computed(() =>
 						</label>
 						<label
 							:class="[
-								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center',
+								'flex flex-col items-center p-4 border rounded-lg cursor-pointer transition-colors text-center has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 								abWinnerCriteria === 'manual'
 									? 'border-brand bg-brand/5'
 									: 'border-border-subtle hover:border-border-default',
@@ -352,7 +384,7 @@ const durationOptions = computed(() =>
 							}}</span>
 						</label>
 					</div>
-				</div>
+				</fieldset>
 
 				<!-- Test Duration (for auto winner selection) -->
 				<div v-if="abWinnerCriteria !== 'manual'">
@@ -370,7 +402,7 @@ const durationOptions = computed(() =>
 					<p class="mt-1.5 text-sm text-text-tertiary">
 						{{
 							t('components.campaigns.abTestConfig.durationHint', {
-								remaining: Math.max(0, 100 - 2 * abSplitPercentage),
+								remaining: remainingPercentage,
 							})
 						}}
 					</p>

@@ -375,7 +375,7 @@ function cancel() {
 			<!-- Test result -->
 			<UiErrorAlert
 				v-if="testResult"
-				:variant="testResult.ok ? 'info' : 'error'"
+				:variant="testResult.ok ? 'success' : 'error'"
 				:title="
 					testResult.ok
 						? t('components.delivery.transportEditor.credentialsVerifiedTitle')

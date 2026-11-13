@@ -120,9 +120,16 @@ async function onFilterFileChange(event: Event) {
 						})
 					}}
 				</p>
-				<p v-if="job.status === 'failed' && job.lastError" class="text-xs text-error">
-					{{ job.lastError }}
-				</p>
+				<!-- The summary above says it failed in words; the server's own error
+				     is untranslated and technical, so it stays folded as evidence. -->
+				<details v-if="job.status === 'failed' && job.lastError" class="text-xs">
+					<summary class="cursor-pointer select-none text-text-tertiary hover:text-text-secondary">
+						{{ t('components.postbox.postboxArchiveImportCard.errorDetails') }}
+					</summary>
+					<p class="mt-1 font-mono text-2xs leading-snug text-error break-words">
+						{{ job.lastError }}
+					</p>
+				</details>
 			</div>
 
 			<div class="flex items-center gap-3">

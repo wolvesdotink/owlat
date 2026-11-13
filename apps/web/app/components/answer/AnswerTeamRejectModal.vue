@@ -14,6 +14,7 @@ const emit = defineEmits<{ confirm: [] }>();
 const { t } = useI18n();
 
 const state = props.reject;
+const reasonId = useId();
 </script>
 
 <template>
@@ -27,11 +28,14 @@ const state = props.reject;
 		<p class="mb-4 text-sm text-text-secondary">
 			{{ t('dashboard.inbox.detail.rejectModalBody') }}
 		</p>
+		<label :for="reasonId" class="label">
+			{{ t('dashboard.inbox.detail.rejectReasonPlaceholder') }}
+		</label>
 		<textarea
+			:id="reasonId"
 			v-model="state.reason.value"
 			rows="3"
 			class="input w-full resize-y"
-			:placeholder="t('dashboard.inbox.detail.rejectReasonPlaceholder')"
 			:disabled="state.isRejecting.value"
 		/>
 		<template #footer>
@@ -43,7 +47,11 @@ const state = props.reject;
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton variant="danger" :loading="state.isRejecting.value" @click="emit('confirm')">
-				{{ t('dashboard.inbox.detail.rejectDraft') }}
+				{{
+					state.isRejecting.value
+						? t('dashboard.inbox.detail.rejecting')
+						: t('dashboard.inbox.detail.rejectDraft')
+				}}
 			</UiButton>
 		</template>
 	</UiModal>

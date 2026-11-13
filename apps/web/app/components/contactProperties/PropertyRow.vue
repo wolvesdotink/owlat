@@ -30,6 +30,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const menuId = useId();
 </script>
 
 <template>
@@ -88,8 +90,23 @@ const { t } = useI18n();
 		</div>
 
 		<!-- Actions -->
-		<div v-else class="relative" data-property-dropdown>
-			<UiButton variant="ghost" size="sm" @click.stop="emit('toggle-menu')">
+		<div
+			v-else
+			class="relative"
+			data-property-dropdown
+			@keydown.escape="menuOpen && emit('toggle-menu')"
+		>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				:aria-label="
+					t('components.contactProperties.propertyRow.actionsFor', { label: property.label })
+				"
+				aria-haspopup="menu"
+				:aria-expanded="menuOpen"
+				:aria-controls="menuOpen ? menuId : undefined"
+				@click.stop="emit('toggle-menu')"
+			>
 				<MoreHorizontalIcon class="w-4 h-4" />
 			</UiButton>
 
@@ -97,17 +114,23 @@ const { t } = useI18n();
 			<Transition name="dropdown">
 				<div
 					v-if="menuOpen"
+					:id="menuId"
+					role="menu"
 					class="absolute right-0 mt-2 w-40 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 py-1"
 				>
 					<button
-						class="w-full px-4 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
+						type="button"
+						role="menuitem"
+						class="w-full px-4 py-2 pointer-coarse:min-h-11 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 						@click="emit('edit')"
 					>
 						<PencilIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('common.edit') }}
 					</button>
 					<button
-						class="w-full px-4 py-2 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
+						type="button"
+						role="menuitem"
+						class="w-full px-4 py-2 pointer-coarse:min-h-11 text-left text-sm text-error hover:bg-bg-surface flex items-center gap-2"
 						@click="emit('delete')"
 					>
 						<TrashIcon class="w-4 h-4" />

@@ -91,14 +91,20 @@ const endpoints = computed(() => [
 				>
 					{{ apiBaseUrl || t('dashboard.admin.team.api.docs.baseUrlMissing') }}
 				</code>
-				<UiButton
-					v-if="apiBaseUrl"
-					variant="secondary"
-					size="sm"
-					@click="copy(apiBaseUrl, 'base-url')"
-				>
-					<component :is="copiedKey === 'base-url' ? CheckIcon : CopyIcon" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-if="apiBaseUrl" :text="t('dashboard.admin.team.api.docs.copyBaseUrl')">
+					<UiButton
+						variant="secondary"
+						size="sm"
+						:aria-label="t('dashboard.admin.team.api.docs.copyBaseUrl')"
+						@click="copy(apiBaseUrl, 'base-url')"
+					>
+						<component
+							:is="copiedKey === 'base-url' ? CheckIcon : CopyIcon"
+							class="w-4 h-4"
+							aria-hidden="true"
+						/>
+					</UiButton>
+				</UiTooltip>
 			</div>
 		</UiCard>
 
@@ -107,44 +113,66 @@ const endpoints = computed(() => [
 				<h2 class="text-sm font-medium text-text-secondary">
 					{{ t('dashboard.admin.team.api.docs.createContact') }}
 				</h2>
-				<UiButton variant="ghost" size="sm" @click="copy(curlExample, 'curl')">
-					<component :is="copiedKey === 'curl' ? CheckIcon : CopyIcon" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip :text="t('dashboard.admin.team.api.docs.copyRequest')">
+					<UiButton
+						variant="ghost"
+						size="sm"
+						:aria-label="t('dashboard.admin.team.api.docs.copyRequest')"
+						@click="copy(curlExample, 'curl')"
+					>
+						<component
+							:is="copiedKey === 'curl' ? CheckIcon : CopyIcon"
+							class="w-4 h-4"
+							aria-hidden="true"
+						/>
+					</UiButton>
+				</UiTooltip>
 			</div>
 			<pre
 				class="px-3 py-2 bg-bg-surface border border-border-subtle rounded-lg text-xs text-text-primary overflow-x-auto"
 			><code>{{ curlExample }}</code></pre>
 		</UiCard>
 
+		<!-- The copy buttons swap their icon only; this tells a screen reader. -->
+		<p class="sr-only" role="status" aria-live="polite">
+			{{ copiedKey ? t('common.copied') : '' }}
+		</p>
+
 		<UiCard class="mb-6" padding="none" overflow="hidden">
-			<table class="w-full text-sm">
-				<thead>
-					<tr class="border-b border-border-subtle text-left">
-						<th class="px-4 py-3 font-medium text-text-secondary">
-							{{ t('dashboard.admin.team.api.docs.table.method') }}
-						</th>
-						<th class="px-4 py-3 font-medium text-text-secondary">
-							{{ t('dashboard.admin.team.api.docs.table.endpoint') }}
-						</th>
-						<th class="px-4 py-3 font-medium text-text-secondary">{{ t('common.description') }}</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr
-						v-for="e in endpoints"
-						:key="e.path"
-						class="border-b border-border-subtle last:border-0"
-					>
-						<td class="px-4 py-3 font-mono text-xs text-text-tertiary whitespace-nowrap">
-							{{ e.method }}
-						</td>
-						<td class="px-4 py-3 font-mono text-xs text-text-primary whitespace-nowrap">
-							{{ e.path }}
-						</td>
-						<td class="px-4 py-3 text-text-secondary">{{ e.description }}</td>
-					</tr>
-				</tbody>
-			</table>
+			<!-- The method and path cells do not wrap, so on a phone the table
+			     scrolls inside the card instead of being cut off by it. -->
+			<div class="overflow-x-auto">
+				<table class="w-full text-sm">
+					<thead>
+						<tr class="border-b border-border-subtle text-left">
+							<th class="px-4 py-3 font-medium text-text-secondary">
+								{{ t('dashboard.admin.team.api.docs.table.method') }}
+							</th>
+							<th class="px-4 py-3 font-medium text-text-secondary">
+								{{ t('dashboard.admin.team.api.docs.table.endpoint') }}
+							</th>
+							<th class="px-4 py-3 font-medium text-text-secondary">
+								{{ t('common.description') }}
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr
+							v-for="e in endpoints"
+							:key="e.path"
+							class="border-b border-border-subtle last:border-0"
+						>
+							<td class="px-4 py-3 font-mono text-xs text-text-tertiary whitespace-nowrap">
+								{{ e.method }}
+							</td>
+							<td class="px-4 py-3 font-mono text-xs text-text-primary whitespace-nowrap">
+								{{ e.path }}
+							</td>
+							<td class="px-4 py-3 text-text-secondary">{{ e.description }}</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
 		</UiCard>
 
 		<UiButton

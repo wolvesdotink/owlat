@@ -1,21 +1,38 @@
 <script setup lang="ts">
-import { workspaceDisplayName } from '~/utils/instanceEntry';
+import { hasOperatorLegalPages, workspaceDisplayName } from '~/utils/instanceEntry';
 const { t } = useI18n();
 
 useHead({ title: () => t('imprint.pageTitle') });
 
 const { public: config } = useRuntimeConfig();
 const operatorName = workspaceDisplayName(config);
+const { isAuthenticated } = useAuth();
+
+// Every value on this page is the operator's runtime config, which defaults to
+// empty on a self-hosted install. Without a company name there is no imprint to
+// show, so the page says so instead of rendering headings over blank space; with
+// one, a row whose value is unset is left out rather than shown empty.
+const imprintPublished = hasOperatorLegalPages(config);
+const addressLines = [
+	config.companyStreet,
+	[config.companyPostalCode, config.companyCity].filter(Boolean).join(' '),
+	config.companyCountry,
+].filter(Boolean);
 </script>
 
 <template>
-	<div class="min-h-screen bg-bg-deep flex flex-col">
+	<div class="min-h-dvh bg-bg-deep flex flex-col">
 		<!-- Navigation: same gutters and width as the article, so the logo and "Sign in" frame
 		     the text instead of sitting at the far edges of a wide screen. -->
 		<div class="px-6 lg:px-12">
 			<nav class="mx-auto flex max-w-3xl items-center justify-between py-4">
-				<NuxtLink to="/" class="font-display text-2xl text-text-primary">Owlat</NuxtLink>
-				<UiButton variant="ghost" to="/auth/login">{{ t('imprint.signIn') }}</UiButton>
+				<NuxtLink to="/" class="font-display text-2xl text-text-primary">{{
+					operatorName ?? 'Owlat'
+				}}</NuxtLink>
+				<UiButton v-if="isAuthenticated" variant="ghost" to="/dashboard">{{
+					t('imprint.openApp')
+				}}</UiButton>
+				<UiButton v-else variant="ghost" to="/auth/login">{{ t('imprint.signIn') }}</UiButton>
 			</nav>
 		</div>
 
@@ -24,20 +41,26 @@ const operatorName = workspaceDisplayName(config);
 			<article class="mx-auto max-w-3xl">
 				<h1 class="font-display text-4xl text-text-primary mb-10">{{ t('imprint.title') }}</h1>
 
-				<section class="space-y-8 text-text-secondary leading-relaxed">
+				<p
+					v-if="!imprintPublished"
+					class="text-text-secondary leading-relaxed"
+					data-testid="imprint-unpublished"
+				>
+					{{ t('imprint.unpublished') }}
+				</p>
+
+				<section v-else class="space-y-8 text-text-secondary leading-relaxed">
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary mb-2">
 							{{ t('imprint.provider.heading') }}
 						</h2>
 						<p>
-							{{ config.companyName }}<br />
-							{{ config.companyStreet }}<br />
-							{{ config.companyPostalCode }} {{ config.companyCity }}<br />
-							{{ config.companyCountry }}
+							{{ config.companyName }}
+							<template v-for="line in addressLines" :key="line"><br />{{ line }}</template>
 						</p>
 					</div>
 
-					<div>
+					<div v-if="config.companyRepresentative">
 						<h2 class="text-lg font-semibold text-text-primary mb-2">
 							{{ t('imprint.representative.heading') }}
 						</h2>
@@ -49,10 +72,11 @@ const operatorName = workspaceDisplayName(config);
 							{{ t('imprint.contact.heading') }}
 						</h2>
 						<p>
-							{{ t('imprint.contact.phone', { phone: config.companyPhone }) }}<br />
+							<template v-if="config.companyPhone"
+								>{{ t('imprint.contact.phone', { phone: config.companyPhone }) }}<br
+							/></template>
 							{{ t('imprint.contact.emailLabel') }}
-							<!-- The legal company details default to empty on a self-host install;
-							     an unset address must not leave an empty `mailto:` link in the tab
+							<!-- An unset address must not leave an empty `mailto:` link in the tab
 							     order with no accessible name. -->
 							<a
 								v-if="config.companyEmail"
@@ -64,15 +88,13 @@ const operatorName = workspaceDisplayName(config);
 						</p>
 					</div>
 
-					<div>
+					<div v-if="config.companyRepresentative">
 						<h2 class="text-lg font-semibold text-text-primary mb-2">
 							{{ t('imprint.responsible.heading') }}
 						</h2>
 						<p>
-							{{ config.companyRepresentative }}<br />
-							{{ config.companyStreet }}<br />
-							{{ config.companyPostalCode }} {{ config.companyCity }}<br />
-							{{ config.companyCountry }}
+							{{ config.companyRepresentative }}
+							<template v-for="line in addressLines" :key="line"><br />{{ line }}</template>
 						</p>
 					</div>
 

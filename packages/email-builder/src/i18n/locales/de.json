@@ -348,7 +348,8 @@
 		"diff": {
 			"title": "Änderungen",
 			"identical": "Keine Änderungen erkannt.",
-			"summary": "{count} Änderung erkannt | {count} Änderungen erkannt"
+			"summary": "{count} Änderung erkannt | {count} Änderungen erkannt",
+			"close": "Änderungen schließen"
 		},
 		"preview": {
 			"clients": {
@@ -393,7 +394,8 @@
 				"download": "{file} herunterladen"
 			},
 			"warnings": {
-				"title": "{count} Darstellungswarnung | {count} Darstellungswarnungen"
+				"title": "{count} Darstellungswarnung | {count} Darstellungswarnungen",
+				"close": "Renderwarnungen schließen"
 			},
 			"frame": {
 				"email": "E-Mail-Vorschau",
@@ -439,7 +441,15 @@
 				"variables": "Variablenwerte",
 				"variableName": "Variablenname",
 				"variableValue": "Wert",
-				"addVariable": "Variable hinzufügen"
+				"addVariable": "Variable hinzufügen",
+				"close": "Renderoptionen schließen",
+				"fontUrl": "Schrift-URL {index}",
+				"removeFontUrl": "Schrift-URL {index} entfernen",
+				"variableNameOf": "Name von Variable {index}",
+				"variableValueOf": "Wert von {name}",
+				"variableValueOfIndex": "Wert von Variable {index}",
+				"removeVariable": "{name} entfernen",
+				"removeVariableIndex": "Variable {index} entfernen"
 			},
 			"generating": "Vorschau wird erzeugt..."
 		},
@@ -521,16 +531,18 @@
 			"preview": {
 				"untitledSection": "Abschnitt ohne Titel",
 				"buttonText": "Hier klicken",
-				"dropHere": "Hier ablegen",
-				"dropBlocksHere": "Blöcke hier ablegen",
 				"socialNoUrl": "Noch keine URL – dieses Icon erscheint nicht in der gesendeten E-Mail",
 				"socialDimmed": "Abgeblendete Icons haben keine URL und erscheinen nicht in der gesendeten E-Mail",
 				"textPlaceholder": "Gib hier deinen Text ein...",
 				"sectionPlaceholder": "Hier steht der Inhalt...",
 				"heroImage": "Hintergrundbild festlegen",
 				"noImage": "Kein Bild ausgewählt",
-				"configure": "{block} – zum Einrichten auswählen"
-			}
+				"configure": "{block} – zum Einrichten auswählen",
+				"frameTitle": "Vorschau: {block}",
+				"emptyColumn": "Leere Spalte. Wähl den Block aus und füge unter Inhalt einen hinzu.",
+				"emptyContainer": "Leer. Wähl den Block aus und füge unter Inhalt einen hinzu."
+			},
+			"textEditor": "Inhalt des Textblocks"
 		},
 		"toolbar": {
 			"categories": {
@@ -633,7 +645,9 @@
 				"fieldOfItem": "{field}, Eintrag {index}",
 				"remove": "Entfernen",
 				"removeItem": "Eintrag {index} entfernen",
-				"add": "Eintrag hinzufügen"
+				"add": "Eintrag hinzufügen",
+				"moveUp": "Eintrag {index} nach oben verschieben",
+				"moveDown": "Eintrag {index} nach unten verschieben"
 			},
 			"border": {
 				"width": "Breite",

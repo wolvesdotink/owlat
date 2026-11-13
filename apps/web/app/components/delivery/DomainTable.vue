@@ -51,6 +51,10 @@ const RISK_TONE: Record<NonNullable<DomainRow['riskLevel']>, HealthTone> = {
 function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 	return riskLevel ? RISK_TONE[riskLevel] : 'neutral';
 }
+/** The dot's meaning in words, for its tooltip and for screen readers. */
+function riskLabel(riskLevel: DomainRow['riskLevel']): string {
+	return t(`components.delivery.domainTable.risk.${riskLevel ?? 'none'}`);
+}
 </script>
 
 <template>
@@ -89,14 +93,12 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 				:description="t('components.delivery.domainTable.emptyDescription')"
 			>
 				<template #action>
-					<NuxtLink :to="DOMAIN_SETUP_ROUTE">
-						<UiButton variant="secondary">
-							<template #iconLeft>
-								<PlusIcon class="w-4 h-4" />
-							</template>
-							{{ t('components.delivery.domainTable.addDomain') }}
-						</UiButton>
-					</NuxtLink>
+					<UiButton variant="secondary" :to="DOMAIN_SETUP_ROUTE">
+						<template #iconLeft>
+							<PlusIcon class="w-4 h-4" />
+						</template>
+						{{ t('components.delivery.domainTable.addDomain') }}
+					</UiButton>
 				</template>
 			</UiEmptyState>
 
@@ -112,8 +114,10 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 							<span
 								class="w-2 h-2 rounded-full shrink-0"
 								:class="healthDotClass[riskTone(row.riskLevel)]"
+								:title="riskLabel(row.riskLevel)"
 								aria-hidden="true"
 							/>
+							<span class="sr-only">{{ riskLabel(row.riskLevel) }}</span>
 							<p
 								class="truncate text-text-primary"
 								:class="row.status === 'verified' ? 'font-medium' : 'font-semibold'"
@@ -157,7 +161,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 									count: formatNumber(row.sent30d, locale),
 								})
 							}}
-							<span class="block text-[11px]">{{
+							<span class="block text-2xs">{{
 								t('components.delivery.domainTable.window30d')
 							}}</span>
 						</p>
@@ -211,10 +215,10 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 									})
 								}}
 							</p>
-							<p class="text-[11px] text-text-tertiary mt-0.5">
+							<p class="text-2xs text-text-tertiary mt-0.5">
 								{{ t('components.delivery.domainTable.reputationUnavailable') }}
 							</p>
-							<p class="text-[11px] text-text-tertiary mt-0.5">
+							<p class="text-2xs text-text-tertiary mt-0.5">
 								{{
 									t('components.delivery.domainTable.googleDataFor', {
 										date: formatDate(row.googlePostmaster.periodStart, 'short', locale),

@@ -37,7 +37,15 @@ import {
 	ownShareLabel,
 	type DeliverabilityDashboardCell,
 } from '~/utils/deliverabilityMeasurement';
-import { formatNumber, formatShortDate } from '~/utils/formatters';
+import { formatNumber, formatUtcDayKey } from '~/utils/formatters';
+
+/**
+ * A point's `day` is a UTC day start, so it is labelled in UTC: a local-time
+ * label shows every reader west of UTC the previous day's date.
+ */
+function formatUtcDay(dayStart: number, locale: string): string {
+	return formatUtcDayKey(new Date(dayStart).toISOString().slice(0, 10), locale);
+}
 import { transportIdLabel } from '~/utils/transportState';
 import { useLocalized } from '~/composables/useLocalized';
 
@@ -87,7 +95,7 @@ const trendPoints = computed(() => {
 	const peak = points.reduce((max, point) => Math.max(max, point.own.sent), 0);
 	return points.map((point) => ({
 		day: point.day,
-		label: formatShortDate(point.day, locale.value),
+		label: formatUtcDay(point.day, locale.value),
 		counts:
 			point.reference === null
 				? t('components.delivery.measurementCellCard.trendSent', {

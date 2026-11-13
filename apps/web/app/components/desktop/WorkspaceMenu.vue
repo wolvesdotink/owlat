@@ -29,6 +29,17 @@ const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 
 const title = computed(() => active.value?.label ?? 'Owlat');
+// The trigger's name is the action; the active workspace is its description,
+// so a screen reader hears which one is current.
+const titleId = useId();
+
+// Tabbing out of the open menu closes it, like a click outside does.
+function onFocusOut(e: FocusEvent): void {
+	if (!open.value) return;
+	const next = e.relatedTarget as Node | null;
+	if (next && rootRef.value?.contains(next)) return;
+	closeMenu({ restoreFocus: false });
+}
 
 /** Every focusable row in the menu, in DOM (visual) order. */
 function menuItems(): HTMLElement[] {
@@ -120,7 +131,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-	<div v-if="workspaces.length" ref="rootRef" class="relative flex items-center min-w-0">
+	<div
+		v-if="workspaces.length"
+		ref="rootRef"
+		class="relative flex items-center min-w-0"
+		@focusout="onFocusOut"
+	>
 		<button
 			ref="triggerRef"
 			type="button"
@@ -129,6 +145,7 @@ onUnmounted(() => {
 			aria-haspopup="menu"
 			:aria-expanded="open"
 			:aria-label="t('components.desktop.workspaceMenu.switchWorkspace')"
+			:aria-describedby="titleId"
 			@click="toggle"
 		>
 			<!-- palette-ok: the hairline rides on the workspace's own accent colour (an
@@ -139,10 +156,13 @@ onUnmounted(() => {
 				class="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-inset ring-black/10"
 				:style="{ backgroundColor: active.accentColor }"
 			/>
-			<span class="font-display text-[13px] font-[550] leading-none truncate text-text-primary">
+			<span
+				:id="titleId"
+				class="font-display text-[13px] font-[550] leading-none truncate text-text-primary"
+			>
 				{{ title }}
 			</span>
-			<UnfoldMoreIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+			<UnfoldMoreIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" aria-hidden="true" />
 		</button>
 
 		<Transition

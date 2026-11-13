@@ -268,7 +268,7 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 				>
 					<button
 						type="button"
-						class="rounded px-2.5 py-1"
+						class="rounded px-2.5 py-1 pointer-coarse:min-h-11"
 						:class="
 							view === option
 								? 'bg-(--surface-2-selected) text-text-primary'

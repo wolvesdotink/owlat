@@ -54,8 +54,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+// Wraps: up to three actions beside the sentence do not fit a narrow reader.
 const BANNER_CLASS =
-	'mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex items-center justify-between gap-3';
+	'mb-2 px-3 py-2 rounded bg-bg-surface text-xs flex flex-wrap items-center justify-between gap-x-3 gap-y-1';
 </script>
 
 <template>
@@ -74,7 +75,7 @@ const BANNER_CLASS =
 				{{ t('components.postbox.postboxMessageBody.imagesBlocked') }}
 			</template>
 		</span>
-		<span class="flex items-center gap-3 flex-shrink-0">
+		<span class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<button
 				type="button"
 				class="text-brand font-medium hover:underline"
@@ -116,7 +117,7 @@ const BANNER_CLASS =
 			<ShieldCheckIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			{{ t('components.postbox.postboxMessageBody.imagesAutoLoaded', { host: senderLabel }) }}
 		</span>
-		<span class="flex items-center gap-3 flex-shrink-0">
+		<span class="flex flex-wrap items-center gap-x-3 gap-y-1">
 			<button
 				v-if="trackerCount > 0"
 				type="button"

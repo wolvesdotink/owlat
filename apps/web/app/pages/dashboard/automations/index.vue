@@ -142,6 +142,35 @@ const filteredAutomations = computed<AutomationListItem[]>(() => {
 	);
 });
 
+// A status tab with no rows is "nothing matches", not the first-run empty
+// state: the shell tells them apart by whether a filter is active, so the
+// status counts as one.
+const statusFilterLabel = computed(
+	() => statusFilters.value.find((filter) => filter.value === selectedStatus.value)?.label ?? ''
+);
+const activeFilter = computed(
+	() => list.debouncedSearch.trim() || (selectedStatus.value === 'all' ? '' : selectedStatus.value)
+);
+const noResultsCopy = computed(() =>
+	list.debouncedSearch.trim()
+		? {
+				title: t('dashboard.automations.index.noResults.title'),
+				description: t('dashboard.automations.index.noResults.description', {
+					query: list.debouncedSearch.trim(),
+				}),
+			}
+		: {
+				title: t('dashboard.automations.index.noStatusResults.title', {
+					status: statusFilterLabel.value,
+				}),
+				description: t('dashboard.automations.index.noStatusResults.description'),
+			}
+);
+const clearFilters = () => {
+	list.clearSearch();
+	selectedStatus.value = 'all';
+};
+
 // keepPreviousData: a refetch (a new status tab) keeps the old rows on screen,
 // so only a load with nothing to show yet takes the skeleton.
 const showSkeleton = computed(
@@ -245,7 +274,7 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 		:error-title="t('dashboard.automations.index.errorTitle')"
 		:has-organization="hasActiveOrganization"
 		:is-empty="filteredAutomations.length === 0"
-		:active-search="list.debouncedSearch.trim()"
+		:active-search="activeFilter"
 		:search-placeholder="t('common.filterPlaceholder')"
 		:empty-no-org="{
 			icon: ZapIcon,
@@ -257,14 +286,9 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 			title: t('dashboard.automations.index.empty.title'),
 			description: t('dashboard.automations.index.empty.description'),
 		}"
-		:no-results="{
-			title: t('dashboard.automations.index.noResults.title'),
-			description: t('dashboard.automations.index.noResults.description', {
-				query: list.debouncedSearch.trim(),
-			}),
-		}"
+		:no-results="noResultsCopy"
 		@retry="refetchAutomations"
-		@clear-search="list.clearSearch"
+		@clear-search="clearFilters"
 	>
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="handleNewAutomation">
@@ -277,7 +301,8 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 		</template>
 
 		<template #filters>
-			<div class="max-w-full overflow-x-auto">
+			<!-- Nothing to narrow until the first automation exists. -->
+			<div v-if="statusCounts?.['total'] !== 0" class="max-w-full overflow-x-auto">
 				<UiSegmentedControl
 					:model-value="selectedStatus"
 					:options="statusFilters"

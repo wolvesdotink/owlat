@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, useId } from 'vue';
 import { ChartBarVerticalIcon, ChevronDownIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import type {
@@ -33,7 +33,35 @@ const emit = defineEmits<{
 	(e: 'toggle'): void;
 }>();
 
-const activeTab = ref<'health' | 'size' | 'validation' | 'compatibility'>('health');
+type AnalysisTab = 'health' | 'size' | 'validation' | 'compatibility';
+const activeTab = ref<AnalysisTab>('health');
+
+// The tab pattern: one tab stop, ← → Home End move between tabs and select.
+const TABS: AnalysisTab[] = ['health', 'size', 'validation', 'compatibility'];
+const TAB_LABEL_KEYS: Record<AnalysisTab, string> = {
+	health: 'builder.analysis.tabs.health',
+	size: 'builder.analysis.tabs.size',
+	validation: 'builder.analysis.tabs.validation',
+	compatibility: 'builder.analysis.tabs.compatibility',
+};
+const uid = useId();
+const bodyId = `ep-analysis-body-${uid}`;
+const tabId = (tab: AnalysisTab) => `ep-analysis-tab-${tab}-${uid}`;
+const panelId = `ep-analysis-panel-${uid}`;
+const tabRefs = ref<HTMLButtonElement[]>([]);
+
+function onTabKeydown(event: KeyboardEvent) {
+	const current = TABS.indexOf(activeTab.value);
+	let next = current;
+	if (event.key === 'ArrowRight') next = (current + 1) % TABS.length;
+	else if (event.key === 'ArrowLeft') next = (current - 1 + TABS.length) % TABS.length;
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = TABS.length - 1;
+	else return;
+	event.preventDefault();
+	activeTab.value = TABS[next]!;
+	tabRefs.value[next]?.focus();
+}
 
 // Error count drives the badge on the Validation tab.
 const errorCount = computed(
@@ -55,58 +83,64 @@ const headerSummary = computed(() => {
 <template>
 	<div class="ep-analysis-panel">
 		<!-- Collapsible Header -->
-		<button class="ep-analysis-header" @click="emit('toggle')">
+		<button
+			type="button"
+			class="ep-analysis-header"
+			:aria-expanded="expanded"
+			:aria-controls="expanded ? bodyId : undefined"
+			@click="emit('toggle')"
+		>
 			<div class="ep-analysis-header-left">
-				<ChartBarVerticalIcon class="ep-analysis-header-icon" />
+				<ChartBarVerticalIcon class="ep-analysis-header-icon" aria-hidden="true" />
 				<span class="ep-analysis-header-title">{{ t('builder.analysis.title') }}</span>
 				<span class="ep-analysis-header-summary">{{ headerSummary }}</span>
 				<SpinnerIcon v-if="isAnalyzing" class="ep-analysis-spinner" />
 			</div>
 			<ChevronDownIcon
+				aria-hidden="true"
 				class="ep-analysis-chevron"
 				:class="{ 'ep-analysis-chevron-open': expanded }"
 			/>
 		</button>
 
 		<!-- Expanded Content -->
-		<div v-if="expanded" class="ep-analysis-body">
+		<div v-if="expanded" :id="bodyId" class="ep-analysis-body">
 			<!-- Tabs -->
-			<div class="ep-analysis-tabs">
+			<div class="ep-analysis-tabs" role="tablist" @keydown="onTabKeydown">
 				<button
+					v-for="(tab, index) in TABS"
+					:id="tabId(tab)"
+					:key="tab"
+					:ref="
+						(el) => {
+							if (el) tabRefs[index] = el as HTMLButtonElement;
+						}
+					"
+					type="button"
+					role="tab"
 					class="ep-analysis-tab"
-					:class="{ 'ep-analysis-tab-active': activeTab === 'health' }"
-					@click="activeTab = 'health'"
+					:class="{ 'ep-analysis-tab-active': activeTab === tab }"
+					:aria-selected="activeTab === tab"
+					:aria-controls="panelId"
+					:tabindex="activeTab === tab ? 0 : -1"
+					@click="activeTab = tab"
 				>
-					{{ t('builder.analysis.tabs.health') }}
-				</button>
-				<button
-					class="ep-analysis-tab"
-					:class="{ 'ep-analysis-tab-active': activeTab === 'size' }"
-					@click="activeTab = 'size'"
-				>
-					{{ t('builder.analysis.tabs.size') }}
-				</button>
-				<button
-					class="ep-analysis-tab"
-					:class="{ 'ep-analysis-tab-active': activeTab === 'validation' }"
-					@click="activeTab = 'validation'"
-				>
-					{{ t('builder.analysis.tabs.validation') }}
-					<span v-if="errorCount > 0" class="ep-analysis-tab-badge ep-badge-error">{{
-						errorCount
-					}}</span>
-				</button>
-				<button
-					class="ep-analysis-tab"
-					:class="{ 'ep-analysis-tab-active': activeTab === 'compatibility' }"
-					@click="activeTab = 'compatibility'"
-				>
-					{{ t('builder.analysis.tabs.compatibility') }}
+					{{ t(TAB_LABEL_KEYS[tab]) }}
+					<span
+						v-if="tab === 'validation' && errorCount > 0"
+						class="ep-analysis-tab-badge ep-badge-error"
+						>{{ errorCount }}</span
+					>
 				</button>
 			</div>
 
 			<!-- Tab Content -->
-			<div class="ep-analysis-tab-content">
+			<div
+				:id="panelId"
+				class="ep-analysis-tab-content"
+				role="tabpanel"
+				:aria-labelledby="tabId(activeTab)"
+			>
 				<div class="ep-analysis-section">
 					<HealthTab v-if="activeTab === 'health'" :health-score="healthScore" />
 					<SizeTab v-else-if="activeTab === 'size'" :email-analysis="emailAnalysis" />

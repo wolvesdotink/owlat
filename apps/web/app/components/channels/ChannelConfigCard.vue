@@ -100,8 +100,9 @@ function getHealthDotClass(config: ChannelConfig): string {
 		case 'down':
 			return 'bg-error';
 		case 'healthy':
-		default:
 			return 'bg-success';
+		default:
+			return 'bg-text-tertiary';
 	}
 }
 
@@ -127,10 +128,30 @@ function getHealthBadgeVariant(config: ChannelConfig): 'success' | 'warning' | '
 		case 'down':
 			return 'error';
 		case 'healthy':
-		default:
 			return 'success';
+		// No check has run yet: a green dot next to "Unknown" would claim health.
+		default:
+			return 'neutral';
 	}
 }
+
+const hasHealthData = computed(
+	() =>
+		props.channelConfig.isEnabled &&
+		!!(props.channelConfig.lastHealthCheckAt || props.channelConfig.lastError)
+);
+// A problem stays on the card face; a healthy channel's timestamps are
+// diagnostics, shown with the configuration on request.
+const hasHealthProblem = computed(
+	() =>
+		!!props.channelConfig.lastError ||
+		props.channelConfig.healthStatus === 'degraded' ||
+		props.channelConfig.healthStatus === 'down'
+);
+const showHealthDetails = computed(
+	() => hasHealthData.value && (hasHealthProblem.value || isConfiguring.value)
+);
+const configPanelId = useId();
 
 // Toggle enabled/disabled
 async function toggleEnabled() {
@@ -192,7 +213,7 @@ function handleConfigCancelled() {
 					:disabled="isTogglingEnabled"
 					:label="
 						t('components.channels.channelConfigCard.toggleLabel', {
-							channel: channelConfig.channel,
+							channel: metaLabel,
 						})
 					"
 					@update:model-value="toggleEnabled"
@@ -200,11 +221,9 @@ function handleConfigCancelled() {
 			</div>
 		</div>
 
-		<!-- Health Details (always visible when channel has health data) -->
-		<div
-			v-if="channelConfig.isEnabled && (channelConfig.lastHealthCheckAt || channelConfig.lastError)"
-			class="mt-4 pt-4 border-t border-border-subtle"
-		>
+		<!-- Health Details: on the card face when something is wrong, otherwise with
+		     the configuration. -->
+		<div v-if="showHealthDetails" class="mt-4 pt-4 border-t border-border-subtle">
 			<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
 				<div>
 					<p class="text-xs text-text-tertiary">
@@ -243,10 +262,13 @@ function handleConfigCancelled() {
 				}}
 			</div>
 			<button
-				class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
+				type="button"
+				class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors pointer-coarse:min-h-11"
+				:aria-expanded="isConfiguring"
+				:aria-controls="configPanelId"
 				@click="isConfiguring = !isConfiguring"
 			>
-				<SettingsIcon class="w-4 h-4" />
+				<SettingsIcon class="w-4 h-4" aria-hidden="true" />
 				{{
 					isConfiguring ? t('common.close') : t('components.channels.channelConfigCard.configure')
 				}}
@@ -259,7 +281,7 @@ function handleConfigCancelled() {
 
 		<!-- Inline Config Form -->
 		<Transition name="expand">
-			<div v-if="isConfiguring" class="mt-4 pt-4 border-t border-border-subtle">
+			<div v-if="isConfiguring" :id="configPanelId" class="mt-4 pt-4 border-t border-border-subtle">
 				<ChannelsChannelConfigForm
 					:channel="channelConfig.channel"
 					:stored-fields="channelConfig.configuredFields ?? []"

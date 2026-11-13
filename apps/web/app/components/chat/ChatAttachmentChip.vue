@@ -20,6 +20,13 @@ const props = defineProps<Props>();
 
 const isImage = computed(() => props.attachment.mimeType.startsWith('image/'));
 
+// The upload probed the image's size, so the row can reserve its box before
+// the image loads and the message list does not jump when it arrives.
+const imageBox = computed(() => {
+	const { width, height } = props.attachment;
+	if (!width || !height) return undefined;
+	return { width, height };
+});
 </script>
 
 <template>
@@ -33,6 +40,8 @@ const isImage = computed(() => props.attachment.mimeType.startsWith('image/'));
 		<img
 			:src="attachment.url"
 			:alt="attachment.filename"
+			:width="imageBox?.width"
+			:height="imageBox?.height"
 			class="max-w-xs max-h-64 object-cover"
 		/>
 	</a>
@@ -45,7 +54,10 @@ const isImage = computed(() => props.attachment.mimeType.startsWith('image/'));
 	>
 		<FileIcon class="w-4 h-4 text-text-tertiary" />
 		<div class="flex flex-col text-xs">
-			<span class="text-text-primary font-medium truncate max-w-[200px]">
+			<span
+				class="text-text-primary font-medium truncate max-w-[200px]"
+				:title="attachment.filename"
+			>
 				{{ attachment.filename }}
 			</span>
 			<span class="text-text-tertiary">{{ formatCompactFileSize(attachment.fileSize) }}</span>

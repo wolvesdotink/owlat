@@ -41,15 +41,17 @@ function confirm() {
 		size="lg"
 		:closable="!busy"
 		:persistent="busy"
+		labelled-by="delete-workspace-title"
+		described-by="delete-workspace-subtitle"
 		@update:open="(v: boolean) => !v && emit('close')"
 	>
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="error" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 id="delete-workspace-title" class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.deleteModal.title') }}
 				</h2>
-				<p class="text-sm text-text-secondary">
+				<p id="delete-workspace-subtitle" class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.team.deleteModal.subtitle') }}
 				</p>
 			</div>

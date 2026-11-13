@@ -32,24 +32,18 @@ const allIntegrations = [
 		name: 'components.contacts.integrationImportModal.providers.mailchimp.name',
 		description: 'components.contacts.integrationImportModal.providers.mailchimp.description',
 		icon: MailIcon,
-		color: 'text-[#FFE01B]',
-		bgColor: 'bg-[#FFE01B]/10',
 	},
 	{
 		id: 'stripe' as const,
 		name: 'components.contacts.integrationImportModal.providers.stripe.name',
 		description: 'components.contacts.integrationImportModal.providers.stripe.description',
 		icon: CreditCardIcon,
-		color: 'text-[#635BFF]',
-		bgColor: 'bg-[#635BFF]/10',
 	},
 	{
 		id: 'mandrill' as const,
 		name: 'components.contacts.integrationImportModal.providers.mandrill.name',
 		description: 'components.contacts.integrationImportModal.providers.mandrill.description',
 		icon: ShieldCloseIcon,
-		color: 'text-[#F0483E]',
-		bgColor: 'bg-[#F0483E]/10',
 	},
 ];
 const FLAG_FOR_INTEGRATION = {
@@ -91,11 +85,13 @@ const integrations = computed(() =>
 			<button
 				v-for="integration in integrations"
 				:key="integration.id"
-				class="w-full p-4 rounded-xl border border-border-subtle hover:border-border-default bg-bg-surface hover:bg-bg-surface/80 transition-colors text-left flex items-center gap-4"
+				class="w-full p-4 rounded-xl border border-border-subtle hover:border-border-default bg-bg-surface hover:bg-bg-surface-hover transition-colors text-left flex items-center gap-4"
 				@click="emit('select', integration.id)"
 			>
-				<div :class="['p-3 rounded-lg', integration.bgColor]">
-					<component :is="integration.icon" :class="['w-6 h-6', integration.color]" size="1em" />
+				<!-- Neutral tokens: the icons are generic glyphs, not logos, and a brand
+				     hex (Mailchimp yellow) all but vanishes on a light surface. -->
+				<div class="p-3 rounded-lg bg-bg-elevated">
+					<component :is="integration.icon" class="w-6 h-6 text-text-secondary" size="1em" />
 				</div>
 				<div class="flex-1">
 					<p class="font-medium text-text-primary">{{ t(integration.name) }}</p>

@@ -79,14 +79,14 @@ function onInput(event: Event) {
 				:aria-describedby="describedBy"
 				autocapitalize="off"
 				spellcheck="false"
-				class="input pr-10"
+				class="input pr-10 pointer-coarse:pr-12"
 				:class="error ? 'input-error' : ''"
 				@input="onInput"
 				@blur="emit('blur', $event)"
 			/>
 			<button
 				type="button"
-				class="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-lg text-text-tertiary hover:text-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+				class="absolute inset-y-0 right-0 flex w-10 pointer-coarse:w-11 items-center justify-center rounded-r-lg text-text-tertiary hover:text-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
 				:aria-label="t('auth.fields.showPassword')"
 				:aria-pressed="revealed"
 				:aria-controls="inputId"

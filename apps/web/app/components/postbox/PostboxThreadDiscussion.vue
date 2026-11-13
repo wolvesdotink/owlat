@@ -129,7 +129,7 @@ watch(
 			<UiTooltip :text="t('components.postbox.threadDiscussion.close')">
 				<button
 					type="button"
-					class="ml-auto rounded p-1 text-text-tertiary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					class="ml-auto rounded p-1 text-text-tertiary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 					:aria-label="t('components.postbox.threadDiscussion.close')"
 					@click="toggle"
 				>
@@ -186,7 +186,7 @@ watch(
 			<textarea
 				v-model="draft"
 				rows="2"
-				class="input resize-none"
+				class="input input-note resize-none"
 				:placeholder="placeholder"
 				:aria-label="t('components.postbox.threadDiscussion.composerLabel')"
 				data-testid="thread-discussion-input"

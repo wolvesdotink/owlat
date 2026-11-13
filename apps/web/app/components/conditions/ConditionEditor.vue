@@ -26,33 +26,36 @@ const module = computed(() => conditionEditorModuleFor(props.modelValue.kind));
 
 const updateKind = (event: Event) => {
 	const kind = (event.target as HTMLSelectElement).value as ConditionKind;
-	emit('update:modelValue', CONDITION_EDITOR_MODULES[kind].createDefault({
-		// Module's createDefault uses ctx only when it needs to seed from
-		// available data; passing empty refs is safe — modules that need
-		// data inject it themselves at editor render time.
-		contactProperties: computed(() => []),
-		topics: computed(() => []),
-	} as never) as Condition);
+	emit(
+		'update:modelValue',
+		CONDITION_EDITOR_MODULES[kind].createDefault({
+			// Module's createDefault uses ctx only when it needs to seed from
+			// available data; passing empty refs is safe — modules that need
+			// data inject it themselves at editor render time.
+			contactProperties: computed(() => []),
+			topics: computed(() => []),
+		} as never) as Condition
+	);
 	emit('save');
 };
 
 const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 	emit('update:modelValue', next as Condition);
 };
+
+// Row variants repeat in the segment editor, so ids are per instance.
+const kindId = useId();
+const kindHintId = useId();
 </script>
 
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">
+			<label :for="kindId" class="text-xs text-text-tertiary mb-1 block">
 				{{ t('components.conditions.conditionEditor.filterBy') }}
 			</label>
-			<select :value="modelValue.kind" class="input" @change="updateKind">
-				<option
-					v-for="m in Object.values(CONDITION_EDITOR_MODULES)"
-					:key="m.kind"
-					:value="m.kind"
-				>
+			<select :id="kindId" :value="modelValue.kind" class="input" @change="updateKind">
+				<option v-for="m in Object.values(CONDITION_EDITOR_MODULES)" :key="m.kind" :value="m.kind">
 					{{ t(m.label) }}
 				</option>
 			</select>
@@ -69,11 +72,17 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 	<template v-else>
 		<div class="space-y-6">
 			<div>
-				<label class="label flex items-center gap-2 mb-2">
+				<label :for="kindId" class="label flex items-center gap-2 mb-2">
 					<GitBranchIcon class="w-4 h-4 text-warning" />
 					{{ t('components.conditions.conditionEditor.conditionType') }}
 				</label>
-				<select :value="modelValue.kind" class="input" @change="updateKind">
+				<select
+					:id="kindId"
+					:value="modelValue.kind"
+					class="input"
+					:aria-describedby="kindHintId"
+					@change="updateKind"
+				>
 					<option
 						v-for="m in Object.values(CONDITION_EDITOR_MODULES)"
 						:key="m.kind"
@@ -82,7 +91,7 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 						{{ t(m.label) }}
 					</option>
 				</select>
-				<p class="text-xs text-text-tertiary mt-1.5">
+				<p :id="kindHintId" class="text-xs text-text-tertiary mt-1.5">
 					{{ t('components.conditions.conditionEditor.conditionTypeHint') }}
 				</p>
 			</div>

@@ -145,7 +145,7 @@ beforeAll(() => {
 		},
 		useRouteId: () => computed(() => route.params['threadId']),
 		useThreadDetail: () => ({
-			thread: ref({ _id: 'ct_1', subject: 'Invoice' }),
+			thread: ref(threadValue),
 			messages,
 			contact: ref({ _id: 'c_1', firstName: 'Ana', lastName: 'Ruiz', email: 'ana@example.org' }),
 			followUps: ref([]),
@@ -185,6 +185,8 @@ beforeAll(() => {
 	});
 });
 let queryCount = 0;
+// The thread the page reads; null is a thread that is gone.
+let threadValue: { _id: string; subject: string } | null = { _id: 'ct_1', subject: 'Invoice' };
 
 beforeEach(() => {
 	state = new Map();
@@ -202,6 +204,7 @@ beforeEach(() => {
 	saveDraftOnly.mockClear();
 	runs.clear();
 	noteCount.value = 0;
+	threadValue = { _id: 'ct_1', subject: 'Invoice' };
 });
 
 const passThrough = (name: string) =>
@@ -264,6 +267,15 @@ async function mountPage() {
 }
 
 describe('Answer mode for a Team inbox thread', () => {
+	it('offers a way out of a thread that is gone, with no reply column left loading', async () => {
+		threadValue = null;
+		messages.value = [];
+		const wrapper = await mountPage();
+		expect(wrapper.find('[data-testid="answer-team-not-found"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="answer-not-found-leave"]').exists()).toBe(true);
+		expect(wrapper.findAllComponents({ name: 'UiSkeleton' })).toHaveLength(0);
+	});
+
 	it('is Answer mode for the team inbox, answering as the team inbox', async () => {
 		const wrapper = await mountPage();
 		expect(wrapper.get('[data-testid="answer-subject"]').text()).toBe('Invoice');

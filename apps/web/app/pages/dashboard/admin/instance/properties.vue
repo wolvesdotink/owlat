@@ -325,7 +325,12 @@ useClickOutsideSelector('[data-property-dropdown]', () => {
 			class="mb-6"
 		>
 			<template #actions>
-				<UiButton @click="openCreateModal()">
+				<!-- While the list is empty its empty state carries the primary create
+				     button, so this one steps down rather than showing two. -->
+				<UiButton
+					:variant="propertiesData && propertiesData.length === 0 ? 'secondary' : 'primary'"
+					@click="openCreateModal()"
+				>
 					<template #iconLeft>
 						<PlusIcon class="w-4 h-4" />
 					</template>

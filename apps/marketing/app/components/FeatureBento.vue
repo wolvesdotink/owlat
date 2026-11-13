@@ -5,15 +5,23 @@ const { t } = useI18n();
 
 const { target, isVisible } = useScrollReveal();
 
-// A/B test count-up percentages
-const variantA = useCountUp(24.2, { duration: 2200, decimals: 1 });
-const variantB = useCountUp(38.7, { duration: 2600, decimals: 1 });
+// A/B test count-up percentages. The count-up is rAF-driven, so the global
+// reduced-motion CSS does not reach it: under reduced motion it lands on the
+// final value in one frame instead of counting for over two seconds.
+const reducedMotion =
+	import.meta.client && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const variantA = useCountUp(24.2, { duration: reducedMotion ? 1 : 2200, decimals: 1 });
+const variantB = useCountUp(38.7, { duration: reducedMotion ? 1 : 2600, decimals: 1 });
 
 watch(isVisible, (v) => {
-	if (v) {
-		setTimeout(() => variantA.start(), 600);
-		setTimeout(() => variantB.start(), 750);
+	if (!v) return;
+	if (reducedMotion) {
+		variantA.start();
+		variantB.start();
+		return;
 	}
+	setTimeout(() => variantA.start(), 600);
+	setTimeout(() => variantB.start(), 750);
 });
 </script>
 
@@ -261,7 +269,7 @@ watch(isVisible, (v) => {
 	transform: none;
 }
 
-/* === Card surface: white, hairline, hover lift === */
+/* === Card surface: white, hairline. No hover lift: the cards are not links. === */
 .bento-card {
 	background: var(--surface-3);
 	border: 1px solid var(--color-border-subtle);
@@ -274,12 +282,6 @@ watch(isVisible, (v) => {
 		border-color var(--motion-fast) var(--ease-spring),
 		box-shadow var(--motion-fast) var(--ease-spring);
 	transition-delay: calc(var(--i, 0) * 0.05s);
-}
-
-.bento-card:hover {
-	border-color: var(--color-border-default);
-	box-shadow: var(--shadow-3);
-	transition-delay: 0s;
 }
 
 /* === Card content === */

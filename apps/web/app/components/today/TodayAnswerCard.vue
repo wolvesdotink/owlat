@@ -34,9 +34,15 @@ const props = withDefaults(
 		queueHref?: string;
 		/** The tab's inbox name, for the all-clear sentence. */
 		inboxName?: string;
+		/**
+		 * A read behind this tab's answers failed. With no rows that is not
+		 * "nothing needs an answer": the card says the read failed instead.
+		 */
+		error?: Error | null;
 	}>(),
-	{ queueTotal: undefined, queueHref: '/dashboard/answer', inboxName: undefined }
+	{ queueTotal: undefined, queueHref: '/dashboard/answer', inboxName: undefined, error: null }
 );
+const emit = defineEmits<{ retry: [] }>();
 
 const { t, locale } = useI18n();
 const TOP = 3;
@@ -183,11 +189,17 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			class="flex items-center gap-4 rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4"
 		>
 			<UiSkeleton class="size-9 rounded-lg" />
-			<div class="flex-1 space-y-2">
-				<UiSkeleton class="h-4 w-56" />
-				<UiSkeleton class="h-3 w-72" />
+			<div class="min-w-0 flex-1 space-y-2">
+				<UiSkeleton class="h-4 w-56 max-w-full" />
+				<UiSkeleton class="h-3 w-72 max-w-full" />
 			</div>
 		</div>
+
+		<UiQueryBoundary
+			v-else-if="error && items.length === 0"
+			:error="error"
+			@retry="emit('retry')"
+		/>
 
 		<div
 			v-else-if="items.length > 0"
@@ -255,18 +267,23 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 							>
 								<span class="min-w-0 flex-1">
 									<span class="flex min-w-0 items-center gap-1.5">
-										<span class="truncate text-sm font-medium text-text-primary">{{
-											rowTitle(item)
-										}}</span>
+										<span
+											class="truncate text-sm font-medium text-text-primary"
+											:title="rowTitle(item)"
+											>{{ rowTitle(item) }}</span
+										>
 										<span
 											v-if="rowMore(item)"
 											class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
 											>{{ rowMore(item) }}</span
 										>
 									</span>
-									<span v-if="rowDetail(item)" class="block truncate text-xs text-text-tertiary">{{
-										rowDetail(item)
-									}}</span>
+									<span
+										v-if="rowDetail(item)"
+										class="block truncate text-xs text-text-tertiary"
+										:title="rowDetail(item)"
+										>{{ rowDetail(item) }}</span
+									>
 								</span>
 								<span class="flex shrink-0 flex-col items-end gap-1">
 									<span v-if="rowDue(item)" class="text-2xs font-medium text-error">{{

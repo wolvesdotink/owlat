@@ -70,10 +70,11 @@ const save = useBackendOperation(api.booking.settings.saveMeetingType, {
 	inlineTarget: error,
 });
 
+const slugValid = computed(() => isValidBookingSlug(form.slug.trim()));
 const canSave = computed(
 	() =>
 		form.title.trim().length > 0 &&
-		isValidBookingSlug(form.slug.trim()) &&
+		slugValid.value &&
 		form.durationMinutes >= BOOKING_LIMITS.durationMinMinutes &&
 		form.durationMinutes <= BOOKING_LIMITS.durationMaxMinutes
 );
@@ -130,11 +131,22 @@ async function submit() {
 						v-model="form.slug"
 						type="text"
 						class="input w-full"
+						:class="{ 'input-error': form.slug && !slugValid }"
 						autocapitalize="off"
 						spellcheck="false"
 						:maxlength="BOOKING_LIMITS.slugMaxLength"
+						:aria-invalid="form.slug && !slugValid ? 'true' : undefined"
+						aria-describedby="meeting-slug-hint"
 						@input="slugTouched = true"
 					/>
+					<!-- Save stays disabled for an invalid link; say why. -->
+					<p
+						id="meeting-slug-hint"
+						class="mt-1 text-xs"
+						:class="slugValid || !form.slug ? 'text-text-tertiary' : 'text-error'"
+					>
+						{{ t('components.booking.profile.slugHint') }}
+					</p>
 				</div>
 				<div>
 					<label for="meeting-duration" class="mb-1 block text-sm font-medium">

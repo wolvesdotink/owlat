@@ -14,7 +14,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-const { run: updateFile } = useBackendOperation(api.files.library.update, {
+const { run: updateFile, isLoading: isSaving } = useBackendOperation(api.files.library.update, {
 	label: () => t('dashboard.files.detail.updateOperation'),
 });
 
@@ -33,6 +33,7 @@ const startEditThread = () => {
 };
 
 const saveThread = async () => {
+	if (isSaving.value) return;
 	// `null` clears the link; the mutation treats an omitted arg as "unchanged".
 	const result = await updateFile({
 		fileId: props.fileId,
@@ -49,18 +50,19 @@ const cancelEditThread = () => {
 </script>
 
 <template>
-	<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
+	<div class="bg-surface-2 shadow-surface-1 rounded-(--radius-card) p-5">
 		<div class="flex items-center justify-between mb-3">
 			<h3 class="text-sm font-semibold text-text-primary">
 				{{ t('dashboard.files.detail.linkedConversation') }}
 			</h3>
 			<button
 				v-if="!isEditingThread && isAdmin"
-				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+				type="button"
+				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				:aria-label="t('dashboard.files.detail.editLinkedConversation')"
 				@click="startEditThread"
 			>
-				<PencilIcon class="w-3.5 h-3.5" />
+				<PencilIcon class="w-3.5 h-3.5" aria-hidden="true" />
 			</button>
 		</div>
 
@@ -68,15 +70,12 @@ const cancelEditThread = () => {
 		<div v-if="isEditingThread" class="space-y-3">
 			<FilesThreadPicker v-model="editThread" />
 			<div class="flex items-center gap-2">
-				<button class="text-xs text-brand font-medium hover:underline" @click="saveThread">
+				<UiButton size="sm" :loading="isSaving" @click="saveThread">
 					{{ t('common.save') }}
-				</button>
-				<button
-					class="text-xs text-text-tertiary hover:text-text-primary"
-					@click="cancelEditThread"
-				>
+				</UiButton>
+				<UiButton variant="ghost" size="sm" :disabled="isSaving" @click="cancelEditThread">
 					{{ t('common.cancel') }}
-				</button>
+				</UiButton>
 			</div>
 		</div>
 
@@ -87,8 +86,11 @@ const cancelEditThread = () => {
 				:to="`/dashboard/inbox/${linkedThread._id}`"
 				class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
 			>
-				<ChatIcon class="w-4 h-4 text-text-tertiary" />
-				<span class="text-sm text-brand hover:underline truncate">
+				<ChatIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" aria-hidden="true" />
+				<span
+					class="text-sm text-brand hover:underline truncate"
+					:title="threadPickerLabel(linkedThread)"
+				>
 					{{ threadPickerLabel(linkedThread) }}
 				</span>
 			</NuxtLink>

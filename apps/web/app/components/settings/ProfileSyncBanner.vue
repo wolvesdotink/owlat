@@ -32,10 +32,31 @@ const { t } = useI18n();
 // so mounting both surfaces still issues one request per page load).
 onMounted(hydrateFromProbe);
 
-// Compose reports its own state words (`running`, `healthy`, …) — they stay as
-// the daemon spells them; only the "we were told nothing" case is our copy.
+// Compose reports its own state words (`running`, `healthy`, …). The ones it
+// documents read as an outcome in the operator's language; anything else is
+// shown as the daemon spells it, and "we were told nothing" is our copy.
+const KNOWN_STATES = [
+	'healthy',
+	'unhealthy',
+	'starting',
+	'running',
+	'restarting',
+	'exited',
+	'created',
+	'paused',
+	'dead',
+] as const;
+type KnownState = (typeof KNOWN_STATES)[number];
+const isKnownState = (value: string): value is KnownState =>
+	(KNOWN_STATES as readonly string[]).includes(value);
+
 function serviceStateLabel(result: ProfileServiceResult): string {
-	return result.health || result.state || result.status || t('common.unknown');
+	const raw = result.health || result.state || result.status;
+	if (!raw) return t('common.unknown');
+	const normalized = raw.toLowerCase();
+	return isKnownState(normalized)
+		? t(`components.settings.profileSyncBanner.states.${normalized}`)
+		: raw;
 }
 </script>
 
@@ -136,14 +157,14 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 					{{ t('components.settings.profileSyncBanner.convergedBody') }}
 				</p>
 			</div>
-			<button
-				type="button"
+			<UiButton
+				variant="ghost"
+				size="sm"
 				data-testid="profile-sync-dismiss"
-				class="text-sm text-text-tertiary hover:text-text-primary"
 				@click="dismissResults"
 			>
 				{{ t('common.dismiss') }}
-			</button>
+			</UiButton>
 		</div>
 	</div>
 </template>

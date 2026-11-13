@@ -18,6 +18,9 @@ const selectedMembers = ref<{ memberId: string; label: string }[]>([]);
 const { candidates } = useChatMentionSearch(() => memberQuery.value, { includeAssistant: false });
 const { createChannel } = useChatActions();
 const isCreating = ref(false);
+const nameId = useId();
+const descriptionId = useId();
+const visibilityLabelId = useId();
 const error = ref<string | null>(null);
 
 const selectedIds = computed(() => new Set(selectedMembers.value.map((m) => m.memberId)));
@@ -37,9 +40,9 @@ const handleSubmit = async () => {
 			initialMemberIds: selectedMembers.value.map((m) => m.memberId),
 		});
 		if (id.ok) emit('created', id.result);
-	} catch (e) {
-		error.value =
-			e instanceof Error ? e.message : t('components.chat.chatNewChannelDialog.createFailed');
+	} catch {
+		// The server's own message is English and internal; say it in the reader's language.
+		error.value = t('components.chat.chatNewChannelDialog.createFailed');
 	} finally {
 		isCreating.value = false;
 	}
@@ -50,11 +53,11 @@ const handleSubmit = async () => {
 	<ChatDialogShell :title="t('components.chat.chatNewChannelDialog.title')" @close="emit('close')">
 		<div class="px-5 py-4 space-y-4">
 			<div>
-				<label for="name" class="block text-sm font-medium text-text-secondary mb-1.5">
+				<label :for="nameId" class="block text-sm font-medium text-text-secondary mb-1.5">
 					{{ t('common.name') }}
 				</label>
 				<input
-					id="name"
+					:id="nameId"
 					v-model="name"
 					type="text"
 					:placeholder="t('components.chat.chatNewChannelDialog.namePlaceholder')"
@@ -63,14 +66,14 @@ const handleSubmit = async () => {
 				/>
 			</div>
 			<div>
-				<label for="description" class="block text-sm font-medium text-text-secondary mb-1.5">
+				<label :for="descriptionId" class="block text-sm font-medium text-text-secondary mb-1.5">
 					{{ t('common.description') }}
 					<span class="text-text-tertiary font-normal">
 						{{ t('components.chat.chatNewChannelDialog.optionalHint') }}
 					</span>
 				</label>
 				<input
-					id="description"
+					:id="descriptionId"
 					v-model="description"
 					type="text"
 					:placeholder="t('components.chat.chatNewChannelDialog.descriptionPlaceholder')"
@@ -78,15 +81,16 @@ const handleSubmit = async () => {
 				/>
 			</div>
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-1.5">
+				<span :id="visibilityLabelId" class="block text-sm font-medium text-text-secondary mb-1.5">
 					{{ t('components.chat.chatNewChannelDialog.visibility') }}
-				</label>
-				<div class="flex gap-2">
+				</span>
+				<div role="group" :aria-labelledby="visibilityLabelId" class="flex gap-2">
 					<UiButton
 						variant="outline"
 						size="sm"
 						class="flex-1"
 						:class="visibility === 'public' ? 'bg-brand-subtle text-brand' : ''"
+						:aria-pressed="visibility === 'public'"
 						@click="visibility = 'public'"
 					>
 						<template #iconLeft>
@@ -99,6 +103,7 @@ const handleSubmit = async () => {
 						size="sm"
 						class="flex-1"
 						:class="visibility === 'private' ? 'bg-brand-subtle text-brand' : ''"
+						:aria-pressed="visibility === 'private'"
 						@click="visibility = 'private'"
 					>
 						<template #iconLeft>
@@ -107,6 +112,13 @@ const handleSubmit = async () => {
 						{{ t('components.chat.chatNewChannelDialog.private') }}
 					</UiButton>
 				</div>
+				<p class="text-xs text-text-tertiary mt-1.5">
+					{{
+						visibility === 'private'
+							? t('components.chat.chatNewChannelDialog.visibilityHint.private')
+							: t('components.chat.chatNewChannelDialog.visibilityHint.public')
+					}}
+				</p>
 			</div>
 
 			<ChatMemberPicker

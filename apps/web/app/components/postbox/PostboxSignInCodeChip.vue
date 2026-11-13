@@ -53,7 +53,7 @@ function onClick(event: MouseEvent) {
 		<button
 			type="button"
 			class="pbx-sign-in-chip inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-brand/40 text-brand hover:bg-brand/10 whitespace-nowrap flex-shrink-0"
-			:class="size === 'reader' ? 'mt-3 text-xs' : 'text-[11px]'"
+			:class="size === 'reader' ? 'mt-3 text-xs' : 'text-2xs'"
 			:aria-label="label"
 			data-testid="sign-in-code-chip"
 			@click="onClick"

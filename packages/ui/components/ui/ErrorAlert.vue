@@ -38,27 +38,35 @@ defineEmits<{
 
 const variantConfig: Record<
 	AlertVariant,
-	{ icon: IconComponent; containerClass: string; iconClass: string }
+	{ icon: IconComponent; containerClass: string; iconClass: string; messageClass: string }
 > = {
+	// Literal class strings: a built `${iconClass}/80` is never seen by the
+	// Tailwind scanner, so the message would render with no colour at all.
+	// Info is the info tone, not brand: brand text is below 4.5:1 in light mode
+	// and terracotta is reserved for actions.
 	error: {
 		icon: CircleWarningIcon,
 		containerClass: 'bg-error/10 border-error/20',
 		iconClass: 'text-error',
+		messageClass: 'text-text-secondary',
 	},
 	warning: {
 		icon: TriangleWarningIcon,
 		containerClass: 'bg-warning/10 border-warning/20',
 		iconClass: 'text-warning',
+		messageClass: 'text-text-secondary',
 	},
 	info: {
 		icon: CircleInfoIcon,
-		containerClass: 'bg-brand/10 border-brand/20',
-		iconClass: 'text-brand',
+		containerClass: 'bg-info/10 border-info/20',
+		iconClass: 'text-info',
+		messageClass: 'text-text-secondary',
 	},
 	success: {
 		icon: CircleCheckIcon,
 		containerClass: 'bg-success/10 border-success/20',
 		iconClass: 'text-success',
+		messageClass: 'text-text-secondary',
 	},
 };
 
@@ -79,15 +87,19 @@ const displayTitle = computed(() => props.title ?? t(defaultTitleKeys[props.vari
 </script>
 
 <template>
-	<div :class="['p-4 border rounded-lg flex items-start gap-3', config.containerClass]">
+	<div
+		:role="variant === 'error' ? 'alert' : 'status'"
+		:class="['p-4 border rounded-lg flex items-start gap-3', config.containerClass]"
+	>
 		<component
 			:is="config.icon"
 			:class="['w-5 h-5 shrink-0 mt-0.5', config.iconClass]"
 			size="1em"
+			aria-hidden="true"
 		/>
 		<div>
 			<p :class="['text-sm font-medium', config.iconClass]">{{ displayTitle }}</p>
-			<p :class="['text-sm', `${config.iconClass}/80`]">{{ message }}</p>
+			<p :class="['text-sm', config.messageClass]">{{ message }}</p>
 			<UiButton
 				v-if="actionLabel"
 				variant="secondary"

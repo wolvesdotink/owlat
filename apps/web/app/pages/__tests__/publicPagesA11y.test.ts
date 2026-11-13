@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { useNow } from '~/composables/useNow';
 import UnsubscribePage from '../unsubscribe.vue';
 import PreferencesPage from '../preferences.vue';
 import ConfirmPage from '../confirm.vue';
@@ -73,6 +74,8 @@ function stubRecipientFetch(): void {
 beforeEach(() => {
 	installNuxtStubs({
 		...i18nStubs,
+		// The shared-campaign countdown ticks on the app clock.
+		useNow,
 		useRoute: () => ({ path: '/', fullPath: '/', query: { token: 'tok' }, params: {}, meta: {} }),
 		// The confirm page reads its submission straight off the Convex client.
 		useConvex: () => ({

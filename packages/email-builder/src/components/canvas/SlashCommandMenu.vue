@@ -1,3 +1,30 @@
+<script lang="ts">
+import type { SlashCommand as Command } from '../../types';
+
+/** Category display order; commands in any other category come last. */
+const CATEGORY_ORDER = ['text', 'media', 'layout', 'components', 'brand', 'saved'] as const;
+
+/**
+ * The commands in the order the menu shows them: grouped by category, registry
+ * order inside a group. The editor confirms the highlighted index against THIS
+ * list, so the row Enter inserts is the row that is highlighted (the registry
+ * order puts a component before some layout commands).
+ */
+/** One slash menu is open at a time (it follows the caret of the active editor). */
+export const SLASH_MENU_ID = 'eb-slash-menu';
+
+export function orderSlashCommands(commands: readonly Command[]): Command[] {
+	const rank = (category: string) => {
+		const index = (CATEGORY_ORDER as readonly string[]).indexOf(category);
+		return index === -1 ? CATEGORY_ORDER.length : index;
+	};
+	return commands
+		.map((command, index) => ({ command, index }))
+		.sort((a, b) => rank(a.command.category) - rank(b.command.category) || a.index - b.index)
+		.map(({ command }) => command);
+}
+</script>
+
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import type { SlashCommand } from '../../types';
@@ -19,8 +46,10 @@ const emit = defineEmits<{
 
 const listEl = ref<HTMLElement | null>(null);
 
-// Category display order
-const categoryOrder = ['text', 'media', 'layout', 'components', 'brand', 'saved'] as const;
+/** The editor points aria-activedescendant at `${listId}-option-${index}`. */
+const listId = SLASH_MENU_ID;
+
+const categoryOrder = CATEGORY_ORDER;
 const categoryLabelKeys: Record<string, string> = {
 	text: 'builder.canvas.categories.text',
 	media: 'builder.canvas.categories.media',
@@ -76,6 +105,7 @@ watch(() => props.selectedIndex, () => {
 
 <template>
 	<div
+		:id="listId"
 		role="listbox"
 		:aria-label="t('builder.canvas.blockTypes')"
 		class="absolute z-[100] w-60 max-h-[280px] overflow-y-auto bg-bg-elevated border border-border-subtle rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.25)] p-1"
@@ -84,37 +114,38 @@ watch(() => props.selectedIndex, () => {
 			left: `${position.left}px`,
 		}"
 	>
-		<div v-if="commands.length === 0" class="p-3 text-[13px] text-text-tertiary text-center">
+		<div v-if="commands.length === 0" class="p-3 text-caption text-text-tertiary text-center">
 			{{ t('builder.canvas.noMatches') }}
 		</div>
 		<div v-else ref="listEl" class="flex flex-col">
 			<template v-for="group in groupedCommands" :key="group.category">
-				<div class="text-[10px] font-semibold uppercase tracking-[0.04em] text-text-tertiary py-1.5 px-2 mt-0.5 first:mt-0">{{ group.label }}</div>
+				<div class="text-2xs font-semibold uppercase tracking-[0.04em] text-text-tertiary py-1.5 px-2 mt-0.5 first:mt-0">{{ group.label }}</div>
 				<button
 					v-for="{ command, text, globalIndex } in group.commands"
 					:key="command.id"
+					:id="`${listId}-option-${globalIndex}`"
 					role="option"
 					:aria-selected="globalIndex === selectedIndex"
 					:data-index="globalIndex"
 					class="flex items-center gap-2 py-1.5 px-2 border-none rounded-md bg-transparent cursor-pointer w-full text-left transition-[background-color,box-shadow] duration-(--motion-fast) hover:bg-bg-surface-hover"
-					:class="globalIndex === selectedIndex && '!bg-[rgba(196,120,90,0.12)] shadow-[inset_0_0_0_1px_rgba(196,120,90,0.2)]'"
+					:class="globalIndex === selectedIndex && '!bg-brand/10 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-brand)_25%,transparent)]'"
 					@mousedown.prevent="emit('select', command)"
 				>
 					<component
 						:is="command.icon"
 						v-if="command.icon"
 						class="shrink-0 w-4 h-4 transition-colors duration-(--motion-fast)"
-						:class="globalIndex === selectedIndex ? 'text-[rgb(196,120,90)]' : 'text-text-secondary'"
+						:class="globalIndex === selectedIndex ? 'text-brand' : 'text-text-secondary'"
 						:size="16"
 					/>
-					<div v-else class="shrink-0 w-4 h-4 rounded-[3px]" :class="globalIndex === selectedIndex ? 'bg-[rgba(196,120,90,0.2)]' : 'bg-bg-surface'" />
+					<div v-else class="shrink-0 w-4 h-4 rounded-[3px]" :class="globalIndex === selectedIndex ? 'bg-brand/20' : 'bg-bg-surface'" />
 					<div class="flex flex-col gap-px min-w-0">
 						<span
-							class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+							class="text-caption font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
 							>{{ text.name }}</span
 						>
 						<span
-							class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis"
+							class="text-2xs text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis"
 							>{{ text.description }}</span
 						>
 					</div>

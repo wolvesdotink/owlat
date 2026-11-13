@@ -57,6 +57,8 @@ const mountGlobal = {
 		UiAvatar: { template: '<span />' },
 		UiButton: { template: '<button type="button"><slot /></button>' },
 		NuxtLink: { props: ['to'], template: '<a><slot /></a>' },
+		UiSkeleton: { template: '<span />' },
+		UiQueryBoundary: { props: ['error'], template: '<div />' },
 	},
 	stubs: { teleport: true },
 };

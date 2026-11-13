@@ -22,6 +22,9 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { useClickOutside } from '~/composables/useClickOutside';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
+import { postboxFolderLabel } from '~/composables/postbox/usePostboxFolderName';
 import {
 	ArchiveIcon,
 	CloseIcon,
@@ -54,7 +57,42 @@ const bulk = usePostboxBulkActions(computed(() => props.selectionScope ?? props.
 const { folders } = usePostboxFolders(mailboxIdRef);
 
 const moveOpen = ref(false);
+const moveWrapEl = ref<HTMLElement | null>(null);
+const moveMenuEl = ref<HTMLElement | null>(null);
 const confirm = useConfirm();
+
+// The Move menu follows the menu-button pattern: Esc and an outside click
+// close it, the first folder takes focus on open, and the arrows, Home and End
+// move between folders.
+useClickOutside(moveWrapEl, () => (moveOpen.value = false));
+useEscapeToClose(moveOpen);
+function moveItems(): HTMLElement[] {
+	return Array.from(moveMenuEl.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+}
+watch(moveOpen, async (open) => {
+	if (!open) return;
+	await nextTick();
+	moveItems()[0]?.focus();
+});
+function onMoveMenuKeydown(event: KeyboardEvent) {
+	const items = moveItems();
+	if (items.length === 0) return;
+	const current = items.indexOf(event.target as HTMLElement);
+	let next: HTMLElement | undefined;
+	if (event.key === 'ArrowDown') next = items[(current + 1) % items.length];
+	else if (event.key === 'ArrowUp') next = items[(current - 1 + items.length) % items.length];
+	else if (event.key === 'Home') next = items[0];
+	else if (event.key === 'End') next = items[items.length - 1];
+	else return;
+	event.preventDefault();
+	next?.focus();
+}
+
+// The same names the folder list and the move picker show for system
+// folders. A custom folder keeps its own name.
+function folderLabel(folder: { role?: string; name: string }): string {
+	return postboxFolderLabel(t, folder);
+}
 
 /**
  * The selected ids that are rows of this view. The folder verbs below
@@ -149,11 +187,13 @@ const movableFolders = computed(() =>
 					</UiButton>
 				</UiTooltip>
 				<span class="w-px h-4 bg-border-subtle mx-1" />
-				<div v-if="mailboxId" class="relative">
+				<div v-if="mailboxId" ref="moveWrapEl" class="relative">
 					<UiButton
 						variant="ghost"
 						size="sm"
 						class="gap-1.5 px-2 py-1"
+						aria-haspopup="menu"
+						:aria-expanded="moveOpen"
 						@click="moveOpen = !moveOpen"
 					>
 						<template #iconLeft>
@@ -163,19 +203,24 @@ const movableFolders = computed(() =>
 					</UiButton>
 					<div
 						v-if="moveOpen"
+						ref="moveMenuEl"
+						role="menu"
+						:aria-label="t('components.postbox.postboxQuickActionsBar.move')"
 						class="absolute top-full mt-1 left-0 bg-bg-elevated border border-border-subtle rounded shadow-lg w-44 max-h-64 overflow-auto z-20"
+						@keydown="onMoveMenuKeydown"
 					>
 						<button
 							v-for="folder in movableFolders"
 							:key="folder._id"
 							type="button"
-							class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface capitalize"
+							role="menuitem"
+							class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface focus-visible:bg-bg-surface focus-visible:outline-none"
 							@click="
 								bulk.moveSelected(folder._id, folder.role === 'trash');
 								moveOpen = false;
 							"
 						>
-							{{ folder.role ?? folder.name }}
+							{{ folderLabel(folder) }}
 						</button>
 					</div>
 				</div>
@@ -258,7 +303,7 @@ const movableFolders = computed(() =>
 				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')">
 					<button
 						type="button"
-						class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 						:aria-label="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
 						@click="bulk.clear()"
 					>

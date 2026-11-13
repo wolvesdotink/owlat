@@ -220,7 +220,11 @@ const overlayAdvanceIds = computed(() => [
 const openListMessage = computed(() =>
 	openMessageId.value ? messages.value.find((m) => m._id === openMessageId.value) : undefined
 );
-const { data: fetchedOpenMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
+const {
+	data: fetchedOpenMessage,
+	error: fetchedOpenError,
+	refetch: refetchOpenMessage,
+} = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	openMessageId.value && !openListMessage.value
 		? { messageId: openMessageId.value as Id<'mailMessages'> }
 		: 'skip'
@@ -297,7 +301,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 				:aria-label="t('postbox.priority.needsYou.title')"
 			>
 				<h2
-					class="flex items-baseline text-[11px] font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
+					class="flex items-baseline text-2xs font-semibold uppercase tracking-wider text-text-tertiary tabular-nums"
 				>
 					{{ t('postbox.priority.needsYou.title') }}
 					<NuxtLink
@@ -336,7 +340,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 				id="postbox-today"
 				:aria-label="t('postbox.priority.everythingElse.title')"
 			>
-				<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+				<h2 class="text-2xs font-semibold uppercase tracking-wider text-text-tertiary">
 					{{ t('postbox.priority.everythingElse.title') }}
 				</h2>
 				<div
@@ -416,7 +420,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 					v-else-if="showPast"
 					:aria-label="t('components.postbox.postboxTodayView.pastMails')"
 				>
-					<h2 class="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+					<h2 class="text-2xs font-semibold uppercase tracking-wider text-text-tertiary">
 						{{ t('components.postbox.postboxTodayView.past') }}
 					</h2>
 					<div class="mt-2 rounded-lg border border-border-subtle bg-bg-surface overflow-hidden">
@@ -441,13 +445,20 @@ function onModeSelect(mode: PostboxInboxMode) {
 		     Fades in with the reader's enter-only swap and closes in the same
 		     frame; the list underneath keeps its scroll and selection for
 		     Esc/scrim return. -->
+		<!-- Opens on the id, not on the row: a message outside the loaded feed
+		     shows its loading, failed or gone state in the overlay instead of the
+		     overlay never appearing. -->
 		<PostboxTodayReaderOverlay
-			v-if="overlayMessage"
+			v-if="openMessageId"
 			class="pbx-reader-swap"
 			:message="overlayMessage"
+			:message-id="openMessageId"
+			:error="openListMessage ? null : fetchedOpenError"
+			:not-found="!openListMessage && fetchedOpenMessage === null"
 			:advance-ids="overlayAdvanceIds"
 			@open="openMessageId = $event"
 			@close="closeOverlay"
+			@retry="refetchOpenMessage"
 		/>
 	</div>
 </template>

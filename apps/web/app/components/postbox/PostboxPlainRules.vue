@@ -161,14 +161,15 @@ async function testRule(filterId: Id<'mailFilters'>) {
 		</p>
 		<ul v-else-if="rules.length > 0" class="mt-3 divide-y divide-border-subtle">
 			<li v-for="rule in rules" :key="rule._id" class="py-3">
-				<div class="flex items-start gap-3">
+				<!-- Wraps: on a phone Test and Delete drop below the rule text. -->
+				<div class="flex flex-wrap items-start gap-3">
 					<UiSwitch
 						class="mt-0.5"
 						:model-value="rule.isEnabled"
 						:label="`${t('common.enabled')}: ${rule.name}`"
 						@update:model-value="(on: boolean) => emit('toggle', rule._id, on)"
 					/>
-					<div class="min-w-0 flex-1">
+					<div class="min-w-0 flex-1 basis-48">
 						<p class="text-sm font-medium">{{ rule.name }}</p>
 						<p v-if="rule.sourceText" class="text-xs text-text-tertiary">“{{ rule.sourceText }}”</p>
 						<PostboxRuleChips
@@ -194,10 +195,9 @@ async function testRule(filterId: Id<'mailFilters'>) {
 						{{ t('postbox.rules.test') }}
 					</UiButton>
 					<UiButton
-						variant="ghost"
+						variant="danger-ghost"
 						size="sm"
 						type="button"
-						class="text-error"
 						@click="emit('remove', rule._id)"
 					>
 						{{ t('common.delete') }}

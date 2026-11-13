@@ -121,16 +121,6 @@ const presentedLogs = computed(() =>
 						{{ formatTimestamp(entry.log.createdAt) }}
 					</p>
 				</div>
-
-				<!-- Resource Icon -->
-				<div class="flex-shrink-0">
-					<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-						<component
-							:is="getResourceIcon(entry.log.resource)"
-							class="w-4 h-4 text-text-secondary"
-						/>
-					</div>
-				</div>
 			</div>
 		</div>
 

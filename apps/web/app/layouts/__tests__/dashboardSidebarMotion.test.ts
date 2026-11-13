@@ -160,3 +160,35 @@ describe('dashboard layout — the Postbox folds the sidebar on its own', () => 
 		expect(rail().classList.contains('w-64')).toBe(true);
 	});
 });
+
+describe('dashboard layout — the closed phone drawer', () => {
+	const realMatchMedia = window.matchMedia;
+	afterEach(() => {
+		window.matchMedia = realMatchMedia;
+	});
+
+	it('is inert below lg, so Tab never walks its off-screen links', async () => {
+		window.matchMedia = (query: string) =>
+			query === '(min-width: 1024px)'
+				? ({
+						matches: false,
+						media: query,
+						onchange: null,
+						addEventListener: () => {},
+						removeEventListener: () => {},
+						addListener: () => {},
+						removeListener: () => {},
+						dispatchEvent: () => false,
+					} as MediaQueryList)
+				: realMatchMedia.call(window, query);
+		mountLayout();
+		await nextTick();
+		expect(rail().hasAttribute('inert')).toBe(true);
+	});
+
+	it('stays reachable on desktop', async () => {
+		mountLayout();
+		await nextTick();
+		expect(rail().hasAttribute('inert')).toBe(false);
+	});
+});

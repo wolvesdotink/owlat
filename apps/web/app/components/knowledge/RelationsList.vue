@@ -9,7 +9,7 @@ type Relation = {
 	toEntryId: string;
 };
 
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		outgoingRelations: Relation[];
 		incomingRelations: Relation[];
@@ -23,7 +23,7 @@ withDefaults(
 		 */
 		readonly?: boolean;
 	}>(),
-	{ readonly: false },
+	{ readonly: false }
 );
 
 const emit = defineEmits<{
@@ -45,14 +45,26 @@ const entryTypeLabel = (type: string) => {
 	const key = `components.knowledge.relationsList.entryTypes.${type}`;
 	return te(key) ? t(key) : typeLabel(type);
 };
+// An entry the map does not resolve (deleted, or not visible to this member)
+// gets a readable placeholder, never its raw id.
+const entryTitle = (entryId: string) =>
+	props.entryMap?.[entryId]?.title ?? t('components.knowledge.relationsList.unknownEntry');
+const entryTypeChipClass = (type: string) =>
+	({
+		default: 'bg-brand-subtle text-brand',
+		warning: 'bg-warning/10 text-warning',
+		neutral: 'bg-bg-surface text-text-tertiary',
+		success: 'bg-success-subtle text-success',
+		error: 'bg-error/10 text-error',
+	})[typeVariant(type)] ?? 'bg-bg-surface text-text-tertiary';
 </script>
 
 <template>
-	<div class="space-y-6">
+	<div class="@container space-y-6">
 		<!-- Outgoing Relations -->
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
-				<ArrowRightIcon class="w-4 h-4" />
+				<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
 				{{ t('components.knowledge.relationsList.outgoing') }}
 				<span class="text-text-tertiary font-normal">{{
 					t('components.knowledge.relationsList.count', { count: outgoingRelations.length })
@@ -69,7 +81,7 @@ const entryTypeLabel = (type: string) => {
 					:key="`out-${rel._id}`"
 					class="flex items-center gap-3 py-2 px-3 rounded-lg bg-bg-surface group"
 				>
-					<ArrowRightIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
+					<ArrowRightIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" aria-hidden="true" />
 
 					<span
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
@@ -78,36 +90,38 @@ const entryTypeLabel = (type: string) => {
 						{{ relationTypeLabel(rel.relationType) }}
 					</span>
 
+					<!-- native-title: the full title of an entry the link truncates -->
 					<NuxtLink
 						:to="`/dashboard/knowledge/${rel.toEntryId}`"
-						class="text-sm text-text-primary hover:text-brand transition-colors truncate"
+						class="min-w-0 flex-1 text-sm text-text-primary hover:text-brand transition-colors truncate"
+						:title="entryTitle(rel.toEntryId)"
 					>
-						{{ entryMap?.[rel.toEntryId]?.title ?? rel.toEntryId }}
+						{{ entryTitle(rel.toEntryId) }}
 					</NuxtLink>
 
+					<!-- The entry type is secondary: it gives way first in a narrow
+					     container (the graph side panel, a phone-width card). -->
 					<span
 						v-if="entryMap?.[rel.toEntryId]?.entryType"
-						class="text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0 ml-auto"
-						:class="{
-							'bg-brand-subtle text-brand': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'default',
-							'bg-warning/10 text-warning': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'warning',
-							'bg-bg-surface text-text-tertiary': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'neutral',
-							'bg-success-subtle text-success': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'success',
-							'bg-error/10 text-error': typeVariant(entryMap?.[rel.toEntryId]?.entryType ?? '') === 'error',
-						}"
+						class="hidden @sm:inline text-2xs font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0"
+						:class="entryTypeChipClass(entryMap?.[rel.toEntryId]?.entryType ?? '')"
 					>
 						{{ entryTypeLabel(entryMap?.[rel.toEntryId]?.entryType ?? '') }}
 					</span>
 
+					<!-- Hover-revealed on a mouse; always shown on touch, where there is no hover. -->
 					<button
 						v-if="!readonly"
 						type="button"
-						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-						:class="entryMap?.[rel.toEntryId]?.entryType ? '' : 'ml-auto'"
-						:aria-label="t('components.knowledge.relationsList.removeRelation')"
+						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="
+							t('components.knowledge.relationsList.removeRelationNamed', {
+								title: entryTitle(rel.toEntryId),
+							})
+						"
 						@click="emit('remove', rel._id)"
 					>
-						<CloseIcon class="w-3.5 h-3.5" />
+						<CloseIcon class="w-3.5 h-3.5" aria-hidden="true" />
 					</button>
 				</div>
 			</div>
@@ -116,7 +130,7 @@ const entryTypeLabel = (type: string) => {
 		<!-- Incoming Relations -->
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
-				<ArrowLeftIcon class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" aria-hidden="true" />
 				{{ t('components.knowledge.relationsList.incoming') }}
 				<span class="text-text-tertiary font-normal">{{
 					t('components.knowledge.relationsList.count', { count: incomingRelations.length })
@@ -133,7 +147,7 @@ const entryTypeLabel = (type: string) => {
 					:key="`in-${rel._id}`"
 					class="flex items-center gap-3 py-2 px-3 rounded-lg bg-bg-surface group"
 				>
-					<ArrowLeftIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
+					<ArrowLeftIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" aria-hidden="true" />
 
 					<span
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
@@ -142,36 +156,38 @@ const entryTypeLabel = (type: string) => {
 						{{ relationTypeLabel(rel.relationType) }}
 					</span>
 
+					<!-- native-title: the full title of an entry the link truncates -->
 					<NuxtLink
 						:to="`/dashboard/knowledge/${rel.fromEntryId}`"
-						class="text-sm text-text-primary hover:text-brand transition-colors truncate"
+						class="min-w-0 flex-1 text-sm text-text-primary hover:text-brand transition-colors truncate"
+						:title="entryTitle(rel.fromEntryId)"
 					>
-						{{ entryMap?.[rel.fromEntryId]?.title ?? rel.fromEntryId }}
+						{{ entryTitle(rel.fromEntryId) }}
 					</NuxtLink>
 
+					<!-- The entry type is secondary: it gives way first in a narrow
+					     container (the graph side panel, a phone-width card). -->
 					<span
 						v-if="entryMap?.[rel.fromEntryId]?.entryType"
-						class="text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0 ml-auto"
-						:class="{
-							'bg-brand-subtle text-brand': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'default',
-							'bg-warning/10 text-warning': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'warning',
-							'bg-bg-surface text-text-tertiary': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'neutral',
-							'bg-success-subtle text-success': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'success',
-							'bg-error/10 text-error': typeVariant(entryMap?.[rel.fromEntryId]?.entryType ?? '') === 'error',
-						}"
+						class="hidden @sm:inline text-2xs font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide flex-shrink-0"
+						:class="entryTypeChipClass(entryMap?.[rel.fromEntryId]?.entryType ?? '')"
 					>
 						{{ entryTypeLabel(entryMap?.[rel.fromEntryId]?.entryType ?? '') }}
 					</span>
 
+					<!-- Hover-revealed on a mouse; always shown on touch, where there is no hover. -->
 					<button
 						v-if="!readonly"
 						type="button"
-						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-						:class="entryMap?.[rel.fromEntryId]?.entryType ? '' : 'ml-auto'"
-						:aria-label="t('components.knowledge.relationsList.removeRelation')"
+						class="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="
+							t('components.knowledge.relationsList.removeRelationNamed', {
+								title: entryTitle(rel.fromEntryId),
+							})
+						"
 						@click="emit('remove', rel._id)"
 					>
-						<CloseIcon class="w-3.5 h-3.5" />
+						<CloseIcon class="w-3.5 h-3.5" aria-hidden="true" />
 					</button>
 				</div>
 			</div>

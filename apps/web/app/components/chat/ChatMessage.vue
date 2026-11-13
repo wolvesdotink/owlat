@@ -12,6 +12,12 @@ interface Props {
 	currentUserId: string;
 	/** The composer's ↑ asked to edit this message: open the editor and focus it. */
 	editRequested?: boolean;
+	/**
+	 * Saves an edit and reports whether it landed. With it, the editor stays
+	 * open with the typed text when the save fails; without it the row only
+	 * emits `edit` and closes.
+	 */
+	saveEdit?: (messageId: Id<'chatMessages'>, text: string) => Promise<{ ok: boolean }>;
 }
 
 const props = defineProps<Props>();
@@ -25,6 +31,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n();
 
 const isEditing = ref(false);
+const isSaving = ref(false);
 const editText = ref(props.message.text);
 watch(isEditing, (active) => emit('editing', props.message._id, active));
 
@@ -83,14 +90,27 @@ const closeEdit = () => {
 	if (focusWillBeLost && target?.isConnected) void nextTick(() => target.focus());
 };
 const cancelEdit = closeEdit;
-const saveEdit = () => {
+const saveEdit = async () => {
+	if (isSaving.value) return;
 	const trimmed = editText.value.trim();
 	if (!trimmed || trimmed === props.message.text) {
 		cancelEdit();
 		return;
 	}
-	emit('edit', props.message._id, trimmed);
-	closeEdit();
+	if (!props.saveEdit) {
+		emit('edit', props.message._id, trimmed);
+		closeEdit();
+		return;
+	}
+	isSaving.value = true;
+	try {
+		// A failed save has been toasted by the operation; the editor keeps
+		// the typed text so the person can try again.
+		const outcome = await props.saveEdit(props.message._id, trimmed);
+		if (outcome.ok) closeEdit();
+	} finally {
+		isSaving.value = false;
+	}
 };
 
 const openEditorFromKeyboard = () => {
@@ -159,8 +179,8 @@ const aiTyping = computed(
 		<div class="flex-1 min-w-0 max-w-3xl">
 			<div class="flex items-baseline gap-2">
 				<span class="text-sm font-semibold text-text-primary truncate">{{ displayName }}</span>
-				<span class="text-[11px] text-text-tertiary">{{ formattedTime }}</span>
-				<span v-if="message.editedAt" class="text-[11px] text-text-tertiary italic">
+				<span class="text-2xs text-text-tertiary">{{ formattedTime }}</span>
+				<span v-if="message.editedAt" class="text-2xs text-text-tertiary italic">
 					{{ t('components.chat.chatMessage.edited') }}
 				</span>
 			</div>
@@ -172,14 +192,18 @@ const aiTyping = computed(
 					v-model="editText"
 					rows="2"
 					class="w-full input resize-none"
+					:aria-label="t('components.chat.chatMessage.editLabel')"
+					:readonly="isSaving"
 					@keydown.enter.exact.prevent="saveEdit"
 					@keydown.escape.prevent="cancelEdit"
 				/>
 				<div class="flex gap-2 mt-1">
-					<UiButton variant="secondary" size="sm" @click="cancelEdit">
+					<UiButton variant="secondary" size="sm" :disabled="isSaving" @click="cancelEdit">
 						{{ t('common.cancel') }}
 					</UiButton>
-					<UiButton size="sm" @click="saveEdit">{{ t('common.save') }}</UiButton>
+					<UiButton size="sm" :loading="isSaving" @click="saveEdit">{{
+						t('common.save')
+					}}</UiButton>
 				</div>
 			</div>
 
@@ -191,21 +215,18 @@ const aiTyping = computed(
 				<!-- AI assistant reply: tool cards + streamed Markdown -->
 				<div v-else-if="isAssistant">
 					<AssistantToolCalls v-if="aiToolCalls.length > 0" :tool-calls="aiToolCalls" />
-					<div
-						v-if="aiTyping"
-						class="flex items-center gap-1 py-1"
-						:aria-label="t('components.chat.chatMessage.assistantTyping')"
-					>
+					<div v-if="aiTyping" role="status" class="flex items-center gap-1 py-1">
+						<span class="sr-only">{{ t('components.chat.chatMessage.assistantTyping') }}</span>
 						<span
-							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce motion-reduce:animate-none"
 							style="animation-delay: 0ms"
 						/>
 						<span
-							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce motion-reduce:animate-none"
 							style="animation-delay: 150ms"
 						/>
 						<span
-							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"
+							class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce motion-reduce:animate-none"
 							style="animation-delay: 300ms"
 						/>
 					</div>
@@ -250,14 +271,14 @@ const aiTyping = computed(
 			</template>
 		</div>
 
-		<!-- Hover actions -->
+		<!-- Hover actions. A touch screen has no hover, so there they always show. -->
 		<div
 			v-if="!isEditing && !message.deletedAt && isOwnMessage"
-			class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-start gap-1"
+			class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity flex items-start gap-1"
 		>
 			<UiTooltip :text="t('common.edit')">
 				<button
-					class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
+					class="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
 					type="button"
 					:aria-label="t('common.edit')"
 					@click="startEdit"
@@ -267,7 +288,7 @@ const aiTyping = computed(
 			</UiTooltip>
 			<UiTooltip :text="t('common.delete')">
 				<button
-					class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
+					class="w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
 					type="button"
 					:aria-label="t('common.delete')"
 					@click="doDelete"

@@ -226,7 +226,7 @@ describe('postbox contacts page', () => {
 
 	it('edits an existing contact with its current values prefilled', async () => {
 		const w = mountPage();
-		await w.get('button[aria-label="Edit contact"]').trigger('click');
+		await w.get('button[aria-label="Edit Ada Lovelace"]').trigger('click');
 
 		expect((w.get('#form-email').element as HTMLInputElement).value).toBe('ada@example.com');
 		expect((w.get('#form-organization').element as HTMLInputElement).value).toBe('Analytical');
@@ -234,7 +234,7 @@ describe('postbox contacts page', () => {
 
 	it('removes a contact and offers an undo that restores the whole row', async () => {
 		const w = mountPage();
-		await w.get('button[aria-label="Remove contact"]').trigger('click');
+		await w.get('button[aria-label="Remove Ada Lovelace"]').trigger('click');
 
 		expect(remove).toHaveBeenCalledWith('c1');
 		const [message, tone, options] = showToast.mock.calls[0] as [
@@ -286,7 +286,7 @@ describe('postbox contacts page', () => {
 		};
 		contacts.value = [ada];
 		const w = mountPage();
-		await w.get('button[aria-label="Remove contact"]').trigger('click');
+		await w.get('button[aria-label="Remove Ada"]').trigger('click');
 		const [, , options] = showToast.mock.calls[0] as [
 			string,
 			string,
@@ -333,7 +333,7 @@ describe('postbox contacts page', () => {
 
 	it('opens the composer prefilled to the contact', async () => {
 		const w = mountPage();
-		await w.get('button[aria-label="Compose to contact"]').trigger('click');
+		await w.get('button[aria-label="Write to Ada Lovelace"]').trigger('click');
 
 		expect(composerOpen).toHaveBeenCalledWith({
 			mailboxId: 'mailbox-1',

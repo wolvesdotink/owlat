@@ -112,6 +112,14 @@ const isLoading = computed(() => teamLoading.value || contactsLoading.value);
 const canLoadMore = computed(() => paginationStatus.value === 'CanLoadMore');
 const isLoadingMore = computed(() => paginationStatus.value === 'LoadingMore');
 const totalCount = computed(() => contacts.value?.length ?? 0);
+// The loaded rows are every match only once the last page is in; before that
+// the true total is unknown, and no count is claimed for it.
+const matchingTotal = computed(() =>
+	paginationStatus.value === 'Exhausted' ? totalCount.value : null
+);
+// "All contacts" in the export ignores the search, so only an unsearched,
+// fully loaded list knows that number.
+const exportTotal = computed(() => (debouncedSearch.value ? null : matchingTotal.value));
 
 const contactIds = computed(() =>
 	(contacts.value ?? []).map((c: { _id: Id<'contacts'> }) => c._id)
@@ -271,8 +279,8 @@ onUnmounted(() => {
 		</UiPageHeader>
 
 		<!-- Search Bar and Bulk Actions -->
-		<div class="flex items-center gap-4 mb-6">
-			<div class="max-w-md flex-1">
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-3 mb-6">
+			<div class="w-full sm:w-auto sm:max-w-md sm:flex-1">
 				<UiInput
 					v-model="searchQuery"
 					:placeholder="t('dashboard.audience.contacts.index.searchPlaceholder')"
@@ -287,8 +295,9 @@ onUnmounted(() => {
 				:bulk-ops="bulkOps"
 				:topics="topics"
 				:can-manage="canManageContacts"
-				:total-count="totalCount"
+				:total-count="matchingTotal"
 				:loaded-count="contacts.length"
+				:has-more="paginationStatus !== 'Exhausted'"
 			/>
 
 			<!-- Bulk Operation Progress -->
@@ -420,7 +429,7 @@ onUnmounted(() => {
 		<LazyContactsExportModal
 			v-if="canManageContacts"
 			v-model:open="isExportModalOpen"
-			:total-count="totalCount"
+			:total-count="exportTotal"
 			:search-query="debouncedSearch"
 			:contact-properties="contactProperties"
 		/>

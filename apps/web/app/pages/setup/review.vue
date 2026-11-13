@@ -3,27 +3,20 @@ import {
 	SETUP_WIZARD_STEPS,
 	interpretSetupModeProbe,
 	buildApplyBody,
-	setupSignInHref,
 } from '~/composables/useSetupWizard';
 import { FEATURE_FLAGS, type FeatureFlagKey } from '@owlat/shared/featureFlags';
 import {
 	SETUP_TOKEN_FIELD_ID,
 	groupActiveFeatures,
 	launchBlockers,
-	SETUP_NEXT_STEPS,
 	type LaunchBlockerId,
 } from '~/composables/setupWizardReview';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { isCsrfRejection } from '~/lib/csrf';
 import { apiFetch } from '~/lib/csrfFetch';
 import SetupReviewRow from '~/components/setup/ReviewRow.vue';
-import {
-	ArrowLeftIcon,
-	ArrowRightIcon,
-	FeatherIcon,
-	PartyPopperIcon,
-	RocketIcon,
-} from '@coolicons/vue';
+import SetupReviewComplete from '~/components/setup/ReviewComplete.vue';
+import { ArrowLeftIcon, FeatherIcon, RocketIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -35,7 +28,10 @@ useHead({ title: () => t('setup.review.pageTitle') });
 const router = useRouter();
 const { flags, env, admin, isMigrationMode, summary, setupToken, goToStep, completeSetup } =
 	useSetupWizard();
-const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'review');
+const { getStepStatus: positionalStepStatus, isConnectorHighlighted } = useWizard(
+	SETUP_WIZARD_STEPS,
+	'review'
+);
 
 // `SETUP_WIZARD_STEPS` carries message KEYS (it is built at module scope); the
 // indicator renders display text, so resolve them here — as a computed, so the
@@ -60,6 +56,21 @@ const canLaunch = computed(() => blockers.value.length === 0);
 // A summary row whose value blocks launch shows it inline, in warning colour.
 function isBlocked(id: LaunchBlockerId): boolean {
 	return blockers.value.some((blocker) => blocker.id === id);
+}
+
+// The indicator ticks every step before Review by position alone, which would
+// show a check on Email or Account while the summary below says "Not set". A
+// step that still blocks launch is shown unticked; its row's "Add" link is the
+// way back to it.
+const BLOCKER_STEP: Partial<Record<LaunchBlockerId, string>> = {
+	provider: 'email',
+	admin: 'admin',
+};
+function getStepStatus(stepId: string): 'completed' | 'current' | 'upcoming' {
+	const status = positionalStepStatus(stepId as Parameters<typeof positionalStepStatus>[0]);
+	if (status !== 'completed') return status;
+	const blocked = blockers.value.some((blocker) => BLOCKER_STEP[blocker.id] === stepId);
+	return blocked ? 'upcoming' : status;
 }
 
 // Active features by their names, under the pack they belong to.
@@ -136,16 +147,6 @@ function stopPolling() {
 	}
 }
 
-/**
- * The finale's exits — every one an ANCHOR, which is what makes the handoff the
- * wizard's single full page load (see `setupSignInHref` for why a load and not a
- * `router.push`). Each row is a real destination behind the sign-in, so the
- * operator leaves pointed at something rather than at a bare login form.
- */
-function signInHref(next?: string): string {
-	return setupSignInHref(redirectTarget.value, next);
-}
-
 async function pollUntilReady() {
 	if (await probeSetupCleared()) {
 		stopPolling();
@@ -216,62 +217,7 @@ onUnmounted(stopPolling);
 		<UiHeroField />
 
 		<!-- ─────────────────────── The finale ─────────────────────── -->
-		<!-- Setup ends on an acknowledgement, not on a login form: eyebrow, title,
-		     one lead, and three real next steps. Every exit from here is an anchor,
-		     so leaving IS the single page load the restarted process needs (see
-		     `signInHref`) — there is no second reload anywhere in this flow. -->
-		<div v-if="phase === 'complete'" class="relative mx-auto max-w-2xl px-6 py-12">
-			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox :icon="PartyPopperIcon" size="md" variant="brand" rounded="xl" />
-				<span class="lp-eyebrow">{{ t('setup.review.complete.eyebrow') }}</span>
-			</div>
-
-			<header class="mb-6">
-				<I18nT
-					keypath="setup.review.complete.title"
-					tag="h1"
-					scope="global"
-					class="text-3xl font-medium tracking-[-0.02em] mb-2"
-				>
-					<template #accent>
-						<span class="lp-title-accent">{{ t('setup.review.complete.titleAccent') }}</span>
-					</template>
-				</I18nT>
-				<p class="max-w-[34rem] text-text-secondary leading-relaxed">
-					{{ t('setup.review.complete.intro') }}
-				</p>
-			</header>
-
-			<h2 class="lp-eyebrow mb-3">{{ t('setup.review.complete.nextHeading') }}</h2>
-			<ul class="space-y-2">
-				<li v-for="step in SETUP_NEXT_STEPS" :key="step.id">
-					<a
-						:href="signInHref(step.to)"
-						class="flex items-center gap-4 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent px-4 py-3 transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-					>
-						<component :is="step.icon" class="h-5 w-5 shrink-0 text-text-tertiary" />
-						<span class="min-w-0 flex-1">
-							<span class="block font-medium text-text-primary">{{
-								t(`setup.review.complete.next.${step.id}.title`)
-							}}</span>
-							<span class="block text-sm text-text-secondary">{{
-								t(`setup.review.complete.next.${step.id}.desc`)
-							}}</span>
-						</span>
-						<span class="shrink-0 text-caption text-text-tertiary">{{
-							t(`setup.review.complete.next.${step.id}.meta`)
-						}}</span>
-					</a>
-				</li>
-			</ul>
-
-			<div class="mt-8">
-				<UiButton size="lg" :href="signInHref()">
-					{{ t('setup.review.complete.signIn') }}
-					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
-				</UiButton>
-			</div>
-		</div>
+		<SetupReviewComplete v-if="phase === 'complete'" :redirect-target="redirectTarget" />
 
 		<div v-else class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
@@ -282,7 +228,7 @@ onUnmounted(stopPolling);
 			<UiStepIndicator
 				class="mb-10"
 				:steps="displaySteps"
-				:get-step-status="getStepStatus as (stepId: string) => 'completed' | 'current' | 'upcoming'"
+				:get-step-status="getStepStatus"
 				:is-connector-highlighted="isConnectorHighlighted"
 				:on-step-click="goToStep"
 			/>
@@ -360,7 +306,9 @@ onUnmounted(stopPolling);
 						:label="t('setup.review.fromIdentity')"
 						to="/setup/email"
 					>
-						<dd class="text-sm text-text-primary font-mono">{{ summary.fromIdentity }}</dd>
+						<dd class="min-w-0 text-sm text-text-primary font-mono [overflow-wrap:anywhere]">
+							{{ summary.fromIdentity }}
+						</dd>
 					</SetupReviewRow>
 
 					<SetupReviewRow
@@ -370,7 +318,7 @@ onUnmounted(stopPolling);
 						link-testid="review-edit-admin"
 					>
 						<dd
-							class="text-sm"
+							class="min-w-0 text-sm [overflow-wrap:anywhere]"
 							:class="isBlocked('admin') ? 'text-warning' : 'text-text-primary'"
 							data-testid="review-admin"
 						>
@@ -413,7 +361,7 @@ onUnmounted(stopPolling);
 			</div>
 
 			<div v-if="error" class="mt-5">
-				<UiErrorAlert variant="error" :message="error" />
+				<UiErrorAlert variant="error" :message="error" role="alert" />
 			</div>
 
 			<div v-if="phase === 'finalizing'" class="mt-5 space-y-3">

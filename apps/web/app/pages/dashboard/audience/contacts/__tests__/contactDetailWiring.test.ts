@@ -12,6 +12,8 @@ import ContactDetail from '../[id].vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
 import { ActivityIcon, CircleCheckIcon } from '@coolicons/vue';
+import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
+import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 
 const CONTACT = {
 	_id: 'ct_1',
@@ -126,6 +128,7 @@ function mountPage() {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
+			components: { UiDropdownMenu, UiDropdownMenuItem },
 			stubs: {
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiTabs: {
@@ -152,6 +155,13 @@ function mountPage() {
 				ContactsContactFilesTab: true,
 				ContactsIdentitiesTab: true,
 				ContactsRelationshipsTab: true,
+				UiEmptyState: true,
+				UiConfirmationDialog: {
+					props: ['open', 'title', 'confirmText', 'isLoading'],
+					emits: ['update:open', 'confirm'],
+					template:
+						'<div v-if="open" role="dialog"><h3>{{ title }}</h3><slot name="description" /><button @click="$emit(\'update:open\', false)">Cancel</button><button @click="$emit(\'confirm\')">{{ confirmText }}</button></div>',
+				},
 			},
 			mocks: { formatDateTime: () => 'Jan 23, 2026' },
 		},
@@ -190,7 +200,7 @@ describe('contact page pieces', () => {
 		expect(ops['Add to topic']).toHaveBeenCalledWith({ topicId: 'tp_beta', contactId: 'ct_1' });
 		expect(button(wrapper, 'Beta program')).toBeUndefined();
 
-		await wrapper.get('button[aria-label="Remove from topic"]').trigger('click');
+		await wrapper.get('button[aria-label="Remove from topic: Newsletter"]').trigger('click');
 		await flushPromises();
 		expect(ops['Remove from topic']).toHaveBeenCalledWith({
 			topicId: 'tp_news',
@@ -217,14 +227,14 @@ describe('contact page pieces', () => {
 		await flushPromises();
 		expect(wrapper.text()).toContain('marcus@example.com');
 
-		const dialogButtons = wrapper.findAll('.max-w-md button');
+		const dialogButtons = wrapper.findAll('[role="dialog"] button');
 		await dialogButtons.find((b) => b.text().trim() === 'Cancel')!.trigger('click');
 		expect(showDeleteConfirm.value).toBe(false);
 
 		showDeleteConfirm.value = true;
 		await flushPromises();
 		await wrapper
-			.findAll('.max-w-md button')
+			.findAll('[role="dialog"] button')
 			.find((b) => b.text().trim() === 'Delete contact')!
 			.trigger('click');
 		expect(handlers.confirmDelete).toHaveBeenCalledTimes(1);

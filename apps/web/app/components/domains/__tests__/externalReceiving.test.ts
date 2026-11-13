@@ -337,6 +337,7 @@ describe('RecordRow — receiving branch', () => {
 		DomainsStreamSubdomainPlanPanel: true,
 		DomainsYahooCflPanel: true,
 		DomainsDmarcReportingPanel: true,
+		UiConfirmationDialog: true,
 		DomainsDnsPropagationNote: true,
 	};
 

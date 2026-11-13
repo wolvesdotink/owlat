@@ -17,6 +17,8 @@ const props = defineProps<{
 	trust: TrustLabel;
 	/** Optional extra quiet footer line, already translated by the caller. */
 	extraDetail?: string;
+	/** Which edge the popover lines up with: 'end' for a chip at the right of its row. */
+	align?: 'start' | 'end';
 }>();
 
 const { t } = useI18n();
@@ -51,7 +53,7 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 		<button
 			type="button"
 			data-testid="trust-chip"
-			class="inline-flex items-center text-xs px-2 py-0.5 rounded-full transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/60"
+			class="inline-flex items-center text-xs px-2 py-0.5 rounded-full transition-colors duration-(--motion-fast) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			:class="VARIANT_CLASS[props.trust.variant]"
 			:aria-expanded="open"
 			:aria-label="t('components.inbox.trustChip.seeWhy', { label: trustText })"
@@ -64,7 +66,8 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 			data-testid="trust-chip-popover"
 			role="region"
 			:aria-label="trustText"
-			class="absolute left-0 top-full mt-1 z-20 w-64 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
+			class="absolute top-full mt-1 z-(--z-menu) w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-border-subtle bg-bg-elevated shadow-lg p-3 text-left"
+			:class="props.align === 'end' ? 'right-0' : 'left-0'"
 			@click.stop
 		>
 			<p class="text-xs font-medium text-text-primary">{{ trustText }}</p>
@@ -83,7 +86,7 @@ const VARIANT_CLASS: Record<TrustLabel['variant'], string> = {
 			</ul>
 			<p
 				data-testid="trust-chip-detail"
-				class="mt-2 pt-2 border-t border-border-subtle text-[11px] text-text-tertiary tabular-nums"
+				class="mt-2 pt-2 border-t border-border-subtle text-2xs text-text-tertiary tabular-nums"
 			>
 				{{ tv(props.trust.detail)
 				}}<template v-if="props.extraDetail"> · {{ props.extraDetail }}</template>

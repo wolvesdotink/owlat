@@ -167,7 +167,7 @@ export const DELIVERABILITY_STATUS_PRESENTATION = {
 	'pending-dns': {
 		label: 'shared.deliverabilityCenter.status.pendingDns',
 		icon: SpinnerIcon,
-		className: 'border-brand/30 bg-brand/10 text-brand',
+		className: 'border-info/30 bg-info/10 text-info',
 	},
 } as const satisfies Record<
 	DeliverabilityItemStatus,

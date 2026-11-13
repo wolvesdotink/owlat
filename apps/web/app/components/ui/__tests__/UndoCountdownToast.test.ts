@@ -69,6 +69,20 @@ describe('UiUndoCountdownToast', () => {
 		expect(undoButton()!.textContent!.trim()).toBe('Undo');
 	});
 
+	it('announces the opening message once and keeps Undo out of the live region', async () => {
+		await mountToast();
+		vi.advanceTimersByTime(4_000);
+		await nextTick();
+
+		const spoken = toast()!.querySelector('.sr-only')!.textContent;
+		expect(spoken).toBe('Sending in 10s');
+		const ticking = [...toast()!.querySelectorAll('[aria-hidden="true"]')].map(
+			(el) => el.textContent
+		);
+		expect(ticking).toContain('Sending in 6s');
+		expect(toast()!.contains(undoButton())).toBe(false);
+	});
+
 	it('renders nothing while the window is closed', async () => {
 		await mountToast({ visible: false });
 		expect(toast()).toBeNull();

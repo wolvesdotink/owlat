@@ -7,6 +7,7 @@
  */
 import { useId } from 'vue';
 import { AI_REPLY_MODES, type AiReplyMode } from '~/utils/aiReplyMode';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -58,12 +59,9 @@ function onChange(mode: AiReplyMode) {
 			<span class="min-w-0">
 				<span class="flex items-center gap-2 font-medium text-text-primary">
 					{{ t(`components.settings.aiReplyModeControl.options.${option}.label`) }}
-					<span
-						v-if="option === 'draft'"
-						class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
-					>
+					<UiBadge v-if="option === 'draft'" variant="neutral" pill>
 						{{ t('components.settings.aiReplyModeControl.defaultBadge') }}
-					</span>
+					</UiBadge>
 				</span>
 				<span class="block text-sm text-text-secondary mt-0.5">
 					{{ t(`components.settings.aiReplyModeControl.options.${option}.description`) }}

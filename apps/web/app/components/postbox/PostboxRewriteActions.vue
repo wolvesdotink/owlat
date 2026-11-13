@@ -14,6 +14,8 @@
  */
 
 import { ref } from 'vue';
+import { useClickOutside } from '~/composables/useClickOutside';
+import { useEscapeToClose } from '~/composables/useEscapeToClose';
 import type { RewriteIntent } from '~/composables/postbox/usePostboxSelectionRewrite';
 import {
 	BriefcaseIcon,
@@ -26,7 +28,7 @@ import {
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 defineProps<{
 	/** True while a rewrite request is in flight (disables the buttons). */
@@ -42,6 +44,34 @@ const emit = defineEmits<{
 }>();
 
 const showTranslate = ref(false);
+const translateWrapEl = ref<HTMLElement | null>(null);
+useClickOutside(translateWrapEl, () => (showTranslate.value = false));
+useEscapeToClose(showTranslate);
+
+// The targets are English language names: that is what the rewrite request
+// carries, so they stay as they are. Only the menu shows them in the reader's
+// language; a name with no known code (one the user typed) is shown verbatim.
+const LANGUAGE_CODES: Record<string, string> = {
+	english: 'en',
+	spanish: 'es',
+	french: 'fr',
+	german: 'de',
+	portuguese: 'pt',
+	italian: 'it',
+	dutch: 'nl',
+	polish: 'pl',
+	japanese: 'ja',
+	chinese: 'zh',
+};
+function languageLabel(language: string): string {
+	const code = LANGUAGE_CODES[language.toLowerCase()];
+	if (!code) return language;
+	try {
+		return new Intl.DisplayNames([locale.value], { type: 'language' }).of(code) ?? language;
+	} catch {
+		return language;
+	}
+}
 
 function pick(intent: RewriteIntent) {
 	emit('select', { intent });
@@ -91,10 +121,12 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: IconComponent }[] =
 			<component v-else :is="opt.icon" class="h-3.5 w-3.5" />
 			<span>{{ t(opt.label) }}</span>
 		</button>
-		<div class="relative">
+		<div ref="translateWrapEl" class="relative">
 			<UiTooltip :text="t('components.postbox.postboxRewriteActions.translateTitle')">
 				<button
 					type="button"
+					aria-haspopup="menu"
+					:aria-expanded="showTranslate"
 					class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
 					:disabled="loading"
 					@click="showTranslate = !showTranslate"
@@ -118,7 +150,7 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: IconComponent }[] =
 					role="menuitem"
 					@click="pickLanguage(lang)"
 				>
-					{{ lang }}
+					{{ languageLabel(lang) }}
 				</button>
 			</div>
 		</div>

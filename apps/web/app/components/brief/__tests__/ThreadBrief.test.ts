@@ -380,6 +380,11 @@ describe('ThreadBrief', () => {
 		await w.get('[data-testid="brief-more"]').trigger('click');
 		expect(w.find('[data-testid="brief-standing"]').exists()).toBe(true);
 		expect(w.find('[data-testid="brief-activity"]').exists()).toBe(true);
+		// The same control folds them away again.
+		const toggle = w.get('[data-testid="brief-more"]');
+		expect(toggle.attributes('aria-expanded')).toBe('true');
+		await toggle.trigger('click');
+		expect(w.find('[data-testid="brief-activity"]').exists()).toBe(false);
 	});
 
 	it('shows a skeleton while loading', () => {

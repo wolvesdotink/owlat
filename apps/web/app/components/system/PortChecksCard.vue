@@ -45,7 +45,7 @@ interface PortChecksResponse {
 	error?: string;
 }
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 type CardState = 'idle' | 'running' | 'done';
 const state = ref<CardState>('idle');
@@ -162,12 +162,12 @@ function statusIcon(row: PortCheckRow): IconComponent {
 </script>
 
 <template>
-	<div class="rounded-xl border border-border-default bg-bg-elevated p-6">
+	<div class="card">
 		<div class="flex items-start justify-between gap-4 flex-wrap">
 			<div class="min-w-0">
-				<h3 class="font-semibold text-text-primary">
+				<h2 class="font-semibold text-text-primary">
 					{{ t('components.system.portChecksCard.title') }}
-				</h3>
+				</h2>
 				<p class="mt-2 text-caption text-text-secondary max-w-2xl">
 					{{ t('components.system.portChecksCard.intro') }}
 				</p>
@@ -198,11 +198,20 @@ function statusIcon(row: PortCheckRow): IconComponent {
 			{{ t('components.system.portChecksCard.idle') }}
 		</p>
 
+		<!-- First run in flight: nothing to show yet but the fact that it runs. -->
+		<p
+			v-else-if="state === 'running' && !result"
+			role="status"
+			class="mt-4 text-caption text-text-tertiary"
+		>
+			{{ t('components.system.portChecksCard.running') }}
+		</p>
+
 		<!-- The sidecar answered and refused (rate limit, unreadable .env). The
 		     probes did not run, but nothing is missing — so this must not carry
 		     the "is the updater up?" advice below. -->
 		<div
-			v-else-if="state === 'done' && refusedByUpdater"
+			v-else-if="refusedByUpdater"
 			data-testid="port-checks-declined"
 			class="mt-4 rounded-lg bg-bg-surface px-3 py-2.5 text-caption text-text-secondary"
 		>
@@ -212,7 +221,7 @@ function statusIcon(row: PortCheckRow): IconComponent {
 
 		<!-- No updater sidecar at all: the probes cannot run on this deployment. -->
 		<div
-			v-else-if="state === 'done' && !result?.reachable"
+			v-else-if="!result?.reachable"
 			data-testid="port-checks-unreachable"
 			class="mt-4 rounded-lg bg-bg-surface px-3 py-2.5 text-caption text-text-secondary"
 		>
@@ -220,7 +229,15 @@ function statusIcon(row: PortCheckRow): IconComponent {
 			<p v-if="result?.error" class="mt-1 text-text-tertiary">{{ result.error }}</p>
 		</div>
 
-		<template v-else-if="state === 'done'">
+		<!-- A re-run keeps the last result on screen, dimmed, instead of
+		     collapsing the card and growing it back. -->
+		<div
+			v-else
+			data-testid="port-checks-result"
+			:aria-busy="state === 'running'"
+			class="transition-opacity"
+			:class="{ 'opacity-50': state === 'running' }"
+		>
 			<!-- The verdict, then the rows. Three outcomes, three sentences: a
 			     required port that is shut, a required port nobody could measure,
 			     and the all-clear — which may only be said when neither of the
@@ -255,9 +272,9 @@ function statusIcon(row: PortCheckRow): IconComponent {
 			</p>
 
 			<div v-for="group in groups" :key="group.direction" class="mt-5">
-				<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
+				<h3 class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 					{{ t(`components.system.portChecksCard.groups.${group.direction}`) }}
-				</h4>
+				</h3>
 				<p class="mt-1 text-xs text-text-tertiary">
 					{{ t(`components.system.portChecksCard.groupHints.${group.direction}`) }}
 				</p>
@@ -296,10 +313,10 @@ function statusIcon(row: PortCheckRow): IconComponent {
 			<p v-if="result?.checkedAt" class="mt-4 text-xs text-text-tertiary">
 				{{
 					t('components.system.portChecksCard.checkedAt', {
-						time: new Date(result.checkedAt).toLocaleTimeString(),
+						time: new Date(result.checkedAt).toLocaleTimeString(locale),
 					})
 				}}
 			</p>
-		</template>
+		</div>
 	</div>
 </template>

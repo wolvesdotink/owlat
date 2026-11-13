@@ -28,7 +28,9 @@ const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 </script>
 
 <template>
-	<div class="h-[calc(100vh-var(--shell-chrome-h,4rem))] overflow-auto bg-bg-base flex flex-col">
+	<div
+		class="h-[calc(100dvh-var(--shell-chrome-mobile-h))] lg:h-[calc(100dvh-var(--titlebar-h,0px)-var(--shell-chrome-h,4rem))] overflow-auto bg-bg-base flex flex-col"
+	>
 		<!-- flex-col so the guard's loading and no-mailbox states fill the frame.
 		     The comment sits inside the root: one above it makes a second root
 		     node in dev (NUXT_E4004). -->

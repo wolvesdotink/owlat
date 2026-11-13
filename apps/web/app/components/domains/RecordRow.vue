@@ -134,9 +134,10 @@ const registrationSettled = computed(
 		     and holds no visible content of its own. The identity text and the
 		     actions are positioned above it: the text stays selectable and a plain
 		     click on it toggles too (`toggleFromText`); everything else in the row
-		     either sits below the overlay or ignores the pointer. -->
+		     either sits below the overlay or ignores the pointer. Below `sm` the
+		     actions drop under the identity so the domain name keeps its width. -->
 		<div
-			class="relative px-6 py-4 flex items-center justify-between hover:bg-bg-surface/50 transition-colors"
+			class="relative px-4 py-4 sm:px-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between hover:bg-bg-surface/50 transition-colors"
 		>
 			<button
 				ref="disclosureRef"
@@ -148,12 +149,12 @@ const registrationSettled = computed(
 				data-testid="domain-disclosure"
 				@click="emit('toggle')"
 			/>
-			<div class="flex items-center gap-4">
+			<div class="flex items-center gap-4 min-w-0">
 				<UiIconBox :icon="GlobeIcon" size="sm" variant="surface" rounded="lg" />
 				<!-- Mouse-only by design: the disclosure above is the keyboard route. -->
-				<div class="relative cursor-pointer" @click="toggleFromText">
-					<div class="flex items-center gap-3">
-						<p class="font-medium text-text-primary">{{ domain.domain }}</p>
+				<div class="relative min-w-0 cursor-pointer" @click="toggleFromText">
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<h3 class="font-medium text-text-primary break-all">{{ domain.domain }}</h3>
 						<span
 							:class="[
 								'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
@@ -221,13 +222,14 @@ const registrationSettled = computed(
 				</div>
 			</div>
 
-			<div class="flex items-center gap-2">
+			<div class="flex items-center justify-end gap-2 shrink-0">
 				<UiTooltip
 					v-if="canForceVerify && domain.status !== 'verified'"
 					:text="t('components.domains.recordRow.forceVerifyTitle')"
 				>
 					<UiButton
-						class="relative gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+						size="sm"
+						class="relative gap-1.5 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
 						:disabled="isForcing"
 						@click="emit('forceVerify')"
 					>
@@ -250,7 +252,8 @@ const registrationSettled = computed(
 				>
 					<UiButton
 						variant="secondary"
-						class="relative gap-1.5 text-sm py-1.5 px-3"
+						size="sm"
+						class="relative gap-1.5"
 						:disabled="isVerifying || domain.status === 'registering'"
 						@click="
 							domain.status === 'failed' && domain.lastRegistrationError
@@ -275,8 +278,9 @@ const registrationSettled = computed(
 				</UiTooltip>
 				<UiTooltip :text="t('components.domains.recordRow.removeDomain')">
 					<UiButton
-						variant="ghost"
-						class="relative p-2 text-error hover:bg-error/10"
+						variant="danger-ghost"
+						size="sm"
+						class="relative px-2"
 						:aria-label="t('components.domains.recordRow.removeDomain')"
 						@click="emit('delete')"
 					>
@@ -302,69 +306,73 @@ const registrationSettled = computed(
 			<div
 				v-if="isExpanded"
 				:id="`domain-records-${domain._id}`"
-				class="border-t border-border-subtle"
+				class="expand-panel border-t border-border-subtle"
 			>
-				<div class="px-6 py-4 bg-bg-surface/30">
-					<!-- Registering state -->
-					<div
-						v-if="domain.status === 'registering'"
-						class="flex items-center gap-3 py-8 justify-center"
-					>
-						<SpinnerIcon class="w-5 h-5 text-info" />
-						<p class="text-sm text-text-secondary">
-							{{ t('components.domains.recordRow.settingUp') }}
-						</p>
-					</div>
-
-					<!-- Registration error -->
-					<div v-else-if="domain.status === 'failed' && domain.lastRegistrationError" class="py-4">
-						<div class="p-4 bg-error/5 border border-error/20 rounded-xl mb-4">
-							<p class="text-sm text-error font-medium mb-1">
-								{{ t('components.domains.recordRow.registrationFailed') }}
-							</p>
+				<div class="expand-panel-inner">
+					<div class="px-4 py-4 sm:px-6 bg-bg-surface/30">
+						<!-- Registering state -->
+						<div
+							v-if="domain.status === 'registering'"
+							class="flex items-center gap-3 py-8 justify-center"
+						>
+							<SpinnerIcon class="w-5 h-5 text-info" />
 							<p class="text-sm text-text-secondary">
-								{{ domain.lastRegistrationError }}
+								{{ t('components.domains.recordRow.settingUp') }}
 							</p>
 						</div>
-						<UiButton class="gap-2" @click="emit('retryRegistration')">
-							<ReloadIcon class="w-4 h-4" />
-							{{ t('components.domains.recordRow.retryRegistration') }}
-						</UiButton>
-					</div>
 
-					<!-- DNS records (normal state): everything the operator publishes to
+						<!-- Registration error -->
+						<div
+							v-else-if="domain.status === 'failed' && domain.lastRegistrationError"
+							class="py-4"
+						>
+							<div class="p-4 bg-error/5 border border-error/20 rounded-xl mb-4">
+								<p class="text-sm text-error font-medium mb-1">
+									{{ t('components.domains.recordRow.registrationFailed') }}
+								</p>
+								<p class="text-sm text-text-secondary">
+									{{ domain.lastRegistrationError }}
+								</p>
+							</div>
+							<UiButton class="gap-2" @click="emit('retryRegistration')">
+								<ReloadIcon class="w-4 h-4" />
+								{{ t('components.domains.recordRow.retryRegistration') }}
+							</UiButton>
+						</div>
+
+						<!-- DNS records (normal state): everything the operator publishes to
 					     SEND from this domain. -->
-					<SendingDnsSection
-						v-else-if="hasDnsRecords(domain.dnsRecords)"
-						:domain="domain"
-						:is-expanded="isExpanded"
-						:can-manage-domains="canManageDomains"
-						:is-updating-dmarc="isUpdatingDmarc"
-						:auto-recheck-active="autoRecheckActive"
-						:spf-coexistence="spfCoexistence"
-						:dmarc-policy-options="dmarcPolicyOptions"
-						:mail-from-host="mailFromHost"
-						@dmarc-change="emit('dmarcChange', $event)"
-					/>
+						<SendingDnsSection
+							v-else-if="hasDnsRecords(domain.dnsRecords)"
+							:domain="domain"
+							:is-expanded="isExpanded"
+							:can-manage-domains="canManageDomains"
+							:is-updating-dmarc="isUpdatingDmarc"
+							:auto-recheck-active="autoRecheckActive"
+							:spf-coexistence="spfCoexistence"
+							:dmarc-policy-options="dmarcPolicyOptions"
+							:mail-from-host="mailFromHost"
+							@dmarc-change="emit('dmarcChange', $event)"
+						/>
 
-					<!-- Per-STREAM sending subdomains: the proposed layout, the
+						<!-- Per-STREAM sending subdomains: the proposed layout, the
 					     reputation-inheritance advice and every record for it in one pass. -->
-					<DomainsStreamSubdomainPlanPanel
-						v-if="registrationSettled"
-						:domain-id="domain._id"
-						:can-manage="canManageDomains"
-					/>
+						<DomainsStreamSubdomainPlanPanel
+							v-if="registrationSettled"
+							:domain-id="domain._id"
+							:can-manage="canManageDomains"
+						/>
 
-					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
+						<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
 					     belongs here. Never enrolling is supported; the panel owns its
 					     own divider so nothing renders when it has nothing to show. -->
-					<DomainsYahooCflPanel
-						v-if="registrationSettled"
-						:domain-id="domain._id"
-						:can-manage="canManageDomains"
-					/>
+						<DomainsYahooCflPanel
+							v-if="registrationSettled"
+							:domain-id="domain._id"
+							:can-manage="canManageDomains"
+						/>
 
-					<!-- Receiving. TWO mutually exclusive sections, because the guidance
+						<!-- Receiving. TWO mutually exclusive sections, because the guidance
 					     is opposite: `external` means the operator's own provider keeps
 					     the MX and must not be disturbed, so the apex-MX/MTA-STS panel
 					     is REPLACED rather than supplemented — showing both would hand
@@ -376,40 +384,41 @@ const registrationSettled = computed(
 					     The external arm does not depend on a deployment mail host —
 					     a send-only install has nothing to point an MX at and the
 					     guidance is still exactly right. -->
-					<div
-						v-if="registrationSettled && (isExternalReceiving || showReceivingDns)"
-						class="mt-4 pt-4 border-t border-border-subtle"
-					>
-						<DomainsExternalReceivingSection
-							v-if="isExternalReceiving"
-							:domain="domain.domain"
-							:provider="domain.externalReceivingProvider ?? null"
-							:spf-value="domain.dnsRecords.spf?.value ?? null"
-							:return-path-host="mailFromHost"
-							:can-manage="canManageDomains"
-						/>
-						<DomainsReceivingDnsSection
-							v-else
-							:domain="domain.domain"
-							:mail-host="inboundMailHost"
-							:inbound-port="inboundPort"
-							:inbound-enabled="inboundEnabled"
-						/>
+						<div
+							v-if="registrationSettled && (isExternalReceiving || showReceivingDns)"
+							class="mt-4 pt-4 border-t border-border-subtle"
+						>
+							<DomainsExternalReceivingSection
+								v-if="isExternalReceiving"
+								:domain="domain.domain"
+								:provider="domain.externalReceivingProvider ?? null"
+								:spf-value="domain.dnsRecords.spf?.value ?? null"
+								:return-path-host="mailFromHost"
+								:can-manage="canManageDomains"
+							/>
+							<DomainsReceivingDnsSection
+								v-else
+								:domain="domain.domain"
+								:mail-host="inboundMailHost"
+								:inbound-port="inboundPort"
+								:inbound-enabled="inboundEnabled"
+							/>
 
-						<!-- Changing the answer is an admin task and a destructive-ish
+							<!-- Changing the answer is an admin task and a destructive-ish
 						     write (it re-drops the domain to pending), so the control
 						     owns its own confirmation rather than living inline here. -->
-						<DomainsReceivingModeSwitch
-							v-if="canManageDomains"
-							:domain-id="domain._id"
-							:domain="domain.domain"
-							:mode="isExternalReceiving ? 'external' : 'owlat'"
-							:provider="domain.externalReceivingProvider ?? null"
-						/>
-					</div>
+							<DomainsReceivingModeSwitch
+								v-if="canManageDomains"
+								:domain-id="domain._id"
+								:domain="domain.domain"
+								:mode="isExternalReceiving ? 'external' : 'owlat'"
+								:provider="domain.externalReceivingProvider ?? null"
+							/>
+						</div>
 
-					<!-- Help Text -->
-					<DomainsDnsPropagationNote v-if="registrationSettled" />
+						<!-- Help Text -->
+						<DomainsDnsPropagationNote v-if="registrationSettled" />
+					</div>
 				</div>
 			</div>
 		</Transition>
@@ -417,23 +426,35 @@ const registrationSettled = computed(
 </template>
 
 <style scoped>
-/* Expand transition */
+/* Expand transition. It animates the grid row from 0fr to 1fr instead of a
+   fixed max-height: an expanded domain is taller than any cap, and a cap clips
+   the panel on open and snaps it on close. The padded content sits in an
+   unpadded inner wrapper because a padded grid item cannot shrink below its
+   padding. */
+.expand-panel {
+	display: grid;
+	grid-template-rows: 1fr;
+}
+
+.expand-panel-inner {
+	min-height: 0;
+}
+
 .expand-enter-active,
 .expand-leave-active {
-	transition-property: opacity, max-height;
+	transition-property: opacity, grid-template-rows;
 	transition-duration: var(--motion-moderate);
 	transition-timing-function: var(--ease-spring);
+}
+
+.expand-enter-active .expand-panel-inner,
+.expand-leave-active .expand-panel-inner {
 	overflow: hidden;
 }
 
 .expand-enter-from,
 .expand-leave-to {
 	opacity: 0;
-	max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-	max-height: 1000px;
+	grid-template-rows: 0fr;
 }
 </style>

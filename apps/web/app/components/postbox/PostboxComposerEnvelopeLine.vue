@@ -5,6 +5,9 @@
  * anything in it needing attention, which the composer decides. When a plain
  * reply leaves people off, "Reply all" sits on the line itself, so the switch
  * is never hidden behind the fold.
+ *
+ * The line's visible text is its accessible name, so a screen reader hears who
+ * the reply goes to; what a click does is the button's description (`title`).
  */
 import { knownRecipientLabel } from '~/utils/recipientHints';
 
@@ -41,29 +44,30 @@ const copyCount = computed(() => props.ccAddresses.length + props.bccAddresses.l
 		class="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-sm"
 		data-testid="composer-envelope-line"
 	>
-		<button
-			type="button"
-			class="min-w-0 flex-1 truncate text-left hover:text-text-primary"
-			:aria-label="t('components.postbox.postboxComposerEnvelopeLine.label')"
-			@click="emit('expand')"
-		>
-			<span class="font-medium text-text-primary">{{
-				t('components.postbox.postboxComposerEnvelopeLine.to', { names: toLine || '…' })
-			}}</span>
-			<span v-if="copyCount > 0" class="ml-1 text-text-tertiary">{{
-				t('components.postbox.postboxComposerEnvelopeLine.copies', { count: copyCount })
-			}}</span>
-			<template v-if="fromLabel">
-				<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
-				<span class="text-text-secondary">{{
-					t('components.postbox.postboxComposerEnvelopeLine.from', { address: fromLabel })
+		<UiTooltip :text="t('components.postbox.postboxComposerEnvelopeLine.label')">
+			<button
+				type="button"
+				class="min-w-0 flex-1 truncate text-left hover:text-text-primary"
+				@click="emit('expand')"
+			>
+				<span class="font-medium text-text-primary">{{
+					t('components.postbox.postboxComposerEnvelopeLine.to', { names: toLine || '…' })
 				}}</span>
-			</template>
-			<template v-if="subject">
-				<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
-				<span class="text-text-secondary">{{ subject }}</span>
-			</template>
-		</button>
+				<span v-if="copyCount > 0" class="ml-1 text-text-tertiary">{{
+					t('components.postbox.postboxComposerEnvelopeLine.copies', { count: copyCount })
+				}}</span>
+				<template v-if="fromLabel">
+					<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
+					<span class="text-text-secondary">{{
+						t('components.postbox.postboxComposerEnvelopeLine.from', { address: fromLabel })
+					}}</span>
+				</template>
+				<template v-if="subject">
+					<span class="mx-1.5 text-text-tertiary" aria-hidden="true">·</span>
+					<span class="text-text-secondary">{{ subject }}</span>
+				</template>
+			</button>
+		</UiTooltip>
 		<button
 			v-if="canReplyAll"
 			type="button"

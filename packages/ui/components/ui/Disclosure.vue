@@ -28,15 +28,22 @@ const contentId = computed(() => props.controls ?? `disclosure-${generatedId}`);
 	<div>
 		<button
 			type="button"
-			class="text-sm text-text-secondary hover:text-text-primary inline-flex items-start gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded disabled:opacity-50"
+			class="text-sm text-text-secondary hover:text-text-primary inline-flex items-start gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded disabled:opacity-50 pointer-coarse:min-h-11 pointer-coarse:items-center"
 			:aria-expanded="open"
-			:aria-controls="contentId"
+			:aria-controls="open ? contentId : undefined"
 			:disabled="disabled"
 			@click="open = !open"
 		>
-			<component :is="open ? ChevronDownIcon : ChevronRightIcon" class="mt-0.5 h-4 w-4 shrink-0" />
+			<component
+				:is="open ? ChevronDownIcon : ChevronRightIcon"
+				class="mt-0.5 h-4 w-4 shrink-0 pointer-coarse:mt-0"
+				aria-hidden="true"
+			/>
 			<slot name="label">{{ resolvedLabel }}</slot>
 		</button>
+		<!-- aria-controls is set only while open: the region is v-if, so its id
+		     exists only then, and v-show would mount closed content (and its
+		     queries) on every page that holds a disclosure. -->
 		<div v-if="open" :id="contentId" class="mt-3">
 			<slot />
 		</div>

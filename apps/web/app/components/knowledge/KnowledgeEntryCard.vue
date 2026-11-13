@@ -4,23 +4,13 @@ const props = defineProps<{
 	entryType: string;
 	title: string;
 	content: string;
-	confidence: number;
 	tags?: string[];
-	sourceType: string;
 	createdAt: number;
 }>();
 
-const {
-	typeVariant,
-	typeIcon,
-	typeLabel,
-	sourceIcon,
-	sourceLabel,
-	confidenceBgColor,
-	formatConfidence,
-	truncate,
-	confidenceVariant,
-} = useKnowledgeGraph();
+// A list row stays at the verdict level: title, excerpt, type, tags and date.
+// Confidence and source are provenance detail, shown on the entry's own page.
+const { typeVariant, typeIcon, typeLabel, truncate } = useKnowledgeGraph();
 
 const { t, te, locale } = useI18n();
 
@@ -30,10 +20,6 @@ const { t, te, locale } = useI18n();
 const entryTypeLabel = (type: string) => {
 	const key = `components.knowledge.knowledgeEntryCard.entryTypes.${type}`;
 	return te(key) ? t(key) : typeLabel(type);
-};
-const sourceTypeLabel = (source: string) => {
-	const key = `components.knowledge.knowledgeEntryCard.sourceTypes.${source}`;
-	return te(key) ? t(key) : sourceLabel(source);
 };
 
 const formattedDate = computed(() => {
@@ -65,7 +51,7 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 					'bg-error/10 text-error': typeVariant(entryType) === 'error',
 				}"
 			>
-				<component :is="typeIcon(entryType)" class="w-5 h-5" />
+				<component :is="typeIcon(entryType)" class="w-5 h-5" aria-hidden="true" />
 			</div>
 
 			<!-- Content -->
@@ -73,11 +59,12 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 				<div class="flex items-center gap-2 mb-1">
 					<h3
 						class="text-sm font-semibold text-text-primary truncate group-hover:text-brand transition-colors"
+						:title="title"
 					>
 						{{ title }}
 					</h3>
 					<span
-						class="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+						class="flex-shrink-0 text-2xs font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide"
 						:class="{
 							'bg-brand-subtle text-brand': typeVariant(entryType) === 'default',
 							'bg-warning/10 text-warning': typeVariant(entryType) === 'warning',
@@ -100,27 +87,8 @@ const hasMoreTags = computed(() => (props.tags ?? []).length > 3);
 				<div
 					class="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-2.5 text-xs text-text-tertiary"
 				>
-					<!-- Confidence -->
-					<div class="flex items-center gap-1.5">
-						<UiProgressBar
-							class="w-12"
-							size="sm"
-							:value="confidence * 100"
-							:variant="confidenceVariant(confidence)"
-							:aria-label="t('components.knowledge.knowledgeEntryCard.confidence')"
-						/>
-						<span>{{ formatConfidence(confidence) }}</span>
-					</div>
-
-					<!-- Source -->
-					<div class="flex items-center gap-1 whitespace-nowrap">
-						<component :is="sourceIcon(sourceType)" class="w-3 h-3" />
-						<span>{{ sourceTypeLabel(sourceType) }}</span>
-					</div>
-
 					<!-- Tags -->
 					<template v-if="displayTags.length > 0">
-						<span class="hidden sm:inline text-border-subtle" aria-hidden="true">|</span>
 						<div class="flex flex-wrap items-center gap-1">
 							<span
 								v-for="tag in displayTags"

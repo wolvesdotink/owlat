@@ -78,13 +78,20 @@ function stepPerInbox(by: 1 | -1) {
 		<div class="px-3 pb-1 pt-2 text-2xs font-medium text-text-tertiary">
 			{{ t('components.shell.options.order') }}
 		</div>
+		<!-- Radio items: the check is not the only sign of the chosen order. -->
 		<UiDropdownMenuItem
 			v-for="option in SORTS"
 			:key="option.value"
-			:icon="sort === option.value ? CheckIcon : undefined"
+			role="menuitemradio"
+			:aria-checked="sort === option.value ? 'true' : 'false'"
 			@click="sort = option.value"
 		>
-			<span :class="sort === option.value ? '' : 'pl-6'">{{ t(option.label) }}</span>
+			<CheckIcon
+				class="size-4 shrink-0"
+				:class="sort === option.value ? '' : 'invisible'"
+				aria-hidden="true"
+			/>
+			{{ t(option.label) }}
 		</UiDropdownMenuItem>
 	</UiDropdownMenu>
 </template>

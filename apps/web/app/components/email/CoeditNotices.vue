@@ -42,6 +42,8 @@ function message(notice: CoeditNoticeView): string {
 }
 
 const shown = computed(() => props.notices.slice(0, 3));
+// The stack shows three; the rest are counted, not silently dropped.
+const hiddenCount = computed(() => Math.max(0, props.notices.length - shown.value.length));
 </script>
 
 <template>
@@ -72,5 +74,12 @@ const shown = computed(() => props.notices.slice(0, 3));
 				</div>
 			</div>
 		</div>
+		<p
+			v-if="hiddenCount > 0"
+			class="self-center rounded-full bg-bg-elevated px-3 py-1 text-xs text-text-secondary shadow-lg"
+			data-testid="coedit-notices-more"
+		>
+			{{ t('components.email.coeditNotices.more', { count: hiddenCount }, hiddenCount) }}
+		</p>
 	</div>
 </template>

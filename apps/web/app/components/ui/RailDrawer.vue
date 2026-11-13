@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useModalFocus } from '@owlat/ui/composables/useModalFocus';
+
 /**
  * A left rail that is a static column at `md` and an off-canvas drawer below it.
  *
@@ -21,10 +23,7 @@ const props = defineProps<{ open: boolean; navigationTitle?: string }>();
 const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
 const close = () => emit('update:open', false);
-// A menu inside the drawer that closed on this Esc has claimed it.
-const onEscape = (event: KeyboardEvent) => {
-	if (!event.defaultPrevented) close();
-};
+const panelRef = ref<HTMLElement | null>(null);
 
 // Off-canvas is a transform, not an unmount, so without `inert` a phone user
 // tabs through every conversation in a pane they cannot see.
@@ -32,7 +31,7 @@ const isDesktopViewport = useMediaQuery('(min-width: 768px)');
 const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 
 // The phone's bottom tab bar outranks this drawer (z-(--z-header) beats the
-// panel's z-50 and the scrim's z-40), so it has to step aside exactly as it
+// drawer's z-(--z-modal)), so it has to step aside exactly as it
 // does for the shell's own navigation drawer. The shell hands that one down as
 // a prop; this state lives in the page, so it goes through shared state
 // instead. Only while the rail is an overlay: at `md` it is a plain column and
@@ -40,6 +39,11 @@ const isOffCanvas = computed(() => !isDesktopViewport.value && !props.open);
 const { setOpen: setRailDrawerOpen } = useRailDrawer();
 const isOverlay = computed(() => !isDesktopViewport.value && props.open);
 watch(isOverlay, setRailDrawerOpen, { immediate: true });
+// As an overlay the drawer holds focus like a dialog: focus moves in when it
+// opens (it may have been opened from the keyboard), Escape closes it through
+// the shared Escape stack (a menu open inside it gets that Escape first), and
+// focus returns to the handle that opened it.
+useModalFocus(panelRef, isOverlay, close);
 onUnmounted(() => {
 	if (isOverlay.value) setRailDrawerOpen(false);
 });
@@ -54,20 +58,20 @@ onUnmounted(() => {
 		leave-from-class="opacity-100"
 		leave-to-class="opacity-0"
 	>
-		<div v-if="open" class="fixed inset-0 bg-scrim/50 z-40 md:hidden" @click="close" />
+		<div v-if="open" class="fixed inset-0 bg-scrim/50 z-(--z-modal) md:hidden" @click="close" />
 	</Transition>
 
 	<DashboardNavigationPortal :title="navigationTitle ?? ''" inline>
 		<div
 			v-bind="$attrs"
-			class="fixed top-0 left-0 z-50 h-full w-72 flex-shrink-0 flex transition-transform pt-[env(safe-area-inset-top)] md:pt-0 md:static md:z-auto md:h-auto md:translate-x-0 md:transition-none"
+			ref="panelRef"
+			class="fixed top-0 left-0 z-(--z-modal) h-full w-72 flex-shrink-0 flex transition-transform pt-[env(safe-area-inset-top)] md:pt-0 md:static md:z-auto md:h-auto md:translate-x-0 md:transition-none"
 			:class="
 				open
 					? 'translate-x-0 duration-(--motion-moderate)'
 					: '-translate-x-full duration-(--motion-moderate-exit)'
 			"
 			:inert="isOffCanvas ? true : undefined"
-			@keydown.esc="onEscape"
 		>
 			<slot />
 		</div>

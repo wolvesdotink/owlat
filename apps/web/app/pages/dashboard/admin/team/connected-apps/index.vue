@@ -215,17 +215,12 @@ function testIcon(outcome: TestResult['outcome']): IconComponent {
 		</UiPageHeader>
 
 		<!-- Admins-only gate: editors lack organization:manage. -->
-		<UiCard
-			v-if="showAdminGate"
-			class="flex flex-col items-center justify-center py-16 text-center px-6"
-		>
-			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.admin.team.connectedApps.index.adminGate.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1 max-w-sm">
-				{{ t('dashboard.admin.team.connectedApps.index.adminGate.description') }}
-			</p>
+		<UiCard v-if="showAdminGate">
+			<UiEmptyState
+				:icon="LockIcon"
+				:title="t('dashboard.admin.team.connectedApps.index.adminGate.title')"
+				:description="t('dashboard.admin.team.connectedApps.index.adminGate.description')"
+			/>
 		</UiCard>
 
 		<UiQueryBoundary v-else :loading="isLoading && !apps" :error="error" @retry="refetch">
@@ -345,12 +340,11 @@ function testIcon(outcome: TestResult['outcome']): IconComponent {
 								v-if="app.status !== 'revoked'"
 								variant="ghost"
 								size="sm"
-								class="text-warning"
 								@click="revokeTarget = app"
 							>
 								{{ t('dashboard.admin.team.connectedApps.index.revoke') }}
 							</UiButton>
-							<UiButton variant="ghost" size="sm" class="text-error" @click="deleteTarget = app">
+							<UiButton variant="danger-ghost" size="sm" @click="deleteTarget = app">
 								{{ t('common.delete') }}
 							</UiButton>
 						</div>

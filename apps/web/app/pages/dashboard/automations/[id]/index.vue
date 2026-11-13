@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
-import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
 import { formatNumber } from '~/utils/formatters';
-import { useLocalized } from '~/composables/useLocalized';
-import type { LocalizedText } from '~/utils/localizedText';
+import { useFormat } from '~/composables/useFormat';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import AutomationsFunnelChart from '~/components/automations/FunnelChart.vue';
 import AutomationsRunsPanel from '~/components/automations/RunsPanel.vue';
 import {
 	ArrowLeftIcon,
-	CircleCloseIcon,
 	ClockIcon,
 	MailIcon,
+	PauseIcon,
 	PencilIcon,
+	PlayIcon,
 	UserCheckCornerIcon,
 	UsersIcon,
 	ZapIcon,
@@ -21,14 +20,9 @@ import {
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
+const { formatPercentage } = useFormat();
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
-
-/**
- * Registry-owned copy (step modules, status/trigger badges) carries message
- * KEYS, so every rendered registry value goes through here.
- */
-const registryText = useLocalized();
 
 definePageMeta({
 	layout: 'dashboard',
@@ -55,13 +49,24 @@ useRecordPaletteObjectOpen(() =>
 );
 
 // Fetch automation stats
-const { data: stats, isLoading: statsLoading } = useConvexQuery(
-	api.automations.analytics.getAutomationStats,
-	() => ({ automationId: automationId.value })
-);
+// Each read has its own boundary: a failed stats or funnel read is "could not
+// load", never zero totals or "no steps".
+const {
+	data: stats,
+	isLoading: statsLoading,
+	error: statsError,
+	refetch: refetchStats,
+} = useConvexQuery(api.automations.analytics.getAutomationStats, () => ({
+	automationId: automationId.value,
+}));
 
 // Fetch step analytics for funnel
-const { data: stepAnalytics } = useConvexQuery(api.automations.analytics.getStepAnalytics, () => ({
+const {
+	data: stepAnalytics,
+	isLoading: stepAnalyticsLoading,
+	error: stepAnalyticsError,
+	refetch: refetchStepAnalytics,
+} = useConvexQuery(api.automations.analytics.getStepAnalytics, () => ({
 	automationId: automationId.value,
 }));
 
@@ -79,61 +84,6 @@ const stepEmailTemplates = computed<Doc<'emailTemplates'>[]>(() => {
 		.map((s) => s['emailTemplate'])
 		.filter((t): t is Doc<'emailTemplates'> => !!t && typeof t === 'object');
 });
-
-// Step label — resolved through the step editor module's getDescription.
-// `parseConfig` throws on malformed input; we fall back to the bare label.
-const getStepLabel = (stepType: StepKind, config: string | Record<string, unknown>) => {
-	const module = stepEditorModuleFor(stepType);
-	try {
-		const raw = typeof config === 'string' ? JSON.parse(config) : config;
-		return registryText(
-			(
-				module.getDescription as (
-					c: unknown,
-					ctx: { emailTemplates: Doc<'emailTemplates'>[] }
-				) => LocalizedText
-			)(module.parseConfig(raw), { emailTemplates: stepEmailTemplates.value })
-		);
-	} catch {
-		return registryText(module.label);
-	}
-};
-
-// Step icon — resolved through the step editor module registry.
-const stepInfo = (stepType: string) => {
-	const module = stepEditorModuleFor(stepType as StepKind);
-	return { icon: module.icon, label: module.label };
-};
-
-// Page-local accent palette per step kind for the funnel rows. The edit
-// page uses a different palette; both pages own their own STEP_ACCENT
-// rather than smearing a shared color across modules that don't need it.
-type FunnelAccent = {
-	readonly iconBg: string;
-	readonly iconText: string;
-	readonly barBg: string;
-};
-
-const STEP_ACCENT: Readonly<Record<StepKind, FunnelAccent>> = {
-	email: { iconBg: 'bg-warning/10', iconText: 'text-warning', barBg: 'bg-warning/20' },
-	delay: { iconBg: 'bg-brand/10', iconText: 'text-brand', barBg: 'bg-brand/20' },
-	condition: {
-		iconBg: 'bg-text-tertiary/10',
-		iconText: 'text-text-tertiary',
-		barBg: 'bg-text-tertiary/20',
-	},
-};
-
-const stepAccent = (stepType: string): FunnelAccent => STEP_ACCENT[stepType as StepKind];
-
-// Calculate funnel percentages
-const getFunnelPercentage = (
-	stepStats: { total: number; completed: number },
-	totalEntered: number
-) => {
-	if (totalEntered === 0) return 0;
-	return Math.round((stepStats.completed / totalEntered) * 100);
-};
 
 // Stats cards configuration
 const statsCards = computed(() => {
@@ -173,6 +123,35 @@ const statsCards = computed(() => {
 // Navigate to edit
 const handleEdit = () => {
 	router.push(`/dashboard/automations/${automationId.value}/edit`);
+};
+
+// Pause / Resume from the detail page, like the list row and the builder.
+const { showToast } = useToast();
+const { run: pauseAutomation } = useBackendOperation(api.automations.automations.pause, {
+	label: () => t('dashboard.automations.index.operations.pause'),
+});
+const { run: resumeAutomation } = useBackendOperation(api.automations.automations.resume, {
+	label: () => t('dashboard.automations.index.operations.resume'),
+});
+const isToggling = ref(false);
+const handleToggleStatus = async () => {
+	const current = automation.value;
+	if (!current || isToggling.value) return;
+	const pausing = current.status === 'active';
+	isToggling.value = true;
+	try {
+		const outcome = pausing
+			? await pauseAutomation({ automationId: automationId.value })
+			: await resumeAutomation({ automationId: automationId.value });
+		if (!outcome.ok) return;
+		showToast(
+			pausing
+				? t('dashboard.automations.index.toasts.paused', { name: current.name })
+				: t('dashboard.automations.index.toasts.activated', { name: current.name })
+		);
+	} finally {
+		isToggling.value = false;
+	}
 };
 </script>
 
@@ -246,6 +225,24 @@ const handleEdit = () => {
 						</div>
 					</template>
 					<template #actions>
+						<UiButton
+							v-if="automation.status === 'active' || automation.status === 'paused'"
+							variant="secondary"
+							:loading="isToggling"
+							@click="handleToggleStatus"
+						>
+							<template v-if="!isToggling" #iconLeft>
+								<component
+									:is="automation.status === 'active' ? PauseIcon : PlayIcon"
+									class="w-4 h-4"
+								/>
+							</template>
+							{{
+								automation.status === 'active'
+									? t('dashboard.automations.detail.edit.pause')
+									: t('dashboard.automations.detail.edit.resume')
+							}}
+						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click="handleEdit">
 							<PencilIcon class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.index.editAutomation') }}
@@ -254,43 +251,55 @@ const handleEdit = () => {
 				</UiPageHeader>
 			</div>
 
-			<!-- Stats Cards -->
-			<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-				<div v-for="stat in statsCards" :key="stat.label" class="card p-4">
-					<div class="flex items-center gap-3 mb-3">
-						<div :class="['p-2 rounded-lg', stat.bgColor]">
-							<component :is="stat.icon" :class="['w-4 h-4', stat.color]" size="1em" />
-						</div>
-						<span class="text-sm text-text-secondary">{{ stat.label }}</span>
-					</div>
-					<span class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ formatNumber(stat.value) }}
-					</span>
-				</div>
-			</div>
+			<UiQueryBoundary
+				v-if="statsError"
+				class="mb-8"
+				:error="statsError"
+				:error-title="t('dashboard.automations.detail.index.statsLoadError')"
+				@retry="refetchStats"
+			/>
 
-			<!-- Completion Rate Card -->
-			<div class="card p-6 mb-8">
-				<div class="flex items-center justify-between mb-4">
-					<h3 class="text-lg font-medium text-text-primary">
-						{{ t('dashboard.automations.detail.index.completionRate') }}
-					</h3>
-					<span class="text-3xl font-semibold text-brand">{{ stats?.completionRate || 0 }}%</span>
+			<template v-else>
+				<!-- Stats Cards -->
+				<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+					<div v-for="stat in statsCards" :key="stat.label" class="card p-4">
+						<div class="flex items-center gap-3 mb-3">
+							<div :class="['p-2 rounded-lg', stat.bgColor]">
+								<component :is="stat.icon" :class="['w-4 h-4', stat.color]" size="1em" />
+							</div>
+							<span class="text-sm text-text-secondary">{{ stat.label }}</span>
+						</div>
+						<span class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+							{{ formatNumber(stat.value) }}
+						</span>
+					</div>
 				</div>
-				<UiProgressBar
-					size="sm"
-					:value="Math.min(stats?.completionRate || 0, 100)"
-					:aria-label="t('dashboard.automations.detail.index.completionRateLabel')"
-				/>
-				<p class="text-sm text-text-tertiary mt-3">
-					{{
-						t('dashboard.automations.detail.index.completedOfEntered', {
-							completed: stats?.completed || 0,
-							total: stats?.totalEntered || 0,
-						})
-					}}
-				</p>
-			</div>
+
+				<!-- Completion Rate Card -->
+				<div class="card p-6 mb-8">
+					<div class="flex items-center justify-between mb-4">
+						<h3 class="text-lg font-medium text-text-primary">
+							{{ t('dashboard.automations.detail.index.completionRate') }}
+						</h3>
+						<span class="text-3xl font-semibold text-text-primary tabular-nums">{{
+							formatPercentage(stats?.completionRate || 0, 0, false)
+						}}</span>
+					</div>
+					<UiProgressBar
+						size="sm"
+						:value="Math.min(stats?.completionRate || 0, 100)"
+						:aria-label="t('dashboard.automations.detail.index.completionRateLabel')"
+					/>
+					<p class="text-sm text-text-tertiary mt-3">
+						{{
+							t('dashboard.automations.detail.index.completedOfEntered', {
+								completed: formatNumber(stats?.completed || 0),
+								total: formatNumber(stats?.totalEntered || 0),
+							})
+						}}
+					</p>
+				</div>
+			</template>
 
 			<!-- Funnel Visualization -->
 			<div class="card p-6 mb-8">
@@ -298,9 +307,23 @@ const handleEdit = () => {
 					{{ t('dashboard.automations.detail.index.funnel.title') }}
 				</h3>
 
+				<UiQueryBoundary
+					v-if="stepAnalyticsError"
+					:error="stepAnalyticsError"
+					:error-title="t('dashboard.automations.detail.index.funnel.loadError')"
+					@retry="refetchStepAnalytics"
+				/>
+
+				<div
+					v-else-if="stepAnalyticsLoading && !stepAnalytics"
+					class="flex items-center justify-center py-12"
+				>
+					<UiSpinner delay />
+				</div>
+
 				<!-- Empty state -->
 				<div
-					v-if="!stepAnalytics || stepAnalytics.length === 0"
+					v-else-if="!stepAnalytics || stepAnalytics.length === 0"
 					class="flex flex-col items-center justify-center py-12 text-center"
 				>
 					<ZapIcon class="w-12 h-12 text-text-tertiary mb-3" :stroke-width="1.5" />
@@ -316,142 +339,13 @@ const handleEdit = () => {
 				</div>
 
 				<!-- Funnel chart -->
-				<div v-else class="space-y-4">
-					<!-- Trigger row -->
-					<div class="flex items-center gap-4">
-						<div class="hidden sm:block w-24 shrink-0 text-right">
-							<span class="text-xs text-text-tertiary uppercase tracking-wider">
-								{{ t('dashboard.automations.detail.index.funnel.trigger') }}
-							</span>
-						</div>
-						<div class="flex-1 min-w-0">
-							<div class="flex items-center gap-3">
-								<div :class="['p-2 rounded-lg', getTriggerDisplay(automation.triggerType).bgColor]">
-									<component
-										:is="getTriggerDisplay(automation.triggerType).icon"
-										:class="['w-4 h-4', getTriggerDisplay(automation.triggerType).color]"
-										size="1em"
-									/>
-								</div>
-								<div class="flex-1 min-w-0">
-									<div
-										class="h-8 bg-brand/20 rounded-lg flex items-center px-4"
-										style="width: 100%"
-									>
-										<span class="text-sm font-medium text-text-primary">
-											{{
-												t('dashboard.automations.detail.index.funnel.entered', {
-													count: stats?.totalEntered || 0,
-												})
-											}}
-										</span>
-									</div>
-								</div>
-								<span class="w-12 sm:w-16 shrink-0 text-right text-sm text-text-secondary"
-									>100%</span
-								>
-							</div>
-						</div>
-					</div>
-
-					<!-- Connector -->
-					<div class="flex items-center gap-4">
-						<div class="hidden sm:block w-24 shrink-0" />
-						<div class="flex-1 flex justify-start pl-5">
-							<div class="w-0.5 h-6 bg-border-subtle" />
-						</div>
-						<div class="w-12 sm:w-16" />
-					</div>
-
-					<!-- Step rows -->
-					<template v-for="(step, index) in stepAnalytics" :key="step.stepId">
-						<div class="flex items-center gap-4">
-							<div class="hidden sm:block w-24 shrink-0 text-right">
-								<span class="text-xs text-text-tertiary uppercase tracking-wider">
-									{{ t('dashboard.automations.detail.index.funnel.step', { number: index + 1 }) }}
-								</span>
-							</div>
-							<div class="flex-1 min-w-0">
-								<div class="flex items-center gap-3">
-									<div :class="['p-2 rounded-lg', stepAccent(step.stepType).iconBg]">
-										<component
-											:is="stepInfo(step.stepType).icon"
-											:class="['w-4 h-4', stepAccent(step.stepType).iconText]"
-											size="1em"
-										/>
-									</div>
-									<div class="flex-1 min-w-0">
-										<!-- The fill is proportional; the label spans the whole track, so
-										     a short bar no longer cuts "472 completed" down to "472 co…". -->
-										<div class="relative min-h-8 rounded-lg overflow-hidden flex items-center">
-											<div
-												class="ui-meter-fill absolute inset-y-0 left-0 rounded-lg transition-transform"
-												:class="stepAccent(step.stepType).barBg"
-												:style="
-													meterFillStyle(
-														Math.max(getFunnelPercentage(step.stats, stats?.totalEntered || 0), 10)
-													)
-												"
-											/>
-											<!-- Wraps on a phone, one line from sm up. -->
-											<span
-												class="relative px-4 py-1.5 sm:py-0 text-sm font-medium text-text-primary sm:truncate"
-											>
-												{{
-													t('dashboard.automations.detail.index.funnel.stepSummary', {
-														label: getStepLabel(step.stepType, step.config),
-														completed: step.stats.completed,
-													})
-												}}
-											</span>
-										</div>
-									</div>
-									<span class="w-12 sm:w-16 shrink-0 text-right text-sm text-text-secondary">
-										{{ getFunnelPercentage(step.stats, stats?.totalEntered || 0) }}%
-									</span>
-								</div>
-								<!-- Step details -->
-								<div
-									class="ml-11 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-tertiary"
-								>
-									<span v-if="step.stats.pending > 0" class="flex items-center gap-1">
-										<ClockIcon class="w-3 h-3" />
-										{{
-											t('dashboard.automations.detail.index.funnel.pending', {
-												count: step.stats.pending,
-											})
-										}}
-									</span>
-									<span v-if="step.stats.executing > 0" class="flex items-center gap-1">
-										<SpinnerIcon class="w-3 h-3" />
-										{{
-											t('dashboard.automations.detail.index.funnel.executing', {
-												count: step.stats.executing,
-											})
-										}}
-									</span>
-									<span v-if="step.stats.failed > 0" class="flex items-center gap-1 text-error">
-										<CircleCloseIcon class="w-3 h-3" />
-										{{
-											t('dashboard.automations.detail.index.funnel.failed', {
-												count: step.stats.failed,
-											})
-										}}
-									</span>
-								</div>
-							</div>
-						</div>
-
-						<!-- Connector between steps -->
-						<div v-if="index < stepAnalytics.length - 1" class="flex items-center gap-4">
-							<div class="hidden sm:block w-24 shrink-0" />
-							<div class="flex-1 flex justify-start pl-5">
-								<div class="w-0.5 h-6 bg-border-subtle" />
-							</div>
-							<div class="w-12 sm:w-16" />
-						</div>
-					</template>
-				</div>
+				<AutomationsFunnelChart
+					v-else
+					:steps="stepAnalytics"
+					:trigger-type="automation.triggerType"
+					:total-entered="stats?.totalEntered || 0"
+					:email-templates="stepEmailTemplates"
+				/>
 			</div>
 
 			<!-- Contacts List: filterable by status, and by the list's health links -->

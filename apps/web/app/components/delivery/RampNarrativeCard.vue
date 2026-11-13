@@ -27,7 +27,7 @@ import {
 	rampPhaseNarrative,
 	recentRampDecisions,
 } from '~/utils/deliverabilityRampNarrative';
-import { formatShortDate } from '~/utils/formatters';
+import { formatDateTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
 import { RouteIcon } from '@coolicons/vue';
 
@@ -152,7 +152,7 @@ const progressPercent = computed(() =>
 									</span>
 									·
 									<time :datetime="new Date(decision.at).toISOString()">
-										{{ formatShortDate(decision.at, locale) }}
+										{{ formatDateTime(decision.at, locale) }}
 									</time>
 									·
 									<span data-testid="ramp-narrative-direction">

@@ -215,7 +215,7 @@ function retryFromButton() {
 				v-if="showRetry"
 				ref="retryButton"
 				type="button"
-				class="px-4 py-1.5 text-sm font-medium bg-bg-elevated border border-border-default rounded-md hover:bg-bg-base transition-colors"
+				class="btn btn-secondary btn-sm"
 				@click="retryFromButton"
 			>
 				{{ t('ui.actions.retry') }}

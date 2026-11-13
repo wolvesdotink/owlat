@@ -65,7 +65,7 @@ const platformLabels: Record<string, string> = {
 				{{ platformLabels[link.platform] || link.platform.slice(0, 2).toUpperCase() }}
 			</div>
 		</div>
-		<div v-if="hasUnlinkedIcons" class="mt-1.5 text-[11px] text-text-tertiary">
+		<div v-if="hasUnlinkedIcons" class="mt-1.5 text-2xs text-text-tertiary">
 			{{ t('builder.canvas.preview.socialDimmed') }}
 		</div>
 	</div>

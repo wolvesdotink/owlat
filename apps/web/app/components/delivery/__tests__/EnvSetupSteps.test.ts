@@ -19,6 +19,7 @@ config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
 
 const stubs = {
 	UiCard: { template: '<section><slot /></section>' },
+	UiIconBox: true,
 	UiButton: {
 		emits: ['click'],
 		template: '<button type="button" @click="$emit(\'click\')"><slot /></button>',

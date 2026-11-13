@@ -47,6 +47,7 @@ const pageFullySelected = computed(
 );
 
 const loadingAllMatching = ref(false);
+const { showOperationError } = useOperationErrorToast();
 /**
  * The escape hatch is only honest when the rows on screen ARE the folder scope.
  * Withhold it under a chip instead of lying: the page-level selection (and its
@@ -71,6 +72,9 @@ async function selectAllMatching() {
 			...(props.sortOrder === 'oldest' ? { sortOrder: 'oldest' as const } : {}),
 		});
 		bulk.selectAllMatchingIds(result.ids, result.capped);
+	} catch (err) {
+		// The link quietly reverting would read as "nothing to select".
+		showOperationError(err);
 	} finally {
 		loadingAllMatching.value = false;
 	}

@@ -85,12 +85,10 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 			</span>
 		</h3>
 
-		<div
-			v-if="isEmpty"
-			class="rounded-xl border border-dashed border-border-subtle px-4 py-5 text-sm text-text-secondary"
-		>
+		<!-- A quiet day earns one muted line, not another empty box. -->
+		<p v-if="isEmpty" class="text-sm text-text-secondary">
 			{{ t('components.today.updates.empty') }}
-		</div>
+		</p>
 
 		<div v-else class="rounded-xl border border-border-subtle bg-bg-elevated pb-2">
 			<template
@@ -140,19 +138,19 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 								</p>
 								<span class="flex shrink-0 items-center gap-2">
 									<span
-										class="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 group-focus:opacity-100 max-md:hidden"
+										class="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 group-focus:opacity-100 max-md:opacity-100 pointer-coarse:opacity-100"
 									>
 										<button
 											v-if="line.inboundMessageId"
 											type="button"
-											class="rounded border border-border-subtle bg-bg-elevated px-1.5 py-px text-2xs text-text-secondary hover:text-text-primary"
+											class="rounded border border-border-subtle bg-bg-elevated px-1.5 py-px text-2xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-8 pointer-coarse:px-2.5"
 											@click="emit('replyAnyway', line)"
 										>
 											{{ t('components.today.line.replyAnyway') }}
 										</button>
 										<button
 											type="button"
-											class="rounded border border-border-subtle bg-bg-elevated px-1.5 py-px text-2xs text-text-secondary hover:text-text-primary"
+											class="rounded border border-border-subtle bg-bg-elevated px-1.5 py-px text-2xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-8 pointer-coarse:px-2.5"
 											@click="emit('done', line)"
 										>
 											{{ t('components.today.line.done') }}

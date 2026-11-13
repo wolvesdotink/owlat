@@ -41,6 +41,9 @@ const CARDS = [
 ];
 
 const subscribed: string[] = [];
+// The Files read's state for the next mount.
+let filesStatus = 'Exhausted';
+let filesError: Error | null = null;
 beforeAll(() => {
 	Object.assign(globalThis, {
 		useI18n: i18nStubs.useI18n,
@@ -48,9 +51,20 @@ beforeAll(() => {
 		usePaginatedQuery: (fn: unknown, args: () => unknown) => {
 			const name = getFunctionName(fn as never);
 			if (args() !== 'skip') subscribed.push(name);
-			return { results: ref(name.endsWith(':list') ? CARDS : []) };
+			return {
+				results: ref(name.endsWith(':list') && filesStatus === 'Exhausted' ? CARDS : []),
+				status: ref(filesStatus),
+				error: ref(filesError),
+				refetch: vi.fn(),
+				loadMore: vi.fn(),
+			};
 		},
-		useConvexQuery: () => ({ data: ref(undefined) }),
+		useConvexQuery: () => ({
+			data: ref(undefined),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}),
 	});
 });
 
@@ -60,7 +74,7 @@ describe('AnswerFilePicker', () => {
 			props: { open: true },
 			global: {
 				plugins: [createTestI18n()],
-				stubs: { UiModal: { template: '<div><slot /></div>' } },
+				stubs: { UiModal: { template: '<div><slot /></div>' }, UiSkeleton: true },
 			},
 		});
 
@@ -74,5 +88,39 @@ describe('AnswerFilePicker', () => {
 			id: 'sf_kept',
 			filename: 'invoice-2026-08.pdf',
 		});
+	});
+
+	const mountPicker = () =>
+		mount(AnswerFilePicker, {
+			props: { open: true },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiModal: { template: '<div><slot /></div>' },
+					UiSkeleton: true,
+					UiQueryBoundary: {
+						props: ['error'],
+						emits: ['retry'],
+						template: '<p data-testid="boundary">{{ error?.message }}</p>',
+					},
+				},
+			},
+		});
+
+	it('shows a loading list, not "No files found", until Files has answered', () => {
+		filesStatus = 'LoadingFirstPage';
+		filesError = null;
+		const wrapper = mountPicker();
+		expect(wrapper.find('[data-testid="file-picker-loading"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="file-picker-empty"]').exists()).toBe(false);
+	});
+
+	it('says a failed Files read failed instead of calling it empty', () => {
+		filesStatus = 'Exhausted';
+		filesError = new Error('boom');
+		const wrapper = mountPicker();
+		expect(wrapper.find('[data-testid="boundary"]').exists()).toBe(true);
+		expect(wrapper.find('[data-testid="file-picker-empty"]').exists()).toBe(false);
+		filesError = null;
 	});
 });

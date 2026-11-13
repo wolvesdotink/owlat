@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import type { Component } from 'vue';
 import type { BlockType } from '../../types';
 import { getAllBlocks } from '../../registry';
@@ -73,23 +73,58 @@ function handleClickOutside(event: MouseEvent) {
 	}
 }
 
+function menuItems(): HTMLButtonElement[] {
+	return Array.from(popoverRef.value?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+}
+
+// The opener gets focus back when the menu closes without a pick, so a
+// keyboard user is not dropped onto <body>.
+function closeToAnchor() {
+	emit('close');
+	props.anchorElement.focus({ preventScroll: true });
+}
+
 function handleKeydown(event: KeyboardEvent) {
 	if (event.key === 'Escape') {
-		emit('close');
+		// This menu owns Escape while open: editor shortcuts behind it must not
+		// also run (deselecting the block, leaving focus mode).
+		event.preventDefault();
+		event.stopPropagation();
+		closeToAnchor();
 	}
+}
+
+// Arrow keys move through the three-column grid; Home and End jump to the ends.
+function handleMenuKeydown(event: KeyboardEvent) {
+	const items = menuItems();
+	const current = items.indexOf(document.activeElement as HTMLButtonElement);
+	if (current === -1) return;
+	const step: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 3, ArrowUp: -3 };
+	let next: number | null = null;
+	if (event.key in step) next = Math.max(0, Math.min(items.length - 1, current + step[event.key]!));
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = items.length - 1;
+	else if (event.key === 'Tab') {
+		emit('close');
+		return;
+	}
+	if (next === null) return;
+	event.preventDefault();
+	items[next]?.focus();
 }
 
 onMounted(() => {
 	positionPopover();
+	nextTick(() => menuItems()[0]?.focus({ preventScroll: true }));
 	setTimeout(() => {
 		document.addEventListener('mousedown', handleClickOutside);
 	}, 0);
-	document.addEventListener('keydown', handleKeydown);
+	document.addEventListener('keydown', handleKeydown, true);
 });
 
 onUnmounted(() => {
 	document.removeEventListener('mousedown', handleClickOutside);
-	document.removeEventListener('keydown', handleKeydown);
+	document.removeEventListener('keydown', handleKeydown, true);
 });
 </script>
 
@@ -101,10 +136,11 @@ onUnmounted(() => {
 			:aria-label="t('builder.canvas.insertBlock')"
 			class="light fixed z-(--z-menu) w-[280px] max-h-[380px] overflow-y-auto bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_4px_8px_rgba(0,0,0,0.08),0_16px_32px_rgba(0,0,0,0.12)] animate-eb-popover-enter"
 			:style="{ top: `${top}px`, left: `${left}px` }"
+			@keydown="handleMenuKeydown"
 		>
 			<div class="p-2">
 				<div v-for="category in categories" :key="category.label" class="mb-1 last:mb-0">
-					<div class="text-[10px] font-semibold text-text-secondary uppercase tracking-wider px-2 py-1.5">
+					<div class="text-2xs font-semibold text-text-secondary uppercase tracking-wider px-2 py-1.5">
 						{{ category.label }}
 					</div>
 					<div class="grid grid-cols-3 gap-0.5">
@@ -112,13 +148,14 @@ onUnmounted(() => {
 							v-for="block in category.items"
 							:key="block.type"
 							role="menuitem"
+							tabindex="-1"
 							:aria-label="block.label"
-							class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-none bg-transparent cursor-pointer transition-colors duration-(--motion-fast) text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
+							class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-none bg-transparent cursor-pointer transition-colors duration-(--motion-fast) text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:bg-bg-surface-hover focus-visible:text-text-primary focus-visible:shadow-[inset_0_0_0_1px_var(--color-brand)]"
 							type="button"
 							@click="emit('select', block.type); emit('close')"
 						>
-							<component :is="block.icon" :size="18" />
-							<span class="text-[11px] font-medium leading-tight">{{ block.label }}</span>
+							<component :is="block.icon" :size="18" aria-hidden="true" />
+							<span class="text-2xs font-medium leading-tight">{{ block.label }}</span>
 						</button>
 					</div>
 				</div>

@@ -17,6 +17,7 @@ import { formatRelativeTime } from '~/utils/formatters';
 import { rankSnippets } from '~/utils/postboxSnippets';
 import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 import SavedReplyEditor from './SavedReplyEditor.vue';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 import { PaperclipIcon, PlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -62,6 +63,22 @@ function limitedTo(reply: Reply): string | null {
 // The form: `null` closed, `'new'` a new reply, otherwise the reply being edited.
 const editing = ref<'new' | Reply | null>(null);
 const saving = ref(false);
+const editorWrap = ref<HTMLElement | null>(null);
+
+// The editor opens above the list, so Edit on a lower row would otherwise open
+// it off-screen with focus left on the button: bring it into view and focus
+// its first field.
+watch(
+	() => (editing.value === null ? null : editing.value === 'new' ? 'new' : editing.value._id),
+	async (key) => {
+		if (key === null) return;
+		await nextTick();
+		const wrap = editorWrap.value;
+		if (!wrap) return;
+		wrap.scrollIntoView?.({ block: 'start' });
+		wrap.querySelector<HTMLElement>('input, textarea')?.focus({ preventScroll: true });
+	}
+);
 const initial = computed<SavedReplyDraft | null>(() => {
 	const reply = editing.value;
 	if (!reply || reply === 'new') return null;
@@ -112,15 +129,16 @@ async function confirmRemove() {
 			</UiButton>
 		</div>
 
-		<SavedReplyEditor
-			v-if="editing"
-			:key="editing === 'new' ? 'new' : editing._id"
-			:initial="initial"
-			:team-inboxes="scope === 'shared' ? (teamInboxes ?? []) : undefined"
-			:saving="saving"
-			@save="save"
-			@cancel="editing = null"
-		/>
+		<div v-if="editing" ref="editorWrap" class="scroll-mt-6">
+			<SavedReplyEditor
+				:key="editing === 'new' ? 'new' : editing._id"
+				:initial="initial"
+				:team-inboxes="scope === 'shared' ? (teamInboxes ?? []) : undefined"
+				:saving="saving"
+				@save="save"
+				@cancel="editing = null"
+			/>
+		</div>
 
 		<section class="card !p-0">
 			<div v-if="isLoading" class="p-8 flex justify-center">
@@ -132,14 +150,16 @@ async function confirmRemove() {
 				{{ t(`shared.savedReplies.library.empty.${scope}`) }}
 			</div>
 			<ul v-else class="divide-y divide-border-subtle" data-testid="saved-reply-list">
-				<li v-for="reply in ordered" :key="reply._id" class="px-5 py-3 flex items-start gap-3">
-					<div class="flex-1 min-w-0">
+				<li
+					v-for="reply in ordered"
+					:key="reply._id"
+					class="px-5 py-3 flex flex-wrap items-start gap-x-3 gap-y-2"
+				>
+					<div class="min-w-0 flex-[1_1_16rem]">
 						<div class="flex flex-wrap items-center gap-2">
-							<span class="font-medium">{{ reply.name }}</span>
-							<span
-								v-if="reply.shortcut"
-								class="text-xs px-1.5 py-0.5 rounded bg-bg-surface text-text-tertiary font-mono"
-								>;{{ reply.shortcut }}</span
+							<span class="font-medium break-words">{{ reply.name }}</span>
+							<UiBadge v-if="reply.shortcut" variant="neutral" class="font-mono"
+								>;{{ reply.shortcut }}</UiBadge
 							>
 							<span
 								v-if="reply.attachments.length > 0"
@@ -156,19 +176,26 @@ async function confirmRemove() {
 							<template v-if="limitedTo(reply)"> · {{ limitedTo(reply) }}</template>
 						</p>
 					</div>
-					<template v-if="canManage">
-						<UiButton variant="ghost" type="button" @click="editing = reply">
+					<div v-if="canManage" class="ml-auto flex shrink-0 items-center gap-1">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							type="button"
+							:aria-label="`${t('common.edit')}: ${reply.name}`"
+							@click="editing = reply"
+						>
 							{{ t('common.edit') }}
 						</UiButton>
 						<UiButton
-							variant="ghost"
+							variant="danger-ghost"
+							size="sm"
 							type="button"
-							class="text-error"
+							:aria-label="`${t('common.delete')}: ${reply.name}`"
 							@click="toRemove = reply._id"
 						>
 							{{ t('common.delete') }}
 						</UiButton>
-					</template>
+					</div>
 				</li>
 			</ul>
 		</section>

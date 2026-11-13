@@ -79,6 +79,39 @@ const weekdayLabels = computed(() =>
 	}))
 );
 
+// A typed zone could be misspelt and saved silently; offer the runtime's
+// IANA list, keeping a stored value the list lacks.
+const timezoneOptions = computed(() => {
+	let zones: string[] = [];
+	try {
+		zones =
+			(Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.(
+				'timeZone'
+			) ?? [];
+	} catch {
+		zones = [];
+	}
+	if (!zones.includes('UTC')) zones = ['UTC', ...zones];
+	return form.timezone && !zones.includes(form.timezone) ? [form.timezone, ...zones] : zones;
+});
+
+const fieldId = useId();
+
+// The switch and the window only take effect on Save; say when the draft
+// differs from what is stored, so leaving does not silently drop a change.
+const isDirty = computed(() => {
+	const days = [...form.days].sort((a, b) => a - b);
+	const stored = [...props.days].sort((a, b) => a - b);
+	return (
+		form.enabled !== props.enabled ||
+		form.timezone !== (props.timezone || browserTimezone) ||
+		hhmmToMinutes(form.start) !== props.start ||
+		hhmmToMinutes(form.end) !== props.end ||
+		days.length !== stored.length ||
+		days.some((day, i) => day !== stored[i])
+	);
+});
+
 const toggleDay = (day: number) => {
 	const i = form.days.indexOf(day);
 	if (i === -1) form.days.push(day);
@@ -150,29 +183,28 @@ const handleSave = () => {
 
 		<div v-if="form.enabled" class="space-y-4">
 			<div>
-				<label class="text-sm font-medium text-text-primary">
+				<label :for="`${fieldId}-tz`" class="text-sm font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyWorkingHours.timezoneLabel') }}
 				</label>
-				<input
-					v-model="form.timezone"
-					type="text"
-					class="input w-full mt-1"
-					:placeholder="t('components.autonomy.autonomyWorkingHours.timezonePlaceholder')"
-				/>
+				<select :id="`${fieldId}-tz`" v-model="form.timezone" class="input w-full mt-1">
+					<option v-for="zone in timezoneOptions" :key="zone" :value="zone">
+						{{ zone.replace(/_/g, ' ') }}
+					</option>
+				</select>
 			</div>
 
 			<div class="flex items-end gap-4">
 				<div>
-					<label class="text-sm font-medium text-text-primary">
+					<label :for="`${fieldId}-from`" class="text-sm font-medium text-text-primary">
 						{{ t('components.autonomy.autonomyWorkingHours.fromLabel') }}
 					</label>
-					<input v-model="form.start" type="time" class="input mt-1" />
+					<input :id="`${fieldId}-from`" v-model="form.start" type="time" class="input mt-1" />
 				</div>
 				<div>
-					<label class="text-sm font-medium text-text-primary">
+					<label :for="`${fieldId}-to`" class="text-sm font-medium text-text-primary">
 						{{ t('components.autonomy.autonomyWorkingHours.toLabel') }}
 					</label>
-					<input v-model="form.end" type="time" class="input mt-1" />
+					<input :id="`${fieldId}-to`" v-model="form.end" type="time" class="input mt-1" />
 				</div>
 				<!-- One marker for the window: hours and days reset together. -->
 				<SettingsResetToDefault
@@ -185,15 +217,16 @@ const handleSave = () => {
 			</div>
 
 			<div>
-				<label class="text-sm font-medium text-text-primary">
+				<p :id="`${fieldId}-days`" class="text-sm font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyWorkingHours.daysLabel') }}
-				</label>
-				<div class="flex flex-wrap gap-2 mt-2">
+				</p>
+				<div class="flex flex-wrap gap-2 mt-2" role="group" :aria-labelledby="`${fieldId}-days`">
 					<button
 						v-for="d in weekdayLabels"
 						:key="d.value"
 						type="button"
-						class="px-3 py-1 rounded-full text-xs border transition-colors"
+						:aria-pressed="form.days.includes(d.value)"
+						class="px-3 py-1 pointer-coarse:min-h-11 rounded-full text-xs border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:class="
 							form.days.includes(d.value)
 								? 'bg-brand-subtle text-brand border-brand/40'
@@ -211,9 +244,12 @@ const handleSave = () => {
 			</p>
 		</div>
 
-		<div class="flex justify-end mt-5 pt-4 border-t border-border-subtle">
+		<div class="flex items-center justify-end gap-3 mt-5 pt-4 border-t border-border-subtle">
+			<span v-if="isDirty" class="text-xs text-text-tertiary" role="status">
+				{{ t('components.autonomy.autonomyWorkingHours.unsaved') }}
+			</span>
 			<UiButton class="gap-2" :disabled="busy" @click="handleSave">
-				<SaveIcon class="w-4 h-4" />
+				<SaveIcon class="w-4 h-4" aria-hidden="true" />
 				{{ t('components.autonomy.autonomyWorkingHours.save') }}
 			</UiButton>
 		</div>

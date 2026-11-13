@@ -41,7 +41,12 @@ const run = vi.fn(async (_args: unknown) => ({ ok: true }));
 const toasts: string[] = [];
 
 beforeAll(() => {
-	vi.stubGlobal('useOrganizationQuery', () => ({ data: status, isLoading: ref(false) }));
+	vi.stubGlobal('useOrganizationQuery', () => ({
+		data: status,
+		isLoading: ref(false),
+		error: ref(null),
+		refetch: vi.fn(),
+	}));
 	vi.stubGlobal('useBackendOperation', () => ({
 		run,
 		isLoading: ref(false),
@@ -107,6 +112,8 @@ const mountCard = () =>
 					template: '<button v-bind="$attrs"><slot /></button>',
 				},
 				UiConfirmationDialog: confirmStub,
+				UiSkeleton: true,
+				UiQueryBoundary: true,
 				PostboxMailboxConnectForm: { template: '<form />' },
 			},
 		},
@@ -153,5 +160,29 @@ describe('seed mailboxes on the delivery hub', () => {
 		// distinct actions — acknowledging is not disconnecting.
 		expect(wrapper.text()).toContain('Credentials rotated');
 		expect(rows).toHaveLength(2);
+	});
+
+	it('names each mailbox provider in words, not by its key', () => {
+		const wrapper = mountCard();
+		expect(wrapper.text()).toContain('Gmail');
+		expect(wrapper.text()).toContain('Microsoft');
+		expect(wrapper.text()).not.toMatch(/\bmicrosoft\b/);
+	});
+
+	it('lets the provider picker be cancelled without collapsing the card', async () => {
+		const wrapper = mountCard();
+		const add = wrapper.findAll('button').find((b) => b.text() === 'Add test mailbox')!;
+		await add.trigger('click');
+		expect(wrapper.find('[data-testid="seed-connect-cancel"]').exists()).toBe(true);
+		await wrapper.get('[data-testid="seed-connect-cancel"]').trigger('click');
+		expect(wrapper.find('[data-testid="seed-connect-cancel"]').exists()).toBe(false);
+		expect(wrapper.findAll('button').some((b) => b.text() === 'Add test mailbox')).toBe(true);
+	});
+
+	it('claims no mailbox count before the status has arrived', () => {
+		status.value = null;
+		const wrapper = mountCard();
+		expect(wrapper.text()).not.toContain('test mailboxes connected');
+		expect(wrapper.find('[data-testid="seed-disconnect"]').exists()).toBe(false);
 	});
 });

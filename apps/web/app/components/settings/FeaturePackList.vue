@@ -26,6 +26,7 @@ import {
 import { useId } from 'vue';
 import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
 import FeatureToggleSwitch from '~/components/settings/FeatureToggleSwitch.vue';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { groupFeatureFlags, type FeatureGroup, type FeatureGroupKey } from '~/utils/featureGroups';
 import { ChevronDownIcon, ChevronRightIcon, TriangleWarningIcon } from '@coolicons/vue';
@@ -155,19 +156,13 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 				<div class="min-w-0">
 					<div class="flex items-center gap-2 flex-wrap">
 						<h2 class="font-medium text-text-primary">{{ groupLabel(group) }}</h2>
-						<span
-							v-if="packState(group) === 'partial'"
-							class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
-						>
+						<UiBadge v-if="packState(group) === 'partial'" variant="neutral" pill>
 							{{ t('components.settings.featurePackList.partial') }}
-						</span>
-						<span
-							v-if="groupNeedsConfig(group)"
-							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
-						>
+						</UiBadge>
+						<UiBadge v-if="groupNeedsConfig(group)" variant="warning" pill>
 							<TriangleWarningIcon class="w-3 h-3" />
 							{{ t('components.settings.featurePackList.needsSetup') }}
-						</span>
+						</UiBadge>
 					</div>
 					<p class="text-sm text-text-secondary mt-0.5">{{ groupDescription(group) }}</p>
 					<slot name="pack-note" :group="group" />
@@ -215,9 +210,10 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 						<div class="min-w-0">
 							<div class="flex items-center gap-2 flex-wrap">
 								<p class="text-sm font-medium text-text-primary">{{ flagLabel(def) }}</p>
-								<span
+								<UiBadge
 									v-if="needsConfig.has(def.key)"
-									class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning"
+									variant="warning"
+									pill
 									:title="
 										t('components.settings.featurePackList.needsSetupTitle', {
 											missing: (missingConfig?.[def.key] ?? []).join(', '),
@@ -226,11 +222,17 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 								>
 									<TriangleWarningIcon class="w-3 h-3" />
 									{{ t('components.settings.featurePackList.needsSetup') }}
-								</span>
+								</UiBadge>
 							</div>
 							<p class="text-sm text-text-secondary mt-0.5">{{ flagDescription(def) }}</p>
-							<p v-if="dependencyReason(def)" class="text-xs text-text-tertiary mt-1">
-								{{ dependencyReason(def) }}
+							<!-- Visible, not only a tooltip: a disabled switch takes no focus,
+							     so keyboard and touch users would never see why. -->
+							<p
+								v-if="blockedReason(def)"
+								:id="`feature-blocked-${def.key}`"
+								class="text-xs text-text-tertiary mt-1"
+							>
+								{{ blockedReason(def) }}
 							</p>
 							<FeatureFlagMetadata :definition="def" />
 						</div>
@@ -240,6 +242,7 @@ function blockedReason(def: FeatureFlagDefinition): string | undefined {
 							:data-testid="`feature-switch-${def.key}`"
 							:disabled="flagsBusy || blockedReason(def) !== undefined"
 							:title="blockedReason(def)"
+							:aria-describedby="blockedReason(def) ? `feature-blocked-${def.key}` : undefined"
 							@toggle="emit('toggle-flag', def.key, !resolved[def.key])"
 						/>
 					</li>

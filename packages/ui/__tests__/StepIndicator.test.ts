@@ -63,7 +63,17 @@ describe('StepIndicator — one accent', () => {
 		const connector = mountRail().findAll('.h-0\\.5');
 
 		expect(connector[0]?.classes()).toContain('bg-text-primary/30');
-		expect(connector[1]?.classes()).toContain('bg-border-subtle');
+		// border-subtle (#f0f0f0) all but vanished on white.
+		expect(connector[1]?.classes()).toContain('bg-border-default');
+	});
+
+	it('marks the current step with aria-current and names completed steps', () => {
+		const w = mountRail();
+		const items = w.findAll('li');
+
+		expect(items[1]?.attributes('aria-current')).toBe('step');
+		expect(items[0]?.attributes('aria-current')).toBeUndefined();
+		expect(items[0]?.find('.sr-only').text()).toContain('completed');
 	});
 
 	it('leaves exactly one brand class in the whole rail', () => {

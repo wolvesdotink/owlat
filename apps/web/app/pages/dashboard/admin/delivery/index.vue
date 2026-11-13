@@ -368,7 +368,7 @@ const sendingDetail = computed(() => {
 					>
 						<template #loading>
 							<div
-								class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
+								class="h-40 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
 								role="status"
 								aria-live="polite"
 								:aria-label="t('dashboard.admin.delivery.index.trend.loading')"
@@ -407,7 +407,7 @@ const sendingDetail = computed(() => {
 			>
 				<template #loading>
 					<div
-						class="h-40 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface"
+						class="h-40 animate-pulse motion-reduce:animate-none rounded-(--radius-card) bg-bg-surface"
 						role="status"
 						aria-live="polite"
 						:aria-label="t('dashboard.admin.delivery.index.domains.loading')"

@@ -59,22 +59,12 @@ const {
 		/>
 
 		<!-- Empty state -->
-		<div
+		<UiEmptyState
 			v-else-if="!visualizations || visualizations.length === 0"
-			class="flex flex-col items-center justify-center py-16 text-center"
-		>
-			<UiIconBox
-				:icon="ChartBarVerticalIcon"
-				size="xl"
-				variant="surface"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">{{ t('dashboard.visualizations.emptyTitle') }}</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{ t('dashboard.visualizations.emptyDescription') }}
-			</p>
-		</div>
+			:icon="ChartBarVerticalIcon"
+			:title="t('dashboard.visualizations.emptyTitle')"
+			:description="t('dashboard.visualizations.emptyDescription')"
+		/>
 
 		<!-- Visualizations grid -->
 		<div v-else class="grid grid-cols-[repeat(auto-fill,minmax(min(28rem,100%),1fr))] gap-4">

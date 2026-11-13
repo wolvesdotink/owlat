@@ -61,7 +61,7 @@ const STATUS_COLORS: Record<string, string> = {
 	success: 'bg-success/10 text-success',
 	failed: 'bg-error/10 text-error',
 	retrying: 'bg-warning/10 text-warning',
-	pending: 'bg-brand-subtle text-brand',
+	pending: 'bg-info/10 text-info',
 };
 
 function statusColor(status: string) {
@@ -137,14 +137,16 @@ function formatJson(value: unknown) {
 			}
 		"
 	>
-		<!-- Sub-header toolbar: back navigation + send test -->
+		<!-- Sub-header toolbar: back navigation + send test. Hidden while the
+		     list is empty: the empty state carries its own send-test action. -->
 		<div
-			v-if="selectedLogId || !logsLoading || logs"
+			v-if="selectedLogId || (logs && logs.length > 0)"
 			class="flex items-center justify-between mb-4 min-h-[2rem]"
 		>
 			<button
 				v-if="selectedLogId"
-				class="flex items-center gap-1 text-sm text-text-tertiary hover:text-text-primary transition-colors"
+				type="button"
+				class="flex items-center gap-1 rounded text-sm text-text-tertiary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="emit('clearSelectedLog')"
 			>
 				<ArrowLeftIcon class="w-4 h-4" />
@@ -305,37 +307,63 @@ function formatJson(value: unknown) {
 				</div>
 			</div>
 
-			<!-- Logs list -->
-			<div v-else-if="logs && logs.length > 0">
-				<div
-					v-for="log in logs"
-					:key="log._id"
-					class="flex items-center gap-4 px-6 py-3 border-b border-border-subtle hover:bg-bg-surface/50 cursor-pointer transition-colors"
-					@click="emit('selectLog', log._id)"
-				>
-					<span
-						:class="[
-							'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0',
-							statusColor(log.status),
-						]"
-					>
-						{{ statusLabel(log.status) }}
-					</span>
-					<span class="text-sm text-text-primary min-w-0 truncate">
-						{{ formatEventLabel(log.event) }}
-					</span>
-					<span v-if="log.httpStatusCode" class="text-xs text-text-tertiary font-mono shrink-0">
-						{{ log.httpStatusCode }}
-					</span>
-					<span class="text-xs text-text-tertiary shrink-0">
-						{{ formatDuration(log.durationMs) }}
-					</span>
-					<span class="text-xs text-text-tertiary shrink-0 ml-auto">
-						{{ formatWhen(log.scheduledAt) }}
-					</span>
-					<ChevronRightIcon class="w-4 h-4 text-text-tertiary shrink-0" />
+			<!-- A log is selected but its detail has not arrived (or no longer
+			     exists): keep the detail view, not the list under a detail title. -->
+			<div
+				v-else-if="selectedLogId && selectedLog === undefined"
+				class="px-6 space-y-4"
+				aria-busy="true"
+			>
+				<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+				<div aria-hidden="true" class="space-y-4">
+					<div class="flex items-center gap-3">
+						<UiSkeleton class="h-6 w-16" />
+						<UiSkeleton class="h-4 w-24" />
+						<UiSkeleton class="h-4 w-28" />
+					</div>
+					<UiSkeleton class="h-4 w-40" />
+					<UiSkeleton class="h-24 w-full" />
 				</div>
 			</div>
+			<div v-else-if="selectedLogId" class="px-6 py-12 text-center">
+				<p class="text-sm text-text-secondary">
+					{{ t('components.webhooks.webhookDeliveryLogsPanel.detailMissing') }}
+				</p>
+			</div>
+
+			<!-- Logs list -->
+			<ul v-else-if="logs && logs.length > 0">
+				<li v-for="log in logs" :key="log._id" class="border-b border-border-subtle">
+					<button
+						type="button"
+						class="flex w-full items-center gap-4 px-6 py-3 text-left hover:bg-bg-surface/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset"
+						data-testid="webhook-delivery-log-row"
+						@click="emit('selectLog', log._id)"
+					>
+						<span
+							:class="[
+								'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0',
+								statusColor(log.status),
+							]"
+						>
+							{{ statusLabel(log.status) }}
+						</span>
+						<span class="text-sm text-text-primary min-w-0 truncate">
+							{{ formatEventLabel(log.event) }}
+						</span>
+						<span v-if="log.httpStatusCode" class="text-xs text-text-tertiary font-mono shrink-0">
+							{{ log.httpStatusCode }}
+						</span>
+						<span class="text-xs text-text-tertiary shrink-0">
+							{{ formatDuration(log.durationMs) }}
+						</span>
+						<span class="text-xs text-text-tertiary shrink-0 ml-auto">
+							{{ formatWhen(log.scheduledAt) }}
+						</span>
+						<ChevronRightIcon class="w-4 h-4 text-text-tertiary shrink-0" />
+					</button>
+				</li>
+			</ul>
 
 			<!-- Empty state -->
 			<div v-else class="flex flex-col items-center justify-center py-16 text-center px-6">

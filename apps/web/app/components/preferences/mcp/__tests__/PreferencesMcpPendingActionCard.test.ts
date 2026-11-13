@@ -22,6 +22,8 @@ const run = vi.fn();
 const pending = ref<McpPendingAction[]>([]);
 /** `undefined` while the card's review is loading. */
 const review = ref<McpActionReview | null | undefined>(undefined);
+const reviewError = ref<Error | null>(null);
+const refetchReview = vi.fn();
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -31,8 +33,8 @@ beforeAll(() => {
 	vi.stubGlobal('useConvexQuery', (query: FunctionReference<'query'>) => ({
 		data: getFunctionName(query) === 'mcp/actions:getReview' ? review : pending,
 		isLoading: ref(false),
-		error: ref(null),
-		refetch: vi.fn(),
+		error: getFunctionName(query) === 'mcp/actions:getReview' ? reviewError : ref(null),
+		refetch: getFunctionName(query) === 'mcp/actions:getReview' ? refetchReview : vi.fn(),
 	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run }));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
@@ -42,6 +44,8 @@ beforeAll(() => {
 beforeEach(() => {
 	run.mockReset();
 	review.value = undefined;
+	reviewError.value = null;
+	refetchReview.mockReset();
 });
 
 function sendSummary(): McpPendingAction {
@@ -89,6 +93,10 @@ function mountPrompt() {
 			},
 			stubs: {
 				NuxtLink: { template: '<a><slot /></a>' },
+				UiQueryBoundary: {
+					emits: ['retry'],
+					template: '<button data-test="retry" @click="$emit(\'retry\')">Retry</button>',
+				},
 				UiButton: {
 					props: ['disabled'],
 					emits: ['click'],
@@ -318,5 +326,16 @@ describe('MCP approval card', () => {
 		const wrapper = mountPrompt();
 		expect(wrapper.text()).toContain('You no longer have access to this mailbox');
 		expect(approveButton(wrapper).attributes('disabled')).toBeDefined();
+	});
+
+	it('offers a retry instead of loading forever when the review read fails', async () => {
+		pending.value = [sendSummary()];
+		reviewError.value = new Error('boom');
+		const wrapper = mountPrompt();
+		expect(wrapper.find('[data-test="review-error"]').exists()).toBe(true);
+		expect(wrapper.find('[data-test="loading"]').exists()).toBe(false);
+		expect(approveButton(wrapper).attributes('disabled')).toBeDefined();
+		await wrapper.get('[data-test="retry"]').trigger('click');
+		expect(refetchReview).toHaveBeenCalledTimes(1);
 	});
 });

@@ -21,7 +21,20 @@ const props = defineProps<{
 	pending: boolean;
 }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+// Locale-aware like the counts beside them: "38,4 %" in German, not "38.4%".
+const percentFormat = computed(
+	() =>
+		new Intl.NumberFormat(locale.value, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+);
+const pointsFormat = computed(
+	() => new Intl.NumberFormat(locale.value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+);
 
 const prefix = 'dashboard.campaigns.detail.report.comparison';
 
@@ -39,14 +52,16 @@ function rateLabel(row: RateComparison): string {
 }
 
 function rateValue(row: RateComparison): string {
-	return `${(row.rate * 100).toFixed(1)}%`;
+	return percentFormat.value.format(row.rate);
 }
 
 function changeText(row: RateComparison): string | null {
 	if (row.pointsChange === null) return null;
 	if (row.pointsChange === 0) return t(`${prefix}.noChange`);
 	const sign = row.pointsChange > 0 ? '+' : '−';
-	return t(`${prefix}.points`, { change: `${sign}${Math.abs(row.pointsChange).toFixed(1)}` });
+	return t(`${prefix}.points`, {
+		change: `${sign}${pointsFormat.value.format(Math.abs(row.pointsChange))}`,
+	});
 }
 
 function changeTone(row: RateComparison): string {

@@ -30,7 +30,7 @@ const { t } = useI18n();
 <template>
 	<div class="mt-3 space-y-2">
 		<span
-			class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-brand/20 text-brand border-brand/30"
+			class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-bg-surface text-text-secondary border-border-subtle"
 		>
 			<GitBranchIcon class="w-3 h-3" />
 			{{ strategyLabel(route.strategy) }}

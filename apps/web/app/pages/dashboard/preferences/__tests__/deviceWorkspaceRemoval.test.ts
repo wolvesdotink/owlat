@@ -124,6 +124,7 @@ function mountPage() {
 				UiModal: UiModalStub,
 				UiButton: UiButtonStub,
 				UiSwitch: true,
+				UiBadge: { template: '<span><slot /></span>' },
 				I18nT: true,
 				PreferencesWebPush: true,
 				PreferencesMarketingNotifications: true,

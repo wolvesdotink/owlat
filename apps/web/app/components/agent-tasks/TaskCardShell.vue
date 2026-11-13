@@ -31,7 +31,7 @@ withDefaults(
 <template>
 	<component
 		:is="as"
-		class="relative surface-2 rounded-lg outline-none focus-visible:ring-1 focus-visible:ring-brand/40 transition-shadow duration-(--motion-fast)"
+		class="relative surface-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand/60 transition-shadow duration-(--motion-fast)"
 		:class="[
 			spine ? 'border-l-2 border-l-brand/60' : '',
 			dense ? 'p-3' : 'p-4',

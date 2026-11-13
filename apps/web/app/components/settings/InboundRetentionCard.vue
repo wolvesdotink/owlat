@@ -88,11 +88,9 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 			</div>
 		</template>
 
-		<div class="mt-4 flex items-start justify-between gap-4">
-			<p v-if="!canManageOrganization" class="text-xs text-text-tertiary">
-				{{ t('components.settings.inboundRetentionCard.adminOnly') }}
-			</p>
-			<span v-else />
+		<!-- The labelled select leads the row; the admin-only note, when shown,
+		     sits beside it rather than an empty column pushing it to the edge. -->
+		<div class="mt-4 flex flex-wrap items-start gap-4">
 			<UiSpinner v-if="isLoading" size="sm" />
 			<div
 				v-else-if="!settingsError"
@@ -108,6 +106,9 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 					@update:model-value="onSelect"
 				/>
 			</div>
+			<p v-if="!canManageOrganization" class="min-w-0 flex-1 self-end text-xs text-text-tertiary">
+				{{ t('components.settings.inboundRetentionCard.adminOnly') }}
+			</p>
 		</div>
 
 		<!-- A failed read is not the default window: show the error instead. -->

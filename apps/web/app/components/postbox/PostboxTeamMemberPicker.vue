@@ -25,10 +25,10 @@ const { t } = useI18n();
 </script>
 
 <template>
-	<div>
-		<label class="text-sm font-medium block mb-1">
+	<fieldset>
+		<legend class="text-sm font-medium block mb-1">
 			{{ t('components.postbox.postboxTeamMemberPicker.label') }}
-		</label>
+		</legend>
 		<p class="text-xs text-text-tertiary mb-2">
 			{{ t('components.postbox.postboxTeamMemberPicker.help') }}
 		</p>
@@ -44,7 +44,9 @@ const { t } = useI18n();
 		</p>
 		<ul v-else class="space-y-1 max-h-56 overflow-y-auto">
 			<li v-for="m in members" :key="m.userId">
-				<label class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer">
+				<label
+					class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer"
+				>
 					<input
 						type="checkbox"
 						:checked="selectedIds.includes(m.userId)"
@@ -57,5 +59,5 @@ const { t } = useI18n();
 				</label>
 			</li>
 		</ul>
-	</div>
+	</fieldset>
 </template>

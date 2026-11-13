@@ -229,6 +229,20 @@ describe('InboxThreadComposer in Answer mode', () => {
 		expect(plain.emitted('reject')).toBeUndefined();
 	});
 
+	it('Clear can be undone from its toast', async () => {
+		showToast.mockClear();
+		const plain = mountComposer();
+		const body = () => plain.get<HTMLTextAreaElement>('[data-testid="thread-composer-body"]');
+		await body().setValue('Half a reply');
+		await plain.get('[data-testid="thread-composer-clear"]').trigger('click');
+		expect(body().element.value).toBe('');
+
+		const options = showToast.mock.calls.at(-1)?.[2] as { action: { onAction: () => void } };
+		options.action.onAction();
+		await nextTick();
+		expect(body().element.value).toBe('Half a reply');
+	});
+
 	it('sends with Cmd/Ctrl+Enter from the editor', async () => {
 		const wrapper = mountComposer();
 		const body = wrapper.get('[data-testid="thread-composer-body"]');

@@ -20,6 +20,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
 import { moveSibling } from '~/utils/postboxReorder';
+import { LABEL_PRESET_COLORS } from '~/utils/labelPalette';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
 import {
 	CheckAllIcon,
@@ -53,7 +54,12 @@ const { collapsedIds, toggle, expandAll } = usePostboxLabelCollapse();
 const { openManager, editLabelId } = usePostboxManageDialog();
 const folderBulk = usePostboxFolderBulk(mailboxIdRef);
 
-const PRESET_COLORS = LABEL_PRESET_HEXES;
+const PRESET_COLORS = LABEL_PRESET_COLORS;
+// Swatches are named by their token ("Terracotta"), never by the stored hex.
+const colorName = (token: string) =>
+	t(
+		`components.postbox.postboxLabelManager.colors.${token.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}`
+	);
 
 // Navigating to a label inside a folded branch must not leave the rail showing
 // no selection at all.
@@ -162,19 +168,56 @@ async function labelDropped(label: { _id: string; name: string }, ids: Id<'mailM
 }
 
 // ── manage mode: rename in place ──────────────────────────────────────────
+// The name button unmounts when its field mounts, so focus is moved by hand:
+// into the field on start, back to the row's name on commit or cancel.
+const rootEl = ref<HTMLElement | null>(null);
+const renameInput = ref<HTMLInputElement | null>(null);
+// A function ref: a string ref inside the row v-for would collect an array.
+function bindRenameInput(el: unknown) {
+	renameInput.value = el instanceof HTMLInputElement ? el : null;
+}
 const renamingId = ref<string | null>(null);
 const renameName = ref('');
 
-function startRename(labelId: string, currentName: string) {
+async function startRename(labelId: string, currentName: string) {
 	renamingId.value = labelId;
 	renameName.value = currentName;
+	await nextTick();
+	renameInput.value?.focus();
+	renameInput.value?.select();
+}
+
+async function focusRenameButton(labelId: string) {
+	await nextTick();
+	rootEl.value?.querySelector<HTMLElement>(`[data-label-rename="${CSS.escape(labelId)}"]`)?.focus();
 }
 
 async function commitRename() {
 	const id = renamingId.value;
 	if (!id) return;
+	const hadFocus = renameInput.value === document.activeElement;
 	renamingId.value = null;
+	if (hadFocus) void focusRenameButton(id);
 	await rename(id as Id<'mailLabels'>, renameName.value);
+}
+
+function cancelRename() {
+	const id = renamingId.value;
+	renamingId.value = null;
+	if (id) void focusRenameButton(id);
+}
+
+// Deleting strips the label from every message that carries it, and recreating
+// it does not put it back, so it asks first (as folder delete does).
+const confirm = useConfirm();
+async function confirmRemove(label: { _id: string; name: string }) {
+	const yes = await confirm({
+		title: t('components.postbox.postboxLabelTree.deleteConfirm.title', { name: label.name }),
+		body: t('components.postbox.postboxLabelTree.deleteConfirm.body'),
+		confirmText: t('components.postbox.postboxLabelTree.deleteConfirm.confirm'),
+		variant: 'danger',
+	});
+	if (yes) await remove(label._id as Id<'mailLabels'>);
 }
 
 // A rail context menu can ask for one row in edit mode; the request is consumed
@@ -233,7 +276,7 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 </script>
 
 <template>
-	<ul class="flex flex-col gap-0.5">
+	<ul ref="rootEl" class="flex flex-col gap-0.5">
 		<UiContextMenu
 			v-for="row in rows"
 			:key="row.label._id"
@@ -281,6 +324,7 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 					<NuxtLink
 						v-if="!manage"
 						:to="`/dashboard/postbox/label/${row.label._id}`"
+						:aria-current="activeLabelId === row.label._id ? 'page' : undefined"
 						class="flex-1 flex items-center gap-2 px-1.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
 						:class="{
 							'bg-bg-surface text-brand': activeLabelId === row.label._id,
@@ -312,17 +356,19 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 						>
 							<input
 								v-if="renamingId === row.label._id"
+								:ref="bindRenameInput"
 								v-model="renameName"
 								type="text"
 								class="input input-sm flex-1"
 								:aria-label="t('components.postbox.postboxLabelTree.nameAriaLabel')"
 								@blur="commitRename"
 								@keyup.enter="commitRename"
-								@keyup.escape="renamingId = null"
+								@keyup.escape="cancelRename"
 							/>
 							<template v-else>
 								<button
 									type="button"
+									:data-label-rename="row.label._id"
 									class="flex-1 truncate text-left text-sm hover:text-text-primary"
 									:aria-label="
 										t('components.postbox.postboxLabelTree.renameAriaLabel', {
@@ -336,18 +382,27 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 								<span class="flex items-center gap-1 flex-shrink-0">
 									<UiTooltip
 										v-for="color in PRESET_COLORS"
-										:key="color"
-										:text="t('components.postbox.postboxLabelManager.setColor', { color })"
+										:key="color.hex"
+										:text="
+											t('components.postbox.postboxLabelManager.setColor', {
+												color: colorName(color.token),
+											})
+										"
 									>
 										<button
 											type="button"
-											class="w-3.5 h-3.5 rounded-full border"
+											class="w-3.5 h-3.5 rounded-full border pointer-coarse:w-6 pointer-coarse:h-6"
 											:class="
-												row.label.color === color ? 'border-text-primary' : 'border-transparent'
+												row.label.color === color.hex ? 'border-text-primary' : 'border-transparent'
 											"
-											:style="{ backgroundColor: color }"
-											:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
-											@click="setColor(row.label._id as Id<'mailLabels'>, color)"
+											:style="{ backgroundColor: color.hex }"
+											:aria-pressed="row.label.color === color.hex"
+											:aria-label="
+												t('components.postbox.postboxLabelManager.setColor', {
+													color: colorName(color.token),
+												})
+											"
+											@click="setColor(row.label._id as Id<'mailLabels'>, color.hex)"
 										/>
 									</UiTooltip>
 								</span>
@@ -356,7 +411,7 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 						<!-- Keyboard-reachable equivalent of the drag: same write, one step. -->
 						<button
 							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary"
+							class="p-0.5 text-text-tertiary hover:text-text-primary pointer-coarse:p-2"
 							:aria-label="
 								t('components.postbox.postboxLabelTree.moveUp', { name: row.label.name })
 							"
@@ -366,7 +421,7 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 						</button>
 						<button
 							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary"
+							class="p-0.5 text-text-tertiary hover:text-text-primary pointer-coarse:p-2"
 							:aria-label="
 								t('components.postbox.postboxLabelTree.moveDown', { name: row.label.name })
 							"
@@ -377,11 +432,11 @@ function menuItems(label: { _id: string; name: string }, unreadCount: number): C
 						<UiTooltip :text="t('components.postbox.postboxLabelManager.deleteLabel')">
 							<button
 								type="button"
-								class="p-1 rounded hover:bg-error/10 text-error"
+								class="p-1 rounded text-text-tertiary hover:text-error hover:bg-error/10 pointer-coarse:p-2.5"
 								:aria-label="
 									t('components.postbox.postboxLabelTree.deleteAriaLabel', { name: row.label.name })
 								"
-								@click="remove(row.label._id as Id<'mailLabels'>)"
+								@click="confirmRemove(row.label)"
 							>
 								<TrashIcon class="w-4 h-4" />
 							</button>

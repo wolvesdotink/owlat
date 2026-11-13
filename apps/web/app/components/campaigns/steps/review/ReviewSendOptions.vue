@@ -47,7 +47,6 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 		day: 'numeric',
 		hour: 'numeric',
 		minute: '2-digit',
-		hour12: true,
 	});
 };
 </script>
@@ -69,11 +68,12 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 		<!-- What can actually go out today, before either option is chosen. -->
 		<CampaignsSendReadinessNote :readiness="readiness" :audience-size="audienceSize" class="mb-4" />
 
-		<div class="space-y-4">
+		<fieldset class="space-y-4">
+			<legend class="sr-only">{{ t('components.campaigns.steps.reviewStep.whenToSend') }}</legend>
 			<!-- Send Now Option -->
 			<label
 				:class="[
-					'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
+					'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 					sendOption === 'now'
 						? 'border-text-primary bg-bg-surface'
 						: 'border-border-subtle hover:border-border-default',
@@ -99,36 +99,42 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 				</div>
 			</label>
 
-			<!-- Schedule for Later Option -->
-			<label
+			<!-- Schedule for Later Option. The label wraps only the radio and its
+			     text; the date, time and timing controls sit beside it in the same
+			     card, since a label may not hold other labels or controls. -->
+			<div
 				:class="[
-					'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
+					'p-4 border rounded-lg transition-colors has-[input[name=sendOption]:focus-visible]:ring-2 has-[input[name=sendOption]:focus-visible]:ring-brand',
 					sendOption === 'later'
 						? 'border-text-primary bg-bg-surface'
 						: 'border-border-subtle hover:border-border-default',
 				]"
 			>
-				<input
-					v-model="sendOption"
-					type="radio"
-					name="sendOption"
-					value="later"
-					class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
-				/>
-				<div class="flex-1">
-					<div class="flex items-center gap-2">
-						<ClockIcon class="w-5 h-5 text-text-tertiary" />
-						<span class="font-medium text-text-primary">{{
-							t('components.campaigns.steps.reviewStep.scheduleLater')
-						}}</span>
-					</div>
-					<p class="text-sm text-text-secondary mt-1">
-						{{ t('components.campaigns.steps.reviewStep.scheduleLaterDescription') }}
-					</p>
+				<label class="flex items-start gap-4 cursor-pointer">
+					<input
+						v-model="sendOption"
+						type="radio"
+						name="sendOption"
+						value="later"
+						class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
+					/>
+					<span class="flex-1">
+						<span class="flex items-center gap-2">
+							<ClockIcon class="w-5 h-5 text-text-tertiary" />
+							<span class="font-medium text-text-primary">{{
+								t('components.campaigns.steps.reviewStep.scheduleLater')
+							}}</span>
+						</span>
+						<span class="block text-sm text-text-secondary mt-1">
+							{{ t('components.campaigns.steps.reviewStep.scheduleLaterDescription') }}
+						</span>
+					</span>
+				</label>
 
+				<div class="pl-8">
 					<!-- Date/Time Picker -->
-					<div v-if="sendOption === 'later'" class="mt-4 space-y-4" @click.stop>
-						<div class="grid grid-cols-2 gap-4">
+					<div v-if="sendOption === 'later'" class="mt-4 space-y-4">
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 							<div>
 								<label for="scheduleDate" class="label flex items-center gap-2">
 									<CalendarIcon class="w-4 h-4 text-text-tertiary" />
@@ -209,7 +215,7 @@ const formatScheduleDate = (dateStr: string, timeStr: string): string => {
 						</div>
 					</div>
 				</div>
-			</label>
-		</div>
+			</div>
+		</fieldset>
 	</div>
 </template>

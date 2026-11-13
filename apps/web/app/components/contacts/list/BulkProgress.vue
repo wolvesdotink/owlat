@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The contacts list's progress strip while a bulk operation runs.
-defineProps<{
+const props = defineProps<{
 	active: boolean;
 	type: string | null;
 	/** Percent done, 0-100. */
@@ -11,6 +10,14 @@ defineProps<{
 }>();
 
 const { t } = useI18n();
+
+const label = computed(() => {
+	if (props.type === 'add') return t('dashboard.audience.contacts.index.bulk.progress.add');
+	if (props.type === 'remove') return t('dashboard.audience.contacts.index.bulk.progress.remove');
+	if (props.type === 'delete') return t('dashboard.audience.contacts.index.bulk.progress.delete');
+	if (props.type === 'export') return t('dashboard.audience.contacts.index.bulk.progress.export');
+	return '';
+});
 </script>
 
 <template>
@@ -23,28 +30,11 @@ const { t } = useI18n();
 		leave-to-class="opacity-0 scale-95"
 	>
 		<div v-if="active" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-surface">
-			<SpinnerIcon class="w-4 h-4 text-brand" />
-			<span class="text-sm text-text-secondary">
-				<template v-if="type === 'add'">{{
-					t('dashboard.audience.contacts.index.bulk.progress.add')
-				}}</template>
-				<template v-else-if="type === 'remove'">{{
-					t('dashboard.audience.contacts.index.bulk.progress.remove')
-				}}</template>
-				<template v-else-if="type === 'delete'">{{
-					t('dashboard.audience.contacts.index.bulk.progress.delete')
-				}}</template>
-				<template v-else-if="type === 'export'">{{
-					t('dashboard.audience.contacts.index.bulk.progress.export')
-				}}</template>
-			</span>
-			<div class="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
-				<div
-					class="ui-meter-fill h-full bg-brand transition-transform duration-(--motion-moderate)"
-					:style="meterFillStyle(progress)"
-				/>
-			</div>
-			<span class="text-xs text-text-tertiary">{{ progress }}%</span>
+			<SpinnerIcon class="w-4 h-4 text-brand" aria-hidden="true" />
+			<!-- The label is a live region, so starting a bulk action is announced. -->
+			<span class="text-sm text-text-secondary" role="status">{{ label }}</span>
+			<UiProgressBar class="w-20" size="sm" :value="progress" :aria-label="label" />
+			<span class="text-xs text-text-tertiary" aria-hidden="true">{{ progress }}%</span>
 		</div>
 	</Transition>
 </template>

@@ -111,7 +111,9 @@ const emit = defineEmits<{
 	>
 		<div class="flex items-center gap-2 min-w-0">
 			<!-- Tri-state select-all over the rows that are loaded: unchecked,
-			     a dash while some are picked, checked when the page is covered. -->
+			     a dash while some are picked, checked when the page is covered.
+			     The box stays 16px; on touch an invisible ::before grows its hit
+			     area to 44px. -->
 			<UiTooltip
 				v-if="selectionEnabled"
 				:text="
@@ -126,7 +128,7 @@ const emit = defineEmits<{
 					:aria-checked="
 						selectionState === 'all' ? 'true' : selectionState === 'partial' ? 'mixed' : 'false'
 					"
-					class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					class="relative w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center focus-visible:ring-1 focus-visible:ring-brand/40 outline-none pointer-coarse:before:absolute pointer-coarse:before:-inset-3.5"
 					:class="
 						selectionState === 'none'
 							? 'border-border-subtle bg-bg-base'
@@ -157,10 +159,8 @@ const emit = defineEmits<{
 			>
 				<PanelLeftIcon class="w-4 h-4" />
 			</button>
-			<h2
-				class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"
-			>
-				<span class="truncate">{{ folderName }}</span>
+			<h2 class="text-sm font-semibold text-text-primary flex items-center gap-2 min-w-0">
+				<span class="truncate" :title="folderName">{{ folderName }}</span>
 				<!-- Cold start from the device cache: a quiet "updating…" hint
 				     while the live query catches up. Live rows replace in place.
 				     Suppressed while offline: the live query never settles, so a
@@ -168,7 +168,7 @@ const emit = defineEmits<{
 				     already communicates the state. -->
 				<span
 					v-if="showingCached && !isOffline"
-					class="animate-pulse motion-reduce:animate-none text-[11px] font-normal text-text-tertiary lowercase"
+					class="animate-pulse motion-reduce:animate-none text-2xs font-normal text-text-tertiary"
 					>{{ t('components.postbox.postboxLayout.updating') }}</span
 				>
 			</h2>

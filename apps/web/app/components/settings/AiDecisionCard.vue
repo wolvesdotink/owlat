@@ -33,6 +33,7 @@
  * translated here, the same contract `utils/aiProviders.ts` documents.
  */
 import { computed, ref, watch } from 'vue';
+import UiBadge from '@owlat/ui/components/ui/Badge.vue';
 import { decisionHealthRows } from '~/utils/aiDecisionPlane';
 import type {
 	DecisionDegradedReason,
@@ -396,12 +397,9 @@ watch(baseUrl, (value) => {
 									classifiers never hop, and a greyed-out control would invite
 									an operator to go looking for the permission to change it.
 								-->
-								<span
-									v-else
-									class="shrink-0 rounded-full bg-bg-surface-hover px-2.5 py-1 text-xs text-text-secondary"
-								>
+								<UiBadge v-else variant="neutral" size="md" pill class="shrink-0">
 									{{ t('dashboard.admin.instance.aiProvider.decision.fallback.never') }}
-								</span>
+								</UiBadge>
 							</div>
 						</div>
 					</div>

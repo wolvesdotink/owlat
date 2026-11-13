@@ -39,7 +39,9 @@ const { t } = useI18n();
 						class="flex items-start justify-between gap-3 py-2.5 group focus-visible:outline-2 focus-visible:outline-brand rounded"
 					>
 						<div class="min-w-0">
-							<p class="text-sm text-text-primary truncate group-hover:underline">{{ row.name }}</p>
+							<p class="text-sm text-text-primary truncate group-hover:underline" :title="row.name">
+								{{ row.name }}
+							</p>
 							<p
 								:class="[
 									'mt-0.5 text-xs inline-flex items-center gap-1',
@@ -83,7 +85,9 @@ const { t } = useI18n();
 						:to="row.href"
 						class="block py-2.5 group focus-visible:outline-2 focus-visible:outline-brand rounded"
 					>
-						<p class="text-sm text-text-primary truncate group-hover:underline">{{ row.name }}</p>
+						<p class="text-sm text-text-primary truncate group-hover:underline" :title="row.name">
+							{{ row.name }}
+						</p>
 						<p class="mt-0.5 text-xs text-text-tertiary tabular-nums">
 							{{
 								row.scheduledAt
@@ -117,7 +121,9 @@ const { t } = useI18n();
 						:to="row.href"
 						class="block py-2.5 group focus-visible:outline-2 focus-visible:outline-brand rounded"
 					>
-						<p class="text-sm text-text-primary truncate group-hover:underline">{{ row.name }}</p>
+						<p class="text-sm text-text-primary truncate group-hover:underline" :title="row.name">
+							{{ row.name }}
+						</p>
 						<p class="mt-0.5 text-xs text-text-tertiary">
 							{{
 								t('components.marketing.nextUp.edited', { when: formatRelativeTime(row.updatedAt) })

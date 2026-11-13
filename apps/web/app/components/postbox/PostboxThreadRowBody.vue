@@ -209,7 +209,7 @@ function onCancelFollowUp(event: MouseEvent) {
 			     known contact's domain. Silent for every other verdict. -->
 			<span
 				v-if="trustMarker"
-				class="pbx-row-trust inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-error/40 text-error whitespace-nowrap flex-shrink-0"
+				class="pbx-row-trust inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium border border-error/40 text-error whitespace-nowrap flex-shrink-0"
 				data-testid="row-trust-marker"
 				:title="trustMarkerLabel"
 				:aria-label="trustMarkerLabel"
@@ -217,7 +217,12 @@ function onCancelFollowUp(event: MouseEvent) {
 				<component :is="trustMarker.icon" class="w-3 h-3" />
 				<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
 			</span>
-			<StarIcon v-if="msg.flagFlagged" class="w-3.5 h-3.5 text-warning" />
+			<StarIcon
+				v-if="msg.flagFlagged"
+				class="w-3.5 h-3.5 text-warning"
+				role="img"
+				:aria-label="t('components.postbox.postboxThreadRow.starredChip')"
+			/>
 			<!-- In the Inbox's pinned band; the star is a separate flag. -->
 			<PinIcon
 				v-if="msg.pinnedAt"
@@ -229,7 +234,9 @@ function onCancelFollowUp(event: MouseEvent) {
 			<ClockIcon
 				v-if="msg.snoozedUntil"
 				class="w-3.5 h-3.5 text-brand"
+				role="img"
 				:title="snoozedTitle(msg.snoozedUntil)"
+				:aria-label="snoozedTitle(msg.snoozedUntil)"
 			/>
 			<!-- Muted conversation: the reason this thread is quiet, said
 			     out loud rather than left as a mystery. -->
@@ -242,12 +249,17 @@ function onCancelFollowUp(event: MouseEvent) {
 			<!-- Transient "you asked for this back" cue, cleared on open. -->
 			<span
 				v-if="msg.snoozeReturnedAt && !msg.snoozedUntil"
-				class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-border-subtle text-text-tertiary whitespace-nowrap"
+				class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium border border-border-subtle text-text-tertiary whitespace-nowrap"
 			>
 				<UndoIcon class="w-3 h-3" />
 				{{ t('components.postbox.postboxThreadRow.backFromSnooze') }}
 			</span>
-			<PaperclipIcon v-if="msg.hasAttachments" class="w-3.5 h-3.5 text-text-tertiary" />
+			<PaperclipIcon
+				v-if="msg.hasAttachments"
+				class="w-3.5 h-3.5 text-text-tertiary"
+				role="img"
+				:aria-label="t('components.postbox.postboxThreadRow.attachmentChip')"
+			/>
 			<PostboxThreadRowFollowUp
 				v-if="msg.followUp?.watched"
 				:follow-up="msg.followUp"

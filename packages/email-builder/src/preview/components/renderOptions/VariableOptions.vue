@@ -23,6 +23,7 @@ const { local, emitUpdate, addVariable, removeVariable } = useRenderOptionsDraft
 				v-model="variable.key"
 				type="text"
 				class="ep-settings-input ep-settings-kv-key"
+				:aria-label="t('builder.preview.renderOptions.variableNameOf', { index: idx + 1 })"
 				:placeholder="t('builder.preview.renderOptions.variableName')"
 				@change="emitUpdate()"
 			/>
@@ -30,15 +31,29 @@ const { local, emitUpdate, addVariable, removeVariable } = useRenderOptionsDraft
 				v-model="variable.value"
 				type="text"
 				class="ep-settings-input ep-settings-kv-value"
+				:aria-label="
+					variable.key
+						? t('builder.preview.renderOptions.variableValueOf', { name: variable.key })
+						: t('builder.preview.renderOptions.variableValueOfIndex', { index: idx + 1 })
+				"
 				:placeholder="t('builder.preview.renderOptions.variableValue')"
 				@change="emitUpdate()"
 			/>
-			<button class="ep-settings-list-remove" @click="removeVariable(idx)">
-				<TrashIcon class="ep-settings-list-remove-icon" />
+			<button
+				type="button"
+				class="ep-settings-list-remove"
+				:aria-label="
+					variable.key
+						? t('builder.preview.renderOptions.removeVariable', { name: variable.key })
+						: t('builder.preview.renderOptions.removeVariableIndex', { index: idx + 1 })
+				"
+				@click="removeVariable(idx)"
+			>
+				<TrashIcon class="ep-settings-list-remove-icon" aria-hidden="true" />
 			</button>
 		</div>
-		<button class="ep-settings-list-add" @click="addVariable">
-			<PlusIcon class="ep-settings-list-add-icon" />
+		<button type="button" class="ep-settings-list-add" @click="addVariable">
+			<PlusIcon class="ep-settings-list-add-icon" aria-hidden="true" />
 			{{ t('builder.preview.renderOptions.addVariable') }}
 		</button>
 	</SettingsAccordion>

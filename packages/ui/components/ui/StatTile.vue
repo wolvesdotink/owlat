@@ -74,7 +74,7 @@ const deltaText = computed(() =>
 
 <template>
 	<div>
-		<p class="text-[11px] uppercase tracking-wide text-text-tertiary">{{ label }}</p>
+		<p class="text-2xs uppercase tracking-wide text-text-tertiary">{{ label }}</p>
 		<p :class="['mt-1 font-display text-3xl tabular-nums leading-none', valueToneClass[valueTone]]">
 			{{ value }}
 		</p>
@@ -84,6 +84,6 @@ const deltaText = computed(() =>
 		>
 			{{ deltaText }}
 		</p>
-		<p v-if="hint" class="mt-1 text-[11px] tabular-nums text-text-tertiary">{{ hint }}</p>
+		<p v-if="hint" class="mt-1 text-2xs tabular-nums text-text-tertiary">{{ hint }}</p>
 	</div>
 </template>

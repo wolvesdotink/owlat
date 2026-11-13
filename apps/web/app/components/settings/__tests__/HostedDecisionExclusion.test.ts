@@ -14,6 +14,7 @@ vi.mock('@owlat/api', () => ({
 }));
 
 const HostedDecisionExclusion = (await import('../HostedDecisionExclusion.vue')).default;
+const UiDisclosure = (await import('@owlat/ui/components/ui/Disclosure.vue')).default;
 
 const run = vi.fn(async () => ({ ok: true, result: null }));
 const role = ref<'admin' | 'member'>('admin');
@@ -39,13 +40,24 @@ const SwitchStub = {
 const mountToggle = (props: Record<string, unknown>) =>
 	mount(HostedDecisionExclusion, {
 		props,
-		global: { plugins: [createTestI18n()], stubs: { UiSwitch: SwitchStub } },
+		global: {
+			plugins: [createTestI18n()],
+			components: { UiDisclosure },
+			stubs: { UiSwitch: SwitchStub },
+		},
 	});
+
+/** The explanation sits behind "What this means", one click away. */
+async function openHelp(w: ReturnType<typeof mountToggle>) {
+	await w.get('button[aria-expanded]').trigger('click');
+}
 
 describe('HostedDecisionExclusion', () => {
 	it('lets an admin exclude the Team Inbox, and says what that means', async () => {
 		const w = mountToggle({ target: { kind: 'team_inbox' }, isExcluded: false });
 		expect(w.text()).toContain('Keep out of hosted decision providers');
+		expect(w.find('[data-testid="hosted-decision-exclusion-help"]').exists()).toBe(false);
+		await openHelp(w);
 		expect(w.text()).toContain('judged only by the local decision engine');
 		await w.get('[data-testid="switch"]').setValue(true);
 		expect(run).toHaveBeenCalledWith({ target: { kind: 'team_inbox' }, isExcluded: true });
@@ -55,6 +67,7 @@ describe('HostedDecisionExclusion', () => {
 	it('readmits a mailbox and names it', async () => {
 		const target = { kind: 'mailbox', mailboxId: 'mb_1' };
 		const w = mountToggle({ target, isExcluded: true, address: 'ada@northwind.studio' });
+		await openHelp(w);
 		expect(w.text()).toContain('Mail in ada@northwind.studio is then judged only by');
 		await w.get('[data-testid="switch"]').setValue(false);
 		expect(run).toHaveBeenCalledWith({ target, isExcluded: false });

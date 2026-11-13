@@ -20,6 +20,16 @@ const showValidationDetails = defineModel<boolean>('showDetails', { required: tr
 
 const { t } = useI18n();
 
+// The status icons differ by colour and shape only, so each row also says it in words.
+const rowStatusLabel = (status: string) => {
+	if (status === 'valid') return t('components.contacts.csvImportModal.preview.rowStatus.valid');
+	if (status === 'missing')
+		return t('components.contacts.csvImportModal.preview.rowStatus.missing');
+	if (status === 'duplicate')
+		return t('components.contacts.csvImportModal.preview.rowStatus.duplicate');
+	return t('components.contacts.csvImportModal.preview.rowStatus.invalid');
+};
+
 // Local handle on the validation result so the warnings panel reads its fields
 // without a non-null assertion on every line; the panel's v-if narrows this to
 // non-null before any field is touched.
@@ -141,7 +151,8 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 				<thead>
 					<tr class="border-b border-border-subtle bg-bg-surface">
 						<th class="text-left px-4 py-2 font-medium text-text-secondary w-8">
-							<ShieldCheckIcon class="w-4 h-4" />
+							<ShieldCheckIcon class="w-4 h-4" aria-hidden="true" />
+							<span class="sr-only">{{ t('common.status') }}</span>
 						</th>
 						<th class="text-left px-4 py-2 font-medium text-text-secondary">
 							{{ t('common.email') }}
@@ -171,12 +182,20 @@ const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys(
 						class="border-b border-border-subtle last:border-b-0"
 					>
 						<td class="px-4 py-2">
-							<CircleCheckIcon v-if="prepared.status === 'valid'" class="w-4 h-4 text-success" />
-							<CircleCloseIcon
-								v-else-if="prepared.status === 'missing'"
-								class="w-4 h-4 text-error"
-							/>
-							<TriangleWarningIcon v-else class="w-4 h-4 text-warning" />
+							<span class="inline-flex" :title="rowStatusLabel(prepared.status)">
+								<CircleCheckIcon
+									v-if="prepared.status === 'valid'"
+									class="w-4 h-4 text-success"
+									aria-hidden="true"
+								/>
+								<CircleCloseIcon
+									v-else-if="prepared.status === 'missing'"
+									class="w-4 h-4 text-error"
+									aria-hidden="true"
+								/>
+								<TriangleWarningIcon v-else class="w-4 h-4 text-warning" aria-hidden="true" />
+								<span class="sr-only">{{ rowStatusLabel(prepared.status) }}</span>
+							</span>
 						</td>
 						<td class="px-4 py-2 text-text-primary">
 							{{ prepared.contact.email || '—' }}

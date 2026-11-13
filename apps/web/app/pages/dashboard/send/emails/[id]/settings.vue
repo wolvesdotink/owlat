@@ -257,7 +257,8 @@ const handleBack = () => {
 			<div class="mx-auto flex h-full w-full max-w-3xl items-center justify-between gap-3">
 				<div class="flex min-w-0 items-center gap-2 sm:gap-4">
 					<button
-						class="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						type="button"
+						class="shrink-0 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="handleBack"
 						:aria-label="t('common.back')"
 					>
@@ -266,9 +267,14 @@ const handleBack = () => {
 
 					<div class="flex min-w-0 items-center gap-2">
 						<SettingsIcon class="w-5 h-5 shrink-0 text-text-tertiary max-sm:hidden" />
-						<span class="truncate text-text-primary font-medium">{{
-							t('dashboard.send.emails.detail.settings.title')
-						}}</span>
+						<!-- Names the email, so the page says which one is being configured. -->
+						<h1 class="truncate text-text-primary font-medium" :title="template?.name || undefined">
+							{{
+								template?.name
+									? t('dashboard.send.emails.detail.settings.titleNamed', { name: template.name })
+									: t('dashboard.send.emails.detail.settings.title')
+							}}
+						</h1>
 					</div>
 				</div>
 
@@ -315,7 +321,11 @@ const handleBack = () => {
 			<!-- Not Found State -->
 			<div v-if="!template" class="flex-1 flex items-center justify-center">
 				<div class="text-center">
-					<div class="w-12 h-12 text-error mx-auto mb-4">!</div>
+					<CircleWarningIcon
+						class="w-12 h-12 text-error mx-auto mb-4"
+						:stroke-width="1.5"
+						aria-hidden="true"
+					/>
 					<h2 class="text-xl font-semibold text-text-primary mb-2">
 						{{ t('dashboard.send.emails.detail.settings.notFound.title') }}
 					</h2>

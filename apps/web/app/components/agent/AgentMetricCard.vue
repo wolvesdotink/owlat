@@ -7,17 +7,28 @@ interface Props {
 	icon: IconComponent;
 	trend?: 'up' | 'down' | 'stable';
 	description?: string;
+	/**
+	 * Whether a rising value is good news. Off for metrics where down is good
+	 * (error rate, latency), so the colour follows the meaning, not the direction.
+	 */
+	upIsGood?: boolean;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+	trend: undefined,
+	description: undefined,
+	upIsGood: true,
+});
+
+const { t } = useI18n();
 
 const trendConfig = computed(() => {
 	if (!props.trend) return null;
 	switch (props.trend) {
 		case 'up':
-			return { icon: TrendingUpIcon, color: 'text-success' };
+			return { icon: TrendingUpIcon, color: props.upIsGood ? 'text-success' : 'text-error' };
 		case 'down':
-			return { icon: TrendingDownIcon, color: 'text-error' };
+			return { icon: TrendingDownIcon, color: props.upIsGood ? 'text-error' : 'text-success' };
 		case 'stable':
 			return { icon: MinusIcon, color: 'text-text-tertiary' };
 	}
@@ -28,8 +39,18 @@ const trendConfig = computed(() => {
 	<UiCard>
 		<div class="flex items-start justify-between mb-3">
 			<UiIconBox :icon="icon" size="sm" variant="surface" />
-			<div v-if="trendConfig" class="flex items-center">
-				<component :is="trendConfig.icon" class="w-4 h-4" :class="trendConfig.color" />
+			<div
+				v-if="trendConfig && trend"
+				class="flex items-center"
+				:title="t(`components.agent.agentMetricCard.trend.${trend}`)"
+			>
+				<component
+					:is="trendConfig.icon"
+					class="w-4 h-4"
+					:class="trendConfig.color"
+					aria-hidden="true"
+				/>
+				<span class="sr-only">{{ t(`components.agent.agentMetricCard.trend.${trend}`) }}</span>
 			</div>
 		</div>
 		<p class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ value }}</p>

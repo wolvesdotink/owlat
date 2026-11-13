@@ -45,6 +45,12 @@ const showPicker = ref(false);
 const posTop = ref(0);
 const posLeft = ref(0);
 const isVisible = ref(false);
+// Docked: no room left of the canvas (a laptop with the app sidebar open, a
+// tablet, a phone). The palette then becomes a horizontal bar pinned to the
+// bottom of the canvas area instead of disappearing, so image, button and
+// layout blocks stay one tap away without the slash menu.
+const docked = ref(false);
+const posBottom = ref(0);
 
 const allQuickBlocks: { type: BlockType; icon: Component; label: string }[] = [
 	{ type: 'text', icon: TextIcon, label: 'Text' },
@@ -75,13 +81,17 @@ function updatePosition() {
 	const gap = 12;
 	const newLeft = rect.left - sidebarWidth - gap;
 
-	// Hide when viewport too narrow
+	isVisible.value = true;
+
 	if (newLeft < 16) {
-		isVisible.value = false;
+		const area = scrollRoot?.getBoundingClientRect() ?? rect;
+		docked.value = true;
+		posLeft.value = area.left + area.width / 2;
+		posBottom.value = window.innerHeight - Math.min(area.bottom, window.innerHeight) + 16;
 		return;
 	}
 
-	isVisible.value = true;
+	docked.value = false;
 	posLeft.value = newLeft;
 
 	// Align to top of canvas, sticky once the canvas scrolls past the top of its
@@ -165,15 +175,21 @@ function handlePickerSelect(type: BlockType) {
 		<div
 			v-show="isVisible && visible !== false"
 			ref="sidebarRef"
-			class="light fixed z-(--z-float) flex flex-col items-center gap-0.5 p-1 bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_2px_8px_rgba(0,0,0,0.08)] animate-eb-fade-in"
-			:style="{ top: `${posTop}px`, left: `${posLeft}px`, width: '40px' }"
+			class="light fixed z-(--z-float) flex items-center gap-0.5 p-1 bg-bg-elevated rounded-xl border border-border-subtle shadow-[0_2px_8px_rgba(0,0,0,0.08)] animate-eb-fade-in"
+			:class="docked ? 'flex-row max-w-[calc(100vw-32px)] overflow-x-auto' : 'flex-col'"
+			:style="
+				docked
+					? { bottom: `${posBottom}px`, left: `${posLeft}px`, transform: 'translateX(-50%)' }
+					: { top: `${posTop}px`, left: `${posLeft}px`, width: '40px' }
+			"
 			role="toolbar"
-			aria-orientation="vertical"
+			:aria-orientation="docked ? 'horizontal' : 'vertical'"
 			:aria-label="t('builder.canvas.insertBlock')"
 		>
 			<UiTooltip v-for="block in quickBlocks" :key="block.type" :text="label(block.label)">
 				<button
-					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-[color,background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
+					class="flex shrink-0 items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-[color,background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
+					:class="docked && 'pointer-coarse:w-11 pointer-coarse:h-11'"
 					:aria-label="t('builder.canvas.addBlock', { block: label(block.label) })"
 					type="button"
 					@click="emit('add-block', block.type)"
@@ -183,10 +199,14 @@ function handlePickerSelect(type: BlockType) {
 			</UiTooltip>
 
 			<template v-if="brandBlocks && brandBlocks.length > 0">
-				<div class="w-6 h-px bg-border-subtle my-0.5" />
+				<div
+					:class="docked ? 'w-px h-6 mx-0.5' : 'w-6 h-px my-0.5'"
+					class="shrink-0 bg-border-subtle"
+				/>
 				<UiTooltip v-for="kind in brandBlocks" :key="kind" :text="label(BRAND_BUTTONS[kind].label)">
 					<button
-						class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-[background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
+						class="flex shrink-0 items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-[background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
+						:class="docked && 'pointer-coarse:w-11 pointer-coarse:h-11'"
 						:aria-label="
 							t('builder.canvas.addBrandBlock', { block: label(BRAND_BUTTONS[kind].label) })
 						"
@@ -199,12 +219,16 @@ function handlePickerSelect(type: BlockType) {
 				</UiTooltip>
 			</template>
 
-			<div class="w-6 h-px bg-border-subtle my-0.5" />
+			<div
+				:class="docked ? 'w-px h-6 mx-0.5' : 'w-6 h-px my-0.5'"
+				class="shrink-0 bg-border-subtle"
+			/>
 
 			<UiTooltip :text="t('builder.canvas.moreBlocksTitle')">
 				<button
 					ref="moreButtonRef"
-					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-[color,background-color,border-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
+					class="flex shrink-0 items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-[color,background-color,border-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
+					:class="docked && 'pointer-coarse:w-11 pointer-coarse:h-11'"
 					:aria-label="t('builder.canvas.moreBlocks')"
 					aria-haspopup="menu"
 					:aria-expanded="showPicker"

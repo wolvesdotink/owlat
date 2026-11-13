@@ -1,5 +1,20 @@
 <script setup lang="ts">
-import { BracesIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleCloseIcon, ClockIcon, CopyIcon, CursorClickIcon, ExternalLinkIcon, EyeIcon, HashIcon, PaperPlaneIcon, TriangleWarningIcon, type IconComponent } from '@coolicons/vue';
+import {
+	BracesIcon,
+	CheckIcon,
+	ChevronDownIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	ClockIcon,
+	CopyIcon,
+	CursorClickIcon,
+	ExternalLinkIcon,
+	EyeIcon,
+	HashIcon,
+	PaperPlaneIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 interface TimelineEvent {
 	key: string;
@@ -62,7 +77,8 @@ const formatDelta = (fromTs: number, toTs: number): string => {
 	const diff = toTs - fromTs;
 	if (diff < 0) return '';
 	const seconds = Math.floor(diff / 1000);
-	if (seconds < 60) return t('components.dashboard.emailSendTimeline.duration.seconds', { seconds });
+	if (seconds < 60)
+		return t('components.dashboard.emailSendTimeline.duration.seconds', { seconds });
 	const minutes = Math.floor(seconds / 60);
 	const remainSec = seconds % 60;
 	if (minutes < 60)
@@ -164,8 +180,8 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 					delta = t('components.dashboard.emailSendTimeline.afterEvent', {
 						duration: d,
 						event:
-						events[events.length - 1]?.label ||
-						t('components.dashboard.emailSendTimeline.previousEvent'),
+							events[events.length - 1]?.label ||
+							t('components.dashboard.emailSendTimeline.previousEvent'),
 					});
 			}
 			events.push({
@@ -197,7 +213,9 @@ const copyMessageId = async () => {
 	<div class="space-y-6">
 		<!-- Timeline -->
 		<div class="card p-6">
-			<h3 class="text-lg font-medium text-text-primary mb-6">{{ t('components.dashboard.emailSendTimeline.title') }}</h3>
+			<h3 class="text-lg font-medium text-text-primary mb-6">
+				{{ t('components.dashboard.emailSendTimeline.title') }}
+			</h3>
 
 			<div class="space-y-1">
 				<div v-for="(event, index) in timelineEvents" :key="event.key" class="relative">
@@ -255,16 +273,16 @@ const copyMessageId = async () => {
 
 		<!-- Clicked Links -->
 		<div v-if="clickedLinks && clickedLinks.length > 0" class="card p-6">
-			<h3 class="text-lg font-medium text-text-primary mb-4">{{ t('components.dashboard.emailSendTimeline.clickedLinks') }}</h3>
+			<h3 class="text-lg font-medium text-text-primary mb-4">
+				{{ t('components.dashboard.emailSendTimeline.clickedLinks') }}
+			</h3>
 			<div class="space-y-3">
 				<div
 					v-for="(link, index) in clickedLinks"
 					:key="index"
 					class="flex items-start gap-3 text-sm"
 				>
-					<ExternalLinkIcon
-						class="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0"
-					/>
+					<ExternalLinkIcon class="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
 					<div class="min-w-0">
 						<a
 							:href="link.url"
@@ -286,11 +304,16 @@ const copyMessageId = async () => {
 		<div v-if="errorMessage || errorCode" class="card p-6 bg-error-subtle border-error/20">
 			<div class="flex items-center gap-3 mb-3">
 				<TriangleWarningIcon class="w-5 h-5 text-error" />
-				<h3 class="text-lg font-medium text-error">{{ t('components.dashboard.emailSendTimeline.errorDetails') }}</h3>
+				<h3 class="text-lg font-medium text-error">
+					{{ t('components.dashboard.emailSendTimeline.errorDetails') }}
+				</h3>
 			</div>
 			<div class="space-y-2 text-sm">
 				<p v-if="errorCode" class="text-text-secondary">
-					<span class="font-medium">{{ t('components.dashboard.emailSendTimeline.errorCode') }}</span> {{ errorCode }}
+					<span class="font-medium">{{
+						t('components.dashboard.emailSendTimeline.errorCode')
+					}}</span>
+					{{ errorCode }}
 				</p>
 				<p v-if="errorMessage" class="text-text-primary">
 					{{ errorMessage }}
@@ -304,11 +327,18 @@ const copyMessageId = async () => {
 				<div class="flex items-center gap-3 min-w-0">
 					<HashIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					<div class="min-w-0">
-						<p class="text-xs text-text-tertiary">{{ t('components.dashboard.emailSendTimeline.providerMessageId') }}</p>
+						<p class="text-xs text-text-tertiary">
+							{{ t('components.dashboard.emailSendTimeline.providerMessageId') }}
+						</p>
 						<p class="text-sm text-text-secondary font-mono truncate">{{ providerMessageId }}</p>
 					</div>
 				</div>
-				<UiButton variant="secondary" class="text-xs gap-1.5 flex-shrink-0" @click="copyMessageId">
+				<UiButton
+					variant="secondary"
+					size="sm"
+					class="gap-1.5 flex-shrink-0"
+					@click="copyMessageId"
+				>
 					<component :is="messageIdCopied ? CheckIcon : CopyIcon" class="w-3.5 h-3.5" />
 					{{ messageIdCopied ? t('common.copied') : t('common.copy') }}
 				</UiButton>
@@ -317,19 +347,26 @@ const copyMessageId = async () => {
 
 		<!-- Data Variables (transactional only) -->
 		<div v-if="dataVariables && Object.keys(dataVariables).length > 0" class="card p-6">
-			<button
-				class="flex items-center justify-between w-full text-left"
-				@click="showDataVariables = !showDataVariables"
-			>
-				<div class="flex items-center gap-3">
-					<BracesIcon class="w-5 h-5 text-text-tertiary" />
-					<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.emailSendTimeline.dataVariables') }}</h3>
-				</div>
-				<ChevronDownIcon
-					class="w-5 h-5 text-text-tertiary transition-transform"
-					:class="{ 'rotate-180': showDataVariables }"
-				/>
-			</button>
+			<!-- The heading wraps the disclosure button: a heading inside a button
+			     is not announced as a heading. -->
+			<h3 class="text-lg font-medium text-text-primary">
+				<button
+					type="button"
+					class="flex items-center justify-between w-full text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:aria-expanded="showDataVariables"
+					@click="showDataVariables = !showDataVariables"
+				>
+					<span class="flex items-center gap-3">
+						<BracesIcon class="w-5 h-5 text-text-tertiary" aria-hidden="true" />
+						{{ t('components.dashboard.emailSendTimeline.dataVariables') }}
+					</span>
+					<ChevronDownIcon
+						class="w-5 h-5 text-text-tertiary transition-transform"
+						:class="{ 'rotate-180': showDataVariables }"
+						aria-hidden="true"
+					/>
+				</button>
+			</h3>
 			<div v-if="showDataVariables" class="mt-4">
 				<pre
 					class="text-sm text-text-secondary bg-bg-surface rounded-lg p-4 overflow-x-auto font-mono"

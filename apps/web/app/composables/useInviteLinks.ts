@@ -8,7 +8,7 @@
 export function useInviteLinks() {
 	const { t } = useI18n();
 	const requestUrl = useRequestURL();
-	const { copy } = useCopyToClipboard();
+	const { copy } = useCopyToClipboard({ notify: false });
 	const { showToast } = useToast();
 
 	function buildAcceptUrl(invitationId: string): string {

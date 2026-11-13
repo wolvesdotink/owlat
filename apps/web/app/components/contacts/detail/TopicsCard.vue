@@ -23,13 +23,6 @@ const emit = defineEmits<{
 const isAddToTopicDropdownOpen = defineModel<boolean>('open', { required: true });
 
 const { t } = useI18n();
-
-// Close dropdown when clicking outside
-const addToTopicDropdownRef = ref<HTMLElement | null>(null);
-
-useClickOutside(addToTopicDropdownRef, () => {
-	isAddToTopicDropdownOpen.value = false;
-});
 </script>
 
 <template>
@@ -39,71 +32,37 @@ useClickOutside(addToTopicDropdownRef, () => {
 				{{ t('dashboard.audience.contacts.detail.topics.title') }}
 			</h2>
 
-			<!-- Add to Topic Dropdown -->
-			<div ref="addToTopicDropdownRef" class="relative">
-				<UiButton
-					variant="secondary"
-					size="sm"
-					class="gap-1.5"
-					:disabled="availableTopics.length === 0 || isAdding"
-					@click.stop="isAddToTopicDropdownOpen = !isAddToTopicDropdownOpen"
-				>
-					<SpinnerIcon v-if="isAdding" class="w-3 h-3" />
-					<PlusIcon v-else class="w-3 h-3" />
-					{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}
-					<ChevronDownIcon class="w-3 h-3" />
-				</UiButton>
-
-				<!-- Dropdown Menu -->
-				<Transition
-					enter-active-class="duration-(--motion-moderate) ease-spring"
-					enter-from-class="opacity-0 translate-y-1"
-					enter-to-class="opacity-100 translate-y-0"
-					leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-					leave-from-class="opacity-100 translate-y-0"
-					leave-to-class="opacity-0 translate-y-1"
-				>
-					<div
-						v-if="isAddToTopicDropdownOpen && availableTopics.length > 0"
-						class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 py-1 max-h-64 overflow-y-auto"
+			<!-- Add to Topic Dropdown. It opens while every topic is already
+			     assigned, so it can say why there is nothing left to pick. -->
+			<UiDropdownMenu v-model:open="isAddToTopicDropdownOpen" position="right">
+				<template #trigger>
+					<UiButton
+						variant="secondary"
+						size="sm"
+						class="gap-1.5"
+						:disabled="!allTopics || allTopics.length === 0 || isAdding"
 					>
-						<button
-							v-for="list in availableTopics"
-							:key="list._id"
-							class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-							:disabled="isAdding"
-							@click="emit('add', list._id)"
-						>
-							<TagIcon class="w-4 h-4 text-brand flex-shrink-0" />
-							<span class="truncate">{{ list.name }}</span>
-						</button>
-					</div>
-				</Transition>
-
-				<!-- Empty Dropdown Message -->
-				<Transition
-					enter-active-class="duration-(--motion-moderate) ease-spring"
-					enter-from-class="opacity-0 translate-y-1"
-					enter-to-class="opacity-100 translate-y-0"
-					leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-					leave-from-class="opacity-100 translate-y-0"
-					leave-to-class="opacity-0 translate-y-1"
-				>
-					<div
-						v-if="
-							isAddToTopicDropdownOpen &&
-							availableTopics.length === 0 &&
-							allTopics &&
-							allTopics.length > 0
-						"
-						class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 p-3"
+						<SpinnerIcon v-if="isAdding" class="w-3 h-3" />
+						<PlusIcon v-else class="w-3 h-3" />
+						{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}
+						<ChevronDownIcon class="w-3 h-3" />
+					</UiButton>
+				</template>
+				<template v-if="availableTopics.length > 0">
+					<UiDropdownMenuItem
+						v-for="list in availableTopics"
+						:key="list._id"
+						:icon="TagIcon"
+						:disabled="isAdding"
+						@click="emit('add', list._id)"
 					>
-						<p class="text-sm text-text-tertiary text-center">
-							{{ t('dashboard.audience.contacts.detail.topics.allTopics') }}
-						</p>
-					</div>
-				</Transition>
-			</div>
+						<span class="truncate">{{ list.name }}</span>
+					</UiDropdownMenuItem>
+				</template>
+				<p v-else class="px-3 py-2 text-sm text-text-tertiary">
+					{{ t('dashboard.audience.contacts.detail.topics.allTopics') }}
+				</p>
+			</UiDropdownMenu>
 		</div>
 
 		<div v-if="contactTopics && contactTopics.length > 0" class="space-y-2">
@@ -123,8 +82,9 @@ useClickOutside(addToTopicDropdownRef, () => {
 				</div>
 				<UiTooltip :text="t('dashboard.audience.contacts.detail.topics.remove')">
 					<button
-						class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
-						:aria-label="t('dashboard.audience.contacts.detail.topics.remove')"
+						type="button"
+						class="inline-flex items-center justify-center p-1 pointer-coarse:size-11 rounded text-text-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
+						:aria-label="`${t('dashboard.audience.contacts.detail.topics.remove')}: ${list.name}`"
 						@click="emit('remove', list._id)"
 					>
 						<CloseIcon class="w-3 h-3" />

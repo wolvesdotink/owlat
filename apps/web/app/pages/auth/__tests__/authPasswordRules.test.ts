@@ -22,6 +22,7 @@ import AuthLegalFooter from '~/components/auth/AuthLegalFooter.vue';
 import AuthTwoFactorStageForm from '~/components/auth/TwoFactorStageForm.vue';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
 import UiHeroField from '@owlat/ui/components/ui/HeroField.vue';
+import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import LoginPage from '../login.vue';
 import RegisterPage from '../register.vue';
 import ResetPasswordPage from '../reset-password.vue';
@@ -69,7 +70,9 @@ function mountPage(component: object) {
 				AuthTwoFactorStageForm,
 				UiInput,
 				UiHeroField,
+				UiErrorAlert,
 			},
+			stubs: { UiIconBox: true },
 		},
 	});
 }

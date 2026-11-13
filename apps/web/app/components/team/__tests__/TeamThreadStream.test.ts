@@ -33,6 +33,16 @@ function mountStream(props: Record<string, unknown>, slots: Record<string, unkno
 							h('button', s['default']?.()),
 				}),
 				InboxNoteComposer: Plain,
+				UiConfirmationDialog: defineComponent({
+					props: { open: Boolean },
+					emits: ['confirm'],
+					setup:
+						(props, { emit }) =>
+						() =>
+							props.open
+								? h('button', { 'data-testid': 'confirm-delete', onClick: () => emit('confirm') })
+								: null,
+				}),
 				InboxAutoSendCountdown: defineComponent({
 					props: { sendAt: { type: Number, required: true } },
 					emits: ['cancel'],
@@ -140,6 +150,17 @@ describe('TeamThreadStream', () => {
 		expect(countdown.attributes('data-send-at')).toBe(String(sendAt));
 		await countdown.trigger('click');
 		expect(w.emitted('undo-follow-up')?.[0]?.[0]).toMatchObject({ followUpId: 'fu_1' });
+	});
+
+	it('deletes a note only after the confirmation', async () => {
+		const w = mountStream({
+			entries: [note('n1', T0)],
+			canDeleteNote: () => true,
+		});
+		await w.find('[data-testid="team-note-delete"]').trigger('click');
+		expect(w.emitted('delete-note')).toBeUndefined();
+		await w.find('[data-testid="confirm-delete"]').trigger('click');
+		expect(w.emitted('delete-note')).toHaveLength(1);
 	});
 
 	it('offers older entries when there are some', async () => {

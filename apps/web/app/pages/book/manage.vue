@@ -39,6 +39,8 @@ const busy = ref(false);
 const actionError = ref<string | null>(null);
 const confirmCancel = ref(false);
 const movedTo = ref<{ startAt: number; endAt: number } | null>(null);
+/** A month or time-zone reload failed after the booking loaded once. */
+const timesFailed = ref(false);
 
 let requestId = 0;
 async function load() {
@@ -54,6 +56,7 @@ async function load() {
 	);
 	if (id !== requestId) return;
 	loadingTimes.value = false;
+	timesFailed.value = !result.ok && managed.value !== null;
 	if (result.ok) managed.value = result.data;
 	else if (!managed.value) reason.value = result.reason;
 }
@@ -183,11 +186,21 @@ async function reschedule() {
 
 			<section v-if="mode === 'reschedule' && managed.reschedule" class="space-y-4">
 				<h2 class="text-lg font-semibold">{{ t('booking.manage.pickHeading') }}</h2>
+				<div
+					v-if="timesFailed && !loadingTimes"
+					class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-error"
+					role="alert"
+				>
+					<span>{{ t('booking.page.timesFailed') }}</span>
+					<UiButton variant="secondary" size="sm" @click="load">
+						{{ t('common.retry') }}
+					</UiButton>
+				</div>
 				<BookingSlotPicker
 					v-model:time-zone="timeZone"
 					v-model:month="month"
 					v-model:selected="selected"
-					:slots="managed.reschedule.slots"
+					:slots="timesFailed ? [] : managed.reschedule.slots"
 					:loading="loadingTimes"
 					:earliest="managed.reschedule.earliest"
 					:latest="managed.reschedule.latest"

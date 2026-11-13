@@ -30,6 +30,8 @@ const { t } = useI18n();
 // can list what is missing: `.btn:disabled` drops pointer events and a disabled
 // button leaves the tab order. The fill fades through colour alpha so the
 // focus ring stays at full strength; the click handler keeps it inert.
+const holdReasonId = useId();
+
 const ACTIVATE_HELD_CLASS =
 	'cursor-not-allowed active:scale-100 bg-text-primary/50 hover:bg-text-primary/50';
 </script>
@@ -42,7 +44,8 @@ const ACTIVATE_HELD_CLASS =
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
 				<div class="flex items-center gap-4 min-w-0">
 					<button
-						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+						type="button"
+						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:flex pointer-coarse:size-11 pointer-coarse:items-center pointer-coarse:justify-center"
 						@click="emit('back')"
 						:aria-label="t('common.back')"
 					>
@@ -146,6 +149,7 @@ const ACTIVATE_HELD_CLASS =
 							class="gap-2"
 							:disabled="isActivating"
 							:aria-disabled="canActivate.valid ? undefined : 'true'"
+							:aria-describedby="canActivate.valid ? undefined : holdReasonId"
 							:class="canActivate.valid ? undefined : ACTIVATE_HELD_CLASS"
 							data-testid="automation-activate"
 							@click="emit('activate')"
@@ -155,6 +159,16 @@ const ACTIVATE_HELD_CLASS =
 							{{ t('dashboard.automations.detail.edit.activate') }}
 						</UiButton>
 					</UiTooltip>
+					<!-- The tooltip shows the reasons on hover/focus; this carries them to a screen reader. -->
+					<span
+						v-if="
+							!canActivate.valid && automation.status !== 'active' && automation.status !== 'paused'
+						"
+						:id="holdReasonId"
+						class="sr-only"
+					>
+						{{ canActivate.reasons.join(', ') }}
+					</span>
 				</div>
 			</div>
 		</div>

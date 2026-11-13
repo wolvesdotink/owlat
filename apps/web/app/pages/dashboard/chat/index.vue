@@ -26,7 +26,7 @@ const { railOpen, openRail, openBrowseChannels, openCreateChannel } = useChatShe
 		<div class="md:hidden px-3 border-b border-border-subtle">
 			<button
 				type="button"
-				class="-mx-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+				class="-mx-2 h-11 flex items-center gap-1.5 px-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				aria-controls="chat-rail"
 				:aria-expanded="railOpen"
 				@click="openRail"
@@ -43,9 +43,9 @@ const { railOpen, openRail, openBrowseChannels, openCreateChannel } = useChatShe
 			>
 				<ChatCircleIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 			</div>
-			<h3 class="text-lg font-medium text-text-primary">
+			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.chat.index.emptyTitle') }}
-			</h3>
+			</h2>
 			<p class="text-sm text-text-secondary mt-1 max-w-sm">
 				{{ t('dashboard.chat.index.emptyDescription') }}
 			</p>

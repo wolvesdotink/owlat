@@ -110,17 +110,17 @@ async function save() {
 
 <template>
 	<div class="mt-4" data-testid="receiving-mode-switch">
-		<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
+		<h4 class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-2">
 			{{ t('components.domains.receivingModeSwitch.heading') }}
-		</p>
+		</h4>
 
 		<div v-if="!editing" class="flex flex-wrap items-center justify-between gap-3">
 			<p class="text-sm text-text-secondary" data-testid="receiving-mode-current">
 				{{ currentLabel }}
 			</p>
 			<UiButton
+				size="sm"
 				variant="secondary"
-				class="text-sm py-1.5 px-3"
 				data-testid="receiving-mode-change"
 				@click="startEditing"
 			>
@@ -142,16 +142,11 @@ async function save() {
 			</p>
 
 			<div class="mt-3 flex justify-end gap-2">
-				<UiButton
-					variant="secondary"
-					class="text-sm py-1.5 px-3"
-					:disabled="isSaving"
-					@click="editing = false"
-				>
+				<UiButton size="sm" variant="secondary" :disabled="isSaving" @click="editing = false">
 					{{ t('common.cancel') }}
 				</UiButton>
 				<UiButton
-					class="text-sm py-1.5 px-3"
+					size="sm"
 					:disabled="isSaving || !isDirty"
 					data-testid="receiving-mode-save"
 					@click="confirmOpen = true"

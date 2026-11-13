@@ -43,7 +43,11 @@ const { breadcrumbs } = useBreadcrumbs();
 			>
 				{{ t(item.label) }}
 			</NuxtLink>
-			<span v-else class="text-text-primary font-medium whitespace-nowrap">
+			<span
+				v-else
+				class="text-text-primary font-medium whitespace-nowrap"
+				:aria-current="index === breadcrumbs.length - 1 ? 'page' : undefined"
+			>
 				{{ t(item.label) }}
 			</span>
 		</template>

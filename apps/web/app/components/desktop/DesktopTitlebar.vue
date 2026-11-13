@@ -170,7 +170,7 @@ function openForYou(): void {
 						@click.prevent="openForYou"
 					>
 						<InboxIcon class="w-3.5 h-3.5" />
-						<span v-if="unreadCount > 0" class="tabular-nums text-[11px] font-[550] leading-none">{{
+						<span v-if="unreadCount > 0" class="tabular-nums text-2xs font-[550] leading-none">{{
 							unreadLabel
 						}}</span>
 					</NuxtLink>
@@ -185,7 +185,7 @@ function openForYou(): void {
 					:aria-label="t('components.desktop.desktopTitlebar.minimize')"
 					@click="control('minimizeWindow')"
 				>
-					<MinusIcon class="w-4 h-4" />
+					<MinusIcon class="w-4 h-4" aria-hidden="true" />
 				</button>
 				<button
 					type="button"
@@ -193,7 +193,7 @@ function openForYou(): void {
 					:aria-label="t('components.desktop.desktopTitlebar.maximize')"
 					@click="control('toggleMaximizeWindow')"
 				>
-					<SquareIcon class="w-3.5 h-3.5" />
+					<SquareIcon class="w-3.5 h-3.5" aria-hidden="true" />
 				</button>
 				<button
 					type="button"
@@ -201,7 +201,7 @@ function openForYou(): void {
 					:aria-label="t('common.close')"
 					@click="control('closeWindow')"
 				>
-					<CloseIcon class="w-4 h-4" />
+					<CloseIcon class="w-4 h-4" aria-hidden="true" />
 				</button>
 			</div>
 		</div>
@@ -313,9 +313,14 @@ function openForYou(): void {
 	background-color: var(--color-bg-surface-hover);
 	color: var(--color-text-primary);
 }
-/* Warm terracotta close affordance — on-brand, not the generic Windows red. */
+.tb-btn:focus-visible {
+	outline: 2px solid var(--color-brand);
+	outline-offset: -2px;
+}
+/* Solid danger fill: error-strong, since plain error reads as terracotta on a
+   fill in dark mode (the same reason .btn-danger uses it). */
 .tb-close:hover {
-	background-color: var(--color-error);
+	background-color: var(--color-error-strong);
 	color: var(--color-text-inverse);
 }
 

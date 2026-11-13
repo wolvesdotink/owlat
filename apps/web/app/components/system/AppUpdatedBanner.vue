@@ -96,14 +96,15 @@ function dismiss(): void {
 					</UiButton>
 				</div>
 			</div>
-			<button
-				type="button"
-				class="flex-shrink-0 rounded-lg p-1 text-text-tertiary transition-colors hover:bg-bg-surface-hover hover:text-text-primary"
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="-mr-2 -mt-1 shrink-0 px-2"
 				:aria-label="t('shared.appUpdated.dismiss')"
 				@click="dismiss"
 			>
 				<CloseIcon size="16" aria-hidden="true" />
-			</button>
+			</UiButton>
 		</section>
 	</div>
 </template>

@@ -11,14 +11,17 @@ import PreferencesMarketingNotifications from '../PreferencesMarketingNotificati
 
 const data = ref<{ kinds: string[]; enabled: Record<string, boolean> } | undefined>(undefined);
 const save = vi.fn(async () => ({ ok: true }));
+const error = ref<Error | null>(null);
+const refetch = vi.fn();
 
 beforeEach(() => {
 	vi.clearAllMocks();
 	data.value = undefined;
+	error.value = null;
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('computed', computed);
 	vi.stubGlobal('ref', ref);
-	vi.stubGlobal('useConvexQuery', () => ({ data }));
+	vi.stubGlobal('useConvexQuery', () => ({ data, error, refetch }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: save }));
 });
 
@@ -48,6 +51,16 @@ const ALL_ON = {
 };
 
 describe('PreferencesMarketingNotifications', () => {
+	it('keeps the card with a retry when the read fails, instead of vanishing', async () => {
+		error.value = new Error('boom');
+		const w = mountCard();
+		expect(w.find('#marketing-notifications').exists()).toBe(true);
+		const boundary = w.findComponent({ name: 'QueryBoundary' });
+		expect(boundary.exists()).toBe(true);
+		boundary.vm.$emit('retry');
+		expect(refetch).toHaveBeenCalledTimes(1);
+	});
+
 	it('renders nothing until loaded, and nothing when no switch can fire', () => {
 		expect(mountCard().find('#marketing-notifications').exists()).toBe(false);
 		data.value = { kinds: [], enabled: ALL_ON };

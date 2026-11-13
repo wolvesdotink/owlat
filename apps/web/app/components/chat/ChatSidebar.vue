@@ -66,6 +66,8 @@ const matchesQuery = (name: string) => {
 	if (!q) return true;
 	return name.toLowerCase().includes(q);
 };
+const visibleChannels = computed(() => props.channels.filter((c) => matchesQuery(c.displayName)));
+const visibleDms = computed(() => props.dms.filter((d) => matchesQuery(d.displayName)));
 </script>
 
 <template>
@@ -77,7 +79,8 @@ const matchesQuery = (name: string) => {
 			</h2>
 			<UiTooltip :text="t('components.chat.chatSidebar.mentions')">
 				<button
-					class="relative w-7 h-7 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+					type="button"
+					class="relative w-7 h-7 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 					@click="emit('mentions')"
 				>
 					<!-- The name, with the badge's count after it: "Mentions 3". -->
@@ -101,6 +104,7 @@ const matchesQuery = (name: string) => {
 					v-model="searchQuery"
 					type="text"
 					:placeholder="t('components.chat.chatSidebar.searchPlaceholder')"
+					:aria-label="t('components.chat.chatSidebar.searchLabel')"
 					class="input input-sm pl-9"
 				/>
 			</div>
@@ -137,7 +141,8 @@ const matchesQuery = (name: string) => {
 						<div class="flex items-center gap-1">
 							<UiTooltip :text="t('components.chat.chatSidebar.browseChannels')">
 								<button
-									class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+									type="button"
+									class="w-6 h-6 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 									:aria-label="t('components.chat.chatSidebar.browseChannels')"
 									@click="emit('browseChannels')"
 								>
@@ -146,7 +151,8 @@ const matchesQuery = (name: string) => {
 							</UiTooltip>
 							<UiTooltip :text="t('components.chat.chatSidebar.newChannel')">
 								<button
-									class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+									type="button"
+									class="w-6 h-6 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 									:aria-label="t('components.chat.chatSidebar.newChannel')"
 									@click="emit('newChannel')"
 								>
@@ -159,10 +165,18 @@ const matchesQuery = (name: string) => {
 					<div v-if="channels.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
 						{{ t('components.chat.chatSidebar.noChannels') }}
 					</div>
+					<div
+						v-else-if="visibleChannels.length === 0"
+						class="px-1 py-2 text-xs text-text-tertiary"
+					>
+						{{ t('components.chat.chatSidebar.noMatches') }}
+					</div>
 					<button
-						v-for="channel in channels.filter((c) => matchesQuery(c.displayName))"
+						v-for="channel in visibleChannels"
 						:key="channel._id"
+						type="button"
 						class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
+						:aria-current="activeRoomId === channel._id ? 'page' : undefined"
 						:class="
 							activeRoomId === channel._id
 								? 'bg-brand-subtle text-brand'
@@ -178,24 +192,34 @@ const matchesQuery = (name: string) => {
 							{{ channel.displayName }}
 						</span>
 						<DraftMarker v-if="drafts.has('chat', channel._id)" />
-						<span
-							v-if="channel.unread.hasMention"
-							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
-						>
-							@
-						</span>
-						<span
-							v-else-if="channel.unread.unreadCount > 0"
-							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
-						>
-							{{ channel.unread.unreadCount > 99 ? '99+' : channel.unread.unreadCount }}
-						</span>
+						<template v-if="channel.unread.hasMention">
+							<span
+								aria-hidden="true"
+								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-error text-text-inverse"
+							>
+								@
+							</span>
+							<span class="sr-only">{{ t('components.chat.chatSidebar.mentionedYou') }}</span>
+						</template>
+						<template v-else-if="channel.unread.unreadCount > 0">
+							<span
+								aria-hidden="true"
+								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
+							>
+								{{ channel.unread.unreadCount > 99 ? '99+' : channel.unread.unreadCount }}
+							</span>
+							<span class="sr-only">{{
+								t('components.chat.chatSidebar.unreadCount', { count: channel.unread.unreadCount })
+							}}</span>
+						</template>
 					</button>
 				</div>
 
 				<!-- Archived channels (collapsed by default) -->
 				<div v-if="archivedChannels.length > 0" class="px-3 mt-3">
 					<button
+						type="button"
+						:aria-expanded="showArchived"
 						class="w-full flex items-center gap-1.5 px-1 py-1 text-2xs uppercase tracking-wider font-semibold text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="showArchived = !showArchived"
 					>
@@ -216,7 +240,9 @@ const matchesQuery = (name: string) => {
 						<button
 							v-for="channel in archivedMatches"
 							:key="channel._id"
+							type="button"
 							class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
+							:aria-current="activeRoomId === channel._id ? 'page' : undefined"
 							:class="
 								activeRoomId === channel._id
 									? 'bg-brand-subtle text-brand'
@@ -240,7 +266,8 @@ const matchesQuery = (name: string) => {
 						</span>
 						<UiTooltip :text="t('components.chat.chatSidebar.newDm')">
 							<button
-								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								type="button"
+								class="w-6 h-6 pointer-coarse:size-11 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
 								:aria-label="t('components.chat.chatSidebar.newDm')"
 								@click="emit('newDm')"
 							>
@@ -252,10 +279,15 @@ const matchesQuery = (name: string) => {
 					<div v-if="dms.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
 						{{ t('components.chat.chatSidebar.noDms') }}
 					</div>
+					<div v-else-if="visibleDms.length === 0" class="px-1 py-2 text-xs text-text-tertiary">
+						{{ t('components.chat.chatSidebar.noMatches') }}
+					</div>
 					<button
-						v-for="dm in dms.filter((d) => matchesQuery(d.displayName))"
+						v-for="dm in visibleDms"
 						:key="dm._id"
+						type="button"
 						class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors"
+						:aria-current="activeRoomId === dm._id ? 'page' : undefined"
 						:class="
 							activeRoomId === dm._id
 								? 'bg-brand-subtle text-brand'
@@ -268,12 +300,17 @@ const matchesQuery = (name: string) => {
 							{{ dm.displayName }}
 						</span>
 						<DraftMarker v-if="drafts.has('chat', dm._id)" />
-						<span
-							v-if="dm.unread.unreadCount > 0"
-							class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
-						>
-							{{ dm.unread.unreadCount > 99 ? '99+' : dm.unread.unreadCount }}
-						</span>
+						<template v-if="dm.unread.unreadCount > 0">
+							<span
+								aria-hidden="true"
+								class="text-2xs font-semibold px-1.5 py-0.5 rounded-full bg-text-primary text-text-inverse"
+							>
+								{{ dm.unread.unreadCount > 99 ? '99+' : dm.unread.unreadCount }}
+							</span>
+							<span class="sr-only">{{
+								t('components.chat.chatSidebar.unreadCount', { count: dm.unread.unreadCount })
+							}}</span>
+						</template>
 					</button>
 				</div>
 			</template>

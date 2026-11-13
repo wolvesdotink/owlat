@@ -22,6 +22,9 @@ import { useCsvImport } from '~/composables/useCsvImport';
 import { useDataTable } from '~/composables/useDataTable';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { useFormModal } from '~/composables/useFormModal';
+import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
+import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
+import UiDropdownDivider from '@owlat/ui/components/ui/DropdownDivider.vue';
 
 const contacts = Array.from({ length: 3 }, (_, i) => ({
 	_id: `contact_${i}`,
@@ -77,7 +80,13 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { formatDate: () => 'Mar 3, 2026' },
-			components: { UiQueryBoundary: QueryBoundary, ContactsContactRow: ContactRow },
+			components: {
+				UiQueryBoundary: QueryBoundary,
+				ContactsContactRow: ContactRow,
+				UiDropdownMenu,
+				UiDropdownMenuItem,
+				UiDropdownDivider,
+			},
 			stubs: {
 				UiModal: ModalStub,
 				UiPageHeader: { template: '<header><slot name="actions" /></header>' },
@@ -105,6 +114,7 @@ function mountPage() {
 					template: '<div v-if="open" data-testid="integration-import" />',
 				},
 				LazyContactsBulkDeleteModal: true,
+				UiProgressBar: true,
 			},
 		},
 	});
@@ -113,17 +123,30 @@ function mountPage() {
 const button = (scope: ReturnType<typeof mountPage>, label: string) =>
 	scope.findAll('button').find((candidate) => candidate.text().trim() === label);
 
+/** A menu item: the menus are teleported to the body, outside the wrapper. */
+const menuItem = (label: string) =>
+	Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((item) =>
+		item.textContent?.replace(/\s+/g, '').includes(label.replace(/\s+/g, ''))
+	);
+
+async function clickMenuItem(label: string) {
+	const item = menuItem(label);
+	if (!item) throw new Error(`No menu item "${label}" in: ${document.body.textContent}`);
+	item.click();
+	await nextTick();
+}
+
 describe('contacts list pieces', () => {
 	it('opens the CSV and the integration import from the Import menu', async () => {
 		const wrapper = mountPage();
 		expect(wrapper.text()).not.toContain('CSV file');
 		await button(wrapper, 'Import')!.trigger('click');
-		await button(wrapper, 'CSV fileImport from spreadsheet')!.trigger('click');
+		await clickMenuItem('CSV fileImport from spreadsheet');
 		expect(wrapper.find('[data-testid="csv-import"]').exists()).toBe(true);
-		expect(wrapper.text()).not.toContain('Import from spreadsheet');
+		expect(menuItem('CSV file')).toBeUndefined();
 
 		await button(wrapper, 'Import')!.trigger('click');
-		await button(wrapper, 'IntegrationsMailchimp, Stripe')!.trigger('click');
+		await clickMenuItem('IntegrationsMailchimp, Stripe');
 		expect(wrapper.find('[data-testid="integration-import"]').exists()).toBe(true);
 		wrapper.unmount();
 	});
@@ -136,16 +159,19 @@ describe('contacts list pieces', () => {
 		expect(wrapper.text()).toContain('1 selected');
 
 		await button(wrapper, 'Actions')!.trigger('click');
-		await wrapper
-			.findAll('button')
-			.find((b) => b.text().includes('Add to topic'))!
-			.trigger('click');
-		expect(button(wrapper, 'Beta program')).toBeDefined();
+		await nextTick();
+		await clickMenuItem('Add to topic');
+		// The topic list replaces the menu's actions instead of opening beside them.
+		expect(menuItem('Beta program')).toBeDefined();
+		expect(menuItem('Delete selected')).toBeUndefined();
+
+		await clickMenuItem('Add to topic');
+		expect(menuItem('Delete selected')).toBeDefined();
 
 		document.body.click();
 		await nextTick();
-		expect(wrapper.text()).not.toContain('Delete selected');
-		expect(button(wrapper, 'Beta program')).toBeUndefined();
+		expect(menuItem('Delete selected')).toBeUndefined();
+		expect(menuItem('Beta program')).toBeUndefined();
 
 		await wrapper.get('button[aria-label="Clear selection"]').trigger('click');
 		await nextTick();

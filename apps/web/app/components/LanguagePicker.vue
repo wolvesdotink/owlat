@@ -31,6 +31,20 @@ type AppLocale = typeof locale.value;
 
 // Spread first: the module types `locales` as `Locale[] | LocaleObject[]`, and
 // mapping a union of array types directly is not callable in TypeScript.
+/**
+ * The language named in the interface's current language ("German (Germany)"
+ * under an English UI), beside its own name ("Deutsch"). A raw BCP 47 tag
+ * means nothing to most people. Empty when it would only repeat the name.
+ */
+function inCurrentLanguage(option: { language: string; name: string }): string {
+	try {
+		const named = new Intl.DisplayNames([locale.value], { type: 'language' }).of(option.language);
+		return named && named !== option.name ? named : '';
+	} catch {
+		return '';
+	}
+}
+
 const options = computed(() =>
 	[...locales.value].map((entry) =>
 		typeof entry === 'string'
@@ -107,7 +121,9 @@ async function rememberOnAccount(code: AppLocale) {
 			<span :lang="option.language" class="mt-2 block text-sm font-medium text-text-primary">{{
 				option.name
 			}}</span>
-			<span class="block text-xs text-text-tertiary">{{ option.language }}</span>
+			<span v-if="inCurrentLanguage(option)" class="block text-xs text-text-tertiary">{{
+				inCurrentLanguage(option)
+			}}</span>
 		</button>
 	</div>
 </template>

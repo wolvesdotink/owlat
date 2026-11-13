@@ -6,6 +6,7 @@ import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime'
 import {
 	CheckIcon,
 	CircleInfoIcon,
+	CloseIcon,
 	CircleWarningIcon,
 	TriangleWarningIcon,
 	type IconComponent,
@@ -201,18 +202,15 @@ watch(
 		<!-- Close button (optional - auto-dismisses but allows manual close) -->
 		<button
 			ref="closeRef"
-			:class="['p-1 rounded-lg transition-colors flex-shrink-0', style.closeHover]"
+			type="button"
+			:class="[
+				'p-1.5 -m-0.5 rounded-lg transition-colors flex-shrink-0 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center',
+				style.closeHover,
+			]"
 			:aria-label="t('ui.toast.dismiss')"
 			@click="emit('close')"
 		>
-			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M6 18L18 6M6 6l12 12"
-				/>
-			</svg>
+			<CloseIcon class="w-4 h-4" aria-hidden="true" />
 		</button>
 	</div>
 </template>

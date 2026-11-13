@@ -65,38 +65,46 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 	<div class="ep-toolbar">
 		<div class="ep-toolbar-left">
 			<!-- View Mode Toggle -->
-			<div v-if="showCodeView" class="ep-view-toggle">
+			<div v-if="showCodeView" class="ep-view-toggle" role="group">
 				<button
+					type="button"
 					class="ep-view-btn"
 					:class="{ 'ep-view-active': viewMode === 'preview' }"
+					:aria-pressed="viewMode === 'preview'"
 					@click="viewMode = 'preview'"
 				>
-					<EyeIcon class="ep-view-icon" />
+					<EyeIcon class="ep-view-icon" aria-hidden="true" />
 					{{ t('builder.preview.views.preview') }}
 				</button>
 				<button
+					type="button"
 					class="ep-view-btn"
 					:class="{ 'ep-view-active': viewMode === 'code' }"
+					:aria-pressed="viewMode === 'code'"
 					@click="viewMode = 'code'"
 				>
-					<CodeIcon class="ep-view-icon" />
+					<CodeIcon class="ep-view-icon" aria-hidden="true" />
 					HTML
 				</button>
 				<button
+					type="button"
 					class="ep-view-btn"
 					:class="{ 'ep-view-active': viewMode === 'plaintext' }"
+					:aria-pressed="viewMode === 'plaintext'"
 					@click="viewMode = 'plaintext'"
 				>
-					<FileTextIcon class="ep-view-icon" />
+					<FileTextIcon class="ep-view-icon" aria-hidden="true" />
 					{{ t('builder.preview.views.text') }}
 				</button>
 				<button
 					v-if="ampHtml || ampAvailable"
+					type="button"
 					class="ep-view-btn"
 					:class="{ 'ep-view-active': viewMode === 'amp' }"
+					:aria-pressed="viewMode === 'amp'"
 					@click="viewMode = 'amp'"
 				>
-					<ZapIcon class="ep-view-icon" />
+					<ZapIcon class="ep-view-icon" aria-hidden="true" />
 					AMP
 				</button>
 			</div>
@@ -113,12 +121,14 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<!-- Render Warnings Badge: an icon and a count, so the name is spelled out -->
 			<UiTooltip v-if="hasWarnings" :text="t('builder.preview.toolbar.renderWarnings')">
 				<button
+					type="button"
 					class="ep-warning-badge"
 					:class="{ 'ep-warning-badge-active': warningsExpanded }"
+					:aria-expanded="warningsExpanded"
 					:aria-label="`${t('builder.preview.toolbar.renderWarnings')}: ${renderWarnings.length}`"
 					@click="warningsExpanded = !warningsExpanded"
 				>
-					<TriangleWarningIcon class="ep-warning-badge-icon" />
+					<TriangleWarningIcon class="ep-warning-badge-icon" aria-hidden="true" />
 					<span>{{ renderWarnings.length }}</span>
 				</button>
 			</UiTooltip>
@@ -126,8 +136,10 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<!-- Diff Button -->
 			<UiTooltip v-if="hasDiff" :text="t('builder.preview.toolbar.compare')">
 				<button
+					type="button"
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': diffPanelOpen }"
+					:aria-pressed="diffPanelOpen"
 					:aria-label="t('builder.preview.toolbar.compare')"
 					@click="diffPanelOpen = !diffPanelOpen"
 				>
@@ -142,8 +154,10 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 				"
 			>
 				<button
+					type="button"
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': darkMode }"
+					:aria-pressed="darkMode"
 					:aria-label="
 						darkMode
 							? t('builder.preview.toolbar.lightMode')
@@ -159,8 +173,10 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<!-- Settings Button -->
 			<UiTooltip v-if="showRenderOptions" :text="t('builder.preview.toolbar.renderOptions')">
 				<button
+					type="button"
 					class="ep-control-btn"
 					:class="{ 'ep-control-btn-active': settingsPanelOpen }"
+					:aria-pressed="settingsPanelOpen"
 					:aria-label="t('builder.preview.toolbar.renderOptions')"
 					@click="settingsPanelOpen = !settingsPanelOpen"
 				>
@@ -172,8 +188,11 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<div class="ep-export-wrapper">
 				<UiTooltip :text="t('builder.preview.toolbar.export')">
 					<button
+						type="button"
 						class="ep-control-btn"
 						:aria-label="t('builder.preview.toolbar.export')"
+						aria-haspopup="menu"
+						:aria-expanded="exportMenuOpen"
 						@click.stop="exportMenuOpen = !exportMenuOpen"
 					>
 						<DownloadIcon class="ep-control-icon" />
@@ -193,8 +212,8 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<div v-if="showSendTest" class="ep-toolbar-divider"></div>
 
 			<UiTooltip v-if="showSendTest" :text="t('builder.preview.toolbar.sendTestTitle')">
-				<button class="ep-action-btn ep-action-primary" @click="emit('send-test')">
-					<PaperPlaneIcon class="ep-action-icon" />
+				<button type="button" class="ep-action-btn ep-action-primary" @click="emit('send-test')">
+					<PaperPlaneIcon class="ep-action-icon" aria-hidden="true" />
 					<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
 				</button>
 			</UiTooltip>
@@ -204,6 +223,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 			<!-- Refresh -->
 			<UiTooltip :text="t('builder.preview.toolbar.refresh')">
 				<button
+					type="button"
 					class="ep-control-btn"
 					:aria-label="t('builder.preview.toolbar.refresh')"
 					@click="emit('refresh')"
@@ -219,9 +239,13 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 /* Toolbar */
 .ep-toolbar {
 	display: flex;
+	/* Wraps: with the app sidebar open on a 1024-1280px screen the two groups
+	   are wider than the previewer, which clips its overflow, and Send test and
+	   Refresh fell off the end. */
+	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
-	gap: 16px;
+	gap: 8px 16px;
 	padding: 12px 16px;
 	background: var(--ep-bg-elevated);
 	border-bottom: 1px solid var(--ep-border-subtle);
@@ -230,6 +254,7 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 .ep-toolbar-left,
 .ep-toolbar-right {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 }
@@ -329,13 +354,15 @@ const { copiedFormat, copyToClipboard, downloadFile } = useEmailExport(() => {
 	transition: filter var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
+/* Monochrome, like .btn-primary: inverse text on brand terracotta is ~3.8:1
+   in light mode, below AA for a 13px label, and brand is kept for accents. */
 .ep-action-primary {
-	background: var(--ep-brand);
+	background: var(--ep-text-primary);
 	color: var(--ep-text-inverse);
 }
 
 .ep-action-primary:hover {
-	filter: brightness(1.06);
+	opacity: 0.85;
 }
 
 .ep-action-icon {

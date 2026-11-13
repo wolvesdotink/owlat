@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
-import { ChartBarVerticalIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -23,12 +22,10 @@ function channelName(channel: string): string {
 
 <template>
 	<div class="card">
-		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox :icon="ChartBarVerticalIcon" size="sm" variant="surface" />
-			<h2 class="text-lg font-medium text-text-primary">
-				{{ t('components.contacts.timelineStatsCard.title') }}
-			</h2>
-		</div>
+		<!-- Titled like the sidebar's other cards (Details, Topics): no icon box. -->
+		<h2 class="text-lg font-medium text-text-primary mb-4">
+			{{ t('components.contacts.timelineStatsCard.title') }}
+		</h2>
 
 		<!-- Loading -->
 		<div v-if="statsLoading" class="flex items-center justify-center py-4">
@@ -53,7 +50,11 @@ function channelName(channel: string): string {
 			</div>
 
 			<!-- Per-channel counts -->
-			<div v-if="stats.channelCounts" class="space-y-2 mb-4">
+			<!-- A contact with no messages has an empty map: no heading over nothing. -->
+			<div
+				v-if="stats.channelCounts && Object.keys(stats.channelCounts).length > 0"
+				class="space-y-2 mb-4"
+			>
 				<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 					{{ t('components.contacts.timelineStatsCard.byChannel') }}
 				</p>
@@ -80,7 +81,10 @@ function channelName(channel: string): string {
 			</div>
 
 			<!-- First/Last interaction -->
-			<div class="space-y-2 pt-3 border-t border-border-subtle">
+			<div
+				v-if="stats.firstInteraction || stats.lastInteraction"
+				class="space-y-2 pt-3 border-t border-border-subtle"
+			>
 				<div v-if="stats.firstInteraction" class="flex items-center justify-between">
 					<span class="text-xs text-text-tertiary">{{
 						t('components.contacts.timelineStatsCard.firstContact')

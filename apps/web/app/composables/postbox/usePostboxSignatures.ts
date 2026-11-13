@@ -36,7 +36,7 @@ export function usePostboxSignatures(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		signatureId: Id<'mailSignatures'>,
 		patch: { name?: string; html?: string; isDefault?: boolean }
 	) {
-		await updateMutation.run({ signatureId, ...patch });
+		return updateMutation.run({ signatureId, ...patch });
 	}
 
 	async function remove(signatureId: Id<'mailSignatures'>) {

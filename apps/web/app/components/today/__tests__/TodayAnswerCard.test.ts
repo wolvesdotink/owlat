@@ -94,6 +94,35 @@ describe('TodayAnswerCard', () => {
 		expect(text).not.toMatch(/\bone\b/);
 	});
 
+	it('says a failed read failed, not that nothing needs an answer', async () => {
+		const w = mount(TodayAnswerCard, {
+			props: {
+				items: [],
+				counts: { mail: 0, team: 0, mention: 0, drafts: 0 },
+				isLoading: false,
+				inboxName: 'Dev',
+				error: new Error('read failed'),
+			},
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiButton: { template: '<a><slot /></a>' },
+					UiSkeleton: true,
+					InboxChip: true,
+					NuxtLink: { template: '<a><slot /></a>' },
+					UiQueryBoundary: {
+						props: ['error'],
+						emits: ['retry'],
+						template: '<div data-testid="boundary" @click="$emit(\'retry\')" />',
+					},
+				},
+			},
+		});
+		expect(w.text()).not.toContain('Nothing in Dev needs an answer');
+		await w.get('[data-testid="boundary"]').trigger('click');
+		expect(w.emitted('retry')).toHaveLength(1);
+	});
+
 	it('links to the whole queue when inboxes left out of Today hold more', () => {
 		const w = mount(TodayAnswerCard, {
 			props: {

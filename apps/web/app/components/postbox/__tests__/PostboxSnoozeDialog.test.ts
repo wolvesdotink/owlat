@@ -28,6 +28,7 @@ const WED_10_UTC = Date.UTC(2026, 0, 7, 10, 0, 0);
 const stubs = {
 	UiModal: { props: ['open', 'title', 'size'], template: '<div><slot /></div>' },
 	UiButton: { template: '<button><slot /></button>' },
+	UiSegmentedControl: { props: ['options', 'modelValue'], template: '<div role="tablist" />' },
 };
 
 function mountDialog(hintText = '', locale: 'en' | 'de' = 'en') {
@@ -107,5 +108,56 @@ describe('PostboxSnoozeDialog', () => {
 		const badged = rows.filter((row) => row.text().includes('Suggested'));
 		expect(badged).toHaveLength(1);
 		expect(badged[0]!.text()).toContain('Next week');
+	});
+});
+
+describe('PostboxPresetTimeDialog — custom time', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(WED_10_UTC);
+		vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(0);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	function mountPicker() {
+		return mount(PostboxPresetTimeDialog, {
+			props: { open: true, title: 'Snooze', presets: [], confirmLabel: 'Snooze' },
+			global: {
+				plugins: [createTestI18n()],
+				stubs: {
+					UiModal: stubs.UiModal,
+					UiButton: {
+						props: ['disabled'],
+						template: '<button :disabled="disabled"><slot /></button>',
+					},
+				},
+			},
+		});
+	}
+
+	it('links the label to the input and floors the picker at now', () => {
+		const wrapper = mountPicker();
+		const input = wrapper.get('input[type="datetime-local"]');
+		expect(wrapper.get('label').attributes('for')).toBe(input.attributes('id'));
+		expect(input.attributes('min')).toBe('2026-01-07T10:00');
+	});
+
+	it('says why a past time cannot be confirmed instead of ignoring the click', async () => {
+		const wrapper = mountPicker();
+		const input = wrapper.get('input[type="datetime-local"]');
+		await input.setValue('2026-01-06T09:00');
+
+		expect(wrapper.get('button').attributes('disabled')).toBeDefined();
+		expect(input.attributes('aria-invalid')).toBe('true');
+		expect(wrapper.text()).toContain('Pick a time in the future');
+
+		await input.setValue('2026-01-08T09:00');
+		expect(wrapper.get('button').attributes('disabled')).toBeUndefined();
+		await wrapper.get('button').trigger('click');
+		expect(wrapper.emitted('confirm')?.[0]?.[0]).toBe(new Date('2026-01-08T09:00').getTime());
 	});
 });

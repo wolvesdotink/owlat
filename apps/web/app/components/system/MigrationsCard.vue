@@ -27,7 +27,7 @@ import {
 import { CircleCheckIcon, CircleCloseIcon, PlayIcon, TriangleWarningIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
-const { t, te } = useI18n();
+const { t, te, locale } = useI18n();
 const { showToast } = useToast();
 
 const { data, error, refetch } = useConvexQuery(api.migrations.admin.list, () => ({}));
@@ -120,9 +120,9 @@ async function runPending() {
 	<div class="card">
 		<div class="flex items-start justify-between gap-4 flex-wrap mb-4">
 			<div class="min-w-0">
-				<h3 class="font-semibold text-text-primary mb-1">
+				<h2 class="font-semibold text-text-primary mb-1">
 					{{ t('components.system.migrationsCard.title') }}
-				</h3>
+				</h2>
 				<p class="text-caption text-text-tertiary max-w-2xl">
 					{{ t('components.system.migrationsCard.intro') }}
 				</p>
@@ -197,9 +197,9 @@ async function runPending() {
 			</div>
 
 			<div v-for="release in releases" :key="release.version" class="mt-4 first:mt-0">
-				<h4 class="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-1">
+				<h3 class="text-xs font-medium uppercase tracking-wide text-text-tertiary mb-1">
 					{{ t('components.system.migrationsCard.introducedIn', { version: release.version }) }}
-				</h4>
+				</h3>
 				<ul class="divide-y divide-border-subtle">
 					<li
 						v-for="row in release.rows"
@@ -228,8 +228,8 @@ async function runPending() {
 							<p v-if="row.progress">
 								{{
 									t('components.system.migrationsCard.progress', {
-										scanned: row.progress.scannedCount.toLocaleString(),
-										changed: row.progress.changedCount.toLocaleString(),
+										scanned: row.progress.scannedCount.toLocaleString(locale),
+										changed: row.progress.changedCount.toLocaleString(locale),
 									})
 								}}
 								<template v-if="row.progress.completedAt">

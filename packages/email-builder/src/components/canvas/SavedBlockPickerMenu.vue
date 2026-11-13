@@ -84,20 +84,20 @@ onUnmounted(() => {
 					ref="searchEl"
 					v-model="searchQuery"
 					:aria-label="t('builder.savedBlocks.search')"
-					class="w-full py-1.5 pr-2 pl-7 text-[13px] border border-transparent rounded-md bg-bg-surface outline-none text-text-primary focus:border-brand focus:shadow-[0_0_0_3px_rgba(196,120,90,0.08)] focus:bg-bg-surface-hover"
+					class="w-full py-1.5 pr-2 pl-7 text-caption border border-transparent rounded-md bg-bg-surface outline-none text-text-primary focus:border-brand focus:shadow-[0_0_0_3px_rgba(196,120,90,0.08)] focus:bg-bg-surface-hover"
 					type="text"
 					:placeholder="t('builder.savedBlocks.searchPlaceholder')"
 				/>
 			</div>
 
-			<div v-if="isLoading" class="flex items-center gap-2 p-4 text-[13px] text-text-tertiary">
+			<div v-if="isLoading" class="flex items-center gap-2 p-4 text-caption text-text-tertiary">
 				<SpinnerIcon :size="16" />
 				{{ t('builder.savedBlocks.loading') }}
 			</div>
 
 			<div
 				v-else-if="filteredBlocks.length === 0"
-				class="p-4 text-center text-[13px] text-text-tertiary"
+				class="p-4 text-center text-caption text-text-tertiary"
 			>
 				{{
 					searchQuery
@@ -125,13 +125,13 @@ onUnmounted(() => {
 				>
 					<PackageIcon :size="16" class="shrink-0 text-text-tertiary" />
 					<div class="flex-1 min-w-0 flex flex-col gap-0.5">
-						<span class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.name }}</span>
-						<span v-if="block.description" class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.description }}</span>
+						<span class="text-caption font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.name }}</span>
+						<span v-if="block.description" class="text-2xs text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.description }}</span>
 					</div>
 					<div class="shrink-0">
 						<span
 							v-if="block.blockCount"
-							class="text-[10px] text-text-tertiary whitespace-nowrap"
+							class="text-2xs text-text-tertiary whitespace-nowrap"
 							>{{ t('builder.savedBlocks.blockCount', { count: block.blockCount }) }}</span
 						>
 					</div>

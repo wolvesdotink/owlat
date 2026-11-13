@@ -124,7 +124,7 @@ function start() {
 						'border-success/30 bg-success/10 text-success': latest.status === 'passed',
 						'border-error/30 bg-error/10 text-error':
 							latest.status === 'failed' || latest.status === 'timed_out',
-						'border-brand/30 bg-brand/10 text-brand': isInFlight,
+						'border-info/30 bg-info/10 text-info': isInFlight,
 					}"
 				>
 					<component
@@ -148,7 +148,22 @@ function start() {
 				{{ t('components.delivery.deliverabilityLoopbackCard.intro') }}
 			</p>
 
-			<label class="block min-w-0 sm:max-w-sm">
+			<!-- No domain to test: say what is missing instead of an empty select
+     and a Run button that cannot work. -->
+			<p
+				v-if="domains.length === 0"
+				class="text-sm text-text-secondary"
+				data-testid="loopback-no-domains"
+			>
+				{{ t('components.delivery.deliverabilityLoopbackCard.noDomains') }}
+				<NuxtLink
+					to="/dashboard/admin/delivery/domains"
+					class="font-medium text-brand hover:underline"
+					>{{ t('components.delivery.deliverabilityLoopbackCard.noDomainsLink') }}</NuxtLink
+				>
+			</p>
+
+			<label v-if="domains.length > 0" class="block min-w-0 sm:max-w-sm">
 				<span class="mb-1.5 block text-sm font-medium text-text-primary">
 					{{ t('components.delivery.deliverabilityLoopbackCard.sendingDomain') }}
 				</span>
@@ -181,7 +196,7 @@ function start() {
 				</div>
 			</div>
 
-			<div v-else class="flex flex-col gap-3 sm:flex-row sm:items-end">
+			<div v-else-if="domains.length > 0" class="flex flex-col gap-3 sm:flex-row sm:items-end">
 				<UiButton
 					:loading="isStarting || isInFlight"
 					:disabled="

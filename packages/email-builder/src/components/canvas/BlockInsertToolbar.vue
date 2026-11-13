@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
-import { ref } from 'vue';
+import { ref, shallowRef } from 'vue';
 import type { Component } from 'vue';
 import type { BlockType } from '../../types';
 import {
@@ -14,6 +14,7 @@ import {
 	TextIcon,
 } from '@coolicons/vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+import BlockPickerPopover from './BlockPickerPopover.vue';
 
 const { t, label } = useBuilderI18n();
 
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>();
 
 const showMore = ref(false);
+const moreButtonRef = shallowRef<HTMLElement | null>(null);
 
 const quickBlocks: { type: BlockType; icon: Component; label: string }[] = [
 	{ type: 'text', icon: TextIcon, label: 'Text' },
@@ -57,14 +59,22 @@ function handleAdd(type: BlockType) {
 		</UiTooltip>
 		<UiTooltip :text="t('builder.canvas.moreBlocksTitle')">
 			<button
+				ref="moreButtonRef"
 				class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
 				:aria-label="t('builder.canvas.moreBlocksTitle')"
+				aria-haspopup="menu"
 				:aria-expanded="showMore"
 				type="button"
 				@click="showMore = !showMore"
 			>
-				<PlusIcon :size="16" />
+				<PlusIcon :size="16" aria-hidden="true" />
 			</button>
 		</UiTooltip>
+		<BlockPickerPopover
+			v-if="showMore && moreButtonRef"
+			:anchor-element="moreButtonRef"
+			@select="handleAdd"
+			@close="showMore = false"
+		/>
 	</div>
 </template>

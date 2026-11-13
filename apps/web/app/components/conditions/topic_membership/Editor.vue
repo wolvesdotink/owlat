@@ -26,19 +26,23 @@ const updateTopic = (event: Event) => {
 };
 
 const updateOperator = (event: Event) => {
-	const operator = (event.target as HTMLSelectElement).value as TopicMembershipCondition['operator'];
+	const operator = (event.target as HTMLSelectElement)
+		.value as TopicMembershipCondition['operator'];
 	emit('update:modelValue', { ...props.modelValue, operator });
 	emit('save');
 };
+
+// The row variant repeats in the segment editor, so ids are per instance.
+const ids = { topic: useId(), operator: useId(), help: useId() };
 </script>
 
 <template>
 	<template v-if="variant === 'row'">
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">{{
+			<label :for="ids.topic" class="text-xs text-text-tertiary mb-1 block">{{
 				t('components.conditions.topicMembership.editor.topic')
 			}}</label>
-			<select :value="modelValue.topicId" class="input" @change="updateTopic">
+			<select :id="ids.topic" :value="modelValue.topicId" class="input" @change="updateTopic">
 				<option value="">
 					{{ t('components.conditions.topicMembership.editor.selectTopicShort') }}
 				</option>
@@ -48,10 +52,15 @@ const updateOperator = (event: Event) => {
 			</select>
 		</div>
 		<div>
-			<label class="text-xs text-text-tertiary mb-1 block">{{
+			<label :for="ids.operator" class="text-xs text-text-tertiary mb-1 block">{{
 				t('components.conditions.topicMembership.editor.condition')
 			}}</label>
-			<select :value="modelValue.operator" class="input" @change="updateOperator">
+			<select
+				:id="ids.operator"
+				:value="modelValue.operator"
+				class="input"
+				@change="updateOperator"
+			>
 				<option v-for="op in TOPIC_OPERATORS" :key="op.value" :value="op.value">
 					{{ t(op.label) }}
 				</option>
@@ -62,13 +71,14 @@ const updateOperator = (event: Event) => {
 	<template v-else>
 		<div class="space-y-4">
 			<div>
-				<label for="topic" class="label">{{
+				<label :for="ids.topic" class="label">{{
 					t('components.conditions.topicMembership.editor.topic')
 				}}</label>
 				<select
-					id="topic"
+					:id="ids.topic"
 					:value="modelValue.topicId"
 					class="input mt-1.5"
+					:aria-describedby="ids.help"
 					@change="updateTopic"
 				>
 					<option value="">
@@ -78,16 +88,16 @@ const updateOperator = (event: Event) => {
 						{{ topic.name }}
 					</option>
 				</select>
-				<p class="text-xs text-text-tertiary mt-1.5">
+				<p :id="ids.help" class="text-xs text-text-tertiary mt-1.5">
 					{{ t('components.conditions.topicMembership.editor.help') }}
 				</p>
 			</div>
 			<div>
-				<label for="topicOperator" class="label">{{
+				<label :for="ids.operator" class="label">{{
 					t('components.conditions.topicMembership.editor.condition')
 				}}</label>
 				<select
-					id="topicOperator"
+					:id="ids.operator"
 					:value="modelValue.operator"
 					class="input mt-1.5"
 					@change="updateOperator"

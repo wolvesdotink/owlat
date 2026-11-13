@@ -32,6 +32,27 @@ function heightPercent(value: number): number {
 	return Math.max(0, Math.min(100, (value / axisMax.value) * 100));
 }
 
+// One tab stop per chart, not one per bar: the arrows walk the bars.
+const activeBar = ref(0);
+const barRefs = ref<HTMLElement[]>([]);
+function onBarKeydown(event: KeyboardEvent, index: number) {
+	const last = props.bars.length - 1;
+	const next =
+		event.key === 'ArrowRight'
+			? Math.min(index + 1, last)
+			: event.key === 'ArrowLeft'
+				? Math.max(index - 1, 0)
+				: event.key === 'Home'
+					? 0
+					: event.key === 'End'
+						? last
+						: -1;
+	if (next < 0) return;
+	event.preventDefault();
+	activeBar.value = next;
+	barRefs.value[next]?.focus();
+}
+
 const averageLabel = computed(() =>
 	t('components.marketing.rateBars.average', { value: formatPercentage(props.average, 1) })
 );
@@ -45,7 +66,7 @@ const averageLabel = computed(() =>
 			<div class="absolute inset-x-0 top-1/2 border-t border-border-subtle" aria-hidden="true" />
 			<div class="absolute inset-x-0 bottom-0 border-t border-border-default" aria-hidden="true" />
 			<span
-				class="absolute -top-2 right-0 text-[10px] tabular-nums text-text-tertiary bg-bg-elevated pl-1"
+				class="absolute -top-2 right-0 text-2xs tabular-nums text-text-tertiary bg-bg-elevated pl-1"
 				aria-hidden="true"
 			>
 				{{ formatPercentage(axisMax, 0) }}
@@ -53,10 +74,13 @@ const averageLabel = computed(() =>
 
 			<div class="absolute inset-0 flex items-end justify-around gap-1 px-1">
 				<div
-					v-for="bar in bars"
+					v-for="(bar, index) in bars"
 					:key="bar.id"
+					ref="barRefs"
 					class="group relative flex-1 max-w-6 h-full flex items-end rounded focus-visible:outline-2 focus-visible:outline-brand"
-					tabindex="0"
+					:tabindex="index === Math.min(activeBar, bars.length - 1) ? 0 : -1"
+					@keydown="onBarKeydown($event, index)"
+					@focus="activeBar = index"
 					role="img"
 					:aria-label="`${bar.label}: ${formatPercentage(bar.value, 1)}`"
 				>
@@ -68,7 +92,7 @@ const averageLabel = computed(() =>
 						class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 pointer-events-none opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-(--motion-fast) rounded-md bg-bg-overlay shadow-surface-4 px-2 py-1 whitespace-nowrap"
 						aria-hidden="true"
 					>
-						<p class="text-[10px] text-text-tertiary leading-tight">{{ bar.label }}</p>
+						<p class="text-2xs text-text-tertiary leading-tight">{{ bar.label }}</p>
 						<p class="text-xs font-semibold text-text-primary tabular-nums leading-tight">
 							{{ formatPercentage(bar.value, 1) }}
 						</p>
@@ -83,6 +107,6 @@ const averageLabel = computed(() =>
 				aria-hidden="true"
 			/>
 		</div>
-		<p class="mt-2 text-[11px] text-text-tertiary tabular-nums">{{ averageLabel }}</p>
+		<p class="mt-2 text-2xs text-text-tertiary tabular-nums">{{ averageLabel }}</p>
 	</div>
 </template>

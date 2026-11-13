@@ -216,7 +216,7 @@ onUnmounted(removeListeners);
 					ref="menuRef"
 					role="menu"
 					:aria-label="t('components.settings.teamRoleMenu.assignRole')"
-					class="fixed z-50 w-72 rounded-xl bg-bg-elevated py-1 shadow-lg"
+					class="fixed z-(--z-menu) w-72 rounded-xl bg-bg-elevated py-1 shadow-lg"
 					:style="{
 						top: openDirection === 'up' ? 'auto' : `${panelPosition.top}px`,
 						bottom: openDirection === 'up' ? `${panelPosition.bottom}px` : 'auto',

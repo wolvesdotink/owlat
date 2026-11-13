@@ -7,7 +7,10 @@
  * with it. Separating `news.` from `mail.` is industry standard, and until this
  * panel the wizard neither offered nor encouraged it. The proposed layout is
  * therefore shown BY DEFAULT, not behind an expert toggle, and the
- * reputation-inheritance rule is said HERE rather than in the docs.
+ * reputation-inheritance rule is said HERE rather than in the docs. Only the
+ * DNS records for the proposed names sit one click down: they are work for
+ * names the operator has not created yet, and open they would bury the
+ * records of the domain being viewed, which the same expanded row shows.
  *
  * Every decision rendered here is DERIVED by the backend's pure core
  * (`domains/streamSubdomains.ts`, `streamSubdomainRecords.ts`, `bimi.ts`): the
@@ -26,6 +29,8 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { streamLabel } from '~/utils/deliverabilityMeasurement';
+import { useLocalized } from '~/composables/useLocalized';
 import { CircleInfoIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -34,7 +39,26 @@ const props = defineProps<{
 	canManage: boolean;
 }>();
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+const localized = useLocalized();
+
+const recordsOpen = ref(false);
+
+/** The streams a name carries, as words ("Campaigns and automations"), not enums. */
+const streamsCopy = (streams: readonly Parameters<typeof streamLabel>[0][]): string =>
+	new Intl.ListFormat(locale.value, { type: 'conjunction' }).format(
+		streams.map((stream) => localized(streamLabel(stream)))
+	);
+
+/**
+ * Advice arrives keyed with its English copy. The key picks the translated
+ * line; a key this catalog does not know yet keeps the backend's sentence.
+ */
+const adviceCopy = (line: { key: string; text: string }): string => {
+	const key = `components.domains.streamSubdomainPlanPanel.advice.${line.key}`;
+	return te(key) ? t(key) : line.text;
+};
 
 // Admin-gated on the backend, so a member who cannot manage domains must not
 // subscribe at all (matches YahooCflPanel / MtaStsModeCard).
@@ -187,15 +211,14 @@ const bimiOffers = computed(() =>
 				<p v-if="entry.streams.length > 0" class="mt-1 text-xs text-text-secondary">
 					{{
 						t('components.domains.streamSubdomainPlanPanel.carries', {
-							streams: entry.streams.join(', '),
+							streams: streamsCopy(entry.streams),
 						})
 					}}
 				</p>
 			</li>
 		</ul>
 
-		<!-- The advice belongs in the wizard, not the docs. The
-		     copy is resolved by the backend so this component owns no wording. -->
+		<!-- The advice belongs in the wizard, not the docs. -->
 		<ul class="mt-3 space-y-1.5" data-testid="stream-subdomain-advice">
 			<li
 				v-for="line in ready.advice"
@@ -204,7 +227,7 @@ const bimiOffers = computed(() =>
 				:data-advice-key="line.key"
 			>
 				<CircleInfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-				<span>{{ line.text }}</span>
+				<span>{{ adviceCopy(line) }}</span>
 			</li>
 		</ul>
 
@@ -222,17 +245,28 @@ const bimiOffers = computed(() =>
 		</p>
 
 		<!-- ONE PASS: every record for every subdomain, generated together. -->
-		<div class="mt-4 space-y-3" data-testid="stream-subdomain-records">
-			<DomainsDNSRecordPanel
-				v-for="panel in recordPanels"
-				:key="panel.key"
-				:record="panel.record"
-				:label="panel.label"
-				:domain="ready.domain"
-				:pending-explanation="panel.pendingExplanation"
-				:host-not-yet-known="panel.hostNotYetKnown"
-			/>
-		</div>
+		<UiDisclosure
+			v-if="recordPanels.length > 0"
+			v-model="recordsOpen"
+			class="mt-4"
+			:label="
+				t('components.domains.streamSubdomainPlanPanel.recordsDisclosure', {
+					count: recordPanels.length,
+				})
+			"
+		>
+			<div class="space-y-3" data-testid="stream-subdomain-records">
+				<DomainsDNSRecordPanel
+					v-for="panel in recordPanels"
+					:key="panel.key"
+					:record="panel.record"
+					:label="panel.label"
+					:domain="ready.domain"
+					:pending-explanation="panel.pendingExplanation"
+					:host-not-yet-known="panel.hostNotYetKnown"
+				/>
+			</div>
+		</UiDisclosure>
 
 		<!-- BIMI: offered only once DMARC is enforcing, and never a nag. -->
 		<div
@@ -242,9 +276,7 @@ const bimiOffers = computed(() =>
 			data-testid="stream-subdomain-bimi"
 		>
 			<p class="text-xs font-medium text-text-primary">
-				{{
-					t('components.domains.streamSubdomainPlanPanel.bimiOffer', { host: entry.host })
-				}}
+				{{ t('components.domains.streamSubdomainPlanPanel.bimiOffer', { host: entry.host }) }}
 			</p>
 			<p class="mt-1 text-xs text-text-secondary">{{ entry.offer.vmcNote }}</p>
 			<!-- The record itself, once a logo URL is configured. -->

@@ -81,7 +81,7 @@ const onOpenChange = (open: boolean) => {
 						<code class="px-1 py-0.5 rounded bg-warning/20">YOUR_API_KEY</code>
 					</template>
 					<template #settings>
-						<NuxtLink to="/dashboard/admin" class="underline hover:no-underline">{{
+						<NuxtLink to="/dashboard/admin/team/api" class="underline hover:no-underline">{{
 							t('common.settings')
 						}}</NuxtLink>
 					</template>

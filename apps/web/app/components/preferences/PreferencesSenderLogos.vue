@@ -14,7 +14,7 @@ import PreferencesSettingRow from './PreferencesSettingRow.vue';
 const { t } = useI18n();
 const { data, isLoading } = useConvexQuery(api.mail.settings.get, () => ({}));
 const updateOp = useBackendOperation(api.mail.settings.update, {
-	label: 'Save Postbox settings',
+	label: () => t('components.preferences.preferencesReading.saveOperation'),
 	optimisticUpdate: optimisticUpdateSettings,
 });
 

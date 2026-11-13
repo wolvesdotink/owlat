@@ -21,6 +21,9 @@ defineProps<{
 }>();
 
 const { t } = useI18n();
+
+// Each label names its control while editing; read-only rows have none.
+const fieldId = useId();
 </script>
 
 <template>
@@ -34,10 +37,13 @@ const { t } = useI18n();
 		<div class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
 			<!-- Email -->
 			<div>
-				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.email') }}</label>
+				<label class="label" :for="isEditing ? `${fieldId}-email` : undefined">{{
+					t('dashboard.audience.contacts.detail.fields.email')
+				}}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
 					<MailIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
+						:id="`${fieldId}-email`"
 						v-model="form.email"
 						type="email"
 						class="input"
@@ -52,10 +58,13 @@ const { t } = useI18n();
 
 			<!-- First Name -->
 			<div>
-				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.firstName') }}</label>
+				<label class="label" :for="isEditing ? `${fieldId}-firstName` : undefined">{{
+					t('dashboard.audience.contacts.detail.fields.firstName')
+				}}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
 					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
+						:id="`${fieldId}-firstName`"
 						v-model="form.firstName"
 						type="text"
 						class="input"
@@ -72,10 +81,13 @@ const { t } = useI18n();
 
 			<!-- Last Name -->
 			<div>
-				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.lastName') }}</label>
+				<label class="label" :for="isEditing ? `${fieldId}-lastName` : undefined">{{
+					t('dashboard.audience.contacts.detail.fields.lastName')
+				}}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
 					<UserIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
 					<input
+						:id="`${fieldId}-lastName`"
 						v-model="form.lastName"
 						type="text"
 						class="input"
@@ -92,10 +104,12 @@ const { t } = useI18n();
 
 			<!-- Timezone -->
 			<div>
-				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.timezone') }}</label>
+				<label class="label" :for="isEditing ? `${fieldId}-timezone` : undefined">{{
+					t('dashboard.audience.contacts.detail.fields.timezone')
+				}}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
 					<GlobeIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-					<select v-model="form.timezone" class="input">
+					<select :id="`${fieldId}-timezone`" v-model="form.timezone" class="input">
 						<option v-for="tz in timezones" :key="tz.value" :value="tz.value">
 							{{ tz.label }}
 						</option>
@@ -111,10 +125,12 @@ const { t } = useI18n();
 
 			<!-- Language -->
 			<div>
-				<label class="label">{{ t('dashboard.audience.contacts.detail.fields.language') }}</label>
+				<label class="label" :for="isEditing ? `${fieldId}-language` : undefined">{{
+					t('dashboard.audience.contacts.detail.fields.language')
+				}}</label>
 				<div v-if="isEditing" class="flex items-center gap-3">
 					<TranslateIcon class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-					<select v-model="form.language" class="input">
+					<select :id="`${fieldId}-language`" v-model="form.language" class="input">
 						<option v-for="lang in languages" :key="lang.value" :value="lang.value">
 							{{ lang.label }}
 						</option>

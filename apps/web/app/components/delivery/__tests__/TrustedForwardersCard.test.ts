@@ -67,10 +67,10 @@ const stubs = {
 	UiSpinner: true,
 	UiQueryBoundary: true,
 	UiInput: {
-		props: ['modelValue'],
+		props: ['modelValue', 'error'],
 		emits: ['update:modelValue'],
 		template:
-			'<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+			'<span><input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /><span v-if="error" data-testid="forwarder-error">{{ error }}</span></span>',
 	},
 	UiButton: {
 		props: ['disabled', 'loading', 'variant', 'type'],
@@ -94,6 +94,19 @@ async function remove(wrapper: ReturnType<typeof mountCard>, domain: string) {
 }
 
 describe('TrustedForwardersCard', () => {
+	it('says why an invalid forwarder was not added, and clears it on the next edit', async () => {
+		const wrapper = mountCard();
+		await flushPromises();
+		const input = wrapper.get('form input');
+		await input.setValue('not a domain');
+		await wrapper.get('form').trigger('submit');
+		expect(wrapper.find('[data-testid="forwarder-error"]').exists()).toBe(true);
+		expect(listed(wrapper)).toEqual(['lists.example.com', 'forward.example.org']);
+
+		await input.setValue('lists.example.net');
+		expect(wrapper.find('[data-testid="forwarder-error"]').exists()).toBe(false);
+	});
+
 	it('shows the stored list, the defaults when it was never set, and nothing for an explicit []', async () => {
 		const wrapper = mountCard();
 		await flushPromises();

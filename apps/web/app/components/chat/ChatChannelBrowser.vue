@@ -23,8 +23,18 @@ const { run: joinMutate } = useBackendOperation(api.chat.members.joinChannel, {
 	label: () => t('components.chat.chatChannelBrowser.operations.joinChannel'),
 });
 
+// The channel being joined: its button shows progress and a second click is ignored.
+const joiningId = ref<Id<'chatRooms'> | null>(null);
+
 const handleJoinAndOpen = async (channelId: Id<'chatRooms'>) => {
-	const result = await joinMutate({ roomId: channelId });
+	if (joiningId.value) return;
+	joiningId.value = channelId;
+	let result;
+	try {
+		result = await joinMutate({ roomId: channelId });
+	} finally {
+		joiningId.value = null;
+	}
 	if (!result.ok) return;
 	router.push(`/dashboard/chat/${channelId}`);
 	emit('close');
@@ -47,6 +57,7 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 				v-model="search"
 				type="text"
 				:placeholder="t('components.chat.chatChannelBrowser.searchPlaceholder')"
+				:aria-label="t('components.chat.chatChannelBrowser.searchPlaceholder')"
 				class="input w-full"
 			/>
 		</div>
@@ -73,20 +84,24 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 							{{ channel.description }}
 						</div>
 					</div>
-					<button
+					<UiButton
 						v-if="channel.isMember"
-						class="text-xs text-text-secondary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-elevated"
+						variant="ghost"
+						size="sm"
 						@click="handleOpen(channel._id)"
 					>
 						{{ t('common.open') }}
-					</button>
-					<button
+					</UiButton>
+					<UiButton
 						v-else
-						class="text-xs text-brand hover:text-brand/80 font-medium px-2 py-1"
+						variant="secondary"
+						size="sm"
+						:loading="joiningId === channel._id"
+						:disabled="joiningId !== null && joiningId !== channel._id"
 						@click="handleJoinAndOpen(channel._id)"
 					>
 						{{ t('components.chat.chatChannelBrowser.join') }}
-					</button>
+					</UiButton>
 				</div>
 			</div>
 		</div>

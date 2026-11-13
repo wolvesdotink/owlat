@@ -80,7 +80,7 @@ const ADD_ADMIN_HELD_CLASS =
 							<td class="py-2 text-text-primary">{{ a.email }}</td>
 							<td class="py-2">
 								<UiBadge :variant="a.role === 'superadmin' ? 'warning' : 'neutral'">{{
-									a.role
+									t(`dashboard.admin.operator.index.roleOptions.${a.role}`)
 								}}</UiBadge>
 							</td>
 							<td class="py-2 text-text-secondary">{{ formatRelativeTime(a.createdAt) }}</td>

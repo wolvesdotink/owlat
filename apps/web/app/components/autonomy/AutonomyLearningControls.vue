@@ -5,14 +5,20 @@ import { BrainIcon, RouteIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
-const { data: memory, isLoading: memoryLoading } = useConvexQuery(
-	api.inbox.clarificationMemory.listClarificationMemory,
-	() => ({})
-);
-const { data: strategyCatalog } = useConvexQuery(
-	api.plugins.draftStrategySelections.listCatalog,
-	() => ({})
-);
+// A failed read is not "nothing remembered" and not "no strategies": both
+// cards show the error with a retry instead.
+const {
+	data: memory,
+	isLoading: memoryLoading,
+	error: memoryError,
+	refetch: refetchMemory,
+} = useConvexQuery(api.inbox.clarificationMemory.listClarificationMemory, () => ({}));
+const {
+	data: strategyCatalog,
+	isLoading: strategyLoading,
+	error: strategyError,
+	refetch: refetchStrategies,
+} = useConvexQuery(api.plugins.draftStrategySelections.listCatalog, () => ({}));
 const { run: revokeMemory } = useBackendOperation(
 	api.inbox.clarificationMemory.revokeClarificationMemory,
 	{ label: () => t('components.autonomy.autonomyLearningControls.forgetOperation') }
@@ -73,7 +79,9 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 		});
 		if (result.ok)
 			showToast(
-				t('components.autonomy.autonomyLearningControls.strategyUpdatedToast', { category })
+				t('components.autonomy.autonomyLearningControls.strategyUpdatedToast', {
+					category: t(`components.autonomy.autonomyLearningControls.categories.${category}`),
+				})
 			);
 	} finally {
 		strategyPendingCategory.value = null;
@@ -82,19 +90,23 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 </script>
 
 <template>
-	<UiCard v-if="strategyCatalog" class="mt-6">
+	<UiCard v-if="strategyCatalog || strategyLoading || strategyError" class="mt-6">
 		<div class="mb-5 flex items-start gap-3">
 			<UiIconBox :icon="RouteIcon" size="sm" variant="surface" />
 			<div>
-				<h2 class="font-medium text-text-primary">
+				<h3 class="font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyLearningControls.strategiesTitle') }}
-				</h2>
+				</h3>
 				<p class="mt-1 text-sm text-text-secondary">
 					{{ t('components.autonomy.autonomyLearningControls.strategiesBody') }}
 				</p>
 			</div>
 		</div>
-		<div class="grid gap-3 sm:grid-cols-2">
+		<UiQueryBoundary v-if="strategyError" :error="strategyError" @retry="refetchStrategies" />
+		<div v-else-if="!strategyCatalog" class="grid gap-3 sm:grid-cols-2" aria-hidden="true">
+			<UiSkeleton v-for="category in categories" :key="category" class="h-10 w-full" />
+		</div>
+		<div v-else class="grid gap-3 sm:grid-cols-2">
 			<UiSelect
 				v-for="category in categories"
 				:key="category"
@@ -116,15 +128,16 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 		<div class="mb-5 flex items-start gap-3">
 			<UiIconBox :icon="BrainIcon" size="sm" variant="surface" />
 			<div>
-				<h2 class="font-medium text-text-primary">
+				<h3 class="font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyLearningControls.memoryTitle') }}
-				</h2>
+				</h3>
 				<p class="mt-1 text-sm text-text-secondary">
 					{{ t('components.autonomy.autonomyLearningControls.memoryBody') }}
 				</p>
 			</div>
 		</div>
 		<div v-if="memoryLoading" class="py-6 text-center"><UiSpinner /></div>
+		<UiQueryBoundary v-else-if="memoryError" :error="memoryError" @retry="refetchMemory" />
 		<p v-else-if="!memory?.items.length" class="py-6 text-center text-sm text-text-tertiary">
 			{{ t('components.autonomy.autonomyLearningControls.memoryEmpty') }}
 		</p>
@@ -165,9 +178,8 @@ async function updateStrategy(category: string, strategyKind: string | number | 
 						{{ t('components.autonomy.autonomyLearningControls.useForEveryone') }}
 					</UiButton>
 					<UiButton
-						variant="ghost"
+						variant="danger-ghost"
 						size="sm"
-						class="text-error hover:text-error"
 						:disabled="memoryPendingId === item.id"
 						@click="forgetAnswer(item.id)"
 					>

@@ -117,6 +117,20 @@ describe('AttachmentPanel storage provenance', () => {
 	});
 });
 
+describe('AttachmentPanel keyboard access', () => {
+	it('opens the device file picker from a real button', async () => {
+		const wrapper = mountPanel();
+		const input = wrapper.get('input[type="file"]').element as HTMLInputElement;
+		const click = vi.spyOn(input, 'click').mockImplementation(() => {});
+
+		const browse = wrapper.findAll('button').find((button) => button.text().includes('Drop files'));
+		expect(browse?.attributes('type')).toBe('button');
+		await browse!.trigger('click');
+
+		expect(click).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('AttachmentPanel and the slow-save episode', () => {
 	afterEach(() => {
 		resetPendingOperations();

@@ -13,8 +13,8 @@ defineProps<{
 	reviewQueue:
 		| FunctionReturnType<typeof api.platformAdmin.queries.getContentReviewQueue>
 		| undefined;
-	/** An approval is in flight. */
-	approving: boolean;
+	/** `${type}-${id}` of the item whose approval is in flight, if any. */
+	approvingKey: string | null;
 	/** Any console write is in flight; every action waits for it. */
 	busy: boolean;
 }>();
@@ -24,7 +24,17 @@ const emit = defineEmits<{
 	reject: [item: OperatorReviewItem];
 }>();
 
-const { t } = useI18n();
+const { t, te } = useI18n();
+
+/**
+ * The words for a backend enum value. A value with no copy of its own falls
+ * back to the raw value, which beats a blank badge.
+ */
+function enumLabel(group: 'scanLevel' | 'resourceType', value: string | undefined): string {
+	if (!value) return '—';
+	const key = `dashboard.admin.operator.index.${group}.${value}`;
+	return te(key) ? t(key) : value;
+}
 </script>
 
 <template>
@@ -49,13 +59,24 @@ const { t } = useI18n();
 				>
 					<div class="min-w-0">
 						<div class="flex items-center gap-2 flex-wrap">
-							<UiBadge variant="neutral">{{ item.type }}</UiBadge>
-							<span class="font-medium text-text-primary truncate">{{ item.name }}</span>
+							<UiBadge variant="neutral">{{ enumLabel('resourceType', item.type) }}</UiBadge>
+							<span class="font-medium text-text-primary truncate" :title="item.name">{{
+								item.name
+							}}</span>
 							<UiBadge v-if="item.scan" :variant="scanLevelVariant(item.scan.level)">
-								{{ item.scan.level }} · {{ item.scan.score }}
+								{{
+									t('dashboard.admin.operator.index.review.scanScore', {
+										level: enumLabel('scanLevel', item.scan.level),
+										score: item.scan.score,
+									})
+								}}
 							</UiBadge>
 						</div>
-						<p v-if="item.subject" class="mt-1 text-caption text-text-secondary truncate">
+						<p
+							v-if="item.subject"
+							class="mt-1 text-caption text-text-secondary truncate"
+							:title="item.subject"
+						>
 							{{ item.subject }}
 						</p>
 						<p class="mt-1 text-xs text-text-tertiary">
@@ -70,7 +91,7 @@ const { t } = useI18n();
 						<UiButton
 							variant="primary"
 							size="sm"
-							:loading="approving"
+							:loading="approvingKey === `${item.type}-${item.id}`"
 							:disabled="busy"
 							@click="emit('approve', item)"
 						>

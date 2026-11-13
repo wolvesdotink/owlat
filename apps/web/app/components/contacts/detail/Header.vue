@@ -10,7 +10,6 @@ import {
 	UserIcon,
 	type IconComponent,
 } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	title: string;
@@ -55,9 +54,8 @@ const { t } = useI18n();
 					<UiButton variant="ghost" :disabled="isSaving" @click="emit('cancel')">
 						{{ t('common.cancel') }}
 					</UiButton>
-					<UiButton class="gap-2" :disabled="isSaving" @click="emit('save')">
-						<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-						<SaveIcon v-else class="w-4 h-4" />
+					<UiButton class="gap-2" :loading="isSaving" @click="emit('save')">
+						<SaveIcon v-if="!isSaving" class="w-4 h-4" />
 						{{ t('dashboard.audience.contacts.detail.saveChanges') }}
 					</UiButton>
 				</template>
@@ -69,11 +67,10 @@ const { t } = useI18n();
 						<UiButton
 							variant="secondary"
 							class="gap-2"
-							:disabled="isResendingDoi"
+							:loading="isResendingDoi"
 							@click="emit('resend-doi')"
 						>
-							<SpinnerIcon v-if="isResendingDoi" class="w-4 h-4" />
-							<MailCheckIcon v-else class="w-4 h-4" />
+							<MailCheckIcon v-if="!isResendingDoi" class="w-4 h-4" />
 							{{
 								isResendingDoi
 									? t('dashboard.audience.contacts.detail.sending')
@@ -100,12 +97,7 @@ const { t } = useI18n();
 							}}
 						</UiButton>
 					</UiTooltip>
-					<UiButton
-						variant="ghost"
-						class="text-error hover:bg-error-subtle"
-						@click="emit('delete')"
-						:aria-label="t('common.delete')"
-					>
+					<UiButton variant="danger-ghost" :aria-label="t('common.delete')" @click="emit('delete')">
 						<TrashIcon class="w-4 h-4" />
 					</UiButton>
 				</template>

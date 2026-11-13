@@ -21,6 +21,7 @@ const emit = defineEmits<{
 const name = ref(props.initialName);
 const description = ref(props.initialDescription ?? '');
 const visibility = ref<'public' | 'private'>(props.initialVisibility);
+const visibilityLabelId = useId();
 
 // Drive the update through useBackendOperation directly (not the useChatActions
 // wrapper) so invalid_input / already_exists failures surface inline on `error`
@@ -91,15 +92,16 @@ const handleSubmit = async () => {
 				/>
 			</div>
 			<div>
-				<label class="block text-sm font-medium text-text-secondary mb-1.5">{{
-					t('components.chat.chatEditChannelDialog.visibilityLabel')
-				}}</label>
-				<div class="flex gap-2">
+				<span :id="visibilityLabelId" class="block text-sm font-medium text-text-secondary mb-1.5">
+					{{ t('components.chat.chatEditChannelDialog.visibilityLabel') }}
+				</span>
+				<div role="group" :aria-labelledby="visibilityLabelId" class="flex gap-2">
 					<UiButton
 						variant="outline"
 						size="sm"
 						class="flex-1"
 						:class="visibility === 'public' ? 'bg-brand-subtle text-brand' : ''"
+						:aria-pressed="visibility === 'public'"
 						@click="visibility = 'public'"
 					>
 						<template #iconLeft>
@@ -112,6 +114,7 @@ const handleSubmit = async () => {
 						size="sm"
 						class="flex-1"
 						:class="visibility === 'private' ? 'bg-brand-subtle text-brand' : ''"
+						:aria-pressed="visibility === 'private'"
 						@click="visibility = 'private'"
 					>
 						<template #iconLeft>
@@ -120,6 +123,13 @@ const handleSubmit = async () => {
 						{{ t('components.chat.chatEditChannelDialog.private') }}
 					</UiButton>
 				</div>
+				<p class="text-xs text-text-tertiary mt-1.5">
+					{{
+						visibility === 'private'
+							? t('components.chat.chatNewChannelDialog.visibilityHint.private')
+							: t('components.chat.chatNewChannelDialog.visibilityHint.public')
+					}}
+				</p>
 			</div>
 
 			<div v-if="error" class="text-sm text-error">{{ error }}</div>

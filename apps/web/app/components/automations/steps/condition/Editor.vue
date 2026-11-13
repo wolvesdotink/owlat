@@ -68,6 +68,9 @@ const conditionDescription = computed(() => {
 	)(props.modelValue.condition, ctx);
 	return localized(described);
 });
+
+const yesBranchId = useId();
+const noBranchId = useId();
 </script>
 
 <template>
@@ -87,13 +90,14 @@ const conditionDescription = computed(() => {
 
 			<div class="space-y-4">
 				<div class="p-4 bg-success/5 border border-success/20 rounded-lg">
-					<div class="flex items-center gap-2 mb-2">
-						<CheckIcon class="w-4 h-4 text-success" />
+					<label :for="yesBranchId" class="flex items-center gap-2 mb-2">
+						<CheckIcon class="w-4 h-4 text-success" aria-hidden="true" />
 						<span class="text-sm font-medium text-success">{{
 							t('components.automations.steps.condition.editor.ifTrue')
 						}}</span>
-					</div>
+					</label>
 					<select
+						:id="yesBranchId"
 						:value="modelValue.yesBranchStepIndex ?? ''"
 						class="input"
 						@change="updateYesBranch"
@@ -118,13 +122,14 @@ const conditionDescription = computed(() => {
 				</div>
 
 				<div class="p-4 bg-error/5 border border-error/20 rounded-lg">
-					<div class="flex items-center gap-2 mb-2">
-						<CloseIcon class="w-4 h-4 text-error" />
+					<label :for="noBranchId" class="flex items-center gap-2 mb-2">
+						<CloseIcon class="w-4 h-4 text-error" aria-hidden="true" />
 						<span class="text-sm font-medium text-error">{{
 							t('components.automations.steps.condition.editor.ifFalse')
 						}}</span>
-					</div>
+					</label>
 					<select
+						:id="noBranchId"
 						:value="modelValue.noBranchStepIndex ?? ''"
 						class="input"
 						@change="updateNoBranch"

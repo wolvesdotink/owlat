@@ -4,7 +4,7 @@
  * goes back to the composer the ↑ came from, whether it closed from the field
  * or from its Save/Cancel buttons.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ref } from 'vue';
 
@@ -192,5 +192,37 @@ describe('ChatMessage opened from the composer', () => {
 		await w.setProps({ editRequested: true });
 		await flushPromises();
 		expect(editor(w).exists()).toBe(false);
+	});
+});
+
+describe('ChatMessage saving an edit', () => {
+	it('keeps the editor open with the typed text when the save fails', async () => {
+		const { w } = setup();
+		const saveEdit = vi.fn(async () => ({ ok: false }));
+		await w.setProps({ saveEdit, editRequested: true });
+		await flushPromises();
+
+		await editor(w).setValue('Pushed the copy changes, v2');
+		await editor(w).trigger('keydown', { key: 'Enter' });
+		await flushPromises();
+
+		expect(saveEdit).toHaveBeenCalledWith('msg_1', 'Pushed the copy changes, v2');
+		expect(editor(w).exists()).toBe(true);
+		expect((editor(w).element as HTMLTextAreaElement).value).toBe('Pushed the copy changes, v2');
+	});
+
+	it('closes the editor once the save lands', async () => {
+		const { w, composer } = setup();
+		const saveEdit = vi.fn(async () => ({ ok: true }));
+		await w.setProps({ saveEdit, editRequested: true });
+		await flushPromises();
+
+		await editor(w).setValue('Pushed the copy changes, v2');
+		await editor(w).trigger('keydown', { key: 'Enter' });
+		await flushPromises();
+
+		expect(editor(w).exists()).toBe(false);
+		expect(w.emitted('edit')).toBeUndefined();
+		expect(document.activeElement).toBe(composer);
 	});
 });

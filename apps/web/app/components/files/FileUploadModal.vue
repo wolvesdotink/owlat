@@ -53,7 +53,7 @@ const { isDesktop, pickNativeFiles } = useNativeFilePicker();
 const browse = async () => {
 	if (isDesktop.value) {
 		onFilesPicked(
-			await pickNativeFiles({ title: t('components.files.fileUploadModal.nativePickerTitle') }),
+			await pickNativeFiles({ title: t('components.files.fileUploadModal.nativePickerTitle') })
 		);
 		return;
 	}
@@ -146,17 +146,20 @@ watch(
 			v-if="isNewVersion"
 			class="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-lg bg-brand-subtle/50 text-text-secondary"
 		>
-			<HistoryIcon class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
+			<HistoryIcon class="w-4 h-4 text-brand flex-shrink-0 mt-0.5" aria-hidden="true" />
 			<p class="text-xs leading-relaxed">
 				{{ t('components.files.fileUploadModal.newVersionHint') }}
 			</p>
 		</div>
 
-		<!-- Drop zone -->
+		<!-- Drop zone: also the keyboard way to open the file picker -->
 		<div
 			v-if="!selectedFile"
 			ref="dropZoneRef"
-			class="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer"
+			role="button"
+			tabindex="0"
+			aria-describedby="file-upload-dropzone-hint"
+			class="border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 			:class="
 				isDragOver
 					? 'border-brand bg-brand-subtle/50'
@@ -166,47 +169,64 @@ watch(
 			@dragleave="handleDragLeave"
 			@drop="handleDrop"
 			@click="browse"
+			@keydown.enter.prevent="browse"
+			@keydown.space.prevent="browse"
 		>
-			<CloudUploadIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
+			<CloudUploadIcon
+				class="w-10 h-10 text-text-tertiary mx-auto mb-3"
+				:stroke-width="1.5"
+				aria-hidden="true"
+			/>
 			<p class="text-sm font-medium text-text-primary">
 				{{ t('components.files.fileUploadModal.dropzone') }}
 			</p>
-			<p class="text-xs text-text-tertiary mt-1">
+			<p id="file-upload-dropzone-hint" class="text-xs text-text-tertiary mt-1">
 				{{ t('components.files.fileUploadModal.dropzoneHint', { size: MAX_LIBRARY_FILE_MB }) }}
 			</p>
 		</div>
 
 		<!-- Selected file preview -->
-		<div
-			v-else
-			class="flex items-center gap-3 p-4 bg-bg-surface shadow-surface-1 rounded-xl"
-		>
-			<FileIcon class="w-8 h-8 text-text-tertiary flex-shrink-0" :stroke-width="1.5" />
+		<div v-else class="flex items-center gap-3 p-4 bg-bg-surface shadow-surface-1 rounded-xl">
+			<FileIcon
+				class="w-8 h-8 text-text-tertiary flex-shrink-0"
+				:stroke-width="1.5"
+				aria-hidden="true"
+			/>
 			<div class="min-w-0 flex-1">
-				<p class="text-sm font-medium text-text-primary truncate">{{ selectedFile.name }}</p>
+				<p class="text-sm font-medium text-text-primary truncate" :title="selectedFile.name">
+					{{ selectedFile.name }}
+				</p>
 				<p class="text-xs text-text-tertiary">
 					{{ formatCompactFileSize(selectedFile.size) }}
 				</p>
 			</div>
 			<button
+				type="button"
 				class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 				@click="removeSelectedFile"
 				:aria-label="t('components.files.fileUploadModal.removeFile')"
 			>
-				<CloseIcon class="w-4 h-4" />
+				<CloseIcon class="w-4 h-4" aria-hidden="true" />
 			</button>
 		</div>
 
-		<input ref="fileInputRef" type="file" class="hidden" @change="handleFileSelect" />
+		<input
+			ref="fileInputRef"
+			type="file"
+			class="hidden"
+			tabindex="-1"
+			aria-hidden="true"
+			@change="handleFileSelect"
+		/>
 
 		<!-- Form fields -->
 		<div class="mt-5 space-y-4">
 			<div>
-				<label for="title" class="block text-sm font-medium text-text-primary mb-1.5">{{
+				<label for="file-upload-title" class="block text-sm font-medium text-text-primary mb-1.5">{{
 					t('components.files.fileUploadModal.titleLabel')
 				}}</label>
 				<input
-					id="title"
+					id="file-upload-title"
 					v-model="title"
 					type="text"
 					class="input input-sm"
@@ -215,11 +235,11 @@ watch(
 			</div>
 
 			<div>
-				<label for="tagsinput" class="block text-sm font-medium text-text-primary mb-1.5">{{
+				<label for="file-upload-tags" class="block text-sm font-medium text-text-primary mb-1.5">{{
 					t('components.files.fileUploadModal.tagsLabel')
 				}}</label>
 				<input
-					id="tagsinput"
+					id="file-upload-tags"
 					v-model="tagsInput"
 					type="text"
 					class="input input-sm"
@@ -237,14 +257,12 @@ watch(
 			</div>
 
 			<div>
-				<label for="sourcetype" class="block text-sm font-medium text-text-primary mb-1.5">{{
-					t('components.files.fileUploadModal.sourceLabel')
-				}}</label>
-				<select
-					id="sourcetype"
-					v-model="sourceType"
-					class="input input-sm"
+				<label
+					for="file-upload-source"
+					class="block text-sm font-medium text-text-primary mb-1.5"
+					>{{ t('components.files.fileUploadModal.sourceLabel') }}</label
 				>
+				<select id="file-upload-source" v-model="sourceType" class="input input-sm">
 					<option value="upload">
 						{{ t('components.files.fileUploadModal.sources.upload') }}
 					</option>
@@ -258,25 +276,28 @@ watch(
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-primary mb-1.5">{{
-					t('components.files.fileUploadModal.contactsLabel')
-				}}</label>
-				<FilesContactPicker v-model="selectedContacts" />
+				<label
+					for="file-upload-contacts"
+					class="block text-sm font-medium text-text-primary mb-1.5"
+					>{{ t('components.files.fileUploadModal.contactsLabel') }}</label
+				>
+				<FilesContactPicker v-model="selectedContacts" input-id="file-upload-contacts" />
 			</div>
 
 			<div>
-				<label class="block text-sm font-medium text-text-primary mb-1.5">{{
-					t('components.files.fileUploadModal.threadLabel')
-				}}</label>
-				<FilesThreadPicker v-model="selectedThread" />
+				<label
+					for="file-upload-thread"
+					class="block text-sm font-medium text-text-primary mb-1.5"
+					>{{ t('components.files.fileUploadModal.threadLabel') }}</label
+				>
+				<FilesThreadPicker v-model="selectedThread" input-id="file-upload-thread" />
 			</div>
 		</div>
 
 		<template #footer>
 			<UiButton variant="secondary" @click="close">{{ t('common.cancel') }}</UiButton>
-			<UiButton :disabled="!selectedFile || isUploading" @click="handleSubmit">
+			<UiButton :disabled="!selectedFile" :loading="isUploading" @click="handleSubmit">
 				<template v-if="isUploading">
-					<UiSpinner size="xs" tone="inverse" class="mr-2" />
 					{{ t('components.files.fileUploadModal.uploading') }}
 				</template>
 				<template v-else>

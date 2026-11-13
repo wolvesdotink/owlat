@@ -3,7 +3,14 @@ import type { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { formatCompactRelativeTime, formatDate, formatDateTime } from '~/utils/formatters';
-import { CheckIcon, ClockIcon, CloseIcon, EyeOffIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
+import {
+	CheckIcon,
+	CircleSlashIcon,
+	ClockIcon,
+	CloseIcon,
+	PencilIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 defineProps<{
 	apiKeys: FunctionReturnType<typeof api.auth.apiKeys.listByTeam>;
@@ -90,7 +97,8 @@ const { t } = useI18n();
 								/>
 								<UiTooltip :text="t('common.save')">
 									<button
-										class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										type="button"
+										class="inline-flex size-8 items-center justify-center text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:size-11"
 										:aria-label="t('common.save')"
 										@click="emit('saveRename')"
 									>
@@ -99,7 +107,8 @@ const { t } = useI18n();
 								</UiTooltip>
 								<UiTooltip :text="t('common.cancel')">
 									<button
-										class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										type="button"
+										class="inline-flex size-8 items-center justify-center text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:size-11"
 										:aria-label="t('common.cancel')"
 										@click="emit('cancelRename')"
 									>
@@ -169,7 +178,7 @@ const { t } = useI18n();
 										:aria-label="t('dashboard.admin.team.api.index.actions.revoke')"
 										@click="emit('revoke', key._id, key.name)"
 									>
-										<EyeOffIcon class="w-4 h-4" />
+										<CircleSlashIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 								<UiTooltip :text="t('dashboard.admin.team.api.index.actions.delete')">

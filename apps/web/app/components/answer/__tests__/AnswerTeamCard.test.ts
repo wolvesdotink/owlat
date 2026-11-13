@@ -90,7 +90,12 @@ beforeEach(() => {
 	vi.stubGlobal('approveUndoWindow', () => undefined);
 	vi.stubGlobal('isApproveAlreadyHandled', () => false);
 	vi.stubGlobal('capitalize', (s: string) => s);
+	confirmAnswer = true;
+	vi.stubGlobal('useConfirm', () => async () => confirmAnswer);
 });
+
+// What the reject confirmation answers.
+let confirmAnswer = true;
 
 const controls: AnswerCardControls = {
 	complete: vi.fn(),
@@ -211,6 +216,15 @@ describe('AnswerTeamCard with a draftless escalation', () => {
 		await flushPromises();
 		expect(controls.complete).toHaveBeenCalledWith('rejected');
 		expect(sent).toEqual([]);
+	});
+
+	it('Dismiss asks first, and a no keeps the item', async () => {
+		confirmAnswer = false;
+		vi.mocked(controls.complete).mockClear();
+		const wrapper = mountReal();
+		await wrapper.get('[data-testid="task-skip"]').trigger('click');
+		await flushPromises();
+		expect(controls.complete).not.toHaveBeenCalled();
 	});
 });
 

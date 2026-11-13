@@ -263,18 +263,16 @@ const showCard = computed(
 					}}
 				</UiButton>
 				<UiButton
-					variant="ghost"
+					variant="danger-ghost"
 					size="sm"
-					class="text-error"
 					data-testid="connected-account-disconnect"
 					@click="confirming = 'disconnect'"
 				>
 					{{ t('components.postbox.postboxConnectedAccountCard.disconnect') }}
 				</UiButton>
 				<UiButton
-					variant="ghost"
+					variant="danger-ghost"
 					size="sm"
-					class="text-error"
 					data-testid="connected-account-delete"
 					@click="confirming = 'delete'"
 				>
@@ -325,9 +323,8 @@ const showCard = computed(
 					{{ t('components.postbox.postboxConnectedAccountCard.reconnect') }}
 				</UiButton>
 				<UiButton
-					variant="ghost"
+					variant="danger-ghost"
 					size="sm"
-					class="text-error"
 					data-testid="connected-account-delete"
 					@click="confirming = 'delete'"
 				>

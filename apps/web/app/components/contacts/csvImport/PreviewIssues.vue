@@ -10,12 +10,17 @@ defineProps<{
 const showValidationDetails = defineModel<boolean>('open', { required: true });
 
 const { t } = useI18n();
+
+const panelId = useId();
 </script>
 
 <template>
 	<div class="mt-4">
 		<button
+			type="button"
 			class="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+			:aria-expanded="showValidationDetails"
+			:aria-controls="panelId"
 			@click="showValidationDetails = !showValidationDetails"
 		>
 			<ChevronRightIcon
@@ -24,7 +29,7 @@ const { t } = useI18n();
 			/>
 			{{ t('components.contacts.csvImportModal.preview.viewIssues') }}
 		</button>
-		<div v-if="showValidationDetails && validationResult" class="mt-2 space-y-3">
+		<div v-if="showValidationDetails && validationResult" :id="panelId" class="mt-2 space-y-3">
 			<div
 				v-if="validationResult.invalidEmails.length > 0"
 				class="p-3 rounded-lg bg-warning/5 border border-warning/20"

@@ -43,7 +43,13 @@ const COPY_KEYS: Record<Preference, { label: string; hint: string }> = {
 
 const { t } = useI18n();
 
-const { data } = useConvexQuery(api.marketing.notifications.getMyPreferences, () => ({}));
+const { data, error, refetch } = useConvexQuery(
+	api.marketing.notifications.getMyPreferences,
+	() => ({})
+);
+// No kinds is an answer (nothing here applies to this person) and hides the
+// card; a failed read is not, so it keeps the card and offers a retry.
+const isShown = computed(() => !!error.value || (!!data.value && data.value.kinds.length > 0));
 const { run: savePreference } = useBackendOperation(api.marketing.notifications.setMyPreference, {
 	label: () => t('components.preferences.marketingNotifications.saveOperation'),
 });
@@ -64,7 +70,7 @@ async function toggle(preference: Preference, enabled: boolean): Promise<void> {
 
 <template>
 	<section
-		v-if="data && data.kinds.length > 0"
+		v-if="isShown"
 		id="marketing-notifications"
 		class="card !p-0 mb-6 scroll-mt-6 overflow-hidden"
 	>
@@ -83,8 +89,9 @@ async function toggle(preference: Preference, enabled: boolean): Promise<void> {
 				{{ t('components.preferences.marketingNotifications.intro') }}
 			</p>
 		</header>
+		<UiQueryBoundary v-if="error && !data" :error="error" @retry="refetch" />
 		<div
-			v-for="(preference, index) in data.kinds"
+			v-for="(preference, index) in data?.kinds ?? []"
 			:key="preference"
 			class="px-5 py-4 flex items-center justify-between gap-4"
 			:class="{ 'border-t border-border-subtle': index > 0 }"
@@ -99,7 +106,7 @@ async function toggle(preference: Preference, enabled: boolean): Promise<void> {
 			</div>
 			<UiSwitch
 				:id="`marketing-notify-${preference}`"
-				:model-value="data.enabled[preference]"
+				:model-value="data?.enabled[preference] ?? false"
 				:disabled="savingPreference !== null"
 				@update:model-value="toggle(preference, $event)"
 			/>

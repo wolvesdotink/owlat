@@ -4,10 +4,10 @@ import {
 	CircleCheckIcon,
 	CircleWarningIcon,
 	CoinsIcon,
+	CpuIcon,
 	LayersIcon,
 	TimerIcon,
 } from '@coolicons/vue';
-import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 definePageMeta({
 	layout: 'admin',
@@ -78,6 +78,31 @@ const llmCost = computed(() => {
 });
 
 // Circuit breakers with fallback defaults
+// One verdict line leads the page: whether any breaker is tripped or
+// recovering. The breakers, metrics and charts below are its breakdown.
+const breakerVerdict = computed(() => {
+	const tripped = circuitBreakers.value.filter((b) => b.state === 'open').length;
+	const recovering = circuitBreakers.value.filter((b) => b.state === 'half_open').length;
+	if (tripped > 0)
+		return {
+			tone: 'error' as const,
+			text: t('dashboard.admin.instance.agentHealth.verdict.tripped', { count: tripped }, tripped),
+		};
+	if (recovering > 0)
+		return {
+			tone: 'warning' as const,
+			text: t(
+				'dashboard.admin.instance.agentHealth.verdict.recovering',
+				{ count: recovering },
+				recovering
+			),
+		};
+	return {
+		tone: 'success' as const,
+		text: t('dashboard.admin.instance.agentHealth.verdict.healthy'),
+	};
+});
+
 const circuitBreakers = computed(() => {
 	if (metrics.value?.circuitBreakers?.length) {
 		return metrics.value.circuitBreakers;
@@ -136,6 +161,24 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 			</template>
 
 			<div class="space-y-8 max-w-5xl">
+				<p
+					class="flex items-center gap-2 text-sm font-medium"
+					:class="{
+						'text-success': breakerVerdict.tone === 'success',
+						'text-warning': breakerVerdict.tone === 'warning',
+						'text-error': breakerVerdict.tone === 'error',
+					}"
+					role="status"
+					data-testid="agent-health-verdict"
+				>
+					<component
+						:is="breakerVerdict.tone === 'success' ? CircleCheckIcon : CircleWarningIcon"
+						class="w-4 h-4 shrink-0"
+						aria-hidden="true"
+					/>
+					{{ breakerVerdict.text }}
+				</p>
+
 				<!-- Section 1: Circuit Breaker Status -->
 				<section>
 					<div class="mb-4">
@@ -189,6 +232,7 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 							:value="errorRate"
 							:icon="CircleWarningIcon"
 							:trend="errorTrend"
+							:up-is-good="false"
 							:description="t('dashboard.admin.instance.agentHealth.metrics.errorRate.description')"
 						/>
 						<AgentMetricCard
@@ -208,7 +252,7 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.processing.label')"
 							:value="metrics?.processingCount ?? 0"
-							:icon="SpinnerIcon"
+							:icon="CpuIcon"
 							:description="
 								t('dashboard.admin.instance.agentHealth.metrics.processing.description')
 							"

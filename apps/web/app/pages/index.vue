@@ -29,10 +29,16 @@ const capabilities = computed(() => [
 ]);
 
 useHead({ title: () => t('home.pageTitle') });
+
+// Registration here is invite-only (see `registrationOpenFor`), so a
+// "Get started" pointing at /auth/register would land on "Registration is
+// invite-only". Until hosted sign-up opens, the way in is the waitlist on the
+// product site.
+const getStartedHref = 'https://owlat.app/waitlist';
 </script>
 
 <template>
-	<div class="relative isolate min-h-screen overflow-hidden bg-bg-base flex flex-col">
+	<div class="relative isolate min-h-dvh overflow-hidden bg-bg-base flex flex-col">
 		<!-- Decorative field — behind the content, ignores the pointer, hidden from AT. -->
 		<UiHeroField />
 
@@ -44,7 +50,7 @@ useHead({ title: () => t('home.pageTitle') });
 			>
 				<NuxtLink to="/" class="font-display text-xl text-text-primary pr-4">Owlat</NuxtLink>
 				<UiButton variant="ghost" size="sm" to="/auth/login">{{ t('home.nav.logIn') }}</UiButton>
-				<UiButton size="sm" to="/auth/register">{{ t('home.nav.getStarted') }}</UiButton>
+				<UiButton size="sm" :href="getStartedHref">{{ t('home.nav.getStarted') }}</UiButton>
 			</nav>
 		</header>
 
@@ -66,7 +72,7 @@ useHead({ title: () => t('home.pageTitle') });
 				{{ t('home.hero.tagline') }}
 			</p>
 			<div class="flex flex-col sm:flex-row items-center gap-3">
-				<UiButton size="lg" to="/auth/register">{{ t('home.hero.getStarted') }}</UiButton>
+				<UiButton size="lg" :href="getStartedHref">{{ t('home.hero.getStarted') }}</UiButton>
 				<UiButton variant="outline" size="lg" to="/auth/login" class="bg-bg-elevated/60">
 					{{ t('home.hero.logIn') }}
 				</UiButton>
@@ -86,15 +92,19 @@ useHead({ title: () => t('home.pageTitle') });
 			<I18nT keypath="home.footer.copyright" tag="p" scope="global">
 				<template #year>{{ new Date().getFullYear() }}</template>
 				<template #company>
-					<a href="https://wolves.ink" class="hover:text-text-secondary">Wolves</a>
+					<a
+						href="https://wolves.ink"
+						class="underline underline-offset-2 hover:text-text-secondary"
+						>Wolves</a
+					>
 				</template>
 			</I18nT>
 			<p>
-				<NuxtLink to="/terms" class="hover:text-text-secondary">{{
+				<NuxtLink to="/terms" class="underline underline-offset-2 hover:text-text-secondary">{{
 					t('home.footer.terms')
 				}}</NuxtLink>
-				<span class="mx-1">&middot;</span>
-				<NuxtLink to="/imprint" class="hover:text-text-secondary">{{
+				<span class="mx-1" aria-hidden="true">&middot;</span>
+				<NuxtLink to="/imprint" class="underline underline-offset-2 hover:text-text-secondary">{{
 					t('home.footer.imprint')
 				}}</NuxtLink>
 			</p>

@@ -46,10 +46,6 @@ const lastComputedLabel = computed(() => {
 	return ts ? new Date(ts).toLocaleString(locale.value) : null;
 });
 
-async function onToggle(event: Event) {
-	await setPersonalize((event.target as HTMLInputElement).checked);
-}
-
 async function setPersonalize(next: boolean) {
 	if (data.value === undefined) return;
 	await setEnabled.run({ mailboxId: props.mailboxId, enabled: next });
@@ -66,9 +62,18 @@ async function onSaveInstructions() {
 	});
 }
 
+// Which learned rule is being removed, so only its own button spins.
+const removingKind = ref<string | null>(null);
 async function onRemoveAdjustment(kind: string) {
-	await removeAdjustment.run({ mailboxId: props.mailboxId, kind });
+	removingKind.value = kind;
+	try {
+		await removeAdjustment.run({ mailboxId: props.mailboxId, kind });
+	} finally {
+		removingKind.value = null;
+	}
 }
+
+const personalizeId = useId();
 </script>
 
 <template>
@@ -83,17 +88,17 @@ async function onRemoveAdjustment(kind: string) {
 				</p>
 			</div>
 			<!-- Shown once the profile is read: before that, "off" is only the default. -->
-			<label v-if="data !== undefined" class="flex items-center gap-2 shrink-0 cursor-pointer">
-				<input
-					type="checkbox"
-					:checked="enabled"
+			<div v-if="data !== undefined" class="flex items-center gap-2 shrink-0">
+				<UiSwitch
+					:id="personalizeId"
+					:model-value="enabled"
 					:disabled="setEnabled.isLoading.value || !!error"
-					@change="onToggle"
+					@update:model-value="setPersonalize"
 				/>
-				<span class="text-sm font-medium">
+				<label :for="personalizeId" class="text-sm font-medium cursor-pointer">
 					{{ t('components.postbox.postboxVoiceProfileCard.personalize') }}
-				</span>
-			</label>
+				</label>
+			</div>
 			<!-- Off is the default; outside the <label> so it never becomes its control. -->
 			<SettingsResetToDefault
 				v-if="data !== undefined"
@@ -146,62 +151,72 @@ async function onRemoveAdjustment(kind: string) {
 					{{ t('components.postbox.postboxVoiceProfileCard.learning') }}
 				</div>
 
-				<dl v-if="profile" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-					<div v-if="profile.greetings.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.greetings') }}
-						</dt>
-						<dd>{{ profile.greetings.join(', ') }}</dd>
-					</div>
-					<div v-if="profile.signOffs.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.signOffs') }}
-						</dt>
-						<dd>{{ profile.signOffs.join(', ') }}</dd>
-					</div>
-					<div>
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.formality') }}
-						</dt>
-						<dd>
-							{{
-								t('components.postbox.postboxVoiceProfileCard.outOfFive', {
-									value: profile.formality,
-								})
-							}}
-						</dd>
-					</div>
-					<div>
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.brevity') }}
-						</dt>
-						<dd>
-							{{
-								t('components.postbox.postboxVoiceProfileCard.outOfFive', {
-									value: profile.brevity,
-								})
-							}}
-						</dd>
-					</div>
-					<div v-if="profile.languages.length">
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.language') }}
-						</dt>
-						<dd>{{ profile.languages.join(', ') }}</dd>
-					</div>
-					<div>
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.emoji') }}
-						</dt>
-						<dd>{{ profile.isEmojiUser ? t('common.yes') : t('common.no') }}</dd>
-					</div>
-					<div v-if="profile.examplePhrasings.length" class="col-span-2">
-						<dt class="text-text-tertiary text-xs">
-							{{ t('components.postbox.postboxVoiceProfileCard.examplePhrasings') }}
-						</dt>
-						<dd class="italic text-text-secondary">{{ profile.examplePhrasings.join(' · ') }}</dd>
-					</div>
-				</dl>
+				<!-- The learned profile is detail behind the setting, not the setting:
+				     one click away, so the card leads with the switch and the rules. -->
+				<details v-if="profile">
+					<summary
+						class="cursor-pointer text-sm text-text-secondary hover:text-text-primary"
+						data-testid="voice-profile-details"
+					>
+						{{ t('components.postbox.postboxVoiceProfileCard.showProfile') }}
+					</summary>
+					<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+						<div v-if="profile.greetings.length" class="col-span-2">
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.greetings') }}
+							</dt>
+							<dd>{{ profile.greetings.join(', ') }}</dd>
+						</div>
+						<div v-if="profile.signOffs.length" class="col-span-2">
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.signOffs') }}
+							</dt>
+							<dd>{{ profile.signOffs.join(', ') }}</dd>
+						</div>
+						<div>
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.formality') }}
+							</dt>
+							<dd>
+								{{
+									t('components.postbox.postboxVoiceProfileCard.outOfFive', {
+										value: profile.formality,
+									})
+								}}
+							</dd>
+						</div>
+						<div>
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.brevity') }}
+							</dt>
+							<dd>
+								{{
+									t('components.postbox.postboxVoiceProfileCard.outOfFive', {
+										value: profile.brevity,
+									})
+								}}
+							</dd>
+						</div>
+						<div v-if="profile.languages.length">
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.language') }}
+							</dt>
+							<dd>{{ profile.languages.join(', ') }}</dd>
+						</div>
+						<div>
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.emoji') }}
+							</dt>
+							<dd>{{ profile.isEmojiUser ? t('common.yes') : t('common.no') }}</dd>
+						</div>
+						<div v-if="profile.examplePhrasings.length" class="col-span-2">
+							<dt class="text-text-tertiary text-xs">
+								{{ t('components.postbox.postboxVoiceProfileCard.examplePhrasings') }}
+							</dt>
+							<dd class="italic text-text-secondary">{{ profile.examplePhrasings.join(' · ') }}</dd>
+						</div>
+					</dl>
+				</details>
 
 				<p v-else-if="!isRefreshing" class="text-sm text-text-secondary">
 					{{ t('components.postbox.postboxVoiceProfileCard.noVoiceYet') }}
@@ -221,7 +236,8 @@ async function onRemoveAdjustment(kind: string) {
 							variant="ghost"
 							size="sm"
 							class="shrink-0 text-error hover:text-error"
-							:loading="removeAdjustment.isLoading.value"
+							:loading="removingKind === adjustment.kind"
+							:disabled="removingKind !== null && removingKind !== adjustment.kind"
 							@click="onRemoveAdjustment(adjustment.kind)"
 						>
 							{{ t('common.remove') }}

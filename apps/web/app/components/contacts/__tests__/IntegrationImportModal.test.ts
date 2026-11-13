@@ -24,6 +24,8 @@ vi.mock('@owlat/api', () => {
 });
 
 import IntegrationImportModal from '../IntegrationImportModal.vue';
+import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
+import UiStatCard from '@owlat/ui/components/ui/StatCard.vue';
 
 const i18n = createTestI18n();
 
@@ -75,6 +77,7 @@ async function mountModal(topics: Array<{ _id: string; name: string }> = []) {
 		props: { open: false, topics },
 		global: {
 			plugins: [i18n],
+			components: { UiCheckbox, UiStatCard },
 			stubs: {
 				UiModal: UiModalStub,
 				NuxtLink: NuxtLinkStub,
@@ -239,6 +242,18 @@ describe('IntegrationImportModal — progress and completion', () => {
 
 		await clickButton(wrapper, 'Done');
 		expect(wrapper.emitted('update:open')).toEqual([[false]]);
+	});
+
+	it('returns to the running import when reopened while it is still going', async () => {
+		const wrapper = await startStripeImport();
+		progress.value = running({ provider: 'stripe', imported: 120, totalEstimate: 500 });
+		await flushPromises();
+
+		await wrapper.setProps({ open: false });
+		await wrapper.setProps({ open: true });
+
+		expect(wrapper.text()).toContain('Imported 120 of ~500...');
+		expect(wrapper.text()).not.toContain('Mailchimp');
 	});
 
 	it('returns to the form with the error when a run fails before importing anything', async () => {

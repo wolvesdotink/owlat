@@ -104,7 +104,7 @@ const showingText = computed(() =>
 const linkClass =
 	'rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
 const pagerButtonClass =
-	'p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
+	'p-2 pointer-coarse:p-3.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface disabled:opacity-50 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand';
 </script>
 
 <template>
@@ -143,12 +143,24 @@ const pagerButtonClass =
 				@clear="emit('clear-search')"
 			/>
 
+			<!-- First page in flight: the table's shape, not an empty table with "Showing 0". -->
+			<div v-else-if="loading && rows.length === 0">
+				<DashboardListSkeleton :variant="tableFits ? 'table' : 'card'" :columns="4" />
+				<p class="sr-only" role="status">{{ t('common.loading') }}</p>
+			</div>
+
 			<div v-else>
 				<ul v-if="!tableFits" class="divide-y divide-border-subtle">
 					<li v-for="row in rows" :key="row._id" class="flex items-center gap-1 px-4 py-2">
 						<NuxtLink :to="rowTo(row)" :class="['flex-1 min-w-0 py-1', linkClass]">
-							<span class="block text-text-primary font-medium truncate">{{ row.email }}</span>
-							<span v-if="fullName(row)" class="block text-sm text-text-secondary truncate">
+							<span class="block text-text-primary font-medium truncate" :title="row.email ?? undefined">{{
+								row.email
+							}}</span>
+							<span
+								v-if="fullName(row)"
+								class="block text-sm text-text-secondary truncate"
+								:title="fullName(row)"
+							>
 								{{ fullName(row) }}
 							</span>
 							<span class="block text-xs text-text-tertiary mt-0.5">{{ dateOf(row) }}</span>
@@ -248,7 +260,7 @@ const pagerButtonClass =
 								v-else
 								type="button"
 								:class="[
-									'min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
+									'min-w-[32px] h-8 px-2 pointer-coarse:min-w-11 pointer-coarse:h-11 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
 									page === currentPage
 										? 'bg-text-primary text-text-inverse'
 										: 'text-text-secondary hover:text-text-primary hover:bg-bg-surface',

@@ -25,6 +25,7 @@ import {
 } from '~/composables/postbox/usePostboxInlineImages';
 import { usePostboxEmojiPicker } from '~/composables/postbox/usePostboxEmojiPicker';
 import { usePostboxEditorInput } from '~/composables/postbox/usePostboxEditorInput';
+import { usePostboxEditorSelectionSync } from '~/composables/postbox/usePostboxEditorSelectionSync';
 import { matchAsciiSmiley } from '~/utils/postboxEmojiShortcodes';
 import {
 	usePostboxSnippetPicker,
@@ -285,31 +286,21 @@ function onDrop(event: DragEvent) {
 	inlineImages.handleDrop(event);
 }
 
-function onBlur() {
-	emitContent();
-	ghost.cancel(); // never leave a ghost hanging over an unfocused editor
-	resetShortcutUndo(); // a literal-restore undo (markdown/ASCII) shouldn't survive leaving the editor
-	emoji.close(); // never leave the picker popover open over an unfocused editor
-	hideFormatBar(); // never leave the floating bar over an unfocused editor
-	snippetPicker.close(); // …nor the snippet picker over an unfocused editor
-}
-
-function onSelectionChange() {
-	if (richText.getSelection()) syncActiveMarks();
-	// A caret move (arrow/click) invalidates a shown ghost. Only dismiss when one
-	// is visible, so this can't clear a request still pending in its debounce.
-	if (ghost.hasGhost()) ghost.cancel();
-	// A caret move re-evaluates an OPEN emoji picker (closes it if the trigger is gone).
-	if (emoji.open.value) emoji.refresh();
-	// A caret move out of the ";token" run closes the snippet picker; a move within
-	// it (e.g. after inserting a char) refreshes the query + position.
-	snippetPicker.onSelectionChange();
-	// A selection change aborts an in-flight rewrite (its anchor is now stale)
-	// and re-places the pill for the new selection.
-	rewriteCtl.onSelectionChange();
-	// Re-place (or hide) the floating format bar for the new selection.
-	refreshFormatBar();
-}
+// Blur, focus-out and caret moves re-place or dismiss every caret-anchored overlay.
+const { onBlur, onFormatBarFocusOut } = usePostboxEditorSelectionSync({
+	editorRef,
+	formatBarRef,
+	emitContent,
+	getSelection: () => richText.getSelection(),
+	resetShortcutUndo,
+	syncActiveMarks,
+	refreshFormatBar,
+	hideFormatBar,
+	ghost,
+	emoji,
+	snippetPicker,
+	rewrite: rewriteCtl,
+});
 
 function focusEditor() {
 	editorRef.value?.focus();
@@ -323,20 +314,6 @@ function withFocus(fn: () => void | Promise<void>) {
 		void fn();
 	};
 }
-
-// Content init + the incoming `modelValue` watcher live in usePostboxEditorDocument;
-// this component only owns the document-level selectionchange listener.
-onMounted(() => {
-	document.addEventListener('selectionchange', onSelectionChange);
-});
-
-onBeforeUnmount(() => {
-	document.removeEventListener('selectionchange', onSelectionChange);
-	ghost.cancel();
-	emoji.close();
-	snippetPicker.close();
-	rewriteCtl.dispose();
-});
 
 // A reply picked, or speech dictated, outside the text goes in at the caret.
 const { insertAtCaret: insertSnippet, insertTextAtCaret: insertText } = snippetPicker;
@@ -377,7 +354,7 @@ defineExpose({ focus: focusEditor, insertSnippet, insertText });
 			<div
 				v-if="isEmpty"
 				aria-hidden="true"
-				class="absolute top-3 left-3 text-text-tertiary text-sm pointer-events-none select-none"
+				class="absolute top-3 left-3 text-text-tertiary text-sm pointer-coarse:text-base pointer-events-none select-none"
 			>
 				{{ placeholder ?? t('components.postbox.postboxBasicEditor.placeholder') }}
 			</div>
@@ -425,6 +402,7 @@ defineExpose({ focus: focusEditor, insertSnippet, insertText });
 				@blockquote="withFocus(toggleBlockquote)()"
 				@link="withFocus(setLink)()"
 				@ai-select="rewriteCtl.onSelect"
+				@focusout="onFormatBarFocusOut"
 			/>
 			<!-- Saved-reply `;` dropdown + the prompt-on-insert dialog behind it. -->
 			<PostboxSnippetSurface :picker="snippetPicker" :field="editorRef" />
@@ -436,7 +414,8 @@ defineExpose({ focus: focusEditor, insertSnippet, insertText });
 
 <style scoped>
 .postbox-basic-editor {
-	font-size: 14px;
+	/* The type token, so the Text size setting reaches the body like its placeholder. */
+	font-size: var(--text-sm);
 	line-height: 1.55;
 	color: var(--color-text-primary, #1a1a1a);
 }
@@ -490,9 +469,16 @@ defineExpose({ focus: focusEditor, insertSnippet, insertText });
 	padding: 0.1em 0.3em;
 }
 .postbox-ghost-text {
-	font-size: 14px;
+	font-size: var(--text-sm);
 	line-height: 1.55;
 	color: var(--color-text-tertiary, #9aa0a6);
 	opacity: 0.75;
+}
+/* Below 16px a mobile browser zooms the page when the field takes focus (as .input-bare). */
+@media (pointer: coarse) {
+	.postbox-basic-editor,
+	.postbox-ghost-text {
+		font-size: 16px;
+	}
 }
 </style>

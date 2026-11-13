@@ -123,7 +123,7 @@ const isNoMatch = computed(
 			<UiTooltip :text="t('components.postbox.threadFind.previous')">
 				<button
 					type="button"
-					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40 inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 					:aria-label="t('components.postbox.threadFind.previous')"
 					:disabled="!canStep"
 					data-testid="thread-find-previous"
@@ -135,7 +135,7 @@ const isNoMatch = computed(
 			<UiTooltip :text="t('components.postbox.threadFind.next')">
 				<button
 					type="button"
-					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40 inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 					:aria-label="t('components.postbox.threadFind.next')"
 					:disabled="!canStep"
 					data-testid="thread-find-next"
@@ -147,7 +147,7 @@ const isNoMatch = computed(
 			<UiTooltip :text="t('components.postbox.threadFind.close')">
 				<button
 					type="button"
-					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary inline-flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 					:aria-label="t('components.postbox.threadFind.close')"
 					data-testid="thread-find-close"
 					@click="find.close()"

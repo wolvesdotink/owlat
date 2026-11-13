@@ -52,6 +52,11 @@ const {
 	browseKeyFile,
 	onConnect,
 } = props.form;
+
+// Every field is named by its visible label (for/id), not by a placeholder that
+// disappears once typing starts.
+const uid = useId();
+const fid = (name: string) => `${uid}-${name}`;
 </script>
 
 <template>
@@ -59,29 +64,47 @@ const {
 		<form class="space-y-4" @submit.prevent="onConnect">
 			<div class="grid grid-cols-[1fr_5rem] gap-3">
 				<div>
-					<label class="mb-1 block text-xs font-medium text-text-secondary">{{
-						t('desktop.setup.fields.host')
-					}}</label>
+					<label :for="fid('host')" :class="labelClass">{{ t('desktop.setup.fields.host') }}</label>
 					<input
+						:id="fid('host')"
 						v-model="host"
+						autocomplete="off"
+						autocapitalize="off"
+						spellcheck="false"
 						class="input input-sm"
 						:placeholder="t('desktop.setup.fields.hostPlaceholder')"
 						:disabled="busy"
 					/>
 				</div>
 				<div>
-					<label :class="labelClass">{{ t('desktop.setup.fields.port') }}</label>
-					<input v-model="port" class="input input-sm" inputmode="numeric" :disabled="busy" />
+					<label :for="fid('port')" :class="labelClass">{{ t('desktop.setup.fields.port') }}</label>
+					<input
+						:id="fid('port')"
+						v-model="port"
+						class="input input-sm"
+						inputmode="numeric"
+						:disabled="busy"
+					/>
 				</div>
 			</div>
 
 			<div>
-				<label :class="labelClass">{{ t('desktop.setup.fields.sshUser') }}</label>
-				<input v-model="username" class="input input-sm" :disabled="busy" />
+				<label :for="fid('user')" :class="labelClass">{{
+					t('desktop.setup.fields.sshUser')
+				}}</label>
+				<input
+					:id="fid('user')"
+					v-model="username"
+					class="input input-sm"
+					autocomplete="username"
+					autocapitalize="off"
+					spellcheck="false"
+					:disabled="busy"
+				/>
 			</div>
 
 			<div>
-				<label :class="labelClass">{{ t('desktop.setup.fields.authentication') }}</label>
+				<p :class="labelClass">{{ t('desktop.setup.fields.authentication') }}</p>
 				<div
 					class="mb-2 inline-block"
 					role="group"
@@ -122,11 +145,13 @@ const {
 						v-model="privateKey"
 						class="input input-sm h-28 resize-none font-mono"
 						placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+						:aria-label="t('desktop.setup.fields.privateKey')"
+						spellcheck="false"
 						:disabled="busy"
 					/>
 					<button
 						type="button"
-						class="mt-1.5 text-xs text-text-secondary hover:text-text-primary"
+						class="mt-1.5 rounded text-xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:disabled="busy"
 						@click="keySource = keySource === 'file' ? 'paste' : 'file'"
 					>
@@ -140,7 +165,9 @@ const {
 						v-model="passphrase"
 						type="password"
 						class="input input-sm mt-2"
+						autocomplete="off"
 						:placeholder="t('desktop.setup.fields.passphrasePlaceholder')"
+						:aria-label="t('desktop.setup.fields.passphrasePlaceholder')"
 						:disabled="busy"
 					/>
 				</template>
@@ -149,35 +176,54 @@ const {
 					v-model="password"
 					type="password"
 					class="input input-sm"
+					autocomplete="current-password"
 					:placeholder="t('desktop.setup.fields.sshPasswordPlaceholder')"
+					:aria-label="t('desktop.setup.fields.sshPasswordPlaceholder')"
 					:disabled="busy"
 				/>
 			</div>
 
 			<button
 				type="button"
-				class="text-xs text-text-secondary hover:text-text-primary"
+				class="rounded text-xs text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+				:aria-expanded="showAdvanced"
+				:aria-controls="fid('advanced')"
 				@click="toggleAdvanced"
 			>
 				{{ showAdvanced ? t('desktop.setup.hideAdvanced') : t('desktop.setup.showAdvanced') }}
 			</button>
-			<div v-if="showAdvanced" class="space-y-3">
+			<div v-if="showAdvanced" :id="fid('advanced')" class="space-y-3">
 				<div class="grid grid-cols-2 gap-3">
 					<div>
-						<label :class="labelClass">{{ t('desktop.setup.fields.installDir') }}</label>
-						<input v-model="installDir" class="input input-sm" :disabled="busy" />
+						<label :for="fid('install-dir')" :class="labelClass">{{
+							t('desktop.setup.fields.installDir')
+						}}</label>
+						<input
+							:id="fid('install-dir')"
+							v-model="installDir"
+							class="input input-sm"
+							spellcheck="false"
+							:disabled="busy"
+						/>
 					</div>
 					<div v-if="devInstall">
-						<label :class="labelClass">{{ t('desktop.setup.fields.branch') }}</label>
+						<label :for="fid('branch')" :class="labelClass">{{
+							t('desktop.setup.fields.branch')
+						}}</label>
 						<input
+							:id="fid('branch')"
 							v-model="branch"
+							spellcheck="false"
 							class="input input-sm"
 							:disabled="busy || !!localSource.trim()"
 						/>
 					</div>
 					<div v-else>
-						<label :class="labelClass">{{ t('desktop.setup.fields.version') }}</label>
+						<label :for="fid('version')" :class="labelClass">{{
+							t('desktop.setup.fields.version')
+						}}</label>
 						<input
+							:id="fid('version')"
 							:value="t('desktop.setup.fields.versionLatest')"
 							class="input input-sm"
 							readonly
@@ -188,7 +234,12 @@ const {
 					</div>
 				</div>
 				<label v-if="devOptionsRevealed" class="flex cursor-pointer items-start gap-2.5 text-sm">
-					<input v-model="devInstallChosen" type="checkbox" class="mt-0.5" :disabled="busy" />
+					<input
+						v-model="devInstallChosen"
+						type="checkbox"
+						class="mt-0.5 h-4 w-4 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+						:disabled="busy"
+					/>
 					<span>
 						{{ t('desktop.setup.fields.devInstall') }}
 						<span class="block text-xs text-text-secondary">{{
@@ -197,9 +248,13 @@ const {
 					</span>
 				</label>
 				<div v-if="isDev && devInstall">
-					<label :class="labelClass">{{ t('desktop.setup.fields.localSource') }}</label>
+					<label :for="fid('local-source')" :class="labelClass">{{
+						t('desktop.setup.fields.localSource')
+					}}</label>
 					<input
+						:id="fid('local-source')"
 						v-model="localSource"
+						spellcheck="false"
 						class="input input-sm"
 						:placeholder="t('desktop.setup.fields.localSourcePlaceholder')"
 						:disabled="busy"
@@ -256,7 +311,7 @@ const {
 					class="text-sm font-medium"
 					:class="hostKeyPrompt.tone === 'danger' ? 'text-error' : 'text-warning'"
 				>
-					<ShieldWarningIcon class="mb-0.5 mr-1 inline size-4" />
+					<ShieldWarningIcon class="mb-0.5 mr-1 inline size-4" aria-hidden="true" />
 					{{ tk(hostKeyPrompt.title) }}
 				</p>
 				<p class="mt-1 text-xs text-text-secondary">{{ tk(hostKeyPrompt.body) }}</p>
@@ -270,7 +325,12 @@ const {
 					v-if="hostKeyPrompt.requiresExplicitConfirmation"
 					class="mt-3 flex cursor-pointer items-start gap-2 text-xs text-error"
 				>
-					<input v-model="mismatchAcknowledged" type="checkbox" class="mt-0.5" :disabled="busy" />
+					<input
+						v-model="mismatchAcknowledged"
+						type="checkbox"
+						class="mt-0.5 h-4 w-4 shrink-0 accent-brand focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+						:disabled="busy"
+					/>
 					<span>{{ t('desktop.setup.hostKey.acknowledge') }}</span>
 				</label>
 
@@ -289,8 +349,8 @@ const {
 				</UiButton>
 			</div>
 
-			<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
-			<p v-if="error" class="text-sm text-error">{{ error }}</p>
+			<p v-if="connectError" class="text-sm text-error" role="alert">{{ connectError }}</p>
+			<p v-if="error" class="text-sm text-error" role="alert">{{ error }}</p>
 
 			<UiButton v-if="stage !== 'hostkey'" type="submit" :disabled="busy" full-width>
 				<span v-if="stage === 'connecting'">{{ t('desktop.setup.connecting') }}</span>

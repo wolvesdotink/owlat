@@ -15,6 +15,8 @@ const mappingAnnouncement = defineModel<string>('announcement', { required: true
 
 const { t } = useI18n();
 
+const fieldId = useId();
+
 /**
  * An option's label in one column's select. A scalar field another column owns
  * names that column, so picking it reads as the move it is.
@@ -73,10 +75,10 @@ const onMappingChange = (column: number, event: Event) => {
 			<div
 				v-for="(header, index) in csvImport.csvHeaders.value"
 				:key="index"
-				class="flex items-center gap-4 p-3 rounded-lg bg-bg-surface"
+				class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 rounded-lg bg-bg-surface"
 			>
 				<div class="flex-1 min-w-0">
-					<p class="text-sm font-medium text-text-primary truncate">{{ header }}</p>
+					<p class="text-sm font-medium text-text-primary truncate" :title="header">{{ header }}</p>
 					<p class="text-xs text-text-tertiary truncate">
 						{{
 							t('components.contacts.csvImportModal.mapping.sample', {
@@ -89,7 +91,7 @@ const onMappingChange = (column: number, event: Event) => {
 				</div>
 				<select
 					:value="csvImport.columnMapping.value[index]"
-					class="input w-48 shrink-0"
+					class="input w-full sm:w-48 shrink-0"
 					:aria-label="
 						t('components.contacts.csvImportModal.mapping.selectLabel', { column: header })
 					"
@@ -114,11 +116,15 @@ const onMappingChange = (column: number, event: Event) => {
 
 		<!-- Handle Duplicates -->
 		<div class="p-4 rounded-lg bg-bg-surface">
-			<h4 class="text-sm font-medium text-text-primary mb-3">
+			<h4 :id="`${fieldId}-duplicates`" class="text-sm font-medium text-text-primary mb-3">
 				{{ t('components.contacts.csvImportModal.mapping.handleDuplicates') }}
 			</h4>
-			<div class="flex gap-4">
-				<label class="flex items-center gap-2 cursor-pointer">
+			<div
+				role="radiogroup"
+				:aria-labelledby="`${fieldId}-duplicates`"
+				class="flex flex-wrap gap-x-4 gap-y-2"
+			>
+				<label class="flex items-center gap-2 cursor-pointer pointer-coarse:min-h-11">
 					<input
 						v-model="csvImport.handleDuplicates.value"
 						type="radio"
@@ -129,7 +135,7 @@ const onMappingChange = (column: number, event: Event) => {
 						t('components.contacts.csvImportModal.mapping.skipDuplicates')
 					}}</span>
 				</label>
-				<label class="flex items-center gap-2 cursor-pointer">
+				<label class="flex items-center gap-2 cursor-pointer pointer-coarse:min-h-11">
 					<input
 						v-model="csvImport.handleDuplicates.value"
 						type="radio"
@@ -145,10 +151,11 @@ const onMappingChange = (column: number, event: Event) => {
 
 		<!-- Add to Topic -->
 		<div v-if="availableLists.length > 0" class="mt-4 p-4 rounded-lg bg-bg-surface">
-			<h4 class="text-sm font-medium text-text-primary mb-3">
+			<label :for="`${fieldId}-topic`" class="block text-sm font-medium text-text-primary mb-3">
 				{{ t('components.contacts.csvImportModal.mapping.addToTopic') }}
-			</h4>
+			</label>
 			<select
+				:id="`${fieldId}-topic`"
 				:value="csvImport.selectedTopicId.value ?? ''"
 				class="input w-full"
 				:disabled="csvImport.isTopicMapped.value"

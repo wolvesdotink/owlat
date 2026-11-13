@@ -2,6 +2,7 @@
 import {
 	POSTBOX_SNOOZE_SCOPE_DEFAULT,
 	POSTBOX_SNOOZE_SCOPE_OPTIONS,
+	resolvePostboxSnoozeScope,
 	type PostboxSnoozeScope,
 } from '~/utils/postboxSnoozeScope';
 import type { PresetTimeOption, PresetTimeAction } from './PostboxPresetTimeDialog.vue';
@@ -54,6 +55,16 @@ watch(
 	}
 );
 
+const scopeOptions = computed(() =>
+	POSTBOX_SNOOZE_SCOPE_OPTIONS.map((option) => ({ value: option.value, label: t(option.label) }))
+);
+const scopeModel = computed({
+	get: () => scope.value,
+	set: (value: string) => {
+		scope.value = resolvePostboxSnoozeScope(value);
+	},
+});
+
 // Presets are resolved at open time from the shared, timezone-aware helper so
 // the dialog and the backend agree on every wake timestamp. The content hint is
 // deterministic; an LLM upgrade (if wired) would just supply a different
@@ -95,28 +106,14 @@ function onAction(id: string) {
 		@action="onAction"
 	>
 		<template v-if="scoped" #beforePresets>
-			<div
-				class="mb-3 inline-flex rounded border border-border-subtle p-0.5"
-				role="radiogroup"
+			<UiSegmentedControl
+				v-model="scopeModel"
+				class="mb-3"
+				size="sm"
+				fit="content"
+				:options="scopeOptions"
 				:aria-label="t('components.postbox.postboxSnoozeDialog.scopeLabel')"
-			>
-				<button
-					v-for="option in POSTBOX_SNOOZE_SCOPE_OPTIONS"
-					:key="option.value"
-					type="button"
-					role="radio"
-					:aria-checked="scope === option.value"
-					class="px-2.5 py-1 rounded text-xs font-medium"
-					:class="
-						scope === option.value
-							? 'bg-brand text-text-inverse'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					@click="scope = option.value"
-				>
-					{{ t(option.label) }}
-				</button>
-			</div>
+			/>
 		</template>
 	</PostboxPresetTimeDialog>
 </template>

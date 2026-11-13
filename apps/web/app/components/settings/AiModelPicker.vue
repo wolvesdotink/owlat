@@ -42,6 +42,7 @@ const selectOptions = computed(() =>
 			v-model="custom"
 			type="text"
 			class="mt-2"
+			:label="t('components.settings.aiModelPicker.customLabel')"
 			:placeholder="t('components.settings.aiModelPicker.customPlaceholder')"
 			:disabled="disabled"
 		/>

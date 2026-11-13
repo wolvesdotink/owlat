@@ -212,6 +212,20 @@ function onKeydown(event: KeyboardEvent) {
 	}
 }
 
+// The mode switch is a radio group: one tab stop, and the arrow keys move the
+// selection (and focus) between the modes on offer.
+const noteModeButton = ref<HTMLButtonElement | null>(null);
+const replyModeButton = ref<HTMLButtonElement | null>(null);
+function onModeKeydown(event: KeyboardEvent) {
+	if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+	if (!props.notesEnabled || !props.replyName) return;
+	event.preventDefault();
+	mode.value = activeMode.value === 'note' ? 'reply' : 'note';
+	void nextTick(() =>
+		(activeMode.value === 'note' ? noteModeButton : replyModeButton).value?.focus()
+	);
+}
+
 /** Put the cursor in the box, in the given mode (the `n` and `r` keys). */
 function focus(next?: TeamComposeMode) {
 	if (next) mode.value = next;
@@ -222,7 +236,7 @@ defineExpose({ focus });
 
 <template>
 	<div
-		class="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 border-t border-border-subtle bg-bg-base px-4 pb-4 pt-3 sm:static sm:mx-0 sm:rounded-(--radius-card) sm:border sm:bg-bg-elevated"
+		class="sticky bottom-[var(--ui-bottom-chrome-height,0px)] z-10 -mx-4 border-t border-border-subtle bg-bg-base px-4 pb-4 pt-3 sm:static sm:mx-0 sm:rounded-(--radius-card) sm:border sm:bg-bg-elevated"
 		data-testid="team-note-composer"
 		:data-mode="activeMode"
 	>
@@ -231,18 +245,21 @@ defineExpose({ focus });
 				role="radiogroup"
 				:aria-label="t('components.team.composer.modeLabel')"
 				class="inline-flex rounded-md border border-border-subtle bg-bg-surface p-0.5 text-xs"
+				@keydown="onModeKeydown"
 			>
 				<button
 					v-if="notesEnabled"
+					ref="noteModeButton"
 					type="button"
 					role="radio"
-					class="inline-flex items-center gap-1 rounded px-2.5 py-1"
+					class="mode-target inline-flex items-center gap-1 rounded px-2.5 py-1"
 					:class="
 						activeMode === 'note'
 							? 'bg-bg-elevated text-text-primary shadow-sm'
 							: 'text-text-tertiary'
 					"
 					:aria-checked="activeMode === 'note'"
+					:tabindex="activeMode === 'note' ? 0 : -1"
 					data-testid="team-composer-mode-note"
 					@click="focus('note')"
 				>
@@ -251,15 +268,17 @@ defineExpose({ focus });
 				</button>
 				<button
 					v-if="replyName"
+					ref="replyModeButton"
 					type="button"
 					role="radio"
-					class="inline-flex items-center gap-1 rounded px-2.5 py-1"
+					class="mode-target inline-flex items-center gap-1 rounded px-2.5 py-1"
 					:class="
 						activeMode === 'reply'
 							? 'bg-bg-elevated text-text-primary shadow-sm'
 							: 'text-text-tertiary'
 					"
 					:aria-checked="activeMode === 'reply'"
+					:tabindex="activeMode === 'reply' ? 0 : -1"
 					data-testid="team-composer-mode-reply"
 					@click="focus('reply')"
 				>
@@ -305,11 +324,11 @@ defineExpose({ focus });
 				}}</span>
 				<button
 					type="button"
-					class="rounded p-0.5 text-text-tertiary hover:text-text-primary"
+					class="unlink-target inline-flex items-center justify-center rounded p-0.5 text-text-tertiary hover:text-text-primary"
 					:aria-label="t('components.team.composer.unlink')"
 					@click="noteDraft = { ...noteDraft, itemId: null }"
 				>
-					<CloseIcon class="size-3" />
+					<CloseIcon class="size-3" aria-hidden="true" />
 				</button>
 			</p>
 
@@ -387,3 +406,16 @@ defineExpose({ focus });
 		</div>
 	</div>
 </template>
+
+<style scoped>
+/* A finger needs a 44px target; a mouse keeps the compact switch. */
+@media (pointer: coarse) {
+	.mode-target {
+		min-height: 44px;
+	}
+	.unlink-target {
+		min-width: 44px;
+		min-height: 44px;
+	}
+}
+</style>

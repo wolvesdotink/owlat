@@ -163,8 +163,9 @@ async function choose(preference: 'external' | 'instance') {
 		<template v-if="showSection">
 			<div class="border-t border-border-subtle" />
 			<!-- Loading -->
-			<div v-if="isLoading" class="p-8 flex justify-center">
-				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
+			<div v-if="isLoading" class="p-8 flex justify-center" role="status">
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" aria-hidden="true" />
+				<span class="sr-only">{{ t('common.loading') }}</span>
 			</div>
 
 			<!-- Error: the subscription failed. Don't silently drop the section. -->

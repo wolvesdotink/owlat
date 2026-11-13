@@ -19,7 +19,9 @@ defineProps<{
 	labels: Map<string, { _id: string; name: string; color?: string }>;
 }>();
 
-const FALLBACK = '#6b7280';
+// A label's colour is the user's pick, so it can be any lightness. It marks the
+// dot only; the name is set in a text token on a neutral chip, which stays
+// readable whichever colour was picked and in either theme.
 </script>
 
 <template>
@@ -33,15 +35,15 @@ const FALLBACK = '#6b7280';
 		<span
 			v-for="labelId in labelIds"
 			:key="labelId"
-			class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-			:style="{
-				backgroundColor: (labels.get(labelId)?.color || FALLBACK) + '20',
-				color: labels.get(labelId)?.color || FALLBACK,
-			}"
+			class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-bg-surface text-text-secondary"
 		>
 			<span
 				class="w-1.5 h-1.5 rounded-full"
-				:style="{ backgroundColor: labels.get(labelId)?.color || FALLBACK }"
+				:class="{ 'bg-text-tertiary': !labels.get(labelId)?.color }"
+				:style="
+					labels.get(labelId)?.color ? { backgroundColor: labels.get(labelId)?.color } : undefined
+				"
+				aria-hidden="true"
 			/>
 			{{ labels.get(labelId)?.name }}
 		</span>

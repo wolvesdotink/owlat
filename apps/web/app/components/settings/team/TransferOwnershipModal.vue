@@ -41,15 +41,17 @@ function confirm() {
 		size="lg"
 		:closable="!busy"
 		:persistent="busy"
+		labelled-by="transfer-ownership-title"
+		described-by="transfer-ownership-subtitle"
 		@update:open="(v: boolean) => !v && emit('close')"
 	>
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox :icon="CrownIcon" size="sm" variant="brand" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">
+				<h2 id="transfer-ownership-title" class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.transferModal.title') }}
 				</h2>
-				<p class="text-sm text-text-secondary">
+				<p id="transfer-ownership-subtitle" class="text-sm text-text-secondary">
 					{{ t('dashboard.admin.team.transferModal.subtitle') }}
 				</p>
 			</div>

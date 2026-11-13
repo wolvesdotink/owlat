@@ -67,14 +67,20 @@ const statusPill =
 			<template #default="{ rowBindings }">
 				<li class="flex items-center gap-1 px-4 py-2" v-bind="rowBindings">
 					<div class="flex-1 min-w-0 py-1">
+						<!-- native-title: the full name of an automation the link truncates -->
 						<NuxtLink
 							v-if="nameTo(automation)"
 							:to="nameTo(automation)!"
 							:class="['block text-text-primary font-medium truncate rounded', focusRing]"
+							:title="automation.name"
 						>
 							{{ automation.name }}
 						</NuxtLink>
-						<span v-else class="block text-text-primary font-medium truncate">
+						<span
+							v-else
+							class="block text-text-primary font-medium truncate"
+							:title="automation.name"
+						>
 							{{ automation.name }}
 						</span>
 						<span class="flex items-center gap-2 mt-1 min-w-0">
@@ -147,6 +153,7 @@ const statusPill =
 									<p
 										v-if="automation.description"
 										class="text-sm text-text-tertiary truncate mt-0.5 max-w-xs"
+										:title="automation.description"
 									>
 										{{ automation.description }}
 									</p>

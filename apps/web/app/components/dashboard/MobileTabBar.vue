@@ -221,7 +221,7 @@ function run(action: (typeof actions.value)[number]): void {
 								<component :is="navIcon(tab.icon, isActive(tab.href))" class="w-5 h-5" />
 								<span
 									v-if="tab.badge"
-									class="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-4 text-text-inverse"
+									class="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-2xs font-semibold leading-4 text-text-inverse"
 									data-testid="mobile-tab-bar-badge"
 									>{{ tab.badge > 99 ? '99+' : tab.badge }}</span
 								>

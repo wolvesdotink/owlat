@@ -43,6 +43,8 @@ const step = ref<'pick' | 'details' | 'booked'>('pick');
 const submitting = ref(false);
 const formError = ref<string | null>(null);
 const booked = ref<{ meeting: BookedMeeting; email: string } | null>(null);
+/** A month or time-zone reload failed after the page loaded once. */
+const timesFailed = ref(false);
 
 useSeoMeta({
 	title: () =>
@@ -65,8 +67,12 @@ async function loadTimes() {
 	loadingTimes.value = false;
 	if (!result.ok) {
 		if (!page.value) pageReason.value = result.reason;
+		// The calendar has moved on; the previous window's times must not
+		// show as if they belonged to it.
+		else timesFailed.value = true;
 		return;
 	}
+	timesFailed.value = false;
 	page.value = result.data;
 }
 
@@ -113,6 +119,15 @@ function back() {
 	selected.value = null;
 	step.value = 'pick';
 }
+
+// The step swaps the content under the heading; move focus to the heading so
+// a keyboard or screen-reader user is not left on a button that is gone.
+const stepHeading = ref<HTMLElement | null>(null);
+watch(step, async (next) => {
+	if (next === 'booked') return;
+	await nextTick();
+	stepHeading.value?.focus();
+});
 </script>
 
 <template>
@@ -158,19 +173,34 @@ function back() {
 			class="card grid w-full max-w-4xl gap-8 p-6 md:grid-cols-[16rem_minmax(0,1fr)] md:p-8"
 		>
 			<BookingMeetingSummary :host="page.host" :meeting="page.meetingType" />
-			<section :aria-label="t('booking.page.pickHeading')">
-				<h2 class="mb-4 text-lg font-semibold">
+			<section aria-labelledby="booking-step-heading">
+				<h2
+					id="booking-step-heading"
+					ref="stepHeading"
+					tabindex="-1"
+					class="mb-4 text-lg font-semibold focus:outline-none"
+				>
 					{{ step === 'pick' ? t('booking.page.pickHeading') : t('booking.page.detailsHeading') }}
 				</h2>
 				<p v-if="step === 'pick' && formError" class="mb-4 text-sm text-error" role="alert">
 					{{ t(formError) }}
 				</p>
+				<div
+					v-if="step === 'pick' && timesFailed && !loadingTimes"
+					class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-error"
+					role="alert"
+				>
+					<span>{{ t('booking.page.timesFailed') }}</span>
+					<UiButton variant="secondary" size="sm" @click="loadTimes">
+						{{ t('common.retry') }}
+					</UiButton>
+				</div>
 				<BookingSlotPicker
 					v-if="step === 'pick'"
 					v-model:time-zone="timeZone"
 					v-model:month="month"
 					v-model:selected="selected"
-					:slots="page.slots"
+					:slots="timesFailed ? [] : page.slots"
 					:loading="loadingTimes"
 					:earliest="page.earliest"
 					:latest="page.latest"

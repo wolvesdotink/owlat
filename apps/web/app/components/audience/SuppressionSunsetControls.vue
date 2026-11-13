@@ -10,16 +10,36 @@ import {
 const { t } = useI18n();
 const { isAdmin } = usePermissions();
 const { showToast: showNotification } = useToast();
-const sunsetPage = { numItems: 100, cursor: null } as const;
+// Each track reads one growing page from its start; "Show more" widens it, so a
+// contact past the first hundred can still be restored or exempted here.
+const TRACK_PAGE = 100;
+const reengagementLimit = ref(TRACK_PAGE);
+const suppressedLimit = ref(TRACK_PAGE);
 
-const { data: policies } = useConvexQuery(api.contacts.sunset.getSunsetPolicies, () =>
-	isAdmin.value ? {} : 'skip'
+const {
+	data: policies,
+	error: policiesError,
+	refetch: refetchPolicies,
+} = useConvexQuery(api.contacts.sunset.getSunsetPolicies, () => (isAdmin.value ? {} : 'skip'));
+const { data: reengagementContacts, error: reengagementError } = useConvexQuery(
+	api.contacts.sunset.listSunsetStage,
+	() =>
+		isAdmin.value
+			? {
+					stage: 'reengagement' as const,
+					paginationOpts: { numItems: reengagementLimit.value, cursor: null },
+				}
+			: 'skip'
 );
-const { data: reengagementContacts } = useConvexQuery(api.contacts.sunset.listSunsetStage, () =>
-	isAdmin.value ? { stage: 'reengagement' as const, paginationOpts: sunsetPage } : 'skip'
-);
-const { data: suppressedContacts } = useConvexQuery(api.contacts.sunset.listSunsetStage, () =>
-	isAdmin.value ? { stage: 'suppressed' as const, paginationOpts: sunsetPage } : 'skip'
+const { data: suppressedContacts, error: suppressedError } = useConvexQuery(
+	api.contacts.sunset.listSunsetStage,
+	() =>
+		isAdmin.value
+			? {
+					stage: 'suppressed' as const,
+					paginationOpts: { numItems: suppressedLimit.value, cursor: null },
+				}
+			: 'skip'
 );
 
 const policyForm = reactive({
@@ -49,6 +69,21 @@ const { run: restoreContact } = useBackendOperation(api.contacts.sunset.restoreS
 	label: () => t('components.audience.suppressionSunsetControls.restoreOperation'),
 });
 
+// Nothing is stored until Save, so Save is offered only for a change and the
+// card says when one is waiting.
+const isDirty = computed(() => {
+	const saved = policies.value?.global;
+	if (!saved) return false;
+	return (
+		saved.isEnabled !== policyForm.isEnabled ||
+		saved.reengageAfterDays !== policyForm.reengageAfterDays ||
+		saved.suppressAfterDays !== policyForm.suppressAfterDays
+	);
+});
+
+// The row whose Exempt or Restore is in flight.
+const pendingContactId = ref<Id<'contacts'> | null>(null);
+
 const savePolicy = async () => {
 	const saved = await setPolicy({ ...policyForm });
 	if (saved.ok)
@@ -56,7 +91,9 @@ const savePolicy = async () => {
 };
 
 const toggleExemption = async (contactId: Id<'contacts'>, exempt: boolean) => {
+	pendingContactId.value = contactId;
 	const changed = await setExemption({ contactId, exempt });
+	pendingContactId.value = null;
 	if (changed.ok)
 		showNotification(
 			exempt
@@ -66,14 +103,26 @@ const toggleExemption = async (contactId: Id<'contacts'>, exempt: boolean) => {
 };
 
 const restore = async (contactId: Id<'contacts'>) => {
+	pendingContactId.value = contactId;
 	const result = await restoreContact({ contactId });
-	if (result.ok && result.result?.outcome === 'restored')
-		showNotification(t('components.audience.suppressionSunsetControls.restoredToast'));
+	pendingContactId.value = null;
+	if (!result.ok) return;
+	// Any other outcome means the contact left the track before the click landed.
+	showNotification(
+		result.result?.outcome === 'restored'
+			? t('components.audience.suppressionSunsetControls.restoredToast')
+			: t('components.audience.suppressionSunsetControls.restoreNotNeededToast')
+	);
 };
 </script>
 
 <template>
-	<div v-if="isAdmin && policies" class="card p-6 space-y-6">
+	<UiQueryBoundary
+		v-if="isAdmin && policiesError"
+		:error="policiesError"
+		@retry="refetchPolicies"
+	/>
+	<div v-else-if="isAdmin && policies" class="card p-6 space-y-6">
 		<div>
 			<h2 class="font-medium text-text-primary">
 				{{ t('components.audience.suppressionSunsetControls.title') }}
@@ -102,7 +151,14 @@ const restore = async (contactId: Id<'contacts'>) => {
 				:label="t('components.audience.suppressionSunsetControls.suppressAfterDays')"
 				:min="policyForm.reengageAfterDays"
 			/>
-			<UiButton :loading="isSaving" @click="savePolicy">{{ t('common.save') }}</UiButton>
+			<div class="flex items-center gap-3">
+				<span v-if="isDirty" class="text-sm text-text-tertiary whitespace-nowrap" role="status">
+					{{ t('components.audience.suppressionSunsetControls.unsaved') }}
+				</span>
+				<UiButton :loading="isSaving" :disabled="!isDirty" @click="savePolicy">{{
+					t('common.save')
+				}}</UiButton>
+			</div>
 		</div>
 
 		<!-- min-w-0 on the columns: a grid item is otherwise as wide as its
@@ -112,7 +168,13 @@ const restore = async (contactId: Id<'contacts'>) => {
 				<h3 class="text-sm font-medium text-text-primary">
 					{{ t('components.audience.suppressionSunsetControls.reengagementTrack') }}
 				</h3>
-				<p v-if="!reengagementContacts?.page.length" class="mt-2 text-sm text-text-tertiary">
+				<p v-if="reengagementError" class="mt-2 text-sm text-error" role="alert">
+					{{ t('components.audience.suppressionSunsetControls.trackError') }}
+				</p>
+				<div v-else-if="reengagementContacts === undefined" class="mt-3">
+					<UiSpinner size="xs" />
+				</div>
+				<p v-else-if="!reengagementContacts.page.length" class="mt-2 text-sm text-text-tertiary">
 					{{ t('components.audience.suppressionSunsetControls.reengagementEmpty') }}
 				</p>
 				<ul v-else class="mt-2 divide-y divide-border-subtle">
@@ -127,6 +189,8 @@ const restore = async (contactId: Id<'contacts'>) => {
 						<UiButton
 							variant="ghost"
 							class="shrink-0 whitespace-nowrap"
+							:loading="pendingContactId === contact.contactId"
+							:disabled="pendingContactId !== null && pendingContactId !== contact.contactId"
 							@click="toggleExemption(contact.contactId, !contact.isExempt)"
 						>
 							{{
@@ -137,13 +201,28 @@ const restore = async (contactId: Id<'contacts'>) => {
 						</UiButton>
 					</li>
 				</ul>
+				<UiButton
+					v-if="reengagementContacts && !reengagementContacts.isDone"
+					variant="ghost"
+					size="sm"
+					class="mt-2"
+					@click="reengagementLimit += TRACK_PAGE"
+				>
+					{{ t('components.audience.suppressionSunsetControls.showMore') }}
+				</UiButton>
 			</div>
 
 			<div class="min-w-0">
 				<h3 class="text-sm font-medium text-text-primary">
 					{{ t('components.audience.suppressionSunsetControls.autoSuppressed') }}
 				</h3>
-				<p v-if="!suppressedContacts?.page.length" class="mt-2 text-sm text-text-tertiary">
+				<p v-if="suppressedError" class="mt-2 text-sm text-error" role="alert">
+					{{ t('components.audience.suppressionSunsetControls.trackError') }}
+				</p>
+				<div v-else-if="suppressedContacts === undefined" class="mt-3">
+					<UiSpinner size="xs" />
+				</div>
+				<p v-else-if="!suppressedContacts.page.length" class="mt-2 text-sm text-text-tertiary">
 					{{ t('components.audience.suppressionSunsetControls.autoSuppressedEmpty') }}
 				</p>
 				<ul v-else class="mt-2 divide-y divide-border-subtle">
@@ -158,11 +237,22 @@ const restore = async (contactId: Id<'contacts'>) => {
 						<UiButton
 							variant="ghost"
 							class="shrink-0 whitespace-nowrap"
+							:loading="pendingContactId === contact.contactId"
+							:disabled="pendingContactId !== null && pendingContactId !== contact.contactId"
 							@click="restore(contact.contactId)"
 							>{{ t('components.audience.suppressionSunsetControls.restore') }}</UiButton
 						>
 					</li>
 				</ul>
+				<UiButton
+					v-if="suppressedContacts && !suppressedContacts.isDone"
+					variant="ghost"
+					size="sm"
+					class="mt-2"
+					@click="suppressedLimit += TRACK_PAGE"
+				>
+					{{ t('components.audience.suppressionSunsetControls.showMore') }}
+				</UiButton>
 			</div>
 		</div>
 	</div>

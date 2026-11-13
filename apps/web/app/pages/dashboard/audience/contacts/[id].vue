@@ -14,7 +14,7 @@ import ContactProfileCard from '~/components/contacts/detail/ProfileCard.vue';
 import ContactTopicsCard from '~/components/contacts/detail/TopicsCard.vue';
 import { ArrowLeftIcon, CalendarIcon, CircleWarningIcon } from '@coolicons/vue';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 useHead({ title: () => t('dashboard.audience.contacts.detail.pageTitle') });
 
@@ -143,6 +143,23 @@ const tabOptions = computed(() =>
 // the timeline actually being open. Without the gate every contact page paid
 // for a listByContact subscription that members can never surface and admins
 // usually don't open.
+// Profile fields, the team note and the sidebar belong to the profile tab
+// alone; another tab shows only its own content under the shared header.
+const isProfileTab = computed(() => activeTab.value === 'profile');
+
+// The edit fields live on the profile tab, so editing from another tab opens it.
+function startEditingOnProfile() {
+	activeTab.value = 'profile';
+	startEditing();
+}
+
+// Stored contact sources read as words in the viewer's language.
+const sourceLabel = (source: string | undefined) => {
+	if (!source) return t('common.unknown');
+	const key = `dashboard.audience.contacts.detail.sources.${source}`;
+	return te(key) ? t(key) : source;
+};
+
 const isActivityTabActive = computed(() => isAdmin.value && activeTab.value === 'timeline');
 const activityTimeline = useActivityTimeline(contactId, () => isActivityTabActive.value);
 
@@ -188,8 +205,24 @@ const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendO
 	api.blockedEmails.blocklist.remove,
 	{ label: () => t('dashboard.audience.contacts.detail.operations.removeSuppression') }
 );
+const askConfirm = useConfirm();
 async function handleRemoveSuppression() {
 	if (!suppression.value) return;
+	// A complaint or a hard bounce is the recipient's or their server's verdict;
+	// mailing the address again risks the sender's reputation, so it asks first.
+	const reason = suppression.value.reason;
+	if (reason === 'complained' || reason === 'bounced') {
+		const confirmed = await askConfirm({
+			title: t('dashboard.audience.contacts.detail.removeSuppressionConfirm.title'),
+			body:
+				reason === 'complained'
+					? t('dashboard.audience.contacts.detail.removeSuppressionConfirm.complainedBody')
+					: t('dashboard.audience.contacts.detail.removeSuppressionConfirm.bouncedBody'),
+			confirmText: t('components.contacts.suppressionNotice.remove'),
+			variant: 'warning',
+		});
+		if (!confirmed) return;
+	}
 	const result = await removeSuppression({ blockedEmailId: suppression.value._id });
 	if (!result.ok) return;
 	showToast(t('dashboard.audience.contacts.detail.toasts.suppressionRemoved'));
@@ -221,27 +254,18 @@ async function handleRemoveSuppression() {
 		/>
 
 		<!-- Not Found State -->
-		<div
+		<UiEmptyState
 			v-else-if="!contactLoading && !contact"
-			class="flex flex-col items-center justify-center py-16 text-center"
+			:icon="CircleWarningIcon"
+			:title="t('dashboard.audience.contacts.detail.notFound.title')"
+			:description="t('dashboard.audience.contacts.detail.notFound.body')"
 		>
-			<UiIconBox
-				:icon="CircleWarningIcon"
-				size="xl"
-				variant="surface"
-				rounded="full"
-				class="mb-4"
-			/>
-			<p class="text-text-secondary font-medium">
-				{{ t('dashboard.audience.contacts.detail.notFound.title') }}
-			</p>
-			<p class="text-sm text-text-tertiary mt-1">
-				{{ t('dashboard.audience.contacts.detail.notFound.body') }}
-			</p>
-			<UiButton variant="secondary" to="/dashboard/audience/contacts" class="mt-6">
-				{{ t('dashboard.audience.contacts.detail.notFound.action') }}
-			</UiButton>
-		</div>
+			<template #action>
+				<UiButton variant="secondary" to="/dashboard/audience/contacts">
+					{{ t('dashboard.audience.contacts.detail.notFound.action') }}
+				</UiButton>
+			</template>
+		</UiEmptyState>
 
 		<!-- Contact Content -->
 		<template v-else-if="contact">
@@ -271,7 +295,7 @@ async function handleRemoveSuppression() {
 				:exporting="exportRequested"
 				@cancel="cancelEditing"
 				@save="saveChanges"
-				@edit="startEditing"
+				@edit="startEditingOnProfile"
 				@resend-doi="handleResendDoi"
 				@export="handleExportData"
 				@delete="showDeleteConfirm = true"
@@ -280,6 +304,7 @@ async function handleRemoveSuppression() {
 			<!-- Error Message -->
 			<div
 				v-if="saveError"
+				role="alert"
 				class="mb-6 p-4 rounded-lg bg-error-subtle border border-error/20 text-error flex items-center gap-3"
 			>
 				<CircleWarningIcon class="w-5 h-5 flex-shrink-0" />
@@ -294,11 +319,12 @@ async function handleRemoveSuppression() {
 				v-bind="tabPanelAttrs(tabPanelId, tabOptions, activeTab)"
 				class="grid grid-cols-1 lg:grid-cols-3 gap-6"
 			>
-				<!-- Main Info -->
-				<div class="lg:col-span-2 space-y-6">
+				<!-- Main Info: the profile tab shares the row with the sidebar, every
+				     other tab gets the full width for its own content. -->
+				<div :class="['space-y-6', isProfileTab ? 'lg:col-span-2' : 'lg:col-span-3']">
 					<!-- Contact Details Card -->
 					<ContactProfileCard
-						v-if="isAdmin || activeTab === 'profile'"
+						v-if="isProfileTab"
 						:contact="contact"
 						:is-editing="isEditing"
 						:form="editForm"
@@ -310,14 +336,14 @@ async function handleRemoveSuppression() {
 
 					<!-- Custom Properties Card -->
 					<ContactCustomPropertiesCard
-						v-if="isAdmin && properties && properties.length > 0"
+						v-if="isProfileTab && isAdmin && properties && properties.length > 0"
 						:properties="properties"
 						:is-editing="isEditing"
 						:form="propertyForm"
 						:display-value="displayPropertyValue"
 					/>
 
-					<div v-if="(isAdmin || activeTab === 'profile') && canAnnotateContacts" class="card">
+					<div v-if="isProfileTab && canAnnotateContacts" class="card">
 						<div class="flex items-start justify-between gap-4 mb-3">
 							<div>
 								<h2 class="text-lg font-medium text-text-primary">
@@ -377,7 +403,7 @@ async function handleRemoveSuppression() {
 				</div>
 
 				<!-- Sidebar -->
-				<div v-if="isAdmin || activeTab === 'profile'" class="space-y-6">
+				<div v-if="isProfileTab" class="space-y-6">
 					<!-- Communication Stats Card -->
 					<ContactsTimelineStatsCard :contact-id="contactId" />
 
@@ -392,8 +418,8 @@ async function handleRemoveSuppression() {
 								<p class="text-sm text-text-tertiary">
 									{{ t('dashboard.audience.contacts.detail.source') }}
 								</p>
-								<p class="text-text-primary capitalize">
-									{{ contact.source || t('common.unknown') }}
+								<p class="text-text-primary">
+									{{ sourceLabel(contact.source) }}
 								</p>
 							</div>
 
@@ -437,7 +463,7 @@ async function handleRemoveSuppression() {
 		<!-- Delete Confirmation Modal -->
 		<ContactDeleteDialog
 			v-model:open="showDeleteConfirm"
-			:email="contact?.email"
+			:email="contact?.email || contactTitle"
 			:is-deleting="isDeleting"
 			@confirm="confirmDelete"
 		/>

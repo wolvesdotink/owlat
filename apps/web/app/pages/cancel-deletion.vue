@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { useUrlCredential } from '~/composables/useUrlCredential';
-import { ArrowRightIcon, CheckIcon, CircleCloseIcon, CircleWarningIcon } from '@coolicons/vue';
+import { ArrowRightIcon, CheckIcon, CircleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -15,6 +15,10 @@ const status = ref<'loading' | 'success' | 'error' | 'no-token'>('loading');
 // Bound as the operation's inline target so the categorized failure message lands
 // here (and is shown in the error card) instead of only firing a toast.
 const errorMessage = ref<string | null>('');
+
+// On a self-hosted instance `/` is the sign-in page, so "Go home" next to
+// "Sign in" would be the same link twice.
+const showGoHome = useRuntimeConfig().public.deploymentMode === 'hosted';
 
 // Cancel deletion mutation
 const { run: cancelDeletion } = useBackendOperation(
@@ -45,11 +49,11 @@ onMounted(async () => {
 </script>
 
 <template>
-	<div class="min-h-screen flex items-center justify-center p-6 bg-bg-deep">
+	<div class="min-h-dvh flex items-center justify-center p-6 bg-bg-deep">
 		<div class="w-full max-w-md">
 			<!-- Loading State -->
-			<div v-if="status === 'loading'" class="card p-8 text-center">
-				<div class="flex justify-center mb-4">
+			<div v-if="status === 'loading'" class="card p-8 text-center" role="status">
+				<div class="flex justify-center mb-4" aria-hidden="true">
 					<UiSpinner size="xl" />
 				</div>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
@@ -60,30 +64,36 @@ onMounted(async () => {
 
 			<!-- Success State -->
 			<div v-else-if="status === 'success'" class="card p-8 text-center">
-				<div class="flex justify-center mb-4">
-					<div class="p-4 rounded-full bg-success/10">
-						<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
-					</div>
-				</div>
+				<UiIconBox
+					:icon="CheckIcon"
+					size="xl"
+					variant="success"
+					rounded="full"
+					class="mx-auto mb-4"
+					aria-hidden="true"
+				/>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('cancelDeletion.successTitle') }}
 				</h1>
 				<p class="text-text-secondary text-sm mb-6">
 					{{ t('cancelDeletion.successBody') }}
 				</p>
-				<UiButton to="/dashboard" class="gap-2 inline-flex">
+				<UiButton to="/dashboard">
 					{{ t('cancelDeletion.goToDashboard') }}
-					<ArrowRightIcon class="w-4 h-4" />
+					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</div>
 
 			<!-- Error State -->
 			<div v-else-if="status === 'error'" class="card p-8 text-center">
-				<div class="flex justify-center mb-4">
-					<div class="p-4 rounded-full bg-error/10">
-						<CircleWarningIcon class="w-8 h-8 text-error" :stroke-width="1.5" />
-					</div>
-				</div>
+				<UiIconBox
+					:icon="CircleWarningIcon"
+					size="xl"
+					variant="error"
+					rounded="full"
+					class="mx-auto mb-4"
+					aria-hidden="true"
+				/>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('cancelDeletion.errorTitle') }}
 				</h1>
@@ -95,17 +105,22 @@ onMounted(async () => {
 				</p>
 				<div class="flex gap-3 justify-center">
 					<UiButton variant="secondary" to="/auth/login">{{ t('cancelDeletion.signIn') }}</UiButton>
-					<UiButton variant="ghost" to="/">{{ t('cancelDeletion.goHome') }}</UiButton>
+					<UiButton v-if="showGoHome" variant="ghost" to="/">{{
+						t('cancelDeletion.goHome')
+					}}</UiButton>
 				</div>
 			</div>
 
 			<!-- No Token State -->
 			<div v-else-if="status === 'no-token'" class="card p-8 text-center">
-				<div class="flex justify-center mb-4">
-					<div class="p-4 rounded-full bg-warning/10">
-						<CircleCloseIcon class="w-8 h-8 text-warning" :stroke-width="1.5" />
-					</div>
-				</div>
+				<UiIconBox
+					:icon="CircleWarningIcon"
+					size="xl"
+					variant="warning"
+					rounded="full"
+					class="mx-auto mb-4"
+					aria-hidden="true"
+				/>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('cancelDeletion.noTokenTitle') }}
 				</h1>
@@ -114,7 +129,9 @@ onMounted(async () => {
 				</p>
 				<div class="flex gap-3 justify-center">
 					<UiButton to="/auth/login">{{ t('cancelDeletion.signIn') }}</UiButton>
-					<UiButton variant="ghost" to="/">{{ t('cancelDeletion.goHome') }}</UiButton>
+					<UiButton v-if="showGoHome" variant="ghost" to="/">{{
+						t('cancelDeletion.goHome')
+					}}</UiButton>
 				</div>
 			</div>
 		</div>

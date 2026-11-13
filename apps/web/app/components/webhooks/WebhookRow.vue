@@ -11,7 +11,17 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { getWebhookEventLabel, type WebhookEvent } from '~/composables/useWebhookForm';
-import { ChevronDownIcon, GlobeIcon, PaperPlaneIcon, PauseIcon, PlayIcon, ReloadIcon, ScrollTextIcon, SettingsIcon, TrashIcon } from '@coolicons/vue';
+import {
+	ChevronDownIcon,
+	GlobeIcon,
+	PaperPlaneIcon,
+	PauseIcon,
+	PlayIcon,
+	ReloadIcon,
+	ScrollTextIcon,
+	SettingsIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface WebhookRowEndpoint {
@@ -64,20 +74,22 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 			@keydown.space.self.prevent="emit('toggleExpanded')"
 		>
 			<div class="flex items-center gap-4 min-w-0">
-				<div
-					:class="['p-2 rounded-lg shrink-0', webhook.isActive ? 'bg-success/10' : 'bg-bg-surface']"
-				>
-					<GlobeIcon
-						:class="['w-5 h-5', webhook.isActive ? 'text-success' : 'text-text-tertiary']" size="1em"
-					/>
-				</div>
+				<UiIconBox
+					:icon="GlobeIcon"
+					size="sm"
+					:variant="webhook.isActive ? 'success' : 'surface'"
+					rounded="lg"
+					class="shrink-0"
+				/>
 				<div class="min-w-0">
-					<div class="flex items-center gap-3">
-						<span class="text-text-primary font-medium">{{ webhook.name }}</span>
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<span class="text-text-primary font-medium break-words">{{ webhook.name }}</span>
 						<span
 							:class="[
 								'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium',
-								webhook.isActive ? 'bg-success/10 text-success' : 'bg-bg-surface text-text-tertiary',
+								webhook.isActive
+									? 'bg-success/10 text-success'
+									: 'bg-bg-surface text-text-tertiary',
 							]"
 						>
 							{{
@@ -94,10 +106,8 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 			</div>
 			<div class="flex items-center gap-2">
 				<ChevronDownIcon
-					:class="[
-						'w-5 h-5 text-text-tertiary transition-transform',
-						expanded ? 'rotate-180' : '',
-					]" size="1em"
+					:class="['w-5 h-5 text-text-tertiary transition-transform', expanded ? 'rotate-180' : '']"
+					size="1em"
 				/>
 			</div>
 		</div>
@@ -107,95 +117,88 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 			<div
 				v-if="expanded"
 				:id="`webhook-details-${webhook._id}`"
-				class="border-t border-border-subtle"
+				class="expand-panel border-t border-border-subtle"
 			>
-				<!-- Events -->
-				<div class="px-6 py-4 border-b border-border-subtle">
-					<p class="text-sm font-medium text-text-secondary mb-2">
-						{{ t('dashboard.admin.delivery.webhooks.subscribedEvents') }}
-					</p>
-					<div class="flex flex-wrap gap-2">
-						<span
-							v-for="event in webhook.events"
-							:key="event"
-							class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-bg-surface text-text-primary"
-						>
-							{{ eventLabel(event) }}
-						</span>
-					</div>
-				</div>
-
-				<!-- Info -->
-				<div class="px-6 py-4 border-b border-border-subtle grid grid-cols-2 gap-4">
-					<div>
-						<p class="text-xs text-text-tertiary">
-							{{ t('dashboard.admin.delivery.webhooks.created') }}
+				<div class="expand-panel-inner">
+					<!-- Events -->
+					<div class="px-6 py-4 border-b border-border-subtle">
+						<p class="text-sm font-medium text-text-secondary mb-2">
+							{{ t('dashboard.admin.delivery.webhooks.subscribedEvents') }}
 						</p>
-						<p class="text-sm text-text-secondary">{{ formatDate(webhook.createdAt) }}</p>
+						<div class="flex flex-wrap gap-2">
+							<span
+								v-for="event in webhook.events"
+								:key="event"
+								class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-bg-surface text-text-primary"
+							>
+								{{ eventLabel(event) }}
+							</span>
+						</div>
 					</div>
-					<div>
-						<p class="text-xs text-text-tertiary">
-							{{ t('dashboard.admin.delivery.webhooks.lastUpdated') }}
-						</p>
-						<p class="text-sm text-text-secondary">{{ formatDate(webhook.updatedAt) }}</p>
-					</div>
-				</div>
 
-				<!-- Actions -->
-				<div class="px-6 py-4 flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<UiButton
-							variant="secondary"
-							class="gap-2"
-							:disabled="toggling"
-							@click.stop="emit('toggleActive')"
-						>
-							<SpinnerIcon
-								v-if="toggling"
-								class="w-4 h-4"
-							/>
-							<PlayIcon v-else-if="!webhook.isActive" class="w-4 h-4" />
-							<PauseIcon v-else class="w-4 h-4" />
-							{{
-								webhook.isActive
-									? t('dashboard.admin.delivery.webhooks.disable')
-									: t('dashboard.admin.delivery.webhooks.enable')
-							}}
-						</UiButton>
-						<UiButton variant="secondary" class="gap-2" @click.stop="emit('edit')">
-							<SettingsIcon class="w-4 h-4" />
-							{{ t('common.edit') }}
-						</UiButton>
-						<UiButton
-							variant="secondary"
-							class="gap-2"
-							:disabled="!webhook.isActive || sendingTest"
-							@click.stop="emit('sendTest')"
-						>
-							<SpinnerIcon
-								v-if="sendingTest"
-								class="w-4 h-4"
-							/>
-							<PaperPlaneIcon v-else class="w-4 h-4" />
-							{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
-						</UiButton>
-						<UiButton variant="secondary" class="gap-2" @click.stop="emit('viewLogs')">
-							<ScrollTextIcon class="w-4 h-4" />
-							{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
-						</UiButton>
-						<UiButton variant="secondary" class="gap-2" @click.stop="emit('regenerate')">
-							<ReloadIcon class="w-4 h-4" />
-							{{ t('dashboard.admin.delivery.webhooks.regenerateSecret') }}
+					<!-- Info -->
+					<div class="px-6 py-4 border-b border-border-subtle grid grid-cols-2 gap-4">
+						<div>
+							<p class="text-xs text-text-tertiary">
+								{{ t('dashboard.admin.delivery.webhooks.created') }}
+							</p>
+							<p class="text-sm text-text-secondary">{{ formatDate(webhook.createdAt) }}</p>
+						</div>
+						<div>
+							<p class="text-xs text-text-tertiary">
+								{{ t('dashboard.admin.delivery.webhooks.lastUpdated') }}
+							</p>
+							<p class="text-sm text-text-secondary">{{ formatDate(webhook.updatedAt) }}</p>
+						</div>
+					</div>
+
+					<!-- Actions. Wrap rather than overflow: the card clips, and on a
+				     narrow screen the row is wider than the card. -->
+					<div class="px-6 py-4 flex flex-wrap items-center justify-between gap-2">
+						<div class="flex flex-wrap items-center gap-2">
+							<UiButton
+								variant="secondary"
+								class="gap-2"
+								:disabled="toggling"
+								@click.stop="emit('toggleActive')"
+							>
+								<SpinnerIcon v-if="toggling" class="w-4 h-4" />
+								<PlayIcon v-else-if="!webhook.isActive" class="w-4 h-4" />
+								<PauseIcon v-else class="w-4 h-4" />
+								{{
+									webhook.isActive
+										? t('dashboard.admin.delivery.webhooks.disable')
+										: t('dashboard.admin.delivery.webhooks.enable')
+								}}
+							</UiButton>
+							<UiButton variant="secondary" class="gap-2" @click.stop="emit('edit')">
+								<SettingsIcon class="w-4 h-4" />
+								{{ t('common.edit') }}
+							</UiButton>
+							<UiButton
+								variant="secondary"
+								class="gap-2"
+								:disabled="!webhook.isActive || sendingTest"
+								@click.stop="emit('sendTest')"
+							>
+								<SpinnerIcon v-if="sendingTest" class="w-4 h-4" />
+								<PaperPlaneIcon v-else class="w-4 h-4" />
+								{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
+							</UiButton>
+							<UiButton variant="secondary" class="gap-2" @click.stop="emit('viewLogs')">
+								<ScrollTextIcon class="w-4 h-4" />
+								{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
+							</UiButton>
+							<UiButton variant="secondary" class="gap-2" @click.stop="emit('regenerate')">
+								<ReloadIcon class="w-4 h-4" />
+								{{ t('dashboard.admin.delivery.webhooks.regenerateSecret') }}
+							</UiButton>
+						</div>
+						<UiButton variant="danger-ghost" class="gap-2" @click.stop="emit('remove')">
+							<TrashIcon class="w-4 h-4" />
+							{{ t('common.delete') }}
 						</UiButton>
 					</div>
-					<UiButton
-						variant="ghost"
-						class="text-error hover:bg-error/10 gap-2"
-						@click.stop="emit('remove')"
-					>
-						<TrashIcon class="w-4 h-4" />
-						{{ t('common.delete') }}
-					</UiButton>
 				</div>
 			</div>
 		</Transition>
@@ -203,23 +206,34 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 </template>
 
 <style scoped>
-/* Expand transition */
+/* Expand transition. It animates the grid row from 0fr to 1fr instead of a
+   fixed max-height, so a panel of any height (many events, wrapped actions)
+   opens without clipping. The content sits in an unpadded inner wrapper
+   because a padded grid item cannot shrink below its padding. */
+.expand-panel {
+	display: grid;
+	grid-template-rows: 1fr;
+}
+
+.expand-panel-inner {
+	min-height: 0;
+}
+
 .expand-enter-active,
 .expand-leave-active {
-	transition-property: opacity, max-height;
+	transition-property: opacity, grid-template-rows;
 	transition-duration: var(--motion-moderate);
 	transition-timing-function: var(--ease-spring);
+}
+
+.expand-enter-active .expand-panel-inner,
+.expand-leave-active .expand-panel-inner {
 	overflow: hidden;
 }
 
 .expand-enter-from,
 .expand-leave-to {
 	opacity: 0;
-	max-height: 0;
-}
-
-.expand-enter-to,
-.expand-leave-from {
-	max-height: 600px;
+	grid-template-rows: 0fr;
 }
 </style>

@@ -43,7 +43,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (event: 'applied'): void }>();
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 /**
  * The migration table is module scope and never calls `useI18n`: it hands back
@@ -71,7 +71,13 @@ interface AppliedWrite {
 const applied = ref<AppliedWrite[]>([]);
 const failedAt = ref<AppliedWrite | null>(null);
 
-const writeLabel = (write: AppliedWrite): string => t(write.key, { stream: write.stream });
+/** The stream as its translated name ("Campaign route"), never the raw message type. */
+const streamName = (stream: string): string => {
+	const key = `shared.deliverabilityMeasurement.stream.${stream}`;
+	return te(key) ? t(key) : stream;
+};
+const writeLabel = (write: AppliedWrite): string =>
+	t(write.key, { stream: streamName(write.stream) });
 
 const preflight = computed(() => migrationPresetIssue(props.catalog));
 const relayWarning = computed(() => competingRelayWarning(props.routes));
@@ -136,9 +142,9 @@ async function apply(): Promise<void> {
 				<template #streams>
 					<strong>{{ t('components.delivery.migrationPresetStep.bulletStreamsNames') }}</strong>
 				</template>
-				<template #strategy>
-					<code>adaptive_mix</code>
-				</template>
+				<template #strategy>{{
+					t('shared.providerRouteOptions.strategies.adaptiveMix.label')
+				}}</template>
 			</I18nT>
 			<li>{{ t('components.delivery.migrationPresetStep.bulletFallback') }}</li>
 			<I18nT keypath="components.delivery.migrationPresetStep.bulletPace" tag="li" scope="global">

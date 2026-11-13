@@ -18,35 +18,46 @@ defineProps<{
 
 const emit = defineEmits<{ close: [] }>();
 
+const titleId = useId();
 const panelRef = ref<HTMLElement | null>(null);
 // Focus trap + opener restore + Escape, shared with UiModal.
-useModalFocus(panelRef, () => true, () => emit('close'));
+useModalFocus(
+	panelRef,
+	() => true,
+	() => emit('close')
+);
 </script>
 
 <template>
 	<Teleport to="body">
 		<div
-			class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/50"
+			class="fixed inset-0 z-(--z-modal) flex items-center justify-center p-4 bg-scrim/50"
 			@click.self="emit('close')"
 		>
 			<div
 				ref="panelRef"
 				role="dialog"
 				aria-modal="true"
+				:aria-labelledby="titleId"
 				tabindex="-1"
 				:class="[
-					'w-full bg-bg-elevated border border-border-subtle rounded-xl shadow-xl',
-					size === 'lg' ? 'max-w-lg flex flex-col max-h-[80vh]' : 'max-w-md',
+					'w-full flex flex-col max-h-[85dvh] bg-bg-elevated border border-border-subtle rounded-xl shadow-xl',
+					// A form dialog scrolls as a whole, so its footer stays reachable
+					// above a phone keyboard; the browser owns its list's scrolling.
+					size === 'lg' ? 'max-w-lg' : 'max-w-md overflow-y-auto',
 				]"
 			>
 				<div class="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
-					<h3 class="text-base font-semibold text-text-primary">{{ title }}</h3>
-					<button
-						class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+					<h3 :id="titleId" class="text-base font-semibold text-text-primary">{{ title }}</h3>
+					<UiButton
+						variant="ghost"
+						size="sm"
+						class="w-8 px-0"
+						:aria-label="t('common.close')"
 						@click="emit('close')"
-					 :aria-label="t('common.close')">
+					>
 						<CloseIcon class="w-4 h-4" />
-					</button>
+					</UiButton>
 				</div>
 
 				<slot />

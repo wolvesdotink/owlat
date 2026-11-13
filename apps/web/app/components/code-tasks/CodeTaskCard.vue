@@ -34,10 +34,16 @@ const isCancelling = ref(false);
 
 const canCancel = computed(() => props.task.status === 'queued' || props.task.status === 'running');
 
+// Stopping a queued or running task cannot be taken back, so it asks first.
+const showCancelConfirm = ref(false);
 const handleCancel = async () => {
 	isCancelling.value = true;
-	await cancelMutation({ taskId: props.task._id });
-	isCancelling.value = false;
+	try {
+		const result = await cancelMutation({ taskId: props.task._id });
+		if (result.ok) showCancelConfirm.value = false;
+	} finally {
+		isCancelling.value = false;
+	}
 };
 
 const formatCost = (cost: number) =>
@@ -64,7 +70,7 @@ const formatCost = (cost: number) =>
 			<!-- Branch -->
 			<div v-if="task.branch" class="flex items-center gap-2 text-xs text-text-secondary">
 				<GitBranchIcon class="w-3.5 h-3.5 text-text-tertiary" />
-				<code class="px-1.5 py-0.5 bg-bg-surface rounded text-text-primary font-mono text-[11px]">
+				<code class="px-1.5 py-0.5 bg-bg-surface rounded text-text-primary font-mono text-2xs">
 					{{ task.branch }}
 				</code>
 			</div>
@@ -72,11 +78,13 @@ const formatCost = (cost: number) =>
 			<!-- PR link -->
 			<div v-if="task.prUrl" class="flex items-center gap-2 text-xs">
 				<GitPullRequestIcon class="w-3.5 h-3.5 text-text-tertiary" />
+				<!-- native-title: the full address of a pull request link truncated to the card -->
 				<a
 					:href="task.prUrl"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="text-brand hover:underline truncate"
+					:title="task.prUrl"
 				>
 					{{ task.prUrl }}
 				</a>
@@ -109,16 +117,28 @@ const formatCost = (cost: number) =>
 			</div>
 
 			<UiButton
-				variant="ghost"
-				size="sm"
 				v-if="canCancel"
-				class="gap-1 text-error hover:bg-error-subtle"
+				variant="danger-ghost"
+				size="sm"
+				class="gap-1"
 				:disabled="isCancelling"
-				@click="handleCancel"
+				@click="showCancelConfirm = true"
 			>
-				<CloseIcon class="w-3 h-3" />
+				<CloseIcon class="w-3 h-3" aria-hidden="true" />
 				{{ isCancelling ? t('components.codeTasks.codeTaskCard.cancelling') : t('common.cancel') }}
 			</UiButton>
 		</div>
+
+		<UiConfirmationDialog
+			:open="showCancelConfirm"
+			variant="danger"
+			:title="t('components.codeTasks.codeTaskCard.cancelOperation')"
+			:description="t('components.codeTasks.codeTaskCard.cancelConfirmBody')"
+			:confirm-text="t('components.codeTasks.codeTaskCard.cancelOperation')"
+			:cancel-text="t('components.codeTasks.codeTaskCard.keepRunning')"
+			:is-loading="isCancelling"
+			@update:open="showCancelConfirm = $event"
+			@confirm="handleCancel"
+		/>
 	</div>
 </template>

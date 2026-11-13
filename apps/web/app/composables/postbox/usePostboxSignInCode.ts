@@ -40,7 +40,7 @@ export function latestLiveSignInCode(
 export function usePostboxSignInCode() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
-	const { copy } = useCopyToClipboard();
+	const { copy } = useCopyToClipboard({ notify: false });
 
 	async function copyCode(value: string): Promise<void> {
 		if (await copy(value)) {

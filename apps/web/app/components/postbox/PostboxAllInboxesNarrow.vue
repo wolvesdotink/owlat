@@ -38,13 +38,17 @@ const current = computed(() => {
 });
 const isNarrowed = computed(() => props.only !== null || props.provider !== null);
 const showProviders = computed(() => props.providers.length > 1);
+// The pill truncates the current choice, so its name and tooltip carry it whole.
+const triggerLabel = computed(() =>
+	t('components.postbox.allInboxes.narrow.triggerLabel', { current: current.value })
+);
 </script>
 
 <template>
 	<div v-if="inboxes.length > 1" class="flex items-center gap-1 min-w-0">
 		<UiDropdownMenu v-model:open="open" position="left" class="min-w-0">
 			<template #trigger>
-				<UiTooltip :text="t('components.postbox.allInboxes.narrow.title')">
+				<UiTooltip :text="triggerLabel">
 					<button
 						type="button"
 						class="inline-flex items-center gap-1 max-w-48 rounded-full px-2.5 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -53,7 +57,7 @@ const showProviders = computed(() => props.providers.length > 1);
 								? 'bg-bg-elevated text-text-primary shadow-(--shadow-1)'
 								: 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
 						"
-						:aria-label="t('components.postbox.allInboxes.narrow.title')"
+						:aria-label="triggerLabel"
 						data-testid="all-inboxes-narrow"
 					>
 						<FilterIcon class="size-3.5 flex-shrink-0" />

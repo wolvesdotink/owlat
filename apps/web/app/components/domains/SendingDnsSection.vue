@@ -98,6 +98,41 @@ const registrableZone = computed(
 // The current return-path host to seed the editor: the explicit per-domain host
 // if set, otherwise the one derived from the MAIL FROM record.
 const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailFromHost);
+
+/**
+ * The select saves on change. Moving to a STRICTER policy is asked first: from
+ * then on receivers spam-folder or refuse this domain's unaligned mail, and a
+ * sender nobody aligned yet loses its delivery. Relaxing saves at once.
+ */
+const POLICY_RANK: Record<DmarcPolicy, number> = { none: 0, quarantine: 1, reject: 2 };
+const currentPolicy = computed<DmarcPolicy>(() => props.domain.dmarcPolicy ?? 'none');
+const pendingPolicy = ref<DmarcPolicy | null>(null);
+const dmarcSelect = ref<HTMLSelectElement | null>(null);
+const pendingPolicyLabel = computed(
+	() => props.dmarcPolicyOptions.find((o) => o.value === pendingPolicy.value)?.label ?? ''
+);
+
+function onDmarcSelect(event: Event) {
+	const next = (event.target as HTMLSelectElement).value as DmarcPolicy;
+	if (POLICY_RANK[next] > POLICY_RANK[currentPolicy.value]) {
+		pendingPolicy.value = next;
+		return;
+	}
+	emit('dmarcChange', next);
+}
+
+function confirmPendingPolicy() {
+	const next = pendingPolicy.value;
+	pendingPolicy.value = null;
+	if (next) emit('dmarcChange', next);
+}
+
+/** A declined raise puts the select back on the saved policy. */
+function onPolicyDialogOpen(open: boolean) {
+	if (open) return;
+	pendingPolicy.value = null;
+	if (dmarcSelect.value) dmarcSelect.value.value = currentPolicy.value;
+}
 </script>
 
 <template>
@@ -196,10 +231,11 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 				<div class="flex items-center gap-3">
 					<select
 						:id="`dmarc-policy-${domain._id}`"
+						ref="dmarcSelect"
 						class="input flex-1"
-						:value="domain.dmarcPolicy ?? 'none'"
+						:value="currentPolicy"
 						:disabled="!canManageDomains || isUpdatingDmarc"
-						@change="emit('dmarcChange', ($event.target as HTMLSelectElement).value as DmarcPolicy)"
+						@change="onDmarcSelect"
 					>
 						<option v-for="opt in dmarcPolicyOptions" :key="opt.value" :value="opt.value">
 							{{ opt.label }}
@@ -208,9 +244,30 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 					<SpinnerIcon v-if="isUpdatingDmarc" class="w-4 h-4 text-text-tertiary" />
 				</div>
 				<p class="mt-2 text-xs text-text-secondary">
-					{{ dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))?.hint }}
+					{{ dmarcPolicyOptions.find((o) => o.value === currentPolicy)?.hint }}
 					{{ t('components.domains.recordRow.dmarcPolicyHelp') }}
 				</p>
+				<UiConfirmationDialog
+					:open="pendingPolicy !== null"
+					variant="warning"
+					:title="
+						t('components.domains.sendingDnsSection.dmarcRaise.title', {
+							policy: pendingPolicyLabel,
+						})
+					"
+					:description="
+						pendingPolicy === 'reject'
+							? t('components.domains.sendingDnsSection.dmarcRaise.reject', {
+									domain: domain.domain,
+								})
+							: t('components.domains.sendingDnsSection.dmarcRaise.quarantine', {
+									domain: domain.domain,
+								})
+					"
+					:confirm-text="t('components.domains.sendingDnsSection.dmarcRaise.confirm')"
+					@update:open="onPolicyDialogOpen"
+					@confirm="confirmPendingPolicy"
+				/>
 			</div>
 
 			<!-- Where the domain's DMARC aggregate reports go, and whether the

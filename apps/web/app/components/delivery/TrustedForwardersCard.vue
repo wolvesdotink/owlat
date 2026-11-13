@@ -75,13 +75,21 @@ const {
 });
 
 const newDomain = ref('');
+/** Why Add did nothing; cleared as soon as the entry changes. */
+const addError = ref<string | null>(null);
+watch(newDomain, () => {
+	addError.value = null;
+});
 
 function addDomain() {
 	if (!canManageOrganization.value) return;
 	const domain = normalizeDomain(newDomain.value);
 	// A bare, dot-bearing domain only — reject blanks, spaces, and single labels
 	// so a typo can't silently widen who we trust. Same rule the backend enforces.
-	if (!isValidForwarderDomain(domain)) return;
+	if (!isValidForwarderDomain(domain)) {
+		addError.value = t('components.delivery.trustedForwardersCard.invalidDomain');
+		return;
+	}
 	if (form.forwarders.includes(domain)) {
 		newDomain.value = '';
 		return;
@@ -112,9 +120,9 @@ async function save() {
 			<div class="flex items-center gap-3">
 				<UiIconBox :icon="ForwardIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
-					<h2 class="text-lg font-semibold text-text-primary">
+					<h3 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.trustedForwardersCard.title') }}
-					</h2>
+					</h3>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.delivery.trustedForwardersCard.subtitle') }}
 					</p>
@@ -152,7 +160,7 @@ async function save() {
 						<button
 							v-if="canManageOrganization"
 							type="button"
-							class="text-text-tertiary hover:text-error focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded"
+							class="-m-1 inline-flex items-center justify-center p-1 text-text-tertiary hover:text-error focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand rounded pointer-coarse:min-h-11 pointer-coarse:min-w-11"
 							:aria-label="t('components.delivery.trustedForwardersCard.removeDomain', { domain })"
 							@click="removeDomain(domain)"
 						>
@@ -167,13 +175,15 @@ async function save() {
 				<!-- Add -->
 				<form
 					v-if="canManageOrganization"
-					class="flex items-center gap-2"
+					class="flex items-start gap-2"
+					novalidate
 					@submit.prevent="addDomain"
 				>
 					<UiInput
 						v-model="newDomain"
 						:placeholder="t('components.delivery.trustedForwardersCard.addPlaceholder')"
 						:aria-label="t('components.delivery.trustedForwardersCard.addLabel')"
+						:error="addError ?? undefined"
 						class="max-w-xs"
 					/>
 					<UiButton type="submit" variant="secondary" :disabled="!newDomain.trim()">

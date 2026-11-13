@@ -19,6 +19,9 @@ const updateTopicId = (event: Event) => {
 	const topicId = (event.target as HTMLSelectElement).value;
 	emit('update:modelValue', { ...props.modelValue, topicId });
 };
+
+const hintId = useId();
+const errorId = useId();
 </script>
 
 <template>
@@ -26,13 +29,16 @@ const updateTopicId = (event: Event) => {
 		<label for="topicId" class="label flex items-center gap-2">
 			<ListPlusIcon class="w-4 h-4 text-success" />
 			{{ t('components.automations.triggers.topicSubscribed.editor.topicLabel') }}
-			<span class="text-error">*</span>
+			<span class="text-error" aria-hidden="true">*</span>
 		</label>
-		<p class="text-sm text-text-tertiary mt-1 mb-3">
+		<p :id="hintId" class="text-sm text-text-tertiary mt-1 mb-3">
 			{{ t('components.automations.triggers.topicSubscribed.editor.topicHint') }}
 		</p>
 		<select
 			id="topicId"
+			aria-required="true"
+			:aria-invalid="error ? true : undefined"
+			:aria-describedby="error ? `${errorId} ${hintId}` : hintId"
 			:value="modelValue.topicId"
 			:class="['input', error ? 'input-error' : '']"
 			@change="updateTopicId"
@@ -51,7 +57,7 @@ const updateTopicId = (event: Event) => {
 				}}
 			</option>
 		</select>
-		<p v-if="error" class="mt-2 text-sm text-error">{{ error }}</p>
+		<p v-if="error" :id="errorId" class="mt-2 text-sm text-error">{{ error }}</p>
 		<p v-else-if="!topics?.length" class="mt-2 text-sm text-text-tertiary">
 			<I18nT
 				keypath="components.automations.triggers.topicSubscribed.editor.noTopics"

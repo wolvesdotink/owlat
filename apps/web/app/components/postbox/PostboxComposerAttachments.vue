@@ -70,7 +70,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 		class="px-3 py-2 border-t border-border-subtle flex flex-col gap-2"
 	>
 		<!-- The chips' icon buttons are 16px for a mouse; on touch
-		     (pointer-coarse) they grow to a fingertip. -->
+		     (pointer-coarse) they grow to a 44px fingertip target. -->
 		<div class="flex flex-wrap gap-2">
 			<!-- Committed attachments -->
 			<span
@@ -85,7 +85,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					class="w-5 h-5 rounded object-cover"
 				/>
 				<PaperclipIcon v-else class="w-3 h-3 text-text-tertiary" />
-				<span class="truncate max-w-[140px]">{{ att.filename }}</span>
+				<span class="truncate max-w-[140px]" :title="att.filename">{{ att.filename }}</span>
 				<span class="text-text-tertiary">{{ formatCompactFileSize(att.size) }}</span>
 				<!-- Idea 10: swap this file for an expiring link in the body. Offered
 				     only once the meter is worried; the file is malware-scanned before it
@@ -97,7 +97,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				>
 					<button
 						type="button"
-						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
+						class="inline-flex items-center justify-center p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
 						:disabled="isSharing || shareDisabled"
 						:aria-label="
 							t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
@@ -109,7 +109,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				</UiTooltip>
 				<button
 					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="inline-flex items-center justify-center p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:aria-label="
 						t('components.postbox.postboxComposerAttachments.remove', { filename: att.filename })
 					"
@@ -145,7 +145,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					class="w-3 h-3"
 					:class="up.status === 'failed' ? 'text-error' : 'text-text-tertiary'"
 				/>
-				<span class="truncate max-w-[140px]">{{ up.filename }}</span>
+				<span class="truncate max-w-[140px]" :title="up.filename">{{ up.filename }}</span>
 				<span v-if="up.status === 'failed'" class="text-error">{{
 					t('components.postbox.postboxComposerAttachments.failed')
 				}}</span>
@@ -167,7 +167,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				>
 					<button
 						type="button"
-						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+						class="inline-flex items-center justify-center p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 						:aria-label="
 							t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
 						"
@@ -178,7 +178,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				</UiTooltip>
 				<button
 					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+					class="inline-flex items-center justify-center p-0.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
 					:aria-label="
 						up.status === 'failed'
 							? t('components.postbox.postboxComposerAttachments.dismiss', {
@@ -209,7 +209,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 
 		<!-- Total-size meter: appears past ~50% of the per-message budget. -->
 		<div v-if="meter.visible" class="flex flex-col gap-1">
-			<div class="flex items-center justify-between text-[11px]">
+			<div class="flex items-center justify-between text-2xs">
 				<span
 					class="h-1 flex-1 mr-2 rounded-full bg-bg-elevated overflow-hidden"
 					aria-hidden="true"
@@ -232,7 +232,7 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					}}
 				</span>
 			</div>
-			<p v-if="meter.amber" class="text-[11px] text-warning">
+			<p v-if="meter.amber" class="text-2xs text-warning">
 				{{ t('components.postbox.postboxComposerAttachments.largeWarning') }}
 			</p>
 		</div>

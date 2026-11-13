@@ -77,8 +77,24 @@ const unavailableClass = 'cursor-not-allowed active:scale-100';
 const heldPublishClass = `${unavailableClass} bg-text-primary/50 hover:bg-text-primary/50`;
 const pendingReviewClass = `${unavailableClass} bg-surface-3/50 hover:bg-surface-3/50 text-text-primary/50`;
 
+/**
+ * Unpublishing takes a live template offline at once: the send API rejects
+ * every request for it (password resets, receipts) until it is published
+ * again. That is asked first; publishing is not.
+ */
+const confirmUnpublishOpen = ref(false);
+
 function onTogglePublish() {
 	if (isPublishHeld.value) return;
+	if (props.isPublished) {
+		confirmUnpublishOpen.value = true;
+		return;
+	}
+	emit('toggle-publish');
+}
+
+function onConfirmUnpublish() {
+	confirmUnpublishOpen.value = false;
 	emit('toggle-publish');
 }
 </script>
@@ -175,6 +191,14 @@ function onTogglePublish() {
 			}}
 		</UiButton>
 	</UiTooltip>
+	<UiConfirmationDialog
+		v-model:open="confirmUnpublishOpen"
+		variant="warning"
+		:title="t('dashboard.send.transactional.detail.edit.unpublishConfirm.title')"
+		:description="t('dashboard.send.transactional.detail.edit.unpublishConfirm.description')"
+		:confirm-text="t('dashboard.send.transactional.detail.edit.unpublish')"
+		@confirm="onConfirmUnpublish"
+	/>
 	<!-- The unavailable reason, for the control's accessible description. -->
 	<span v-if="unavailableReason" :id="unavailableReasonId" class="sr-only">{{
 		unavailableReason

@@ -104,7 +104,8 @@ const describedBy = () => {
 	const callerIds = attrs['aria-describedby'];
 	if (typeof callerIds === 'string' && callerIds.trim()) ids.push(callerIds.trim());
 	if (props.error) ids.push(`${inputId.value}-error`);
-	if (props.helpText) ids.push(`${inputId.value}-help`);
+	// Help text renders only while there is no error.
+	if (props.helpText && !props.error) ids.push(`${inputId.value}-help`);
 	return ids.length ? ids.join(' ') : undefined;
 };
 
@@ -120,7 +121,7 @@ const handleInput = (event: Event) => {
 		<!-- Label -->
 		<label v-if="label" :for="inputId" class="block text-sm font-medium text-text-secondary mb-2">
 			{{ label }}
-			<span v-if="required" class="text-error">*</span>
+			<span v-if="required" class="text-error" aria-hidden="true">*</span>
 		</label>
 
 		<!-- Input wrapper -->

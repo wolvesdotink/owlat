@@ -28,14 +28,15 @@ const { t } = useI18n();
 			<div
 				v-for="name in csvImport.detectedListNames.value"
 				:key="name"
-				class="flex items-center gap-4 p-3 rounded-lg bg-bg-surface"
+				class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 rounded-lg bg-bg-surface"
 			>
 				<div class="flex-1 min-w-0">
-					<p class="text-sm font-medium text-text-primary truncate">{{ name }}</p>
+					<p class="text-sm font-medium text-text-primary truncate" :title="name">{{ name }}</p>
 				</div>
 				<select
 					:value="csvImport.listNameMapping.value[name] ?? ''"
-					class="input w-56 shrink-0"
+					class="input w-full sm:w-56 shrink-0"
+					:aria-label="t('components.contacts.csvImportModal.listMapping.selectLabel', { name })"
 					@change="
 						csvImport.listNameMapping.value[name] =
 							($event.target as HTMLSelectElement).value || null

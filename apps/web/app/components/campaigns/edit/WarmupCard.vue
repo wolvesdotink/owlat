@@ -72,7 +72,14 @@ const { t } = useI18n();
 						}}
 					</p>
 				</div>
-				<div class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
+				<div
+					class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden"
+					role="progressbar"
+					aria-valuemin="1"
+					aria-valuemax="30"
+					:aria-valuenow="warming.ips?.[0]?.currentDay ?? 1"
+					:aria-label="t('dashboard.campaigns.detail.edit.warmup.progress')"
+				>
 					<div
 						class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
 						:style="meterFillStyle(Math.round(((warming.ips?.[0]?.currentDay ?? 1) / 30) * 100))"
@@ -105,12 +112,13 @@ const { t } = useI18n();
 				@dismiss="emit('dismissCapacity')"
 			/>
 
-			<!-- Send Estimate -->
+			<!-- Send Estimate: a multi-day send is a normal state, so the neutral
+			     accent tone like the capacity schedule, not a warning. -->
 			<div
 				v-if="!capacityPlan && sendEstimate && audienceSize !== null && sendEstimate.days > 1"
-				class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
+				class="flex items-start gap-3 p-3 bg-accent/5 border border-accent/20 rounded-lg"
 			>
-				<ClockIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+				<ClockIcon class="w-5 h-5 text-accent shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm font-medium text-text-primary">
 						{{

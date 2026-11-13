@@ -14,10 +14,10 @@ const emit = defineEmits<{
 		class="flex items-center justify-between gap-3 cursor-pointer select-none min-h-[34px]"
 		@click="emit('update', !value)"
 	>
-		<span class="text-[12.5px] font-medium text-text-primary tracking-[-0.01em]">{{ label }}</span>
+		<span class="text-caption font-medium text-text-primary tracking-[-0.01em]">{{ label }}</span>
 		<button
-			class="relative w-[38px] h-[22px] rounded-[11px] border-none cursor-pointer p-0 shrink-0 transition-[background] duration-(--motion-moderate)"
-			:class="value ? 'bg-brand' : 'bg-bg-overlay'"
+			class="relative w-[38px] h-[22px] rounded-[11px] border-none cursor-pointer p-0 shrink-0 transition-[background] duration-(--motion-moderate) focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2"
+			:class="value ? 'bg-brand' : 'bg-text-tertiary/70'"
 			type="button"
 			role="switch"
 			:aria-label="label"

@@ -10,7 +10,7 @@
  * is "Assign to…" in the menu. An unconfirmed proposal offers Track.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
-import { briefDueDate, briefShortDate } from '~/utils/threadBriefContext';
+import { briefDueDate, briefShortDate, isBriefDueUrgent } from '~/utils/threadBriefContext';
 import { menuReactions, type BriefAction } from '~/utils/threadBriefItems';
 import BriefPendingUpdate from '~/components/brief/BriefPendingUpdate.vue';
 import EvidenceMarker from '~/components/brief/EvidenceMarker.vue';
@@ -49,6 +49,10 @@ const assignee = computed(() => {
 	if (!id) return null;
 	const m = props.members.find((x) => x.userId === id);
 	return { id, name: m?.name || m?.email || t('components.team.items.formerTeammate'), m };
+});
+const isDueUrgent = computed(() => {
+	const at = props.item.due?.at;
+	return at !== undefined && isBriefDueUrgent(at);
 });
 const due = computed(() =>
 	props.item.due?.at !== undefined ? briefDueDate(props.item.due.at, locale.value) : null
@@ -108,9 +112,12 @@ function label(action: TeamItemAction): string {
 				{{ isProposal ? `${t('components.brief.item.checkThis')} ${item.text}` : item.text }}
 			</p>
 			<p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-text-tertiary">
-				<span v-if="due" class="font-medium text-error">{{
-					t('components.brief.item.due', { date: due })
-				}}</span>
+				<span
+					v-if="due"
+					class="font-medium"
+					:class="isDueUrgent ? 'text-error' : 'text-text-secondary'"
+					>{{ t('components.brief.item.due', { date: due }) }}</span
+				>
 				<span>{{ kinds }}</span>
 				<span v-if="asker">{{
 					t('components.team.items.askedBy', {

@@ -33,10 +33,15 @@ const text = computed(() => systemLineText(props.entries, { t, memberName: props
 		<span class="text-text-secondary">{{ text }}</span>
 		<span
 			v-if="first.activity.provenance !== 'recorded'"
-			class="rounded border border-border-subtle px-1 text-[10px]"
+			class="rounded border border-border-subtle px-1 text-2xs"
 			:title="t(`components.brief.activity.provenanceHint.${first.activity.provenance}`)"
 			data-testid="team-stream-provenance"
 			>{{ t(`components.brief.activity.provenance.${first.activity.provenance}`) }}</span
 		>
+		<!-- The hint lives in a mouse-only title; keyboard and touch readers
+		     get it as text. -->
+		<span v-if="first.activity.provenance !== 'recorded'" class="sr-only">{{
+			t(`components.brief.activity.provenanceHint.${first.activity.provenance}`)
+		}}</span>
 	</p>
 </template>

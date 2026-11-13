@@ -21,14 +21,27 @@ import { PencilIcon, TrashIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
-const { mailboxes: ownMailboxes, isLoading: ownLoading } = usePostboxMailbox();
+const {
+	mailboxes: ownMailboxes,
+	isLoading: ownLoading,
+	error: ownError,
+	refetch: refetchOwn,
+} = usePostboxMailbox();
 const { isAdmin } = usePermissions();
-const { data: orgMailboxes, isLoading: orgLoading } = useConvexQuery(
-	api.mail.mailbox.identity.listOrgMailboxes,
-	() => (isAdmin.value ? {} : 'skip')
-);
+const {
+	data: orgMailboxes,
+	isLoading: orgLoading,
+	error: orgError,
+	refetch: refetchOrg,
+} = useConvexQuery(api.mail.mailbox.identity.listOrgMailboxes, () => (isAdmin.value ? {} : 'skip'));
 const mailboxes = computed(() => (isAdmin.value ? (orgMailboxes.value ?? []) : ownMailboxes.value));
 const isLoading = computed(() => (isAdmin.value ? orgLoading.value : ownLoading.value));
+// The read behind the list in use: a failed one is not "no mailboxes".
+const listError = computed(() => (isAdmin.value ? orgError.value : ownError.value) ?? null);
+function retryList() {
+	if (isAdmin.value) refetchOrg();
+	else refetchOwn();
+}
 
 type MailboxRow = (typeof mailboxes.value)[number];
 
@@ -145,6 +158,7 @@ async function handleDelete() {
 			<div v-if="isLoading" class="p-8 flex justify-center">
 				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
+			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="retryList" />
 			<div v-else-if="mailboxes.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.index.noMailboxes') }}
 			</div>
@@ -164,7 +178,7 @@ async function handleDelete() {
 								:slot="inboxById.get(mb._id)!.slot"
 								:mark="inboxById.get(mb._id)!.mark"
 							/>
-							<span class="truncate">{{ mb.address }}</span>
+							<span class="truncate" :title="mb.address">{{ mb.address }}</span>
 						</p>
 						<p class="text-xs text-text-tertiary">
 							{{
@@ -175,41 +189,36 @@ async function handleDelete() {
 							}}
 						</p>
 					</div>
-					<div class="flex items-center gap-2 shrink-0">
-						<span
-							class="text-xs px-2 py-0.5 rounded"
-							:class="
-								mb.status === 'active'
-									? 'bg-success-subtle text-success'
-									: 'bg-bg-surface text-text-tertiary'
-							"
-							>{{ t(`dashboard.preferences.index.mailboxStatus.${mb.status}`) }}</span
-						>
-						<NuxtLink
+					<div class="flex items-center gap-1 shrink-0">
+						<UiBadge pill :variant="mb.status === 'active' ? 'success' : 'neutral'">{{
+							t(`dashboard.preferences.index.mailboxStatus.${mb.status}`)
+						}}</UiBadge>
+						<UiButton
 							v-if="mb.scope === 'shared'"
+							variant="ghost"
+							size="sm"
 							:to="`/dashboard/preferences/members/${mb._id}`"
-							class="text-xs px-2 py-0.5 rounded bg-brand-subtle text-brand hover:underline"
-							>{{ t('dashboard.preferences.index.teamManage') }}</NuxtLink
+							>{{ t('dashboard.preferences.index.teamManage') }}</UiButton
 						>
 						<UiTooltip :text="t('dashboard.preferences.index.renameMailbox')">
-							<button
-								type="button"
-								class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-								:aria-label="t('dashboard.preferences.index.renameMailbox')"
+							<UiButton
+								variant="ghost"
+								size="sm"
+								:aria-label="`${t('dashboard.preferences.index.renameMailbox')}: ${mb.address}`"
 								@click="openRename(mb)"
 							>
 								<PencilIcon class="w-4 h-4" />
-							</button>
+							</UiButton>
 						</UiTooltip>
 						<UiTooltip v-if="isAdmin" :text="t('dashboard.preferences.index.deleteMailbox')">
-							<button
-								type="button"
-								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-								:aria-label="t('dashboard.preferences.index.deleteMailbox')"
+							<UiButton
+								variant="danger-ghost"
+								size="sm"
+								:aria-label="`${t('dashboard.preferences.index.deleteMailbox')}: ${mb.address}`"
 								@click="deleteTarget = mb"
 							>
 								<TrashIcon class="w-4 h-4" />
-							</button>
+							</UiButton>
 						</UiTooltip>
 					</div>
 					<!-- Only admins reach every mailbox here, a teammate's
@@ -250,7 +259,7 @@ async function handleDelete() {
 					>
 				</I18nT>
 				<div>
-					<label for="mb-display-name" class="text-sm font-medium block mb-1">
+					<label for="mb-display-name" class="label">
 						{{ t('dashboard.preferences.index.displayName') }}
 					</label>
 					<input
@@ -265,7 +274,7 @@ async function handleDelete() {
 					</p>
 				</div>
 				<fieldset>
-					<legend class="text-sm font-medium mb-1">
+					<legend class="label">
 						{{ t('dashboard.preferences.index.colour') }}
 					</legend>
 					<div class="flex flex-wrap items-center gap-2">
@@ -300,7 +309,7 @@ async function handleDelete() {
 					</p>
 				</fieldset>
 				<fieldset>
-					<legend class="text-sm font-medium mb-1">
+					<legend class="label">
 						{{ t('dashboard.preferences.index.mark') }}
 					</legend>
 					<div class="flex flex-wrap items-center gap-2">
@@ -347,11 +356,12 @@ async function handleDelete() {
 						autocomplete="off"
 						:placeholder="t('dashboard.preferences.index.markEmojiPlaceholder')"
 						:aria-invalid="markEmojiInvalid"
+						:aria-describedby="markEmojiInvalid ? 'mb-mark-emoji-error' : undefined"
 						class="input w-56"
 						data-testid="mailbox-mark-emoji"
 						@input="onMarkEmojiInput"
 					/>
-					<p v-if="markEmojiInvalid" class="text-xs text-error mt-1">
+					<p v-if="markEmojiInvalid" id="mb-mark-emoji-error" class="text-xs text-error mt-1">
 						{{ t('dashboard.preferences.index.markEmojiInvalid') }}
 					</p>
 					<p class="text-xs text-text-tertiary mt-1">

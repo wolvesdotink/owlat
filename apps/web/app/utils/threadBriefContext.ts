@@ -27,6 +27,16 @@ export function briefShortDate(at: number, locale: string): string {
 }
 
 /**
+ * Whether a due date is drawn in red: it has passed or falls today. A date
+ * further out reads as plain metadata, or every dated ask would look urgent.
+ */
+export function isBriefDueUrgent(at: number, now: number = Date.now()): boolean {
+	const endOfToday = new Date(now);
+	endOfToday.setHours(23, 59, 59, 999);
+	return at <= endOfToday.getTime();
+}
+
+/**
  * A due date as people say it: the weekday within the coming week ("Fri"),
  * else weekday and date ("Fri 9 Oct").
  */

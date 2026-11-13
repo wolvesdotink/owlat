@@ -35,6 +35,34 @@ const resolvedAriaLabel = computed(() => props.ariaLabel ?? t('ui.chart.barsAria
 
 const maxValue = computed(() => Math.max(...props.data.map((d) => d.value), 0));
 
+// One tab stop for the whole chart: a 90-day series would otherwise cost a
+// keyboard user 90 Tab presses to get past it. Arrow keys move between bars.
+const activeIndex = ref(0);
+const barRefs = shallowRef<HTMLElement[]>([]);
+const setBarRef = (el: unknown, index: number) => {
+	if (el) barRefs.value[index] = el as HTMLElement;
+};
+
+watch(
+	() => props.data.length,
+	(length) => {
+		if (activeIndex.value >= length) activeIndex.value = Math.max(length - 1, 0);
+	}
+);
+
+const onBarKeydown = (event: KeyboardEvent, index: number) => {
+	const last = props.data.length - 1;
+	let next = index;
+	if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = Math.min(index + 1, last);
+	else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = Math.max(index - 1, 0);
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = last;
+	else return;
+	event.preventDefault();
+	activeIndex.value = next;
+	barRefs.value[next]?.focus();
+};
+
 const showLabelAt = (index: number) =>
 	props.labelEvery > 0 && (index % props.labelEvery === 0 || index === props.data.length - 1);
 </script>
@@ -52,10 +80,13 @@ const showLabelAt = (index: number) =>
 			<div
 				v-for="(bar, index) in data"
 				:key="`${bar.label}-${index}`"
+				:ref="(el) => setBarRef(el, index)"
 				class="group relative flex-1 min-w-0 h-full flex items-end rounded focus-visible:outline-2 focus-visible:outline-brand"
-				tabindex="0"
+				:tabindex="index === activeIndex ? 0 : -1"
 				role="img"
 				:aria-label="`${bar.label}: ${formatValue(bar.value)}`"
+				@keydown="onBarKeydown($event, index)"
+				@focus="activeIndex = index"
 			>
 				<div
 					class="w-full rounded-t transition-opacity duration-(--motion-fast)"
@@ -73,7 +104,7 @@ const showLabelAt = (index: number) =>
 					class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-(--motion-fast) rounded-md bg-bg-overlay shadow-surface-4 px-2 py-1 whitespace-nowrap"
 					aria-hidden="true"
 				>
-					<p class="text-[10px] text-text-tertiary leading-tight">{{ bar.label }}</p>
+					<p class="text-2xs text-text-tertiary leading-tight">{{ bar.label }}</p>
 					<p class="text-xs font-semibold text-text-primary tabular-nums leading-tight">
 						{{ formatValue(bar.value) }}
 					</p>
@@ -89,7 +120,7 @@ const showLabelAt = (index: number) =>
 			>
 				<span
 					v-if="showLabelAt(index)"
-					class="text-[10px] text-text-tertiary tabular-nums whitespace-nowrap"
+					class="text-2xs text-text-tertiary tabular-nums whitespace-nowrap"
 				>
 					{{ bar.label }}
 				</span>

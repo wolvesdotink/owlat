@@ -99,6 +99,22 @@ function startOver() {
 	pastedCode.value = '';
 	errorMessage.value = '';
 }
+
+// Removing a saved server signs it out and forgets it; one stray click must
+// not do that, so it asks first.
+const pendingRemoval = ref<{ id: string; label: string } | null>(null);
+const isRemoving = ref(false);
+async function confirmRemoval() {
+	const target = pendingRemoval.value;
+	if (!target) return;
+	isRemoving.value = true;
+	try {
+		await removeWorkspace(target.id);
+		pendingRemoval.value = null;
+	} finally {
+		isRemoving.value = false;
+	}
+}
 </script>
 
 <template>
@@ -110,7 +126,13 @@ function startOver() {
 		<DesktopTitlebar />
 
 		<div v-if="!isDesktop" class="card w-full max-w-md p-8 text-sm text-text-secondary">
-			{{ t('desktop.welcome.desktopOnly') }}
+			<h1 class="mb-2 text-lg font-medium text-text-primary">
+				{{ t('desktop.web.desktopOnlyHeading') }}
+			</h1>
+			<p>{{ t('desktop.welcome.desktopOnly') }}</p>
+			<UiButton variant="secondary" size="sm" class="mt-4" to="/dashboard">
+				{{ t('desktop.web.backToDashboard') }}
+			</UiButton>
 		</div>
 
 		<div v-else class="w-full max-w-md">
@@ -144,7 +166,11 @@ function startOver() {
 			</div>
 
 			<!-- Why the app bounced back here, when it knows. -->
-			<p v-if="connectError && !browserOpened" class="mb-6 text-center text-sm text-error">
+			<p
+				v-if="connectError && !browserOpened"
+				class="mb-6 text-center text-sm text-error"
+				role="alert"
+			>
 				{{ connectError }}
 			</p>
 
@@ -162,8 +188,9 @@ function startOver() {
 				>
 					<button
 						type="button"
-						class="min-w-0 flex-1 text-left"
+						class="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						:disabled="ws.id === activeId"
+						:aria-current="ws.id === activeId ? 'true' : undefined"
 						@click="switchTo(ws.id)"
 					>
 						<span class="block truncate text-sm" :class="ws.id === activeId ? 'font-semibold' : ''">
@@ -174,13 +201,14 @@ function startOver() {
 					<UiButton variant="outline" size="sm" class="shrink-0" @click="reconnect(ws.siteUrl)">
 						{{ t('desktop.welcome.reconnect.action') }}
 					</UiButton>
-					<button
-						type="button"
-						class="shrink-0 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-error"
-						@click="removeWorkspace(ws.id)"
+					<UiButton
+						variant="danger-ghost"
+						size="sm"
+						class="shrink-0"
+						@click="pendingRemoval = { id: ws.id, label: ws.label }"
 					>
 						{{ t('common.remove') }}
-					</button>
+					</UiButton>
 				</li>
 			</ul>
 
@@ -190,7 +218,7 @@ function startOver() {
 					<span
 						class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand"
 					>
-						<PlugIcon class="size-5" />
+						<PlugIcon class="size-5" aria-hidden="true" />
 					</span>
 					<div class="min-w-0">
 						<h2 id="desktop-connect-title" class="text-base font-semibold">
@@ -220,7 +248,7 @@ function startOver() {
 						:placeholder="t('desktop.welcome.connect.urlPlaceholder')"
 						class="input input-sm"
 					/>
-					<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+					<p v-if="errorMessage" class="text-sm text-error" role="alert">{{ errorMessage }}</p>
 					<UiButton type="submit" :disabled="isConnecting" full-width>
 						{{
 							isConnecting
@@ -236,7 +264,7 @@ function startOver() {
 					</p>
 					<!-- A deep link that came back and failed: the browser half looks
 					     finished, so the reason has to land here. -->
-					<p v-if="connectError" class="text-sm text-error">{{ connectError }}</p>
+					<p v-if="connectError" class="text-sm text-error" role="alert">{{ connectError }}</p>
 					<form
 						class="space-y-3 border-t border-border-subtle pt-4"
 						@submit.prevent="handlePastedCode"
@@ -253,7 +281,7 @@ function startOver() {
 							:placeholder="t('desktop.welcome.connect.codePlaceholder')"
 							class="input input-sm font-mono"
 						/>
-						<p v-if="errorMessage" class="text-sm text-error">{{ errorMessage }}</p>
+						<p v-if="errorMessage" class="text-sm text-error" role="alert">{{ errorMessage }}</p>
 						<UiButton type="submit" :disabled="isRedeeming || !pastedCode.trim()" full-width>
 							{{
 								isRedeeming
@@ -264,7 +292,7 @@ function startOver() {
 					</form>
 					<button
 						type="button"
-						class="text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
+						class="rounded text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="startOver"
 					>
 						{{ t('desktop.welcome.connect.startOver') }}
@@ -277,7 +305,7 @@ function startOver() {
 				to="/desktop/setup"
 				class="group mt-4 flex w-full items-center gap-3 rounded-xl border border-border-subtle px-4 py-3 text-left transition-colors duration-(--motion-fast) hover:border-brand-border"
 			>
-				<ServerIcon class="size-4 shrink-0 text-text-tertiary" />
+				<ServerIcon class="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 				<span class="min-w-0 flex-1">
 					<span class="block text-sm font-medium">{{ t('desktop.welcome.setup.title') }}</span>
 					<span class="mt-0.5 block text-xs text-text-secondary">{{
@@ -286,8 +314,20 @@ function startOver() {
 				</span>
 				<ArrowRightIcon
 					class="size-4 shrink-0 text-text-tertiary transition-transform duration-(--motion-fast) group-hover:translate-x-[2px] group-hover:text-brand"
+					aria-hidden="true"
 				/>
 			</NuxtLink>
 		</div>
+
+		<UiConfirmationDialog
+			:open="pendingRemoval !== null"
+			variant="danger"
+			:title="t('desktop.welcome.remove.title')"
+			:description="t('desktop.welcome.remove.body', { name: pendingRemoval?.label ?? '' })"
+			:confirm-text="t('common.remove')"
+			:is-loading="isRemoving"
+			@update:open="(open: boolean) => !open && (pendingRemoval = null)"
+			@confirm="confirmRemoval"
+		/>
 	</div>
 </template>

@@ -195,14 +195,14 @@ defineExpose({
 
 		<form @submit.prevent="handleSubmit">
 			<div class="space-y-6">
-				<div class="space-y-3">
-					<label class="label"
-						>{{ t('components.campaigns.steps.contentStep.choiceLabel') }}
-						<span class="text-error">*</span></label
-					>
+				<fieldset class="space-y-3">
+					<legend class="label">
+						{{ t('components.campaigns.steps.contentStep.choiceLabel') }}
+						<span class="text-error" aria-hidden="true">*</span>
+					</legend>
 					<label
 						:class="[
-							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
+							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 							selectionType === 'existing'
 								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
@@ -226,7 +226,7 @@ defineExpose({
 					</label>
 					<label
 						:class="[
-							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors',
+							'flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
 							selectionType === 'new'
 								? 'border-text-primary bg-bg-surface'
 								: 'border-border-subtle hover:border-border-default',
@@ -248,7 +248,7 @@ defineExpose({
 							</p>
 						</div>
 					</label>
-				</div>
+				</fieldset>
 
 				<div v-if="selectionType === 'existing'">
 					<label for="templateSearch" class="label text-sm">{{

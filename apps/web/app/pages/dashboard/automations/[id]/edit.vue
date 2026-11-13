@@ -93,6 +93,20 @@ const {
 	getStepDescription,
 } = useAutomationSteps(automationId, automation, emailTemplates);
 
+// Deleting a step drops its whole configuration with no undo, so both entry
+// points (step menu, inspector) ask first.
+const askConfirm = useConfirm();
+const confirmDeleteStep = async (stepId: Id<'automationSteps'>) => {
+	const position = mutableSteps.value.findIndex((step) => step._id === stepId) + 1;
+	const confirmed = await askConfirm({
+		title: t('dashboard.automations.detail.edit.deleteStepConfirm.title', { position }),
+		body: t('dashboard.automations.detail.edit.deleteStepConfirm.body'),
+		confirmText: t('components.automations.stepEditorPanel.delete'),
+		variant: 'danger',
+	});
+	if (confirmed) await handleDeleteStep(stepId);
+};
+
 // Save draft, Pause, Resume and Activate, each after the open step's save.
 const {
 	isSavingDraft,
@@ -386,7 +400,7 @@ onUnmounted(() => {
 								@handle-keydown="keyboardReorder.onKeydown($event, step._id)"
 								@update:menu-open="openStepMenuId = $event ? step._id : null"
 								@move="moveStepBy(step._id, $event)"
-								@delete="handleDeleteStep(step._id)"
+								@delete="confirmDeleteStep(step._id)"
 							/>
 
 							<!-- Connector Line -->
@@ -443,7 +457,7 @@ onUnmounted(() => {
 				@retry="requestStepSave"
 				@use-theirs="takeRemoteStepConfig"
 				@keep-mine="keepLocalStepConfig"
-				@delete="handleDeleteStep"
+				@delete="confirmDeleteStep"
 				@update:current-config="currentConfig = $event"
 			/>
 		</div>

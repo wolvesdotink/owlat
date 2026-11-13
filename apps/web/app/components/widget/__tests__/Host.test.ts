@@ -55,14 +55,16 @@ describe('WidgetHost — rendering & accessibility', () => {
 		expect(wrapper.find('[data-testid="child"]').text()).toBe('card body');
 	});
 
-	it('falls back to the widget kind when no label is present', async () => {
+	it('is a plain group, not a landmark named by its internal kind, when no label is present', async () => {
 		const Child = defineComponent({ template: '<div />' });
 		const wrapper = mount(WidgetHost, {
 			...mountOpts,
 			props: { module: moduleFor(Child, { label: undefined, kind: 'raw_kind' }) },
 		});
 		await flushPromises();
-		expect(wrapper.find('[role="region"]').attributes('aria-label')).toBe('raw_kind');
+		expect(wrapper.find('[role="region"]').exists()).toBe(false);
+		const group = wrapper.get('[role="group"]');
+		expect(group.attributes('aria-label')).toBeUndefined();
 	});
 });
 

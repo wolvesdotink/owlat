@@ -4,6 +4,7 @@ import { useZenMode } from '~/composables/useZenMode';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import ShellConnectionIndicator from './ConnectionIndicator.vue';
+import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import {
 	ExpandIcon,
 	KeyboardIcon,
@@ -50,24 +51,47 @@ const showAssistant = computed(() => isEnabled('ai.assistant'));
 
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
+const menuPanelRef = ref<HTMLElement | null>(null);
 function onClickOutside(event: MouseEvent) {
 	if (menuRef.value && !menuRef.value.contains(event.target as Node)) menuOpen.value = false;
 }
-function onKeydown(event: KeyboardEvent) {
-	if (event.key === 'Escape' && menuOpen.value) {
-		event.stopPropagation();
+onMounted(() => document.addEventListener('click', onClickOutside));
+onUnmounted(() => document.removeEventListener('click', onClickOutside));
+
+// Menu keys, as UiDropdownMenu has them: opening moves focus to the first item,
+// the arrows (and Home/End) move between items, Escape closes and returns focus
+// to the trigger through the shared Escape stack, and Tab leaves and closes.
+// The menu stays hand-built because it holds a non-item row (the theme toggle).
+const menuItems = () =>
+	Array.from(menuPanelRef.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+watch(menuOpen, async (open) => {
+	if (!open) return;
+	await nextTick();
+	menuItems()[0]?.focus();
+});
+useEscapeLayer(menuOpen, () => {
+	menuOpen.value = false;
+	triggerRef.value?.focus();
+});
+function onMenuKeydown(event: KeyboardEvent) {
+	if (event.key === 'Tab') {
 		menuOpen.value = false;
+		return;
 	}
+	const items = menuItems();
+	if (items.length === 0) return;
+	const current = items.indexOf(document.activeElement as HTMLElement);
+	let next: number | null = null;
+	if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
+	else if (event.key === 'ArrowUp')
+		next = current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+	else if (event.key === 'Home') next = 0;
+	else if (event.key === 'End') next = items.length - 1;
+	if (next === null) return;
+	event.preventDefault();
+	items[next]?.focus();
 }
-onMounted(() => {
-	document.addEventListener('click', onClickOutside);
-	// oxlint-disable-next-line owlat/no-raw-keydown-listener -- Escape closes the account menu
-	document.addEventListener('keydown', onKeydown);
-});
-onUnmounted(() => {
-	document.removeEventListener('click', onClickOutside);
-	document.removeEventListener('keydown', onKeydown);
-});
 watch(
 	() => route.path,
 	() => (menuOpen.value = false)
@@ -120,8 +144,9 @@ function openSetupChecklist() {
 			<!-- Collapsed, the row shows only initials: the name is the tooltip and the label. -->
 			<UiTooltip :text="collapsedName">
 				<button
+					ref="triggerRef"
 					type="button"
-					class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-bg-surface"
+					class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:class="props.collapsed ? 'justify-center' : ''"
 					:aria-expanded="menuOpen"
 					aria-haspopup="menu"
@@ -157,8 +182,11 @@ function openSetupChecklist() {
 			>
 				<div
 					v-if="menuOpen"
+					ref="menuPanelRef"
 					role="menu"
-					class="absolute bottom-full left-0 z-(--z-dropdown,50) mb-2 w-60 overflow-hidden rounded-lg border border-border-default bg-bg-elevated py-1 shadow-lg"
+					:aria-label="user?.name || t('shell.dashboard.userFallback')"
+					class="absolute bottom-full left-0 z-(--z-menu) mb-2 w-60 overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg"
+					@keydown="onMenuKeydown"
 				>
 					<p v-if="user?.email" class="truncate px-3 pb-1.5 pt-1 text-xs text-text-tertiary">
 						{{ user.email }}
@@ -168,7 +196,7 @@ function openSetupChecklist() {
 						to="/dashboard/assistant"
 						role="menuitem"
 						:aria-keyshortcuts="ariaFor('global.assistant')"
-						class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary outline-none hover:bg-bg-surface focus-visible:bg-bg-surface"
 					>
 						<SparklesIcon class="size-4 text-text-tertiary" />
 						<span class="flex-1">{{ t('components.shell.footer.assistant') }}</span>
@@ -177,7 +205,7 @@ function openSetupChecklist() {
 					<button
 						type="button"
 						role="menuitem"
-						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary outline-none hover:bg-bg-surface focus-visible:bg-bg-surface"
 						:aria-keyshortcuts="ariaFor('global.zen')"
 						@click="startZen"
 					>
@@ -188,7 +216,7 @@ function openSetupChecklist() {
 					<button
 						type="button"
 						role="menuitem"
-						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary outline-none hover:bg-bg-surface focus-visible:bg-bg-surface"
 						:aria-keyshortcuts="ariaFor('global.help')"
 						@click="openShortcuts"
 					>
@@ -199,7 +227,7 @@ function openSetupChecklist() {
 					<button
 						type="button"
 						role="menuitem"
-						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary outline-none hover:bg-bg-surface focus-visible:bg-bg-surface"
 						@click="openSetupChecklist"
 					>
 						<ListChecklistIcon class="size-4 text-text-tertiary" />
@@ -214,11 +242,11 @@ function openSetupChecklist() {
 							<span class="text-sm text-text-primary">{{ t('shell.dashboard.theme') }}</span>
 						</UiThemeToggle>
 					</div>
-					<div class="my-1 border-t border-border-subtle" />
+					<div class="my-1 border-t border-border-subtle" role="separator" />
 					<button
 						type="button"
 						role="menuitem"
-						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-error hover:bg-error-subtle"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-error outline-none hover:bg-error-subtle focus-visible:bg-error-subtle"
 						@click="handleSignOut"
 					>
 						<LogOutIcon class="size-4" />

@@ -46,7 +46,10 @@ function latestName(change: TodayChange): string {
 						v-bind="rowBindings"
 					>
 						<div class="min-w-0 flex-1">
-							<p class="truncate text-sm font-medium text-text-primary">
+							<p
+								class="truncate text-sm font-medium text-text-primary"
+								:title="change.subject || undefined"
+							>
 								{{ change.subject || t('components.shell.noSubject') }}
 							</p>
 							<p class="mt-0.5 text-xs leading-relaxed text-text-secondary">
@@ -68,16 +71,18 @@ function latestName(change: TodayChange): string {
 								</template>
 							</p>
 						</div>
-						<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
-							formatCompactRelativeTime(change.at)
-						}}</span>
+						<!-- In its own column, so a long summary never runs under it;
+						     always shown where there is no hover. -->
 						<button
 							type="button"
-							class="absolute right-14 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
+							class="shrink-0 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100 pointer-coarse:opacity-100 pointer-coarse:min-h-8"
 							@click="emit('done', change)"
 						>
 							{{ t('components.today.line.done') }}
 						</button>
+						<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
+							formatCompactRelativeTime(change.at)
+						}}</span>
 					</li>
 				</template>
 			</RowContextMenu>

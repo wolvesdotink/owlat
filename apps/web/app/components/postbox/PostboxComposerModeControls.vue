@@ -4,6 +4,8 @@
  * only — flips between the minimal floating bar and the classic persistent
  * toolbar) and an optional path into the layout designer. Split out of
  * PostboxComposer.vue to keep that orchestrator under the file-size ratchet.
+ *
+ * Rendered inside the footer's ⋯ menu, so both controls are menu items.
  */
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
 import { LayoutTemplateIcon, PencilIcon, TextIcon } from '@coolicons/vue';
@@ -38,7 +40,8 @@ const { t } = useI18n();
 				variant="ghost"
 				type="button"
 				:class="{ 'text-brand': persistentToolbar }"
-				:aria-pressed="persistentToolbar"
+				role="menuitemcheckbox"
+				:aria-checked="persistentToolbar"
 				:aria-label="
 					persistentToolbar
 						? t('components.postbox.postboxComposerModeControls.hideToolbar')
@@ -51,8 +54,9 @@ const { t } = useI18n();
 		</UiTooltip>
 		<UiButton
 			variant="ghost"
+			size="sm"
 			type="button"
-			class="text-xs"
+			role="menuitem"
 			:disabled="switchDisabled"
 			@click="emit('switch-mode', mode === 'simple' ? 'full' : 'simple')"
 		>

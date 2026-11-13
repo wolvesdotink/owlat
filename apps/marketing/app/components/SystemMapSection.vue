@@ -50,8 +50,16 @@ let running = false;
 let inView = false;
 let observer: IntersectionObserver | null = null;
 
+// Set once a visitor picks a step: the loop stops on it instead of cycling on
+// underneath them, which is also the way to halt the motion.
+let heldByVisitor = false;
+
 function frame(now: number) {
-	const t = (now - startTs) % TOTAL_MS;
+	render((now - startTs) % TOTAL_MS);
+	rafId = requestAnimationFrame(frame);
+}
+
+function render(t: number) {
 	const beat = Math.floor(t / BEAT_MS);
 	if (beat !== currentBeat.value) currentBeat.value = beat;
 	const p = (t % BEAT_MS) / BEAT_MS;
@@ -83,7 +91,6 @@ function frame(now: number) {
 			}
 		}
 	}
-	rafId = requestAnimationFrame(frame);
 }
 
 function startLoop() {
@@ -101,7 +108,7 @@ function stopLoop() {
 }
 
 function syncRunning() {
-	if (inView && !document.hidden) startLoop();
+	if (inView && !document.hidden && !heldByVisitor) startLoop();
 	else stopLoop();
 }
 
@@ -112,8 +119,11 @@ function onVisibilityChange() {
 function jumpTo(beatIdx: number) {
 	currentBeat.value = beatIdx;
 	if (!animated.value) return;
-	frozenT = beatIdx * BEAT_MS;
-	if (running) startTs = performance.now() - frozenT;
+	heldByVisitor = true;
+	stopLoop();
+	// Show the picked step with its edges fully drawn.
+	frozenT = beatIdx * BEAT_MS + BEAT_MS * DRAW_PORTION;
+	render(frozenT);
 }
 
 onMounted(() => {
@@ -168,10 +178,12 @@ onUnmounted(() => {
 		<!-- Accessible description of the flow -->
 		<p class="sr-only">{{ t('systemMap.srDescription') }}</p>
 
-		<!-- Diagram (decorative; described above) -->
+		<!-- Diagram (decorative; described above). Below md the 960-wide viewBox
+		     would shrink its labels to a few pixels, so the step list below carries
+		     the content there instead. -->
 		<svg
 			:viewBox="`0 0 ${VIEW_W} ${VIEW_H}`"
-			class="w-full h-auto mt-12 max-md:mt-8"
+			class="w-full h-auto mt-12 max-md:hidden"
 			aria-hidden="true"
 		>
 			<!-- Static track underlays -->
@@ -209,30 +221,32 @@ onUnmounted(() => {
 			</g>
 		</svg>
 
-		<!-- Beat chips -->
-		<div
-			class="mt-10 grid grid-cols-5 gap-2.5 max-lg:grid-cols-2 max-md:grid-cols-1"
-			role="group"
+		<!-- Beat chips. Buttons only while the diagram animates: they pick the step
+		     it shows. Static (reduced motion, narrow screens) the diagram is fully
+		     lit, so the chips are a plain list of the steps. -->
+		<ol
+			class="mt-10 grid grid-cols-5 gap-2.5 max-lg:grid-cols-2 max-md:grid-cols-1 max-md:mt-8"
 			:aria-label="t('systemMap.stepsLabel')"
 		>
-			<button
-				v-for="(beat, i) in MAP_BEATS"
-				:key="beat.id"
-				type="button"
-				class="map-chip"
-				:data-active="i === currentBeat"
-				:aria-current="i === currentBeat ? 'step' : undefined"
-				@click="jumpTo(i)"
-			>
-				<span class="flex items-center gap-2">
-					<span class="font-mono text-2xs text-text-tertiary tabular-nums">0{{ i + 1 }}</span>
-					<span class="text-caption font-medium text-text-primary">{{ t(beat.labelKey) }}</span>
-				</span>
-				<span class="block text-2xs text-text-tertiary leading-[1.5] mt-1">
-					{{ t(beat.captionKey) }}
-				</span>
-			</button>
-		</div>
+			<li v-for="(beat, i) in MAP_BEATS" :key="beat.id" class="flex">
+				<component
+					:is="animated ? 'button' : 'div'"
+					:type="animated ? 'button' : undefined"
+					class="map-chip w-full"
+					:data-active="animated && i === currentBeat"
+					:aria-current="animated && i === currentBeat ? 'step' : undefined"
+					@click="animated && jumpTo(i)"
+				>
+					<span class="flex items-center gap-2">
+						<span class="font-mono text-2xs text-text-tertiary tabular-nums">0{{ i + 1 }}</span>
+						<span class="text-caption font-medium text-text-primary">{{ t(beat.labelKey) }}</span>
+					</span>
+					<span class="block text-2xs text-text-tertiary leading-[1.5] mt-1">
+						{{ t(beat.captionKey) }}
+					</span>
+				</component>
+			</li>
+		</ol>
 	</div>
 </template>
 
@@ -317,13 +331,16 @@ onUnmounted(() => {
 	border-radius: 12px;
 	background: transparent;
 	padding: 0.625rem 0.875rem;
-	cursor: pointer;
 	transition:
 		border-color var(--motion-fast) var(--ease-spring),
 		background-color var(--motion-fast) var(--ease-spring);
 }
 
-.map-chip:hover {
+button.map-chip {
+	cursor: pointer;
+}
+
+button.map-chip:hover {
 	border-color: var(--color-border-default);
 }
 

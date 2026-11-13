@@ -172,73 +172,87 @@ const providerLabel = (kind: string | undefined) => {
 					</div>
 				</div>
 
-				<section data-testid="ai-embedding-coverage">
-					<div class="flex items-center justify-between gap-3">
-						<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.coverage.title`) }}</h3>
-						<UiButton
-							type="button"
-							variant="ghost"
-							size="sm"
-							:disabled="spaces.isBusy.value"
-							@click="spaces.refresh"
-						>
-							{{ t(`${K}.coverage.refresh`) }}
-						</UiButton>
-					</div>
-					<p v-if="!status.coverage" class="mt-1 text-xs text-text-tertiary">
-						{{ t(`${K}.coverage.none`) }}
-					</p>
-					<template v-else>
-						<p class="mt-1 text-xs text-text-tertiary">
-							{{
-								status.coverage.isCurrent
-									? t(`${K}.coverage.measuredAt`, {
-											date: formatDateTime(status.coverage.measuredAt),
-										})
-									: t(`${K}.coverage.stale`)
-							}}
-						</p>
-						<div class="mt-3 overflow-x-auto">
-							<table class="w-full text-sm">
-								<thead>
-									<tr class="text-left text-xs text-text-tertiary">
-										<th class="py-1 pr-4 font-normal">
-											<span class="sr-only">{{ t(`${K}.coverage.table`) }}</span>
-										</th>
-										<th
-											v-for="column in COUNT_COLUMNS"
-											:key="column"
-											scope="col"
-											class="py-1 pr-4 font-normal"
-										>
-											{{ t(`${K}.coverage.columns.${column}`) }}
-										</th>
-									</tr>
-								</thead>
-								<tbody>
-									<tr
-										v-for="row in rows"
-										:key="row.table"
-										class="border-t border-border-subtle"
-										:data-testid="`ai-embedding-coverage-${row.table}`"
-									>
-										<th scope="row" class="py-2 pr-4 text-left font-medium text-text-primary">
-											{{ t(`${K}.coverage.tables.${row.table}`) }}
-										</th>
-										<td
-											v-for="column in COUNT_COLUMNS"
-											:key="column"
-											class="py-2 pr-4 tabular-nums text-text-secondary"
-										>
-											{{ formatNumber(row.counts[column]) }}
-										</td>
-									</tr>
-								</tbody>
-							</table>
+				<!--
+					The verdict above and the re-embed below are what an operator acts
+					on; coverage and the attestation/rebuild tools are the "why" and the
+					rarely needed, so they sit one click away while search is healthy
+					and open by themselves when it is not. Native <details>: the content
+					stays in the document, so its controls keep their state when closed.
+				-->
+				<details
+					class="rounded-lg border border-border-subtle p-3"
+					:open="searchState !== 'searchable'"
+				>
+					<summary class="cursor-pointer text-sm font-medium text-text-primary">
+						{{ t(`${K}.coverage.title`) }}
+					</summary>
+					<section data-testid="ai-embedding-coverage" class="mt-3">
+						<div class="flex items-center justify-end gap-3">
+							<UiButton
+								type="button"
+								variant="ghost"
+								size="sm"
+								:disabled="spaces.isBusy.value"
+								@click="spaces.refresh"
+							>
+								{{ t(`${K}.coverage.refresh`) }}
+							</UiButton>
 						</div>
-						<p class="mt-2 text-xs text-text-tertiary">{{ t(`${K}.coverage.legend`) }}</p>
-					</template>
-				</section>
+						<p v-if="!status.coverage" class="mt-1 text-xs text-text-tertiary">
+							{{ t(`${K}.coverage.none`) }}
+						</p>
+						<template v-else>
+							<p class="mt-1 text-xs text-text-tertiary">
+								{{
+									status.coverage.isCurrent
+										? t(`${K}.coverage.measuredAt`, {
+												date: formatDateTime(status.coverage.measuredAt),
+											})
+										: t(`${K}.coverage.stale`)
+								}}
+							</p>
+							<div class="mt-3 overflow-x-auto">
+								<table class="w-full text-sm">
+									<thead>
+										<tr class="text-left text-xs text-text-tertiary">
+											<th class="py-1 pr-4 font-normal">
+												<span class="sr-only">{{ t(`${K}.coverage.table`) }}</span>
+											</th>
+											<th
+												v-for="column in COUNT_COLUMNS"
+												:key="column"
+												scope="col"
+												class="py-1 pr-4 font-normal"
+											>
+												{{ t(`${K}.coverage.columns.${column}`) }}
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr
+											v-for="row in rows"
+											:key="row.table"
+											class="border-t border-border-subtle"
+											:data-testid="`ai-embedding-coverage-${row.table}`"
+										>
+											<th scope="row" class="py-2 pr-4 text-left font-medium text-text-primary">
+												{{ t(`${K}.coverage.tables.${row.table}`) }}
+											</th>
+											<td
+												v-for="column in COUNT_COLUMNS"
+												:key="column"
+												class="py-2 pr-4 tabular-nums text-text-secondary"
+											>
+												{{ formatNumber(row.counts[column]) }}
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+							<p class="mt-2 text-xs text-text-tertiary">{{ t(`${K}.coverage.legend`) }}</p>
+						</template>
+					</section>
+				</details>
 
 				<section data-testid="ai-embedding-reembed">
 					<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.reembed.title`) }}</h3>
@@ -347,13 +361,23 @@ const providerLabel = (kind: string | undefined) => {
 					</p>
 				</section>
 
-				<SettingsAiEmbeddingAttestation
-					v-if="isAttestationOffered(status) || status.attestations.length > 0"
-					:spaces="spaces"
-					:status="status"
-				/>
+				<details
+					class="rounded-lg border border-border-subtle p-3"
+					:open="searchState !== 'searchable'"
+				>
+					<summary class="cursor-pointer text-sm font-medium text-text-primary">
+						{{ t(`${K}.advancedTitle`) }}
+					</summary>
+					<div class="mt-3 space-y-6">
+						<SettingsAiEmbeddingAttestation
+							v-if="isAttestationOffered(status) || status.attestations.length > 0"
+							:spaces="spaces"
+							:status="status"
+						/>
 
-				<SettingsAiEmbeddingRebuild :spaces="spaces" :status="status" />
+						<SettingsAiEmbeddingRebuild :spaces="spaces" :status="status" />
+					</div>
+				</details>
 			</div>
 		</UiQueryBoundary>
 

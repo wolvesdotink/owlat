@@ -57,6 +57,27 @@ const {
 
 const center = computed<DeliverabilityCenter | null>(() => centerData.value ?? null);
 const counts = computed(() => countDeliverabilityItems(center.value?.groups ?? []));
+
+// The verdict sentence is worded here from the grade, not taken from the
+// server's `summary`, which is English-only copy.
+const summaryText = computed(() => {
+	const c = center.value;
+	if (!c) return '';
+	if (c.grade === 'at_risk') return t('dashboard.admin.delivery.deliverability.summary.atRisk');
+	if (c.grade === 'needs_attention')
+		return t('dashboard.admin.delivery.deliverability.summary.needsAttention');
+	const recommended =
+		c.groups
+			.find((group) => group.key === 'recommended')
+			?.items.filter((item) => item.status !== 'pass').length ?? 0;
+	return recommended === 0
+		? t('dashboard.admin.delivery.deliverability.summary.ready')
+		: t(
+				'dashboard.admin.delivery.deliverability.summary.readyWithRecommended',
+				{ count: recommended },
+				recommended
+			);
+});
 const grade = computed(() =>
 	center.value ? DELIVERABILITY_GRADE_PRESENTATION[center.value.grade] : null
 );
@@ -215,11 +236,12 @@ async function copyReport() {
 			<template #loading>
 				<div
 					class="space-y-5"
+					role="status"
 					:aria-label="t('dashboard.admin.delivery.deliverability.loadingChecks')"
 				>
-					<div class="h-32 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
-					<div class="h-80 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
-					<div class="h-48 animate-pulse motion-reduce:animate-none rounded-xl bg-bg-surface" />
+					<UiSkeleton class="h-32 w-full rounded-(--radius-card)" />
+					<UiSkeleton class="h-80 w-full rounded-(--radius-card)" />
+					<UiSkeleton class="h-48 w-full rounded-(--radius-card)" />
 				</div>
 			</template>
 			<template #empty>
@@ -263,7 +285,7 @@ async function copyReport() {
 									id="deliverability-grade-heading"
 									class="mt-1 text-xl font-semibold text-text-primary"
 								>
-									{{ center.summary }}
+									{{ summaryText }}
 								</h2>
 								<p class="mt-1 text-xs text-text-tertiary">
 									{{

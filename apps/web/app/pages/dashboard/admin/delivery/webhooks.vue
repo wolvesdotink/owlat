@@ -181,7 +181,13 @@ async function handleGuardSave() {
 			:description="t('dashboard.admin.delivery.webhooks.lede')"
 		>
 			<template #actions>
-				<UiButton class="gap-2" @click="openCreateModal">
+				<!-- While the list is empty its empty state carries the primary create
+				     button, so this one steps down rather than showing two. -->
+				<UiButton
+					:variant="webhooks && webhooks.length === 0 ? 'secondary' : 'primary'"
+					class="gap-2"
+					@click="openCreateModal"
+				>
 					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.webhooks.create') }}
 				</UiButton>

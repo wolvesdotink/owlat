@@ -95,102 +95,107 @@ function pickDay(key: string) {
 </script>
 
 <template>
-	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_14rem]" data-testid="booking-slot-picker">
-		<div>
-			<div class="mb-3 flex items-center justify-between gap-2">
-				<h3 class="text-base font-semibold capitalize text-text-primary">{{ monthLabel }}</h3>
-				<div class="flex items-center gap-1">
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:disabled="!canGoBack || loading"
-						:aria-label="t('components.booking.slotPicker.previousMonth')"
-						@click="shift(-1)"
-					>
-						<ChevronLeftIcon class="h-4 w-4" />
-					</UiButton>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:disabled="!canGoForward || loading"
-						:aria-label="t('components.booking.slotPicker.nextMonth')"
-						@click="shift(1)"
-					>
-						<ChevronRightIcon class="h-4 w-4" />
-					</UiButton>
+	<!-- The calendar and the times sit side by side only when this picker itself
+	     has room (a container query): the booking page puts it next to a 16rem
+	     host column, so a viewport breakpoint would squeeze the calendar. -->
+	<div class="@container" data-testid="booking-slot-picker">
+		<div class="grid gap-6 @2xl:grid-cols-[minmax(0,1fr)_14rem]">
+			<div>
+				<div class="mb-3 flex items-center justify-between gap-2">
+					<h3 class="text-base font-semibold capitalize text-text-primary">{{ monthLabel }}</h3>
+					<div class="flex items-center gap-1">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							:disabled="!canGoBack || loading"
+							:aria-label="t('components.booking.slotPicker.previousMonth')"
+							@click="shift(-1)"
+						>
+							<ChevronLeftIcon class="h-4 w-4" aria-hidden="true" />
+						</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							:disabled="!canGoForward || loading"
+							:aria-label="t('components.booking.slotPicker.nextMonth')"
+							@click="shift(1)"
+						>
+							<ChevronRightIcon class="h-4 w-4" aria-hidden="true" />
+						</UiButton>
+					</div>
 				</div>
-			</div>
-			<div class="grid grid-cols-7 gap-1 text-center" :aria-busy="loading">
-				<div
-					v-for="label in weekdayLabels"
-					:key="label"
-					aria-hidden="true"
-					class="pb-1 text-xs font-medium text-text-tertiary"
-				>
-					{{ label }}
-				</div>
-				<template v-for="week in weeks" :key="week[0]!.key">
-					<button
-						v-for="cell in week"
-						:key="cell.key"
-						type="button"
-						class="aspect-square rounded-lg text-sm transition-colors disabled:cursor-default"
-						:class="[
-							!cell.inMonth
-								? 'invisible'
-								: days.has(cell.key)
-									? selectedDay === cell.key
-										? 'bg-brand text-text-inverse font-semibold'
-										: 'bg-brand-subtle text-brand font-semibold hover:bg-brand/20'
-									: 'text-text-tertiary',
-						]"
-						:disabled="!cell.inMonth || !days.has(cell.key)"
-						:aria-pressed="selectedDay === cell.key"
-						:aria-label="formatDayKey(cell.key, locale)"
-						@click="pickDay(cell.key)"
+				<div class="grid grid-cols-7 gap-1 text-center" :aria-busy="loading">
+					<div
+						v-for="label in weekdayLabels"
+						:key="label"
+						aria-hidden="true"
+						class="pb-1 text-xs font-medium text-text-tertiary"
 					>
-						{{ cell.day }}
-					</button>
-				</template>
+						{{ label }}
+					</div>
+					<template v-for="week in weeks" :key="week[0]!.key">
+						<button
+							v-for="cell in week"
+							:key="cell.key"
+							type="button"
+							class="aspect-square rounded-lg text-sm transition-colors disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1"
+							:class="[
+								!cell.inMonth
+									? 'invisible'
+									: days.has(cell.key)
+										? selectedDay === cell.key
+											? 'bg-brand text-text-inverse font-semibold'
+											: 'bg-brand-subtle text-brand font-semibold hover:bg-brand/20'
+										: 'text-text-tertiary',
+							]"
+							:disabled="!cell.inMonth || !days.has(cell.key)"
+							:aria-pressed="selectedDay === cell.key"
+							:aria-label="formatDayKey(cell.key, locale)"
+							@click="pickDay(cell.key)"
+						>
+							{{ cell.day }}
+						</button>
+					</template>
+				</div>
+				<label class="mt-4 block text-sm">
+					<span class="mb-1 block text-text-secondary">{{
+						t('components.booking.slotPicker.timeZone')
+					}}</span>
+					<select v-model="timeZone" class="input w-full" data-testid="booking-time-zone">
+						<option v-for="zone in zones" :key="zone" :value="zone">{{ zone }}</option>
+					</select>
+				</label>
 			</div>
-			<label class="mt-4 block text-sm">
-				<span class="mb-1 block text-text-secondary">{{
-					t('components.booking.slotPicker.timeZone')
-				}}</span>
-				<select v-model="timeZone" class="input w-full" data-testid="booking-time-zone">
-					<option v-for="zone in zones" :key="zone" :value="zone">{{ zone }}</option>
-				</select>
-			</label>
-		</div>
 
-		<div>
-			<p v-if="selectedDay" class="mb-3 text-sm font-medium text-text-primary">
-				{{ formatDayKey(selectedDay, locale) }}
-			</p>
-			<div v-if="loading" class="space-y-2" role="status" :aria-label="t('common.loading')">
-				<UiSkeleton v-for="n in 5" :key="n" class="h-10 rounded-lg" />
+			<div>
+				<p v-if="selectedDay" class="mb-3 text-sm font-medium text-text-primary">
+					{{ formatDayKey(selectedDay, locale) }}
+				</p>
+				<div v-if="loading" class="space-y-2" role="status" :aria-label="t('common.loading')">
+					<UiSkeleton v-for="n in 5" :key="n" class="h-10 rounded-lg" />
+				</div>
+				<p v-else-if="dayTimes.length === 0" class="text-sm text-text-tertiary">
+					{{ t('components.booking.slotPicker.noTimes') }}
+				</p>
+				<ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-1">
+					<li v-for="slot in dayTimes" :key="slot">
+						<button
+							type="button"
+							class="w-full rounded-lg border px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:class="
+								selected === slot
+									? 'border-brand bg-brand text-text-inverse'
+									: 'border-border-subtle text-brand hover:border-brand'
+							"
+							:aria-pressed="selected === slot"
+							data-testid="booking-slot"
+							@click="selected = slot"
+						>
+							{{ formatSlotTime(slot, locale, timeZone) }}
+						</button>
+					</li>
+				</ul>
 			</div>
-			<p v-else-if="dayTimes.length === 0" class="text-sm text-text-tertiary">
-				{{ t('components.booking.slotPicker.noTimes') }}
-			</p>
-			<ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-1">
-				<li v-for="slot in dayTimes" :key="slot">
-					<button
-						type="button"
-						class="w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors"
-						:class="
-							selected === slot
-								? 'border-brand bg-brand text-text-inverse'
-								: 'border-border-subtle text-brand hover:border-brand'
-						"
-						:aria-pressed="selected === slot"
-						data-testid="booking-slot"
-						@click="selected = slot"
-					>
-						{{ formatSlotTime(slot, locale, timeZone) }}
-					</button>
-				</li>
-			</ul>
 		</div>
 	</div>
 </template>

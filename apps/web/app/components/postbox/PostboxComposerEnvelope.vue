@@ -144,6 +144,8 @@ function onFromChange(event: Event) {
 	emit('from-change', target.value);
 }
 
+// Composers stack (minimized, floating), so the subject's id must be unique per instance.
+const subjectId = useId();
 const showCc = ref(ccAddresses.value.length > 0);
 const showBcc = ref(bccAddresses.value.length > 0);
 
@@ -211,9 +213,9 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 <template>
 	<div class="flex flex-col gap-1 p-3 border-b border-border-subtle text-sm">
 		<div class="flex items-center gap-2">
-			<label class="text-text-tertiary w-12">{{
+			<span class="text-text-tertiary w-12">{{
 				t('components.postbox.postboxComposerEnvelope.from')
-			}}</label>
+			}}</span>
 			<InboxChip
 				v-if="fromInbox"
 				:name="fromInbox.name"
@@ -309,7 +311,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				<button
 					v-if="!showCc"
 					type="button"
-					class="text-text-tertiary hover:text-text-primary"
+					class="text-text-tertiary hover:text-text-primary pointer-coarse:min-h-11 pointer-coarse:px-2"
 					@click="showCc = true"
 				>
 					{{ t('components.postbox.postboxComposerEnvelope.cc') }}
@@ -317,7 +319,7 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 				<button
 					v-if="!showBcc"
 					type="button"
-					class="text-text-tertiary hover:text-text-primary"
+					class="text-text-tertiary hover:text-text-primary pointer-coarse:min-h-11 pointer-coarse:px-2"
 					@click="showBcc = true"
 				>
 					{{ t('components.postbox.postboxComposerEnvelope.bcc') }}
@@ -377,10 +379,16 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 		     dialogs, mounted with the fields they are about. -->
 		<PostboxComposerGuards :guards="guards" />
 		<div class="flex items-baseline gap-2">
-			<label for="subject" class="text-text-tertiary w-12">{{
+			<label :for="subjectId" class="text-text-tertiary w-12">{{
 				t('components.postbox.postboxComposerEnvelope.subject')
 			}}</label>
-			<input id="subject" v-model="subject" type="text" class="input-bare flex-1 font-medium" />
+			<input
+				:id="subjectId"
+				v-model="subject"
+				type="text"
+				class="input-bare flex-1 font-medium"
+				:placeholder="t('components.postbox.postboxComposerEnvelope.subjectPlaceholder')"
+			/>
 		</div>
 	</div>
 </template>

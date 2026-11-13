@@ -29,11 +29,11 @@ function remove(index: number) {
 <template>
 	<div>
 		<p class="label">{{ t('dashboard.admin.instance.brandKit.colors.swatches') }}</p>
-		<ul class="flex flex-wrap gap-2" data-testid="brand-kit-swatches">
+		<ul class="flex flex-wrap items-center gap-2" data-testid="brand-kit-swatches">
 			<li
 				v-for="(color, index) in swatches"
 				:key="index"
-				class="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-surface p-1 pr-1.5"
+				class="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-surface p-1 pr-1.5 focus-within:ring-1 focus-within:ring-brand"
 			>
 				<input
 					:value="isBrandHexColor(color) ? color : '#000000'"
@@ -55,7 +55,7 @@ function remove(index: number) {
 				/>
 				<button
 					type="button"
-					class="flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover"
+					class="flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:size-11"
 					:aria-label="t('dashboard.admin.instance.brandKit.colors.removeSwatch', { color })"
 					:disabled="disabled"
 					@click="remove(index)"
@@ -69,7 +69,6 @@ function remove(index: number) {
 					size="sm"
 					type="button"
 					:disabled="disabled || !canAdd"
-					class="h-[38px]"
 					@click="add"
 				>
 					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>

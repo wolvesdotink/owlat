@@ -24,7 +24,7 @@ withDefaults(
 			alignItems: 'center',
 			justifyContent: 'center',
 			background: '#fafafa',
-			fontFamily: 'Outfit',
+			fontFamily: 'Figtree',
 		}"
 	>
 		<!-- Owl logo -->
@@ -95,7 +95,7 @@ withDefaults(
 		>
 			<div
 				:style="{
-					fontSize: '12px',
+					fontSize: '18px',
 					fontWeight: 500,
 					fontFamily: 'JetBrains Mono',
 					color: '#666666',
@@ -105,10 +105,10 @@ withDefaults(
 			>
 				owlat.app
 			</div>
-			<div :style="{ width: '1px', height: '14px', backgroundColor: '#e4e4e4' }" />
+			<div :style="{ width: '1px', height: '20px', backgroundColor: '#e4e4e4' }" />
 			<div
 				:style="{
-					fontSize: '12px',
+					fontSize: '18px',
 					fontWeight: 500,
 					fontFamily: 'JetBrains Mono',
 					color: '#666666',

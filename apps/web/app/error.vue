@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NuxtError } from "#app";
+import type { NuxtError } from '#app';
 
 const props = defineProps<{
 	error: NuxtError;
@@ -12,25 +12,25 @@ const { t } = useI18n();
 useHead({
 	title: () =>
 		props.error.statusCode === 404
-			? t("shell.error.pageTitleNotFound")
-			: t("shell.error.pageTitleGeneric"),
+			? t('shell.error.pageTitleNotFound')
+			: t('shell.error.pageTitleGeneric'),
 });
 
 const handleGoBack = () => {
-	clearError({ redirect: "/" });
+	clearError({ redirect: '/' });
 };
 
 const statusMessage = computed(() => {
 	switch (props.error.statusCode) {
 		case 404:
-			return t("shell.error.notFound");
+			return t('shell.error.notFound');
 		case 500:
-			return t("shell.error.serverError");
+			return t('shell.error.serverError');
 		case 403:
-			return t("shell.error.forbidden");
+			return t('shell.error.forbidden');
 		default:
 			// The thrown message is whatever raised the error — never a catalog key.
-			return props.error.message || t("shell.error.unexpected");
+			return props.error.message || t('shell.error.unexpected');
 	}
 });
 </script>
@@ -46,15 +46,15 @@ const statusMessage = computed(() => {
 			<h1 class="text-2xl font-medium tracking-tight text-text-primary mb-3">
 				{{
 					error.statusCode === 404
-						? t("shell.error.headingNotFound")
-						: t("shell.error.headingGeneric")
+						? t('shell.error.headingNotFound')
+						: t('shell.error.headingGeneric')
 				}}
 			</h1>
 			<p class="text-text-secondary mb-8 max-w-md">
 				{{ statusMessage }}
 			</p>
 			<div class="flex gap-4">
-				<UiButton class="px-6 py-2.5" @click="handleGoBack">{{ t("shell.error.goHome") }}</UiButton>
+				<UiButton size="lg" @click="handleGoBack">{{ t('shell.error.goHome') }}</UiButton>
 			</div>
 		</main>
 	</div>

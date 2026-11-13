@@ -127,7 +127,7 @@ function mountStep(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 const pencils = (wrapper: ReturnType<typeof mountStep>) =>
-	wrapper.findAll('button').filter((b) => b.attributes('aria-label') === 'Edit');
+	wrapper.findAll('button').filter((b) => b.attributes('aria-label')?.startsWith('Edit '));
 
 describe('ReviewStep summary', () => {
 	it('shows what the earlier steps set, and each pencil goes back to its step', async () => {
@@ -145,7 +145,13 @@ describe('ReviewStep summary', () => {
 		}
 
 		const buttons = pencils(wrapper);
-		expect(buttons).toHaveLength(4);
+		// Each pencil says which row it edits, not five identical "Edit"s.
+		expect(buttons.map((b) => b.attributes('aria-label'))).toEqual([
+			'Edit campaign name',
+			'Edit sender',
+			'Edit audience',
+			'Edit email content',
+		]);
 		for (const button of buttons) await button.trigger('click');
 		expect(wrapper.emitted('editStep')).toEqual([['setup'], ['setup'], ['setup'], ['content']]);
 	});

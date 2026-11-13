@@ -6,7 +6,7 @@ import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spf
 import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
-import type { DmarcPolicy } from '~/utils/domainStatus';
+import { dmarcChangeToastKey, type DmarcPolicy } from '~/utils/domainStatus';
 import { GlobeIcon, MailPlusIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -222,16 +222,29 @@ const dmarcPolicyOptions = computed<{ value: DmarcPolicy; label: string; hint: s
 ]);
 const updatingDmarcDomainId = ref<Id<'domains'> | null>(null);
 
-const handleDmarcPolicyChange = async (domainId: Id<'domains'>, policy: DmarcPolicy) => {
+// The toast names the policy by the label the picker showed, not the raw enum.
+function dmarcChangedToast(previous: DmarcPolicy, policy: DmarcPolicy): string {
+	const label = dmarcPolicyOptions.value.find((option) => option.value === policy)?.label ?? policy;
+	switch (dmarcChangeToastKey(previous, policy)) {
+		case 'dmarcMonitorOnly':
+			return t('dashboard.admin.delivery.domains.toasts.dmarcMonitorOnly');
+		case 'dmarcLowered':
+			return t('dashboard.admin.delivery.domains.toasts.dmarcLowered', { policy: label });
+		case 'dmarcRaised':
+			return t('dashboard.admin.delivery.domains.toasts.dmarcRaised', { policy: label });
+	}
+}
+
+const handleDmarcPolicyChange = async (
+	domainId: Id<'domains'>,
+	policy: DmarcPolicy,
+	previous: DmarcPolicy
+) => {
 	updatingDmarcDomainId.value = domainId;
 	try {
 		const result = await setDmarcPolicy({ domainId, policy });
 		if (!result.ok) return; // run() already surfaced the failure
-		showToast(
-			policy === 'none'
-				? t('dashboard.admin.delivery.domains.toasts.dmarcMonitorOnly')
-				: t('dashboard.admin.delivery.domains.toasts.dmarcRaised', { policy })
-		);
+		showToast(dmarcChangedToast(previous, policy));
 	} finally {
 		updatingDmarcDomainId.value = null;
 	}
@@ -428,7 +441,9 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 					@verify="handleVerifyDomain(domain._id)"
 					@retry-registration="handleRetryRegistration(domain._id)"
 					@delete="deleteModal.open(domain)"
-					@dmarc-change="(policy) => handleDmarcPolicyChange(domain._id, policy)"
+					@dmarc-change="
+						(policy) => handleDmarcPolicyChange(domain._id, policy, domain.dmarcPolicy ?? 'none')
+					"
 				/>
 			</div>
 

@@ -22,9 +22,11 @@ const LIST_USERS = getFunctionName(api.platformAdmin.queries.listAllUsers);
 const ada = { authUserId: 'user_ada', email: 'ada@owlat.example', name: 'Ada' };
 const lin = { authUserId: 'user_lin', email: 'lin@owlat.example', name: 'Lin' };
 const users = ref([ada]);
+const run = vi.fn();
 
 beforeEach(() => {
 	users.value = [ada];
+	run.mockReset();
 	installNuxtStubs({
 		...i18nStubs,
 		useToast: () => ({ showToast: vi.fn() }),
@@ -43,7 +45,7 @@ beforeEach(() => {
 			if (name === LIST_USERS) return { ...queryResult(undefined), data: users };
 			return queryResult(undefined);
 		},
-		useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false), error: ref(null) }),
+		useBackendOperation: () => ({ run, isLoading: ref(false), error: ref(null) }),
 	});
 });
 
@@ -61,6 +63,13 @@ async function mountAdminsTab() {
 				UiEmptyState: true,
 				UiSelect: true,
 				UiTextarea: true,
+				UiConfirmationDialog: {
+					name: 'UiConfirmationDialog',
+					props: ['open', 'description'],
+					emits: ['confirm'],
+					template:
+						'<div v-if="open" data-testid="confirm"><p>{{ description }}</p><button data-testid="confirm-yes" @click="$emit(\'confirm\')" /></div>',
+				},
 				UiModal: {
 					name: 'UiModal',
 					props: ['open'],
@@ -105,6 +114,24 @@ describe('operator console Add admin', () => {
 
 		await button.trigger('click');
 		expect(wrapper.find('[data-testid="modal"]').exists()).toBe(true);
+		wrapper.unmount();
+	});
+});
+
+describe('operator console Remove admin', () => {
+	it('asks first, naming the account, and removes only on confirm', async () => {
+		run.mockResolvedValue({ ok: true });
+		const wrapper = await mountAdminsTab();
+		const remove = wrapper.findAll('button').find((b) => b.text() === 'Remove')!;
+
+		await remove.trigger('click');
+		expect(run).not.toHaveBeenCalled();
+		expect(wrapper.get('[data-testid="confirm"]').text()).toContain(ada.email);
+
+		await wrapper.get('[data-testid="confirm-yes"]').trigger('click');
+		await flushPromises();
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(wrapper.find('[data-testid="confirm"]').exists()).toBe(false);
 		wrapper.unmount();
 	});
 });

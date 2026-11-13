@@ -11,7 +11,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { usePostboxHostedVirtualList } from '~/composables/postbox/usePostboxHostedVirtualList';
 import { POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
-import { PencilIcon, SearchIcon, TrashIcon, UserPlusCornerIcon, UsersIcon } from '@coolicons/vue';
+import {
+	PaperPlaneIcon,
+	PencilIcon,
+	SearchIcon,
+	TrashIcon,
+	UserPlusCornerIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
@@ -203,6 +210,7 @@ function sourceOf(c: MailContact): ContactSource {
 				v-model="search"
 				type="text"
 				:placeholder="t('dashboard.postbox.contacts.searchPlaceholder')"
+				:aria-label="t('dashboard.postbox.contacts.searchPlaceholder')"
 				class="input w-full pl-9"
 			/>
 		</div>
@@ -278,20 +286,22 @@ function sourceOf(c: MailContact): ContactSource {
 					>
 						{{ t('dashboard.postbox.contacts.resumeCardDav') }}
 					</UiButton>
-					<!-- Row actions stay reachable for keyboard and touch users: they
-					     only fade in on hover, never leave the tab order. -->
+					<!-- Row actions fade in on hover for a mouse and never leave the tab
+					     order. A touch screen never hovers, so there they stay shown. -->
 					<div
-						class="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+						class="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100"
 					>
 						<UiTooltip :text="t('dashboard.postbox.contacts.compose')">
 							<UiButton
 								variant="ghost"
 								size="sm"
 								type="button"
-								:aria-label="t('dashboard.postbox.contacts.composeAria')"
+								:aria-label="
+									t('dashboard.postbox.contacts.composeAria', { name: c.displayName || c.email })
+								"
 								@click="composeTo(c.email)"
 							>
-								<PencilIcon class="w-4 h-4" />
+								<PaperPlaneIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('common.edit')">
@@ -299,7 +309,9 @@ function sourceOf(c: MailContact): ContactSource {
 								variant="ghost"
 								size="sm"
 								type="button"
-								:aria-label="t('dashboard.postbox.contacts.editAria')"
+								:aria-label="
+									t('dashboard.postbox.contacts.editAria', { name: c.displayName || c.email })
+								"
 								@click="openEdit(c)"
 							>
 								<PencilIcon class="w-4 h-4" />
@@ -310,7 +322,9 @@ function sourceOf(c: MailContact): ContactSource {
 								variant="danger-ghost"
 								size="sm"
 								type="button"
-								:aria-label="t('dashboard.postbox.contacts.removeAria')"
+								:aria-label="
+									t('dashboard.postbox.contacts.removeAria', { name: c.displayName || c.email })
+								"
 								@click="removeContact(c)"
 							>
 								<TrashIcon class="w-4 h-4" />

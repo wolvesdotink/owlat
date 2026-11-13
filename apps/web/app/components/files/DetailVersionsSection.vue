@@ -15,16 +15,20 @@ defineProps<{
 const { t } = useI18n();
 
 const showVersions = ref(true);
+const panelId = useId();
 </script>
 
 <template>
-	<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)">
+	<div class="bg-surface-2 shadow-surface-1 rounded-(--radius-card)">
 		<button
-			class="w-full flex items-center justify-between px-5 py-4"
+			type="button"
+			class="w-full flex items-center justify-between px-5 py-4 rounded-(--radius-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+			:aria-expanded="showVersions"
+			:aria-controls="panelId"
 			@click="showVersions = !showVersions"
 		>
 			<div class="flex items-center gap-2">
-				<HistoryIcon class="w-4 h-4 text-text-tertiary" />
+				<HistoryIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
 				<span class="text-sm font-medium text-text-primary">{{
 					t('dashboard.files.detail.versionHistory')
 				}}</span>
@@ -35,11 +39,20 @@ const showVersions = ref(true);
 			<ChevronDownIcon
 				class="w-4 h-4 text-text-tertiary transition-transform"
 				:class="{ '-rotate-180': showVersions }"
+				aria-hidden="true"
 			/>
 		</button>
-		<div v-if="showVersions" class="px-5 pb-4">
+		<div v-if="showVersions" :id="panelId" class="px-5 pb-4">
+			<!-- The first page has not landed yet: not the same as "no versions". -->
+			<div v-if="history.versions.value === undefined" aria-busy="true">
+				<p role="status" class="sr-only">{{ t('common.loading') }}</p>
+				<div class="space-y-2" aria-hidden="true">
+					<UiSkeleton v-for="row in 2" :key="row" class="h-10 w-full" />
+				</div>
+			</div>
 			<FilesVersionHistory
-				:versions="history.versions.value || []"
+				v-else
+				:versions="history.versions.value"
 				:current-version-id="currentVersionId"
 				:has-older="history.hasOlder.value"
 				:older-unavailable="history.olderUnavailable.value"

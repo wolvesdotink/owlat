@@ -3,16 +3,22 @@
  * c3b). Verifies the block renders correctly per test state: in-progress, a
  * manual test awaiting a pick, and a decided winner.
  */
-import { beforeAll, describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 
 import CampaignAbComparison from '../CampaignAbComparison.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
+const confirm = vi.fn();
+
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, { useI18n: i18nStubs.useI18n, useConfirm: () => confirm });
+});
+
+beforeEach(() => {
+	confirm.mockReset().mockResolvedValue(true);
 });
 
 type AbStats = NonNullable<FunctionReturnType<typeof api.campaigns.abTest.getABTestStats>>;
@@ -79,7 +85,24 @@ describe('CampaignAbComparison', () => {
 			variantB: variant(45, 9),
 		});
 		await wrapper.findAll(pickSel)[1]!.trigger('click');
+		await flushPromises();
+		expect(confirm).toHaveBeenCalledTimes(1);
 		expect(wrapper.emitted('select-winner')!.at(-1)).toEqual(['B']);
+	});
+
+	it('picks no winner when the confirmation is declined', async () => {
+		confirm.mockResolvedValue(false);
+		const wrapper = mountBlock({
+			status: 'testing',
+			winner: undefined,
+			winnerSelectedAt: undefined,
+			config: { testType: 'content', winnerCriteria: 'manual' },
+			variantA: variant(40, 8),
+			variantB: variant(45, 9),
+		});
+		await wrapper.findAll(pickSel)[0]!.trigger('click');
+		await flushPromises();
+		expect(wrapper.emitted('select-winner')).toBeUndefined();
 	});
 
 	it('renders the winner state with the deciding-metric margin and no picker', () => {

@@ -6,7 +6,7 @@
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 
 const {
 	data: history,
@@ -15,6 +15,12 @@ const {
 } = useConvexQuery(api.maintenance.updates.listUpdateHistory, () => ({
 	limit: 20,
 }));
+
+/** The words for a run's verdict; an unknown status falls back to the raw value. */
+function statusLabel(status: string | undefined): string {
+	const key = `dashboard.admin.system.index.history.status.${status}`;
+	return te(key) ? t(key) : (status ?? '');
+}
 
 function formatDuration(start?: number, end?: number) {
 	if (!start || !end) return '—';
@@ -29,14 +35,19 @@ function formatDuration(start?: number, end?: number) {
 
 <template>
 	<div class="card">
-		<h3 class="font-semibold text-text-primary mb-4">
+		<h2 class="font-semibold text-text-primary mb-4">
 			{{ t('dashboard.admin.system.index.history.title') }}
-		</h3>
+		</h2>
 
 		<!-- A failed read is not an empty history: show the error. -->
 		<UiQueryBoundary v-if="historyError" :error="historyError" @retry="refetchHistory" />
 
-		<div v-else-if="!history || history.length === 0" class="text-caption text-text-tertiary">
+		<!-- Not answered yet is not "no updates": hold the line until it is. -->
+		<p v-else-if="history === undefined" role="status" class="text-caption text-text-tertiary">
+			{{ t('common.loading') }}
+		</p>
+
+		<div v-else-if="history.length === 0" class="text-caption text-text-tertiary">
 			{{ t('dashboard.admin.system.index.history.empty') }}
 		</div>
 
@@ -91,7 +102,7 @@ function formatDuration(start?: number, end?: number) {
 										'bg-text-tertiary': row.status === 'superseded',
 									}"
 								/>
-								{{ row.status }}
+								{{ statusLabel(row.status) }}
 							</span>
 						</td>
 					</tr>
