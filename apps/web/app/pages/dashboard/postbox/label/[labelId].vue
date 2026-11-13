@@ -188,7 +188,9 @@ usePostboxMarkReadCommands('label', mailboxId, () =>
 						</button>
 					</div>
 					<AppErrorBoundary v-if="activeMessage" surface="reader" :reset-keys="[activeMessageId]">
-						<PostboxThreadReader :key="activeMessageId ?? undefined" :message="activeMessage" />
+						<!-- Lazy: the label view opens on its list, and most visits read
+						     no message, so the reader loads with the first opened row. -->
+						<LazyPostboxThreadReader :key="activeMessageId ?? undefined" :message="activeMessage" />
 					</AppErrorBoundary>
 					<UiQueryBoundary
 						v-else-if="activeMessageId && activeMessageError"
