@@ -189,6 +189,63 @@ describe('sendToMx outcome classification', () => {
 		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1); // only the second delivered
 	});
 
+	describe('a greeting or EHLO refusal moves on to the next MX host', () => {
+		const refusal = (phase: 'greeting' | 'ehlo', replyCode: number, message: string) =>
+			smtpError({ phase, message, replyCode, secured: false });
+
+		it('delivers through the backup when the primary greets with 421', async () => {
+			connectMock
+				.mockRejectedValueOnce(refusal('greeting', 421, '421 4.3.2 Service not available'))
+				.mockResolvedValue(liveConn(true));
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(connectMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('delivers through the backup when the primary refuses EHLO with 554', async () => {
+			connectMock
+				.mockRejectedValueOnce(refusal('ehlo', 554, '554 5.7.1 Access denied'))
+				.mockResolvedValue(liveConn(true));
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(connectMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('returns the refusal when every MX host refuses', async () => {
+			connectMock.mockRejectedValue(refusal('greeting', 421, '421 4.7.0 Try again later'));
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result).toMatchObject({ success: false, bounceType: 'deferred', smtpCode: 421 });
+			expect(connectMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('prefers a temporary refusal over a permanent one from another host', async () => {
+			connectMock
+				.mockRejectedValueOnce(refusal('greeting', 554, '554 5.7.1 No service'))
+				.mockRejectedValue(refusal('greeting', 421, '421 4.3.2 Busy'));
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result).toMatchObject({ success: false, bounceType: 'deferred', smtpCode: 421 });
+		});
+
+		it('keeps a MAIL FROM deferral as the verdict without trying the next host', async () => {
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({ phase: 'mail', message: '451 4.7.1 Try later', replyCode: 451, secured: true })
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result).toMatchObject({ bounceType: 'deferred', smtpCode: 451 });
+			expect(connectMock).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	it('returns soft bounce when all MX hosts fail with connection errors', async () => {
 		connectMock.mockRejectedValue(
 			smtpError({ phase: 'connect', message: 'ECONNREFUSED', secured: false })

@@ -13,6 +13,9 @@ import {
 	deferBudgetKey,
 	MAX_DEFER_SUCCESSORS_PER_MESSAGE,
 } from '../deferBudget.js';
+import { reduce, type DispatchOutcome } from '../../dispatch/outcome.js';
+import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
+import type { AttemptCtx } from '../../dispatch/types.js';
 
 describe('defer successor budget', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -99,6 +102,45 @@ describe('defer successor budget', () => {
 		// mid-flight and an abandoned one still expires.
 		await claimDeferSuccessor(redis as never, 'msg-1');
 		expect(await redis.pttl(deferBudgetKey('msg-1'))).toBeGreaterThan(0);
+	});
+
+	it('retries a message the receiver keeps deferring across its whole lifetime', () => {
+		// The receiver answers every attempt with a generic 451. The successor
+		// carries the deferral count, so walk the ladder the reducer asks for at the
+		// shortest jitter (-15%) the handler can apply, until the message expires.
+		const outcome: DispatchOutcome = {
+			kind: 'deferred',
+			smtpCode: 451,
+			error: '451 4.3.0 Temporary local problem',
+			enhancedCode: undefined,
+			classification: classifySmtpResponse(451, '451 4.3.0 Temporary local problem', undefined),
+		};
+		const ctxAfter = (remoteDeferrals: number) =>
+			({
+				job: { messageId: 'msg-1', remoteDeferrals },
+				destination: { throttleKey: 'example.com', providerKey: 'other' },
+				ip: '192.0.2.1',
+				domain: 'example.com',
+				providerVolumePressure: 0,
+				utcDate: '2026-03-01',
+			}) as unknown as AttemptCtx;
+
+		let elapsed = 0;
+		let rungs = 0;
+		let longestWait = 0;
+		while (elapsed < GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+			const delay = reduce(outcome, ctxAfter(rungs)).defer!.delayMs;
+			longestWait = Math.max(longestWait, delay);
+			elapsed += delay * 0.85;
+			rungs++;
+		}
+
+		// Never refused as a runaway before it expires, with room left in the
+		// budget for the self-throttle rungs that share it...
+		expect(rungs).toBeLessThan(MAX_DEFER_SUCCESSORS_PER_MESSAGE / 10);
+		// ...and still retried at least hourly to the end.
+		expect(longestWait).toBeLessThanOrEqual(3_600_000);
+		expect(rungs).toBeGreaterThan(GOVERNED_MTA_MAX_MESSAGE_AGE_MS / 3_600_000);
 	});
 
 	it('allows a rung a minute for the whole message lifetime', async () => {
