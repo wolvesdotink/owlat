@@ -3,11 +3,11 @@
  *
  * The reader used to subscribe the whole thread with every body, so a
  * 200-message thread shipped 200 bodies to show the newest few. It now reads
- * the newest page (see `postboxThreadPage.ts`): the newest messages with
- * bodies, the older ones of the page as envelopes. Earlier pages load on
- * "Load earlier", or by themselves while the message the reader was opened on
- * is not among the loaded ones. An envelope's body loads once it is expanded
- * ({@link usePostboxEnvelopeBodies}).
+ * the newest page (see `postboxThreadPage.ts`): the newest messages as full
+ * rows, the older ones of the page as envelopes, none with a body. Earlier
+ * pages load on "Load earlier", or by themselves while the message the reader
+ * was opened on is not among the loaded ones. A message's body loads once it
+ * is expanded ({@link usePostboxEnvelopeBodies}).
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -107,8 +107,6 @@ export function usePostboxThreadPages(source: {
 		const page = newest.data.value;
 		return page ? [...page.envelopes, ...page.messages] : undefined;
 	});
-	/** Ids of the rows that came with their bodies. */
-	const bodyIds = computed(() => new Set((newest.data.value?.messages ?? []).map((m) => m._id)));
 
 	/** An unread message is loaded, or the unloaded part of the thread has one. */
 	const hasUnread = computed(
@@ -146,7 +144,6 @@ export function usePostboxThreadPages(source: {
 		newest,
 		rows,
 		newestRows,
-		bodyIds,
 		hasUnread,
 		hasEarlier,
 		loadingEarlier,
@@ -158,23 +155,19 @@ export function usePostboxThreadPages(source: {
 }
 
 /**
- * The rows with the bodies of expanded envelopes folded in. An envelope's body
- * loads through `getMessageInlineBody` once it is expanded, pending until it
+ * The rows with the bodies of expanded messages folded in. A body loads
+ * through `getMessageInlineBody` once its message is expanded, pending until it
  * answers (a body stored as a blob downloads from there, as for the opened
- * row). Collapsing it again releases the query.
+ * row). Collapsing it again releases the query. A row that already carries its
+ * body (the opened row a host passed in with one) needs no query.
  */
 export function usePostboxEnvelopeBodies<Row extends OpenRowMessage>(source: {
 	rows: () => readonly Row[] | undefined;
 	expanded: () => ReadonlySet<string>;
-	/** Rows that came with their bodies and need no body query. */
-	bodyIds: () => ReadonlySet<string>;
 }) {
 	const wanted = computed(() =>
 		(source.rows() ?? [])
-			.filter(
-				(row) =>
-					source.expanded().has(row._id) && !source.bodyIds().has(row._id) && !rowCarriesBody(row)
-			)
+			.filter((row) => source.expanded().has(row._id) && !rowCarriesBody(row))
 			.map((row) => row._id)
 	);
 	const bodies = useConvexQueryMap(
