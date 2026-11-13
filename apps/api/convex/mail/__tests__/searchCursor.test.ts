@@ -18,6 +18,12 @@ import {
 	mergeMailboxPages,
 	positionRows,
 } from '../mailbox/searchCursor';
+import {
+	decodeSourceCursor,
+	encodeSourceCursor,
+	resumableSource,
+	type ScanSource,
+} from '../mailbox/searchSource';
 
 function row(id: string, mailboxId: string, receivedAt: number): ScannedRow {
 	return { _id: id, mailboxId, receivedAt };
@@ -43,10 +49,24 @@ describe('encodeMultiCursor / decodeMultiCursor', () => {
 		expect(decodeMultiCursor('')).toBeNull();
 	});
 
+	it('round-trips a position on a folder index', () => {
+		const cursor = {
+			mb1: { at: 1_700, skip: 2, folderId: 'folder-sent' },
+			mb2: { at: 9, skip: 1 },
+		};
+		expect(decodeMultiCursor(encodeMultiCursor(cursor))).toEqual(cursor);
+	});
+
+	it('reads a version-1 position as a mailbox-wide walk', () => {
+		const legacy = JSON.stringify({ v: 1, p: { mb1: [1_700, 2, 'ignored'], mb2: null } });
+		expect(decodeMultiCursor(legacy)).toEqual({ mb1: { at: 1_700, skip: 2 }, mb2: null });
+	});
+
 	it('rejects garbage and foreign versions instead of misreading them', () => {
 		expect(decodeMultiCursor('not json')).toBeNull();
 		expect(decodeMultiCursor(JSON.stringify({ v: 99, p: {} }))).toBeNull();
 		expect(decodeMultiCursor(JSON.stringify({ v: 1, p: { mb1: ['nope'] } }))).toBeNull();
+		expect(decodeMultiCursor(JSON.stringify({ v: 2, p: { mb1: [1, 1, 7] } }))).toBeNull();
 	});
 });
 
@@ -248,5 +268,40 @@ describe('mergeMailboxPages', () => {
 		);
 		expect(merged.page.map((r) => r._id)).toEqual(['y']);
 		expect(merged.cursor).toEqual({ mb1: null });
+	});
+});
+
+describe('encodeSourceCursor / decodeSourceCursor', () => {
+	const folder = { folderId: 'folder-sent', afterMs: 10, beforeMs: 20 } as unknown as ScanSource;
+
+	it('leaves a mailbox-wide cursor untagged, as every cursor was before sources narrowed', () => {
+		expect(encodeSourceCursor({}, 'native')).toBe('native');
+		expect(decodeSourceCursor('native')).toEqual({ source: {}, native: 'native' });
+	});
+
+	it('round-trips the folder and bounds a cursor was minted on', () => {
+		expect(decodeSourceCursor(encodeSourceCursor(folder, 'native'))).toEqual({
+			source: folder,
+			native: 'native',
+		});
+		const bounded = { beforeMs: 20 };
+		expect(decodeSourceCursor(encodeSourceCursor(bounded, 'n'))).toEqual({
+			source: bounded,
+			native: 'n',
+		});
+	});
+
+	it('rejects a tagged cursor that does not decode', () => {
+		expect(decodeSourceCursor('src1:not json')).toBeNull();
+		expect(decodeSourceCursor('src1:{"f":1,"c":"n"}')).toBeNull();
+		expect(decodeSourceCursor('src1:{"f":"x"}')).toBeNull();
+	});
+
+	it('resumes a folder cursor only on the folder the request resolves', () => {
+		expect(resumableSource(folder, folder)).toEqual(folder);
+		const other = { ...folder, folderId: 'folder-other' } as unknown as ScanSource;
+		expect(resumableSource(folder, other)).toBeNull();
+		expect(resumableSource(folder, {})).toBeNull();
+		expect(resumableSource({}, folder)).toEqual({});
 	});
 });

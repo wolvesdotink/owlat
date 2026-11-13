@@ -1531,6 +1531,7 @@ import type * as mail_mailbox_threadListRow from '../mail/mailbox/threadListRow.
 import type * as mail_mailbox_search from '../mail/mailbox/search.js';
 import type * as mail_mailbox_searchClause from '../mail/mailbox/searchClause.js';
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
+import type * as mail_mailbox_searchSource from '../mail/mailbox/searchSource.js';
 import type * as mail_mailbox_selection from '../mail/mailbox/selection.js';
 import type * as mail_mailbox_sendingHealth from '../mail/mailbox/sendingHealth.js';
 import type * as mail_mailbox_signatureReverify from '../mail/mailbox/signatureReverify.js';
@@ -3599,6 +3600,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/search': typeof mail_mailbox_search;
 	'mail/mailbox/searchClause': typeof mail_mailbox_searchClause;
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
+	'mail/mailbox/searchSource': typeof mail_mailbox_searchSource;
 	'mail/mailbox/selection': typeof mail_mailbox_selection;
 	'mail/mailbox/sendingHealth': typeof mail_mailbox_sendingHealth;
 	'mail/mailbox/signatureReverify': typeof mail_mailbox_signatureReverify;

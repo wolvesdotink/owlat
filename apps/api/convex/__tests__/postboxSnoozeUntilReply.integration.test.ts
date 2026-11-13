@@ -18,7 +18,7 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { clearSnoozeUntilReplyForThread } from '../mail/snooze';
 import { enableFeatures } from './factories';
-import { countingDb, type QueriedDocuments } from './indexRecorder.testlib';
+import { tableCountingDb, type QueriedDocuments } from './indexRecorder.testlib';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -270,7 +270,7 @@ describe('an arriving reply reads only the watched messages of its thread', () =
 		const queried: QueriedDocuments = {};
 		await t.run((ctx) =>
 			clearSnoozeUntilReplyForThread(
-				{ ...ctx, db: countingDb(ctx.db, queried) } as MutationCtx,
+				{ ...ctx, db: tableCountingDb(ctx.db, queried) } as MutationCtx,
 				threadId,
 				Date.now()
 			)

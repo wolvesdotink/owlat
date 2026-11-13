@@ -21,7 +21,7 @@ import { THREAD_READ_CAP } from '../mailbox/threadReads';
 import { rebuildThreadAggregates } from '../threadAggregates';
 import { archive, move, trash } from '../messageActions';
 import type { MutationCtx } from '../../_generated/server';
-import { countingDb, type QueriedDocuments } from '../../__tests__/indexRecorder.testlib';
+import { tableCountingDb, type QueriedDocuments } from '../../__tests__/indexRecorder.testlib';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -613,7 +613,7 @@ describe('moving one message reads a fixed number of its siblings', () => {
 		const queried: QueriedDocuments = {};
 		await t.run(async (ctx) => {
 			await handlers[verb]._handler(
-				{ ...ctx, db: countingDb(ctx.db, queried) } as MutationCtx,
+				{ ...ctx, db: tableCountingDb(ctx.db, queried) } as MutationCtx,
 				args
 			);
 		});
