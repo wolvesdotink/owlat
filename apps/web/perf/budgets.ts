@@ -52,6 +52,20 @@ const postboxTeardown = (domNodes: number, listeners: number): ScenarioBudgets =
 	'teardown: JS event listeners left': { max: listeners },
 });
 
+/**
+ * A Postbox row's quick actions mount on its first hover or focus. The first
+ * hover mounts the cluster (its buttons and their tooltips) in one insertion,
+ * and from then on a one-row update re-renders the cluster with the row: the
+ * mark-read glyph swaps. That update is what marking a hovered row read costs,
+ * which is the usual case; the unhovered one-row update above is the floor.
+ */
+const POSTBOX_HOVER: ScenarioBudgets = {
+	'run: components mounted by a first hover': { max: 5 },
+	'run: DOM mutations for a first hover': { max: 2 },
+	'run: component updates for a one-row update on a hovered row': { max: 11 },
+	'run: DOM mutations for a one-row update on a hovered row': { max: 10 },
+};
+
 const assistantStream = (counts: {
 	componentsMounted: number;
 	elementsRendered: number;
@@ -125,12 +139,14 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 		// Marking a row read removes the row's unread mark and drops its unread
 		// weight. The mark-read button, whose glyph would swap, is not mounted.
 		'run: DOM mutations for a one-row update': { max: 7 },
+		...POSTBOX_HOVER,
 		'run: rows shown while scrolling': { exact: 50 },
 		'run: rows re-rendered while scrolling': { max: 0 },
 		'run: component updates while scrolling': { max: 0 },
 		'run: DOM mutations while scrolling': { max: 0 },
-		// The retained list includes its sweep status's node.
-		...postboxTeardown(2496, 658),
+		// The retained list includes its sweep status's node and the quick actions
+		// of the one row the run hovered.
+		...postboxTeardown(2513, 662),
 	},
 	'postbox-list/500': {
 		'mount: rows': { exact: 500 },
@@ -144,6 +160,7 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 		'run: rows re-rendered by a one-row update': { max: 1 },
 		'run: component updates for a one-row update': { max: 9 },
 		'run: DOM mutations for a one-row update': { max: 7 },
+		...POSTBOX_HOVER,
 		'run: scroll height': { exact: 38000 },
 		'run: rows shown while scrolling': { exact: 500 },
 		'run: rows re-rendered while scrolling': { max: 0 },
