@@ -66,11 +66,13 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(NOW);
 	vi.spyOn(runtimeLog, 'logError').mockImplementation(() => {});
+	vi.stubEnv('DEFAULT_FROM_DOMAIN', 'owlat.example');
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.useRealTimers();
+	vi.unstubAllEnvs();
 });
 
 /** A blob the caller uploaded and has not registered yet. */

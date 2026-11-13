@@ -111,3 +111,76 @@ describe('change-login-email wiring', () => {
 		expect(send.html).toContain('new@example.com');
 	});
 });
+
+/**
+ * Every auth mail hook takes its From from the one system sender. With none
+ * configured, the hook fails with a configuration error, as it does with no
+ * transport, rather than sending under a domain the operator does not own.
+ */
+describe('auth mail sender', () => {
+	function invitationCtx() {
+		const sends: CapturedSend[] = [];
+		const runMutation = vi.fn(async () => undefined);
+		const captureCtx = {
+			runAction: vi.fn(async (_ref: unknown, params: CapturedSend) => {
+				sends.push(params);
+				return undefined;
+			}),
+			runMutation,
+			runQuery: vi.fn(async () => null),
+		} as unknown as ActionCtx;
+		return { ctx: captureCtx, sends, runMutation };
+	}
+
+	const hooks = {
+		'password reset': (opts: ReturnType<typeof createAuthOptions>) =>
+			opts.emailAndPassword.sendResetPassword({
+				user: { email: 'member@example.com' },
+				token: 'reset-token',
+			}),
+		'change-email confirmation': (opts: ReturnType<typeof createAuthOptions>) =>
+			opts.user.changeEmail.sendChangeEmailConfirmation({
+				user: { email: 'member@example.com' },
+				newEmail: 'new@example.com',
+				url: 'https://app.example.com/verify-email?token=t',
+			}),
+		verification: (opts: ReturnType<typeof createAuthOptions>) =>
+			opts.emailVerification!.sendVerificationEmail({
+				user: { email: 'member@example.com' },
+				url: 'https://app.example.com/verify-email?token=t',
+				token: 'header.e30.signature',
+			}),
+		invitation: (opts: ReturnType<typeof createAuthOptions>) => {
+			const plugin = opts.plugins.find((p) => p.id === 'organization') as unknown as {
+				options: {
+					sendInvitationEmail: (data: unknown) => Promise<void>;
+				};
+			};
+			return plugin.options.sendInvitationEmail({
+				email: 'invitee@example.com',
+				organization: { id: 'org-1', name: 'Acme' },
+				inviter: { user: { name: 'Owner', email: 'owner@example.com' } },
+				invitation: { id: 'inv-1', role: 'editor' },
+			});
+		},
+	};
+
+	it.each(Object.entries(hooks))('sends the %s mail from the configured sender', async (_, run) => {
+		const { ctx: captureCtx, sends } = invitationCtx();
+		await run(createAuthOptions(captureCtx));
+		expect(sends.map((send) => send.from)).toEqual(['Owlat <noreply@mail.example.com>']);
+	});
+
+	it.each(Object.entries(hooks))(
+		'refuses the %s mail when no sender is configured',
+		async (_, run) => {
+			vi.stubEnv('DEFAULT_FROM_DOMAIN', '');
+			vi.stubEnv('DEFAULT_FROM_EMAIL', '');
+			const { ctx: captureCtx, sends, runMutation } = invitationCtx();
+			await expect(run(createAuthOptions(captureCtx))).rejects.toThrow(/DEFAULT_FROM_DOMAIN/);
+			expect(sends).toEqual([]);
+			// The invitation's resend cooldown is not spent on a mail that never left.
+			expect(runMutation).not.toHaveBeenCalled();
+		}
+	);
+});

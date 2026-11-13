@@ -173,6 +173,7 @@ export const dispatch = internalMutation({
 			defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
 			defaultFromName: getOptional('DEFAULT_FROM_NAME'),
 		});
+		if (!sender.ok) return sender;
 		const refusal = decideSenderAndVariables({
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,

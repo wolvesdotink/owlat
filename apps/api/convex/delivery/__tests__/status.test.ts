@@ -68,6 +68,7 @@ const ENV_KEYS = [
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'RESEND_WEBHOOK_SECRET',
 	'MANDRILL_WEBHOOK_KEY',
+	'DEFAULT_FROM_DOMAIN',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -240,7 +241,12 @@ describe('delivery.statusActions.sendTest — staged diagnostics', () => {
 	});
 
 	it('returns provider receipt metadata and passes every stage after acceptance', async () => {
-		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		setEnv({
+			EMAIL_PROVIDER: 'mta',
+			MTA_API_URL: 'http://mta:3100',
+			MTA_API_KEY: 'k',
+			DEFAULT_FROM_DOMAIN: 'owlat.example',
+		});
 		global.fetch = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ success: true, id: 'test-message-1' }), {
 				status: 200,

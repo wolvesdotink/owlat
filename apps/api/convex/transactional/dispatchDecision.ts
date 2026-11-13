@@ -42,6 +42,7 @@ export type DispatchRejectionReason =
 	| 'template_not_found'
 	| 'template_not_published'
 	| 'template_no_content'
+	| 'sender_not_configured'
 	| 'domain_unverified'
 	| 'invalid_variables'
 	| IdempotencyRefusalReason;
@@ -107,13 +108,27 @@ export function decideTemplate(
 	return { ok: true, template, isHtmlStale: template.htmlRenderState?.stale === true };
 }
 
-/** The sender every transactional send uses: settings → environment → fallback. */
+/**
+ * The sender every transactional send uses: settings, then the environment.
+ * With neither the request is refused; a stand-in address would be one on a
+ * domain nobody here owns.
+ */
 export function senderDefaults(
 	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail' | 'defaultFromName'> | null,
 	environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string }
-): { fromEmail: string; fromName: string } {
+): { ok: true; fromEmail: string; fromName: string } | DispatchRefusal {
+	const fromEmail = settings?.defaultFromEmail?.trim() || environment.defaultFromEmail?.trim();
+	if (!fromEmail) {
+		return {
+			ok: false,
+			reason: 'sender_not_configured',
+			detail:
+				'Cannot send transactional email: no default sender is configured. Set a default From address for this instance, or DEFAULT_FROM_EMAIL in the deployment environment.',
+		};
+	}
 	return {
-		fromEmail: settings?.defaultFromEmail ?? environment.defaultFromEmail ?? 'noreply@example.com',
+		ok: true,
+		fromEmail,
 		fromName: settings?.defaultFromName ?? environment.defaultFromName ?? 'Owlat',
 	};
 }

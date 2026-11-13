@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
 	REGRESSION_EMAIL_RETRY_DELAYS_MS,
 	deliverRegressionEmailHandler,
@@ -34,6 +34,13 @@ function failedMail(
 }
 
 describe('deliverability regression email retry policy', () => {
+	beforeEach(() => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.test');
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it('loads every owner and admin in an organization at the 50-member limit', async () => {
 		const members = Array.from({ length: 50 }, (_, index) => ({
 			userId: `user-${index.toString().padStart(2, '0')}`,
@@ -92,11 +99,9 @@ describe('deliverability regression email retry policy', () => {
 		sendEmail?: RegressionEmailDependencies['sendEmail'];
 		boundaryFailureRetryDisposition?: RegressionEmailDependencies['boundaryFailureRetryDisposition'];
 	}) {
-		const runQuery = vi.fn(
-			async (): Promise<{ emailDirectoryAttemptCount?: number } | null> => ({
-				emailDirectoryAttemptCount: 0,
-			})
-		);
+		const runQuery = vi.fn(async (): Promise<{ emailDirectoryAttemptCount?: number } | null> => ({
+			emailDirectoryAttemptCount: 0,
+		}));
 		const runMutation = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -116,6 +121,44 @@ describe('deliverability regression email retry policy', () => {
 		};
 		return { ctx, dependencies, runQuery, runMutation };
 	}
+
+	it('sends from the configured system sender', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+		});
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		expect(vi.mocked(test.dependencies.sendEmail).mock.calls[0]?.[1]).toMatchObject({
+			from: 'Owlat <noreply@mail.example.test>',
+		});
+	});
+
+	it('records a terminal failure, and sends nothing, when no sender is configured', async () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', '');
+		vi.stubEnv('DEFAULT_FROM_EMAIL', '');
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+			completion: { state: 'unavailable', retryScheduled: false },
+		});
+
+		await expect(
+			deliverRegressionEmailHandler(
+				test.ctx,
+				{ organizationId: 'org', identity: 'incident' },
+				test.dependencies
+			)
+		).resolves.toEqual({ sent: false, reason: 'delivery_failed' });
+		expect(test.dependencies.sendEmail).not.toHaveBeenCalled();
+		expect(test.runMutation).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({ results: [{ userId: 'user-1', isSuccess: false }] })
+		);
+	});
 
 	it('records no eligible administrator as unavailable without sending', async () => {
 		const test = harness();

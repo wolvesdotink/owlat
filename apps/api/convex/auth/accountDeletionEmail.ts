@@ -5,7 +5,7 @@
 import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
+import { requireSystemSenderAddress } from '../lib/systemSender';
 import { generateDeletionEmailHtml } from '../lib/systemEmails';
 import { deletionEmailCopy, systemEmailBcp47, systemEmailLocale } from '../lib/systemEmailCopy';
 import { appLocaleValidator } from '../lib/convexValidators';
@@ -30,6 +30,9 @@ export async function sendDeletionConfirmation(
 	ctx: ActionCtx,
 	args: ObjectType<typeof sendAccountDeletionEmailArgs>
 ): Promise<{ success: boolean }> {
+	// A scheduled action: with no sender configured it fails with the reason in
+	// the deployment logs, as it does with no transport.
+	const from = `Owlat <${requireSystemSenderAddress()}>`;
 	const locale = systemEmailLocale(args.locale);
 	const copy = deletionEmailCopy(locale);
 	// The date said the reader's way: "Sunday, June 15, 2025" against
@@ -50,7 +53,7 @@ export async function sendDeletionConfirmation(
 	// Routes to whatever delivery provider is configured (MTA / Resend / SES).
 	await ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, {
 		to: args.email,
-		from: `Owlat <noreply@${getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app'}>`,
+		from,
 		subject: copy.subject,
 		html,
 	});
