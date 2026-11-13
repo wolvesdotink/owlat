@@ -20,6 +20,7 @@ import { isMessageSnoozed } from '../lib/mailSnooze';
 import { requireMailboxAccess, requireMessageAccess } from './permissions';
 import { adjustFolderUnseen } from './folders';
 import { syncThreadLatestSnooze } from './threadLatestSnooze';
+import { inboxLastMessageAt } from './threadInboxRecency';
 import { recordMessageCounters } from './messageCounters';
 import { recordMailSnoozed } from './interpret/threadEvents';
 
@@ -384,6 +385,7 @@ export const internalSweep = internalMutation({
 			if (!t) continue;
 			await ctx.db.patch(tid, {
 				lastMessageAt: now,
+				inboxLastMessageAt: inboxLastMessageAt({ folderRoles: t.folderRoles, lastMessageAt: now }),
 				// Transient recognition cue; the reader clears it on open.
 				snoozeReturnedAt: now,
 				updatedAt: now,

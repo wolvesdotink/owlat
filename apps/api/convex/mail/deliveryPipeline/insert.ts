@@ -37,6 +37,7 @@ import type { InboundEncryptionInfo } from '../../e2ee/inboundSeal';
 import type { InboundSignatureInfo } from '../../e2ee/inboundSignature';
 import type { VirusVerdict } from '../../lib/literalValidators';
 import { invalidateSenderMemoryOnAuthFailure } from '../../decision/senderMemory';
+import { inboxLastMessageAt } from '../threadInboxRecency';
 
 function extractName(field: string): string | undefined {
 	const match = field.match(/^([^<]+?)\s*<[^>]+>$/);
@@ -286,6 +287,7 @@ export async function insertDeliveredMessage(
 			...(fromName ? { latestFromName: fromName } : {}),
 			latestSubject: params.subject,
 			folderRoles: [],
+			inboxLastMessageAt: null,
 			labelIds: [],
 			createdAt: now,
 			updatedAt: now,
@@ -409,12 +411,17 @@ export async function insertDeliveredMessage(
 		// newest — external IMAP sync can ingest older messages out of order, and
 		// latestMessageId now drives the conversation-list routing.
 		const isNewest = params.receivedAt >= thread.lastMessageAt;
+		const lastMessageAt = isNewest ? params.receivedAt : thread.lastMessageAt;
 		await ctx.db.patch(threadId, {
 			participants,
 			messageCount: thread.messageCount + 1,
 			unreadCount: thread.unreadCount + unreadDelta,
 			hasAttachments: thread.hasAttachments || hasAttachments,
 			folderRoles: Array.from(folderRoles),
+			inboxLastMessageAt: inboxLastMessageAt({
+				folderRoles: Array.from(folderRoles),
+				lastMessageAt,
+			}),
 			// An out-of-order ingest can also land an OLDER message than any the
 			// thread holds — the parent a history import reaches last.
 			firstMessageAt: Math.min(thread.firstMessageAt, params.receivedAt),
@@ -424,7 +431,7 @@ export async function insertDeliveredMessage(
 				: {}),
 			...(isNewest
 				? {
-						lastMessageAt: params.receivedAt,
+						lastMessageAt,
 						latestSnippet: snippet,
 						latestFromAddress: fromAddress,
 						// Cleared when the newest sender gives no name.

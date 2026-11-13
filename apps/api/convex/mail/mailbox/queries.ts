@@ -23,8 +23,8 @@ import type { FolderRole } from '../../lib/validators/mail';
 import { providerHostOf, providerOf, readRoleFolders, type InboxProvider } from './accessibleRow';
 import { attachThreadState, type MailListRow, type RowThreadState } from './rowThreadState';
 import type { SenderLogoField } from '../senderLogos/cache';
-import { toThreadListRow, type ThreadListRow } from './threadListRow';
-import { isThreadLatestSnoozed } from '../threadLatestSnooze';
+import type { ThreadListRow } from './threadListRow';
+import { readThreadList } from './threadListRead';
 
 /**
  * List messages in a mailbox, for the webmail UI.
@@ -242,15 +242,8 @@ export const listByLabel = publicQuery({
 
 /**
  * Conversation list — one row per thread that has a message in the folder,
- * newest first. Snoozed threads (newest message snoozed) are hidden. Threads
- * aren't folder-indexed, so this overfetches the recent set then filters; it's
- * used for the inbox view (where most threads live), with the flat
- * `listMessages` serving other folders.
- *
- * Plan C8: the snooze check reads the copy on the thread
- * (`latestSnoozedUntil`) instead of loading every candidate's newest message,
- * and rows are projected ({@link toThreadListRow}) so drafts and cached
- * summaries no longer ride along.
+ * newest first, snoozed threads (newest message snoozed) hidden. Rows are
+ * projected (`threadListRow.ts`); the read is {@link readThreadList}.
  */
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const listThreads = publicQuery({
@@ -260,26 +253,9 @@ export const listThreads = publicQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const empty = { threads: [] as ThreadListRow[], hasMore: false };
 		const mailbox = await loadReadableMailbox(ctx, args.mailboxId);
-		if (!mailbox) return empty;
-
-		const now = Date.now();
-		const limit = Math.min(args.limit ?? 50, 500);
-		const candidates = await ctx.db
-			.query('mailThreads')
-			.withIndex('by_mailbox_and_last_message', (q) => q.eq('mailboxId', args.mailboxId))
-			.order('desc')
-			.take((limit + 1) * 3);
-
-		const threads: ThreadListRow[] = [];
-		for (const t of candidates) {
-			if (!t.folderRoles.includes(args.folderRole)) continue;
-			if (await isThreadLatestSnoozed(ctx, t, now)) continue;
-			threads.push(toThreadListRow(t));
-			if (threads.length > limit) break;
-		}
-		return { threads: threads.slice(0, limit), hasMore: threads.length > limit };
+		if (!mailbox) return { threads: [] as ThreadListRow[], hasMore: false };
+		return await readThreadList(ctx, args);
 	},
 });
 

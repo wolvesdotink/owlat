@@ -147,6 +147,7 @@ import type * as migrations_0068_seal_fact_keys from '../migrations/0068_seal_fa
 import type * as migrations_0069_restrict_captured_file_knowledge from '../migrations/0069_restrict_captured_file_knowledge.js';
 import type * as migrations_0070_reconcile_fenced_threads from '../migrations/0070_reconcile_fenced_threads.js';
 import type * as migrations_0071_backfill_thread_sender_names from '../migrations/0071_backfill_thread_sender_names.js';
+import type * as migrations_0073_backfill_thread_inbox_recency from '../migrations/0073_backfill_thread_inbox_recency.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -1529,6 +1530,7 @@ import type * as mail_mailbox_queries from '../mail/mailbox/queries.js';
 import type * as mail_mailbox_rawExport from '../mail/mailbox/rawExport.js';
 import type * as mail_mailbox_rowThreadState from '../mail/mailbox/rowThreadState.js';
 import type * as mail_mailbox_threadListRow from '../mail/mailbox/threadListRow.js';
+import type * as mail_mailbox_threadListRead from '../mail/mailbox/threadListRead.js';
 import type * as mail_mailbox_search from '../mail/mailbox/search.js';
 import type * as mail_mailbox_searchClause from '../mail/mailbox/searchClause.js';
 import type * as mail_mailbox_searchCursor from '../mail/mailbox/searchCursor.js';
@@ -1608,6 +1610,7 @@ import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
 import type * as mail_teamInboxConversion from '../mail/teamInboxConversion.js';
 import type * as mail_threadAggregates from '../mail/threadAggregates.js';
+import type * as mail_threadInboxRecency from '../mail/threadInboxRecency.js';
 import type * as mail_threadLatestSnooze from '../mail/threadLatestSnooze.js';
 import type * as mail_threadView from '../mail/threadView.js';
 import type * as mail_threadVisits from '../mail/threadVisits.js';
@@ -3599,6 +3602,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailbox/rawExport': typeof mail_mailbox_rawExport;
 	'mail/mailbox/rowThreadState': typeof mail_mailbox_rowThreadState;
 	'mail/mailbox/threadListRow': typeof mail_mailbox_threadListRow;
+	'mail/mailbox/threadListRead': typeof mail_mailbox_threadListRead;
 	'mail/mailbox/search': typeof mail_mailbox_search;
 	'mail/mailbox/searchClause': typeof mail_mailbox_searchClause;
 	'mail/mailbox/searchCursor': typeof mail_mailbox_searchCursor;
@@ -3678,6 +3682,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/subscriptions': typeof mail_subscriptions;
 	'mail/teamInboxConversion': typeof mail_teamInboxConversion;
 	'mail/threadAggregates': typeof mail_threadAggregates;
+	'mail/threadInboxRecency': typeof mail_threadInboxRecency;
 	'mail/threadLatestSnooze': typeof mail_threadLatestSnooze;
 	'mail/threadView': typeof mail_threadView;
 	'mail/threadVisits': typeof mail_threadVisits;
@@ -3815,6 +3820,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
 	'migrations/0070_reconcile_fenced_threads': typeof migrations_0070_reconcile_fenced_threads;
 	'migrations/0071_backfill_thread_sender_names': typeof migrations_0071_backfill_thread_sender_names;
+	'migrations/0073_backfill_thread_inbox_recency': typeof migrations_0073_backfill_thread_inbox_recency;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;

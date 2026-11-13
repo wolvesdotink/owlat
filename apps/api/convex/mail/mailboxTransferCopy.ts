@@ -103,6 +103,7 @@ async function targetThread(
 		...(message.fromName ? { latestFromName: message.fromName } : {}),
 		latestSubject: message.subject,
 		folderRoles: [],
+		inboxLastMessageAt: null,
 		labelIds: [],
 		createdAt: now,
 		updatedAt: now,
