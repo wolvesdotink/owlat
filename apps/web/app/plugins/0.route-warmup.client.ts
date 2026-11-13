@@ -25,7 +25,7 @@
 import layouts from '#build/layouts';
 import { namedMiddleware } from '#build/middleware';
 import { areaChunks, areaRoutes } from '#build/owlat-i18n-areas.mjs';
-import { areasForPath, guessLocale } from '~~/i18n/areaRuntime';
+import { areasForPath, guessLocale, type AreaChunks } from '~~/i18n/areaRuntime';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isPublicRoute } from '~/utils/publicRoutes';
 
@@ -60,8 +60,9 @@ export default defineNuxtPlugin({
 
 		const areas = areasForPath(areaRoutes, route.path);
 		if (areas.length === 0) return;
-		const locales = [...new Set(Object.values(areaChunks).flatMap((chunk) => Object.keys(chunk)))];
+		const chunks: AreaChunks = areaChunks;
+		const locales = [...new Set(Object.values(chunks).flatMap((chunk) => Object.keys(chunk)))];
 		const locale = guessLocale(document.cookie, navigator.languages, locales, 'en');
-		for (const area of areas) areaChunks[area]?.[locale]?.().catch(ignore);
+		for (const area of areas) chunks[area]?.[locale]?.().catch(ignore);
 	},
 });
