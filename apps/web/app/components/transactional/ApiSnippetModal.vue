@@ -46,7 +46,7 @@ const onOpenChange = (open: boolean) => {
 
 		<!-- A snippet handed over while the default sender or the transport is
 		     missing would only return a refusal; say so before the code. -->
-		<DeliveryTransactionalReadinessLine v-if="email !== null" class="mb-4" />
+		<LazyDeliveryTransactionalReadinessLine v-if="email !== null" class="mb-4" />
 
 		<div class="space-y-4">
 			<div v-for="language in SNIPPET_LANGUAGES" :key="language.value">

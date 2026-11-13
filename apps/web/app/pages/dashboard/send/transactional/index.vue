@@ -162,7 +162,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		<!-- Whether the first API call would go out, before a template is handed
 		     to a developer. -->
 		<template #after-header>
-			<DeliveryTransactionalReadinessLine />
+			<LazyDeliveryTransactionalReadinessLine />
 		</template>
 
 		<template #actions>
