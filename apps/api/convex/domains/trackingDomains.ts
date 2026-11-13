@@ -3,18 +3,24 @@
  *
  * Allows organizations to use their own branded domains for click/open tracking.
  * Prevents reputation cross-contamination between tenants.
+ *
+ * A domain is verified by `trackingDomainCheck.checkTrackingDomain` (CNAME plus
+ * HTTPS probe) and re-checked daily; `trackingDomainVerdict.ts` holds the rules.
  */
 
 import { v } from 'convex/values';
-import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { internalQuery, internalAction } from '../_generated/server';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
-import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
+import { isValidDomain } from '@owlat/shared';
+import { getOrThrow, throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import { getOptional } from '../lib/env';
-import { logError, logWarn } from '../lib/runtimeLog';
+import { recordAuditLog } from '../lib/auditLog';
+import { trackingDomainCheckOutcomeValidator } from '../lib/literalValidators';
+import { planTrackingDomainCheck, selectTrackingDomainForSender } from './trackingDomainVerdict';
 
 /**
  * The host a branded tracking subdomain must CNAME at.
@@ -56,10 +62,15 @@ export const addTrackingDomain = authedMutation({
 			'Only owners and admins can perform this action'
 		);
 
+		// The name becomes the host of every tracked link and of the HTTPS probe,
+		// so nothing but a hostname (no port, path or userinfo) is accepted.
+		const domain = args.domain.trim().toLowerCase();
+		if (!isValidDomain(domain)) throwInvalidInput('Enter a domain name such as track.example.com');
+
 		// Ensure domain is not already registered
 		const existing = await ctx.db
 			.query('trackingDomains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain.toLowerCase()))
+			.withIndex('by_domain', (q) => q.eq('domain', domain))
 			.first();
 
 		if (existing) {
@@ -71,7 +82,7 @@ export const addTrackingDomain = authedMutation({
 		const cnameTarget = resolveCnameTarget();
 
 		return await ctx.db.insert('trackingDomains', {
-			domain: args.domain.toLowerCase(),
+			domain,
 			cnameTarget,
 			isVerified: false,
 			verifiedAt: undefined,
@@ -80,7 +91,7 @@ export const addTrackingDomain = authedMutation({
 	},
 });
 
-// Verify a tracking domain — schedules DNS verification action
+// Verify a tracking domain — schedules the CNAME + HTTPS check
 export const verifyTrackingDomain = authedMutation({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
@@ -91,13 +102,9 @@ export const verifyTrackingDomain = authedMutation({
 			'Only owners and admins can perform this action'
 		);
 
-		const td = await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
-
-		// Schedule DNS verification action
-		await ctx.scheduler.runAfter(0, internal.domains.trackingDomains.verifyTrackingDomainDns, {
+		await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
+		await ctx.scheduler.runAfter(0, internal.domains.trackingDomainCheck.checkTrackingDomain, {
 			trackingDomainId: args.trackingDomainId,
-			domain: td.domain,
-			expectedCname: td.cnameTarget,
 		});
 
 		// Return a truthy sentinel (mirrors `dnsVerification.verifyDomain`) so the
@@ -107,10 +114,6 @@ export const verifyTrackingDomain = authedMutation({
 		return { success: true };
 	},
 });
-
-// (Removed the redundant public markTrackingDomainVerified adminMutation — it
-// had no caller and its comment was wrong; the DNS-verify action drives
-// verification through the internal markVerifiedInternal mutation.)
 
 // List tracking domains for org
 // all-members: the rows are a hostname, its public CNAME target and its
@@ -144,110 +147,130 @@ export const removeTrackingDomain = authedMutation({
 	},
 });
 
-// Get the active tracking domain for an org (verified only) — internal query for sending pipeline
-export const getActiveTrackingDomain = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const domains = await ctx.db.query('trackingDomains').collect(); // bounded: tracking domains (few per org)
-
-		// Return first verified domain, or null
-		return domains.find((d) => d.isVerified) ?? null;
+/**
+ * The tracking domain a campaign send from `from` rewrites its links to, or
+ * `null` for the default tracking base URL. The rule is
+ * `trackingDomainVerdict.ts:selectTrackingDomainForSender`.
+ */
+export const getTrackingDomainForSender = internalQuery({
+	args: { from: v.string() },
+	handler: async (ctx, args): Promise<string | null> => {
+		const rows = await ctx.db.query('trackingDomains').take(TRACKING_DOMAIN_LIMIT);
+		return selectTrackingDomainForSender(rows, args.from);
 	},
 });
 
-// Internal mutation to mark domain verified (called by DNS verification action)
-export const markVerifiedInternal = internalMutation({
-	args: {
-		trackingDomainId: v.id('trackingDomains'),
-	},
+// A deployment holds a handful; the bound keeps every whole-table read finite.
+const TRACKING_DOMAIN_LIMIT = 100;
+
+/** The row a check runs against, read in the check's first phase. */
+export const getTrackingDomainForCheck = internalQuery({
+	args: { trackingDomainId: v.id('trackingDomains') },
 	handler: async (ctx, args) => {
-		const td = await ctx.db.get(args.trackingDomainId);
-		if (!td) return;
-
-		await ctx.db.patch(args.trackingDomainId, {
-			isVerified: true,
-			verifiedAt: Date.now(),
-		});
+		const row = await ctx.db.get(args.trackingDomainId);
+		return row ? { domain: row.domain, cnameTarget: row.cnameTarget } : null;
 	},
 });
-
-/** A DNS-over-HTTPS JSON answer, as far as the CNAME check reads it. */
-const decodeDnsAnswer = validatorDecoder(
-	v.object({ Answer: v.optional(v.array(v.object({ type: v.number(), data: v.string() }))) })
-);
 
 /**
- * DNS verification action for tracking domains.
- * Uses fetch to resolve CNAME and verify it points to the expected target.
- * Note: Uses DNS-over-HTTPS (Cloudflare) since Convex actions can't use Node dns module directly.
+ * The check's one commit: land the outcome as `planTrackingDomainCheck` says,
+ * audit a change of verified state, and schedule the confirming check a
+ * verified domain's first failure needs. Writes nothing when the row was
+ * removed or renamed while the check ran.
  */
+export const recordTrackingDomainCheck = internalMutation({
+	args: {
+		trackingDomainId: v.id('trackingDomains'),
+		domain: v.string(),
+		outcome: trackingDomainCheckOutcomeValidator,
+	},
+	handler: async (ctx, args): Promise<null> => {
+		const row = await ctx.db.get(args.trackingDomainId);
+		if (!row || row.domain !== args.domain) return null;
+		const plan = planTrackingDomainCheck(row, args.outcome, Date.now());
+		await ctx.db.patch(args.trackingDomainId, plan.patch);
+		if (plan.transition !== null) {
+			await recordAuditLog(ctx, {
+				userId: 'system:verifier',
+				action:
+					plan.transition === 'verified'
+						? 'tracking_domain.verified'
+						: 'tracking_domain.verification_failed',
+				resource: 'tracking_domain',
+				resourceId: args.trackingDomainId,
+				details: { domain: row.domain, outcome: args.outcome },
+			});
+		}
+		if (plan.confirmAfterMs !== null) {
+			await ctx.scheduler.runAfter(
+				plan.confirmAfterMs,
+				internal.domains.trackingDomainCheck.checkTrackingDomain,
+				{ trackingDomainId: args.trackingDomainId }
+			);
+		}
+		return null;
+	},
+});
+
+/**
+ * Schedule a check of every tracking domain that was ever verified, spread by
+ * `staggerMs`. Called by the daily sending-domain sweep
+ * (`reverificationSweep.ts`). A domain never verified is left to its operator,
+ * who is still setting it up and checks it with the Verify button.
+ */
+export async function scheduleTrackingDomainRechecks(
+	ctx: MutationCtx,
+	staggerMs: number
+): Promise<number> {
+	const rows = await ctx.db.query('trackingDomains').take(TRACKING_DOMAIN_LIMIT);
+	let scheduled = 0;
+	for (const row of rows) {
+		if (row.verifiedAt === undefined) continue;
+		await ctx.scheduler.runAfter(
+			scheduled * staggerMs,
+			internal.domains.trackingDomainCheck.checkTrackingDomain,
+			{ trackingDomainId: row._id }
+		);
+		scheduled += 1;
+	}
+	return scheduled;
+}
+
+// The previous release's Verify scheduled this action and let a CNAME match
+// verify the domain through `markVerifiedInternal`. Both stay for one release
+// for jobs queued before the deploy, and both now run the full check instead.
 export const verifyTrackingDomainDns = internalAction({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
 		domain: v.string(),
 		expectedCname: v.string(),
 	},
-	handler: async (ctx, args) => {
-		try {
-			// Use Cloudflare DNS-over-HTTPS to resolve CNAME
-			const dnsUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(args.domain)}&type=CNAME`;
-			const response = await fetch(dnsUrl, {
-				headers: { Accept: 'application/dns-json' },
-			});
+	handler: async (ctx, args): Promise<null> => {
+		await ctx.scheduler.runAfter(0, internal.domains.trackingDomainCheck.checkTrackingDomain, {
+			trackingDomainId: args.trackingDomainId,
+		});
+		return null;
+	},
+});
 
-			if (!response.ok) {
-				logWarn('[Tracking Domain DNS] DNS query failed', {
-					trackingDomainId: args.trackingDomainId,
-					domain: args.domain,
-					status: response.status,
-				});
-				return { verified: false, error: 'DNS query failed' };
-			}
+export const markVerifiedInternal = internalMutation({
+	args: { trackingDomainId: v.id('trackingDomains') },
+	handler: async (ctx, args): Promise<null> => {
+		if (!(await ctx.db.get(args.trackingDomainId))) return null;
+		await ctx.scheduler.runAfter(0, internal.domains.trackingDomainCheck.checkTrackingDomain, {
+			trackingDomainId: args.trackingDomainId,
+		});
+		return null;
+	},
+});
 
-			const decoded = decodeDnsAnswer(await response.json());
-			if (!decoded.ok) {
-				logWarn('[Tracking Domain DNS] DNS answer could not be read', {
-					trackingDomainId: args.trackingDomainId,
-					domain: args.domain,
-					issue: decoded.issue,
-				});
-				return { verified: false, error: 'DNS query failed' };
-			}
-			const data = decoded.value;
-
-			// Check if any CNAME answer matches the expected target
-			const cnameAnswers = data.Answer?.filter((a) => a.type === 5) ?? [];
-			const verified = cnameAnswers.some((a) => {
-				// DNS responses may have trailing dot
-				const resolved = a.data.replace(/\.$/, '').toLowerCase();
-				return resolved === args.expectedCname.toLowerCase();
-			});
-
-			if (verified) {
-				await ctx.runMutation(internal.domains.trackingDomains.markVerifiedInternal, {
-					trackingDomainId: args.trackingDomainId,
-				});
-				return { verified: true };
-			}
-
-			logWarn('[Tracking Domain DNS] CNAME does not match', {
-				trackingDomainId: args.trackingDomainId,
-				domain: args.domain,
-				expectedCname: args.expectedCname,
-				found: cnameAnswers.map((a) => a.data),
-			});
-			return { verified: false, error: 'CNAME does not match expected target' };
-		} catch (error) {
-			// Fail soft: the caller gets `verified: false` with a generic reason
-			// (the raw resolver error is not for the browser), and the log carries
-			// the detail an operator needs.
-			logError('[Tracking Domain DNS] verification failed', {
-				trackingDomainId: args.trackingDomainId,
-				domain: args.domain,
-				expectedCname: args.expectedCname,
-				error,
-			});
-			return { verified: false, error: 'DNS verification error' };
-		}
+// The previous release's campaign send hop reads this by path; kept for one
+// release for hops mid-run during the deploy. This release reads
+// `getTrackingDomainForSender`.
+export const getActiveTrackingDomain = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query('trackingDomains').take(TRACKING_DOMAIN_LIMIT);
+		return rows.find((row) => row.isVerified) ?? null;
 	},
 });

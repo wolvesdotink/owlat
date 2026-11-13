@@ -200,6 +200,11 @@ export const AUDIT_ACTION_LITERALS = [
 	// measurement to the unsubscribe-rate proxy, a weaker signal on a
 	// relative rule rather than Yahoo's own absolute complaint feed.
 	action('sending_domain.yahoo_cfl_changed'),
+	// Tracking domain — its verified state changed (`domains/trackingDomains.ts`).
+	// `verification_failed` is a verified domain's confirmed regression: new
+	// sends stop rewriting links to it from then on.
+	action('tracking_domain.verified'),
+	action('tracking_domain.verification_failed'),
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),
@@ -398,6 +403,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'api_key',
 	'webhook',
 	'sending_domain',
+	'tracking_domain',
 	'seed_mailbox',
 	'blocklist',
 	'segment',

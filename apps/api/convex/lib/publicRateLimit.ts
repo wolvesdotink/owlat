@@ -17,6 +17,7 @@ import { logWarn } from './runtimeLog';
 const publicRateLimitTypeValidator = v.union(
 	v.literal('formSubmission'),
 	v.literal('emailTracking'),
+	v.literal('trackingProbe'),
 	v.literal('subscriptionManagement'),
 	v.literal('doiConfirmation'),
 	v.literal('webhookIngestion'),

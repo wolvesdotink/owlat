@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Component } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import {
+	trackingDomainCheckMessageKey,
+	trackingDomainStatus,
+	type TrackingDomainStatus,
+} from '~/utils/trackingDomainStatus';
+import {
 	ChevronDownIcon,
 	CircleCheckIcon,
+	CircleWarningIcon,
 	ClockIcon,
 	LinkIcon,
 	PlusIcon,
@@ -65,6 +72,34 @@ const deleteModal = useConfirmModal<{ _id: Id<'trackingDomains'>; domain: string
 // Per-row verify spinner + expanded (DNS record) row
 const verifyingId = ref<Id<'trackingDomains'> | null>(null);
 const expandedId = ref<Id<'trackingDomains'> | null>(null);
+
+// A verified domain whose last check failed is still in use (`failing`); one
+// that stopped verifying no longer is (`lapsed`), so it reads as an error.
+const STATUS_BADGE: Record<
+	TrackingDomainStatus,
+	{ class: string; icon: Component; labelKey: string }
+> = {
+	verified: {
+		class: 'bg-success/20 text-success border-success/30',
+		icon: CircleCheckIcon,
+		labelKey: 'components.domains.trackingDomainsSection.status.verified',
+	},
+	failing: {
+		class: 'bg-warning/20 text-warning border-warning/30',
+		icon: CircleWarningIcon,
+		labelKey: 'components.domains.trackingDomainsSection.status.failing',
+	},
+	lapsed: {
+		class: 'bg-error/10 text-error border-error/30',
+		icon: CircleWarningIcon,
+		labelKey: 'components.domains.trackingDomainsSection.status.lapsed',
+	},
+	pending: {
+		class: 'bg-warning/20 text-warning border-warning/30',
+		icon: ClockIcon,
+		labelKey: 'components.domains.trackingDomainsSection.status.pending',
+	},
+};
 
 const toggleExpansion = (id: Id<'trackingDomains'>) => {
 	expandedId.value = expandedId.value === id ? null : id;
@@ -256,30 +291,38 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 								<span
 									:class="[
 										'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-										td.isVerified
-											? 'bg-success/20 text-success border-success/30'
-											: 'bg-warning/20 text-warning border-warning/30',
+										STATUS_BADGE[trackingDomainStatus(td)].class,
 									]"
+									data-testid="tracking-domain-status"
 								>
-									<component :is="td.isVerified ? CircleCheckIcon : ClockIcon" class="w-3 h-3" />
-									{{
-										td.isVerified
-											? t('components.domains.trackingDomainsSection.status.verified')
-											: t('components.domains.trackingDomainsSection.status.pending')
-									}}
+									<component :is="STATUS_BADGE[trackingDomainStatus(td)].icon" class="w-3 h-3" />
+									{{ t(STATUS_BADGE[trackingDomainStatus(td)].labelKey) }}
 								</span>
 							</div>
 							<p class="text-sm text-text-tertiary mt-0.5">
-								<span v-if="td.isVerified && td.verifiedAt">
+								<span v-if="trackingDomainStatus(td) === 'verified' && td.verifiedAt">
 									{{
 										t('components.domains.trackingDomainsSection.verifiedAt', {
 											date: formatDateTime(td.verifiedAt),
 										})
 									}}
 								</span>
-								<span v-else>
+								<span v-else-if="trackingDomainStatus(td) === 'failing'">
+									{{ t('components.domains.trackingDomainsSection.failingHint') }}
+								</span>
+								<span v-else-if="trackingDomainStatus(td) === 'lapsed'">
+									{{ t('components.domains.trackingDomainsSection.lapsedHint') }}
+								</span>
+								<span v-else-if="!trackingDomainCheckMessageKey(td)">
 									{{ t('components.domains.trackingDomainsSection.addCnameHint') }}
 								</span>
+							</p>
+							<p
+								v-if="trackingDomainCheckMessageKey(td)"
+								class="text-sm text-text-secondary mt-1"
+								data-testid="tracking-domain-last-check"
+							>
+								{{ t(trackingDomainCheckMessageKey(td) as string) }}
 							</p>
 						</div>
 					</div>

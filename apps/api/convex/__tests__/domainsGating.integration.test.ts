@@ -22,9 +22,11 @@
  *       · `addTrackingDomain` / `verifyTrackingDomain` / `removeTrackingDomain`
  *         admin gate (non-admin rejected)
  *       · duplicate / not-found handling
- *       · `markVerifiedInternal` patches isVerified/verifiedAt (and no-ops on a
- *         missing row)
- *       · `getActiveTrackingDomain` returns the first verified row
+ *       · `markVerifiedInternal` (kept for the previous release) no longer
+ *         verifies on a CNAME alone: it schedules the full check (and no-ops on
+ *         a missing row)
+ *       · `getTrackingDomainForSender` returns the verified row under the
+ *         sender's organisational domain
  *
  * The session mock is mutable (vi.hoisted) so individual cases can flip the
  * member/admin floor to the rejecting path.
@@ -742,7 +744,7 @@ describe('trackingDomains.removeTrackingDomain', () => {
 });
 
 describe('trackingDomains.markVerifiedInternal', () => {
-	it('patches isVerified + verifiedAt on an existing row', async () => {
+	it('does not verify on its own, and schedules the full CNAME and HTTPS check', async () => {
 		const t = convexTest(schema, verifyModules);
 		let tdId: Id<'trackingDomains'>;
 		await t.run(async (ctx) => {
@@ -759,9 +761,11 @@ describe('trackingDomains.markVerifiedInternal', () => {
 		});
 
 		await t.run(async (ctx) => {
-			const td = await ctx.db.get(tdId!);
-			expect(td!.isVerified).toBe(true);
-			expect(td!.verifiedAt).toBeTypeOf('number');
+			expect((await ctx.db.get(tdId!))!.isVerified).toBe(false);
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			expect(jobs.map((job) => job.name)).toContainEqual(
+				expect.stringContaining('trackingDomainCheck')
+			);
 		});
 	});
 
@@ -786,8 +790,8 @@ describe('trackingDomains.markVerifiedInternal', () => {
 	});
 });
 
-describe('trackingDomains.getActiveTrackingDomain', () => {
-	it('returns the first verified tracking domain', async () => {
+describe('trackingDomains.getTrackingDomainForSender', () => {
+	it('returns the verified tracking domain under the sender organisational domain', async () => {
 		const t = convexTest(schema, verifyModules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('trackingDomains', {
@@ -805,10 +809,10 @@ describe('trackingDomains.getActiveTrackingDomain', () => {
 			});
 		});
 
-		const active = await t.query(internal.domains.trackingDomains.getActiveTrackingDomain, {});
-		expect(active).not.toBeNull();
-		expect(active!.domain).toBe('active.example.com');
-		expect(active!.isVerified).toBe(true);
+		const active = await t.query(internal.domains.trackingDomains.getTrackingDomainForSender, {
+			from: 'news@example.com',
+		});
+		expect(active).toBe('active.example.com');
 	});
 
 	it('returns null when no tracking domain is verified', async () => {
@@ -822,7 +826,9 @@ describe('trackingDomains.getActiveTrackingDomain', () => {
 			});
 		});
 
-		const active = await t.query(internal.domains.trackingDomains.getActiveTrackingDomain, {});
+		const active = await t.query(internal.domains.trackingDomains.getTrackingDomainForSender, {
+			from: 'news@example.com',
+		});
 		expect(active).toBeNull();
 	});
 });

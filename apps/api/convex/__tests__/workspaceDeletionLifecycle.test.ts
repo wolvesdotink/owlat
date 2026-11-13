@@ -15,6 +15,7 @@ import schema from '../schema';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as SsrfGuard from '../lib/ssrfGuard';
 import { STEPS, ORGANIZATION_DELETION_STEPS } from '../workspaces/deletion/steps/registry';
 import { MAX_VERIFY_PASSES } from '../workspaces/deletion/job';
 import {
@@ -33,6 +34,23 @@ import {
 	isSurvivingScheduledFunction,
 	shrunkPageRows,
 } from '../workspaces/deletion/quiesce';
+
+// The tracking-domain check's HTTPS probe answers as this deployment would,
+// without a network; only its DNS-over-HTTPS lookup goes through `fetch`.
+vi.mock('../lib/ssrfGuard', async () => {
+	const actual = await vi.importActual<typeof SsrfGuard>('../lib/ssrfGuard');
+	const { trackingProbeAnswer } = await import('../delivery/trackingProbe');
+	return {
+		...actual,
+		fetchGuarded: async (url: string) =>
+			new Response(
+				await trackingProbeAnswer(
+					process.env['UNSUBSCRIBE_SECRET'] ?? '',
+					new URL(url).pathname.split('/').pop() ?? ''
+				)
+			),
+	};
+});
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -215,19 +233,17 @@ describe('workspace deletion — the write fence', () => {
 			new Response(JSON.stringify({ Answer: [{ type: 5, data: 'cname.example.com.' }] }), {
 				status: 200,
 			});
-		const verify = (trackingDomainId: Id<'trackingDomains'>, domain: string) =>
-			t.action(internal.domains.trackingDomains.verifyTrackingDomainDns, {
-				trackingDomainId,
-				domain,
-				expectedCname: 'cname.example.com',
-			});
+		vi.stubEnv('UNSUBSCRIBE_SECRET', 'deletion-test-secret');
+		const verify = (trackingDomainId: Id<'trackingDomains'>) =>
+			t.action(internal.domains.trackingDomainCheck.checkTrackingDomain, { trackingDomainId });
 
 		// Control: with no deletion the same action commits.
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async () => dnsAnswer())
 		);
-		await expect(verify(controlId, 'links.example.com')).resolves.toEqual({ verified: true });
+		await expect(verify(controlId)).resolves.toEqual({ outcome: 'verified' });
+		expect(await t.run(async (ctx) => (await ctx.db.get(controlId))?.isVerified)).toBe(true);
 
 		// The action reaches its DNS lookup, and waits there while the deletion begins.
 		let reachedLookup!: () => void;
@@ -241,13 +257,14 @@ describe('workspace deletion — the write fence', () => {
 				return lookupAnswer;
 			})
 		);
-		const inFlight = verify(inFlightId, 'track.example.com');
+		const inFlight = verify(inFlightId);
 		await lookupReached;
 		await startDeletion(t);
 		answerLookup(dnsAnswer());
 
-		// The action's own catch turns the refused commit into a soft failure.
-		await expect(inFlight).resolves.toMatchObject({ verified: false });
+		// The action's own catch turns the refused commit into a soft failure: the
+		// check passed, and nothing was written.
+		await expect(inFlight).resolves.toEqual({ outcome: 'verified' });
 		expect(await t.run(async (ctx) => (await ctx.db.get(inFlightId))?.isVerified)).toBe(false);
 	});
 

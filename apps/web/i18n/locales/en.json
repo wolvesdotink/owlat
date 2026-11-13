@@ -4026,7 +4026,7 @@
 				},
 				"loading": "Loading tracking domains...",
 				"note": {
-					"body": "{note} DNS changes can take up to 48 hours to propagate. After adding the record, click \"Verify\" to check the configuration.",
+					"body": "{note} DNS changes can take up to 48 hours to propagate. Your reverse proxy must also serve this subdomain over HTTPS. After adding both, click \"Verify\" to check the configuration.",
 					"label": "Note:"
 				},
 				"operations": {
@@ -4038,20 +4038,30 @@
 				"removeTitle": "Remove tracking domain",
 				"status": {
 					"pending": "Pending",
-					"verified": "Verified"
+					"verified": "Verified",
+					"failing": "Check failing",
+					"lapsed": "Not working"
 				},
 				"subtitle": "Serve open & click tracking from your own branded subdomain",
 				"title": "Tracking domains",
 				"toasts": {
 					"added": "Tracking domain added. Add the CNAME record below, then verify.",
 					"removed": "Tracking domain removed",
-					"verifying": "Checking DNS for this tracking domain. It will show as verified once the CNAME resolves."
+					"verifying": "Checking DNS and HTTPS for this tracking domain. It shows as verified once both work."
 				},
 				"verifiedAt": "Verified {date}",
 				"verify": "Verify",
-				"verifyTitle": "Check DNS for this tracking domain",
+				"verifyTitle": "Check DNS and HTTPS for this tracking domain",
 				"verifying": "Verifying...",
-				"rowLabel": "CNAME record for {domain}"
+				"rowLabel": "CNAME record for {domain}",
+				"lastCheck": {
+					"dnsMismatch": "Last check: the CNAME record is missing or points elsewhere. Point it at the value below.",
+					"httpsUnreachable": "Last check: DNS is correct, but this host does not answer over HTTPS with a valid certificate. Add a site for it to your reverse proxy.",
+					"httpsWrongResponse": "Last check: this host answers over HTTPS, but not with Owlat's tracking handler. Proxy it to your Convex site URL.",
+					"inconclusive": "Last check: DNS could not be looked up. Try again in a few minutes."
+				},
+				"failingHint": "New campaigns still use this domain. Owlat checks again within the hour and stops using it if the check fails again.",
+				"lapsedHint": "New campaigns use the default tracking host until this domain verifies again."
 			},
 			"yahooCflPanel": {
 				"confirmButton": "Yahoo accepted the domain",
