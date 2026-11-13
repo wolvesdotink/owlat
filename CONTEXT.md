@@ -1077,8 +1077,9 @@ The current state of a Sending domain at `domains.status`:
 - `verified → verified` / `failed → failed` (re-verify on stable
   state — recorded, results patched)
 - `verified → failed` / `verified → pending` (DNS changed underneath
-  a previously-verified domain — `verifiedAt` preserved as
-  first-verified history)
+  a previously-verified domain, and a second check an hour or more
+  later confirmed it — `verifiedAt` preserved as first-verified
+  history)
 
 No terminal states — every status can leave via regenerate or
 re-verify. Companion fields written atomically with the status by

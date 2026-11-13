@@ -8615,6 +8615,7 @@
 					},
 					"title": "Sending domains",
 					"toasts": {
+						"checkInconclusive": "The DNS check could not be completed: the resolver did not answer. Nothing changed; try again in a few minutes.",
 						"dmarcMonitorOnly": "DMARC set to monitor-only. Re-publish the updated _dmarc record, then verify.",
 						"dmarcRaised": "DMARC policy raised to {policy}. Re-publish the updated _dmarc record, then verify.",
 						"forceVerified": "Domain force-verified (dev shortcut).",

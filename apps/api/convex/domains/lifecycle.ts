@@ -6,8 +6,10 @@
  * `lastRegistrationError`), and is the only place that inserts and deletes
  * `domains` rows. Split across five files that share that one write path:
  *
- *   lifecycleReducer.ts  — pure: types, validators, the verification verdict,
- *                          the legal-edges graph and the reducer.
+ *   lifecycleReducer.ts  — pure: types, validators, the legal-edges graph and
+ *                          the reducer.
+ *   lifecycleVerdict.ts  — pure: the verification verdict and the rule that
+ *                          confirms a regression before it lands.
  *   lifecycleEffects.ts  — the effect runner (`applyEffects`).
  *   lifecycle.ts (here)  — `dispatch`, the status entry points, and
  *                          `patchDomainRecords`, the write every feature editor
@@ -23,10 +25,11 @@
  *                                          (`registering → pending`), register
  *                                          failure (`→ failed`), regenerate
  *                                          (`* → registering`).
- *   lifecycle.recordVerification         — DNS-verifier callback;
- *                                          `deriveVerificationVerdict` picks
- *                                          `verified | failed | pending` and the
- *                                          reducer lands it.
+ *   lifecycle.recordVerification         — DNS-verifier callback (manual
+ *                                          Verify and the daily re-check);
+ *                                          `deriveVerificationVerdict` judges
+ *                                          the DNS pass and the reducer lands
+ *                                          the transition it earns.
  *   lifecycle.remove                     — clears identity sibling rows,
  *                                          deletes the row, fires
  *                                          `delete_with_provider`.
@@ -52,7 +55,9 @@
  *
  * There is no `requestVerification` entry point. The
  * FE calls the DNS verifier (`dnsVerification.verifyDomain`) directly for
- * synchronous feedback, and it lands the result through `recordVerification`.
+ * synchronous feedback, the daily sweep (`reverificationSweep.ts`) schedules
+ * `reverification.reverifyDomain`, and both land the result through
+ * `recordVerification`.
  */
 
 import { v } from 'convex/values';
@@ -77,6 +82,7 @@ import {
 } from './providers';
 import {
 	deriveVerificationVerdict,
+	planVerificationTransition,
 	providerCheckResultValidator,
 	reduce,
 	SENDING_DOMAIN_LIFECYCLE,
@@ -85,9 +91,15 @@ import {
 	type SendingDomainStatus,
 	type SendingDomainTransitionInput,
 	type SendingDomainTransitionOutcome,
+	type VerificationVerdict,
 } from './lifecycleReducer';
 import { applyEffects } from './lifecycleEffects';
 import { returnPathProviderFor } from './returnPathProviders';
+
+/** `recordVerification`'s outcome: the transition, plus what the check proved. */
+export type VerificationOutcome =
+	| (Extract<SendingDomainTransitionOutcome, { ok: true }> & { verdict: VerificationVerdict })
+	| Extract<SendingDomainTransitionOutcome, { ok: false }>;
 
 /**
  * Synthetic `userId` tag for user-driven public-mutation transitions. The
@@ -327,10 +339,13 @@ export const transition = internalMutation({
 });
 
 /**
- * DNS-verifier callback. Derives the verdict via `deriveVerificationVerdict`
- * (DNS results + per-provider check → `verified | failed | pending`) and
- * applies the matching transition. The reducer never branches on
- * `providerType` — the provider check is delivered as `{ verified, lastError? }`.
+ * DNS-verifier callback, for the manual Verify and the scheduled re-check
+ * alike. Derives the verdict via `deriveVerificationVerdict` (DNS results +
+ * per-provider check) and applies the transition `planVerificationTransition`
+ * picks for it. An `inconclusive` verdict (the resolver did not answer) writes
+ * nothing: the status and the last conclusive results stay. The reducer never
+ * branches on `providerType` — the provider check is delivered as
+ * `{ verified, lastError? }`.
  */
 export const recordVerification = internalMutation({
 	args: {
@@ -339,7 +354,7 @@ export const recordVerification = internalMutation({
 		providerCheck: providerCheckResultValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<SendingDomainTransitionOutcome> => {
+	handler: async (ctx, args): Promise<VerificationOutcome> => {
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
@@ -351,21 +366,15 @@ export const recordVerification = internalMutation({
 		// domain's deliverability the way authentication alignment does. Their
 		// `dns.tlsRpt` result is still recorded for the builder UI.
 		const verdict = deriveVerificationVerdict(dns, args.providerCheck);
+		const from = domain.status as SendingDomainStatus;
 
-		const at = Date.now();
-
-		let input: SendingDomainTransitionInput;
-		if (verdict === 'verified') {
-			input = { to: 'verified', at, verificationResults: dns };
-		} else if (verdict === 'failed') {
-			input = { to: 'failed', at, verificationResults: dns };
-		} else {
-			// Some records still pending, none failed — land at `pending`
-			// with fresh results.
-			input = { to: 'pending', at, verificationResults: dns };
+		if (verdict === 'inconclusive') {
+			return { ok: true, applied: 'recorded', from, to: from, domainId: domain._id, verdict };
 		}
 
-		return await dispatch(ctx, domain, input, args.userId);
+		const input = planVerificationTransition(domain, verdict, dns, Date.now());
+		const outcome = await dispatch(ctx, domain, input, args.userId);
+		return outcome.ok ? { ...outcome, verdict } : outcome;
 	},
 });
 

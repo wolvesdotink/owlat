@@ -26,9 +26,7 @@ import type {
 } from '../lib/convexValidators';
 import { authedAction } from '../lib/authedFunctions';
 import dns from 'node:dns/promises';
-import { logError } from '../lib/runtimeLog';
-import { isOwnPrimarySendingDomain, isSendingDomainProviderKind, providerFor } from './providers';
-import type { ProviderCheckResult } from './providers';
+import { isOwnPrimarySendingDomain } from './providers';
 import {
 	formatTlsaRecord,
 	parseTlsaRecord,
@@ -45,6 +43,7 @@ import {
 } from '@owlat/shared/externalReceiving';
 import { checkReverseDns, normalizeHost } from './reverseDns';
 import type { ReverseDnsResult } from './reverseDns';
+import { recordVerificationPass } from './verificationPass';
 
 // The verifier's record/result shapes are the PERSISTED ones, derived from the
 // validators the lifecycle checks `recordVerification` against. Re-spelling them
@@ -56,14 +55,14 @@ type DnsRecords = Infer<typeof dnsRecordsValidator>;
 type VerificationResult = Infer<typeof verificationResultValidator>;
 type VerificationResults = Infer<typeof verificationResultsValidator>;
 
-const LIFECYCLE_USER_VERIFIER = 'system:verifier';
-
 // ─── Shared DNS lookup-error classifier ─────────────────────────────────────
 //
 // Each record verifier's catch tail maps a `node:dns` lookup rejection to the
-// same structured `VerificationResult`: ENOTFOUND/ENODATA → "not found" (the
-// only record-type-specific message), SERVFAIL → "try again later", anything
-// else → the raw message. Hoisted so the three verifiers can't drift.
+// same structured `VerificationResult`. Only ENOTFOUND (NXDOMAIN) and ENODATA
+// are answers about the record: it is absent. Every other rejection (SERVFAIL,
+// timeout, refused, a bad response) means the resolver did not answer, so the
+// result is `inconclusive` and the lifecycle keeps the domain's status. Hoisted
+// so the verifiers can't drift.
 
 function classifyDnsError(
 	error: unknown,
@@ -77,11 +76,17 @@ function classifyDnsError(
 	if (errorMessage.includes('SERVFAIL')) {
 		return {
 			verified: false,
+			inconclusive: true,
 			lastChecked: now,
 			error: 'DNS server error - please try again later',
 		};
 	}
-	return { verified: false, lastChecked: now, error: `DNS lookup failed: ${errorMessage}` };
+	return {
+		verified: false,
+		inconclusive: true,
+		lastChecked: now,
+		error: `DNS lookup failed: ${errorMessage}`,
+	};
 }
 
 // ─── DNS lookup helpers ─────────────────────────────────────────────────────
@@ -294,7 +299,7 @@ export async function runDnsLookups(
 				dkimRecord.type === 'CNAME'
 					? await verifyCnameRecord(dkimHostname, dkimRecord.value)
 					: await verifyTxtRecord(dkimHostname, dkimRecord.value);
-			results.dkim.push(result);
+			results.dkim.push(dkimRecord.rotationPending ? { ...result, rotationPending: true } : result);
 		}
 	}
 
@@ -343,7 +348,9 @@ export async function runDnsLookups(
 /**
  * Run DNS lookups + the per-provider check, then call
  * `lifecycle.recordVerification` to land the status transition. Returns the
- * synchronous result for the FE.
+ * synchronous result for the FE: `allVerified` when the check proved every
+ * record, `inconclusive` when the resolver could not answer and nothing
+ * changed.
  */
 // authz: re-runs live DNS lookups; the verdict comes from DNS, not the caller,
 // and the status write goes through internal lifecycle.recordVerification.
@@ -354,7 +361,12 @@ export const verifyDomain = authedAction({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ success: boolean; allVerified: boolean; results: VerificationResults }> => {
+	): Promise<{
+		success: boolean;
+		allVerified: boolean;
+		inconclusive: boolean;
+		results: VerificationResults;
+	}> => {
 		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
 			domainId: args.domainId,
 		});
@@ -368,37 +380,7 @@ export const verifyDomain = authedAction({
 		}
 
 		const results = await runDnsLookups(domain.domain, domain.dnsRecords);
-
-		// Per-provider check. SES implements `runProviderCheck`; MTA omits it
-		// (treated as `{ verified: true }`).
-		let providerCheck: ProviderCheckResult = { verified: true };
-		if (isSendingDomainProviderKind(domain.providerType)) {
-			const adapter = providerFor(domain.providerType);
-			if (adapter.runProviderCheck) {
-				try {
-					providerCheck = await adapter.runProviderCheck(domain.domain);
-					// Mirror the provider verdict into the persisted
-					// `verificationResults` bundle. WHICH field carries it — and whether
-					// this provider has a verdict worth recording at all — is the
-					// adapter's own business, so no `providerType === 'ses'` check or SES
-					// field name is spelled here.
-					Object.assign(results, adapter.verificationStatusFields?.(providerCheck));
-				} catch (error) {
-					logError('[DNS Verification] Failed to run provider check:', error);
-					providerCheck = {
-						verified: false,
-						lastError: error instanceof Error ? error.message : 'Unknown provider error',
-					};
-				}
-			}
-		}
-
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.recordVerification, {
-			domainId: args.domainId,
-			verificationResults: results,
-			providerCheck,
-			userId: LIFECYCLE_USER_VERIFIER,
-		});
+		const outcome = await recordVerificationPass(ctx, domain, results);
 
 		if (!outcome.ok) {
 			throwInternal(`Verification failed: ${outcome.reason}`);
@@ -429,7 +411,8 @@ export const verifyDomain = authedAction({
 
 		return {
 			success: true,
-			allVerified: outcome.to === 'verified',
+			allVerified: outcome.verdict === 'verified',
+			inconclusive: outcome.verdict === 'inconclusive',
 			results,
 		};
 	},

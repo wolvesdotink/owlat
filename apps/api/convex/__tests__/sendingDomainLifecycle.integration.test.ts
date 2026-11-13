@@ -13,10 +13,13 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import dns from 'node:dns/promises';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { checkEmailDomainVerification } from '../domains/domains';
+import { decideSenderAndVariables } from '../transactional/dispatchDecision';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 // The flow under test schedules the functions below, which this suite's
@@ -1285,5 +1288,223 @@ describe('Sending domain lifecycle — setDmarcPolicy', () => {
 		expect(outcome.ok).toBe(false);
 		if (outcome.ok) return;
 		expect(outcome.reason).toBe('domain_not_found');
+	});
+});
+
+describe('Sending domain lifecycle — re-verification of a verified domain', () => {
+	const HOUR = 60 * 60 * 1000;
+	const ACTIVE_KEY = 'v=DKIM1; k=rsa; p=ACTIVEKEY';
+	const DMARC = 'v=DMARC1; p=none';
+
+	const dnsError = (code: string, host: string) =>
+		Object.assign(new Error(`queryTxt ${code} ${host}`), { code });
+
+	/**
+	 * Answer TXT lookups from a zone: a string list is the published records, an
+	 * error code is what the resolver says instead, and a host not listed does
+	 * not exist (NXDOMAIN).
+	 */
+	function serveZone(zone: Record<string, string[] | { fails: string }>) {
+		vi.spyOn(dns, 'resolveTxt').mockImplementation(async (host: string) => {
+			const answer = zone[host];
+			if (answer === undefined) throw dnsError('ENOTFOUND', host);
+			if (!Array.isArray(answer)) throw dnsError(answer.fails, host);
+			return answer.map((value) => [value]);
+		});
+	}
+
+	async function seedVerified(
+		t: ReturnType<typeof convexTest>,
+		domain: string,
+		status: 'verified' | 'failed' = 'verified'
+	): Promise<Id<'domains'>> {
+		return await t.run(async (ctx) =>
+			ctx.db.insert('domains', {
+				domain,
+				status,
+				dnsRecords: {
+					dkim: [{ type: 'TXT', host: 's1._domainkey', value: ACTIVE_KEY }],
+					dmarc: { type: 'TXT', host: '_dmarc', value: DMARC },
+				},
+				verificationResults: {
+					dkim: [{ verified: true, lastChecked: Date.now() }],
+					dmarc: { verified: true, lastChecked: Date.now() },
+				},
+				providerType: 'mta',
+				verifiedAt: Date.now() - 30 * 24 * HOUR,
+				lastVerifiedAt: Date.now() - 24 * HOUR,
+				createdAt: Date.now() - 30 * 24 * HOUR,
+				updatedAt: Date.now() - 24 * HOUR,
+			})
+		);
+	}
+
+	const statusOf = (t: ReturnType<typeof convexTest>, domainId: Id<'domains'>) =>
+		t.run(async (ctx) => (await ctx.db.get(domainId))!);
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-11-02T08:00:00Z'));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('leaves verified only after a confirming check, and the send gates then refuse', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'dkim-gone.com');
+		// The DKIM record was deleted: the zone answers NXDOMAIN for the selector.
+		serveZone({ '_dmarc.dkim-gone.com': [DMARC] });
+
+		const first = await t.action(api.domains.dnsVerification.verifyDomain, { domainId });
+		expect(first.allVerified).toBe(false);
+		// One answer is not enough to block every send from the domain.
+		expect((await statusOf(t, domainId)).status).toBe('verified');
+		expect((await statusOf(t, domainId)).regressionSuspectedAt).toBe(Date.now());
+
+		// The confirming check the first failure scheduled runs an hour later and
+		// sees the same authoritative absence.
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const domain = await statusOf(t, domainId);
+		expect(domain.status).toBe('failed');
+		expect(domain.regressionSuspectedAt).toBeUndefined();
+		expect(domain.verificationResults?.dkim?.[0]).toMatchObject({ verified: false });
+
+		const gate = await t.run((ctx) => checkEmailDomainVerification(ctx, 'news@dkim-gone.com'));
+		expect(gate.verified).toBe(false);
+		expect(gate.error).toContain('Settings > Domains');
+		expect(
+			decideSenderAndVariables({
+				domainStatus: gate,
+				dataVariables: undefined,
+				dataVariablesSchema: undefined,
+			})
+		).toMatchObject({ ok: false, reason: 'domain_unverified' });
+	});
+
+	it('does not count a second failure inside the confirmation window', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'cached-nx.com');
+		serveZone({ '_dmarc.cached-nx.com': [DMARC] });
+
+		await t.action(internal.domains.reverification.reverifyDomain, { domainId });
+		const suspectedAt = (await statusOf(t, domainId)).regressionSuspectedAt;
+		// A resolver may hand back its cached negative answer for a while; a
+		// re-check minutes later proves nothing new.
+		vi.setSystemTime(Date.now() + 5 * 60 * 1000);
+		await t.action(internal.domains.reverification.reverifyDomain, { domainId });
+
+		const domain = await statusOf(t, domainId);
+		expect(domain.status).toBe('verified');
+		expect(domain.regressionSuspectedAt).toBe(suspectedAt);
+	});
+
+	it('keeps a verified domain verified when the resolver cannot answer, and says so', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'servfail.com');
+		serveZone({
+			's1._domainkey.servfail.com': { fails: 'ESERVFAIL' },
+			'_dmarc.servfail.com': [DMARC],
+		});
+
+		const result = await t.action(api.domains.dnsVerification.verifyDomain, { domainId });
+		expect(result).toMatchObject({ allVerified: false, inconclusive: true });
+
+		const domain = await statusOf(t, domainId);
+		expect(domain.status).toBe('verified');
+		expect(domain.regressionSuspectedAt).toBeUndefined();
+		// The last authoritative evidence stays on the row.
+		expect(domain.verificationResults?.dkim?.[0]).toMatchObject({ verified: true });
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		expect(jobs).toEqual([]);
+	});
+
+	it('does not fail the domain over a rotation selector that is not published yet', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'rotating.com');
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+			domain: 'rotating.com',
+			selector: 's2',
+			dnsRecord: 'v=DKIM1; k=rsa; p=NEXTKEY',
+			phase: 'pending',
+			userId: 'system:dkim_rotation',
+		});
+		// The active selector still signs and is published; s2 is not yet.
+		serveZone({
+			's1._domainkey.rotating.com': [ACTIVE_KEY],
+			'_dmarc.rotating.com': [DMARC],
+		});
+
+		const result = await t.action(api.domains.dnsVerification.verifyDomain, { domainId });
+		expect(result.allVerified).toBe(true);
+
+		const domain = await statusOf(t, domainId);
+		expect(domain.status).toBe('verified');
+		expect(domain.regressionSuspectedAt).toBeUndefined();
+		expect(domain.verificationResults?.dkim).toEqual([
+			expect.objectContaining({ verified: true }),
+			expect.objectContaining({ verified: false, rotationPending: true }),
+		]);
+	});
+
+	it('returns a regressed domain to verified on the next passing check', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'restored.com', 'failed');
+		serveZone({
+			's1._domainkey.restored.com': [ACTIVE_KEY],
+			'_dmarc.restored.com': [DMARC],
+		});
+
+		await t.action(internal.domains.reverification.reverifyDomain, { domainId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect((await statusOf(t, domainId)).status).toBe('verified');
+		const gate = await t.run((ctx) => checkEmailDomainVerification(ctx, 'news@restored.com'));
+		expect(gate.verified).toBe(true);
+	});
+
+	it('clears a suspicion when the record is back before the confirming check', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedVerified(t, 'blip.com');
+		serveZone({ '_dmarc.blip.com': [DMARC] });
+		await t.action(internal.domains.reverification.reverifyDomain, { domainId });
+		expect((await statusOf(t, domainId)).regressionSuspectedAt).toBeDefined();
+
+		serveZone({ 's1._domainkey.blip.com': [ACTIVE_KEY], '_dmarc.blip.com': [DMARC] });
+		await vi.advanceTimersByTimeAsync(HOUR);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const domain = await statusOf(t, domainId);
+		expect(domain.status).toBe('verified');
+		expect(domain.regressionSuspectedAt).toBeUndefined();
+	});
+
+	it('the daily sweep schedules one check per domain that was ever verified', async () => {
+		const t = convexTest(schema, modules);
+		const verified = await seedVerified(t, 'sweep-ok.com');
+		const regressed = await seedVerified(t, 'sweep-failed.com', 'failed');
+		await t.run(async (ctx) => {
+			// Never verified: setting up is the operator's job, not the sweep's.
+			await ctx.db.insert('domains', {
+				domain: 'sweep-new.com',
+				status: 'pending',
+				dnsRecords: {},
+				providerType: 'mta',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(internal.domains.reverificationSweep.scheduleReverification, {});
+
+		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		const checked = jobs
+			.filter((job) => job.name.endsWith('reverification:reverifyDomain'))
+			.map((job) => (job.args[0] as { domainId: Id<'domains'> }).domainId);
+		expect(checked.sort()).toEqual([verified, regressed].sort());
 	});
 });

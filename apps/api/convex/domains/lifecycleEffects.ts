@@ -21,6 +21,9 @@
  *   provision_relay_identity_if_enabled  — `→ verified`; provisions the
  *                                          coexisting relay identity the
  *                                          fallback configuration calls for.
+ *   schedule_confirming_check            — a verified domain's first
+ *                                          authoritative failure; re-checks it
+ *                                          after the confirmation delay.
  */
 
 import type { MutationCtx } from '../_generated/server';
@@ -112,6 +115,14 @@ export async function applyEffects(
 				// first: nothing in this effect may roll back the domain's → verified
 				// transition (the same reasoning as `register_with_provider`).
 				await ensureRelayIdentities(ctx, domain, backfills, { reprovision: true });
+				break;
+			}
+			case 'schedule_confirming_check': {
+				await ctx.scheduler.runAfter(
+					effect.delayMs,
+					internal.domains.reverification.reverifyDomain,
+					{ domainId: effect.domainId }
+				);
 				break;
 			}
 		}
