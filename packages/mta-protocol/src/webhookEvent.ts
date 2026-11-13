@@ -28,7 +28,7 @@ import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { isDeliveryDomain } from '@owlat/shared/routingDispatch';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
 import { isDeliverabilityProbeTokenFormat } from '@owlat/shared/deliverabilityProbeFormat';
-import { isSmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
+import { isBounceCause, isSmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import { isCorrelationId } from '@owlat/shared/correlation';
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
@@ -112,7 +112,8 @@ export function isMtaWebhookEvent(value: unknown): value is ValidatedMtaWebhookE
 				(bounded(value['messageId'], 512) || bounded(value['recipient'], 320)) &&
 				(value['bounceType'] === undefined ||
 					value['bounceType'] === 'hard' ||
-					value['bounceType'] === 'soft')
+					value['bounceType'] === 'soft') &&
+				(value['bounceCause'] === undefined || isBounceCause(value['bounceCause']))
 			);
 		case 'smtp.classified':
 			return bounded(value['messageId'], 512) && value['smtpCategory'] !== undefined;

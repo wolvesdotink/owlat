@@ -94,6 +94,25 @@ describe('sendToMx outcome classification', () => {
 		expect(result.smtpCode).toBe(550);
 		// A 5xx is a permanent verdict on the recipient — never retry the next MX.
 		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+		// The phase travels with the verdict, so dispatch can tell a refusal of
+		// the recipient from a refusal of the sender.
+		expect(result.smtpPhase).toBe('rcpt');
+	});
+
+	it('records the greeting phase of a 554 the server answered before any envelope', async () => {
+		connectMock.mockRejectedValue(
+			smtpError({
+				phase: 'greeting',
+				message: '554 IP=203.0.113.10 - A problem occurred.',
+				replyCode: 554,
+				secured: false,
+			})
+		);
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+		expect(result.bounceType).toBe('hard');
+		expect(result.smtpPhase).toBe('greeting');
 	});
 
 	it('returns soft bounce for 5.2.2 (mailbox full) despite 5xx code', async () => {
@@ -136,6 +155,9 @@ describe('sendToMx outcome classification', () => {
 		expect(result.bounceType).toBe('hard');
 		// A reply-less client refusal carries no SMTP code — but is still terminal.
 		expect(result.smtpCode).toBeUndefined();
+		// It refuses the recipient's address, not our sender, so no phase rides
+		// along to make dispatch read it as a sender refusal.
+		expect(result.smtpPhase).toBeUndefined();
 		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
 	});
 
@@ -149,6 +171,7 @@ describe('sendToMx outcome classification', () => {
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('deferred');
 		expect(result.smtpCode).toBe(451);
+		expect(result.smtpPhase).toBe('mail');
 	});
 
 	it('tries next MX host on connection error', async () => {

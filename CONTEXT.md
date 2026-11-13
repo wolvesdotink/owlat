@@ -2554,6 +2554,13 @@ per-recipient on `contacts.softBounceCount` (so it accumulates across the
 recipient's whole send history) and reset to 0 on the next `delivered`. This is
 the standard ESP "suppress-after-N-soft" practice.
 
+A bounce has a cause: the recipient, or the sender. A sender bounce is a
+receiver refusing our sending identity (IP or domain reputation, SPF/DKIM/DMARC,
+PTR/HELO, a spam verdict, or any reply before `RCPT TO`), not the address. It
+still ends the Send as `bounced` and still counts against the sender's
+reputation, but it never blocklists the address and never counts toward the
+soft-bounce threshold. A bounce that names no cause is the recipient's.
+
 `bounceType: 'hard' | 'soft'` is the canonical encoding of bounce class.
 `errorCode` is reserved for the `failed` state (worker-side classification:
 `WORKPOOL_FAILED`, `PROVIDER_REJECTED`, etc.) and is not written on

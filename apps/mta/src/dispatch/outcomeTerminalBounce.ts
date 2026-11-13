@@ -10,6 +10,7 @@
 import type { MetricOutcome } from '../types.js';
 import type { DispatchEffect } from './effects.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
+import { smtpRefusalCause } from '../intelligence/bounceCause.js';
 import { classifiedResponseEffect } from './outcomeClassifiedResponse.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { AttemptCtx } from './types.js';
@@ -25,6 +26,13 @@ type TerminalBounceOutcome = Extract<DispatchOutcome, { kind: 'hard_bounce' | 'd
  * `bounced` event carries for the operator. The order is load-bearing: the
  * effects and idempotency suites pin it, and `suppress_recipient` must stay last.
  *
+ * A REFUSAL OF OUR SENDING IDENTITY KEEPS THE RECIPIENT. When the receiver
+ * refused our IP, domain, authentication or content, or answered before it had
+ * a recipient (`bounceCause.ts`), the address is fine: `suppress_recipient` is
+ * left out and the `bounced` event says `bounceCause: 'sender'`, so Convex does
+ * not blocklist it either. Everything that trains on the sender (breaker,
+ * throttle, warming, metrics, the ramp's block clause) still runs.
+ *
  * TWO `notify_convex` events, and they are not interchangeable. `bounced` moves
  * the send to a terminal status; `smtp.classified` moves the ramp's block-clause
  * counter (see `outcomeClassifiedResponse.ts`). A block category such as
@@ -37,6 +45,12 @@ export function terminalBounceEffects(
 ): DispatchEffect[] {
 	const { job, ip, domain } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
+	const senderRefused =
+		smtpRefusalCause({
+			phase: outcome.smtpPhase,
+			enhancedCode: outcome.enhancedCode,
+			category: outcome.classification.category,
+		}) === 'sender';
 	return [
 		circuitBreakerEffect(ctx, 'bounced'),
 		{
@@ -67,12 +81,21 @@ export function terminalBounceEffects(
 				messageId: job.messageId,
 				organizationId: job.organizationId,
 				bounceType: 'hard',
+				...(senderRefused ? { bounceCause: 'sender' as const } : {}),
 				message: notifyMessage,
 				timestamp: Date.now(),
 			},
 		},
 		classifiedResponseEffect(outcome, ctx),
-		{ kind: 'suppress_recipient', address: job.to, reason: 'hard_bounce' },
+		...(senderRefused
+			? []
+			: [
+					{
+						kind: 'suppress_recipient',
+						address: job.to,
+						reason: 'hard_bounce',
+					} as const satisfies DispatchEffect,
+				]),
 	];
 }
 
