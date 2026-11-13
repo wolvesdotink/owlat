@@ -403,14 +403,19 @@ function onKeydown(event: KeyboardEvent) {
 
 		<!-- Advisory AI cluster: "Coach my draft" self-check + freeform whole-draft
 		     revise. Advisory only — never sends; hidden when AI is off / draft empty. -->
-		<PostboxComposerAdvisory
+		<!-- The advisory renders two roots, so the lock sits on a wrapper. -->
+		<div
 			v-if="frameView.advisoryOpen.value"
+			class="contents"
 			:inert="draftMirror.busy || isScheduled"
-			v-model:body-html="bodyHtml"
-			:ai-enabled="aiRewriteEnabled"
-			:mailbox-id="seed.mailboxId"
-			:in-reply-to-message-id="seed.inReplyToMessageId"
-		/>
+		>
+			<PostboxComposerAdvisory
+				v-model:body-html="bodyHtml"
+				:ai-enabled="aiRewriteEnabled"
+				:mailbox-id="seed.mailboxId"
+				:in-reply-to-message-id="seed.inReplyToMessageId"
+			/>
+		</div>
 
 		<template #footer="{ capabilities }">
 			<PostboxComposerFooter
