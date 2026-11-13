@@ -189,7 +189,7 @@ route 33 pages/welcome.vue
 
 deferred 4 ../../../node_modules/@tauri-apps/api/app.js
 deferred 9 ../../../node_modules/@tauri-apps/api/webviewWindow.js
-deferred 83 ../../../node_modules/posthog-js/dist/module.js
+deferred 127 ../../../node_modules/posthog-js/dist/module.mjs
 deferred 22 ../../../packages/email-builder/src/preview/components/AnalysisPanel.vue
 deferred 20 ../../../packages/email-builder/src/preview/components/DiffPanel.vue
 deferred 20 ../../../packages/email-builder/src/preview/components/RenderOptionsPanel.vue

@@ -49,4 +49,9 @@ for (const { identity, directory } of latest.values())
 	);
 const env = { ...process.env };
 delete env['OWLAT_COVERAGE_COLLECT_ONLY'];
-execFileSync('bunx', ['vitest', '--merge-reports', '--coverage'], { cwd, env, stdio: 'inherit' });
+// Named, not left to vitest's default report directory, which differs between majors.
+execFileSync('bunx', ['vitest', '--merge-reports=.vitest-reports', '--coverage'], {
+	cwd,
+	env,
+	stdio: 'inherit',
+});
