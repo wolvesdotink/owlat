@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	areasForPath,
 	createAreaCatalogs,
+	guessLocale,
 	type AreaChunkLoader,
 	type AreaMessages,
 	type AreaRouteEntry,
@@ -80,6 +81,23 @@ describe('areasForPath', () => {
 		expect(areasForPath(ROUTES, '/dashboard/administration')).toEqual([]);
 		expect(areasForPath(ROUTES, '/setup-guide')).toEqual([]);
 		expect(areasForPath(ROUTES, '/auth/login')).toEqual([]);
+	});
+});
+
+describe('guessLocale', () => {
+	const locales = ['en', 'de'];
+
+	it('takes the saved locale first', () => {
+		expect(guessLocale('a=1; owlat-locale=de; b=2', ['en-US'], locales, 'en')).toBe('de');
+	});
+
+	it('falls back to the browser languages, a region to its language', () => {
+		expect(guessLocale('', ['fr-FR', 'de-AT', 'en'], locales, 'en')).toBe('de');
+		expect(guessLocale('owlat-locale=xx', ['DE'], locales, 'en')).toBe('de');
+	});
+
+	it('ends at the fallback', () => {
+		expect(guessLocale('', ['fr-FR'], locales, 'en')).toBe('en');
 	});
 });
 
