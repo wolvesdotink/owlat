@@ -8,24 +8,41 @@ describe('sendingIpPosture', () => {
 
 	it('judges only the pool asked for', () => {
 		const ips = [
-			{ pool: 'campaign', active: true, blockReasons: ['dnsbl' as const] },
-			{ pool: 'transactional', active: true },
+			{ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: ['dnsbl' as const] },
+			{ ip: '192.0.2.2', pool: 'transactional', active: true },
 		];
 		expect(sendingIpPosture(ips, 'campaign')).toBe('all_held');
 		expect(sendingIpPosture(ips, 'transactional')).toBe('ready');
 	});
 
+	it('reads membership from the pool lists, since a shared row names only its first pool', () => {
+		// 192.0.2.1 serves both pools but its row says `transactional`; the held
+		// 192.0.2.2 is campaign-only, so campaigns still have a healthy address.
+		const ips = [
+			{ ip: '192.0.2.1', pool: 'transactional', active: true },
+			{ ip: '192.0.2.2', pool: 'campaign', active: true, blockReasons: ['dnsbl' as const] },
+		];
+		const pools = { transactional: ['192.0.2.1'], campaign: ['192.0.2.1', '192.0.2.2'] };
+		expect(sendingIpPosture(ips, 'campaign')).toBe('all_held');
+		expect(sendingIpPosture(ips, 'campaign', pools)).toBe('some_held');
+		expect(sendingIpPosture(ips, 'transactional', pools)).toBe('ready');
+	});
+
 	it('falls back to every address when the pool lists none', () => {
 		const ips = [
-			{ pool: 'default', active: true },
-			{ pool: 'default', active: false },
+			{ ip: '192.0.2.1', pool: 'default', active: true },
+			{ ip: '192.0.2.2', pool: 'default', active: false },
 		];
 		expect(sendingIpPosture(ips, 'transactional')).toBe('some_held');
 	});
 
 	it('holds an address out of rotation or with a block reason', () => {
-		expect(isSendingIpHeld({ pool: 'campaign', active: false })).toBe(true);
-		expect(isSendingIpHeld({ pool: 'campaign', active: true, blockReasons: ['spf'] })).toBe(true);
-		expect(isSendingIpHeld({ pool: 'campaign', active: true, blockReasons: [] })).toBe(false);
+		expect(isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: false })).toBe(true);
+		expect(
+			isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: ['spf'] })
+		).toBe(true);
+		expect(
+			isSendingIpHeld({ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: [] })
+		).toBe(false);
 	});
 });

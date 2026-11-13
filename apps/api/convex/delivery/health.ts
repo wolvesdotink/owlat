@@ -14,9 +14,11 @@
  *  - the transactional default sender, which every transactional send uses
  *
  * The Delivery hub's readiness panel judges the same facts per message type
- * (`apps/web/app/utils/deliveryReadiness.ts`). Any condition that blocks a
- * stream there is an `error` here, and any it flags is a `warn`, so the header
- * chip above the panel never reads healthier than the panel.
+ * (`apps/web/app/utils/deliveryReadiness.ts`). Every condition that blocks a
+ * stream there is an `error` here, so the header chip above the panel never
+ * reads healthy while the panel says a stream is blocked. The panel's
+ * attention-only gates (authentication records, DMARC, today's capacity) stay
+ * out of this roll-up, which the sidebar subscribes to on every page.
  *
  * The worst-of logic lives in the pure `rollUpDeliveryHealth` so it is unit
  * testable without a DB. Levels map to the shared success/warning/error tokens
@@ -307,7 +309,9 @@ async function streamHealthInputs(
 	}
 
 	const warming = mtaPools.length > 0 ? await ctx.db.query('warmingState').first() : null;
-	const postures = new Set(mtaPools.map((pool) => sendingIpPosture(warming?.ips ?? [], pool)));
+	const postures = new Set(
+		mtaPools.map((pool) => sendingIpPosture(warming?.ips ?? [], pool, warming?.pools))
+	);
 	return {
 		streamsWithoutTransport,
 		sendingIps: postures.has('all_held')

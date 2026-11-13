@@ -263,10 +263,12 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 	async function seedWarming(
 		t: ReturnType<typeof convexTest>,
 		phase: string,
-		ips: ReturnType<typeof warmingIp>[]
+		ips: ReturnType<typeof warmingIp>[],
+		pools?: { transactional: string[]; campaign: string[] }
 	) {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('warmingState', {
+				...(pools ? { pools } : {}),
 				phase,
 				totalDailyCap: 1000,
 				totalSentToday: 0,
@@ -310,6 +312,22 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({ level: 'error', reason: 'Every sending IP is held back' });
+	});
+
+	it('reads pool membership from the pool lists, not the first-pool label on each row', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t);
+		// 192.0.2.10 serves both pools but its row names only `transactional`.
+		await seedWarming(
+			t,
+			'ramp',
+			[warmingIp('192.0.2.10', 'transactional', false), warmingIp('192.0.2.11', 'campaign', true)],
+			{ transactional: ['192.0.2.10'], campaign: ['192.0.2.10', '192.0.2.11'] }
+		);
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({ level: 'warn', reason: 'Some sending IPs are held back' });
 	});
 
 	it('warns when the campaign warm-up is halted', async () => {

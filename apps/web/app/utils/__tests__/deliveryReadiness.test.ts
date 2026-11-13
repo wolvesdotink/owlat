@@ -645,7 +645,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 				transactionalSender: verifiedSender,
 				warming: {
 					phase: 'plateau',
-					ips: [{ pool: 'campaign', active: true, blockReasons: ['dnsbl'] }],
+					ips: [{ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: ['dnsbl'] }],
 				},
 				sendingReadiness: { capped: true, today: 0 },
 			}
@@ -684,8 +684,8 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 				warming: {
 					phase: 'ramp',
 					ips: [
-						{ pool: 'campaign', active: true, blockReasons: ['fcrdns'] },
-						{ pool: 'transactional', active: true },
+						{ ip: '192.0.2.1', pool: 'campaign', active: true, blockReasons: ['fcrdns'] },
+						{ ip: '192.0.2.2', pool: 'transactional', active: true },
 					],
 				},
 			}

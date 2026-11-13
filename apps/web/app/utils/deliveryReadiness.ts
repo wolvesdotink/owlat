@@ -15,6 +15,7 @@ import type {
 import type { LocalizedText } from '~/utils/localizedText';
 import {
 	sendingIpPosture,
+	type SendingIpPools,
 	type SendingIpPosture,
 	type SendingIpPostureInput,
 } from '@owlat/shared/ipReadiness';
@@ -177,7 +178,11 @@ export interface ReadinessStreamSources {
 	mailServer: MailServerState | null;
 	transactionalSender: { address: string | null; isDomainVerified: boolean } | null;
 	enabled?: Partial<Record<MailStream, boolean>>;
-	warming?: { phase: string; ips: readonly SendingIpPostureInput[] } | null;
+	warming?: {
+		phase: string;
+		ips: readonly SendingIpPostureInput[];
+		pools?: SendingIpPools | null;
+	} | null;
 	sendingReadiness?: { capped: false } | { capped: true; today: number } | null;
 	reputation?: { complaintRate: number } | null;
 	oneClickUnsubscribe?: 'pass' | 'fail' | null;
@@ -284,6 +289,7 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 		marketing: sources.streams.campaign,
 	};
 	const ips = sources.warming?.ips ?? [];
+	const pools = sources.warming?.pools ?? null;
 	const capacity = sources.sendingReadiness;
 	return {
 		streamTransport,
@@ -291,9 +297,11 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 		mailServer: sources.mailServer,
 		sendingIps: {
 			transactional: streamTransport.transactional.usesOwnMta
-				? sendingIpPosture(ips, 'transactional')
+				? sendingIpPosture(ips, 'transactional', pools)
 				: null,
-			marketing: streamTransport.marketing.usesOwnMta ? sendingIpPosture(ips, 'campaign') : null,
+			marketing: streamTransport.marketing.usesOwnMta
+				? sendingIpPosture(ips, 'campaign', pools)
+				: null,
 		},
 		warmupHalted: streamTransport.marketing.usesOwnMta && sources.warming?.phase === 'plateau',
 		defaultSender: sources.transactionalSender,
