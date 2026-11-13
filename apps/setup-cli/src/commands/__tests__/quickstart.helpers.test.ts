@@ -8,6 +8,7 @@ import { resolveComposeVersionPin, composeImageSource, composeUpArgs } from '../
 import { checkOutboundPort25, outboundPort25Warning } from '../quickstartOutbound.js';
 import type { MtaHealthBody } from '../doctor.js';
 import { doctorText } from '../../lib/doctorText.js';
+import { localSiteUrlNotice } from '../../lib/publicSiteUrl.js';
 import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
 
@@ -273,5 +274,36 @@ describe('quickstart — outbound port 25 in the summary', () => {
 		const result = await checkOutboundPort25(env, fetchHealth);
 		expect(fetchHealth).not.toHaveBeenCalled();
 		expect(outboundPort25Warning(result, env)).toEqual([]);
+	});
+});
+
+/**
+ * The terminal wizard asks for no public URL, because a public SITE_URL only
+ * works together with the reverse proxy and TLS that serve it. The install
+ * stays on localhost and works; the summary says where the mail links point
+ * and how to move them, once the box sends mail as a public domain.
+ */
+describe('quickstart — localhost links in system mail', () => {
+	const plain = (s: string) => stripVTControlCharacters(s);
+	const mailHost = { EHLO_HOSTNAME: 'mail.example.com', DEFAULT_FROM_DOMAIN: 'mail.example.com' };
+
+	it('says the links point at localhost and how to set a public SITE_URL', () => {
+		const notice = localSiteUrlNotice({ ...mailHost, SITE_URL: 'http://localhost:3000' });
+		const joined = notice.join('\n');
+		expect(joined).toContain('http://localhost:3000');
+		expect(joined).toMatch(/verification, password-reset and invitation/);
+		expect(joined).toContain('owlat env SITE_URL');
+		expect(joined).toContain('owlat apply');
+
+		const out = plain(
+			formatSummary({ mode: 'custom', baseUrl: 'http://localhost:3210', siteUrlNotice: notice })
+		);
+		expect(out.split('\n')[0]).toBe('Quickstart complete!');
+		expect(out).toContain('owlat env SITE_URL');
+	});
+
+	it('stays quiet for a public SITE_URL or a box with no public mail identity', () => {
+		expect(localSiteUrlNotice({ ...mailHost, SITE_URL: 'https://owlat.example.com' })).toEqual([]);
+		expect(localSiteUrlNotice({ SITE_URL: 'http://localhost:3000' })).toEqual([]);
 	});
 });

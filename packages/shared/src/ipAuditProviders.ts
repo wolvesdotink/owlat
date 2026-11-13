@@ -97,7 +97,7 @@ const VPS_PORT25_NOTES: Record<IpAuditVpsProvider, VpsPort25Note> = {
 		providerLabel: 'Another provider',
 		port25Policy: 'unknown',
 		listingPropensity: 'unknown',
-		note: 'Many providers block outbound port 25 silently. The audit below tests it directly, so you find out in seconds rather than after setup.',
+		note: 'Many providers block outbound port 25 silently. Ask yours to open it for this server, or send through an SMTP relay.',
 	},
 };
 

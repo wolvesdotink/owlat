@@ -22,6 +22,12 @@ import {
 } from '@owlat/shared/fcrdns';
 import { installerProviderNote } from '@owlat/shared/ipAuditProviders';
 import { isRecord } from '@owlat/shared';
+import {
+	PUBLIC_SITE_URL_STEPS,
+	isLocalSiteUrl,
+	publicMailIdentity,
+	systemMailSiteUrl,
+} from '../lib/publicSiteUrl';
 
 export type SendPathFinding = DoctorFinding;
 
@@ -124,6 +130,33 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 		ok: Boolean(env[key]),
 		message: doctorText`${trusted(key)} is set (required to send via ${trusted(provider)})`,
 	}));
+}
+
+/**
+ * Whether the links in system mail reach their readers: on a box that sends
+ * mail as a public domain, a localhost `SITE_URL` sends every verification,
+ * reset and invitation link to an address only this server can open. A local
+ * install with no public mail identity is not checked.
+ */
+export function evaluateSiteUrl(env: EnvMap): DoctorFinding[] {
+	if (!publicMailIdentity(env)) return [];
+	const siteUrl = systemMailSiteUrl(env);
+	if (!isLocalSiteUrl(siteUrl)) {
+		return [
+			{
+				check: 'env.site_url',
+				ok: true,
+				message: doctorText`SITE_URL ${urlValue(siteUrl)} is public, so links in system mail open off this server`,
+			},
+		];
+	}
+	return [
+		{
+			check: 'env.site_url',
+			ok: false,
+			message: doctorText`SITE_URL is ${urlValue(siteUrl)} while this server sends mail as a public domain: links in sign-up verification, password-reset and invitation mail only open on this server. ${trusted(PUBLIC_SITE_URL_STEPS.join(' '))}`,
+		},
+	];
 }
 
 /**
@@ -353,8 +386,20 @@ export async function probeIpAudit(baseUrl: string, apiKey?: string): Promise<Mt
 
 export type MtaHealthBody = { ok: true; body: unknown } | { ok: false; finding: MtaHealthFinding };
 
+/**
+ * How long a `/health` read may take. On a cold probe cache the MTA opens a
+ * TCP/25 connection per sending IP before it answers, and a silently dropped
+ * port only fails once its 5s connect timeout runs out. A shorter budget would
+ * report that blocked port as an unreachable MTA, so this allows for the MX
+ * lookup and the connect timeout together.
+ */
+export const MTA_HEALTH_TIMEOUT_MS = 20_000;
+
 /** GET `/health`; a failure comes back as the finding to report, never as a throw. */
-export async function fetchMtaHealth(baseUrl: string, timeoutMs = 3000): Promise<MtaHealthBody> {
+export async function fetchMtaHealth(
+	baseUrl: string,
+	timeoutMs = MTA_HEALTH_TIMEOUT_MS
+): Promise<MtaHealthBody> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
 	// The configured URL may carry credentials; only its sanitized form is printed.
 	const unreachable = (detail: string): MtaHealthBody => ({
@@ -409,7 +454,7 @@ export async function refreshMtaIdentity(
 	const url = `${baseUrl.replace(/\/+$/, '')}/identity/recheck`;
 	const ctrl = new AbortController();
 	// DNS, not HTTP, sets the floor here: each identity may wait out a 5s
-	// resolver budget, so allow more than the 3s the read-only probes use.
+	// resolver budget.
 	const timer = setTimeout(() => ctrl.abort(), 30_000);
 	try {
 		const resp = await fetch(url, {

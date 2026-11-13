@@ -141,6 +141,8 @@ export function formatSummary(args: {
 	baseUrl: string;
 	/** Lines explaining why mail cannot leave yet; they replace the plain success headline. */
 	outboundWarning?: string[];
+	/** Lines saying system mail links to a localhost URL (`lib/publicSiteUrl.ts`). */
+	siteUrlNotice?: string[];
 }): string {
 	const warning = args.outboundWarning ?? [];
 	const lines: string[] =
@@ -154,6 +156,9 @@ export function formatSummary(args: {
 	lines.push('');
 	lines.push(`Web app:   ${pc.cyan('http://localhost:3000')}`);
 	lines.push(`Convex:    ${pc.cyan(args.baseUrl)}`);
+	if (args.siteUrlNotice?.length) {
+		lines.push('', ...args.siteUrlNotice.map((line) => pc.yellow(line)));
+	}
 	if (args.mode === 'blank') {
 		lines.push(`Mode:      ${pc.yellow('Blank — sign up at /auth/register')}`);
 	} else if (args.adminEmail) {
