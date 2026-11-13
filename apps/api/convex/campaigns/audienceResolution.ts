@@ -42,6 +42,7 @@ import {
 import type { ParsedSegmentFilters } from '../conditions';
 import {
 	selectRecipient,
+	selectSegmentRecipient,
 	SEND_PAGE_SIZE,
 	type AudienceCount,
 	type CampaignRecipient,
@@ -73,7 +74,8 @@ export interface ResolvedPage {
  * A page costs a FIXED set-up plus a per-candidate fan-out that depends on the
  * Audience: a topic candidate is its membership, its contact and one
  * suppression point read; a segment candidate is its contact, one point read
- * per distinct condition lookup and one suppression point read. A segment
+ * per distinct condition lookup, one suppression point read and, for a contact
+ * a transactional send created, one topic-membership read. A segment
  * carrying many conditions therefore resolves fewer contacts per page — the
  * cursor advances by what was read, so a smaller page only means more hops.
  */
@@ -206,8 +208,8 @@ export async function resolveRecipientPageImpl(
 		// segment get + paginate + the lookup's per-page set-up.
 		fixedQueries: 2 + lookupSetup,
 		fixedDocuments: 1 + lookupSetup,
-		queriesPerCandidate: lookupsPerContact + 1,
-		documentsPerCandidate: 1 + lookupsPerContact + 1,
+		queriesPerCandidate: lookupsPerContact + 2,
+		documentsPerCandidate: 1 + lookupsPerContact + 2,
 	});
 
 	// Stream the live Contacts over the `by_deleted_at` index pinned to
@@ -229,7 +231,7 @@ export async function resolveRecipientPageImpl(
 	const gate = { requiresDoi: false, blockedEmails: await pageSuppressionGate(ctx, matched) };
 	const recipients: CampaignRecipient[] = [];
 	for (const contact of matched) {
-		const recipient = selectRecipient(contact, gate);
+		const recipient = await selectSegmentRecipient(ctx, contact, gate);
 		if (recipient) recipients.push(recipient);
 	}
 

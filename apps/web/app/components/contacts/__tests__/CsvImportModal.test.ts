@@ -563,3 +563,22 @@ describe('CsvImportModal — identity mapping', () => {
 		expect(emailCells).toEqual(['billing0@owlat.example', '—']);
 	});
 });
+
+describe('CsvImportModal — contacts that unsubscribed', () => {
+	it('says how many contacts the import left unsubscribed', () => {
+		const { wrapper } = mountModal({
+			step: 'complete',
+			results: { updated: 3, keptUnsubscribed: 2 },
+		});
+
+		expect(wrapper.find('[data-testid="kept-unsubscribed"]').text()).toBe(
+			'2 contacts stayed unsubscribed. An import never re-subscribes someone who opted out.'
+		);
+	});
+
+	it('shows no such line when every contact was subscribable', () => {
+		const { wrapper } = mountModal({ step: 'complete', results: { imported: 3 } });
+
+		expect(wrapper.find('[data-testid="kept-unsubscribed"]').exists()).toBe(false);
+	});
+});

@@ -351,13 +351,15 @@ export function reduceConfirmed(
 		doiConfirmedAt: args.at,
 		updatedAt: args.at,
 	};
-	// A genuine confirmed opt-in (token-click or admin-attest) lifts a prior
-	// global marketing opt-out — this is the authoritative point at which a
-	// DOI-pending re-subscribe becomes a real opt-in, so the persistent
-	// `contacts.unsubscribedAt` signal is cleared here rather than at
-	// subscribe time (see topics/subscriptionOps.ts subscribeOne). Only emitted
-	// when an opt-out is actually set so the patch stays a no-op otherwise.
-	if (contact.unsubscribedAt !== undefined) {
+	// The recipient's own confirmation lifts a prior global marketing opt-out:
+	// this is the authoritative point at which a DOI-pending re-subscribe
+	// becomes a real opt-in, so the persistent `contacts.unsubscribedAt` signal
+	// is cleared here rather than at subscribe time (see
+	// topics/subscriptionOps.ts subscribeOne). An admin attest never does: it
+	// vouches for consent given on another platform, which cannot outrank the
+	// recipient unsubscribing here. Only emitted when an opt-out is actually set
+	// so the patch stays a no-op otherwise.
+	if (contact.unsubscribedAt !== undefined && !adminAttest) {
 		patch['unsubscribedAt'] = undefined;
 	}
 	if (adminAttest) {

@@ -29,6 +29,9 @@ export const integrationTables = {
 		skipped: v.number(),
 		failed: v.number(),
 		errors: v.array(v.string()),
+		// Rows whose contact holds a global opt-out, which the import left in
+		// place. Absent on a run no page of which named one.
+		keptUnsubscribed: v.optional(v.number()),
 		totalEstimate: v.optional(v.number()),
 		// COUNTER [importSuppressionTally] — per-disposition tally of the
 		// suppression carry-over half of this run. Absent on every contacts-only

@@ -1670,9 +1670,9 @@ route through it so a count can never disagree with a send:
     the "excluded" count, and its composition differs by kind: a _topic_
     gap is DOI-pending + emailless + suppressed, **plus** any
     soft-deleted or orphaned (hard-deleted-Contact) memberships still
-    counted in `total`; a _segment_ gap is emailless + suppressed only
-    (soft-deleted are already dropped from `total`, and DOI never gates a
-    segment).
+    counted in `total`; a _segment_ gap is emailless + suppressed +
+    transactional-only Contacts (soft-deleted are already dropped from
+    `total`, and DOI never gates a segment).
 
 The eligibility predicate, in order: live-Contact (skip soft-deleted),
 email-present (skip phone/SMS/WhatsApp/generic Contacts — the recipient
@@ -1684,6 +1684,9 @@ is asymmetric **by design**: a `topic` Audience gates on the Contact's
 Segments are explicit operator targeting, not consent-derived
 membership. This asymmetry is a named invariant, not an oversight — do
 not "fix" the segment path to gate on DOI without revisiting it here.
+Operator targeting still needs some consent to target: a segment leaves
+out a Contact that only a transactional send created until it holds a
+topic membership or a confirmed opt-in. A receipt is not a subscription.
 
 Replaces the open-coded `getCampaignRecipients`
 (`emailsQueries.ts:138-267`), the duplicate eligibility logic in

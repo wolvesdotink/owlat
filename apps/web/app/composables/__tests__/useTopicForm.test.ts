@@ -44,7 +44,7 @@ describe('useTopicForm create and edit', () => {
 		expect(form.isTopicModalOpen.value).toBe(true);
 	});
 
-	it('creates with the trimmed fields and an explicit double opt-in choice', async () => {
+	it('creates with the trimmed fields and double opt-in on by default', async () => {
 		const form = useTopicForm();
 		form.openCreateModal();
 		form.topicForm.name = ' News ';
@@ -52,7 +52,7 @@ describe('useTopicForm create and edit', () => {
 		expect(runs.create).toHaveBeenCalledWith({
 			name: 'News',
 			description: undefined,
-			requireDoubleOptIn: false,
+			requireDoubleOptIn: true,
 		});
 		expect(runs.update).not.toHaveBeenCalled();
 		expect(showToast).toHaveBeenCalledWith('dashboard.audience.topics.index.toasts.created');
@@ -80,7 +80,26 @@ describe('useTopicForm create and edit', () => {
 		form.openEditModal(topic);
 		form.openCreateModal();
 		expect(form.isEditMode.value).toBe(false);
-		expect(form.topicForm).toMatchObject({ id: '', name: '', requireDoubleOptIn: false });
+		expect(form.topicForm).toMatchObject({ id: '', name: '', requireDoubleOptIn: true });
+	});
+
+	it('sends single opt-in when the operator switches double opt-in off', async () => {
+		const form = useTopicForm();
+		form.openCreateModal();
+		form.topicForm.name = 'News';
+		form.topicForm.requireDoubleOptIn = false;
+		await form.handleSave();
+		expect(runs.create).toHaveBeenCalledWith({
+			name: 'News',
+			description: undefined,
+			requireDoubleOptIn: false,
+		});
+	});
+
+	it('opens an existing single opt-in topic as single opt-in', () => {
+		const form = useTopicForm();
+		form.openEditModal({ ...topic, requireDoubleOptIn: false });
+		expect(form.topicForm.requireDoubleOptIn).toBe(false);
 	});
 
 	it('keeps the modal open when the save fails', async () => {

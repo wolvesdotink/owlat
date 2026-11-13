@@ -32,11 +32,13 @@ export function useTopicForm() {
 
 	const isTopicModalOpen = ref(false);
 	const isEditMode = ref(false);
+	// A new topic starts with double opt-in on, as the backend default does: a
+	// single opt-in topic behind a public form subscribes any address typed in.
 	const topicForm = reactive({
 		id: '' as Id<'topics'> | '',
 		name: '',
 		description: '',
-		requireDoubleOptIn: false,
+		requireDoubleOptIn: true,
 	});
 	const topicErrors = reactive({ name: '', general: '' });
 	const isSaving = ref(false);
@@ -50,7 +52,7 @@ export function useTopicForm() {
 	};
 
 	const openCreateModal = () =>
-		openModal({ id: '', name: '', description: '', requireDoubleOptIn: false }, false);
+		openModal({ id: '', name: '', description: '', requireDoubleOptIn: true }, false);
 
 	const openEditModal = (topic: TopicRow) =>
 		openModal(
@@ -58,7 +60,8 @@ export function useTopicForm() {
 				id: topic._id,
 				name: topic.name,
 				description: topic.description || '',
-				requireDoubleOptIn: topic.requireDoubleOptIn || false,
+				// A stored topic keeps what it has; an unset flag means single opt-in.
+				requireDoubleOptIn: topic.requireDoubleOptIn === true,
 			},
 			true
 		);

@@ -129,12 +129,14 @@ export function useFormSettings() {
 
 	// --- Add form modal ---
 	const isAddModalOpen = ref(false);
+	// A new form starts with double opt-in on: without it, the public endpoint
+	// subscribes any address anyone types in.
 	const addForm = reactive({
 		name: '',
 		topicId: '' as string,
 		redirectUrl: '',
 		honeypotFieldName: '',
-		doubleOptIn: false,
+		doubleOptIn: true,
 		fields: defaultFields(),
 	});
 	const addFormErrors = reactive({ name: '', fields: '' });
@@ -146,7 +148,7 @@ export function useFormSettings() {
 		addForm.topicId = '';
 		addForm.redirectUrl = '';
 		addForm.honeypotFieldName = '';
-		addForm.doubleOptIn = false;
+		addForm.doubleOptIn = true;
 		addForm.fields.splice(0, addForm.fields.length, ...defaultFields());
 		addFormErrors.name = '';
 		addFormErrors.fields = '';
@@ -182,7 +184,7 @@ export function useFormSettings() {
 			fields: normalized.fields,
 			redirectUrl: addForm.redirectUrl.trim() || undefined,
 			honeypotFieldName: addForm.honeypotFieldName.trim() || undefined,
-			doubleOptIn: addForm.doubleOptIn || undefined,
+			doubleOptIn: addForm.doubleOptIn,
 		});
 		isAdding.value = false;
 		if (!result.ok) return;

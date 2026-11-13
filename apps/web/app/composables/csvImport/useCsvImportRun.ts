@@ -200,6 +200,8 @@ export function useCsvImportRun(state: CsvImportRunState) {
 			aggregated.failed += batchResults.failed;
 			aggregated.errors.push(...batchResults.errors.slice(0, 10));
 			aggregated.addedToList = (aggregated.addedToList ?? 0) + (batchResults.addedToList ?? 0);
+			aggregated.keptUnsubscribed =
+				(aggregated.keptUnsubscribed ?? 0) + (batchResults.keptUnsubscribed ?? 0);
 
 			progress.value = Math.round(((i + 1) / totalBatches) * 100);
 		}
@@ -256,6 +258,7 @@ export function useCsvImportRun(state: CsvImportRunState) {
 			failed: 0,
 			errors: [],
 			addedToList: 0,
+			keptUnsubscribed: 0,
 		});
 	};
 

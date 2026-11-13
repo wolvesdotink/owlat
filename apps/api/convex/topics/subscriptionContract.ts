@@ -61,7 +61,13 @@ export type SubscribeOutcome =
 	| { ok: true; action: 'already_member'; membershipId: Id<'contactTopics'> }
 	| {
 			ok: false;
-			reason: 'contact_not_found' | 'topic_not_found' | 'contact_soft_deleted';
+			// `contact_opted_out`: the contact holds a global opt-out this source
+			// keeps in place, so no membership was written.
+			reason:
+				| 'contact_not_found'
+				| 'topic_not_found'
+				| 'contact_soft_deleted'
+				| 'contact_opted_out';
 	  };
 
 export type UnsubscribeOutcome =
@@ -166,46 +172,67 @@ export function defaultUnsubscribeReason(source: UnsubscribeSource): string {
 // Who may complete one on the spot depends on who is asking. A public form
 // takes any address from anyone, so on its own it never lifts an opt-out: the
 // signup waits for a fresh confirmation, and an earlier confirmation does not
-// count because the opt-out ended it.
+// count because the opt-out ended it. A bulk import carries rows from another
+// system, which cannot know the recipient left, so it keeps the opt-out and
+// asks the recipient nothing.
+
+/** What a subscribe from one source does about a standing global opt-out. */
+type OptOutRule = 'lift' | 'confirm' | 'keep';
 
 /**
- * Whether a subscribe from `source` may lift a standing global opt-out on its
- * own authority.
- *   - `admin`, `import`, `public_api`, `automation`: an authenticated operator
- *     (session, API key, or an automation an operator built) acting on the
- *     record — the administrative override.
- *   - `preferences_page`: the recipient, through the capability link in a
- *     message sent to them.
- *   - `form`: no. Anonymous, so it needs the recipient's fresh confirmation.
+ *   - `admin`, `public_api`, `automation`: `lift`. An authenticated operator
+ *     (session, API key, or an automation an operator built) acting on one
+ *     record: the administrative override.
+ *   - `preferences_page`: `lift`. The recipient, through the capability link in
+ *     a message sent to them.
+ *   - `form`: `confirm`. Anonymous, so it needs the recipient's fresh
+ *     confirmation.
+ *   - `import`: `keep`. Re-importing a list must never make someone who
+ *     unsubscribed mailable again, and mailing them a confirmation request
+ *     they did not ask for is no better.
  */
-function sourceMayLiftOptOut(source: SubscribeSource): boolean {
+function optOutRuleFor(source: SubscribeSource): OptOutRule {
 	switch (source) {
 		case 'admin':
-		case 'import':
 		case 'public_api':
 		case 'automation':
 		case 'preferences_page':
-			return true;
+			return 'lift';
 		case 'form':
-			return false;
+			return 'confirm';
+		case 'import':
+			return 'keep';
 	}
 }
 
 /**
- * The consent rule for one subscribe, and for a form signup without a topic:
- * whether it must wait for the recipient to confirm before it counts.
- *
- * True when the contact holds a global opt-out this source may not lift, or
- * when DOI applies (`doiRequired`, already net of `skipDoi`) and the contact
- * has not confirmed. Otherwise the subscribe completes at once and lifts any
- * opt-out.
+ * The consent rule for one subscribe, and for a form signup without a topic.
+ *   - `keep_opted_out`: the contact holds a global opt-out this source keeps;
+ *     nothing is written and no confirmation is requested.
+ *   - `confirm`: the subscribe waits for the recipient to confirm. The contact
+ *     holds an opt-out only a fresh confirmation lifts, or DOI applies
+ *     (`doiRequired`, already net of `skipDoi`) and the contact has not
+ *     confirmed.
+ *   - `complete`: the subscribe completes at once and lifts any opt-out.
  */
+export function subscribeGate(
+	contact: Pick<Doc<'contacts'>, 'doiStatus' | 'unsubscribedAt'>,
+	args: { source: SubscribeSource; doiRequired: boolean }
+): 'keep_opted_out' | 'confirm' | 'complete' {
+	if (contact.unsubscribedAt !== undefined) {
+		const rule = optOutRuleFor(args.source);
+		if (rule === 'keep') return 'keep_opted_out';
+		if (rule === 'confirm') return 'confirm';
+	}
+	return args.doiRequired && contact.doiStatus !== 'confirmed' ? 'confirm' : 'complete';
+}
+
+/** Whether {@link subscribeGate} makes this subscribe wait for a confirmation. */
 export function requiresFreshConfirmation(
 	contact: Pick<Doc<'contacts'>, 'doiStatus' | 'unsubscribedAt'>,
 	args: { source: SubscribeSource; doiRequired: boolean }
 ): boolean {
-	if (contact.unsubscribedAt !== undefined && !sourceMayLiftOptOut(args.source)) return true;
-	return args.doiRequired && contact.doiStatus !== 'confirmed';
+	return subscribeGate(contact, args) === 'confirm';
 }
 
 // ─── Entry-point args ───────────────────────────────────────────────────────
