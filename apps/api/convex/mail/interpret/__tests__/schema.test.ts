@@ -185,6 +185,7 @@ describe('interpretInputSchema', () => {
 				sentAt: 1_760_000_000_000,
 				timezone: 'Europe/Berlin',
 				sourceRevision: 'rev-abc',
+				isOurs: false,
 			},
 			participants: [
 				{ ref: 'p0', role: 'us', isUs: true },

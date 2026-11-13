@@ -69,6 +69,7 @@ export function createLiveEvalModel(name: string, generate: EvalGenerate): EvalM
 				sentAt: Date.parse(message.sentAt),
 				timezone: 'UTC',
 				contentRevision: await contentRevisionOf(segmented),
+				isOurs: participants.some((p) => p.role === 'from' && p.isUs),
 				participants,
 				openItems: [],
 				isItemsOverflow: false,
