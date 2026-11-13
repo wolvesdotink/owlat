@@ -105,6 +105,28 @@ describe('Deliverability Center setup values', () => {
 		expect(hardenedSpfRecordValue(value)).toBe(hardened);
 	});
 
+	it('shows the hardened return-path SPF record when no apex SPF record was generated', () => {
+		const domain = {
+			domain: 'example.test',
+			providerType: 'mta',
+			returnPathHost: 'bounce.example.test',
+			dnsRecords: {
+				mailFrom: [
+					{ type: 'MX', hostname: 'bounce.example.test', value: 'mail.example.test', priority: 10 },
+					{ type: 'TXT', hostname: 'bounce.example.test', value: 'v=spf1 ip4:203.0.113.10 ~all' },
+				],
+			},
+		} as unknown as Doc<'domains'>;
+		expect(domainSetupValuesForItem('domain.spf', domain, [], null)).toMatchObject([
+			{
+				kind: 'dns_record',
+				name: 'bounce.example.test',
+				recordType: 'TXT',
+				value: 'v=spf1 ip4:203.0.113.10 -all',
+			},
+		]);
+	});
+
 	it('derives MTA-STS guidance from the deployment EHLO policy source', () => {
 		vi.stubEnv('EHLO_HOSTNAME', 'canonical.example.test');
 		const domain = {
