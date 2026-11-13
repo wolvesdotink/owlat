@@ -125,14 +125,14 @@ route 26 pages/dashboard/knowledge/graph.vue
 route 24 pages/dashboard/knowledge/index.vue
 route 16 pages/dashboard/marketing/deleted.vue
 route 22 pages/dashboard/marketing/index.vue
-route 420 pages/dashboard/postbox/[folder]/[[messageId]].vue
+route 464 pages/dashboard/postbox/[folder]/[[messageId]].vue
 route 31 pages/dashboard/postbox/contacts.vue
 route 29 pages/dashboard/postbox/files.vue
 route 3 pages/dashboard/postbox/index.vue
-route 115 pages/dashboard/postbox/label/[labelId].vue
+route 129 pages/dashboard/postbox/label/[labelId].vue
 route 44 pages/dashboard/postbox/migrate.vue
 route 3 pages/dashboard/postbox/reply-queue.vue
-route 357 pages/dashboard/postbox/search.vue
+route 397 pages/dashboard/postbox/search.vue
 route 35 pages/dashboard/postbox/senders.vue
 route 3 pages/dashboard/postbox/subscriptions.vue
 route 57 pages/dashboard/preferences/account.vue
@@ -277,6 +277,7 @@ deferred 142 ../node_modules/.cache/owlat-i18n/boot/de.json
 deferred 126 ../node_modules/.cache/owlat-i18n/boot/en.json
 deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
+deferred 360 PostboxThreadReader
 deferred 55 PostboxUndoSendToast
 deferred 3 backendConnection
 deferred 55 components/AppCommandPalette.vue
