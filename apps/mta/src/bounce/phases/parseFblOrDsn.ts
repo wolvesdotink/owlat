@@ -15,6 +15,8 @@
 import { tryParseARF, reserveComplaint, generateDedupKey } from '../fblProcessor.js';
 import { parseBounce } from '../parser.js';
 import { extractReportParts } from '../reportParts.js';
+import { tryParseForwardedComplaint } from '../forwardedComplaint.js';
+import { isComplaintMailbox, systemMailboxHosts } from '../../inbound/systemMailboxes.js';
 import { logger } from '../../monitoring/logger.js';
 import type { Phase } from '../pipeline.js';
 import type { BasePhaseCtx } from '../types.js';
@@ -36,14 +38,22 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 		// `rcptTo` is threaded in so an RFC 9477 report delivered to our SIGNED
 		// `fbl+…@` complaint address attributes to the send even when the provider
 		// redacted the original message (the common case for consumer FBLs).
-		const arfResult = tryParseARF(parsed, reportParts, { rcptTo });
-		if (arfResult) {
-			const dedupKey = generateDedupKey(parsed, arfResult.originalMessageId);
+		//
+		// A plain forward of one of our messages is a complaint too, but only when
+		// it was sent to a complaint mailbox (`fbl+…@`, `abuse@`, `postmaster@`):
+		// anywhere else a forwarded newsletter is just mail.
+		const complaint =
+			tryParseARF(parsed, reportParts, { rcptTo }) ??
+			(isComplaintMailbox(rcptTo, systemMailboxHosts(deps.config))
+				? tryParseForwardedComplaint(parsed, reportParts)
+				: null);
+		if (complaint) {
+			const dedupKey = generateDedupKey(parsed, complaint.originalMessageId);
 			const dedup = await reserveComplaint(deps.redis, dedupKey);
 			if (dedup.kind === 'completed') {
 				logger.info(
 					{
-						messageId: arfResult.originalMessageId,
+						messageId: complaint.originalMessageId,
 						dedupKey,
 						dedupState: dedup.kind,
 					},
@@ -53,7 +63,7 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 			}
 			return {
 				kind: 'bounceTo',
-				attempt: { kind: 'fbl', arf: arfResult, dedupReservation: dedup.reservation },
+				attempt: { kind: 'fbl', arf: complaint, dedupReservation: dedup.reservation },
 			};
 		}
 
