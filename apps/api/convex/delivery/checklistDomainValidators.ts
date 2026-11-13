@@ -2,7 +2,6 @@
 
 import dns from 'node:dns/promises';
 import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
-import { spfTrailingAllQualifier } from '@owlat/shared/spf';
 import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
@@ -11,12 +10,7 @@ import { returnPathProviderFor } from '../domains/returnPathProviders';
 import { assertMarketingOneClickSigningContract } from './marketingCompliance';
 import { detectDomainDnsProvider, dnsProviderObservation } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
-import {
-	absoluteDnsRecordName,
-	checklistSpfSource,
-	hardenedSpfRecordValue,
-	type ChecklistSpfSource,
-} from './checklistRecords';
+import { absoluteDnsRecordName, checklistSpfSource } from './checklistRecords';
 import {
 	dnsBundleObservations,
 	dnsBundleStatus,
@@ -25,6 +19,7 @@ import {
 	isSuccessfulDnsResult,
 	mtaStsObservation,
 } from './checklistDnsObservations';
+import { observeSpfCheck, spfSourceResult } from './checklistSpfObservation';
 import {
 	checklistObservation,
 	pendingDnsStatus,
@@ -39,17 +34,6 @@ import {
 
 const POSTMASTER_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
 const POSTMASTER_PERIOD_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1_000;
-function hasStrictSpfPolicy(value: string | undefined): boolean {
-	return spfTrailingAllQualifier(value ?? '') === '-all';
-}
-
-type DomainDnsResults = Awaited<ReturnType<typeof runDnsLookups>>;
-
-/** The lookup result for the record {@link checklistSpfSource} picked. */
-function spfSourceResult(source: ChecklistSpfSource, results: DomainDnsResults) {
-	return source.kind === 'apex' ? results.spf : results.mailFrom?.[source.mailFromIndex];
-}
-
 export async function observeDomainCheck(
 	ctx: ActionCtx,
 	itemId: DeliverabilityCheckId,
@@ -91,46 +75,7 @@ export async function observeDomainCheck(
 	switch (itemId) {
 		case 'domain.spf': {
 			if (!results) throw new Error('SPF DNS observation was not loaded');
-			const source = checklistSpfSource(domain);
-			if (!source) {
-				return checklistObservation(
-					'dns.spf',
-					'fail',
-					'No SPF record is generated for this domain: there is no apex record and no SPF record on a return-path host. On the built-in MTA, set MTA_SPF_INCLUDE, or MTA_RETURN_PATH_DOMAIN together with MTA_IP_POOLS.',
-					providerValues
-				);
-			}
-			// The lookup used the stored record, the same input the Domains
-			// verifier uses, so both read one verdict; the -all bar is this
-			// checklist's own, judged on the value that is actually live.
-			const result = spfSourceResult(source, results);
-			const isLive = isSuccessfulDnsResult(result);
-			const isStrict = hasStrictSpfPolicy(result?.foundValue ?? source.record.value);
-			const subject =
-				source.kind === 'apex'
-					? 'SPF'
-					: `SPF on the return-path host ${source.host}, which receivers check for this domain's mail,`;
-			return checklistObservation(
-				'dns.spf',
-				isLive
-					? isStrict
-						? 'pass'
-						: pendingDnsStatus(isFinalDnsRetry)
-					: dnsResultStatus(result, isFinalDnsRetry),
-				isLive && !isStrict
-					? `${subject} is published, but it must end in -all for this checklist.`
-					: (result?.error ??
-							(isLive ? `${subject} is live and ends in -all.` : `${subject} is not live yet.`)),
-				[
-					...providerValues,
-					dnsRecordObservation(
-						'spf',
-						domain.domain,
-						{ ...source.record, value: hardenedSpfRecordValue(source.record.value) },
-						result
-					),
-				]
-			);
+			return observeSpfCheck(domain, results, providerValues, isFinalDnsRetry);
 		}
 		case 'domain.dkim': {
 			if (!results) throw new Error('DKIM DNS observation was not loaded');

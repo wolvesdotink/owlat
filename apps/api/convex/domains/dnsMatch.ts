@@ -30,8 +30,9 @@
 
 import { normalizeDmarcReportAddress } from '@owlat/shared/dmarcReportAddress';
 import { parseTagList, stripTagValueWhitespace } from '@owlat/shared/dnsTagList';
-import { isSpfRecord } from '@owlat/shared/spf';
+import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { isDmarcRecord } from './dmarc';
+import { detectMultipleSpf } from './spf';
 
 /** Collapse all runs of ASCII whitespace to a single space and trim the ends. */
 function collapseWhitespace(value: string): string {
@@ -290,4 +291,46 @@ export function txtRecordMatches(published: string, expected: string): boolean {
 		return tagValueRecordMatches(published, expected);
 	}
 	return collapseWhitespace(published) === collapseWhitespace(expected);
+}
+
+/**
+ * The failure for a policy record published more than once at one name, or
+ * `null` when the name carries at most one. A duplicate fails even when one
+ * copy matches `expected`, because receivers stop evaluating:
+ *
+ *   - two `v=spf1` records are a PermError (RFC 7208 §3.2). When the other
+ *     record is a foreign one (a domain that already sends through another
+ *     provider), the error offers the single merged record to publish instead.
+ *   - two `v=DMARC1` records mean no DMARC policy is applied (RFC 7489 §6.6.3).
+ */
+export function duplicatePolicyRecordFailure(
+	txtValues: readonly string[],
+	expected: string
+): { error: string; foundValue: string } | null {
+	if (isSpfRecord(expected) && detectMultipleSpf(txtValues)) {
+		const spfRecords = txtValues.filter((value) => isSpfRecord(value));
+		const foreign = spfRecords.find((value) => value.trim() !== expected.trim());
+		const mergeHint = foreign
+			? ` Merge them into a single record: "${mergeSpfRecords(foreign, expected)}".`
+			: '';
+		return {
+			error:
+				'Multiple v=spf1 records found at this hostname (duplicate SPF). ' +
+				'Only one SPF record is allowed — merge them into a single record ' +
+				`(RFC 7208 §3.2 PermError).${mergeHint}`,
+			foundValue: spfRecords.join(' | '),
+		};
+	}
+	if (isDmarcRecord(expected)) {
+		const dmarcRecords = txtValues.filter((value) => isDmarcRecord(value));
+		if (dmarcRecords.length > 1) {
+			return {
+				error:
+					'Multiple v=DMARC1 records found at this hostname. Receivers then apply no DMARC ' +
+					'policy (RFC 7489 §6.6.3) — merge them into a single record.',
+				foundValue: dmarcRecords.join(' | '),
+			};
+		}
+	}
+	return null;
 }
