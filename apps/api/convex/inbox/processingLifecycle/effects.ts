@@ -38,6 +38,7 @@ import {
 } from './reducers';
 import { enqueuePush } from '../../push/events';
 import { recordTeamSendQueued } from '../../mail/interpret/sendActivity';
+import { countAutoReply } from '../../agent/autoReplyUsage';
 import { deletePlansForDraft, retirePlansForDraft } from '../../mail/interpret/responsePlanState';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -320,18 +321,7 @@ export async function applyEffects(
 				break;
 			}
 			case 'increment_auto_reply_count': {
-				const configs = await ctx.db.query('agentConfig').take(1);
-				if (configs.length === 0) break;
-				const config = configs[0]!;
-				const now = Date.now();
-				const resetAt = config.dailyAutoReplyResetAt ?? 0;
-				const isNewDay = now > resetAt;
-				const midnight = new Date();
-				midnight.setUTCHours(24, 0, 0, 0);
-				await ctx.db.patch(config._id, {
-					dailyAutoReplyCount: isNewDay ? 1 : (config.dailyAutoReplyCount ?? 0) + 1,
-					dailyAutoReplyResetAt: isNewDay ? midnight.getTime() : resetAt,
-				});
+				await countAutoReply(ctx);
 				break;
 			}
 		}

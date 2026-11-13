@@ -90,6 +90,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeExtractionProgress',
 	'agentCircuitBreakers',
 	'agentConfig',
+	'agentAutoReplyUsage',
 	'autonomyFeedback',
 	'autonomyRules',
 	'autonomySuggestions',

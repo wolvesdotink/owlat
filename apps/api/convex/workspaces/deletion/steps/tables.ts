@@ -162,6 +162,7 @@ export type OrganizationDeletionTable =
 	| 'llmUsageEvents'
 	| 'agentCircuitBreakers'
 	| 'agentConfig'
+	| 'agentAutoReplyUsage'
 	| 'autonomyFeedback'
 	| 'autonomyRules'
 	| 'autonomySuggestions'
@@ -385,6 +386,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('llmUsageEvents'),
 	v.literal('agentCircuitBreakers'),
 	v.literal('agentConfig'),
+	v.literal('agentAutoReplyUsage'),
 	v.literal('autonomyFeedback'),
 	v.literal('autonomyRules'),
 	v.literal('autonomySuggestions'),

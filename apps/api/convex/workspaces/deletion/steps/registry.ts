@@ -213,6 +213,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	llmUsageEvents: makeSweepStep('llmUsageEvents'),
 	agentCircuitBreakers: makeSweepStep('agentCircuitBreakers'),
 	agentConfig: makeSweepStep('agentConfig'),
+	agentAutoReplyUsage: makeSweepStep('agentAutoReplyUsage'),
 	autonomyFeedback: makeSweepStep('autonomyFeedback'),
 	autonomyRules: makeSweepStep('autonomyRules'),
 	autonomySuggestions: makeSweepStep('autonomySuggestions'),

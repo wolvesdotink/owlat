@@ -180,6 +180,7 @@ import type * as _utils_batchLoader from '../_utils/batchLoader.js';
 import type * as _utils_errors from '../_utils/errors.js';
 import type * as agent_agentPipeline from '../agent/agentPipeline.js';
 import type * as agent_approvedReplyDecision from '../agent/approvedReplyDecision.js';
+import type * as agent_autoReplyUsage from '../agent/autoReplyUsage.js';
 import type * as agent_coalescing from '../agent/coalescing.js';
 import type * as agent_configMutations from '../agent/configMutations.js';
 import type * as agent_health from '../agent/health.js';
@@ -2080,6 +2081,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/classify/intents': typeof agent_steps_classify_intents;
 	'agent/agentPipeline': typeof agent_agentPipeline;
 	'agent/approvedReplyDecision': typeof agent_approvedReplyDecision;
+	'agent/autoReplyUsage': typeof agent_autoReplyUsage;
 	'agent/coalescing': typeof agent_coalescing;
 	'agent/configMutations': typeof agent_configMutations;
 	'agent/health': typeof agent_health;

@@ -14,6 +14,7 @@ import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { logError, logInfo } from '../lib/runtimeLog';
 import type { AgentReplyIntakeOutcome } from '../inbox/replyAttachments';
 import { planEmailReply, routeApprovedReply, settleIntakeOutcome } from './approvedReplyDecision';
+import { readAutoReplyUsage } from './autoReplyUsage';
 
 // ============================================================
 // Helper Queries
@@ -89,11 +90,17 @@ export const isAgentEnabled = internalQuery({
 /**
  * Get agent config (singleton)
  */
+/**
+ * The agent settings, with the day's auto-reply count from its own row in
+ * the two fields that held it: the route step (and an action of the previous
+ * release still running during a deploy) reads the count from here.
+ */
 export const getAgentConfig = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const configs = await ctx.db.query('agentConfig').take(1);
-		return configs.length > 0 ? configs[0] : null;
+		const config = await ctx.db.query('agentConfig').first();
+		if (!config) return null;
+		return { ...config, ...(await readAutoReplyUsage(ctx, config)) };
 	},
 });
 

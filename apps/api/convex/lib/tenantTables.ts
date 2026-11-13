@@ -199,6 +199,7 @@ export const TENANT_TABLES = [
 	'llmUsageEvents',
 	'agentCircuitBreakers',
 	'agentConfig',
+	'agentAutoReplyUsage',
 	'autonomyFeedback',
 	'autonomyRules',
 	'handlingRules',
