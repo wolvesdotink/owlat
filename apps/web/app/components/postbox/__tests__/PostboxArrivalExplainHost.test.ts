@@ -59,8 +59,9 @@ describe('usePostboxArrivalExplainHost', () => {
 
 const open = vi.fn();
 
-function mountRow(msg: Partial<PostboxThreadRowMessage>, isPriority: boolean) {
-	return mount(PostboxThreadRow, {
+/** A row the pointer is on: its quick actions, the "Why here?" among them, mount on hover. */
+async function mountRow(msg: Partial<PostboxThreadRowMessage>, isPriority: boolean) {
+	const w = mount(PostboxThreadRow, {
 		props: {
 			msg: { ...BASE_MESSAGE, ...msg },
 			folderRole: 'inbox',
@@ -90,13 +91,15 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, isPriority: boolean) {
 			mocks: { resolveComponent: () => 'a' },
 		},
 	});
+	await w.find('.pbx-row-li').trigger('mouseenter');
+	return w;
 }
 
 describe('the Priority row "Why here?"', () => {
 	const placed = { mailboxId: 'mb1', threadId: 't1', placement: 'updates' as const };
 
 	it('opens the popover for the row thread, anchored on the button', async () => {
-		const w = mountRow(placed, true);
+		const w = await mountRow(placed, true);
 		const button = w.get('[data-testid="row-why-here"]');
 		expect(button.attributes('aria-label')).toBe('Why is this here?');
 		await button.trigger('click');
@@ -108,12 +111,11 @@ describe('the Priority row "Why here?"', () => {
 		});
 	});
 
-	it('is not offered outside the Priority view or without a placement', () => {
-		expect(mountRow(placed, false).find('[data-testid="row-why-here"]').exists()).toBe(false);
-		expect(
-			mountRow({ ...placed, placement: undefined }, true)
-				.find('[data-testid="row-why-here"]')
-				.exists()
-		).toBe(false);
+	it('is not offered outside the Priority view or without a placement', async () => {
+		const outside = await mountRow(placed, false);
+		expect(outside.find('.pbx-row-actions').exists()).toBe(true);
+		expect(outside.find('[data-testid="row-why-here"]').exists()).toBe(false);
+		const unplaced = await mountRow({ ...placed, placement: undefined }, true);
+		expect(unplaced.find('[data-testid="row-why-here"]').exists()).toBe(false);
 	});
 });

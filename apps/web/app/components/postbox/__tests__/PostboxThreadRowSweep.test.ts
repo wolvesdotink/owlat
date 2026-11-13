@@ -33,7 +33,9 @@ const MSG: PostboxThreadRowMessage = {
 	hasAttachments: false,
 };
 
-function mountRow(props: { selected?: boolean; sweepMark?: PostboxSweepMark | null } = {}) {
+function mountRow(
+	props: { selected?: boolean; sweepMark?: PostboxSweepMark | null; hoverless?: boolean } = {}
+) {
 	return mount(PostboxThreadRow, {
 		props: {
 			msg: MSG,
@@ -43,6 +45,7 @@ function mountRow(props: { selected?: boolean; sweepMark?: PostboxSweepMark | nu
 			focused: false,
 			active: false,
 			sweepMark: props.sweepMark ?? null,
+			hoverless: props.hoverless ?? false,
 		},
 		attachTo: document.body,
 		global: {
@@ -87,6 +90,39 @@ function dragstart(row: Element) {
 const archiveButton = (w: ReturnType<typeof mountRow>) =>
 	w.find('[data-sweep-handle="archive"]').element;
 
+/** A row the pointer has moved onto, which is where its quick actions mount. */
+async function hoveredRow() {
+	const w = mountRow();
+	await w.find('.pbx-row-li').trigger('mouseenter');
+	return w;
+}
+
+const quickActions = (w: ReturnType<typeof mountRow>) => w.find('.pbx-row-actions').exists();
+
+describe('PostboxThreadRow quick actions', () => {
+	it('mounts them on the first hover and keeps them after the pointer leaves', async () => {
+		const w = mountRow();
+		expect(quickActions(w)).toBe(false);
+
+		await w.find('.pbx-row-li').trigger('mouseenter');
+		expect(quickActions(w)).toBe(true);
+		await w.find('.pbx-row-li').trigger('mouseleave');
+		expect(quickActions(w)).toBe(true);
+		expect(w.emitted('prefetch')).toHaveLength(1);
+	});
+
+	it('mounts them when focus enters the row, before Tab moves on to them', async () => {
+		const w = mountRow();
+		await w.find('.pbx-row-link').trigger('focusin');
+		expect(w.find('[aria-label="Star"]').exists()).toBe(true);
+		expect(w.emitted('prefetch')).toHaveLength(1);
+	});
+
+	it('mounts them up front on a device without hover, where they show at rest', () => {
+		expect(quickActions(mountRow({ hoverless: true }))).toBe(true);
+	});
+});
+
 describe('PostboxThreadRow sweep handles', () => {
 	it('offers a press on the checkbox as a selection sweep', () => {
 		const w = mountRow();
@@ -94,14 +130,14 @@ describe('PostboxThreadRow sweep handles', () => {
 		expect(w.emitted('sweep-start')).toEqual([['select', event]]);
 	});
 
-	it('offers a press on the hover Archive button (or its icon) as an archive sweep', () => {
-		const w = mountRow();
+	it('offers a press on the hover Archive button (or its icon) as an archive sweep', async () => {
+		const w = await hoveredRow();
 		mousedown(archiveButton(w).firstElementChild ?? archiveButton(w));
 		expect(w.emitted('sweep-start')?.[0]?.[0]).toBe('archive');
 	});
 
-	it('offers nothing for a press on the row body or the other quick actions', () => {
-		const w = mountRow();
+	it('offers nothing for a press on the row body or the other quick actions', async () => {
+		const w = await hoveredRow();
 		mousedown(w.find('.pbx-row-link').element);
 		mousedown(w.find('[aria-label="Delete"]').element);
 		expect(w.emitted('sweep-start')).toBeUndefined();
@@ -124,8 +160,8 @@ describe('PostboxThreadRow sweep handles', () => {
 		expect(w.emitted('drag-start')).toHaveLength(1);
 	});
 
-	it('says on both handles that they sweep', () => {
-		const w = mountRow();
+	it('says on both handles that they sweep', async () => {
+		const w = await hoveredRow();
 		expect(tooltipOf(w, w.find('.pbx-row-checkbox'))).toContain('drag across rows');
 		expect(tooltipOf(w, archiveButton(w))).toContain('drag across rows');
 		expect(w.find('.pbx-row-checkbox').attributes('title')).toBeUndefined();
