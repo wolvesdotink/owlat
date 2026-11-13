@@ -20,6 +20,12 @@ export interface AcquireOptions {
 	};
 	port?: number;
 	requireTLS?: boolean;
+	/**
+	 * Skip STARTTLS on this connection: the one cleartext retry after an
+	 * opportunistic handshake failed (send/tlsFallback.ts). Never combined with
+	 * `requireTLS`.
+	 */
+	cleartext?: boolean;
 	tls?: {
 		rejectUnauthorized?: boolean;
 		minVersion?: 'TLSv1.2' | 'TLSv1.3';
@@ -50,6 +56,7 @@ export interface AcquireOptions {
 /** The TLS-strictness dimensions that participate in a pool key's identity. */
 export interface TlsKeyProfile {
 	requireTLS?: boolean;
+	cleartext?: boolean;
 	rejectUnauthorized?: boolean;
 	danePolicyFingerprint?: string;
 }
@@ -75,15 +82,19 @@ export function buildPoolKey(
 	// exact RRset + reference-name fingerprint therefore participates in identity;
 	// non-DANE keys remain unchanged.
 	const daneSuffix = tls?.danePolicyFingerprint ? `da${tls.danePolicyFingerprint}` : '';
-	const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}${daneSuffix}`;
+	// A cleartext fallback socket must never serve a later job, which would then
+	// skip the TLS attempt it is owed. Other keys stay byte-identical.
+	const cleartextSuffix = tls?.cleartext ? 'pt1' : '';
+	const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}${daneSuffix}${cleartextSuffix}`;
 	return `${mxHost}:${bindIp}:${dkimDomain ?? 'none'}:${tlsProfile}`;
 }
 
 /**
  * Assemble the @owlat/smtp-client connect config for one MX/bindIp/profile.
  *
- * Outbound MX delivery is always STARTTLS on port 25 (opportunistic upgrade,
- * escalated to a required floor by `requireTLS`). The TLSv1.2 floor is pinned here
+ * Outbound MX delivery is STARTTLS on port 25 (opportunistic upgrade,
+ * escalated to a required floor by `requireTLS`), except for the explicit
+ * `cleartext` fallback connection. The TLSv1.2 floor is pinned here
  * (RFC 8996/9325) so it never rests on Node's env-fragile process default; the
  * caller may raise it to TLSv1.3 but cannot lower it. `danePolicyFingerprint` is
  * pool-only identity and is deliberately NOT forwarded to the client.
@@ -118,7 +129,7 @@ export function buildConnectConfig(
 		// carry the `IPv6:` tag (RFC 5321 §4.1.3) — a bare `[2001:db8::1]` is a syntax
 		// error a strict MX may reject at EHLO.
 		ehloName: options.name ?? (bindIp.includes(':') ? `[IPv6:${bindIp}]` : `[${bindIp}]`),
-		tlsMode: 'starttls',
+		tlsMode: options.cleartext ? 'none' : 'starttls',
 		requireTls: options.requireTLS ?? false,
 		...(localAddress !== undefined ? { localAddress } : {}),
 		tls,

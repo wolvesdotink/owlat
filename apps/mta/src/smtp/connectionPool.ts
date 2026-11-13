@@ -103,6 +103,7 @@ export class SmtpConnectionPool {
 		const dkimDomain = options.dkimDomain;
 		const baseKey = buildPoolKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
+			cleartext: options.cleartext,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
 			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
 		});

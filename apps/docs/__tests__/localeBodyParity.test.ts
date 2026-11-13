@@ -209,7 +209,7 @@ const knownStructureDrift = {
 			tables: [
 				'7x3',
 				'6x3',
-				'19x3',
+				'20x3',
 				'5x3',
 				'4x3',
 				'6x3',
@@ -281,7 +281,7 @@ const knownStructureDrift = {
 			tables: [
 				'7x3',
 				'6x3',
-				'19x3',
+				'20x3',
 				'5x3',
 				'4x3',
 				'6x3',

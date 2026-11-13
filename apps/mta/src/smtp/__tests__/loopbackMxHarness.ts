@@ -62,6 +62,8 @@ export interface ServerProbe {
 	 * if the body never reached the server.
 	 */
 	dataOverTls(): boolean | null;
+	/** Every SNI server name a client offered in a STARTTLS handshake. */
+	sniNames(): string[];
 }
 
 export interface StartServerOptions {
@@ -74,6 +76,11 @@ export interface StartServerOptions {
 	 * Defaults to `true`.
 	 */
 	advertiseStartTls?: boolean;
+	/**
+	 * Speak at most TLS 1.1 after the STARTTLS 220. The client's TLSv1.2 floor
+	 * then fails the handshake, as against a legacy MX.
+	 */
+	legacyTlsOnly?: boolean;
 }
 
 /**
@@ -85,6 +92,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 	const advertiseStartTls = options.advertiseStartTls ?? true;
 	let sawData = false;
 	let dataSecure: boolean | null = null;
+	const sniNames: string[] = [];
 
 	const server = new SMTPServer({
 		secure: false,
@@ -93,7 +101,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		hideSTARTTLS: !advertiseStartTls,
 		cert: MX_CERT,
 		key: MX_KEY,
-		minVersion: 'TLSv1.2',
+		...(options.legacyTlsOnly
+			? { minVersion: 'TLSv1', maxVersion: 'TLSv1.1' }
+			: { minVersion: 'TLSv1.2' }),
+		SNICallback(servername, cb) {
+			sniNames.push(servername);
+			cb(null, undefined);
+		},
 		onData(stream, session, cb) {
 			sawData = true;
 			dataSecure = session.secure === true;
@@ -115,6 +129,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
 		port,
 		dataReached: () => sawData,
 		dataOverTls: () => dataSecure,
+		sniNames: () => [...sniNames],
 	};
 }
 
@@ -172,6 +187,8 @@ export function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		inboundSpfEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		// The loopback MX is 127.0.0.1, which the non-public screen refuses.
+		allowPrivateMxTargets: true,
 		...overrides,
 	} as MtaConfig;
 }

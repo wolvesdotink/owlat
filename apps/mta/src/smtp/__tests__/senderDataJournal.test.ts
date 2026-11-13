@@ -20,6 +20,9 @@ vi.mock('@owlat/smtp-client', async (importOriginal) =>
 );
 vi.mock('../connectionPool.js', () => harness.connectionPoolModule());
 vi.mock('../mxResolver.js', () => harness.mxResolverModule());
+vi.mock('../mxAddresses.js', async (importOriginal) =>
+	harness.mxAddressesModule(await importOriginal<Record<string, unknown>>())
+);
 vi.mock('../daneMxResolver.js', () => harness.daneMxResolverModule());
 vi.mock('../mtaSts.js', async (importOriginal) =>
 	harness.mtaStsModule(await importOriginal<Record<string, unknown>>())

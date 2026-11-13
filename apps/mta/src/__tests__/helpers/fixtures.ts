@@ -30,6 +30,7 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 		genericPtrSuffixes: [],
 		allowUnverifiedFcrdns: false,
 		ipv6Enabled: false,
+		allowPrivateMxTargets: false,
 		returnPathDomain: 'bounces.test.local',
 		convexSiteUrl: 'https://convex.test.local',
 		webhookSecret: 'test-webhook-secret',

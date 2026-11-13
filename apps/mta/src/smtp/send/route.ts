@@ -33,6 +33,8 @@ export interface DeliveryRoute {
 	recipientDomain: string;
 	/** MX exchanges in priority order. */
 	mxHosts: string[];
+	/** No MX record: `mxHosts` is the domain itself (RFC 5321 §5.1 implicit MX). */
+	implicitMx: boolean;
 	/** Provider classified from the ACTUAL MX set; scopes the connection caps. */
 	routeProvider: DestinationProviderKey;
 	providerPolicy: DeliveryProviderPolicy;
@@ -124,6 +126,7 @@ export async function resolveDeliveryRoute(
 		route: {
 			recipientDomain,
 			mxHosts,
+			implicitMx: destination.mx.source === 'implicit',
 			routeProvider,
 			providerPolicy: strictestDeliveryProviderPolicy(snapshotProfile, routeProfile),
 			daneDestinations: new Map(

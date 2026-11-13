@@ -70,20 +70,26 @@ export function installSenderDefaults(harness: SenderHarness): void {
 		],
 	});
 	vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
+	// Every MX host resolves to one public address per family (documentation
+	// ranges): mx1 → .1, mx2 → .2, anything else → .99.
+	harness.resolveAddressesMock.mockImplementation(async (host: string) => {
+		const suffix = /^mx(\d)\./.exec(host)?.[1] ?? '99';
+		return { status: 'resolved', ipv4: [`192.0.2.${suffix}`], ipv6: [`2001:db8::${suffix}`] };
+	});
 	// Default acquire echoes the resolved connect config so assertions can read
 	// it back; no live socket is ever opened.
 	harness.acquireMock.mockImplementation(
 		(
 			mxHost: string,
 			bindIp: string,
-			options: { name?: string; requireTLS?: boolean; tls?: unknown }
+			options: { name?: string; requireTLS?: boolean; cleartext?: boolean; tls?: unknown }
 		) => ({
 			key: `${mxHost}:${bindIp}`,
 			config: {
 				host: mxHost,
 				port: 25,
 				ehloName: options.name,
-				tlsMode: 'starttls',
+				tlsMode: options.cleartext ? 'none' : 'starttls',
 				requireTls: options.requireTLS ?? false,
 				localAddress: bindIp,
 				tls: options.tls,
@@ -107,6 +113,7 @@ export function installSenderDefaults(harness: SenderHarness): void {
 export interface AcquireOptionsSnapshot {
 	name?: string;
 	requireTLS?: boolean;
+	cleartext?: boolean;
 	connectionLimits?: {
 		scope: string;
 		maxConnections: number;
