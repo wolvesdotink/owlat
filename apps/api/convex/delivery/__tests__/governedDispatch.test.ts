@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type * as SendProviderCatalog from '../../lib/sendProviders/catalog';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { getFunctionName } from 'convex/server';
@@ -46,6 +46,7 @@ vi.mock('../../lib/sendProviders/catalog', async (importOriginal) => {
 });
 
 import { dispatchGovernedEmail } from '../governedDispatch';
+import { planCompletionOutcome } from '../sendCompletionDecision';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../workerEnvelope';
 import type { Id } from '../../_generated/dataModel';
 
@@ -410,7 +411,7 @@ describe('dispatchGovernedEmail', () => {
 		resolveLastMileRouting.mockResolvedValue({
 			kind: 'defer',
 			retryAfterMs: 600_000,
-			isPolicyHold: true,
+			hold: 'routing_policy',
 			origin: 'local',
 		});
 
@@ -426,8 +427,102 @@ describe('dispatchGovernedEmail', () => {
 			// gate 2's numerator can be written from — a hold this deployment chose
 			// is not the destination throttling it.
 			deferralOrigin: 'local',
+			// The cause travels too, so a hold that outlives the deadline fails
+			// under a code that names it.
+			hold: 'routing_policy',
 			retryState: { attempt: 4 },
 		});
+	});
+
+	it('holds a send while the MTA is unreachable without spending its routing attempts', async () => {
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'defer',
+			retryAfterMs: 120_000,
+			hold: 'mta_unreachable',
+			origin: 'local',
+		});
+
+		const result = await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			retryState: { attempt: 8, startedAt: Date.now(), idempotencyKey: 'send_send-row-1' },
+		});
+
+		expect(result).toMatchObject({
+			kind: 'deferred',
+			retryAfterMs: 120_000,
+			deferralOrigin: 'local',
+			hold: 'mta_unreachable',
+			retryState: { attempt: 8 },
+		});
+		expect(sendProviderDispatch).not.toHaveBeenCalled();
+	});
+
+	it('delivers exactly once after an MTA outage that outlasts eight re-entries', async () => {
+		// Twelve held re-entries ten minutes apart: a two-hour outage, well past
+		// the eight-attempt routing cap and well inside the delivery deadline.
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+		const HELD_ATTEMPTS = 12;
+		resolveLastMileRouting.mockImplementation(async () =>
+			resolveLastMileRouting.mock.calls.length <= HELD_ATTEMPTS
+				? { kind: 'defer', retryAfterMs: 600_000, hold: 'mta_unreachable', origin: 'local' }
+				: {
+						kind: 'ready',
+						providerKind: 'mta',
+						route: { ipPool: 'campaign' },
+						organizationId: 'org-1',
+						routingLease: 'lease-1',
+					}
+		);
+		runMutation.mockImplementation(async (ref) =>
+			getFunctionName(ref) === BIND_PROVIDER_IDENTITY
+				? { ok: true }
+				: { token: 'reentry-token', expiresAt: Date.now() }
+		);
+		onTestFinished(() => {
+			runMutation.mockReset();
+			runMutation.mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() });
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: { success: true, id: 'send_send-row-1' },
+			providerType: 'mta',
+			latencyMs: 5,
+			attempts: 1,
+		});
+
+		let retryState: WorkerRetryState | undefined;
+		const results: Array<Awaited<ReturnType<typeof dispatchGovernedEmail>>> = [];
+		for (let reentry = 0; reentry <= HELD_ATTEMPTS; reentry += 1) {
+			const result = await dispatchGovernedEmail(ctx, {
+				...baseRequest,
+				...(retryState ? { retryState } : {}),
+			});
+			results.push(result);
+			if (result.kind !== 'deferred') break;
+			// The completion callback's own decision, as it would run for this result.
+			const { step } = planCompletionOutcome({
+				outcome: result,
+				send: { status: 'queued' },
+				now: Date.now(),
+				isEnvelopeStripped: false,
+			});
+			if (step.kind !== 'scheduleRetry') {
+				throw new Error(`held send terminalized on re-entry ${reentry + 1}: ${step.kind}`);
+			}
+			retryState = step.retryState;
+			await vi.advanceTimersByTimeAsync(step.delayMs);
+		}
+
+		expect(results).toHaveLength(HELD_ATTEMPTS + 1);
+		expect(results[results.length - 1]).toMatchObject({
+			kind: 'accepted',
+			providerMessageId: 'send_send-row-1',
+		});
+		expect(sendProviderDispatch).toHaveBeenCalledOnce();
+		// One message, one idempotency key, across every re-entry.
+		expect(resolveLastMileRouting.mock.calls.map(([, routing]) => routing.idempotencyKey)).toEqual(
+			Array(HELD_ATTEMPTS + 1).fill('send_send-row-1')
+		);
 	});
 
 	it('still spends an attempt on ordinary routing churn', async () => {

@@ -45,6 +45,25 @@ const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
 
 /**
+ * A decision, plus whether a `defer` means the endpoint could not be reached
+ * at all: a refused connection, a timeout, or a 5xx from the MTA or the proxy
+ * in front of it. That is an outage the caller waits out (a hold bounded by
+ * the delivery deadline), not an answer. A 4xx, a malformed body and an
+ * unconfigured endpoint stay ordinary deferrals: they do not clear by waiting,
+ * so the routing attempt cap ends them.
+ */
+export type MtaRoutingDecisionResult =
+	| Exclude<MtaRoutingDecision, { kind: 'defer' }>
+	| (Extract<MtaRoutingDecision, { kind: 'defer' }> & { isUnreachable?: true });
+
+const UNREACHABLE_DEFER: MtaRoutingDecisionResult = {
+	kind: 'defer',
+	retryAfterMs: LOCAL_DEFER_MS,
+	origin: 'local',
+	isUnreachable: true,
+};
+
+/**
  * The IP pool a send asks the MTA for: the route's pool when it names one,
  * else the one its stream belongs to. Campaign and automation mail is bulk
  * marketing traffic and goes to `campaign`, where the MTA paces it through
@@ -87,7 +106,7 @@ export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
 	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] },
 	correlationId?: string
-): Promise<MtaRoutingDecision> {
+): Promise<MtaRoutingDecisionResult> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
 	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
@@ -105,8 +124,19 @@ export async function resolveMtaRoutingDecision(
 			body: JSON.stringify({ ...input, ipPool: mtaIpPoolFor(input.ipPool, input.messageType) }),
 			signal: controller.signal,
 		});
+		if (response.status >= 500) return UNREACHABLE_DEFER;
 		if (!response.ok) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
-		const value = (await response.json()) as unknown;
+		let value: unknown;
+		try {
+			value = await response.json();
+		} catch (error) {
+			// A body that is not JSON is an answer we cannot read, not an outage. A
+			// body cut off by a reset or by the timeout above is the outage.
+			if (error instanceof SyntaxError) {
+				return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+			}
+			return UNREACHABLE_DEFER;
+		}
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 			return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 		}
@@ -185,7 +215,9 @@ export async function resolveMtaRoutingDecision(
 		// halt a cell) but never a silent one.
 		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	} catch {
-		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+		// The request never got an answer: refused, reset, or aborted by the
+		// timeout above.
+		return UNREACHABLE_DEFER;
 	} finally {
 		clearTimeout(timeout);
 	}
