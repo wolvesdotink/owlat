@@ -13,6 +13,7 @@ import { resetHttp } from './devShortcuts/resetHttp';
 import {
 	handleOneClickUnsubscribe,
 	handleSeedProbeUnsubscribe,
+	redirectUnsubscribeLinkToPage,
 	verifyUnsubscribeToken,
 } from './delivery/unsubscribeHttp';
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
@@ -69,6 +70,20 @@ http.route({
 	pathPrefix: '/unsub/',
 	method: 'POST',
 	handler: handleOneClickUnsubscribe,
+});
+
+// CORS preflight for the one-click POST, which the recipient page also sends
+http.route({
+	pathPrefix: '/unsub/',
+	method: 'OPTIONS',
+	handler: handleOneClickUnsubscribe,
+});
+
+// A person opening the header URL: redirect to the confirm page, never unsubscribe
+http.route({
+	pathPrefix: '/unsub/',
+	method: 'GET',
+	handler: redirectUnsubscribeLinkToPage,
 });
 
 // One-click unsubscribe target of a deliverability seed probe (RFC 8058):
