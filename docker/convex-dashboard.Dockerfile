@@ -8,4 +8,4 @@
 # directory. Pinned by the digest of the multi-arch index; bump it together
 # with the backend:
 #   docker buildx imagetools inspect ghcr.io/convex/convex-dashboard:latest
-FROM ghcr.io/convex/convex-dashboard:latest@sha256:f85cf0d0448b9c835ae3df5c7c1c6f0145dd4c8f0f92eb0245daf304efdd9f1a
+FROM ghcr.io/convex/convex-dashboard:latest@sha256:caf95d3f2241cddc103a84b728294fa0777c6acc291a2c4612c1d06faaa1c43a

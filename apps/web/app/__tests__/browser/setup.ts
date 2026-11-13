@@ -49,7 +49,8 @@ const VUE_AUTO_IMPORTS = [
 	'onScopeDispose',
 	'useId',
 ] as const;
-for (const name of VUE_AUTO_IMPORTS) vi.stubGlobal(name, vue[name]);
+for (const name of VUE_AUTO_IMPORTS)
+	vi.stubGlobal(name, (vue as Record<typeof name, unknown>)[name]);
 vi.stubGlobal('useI18n', useI18n);
 config.global.plugins = [...config.global.plugins, createTestI18n()];
 

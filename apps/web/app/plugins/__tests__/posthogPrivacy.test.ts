@@ -6,7 +6,8 @@ import type { PostHog } from 'posthog-js';
 
 /**
  * The real plugin and the real posthog-js, with the transport intercepted at
- * `_send_request` (the one door every request and event batch leaves by). A
+ * `_send_request` and the retry queue (the two doors every request and event
+ * batch leaves by). A
  * sentinel planted in a query string, a fragment and a dynamic path segment
  * must not appear in anything handed to it, whatever produced the event.
  */
@@ -62,8 +63,22 @@ async function loadPlugin(router: Router) {
 	// Same registry as the plugin's own dynamic import, so the same instance.
 	const { default: posthog } = await import('posthog-js');
 	current = posthog;
-	vi.spyOn(posthog, '_send_request').mockImplementation((options: Request) => {
+	const send = (options: Request) => {
 		requests.push({ url: options.url, data: options.data });
+	};
+	vi.spyOn(posthog, '_send_request').mockImplementation(send);
+	// Event batches leave through the retry queue, which calls the transport
+	// itself; the queue exists only once `init` has run.
+	const init = posthog.init;
+	vi.spyOn(posthog, 'init').mockImplementation(function (this: PostHog, ...args) {
+		const client = init.apply(this, args);
+		const retryQueue = Object.values(this).find(
+			(value): value is { retriableRequest: (options: Request) => void } =>
+				typeof (value as { retriableRequest?: unknown } | null)?.retriableRequest === 'function'
+		);
+		if (!retryQueue) throw new Error('posthog-js retry queue not found');
+		vi.spyOn(retryQueue, 'retriableRequest').mockImplementation(send);
+		return client;
 	});
 	return { plugin: mod.default as unknown as Plugin, flag, posthog };
 }

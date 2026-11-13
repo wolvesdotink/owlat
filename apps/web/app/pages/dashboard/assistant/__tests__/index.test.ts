@@ -185,7 +185,9 @@ describe('Assistant feed follows only a reader at the end (#1050)', () => {
 		Object.defineProperty(el, 'clientHeight', { get: () => box.clientHeight });
 		Object.defineProperty(el, 'scrollTop', {
 			get: () => box.scrollTop,
-			set: (v: number) => (box.scrollTop = v),
+			set: (v: number) => {
+				box.scrollTop = v;
+			},
 		});
 		(el as unknown as { scrollTo: (o: ScrollToOptions) => void }).scrollTo = (o) => {
 			box.scrollTop = Math.min(o.top ?? 0, box.scrollHeight - box.clientHeight);

@@ -27,7 +27,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateKeyPairSync, type KeyObject } from 'crypto';
-import type { DKIMSignOptions } from 'mailauth';
+import type { DKIMSignatureData } from 'mailauth';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
 import { verifyDkim } from '../verify.js';
@@ -165,19 +165,15 @@ const edTxt = `v=DKIM1; k=ed25519; p=${ed25519RawBase64(ed.publicKey)}`;
  */
 const FIXTURE_SIGN_TIME = new Date('2026-06-17T12:00:00Z');
 
-/**
- * mailauth's type definitions require flat top-level `signingDomain` /
- * `selector` / `privateKey`, but its signer ignores those and signs once per
- * `signatureData` entry, so the oracle is called with that shape alone.
- */
+/** The oracle signer: one signature per `signatureData` entry, at the fixture time. */
 function signWithSignatureData(
 	message: Buffer,
-	options: { canonicalization: string; algorithm: string; signatureData: DKIMSignOptions[] }
+	options: { canonicalization: string; algorithm: string; signatureData: DKIMSignatureData[] }
 ) {
 	return dkimSign(message, {
 		...options,
 		signTime: FIXTURE_SIGN_TIME,
-	} as unknown as DKIMSignOptions);
+	});
 }
 
 async function signRsa(canon: string, message = RAW_MESSAGE): Promise<Buffer> {

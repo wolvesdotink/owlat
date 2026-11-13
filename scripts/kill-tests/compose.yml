@@ -21,7 +21,7 @@ networks:
 
 services:
   redis:
-    image: redis:${REDIS_VERSION:-7.4-alpine}
+    image: redis:${REDIS_VERSION:-8.8-alpine}
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     networks: [kill]
     healthcheck:

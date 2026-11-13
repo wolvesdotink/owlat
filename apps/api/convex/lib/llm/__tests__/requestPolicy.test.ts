@@ -19,8 +19,8 @@ describe('current model wire compatibility', () => {
 				},
 			});
 			const model = modelForRequest(client('gpt-6-luna'));
-			if (typeof model !== 'object' || model.specificationVersion !== 'v3')
-				throw new Error('v3 expected');
+			if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+				throw new Error('v4 expected');
 			await expect(model[method]({ prompt, temperature: 0.2, topP: 0.9 })).rejects.toThrow(
 				'request captured'
 			);
@@ -40,8 +40,8 @@ describe('current model wire compatibility', () => {
 			},
 		});
 		const model = modelForRequest(client('gpt-6.1-sol'));
-		if (typeof model !== 'object' || model.specificationVersion !== 'v3')
-			throw new Error('v3 expected');
+		if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+			throw new Error('v4 expected');
 		await expect(
 			model.doGenerate({ prompt, providerOptions: { openai: { reasoningEffort: 'high' } } })
 		).rejects.toThrow('request captured');
@@ -58,8 +58,8 @@ describe('current model wire compatibility', () => {
 			},
 		});
 		const model = modelForRequest(client('claude-sonnet-5-5'));
-		if (typeof model !== 'object' || model.specificationVersion !== 'v3')
-			throw new Error('v3 expected');
+		if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+			throw new Error('v4 expected');
 		await expect(model.doGenerate({ prompt, temperature: 0.2 })).rejects.toThrow(
 			'request captured'
 		);
@@ -83,8 +83,8 @@ describe('current model wire compatibility', () => {
 			},
 		});
 		const model = modelForRequest(client('openai/gpt-6-luna'));
-		if (typeof model !== 'object' || model.specificationVersion !== 'v3')
-			throw new Error('v3 expected');
+		if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+			throw new Error('v4 expected');
 		await expect(
 			model.doGenerate({
 				prompt,

@@ -31,8 +31,8 @@
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
-		"ioredis-mock": "^8.9.0",
-		"mailauth": "^5.0.0",
+		"ioredis-mock": "^8.13.1",
+		"mailauth": "^8.0.6",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

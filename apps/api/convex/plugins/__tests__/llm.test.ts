@@ -1,7 +1,7 @@
 import { getFunctionName } from 'convex/server';
 import { PRICE_VERSION } from '../../lib/llm/pricing';
 import { convexTest } from 'convex-test';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
@@ -61,7 +61,7 @@ beforeEach(() => {
 	vi.mocked(resolveLanguageModelWithProvenance)
 		.mockReset()
 		.mockResolvedValue({
-			model: new MockLanguageModelV3({
+			model: new MockLanguageModelV4({
 				modelId: 'gpt-4o-mini',
 				doGenerate: providerGenerate,
 			}),

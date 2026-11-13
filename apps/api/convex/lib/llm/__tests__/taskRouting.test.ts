@@ -6,7 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../../_generated/server';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { AI_TASK_NAMES } from '@owlat/shared/aiRouting';
 import { TASK_POLICIES } from '../taskPolicy';
 import { isTierEligible, taskTier, TaskTierNotEligibleError, userTextTier } from '../taskRouting';
@@ -74,8 +74,8 @@ describe('dispatch model eligibility', () => {
 		expect(() => callShape({ model: capable, meter })).not.toThrow();
 	});
 
-	function model(): MockLanguageModelV3 {
-		return new MockLanguageModelV3({
+	function model(): MockLanguageModelV4 {
+		return new MockLanguageModelV4({
 			modelId: 'm',
 			doGenerate: async () => ({
 				content: [{ type: 'text', text: 'ok' }],

@@ -57,9 +57,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use tauri::ipc::Channel;
-// `Manager` is what puts `package_info()` and `config()` on an `AppHandle`
-// (same reason menu.rs and notifications.rs import it).
-use tauri::{command, AppHandle, Manager, State, Url};
+use tauri::{command, AppHandle, State, Url};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// How long the whole check (connect + manifest fetch) may take. The manifest

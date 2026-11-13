@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tool } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
 import { newHarness } from '../../__tests__/testModules';
 import { runLlmText, runLlmTextWithTools } from '../../lib/llm/dispatch';
@@ -41,7 +41,7 @@ const answer = {
 
 function mockModel(results: unknown[]) {
 	const queue = [...results];
-	const model = new MockLanguageModelV3({
+	const model = new MockLanguageModelV4({
 		modelId: 'gpt-4o',
 		doGenerate: async () => {
 			const next = queue.shift();
@@ -138,7 +138,7 @@ describe('hold sizing bounds what is billed (Sol r1 F1)', () => {
 		// A provider that bills the most it could: one token per UTF-8 byte of
 		// everything it was sent, and its whole output ceiling.
 		const model = stampModelEndpoint(
-			new MockLanguageModelV3({
+			new MockLanguageModelV4({
 				modelId: 'gpt-4o-mini',
 				doGenerate: async (options) => {
 					const bytes = new TextEncoder().encode(JSON.stringify(options.prompt)).length;

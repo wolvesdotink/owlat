@@ -19,7 +19,7 @@
  * than at first send.
  */
 
-import { select, password, text, confirm, isCancel } from '@clack/prompts';
+import { select, password, text, confirm, isCancel, type CANCEL_SYMBOL } from '@clack/prompts';
 import type {
 	CoreSendProviderCatalogEntry,
 	SendProviderCredentialField,
@@ -118,7 +118,7 @@ async function promptField(
 ): Promise<boolean> {
 	const copy = fieldPrompt(entry, field);
 	const validate = field.required ? requireNonEmpty(copy.message) : undefined;
-	let answer: string | boolean | symbol;
+	let answer: string | boolean | typeof CANCEL_SYMBOL;
 	if (field.kind === 'secret') {
 		answer = await password({ message: copy.message, validate });
 	} else if (field.kind === 'boolean') {

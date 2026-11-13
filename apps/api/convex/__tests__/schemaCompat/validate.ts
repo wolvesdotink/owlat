@@ -34,6 +34,8 @@ function mismatch(validator: ValidatorJSON, value: unknown, path: string): strin
 		case 'boolean':
 			return typeof value === 'boolean' ? null : expected('boolean');
 		case 'string':
+		case 'function':
+			// A function handle is stored as its string reference.
 			return typeof value === 'string' ? null : expected('string');
 		case 'bytes':
 			return value instanceof ArrayBuffer ? null : expected('bytes');

@@ -20,7 +20,7 @@
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"convex": "catalog:convex",
-		"tsx": "^4.19.0",
+		"tsx": "^4.23.15",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

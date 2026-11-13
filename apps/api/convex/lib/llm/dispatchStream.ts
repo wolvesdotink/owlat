@@ -26,6 +26,39 @@ import { isLengthStop } from './truncation';
 import { toolRoundLimit } from './taskLimits';
 
 /**
+ * Wrap each tool so its pending execution is in `inFlight` until it settles.
+ * On abort the SDK closes the stream without waiting for running tools, and a
+ * tool's own LLM calls meter and settle their holds only when they finish, so
+ * the dispatch waits for them before it returns.
+ */
+function trackToolExecutions(tools: ToolSet, inFlight: Set<Promise<unknown>>): ToolSet {
+	const tracked: ToolSet = {};
+	for (const [name, tool] of Object.entries(tools)) {
+		const execute = tool.execute;
+		if (typeof execute !== 'function') {
+			tracked[name] = tool;
+			continue;
+		}
+		tracked[name] = {
+			...tool,
+			execute: (input: unknown, options: Parameters<typeof execute>[1]) => {
+				const result = execute(input as never, options);
+				if (result instanceof Promise) {
+					const settled = result.then(
+						() => undefined,
+						() => undefined
+					);
+					inFlight.add(settled);
+					void settled.then(() => inFlight.delete(settled));
+				}
+				return result;
+			},
+		} as ToolSet[string];
+	}
+	return tracked;
+}
+
+/**
  * Default ceiling on agentic steps (one LLM call + its tool round-trip) per
  * streamed turn. Caps runaway tool loops and bounds per-turn spend — the engine
  * passes its own value but never above a sane hard limit.
@@ -150,12 +183,14 @@ async function streamOnce(
 	const signal = call.abortSignal
 		? AbortSignal.any([call.abortSignal, readerGone.signal])
 		: readerGone.signal;
+	const toolsInFlight = new Set<Promise<unknown>>();
 	const result = streamText({
 		// Admission outside the meter: a request it refuses is never opened.
 		model: hold.wrap(metered.model),
 		...(opts.system !== undefined ? { system: opts.system } : {}),
 		messages: opts.messages,
-		...(opts.tools ? { tools: opts.tools } : {}),
+		allowSystemInMessages: true,
+		...(opts.tools ? { tools: trackToolExecutions(opts.tools, toolsInFlight) } : {}),
 		stopWhen: stepCountIs(maxStepsOf(opts)),
 		temperature: opts.temperature,
 		// The SDK's retry re-sends only the opening request, before any token
@@ -241,6 +276,7 @@ async function streamOnce(
 		// the stream nobody reads.
 		await metered.settle(STREAM_SETTLE_MS);
 		readerGone.abort();
+		await Promise.all(toolsInFlight);
 		metered.closeOpen();
 		if (!metered.isProviderLevel) {
 			opts.meter?.record({ ...call.requestBase, outcome: 'failed', latencyMs: 0 });
@@ -248,6 +284,7 @@ async function streamOnce(
 		throw withPartialUsage(error, billed(), call.modelUsed);
 	}
 	// A request an abort cut short was made too, with no usage reported.
+	await Promise.all(toolsInFlight);
 	await metered.settle(STREAM_SETTLE_MS);
 	metered.closeOpen();
 

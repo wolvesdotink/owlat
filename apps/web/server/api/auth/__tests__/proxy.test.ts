@@ -38,7 +38,7 @@ async function mountProxy(convexSiteUrlInternal: string): Promise<string> {
 		'setHeader',
 		'setResponseStatus',
 	] as const) {
-		vi.stubGlobal(name, h3[name]);
+		vi.stubGlobal(name, (h3 as Record<typeof name, unknown>)[name]);
 	}
 	vi.stubGlobal('useRuntimeConfig', () => ({ convexSiteUrlInternal, public: {} }));
 	vi.resetModules();

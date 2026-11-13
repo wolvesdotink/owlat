@@ -81,10 +81,10 @@ export function usageDetails(usage: RawUsage): UsageDetails {
 }
 
 /**
- * The usage a PROVIDER reports on its own stream (`LanguageModelV3` `finish`
+ * The usage a PROVIDER reports on its own stream (`LanguageModelV4` `finish`
  * part), before the SDK reshapes it: nested input and output totals.
  */
-export interface ProviderUsageV3 {
+export interface ProviderUsageV4 {
 	readonly inputTokens?: {
 		readonly total?: number;
 		readonly cacheRead?: number;
@@ -95,7 +95,7 @@ export interface ProviderUsageV3 {
 
 /** A provider-level usage report as the ledger's usage triple and its details. */
 export function providerReportedUsage(
-	usage: ProviderUsageV3 | undefined
+	usage: ProviderUsageV4 | undefined
 ): { usage: TokenUsage; details: UsageDetails } | undefined {
 	if (!usage) return undefined;
 	const reportedInput = count(usage.inputTokens?.total);

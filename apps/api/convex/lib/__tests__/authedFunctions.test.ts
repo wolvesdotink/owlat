@@ -117,16 +117,50 @@ beforeEach(() => {
 
 describe('the org-scoped builders thread their floor’s session', () => {
 	const cases = [
-		{ name: 'authedQuery', build: authedQuery, floor: 'requireOrgMember', session: MEMBER },
-		{ name: 'adminQuery', build: adminQuery, floor: 'requireOrgPermission', session: ADMIN },
-		{ name: 'authedMutation', build: authedMutation, floor: 'getMutationContext', session: MEMBER },
-		{ name: 'adminMutation', build: adminMutation, floor: 'requireAdminContext', session: ADMIN },
-		{ name: 'ownerMutation', build: ownerMutation, floor: 'requireOwnerContext', session: OWNER },
+		{
+			name: 'authedQuery',
+			build: authedQuery,
+			floor: 'requireOrgMember',
+			floorFn: sessionOrganization.requireOrgMember,
+			session: MEMBER,
+		},
+		{
+			name: 'adminQuery',
+			build: adminQuery,
+			floor: 'requireOrgPermission',
+			floorFn: sessionOrganization.requireOrgPermission,
+			session: ADMIN,
+		},
+		{
+			name: 'authedMutation',
+			build: authedMutation,
+			floor: 'getMutationContext',
+			floorFn: sessionOrganization.getMutationContext,
+			session: MEMBER,
+		},
+		{
+			name: 'adminMutation',
+			build: adminMutation,
+			floor: 'requireAdminContext',
+			floorFn: sessionOrganization.requireAdminContext,
+			session: ADMIN,
+		},
+		{
+			name: 'ownerMutation',
+			build: ownerMutation,
+			floor: 'requireOwnerContext',
+			floorFn: sessionOrganization.requireOwnerContext,
+			session: OWNER,
+		},
 	] as const;
 
-	it.each(cases.map(({ name, build, floor, session }) => [name, floor, build, session] as const))(
+	it.each(
+		cases.map(
+			({ name, build, floor, floorFn, session }) => [name, floor, build, session, floorFn] as const
+		)
+	)(
 		'%s hands the handler the session %s resolved, once',
-		async (name, floor, build, session) => {
+		async (name, _floor, build, session, floorFn) => {
 			const handler = vi.fn(echo);
 			const fn = (build as unknown as LooseBuilder)({
 				args: {},
@@ -153,7 +187,7 @@ describe('the org-scoped builders thread their floor’s session', () => {
 				expect(handed.runQuery).toBe(ctx.runQuery);
 			}
 			expect(result.args).toEqual({ page: 2 });
-			expect(vi.mocked(sessionOrganization[floor])).toHaveBeenCalledTimes(1);
+			expect(vi.mocked(floorFn)).toHaveBeenCalledTimes(1);
 			expect(handler).toHaveBeenCalledTimes(1);
 		}
 	);

@@ -587,7 +587,7 @@ describe('mtaSts', () => {
 				Array.from({ length: 20 }, () => getStsTlsOptions(redis, 'example.com'))
 			);
 
-			expect(results).toEqual(Array(20).fill(ENFORCE_OPTS));
+			expect(results).toEqual(Array.from({ length: 20 }, () => ENFORCE_OPTS));
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
 		});
 	});

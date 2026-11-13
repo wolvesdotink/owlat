@@ -152,7 +152,7 @@ function runPeerVerifier(
  */
 type TlsSecurityOptions = Pick<
 	tls.ConnectionOptions,
-	'servername' | 'minVersion' | 'rejectUnauthorized' | 'ca' | 'checkServerIdentity'
+	'host' | 'servername' | 'minVersion' | 'rejectUnauthorized' | 'ca' | 'checkServerIdentity'
 >;
 
 /** `tls.connect` forwards net options at runtime; `localAddress` is one of them. */
@@ -169,7 +169,10 @@ function buildTlsSecurityOptions(
 	servername: string
 ): TlsSecurityOptions {
 	const secure: TlsSecurityOptions = {
-		servername,
+		// SNI cannot carry an IP literal (RFC 6066 section 3) and Node rejects one.
+		// Node checks the certificate against `host` when no servername is set,
+		// so an IP peer is still verified, on the STARTTLS upgrade path too.
+		...(net.isIP(servername) ? { host: servername } : { servername }),
 		minVersion: tlsOptions.minVersion ?? DEFAULT_MIN_TLS_VERSION,
 		rejectUnauthorized: tlsOptions.rejectUnauthorized ?? true,
 	};
@@ -188,9 +191,9 @@ function buildTlsConnectOptions(
 	servername: string
 ): TlsConnectOptions {
 	const connectOptions: TlsConnectOptions = {
+		...buildTlsSecurityOptions(tlsOptions, servername),
 		host: options.host,
 		port: options.port,
-		...buildTlsSecurityOptions(tlsOptions, servername),
 	};
 	if (options.localAddress !== undefined) {
 		connectOptions.localAddress = options.localAddress;

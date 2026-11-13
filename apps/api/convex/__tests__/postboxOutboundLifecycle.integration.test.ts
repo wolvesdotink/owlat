@@ -7,6 +7,7 @@
  */
 
 import { convexTest } from 'convex-test';
+import type { FunctionReference } from 'convex/server';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -61,7 +62,7 @@ type RecipientFixture = {
 
 function dispatchEvent(t: ReturnType<typeof convexTest>, event: InboundEvent): Promise<void> {
 	const actionCtx = {
-		runMutation: (mutation: Parameters<ActionCtx['runMutation']>[0], args: unknown) =>
+		runMutation: (mutation: FunctionReference<'mutation', 'public' | 'internal'>, args: unknown) =>
 			t.mutation(mutation, args),
 	} as unknown as ActionCtx;
 	return dispatchInboundEvent(actionCtx, event);

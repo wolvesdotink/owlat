@@ -21,14 +21,14 @@
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
-		"@vue/compiler-sfc": "^3.5.33",
+		"@vue/compiler-sfc": "^3.5.45",
 		"typescript": "catalog:"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"convex": "catalog:convex",
-		"convex-test": "^0.0.59",
+		"convex-test": "0.0.62",
 		"esbuild": "0.28.2",
 		"vitest": "catalog:"
 	}

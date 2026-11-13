@@ -59,8 +59,6 @@ beforeAll(async () => {
 	privateKey = keyPair.privateKey;
 	txtRecord = buildTxtRecord(keyPair.publicKey);
 
-	// mailauth's signer reads the key set off `signatureData` (the flat
-	// top-level fields in its type defs are not honored at runtime).
 	const signResult = await mailauthDkimSign(Buffer.from(RAW_MESSAGE), {
 		canonicalization: 'relaxed/relaxed',
 		algorithm: 'rsa-sha256',

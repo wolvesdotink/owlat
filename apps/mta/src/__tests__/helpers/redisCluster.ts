@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import Redis, { type Cluster } from 'ioredis';
 import { awaitContainerLog, REDIS_CLUSTER_OK_LOG, REDIS_READY_LOG } from './dockerLogs.js';
 
-const REDIS_IMAGE = 'redis:7-alpine';
+const REDIS_IMAGE = 'redis:8-alpine';
 const CLUSTER_NODE_COUNT = 3;
 const CLUSTER_SLOT_COUNT = 16_384;
 const PORT_MIN = 16_000;
@@ -27,9 +27,9 @@ let probeError: unknown;
 let probed = false;
 
 /**
- * Gate for the suites that run against a real redis:7-alpine container
+ * Gate for the suites that run against a real redis:8-alpine container
  * (`describe.runIf(dockerRedisAvailable())`). The suites never pull the image
- * themselves; `docker pull redis:7-alpine` once.
+ * themselves; `docker pull redis:8-alpine` once.
  *
  * Without `OWLAT_REQUIRE_DOCKER=1` a missing daemon or image skips the suites,
  * so the rest of the MTA tests still run on a machine without Docker. With the

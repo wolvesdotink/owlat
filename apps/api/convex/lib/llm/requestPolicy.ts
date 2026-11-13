@@ -33,7 +33,7 @@ function schemaInstruction(schema: unknown): string {
  *   request and drops the schema, so the schema goes into the system prompt.
  */
 export function modelForRequest(model: LanguageModel): LanguageModel {
-	if (typeof model !== 'object' || model.specificationVersion !== 'v3') return model;
+	if (typeof model !== 'object' || model.specificationVersion !== 'v4') return model;
 	const id = model.modelId.replace(/^[^/]+\//, '');
 	const gpt6 = /^gpt-6(?:[.-]|$)/.test(id);
 	const claude55 = /^claude-(?:haiku|sonnet|opus)-5[.-]5(?:-|$)/.test(id);
@@ -45,7 +45,7 @@ export function modelForRequest(model: LanguageModel): LanguageModel {
 	return wrapLanguageModel({
 		model,
 		middleware: {
-			specificationVersion: 'v3',
+			specificationVersion: 'v4',
 			transformParams: async ({ params }) => {
 				let next = params;
 				const format = params.responseFormat;
@@ -62,8 +62,15 @@ export function modelForRequest(model: LanguageModel): LanguageModel {
 				const options = { ...params.providerOptions };
 				if (gpt6 && /^(openai|azure)\.responses$/.test(model.provider)) {
 					const key = model.provider.startsWith('azure') ? 'azure' : 'openai';
-					// Low effort is the default; a caller's explicit effort wins.
-					options[key] = { reasoningEffort: 'low', ...options[key], forceReasoning: true };
+					// Low effort is the default; a caller's explicit effort wins. Nothing
+					// reads reasoning summaries, which the provider would otherwise
+					// request (and bill as output) whenever an effort is set.
+					options[key] = {
+						reasoningEffort: 'low',
+						reasoningSummary: null,
+						...options[key],
+						forceReasoning: true,
+					};
 				}
 				if (isLunaOnChat && chatOptionsKey) {
 					options[chatOptionsKey] = { ...options[chatOptionsKey], reasoningEffort: 'none' };

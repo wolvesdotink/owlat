@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test';
+import type { FunctionReference } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import type { ActionCtx } from '../_generated/server';
@@ -62,7 +63,7 @@ function dispatch(t: TestHarness, event: InboundEvent): Promise<void> {
 	// its real mutation references while convex-test supplies the mutation
 	// executor; none of these email event handlers use the action scheduler.
 	const actionCtx = {
-		runMutation: (mutation: Parameters<ActionCtx['runMutation']>[0], args: unknown) =>
+		runMutation: (mutation: FunctionReference<'mutation', 'public' | 'internal'>, args: unknown) =>
 			t.mutation(mutation, args),
 	} as unknown as ActionCtx;
 	return dispatchInboundEvent(actionCtx, event);

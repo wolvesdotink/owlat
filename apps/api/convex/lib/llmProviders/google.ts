@@ -65,7 +65,7 @@ export const googleEmbeddingAdapter: EmbeddingProviderAdapter<'google'> = {
 		const bounded = wrapEmbeddingModel({
 			model,
 			middleware: {
-				specificationVersion: 'v3',
+				specificationVersion: 'v4',
 				transformParams: async ({ params }) => ({
 					...params,
 					providerOptions: {

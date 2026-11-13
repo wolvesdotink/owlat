@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { APICallError, NoObjectGeneratedError, tool } from 'ai';
-import { MockLanguageModelV3 } from 'ai/test';
+import { MockLanguageModelV4 } from 'ai/test';
 import { z } from 'zod';
 
 const sdk = vi.hoisted(() => ({
@@ -338,9 +338,9 @@ describe('runLlmStream — every provider request, at the provider boundary', ()
 			execute: async () => ({ facts: [] as string[] }),
 		});
 	/** `inner`, except its first `failures` stream requests are refused with a 503. */
-	function flaky(inner: MockLanguageModelV3, failures: number) {
+	function flaky(inner: MockLanguageModelV4, failures: number) {
 		let refused = 0;
-		return new MockLanguageModelV3({
+		return new MockLanguageModelV4({
 			modelId: 'gpt-4o-mini',
 			doStream: async (options) => {
 				if (refused < failures) {

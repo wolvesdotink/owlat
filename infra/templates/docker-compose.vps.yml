@@ -153,7 +153,7 @@ services:
   # default.{crt,key} into the mail-certs volume.
   acme:
     logging: *default-logging
-    image: goacme/lego:v4.27
+    image: goacme/lego:v4.35
     entrypoint: /opt/owlat/acme-entrypoint.sh
     volumes:
       - mail-certs:/opt/owlat/certs
@@ -404,7 +404,7 @@ services:
   # manual approval.
   redis:
     logging: *default-logging
-    image: redis:7.4-alpine
+    image: redis:8.8-alpine
     # Run directly as the image's redis user (uid 999, gid 1000). With
     # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
     # traverse an appendonlydir created (and owned as 999) by a previous run —
@@ -804,7 +804,7 @@ services:
   # and filled the disk (see the root docker-compose.yml).
   ollama:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.16}
     volumes:
       - ollama-data:/root/.ollama
     environment:
@@ -835,7 +835,7 @@ services:
   # readiness check. The next `up` retries it.
   ollama-models:
     logging: *default-logging
-    image: ollama/ollama:${OLLAMA_VERSION:-0.34.4}
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.16}
     entrypoint: ['/bin/sh', '-c']
     command:
       - |

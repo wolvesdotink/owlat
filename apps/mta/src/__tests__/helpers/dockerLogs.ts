@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-/** redis:7 logs this once it listens for clients. */
+/** redis:8 logs this once it listens for clients. */
 export const REDIS_READY_LOG = 'Ready to accept connections';
 
 /** A cluster node logs this once every slot is served by a reachable master. */

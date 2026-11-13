@@ -20,12 +20,12 @@ describe('dockerRedisAvailable', () => {
 		vi.unstubAllEnvs();
 	});
 
-	it('is true when the daemon answers for the redis:7-alpine image', async () => {
+	it('is true when the daemon answers for the redis:8-alpine image', async () => {
 		const { dockerRedisAvailable } = await loadGate();
 		expect(dockerRedisAvailable()).toBe(true);
 		expect(execFileSync).toHaveBeenCalledWith(
 			'docker',
-			['image', 'inspect', 'redis:7-alpine'],
+			['image', 'inspect', 'redis:8-alpine'],
 			expect.objectContaining({ timeout: 30_000 })
 		);
 	});
@@ -44,7 +44,7 @@ describe('dockerRedisAvailable', () => {
 		});
 		const { dockerRedisAvailable, REQUIRE_DOCKER_ENV } = await loadGate();
 		vi.stubEnv(REQUIRE_DOCKER_ENV, '1');
-		expect(() => dockerRedisAvailable()).toThrow(/OWLAT_REQUIRE_DOCKER=1 .*redis:7-alpine/);
+		expect(() => dockerRedisAvailable()).toThrow(/OWLAT_REQUIRE_DOCKER=1 .*redis:8-alpine/);
 	});
 
 	it('probes Docker once per module, however many suites ask', async () => {
