@@ -17,7 +17,7 @@
 import { group, isCancel, text } from '@clack/prompts';
 import { proposedSystemFromEmail, systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import type { EnvMap } from '../lib/env';
-import { detectPrimaryIpv4 } from '../lib/outboundIp';
+import { detectOutboundIpv4 } from '../lib/outboundIp';
 import { announceReverseDns, plannedOutboundIdentities } from '../lib/reverseDns';
 import { isValidEmail } from '../lib/validators';
 
@@ -49,8 +49,8 @@ export async function collectDomain(existingEnv: EnvMap = {}): Promise<EnvMap | 
 		);
 	}
 	// The sending pools are not configured yet — `quickstart` defaults them to
-	// this box's primary IPv4 — so check the PTR of the address they will get.
-	const ip = detectPrimaryIpv4();
+	// this box's default-route source — so check the PTR of the address they will get.
+	const ip = (await detectOutboundIpv4())?.ip;
 	if (ip) {
 		const identities = plannedOutboundIdentities({ ...env, IP_POOLS_TRANSACTIONAL: ip });
 		await announceReverseDns(identities, env, { interactive: true });

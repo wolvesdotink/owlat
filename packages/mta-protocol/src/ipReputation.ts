@@ -103,10 +103,6 @@ function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-function isBlockReasonArray(value: unknown): value is IpReadinessBlockReason[] {
-	return isStringArray(value) && value.every(isIpReadinessBlockReason);
-}
-
 function isDnsblListingArray(value: unknown): value is DnsblListId[] {
 	return isStringArray(value) && value.every(isDnsblListId);
 }
@@ -179,7 +175,9 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 		Number.isFinite(value['warmingDay']) &&
 		typeof value['pool'] === 'string' &&
 		typeof value['active'] === 'boolean' &&
-		(value['blockReasons'] === undefined || isBlockReasonArray(value['blockReasons'])) &&
+		// Any string list: a reason a newer MTA adds must not reject the whole
+		// snapshot. The normalizer drops it and marks the row held instead.
+		(value['blockReasons'] === undefined || isStringArray(value['blockReasons'])) &&
 		(value['dnsbl'] === undefined ||
 			(typeof value['dnsbl'] === 'string' && isDnsblStatus(value['dnsbl']))) &&
 		(value['dnsblListings'] === undefined || isDnsblListingArray(value['dnsblListings'])) &&
@@ -214,6 +212,11 @@ export function normalizeIpReputationPayload(value: unknown) {
 	let anyPlateau = false;
 
 	const ips = sourceIps.map((ip) => {
+		const reportedReasons: string[] = Array.isArray(ip.blockReasons) ? ip.blockReasons : [];
+		const blockReasons = reportedReasons.filter(isIpReadinessBlockReason);
+		// A reason this build does not know still means the MTA holds the address,
+		// so the row is never presented as ready on the reasons it does know.
+		const hasUnknownReason = blockReasons.length < reportedReasons.length;
 		const dailyCap =
 			ip.warmingPhase === 'graduated'
 				? GRADUATED_DISPLAY_CAP
@@ -235,8 +238,8 @@ export function normalizeIpReputationPayload(value: unknown) {
 			bounceRate: Math.round(bounceRate * 10000) / 10000,
 			deferralRate: Math.round(deferralRate * 10000) / 10000,
 			pool: ip.pool,
-			active: ip.active,
-			...(Array.isArray(ip.blockReasons) ? { blockReasons: ip.blockReasons } : {}),
+			active: ip.active && !hasUnknownReason,
+			...(Array.isArray(ip.blockReasons) ? { blockReasons } : {}),
 			...(typeof ip.dnsbl === 'string' ? { dnsbl: ip.dnsbl } : {}),
 			...(Array.isArray(ip.dnsblListings) ? { dnsblListings: ip.dnsblListings } : {}),
 			...(typeof ip.dnsblCheckedAt === 'number' ? { dnsblCheckedAt: ip.dnsblCheckedAt } : {}),

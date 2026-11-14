@@ -15,14 +15,15 @@
  * the OS never picks an IPv6 source whose PTR/SPF readiness was never checked.
  *
  * What the fallback gives up: the MTA no longer chooses its source address, the
- * host's NAT does, and nothing inside the container can observe the translated
+ * host's NAT does, and nothing inside the container can read the translated
  * address. A mistyped or not-yet-assigned IP fails loudly (EADDRNOTAVAIL) only
  * when the MTA can see its public address, i.e. with host networking. Behind
  * NAT the same mistake sends from the host's default outbound address while
- * announcing the configured IP's EHLO name, and nothing reports it. Two or more
- * same-family pool IPs behind NAT all leave from that one address;
- * `sharedNatEgressIps` names them so the boot log and the health probe can say
- * so, but delivery continues.
+ * announcing the configured IP's EHLO name. Only the receivers see that
+ * address; `scaling/egressAddressReadiness.ts` asks them and holds an IP whose
+ * mail they see arrive from somewhere else. Two or more same-family pool IPs
+ * behind NAT all leave from that one address; `sharedNatEgressIps` names them
+ * so the boot log and the health probe can say so, but delivery continues.
  */
 
 import { BlockList, isIP } from 'node:net';
@@ -142,8 +143,8 @@ export function logNatSourceAddresses(
 		log.info(
 			{ ips: unbound },
 			'Sending IP is not assigned inside this network namespace, so outbound SMTP binds nothing ' +
-				"and NAT picks the source address. The MTA cannot see the translated address: make sure the host's " +
-				'default outbound IPv4 address is this IP.'
+				"and NAT picks the source address. Make sure the host's default outbound IPv4 address is this IP; " +
+				'the egress-address check holds the IP if receivers see its mail arrive from another address.'
 		);
 	}
 }

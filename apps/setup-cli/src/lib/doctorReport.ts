@@ -49,6 +49,7 @@ export const DOCTOR_CHECK_IDS = [
 	'compose.cli',
 	'containers.health',
 	'version.drift',
+	'mta.egress_address',
 ] as const;
 
 export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
@@ -97,6 +98,7 @@ const CHECK_META: Record<
 	'mta.dns': { component: 'mta', remediation: 'check_mta' },
 	'mta.circuit_breaker': { component: 'mta', remediation: 'check_ip_reputation' },
 	'mta.identity': { component: 'mta', remediation: 'fix_reverse_dns' },
+	'mta.egress_address': { component: 'mta', remediation: 'configure_sending_ips' },
 	'mta.queue_leak': { component: 'mta', remediation: 'report_queue_leak' },
 	'mta.sending_ips': { component: 'mta', remediation: 'configure_sending_ips' },
 	'mta.tcp25': { component: 'mta', remediation: 'unblock_outbound_smtp' },
