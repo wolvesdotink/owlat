@@ -121,7 +121,7 @@ Fired when the recipient marks the email as spam (feedback loop from provider).
 ```
 
 ### `email.failed`
-Fired once when a send reaches the terminal `failed` state (`reduceFailed` in `delivery/sendLifecycle/reducers.ts`). Never for a bounce, never for a send that is held or retried, never twice: a repeated failure is a duplicate transition and emits nothing. `errorCode` is the code stored on the send row; `message` is its `errorMessage`. Webhooks subscribe to it explicitly, like every event: an existing webhook does not receive it until its event list includes it.
+Fired once when a send reaches the terminal `failed` state (`reduceFailed` in `delivery/sendLifecycle/reducers.ts`). Never for a bounce, never for a send that is held or retried, never twice: a repeated failure is a duplicate transition and emits nothing. Never for a campaign or automation send that was skipped at dispatch because its recipient is suppressed, unsubscribed or deleted (`RECIPIENT_SUPPRESSED`, `RECIPIENT_UNSUBSCRIBED`, `CONTACT_DELETED`): that is not a delivery failure. The send row still records `failed` with its code and the campaign report still counts it as failed. A send accepted by the transactional API (`sendId` set) does fire it for those codes, since its caller was answered `202`. `errorCode` is the code stored on the send row; `message` is its `errorMessage`. Webhooks subscribe to it explicitly, like every event: an existing webhook does not receive it until its event list includes it.
 ```json
 {
   "email": "recipient@example.com",

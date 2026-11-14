@@ -338,7 +338,7 @@ describe('a transactional send names itself on every email event', () => {
 	it('a campaign send names its campaign and no send id', () => {
 		const result = reduceFailed(
 			campaignSend({ status: 'queued' }),
-			{ to: 'failed', at: 3000, errorMessage: 'nope', errorCode: 'RECIPIENT_SUPPRESSED' },
+			{ to: 'failed', at: 3000, errorMessage: 'nope', errorCode: 'MTA_UNREACHABLE' },
 			campaignRef
 		);
 		expect(webhookPayloads(result.effects)).toEqual([
@@ -348,8 +348,45 @@ describe('a transactional send names itself on every email event', () => {
 					sendId: null,
 					campaignId: CAMPAIGN_ID,
 					templateId: null,
-					errorCode: 'RECIPIENT_SUPPRESSED',
+					errorCode: 'MTA_UNREACHABLE',
 				}),
+			},
+		]);
+	});
+
+	it.each(['RECIPIENT_SUPPRESSED', 'RECIPIENT_UNSUBSCRIBED', 'CONTACT_DELETED'])(
+		'a campaign recipient skipped at dispatch (%s) is recorded as failed but emits no email.failed',
+		(errorCode) => {
+			const result = reduceFailed(
+				campaignSend({ status: 'queued' }),
+				{ to: 'failed', at: 3000, errorMessage: 'skipped', errorCode },
+				campaignRef
+			);
+			expect(webhookPayloads(result.effects)).toEqual([]);
+			expect(result.patch).toMatchObject({ status: 'failed', errorCode });
+			expect(result.effects.map((e) => e.kind)).toContain('campaign_stats_failed');
+		}
+	);
+
+	it('an automation send skipped at dispatch emits no email.failed either', () => {
+		const result = reduceFailed(
+			apiSend({ kind: 'automation', transactionalEmailId: undefined }),
+			{ to: 'failed', at: 3000, errorMessage: 'skipped', errorCode: 'RECIPIENT_SUPPRESSED' },
+			apiRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([]);
+	});
+
+	it('an API send skipped at dispatch still emits one email.failed for its caller', () => {
+		const result = reduceFailed(
+			apiSend(),
+			{ to: 'failed', at: 3000, errorMessage: 'skipped', errorCode: 'RECIPIENT_SUPPRESSED' },
+			apiRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([
+			{
+				event: 'email.failed',
+				data: expect.objectContaining({ sendId: API_SEND_ID, errorCode: 'RECIPIENT_SUPPRESSED' }),
 			},
 		]);
 	});

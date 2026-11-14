@@ -2,7 +2,10 @@
  * email.failed — fired once when a send reaches the terminal `failed` state:
  * the provider refused it, a delivery hold outlived the delivery deadline, or
  * the worker could not hand it over. A bounce is not a failure and has its own
- * event; a send that is held or retried fires nothing until it settles.
+ * event; a send that is held or retried fires nothing until it settles. A
+ * campaign or automation send skipped at dispatch because its recipient is
+ * suppressed, unsubscribed or deleted fires nothing; an API send skipped that
+ * way still does (`reduceFailed` in `delivery/sendLifecycle/reducers.ts`).
  *
  * `errorCode` is the stable code the send row records (`MTA_UNREACHABLE`,
  * `DELIVERY_HOLD_EXPIRED`, `RECIPIENT_SUPPRESSED`, ...). Receivers branch on

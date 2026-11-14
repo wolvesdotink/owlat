@@ -120,6 +120,16 @@ const SUPPRESSED_SEND_FAILURE = {
 >;
 
 /**
+ * The error codes of a send that was never attempted because of its recipient:
+ * suppressed, unsubscribed or deleted at dispatch. The send lifecycle reads
+ * them to keep such a skip out of `email.failed` for sends nobody requested
+ * through the API (`delivery/sendLifecycle/reducers.ts`).
+ */
+export const SKIPPED_RECIPIENT_ERROR_CODES: ReadonlySet<string> = new Set(
+	Object.values(SUPPRESSED_SEND_FAILURE).map((failure) => failure.code)
+);
+
+/**
  * How a deferral that ran out of budget is recorded: by what it was waiting
  * for, so the Send says why it never went out. A hold spends no routing
  * attempts, so only the deadline can end one.
