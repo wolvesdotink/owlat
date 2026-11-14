@@ -11,6 +11,7 @@
 import { v } from 'convex/values';
 import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { pickHtmlTranslation } from '../lib/emailJson';
+import { variablesWithoutFallback } from '../delivery/sendComposition/personalization';
 
 /** A template-side attachment as the template's `attachments` JSON stores it. */
 const templateAttachmentsValidator = v.array(
@@ -134,6 +135,75 @@ export function selectContent(
 		subject: defaultSubject,
 		resolvedLanguage: templateDefaultLanguage,
 	};
+}
+
+/** What one send renders: the language it went out in and that language's content. */
+export interface SendContent {
+	language: string;
+	subject: string;
+	html: string;
+	plainText: string | undefined;
+}
+
+/**
+ * The content a send to a recipient renders, after the language fallback
+ * chain ({@link resolveLanguage}) and the translation fallback
+ * ({@link selectContent}). The pre-generated text/plain body belongs to the
+ * default language only: translations carry no translated text body, and
+ * pairing the default language's text with translated html would send two
+ * languages in one message.
+ */
+export function selectSendContent(
+	template: {
+		defaultLanguage?: string;
+		supportedLanguages?: string[];
+		htmlContent?: string;
+		subject: string;
+		htmlTranslations?: string;
+		plainTextContent?: string;
+	},
+	requestLanguage: string | undefined,
+	contactLanguage: string | undefined
+): SendContent {
+	const defaultLanguage = template.defaultLanguage ?? 'en';
+	const language = resolveLanguage(
+		requestLanguage,
+		contactLanguage,
+		template.defaultLanguage,
+		template.supportedLanguages ?? [defaultLanguage]
+	);
+	const content = selectContent(
+		language,
+		defaultLanguage,
+		template.htmlContent ?? '',
+		template.subject,
+		template.htmlTranslations
+	);
+	return {
+		language: content.resolvedLanguage,
+		subject: content.subject,
+		html: content.html,
+		plainText: content.resolvedLanguage === defaultLanguage ? template.plainTextContent : undefined,
+	};
+}
+
+/**
+ * The variables the content uses without a fallback that the request leaves
+ * out or sends as `null`: each would render as an empty string. The template's
+ * `dataVariablesSchema` records only a type per variable, not whether one is
+ * required, so the content is what decides: a variable with a fallback
+ * (`{{name|'there'}}`) or one the content never uses is never required.
+ */
+export function missingDataVariables(
+	content: Pick<SendContent, 'subject' | 'html' | 'plainText'>,
+	variables: Record<string, unknown> | undefined
+): string[] {
+	const used = new Set([
+		...variablesWithoutFallback(content.subject),
+		...variablesWithoutFallback(content.html),
+		...variablesWithoutFallback(content.plainText ?? ''),
+	]);
+	return [...used].filter((name) => variables?.[name] == null);
 }
 
 /**

@@ -23,6 +23,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
+import { findContactByIdentifier } from '../contacts/resolution';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
@@ -48,6 +49,7 @@ import {
 	validateDataVariables,
 	resolveLanguage,
 	selectContent,
+	selectSendContent,
 	mergeAttachments,
 } from './dispatchContent';
 import {
@@ -104,6 +106,15 @@ async function resolveIntakeRoute(
 		logWarn(`transactional intake queued on hold: ${routing.deferralCode}`);
 	}
 	return routing.route;
+}
+
+/**
+ * The language stored on the recipient's contact, read before the contact
+ * upsert so a refused request writes nothing. The upsert never overwrites a
+ * stored language, so the plan resolves the same one after it.
+ */
+async function storedLanguage(ctx: MutationCtx, email: string): Promise<string | undefined> {
+	return (await findContactByIdentifier(ctx, 'email', email))?.contact.language;
 }
 
 // ============================================================
@@ -204,6 +215,7 @@ export const dispatch = internalMutation({
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,
 			dataVariablesSchema: template.dataVariablesSchema,
+			content: selectSendContent(template, args.language, await storedLanguage(ctx, args.email)),
 		});
 		if (refusal) return refusal;
 

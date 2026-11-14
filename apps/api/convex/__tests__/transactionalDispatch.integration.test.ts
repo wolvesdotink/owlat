@@ -128,7 +128,8 @@ async function seedBaseline(
 		);
 		const tpl = createTestTransactionalEmail({
 			status: overrides.templateStatus ?? 'published',
-			htmlContent: overrides.htmlContent ?? '<p>Hello {{firstName}}</p>',
+			// A fallback, so a request that sends no variables is still complete.
+			htmlContent: overrides.htmlContent ?? "<p>Hello {{firstName|'there'}}</p>",
 			subject: 'Welcome',
 			dataVariablesSchema: overrides.dataVariablesSchema,
 			htmlTranslations: overrides.htmlTranslations,
@@ -519,6 +520,27 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		if (outcome.ok) throw new Error('expected rejection');
 		expect(outcome.reason).toBe('invalid_variables');
 	});
+
+	it("returns 'invalid_variables' naming a variable the email uses without a fallback", async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t, {
+			htmlContent: "<p>Hi {{firstName|'there'}}, reset here: {{resetUrl}}</p>",
+			dataVariablesSchema: { firstName: 'string', resetUrl: 'string' },
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { resetURL: 'https://example.com/reset?token=t' },
+		});
+
+		expect(outcome.ok).toBe(false);
+		if (outcome.ok) throw new Error('expected rejection');
+		expect(outcome.reason).toBe('invalid_variables');
+		expect(outcome.detail).toContain('"resetUrl"');
+		expect(outcome.detail).not.toContain('firstName');
+		expect(await t.run((ctx) => ctx.db.query('contacts').collect())).toHaveLength(0);
+	});
 });
 
 // ─── Drift-bug closures ─────────────────────────────────────────────────────
@@ -610,7 +632,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 			sendId: outcome.sendId,
 			template: {
 				subject: 'Welcome',
-				htmlContent: '<p>Hello {{firstName}}</p>',
+				htmlContent: "<p>Hello {{firstName|'there'}}</p>",
 				plainTextContent: 'Hello in text',
 			},
 			dataVariables: { firstName: 'Ada' },
