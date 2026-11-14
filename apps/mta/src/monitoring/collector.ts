@@ -192,6 +192,18 @@ export const cfblRejectionsTotal = new Counter({
 });
 
 /**
+ * Mail to a signed `unsubscribe+…@` address, by outcome (`accepted`,
+ * `invalid`, `expired`). Anyone may mail the address, so forged requests are
+ * counted here and dropped, never reported to Convex.
+ */
+export const unsubscribeMailTotal = new Counter({
+	name: 'mta_unsubscribe_mail_total',
+	help: 'Mail to the signed unsubscribe address, by outcome',
+	labelNames: ['outcome'] as const,
+	registers: [registry],
+});
+
+/**
  * Sends held because the sending domain is owed a DKIM signature and no usable
  * key produced one, by bounded cause (`DKIM_UNAVAILABLE_CAUSES` in
  * `smtp/dkim.ts`). The message is deferred, never sent unsigned.

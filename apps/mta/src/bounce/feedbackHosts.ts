@@ -1,5 +1,5 @@
 /**
- * The hosts this MTA answers `bounce+…@` and `fbl+…@` for.
+ * The hosts this MTA answers `bounce+…@`, `fbl+…@` and `unsubscribe+…@` for.
  *
  * Those local parts carry a signed token that is verified after DATA, so a
  * forged one is discarded either way. Accepting them at RCPT for any host,

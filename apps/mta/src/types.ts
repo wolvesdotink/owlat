@@ -78,6 +78,11 @@ export interface EmailJob {
 	organizationId: string;
 	/** Authenticated production-vs-member-preview effect domain. */
 	deliveryDomain?: DeliveryDomain;
+	/**
+	 * Convex asked for a signed `mailto:` target in front of the message's HTTPS
+	 * `List-Unsubscribe` one (`smtp/send/compose.ts`). Governed intake only.
+	 */
+	listUnsubscribeMailto?: true;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */

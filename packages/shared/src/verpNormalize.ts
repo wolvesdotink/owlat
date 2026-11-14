@@ -1,6 +1,6 @@
 /**
- * VERP configuration normalisation — the two PURE string helpers, in a module
- * that imports nothing.
+ * VERP configuration normalisation — the two PURE string helpers (and the
+ * unsubscribe token lifetime), in a module that imports nothing.
  *
  * They live apart from `./verp` on purpose: `verp.ts` imports `node:crypto`,
  * and `./outboundIdentity` (which is re-exported from the package barrel, and
@@ -29,6 +29,14 @@ export function normalizeVerpKey(key: string | undefined): string | undefined {
 	const normalized = key?.trim();
 	return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
 }
+
+/**
+ * How long an unsubscribe token keeps working: the HTTPS one-click link Convex
+ * signs and the `mailto:` address the MTA signs beside it share one lifetime.
+ * Here rather than in `./verp` so Convex code outside the Node runtime can
+ * read it.
+ */
+export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * Normalise a configured return-path domain: trim, drop a trailing root dot

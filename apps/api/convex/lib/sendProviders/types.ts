@@ -149,6 +149,8 @@ export interface MtaExtras {
 	 * than send it unsigned. Absent ⇒ signed when a key resolves.
 	 */
 	requireDkimSignature?: boolean;
+	/** Ask the MTA for a signed `mailto:` unsubscribe target (`MtaSendRequest`). */
+	listUnsubscribeMailto?: boolean;
 	organizationId?: string;
 	messageType?: GovernedMessageType;
 	deliveryDomain?: DeliveryDomain;
@@ -307,6 +309,13 @@ export interface DispatchExtrasInput {
 	 * (`delivery/dkimSignatureRequirement.ts`). Only the MTA module reads it.
 	 */
 	readonly requireDkimSignature?: boolean | undefined;
+	/**
+	 * The message is marketing mail whose `List-Unsubscribe` carries a one-click
+	 * target, so a transport that can receive mail for its return path may add a
+	 * `mailto:` target beside it. Only the MTA module reads it; a relay's
+	 * return path is not a host whose mail reaches Owlat as a request.
+	 */
+	readonly listUnsubscribeMailto?: boolean | undefined;
 	/**
 	 * The cross-service log key for this send (`@owlat/shared/correlation`). A
 	 * transport that can carry it (the owned MTA) sends it as a header; it never

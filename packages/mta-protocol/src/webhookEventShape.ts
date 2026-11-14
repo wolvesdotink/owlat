@@ -43,6 +43,7 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 	'inbound.mailbox.received',
 	'ip.readiness_regressed',
 	'deliverability.probe_observed',
+	'unsubscribed',
 ] as const;
 
 export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
@@ -308,6 +309,10 @@ export type ValidatedMtaWebhookEvent =
 			eligibilityGeneration: number;
 			message: string;
 	  })
+	// A recipient mailed the signed `mailto:` unsubscribe address of a message
+	// (`unsubscribe+…@` on a return-path host). The MTA verified the token;
+	// `messageId` is the message it was minted for.
+	| (EventBase<'unsubscribed'> & { eventId: string; messageId: string })
 	| (EventBase<'deliverability.probe_observed'> & {
 			eventId: string;
 			probeToken: string;

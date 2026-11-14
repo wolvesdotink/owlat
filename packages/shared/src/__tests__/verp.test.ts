@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
 	VERP_KEY_MIN_BYTES,
 	VERP_WINDOW_MS,
+	UNSUBSCRIBE_TOKEN_MAX_AGE_MS,
+	buildUnsubscribeAddress,
 	buildVerpAddress,
+	isUnsubscribeAddress,
 	isUsableVerpKey,
 	normalizeReturnPathDomain,
 	normalizeVerpKey,
 	parseVerpAddress,
+	verifyUnsubscribeAddress,
 } from '../verp';
 
 /**
@@ -154,5 +158,63 @@ describe('key normalisation is ONE definition for both signers', () => {
 		expect(isUsableVerpKey(short)).toBe(false);
 		expect(isUsableVerpKey(` ${short} `)).toBe(false);
 		expect(isUsableVerpKey(PADDED)).toBe(true);
+	});
+});
+
+describe('unsubscribe address', () => {
+	const MESSAGE_ID = 'send_k17abc';
+	const address = buildUnsubscribeAddress(MESSAGE_ID, DOMAIN, KEY, NOW)!;
+
+	it('is unsubscribe+<base64url(id)>+<window>+<mac>@<host> and round-trips', () => {
+		expect(address).toMatch(
+			/^unsubscribe\+[A-Za-z0-9_-]+\+[0-9a-z]+\+[A-Za-z0-9_-]{14}@bounces\.example\.com$/
+		);
+		expect(isUnsubscribeAddress(address)).toBe(true);
+		expect(verifyUnsubscribeAddress(address, KEY, NOW)).toEqual({
+			kind: 'valid',
+			messageId: MESSAGE_ID,
+		});
+	});
+
+	it('is not minted without a key', () => {
+		expect(buildUnsubscribeAddress(MESSAGE_ID, DOMAIN, undefined, NOW)).toBeNull();
+	});
+
+	it('rejects a forged MAC, a tampered id and another key', () => {
+		const [local, host] = address.split('@') as [string, string];
+		const parts = local.split('+');
+		const forged = `${parts.slice(0, 3).join('+')}+AAAAAAAAAAAAAA@${host}`;
+		const tampered = `unsubscribe+${Buffer.from('send_other').toString('base64url')}+${parts[2]}+${parts[3]}@${host}`;
+		expect(verifyUnsubscribeAddress(forged, KEY, NOW)).toEqual({ kind: 'invalid' });
+		expect(verifyUnsubscribeAddress(tampered, KEY, NOW)).toEqual({ kind: 'invalid' });
+		expect(verifyUnsubscribeAddress(address, 'x'.repeat(VERP_KEY_MIN_BYTES), NOW)).toEqual({
+			kind: 'invalid',
+		});
+	});
+
+	it('never verifies a bounce token as an unsubscribe token', () => {
+		const bounce = buildVerpAddress(MESSAGE_ID, DOMAIN, KEY, NOW);
+		const [, encoded, mac] = bounce.split('@')[0]!.split('+');
+		const window = Math.floor(NOW / VERP_WINDOW_MS).toString(36);
+		expect(
+			verifyUnsubscribeAddress(`unsubscribe+${encoded}+${window}+${mac}@${DOMAIN}`, KEY, NOW)
+		).toEqual({ kind: 'invalid' });
+	});
+
+	it('lives as long as the HTTPS one-click token', () => {
+		expect(
+			verifyUnsubscribeAddress(address, KEY, NOW + UNSUBSCRIBE_TOKEN_MAX_AGE_MS - VERP_WINDOW_MS)
+				.kind
+		).toBe('valid');
+		expect(
+			verifyUnsubscribeAddress(address, KEY, NOW + UNSUBSCRIBE_TOKEN_MAX_AGE_MS + VERP_WINDOW_MS)
+		).toEqual({
+			kind: 'expired',
+		});
+	});
+
+	it('rejects a token dated more than a day ahead', () => {
+		const future = buildUnsubscribeAddress(MESSAGE_ID, DOMAIN, KEY, NOW + 2 * VERP_WINDOW_MS)!;
+		expect(verifyUnsubscribeAddress(future, KEY, NOW)).toEqual({ kind: 'invalid' });
 	});
 });
