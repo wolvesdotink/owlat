@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { addressEffects, readBounceFixtures } from './bounceAddressEffects';
 import {
 	buildSnsCanonicalString,
 	extractSpkiDer,
@@ -381,5 +382,49 @@ describe('sesAdapter.parseEvent', () => {
 		expect(
 			sesAdapter.parseEvent(notification({ notificationType: 'Reject', mail: { messageId: 'x' } }))
 		).toBeNull();
+	});
+});
+
+// ─── Who a bounce is about ──────────────────────────────────────────────────
+
+/** SES `Message` payloads, one per documented bounce type and subtype. */
+const SES_BOUNCES = readBounceFixtures('ses');
+
+describe('sesAdapter.parseEvent — who the bounce is about', () => {
+	const parse = (name: string) =>
+		sesAdapter.parseEvent(notification(SES_BOUNCES[name] as Record<string, unknown>));
+
+	it.each([
+		['permanentGeneralUserUnknown', 'hard'],
+		['permanentGeneralNoSuchMailbox', 'hard'],
+		['permanentSuppressed', 'hard'],
+		['permanentOnAccountSuppressionList', 'hard'],
+	] as const)('%s is the recipient’s and blocklists the address', (name, bounceType) => {
+		const event = parse(name);
+		expect(event).toMatchObject({ bounceType, bounceCause: 'recipient' });
+		expect(addressEffects(event)).toEqual(['blocklist_insert']);
+	});
+
+	it('a full mailbox is the recipient’s and advances the soft-bounce counter', () => {
+		const event = parse('transientMailboxFull');
+		expect(event).toMatchObject({ bounceType: 'soft', bounceCause: 'recipient' });
+		expect(addressEffects(event)).toEqual(['contact_soft_bounce_count', 'blocklist_insert']);
+	});
+
+	it.each([
+		// A reputation block and an authentication failure SES files under a
+		// permanent General bounce: the enhanced code names our identity.
+		'permanentGeneralIpBlocked',
+		'permanentGeneralUnauthenticated',
+		// SES's own subtypes for a refusal of the message.
+		'transientContentRejected',
+		'transientMessageTooLarge',
+		// Neither SES nor the code names the address.
+		'transientGeneralThrottled',
+		'undetermined',
+	])('%s neither blocklists nor counts toward suppression', (name) => {
+		const event = parse(name);
+		expect(event).toMatchObject({ kind: 'email.bounced', bounceCause: 'sender' });
+		expect(addressEffects(event)).toEqual([]);
 	});
 });

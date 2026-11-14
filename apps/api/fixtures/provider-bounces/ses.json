@@ -1,0 +1,185 @@
+{
+	"permanentGeneralUserUnknown": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-permanent-general", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "General",
+			"bouncedRecipients": [
+				{
+					"status": "5.0.0",
+					"action": "failed",
+					"diagnosticCode": "smtp; 550 user unknown",
+					"emailAddress": "recipient1@example.com"
+				}
+			],
+			"reportingMTA": "example.com",
+			"timestamp": "2026-07-10T00:00:01.000Z",
+			"feedbackId": "000001378603176d-5a4b5ad9-6f30-4198-a8c3-b1eb0c270a1d-000000",
+			"remoteMtaIp": "192.0.2.25"
+		}
+	},
+	"permanentGeneralNoSuchMailbox": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-no-such-mailbox", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "General",
+			"bouncedRecipients": [
+				{
+					"status": "5.1.1",
+					"action": "failed",
+					"diagnosticCode": "smtp; 550 5.1.1 The email account that you tried to reach does not exist.",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"permanentGeneralIpBlocked": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-ip-blocked", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "General",
+			"bouncedRecipients": [
+				{
+					"status": "5.0.0",
+					"action": "failed",
+					"diagnosticCode": "smtp; 554 5.7.1 Service unavailable; Client host [192.0.2.10] blocked using zen.spamhaus.org",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"permanentGeneralUnauthenticated": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-unauthenticated", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "General",
+			"bouncedRecipients": [
+				{
+					"status": "5.7.26",
+					"action": "failed",
+					"diagnosticCode": "smtp; 550 5.7.26 This mail has been blocked because the sender is unauthenticated.",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"permanentSuppressed": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-suppressed", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "Suppressed",
+			"bouncedRecipients": [
+				{
+					"status": "5.1.1",
+					"action": "failed",
+					"diagnosticCode": "Amazon SES has suppressed sending to this address because it has a recent history of bouncing as an invalid address.",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"permanentOnAccountSuppressionList": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-account-suppressed", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Permanent",
+			"bounceSubType": "OnAccountSuppressionList",
+			"bouncedRecipients": [
+				{
+					"status": "5.1.1",
+					"action": "failed",
+					"diagnosticCode": "Amazon SES did not send the message to this address because it is on the suppression list for your account.",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"transientMailboxFull": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-mailbox-full", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Transient",
+			"bounceSubType": "MailboxFull",
+			"bouncedRecipients": [
+				{
+					"status": "4.2.2",
+					"action": "failed",
+					"diagnosticCode": "smtp; 452 4.2.2 The email account that you tried to reach is over quota.",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"transientContentRejected": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-content-rejected", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Transient",
+			"bounceSubType": "ContentRejected",
+			"bouncedRecipients": [
+				{
+					"status": "5.0.0",
+					"action": "failed",
+					"diagnosticCode": "smtp; 554 Message rejected due to content restrictions",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"transientMessageTooLarge": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-too-large", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Transient",
+			"bounceSubType": "MessageTooLarge",
+			"bouncedRecipients": [
+				{
+					"status": "5.3.4",
+					"action": "failed",
+					"diagnosticCode": "smtp; 552 5.3.4 Message size exceeds fixed limit",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"transientGeneralThrottled": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-transient-general", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Transient",
+			"bounceSubType": "General",
+			"bouncedRecipients": [
+				{
+					"status": "4.0.0",
+					"action": "failed",
+					"diagnosticCode": "smtp; 421 Try again later",
+					"emailAddress": "recipient@example.com"
+				}
+			],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	},
+	"undetermined": {
+		"notificationType": "Bounce",
+		"mail": { "messageId": "ses-undetermined", "timestamp": "2026-07-10T00:00:00.000Z" },
+		"bounce": {
+			"bounceType": "Undetermined",
+			"bounceSubType": "Undetermined",
+			"bouncedRecipients": [{ "emailAddress": "recipient@example.com" }],
+			"timestamp": "2026-07-10T00:00:01.000Z"
+		}
+	}
+}

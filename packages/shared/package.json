@@ -350,6 +350,10 @@
 			"types": "./src/bounceClassification.ts",
 			"import": "./src/bounceClassification.ts"
 		},
+		"./bounceCause": {
+			"types": "./src/bounceCause.ts",
+			"import": "./src/bounceCause.ts"
+		},
 		"./emailLimits": {
 			"types": "./src/emailLimits.ts",
 			"import": "./src/emailLimits.ts"

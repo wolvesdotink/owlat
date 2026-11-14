@@ -66,3 +66,32 @@ describe('portable provider feedback vocabulary', () => {
 		).toThrow(PluginFeedbackEventError);
 	});
 });
+
+describe('a plugin bounce names who it is about', () => {
+	const bounce = (extra: Record<string, unknown>) =>
+		parsePluginFeedbackEvents(
+			[{ kind: 'bounced', providerMessageId: 'm1', at: now, bounceType: 'hard', ...extra }],
+			'plugin.acme.mail'
+		);
+
+	it.each(['sender', 'recipient'] as const)('carries bounceCause %s to the lifecycle', (cause) => {
+		expect(bounce({ bounceCause: cause })).toEqual([
+			{
+				kind: 'email.bounced',
+				providerMessageId: 'm1',
+				at: now,
+				bounceType: 'hard',
+				bounceCause: cause,
+				providerType: 'plugin.acme.mail',
+			},
+		]);
+	});
+
+	it('leaves the cause out when the plugin names none, which keeps the recipient', () => {
+		expect(bounce({})[0]).not.toHaveProperty('bounceCause');
+	});
+
+	it('refuses a cause outside the vocabulary', () => {
+		expect(() => bounce({ bounceCause: 'provider' })).toThrow(PluginFeedbackEventError);
+	});
+});

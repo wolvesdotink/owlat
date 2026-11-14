@@ -31,6 +31,7 @@ import { withTimeout } from '../../lib/inputGuards';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
+import { sesBounceCause } from './sesBounceCause';
 
 /**
  * Reject a signed SNS envelope whose `Timestamp` is more than this many seconds
@@ -83,11 +84,13 @@ const sesNotificationValidator = v.object({
 	bounce: v.optional(
 		v.object({
 			bounceType: v.optional(v.string()),
+			bounceSubType: v.optional(v.string()),
 			timestamp: v.optional(v.string()),
 			bouncedRecipients: v.optional(
 				v.array(
 					v.object({
 						emailAddress: v.optional(v.string()),
+						status: v.optional(v.string()),
 						diagnosticCode: v.optional(v.string()),
 					})
 				)
@@ -405,12 +408,19 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 			case 'Bounce': {
 				if (!providerMessageId) return null;
 				const bounceType = notification.bounce?.bounceType === 'Permanent' ? 'hard' : 'soft';
-				const diagnostic = notification.bounce?.bouncedRecipients?.[0]?.diagnosticCode;
+				const recipient = notification.bounce?.bouncedRecipients?.[0];
+				const diagnostic = recipient?.diagnosticCode;
 				return {
 					kind: 'email.bounced',
 					providerMessageId,
 					at: parseTimestamp(notification.bounce?.timestamp, at),
 					bounceType,
+					bounceCause: sesBounceCause({
+						bounceType: notification.bounce?.bounceType,
+						bounceSubType: notification.bounce?.bounceSubType,
+						...(recipient?.status ? { status: recipient.status } : {}),
+						diagnostics: [diagnostic],
+					}),
 					...(diagnostic ? { bounceMessage: diagnostic } : {}),
 				};
 			}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { classifyResendBounce, resendAdapter, verifySvixHeaders } from '../resend';
+import { addressEffects, readBounceFixtures } from './bounceAddressEffects';
 
 describe('classifyResendBounce', () => {
 	it('classifies user-unknown patterns as hard', () => {
@@ -221,4 +222,29 @@ describe('resendAdapter.parseEvent — complaints', () => {
 		expect(event).toMatchObject({ kind: 'email.complained', providerType: 'resend' });
 		expect(event).not.toHaveProperty('recipient');
 	});
+});
+
+describe('resendAdapter — who a bounce is about', () => {
+	// Resend reports Amazon SES's bounce type and subtype, and the receiver's
+	// replies in `diagnosticCode`.
+	const RESEND_BOUNCES = readBounceFixtures('resend');
+	const parse = (name: string) => resendAdapter.parseEvent(JSON.stringify(RESEND_BOUNCES[name]));
+
+	it.each(['permanentSuppressed', 'permanentGeneralNoSuchMailbox'])(
+		'%s is the recipient’s and blocklists the address',
+		(name) => {
+			const event = parse(name);
+			expect(event).toMatchObject({ kind: 'email.bounced', bounceCause: 'recipient' });
+			expect(addressEffects(event)).toContain('blocklist_insert');
+		}
+	);
+
+	it.each(['permanentGeneralIpBlocked', 'transientContentRejected'])(
+		'%s neither blocklists nor counts toward suppression',
+		(name) => {
+			const event = parse(name);
+			expect(event).toMatchObject({ kind: 'email.bounced', bounceCause: 'sender' });
+			expect(addressEffects(event)).toEqual([]);
+		}
+	);
 });
