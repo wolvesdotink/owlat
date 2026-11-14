@@ -15,6 +15,11 @@ import {
 	reserveCurrentRecipientCapacity,
 	type RecipientEntry,
 } from './checklistAlertRecipientPersistence';
+import {
+	isChecklistItemApplicable,
+	loadDeliverabilitySendPaths,
+	retireInapplicableCheck,
+} from './checklistApplicability';
 
 const ALERT_SEND_BOUNDARY_GRACE_MS = 5 * 60_000;
 
@@ -84,6 +89,12 @@ export const prepareRecipientAttempts = internalMutation({
 	handler: async (ctx, args) => {
 		const alert = await pendingAlert(ctx, args.organizationId, args.identity);
 		if (!alert) return null;
+		// The deployment can stop using the checked send path between the alert
+		// and its email; nobody is mailed about a check that no longer applies.
+		if (!isChecklistItemApplicable(alert.itemId, await loadDeliverabilitySendPaths(ctx))) {
+			await retireInapplicableCheck(ctx, { ...alert, now: args.now });
+			return null;
+		}
 		const recipients = args.recipients.slice(0, DELIVERABILITY_ALERT_RECIPIENT_LIMIT);
 		const protectedReceipts = new Map<
 			string,
