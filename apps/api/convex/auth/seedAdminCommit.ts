@@ -103,10 +103,13 @@ export const commitAdminSeed = internalMutation({
 
 		// The system sender's domain becomes a sending domain, so the MTA has a
 		// key to sign account mail with and the operator gets its DNS records.
-		// Best-effort for the same reason: a failure leaves migration 0075 to
-		// register it, and account mail goes out unsigned meanwhile.
+		// Through migration 0075, so its ledger completes with the registration
+		// and its cron cannot add the domain back after the operator removed it.
+		// Best-effort for the same reason as the grant: a failure leaves the
+		// migration pending for its cron, and account mail goes out unsigned
+		// meanwhile.
 		try {
-			await ctx.runMutation(internal.domains.systemSenderDomain.register, {});
+			await ctx.runMutation(internal.migrations['0075_register_system_sender_domain'].ensure, {});
 		} catch (error) {
 			logError(
 				'[seedAdmin] system sender domain not registered (instance is still usable):',

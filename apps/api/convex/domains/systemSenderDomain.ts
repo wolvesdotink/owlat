@@ -16,16 +16,15 @@
  * treated as no signature, so account mail loses nothing while the operator
  * publishes the record and passes from the first mail after.
  *
- * New installs register it when the first admin is seeded
- * (`auth/seedAdminCommit.ts`); existing ones once, through migration 0075.
- * Neither adds a domain the operator has removed since.
+ * Registered once, by migration 0075: the admin seed runs it for a new install
+ * (`auth/seedAdminCommit.ts`), its cron for an existing one. A domain the
+ * operator removes afterwards is not added again.
  */
 
 import { extractDomainOrNull } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { internalMutation } from '../lib/writeFence';
 import { systemSenderAddress } from '../lib/systemSender';
 import { getMtaConfig } from '../mail/mtaClient';
 import { newDomainProviderKind } from './lifecycle';
@@ -78,12 +77,6 @@ export async function registerSystemSenderDomain(
 	if (outcome.ok) return 'registered';
 	return outcome.reason === 'already_exists' ? 'already_registered' : 'invalid_domain';
 }
-
-/** {@link registerSystemSenderDomain} as its own transaction, for the admin seed. */
-export const register = internalMutation({
-	args: {},
-	handler: (ctx): Promise<SystemSenderDomainOutcome> => registerSystemSenderDomain(ctx),
-});
 
 /** One record the operator publishes for the system sender's domain. */
 export interface SystemSenderDnsRecord {

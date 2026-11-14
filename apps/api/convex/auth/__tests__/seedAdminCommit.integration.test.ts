@@ -143,6 +143,20 @@ describe('commitAdminSeed', () => {
 			]);
 		});
 
+		it('stays removed once the operator deletes it', async () => {
+			vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.org');
+			vi.stubEnv('MTA_INTERNAL_URL', 'http://mta.internal:3100');
+			vi.stubEnv('MTA_API_KEY', 'mta-key');
+			const t = harness();
+			await t.mutation(internal.auth.seedAdminCommit.commitAdminSeed, SEED);
+			await t.run(async (ctx) => {
+				for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+			});
+
+			await t.mutation(internal.migrations['0075_register_system_sender_domain'].ensure, {});
+			expect(await domains(t)).toEqual([]);
+		});
+
 		it('is left alone when no system sender is configured', async () => {
 			vi.stubEnv('MTA_INTERNAL_URL', 'http://mta.internal:3100');
 			vi.stubEnv('MTA_API_KEY', 'mta-key');

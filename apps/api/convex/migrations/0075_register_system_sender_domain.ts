@@ -3,8 +3,8 @@
  *
  *   npx convex run migrations/0075_register_system_sender_domain:run
  *
- * An install seeded before the admin seed did this (`auth/seedAdminCommit.ts`)
- * sends its account mail unsigned unless an operator added the system
+ * The admin seed runs {@link ensure} for a new install (`auth/seedAdminCommit.ts`).
+ * An install seeded before it did sends its account mail unsigned unless an operator added the system
  * sender's domain by hand: the MTA signs only registered domains. One
  * transaction adds the domain through the domain lifecycle
  * (`domains/systemSenderDomain.ts`), or finds it already there, and completes.
