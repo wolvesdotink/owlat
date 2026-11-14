@@ -407,6 +407,32 @@ describe('sendToMx DANE', () => {
 				expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 			});
 
+			it.each([
+				[
+					'refuses the connection',
+					smtpError({ phase: 'connect', message: 'connect ECONNREFUSED', secured: false }),
+				],
+				[
+					'refuses us at the greeting',
+					smtpError({ phase: 'greeting', message: '554 go away', replyCode: 554, secured: false }),
+				],
+			])(
+				'report mode delivers on the normal path when the validated address %s',
+				async (_label, failure) => {
+					validatedDestination(['198.51.100.7']);
+					vi.mocked(lookupTlsaRecords).mockResolvedValue({
+						status: 'records',
+						records: [MATCHING_TLSA],
+					});
+					connectMock.mockRejectedValueOnce(failure).mockResolvedValue(liveConn(true));
+
+					const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
+
+					expect(result.success).toBe(true);
+					expect(dialled()).toEqual(['198.51.100.7', '192.0.2.1']);
+				}
+			);
+
 			it('looks the addresses up through the validating resolver when discovery did not carry the host', async () => {
 				vi.mocked(resolveDaneHostAddresses).mockResolvedValue({
 					security: 'secure',

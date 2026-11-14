@@ -197,7 +197,12 @@ export async function sendToMx(
 			// any probe failure we retry the SAME MX at the normal opportunistic/MTA-STS
 			// floor so delivery is unaffected. Report-only is observability only, and
 			// DANE never bounces mail by default.
-			const probe = await attemptSend(
+			// The probe dials only the validated addresses and the normal path the
+			// system resolver's, so a probe that cannot reach or talk to the host
+			// says nothing about the normal path. It goes through the unwrapped
+			// attempt so its refusal or unroutable verdict is never kept as the
+			// host's.
+			const probe = await attemptSendOnce(
 				ctx,
 				mxHost,
 				tls.daneRequirements.requireTLS,
@@ -206,31 +211,20 @@ export async function sendToMx(
 			);
 			const probeFinished = terminalResult(probe);
 			if (probeFinished) return probeFinished;
-			// The probe dials only the validated addresses, which the normal path
-			// does not: none of them being dialable says nothing about the host the
-			// normal path reaches, so it is not recorded as the host's verdict.
-			if (probe.kind === 'unroutable') unroutable.delete(mxHost);
-			if (probe.kind === 'tls-failure' || probe.kind === 'unroutable') {
-				// A validation-failure (tlsa policy) has already been recorded inside
-				// attemptSend. Deliver anyway at the normal floor — report-only never
-				// blocks mail on a DANE outcome.
-				logger.debug(
-					{ mxHost, recipientDomain, probe: probe.kind },
-					'DANE report-only: probe done; delivering at the normal TLS floor'
-				);
-				const retry = await attemptWithCleartextFallback(
-					attemptSend,
-					ctx,
-					mxHost,
-					tls.requirements
-				);
-				const retryFinished = terminalResult(retry);
-				if (retryFinished) return retryFinished;
-				noteFallbackTlsFailure(retry);
-				continue; // retry failed too — try the next MX
-			}
-			// over-cap / connection → try the next MX (same as the non-DANE path).
-			continue;
+			// Over the connection cap, the normal attempt would be refused a slot too.
+			if (probe.kind === 'over-cap') continue;
+			// A validation-failure (tlsa policy) has already been recorded inside
+			// the attempt. Deliver anyway at the normal floor — report-only never
+			// blocks mail on a DANE outcome.
+			logger.debug(
+				{ mxHost, recipientDomain, probe: probe.kind },
+				'DANE report-only: probe done; delivering at the normal TLS floor'
+			);
+			const retry = await attemptWithCleartextFallback(attemptSend, ctx, mxHost, tls.requirements);
+			const retryFinished = terminalResult(retry);
+			if (retryFinished) return retryFinished;
+			noteFallbackTlsFailure(retry);
+			continue; // retry failed too — try the next MX
 		}
 
 		// MTA-STS enforcement: skip MX hosts not listed in the policy
