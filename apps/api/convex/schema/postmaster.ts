@@ -23,8 +23,10 @@ export const googlePostmasterMetricFields = {
  * The signed MTA collector is the only writer for both tables and raw OAuth
  * credentials never enter Convex. Postmaster is an ADDITIVE-ONLY signal: an
  * operator who never connects a Google account simply has no rows here, which
- * lowers measurement confidence and nothing else — it is never an error state
- * and never blocks a send.
+ * lowers measurement confidence and nothing else — absence is never an error
+ * state and never blocks a send. A fresh spam rate at Google's lines does feed
+ * reputation enforcement (`analytics/reputationEnforcement.ts`), the same as
+ * the internal complaint rate.
  */
 export const postmasterTables = {
 	// One idempotent row per verified authentication domain per UTC day. Every

@@ -228,11 +228,56 @@ describe('classifyBounce', () => {
 			expect(result.bounceCause).toBe('sender');
 		});
 
+		// A reporting MTA that only knows the reply class writes `Status: 5.0.0`
+		// and keeps the remote server's reply, enhanced code included, in the
+		// `smtp`-typed Diagnostic-Code (RFC 3464 §2.3.6).
+		it.each([
+			{ status: '5.0.0', diagnostic: '550 5.7.1 Client host blocked using Spamhaus' },
+			{ status: '5.0.0', diagnostic: '550-5.7.26 This mail is unauthenticated' },
+			{ status: '4.0.0', diagnostic: '451 4.7.1 Try again later' },
+		])(
+			"Status: $status with a sender code in Diagnostic-Code ($diagnostic) is the sender's",
+			({ status, diagnostic }) => {
+				const result = classifyBounce(`Report.\n${dsn(status, diagnostic)}`);
+				expect(result.bounceType).toBe(status.startsWith('5') ? 'hard' : 'soft');
+				expect(result.bounceCause).toBe('sender');
+				expect(result.diagnosticCode).toBe(status);
+			}
+		);
+
+		it('a folded smtp Diagnostic-Code still yields its enhanced code', () => {
+			const result = classifyBounce(
+				[
+					'Final-Recipient: rfc822; user@example.com',
+					'Action: failed',
+					'Status: 5.0.0',
+					'Diagnostic-Code: smtp;',
+					' 550 5.7.1 Service unavailable; client host blocked',
+				].join('\n')
+			);
+			expect(result.bounceCause).toBe('sender');
+		});
+
+		it('a non-smtp Diagnostic-Code never decides the cause', () => {
+			const result = classifyBounce(
+				[
+					'Final-Recipient: rfc822; user@example.com',
+					'Action: failed',
+					'Status: 5.0.0',
+					'Diagnostic-Code: X-Postfix; 550 5.7.1 rejected by local policy',
+				].join('\n')
+			);
+			expect(result.bounceCause).toBeUndefined();
+		});
+
 		it.each([
 			{ status: '5.1.1', diagnostic: '550 5.1.1 User unknown' },
 			{ status: '5.2.1', diagnostic: '550 5.2.1 Mailbox disabled' },
 			{ status: '5.7.13', diagnostic: '525 5.7.13 User account disabled' },
 			{ status: '5.0.0', diagnostic: '550 Requested action not taken' },
+			{ status: '5.0.0', diagnostic: '550 5.1.1 User unknown' },
+			// A specific Status is authoritative; only a generic X.0.0 defers.
+			{ status: '5.1.1', diagnostic: '550 5.7.1 Relaying denied' },
 		])('Status: $status stays a recipient bounce', ({ status, diagnostic }) => {
 			const result = classifyBounce(`Report.\n${dsn(status, diagnostic)}`);
 			expect(result.bounceType).toBe('hard');

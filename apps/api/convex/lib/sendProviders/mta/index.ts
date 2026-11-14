@@ -8,11 +8,7 @@
  * code derived from the HTTP response.
  */
 
-import {
-	extractDomainOrNull,
-	ROUTING_LEASE_TOKEN_MAX_LENGTH,
-	type GovernedMessageType,
-} from '@owlat/shared';
+import { extractDomainOrNull, ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 import { correlationHeader } from '@owlat/shared/correlation';
 import {
 	MTA_RELAY_ALLOWED_REASON,
@@ -36,6 +32,7 @@ import {
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
 import { decodeMtaRefusal, mtaConflictOf } from './refusal';
 import { readMtaSendAnswer } from './answer';
+import { mtaIpPoolFor } from './ipPool';
 import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
@@ -45,25 +42,23 @@ const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
 
 /**
- * The IP pool a send asks the MTA for: the route's pool when it names one,
- * else the one its stream belongs to. Campaign and automation mail is bulk
- * marketing traffic and goes to `campaign`, where the MTA paces it through
- * warm-up and holds back the transactional reserve; everything else (the
- * transactional API, replies, system and personal mail) goes to
- * `transactional`. `delivery/rampCapacityInputs.ts` measures campaign-pool
- * headroom against the same two streams, so the two must change together.
- *
- * Both the routing decision and the intake body take their pool from here: the
- * MTA binds a lease to the pool it was decided for and refuses an intake that
- * names another one. An empty pool name counts as no pool.
+ * A decision, plus whether a `defer` means the endpoint could not be reached
+ * at all: a refused connection, a timeout, or a 5xx from the MTA or the proxy
+ * in front of it. That is an outage the caller waits out (a hold bounded by
+ * the delivery deadline), not an answer. A 4xx, a malformed body and an
+ * unconfigured endpoint stay ordinary deferrals: they do not clear by waiting,
+ * so the routing attempt cap ends them.
  */
-export function mtaIpPoolFor(
-	routePool: MtaIpPool | '' | undefined,
-	messageType: GovernedMessageType | undefined
-): MtaIpPool {
-	if (routePool) return routePool;
-	return messageType === 'campaign' || messageType === 'automation' ? 'campaign' : 'transactional';
-}
+export type MtaRoutingDecisionResult =
+	| Exclude<MtaRoutingDecision, { kind: 'defer' }>
+	| (Extract<MtaRoutingDecision, { kind: 'defer' }> & { isUnreachable?: true });
+
+const UNREACHABLE_DEFER: MtaRoutingDecisionResult = {
+	kind: 'defer',
+	retryAfterMs: LOCAL_DEFER_MS,
+	origin: 'local',
+	isUnreachable: true,
+};
 
 /**
  * Take a last-mile routing lease from ONE configured MTA transport.
@@ -87,7 +82,7 @@ export async function resolveMtaRoutingDecision(
 	transport: SendTransportRecord,
 	input: Omit<MtaRoutingDecisionRequest, 'ipPool'> & { ipPool?: MtaExtras['ipPool'] },
 	correlationId?: string
-): Promise<MtaRoutingDecision> {
+): Promise<MtaRoutingDecisionResult> {
 	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
 	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
@@ -105,8 +100,19 @@ export async function resolveMtaRoutingDecision(
 			body: JSON.stringify({ ...input, ipPool: mtaIpPoolFor(input.ipPool, input.messageType) }),
 			signal: controller.signal,
 		});
+		if (response.status >= 500) return UNREACHABLE_DEFER;
 		if (!response.ok) return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
-		const value = (await response.json()) as unknown;
+		let value: unknown;
+		try {
+			value = await response.json();
+		} catch (error) {
+			// A body that is not JSON is an answer we cannot read, not an outage. A
+			// body cut off by a reset or by the timeout above is the outage.
+			if (error instanceof SyntaxError) {
+				return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+			}
+			return UNREACHABLE_DEFER;
+		}
 		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 			return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 		}
@@ -185,7 +191,9 @@ export async function resolveMtaRoutingDecision(
 		// halt a cell) but never a silent one.
 		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	} catch {
-		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
+		// The request never got an answer: refused, reset, or aborted by the
+		// timeout above.
+		return UNREACHABLE_DEFER;
 	} finally {
 		clearTimeout(timeout);
 	}
@@ -219,6 +227,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// what a warming schedule is pacing, so the route's permission alone
 			// never grants it.
 			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
+			...(input.requireDkimSignature === true ? { requireDkimSignature: true } : {}),
 			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
 			...(input.correlationId ? { correlationId: input.correlationId } : {}),
 			// Omitted, never zeroed, when the recipient has no score: the MTA reads
@@ -296,6 +305,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			ipPool: mtaIpPoolFor(extras?.ipPool, extras?.messageType),
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
+			requireDkimSignature: extras?.requireDkimSignature,
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
 			deliveryDomain: extras?.deliveryDomain,

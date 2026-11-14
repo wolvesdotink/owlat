@@ -30,11 +30,14 @@ export interface SenderHarness {
 	storeConnectionMock: Mock;
 	attachConnectionMock: Mock;
 	leaseValidMock: Mock;
+	/** Per-host A/AAAA answers, already screened (smtp/mxAddresses.ts). */
+	resolveAddressesMock: Mock;
 	/** Module factories, one per `vi.mock` call in a suite's preamble. */
 	ipPoolModule: () => Record<string, unknown>;
 	smtpClientModule: (actual: Record<string, unknown>) => Record<string, unknown>;
 	connectionPoolModule: () => Record<string, unknown>;
 	mxResolverModule: () => Record<string, unknown>;
+	mxAddressesModule: (actual: Record<string, unknown>) => Record<string, unknown>;
 	daneMxResolverModule: () => Record<string, unknown>;
 	mtaStsModule: (actual: Record<string, unknown>) => Record<string, unknown>;
 	dkimModule: () => Record<string, unknown>;
@@ -58,6 +61,7 @@ export function createSenderHarness(): SenderHarness {
 	const storeConnectionMock = vi.fn();
 	const attachConnectionMock = vi.fn().mockReturnValue(true);
 	const leaseValidMock = vi.fn();
+	const resolveAddressesMock = vi.fn();
 
 	return {
 		connectMock,
@@ -70,6 +74,7 @@ export function createSenderHarness(): SenderHarness {
 		storeConnectionMock,
 		attachConnectionMock,
 		leaseValidMock,
+		resolveAddressesMock,
 
 		ipPoolModule: () => ({ isIpEligibilityLeaseValid: leaseValidMock }),
 
@@ -105,6 +110,10 @@ export function createSenderHarness(): SenderHarness {
 			}),
 		}),
 
+		// The MX host address lookup is stubbed so no suite reaches real DNS;
+		// family selection and screening stay real (installSenderDefaults).
+		mxAddressesModule: (actual) => ({ ...actual, resolveMxHostAddresses: resolveAddressesMock }),
+
 		daneMxResolverModule: () => ({ resolveDaneMxDestinations: vi.fn() }),
 
 		// Only the MTA-STS policy lookup is stubbed (per-test policy mode);
@@ -115,7 +124,19 @@ export function createSenderHarness(): SenderHarness {
 		// STS-specific result types it emits are exercised end-to-end.
 		mtaStsModule: (actual) => ({ ...actual, getStsTlsOptions: vi.fn() }),
 
-		dkimModule: () => ({ getDkimOptions: vi.fn().mockResolvedValue(undefined) }),
+		dkimModule: () => ({
+			getDkimOptions: vi.fn().mockResolvedValue(undefined),
+			resolveRequiredDkimKey: vi.fn().mockResolvedValue({ kind: 'unavailable', cause: 'no_key' }),
+			DkimSignatureUnavailableError: class DkimSignatureUnavailableError extends Error {
+				constructor(
+					readonly domain: string,
+					readonly reason: string
+				) {
+					super(`DKIM signature unavailable for ${domain} (${reason})`);
+					this.name = 'DkimSignatureUnavailableError';
+				}
+			},
+		}),
 
 		// DANE TLSA resolver is stubbed per-test (default: no TLSA, so the DANE
 		// branch is inert and the non-DANE path is unchanged).

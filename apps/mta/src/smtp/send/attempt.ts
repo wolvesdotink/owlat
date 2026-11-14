@@ -37,7 +37,9 @@ export async function attemptSend(
 	mxHost: string,
 	requireTLS: boolean,
 	rejectUnauthorized: boolean,
-	danePlan?: DanePlan
+	danePlan?: DanePlan,
+	/** The cleartext retry after an opportunistic handshake failed (tlsFallback.ts). */
+	cleartext = false
 ): Promise<AttemptOutcome> {
 	const { redis, recipientDomain, bindIp, stsPolicyMode, eligibilityLease } = ctx;
 	const tlsContext = danePlan?.policyContext ?? ctx.policyContext;
@@ -49,7 +51,8 @@ export async function attemptSend(
 		requireTLS,
 		rejectUnauthorized,
 		tlsContext,
-		danePlan
+		danePlan,
+		cleartext
 	);
 	if (opened.kind === 'failed') return opened.outcome;
 	const { key, conn } = opened;
@@ -92,12 +95,17 @@ export async function attemptSend(
 		// the STS-specific type under a testing/enforce policy). Recording a
 		// cleartext send as success would overstate our TLS coverage to the domain
 		// owner.
-		const successResultType: TlsResultType = secured
-			? 'success'
-			: stsAttributedResultType('starttls-not-supported', stsPolicyMode);
-		recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, tlsContext).catch(
-			() => {}
-		);
+		// A cleartext fallback session records nothing: the failed handshake just
+		// before it is this delivery's TLS-RPT result, and reporting the fallback
+		// as `starttls-not-supported` would claim the MX never offered TLS.
+		if (!cleartext) {
+			const successResultType: TlsResultType = secured
+				? 'success'
+				: stsAttributedResultType('starttls-not-supported', stsPolicyMode);
+			recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, tlsContext).catch(
+				() => {}
+			);
+		}
 
 		// Healthy delivery: park the socket for the next job to reuse across an RSET
 		// boundary (or let the pool cleanly QUIT it at the per-connection / lifetime

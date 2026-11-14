@@ -3,7 +3,7 @@
  *
  * Single place that reads the provider-route config + provider-health
  * snapshots from the DB and runs the pure `resolveRoute` dispatcher. Both
- * the action send paths (via the `resolveSendRoute` internal query) and the
+ * the action send paths (via the `resolveSendRouteOrHold` internal query) and the
  * transactional intake mutation (via the `resolveSendRouteFromDb` helper,
  * reading in-transaction through `ctx.db`) share this so the lookup +
  * health-map + fallback sequence lives in one spot.
@@ -31,6 +31,7 @@ import {
 } from './routeMixContext';
 import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isDkimSignatureRequired } from '../../delivery/dkimSignatureRequirement';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import { routeCarriesOwnArm } from './fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
@@ -237,10 +238,13 @@ export function selectRouteFromFacts(
  * and terminalizes the Send as `WORKPOOL_FAILED`. Opening the safety circuit
  * would then burn every in-flight campaign send instead of pausing it. The
  * governed queries below convert them to a typed deferral, which the last-mile
- * boundary turns into a bounded retry (capped by the routing attempt limit and
- * the four-day delivery deadline).
+ * boundary turns into a hold: it spends no routing attempt and is bounded by
+ * the four-day delivery deadline.
+ *
+ * Intake asks the same question through {@link resolveSendRouteOrHoldFromDb},
+ * so the request the worker would hold is one intake accepts.
  */
-type RoutingDeferralCode =
+export type RoutingDeferralCode =
 	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
@@ -252,28 +256,43 @@ export function routingDeferralCode(error: unknown): RoutingDeferralCode | null 
 }
 
 /**
- * Internal query wrapper for action callers (which can only reach the DB via
- * `ctx.runQuery`). Folds the route lookup, the provider-health read, and the
- * caller-side `resolveRoute` into one round-trip.
+ * {@link resolveSendRouteFromDb}, with a transient refusal reported as its
+ * deferral code instead of thrown. `route` is then `null`, which here means
+ * "not right now" and says nothing about whether a provider is configured:
+ * the open circuit is checked before any provider is looked at.
  */
-export const resolveSendRoute = internalQuery({
+export async function resolveSendRouteOrHoldFromDb(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext?: SendRouteAddressContext
+): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
+	try {
+		return { route: await resolveSendRouteFromDb(ctx, messageType, addressContext) };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, deferralCode };
+	}
+}
+
+/**
+ * Internal query wrapper for action callers (which can only reach the DB via
+ * `ctx.runQuery`): {@link resolveSendRouteOrHoldFromDb} in one round-trip. A
+ * transient refusal comes back as its deferral code rather than a throw,
+ * because a throw crossing the action boundary loses its class and leaves the
+ * caller (the campaign page hop) dead instead of holding.
+ */
+export const resolveSendRouteOrHold = internalQuery({
 	args: {
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
-		baseOnly: v.optional(v.boolean()),
-		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
-		sendId: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
-		return await resolveSendRouteFromDb(ctx, args.messageType, {
-			to: args.to,
-			from: args.from,
-			baseOnly: args.baseOnly,
-			forceRelayReason: args.forceRelayReason,
-			sendId: args.sendId,
-		});
-	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> =>
+		await resolveSendRouteOrHoldFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
 });
 
 /**
@@ -298,8 +317,15 @@ export async function resolveLastMileRoutePlanFromDb(
 	 * in a second round trip from the dispatcher.
 	 */
 	relayReturnPathHost?: string | undefined;
+	/**
+	 * Whether the From domain is owed a DKIM signature by the built-in MTA
+	 * (`delivery/dkimSignatureRequirement.ts`). One indexed read, here for the
+	 * same reason as `relayReturnPathHost`.
+	 */
+	requireDkimSignature: boolean;
 }> {
 	const now = addressContext.now ?? Date.now();
+	const requireDkimSignature = await isDkimSignatureRequired(ctx, addressContext.from);
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -361,6 +387,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			baseRoute,
 			isMtaGoverned: isHybrid || baseRoute?.providerType === OWN_ARM_TRANSPORT_KIND,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
@@ -371,6 +398,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			isMtaGoverned: isHybrid,
 			deferralCode,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	}
 }
@@ -383,7 +411,7 @@ export const resolveLastMileRoutePlan = internalQuery({
 		// The durable Send id, so the dispatch-time resolution replays the arm
 		// the enqueue transaction recorded (see `SendRouteAddressContext`).
 		sendId: v.optional(v.string()),
-		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
+		// No clock argument, deliberately — the sibling `resolveSendRouteOrHold` exposes
 		// none either. `now` lives on the …FromDb helper for tests, which call it
 		// directly; accepting one over the wire would let a backdated value revive
 		// a TTL-expired return-path verdict.
@@ -412,13 +440,7 @@ export async function resolveGovernedRelayRouteFromDb(
 		forceRelayReason: 'breaker_open' | 'warmup_overflow';
 	}
 ): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
-	try {
-		return { route: await resolveSendRouteFromDb(ctx, messageType, options) };
-	} catch (error) {
-		const deferralCode = routingDeferralCode(error);
-		if (!deferralCode) throw error;
-		return { route: null, deferralCode };
-	}
+	return await resolveSendRouteOrHoldFromDb(ctx, messageType, options);
 }
 
 export const resolveGovernedRelayRoute = internalQuery({

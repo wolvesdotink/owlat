@@ -8,6 +8,7 @@
 import type Redis from 'ioredis';
 import { parseAddress } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { isSystemMailboxAddress } from './systemMailboxes.js';
 
 export type RouteMode = 'endpoint' | 'accept' | 'hold' | 'bounce' | 'reject';
 
@@ -44,6 +45,9 @@ const TLS_RPT_SYSTEM_ROUTE_ID = '__system:tls-rpt__';
 /** Convex webhook path the TLS-RPT system route delivers to. */
 const TLS_RPT_WEBHOOK_PATH = '/webhooks/mta-tls-report';
 
+/** Synthetic id for the `postmaster@`/`abuse@` system route. */
+const SYSTEM_MAILBOX_ROUTE_ID = '__system:postmaster__';
+
 // ─── DMARC aggregate-report system route (RFC 7489 §7.1) ────────────
 
 /** Synthetic id for the DMARC report-address system route. */
@@ -64,6 +68,11 @@ export interface TlsRptSystemRouteConfig {
 	convexSiteUrl: string;
 	/** Shared MTA webhook secret used to HMAC-sign the forward. */
 	webhookSecret: string;
+	/**
+	 * Hosts whose `postmaster@` and `abuse@` the MTA answers for
+	 * (`systemMailboxHosts`). Absent means none.
+	 */
+	systemMailboxHosts?: readonly string[];
 }
 
 /**
@@ -161,6 +170,23 @@ export async function findRoute(
 		} catch {
 			/* fall through */
 		}
+	}
+
+	// `postmaster@`/`abuse@` on our own hosts, after an operator's exact route
+	// (a real destination of that name wins) but before a catch-all, which must
+	// not be able to refuse or swallow them. `accept` hands the message to
+	// Convex as team-inbox mail, the store every `accept` route delivers to.
+	if (
+		system?.systemMailboxHosts &&
+		isSystemMailboxAddress(parsed.address, system.systemMailboxHosts)
+	) {
+		return {
+			id: SYSTEM_MAILBOX_ROUTE_ID,
+			domain,
+			address: localPart,
+			mode: 'accept',
+			createdAt: 0,
+		};
 	}
 
 	// Try wildcard

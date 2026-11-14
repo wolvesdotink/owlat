@@ -17,8 +17,34 @@ import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounte
 import { getMtaBaseUrl } from '../mail/mtaClient';
 import { mtaHealthSnapshotValidator } from '../schema/instance';
 import { canSkipMtaHealthWrite } from './mtaHealthFreshness';
+import { regenerateDomainsWithLostKeys } from './dkimKeyRecovery';
 
 type Snapshot = Infer<typeof mtaHealthSnapshotValidator>;
+
+/** The most held domains one snapshot keeps; the MTA reports at most this many. */
+const MAX_HELD_SIGNING_DOMAINS = 20;
+
+/**
+ * The MTA's `dkimSigning.held` list, keeping only well-formed entries. Lenient
+ * on purpose: a malformed entry is dropped rather than discarding the whole
+ * snapshot, because the rest of it is still true.
+ */
+function parseHeldSigning(value: unknown): NonNullable<Snapshot['dkimSigningHeld']> {
+	const held = isRecord(value) && Array.isArray(value['held']) ? value['held'] : [];
+	const parsed: NonNullable<Snapshot['dkimSigningHeld']> = [];
+	for (const entry of held) {
+		if (
+			isRecord(entry) &&
+			typeof entry['domain'] === 'string' &&
+			typeof entry['cause'] === 'string' &&
+			typeof entry['since'] === 'number'
+		) {
+			parsed.push({ domain: entry['domain'], cause: entry['cause'], since: entry['since'] });
+		}
+		if (parsed.length === MAX_HELD_SIGNING_DOMAINS) break;
+	}
+	return parsed;
+}
 
 export function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 	if (!isRecord(value)) return null;
@@ -75,6 +101,7 @@ export function parseHealth(value: unknown, observedAt: number): Snapshot | null
 				checkedAt: smtpTls['checkedAt'] as number,
 			}
 		: undefined;
+	const dkimSigningHeld = parseHeldSigning(value['dkimSigning']);
 	return {
 		status: value['status'],
 		isRedisConnected: value['redis'] === 'connected',
@@ -83,6 +110,7 @@ export function parseHealth(value: unknown, observedAt: number): Snapshot | null
 		isAllIpsBlocked: emergency['allIpsBlocked'],
 		smtpOutbound: { status: smtp['status'], checkedAt: smtp['checkedAt'], ips },
 		...(parsedTls ? { smtpTls: parsedTls } : {}),
+		...(dkimSigningHeld.length > 0 ? { dkimSigningHeld } : {}),
 		observedAt,
 	};
 }
@@ -121,6 +149,14 @@ export const record = internalMutation({
 		// re-runs feature-gated queries. A poll that only refreshed timestamps is
 		// still not written until the stored snapshot needs a re-stamp (see
 		// mtaHealthFreshness.ts): the Delivery surfaces subscribe to the row.
+		// Before the skip below: a regeneration is idempotent (the domain leaves
+		// `verified`), and a poll the skip drops can still be the first to report it.
+		const regenerated = await regenerateDomainsWithLostKeys(ctx, args.snapshot);
+		if (regenerated.length > 0) {
+			console.warn(
+				`[mtaHealth] DKIM key missing on the MTA; regenerating DNS records for ${regenerated.join(', ')}`
+			);
+		}
 		const { mtaHealth: stored } = await readInstanceCounter(ctx.db, 'mtaHealth');
 		if (canSkipMtaHealthWrite(stored, args.snapshot)) return;
 		await writeInstanceCounter(ctx, 'mtaHealth', { mtaHealth: args.snapshot });

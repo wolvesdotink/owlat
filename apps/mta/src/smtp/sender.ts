@@ -22,7 +22,11 @@ import { logger } from '../monitoring/logger.js';
 import { isIpEligibilityLeaseValid, type IpEligibilityLease } from '../scaling/ipPool.js';
 import { fireAndForget } from '../lib/fireAndForget.js';
 import { prepareDaneAttempt } from './daneVerify.js';
-import { buildAllMxFailedResult } from './mxBounce.js';
+import {
+	buildAllMxFailedResult,
+	buildUnroutableResult,
+	type UnroutableReason,
+} from './mxBounce.js';
 import { isMxAllowed } from './mtaSts.js';
 import { recordTlsResult } from './tlsRpt.js';
 import type { DestinationSnapshot } from './destinationProvider.js';
@@ -30,6 +34,7 @@ import { resolveDeliveryRoute } from './send/route.js';
 import { prepareSignedMessage } from './send/compose.js';
 import { resolveSendTlsPlan } from './send/tlsPlan.js';
 import { attemptSend as attemptSendOnce, type AttemptContext } from './send/attempt.js';
+import { attemptWithCleartextFallback } from './send/tlsFallback.js';
 import { terminalResult, type AttemptOutcome } from './send/outcome.js';
 
 /**
@@ -82,6 +87,7 @@ export async function sendToMx(
 		routeProvider,
 		providerPolicy,
 		dkimDomain: message.dkimDomain,
+		allowPrivateMxTargets: config.allowPrivateMxTargets === true,
 		verpAddress: message.verpAddress,
 		recipient: job.to,
 		signedBytes: message.signedBytes,
@@ -110,6 +116,10 @@ export async function sendToMx(
 	// temporary refusal replaces a permanent one: one host still willing to try
 	// later means the message is not undeliverable.
 	let hostRefusal: EmailJobResult | null = null;
+	// Why each MX host had no address to dial, so that a domain whose every
+	// host points at non-public space, or an implicit MX that does not resolve,
+	// ends as the permanent failure it is rather than retrying to expiry.
+	const unroutable = new Map<string, UnroutableReason>();
 	const attemptSend = async (...args: Parameters<typeof attemptSendOnce>) => {
 		const outcome: AttemptOutcome = await attemptSendOnce(...args);
 		if (
@@ -118,6 +128,7 @@ export async function sendToMx(
 		) {
 			hostRefusal = outcome.result;
 		}
+		if (outcome.kind === 'unroutable') unroutable.set(args[1], outcome.reason);
 		return outcome;
 	};
 
@@ -186,11 +197,11 @@ export async function sendToMx(
 					{ mxHost, recipientDomain, resultType: probe.resultType },
 					'DANE report-only: TLSA result recorded; delivering at the normal TLS floor'
 				);
-				const retry = await attemptSend(
+				const retry = await attemptWithCleartextFallback(
+					attemptSend,
 					ctx,
 					mxHost,
-					tls.requirements.requireTLS,
-					tls.requirements.rejectUnauthorized
+					tls.requirements
 				);
 				const retryFinished = terminalResult(retry);
 				if (retryFinished) return retryFinished;
@@ -248,11 +259,11 @@ export async function sendToMx(
 				// mode this is (no requireTLS / no verify) — historic behaviour. Under a
 				// `require` / `require-verified` local mode the floor is preserved and
 				// the retry never downgrades below it.
-				const retry = await attemptSend(
+				const retry = await attemptWithCleartextFallback(
+					attemptSend,
 					ctx,
 					mxHost,
-					tls.requirements.requireTLS,
-					tls.requirements.rejectUnauthorized
+					tls.requirements
 				);
 				const retryFinished = terminalResult(retry);
 				if (retryFinished) return retryFinished;
@@ -266,13 +277,9 @@ export async function sendToMx(
 		}
 
 		// Enforce / no-policy path: a single attempt at the resolved TLS floor
-		// (strictest of the local mode and the recipient's MTA-STS state).
-		const outcome = await attemptSend(
-			ctx,
-			mxHost,
-			tls.requirements.requireTLS,
-			tls.requirements.rejectUnauthorized
-		);
+		// (strictest of the local mode and the recipient's MTA-STS state), plus
+		// the one cleartext retry an opportunistic floor allows.
+		const outcome = await attemptWithCleartextFallback(attemptSend, ctx, mxHost, tls.requirements);
 		const finished = terminalResult(outcome);
 		if (finished) return finished;
 		if (outcome.kind === 'tls-failure' && tls.requirements.requireTLS) {
@@ -289,6 +296,13 @@ export async function sendToMx(
 	// not be completed, else a plain connection-level failure. All soft/deferred:
 	// a TLS-required or DANE floor never falls back to cleartext (RFC 7672 §2.1).
 	if (hostRefusal) return hostRefusal;
+	const unroutableResult = buildUnroutableResult(
+		recipientDomain,
+		mxHosts,
+		routing.route.implicitMx,
+		unroutable
+	);
+	if (unroutableResult) return unroutableResult;
 	return buildAllMxFailedResult(
 		recipientDomain,
 		mxHosts,

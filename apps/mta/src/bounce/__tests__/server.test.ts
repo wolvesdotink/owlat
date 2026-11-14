@@ -272,6 +272,66 @@ describe('bounce onRcptTo — TLS-RPT rua system route', () => {
 	});
 });
 
+describe('bounce onRcptTo — postmaster and abuse on the hosts we send as', () => {
+	const config = makeConfig({
+		ehloHostnames: { '198.51.100.7': 'mx2.owlat.test' },
+		convexSiteUrl: 'https://acme.convex.site',
+	});
+
+	beforeEach(() => {
+		vi.mocked(findMailboxRoute).mockReset().mockResolvedValue(null);
+	});
+
+	it.each([
+		'postmaster@bounces.owlat.test',
+		'abuse@bounces.owlat.test',
+		'Postmaster@MX.owlat.test',
+		'abuse@mx.owlat.test',
+		'postmaster@mx2.owlat.test',
+	])('accepts %s', async (rcpt) => {
+		expect(await runRcptTo(config, rcpt)).toBeUndefined();
+	});
+
+	it.each([
+		'nobody@bounces.owlat.test',
+		'webmaster@mx.owlat.test',
+		'postmaster@customer.example',
+		'abuse@sub.bounces.owlat.test',
+	])('still refuses %s with 550', async (rcpt) => {
+		const reply = await runRcptTo(config, rcpt);
+		expect(reply?.code).toBe(550);
+	});
+
+	it('lets a real mailbox of that name keep its own quota answer', async () => {
+		vi.mocked(findMailboxRoute).mockResolvedValue({
+			organizationId: 'org_1',
+			quotaBytes: 100,
+			usedBytes: 100,
+		} as never);
+		expect((await runRcptTo(config, 'postmaster@bounces.owlat.test'))?.code).toBe(552);
+	});
+
+	it("honours an operator's exact reject route for the address", async () => {
+		const redis = {
+			get: async (key: string) =>
+				key === 'mta:inbound-routes:bounces.owlat.test:abuse'
+					? JSON.stringify({
+							id: 'r',
+							domain: 'bounces.owlat.test',
+							address: 'abuse',
+							mode: 'reject',
+						})
+					: null,
+		} as unknown as Redis;
+		const onRcptTo = buildOnRcptTo(config, redis);
+		const reply = await onRcptTo(
+			addr('abuse@bounces.owlat.test'),
+			makeSession() as Parameters<typeof onRcptTo>[1]
+		);
+		expect((reply as SmtpReply | undefined)?.code).toBe(550);
+	});
+});
+
 describe('bounce onRcptTo — mailbox quota (structured 552 5.2.2, sanctioned)', () => {
 	beforeEach(() => {
 		vi.mocked(findMailboxRoute).mockReset();

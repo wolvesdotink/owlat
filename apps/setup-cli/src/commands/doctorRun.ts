@@ -4,6 +4,8 @@
  * Checks (in order):
  *   1. /opt/owlat/.env exists and parses.
  *   2. Required env vars for the active feature set are populated.
+ *   2b. SITE_URL is public once the box sends mail as a public domain, so the
+ *       links in verification, reset and invitation mail open off the box.
  *   3. SEND PATH: a sending feature is enabled AND a delivery provider
  *      (EMAIL_PROVIDER + its credentials) is actually configured — so doctor
  *      never green-lights an install that cannot send any mail.
@@ -49,7 +51,13 @@ import {
 	type DoctorReport,
 } from '../lib/doctorReport';
 import { doctorText, envValue, trusted } from '../lib/doctorText';
-import { evaluateSendPath, probeIpAudit, probeMtaHealth, refreshMtaIdentity } from './doctor';
+import {
+	evaluateSendPath,
+	evaluateSiteUrl,
+	probeIpAudit,
+	probeMtaHealth,
+	refreshMtaIdentity,
+} from './doctor';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -151,6 +159,8 @@ export async function collectDoctorReport(
 			message: doctorText`${trusted(key)} is set (required by an active feature)`,
 		});
 	}
+
+	for (const finding of evaluateSiteUrl(env)) report.record(finding);
 
 	// SEND PATH — the core capability check. A sending feature with no configured
 	// delivery provider is the exact hole that let doctor report "All checks

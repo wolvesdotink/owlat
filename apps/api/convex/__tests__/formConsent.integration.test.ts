@@ -140,7 +140,7 @@ async function seedConfirmedThenOptedOut(t: T, email: string, topicId: Id<'topic
 	const contact = await t.run((ctx) => ctx.db.get(contactId));
 	expect(contact?.unsubscribedAt).toBeTypeOf('number');
 	expect(contact?.doiStatus).toBe('confirmed');
-	return { contactId, confirmedAt };
+	return { contactId, confirmedAt, optedOutAt: contact?.unsubscribedAt };
 }
 
 async function seedTopicAutomation(t: T, topicId: Id<'topics'>) {
@@ -197,6 +197,15 @@ async function getForm(t: T, id: Id<'formEndpoints'>) {
 
 async function getContact(t: T, id: Id<'contacts'>) {
 	return await t.run((ctx) => ctx.db.get(id));
+}
+
+async function membershipOf(t: T, contactId: Id<'contacts'>, topicId: Id<'topics'>) {
+	return await t.run((ctx) =>
+		ctx.db
+			.query('contactTopics')
+			.withIndex('by_contact_and_topic', (q) => q.eq('contactId', contactId).eq('topicId', topicId))
+			.first()
+	);
 }
 
 // ─── Contacts-only forms honour double opt-in ───────────────────────────────
@@ -574,21 +583,60 @@ describe('form signups after a global opt-out', () => {
 		expect(contact?.doiStatus).toBe('confirmed');
 	});
 
-	it.each([{ source: 'admin' as const }, { source: 'import' as const }])(
-		'a trusted $source subscribe keeps its override',
-		async ({ source }) => {
+	it('an admin subscribe keeps its override', async () => {
+		const t = setupTest();
+		const topicId = await createTopic(t, false);
+		const { contactId } = await seedConfirmedThenOptedOut(t, 'override@example.com', topicId);
+
+		const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
+			topicId,
+			contactIds: [contactId],
+			source: 'admin',
+		});
+
+		expect(outcomes[0]).toMatchObject({ ok: true, action: 'subscribed' });
+		expect((await getContact(t, contactId))?.unsubscribedAt).toBeUndefined();
+	});
+
+	it("adding one contact to a topic from its page lifts the opt-out, as the operator's override", async () => {
+		const t = setupTest();
+		const topicId = await createTopic(t, false);
+		const { contactId } = await seedConfirmedThenOptedOut(t, 'single@example.com', topicId);
+
+		// `topics.addContact` (the contact page) and its API-key twin share this body.
+		const added = await t.mutation(internal.topics.topics.addContactInternal, {
+			topicId,
+			contactId,
+		});
+
+		expect(added.membershipId).toBeDefined();
+		expect((await getContact(t, contactId))?.unsubscribedAt).toBeUndefined();
+	});
+
+	it.each([{ requireDoi: false }, { requireDoi: true }])(
+		'an import keeps the opt-out and asks for no confirmation (topic DOI: $requireDoi)',
+		async ({ requireDoi }) => {
 			const t = setupTest();
-			const topicId = await createTopic(t, false);
-			const { contactId } = await seedConfirmedThenOptedOut(t, 'override@example.com', topicId);
+			const topicId = await createTopic(t, requireDoi);
+			const { contactId, optedOutAt } = await seedConfirmedThenOptedOut(
+				t,
+				'reimported@example.com',
+				topicId
+			);
 
 			const { outcomes } = await t.mutation(internal.topics.subscription.subscribeMany, {
 				topicId,
 				contactIds: [contactId],
-				source,
+				source: 'import',
+				siteUrl: 'https://app.example.com',
 			});
 
-			expect(outcomes[0]).toMatchObject({ ok: true, action: 'subscribed' });
-			expect((await getContact(t, contactId))?.unsubscribedAt).toBeUndefined();
+			expect(outcomes[0]).toEqual({ ok: false, reason: 'contact_opted_out' });
+			const contact = await getContact(t, contactId);
+			expect(contact?.unsubscribedAt).toBe(optedOutAt);
+			expect(contact?.doiStatus).toBe('confirmed');
+			expect(contact?.doiConfirmationToken).toBeUndefined();
+			expect(await membershipOf(t, contactId, topicId)).toBeNull();
 		}
 	);
 });

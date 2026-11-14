@@ -2,10 +2,12 @@
  * Phase: select sending IP.
  *
  * Picks an active (non-DNSBL-blocked) IP from the resolved pool via
- * round-robin. Defers the attempt (60s) when no IPs are available.
+ * round-robin, preferring a family the destination's MX hosts have an address
+ * in. Defers the attempt (60s) when no IPs are available.
  */
 
 import { selectIpWithLease } from '../../scaling/ipPool.js';
+import { reachableFamiliesOf } from '../../smtp/mxAddresses.js';
 import type { Phase } from '../pipeline.js';
 import type { CtxWithIp, CtxWithPool } from '../types.js';
 
@@ -27,7 +29,10 @@ export const selectIpPhase: Phase<CtxWithPool, CtxWithIp> = {
 			deps.redis,
 			ctx.pool,
 			deps.config.ipPools,
-			ctx.dedicatedIp
+			ctx.dedicatedIp,
+			reachableFamiliesOf(ctx.destination.mx, {
+				allowPrivate: deps.config.allowPrivateMxTargets === true,
+			})
 		);
 		if (!lease) {
 			return {

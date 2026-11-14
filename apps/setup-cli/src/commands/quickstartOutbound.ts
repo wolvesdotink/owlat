@@ -22,14 +22,6 @@ import {
 
 const SENDING_FROM_A_VPS_GUIDE = 'https://docs.owlat.app/guide/sending-from-a-vps';
 
-/**
- * The MTA's `/health` opens a TCP/25 connection per sending IP, and a silently
- * dropped port only fails once its 5s connect timeout runs out. Doctor's 3s
- * budget is too short for that on a cold probe cache, so this check allows for
- * the MX lookup and the connect timeout together.
- */
-const PORT25_PROBE_TIMEOUT_MS = 20_000;
-
 /** The MTA's HTTP API as the installer reaches it on this box. */
 export function localMtaUrl(env: EnvMap): string {
 	return `http://${resolveLocalHost(process.env)}:${env['MTA_HTTP_PORT'] ?? '3100'}`;
@@ -41,8 +33,7 @@ export function localMtaUrl(env: EnvMap): string {
  */
 export async function checkOutboundPort25(
 	env: EnvMap,
-	fetchHealth: (url: string) => Promise<MtaHealthBody> = (url) =>
-		fetchMtaHealth(url, PORT25_PROBE_TIMEOUT_MS)
+	fetchHealth: (url: string) => Promise<MtaHealthBody> = fetchMtaHealth
 ): Promise<OutboundPort25> {
 	if (!isOwnSendProviderKind(env['EMAIL_PROVIDER'])) return { status: 'unknown' };
 	const health = await fetchHealth(localMtaUrl(env));
@@ -52,8 +43,8 @@ export async function checkOutboundPort25(
 /** The summary lines for a blocked port; nothing for any other result. */
 export function outboundPort25Warning(result: OutboundPort25, env: EnvMap): string[] {
 	if (result.status !== 'blocked') return [];
-	// The generic note points at an audit section this summary does not have,
-	// so only a named provider's own note is worth a line here.
+	// The generic note says what the lines below already say, so only a named
+	// provider's own note is worth a line here.
 	const provider = installerProviderNote(env['MTA_VPS_PROVIDER'] ?? '');
 	return [
 		`Outbound port 25 is blocked from ${result.ips.join(', ')}. Mail to other servers cannot leave this box and waits in the queue until the port opens.`,

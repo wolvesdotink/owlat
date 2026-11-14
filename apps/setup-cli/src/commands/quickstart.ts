@@ -58,6 +58,7 @@ import {
 } from './quickstartStack';
 import { deployBackend, verifyMtaIdentity } from './quickstartBackend';
 import { checkOutboundPort25, outboundPort25Warning } from './quickstartOutbound';
+import { localSiteUrlNotice } from '../lib/publicSiteUrl';
 import type { OutboundPort25 } from './doctor';
 
 interface RunOptions extends CliOptions {
@@ -435,6 +436,9 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	}
 	const outboundWarning = outboundPort25Warning(outbound, env);
 	for (const line of outboundWarning) reporter.log(line, 'stderr');
+	// The terminal wizard leaves SITE_URL on localhost (lib/publicSiteUrl.ts).
+	const siteUrlNotice = localSiteUrlNotice(env);
+	for (const line of siteUrlNotice) reporter.log(line, 'stderr');
 
 	// Step 8: summary.
 	reporter.done(true, {
@@ -451,6 +455,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			adminEmail,
 			baseUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud,
 			outboundWarning,
+			siteUrlNotice,
 		})
 	);
 	return 0;

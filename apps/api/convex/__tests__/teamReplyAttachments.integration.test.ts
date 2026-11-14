@@ -8,6 +8,7 @@ import {
 	createTestConversationThread,
 	createTestInboundMessage,
 	createTestSemanticFile,
+	createTestDomain,
 } from './factories';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
@@ -59,6 +60,11 @@ async function seedThread(
 	overrides: { channel?: string; attachmentSuggestions?: unknown } = {}
 ) {
 	return t.run(async (ctx) => {
+		// The default sender's domain: non-campaign mail is refused from any other.
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({ domain: 'owlat.example', status: 'verified', lastVerifiedAt: Date.now() })
+		);
 		await ctx.db.insert('instanceSettings', {
 			contactCount: 0,
 			createdAt: Date.now(),

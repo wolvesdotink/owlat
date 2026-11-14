@@ -1,8 +1,8 @@
 import { governedDeliveryDeadlineAt } from '@owlat/shared';
 import type { Infer } from 'convex/values';
 import type { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
-import { governedRetryDelayMs } from './sendRetryPlan';
-import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
+import { deferralExhaustedBy, governedRetryDelayMs } from './sendRetryPlan';
+import { isSendWorkerOutcome, type DeliveryHold, type SendWorkerOutcome } from './workerOutcome';
 import type { MarketingIneligibility } from '../lib/marketingEligibility';
 import { InternalFailure } from '../_utils/errors';
 
@@ -118,6 +118,49 @@ const SUPPRESSED_SEND_FAILURE = {
 	'blocklist' | MarketingIneligibility,
 	{ message: string; code: string }
 >;
+
+/**
+ * How a deferral that ran out of budget is recorded: by what it was waiting
+ * for, so the Send says why it never went out. A hold spends no routing
+ * attempts, so only the deadline can end one.
+ */
+const EXHAUSTED_HOLD_FAILURE = {
+	routing_policy: {
+		message:
+			'Delivery stayed on hold (an open delivery safety circuit or an unavailable relay) until the delivery deadline passed',
+		code: 'DELIVERY_HOLD_EXPIRED',
+	},
+	mta_unreachable: {
+		message: 'The mail server could not be reached before the delivery deadline passed',
+		code: 'MTA_UNREACHABLE',
+	},
+	sending_suspended: {
+		message: 'Sending stayed suspended for this workspace until the delivery deadline passed',
+		code: 'SENDING_SUSPENDED',
+	},
+} as const satisfies Record<DeliveryHold, { message: string; code: string }>;
+
+const EXHAUSTED_DEFERRAL_FAILURE = {
+	attempts: {
+		message: 'Delivery was deferred on every routing attempt until the retry limit ran out',
+		code: 'ROUTING_RETRY_LIMIT_EXHAUSTED',
+	},
+	deadline: {
+		message: 'Delivery was deferred until the delivery deadline passed',
+		code: 'DELIVERY_DEADLINE_EXPIRED',
+	},
+} as const;
+
+function exhaustedDeferralFailure(
+	outcome: Extract<SendWorkerOutcome, { kind: 'deferred' }>,
+	now: number
+): CompletionStep {
+	const failure =
+		outcome.hold !== undefined
+			? EXHAUSTED_HOLD_FAILURE[outcome.hold]
+			: EXHAUSTED_DEFERRAL_FAILURE[deferralExhaustedBy(outcome, now)];
+	return fail(failure.message, failure.code);
+}
 
 const NONE: CompletionStep = { kind: 'none' };
 
@@ -280,16 +323,9 @@ export function planCompletionOutcome(input: {
 			const recordsDeferral = outcome.deferralOrigin === 'governed';
 			// Both bounds, attempts and deadline (`./sendRetryPlan`). Out of routing
 			// attempts, or past the cumulative delivery deadline, the wait itself
-			// ran out, which is a real non-delivery — the shipped terminalization.
+			// ran out, which is a real non-delivery, recorded under what it waited for.
 			const retry = retryStep(outcome, now, isEnvelopeStripped);
-			const expired =
-				outcome.hold === 'sending_suspended'
-					? fail(
-							'Sending stayed suspended for this workspace until the delivery deadline passed',
-							'SENDING_SUSPENDED'
-						)
-					: fail('Unknown error', 'WORKPOOL_FAILED');
-			return plan(retry ?? expired, recordsDeferral);
+			return plan(retry ?? exhaustedDeferralFailure(outcome, now), recordsDeferral);
 		}
 
 		case 'accepted': {

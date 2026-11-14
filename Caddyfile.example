@@ -97,6 +97,21 @@ rest.api.example.com {
 	encode gzip zstd
 }
 
+# ── Tracking domains (optional) ──────────────────────────────────────────────
+# One block per tracking domain added under Settings → Domains → Tracking
+# domains. Its CNAME points at the Convex site host above; this block makes
+# Caddy answer for the name with its own certificate. Verification fails, and
+# campaigns keep using rest.api.example.com, until it is in place.
+# track.example.com {
+# 	reverse_proxy convex:3211
+#
+# 	header {
+# 		Strict-Transport-Security "max-age=31536000"
+# 		X-Content-Type-Options "nosniff"
+# 		-Server
+# 	}
+# }
+
 # ── MTA HTTP API (internal — only if you expose send-events externally) ──────
 # Remove or firewall this block unless you need public access to MTA's HTTP API.
 # The typical setup keeps the MTA reachable only from the web container via Docker network.

@@ -27,7 +27,12 @@ import {
 	buildCfblHeaders,
 	type CfblHeaderResult,
 } from '../../bounce/cfblAddress.js';
-import { getDkimOptions, type DkimSigningKey } from '../dkim.js';
+import {
+	DkimSignatureUnavailableError,
+	getDkimOptions,
+	resolveRequiredDkimKey,
+	type DkimSigningKey,
+} from '../dkim.js';
 import { getReturnPathHost } from '../dkimStore.js';
 
 /** The one payload every delivery attempt for this job writes. */
@@ -140,8 +145,10 @@ function composeStructured(
  * Build the exact wire bytes for a job: compose the structured message (or take
  * the sealed-mail raw MIME verbatim), then DKIM-sign over those bytes.
  *
- * A missing DKIM key ships the message UNSIGNED (recoverable), and a signing
- * failure falls back to the unsigned bytes rather than a corrupt signature.
+ * Without `requireDkimSignature`, a missing DKIM key ships the message UNSIGNED
+ * and a signing failure falls back to the unsigned bytes rather than a corrupt
+ * signature. With it, a signing failure throws {@link DkimSignatureUnavailableError}
+ * and nothing is sent: the domain's DMARC policy would reject the unsigned copy.
  *
  * `signed` reports what actually happened to THESE bytes, not what was
  * configured: it is false both when no key exists and when signing threw. The
@@ -162,12 +169,30 @@ function buildSignedBytes(
 	try {
 		return { bytes: signMessage(raw, dkimConfig), signed: true };
 	} catch (err) {
+		if (job.requireDkimSignature === true) {
+			logger.error(
+				{ err, domain: dkimConfig.domainName, selector: dkimConfig.keySelector },
+				'DKIM signing failed for a domain that requires a signature; holding the message'
+			);
+			throw new DkimSignatureUnavailableError(dkimConfig.domainName, 'sign_failed');
+		}
 		logger.error(
 			{ err, domain: dkimConfig.domainName, selector: dkimConfig.keySelector },
 			'DKIM signing failed; shipping message unsigned'
 		);
 		return { bytes: raw, signed: false };
 	}
+}
+
+async function resolveSigningKey(job: EmailJob, redis: Redis): Promise<DkimSigningKey | undefined> {
+	if (job.requireDkimSignature !== true) {
+		return getDkimOptions(redis, job.dkimDomain, job.organizationId);
+	}
+	const resolved = await resolveRequiredDkimKey(redis, job.dkimDomain, job.organizationId);
+	if (resolved.kind === 'unavailable') {
+		throw new DkimSignatureUnavailableError(job.dkimDomain.toLowerCase(), resolved.cause);
+	}
+	return resolved.key;
 }
 
 /**
@@ -181,8 +206,10 @@ export async function prepareSignedMessage(
 ): Promise<SignedMessage> {
 	// Scope the DKIM key to the job's owning organization: a domain key bound to
 	// another tenant is refused here, so the message ships unsigned rather than
-	// carrying a cross-tenant DKIM signature.
-	const dkimConfig = await getDkimOptions(redis, job.dkimDomain, job.organizationId);
+	// carrying a cross-tenant DKIM signature. A message that requires a signature
+	// is refused instead: the dispatch phase checked the key, but it can vanish or
+	// be replaced between that check and this one.
+	const dkimConfig = await resolveSigningKey(job, redis);
 
 	// VERP return-path host: a sending domain may register its own bounce host,
 	// making the MAIL FROM domain per-sending-domain instead of the single global

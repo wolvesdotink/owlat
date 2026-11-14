@@ -19,6 +19,8 @@
  *   - `abuse_blocked` → the step FAILS for the same reason. This gate is NEW:
  *     before C2 the non-campaign path had no abuse check at all, so a suspended
  *     instance still sent automation mail.
+ *   - `sender_domain_unverified` → the step FAILS with the reason on its run:
+ *     the default sender is not on a verified sending domain.
  *   - positive control: an enqueued Send row and a completed step carrying its
  *     `emailSendId`.
  */
@@ -33,6 +35,7 @@ import {
 	createTestAutomationStep,
 	createTestBlockedEmail,
 	createTestContact,
+	createTestDomain,
 	createTestEmailTemplate,
 	createTestInstanceSettings,
 } from '../../__tests__/factories';
@@ -90,9 +93,18 @@ afterEach(() => {
 
 async function seedSettings(
 	t: TestConvex<typeof schema>,
-	overrides: Record<string, unknown> = {}
+	overrides: Record<string, unknown> = {},
+	options: { senderDomainStatus?: 'verified' | 'pending' } = {}
 ): Promise<void> {
 	await t.run(async (ctx) => {
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({
+				domain: 'example.com',
+				status: options.senderDomainStatus ?? 'verified',
+				lastVerifiedAt: Date.now(),
+			})
+		);
 		await ctx.db.insert(
 			'instanceSettings',
 			createTestInstanceSettings({
@@ -229,6 +241,31 @@ describe('automation email step — intake rejection mapping', () => {
 		expect(result.error).toMatch(/suspended/i);
 		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(0);
+	});
+
+	it('sender_domain_unverified → fails the step with the reason on its run and writes no row', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t, {}, { senderDomainStatus: 'pending' });
+		const { automationRunId, stepRunId } = await seedActiveEmailAutomation(
+			t,
+			'allowed@example.com'
+		);
+
+		const result = await t.action(internal.automations.stepWalker.executeStep, {
+			automationRunId,
+			stepRunId,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/"example\.com" is not verified/);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(0);
+		// The reason is recorded where runs record step failures; the walker's
+		// bounded backoff (`MAX_RETRY_ATTEMPTS`, then the run is cancelled)
+		// applies as it does to a missing delivery provider.
+		expect(result.retrying).toBe(true);
+		const stepRun = await t.run(async (ctx) => ctx.db.get(stepRunId));
+		expect(stepRun?.errorMessage).toMatch(/"example\.com" is not verified/);
 	});
 
 	it('enqueues a Send row for a non-blocked contact (positive control)', async () => {

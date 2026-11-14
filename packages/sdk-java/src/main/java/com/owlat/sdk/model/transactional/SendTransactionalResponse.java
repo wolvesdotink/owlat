@@ -40,13 +40,15 @@ public class SendTransactionalResponse {
     }
 
     /**
-     * The id of the send record created for this email (a {@code transactionalSends}
-     * row), NOT the template id. Use it to correlate with delivery webhooks.
+     * The id of the send created for this email, NOT the template id. Every
+     * {@code email.*} webhook for this send carries it as {@code sendId}, and
+     * {@link com.owlat.sdk.resource.TransactionalResource#get(String)} reads its status.
      */
     public String getTransactionalEmailId() {
         return transactionalEmailId;
     }
 
+    /** Slug of the template used, also when the request named the template by id. */
     public String getSlug() {
         return slug;
     }

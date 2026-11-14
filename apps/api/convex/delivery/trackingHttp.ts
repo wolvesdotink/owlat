@@ -10,6 +10,11 @@ import { constantTimeEqual, hmacSignature } from '../webhooks/security';
 import { decodeTrackedTarget, trackedLinkSigningInput } from './sendComposition/trackingUrl';
 import { classifyOpenRequest } from './automatedOpens';
 import { classifyClickRequest } from './automatedClicks';
+import {
+	TRACKING_PROBE_PATH_PREFIX,
+	isTrackingProbeNonce,
+	trackingProbeAnswer,
+} from './trackingProbe';
 
 /**
  * Verify the HMAC that binds a click-tracking redirect target to its
@@ -58,8 +63,8 @@ const TRACKING_PIXEL = new Uint8Array([
 //     A signature would only bind the id to itself (trackClick signs id+URL —
 //     there is a separate target to forge; an open has none).
 //   - Forging an open exposes NO data and grants no redirect: it can only
-//     inflate the open count for a known send. The per-IP `emailTracking` rate
-//     limit below caps that abuse; opens are analytics-only.
+//     inflate the open count for a known send. That send's own tracking
+//     budget (`recordTrackingHit`) caps that abuse; opens are analytics-only.
 // Future option: sign the pixel path (id + a short expiry) the same way
 // trackClick signs its target, if open-count integrity ever needs to be
 // stronger than rate-limited best-effort. See CONTEXT.md "Outbound lifecycle".
@@ -92,8 +97,9 @@ export const trackOpen = httpAction(async (ctx, request) => {
 		});
 	}
 
-	// One commit spends the per-IP `emailTracking` token and, inside the budget,
-	// records the open. The pixel is returned whatever happens to it.
+	// One commit spends a tracking token (the send's own, see
+	// `recordTrackingHit`) and, inside the budget, records the open. The pixel is
+	// returned whatever happens to it.
 	const ip = getClientIp(request);
 	try {
 		// Only the coarse client class leaves this handler; the User-Agent and IP
@@ -198,9 +204,9 @@ export const trackClick = httpAction(async (ctx, request) => {
 		}
 	}
 
-	// One commit spends the per-IP `emailTracking` token, also for a target that
-	// is not followed, and, inside the budget, records the click. The redirect is
-	// the same whatever happens to it.
+	// One commit spends a tracking token, also for a target that is not followed
+	// (then the caller's, since there is no send to charge), and, inside the
+	// budget, records the click. The redirect is the same whatever happens to it.
 	const ip = getClientIp(request);
 	const isRecordable = hasValidTarget && emailSendId !== undefined && encodedUrl !== undefined;
 	try {
@@ -231,4 +237,25 @@ export const trackClick = httpAction(async (ctx, request) => {
 			'Cache-Control': 'no-store, no-cache, must-revalidate',
 		},
 	});
+});
+
+// HTTP action for the tracking-domain probe: GET /t/probe/{nonce}. The
+// tracking-domain check (domains/trackingDomainCheck.ts) calls it through the
+// operator's tracking host to prove that host serves this deployment's
+// tracking routes over HTTPS. It reads and writes nothing but its own rate
+// limit, and its answer is useless outside the probe (see trackingProbe.ts).
+export const trackProbe = httpAction(async (ctx, request) => {
+	const headers = { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
+	const nonce = new URL(request.url).pathname.slice(TRACKING_PROBE_PATH_PREFIX.length);
+	if (!isTrackingProbeNonce(nonce)) return new Response('Not found', { status: 404, headers });
+
+	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
+		limitType: 'trackingProbe',
+		key: getClientIp(request),
+	});
+	if (!ok) return new Response('Too many requests', { status: 429, headers });
+
+	const secret = getOptional('UNSUBSCRIBE_SECRET');
+	if (!secret) return new Response('Tracking is not configured', { status: 503, headers });
+	return new Response(await trackingProbeAnswer(secret, nonce), { status: 200, headers });
 });

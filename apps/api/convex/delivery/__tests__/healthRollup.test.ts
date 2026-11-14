@@ -154,6 +154,33 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		});
 	});
 
+	it('names the sending domain whose mail the MTA holds for a missing DKIM key', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: {
+					status: 'degraded',
+					isRedisConnected: true,
+					isWorkerAlive: true,
+					isDnsReachable: true,
+					isAllIpsBlocked: false,
+					smtpOutbound: { status: 'ok', checkedAt: Date.now(), ips: [] },
+					dkimSigningHeld: [{ domain: 'mail.example.com', cause: 'no_key', since: Date.now() }],
+					observedAt: Date.now(),
+				},
+				createdAt: Date.now(),
+			});
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({
+			level: 'error',
+			reason:
+				'Mail from mail.example.com is held: the mail server has no usable DKIM key to sign it',
+		});
+	});
+
 	it('returns error when the sending provider is unconfigured', async () => {
 		setEnv({});
 		const t = convexTest(schema, modules);

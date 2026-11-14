@@ -6,7 +6,8 @@
  *
  * Recipients follow the permission that acts on the notice: a finished
  * campaign goes to whoever may manage campaigns, a reminder to whoever may
- * cancel the schedule, and the delivery hold and DNS failure to admins, who are
+ * cancel the schedule, a start that did not happen to whoever may schedule
+ * it again, and the delivery hold and DNS failure to admins, who are
  * the only ones who can open the delivery pages they link to.
  */
 
@@ -35,6 +36,13 @@ export const MARKETING_NOTICE_POLICY: Record<MarketingNoticeKind, NoticePolicy> 
 		features: ['campaigns'],
 	},
 	campaign_reminder: {
+		preference: 'campaignReminder',
+		permission: 'campaigns:schedule',
+		features: ['campaigns'],
+	},
+	// Shares the reminder's switch and audience: both are about a scheduled
+	// start, and whoever may schedule is who can reschedule it.
+	campaign_not_started: {
 		preference: 'campaignReminder',
 		permission: 'campaigns:schedule',
 		features: ['campaigns'],

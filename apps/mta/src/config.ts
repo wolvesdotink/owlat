@@ -65,6 +65,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	allowUnverifiedFcrdns: boolean;
 	/** Explicit opt-in for native IPv6 source addresses in IP_POOLS_*. */
 	ipv6Enabled: boolean;
+	/** Lab/test-only: connect to non-public MX addresses (`MTA_ALLOW_PRIVATE_MX`). */
+	allowPrivateMxTargets: boolean;
 	/** Domain for VERP return-path addresses */
 	returnPathDomain: string;
 	/** Convex site URL for webhook callbacks */
@@ -207,9 +209,9 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	 * `report` (evaluate each MX's DNSSEC-authenticated TLSA and emit the TLS-RPT
 	 * result but never require TLS or bounce — observability only), or `enforce`
 	 * (also authenticate the MX cert against the RRset, a require-TLS floor that
-	 * supersedes MTA-STS and defers a mismatch). Default `report`, which keeps
-	 * DANE report-only (zero enforcement/delivery impact). Inert in every mode without a resolver
-	 * URL. Optional only for test doubles; read sites treat an absent value as `off`.
+	 * supersedes MTA-STS and defers a mismatch). Default `off`: operators opt in
+	 * before any TLSA lookup. Inert in every mode without a resolver URL.
+	 * Optional only for test doubles; read sites treat an absent value as `off`.
 	 */
 	daneMode?: DaneMode;
 	/**
@@ -387,8 +389,8 @@ export function loadConfig(): MtaConfig {
 	}
 	const outboundTlsMode: OutboundTlsMode = outboundTlsModeRaw;
 
-	// DANE (RFC 7672) at send time — `report` by default (report-only
-	// has zero delivery impact). Parsing and validation (mode enum, https-only
+	// DANE (RFC 7672) at send time — `off` by default (operators opt in to
+	// TLSA lookups). Parsing and validation (mode enum, https-only
 	// channel, inert-without-resolver) lives in daneConfig.ts to keep this module
 	// under the file-size gate.
 	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
@@ -407,6 +409,7 @@ export function loadConfig(): MtaConfig {
 		genericPtrSuffixes,
 		allowUnverifiedFcrdns,
 		ipv6Enabled: outboundIp.ipv6Enabled,
+		allowPrivateMxTargets: outboundIp.allowPrivateMxTargets,
 		returnPathDomain,
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),

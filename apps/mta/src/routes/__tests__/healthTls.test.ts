@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { classifySmtpTlsCertificate, inspectSmtpTlsCertificate } from '../health.js';
+import {
+	classifySmtpTlsCertificate,
+	dkimSigningReadiness,
+	inspectSmtpTlsCertificate,
+} from '../health.js';
 
 describe('SMTP TLS certificate readiness', () => {
 	const now = Date.UTC(2026, 6, 26);
@@ -34,5 +38,16 @@ describe('SMTP TLS certificate readiness', () => {
 			status: 'fail',
 			reason: 'certificate-pending',
 		});
+	});
+});
+
+describe('DKIM signing readiness', () => {
+	it('is ok with no held domain', () => {
+		expect(dkimSigningReadiness([])).toEqual({ status: 'ok', held: [] });
+	});
+
+	it('names each held domain and its cause', () => {
+		const held = [{ domain: 'brand.example', cause: 'no_key' as const, since: 1 }];
+		expect(dkimSigningReadiness(held)).toEqual({ status: 'held', held });
 	});
 });

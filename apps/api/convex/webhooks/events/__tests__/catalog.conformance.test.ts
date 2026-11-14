@@ -42,6 +42,7 @@ const CORE_KINDS = [
 	'email.clicked',
 	'email.bounced',
 	'email.complained',
+	'email.failed',
 	'contact.created',
 	'topic.unsubscribed',
 	'test',

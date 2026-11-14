@@ -76,6 +76,7 @@ describe('importBatch: the outcome', () => {
 			propertiesAutoRegistered: 0,
 			propertiesSkipped: 2,
 			activitiesRecorded: 1,
+			keptUnsubscribed: 0,
 		});
 	});
 

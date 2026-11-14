@@ -11,6 +11,7 @@ import { components, internal } from '../_generated/api';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
 import { EmailErrorCode } from '../lib/sendProviders';
+import { SYSTEM_SENDER_NOT_CONFIGURED_MESSAGE, systemSenderAddress } from '../lib/systemSender';
 import {
 	systemMailRetryDisposition,
 	type SystemMailAttemptOutcome,
@@ -214,11 +215,21 @@ export async function deliverRegressionEmailHandler(
 		};
 	}
 
-	const fromEmail =
-		getOptional('DEFAULT_FROM_EMAIL') ??
-		`noreply@${getOptional('DEFAULT_FROM_DOMAIN') ?? 'mail.owlat.app'}`;
+	const fromEmail = systemSenderAddress();
 	const deliveries = await Promise.all(
-		prepared.claims.map((claim) => {
+		prepared.claims.map((claim): Promise<SystemMailAttemptOutcome> => {
+			// No sender is a configuration failure, the same terminal outcome the
+			// transport reports when none is configured, so the claim settles as
+			// failed instead of waiting on a retry that cannot succeed.
+			if (!fromEmail) {
+				return Promise.resolve({
+					status: 'failed',
+					provider: null,
+					errorCode: 'CONFIGURATION',
+					errorMessage: SYSTEM_SENDER_NOT_CONFIGURED_MESSAGE,
+					retryDisposition: 'terminal',
+				});
+			}
 			const payload = {
 				to: claim.email,
 				from: `Owlat <${fromEmail}>`,

@@ -20,6 +20,9 @@ vi.mock('@owlat/smtp-client', async (importOriginal) =>
 );
 vi.mock('../connectionPool.js', () => harness.connectionPoolModule());
 vi.mock('../mxResolver.js', () => harness.mxResolverModule());
+vi.mock('../mxAddresses.js', async (importOriginal) =>
+	harness.mxAddressesModule(await importOriginal<Record<string, unknown>>())
+);
 vi.mock('../daneMxResolver.js', () => harness.daneMxResolverModule());
 vi.mock('../mtaSts.js', async (importOriginal) =>
 	harness.mtaStsModule(await importOriginal<Record<string, unknown>>())
@@ -44,6 +47,7 @@ import type { MtaConfig } from '../../config.js';
 import { SmtpError, type SmtpConnection } from '@owlat/smtp-client';
 import { pool } from '../connectionPool.js';
 import { getStsTlsOptions } from '../mtaSts.js';
+import { resolveMxDestination } from '../mxResolver.js';
 import { logger } from '../../monitoring/logger.js';
 import {
 	acquireCallOptions,
@@ -139,10 +143,14 @@ describe('sendToMx TLS policy', () => {
 				secured: false,
 			});
 
+		// A `require` floor, so the opportunistic cleartext fallback (tested
+		// below) does not retry the same host first.
+		const requireTls = () => createConfig({ outboundTlsMode: 'require' });
+
 		it('first MX fails on TLS, second MX resolves => success', async () => {
 			connectMock.mockRejectedValueOnce(tlsHandshakeError()).mockResolvedValue(liveConn(true));
 
-			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			const result = await sendToMx(createJob(), requireTls(), redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
 			expect(connectMock).toHaveBeenCalledTimes(2); // tried both MX
@@ -152,7 +160,7 @@ describe('sendToMx TLS policy', () => {
 		it('every MX fails on TLS => soft bounce (retryable) + TLS-RPT validation-failure recorded', async () => {
 			connectMock.mockRejectedValue(tlsHandshakeError());
 
-			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			const result = await sendToMx(createJob(), requireTls(), redis, '10.0.0.1');
 
 			expect(result.success).toBe(false);
 			expect(result.bounceType).toBe('soft');
@@ -168,6 +176,139 @@ describe('sendToMx TLS policy', () => {
 			const recordedHosts = validationFailures.map((d) => d['receiving-mx-hostname']);
 			expect(recordedHosts).toContain('mx1.example.com');
 			expect(recordedHosts).toContain('mx2.example.com');
+		});
+	});
+
+	describe('opportunistic STARTTLS failure: one cleartext retry on the same host', () => {
+		const handshakeFailure = () =>
+			smtpError({
+				phase: 'starttls',
+				message: 'TLS handshake failed (ERR_SSL_UNSUPPORTED_PROTOCOL)',
+				tlsCause: 'handshake',
+				secured: false,
+			});
+		// The STARTTLS connection fails its handshake; a cleartext one succeeds.
+		const tlsBrokenMx = () =>
+			connectMock.mockImplementation(async (options: { tlsMode: string }) => {
+				if (options.tlsMode === 'starttls') throw handshakeFailure();
+				return liveConn(false);
+			});
+
+		it('delivers in cleartext once and records only the failed handshake for TLS-RPT', async () => {
+			tlsBrokenMx();
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(acquireMock.mock.calls.map((call) => call[0])).toEqual([
+				'mx1.example.com',
+				'mx1.example.com',
+			]);
+			expect(acquireOpts(0).cleartext).toBeUndefined();
+			expect(acquireOpts(1)).toMatchObject({ cleartext: true, requireTLS: false });
+			expect(connectMock.mock.calls.map((call) => call[0].tlsMode)).toEqual(['starttls', 'none']);
+
+			const policy = (await reportFor()).policies[0]!;
+			expect(policy.summary['total-successful-session-count']).toBe(0);
+			expect(policy.summary['total-failure-session-count']).toBe(1);
+			expect(policy['failure-details']!.map((d) => d['result-type'])).toEqual([
+				'validation-failure',
+			]);
+		});
+
+		it('also falls back when the MX answers STARTTLS with an error', async () => {
+			connectMock.mockImplementation(async (options: { tlsMode: string }) => {
+				if (options.tlsMode === 'starttls') {
+					throw smtpError({
+						phase: 'starttls',
+						message: 'server refused STARTTLS with 454: TLS not available',
+						replyCode: 454,
+						tlsCause: 'starttls-unavailable',
+						secured: false,
+					});
+				}
+				return liveConn(false);
+			});
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(acquireMock.mock.calls.map((call) => call[0])).toEqual([
+				'mx1.example.com',
+				'mx1.example.com',
+			]);
+		});
+
+		it('keeps the TLS failure and moves on when the cleartext session is refused as cleartext', async () => {
+			tlsBrokenMx();
+			sendEnvelopeMock.mockRejectedValueOnce(
+				smtpError({
+					phase: 'mail',
+					message: 'server rejected mail with 530: Must issue a STARTTLS command first',
+					replyCode: 530,
+					enhancedCode: '5.7.0',
+					secured: false,
+				})
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(acquireMock.mock.calls.map((call) => call[0])).toEqual([
+				'mx1.example.com',
+				'mx1.example.com',
+				'mx2.example.com',
+				'mx2.example.com',
+			]);
+		});
+
+		it('never falls back to cleartext under an MTA-STS enforce policy', async () => {
+			vi.mocked(getStsTlsOptions).mockResolvedValue({
+				requireTLS: true,
+				rejectUnauthorized: true,
+				allowedMxHosts: ['*.example.com'],
+				policyMode: 'enforce',
+			});
+			tlsBrokenMx();
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+			expect(acquireMock.mock.calls.map((call) => call[2].cleartext)).toEqual([
+				undefined,
+				undefined,
+			]);
+			expect(connectMock.mock.calls.every((call) => call[0].tlsMode === 'starttls')).toBe(true);
+		});
+
+		it('never falls back to cleartext for a provider that requires TLS (Gmail)', async () => {
+			vi.mocked(resolveMxDestination).mockResolvedValue({
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'gmail-smtp-in.l.google.com', priority: 5 }],
+			});
+			tlsBrokenMx();
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+			expect(acquireMock).toHaveBeenCalledTimes(1);
+			expect(acquireOpts(0)).toMatchObject({ requireTLS: true });
+			expect(acquireOpts(0).cleartext).toBeUndefined();
+		});
+
+		it('never falls back to cleartext under OUTBOUND_TLS_MODE=require', async () => {
+			tlsBrokenMx();
+
+			const result = await sendToMx(
+				createJob(),
+				createConfig({ outboundTlsMode: 'require' }),
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+			expect(connectMock.mock.calls.every((call) => call[0].tlsMode === 'starttls')).toBe(true);
 		});
 	});
 

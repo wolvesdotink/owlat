@@ -83,6 +83,12 @@ export interface EmailJob {
 	/** Domain for DKIM signing */
 	dkimDomain: string;
 	/**
+	 * Convex's statement that `dkimDomain` is a sending domain registered with
+	 * this MTA, so the message must not leave unsigned. Absent ⇒ the historic
+	 * rule: sign when a key resolves, otherwise send unsigned.
+	 */
+	requireDkimSignature?: boolean;
+	/**
 	 * Wall-clock ms when the message was *first* enqueued. Set on the initial
 	 * `queue.add` and carried verbatim across every defer re-enqueue so the
 	 * worker can enforce a max-message-age give-up (RFC 5321 §4.5.4.1) that
@@ -359,6 +365,14 @@ export interface DkimKeyConfig {
 	 * keys, which stay usable by any org until re-registered with an owner.
 	 */
 	organizationId?: string;
+	/**
+	 * Set on a key the MTA generated itself (registration, regeneration, manual
+	 * rotation): its public half is in no DNS record yet. A send that requires a
+	 * signature is held until the MTA has seen the record published once; the
+	 * field is then removed. Absent on operator-supplied and DNS-gated rotation
+	 * keys, and on every key written before the field existed.
+	 */
+	awaitingDnsSince?: number;
 }
 
 // ============ Bounce Types ============

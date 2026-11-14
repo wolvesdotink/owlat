@@ -226,3 +226,38 @@ describe('parseHealth sourceBinding', () => {
 		]);
 	});
 });
+
+describe('parseHealth dkimSigning', () => {
+	const health = (dkimSigning?: unknown) => ({
+		status: 'degraded',
+		redis: 'connected',
+		worker: { alive: true },
+		dns: 'ok',
+		emergency: { allIpsBlocked: false },
+		smtpOutbound: { status: 'ok', checkedAt: 1, ips: [] },
+		...(dkimSigning === undefined ? {} : { dkimSigning }),
+	});
+
+	it('keeps the domains the MTA holds mail for, and drops malformed entries', () => {
+		const snapshot = parseHealth(
+			health({
+				status: 'held',
+				held: [
+					{ domain: 'brand.example', cause: 'no_key', since: 5 },
+					{ domain: 'broken.example', cause: 'no_key' },
+				],
+			}),
+			9
+		);
+		expect(snapshot?.dkimSigningHeld).toEqual([
+			{ domain: 'brand.example', cause: 'no_key', since: 5 },
+		]);
+	});
+
+	it('records nothing when nothing is held or the MTA predates the hold', () => {
+		expect(parseHealth(health({ status: 'ok', held: [] }), 9)).not.toHaveProperty(
+			'dkimSigningHeld'
+		);
+		expect(parseHealth(health(), 9)).not.toHaveProperty('dkimSigningHeld');
+	});
+});

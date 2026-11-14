@@ -414,4 +414,97 @@ describe('ipPool', () => {
 			expect(await redis.get('mta:emergency:all_ips_blocked')).toBeNull();
 		});
 	});
+
+	describe('selectIpWithLease prefers a family the destination can reach', () => {
+		const dualStack: IpPoolConfig = {
+			transactional: ['192.0.2.10', '2001:db8::10'],
+			campaign: ['192.0.2.10'],
+		};
+		async function activateDualStack(): Promise<void> {
+			for (const ip of dualStack.transactional) {
+				await redis.sadd('mta:ip-pool:configured', ip);
+				await redis.sadd('mta:ip-pool:active', ip);
+			}
+		}
+
+		it('sends from the IPv4 IP when the destination has no IPv6 address', async () => {
+			await activateDualStack();
+			const reachable = vi.fn(async () => new Set(['ipv4'] as const));
+
+			const picked = new Set<string>();
+			for (let i = 0; i < 4; i++) {
+				const lease = await selectIpWithLease(
+					redis,
+					'transactional',
+					dualStack,
+					undefined,
+					reachable
+				);
+				picked.add(lease!.ip);
+			}
+
+			expect(picked).toEqual(new Set(['192.0.2.10']));
+		});
+
+		it('sends from the IPv6 IP when the destination is IPv6-only', async () => {
+			await activateDualStack();
+
+			const lease = await selectIpWithLease(
+				redis,
+				'transactional',
+				dualStack,
+				undefined,
+				async () => new Set(['ipv6'] as const)
+			);
+
+			expect(lease?.ip).toBe('2001:db8::10');
+		});
+
+		it('keeps round-robin over both families when the destination has both', async () => {
+			await activateDualStack();
+			const picked = new Set<string>();
+			for (let i = 0; i < 4; i++) {
+				const lease = await selectIpWithLease(
+					redis,
+					'transactional',
+					dualStack,
+					undefined,
+					async () => new Set(['ipv4', 'ipv6'] as const)
+				);
+				picked.add(lease!.ip);
+			}
+
+			expect(picked).toEqual(new Set(dualStack.transactional));
+		});
+
+		it('does not look the destination up when the candidates share one family', async () => {
+			await initializePools(redis, testConfig);
+			const reachable = vi.fn(async () => new Set(['ipv6'] as const));
+
+			const lease = await selectIpWithLease(
+				redis,
+				'transactional',
+				testConfig,
+				undefined,
+				reachable
+			);
+
+			expect(lease).not.toBeNull();
+			expect(reachable).not.toHaveBeenCalled();
+		});
+
+		it('leaves the choice alone when the destination resolved to nothing', async () => {
+			await activateDualStack();
+
+			const lease = await selectIpWithLease(
+				redis,
+				'transactional',
+				dualStack,
+				undefined,
+				async () => null
+			);
+
+			expect(dualStack.transactional).toContain(lease?.ip);
+		});
+	});
 });

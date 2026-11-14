@@ -144,6 +144,12 @@ const result = await owlat.transactional.send({
 
 console.log(result.status); // 'queued'
 console.log(result.contactCreated); // true if a new contact was created
+
+// Later: where the send stands. Every email.* webhook for it carries the same
+// id as `sendId`, so an `email.failed` webhook saves you the polling.
+const send = await owlat.transactional.get(result.transactionalEmailId);
+console.log(send.status); // 'queued' | 'sent' | 'delivered' | 'failed' | ...
+console.log(send.errorCode); // e.g. 'MTA_UNREACHABLE' once it failed
 ```
 
 #### Safe retries with an idempotency key

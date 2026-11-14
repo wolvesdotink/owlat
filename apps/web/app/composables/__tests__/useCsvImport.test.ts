@@ -482,7 +482,21 @@ describe('useCsvImport', () => {
 				failed: 0,
 				errors: [],
 				addedToList: 0,
+				keptUnsubscribed: 0,
 			});
+		});
+
+		it('adds up the contacts each batch kept unsubscribed', async () => {
+			const csvImport = useCsvImport();
+			const rows = Array.from({ length: 150 }, (_, i) => [`user${i}@test.com`]);
+			await simulateFileSelect(csvImport, ['Email'], rows);
+			csvImport.columnMapping.value = { 0: 'email' };
+
+			const result = await csvImport.startImport(
+				vi.fn(async () => committed({ updated: 2, keptUnsubscribed: 2 }))
+			);
+
+			expect(result?.keptUnsubscribed).toBe(4);
 		});
 
 		it('updates progress during import', async () => {
@@ -521,6 +535,7 @@ describe('useCsvImport', () => {
 				failed: 0,
 				errors: [],
 				addedToList: 0,
+				keptUnsubscribed: 0,
 			});
 		});
 

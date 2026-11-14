@@ -18,7 +18,7 @@ import { scheduleFanout } from '../webhooks/scheduleFanout';
 import { recordContactActivity } from '../contactActivities/writer';
 import {
 	effectFlagsForUnsubscribeSource,
-	requiresFreshConfirmation,
+	subscribeGate,
 	type RemovedMembership,
 	type SubscribeOutcome,
 	type SubscribeSource,
@@ -32,8 +32,8 @@ import {
  * Hand a contact to the DOI lifecycle as `pending` and return the token its
  * confirmation link carries. A contact already pending with a live token keeps
  * it (no second email), so every signup in one pending window shares one
- * token. A confirmed contact only gets here when `requiresFreshConfirmation`
- * held for an opt-out, so the request opens a new consent episode (`reopen`).
+ * token. A confirmed contact only gets here when `subscribeGate` asked for a
+ * confirmation over an opt-out, so the request opens a new consent episode (`reopen`).
  */
 export async function requestConfirmation(
 	ctx: MutationCtx,
@@ -119,16 +119,20 @@ export async function subscribeOne(
 		};
 	}
 
+	const doiRequired =
+		(args.topic.requireDoubleOptIn === true || args.forceDoi === true) && args.skipDoi !== true;
+	const gate = subscribeGate(contact, { source: args.source, doiRequired });
+	if (gate === 'keep_opted_out') {
+		return { outcome: { ok: false, reason: 'contact_opted_out' }, insertedCount: 0 };
+	}
+
 	const membershipId = await ctx.db.insert('contactTopics', {
 		contactId: args.contactId,
 		topicId: args.topic._id,
 		addedAt: args.now,
 	});
 
-	const doiRequired =
-		(args.topic.requireDoubleOptIn === true || args.forceDoi === true) && args.skipDoi !== true;
-
-	if (!requiresFreshConfirmation(contact, { source: args.source, doiRequired })) {
+	if (gate === 'complete') {
 		// A completed opt-in lifts the global marketing opt-out — they are
 		// actively opting back in, so they should once again be reachable by
 		// matching audiences. Clears the `contacts.unsubscribedAt` signal set by

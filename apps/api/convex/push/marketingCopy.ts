@@ -24,6 +24,8 @@ interface MarketingCopy {
 	finishedPrivate: string;
 	reminderTitle: (minutes: number) => string;
 	reminderPrivate: string;
+	notStartedTitle: string;
+	notStartedPrivate: string;
 	holdTitle: string;
 	holdBody: (provider: string) => string;
 	providers: Record<DestinationProviderKey, string>;
@@ -48,6 +50,8 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		finishedPrivate: 'A campaign has finished sending',
 		reminderTitle: (minutes) => `Scheduled campaign sends in ${minutes} min`,
 		reminderPrivate: 'Open it to review or cancel the send',
+		notStartedTitle: 'Scheduled campaign did not start',
+		notStartedPrivate: 'A scheduled campaign is back in draft. Open it to see why',
 		holdTitle: 'Bounce spike: sending protection on',
 		holdBody: (provider) =>
 			`Owlat is holding back mail to ${provider}, or rerouting it through your relay, after a spike in bounces or complaints`,
@@ -79,6 +83,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		finishedPrivate: 'Eine Kampagne ist fertig versendet',
 		reminderTitle: (minutes) => `Geplante Kampagne startet in ${minutes} Min.`,
 		reminderPrivate: 'Öffne sie, um den Versand zu prüfen oder abzubrechen',
+		notStartedTitle: 'Geplante Kampagne nicht gestartet',
+		notStartedPrivate:
+			'Eine geplante Kampagne ist wieder ein Entwurf. Öffne sie, um den Grund zu sehen',
 		holdTitle: 'Bounce-Spitze: Versandschutz aktiv',
 		holdBody: (provider) =>
 			`Owlat hält Mails an ${provider} nach vielen Bounces oder Beschwerden zurück oder leitet sie über dein Relay um`,
@@ -163,6 +170,12 @@ export function marketingPayload(
 							]
 						: []),
 				],
+			};
+		case 'campaign_not_started':
+			return {
+				...base,
+				title: copy.notStartedTitle,
+				body: isPrivate ? copy.notStartedPrivate : name,
 			};
 		case 'delivery_hold':
 			return {

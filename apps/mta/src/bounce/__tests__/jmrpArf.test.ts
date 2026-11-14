@@ -166,6 +166,33 @@ describe('Microsoft JMRP complaints through the shipped ARF processor', () => {
 		expect(result?.organizationId).toBeUndefined();
 	});
 
+	it("attributes from the re-attached original's signed Return-Path when the report names no sender", () => {
+		const feedbackReport = [
+			'Feedback-Type: abuse',
+			'User-Agent: Microsoft Junk Mail Reporting Program',
+			'Version: 0.1',
+			`Source-IP: ${SENDING_IP}`,
+		].join('\r\n');
+		const original = (returnPath: string) =>
+			[
+				`Return-Path: <${returnPath}>`,
+				'X-HmXmrOriginalRecipient: subscriber@hotmail.com',
+				'From: news@example.test',
+				'',
+				'Body that mentions Return-Path: <bounce+nothing@elsewhere.test>',
+			].join('\r\n');
+
+		const signed = buildVerpAddress(SEND_ID, RETURN_PATH_DOMAIN, KEY);
+		expect(
+			parse(jmrpMessage({ feedbackReport, originalMessage: original(signed) }))?.originalMessageId
+		).toBe(SEND_ID);
+
+		const forged = signed.replace(/(.)@/, (_m, last: string) => `${last === 'A' ? 'B' : 'A'}@`);
+		expect(
+			parse(jmrpMessage({ feedbackReport, originalMessage: original(forged) }))?.originalMessageId
+		).toBeUndefined();
+	});
+
 	it('tolerates a JMRP report with no recipient anywhere', () => {
 		const result = parse(
 			jmrpMessage({

@@ -58,6 +58,13 @@ vi.mock('../mxResolver.js', () => ({
 		hosts: [{ exchange: 'mx1.acme.com', priority: 0 }],
 	}),
 }));
+// The MX host's address lookup is stubbed so no real DNS is reached.
+vi.mock('../mxAddresses.js', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	resolveMxHostAddresses: vi
+		.fn()
+		.mockResolvedValue({ status: 'resolved', ipv4: ['192.0.2.1'], ipv6: [] }),
+}));
 vi.mock('../dkim.js', () => ({
 	getDkimOptions: vi.fn().mockResolvedValue(undefined),
 }));

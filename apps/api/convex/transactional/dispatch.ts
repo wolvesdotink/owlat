@@ -24,7 +24,9 @@ import { internal } from '../_generated/api';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
 import { checkEmailDomainVerification } from '../domains/domains';
-import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
+import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
+import type { ResolvedRoute } from '../lib/sendProviders/routing';
+import type { MutationCtx } from '../_generated/server';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
@@ -34,6 +36,7 @@ import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
+import { templateSlugOfSend } from './sendStatus';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
 	idempotencyArgValidator,
@@ -59,10 +62,13 @@ import {
 // The outcome types live with the decisions; re-exported for existing importers.
 export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
 
-// Discriminated lookup so the module accepts either a typed id or a slug
-// from the HTTP shell without re-validating which was provided.
+// Discriminated lookup so the module accepts either an id or a slug from the
+// HTTP shell without re-validating which was provided. The id is a plain
+// string, not `v.id`: it is whatever the caller typed, and a malformed id or
+// one of another table must answer `template_not_found` (a 404), not fail
+// argument validation (a 500). The handler normalizes it.
 const templateLookupValidator = v.union(
-	v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
+	v.object({ kind: v.literal('id'), id: v.string() }),
 	v.object({ kind: v.literal('slug'), slug: v.string() })
 );
 
@@ -79,6 +85,30 @@ const attachmentRefValidator = v.object({
 // and the unit tests — keep a stable path.
 export { validateDataVariables, resolveLanguage, selectContent, mergeAttachments };
 export type { AttachmentRef } from './dispatchContent';
+
+/**
+ * The route stamped on the row and the envelope, through the shared
+ * `resolveSendRouteFromDb` seam. Its `providerType`/`ipPool` are advisory for the
+ * worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative for the
+ * `providerType` stamped on the row, so it runs before the insert.
+ *
+ * A transient refusal (an open safety circuit, a relay not usable right now)
+ * is a hold, not a refusal: the gates already established that a provider is
+ * configured, and the worker holds the send and delivers it when the hold
+ * lifts. The answer is then `null`, so neither the row nor the envelope names
+ * a provider until the worker picks one.
+ */
+async function resolveIntakeRoute(
+	ctx: MutationCtx,
+	to: string,
+	from: string
+): Promise<ResolvedRoute | null> {
+	const routing = await resolveSendRouteOrHoldFromDb(ctx, 'transactional', { to, from });
+	if (routing.deferralCode) {
+		logWarn(`transactional intake queued on hold: ${routing.deferralCode}`);
+	}
+	return routing.route;
+}
 
 // ============================================================
 // Internal mutation — the intake entry point
@@ -111,9 +141,11 @@ export const dispatch = internalMutation({
 				};
 			}
 			if (lookup.kind === 'replay') {
+				const stored = storedTransactionalResponse(lookup.receipt);
 				return {
 					ok: true,
-					...storedTransactionalResponse(lookup.receipt),
+					...stored,
+					slug: await templateSlugOfSend(ctx.db, stored.sendId),
 					queued: true,
 					replayed: true,
 				};
@@ -153,10 +185,12 @@ export const dispatch = internalMutation({
 
 		// 2. Template lookup + publish + has-HTML checks.
 		const lookup = args.templateLookup;
+		const templateId =
+			lookup.kind === 'id' ? ctx.db.normalizeId('transactionalEmails', lookup.id) : null;
 		const found = decideTemplate(
 			lookup,
 			lookup.kind === 'id'
-				? await ctx.db.get(lookup.id)
+				? templateId && (await ctx.db.get(templateId))
 				: await ctx.db
 						.query('transactionalEmails')
 						.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
@@ -173,6 +207,7 @@ export const dispatch = internalMutation({
 			defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
 			defaultFromName: getOptional('DEFAULT_FROM_NAME'),
 		});
+		if (!sender.ok) return sender;
 		const refusal = decideSenderAndVariables({
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,
@@ -190,15 +225,9 @@ export const dispatch = internalMutation({
 		});
 		const contact = await ctx.db.get(resolved.contactId);
 
-		// 6. Provider route resolution, through the shared `resolveSendRoute`
-		//    seam. KEPT LATE on purpose: it is address-aware, so it needs the
-		//    sender settled above. Its `providerType`/`ipPool` are advisory for the
-		//    worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative
-		//    for the `providerType` stamped on the row, so it runs before the insert.
-		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
-			to: args.email,
-			from: sender.fromEmail,
-		});
+		// 6. Provider route resolution. KEPT LATE on purpose: it is address-aware,
+		//    so it needs the sender settled above (see `resolveIntakeRoute`).
+		const resolvedRoute = await resolveIntakeRoute(ctx, args.email, sender.fromEmail);
 
 		const plan = planTransactionalSend({
 			template,
@@ -273,6 +302,7 @@ export const dispatch = internalMutation({
 			contactId: resolved.contactId,
 			contactCreated,
 			language: plan.language,
+			slug: template.slug,
 			queued: true,
 		};
 	},

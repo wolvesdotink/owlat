@@ -18,6 +18,12 @@
  *      step 6 so DOI-required topic memberships activate immediately
  *      rather than firing a confirmation email at subscribe time.
  *
+ * A row whose contact holds a global opt-out (`contacts.unsubscribedAt`) stops
+ * after step 4: no attest, no topic, no confirmation mail. The rows come from
+ * another system, which cannot know the recipient unsubscribed here, so an
+ * import never makes them mailable again. The outcome counts them in
+ * `keptUnsubscribed` so the operator sees why they were left out.
+ *
  * After the row loop:
  *   6. Per-topic subscribeMany coalescing (one mutation call per topic)
  *   7. One incrementContactCount(ctx, imported)
@@ -238,7 +244,8 @@ export const importBatch = internalMutation({
 		// Keys skipped across rows, for one batch-level summary line per key.
 		let skippedKeyCounts: ReadonlyMap<string, number> = new Map();
 
-		// Resolved contacts (id + normalized email) for post-loop topic subscription.
+		// Resolved contacts (id + normalized email) for post-loop topic
+		// subscription. A contact that keeps its opt-out is never added.
 		const resolvedByEmail = new Map<Id<'contacts'>, string>();
 
 		const now = Date.now();
@@ -278,8 +285,6 @@ export const importBatch = internalMutation({
 					});
 				}
 
-				resolvedByEmail.set(contactId, normalizedEmail);
-
 				const propertySummary = await applyRowProperties(
 					ctx,
 					contactId,
@@ -298,6 +303,13 @@ export const importBatch = internalMutation({
 					await recordContactActivity(ctx, activity);
 					outcome.activitiesRecorded++;
 				}
+
+				const contact = await ctx.db.get(contactId);
+				if (contact?.unsubscribedAt !== undefined) {
+					outcome.keptUnsubscribed++;
+					continue;
+				}
+				resolvedByEmail.set(contactId, normalizedEmail);
 
 				// DOI attest — must precede topic subscription (post-loop) so
 				// the contact is `'confirmed'` before subscribeMany runs.

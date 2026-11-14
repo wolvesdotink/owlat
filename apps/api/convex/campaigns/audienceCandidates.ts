@@ -17,7 +17,12 @@ import type { segmentFiltersValidator } from '../lib/convexValidators';
 import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';
-import { contactMarketingIneligibility, isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
+import {
+	contactMarketingIneligibility,
+	holdsTopicMembership,
+	isAwaitingDoubleOptIn,
+	needsMembershipForSegment,
+} from '../lib/marketingEligibility';
 import {
 	conditionsLookupReadsPerBatch,
 	conditionsLookupReadsPerContact,
@@ -106,6 +111,23 @@ export function selectRecipient(
 	// DOI (topic only), or form-forced DOI on a non-DOI topic not yet confirmed.
 	if (isAwaitingDoubleOptIn(contact, gate.requiresDoi, membershipPendingDoi)) return null;
 	return projectRecipient(contact);
+}
+
+/**
+ * `selectRecipient` plus the segment-only rule `needsMembershipForSegment`. The
+ * membership read is charged to the budget first; when the budget cannot cover
+ * it the Contact is left out, so an exhausted count stays a lower bound.
+ */
+export async function selectSegmentRecipient(
+	ctx: QueryCtx,
+	contact: Doc<'contacts'>,
+	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
+	budget?: ExamineBudget
+): Promise<CampaignRecipient | null> {
+	const recipient = selectRecipient(contact, gate);
+	if (recipient === null || !needsMembershipForSegment(contact)) return recipient;
+	if (!spendDocuments(budget, 1)) return null;
+	return (await holdsTopicMembership(ctx, contact._id)) ? recipient : null;
 }
 
 /**
@@ -278,7 +300,9 @@ async function* streamSegmentMatchesBounded(
 		const lookup = await preloadConditionsLookupForContacts(ctx, parsedFilters.conditions, pending);
 		const matches = makeSegmentPredicate(parsedFilters, lookup);
 		for (const contact of pending) {
-			if (matches(contact)) yield { recipient: selectRecipient(contact, gate) };
+			if (matches(contact)) {
+				yield { recipient: await selectSegmentRecipient(ctx, contact, gate, budget) };
+			}
 		}
 	}
 
@@ -377,7 +401,7 @@ export async function* streamAudienceCandidates(
 		.query('contacts')
 		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
 		if (!matches(contact)) continue;
-		yield { recipient: selectRecipient(contact, gate) };
+		yield { recipient: await selectSegmentRecipient(ctx, contact, gate) };
 	}
 }
 

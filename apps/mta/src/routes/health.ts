@@ -21,6 +21,7 @@ import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
 import { probeDelayedQueue } from '../queue/delayedOrphans.js';
 import { logger } from '../monitoring/logger.js';
+import { readDkimSigningHolds, type DkimSigningHold } from '../smtp/dkimSigningHold.js';
 
 const startTime = Date.now();
 const CERTIFICATE_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1_000;
@@ -105,6 +106,19 @@ export function inspectSmtpTlsCertificate(
 			checkedAt: now,
 		};
 	}
+}
+
+/**
+ * Mail held because a sending domain that requires a DKIM signature has no
+ * usable key. It degrades the MTA like a dead worker would: for those domains
+ * nothing leaves, and the queue only grows. `held` names each domain and why,
+ * so the operator knows which key to restore or which record to publish.
+ */
+export function dkimSigningReadiness(held: DkimSigningHold[]): {
+	status: 'ok' | 'held';
+	held: DkimSigningHold[];
+} {
+	return { status: held.length > 0 ? 'held' : 'ok', held };
 }
 
 // Worker heartbeat tracking
@@ -216,6 +230,10 @@ export function createHealthHandler(
 			);
 		}
 
+		const dkimSigning = dkimSigningReadiness(
+			redisOk ? await readDkimSigningHolds(redis).catch(() => []) : []
+		);
+
 		// Determine overall status
 		const identityNotReady = ipStatus.some(
 			(ip) =>
@@ -228,7 +246,8 @@ export function createHealthHandler(
 			identityNotReady ||
 			!workerStatus.alive ||
 			!dnsOk ||
-			smtpProbe.status !== 'ok';
+			smtpProbe.status !== 'ok' ||
+			dkimSigning.status === 'held';
 		const tlsDegraded = smtpTls.status === 'fail';
 		const status = degraded || tlsDegraded ? 'degraded' : 'ok';
 
@@ -243,6 +262,7 @@ export function createHealthHandler(
 			dns: dnsOk ? 'ok' : 'unreachable',
 			smtpOutbound: smtpProbe,
 			smtpTls,
+			dkimSigning,
 			queue: { ...queueProbe, waiting },
 		});
 	};

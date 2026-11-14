@@ -3,6 +3,7 @@ import Redis from 'ioredis-mock';
 import keySlot from 'cluster-key-slot';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { reduce } from '../outcome.js';
+import { stateChangingEffects } from './helpers/feedbackEffects.js';
 import type { EmailJob } from '../../types.js';
 import type { BounceAttempt } from '../types.js';
 import { FEEDBACK_RECORD_RETENTION_SECONDS } from '../signedToken.js';
@@ -94,7 +95,7 @@ describe('delayed feedback provenance', () => {
 			const { effects } = reduce(attributed, {} as never);
 
 			if (attempt.kind === 'fbl' && !attempt.arf.originalMessageId) {
-				expect(effects).toEqual([]);
+				expect(stateChangingEffects(effects)).toEqual([]);
 				return;
 			}
 			expect(effects.map((effect) => effect.kind)).toEqual(['notify_convex']);
@@ -161,7 +162,7 @@ describe('delayed feedback provenance', () => {
 		const attributed = await attachFeedbackProvenance(redis, redacted());
 
 		expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
-		expect(reduce(attributed, {} as never).effects).toEqual([]);
+		expect(stateChangingEffects(reduce(attributed, {} as never).effects)).toEqual([]);
 	});
 
 	it('replaces forged ARF tenant and campaign labels with persisted outbound provenance', async () => {
@@ -210,7 +211,7 @@ describe('delayed feedback provenance', () => {
 				},
 			};
 			const attributed = await attachFeedbackProvenance(redis, forged);
-			expect(reduce(attributed, {} as never).effects).toEqual([]);
+			expect(stateChangingEffects(reduce(attributed, {} as never).effects)).toEqual([]);
 		}
 
 		expect(await redis.keys('mta:campaign-complaints:*')).toEqual([]);
@@ -244,7 +245,7 @@ describe('delayed feedback provenance', () => {
 
 		const attributed = await attachFeedbackProvenance(redis, attributedFbl('corrupt-record'));
 		expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
-		expect(reduce(attributed, {} as never).effects).toEqual([]);
+		expect(stateChangingEffects(reduce(attributed, {} as never).effects)).toEqual([]);
 	});
 
 	it.each([null, 'production', 42, [{ deliveryDomain: 'production' }]])(
@@ -256,7 +257,7 @@ describe('delayed feedback provenance', () => {
 
 			const attributed = await attachFeedbackProvenance(redis, attributedFbl('not-an-object'));
 			expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
-			expect(reduce(attributed, {} as never).effects).toEqual([]);
+			expect(stateChangingEffects(reduce(attributed, {} as never).effects)).toEqual([]);
 		}
 	);
 
@@ -291,8 +292,8 @@ describe('delayed feedback provenance', () => {
 		const recipientOnly = await attachFeedbackProvenance(redis, redacted());
 		expect(exact.kind === 'dsn_attributed' && exact.bounce.feedbackProvenance).toBe('unknown');
 		expect(recipientOnly.kind === 'fbl' && recipientOnly.arf.feedbackProvenance).toBe('unknown');
-		expect(reduce(exact, {} as never).effects).toEqual([]);
-		expect(reduce(recipientOnly, {} as never).effects).toEqual([]);
+		expect(stateChangingEffects(reduce(exact, {} as never).effects)).toEqual([]);
+		expect(stateChangingEffects(reduce(recipientOnly, {} as never).effects)).toEqual([]);
 	});
 
 	it('prefers the RECORDED recipient over a DSN Final-Recipient that differs', async () => {

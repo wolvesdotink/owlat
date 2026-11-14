@@ -42,6 +42,7 @@ export type DispatchRejectionReason =
 	| 'template_not_found'
 	| 'template_not_published'
 	| 'template_no_content'
+	| 'sender_not_configured'
 	| 'domain_unverified'
 	| 'invalid_variables'
 	| IdempotencyRefusalReason;
@@ -59,6 +60,8 @@ export type DispatchOutcome =
 			contactId: Id<'contacts'>;
 			contactCreated: boolean;
 			language: string;
+			/** The template's slug, whichever way the request named it. */
+			slug: string;
 			queued: true;
 			/** Answered from the Idempotency-Key's receipt: nothing was sent this time. */
 			replayed?: true;
@@ -66,7 +69,7 @@ export type DispatchOutcome =
 	| DispatchRefusal;
 
 export type TemplateLookup =
-	| { readonly kind: 'id'; readonly id: Id<'transactionalEmails'> }
+	| { readonly kind: 'id'; readonly id: string }
 	| { readonly kind: 'slug'; readonly slug: string };
 
 type Template = Doc<'transactionalEmails'>;
@@ -108,25 +111,37 @@ export function decideTemplate(
 }
 
 /**
- * The default sender address an operator actually configured (settings, then
- * environment), or `null` when neither is set. The readiness surfaces read this
- * rather than {@link senderDefaults}: its placeholder fallback is never on a
- * verified domain, so a send that reaches it is refused as `domain_unverified`.
+ * The default sender address an operator configured (settings, then the
+ * environment), or `null` when neither is set. The readiness surfaces and
+ * {@link senderDefaults} both read it, so they agree on whether a sender exists.
  */
 export function configuredDefaultFromEmail(
 	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail'> | null,
 	environment: { readonly defaultFromEmail?: string }
 ): string | null {
-	return settings?.defaultFromEmail ?? environment.defaultFromEmail ?? null;
+	return settings?.defaultFromEmail?.trim() || environment.defaultFromEmail?.trim() || null;
 }
 
-/** The sender every transactional send uses: settings → environment → fallback. */
+/**
+ * The sender every transactional send uses. With none configured the request
+ * is refused; a stand-in address would be one on a domain nobody here owns.
+ */
 export function senderDefaults(
 	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail' | 'defaultFromName'> | null,
 	environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string }
-): { fromEmail: string; fromName: string } {
+): { ok: true; fromEmail: string; fromName: string } | DispatchRefusal {
+	const fromEmail = configuredDefaultFromEmail(settings, environment);
+	if (!fromEmail) {
+		return {
+			ok: false,
+			reason: 'sender_not_configured',
+			detail:
+				'Cannot send transactional email: no default sender is configured. Set a default From address for this instance, or DEFAULT_FROM_EMAIL in the deployment environment.',
+		};
+	}
 	return {
-		fromEmail: configuredDefaultFromEmail(settings, environment) ?? 'noreply@example.com',
+		ok: true,
+		fromEmail,
 		fromName: settings?.defaultFromName ?? environment.defaultFromName ?? 'Owlat',
 	};
 }

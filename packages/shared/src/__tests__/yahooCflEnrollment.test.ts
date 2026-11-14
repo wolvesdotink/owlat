@@ -608,6 +608,18 @@ describe('guided steps — actionable at every state', () => {
 		expect(ready[1]?.status).toBe('todo');
 	});
 
+	it('names the address the mail server accepts reports on', () => {
+		const named = yahooCflGuidedSteps(
+			emptyYahooCflEnrollment(),
+			READY,
+			T0,
+			'abuse@bounces.example.com'
+		);
+		expect(named[1]?.action).toContain('abuse@bounces.example.com');
+		const unnamed = yahooCflGuidedSteps(emptyYahooCflEnrollment(), READY, T0);
+		expect(unnamed[1]?.action).toContain('abuse@');
+	});
+
 	it('suggests re-submitting once Yahoo has been silent for the patience window', () => {
 		const awaiting: YahooCflEnrollmentRecord = { state: 'awaiting_yahoo', submittedAt: T0 };
 		const patient = yahooCflGuidedSteps(awaiting, READY, T0 + DAY);
