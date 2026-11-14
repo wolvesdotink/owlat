@@ -114,6 +114,7 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 							mailboxAddress: username.toLowerCase(),
 							appPasswordId: result.appPasswordId,
 							userId: result.userId,
+							...(result.requireDkimSignature ? { requireDkimSignature: true as const } : {}),
 						},
 					};
 					return { ok: true, user: username };

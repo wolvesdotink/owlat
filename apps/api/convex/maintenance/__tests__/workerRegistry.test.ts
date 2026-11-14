@@ -185,7 +185,7 @@ describe('workerRegistry.report', () => {
 describe('workerRegistry.status', () => {
 	it('lists every service, reported or not, with verdicts and liveness', async () => {
 		const t = harness();
-		await seedWorker(t, { service: 'mta', hostLabel: 'm1', wireVersion: 1, lastSeenAt: T0 });
+		await seedWorker(t, { service: 'mta', hostLabel: 'm1', wireVersion: 2, lastSeenAt: T0 });
 		await seedWorker(t, {
 			service: 'mta',
 			hostLabel: 'm2',
@@ -213,10 +213,10 @@ describe('workerRegistry.status', () => {
 			['m2', 'supported', false],
 		]);
 		expect(mta).toMatchObject({
-			backendWireVersion: 1,
+			backendWireVersion: 2,
 			minSupportedWireVersion: 0,
 			oldestWireVersionSeen: 0,
-			newestWireVersionSeen: 1,
+			newestWireVersionSeen: 2,
 			isListTruncated: false,
 			legacySeenAt: null,
 		});
@@ -393,7 +393,7 @@ describe('POST /webhooks/mta-worker-report', () => {
 		const first = await post(t, JSON.stringify(reportArgs()));
 		expect(first.status).toBe(200);
 		expect(await first.json()).toEqual({
-			backendWireVersion: 1,
+			backendWireVersion: 2,
 			minSupportedWireVersion: 0,
 			compatible: true,
 		});

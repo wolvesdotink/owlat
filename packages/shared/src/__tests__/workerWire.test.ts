@@ -30,9 +30,12 @@ describe('workerWireWindow', () => {
 		for (const service of ['mail-sync', 'mta', 'code-worker'] as const) {
 			expect(workerWireVerdict(0, workerWireWindow(service))).toBe('supported');
 		}
-		for (const service of ['mta', 'code-worker'] as const) {
-			expect(workerWireVerdict(1, workerWireWindow(service))).toBe('current');
-		}
+		expect(workerWireVerdict(1, workerWireWindow('code-worker'))).toBe('current');
+	});
+
+	it('still serves an MTA that sends submitted mail without asking for a signature', () => {
+		expect(workerWireVerdict(1, workerWireWindow('mta'))).toBe('supported');
+		expect(workerWireVerdict(2, workerWireWindow('mta'))).toBe('current');
 	});
 
 	it('still serves the first reporting mail-sync worker, which sends through SMTP only', () => {
