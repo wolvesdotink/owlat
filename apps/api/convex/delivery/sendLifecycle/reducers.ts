@@ -5,6 +5,7 @@ import { transportOutcomeEffect, type Effect } from './effects';
 import { readerEngagementActivity } from './engagementActivity';
 import { reduceAutomatedClick, reduceAutomatedOpen } from './automatedEngagement';
 import { contactEmailOf, nonCampaignActivityProvenance, sendIdentityOf } from './lookups';
+import { SKIPPED_RECIPIENT_ERROR_CODES } from '../sendCompletionDecision';
 import { sendTimeEngagementEffects, sendTimeGroupOf } from './sendTimeEffects';
 import type {
 	EmailSendDoc,
@@ -253,19 +254,28 @@ export function reduceFailed(
 	// The one event a caller hears about a send that will never go out. The
 	// duplicate arm above keeps it to once per send; a hold or a retry never
 	// reaches this reducer, so it fires only on the terminal answer.
-	effects.push({
-		kind: 'customer_webhook',
-		spec: {
-			literal: 'email.failed',
-			input: {
-				email: contactEmailOf(send),
-				identity: sendIdentityOf(send, ref),
-				errorCode: args.errorCode,
-				message: args.errorMessage,
-				at: args.at,
+	//
+	// A recipient skipped at dispatch (suppressed, unsubscribed, deleted) is not
+	// a delivery failure, and a campaign skips one per such recipient, so the
+	// event would arrive by the thousand. Only a send the API accepted keeps it:
+	// its caller was answered 202 and has no other signal that nothing went out.
+	// Every skip stays on the send row and in the campaign report.
+	const identity = sendIdentityOf(send, ref);
+	if (identity.sendId !== null || !SKIPPED_RECIPIENT_ERROR_CODES.has(args.errorCode)) {
+		effects.push({
+			kind: 'customer_webhook',
+			spec: {
+				literal: 'email.failed',
+				input: {
+					email: contactEmailOf(send),
+					identity,
+					errorCode: args.errorCode,
+					message: args.errorMessage,
+					at: args.at,
+				},
 			},
-		},
-	});
+		});
+	}
 	return {
 		patch: {
 			status: 'failed',
