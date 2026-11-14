@@ -426,6 +426,41 @@ describe('buildSetupFromConfig', () => {
 		expect(out.env['NUXT_PUBLIC_CONVEX_SITE_URL']).toBe('https://convex-site.x.com');
 		expect(out.env['CONVEX_SITE_URL']).toBe('https://convex-site.x.com');
 	});
+
+	const withNetwork = () =>
+		parseSetupConfig({
+			...base(),
+			network: {
+				siteUrl: 'https://owlat.x.com',
+				convexUrl: 'https://convex.x.com',
+				convexSiteUrl: 'https://convex-site.x.com',
+			},
+		});
+
+	it('trusts the bundled Caddy as the only proxy hop when it generates the Caddyfile', () => {
+		const out = buildSetupFromConfig(withNetwork(), {});
+		expect(out.env['RATE_LIMIT_TRUSTED_PROXY']).toBe('xforwarded');
+		// A function-runtime key: it must be pushed into the Convex deployment.
+		expect(selectRuntimeEnvVars(out.env)).toContainEqual([
+			'RATE_LIMIT_TRUSTED_PROXY',
+			'xforwarded',
+		]);
+	});
+
+	it('trusts no forwarded header when it does not front the stack with Caddy', () => {
+		const out = buildSetupFromConfig(parseSetupConfig(base()), {});
+		expect(out.env['RATE_LIMIT_TRUSTED_PROXY']).toBeUndefined();
+	});
+
+	it("keeps an operator's own trusted-proxy mode", () => {
+		const out = buildSetupFromConfig(withNetwork(), {
+			INSTANCE_SECRET: 'already-installed',
+			FBL_DEDUP_PROTOCOL: 'owned-v2',
+			FBL_DEDUP_CUTOVER_ACK: 'quiesced-v1-intake',
+			RATE_LIMIT_TRUSTED_PROXY: 'cloudflare',
+		});
+		expect(out.env['RATE_LIMIT_TRUSTED_PROXY']).toBe('cloudflare');
+	});
 });
 
 /**

@@ -753,6 +753,7 @@ import type * as delivery_suppressionMirrorScheduler from '../delivery/suppressi
 import type * as delivery_tokenValidation from '../delivery/tokenValidation.js';
 import type * as delivery_tracking from '../delivery/tracking.js';
 import type * as delivery_trackingHttp from '../delivery/trackingHttp.js';
+import type * as delivery_trackingProbe from '../delivery/trackingProbe.js';
 import type * as delivery_unsubscribe from '../delivery/unsubscribe.js';
 import type * as delivery_unsubscribeHttp from '../delivery/unsubscribeHttp.js';
 import type * as delivery_unsubscribeOutcome from '../delivery/unsubscribeOutcome.js';
@@ -844,6 +845,8 @@ import type * as domains_tlsReports from '../domains/tlsReports.js';
 import type * as domains_tlsReportsHttp from '../domains/tlsReportsHttp.js';
 import type * as domains_tlsReportsNode from '../domains/tlsReportsNode.js';
 import type * as domains_tlsRpt from '../domains/tlsRpt.js';
+import type * as domains_trackingDomainCheck from '../domains/trackingDomainCheck.js';
+import type * as domains_trackingDomainVerdict from '../domains/trackingDomainVerdict.js';
 import type * as domains_trackingDomains from '../domains/trackingDomains.js';
 import type * as domains_verificationPass from '../domains/verificationPass.js';
 import type * as domains_yahooCfl from '../domains/yahooCfl.js';
@@ -2697,6 +2700,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/tokenValidation': typeof delivery_tokenValidation;
 	'delivery/tracking': typeof delivery_tracking;
 	'delivery/trackingHttp': typeof delivery_trackingHttp;
+	'delivery/trackingProbe': typeof delivery_trackingProbe;
 	'delivery/unsubscribe': typeof delivery_unsubscribe;
 	'delivery/unsubscribeHttp': typeof delivery_unsubscribeHttp;
 	'delivery/unsubscribeOutcome': typeof delivery_unsubscribeOutcome;
@@ -2791,6 +2795,8 @@ declare const fullApi: ApiFromModules<{
 	'domains/tlsReportsHttp': typeof domains_tlsReportsHttp;
 	'domains/tlsReportsNode': typeof domains_tlsReportsNode;
 	'domains/tlsRpt': typeof domains_tlsRpt;
+	'domains/trackingDomainCheck': typeof domains_trackingDomainCheck;
+	'domains/trackingDomainVerdict': typeof domains_trackingDomainVerdict;
 	'domains/trackingDomains': typeof domains_trackingDomains;
 	'domains/verificationPass': typeof domains_verificationPass;
 	'domains/yahooCfl': typeof domains_yahooCfl;

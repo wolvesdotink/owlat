@@ -347,9 +347,10 @@ export const resolveCampaignPage = internalAction({
 			route: resolvedRoute,
 			siteUrl: getOptional('SITE_URL'),
 			convexSiteUrl: getOptional('CONVEX_SITE_URL'),
-			trackingDomain: (
-				await ctx.runQuery(internal.domains.trackingDomains.getActiveTrackingDomain, {})
-			)?.domain,
+			trackingDomain:
+				(await ctx.runQuery(internal.domains.trackingDomains.getTrackingDomainForSender, {
+					from: settings.from,
+				})) ?? undefined,
 			organizationId:
 				(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {})) ??
 				undefined,

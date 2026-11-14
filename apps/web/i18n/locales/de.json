@@ -4028,7 +4028,7 @@
 				},
 				"loading": "Tracking-Domains werden geladen…",
 				"note": {
-					"body": "{note} DNS-Änderungen können bis zu 48 Stunden brauchen, um sich zu verbreiten. Klicke nach dem Hinzufügen des Eintrags auf „Prüfen“, um die Konfiguration zu überprüfen.",
+					"body": "{note} DNS-Änderungen können bis zu 48 Stunden brauchen, um sich zu verbreiten. Dein Reverse Proxy muss diese Subdomain außerdem per HTTPS ausliefern. Klicke danach auf „Prüfen“, um die Konfiguration zu überprüfen.",
 					"label": "Hinweis:"
 				},
 				"operations": {
@@ -4040,20 +4040,30 @@
 				"removeTitle": "Tracking-Domain entfernen",
 				"status": {
 					"pending": "Ausstehend",
-					"verified": "Bestätigt"
+					"verified": "Bestätigt",
+					"failing": "Prüfung schlägt fehl",
+					"lapsed": "Funktioniert nicht"
 				},
 				"subtitle": "Öffnungs- und Klick-Tracking über deine eigene Marken-Subdomain ausliefern",
 				"title": "Tracking-Domains",
 				"toasts": {
 					"added": "Tracking-Domain hinzugefügt. Lege den CNAME-Eintrag unten an und prüfe dann.",
 					"removed": "Tracking-Domain entfernt",
-					"verifying": "Das DNS dieser Tracking-Domain wird geprüft. Sie wird als bestätigt angezeigt, sobald der CNAME auflöst."
+					"verifying": "DNS und HTTPS dieser Tracking-Domain werden geprüft. Sie wird als bestätigt angezeigt, sobald beides funktioniert."
 				},
 				"verifiedAt": "Bestätigt {date}",
 				"verify": "Prüfen",
-				"verifyTitle": "DNS dieser Tracking-Domain prüfen",
+				"verifyTitle": "DNS und HTTPS dieser Tracking-Domain prüfen",
 				"verifying": "Wird geprüft…",
-				"rowLabel": "CNAME-Eintrag für {domain}"
+				"rowLabel": "CNAME-Eintrag für {domain}",
+				"lastCheck": {
+					"dnsMismatch": "Letzte Prüfung: Der CNAME-Eintrag fehlt oder zeigt woanders hin. Richte ihn auf den Wert unten.",
+					"httpsUnreachable": "Letzte Prüfung: DNS stimmt, aber dieser Host antwortet nicht per HTTPS mit gültigem Zertifikat. Lege in deinem Reverse Proxy eine Site dafür an.",
+					"httpsWrongResponse": "Letzte Prüfung: Dieser Host antwortet per HTTPS, aber nicht mit dem Tracking-Handler von Owlat. Leite ihn an deine Convex-Site-URL weiter.",
+					"inconclusive": "Letzte Prüfung: DNS konnte nicht abgefragt werden. Versuch es in ein paar Minuten noch einmal."
+				},
+				"failingHint": "Neue Kampagnen nutzen diese Domain noch. Owlat prüft innerhalb der nächsten Stunde erneut und nutzt sie nicht mehr, wenn die Prüfung wieder fehlschlägt.",
+				"lapsedHint": "Neue Kampagnen nutzen den Standard-Tracking-Host, bis diese Domain wieder bestätigt ist."
 			},
 			"yahooCflPanel": {
 				"confirmButton": "Yahoo hat die Domain akzeptiert",

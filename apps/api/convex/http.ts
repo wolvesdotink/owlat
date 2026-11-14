@@ -2,7 +2,7 @@ import { httpRouter } from 'convex/server';
 import { beginUpload, finishUpload, abortUpload } from './storage/uploadsHttp';
 import { authComponent, createAuth } from './auth/auth';
 import { withVerifiedClientIp } from './auth/ipAddress';
-import { trackOpen, trackClick } from './delivery/trackingHttp';
+import { trackOpen, trackClick, trackProbe } from './delivery/trackingHttp';
 import { seedAdmin } from './auth/seedAdminHttp';
 import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
@@ -61,6 +61,13 @@ http.route({
 	pathPrefix: '/t/c/',
 	method: 'GET',
 	handler: trackClick,
+});
+
+// Tracking-domain probe: GET /t/probe/{nonce}
+http.route({
+	pathPrefix: '/t/probe/',
+	method: 'GET',
+	handler: trackProbe,
 });
 
 // ============ UNSUBSCRIBE ROUTES ============
