@@ -120,6 +120,7 @@ describe('the sender and the variables', () => {
 				domainStatus: unverified,
 				dataVariables: { firstName: 3 },
 				dataVariablesSchema: { firstName: 'string' },
+				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ reason: 'domain_unverified', detail: expect.stringContaining('"x.test"') });
 		expect(
@@ -127,6 +128,7 @@ describe('the sender and the variables', () => {
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 3 },
 				dataVariablesSchema: { firstName: 'string' },
+				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ reason: 'invalid_variables' });
 		expect(
@@ -134,6 +136,7 @@ describe('the sender and the variables', () => {
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 'Ada' },
 				dataVariablesSchema: { firstName: 'string' },
+				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toBeUndefined();
 	});

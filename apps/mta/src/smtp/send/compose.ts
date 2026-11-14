@@ -3,11 +3,13 @@
  *
  * The structured job is composed (or the sealed-mail raw MIME taken verbatim),
  * then DKIM-signed over those bytes, and the SAME buffer is retried across every
- * MX host and TLS profile — byte-identical, DKIM-stable retries. The phase also
- * resolves the VERP return path and the RFC 9477 complaint-feedback pair that
+ * MX host and TLS profile — byte-identical, DKIM-stable retries. A later queue
+ * attempt of the same job composes the same bytes again (see `messageIdentity`).
+ * The phase also resolves the VERP return path and the RFC 9477 complaint-feedback pair that
  * ride on it.
  */
 
+import { createHash, createHmac } from 'node:crypto';
 import type Redis from 'ioredis';
 import {
 	composeMessage,
@@ -78,11 +80,49 @@ function withoutCfblHeaders(
 }
 
 /**
+ * The parts of a message that must not change between queue attempts.
+ *
+ * Every attempt (an MX retry, a defer re-enqueue, a Convex retry under the same
+ * message id) composes again, so anything the composer would otherwise draw
+ * from the clock or from randomness has to come from the job instead. With the
+ * same date, Message-ID and boundaries every attempt writes the same bytes and,
+ * under an unchanged key, the same DKIM signature: a receiver that saw a
+ * deferred copy recognises the retry as the same message.
+ *
+ * The date is when the message was first enqueued, clamped to now so a skewed
+ * producer clock never dates mail in the future (a DKIM `t=` from the future
+ * fails verification). A legacy job without `firstEnqueuedAt` takes now.
+ *
+ * The boundary seed is an HMAC of the message id under `MTA_SECRET`, not the
+ * bare id: the composer rejects a body line equal to a boundary delimiter, and
+ * a boundary anyone could predict would let a merged template value make the
+ * message fail to compose.
+ */
+interface MessageIdentity {
+	date: Date;
+	boundarySeed: string;
+	messageIdLocalPart: string;
+}
+
+function messageIdentity(job: EmailJob, mtaSecret: string, now: number): MessageIdentity {
+	const date = new Date(Math.min(job.firstEnqueuedAt ?? now, now));
+	const boundarySeed = createHmac('sha256', mtaSecret)
+		.update(`mime-boundary:${job.messageId}`)
+		.digest('hex')
+		.slice(0, 32);
+	// The job id may hold characters a Message-ID cannot (`:` in some idempotency
+	// keys), so the local part is a digest of it rather than the id itself.
+	const messageIdLocalPart = createHash('sha256').update(job.messageId).digest('hex').slice(0, 32);
+	return { date, boundarySeed, messageIdLocalPart };
+}
+
+/**
  * Compose a structured (non-sealed) job into RFC 822 bytes via
  * `@owlat/mail-message`. Preserves the historic payload: html/text (with an
  * HTML-derived fallback), the AMP alternative, decoded attachments, the tracing
  * headers, the VERP envelope, and a From-aligned Message-ID (a caller-supplied
- * Message-ID header wins).
+ * Message-ID header wins). Date, Message-ID and boundaries come from
+ * {@link messageIdentity}.
  *
  * `feedbackHeaders` carries the RFC 9477 CFBL pair. Any caller-supplied CFBL
  * field is STRIPPED from `job.headers` first — see {@link withoutCfblHeaders} —
@@ -90,6 +130,7 @@ function withoutCfblHeaders(
  */
 function composeStructured(
 	job: EmailJob,
+	identity: MessageIdentity,
 	verpAddress: string,
 	feedbackHeaders: Record<string, string>
 ): { raw: Buffer } {
@@ -130,13 +171,16 @@ function composeStructured(
 			'X-Owlat-Message-Id': job.messageId,
 			'X-Owlat-Org-Id': job.organizationId,
 		},
-		// A caller-supplied Message-ID wins; otherwise From-align it (only when the
-		// From carries a domain — else the composer derives it from the From addr-spec).
+		// A caller-supplied Message-ID wins; otherwise a From-aligned one derived
+		// from the job id (only when the From carries a domain — else the composer
+		// derives one from the From addr-spec).
 		...(suppliedMessageId !== undefined
 			? { messageId: suppliedMessageId }
 			: fromDomain
-				? { messageIdDomain: fromDomain }
+				? { messageId: `<${identity.messageIdLocalPart}@${fromDomain}>` }
 				: {}),
+		date: identity.date,
+		boundarySeed: identity.boundarySeed,
 		envelope: { from: verpAddress, to: [job.to] },
 	});
 }
@@ -158,16 +202,18 @@ function composeStructured(
  */
 function buildSignedBytes(
 	job: EmailJob,
+	identity: MessageIdentity,
 	dkimConfig: DkimSigningKey | undefined,
 	verpAddress: string,
 	feedbackHeaders: Record<string, string>
 ): { bytes: Buffer; signed: boolean } {
 	const raw = job.sealedMimeBase64
 		? Buffer.from(job.sealedMimeBase64, 'base64')
-		: composeStructured(job, verpAddress, feedbackHeaders).raw;
+		: composeStructured(job, identity, verpAddress, feedbackHeaders).raw;
 	if (!dkimConfig) return { bytes: raw, signed: false };
 	try {
-		return { bytes: signMessage(raw, dkimConfig), signed: true };
+		// `t=` is the message date too, so a retry signs to the same signature.
+		return { bytes: signMessage(raw, dkimConfig, identity.date.getTime()), signed: true };
 	} catch (err) {
 		if (job.requireDkimSignature === true) {
 			logger.error(
@@ -217,9 +263,9 @@ export async function prepareSignedMessage(
 	// domain). Absent → global fallback, so a domain with no override behaves
 	// exactly as before. Attribution stays domain-agnostic: the VERP token's HMAC
 	// is computed over the message id + time window (never the host), and the
-	// bounce server accepts `bounce+…` at ANY host — so a DSN arriving at the
-	// per-domain host still verifies and suppresses the right recipient (see
-	// bounce/verp.ts, bounce/server.ts).
+	// bounce server accepts `bounce+…` at every registered per-domain host
+	// (bounce/feedbackHosts.ts) — so a DSN arriving at the per-domain host still
+	// verifies and suppresses the right recipient (see bounce/verp.ts).
 	const perDomainReturnPath = await getReturnPathHost(redis, job.dkimDomain.toLowerCase());
 	const feedbackHost = perDomainReturnPath ?? config.returnPathDomain;
 	const verpAddress = buildVerpAddress(job.messageId, feedbackHost);
@@ -253,6 +299,12 @@ export async function prepareSignedMessage(
 	// sends unsigned, so `dkimConfig` presence gates emission too — otherwise we
 	// would publish exactly the inert, provider-discarded header the unaligned
 	// branch already refuses to publish.
+	//
+	// The pair is signed, so its token window comes from the message date like
+	// the rest of the identity: a retry on a later day keeps the same bytes. A
+	// complaint about a message delivered late by retries therefore has that
+	// many days less of the acceptance window.
+	const identity = messageIdentity(job, config.mtaSecret, Date.now());
 	const cfbl: CfblHeaderResult = job.sealedMimeBase64
 		? { outcome: 'sealed_raw', headers: {} }
 		: buildCfblHeaders({
@@ -260,10 +312,12 @@ export async function prepareSignedMessage(
 				cfblHost: feedbackHost,
 				fromDomain: extractDomainOrNull(job.from) ?? '',
 				dkimSigned: dkimConfig !== undefined,
+				now: identity.date.getTime(),
 			});
 
 	const { bytes: signedBytes, signed: dkimSigned } = buildSignedBytes(
 		job,
+		identity,
 		dkimConfig,
 		verpAddress,
 		cfbl.headers

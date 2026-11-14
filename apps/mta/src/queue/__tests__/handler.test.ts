@@ -1637,6 +1637,23 @@ describe('handleEmailJob', () => {
 			]);
 		});
 
+		it('holds a Postbox message whose key is lost rather than send it unsigned', async () => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+
+			await run(
+				createJob({
+					messageId: 'pb-message1-0',
+					organizationId: 'postbox',
+					queueLane: 'postbox',
+					requireDkimSignature: true,
+				})
+			);
+
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(queue.add).toHaveBeenCalledOnce();
+			expect((await readDkimSigningHolds(redis))[0]?.cause).toBe('no_key');
+		});
+
 		it('is held the same way when the stored key is corrupt', async () => {
 			const { sendToMx } = await import('../../smtp/sender.js');
 			await setDkimKey(redis, 'owlat.com', 's1', 'not a private key', 'org-1');

@@ -23,6 +23,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
+import { findContactByIdentifier } from '../contacts/resolution';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
@@ -36,6 +37,7 @@ import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
+import { chargeTransactionalSendCaps } from './sendCaps';
 import { templateSlugOfSend } from './sendStatus';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
@@ -49,6 +51,7 @@ import {
 	validateDataVariables,
 	resolveLanguage,
 	selectContent,
+	selectSendContent,
 	mergeAttachments,
 } from './dispatchContent';
 import {
@@ -110,6 +113,33 @@ async function resolveIntakeRoute(
 	return routing.route;
 }
 
+/**
+ * The language stored on the recipient's contact, read before the contact
+ * upsert so a refused request writes nothing. The upsert never overwrites a
+ * stored language, so the plan resolves the same one after it.
+ */
+async function storedLanguage(ctx: MutationCtx, email: string): Promise<string | undefined> {
+	return (await findContactByIdentifier(ctx, 'email', email))?.contact.language;
+}
+
+/**
+ * The template a request names, by id or by slug. A malformed id, or one from
+ * another table, reads as no template, the same as an unknown one.
+ */
+async function loadRequestedTemplate(
+	ctx: MutationCtx,
+	lookup: Parameters<typeof decideTemplate>[0]
+): Promise<Parameters<typeof decideTemplate>[1]> {
+	if (lookup.kind === 'slug') {
+		return await ctx.db
+			.query('transactionalEmails')
+			.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
+			.first();
+	}
+	const templateId = ctx.db.normalizeId('transactionalEmails', lookup.id);
+	return templateId ? await ctx.db.get(templateId) : null;
+}
+
 // ============================================================
 // Internal mutation — the intake entry point
 // ============================================================
@@ -126,6 +156,8 @@ export const dispatch = internalMutation({
 		// The caller's Idempotency-Key (`auth/apiRequestReceipts.ts`): a repeat
 		// of a committed request returns its outcome and sends nothing.
 		idempotency: v.optional(idempotencyArgValidator),
+		// The API key the request authenticated with, for its daily send cap.
+		apiKeyId: v.optional(v.id('apiKeys')),
 	},
 	handler: async (ctx, args): Promise<DispatchOutcome> => {
 		// 0. Idempotency, before any gate: a request that already committed is
@@ -184,17 +216,9 @@ export const dispatch = internalMutation({
 		if (!gates.ok) return gates;
 
 		// 2. Template lookup + publish + has-HTML checks.
-		const lookup = args.templateLookup;
-		const templateId =
-			lookup.kind === 'id' ? ctx.db.normalizeId('transactionalEmails', lookup.id) : null;
 		const found = decideTemplate(
-			lookup,
-			lookup.kind === 'id'
-				? templateId && (await ctx.db.get(templateId))
-				: await ctx.db
-						.query('transactionalEmails')
-						.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
-						.first()
+			args.templateLookup,
+			await loadRequestedTemplate(ctx, args.templateLookup)
 		);
 		if (!found.ok) return found;
 		const { template } = found;
@@ -202,7 +226,8 @@ export const dispatch = internalMutation({
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
-		// 3–4. The sending domain must be verified, then the variables must match.
+		// 3–4. The sending domain must be verified, then the variables must match;
+		//      then the volume caps (`./sendCaps.ts`).
 		const sender = senderDefaults(settings, {
 			defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
 			defaultFromName: getOptional('DEFAULT_FROM_NAME'),
@@ -212,8 +237,11 @@ export const dispatch = internalMutation({
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,
 			dataVariablesSchema: template.dataVariablesSchema,
+			content: selectSendContent(template, args.language, await storedLanguage(ctx, args.email)),
 		});
 		if (refusal) return refusal;
+		const capped = await chargeTransactionalSendCaps(ctx, template._id, args);
+		if (capped) return capped;
 
 		// 5. Contact resolution, through the Contact resolution module in
 		//    `upsert` mode; the contact is read back for its stored language.

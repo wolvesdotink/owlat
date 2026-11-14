@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { createTestContact } from '../../__tests__/factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+} from '../../__tests__/factories';
 import {
 	evaluateSunset,
 	isClockCorroborated,
@@ -8,7 +12,7 @@ import {
 	SUNSET_POLICY_DEFAULTS,
 } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
-import { DAY, NOW, daysAgo, facts, harness, policy } from './sunsetFixtures';
+import { DAY, NOW, daysAgo, facts, harness, policy, recordCampaignSend } from './sunsetFixtures';
 
 /**
  * THE BLOCKING SAFETY SUITE (deliverability plan P4-4).
@@ -143,10 +147,12 @@ describe('sunset safety — auto-suppression NEVER deletes data', () => {
 				addedAt: daysAgo(500),
 			});
 			for (const at of [daysAgo(480), daysAgo(400), daysAgo(320)]) {
+				await recordCampaignSend(ctx, id, at);
 				await ctx.db.insert('contactActivities', {
 					contactId: id,
 					activityType: 'email_sent',
 					occurredAt: at,
+					metadata: { emailType: 'campaign' },
 				});
 			}
 			const activities = await ctx.db
@@ -254,11 +260,7 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 					updatedAt: daysAgo(900),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(880),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(880));
 			// The genuinely newest engagement — written before everything older.
 			await ctx.db.insert('contactActivities', {
 				contactId: id,
@@ -305,28 +307,24 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 		}
 	);
 
-	it('measures the first send from the oldest occurredAt, not the first row written', async () => {
+	it('measures from the first campaign mail that was sent, past one that never was', async () => {
 		const t = harness();
 		const contactId = await t.run(async (ctx) => {
 			const id = await ctx.db.insert(
 				'contacts',
 				createTestContact({
-					email: 'late-import@example.com',
+					email: 'first-sent@example.com',
 					createdAt: daysAgo(900),
 					updatedAt: daysAgo(900),
 				})
 			);
-			// A recent send written first, then the true first send backfilled.
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(10),
-			});
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(800),
-			});
+			// A campaign Send that failed before it left: no `sentAt`.
+			const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sent' }));
+			await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId: id, status: 'failed', queuedAt: daysAgo(850) })
+			);
+			await recordCampaignSend(ctx, id, daysAgo(800));
 			return id;
 		});
 
@@ -340,9 +338,123 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 			});
 		});
 
-		// 800 quiet days against a 270-day window: the engine only reaches this
-		// verdict if it read the OLDEST send rather than the first row written.
 		expect(applied.verdict.action).toBe('suppress');
+		expect(applied.verdict.action === 'suppress' && Math.round(applied.verdict.quietDays)).toBe(
+			800
+		);
+	});
+
+	it('does not count automation or transactional mail as send history', async () => {
+		// A contact who only ever received drips: that mail has no pixel and no
+		// wrapped links, so nothing they did with it could have been seen.
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'drips-only@example.com',
+					createdAt: daysAgo(900),
+					updatedAt: daysAgo(900),
+				})
+			);
+			for (const at of [daysAgo(800), daysAgo(500), daysAgo(300)]) {
+				await ctx.db.insert('contactActivities', {
+					contactId: id,
+					activityType: 'email_sent',
+					occurredAt: at,
+					metadata: { emailType: 'automation' },
+				});
+			}
+			return id;
+		});
+
+		const applied = await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				clock: { now: NOW },
+			});
+		});
+
+		expect(applied.verdict).toMatchObject({ action: 'hold', reason: 'no_send_history' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(0);
+		});
+	});
+
+	it('holds a contact whose recent campaign mail was only fetched by a proxy', async () => {
+		// Apple Mail Privacy Protection fetches the pixel on arrival; a reader
+		// behind it never registers a human open. Quiet on paper, but measured
+		// blind.
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'mpp@example.com',
+					createdAt: daysAgo(900),
+					updatedAt: daysAgo(900),
+				})
+			);
+			await recordCampaignSend(ctx, id, daysAgo(600));
+			await recordCampaignSend(ctx, id, daysAgo(20), { automatedOpenedAt: daysAgo(20) });
+			return id;
+		});
+
+		const applied = await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				clock: { now: NOW },
+			});
+		});
+
+		expect(applied.verdict).toMatchObject({ action: 'hold', reason: 'opens_unmeasurable' });
+	});
+
+	it('looks past newer campaign Sends that never left for that automated fetch', async () => {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'mpp-queued@example.com',
+					createdAt: daysAgo(900),
+					updatedAt: daysAgo(900),
+				})
+			);
+			await recordCampaignSend(ctx, id, daysAgo(600));
+			await recordCampaignSend(ctx, id, daysAgo(20), { automatedOpenedAt: daysAgo(20) });
+			for (let i = 0; i < 6; i++) {
+				const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sent' }));
+				await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({
+						campaignId,
+						contactId: id,
+						status: 'failed',
+						queuedAt: daysAgo(10),
+					})
+				);
+			}
+			return id;
+		});
+
+		const applied = await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				clock: { now: NOW },
+			});
+		});
+
+		expect(applied.verdict).toMatchObject({ action: 'hold', reason: 'opens_unmeasurable' });
 	});
 });
 
@@ -366,11 +478,7 @@ describe('sunset safety — an explicit act by the contact resets the quiet cloc
 					updatedAt: daysAgo(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(480),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(480));
 			// The last time they opened anything was 300 days ago.
 			await ctx.db.insert('contactActivities', {
 				contactId: id,
@@ -428,11 +536,7 @@ describe('sunset safety — a jumped clock never fires', () => {
 					updatedAt: daysAgo(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(480),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(480));
 			return id;
 		});
 
@@ -465,11 +569,7 @@ describe('sunset safety — a jumped clock never fires', () => {
 					updatedAt: daysAgo(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(480),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(480));
 			return id;
 		});
 		await t.run(async (ctx) => {

@@ -173,3 +173,53 @@ describe('mail/outbound · dispatch guards', () => {
 		expect(blobs).toBe(0);
 	});
 });
+
+describe('mail/outbound · the MTA intake', () => {
+	beforeEach(() => {
+		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
+		vi.stubEnv('MTA_INTERNAL_URL', 'https://mta.test');
+		vi.stubEnv('MTA_API_KEY', 'mta-key');
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.restoreAllMocks();
+	});
+
+	async function intakeBody(t: T, draftId: Id<'mailDrafts'>): Promise<Record<string, unknown>> {
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockImplementation(async () => new Response('{}', { status: 200 }));
+		await dispatch(t, draftId);
+		const call = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/send/postbox'));
+		expect(call).toBeDefined();
+		return JSON.parse(String((call![1] as RequestInit).body)) as Record<string, unknown>;
+	}
+
+	async function registerDomain(t: T, providerType: string) {
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('domains', {
+				domain: 'a.test',
+				status: 'verified',
+				dnsRecords: {},
+				providerType,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+	}
+
+	it('asks the MTA to hold mail from a domain registered with it rather than send it unsigned', async () => {
+		const t = convexTest(schema, modules);
+		const draftId = await seedDraft(t);
+		await registerDomain(t, 'mta');
+		expect(await intakeBody(t, draftId)).toMatchObject({ requireDkimSignature: true });
+	});
+
+	it('leaves the requirement off for a domain the MTA does not sign', async () => {
+		const t = convexTest(schema, modules);
+		const draftId = await seedDraft(t);
+		await registerDomain(t, 'ses');
+		expect(await intakeBody(t, draftId)).not.toHaveProperty('requireDkimSignature');
+	});
+});

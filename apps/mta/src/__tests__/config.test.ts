@@ -34,6 +34,25 @@ describe('loadConfig', () => {
 		expect(() => loadConfig()).toThrow('MTA_API_KEY');
 	});
 
+	it.each(['MTA_API_KEY', 'MTA_WEBHOOK_SECRET'])(
+		'refuses a placeholder or short %s in production and accepts it otherwise',
+		(name) => {
+			process.env['MTA_API_KEY'] = 'mta_a-generated-value-0123456789abcdef0123';
+			process.env['MTA_WEBHOOK_SECRET'] = 'whsec_a-generated-value-0123456789abcdef01';
+			process.env[name] = 'change-me';
+			process.env['NODE_ENV'] = 'production';
+			expect(() => loadConfig()).toThrow(`${name} is a documentation placeholder`);
+			process.env[name] = 'short-but-not-a-placeholder';
+			expect(() => loadConfig()).toThrow(`${name} must be at least 32 bytes`);
+			process.env[name] = 'a-generated-value-0123456789abcdef0123456789';
+			expect(() => loadConfig()).not.toThrow();
+
+			process.env[name] = 'change-me';
+			process.env['NODE_ENV'] = 'test';
+			expect(() => loadConfig()).not.toThrow();
+		}
+	);
+
 	it('throws on missing EHLO_HOSTNAME', () => {
 		delete process.env['EHLO_HOSTNAME'];
 		expect(() => loadConfig()).toThrow('EHLO_HOSTNAME');

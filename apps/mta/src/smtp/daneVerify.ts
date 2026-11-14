@@ -200,7 +200,7 @@ export type DaneDecision =
 /**
  * Decide how to handle DANE for one recipient MX host. Never throws.
  *
- * The DANE mode (`off`/`report`/`enforce`, default `report`) governs the two
+ * The DANE mode (`off`/`report`/`enforce`, default `off`) governs the two
  * strict outcomes:
  *
  *  - In `enforce`, a `lookup-failed` TLSA result becomes `defer` (fail-closed):

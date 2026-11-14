@@ -9,7 +9,7 @@
  *  - The return-path SPF record an operator must publish on RETURN_PATH_DOMAIN.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
 	DEFAULT_SPF_QUALIFIER,
 	MAX_RELAY_SPF_TERMS,
@@ -73,11 +73,11 @@ describe('buildSpfRecordValue', () => {
 });
 
 describe('resolveSpfQualifier / isSpfQualifier', () => {
-	it('accepts the four valid qualifiers', () => {
+	it('accepts only the qualifiers domain verification accepts', () => {
 		expect(isSpfQualifier('~all')).toBe(true);
 		expect(isSpfQualifier('-all')).toBe(true);
-		expect(isSpfQualifier('?all')).toBe(true);
-		expect(isSpfQualifier('+all')).toBe(true);
+		expect(isSpfQualifier('?all')).toBe(false);
+		expect(isSpfQualifier('+all')).toBe(false);
 	});
 
 	it('rejects anything else', () => {
@@ -92,6 +92,22 @@ describe('resolveSpfQualifier / isSpfQualifier', () => {
 		expect(resolveSpfQualifier('')).toBe('~all');
 		expect(resolveSpfQualifier('garbage')).toBe('~all');
 		expect(resolveSpfQualifier('  -all  ')).toBe('-all');
+	});
+
+	it('generates the default for ?all and +all, which can never verify, and warns', () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			expect(resolveSpfQualifier('+all')).toBe('~all');
+			expect(resolveSpfQualifier('?all')).toBe('~all');
+			expect(warn).toHaveBeenCalledTimes(2);
+			expect(String(warn.mock.calls[0]?.[0])).toContain('SPF_QUALIFIER');
+			warn.mockClear();
+			resolveSpfQualifier(undefined);
+			resolveSpfQualifier('-all');
+			expect(warn).not.toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });
 

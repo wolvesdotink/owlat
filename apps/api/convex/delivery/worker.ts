@@ -15,7 +15,11 @@ import type { FooterUrls } from './sendComposition/footer';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { resolveAttachments } from './attachmentFetch';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
-import { dispatchGovernedEmail } from './governedDispatch';
+import {
+	dispatchGovernedEmail,
+	governedIdempotencyKey,
+	type DispatchRef,
+} from './governedDispatch';
 import { armForTransportLabel } from './sendAssignments';
 import {
 	envelopeInputValidator,
@@ -24,7 +28,12 @@ import {
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
 import { sendWorkerOutcomeValidator, type SendWorkerOutcome } from './workerOutcome';
-import { marketingDispatchRecipient, type MarketingDispatchRefusal } from './marketingDispatchGate';
+import {
+	marketingDispatchRecipient,
+	sendingHoldOutcome,
+	transactionalDispatchRecipient,
+	type MarketingDispatchVerdict,
+} from './marketingDispatchGate';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -245,6 +254,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 			autoSubmittedType: envelopeInput.autoSubmittedType,
 			unsubscribeUrl: footer?.unsubscribeUrl,
 			preferenceUrl: footer?.preferenceUrl,
+			footerLanguage: envelopeInput.footerLanguage,
+			senderAddress: envelopeInput.senderAddress,
 			organizationId: envelopeInput.organizationId,
 			// The join key between this send and the IMAP observation. Absent on
 			// every envelope bound for a real recipient; without it a scheduled
@@ -297,6 +308,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		organizationId: envelopeInput.organizationId,
 		unsubscribeUrl: footer?.unsubscribeUrl,
 		preferenceUrl: footer?.preferenceUrl,
+		footerLanguage: envelopeInput.footerLanguage,
+		senderAddress: envelopeInput.senderAddress,
 		listUnsubscribeHeader,
 		// RFC 2919 List-Id — the orchestrator pre-builds it from the topic +
 		// sending domain (`getListIdHeader`) and threads it through the envelope.
@@ -309,6 +322,24 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		seedProbeId: envelopeInput.seedProbeId,
 	};
 	return composeInput;
+}
+
+/** The durable reference a governed dispatch of this envelope is bound to. */
+function dispatchRefFor(envelopeInput: WorkerEnvelopeInput): DispatchRef | undefined {
+	if (envelopeInput.kind === 'campaign' && envelopeInput.emailSendId) {
+		return { kind: 'campaign', id: envelopeInput.emailSendId };
+	}
+	// A seed probe's durable reference is its probe ledger row: enough for a
+	// stable idempotency key and an authenticated re-entry token, and
+	// deliberately not a Send. Checked ahead of `sendId` on either kind — the
+	// exclusion above already refuses an envelope carrying both, so the order
+	// only decides which error a malformed probe would produce, and this one
+	// keeps the probe arm unreachable-by-a-countable-send by construction.
+	if (envelopeInput.seedProbeRef) return { kind: 'seedProbe', id: envelopeInput.seedProbeRef };
+	if (envelopeInput.kind === 'transactional' && envelopeInput.sendId) {
+		return { kind: 'transactional', id: envelopeInput.sendId };
+	}
+	return undefined;
 }
 
 /**
@@ -339,13 +370,29 @@ export const sendSingleEmail = internalAction({
 		// suppression obligation (CAN-SPAM §316.5, Gmail/Yahoo 2024) holds until
 		// the message leaves. Point reads only. Returned, never thrown, so the
 		// workpool does not retry; see delivery/marketingDispatchGate.ts.
-		const marketingRecipient = marketingDispatchRecipient(envelopeInput);
-		if (marketingRecipient) {
-			const refusal: MarketingDispatchRefusal | null = await ctx.runQuery(
+		// Real transactional mail gets the blocklist half of the same gate.
+		//
+		// It also HOLDS marketing mail while the deployment's sending is
+		// suspended or banned: the envelope comes back as a deferral that spends
+		// no attempt and is re-entered until the suspension is lifted or the
+		// delivery deadline passes (see `sendingHoldOutcome`).
+		const gateRecipient =
+			marketingDispatchRecipient(envelopeInput) ?? transactionalDispatchRecipient(envelopeInput);
+		if (gateRecipient) {
+			const verdict: MarketingDispatchVerdict | null = await ctx.runQuery(
 				internal.delivery.marketingDispatchGate.checkMarketingDispatch,
-				marketingRecipient
+				gateRecipient
 			);
-			if (refusal) return refusal;
+			if (verdict?.kind === 'suppressed') return verdict;
+			if (verdict?.kind === 'held') {
+				return sendingHoldOutcome({
+					envelopeInput,
+					retryState,
+					idempotencyKey:
+						retryState?.idempotencyKey ?? governedIdempotencyKey(dispatchRefFor(envelopeInput)),
+					now: Date.now(),
+				});
+			}
 		}
 
 		const composeInput = buildComposeInput(envelopeInput);
@@ -389,21 +436,7 @@ export const sendSingleEmail = internalAction({
 			// dispatch never point-reads a contact per send; absent for unscored
 			// contacts and for sends with no contact record at all.
 			engagementScore: envelopeInput.engagementScore,
-			sendRef:
-				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
-					? { kind: 'campaign', id: envelopeInput.emailSendId }
-					: // A seed probe's durable reference is its probe ledger row:
-						// enough for a stable idempotency key and an authenticated
-						// re-entry token, and deliberately not a Send. Checked ahead of
-						// `sendId` on either kind — the exclusion above already refuses an
-						// envelope carrying both, so the order only decides which error a
-						// malformed probe would produce, and this one keeps the probe arm
-						// unreachable-by-a-countable-send by construction.
-						envelopeInput.seedProbeRef
-						? { kind: 'seedProbe', id: envelopeInput.seedProbeRef }
-						: envelopeInput.kind === 'transactional' && envelopeInput.sendId
-							? { kind: 'transactional', id: envelopeInput.sendId }
-							: undefined,
+			sendRef: dispatchRefFor(envelopeInput),
 			retryState,
 			message: {
 				subject: composed.subject,

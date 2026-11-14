@@ -47,6 +47,8 @@ const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
 function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 	return {
 		ehloHostname: 'mx.owlat.test',
+		// The RCPT gate accepts `bounce+…` only on the hosts this MTA answers for.
+		returnPathDomain: 'bounces.owlat.test',
 		bounceMaxClients: 200,
 		bounceMaxConnectionsPerIp: 50,
 		bounceTarpitEnabled: false,

@@ -87,6 +87,15 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.maintenance.retention.sweepInboundFiles,
 		{}
 	);
+	// Template send data (transactional/sendDataRetention.ts): the variable
+	// values an API caller supplied leave a send a day after it finished. Hourly,
+	// so the day is not stretched to two.
+	crons.interval(
+		'retention: transactional data variables',
+		{ hours: 1 },
+		internal.transactional.sendDataRetention.sweepDataVariables,
+		{}
+	);
 	// Recently deleted (marketing/recentlyDeleted.ts): campaigns, automations
 	// and email templates deleted more than 30 days ago are removed for good.
 	crons.interval(

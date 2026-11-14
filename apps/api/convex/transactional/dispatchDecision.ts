@@ -22,10 +22,11 @@ import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import {
 	mergeAttachments,
-	resolveLanguage,
-	selectContent,
+	missingDataVariables,
+	selectSendContent,
 	validateDataVariables,
 	type AttachmentRef,
+	type SendContent,
 } from './dispatchContent';
 
 /**
@@ -45,12 +46,16 @@ export type DispatchRejectionReason =
 	| 'sender_not_configured'
 	| 'domain_unverified'
 	| 'invalid_variables'
+	| 'recipient_rate_limited'
+	| 'daily_send_limit'
 	| IdempotencyRefusalReason;
 
 export type DispatchRefusal = {
 	ok: false;
 	reason: DispatchRejectionReason;
 	detail?: string;
+	/** Set on the volume-cap refusals: when the cap admits the next send. */
+	retryAfterMs?: number;
 };
 
 export type DispatchOutcome =
@@ -149,7 +154,8 @@ export function senderDefaults(
 /**
  * The refusals left once the template is known, in order: the sending domain
  * must be registered and verified, then `dataVariables` must match the
- * template's declared schema.
+ * template's declared schema and supply every variable the content renders
+ * without a fallback.
  */
 export function decideSenderAndVariables(input: {
 	readonly domainStatus: {
@@ -159,6 +165,8 @@ export function decideSenderAndVariables(input: {
 	};
 	readonly dataVariables: Record<string, unknown> | undefined;
 	readonly dataVariablesSchema: Template['dataVariablesSchema'];
+	/** What this send renders; a variable it uses without a fallback must be supplied. */
+	readonly content: Pick<SendContent, 'subject' | 'html' | 'plainText'>;
 }): DispatchRefusal | undefined {
 	if (!input.domainStatus.verified) {
 		return {
@@ -172,6 +180,15 @@ export function decideSenderAndVariables(input: {
 	const validation = validateDataVariables(input.dataVariables, input.dataVariablesSchema);
 	if (!validation.valid) {
 		return { ok: false, reason: 'invalid_variables', detail: validation.error };
+	}
+	const missing = missingDataVariables(input.content, input.dataVariables);
+	if (missing.length > 0) {
+		const names = missing.map((name) => `"${name}"`).join(', ');
+		return {
+			ok: false,
+			reason: 'invalid_variables',
+			detail: `Missing data ${missing.length === 1 ? 'variable' : 'variables'} ${names}: the email uses ${missing.length === 1 ? 'it' : 'them'} without a fallback.`,
+		};
 	}
 	return undefined;
 }
@@ -219,42 +236,25 @@ export function planTransactionalSend(input: {
 	readonly now: number;
 }): TransactionalSendPlan {
 	const { template, request, route } = input;
-	const defaultLanguage = template.defaultLanguage ?? 'en';
 	// Fallback chain: request → contact → template default → 'en'. The contact
 	// upsert never overwrites a stored language, so a pre-existing one wins.
-	const language = resolveLanguage(
-		request.language,
-		input.contactLanguage,
-		template.defaultLanguage,
-		template.supportedLanguages ?? [defaultLanguage]
-	);
-	const content = selectContent(
-		language,
-		defaultLanguage,
-		template.htmlContent ?? '',
-		template.subject,
-		template.htmlTranslations
-	);
-	// The pre-generated text/plain body belongs to the DEFAULT language only —
-	// translations carry no translated text body, and pairing the default
-	// language's text with translated html would send two languages in one
-	// message. Absent → the composer strips the untracked html instead.
-	const plainText =
-		content.resolvedLanguage === defaultLanguage ? template.plainTextContent : undefined;
+	// No plain text (a translation) → the composer strips the untracked html.
+	const content = selectSendContent(template, request.language, input.contactLanguage);
+	const plainText = content.plainText;
 	const attachmentStorageIds = request.attachmentRefs
 		?.filter((a) => a.storageId)
 		.map((a) => a.storageId!);
 	const from = formatFromAddress(input.sender.fromEmail, input.sender.fromName);
 
 	return {
-		language: content.resolvedLanguage,
+		language: content.language,
 		attachmentStorageIds,
 		sendRow: {
 			kind: 'transactional' as const,
 			transactionalEmailId: template._id,
 			email: request.email,
 			contactId: input.contactId,
-			language: content.resolvedLanguage,
+			language: content.language,
 			dataVariables: request.dataVariables,
 			status: 'queued',
 			queuedAt: input.now,

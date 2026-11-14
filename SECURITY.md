@@ -74,23 +74,35 @@ The following secrets gate security-critical paths. If any are missing,
 the corresponding endpoint **must** return 503 — never fall back to
 accepting unsigned/unverified traffic.
 
-| Env var                                    | Used by                                                              | Failure mode if unset         |
-| ------------------------------------------ | -------------------------------------------------------------------- | ----------------------------- |
-| `BETTER_AUTH_SECRET`                       | `apps/api/convex/auth.ts`                                            | Session signing fails.        |
-| `INSTANCE_SECRET`                          | Mailbox auth, unsubscribe tokens, sealed IMAP and CardDAV passwords. | Various.                      |
-| `MTA_API_KEY`                              | Outbound mail dispatch, attachment scan.                             | No outbound mail.             |
-| `MTA_WEBHOOK_SECRET`                       | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)                    | 503.                          |
-| `RESEND_WEBHOOK_SECRET`                    | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)              | 503.                          |
-| `TWILIO_AUTH_TOKEN`                        | `webhooks/adapters/twilio.ts` (SMS webhook verification)             | 503.                          |
-| `META_APP_SECRET`                          | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST              | 503.                          |
-| `META_VERIFY_TOKEN`                        | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET               | 503.                          |
-| `GENERIC_WEBHOOK_SECRET`                   | `webhooks/channelsHttp.ts` `handleGenericWebhook`                    | 503.                          |
-| `UNSUBSCRIBE_SECRET`                       | Unsubscribe-link HMAC.                                               | Link generation/verify fails. |
-| `GOOGLE_SAFE_BROWSING_API_KEY` (optional)  | URL-reputation scanner.                                              | Reputation skipped.           |
-| `MICROSOFT_OAUTH_CLIENT_SECRET` (optional) | Microsoft sign-in token exchange and refresh.                        | No Microsoft sign-in offered. |
+| Env var                                                                         | Used by                                                                           | Failure mode if unset                                                                          |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                                                            | `apps/api/convex/auth.ts`                                                         | Session signing fails.                                                                         |
+| `INSTANCE_SECRET`                                                               | Mailbox auth, unsubscribe tokens, sealed IMAP and CardDAV passwords.              | Various.                                                                                       |
+| `MTA_API_KEY`                                                                   | Outbound mail dispatch, attachment scan.                                          | No outbound mail. A placeholder or a value under 32 bytes stops the MTA booting in production. |
+| `MTA_WEBHOOK_SECRET`                                                            | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)                                 | 503. A placeholder or a value under 32 bytes stops the MTA booting in production.              |
+| `MTA_SECRET`                                                                    | MTA: seals DKIM private keys and relay credentials at rest.                       | MTA refuses to boot.                                                                           |
+| `BOUNCE_VERP_KEY`                                                               | MTA: signs and verifies VERP bounce addresses.                                    | MTA refuses to boot.                                                                           |
+| `REDIS_PASSWORD`                                                                | Redis `requirepass`, and the MTA's `REDIS_URL`.                                   | `docker compose up` aborts.                                                                    |
+| `MAIL_SYNC_API_KEY`                                                             | `apps/mail-sync` `/send` and `/test` bearer token.                                | mail-sync refuses to boot.                                                                     |
+| `RESEND_WEBHOOK_SECRET`                                                         | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)                           | 503.                                                                                           |
+| `MANDRILL_WEBHOOK_KEY`                                                          | `webhooks/adapters/mandrill.ts` (`POST /webhooks/mandrill`)                       | 503.                                                                                           |
+| `EMAILIT_WEBHOOK_SECRET`                                                        | `webhooks/adapters/emailit.ts` (`POST /webhooks/emailit`)                         | 503.                                                                                           |
+| `TWILIO_AUTH_TOKEN`                                                             | `webhooks/adapters/twilio.ts` (SMS webhook verification)                          | 503.                                                                                           |
+| `META_APP_SECRET`                                                               | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST                           | 503.                                                                                           |
+| `META_VERIFY_TOKEN`                                                             | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET                            | 503.                                                                                           |
+| `GENERIC_WEBHOOK_SECRET`                                                        | `webhooks/channelsHttp.ts` `handleGenericWebhook`                                 | 503.                                                                                           |
+| `UNSUBSCRIBE_SECRET`                                                            | Unsubscribe-link HMAC.                                                            | Link generation/verify fails.                                                                  |
+| `GOOGLE_SAFE_BROWSING_API_KEY` (optional)                                       | URL-reputation scanner.                                                           | Reputation skipped.                                                                            |
+| `MICROSOFT_OAUTH_CLIENT_SECRET` (optional)                                      | Microsoft sign-in token exchange and refresh.                                     | No Microsoft sign-in offered.                                                                  |
+| `SNDS_DATA_FEED_URLS` (optional)                                                | Microsoft SNDS polling; each URL is a bearer credential.                          | SNDS data not polled.                                                                          |
+| `GOOGLE_POSTMASTER_CLIENT_SECRET`, `GOOGLE_POSTMASTER_REFRESH_TOKEN` (optional) | MTA: Google Postmaster Tools reputation polling (OAuth client and refresh token). | Not polled. Set without `GOOGLE_POSTMASTER_CLIENT_ID`, the MTA refuses to boot.                |
+| `ABUSIX_DNSBL_API_KEY` (optional)                                               | MTA: Abusix blocklist lookups; the key is part of every query name.               | Abusix not queried.                                                                            |
+| `BOUNCE_TLS_KEY` / `BOUNCE_TLS_KEY_FILE`                                        | MTA: private key of the inbound port-25 STARTTLS certificate.                     | The self-signed default is used.                                                               |
+| `SUBMISSION_TLS_KEY`                                                            | MTA: private key of the submission (587/465) certificate.                         | The MTA refuses to boot with submission enabled.                                               |
+| `HETZNER_API_TOKEN` (optional)                                                  | VPS template acme sidecar: DNS-01 challenge for the mail certificate.             | No certificate issued; IMAP and SMTP keep the self-signed one.                                 |
 
 The send-provider feedback routes (`/webhooks/mta`, `/webhooks/resend`,
-`/webhooks/ses`, `/webhooks/mandrill`) share one HTTP entry point —
+`/webhooks/ses`, `/webhooks/mandrill`, `/webhooks/emailit`) share one HTTP entry point —
 `webhooks/providerFeedbackHttp.ts`, which resolves the per-kind adapter from
 the `webhooks/adapters/` registry. Each adapter's `verifySignature` is where
 its 503 is returned, via `missingSecretResult` in `webhooks/security.ts`; the
@@ -118,6 +130,8 @@ Convex-side rate limits _are_ in place for:
 - Mail authentication (`apps/api/convex/mail/authRateLimit.ts`)
 - IMAP per-(IP, address) (`apps/imap/src/rateLimit.ts`)
 - Webhook ingestion (`publicRateLimit.checkPublicRateLimit`)
+- Transactional send volume: per template and recipient, and per API key
+  per UTC day (`apps/api/convex/transactional/sendCaps.ts`)
 - Form submissions
 
 If you add a new public Convex `httpAction`, run it through
@@ -160,7 +174,7 @@ describe. So a correspondent's address and a message subject do not go in one.
 1. **Redact, do not drop.** Route the value through
    `@owlat/shared/logRedaction`: `redactEmailAddress('marcel@example.com')` →
    `redacted-<digest>@example.com`, `redactSubject(s)` → `[subject len=N
-<digest>]`. The domain survives because it identifies a host and is what
+   <digest>]`. The domain survives because it identifies a host and is what
    operators route on; the digest is stable and unsalted, so two lines about the
    same recipient still line up across services and across restarts.
 2. **Know what that is and is not.** An address is low-entropy, so an unsalted
@@ -174,7 +188,7 @@ describe. So a correspondent's address and a message subject do not go in one.
    `email` / `recipient` / `rcptTo` / `mailFrom` / `address` / `sender` key that
    is not redacted. Qualified names (`fromDomain`, `toCount`, `senderId`) are out
    of scope; a genuinely non-address value opts out with `// log-pii-safe:
-<reason>`.
+   <reason>`.
 4. **The sidecars are central.** `apps/mta`, `apps/imap` and `apps/mail-sync`
    configure pino's `redact` with `LOG_REDACT_PATHS` + `logRedactCensor` in their
    logger module, so a new `logger.info({ rcptTo }, '…')` is censored without

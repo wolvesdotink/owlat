@@ -417,3 +417,28 @@ export function isEmptyAudienceComplete(
 	if (!advanced) return false;
 	return variantMode === 'ab_test' ? advanced.totalCandidates === 0 : advanced.enqueuedCount === 0;
 }
+
+/**
+ * What the campaign-send orchestrator (`startCampaignSend`) reports. `skipped`
+ * carries the reason a scheduled fire did nothing at the entry guards or the
+ * content-scan gate; `timezoneScheduled` is set when a timezone-aware delayed
+ * enqueue fired. `abTestCohort` and `abTestRemainder` describe the split while
+ * the campaign is in its A/B testing phase; the remainder waits for
+ * `declareABTestWinner` to schedule `sendCampaignWinnerToRemainder`.
+ */
+export interface CampaignSendResult {
+	totalRecipients: number;
+	totalBatches: number;
+	skipped?: boolean;
+	reason?: string;
+	timezoneScheduled?: boolean;
+	abTestCohort?: number;
+	abTestRemainder?: number;
+}
+
+/** What `sendCampaignWinnerToRemainder` reports: whether the winner's walk was scheduled. */
+export interface WinnerRemainderResult {
+	scheduled: boolean;
+	skipped?: boolean;
+	reason?: string;
+}

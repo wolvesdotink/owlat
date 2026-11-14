@@ -156,6 +156,8 @@ export async function openSendJob(
 		isPlannedTotalLowerBound: undefined,
 		isPlannedTotalCountAttempted: undefined,
 		resumeAt: undefined,
+		holdStartedAt: undefined,
+		holdExpiredAt: undefined,
 		updatedAt: now,
 	};
 	const existing = await ctx.db
@@ -240,6 +242,8 @@ export async function advanceJob(
 		enqueuedCount,
 		totalCandidates,
 		phase,
+		// A committed page means sending is allowed again: the hold is over.
+		holdStartedAt: undefined,
 		updatedAt: Date.now(),
 	});
 

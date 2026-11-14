@@ -17,6 +17,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { SendTimeHistogram } from '../analytics/sendTimeProfile';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
 import { nextUtcDayStart } from '../lib/clock';
+import { governedDeliveryDeadlineAt } from '@owlat/shared';
+import { SENDING_HOLD_RECHECK_MS, type SendingHold } from '../workspaces/abuseGate';
 import type { CampaignRecipient } from './audienceCandidates';
 import { planTodaysSlice, remainingRecipients } from './multiDaySendPlan';
 import {
@@ -82,6 +84,28 @@ export function decideHopStart(
 	if (!campaign || campaign.status !== 'sending') return { kind: 'stop' };
 	if (!campaign.emailTemplateId || !campaign.fromEmail) return { kind: 'stop' };
 	return { kind: 'walk', job, campaign: campaign as WalkingCampaign };
+}
+
+/**
+ * Does a suspension hold this walk? While sending is not allowed the hop
+ * enqueues nothing and asks again after `SENDING_HOLD_RECHECK_MS`, keeping its
+ * cursor, so a lift resumes the walk where it stopped and nobody is mailed
+ * twice. The hold is bounded like a held delivery: past the delivery deadline,
+ * counted from the first held hop, the walk ends instead of mailing whatever is
+ * left days later.
+ */
+export function decideWalkHold(input: {
+	readonly job: Pick<Job, 'holdStartedAt'>;
+	readonly hold: SendingHold | null;
+	readonly now: number;
+}):
+	| { readonly kind: 'walk' }
+	| { readonly kind: 'hold'; readonly holdStartedAt: number; readonly resumeAt: number }
+	| { readonly kind: 'expire' } {
+	if (input.hold === null) return { kind: 'walk' };
+	const holdStartedAt = input.job.holdStartedAt ?? input.now;
+	if (input.now >= governedDeliveryDeadlineAt(holdStartedAt)) return { kind: 'expire' };
+	return { kind: 'hold', holdStartedAt, resumeAt: input.now + SENDING_HOLD_RECHECK_MS };
 }
 
 /**
@@ -188,6 +212,8 @@ export interface HopSendContext {
 	readonly organizationId?: string;
 	/** RFC 2919 List-Id header value for a TOPIC campaign. */
 	readonly listId?: string;
+	/** The brand kit's company name and postal address, for the footer. */
+	readonly senderAddress?: string;
 	readonly useTimezone: boolean;
 	readonly scheduledHour?: number;
 	readonly scheduledMinute?: number;
@@ -206,6 +232,7 @@ export function hopSendContext(input: {
 	readonly organizationId: string | undefined;
 	readonly topic: { readonly _id: string; readonly name: string } | null;
 	readonly defaultTimezone: string | undefined;
+	readonly senderAddress?: string | undefined;
 }): HopSendContext {
 	const { campaign, siteUrl } = input;
 	// The sending domain is the host of the From address. A segment campaign has
@@ -234,6 +261,7 @@ export function hopSendContext(input: {
 		siteUrl,
 		organizationId: input.organizationId,
 		listId,
+		...(input.senderAddress !== undefined ? { senderAddress: input.senderAddress } : {}),
 		useTimezone: input.settings.isTimezoneAware,
 		scheduledHour: campaign.scheduledHour,
 		scheduledMinute: campaign.scheduledMinute,
@@ -312,6 +340,8 @@ export interface LanguageContent {
 	readonly htmlContent: string;
 	/** The text/plain body; the per-language query returns it for the default language only. */
 	readonly plainTextContent?: string;
+	/** The language the body is in, after the per-language query's fallback. */
+	readonly resolvedLanguage?: string;
 }
 
 /**
@@ -338,6 +368,9 @@ export function bucketContent(
 		subject,
 		htmlContent: content.htmlContent,
 		plainTextContent: content.plainTextContent,
+		...(content.resolvedLanguage !== undefined
+			? { resolvedLanguage: content.resolvedLanguage }
+			: {}),
 	};
 }
 

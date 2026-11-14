@@ -9,6 +9,7 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
+import type { FooterContent } from './footer';
 import type { TransformConfig } from './transform';
 
 export type SendCompositionKind =
@@ -107,6 +108,10 @@ export type CampaignComposeInput = {
 	// Pre-built URLs (caller owns HMAC)
 	unsubscribeUrl?: string;
 	preferenceUrl?: string;
+	// The footer's language (the body's) and the sender's postal address; both
+	// render only when the footer does. See `footer.ts`.
+	footerLanguage?: string;
+	senderAddress?: string;
 	listUnsubscribeHeader?: {
 		listUnsubscribe: string;
 		listUnsubscribePost: string;
@@ -148,6 +153,10 @@ export type TransactionalComposeInput = {
 	// the worker appends the unsubscribe footer. Omitted → no footer (default).
 	unsubscribeUrl?: string;
 	preferenceUrl?: string;
+	// The footer's language (the body's) and the sender's postal address; both
+	// render only when the footer does. See `footer.ts`.
+	footerLanguage?: string;
+	senderAddress?: string;
 	// Gmail FBL granularity — when present the transactional composer emits a
 	// `Feedback-ID` header on the `txn` stream (distinct from the `campaign`
 	// stream) so transactional/automation spam complaints aggregate separately.
@@ -165,6 +174,15 @@ export type TestComposeInput = {
 	kind: 'test';
 	template: SendTemplate;
 	sampleContact: Record<string, unknown>;
+	// A marketing preview carries the footer and the one-click header pair a
+	// real send carries, with links that change nothing (see
+	// `delivery/testPreviewLinks.ts`). Omitted for a transactional or block
+	// preview, which goes out without either.
+	footer?: FooterContent;
+	listUnsubscribeHeader?: {
+		listUnsubscribe: string;
+		listUnsubscribePost: string;
+	};
 };
 
 export type ArchiveSnapshotComposeInput = {

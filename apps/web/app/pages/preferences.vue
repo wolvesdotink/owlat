@@ -18,6 +18,11 @@ definePageMeta({
 
 const { senderName, contactEmail, logo } = useRecipientSender();
 
+// Opened from a test email: the footer of a preview links here without a
+// token (`delivery/testPreviewLinks.ts` in the API), so there is nobody to act
+// on and the page only says what the link does in a real send.
+const isTestPreview = useRoute().query['preview'] === 'test';
+
 interface Topic {
 	_id: string;
 	name: string;
@@ -184,7 +189,16 @@ async function savePreferences() {
 		/>
 
 		<RecipientStateCard
-			v-if="state === 'loading'"
+			v-if="isTestPreview"
+			variant="prompt"
+			tone="neutral"
+			width="lg"
+			:heading="t('recipient.shared.testPreview.heading')"
+			:message="t('recipient.shared.testPreview.preferences')"
+		/>
+
+		<RecipientStateCard
+			v-else-if="state === 'loading'"
 			variant="loading"
 			width="lg"
 			:message="t('recipient.preferences.loading')"

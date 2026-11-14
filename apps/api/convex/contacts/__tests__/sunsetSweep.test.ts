@@ -3,7 +3,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { SUNSET_BATCH_SIZE, SUNSET_STALE_MS } from '../sunsetSweep';
-import { DAY, harness, type Harness } from './sunsetFixtures';
+import { DAY, harness, type Harness, recordCampaignSend } from './sunsetFixtures';
 
 /**
  * THE SWEEP IS BOUNDED, RESUMABLE AND DOES NOT RESCAN SETTLED CONTACTS
@@ -165,11 +165,7 @@ describe('sunset sweep — it actually transitions contacts', () => {
 					updatedAt: agoReal(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: suppressMe,
-				activityType: 'email_sent',
-				occurredAt: agoReal(480),
-			});
+			await recordCampaignSend(ctx, suppressMe, agoReal(480));
 
 			const reengageMe = await ctx.db.insert(
 				'contacts',
@@ -179,11 +175,7 @@ describe('sunset sweep — it actually transitions contacts', () => {
 					updatedAt: agoReal(400),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: reengageMe,
-				activityType: 'email_sent',
-				occurredAt: agoReal(390),
-			});
+			await recordCampaignSend(ctx, reengageMe, agoReal(390));
 			await ctx.db.insert('contactActivities', {
 				contactId: reengageMe,
 				activityType: 'email_opened',
@@ -289,11 +281,7 @@ describe('sunset sweep — the per-tick suppression ceiling', () => {
 						updatedAt: agoReal(500),
 					})
 				);
-				await ctx.db.insert('contactActivities', {
-					contactId: id,
-					activityType: 'email_sent',
-					occurredAt: agoReal(480),
-				});
+				await recordCampaignSend(ctx, id, agoReal(480));
 			}
 		});
 	}
@@ -452,11 +440,7 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 						updatedAt: agoReal(900),
 					})
 				);
-				await ctx.db.insert('contactActivities', {
-					contactId: id,
-					activityType: 'email_sent',
-					occurredAt: agoReal(880),
-				});
+				await recordCampaignSend(ctx, id, agoReal(880));
 				await ctx.db.patch(id, { sunsetEvaluatedAt: agoReal(365) });
 			}
 		});
@@ -721,11 +705,7 @@ describe('sunset sweep — hostile arguments', () => {
 					updatedAt: agoReal(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: agoReal(480),
-			});
+			await recordCampaignSend(ctx, id, agoReal(480));
 		});
 
 		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
@@ -761,11 +741,7 @@ describe('sunset sweep — hostile arguments', () => {
 						updatedAt: agoReal(500),
 					})
 				);
-				await ctx.db.insert('contactActivities', {
-					contactId: id,
-					activityType: 'email_sent',
-					occurredAt: agoReal(480),
-				});
+				await recordCampaignSend(ctx, id, agoReal(480));
 			}
 		});
 

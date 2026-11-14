@@ -9,9 +9,10 @@
  * first verification mail fails SPF and DMARC at the recipient.
  *
  * The sending hostname (`EHLO_HOSTNAME`) is the proposal because it is the one
- * domain every MTA install already controls DNS for. It is not DKIM-signed by
- * default: the MTA signs only domains added in the app. With the bounce domain
- * under the same parent domain, SPF still aligns in relaxed mode.
+ * domain every MTA install already controls DNS for. The admin seed registers
+ * the address's domain as a sending domain, so the MTA has a key to sign
+ * system mail with (`apps/api/convex/domains/systemSenderDomain.ts`). With the
+ * bounce domain under the same parent domain, SPF still aligns in relaxed mode.
  */
 
 /** The display name system mail carries when the operator names none. */

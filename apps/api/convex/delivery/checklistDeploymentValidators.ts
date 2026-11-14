@@ -1,5 +1,6 @@
 'use node';
 
+import { ADAPTIVE_WARMING_POLICY } from '@owlat/shared/warming';
 import {
 	SES_RELAY_PROOF_MAX_AGE_MS,
 	serializeDeliverabilityObservation,
@@ -33,6 +34,42 @@ import {
  * now" asks the MTA for a fresh observation, so it does not wait on the sweep.
  */
 export const OUTBOUND_IDENTITY_MAX_AGE_MS = 75 * 60_000;
+
+/**
+ * A ramp in progress is the intended state, not a finding: it passes while no
+ * active address is halted (`plateau`) or past the thresholds at which the MTA
+ * steps its schedule back. Only a halted or regressing ramp needs attention.
+ */
+function observeWarmup(
+	warming: NonNullable<ChecklistVerificationContext['warming']>
+): ChecklistObservation {
+	const { deceleration } = ADAPTIVE_WARMING_POLICY;
+	const warmingIps = warming.ips.filter((entry) => entry.active && entry.phase !== 'graduated');
+	const halted =
+		warming.phase === 'plateau' || warmingIps.some((entry) => entry.phase === 'plateau');
+	const regressing = warmingIps.some(
+		(entry) =>
+			entry.bounceRate > deceleration.bounceRateExclusiveMin ||
+			entry.deferralRate > deceleration.deferralRateExclusiveMin
+	);
+	const progress = `${warming.totalSentToday}/${warming.totalDailyCap} sent today.`;
+	return checklistObservation(
+		'mta.warming',
+		halted || regressing ? 'warn' : 'pass',
+		halted
+			? `Warm-up is halted. ${progress}`
+			: regressing
+				? `Warm-up is stepping back because bounces or deferrals are too high. ${progress}`
+				: warming.phase === 'graduated'
+					? `Warm-up is complete. ${progress}`
+					: `Warm-up is progressing normally. ${progress}`,
+		[
+			`phase=${warming.phase}`,
+			...(regressing ? ['ramp=regressing'] : []),
+			`synced-at=${warming.syncedAt}`,
+		]
+	);
+}
 
 function boundedIdentityField(value: string, maxLength: number): string {
 	if (value.length <= maxLength) return value;
@@ -207,21 +244,22 @@ export async function observeDeploymentCheck(
 		}
 		case 'deployment.dnsbl': {
 			const pass = dnsblFresh && selectedAddresses.every((entry) => entry.dnsbl === 'clean');
-			const status = !dnsblFresh
-				? 'warn'
-				: pass
-					? 'pass'
-					: selectedAddresses.some((entry) => entry.dnsbl === 'unknown')
-						? 'warn'
-						: 'fail';
+			// A listing is asked first: one address's unknown standing must not
+			// soften another address that is known to be listed.
+			const isListed = selectedAddresses.some(
+				(entry) => entry.dnsbl === 'critical' || entry.dnsbl === 'degraded'
+			);
+			const status = !dnsblFresh ? 'warn' : pass ? 'pass' : isListed ? 'fail' : 'warn';
 			return checklistObservation(
 				'mta.dnsbl',
 				status,
 				pass
 					? 'Every outbound address is clean on the monitored DNS blocklists.'
-					: dnsblFresh
-						? 'At least one outbound address is listed or has unknown standing.'
-						: 'The MTA blocklist snapshot is missing or too old to verify this check.',
+					: !dnsblFresh
+						? 'The MTA blocklist snapshot is missing or too old to verify this check.'
+						: isListed
+							? 'At least one outbound address is listed on a monitored DNS blocklist.'
+							: 'At least one outbound address has unknown standing on the monitored DNS blocklists.',
 				selectedAddresses.flatMap((entry) => [
 					`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
 					`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,
@@ -230,12 +268,7 @@ export async function observeDeploymentCheck(
 		}
 		case 'deployment.warmup':
 			return context.warming && warmingFresh
-				? checklistObservation(
-						'mta.warming',
-						context.warming.phase === 'graduated' ? 'pass' : 'warn',
-						`Warm-up is ${context.warming.phase}; ${context.warming.totalSentToday}/${context.warming.totalDailyCap} sent today.`,
-						[`phase=${context.warming.phase}`, `synced-at=${context.warming.syncedAt}`]
-					)
+				? observeWarmup(context.warming)
 				: checklistObservation('mta.warming', 'warn', 'No warming state has been synced yet.');
 		case 'deployment.relay': {
 			// ASK THE CAPABILITY, don't name the provider. This used to require

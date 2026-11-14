@@ -15,7 +15,8 @@
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import {
 	createTestCampaign,
 	createTestContact,
@@ -24,6 +25,8 @@ import {
 	createTestDomain,
 	createTestBlockedEmail,
 	createTestCampaignSender,
+	createTestInstanceSettings,
+	enableFeatures,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -1558,6 +1561,116 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		const job = await getJob(t, data.campaignId);
 		expect(job?.phase).toBe('done');
 		expect(await countSends(t, data.campaignId)).toBe(6);
+	});
+
+	// A suspension lands between two days of a multi-day plan. The walk must
+	// send nothing further while sending is not allowed, say so on the
+	// campaign, and pick up where it stopped once the suspension is lifted.
+	describe('a suspension after day one', () => {
+		async function setAbuseStatus(
+			t: TestConvex<typeof schema>,
+			to: 'clean' | 'warned' | 'suspended'
+		) {
+			await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+				input: { to, at: Date.now(), reason: `set to ${to} by the test`, changedBy: 'test' },
+			});
+		}
+
+		async function startDayOne(t: TestConvex<typeof schema>) {
+			const data = await setupWalker(t, 6);
+			await enableFeatures(t, ['campaigns']);
+			await t.run(async (ctx) => {
+				await ctx.db.insert('instanceSettings', createTestInstanceSettings());
+			});
+			await seedCapacity(t, 2);
+			await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+			await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+			expect(await countSends(t, data.campaignId)).toBe(2);
+			return data;
+		}
+
+		async function nextDayHop(t: TestConvex<typeof schema>, campaignId: Id<'campaigns'>) {
+			vi.setSystemTime(new Date(Date.now() + DAY_MS));
+			await seedCapacity(t, 2);
+			await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId });
+		}
+
+		it('sends nothing further, shows the hold, and resumes after the lift with each recipient mailed once', async () => {
+			const t = convexTest(schema, modules);
+			const data = await startDayOne(t);
+			await setAbuseStatus(t, 'suspended');
+
+			await nextDayHop(t, data.campaignId);
+			await nextDayHop(t, data.campaignId);
+			expect(await countSends(t, data.campaignId)).toBe(2);
+
+			const held = await getJob(t, data.campaignId);
+			expect(held?.phase).toBe('resolving');
+			expect(held?.holdStartedAt).toBeDefined();
+			// The hold re-checks on its own schedule and stays out of the watchdog's
+			// stale range, like a capacity park.
+			expect(held?.resumeAt).toBeGreaterThan(Date.now());
+			expect((await t.mutation(internal.campaigns.sendJob.redriveStuckSendJobs, {})).redriven).toBe(
+				0
+			);
+			expect(
+				await t.query(api.campaigns.sendHold.getCampaignSendHold, { campaignId: data.campaignId })
+			).toEqual({ kind: 'held', status: 'suspended', since: held?.holdStartedAt, holdDays: 4 });
+
+			await setAbuseStatus(t, 'clean');
+			await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+			expect(await countSends(t, data.campaignId)).toBe(4);
+			await nextDayHop(t, data.campaignId);
+
+			const job = await getJob(t, data.campaignId);
+			expect(job?.phase).toBe('done');
+			expect(job?.holdStartedAt).toBeUndefined();
+			await t.run(async (ctx) => {
+				const sends = await ctx.db
+					.query('emailSends')
+					.withIndex('by_campaign', (q) => q.eq('campaignId', data.campaignId))
+					.collect();
+				expect(sends).toHaveLength(6);
+				expect(new Set(sends.map((s) => String(s.contactId))).size).toBe(6);
+			});
+			expect(
+				await t.query(api.campaigns.sendHold.getCampaignSendHold, { campaignId: data.campaignId })
+			).toBeNull();
+		});
+
+		it('a warned workspace holds nothing', async () => {
+			const t = convexTest(schema, modules);
+			const data = await startDayOne(t);
+			await setAbuseStatus(t, 'warned');
+
+			await nextDayHop(t, data.campaignId);
+			expect(await countSends(t, data.campaignId)).toBe(4);
+			expect((await getJob(t, data.campaignId))?.holdStartedAt).toBeUndefined();
+		});
+
+		it('a hold that outlasts the delivery deadline ends the walk instead of waiting forever', async () => {
+			const t = convexTest(schema, modules);
+			const data = await startDayOne(t);
+			await setAbuseStatus(t, 'suspended');
+			await nextDayHop(t, data.campaignId);
+			const holdStartedAt = (await getJob(t, data.campaignId))?.holdStartedAt;
+			expect(holdStartedAt).toBeDefined();
+
+			vi.setSystemTime(new Date(holdStartedAt! + GOVERNED_MTA_MAX_MESSAGE_AGE_MS));
+			await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+
+			const job = await getJob(t, data.campaignId);
+			expect(job?.phase).toBe('done');
+			expect(job?.holdExpiredAt).toBe(Date.now());
+			expect(await countSends(t, data.campaignId)).toBe(2);
+			// Lifting the suspension afterwards does not restart a finished walk.
+			await setAbuseStatus(t, 'clean');
+			await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+			expect(await countSends(t, data.campaignId)).toBe(2);
+			expect(
+				await t.query(api.campaigns.sendHold.getCampaignSendHold, { campaignId: data.campaignId })
+			).toEqual({ kind: 'stopped', at: job?.holdExpiredAt, holdDays: 4 });
+		});
 	});
 });
 

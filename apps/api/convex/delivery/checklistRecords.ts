@@ -5,6 +5,8 @@ import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy'
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { returnPathProviderFor } from '../domains/returnPathProviders';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
+import { RETURN_PATH_MX_PRIORITY } from '../domains/spf';
 import { checklistTraits } from './checklistTraits';
 
 export type ChecklistDnsRecord = {
@@ -155,6 +157,19 @@ export function domainSetupValuesForItem(
 					? [domain.dnsRecords.tlsRpt]
 					: [];
 			break;
+		case 'domain.bounce_mx': {
+			const host = returnPathProviderFor(domain.providerType)?.activeHost(
+				domain.domain,
+				domain.returnPathHost?.toLowerCase().replace(/\.$/, '')
+			);
+			const mailHost = getOptional('EHLO_HOSTNAME')?.trim().toLowerCase().replace(/\.$/, '');
+			if (domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND && host && mailHost) {
+				records = [
+					{ type: 'MX', hostname: host, value: mailHost, priority: RETURN_PATH_MX_PRIORITY },
+				];
+			}
+			break;
+		}
 		case 'domain.tracking': {
 			const tracking = trackingDomains.find(
 				(row) => row.domain === domain.domain || row.domain.endsWith(`.${domain.domain}`)

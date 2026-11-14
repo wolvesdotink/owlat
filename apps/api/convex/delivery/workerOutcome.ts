@@ -61,13 +61,16 @@ const acceptedArm = v.object({
  *   - `mta_unreachable` — our own MTA's decision endpoint could not be
  *     reached (a refused connection, a timeout, a 5xx), e.g. while its
  *     container restarts. Nobody judged the message.
+ *   - `sending_suspended` — the worker's own gate held a marketing envelope
+ *     before dispatch because the deployment's sending is suspended.
  *
  * The completion names the hold in the failure code when one outlives the
  * deadline, so the cause survives on the Send.
  */
 export const deliveryHoldValidator = v.union(
 	v.literal('routing_policy'),
-	v.literal('mta_unreachable')
+	v.literal('mta_unreachable'),
+	v.literal('sending_suspended')
 );
 export type DeliveryHold = Infer<typeof deliveryHoldValidator>;
 

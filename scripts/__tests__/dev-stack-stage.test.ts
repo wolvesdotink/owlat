@@ -112,10 +112,10 @@ describe('secrets', () => {
 		const random = (bytes: number) => Buffer.alloc(bytes, ++calls);
 		const first = loadOrCreateSecrets(file, random);
 		expect(first.instanceSecret).toMatch(/^[0-9a-f]{64}$/);
-		expect(new Set(Object.values(first)).size).toBe(3);
+		expect(new Set(Object.values(first)).size).toBe(4);
 		expect(statSync(file).mode & 0o777).toBe(0o600);
 		expect(loadOrCreateSecrets(file, random)).toEqual(first);
-		expect(calls).toBe(3);
+		expect(calls).toBe(4);
 	});
 
 	it('replaces only an invalid entry', () => {
@@ -140,7 +140,12 @@ describe('secrets', () => {
 
 	it('feeds the compose file the derived ports and URLs', () => {
 		const config = resolveDevStackConfig({ root: '/w', linkedWorktree: true, explicit: '7' });
-		const secrets = { instanceSecret: '1', betterAuthSecret: '2', redisPassword: '3' };
+		const secrets = {
+			instanceSecret: '1',
+			betterAuthSecret: '2',
+			redisPassword: '3',
+			unsubscribeSecret: '4',
+		};
 		expect(composeEnvEntries(config, secrets)).toEqual({
 			OWLAT_DEV_CONVEX_PORT: '3217',
 			OWLAT_DEV_CONVEX_SITE_PORT: '3218',
@@ -152,8 +157,23 @@ describe('secrets', () => {
 		});
 	});
 
+	it('gives the deployment its own UNSUBSCRIBE_SECRET, so recipient links verify', () => {
+		const secrets = {
+			instanceSecret: '1',
+			betterAuthSecret: '2',
+			redisPassword: '3',
+			unsubscribeSecret: '4',
+		};
+		expect(deploymentSecretEnv(secrets)['UNSUBSCRIBE_SECRET']).toBe('4');
+	});
+
 	it('gives the web server the INSTANCE_SECRET the deployment checks', () => {
-		const secrets = { instanceSecret: '1', betterAuthSecret: '2', redisPassword: '3' };
+		const secrets = {
+			instanceSecret: '1',
+			betterAuthSecret: '2',
+			redisPassword: '3',
+			unsubscribeSecret: '4',
+		};
 		expect(webSecretEnv(secrets)).toEqual({
 			INSTANCE_SECRET: deploymentSecretEnv(secrets)['INSTANCE_SECRET'],
 		});

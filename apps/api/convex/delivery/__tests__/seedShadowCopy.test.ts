@@ -76,6 +76,8 @@ const realSend: CampaignEnvelopeInput = {
 	trackingBaseUrl: 'https://track.example',
 	viewInBrowserUrl: 'https://app.example/archive/1',
 	listId: '"March" <topic-1.org.example>',
+	footerLanguage: 'de',
+	senderAddress: 'Org GmbH\n1 Example Street',
 };
 
 const shadow = buildSeedShadowEnvelope(realSend, {
@@ -135,7 +137,7 @@ describe('shadow composition is identical apart from the probe header', () => {
 				.replaceAll(out.transformConfig?.unsubscribeUrl ?? '', '<footer link>')
 				.replaceAll(out.transformConfig?.preferenceUrl ?? '', '<footer link>');
 		expect(withoutFooterUrls(shadowOut)).toBe(withoutFooterUrls(realOut));
-		expect(withoutFooterUrls(realOut)).toContain('Unsubscribe: <footer link>');
+		expect(withoutFooterUrls(realOut)).toContain('Abmelden: <footer link>');
 	});
 
 	it('produces the same bulk-mail and list headers', () => {
@@ -191,6 +193,13 @@ describe('shadow composition is identical apart from the probe header', () => {
 		expect(probe?.unsubscribeUrl).not.toBe(real?.unsubscribeUrl);
 		expect(probe?.unsubscribeUrl).not.toContain(CONTACT_ID);
 		expect(probe?.preferenceUrl).not.toContain(CONTACT_ID);
+	});
+
+	it('renders the same footer language and sender address as the real send', () => {
+		expect(shadowOut.transformConfig?.footerLanguage).toBe('de');
+		expect(shadowOut.transformConfig?.senderAddress).toBe('Org GmbH\n1 Example Street');
+		expect(realOut.transformConfig?.footerLanguage).toBe('de');
+		expect(realOut.transformConfig?.senderAddress).toBe('Org GmbH\n1 Example Street');
 	});
 
 	it('renders the footer for a SEGMENT campaign too, on both arms', () => {

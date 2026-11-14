@@ -7,6 +7,9 @@
 
 import { convexTest } from 'convex-test';
 import schema from '../../schema';
+import type { Id } from '../../_generated/dataModel';
+import type { MutationCtx } from '../../_generated/server';
+import { createTestCampaign, createTestEmailSend } from '../../__tests__/factories';
 import {
 	SUNSET_POLICY_DEFAULTS,
 	type SunsetFacts,
@@ -85,4 +88,29 @@ export function measured(verdict: SunsetVerdict): SunsetMeasuredVerdict {
 		throw new Error(`expected a measured verdict, got hold (${verdict.reason})`);
 	}
 	return verdict;
+}
+
+/**
+ * A campaign mail sent to the contact at `sentAt`: the send history the sunset
+ * engine measures (campaign mail is the tracked kind; see `sunsetEngine.ts`).
+ * `automatedOpenedAt` records an automated pixel fetch on it.
+ */
+export async function recordCampaignSend(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>,
+	sentAt: number,
+	extra: { automatedOpenedAt?: number } = {}
+): Promise<void> {
+	const campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sent' }));
+	await ctx.db.insert(
+		'emailSends',
+		createTestEmailSend({
+			campaignId,
+			contactId,
+			status: 'sent',
+			queuedAt: sentAt,
+			sentAt,
+			...extra,
+		})
+	);
 }

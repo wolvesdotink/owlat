@@ -221,7 +221,7 @@ function buildSearchEverything(ctx: ActionCtx): Tool {
 function buildGetCampaignStats(ctx: ActionCtx): Tool {
 	return tool({
 		description:
-			'Look up performance stats for marketing campaigns matching a name/subject query — sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates.',
+			"Look up performance stats for marketing campaigns matching a name/subject query — sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates. `sendHold` is set when the workspace's sending is suspended: `held` means the campaign waits and resumes once sending is restored, `stopped` means the hold outlasted the delivery deadline and the remaining recipients were not mailed.",
 		inputSchema: z.object({
 			campaign: z.string().describe('Campaign name, subject, or keyword.'),
 		}),

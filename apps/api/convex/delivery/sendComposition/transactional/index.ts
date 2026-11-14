@@ -14,14 +14,18 @@
 
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import { buildFeedbackId } from '../feedbackId';
-import { personalize } from '../personalization';
+import { personalize, withUnsubscribeLink } from '../personalization';
 import type { TransformConfig } from '../transform';
 import type { ComposerOutput, TransactionalComposeInput } from '../types';
 
 export function composeTransactional(input: TransactionalComposeInput): ComposerOutput {
 	const vars = input.dataVariables ?? {};
 	const subject = personalize(input.template.subject, vars, { escape: 'header' });
-	const html = personalize(input.template.htmlContent, vars, { escape: 'html' });
+	const html = personalize(
+		input.template.htmlContent,
+		withUnsubscribeLink(vars, input.unsubscribeUrl),
+		{ escape: 'html' }
+	);
 
 	// Gmail FBL: the `txn` stream token keeps transactional + automation spam
 	// complaints in a separate Postmaster bucket from bulk `campaign` sends.
@@ -60,6 +64,8 @@ export function composeTransactional(input: TransactionalComposeInput): Composer
 		transformConfig = {
 			unsubscribeUrl: input.unsubscribeUrl,
 			preferenceUrl: input.preferenceUrl,
+			...(input.footerLanguage ? { footerLanguage: input.footerLanguage } : {}),
+			...(input.senderAddress ? { senderAddress: input.senderAddress } : {}),
 		};
 	}
 

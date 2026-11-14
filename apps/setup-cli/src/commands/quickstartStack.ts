@@ -10,7 +10,11 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { mergeEnv, readEnv, writeEnv } from '../lib/env';
 import { progressSpinner, type Reporter } from '../lib/progress';
-import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
+import {
+	applyOutboundIpDefaults,
+	describeOutboundIpChoice,
+	detectOutboundIpv4,
+} from '../lib/outboundIp';
 import { announceReverseDns, plannedOutboundIdentities } from '../lib/reverseDns';
 
 /**
@@ -80,13 +84,13 @@ export async function defaultSendingPools(
 	// Direct delivery needs a real source address. docker-compose.yml defaults
 	// IP_POOLS_* to 127.0.0.1, whose PTR can never match EHLO_HOSTNAME, so the
 	// MTA's identity gate (verifyMtaIdentity) would always fail. Default both
-	// pools to the box's primary IPv4 unless the operator already chose one.
+	// pools to the box's default-route source unless the operator already chose one.
 	const envForPools = await readEnv(envPath);
-	const detected = detectPrimaryIpv4();
-	if (applyOutboundIpDefaults(envForPools, detected)) {
+	const choice = await detectOutboundIpv4();
+	if (choice && applyOutboundIpDefaults(envForPools, choice.ip)) {
 		await writeEnv(envPath, envForPools);
-		reporter.log(`Sending pools default to this server's address ${detected}`);
-	} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
+		reporter.log(describeOutboundIpChoice(choice));
+	} else if (!choice && !envForPools['IP_POOLS_TRANSACTIONAL']) {
 		reporter.log(
 			'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
 			'stderr'

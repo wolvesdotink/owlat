@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DELIVERABILITY_CHECKLIST, DELIVERABILITY_NOT_MEASURED } from '@owlat/shared';
 import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
 import {
@@ -70,6 +71,111 @@ function warmingRow(ips: string[]) {
 		syncedAt: Date.now(),
 	};
 }
+
+// The built-in mail server carries the mail unless a test says otherwise, so
+// its checks grade.
+beforeEach(() => {
+	vi.stubEnv('EMAIL_PROVIDER', 'mta');
+	vi.stubEnv('MTA_API_URL', 'http://mta.internal:3100');
+	vi.stubEnv('MTA_API_KEY', 'test-key');
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe('the grade follows the send paths this deployment uses', () => {
+	function useRelayOnly() {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+	}
+
+	/** A domain whose DNS is right: every domain check passed, Postmaster is not connected. */
+	async function centerWithCorrectDns(options: { campaigns?: boolean } = {}) {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			if (options.campaigns === false) {
+				await ctx.db.insert('featureFlagSettings', {
+					featureFlags: { campaigns: false },
+					updatedAt: now,
+				});
+			}
+			const domainId = await ctx.db.insert('domains', domainRow(1));
+			const targetKey = deliverabilityTargetKey(ORGANIZATION_ID, domainId);
+			const domainChecks = DELIVERABILITY_CHECKLIST.filter((check) =>
+				check.id.startsWith('domain.')
+			);
+			for (const [index, check] of domainChecks.entries()) {
+				const notConnected = check.id === 'domain.postmaster' || check.id === 'domain.spam_rate';
+				const evidenceId = await ctx.db.insert('deliverabilityEvidence', {
+					organizationId: ORGANIZATION_ID,
+					itemId: check.id,
+					scopeKind: 'domain',
+					domainId,
+					targetKey,
+					attemptId: `dns-${index}`,
+					validator: 'test',
+					status: notConnected ? 'warn' : 'pass',
+					observedValues: notConnected ? [DELIVERABILITY_NOT_MEASURED] : [],
+					diagnostic: 'observed',
+					observedAt: now,
+					createdAt: now,
+				});
+				await ctx.db.insert('deliverabilityVerificationState', {
+					organizationId: ORGANIZATION_ID,
+					itemId: check.id,
+					targetKey,
+					attemptId: `dns-${index}`,
+					generation: 1,
+					retryIndex: 0,
+					leaseToken: `dns-lease-${index}`,
+					leaseExpiresAt: 0,
+					currentEvidenceId: evidenceId,
+					updatedAt: now,
+				});
+			}
+		});
+		return await t.query(api.delivery.checklist.getCenter, {});
+	}
+
+	it('grades a relay-only deployment with correct DNS ready, with the mail server checks not applicable', async () => {
+		useRelayOnly();
+		const center = await centerWithCorrectDns();
+		const items = center.groups.flatMap((group) => group.items);
+
+		expect(center.grade).toBe('ready');
+		const serverChecks = items.filter((item) => item.scope.kind === 'deployment');
+		expect(serverChecks.length).toBeGreaterThan(0);
+		expect(serverChecks.every((item) => item.notGraded === 'own_mta_unused')).toBe(true);
+		expect(items.find((item) => item.id === 'domain.bounce_mx')?.notGraded).toBe('own_mta_unused');
+		expect(center.groups[center.groups.length - 1]?.key).toBe('not_applicable');
+		expect(center.nextItem).toBeNull();
+	});
+
+	it('shows Google Postmaster data that is not connected as not measured', async () => {
+		useRelayOnly();
+		const center = await centerWithCorrectDns();
+		const items = center.groups.flatMap((group) => group.items);
+		expect(items.find((item) => item.id === 'domain.spam_rate')?.notGraded).toBe('not_measured');
+		expect(items.find((item) => item.id === 'domain.postmaster')?.notGraded).toBe('not_measured');
+	});
+
+	it('grades the mail server checks once a route sends through it', async () => {
+		const center = await centerWithCorrectDns();
+		expect(center.grade).toBe('at_risk');
+		expect(center.nextItem?.scope.kind).toBe('deployment');
+	});
+
+	it('leaves the bulk-mail checks out while campaigns are off', async () => {
+		useRelayOnly();
+		const center = await centerWithCorrectDns({ campaigns: false });
+		const items = center.groups.flatMap((group) => group.items);
+		expect(items.find((item) => item.id === 'domain.unsubscribe')?.notGraded).toBe('marketing_off');
+		expect(items.find((item) => item.id === 'domain.spam_rate')?.notGraded).toBe('marketing_off');
+		expect(center.grade).toBe('ready');
+	});
+});
 
 describe('Deliverability Center complete materialization', () => {
 	it('explicitly refuses an over-limit collection instead of returning a partial result', () => {
@@ -227,6 +333,25 @@ describe('Deliverability Center complete materialization', () => {
 		]);
 		expect(ids.filter((id) => id.startsWith('deployment.ipv6_'))).toEqual([]);
 		expect(center.nextItem?.id.startsWith('deployment.ipv6_')).toBe(false);
+	});
+
+	it('lists each unused IPv6 check once under not applicable', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', warmingRow(['203.0.113.25', '2a01:4f8:c0c:1::25']));
+		});
+
+		const center = await t.query(api.delivery.checklist.getCenter, {});
+		const ids = center.groups
+			.flatMap((group) => group.items)
+			.filter((item) => item.id === 'deployment.ipv6_ptr');
+		expect(ids).toHaveLength(1);
+		expect(center.groups.some((group) => group.key === 'ipv6')).toBe(false);
 	});
 
 	it('groups the IPv6 checks together once the MTA reports an IPv6 address', async () => {

@@ -12,6 +12,8 @@ import {
 	combineContentScan,
 	isSendPrepared,
 	makeVariantBucketer,
+	type CampaignSendResult,
+	type WinnerRemainderResult,
 } from './sendPlanning';
 import {
 	NO_PROVIDER_RETRY_MS,
@@ -19,6 +21,7 @@ import {
 	bucketTemplateId,
 	decideHopPlan,
 	decideHopStart,
+	decideWalkHold,
 	hopSendContext,
 	hopSendSettings,
 	needsSendTimePlanning,
@@ -65,23 +68,6 @@ export const processScheduledCampaigns = internalAction({
 		};
 	},
 });
-
-// Return type for the campaign-send orchestrator. `skipped` carries the
-// reason a scheduled-fire was no-oped at the entry-guards or content-scan
-// gate; `timezoneScheduled` is set when timezone-aware delayed enqueue
-// fired. `abTestCohort` and `abTestRemainder` describe the split when the
-// campaign is in the A/B testing phase (`isABTest` + `abTestStatus ===
-// 'testing'`) — the remainder waits for `declareABTestWinner` to schedule
-// `sendCampaignWinnerToRemainder`.
-interface CampaignSendResult {
-	totalRecipients: number;
-	totalBatches: number;
-	skipped?: boolean;
-	reason?: string;
-	timezoneScheduled?: boolean;
-	abTestCohort?: number;
-	abTestRemainder?: number;
-}
 
 // ─── Campaign send orchestrator (module) ───────────────────────────────
 // The single live action that takes a campaign from `scheduled|sending`
@@ -304,6 +290,21 @@ export const resolveCampaignPage = internalAction({
 		if (start.kind === 'stop') return { done: true, pageEnqueued: 0 };
 		const { job, campaign } = start;
 
+		// A SUSPENDED DEPLOYMENT HOLDS THE WALK at its cursor (see `decideWalkHold`);
+		// the hold mutation re-checks and schedules the re-check hop.
+		const walkHold = decideWalkHold({
+			job,
+			hold: await ctx.runQuery(internal.campaigns.sendHold.getSendHold, {}),
+			now: Date.now(),
+		});
+		if (walkHold.kind !== 'walk') {
+			await ctx.runMutation(internal.campaigns.sendHold.holdSendWalk, {
+				campaignId,
+				read: { startedAt: job.startedAt, cursor: job.cursor },
+			});
+			return { done: walkHold.kind === 'expire', pageEnqueued: 0 };
+		}
+
 		// THE MULTI-DAY SEND PLAN: today's capacity slice, or a park until the
 		// next cap window (see `decideHopPlan`).
 		const hop = decideHopPlan({
@@ -387,6 +388,8 @@ export const resolveCampaignPage = internalAction({
 				(settings.isTimezoneAware
 					? await ctx.runQuery(internal.campaigns.sendQueries.getOrgTimezone, {})
 					: undefined) ?? undefined,
+			senderAddress:
+				(await ctx.runQuery(internal.campaigns.sendQueries.getSenderAddress, {})) ?? undefined,
 		});
 		const plannedSendTimes = planSendTimes({
 			campaignId,
@@ -453,12 +456,6 @@ export const resolveCampaignPage = internalAction({
 });
 
 // ─── Winner-cohort send (second phase) ─────────────────────────────────
-
-interface WinnerRemainderResult {
-	scheduled: boolean;
-	skipped?: boolean;
-	reason?: string;
-}
 
 // Second-phase orchestrator: after `declareABTestWinner` transitions the
 // AB test lifecycle to `winner_selected`, this action sends the winner's

@@ -27,7 +27,13 @@ import {
 	manualOrEventBlockReasonValidator,
 } from '../lib/literalValidators';
 import { deriveBlockSourceType } from './events';
-import { BLOCKLIST_VIEW_LIMIT, countBlockedByReason, findBlockedByEmail } from './lookup';
+import {
+	BLOCKLIST_VIEW_LIMIT,
+	countBlockedByReason,
+	findBlockedByEmail,
+	supersedesBlockedRow,
+	writeBlockedRow,
+} from './lookup';
 
 /** `listByTeam`'s arguments. */
 export const listByTeamArgs = {
@@ -166,16 +172,17 @@ export async function addBlockedEmail(
 		throwInvalidInput('Invalid email address format');
 	}
 
-	// Check if already blocked
+	// Check if already blocked. A manual block replaces an expiring soft-bounce
+	// row (see `supersedesBlockedRow`).
 	const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
-	if (existing) {
+	if (existing && !supersedesBlockedRow(existing, args, Date.now())) {
 		throwAlreadyExists('This email address is already blocked');
 	}
 
 	// Create the blocked email record
 	const sourceType = deriveBlockSourceType(args);
-	const blockedEmailId = await ctx.db.insert('blockedEmails', {
+	const blockedEmailId = await writeBlockedRow(ctx, existing, {
 		email: normalizedEmail,
 		reason: args.reason,
 		notes: args.notes,
@@ -326,16 +333,16 @@ export async function bulkAddBlockedEmails(
 			continue;
 		}
 
-		// Check if already blocked
+		// Check if already blocked (an expiring soft-bounce row is replaced)
 		const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
-		if (existing) {
+		if (existing && !supersedesBlockedRow(existing, item, Date.now())) {
 			results.skipped++;
 			continue;
 		}
 
 		// Add to blocklist
-		const blockedEmailId = await ctx.db.insert('blockedEmails', {
+		const blockedEmailId = await writeBlockedRow(ctx, existing, {
 			email: normalizedEmail,
 			reason: item.reason,
 			notes: item.notes,

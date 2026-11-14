@@ -27,6 +27,7 @@ import type * as Receipts from '../auth/apiRequestReceipts';
 import { RECEIPT_TTL_MS } from '../auth/apiRequestReceipts';
 import { publicOperation, successBodySchema } from '@owlat/public-contract/schemas';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { rateLimiter } from '../lib/rateLimiter';
 import {
 	createTestAutomation,
 	createTestAutomationStep,
@@ -452,6 +453,62 @@ describe('Idempotency-Key on POST /api/v1/transactional', () => {
 
 		expect(swept).toBe(1);
 		expect((await receiptRows(t)).map((r) => r.keyHash)).toEqual([await sha256Hex('new-key')]);
+	});
+});
+
+describe('transactional send volume caps', () => {
+	const send = (t: T, slug: string, email: string, key: string) =>
+		post(t, '/api/v1/transactional', { slug, email, dataVariables: { orderNumber: 'A-1' } }, key);
+
+	it('refuses the sixth send of a template to one address within the hour, but never a replay', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+
+		for (let i = 1; i <= 5; i++) {
+			expect((await send(t, slug, 'reset@example.com', `reset-${i}`)).status).toBe(202);
+		}
+		const sixth = await send(t, slug, 'reset@example.com', 'reset-6');
+		const replay = await send(t, slug, 'reset@example.com', 'reset-1');
+		const otherAddress = await send(t, slug, 'someone-else@example.com', 'other-1');
+
+		expect(sixth.status).toBe(429);
+		expect(Number(sixth.headers.get('Retry-After'))).toBeGreaterThan(0);
+		const body = await sixth.json();
+		expect(body.error.category).toBe('rate_limited');
+		expect(body.error.data.reason).toBe('recipient_rate_limited');
+		expect(replay.status).toBe(202);
+		expect(replay.headers.get('Idempotent-Replayed')).toBe('true');
+		expect(otherAddress.status).toBe(202);
+		expect(await sendRows(t)).toHaveLength(6);
+	});
+
+	it('charges the API key once per accepted send and refuses once its day is spent', async () => {
+		const t = setupTest();
+		const slug = await seedSendable(t);
+		const keyId = await t.run(async (ctx) => (await ctx.db.query('apiKeys').first())!._id);
+		const remaining = () =>
+			t.run(
+				async (ctx) =>
+					(await rateLimiter.getValue(ctx, 'transactionalPerApiKeyDaily', { key: keyId })).value
+			);
+		const fullDay = await remaining();
+
+		expect((await send(t, slug, 'a@example.com', 'day-1')).status).toBe(202);
+		expect((await send(t, slug, 'a@example.com', 'day-1')).status).toBe(202);
+		expect(await remaining()).toBe(fullDay - 1);
+
+		await t.run(async (ctx) => {
+			await rateLimiter.limit(ctx, 'transactionalPerApiKeyDaily', {
+				key: keyId,
+				count: fullDay - 1,
+			});
+		});
+		const refused = await send(t, slug, 'b@example.com', 'day-2');
+
+		expect(refused.status).toBe(429);
+		expect(Number(refused.headers.get('Retry-After'))).toBeGreaterThan(0);
+		expect((await refused.json()).error.data.reason).toBe('daily_send_limit');
+		expect(await sendRows(t)).toHaveLength(1);
 	});
 });
 

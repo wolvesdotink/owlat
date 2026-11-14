@@ -610,6 +610,100 @@ describe('composeForSend — test', () => {
 	});
 });
 
+describe('composeForSend — a marketing test preview', () => {
+	const preview = {
+		kind: 'test' as const,
+		template: {
+			subject: 'Hi {{firstName}}',
+			htmlContent: '<p>Hi {{firstName}}, <a href="{{unsubscribe_link}}">leave</a></p>',
+		},
+		sampleContact: { email: 'member@org.example', firstName: 'Test', lastName: 'User' },
+		footer: {
+			unsubscribeUrl: 'https://app.example/unsubscribe?preview=test',
+			preferenceUrl: 'https://app.example/preferences?preview=test',
+			language: 'de',
+			senderAddress: 'Northwind\n1 Example Street',
+		},
+		listUnsubscribeHeader: {
+			listUnsubscribe: '<https://convex.example/unsub/test-preview>',
+			listUnsubscribePost: 'List-Unsubscribe=One-Click',
+		},
+	};
+
+	it('carries the footer and the one-click header pair a real send carries, untracked', () => {
+		const composed = composeForSend(preview);
+		expect(composed.headers).toEqual({
+			'List-Unsubscribe': '<https://convex.example/unsub/test-preview>',
+			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+		});
+		expect(composed.transformConfig).toEqual({
+			unsubscribeUrl: 'https://app.example/unsubscribe?preview=test',
+			preferenceUrl: 'https://app.example/preferences?preview=test',
+			footerLanguage: 'de',
+			senderAddress: 'Northwind\n1 Example Street',
+		});
+		expect(composed.html).toContain('href="https://app.example/unsubscribe?preview=test"');
+		expect(composed.text).toContain(
+			'Northwind\n1 Example Street\n\nEinstellungen verwalten: https://app.example/preferences?preview=test\nAbmelden: https://app.example/unsubscribe?preview=test'
+		);
+	});
+
+	it('stays bare without a footer (a transactional or block preview)', () => {
+		const { footer: _footer, listUnsubscribeHeader: _header, ...bare } = preview;
+		const composed = composeForSend(bare);
+		expect(composed.headers).toEqual({});
+		expect(composed.transformConfig).toBeNull();
+	});
+});
+
+describe('composeForSend — {{unsubscribe_link}}', () => {
+	const contactInfo = { contactId: CONTACT_ID, email: 'jane@example.com', firstName: 'Jane' };
+	const template = {
+		subject: 'News {{unsubscribe_link}}',
+		htmlContent: '<p><a href="{{unsubscribe_link}}">Unsubscribe</a></p>',
+		plainTextContent: 'Leave: {{unsubscribe_link}}',
+	};
+
+	it("resolves to the contact's unsubscribe URL in a campaign, html and text part", () => {
+		const composed = composeForSend({
+			kind: 'campaign',
+			template,
+			contactInfo,
+			unsubscribeUrl: 'https://app.example/unsubscribe?token=u',
+			preferenceUrl: 'https://app.example/preferences?token=p',
+		});
+		expect(composed.html).toBe(
+			'<p><a href="https://app.example/unsubscribe?token=u">Unsubscribe</a></p>'
+		);
+		expect(composed.text).toContain('Leave: https://app.example/unsubscribe?token=u');
+		// Not in the subject: a header is no place for a signed link.
+		expect(composed.subject).toBe('News ');
+	});
+
+	it("survives an automation step's personalization for the worker to resolve", () => {
+		const step = composeForSend({ kind: 'automation', template, contactInfo });
+		expect(step.html).toContain('href="{{unsubscribe_link}}"');
+		const delivered = composeForSend({
+			kind: 'transactional',
+			template: { subject: step.subject, htmlContent: step.html },
+			unsubscribeUrl: 'https://app.example/unsubscribe?token=u',
+			preferenceUrl: 'https://app.example/preferences?token=p',
+		});
+		expect(delivered.html).toContain('href="https://app.example/unsubscribe?token=u"');
+	});
+
+	it('keeps a value a transactional API caller supplied under that name', () => {
+		const composed = composeForSend({
+			kind: 'transactional',
+			template: { subject: 's', htmlContent: '{{unsubscribe_link}}' },
+			dataVariables: { unsubscribe_link: 'https://shop.example/leave' },
+			unsubscribeUrl: 'https://app.example/unsubscribe?token=u',
+			preferenceUrl: 'https://app.example/preferences?token=p',
+		});
+		expect(composed.html).toBe('https://shop.example/leave');
+	});
+});
+
 describe('composeForSend — archive_snapshot', () => {
 	it('subject passed through raw, html personalized against empty placeholder', () => {
 		const composed = composeForSend({

@@ -34,7 +34,10 @@ const RESULT = {
 beforeEach(() => {
 	action.mockReset().mockResolvedValue(RESULT);
 	vi.stubGlobal('useConvex', () => ({ action }));
-	vi.stubGlobal('useEmailTheme', () => ({ emailTheme: ref(DEFAULT_EMAIL_THEME) }));
+	vi.stubGlobal('useEmailTheme', () => ({
+		emailTheme: ref(DEFAULT_EMAIL_THEME),
+		senderAddress: ref(undefined),
+	}));
 });
 
 afterEach(() => {

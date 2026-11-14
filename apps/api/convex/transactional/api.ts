@@ -162,6 +162,14 @@ const REJECTION_RESPONSE_MAP: Record<
 		category: 'invalid_input',
 		defaultMessage: 'Invalid data variables',
 	},
+	recipient_rate_limited: {
+		category: 'rate_limited',
+		defaultMessage: 'Too many emails from this template to this recipient. Try again later.',
+	},
+	daily_send_limit: {
+		category: 'rate_limited',
+		defaultMessage: 'This API key has reached its daily transactional send limit.',
+	},
 	idempotency_conflict: {
 		category: 'conflict',
 		defaultMessage: IDEMPOTENCY_REFUSAL_MESSAGES.idempotency_conflict,
@@ -299,6 +307,7 @@ export const sendTransactional = createAuthenticatedHandler(
 			dataVariables: body.dataVariables,
 			language: body.language,
 			...(idempotency ? { idempotency } : {}),
+			apiKeyId: auth.keyId,
 		});
 		if (!intake.ok) return intake.response;
 		const outcome = intake.outcome;
@@ -306,6 +315,9 @@ export const sendTransactional = createAuthenticatedHandler(
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];
 			return errorResponse(map.category, outcome.detail || map.defaultMessage, {
 				data: { reason: outcome.reason },
+				...(outcome.retryAfterMs !== undefined && {
+					retryAfter: Math.max(1, Math.ceil(outcome.retryAfterMs / 1000)),
+				}),
 			});
 		}
 

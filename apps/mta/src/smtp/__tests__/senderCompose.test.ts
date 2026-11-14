@@ -47,6 +47,7 @@ import { generateKeyPairSync } from 'crypto';
 import { sendToMx } from '../sender.js';
 import { DkimSignatureUnavailableError, getDkimOptions, resolveRequiredDkimKey } from '../dkim.js';
 import type { MtaConfig } from '../../config.js';
+import type { EmailJob } from '../../types.js';
 import {
 	createConfig,
 	createJob,
@@ -54,6 +55,12 @@ import {
 	okReply,
 	smtpError,
 } from './helpers/senderFixtures.js';
+
+const privateKey = generateKeyPairSync('rsa', {
+	modulusLength: 1024,
+	publicKeyEncoding: { type: 'spki', format: 'pem' },
+	privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+}).privateKey;
 
 describe('sendToMx message composition', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -233,9 +240,19 @@ describe('sendToMx message composition', () => {
 		expect(count).toBe(1);
 	});
 
-	it('generates a distinct Message-ID for each send', async () => {
-		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
-		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
+	it('generates a distinct Message-ID for each message', async () => {
+		await sendToMx(
+			createJob({ messageId: 'msg-001', from: 'user@example.com' }),
+			config,
+			redis,
+			'10.0.0.1'
+		);
+		await sendToMx(
+			createJob({ messageId: 'msg-002', from: 'user@example.com' }),
+			config,
+			redis,
+			'10.0.0.1'
+		);
 
 		const first = headerValueOf(0, 'Message-ID');
 		const second = headerValueOf(1, 'Message-ID');
@@ -257,13 +274,68 @@ describe('sendToMx message composition', () => {
 		expect(headerValueOf(0, 'Message-ID')).toBe(supplied);
 	});
 
-	describe('a job that requires a DKIM signature', () => {
-		const privateKey = generateKeyPairSync('rsa', {
-			modulusLength: 1024,
-			publicKeyEncoding: { type: 'spki', format: 'pem' },
-			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-		}).privateKey;
+	describe('a message keeps its identity across queue attempts', () => {
+		const FIRST_ENQUEUED_AT = Date.parse('2026-06-21T12:00:00Z');
 
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+		});
+
+		/** One queue attempt of the job, with the clock at `at`. */
+		async function attemptAt(at: string, job: EmailJob): Promise<void> {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(at));
+			const result = await sendToMx(job, config, redis, '10.0.0.1');
+			expect(result.success).toBe(true);
+		}
+
+		const multipartJob = (): EmailJob =>
+			createJob({
+				messageId: 'send_abc123',
+				from: 'user@example.com',
+				html: '<p>Hello <b>world</b></p>',
+				text: 'Hello world',
+				firstEnqueuedAt: FIRST_ENQUEUED_AT,
+			});
+
+		it('puts the same Message-ID, Date, boundaries and signature on the wire on every attempt', async () => {
+			vi.mocked(getDkimOptions).mockResolvedValue({
+				domainName: 'example.com',
+				keySelector: 's1',
+				privateKey,
+			});
+
+			await attemptAt('2026-06-21T12:00:05Z', multipartJob());
+			await attemptAt('2026-06-23T08:30:00Z', multipartJob());
+
+			expect(headerBlockOf(0)).toMatch(/^DKIM-Signature:/m);
+			expect(rawOf(1)).toBe(rawOf(0));
+		});
+
+		it('dates the message when it was first enqueued, not when the attempt runs', async () => {
+			await attemptAt('2026-06-23T08:30:00Z', multipartJob());
+
+			expect(headerValueOf(0, 'Date')).toBe('Sun, 21 Jun 2026 12:00:00 +0000');
+		});
+
+		it('derives the Message-ID from the job id and the From domain', async () => {
+			await attemptAt('2026-06-21T12:00:05Z', multipartJob());
+			await attemptAt('2026-06-21T12:00:05Z', { ...multipartJob(), messageId: 'send_other' });
+
+			const first = headerValueOf(0, 'Message-ID');
+			expect(first).toMatch(/^<[0-9a-f]{32}@example\.com>$/);
+			expect(headerValueOf(1, 'Message-ID')).not.toBe(first);
+		});
+
+		it('never dates a message in the future', async () => {
+			await attemptAt('2026-06-21T11:00:00Z', multipartJob());
+
+			expect(headerValueOf(0, 'Date')).toBe('Sun, 21 Jun 2026 11:00:00 +0000');
+		});
+	});
+
+	describe('a job that requires a DKIM signature', () => {
 		afterEach(() => {
 			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
 		});

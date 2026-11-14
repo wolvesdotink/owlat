@@ -283,8 +283,14 @@ describe('DKIM rotation routes (PR-29)', () => {
 			dkimStore.clearCache();
 			await authedRequest(app, 'POST', '/example.com/rotation');
 
+			notifyConvex.mockClear();
 			const res = await authedRequest(app, 'DELETE', '/example.com/rotation');
 			expect(res.status).toBe(200);
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({ event: 'dkim.rotated', phase: 'cancelled' }),
+				expect.anything(),
+				expect.anything()
+			);
 
 			// A second cancel finds nothing pending.
 			const res2 = await authedRequest(app, 'DELETE', '/example.com/rotation');

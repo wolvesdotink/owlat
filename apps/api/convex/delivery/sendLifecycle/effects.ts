@@ -14,6 +14,7 @@ import { bumpCampaignStats } from '../../campaigns/statShards';
 import { normalizeEmail } from '../../lib/inputGuards';
 import { isMarketingOnlyBlockReason } from '../suppressionMirror';
 import { scheduleSuppressionMirror } from '../suppressionMirrorScheduler';
+import { supersedesBlockedRow } from '../../blockedEmails/lookup';
 import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 import type { SendTimeGroup } from '../../lib/validators/sendTime';
@@ -176,23 +177,24 @@ export async function applyEffects(
 					//    Otherwise the address stays permanently sendable on the
 					//    transactional scope, keeps bouncing, and the MTA backstop never
 					//    hears about it.
-					//  - A threshold-created SOFT bounce upgrades to HARD: the mirror
-					//    refresh below also changes the MTA backstop from expiring to
-					//    permanent.
+					//  - A SOFT bounce, which expires, yields to a hard bounce or a
+					//    complaint, which do not, and once expired to a new soft bounce
+					//    that starts its window again (`supersedesBlockedRow`). The
+					//    mirror refresh below changes the MTA backstop to match.
 					//
 					// `effect.reason` is only ever 'bounced' | 'complained', i.e. always
 					// mailbox-level evidence, so the marketing-only row always yields.
+					const now = Date.now();
 					const upgradesMarketingOnly = isMarketingOnlyBlockReason(existing.reason);
-					const upgradesSoftToHard =
-						existing.reason === 'bounced' &&
-						existing.bounceType === 'soft' &&
-						effect.reason === 'bounced' &&
-						effect.bounceType === 'hard';
-					if (!upgradesMarketingOnly && !upgradesSoftToHard) break;
-					const bounceType = upgradesSoftToHard ? 'hard' : effect.bounceType;
+					const supersedesSoftBounce = supersedesBlockedRow(existing, effect, now);
+					if (!upgradesMarketingOnly && !supersedesSoftBounce) break;
+					const bounceType = effect.bounceType;
 					await ctx.db.patch(existing._id, {
 						reason: effect.reason,
 						bounceType,
+						// A soft bounce's window starts with this evidence, whatever row it
+						// replaced, as its MTA mirror's does.
+						...(bounceType === 'soft' ? { createdAt: now } : {}),
 						// THE NOTE MUST NOT OUTLIVE THE REASON IT EXPLAINED. A
 						// marketing-only row carries the sunset engine's note ("no
 						// engagement for N days"); once mailbox evidence has replaced the

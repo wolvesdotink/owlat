@@ -40,6 +40,22 @@ function applyEscape(value: string, escape: EscapePolicy): string {
 	return value;
 }
 
+/** A `{{name}}` or `{{name|'fallback'}}` token: group 1 the name, group 2 the fallback. */
+const VARIABLE_TOKEN = /\{\{(\w+)(?:\|'([^']*)')?\}\}/g;
+
+/**
+ * The variables `content` uses without a fallback, in order of first use. A
+ * token with a fallback (even an empty one, `{{name|''}}`) renders without its
+ * value; one without renders blank, so the caller has to supply it.
+ */
+export function variablesWithoutFallback(content: string): string[] {
+	const names = new Set<string>();
+	for (const match of content.matchAll(VARIABLE_TOKEN)) {
+		if (match[2] === undefined) names.add(match[1]!);
+	}
+	return [...names];
+}
+
 /**
  * Replace `{{var}}` (and `{{var|'fallback'}}`) tokens in a string with values
  * from a variable record. Supports the `{{name|'fallback'}}` fallback syntax.
@@ -56,11 +72,40 @@ export function personalize(
 	variables: Record<string, unknown>,
 	options: { escape: EscapePolicy }
 ): string {
-	return content.replace(/\{\{(\w+)(?:\|'([^']*)')?\}\}/g, (_match, variable, fallback) => {
+	return content.replace(VARIABLE_TOKEN, (_match, variable, fallback) => {
 		const value = variables[variable as keyof typeof variables];
 		if (value !== undefined && value !== null && value !== '') {
 			return applyEscape(String(value), options.escape);
 		}
 		return fallback ? applyEscape(fallback, options.escape) : '';
 	});
+}
+
+/**
+ * The `{{unsubscribe_link}}` variable: the recipient's own unsubscribe page,
+ * the URL the footer links. Templates migrated from other tools often carry
+ * the placeholder. It is defined only where the send has a footer; elsewhere
+ * it renders like any unknown variable. A value the caller already supplies
+ * (a transactional API call's data variable of that name) is kept.
+ */
+export const UNSUBSCRIBE_LINK_VARIABLE = 'unsubscribe_link';
+
+export function withUnsubscribeLink(
+	variables: Record<string, unknown>,
+	unsubscribeUrl: string | undefined
+): Record<string, unknown> {
+	if (!unsubscribeUrl) return variables;
+	const supplied = variables[UNSUBSCRIBE_LINK_VARIABLE];
+	if (supplied !== undefined && supplied !== null && supplied !== '') return variables;
+	return { ...variables, [UNSUBSCRIBE_LINK_VARIABLE]: unsubscribeUrl };
+}
+
+/**
+ * An automation step personalizes its content before the intake, but its
+ * footer URLs are signed later, in the worker. The step therefore keeps the
+ * `{{unsubscribe_link}}` token as written, and the worker's composition
+ * resolves it next to the footer.
+ */
+export function automationVariables(contactInfo: Record<string, unknown>): Record<string, unknown> {
+	return { ...contactInfo, [UNSUBSCRIBE_LINK_VARIABLE]: `{{${UNSUBSCRIBE_LINK_VARIABLE}}}` };
 }

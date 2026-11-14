@@ -8,6 +8,7 @@ import {
 	brandWebFontUrls,
 	readableTextColor,
 	resolveBrandKitDesign,
+	senderPostalAddress,
 	type BrandKitDesign,
 } from '../brandKit';
 import { DEFAULT_EMAIL_THEME } from '../emailDefaults';
@@ -168,5 +169,27 @@ describe('brandKitDesignProblem', () => {
 		],
 	])('refuses %o as %s', (patch, problem) => {
 		expect(brandKitDesignProblem({ ...valid, ...patch })).toBe(problem);
+	});
+});
+
+describe('senderPostalAddress', () => {
+	it('puts the company name above the address', () => {
+		expect(
+			senderPostalAddress({
+				footerCompanyName: ' Northwind ',
+				footerAddress: '1 Example Street\n12345 Example City ',
+			})
+		).toBe('Northwind\n1 Example Street\n12345 Example City');
+	});
+
+	it('is the address alone without a company name', () => {
+		expect(senderPostalAddress({ footerAddress: '1 Example Street' })).toBe('1 Example Street');
+	});
+
+	it('is undefined without an address, whatever the company name', () => {
+		expect(
+			senderPostalAddress({ footerCompanyName: 'Northwind', footerAddress: '  ' })
+		).toBeUndefined();
+		expect(senderPostalAddress(undefined)).toBeUndefined();
 	});
 });

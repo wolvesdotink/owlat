@@ -208,6 +208,12 @@ export async function patchDomainRecords(
 
 // ─── Public entry points ────────────────────────────────────────────────────
 
+/** The provider a domain added now registers with: `EMAIL_PROVIDER`, else the built-in MTA. */
+export function newDomainProviderKind(): SendingDomainProviderKind {
+	const envProvider = getOptional('EMAIL_PROVIDER') ?? 'mta';
+	return isSendingDomainProviderKind(envProvider) ? envProvider : 'mta';
+}
+
 export const create = internalMutation({
 	args: {
 		domain: v.string(),
@@ -249,10 +255,7 @@ export const create = internalMutation({
 		}
 
 		const now = Date.now();
-		const envProvider = getOptional('EMAIL_PROVIDER') ?? 'mta';
-		const providerKind: SendingDomainProviderKind = isSendingDomainProviderKind(envProvider)
-			? envProvider
-			: 'mta';
+		const providerKind = newDomainProviderKind();
 
 		// Validate the optional return-path host up front, mirroring
 		// `setReturnPathHost` exactly (shared strict validator, then the provider's

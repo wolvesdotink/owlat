@@ -19,6 +19,7 @@ import { appendDraftRevision } from './draftRevisions';
 import { assertDraftSendable, humanApproveUndoDelayMs, retryFailed } from './retryFailed';
 import { enqueuePush } from '../push/events';
 import { recordTeamAssigned } from '../mail/interpret/threadEvents';
+import { supersedesBlockedRow, writeBlockedRow } from '../blockedEmails/lookup';
 
 /**
  * Approve an agent-generated draft for sending.
@@ -408,8 +409,8 @@ export const blockSender = adminMutation({
 			.withIndex('by_email', (q) => q.eq('email', email))
 			.first();
 
-		if (!existing) {
-			await ctx.db.insert('blockedEmails', {
+		if (!existing || supersedesBlockedRow(existing, { reason: 'manual' }, Date.now())) {
+			await writeBlockedRow(ctx, existing, {
 				email,
 				reason: 'manual',
 				notes: 'Blocked from inbound quarantine',

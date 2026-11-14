@@ -12,10 +12,11 @@
  * A pure extraction: no behaviour, and no call site outside `./checklist.ts`.
  */
 
-import type { DeliverabilityValidatorEvidence } from '@owlat/shared';
+import type { DeliverabilityChecklistItem, DeliverabilityValidatorEvidence } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import type { DnsProvider, VpsProvider } from './checklistGuidance';
+import { isIpv6CheckId } from './checklistIpv6';
 
 export function loopbackResult(row: Doc<'deliverabilityLoopbackAttempts'>) {
 	return {
@@ -109,4 +110,71 @@ export function summaryFor(
 		return 'Your mail is at risk. Fix the blocking item below before sending.';
 	}
 	return 'Your mail needs attention. Follow the next verified setup step below.';
+}
+
+type GroupedItem = Pick<DeliverabilityChecklistItem, 'id' | 'severity' | 'notGraded'>;
+
+/**
+ * The Center's groups. English, like every other sentence this read model
+ * returns: one payload feeds the browser, the copyable diagnostic report and
+ * non-browser callers. The web paints these headings from
+ * `sharedPkg.deliverabilityChecklist.groups.<key>.*`, resolved in
+ * `apps/web/app/composables/useDeliverabilityChecklistCopy.ts` with these words
+ * as the fallback, so a heading reworded here needs the catalog edit too
+ * (`apps/web/app/__tests__/sharedRegistryCatalog.test.ts` pins the two copies
+ * together). The IPv6 checks form their own group, and only once IPv6 is on.
+ * Checks about a send path this deployment does not use go last, in a group
+ * of their own, so the severity groups hold only what grades.
+ */
+export function centerGroups<T extends GroupedItem>(
+	graded: readonly T[],
+	ipv6Items: readonly T[],
+	ipv6Enabled: boolean
+) {
+	const unused = (item: T) =>
+		item.notGraded === 'own_mta_unused' || item.notGraded === 'marketing_off';
+	const ungrouped = graded.filter((item) => !isIpv6CheckId(item.id) && !unused(item));
+	// `graded` already holds the IPv6 checks while IPv6 is on.
+	const notApplicable = graded.filter(unused);
+	return [
+		{
+			key: 'blocking' as const,
+			label: 'Blocking delivery',
+			description: 'These checks can stop or reject mail.',
+			items: ungrouped.filter((item) => item.severity === 'blocking'),
+		},
+		{
+			key: 'reputation' as const,
+			label: 'Hurting reputation',
+			description: 'These checks affect how receivers treat future mail.',
+			items: ungrouped.filter((item) => item.severity === 'reputation'),
+		},
+		{
+			key: 'recommended' as const,
+			label: 'Recommended',
+			description: 'Useful hardening after the blocking path is verified.',
+			items: ungrouped.filter((item) => item.severity === 'recommended'),
+		},
+		...(ipv6Enabled && ipv6Items.some((item) => !unused(item))
+			? [
+					{
+						key: 'ipv6' as const,
+						label: 'IPv6 sending',
+						description: 'Checks for the IPv6 address the server sends from.',
+						items: ipv6Items.filter((item) => !unused(item)),
+					},
+				]
+			: []),
+		...(notApplicable.length > 0
+			? [
+					{
+						key: 'not_applicable' as const,
+						label: 'Not used by this deployment',
+						description:
+							'These checks are about a way of sending this deployment does not use. They do not affect the grade.',
+						items: notApplicable,
+					},
+				]
+			: []),
+	];
 }

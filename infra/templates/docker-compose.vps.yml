@@ -337,6 +337,11 @@ services:
       # IPv4 only, like the root docker-compose.yml: while the bridge is
       # IPv4-only, Docker would forward IPv6 senders from the bridge gateway.
       - '0.0.0.0:25:25'
+      # Mail submission for native clients (587 STARTTLS, 465 implicit TLS),
+      # loopback until SUBMISSION_BIND=0.0.0.0 and IPv4 only, like the root
+      # docker-compose.yml.
+      - '${SUBMISSION_BIND:-127.0.0.1}:${SUBMISSION_PORT:-587}:${SUBMISSION_PORT:-587}'
+      - '${SUBMISSION_BIND:-127.0.0.1}:${SUBMISSION_IMPLICIT_TLS_PORT:-465}:${SUBMISSION_IMPLICIT_TLS_PORT:-465}'
     environment:
       PORT: '3100'
       BOUNCE_PORT: '25'

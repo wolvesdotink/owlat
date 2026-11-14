@@ -76,7 +76,13 @@ elseif decision == 'clear' then
   underlying = false
 else
   local stored = redis.call('HGET', underlyingKey, ip)
-  underlying = not stored or stored == '1'
+  if reason == 'egress-address' then
+    -- An unobservable egress address never blocks on its own: preserve keeps a
+    -- mismatch an earlier sweep confirmed, and is no block without one.
+    underlying = stored == '1'
+  else
+    underlying = not stored or stored == '1'
+  end
 end
 
 redis.call('HSET', appliedKey, ip, observationGeneration)
@@ -138,6 +144,8 @@ local dnsblUnderlyingKey = KEYS[11]
 local ipv4IdentityUnderlyingKey = KEYS[12]
 local sourceAddressUnderlyingKey = KEYS[13]
 local spfUnderlyingKey = KEYS[14]
+local egressAddressAppliedKey = KEYS[15]
+local egressAddressUnderlyingKey = KEYS[16]
 local fcrdnsPrefix = ARGV[1]
 local blockPrefix = ARGV[2]
 local dnsblPrefix = ARGV[3]
@@ -145,12 +153,13 @@ local ipv4IdentityPrefix = ARGV[4]
 local sourceAddressPrefix = ARGV[5]
 local spfPrefix = ARGV[6]
 local observationSequencePrefix = ARGV[7]
-local allowUnverifiedFcrdns = ARGV[8] == '1'
-local reasonCount = tonumber(ARGV[9])
+local egressAddressPrefix = ARGV[8]
+local allowUnverifiedFcrdns = ARGV[9] == '1'
+local reasonCount = tonumber(ARGV[10])
 local reasons = {}
-for index = 1, reasonCount do reasons[index] = ARGV[9 + index] end
+for index = 1, reasonCount do reasons[index] = ARGV[10 + index] end
 local newIps = {}
-for index = 10 + reasonCount, #ARGV do newIps[ARGV[index]] = true end
+for index = 11 + reasonCount, #ARGV do newIps[ARGV[index]] = true end
 
 local previousIps = redis.call('SMEMBERS', configuredKey)
 for _, ip in ipairs(previousIps) do
@@ -163,17 +172,20 @@ for _, ip in ipairs(previousIps) do
     redis.call('DEL', ipv4IdentityPrefix .. ip)
     redis.call('DEL', sourceAddressPrefix .. ip)
     redis.call('DEL', spfPrefix .. ip)
+    redis.call('DEL', egressAddressPrefix .. ip)
     redis.call('DEL', blockPrefix .. ip)
     redis.call('HDEL', fcrdnsAppliedKey, ip)
     redis.call('HDEL', dnsblAppliedKey, ip)
     redis.call('HDEL', ipv4IdentityAppliedKey, ip)
     redis.call('HDEL', sourceAddressAppliedKey, ip)
     redis.call('HDEL', spfAppliedKey, ip)
+    redis.call('HDEL', egressAddressAppliedKey, ip)
     redis.call('HDEL', fcrdnsUnderlyingKey, ip)
     redis.call('HDEL', dnsblUnderlyingKey, ip)
     redis.call('HDEL', ipv4IdentityUnderlyingKey, ip)
     redis.call('HDEL', sourceAddressUnderlyingKey, ip)
     redis.call('HDEL', spfUnderlyingKey, ip)
+    redis.call('HDEL', egressAddressUnderlyingKey, ip)
     -- The per-reason observation counters are the last per-address keys left
     -- behind by a retirement, and they carry no TTL. They go with the applied
     -- generations they are compared against: reset together, or the pair is

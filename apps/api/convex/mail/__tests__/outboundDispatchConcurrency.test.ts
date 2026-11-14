@@ -100,6 +100,7 @@ describe('dispatchViaMta', () => {
 			recipients,
 			rfc822MessageId: '<m1@owlat.test>',
 			allowedFromAddresses: ['me@owlat.test'],
+			requireDkimSignature: false,
 			mta: MTA,
 		});
 		await held.arrived(3);
@@ -149,6 +150,7 @@ describe('dispatchViaMta', () => {
 			recipients,
 			rfc822MessageId: '<m2@owlat.test>',
 			allowedFromAddresses: ['me@owlat.test'],
+			requireDkimSignature: false,
 			mta: MTA,
 		});
 
@@ -181,6 +183,7 @@ describe('dispatchViaMta — read receipt request', () => {
 			recipients: ['a@example.com'],
 			rfc822MessageId: '<m1@owlat.test>',
 			allowedFromAddresses: ['me@owlat.test'],
+			requireDkimSignature: false,
 			mta: MTA,
 		});
 		const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];

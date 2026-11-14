@@ -64,6 +64,41 @@ function context(dnsblCheckedAt?: number): ChecklistVerificationContext {
 	};
 }
 
+describe('the warm-up check', () => {
+	function rampContext(overrides: { phase?: string; bounceRate?: number; deferralRate?: number }) {
+		const snapshot = context();
+		snapshot.warming = {
+			...snapshot.warming!,
+			phase: overrides.phase ?? 'ramp',
+			ips: [
+				{
+					...snapshot.warming!.ips[0]!,
+					phase: overrides.phase ?? 'ramp',
+					currentDay: 6,
+					bounceRate: overrides.bounceRate ?? 0.005,
+					deferralRate: overrides.deferralRate ?? 0.02,
+				},
+			],
+		} as ChecklistVerificationContext['warming'];
+		return snapshot;
+	}
+
+	it('passes a ramp that is progressing normally', async () => {
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({}), false)
+		).resolves.toMatchObject({ status: 'pass' });
+	});
+
+	it('warns while the ramp is halted or stepping back', async () => {
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({ phase: 'plateau' }), false)
+		).resolves.toMatchObject({ status: 'warn' });
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({ deferralRate: 0.2 }), false)
+		).resolves.toMatchObject({ status: 'warn' });
+	});
+});
+
 describe('deployment checklist validator freshness', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -131,7 +166,35 @@ describe('deployment checklist validator freshness', () => {
 		listed.warming!.ips[0]!.dnsbl = 'critical';
 		await expect(observeDeploymentCheck('deployment.dnsbl', listed, false)).resolves.toMatchObject({
 			status: 'fail',
-			diagnostic: expect.stringContaining('listed or has unknown standing'),
+			diagnostic: expect.stringContaining('is listed'),
+		});
+	});
+
+	it.each(['critical', 'degraded'] as const)(
+		'fails when one address is %s even though another one is unknown',
+		async (listing) => {
+			const mixed = context(Date.now());
+			mixed.warming!.ips[0]!.dnsbl = listing;
+			mixed.warming!.ips.push({
+				...mixed.warming!.ips[0]!,
+				ip: '203.0.113.11',
+				dnsbl: 'unknown',
+			});
+			await expect(observeDeploymentCheck('deployment.dnsbl', mixed, false)).resolves.toMatchObject(
+				{
+					status: 'fail',
+					diagnostic: expect.stringContaining('is listed'),
+				}
+			);
+		}
+	);
+
+	it('warns, not fails, when no address is listed and one is unknown', async () => {
+		const mixed = context(Date.now());
+		mixed.warming!.ips.push({ ...mixed.warming!.ips[0]!, ip: '203.0.113.11', dnsbl: 'unknown' });
+		await expect(observeDeploymentCheck('deployment.dnsbl', mixed, false)).resolves.toMatchObject({
+			status: 'warn',
+			diagnostic: expect.stringContaining('unknown standing'),
 		});
 	});
 

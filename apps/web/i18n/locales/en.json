@@ -1273,6 +1273,14 @@
 				"unfiltered": "Clicks counted before automated clicks were filtered out may include security scanners.",
 				"unfilteredWithOpens": "Opens and clicks counted before automated ones were filtered out may include Apple Mail Privacy Protection and security scanners."
 			},
+			"campaignSendHoldNotice": {
+				"heldBanned": "Sending is disabled for this workspace, so this campaign is not sending. Messages that have not left yet wait up to {days} days and are not sent if sending is still disabled then.",
+				"heldSince": "On hold since {date}",
+				"heldSuspended": "Sending is suspended for this workspace, so this campaign is on hold. Messages that have not left yet go out once sending is restored. Anything still waiting after {days} days is not sent.",
+				"stopped": "Sending stopped on {date}: sending stayed suspended for {days} days, so recipients this campaign had not reached yet were not mailed.",
+				"title": "Sending on hold",
+				"titleStopped": "Sending stopped"
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "at least {total}",
 				"dayOf": "day {day} of {totalDays}",
@@ -1403,8 +1411,10 @@
 				},
 				"passed": "{count} check passed | {count} checks passed",
 				"postalAddress": {
-					"missing": "We couldn't find a postal address. US law (CAN-SPAM) requires one in marketing email, and EU imprint rules expect one. Add it to the footer.",
-					"pass": "A postal address appears in the email."
+					"footer": "Owlat adds your postal address from the brand kit to the footer of every campaign.",
+					"missing": "No postal address is set, and we couldn't find one in the email. US law (CAN-SPAM) requires one in marketing email, and EU imprint rules expect one. Once an admin adds it to the brand kit, Owlat puts it in the footer of every campaign.",
+					"pass": "A postal address appears in the email.",
+					"setUp": "Add it to the brand kit"
 				},
 				"reasons": {
 					"blockedUrl": "matches the blocked pattern “{pattern}”",
@@ -2738,6 +2748,9 @@
 				"afterEvent": "{duration} after {event}",
 				"clickedLinks": "Clicked links",
 				"dataVariables": "Data variables",
+				"dataVariablesHidden": "Values are hidden. Only owners and admins can see them.",
+				"dataVariablesRedacted": "Values were removed after the retention period. The names show what the request supplied.",
+				"dataVariablesRemovedAfter": "Values are removed after {date}.",
 				"duration": {
 					"days": "{days}d",
 					"daysHours": "{days}d {hours}h",
@@ -2877,6 +2890,11 @@
 				"copyDiagnostic": "Copy diagnostic",
 				"diagnosticCopied": "Diagnostic copied",
 				"howThisWorks": "How this works",
+				"notGraded": {
+					"marketing_off": "This check applies to marketing mail. Campaigns are turned off, so it does not affect the grade.",
+					"not_measured": "Google Postmaster Tools is not connected, so this is not measured. It does not lower the grade.",
+					"own_mta_unused": "No route sends through the built-in mail server, so this check does not apply. It counts again once a route uses it."
+				},
 				"observed": "Observed: {values}",
 				"thisServer": "This server",
 				"verifyNow": "Verify now"
@@ -9536,7 +9554,7 @@
 					"footer": {
 						"addSocialLink": "Add social link",
 						"address": "Postal address",
-						"addressHelp": "Many countries require a postal address in marketing emails.",
+						"addressHelp": "Owlat adds it, with the company name, to the footer of every marketing email. US law (CAN-SPAM) requires a postal address in marketing email.",
 						"companyName": "Company name",
 						"platform": "Platform",
 						"removeSocialLink": "Remove the {platform} link",
@@ -11359,7 +11377,9 @@
 					"dateAdded": "Date added",
 					"email": "Email address",
 					"notes": "Notes",
-					"reason": "Reason"
+					"reason": "Reason",
+					"softBounceExpired": "Temporary bounce, expired {date}: no longer blocks",
+					"softBounceExpires": "Temporary bounce, expires {date}"
 				},
 				"title": "Suppressions",
 				"toasts": {
@@ -14980,6 +15000,11 @@
 			"contactToOptOut": "To stop these emails, you can also write to {email}.",
 			"emailPreferences": "Email preferences",
 			"rateLimited": "Too many attempts right now. Please wait a minute and try again.",
+			"testPreview": {
+				"heading": "This link is from a test email",
+				"preferences": "In a real send, this link opens the recipient's subscription preferences. Nothing was changed.",
+				"unsubscribe": "In a real send, this link lets the recipient unsubscribe. Nothing was changed."
+			},
 			"verifying": "Verifying your link…"
 		},
 		"unsubscribe": {
@@ -16022,6 +16047,8 @@
 			},
 			"status": {
 				"fail": "Not working",
+				"notApplicable": "Not applicable",
+				"notMeasured": "Not measured",
 				"pass": "Verified",
 				"pendingDns": "Checking…",
 				"warn": "Needs attention"
@@ -17011,6 +17038,7 @@
 				}
 			},
 			"detail": {
+				"egressAddress": "Receivers see mail from this IP arrive from another address, so the MTA keeps mail off it: its reverse DNS, SPF and blocklist checks are about an address that is not sending.",
 				"ipv4": "Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.",
 				"sourceAddress": "Outbound IPv6 stays quarantined because the MTA cannot bind and route this source address.",
 				"spf": "Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address."
@@ -17029,6 +17057,7 @@
 				"blocklistUnavailable": "Blocklist check unavailable",
 				"blocklistWarning": "Blocklist warning",
 				"blocklisted": "Blocklisted",
+				"egressAddress": "Sends from another address",
 				"identityAndBlocklist": "Identity + blocklist",
 				"identityQuarantined": "Identity quarantined",
 				"ipv4": "IPv4 prerequisite",
@@ -17051,6 +17080,7 @@
 					"unusable_answer": "Use a DNS resolver that doesn't rewrite answers, or add a Spamhaus Data Query Service key."
 				},
 				"digitalocean": "In the DigitalOcean control panel, rename the Droplet to the EHLO hostname; DigitalOcean uses that name for reverse DNS.",
+				"egressAddress": "Make this IP the server's outbound address (its default route source), or set IP_POOLS_* to the address receivers see, then run readiness again.",
 				"generic": "Open your VPS provider’s reverse-DNS/PTR settings for this public IP.",
 				"hetzner": "In Hetzner Console, open Servers → your server → Networking → Primary IP → Edit reverse DNS.",
 				"ipv4": "Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.",
@@ -17062,7 +17092,8 @@
 		"personalizationVariables": {
 			"email": "Email",
 			"firstName": "First name",
-			"lastName": "Last name"
+			"lastName": "Last name",
+			"unsubscribeLink": "Unsubscribe link"
 		},
 		"postbox": {
 			"offlineOutbox": {
@@ -19810,6 +19841,10 @@
 					"description": "Checks for the IPv6 address the server sends from.",
 					"label": "IPv6 sending"
 				},
+				"not_applicable": {
+					"description": "These checks are about a way of sending this deployment does not use. They do not affect the grade.",
+					"label": "Not used by this deployment"
+				},
 				"recommended": {
 					"description": "Useful hardening after the blocking path is verified.",
 					"label": "Recommended"
@@ -19887,6 +19922,10 @@
 					}
 				},
 				"domain": {
+					"bounce_mx": {
+						"impact": "Bounces reach Owlat only when the return-path host has an MX record that points at your mail server.",
+						"title": "Receive bounces at your mail server"
+					},
 					"dkim": {
 						"impact": "DKIM proves messages were signed by your domain and were not changed.",
 						"title": "Sign your emails so Gmail trusts them"
@@ -19894,6 +19933,10 @@
 					"dmarc": {
 						"impact": "DMARC alignment is required for bulk sending and blocks domain impersonation.",
 						"title": "Tell receivers how to check your From address"
+					},
+					"from_mx": {
+						"impact": "Receivers refuse mail from a domain that cannot receive mail, because replies and bounces would have nowhere to go.",
+						"title": "Let your domain receive replies and bounces"
 					},
 					"mta_sts": {
 						"impact": "A fetchable policy tells compatible senders not to downgrade encrypted delivery.",

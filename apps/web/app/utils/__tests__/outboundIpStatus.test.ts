@@ -69,6 +69,21 @@ describe('outboundIpPresentation', () => {
 		expect(worded(input)).toMatchObject({ tone, label });
 	});
 
+	it('names an egress-address hold even when the identity passed', () => {
+		expect(
+			worded({
+				active: false,
+				blockReasons: ['egress-address'],
+				fcrdns: { verdict: 'pass', isGenericPtr: false, isOverridden: false, ptrNames: [] },
+			})
+		).toMatchObject({
+			tone: 'error',
+			label: 'Sends from another address',
+			detail: expect.stringContaining('arrive from another address'),
+			remediation: expect.stringContaining('IP_POOLS_'),
+		});
+	});
+
 	it('distinguishes DNSBL-only and combined quarantine causes', () => {
 		expect(worded({ active: false, blockReasons: ['dnsbl'], dnsbl: 'critical' })).toMatchObject({
 			label: 'Blocklisted',

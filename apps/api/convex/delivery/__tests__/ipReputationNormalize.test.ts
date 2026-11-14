@@ -150,7 +150,6 @@ describe('normalizeIpReputationPayload', () => {
 		['verdict', { fcrdns: { verdict: 'healthy' } }],
 		['reason', { fcrdns: { verdict: 'fail', reason: 'dns-ish' } }],
 		['DNSBL status', { dnsbl: 'ready' }],
-		['block reason', { blockReasons: ['reputation-ish'] }],
 		[
 			'IPv6 SPF reason',
 			{
@@ -169,5 +168,13 @@ describe('normalizeIpReputationPayload', () => {
 				ips: [{ ...legacyIp, ...fields }],
 			})
 		).toBeNull();
+	});
+
+	it('holds an address with an unknown block reason instead of failing the sync', () => {
+		const row = normalizeIpReputationPayload({
+			date: '2026-07-21',
+			ips: [{ ...legacyIp, active: true, blockReasons: ['reputation-ish'] }],
+		})?.ips[0];
+		expect(row).toMatchObject({ active: false, blockReasons: [] });
 	});
 });

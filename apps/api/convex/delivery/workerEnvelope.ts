@@ -42,6 +42,11 @@ export const envelopeInputValidator = v.union(
 		viewInBrowserUrl: v.optional(v.string()),
 		listId: v.optional(v.string()),
 		engagementScore: v.optional(v.number()),
+		// The footer's language (the body's) and the sender's postal address
+		// (`sendComposition/footer.ts`). Not recipient data: a seed shadow copy
+		// keeps both.
+		footerLanguage: v.optional(v.string()),
+		senderAddress: v.optional(v.string()),
 		// Deliverability SEED PROBE marker. Set ONLY on a shadow copy addressed
 		// to an operator-owned seed mailbox (see `delivery/seedShadowCopy.ts`);
 		// the campaign composer stamps it as `X-Owlat-Seed-Probe` so the IMAP
@@ -85,6 +90,9 @@ export const envelopeInputValidator = v.union(
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
 		engagementScore: v.optional(v.number()),
+		// As on the campaign variant; rendered only when the footer is.
+		footerLanguage: v.optional(v.string()),
+		senderAddress: v.optional(v.string()),
 		// Deliverability SEED PROBE marker, exactly as on the campaign variant
 		// above and for exactly the same reason: the `transactional` and
 		// `automation` cells are measured by a SCHEDULED probe

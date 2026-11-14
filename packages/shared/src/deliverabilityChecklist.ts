@@ -1,5 +1,8 @@
 /** Canonical Deliverability Center taxonomy and evidence-only reducer. */
-import type { DeliverabilityChecklistDefinition } from './deliverabilityChecklistCatalog';
+import type {
+	DeliverabilityAudience,
+	DeliverabilityChecklistDefinition,
+} from './deliverabilityChecklistCatalog';
 
 import { deliverabilityDiagnosticReport } from './deliverabilityDiagnostics';
 
@@ -32,6 +35,8 @@ export const DOMAIN_CHECK_IDS = [
 	'domain.dkim',
 	'domain.dmarc',
 	'domain.return_path',
+	'domain.from_mx',
+	'domain.bounce_mx',
 	'domain.mta_sts',
 	'domain.tls_rpt',
 	'domain.tlsa',
@@ -106,6 +111,9 @@ export const DELIVERABILITY_NEXT_ACTIONS: Record<DeliverabilityCheckId, string> 
 	'domain.dkim': 'Publish every DKIM selector exactly as shown by Owlat.',
 	'domain.dmarc': 'Publish the shown DMARC policy after SPF and DKIM pass.',
 	'domain.return_path': 'Publish the displayed return-path MX and SPF records.',
+	'domain.from_mx':
+		'Publish an MX record for this domain, pointing at the server that receives its mail.',
+	'domain.bounce_mx': 'Publish the displayed MX record on the return-path host.',
 	'domain.mta_sts': 'Publish the MTA-STS TXT id and serve the matching HTTPS policy.',
 	'domain.tls_rpt': 'Publish the displayed _smtp._tls TXT reporting address.',
 	'domain.tlsa': 'Publish the displayed TLSA association in the DNSSEC-signed zone.',
@@ -135,6 +143,51 @@ export interface DeliverabilityChecklistItem extends DeliverabilityChecklistDefi
 	observed: readonly string[];
 	failureReason?: string;
 	diagnosticReport: string;
+	/** Set when the check is shown but left out of the grade and the next step. */
+	notGraded?: DeliverabilityNotGradedReason;
+}
+
+/** How this deployment actually sends, as far as the checks care. */
+export interface DeliverabilitySendPaths {
+	/** Some message type is routed through the built-in mail server. */
+	usesOwnMta: boolean;
+	/** The campaigns feature is on, so bulk marketing mail is sent. */
+	sendsMarketing: boolean;
+}
+
+export type DeliverabilityNotGradedReason = 'own_mta_unused' | 'marketing_off' | 'not_measured';
+
+/**
+ * Observed value a validator records when its measurement source is simply
+ * not connected (no Google Postmaster data at all). That is a missing optional
+ * input, not a finding about the mail, so it never lowers the grade.
+ */
+export const DELIVERABILITY_NOT_MEASURED = 'measurement=absent';
+
+const AUDIENCE_UNUSED: Record<
+	Exclude<DeliverabilityAudience, 'all'>,
+	{ reason: DeliverabilityNotGradedReason; isUsed: (paths: DeliverabilitySendPaths) => boolean }
+> = {
+	own_mta: { reason: 'own_mta_unused', isUsed: (paths) => paths.usesOwnMta },
+	marketing: { reason: 'marketing_off', isUsed: (paths) => paths.sendsMarketing },
+};
+
+/**
+ * Why a check stays out of the grade on this deployment, or null when it
+ * counts: it judges a send path the deployment does not use, or its optional
+ * measurement source is not connected.
+ */
+export function deliverabilityNotGradedReason(
+	item: Pick<DeliverabilityChecklistItem, 'appliesTo' | 'status' | 'observed'>,
+	paths: DeliverabilitySendPaths
+): DeliverabilityNotGradedReason | null {
+	if (item.appliesTo !== 'all') {
+		const audience = AUDIENCE_UNUSED[item.appliesTo];
+		if (!audience.isUsed(paths)) return audience.reason;
+	}
+	return item.status !== 'pass' && item.observed.includes(DELIVERABILITY_NOT_MEASURED)
+		? 'not_measured'
+		: null;
 }
 
 export type DeliverabilityGrade = 'ready' | 'needs_attention' | 'at_risk';
@@ -174,12 +227,13 @@ export function materializeChecklistItem(
 }
 
 export function deriveDeliverabilityGrade(
-	items: readonly Pick<DeliverabilityChecklistItem, 'status' | 'severity'>[]
+	items: readonly Pick<DeliverabilityChecklistItem, 'status' | 'severity' | 'notGraded'>[]
 ): DeliverabilityGrade {
-	if (items.some((item) => item.severity === 'blocking' && item.status === 'fail')) {
+	const graded = items.filter((item) => !item.notGraded);
+	if (graded.some((item) => item.severity === 'blocking' && item.status === 'fail')) {
 		return 'at_risk';
 	}
-	return items.some((item) => item.severity !== 'recommended' && item.status !== 'pass')
+	return graded.some((item) => item.severity !== 'recommended' && item.status !== 'pass')
 		? 'needs_attention'
 		: 'ready';
 }
@@ -206,7 +260,10 @@ export function selectNextDeliverabilityItem(
 	for (const severity of DELIVERABILITY_SEVERITIES) {
 		const candidate = items.find(
 			(item) =>
-				item.severity === severity && item.status !== 'pass' && dependenciesPass(item, items)
+				item.severity === severity &&
+				!item.notGraded &&
+				item.status !== 'pass' &&
+				dependenciesPass(item, items)
 		);
 		if (candidate) return candidate;
 	}

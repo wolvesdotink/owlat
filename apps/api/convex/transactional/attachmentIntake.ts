@@ -9,6 +9,7 @@
  */
 
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { errorResponse } from '../auth/apiResponses';
 import type { JsonPrimitiveValue } from '../lib/inputGuards';
@@ -163,6 +164,7 @@ interface DispatchRequest {
 	dataVariables?: Record<string, JsonPrimitiveValue>;
 	language?: string;
 	idempotency?: IdempotencyArg;
+	apiKeyId?: Id<'apiKeys'>;
 }
 
 /**
