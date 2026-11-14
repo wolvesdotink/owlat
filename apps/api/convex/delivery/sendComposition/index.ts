@@ -10,6 +10,7 @@
  * adding a registry entry is a compile error.
  */
 
+import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
@@ -71,7 +72,7 @@ const COMPOSERS = {
  */
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
-	const composed = composer(input);
+	const composed = withoutDuplicatePostalAddress(composer(input));
 	// The text/plain alternative, in preference order:
 	//  1. the template's `plainTextContent` — the author's manual override, or
 	//     the body generated from the block document at save time. It is
@@ -101,6 +102,29 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 				})}`
 			: body;
 	return { ...composed, text };
+}
+
+/**
+ * A rendered element carrying the postal-address marker. Anchored on a tag so
+ * the attribute name written as text in the body does not count. Authors cannot
+ * set the attribute themselves: the text and raw-HTML sanitizers drop it, so
+ * only the renderer's brand kit footer block emits it.
+ */
+const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
+	`<[a-z][^>]*\\s${POSTAL_ADDRESS_BLOCK_ATTRIBUTE}(?=[\\s=/>])`,
+	'i'
+);
+
+/**
+ * The brand kit footer block already prints the sender's address, so the
+ * footer keeps only its two links. Seed shadow copies go through here too and
+ * stay identical to the mail they mirror.
+ */
+function withoutDuplicatePostalAddress(composed: ComposerOutput): ComposerOutput {
+	const config = composed.transformConfig;
+	if (!config?.senderAddress || !POSTAL_ADDRESS_BLOCK_RE.test(composed.html)) return composed;
+	const { senderAddress: _printedByTheBody, ...rest } = config;
+	return { ...composed, transformConfig: rest };
 }
 
 /** The personalization variables this send kind substitutes into its subject. */

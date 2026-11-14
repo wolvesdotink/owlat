@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { composeForSend, personalizeSubject } from '../index';
 import { isAutomatedMail } from '../../../lib/inboundClassification';
 import type { Id } from '../../../_generated/dataModel';
+import { renderEmailHtml, renderPlainText } from '@owlat/email-renderer';
+import { DEFAULT_BRAND_KIT_DESIGN, senderPostalAddress } from '@owlat/shared/brandKit';
+import { brandFooterBlocks } from '@owlat/shared/brandKitBlocks';
+import { transformHtml } from '../transform';
 
 const CONTACT_ID = 'contact1' as Id<'contacts'>;
 const SEND_ID = 'send1' as Id<'emailSends'>;
@@ -903,5 +907,53 @@ describe('personalizeSubject', () => {
 				contactInfo: { email: 'x@y', firstName: 'A & B' },
 			})
 		).toBe('Hi A & B');
+	});
+});
+
+describe('composeForSend — the postal address appears once', () => {
+	const kit = {
+		...DEFAULT_BRAND_KIT_DESIGN,
+		isConfigured: true,
+		footerCompanyName: 'Northwind',
+		footerAddress: '1 Example Street\n12345 Example City',
+	};
+	let n = 0;
+	const blocks = brandFooterBlocks(kit, () => `ftr${n++}`);
+	const withBlock = {
+		subject: 'News',
+		htmlContent: renderEmailHtml([
+			{ id: 'body', type: 'text', content: { html: '<p>Hello</p>' } } as never,
+			...blocks,
+		]),
+		plainTextContent: renderPlainText(blocks),
+	};
+	const campaign = (template: typeof withBlock) => ({
+		kind: 'campaign' as const,
+		template,
+		contactInfo: { contactId: CONTACT_ID, email: 'jane@example.com' },
+		unsubscribeUrl: 'https://app.example/unsubscribe?token=u',
+		preferenceUrl: 'https://app.example/preferences?token=p',
+		senderAddress: senderPostalAddress(kit),
+	});
+	const occurrences = (haystack: string) => haystack.split('1 Example Street').length - 1;
+
+	it('leaves the address out of the footer when the brand kit footer block carries it', () => {
+		expect(withBlock.htmlContent).toContain('data-owlat-postal-address');
+		const composed = composeForSend(campaign(withBlock));
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
+		expect(occurrences(composed.text)).toBe(1);
+		// The two links stay.
+		expect(html).toContain('href="https://app.example/unsubscribe?token=u"');
+		expect(html).toContain('href="https://app.example/preferences?token=p"');
+		expect(composed.text).toContain('Unsubscribe: https://app.example/unsubscribe?token=u');
+	});
+
+	it('still prints the address when the body has no footer block', () => {
+		const bare = { subject: 'News', htmlContent: '<p>Hello</p>', plainTextContent: 'Hello' };
+		const composed = composeForSend(campaign(bare));
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
+		expect(occurrences(composed.text)).toBe(1);
 	});
 });

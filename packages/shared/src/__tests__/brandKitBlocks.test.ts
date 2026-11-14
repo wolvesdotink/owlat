@@ -193,3 +193,15 @@ describe('applyBrandKit', () => {
 		expect(applyBrandKit(once, design).changedCount).toBe(0);
 	});
 });
+
+describe('brandFooterBlocks — postal address marker', () => {
+	it('flags the text Block that prints the address', () => {
+		const [text] = brandFooterBlocks(design, ids());
+		expect((text!.content as { postalAddress?: boolean }).postalAddress).toBe(true);
+	});
+
+	it('does not flag a footer that names the company without an address', () => {
+		const [text] = brandFooterBlocks({ ...design, footerAddress: '' }, ids());
+		expect((text!.content as { postalAddress?: boolean }).postalAddress).toBeUndefined();
+	});
+});
