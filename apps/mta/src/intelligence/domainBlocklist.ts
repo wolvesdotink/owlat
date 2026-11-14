@@ -24,6 +24,7 @@ import {
 	type DomainBlocklistDefinition,
 	type DomainBlocklistId,
 } from '@owlat/shared/dnsbl';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { checkDnsblNameDetailed, type DnsblLookupDeps, type DnsblStatus } from './dnsblLookup.js';
 
 const CACHE_PREFIX = 'mta:domain-blocklist:';
@@ -101,7 +102,8 @@ function zoneFor(
 function parseCached(raw: string | null): CachedVerdict | null {
 	if (!raw) return null;
 	try {
-		const value = JSON.parse(raw) as Record<string, unknown>;
+		const value: unknown = JSON.parse(raw);
+		if (!isRecord(value)) return null;
 		const status = value['status'];
 		const checkedAt = value['checkedAt'];
 		if (
