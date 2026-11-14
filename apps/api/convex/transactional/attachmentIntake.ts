@@ -164,6 +164,7 @@ interface DispatchRequest {
 	dataVariables?: Record<string, JsonPrimitiveValue>;
 	language?: string;
 	idempotency?: IdempotencyArg;
+	apiKeyId?: Id<'apiKeys'>;
 }
 
 /**

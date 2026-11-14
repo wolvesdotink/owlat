@@ -45,12 +45,16 @@ export type DispatchRejectionReason =
 	| 'sender_not_configured'
 	| 'domain_unverified'
 	| 'invalid_variables'
+	| 'recipient_rate_limited'
+	| 'daily_send_limit'
 	| IdempotencyRefusalReason;
 
 export type DispatchRefusal = {
 	ok: false;
 	reason: DispatchRejectionReason;
 	detail?: string;
+	/** Set on the volume-cap refusals: when the cap admits the next send. */
+	retryAfterMs?: number;
 };
 
 export type DispatchOutcome =
