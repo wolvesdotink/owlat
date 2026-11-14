@@ -18,7 +18,12 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal, api } from '../_generated/api';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	createTestTopic,
+} from './factories';
 import type { Id } from '../_generated/dataModel';
 import { toMtaSuppressionReason } from '../delivery/suppressionMirror';
 
@@ -32,6 +37,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-1'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -425,5 +431,86 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 
 		const calls = suppressionCalls(global.fetch as ReturnType<typeof vi.fn>);
 		expect(calls).toHaveLength(0);
+	});
+});
+
+// Collect the JSON body of every POST to the MTA marketing opt-out endpoint.
+function optOutCalls(fetchSpy: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
+	return fetchSpy.mock.calls
+		.filter((call) => String(call[0]).endsWith('/suppression/marketing-opt-out'))
+		.map((call) => JSON.parse((call[1] as RequestInit).body as string));
+}
+
+describe('global opt-out → MTA withdraws queued marketing mail', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.stubEnv('MTA_INTERNAL_URL', 'https://mta.internal');
+		vi.stubEnv('MTA_API_KEY', 'test-key');
+		global.fetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true }), { status: 200 })
+			) as unknown as typeof fetch;
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+		global.fetch = originalFetch;
+	});
+
+	async function seed(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'leaver@example.com' })
+			);
+			const topicId = await ctx.db.insert('topics', createTestTopic());
+			await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: Date.now() });
+			return { contactId, topicId };
+		});
+	}
+
+	it('tells the MTA once, with the time the opt-out was recorded', async () => {
+		const t = convexTest(schema, modules);
+		const { contactId } = await seed(t);
+
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, { contactId });
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, { contactId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const optedOutAt = await t.run(async (ctx) => (await ctx.db.get(contactId))?.unsubscribedAt);
+		expect(optOutCalls(global.fetch as ReturnType<typeof vi.fn>)).toEqual([
+			{ organizationId: 'org-1', email: 'leaver@example.com', optedOutAt },
+		]);
+	});
+
+	it('does not tell the MTA about a single-topic unsubscribe', async () => {
+		const t = convexTest(schema, modules);
+		const { contactId, topicId } = await seed(t);
+
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, {
+			contactId,
+			topicId,
+		});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(optOutCalls(global.fetch as ReturnType<typeof vi.fn>)).toHaveLength(0);
+	});
+
+	it('retries while the MTA is unavailable', async () => {
+		global.fetch = vi
+			.fn()
+			.mockResolvedValueOnce(new Response('down', { status: 503 }))
+			.mockResolvedValue(
+				new Response(JSON.stringify({ success: true }), { status: 200 })
+			) as unknown as typeof fetch;
+		const t = convexTest(schema, modules);
+		const { contactId } = await seed(t);
+
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, { contactId });
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(optOutCalls(global.fetch as ReturnType<typeof vi.fn>)).toHaveLength(2);
 	});
 });

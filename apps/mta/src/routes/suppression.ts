@@ -10,6 +10,7 @@ import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as suppressionList from '../intelligence/suppressionList.js';
+import { recordMarketingOptOut } from '../intelligence/marketingOptOut.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import { logger } from '../monitoring/logger.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
@@ -40,6 +41,12 @@ const bulkBody = v.object({
 			expiresAt: v.optional(v.number()),
 		})
 	),
+});
+
+const marketingOptOutBody = v.object({
+	organizationId: v.string(),
+	email: v.string(),
+	optedOutAt: v.number(),
 });
 
 /**
@@ -107,6 +114,24 @@ export function createSuppressionRoutes(redis: Redis, config: MtaConfig): Hono {
 		} catch (err) {
 			logger.error({ err }, 'Failed to bulk suppress');
 			return c.json({ error: 'Failed to bulk suppress' }, 500);
+		}
+	});
+
+	// POST /marketing-opt-out — a contact unsubscribed from marketing; withdraw
+	// the campaign and automation mail to them that is still queued here.
+	app.post('/marketing-opt-out', async (c) => {
+		const read = await readJsonBody(c, marketingOptOutBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
+		if (!body.organizationId || !body.email.includes('@') || !Number.isFinite(body.optedOutAt)) {
+			return c.json({ error: 'Invalid marketing opt-out' }, 400);
+		}
+		try {
+			await recordMarketingOptOut(redis, body, config);
+			return c.json({ success: true });
+		} catch (err) {
+			logger.error({ err }, 'Failed to record marketing opt-out');
+			return c.json({ error: 'Failed to record marketing opt-out' }, 500);
 		}
 	});
 
