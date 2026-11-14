@@ -274,7 +274,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// Cancel a pending rotation (discard the unpublished pending key).
 	app.delete('/:domain/rotation', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const cancelled = await dkimRotation.cancelRotation(redis, domain);
+		const cancelled = await dkimRotation.cancelRotation(redis, domain, notifyRotation);
 		if (!cancelled) return c.json({ error: 'No pending rotation for domain' }, 404);
 		return c.json({ success: true, domain });
 	});

@@ -22,7 +22,12 @@ describe('dkimRotation', () => {
 		redis = new Redis() as unknown as RealRedis;
 		clearCache();
 		// Set up a domain with an existing DKIM key
-		await setDkimKey(redis, 'example.com', 's1', '-----BEGIN PRIVATE KEY-----\nfake-key\n-----END PRIVATE KEY-----');
+		await setDkimKey(
+			redis,
+			'example.com',
+			's1',
+			'-----BEGIN PRIVATE KEY-----\nfake-key\n-----END PRIVATE KEY-----'
+		);
 	});
 
 	afterEach(async () => {
@@ -55,15 +60,15 @@ describe('dkimRotation', () => {
 		it('rejects if already has pending rotation', async () => {
 			await initiateRotation(redis, 'example.com', { selector: 's2' });
 
-			await expect(
-				initiateRotation(redis, 'example.com', { selector: 's3' })
-			).rejects.toThrow('already has a pending rotation');
+			await expect(initiateRotation(redis, 'example.com', { selector: 's3' })).rejects.toThrow(
+				'already has a pending rotation'
+			);
 		});
 
 		it('rejects if no DKIM key exists', async () => {
-			await expect(
-				initiateRotation(redis, 'nonexistent.com', { selector: 's1' })
-			).rejects.toThrow('No DKIM key configured');
+			await expect(initiateRotation(redis, 'nonexistent.com', { selector: 's1' })).rejects.toThrow(
+				'No DKIM key configured'
+			);
 		});
 
 		// PR-27 — Regression-lock the rotated key strength. RFC 8301 mandates
@@ -124,7 +129,10 @@ describe('dkimRotation', () => {
 		});
 
 		it('activates once the new DNS record is published', async () => {
-			const { dnsRecord } = await initiateRotation(redis, 'example.com', { selector: 's2', overlapHours: 0 });
+			const { dnsRecord } = await initiateRotation(redis, 'example.com', {
+				selector: 's2',
+				overlapHours: 0,
+			});
 			const published = vi.fn(async (): Promise<string[][]> => [[dnsRecord]]);
 			const result = await activatePendingKey(redis, 'example.com', false, published);
 			expect(result.activated).toBe(true);
@@ -142,9 +150,17 @@ describe('dkimRotation', () => {
 
 		it('is false when the record is absent, wrong, or the lookup fails', async () => {
 			expect(await isPendingDnsPublished('example.com', 's2', RECORD, async () => [])).toBe(false);
-			expect(await isPendingDnsPublished('example.com', 's2', RECORD, async () => [['p=OTHERKEY']])).toBe(false);
-			expect(await isPendingDnsPublished('example.com', 's2', RECORD, async () => { throw new Error('NXDOMAIN'); })).toBe(false);
-			expect(await isPendingDnsPublished('example.com', 's2', undefined, async () => [[RECORD]])).toBe(false);
+			expect(
+				await isPendingDnsPublished('example.com', 's2', RECORD, async () => [['p=OTHERKEY']])
+			).toBe(false);
+			expect(
+				await isPendingDnsPublished('example.com', 's2', RECORD, async () => {
+					throw new Error('NXDOMAIN');
+				})
+			).toBe(false);
+			expect(
+				await isPendingDnsPublished('example.com', 's2', undefined, async () => [[RECORD]])
+			).toBe(false);
 		});
 	});
 
@@ -186,6 +202,27 @@ describe('dkimRotation', () => {
 			});
 		});
 
+		it('cancelRotation notifies Convex so the pending selector is withdrawn', async () => {
+			const notify = vi.fn(async () => {});
+			const { dnsRecord } = await initiateRotation(redis, 'example.com', { selector: 's2' });
+
+			expect(await cancelRotation(redis, 'example.com', notify)).toBe(true);
+
+			expect(notify).toHaveBeenCalledTimes(1);
+			expect(notify).toHaveBeenCalledWith({
+				domain: 'example.com',
+				selector: 's2',
+				dnsRecord,
+				phase: 'cancelled',
+			});
+		});
+
+		it('does not notify Convex when there is no rotation to cancel', async () => {
+			const notify = vi.fn(async () => {});
+			expect(await cancelRotation(redis, 'example.com', notify)).toBe(false);
+			expect(notify).not.toHaveBeenCalled();
+		});
+
 		it('does not notify Convex when activation is refused', async () => {
 			const notify = vi.fn(async () => {});
 			await initiateRotation(redis, 'example.com', { selector: 's2', overlapHours: 48 });
@@ -221,7 +258,7 @@ describe('dkimRotation', () => {
 			});
 
 			const status = await checkRotationStatus(redis);
-			const entry = status.find(s => s.domain === 'example.com');
+			const entry = status.find((s) => s.domain === 'example.com');
 			expect(entry?.action).toBe('pending_ready');
 		});
 	});

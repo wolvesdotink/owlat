@@ -25,6 +25,25 @@ import {
 import { authedQuery, publicQuery } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
+import { internalQuery, type QueryCtx } from '../_generated/server';
+
+type PublishedMtaStsPolicy = { mode: MtaStsPublishedMode; policyId: string; body: string };
+
+async function loadMtaStsPolicy(ctx: QueryCtx): Promise<PublishedMtaStsPolicy | null> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	const mode: MtaStsMode = settings?.mtaStsMode ?? 'none';
+	if (mode === 'none') return null;
+
+	const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
+	if (!mailHost) return null;
+
+	const mx = [mailHost];
+	return {
+		mode,
+		policyId: mtaStsPolicyId(mode, mx),
+		body: buildMtaStsPolicy(mode, mx),
+	};
+}
 
 // public: MTA-STS policy content for the public `/.well-known/mta-sts.txt`
 // route. The MTA-STS policy file is served UNAUTHENTICATED over HTTPS to any
@@ -37,23 +56,13 @@ import { getOptional } from '../lib/env';
 // authz: no gate by design — RFC 8461 requires this policy be world-readable.
 export const getMtaStsPolicy = publicQuery({
 	args: {},
-	handler: async (
-		ctx
-	): Promise<{ mode: MtaStsPublishedMode; policyId: string; body: string } | null> => {
-		const settings = await ctx.db.query('instanceSettings').first();
-		const mode: MtaStsMode = settings?.mtaStsMode ?? 'none';
-		if (mode === 'none') return null;
+	handler: (ctx): Promise<PublishedMtaStsPolicy | null> => loadMtaStsPolicy(ctx),
+});
 
-		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
-		if (!mailHost) return null;
-
-		const mx = [mailHost];
-		return {
-			mode,
-			policyId: mtaStsPolicyId(mode, mx),
-			body: buildMtaStsPolicy(mode, mx),
-		};
-	},
+/** The same policy for server code, which calls internal functions only. */
+export const readMtaStsPolicy = internalQuery({
+	args: {},
+	handler: (ctx): Promise<PublishedMtaStsPolicy | null> => loadMtaStsPolicy(ctx),
 });
 
 // Query: MTA-STS DNS guidance for the Settings → Domains "Receiving" panel.

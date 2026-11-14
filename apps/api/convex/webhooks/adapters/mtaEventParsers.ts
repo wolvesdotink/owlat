@@ -246,7 +246,9 @@ export const MTA_EVENT_PARSERS = {
 			!payload.domain ||
 			!payload.selector ||
 			!payload.dnsRecord ||
-			(payload.phase !== 'pending' && payload.phase !== 'activated')
+			(payload.phase !== 'pending' &&
+				payload.phase !== 'activated' &&
+				payload.phase !== 'cancelled')
 		) {
 			return null;
 		}

@@ -67,8 +67,9 @@ export type EnvKey =
 	| 'MTA_SPF_INCLUDE'
 	// SPF trailing-mechanism qualifier for the generated DNS records: one of
 	// `~all` (soft-fail, the safe default while the authorized IP set is still
-	// settling), `-all` (hard-fail, once the IP set is stable), `?all` or
-	// `+all`. Unset / invalid ⇒ `~all`. RFC 7208 §5.1.
+	// settling) or `-all` (hard-fail, once the IP set is stable). Unset or any
+	// other value (`?all` and `+all` included, which never verify) ⇒ `~all`
+	// with a logged warning. RFC 7208 §5.1.
 	| 'SPF_QUALIFIER'
 	// VERP bounce return-path domain (matches the MTA's RETURN_PATH_DOMAIN,
 	// e.g. `bounces.example.com`). When set together with MTA_IP_POOLS the

@@ -52,10 +52,14 @@ export { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
+import { logWarn } from '../lib/runtimeLog';
 
-const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
-
-export type SpfQualifier = (typeof SPF_QUALIFIERS)[number];
+/**
+ * Only the qualifiers domain verification accepts (`dnsMatch.ts`): `?all`
+ * asserts nothing and `+all` authorises every host, so a generated record
+ * carrying either could never verify.
+ */
+export type SpfQualifier = '~all' | '-all';
 
 /**
  * Default trailing mechanism. A soft-fail (`~all`) is the safe default while an
@@ -66,16 +70,24 @@ export type SpfQualifier = (typeof SPF_QUALIFIERS)[number];
 export const DEFAULT_SPF_QUALIFIER: SpfQualifier = '~all';
 
 export function isSpfQualifier(value: string | undefined | null): value is SpfQualifier {
-	return value === '~all' || value === '-all' || value === '?all' || value === '+all';
+	return value === '~all' || value === '-all';
 }
 
 /**
- * Coerce an operator-supplied `SPF_QUALIFIER` string to a valid qualifier,
- * falling back to the soft-fail default for unset/garbage input.
+ * Coerce an operator-supplied `SPF_QUALIFIER` string to a supported qualifier,
+ * falling back to the soft-fail default for unset or unsupported input. A set
+ * but unsupported value is logged, because the operator chose it on purpose
+ * and would otherwise not learn why the record ends in `~all`.
  */
 export function resolveSpfQualifier(raw: string | undefined | null): SpfQualifier {
 	const trimmed = raw?.trim();
-	return isSpfQualifier(trimmed) ? trimmed : DEFAULT_SPF_QUALIFIER;
+	if (isSpfQualifier(trimmed)) return trimmed;
+	if (trimmed) {
+		logWarn(
+			`[spf] SPF_QUALIFIER=${JSON.stringify(trimmed)} is not supported; generating ${DEFAULT_SPF_QUALIFIER}. Use ~all or -all.`
+		);
+	}
+	return DEFAULT_SPF_QUALIFIER;
 }
 
 type SpfRecordParts = {

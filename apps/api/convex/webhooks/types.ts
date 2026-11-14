@@ -427,12 +427,13 @@ export type InboundEvent =
 			// MTA→Convex DKIM rotation callback (RFC 6376 §3.6.1). `phase` mirrors
 			// the publish-then-switch overlap workflow: `'pending'` adds the new
 			// selector's record alongside the active one, `'activated'` retires the
-			// old one. Lands via `domains.lifecycleDkim.recordDkimRotation`.
+			// old one, `'cancelled'` withdraws the pending one. Lands via
+			// `domains.lifecycleDkim.recordDkimRotation`.
 			kind: 'internal.dkim_rotated';
 			domain: string;
 			selector: string;
 			dnsRecord: string;
-			phase: 'pending' | 'activated';
+			phase: 'pending' | 'activated' | 'cancelled';
 	  }
 	| {
 			// Amazon SNS one-time subscription handshake for the SES feedback

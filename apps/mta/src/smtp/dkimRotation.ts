@@ -30,6 +30,7 @@ export type TxtResolver = (hostname: string) => Promise<string[][]>;
  *   - `'pending'`   — rotation initiated: publish the new selector's record
  *                     alongside the active one (overlap).
  *   - `'activated'` — signing switched to the new key: retire the old selector.
+ *   - `'cancelled'` — the pending key was discarded: withdraw its selector.
  *
  * Injectable so callers wire it to `notifyConvex` and tests can capture the
  * propagated payload. Defaults to a no-op so existing callers are unaffected.
@@ -38,7 +39,7 @@ export type DkimRotationNotifier = (rotation: {
 	domain: string;
 	selector: string;
 	dnsRecord: string;
-	phase: 'pending' | 'activated';
+	phase: 'pending' | 'activated' | 'cancelled';
 }) => Promise<void>;
 
 const noopNotifier: DkimRotationNotifier = async () => {};
@@ -295,7 +296,11 @@ export async function activatePendingKey(
 /**
  * Cancel a pending DKIM key rotation
  */
-export async function cancelRotation(redis: Redis, domain: string): Promise<boolean> {
+export async function cancelRotation(
+	redis: Redis,
+	domain: string,
+	notify: DkimRotationNotifier = noopNotifier
+): Promise<boolean> {
 	const state = await getRotationState(redis, domain);
 	if (!state?.pendingSelector) {
 		return false;
@@ -311,6 +316,17 @@ export async function cancelRotation(redis: Redis, domain: string): Promise<bool
 	);
 
 	logger.info({ domain }, 'DKIM key rotation cancelled');
+
+	// Convex lists the pending selector as a record to publish until it hears
+	// the rotation is gone.
+	if (state.pendingDnsRecord) {
+		await notify({
+			domain,
+			selector: state.pendingSelector,
+			dnsRecord: state.pendingDnsRecord,
+			phase: 'cancelled',
+		});
+	}
 	return true;
 }
 

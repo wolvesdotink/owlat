@@ -618,25 +618,28 @@ describe('mtaAdapter.parseEvent', () => {
 		).toBeNull();
 	});
 
-	it.each(['pending', 'activated'] as const)('parses dkim.rotated (phase=%s)', (phase) => {
-		const event = mtaAdapter.parseEvent(
-			JSON.stringify({
-				event: 'dkim.rotated',
+	it.each(['pending', 'activated', 'cancelled'] as const)(
+		'parses dkim.rotated (phase=%s)',
+		(phase) => {
+			const event = mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'dkim.rotated',
+					domain: 'rotate.com',
+					selector: 's2',
+					dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
+					phase,
+					timestamp: 1700000000000,
+				})
+			);
+			expect(event).toEqual({
+				kind: 'internal.dkim_rotated',
 				domain: 'rotate.com',
 				selector: 's2',
 				dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
 				phase,
-				timestamp: 1700000000000,
-			})
-		);
-		expect(event).toEqual({
-			kind: 'internal.dkim_rotated',
-			domain: 'rotate.com',
-			selector: 's2',
-			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
-			phase,
-		});
-	});
+			});
+		}
+	);
 
 	it('returns null for dkim.rotated missing required fields', () => {
 		expect(
