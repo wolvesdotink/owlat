@@ -37,6 +37,7 @@ import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
 import { chargeTransactionalSendCaps } from './sendCaps';
+import { templateSlugOfSend } from './sendStatus';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
 	idempotencyArgValidator,
@@ -62,10 +63,13 @@ import {
 // The outcome types live with the decisions; re-exported for existing importers.
 export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
 
-// Discriminated lookup so the module accepts either a typed id or a slug
-// from the HTTP shell without re-validating which was provided.
+// Discriminated lookup so the module accepts either an id or a slug from the
+// HTTP shell without re-validating which was provided. The id is a plain
+// string, not `v.id`: it is whatever the caller typed, and a malformed id or
+// one of another table must answer `template_not_found` (a 404), not fail
+// argument validation (a 500). The handler normalizes it.
 const templateLookupValidator = v.union(
-	v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
+	v.object({ kind: v.literal('id'), id: v.string() }),
 	v.object({ kind: v.literal('slug'), slug: v.string() })
 );
 
@@ -85,7 +89,7 @@ export type { AttachmentRef } from './dispatchContent';
 
 /**
  * The route stamped on the row and the envelope, through the shared
- * `resolveSendRoute` seam. Its `providerType`/`ipPool` are advisory for the
+ * `resolveSendRouteFromDb` seam. Its `providerType`/`ipPool` are advisory for the
  * worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative for the
  * `providerType` stamped on the row, so it runs before the insert.
  *
@@ -105,6 +109,24 @@ async function resolveIntakeRoute(
 		logWarn(`transactional intake queued on hold: ${routing.deferralCode}`);
 	}
 	return routing.route;
+}
+
+/**
+ * The template a request names, by id or by slug. A malformed id, or one from
+ * another table, reads as no template, the same as an unknown one.
+ */
+async function loadRequestedTemplate(
+	ctx: MutationCtx,
+	lookup: Parameters<typeof decideTemplate>[0]
+): Promise<Parameters<typeof decideTemplate>[1]> {
+	if (lookup.kind === 'slug') {
+		return await ctx.db
+			.query('transactionalEmails')
+			.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
+			.first();
+	}
+	const templateId = ctx.db.normalizeId('transactionalEmails', lookup.id);
+	return templateId ? await ctx.db.get(templateId) : null;
 }
 
 // ============================================================
@@ -140,9 +162,11 @@ export const dispatch = internalMutation({
 				};
 			}
 			if (lookup.kind === 'replay') {
+				const stored = storedTransactionalResponse(lookup.receipt);
 				return {
 					ok: true,
-					...storedTransactionalResponse(lookup.receipt),
+					...stored,
+					slug: await templateSlugOfSend(ctx.db, stored.sendId),
 					queued: true,
 					replayed: true,
 				};
@@ -181,15 +205,9 @@ export const dispatch = internalMutation({
 		if (!gates.ok) return gates;
 
 		// 2. Template lookup + publish + has-HTML checks.
-		const lookup = args.templateLookup;
 		const found = decideTemplate(
-			lookup,
-			lookup.kind === 'id'
-				? await ctx.db.get(lookup.id)
-				: await ctx.db
-						.query('transactionalEmails')
-						.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
-						.first()
+			args.templateLookup,
+			await loadRequestedTemplate(ctx, args.templateLookup)
 		);
 		if (!found.ok) return found;
 		const { template } = found;
@@ -300,6 +318,7 @@ export const dispatch = internalMutation({
 			contactId: resolved.contactId,
 			contactCreated,
 			language: plan.language,
+			slug: template.slug,
 			queued: true,
 		};
 	},

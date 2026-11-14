@@ -352,37 +352,52 @@ for compose in "$root" "$vps"; do
 	else bad "$compose must use CONVEX_ADMIN_KEY: \${CONVEX_ADMIN_KEY} with no :- default (found ${defaulted:-0} defaulted, ${consumers:-0} defaultless) — an empty admin key crash-loops imap/mail-sync/convex-fn-proxy forever"; fi
 done
 
-cert_init=$(service_block "$root" imap-cert-init)
 imap_block=$(service_block "$root" imap)
-if [ -n "$cert_init" ] && grep -qE '^ {6}- personal-mail$' <<<"$cert_init" \
+if grep -qE '^ {6}- personal-mail$' <<<"$(service_block "$root" imap-cert-init)" \
 	&& grep -Pzq 'imap-cert-init:\n {8}condition: service_completed_successfully\n' <<<"$imap_block"; then
 	ok "$root provisions the IMAP TLS cert under personal-mail before the imap server starts"
 else bad "$root needs an imap-cert-init service on the personal-mail profile that imap depends on with service_completed_successfully"; fi
 
-# --- the IMAP TLS key must be readable BY THE PROCESS THAT NEEDS IT -----------
+# The MTA's inbound listener reads the same pair, and the default-on inbound TLS
+# floor rejects every delivery, bounces included, while it has none. The VPS
+# template's acme sidecar runs only under personal-mail, so an MTA-only instance
+# depends on this one-shot for its certificate in both files.
+for compose in "$root" "$vps"; do
+	cert_init=$(service_block "$compose" imap-cert-init)
+	if [ -n "$cert_init" ] && grep -qE '^ {6}- mta$' <<<"$cert_init" \
+		&& grep -Pzq '\n {6}imap-cert-init:\n {8}condition: service_completed_successfully\n' <<<"$(service_block "$compose" mta)"; then
+		ok "$compose provisions the inbound SMTP TLS cert under the mta profile before the MTA starts"
+	else bad "$compose needs an imap-cert-init service on the mta profile that mta depends on with service_completed_successfully, or every inbound delivery is refused"; fi
+done
+
+# --- the mail TLS key must be readable BY THE PROCESS THAT NEEDS IT -----------
 # Provisioning the cert is only half of it. imap-cert-init runs as root, so the
 # 0600 key it writes lands as root:root — while the imap image runs as uid 1000
 # and mounts mail-certs `:ro`, so it can neither read the key nor repair it.
 # `EACCES: permission denied, open '/opt/owlat/certs/default.key'` out of
 # loadConfig, then `restart: unless-stopped` forever: a live instance logged 724
-# restarts having never once served IMAP. Four properties are pinned.
-if grep -qF 'chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"' <<<"$cert_init"; then
-	ok "$root imap-cert-init hands the cert dir to the uid the imap image runs as"
-else bad "$root imap-cert-init must chown the cert dir to \${IMAP_RUNTIME_USER}, or imap EACCESes on its own TLS key and crash-loops"; fi
+# restarts having never once served IMAP. Four properties are pinned, in both
+# files.
+for compose in "$root" "$vps"; do
+	cert_init=$(service_block "$compose" imap-cert-init)
+	if grep -qF 'chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"' <<<"$cert_init"; then
+		ok "$compose imap-cert-init hands the cert dir to the uid the imap image runs as"
+	else bad "$compose imap-cert-init must chown the cert dir to \${IMAP_RUNTIME_USER}, or imap EACCESes on its own TLS key and crash-loops"; fi
 
-# The fixup has to run on EVERY boot, including the branch that finds a cert
-# already there — that is the only thing that heals a volume an older install
-# already poisoned, or a key an ACME sidecar has just re-published as root. An
-# early `exit 0` on the already-present branch silently skips it.
-if grep -qF 'exit 0' <<<"$cert_init"; then
-	bad "$root imap-cert-init exits early on the already-present branch — the ownership fixup must run on every boot or a poisoned volume stays broken forever"
-else ok "$root imap-cert-init applies the ownership fixup on every boot, not just when it generates a cert"; fi
+	# The fixup has to run on EVERY boot, including the branch that finds a cert
+	# already there — that is the only thing that heals a volume an older install
+	# already poisoned, or a key an ACME sidecar has just re-published as root. An
+	# early `exit 0` on the already-present branch silently skips it.
+	if grep -qF 'exit 0' <<<"$cert_init"; then
+		bad "$compose imap-cert-init exits early on the already-present branch — the ownership fixup must run on every boot or a poisoned volume stays broken forever"
+	else ok "$compose imap-cert-init applies the ownership fixup on every boot, not just when it generates a cert"; fi
 
-# Fixing ownership must not be done by widening the mode instead.
-key_modes=$(grep -oE 'chmod [0-7]+ "\$\$cert_dir/default\.key"' <<<"$cert_init" | awk '{print $2}' | sort -u | tr '\n' ' ')
-if [ "$key_modes" = "600 " ]; then
-	ok "$root imap-cert-init keeps the private key 0600 (never group- or world-readable)"
-else bad "$root imap-cert-init must chmod the private key to exactly 600 (found: ${key_modes:-none})"; fi
+	# Fixing ownership must not be done by widening the mode instead.
+	key_modes=$(grep -oE 'chmod [0-7]+ "\$\$cert_dir/default\.key"' <<<"$cert_init" | awk '{print $2}' | sort -u | tr '\n' ' ')
+	if [ "$key_modes" = "600 " ]; then
+		ok "$compose imap-cert-init keeps the private key 0600 (never group- or world-readable)"
+	else bad "$compose imap-cert-init must chmod the private key to exactly 600 (found: ${key_modes:-none})"; fi
+done
 
 # The chown target here and the image's USER there are the same fact in two
 # files, so they are pinned to each other: apps/imap/Dockerfile asserts its
@@ -437,6 +452,16 @@ for compose in "$root" "$vps"; do
 		&& grep -Pzq 'default:\n(?: *#.*\n)* *enable_ipv6: \$\{MTA_IPV6_ENABLED:-false\}' "$compose"; then
 		ok "$compose gates MTA config and bridge plumbing on the single MTA_IPV6_ENABLED flag"
 	else bad "$compose must drive both MTA_IPV6_ENABLED and the default network's enable_ipv6 from \${MTA_IPV6_ENABLED:-false}"; fi
+done
+
+# Port 25 is published on IPv4 only. With no host address Docker also listens
+# on IPv6, and while the bridge is IPv4-only it forwards those connections over
+# IPv4 from the bridge gateway, so the MTA would see one address for every IPv6
+# sender: inbound SPF fails and the per-IP connection caps pool them all.
+for compose in "$root" "$vps"; do
+	if grep -qE "^ {6}- '0\.0\.0\.0:(\\$\{MTA_SMTP_PORT:-25\}|25):25'$" <<<"$(service_block "$compose" mta)"; then
+		ok "$compose publishes the MTA's port 25 on IPv4 only"
+	else bad "$compose must publish the MTA's port 25 as '0.0.0.0:<port>:25', or IPv6 senders arrive as the bridge gateway"; fi
 done
 
 for envfile in .env.selfhost.example apps/mta/.env.example infra/templates/.env.vps.template; do
@@ -508,11 +533,13 @@ fi
 # "supplied elsewhere" is a written-down claim rather than an absence.
 vps_env=infra/templates/.env.vps.template
 
-# Both interpolation forms, as written in the compose file.
-vps_required=$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*:\?' "$vps" |
-	sed -e 's/^[$][{]//' -e 's/:?$//' | sort -u)
-vps_bare=$(grep -oE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$vps" |
-	sed -e 's/^[$][{]//' -e 's/[}]$//' | sort -u)
+# Both interpolation forms, as written in the compose file. `$${VAR}` is
+# compose's escape for a literal `${VAR}` that a container's shell expands, so a
+# reference preceded by another `$` is not interpolated and is skipped.
+vps_required=$(grep -oE '(^|[^$])\$\{[A-Za-z_][A-Za-z0-9_]*:\?' "$vps" |
+	sed -e 's/^.*[$][{]//' -e 's/:?$//' | sort -u)
+vps_bare=$(grep -oE '(^|[^$])\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$vps" |
+	sed -e 's/^.*[$][{]//' -e 's/[}]$//' | sort -u)
 
 unfilled=
 for var in $vps_required $vps_bare; do

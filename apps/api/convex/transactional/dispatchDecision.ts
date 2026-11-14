@@ -64,6 +64,8 @@ export type DispatchOutcome =
 			contactId: Id<'contacts'>;
 			contactCreated: boolean;
 			language: string;
+			/** The template's slug, whichever way the request named it. */
+			slug: string;
 			queued: true;
 			/** Answered from the Idempotency-Key's receipt: nothing was sent this time. */
 			replayed?: true;
@@ -71,7 +73,7 @@ export type DispatchOutcome =
 	| DispatchRefusal;
 
 export type TemplateLookup =
-	| { readonly kind: 'id'; readonly id: Id<'transactionalEmails'> }
+	| { readonly kind: 'id'; readonly id: string }
 	| { readonly kind: 'slug'; readonly slug: string };
 
 type Template = Doc<'transactionalEmails'>;

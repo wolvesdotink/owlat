@@ -4,7 +4,10 @@ import { softDeleteFields } from '../lib/validators/softDelete';
 import { abTestConfigValidator, campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from '../campaigns/audience';
 import { sendStatusValidator, abVariantValidator } from '../lib/literalValidators';
-import { campaignShardedStatFields } from '../lib/validators/campaigns';
+import {
+	campaignShardedStatFields,
+	campaignStartRefusalValidator,
+} from '../lib/validators/campaigns';
 import { sendTrackingFields } from '../lib/validators/send';
 import {
 	sendTimeGroupValidator,
@@ -270,6 +273,9 @@ export const campaignTables = {
 		archiveSubject: v.optional(v.string()),
 		// Content scanning: reason if content was blocked by scanner
 		contentBlockReason: v.optional(v.string()),
+		// Why the last scheduled start did not happen (the campaign went back to
+		// draft). Cleared when the campaign is scheduled or sent again.
+		startRefusal: v.optional(campaignStartRefusalValidator),
 		// Denormalized search field: "name subject" for full-text search
 		searchableText: v.optional(v.string()),
 		// Aggregated stats freshness (stats* fields are updated only by the Send
@@ -357,7 +363,10 @@ export const campaignTables = {
 		// The lost-send sweep (`delivery/stuckSendSweep.ts`): queued Sends with no
 		// provider id, by first-attempt time, so it reads only the rows past their
 		// deadline (and, with `firstAttemptAt` absent, the never-attempted ones).
-		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt']),
+		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt'])
+		// The sweep's no-feedback pass: queued Sends by first attempt, whatever
+		// their provider id, of which it ends only the ones holding one.
+		.index('by_status_first_attempt', ['status', 'firstAttemptAt']),
 
 	// Checkpoint rows for large-audience campaign sends (see the table comment
 	// above). One row per send walk (plain, A/B test cohort, or A/B winner

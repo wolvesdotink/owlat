@@ -159,7 +159,7 @@ export async function uploadAttachments(
 
 /** The dispatch arguments the shell settles before any attachment is stored. */
 interface DispatchRequest {
-	templateLookup: { kind: 'id'; id: Id<'transactionalEmails'> } | { kind: 'slug'; slug: string };
+	templateLookup: { kind: 'id'; id: string } | { kind: 'slug'; slug: string };
 	email: string;
 	dataVariables?: Record<string, JsonPrimitiveValue>;
 	language?: string;

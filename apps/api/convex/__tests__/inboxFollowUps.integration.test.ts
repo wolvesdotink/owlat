@@ -8,6 +8,7 @@ import {
 	createTestContact,
 	createTestConversationThread,
 	createTestInboundMessage,
+	createTestDomain,
 } from './factories';
 import { FOLLOW_UP_LIFECYCLE, followUpRefusal } from '../inbox/followUps';
 import { interpretationSourceKey } from '../lib/validators/threadBrief';
@@ -90,6 +91,15 @@ describe('inbox follow-ups', () => {
 	) {
 		return await t.run(async (ctx) => {
 			if (options.withSender !== false) {
+				// The default sender's domain: non-campaign mail is refused from any other.
+				await ctx.db.insert(
+					'domains',
+					createTestDomain({
+						domain: 'owlat.example',
+						status: 'verified',
+						lastVerifiedAt: Date.now(),
+					})
+				);
 				await ctx.db.insert('instanceSettings', {
 					contactCount: 0,
 					createdAt: Date.now(),

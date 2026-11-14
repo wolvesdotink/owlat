@@ -287,6 +287,7 @@ import type * as analytics_llmUsage from '../analytics/llmUsage.js';
 import type * as analytics_marketingOverview from '../analytics/marketingOverview.js';
 import type * as analytics_marketingOverviewMath from '../analytics/marketingOverviewMath.js';
 import type * as analytics_reporter from '../analytics/reporter.js';
+import type * as analytics_reputationEnforcement from '../analytics/reputationEnforcement.js';
 import type * as analytics_reputationQueries from '../analytics/reputationQueries.js';
 import type * as analytics_reputationSnapshots from '../analytics/reputationSnapshots.js';
 import type * as analytics_seedAccounts from '../analytics/seedAccounts.js';
@@ -429,6 +430,7 @@ import type * as campaigns_guards from '../campaigns/guards.js';
 import type * as campaigns_lifecycle from '../campaigns/lifecycle.js';
 import type * as campaigns_lifecycleReducer from '../campaigns/lifecycleReducer.js';
 import type * as campaigns_listing from '../campaigns/listing.js';
+import type * as campaigns_mailServerPreflight from '../campaigns/mailServerPreflight.js';
 import type * as campaigns_deletion from '../campaigns/deletion.js';
 import type * as campaigns_multiDaySendPlan from '../campaigns/multiDaySendPlan.js';
 import type * as campaigns_organization from '../campaigns/organization.js';
@@ -451,6 +453,7 @@ import type * as campaigns_sendTimeQueries from '../campaigns/sendTimeQueries.js
 import type * as campaigns_sendVariantSplit from '../campaigns/sendVariantSplit.js';
 import type * as campaigns_senders from '../campaigns/senders.js';
 import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
+import type * as campaigns_startGate from '../campaigns/startGate.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
 import type * as campaigns_testSendCommit from '../campaigns/testSendCommit.js';
@@ -730,6 +733,7 @@ import type * as delivery_sendComposition_transform from '../delivery/sendCompos
 import type * as delivery_sendComposition_types from '../delivery/sendComposition/types.js';
 import type * as delivery_sendEngagement from '../delivery/sendEngagement.js';
 import type * as delivery_sendLifecycle from '../delivery/sendLifecycle.js';
+import type * as delivery_sendLifecycle_automatedEngagement from '../delivery/sendLifecycle/automatedEngagement.js';
 import type * as delivery_sendLifecycle_deliveryObservation from '../delivery/sendLifecycle/deliveryObservation.js';
 import type * as delivery_sendLifecycle_effects from '../delivery/sendLifecycle/effects.js';
 import type * as delivery_sendLifecycle_engagementActivity from '../delivery/sendLifecycle/engagementActivity.js';
@@ -746,6 +750,7 @@ import type * as delivery_sndsFeed from '../delivery/sndsFeed.js';
 import type * as delivery_sndsPoll from '../delivery/sndsPoll.js';
 import type * as delivery_status from '../delivery/status.js';
 import type * as delivery_statusActions from '../delivery/statusActions.js';
+import type * as delivery_stuckSendFeedback from '../delivery/stuckSendFeedback.js';
 import type * as delivery_stuckSendSweep from '../delivery/stuckSendSweep.js';
 import type * as delivery_stuckSendSweepAdmin from '../delivery/stuckSendSweepAdmin.js';
 import type * as delivery_suppressionMirror from '../delivery/suppressionMirror.js';
@@ -1222,6 +1227,7 @@ import type * as lib_sendProviders_emailit_index from '../lib/sendProviders/emai
 import type * as lib_sendProviders_errors from '../lib/sendProviders/errors.js';
 import type * as lib_sendProviders_fallbackEligibility from '../lib/sendProviders/fallbackEligibility.js';
 import type * as lib_sendProviders_fallbackRelays from '../lib/sendProviders/fallbackRelays.js';
+import type * as lib_sendProviders_feedbackReadiness from '../lib/sendProviders/feedbackReadiness.js';
 import type * as lib_sendProviders_health from '../lib/sendProviders/health.js';
 import type * as lib_sendProviders_index from '../lib/sendProviders/index.js';
 import type * as lib_sendProviders_mandrill_client from '../lib/sendProviders/mandrill/client.js';
@@ -1911,6 +1917,8 @@ import type * as transactional_pendingUploads from '../transactional/pendingUplo
 import type * as transactional_sendCaps from '../transactional/sendCaps.js';
 import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
 import type * as transactional_sends from '../transactional/sends.js';
+import type * as transactional_sendStatus from '../transactional/sendStatus.js';
+import type * as transactional_sendStatusHttp from '../transactional/sendStatusHttp.js';
 import type * as transactional_translations from '../transactional/translations.js';
 import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
 import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js';
@@ -1945,9 +1953,11 @@ import type * as webhooks_events_emailBounced_index from '../webhooks/events/ema
 import type * as webhooks_events_emailClicked_index from '../webhooks/events/emailClicked/index.js';
 import type * as webhooks_events_emailComplained_index from '../webhooks/events/emailComplained/index.js';
 import type * as webhooks_events_emailDelivered_index from '../webhooks/events/emailDelivered/index.js';
+import type * as webhooks_events_emailFailed_index from '../webhooks/events/emailFailed/index.js';
 import type * as webhooks_events_emailOpened_index from '../webhooks/events/emailOpened/index.js';
 import type * as webhooks_events_emailSent_index from '../webhooks/events/emailSent/index.js';
 import type * as webhooks_events_registry from '../webhooks/events/registry.js';
+import type * as webhooks_events_sendIdentity from '../webhooks/events/sendIdentity.js';
 import type * as webhooks_events_test_index from '../webhooks/events/test/index.js';
 import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/events/topicUnsubscribed/index.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
@@ -2213,6 +2223,7 @@ declare const fullApi: ApiFromModules<{
 	'analytics/marketingOverview': typeof analytics_marketingOverview;
 	'analytics/marketingOverviewMath': typeof analytics_marketingOverviewMath;
 	'analytics/reporter': typeof analytics_reporter;
+	'analytics/reputationEnforcement': typeof analytics_reputationEnforcement;
 	'analytics/reputationQueries': typeof analytics_reputationQueries;
 	'analytics/reputationSnapshots': typeof analytics_reputationSnapshots;
 	'analytics/seedAccounts': typeof analytics_seedAccounts;
@@ -2368,6 +2379,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/lifecycle': typeof campaigns_lifecycle;
 	'campaigns/lifecycleReducer': typeof campaigns_lifecycleReducer;
 	'campaigns/listing': typeof campaigns_listing;
+	'campaigns/mailServerPreflight': typeof campaigns_mailServerPreflight;
 	'campaigns/deletion': typeof campaigns_deletion;
 	'campaigns/multiDaySendPlan': typeof campaigns_multiDaySendPlan;
 	'campaigns/organization': typeof campaigns_organization;
@@ -2390,6 +2402,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendVariantSplit': typeof campaigns_sendVariantSplit;
 	'campaigns/senders': typeof campaigns_senders;
 	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
+	'campaigns/startGate': typeof campaigns_startGate;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
 	'campaigns/testSendCommit': typeof campaigns_testSendCommit;
@@ -2679,6 +2692,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendComposition/types': typeof delivery_sendComposition_types;
 	'delivery/sendEngagement': typeof delivery_sendEngagement;
 	'delivery/sendLifecycle': typeof delivery_sendLifecycle;
+	'delivery/sendLifecycle/automatedEngagement': typeof delivery_sendLifecycle_automatedEngagement;
 	'delivery/sendLifecycle/deliveryObservation': typeof delivery_sendLifecycle_deliveryObservation;
 	'delivery/sendLifecycle/effects': typeof delivery_sendLifecycle_effects;
 	'delivery/sendLifecycle/engagementActivity': typeof delivery_sendLifecycle_engagementActivity;
@@ -2695,6 +2709,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sndsPoll': typeof delivery_sndsPoll;
 	'delivery/status': typeof delivery_status;
 	'delivery/statusActions': typeof delivery_statusActions;
+	'delivery/stuckSendFeedback': typeof delivery_stuckSendFeedback;
 	'delivery/stuckSendSweep': typeof delivery_stuckSendSweep;
 	'delivery/stuckSendSweepAdmin': typeof delivery_stuckSendSweepAdmin;
 	'delivery/suppressionMirror': typeof delivery_suppressionMirror;
@@ -3214,6 +3229,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/errors': typeof lib_sendProviders_errors;
 	'lib/sendProviders/fallbackEligibility': typeof lib_sendProviders_fallbackEligibility;
 	'lib/sendProviders/fallbackRelays': typeof lib_sendProviders_fallbackRelays;
+	'lib/sendProviders/feedbackReadiness': typeof lib_sendProviders_feedbackReadiness;
 	'lib/sendProviders/health': typeof lib_sendProviders_health;
 	'lib/sendProviders/index': typeof lib_sendProviders_index;
 	'lib/sendProviders/mandrill/client': typeof lib_sendProviders_mandrill_client;
@@ -4124,6 +4140,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/sendCaps': typeof transactional_sendCaps;
 	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
 	'transactional/sends': typeof transactional_sends;
+	'transactional/sendStatus': typeof transactional_sendStatus;
+	'transactional/sendStatusHttp': typeof transactional_sendStatusHttp;
 	'transactional/translations': typeof transactional_translations;
 }> & ApiFromModules<{
 	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
@@ -4159,9 +4177,11 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events/emailClicked/index': typeof webhooks_events_emailClicked_index;
 	'webhooks/events/emailComplained/index': typeof webhooks_events_emailComplained_index;
 	'webhooks/events/emailDelivered/index': typeof webhooks_events_emailDelivered_index;
+	'webhooks/events/emailFailed/index': typeof webhooks_events_emailFailed_index;
 	'webhooks/events/emailOpened/index': typeof webhooks_events_emailOpened_index;
 	'webhooks/events/emailSent/index': typeof webhooks_events_emailSent_index;
 	'webhooks/events/registry': typeof webhooks_events_registry;
+	'webhooks/events/sendIdentity': typeof webhooks_events_sendIdentity;
 	'webhooks/events/test/index': typeof webhooks_events_test_index;
 	'webhooks/events/topicUnsubscribed/index': typeof webhooks_events_topicUnsubscribed_index;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;

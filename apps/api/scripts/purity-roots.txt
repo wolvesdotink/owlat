@@ -12,6 +12,9 @@
 convex/delivery/ramp
 convex/delivery/signals
 
+# Reputation enforcement: which abuse status the sending evidence calls for.
+convex/analytics/reputationEnforcement.ts
+
 # Decision plane: contracts, catalogs, routing, pricing and evidence rules.
 convex/lib/decision
 # Reserves spend for a native attempt through the LLM admission port.
@@ -47,7 +50,7 @@ convex/delivery/sendLifecycle
 # builds (scripts/check-transport-outcome-wiring.ts).
 !convex/delivery/sendLifecycle/effects.ts transportOutcomeEffect
 # Send store reads; the field projections at the bottom are pure.
-!convex/delivery/sendLifecycle/lookups.ts contactEmailOf nonCampaignActivityProvenance nonCampaignBounceProvenance
+!convex/delivery/sendLifecycle/lookups.ts contactEmailOf nonCampaignActivityProvenance nonCampaignBounceProvenance sendIdentityOf
 # Reads the sender domain from the database for the reputation effect.
 !convex/delivery/sendLifecycle/outcomeAccounting.ts
 # Closes the inbound message, follow-up and thread an inbox reply carried.

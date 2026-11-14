@@ -363,5 +363,8 @@ export const templateTables = {
 		// Point lookup for the automation intake's step-run idempotency key.
 		.index('by_automation_step_run', ['automationStepRunId'])
 		// The lost-send sweep (`delivery/stuckSendSweep.ts`); see `emailSends`.
-		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt']),
+		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt'])
+		// The sweep's no-feedback pass: queued Sends by first attempt, whatever
+		// their provider id, of which it ends only the ones holding one.
+		.index('by_status_first_attempt', ['status', 'firstAttemptAt']),
 };

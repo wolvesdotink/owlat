@@ -1,6 +1,6 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { Effect } from './effects';
-import { nonCampaignBounceProvenance } from './lookups';
+import { nonCampaignBounceProvenance, sendIdentityOf } from './lookups';
 import type {
 	EmailSendDoc,
 	ReducerResult,
@@ -160,6 +160,7 @@ export function reduceBounced(
 			literal: 'email.bounced',
 			input: {
 				email: contactEmail,
+				identity: sendIdentityOf(send, ref),
 				bounceType: args.bounceType,
 				...(args.bounceMessage ? { message: args.bounceMessage } : {}),
 				at: args.at,
@@ -252,6 +253,7 @@ export function reduceComplained(
 			literal: 'email.complained',
 			input: {
 				email: contactEmail,
+				identity: sendIdentityOf(send, ref),
 				at: args.at,
 			},
 		},

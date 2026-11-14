@@ -94,10 +94,50 @@ const FIX_LINKS: Readonly<Record<PreflightFailureReason, RefusalFixLink | null>>
 		to: '/dashboard/admin/delivery',
 		labelKey: 'shared.campaignRefusal.fix.deliveryHub',
 	},
+	// The hub's readiness panel names the mail-server, port 25 and sending-IP
+	// gates this refusal is judged on.
+	mail_server_not_ready: {
+		to: '/dashboard/admin/delivery',
+		labelKey: 'shared.campaignRefusal.fix.deliveryHub',
+	},
+	delivery_on_hold: {
+		to: '/dashboard/admin/delivery',
+		labelKey: 'shared.campaignRefusal.fix.deliveryHub',
+	},
+	// The webhook key is set where the transport is configured.
+	no_bounce_feedback: {
+		to: '/dashboard/admin/delivery/transport',
+		labelKey: 'shared.campaignRefusal.fix.transport',
+	},
 };
 
 export function refusalFixLink(reason: PreflightFailureReason): RefusalFixLink | null {
 	return FIX_LINKS[reason];
+}
+
+/** A refusal as the campaign row stores it after a scheduled start gave up. */
+export interface StoredStartRefusal {
+	reason: string;
+	messageKey: string;
+	messageParams?: Record<string, string | number>;
+	message: string;
+	scheduledAt: number;
+}
+
+/**
+ * The note for a stored start refusal. A reason this build does not know (a
+ * newer backend) still shows its sentence, without a fix link.
+ */
+export function blockerFromStartRefusal(
+	refusal: StoredStartRefusal,
+	hasMessage: (key: string) => boolean
+): SendBlocker {
+	return {
+		message: hasMessage(refusal.messageKey)
+			? { key: refusal.messageKey, params: plainParams(refusal.messageParams) }
+			: refusal.message,
+		fix: isPreflightFailureReason(refusal.reason) ? refusalFixLink(refusal.reason) : null,
+	};
 }
 
 export interface SendBlocker {
