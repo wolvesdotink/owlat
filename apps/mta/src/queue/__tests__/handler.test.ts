@@ -1523,6 +1523,79 @@ describe('handleEmailJob', () => {
 		);
 	});
 
+	describe('a message our own machinery held until it expired', () => {
+		// Each hold is a decision of ours, taken before any receiver heard of the
+		// message, so the give-up must not count toward the recipient.
+		const ownHolds: ReadonlyArray<readonly [string, () => Promise<void>]> = [
+			[
+				'the warm-up cap',
+				async () => {
+					const { checkCap } = await import('../../intelligence/warming.js');
+					vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });
+				},
+			],
+			[
+				'an open circuit breaker',
+				async () => {
+					const { canSend } = await import('../../intelligence/circuitBreaker.js');
+					vi.mocked(canSend).mockResolvedValue({ allowed: false, state: 'open', generation: 0 });
+				},
+			],
+			[
+				'no eligible sending IP',
+				async () => {
+					const { selectIpWithLease } = await import('../../scaling/ipPool.js');
+					vi.mocked(selectIpWithLease).mockResolvedValue(null);
+				},
+			],
+			[
+				'the organization rate limit',
+				async () => {
+					const { checkAndIncrement } = await import('../../intelligence/orgLimits.js');
+					vi.mocked(checkAndIncrement).mockResolvedValue({ allowed: false });
+				},
+			],
+		];
+
+		it.each(ownHolds)("expires under %s as the sender's", async (_name, hold) => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+			const { suppress } = await import('../../intelligence/suppressionList.js');
+			await hold();
+
+			const firstEnqueuedAt = Date.now() - 5 * DAY_MS;
+			await run(createJob({ firstEnqueuedAt }), { timestamp: firstEnqueuedAt });
+
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(queue.add).not.toHaveBeenCalled();
+			expect(suppress).not.toHaveBeenCalled();
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({ event: 'bounced', bounceType: 'soft', bounceCause: 'sender' }),
+				config,
+				redis
+			);
+		});
+
+		it("still expires a domain-connection backoff as the recipient's", async () => {
+			// The backoff stands in for the connection failures that started it,
+			// and a connection failure that runs out of time is the recipient
+			// domain's: a domain that never answers is eventually suppressed.
+			const { shouldBackoffDomain } = await import('../../scaling/degradation.js');
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+			vi.mocked(shouldBackoffDomain).mockResolvedValue({ backoff: true, retryAfter: 30_000 });
+
+			const firstEnqueuedAt = Date.now() - 5 * DAY_MS;
+			await run(createJob({ firstEnqueuedAt }), { timestamp: firstEnqueuedAt });
+
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({ event: 'bounced', bounceType: 'soft' }),
+				config,
+				redis
+			);
+			expect(vi.mocked(notifyConvex).mock.calls[0]?.[0]).not.toHaveProperty('bounceCause');
+		});
+	});
+
 	it('expires at the exact shared four-day boundary', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
