@@ -130,6 +130,24 @@ export function screenHostAnswer(answer: HostAnswer, allowPrivate: boolean): MxH
 	return refused.length > 0 ? { status: 'refused', addresses: refused } : { status: 'not-found' };
 }
 
+/**
+ * Screen addresses obtained elsewhere (the validating resolver, for DANE) the
+ * same way as this module's own answers. Anything that is not an address
+ * literal is dropped: the list came off the wire.
+ */
+export function screenAddressList(
+	addresses: readonly string[],
+	allowPrivate: boolean
+): MxHostAddresses {
+	const family = (version: 4 | 6): FamilyAnswer => {
+		const matching = addresses.filter((address) => isIP(address) === version);
+		return matching.length > 0
+			? { kind: 'addresses', addresses: matching, ttl: 0 }
+			: { kind: 'none' };
+	};
+	return screenHostAnswer({ ipv4: family(4), ipv6: family(6) }, allowPrivate);
+}
+
 function cacheSeconds(answer: HostAnswer): number | null {
 	const families = [answer.ipv4, answer.ipv6];
 	if (families.some((family) => family.kind === 'failed')) return null;
