@@ -75,6 +75,17 @@ export type ProviderFeedbackEvent =
 			readonly at: number;
 			readonly bounceType: 'hard' | 'soft';
 			readonly bounceMessage?: string;
+			/**
+			 * Who the bounce is about, from the provider's typed fields. `sender`
+			 * when the refusal was of the sending identity (a reputation or
+			 * authentication block, a content or size rejection) or when the
+			 * provider does not say the address is bad: the host then keeps the
+			 * address off the blocklist and does not count the bounce toward its
+			 * soft-bounce suppression. `recipient`, or leaving it out, lets the
+			 * bounce suppress the address. Decide it from the provider's documented
+			 * bounce type or an RFC 3463 enhanced status code, never its prose.
+			 */
+			readonly bounceCause?: 'sender' | 'recipient';
 	  }
 	| {
 			readonly kind: 'complained';

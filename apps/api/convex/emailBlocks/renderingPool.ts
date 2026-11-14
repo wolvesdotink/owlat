@@ -13,7 +13,7 @@
 
 import { v } from 'convex/values';
 import { Workpool, vOnCompleteArgs } from '@convex-dev/workpool';
-import { components } from '../_generated/api';
+import { components, internal } from '../_generated/api';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { currentContentRevision } from '../lib/contentRevision';
@@ -152,10 +152,23 @@ export const patchTemplateHtml = internalMutation({
 		await patchRenderedHtml(ctx, templateId, args),
 });
 
+/**
+ * A published transactional email's new HTML goes out on the next API send, so
+ * it gets the scan a forced edit gets (`transactional/lifecycle.ts`
+ * `scanPublishedEdit`): blocked content throws and rolls the patch back, so the
+ * job fails and the live HTML stays as it was; suspicious content moves the
+ * email to review. Called through the function reference because that module
+ * imports this one's importer.
+ */
 export const patchTransactionalHtml = internalMutation({
 	args: { emailId: v.id('transactionalEmails'), ...rerenderPatchArgs },
-	handler: async (ctx, { emailId, ...args }): Promise<RerenderPatchOutcome> =>
-		await patchRenderedHtml(ctx, emailId, args),
+	handler: async (ctx, { emailId, ...args }): Promise<RerenderPatchOutcome> => {
+		const outcome = await patchRenderedHtml(ctx, emailId, args);
+		if (outcome === 'applied') {
+			await ctx.runMutation(internal.transactional.lifecycle.scanRerenderedHtml, { emailId });
+		}
+		return outcome;
+	},
 });
 
 // ─── onComplete callback ────────────────────────────────────────────────────

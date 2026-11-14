@@ -741,3 +741,62 @@ describe('organizations.settings.update — inbound file retention horizon', () 
 		).rejects.toThrow();
 	});
 });
+
+// ============================================================
+// update — a default sender on another domain registers that domain
+// ============================================================
+
+describe('organizations.settings.update — default sender domain', () => {
+	beforeEach(() => {
+		vi.stubEnv('MTA_INTERNAL_URL', 'http://mta.internal:3100');
+		vi.stubEnv('MTA_API_KEY', 'mta-key');
+		return () => vi.unstubAllEnvs();
+	});
+
+	const domainNames = (t: ReturnType<typeof convexTest>) =>
+		t.run(async (ctx) => (await ctx.db.query('domains').collect()).map((row) => row.domain));
+
+	it('registers the new domain once, under the operator who changed it', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromEmail: 'hello@news.example.com',
+		});
+		await t.mutation(api.workspaces.settings.update, { defaultFromEmail: 'team@news.example.com' });
+
+		expect(await domainNames(t)).toEqual(['news.example.com']);
+		const audit = await t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.withIndex('by_action', (q) => q.eq('action', 'sending_domain.created'))
+				.collect()
+		);
+		expect(audit.map((row) => row.userId)).toEqual(['test-user']);
+	});
+
+	it('does not add a removed domain back when other settings are saved', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromEmail: 'hello@news.example.com',
+		});
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+		});
+
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromEmail: 'hello@news.example.com',
+			timezone: 'Europe/Berlin',
+		});
+		await t.mutation(api.workspaces.settings.update, { defaultFromName: 'News' });
+
+		expect(await domainNames(t)).toEqual([]);
+	});
+
+	it('registers nothing while mail goes through a relay', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'ses');
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromEmail: 'hello@news.example.com',
+		});
+		expect(await domainNames(t)).toEqual([]);
+	});
+});

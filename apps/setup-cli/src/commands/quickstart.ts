@@ -22,15 +22,16 @@ import { intro, outro, log } from '@clack/prompts';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { mergeEnv, readEnv, writeEnv } from '../lib/env';
 import { waitForUrl } from '../lib/dockerHealth';
 import { createReporter, progressSpinner, SetupStep } from '../lib/progress';
 import { resolveLocalUrls } from '../lib/localHost';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
-import { buildCaddyfile } from '../lib/caddyfile';
+import { bundledEdgeNetwork, writeCaddyfile } from '../lib/publicAddress';
 import { runSetup } from './setup';
+import { assumeYesAdminFromEnv } from './setupNonInteractive';
 import { bootstrap, resolveAdminPassword } from './bootstrap-org';
 import { runSeed } from './seed';
 import { installSampleData } from './sampleData';
@@ -38,6 +39,7 @@ import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 import {
 	askYesNo,
+	dnsInputFromEnv,
 	dnsInstructions,
 	formatSummary,
 	parseFlags,
@@ -192,17 +194,13 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// Step 3c: edge TLS — when public URLs are configured, generate a Caddyfile
 	// and enable the `tls` compose profile so the instance is reachable over
 	// HTTPS off-box. The operator must point DNS at the box and open 80/443 for
-	// Let's Encrypt to issue certs.
+	// Let's Encrypt to issue certs. The terminal wizard's public-address step
+	// already wrote both (lib/publicAddress.ts), so its install is read back
+	// from `.env` instead.
 	const composeProfiles: string[] = [];
 	if (config?.network) {
 		try {
-			const caddyfile = buildCaddyfile({
-				webHost: new URL(config.network.siteUrl).hostname,
-				convexHost: new URL(config.network.convexUrl).hostname,
-				convexSiteHost: new URL(config.network.convexSiteUrl).hostname,
-				email: config.admin.email,
-			});
-			await writeFile(join(opts.owlatDir, 'Caddyfile'), caddyfile, 'utf-8');
+			await writeCaddyfile(opts.owlatDir, config.network, config.admin.email);
 			composeProfiles.push('tls');
 			reporter.log(`Configured TLS for ${new URL(config.network.siteUrl).hostname} (Caddy)`);
 		} catch (e) {
@@ -215,12 +213,18 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// Step 4: docker compose up, with the profiles persisted and, for the
 	// built-in MTA, the sending pools readied first.
 	const composeProfilesUnion = await persistComposeProfiles(envPath, composeProfiles);
+	const network = config?.network ?? bundledEdgeNetwork(await readEnv(envPath));
 	if (composeProfilesUnion.includes('mta')) {
 		await defaultSendingPools(envPath, reporter, !opts.assumeYes && !config && !reporter.isJson);
 	}
 
+	// A headless run reads OWLAT_ADMIN_*, which scripts/owlat passes through.
+	const envAdmin = opts.assumeYes ? assumeYesAdminFromEnv() : {};
 	const knownAdminEmail = shouldBootstrap
-		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))
+		? (config?.admin.email ??
+			flags.email ??
+			envAdmin.email ??
+			(opts.assumeYes ? 'dev@example.com' : undefined))
 		: undefined;
 	const checkpointInputs: CheckpointInputs = {
 		mode,
@@ -232,7 +236,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		localImages: opts.localImages ?? false,
 		composeProfiles: composeProfilesUnion,
 		...(await resolveSourceRevision(opts.owlatDir)),
-		...(config?.network ? { network: config.network } : {}),
+		...(network ? { network } : {}),
 		...(config?.sending
 			? {
 					sending: {
@@ -287,7 +291,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// 'localhost' so the blessed Linux path is unchanged, and still ignores the
 	// PUBLIC NUXT_PUBLIC_* / CONVEX_SITE_URL values for a domain install (they
 	// aren't reachable on-box until DNS + TLS are live). See lib/localHost.ts.
-	const { localCloud, localSite } = resolveLocalUrls({ network: Boolean(config?.network), env });
+	const { localCloud, localSite } = resolveLocalUrls({ network: Boolean(network), env });
 	const s = progressSpinner();
 	reporter.step(SetupStep.WaitConvex, `Waiting for Convex at ${localCloud}`);
 	s.start(`Waiting for Convex at ${localCloud}`);
@@ -345,6 +349,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const email =
 				config?.admin.email ??
 				flags.email ??
+				envAdmin.email ??
 				(opts.assumeYes ? 'dev@example.com' : await promptEmail());
 			if (!email) {
 				reporter.fail('No admin email provided');
@@ -354,6 +359,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const name =
 				config?.admin.name ??
 				flags.name ??
+				envAdmin.name ??
 				(opts.assumeYes ? 'Dev Admin' : await promptText('Admin display name'));
 			if (!name) {
 				reporter.fail('No admin name provided');
@@ -363,6 +369,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const password =
 				config?.admin.password ??
 				flags.password ??
+				envAdmin.password ??
 				(await resolveAdminPassword(Boolean(opts.assumeYes)));
 			if (!password) {
 				reporter.fail('No admin password provided');
@@ -373,7 +380,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			const exit = await bootstrap(
 				{ email, name, password },
 				opts,
-				config?.network ? localSite : undefined
+				network ? localSite : undefined
 			);
 			if (exit !== 0) {
 				reporter.fail('Admin bootstrap failed');
@@ -400,7 +407,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			// fuller /seed/demo dataset, teammates and Postbox threads included.
 			const devEndpointsEnabled = env['OWLAT_DEV_MODE']?.toLowerCase() === 'true';
 			const seed = devEndpointsEnabled ? runSeed : installSampleData;
-			const exit = await seed({ ...opts, positional: [] }, config?.network ? localSite : undefined);
+			const exit = await seed({ ...opts, positional: [] }, network ? localSite : undefined);
 			if (exit !== 0) {
 				reporter.fail('Demo seed failed');
 				reporter.done(false);
@@ -416,8 +423,8 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// Domain installs only work once the operator creates the DNS records —
 	// spell out exactly which ones (also emitted as log lines so the desktop
 	// installer surfaces them in its drawer).
-	if (config?.network) {
-		for (const line of dnsInstructions(config)) {
+	if (network) {
+		for (const line of dnsInstructions(config ?? dnsInputFromEnv(network, env))) {
 			reporter.log(line);
 			log.info(line);
 		}
@@ -470,6 +477,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			mode,
 			adminEmail,
 			baseUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud,
+			...(network ? { webUrl: network.siteUrl } : {}),
 			outboundWarning,
 			siteUrlNotice,
 		})

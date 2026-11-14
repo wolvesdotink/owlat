@@ -38,8 +38,7 @@ import {
 } from '../lib/sendProviders/catalog';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
-import { checkEmailDomainVerification } from '../domains/domains';
-import { configuredDefaultFromEmail } from '../transactional/dispatchDecision';
+import { loadTransactionalSender } from '../transactional/senderResolution';
 import type { Doc } from '../_generated/dataModel';
 import { mtaInfrastructureState } from './health';
 import { missingFeedbackVariablesFor } from '../lib/sendProviders/feedbackReadiness';
@@ -198,24 +197,6 @@ async function streamTransport(
 }
 
 /**
- * The instance default sender every transactional send uses, and whether its
- * domain is verified. `address` is null when neither the settings row nor the
- * environment sets one: dispatch then falls back to a placeholder that no
- * domain verifies, so the first API call is refused.
- */
-async function transactionalSender(
-	ctx: QueryCtx
-): Promise<{ address: string | null; isDomainVerified: boolean }> {
-	const settings = await ctx.db.query('instanceSettings').first();
-	const address = configuredDefaultFromEmail(settings, {
-		defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
-	});
-	if (address === null) return { address: null, isDomainVerified: false };
-	const status = await checkEmailDomainVerification(ctx, address);
-	return { address, isDomainVerified: status.verified };
-}
-
-/**
  * Non-secret transport summary for the Delivery hub's single transport card and
  * the per-transport DNS guidance on the domains page. Member-readable
  * (`authedQuery`): it exposes only which transport kind is active, whether the
@@ -234,8 +215,8 @@ async function transactionalSender(
  * `streams` answers the same questions per message type (transactional and
  * campaign can be routed differently), `mailServer` classifies the built-in
  * MTA's health whenever any route carries mail through it, and
- * `transactionalSender` is the default From address every transactional send
- * uses, which members can already read from the settings row.
+ * `transactionalSender` is the From address a template that names no sender
+ * goes out from, which members can already read from the settings row.
  */
 // all-members: non-secret transport state (kind, canSend, routing flag, rolling
 // health); credentials/env-presence stay behind admin-gated getStatus.
@@ -302,7 +283,7 @@ export const getTransportSummary = authedQuery({
 				transactional: await streamTransport(ctx, routes, 'transactional'),
 				campaign: await streamTransport(ctx, routes, 'campaign'),
 			},
-			transactionalSender: await transactionalSender(ctx),
+			transactionalSender: await loadTransactionalSender(ctx),
 			advancedRoutingActive,
 			health,
 			infrastructure: provider === OWN_ARM_TRANSPORT_KIND ? (mtaHealth ?? null) : null,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emailitAdapter } from '../emailit';
+import { addressEffects, readBounceFixtures } from './bounceAddressEffects';
 
 const at = Date.parse('2026-08-09T08:00:00.000Z');
 
@@ -43,6 +44,7 @@ describe('Emailit feedback semantics', () => {
 				providerType: 'emailit',
 				// Unrecognized free text is soft — see the classification test below.
 				bounceType: 'soft',
+				bounceCause: 'sender',
 				bounceMessage: 'bounced',
 			},
 		],
@@ -86,19 +88,21 @@ describe('Emailit feedback semantics', () => {
 	// A hard bounce blocklists the address permanently, so Emailit's free-text
 	// `status` goes through the shared soft-default classifier rather than being
 	// assumed hard.
+	// The cause is read from an enhanced code alone: prose names no one.
 	it.each([
-		['550 5.1.1 user unknown', 'hard'],
-		['recipient rejected by the receiving server', 'hard'],
-		['mailbox full, try again later', 'soft'],
-		['452 4.2.2 over quota', 'soft'],
-		['bounced', 'soft'],
-	] as const)('classifies the bounce status %s as %s', (status, bounceType) => {
+		['550 5.1.1 user unknown', 'hard', 'recipient'],
+		['recipient rejected by the receiving server', 'hard', 'sender'],
+		['mailbox full, try again later', 'soft', 'sender'],
+		['452 4.2.2 over quota', 'soft', 'recipient'],
+		['bounced', 'soft', 'sender'],
+	] as const)('classifies the bounce status %s as %s', (status, bounceType, bounceCause) => {
 		expect(emailitAdapter.parseEvent(payload('email.bounced', { status }))).toEqual({
 			kind: 'email.bounced',
 			providerMessageId: 'em_123',
 			at,
 			providerType: 'emailit',
 			bounceType,
+			bounceCause,
 			bounceMessage: status,
 		});
 	});
@@ -110,6 +114,7 @@ describe('Emailit feedback semantics', () => {
 			at,
 			providerType: 'emailit',
 			bounceType: 'soft',
+			bounceCause: 'sender',
 		});
 	});
 
@@ -206,5 +211,25 @@ describe('Emailit feedback semantics', () => {
 		expect(() =>
 			emailitAdapter.parseEvent(payload(type, { updated_at: 'nope', created_at: 'nope' }))
 		).toThrow(/invalid timestamp/);
+	});
+});
+
+describe('Emailit bounce cause', () => {
+	it('a documented `email.bounced` names no cause, so it never suppresses the address', () => {
+		// The payload carries no reason or SMTP code; an address Emailit stops
+		// mailing arrives as `email.suppressed` instead.
+		const event = emailitAdapter.parseEvent(
+			JSON.stringify(readBounceFixtures('emailit')['bounced'])
+		);
+		expect(event).toMatchObject({ kind: 'email.bounced', bounceCause: 'sender' });
+		expect(addressEffects(event)).toEqual([]);
+	});
+
+	it('reads an enhanced code that names the recipient', () => {
+		const event = emailitAdapter.parseEvent(
+			payload('email.bounced', { status: '550 5.1.1 The email account does not exist' })
+		);
+		expect(event).toMatchObject({ bounceType: 'hard', bounceCause: 'recipient' });
+		expect(addressEffects(event)).toEqual(['blocklist_insert']);
 	});
 });

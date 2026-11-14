@@ -56,6 +56,8 @@ const { run: updateSchema } = useBackendOperation(api.transactional.emails.updat
 });
 const { showToast } = useToast();
 
+const testSender = useResolvedTransactionalSender(emailId);
+
 // Data variables from schema
 interface DataVariableInfo {
 	key: string;
@@ -419,6 +421,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 							</p>
 						</div>
 					</div>
+					<LazyTransactionalTemplateSenderCard class="mt-3" :email-id="emailId" />
 					<div class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5">
 						<AttachmentPanel
 							:attachments="attachments"
@@ -476,6 +479,8 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			:subject="subject"
 			:variables="variables"
 			:data-variable-schema="dataVariables"
+			:sender="testSender"
+			:transactional-email-id="emailId"
 		/>
 	</div>
 </template>

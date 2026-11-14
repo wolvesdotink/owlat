@@ -57,10 +57,11 @@ import {
 import {
 	decideSenderAndVariables,
 	decideTemplate,
+	decideSender,
 	planTransactionalSend,
-	senderDefaults,
 	type DispatchOutcome,
 } from './dispatchDecision';
+import { transactionalSenderInputs } from './senderResolution';
 
 // The outcome types live with the decisions; re-exported for existing importers.
 export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
@@ -226,14 +227,12 @@ export const dispatch = internalMutation({
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
-		// 3–4. The sending domain must be verified, then the variables must match;
+		// 3–4. The resolved sender's domain must be verified, then the variables must match;
 		//      then the volume caps (`./sendCaps.ts`).
-		const sender = senderDefaults(settings, {
-			defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
-			defaultFromName: getOptional('DEFAULT_FROM_NAME'),
-		});
+		const sender = decideSender(transactionalSenderInputs(settings, template));
 		if (!sender.ok) return sender;
 		const refusal = decideSenderAndVariables({
+			fromEmail: sender.fromEmail,
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,
 			template,

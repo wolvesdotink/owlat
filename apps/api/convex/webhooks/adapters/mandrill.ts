@@ -69,6 +69,7 @@ import {
 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import { mapMarkingSendingScope } from './mandrillSubaccount';
+import { mandrillBounceCause } from './mandrillBounceCause';
 import type { InboundBatchParser } from '../pipeline';
 import {
 	INBOUND_REPLAY_WINDOW_MS,
@@ -356,10 +357,9 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 
 	switch (item.event) {
 		case 'send':
-			// Confirms Mandrill accepted the message. For a send whose acceptance
-			// was left UNKNOWN by an ambiguous API timeout this is the event
-			// that resolves it: `queued → sent` through the ordinary lifecycle edge,
-			// and a row already `sent` records a `duplicate` and changes nothing.
+			// Confirms Mandrill accepted the message. It resolves a send an ambiguous
+			// API timeout left UNKNOWN: `queued → sent` through the ordinary edge;
+			// a row already `sent` records a `duplicate` and changes nothing.
 			if (!providerMessageId) return null;
 			return {
 				kind: 'email.sent',
@@ -385,6 +385,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				providerMessageId,
 				at,
 				bounceType: classifyMandrillBounce(item.event, bounceMessage),
+				bounceCause: mandrillBounceCause(item.event, item.msg?.diag),
 				...(bounceMessage ? { bounceMessage } : {}),
 				providerType: MANDRILL_PROVIDER_TYPE,
 			};
@@ -458,9 +459,8 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 				...(replayKey ? { replayKey } : {}),
 			};
 		}
-		// `open` / `click` (first-party tracking only), `sync`, inbound
-		// routing, and any event name Mandrill adds later: acknowledged, not acted
-		// on. Same posture as the Resend adapter's default branch.
+		// `open` / `click` (first-party tracking only), `sync`, inbound routing and
+		// any event Mandrill adds later: acknowledged, not acted on, as in Resend.
 		default:
 			return null;
 	}

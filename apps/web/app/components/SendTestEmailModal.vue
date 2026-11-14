@@ -21,6 +21,14 @@ interface Props {
 	templateId?: Id<'emailTemplates'> | null;
 	variables?: Array<{ key: string; label?: string }>;
 	dataVariableSchema?: Array<{ key: string; type: string }>;
+	/**
+	 * The sender the email itself goes out from, when the caller resolves one
+	 * (a transactional email's template, transactional or default sender), so
+	 * the test arrives from the same address. Without it, the default sender.
+	 */
+	sender?: { email: string; name: string | null } | null;
+	/** A transactional email: the server sends the test from its resolved sender. */
+	transactionalEmailId?: Id<'transactionalEmails'> | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -61,6 +69,7 @@ const { data: domains } = useOrganizationQuery(api.domains.domains.listByOrganiz
 
 // Computed: from email options
 const fromEmail = computed(() => {
+	if (props.sender?.email) return props.sender.email;
 	// Use organization default if available
 	if (orgSettings.value?.defaultFromEmail) {
 		return orgSettings.value.defaultFromEmail;
@@ -73,7 +82,9 @@ const fromEmail = computed(() => {
 	return '';
 });
 
-const fromName = computed(() => orgSettings.value?.defaultFromName || '');
+const fromName = computed(() =>
+	props.sender?.email ? props.sender.name || '' : orgSettings.value?.defaultFromName || ''
+);
 
 /** A row with something typed in it that is not an address. */
 const isInvalidRow = (row: TestEmailRow) => !!row.address.trim() && !isValidEmail(row.address);
@@ -149,6 +160,7 @@ const handleSend = async () => {
 			fromName: fromName.value || undefined,
 			sampleData: finalSampleData,
 			dataVariables: Object.keys(nonEmptyDataVars).length > 0 ? nonEmptyDataVars : undefined,
+			transactionalEmailId: props.transactionalEmailId || undefined,
 		});
 
 		sendResult.value = {
@@ -332,9 +344,7 @@ watch(
 				</p>
 				<p class="text-xs text-text-secondary">
 					<I18nT keypath="components.sendTestEmailModal.sampleDataHelp" tag="span" scope="global">
-						<template #variables
-							><span v-pre>{{...}}</span></template
-						>
+						<template #variables><span v-pre>{{...}}</span></template>
 					</I18nT>
 				</p>
 				<div class="grid grid-cols-2 gap-3">

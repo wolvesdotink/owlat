@@ -99,7 +99,7 @@ accepting unsigned/unverified traffic.
 | `ABUSIX_DNSBL_API_KEY` (optional)                                               | MTA: Abusix blocklist lookups; the key is part of every query name.               | Abusix not queried.                                                                            |
 | `BOUNCE_TLS_KEY` / `BOUNCE_TLS_KEY_FILE`                                        | MTA: private key of the inbound port-25 STARTTLS certificate.                     | The self-signed default is used.                                                               |
 | `SUBMISSION_TLS_KEY`                                                            | MTA: private key of the submission (587/465) certificate.                         | The MTA refuses to boot with submission enabled.                                               |
-| `HETZNER_API_TOKEN` (optional)                                                  | VPS template acme sidecar: DNS-01 challenge for the mail certificate.             | No certificate issued; IMAP and SMTP keep the self-signed one.                                 |
+| `HETZNER_API_TOKEN` (optional)                                                  | VPS template acme sidecar: DNS-01 challenge for the mail certificate. A Hetzner DNS token for that one zone, never the control plane's provisioning token. | No certificate issued; IMAP and SMTP keep the self-signed one.                                 |
 
 The send-provider feedback routes (`/webhooks/mta`, `/webhooks/resend`,
 `/webhooks/ses`, `/webhooks/mandrill`, `/webhooks/emailit`) share one HTTP entry point —

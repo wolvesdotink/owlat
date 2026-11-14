@@ -1,6 +1,7 @@
 /** Emailit event semantics. Authentication is supplied by the host verifier registry. */
 import { v, type Infer } from 'convex/values';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
+import { relayBounceCause, smtpReplyEnhancedCode } from '@owlat/shared/bounceCause';
 import type { InboundEvent, InboundEventOf } from '../types';
 import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
 
@@ -163,6 +164,13 @@ export const emailitAdapter = {
 				// text is classified by the shared soft-default classifier the Resend
 				// adapter and the MTA bounce engine use. Defaulting to `hard` would
 				// permanently blocklist a recipient on any transient failure.
+				//
+				// Nor does it say who the bounce is about: its `email.bounced` covers a
+				// permanent rejection, a late DSN, exhausted retries and a deleted
+				// sending domain alike, with no reason or SMTP code
+				// (https://emailit.com/docs/webhooks/events/email/bounced/). An
+				// unattributed bounce never suppresses; an address Emailit itself
+				// stops mailing arrives as `email.suppressed` below.
 				const bounceMessage = object.status ?? '';
 				return {
 					kind: 'email.bounced',
@@ -170,6 +178,7 @@ export const emailitAdapter = {
 					at,
 					providerType,
 					bounceType: classifyBounceMessage(bounceMessage),
+					bounceCause: relayBounceCause('unattributed', smtpReplyEnhancedCode(bounceMessage)),
 					...(bounceMessage ? { bounceMessage } : {}),
 				};
 			}

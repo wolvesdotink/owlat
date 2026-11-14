@@ -32,13 +32,18 @@ type Attempt = (
 
 /**
  * Whether the cleartext session was refused BECAUSE it is cleartext: 530 or
- * X.7.10 / X.7.11 "encryption needed" (RFC 3207 §4, RFC 5248), or a refusal of
- * MAIL FROM, which on a server that offered STARTTLS is that refusal in
- * practice. Such a verdict is about the transport, not the message, so it must
- * not end the job; the TLS failure stands and the next host is tried.
+ * X.7.10 / X.7.11 "encryption needed" (RFC 3207 §4, RFC 5248) at the greeting,
+ * EHLO or later, or a refusal of MAIL FROM, which on a server that offered
+ * STARTTLS is that refusal in practice. Such a verdict is about the transport,
+ * not the message or the host, so it must not end the job or count as the
+ * host refusing us; the TLS failure stands and the next host is tried.
  */
-function refusedForCleartext(outcome: AttemptOutcome): boolean {
-	if (outcome.kind !== 'smtp' || outcome.result.success) return false;
+export function refusedForCleartext(
+	outcome: AttemptOutcome
+): outcome is Extract<AttemptOutcome, { kind: 'smtp' | 'host-refused' }> {
+	if ((outcome.kind !== 'smtp' && outcome.kind !== 'host-refused') || outcome.result.success) {
+		return false;
+	}
 	const { smtpCode, enhancedCode, smtpPhase } = outcome.result;
 	return smtpCode === 530 || /^[45]\.7\.1[01]$/.test(enhancedCode ?? '') || smtpPhase === 'mail';
 }
@@ -62,5 +67,6 @@ export async function attemptWithCleartextFallback(
 		'Opportunistic STARTTLS failed; retrying this MX once without TLS'
 	);
 	const fallback = await attempt(ctx, mxHost, false, false, undefined, true);
-	return refusedForCleartext(fallback) ? outcome : fallback;
+	if (!refusedForCleartext(fallback)) return fallback;
+	return { ...outcome, cleartextRefusal: fallback.result.error ?? 'refused' };
 }

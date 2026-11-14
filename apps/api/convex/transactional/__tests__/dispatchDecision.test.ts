@@ -8,8 +8,9 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import {
 	decideSenderAndVariables,
 	decideTemplate,
+	decideSender,
 	planTransactionalSend,
-	senderDefaults,
+	resolveTransactionalSender,
 } from '../dispatchDecision';
 
 const NOW = Date.UTC(2026, 9, 25, 12);
@@ -90,22 +91,66 @@ describe('decideTemplate', () => {
 });
 
 describe('the sender and the variables', () => {
-	it('takes the sender from settings, then the environment', () => {
-		expect(senderDefaults({ defaultFromEmail: 'a@x.test', defaultFromName: 'A' }, {})).toEqual({
-			ok: true,
-			fromEmail: 'a@x.test',
-			fromName: 'A',
+	const settingsWith = (overrides: Record<string, string> = {}) => ({
+		defaultFromEmail: 'hello@example.com',
+		defaultFromName: 'Example',
+		...overrides,
+	});
+
+	it('uses the default sender while no transactional or template sender is set', () => {
+		expect(resolveTransactionalSender({ settings: settingsWith(), environment: {} })).toEqual({
+			fromEmail: 'hello@example.com',
+			fromName: 'Example',
+			source: 'default',
 		});
-		expect(senderDefaults(null, { defaultFromEmail: 'env@x.test' })).toEqual({
-			ok: true,
-			fromEmail: 'env@x.test',
-			fromName: 'Owlat',
+		expect(
+			resolveTransactionalSender({
+				settings: null,
+				environment: { defaultFromEmail: 'env@x.test' },
+			})
+		).toEqual({ fromEmail: 'env@x.test', fromName: 'Owlat', source: 'default' });
+	});
+
+	it('uses the transactional sender when one is set, with the default name when it has none', () => {
+		const settings = settingsWith({ transactionalFromEmail: 'account@mail.example.com' });
+		expect(resolveTransactionalSender({ settings, environment: {} })).toEqual({
+			fromEmail: 'account@mail.example.com',
+			fromName: 'Example',
+			source: 'transactional',
 		});
+		expect(
+			resolveTransactionalSender({
+				settings: { ...settings, transactionalFromName: 'Example Accounts' },
+				environment: {},
+			})
+		).toMatchObject({ fromName: 'Example Accounts' });
+	});
+
+	it("lets a template's own sender win over the transactional sender", () => {
+		const settings = settingsWith({
+			transactionalFromEmail: 'account@mail.example.com',
+			transactionalFromName: 'Example Accounts',
+		});
+		expect(
+			resolveTransactionalSender({
+				settings,
+				environment: {},
+				template: { fromEmail: 'receipts@mail.example.com', fromName: 'Example Billing' },
+			})
+		).toEqual({
+			fromEmail: 'receipts@mail.example.com',
+			fromName: 'Example Billing',
+			source: 'template',
+		});
+		// A template without a sender of its own falls through.
+		expect(
+			resolveTransactionalSender({ settings, environment: {}, template: { fromEmail: ' ' } })
+		).toMatchObject({ fromEmail: 'account@mail.example.com', source: 'transactional' });
 	});
 
 	it('refuses when no sender is configured, rather than sending from a domain nobody here owns', () => {
 		for (const environment of [{}, { defaultFromEmail: ' ' }]) {
-			expect(senderDefaults(null, environment)).toMatchObject({
+			expect(decideSender({ settings: null, environment })).toMatchObject({
 				ok: false,
 				reason: 'sender_not_configured',
 				detail: expect.stringContaining('DEFAULT_FROM_EMAIL'),
@@ -117,14 +162,19 @@ describe('the sender and the variables', () => {
 		const unverified = { verified: false, domain: 'x.test' };
 		expect(
 			decideSenderAndVariables({
+				fromEmail: 'receipts@x.test',
 				domainStatus: unverified,
 				dataVariables: { firstName: 3 },
 				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
-		).toMatchObject({ reason: 'domain_unverified', detail: expect.stringContaining('"x.test"') });
+		).toMatchObject({
+			reason: 'domain_unverified',
+			detail: expect.stringMatching(/receipts@x\.test.*"x\.test"/),
+		});
 		expect(
 			decideSenderAndVariables({
+				fromEmail: 'receipts@x.test',
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 3 },
 				template: { dataVariablesSchema: { firstName: 'string' } },
@@ -133,6 +183,7 @@ describe('the sender and the variables', () => {
 		).toMatchObject({ reason: 'invalid_variables' });
 		expect(
 			decideSenderAndVariables({
+				fromEmail: 'receipts@x.test',
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 'Ada' },
 				template: { dataVariablesSchema: { firstName: 'string' } },
@@ -163,6 +214,7 @@ describe('planTransactionalSend', () => {
 				queuedAt: NOW,
 				providerType: 'mta',
 				correlationId: 'txn_fixed',
+				fromEmail: 'noreply@owlat.example',
 			},
 			counterPatch: {
 				transactionalSendCount: 3,

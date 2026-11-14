@@ -360,6 +360,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('emailTemplates', 'deletedBy', 'retain', ORG_ATTRIBUTION),
 	rel('instanceSettings', 'abuseStatusChangedBy', 'retain', ORG_ATTRIBUTION),
 	rel('instanceSettings', 'desktopUpdates.updatedBy', 'retain', ORG_ATTRIBUTION),
+	rel('instanceSettings', 'transactionalSendCaps.updatedBy', 'retain', ORG_ATTRIBUTION),
 	rel('backupState', 'updatedBy', 'retain', ORG_ATTRIBUTION),
 	rel('aiRoutingPolicy', 'updatedBy', 'retain', ORG_ATTRIBUTION),
 	rel('embeddingAttestations', 'attestedBy', 'retain', ORG_ATTRIBUTION),

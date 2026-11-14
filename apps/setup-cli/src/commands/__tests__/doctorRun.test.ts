@@ -162,6 +162,9 @@ const FIXTURES: Record<string, Fixture> = {
 			// Sends as a public domain while mail links still point at localhost.
 			'EHLO_HOSTNAME=mail.example.com',
 			'SITE_URL=http://localhost:3000',
+			// An acme sidecar that was never given its contact and DNS token.
+			'ACME_DOMAIN=mail.example.com',
+			'ACME_CONTACT_EMAIL={{ACME_CONTACT_EMAIL}}',
 		].join('\n'),
 		flags: JSON.stringify({ campaigns: true, ai: true }),
 		compose: composeRows([
@@ -640,6 +643,7 @@ describe('doctor --json — report contents', () => {
 			  "fail env.required LLM_API_KEY set_env_var",
 			  "fail env.required LLM_PROVIDER set_env_var",
 			  "fail env.site_url set_public_url",
+			  "fail env.acme set_env_var",
 			  "pass send_path.credential MTA_API_URL",
 			  "pass send_path.credential MTA_API_KEY",
 			  "fail mta.queue_store check_mta",

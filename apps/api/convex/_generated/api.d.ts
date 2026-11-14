@@ -1320,6 +1320,7 @@ import type * as lib_validators_embedding from '../lib/validators/embedding.js';
 import type * as lib_validators_fields from '../lib/validators/fields.js';
 import type * as lib_validators_mail from '../lib/validators/mail.js';
 import type * as lib_validators_inboxSla from '../lib/validators/inboxSla.js';
+import type * as lib_validators_inboxStats from '../lib/validators/inboxStats.js';
 import type * as lib_validators_inboxAutoClose from '../lib/validators/inboxAutoClose.js';
 import type * as lib_validators_mailAi from '../lib/validators/mailAi.js';
 import type * as lib_validators_mailContacts from '../lib/validators/mailContacts.js';
@@ -1930,6 +1931,8 @@ import type * as transactional_sendCapSettings from '../transactional/sendCapSet
 import type * as transactional_sendCapsPolicy from '../transactional/sendCapsPolicy.js';
 import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
 import type * as transactional_sendOptions from '../transactional/sendOptions.js';
+import type * as transactional_sender from '../transactional/sender.js';
+import type * as transactional_senderResolution from '../transactional/senderResolution.js';
 import type * as transactional_sends from '../transactional/sends.js';
 import type * as transactional_sendStatus from '../transactional/sendStatus.js';
 import type * as transactional_sendStatusHttp from '../transactional/sendStatusHttp.js';
@@ -1939,6 +1942,7 @@ import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js
 import type * as webhooks_adapters_inboundRegistry from '../webhooks/adapters/inboundRegistry.js';
 import type * as webhooks_adapters_index from '../webhooks/adapters/index.js';
 import type * as webhooks_adapters_mandrill from '../webhooks/adapters/mandrill.js';
+import type * as webhooks_adapters_mandrillBounceCause from '../webhooks/adapters/mandrillBounceCause.js';
 import type * as webhooks_adapters_mandrillSubaccount from '../webhooks/adapters/mandrillSubaccount.js';
 import type * as webhooks_adapters_meta from '../webhooks/adapters/meta.js';
 import type * as webhooks_adapters_mta from '../webhooks/adapters/mta.js';
@@ -1946,6 +1950,7 @@ import type * as webhooks_adapters_mtaEventParsers from '../webhooks/adapters/mt
 import type * as webhooks_adapters_mtaRawRoute from '../webhooks/adapters/mtaRawRoute.js';
 import type * as webhooks_adapters_resend from '../webhooks/adapters/resend.js';
 import type * as webhooks_adapters_ses from '../webhooks/adapters/ses.js';
+import type * as webhooks_adapters_sesBounceCause from '../webhooks/adapters/sesBounceCause.js';
 import type * as webhooks_adapters_twilio from '../webhooks/adapters/twilio.js';
 import type * as webhooks_adapters_webhookBody from '../webhooks/adapters/webhookBody.js';
 import type * as webhooks_channels from '../webhooks/channels.js';
@@ -3334,6 +3339,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/fields': typeof lib_validators_fields;
 	'lib/validators/mail': typeof lib_validators_mail;
 	'lib/validators/inboxSla': typeof lib_validators_inboxSla;
+	'lib/validators/inboxStats': typeof lib_validators_inboxStats;
 	'lib/validators/inboxAutoClose': typeof lib_validators_inboxAutoClose;
 	'lib/validators/mailAi': typeof lib_validators_mailAi;
 	'lib/validators/mailContacts': typeof lib_validators_mailContacts;
@@ -4167,6 +4173,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/sendCapsPolicy': typeof transactional_sendCapsPolicy;
 	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
 	'transactional/sendOptions': typeof transactional_sendOptions;
+	'transactional/sender': typeof transactional_sender;
+	'transactional/senderResolution': typeof transactional_senderResolution;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/sendStatus': typeof transactional_sendStatus;
 	'transactional/sendStatusHttp': typeof transactional_sendStatusHttp;
@@ -4177,6 +4185,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/inboundRegistry': typeof webhooks_adapters_inboundRegistry;
 	'webhooks/adapters/index': typeof webhooks_adapters_index;
 	'webhooks/adapters/mandrill': typeof webhooks_adapters_mandrill;
+	'webhooks/adapters/mandrillBounceCause': typeof webhooks_adapters_mandrillBounceCause;
 	'webhooks/adapters/mandrillSubaccount': typeof webhooks_adapters_mandrillSubaccount;
 	'webhooks/adapters/meta': typeof webhooks_adapters_meta;
 	'webhooks/adapters/mta': typeof webhooks_adapters_mta;
@@ -4184,6 +4193,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/mtaRawRoute': typeof webhooks_adapters_mtaRawRoute;
 	'webhooks/adapters/resend': typeof webhooks_adapters_resend;
 	'webhooks/adapters/ses': typeof webhooks_adapters_ses;
+	'webhooks/adapters/sesBounceCause': typeof webhooks_adapters_sesBounceCause;
 	'webhooks/adapters/twilio': typeof webhooks_adapters_twilio;
 	'webhooks/adapters/webhookBody': typeof webhooks_adapters_webhookBody;
 	'webhooks/channels': typeof webhooks_channels;

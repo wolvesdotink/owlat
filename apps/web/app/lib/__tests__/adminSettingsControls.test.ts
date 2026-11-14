@@ -52,6 +52,7 @@ describe('admin settings controls', () => {
 			'rampPace',
 			'webhookSecret',
 			'brandColors',
+			'transactionalSender',
 			'transactionalSendLimits',
 		]);
 	});
@@ -120,6 +121,8 @@ describe('admin settings controls', () => {
 		expect(first('warm-up')).toBe('rampPace');
 		expect(first('webhook secret')).toBe('webhookSecret');
 		expect(first('brand colors')).toBe('brandColors');
+		expect(first('transactional sender')).toBe('transactionalSender');
+		expect(first('password reset')).toBe('transactionalSender');
 	});
 });
 

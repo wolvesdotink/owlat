@@ -26,6 +26,7 @@ import {
 	type PluginWebhookFeedbackEvent,
 	type PluginWebhookFeedbackKind,
 } from '@owlat/plugin-kit';
+import { isBounceCause, type BounceCause } from '@owlat/shared/smtpBlockCategories';
 import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import { PROVIDER_SUPPRESSION_REASONS, type InboundEvent } from './types';
 
@@ -106,6 +107,7 @@ function parseEvent(input: unknown, providerType: string): InboundEvent {
 				providerMessageId: readProviderMessageId(event['providerMessageId']),
 				at,
 				bounceType: readBounceType(event['bounceType']),
+				...readBounceCause(event['bounceCause']),
 				providerType,
 				...optionalText('bounceMessage', event['bounceMessage']),
 			};
@@ -231,6 +233,19 @@ function readBounceType(value: unknown): 'hard' | 'soft' {
 		throw new PluginFeedbackEventError('Plugin bounce type must be hard or soft');
 	}
 	return value;
+}
+
+/**
+ * The plugin's verdict on who the bounce is about. Absent is the recipient's,
+ * as it was before the kit carried the field; any other value is refused
+ * rather than read as either party.
+ */
+function readBounceCause(value: unknown): { bounceCause?: BounceCause } {
+	if (value === undefined) return {};
+	if (!isBounceCause(value)) {
+		throw new PluginFeedbackEventError('Plugin bounce cause must be sender or recipient');
+	}
+	return { bounceCause: value };
 }
 
 /** The suppression vocabulary as the plugin CONTRACT spells it. */

@@ -72,7 +72,7 @@ route 14 pages/dashboard/admin/instance/sealed-mail.vue
 route 27 pages/dashboard/admin/operator/index.vue
 route 28 pages/dashboard/admin/system/index.vue
 route 9 pages/dashboard/admin/team/api/docs.vue
-route 27 pages/dashboard/admin/team/api/index.vue
+route 28 pages/dashboard/admin/team/api/index.vue
 route 22 pages/dashboard/admin/team/audit.vue
 route 23 pages/dashboard/admin/team/connected-apps/index.vue
 route 49 pages/dashboard/admin/team/inboxes.vue
@@ -249,8 +249,8 @@ deferred 12 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.de.json
 deferred 11 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.en.json
 deferred 30 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.de.json
 deferred 26 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.en.json
-deferred 16 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
-deferred 14 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.en.json
+deferred 17 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
+deferred 15 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.en.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.de.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.en.json
 deferred 5 ../node_modules/.cache/owlat-i18n/areas/dashboard.de.json
@@ -307,6 +307,9 @@ deferred 362 components/postbox/PostboxThreadReader.vue
 deferred 78 components/preferences/mcp/PreferencesMcpPendingActionCard.vue
 deferred 10 components/shell/BackendStatusHost.vue
 deferred 13 components/system/AppUpdatedBanner.vue
+deferred 19 components/transactional/SenderDialog.vue
+deferred 5 components/transactional/SenderRow.vue
+deferred 14 components/transactional/TemplateSenderCard.vue
 deferred 2 en
 deferred 16 layouts/admin.vue
 deferred 3 layouts/compose.vue

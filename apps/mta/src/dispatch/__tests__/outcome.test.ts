@@ -668,6 +668,8 @@ describe('reduce — a refusal of our sending identity keeps the recipient', () 
 			'log_delivery_event',
 			'notify_convex',
 			'notify_convex',
+			// A refusal at the greeting is every host refusing the connection.
+			...(sample.smtpPhase === 'greeting' ? ['domain_failure_record'] : []),
 		]);
 	});
 
@@ -752,6 +754,57 @@ describe('classifySmtpResponse — retry-delay regression guards', () => {
 		expect(c.category).toBe('greylisted');
 		expect(c.retryable).toBe(true);
 		expect(c.suggestedDelayMs).toBe(90_000);
+	});
+});
+
+describe('reduce — every MX host refused the connection at the greeting or EHLO', () => {
+	// The MX loop moves on after a greeting or EHLO reply, so a result that
+	// still carries one of those phases means every host gave one. The domain
+	// refused our connections as a whole, as surely as a refused TCP connect.
+	const refusals: ReadonlyArray<readonly [string, EmailJobResult]> = [
+		[
+			'421 at the greeting',
+			{
+				success: false,
+				bounceType: 'deferred',
+				smtpCode: 421,
+				smtpPhase: 'greeting',
+				error: '421 mx.example.com Service not available, closing transmission channel',
+			},
+		],
+		[
+			'554 to EHLO',
+			{
+				success: false,
+				bounceType: 'hard',
+				smtpCode: 554,
+				smtpPhase: 'ehlo',
+				error: '554 5.7.1 mx.example.com does not accept mail from you',
+				enhancedCode: '5.7.1',
+			},
+		],
+	];
+
+	it.each(refusals)('%s records one domain connection failure', (_name, result) => {
+		const { effects } = reduce(classifyResult(result), makeCtx());
+		expect(effects.filter((e) => e.kind === 'domain_failure_record')).toEqual([
+			{ kind: 'domain_failure_record', domain: 'example.com' },
+		]);
+	});
+
+	it('a refusal at RCPT TO is about the message and records none', () => {
+		const { effects } = reduce(
+			classifyResult({
+				success: false,
+				bounceType: 'deferred',
+				smtpCode: 450,
+				smtpPhase: 'rcpt',
+				error: '450 4.2.1 mailbox temporarily unavailable',
+				enhancedCode: '4.2.1',
+			}),
+			makeCtx()
+		);
+		expect(effects.some((e) => e.kind === 'domain_failure_record')).toBe(false);
 	});
 });
 

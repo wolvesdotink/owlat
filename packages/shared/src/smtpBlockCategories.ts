@@ -124,11 +124,15 @@ export const SMTP_BLOCK_CATEGORIES: ReadonlySet<SmtpFailureCategory> = new Set<S
  * receiver blocked our IP or domain, failed our SPF/DKIM/DMARC, PTR or HELO, or
  * called our content spam, or it refused us before it had heard a recipient.
  * The address is fine, so such a bounce must never suppress or blocklist it.
- * `recipient` is everything else, and absent means `recipient`, so relays and
- * producers that never name a cause keep suppressing exactly as they did.
+ * A relay's bounce is also `sender` when the relay does not say the address is
+ * the problem: what cannot be shown to be the recipient's must not suppress it.
+ * `recipient` is everything else, and absent means `recipient`, so producers
+ * that never name a cause keep suppressing exactly as they did.
  *
  * The MTA decides it from typed fields (SMTP phase, enhanced status code and
- * the category above) and sends the verdict, never the prose, to Convex.
+ * the category above) and sends the verdict, never the prose, to Convex. The
+ * relay adapters decide it from each relay's documented bounce vocabulary.
+ * Both read codes through `./bounceCause`.
  */
 export type BounceCause = 'sender' | 'recipient';
 

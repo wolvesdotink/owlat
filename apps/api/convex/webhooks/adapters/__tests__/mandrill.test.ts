@@ -141,13 +141,23 @@ interface SeededSend {
 /** A campaign send already dispatched through Mandrill, joinable by its `_id`. */
 async function seedMandrillSend(
 	t: Harness,
-	options: { providerMessageId: string; status?: string; email?: string } = {
+	options: {
+		providerMessageId: string;
+		status?: string;
+		email?: string;
+		softBounceCount?: number;
+	} = {
 		providerMessageId: 'msg-1',
 	}
 ): Promise<SeededSend> {
 	return await t.run(async (ctx: { db: DatabaseWriter }) => {
 		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-		const contact = createTestContact(options.email ? { email: options.email } : {});
+		const contact = createTestContact({
+			...(options.email ? { email: options.email } : {}),
+			...(options.softBounceCount !== undefined
+				? { softBounceCount: options.softBounceCount }
+				: {}),
+		});
 		const contactId = await ctx.db.insert('contacts', contact);
 		const email = contact.email as string;
 		const sendId = await ctx.db.insert(
@@ -401,6 +411,77 @@ describe('Mandrill event mapping', () => {
 					.first()
 		);
 		expect(blocked).toBeNull();
+	});
+
+	describe('who a bounce is about', () => {
+		const blockedRow = async (t: Harness, email: string) =>
+			await t.run(
+				async (ctx: { db: DatabaseWriter }) =>
+					await ctx.db
+						.query('blockedEmails')
+						.withIndex('by_email', (q) => q.eq('email', email))
+						.first()
+			);
+		const softCount = async (t: Harness, contactId: Id<'contacts'>) =>
+			await t.run(
+				async (ctx: { db: DatabaseWriter }) => (await ctx.db.get(contactId))?.softBounceCount
+			);
+
+		it('a `hard_bounce` that refused our IP ends the send but blocklists no one', async () => {
+			const t = setupTest();
+			const { sendId, email } = await seedMandrillSend(t, {
+				providerMessageId: 'm-blocked',
+				status: 'sent',
+			});
+			await postBatch(t, [
+				event('hard_bounce', {
+					_id: 'm-blocked',
+					email,
+					diag: 'smtp;554 5.7.1 Service unavailable; Client host [192.0.2.10] blocked using zen.spamhaus.org',
+				}),
+			]);
+
+			expect(await readSend(t, sendId)).toMatchObject({ status: 'bounced', bounceType: 'hard' });
+			expect(await blockedRow(t, email)).toBeNull();
+		});
+
+		it('a `soft_bounce` refusing our authentication does not count toward suppression', async () => {
+			const t = setupTest();
+			const { contactId, email } = await seedMandrillSend(t, {
+				providerMessageId: 'm-auth',
+				status: 'sent',
+				softBounceCount: 4,
+			});
+			await postBatch(t, [
+				event('soft_bounce', {
+					_id: 'm-auth',
+					email,
+					diag: 'smtp;451 4.7.26 Unauthenticated email from example.org is not accepted',
+				}),
+			]);
+
+			expect(await softCount(t, contactId)).toBe(4);
+			expect(await blockedRow(t, email)).toBeNull();
+		});
+
+		it('a full mailbox still counts, and the fifth suppresses the address', async () => {
+			const t = setupTest();
+			const { contactId, email } = await seedMandrillSend(t, {
+				providerMessageId: 'm-full',
+				status: 'sent',
+				softBounceCount: 4,
+			});
+			await postBatch(t, [
+				event('soft_bounce', {
+					_id: 'm-full',
+					email,
+					diag: 'smtp;452 4.2.2 The email account that you tried to reach is over quota',
+				}),
+			]);
+
+			expect(await softCount(t, contactId)).toBe(5);
+			expect(await blockedRow(t, email)).toMatchObject({ reason: 'bounced', bounceType: 'soft' });
+		});
 	});
 
 	it('`spam` complains the row and blocklists the complainer', async () => {

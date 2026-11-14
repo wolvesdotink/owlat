@@ -39,6 +39,28 @@ const snippetEmail = ref<{ name: string; slug: string } | null>(null);
 const recentSends = ref<{ id: Id<'transactionalEmails'>; name: string } | null>(null);
 const isRecentSendsOpen = ref(false);
 
+// The transactional sender dialog lives on the page's address
+// (`?sender=edit`), so the readiness row, the Delivery hub's fix link and
+// General settings all open it the same way. Only an admin can change it.
+const route = useRoute();
+const router = useRouter();
+const isSenderOpen = computed({
+	get: () => route.query['sender'] === 'edit' && can('settings:manage'),
+	set: (open: boolean) => {
+		if (open) return;
+		const { sender: _sender, ...query } = route.query;
+		void router.replace({ query });
+	},
+});
+// Loaded on first open and kept, so closing plays the modal's exit.
+const hasOpenedSender = ref(false);
+// The readiness line inside the API snippet links here too; one dialog at a time.
+watchEffect(() => {
+	if (!isSenderOpen.value) return;
+	hasOpenedSender.value = true;
+	snippetEmail.value = null;
+});
+
 const selectedStatus = ref<StatusFilter>('all');
 const statusFilters = computed(() => [
 	{ value: 'all', label: t('common.all') },
@@ -75,7 +97,11 @@ const list = reactive(
 		},
 		onNew: () => (isCreateOpen.value = true),
 		canCreate: () => canManage.value,
-		isBusy: () => isCreateOpen.value || snippetEmail.value !== null || isRecentSendsOpen.value,
+		isBusy: () =>
+			isCreateOpen.value ||
+			snippetEmail.value !== null ||
+			isRecentSendsOpen.value ||
+			isSenderOpen.value,
 	})
 );
 
@@ -302,6 +328,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 		</template>
 
 		<TransactionalCreateEmailModal v-model:open="isCreateOpen" />
+		<LazyTransactionalSenderDialog v-if="hasOpenedSender" v-model:open="isSenderOpen" />
 		<TransactionalApiSnippetModal :email="snippetEmail" @close="snippetEmail = null" />
 		<TransactionalRecentSendsModal
 			v-model:open="isRecentSendsOpen"

@@ -29,8 +29,11 @@ import {
  * A dispatch terminal outcome.
  *
  * - `defer` re-queues the attempt with the given delay. `bounceCause` is whose
- *   problem the hold is, read if the message expires while held; absent means
- *   the recipient's, the default every other expiry carries.
+ *   problem the hold is, read if the message expires while held. Absent means
+ *   the sender's: a phase holds a message before any receiver has heard of it,
+ *   on a limit, a breaker or an IP shortage of our own, so running out of time
+ *   there says nothing about the address. A phase that stands in for a
+ *   recipient-side failure names `recipient`.
  * - `drop` ends the attempt without a re-queue (used by content screening
  *   and the suppression check).
  */

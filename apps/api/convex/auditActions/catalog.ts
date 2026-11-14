@@ -106,6 +106,8 @@ export const AUDIT_ACTION_LITERALS = [
 	action('transactional_email.rejected'),
 	action('transactional_email.duplicated'),
 	action('transactional_email.deleted'),
+	// A template's own sender set or cleared (transactional/sender.ts).
+	action('transactional_email.sender_updated'),
 	// Saved block — row writes from `emailBlocks/module.ts`, plus the
 	// terminal-failure callback from the saved-block rerender pool.
 	action('email_block.created'),
@@ -132,6 +134,8 @@ export const AUDIT_ACTION_LITERALS = [
 	// Team Inbox response targets (SLA) saved: inbox/sla/policy.ts.
 	action('settings.inbox_sla_updated'),
 	action('settings.inbox_auto_close_updated'),
+	// The instance's transactional sender set or cleared (transactional/sender.ts).
+	action('settings.transactional_sender_updated'),
 	// Transactional send caps saved (transactional/sendCapSettings.ts `update`).
 	action('settings.transactional_send_caps_updated'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
