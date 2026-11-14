@@ -33,6 +33,7 @@ import { SETUP_SENDING_CATALOG_ENTRIES, sendingConfigEnv } from '@owlat/shared/s
 import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { mergeEnv, type EnvMap } from './env';
 import { applyBundledProxyDefaults, applySetupDefaults } from './setupEnvDefaults';
+import { publicNetworkEnv } from './publicAddress';
 import { isValidEmail } from './validators';
 import { assertFblDedupCutoverConfigured } from './fblDedupSetup';
 
@@ -356,17 +357,8 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 		Object.assign(patch, systemFromIdentityEnv(config.domain.ehloHostname));
 	}
 
-	if (config.network) {
-		// Set in the patch so `applySetupDefaults` (which only fills absent keys)
-		// won't clobber them back to localhost. CONVEX_SITE_URL is the function
-		// runtime's own site URL; the NUXT_PUBLIC_* values are what the web app
-		// and the desktop client (via /api/instance-info) consume.
-		patch['SITE_URL'] = config.network.siteUrl;
-		patch['NUXT_PUBLIC_SITE_URL'] = config.network.siteUrl;
-		patch['NUXT_PUBLIC_CONVEX_URL'] = config.network.convexUrl;
-		patch['NUXT_PUBLIC_CONVEX_SITE_URL'] = config.network.convexSiteUrl;
-		patch['CONVEX_SITE_URL'] = config.network.convexSiteUrl;
-	}
+	// The same keys the terminal wizard's public-address step writes.
+	if (config.network) Object.assign(patch, publicNetworkEnv(config.network));
 
 	return patch;
 }

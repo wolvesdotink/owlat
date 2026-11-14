@@ -596,6 +596,37 @@ case "$cmd" in
 		;;
 esac
 
+# ── Headless answers ──────────────────────────────────────────────────────────
+# The variables a headless install (`--assume-yes`) reads as its answers:
+# ASSUME_YES_ENV_KEYS in apps/setup-cli/src/commands/setupNonInteractive.ts,
+# which a test holds equal to this list. Only these reach the installer
+# container, never the rest of the host environment. `-e NAME` without a value
+# passes a variable only when it is set, and keeps the value (an admin password,
+# a provider key) off the docker command line.
+INSTALLER_ENV_KEYS=(
+	OWLAT_DEPLOYMENT_MODE
+	OWLAT_ADMIN_EMAIL OWLAT_ADMIN_NAME OWLAT_ADMIN_PASSWORD
+	EHLO_HOSTNAME RETURN_PATH_DOMAIN DEFAULT_FROM_EMAIL DEFAULT_FROM_NAME
+	EMAIL_PROVIDER OUTBOUND_TLS_MODE
+	AWS_SES_REGION AWS_SES_ACCESS_KEY_ID AWS_SES_SECRET_ACCESS_KEY
+	RESEND_API_KEY
+	SMTP_RELAY_HOST SMTP_RELAY_PORT SMTP_RELAY_SECURE SMTP_RELAY_USERNAME SMTP_RELAY_PASSWORD
+	EMAILIT_API_KEY
+	LLM_PROVIDER LLM_API_KEY LLM_BASE_URL LLM_MODEL_FAST LLM_MODEL_CAPABLE
+)
+INSTALLER_ENV_ARGS=()
+for installer_env_key in "${INSTALLER_ENV_KEYS[@]}"; do
+	INSTALLER_ENV_ARGS+=(-e "$installer_env_key")
+done
+
+# Whether containers run inside Docker Desktop's VM, where `--network host`
+# joins the VM's loopback rather than this machine's: any non-Linux kernel, or a
+# Linux machine running the Docker Desktop engine.
+on_docker_desktop() {
+	[[ "$(uname -s)" != "Linux" ]] && return 0
+	docker info --format '{{.OperatingSystem}}' 2>/dev/null | grep -qi 'docker desktop'
+}
+
 # ── Consume-once setup config ─────────────────────────────────────────────────
 # A setup config holds the admin password and provider keys in plaintext. With
 # OWLAT_CONSUME_CONFIG=1 (the desktop wizard sets it) quickstart's config file
@@ -633,11 +664,18 @@ case "$cmd" in
 				exec bash scripts/setup.sh "$@"
 			fi
 		done
+		# Host networking on a Linux server: the wizard's public-address step
+		# listens on ports 80 and 443 of this machine to check that the chosen
+		# names reach it.
+		setup_network_args=()
+		on_docker_desktop || setup_network_args=(--network host)
 		exec docker run --rm $([ -t 1 ] && echo "-it") \
+			${setup_network_args[@]+"${setup_network_args[@]}"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
 			-e "OWLAT_DIR=/opt/owlat" \
 			-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
+			"${INSTALLER_ENV_ARGS[@]}" \
 			"$OWLAT_SETUP_IMAGE" setup "$@"
 		;;
 	quickstart)
@@ -692,6 +730,7 @@ case "$cmd" in
 				-e "OWLAT_PROGRESS=${OWLAT_PROGRESS:-}" \
 				-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 				-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
+				"${INSTALLER_ENV_ARGS[@]}" \
 				"$OWLAT_SETUP_IMAGE" quickstart "$@"
 			exit $?
 		fi
@@ -705,6 +744,7 @@ case "$cmd" in
 			-e "OWLAT_PROGRESS=${OWLAT_PROGRESS:-}" \
 			-e "OWLAT_BUILD_LOCAL=${OWLAT_BUILD_LOCAL:-0}" \
 			-e "OWLAT_LOCAL_IMAGES=${OWLAT_LOCAL_IMAGES:-0}" \
+			"${INSTALLER_ENV_ARGS[@]}" \
 			"$OWLAT_SETUP_IMAGE" quickstart "$@"
 		exit $?
 		;;
