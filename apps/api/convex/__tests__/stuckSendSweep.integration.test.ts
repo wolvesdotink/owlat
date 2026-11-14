@@ -35,6 +35,7 @@ import {
 	UNANCHORED_MIN_AGE_MS,
 } from '../delivery/stuckSendSweep';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
+import { NO_FEEDBACK_ERROR_CODE } from '../delivery/stuckSendFeedback';
 
 const enqueueAction = vi.fn().mockResolvedValue('work-1');
 vi.mock('../delivery/workpool', () => ({
@@ -217,6 +218,56 @@ describe('the cron sweep', () => {
 		const { sendId } = await queuedCampaignSend(t, {
 			providerMessageId: 'send_mta-custody',
 			providerType: 'mta',
+			firstAttemptAt: T0,
+		});
+		at(T0 + 30 * DAY);
+		await runCron(t);
+		expect((await getSend(t, sendId))?.status).toBe('queued');
+	});
+
+	it('ends an MTA Send whose delivery report can never arrive (no webhook key), with the reason', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+		try {
+			const { sendId } = await queuedCampaignSend(t, {
+				providerMessageId: 'send_mta-custody',
+				providerType: 'mta',
+				firstAttemptAt: T0,
+			});
+			at(T0 + 6 * DAY);
+			await runCron(t);
+			expect(await getSend(t, sendId)).toMatchObject({
+				status: 'failed',
+				errorCode: NO_FEEDBACK_ERROR_CODE,
+				errorMessage: expect.stringContaining('MTA_WEBHOOK_SECRET is not set'),
+			});
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it('keeps that Send through its delivery window and the grace', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+		try {
+			const { sendId } = await queuedCampaignSend(t, {
+				providerMessageId: 'send_mta-custody',
+				providerType: 'mta',
+				firstAttemptAt: T0,
+			});
+			at(T0 + 4 * DAY);
+			await runCron(t);
+			expect((await getSend(t, sendId))?.status).toBe('queued');
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it('leaves a Send whose transport has no feedback channel to wait on at all', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await queuedCampaignSend(t, {
+			providerMessageId: 'smtp-accepted',
+			providerType: 'smtp',
 			firstAttemptAt: T0,
 		});
 		at(T0 + 30 * DAY);
