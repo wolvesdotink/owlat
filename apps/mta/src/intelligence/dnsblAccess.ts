@@ -118,21 +118,6 @@ export async function prepareSpamhausAccess(
 	return unavailable ? { dqsKey, unavailable } : { dqsKey };
 }
 
-/**
- * This MTA's Spamhaus access as the last IP sweep left it, without a test
- * query of its own: the sweep re-tests the key every 15 minutes, so a caller
- * that runs more often than that would only add queries. A key the sweep
- * rejected stays unusable until it is replaced (`resetSpamhausAccess`).
- */
-export async function readSweptSpamhausAccess(redis: Redis): Promise<SpamhausAccess> {
-	const [dqsKey, reason] = await Promise.all([
-		readSpamhausDqsKey(redis),
-		redis.hget(ACCESS_STATE_REDIS_KEY, 'reason'),
-	]);
-	if (!dqsKey) return {};
-	return reason === 'key_rejected' ? { dqsKey, unavailable: 'key_rejected' } : { dqsKey };
-}
-
 /** Persist the outcome of one sweep's Spamhaus lookups for the admin card. */
 export async function recordSpamhausAccess(
 	redis: Redis,

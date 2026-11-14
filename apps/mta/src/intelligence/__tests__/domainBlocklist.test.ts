@@ -13,25 +13,29 @@ const NOW = 1_800_000_000_000;
 describe('domain blocklist lookups', () => {
 	let redis: RealRedis;
 	let answers: Record<string, string[]>;
-	const resolve4 = vi.fn(async (name: string) => {
+	const answerFromTable = async (name: string) => {
 		const answer = answers[name];
 		if (!answer) throw dnsError('ENOTFOUND');
 		return answer;
-	});
+	};
+	const resolve4 = vi.fn(answerFromTable);
 
 	beforeEach(async () => {
 		redis = new Redis() as unknown as RealRedis;
 		await redis.flushall();
 		answers = {};
-		resolve4.mockClear();
+		resolve4.mockReset();
+		resolve4.mockImplementation(answerFromTable);
 	});
 
-	const check = (domains: string[], spamhaus = {}) =>
+	const check = (domains: string[], dqsKey?: string) =>
 		checkDomainBlocklists(redis, domains, {
 			lookup: { ...createRecordingLookupDeps().deps, resolve4 },
-			spamhaus,
+			...(dqsKey ? { dqsKey } : {}),
 			now: () => NOW,
 		});
+	const KEY = 'abcdefghijklmnop0123';
+	const KEY_TEST = `dbltest.com.${KEY}.dbl.dq.spamhaus.net`;
 
 	it('reports a domain a list names as listed, with that list', async () => {
 		answers['example.com.dbl.spamhaus.org'] = ['127.0.1.2'];
@@ -83,37 +87,54 @@ describe('domain blocklist lookups', () => {
 		expect(again.map((result) => result.status)).toEqual(['clean', 'clean', 'clean']);
 	});
 
-	it('asks Spamhaus through the keyed zone when a DQS key is set', async () => {
-		answers['example.com.abcdefghijklmnop0123.dbl.dq.spamhaus.net'] = ['127.0.1.4'];
+	it('asks Spamhaus through the keyed zone when the key passes its test', async () => {
+		answers[KEY_TEST] = ['127.0.1.2'];
+		answers[`example.com.${KEY}.dbl.dq.spamhaus.net`] = ['127.0.1.4'];
 
-		const results = await check(['example.com'], { dqsKey: 'abcdefghijklmnop0123' });
+		const results = await check(['example.com'], KEY);
 
 		expect(results).toContainEqual(
 			expect.objectContaining({ list: 'spamhaus_dbl', status: 'listed' })
 		);
 	});
 
-	it('does not ask Spamhaus at all while the DQS key failed its test', async () => {
-		const results = await check(['example.com'], {
-			dqsKey: 'abcdefghijklmnop0123',
-			unavailable: 'key_rejected',
-		});
+	it("does not read a rejected key's NXDOMAIN as clean", async () => {
+		const results = await check(['example.com'], KEY);
 
 		expect(results).toContainEqual(
 			expect.objectContaining({ list: 'spamhaus_dbl', status: 'unknown', reason: 'key_rejected' })
 		);
-		expect(resolve4.mock.calls.map(([name]) => name)).not.toContainEqual(
-			expect.stringContaining('spamhaus')
+		expect(resolve4.mock.calls.map(([name]) => name)).not.toContain(
+			`example.com.${KEY}.dbl.dq.spamhaus.net`
 		);
 	});
 
-	it('does not pass a cached clean Spamhaus answer once the DQS key is rejected', async () => {
-		await check(['example.com'], { dqsKey: 'abcdefghijklmnop0123' });
-
-		const results = await check(['example.com'], {
-			dqsKey: 'abcdefghijklmnop0123',
-			unavailable: 'key_rejected',
+	it('does not trust the key while its test does not answer', async () => {
+		const timeout = dnsError('ETIMEOUT');
+		resolve4.mockImplementation(async (name: string) => {
+			if (name === KEY_TEST) throw timeout;
+			throw dnsError('ENOTFOUND');
 		});
+
+		const results = await check(['example.com'], KEY);
+
+		expect(results).toContainEqual(
+			expect.objectContaining({
+				list: 'spamhaus_dbl',
+				status: 'unknown',
+				reason: 'resolver_unreachable',
+			})
+		);
+	});
+
+	it('does not pass a cached clean Spamhaus answer once the key fails its test', async () => {
+		answers[KEY_TEST] = ['127.0.1.2'];
+		await check(['example.com'], KEY);
+		// The key is revoked, and its cached test result has run out.
+		delete answers[KEY_TEST];
+		for (const key of await redis.keys('mta:domain-blocklist:dqs-test:*')) await redis.del(key);
+
+		const results = await check(['example.com'], KEY);
 
 		expect(results).toContainEqual(
 			expect.objectContaining({ list: 'spamhaus_dbl', status: 'unknown', reason: 'key_rejected' })

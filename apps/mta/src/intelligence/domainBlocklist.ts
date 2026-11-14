@@ -13,6 +13,7 @@
  * the lists as one burst; a free zone answers a burst with its refusal code.
  */
 
+import { createHash } from 'node:crypto';
 import type Redis from 'ioredis';
 import {
 	DOMAIN_BLOCKLIST_IDS,
@@ -24,7 +25,6 @@ import {
 	type DomainBlocklistId,
 } from '@owlat/shared/dnsbl';
 import { checkDnsblNameDetailed, type DnsblLookupDeps, type DnsblStatus } from './dnsblLookup.js';
-import type { SpamhausAccess } from './dnsblAccess.js';
 
 const CACHE_PREFIX = 'mta:domain-blocklist:';
 /**
@@ -37,6 +37,10 @@ const CACHE_TTL_SECONDS: Record<DnsblStatus, number> = {
 	listed: 60 * 60,
 	unknown: 15 * 60,
 };
+/** How long a DQS key's test result is reused; a revoked key is noticed within it. */
+const KEY_TEST_TTL_SECONDS = 15 * 60;
+/** Spamhaus's documented DBL test entry: every DBL zone lists it. */
+const SPAMHAUS_DBL_TEST_DOMAIN = 'dbltest.com';
 /** Lookups in flight at once, across every caller of this module. */
 const MAX_CONCURRENT_LOOKUPS = 3;
 
@@ -50,15 +54,14 @@ export interface DomainBlocklistResult {
 
 export interface DomainBlocklistDeps {
 	lookup: DnsblLookupDeps;
-	/** This sweep's Spamhaus access: the DQS key, or why it cannot be used. */
-	spamhaus: SpamhausAccess;
+	/** The operator's Spamhaus DQS key, when one is configured. */
+	dqsKey?: string;
 	now: () => number;
 }
 
-const pendingLookups = new Map<
-	string,
-	Promise<Pick<DomainBlocklistResult, 'status' | 'reason' | 'checkedAt'>>
->();
+type CachedVerdict = Pick<DomainBlocklistResult, 'status' | 'reason' | 'checkedAt'>;
+
+const pendingLookups = new Map<string, Promise<CachedVerdict>>();
 
 let inFlight = 0;
 const waiting: Array<() => void> = [];
@@ -79,19 +82,23 @@ async function limited<T>(task: () => Promise<T>): Promise<T> {
 	}
 }
 
-/** The zone to ask, and whether it is the keyed one (cached apart). */
+/**
+ * The zone to ask, and the access it is asked through. Keyed verdicts are
+ * cached per key (by a digest, never the key), so a replaced key starts over.
+ */
 function zoneFor(
 	list: DomainBlocklistDefinition,
-	spamhaus: SpamhausAccess
-): { zone: string; access: 'public' | 'keyed' } {
-	return list.keyedZone && spamhaus.dqsKey
-		? { zone: `${spamhaus.dqsKey}.${list.keyedZone}`, access: 'keyed' }
+	dqsKey: string | undefined
+): { zone: string; access: string } {
+	return list.keyedZone && dqsKey
+		? {
+				zone: `${dqsKey}.${list.keyedZone}`,
+				access: `keyed-${createHash('sha256').update(dqsKey).digest('hex').slice(0, 16)}`,
+			}
 		: { zone: list.zone, access: 'public' };
 }
 
-function parseCached(
-	raw: string | null
-): Pick<DomainBlocklistResult, 'status' | 'reason' | 'checkedAt'> | null {
+function parseCached(raw: string | null): CachedVerdict | null {
 	if (!raw) return null;
 	try {
 		const value = JSON.parse(raw) as Record<string, unknown>;
@@ -115,47 +122,85 @@ async function lookupOne(
 	id: DomainBlocklistId,
 	deps: DomainBlocklistDeps
 ): Promise<Pick<DomainBlocklistResult, 'status' | 'reason'>> {
-	const { zone } = zoneFor(DOMAIN_BLOCKLISTS[id], deps.spamhaus);
+	const { zone } = zoneFor(DOMAIN_BLOCKLISTS[id], deps.dqsKey);
 	const result = await checkDnsblNameDetailed(`${domain}.${zone}`, { domain }, id, deps.lookup);
 	if (result.answers.length > 0) return readDomainBlocklistAnswer(id, result.answers);
 	if (result.status === 'clean') return { status: 'clean' };
 	return { status: 'unknown', reason: result.reason ?? 'resolver_unreachable' };
 }
 
-async function checkOne(
+/**
+ * A cached verdict, or one shared lookup for every caller that misses the
+ * cache at the same time, written to the cache before the next caller looks.
+ */
+async function cachedVerdict(
 	redis: Redis,
-	domain: string,
-	id: DomainBlocklistId,
-	deps: DomainBlocklistDeps
-): Promise<DomainBlocklistResult> {
-	const list = DOMAIN_BLOCKLISTS[id];
-	// Before the cache: a verdict read through a key that has since been
-	// rejected says nothing about the domain now.
-	if (list.keyedZone && deps.spamhaus.unavailable) {
-		return {
-			domain,
-			list: id,
-			status: 'unknown',
-			reason: deps.spamhaus.unavailable,
-			checkedAt: deps.now(),
-		};
-	}
-	const key = `${CACHE_PREFIX}${id}:${zoneFor(list, deps.spamhaus).access}:${domain}`;
+	key: string,
+	ttlSeconds: (status: DnsblStatus) => number,
+	lookup: () => Promise<Pick<DomainBlocklistResult, 'status' | 'reason'>>,
+	now: () => number
+): Promise<CachedVerdict> {
 	const cached = parseCached(await redis.get(key));
-	if (cached) return { domain, list: id, ...cached };
-	// Checks that arrive together for one domain share one lookup.
+	if (cached) return cached;
 	let pending = pendingLookups.get(key);
 	if (!pending) {
-		pending = limited(() => lookupOne(domain, id, deps))
+		pending = limited(lookup)
 			.then(async (verdict) => {
-				const result = { ...verdict, checkedAt: deps.now() };
-				await redis.set(key, JSON.stringify(result), 'EX', CACHE_TTL_SECONDS[result.status]);
+				const result = { ...verdict, checkedAt: now() };
+				await redis.set(key, JSON.stringify(result), 'EX', ttlSeconds(result.status));
 				return result;
 			})
 			.finally(() => pendingLookups.delete(key));
 		pendingLookups.set(key, pending);
 	}
-	return { domain, list: id, ...(await pending) };
+	return pending;
+}
+
+/**
+ * Why the keyed Spamhaus zone cannot be trusted right now, or undefined when
+ * it can. A wrong or expired DQS key answers NXDOMAIN for every name, which
+ * would read as clean, so the zone is trusted only while Spamhaus's own DBL
+ * test entry answers as listed through it. The test is cached briefly and
+ * apart from the IP sweep's, whose last outcome can be a timeout that says
+ * nothing about the key.
+ */
+async function keyedZoneProblem(
+	redis: Redis,
+	deps: DomainBlocklistDeps
+): Promise<DnsblUnknownReason | undefined> {
+	const probe = await cachedVerdict(
+		redis,
+		`${CACHE_PREFIX}dqs-test:${zoneFor(DOMAIN_BLOCKLISTS.spamhaus_dbl, deps.dqsKey).access}`,
+		() => KEY_TEST_TTL_SECONDS,
+		() => lookupOne(SPAMHAUS_DBL_TEST_DOMAIN, 'spamhaus_dbl', deps),
+		deps.now
+	);
+	if (probe.status === 'listed') return undefined;
+	return probe.status === 'clean' ? 'key_rejected' : (probe.reason ?? 'resolver_unreachable');
+}
+
+async function checkOne(
+	redis: Redis,
+	domain: string,
+	id: DomainBlocklistId,
+	deps: DomainBlocklistDeps,
+	keyedProblem: DnsblUnknownReason | undefined
+): Promise<DomainBlocklistResult> {
+	const list = DOMAIN_BLOCKLISTS[id];
+	// Before the cache: an answer read through a key that fails its test now
+	// says nothing about the domain now.
+	if (list.keyedZone && keyedProblem) {
+		return { domain, list: id, status: 'unknown', reason: keyedProblem, checkedAt: deps.now() };
+	}
+	const key = `${CACHE_PREFIX}${id}:${zoneFor(list, deps.dqsKey).access}:${domain}`;
+	const verdict = await cachedVerdict(
+		redis,
+		key,
+		(status) => CACHE_TTL_SECONDS[status],
+		() => lookupOne(domain, id, deps),
+		deps.now
+	);
+	return { domain, list: id, ...verdict };
 }
 
 /** Every list's verdict for every domain, in domain then list order. */
@@ -164,7 +209,10 @@ export async function checkDomainBlocklists(
 	domains: readonly string[],
 	deps: DomainBlocklistDeps
 ): Promise<DomainBlocklistResult[]> {
+	const keyedProblem = deps.dqsKey ? await keyedZoneProblem(redis, deps) : undefined;
 	return Promise.all(
-		domains.flatMap((domain) => DOMAIN_BLOCKLIST_IDS.map((id) => checkOne(redis, domain, id, deps)))
+		domains.flatMap((domain) =>
+			DOMAIN_BLOCKLIST_IDS.map((id) => checkOne(redis, domain, id, deps, keyedProblem))
+		)
 	);
 }
