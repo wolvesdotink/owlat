@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { createTestContact, createTestTopic } from './factories';
+import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
 import {
 	apiErrorResponseSchema,
 	PUBLIC_OPERATIONS,
@@ -15,6 +15,7 @@ import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
 import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
+import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 
@@ -824,6 +825,25 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(body.error.category).toBe('not_found');
 	});
 
+	it.each([
+		['a malformed transactionalId', async () => 'not-a-template-id'],
+		['an id of another kind of record', null],
+	])('404 not_found for %s (not 500)', async (_label, idOf) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const transactionalId = idOf
+			? await idOf()
+			: await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()));
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'to@example.com', transactionalId }),
+		});
+		expect(res.status).toBe(404);
+		const body = await res.json();
+		expect(body.error.category).toBe('not_found');
+	});
+
 	it('403 forbidden while the transactional feature is off', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['transactional:send']);
@@ -843,6 +863,160 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		const body = await res.json();
 		expect(body.error.category).toBe('forbidden');
 		expect(body.error.data?.reason).toBe('feature_disabled');
+	});
+});
+
+// ─── GET /api/v1/transactional/{sendId} ──────────────────────────────────────
+
+const SENT_AT = Date.UTC(2026, 10, 1, 9, 0, 0);
+
+/** A send created through the transactional API, with stored data variables. */
+async function seedApiSend(
+	t: ReturnType<typeof convexTest>,
+	fields: Record<string, unknown> = {}
+): Promise<{ sendId: string; templateId: string; slug: string }> {
+	return await t.run(async (ctx) => {
+		const template = createTestTransactionalEmail({ slug: 'order-confirmation' });
+		const templateId = await ctx.db.insert('transactionalEmails', template);
+		const sendId = await ctx.db.insert('transactionalSends', {
+			kind: 'transactional',
+			transactionalEmailId: templateId,
+			email: 'ada@example.com',
+			language: 'en',
+			dataVariables: { resetToken: 'secret-token-123' },
+			status: 'queued',
+			queuedAt: SENT_AT,
+			...fields,
+		} as never);
+		return { sendId, templateId, slug: 'order-confirmation' };
+	});
+}
+
+describe('GET /api/v1/transactional/{sendId} (getTransactionalSend → transactional:send)', () => {
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, { method: 'GET' });
+		expect(res.status).toBe(401);
+	});
+
+	it('403 when the key lacks transactional:send', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t);
+		const key = await seedKey(t, ['contacts:read']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect(res.status).toBe(403);
+		expect((await res.json()).error.message).toContain('transactional:send');
+	});
+
+	it('200 with the status of the named send and none of its data variables', async () => {
+		const t = setupTest();
+		await seedApiSend(t, { email: 'other@example.com' });
+		const { sendId, templateId } = await seedApiSend(t, {
+			status: 'delivered',
+			sentAt: SENT_AT + 1000,
+			deliveredAt: SENT_AT + 2000,
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		await expectContractSuccess('getTransactionalSend', res);
+		const text = await res.text();
+		expect(text).not.toContain('secret-token-123');
+		expect(text).not.toContain('dataVariables');
+		expect(JSON.parse(text).data).toEqual({
+			sendId,
+			status: 'delivered',
+			email: 'ada@example.com',
+			templateId,
+			slug: 'order-confirmation',
+			language: 'en',
+			queuedAt: new Date(SENT_AT).toISOString(),
+			sentAt: new Date(SENT_AT + 1000).toISOString(),
+			deliveredAt: new Date(SENT_AT + 2000).toISOString(),
+			openedAt: null,
+			clickedAt: null,
+			bouncedAt: null,
+			complainedAt: null,
+			failedAt: null,
+			bounceType: null,
+			errorCode: null,
+			errorMessage: null,
+		});
+	});
+
+	it('names the error of a failed send', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, {
+			status: 'failed',
+			failedAt: SENT_AT + 5000,
+			errorCode: 'MTA_UNREACHABLE',
+			errorMessage: 'The mail server could not be reached before the delivery deadline passed',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect(res.status).toBe(200);
+		expect((await res.json()).data).toMatchObject({
+			status: 'failed',
+			failedAt: new Date(SENT_AT + 5000).toISOString(),
+			errorCode: 'MTA_UNREACHABLE',
+			errorMessage: 'The mail server could not be reached before the delivery deadline passed',
+		});
+	});
+
+	it('names the bounce type of a bounced send', async () => {
+		const t = setupTest();
+		const { sendId } = await seedApiSend(t, {
+			status: 'bounced',
+			bouncedAt: SENT_AT + 3000,
+			bounceType: 'hard',
+		});
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch(`/api/v1/transactional/${sendId}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect((await res.json()).data).toMatchObject({ status: 'bounced', bounceType: 'hard' });
+	});
+
+	it.each([
+		['an unknown send id', 'unknown'],
+		['a malformed id', 'malformed'],
+		['an id of another kind of record', 'contact'],
+		['a send no API call created', 'automation'],
+		['an erased send', 'erased'],
+	])('404 not_found for %s', async (_label, kind) => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		let id: string;
+		if (kind === 'malformed') id = 'not-a-send-id';
+		else if (kind === 'contact') {
+			id = await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()));
+		} else if (kind === 'automation') {
+			id = (await seedApiSend(t, { kind: 'automation', transactionalEmailId: undefined })).sendId;
+		} else if (kind === 'erased') {
+			id = (await seedApiSend(t, { deletedAt: SENT_AT, deletedBy: 'gdpr' })).sendId;
+		} else {
+			const { sendId } = await seedApiSend(t);
+			await t.run(async (ctx) => await ctx.db.delete(sendId as never));
+			id = sendId;
+		}
+		const res = await t.fetch(`/api/v1/transactional/${id}`, {
+			method: 'GET',
+			headers: authHeaders(key),
+		});
+		expect(res.status).toBe(404);
+		const body: unknown = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body).toMatchObject({ error: { category: 'not_found' } });
 	});
 });
 
@@ -1125,6 +1299,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	deleteContact: contactsApi.deleteContact,
 	sendEvent,
 	sendTransactional,
+	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,
 };

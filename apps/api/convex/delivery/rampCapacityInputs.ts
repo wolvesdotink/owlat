@@ -17,8 +17,9 @@
  * the ceiling that comes out is legitimately the same for each of them.
  *
  * WHICH POOL THE BOUND GOVERNS, AND THEREFORE WHICH CELLS IT BINDS.
- * `loadWarmingCapacity` sums `ip.active && ip.pool === 'campaign'` — CAMPAIGN
- * POOL headroom, nothing else. The numerator and the denominator must describe
+ * `loadWarmingCapacity` sums the headroom of the IPs campaign mail leaves from:
+ * the active campaign-pool IPs, or the transactional IPs the MTA borrows when
+ * none is active (`campaignSendingIps`), nothing else. The numerator and the denominator must describe
  * the same population, so the denominator sums only the streams that dispatch
  * through that pool: `campaign` and `automation`. That is the MTA adapter's
  * rule (`mtaIpPoolFor` in `lib/sendProviders/mta/index.ts`): with no route

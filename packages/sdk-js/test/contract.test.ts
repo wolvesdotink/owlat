@@ -22,6 +22,7 @@ afterEach(() => {
 
 const CONTACT_ID = 'k57c0ntact00000000000000000000';
 const TOPIC_ID = 'k57t0pic0000000000000000000000';
+const SEND_ID = 'k57s3nd00000000000000000000000';
 
 const example = <Id extends PublicOperationId>(id: Id) => OPERATION_EXAMPLES[id];
 const requestOf = (id: PublicOperationId) =>
@@ -69,6 +70,11 @@ const CALLS: Record<
 		call: (client) => client.transactional.send(example('sendTransactional').request),
 		path: '/api/v1/transactional',
 		result: example('sendTransactional').response.data,
+	},
+	getTransactionalSend: {
+		call: (client) => client.transactional.get(SEND_ID),
+		path: `/api/v1/transactional/${SEND_ID}`,
+		result: example('getTransactionalSend').response.data,
 	},
 	addContactToTopic: {
 		call: (client) =>

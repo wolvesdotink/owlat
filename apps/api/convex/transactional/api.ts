@@ -20,7 +20,6 @@
  * in the **Transactional send intake (module)** at `transactional/dispatch.ts`.
  */
 
-import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import {
@@ -202,17 +201,27 @@ async function fingerprintInput(
 	};
 }
 
-/** The 202 body. Request echoes come from the request, which a replay repeats exactly. */
+/**
+ * The 202 body. Request echoes come from the request, which a replay repeats
+ * exactly. `slug` is the template's own, so a request that named the template
+ * by id still learns which template it sent.
+ */
 function queuedResponse(
 	body: SendTransactionalBody,
-	outcome: { sendId: string; contactId: string; contactCreated: boolean; language: string },
+	outcome: {
+		sendId: string;
+		contactId: string;
+		contactCreated: boolean;
+		language: string;
+		slug: string;
+	},
 	replayed: boolean | undefined
 ): Response {
 	const response: SendTransactionalResponse = {
 		status: 'queued',
 		email: body.email,
 		transactionalEmailId: outcome.sendId,
-		slug: body.slug ?? '',
+		slug: outcome.slug || (body.slug ?? ''),
 		contactId: outcome.contactId,
 		contactCreated: outcome.contactCreated,
 		language: outcome.language,
@@ -270,16 +279,17 @@ export const sendTransactional = createAuthenticatedHandler(
 			});
 			if (lookup.kind === 'refused') return idempotencyRefusalResponse(lookup.reason);
 			if (lookup.kind === 'replay') {
-				return queuedResponse(body, storedTransactionalResponse(lookup.receipt), true);
+				const stored = storedTransactionalResponse(lookup.receipt);
+				const status = await ctx.runQuery(internal.transactional.sendStatus.getForApi, {
+					sendId: stored.sendId,
+				});
+				return queuedResponse(body, { ...stored, slug: status?.slug ?? '' }, true);
 			}
 		}
 
 		// Build the templateLookup discriminator.
 		const templateLookup = body.transactionalId
-			? {
-					kind: 'id' as const,
-					id: body.transactionalId as Id<'transactionalEmails'>,
-				}
+			? { kind: 'id' as const, id: body.transactionalId }
 			: // The schema refuses a body naming neither.
 				{ kind: 'slug' as const, slug: body.slug! };
 

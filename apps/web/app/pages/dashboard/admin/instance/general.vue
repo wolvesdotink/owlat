@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 import { instanceTimezoneSelectOptions } from '~/data/instanceTimezoneOptions';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { isValidEmail } from '@owlat/shared';
-import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
+import { unverifiedFromDomain } from '~/utils/fromEmailDomain';
 import { useSettingsForm } from '~/composables/useSettingsForm';
 import { FEATURE_FLAGS } from '@owlat/shared/featureFlags';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
@@ -200,14 +200,15 @@ const {
 });
 
 // Non-blocking warning when the From email's domain is not a verified sending
-// domain. Only shown once the address is a syntactically valid email, so it
+// domain: the address saves, but every send from it is refused until it is. Only shown once the address is a syntactically valid email, so it
 // doesn't flicker while the operator is mid-type.
 const fromDomainWarning = computed(() => {
 	if (!isValidEmail(form.defaultFromEmail)) return null;
-	return unverifiedFromDomainWarning(
+	const domain = unverifiedFromDomain(
 		form.defaultFromEmail,
 		verifiedDomains.value?.map((d) => d.domain)
 	);
+	return domain ? t('dashboard.admin.instance.general.unverifiedFromDomain', { domain }) : null;
 });
 
 // Swap the From email onto a verified domain, preserving the local part the
