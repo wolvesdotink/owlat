@@ -20,7 +20,11 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { CURRENT_ATTACHMENT_META_VERSION } from '../lib/constants';
-import { virusVerdictValidator, type VirusVerdict } from '../lib/literalValidators';
+import {
+	systemMailboxValidator,
+	virusVerdictValidator,
+	type VirusVerdict,
+} from '../lib/literalValidators';
 import { spamVerdictValidator } from '../lib/convexValidators';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { clearsignedSignatureMirror } from '../webhooks/inboundSignatureMirror';
@@ -84,13 +88,17 @@ export const inboundMessageArgs = {
 	// always; terminal only behind the `mtaVerdictTerminal` routing switch.
 	mtaSpamVerdict: v.optional(spamVerdictValidator),
 	mtaSpamScore: v.optional(v.number()),
+	// The MTA's built-in `postmaster@`/`abuse@` route, see
+	// `inboundEmailMessageValidator`.
+	systemMailbox: v.optional(systemMailboxValidator),
 } as const;
 
 /**
  * What one receive did — a DISCRIMINATED UNION on `isDuplicate`, not a bag of
  * optional fields.
  *
- * A message this delivery stored always has a thread and a contact:
+ * A message this delivery stored always has a thread, and a contact unless it
+ * is `postmaster@`/`abuse@` mail, which is never filed under one:
  * `receiveMessage` resolves both before it inserts. Only the duplicate branch
  * hands back whatever the EXISTING row holds, which for an old row may be
  * nothing. Spelling that as two shapes is what lets a caller on the stored
@@ -119,7 +127,7 @@ export const inboundReceiveResultValidator = v.union(
 		inboundMessageId: v.id('inboundMessages'),
 		isDuplicate: v.literal(false),
 		threadId: v.id('conversationThreads'),
-		contactId: v.id('contacts'),
+		contactId: v.optional(v.id('contacts')),
 	})
 );
 
@@ -173,6 +181,7 @@ export async function receiveInboundMail(
 		dmarcPolicy: input.dmarcPolicy,
 		mtaSpamVerdict: input.mtaSpamVerdict,
 		mtaSpamScore: input.mtaSpamScore,
+		systemMailbox: input.systemMailbox,
 		...extras,
 	};
 

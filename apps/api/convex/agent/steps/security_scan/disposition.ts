@@ -140,7 +140,9 @@ export function guardBlocksStep(
  *     malware, a malicious URL, or an injection at quarantine confidence. Keyed
  *     on the persisted status and flags, so it holds after a late guard has
  *     cleared the guard-skip marker and for a deterministic quarantine with no marker
- *     at all.
+ *     at all. Mail to `postmaster@`/`abuse@` (`systemMailbox`) is always
+ *     rejected: it is operational, can quote other people's messages, and no
+ *     model reads it.
  *   - `needs_guard`: its scan skipped the model guard; run it first.
  *   - `clear`: anything else, including a message never scanned (store-only
  *     mail), which these consumers read without a guard.
@@ -151,9 +153,11 @@ export function guardStanding(message: {
 	processingStatus?: string;
 	virusVerdict?: string;
 	securityFlags?: Infer<typeof securityFlagsValidator>;
+	systemMailbox?: string;
 }): GuardStanding {
 	const flags = message.securityFlags;
 	if (
+		message.systemMailbox !== undefined ||
 		message.processingStatus === 'quarantined' ||
 		message.virusVerdict === 'infected' ||
 		flags?.phishingDetected === true ||

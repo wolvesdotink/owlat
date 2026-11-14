@@ -14,7 +14,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { createContact } from '../contacts/creation';
@@ -37,12 +37,14 @@ import {
 	type InboundReceiveResult,
 } from './receiveInbound';
 import { invalidateSenderMemoryOnAuthFailure } from '../decision/senderMemory';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 import {
 	coalesceWindowFor,
 	decidePipelineStart,
 	extractNameFromEmail,
 	inboundMessageRow,
 	planArrival,
+	type ArrivalPlan,
 } from './receiveDecision';
 
 // Re-exported for existing importers of this module.
@@ -93,6 +95,43 @@ async function findStoredDuplicate(
 		.withIndex('by_message_id', (q) => q.eq('messageId', envelope.messageId))
 		.take(DUPLICATE_SCAN_LIMIT);
 	return sameId.find((row) => row.from === envelope.from && row.to === envelope.to) ?? null;
+}
+
+/**
+ * The sender's contact, created or updated. None for postmaster/abuse mail
+ * (`ArrivalPlan.isSystemMailbox`): its sender is not a customer, and a contact
+ * would show the mail's subject to every member and could enter an audience.
+ */
+async function resolveSenderContact(
+	ctx: MutationCtx,
+	plan: ArrivalPlan
+): Promise<Id<'contacts'> | undefined> {
+	if (plan.isSystemMailbox) return undefined;
+	const { contactId } = await createContact(ctx, {
+		channel: 'email',
+		identifier: plan.senderEmail,
+		source: 'inbound',
+		mode: 'upsert',
+		contactFields: { firstName: plan.senderFirstName },
+	});
+	return contactId;
+}
+
+/**
+ * The end of a postmaster/abuse arrival, once the row is stored: no timeline
+ * row, contact activity, suppression archive or agent run, and the instance
+ * admins are told (`marketing/notifications`, kind `postmaster_mail`).
+ */
+async function storedForAdmins(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	threadId: Id<'conversationThreads'>
+): Promise<InboundReceiveResult> {
+	await scheduleMarketingNotice(ctx, { kind: 'postmaster_mail', inboundMessageId });
+	logInfo('[Inbound Email] postmaster/abuse mail stored for admins without AI processing', {
+		threadId,
+	});
+	return { inboundMessageId, threadId, isDuplicate: false };
 }
 
 /**
@@ -164,14 +203,8 @@ export const receiveMessage = internalMutation({
 		const plan = planArrival(args);
 		const now = Date.now();
 
-		// ── 1. Resolve contact ──
-		const { contactId } = await createContact(ctx, {
-			channel: 'email',
-			identifier: plan.senderEmail,
-			source: 'inbound',
-			mode: 'upsert',
-			contactFields: { firstName: plan.senderFirstName },
-		});
+		// ── 1. Resolve contact ── (none for postmaster/abuse mail, see the plan)
+		const contactId = await resolveSenderContact(ctx, plan);
 
 		// ── 2. Resolve or create conversation thread ──
 		// The Conversation thread module owns the three-strategy cascade
@@ -186,6 +219,7 @@ export const receiveMessage = internalMutation({
 			references: args.references,
 			occurredAt: now,
 			preview: plan.preview,
+			systemMailbox: args.systemMailbox,
 		});
 
 		// ── 3. Store the inbound message ──
@@ -210,6 +244,9 @@ export const receiveMessage = internalMutation({
 		// a response clock for it (inbox/sla/clock.ts); it never passes through the
 		// lifecycle edge that would stop it.
 		if (plan.isInfected) await releaseClockIfNothingOwed(ctx, threadId, inboundMessageId);
+
+		// Only postmaster/abuse mail has no contact, and it stops here.
+		if (contactId === undefined) return await storedForAdmins(ctx, inboundMessageId, threadId);
 
 		// ── Capture post-send OUTCOME signal (graduated-autonomy learning) ──
 		// A reply on a thread whose prior message the agent AUTO-sent is a

@@ -17,6 +17,9 @@ describe('notIndexedNoticeKey', () => {
 		expect(notIndexedNoticeKey('skipped_automated')).toBe(
 			'components.inbox.inboxMessageAttachments.notIndexedAutomated'
 		);
+		expect(notIndexedNoticeKey('skipped_system_mailbox')).toBe(
+			'components.inbox.inboxMessageAttachments.notIndexedSystemMailbox'
+		);
 		expect(notIndexedNoticeKey('skipped_unscanned')).toBe(
 			'components.inbox.inboxMessageAttachments.notScanned'
 		);

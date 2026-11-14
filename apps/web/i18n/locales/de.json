@@ -4425,6 +4425,7 @@
 				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
 				"notIndexedRefusedType": "Der Assistent hat nicht jede Datei hier gelesen — einige dieser Dateitypen werden nie auf Schadsoftware geprüft. Öffne sie nur, wenn du dem Absender vertraust.",
 				"notIndexedSpam": "Der Assistent hat diese Dateien nicht gelesen — diese Nachricht wurde als Spam markiert.",
+				"notIndexedSystemMailbox": "Der Assistent liest keine Dateien, die an postmaster{'@'} oder abuse{'@'} geschickt wurden.",
 				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
 				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
 				"notIndexedUnverified": "Der Assistent hat diese Dateien nicht gelesen — der Absender dieser Nachricht konnte nicht verifiziert werden.",
@@ -6923,6 +6924,10 @@
 				"domainDns": {
 					"label": "DNS der Versanddomain fehlerhaft",
 					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
+				},
+				"postmasterMail": {
+					"label": "Mail an postmaster und abuse",
+					"hint": "Wenn ein Mailanbieter, eine Blocklist oder ein Abuse-Team an postmaster{'@'} oder abuse{'@'} deiner Versandhosts schreibt."
 				},
 				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
@@ -18996,6 +19001,11 @@
 				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
 				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
 				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			},
+			"postmasterMail": {
+				"title": "Postmaster-Mail",
+				"body": "{sender} hat an {address} geschrieben",
+				"private": "Neue Mail an postmaster{'@'} oder abuse{'@'}"
 			},
 			"campaignNotStarted": {
 				"title": "Geplante Kampagne nicht gestartet",

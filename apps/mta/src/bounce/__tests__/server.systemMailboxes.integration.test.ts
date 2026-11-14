@@ -168,10 +168,21 @@ function queuedEvents(): string[] {
 	);
 }
 
-function notifiedEvents(): Array<{ event: string; inboundPayload?: { to: string } }> {
-	return mocks.notifyConvex.mock.calls.map(
-		(call) => (call as unknown[])[0] as { event: string; inboundPayload?: { to: string } }
-	);
+type NotifiedEvent = { event: string; inboundPayload?: { to: string; systemMailbox?: string } };
+
+function notifiedEvents(): NotifiedEvent[] {
+	return mocks.notifyConvex.mock.calls.map((call) => (call as unknown[])[0] as NotifiedEvent);
+}
+
+/** A plain message to `to`, the kind a blocklist operator or abuse desk writes. */
+function plainMessage(to: string): string {
+	return [
+		'From: Admin <admin@example.org>',
+		`To: ${to}`,
+		'Subject: Your server',
+		'',
+		'Please look at your PTR record.',
+	].join('\n');
 }
 
 beforeEach(async () => {
@@ -234,6 +245,48 @@ describe('postmaster@ and abuse@ on the port-25 listener', () => {
 		expect(events.map((e) => e.event)).toEqual(['inbound.received']);
 		expect(events[0]!.inboundPayload?.to).toBe('postmaster@mx.owlat.test');
 		expect(mocks.queueConvexWebhook).not.toHaveBeenCalled();
+	});
+
+	it('marks the mail with the system mailbox it was addressed to', async () => {
+		const port = await start();
+		for (const to of ['postmaster@mx.owlat.test', `Abuse@${RETURN_PATH_DOMAIN}`]) {
+			expect(await deliver(port, to, plainMessage(to), 'admin@example.org')).toMatch(/^250 /);
+		}
+		expect(notifiedEvents().map((e) => e.inboundPayload?.systemMailbox)).toEqual([
+			'postmaster',
+			'abuse',
+		]);
+	});
+
+	it("leaves an operator's exact route of the same name unmarked", async () => {
+		await redis.set(
+			'mta:inbound-routes:mx.owlat.test:postmaster',
+			JSON.stringify({
+				id: 'route_operator',
+				domain: 'mx.owlat.test',
+				address: 'postmaster',
+				mode: 'accept',
+				createdAt: 1,
+			})
+		);
+		const port = await start();
+		const to = 'postmaster@mx.owlat.test';
+		expect(await deliver(port, to, plainMessage(to), 'admin@example.org')).toMatch(/^250 /);
+		const events = notifiedEvents();
+		expect(events.map((e) => e.event)).toEqual(['inbound.received']);
+		expect(events[0]!.inboundPayload).not.toHaveProperty('systemMailbox');
+	});
+
+	it('delivers to a real mailbox of the same name as that mailbox', async () => {
+		await setMailboxCache(redis as never, 'postmaster@mx.owlat.test', {
+			mailboxId: 'mbx_postmaster',
+			organizationId: 'org_team',
+			usedBytes: 0,
+		});
+		const port = await start();
+		const to = 'postmaster@mx.owlat.test';
+		expect(await deliver(port, to, plainMessage(to), 'admin@example.org')).toMatch(/^250 /);
+		expect(notifiedEvents().map((e) => e.event)).toEqual(['inbound.mailbox.received']);
 	});
 
 	it('still refuses an unknown local part on the return-path host', async () => {

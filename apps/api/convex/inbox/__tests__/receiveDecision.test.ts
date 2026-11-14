@@ -31,7 +31,18 @@ describe('planArrival', () => {
 			senderFirstName: 'Pat',
 			preview: 'Thanks!',
 			isInfected: false,
+			isSystemMailbox: false,
 			isPipelineSkipped: false,
+			replyFeedbackText: undefined,
+		});
+	});
+
+	it('takes postmaster and abuse mail off the agent, the reply classifier included', () => {
+		expect(
+			planArrival(arrival({ systemMailbox: 'abuse', inReplyTo: '<p@example.com>' }))
+		).toMatchObject({
+			isSystemMailbox: true,
+			isPipelineSkipped: true,
 			replyFeedbackText: undefined,
 		});
 	});

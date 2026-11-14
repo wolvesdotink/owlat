@@ -83,6 +83,22 @@ describe('presentMarketingNotice', () => {
 			'mail.example.com: a DNS check failed'
 		);
 	});
+
+	it('says who wrote to postmaster or abuse, and opens the conversation', () => {
+		expect(
+			render({
+				kind: 'postmaster_mail',
+				name: 'abuse@bounces.example.com',
+				detail: 'listings@blocklist.example',
+				url: '/dashboard/inbox/t1',
+			})
+		).toEqual({
+			title: 'Postmaster mail',
+			body: 'listings@blocklist.example wrote to abuse@bounces.example.com',
+			toastType: 'info',
+			href: '/dashboard/inbox/t1',
+		});
+	});
 });
 
 describe('freshMarketingNotices', () => {
@@ -126,6 +142,7 @@ describe('presentNativeMarketingNotice', () => {
 		['automation_stalled', 'Secret flow', 'Contacts stalled in an automation'],
 		['automation_paused', 'Secret flow', 'An automation paused itself after repeated failed runs'],
 		['domain_dns', 'secret.example.com', 'A DNS check of a sending domain failed'],
+		['postmaster_mail', 'abuse@secret.example', 'New mail to postmaster@ or abuse@'],
 	] as const)('names no %s on the lock screen when private', (kind, name, body) => {
 		const native = presentNativeMarketingNotice(
 			view({ kind, name, count: 3, scheduledAt: 15 * 60_000, detail: 'SPF' }),

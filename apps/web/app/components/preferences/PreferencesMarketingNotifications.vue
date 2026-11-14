@@ -2,12 +2,13 @@
 /**
  * Marketing notifications: one switch per kind (campaign finished, scheduled
  * campaign about to send, bounce protection, automation problems, sending domain
- * DNS broken). The switches are the person's own and live on the server, so
- * they hold for the app, the desktop app and Web Push on every device alike.
+ * DNS broken, postmaster and abuse mail). The switches are the person's own and
+ * live on the server, so they hold for the app, the desktop app and Web Push on
+ * every device alike.
  *
  * Only the switches that can ever fire for this person on this instance are
- * listed (the DNS one is admin-only, the automation one needs automations),
- * and the card hides itself when none can.
+ * listed (the DNS and postmaster ones are admin-only, the automation one needs
+ * automations), and the card hides itself when none can.
  */
 import { api } from '@owlat/api';
 
@@ -16,7 +17,8 @@ type Preference =
 	| 'campaignReminder'
 	| 'deliveryHold'
 	| 'automationProblems'
-	| 'domainDns';
+	| 'domainDns'
+	| 'postmasterMail';
 
 const COPY_KEYS: Record<Preference, { label: string; hint: string }> = {
 	campaignFinished: {
@@ -38,6 +40,10 @@ const COPY_KEYS: Record<Preference, { label: string; hint: string }> = {
 	domainDns: {
 		label: 'components.preferences.marketingNotifications.domainDns.label',
 		hint: 'components.preferences.marketingNotifications.domainDns.hint',
+	},
+	postmasterMail: {
+		label: 'components.preferences.marketingNotifications.postmasterMail.label',
+		hint: 'components.preferences.marketingNotifications.postmasterMail.hint',
 	},
 };
 

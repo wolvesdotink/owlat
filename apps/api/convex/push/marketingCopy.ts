@@ -4,8 +4,9 @@
  * Server-side for the same reason as `copy.ts` (the sender has no vue-i18n),
  * and worded like the in-app toasts (`shared.marketingNotices` in the web
  * catalogs) so the two surfaces read the same. A private notification (the
- * shared "hide message preview" switch) names no campaign, automation or
- * domain: those names can say more than the person wants on a lock screen.
+ * shared "hide message preview" switch) names no campaign, automation, domain
+ * or correspondent: those names can say more than the person wants on a lock
+ * screen.
  */
 
 import type { AppLocale } from '@owlat/shared/appLocales';
@@ -38,6 +39,9 @@ interface MarketingCopy {
 	dnsTitle: string;
 	dnsBody: (domain: string, check: string | undefined) => string;
 	dnsPrivate: string;
+	postmasterTitle: string;
+	postmasterBody: (sender: string, address: string) => string;
+	postmasterPrivate: string;
 	open: string;
 	cancelSend: string;
 }
@@ -73,6 +77,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		dnsBody: (domain, check) =>
 			check ? `${domain}: ${check} check failed` : `${domain}: a DNS check failed`,
 		dnsPrivate: 'A DNS check of a sending domain failed',
+		postmasterTitle: 'Postmaster mail',
+		postmasterBody: (sender, address) => `${sender} wrote to ${address}`,
+		postmasterPrivate: 'New mail to postmaster@ or abuse@',
 		open: 'Open',
 		cancelSend: 'Cancel send',
 	},
@@ -109,6 +116,9 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 				? `${domain}: Prüfung „${check}“ fehlgeschlagen`
 				: `${domain}: eine DNS-Prüfung ist fehlgeschlagen`,
 		dnsPrivate: 'Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen',
+		postmasterTitle: 'Postmaster-Mail',
+		postmasterBody: (sender, address) => `${sender} hat an ${address} geschrieben`,
+		postmasterPrivate: 'Neue Mail an postmaster@ oder abuse@',
 		open: 'Öffnen',
 		cancelSend: 'Versand abbrechen',
 	},
@@ -202,6 +212,14 @@ export function marketingPayload(
 				...base,
 				title: copy.dnsTitle,
 				body: isPrivate ? copy.dnsPrivate : clip(copy.dnsBody(name, notice.detail), MAX_BODY),
+			};
+		case 'postmaster_mail':
+			return {
+				...base,
+				title: copy.postmasterTitle,
+				body: isPrivate
+					? copy.postmasterPrivate
+					: clip(copy.postmasterBody(clip(notice.detail ?? '', 60), name), MAX_BODY),
 			};
 	}
 }

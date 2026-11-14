@@ -13,7 +13,7 @@ import { marketingNoticeKindValidator } from '../lib/validators/marketingNotific
  * that was cancelled meanwhile is never shown). Rows older than the retention
  * are pruned on the next write for the same person.
  *
- * `marketingNotificationSettings` is one row per person with the five switches
+ * `marketingNotificationSettings` is one row per person with the switches
  * from Preferences → This device. An absent row or field means on.
  *
  * Lifecycle: deleted by member erasure and by workspace deletion.
@@ -43,14 +43,17 @@ export const marketingNotificationTables = {
 		automationId: v.optional(v.id('automations')),
 		domainId: v.optional(v.id('domains')),
 		alertId: v.optional(v.id('deliverabilityRegressionAlerts')),
+		// Postmaster mail: the Team Inbox thread it landed in.
+		threadId: v.optional(v.id('conversationThreads')),
 		// The campaign, automation or domain name; the destination provider for
-		// a delivery hold.
+		// a delivery hold; the address written to for postmaster mail.
 		name: v.optional(v.string()),
 		// Campaign finished: delivered share of the messages handed off, 0–100.
 		percent: v.optional(v.number()),
 		// Automation stalled: runs ended.
 		count: v.optional(v.number()),
 		// Domain DNS: the failing check's protocol label ("SPF with -all").
+		// Postmaster mail: the sender's address.
 		detail: v.optional(v.string()),
 		// Campaign reminder: the start the reminder is for.
 		scheduledAt: v.optional(v.number()),
@@ -69,6 +72,7 @@ export const marketingNotificationTables = {
 		isDeliveryHoldOn: v.optional(v.boolean()),
 		isAutomationProblemsOn: v.optional(v.boolean()),
 		isDomainDnsOn: v.optional(v.boolean()),
+		isPostmasterMailOn: v.optional(v.boolean()),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
 };
