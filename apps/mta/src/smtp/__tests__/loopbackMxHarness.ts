@@ -157,6 +157,7 @@ export function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bouncePort: 25,
 		redisUrl: 'redis://localhost:6379',
 		apiKey: 'test-key',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
 		ehloHostname: 'mail.owlat.com',
 		ehloHostnames: {},
 		returnPathDomain: 'bounces.owlat.com',
