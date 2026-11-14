@@ -263,9 +263,9 @@ export async function prepareSignedMessage(
 	// domain). Absent → global fallback, so a domain with no override behaves
 	// exactly as before. Attribution stays domain-agnostic: the VERP token's HMAC
 	// is computed over the message id + time window (never the host), and the
-	// bounce server accepts `bounce+…` at ANY host — so a DSN arriving at the
-	// per-domain host still verifies and suppresses the right recipient (see
-	// bounce/verp.ts, bounce/server.ts).
+	// bounce server accepts `bounce+…` at every registered per-domain host
+	// (bounce/feedbackHosts.ts) — so a DSN arriving at the per-domain host still
+	// verifies and suppresses the right recipient (see bounce/verp.ts).
 	const perDomainReturnPath = await getReturnPathHost(redis, job.dkimDomain.toLowerCase());
 	const feedbackHost = perDomainReturnPath ?? config.returnPathDomain;
 	const verpAddress = buildVerpAddress(job.messageId, feedbackHost);

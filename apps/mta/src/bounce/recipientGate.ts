@@ -6,6 +6,7 @@ import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { findRoute } from '../inbound/router.js';
 import { systemMailboxHosts } from '../inbound/systemMailboxes.js';
 import { deliverabilityProbeRecipientDecision } from './deliverabilityProbe.js';
+import { isFeedbackHost } from './feedbackHosts.js';
 
 export interface RecipientGateTransaction {
 	deliverabilityProbeToken?: string;
@@ -17,6 +18,13 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 		address: SmtpAddress,
 		session: SmtpSession<unknown, RecipientGateTransaction>
 	): Promise<SmtpHandlerResult> | SmtpHandlerResult {
+		// RFC 5321 §4.1.1.3: `postmaster` without a domain must be accepted. It
+		// names this host's postmaster, so it is routed as the return-path
+		// domain's, the address Owlat publishes as its own contact. Rewritten in
+		// place because the listener records this object as the recipient.
+		if (address.address.toLowerCase() === 'postmaster') {
+			address.address = `postmaster@${config.returnPathDomain}`;
+		}
 		if (session.transaction?.deliverabilityProbeToken && session.rcptTo.length > 0) {
 			return {
 				code: 550,
@@ -51,7 +59,14 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 			};
 			return;
 		}
-		if (address.address.startsWith('bounce+') || address.address.startsWith('fbl+')) return;
+		if (address.address.startsWith('bounce+') || address.address.startsWith('fbl+')) {
+			const host = address.address.slice(address.address.lastIndexOf('@') + 1);
+			return isFeedbackHost(redis, config, address.address.includes('@') ? host : '')
+				.then((accepted): SmtpHandlerResult =>
+					accepted ? undefined : { code: 550, enhanced: '5.7.1', text: 'Relaying denied' }
+				)
+				.catch((): SmtpReply => ({ code: 451, enhanced: '4.3.0', text: 'Temporary error' }));
+		}
 
 		// Reserved: a return-path capability probe is addressed here PRECISELY so
 		// that it is refused and the relay generates a DSN we can attribute. The
