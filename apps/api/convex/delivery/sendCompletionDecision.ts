@@ -134,6 +134,10 @@ const EXHAUSTED_HOLD_FAILURE = {
 		message: 'The mail server could not be reached before the delivery deadline passed',
 		code: 'MTA_UNREACHABLE',
 	},
+	sending_suspended: {
+		message: 'Sending stayed suspended for this workspace until the delivery deadline passed',
+		code: 'SENDING_SUSPENDED',
+	},
 } as const satisfies Record<DeliveryHold, { message: string; code: string }>;
 
 const EXHAUSTED_DEFERRAL_FAILURE = {

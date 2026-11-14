@@ -28,6 +28,7 @@
 import { authedQuery } from '../lib/authedFunctions';
 import { summarize } from '../analytics/sendingReputation';
 import { isDeliveryConfigured, messageTypeTransportKinds } from '../lib/sendProviders/capability';
+import { missingFeedbackVariablesFor } from '../lib/sendProviders/feedbackReadiness';
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
@@ -72,6 +73,12 @@ export interface DeliveryHealthInputs {
 	sendingIps?: SendingIpPosture | null;
 	/** True when the MTA reports the campaign warm-up halted (`plateau`). */
 	isWarmupHalted?: boolean;
+	/**
+	 * Enabled message types whose transport sends but cannot receive bounce
+	 * and complaint reports (its webhook key is unset). Optional: absent means
+	 * none.
+	 */
+	streamsWithoutFeedback?: readonly ('transactional' | 'campaign')[];
 	/**
 	 * The transactional default sender: `missing` when none is configured,
 	 * `unverified` when its domain is not verified, `null` when it is fine or
@@ -132,6 +139,24 @@ function providerHealth(
 		return { level: 'error', reason: 'No delivery provider is configured for campaigns' };
 	}
 	return { level: 'ok', reason: 'Delivery provider is configured' };
+}
+
+/**
+ * Feedback dimension: campaigns are refused while their bounce and complaint
+ * reports cannot come back, so that blocks; transactional mail still goes out
+ * and only warns, as the readiness panel's transport gate grades it.
+ */
+function feedbackHealth(streams: readonly ('transactional' | 'campaign')[]): DeliveryHealthRollup {
+	if (streams.includes('campaign')) {
+		return {
+			level: 'error',
+			reason: 'Bounce and complaint reports cannot reach Owlat, so campaigns are refused',
+		};
+	}
+	if (streams.includes('transactional')) {
+		return { level: 'warn', reason: 'Bounce and complaint reports cannot reach Owlat' };
+	}
+	return { level: 'ok', reason: 'Bounce and complaint reports can reach Owlat' };
 }
 
 /** Transactional sends always use the default sender; without a verified one they are refused. */
@@ -231,13 +256,14 @@ function reputationHealth(risk: ReputationRisk | null): DeliveryHealthRollup {
  * Roll the delivery-health dimensions into one worst-of verdict. Pure:
  * no DB, no ctx — the null-vs-populated and tie-break decisions are unit
  * testable. Ties at the same severity resolve in a fixed, most-actionable
- * order: provider → infrastructure → sending IPs → domains → default sender →
+ * order: provider → bounce feedback → infrastructure → sending IPs → domains → default sender →
  * warm-up → reputation (so a red provider dot names the provider, not a
  * coincidentally-red reputation).
  */
 export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHealthRollup {
 	const candidates: DeliveryHealthRollup[] = [
 		providerHealth(inputs.canSend, inputs.streamsWithoutTransport ?? []),
+		feedbackHealth(inputs.streamsWithoutFeedback ?? []),
 		mtaHealth(inputs.mtaInfrastructure, inputs.heldSigningDomains),
 		sendingIpHealth(inputs.sendingIps),
 		domainHealth(inputs.domainStatuses),
@@ -312,7 +338,11 @@ async function streamHealthInputs(
 ): Promise<
 	Pick<
 		DeliveryHealthInputs,
-		'streamsWithoutTransport' | 'sendingIps' | 'isWarmupHalted' | 'transactionalSender'
+		| 'streamsWithoutTransport'
+		| 'streamsWithoutFeedback'
+		| 'sendingIps'
+		| 'isWarmupHalted'
+		| 'transactionalSender'
 	>
 > {
 	const settings = await ctx.db.query('instanceSettings').first();
@@ -323,11 +353,13 @@ async function streamHealthInputs(
 	];
 
 	const streamsWithoutTransport: ('transactional' | 'campaign')[] = [];
+	const streamsWithoutFeedback: ('transactional' | 'campaign')[] = [];
 	const mtaPools: ('transactional' | 'campaign')[] = [];
 	for (const stream of streams) {
 		if (!(await isDeliveryConfigured(ctx, stream))) streamsWithoutTransport.push(stream);
 		const kinds = await messageTypeTransportKinds(ctx, routes, stream);
 		if (kinds.includes(OWN_ARM_TRANSPORT_KIND)) mtaPools.push(stream);
+		if (missingFeedbackVariablesFor(kinds).length > 0) streamsWithoutFeedback.push(stream);
 	}
 
 	const warming = mtaPools.length > 0 ? await ctx.db.query('warmingState').first() : null;
@@ -336,6 +368,7 @@ async function streamHealthInputs(
 	);
 	return {
 		streamsWithoutTransport,
+		streamsWithoutFeedback,
 		sendingIps: postures.has('all_held')
 			? 'all_held'
 			: postures.has('some_held')

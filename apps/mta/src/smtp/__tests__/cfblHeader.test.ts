@@ -261,6 +261,26 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		expect(cfblAddressOf(headerValue('CFBL-Address')!)).toBe(`fbl+${token}@${ALIGNED_RETURN_PATH}`);
 	});
 
+	it('mints the same pair on a retry on a later day, so the signed bytes do not change', async () => {
+		await alignReturnPath();
+		const firstEnqueuedAt = Date.parse('2026-06-21T23:50:00Z');
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			for (const at of ['2026-06-21T23:55:00Z', '2026-06-23T08:00:00Z']) {
+				vi.setSystemTime(new Date(at));
+				await sendToMx(createJob({ firstEnqueuedAt }), createConfig(), redis, '10.0.0.1');
+			}
+		} finally {
+			vi.useRealTimers();
+		}
+
+		const [first, retry] = sendEnvelopeMock.mock.calls.map(
+			(call) => (call[1] as { data: Buffer }).data
+		);
+		expect(first?.toString('utf-8')).toContain('CFBL-Feedback-ID:');
+		expect(retry?.equals(first!)).toBe(true);
+	});
+
 	describe('RFC 9477 §3.1.2/§3.1.3 — the CFBL host must align with RFC5322.From', () => {
 		it('emits on a per-domain return-path host that is a CHILD of the From domain', async () => {
 			await alignReturnPath('bounce.acme.com');

@@ -16,7 +16,7 @@
  * verified by itself alone. RFC 6376 §6.1 (Signature Verification).
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
@@ -422,6 +422,58 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 			);
 			const result = await dkimVerify(tampered, { resolver });
 			expect(result.results[0]!.status.result).not.toBe('pass');
+		});
+	});
+
+	// RFC 6376 §5.4 / §8.15: a header that is absent when signing and not listed
+	// in h= can be added to a replayed copy without breaking the signature. Each
+	// header a replay could use to change who a reply goes to, how the message
+	// threads, or where an unsubscribe lands is oversigned; the headers relays
+	// and mailing lists add in transit are not. One key for the whole block.
+	describe('a replayed copy with an added header', () => {
+		let signed: string;
+		let resolver: (name: string, rrtype: string) => Promise<string[][]>;
+
+		beforeAll(async () => {
+			const keyRedis = new Redis() as unknown as RealRedis;
+			({ resolver } = await seedKeyAndResolver(keyRedis));
+			signed = await signStructured(keyRedis, {
+				from: 'a@example.com',
+				to: ['recipient@elsewhere.test'],
+				subject: 'Original',
+				date: new Date('2026-06-21T12:00:00Z'),
+				messageId: '<replay@example.com>',
+				text: 'legitimate body\n',
+			});
+		});
+
+		it('verifies pass before anything is added', async () => {
+			expect((await dkimVerify(signed, { resolver })).results[0]!.status.result).toBe('pass');
+		});
+
+		it.each([
+			'Reply-To: attacker@evil.test',
+			'Cc: victim@elsewhere.test',
+			'Sender: attacker@evil.test',
+			'Date: Mon, 22 Jun 2026 12:00:00 +0000',
+			'Message-ID: <forged@evil.test>',
+			'List-Unsubscribe: <https://evil.test/unsub>',
+			'List-Unsubscribe-Post: List-Unsubscribe=One-Click',
+			'In-Reply-To: <thread@evil.test>',
+			'References: <thread@evil.test>',
+		])('fails verification once "%s" is added', async (line) => {
+			const result = await dkimVerify(`${line}\r\n${signed}`, { resolver });
+			expect(result.results[0]!.status.result).not.toBe('pass');
+		});
+
+		it('still verifies after the headers relays add in transit', async () => {
+			const relayed =
+				'Received: from relay.example.net by mx.elsewhere.test; Mon, 22 Jun 2026 12:00:00 +0000\r\n' +
+				'Return-Path: <bounce@example.com>\r\n' +
+				'Authentication-Results: mx.elsewhere.test; dkim=pass\r\n' +
+				'X-Forwarded-For: list@example.net\r\n' +
+				signed;
+			expect((await dkimVerify(relayed, { resolver })).results[0]!.status.result).toBe('pass');
 		});
 	});
 

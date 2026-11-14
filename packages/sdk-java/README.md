@@ -140,6 +140,12 @@ SendTransactionalResponse response = owlat.transactional().send(
         .dataVariables(Map.of("name", "John"))
         .build()
 );
+
+// Later: where the send stands. Every email.* webhook for it carries the same
+// id as `sendId`.
+TransactionalSendStatus send = owlat.transactional().get(response.getTransactionalEmailId());
+send.getStatus();    // "queued", "sent", "delivered", "failed", ...
+send.getErrorCode(); // e.g. "MTA_UNREACHABLE" once it failed
 ```
 
 ### Events

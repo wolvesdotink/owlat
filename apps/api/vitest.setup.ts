@@ -13,6 +13,13 @@ import { installScheduledFailureGate } from './convex/__tests__/helpers/schedule
 process.env['EMAIL_PROVIDER'] ??= 'mta';
 process.env['MTA_API_URL'] ??= 'http://mta:3100';
 process.env['MTA_API_KEY'] ??= 'test-key';
+// The transports' feedback keys: without one, that transport's bounce and
+// complaint reports are rejected and the campaign pre-flight refuses bulk mail
+// through it. A configured transport in these tests has its key; the suites
+// about a missing key clear it themselves.
+process.env['MTA_WEBHOOK_SECRET'] ??= 'whsec_test-webhook-secret';
+process.env['SES_SNS_TOPIC_ARN'] ??= 'arn:aws:sns:us-east-1:000000000000:owlat-test-feedback';
+process.env['RESEND_WEBHOOK_SECRET'] ??= 'whsec_test-resend-webhook-secret';
 
 // The BetterAuth session-signing secret is now fail-closed (auth.ts uses
 // getRequired, not getOptional) so a misconfigured deploy can't silently fall

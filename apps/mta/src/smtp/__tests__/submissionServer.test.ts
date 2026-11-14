@@ -878,7 +878,10 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 
 		const { signedBytes } = await prepareSignedMessage(
 			job,
-			{ returnPathDomain: 'bounces.example.com' } as MtaConfig,
+			{
+				returnPathDomain: 'bounces.example.com',
+				mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
+			} as MtaConfig,
 			new Redis() as never
 		);
 		const headerBlock = signedBytes.toString('latin1').split('\r\n\r\n')[0]!;

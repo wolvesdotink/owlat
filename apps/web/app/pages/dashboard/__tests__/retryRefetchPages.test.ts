@@ -107,6 +107,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'DashboardAuditLogList',
 		'DashboardDetailSkeleton',
 		'DashboardListSkeleton',
+		'DeliveryBounceFeedbackNote',
 		'DeliveryDeliverabilityChecklistGroups',
 		'DeliveryDeliverabilityIpv6Setup',
 		'DeliveryDeliverabilityLoopbackCard',

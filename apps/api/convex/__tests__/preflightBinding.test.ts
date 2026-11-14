@@ -24,8 +24,10 @@ import {
 	assessCampaign,
 	seedSendableCampaign,
 	useMtaPreflightEnv,
+	warmingIp,
 } from './preflightFixtures';
 import type { Id } from '../_generated/dataModel';
+import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { validateReadyToSend } from '../campaigns/preflight';
 import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
 
@@ -68,6 +70,122 @@ describe('pre-flight capacity gate — binding refusal', () => {
 		expect(result.message).toContain('5 days');
 		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.exceeds_sending_capacity.about);
 		expect(result.messageParams).toEqual({ days: 5 });
+	});
+
+	// With no eligible campaign-pool IP the MTA sends campaign mail from the
+	// transactional IPs, so the gate measures their warm-up headroom instead of
+	// answering "unknown" and letting the send through.
+	describe('when campaign mail borrows the transactional IPs', () => {
+		async function seedBorrowingPool(
+			t: ReturnType<typeof convexTest>,
+			options: { withPools: boolean }
+		) {
+			await t.run(async (ctx) => {
+				await ctx.db.insert('warmingState', {
+					phase: 'ramp',
+					totalDailyCap: 50,
+					totalSentToday: 50,
+					ipCount: 2,
+					...(options.withPools
+						? { pools: { campaign: ['203.0.113.11'], transactional: ['203.0.113.10'] } }
+						: {}),
+					ips: [
+						warmingIp({
+							ip: '203.0.113.10',
+							phase: 'ramp',
+							currentDay: 1,
+							dailyCap: 50,
+							sentToday: 50,
+							pool: 'transactional',
+						}),
+						warmingIp({
+							ip: '203.0.113.11',
+							phase: 'ramp',
+							currentDay: 1,
+							dailyCap: 50,
+							pool: 'campaign',
+							active: false,
+						}),
+					],
+					syncedAt: MIDNIGHT,
+				});
+			});
+		}
+
+		it.each([
+			['the per-IP pool labels', false],
+			['the synced pool lists', true],
+		])('refuses with the plan of the borrowed IP, read from %s', async (_label, withPools) => {
+			const t = convexTest(schema, modules);
+			await seedBorrowingPool(t, { withPools });
+			const campaignId = await seedSendableCampaign(t, 600);
+
+			const result = await runPreflight(t, campaignId);
+
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			expect(result.reason).toBe('exceeds_sending_capacity');
+			expect(result.capacityPlan?.slices).toEqual([0, 100, 200, 200, 100]);
+		});
+
+		it('measures them on a deployment with no campaign IP at all, as the sync reports it', async () => {
+			const t = convexTest(schema, modules);
+			// The sync rolls the overall phase up from campaign-pool rows only, so a
+			// transactional-only deployment reports `graduated` while its IP warms.
+			const snapshot = normalizeIpReputationPayload({
+				date: '2026-01-01',
+				pools: { transactional: ['203.0.113.10'], campaign: [] },
+				ips: [
+					{
+						ip: '203.0.113.10',
+						sent: 50,
+						bounced: 0,
+						deferred: 0,
+						warmingPhase: 'ramp',
+						warmingDay: 1,
+						pool: 'transactional',
+						active: true,
+					},
+				],
+			});
+			expect(snapshot?.phase).toBe('graduated');
+			await t.run(async (ctx) => {
+				await ctx.db.insert('warmingState', { ...snapshot!, syncedAt: MIDNIGHT });
+			});
+			const campaignId = await seedSendableCampaign(t, 600);
+
+			const result = await runPreflight(t, campaignId);
+
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			expect(result.reason).toBe('exceeds_sending_capacity');
+		});
+
+		it('still allows the send when no IP of either pool is active', async () => {
+			const t = convexTest(schema, modules);
+			await t.run(async (ctx) => {
+				await ctx.db.insert('warmingState', {
+					phase: 'ramp',
+					totalDailyCap: 0,
+					totalSentToday: 0,
+					ipCount: 1,
+					ips: [
+						warmingIp({
+							ip: '203.0.113.10',
+							phase: 'ramp',
+							currentDay: 1,
+							dailyCap: 50,
+							pool: 'transactional',
+							active: false,
+						}),
+					],
+					syncedAt: MIDNIGHT,
+				});
+			});
+			const campaignId = await seedSendableCampaign(t, 600);
+
+			expect((await runPreflight(t, campaignId)).ok).toBe(true);
+		});
 	});
 
 	it('leaves a campaign that fits untouched', async () => {

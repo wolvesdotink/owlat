@@ -15,7 +15,7 @@ import type { Id } from '../_generated/dataModel';
 import { internalAction } from '../_generated/server';
 import * as runtimeLog from '../lib/runtimeLog';
 import { systemMailArgs } from '../maintenance/systemMail';
-import { createTestInstanceSettings } from './factories';
+import { createTestInstanceSettings, createTestDomain } from './factories';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 
 const session = vi.hoisted(() => ({
@@ -269,6 +269,15 @@ describe('system mail actions', () => {
 	it('sendConfirmationEmail sends the DOI mail from the default sender', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
+			// The default sender's domain: non-campaign mail is refused from any other.
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain: 'owlat.example',
+					status: 'verified',
+					lastVerifiedAt: Date.now(),
+				})
+			);
 			await ctx.db.insert(
 				'instanceSettings',
 				createTestInstanceSettings({

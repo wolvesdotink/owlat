@@ -398,6 +398,10 @@
 			"types": "./src/ipAuditProviders.ts",
 			"import": "./src/ipAuditProviders.ts"
 		},
+		"./campaignIpPool": {
+			"types": "./src/campaignIpPool.ts",
+			"import": "./src/campaignIpPool.ts"
+		},
 		"./ipReadiness": {
 			"types": "./src/ipReadiness.ts",
 			"import": "./src/ipReadiness.ts"

@@ -23,6 +23,7 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
+	TransactionalSendStatus,
 	UpdateContactRequest,
 } from './types';
 
@@ -116,6 +117,29 @@ export const OPERATION_EXAMPLES = {
 				language: 'en-US',
 			},
 		} satisfies ApiResponse<SendTransactionalResponse>,
+	},
+	getTransactionalSend: {
+		response: {
+			data: {
+				sendId: 'k57s3nd00000000000000000000000',
+				status: 'failed',
+				email: 'ada@example.com',
+				templateId: 'k57t3mpl4te0000000000000000000',
+				slug: 'order-confirmation',
+				language: 'en-US',
+				queuedAt: '2026-11-02T09:00:00.000Z',
+				sentAt: null,
+				deliveredAt: null,
+				openedAt: null,
+				clickedAt: null,
+				bouncedAt: null,
+				complainedAt: null,
+				failedAt: '2026-11-06T09:00:00.000Z',
+				bounceType: null,
+				errorCode: 'MTA_UNREACHABLE',
+				errorMessage: 'The mail server could not be reached before the delivery deadline passed',
+			},
+		} satisfies ApiResponse<TransactionalSendStatus>,
 	},
 	addContactToTopic: {
 		request: { email: 'ada@example.com' } satisfies AddContactToTopicRequest,

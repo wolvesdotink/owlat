@@ -1,5 +1,9 @@
 import { BaseResource } from './base';
-import type { SendTransactionalParams, SendTransactionalResponse } from '../types/transactional';
+import type {
+	SendTransactionalParams,
+	SendTransactionalResponse,
+	TransactionalSendStatus,
+} from '../types/transactional';
 import type { ApiResponse, RequestOptions } from '../types/common';
 import { ValidationError } from '../errors';
 
@@ -144,6 +148,33 @@ export class TransactionalResource extends BaseResource {
 			params,
 			undefined,
 			options
+		);
+		return response.data.data;
+	}
+
+	/**
+	 * Get where one send stands: queued, sent, delivered, bounced, failed, ...
+	 * A failed send names its `errorCode` and `errorMessage`. The send's data
+	 * variables are never returned. Needs the `transactional:send` scope.
+	 *
+	 * @param sendId - The `transactionalEmailId` that {@link send} returned
+	 *   (every `email.*` webhook for the send carries it as `sendId`)
+	 * @returns The send's status
+	 * @throws {NotFoundError} If no send created through this API has that id
+	 *
+	 * @example
+	 * ```typescript
+	 * const { transactionalEmailId } = await owlat.transactional.send({
+	 *   email: 'user@example.com',
+	 *   slug: 'password-reset',
+	 * });
+	 * const send = await owlat.transactional.get(transactionalEmailId);
+	 * if (send.status === 'failed') console.warn(send.errorCode, send.errorMessage);
+	 * ```
+	 */
+	async get(sendId: string): Promise<TransactionalSendStatus> {
+		const response = await this.http.get<ApiResponse<TransactionalSendStatus>>(
+			`/api/v1/transactional/${encodeURIComponent(sendId)}`
 		);
 		return response.data.data;
 	}

@@ -16,6 +16,7 @@ import { destinationProviderValidator } from './deliverability';
 export const marketingNoticeKindValidator = v.union(
 	v.literal('campaign_finished'),
 	v.literal('campaign_reminder'),
+	v.literal('campaign_not_started'),
 	v.literal('delivery_hold'),
 	v.literal('automation_stalled'),
 	v.literal('automation_paused'),
@@ -60,6 +61,13 @@ export const marketingNoticeEventValidator = v.union(
 		kind: v.literal('campaign_reminder'),
 		campaignId: v.id('campaigns'),
 		scheduledAt: v.number(),
+	}),
+	// A scheduled campaign did not start at its time and went back to draft
+	// with the reason recorded. `refusedAt` identifies the occurrence.
+	v.object({
+		kind: v.literal('campaign_not_started'),
+		campaignId: v.id('campaigns'),
+		refusedAt: v.number(),
 	}),
 	// The MTA's circuit breaker for one destination provider opened (a bounce
 	// or complaint spike): sending to it is held. `openedAt` identifies the
