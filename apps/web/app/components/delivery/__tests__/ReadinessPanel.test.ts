@@ -55,7 +55,7 @@ function readinessFor(overrides: Partial<ReadinessInput> = {}): DeliveryReadines
 		authMissing: [],
 		streamTransport: { transactional: ownMta, marketing: ownMta },
 		mailServer: 'healthy',
-		defaultSender: { address: 'hello@acme.com', isDomainVerified: true },
+		transactionalSender: { address: 'hello@acme.com', isDomainVerified: true },
 		...overrides,
 	});
 }
@@ -93,15 +93,17 @@ beforeEach(() => {
 describe('ReadinessPanel', () => {
 	it('leads with one verdict per stream, each named in words', () => {
 		state.readiness.value = readinessFor({
-			defaultSender: { address: null, isDomainVerified: false },
+			transactionalSender: { address: null, isDomainVerified: false },
 		});
 		const wrapper = mount(ReadinessPanel, { global });
 
 		const transactional = wrapper.find('[data-testid="stream-verdict-transactional"]');
 		expect(transactional.text()).toContain('Transactional');
 		expect(transactional.text()).toContain('Blocked');
-		expect(transactional.text()).toContain('No default sender is set');
-		expect(transactional.find('a').attributes('href')).toBe('/dashboard/admin/instance/general');
+		expect(transactional.text()).toContain('No sender is set');
+		expect(transactional.find('a').attributes('href')).toBe(
+			'/dashboard/send/transactional?sender=edit'
+		);
 
 		const marketing = wrapper.find('[data-testid="stream-verdict-marketing"]');
 		expect(marketing.text()).toContain('Ready');
@@ -128,7 +130,7 @@ describe('ReadinessPanel', () => {
 		await wrapper.find('[data-testid="disclosure"]').trigger('click');
 		const passed = wrapper.find('[data-testid="readiness-passed-gates"]');
 		expect(passed.text()).toContain('Mail server');
-		expect(passed.text()).toContain('Default sender');
+		expect(passed.text()).toContain('Transactional sender');
 	});
 
 	it('announces both verdicts in a status region, so a re-check is heard', () => {

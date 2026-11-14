@@ -253,7 +253,9 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 	/** A provider-configured MTA instance with a fresh healthy snapshot and a verified sender. */
 	async function seedReadyMtaInstance(
 		t: ReturnType<typeof convexTest>,
-		settings: { defaultFromEmail?: string } = { defaultFromEmail: 'hello@mail.example.com' }
+		settings: { defaultFromEmail?: string; transactionalFromEmail?: string } = {
+			defaultFromEmail: 'hello@mail.example.com',
+		}
 	) {
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
@@ -324,6 +326,18 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health.level).toBe('error');
+		expect(health.reasonCode).toBe('sender_unverified');
+	});
+
+	it('follows the transactional sender: errors when its domain is not verified, even with a verified default', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seedReadyMtaInstance(t, {
+			defaultFromEmail: 'hello@mail.example.com',
+			transactionalFromEmail: 'account@txn.unverified.example',
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health.reasonCode).toBe('sender_unverified');
 	});
 

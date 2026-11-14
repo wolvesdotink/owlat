@@ -13,7 +13,9 @@ import {
 	createTestEmailTemplate,
 	createTestInstanceSettings,
 	createTestTopic,
+	createTestTransactionalEmail,
 } from '../../__tests__/factories';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 
 /**
  * Curated campaign-sender enforcement (2026-07-10 experience plan, decision 8).
@@ -426,6 +428,54 @@ describe('sendTestEmail — curated-sender enforcement site', () => {
 				testEmail: 'admin@acme.com',
 			})
 		).rejects.toThrow(/not an approved campaign sender/i);
+	});
+});
+
+describe('commitTestSends — a transactional email tests from its own sender', () => {
+	it('does not hold a transactional sender to the campaign-sender list', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await seedInstance(t);
+		const templateId = await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain: 'mail.acme.com',
+					status: 'verified',
+					lastVerifiedAt: Date.now(),
+				})
+			);
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { transactionalFromEmail: 'account@mail.acme.com' });
+			return await ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({ status: 'published' })
+			);
+		});
+		const message = {
+			subject: '[TEST] Hi',
+			html: '<p>Hi</p>',
+			recipients: ['outsider@example.com'],
+		};
+
+		// Past the sender gates to the member-inbox check: the transactional
+		// sender is resolved on the server, whatever address the caller names.
+		await expect(
+			t.mutation(internal.campaigns.testSendCommit.commitTestSends, {
+				...message,
+				fromEmail: 'news@acme.com',
+				from: 'Acme News <news@acme.com>',
+				transactionalEmailId: templateId,
+			})
+		).resolves.toEqual({ kind: 'recipient_not_member', email: 'outsider@example.com' });
+		// The same address in a campaign test is still not an approved sender.
+		await expect(
+			t.mutation(internal.campaigns.testSendCommit.commitTestSends, {
+				...message,
+				fromEmail: 'account@mail.acme.com',
+				from: 'account@mail.acme.com',
+			})
+		).resolves.toEqual({ kind: 'sender_not_allowed' });
 	});
 });
 

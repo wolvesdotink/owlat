@@ -43,6 +43,10 @@ export async function senderDomainFor(
 		const campaign = await ctx.db.get((send as EmailSendDoc).campaignId);
 		return campaign?.fromEmail?.split('@')[1]?.toLowerCase();
 	}
+	// A template API send records the address it resolved at intake; the
+	// transactional sender may sit on its own subdomain.
+	const fromEmail = 'fromEmail' in send ? send.fromEmail : undefined;
+	if (fromEmail) return fromEmail.split('@')[1]?.toLowerCase();
 	const settings = await ctx.db.query('instanceSettings').first();
 	return settings?.defaultFromEmail?.split('@')[1]?.toLowerCase();
 }

@@ -357,6 +357,7 @@ describe('settings controls', () => {
 			'setting:admin:rampControls:rampPace',
 			'setting:admin:webhooks:webhookSecret',
 			'setting:admin:brandKit:brandColors',
+			'setting:admin:instanceGeneral:transactionalSender',
 		]);
 		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
 	});

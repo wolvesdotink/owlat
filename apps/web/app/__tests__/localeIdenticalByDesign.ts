@@ -178,6 +178,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.today.upcoming.when.date',
 	'components.today.upcoming.when.today',
 	'components.today.upcoming.when.week',
+	'components.transactional.senderAddressField.localPartPlaceholder',
 	'components.translation.cell.fieldName',
 	'components.translation.cell.htmlBadge',
 	'components.translation.manager.buttonBlock',

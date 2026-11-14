@@ -60,6 +60,7 @@ export const ADMIN_SETTINGS_CONTROLS: readonly AdminSettingsControl[] = [
 	control('rampPace', 'rampControls', 'ramp-presets'),
 	control('webhookSecret', 'webhooks', 'webhook-signing'),
 	control('brandColors', 'brandKit', 'brand-colors'),
+	control('transactionalSender', 'instanceGeneral', 'transactional-sender'),
 ];
 
 /** An admin control, flattened together with the page it lives on. */

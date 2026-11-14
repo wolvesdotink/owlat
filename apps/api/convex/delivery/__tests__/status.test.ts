@@ -189,7 +189,12 @@ describe('delivery.status.getTransportSummary — per-stream readiness facts', (
 		const t = convexTest(schema, modules);
 
 		const summary = await t.query(api.delivery.status.getTransportSummary, {});
-		expect(summary.transactionalSender).toEqual({ address: null, isDomainVerified: false });
+		expect(summary.transactionalSender).toEqual({
+			address: null,
+			name: null,
+			source: null,
+			isDomainVerified: false,
+		});
 	});
 
 	it('reports the default sender and whether its domain is verified', async () => {
@@ -202,8 +207,9 @@ describe('delivery.status.getTransportSummary — per-stream readiness facts', (
 			});
 		});
 		const unverified = await t.query(api.delivery.status.getTransportSummary, {});
-		expect(unverified.transactionalSender).toEqual({
+		expect(unverified.transactionalSender).toMatchObject({
 			address: 'hello@mail.example.com',
+			source: 'default',
 			isDomainVerified: false,
 		});
 
@@ -218,6 +224,36 @@ describe('delivery.status.getTransportSummary — per-stream readiness facts', (
 		});
 		const verified = await t.query(api.delivery.status.getTransportSummary, {});
 		expect(verified.transactionalSender.isDomainVerified).toBe(true);
+	});
+
+	it('reports the transactional sender, not the default one, once it is set', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				defaultFromEmail: 'hello@example.com',
+				transactionalFromEmail: 'account@mail.example.com',
+				transactionalFromName: 'Example Accounts',
+				createdAt: Date.now(),
+			});
+			// Only the default sender's domain is verified: the gate must not pass
+			// on the strength of an address transactional mail no longer uses.
+			await ctx.db.insert('domains', {
+				domain: 'example.com',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const summary = await t.query(api.delivery.status.getTransportSummary, {});
+		expect(summary.transactionalSender).toEqual({
+			address: 'account@mail.example.com',
+			name: 'Example Accounts',
+			source: 'transactional',
+			isDomainVerified: false,
+		});
 	});
 });
 

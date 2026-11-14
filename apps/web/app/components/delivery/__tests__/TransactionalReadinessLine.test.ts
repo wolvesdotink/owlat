@@ -44,7 +44,7 @@ function readinessFor(overrides: Partial<ReadinessInput> = {}): DeliveryReadines
 			marketing: { canSend: true, providerLabels: ['Amazon SES'], usesOwnMta: false },
 		},
 		streamsEnabled: { marketing: false },
-		defaultSender: { address: 'hello@acme.com', isDomainVerified: true },
+		transactionalSender: { address: 'hello@acme.com', isDomainVerified: true },
 		...overrides,
 	});
 }
@@ -53,6 +53,7 @@ const global = {
 	plugins: [createTestI18n()],
 	stubs: {
 		DeliveryStreamVerdict: StreamVerdict,
+		LazyTransactionalSenderRow: { template: '<p data-testid="sender-row" />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		UiButton: {
 			emits: ['click'],
@@ -74,15 +75,20 @@ beforeEach(() => {
 describe('TransactionalReadinessLine', () => {
 	it('says what to fix and links an admin to it and to the hub', () => {
 		state.readiness.value = readinessFor({
-			defaultSender: { address: null, isDomainVerified: false },
+			transactionalSender: { address: null, isDomainVerified: false },
 		});
 		const wrapper = mount(TransactionalReadinessLine, { global });
 
 		expect(wrapper.text()).toContain('Transactional mail');
 		expect(wrapper.text()).toContain('Blocked');
-		expect(wrapper.text()).toContain('No default sender is set');
+		expect(wrapper.text()).toContain('No sender is set');
 		const hrefs = wrapper.findAll('a').map((a) => a.attributes('href'));
-		expect(hrefs).toEqual(['/dashboard/admin/instance/general', '/dashboard/admin/delivery']);
+		expect(hrefs).toEqual([
+			'/dashboard/send/transactional?sender=edit',
+			'/dashboard/admin/delivery',
+		]);
+		// The sender the verdict is about sits under it.
+		expect(wrapper.find('[data-testid="sender-row"]').exists()).toBe(true);
 		expect(wrapper.find('[role="status"]').text()).toBe('Transactional mail: Blocked');
 		expectFullyLocalized(wrapper);
 	});
@@ -98,7 +104,7 @@ describe('TransactionalReadinessLine', () => {
 	it('tells a member who can fix it instead of linking to admin pages', () => {
 		isAdmin.value = false;
 		state.readiness.value = readinessFor({
-			defaultSender: { address: null, isDomainVerified: false },
+			transactionalSender: { address: null, isDomainVerified: false },
 		});
 		const wrapper = mount(TransactionalReadinessLine, { global });
 

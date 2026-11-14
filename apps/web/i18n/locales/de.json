@@ -7386,6 +7386,13 @@
 					"voicePersonalize": "KI-Entwürfe für {address} personalisieren",
 					"workspaceMute": "Benachrichtigungen für {workspace} stummschalten"
 				}
+			},
+			"transactionalSenderNote": {
+				"action": "Transaktionsabsender festlegen",
+				"changeAction": "Transaktionsabsender ändern",
+				"off": "Transaktionsmails sind ausgeschaltet, es gibt also keinen Absender festzulegen.",
+				"own": "Transaktionsmails gehen von ihrem eigenen Absender raus: {from}.",
+				"usesDefault": "Transaktionsmails wie Passwort-Resets und Belege gehen ebenfalls von diesem Standardabsender raus. Gib ihnen einen eigenen Absender, damit ein Marketingproblem sie nicht ausbremst."
 			}
 		},
 		"shareLinksPopover": {
@@ -7692,6 +7699,72 @@
 				"title": "Letzte Sendungen",
 				"titleNamed": "Letzte Sendungen — {name}",
 				"unknownRecipient": "Unbekannter Empfänger"
+			},
+			"senderAddressField": {
+				"addressLabel": "Adresse",
+				"domainLabel": "Absenderdomain",
+				"domainPlaceholder": "Domain wählen",
+				"domainsLink": "Domain hinzufügen oder verifizieren",
+				"localPartPlaceholder": "noreply",
+				"nameHelp": "Was Empfänger neben der Adresse sehen. Lass das Feld leer, um den üblichen Namen zu behalten.",
+				"nameLabel": "Absendername",
+				"namePlaceholder": "Deine Firma",
+				"preview": "Empfänger sehen:",
+				"unverifiedGroup": "Noch nicht verifiziert",
+				"verifiedGroup": "Verifiziert"
+			},
+			"senderRow": {
+				"change": "Ändern",
+				"defaultSender": "Standardabsender",
+				"error": "Der Absender konnte nicht geladen werden.",
+				"loading": "Absender wird geprüft …",
+				"none": "Es ist kein Absender festgelegt.",
+				"ownSender": "Transaktionsabsender",
+				"sendsFrom": "Sendet von",
+				"set": "Absender festlegen"
+			},
+			"senderDialog": {
+				"intro": "Passwort-Resets, Belege und andere API-Sendungen gehen von dieser Adresse raus, außer eine Mail legt ihren eigenen Absender fest.",
+				"layoutLink": "Unter Domains planen",
+				"layoutTip": "Eine eigene Subdomain wie {host} sorgt dafür, dass Beschwerden über deine Newsletter keine Passwort-Resets treffen.",
+				"loadError": "Der Absender und deine Absenderdomains konnten nicht geladen werden.",
+				"loading": "Absender wird geladen",
+				"modeLegend": "Von welcher Adresse Transaktionsmails rausgehen",
+				"operation": "Transaktionsabsender speichern",
+				"save": "Absender speichern",
+				"saved": "Transaktionsmails gehen jetzt von {address} raus.",
+				"savedDefault": "Transaktionsmails gehen jetzt vom Standardabsender raus.",
+				"saving": "Wird gespeichert …",
+				"suggestion": {
+					"title": "Von {domain} senden",
+					"use": "{domain} verwenden",
+					"why": "Eine eigene Subdomain sorgt dafür, dass Beschwerden über deine Newsletter keine Passwort-Resets und Belege treffen."
+				},
+				"title": "Transaktionsabsender",
+				"useDefault": "Standardabsender verwenden",
+				"useDefaultDescription": "{from}, die Adresse aus den allgemeinen Einstellungen.",
+				"useDefaultMissing": "Es ist kein Standardabsender festgelegt, Transaktionsmails würden also abgelehnt.",
+				"useOwn": "Eigenen Absender verwenden",
+				"useOwnDescription": "Hält Passwort-Resets und Belege von deinen Marketingmails getrennt."
+			},
+			"templateSenderCard": {
+				"change": "Ändern",
+				"loadError": "Der Absender dieser Mail konnte nicht geladen werden.",
+				"loading": "Absender wird geladen …",
+				"noSender": "Es ist kein Absender festgelegt, Sendungen dieser Mail werden also abgelehnt.",
+				"operation": "Absender dieser Mail speichern",
+				"override": "Anderen Absender verwenden",
+				"restored": "Diese Mail verwendet wieder den gemeinsamen Absender.",
+				"save": "Absender speichern",
+				"saved": "Diese Mail geht jetzt von {address} raus.",
+				"sendsFrom": "Sendet von",
+				"title": "Absender",
+				"unverified": "Liegt auf keiner verifizierten Domain, Sendungen dieser Mail werden also abgelehnt",
+				"useDefault": "Standardabsender verwenden",
+				"useTransactional": "Transaktionsabsender verwenden",
+				"usesDefault": "Verwendet den Standardabsender ({from}).",
+				"usesTransactional": "Verwendet den Transaktionsabsender ({from}).",
+				"verified": "Auf einer verifizierten Domain"
 			}
 		},
 		"translation": {
@@ -16466,14 +16539,6 @@
 					"title": "Beschwerderate",
 					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
 				},
-				"defaultSender": {
-					"actionChange": "Absender ändern",
-					"actionSet": "Standardabsender festlegen",
-					"missing": "Es ist kein Standardabsender gesetzt, jede Transaktionsmail wird also abgelehnt.",
-					"title": "Standardabsender",
-					"unverified": "{address} liegt auf keiner verifizierten Domain, jede Transaktionsmail wird also abgelehnt.",
-					"verified": "Transaktionsmails gehen von {address} raus."
-				},
 				"dmarc": {
 					"action": "Eintrag hinzufügen",
 					"missing": "Veröffentliche einen DMARC-Eintrag. Gmail und Yahoo verlangen ihn für Massenversand.",
@@ -16510,6 +16575,15 @@
 					"ready": "Alle Versand-IPs sind im Einsatz.",
 					"some_held": "Einige Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb; die anderen übernehmen die Mail.",
 					"title": "Versand-IPs"
+				},
+				"transactionalSender": {
+					"actionChange": "Absender ändern",
+					"actionSet": "Absender festlegen",
+					"missing": "Es ist kein Absender festgelegt, jede Transaktionsmail wird also abgelehnt.",
+					"title": "Transaktionsabsender",
+					"unverified": "{address} liegt auf keiner verifizierten Domain, jede Transaktionsmail wird also abgelehnt.",
+					"verifiedDefault": "Transaktionsmails gehen vom Standardabsender {address} raus.",
+					"verifiedOwn": "Transaktionsmails gehen von {address} raus, ihrem eigenen Absender."
 				},
 				"transport": {
 					"action": "Versand einrichten",
@@ -18106,6 +18180,10 @@
 				"brandColors": {
 					"title": "Markenfarben",
 					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
+				},
+				"transactionalSender": {
+					"keywords": "transaktionsabsender, transaktionsmail absender, passwort reset absender, beleg absender, api absender, mail subdomain, absenderadresse, transactional sender",
+					"title": "Transaktionsabsender"
 				}
 			}
 		},
@@ -19751,8 +19829,8 @@
 				"noDomain": "Es ist noch keine Absenderdomain eingerichtet",
 				"noVerifiedDomain": "Es ist noch keine Absenderdomain verifiziert",
 				"domainPending": "Eine Absenderdomain ist noch nicht verifiziert",
-				"senderMissing": "Für Transaktionsmails ist kein Standardabsender festgelegt",
-				"senderUnverified": "Die Domain des Standardabsenders ist nicht verifiziert, deshalb werden Transaktionsmails abgelehnt",
+				"senderMissing": "Für Transaktionsmails ist kein Absender festgelegt",
+				"senderUnverified": "Die Domain des Transaktionsabsenders ist nicht verifiziert, deshalb werden Transaktionsmails abgelehnt",
 				"warmupHalted": "Das IP-Warm-up ist angehalten",
 				"reputationCritical": "Die Versandreputation ist kritisch",
 				"reputationHigh": "Die Versandreputation ist gefährdet",
@@ -19771,6 +19849,17 @@
 				"deliveryOnHold": "Wartet auf den Start: Versand ist angehalten · gibt {when} auf",
 				"mailServerNotReady": "Wartet auf den Start: Mailserver kann nicht zustellen · gibt {when} auf",
 				"unknown": "Wartet auf den Start · gibt {when} auf"
+			}
+		},
+		"transactionalSender": {
+			"verdict": {
+				"domainMissing": "{domain} ist keine deiner Absenderdomains, Mails von dort würden also abgelehnt.",
+				"domainUnverified": "{domain} ist noch nicht verifiziert, Mails von dort würden also abgelehnt.",
+				"domainVerified": "{domain} ist verifiziert. Mails von dieser Adresse werden als {domain} signiert.",
+				"enterAddress": "Gib den Teil vor der Domain ein, zum Beispiel noreply.",
+				"invalidAddress": "Das ist keine gültige E-Mail-Adresse.",
+				"nameTooLong": "Der Name darf nur eine Zeile mit höchstens {max} Zeichen sein.",
+				"noDomains": "Füge zuerst eine Absenderdomain hinzu. Mails gehen nur von einer verifizierten Domain raus."
 			}
 		}
 	},

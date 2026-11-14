@@ -6,6 +6,7 @@
  * Pure: plain data in, plain data out.
  */
 
+import { TRANSACTIONAL_SENDER_HREF } from './transactionalSender';
 import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import type { ReadinessInput, StreamTransportFacts } from '~/utils/deliveryReadinessTypes';
 import {
@@ -23,7 +24,6 @@ import type { LocalizedText } from '~/utils/localizedText';
 import type { MailStream, ReadinessGate } from '~/utils/readinessGate';
 
 const DOMAINS_HREF = '/dashboard/admin/delivery/domains';
-const SENDER_HREF = '/dashboard/admin/instance/general';
 
 /** The transport label of one stream ("Amazon SES + Owlat MTA"), or `null`. */
 function transportLabel(facts: StreamTransportFacts | undefined): string | null {
@@ -227,26 +227,27 @@ function dmarcGate(input: ReadinessInput): ReadinessGate | null {
 }
 
 /**
- * Transactional: every send uses the instance default sender, and dispatch
- * refuses it unless that address is on a verified domain. Without one set, the
- * fallback placeholder is refused too.
+ * Transactional: a template that names no sender goes out from the
+ * transactional sender, else the default sender, and dispatch refuses it
+ * unless that address is on a verified domain. Without either set, every send
+ * is refused. The fix is made where transactional mail is managed.
  */
-function defaultSenderGate(input: ReadinessInput): ReadinessGate | null {
-	const sender = input.defaultSender;
+function transactionalSenderGate(input: ReadinessInput): ReadinessGate | null {
+	const sender = input.transactionalSender;
 	if (sender == null || !isReadinessStreamEnabled(input, 'transactional')) return null;
 	const base = {
-		key: 'default-sender' as const,
-		title: 'shared.deliveryReadiness.gates.defaultSender.title',
+		key: 'transactional-sender' as const,
+		title: 'shared.deliveryReadiness.gates.transactionalSender.title',
 		streams: ['transactional'] as const,
 	};
 	if (sender.address === null) {
 		return {
 			...base,
-			detail: 'shared.deliveryReadiness.gates.defaultSender.missing',
+			detail: 'shared.deliveryReadiness.gates.transactionalSender.missing',
 			status: 'attention',
 			tone: 'error',
-			actionHref: SENDER_HREF,
-			actionLabel: 'shared.deliveryReadiness.gates.defaultSender.actionSet',
+			actionHref: TRANSACTIONAL_SENDER_HREF,
+			actionLabel: 'shared.deliveryReadiness.gates.transactionalSender.actionSet',
 			isBlocking: true,
 		};
 	}
@@ -254,20 +255,23 @@ function defaultSenderGate(input: ReadinessInput): ReadinessGate | null {
 		return {
 			...base,
 			detail: {
-				key: 'shared.deliveryReadiness.gates.defaultSender.unverified',
+				key: 'shared.deliveryReadiness.gates.transactionalSender.unverified',
 				params: { address: sender.address },
 			},
 			status: 'attention',
 			tone: 'error',
-			actionHref: SENDER_HREF,
-			actionLabel: 'shared.deliveryReadiness.gates.defaultSender.actionChange',
+			actionHref: TRANSACTIONAL_SENDER_HREF,
+			actionLabel: 'shared.deliveryReadiness.gates.transactionalSender.actionChange',
 			isBlocking: true,
 		};
 	}
 	return {
 		...base,
 		detail: {
-			key: 'shared.deliveryReadiness.gates.defaultSender.verified',
+			key:
+				sender.source === 'default'
+					? 'shared.deliveryReadiness.gates.transactionalSender.verifiedDefault'
+					: 'shared.deliveryReadiness.gates.transactionalSender.verifiedOwn',
 			params: { address: sender.address },
 		},
 		status: 'ready',
@@ -385,7 +389,7 @@ export function buildReadinessGates(input: ReadinessInput): ReadinessGate[] {
 		...sendingIpGates(input),
 		domainGate(input),
 		authenticationGate(input),
-		defaultSenderGate(input),
+		transactionalSenderGate(input),
 	].filter(present);
 	if (isReadinessStreamEnabled(input, 'marketing')) {
 		gates.push(

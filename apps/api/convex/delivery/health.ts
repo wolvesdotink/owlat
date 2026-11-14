@@ -35,8 +35,7 @@ import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive
 import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 import { readInstanceCounter } from '../lib/instanceCounters';
 import { resolveStoredFeatureFlags } from '../lib/featureFlags';
-import { configuredDefaultFromEmail } from '../transactional/dispatchDecision';
-import { checkEmailDomainVerification } from '../domains/domains';
+import { loadTransactionalSender } from '../transactional/senderResolution';
 import { sendingIpPosture, type SendingIpPosture } from '@owlat/shared/ipReadiness';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import type { Infer } from 'convex/values';
@@ -381,14 +380,12 @@ async function streamHealthInputs(
 	};
 }
 
-/** The transactional default sender as the roll-up grades it. */
+/** The transactional sender (`transactional/senderResolution.ts`) as the roll-up grades it. */
 async function transactionalSenderState(
 	ctx: QueryCtx,
-	settings: { defaultFromEmail?: string } | null
+	settings: Doc<'instanceSettings'> | null
 ): Promise<'missing' | 'unverified' | null> {
-	const address = configuredDefaultFromEmail(settings, {
-		defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
-	});
-	if (address === null) return 'missing';
-	return (await checkEmailDomainVerification(ctx, address)).verified ? null : 'unverified';
+	const sender = await loadTransactionalSender(ctx, { settings });
+	if (sender.address === null) return 'missing';
+	return sender.isDomainVerified ? null : 'unverified';
 }

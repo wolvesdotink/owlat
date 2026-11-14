@@ -107,6 +107,12 @@ export const instanceTables = {
 		// Default sender information
 		defaultFromName: v.optional(v.string()),
 		defaultFromEmail: v.optional(v.string()),
+		// The transactional sender: what template API sends go out from when the
+		// template names none. Unset falls back to the default sender above.
+		// Written only by `transactional/sender.ts`, which refuses an address
+		// that is not on a verified sending domain.
+		transactionalFromName: v.optional(v.string()),
+		transactionalFromEmail: v.optional(v.string()),
 		// Campaign senders are a curated list (see `campaignSenders`). When this
 		// is on, campaign sends may also use any from-address on a VERIFIED
 		// sending domain, not just the curated list. Defaults to OFF for everyone
