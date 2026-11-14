@@ -25,9 +25,15 @@ const isPublicAddress = (ip: string) => !ip.startsWith('10.') && !ip.startsWith(
 
 function deps(replies: Record<string, string[] | Error>): EgressAddressDeps {
 	return {
-		resolveMx: vi.fn(async (domain: string) => [{ exchange: `mx.${domain}`, priority: 10 }]),
-		resolve4: vi.fn(async (host: string) => [host === 'mx.gmail.com' ? '192.0.2.1' : '192.0.2.2']),
-		resolve6: vi.fn(async () => []),
+		resolveMx: vi
+			.fn()
+			.mockImplementation(async (domain: string) => [{ exchange: `mx.${domain}`, priority: 10 }]),
+		resolve4: vi
+			.fn()
+			.mockImplementation(async (host: string) => [
+				host === 'mx.gmail.com' ? '192.0.2.1' : '192.0.2.2',
+			]),
+		resolve6: vi.fn().mockResolvedValue([]),
 		exchange: vi.fn(async ({ host }) => {
 			const reply = replies[host];
 			if (!reply || reply instanceof Error) throw reply ?? new Error('no reply');
