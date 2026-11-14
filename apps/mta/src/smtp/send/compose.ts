@@ -299,6 +299,12 @@ export async function prepareSignedMessage(
 	// sends unsigned, so `dkimConfig` presence gates emission too — otherwise we
 	// would publish exactly the inert, provider-discarded header the unaligned
 	// branch already refuses to publish.
+	//
+	// The pair is signed, so its token window comes from the message date like
+	// the rest of the identity: a retry on a later day keeps the same bytes. A
+	// complaint about a message delivered late by retries therefore has that
+	// many days less of the acceptance window.
+	const identity = messageIdentity(job, config.mtaSecret, Date.now());
 	const cfbl: CfblHeaderResult = job.sealedMimeBase64
 		? { outcome: 'sealed_raw', headers: {} }
 		: buildCfblHeaders({
@@ -306,11 +312,12 @@ export async function prepareSignedMessage(
 				cfblHost: feedbackHost,
 				fromDomain: extractDomainOrNull(job.from) ?? '',
 				dkimSigned: dkimConfig !== undefined,
+				now: identity.date.getTime(),
 			});
 
 	const { bytes: signedBytes, signed: dkimSigned } = buildSignedBytes(
 		job,
-		messageIdentity(job, config.mtaSecret, Date.now()),
+		identity,
 		dkimConfig,
 		verpAddress,
 		cfbl.headers
