@@ -134,7 +134,8 @@ export function centerGroups<T extends GroupedItem>(
 	const unused = (item: T) =>
 		item.notGraded === 'own_mta_unused' || item.notGraded === 'marketing_off';
 	const ungrouped = graded.filter((item) => !isIpv6CheckId(item.id) && !unused(item));
-	const notApplicable = [...graded, ...(ipv6Enabled ? ipv6Items : [])].filter(unused);
+	// `graded` already holds the IPv6 checks while IPv6 is on.
+	const notApplicable = graded.filter(unused);
 	return [
 		{
 			key: 'blocking' as const,

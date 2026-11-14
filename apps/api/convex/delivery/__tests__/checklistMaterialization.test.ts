@@ -335,6 +335,25 @@ describe('Deliverability Center complete materialization', () => {
 		expect(center.nextItem?.id.startsWith('deployment.ipv6_')).toBe(false);
 	});
 
+	it('lists each unused IPv6 check once under not applicable', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', warmingRow(['203.0.113.25', '2a01:4f8:c0c:1::25']));
+		});
+
+		const center = await t.query(api.delivery.checklist.getCenter, {});
+		const ids = center.groups
+			.flatMap((group) => group.items)
+			.filter((item) => item.id === 'deployment.ipv6_ptr');
+		expect(ids).toHaveLength(1);
+		expect(center.groups.some((group) => group.key === 'ipv6')).toBe(false);
+	});
+
 	it('groups the IPv6 checks together once the MTA reports an IPv6 address', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {

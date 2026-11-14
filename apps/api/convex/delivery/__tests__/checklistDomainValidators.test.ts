@@ -1128,6 +1128,21 @@ describe('domain checklist validation', () => {
 			).resolves.toMatchObject({ status: 'fail' });
 		});
 
+		it('never fails when the addresses behind an MX alias could not be resolved', async () => {
+			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+			vi.spyOn(dns, 'resolveMx').mockResolvedValue([
+				{ exchange: 'mx.owlat.example', priority: 10 },
+			]);
+			vi.spyOn(dns, 'resolve4').mockRejectedValue(
+				Object.assign(new Error('query ETIMEOUT'), { code: 'ETIMEOUT' })
+			);
+			vi.spyOn(dns, 'resolve6').mockResolvedValue([]);
+			await expect(
+				observeDomainCheck({} as never, 'domain.bounce_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'warn' });
+		});
+
 		it('uses the domain own return-path host when it has one', async () => {
 			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
 			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');

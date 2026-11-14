@@ -154,13 +154,20 @@ export async function observeBouncesReachMailServer(
 	let pass = exchanges.includes(mailHost);
 	if (!pass && exchanges.length > 0) {
 		// An MX may name another hostname of the same server.
-		const [mailAddresses, ...exchangeAddresses] = await Promise.all(
-			[mailHost, ...exchanges].map((name) => addresses(name))
-		);
+		const answers = await Promise.all([mailHost, ...exchanges].map((name) => addresses(name)));
+		const [mailAddresses, ...exchangeAddresses] = answers;
 		const ours = new Set(mailAddresses?.kind === 'found' ? mailAddresses.values : []);
 		pass = exchangeAddresses.some(
 			(answer) => answer.kind === 'found' && answer.values.some((address) => ours.has(address))
 		);
+		if (!pass && answers.some((answer) => answer.kind === 'unanswered')) {
+			return checklistObservation(
+				'dns.bounce-mx',
+				'warn',
+				`The MX of ${host} names ${exchanges.join(', ')}, and the resolver did not answer whether that is ${mailHost}. Owlat checks again on the next sweep.`,
+				[...observed, ...exchanges.map((name) => `mx=${name}`), 'lookup=unanswered']
+			);
+		}
 	}
 	return checklistObservation(
 		'dns.bounce-mx',
