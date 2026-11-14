@@ -7,7 +7,7 @@ import DeliverabilitySetupValues from './DeliverabilitySetupValues.vue';
 import DeliverabilityGuidance from './DeliverabilityGuidance.vue';
 import {
 	checklistItemDomId,
-	DELIVERABILITY_STATUS_PRESENTATION,
+	deliverabilityItemPresentation,
 	formatVerificationAge,
 	itemKey,
 } from '~/utils/deliverabilityCenter';
@@ -15,6 +15,7 @@ import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityC
 import { useLocalized } from '~/composables/useLocalized';
 import {
 	ChevronDownIcon,
+	CircleMinusIcon,
 	GlobeIcon,
 	ReloadIcon,
 	ShieldWarningIcon,
@@ -55,7 +56,13 @@ const groupIcon = {
 	reputation: TrendingUpIcon,
 	recommended: SparklesIcon,
 	ipv6: GlobeIcon,
+	not_applicable: CircleMinusIcon,
 } as const;
+
+/** A check that judges a send path this deployment does not use. */
+function isNotApplicable(item: DeliverabilityChecklistItem): boolean {
+	return item.notGraded === 'own_mta_unused' || item.notGraded === 'marketing_off';
+}
 </script>
 
 <template>
@@ -87,11 +94,14 @@ const groupIcon = {
 						class="flex cursor-pointer list-none items-center gap-3 px-4 py-4 hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand sm:px-5"
 					>
 						<component
-							:is="DELIVERABILITY_STATUS_PRESENTATION[item.status].icon"
+							:is="deliverabilityItemPresentation(item).icon"
 							class="h-5 w-5 shrink-0"
 							:class="[
-								DELIVERABILITY_STATUS_PRESENTATION[item.status].className.split(' ').at(-1),
-								{ 'animate-spin motion-reduce:animate-none': item.status === 'pending-dns' },
+								deliverabilityItemPresentation(item).className.split(' ').at(-1),
+								{
+									'animate-spin motion-reduce:animate-none':
+										!item.notGraded && item.status === 'pending-dns',
+								},
 							]"
 						/>
 						<div class="min-w-0 flex-1">
@@ -110,9 +120,9 @@ const groupIcon = {
 						</div>
 						<span
 							class="inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium"
-							:class="DELIVERABILITY_STATUS_PRESENTATION[item.status].className"
+							:class="deliverabilityItemPresentation(item).className"
 						>
-							{{ t(DELIVERABILITY_STATUS_PRESENTATION[item.status].label) }}
+							{{ t(deliverabilityItemPresentation(item).label) }}
 						</span>
 						<ChevronDownIcon
 							class="h-4 w-4 shrink-0 text-text-tertiary transition-transform group-open:rotate-180"
@@ -121,8 +131,20 @@ const groupIcon = {
 
 					<div class="space-y-4 border-t border-border-subtle bg-bg-deep/30 px-4 py-4 sm:px-5">
 						<p class="text-sm leading-6 text-text-secondary">{{ itemImpact(item) }}</p>
+						<p
+							v-if="item.notGraded"
+							class="text-sm text-text-secondary"
+							:data-testid="`not-graded-${item.notGraded}`"
+						>
+							{{
+								t(`components.delivery.deliverabilityChecklistGroups.notGraded.${item.notGraded}`)
+							}}
+						</p>
 						<div
-							v-if="item.failureReason || item.nextStep || item.observed.length"
+							v-if="
+								!isNotApplicable(item) &&
+								(item.failureReason || item.nextStep || item.observed.length)
+							"
 							class="rounded-lg border border-border-subtle bg-bg-surface p-3 text-sm"
 						>
 							<p v-if="item.failureReason" class="font-medium text-text-primary">
@@ -142,19 +164,19 @@ const groupIcon = {
 						</div>
 
 						<DeliverabilitySetupValues
-							v-if="item.setupValues?.length"
+							v-if="!isNotApplicable(item) && item.setupValues?.length"
 							:setup-values="item.setupValues"
 							:scope-key="itemKey(item.scope, item.id)"
 						/>
 						<DeliverabilityGuidance
-							v-if="item.status !== 'pass' && item.instructions"
+							v-if="!isNotApplicable(item) && item.status !== 'pass' && item.instructions"
 							:instructions="item.instructions"
 							:scope-key="itemKey(item.scope, item.id)"
 						/>
 
 						<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
 							<UiButton
-								v-if="item.status !== 'pass'"
+								v-if="!isNotApplicable(item) && item.status !== 'pass'"
 								size="sm"
 								variant="secondary"
 								:loading="verifyingItemKey === itemKey(item.scope, item.id)"
@@ -169,7 +191,10 @@ const groupIcon = {
 								</template>
 								{{ t('components.delivery.deliverabilityChecklistGroups.verifyNow') }}
 							</UiButton>
-							<p v-if="item.lockedReason" class="text-xs text-text-secondary">
+							<p
+								v-if="item.lockedReason && !isNotApplicable(item)"
+								class="text-xs text-text-secondary"
+							>
 								{{ item.lockedReason }}
 							</p>
 							<div class="flex flex-wrap gap-3 sm:ml-auto">

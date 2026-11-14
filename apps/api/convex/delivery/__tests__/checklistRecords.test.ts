@@ -34,6 +34,22 @@ describe('Deliverability Center setup values', () => {
 		]);
 	});
 
+	it('shows the bounce MX the return-path host needs on the built-in mail server', () => {
+		vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+		const domain = (providerType: string) =>
+			({ domain: 'example.test', providerType, dnsRecords: {} }) as unknown as Doc<'domains'>;
+		expect(domainSetupValuesForItem('domain.bounce_mx', domain('mta'), [], null)).toMatchObject([
+			{
+				kind: 'dns_record',
+				recordType: 'MX',
+				name: 'bounces.owlat.example',
+				value: '10 mail.owlat.example',
+			},
+		]);
+		expect(domainSetupValuesForItem('domain.bounce_mx', domain('ses'), [], null)).toEqual([]);
+	});
+
 	it('emits one additive SPF fragment for every IPv6 policy host', () => {
 		const warming = {
 			ips: [

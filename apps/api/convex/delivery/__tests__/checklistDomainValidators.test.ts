@@ -1,6 +1,7 @@
 import dns from 'node:dns/promises';
 import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DELIVERABILITY_NOT_MEASURED } from '@owlat/shared';
 
 vi.mock('../checklistProviderDetection', () => ({
 	detectDomainDnsProvider: vi.fn(async () => null),
@@ -999,28 +1000,148 @@ describe('domain checklist validation', () => {
 		).resolves.toMatchObject({ status: 'fail' });
 	});
 
-	it('retries an existing wrong tracking CNAME before failing', async () => {
-		const resolveCname = vi.spyOn(dns, 'resolveCname').mockResolvedValue(['old.owlat.example']);
-		const trackingContext = context({}, {});
-		trackingContext.tracking = [
-			{
-				domain: 'track.example.test',
-				cnameTarget: 'active.owlat.example',
-			},
-		] as ChecklistVerificationContext['tracking'];
+	it('reports the tracking domain verdict the tracking domain check stored', async () => {
+		const resolveCname = vi.spyOn(dns, 'resolveCname');
+		const trackingContext = (row: Record<string, unknown>) => {
+			const ctx = context({}, {});
+			ctx.tracking = [
+				{ domain: 'track.example.test', cnameTarget: 'active.owlat.example', ...row },
+			] as ChecklistVerificationContext['tracking'];
+			return ctx;
+		};
+		const verified = { isVerified: true, lastCheck: { at: 1, outcome: 'verified' } };
+		const certificateMissing = {
+			isVerified: false,
+			lastCheck: { at: 1, outcome: 'https_unreachable' },
+		};
 
 		await expect(
-			observeDomainCheck({} as never, 'domain.tracking', trackingContext, false)
-		).resolves.toMatchObject({
-			status: 'pending-dns',
-			observedValues: expect.arrayContaining([
-				expect.stringContaining('"observed":"old.owlat.example"'),
-			]),
-		});
+			observeDomainCheck({} as never, 'domain.tracking', trackingContext(verified), false)
+		).resolves.toMatchObject({ status: 'pass' });
+		// The CNAME is right but HTTPS fails: the tracking surface says unverified,
+		// and so does the Center.
+		resolveCname.mockResolvedValue(['active.owlat.example']);
 		await expect(
-			observeDomainCheck({} as never, 'domain.tracking', trackingContext, true)
-		).resolves.toMatchObject({ status: 'fail' });
+			observeDomainCheck({} as never, 'domain.tracking', trackingContext(certificateMissing), true)
+		).resolves.toMatchObject({ status: 'fail', diagnostic: expect.stringContaining('HTTPS') });
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.tracking',
+				trackingContext({ ...verified, regressionSuspectedAt: 2 }),
+				false
+			)
+		).resolves.toMatchObject({ status: 'warn' });
 		resolveCname.mockRestore();
+	});
+
+	it('records an absent Postmaster source as not measured', async () => {
+		for (const itemId of ['domain.postmaster', 'domain.spam_rate'] as const) {
+			await expect(
+				observeDomainCheck({} as never, itemId, context({}, {}), false)
+			).resolves.toMatchObject({
+				status: 'warn',
+				observedValues: expect.arrayContaining([DELIVERABILITY_NOT_MEASURED]),
+			});
+		}
+	});
+
+	describe('the From domain accepts mail', () => {
+		const dnsError = (code: string) => Object.assign(new Error(`query ${code}`), { code });
+		afterEach(() => vi.restoreAllMocks());
+
+		it('passes on an MX record, or an address record as the implicit MX', async () => {
+			vi.spyOn(dns, 'resolveMx').mockResolvedValue([{ exchange: 'mx.example.test', priority: 10 }]);
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), false)
+			).resolves.toMatchObject({ status: 'pass' });
+
+			vi.spyOn(dns, 'resolveMx').mockRejectedValue(dnsError('ENODATA'));
+			vi.spyOn(dns, 'resolve4').mockResolvedValue(['192.0.2.10']);
+			vi.spyOn(dns, 'resolve6').mockRejectedValue(dnsError('ENODATA'));
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), false)
+			).resolves.toMatchObject({ status: 'pass' });
+		});
+
+		it('fails a domain with no MX and no address, after the propagation retries', async () => {
+			vi.spyOn(dns, 'resolveMx').mockRejectedValue(dnsError('ENOTFOUND'));
+			vi.spyOn(dns, 'resolve4').mockRejectedValue(dnsError('ENOTFOUND'));
+			vi.spyOn(dns, 'resolve6').mockRejectedValue(dnsError('ENOTFOUND'));
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), false)
+			).resolves.toMatchObject({ status: 'pending-dns' });
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'fail' });
+		});
+
+		it('fails a Null MX, which says the domain accepts no mail', async () => {
+			vi.spyOn(dns, 'resolveMx').mockResolvedValue([{ exchange: '', priority: 0 }]);
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), false)
+			).resolves.toMatchObject({ status: 'fail', diagnostic: expect.stringContaining('Null MX') });
+		});
+
+		it('never fails on a resolver error', async () => {
+			vi.spyOn(dns, 'resolveMx').mockRejectedValue(dnsError('ESERVFAIL'));
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'warn' });
+
+			vi.spyOn(dns, 'resolveMx').mockRejectedValue(dnsError('ENODATA'));
+			vi.spyOn(dns, 'resolve4').mockRejectedValue(dnsError('ETIMEOUT'));
+			vi.spyOn(dns, 'resolve6').mockRejectedValue(dnsError('ENODATA'));
+			await expect(
+				observeDomainCheck({} as never, 'domain.from_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'warn' });
+		});
+	});
+
+	describe('bounces reach the mail server', () => {
+		afterEach(() => vi.restoreAllMocks());
+
+		it('passes when the return-path host MX points at the mail host', async () => {
+			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+			const resolveMx = vi
+				.spyOn(dns, 'resolveMx')
+				.mockResolvedValue([{ exchange: 'Mail.Owlat.Example.', priority: 10 }]);
+			await expect(
+				observeDomainCheck({} as never, 'domain.bounce_mx', context({}, {}), false)
+			).resolves.toMatchObject({ status: 'pass' });
+			expect(resolveMx).toHaveBeenCalledWith('bounces.owlat.example');
+		});
+
+		it('fails, after the retries, when the MX points elsewhere', async () => {
+			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+			vi.spyOn(dns, 'resolveMx').mockResolvedValue([
+				{ exchange: 'mx.elsewhere.test', priority: 10 },
+			]);
+			vi.spyOn(dns, 'resolve4').mockImplementation(async (host: string) =>
+				host === 'mail.owlat.example' ? ['192.0.2.1'] : ['198.51.100.7']
+			);
+			vi.spyOn(dns, 'resolve6').mockResolvedValue([]);
+			await expect(
+				observeDomainCheck({} as never, 'domain.bounce_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'fail' });
+		});
+
+		it('uses the domain own return-path host when it has one', async () => {
+			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+			const resolveMx = vi
+				.spyOn(dns, 'resolveMx')
+				.mockResolvedValue([{ exchange: 'mail.owlat.example', priority: 10 }]);
+			await observeDomainCheck(
+				{} as never,
+				'domain.bounce_mx',
+				context({ returnPathHost: 'bounce.example.test' }, {}),
+				false
+			);
+			expect(resolveMx).toHaveBeenCalledWith('bounce.example.test');
+		});
 	});
 
 	it('passes MTA-STS without verifying anything for an external-receiving domain', async () => {

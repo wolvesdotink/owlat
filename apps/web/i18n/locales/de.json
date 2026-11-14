@@ -2877,6 +2877,11 @@
 				"copyDiagnostic": "Diagnose kopieren",
 				"diagnosticCopied": "Diagnose kopiert",
 				"howThisWorks": "So funktioniert das",
+				"notGraded": {
+					"marketing_off": "Diese Prüfung gilt für Marketing-Mail. Kampagnen sind ausgeschaltet, deshalb zählt sie nicht für die Bewertung.",
+					"not_measured": "Google Postmaster Tools ist nicht verbunden, deshalb wird das nicht gemessen. Es senkt die Bewertung nicht.",
+					"own_mta_unused": "Keine Route sendet über den eingebauten Mailserver, deshalb trifft diese Prüfung nicht zu. Sie zählt wieder, sobald eine Route ihn nutzt."
+				},
 				"observed": "Beobachtet: {values}",
 				"thisServer": "Dieser Server",
 				"verifyNow": "Jetzt prüfen"
@@ -16003,6 +16008,8 @@
 			},
 			"status": {
 				"fail": "Funktioniert nicht",
+				"notApplicable": "Nicht zutreffend",
+				"notMeasured": "Nicht gemessen",
 				"pass": "Verifiziert",
 				"pendingDns": "Wird geprüft…",
 				"warn": "Handlungsbedarf"
@@ -19730,6 +19737,10 @@
 					"description": "Prüfungen für die IPv6-Adresse, von der der Server sendet.",
 					"label": "IPv6-Versand"
 				},
+				"not_applicable": {
+					"description": "Diese Prüfungen betreffen einen Versandweg, den diese Installation nicht nutzt. Sie zählen nicht für die Bewertung.",
+					"label": "Von dieser Installation nicht genutzt"
+				},
 				"recommended": {
 					"description": "Sinnvolle Härtung, nachdem der blockierende Pfad verifiziert ist.",
 					"label": "Empfohlen"
@@ -19807,6 +19818,10 @@
 					}
 				},
 				"domain": {
+					"bounce_mx": {
+						"impact": "Bounces erreichen Owlat nur, wenn der Return-Path-Host einen MX-Eintrag hat, der auf deinen Mailserver zeigt.",
+						"title": "Empfange Bounces auf deinem Mailserver"
+					},
 					"dkim": {
 						"impact": "DKIM belegt, dass Nachrichten von deiner Domain signiert und nicht verändert wurden.",
 						"title": "Signiere deine E-Mails, damit Gmail ihnen vertraut"
@@ -19814,6 +19829,10 @@
 					"dmarc": {
 						"impact": "DMARC-Ausrichtung ist für den Massenversand erforderlich und blockiert Domain-Missbrauch.",
 						"title": "Sage Empfängern, wie sie deine From-Adresse prüfen sollen"
+					},
+					"from_mx": {
+						"impact": "Empfänger lehnen Mail von einer Domain ab, die selbst keine Mail empfangen kann, weil Antworten und Bounces dann nirgends ankommen.",
+						"title": "Lass deine Domain Antworten und Bounces empfangen"
 					},
 					"mta_sts": {
 						"impact": "Eine abrufbare Richtlinie weist kompatible Absender an, die verschlüsselte Zustellung nicht herabzustufen.",

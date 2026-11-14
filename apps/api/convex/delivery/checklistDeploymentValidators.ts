@@ -1,5 +1,6 @@
 'use node';
 
+import { ADAPTIVE_WARMING_POLICY } from '@owlat/shared/warming';
 import {
 	SES_RELAY_PROOF_MAX_AGE_MS,
 	serializeDeliverabilityObservation,
@@ -33,6 +34,42 @@ import {
  * now" asks the MTA for a fresh observation, so it does not wait on the sweep.
  */
 export const OUTBOUND_IDENTITY_MAX_AGE_MS = 75 * 60_000;
+
+/**
+ * A ramp in progress is the intended state, not a finding: it passes while no
+ * active address is halted (`plateau`) or past the thresholds at which the MTA
+ * steps its schedule back. Only a halted or regressing ramp needs attention.
+ */
+function observeWarmup(
+	warming: NonNullable<ChecklistVerificationContext['warming']>
+): ChecklistObservation {
+	const { deceleration } = ADAPTIVE_WARMING_POLICY;
+	const warmingIps = warming.ips.filter((entry) => entry.active && entry.phase !== 'graduated');
+	const halted =
+		warming.phase === 'plateau' || warmingIps.some((entry) => entry.phase === 'plateau');
+	const regressing = warmingIps.some(
+		(entry) =>
+			entry.bounceRate > deceleration.bounceRateExclusiveMin ||
+			entry.deferralRate > deceleration.deferralRateExclusiveMin
+	);
+	const progress = `${warming.totalSentToday}/${warming.totalDailyCap} sent today.`;
+	return checklistObservation(
+		'mta.warming',
+		halted || regressing ? 'warn' : 'pass',
+		halted
+			? `Warm-up is halted. ${progress}`
+			: regressing
+				? `Warm-up is stepping back because bounces or deferrals are too high. ${progress}`
+				: warming.phase === 'graduated'
+					? `Warm-up is complete. ${progress}`
+					: `Warm-up is progressing normally. ${progress}`,
+		[
+			`phase=${warming.phase}`,
+			...(regressing ? ['ramp=regressing'] : []),
+			`synced-at=${warming.syncedAt}`,
+		]
+	);
+}
 
 function boundedIdentityField(value: string, maxLength: number): string {
 	if (value.length <= maxLength) return value;
@@ -230,12 +267,7 @@ export async function observeDeploymentCheck(
 		}
 		case 'deployment.warmup':
 			return context.warming && warmingFresh
-				? checklistObservation(
-						'mta.warming',
-						context.warming.phase === 'graduated' ? 'pass' : 'warn',
-						`Warm-up is ${context.warming.phase}; ${context.warming.totalSentToday}/${context.warming.totalDailyCap} sent today.`,
-						[`phase=${context.warming.phase}`, `synced-at=${context.warming.syncedAt}`]
-					)
+				? observeWarmup(context.warming)
 				: checklistObservation('mta.warming', 'warn', 'No warming state has been synced yet.');
 		case 'deployment.relay': {
 			// ASK THE CAPABILITY, don't name the provider. This used to require

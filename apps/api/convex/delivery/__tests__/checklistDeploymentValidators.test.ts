@@ -64,6 +64,41 @@ function context(dnsblCheckedAt?: number): ChecklistVerificationContext {
 	};
 }
 
+describe('the warm-up check', () => {
+	function rampContext(overrides: { phase?: string; bounceRate?: number; deferralRate?: number }) {
+		const snapshot = context();
+		snapshot.warming = {
+			...snapshot.warming!,
+			phase: overrides.phase ?? 'ramp',
+			ips: [
+				{
+					...snapshot.warming!.ips[0]!,
+					phase: overrides.phase ?? 'ramp',
+					currentDay: 6,
+					bounceRate: overrides.bounceRate ?? 0.005,
+					deferralRate: overrides.deferralRate ?? 0.02,
+				},
+			],
+		} as ChecklistVerificationContext['warming'];
+		return snapshot;
+	}
+
+	it('passes a ramp that is progressing normally', async () => {
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({}), false)
+		).resolves.toMatchObject({ status: 'pass' });
+	});
+
+	it('warns while the ramp is halted or stepping back', async () => {
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({ phase: 'plateau' }), false)
+		).resolves.toMatchObject({ status: 'warn' });
+		await expect(
+			observeDeploymentCheck('deployment.warmup', rampContext({ deferralRate: 0.2 }), false)
+		).resolves.toMatchObject({ status: 'warn' });
+	});
+});
+
 describe('deployment checklist validator freshness', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

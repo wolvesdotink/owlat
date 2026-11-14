@@ -9,11 +9,13 @@
 import {
 	DELIVERABILITY_CHECKLIST,
 	DELIVERABILITY_NEXT_ACTIONS,
+	deliverabilityNotGradedReason,
 	deriveDeliverabilityGrade,
 	dependenciesPass,
 	materializeChecklistItem,
 	selectNextDeliverabilityItem,
 	type DeliverabilityChecklistItem,
+	type DeliverabilitySendPaths,
 	type DeliverabilitySetupValue,
 } from '@owlat/shared';
 import { adminQuery } from '../lib/authedFunctions';
@@ -21,6 +23,7 @@ import { internalQuery, type QueryCtx } from '../_generated/server';
 import { v } from 'convex/values';
 import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
 import {
+	centerGroups,
 	evidenceDto,
 	loopbackResult,
 	providerFromEvidence,
@@ -34,6 +37,9 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 import { ipv6SendingAddresses, isIpv6CheckId, partitionIpv6Items } from './checklistIpv6';
+import { messageTypeTransportKinds } from '../lib/sendProviders/capability';
+import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND, SENDING_DOMAIN_PROVIDERS } from '../domains/providers';
 import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
@@ -166,6 +172,27 @@ async function loadSettingsWithMtaHealth(ctx: QueryCtx): Promise<Doc<'instanceSe
 	return { ...settings, mtaHealth };
 }
 
+/**
+ * Which send paths the checks are graded against. The transport kinds per
+ * message type are the ones the readiness panel and the health dot read
+ * (`messageTypeTransportKinds`), so the three surfaces agree on whether the
+ * built-in mail server is in use.
+ */
+async function loadSendPaths(
+	ctx: QueryCtx,
+	routes: readonly Doc<'providerRoutes'>[]
+): Promise<DeliverabilitySendPaths> {
+	const kinds = await Promise.all(
+		(['transactional', 'campaign', 'automation'] as const).map((messageType) =>
+			messageTypeTransportKinds(ctx, routes, messageType)
+		)
+	);
+	return {
+		usesOwnMta: kinds.some((forType) => forType.includes(OWN_ARM_TRANSPORT_KIND)),
+		sendsMarketing: await isFeatureEnabled(ctx, 'campaigns'),
+	};
+}
+
 async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	const organizationId = session.activeOrganizationId;
 	const domains = await loadCenterDomains(ctx);
@@ -201,6 +228,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		'active regression alerts'
 	);
 	const verificationStates = statePages.flat();
+	const sendPaths = await loadSendPaths(ctx, routes);
 
 	const evidenceRows = await Promise.all(
 		verificationStates.map((state) =>
@@ -239,8 +267,10 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 				definition.id === 'deployment.port25' &&
 				materialized.status !== 'pass' &&
 				port25AwaitsSourceAddress(materialized.observed);
+			const notGraded = deliverabilityNotGradedReason(materialized, sendPaths);
 			items.push({
 				...materialized,
+				...(notGraded ? { notGraded } : {}),
 				...(awaitsSourceIp
 					? { dependencies: [...materialized.dependencies, 'deployment.source_ip' as const] }
 					: {}),
@@ -304,46 +334,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 							item.scope.domainId === selectedNextItem.scope.domainId)
 			) ?? null)
 		: null;
-	// English, like every other sentence this read model returns: one payload
-	// feeds the browser, the copyable diagnostic report and non-browser callers.
-	// The web paints these headings from
-	// `sharedPkg.deliverabilityChecklist.groups.<severity>.*` — a key derived
-	// from `key`, resolved in `apps/web/app/composables/useDeliverabilityChecklistCopy.ts`
-	// with these words as the fallback — so a heading reworded here needs the
-	// catalog edit too (`apps/web/app/__tests__/sharedRegistryCatalog.test.ts`
-	// pins the two copies together).
-	// The IPv6 checks form their own group, and only once IPv6 is on.
-	const ungrouped = graded.filter((item) => !isIpv6CheckId(item.id));
-	const groups = [
-		{
-			key: 'blocking' as const,
-			label: 'Blocking delivery',
-			description: 'These checks can stop or reject mail.',
-			items: ungrouped.filter((item) => item.severity === 'blocking'),
-		},
-		{
-			key: 'reputation' as const,
-			label: 'Hurting reputation',
-			description: 'These checks affect how receivers treat future mail.',
-			items: ungrouped.filter((item) => item.severity === 'reputation'),
-		},
-		{
-			key: 'recommended' as const,
-			label: 'Recommended',
-			description: 'Useful hardening after the blocking path is verified.',
-			items: ungrouped.filter((item) => item.severity === 'recommended'),
-		},
-		...(ipv6Enabled
-			? [
-					{
-						key: 'ipv6' as const,
-						label: 'IPv6 sending',
-						description: 'Checks for the IPv6 address the server sends from.',
-						items: ipv6Items,
-					},
-				]
-			: []),
-	];
+	const groups = centerGroups(graded, ipv6Items, ipv6Enabled);
 	const latestLoopbacks = await Promise.all(
 		domains.map((domain) =>
 			ctx.db
@@ -357,7 +348,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	);
 	const loopbackInfrastructureReady = settings?.mtaHealth !== undefined;
 	const recommended = graded.filter(
-		(item) => item.severity === 'recommended' && item.status !== 'pass'
+		(item) => item.severity === 'recommended' && item.status !== 'pass' && !item.notGraded
 	).length;
 
 	return {
