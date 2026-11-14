@@ -103,4 +103,29 @@ describe('verifyPostboxAppPassword', () => {
 			).resolves.toBeNull();
 		}
 	});
+
+	it('carries the signature requirement only when the backend answers a literal true', async () => {
+		const verified = {
+			ok: true,
+			mailboxId: 'mbx_1',
+			appPasswordId: 'ap_1',
+			userId: 'user_1',
+			organizationId: 'org_1',
+		};
+		fetchMock.mockResolvedValueOnce(
+			new Response(JSON.stringify({ ...verified, requireDkimSignature: true }))
+		);
+		await expect(
+			verifyPostboxAppPassword(config, 'jane@example.com', 'pw', 'smtp')
+		).resolves.toMatchObject({ requireDkimSignature: true });
+
+		// A backend from before the field, or one answering anything but `true`,
+		// leaves the mail unflagged, as it was.
+		for (const extra of [{}, { requireDkimSignature: false }, { requireDkimSignature: 'true' }]) {
+			fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ...verified, ...extra })));
+			const result = await verifyPostboxAppPassword(config, 'jane@example.com', 'pw', 'smtp');
+			expect(result).not.toBeNull();
+			expect(result).not.toHaveProperty('requireDkimSignature');
+		}
+	});
 });

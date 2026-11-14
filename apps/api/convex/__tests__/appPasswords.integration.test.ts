@@ -128,6 +128,7 @@ async function seedMailbox(
 		address?: string;
 		organizationId?: string;
 		status?: 'active' | 'suspended' | 'deleted';
+		scope?: 'personal' | 'shared';
 	} = {}
 ) {
 	const userId = overrides.userId ?? 'user-owner';
@@ -141,6 +142,7 @@ async function seedMailbox(
 			address,
 			domain: address.split('@')[1] ?? 'example.com',
 			status,
+			...(overrides.scope ? { scope: overrides.scope } : {}),
 			usedBytes: 0,
 			uidValidity: Date.now(),
 			createdAt: Date.now(),
@@ -905,6 +907,52 @@ describe('verify-credential route keys the auth throttle on the client IP', () =
 		});
 		return { address, appPasswordId: id, cleartext };
 	}
+
+	async function registerDomain(
+		t: Awaited<ReturnType<typeof setupTest>>,
+		domain: string,
+		providerType: string
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain,
+				status: 'verified',
+				providerType,
+				dnsRecords: {},
+				verifiedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+	}
+
+	it.each(['personal', 'shared'] as const)(
+		'tells the MTA that mail from a %s mailbox on a domain it signs is owed a signature',
+		async (scope) => {
+			const t = await setupTest();
+			await registerDomain(t, 'brand.example', 'mta');
+			const { mailboxId, address } = await seedMailbox(t, {
+				address: 'desk@brand.example',
+				scope,
+			});
+			const { cleartext } = await t.mutation(api.mail.appPasswords.generate, {
+				mailboxId,
+				label: 'desktop client',
+			});
+
+			const res = await signedVerify(t, { address, password: cleartext, scope: 'smtp' });
+			expect(res).toMatchObject({ ok: true, requireDkimSignature: true });
+		}
+	);
+
+	it('owes no signature for a mailbox domain the MTA does not sign', async () => {
+		const t = await setupTest();
+		await registerDomain(t, 'example.com', 'ses');
+		const f = await provisionSmtp(t);
+
+		const res = await signedVerify(t, { address: f.address, password: f.cleartext, scope: 'smtp' });
+		expect(res).toMatchObject({ ok: true, requireDkimSignature: false });
+	});
 
 	const failureIps = (t: Awaited<ReturnType<typeof setupTest>>) =>
 		t.run(async (ctx) => (await ctx.db.query('mailAuthFailures').collect()).map((f) => f.ip));

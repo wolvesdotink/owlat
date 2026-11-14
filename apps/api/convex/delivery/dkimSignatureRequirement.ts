@@ -16,7 +16,10 @@
  *
  * Postbox mail (sends, forwards, vacation replies) posts to the MTA's
  * `/send/postbox` intake from actions, not through the send adapter, and asks
- * through {@link isRequiredForSender}. System mail never carries the flag:
+ * through {@link isRequiredForSender}. Mail a client submits to the MTA with
+ * an app password is built by the MTA itself, which learns the answer from the
+ * verify-credential route at AUTH (`mail/authHttp.ts`), asked the same way.
+ * System mail never carries the flag:
  * account mail has to leave before the operator has published DNS.
  */
 
