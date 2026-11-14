@@ -1273,6 +1273,14 @@
 				"unfiltered": "Klicks, die vor dem Herausfiltern automatischer Klicks gezählt wurden, können Aufrufe durch Sicherheitsscanner enthalten.",
 				"unfilteredWithOpens": "Öffnungen und Klicks, die vor dem Herausfiltern automatischer Zugriffe gezählt wurden, können Abrufe durch Apple Mail Privacy Protection und Sicherheitsscanner enthalten."
 			},
+			"campaignSendHoldNotice": {
+				"heldBanned": "Der Versand ist für diesen Workspace gesperrt, deshalb wird diese Kampagne nicht verschickt. Nachrichten, die noch nicht raus sind, warten bis zu {days} Tage und werden nicht verschickt, wenn der Versand dann noch gesperrt ist.",
+				"heldSince": "Angehalten seit {date}",
+				"heldSuspended": "Der Versand ist für diesen Workspace ausgesetzt, deshalb ist diese Kampagne angehalten. Nachrichten, die noch nicht raus sind, gehen raus, sobald der Versand wieder freigegeben ist. Was nach {days} Tagen noch wartet, wird nicht verschickt.",
+				"stopped": "Versand am {date} beendet: Der Versand blieb {days} Tage lang ausgesetzt, deshalb haben Empfänger, die diese Kampagne noch nicht erreicht hatte, keine Mail bekommen.",
+				"title": "Versand angehalten",
+				"titleStopped": "Versand beendet"
+			},
 			"campaignSendPlanLine": {
 				"atLeast": "mindestens {total}",
 				"dayOf": "Tag {day} von {totalDays}",

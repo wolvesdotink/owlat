@@ -11,6 +11,9 @@
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import { campaignSendHold } from '../campaigns/sendHold';
+import { readSendJob } from '../campaigns/sendJob';
+import { readSendingHold } from '../workspaces/abuseGate';
 
 /** Rate as a percentage to one decimal place, or null when the denominator is 0. */
 function pct(num: number, den: number): number | null {
@@ -70,7 +73,18 @@ export const campaignStats = internalQuery({
 				s.search('searchableText', q).eq('deletedAt', undefined)
 			)
 			.take(limit);
-		return { campaigns: matches.map(campaignSnapshot) };
+		// The same hold the campaign report shows, so "why is it not sending"
+		// has an answer: a suspended workspace holds every sending campaign.
+		const hold = await readSendingHold(ctx.db);
+		const campaigns = [];
+		for (const campaign of matches) {
+			const job = await readSendJob(ctx, campaign._id);
+			campaigns.push({
+				...campaignSnapshot(campaign),
+				sendHold: campaignSendHold({ campaign, job, hold }),
+			});
+		}
+		return { campaigns };
 	},
 });
 

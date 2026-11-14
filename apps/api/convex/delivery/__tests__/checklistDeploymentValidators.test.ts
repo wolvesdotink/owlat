@@ -131,7 +131,35 @@ describe('deployment checklist validator freshness', () => {
 		listed.warming!.ips[0]!.dnsbl = 'critical';
 		await expect(observeDeploymentCheck('deployment.dnsbl', listed, false)).resolves.toMatchObject({
 			status: 'fail',
-			diagnostic: expect.stringContaining('listed or has unknown standing'),
+			diagnostic: expect.stringContaining('is listed'),
+		});
+	});
+
+	it.each(['critical', 'degraded'] as const)(
+		'fails when one address is %s even though another one is unknown',
+		async (listing) => {
+			const mixed = context(Date.now());
+			mixed.warming!.ips[0]!.dnsbl = listing;
+			mixed.warming!.ips.push({
+				...mixed.warming!.ips[0]!,
+				ip: '203.0.113.11',
+				dnsbl: 'unknown',
+			});
+			await expect(observeDeploymentCheck('deployment.dnsbl', mixed, false)).resolves.toMatchObject(
+				{
+					status: 'fail',
+					diagnostic: expect.stringContaining('is listed'),
+				}
+			);
+		}
+	);
+
+	it('warns, not fails, when no address is listed and one is unknown', async () => {
+		const mixed = context(Date.now());
+		mixed.warming!.ips.push({ ...mixed.warming!.ips[0]!, ip: '203.0.113.11', dnsbl: 'unknown' });
+		await expect(observeDeploymentCheck('deployment.dnsbl', mixed, false)).resolves.toMatchObject({
+			status: 'warn',
+			diagnostic: expect.stringContaining('unknown standing'),
 		});
 	});
 

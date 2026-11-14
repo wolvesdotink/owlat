@@ -207,21 +207,22 @@ export async function observeDeploymentCheck(
 		}
 		case 'deployment.dnsbl': {
 			const pass = dnsblFresh && selectedAddresses.every((entry) => entry.dnsbl === 'clean');
-			const status = !dnsblFresh
-				? 'warn'
-				: pass
-					? 'pass'
-					: selectedAddresses.some((entry) => entry.dnsbl === 'unknown')
-						? 'warn'
-						: 'fail';
+			// A listing is asked first: one address's unknown standing must not
+			// soften another address that is known to be listed.
+			const isListed = selectedAddresses.some(
+				(entry) => entry.dnsbl === 'critical' || entry.dnsbl === 'degraded'
+			);
+			const status = !dnsblFresh ? 'warn' : pass ? 'pass' : isListed ? 'fail' : 'warn';
 			return checklistObservation(
 				'mta.dnsbl',
 				status,
 				pass
 					? 'Every outbound address is clean on the monitored DNS blocklists.'
-					: dnsblFresh
-						? 'At least one outbound address is listed or has unknown standing.'
-						: 'The MTA blocklist snapshot is missing or too old to verify this check.',
+					: !dnsblFresh
+						? 'The MTA blocklist snapshot is missing or too old to verify this check.'
+						: isListed
+							? 'At least one outbound address is listed on a monitored DNS blocklist.'
+							: 'At least one outbound address has unknown standing on the monitored DNS blocklists.',
 				selectedAddresses.flatMap((entry) => [
 					`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
 					`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,

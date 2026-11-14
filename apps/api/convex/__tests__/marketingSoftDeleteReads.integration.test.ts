@@ -229,6 +229,12 @@ const PROBES: Record<string, Probe> = {
 		read: ({ t, campaignId }) => t.query(api.campaigns.campaigns.getWithRelations, { campaignId }),
 		shownWhileLive: true,
 	},
+	'campaigns/sendHold.ts:getCampaignSendHold': {
+		read: ({ t, campaignId }) =>
+			t.query(api.campaigns.sendHold.getCampaignSendHold, { campaignId }),
+		// Sending is allowed, so a live campaign answers null too.
+		shownWhileLive: false,
+	},
 	'campaigns/sendPlanQueries.ts:getCampaignSendPlan': {
 		read: ({ t, campaignId }) =>
 			t.query(api.campaigns.sendPlanQueries.getCampaignSendPlan, { campaignId }),
