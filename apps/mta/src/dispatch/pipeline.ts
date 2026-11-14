@@ -35,12 +35,13 @@ import {
  *   there says nothing about the address. A phase that stands in for a
  *   recipient-side failure names `recipient`.
  * - `drop` ends the attempt without a re-queue (used by content screening
- *   and the suppression check).
+ *   and the suppression check, which also withdraws marketing mail to an
+ *   address that unsubscribed).
  */
 export type DispatchTerminal =
 	| { kind: 'defer'; delayMs: number; reason: string; bounceCause?: BounceCause }
 	| { kind: 'routing_reentry'; reason: string }
-	| { kind: 'drop'; status: 'screened' | 'suppressed'; reason: string };
+	| { kind: 'drop'; status: 'screened' | 'suppressed' | 'unsubscribed'; reason: string };
 
 /**
  * One step in the pipeline. The runner discovers the step's name via this

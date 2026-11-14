@@ -3,7 +3,7 @@
  */
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
-import type { DeliveryDomain } from '@owlat/shared';
+import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { SmtpPhase } from '@owlat/smtp-client';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
@@ -78,6 +78,13 @@ export interface EmailJob {
 	organizationId: string;
 	/** Authenticated production-vs-member-preview effect domain. */
 	deliveryDomain?: DeliveryDomain;
+	/**
+	 * The governed stream the message belongs to. Only campaign and automation
+	 * mail is withdrawn when its recipient unsubscribes
+	 * (`intelligence/marketingOptOut.ts`). Absent on Postbox and system mail and
+	 * on jobs retained from before the field existed.
+	 */
+	messageType?: GovernedMessageType;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */

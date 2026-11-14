@@ -9,7 +9,7 @@ import {
 	WEBHOOK_DLQ_CREATED_KEY,
 	WEBHOOK_DLQ_PROTECTED_KEY,
 } from '../../webhooks/dlq.js';
-import { emitExpiredBounce } from '../nonDeliveryOutcomes.js';
+import { emitExpiredBounce, handleDrop } from '../nonDeliveryOutcomes.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -88,6 +88,52 @@ describe('emitExpiredBounce', () => {
 			bounceType: 'soft',
 			message: `Message expired after ${config.maxMessageAgeMs}ms without delivery`,
 			timestamp: FIRST_ENQUEUED_AT + config.maxMessageAgeMs,
+		});
+	});
+});
+
+describe('handleDrop — a message withdrawn after a marketing opt-out', () => {
+	let redis: InstanceType<typeof Redis>;
+	let originalFetch: typeof globalThis.fetch;
+
+	beforeEach(async () => {
+		redis = new Redis();
+		await redis.flushall();
+		originalFetch = globalThis.fetch;
+		globalThis.fetch = vi.fn(() => new Promise<Response>(() => {})) as typeof fetch;
+	});
+
+	afterEach(async () => {
+		globalThis.fetch = originalFetch;
+		await redis.quit();
+	});
+
+	it('tells Convex the message was not sent because the contact unsubscribed, not that it bounced', async () => {
+		const config = createTestConfig();
+		const deps = { redis: redis as unknown as IORedis, config };
+		const job = { ...retainedJob().data, messageType: 'campaign' as const };
+
+		await handleDrop(
+			{
+				kind: 'drop',
+				status: 'unsubscribed',
+				reason: 'recipient_unsubscribed',
+				phase: 'suppression',
+			},
+			job,
+			deps,
+			{ domain: 'example.com', providerKey: 'other', droppedAt: FIRST_ENQUEUED_AT }
+		);
+
+		const [id] = await redis.smembers(WEBHOOK_DLQ_PROTECTED_KEY);
+		const entry = await getEntry(redis as unknown as IORedis, id!);
+		expect(entry?.event).toEqual({
+			event: 'failed',
+			messageId: 'msg-retained-expiry',
+			organizationId: 'org-1',
+			message: 'Contact unsubscribed from marketing before delivery',
+			errorCode: 'RECIPIENT_UNSUBSCRIBED',
+			timestamp: FIRST_ENQUEUED_AT,
 		});
 	});
 });
