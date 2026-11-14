@@ -80,7 +80,13 @@ accepting unsigned/unverified traffic.
 | `INSTANCE_SECRET`                          | Mailbox auth, unsubscribe tokens, sealed IMAP and CardDAV passwords. | Various.                      |
 | `MTA_API_KEY`                              | Outbound mail dispatch, attachment scan.                             | No outbound mail.             |
 | `MTA_WEBHOOK_SECRET`                       | `webhooks/adapters/mta.ts` (`POST /webhooks/mta`)                    | 503.                          |
+| `MTA_SECRET`                               | MTA: seals DKIM private keys and relay credentials at rest.          | MTA refuses to boot.          |
+| `BOUNCE_VERP_KEY`                          | MTA: signs and verifies VERP bounce addresses.                       | MTA refuses to boot.          |
+| `REDIS_PASSWORD`                           | Redis `requirepass`, and the MTA's `REDIS_URL`.                      | `docker compose up` aborts.   |
+| `MAIL_SYNC_API_KEY`                        | `apps/mail-sync` `/send` and `/test` bearer token.                   | mail-sync refuses to boot.    |
 | `RESEND_WEBHOOK_SECRET`                    | `webhooks/adapters/resend.ts` (`POST /webhooks/resend`)              | 503.                          |
+| `MANDRILL_WEBHOOK_KEY`                     | `webhooks/adapters/mandrill.ts` (`POST /webhooks/mandrill`)          | 503.                          |
+| `EMAILIT_WEBHOOK_SECRET`                   | `webhooks/adapters/emailit.ts` (`POST /webhooks/emailit`)            | 503.                          |
 | `TWILIO_AUTH_TOKEN`                        | `webhooks/adapters/twilio.ts` (SMS webhook verification)             | 503.                          |
 | `META_APP_SECRET`                          | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` POST              | 503.                          |
 | `META_VERIFY_TOKEN`                        | `webhooks/channelsHttp.ts` `handleWhatsAppWebhook` GET               | 503.                          |
@@ -88,9 +94,10 @@ accepting unsigned/unverified traffic.
 | `UNSUBSCRIBE_SECRET`                       | Unsubscribe-link HMAC.                                               | Link generation/verify fails. |
 | `GOOGLE_SAFE_BROWSING_API_KEY` (optional)  | URL-reputation scanner.                                              | Reputation skipped.           |
 | `MICROSOFT_OAUTH_CLIENT_SECRET` (optional) | Microsoft sign-in token exchange and refresh.                        | No Microsoft sign-in offered. |
+| `SNDS_DATA_FEED_URLS` (optional)           | Microsoft SNDS polling; each URL is a bearer credential.             | SNDS data not polled.         |
 
 The send-provider feedback routes (`/webhooks/mta`, `/webhooks/resend`,
-`/webhooks/ses`, `/webhooks/mandrill`) share one HTTP entry point —
+`/webhooks/ses`, `/webhooks/mandrill`, `/webhooks/emailit`) share one HTTP entry point —
 `webhooks/providerFeedbackHttp.ts`, which resolves the per-kind adapter from
 the `webhooks/adapters/` registry. Each adapter's `verifySignature` is where
 its 503 is returned, via `missingSecretResult` in `webhooks/security.ts`; the
