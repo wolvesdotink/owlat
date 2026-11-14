@@ -25,6 +25,8 @@ export const PREFLIGHT_FAILURE_REASONS = [
 	'sending_not_allowed',
 	'scheduled_in_past',
 	'exceeds_sending_capacity',
+	'mail_server_not_ready',
+	'delivery_on_hold',
 	'no_bounce_feedback',
 ] as const;
 
@@ -60,6 +62,14 @@ export const PREFLIGHT_MESSAGE_KEYS = {
 		atLeast: 'shared.campaignRefusal.capacityAtLeast',
 		about: 'shared.campaignRefusal.capacityAbout',
 	},
+	mail_server_not_ready: {
+		unreachable: 'shared.campaignRefusal.mailServerUnreachable',
+		port25Blocked: 'shared.campaignRefusal.mailServerPort25Blocked',
+		allIpsHeld: 'shared.campaignRefusal.mailServerAllIpsHeld',
+	},
+	// Only a scheduled start records this one: delivery stayed on hold for the
+	// whole wait at fire time (`campaigns/startGate.ts`).
+	delivery_on_hold: { default: 'shared.campaignRefusal.deliveryOnHold' },
 	no_bounce_feedback: { default: 'shared.campaignRefusal.noBounceFeedback' },
 } as const satisfies Record<PreflightFailureReason, Readonly<Record<string, string>>>;
 

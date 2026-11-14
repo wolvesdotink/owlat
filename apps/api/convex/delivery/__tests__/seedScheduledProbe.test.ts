@@ -64,6 +64,16 @@ vi.mock('../workpool', () => ({
 	campaignEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
 }));
 
+// Route resolution reads the org-wide safety circuit for the instance's one
+// organization, which is the organization the seeds below belong to.
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	return {
+		...actual,
+		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_scheduled_probe'),
+	};
+});
+
 const PREV_SECRET = process.env['UNSUBSCRIBE_SECRET'];
 process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
 // The origin the probe's own one-click target is minted against. Every real
@@ -384,6 +394,35 @@ describe('sweepScheduledSeedProbes — absence is a supported configuration', ()
 			ctx.db.system.query('_scheduled_functions').collect()
 		);
 		expect(scheduled).toEqual([]);
+	});
+
+	it('skips a stream whose route is on hold instead of failing the sweep', async () => {
+		// An open org-wide safety circuit makes route resolution defer every send.
+		// Thrown, it would roll back the page and stop the sweep before it
+		// reschedules; held, the stream is simply not measured this tick.
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		await configureSender(t);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: now }],
+				fallbackActiveSince: now,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 86_400_000,
+				updatedAt: now,
+			});
+		});
+
+		const outcome = await sweep(t);
+
+		expect(outcome).toMatchObject({ enqueued: 0, done: true });
+		expect(vi.mocked(transactionalEmailPool.enqueueAction)).not.toHaveBeenCalled();
+		const rows = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(rows).toEqual([]);
 	});
 
 	it('mails nothing when the deployment has no default sender', async () => {

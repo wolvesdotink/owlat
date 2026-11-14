@@ -6,12 +6,13 @@
 
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { api } from '../_generated/api';
+import { checkEmailDomainVerification } from '../domains/domains';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { isDeliveryConfigured, messageTypeTransportKinds } from '../lib/sendProviders/capability';
 import { missingFeedbackVariablesFor } from '../lib/sendProviders/feedbackReadiness';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
+import { assessCampaignMailServer, type MailServerBlock } from './mailServerPreflight';
 import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
 import { getLive } from '../lib/softDelete';
 import { campaignsQuery } from './_helpers';
@@ -99,6 +100,14 @@ export interface PreflightOptions {
 	 * shipped fire-time check still runs.
 	 */
 	checkCapacity?: boolean;
+	/**
+	 * Run the built-in mail server check (default `true`). The orchestrator's
+	 * re-check of a send that already started (`validateReadyToSendQuery`)
+	 * passes `false`: that campaign is `sending` with no send job yet, nothing
+	 * would ever retry a start refused there, and the page hop and the MTA's
+	 * own queue already hold mail while the server cannot deliver.
+	 */
+	checkMailServer?: boolean;
 }
 
 /**
@@ -157,6 +166,15 @@ function capacityRefusal(schedule: CampaignCapacitySchedule): PreflightFailure {
 }
 
 type Ctx = MutationCtx | QueryCtx;
+
+const MAIL_SERVER_BLOCK_MESSAGE: Record<MailServerBlock, string> = {
+	unreachable:
+		'Cannot send campaign: the built-in mail server is not answering its health check, so the mail would wait in its queue. Check the mail server under Delivery.',
+	port25Blocked:
+		'Cannot send campaign: the built-in mail server cannot reach other mail servers on port 25 from any campaign sending IP. Many hosts block port 25 until you ask them to open it.',
+	allIpsHeld:
+		'Cannot send campaign: every campaign sending IP of the built-in mail server is held back (blocklist, PTR or SPF problem). Fix the held IPs under Delivery.',
+};
 
 /**
  * Validate that a campaign is ready to be scheduled or sent. The reducer
@@ -218,9 +236,10 @@ export async function validateReadyToSend(
 		);
 	}
 
-	const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-		email: campaign.fromEmail,
-	});
+	// The helper, not the public query: the scheduler and the send orchestrator
+	// run this with no signed-in member, and the query's member check would
+	// throw there and leave the campaign unstarted.
+	const domainStatus = await checkEmailDomainVerification(ctx, campaign.fromEmail);
 
 	if (!domainStatus.verified) {
 		const message =
@@ -274,6 +293,19 @@ export async function validateReadyToSend(
 		);
 	}
 
+	// The built-in mail server must be able to deliver right now, judged from
+	// its last fresh health snapshot exactly as the Delivery hub judges it.
+	// Stale or missing health never refuses.
+	const mailServerBlock =
+		options.checkMailServer === false ? null : await assessCampaignMailServer(ctx, now);
+	if (mailServerBlock) {
+		return refuse(
+			'mail_server_not_ready',
+			mailServerBlock,
+			MAIL_SERVER_BLOCK_MESSAGE[mailServerBlock]
+		);
+	}
+
 	if (options.scheduledAt !== undefined) {
 		if (options.scheduledAt <= now) {
 			return refuse('scheduled_in_past', 'default', 'Scheduled time must be in the future');
@@ -323,7 +355,10 @@ export const validateReadyToSendQuery = internalQuery({
 		// consumer — it becomes `{ skipped: true }` and the campaign sits
 		// `scheduled` forever, which is strictly worse than the expiring tail this
 		// gate exists to prevent. Every shipped fire-time check still runs.
-		return await validateReadyToSend(ctx, campaign, { checkCapacity: false });
+		return await validateReadyToSend(ctx, campaign, {
+			checkCapacity: false,
+			checkMailServer: false,
+		});
 	},
 });
 

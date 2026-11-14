@@ -121,7 +121,13 @@ export const commitPreparation = internalMutation({
 		if (isSendPrepared(campaign, await readSendJob(ctx, campaignId))) {
 			return { kind: 'skipped', reason: 'Campaign send is already prepared' };
 		}
-		const preflight = await validateReadyToSend(ctx, campaign, { checkCapacity: false });
+		// The mail-server check is the start gate's (scheduled) or the send
+		// mutation's (send now) to make, before this point: refused here, a
+		// campaign already `sending` would have no send job and nothing to resume it.
+		const preflight = await validateReadyToSend(ctx, campaign, {
+			checkCapacity: false,
+			checkMailServer: false,
+		});
 		if (!preflight.ok) {
 			return { kind: 'skipped', reason: `Pre-flight failed: ${preflight.message}` };
 		}
