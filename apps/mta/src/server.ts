@@ -22,6 +22,7 @@ import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
 import { createIpAuditRoutes } from './routes/ipAudit.js';
 import { createDnsblAccessRoutes } from './routes/dnsblAccess.js';
+import { createDomainBlocklistRoutes } from './routes/domainBlocklists.js';
 import { createOutboundIdentityRoutes } from './routes/outboundIdentity.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
 import { createMailboxRoutes } from './routes/mailboxes.js';
@@ -122,6 +123,9 @@ export function createApp(
 
 	// Blocklist resolver + Spamhaus DQS key for the admin card (master-key protected)
 	app.route('/dnsbl-access', createDnsblAccessRoutes(redis, config));
+
+	// Domain blocklist lookups for the Deliverability Center (master-key protected)
+	app.route('/domain-blocklists', createDomainBlocklistRoutes(redis, config));
 
 	// Outbound identity status + on-demand FCrDNS re-check (master-key protected)
 	app.route('/identity', createOutboundIdentityRoutes(redis, config));

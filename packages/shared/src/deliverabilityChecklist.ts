@@ -37,6 +37,7 @@ export const DOMAIN_CHECK_IDS = [
 	'domain.return_path',
 	'domain.from_mx',
 	'domain.bounce_mx',
+	'domain.blocklist',
 	'domain.mta_sts',
 	'domain.tls_rpt',
 	'domain.tlsa',
@@ -121,6 +122,8 @@ export const DELIVERABILITY_NEXT_ACTIONS: Record<DeliverabilityCheckId, string> 
 	'domain.unsubscribe': 'Send marketing mail through the production one-click signing path.',
 	'domain.postmaster': 'Authorize this verified domain in Google Postmaster Tools.',
 	'domain.spam_rate': 'Pause risky volume and reduce complaints below the 0.10% target.',
+	'domain.blocklist':
+		'Find and stop the mail that got the domain listed, then ask each list that names it for removal.',
 };
 export type DeliverabilityScope =
 	| { kind: 'deployment' }

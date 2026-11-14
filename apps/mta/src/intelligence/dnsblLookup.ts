@@ -13,7 +13,7 @@
 
 import { resolve4 } from 'dns/promises';
 import { sleep as sharedSleep } from '@owlat/shared';
-import type { DnsblListId, DnsblUnknownReason } from '@owlat/shared/dnsbl';
+import type { DnsblListId, DnsblUnknownReason, DomainBlocklistId } from '@owlat/shared/dnsbl';
 import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
 import { canRetry, nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
@@ -150,14 +150,27 @@ export async function lookupDnsblZone(
 	zone: string,
 	deps: DnsblLookupDeps = defaultLookupDeps
 ): Promise<DnsblLookupResult> {
-	const lookup = dnsblQueryName(ip, zone);
+	return lookupDnsblName(dnsblQueryName(ip, zone), { ip }, listId, deps);
+}
+
+/** What a log line names as the looked-up thing: an address or a domain. */
+type DnsblSubject = { ip: string } | { domain: string };
+type DnsblLookupListId = DnsblListId | IpAuditZoneId | DomainBlocklistId;
+
+/** {@link lookupDnsblZone} for an already built query name. */
+export async function lookupDnsblName(
+	lookup: string,
+	subject: DnsblSubject,
+	listId: DnsblLookupListId,
+	deps: DnsblLookupDeps = defaultLookupDeps
+): Promise<DnsblLookupResult> {
 	const resolver = deps.resolve4 ?? resolve4;
 	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
 	// Never log `zone` or the resolver message: keyed providers such as Abusix
 	// embed a credential in the queried hostname and resolver errors often echo it.
 	const logUnknown = (errorCode: string) => {
-		if (deps.quiet) logger.debug({ ip, listId, errorCode }, 'DNSBL check is unknown');
-		else logger.warn({ ip, listId, errorCode }, 'DNSBL check is unknown');
+		if (deps.quiet) logger.debug({ ...subject, listId, errorCode }, 'DNSBL check is unknown');
+		else logger.warn({ ...subject, listId, errorCode }, 'DNSBL check is unknown');
 	};
 
 	let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -244,6 +257,16 @@ export async function checkDnsblDetailed(
 	zone: string,
 	deps: DnsblLookupDeps = defaultLookupDeps
 ): Promise<DnsblLookupResult> {
+	return checkDnsblNameDetailed(dnsblQueryName(ip, zone), { ip }, listId, deps);
+}
+
+/** {@link checkDnsblDetailed} for an already built query name. */
+export async function checkDnsblNameDetailed(
+	queryName: string,
+	subject: DnsblSubject,
+	listId: DnsblLookupListId,
+	deps: DnsblLookupDeps = defaultLookupDeps
+): Promise<DnsblLookupResult> {
 	const now = deps.now ?? Date.now;
 	const sleep = deps.sleep ?? sharedSleep;
 	// Per-attempt lines drop to debug; this function owns the conclusion line.
@@ -258,7 +281,7 @@ export async function checkDnsblDetailed(
 	let attempts = 0;
 	for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
 		attempts = attempt;
-		outcome = await lookupDnsblZone(ip, listId, zone, attemptDeps);
+		outcome = await lookupDnsblName(queryName, subject, listId, attemptDeps);
 		if (!outcome.retryable) break;
 		if (!canRetry(LOOKUP_RETRY, attempt)) break;
 		const delay = nextDelay(LOOKUP_RETRY, attempt - 1);
@@ -278,7 +301,7 @@ export async function checkDnsblDetailed(
 	}
 	// One line, at the conclusion, carrying how many attempts it took.
 	if (outcome.status === 'unknown') {
-		const fields = { ip, listId, errorCode: outcome.errorCode ?? 'unknown', attempts };
+		const fields = { ...subject, listId, errorCode: outcome.errorCode ?? 'unknown', attempts };
 		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
 		else logger.warn(fields, 'DNSBL check is unknown');
 	}

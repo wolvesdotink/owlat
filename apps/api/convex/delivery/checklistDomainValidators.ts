@@ -28,6 +28,7 @@ import {
 	observeFromDomainAcceptsMail,
 } from './checklistMailFlowValidators';
 import { observeTrackingDomain } from './checklistTrackingObservation';
+import { observeDomainBlocklists } from './checklistDomainBlocklist';
 import {
 	checklistObservation,
 	pendingDnsStatus,
@@ -354,6 +355,8 @@ export async function observeDomainCheck(
 			return observeFromDomainAcceptsMail(context, providerValues, isFinalDnsRetry);
 		case 'domain.bounce_mx':
 			return observeBouncesReachMailServer(context, providerValues, isFinalDnsRetry);
+		case 'domain.blocklist':
+			return observeDomainBlocklists(context, providerValues);
 		case 'domain.unsubscribe':
 			try {
 				assertMarketingOneClickSigningContract();

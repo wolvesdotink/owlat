@@ -1224,3 +1224,96 @@ describe('domain checklist validation', () => {
 		).rejects.toThrow('TLS-RPT DNS observation was not loaded');
 	});
 });
+
+describe('domain blocklist check', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+	});
+
+	/** Answer the MTA's domain blocklist lookup with `results`, and record what was asked. */
+	function stubMtaLookup(results: Array<Record<string, unknown>>) {
+		const asked: string[][] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL, init?: RequestInit) => {
+				expect(String(input)).toBe('http://mta:3100/domain-blocklists');
+				asked.push(JSON.parse(String(init?.body)).domains);
+				return new Response(JSON.stringify({ results }), { status: 200 });
+			})
+		);
+		return asked;
+	}
+
+	const blocklistContext = (tracking: Array<Record<string, unknown>> = []) =>
+		({
+			...context({ status: 'verified', returnPathHost: 'bounce.mail-example.test' }, {}),
+			tracking,
+		}) as ChecklistVerificationContext;
+
+	const observe = (ctx: ChecklistVerificationContext) =>
+		observeDomainCheck({} as never, 'domain.blocklist', ctx, false);
+
+	const clean = (domain: string) =>
+		['spamhaus_dbl', 'surbl', 'uribl'].map((list) => ({ domain, list, status: 'clean' }));
+
+	it('fails a listed domain, naming the list and its delisting page', async () => {
+		stubMtaLookup([
+			{ domain: 'example.test', list: 'spamhaus_dbl', status: 'listed' },
+			...clean('example.test').slice(1),
+		]);
+
+		const result = await observe(blocklistContext());
+
+		expect(result.status).toBe('fail');
+		expect(result.diagnostic).toContain('Spamhaus DBL');
+		expect(result.diagnostic).toContain('https://check.spamhaus.org/');
+	});
+
+	it('reports a "may not query" answer as unknown, with the resolver fix', async () => {
+		stubMtaLookup([
+			{
+				domain: 'example.test',
+				list: 'spamhaus_dbl',
+				status: 'unknown',
+				reason: 'resolver_refused',
+			},
+			...clean('example.test').slice(1),
+		]);
+
+		const result = await observe(blocklistContext());
+
+		expect(result.status).toBe('warn');
+		expect(result.diagnostic).toContain('DNSBL_RESOLVER');
+		expect(result.diagnostic).not.toContain('is listed');
+	});
+
+	it('passes when no list names the From, return-path or tracking domain', async () => {
+		const asked = stubMtaLookup([
+			...clean('example.test'),
+			...clean('mail-example.test'),
+			...clean('brand.test'),
+		]);
+
+		const result = await observe(
+			blocklistContext([
+				{ domain: 'links.example.test', isVerified: true },
+				{ domain: 'go.brand.test', isVerified: true },
+				{ domain: 'unverified.example.test', isVerified: false },
+			])
+		);
+
+		expect(result.status).toBe('pass');
+		// Registered domains, each once: the lists name a domain, not its hosts.
+		expect(asked).toEqual([['example.test', 'mail-example.test']]);
+	});
+
+	it('is not measured without the built-in mail server to ask', async () => {
+		vi.stubEnv('MTA_API_URL', '');
+
+		const result = await observe(blocklistContext());
+
+		expect(result.status).toBe('warn');
+		expect(result.observedValues).toContain(DELIVERABILITY_NOT_MEASURED);
+	});
+});
