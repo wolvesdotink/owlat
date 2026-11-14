@@ -262,6 +262,47 @@ describe('sendToMx TLS policy', () => {
 			]);
 		});
 
+		const encryptionRequired = (phase: 'ehlo' | 'mail') =>
+			smtpError({
+				phase,
+				message:
+					'server rejected with 530: 5.7.10 Encryption required for requested authentication',
+				replyCode: 530,
+				enhancedCode: '5.7.10',
+				secured: false,
+			});
+
+		it.each(['ehlo', 'mail'] as const)(
+			'reports a TLS failure, not a host refusal, when every cleartext retry is refused at %s',
+			async (phase) => {
+				connectMock.mockImplementation(async (options: { tlsMode: string }) => {
+					if (options.tlsMode === 'starttls') throw handshakeFailure();
+					if (phase === 'ehlo') throw encryptionRequired('ehlo');
+					return liveConn(false);
+				});
+				if (phase === 'mail') sendEnvelopeMock.mockRejectedValue(encryptionRequired('mail'));
+
+				const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+				// Retried until the receiver's TLS works, never a terminal bounce on
+				// the cleartext session's 530, and the result names both halves.
+				expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+				expect(result.smtpCode).toBeUndefined();
+				expect(result.error).toContain('TLS handshake failed');
+				expect(result.error).toContain('cleartext');
+				expect(result.error).toContain('5.7.10');
+				expect(acquireMock.mock.calls.map((call) => call[0])).toEqual([
+					'mx1.example.com',
+					'mx1.example.com',
+					'mx2.example.com',
+					'mx2.example.com',
+				]);
+				const policy = (await reportFor()).policies[0]!;
+				expect(policy.summary['total-failure-session-count']).toBe(2);
+				expect(policy.summary['total-successful-session-count']).toBe(0);
+			}
+		);
+
 		it('never falls back to cleartext under an MTA-STS enforce policy', async () => {
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
