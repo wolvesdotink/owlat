@@ -64,6 +64,8 @@ interface Fixture {
 	/** stdout of `docker compose ps`, or an error when docker cannot run. */
 	compose: string | Error;
 	fetch?: (url: string, init?: RequestInit) => Response;
+	/** stdout of `convex run` for the system sender's DNS records; absent: it cannot run. */
+	systemSenderDns?: string;
 	/** Values from this fixture's `.env` that must appear in neither output. */
 	secrets?: string[];
 }
@@ -135,6 +137,19 @@ const FIXTURES: Record<string, Fixture> = {
 			},
 		]),
 		fetch: (url) => Response.json(url.endsWith('/ip-audit') ? { audits: [] } : healthyMta),
+		systemSenderDns: JSON.stringify({
+			state: 'verified',
+			domain: 'mail.example.com',
+			records: [
+				{
+					label: 'DKIM',
+					type: 'TXT',
+					name: 's1._domainkey.mail.example.com',
+					value: 'v=DKIM1; k=rsa; p=AAAA',
+					verified: true,
+				},
+			],
+		}),
 	},
 	brokenMta: {
 		env: [
@@ -158,6 +173,26 @@ const FIXTURES: Record<string, Fixture> = {
 			},
 		]),
 		fetch: (url) => Response.json(url.endsWith('/ip-audit') ? unusableAudit : brokenMta),
+		systemSenderDns: JSON.stringify({
+			state: 'pending',
+			domain: 'mail.example.com',
+			records: [
+				{
+					label: 'SPF',
+					type: 'TXT',
+					name: 'mail.example.com',
+					value: 'v=spf1 a -all',
+					verified: true,
+				},
+				{
+					label: 'DKIM',
+					type: 'TXT',
+					name: 's1._domainkey.mail.example.com',
+					value: 'v=DKIM1; k=rsa; p=AAAA',
+					verified: false,
+				},
+			],
+		}),
 	},
 	unreachable: {
 		env: [
@@ -514,6 +549,10 @@ async function run(fixture: Fixture, json: boolean): Promise<{ code: number; std
 			if (fixture.compose instanceof Error) throw fixture.compose;
 			return fixture.compose;
 		},
+		convexRun: async () => {
+			if (fixture.systemSenderDns === undefined) throw new Error('docker is not available');
+			return fixture.systemSenderDns;
+		},
 		now: () => NOW,
 		print: (line) => lines.push(line),
 	};
@@ -611,6 +650,7 @@ describe('doctor --json — report contents', () => {
 			  "fail mta.tcp25 192.0.2.10 unblock_outbound_smtp",
 			  "fail mta.sending_ips configure_sending_ips",
 			  "fail mta.ip_audit 192.0.2.10 replace_or_delist_ip",
+			  "fail mta.system_sender_dns DKIM publish_dns_records",
 			  "fail compose.override run_setup",
 			  "pass compose.services",
 			  "fail containers.health web inspect_container",

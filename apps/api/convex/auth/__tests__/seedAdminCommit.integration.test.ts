@@ -119,4 +119,37 @@ describe('commitAdminSeed', () => {
 		expect(await userCount(t)).toBe(1);
 		expect((await appRows(t)).admins).toHaveLength(1);
 	});
+
+	describe('the system sender domain', () => {
+		async function domains(t: Harness) {
+			return await t.run((ctx) => ctx.db.query('domains').collect());
+		}
+
+		it('is registered with the built-in MTA, so account mail can be signed', async () => {
+			vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.org');
+			vi.stubEnv('MTA_INTERNAL_URL', 'http://mta.internal:3100');
+			vi.stubEnv('MTA_API_KEY', 'mta-key');
+			const t = harness();
+
+			expect(await t.mutation(internal.auth.seedAdminCommit.commitAdminSeed, SEED)).toMatchObject({
+				outcome: 'seeded',
+			});
+			expect(await domains(t)).toEqual([
+				expect.objectContaining({
+					domain: 'mail.example.org',
+					providerType: 'mta',
+					status: 'registering',
+				}),
+			]);
+		});
+
+		it('is left alone when no system sender is configured', async () => {
+			vi.stubEnv('MTA_INTERNAL_URL', 'http://mta.internal:3100');
+			vi.stubEnv('MTA_API_KEY', 'mta-key');
+			const t = harness();
+
+			await t.mutation(internal.auth.seedAdminCommit.commitAdminSeed, SEED);
+			expect(await domains(t)).toEqual([]);
+		});
+	});
 });

@@ -351,8 +351,8 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 		// Without DEFAULT_FROM_* the Convex runtime sends system mail from a
 		// placeholder domain the operator does not own (auth/auth.ts,
 		// transactional/dispatchDecision.ts). The EHLO hostname is the domain the
-		// MTA identifies as, but it is not DKIM-signed until it is added as a
-		// domain in the app: the MTA signs only domains registered there.
+		// MTA identifies as; the admin seed registers it as a sending domain so
+		// the MTA can DKIM-sign system mail once its records are published.
 		Object.assign(patch, systemFromIdentityEnv(config.domain.ehloHostname));
 	}
 

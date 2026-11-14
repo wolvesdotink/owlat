@@ -2,9 +2,10 @@
  * The one commit of `POST /seed/admin` (`seedAdminHttp.ts`): the first admin's
  * BetterAuth user, credential account, organization and owner membership, the
  * user profile, the instance settings row with its one-shot latch, the initial
- * platform-admin grant and the wizard's feature flags, in one transaction. A
- * seed that fails anywhere writes nothing, so the instance is either fully
- * seeded and latched or untouched and still seedable.
+ * platform-admin grant, the system sender's sending domain and the wizard's
+ * feature flags, in one transaction. A seed that fails anywhere writes nothing,
+ * so the instance is either fully seeded and latched or untouched and still
+ * seedable.
  */
 
 import { v } from 'convex/values';
@@ -98,6 +99,19 @@ export const commitAdminSeed = internalMutation({
 			await ctx.runMutation(internal.platformAdmin.bootstrap.seedInitialPlatformAdmin, {});
 		} catch (error) {
 			logError('[seedAdmin] platform-admin grant failed (instance is still usable):', error);
+		}
+
+		// The system sender's domain becomes a sending domain, so the MTA has a
+		// key to sign account mail with and the operator gets its DNS records.
+		// Best-effort for the same reason: a failure leaves migration 0075 to
+		// register it, and account mail goes out unsigned meanwhile.
+		try {
+			await ctx.runMutation(internal.domains.systemSenderDomain.register, {});
+		} catch (error) {
+			logError(
+				'[seedAdmin] system sender domain not registered (instance is still usable):',
+				error
+			);
 		}
 
 		if (args.flags) await writeAllFlags(ctx, args.flags);

@@ -183,19 +183,22 @@ export const dispatchDraft = internalAction({
 		const recipients = dispatchRecipients(draft);
 		const sendingMailbox = sendingMailboxId(draft);
 
-		// Two independent reads, side by side. The allowed-from set goes into
+		// Independent reads, side by side. The allowed-from set goes into
 		// every MTA /send call, so the MTA checks "is this From authorized?"
 		// independently of Convex (defence-in-depth around the reducer's check).
 		// The transport branches on mailbox kind: external mailboxes send through
 		// the user's own SMTP via the mail-sync worker, hosted ones go
 		// per-recipient to the MTA. Both are keyed on the SENDING mailbox, so a
 		// send-as identity uses its own allow-set and transport.
-		const [allowedFromAddresses, transport] = await Promise.all([
+		const [allowedFromAddresses, transport, requireDkimSignature] = await Promise.all([
 			ctx.runQuery(internal.mail.identities.resolveAllowedFromAddresses, {
 				mailboxId: sendingMailbox,
 			}) as Promise<string[]>,
 			ctx.runQuery(internal.mail.outboundTransport.resolveOutboundTransport, {
 				mailboxId: sendingMailbox,
+			}),
+			ctx.runQuery(internal.delivery.dkimSignatureRequirement.isRequiredForSender, {
+				from: draft.fromAddress,
 			}),
 		]);
 		if (transport.kind === 'external') {
@@ -219,6 +222,7 @@ export const dispatchDraft = internalAction({
 			inReplyToHeaderValue,
 			referencesHeaderValue,
 			allowedFromAddresses,
+			requireDkimSignature,
 			mta: getMtaConfig(),
 		});
 	},

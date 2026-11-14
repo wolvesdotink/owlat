@@ -14,6 +14,8 @@ The migration manifest adds the resumable background migration `0073_backfill_la
 
 The migration manifest adds the resumable background migration `0074_backfill_review_queue_counts`. It counts the Team Inbox review queue onto each conversation; until it completes, the Answer badge counts the queue the slower way it always has.
 
+The migration manifest adds `0075_register_system_sender_domain`, which starts itself. With the built-in MTA it adds the system sender's domain (`DEFAULT_FROM_DOMAIN`, or the domain of `DEFAULT_FROM_EMAIL`) as a sending domain, so account mail is DKIM-signed once you publish the DKIM record the Domains page and `owlat doctor` list. New installs get the domain when the first admin is created.
+
 <!-- Add released versions below this line, newest first. -->
 
 ## [0.6.21] - 2026-11-06

@@ -13,10 +13,16 @@
  * the old public key; mail already accepted for that domain must keep waiting
  * until the new record is live, and the MTA holds it until it sees that record
  * itself. New mail from an unverified domain is refused before it gets here.
+ *
+ * Postbox mail (sends, forwards, vacation replies) posts to the MTA's
+ * `/send/postbox` intake from actions, not through the send adapter, and asks
+ * through {@link isRequiredForSender}. System mail never carries the flag:
+ * account mail has to leave before the operator has published DNS.
  */
 
+import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
-import type { QueryCtx } from '../_generated/server';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
 
 export async function isDkimSignatureRequired(ctx: QueryCtx, from: string): Promise<boolean> {
@@ -28,3 +34,9 @@ export async function isDkimSignatureRequired(ctx: QueryCtx, from: string): Prom
 		.first();
 	return row?.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND;
 }
+
+/** {@link isDkimSignatureRequired} for an action that posts to the MTA itself. */
+export const isRequiredForSender = internalQuery({
+	args: { from: v.string() },
+	handler: (ctx, args): Promise<boolean> => isDkimSignatureRequired(ctx, args.from),
+});

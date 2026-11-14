@@ -481,6 +481,16 @@ crons.interval(
 	{}
 );
 
+// System sender domain: register it on an install seeded before the seed did,
+// as soon as a system sender and the built-in MTA are configured. One indexed
+// read once completed.
+crons.interval(
+	'ensure system sender domain',
+	{ hours: 1 },
+	internal.migrations['0075_register_system_sender_domain'].ensure,
+	{}
+);
+
 // Contact-book hygiene (retention cascade, duplicate auto-merge, engagement
 // score decay, sunset policy). Grouped in `contacts/crons.ts`.
 registerContactHygieneCrons(crons);

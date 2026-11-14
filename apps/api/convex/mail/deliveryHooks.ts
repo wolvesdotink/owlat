@@ -50,6 +50,8 @@ export async function forwardToTarget(
 		subject: string;
 		bodyText?: string;
 		bodyHtml?: string;
+		/** The mailbox's domain is registered with the MTA: hold rather than send unsigned. */
+		requireDkimSignature?: boolean;
 	},
 	target: string,
 	correlationId?: string
@@ -94,6 +96,7 @@ export async function forwardToTarget(
 				ipPool: 'transactional',
 				organizationId: 'postbox',
 				dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+				...(args.requireDkimSignature ? { requireDkimSignature: true } : {}),
 				allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
 			} satisfies MtaSendRequest),
 		},
@@ -228,6 +231,13 @@ export const runPostDelivery = internalAction({
 		const selfLower = args.mailboxAddress.toLowerCase();
 
 		const mta = getMtaConfig();
+		// Forwards and auto-replies both leave under the mailbox's own domain.
+		// Asked once, and only when one of them is sent.
+		let required: Promise<boolean> | undefined;
+		const isDkimSignatureRequired = () =>
+			(required ??= ctx.runQuery(internal.delivery.dkimSignatureRequirement.isRequiredForSender, {
+				from: args.mailboxAddress,
+			}));
 
 		// ── Forwarding (account-level rules + filter "Forward to…" actions) ──
 		if (!automated && mta) {
@@ -246,7 +256,12 @@ export const runPostDelivery = internalAction({
 				seen.add(lower);
 				const correlationId = mintCorrelationId('fwd');
 				try {
-					await forwardToTarget(mta, args, target, correlationId);
+					await forwardToTarget(
+						mta,
+						{ ...args, requireDkimSignature: await isDkimSignatureRequired() },
+						target,
+						correlationId
+					);
 					logEvent('postbox.forward.sent', {
 						correlationId,
 						outcome: 'sent',
@@ -355,6 +370,7 @@ export const runPostDelivery = internalAction({
 						ipPool: 'transactional',
 						organizationId: 'postbox',
 						dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+						...((await isDkimSignatureRequired()) ? { requireDkimSignature: true } : {}),
 						allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
 					} satisfies MtaSendRequest),
 				},
