@@ -21,7 +21,11 @@ import { readEnv, type EnvMap } from '../lib/env';
 import { generateSecret } from '@owlat/shared/setupSecrets';
 import { OWN_SEND_PROVIDER_KIND, isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
-import { isSetupSendingKind, sendingConfigFromCredentials } from '@owlat/shared/setupSendingConfig';
+import {
+	SETUP_SENDING_CATALOG_ENTRIES,
+	isSetupSendingKind,
+	sendingConfigFromCredentials,
+} from '@owlat/shared/setupSendingConfig';
 import { persistResolvedSetup } from '../lib/persistSetup';
 import { createReporter, SetupStep } from '../lib/progress';
 import {
@@ -209,9 +213,64 @@ export function buildAssumeYesConfig(existingEnv: EnvMap): SetupConfig {
 	return config;
 }
 
+/**
+ * Every variable a headless install reads from its environment. `scripts/owlat`
+ * passes exactly these into the installer container, and nothing else from the
+ * host (a test holds its list equal to this one), so an answer read here that
+ * is missing from the list would be lost on the `curl … | bash` path.
+ */
+export const ASSUME_YES_ENV_KEYS: readonly string[] = Object.freeze([
+	'OWLAT_DEPLOYMENT_MODE',
+	'OWLAT_ADMIN_EMAIL',
+	'OWLAT_ADMIN_NAME',
+	'OWLAT_ADMIN_PASSWORD',
+	'EHLO_HOSTNAME',
+	'RETURN_PATH_DOMAIN',
+	'DEFAULT_FROM_EMAIL',
+	'DEFAULT_FROM_NAME',
+	'EMAIL_PROVIDER',
+	...new Set(
+		SETUP_SENDING_CATALOG_ENTRIES.flatMap((entry) =>
+			entry.credentialFields.flatMap((field) =>
+				field.kind === 'host-port'
+					? [field.envVar, field.portEnvVar, field.secureEnvVar]
+					: [field.envVar]
+			)
+		)
+	),
+	'LLM_PROVIDER',
+	'LLM_API_KEY',
+	'LLM_BASE_URL',
+	'LLM_MODEL_FAST',
+	'LLM_MODEL_CAPABLE',
+]);
+
 /** An answer from `process.env`, else from the existing `.env`; empty counts as unset. */
 function assumeYesReader(existingEnv: EnvMap): (key: string) => string | undefined {
-	return (key) => process.env[key] || existingEnv[key] || undefined;
+	return (key) => {
+		if (!ASSUME_YES_ENV_KEYS.includes(key)) {
+			throw new Error(
+				`${key} is read by the headless install but missing from ASSUME_YES_ENV_KEYS`
+			);
+		}
+		return process.env[key] || existingEnv[key] || undefined;
+	};
+}
+
+/**
+ * The admin account a headless quickstart creates, from `OWLAT_ADMIN_*`; each
+ * missing answer falls back to quickstart's own default.
+ */
+export function assumeYesAdminFromEnv(): { email?: string; name?: string; password?: string } {
+	const read = assumeYesReader({});
+	const email = read('OWLAT_ADMIN_EMAIL');
+	const name = read('OWLAT_ADMIN_NAME');
+	const password = read('OWLAT_ADMIN_PASSWORD');
+	return {
+		...(email ? { email } : {}),
+		...(name ? { name } : {}),
+		...(password ? { password } : {}),
+	};
 }
 
 /**

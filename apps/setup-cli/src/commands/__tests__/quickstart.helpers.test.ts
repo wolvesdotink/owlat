@@ -3,7 +3,12 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { parseFlags, dnsInstructions, formatSummary } from '../quickstartPrompts.js';
+import {
+	parseFlags,
+	dnsInputFromEnv,
+	dnsInstructions,
+	formatSummary,
+} from '../quickstartPrompts.js';
 import { resolveComposeVersionPin, composeImageSource, composeUpArgs } from '../quickstartStack.js';
 import { checkOutboundPort25, outboundPort25Warning } from '../quickstartOutbound.js';
 import type { MtaHealthBody } from '../doctor.js';
@@ -158,6 +163,23 @@ describe('dnsInstructions', () => {
 		expect(text).toMatch(/PTR\s+mail\.example\.com/);
 		expect(text).toContain("VPS provider's console");
 	});
+
+	it('lists the same records for a wizard install read back from .env', () => {
+		const network = {
+			siteUrl: 'https://owlat.example.com',
+			convexUrl: 'https://api.example.com',
+			convexSiteUrl: 'https://rest.api.example.com',
+		};
+		const domain = { ehloHostname: 'mail.example.com', bounceDomain: 'bounces.example.com' };
+		const fromEnv = dnsInputFromEnv(network, {
+			EMAIL_PROVIDER: 'mta',
+			EHLO_HOSTNAME: domain.ehloHostname,
+			RETURN_PATH_DOMAIN: domain.bounceDomain,
+		});
+		expect(dnsInstructions(fromEnv)).toEqual(
+			dnsInstructions({ network, sending: { provider: 'mta' }, domain } as SetupConfig)
+		);
+	});
 });
 
 describe('formatSummary', () => {
@@ -300,6 +322,18 @@ describe('quickstart — localhost links in system mail', () => {
 		);
 		expect(out.split('\n')[0]).toBe('Quickstart complete!');
 		expect(out).toContain('owlat env SITE_URL');
+		expect(out).toContain('run `owlat setup`, choose "Only the public address"');
+	});
+
+	it('shows the public web address of an install behind the bundled edge', () => {
+		const out = plain(
+			formatSummary({
+				mode: 'custom',
+				baseUrl: 'https://api.example.com',
+				webUrl: 'https://owlat.example.com',
+			})
+		);
+		expect(out).toContain('Web app:   https://owlat.example.com');
 	});
 
 	it('stays quiet for a public SITE_URL or a box with no public mail identity', () => {

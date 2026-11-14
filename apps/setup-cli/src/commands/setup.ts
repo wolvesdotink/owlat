@@ -19,12 +19,11 @@ import {
 	multiselect,
 	text,
 	password,
-	confirm,
 	isCancel,
 	log,
 	group,
 } from '@clack/prompts';
-import { progressSpinner, validateWithSpinner } from '../lib/progress';
+import { progressSpinner } from '../lib/progress';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -50,10 +49,22 @@ import { pickSendingProvider } from './setupSendingProvider';
 import { pickAIProvider, pickDecisionProvider, withComposeProfiles } from './setupAiProvider';
 import { collectDomain } from './setupDomain';
 import {
-	validatePostHogHost,
-	validateGoogleSafeBrowsingKey,
-	isValidEmail,
-} from '../lib/validators';
+	collectGoogleSafeBrowsing,
+	collectMicrosoftOAuth,
+	collectPostHog,
+} from './setupIntegrations';
+import {
+	askPublicAddress,
+	publicAddressNextSteps,
+	runPublicAddressOnly,
+} from './setupPublicAddress';
+import {
+	bundledEdgeNetwork,
+	withLocalNetwork,
+	withPublicNetwork,
+	writeCaddyfile,
+} from '../lib/publicAddress';
+import { isValidEmail } from '../lib/validators';
 
 import type { CliOptions } from '../lib/cliOptions';
 
@@ -100,13 +111,25 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 			log.error((error as Error).message);
 			return 1;
 		}
-		const proceed = await confirm({
-			message: `An existing install was detected at ${opts.owlatDir}. Re-running setup will update .env and the compose override. Continue?`,
-			initialValue: false,
+		const rerun = await select({
+			message: `An existing install was detected at ${opts.owlatDir}. What do you want to change?`,
+			options: [
+				{ label: 'Only the public address (HTTPS domain)', value: 'public-address' },
+				{
+					label: 'Everything: re-run the full setup',
+					value: 'full',
+					hint: 'updates .env and the compose override',
+				},
+				{ label: 'Nothing', value: 'cancel' },
+			],
+			initialValue: 'public-address',
 		});
-		if (isCancel(proceed) || !proceed) {
+		if (isCancel(rerun) || rerun === 'cancel') {
 			outro(pc.yellow('Setup cancelled. Run `owlat-setup config` to make incremental changes.'));
 			return 0;
+		}
+		if (rerun === 'public-address') {
+			return await runPublicAddressOnly({ owlatDir: opts.owlatDir, envPath, overridePath });
 		}
 	}
 
@@ -207,6 +230,14 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 		envPatch = { ...envPatch, ...dom };
 	}
 
+	// Step 8: public HTTPS address (empty keeps the install on localhost).
+	const publicAddress = await askPublicAddress({
+		existingEnv,
+		contactEmail: admin.email,
+		allowStayLocal: true,
+	});
+	if (!publicAddress) return 1;
+
 	// === Apply ===
 	const s = progressSpinner();
 	s.start('Generating secrets and writing config');
@@ -218,15 +249,22 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 	// Deployment URLs + dev-mode default. Shared with the non-interactive config
 	// path (lib/setupEnvDefaults.applySetupDefaults) so the two can't diverge.
 	applySetupDefaults(withSecrets, deploymentMode as DeploymentMode, flags, !hasPriorInstall);
+	const network = publicAddress.network;
+	const finalEnv = network
+		? withPublicNetwork(withSecrets, network)
+		: bundledEdgeNetwork(existingEnv)
+			? withLocalNetwork(withSecrets)
+			: withSecrets;
 
 	const profiles = await persistResolvedSetup({
 		owlatDir: opts.owlatDir,
 		envPath,
 		overridePath,
-		env: withSecrets,
+		env: finalEnv,
 		flags,
 		hosted,
 	});
+	if (network) await writeCaddyfile(opts.owlatDir, network, publicAddress.email);
 
 	s.stop(
 		`Wrote ${pc.cyan(envPath)} and ${pc.cyan(overridePath)} (profiles: ${profiles.join(', ') || 'none'})`
@@ -245,7 +283,9 @@ export async function runSetup(opts: RunOptions): Promise<number> {
 			`\n\n${pc.bold('This wrote .env + compose override only — it did not deploy or create your admin.')}\n` +
 			`Next: ${pc.cyan(`cd ${opts.owlatDir} && owlat quickstart`)} to bring up the stack,\n` +
 			`deploy the Convex functions, push env vars, and create ${admin.email}.\n` +
-			`Then open ${pc.cyan('http://localhost:3000')} to sign in.`
+			(network
+				? publicAddressNextSteps(network).join('\n')
+				: `Then open ${pc.cyan('http://localhost:3000')} to sign in.`)
 	);
 	return 0;
 }
@@ -318,77 +358,6 @@ function categoryLabel(cat: string): string {
 		hosted: 'Hosted-mode',
 	};
 	return map[cat] ?? cat;
-}
-
-async function collectGoogleSafeBrowsing(): Promise<EnvMap | null> {
-	const apiKey = await password({ message: 'Google Safe Browsing API key' });
-	if (isCancel(apiKey)) return null;
-	if (
-		!(await validateWithSpinner('Validating Google Safe Browsing key', () =>
-			validateGoogleSafeBrowsingKey(apiKey as string)
-		))
-	) {
-		return null;
-	}
-	return { GOOGLE_SAFE_BROWSING_API_KEY: apiKey as string };
-}
-
-async function collectPostHog(): Promise<EnvMap | null> {
-	const result = await group({
-		host: () => text({ message: 'PostHog host', placeholder: 'https://app.posthog.com' }),
-		apiKey: () => password({ message: 'PostHog API key (phc_...)' }),
-	});
-	if (
-		!(await validateWithSpinner('Checking PostHog reachability', () =>
-			validatePostHogHost(result.host, result.apiKey)
-		))
-	) {
-		return null;
-	}
-	return {
-		POSTHOG_API_KEY: result.apiKey,
-		POSTHOG_HOST: result.host,
-		NUXT_PUBLIC_POSTHOG_API_KEY: result.apiKey,
-		NUXT_PUBLIC_POSTHOG_HOST: result.host,
-	};
-}
-
-/**
- * Optional: the Microsoft app registration that lets users connect Outlook and
- * Microsoft 365 mailboxes by signing in with Microsoft. Skipping it is a
- * supported answer (an empty patch); only a cancelled prompt returns `null`.
- */
-async function collectMicrosoftOAuth(): Promise<EnvMap | null> {
-	const wanted = await confirm({
-		message:
-			'Offer "Sign in with Microsoft" for Outlook and Microsoft 365 mailboxes? (needs an app registered in Microsoft Entra)',
-		initialValue: false,
-	});
-	if (isCancel(wanted)) return null;
-	if (!wanted) return {};
-	const result = await group({
-		clientId: () =>
-			text({
-				message: 'Application (client) ID',
-				validate: (v) => (v?.trim() ? undefined : 'Enter the application ID'),
-			}),
-		clientSecret: () => password({ message: 'Client secret value' }),
-		tenant: () =>
-			text({
-				message: 'Tenant (common, organizations, consumers, or a tenant ID or domain)',
-				initialValue: 'common',
-				validate: (v) =>
-					/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(v?.trim() ?? '')
-						? undefined
-						: 'Enter common, organizations, consumers, a tenant ID or a domain',
-			}),
-	});
-	if (isCancel(result) || !result.clientSecret) return null;
-	return {
-		MICROSOFT_OAUTH_CLIENT_ID: result.clientId.trim(),
-		MICROSOFT_OAUTH_CLIENT_SECRET: result.clientSecret,
-		MICROSOFT_OAUTH_TENANT: result.tenant.trim(),
-	};
 }
 
 async function collectAdmin(): Promise<{ email: string; name: string; password: string } | null> {

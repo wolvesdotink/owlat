@@ -7,6 +7,7 @@
 import { select, isCancel, confirm, text } from '@clack/prompts';
 import pc from 'picocolors';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
+import type { EnvMap } from '../lib/env';
 import type { SetupConfig } from '../lib/setupConfig';
 import { isValidEmail } from '../lib/validators';
 
@@ -98,12 +99,29 @@ export async function promptText(message: string): Promise<string | undefined> {
 	return result;
 }
 
+type DnsInput = Pick<SetupConfig, 'network' | 'domain'> & { sending?: { provider: string } };
+
+/** {@link dnsInstructions}' input for an install the terminal wizard set up, read from `.env`. */
+export function dnsInputFromEnv(
+	network: NonNullable<SetupConfig['network']>,
+	env: EnvMap
+): DnsInput {
+	const ehloHostname = env['EHLO_HOSTNAME'];
+	return {
+		network,
+		sending: { provider: env['EMAIL_PROVIDER'] ?? '' },
+		...(ehloHostname
+			? { domain: { ehloHostname, bounceDomain: env['RETURN_PATH_DOMAIN'] ?? '' } }
+			: {}),
+	};
+}
+
 /**
  * The DNS records a domain install needs before its public URLs work. The
  * server's own public IP isn't reliably known from inside the box, so the
  * target is described rather than printed.
  */
-export function dnsInstructions(config: SetupConfig): string[] {
+export function dnsInstructions(config: DnsInput): string[] {
 	if (!config.network) return [];
 	const hosts = [
 		config.network.siteUrl,
@@ -139,6 +157,8 @@ export function formatSummary(args: {
 	mode: Mode;
 	adminEmail?: string;
 	baseUrl: string;
+	/** The public web address behind the bundled edge; localhost otherwise. */
+	webUrl?: string;
 	/** Lines explaining why mail cannot leave yet; they replace the plain success headline. */
 	outboundWarning?: string[];
 	/** Lines saying system mail links to a localhost URL (`lib/publicSiteUrl.ts`). */
@@ -154,7 +174,7 @@ export function formatSummary(args: {
 				]
 			: [pc.green('Quickstart complete!')];
 	lines.push('');
-	lines.push(`Web app:   ${pc.cyan('http://localhost:3000')}`);
+	lines.push(`Web app:   ${pc.cyan(args.webUrl ?? 'http://localhost:3000')}`);
 	lines.push(`Convex:    ${pc.cyan(args.baseUrl)}`);
 	if (args.siteUrlNotice?.length) {
 		lines.push('', ...args.siteUrlNotice.map((line) => pc.yellow(line)));

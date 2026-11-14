@@ -1,14 +1,13 @@
 /**
  * Whether the links in system mail can be opened anywhere but on this server.
  *
- * Verification, password-reset and invitation mail link to `SITE_URL`. The
- * terminal wizard asks for no public URL on purpose: a public `SITE_URL` only
- * works together with the reverse proxy and TLS that serve it (the config
- * file's `network` section sets up both), and once set it is the only origin
- * sign-in trusts, so a public URL that nothing serves yet would also break
- * sign-in on localhost. A terminal install therefore stays on localhost, and
- * the quickstart summary and `owlat doctor` say so as soon as the box sends
- * mail as a public domain.
+ * Verification, password-reset and invitation mail link to `SITE_URL`. A public
+ * `SITE_URL` only works together with the reverse proxy and TLS that serve it,
+ * and once set it is the only origin sign-in trusts. The terminal wizard's
+ * public-address step and the config file's `network` section set both up
+ * together (`publicAddress.ts`); an install that gave no domain stays on
+ * localhost, and the quickstart summary and `owlat doctor` say so as soon as
+ * the box sends mail as a public domain.
  */
 
 import type { EnvMap } from './env';
@@ -61,10 +60,8 @@ export function publicMailIdentity(env: EnvMap): string | undefined {
 
 /** The fix, as commands the operator can paste. */
 export const PUBLIC_SITE_URL_STEPS = [
-	`Serve Owlat on a public HTTPS address (${PRODUCTION_GUIDE}), then run:`,
-	'  owlat env SITE_URL https://owlat.example.com',
-	'  owlat env NUXT_PUBLIC_SITE_URL https://owlat.example.com',
-	'  owlat apply',
+	'Point a domain at this server, open ports 80 and 443, then run `owlat setup`, choose "Only the public address", and run `owlat apply`.',
+	`Behind a proxy of your own (${PRODUCTION_GUIDE}): owlat env SITE_URL https://owlat.example.com, owlat env NUXT_PUBLIC_SITE_URL https://owlat.example.com, owlat apply.`,
 ];
 
 /**
