@@ -1337,6 +1337,7 @@ import type * as lib_validators_teamThreadPriority from '../lib/validators/teamT
 import type * as lib_validators_templates from '../lib/validators/templates.js';
 import type * as lib_validators_threadBrief from '../lib/validators/threadBrief.js';
 import type * as lib_validators_threadRef from '../lib/validators/threadRef.js';
+import type * as lib_validators_transactionalSendCaps from '../lib/validators/transactionalSendCaps.js';
 import type * as lib_validators_responsePlan from '../lib/validators/responsePlan.js';
 import type * as lib_validators_coediting from '../lib/validators/coediting.js';
 import type * as lib_vectorMath from '../lib/vectorMath.js';
@@ -1925,7 +1926,10 @@ import type * as transactional_lifecycle from '../transactional/lifecycle.js';
 import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
 import type * as transactional_pendingUploads from '../transactional/pendingUploads.js';
 import type * as transactional_sendCaps from '../transactional/sendCaps.js';
+import type * as transactional_sendCapSettings from '../transactional/sendCapSettings.js';
+import type * as transactional_sendCapsPolicy from '../transactional/sendCapsPolicy.js';
 import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
+import type * as transactional_sendOptions from '../transactional/sendOptions.js';
 import type * as transactional_sends from '../transactional/sends.js';
 import type * as transactional_sendStatus from '../transactional/sendStatus.js';
 import type * as transactional_sendStatusHttp from '../transactional/sendStatusHttp.js';
@@ -3347,6 +3351,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/templates': typeof lib_validators_templates;
 	'lib/validators/threadBrief': typeof lib_validators_threadBrief;
 	'lib/validators/threadRef': typeof lib_validators_threadRef;
+	'lib/validators/transactionalSendCaps': typeof lib_validators_transactionalSendCaps;
 	'lib/validators/responsePlan': typeof lib_validators_responsePlan;
 	'lib/validators/coediting': typeof lib_validators_coediting;
 	'lib/vectorMath': typeof lib_vectorMath;
@@ -4158,7 +4163,10 @@ declare const fullApi: ApiFromModules<{
 	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
 	'transactional/sendCaps': typeof transactional_sendCaps;
+	'transactional/sendCapSettings': typeof transactional_sendCapSettings;
+	'transactional/sendCapsPolicy': typeof transactional_sendCapsPolicy;
 	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
+	'transactional/sendOptions': typeof transactional_sendOptions;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/sendStatus': typeof transactional_sendStatus;
 	'transactional/sendStatusHttp': typeof transactional_sendStatusHttp;

@@ -16,6 +16,8 @@ The migration manifest adds the resumable background migration `0074_backfill_re
 
 The migration manifest adds `0075_register_system_sender_domain`, which starts itself. With the built-in MTA it adds the system sender's domain (`DEFAULT_FROM_DOMAIN`, or the domain of `DEFAULT_FROM_EMAIL`) as a sending domain, so account mail is DKIM-signed once you publish the DKIM record the Domains page and `owlat doctor` list. New installs get the domain when the first admin is created.
 
+The transactional send limits (per template and recipient, per API key and day) are now set under Settings → API and count sends afresh from the update: on the day you update, a key or a recipient can be sent up to one more day's or hour's allowance than before.
+
 <!-- Add released versions below this line, newest first. -->
 
 ## [0.6.21] - 2026-11-06

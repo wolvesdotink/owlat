@@ -7692,6 +7692,26 @@
 				"title": "Recent sends",
 				"titleNamed": "Recent sends — {name}",
 				"unknownRecipient": "Unknown recipient"
+			},
+			"sendOptions": {
+				"description": "These apply to the next send right away, also while the email is published.",
+				"operations": {
+					"recipientLimit": "Update the recipient limit",
+					"variable": "Update the variable"
+				},
+				"recipientLimit": {
+					"description": "For an email that only goes to one fixed address, such as a new-order notice to your shop. The workspace limit per recipient then no longer applies; the daily limit per API key still does.",
+					"title": "Skip the per-recipient send limit"
+				},
+				"title": "Sending",
+				"variables": {
+					"description": "A required variable that the request leaves out is refused with an error naming it. An optional one may be left out and sends empty, or as its fallback.",
+					"empty": "This email has no data variables yet.",
+					"optional": "Optional",
+					"required": "Required",
+					"title": "Data variables",
+					"toggle": "{name} is optional"
+				}
 			}
 		},
 		"translation": {
@@ -8374,6 +8394,40 @@
 		"contactProperties": {
 			"propertyRow": {
 				"actionsFor": "Actions for {label}"
+			}
+		},
+		"apiKeys": {
+			"sendLimits": {
+				"change": "Change limits",
+				"intro": "A transactional send that reaches one of these limits is refused with HTTP 429 and a Retry-After header. A request repeated with the same Idempotency-Key never counts.",
+				"off": "Off",
+				"per": "per",
+				"perApiKeyDaily": {
+					"countLabel": "Emails per API key and day",
+					"description": "Caps what one key can send in a day, so a leaked key cannot use up your sending reputation. Default: {default} per UTC day.",
+					"offHint": "An API key can send without a daily limit.",
+					"summary": "{count} per UTC day",
+					"title": "Per API key and day",
+					"toggle": "Limit sends per API key and day",
+					"unit": "per UTC day"
+				},
+				"perRecipient": {
+					"countLabel": "Emails per recipient",
+					"description": "Stops a loop, or a stranger's address typed into a public form, from flooding one inbox from your domain. Default: {default}. A template that only goes to one fixed address can opt out in its editor.",
+					"offHint": "Every template can send to the same address without limit.",
+					"summary": "{count} per {window}",
+					"title": "Per template and recipient",
+					"toggle": "Limit sends per template and recipient",
+					"windowLabel": "Time window"
+				},
+				"problem": "Enter a whole number between {min} and {max}.",
+				"restoreDefaults": "Restore defaults",
+				"title": "Transactional send limits",
+				"window": {
+					"days": "day | {count} days",
+					"hours": "hour | {count} hours",
+					"minutes": "minute | {count} minutes"
+				}
 			}
 		}
 	},
@@ -10557,7 +10611,8 @@
 							"create": "Create API key",
 							"delete": "Delete API key",
 							"rename": "Rename API key",
-							"revoke": "Revoke API key"
+							"revoke": "Revoke API key",
+							"saveSendLimits": "Save the send limits"
 						},
 						"pageTitle": "API — Owlat",
 						"rateLimit": {
@@ -10618,7 +10673,8 @@
 							"copyFailed": "Failed to copy to clipboard",
 							"created": "API key created successfully",
 							"deleted": "API key deleted permanently",
-							"revoked": "API key revoked successfully"
+							"revoked": "API key revoked successfully",
+							"sendLimitsSaved": "Send limits saved"
 						},
 						"validation": {
 							"nameRequired": "Name is required",
@@ -18106,6 +18162,10 @@
 				"brandColors": {
 					"title": "Brand colors",
 					"keywords": "brand colours, colors, colours, primary color, link color, palette, theme color"
+				},
+				"transactionalSendLimits": {
+					"keywords": "send limit, rate limit, 429, too many requests, recipient limit, daily limit, transactional limit, throttle, cap",
+					"title": "Transactional send limits"
 				}
 			}
 		},

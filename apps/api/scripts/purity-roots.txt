@@ -103,6 +103,9 @@ convex/lib/textPreview.ts
 # Transactional intake decisions; the mutation (transactional/dispatch.ts) is
 # the shell.
 convex/transactional/dispatchDecision.ts
+# The transactional send caps' defaults, bounds and verdict; transactional/sendCaps.ts
+# charges them.
+convex/transactional/sendCapsPolicy.ts
 
 # Campaign send walker: one hop's decisions and the plan, split and send-time
 # rules they compose; the orchestrator (campaigns/send.ts) is the shell.

@@ -11,11 +11,12 @@ import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { transactionalEmailPool } from '../delivery/workpool';
 import { normalizeEmail } from '../lib/inputGuards';
 import {
+	createTestApiKey,
 	createTestBlockedEmail,
 	createTestContact,
 	createTestDomain,
@@ -23,7 +24,7 @@ import {
 	createTestTransactionalEmail,
 } from './factories';
 import { readInstanceCounter } from '../lib/instanceCounters';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -829,5 +830,214 @@ describe('transactional.dispatch.dispatch — temporary routing holds', () => {
 
 		expect(outcome).toMatchObject({ ok: false, reason: 'domain_unverified' });
 		expect(vi.mocked(transactionalEmailPool.enqueueAction)).not.toHaveBeenCalled();
+	});
+});
+
+// ─── Configurable send caps and optional variables ──────────────────────────
+
+describe('transactional.dispatch.dispatch — send caps an admin configures', () => {
+	const HOUR = 60 * 60 * 1000;
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-11-14T10:00:00Z'));
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	const saveCaps = (
+		t: TestConvex<typeof schema>,
+		caps: {
+			perRecipient?: { isEnabled: boolean; count: number; windowMs: number };
+			perApiKeyDaily?: { isEnabled: boolean; count: number };
+		}
+	) =>
+		t.mutation(api.transactional.sendCapSettings.update, {
+			perRecipient: caps.perRecipient ?? { isEnabled: true, count: 5, windowMs: HOUR },
+			perApiKeyDaily: caps.perApiKeyDaily ?? { isEnabled: true, count: 50_000 },
+		});
+
+	const seedKey = (t: TestConvex<typeof schema>) =>
+		t.run((ctx) => ctx.db.insert('apiKeys', createTestApiKey()));
+
+	const send = (
+		t: TestConvex<typeof schema>,
+		templateId: Id<'transactionalEmails'>,
+		email: string,
+		apiKeyId?: Id<'apiKeys'>
+	) =>
+		t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email,
+			...(apiKeyId ? { apiKeyId } : {}),
+		});
+
+	it('applies a lowered and then a raised per-recipient cap to the next request', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t);
+		await saveCaps(t, { perRecipient: { isEnabled: true, count: 2, windowMs: HOUR } });
+
+		expect((await send(t, templateId, 'ada@example.com')).ok).toBe(true);
+		expect((await send(t, templateId, 'ada@example.com')).ok).toBe(true);
+		const third = await send(t, templateId, 'ada@example.com');
+		expect(third).toMatchObject({ ok: false, reason: 'recipient_rate_limited' });
+		if (third.ok) throw new Error('expected refusal');
+		expect(third.detail).toContain('2 per hour');
+		expect(third.detail).toContain('instance admin');
+		expect(third.retryAfterMs).toBeGreaterThan(0);
+
+		await saveCaps(t, { perRecipient: { isEnabled: true, count: 3, windowMs: HOUR } });
+		expect((await send(t, templateId, 'ada@example.com')).ok).toBe(true);
+		expect((await send(t, templateId, 'ada@example.com')).ok).toBe(false);
+	});
+
+	it('applies a raised daily cap per API key to the next request', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t);
+		const keyId = await seedKey(t);
+		await saveCaps(t, { perApiKeyDaily: { isEnabled: true, count: 1 } });
+
+		expect((await send(t, templateId, 'a@example.com', keyId)).ok).toBe(true);
+		const refused = await send(t, templateId, 'b@example.com', keyId);
+		expect(refused).toMatchObject({ ok: false, reason: 'daily_send_limit' });
+		if (refused.ok) throw new Error('expected refusal');
+		// The window ends at the next UTC midnight, 14 hours from now.
+		expect(refused.retryAfterMs).toBe(14 * HOUR);
+
+		await saveCaps(t, { perApiKeyDaily: { isEnabled: true, count: 2 } });
+		expect((await send(t, templateId, 'c@example.com', keyId)).ok).toBe(true);
+	});
+
+	it('never refuses on a cap that is switched off', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t);
+		const keyId = await seedKey(t);
+		await saveCaps(t, {
+			perRecipient: { isEnabled: false, count: 1, windowMs: HOUR },
+			perApiKeyDaily: { isEnabled: false, count: 1 },
+		});
+
+		for (let i = 0; i < 4; i++) {
+			expect((await send(t, templateId, 'ada@example.com', keyId)).ok).toBe(true);
+		}
+	});
+
+	it('does not throttle a template that opted out of the per-recipient cap', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t);
+		const keyId = await seedKey(t);
+		await t.mutation(api.transactional.sendOptions.setRecipientCapExempt, {
+			id: templateId,
+			isExempt: true,
+		});
+		await saveCaps(t, { perApiKeyDaily: { isEnabled: true, count: 7 } });
+
+		for (let i = 0; i < 7; i++) {
+			expect((await send(t, templateId, 'orders@shop.example', keyId)).ok).toBe(true);
+		}
+		// The daily cap per key still counts the exempt template's sends.
+		expect(await send(t, templateId, 'orders@shop.example', keyId)).toMatchObject({
+			ok: false,
+			reason: 'daily_send_limit',
+		});
+	});
+
+	it('refuses a cap change from a member who is not an admin', async () => {
+		const t = newTest();
+		await seedBaseline(t);
+		vi.mocked(getMutationContext).mockResolvedValueOnce({
+			userId: 'editor-user',
+			role: 'editor',
+			activeOrganizationId: 'org_1',
+		});
+
+		await expect(
+			saveCaps(t, { perRecipient: { isEnabled: false, count: 5, windowMs: HOUR } })
+		).rejects.toThrow(/owners and admins/);
+		const settings = await t.run((ctx) => ctx.db.query('instanceSettings').first());
+		expect(settings?.transactionalSendCaps).toBeUndefined();
+	});
+
+	it('refuses a cap of zero or out of range, and audits a saved change', async () => {
+		const t = newTest();
+		await seedBaseline(t);
+
+		await expect(
+			saveCaps(t, { perRecipient: { isEnabled: true, count: 0, windowMs: HOUR } })
+		).rejects.toThrow(/per-recipient cap/);
+		await expect(
+			saveCaps(t, { perRecipient: { isEnabled: true, count: 5, windowMs: 1_500 } })
+		).rejects.toThrow(/window/);
+		await expect(saveCaps(t, { perApiKeyDaily: { isEnabled: true, count: -1 } })).rejects.toThrow(
+			/daily cap/
+		);
+
+		await saveCaps(t, { perApiKeyDaily: { isEnabled: false, count: 50_000 } });
+		const audit = await t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.filter((q) => q.eq(q.field('action'), 'settings.transactional_send_caps_updated'))
+				.collect()
+		);
+		expect(audit).toHaveLength(1);
+		expect(audit[0]?.details).toMatchObject({ isPerApiKeyDailyEnabled: false });
+	});
+});
+
+describe('transactional.dispatch.dispatch — optional variables', () => {
+	it('accepts a request that leaves out a variable the template marks optional', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			htmlContent: '<p>Order {{orderNumber}} {{giftNote}}</p>',
+			dataVariablesSchema: { orderNumber: 'string', giftNote: 'string' },
+		});
+		await t.mutation(api.transactional.sendOptions.setVariableOptional, {
+			id: templateId,
+			key: 'giftNote',
+			isOptional: true,
+		});
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: { orderNumber: 'A-1' },
+		});
+
+		expect(outcome.ok).toBe(true);
+
+		// Marked required again, the same request is refused.
+		await t.mutation(api.transactional.sendOptions.setVariableOptional, {
+			id: templateId,
+			key: 'giftNote',
+			isOptional: false,
+		});
+		const again = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'other@example.com',
+			dataVariables: { orderNumber: 'A-1' },
+		});
+		expect(again).toMatchObject({ ok: false, reason: 'invalid_variables' });
+	});
+
+	it('still refuses a missing variable that is not optional, saying it can be marked optional', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t, {
+			htmlContent: '<p>Order {{orderNumber}} {{giftNote}}</p>',
+			dataVariablesSchema: { orderNumber: 'string', giftNote: 'string' },
+		});
+		await t.run((ctx) => ctx.db.patch(templateId, { optionalDataVariables: ['giftNote'] }));
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+			dataVariables: {},
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'invalid_variables' });
+		if (outcome.ok) throw new Error('expected refusal');
+		expect(outcome.detail).toContain('"orderNumber"');
+		expect(outcome.detail).not.toContain('giftNote');
+		expect(outcome.detail).toContain('mark it optional');
 	});
 });

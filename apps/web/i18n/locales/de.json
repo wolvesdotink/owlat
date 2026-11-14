@@ -7692,6 +7692,26 @@
 				"title": "Letzte Sendungen",
 				"titleNamed": "Letzte Sendungen — {name}",
 				"unknownRecipient": "Unbekannter Empfänger"
+			},
+			"sendOptions": {
+				"description": "Diese Einstellungen gelten sofort für den nächsten Versand, auch während die E-Mail veröffentlicht ist.",
+				"operations": {
+					"recipientLimit": "Empfängerlimit ändern",
+					"variable": "Variable ändern"
+				},
+				"recipientLimit": {
+					"description": "Für eine E-Mail, die nur an eine feste Adresse geht, etwa eine Bestellbenachrichtigung an deinen Shop. Das Limit pro Empfänger gilt dann nicht mehr, das Tageslimit pro API-Schlüssel schon.",
+					"title": "Versandlimit pro Empfänger überspringen"
+				},
+				"title": "Versand",
+				"variables": {
+					"description": "Fehlt in der Anfrage eine Pflichtvariable, wird sie mit einem Fehler abgelehnt, der die Variable nennt. Eine optionale Variable darf fehlen und wird leer gesendet oder mit ihrem Ersatzwert.",
+					"empty": "Diese E-Mail hat noch keine Datenvariablen.",
+					"optional": "Darf fehlen",
+					"required": "Pflicht",
+					"title": "Datenvariablen",
+					"toggle": "{name} ist optional"
+				}
 			}
 		},
 		"translation": {
@@ -8374,6 +8394,40 @@
 		"contactProperties": {
 			"propertyRow": {
 				"actionsFor": "Aktionen für {label}"
+			}
+		},
+		"apiKeys": {
+			"sendLimits": {
+				"change": "Limits ändern",
+				"intro": "Ein Transaktionsversand, der eines dieser Limits erreicht, wird mit HTTP 429 und einem Retry-After-Header abgelehnt. Eine Anfrage, die mit demselben Idempotency-Key wiederholt wird, zählt nie mit.",
+				"off": "Aus",
+				"per": "pro",
+				"perApiKeyDaily": {
+					"countLabel": "E-Mails pro API-Schlüssel und Tag",
+					"description": "Begrenzt, was ein Schlüssel an einem Tag senden kann, damit ein geleakter Schlüssel nicht deinen Absenderruf aufbraucht. Standard: {default} pro UTC-Tag.",
+					"offHint": "Ein API-Schlüssel kann ohne Tageslimit senden.",
+					"summary": "{count} pro UTC-Tag",
+					"title": "Pro API-Schlüssel und Tag",
+					"toggle": "Versand pro API-Schlüssel und Tag begrenzen",
+					"unit": "pro UTC-Tag"
+				},
+				"perRecipient": {
+					"countLabel": "E-Mails pro Empfänger",
+					"description": "Verhindert, dass eine Schleife oder eine fremde Adresse in einem öffentlichen Formular ein Postfach von deiner Domain aus flutet. Standard: {default}. Eine Vorlage, die nur an eine feste Adresse geht, kann sich in ihrem Editor davon ausnehmen.",
+					"offHint": "Jede Vorlage darf beliebig oft an dieselbe Adresse senden.",
+					"summary": "{count} pro {window}",
+					"title": "Pro Vorlage und Empfänger",
+					"toggle": "Versand pro Vorlage und Empfänger begrenzen",
+					"windowLabel": "Zeitfenster"
+				},
+				"problem": "Gib eine ganze Zahl zwischen {min} und {max} ein.",
+				"restoreDefaults": "Standardwerte wiederherstellen",
+				"title": "Versandlimits für Transaktionsmails",
+				"window": {
+					"days": "Tag | {count} Tage",
+					"hours": "Stunde | {count} Stunden",
+					"minutes": "Minute | {count} Minuten"
+				}
 			}
 		}
 	},
@@ -10557,7 +10611,8 @@
 							"create": "API-Schlüssel erstellen",
 							"delete": "API-Schlüssel löschen",
 							"rename": "API-Schlüssel umbenennen",
-							"revoke": "API-Schlüssel widerrufen"
+							"revoke": "API-Schlüssel widerrufen",
+							"saveSendLimits": "Versandlimits speichern"
 						},
 						"pageTitle": "API — Owlat",
 						"rateLimit": {
@@ -10618,7 +10673,8 @@
 							"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
 							"created": "API-Schlüssel erfolgreich erstellt",
 							"deleted": "API-Schlüssel dauerhaft gelöscht",
-							"revoked": "API-Schlüssel erfolgreich widerrufen"
+							"revoked": "API-Schlüssel erfolgreich widerrufen",
+							"sendLimitsSaved": "Versandlimits gespeichert"
 						},
 						"validation": {
 							"nameRequired": "Name ist erforderlich",
@@ -18106,6 +18162,10 @@
 				"brandColors": {
 					"title": "Markenfarben",
 					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
+				},
+				"transactionalSendLimits": {
+					"keywords": "versandlimit, ratenbegrenzung, 429, too many requests, empfängerlimit, tageslimit, transaktionslimit, drosselung, send limit, rate limit",
+					"title": "Versandlimits für Transaktionsmails"
 				}
 			}
 		},

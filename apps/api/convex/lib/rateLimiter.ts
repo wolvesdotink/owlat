@@ -1,4 +1,4 @@
-import { RateLimiter, SECOND, MINUTE, HOUR, DAY } from '@convex-dev/rate-limiter';
+import { RateLimiter, SECOND, MINUTE, HOUR } from '@convex-dev/rate-limiter';
 import { components } from '../_generated/api';
 
 /**
@@ -15,29 +15,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 15, // Allow burst up to 15 requests
 	},
 
-	// Transactional sends of one template to one address (transactional/sendCaps.ts),
-	// keyed on the template and a digest of the address. A person needs a handful
-	// of password resets or sign-in links an hour, not more; a loop against one
-	// address, or a stranger's address typed into a public form, stops here
-	// instead of reaching the mailbox provider as a flood from our domain.
-	transactionalPerRecipient: {
-		kind: 'token bucket',
-		rate: 5,
-		period: HOUR,
-		capacity: 5,
-	},
-
-	// Transactional sends accepted per API key per UTC day (transactional/sendCaps.ts).
-	// `apiRequest` bounds the request rate, not the volume: at its rate one key
-	// could send several hundred thousand mails a day, which is what a leaked key
-	// does and how a sender ends up on a blocklist. Generous for a real
-	// integration; `start: 0` puts the window boundary at UTC midnight.
-	transactionalPerApiKeyDaily: {
-		kind: 'fixed window',
-		rate: 50_000,
-		period: DAY,
-		start: 0,
-	},
+	// The transactional send caps (transactional/sendCaps.ts) are not defined
+	// here: an instance admin sets them, so each call passes its config inline.
 
 	// Failed API-key authentications, keyed per client IP. A wrong or unknown key
 	// never reaches the per-key `apiRequest` bucket (there is no key to key it

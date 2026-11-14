@@ -425,27 +425,13 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 							@update:attachments="attachments = $event"
 						/>
 					</div>
-					<!-- Unsubscribe footer — when on, sends of this email append a
-				     Manage Preferences / Unsubscribe footer (built per-recipient at
-				     send time). Off by default: most transactional mail is exempt. -->
-					<div
-						class="mt-3 rounded-lg shadow-surface-1 bg-bg-elevated px-10 py-5 flex items-center justify-between gap-4"
-					>
-						<div>
-							<p class="text-base font-medium text-text-primary">
-								{{ t('dashboard.send.transactional.detail.edit.unsubscribe.title') }}
-							</p>
-							<p class="text-sm text-text-tertiary mt-0.5">
-								{{ t('dashboard.send.transactional.detail.edit.unsubscribe.description') }}
-							</p>
-						</div>
-						<UiSwitch
-							:model-value="showUnsubscribe"
-							:label="t('dashboard.send.transactional.detail.edit.unsubscribe.title')"
-							class="shrink-0"
-							@update:model-value="showUnsubscribe = $event"
-						/>
-					</div>
+					<TransactionalSendOptions
+						v-model:show-unsubscribe="showUnsubscribe"
+						:email-id="emailId"
+						:variables="dataVariables"
+						:optional-variables="email?.optionalDataVariables ?? []"
+						:is-recipient-cap-exempt="email?.isRecipientCapExempt === true"
+					/>
 				</template>
 			</EmailBuilder>
 		</UiQueryBoundary>

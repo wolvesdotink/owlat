@@ -249,7 +249,7 @@ deferred 12 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.de.json
 deferred 11 ../node_modules/.cache/owlat-i18n/areas/dashboard-postbox.en.json
 deferred 30 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.de.json
 deferred 26 ../node_modules/.cache/owlat-i18n/areas/dashboard-preferences.en.json
-deferred 15 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
+deferred 16 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.de.json
 deferred 14 ../node_modules/.cache/owlat-i18n/areas/dashboard-send.en.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.de.json
 deferred 3 ../node_modules/.cache/owlat-i18n/areas/dashboard-visualizations.en.json

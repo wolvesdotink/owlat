@@ -119,7 +119,7 @@ describe('the sender and the variables', () => {
 			decideSenderAndVariables({
 				domainStatus: unverified,
 				dataVariables: { firstName: 3 },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ reason: 'domain_unverified', detail: expect.stringContaining('"x.test"') });
@@ -127,7 +127,7 @@ describe('the sender and the variables', () => {
 			decideSenderAndVariables({
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 3 },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ reason: 'invalid_variables' });
@@ -135,7 +135,7 @@ describe('the sender and the variables', () => {
 			decideSenderAndVariables({
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 'Ada' },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toBeUndefined();
