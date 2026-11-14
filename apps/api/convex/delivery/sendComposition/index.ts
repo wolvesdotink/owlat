@@ -18,7 +18,7 @@ import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
 import { footerText } from './footer';
-import { personalize } from './personalization';
+import { automationVariables, personalize, withUnsubscribeLink } from './personalization';
 import type {
 	ComposeInput,
 	ComposeInputForKind,
@@ -88,7 +88,7 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 	// reader of the text part has the same visible opt-out.
 	const stored = input.template.plainTextContent?.trim();
 	const body = stored
-		? personalize(stored, variablesFor(input), { escape: 'plain' })
+		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	const config = composed.transformConfig;
 	const text =
@@ -96,12 +96,14 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 			? `${body.trimEnd()}\n\n${footerText({
 					unsubscribeUrl: config.unsubscribeUrl,
 					preferenceUrl: config.preferenceUrl,
+					language: config.footerLanguage,
+					senderAddress: config.senderAddress,
 				})}`
 			: body;
 	return { ...composed, text };
 }
 
-/** The personalization variables this send kind substitutes into its content. */
+/** The personalization variables this send kind substitutes into its subject. */
 function variablesFor(input: ComposeInput): Record<string, unknown> {
 	switch (input.kind) {
 		case 'campaign':
@@ -113,6 +115,25 @@ function variablesFor(input: ComposeInput): Record<string, unknown> {
 			return input.sampleContact;
 		case 'archive_snapshot':
 			return { email: '', firstName: '', lastName: '' };
+	}
+}
+
+/**
+ * The variables the body (html and text part) is personalized with: the
+ * subject's, plus `{{unsubscribe_link}}` where the send has a footer. Each html
+ * composer adds the link the same way, so both parts resolve the same values.
+ */
+function bodyVariablesFor(input: ComposeInput): Record<string, unknown> {
+	switch (input.kind) {
+		case 'campaign':
+		case 'transactional':
+			return withUnsubscribeLink(variablesFor(input), input.unsubscribeUrl);
+		case 'test':
+			return withUnsubscribeLink(input.sampleContact, input.footer?.unsubscribeUrl);
+		case 'automation':
+			return automationVariables(input.contactInfo);
+		case 'archive_snapshot':
+			return variablesFor(input);
 	}
 }
 

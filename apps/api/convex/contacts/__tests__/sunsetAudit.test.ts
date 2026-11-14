@@ -4,7 +4,7 @@ import { createTestContact } from '../../__tests__/factories';
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
 import { restoreSunsetSuppression, setSunsetExemption } from '../sunsetRestore';
-import { NOW, daysAgo, harness, type Harness } from './sunsetFixtures';
+import { NOW, daysAgo, harness, type Harness, recordCampaignSend } from './sunsetFixtures';
 
 /**
  * EVERY AUTOMATIC TRANSITION IS AUDITED, and the restore path works and is
@@ -31,11 +31,7 @@ async function seedContact(
 				updatedAt: daysAgo(args.tenureDays),
 			})
 		);
-		await ctx.db.insert('contactActivities', {
-			contactId: id,
-			activityType: 'email_sent',
-			occurredAt: daysAgo(args.firstSendDaysAgo),
-		});
+		await recordCampaignSend(ctx, id, daysAgo(args.firstSendDaysAgo));
 		if (args.lastEngagementDaysAgo !== undefined) {
 			await ctx.db.insert('contactActivities', {
 				contactId: id,

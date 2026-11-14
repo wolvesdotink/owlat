@@ -1411,8 +1411,10 @@
 				},
 				"passed": "{count} Prüfung bestanden | {count} Prüfungen bestanden",
 				"postalAddress": {
-					"missing": "Wir haben keine Postanschrift gefunden. Das US-Recht (CAN-SPAM) verlangt eine in Marketing-E-Mails, und in der EU gehört sie ins Impressum. Ergänze sie in der Fußzeile.",
-					"pass": "Die E-Mail enthält eine Postanschrift."
+					"footer": "Owlat setzt deine Postanschrift aus dem Markenkit in die Fußzeile jeder Kampagne.",
+					"missing": "Es ist keine Postanschrift hinterlegt, und in der E-Mail haben wir keine gefunden. Das US-Recht (CAN-SPAM) verlangt eine in Marketing-E-Mails, und in der EU gehört sie ins Impressum. Sobald ein Admin sie im Markenkit einträgt, setzt Owlat sie in die Fußzeile jeder Kampagne.",
+					"pass": "Die E-Mail enthält eine Postanschrift.",
+					"setUp": "Im Markenkit eintragen"
 				},
 				"reasons": {
 					"blockedUrl": "passt auf das gesperrte Muster „{pattern}“",
@@ -9536,7 +9538,7 @@
 					"footer": {
 						"addSocialLink": "Social-Media-Link hinzufügen",
 						"address": "Postanschrift",
-						"addressHelp": "Viele Länder schreiben eine Postanschrift in Marketing-E-Mails vor.",
+						"addressHelp": "Owlat setzt sie mit dem Firmennamen in die Fußzeile jeder Marketing-E-Mail. Das US-Recht (CAN-SPAM) verlangt eine Postanschrift in Marketing-E-Mails.",
 						"companyName": "Firmenname",
 						"platform": "Plattform",
 						"removeSocialLink": "{platform}-Link entfernen",
@@ -14980,6 +14982,11 @@
 			"contactToOptOut": "Um diese E-Mails abzubestellen, kannst du auch an {email} schreiben.",
 			"emailPreferences": "E-Mail-Einstellungen",
 			"rateLimited": "Gerade gab es zu viele Versuche. Bitte warte eine Minute und versuche es erneut.",
+			"testPreview": {
+				"heading": "Dieser Link stammt aus einer Test-E-Mail",
+				"preferences": "In einem echten Versand öffnet dieser Link die Abo-Einstellungen der Empfängerin oder des Empfängers. Es wurde nichts geändert.",
+				"unsubscribe": "In einem echten Versand meldet dieser Link die Empfängerin oder den Empfänger ab. Es wurde nichts geändert."
+			},
 			"verifying": "Dein Link wird geprüft…"
 		},
 		"unsubscribe": {
@@ -17062,7 +17069,8 @@
 		"personalizationVariables": {
 			"email": "E-Mail",
 			"firstName": "Vorname",
-			"lastName": "Nachname"
+			"lastName": "Nachname",
+			"unsubscribeLink": "Abmeldelink"
 		},
 		"postbox": {
 			"offlineOutbox": {

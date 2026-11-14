@@ -151,6 +151,14 @@ const headline = computed(() => {
 						<p v-if="check.note" class="mt-0.5 text-sm text-text-secondary">
 							{{ localized(check.note) }}
 						</p>
+						<NuxtLink
+							v-if="check.action"
+							:to="check.action.to"
+							class="mt-1 inline-block rounded text-sm font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							data-testid="presend-check-action"
+						>
+							{{ localized(check.action.label) }}
+						</NuxtLink>
 						<ul v-if="check.items.length > 0" class="mt-2 space-y-1.5">
 							<li
 								v-for="(item, index) in visibleItems(check)"

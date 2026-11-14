@@ -9,8 +9,12 @@ const BUILT_IN_PROPERTY_KEYS = new Set(['first_name', 'last_name']);
 
 /**
  * The personalization variables an email or saved-block editor offers: the
- * built-in email, first name and last name, then the organization's custom
- * contact properties.
+ * built-in email, first name and last name, the recipient's unsubscribe link,
+ * then the organization's custom contact properties.
+ *
+ * `unsubscribe_link` resolves to the same page the footer links, in campaigns
+ * and automation emails (`delivery/sendComposition/personalization.ts` in the
+ * API); link tracking leaves it alone.
  */
 export function usePersonalizationVariables() {
 	const { t } = useI18n();
@@ -23,6 +27,11 @@ export function usePersonalizationVariables() {
 			{ key: 'email', label: t('shared.personalizationVariables.email'), isBuiltIn: true },
 			{ key: 'firstName', label: t('shared.personalizationVariables.firstName'), isBuiltIn: true },
 			{ key: 'lastName', label: t('shared.personalizationVariables.lastName'), isBuiltIn: true },
+			{
+				key: 'unsubscribe_link',
+				label: t('shared.personalizationVariables.unsubscribeLink'),
+				isBuiltIn: true,
+			},
 		];
 		const custom: Variable[] = (contactProperties.value || [])
 			.filter((prop) => !BUILT_IN_PROPERTY_KEYS.has(prop.key))

@@ -380,6 +380,8 @@ export const resolveCampaignPage = internalAction({
 				(settings.isTimezoneAware
 					? await ctx.runQuery(internal.campaigns.sendQueries.getOrgTimezone, {})
 					: undefined) ?? undefined,
+			senderAddress:
+				(await ctx.runQuery(internal.campaigns.sendQueries.getSenderAddress, {})) ?? undefined,
 		});
 		const plannedSendTimes = planSendTimes({
 			campaignId,

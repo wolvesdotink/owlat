@@ -13,14 +13,14 @@
  * slots both `List-Unsubscribe` and `List-Unsubscribe-Post` into the headers.
  */
 
-import { personalize } from '../personalization';
+import { automationVariables, personalize } from '../personalization';
 import type { AutomationComposeInput, ComposerOutput } from '../types';
 
 export function composeAutomation(input: AutomationComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, {
 		escape: 'header',
 	});
-	const html = personalize(input.template.htmlContent, input.contactInfo, {
+	const html = personalize(input.template.htmlContent, automationVariables(input.contactInfo), {
 		escape: 'html',
 	});
 

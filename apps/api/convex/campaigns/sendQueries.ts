@@ -12,6 +12,8 @@ import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounte
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { readDefaultTimezone } from '../analytics/sendTimeProfileSync';
+import { senderPostalAddress } from '@owlat/shared/brandKit';
+import { getInstanceSettings } from '../lib/instanceSettings';
 import { getLive, isLive } from '../lib/softDelete';
 
 /**
@@ -92,6 +94,15 @@ export const getCampaignForSending = internalQuery({
 export const getOrgTimezone = internalQuery({
 	args: {},
 	handler: async (ctx) => await readDefaultTimezone(ctx.db),
+});
+
+// The sender's company name and postal address from the brand kit, which the
+// footer of every marketing email renders. Null until an admin sets an
+// address there.
+export const getSenderAddress = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<string | null> =>
+		senderPostalAddress((await getInstanceSettings(ctx.db))?.brandKit) ?? null,
 });
 
 /**

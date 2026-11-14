@@ -106,6 +106,11 @@ describe('unsubscribe', () => {
 		answers['GET /unsub/verify/'] = { status: 200, body: { ok: true, data: contact } };
 	});
 
+	it('puts a space between the greeting and the question', async () => {
+		const w = await mountPage(UnsubscribePage);
+		expect(w.text()).toContain('Hi Ada, Are you sure you want to unsubscribe');
+	});
+
 	it('reads alreadyUnsubscribed, not the English message', async () => {
 		answers['POST /unsub/'] = {
 			status: 200,
@@ -338,5 +343,21 @@ describe('share', () => {
 		fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 		const w = await mountPage(SharePage);
 		expect(w.text()).toContain('Unable to load the preview.');
+	});
+});
+
+describe('a link from a test email', () => {
+	beforeEach(() => {
+		vi.stubGlobal('useRoute', () => ({ path: '/', query: { preview: 'test' }, hash: '' }));
+	});
+
+	it.each([
+		['unsubscribe', UnsubscribePage, 'lets the recipient unsubscribe'],
+		['preferences', PreferencesPage, "opens the recipient's subscription preferences"],
+	])('the %s page says it is a test and verifies nothing', async (_name, page, what) => {
+		const w = await mountPage(page);
+		expect(w.find('h2').text()).toBe('This link is from a test email');
+		expect(w.text()).toContain(`In a real send, this link ${what}. Nothing was changed.`);
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });

@@ -62,6 +62,8 @@ export const commitTestSends = internalMutation({
 		replyTo: v.optional(v.string()),
 		subject: v.string(),
 		html: v.string(),
+		text: v.optional(v.string()),
+		headers: v.optional(v.record(v.string(), v.string())),
 		recipients: v.array(v.string()),
 	},
 	handler: async (ctx, args): Promise<TestSendCommit> => {
@@ -102,6 +104,8 @@ export const commitTestSends = internalMutation({
 				replyTo: args.replyTo,
 				subject: args.subject,
 				html: args.html,
+				...(args.text !== undefined ? { text: args.text } : {}),
+				...(args.headers !== undefined ? { headers: args.headers } : {}),
 			});
 			await ctx.scheduler.runAfter(
 				TEST_SEND_RETENTION_MS,

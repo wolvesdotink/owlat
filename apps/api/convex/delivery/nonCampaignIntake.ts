@@ -197,6 +197,10 @@ export const intake = internalMutation({
 		// against (its links are pages there, not the one-click endpoint). A
 		// marketing step that gets the header pair gets the footer too.
 		siteUrl: v.optional(v.string()),
+		// The footer's language and the sender's postal address, for an
+		// automation step's footer (`sendComposition/footer.ts`).
+		footerLanguage: v.optional(v.string()),
+		senderAddress: v.optional(v.string()),
 		// Idempotency key for automation email steps: the step run producing the
 		// send. A retried or recovered step re-enters with the same key and gets
 		// the Send it already created back, instead of a second Send.
@@ -357,6 +361,8 @@ export const intake = internalMutation({
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
 					...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
+					...(args.footerLanguage ? { footerLanguage: args.footerLanguage } : {}),
+					...(args.senderAddress ? { senderAddress: args.senderAddress } : {}),
 					...(engagementScore !== undefined ? { engagementScore } : {}),
 				},
 			}

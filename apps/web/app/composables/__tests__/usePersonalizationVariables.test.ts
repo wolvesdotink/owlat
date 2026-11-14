@@ -20,6 +20,7 @@ describe('usePersonalizationVariables', () => {
 			{ key: 'email', label: 'Email', isBuiltIn: true },
 			{ key: 'firstName', label: 'First name', isBuiltIn: true },
 			{ key: 'lastName', label: 'Last name', isBuiltIn: true },
+			{ key: 'unsubscribe_link', label: 'Unsubscribe link', isBuiltIn: true },
 		]);
 	});
 
@@ -35,9 +36,10 @@ describe('usePersonalizationVariables', () => {
 			['email', true],
 			['firstName', true],
 			['lastName', true],
+			['unsubscribe_link', true],
 			['company', false],
 			['plan', false],
 		]);
-		expect(variables.value[3]?.label).toBe('Company');
+		expect(variables.value[4]?.label).toBe('Company');
 	});
 });

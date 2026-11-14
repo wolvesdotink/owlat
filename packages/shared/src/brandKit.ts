@@ -360,3 +360,19 @@ export function brandKitDesignProblem(
 	}
 	return null;
 }
+
+/**
+ * The sender identification the footer of every marketing email carries: the
+ * kit's company name above its postal address, one line per line. CAN-SPAM
+ * asks for a valid postal address in commercial mail and EU imprint rules for
+ * the sender's identity, so a company name alone is not enough and yields
+ * `undefined`, as does an unset kit.
+ */
+export function senderPostalAddress(
+	kit: Pick<StoredBrandKit, 'footerCompanyName' | 'footerAddress'> | undefined | null
+): string | undefined {
+	const address = kit?.footerAddress?.trim();
+	if (!address) return undefined;
+	const name = kit?.footerCompanyName?.trim();
+	return name ? `${name}\n${address}` : address;
+}

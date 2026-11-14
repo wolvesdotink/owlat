@@ -13,7 +13,7 @@ import {
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
 import { internal } from '../../_generated/api';
-import { NOW, daysAgo, harness, modules } from './sunsetFixtures';
+import { NOW, daysAgo, harness, modules, recordCampaignSend } from './sunsetFixtures';
 
 // The non-campaign chokepoint schedules a workpool action. The Workpool
 // component is not registered in convex-test and the worker would need provider
@@ -53,11 +53,7 @@ async function suppressOne(t: ReturnType<typeof harness>, email: string) {
 			'contacts',
 			createTestContact({ email, createdAt: daysAgo(500), updatedAt: daysAgo(500) })
 		);
-		await ctx.db.insert('contactActivities', {
-			contactId: id,
-			activityType: 'email_sent',
-			occurredAt: daysAgo(480),
-		});
+		await recordCampaignSend(ctx, id, daysAgo(480));
 		return id;
 	});
 
@@ -206,11 +202,7 @@ describe('sunset suppression reuses the shipped path', () => {
 					updatedAt: daysAgo(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(480),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(480));
 			await ctx.db.insert('blockedEmails', {
 				email: 'already@example.com',
 				reason: 'bounced',

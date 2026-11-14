@@ -15,14 +15,18 @@
 
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import { buildFeedbackId } from '../feedbackId';
-import { personalize } from '../personalization';
+import { personalize, withUnsubscribeLink } from '../personalization';
 import { getTrackingPixelUrl } from '../trackingUrl';
 import type { TransformConfig } from '../transform';
 import type { CampaignComposeInput, ComposerOutput } from '../types';
 
 export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, { escape: 'header' });
-	const html = personalize(input.template.htmlContent, input.contactInfo, { escape: 'html' });
+	const html = personalize(
+		input.template.htmlContent,
+		withUnsubscribeLink(input.contactInfo, input.unsubscribeUrl),
+		{ escape: 'html' }
+	);
 
 	// Campaign mail is bulk, machine-generated marketing. RFC 2076 / Gmail &
 	// Yahoo 2024 bulk-sender rules: stamp Precedence: bulk so receiving MTAs
@@ -80,6 +84,8 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	if (input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
+		if (input.footerLanguage) transformConfig.footerLanguage = input.footerLanguage;
+		if (input.senderAddress) transformConfig.senderAddress = input.senderAddress;
 	}
 
 	// A seed shadow copy has no `emailSendId` (that is what keeps it out of

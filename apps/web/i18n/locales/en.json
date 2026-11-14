@@ -1411,8 +1411,10 @@
 				},
 				"passed": "{count} check passed | {count} checks passed",
 				"postalAddress": {
-					"missing": "We couldn't find a postal address. US law (CAN-SPAM) requires one in marketing email, and EU imprint rules expect one. Add it to the footer.",
-					"pass": "A postal address appears in the email."
+					"footer": "Owlat adds your postal address from the brand kit to the footer of every campaign.",
+					"missing": "No postal address is set, and we couldn't find one in the email. US law (CAN-SPAM) requires one in marketing email, and EU imprint rules expect one. Once an admin adds it to the brand kit, Owlat puts it in the footer of every campaign.",
+					"pass": "A postal address appears in the email.",
+					"setUp": "Add it to the brand kit"
 				},
 				"reasons": {
 					"blockedUrl": "matches the blocked pattern “{pattern}”",
@@ -9536,7 +9538,7 @@
 					"footer": {
 						"addSocialLink": "Add social link",
 						"address": "Postal address",
-						"addressHelp": "Many countries require a postal address in marketing emails.",
+						"addressHelp": "Owlat adds it, with the company name, to the footer of every marketing email. US law (CAN-SPAM) requires a postal address in marketing email.",
 						"companyName": "Company name",
 						"platform": "Platform",
 						"removeSocialLink": "Remove the {platform} link",
@@ -14980,6 +14982,11 @@
 			"contactToOptOut": "To stop these emails, you can also write to {email}.",
 			"emailPreferences": "Email preferences",
 			"rateLimited": "Too many attempts right now. Please wait a minute and try again.",
+			"testPreview": {
+				"heading": "This link is from a test email",
+				"preferences": "In a real send, this link opens the recipient's subscription preferences. Nothing was changed.",
+				"unsubscribe": "In a real send, this link lets the recipient unsubscribe. Nothing was changed."
+			},
 			"verifying": "Verifying your link…"
 		},
 		"unsubscribe": {
@@ -17062,7 +17069,8 @@
 		"personalizationVariables": {
 			"email": "Email",
 			"firstName": "First name",
-			"lastName": "Last name"
+			"lastName": "Last name",
+			"unsubscribeLink": "Unsubscribe link"
 		},
 		"postbox": {
 			"offlineOutbox": {

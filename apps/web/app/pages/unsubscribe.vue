@@ -18,6 +18,11 @@ definePageMeta({
 
 const { senderName, contactEmail, logo } = useRecipientSender();
 
+// Opened from a test email: the footer of a preview links here without a
+// token (`delivery/testPreviewLinks.ts` in the API), so there is nobody to act
+// on and the page only says what the link does in a real send.
+const isTestPreview = useRoute().query['preview'] === 'test';
+
 interface UnsubscribeContact {
 	email: string;
 	firstName?: string;
@@ -72,7 +77,15 @@ async function handleUnsubscribe() {
 		/>
 
 		<RecipientStateCard
-			v-if="state === 'loading'"
+			v-if="isTestPreview"
+			variant="prompt"
+			tone="neutral"
+			:heading="t('recipient.shared.testPreview.heading')"
+			:message="t('recipient.shared.testPreview.unsubscribe')"
+		/>
+
+		<RecipientStateCard
+			v-else-if="state === 'loading'"
 			variant="loading"
 			:message="t('recipient.shared.verifying')"
 		/>
@@ -158,8 +171,10 @@ async function handleUnsubscribe() {
 			:heading="t('recipient.unsubscribe.confirmHeading')"
 		>
 			<p class="mb-6 break-words text-text-secondary">
+				<!-- The space is part of the text: Vue drops the whitespace between this
+				     line and the question that follows it. -->
 				<template v-if="contact.firstName">
-					{{ t('recipient.unsubscribe.greeting', { name: contact.firstName }) }}
+					{{ `${t('recipient.unsubscribe.greeting', { name: contact.firstName })} ` }}
 				</template>
 				<I18nT keypath="recipient.unsubscribe.confirmBody" tag="span" scope="global">
 					<template #email
