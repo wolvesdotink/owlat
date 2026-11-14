@@ -19,6 +19,7 @@ import {
 	SPAM_RATE_TARGET,
 	summarizeSpamRate,
 } from '../analytics/spamRate';
+import { createTestDomain } from './factories';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -575,6 +576,85 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 
 		const result = await evaluate(t);
 		expect(result.riskLevel).toBe('low');
+
+		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+	});
+});
+
+// Gmail sends no ARF reports, so a Gmail spam-rate breach only shows in Google
+// Postmaster Tools. A fresh Postmaster reading feeds the same decision the
+// internal complaint rate feeds; stale data never enforces anything.
+describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
+	async function seedPostmaster(
+		t: Tester,
+		fields: { ratio: number; fetchedAgoMs: number; periodAgoMs?: number }
+	): Promise<void> {
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'news.example.com', status: 'verified' })
+			);
+			await ctx.db.insert('googlePostmasterStats', {
+				domainId,
+				domain: 'news.example.com',
+				periodStart: dayStart(now - (fields.periodAgoMs ?? DAY_MS)),
+				userReportedSpamRatio: fields.ratio,
+				fetchedAt: now - fields.fetchedAgoMs,
+				ingestedAt: now - fields.fetchedAgoMs,
+			});
+		});
+	}
+
+	/** Run the enqueued executor with the args the decision gave it. */
+	async function applyEnforce(t: Tester): Promise<{ status?: string; reason?: string }> {
+		const [job] = await pendingEnforceJobs(t);
+		if (job) {
+			await t.mutation(
+				internal.analytics.sendingReputation.autoEnforceReputation,
+				job as { riskLevel: 'high' | 'critical'; reason?: string }
+			);
+		}
+		return await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			return { status: settings?.abuseStatus, reason: settings?.abuseStatusReason };
+		});
+	}
+
+	it('suspends at the hard line and names Gmail as the source', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await seedPostmaster(t, { ratio: 0.0042, fetchedAgoMs: 2 * 60 * 60 * 1000 });
+
+		await evaluate(t);
+		const { status, reason } = await applyEnforce(t);
+
+		expect(status).toBe('suspended');
+		expect(reason).toContain('Gmail reports a spam rate of 0.42%');
+		expect(reason).toContain('news.example.com');
+	});
+
+	it('warns between Google’s guidance and the hard line', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await seedPostmaster(t, { ratio: 0.0015, fetchedAgoMs: 2 * 60 * 60 * 1000 });
+
+		await evaluate(t);
+		const { status, reason } = await applyEnforce(t);
+
+		expect(status).toBe('warned');
+		expect(reason).toContain('Gmail reports a spam rate of 0.15%');
+	});
+
+	it.each([
+		['fetched too long ago', { fetchedAgoMs: 3 * DAY_MS }],
+		['describing a day too long ago', { fetchedAgoMs: 60 * 60 * 1000, periodAgoMs: 6 * DAY_MS }],
+	])('never enforces on Postmaster data %s', async (_label, age) => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await seedPostmaster(t, { ratio: 0.009, ...age });
+
+		await evaluate(t);
 
 		expect(await pendingEnforceJobs(t)).toHaveLength(0);
 	});
