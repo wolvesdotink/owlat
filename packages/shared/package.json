@@ -554,6 +554,10 @@
 			"types": "./src/logRedaction.ts",
 			"import": "./src/logRedaction.ts"
 		},
+		"./softBounceSuppression": {
+			"types": "./src/softBounceSuppression.ts",
+			"import": "./src/softBounceSuppression.ts"
+		},
 		"./logEvent": {
 			"types": "./src/logEvent.ts",
 			"import": "./src/logEvent.ts"

@@ -31,6 +31,7 @@ import { sendWorkerOutcomeValidator, type SendWorkerOutcome } from './workerOutc
 import {
 	marketingDispatchRecipient,
 	sendingHoldOutcome,
+	transactionalDispatchRecipient,
 	type MarketingDispatchVerdict,
 } from './marketingDispatchGate';
 
@@ -369,16 +370,18 @@ export const sendSingleEmail = internalAction({
 		// suppression obligation (CAN-SPAM §316.5, Gmail/Yahoo 2024) holds until
 		// the message leaves. Point reads only. Returned, never thrown, so the
 		// workpool does not retry; see delivery/marketingDispatchGate.ts.
+		// Real transactional mail gets the blocklist half of the same gate.
 		//
 		// It also HOLDS marketing mail while the deployment's sending is
 		// suspended or banned: the envelope comes back as a deferral that spends
 		// no attempt and is re-entered until the suspension is lifted or the
 		// delivery deadline passes (see `sendingHoldOutcome`).
-		const marketingRecipient = marketingDispatchRecipient(envelopeInput);
-		if (marketingRecipient) {
+		const gateRecipient =
+			marketingDispatchRecipient(envelopeInput) ?? transactionalDispatchRecipient(envelopeInput);
+		if (gateRecipient) {
 			const verdict: MarketingDispatchVerdict | null = await ctx.runQuery(
 				internal.delivery.marketingDispatchGate.checkMarketingDispatch,
-				marketingRecipient
+				gateRecipient
 			);
 			if (verdict?.kind === 'suppressed') return verdict;
 			if (verdict?.kind === 'held') {

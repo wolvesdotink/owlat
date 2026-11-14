@@ -1,5 +1,7 @@
-import type { Doc } from '../_generated/dataModel';
+import type { WithoutSystemFields } from 'convex/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { isSuppressionExpired } from '@owlat/shared/softBounceSuppression';
 import { afterEventSecond } from '../lib/clock';
 import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
 import { normalizeEmail } from '../lib/inputGuards';
@@ -32,6 +34,38 @@ export async function findBlockedByEmail(
 		.query('blockedEmails')
 		.withIndex('by_email', (q) => q.eq('email', normalizedEmail))
 		.first();
+}
+
+/**
+ * Whether a new suppression replaces the address's existing row instead of
+ * being dropped as "already blocked". The list keeps one row per address and a
+ * soft-bounce row expires, so it must give way to evidence that does not: a
+ * hard bounce, a complaint or a manual block. Once expired it gives way to any
+ * new suppression, so a fresh one starts its own window. Every other row stays.
+ */
+export function supersedesBlockedRow(
+	existing: Pick<Doc<'blockedEmails'>, 'reason' | 'bounceType' | 'createdAt'>,
+	incoming: { reason: BlockReason; bounceType?: 'hard' | 'soft' | undefined },
+	now: number
+): boolean {
+	if (existing.reason !== 'bounced' || existing.bounceType !== 'soft') return false;
+	if (isSuppressionExpired(existing, now)) return true;
+	const incomingExpires = incoming.reason === 'bounced' && incoming.bounceType === 'soft';
+	return !incomingExpires && incoming.reason !== 'unengaged';
+}
+
+/**
+ * Write a suppression: replace `superseded` (a row {@link supersedesBlockedRow}
+ * let go) with it, so the address keeps one row, or insert a new one.
+ */
+export async function writeBlockedRow(
+	ctx: MutationCtx,
+	superseded: Doc<'blockedEmails'> | null,
+	row: WithoutSystemFields<Doc<'blockedEmails'>>
+): Promise<Id<'blockedEmails'>> {
+	if (!superseded) return await ctx.db.insert('blockedEmails', row);
+	await ctx.db.replace(superseded._id, row);
+	return superseded._id;
 }
 
 /** Blocked-address counts per reason, plus their sum. */

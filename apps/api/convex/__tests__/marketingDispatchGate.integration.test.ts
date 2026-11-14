@@ -220,6 +220,60 @@ describe('worker — marketing dispatch gate', () => {
 		expect(fetchSpy).toHaveBeenCalled();
 	});
 
+	it('a held transactional template Send to an address blocked since intake is never dispatched', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId, contactId } = await seedQueuedAutomationSend(t);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(sendId, { kind: 'transactional' });
+			await ctx.db.insert('blockedEmails', {
+				email: 'reader@example.com',
+				reason: 'bounced',
+				bounceType: 'hard',
+				createdAt: Date.now(),
+			});
+		});
+		const fetchSpy = vi.fn();
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: automationEnvelope(sendId, contactId, 'transactional'),
+		});
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: 'test-work-id' as never,
+			result: { kind: 'success', returnValue: result },
+			context: { sendRef: { kind: 'transactional' as const, id: sendId } },
+		});
+
+		expect(result).toEqual({ kind: 'suppressed' });
+		expect(fetchSpy).not.toHaveBeenCalled();
+		const send = await t.run(async (ctx) => ctx.db.get(sendId));
+		expect(send?.status).toBe('failed');
+		expect(send?.errorCode).toBe('RECIPIENT_SUPPRESSED');
+	});
+
+	it('a marketing-only suppression does not stop a transactional Send at dispatch', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId, contactId } = await seedQueuedAutomationSend(t);
+		await t.run(async (ctx) =>
+			ctx.db.insert('blockedEmails', {
+				email: 'reader@example.com',
+				reason: 'unengaged',
+				createdAt: Date.now(),
+			})
+		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValueOnce(decisionResponse())
+			.mockResolvedValueOnce(acceptedResponse('mta-receipt-2'));
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: automationEnvelope(sendId, contactId, 'transactional'),
+		});
+
+		expect(result.kind).toBe('accepted');
+	});
+
 	describe('while sending is suspended', () => {
 		async function setAbuseStatus(
 			t: ReturnType<typeof convexTest>,

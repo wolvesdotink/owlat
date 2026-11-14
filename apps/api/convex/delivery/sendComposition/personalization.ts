@@ -40,6 +40,22 @@ function applyEscape(value: string, escape: EscapePolicy): string {
 	return value;
 }
 
+/** A `{{name}}` or `{{name|'fallback'}}` token: group 1 the name, group 2 the fallback. */
+const VARIABLE_TOKEN = /\{\{(\w+)(?:\|'([^']*)')?\}\}/g;
+
+/**
+ * The variables `content` uses without a fallback, in order of first use. A
+ * token with a fallback (even an empty one, `{{name|''}}`) renders without its
+ * value; one without renders blank, so the caller has to supply it.
+ */
+export function variablesWithoutFallback(content: string): string[] {
+	const names = new Set<string>();
+	for (const match of content.matchAll(VARIABLE_TOKEN)) {
+		if (match[2] === undefined) names.add(match[1]!);
+	}
+	return [...names];
+}
+
 /**
  * Replace `{{var}}` (and `{{var|'fallback'}}`) tokens in a string with values
  * from a variable record. Supports the `{{name|'fallback'}}` fallback syntax.
@@ -56,7 +72,7 @@ export function personalize(
 	variables: Record<string, unknown>,
 	options: { escape: EscapePolicy }
 ): string {
-	return content.replace(/\{\{(\w+)(?:\|'([^']*)')?\}\}/g, (_match, variable, fallback) => {
+	return content.replace(VARIABLE_TOKEN, (_match, variable, fallback) => {
 		const value = variables[variable as keyof typeof variables];
 		if (value !== undefined && value !== null && value !== '') {
 			return applyEscape(String(value), options.escape);

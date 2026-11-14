@@ -10,7 +10,12 @@ import { normalizeEmail } from '../lib/inputGuards';
 import * as sm from '../delivery/suppressionMirrorScheduler';
 import { recordAuditLog } from '../lib/auditLog';
 import { bounceTypeValidator, manualOrEventBlockReasonValidator } from '../lib/literalValidators';
-import { findBlockedByEmail, wasRemovedByOperatorSince } from './lookup';
+import {
+	findBlockedByEmail,
+	supersedesBlockedRow,
+	wasRemovedByOperatorSince,
+	writeBlockedRow,
+} from './lookup';
 
 // Derive the polymorphic block `sourceType` from whichever source-send id was
 // supplied (emailSend vs transactionalSend), or undefined for a manual block.
@@ -88,10 +93,11 @@ export async function addProviderSuppression(
 ): Promise<Id<'blockedEmails'> | null> {
 	const normalizedEmail = normalizeEmail(args.email);
 
-	// Check if already blocked - if so, don't add duplicate
+	// Check if already blocked - if so, don't add duplicate, unless the new
+	// evidence supersedes an expiring soft-bounce row (see `supersedesBlockedRow`).
 	const existing = await findBlockedByEmail(ctx, normalizedEmail);
 
-	if (existing) {
+	if (existing && !supersedesBlockedRow(existing, args, Date.now())) {
 		// Already blocked, just return the existing ID. A replayed webhook batch
 		// or a re-run import therefore writes NOTHING — no row, no mirror, and
 		// (below) no audit entry, because an audit trail records state changes
@@ -108,7 +114,7 @@ export async function addProviderSuppression(
 
 	// Create the blocked email record
 	const sourceType = deriveBlockSourceType(args);
-	const blockedEmailId = await ctx.db.insert('blockedEmails', {
+	const blockedEmailId = await writeBlockedRow(ctx, existing, {
 		email: normalizedEmail,
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),

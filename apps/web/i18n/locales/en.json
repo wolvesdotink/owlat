@@ -11369,7 +11369,9 @@
 					"dateAdded": "Date added",
 					"email": "Email address",
 					"notes": "Notes",
-					"reason": "Reason"
+					"reason": "Reason",
+					"softBounceExpired": "Temporary bounce, expired {date}: no longer blocks",
+					"softBounceExpires": "Temporary bounce, expires {date}"
 				},
 				"title": "Suppressions",
 				"toasts": {

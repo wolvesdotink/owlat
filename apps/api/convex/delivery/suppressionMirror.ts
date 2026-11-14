@@ -27,6 +27,7 @@ import { internalAction, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
+import { isSuppressionExpired, suppressionExpiresAt } from '@owlat/shared/softBounceSuppression';
 import { getMtaConfig } from '../mail/mtaClient';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { bounceTypeValidator, type BlockReason } from '../lib/literalValidators';
@@ -207,14 +208,8 @@ export const blockedEmailPage = internalQuery({
 	},
 });
 
-const SOFT_BOUNCE_TTL_MS = 7 * 86400 * 1000;
-
 function isExpiredSoftBounce(row: ReconcileRow): boolean {
-	return (
-		row.reason === 'bounced' &&
-		row.bounceType === 'soft' &&
-		row.createdAt + SOFT_BOUNCE_TTL_MS <= Date.now()
-	);
+	return isSuppressionExpired(row, Date.now());
 }
 
 type ReconcileRow = {
@@ -280,20 +275,18 @@ export const reconcile = internalAction({
 			cursor = page.cursor;
 		}
 
-		const entries = [...authoritative.values()].flatMap((row) =>
-			isMarketingOnlyBlockReason(row.reason) || isExpiredSoftBounce(row)
-				? []
-				: [
-						{
-							email: row.email,
-							reason: toMtaSuppressionReason(row.reason, row.bounceType),
-							source: 'convex-reconcile',
-							...(row.reason === 'bounced' && row.bounceType === 'soft'
-								? { expiresAt: row.createdAt + SOFT_BOUNCE_TTL_MS }
-								: {}),
-						},
-					]
-		);
+		const entries = [...authoritative.values()].flatMap((row) => {
+			if (isMarketingOnlyBlockReason(row.reason) || isExpiredSoftBounce(row)) return [];
+			const expiresAt = suppressionExpiresAt(row);
+			return [
+				{
+					email: row.email,
+					reason: toMtaSuppressionReason(row.reason, row.bounceType),
+					source: 'convex-reconcile',
+					...(expiresAt !== null ? { expiresAt } : {}),
+				},
+			];
+		});
 		for (let index = 0; index < entries.length; index += 1000) {
 			await requireMtaResponse(
 				await fetchWithTimeout(

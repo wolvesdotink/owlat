@@ -1458,6 +1458,7 @@ describe('Sending domain lifecycle — re-verification of a verified domain', ()
 				domainStatus: gate,
 				dataVariables: undefined,
 				dataVariablesSchema: undefined,
+				content: { subject: 'Hi', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ ok: false, reason: 'domain_unverified' });
 	});
