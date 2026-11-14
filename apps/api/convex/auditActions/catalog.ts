@@ -136,6 +136,8 @@ export const AUDIT_ACTION_LITERALS = [
 	action('settings.inbox_auto_close_updated'),
 	// The instance's transactional sender set or cleared (transactional/sender.ts).
 	action('settings.transactional_sender_updated'),
+	// Transactional send caps saved (transactional/sendCapSettings.ts `update`).
+	action('settings.transactional_send_caps_updated'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),

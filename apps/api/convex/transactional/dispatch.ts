@@ -235,11 +235,11 @@ export const dispatch = internalMutation({
 			fromEmail: sender.fromEmail,
 			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
 			dataVariables: args.dataVariables,
-			dataVariablesSchema: template.dataVariablesSchema,
+			template,
 			content: selectSendContent(template, args.language, await storedLanguage(ctx, args.email)),
 		});
 		if (refusal) return refusal;
-		const capped = await chargeTransactionalSendCaps(ctx, template._id, args);
+		const capped = await chargeTransactionalSendCaps(ctx, template, args, settings);
 		if (capped) return capped;
 
 		// 5. Contact resolution, through the Contact resolution module in

@@ -61,6 +61,7 @@ export const ADMIN_SETTINGS_CONTROLS: readonly AdminSettingsControl[] = [
 	control('webhookSecret', 'webhooks', 'webhook-signing'),
 	control('brandColors', 'brandKit', 'brand-colors'),
 	control('transactionalSender', 'instanceGeneral', 'transactional-sender'),
+	control('transactionalSendLimits', 'apiKeys', 'transactional-send-limits'),
 ];
 
 /** An admin control, flattened together with the page it lives on. */

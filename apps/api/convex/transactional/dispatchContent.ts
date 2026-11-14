@@ -189,21 +189,24 @@ export function selectSendContent(
 
 /**
  * The variables the content uses without a fallback that the request leaves
- * out or sends as `null`: each would render as an empty string. The template's
- * `dataVariablesSchema` records only a type per variable, not whether one is
- * required, so the content is what decides: a variable with a fallback
- * (`{{name|'there'}}`) or one the content never uses is never required.
+ * out or sends as `null`: each would render as an empty string. A variable the
+ * template marks optional may be left out, and one with a fallback
+ * (`{{name|'there'}}`) or one the content never uses is never required. A
+ * variable with no flag is required exactly when the content uses it without
+ * a fallback, which is how every template behaved before the flag existed.
  */
 export function missingDataVariables(
 	content: Pick<SendContent, 'subject' | 'html' | 'plainText'>,
-	variables: Record<string, unknown> | undefined
+	variables: Record<string, unknown> | undefined,
+	optionalVariables: readonly string[] = []
 ): string[] {
 	const used = new Set([
 		...variablesWithoutFallback(content.subject),
 		...variablesWithoutFallback(content.html),
 		...variablesWithoutFallback(content.plainText ?? ''),
 	]);
-	return [...used].filter((name) => variables?.[name] == null);
+	const optional = new Set(optionalVariables);
+	return [...used].filter((name) => !optional.has(name) && variables?.[name] == null);
 }
 
 /**

@@ -206,6 +206,14 @@ export const templateTables = {
 		// JSON schema defining expected data variables
 		// Example: { "orderNumber": "string", "totalAmount": "number" }
 		dataVariablesSchema: v.optional(dataVariablesSchemaValidator),
+		// Variables a caller may leave out: they render empty, or as their
+		// fallback. A variable not listed here that the content uses without a
+		// fallback must be supplied (`transactional/dispatchContent.ts`).
+		optionalDataVariables: v.optional(v.array(v.string())),
+		// Sends of this template are not held to the per-recipient cap (one fixed
+		// internal address, such as a shop's new-order notification). The per-key
+		// daily cap still applies.
+		isRecipientCapExempt: v.optional(v.boolean()),
 		status: v.union(
 			v.literal('draft'),
 			v.literal('published'),
