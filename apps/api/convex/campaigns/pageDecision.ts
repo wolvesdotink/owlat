@@ -188,6 +188,8 @@ export interface HopSendContext {
 	readonly organizationId?: string;
 	/** RFC 2919 List-Id header value for a TOPIC campaign. */
 	readonly listId?: string;
+	/** The brand kit's company name and postal address, for the footer. */
+	readonly senderAddress?: string;
 	readonly useTimezone: boolean;
 	readonly scheduledHour?: number;
 	readonly scheduledMinute?: number;
@@ -206,6 +208,7 @@ export function hopSendContext(input: {
 	readonly organizationId: string | undefined;
 	readonly topic: { readonly _id: string; readonly name: string } | null;
 	readonly defaultTimezone: string | undefined;
+	readonly senderAddress?: string | undefined;
 }): HopSendContext {
 	const { campaign, siteUrl } = input;
 	// The sending domain is the host of the From address. A segment campaign has
@@ -234,6 +237,7 @@ export function hopSendContext(input: {
 		siteUrl,
 		organizationId: input.organizationId,
 		listId,
+		...(input.senderAddress !== undefined ? { senderAddress: input.senderAddress } : {}),
 		useTimezone: input.settings.isTimezoneAware,
 		scheduledHour: campaign.scheduledHour,
 		scheduledMinute: campaign.scheduledMinute,
@@ -312,6 +316,8 @@ export interface LanguageContent {
 	readonly htmlContent: string;
 	/** The text/plain body; the per-language query returns it for the default language only. */
 	readonly plainTextContent?: string;
+	/** The language the body is in, after the per-language query's fallback. */
+	readonly resolvedLanguage?: string;
 }
 
 /**
@@ -338,6 +344,9 @@ export function bucketContent(
 		subject,
 		htmlContent: content.htmlContent,
 		plainTextContent: content.plainTextContent,
+		...(content.resolvedLanguage !== undefined
+			? { resolvedLanguage: content.resolvedLanguage }
+			: {}),
 	};
 }
 

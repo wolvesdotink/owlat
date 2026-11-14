@@ -245,6 +245,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 			autoSubmittedType: envelopeInput.autoSubmittedType,
 			unsubscribeUrl: footer?.unsubscribeUrl,
 			preferenceUrl: footer?.preferenceUrl,
+			footerLanguage: envelopeInput.footerLanguage,
+			senderAddress: envelopeInput.senderAddress,
 			organizationId: envelopeInput.organizationId,
 			// The join key between this send and the IMAP observation. Absent on
 			// every envelope bound for a real recipient; without it a scheduled
@@ -297,6 +299,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		organizationId: envelopeInput.organizationId,
 		unsubscribeUrl: footer?.unsubscribeUrl,
 		preferenceUrl: footer?.preferenceUrl,
+		footerLanguage: envelopeInput.footerLanguage,
+		senderAddress: envelopeInput.senderAddress,
 		listUnsubscribeHeader,
 		// RFC 2919 List-Id — the orchestrator pre-builds it from the topic +
 		// sending domain (`getListIdHeader`) and threads it through the envelope.

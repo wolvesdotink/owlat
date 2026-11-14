@@ -113,6 +113,10 @@ export function buildSeedShadowEnvelope(
 	if (base.campaignId !== undefined) shadow.campaignId = base.campaignId;
 	if (base.organizationId !== undefined) shadow.organizationId = base.organizationId;
 	if (base.listId !== undefined) shadow.listId = base.listId;
+	// The footer's language and the sender's address are the campaign's, not
+	// the recipient's, and the footer is part of what is measured.
+	if (base.footerLanguage !== undefined) shadow.footerLanguage = base.footerLanguage;
+	if (base.senderAddress !== undefined) shadow.senderAddress = base.senderAddress;
 	// Kept so the shadow carries the same wire features a subscriber's copy
 	// does — the one-click header pair and the tracking pixel / wrapped links
 	// are exactly what a filter weighs. Both are keyed by the opaque probe id,

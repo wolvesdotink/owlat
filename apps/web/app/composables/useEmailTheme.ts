@@ -1,6 +1,10 @@
 import { api } from '@owlat/api';
 import type { EmailBuilderBrand } from '@owlat/email-builder';
-import { DEFAULT_BRAND_KIT_DESIGN, brandKitEmailTheme } from '@owlat/shared/brandKit';
+import {
+	DEFAULT_BRAND_KIT_DESIGN,
+	brandKitEmailTheme,
+	senderPostalAddress,
+} from '@owlat/shared/brandKit';
 
 /**
  * The organization's email theme and brand kit — the single source for every
@@ -11,6 +15,10 @@ import { DEFAULT_BRAND_KIT_DESIGN, brandKitEmailTheme } from '@owlat/shared/bran
  *
  * `brand` is what the email builder takes as `config.brand`: brand swatches in
  * every colour picker, the logo and footer Blocks and "Apply brand kit".
+ *
+ * `senderAddress` is the company name and postal address the send path puts
+ * into the footer of every marketing email; `undefined` while the kit has no
+ * address (or has not loaded).
  */
 export function useEmailTheme() {
 	const { data: brandKit } = useOrganizationQuery(api.workspaces.brandKit.get);
@@ -20,5 +28,6 @@ export function useEmailTheme() {
 	const brand = computed<EmailBuilderBrand | undefined>(() =>
 		brandKit.value ? { design: brandKit.value.design, logos: brandKit.value.logos } : undefined
 	);
-	return { emailTheme, brand };
+	const senderAddress = computed(() => senderPostalAddress(brandKit.value?.design));
+	return { emailTheme, brand, senderAddress };
 }

@@ -55,7 +55,7 @@ const sameInputs = (a: RemoteInputs, b: RemoteInputs) =>
 export function usePresendChecks(source: () => PresendSource | null) {
 	// The organization theme the email was rendered with: the contrast checks
 	// read its colours, dark-mode ones included.
-	const { emailTheme } = useEmailTheme();
+	const { emailTheme, senderAddress } = useEmailTheme();
 	const remote = shallowRef<PresendRemote>({ status: 'pending' });
 	/** What the last `run()` sent; `null` until the first run. */
 	let ranFor: RemoteInputs | null = null;
@@ -135,6 +135,7 @@ export function usePresendChecks(source: () => PresendSource | null) {
 				blocks: current.blocks,
 				subject: current.subject,
 				theme: { ...DEFAULT_EMAIL_THEME, ...emailTheme.value },
+				...(senderAddress.value ? { senderAddress: senderAddress.value } : {}),
 				...(current.blockedReason !== undefined ? { blockedReason: current.blockedReason } : {}),
 				remote: remote.value,
 			},

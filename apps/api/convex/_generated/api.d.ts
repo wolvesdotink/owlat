@@ -722,6 +722,7 @@ import type * as delivery_sendComposition_feedbackId from '../delivery/sendCompo
 import type * as delivery_sendComposition_footer from '../delivery/sendComposition/footer.js';
 import type * as delivery_sendComposition_index from '../delivery/sendComposition/index.js';
 import type * as delivery_sendComposition_listId from '../delivery/sendComposition/listId.js';
+import type * as delivery_sendComposition_ownLinks from '../delivery/sendComposition/ownLinks.js';
 import type * as delivery_sendComposition_personalization from '../delivery/sendComposition/personalization.js';
 import type * as delivery_sendComposition_test_index from '../delivery/sendComposition/test/index.js';
 import type * as delivery_sendComposition_trackingUrl from '../delivery/sendComposition/trackingUrl.js';
@@ -750,6 +751,8 @@ import type * as delivery_stuckSendSweep from '../delivery/stuckSendSweep.js';
 import type * as delivery_stuckSendSweepAdmin from '../delivery/stuckSendSweepAdmin.js';
 import type * as delivery_suppressionMirror from '../delivery/suppressionMirror.js';
 import type * as delivery_suppressionMirrorScheduler from '../delivery/suppressionMirrorScheduler.js';
+import type * as delivery_testPreviewHttp from '../delivery/testPreviewHttp.js';
+import type * as delivery_testPreviewLinks from '../delivery/testPreviewLinks.js';
 import type * as delivery_tokenValidation from '../delivery/tokenValidation.js';
 import type * as delivery_tracking from '../delivery/tracking.js';
 import type * as delivery_trackingHttp from '../delivery/trackingHttp.js';
@@ -2666,6 +2669,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendComposition/footer': typeof delivery_sendComposition_footer;
 	'delivery/sendComposition/index': typeof delivery_sendComposition_index;
 	'delivery/sendComposition/listId': typeof delivery_sendComposition_listId;
+	'delivery/sendComposition/ownLinks': typeof delivery_sendComposition_ownLinks;
 	'delivery/sendComposition/personalization': typeof delivery_sendComposition_personalization;
 	'delivery/sendComposition/test/index': typeof delivery_sendComposition_test_index;
 	'delivery/sendComposition/trackingUrl': typeof delivery_sendComposition_trackingUrl;
@@ -2694,6 +2698,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/stuckSendSweepAdmin': typeof delivery_stuckSendSweepAdmin;
 	'delivery/suppressionMirror': typeof delivery_suppressionMirror;
 	'delivery/suppressionMirrorScheduler': typeof delivery_suppressionMirrorScheduler;
+	'delivery/testPreviewHttp': typeof delivery_testPreviewHttp;
+	'delivery/testPreviewLinks': typeof delivery_testPreviewLinks;
 	'delivery/tokenValidation': typeof delivery_tokenValidation;
 	'delivery/tracking': typeof delivery_tracking;
 	'delivery/trackingHttp': typeof delivery_trackingHttp;

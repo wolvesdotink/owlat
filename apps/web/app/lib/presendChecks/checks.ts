@@ -260,14 +260,26 @@ function unsubscribeCheck(): PresendCheck {
 	};
 }
 
-function postalAddressCheck(scan: PresendScan): PresendCheck {
-	const found = hasPostalAddress(scan.html.text);
+/** Where the address the footer shows is set. */
+const BRAND_KIT_ROUTE = '/dashboard/admin/instance/brand-kit';
+
+// The send path puts the brand kit's postal address into the footer of every
+// campaign (`delivery/sendComposition/footer.ts`). Without one, an address the
+// author wrote into the email also satisfies the rule.
+function postalAddressCheck(input: PresendInput, scan: PresendScan): PresendCheck {
+	const base = { id: 'postalAddress', category: 'compliance' } as const;
+	if (input.senderAddress) {
+		return { ...base, status: 'pass', summary: `${KEY}.postalAddress.footer`, items: [] };
+	}
+	if (hasPostalAddress(scan.html.text)) {
+		return { ...base, status: 'pass', summary: `${KEY}.postalAddress.pass`, items: [] };
+	}
 	return {
-		id: 'postalAddress',
-		category: 'compliance',
-		status: found ? 'pass' : 'warning',
-		summary: found ? `${KEY}.postalAddress.pass` : `${KEY}.postalAddress.missing`,
+		...base,
 		items: [],
+		status: 'warning',
+		summary: `${KEY}.postalAddress.missing`,
+		action: { label: `${KEY}.postalAddress.setUp`, to: BRAND_KIT_ROUTE },
 	};
 }
 
@@ -287,7 +299,7 @@ export function buildPresendChecks(input: PresendInput, scan: PresendScan): Pres
 		screeningCheck(input, scan),
 		subjectCheck(input),
 		unsubscribeCheck(),
-		postalAddressCheck(scan),
+		postalAddressCheck(input, scan),
 	];
 }
 

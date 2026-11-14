@@ -60,7 +60,8 @@ In order, it:
    `.env.local` (see [State](#state)).
 4. Sets the deployment variables the app needs: `SITE_URL` and
    `ALLOWED_ORIGINS` (the web origin), `BETTER_AUTH_SECRET`,
-   `INSTANCE_SECRET` and `OWLAT_DEV_MODE=true`. Variables you set yourself
+   `INSTANCE_SECRET`, `UNSUBSCRIBE_SECRET` (signs the recipient links) and
+   `OWLAT_DEV_MODE=true`. Variables you set yourself
    (provider keys and the like) are left alone.
 5. Pushes the functions once (`convex dev --once`). The first push on a new
    volume takes one to two minutes; later ones take seconds. A failed push
@@ -154,7 +155,7 @@ Everything a stack writes lives in `.owlat-dev/` (gitignored):
 
 | Path             | Contents                                                    |
 | ---------------- | ----------------------------------------------------------- |
-| `secrets.json`   | Instance secret, auth secret, Redis password (mode 0600).   |
+| `secrets.json`   | Instance, auth and unsubscribe secrets, Redis password.     |
 | `compose.env`    | Ports and secrets for Compose interpolation (mode 0600).    |
 | `api/`           | The stage: `package.json` and `convex/` without tests.      |
 | `api/.env.local` | `CONVEX_SELF_HOSTED_URL`, the admin key, `CONVEX_SITE_URL`. |

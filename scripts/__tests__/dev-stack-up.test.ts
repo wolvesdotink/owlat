@@ -13,6 +13,7 @@ const secrets = {
 	instanceSecret: 'i'.repeat(64),
 	betterAuthSecret: 'b'.repeat(64),
 	redisPassword: 'r',
+	unsubscribeSecret: 'u'.repeat(64),
 };
 
 interface Fake {
@@ -119,6 +120,7 @@ describe('runUp', () => {
 		expect(fake.deploymentEnv).toEqual({
 			INSTANCE_SECRET: secrets.instanceSecret,
 			BETTER_AUTH_SECRET: secrets.betterAuthSecret,
+			UNSUBSCRIBE_SECRET: secrets.unsubscribeSecret,
 			OWLAT_DEV_MODE: 'true',
 			SITE_URL: 'http://localhost:23000',
 			ALLOWED_ORIGINS: 'http://localhost:23000',

@@ -4,6 +4,7 @@ import * as cheerio from 'cheerio';
 import { createHmac } from 'node:crypto';
 import { getOptional } from '../../lib/env';
 import { footerHtml } from './footer';
+import { isOwnSubscriptionLink } from './ownLinks';
 import { encodeTrackedTarget, trackedLinkPath, trackedLinkSigningInput } from './trackingUrl';
 
 /**
@@ -31,6 +32,10 @@ export interface TransformConfig {
 	preferenceUrl?: string;
 	/** Pre-built `/archive?token=...` URL. */
 	viewInBrowserUrl?: string;
+	/** The language the body is in; picks the footer's link labels. */
+	footerLanguage?: string;
+	/** The sender's company name and postal address, shown in the footer. */
+	senderAddress?: string;
 }
 
 /**
@@ -42,7 +47,8 @@ export interface TransformConfig {
  *   2. Footer appended to body (before wrapping, which must see its
  *      `data-no-track` anchors to leave them alone)
  *   3. Link wrapping (skips data-no-track, mailto:, tel:, #anchors,
- *      javascript:, already-tracked /t/c/)
+ *      javascript:, already-tracked /t/c/, and this instance's own
+ *      unsubscribe and preference links)
  *   4. Tracking pixel appended to body
  */
 export function transformHtml(html: string, config: TransformConfig): string {
@@ -64,6 +70,8 @@ export function transformHtml(html: string, config: TransformConfig): string {
 		const footer = footerHtml({
 			unsubscribeUrl: config.unsubscribeUrl,
 			preferenceUrl: config.preferenceUrl,
+			language: config.footerLanguage,
+			senderAddress: config.senderAddress,
 		});
 		const $body = $('body');
 		if ($body.length > 0) {
@@ -82,6 +90,13 @@ export function transformHtml(html: string, config: TransformConfig): string {
 		// public-link signing secret. If it is somehow unset we leave links
 		// untracked rather than emit an unsigned (forgeable) tracking URL.
 		const trackingSecret = getOptional('UNSUBSCRIBE_SECRET');
+		// Read from the environment rather than the envelope so a seed shadow
+		// copy, which carries no `siteUrl`, wraps exactly the links its real send
+		// wraps.
+		const ownOrigins = {
+			siteUrl: getOptional('SITE_URL'),
+			convexSiteUrl: getOptional('CONVEX_SITE_URL'),
+		};
 		$('a[href]').each((_index, element) => {
 			const $link = $(element);
 			const href = $link.attr('href');
@@ -101,6 +116,10 @@ export function transformHtml(html: string, config: TransformConfig): string {
 			) {
 				return;
 			}
+
+			// An unsubscribe or preference link the author wrote into the body
+			// (or `{{unsubscribe_link}}`) opts out like the footer's: see footer.ts.
+			if (isOwnSubscriptionLink(href, ownOrigins)) return;
 
 			if (!trackingSecret) return; // no secret → leave the link untracked
 

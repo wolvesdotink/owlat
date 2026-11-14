@@ -17,6 +17,7 @@ import {
 	verifyUnsubscribeToken,
 } from './delivery/unsubscribeHttp';
 import { verifyPreferenceToken, updatePreferences } from './delivery/preferencesHttp';
+import { registerTestPreviewRoutes } from './delivery/testPreviewHttp';
 import { submitForm, handleFormCors } from './forms/apiHttp';
 import {
 	providerFeedbackWebhook,
@@ -94,6 +95,9 @@ http.route({
 	method: 'POST',
 	handler: handleSeedProbeUnsubscribe,
 });
+
+// The one-click target of a test preview (see testPreviewHttp.ts).
+registerTestPreviewRoutes(http);
 
 // Verify unsubscribe token: GET /unsub/verify/{token}
 http.route({

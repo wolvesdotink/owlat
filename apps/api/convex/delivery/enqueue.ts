@@ -79,6 +79,11 @@ export const campaignEnqueueEnvelopeFields = {
 	// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
 	// orchestrator via `getListIdHeader`. Absent for segment campaigns.
 	listId: v.optional(v.string()),
+	// The footer's labels follow the language the body was resolved to, and
+	// it shows the sender's postal address from the brand kit
+	// (`sendComposition/footer.ts`).
+	footerLanguage: v.optional(v.string()),
+	senderAddress: v.optional(v.string()),
 	// A/B arm this page belongs to. Only used to key the seed-probe set: the
 	// two arms are different messages and each deserves its own reading.
 	abVariant: v.optional(abVariantValidator),
@@ -178,6 +183,8 @@ export const enqueueCampaignEmails = internalMutation({
 				trackingBaseUrl: args.trackingBaseUrl,
 				viewInBrowserUrl: args.viewInBrowserUrl,
 				listId: args.listId,
+				...(args.footerLanguage !== undefined ? { footerLanguage: args.footerLanguage } : {}),
+				...(args.senderAddress !== undefined ? { senderAddress: args.senderAddress } : {}),
 				...(engagementScore !== undefined ? { engagementScore } : {}),
 			};
 			probeBaseEnvelope ??= envelopeInput;

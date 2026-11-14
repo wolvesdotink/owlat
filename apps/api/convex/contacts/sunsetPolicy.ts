@@ -37,7 +37,14 @@
  *     evidence of disengagement, it is absence of measurement;
  *   - a contact younger than the window it would be judged against never
  *     fires, so a brand-new contact is structurally unsuppressable;
- *   - a contact we have never actually sent to never fires;
+ *   - a contact we have never sent a campaign to never fires: only campaign
+ *     mail carries the open pixel and wrapped links, so automation and
+ *     transactional mail give the contact nothing we could see them engage
+ *     with;
+ *   - a contact whose recent campaign mail was opened only by an automated
+ *     fetch (Apple Mail Privacy Protection, a security gateway) never fires
+ *     while that fetch is recent: their mail is arriving and being fetched,
+ *     and whether a person reads it is something we cannot see;
  *   - a globally-unsubscribed contact never fires (it already receives no
  *     marketing mail, and suppressing it would also block the transactional
  *     mail it explicitly asked for);
@@ -172,6 +179,7 @@ export type SunsetReason =
 	| 'no_email'
 	| 'globally_unsubscribed'
 	| 'no_send_history'
+	| 'opens_unmeasurable'
 	| 'insufficient_tenure'
 	| 'already_suppressed'
 	| 'engaged_recently'
@@ -214,10 +222,12 @@ export type SunsetFacts = SunsetClock & {
 	createdAt: number;
 	/** Newest open/click/reply, per the engagement literals. */
 	lastEngagementAt?: number | undefined;
-	/** Oldest `email_sent` — when this contact first became measurable. */
+	/** Oldest sent campaign mail — when this contact first became measurable. */
 	firstMessagedAt?: number | undefined;
-	/** True when we have ever actually sent this contact mail. */
+	/** True when we have ever sent this contact campaign mail (the tracked kind). */
 	hasSendHistory: boolean;
+	/** Newest automated pixel fetch on the contact's latest campaign mail. */
+	lastAutomatedOpenAt?: number | undefined;
 	/** False when the contact row carries no email address at all. */
 	hasEmail: boolean;
 	/** `contacts.unsubscribedAt` is set — global marketing opt-out. */
@@ -400,7 +410,8 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 	if (
 		!isTrustworthyInstantOrAbsent(facts.createdAt, facts.now) ||
 		!isTrustworthyInstantOrAbsent(facts.lastEngagementAt, facts.now) ||
-		!isTrustworthyInstantOrAbsent(facts.firstMessagedAt, facts.now)
+		!isTrustworthyInstantOrAbsent(facts.firstMessagedAt, facts.now) ||
+		!isTrustworthyInstantOrAbsent(facts.lastAutomatedOpenAt, facts.now)
 	) {
 		return hold('clock_skew', stage);
 	}
@@ -442,6 +453,16 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 
 	if (stage === 'suppressed' || facts.isAlreadySuppressed) {
 		return hold('already_suppressed', stage);
+	}
+
+	// 7. Quiet on paper, but the mail is being fetched by a proxy or scanner
+	//    that hides whether a person reads it. Within the re-engage window of
+	//    such a fetch the quiet days measure our blindness, not the contact.
+	if (
+		facts.lastAutomatedOpenAt !== undefined &&
+		(facts.now - facts.lastAutomatedOpenAt) / DAY_MS < policy.reengageAfterDays
+	) {
+		return hold('opens_unmeasurable', stage);
 	}
 
 	const covers = (windowDays: number): boolean =>

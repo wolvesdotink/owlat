@@ -6,7 +6,13 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { FunctionArgs } from 'convex/server';
 import type { TestSendCommit } from './testSendCommit';
-import { composeForSend } from '../delivery/sendComposition';
+import { composeForSend, type TestComposeInput } from '../delivery/sendComposition';
+import { transformHtml } from '../delivery/sendComposition/transform';
+import {
+	testPreviewFooterUrls,
+	testPreviewListUnsubscribeHeader,
+} from '../delivery/testPreviewLinks';
+import { getOptional } from '../lib/env';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
 import { assertCampaignsEnabledInAction } from './_helpers';
@@ -48,6 +54,46 @@ async function queueTestSends(
 		);
 	}
 	return outcome;
+}
+
+/**
+ * What a marketing preview adds so it shows what recipients get: the footer
+ * (in the body's language, with the sender's postal address) and the one-click
+ * header pair, all pointing at preview targets that act on nobody
+ * (`delivery/testPreviewLinks.ts`).
+ */
+async function marketingPreview(
+	ctx: Pick<ActionCtx, 'runQuery'>,
+	language: string | undefined
+): Promise<Pick<TestComposeInput, 'footer' | 'listUnsubscribeHeader'>> {
+	const urls = testPreviewFooterUrls(getOptional('SITE_URL'));
+	const listUnsubscribeHeader = testPreviewListUnsubscribeHeader(getOptional('CONVEX_SITE_URL'));
+	const senderAddress = urls
+		? await ctx.runQuery(internal.campaigns.sendQueries.getSenderAddress, {})
+		: undefined;
+	return {
+		...(urls
+			? {
+					footer: {
+						...urls,
+						...(language ? { language } : {}),
+						...(senderAddress ? { senderAddress } : {}),
+					},
+				}
+			: {}),
+		...(listUnsubscribeHeader ? { listUnsubscribeHeader } : {}),
+	};
+}
+
+/** The composed preview as the test-send commit queues it: footer applied, no tracking. */
+function previewMessage(composed: ReturnType<typeof composeForSend>) {
+	return {
+		html: composed.transformConfig
+			? transformHtml(composed.html, composed.transformConfig)
+			: composed.html,
+		text: composed.text,
+		...(Object.keys(composed.headers).length > 0 ? { headers: composed.headers } : {}),
+	};
 }
 
 // Action to send a test email for a campaign
@@ -117,7 +163,8 @@ export const sendTestEmail = authedAction({
 			lastName: 'User',
 		};
 
-		// Compose subject + body for the test kind (no tracking, no footer).
+		// Compose subject + body for the test kind: the footer and one-click
+		// pair a real send carries, with preview links, and no tracking.
 		const composed = composeForSend({
 			kind: 'test',
 			template: {
@@ -126,6 +173,7 @@ export const sendTestEmail = authedAction({
 				plainTextContent: langContent.plainTextContent,
 			},
 			sampleContact: testContact,
+			...(await marketingPreview(ctx, langContent.resolvedLanguage)),
 		});
 
 		// Add test email indicator with language info
@@ -140,7 +188,7 @@ export const sendTestEmail = authedAction({
 			from,
 			replyTo: campaign.replyTo,
 			subject: testSubject,
-			html: composed.html,
+			...previewMessage(composed),
 			recipients: [args.testEmail],
 		});
 		if (queued.kind === 'no_provider') throwInvalidState(queued.message);
@@ -204,14 +252,24 @@ export const sendTestEmailFromTemplate = authedAction({
 			...args.dataVariables,
 		} as { email: string; firstName: string; lastName: string; [key: string]: unknown };
 
-		// Compose subject + body for the test kind (no tracking, no footer).
+		// A marketing email (campaigns and automations send it) previews with
+		// the footer and one-click pair its recipients get; a transactional email
+		// or a saved block, which have no template row here, without them.
+		const template = args.templateId
+			? await ctx.runQuery(internal.campaigns.sendQueries.getEmailTemplate, {
+					templateId: args.templateId,
+				})
+			: null;
+		const isMarketing = template?.type === 'marketing';
+
+		// Compose subject + body for the test kind; never tracked.
 		const composed = composeForSend({
 			kind: 'test',
 			template: { subject: args.subject, htmlContent: args.htmlContent },
 			sampleContact,
+			...(isMarketing ? await marketingPreview(ctx, template.defaultLanguage) : {}),
 		});
 		const personalizedSubject = `[TEST] ${composed.subject}`;
-		const personalizedHtml = composed.html;
 
 		// COMMIT. One queued test Send per recipient, behind the sender,
 		// rate-limit and member-inbox gates (a non-member recipient refuses the
@@ -221,7 +279,7 @@ export const sendTestEmailFromTemplate = authedAction({
 			fromEmail: args.fromEmail,
 			from,
 			subject: personalizedSubject,
-			html: personalizedHtml,
+			...previewMessage(composed),
 			recipients: args.testEmails,
 		});
 		if (queued.kind === 'no_provider') {
