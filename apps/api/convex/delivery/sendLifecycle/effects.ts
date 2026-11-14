@@ -15,7 +15,6 @@ import { normalizeEmail } from '../../lib/inputGuards';
 import { isMarketingOnlyBlockReason } from '../suppressionMirror';
 import { scheduleSuppressionMirror } from '../suppressionMirrorScheduler';
 import { supersedesBlockedRow } from '../../blockedEmails/lookup';
-import { isSuppressionExpired } from '@owlat/shared/softBounceSuppression';
 import type { TransportOutcomeEvent } from '../../analytics/transportOutcomes';
 import type { SendRef } from './types';
 import type { SendTimeGroup } from '../../lib/validators/sendTime';
@@ -193,7 +192,9 @@ export async function applyEffects(
 					await ctx.db.patch(existing._id, {
 						reason: effect.reason,
 						bounceType,
-						...(isSuppressionExpired(existing, now) ? { createdAt: now } : {}),
+						// A soft bounce's window starts with this evidence, whatever row it
+						// replaced, as its MTA mirror's does.
+						...(bounceType === 'soft' ? { createdAt: now } : {}),
 						// THE NOTE MUST NOT OUTLIVE THE REASON IT EXPLAINED. A
 						// marketing-only row carries the sunset engine's note ("no
 						// engagement for N days"); once mailbox evidence has replaced the

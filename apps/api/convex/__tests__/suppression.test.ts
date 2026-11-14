@@ -18,6 +18,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { isSuppressed, loadSuppressionSet, suppressEmail } from '../lib/suppression';
 import { SOFT_BOUNCE_SUPPRESSION_TTL_MS } from '@owlat/shared/softBounceSuppression';
+import { applyEffects } from '../delivery/sendLifecycle/effects';
 import { normalizeEmail } from '../lib/inputGuards';
 
 const modules = import.meta.glob('../**/*.*s');
@@ -160,6 +161,39 @@ describe('soft-bounce expiry', () => {
 		expect(await blocked('gone@example.com')).toBe(true);
 		const set = await t.run(async (ctx) => [...(await loadSuppressionSet(ctx))]);
 		expect(set).toEqual(['gone@example.com']);
+	});
+
+	it('a soft bounce that upgrades an old unengaged row starts its own window', async () => {
+		vi.useFakeTimers({ now: T0 });
+		const t = convexTest(schema, modules);
+		const sendId = await t.run(async (ctx) => {
+			await ctx.db.insert('blockedEmails', {
+				email: 'quiet@example.com',
+				reason: 'unengaged',
+				createdAt: T0 - 3 * SOFT_BOUNCE_SUPPRESSION_TTL_MS,
+			});
+			return await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'quiet@example.com',
+				status: 'queued',
+			});
+		});
+
+		await t.run((ctx) =>
+			applyEffects(ctx, [
+				{
+					kind: 'blocklist_insert',
+					email: 'quiet@example.com',
+					reason: 'bounced',
+					bounceType: 'soft',
+					source: { kind: 'transactional', id: sendId },
+				},
+			])
+		);
+
+		expect(
+			await t.run((ctx) => isSuppressed(ctx, 'quiet@example.com', { scope: 'transactional' }))
+		).toBe(true);
 	});
 
 	it('a complaint replaces an active soft-bounce row instead of being dropped', async () => {
