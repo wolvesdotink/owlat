@@ -177,6 +177,23 @@ describe('the public-address step of a re-run', () => {
 		expect(await readEnv(paths.envPath)).toEqual(before);
 	});
 
+	it('tests the ports again when a config-file install with other Convex names is moved onto the convention', async () => {
+		await writeEnv(paths.envPath, {
+			...LOCAL_ENV,
+			SITE_URL: 'https://owlat.example.com',
+			NUXT_PUBLIC_CONVEX_URL: 'https://convex.example.com',
+			NUXT_PUBLIC_CONVEX_SITE_URL: 'https://convex-site.example.com',
+			COMPOSE_PROFILES: 'mta,tls',
+		});
+		const before = await readEnv(paths.envPath);
+		const portsTaken: HostCheckDeps = { ...reachableDeps(), listen: async () => 'EADDRINUSE' };
+		driver.text = ['example.com', 'ops@example.com'];
+		driver.select = ['cancel'];
+
+		expect(await runPublicAddressOnly({ ...paths, deps: portsTaken })).toBe(1);
+		expect(await readEnv(paths.envPath)).toEqual(before);
+	});
+
 	it('goes back to localhost, dropping the edge, when the domain is cleared', async () => {
 		driver.text = ['example.com', 'ops@example.com'];
 		await runPublicAddressOnly({ ...paths, deps: reachableDeps() });
