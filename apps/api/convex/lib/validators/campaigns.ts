@@ -77,3 +77,20 @@ export const campaignStartRefusalValidator = v.object({
 	/** When the start was given up. */
 	refusedAt: v.number(),
 });
+
+/**
+ * A scheduled start the start gate is holding (`campaigns/startGate.ts`): the
+ * campaign is past its time, still `scheduled`, and waiting for delivery to
+ * come back. Kept on the campaign so its pages can say why it has not started
+ * and when the wait gives up. `reason` is the pre-flight reason or
+ * `delivery_on_hold`, stored as a string like the refusal's, so a hold
+ * written by one build still loads under another. Cleared by every lifecycle
+ * transition.
+ */
+export const campaignStartHoldValidator = v.object({
+	reason: v.string(),
+	/** The start being held; a reschedule makes it stale. */
+	scheduledAt: v.number(),
+	/** When the gate stops waiting and returns the campaign to draft. */
+	givesUpAt: v.number(),
+});

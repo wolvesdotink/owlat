@@ -2,13 +2,16 @@
 // The alerts above the campaign editor's form: a screening block that sent the
 // campaign back to draft, a scheduled start that did not happen, the last
 // save's error, what stops the campaign from going out, and the scheduled-send
-// notice with Unschedule and Cancel. Several roots, so each alert stays a
+// notice with Unschedule and Cancel (which says so when the start gate is
+// holding a start past its time). Several roots, so each alert stays a
 // direct child of the form's spaced column.
 import {
 	blockerFromStartRefusal,
 	type SendBlocker,
 	type StoredStartRefusal,
 } from '~/lib/campaignRefusal';
+import { activeStartHold, type StoredStartHold } from '~/utils/campaignStartHold';
+import StartWaitingNote from '~/components/campaigns/StartWaitingNote.vue';
 import { CircleWarningIcon, ClockIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -22,6 +25,8 @@ const props = defineProps<{
 	isSaving: boolean;
 	/** Why the campaign cannot go out as it stands, or `null`. */
 	sendBlocker?: SendBlocker | null;
+	/** The start gate's recorded wait, when it is holding this start. */
+	startHold?: StoredStartHold | null;
 }>();
 
 const emit = defineEmits<{ unschedule: []; cancel: [] }>();
@@ -30,6 +35,15 @@ const { t, te, locale } = useI18n();
 
 const startRefusalBlocker = computed(() =>
 	props.startRefusal ? blockerFromStartRefusal(props.startRefusal, (key) => te(key)) : null
+);
+const waitingHold = computed(() =>
+	props.isScheduled
+		? activeStartHold({
+				status: 'scheduled',
+				scheduledAt: props.scheduledAt,
+				startHold: props.startHold,
+			})
+		: null
 );
 const startRefusalDate = computed(() =>
 	props.startRefusal ? new Date(props.startRefusal.scheduledAt).toLocaleString(locale.value) : ''
@@ -95,15 +109,33 @@ const startRefusalDate = computed(() =>
 		<CampaignsSendBlockedNote v-if="sendBlocker" :blocker="sendBlocker" />
 	</div>
 
-	<!-- Scheduled Campaign Notice -->
-	<div v-if="isScheduled && scheduledAt" class="p-4 bg-brand/10 border border-brand/20 rounded-lg">
+	<!-- Scheduled Campaign Notice. Past its time and held by the start gate, it
+	     says it is waiting, why, and until when; the status region is always in
+	     the DOM so that change is announced. -->
+	<div
+		v-if="isScheduled && scheduledAt"
+		class="p-4 border rounded-lg"
+		:class="waitingHold ? 'bg-warning/10 border-warning/20' : 'bg-brand/10 border-brand/20'"
+	>
 		<div class="flex items-start gap-3">
-			<ClockIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+			<ClockIcon
+				class="w-5 h-5 shrink-0 mt-0.5"
+				:class="waitingHold ? 'text-warning' : 'text-brand'"
+			/>
 			<div class="flex-1">
-				<p class="text-sm font-medium text-text-primary">
+				<div role="status" data-testid="start-waiting" class="space-y-1 empty:hidden">
+					<template v-if="waitingHold">
+						<p class="text-sm font-medium text-text-primary">
+							{{ t('shared.campaignStartHold.title') }}
+						</p>
+						<StartWaitingNote :hold="waitingHold" />
+					</template>
+				</div>
+				<p v-if="!waitingHold" class="text-sm font-medium text-text-primary">
 					{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}
 				</p>
 				<I18nT
+					v-if="!waitingHold"
 					keypath="dashboard.campaigns.detail.edit.scheduledNotice.description"
 					tag="p"
 					class="text-sm text-text-secondary mt-1"

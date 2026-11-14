@@ -1,13 +1,17 @@
 import { api } from '@owlat/api';
 import { healthDotClass, levelTone } from '~/utils/healthTone';
+import { deliveryHealthReasonText } from '~/utils/deliveryHealthReason';
+import { useLocalized } from '~/composables/useLocalized';
 
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
 
 /**
  * Live delivery-health roll-up for the sidebar **Delivery** status dot. One
  * cheap org-scoped subscription (worst-of reputation risk, domain verification,
- * and provider config) — no N+1. Returns the level + a human reason for the
- * dot's tooltip, plus the token class the dot fills with.
+ * and provider config) — no N+1. Returns the level + the reason in the
+ * reader's language (the backend names it by code), plus the token class the
+ * dot fills with. `reason` is empty until the roll-up answers, and for a code
+ * this build cannot word, so each surface falls back to its own generic line.
  *
  * `level` is `null` until the roll-up answers. It used to default to `'ok'`,
  * which made every consumer claim "Healthy" before anything had been checked —
@@ -19,7 +23,10 @@ export function useDeliveryHealth() {
 	const { data } = useOrganizationQuery(api.delivery.health.getDeliveryHealth);
 
 	const level = computed<DeliveryHealthLevel | null>(() => data.value?.level ?? null);
-	const reason = computed(() => data.value?.reason ?? '');
+	const localized = useLocalized();
+	const reason = computed(() =>
+		localized(deliveryHealthReasonText(data.value?.reasonCode, data.value?.reasonParams))
+	);
 
 	// Only surface the dot when there's something to say — a healthy (or not yet
 	// known) send path stays quiet (no green dot cluttering the nav).

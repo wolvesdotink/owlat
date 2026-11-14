@@ -9,6 +9,13 @@ import { mount } from '@vue/test-utils';
 import { defineComponent, h, ref, type PropType } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import de from '~~/i18n/locales/de.json';
+import {
+	NO_PROVIDER_DE,
+	NO_PROVIDER_HEALTH,
+	germanTestI18n,
+	healthQueryStub,
+} from '~/__tests__/deliveryHealthFixture';
+import { useDeliveryHealth } from '~/composables/useDeliveryHealth';
 import type { MarketingDelivery } from '~/utils/marketingOverviewTypes';
 
 /** Renders each bar's label as a list item, so the test reads what UiBars is handed. */
@@ -77,5 +84,28 @@ describe('MarketingAudiencePanel new-contacts bars', () => {
 		const wrapper = await mountPanel('en');
 		expect(barLabels(wrapper)).toEqual(['Sep 2', 'Sep 3']);
 		expect(wrapper.text()).not.toContain('(server)');
+	});
+});
+
+describe('MarketingAudiencePanel delivery health row', () => {
+	afterEach(() => {
+		vi.resetModules();
+	});
+
+	it('words the roll-up reason in German', async () => {
+		vi.stubGlobal('useI18n', i18nStubs.useI18n);
+		vi.stubGlobal(
+			'useOrganizationQuery',
+			healthQueryStub(NO_PROVIDER_HEALTH, () => GROWTH)
+		);
+		vi.stubGlobal('useDeliveryHealth', useDeliveryHealth);
+		const component = (await import('../MarketingAudiencePanel.vue')).default;
+		const wrapper = mount(component, {
+			props: { delivery: DELIVERY },
+			global: { plugins: [germanTestI18n()], stubs: { UiBars: UiBarsStub, UiSkeleton: true } },
+		});
+
+		expect(wrapper.text()).toContain(NO_PROVIDER_DE);
+		expect(wrapper.text()).not.toContain('No delivery provider');
 	});
 });

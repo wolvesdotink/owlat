@@ -22,7 +22,8 @@
  *
  * The worst-of logic lives in the pure `rollUpDeliveryHealth` so it is unit
  * testable without a DB. Levels map to the shared success/warning/error tokens
- * on the client; the `reason` names the worst offender for the dot's tooltip.
+ * on the client; the `reasonCode` names the worst offender for the dot's
+ * tooltip, and the client words it (`healthCopy.ts`).
  */
 
 import { authedQuery } from '../lib/authedFunctions';
@@ -42,6 +43,7 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import type { mtaHealthSnapshotValidator } from '../schema/instance';
+import type { DeliveryHealthReason, DeliveryHealthReasonParams } from './healthCopy';
 
 /** Traffic-light level for the Delivery status dot. */
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
@@ -120,25 +122,40 @@ export function mtaInfrastructureState(
 
 interface DeliveryHealthRollup {
 	level: DeliveryHealthLevel;
-	/** One human line naming the worst offender, for the dot's title tooltip. */
-	reason: string;
+	/**
+	 * The worst offender as a catalog reason (`healthCopy.ts`), worded by the
+	 * client in the reader's language. Nothing outside the web app reads the
+	 * roll-up, so it carries no English sentence of its own.
+	 */
+	reasonCode: DeliveryHealthReason;
+	/** The values the reason's sentence interpolates, when it has any. */
+	reasonParams?: DeliveryHealthReasonParams;
 }
 
 const SEVERITY: Record<DeliveryHealthLevel, number> = { ok: 0, warn: 1, error: 2 };
+
+const HEALTHY: DeliveryHealthRollup = { level: 'ok', reasonCode: 'healthy' };
+
+function verdict(
+	level: DeliveryHealthLevel,
+	reasonCode: DeliveryHealthReason
+): DeliveryHealthRollup {
+	return { level, reasonCode };
+}
 
 /** Provider dimension: no usable provider is a hard, send-blocking failure. */
 function providerHealth(
 	canSend: boolean,
 	streamsWithoutTransport: readonly ('transactional' | 'campaign')[]
 ): DeliveryHealthRollup {
-	if (!canSend) return { level: 'error', reason: 'No delivery provider is configured' };
+	if (!canSend) return verdict('error', 'no_provider');
 	if (streamsWithoutTransport.includes('transactional')) {
-		return { level: 'error', reason: 'No delivery provider is configured for transactional mail' };
+		return verdict('error', 'no_provider_transactional');
 	}
 	if (streamsWithoutTransport.includes('campaign')) {
-		return { level: 'error', reason: 'No delivery provider is configured for campaigns' };
+		return verdict('error', 'no_provider_campaign');
 	}
-	return { level: 'ok', reason: 'Delivery provider is configured' };
+	return HEALTHY;
 }
 
 /**
@@ -147,30 +164,20 @@ function providerHealth(
  * and only warns, as the readiness panel's transport gate grades it.
  */
 function feedbackHealth(streams: readonly ('transactional' | 'campaign')[]): DeliveryHealthRollup {
-	if (streams.includes('campaign')) {
-		return {
-			level: 'error',
-			reason: 'Bounce and complaint reports cannot reach Owlat, so campaigns are refused',
-		};
-	}
-	if (streams.includes('transactional')) {
-		return { level: 'warn', reason: 'Bounce and complaint reports cannot reach Owlat' };
-	}
-	return { level: 'ok', reason: 'Bounce and complaint reports can reach Owlat' };
+	if (streams.includes('campaign')) return verdict('error', 'feedback_missing_campaign');
+	if (streams.includes('transactional')) return verdict('warn', 'feedback_missing_transactional');
+	return HEALTHY;
 }
 
 /** Transactional sends always use the default sender; without a verified one they are refused. */
 function senderHealth(sender: DeliveryHealthInputs['transactionalSender']): DeliveryHealthRollup {
 	switch (sender) {
 		case 'missing':
-			return { level: 'error', reason: 'No default sender is set for transactional mail' };
+			return verdict('error', 'sender_missing');
 		case 'unverified':
-			return {
-				level: 'error',
-				reason: "The default sender's domain is not verified, so transactional mail is refused",
-			};
+			return verdict('error', 'sender_unverified');
 		default:
-			return { level: 'ok', reason: 'The default sender is verified' };
+			return HEALTHY;
 	}
 }
 
@@ -178,19 +185,17 @@ function senderHealth(sender: DeliveryHealthInputs['transactionalSender']): Deli
 function sendingIpHealth(posture: SendingIpPosture | null | undefined): DeliveryHealthRollup {
 	switch (posture) {
 		case 'all_held':
-			return { level: 'error', reason: 'Every sending IP is held back' };
+			return verdict('error', 'ips_all_held');
 		case 'some_held':
-			return { level: 'warn', reason: 'Some sending IPs are held back' };
+			return verdict('warn', 'ips_some_held');
 		default:
-			return { level: 'ok', reason: 'Sending IPs are in rotation' };
+			return HEALTHY;
 	}
 }
 
 /** A halted warm-up stops campaign volume from growing until it is cleared. */
 function warmupHealth(isHalted: boolean): DeliveryHealthRollup {
-	return isHalted
-		? { level: 'warn', reason: 'IP warm-up is halted' }
-		: { level: 'ok', reason: 'IP warm-up is on track' };
+	return isHalted ? verdict('warn', 'warmup_halted') : HEALTHY;
 }
 
 function mtaHealth(
@@ -199,20 +204,23 @@ function mtaHealth(
 ): DeliveryHealthRollup {
 	switch (status) {
 		case 'signing_held':
-			return {
-				level: 'error',
-				reason: `Mail from ${heldSigningDomains.join(', ') || 'a sending domain'} is held: the mail server has no usable DKIM key to sign it`,
-			};
+			return heldSigningDomains.length > 0
+				? {
+						level: 'error',
+						reasonCode: 'mta_signing_held',
+						reasonParams: { domains: heldSigningDomains.join(', ') },
+					}
+				: verdict('error', 'mta_signing_held_unnamed');
 		case 'degraded':
-			return { level: 'error', reason: 'Mail server infrastructure is degraded' };
+			return verdict('error', 'mta_degraded');
 		case 'unreachable':
-			return { level: 'error', reason: 'Mail server health endpoint is unreachable' };
+			return verdict('error', 'mta_unreachable');
 		case 'stale':
-			return { level: 'warn', reason: 'Mail server health check is stale' };
+			return verdict('warn', 'mta_stale');
 		case 'unchecked':
-			return { level: 'warn', reason: 'Mail server health has not been checked yet' };
+			return verdict('warn', 'mta_unchecked');
 		default:
-			return { level: 'ok', reason: 'Mail server infrastructure is healthy' };
+			return HEALTHY;
 	}
 }
 
@@ -223,32 +231,26 @@ function mtaHealth(
  * verified domain in place, anything still mid-flight only warns.
  */
 function domainHealth(statuses: DomainStatus[]): DeliveryHealthRollup {
-	if (statuses.some((s) => s === 'failed')) {
-		return { level: 'error', reason: 'A sending domain failed verification' };
-	}
-	if (statuses.length === 0) {
-		return { level: 'error', reason: 'No sending domain is set up yet' };
-	}
-	if (!statuses.some((s) => s === 'verified')) {
-		return { level: 'error', reason: 'No sending domain is verified yet' };
-	}
+	if (statuses.some((s) => s === 'failed')) return verdict('error', 'domain_failed');
+	if (statuses.length === 0) return verdict('error', 'no_domain');
+	if (!statuses.some((s) => s === 'verified')) return verdict('error', 'no_verified_domain');
 	if (statuses.some((s) => s === 'pending' || s === 'registering')) {
-		return { level: 'warn', reason: "A sending domain isn't verified yet" };
+		return verdict('warn', 'domain_pending');
 	}
-	return { level: 'ok', reason: 'Sending domains are verified' };
+	return HEALTHY;
 }
 
 /** Reputation dimension: critical blocks; high/medium warrant attention. */
 function reputationHealth(risk: ReputationRisk | null): DeliveryHealthRollup {
 	switch (risk) {
 		case 'critical':
-			return { level: 'error', reason: 'Sending reputation is critical' };
+			return verdict('error', 'reputation_critical');
 		case 'high':
-			return { level: 'warn', reason: 'Sending reputation is at risk' };
+			return verdict('warn', 'reputation_high');
 		case 'medium':
-			return { level: 'warn', reason: 'Sending reputation needs attention' };
+			return verdict('warn', 'reputation_medium');
 		default:
-			return { level: 'ok', reason: 'Sending reputation is healthy' };
+			return HEALTHY;
 	}
 }
 
@@ -273,7 +275,7 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
 	];
 
 	// Highest severity wins; first candidate at that severity supplies the reason.
-	let worst = candidates[0]!;
+	let worst = HEALTHY;
 	for (const c of candidates) {
 		if (SEVERITY[c.level] > SEVERITY[worst.level]) worst = c;
 	}
@@ -284,9 +286,9 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
  * Live delivery-health roll-up for the sidebar dot. One query, three bounded
  * reads (rolling reputation buckets, sending domains, provider routes, and the
  * infrastructure singleton) — cheap enough to subscribe to from the nav. Member-level: it returns
- * only a level + a human reason string, never a credential or a raw metric.
+ * only a level + a reason code, never a credential or a raw metric.
  */
-// all-members: delivery health is org-wide operational status, member-visible — a coarse ok/warn/error level + human reason string, no credentials or raw metrics.
+// all-members: delivery health is org-wide operational status, member-visible — a coarse ok/warn/error level + reason code, no credentials or raw metrics.
 export const getDeliveryHealth = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliveryHealthRollup> => {

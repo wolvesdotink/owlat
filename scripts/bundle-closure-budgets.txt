@@ -97,8 +97,8 @@ route 54 pages/dashboard/automations/[id]/edit.vue
 route 29 pages/dashboard/automations/[id]/index.vue
 route 55 pages/dashboard/automations/index.vue
 route 11 pages/dashboard/automations/new.vue
-route 62 pages/dashboard/campaigns/[id]/edit.vue
-route 33 pages/dashboard/campaigns/[id]/report.vue
+route 63 pages/dashboard/campaigns/[id]/edit.vue
+route 34 pages/dashboard/campaigns/[id]/report.vue
 route 14 pages/dashboard/campaigns/[id]/sends/[sendId].vue
 route 55 pages/dashboard/campaigns/index.vue
 route 352 pages/dashboard/campaigns/new.vue

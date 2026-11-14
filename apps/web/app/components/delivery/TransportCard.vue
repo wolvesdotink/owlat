@@ -19,6 +19,8 @@ import { deriveTransportDisplay } from '~/utils/transportState';
 import { healthChipClass, healthDotClass, healthTextClass } from '~/utils/healthTone';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
+import { useInstanceTransportPage } from '~/composables/useInstanceTransportPage';
+import InstanceTransportNotice from './InstanceTransportNotice.vue';
 import {
 	CircleCheckIcon,
 	CircleCloseIcon,
@@ -47,6 +49,10 @@ const {
 } = useOrganizationQuery(api.delivery.status.getTransportSummary);
 
 const display = computed(() => (summary.value ? deriveTransportDisplay(summary.value) : null));
+
+// The desktop app cannot run the transport editor; the card says where the
+// transport is changed instead of linking to controls that would fail there.
+const { isDesktop } = useInstanceTransportPage();
 
 const lastCheckedLabel = computed(() => {
 	const at = summary.value?.infrastructure?.observedAt ?? summary.value?.health?.lastCheckedAt;
@@ -173,9 +179,11 @@ const infrastructureChecks = computed(() => {
 				<span>{{ t('components.delivery.transportCard.advancedRoutingActive') }}</span>
 			</p>
 
+			<InstanceTransportNotice v-if="isDesktop" compact />
+
 			<!-- Actions -->
 			<div class="flex flex-wrap items-center gap-3 pt-1">
-				<UiButton to="/dashboard/admin/delivery/transport">
+				<UiButton v-if="!isDesktop" to="/dashboard/admin/delivery/transport">
 					<Slider1Icon class="w-4 h-4" />
 					{{
 						display.isConfigured

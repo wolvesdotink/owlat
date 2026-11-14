@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // The campaign report's title block: Back, the name, which of the five states
 // the send is in (badge and timing line), the recipient count once the send has
-// started, the multi-day send plan and Duplicate.
+// started, the multi-day send plan and Duplicate. A scheduled start the start
+// gate is holding past its time reads as waiting, with why and until when.
 import type { FunctionReturnType } from 'convex/server';
 // TYPE-ONLY: the header needs the send plan's shape, never the client.
 import type { api } from '@owlat/api';
 import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
+import StartWaitingNote from '~/components/campaigns/StartWaitingNote.vue';
+import { activeStartHold, type StoredStartHold } from '~/utils/campaignStartHold';
 import { formatNumber } from '~/utils/formatters';
 import {
 	ArrowLeftIcon,
@@ -18,7 +21,12 @@ import {
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
-	campaign: { name: string; sentAt?: number; scheduledAt?: number };
+	campaign: {
+		name: string;
+		sentAt?: number;
+		scheduledAt?: number;
+		startHold?: StoredStartHold;
+	};
 	reportStatus: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
 	hasSendStarted: boolean;
 	/** Everything dispatched to the provider. */
@@ -33,8 +41,22 @@ const emit = defineEmits<{ duplicate: [] }>();
 
 const { t } = useI18n();
 
+const waitingHold = computed(() =>
+	props.reportStatus === 'scheduled'
+		? activeStartHold({ ...props.campaign, status: 'scheduled' })
+		: null
+);
+
 const statusBadge = computed(() => {
 	const prefix = 'dashboard.campaigns.detail.report.status';
+	if (waitingHold.value) {
+		return {
+			label: t('shared.campaignStartHold.title'),
+			icon: ClockIcon,
+			tone: 'bg-warning/10 text-warning',
+			spin: false,
+		};
+	}
 	switch (props.reportStatus) {
 		case 'sent':
 			return {
@@ -136,6 +158,10 @@ const timingLine = computed(() => {
 							}}
 						</span>
 					</template>
+				</div>
+				<!-- Always in the DOM, so the move from scheduled to waiting is announced. -->
+				<div role="status" data-testid="start-waiting" class="mt-1 space-y-0.5 empty:hidden">
+					<StartWaitingNote v-if="waitingHold" :hold="waitingHold" />
 				</div>
 				<!--
 					THE MULTI-DAY SEND PLAN, present from the moment the send starts. Renders nothing for an ordinary same-day send.

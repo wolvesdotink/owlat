@@ -6,6 +6,7 @@ import { audienceValidator } from '../campaigns/audience';
 import { sendStatusValidator, abVariantValidator } from '../lib/literalValidators';
 import {
 	campaignShardedStatFields,
+	campaignStartHoldValidator,
 	campaignStartRefusalValidator,
 } from '../lib/validators/campaigns';
 import { sendTrackingFields } from '../lib/validators/send';
@@ -284,6 +285,8 @@ export const campaignTables = {
 		// Why the last scheduled start did not happen (the campaign went back to
 		// draft). Cleared when the campaign is scheduled or sent again.
 		startRefusal: v.optional(campaignStartRefusalValidator),
+		// A scheduled start the start gate is waiting on, past its time.
+		startHold: v.optional(campaignStartHoldValidator),
 		// Denormalized search field: "name subject" for full-text search
 		searchableText: v.optional(v.string()),
 		// Aggregated stats freshness (stats* fields are updated only by the Send

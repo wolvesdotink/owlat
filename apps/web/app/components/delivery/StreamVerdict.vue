@@ -8,7 +8,7 @@
 import type { StreamVerdict } from '~/utils/deliveryReadiness';
 import { healthChipClass } from '~/utils/healthTone';
 import { useLocalized } from '~/composables/useLocalized';
-import { ArrowRightIcon } from '@coolicons/vue';
+import ReadinessActionLink from './ReadinessActionLink.vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -44,15 +44,10 @@ const resolvedHeading = computed(
 			</span>
 		</div>
 		<p class="flex-1 min-w-0 text-sm text-text-secondary">{{ localized(verdict.sentence) }}</p>
-		<NuxtLink
+		<ReadinessActionLink
 			v-if="showAction && verdict.actionHref && verdict.actionLabel"
-			:to="verdict.actionHref"
-			class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline shrink-0 group"
-		>
-			{{ localized(verdict.actionLabel) }}
-			<ArrowRightIcon
-				class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"
-			/>
-		</NuxtLink>
+			:href="verdict.actionHref"
+			:label="verdict.actionLabel"
+		/>
 	</div>
 </template>

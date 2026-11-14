@@ -85,8 +85,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health.level).toBe('error');
-		expect(typeof health.reason).toBe('string');
-		expect(health.reason.length).toBeGreaterThan(0);
+		expect(health.reasonCode).toBe('domain_failed');
 	});
 
 	it('is ok when the provider is configured, no failed domain, no activity', async () => {
@@ -150,7 +149,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({
 			level: 'error',
-			reason: 'Mail server infrastructure is degraded',
+			reasonCode: 'mta_degraded',
 		});
 	});
 
@@ -176,8 +175,8 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({
 			level: 'error',
-			reason:
-				'Mail from mail.example.com is held: the mail server has no usable DKIM key to sign it',
+			reasonCode: 'mta_signing_held',
+			reasonParams: { domains: 'mail.example.com' },
 		});
 	});
 
@@ -248,7 +247,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		await seedHealthySnapshot(t, MTA_HEALTH_MAX_AGE_MS + 60_000);
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
-		expect(health).toEqual({ level: 'warn', reason: 'Mail server health check is stale' });
+		expect(health).toEqual({ level: 'warn', reasonCode: 'mta_stale' });
 	});
 
 	/** A provider-configured MTA instance with a fresh healthy snapshot and a verified sender. */
@@ -314,7 +313,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({
 			level: 'error',
-			reason: 'No default sender is set for transactional mail',
+			reasonCode: 'sender_missing',
 		});
 	});
 
@@ -325,7 +324,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health.level).toBe('error');
-		expect(health.reason).toMatch(/default sender/i);
+		expect(health.reasonCode).toBe('sender_unverified');
 	});
 
 	it('errors when every IP of a pool the MTA carries is held', async () => {
@@ -338,7 +337,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		]);
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
-		expect(health).toEqual({ level: 'error', reason: 'Every sending IP is held back' });
+		expect(health).toEqual({ level: 'error', reasonCode: 'ips_all_held' });
 	});
 
 	it('reads pool membership from the pool lists, not the first-pool label on each row', async () => {
@@ -354,7 +353,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		);
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
-		expect(health).toEqual({ level: 'warn', reason: 'Some sending IPs are held back' });
+		expect(health).toEqual({ level: 'warn', reasonCode: 'ips_some_held' });
 	});
 
 	it('warns when the campaign warm-up is halted', async () => {
@@ -364,7 +363,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		await seedWarming(t, 'plateau', [warmingIp('192.0.2.10', 'campaign', false)]);
 
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
-		expect(health).toEqual({ level: 'warn', reason: 'IP warm-up is halted' });
+		expect(health).toEqual({ level: 'warn', reasonCode: 'warmup_halted' });
 	});
 
 	it('ignores held IPs and a halted warm-up when no stream is sent through the MTA', async () => {
@@ -394,7 +393,7 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
 		expect(health).toEqual({
 			level: 'error',
-			reason: 'No delivery provider is configured for transactional mail',
+			reasonCode: 'no_provider_transactional',
 		});
 	});
 });

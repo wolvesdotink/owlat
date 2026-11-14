@@ -3637,6 +3637,14 @@
 					"mta_unavailable": "Die MTA ist nicht erreichbar, deshalb wurde der Schlüssel nicht gespeichert."
 				},
 				"loadFailed": "Die Einrichtung der Blocklist-Abfragen konnte nicht geladen werden."
+			},
+			"instanceTransport": {
+				"title": "Der Versand wird auf der Instanz eingerichtet",
+				"body": "Die Desktop-App zeigt, wie der Versand eingerichtet ist. Den Anbieter oder seine Zugangsdaten änderst du auf deiner Owlat-Instanz selbst, in deinem Browser.",
+				"open": "Im Browser öffnen",
+				"opensInBrowser": "(öffnet sich in deinem Browser)",
+				"noInstance": "Öffne diese Seite auf deiner Owlat-Instanz im Browser, um den Versand zu ändern.",
+				"openFailed": "Dein Browser hat sich nicht geöffnet. Geh zu {url}, um den Versand zu ändern."
 			}
 		},
 		"desktop": {
@@ -19722,6 +19730,48 @@
 			"scheduledInPast": "Dieser Zeitpunkt ist schon vorbei. Wähle einen Zeitpunkt in der Zukunft.",
 			"senderNotAllowed": "\"{email}\" ist kein freigegebener Kampagnenabsender. Füge die Adresse zu den Kampagnenabsendern hinzu oder erlaube eigene Absender.",
 			"templateDeleted": "Die E-Mail, die diese Kampagne sendet, wurde gelöscht. Stelle sie wieder her oder wähle eine andere."
+		},
+		"deliveryHealth": {
+			"reasons": {
+				"healthy": "Der Versand läuft einwandfrei",
+				"noProvider": "Es ist kein Zustellungsanbieter eingerichtet",
+				"noProviderTransactional": "Für Transaktionsmails ist kein Zustellungsanbieter eingerichtet",
+				"noProviderCampaign": "Für Kampagnen ist kein Zustellungsanbieter eingerichtet",
+				"feedbackMissingCampaign": "Bounce- und Beschwerdeberichte erreichen Owlat nicht, deshalb werden Kampagnen abgelehnt",
+				"feedbackMissingTransactional": "Bounce- und Beschwerdeberichte erreichen Owlat nicht",
+				"mtaSigningHeld": "E-Mails von {domains} werden zurückgehalten: Der Mailserver hat keinen nutzbaren DKIM-Schlüssel, um sie zu signieren",
+				"mtaSigningHeldUnnamed": "E-Mails einer Absenderdomain werden zurückgehalten: Der Mailserver hat keinen nutzbaren DKIM-Schlüssel, um sie zu signieren",
+				"mtaDegraded": "Die Infrastruktur des Mailservers ist beeinträchtigt",
+				"mtaUnreachable": "Die Statusprüfung des Mailservers ist nicht erreichbar",
+				"mtaStale": "Die Statusprüfung des Mailservers ist veraltet",
+				"mtaUnchecked": "Der Zustand des Mailservers wurde noch nicht geprüft",
+				"ipsAllHeld": "Alle Versand-IPs werden zurückgehalten",
+				"ipsSomeHeld": "Einige Versand-IPs werden zurückgehalten",
+				"domainFailed": "Eine Absenderdomain hat die Verifizierung nicht bestanden",
+				"noDomain": "Es ist noch keine Absenderdomain eingerichtet",
+				"noVerifiedDomain": "Es ist noch keine Absenderdomain verifiziert",
+				"domainPending": "Eine Absenderdomain ist noch nicht verifiziert",
+				"senderMissing": "Für Transaktionsmails ist kein Standardabsender festgelegt",
+				"senderUnverified": "Die Domain des Standardabsenders ist nicht verifiziert, deshalb werden Transaktionsmails abgelehnt",
+				"warmupHalted": "Das IP-Warm-up ist angehalten",
+				"reputationCritical": "Die Versandreputation ist kritisch",
+				"reputationHigh": "Die Versandreputation ist gefährdet",
+				"reputationMedium": "Die Versandreputation braucht Aufmerksamkeit"
+			}
+		},
+		"campaignStartHold": {
+			"title": "Wartet auf den Start",
+			"reasons": {
+				"deliveryOnHold": "Der Versand ist angehalten, weil der Versandschutz aktiv ist.",
+				"mailServerNotReady": "Der Mailserver kann gerade nicht zustellen.",
+				"unknown": "Der Versand kann gerade nicht starten."
+			},
+			"givesUp": "Owlat prüft jede Minute erneut und gibt {when} auf, falls sich der Versand bis dahin nicht erholt hat. Die Kampagne wird dann wieder zum Entwurf.",
+			"rowMeta": {
+				"deliveryOnHold": "Wartet auf den Start: Versand ist angehalten · gibt {when} auf",
+				"mailServerNotReady": "Wartet auf den Start: Mailserver kann nicht zustellen · gibt {when} auf",
+				"unknown": "Wartet auf den Start · gibt {when} auf"
+			}
 		}
 	},
 	"sharedPkg": {
