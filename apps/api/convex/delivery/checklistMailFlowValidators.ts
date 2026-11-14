@@ -42,19 +42,20 @@ function hostName(value: string): string {
 	return value.trim().toLowerCase().replace(/\.$/, '');
 }
 
-async function addresses(host: string): Promise<Lookup<string>> {
+/**
+ * A host's A and AAAA addresses. `unanswered` stays set when one family was
+ * not answered even though the other returned records, because a match may
+ * still be hiding in the family that was not answered.
+ */
+async function addresses(host: string): Promise<{ values: string[]; unanswered: boolean }> {
 	const [v4, v6] = await Promise.all([
 		lookup(() => dns.resolve4(host)),
 		lookup(() => dns.resolve6(host)),
 	]);
-	const found = [
-		...(v4.kind === 'found' ? v4.values : []),
-		...(v6.kind === 'found' ? v6.values : []),
-	];
-	if (found.length > 0) return { kind: 'found', values: found };
-	return v4.kind === 'unanswered' || v6.kind === 'unanswered'
-		? { kind: 'unanswered' }
-		: { kind: 'absent' };
+	return {
+		values: [...(v4.kind === 'found' ? v4.values : []), ...(v6.kind === 'found' ? v6.values : [])],
+		unanswered: v4.kind === 'unanswered' || v6.kind === 'unanswered',
+	};
 }
 
 /** RFC 7505: a single MX with an empty exchange says the domain accepts no mail. */
@@ -94,8 +95,7 @@ export async function observeFromDomainAcceptsMail(
 		);
 	}
 	const fallback = await addresses(domain);
-	if (fallback.kind === 'unanswered') return unanswered();
-	if (fallback.kind === 'found') {
+	if (fallback.values.length > 0) {
 		return checklistObservation(
 			'dns.from-mx',
 			'pass',
@@ -103,6 +103,7 @@ export async function observeFromDomainAcceptsMail(
 			[...providerValues, ...fallback.values.map((address) => `address=${address}`)]
 		);
 	}
+	if (fallback.unanswered) return unanswered();
 	return checklistObservation(
 		'dns.from-mx',
 		pendingDnsStatus(isFinalDnsRetry),
@@ -156,11 +157,9 @@ export async function observeBouncesReachMailServer(
 		// An MX may name another hostname of the same server.
 		const answers = await Promise.all([mailHost, ...exchanges].map((name) => addresses(name)));
 		const [mailAddresses, ...exchangeAddresses] = answers;
-		const ours = new Set(mailAddresses?.kind === 'found' ? mailAddresses.values : []);
-		pass = exchangeAddresses.some(
-			(answer) => answer.kind === 'found' && answer.values.some((address) => ours.has(address))
-		);
-		if (!pass && answers.some((answer) => answer.kind === 'unanswered')) {
+		const ours = new Set(mailAddresses?.values ?? []);
+		pass = exchangeAddresses.some((answer) => answer.values.some((address) => ours.has(address)));
+		if (!pass && answers.some((answer) => answer.unanswered)) {
 			return checklistObservation(
 				'dns.bounce-mx',
 				'warn',

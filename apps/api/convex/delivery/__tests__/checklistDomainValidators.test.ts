@@ -1143,6 +1143,23 @@ describe('domain checklist validation', () => {
 			).resolves.toMatchObject({ status: 'warn' });
 		});
 
+		it('never fails while one address family of an MX alias is unanswered', async () => {
+			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
+			vi.spyOn(dns, 'resolveMx').mockResolvedValue([
+				{ exchange: 'mx.owlat.example', priority: 10 },
+			]);
+			vi.spyOn(dns, 'resolve4').mockImplementation(async (host: string) =>
+				host === 'mail.owlat.example' ? ['192.0.2.1'] : ['198.51.100.7']
+			);
+			vi.spyOn(dns, 'resolve6').mockRejectedValue(
+				Object.assign(new Error('query ESERVFAIL'), { code: 'ESERVFAIL' })
+			);
+			await expect(
+				observeDomainCheck({} as never, 'domain.bounce_mx', context({}, {}), true)
+			).resolves.toMatchObject({ status: 'warn' });
+		});
+
 		it('uses the domain own return-path host when it has one', async () => {
 			vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
 			vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounces.owlat.example');
