@@ -24,6 +24,7 @@ import {
 } from '../contacts/api';
 import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
+import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
@@ -67,6 +68,12 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	// Transactional API
 	http.route({
 		path: '/api/v1/transactional',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	http.route({
+		pathPrefix: '/api/v1/transactional/',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -131,6 +138,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/transactional',
 		method: 'POST',
 		handler: sendTransactional,
+	});
+
+	// GET /api/v1/transactional/{sendId} - Delivery status of one send
+	http.route({
+		pathPrefix: '/api/v1/transactional/',
+		method: 'GET',
+		handler: getTransactionalSend,
 	});
 
 	// ============ TOPICS API ENDPOINTS ============

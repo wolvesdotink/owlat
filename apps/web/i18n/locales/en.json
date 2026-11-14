@@ -7811,6 +7811,7 @@
 					"emailClicked": "Email clicked",
 					"emailComplained": "Email complained",
 					"emailDelivered": "Email delivered",
+					"emailFailed": "Email failed",
 					"emailOpened": "Email opened",
 					"emailSent": "Email sent",
 					"test": "Test",
@@ -19223,6 +19224,10 @@
 				"emailDelivered": {
 					"description": "When an email is delivered",
 					"label": "Email delivered"
+				},
+				"emailFailed": {
+					"description": "When an email cannot be sent and will not be retried",
+					"label": "Email failed"
 				},
 				"emailOpened": {
 					"description": "When an email is opened",

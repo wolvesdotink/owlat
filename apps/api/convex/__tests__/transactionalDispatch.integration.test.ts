@@ -16,6 +16,7 @@ import { transactionalEmailPool } from '../delivery/workpool';
 import { normalizeEmail } from '../lib/inputGuards';
 import {
 	createTestBlockedEmail,
+	createTestContact,
 	createTestDomain,
 	createTestInstanceSettings,
 	createTestTransactionalEmail,
@@ -248,6 +249,18 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 		expect(outcome.ok).toBe(true);
 	});
 
+	it('answers with the template slug when the request names the template by id', async () => {
+		const t = convexTest(schema, modules);
+		const { templateId, slug } = await seedBaseline(t);
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+
+		expect(outcome).toMatchObject({ ok: true, slug });
+	});
+
 	it('falls back to contact language when no request language', async () => {
 		const t = convexTest(schema, modules);
 		const { templateId } = await seedBaseline(t, {
@@ -461,6 +474,25 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		expect(outcome.reason).toBe('template_not_found');
 	});
 
+	it.each([
+		['a malformed id', 'not-a-template-id'],
+		['an id from another table', 'contact'],
+	])("returns 'template_not_found' for %s", async (_label, kind) => {
+		const t = convexTest(schema, modules);
+		await seedBaseline(t);
+		const id =
+			kind === 'contact'
+				? await t.run(async (ctx) => await ctx.db.insert('contacts', createTestContact()))
+				: kind;
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id },
+			email: 'recipient@example.com',
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'template_not_found' });
+	});
+
 	it("returns 'template_not_published' when status is 'draft'", async () => {
 		const t = convexTest(schema, modules);
 		const { templateId } = await seedBaseline(t, { templateStatus: 'draft' });
@@ -647,7 +679,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 
 	it('answers a repeat of a committed request from its receipt and queues nothing more', async () => {
 		const t = convexTest(schema, modules);
-		const { templateId } = await seedBaseline(t);
+		const { templateId, slug } = await seedBaseline(t);
 		const idempotency = { organizationId: 'org_1', keyHash: 'key-hash', requestHash: 'req-hash' };
 		const request = {
 			templateLookup: { kind: 'id' as const, id: templateId },
@@ -665,6 +697,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 			contactId: first.contactId,
 			contactCreated: true,
 			language: 'en',
+			slug,
 			queued: true,
 			replayed: true,
 		});

@@ -28,6 +28,7 @@ import type {
 	sendTransactionalRequestSchema,
 	sendTransactionalResponseSchema,
 	transactionalAttachmentSchema,
+	transactionalSendStatusSchema,
 } from '../transactional';
 import type * as T from '../types';
 
@@ -56,6 +57,9 @@ describe('schema and type agreement', () => {
 		expectTypeOf<
 			z.output<typeof sendTransactionalResponseSchema>
 		>().toEqualTypeOf<T.SendTransactionalResponse>();
+		expectTypeOf<
+			z.output<typeof transactionalSendStatusSchema>
+		>().toEqualTypeOf<T.TransactionalSendStatus>();
 		expectTypeOf<z.output<typeof addToTopicResponseSchema>>().toEqualTypeOf<T.AddToTopicResponse>();
 		expectTypeOf<
 			z.output<typeof removeFromTopicResponseSchema>
