@@ -1926,6 +1926,8 @@ import type * as transactional_lifecycleReducer from '../transactional/lifecycle
 import type * as transactional_pendingUploads from '../transactional/pendingUploads.js';
 import type * as transactional_sendCaps from '../transactional/sendCaps.js';
 import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
+import type * as transactional_sender from '../transactional/sender.js';
+import type * as transactional_senderResolution from '../transactional/senderResolution.js';
 import type * as transactional_sends from '../transactional/sends.js';
 import type * as transactional_sendStatus from '../transactional/sendStatus.js';
 import type * as transactional_sendStatusHttp from '../transactional/sendStatusHttp.js';
@@ -4159,6 +4161,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
 	'transactional/sendCaps': typeof transactional_sendCaps;
 	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
+	'transactional/sender': typeof transactional_sender;
+	'transactional/senderResolution': typeof transactional_senderResolution;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/sendStatus': typeof transactional_sendStatus;
 	'transactional/sendStatusHttp': typeof transactional_sendStatusHttp;

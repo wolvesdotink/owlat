@@ -557,7 +557,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 	): ReadinessInput {
 		return input({
 			streamTransport: { transactional: transport, marketing: transport },
-			defaultSender: verifiedSender,
+			transactionalSender: verifiedSender,
 			...overrides,
 		});
 	}
@@ -568,15 +568,16 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		return found;
 	}
 
-	it('blocks transactional mail when no default sender is set, although transport and a verified domain exist', () => {
+	it('blocks transactional mail when no sender is set, although transport and a verified domain exist', () => {
 		const r = deriveDeliveryReadiness(
-			streamInput(viaProvider, { defaultSender: { address: null, isDomainVerified: false } })
+			streamInput(viaProvider, { transactionalSender: { address: null, isDomainVerified: false } })
 		);
 		const transactional = verdict(r, 'transactional');
 		expect(transactional.level).toBe('blocked');
 		expect(localized(transactional.label)).toBe('Blocked');
-		expect(localized(transactional.sentence)).toContain('No default sender is set');
-		expect(transactional.actionHref).toBe('/dashboard/admin/instance/general');
+		expect(localized(transactional.sentence)).toContain('No sender is set');
+		// The sender is set where transactional mail is managed.
+		expect(transactional.actionHref).toBe('/dashboard/send/transactional?sender=edit');
 		// Campaigns use their own senders, so the marketing stream is unaffected.
 		expect(verdict(r, 'marketing').level).toBe('ready');
 		expect(r.level).toBe('blocked');
@@ -585,11 +586,51 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 	it('blocks transactional mail when the default sender is on an unverified domain', () => {
 		const r = deriveDeliveryReadiness(
 			streamInput(viaProvider, {
-				defaultSender: { address: 'noreply@example.com', isDomainVerified: false },
+				transactionalSender: { address: 'noreply@example.com', isDomainVerified: false },
 			})
 		);
 		expect(verdict(r, 'transactional').level).toBe('blocked');
 		expect(localized(verdict(r, 'transactional').sentence)).toContain('noreply@example.com');
+	});
+
+	it('follows the resolved transactional sender, not the default one', () => {
+		const ownUnverified = deriveDeliveryReadiness(
+			streamInput(viaProvider, {
+				transactionalSender: {
+					address: 'account@mail.acme.com',
+					isDomainVerified: false,
+					source: 'transactional',
+				},
+			})
+		);
+		expect(verdict(ownUnverified, 'transactional').level).toBe('blocked');
+		expect(localized(verdict(ownUnverified, 'transactional').sentence)).toContain(
+			'account@mail.acme.com'
+		);
+
+		const own = deriveDeliveryReadiness(
+			streamInput(viaProvider, {
+				transactionalSender: {
+					address: 'account@mail.acme.com',
+					isDomainVerified: true,
+					source: 'transactional',
+				},
+			})
+		);
+		const gate = own.gates.find((g) => g.key === 'transactional-sender');
+		expect(localized(gate!.title)).toBe('Transactional sender');
+		expect(localized(gate!.detail)).toBe(
+			'Transactional mail goes out from account@mail.acme.com, its own sender.'
+		);
+
+		const fallback = deriveDeliveryReadiness(
+			streamInput(viaProvider, {
+				transactionalSender: { ...verifiedSender, source: 'default' },
+			})
+		);
+		expect(localized(fallback.gates.find((g) => g.key === 'transactional-sender')!.detail)).toBe(
+			'Transactional mail goes out from the default sender, hello@acme.com.'
+		);
 	});
 
 	it('asks for attention on marketing when the warm-up is halted, and leaves transactional ready', () => {
@@ -728,7 +769,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 					transactional: { canSend: false, providerLabels: [], usesOwnMta: false },
 					marketing: viaProvider,
 				},
-				defaultSender: verifiedSender,
+				transactionalSender: verifiedSender,
 			})
 		);
 		const transports = r.gates.filter((g) => g.key === 'transport');
@@ -743,7 +784,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		const r = deriveDeliveryReadiness(
 			input({
 				streamTransport: { transactional: noFeedback, marketing: noFeedback },
-				defaultSender: verifiedSender,
+				transactionalSender: verifiedSender,
 			})
 		);
 		const transports = r.gates.filter((g) => g.key === 'transport');
@@ -761,11 +802,11 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		const r = deriveDeliveryReadiness(
 			streamInput(viaProvider, {
 				streamsEnabled: { transactional: false },
-				defaultSender: { address: null, isDomainVerified: false },
+				transactionalSender: { address: null, isDomainVerified: false },
 			})
 		);
 		expect(r.streams.map((v) => v.stream)).toEqual(['marketing']);
-		expect(r.gates.find((g) => g.key === 'default-sender')).toBeUndefined();
+		expect(r.gates.find((g) => g.key === 'transactional-sender')).toBeUndefined();
 		expect(r.level).toBe('ready');
 	});
 });

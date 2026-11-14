@@ -145,6 +145,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'SettingsConnectedWorkspaces',
 		'SettingsInboundRetentionCard',
 		'SettingsMigrationModeCard',
+		'SettingsTransactionalSenderNote',
 		'SettingsWorkspaceDangerZone',
 		'SettingsWorkspaceLogoCard',
 		'UiAvatar',

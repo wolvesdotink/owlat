@@ -138,8 +138,11 @@ export interface ReadinessInput {
 	sendingIps?: Partial<Record<MailStream, SendingIpPosture | null>>;
 	/** The MTA reports the campaign warm-up halted (`plateau`). */
 	warmupHalted?: boolean;
-	/** The transactional default sender; `null` or absent when unknown. */
-	defaultSender?: { address: string | null; isDomainVerified: boolean } | null;
+	/**
+	 * The sender a template that names none resolves to: the transactional
+	 * sender, else the default sender. `null` or absent when unknown.
+	 */
+	transactionalSender?: TransactionalSenderFacts | null;
 	/** Today's campaign capacity; `null` or absent when it cannot be measured. */
 	marketingCapacity?: MarketingCapacity | null;
 	/** Rolling complaint rate; `null` or absent with no sending activity. */
@@ -151,6 +154,14 @@ export interface ReadinessInput {
 	oneClickUnsubscribe?: 'pass' | 'fail' | null;
 }
 
+/** The resolved transactional sender, as `delivery.status.getTransportSummary` reports it. */
+export interface TransactionalSenderFacts {
+	address: string | null;
+	isDomainVerified: boolean;
+	/** Which setting the address came from; absent reads as unknown. */
+	source?: 'template' | 'transactional' | 'default' | null;
+}
+
 /**
  * The per-stream half of the sources: what `getTransportSummary`,
  * `getSendingOverview`, `getSendingReadiness` and (for admins) the deliverability
@@ -159,7 +170,7 @@ export interface ReadinessInput {
 export interface ReadinessStreamSources {
 	streams: { transactional: StreamTransportFacts; campaign: StreamTransportFacts };
 	mailServer: MailServerState | null;
-	transactionalSender: { address: string | null; isDomainVerified: boolean } | null;
+	transactionalSender: TransactionalSenderFacts | null;
 	enabled?: Partial<Record<MailStream, boolean>>;
 	warming?: {
 		phase: string;

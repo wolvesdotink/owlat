@@ -33,7 +33,7 @@ export type ReadinessGateKey =
 	| 'sending-ips'
 	| 'domain'
 	| 'authentication'
-	| 'default-sender'
+	| 'transactional-sender'
 	| 'dmarc'
 	| 'unsubscribe'
 	| 'capacity'

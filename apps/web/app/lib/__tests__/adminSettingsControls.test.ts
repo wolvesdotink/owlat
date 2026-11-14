@@ -44,7 +44,7 @@ function lookup(catalog: unknown, key: string): unknown {
 }
 
 describe('admin settings controls', () => {
-	it('indexes the six anchored admin topics', () => {
+	it('indexes the seven anchored admin topics', () => {
 		expect(ids(FULL)).toEqual([
 			'dkim',
 			'aiProviderKey',
@@ -52,6 +52,7 @@ describe('admin settings controls', () => {
 			'rampPace',
 			'webhookSecret',
 			'brandColors',
+			'transactionalSender',
 		]);
 	});
 
@@ -116,6 +117,8 @@ describe('admin settings controls', () => {
 		expect(first('warm-up')).toBe('rampPace');
 		expect(first('webhook secret')).toBe('webhookSecret');
 		expect(first('brand colors')).toBe('brandColors');
+		expect(first('transactional sender')).toBe('transactionalSender');
+		expect(first('password reset')).toBe('transactionalSender');
 	});
 });
 

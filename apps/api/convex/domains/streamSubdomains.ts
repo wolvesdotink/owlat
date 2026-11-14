@@ -63,6 +63,20 @@ const STREAM_SUBDOMAIN_LABELS = {
 	bounce: 'bounces',
 } as const satisfies Record<SendingSubdomainRole, string>;
 
+/** The transactional stream's sending host under `root`: `mail.<root>`. */
+export function transactionalStreamHost(root: string): string {
+	return `${STREAM_SUBDOMAIN_LABELS.transactional}.${root.toLowerCase()}`;
+}
+
+/**
+ * Whether `host` is the transactional stream's subdomain of some registrable
+ * root, the address the layout sends password resets and receipts from.
+ */
+export function isTransactionalStreamHost(host: string): boolean {
+	const [label, ...rest] = host.toLowerCase().split('.');
+	return label === STREAM_SUBDOMAIN_LABELS.transactional && rest.length >= 2;
+}
+
 /**
  * Stream → role. `automation` deliberately shares the bulk subdomain with
  * `campaign`: lifecycle mail is steady, well-engaged volume and is the best
