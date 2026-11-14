@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { renderBookingEmail } from '../emails';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { bookingInviteFrom, renderBookingEmail } from '../emails';
 import { BOOKING_EMAIL_COPY } from '../emailCopy';
 
 describe('renderBookingEmail', () => {
@@ -51,5 +51,24 @@ describe('renderBookingEmail', () => {
 		});
 		expect(html).toContain('Dein Termin ist gebucht');
 		expect(html).not.toMatch(/\bSie\b|\bIhr\b/);
+	});
+});
+
+describe('bookingInviteFrom', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('names the host in front of the configured system sender', () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.com');
+		expect(bookingInviteFrom('Ada "the host" <x>')).toBe(
+			'"Ada the host x via Owlat" <noreply@mail.example.com>'
+		);
+	});
+
+	it('has no From when no sender is configured, so the invite is skipped', () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', '');
+		vi.stubEnv('DEFAULT_FROM_EMAIL', '');
+		expect(bookingInviteFrom('Ada')).toBeNull();
 	});
 });

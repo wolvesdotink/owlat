@@ -7,11 +7,12 @@
  * within-batch dedup, batch limit, and four drift-bug regression cases.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 const incrementContactCountMock = vi.fn().mockResolvedValue(undefined);
 
@@ -553,6 +554,110 @@ describe('contacts.import.importBatch — DOI attest', () => {
 });
 
 // ─── Activity recording ─────────────────────────────────────────────────────
+
+// ─── Global opt-outs ────────────────────────────────────────────────────────
+
+/** A contact the import will find, holding a global opt-out from an earlier unsubscribe. */
+async function seedOptedOut(
+	t: TestConvex<typeof schema>,
+	email: string
+): Promise<{ contactId: Id<'contacts'>; optedOutAt: number }> {
+	await t.mutation(internal.contacts.import.importBatch, {
+		rows: [{ email }],
+		source: 'csv',
+		handleDuplicates: 'skip',
+	});
+	const optedOutAt = Date.now() - 60_000;
+	const contactId = await t.run(async (ctx) => {
+		const contact = await ctx.db
+			.query('contacts')
+			.withIndex('by_email', (q) => q.eq('email', email))
+			.first();
+		await ctx.db.patch(contact!._id, { unsubscribedAt: optedOutAt });
+		return contact!._id;
+	});
+	return { contactId, optedOutAt };
+}
+
+async function confirmationEmailsScheduled(t: TestConvex<typeof schema>): Promise<number> {
+	return await t.run(
+		async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter((job) =>
+				job.name.includes('sendConfirmationEmail')
+			).length
+	);
+}
+
+describe('contacts.import.importBatch — global opt-outs', () => {
+	it.each([
+		{ handleDuplicates: 'skip' as const, requireDoi: false },
+		{ handleDuplicates: 'update' as const, requireDoi: false },
+		{ handleDuplicates: 'skip' as const, requireDoi: true },
+	])(
+		'a topic import ($handleDuplicates, topic DOI: $requireDoi) leaves an opted-out contact unsubscribed and reports it',
+		async ({ handleDuplicates, requireDoi }) => {
+			// No MTA runs under test, so the new contact's confirmation mail fails when it fires.
+			if (requireDoi) expectScheduledFailure('contacts/confirmationEmail:sendConfirmationEmail');
+			const t = convexTest(schema, modules);
+			const topicId = await createTopic(t, requireDoi);
+			const { contactId, optedOutAt } = await seedOptedOut(t, 'gone@example.com');
+
+			const result = await t.mutation(internal.contacts.import.importBatch, {
+				rows: [{ email: 'gone@example.com' }, { email: 'new@example.com' }],
+				source: 'csv',
+				handleDuplicates,
+				topicAssignments: { kind: 'single', topicId },
+				siteUrl: 'https://app.example.com',
+			});
+
+			expect(result.keptUnsubscribed).toBe(1);
+			expect(result.addedToTopics).toBe(1);
+			const contact = await t.run((ctx) => ctx.db.get(contactId));
+			expect(contact?.unsubscribedAt).toBe(optedOutAt);
+			expect(contact?.doiStatus).toBe('not_required');
+			expect(contact?.doiConfirmationToken).toBeUndefined();
+			const memberships = await t.run((ctx) =>
+				ctx.db
+					.query('contactTopics')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+					.collect()
+			);
+			expect(memberships).toEqual([]);
+			// Only the new contact on a DOI topic is asked to confirm.
+			expect(await confirmationEmailsScheduled(t)).toBe(requireDoi ? 1 : 0);
+		}
+	);
+
+	it('a doiAttest import neither confirms nor lifts an opt-out', async () => {
+		const t = convexTest(schema, modules);
+		const { contactId, optedOutAt } = await seedOptedOut(t, 'gone@example.com');
+
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'gone@example.com' }],
+			source: 'mailchimp',
+			handleDuplicates: 'update',
+			doiAttest: { attestSource: 'mailchimp' },
+		});
+
+		expect(result.keptUnsubscribed).toBe(1);
+		const contact = await t.run((ctx) => ctx.db.get(contactId));
+		expect(contact?.unsubscribedAt).toBe(optedOutAt);
+		expect(contact?.doiStatus).toBe('not_required');
+		expect(contact?.doiAttestedSource).toBeUndefined();
+	});
+
+	it('an import that only names subscribed contacts reports none kept', async () => {
+		const t = convexTest(schema, modules);
+
+		const result = await t.mutation(internal.contacts.import.importBatch, {
+			rows: [{ email: 'a@example.com' }],
+			source: 'csv',
+			handleDuplicates: 'skip',
+		});
+
+		expect(result.keptUnsubscribed).toBe(0);
+	});
+});
 
 describe('contacts.import.importBatch — contact activity', () => {
 	it('newly-created contact gets one created activity', async () => {

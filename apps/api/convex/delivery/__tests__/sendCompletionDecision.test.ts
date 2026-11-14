@@ -195,8 +195,44 @@ describe('planCompletionOutcome', () => {
 		expect(planFor(deferred('local')).recordsDeferral).toBe(false);
 		expect(planFor(deferred('governed', retryState(NOW, 9)))).toEqual({
 			recordsDeferral: true,
-			step: { kind: 'fail', errorMessage: 'Unknown error', errorCode: 'WORKPOOL_FAILED' },
+			step: {
+				kind: 'fail',
+				errorMessage:
+					'Delivery was deferred on every routing attempt until the retry limit ran out',
+				errorCode: 'ROUTING_RETRY_LIMIT_EXHAUSTED',
+			},
 		});
+	});
+
+	// A send that runs out of time fails under a code that names why it waited,
+	// so an operator reading the Send can tell an outage from a policy pause.
+	it.each([
+		{ hold: undefined, errorCode: 'DELIVERY_DEADLINE_EXPIRED' },
+		{ hold: 'routing_policy' as const, errorCode: 'DELIVERY_HOLD_EXPIRED' },
+		{ hold: 'mta_unreachable' as const, errorCode: 'MTA_UNREACHABLE' },
+	])('fails a $hold wait that outlived the deadline as $errorCode', ({ hold, errorCode }) => {
+		const outcome = { ...deferred('local', retryState(EXPIRED, 2)), ...(hold ? { hold } : {}) };
+		expect(planFor(outcome).step).toMatchObject({ kind: 'fail', errorCode });
+	});
+
+	// The dispatch boundary refuses an attempt that starts past the deadline by
+	// throwing, which the completion can only read as `WORKPOOL_FAILED`. A
+	// retry that would start too late is therefore not scheduled at all.
+	it('fails a held send now when its next retry would start after the deadline', () => {
+		const nearlyExpired = NOW - GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 5 * 60_000;
+		const held = (retryAfterMs: number): SendWorkerOutcome => ({
+			kind: 'deferred',
+			retryAfterMs,
+			deferralOrigin: 'local',
+			hold: 'mta_unreachable',
+			envelopeInput,
+			retryState: retryState(nearlyExpired, 2),
+		});
+		expect(planFor(held(10 * 60_000)).step).toMatchObject({
+			kind: 'fail',
+			errorCode: 'MTA_UNREACHABLE',
+		});
+		expect(planFor(held(60_000)).step).toMatchObject({ kind: 'scheduleRetry', delayMs: 60_000 });
 	});
 
 	it('marks a direct acceptance sent and records a custody handoff', () => {

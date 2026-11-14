@@ -8,10 +8,12 @@ import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { isRelayTransportKind } from './relayConfiguration';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
+import type { resolveLastMileRoutePlanFromDb } from '../lib/sendProviders/route';
 import { transportEnvOptional } from '../lib/sendProviders/transportEnv';
 import { defaultSendTransportId, resolveSendTransport } from '../lib/sendProviders/transports';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
 import { LOCAL_DEFER_MS } from '../lib/sendProviders/errors';
+import type { DeliveryHold } from './workerOutcome';
 
 interface LastMileInput {
 	messageType: GovernedMessageType;
@@ -51,20 +53,26 @@ interface LastMileRoutingReady {
 	 * domain's return-path host authorises it.
 	 */
 	relayReturnPathHost?: string | undefined;
+	/**
+	 * The From domain is owed a DKIM signature by the built-in MTA; see
+	 * `delivery/dkimSignatureRequirement.ts`. Answered by the same routing query.
+	 */
+	requireDkimSignature?: boolean;
 }
 
 export interface LastMileRoutingDeferred {
 	kind: 'defer';
 	retryAfterMs: number;
 	/**
-	 * A deliberate safety hold (an open org-wide circuit, an unverified relay
-	 * identity) rather than routing churn. The routing attempt cap exists to
-	 * bound churn, so a hold must not consume one — eight 60-second attempts
-	 * would terminalize the send about seven minutes in, well inside a single
-	 * signal's own freshness window, which is the destruction the hold exists
-	 * to prevent. Held sends are bounded by the four-day delivery deadline.
+	 * A hold rather than routing churn: a deliberate safety pause (an open
+	 * org-wide circuit, an unverified relay identity) or an MTA we cannot reach.
+	 * The routing attempt cap exists to bound churn, so a hold must not consume
+	 * one — eight 60-second attempts would terminalize the send about seven
+	 * minutes in, well inside a single signal's own freshness window or a
+	 * container restart, which is the destruction the hold exists to prevent.
+	 * Held sends are bounded by the four-day delivery deadline.
 	 */
-	isPolicyHold?: boolean;
+	hold?: DeliveryHold;
 	/**
 	 * WHOSE FACT THIS DEFERRAL IS — gate 2's numerator, and the
 	 * reason this field is REQUIRED rather than defaulted: a new defer site that
@@ -90,6 +98,18 @@ export interface LastMileRoutingDeferred {
 
 /** Poll at the deliverability signal's own freshness horizon while held. */
 const POLICY_HOLD_RETRY_MS = 10 * 60 * 1000;
+
+/**
+ * How long a send waits for an unreachable MTA before asking again: as long
+ * as it has already waited, between one minute and the policy-hold interval.
+ * A restart of a minute or two is caught within a minute or two, and an
+ * outage of hours costs each queued send six attempts an hour, not sixty.
+ */
+function mtaUnreachableRetryMs(startedAt: number, now: number): number {
+	const waitedMs = now - startedAt;
+	if (!Number.isFinite(waitedMs)) return LOCAL_DEFER_MS;
+	return Math.min(Math.max(waitedMs, LOCAL_DEFER_MS), POLICY_HOLD_RETRY_MS);
+}
 
 type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
 
@@ -125,6 +145,19 @@ export async function resolveLastMileRouting(
 		from: input.from,
 		...(input.sendId !== undefined ? { sendId: input.sendId } : {}),
 	});
+	const result = await routeFromPlan(ctx, input, plan);
+	return result.kind === 'ready' && plan.requireDkimSignature
+		? { ...result, requireDkimSignature: true }
+		: result;
+}
+
+type LastMileRoutePlan = Awaited<ReturnType<typeof resolveLastMileRoutePlanFromDb>>;
+
+async function routeFromPlan(
+	ctx: ActionCtx,
+	input: LastMileInput,
+	plan: LastMileRoutePlan
+): Promise<LastMileRoutingResult> {
 	// An open org-wide safety circuit, or a fallback whose relay identity is
 	// unverified, is a "not right now" — holding keeps the message alive until
 	// the deadline instead of burning every in-flight send the moment a safety
@@ -135,7 +168,7 @@ export async function resolveLastMileRouting(
 		return {
 			kind: 'defer',
 			retryAfterMs: POLICY_HOLD_RETRY_MS,
-			isPolicyHold: true,
+			hold: 'routing_policy',
 			// The deployment pausing itself. It already does not consume a routing
 			// attempt for that reason; for the same reason it is not a 4xx.
 			origin: 'local',
@@ -221,6 +254,17 @@ export async function resolveLastMileRouting(
 		},
 		input.correlationId
 	);
+	if (decision.kind === 'defer' && decision.isUnreachable) {
+		// Nothing was decided and no MTA work exists, so waiting is safe: the next
+		// attempt asks for a fresh lease under the same idempotency key.
+		console.warn('[lastMileRouting] holding delivery: MTA_UNREACHABLE');
+		return {
+			kind: 'defer',
+			retryAfterMs: mtaUnreachableRetryMs(input.startedAt, Date.now()),
+			hold: 'mta_unreachable',
+			origin: 'local',
+		};
+	}
 	if (decision.kind === 'defer') {
 		// CARRIED, never re-derived, because three cases arrive here looking
 		// identical and only the adapter can tell them apart: the MTA answered
@@ -288,7 +332,7 @@ export async function resolveLastMileRouting(
 			return {
 				kind: 'defer',
 				retryAfterMs: POLICY_HOLD_RETRY_MS,
-				isPolicyHold: true,
+				hold: 'routing_policy',
 				// THREE HOLDS AT ONE RETURN SITE, and only one of them is evidence.
 				//
 				// `breaker_open` with no relay to catch it is the MTA refusing to carry

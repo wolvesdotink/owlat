@@ -326,11 +326,16 @@ export interface YahooCflGuidedStep {
 /**
  * The four steps, each with its own "how to tell it worked". Statuses are
  * derived, never stored, so the guide can never disagree with the record.
+ *
+ * `reportAddress` is the address the built-in mail server accepts complaint
+ * reports on (`abuse@` the return-path domain); without it the step names the
+ * address by its parts.
  */
 export function yahooCflGuidedSteps(
 	record: YahooCflEnrollmentRecord,
 	precondition: YahooCflDkimPrecondition,
-	nowMs: number
+	nowMs: number,
+	reportAddress?: string
 ): YahooCflGuidedStep[] {
 	const dkimReady = yahooCflPreconditionMet(precondition);
 	const submitted = record.state !== 'not_started';
@@ -368,7 +373,7 @@ export function yahooCflGuidedSteps(
 			title: "Submit Yahoo's Complaint Feedback Loop form",
 			action: lapsed
 				? `Re-submit the form for ${precondition.domain} at Yahoo's sender site, then press "I submitted Yahoo's form" again.`
-				: `Enroll the DKIM domain ${precondition.domain} at Yahoo's sender site and give the FBL address you already receive ARF reports on.`,
+				: `Enroll the DKIM domain ${precondition.domain} at Yahoo's sender site and give ${reportAddress ?? "abuse@ your mail server's return-path domain"} as the address for reports.`,
 			verification:
 				'Yahoo emails a confirmation to the address on the form. Keep it — it names the exact domain that was accepted.',
 			// A lapsed enrollment reopens this step: re-submitting is the documented

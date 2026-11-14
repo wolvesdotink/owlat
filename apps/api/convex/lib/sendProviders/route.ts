@@ -31,6 +31,7 @@ import {
 } from './routeMixContext';
 import { deliverabilityInput } from './routeDeliverabilityInput';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isDkimSignatureRequired } from '../../delivery/dkimSignatureRequirement';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 import { routeCarriesOwnArm } from './fallbackEligibility';
 import { OWN_ARM_TRANSPORT_KIND } from './strategies/adaptive_mix';
@@ -237,10 +238,13 @@ export function selectRouteFromFacts(
  * and terminalizes the Send as `WORKPOOL_FAILED`. Opening the safety circuit
  * would then burn every in-flight campaign send instead of pausing it. The
  * governed queries below convert them to a typed deferral, which the last-mile
- * boundary turns into a bounded retry (capped by the routing attempt limit and
- * the four-day delivery deadline).
+ * boundary turns into a hold: it spends no routing attempt and is bounded by
+ * the four-day delivery deadline.
+ *
+ * Intake asks the same question through {@link resolveSendRouteOrHoldFromDb},
+ * so the request the worker would hold is one intake accepts.
  */
-type RoutingDeferralCode =
+export type RoutingDeferralCode =
 	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
 	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
 	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
@@ -249,6 +253,26 @@ export function routingDeferralCode(error: unknown): RoutingDeferralCode | null 
 	if (error instanceof GlobalDeliveryCircuitOpenError) return error.code;
 	if (error instanceof DeliverabilityRouteError) return error.code;
 	return null;
+}
+
+/**
+ * {@link resolveSendRouteFromDb}, with a transient refusal reported as its
+ * deferral code instead of thrown. `route` is then `null`, which here means
+ * "not right now" and says nothing about whether a provider is configured:
+ * the open circuit is checked before any provider is looked at.
+ */
+export async function resolveSendRouteOrHoldFromDb(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext?: SendRouteAddressContext
+): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
+	try {
+		return { route: await resolveSendRouteFromDb(ctx, messageType, addressContext) };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, deferralCode };
+	}
 }
 
 /**
@@ -298,8 +322,15 @@ export async function resolveLastMileRoutePlanFromDb(
 	 * in a second round trip from the dispatcher.
 	 */
 	relayReturnPathHost?: string | undefined;
+	/**
+	 * Whether the From domain is owed a DKIM signature by the built-in MTA
+	 * (`delivery/dkimSignatureRequirement.ts`). One indexed read, here for the
+	 * same reason as `relayReturnPathHost`.
+	 */
+	requireDkimSignature: boolean;
 }> {
 	const now = addressContext.now ?? Date.now();
+	const requireDkimSignature = await isDkimSignatureRequired(ctx, addressContext.from);
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -361,6 +392,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			baseRoute,
 			isMtaGoverned: isHybrid || baseRoute?.providerType === OWN_ARM_TRANSPORT_KIND,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
@@ -371,6 +403,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			isMtaGoverned: isHybrid,
 			deferralCode,
 			relayReturnPathHost,
+			requireDkimSignature,
 		};
 	}
 }
@@ -412,13 +445,7 @@ export async function resolveGovernedRelayRouteFromDb(
 		forceRelayReason: 'breaker_open' | 'warmup_overflow';
 	}
 ): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
-	try {
-		return { route: await resolveSendRouteFromDb(ctx, messageType, options) };
-	} catch (error) {
-		const deferralCode = routingDeferralCode(error);
-		if (!deferralCode) throw error;
-		return { route: null, deferralCode };
-	}
+	return await resolveSendRouteOrHoldFromDb(ctx, messageType, options);
 }
 
 export const resolveGovernedRelayRoute = internalQuery({

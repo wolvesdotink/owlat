@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
-import { CheckIcon, TriangleWarningIcon } from '@coolicons/vue';
+import { CheckIcon, CircleWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	importProgress:
@@ -70,6 +70,23 @@ const suppressionSummary = computed(() => {
 				:label="t('components.contacts.integrationImportModal.complete.failed')"
 				:variant="(importProgress?.failed || 0) > 0 ? 'error' : 'secondary'"
 			/>
+		</div>
+		<!-- An import never lifts an opt-out, so say how many contacts it left alone. -->
+		<div
+			v-if="!isSuppressionOnly && importProgress?.keptUnsubscribed"
+			class="mb-6 p-3 rounded-lg bg-bg-surface border border-border-default flex items-center gap-3"
+			data-testid="kept-unsubscribed"
+		>
+			<CircleWarningIcon class="w-5 h-5 text-text-tertiary shrink-0" />
+			<p class="text-sm text-text-secondary">
+				{{
+					t(
+						'components.contacts.integrationImportModal.complete.keptUnsubscribed',
+						{ count: importProgress.keptUnsubscribed },
+						importProgress.keptUnsubscribed
+					)
+				}}
+			</p>
 		</div>
 		<!-- Suppression carry-over -->
 		<div v-if="suppressionSummary" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

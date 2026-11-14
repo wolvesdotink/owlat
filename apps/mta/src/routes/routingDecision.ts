@@ -30,6 +30,7 @@ import {
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { resolvePool } from '../scaling/poolRules.js';
 import { selectIpWithLease } from '../scaling/ipPool.js';
+import { reachableFamiliesOf } from '../smtp/mxAddresses.js';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { IpPoolType } from '../types.js';
 import {
@@ -291,7 +292,8 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			redis,
 			poolRule.pool,
 			config.ipPools,
-			poolRule.dedicatedIp
+			poolRule.dedicatedIp,
+			reachableFamiliesOf(destination.mx, { allowPrivate: config.allowPrivateMxTargets === true })
 		);
 		if (!selected)
 			return decide(c, { decision: 'defer', reason: 'no_owned_ip', retryAfterMs: 60_000 });

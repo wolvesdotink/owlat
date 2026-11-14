@@ -13,6 +13,7 @@
  */
 
 import { findRoute } from '../../inbound/router.js';
+import { systemMailboxHosts } from '../../inbound/systemMailboxes.js';
 import { findMailboxRoute } from '../../inbound/mailboxResolver.js';
 import type { AddressObject } from '@owlat/mail-message';
 import type { Phase } from '../pipeline.js';
@@ -77,6 +78,7 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 			dmarcReportAddress: deps.config.dmarcReportAddress,
 			convexSiteUrl: deps.config.convexSiteUrl,
 			webhookSecret: deps.config.webhookSecret,
+			systemMailboxHosts: systemMailboxHosts(deps.config),
 		});
 		if (!route) {
 			return {

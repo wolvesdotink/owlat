@@ -4,7 +4,7 @@
 import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
+import { requireSystemSenderAddress } from '../lib/systemSender';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { generateConfirmationEmailHtml } from '../lib/systemEmails';
 
@@ -25,8 +25,9 @@ export async function sendDoiConfirmation(
 	const team = await ctx.runQuery(internal.contacts.confirmationEmailQueries.getTeamInfo, {});
 
 	const teamName = team?.name || 'Newsletter';
-	const fromEmail =
-		team?.defaultFromEmail || `noreply@${getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app'}`;
+	// The team's own address, else the system sender; with neither the
+	// scheduled action fails with the reason in the deployment logs.
+	const fromEmail = team?.defaultFromEmail || requireSystemSenderAddress();
 	const fromName = team?.defaultFromName || teamName;
 
 	// Build confirmation URL

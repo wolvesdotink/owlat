@@ -82,5 +82,6 @@ export function legacyImportResult(importResult: ImportOutcome) {
 		propertiesSet: importResult.propertiesSet,
 		propertiesAutoRegistered: importResult.propertiesAutoRegistered,
 		propertiesSkipped: importResult.propertiesSkipped,
+		keptUnsubscribed: importResult.keptUnsubscribed,
 	};
 }

@@ -23,6 +23,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import type * as MtaStsModule from '../mtaSts.js';
+import type * as MxAddressesModule from '../mxAddresses.js';
 
 vi.mock('../mxResolver.js', () => ({
 	resolveMxDestination: vi.fn().mockResolvedValue({
@@ -45,6 +46,12 @@ vi.mock('../mtaSts.js', async (importOriginal) => {
 		}),
 	};
 });
+// Real resolution (an address-literal MX needs no DNS); one test answers for a
+// hostname MX itself.
+vi.mock('../mxAddresses.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof MxAddressesModule>();
+	return { ...actual, resolveMxHostAddresses: vi.fn(actual.resolveMxHostAddresses) };
+});
 vi.mock('../dkim.js', () => ({
 	getDkimOptions: vi.fn().mockResolvedValue(undefined),
 }));
@@ -62,6 +69,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
 import { generateReport } from '../tlsRptReport.js';
+import { resolveMxHostAddresses } from '../mxAddresses.js';
 import {
 	type ServerProbe,
 	startServer,
@@ -207,5 +215,58 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.bounceType).toBe('soft');
 		expect(result.error).toContain('TLS required');
 		expect(probe.dataReached()).toBe(false);
+	});
+
+	it('opportunistic: an MX whose STARTTLS handshake fails gets the mail in cleartext, and TLS-RPT records the failure once', async () => {
+		probe = await startServer({ advertiseStartTls: true, legacyTlsOnly: true });
+
+		const result = await sendToMx(createJob(), createConfig(), redis, '127.0.0.1');
+
+		expect(result.success).toBe(true);
+		expect(probe.dataReached()).toBe(true);
+		expect(probe.dataOverTls()).toBe(false);
+		// The failed handshake is the record; the cleartext session that follows
+		// is not reported again as `starttls-not-supported`.
+		expect(await failureTypes()).toEqual(['validation-failure']);
+	});
+
+	it('require: the same legacy-TLS MX never receives the message in cleartext', async () => {
+		probe = await startServer({ advertiseStartTls: true, legacyTlsOnly: true });
+
+		const result = await sendToMx(
+			createJob(),
+			createConfig({ outboundTlsMode: 'require' }),
+			redis,
+			'127.0.0.1'
+		);
+
+		expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+		expect(probe.dataReached()).toBe(false);
+	});
+
+	it('dials the address of a hostname MX and still offers the MX hostname as the TLS server name', async () => {
+		probe = await startServer({ advertiseStartTls: true });
+		// The MX has both families; the IPv4 source must pick 127.0.0.1 (the
+		// fixture listens on IPv4 only).
+		vi.mocked(resolveMxHostAddresses).mockResolvedValueOnce({
+			status: 'resolved',
+			ipv4: ['127.0.0.1'],
+			ipv6: ['::1'],
+		});
+
+		const result = await sendToMx(createJob(), createConfig(), redis, '127.0.0.1', undefined, {
+			recipientDomain: 'recipient.test',
+			providerKey: 'other',
+			throttleKey: 'recipient.test',
+			mx: { status: 'deliverable', source: 'mx', hosts: [{ exchange: 'mx.test', priority: 0 }] },
+			daneDiscoveryAuthenticated: true,
+		});
+
+		expect(result.success).toBe(true);
+		expect(vi.mocked(resolveMxHostAddresses)).toHaveBeenCalledWith('mx.test', {
+			allowPrivate: true,
+		});
+		expect(probe.dataOverTls()).toBe(true);
+		expect(probe.sniNames()).toEqual(['mx.test']);
 	});
 });

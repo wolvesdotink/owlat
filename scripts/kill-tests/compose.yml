@@ -97,6 +97,8 @@ services:
       IP_POOLS_CAMPAIGN: ${KILL_MTA_IP:-10.231.0.10}
       MTA_IPV6_ENABLED: 'false'
       MTA_ALLOW_UNVERIFIED_FCRDNS: 'true'
+      # The sink MX lives on the private test network.
+      MTA_ALLOW_PRIVATE_MX: 'true'
       DNSBL_RESOLVER: dnsbl.owlat.test:5353
       DKIM_KEYS: '{}'
       CONTENT_SCREENING_ENABLED: 'false'

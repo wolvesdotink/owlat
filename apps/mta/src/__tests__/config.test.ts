@@ -163,6 +163,15 @@ describe('loadConfig', () => {
 		expect(() => loadConfig()).toThrow('must be true or false');
 	});
 
+	it('screens non-public MX addresses unless MTA_ALLOW_PRIVATE_MX is exactly true', () => {
+		delete process.env['MTA_ALLOW_PRIVATE_MX'];
+		expect(loadConfig().allowPrivateMxTargets).toBe(false);
+		process.env['MTA_ALLOW_PRIVATE_MX'] = 'true';
+		expect(loadConfig().allowPrivateMxTargets).toBe(true);
+		process.env['MTA_ALLOW_PRIVATE_MX'] = '1';
+		expect(() => loadConfig()).toThrow('MTA_ALLOW_PRIVATE_MX must be true or false');
+	});
+
 	it('throws on invalid DKIM_KEYS JSON', () => {
 		process.env['DKIM_KEYS'] = 'not-valid-json{{{';
 		expect(() => loadConfig()).toThrow('DKIM_KEYS must be valid JSON');

@@ -21,15 +21,22 @@ import {
 	createTestTransactionalEmail,
 } from './factories';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import type * as SessionOrganization from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual('../lib/sessionOrganization');
+	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// Pass-through by default; the routing-hold tests name the organization
+		// whose deliverability state the route resolution reads.
+		getSingletonOrganizationId: vi.fn(
+			actual.getSingletonOrganizationId as (ctx: unknown) => Promise<string>
+		),
 	};
 });
 
@@ -666,5 +673,98 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 		expect(rows).toHaveLength(1);
 		const sends = await t.run(async (ctx) => await readInstanceCounter(ctx.db, 'sends'));
 		expect(sends.transactionalSendCount).toBe(1);
+	});
+});
+
+// ─── Temporary routing holds ────────────────────────────────────────────────
+// An open org-wide safety circuit is "not right now": the worker holds and
+// re-enters a queued send until the circuit closes. Intake must accept the
+// request instead of throwing (which the HTTP shell answers with a 500).
+
+describe('transactional.dispatch.dispatch — temporary routing holds', () => {
+	const ORG = 'org-hold';
+
+	beforeEach(() => {
+		vi.mocked(getSingletonOrganizationId).mockResolvedValue(ORG);
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+	});
+	afterEach(async () => {
+		const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
+		vi.mocked(getSingletonOrganizationId).mockReset();
+		vi.mocked(getSingletonOrganizationId).mockImplementation(actual.getSingletonOrganizationId);
+		vi.unstubAllEnvs();
+	});
+
+	async function openGlobalBreaker(t: TestConvex<typeof schema>): Promise<void> {
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: now }],
+				fallbackActiveSince: now,
+				snapshotGeneratedAt: now,
+				expiresAt: now + 86_400_000,
+				updatedAt: now,
+			});
+		});
+	}
+
+	it('accepts and queues the send while the org-wide delivery circuit is open', async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t);
+		await openGlobalBreaker(t);
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'reset@example.com',
+		});
+
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		expect(outcome.queued).toBe(true);
+		const send = await t.run(async (ctx) => await ctx.db.get(outcome.sendId));
+		expect(send?.status).toBe('queued');
+		// No route was resolved, so the row names no provider: the worker resolves
+		// one when the hold lifts, and the lifecycle stamps the one it used.
+		expect(send?.providerType).toBeUndefined();
+		const enqueue = vi.mocked(transactionalEmailPool.enqueueAction);
+		expect(enqueue).toHaveBeenCalledOnce();
+		const queued = enqueue.mock.calls[0]?.[2] as { envelopeInput: Record<string, unknown> };
+		expect(queued.envelopeInput['sendId']).toBe(outcome.sendId);
+		expect('providerType' in queued.envelopeInput).toBe(false);
+		expect('ipPool' in queued.envelopeInput).toBe(false);
+	});
+
+	it("still refuses with 'no_delivery_provider' while the circuit is open and nothing can deliver", async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t);
+		await openGlobalBreaker(t);
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('MTA_API_KEY', '');
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'reset@example.com',
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'no_delivery_provider' });
+		const rows = await t.run(async (ctx) => await ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(0);
+	});
+
+	it("still refuses with 'domain_unverified' while the circuit is open", async () => {
+		const t = convexTest(schema, modules);
+		const { templateId } = await seedBaseline(t, { domainStatus: 'pending' });
+		await openGlobalBreaker(t);
+
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'reset@example.com',
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'domain_unverified' });
+		expect(vi.mocked(transactionalEmailPool.enqueueAction)).not.toHaveBeenCalled();
 	});
 });

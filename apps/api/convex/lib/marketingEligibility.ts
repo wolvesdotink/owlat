@@ -21,6 +21,10 @@
  * per send kind whether this gate applies (see `SUPPRESSION_SCOPE_BY_KIND` in
  * `delivery/nonCampaignIntake.ts` and `delivery/marketingDispatchGate.ts`).
  *
+ * A third rule applies to segment audiences only: a Contact a transactional send
+ * created needs a topic membership or a confirmed opt-in first
+ * (`needsMembershipForSegment`).
+ *
  * Consumers: campaign audience resolution (`campaigns/audienceCandidates.ts`),
  * the automation step claim (`automations/stepOrchestration.ts`), the
  * non-campaign intake for automation sends, and the worker's last gate before
@@ -86,4 +90,33 @@ export function isAwaitingDoubleOptIn(
 		return true;
 	}
 	return membershipPendingDoi === true;
+}
+
+/**
+ * Whether a segment must check this Contact's topic memberships before it may
+ * mail it: the Contact was created by a transactional send (`source` is set at
+ * creation and never rewritten) and has not confirmed an opt-in. Someone who
+ * only ever received a receipt gave no consent to marketing, so a segment, which
+ * selects from the whole contacts table, may reach them only once they hold a
+ * topic membership or a confirmed opt-in. Imports, forms and the API create
+ * contacts under their own source, so no other contact pays for the probe.
+ *
+ * Segment audiences only: a topic audience already starts from a membership.
+ */
+export function needsMembershipForSegment(
+	contact: Pick<Doc<'contacts'>, 'source' | 'doiStatus'>
+): boolean {
+	return contact.source === 'transactional' && contact.doiStatus !== 'confirmed';
+}
+
+/** Whether the Contact holds any topic membership. One indexed read. */
+export async function holdsTopicMembership(
+	ctx: QueryCtx | MutationCtx,
+	contactId: Id<'contacts'>
+): Promise<boolean> {
+	const membership = await ctx.db
+		.query('contactTopics')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.first();
+	return membership !== null;
 }

@@ -54,7 +54,8 @@ describe('selectIpPhase', () => {
 			expect.anything(),
 			'campaign',
 			ipPools,
-			'10.0.0.99'
+			'10.0.0.99',
+			expect.any(Function)
 		);
 	});
 });

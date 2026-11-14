@@ -22,7 +22,14 @@ const warming = vi.hoisted(() => ({
 vi.mock('../../intelligence/circuitBreaker.js', () => breaker);
 vi.mock('../../intelligence/warming.js', () => warming);
 vi.mock('../../smtp/destinationProvider.js', () => ({
-	resolveDestinationSnapshot: vi.fn().mockResolvedValue({ providerKey: 'gmail' }),
+	resolveDestinationSnapshot: vi.fn().mockResolvedValue({
+		providerKey: 'gmail',
+		mx: {
+			status: 'deliverable',
+			source: 'mx',
+			hosts: [{ exchange: 'gmail-smtp-in.l.google.com', priority: 5 }],
+		},
+	}),
 }));
 vi.mock('../../scaling/poolRules.js', () => ({
 	resolvePool: vi.fn().mockResolvedValue({ pool: 'campaign' }),

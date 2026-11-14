@@ -69,6 +69,7 @@ describe('legacyImportResult', () => {
 			propertiesAutoRegistered: 1,
 			propertiesSkipped: 2,
 			activitiesRecorded: 6,
+			keptUnsubscribed: 3,
 		};
 		expect(legacyImportResult(outcome)).toEqual({
 			imported: 3,
@@ -80,6 +81,7 @@ describe('legacyImportResult', () => {
 			propertiesSet: 5,
 			propertiesAutoRegistered: 1,
 			propertiesSkipped: 2,
+			keptUnsubscribed: 3,
 		});
 	});
 });

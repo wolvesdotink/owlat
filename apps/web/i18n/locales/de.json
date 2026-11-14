@@ -2118,6 +2118,7 @@
 					"failed": "Fehlgeschlagen",
 					"imported": "Importiert",
 					"incompleteTitle": "Import unvollständig",
+					"keptUnsubscribed": "{count} Kontakt bleibt abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat. | {count} Kontakte bleiben abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat.",
 					"notImportedRow": "Nicht importiert (Zeile {row}): {email} – {reason}",
 					"notImportedSummary": "{processed} von {total} Zeilen verarbeitet. {count} Zeile wurde nicht importiert. | {processed} von {total} Zeilen verarbeitet. {count} Zeilen wurden nicht importiert.",
 					"notSent": "Zeile {first} wurde nach dem Fehler nicht gesendet. | Zeilen {first}–{last} wurden nach dem Fehler nicht gesendet.",
@@ -2279,6 +2280,7 @@
 					"failed": "Fehlgeschlagen",
 					"failedTitle": "Import fehlgeschlagen",
 					"imported": "Importiert",
+					"keptUnsubscribed": "{count} Kontakt bleibt abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat. | {count} Kontakte bleiben abgemeldet. Ein Import meldet niemanden wieder an, der sich abgemeldet hat.",
 					"notApplicable": "Nicht zutreffend",
 					"skipped": "Übersprungen",
 					"suppressed": "Gesperrt",
@@ -9809,7 +9811,7 @@
 					"endpointUrl": "URL des Formular-Endpunkts",
 					"fields": {
 						"doubleOptIn": "Double-Opt-in aktivieren",
-						"doubleOptInHelp": "Vor dem Abonnieren eine E-Mail-Bestätigung verlangen. Für die DSGVO-Konformität empfohlen.",
+						"doubleOptInHelp": "Vor dem Abonnieren eine E-Mail-Bestätigung verlangen. Ohne Bestätigung kann jemand fremde Adressen eintragen. Das führt zu Spam-Beschwerden und schadet deiner Zustellbarkeit.",
 						"honeypot": "Name des Spamfallen-Felds (optional)",
 						"honeypotHelp": "Ein verstecktes Feld zur Spam-Abwehr. Bots füllen es aus, Menschen nicht.",
 						"honeypotPlaceholder": "z. B. website_url",
@@ -11485,7 +11487,7 @@
 					"errorTitle": "Themen konnten nicht geladen werden",
 					"form": {
 						"descriptionPlaceholder": "Optionale Beschreibung für dieses Thema...",
-						"doiDescription": "Neue Abonnenten müssen ihre E-Mail-Adresse bestätigen, bevor sie diesem Thema hinzugefügt werden",
+						"doiDescription": "Neue Abonnenten müssen ihre E-Mail-Adresse bestätigen, bevor sie hinzugefügt werden. Ohne Bestätigung kann jemand fremde Adressen eintragen. Das führt zu Spam-Beschwerden und schadet deiner Zustellbarkeit.",
 						"doiLabel": "Double-Opt-in verlangen",
 						"namePlaceholder": "z. B. Newsletter-Abonnenten"
 					},
@@ -16444,6 +16446,8 @@
 					"action": "Mailserver prüfen",
 					"degraded": "Der Mailserver meldet einen Fehler, Mail geht über ihn also nicht zuverlässig raus.",
 					"healthy": "Der Mailserver ist erreichbar und meldet keine Probleme.",
+					"signingHeld": "Der Mailserver hält Mails zurück, weil eine Versanddomain keinen nutzbaren DKIM-Schlüssel zum Signieren hat. Stell den Schlüssel wieder her oder veröffentliche den neuen DKIM-Eintrag der Domain.",
+					"signingHeldAction": "Versanddomains öffnen",
 					"stale": "Die letzte Statusprüfung des Mailservers ist veraltet, die Prüfung selbst ist also vielleicht stehen geblieben.",
 					"title": "Mailserver",
 					"unchecked": "Der Status des Mailservers wurde noch nicht geprüft.",

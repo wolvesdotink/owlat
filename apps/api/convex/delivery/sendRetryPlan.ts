@@ -31,8 +31,11 @@ type RetryableOutcome = Extract<SendWorkerOutcome, { kind: 'deferred' | 'accepta
  *     cumulative deadline does.
  *   - `deferred` is bounded by BOTH. The retry state carried here is the
  *     successor's (the dispatch boundary already incremented it, and declined
- *     to for a policy hold), so admitting `attempt <= MAX` is the exact
- *     complement of the cap dispatch would refuse this same number on.
+ *     to for a hold), so admitting `attempt <= MAX` is the exact complement of
+ *     the cap dispatch would refuse this same number on. A deferral whose
+ *     re-entry would only start at or after the deadline is not re-entered:
+ *     dispatch would refuse it by throwing, and a throw reaches the completion
+ *     as an anonymous `WORKPOOL_FAILED` instead of the cause of the wait.
  */
 export function governedRetryDelayMs(outcome: RetryableOutcome, now: number): number | null {
 	const budget = admitGovernedRetry(outcome.retryState, now);
@@ -41,7 +44,17 @@ export function governedRetryDelayMs(outcome: RetryableOutcome, now: number): nu
 			? clampRetryAfterMs(outcome.retryAfterMs, RETRY_AFTER_MIN_MS)
 			: null;
 	}
-	return budget.attempts === 'ok' && deadlineAdmits(budget.deadline)
-		? clampRetryAfterMs(outcome.retryAfterMs, LOCAL_DEFER_MS)
-		: null;
+	if (budget.attempts !== 'ok' || !deadlineAdmits(budget.deadline)) return null;
+	const delayMs = clampRetryAfterMs(outcome.retryAfterMs, LOCAL_DEFER_MS);
+	return now + delayMs < budget.deadlineAt ? delayMs : null;
+}
+
+/** Which bound ended a deferral that `governedRetryDelayMs` declined to re-enter. */
+export function deferralExhaustedBy(
+	outcome: Extract<SendWorkerOutcome, { kind: 'deferred' }>,
+	now: number
+): 'attempts' | 'deadline' {
+	return admitGovernedRetry(outcome.retryState, now).attempts === 'attempt_capped'
+		? 'attempts'
+		: 'deadline';
 }

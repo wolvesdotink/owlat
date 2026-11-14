@@ -140,6 +140,7 @@ export const commitIntegrationPage = internalMutation({
 		let updated = 0;
 		let skipped = 0;
 		let failed = 0;
+		let keptUnsubscribed = 0;
 		const pageErrors: string[] = [];
 
 		// Each stage runs as a nested mutation: one that throws rolls back its
@@ -165,6 +166,7 @@ export const commitIntegrationPage = internalMutation({
 				updated = batch.updated;
 				skipped = batch.skipped;
 				failed = batch.failed;
+				keptUnsubscribed = batch.keptUnsubscribed;
 				pageErrors.push(...batch.errors.slice(0, 10));
 			} catch (error) {
 				failed = args.rows.length;
@@ -203,6 +205,9 @@ export const commitIntegrationPage = internalMutation({
 			updated: record.updated + updated,
 			skipped: record.skipped + skipped,
 			failed: record.failed + failed,
+			...(keptUnsubscribed > 0
+				? { keptUnsubscribed: (record.keptUnsubscribed ?? 0) + keptUnsubscribed }
+				: {}),
 			errors: [...record.errors, ...pageErrors].slice(0, MAX_RUN_ERRORS),
 			cursor: args.nextCursor ?? args.cursor,
 			pagesCommitted,

@@ -66,7 +66,21 @@ function applyFeedbackProvenancePolicy(
 	// Direct reducer tests and legacy callers predate persisted provenance. The
 	// live SMTP path always sets an explicit value via attachFeedbackProvenance.
 	if (!feedback.feedbackProvenance) return reduction;
-	if (feedback.feedbackProvenance === 'unknown') return { effects: [] };
+	// Unknown provenance never suppresses or trains anything; it is only counted,
+	// so a feedback loop that delivers complaints we cannot attribute is visible.
+	if (feedback.feedbackProvenance === 'unknown') {
+		return attempt.kind === 'fbl'
+			? {
+					effects: [
+						{
+							kind: 'metric_inc',
+							metric: 'fbl_complaint_unknown_provenance',
+							isp: ispFromComplaintMessage(attempt.arf.message),
+						},
+					],
+				}
+			: { effects: [] };
+	}
 	const deliveryDomain = feedback.feedbackProvenance;
 	// The original job's id from the same persisted record, so a delayed DSN or
 	// complaint joins the send that caused it in the logs.
@@ -144,12 +158,16 @@ function safeSourceIsp(value: FblSourceIspToken | undefined): DestinationProvide
 	return FBL_ISP_TO_CELL[value];
 }
 
+function ispFromComplaintMessage(message: string | undefined): string {
+	return message?.match(/from (\w+)/)?.[1] ?? 'unknown';
+}
+
 function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeReduction {
 	const { arf } = attempt;
 	// The SHIPPED metric contract: the ISP label on `fbl_complaint` is re-parsed
 	// from the classifier's message text, NOT from `arf.sourceIsp`. Named for where
 	// it comes from so it cannot be confused with the forwarded provenance below.
-	const ispFromMessage = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
+	const ispFromMessage = ispFromComplaintMessage(arf.message);
 	const effects: BounceEffect[] = [];
 
 	if (arf.organizationId) {

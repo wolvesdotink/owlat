@@ -78,10 +78,18 @@ export interface DeliveryHealthInputs {
 	 * transactional sending is switched off.
 	 */
 	transactionalSender?: 'missing' | 'unverified' | null;
+	/** The sending domains the MTA holds mail for, when `mtaInfrastructure` is `signing_held`. */
+	heldSigningDomains?: readonly string[];
 }
 
 /** How the built-in MTA's last health snapshot reads right now. */
-export type MtaInfrastructureState = 'healthy' | 'degraded' | 'unreachable' | 'stale' | 'unchecked';
+export type MtaInfrastructureState =
+	| 'healthy'
+	| 'degraded'
+	| 'signing_held'
+	| 'unreachable'
+	| 'stale'
+	| 'unchecked';
 
 type MtaHealthSnapshot = Infer<typeof mtaHealthSnapshotValidator>;
 
@@ -96,6 +104,9 @@ export function mtaInfrastructureState(
 ): MtaInfrastructureState {
 	if (!snapshot) return 'unchecked';
 	if (now - snapshot.observedAt > MTA_HEALTH_MAX_AGE_MS) return 'stale';
+	// Before `degraded`, which the MTA also reports for it: the fix is a key or a
+	// DNS record, not the host.
+	if (snapshot.dkimSigningHeld?.length) return 'signing_held';
 	if (snapshot.status === 'ok') return 'healthy';
 	return snapshot.status;
 }
@@ -157,8 +168,16 @@ function warmupHealth(isHalted: boolean): DeliveryHealthRollup {
 		: { level: 'ok', reason: 'IP warm-up is on track' };
 }
 
-function mtaHealth(status: DeliveryHealthInputs['mtaInfrastructure']): DeliveryHealthRollup {
+function mtaHealth(
+	status: DeliveryHealthInputs['mtaInfrastructure'],
+	heldSigningDomains: readonly string[] = []
+): DeliveryHealthRollup {
 	switch (status) {
+		case 'signing_held':
+			return {
+				level: 'error',
+				reason: `Mail from ${heldSigningDomains.join(', ') || 'a sending domain'} is held: the mail server has no usable DKIM key to sign it`,
+			};
 		case 'degraded':
 			return { level: 'error', reason: 'Mail server infrastructure is degraded' };
 		case 'unreachable':
@@ -219,7 +238,7 @@ function reputationHealth(risk: ReputationRisk | null): DeliveryHealthRollup {
 export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHealthRollup {
 	const candidates: DeliveryHealthRollup[] = [
 		providerHealth(inputs.canSend, inputs.streamsWithoutTransport ?? []),
-		mtaHealth(inputs.mtaInfrastructure),
+		mtaHealth(inputs.mtaInfrastructure, inputs.heldSigningDomains),
 		sendingIpHealth(inputs.sendingIps),
 		domainHealth(inputs.domainStatuses),
 		senderHealth(inputs.transactionalSender),
@@ -275,6 +294,9 @@ export const getDeliveryHealth = authedQuery({
 			canSend,
 			mtaInfrastructure,
 			...streams,
+			...(mtaInfrastructure === 'signing_held'
+				? { heldSigningDomains: snapshot?.dkimSigningHeld?.map((held) => held.domain) ?? [] }
+				: {}),
 		});
 	},
 });

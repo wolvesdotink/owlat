@@ -13,6 +13,7 @@ describe('invitation identity verification with installed BetterAuth', () => {
 			vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', setting);
 			vi.stubEnv('OWLAT_DEV_MODE', 'false');
 			vi.stubEnv('SITE_URL', 'https://owlat.example');
+			vi.stubEnv('DEFAULT_FROM_DOMAIN', 'owlat.example');
 			vi.stubEnv('BETTER_AUTH_SECRET', 'test-only-secret-123456789012345678901234567890');
 			const now = new Date();
 			const db: Record<string, Array<Record<string, unknown>>> = {

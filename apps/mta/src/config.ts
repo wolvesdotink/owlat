@@ -65,6 +65,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	allowUnverifiedFcrdns: boolean;
 	/** Explicit opt-in for native IPv6 source addresses in IP_POOLS_*. */
 	ipv6Enabled: boolean;
+	/** Lab/test-only: connect to non-public MX addresses (`MTA_ALLOW_PRIVATE_MX`). */
+	allowPrivateMxTargets: boolean;
 	/** Domain for VERP return-path addresses */
 	returnPathDomain: string;
 	/** Convex site URL for webhook callbacks */
@@ -407,6 +409,7 @@ export function loadConfig(): MtaConfig {
 		genericPtrSuffixes,
 		allowUnverifiedFcrdns,
 		ipv6Enabled: outboundIp.ipv6Enabled,
+		allowPrivateMxTargets: outboundIp.allowPrivateMxTargets,
 		returnPathDomain,
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),

@@ -217,17 +217,20 @@ export async function dispatchGovernedEmail(
 			retryAfterMs: routing.retryAfterMs,
 			deferralOrigin: routing.origin,
 			envelopeInput: request.envelopeInput,
-			// The attempt cap bounds routing churn. A deliberate safety hold is
-			// not churn: consuming attempts would terminalize the send minutes
-			// into a pause that is meant to outlast them, so a held message is
-			// bounded by the delivery deadline instead. The exemption is NAMED
-			// (`isPolicyHold`) rather than expressed as a skipped increment, so the
-			// cap checks downstream read it in the same vocabulary.
-			retryState: nextRetryState(retryState, { isPolicyHold: routing.isPolicyHold === true }),
+			// The attempt cap bounds routing churn. A hold (a safety pause, an
+			// unreachable MTA) is not churn: consuming attempts would terminalize
+			// the send minutes into a wait that is meant to outlast them, so a held
+			// message is bounded by the delivery deadline instead. The exemption is
+			// NAMED (`isPolicyHold`) rather than expressed as a skipped increment, so
+			// the cap checks downstream read it in the same vocabulary.
+			retryState: nextRetryState(retryState, { isPolicyHold: routing.hold !== undefined }),
+			// The cause rides along so a hold that outlives the deadline fails under
+			// a code that names it.
+			...(routing.hold !== undefined ? { hold: routing.hold } : {}),
 		};
 	}
 
-	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
+	const { providerKind, route, routingLease, relayReturnPathHost, requireDkimSignature } = routing;
 	// A CAPABILITY, NOT A KIND. Both facts below are declared by the
 	// transport's catalog entry, so a new provider kind never edits this file:
 	//   · does its provider message id exist before the send (ours, not theirs)?
@@ -283,6 +286,7 @@ export async function dispatchGovernedEmail(
 		warmupOverflowEnabled: route?.warmupOverflowEnabled,
 		engagementScore,
 		relayReturnPathHost,
+		requireDkimSignature,
 		correlationId,
 	});
 	const dispatched = await sendProviderDispatch(

@@ -4,7 +4,7 @@
  * MIME passed through untouched, Message-ID policy, and the byte-identical
  * retry across MX hosts.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 
 // Every sendToMx suite stubs the same seams — transport, pool, MX/DANE/STS
@@ -21,6 +21,9 @@ vi.mock('@owlat/smtp-client', async (importOriginal) =>
 );
 vi.mock('../connectionPool.js', () => harness.connectionPoolModule());
 vi.mock('../mxResolver.js', () => harness.mxResolverModule());
+vi.mock('../mxAddresses.js', async (importOriginal) =>
+	harness.mxAddressesModule(await importOriginal<Record<string, unknown>>())
+);
 vi.mock('../daneMxResolver.js', () => harness.daneMxResolverModule());
 vi.mock('../mtaSts.js', async (importOriginal) =>
 	harness.mtaStsModule(await importOriginal<Record<string, unknown>>())
@@ -40,7 +43,9 @@ const {
 	leaseValidMock,
 } = harness;
 
+import { generateKeyPairSync } from 'crypto';
 import { sendToMx } from '../sender.js';
+import { DkimSignatureUnavailableError, getDkimOptions, resolveRequiredDkimKey } from '../dkim.js';
 import type { MtaConfig } from '../../config.js';
 import {
 	createConfig,
@@ -250,5 +255,70 @@ describe('sendToMx message composition', () => {
 		);
 
 		expect(headerValueOf(0, 'Message-ID')).toBe(supplied);
+	});
+
+	describe('a job that requires a DKIM signature', () => {
+		const privateKey = generateKeyPairSync('rsa', {
+			modulusLength: 1024,
+			publicKeyEncoding: { type: 'spki', format: 'pem' },
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+		}).privateKey;
+
+		afterEach(() => {
+			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+		});
+
+		it('opens no connection and sends nothing when no key resolves', async () => {
+			vi.mocked(resolveRequiredDkimKey).mockResolvedValue({ kind: 'unavailable', cause: 'no_key' });
+
+			await expect(
+				sendToMx(createJob({ requireDkimSignature: true }), config, redis, '10.0.0.1')
+			).rejects.toBeInstanceOf(DkimSignatureUnavailableError);
+
+			expect(acquireMock).not.toHaveBeenCalled();
+			expect(sendEnvelopeMock).not.toHaveBeenCalled();
+		});
+
+		it('refuses to fall back to unsigned bytes when signing throws', async () => {
+			vi.mocked(resolveRequiredDkimKey).mockResolvedValue({
+				kind: 'key',
+				key: { domainName: 'owlat.com', keySelector: 's1', privateKey: 'not a key' },
+			});
+
+			await expect(
+				sendToMx(createJob({ requireDkimSignature: true }), config, redis, '10.0.0.1')
+			).rejects.toMatchObject({ reason: 'sign_failed', domain: 'owlat.com' });
+			expect(sendEnvelopeMock).not.toHaveBeenCalled();
+		});
+
+		it('goes out signed with the resolved key', async () => {
+			vi.mocked(resolveRequiredDkimKey).mockResolvedValue({
+				kind: 'key',
+				key: { domainName: 'owlat.com', keySelector: 's1', privateKey },
+			});
+
+			const result = await sendToMx(
+				createJob({ requireDkimSignature: true }),
+				config,
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(result.success).toBe(true);
+			expect(headerValueOf(0, 'DKIM-Signature')).toMatch(/d=owlat\.com;.*s=s1;/);
+		});
+
+		it('keeps shipping unsigned bytes when signing throws for a job without the requirement', async () => {
+			vi.mocked(getDkimOptions).mockResolvedValue({
+				domainName: 'owlat.com',
+				keySelector: 's1',
+				privateKey: 'not a key',
+			});
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(headerBlockOf(0)).not.toMatch(/^DKIM-Signature:/m);
+		});
 	});
 });

@@ -225,6 +225,13 @@ describe('mta extras', () => {
 		);
 	});
 
+	it('asks the MTA for a signature only when the From domain is owed one', () => {
+		expect(buildDispatchExtrasFor('mta', facts({ requireDkimSignature: true }))).toMatchObject({
+			requireDkimSignature: true,
+		});
+		expect(keysOf(buildDispatchExtrasFor('mta', facts()))).not.toContain('requireDkimSignature');
+	});
+
 	it('omits an empty pool name instead of sending one', () => {
 		expect(keysOf(buildDispatchExtrasFor('mta', facts({ ipPool: undefined })))).not.toContain(
 			'ipPool'

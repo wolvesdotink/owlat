@@ -270,6 +270,23 @@ describe('IntegrationImportModal — progress and completion', () => {
 		expect(wrapper.find('input[type="password"]').exists()).toBe(true);
 	});
 
+	it('says how many contacts the run left unsubscribed', async () => {
+		const wrapper = await startStripeImport();
+
+		progress.value = running({
+			provider: 'stripe',
+			status: 'completed',
+			imported: 10,
+			updated: 4,
+			keptUnsubscribed: 3,
+		});
+		await flushPromises();
+
+		expect(wrapper.find('[data-testid="kept-unsubscribed"]').text()).toBe(
+			'3 contacts stayed unsubscribed. An import never re-subscribes someone who opted out.'
+		);
+	});
+
 	it('shows a suppression-only summary for a Mandrill run', async () => {
 		const wrapper = await mountModal();
 		await clickButton(wrapper, 'Mandrill');

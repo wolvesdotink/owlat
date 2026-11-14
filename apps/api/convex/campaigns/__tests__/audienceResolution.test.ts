@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { selectRecipient, type CampaignRecipient } from '../audienceCandidates';
+import { countAudience, selectRecipient, type CampaignRecipient } from '../audienceCandidates';
 import type { StoredAudience } from '../audience';
 import {
 	createTestContact,
@@ -1099,5 +1099,69 @@ describe('Audience resolution — honors global unsubscribe across segments (PR-
 				})
 			).map((r) => r.email)
 		).toContain('unsub@pr09.test');
+	});
+});
+
+describe('Audience resolution — a transactional-only contact is not a segment audience', () => {
+	// Every contact matches the segment (no conditions); only source, topic
+	// membership and a confirmed opt-in tell them apart.
+	async function seedTransactionalContacts(t: TestConvex<typeof schema>) {
+		return await t.run(async (ctx) => {
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+			const segmentId = await ctx.db.insert('segments', {
+				name: 'everyone',
+				filters: { logic: 'AND', conditions: [] },
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			const mk = (o: Record<string, unknown>) => ctx.db.insert('contacts', createTestContact(o));
+			await mk({ email: 'receipt@shop.test', source: 'transactional' });
+			const memberId = await mk({ email: 'member@shop.test', source: 'transactional' });
+			await ctx.db.insert('contactTopics', { contactId: memberId, topicId, addedAt: Date.now() });
+			await mk({ email: 'confirmed@shop.test', source: 'transactional', doiStatus: 'confirmed' });
+			await mk({ email: 'imported@shop.test', source: 'import' });
+			return { topicId, segmentId };
+		});
+	}
+
+	const reachable = ['confirmed@shop.test', 'imported@shop.test', 'member@shop.test'];
+
+	it('the send, the readout and the exact count all leave it out', async () => {
+		const t = convexTest(schema, modules);
+		const { segmentId } = await seedTransactionalContacts(t);
+		const audience = { kind: 'segment' as const, segmentId };
+
+		const resolved = await drainRecipientPages(t, { audience });
+		expect(resolved.map((r) => r.email).sort()).toEqual(reachable);
+
+		const readout = await t.query(api.campaigns.audienceResolution.countRecipients, { audience });
+		expect(readout.eligible).toBe(3);
+		expect(readout.total).toBe(4);
+
+		const exact = await exactRecipientCount(t, audience);
+		expect(exact.eligible).toBe(3);
+	});
+
+	it('the capacity count leaves it out, budgeted or not', async () => {
+		const t = convexTest(schema, modules);
+		const { segmentId } = await seedTransactionalContacts(t);
+		const audience = { kind: 'segment' as const, segmentId };
+
+		const [unbudgeted, budgeted] = await t.run(async (ctx) => [
+			await countAudience(ctx, audience),
+			await countAudience(ctx, audience, { documentBudget: 1_000 }),
+		]);
+		expect(unbudgeted).toEqual({ total: 4, eligible: 3, completeness: 'exact' });
+		expect(budgeted).toEqual({ total: 4, eligible: 3, completeness: 'exact' });
+	});
+
+	it('a topic it belongs to still reaches it', async () => {
+		const t = convexTest(schema, modules);
+		const { topicId } = await seedTransactionalContacts(t);
+
+		const resolved = await drainRecipientPages(t, {
+			audience: { kind: 'topic' as const, topicId },
+		});
+		expect(resolved.map((r) => r.email)).toEqual(['member@shop.test']);
 	});
 });

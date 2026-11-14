@@ -981,6 +981,27 @@ describe('doiLifecycle.transition — admin_attest', () => {
 		expect(doiAttested).toHaveLength(1);
 	});
 
+	it('admin_attest leaves a global opt-out in place', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const contactId = await createContact(t);
+		const optedOutAt = Date.now() - 60_000;
+		await t.run((ctx) => ctx.db.patch(contactId, { unsubscribedAt: optedOutAt }));
+
+		await t.mutation(internal.contacts.doiLifecycle.transition, {
+			contactId,
+			input: {
+				to: 'confirmed',
+				at: Date.now(),
+				source: 'admin_attest',
+				attestSource: 'mailchimp',
+			},
+		});
+
+		const contact = await t.run(async (ctx) => ctx.db.get(contactId));
+		expect(contact?.unsubscribedAt).toBe(optedOutAt);
+	});
+
 	it('admin_attest from not_required leaves doiConfirmationToken/expiresAt untouched', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);

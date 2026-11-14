@@ -5,6 +5,8 @@ import {
 	evaluateMtaIdentityHealth,
 	evaluateOutboundPort25,
 	evaluateSendPath,
+	evaluateSiteUrl,
+	probeMtaHealth,
 	probeMtaIdentityHealth,
 } from '../doctor';
 import { DELIVERY_PROVIDER_KINDS, type FeatureFlagState } from '@owlat/shared/featureFlags';
@@ -544,5 +546,109 @@ describe('doctor — outbound port 25 verdict for quickstart', () => {
 		['an unreadable row', health(['203.0.113.10'])],
 	])('is unknown for %s', (_label, body) => {
 		expect(evaluateOutboundPort25(body)).toEqual({ status: 'unknown' });
+	});
+});
+
+/**
+ * The MTA's `/health` runs a live TCP/25 connect per sending IP when its probe
+ * cache is cold, and a silently dropped port only fails once the MTA's own 5s
+ * connect timeout runs out. Doctor must wait longer than that, or the blocked
+ * port it exists to report reads as an unreachable MTA instead.
+ */
+describe('doctor — MTA health timeout', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+
+	const blocked = {
+		status: 'degraded',
+		redis: 'connected',
+		worker: { alive: true },
+		dns: 'ok',
+		emergency: { allIpsBlocked: false },
+		ips: [
+			{
+				ip: '192.0.2.10',
+				fcrdns: { verdict: 'pass', ehlo: 'mail.example.com', ptrNames: ['mail.example.com'] },
+			},
+		],
+		smtpOutbound: {
+			status: 'degraded',
+			ips: [{ ip: '192.0.2.10', status: 'failed', reason: 'timeout' }],
+		},
+	};
+
+	it('reports a port 25 that times out as blocked, not the MTA as unreachable', async () => {
+		vi.useFakeTimers();
+		// The MTA answers only once its 5s connect timeout to the remote MX has run
+		// out; until then the request is pending, and doctor's abort rejects it.
+		let answer: (response: Response) => void = () => {};
+		const fetchMock = vi.fn(
+			(_input: string | URL, init?: RequestInit) =>
+				new Promise<Response>((resolve, reject) => {
+					answer = resolve;
+					init?.signal?.addEventListener('abort', () =>
+						reject(new Error('This operation was aborted'))
+					);
+				})
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		const pending = probeMtaHealth('http://mta:3100');
+		await vi.advanceTimersByTimeAsync(5_500);
+		answer(Response.json(blocked));
+		const findings = await pending;
+
+		expect(findings.find((finding) => finding.check === 'mta.health')).toBeUndefined();
+		const tcp25 = findings.find((finding) => finding.check === 'mta.tcp25');
+		expect(tcp25?.ok).toBe(false);
+		expect(text(tcp25)).toContain('192.0.2.10 (timeout)');
+	});
+
+	it('names no other section in the generic port-25 note', () => {
+		const tcp25 = evaluateMtaHealth(blocked).find((finding) => finding.check === 'mta.tcp25');
+		expect(text(tcp25)).toContain('port 25');
+		expect(text(tcp25)).not.toMatch(/below|above/);
+	});
+});
+
+/**
+ * The links in verification, password-reset and invitation mail are built from
+ * SITE_URL. A terminal install leaves it on localhost, which is right until the
+ * box sends mail to people elsewhere; doctor says so once it does.
+ */
+describe('doctor — public site URL', () => {
+	it('fails a localhost SITE_URL on a host that sends mail as a public domain', () => {
+		for (const siteUrl of [undefined, 'http://localhost:3000', 'http://127.0.0.1:3000']) {
+			const findings = evaluateSiteUrl({
+				EHLO_HOSTNAME: 'mail.example.com',
+				DEFAULT_FROM_DOMAIN: 'mail.example.com',
+				...(siteUrl ? { SITE_URL: siteUrl } : {}),
+			});
+			expect(findings).toHaveLength(1);
+			expect(findings[0]).toMatchObject({ check: 'env.site_url', ok: false });
+			expect(text(findings[0])).toContain('owlat env SITE_URL');
+		}
+	});
+
+	it('also fails it when only a system From address is configured', () => {
+		expect(
+			evaluateSiteUrl({
+				DEFAULT_FROM_EMAIL: 'system@example.com',
+				SITE_URL: 'http://localhost:3000',
+			})
+		).toMatchObject([{ check: 'env.site_url', ok: false }]);
+	});
+
+	it('passes a public SITE_URL', () => {
+		expect(
+			evaluateSiteUrl({ DEFAULT_FROM_DOMAIN: 'example.com', SITE_URL: 'https://owlat.example.com' })
+		).toMatchObject([{ check: 'env.site_url', ok: true }]);
+	});
+
+	it('says nothing for a local install with no public mail identity', () => {
+		expect(evaluateSiteUrl({})).toEqual([]);
+		expect(evaluateSiteUrl({ EHLO_HOSTNAME: 'mail.localhost' })).toEqual([]);
 	});
 });
