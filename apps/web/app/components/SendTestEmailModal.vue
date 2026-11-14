@@ -27,6 +27,8 @@ interface Props {
 	 * the test arrives from the same address. Without it, the default sender.
 	 */
 	sender?: { email: string; name: string | null } | null;
+	/** A transactional email: the server sends the test from its resolved sender. */
+	transactionalEmailId?: Id<'transactionalEmails'> | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -158,6 +160,7 @@ const handleSend = async () => {
 			fromName: fromName.value || undefined,
 			sampleData: finalSampleData,
 			dataVariables: Object.keys(nonEmptyDataVars).length > 0 ? nonEmptyDataVars : undefined,
+			transactionalEmailId: props.transactionalEmailId || undefined,
 		});
 
 		sendResult.value = {

@@ -42,6 +42,8 @@ import {
 	queueTestSend,
 } from '../delivery/enqueueTestSend';
 import { isCampaignSenderAllowed, seedDefaultSenderIfNeeded } from './senders';
+import { loadTransactionalSender } from '../transactional/senderResolution';
+import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { readMemberInboxes } from './sendQueries';
 
 /** Outcome of one commit, mapped onto the action's answer by the action. */
@@ -65,11 +67,32 @@ export const commitTestSends = internalMutation({
 		text: v.optional(v.string()),
 		headers: v.optional(v.record(v.string(), v.string())),
 		recipients: v.array(v.string()),
+		/**
+		 * A transactional email's test: it goes out from the sender its real
+		 * sends resolve to, read here rather than taken from the caller, and the
+		 * campaign-sender list does not apply to it.
+		 */
+		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
 	handler: async (ctx, args): Promise<TestSendCommit> => {
 		const session = await requireOrgMember(ctx);
 
-		const domain = await checkEmailDomainVerification(ctx, args.fromEmail);
+		let { fromEmail, from } = args;
+		if (args.transactionalEmailId) {
+			const sender = await loadTransactionalSender(ctx, {
+				template: await ctx.db.get(args.transactionalEmailId),
+			});
+			if (sender.address === null) {
+				return {
+					kind: 'domain_not_verified',
+					message: 'Cannot send test email: no sender is configured for transactional mail.',
+				};
+			}
+			fromEmail = sender.address;
+			from = formatFromAddress(sender.address, sender.name ?? undefined);
+		}
+
+		const domain = await checkEmailDomainVerification(ctx, fromEmail);
 		if (!domain.verified) {
 			return {
 				kind: 'domain_not_verified',
@@ -79,9 +102,11 @@ export const commitTestSends = internalMutation({
 			};
 		}
 
-		await seedDefaultSenderIfNeeded(ctx);
-		if (!(await isCampaignSenderAllowed(ctx, args.fromEmail))) {
-			return { kind: 'sender_not_allowed' };
+		if (!args.transactionalEmailId) {
+			await seedDefaultSenderIfNeeded(ctx);
+			if (!(await isCampaignSenderAllowed(ctx, fromEmail))) {
+				return { kind: 'sender_not_allowed' };
+			}
 		}
 
 		const limit = await rateLimiter.limit(ctx, 'testEmailSend', { key: session.userId });
@@ -100,7 +125,7 @@ export const commitTestSends = internalMutation({
 			const queued = await queueTestSend(ctx, {
 				email,
 				organizationId: session.activeOrganizationId,
-				from: args.from,
+				from,
 				replyTo: args.replyTo,
 				subject: args.subject,
 				html: args.html,

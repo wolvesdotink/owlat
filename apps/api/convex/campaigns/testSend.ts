@@ -223,6 +223,9 @@ export const sendTestEmailFromTemplate = authedAction({
 			})
 		),
 		dataVariables: v.optional(v.record(v.string(), v.string())),
+		// The transactional editor's test: sent from that email's resolved
+		// sender (`commitTestSends`), not from `fromEmail`.
+		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
 	handler: async (ctx, args) => {
 		// Validate test emails
@@ -281,6 +284,7 @@ export const sendTestEmailFromTemplate = authedAction({
 			subject: personalizedSubject,
 			...previewMessage(composed),
 			recipients: args.testEmails,
+			...(args.transactionalEmailId ? { transactionalEmailId: args.transactionalEmailId } : {}),
 		});
 		if (queued.kind === 'no_provider') {
 			throwInternal(

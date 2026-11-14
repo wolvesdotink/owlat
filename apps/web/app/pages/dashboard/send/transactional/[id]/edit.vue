@@ -56,7 +56,6 @@ const { run: updateSchema } = useBackendOperation(api.transactional.emails.updat
 });
 const { showToast } = useToast();
 
-// A test send arrives from the address real sends of this email use.
 const testSender = useResolvedTransactionalSender(emailId);
 
 // Data variables from schema
@@ -495,6 +494,7 @@ const handleCreateVariable = async (variable: { key: string; type?: string }) =>
 			:variables="variables"
 			:data-variable-schema="dataVariables"
 			:sender="testSender"
+			:transactional-email-id="emailId"
 		/>
 	</div>
 </template>
