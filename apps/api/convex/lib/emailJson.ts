@@ -78,3 +78,21 @@ export function pickHtmlTranslation(
 	const entry = decodeHtmlTranslation(checked.value[language]);
 	return entry.ok ? entry : { ok: false, issue: entry.issue.replace(/^\$/, '$[*]') };
 }
+
+/**
+ * Every language's rendered HTML in an `htmlTranslations` blob that decodes.
+ * A malformed blob or entry contributes nothing: the send path falls back to
+ * the default language for it (`selectContent`), so the default content is
+ * what would go out instead.
+ */
+export function htmlTranslationEntries(json: string | undefined): HtmlTranslation[] {
+	if (!json) return [];
+	const checked = decodeJsonString(json, guardDecoder(isRecord, '$: expected object'));
+	if (!checked.ok) return [];
+	const entries: HtmlTranslation[] = [];
+	for (const value of Object.values(checked.value)) {
+		const entry = decodeHtmlTranslation(value);
+		if (entry.ok) entries.push(entry.value);
+	}
+	return entries;
+}
