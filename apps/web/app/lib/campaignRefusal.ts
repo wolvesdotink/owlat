@@ -104,6 +104,11 @@ const FIX_LINKS: Readonly<Record<PreflightFailureReason, RefusalFixLink | null>>
 		to: '/dashboard/admin/delivery',
 		labelKey: 'shared.campaignRefusal.fix.deliveryHub',
 	},
+	// The webhook key is set where the transport is configured.
+	no_bounce_feedback: {
+		to: '/dashboard/admin/delivery/transport',
+		labelKey: 'shared.campaignRefusal.fix.transport',
+	},
 };
 
 export function refusalFixLink(reason: PreflightFailureReason): RefusalFixLink | null {

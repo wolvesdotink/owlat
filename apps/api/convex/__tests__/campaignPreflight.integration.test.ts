@@ -490,6 +490,79 @@ describe('validateReadyToSend — the built-in mail server', () => {
 	});
 });
 
+describe('validateReadyToSend — bounce and complaint feedback', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	async function seedReadyCampaign(t: TestRunner): Promise<Id<'campaigns'>> {
+		const templateId = await seedTemplate(t);
+		const topicId = await seedTopic(t);
+		await seedVerifiedDomain(t, 'verified.example.com');
+		let campaignId: Id<'campaigns'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'draft',
+					emailTemplateId: templateId,
+					fromEmail: 'sender@verified.example.com',
+					audience: { kind: 'topic', topicId },
+				})
+			);
+		});
+		return campaignId!;
+	}
+
+	it('refuses a campaign whose transport cannot receive bounce reports, naming the key', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('no_bounce_feedback');
+		expect(result.messageKey).toBe(PREFLIGHT_MESSAGE_KEYS.no_bounce_feedback.default);
+		expect(result.messageParams).toEqual({ variables: 'MTA_WEBHOOK_SECRET' });
+	});
+
+	it('passes once the key is set', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', 'whsec_set');
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(true);
+	});
+
+	it('does not refuse a transport that has no feedback channel to configure', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await seedReadyCampaign(t);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.example.com');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'secret');
+
+		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
+			campaignId,
+		});
+
+		expect(result.ok).toBe(true);
+	});
+});
+
 describe('getCampaignDeliveryConfigured', () => {
 	it('answers true when campaign mail has a ready provider', async () => {
 		const t = convexTest(schema, modules);

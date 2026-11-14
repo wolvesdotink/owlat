@@ -42,9 +42,10 @@ export const MAX_ATTACHMENT_WAITS = 24;
  *     verdict about the same address, observed at reply time. `archived` is
  *     terminal, so the failed-action retry cron never re-drives it (`failed`
  *     would report a policy decision as a fault and retry it forever).
- *   - `no_delivery_provider` / `abuse_blocked` are about the deployment, not
- *     the recipient: the draft should send once an operator configures a
- *     provider or the suspension lifts, so they stay `failed`, keep surfacing
+ *   - `no_delivery_provider` / `abuse_blocked` / `sender_domain_unverified`
+ *     are about the deployment, not the recipient: the draft should send once
+ *     an operator configures a provider, verifies the domain or the suspension
+ *     lifts, so they stay `failed`, keep surfacing
  *     as a fault, and stay re-drivable.
  */
 const REPLY_REFUSAL_BY_REASON: Record<
@@ -63,6 +64,10 @@ const REPLY_REFUSAL_BY_REASON: Record<
 	abuse_blocked: {
 		terminal: 'failed',
 		message: () => 'Sending is disabled while this instance is suspended.',
+	},
+	sender_domain_unverified: {
+		terminal: 'failed',
+		message: (detail) => detail ?? "The default sender's domain is not a verified sending domain.",
 	},
 };
 

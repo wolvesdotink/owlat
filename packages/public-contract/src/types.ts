@@ -386,12 +386,14 @@ export interface SendTransactionalResponse {
 	 */
 	email: string;
 	/**
-	 * ID of the send record created for this email (a `transactionalSends`
-	 * row), NOT the template id. Use it to correlate with delivery webhooks.
+	 * ID of the send created for this email, NOT the template id. Every
+	 * `email.*` webhook for this send carries it as `sendId`, and
+	 * `GET /api/v1/transactional/{sendId}` reads its status.
 	 */
 	transactionalEmailId: string;
 	/**
-	 * Slug of the transactional email template used.
+	 * Slug of the transactional email template used, also when the request
+	 * named the template by ID.
 	 */
 	slug: string;
 	/**
@@ -406,4 +408,53 @@ export interface SendTransactionalResponse {
 	 * The language used for this email send.
 	 */
 	language: string;
+}
+
+/** Delivery states of one send. `failed` and a hard `bounced` are final. */
+export const TRANSACTIONAL_SEND_STATUSES = [
+	'queued',
+	'sent',
+	'failed',
+	'delivered',
+	'opened',
+	'clicked',
+	'bounced',
+	'complained',
+] as const;
+
+/** Delivery state of one send. */
+export type TransactionalSendStatusValue = (typeof TRANSACTIONAL_SEND_STATUSES)[number];
+
+/**
+ * Body of `GET /api/v1/transactional/{sendId}`: where one send stands. It
+ * never carries the send's data variables. Timestamps are ISO 8601, `null`
+ * until the send reaches that step.
+ */
+export interface TransactionalSendStatus {
+	/** The ID the send call answered with as `transactionalEmailId`. */
+	sendId: string;
+	/** Current delivery state. */
+	status: TransactionalSendStatusValue;
+	/** Recipient's email address. */
+	email: string;
+	/** ID of the template the send used, or `null` once the template is gone. */
+	templateId: string | null;
+	/** Slug of that template, or `null` once the template is gone. */
+	slug: string | null;
+	/** Language the send used. */
+	language: string | null;
+	queuedAt: string | null;
+	sentAt: string | null;
+	deliveredAt: string | null;
+	openedAt: string | null;
+	clickedAt: string | null;
+	bouncedAt: string | null;
+	complainedAt: string | null;
+	failedAt: string | null;
+	/** `hard` or `soft` once a bounce was reported, otherwise `null`. */
+	bounceType: 'hard' | 'soft' | null;
+	/** Stable code of the failure (for example `MTA_UNREACHABLE`); `null` unless `failed`. */
+	errorCode: string | null;
+	/** Human-readable reason of the failure; `null` unless `failed`. */
+	errorMessage: string | null;
 }

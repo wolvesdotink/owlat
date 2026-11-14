@@ -6,10 +6,12 @@
 
 import { v, type Infer } from 'convex/values';
 import type { WebhookEventModule } from '../../types';
+import { sendIdentityData, sendIdentityFields, type SendIdentity } from '../sendIdentity';
 import { bounceTypeValidator } from '../../../lib/literalValidators';
 
 const schema = v.object({
 	email: v.string(),
+	...sendIdentityFields,
 	bounceType: bounceTypeValidator,
 	message: v.string(),
 	timestamp: v.string(),
@@ -19,6 +21,7 @@ type Data = Infer<typeof schema>;
 
 interface Input {
 	email: string;
+	identity: SendIdentity;
 	bounceType: 'hard' | 'soft';
 	message?: string;
 	at: number;
@@ -32,6 +35,7 @@ export const emailBounced: WebhookEventModule<'email.bounced', Input, Data> = {
 	build(input) {
 		return {
 			email: input.email,
+			...sendIdentityData(input.identity),
 			bounceType: input.bounceType,
 			message: input.message ?? '',
 			timestamp: new Date(input.at).toISOString(),

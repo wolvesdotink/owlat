@@ -7821,6 +7821,7 @@
 					"emailClicked": "Email clicked",
 					"emailComplained": "Email complained",
 					"emailDelivered": "Email delivered",
+					"emailFailed": "Email failed",
 					"emailOpened": "Email opened",
 					"emailSent": "Email sent",
 					"test": "Test",
@@ -8545,6 +8546,11 @@
 						"needsAttention": "Your mail needs attention. Follow the next verified setup step below.",
 						"ready": "Your mail setup is verified and ready.",
 						"readyWithRecommended": "Your mail is deliverable. {count} recommended improvement available. | Your mail is deliverable. {count} recommended improvements available."
+					},
+					"bounceFeedback": {
+						"title": "Bounces and complaints cannot reach Owlat",
+						"detail": "{variables} is not set, so every bounce and complaint report is rejected and nothing is suppressed. Campaigns are refused until it is set; transactional mail still goes out.",
+						"action": "Open the delivery provider"
 					}
 				},
 				"dmarc": {
@@ -9919,7 +9925,8 @@
 					"toggleArchivesOperation": "Toggle campaign archives",
 					"unsavedChanges": "You have unsaved changes",
 					"verifiedLabel": "Verified:",
-					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again."
+					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again.",
+					"unverifiedFromDomain": "{domain} is not a verified sending domain yet. You can save this address, but automation emails, inbox replies, double opt-in confirmations and transactional mail from it are refused until the domain is verified."
 				},
 				"index": {
 					"applyChanges": "Apply changes",
@@ -16471,7 +16478,12 @@
 				},
 				"transport": {
 					"action": "Set up sending",
+					"actionFeedback": "Set the webhook secret",
 					"configured": "A delivery transport is configured, so mail has a way out.",
+					"feedbackMissing": {
+						"marketing": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set. Campaigns stay blocked until it is, so addresses that bounce or complain are suppressed.",
+						"transactional": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set, so addresses that bounce or complain are never suppressed."
+					},
 					"missing": "No transport is configured yet, so nothing can be sent.",
 					"missingFor": {
 						"marketing": "No transport is configured for campaigns, so they can't go out.",
@@ -19243,6 +19255,10 @@
 					"description": "When an email is delivered",
 					"label": "Email delivered"
 				},
+				"emailFailed": {
+					"description": "When an email cannot be sent and will not be retried",
+					"label": "Email failed"
+				},
 				"emailOpened": {
 					"description": "When an email is opened",
 					"label": "Email opened"
@@ -19667,6 +19683,7 @@
 			"mailServerPort25Blocked": "The built-in mail server cannot reach other mail servers on port 25 from any campaign sending IP. Many hosting providers block port 25 until you ask them to open it.",
 			"mailServerUnreachable": "The built-in mail server is not answering its health check, so campaign mail would only wait in its queue. Check the mail server, then send again.",
 			"noAudience": "Choose who gets this campaign before you send it.",
+			"noBounceFeedback": "Bounces and complaints cannot reach Owlat because {variables} is not set, so addresses that bounce or complain would never be suppressed. Set it on the delivery provider page, then send again.",
 			"noDeliveryProvider": "Sending is not set up yet: campaign mail has no delivery provider. A connected mailbox does not send campaigns.",
 			"noFromEmail": "Choose who this campaign sends from before you send it.",
 			"noTemplate": "Choose the email this campaign sends before you send it.",

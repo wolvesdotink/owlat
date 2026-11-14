@@ -22,6 +22,7 @@ import {
 	createTestConversationThread,
 	createTestInboundMessage,
 	createTestInstanceSettings,
+	createTestDomain,
 } from './factories';
 
 // Agent replies enqueue on the transactional workpool. Stub it so nothing is
@@ -56,6 +57,11 @@ async function seed(
 ): Promise<{ messageId: Id<'inboundMessages'>; threadId?: Id<'conversationThreads'> }> {
 	const { withThread, ...overrides } = message;
 	return t.run(async (ctx) => {
+		// The default sender's domain: non-campaign mail is refused from any other.
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({ domain: 'owlat.example', status: 'verified', lastVerifiedAt: Date.now() })
+		);
 		await ctx.db.insert(
 			'instanceSettings',
 			createTestInstanceSettings({

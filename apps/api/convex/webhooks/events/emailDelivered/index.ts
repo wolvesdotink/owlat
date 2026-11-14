@@ -6,9 +6,11 @@
 
 import { v, type Infer } from 'convex/values';
 import type { WebhookEventModule } from '../../types';
+import { sendIdentityData, sendIdentityFields, type SendIdentity } from '../sendIdentity';
 
 const schema = v.object({
 	email: v.string(),
+	...sendIdentityFields,
 	timestamp: v.string(),
 });
 
@@ -16,14 +18,11 @@ type Data = Infer<typeof schema>;
 
 interface Input {
 	email: string;
+	identity: SendIdentity;
 	at: number;
 }
 
-export const emailDelivered: WebhookEventModule<
-	'email.delivered',
-	Input,
-	Data
-> = {
+export const emailDelivered: WebhookEventModule<'email.delivered', Input, Data> = {
 	literal: 'email.delivered',
 	description: 'Sending provider reported successful delivery',
 	isSubscribable: true,
@@ -31,6 +30,7 @@ export const emailDelivered: WebhookEventModule<
 	build(input) {
 		return {
 			email: input.email,
+			...sendIdentityData(input.identity),
 			timestamp: new Date(input.at).toISOString(),
 		};
 	},

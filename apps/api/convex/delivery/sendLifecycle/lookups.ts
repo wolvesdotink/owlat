@@ -1,6 +1,7 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { findLiveContactByEmail } from '../../lib/contactHelpers';
+import type { SendIdentity } from '../../webhooks/events/sendIdentity';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc } from './types';
 
 // ─── SendStore — the only place that branches on kind to load/patch ─────────
@@ -54,6 +55,25 @@ export async function senderDomainFor(
 export function contactEmailOf(send: EmailSendDoc | TransactionalSendDoc): string {
 	if ('contactEmail' in send) return send.contactEmail;
 	return (send as TransactionalSendDoc).email;
+}
+
+// ─── Send identity (for customer webhooks) ──────────────────────────────────
+//
+// What an `email.*` webhook names the send by. Only a `kind: 'transactional'`
+// row was created by the public send API, so only it gets a `sendId`: that is
+// the id the API answered with and the one its status route reads. An
+// automation, inbox or preview row has no such route, and its internal id is
+// not handed out.
+export function sendIdentityOf(
+	send: EmailSendDoc | TransactionalSendDoc,
+	ref: SendRef
+): SendIdentity {
+	if (ref.kind === 'campaign') {
+		return { sendId: null, campaignId: (send as EmailSendDoc).campaignId, templateId: null };
+	}
+	const row = send as TransactionalSendDoc;
+	if (row.kind !== 'transactional') return { sendId: null, campaignId: null, templateId: null };
+	return { sendId: ref.id, campaignId: null, templateId: row.transactionalEmailId ?? null };
 }
 
 // ─── Recipient-contact lookup (for the soft-bounce counter) ─────────────────

@@ -27,6 +27,7 @@ export const PREFLIGHT_FAILURE_REASONS = [
 	'exceeds_sending_capacity',
 	'mail_server_not_ready',
 	'delivery_on_hold',
+	'no_bounce_feedback',
 ] as const;
 
 export type PreflightFailureReason = (typeof PREFLIGHT_FAILURE_REASONS)[number];
@@ -69,6 +70,7 @@ export const PREFLIGHT_MESSAGE_KEYS = {
 	// Only a scheduled start records this one: delivery stayed on hold for the
 	// whole wait at fire time (`campaigns/startGate.ts`).
 	delivery_on_hold: { default: 'shared.campaignRefusal.deliveryOnHold' },
+	no_bounce_feedback: { default: 'shared.campaignRefusal.noBounceFeedback' },
 } as const satisfies Record<PreflightFailureReason, Readonly<Record<string, string>>>;
 
 /** The variants one reason is worded in. */

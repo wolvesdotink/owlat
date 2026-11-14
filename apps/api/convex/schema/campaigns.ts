@@ -363,7 +363,10 @@ export const campaignTables = {
 		// The lost-send sweep (`delivery/stuckSendSweep.ts`): queued Sends with no
 		// provider id, by first-attempt time, so it reads only the rows past their
 		// deadline (and, with `firstAttemptAt` absent, the never-attempted ones).
-		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt']),
+		.index('by_status_provider_first_attempt', ['status', 'providerMessageId', 'firstAttemptAt'])
+		// The sweep's no-feedback pass: queued Sends by first attempt, whatever
+		// their provider id, of which it ends only the ones holding one.
+		.index('by_status_first_attempt', ['status', 'firstAttemptAt']),
 
 	// Checkpoint rows for large-audience campaign sends (see the table comment
 	// above). One row per send walk (plain, A/B test cohort, or A/B winner
