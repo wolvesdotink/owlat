@@ -14,6 +14,8 @@
  * party, so it takes an operator pressing the button.
  */
 import { apiFetch } from '~/lib/csrfFetch';
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import InstancePageNotice from '~/components/InstancePageNotice.vue';
 import {
 	summarizePortChecks,
 	type PortChecksVerdict,
@@ -46,6 +48,9 @@ interface PortChecksResponse {
 }
 
 const { t, locale } = useI18n();
+// The probes run through `/api/system/port-checks`, a server route the static
+// desktop build does not have; there the card offers the instance's page.
+const isDesktop = isDesktopRuntime();
 
 type CardState = 'idle' | 'running' | 'done';
 const state = ref<CardState>('idle');
@@ -102,6 +107,7 @@ const unmeasured = computed(() =>
 const refusedByUpdater = computed(() => Boolean(result.value?.reachable && result.value?.error));
 
 async function runChecks() {
+	if (isDesktop) return;
 	state.value = 'running';
 	try {
 		result.value = await apiFetch<PortChecksResponse>('/api/system/port-checks', {
@@ -173,6 +179,7 @@ function statusIcon(row: PortCheckRow): IconComponent {
 				</p>
 			</div>
 			<UiButton
+				v-if="!isDesktop"
 				variant="outline"
 				size="sm"
 				data-testid="port-checks-run"
@@ -189,9 +196,15 @@ function statusIcon(row: PortCheckRow): IconComponent {
 			</UiButton>
 		</div>
 
+		<InstancePageNotice
+			v-if="isDesktop"
+			class="mt-4"
+			path="/dashboard/admin/system"
+			:body="t('components.system.portChecksCard.onInstance')"
+		/>
 		<!-- Never run: say what pressing the button will do, including who it talks to. -->
 		<p
-			v-if="state === 'idle'"
+			v-else-if="state === 'idle'"
 			data-testid="port-checks-idle"
 			class="mt-4 text-caption text-text-tertiary"
 		>

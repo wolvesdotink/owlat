@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
-import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import { suppressionReasonPresentation } from '~/utils/suppressionReasons';
 import {
 	indexSuppressionProvenance,
 	suppressionProvenanceLine,
@@ -54,9 +54,10 @@ const provenanceFor = (blockedEmailId: string): string | null => {
 
 // The reason -> badge/icon/label decision lives in ONE place (see
 // `~/utils/suppressionReasons`), shared with the contact-profile notice. The
-// parameter is the closed `BlockReason` union, so the lookup is total: a fifth
+// reason is the closed `BlockReason` union, so the lookup is total: a fifth
 // schema literal fails the build instead of silently rendering as "manual".
-const presentation = (reason: BlockReason) => suppressionReasonPresentation(reason);
+const presentation = (row: Pick<SuppressionRow, 'reason' | 'bounceType'>) =>
+	suppressionReasonPresentation(row.reason, row.bounceType);
 
 // A soft bounce (a full or unavailable mailbox) blocks for a while and then
 // lapses, on the same rule every send path applies; say when, so a row that no
@@ -114,7 +115,7 @@ const expiryLine = (row: SuppressionRow): string | null => {
 					<div class="flex items-center gap-3">
 						<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center shrink-0">
 							<component
-								:is="presentation(blockedEmail.reason).icon"
+								:is="presentation(blockedEmail).icon"
 								class="w-4 h-4 text-text-secondary"
 							/>
 						</div>
@@ -127,10 +128,10 @@ const expiryLine = (row: SuppressionRow): string | null => {
 							<span
 								:class="[
 									'sm:hidden mt-1 inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium border',
-									presentation(blockedEmail.reason).badge,
+									presentation(blockedEmail).badge,
 								]"
 							>
-								{{ t(presentation(blockedEmail.reason).label) }}
+								{{ t(presentation(blockedEmail).label) }}
 							</span>
 						</div>
 					</div>
@@ -139,10 +140,10 @@ const expiryLine = (row: SuppressionRow): string | null => {
 					<span
 						:class="[
 							'inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium border',
-							presentation(blockedEmail.reason).badge,
+							presentation(blockedEmail).badge,
 						]"
 					>
-						{{ t(presentation(blockedEmail.reason).label) }}
+						{{ t(presentation(blockedEmail).label) }}
 					</span>
 					<span
 						v-if="expiryLine(blockedEmail)"

@@ -61,6 +61,24 @@ export type SuppressionReasonPresentation = {
 	phrase: (dateLabel: string) => SuppressionReasonText;
 };
 
+/**
+ * A `bounced` row from repeated SOFT bounces (`bounceType: 'soft'`): the
+ * mailbox exists and kept refusing for a while (full, temporarily unavailable).
+ * It blocks only until it expires (`@owlat/shared/softBounceSuppression`), so it
+ * must not read as the hard bounce's "mailbox doesn't exist".
+ */
+const SOFT_BOUNCE_PRESENTATION: SuppressionReasonPresentation = {
+	headline: 'shared.suppressionReasons.headline.noMail',
+	badge: 'bg-warning/20 text-warning border-warning/30',
+	tone: 'text-warning',
+	icon: MailIcon,
+	label: 'shared.suppressionReasons.softBounced.label',
+	phrase: (dateLabel: string) => ({
+		key: 'shared.suppressionReasons.softBounced.phrase',
+		params: { date: dateLabel },
+	}),
+};
+
 const SUPPRESSION_REASON_PRESENTATION = {
 	bounced: {
 		headline: 'shared.suppressionReasons.headline.noMail',
@@ -108,7 +126,15 @@ const SUPPRESSION_REASON_PRESENTATION = {
 	},
 } as const satisfies Record<BlockReason, SuppressionReasonPresentation>;
 
-/** Total lookup — no fallback, because the union admits no other value. */
-export function suppressionReasonPresentation(reason: BlockReason): SuppressionReasonPresentation {
+/**
+ * Total lookup — no fallback, because the union admits no other value. A
+ * bounce row also passes its `bounceType`, which tells a soft bounce from a
+ * hard one.
+ */
+export function suppressionReasonPresentation(
+	reason: BlockReason,
+	bounceType?: 'hard' | 'soft'
+): SuppressionReasonPresentation {
+	if (reason === 'bounced' && bounceType === 'soft') return SOFT_BOUNCE_PRESENTATION;
 	return SUPPRESSION_REASON_PRESENTATION[reason];
 }

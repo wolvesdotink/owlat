@@ -4,6 +4,7 @@ import type { DecoratedRow } from '~/utils/campaignCommandRow';
 import { useLocalized } from '~/composables/useLocalized';
 import { useFormat } from '~/composables/useFormat';
 import { useNow } from '~/composables/useNow';
+import { blockerFromStartRefusal, type StoredStartRefusal } from '~/lib/campaignRefusal';
 import {
 	activeStartHold,
 	startHoldGivesUpAt,
@@ -23,7 +24,8 @@ const emit = defineEmits<{
 
 const dropdownOpen = ref(false);
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+const { isAdmin } = usePermissions();
 const { formatPercentage, formatRelativeTime } = useFormat();
 // A held start counts down to when the wait gives up; minutes are enough.
 const now = useNow({ intervalMs: 60_000 });
@@ -64,11 +66,25 @@ const contextItems = computed<ContextMenuItem[]>(() => {
 	return items;
 });
 
+/**
+ * A refused scheduled start: the stored reason, and the page that fixes it,
+ * exactly as the editor's in-place note (`EditNotices`) shows them. The fix
+ * pages are admin-only, so a member gets the "Review" action instead.
+ */
+const startRefusal = computed(() => {
+	const refusal = props.row.campaign.startRefusal;
+	return props.row.reason === 'start_refused' && refusal
+		? blockerFromStartRefusal(refusal as StoredStartRefusal, (key) => te(key))
+		: null;
+});
+const startRefusalFix = computed(() => (isAdmin.value ? (startRefusal.value?.fix ?? null) : null));
+
 /** Meta line under the campaign name — one human sentence per state. */
 const metaLine = computed(() => {
 	const row = props.row;
 	const c = row.campaign;
 	const meta = 'components.campaigns.commandRow.meta';
+	if (startRefusal.value) return message(startRefusal.value.message);
 	if (row.reason === 'ab_decision') {
 		const a = row.variantA;
 		const b = row.variantB;
@@ -187,11 +203,13 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 						</span>
 						<!-- A scheduled row's line turns into the start gate's wait when it
 						     holds the start, so it is a status region while scheduled. -->
+						<!-- native-title: the full refusal reason the line truncates -->
 						<span
 							v-if="metaLine"
 							:role="row.campaign.status === 'scheduled' ? 'status' : undefined"
 							data-testid="campaign-row-meta"
 							class="text-xs text-text-tertiary truncate"
+							:title="startRefusal ? metaLine : undefined"
 							>{{ metaLine }}</span
 						>
 					</div>
@@ -237,7 +255,21 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					@keydown.enter.stop
 					@keydown.space.stop
 				>
-					<UiButton v-if="row.actionLabel" size="sm" variant="secondary" @click="emit('runAction')">
+					<UiButton
+						v-if="startRefusalFix"
+						size="sm"
+						variant="secondary"
+						:to="startRefusalFix.to"
+						data-testid="campaign-row-refusal-fix"
+					>
+						{{ t(startRefusalFix.labelKey) }}
+					</UiButton>
+					<UiButton
+						v-else-if="row.actionLabel"
+						size="sm"
+						variant="secondary"
+						@click="emit('runAction')"
+					>
 						{{ message(row.actionLabel) }}
 					</UiButton>
 					<!-- Completed A/B tests keep a discoverable path to their results -->

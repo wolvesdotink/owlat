@@ -10,6 +10,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, ref, type Ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import UiInput from '@owlat/ui/components/ui/Input.vue';
+import UiSelect from '@owlat/ui/components/ui/Select.vue';
 import type { Id } from '@owlat/api/dataModel';
 
 import SetupSenderPicker from '../SetupSenderPicker.vue';
@@ -243,5 +244,69 @@ describe('SetupSenderPicker on a saved campaign (the edit page)', () => {
 		pickerData.value = { senders: [SENDER], isCustomAllowed: true, canManage: true };
 		const wrapper = mountForCampaign({ fromName: 'Owlat', fromEmail: 'news@example.com' });
 		expect(wrapper.findComponent({ name: 'UiSelect' }).attributes('disabled')).toBe('true');
+	});
+});
+
+/**
+ * A custom from-address on a domain the workspace cannot send from. The hint
+ * names the page that fixes it as a link for an admin. That page is admin-only,
+ * so a member reads the sentence without a link that would bounce them to Home.
+ */
+describe('SetupSenderPicker with a custom address on an unusable domain', () => {
+	function mountCustom() {
+		pickerData.value = { senders: [], isCustomAllowed: true, canManage: false };
+		domainStatus.value = { domain: 'unregistered.example', exists: false, verified: false };
+		return mount(SetupSenderPicker, {
+			props: {
+				campaignId: null,
+				campaignDetails: null,
+				fromName: 'Owlat News',
+				fromEmail: 'news@unregistered.example',
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: {
+					CampaignsStepsSetupAddSenderInline: SetupAddSenderInline,
+					CampaignsSenderAuthChip: SenderAuthChip,
+					UiInput,
+					UiSelect,
+				},
+				stubs: {
+					UiErrorAlert: true,
+					NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
+				},
+			},
+		}) as VueWrapper;
+	}
+
+	it('names the custom-address choice in words, not as a message key', async () => {
+		const wrapper = mountCustom();
+		await nextTick();
+		expect(wrapper.text()).toContain('Custom address…');
+		expect(wrapper.text()).not.toContain('shared.campaignSenderPicker');
+	});
+
+	it('links an admin to the sending domains page', async () => {
+		const wrapper = mountCustom();
+		await nextTick();
+		const hint = wrapper.find('[data-testid="sender-domain-problem"]');
+		expect(hint.text()).toContain('Domain "unregistered.example" is not registered.');
+		expect(hint.find('a').attributes('href')).toBe('/dashboard/admin/delivery/domains');
+		expect(hint.find('a').text()).toBe('Sending domains');
+	});
+
+	it('tells a member without a link to a page they cannot open', async () => {
+		vi.stubGlobal('usePermissions', () => ({
+			role: ref('editor'),
+			isRoleLoading: ref(false),
+			isOwner: ref(false),
+			isAdmin: ref(false),
+		}));
+		const wrapper = mountCustom();
+		await nextTick();
+		const hint = wrapper.find('[data-testid="sender-domain-problem"]');
+		expect(hint.text()).toContain('until an admin adds and verifies this domain');
+		expect(hint.find('a').exists()).toBe(false);
+		expect(hint.text()).not.toContain('Settings');
 	});
 });

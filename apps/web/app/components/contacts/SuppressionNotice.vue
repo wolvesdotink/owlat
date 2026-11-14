@@ -11,10 +11,16 @@
  */
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
 import { useLocalized } from '~/composables/useLocalized';
+import { isSuppressionExpired, suppressionExpiresAt } from '@owlat/shared/softBounceSuppression';
+import { formatShortDate } from '~/utils/formatters';
 import { MailCloseIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	reason: BlockReason;
+	/** Set on a bounce row: a soft bounce blocks only for a while. */
+	bounceType?: 'hard' | 'soft';
+	/** When the row was written; a soft bounce's expiry counts from it. */
+	createdAt?: number;
 	/** Pre-formatted human date the address was suppressed (e.g. "Mar 3"). */
 	dateLabel: string;
 	/** Whether the viewer may remove suppressions (contacts:manage). */
@@ -37,7 +43,15 @@ const localize = useLocalized();
 // wording comes from the SAME table the suppression list renders from, so the
 // two surfaces cannot describe the same reason differently, and a new schema
 // literal is a compile error rather than a silent "manually suppressed".
-const presentation = computed(() => suppressionReasonPresentation(props.reason));
+const presentation = computed(() => suppressionReasonPresentation(props.reason, props.bounceType));
+// A soft bounce stops blocking after its expiry, on the rule every send path
+// applies (`@owlat/shared/softBounceSuppression`); the row stays until someone
+// removes it. A lapsed row is not a live block, so the notice says so.
+const lapsedAt = computed(() => {
+	if (props.createdAt === undefined) return null;
+	const row = { reason: props.reason, bounceType: props.bounceType, createdAt: props.createdAt };
+	return isSuppressionExpired(row, Date.now()) ? suppressionExpiresAt(row) : null;
+});
 const reasonPhrase = computed(() => localize(presentation.value.phrase(props.dateLabel)));
 // The headline is reason-specific too: an `unengaged` row is marketing-only, so
 // that address still gets transactional mail, DOI confirmations and 1:1 agent
@@ -48,11 +62,24 @@ const detailOpen = ref(false);
 </script>
 
 <template>
-	<div class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm" role="status">
+	<div
+		:class="[
+			'rounded-lg border px-3 py-2 text-sm',
+			lapsedAt ? 'border-border-subtle bg-bg-surface' : 'border-warning/20 bg-warning/5',
+		]"
+		role="status"
+		data-testid="suppression-notice"
+	>
 		<div class="flex items-center gap-2.5">
-			<MailCloseIcon class="w-4 h-4 shrink-0 text-warning" />
+			<MailCloseIcon
+				:class="['w-4 h-4 shrink-0', lapsedAt ? 'text-text-tertiary' : 'text-warning']"
+			/>
 			<p class="font-medium text-text-primary">
-				{{ t('components.contacts.suppressionNotice.title') }}
+				{{
+					lapsedAt
+						? t('components.contacts.suppressionNotice.lapsedTitle')
+						: t('components.contacts.suppressionNotice.title')
+				}}
 			</p>
 			<UiDisclosure
 				v-model="detailOpen"
@@ -60,7 +87,18 @@ const detailOpen = ref(false);
 				:label="t('components.contacts.suppressionNotice.why')"
 			>
 				<p class="text-text-secondary">
-					<I18nT keypath="components.contacts.suppressionNotice.detail" tag="span" scope="global">
+					<span v-if="lapsedAt">{{
+						t('components.contacts.suppressionNotice.lapsedDetail', {
+							date: dateLabel,
+							expiry: formatShortDate(lapsedAt),
+						})
+					}}</span>
+					<I18nT
+						v-else
+						keypath="components.contacts.suppressionNotice.detail"
+						tag="span"
+						scope="global"
+					>
 						<template #headline>
 							<span class="font-medium text-text-primary">{{ headline }}</span>
 						</template>
