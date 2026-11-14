@@ -12,8 +12,10 @@ import { internalMutation } from '../lib/writeFence';
 import { patchDomainRecords } from './lifecycle';
 import type { DnsRecords, VerificationResults } from './lifecycleReducer';
 
+type DkimRotationPhase = 'pending' | 'activated' | 'cancelled';
+
 type SendingDomainDkimRotationOutcome =
-	| { ok: true; phase: 'pending' | 'activated'; selector: string; changed: boolean }
+	| { ok: true; phase: DkimRotationPhase; selector: string; changed: boolean }
 	| { ok: false; reason: 'domain_not_found' };
 
 /**
@@ -32,6 +34,9 @@ type SendingDomainDkimRotationOutcome =
  *                   publish + re-verify of the new selector.
  *   - `'activated'` (signing switched): the old selector is retired and only
  *                   the new selector's record remains.
+ *   - `'cancelled'` (pending key discarded): the selector's record is removed
+ *                   if it is still flagged `rotationPending`. A selector that
+ *                   signs is never removed by a cancel.
  *
  * Looks the domain up by name (the MTA only knows the domain string). A
  * domain that isn't registered with the MTA provider — or was removed — is a
@@ -45,7 +50,7 @@ export const recordDkimRotation = internalMutation({
 		domain: v.string(),
 		selector: v.string(),
 		dnsRecord: v.string(),
-		phase: v.union(v.literal('pending'), v.literal('activated')),
+		phase: v.union(v.literal('pending'), v.literal('activated'), v.literal('cancelled')),
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<SendingDomainDkimRotationOutcome> => {
@@ -81,6 +86,8 @@ export const recordDkimRotation = internalMutation({
 				existingIndexOfNew >= 0
 					? existingDkim.map((r, i) => (i === existingIndexOfNew ? newRecord : r))
 					: [...existingDkim, newRecord];
+		} else if (args.phase === 'cancelled') {
+			nextDkim = existingDkim.filter((r) => !(r.host === newHost && r.rotationPending === true));
 		} else {
 			// Activated: retire every other selector, keep only the new one.
 			nextDkim = [newRecord];
@@ -108,9 +115,15 @@ export const recordDkimRotation = internalMutation({
 		// prompts a re-publish + re-verify (mirrors `setDmarcPolicy`). The array
 		// shape no longer aligns 1:1 with the new selector set, so clear it
 		// wholesale; the next `verifyDomain` re-populates it against the new hosts.
+		// A cancel only removes a record, so the results of the selectors that
+		// remain stay valid when they still line up with the old bundle.
 		const verificationResults = domain.verificationResults as VerificationResults | undefined;
+		const keptDkimResults =
+			args.phase === 'cancelled' && verificationResults?.dkim?.length === existingDkim.length
+				? verificationResults.dkim.filter((_, i) => nextDkim.includes(existingDkim[i]!))
+				: undefined;
 		const nextVerificationResults: VerificationResults | undefined = verificationResults
-			? { ...verificationResults, dkim: undefined }
+			? { ...verificationResults, dkim: keptDkimResults }
 			: undefined;
 
 		await patchDomainRecords(
