@@ -136,6 +136,11 @@ export interface ReadinessInput {
 	mailServer?: MailServerState | null;
 	/** Each stream's sending-IP posture; `null` or absent before IPs are synced. */
 	sendingIps?: Partial<Record<MailStream, SendingIpPosture | null>>;
+	/**
+	 * Each stream's addresses that send Microsoft mail at a reduced rate because
+	 * Microsoft SNDS rates them red. Absent or empty when none is held.
+	 */
+	microsoftHeldIps?: Partial<Record<MailStream, readonly string[]>>;
 	/** The MTA reports the campaign warm-up halted (`plateau`). */
 	warmupHalted?: boolean;
 	/**
@@ -176,6 +181,8 @@ export interface ReadinessStreamSources {
 		phase: string;
 		ips: readonly SendingIpPostureInput[];
 		pools?: SendingIpPools | null;
+		/** Addresses Microsoft SNDS currently rates red (`getSendingOverview`). */
+		microsoftHeldIps?: readonly string[];
 	} | null;
 	sendingReadiness?: { capped: false } | { capped: true; today: number } | null;
 	reputation?: { complaintRate: number } | null;

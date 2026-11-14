@@ -745,6 +745,38 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(verdict(r, 'transactional').level).toBe('ready');
 	});
 
+	it('says why Microsoft mail from an address is held, without blocking the stream', () => {
+		const result = readinessInputFromSources(
+			{ canSend: true },
+			[{ status: 'verified', missing: [] }],
+			null,
+			null,
+			null,
+			{
+				streams: { transactional: viaOwnMta, campaign: viaOwnMta },
+				mailServer: 'healthy',
+				transactionalSender: verifiedSender,
+				warming: {
+					phase: 'ramp',
+					ips: [
+						{ ip: '192.0.2.1', pool: 'campaign', active: true },
+						{ ip: '192.0.2.2', pool: 'transactional', active: true },
+					],
+					microsoftHeldIps: ['192.0.2.1'],
+				},
+			}
+		);
+		const r = deriveDeliveryReadiness(result);
+		const held = r.gates.filter((g) => g.key === 'sending-ips' && g.status === 'attention');
+		expect(held).toHaveLength(1);
+		expect(held[0]!.streams).toEqual(['marketing']);
+		expect(held[0]!.isBlocking).toBe(false);
+		expect(localized(held[0]!.detail)).toContain('192.0.2.1');
+		expect(localized(held[0]!.detail)).toContain('Microsoft');
+		expect(verdict(r, 'marketing').level).toBe('attention');
+		expect(verdict(r, 'transactional').level).toBe('ready');
+	});
+
 	it('asks for DMARC on the marketing stream only', () => {
 		const r = deriveDeliveryReadiness(
 			streamInput(viaProvider, { authComplete: false, authMissing: ['DMARC'] })

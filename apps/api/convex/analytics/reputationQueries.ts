@@ -12,6 +12,7 @@ import {
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
+import { microsoftHeldIps, readSndsIpStandings } from '../delivery/sndsStanding';
 import { buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
@@ -103,6 +104,8 @@ export const getSendingOverview = authedQuery({
 						// The full pool lists: a row's own `pool` names only the first
 						// pool of an address that serves both.
 						pools: warmingState.pools ?? null,
+						// Addresses that send Microsoft mail at a reduced rate.
+						microsoftHeldIps: microsoftHeldIps(await readSndsIpStandings(ctx.db, Date.now())),
 						syncedAt: warmingState.syncedAt,
 					}
 				: null,

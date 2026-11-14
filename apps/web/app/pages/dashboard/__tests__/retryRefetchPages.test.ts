@@ -117,6 +117,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'DeliveryIndependenceTrendChart',
 		'DeliveryMeasurementCellCard',
 		'DeliveryMeasurementGateList',
+		'DeliveryMicrosoftSndsNote',
 		'DeliveryRampCellControls',
 		'DeliveryRampCellsGrid',
 		'DeliveryRampConfirmDialog',

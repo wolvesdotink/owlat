@@ -87,27 +87,56 @@ export function sendingIpGates(input: ReadinessInput): ReadinessGate[] {
 		if (posture == null) continue;
 		byPosture.set(posture, [...(byPosture.get(posture) ?? []), stream]);
 	}
-	return [...byPosture].map(([posture, streams]): ReadinessGate => {
-		const base = {
-			key: 'sending-ips' as const,
-			title: 'shared.deliveryReadiness.gates.sendingIps.title',
-			detail: `shared.deliveryReadiness.gates.sendingIps.${posture}`,
-			streams,
-			transport: OWN_MAIL_SERVER_LABEL,
-		};
-		if (posture === 'ready') {
-			return { ...base, status: 'ready', tone: 'success', actionHref: null, actionLabel: null };
-		}
-		const isBlocking = posture === 'all_held';
-		return {
-			...base,
-			status: 'attention',
-			tone: isBlocking ? 'error' : 'warning',
-			actionHref: READINESS_DELIVERABILITY_HREF,
-			actionLabel: 'shared.deliveryReadiness.gates.sendingIps.action',
-			isBlocking,
-		};
-	});
+	return [
+		...[...byPosture].map(([posture, streams]): ReadinessGate => {
+			const base = {
+				key: 'sending-ips' as const,
+				title: 'shared.deliveryReadiness.gates.sendingIps.title',
+				detail: `shared.deliveryReadiness.gates.sendingIps.${posture}`,
+				streams,
+				transport: OWN_MAIL_SERVER_LABEL,
+			};
+			if (posture === 'ready') {
+				return { ...base, status: 'ready', tone: 'success', actionHref: null, actionLabel: null };
+			}
+			const isBlocking = posture === 'all_held';
+			return {
+				...base,
+				status: 'attention',
+				tone: isBlocking ? 'error' : 'warning',
+				actionHref: READINESS_DELIVERABILITY_HREF,
+				actionLabel: 'shared.deliveryReadiness.gates.sendingIps.action',
+				isBlocking,
+			};
+		}),
+		...microsoftHoldGates(input),
+	];
+}
+
+/**
+ * Addresses Microsoft SNDS rates red send Microsoft mail at a reduced rate.
+ * Everything else still goes out, so it asks for attention without blocking.
+ */
+function microsoftHoldGates(input: ReadinessInput): ReadinessGate[] {
+	const byAddresses = new Map<string, MailStream[]>();
+	for (const stream of ownMtaStreams(input)) {
+		const held = input.microsoftHeldIps?.[stream] ?? [];
+		if (held.length === 0) continue;
+		const key = held.join(', ');
+		byAddresses.set(key, [...(byAddresses.get(key) ?? []), stream]);
+	}
+	return [...byAddresses].map(([ips, streams]) => ({
+		key: 'sending-ips',
+		title: 'shared.deliveryReadiness.gates.sendingIps.title',
+		detail: { key: 'shared.deliveryReadiness.gates.sendingIps.microsoftHeld', params: { ips } },
+		streams,
+		transport: OWN_MAIL_SERVER_LABEL,
+		status: 'attention',
+		tone: 'warning',
+		actionHref: READINESS_DELIVERABILITY_HREF,
+		actionLabel: 'shared.deliveryReadiness.gates.sendingIps.action',
+		isBlocking: false,
+	}));
 }
 
 /**

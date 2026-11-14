@@ -132,6 +132,20 @@ export interface SendingIpPools {
 }
 
 /**
+ * The addresses one pool sends from: the MTA's pool list when it reports one,
+ * else each row's own `pool`, else every address (an MTA that lists none under
+ * the pool sends that pool from all of them).
+ */
+export function sendingIpPoolAddresses<T extends Pick<SendingIpPostureInput, 'ip' | 'pool'>>(
+	ips: readonly T[],
+	pool: 'transactional' | 'campaign',
+	pools?: SendingIpPools | null
+): readonly T[] {
+	const inPool = ips.filter((ip) => (pools ? pools[pool].includes(ip.ip) : ip.pool === pool));
+	return inPool.length > 0 ? inPool : ips;
+}
+
+/**
  * The posture of the addresses one pool (`transactional` or `campaign`) sends
  * from, or `null` when no address has been synced yet, which is not a failure.
  * Membership comes from the MTA's pool lists when it reports them: a row's own
@@ -147,8 +161,7 @@ export function sendingIpPosture(
 	pool: 'transactional' | 'campaign',
 	pools?: SendingIpPools | null
 ): SendingIpPosture | null {
-	const inPool = ips.filter((ip) => (pools ? pools[pool].includes(ip.ip) : ip.pool === pool));
-	const candidates = inPool.length > 0 ? inPool : ips;
+	const candidates = sendingIpPoolAddresses(ips, pool, pools);
 	if (candidates.length === 0) return null;
 	const held = candidates.filter(isSendingIpHeld).length;
 	if (held === 0) return 'ready';

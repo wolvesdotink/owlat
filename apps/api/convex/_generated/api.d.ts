@@ -756,6 +756,7 @@ import type * as delivery_snds from '../delivery/snds.js';
 import type * as delivery_sndsConfig from '../delivery/sndsConfig.js';
 import type * as delivery_sndsFeed from '../delivery/sndsFeed.js';
 import type * as delivery_sndsPoll from '../delivery/sndsPoll.js';
+import type * as delivery_sndsStanding from '../delivery/sndsStanding.js';
 import type * as delivery_status from '../delivery/status.js';
 import type * as delivery_statusActions from '../delivery/statusActions.js';
 import type * as delivery_stuckSendFeedback from '../delivery/stuckSendFeedback.js';
@@ -2742,6 +2743,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sndsConfig': typeof delivery_sndsConfig;
 	'delivery/sndsFeed': typeof delivery_sndsFeed;
 	'delivery/sndsPoll': typeof delivery_sndsPoll;
+	'delivery/sndsStanding': typeof delivery_sndsStanding;
 	'delivery/status': typeof delivery_status;
 	'delivery/statusActions': typeof delivery_statusActions;
 	'delivery/stuckSendFeedback': typeof delivery_stuckSendFeedback;

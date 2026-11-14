@@ -44,6 +44,7 @@ import { OWN_SENDING_DOMAIN_PROVIDER_KIND, SENDING_DOMAIN_PROVIDERS } from '../d
 import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { readSndsIpStandings } from './sndsStanding';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -381,6 +382,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		nextItem,
 		groups,
 		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },
+		sndsStandings: await readSndsIpStandings(ctx.db, now),
 		loopback: {
 			domains: loopbackDomains(items, domains, loopbackInfrastructureReady).map(
 				(option, index) => ({

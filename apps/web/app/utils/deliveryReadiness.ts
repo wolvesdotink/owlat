@@ -1,5 +1,11 @@
 import { summarizeOutboundAlignment } from '@owlat/shared';
-import { sendingIpPosture, type SendingIpPosture } from '@owlat/shared/ipReadiness';
+import {
+	sendingIpPoolAddresses,
+	sendingIpPosture,
+	type SendingIpPools,
+	type SendingIpPostureInput,
+	type SendingIpPosture,
+} from '@owlat/shared/ipReadiness';
 import { buildReadinessGates, enabledReadinessStreams } from '~/utils/deliveryReadinessGates';
 import type {
 	DeliveryReadiness,
@@ -112,6 +118,19 @@ export function readinessInputFromSources(
 	};
 }
 
+/** The addresses of one pool that Microsoft SNDS holds back. */
+function heldInPool(
+	ips: readonly SendingIpPostureInput[],
+	pool: 'transactional' | 'campaign',
+	pools: SendingIpPools | null,
+	held: readonly string[] | undefined
+): string[] {
+	if (!held || held.length === 0) return [];
+	return sendingIpPoolAddresses(ips, pool, pools)
+		.map(({ ip }) => ip)
+		.filter((ip) => held.includes(ip));
+}
+
 /**
  * The stream facts of a {@link ReadinessInput}. Sending IPs are judged per
  * pool (`transactional`, `campaign`) and only for a stream the MTA carries; the
@@ -136,6 +155,14 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 			marketing: streamTransport.marketing.usesOwnMta
 				? sendingIpPosture(ips, 'campaign', pools)
 				: null,
+		},
+		microsoftHeldIps: {
+			transactional: streamTransport.transactional.usesOwnMta
+				? heldInPool(ips, 'transactional', pools, sources.warming?.microsoftHeldIps)
+				: [],
+			marketing: streamTransport.marketing.usesOwnMta
+				? heldInPool(ips, 'campaign', pools, sources.warming?.microsoftHeldIps)
+				: [],
 		},
 		warmupHalted: streamTransport.marketing.usesOwnMta && sources.warming?.phase === 'plateau',
 		transactionalSender: sources.transactionalSender,

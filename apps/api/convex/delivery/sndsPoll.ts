@@ -9,8 +9,9 @@
  *
  * ADDITIVE ONLY. No feed configured means the poller returns early having
  * written nothing and thrown nothing. A failed fetch, an unparseable body and
- * an empty day are all counted and returned, never raised: SNDS can only lower
- * measurement confidence and slow the Microsoft cell's ramp, never block it.
+ * an empty day are all counted and returned, never raised. The one thing SNDS
+ * changes about sending is narrow: an address it reports red sends Microsoft
+ * mail at Microsoft's floor rate (`sndsStanding.ts`), and nothing is blocked.
  */
 
 import { internalAction } from '../_generated/server';
@@ -25,6 +26,7 @@ import {
 	type SndsDayObservation,
 } from './sndsFeed';
 import { oldestStorableDay, parsePoolAllowlist, parseSndsFeedUrls } from './sndsConfig';
+import { pushMicrosoftHolds } from './sndsStanding';
 
 const FEED_TIMEOUT_MS = 20_000;
 
@@ -147,7 +149,8 @@ export const poll = internalAction({
 	args: {},
 	handler: async (ctx): Promise<SndsPollSummary> => {
 		const urls = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS'));
-		// Not enrolled is a supported configuration. Return, write nothing.
+		// Not enrolled is a supported configuration. Return, write nothing; a hold
+		// a removed feed left behind expires on the MTA by itself.
 		if (urls.length === 0) return notEnrolledSummary();
 
 		const allowlist = parsePoolAllowlist(getOptional('MTA_IP_POOLS'));
@@ -213,6 +216,7 @@ export const poll = internalAction({
 			summary.rejected += result.rejected;
 			summary.replayed += result.replayed;
 		}
+		await pushMicrosoftHolds(ctx);
 		return summary;
 	},
 });

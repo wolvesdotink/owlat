@@ -519,3 +519,70 @@ describe('SNDS poll', () => {
 		expect(rows).toHaveLength(1);
 	});
 });
+
+describe('SNDS red holds Microsoft volume for that address', () => {
+	/** Answer the feed with `body` and record every hold list pushed to the MTA. */
+	function stubFeedAndMta(body: string) {
+		const pushed: Array<{ provider: string; ips: string[] }> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL, init?: RequestInit) => {
+				const url = String(input);
+				if (url.endsWith('/provider-holds')) {
+					expect(init?.method).toBe('PUT');
+					pushed.push(JSON.parse(String(init?.body)));
+					return new Response('{}', { status: 200 });
+				}
+				return new Response(body, { status: 200 });
+			})
+		);
+		return pushed;
+	}
+
+	it('holds an address SNDS reports red, and only that address', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		const pushed = stubFeedAndMta(
+			[
+				feedRow({ ip: '203.0.113.10', start: dayAgo(1, 0), end: dayAgo(1, 8), filter: 'RED' }),
+				feedRow({ ip: '203.0.113.11', start: dayAgo(1, 0), end: dayAgo(1, 8), filter: 'YELLOW' }),
+				feedRow({ ip: '203.0.113.12', start: dayAgo(1, 0), end: dayAgo(1, 8) }),
+			].join('\n')
+		);
+		await t.run((ctx) => ctx.db.insert('instanceSettings', { createdAt: NOW }));
+
+		await t.action(internal.delivery.sndsPoll.poll, {});
+
+		expect(pushed[pushed.length - 1]).toEqual({ provider: 'microsoft', ips: ['203.0.113.10'] });
+		// A red address is a Microsoft matter: the workspace keeps sending.
+		const settings = await t.run((ctx) => ctx.db.query('instanceSettings').first());
+		expect(settings?.abuseStatus).toBeUndefined();
+	});
+
+	it('releases the address once a newer day reports it green', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		const pushed = stubFeedAndMta(
+			[
+				feedRow({ ip: '203.0.113.10', start: dayAgo(2, 0), end: dayAgo(2, 8), filter: 'RED' }),
+				feedRow({ ip: '203.0.113.10', start: dayAgo(1, 0), end: dayAgo(1, 8), filter: 'GREEN' }),
+			].join('\n')
+		);
+
+		await t.action(internal.delivery.sndsPoll.poll, {});
+
+		expect(pushed[pushed.length - 1]).toEqual({ provider: 'microsoft', ips: [] });
+	});
+
+	it('releases the address when its red reading has gone stale', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		const pushed = stubFeedAndMta(
+			feedRow({ ip: '203.0.113.10', start: dayAgo(5, 0), end: dayAgo(5, 8), filter: 'RED' })
+		);
+
+		await t.action(internal.delivery.sndsPoll.poll, {});
+
+		expect(pushed[pushed.length - 1]).toEqual({ provider: 'microsoft', ips: [] });
+	});
+});
