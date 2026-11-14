@@ -3,7 +3,10 @@
 // start gate stops waiting for it (`campaigns/startGate.ts`). The editor and
 // the report header put this inside their own `role="status"` region, so the
 // change from "scheduled" to "waiting" is announced.
-import { useFormat } from '~/composables/useFormat';
+// The shared formatter, not `useFormat`: the i18n-format plugin binds it to the
+// reader's locale, and it is already in the entry, so the editor and report
+// routes that render this do not carry the composable.
+import { formatRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import {
 	startHoldGivesUpAt,
@@ -13,12 +16,16 @@ import {
 
 const props = defineProps<{ hold: StoredStartHold }>();
 
-const { t } = useI18n();
-const { formatRelativeTime } = useFormat();
+const { t, locale } = useI18n();
 // The give-up time is counted down in minutes, so the line moves while the page sits open.
 const now = useNow({ intervalMs: 60_000 });
 
-const givesUpWhen = computed(() => formatRelativeTime(startHoldGivesUpAt(props.hold, now.value)));
+const givesUpWhen = computed(() => {
+	// The formatter's locale is not reactive; reading this one re-words the
+	// line when the reader switches language (the plugin rebinds it first).
+	void locale.value;
+	return formatRelativeTime(startHoldGivesUpAt(props.hold, now.value));
+});
 </script>
 
 <template>
