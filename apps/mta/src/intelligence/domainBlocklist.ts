@@ -55,6 +55,11 @@ export interface DomainBlocklistDeps {
 	now: () => number;
 }
 
+const pendingLookups = new Map<
+	string,
+	Promise<Pick<DomainBlocklistResult, 'status' | 'reason' | 'checkedAt'>>
+>();
+
 let inFlight = 0;
 const waiting: Array<() => void> = [];
 
@@ -110,11 +115,7 @@ async function lookupOne(
 	id: DomainBlocklistId,
 	deps: DomainBlocklistDeps
 ): Promise<Pick<DomainBlocklistResult, 'status' | 'reason'>> {
-	const list = DOMAIN_BLOCKLISTS[id];
-	if (list.keyedZone && deps.spamhaus.unavailable) {
-		return { status: 'unknown', reason: deps.spamhaus.unavailable };
-	}
-	const { zone } = zoneFor(list, deps.spamhaus);
+	const { zone } = zoneFor(DOMAIN_BLOCKLISTS[id], deps.spamhaus);
 	const result = await checkDnsblNameDetailed(`${domain}.${zone}`, { domain }, id, deps.lookup);
 	if (result.answers.length > 0) return readDomainBlocklistAnswer(id, result.answers);
 	if (result.status === 'clean') return { status: 'clean' };
@@ -128,18 +129,33 @@ async function checkOne(
 	deps: DomainBlocklistDeps
 ): Promise<DomainBlocklistResult> {
 	const list = DOMAIN_BLOCKLISTS[id];
+	// Before the cache: a verdict read through a key that has since been
+	// rejected says nothing about the domain now.
+	if (list.keyedZone && deps.spamhaus.unavailable) {
+		return {
+			domain,
+			list: id,
+			status: 'unknown',
+			reason: deps.spamhaus.unavailable,
+			checkedAt: deps.now(),
+		};
+	}
 	const key = `${CACHE_PREFIX}${id}:${zoneFor(list, deps.spamhaus).access}:${domain}`;
 	const cached = parseCached(await redis.get(key));
 	if (cached) return { domain, list: id, ...cached };
-	const verdict = await limited(() => lookupOne(domain, id, deps));
-	const result: DomainBlocklistResult = { domain, list: id, ...verdict, checkedAt: deps.now() };
-	await redis.set(
-		key,
-		JSON.stringify({ status: result.status, reason: result.reason, checkedAt: result.checkedAt }),
-		'EX',
-		CACHE_TTL_SECONDS[result.status]
-	);
-	return result;
+	// Checks that arrive together for one domain share one lookup.
+	let pending = pendingLookups.get(key);
+	if (!pending) {
+		pending = limited(() => lookupOne(domain, id, deps))
+			.then(async (verdict) => {
+				const result = { ...verdict, checkedAt: deps.now() };
+				await redis.set(key, JSON.stringify(result), 'EX', CACHE_TTL_SECONDS[result.status]);
+				return result;
+			})
+			.finally(() => pendingLookups.delete(key));
+		pendingLookups.set(key, pending);
+	}
+	return { domain, list: id, ...(await pending) };
 }
 
 /** Every list's verdict for every domain, in domain then list order. */

@@ -106,4 +106,23 @@ describe('domain blocklist lookups', () => {
 			expect.stringContaining('spamhaus')
 		);
 	});
+
+	it('does not pass a cached clean Spamhaus answer once the DQS key is rejected', async () => {
+		await check(['example.com'], { dqsKey: 'abcdefghijklmnop0123' });
+
+		const results = await check(['example.com'], {
+			dqsKey: 'abcdefghijklmnop0123',
+			unavailable: 'key_rejected',
+		});
+
+		expect(results).toContainEqual(
+			expect.objectContaining({ list: 'spamhaus_dbl', status: 'unknown', reason: 'key_rejected' })
+		);
+	});
+
+	it('asks each list once when two checks for one domain arrive together', async () => {
+		await Promise.all([check(['example.com']), check(['example.com'])]);
+
+		expect(resolve4).toHaveBeenCalledTimes(3);
+	});
 });

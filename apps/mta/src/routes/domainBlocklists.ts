@@ -10,7 +10,7 @@ import type { MtaConfig } from '../config.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { readJsonBody } from '../lib/jsonBody.js';
 import { checkDomainBlocklists } from '../intelligence/domainBlocklist.js';
-import { prepareSpamhausAccess } from '../intelligence/dnsblAccess.js';
+import { readSweptSpamhausAccess } from '../intelligence/dnsblAccess.js';
 import { defaultLookupDeps } from '../intelligence/dnsblLookup.js';
 import { getDnsblTransport } from '../intelligence/dnsblResolver.js';
 
@@ -35,7 +35,7 @@ export function createDomainBlocklistRoutes(redis: Redis, config: MtaConfig) {
 		const lookup = { ...defaultLookupDeps, resolve4: transport.resolve4 };
 		const results = await checkDomainBlocklists(redis, domains, {
 			lookup,
-			spamhaus: await prepareSpamhausAccess(redis, lookup),
+			spamhaus: await readSweptSpamhausAccess(redis),
 			now: Date.now,
 		});
 		return c.json({ results, resolver: transport.configured });

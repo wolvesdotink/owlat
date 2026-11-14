@@ -14,6 +14,7 @@ import {
 	probeSpamhausZone,
 	readSpamhausAccess,
 	readSpamhausDqsKey,
+	readSweptSpamhausAccess,
 	recordSpamhausAccess,
 	resetSpamhausAccess,
 	storeSpamhausDqsKey,
@@ -262,6 +263,23 @@ describe('the sweep with Spamhaus access', () => {
 		expect((await readSpamhausAccess(redis, 'system')).spamhaus).toMatchObject({
 			status: 'unknown',
 			reason: 'key_rejected',
+		});
+	});
+});
+
+describe('readSweptSpamhausAccess', () => {
+	it("reuses the IP sweep's key test instead of querying Spamhaus again", async () => {
+		const redis = new Redis() as unknown as import('ioredis').default;
+		await redis.flushall();
+		expect(await readSweptSpamhausAccess(redis)).toEqual({});
+
+		await storeSpamhausDqsKey(redis, KEY);
+		expect(await readSweptSpamhausAccess(redis)).toEqual({ dqsKey: KEY });
+
+		await recordSpamhausAccess(redis, { reason: 'key_rejected', path: 'bundled', checkedAt: 1 });
+		expect(await readSweptSpamhausAccess(redis)).toEqual({
+			dqsKey: KEY,
+			unavailable: 'key_rejected',
 		});
 	});
 });
