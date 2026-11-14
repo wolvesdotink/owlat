@@ -359,6 +359,10 @@ export const deliveryTables = {
 		leaseToken: v.string(),
 		leaseExpiresAt: v.number(),
 		currentEvidenceId: v.optional(v.id('deliverabilityEvidence')),
+		// When the check was last found not to apply to the deployment. A pass
+		// observed before it is no baseline for a regression alert: it judged a
+		// send path the deployment stopped using in between.
+		notApplicableAt: v.optional(v.number()),
 		updatedAt: v.number(),
 	})
 		.index('by_org_target_item', ['organizationId', 'targetKey', 'itemId'])
@@ -397,6 +401,8 @@ export const deliveryTables = {
 		emailDirectoryAttemptCount: v.optional(v.number()),
 		acknowledgedAt: v.optional(v.number()),
 		resolvedAt: v.optional(v.number()),
+		// Absent when the check passed again or an admin resolved the alert.
+		resolvedReason: v.optional(v.literal('not_applicable')),
 		createdAt: v.number(),
 	})
 		.index('by_org_identity', ['organizationId', 'identity'])
