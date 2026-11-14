@@ -206,13 +206,17 @@ export async function sendToMx(
 			);
 			const probeFinished = terminalResult(probe);
 			if (probeFinished) return probeFinished;
-			if (probe.kind === 'tls-failure') {
-				// The validation-failure (tlsa policy) has already been recorded inside
+			// The probe dials only the validated addresses, which the normal path
+			// does not: none of them being dialable says nothing about the host the
+			// normal path reaches, so it is not recorded as the host's verdict.
+			if (probe.kind === 'unroutable') unroutable.delete(mxHost);
+			if (probe.kind === 'tls-failure' || probe.kind === 'unroutable') {
+				// A validation-failure (tlsa policy) has already been recorded inside
 				// attemptSend. Deliver anyway at the normal floor — report-only never
 				// blocks mail on a DANE outcome.
 				logger.debug(
-					{ mxHost, recipientDomain, resultType: probe.resultType },
-					'DANE report-only: TLSA result recorded; delivering at the normal TLS floor'
+					{ mxHost, recipientDomain, probe: probe.kind },
+					'DANE report-only: probe done; delivering at the normal TLS floor'
 				);
 				const retry = await attemptWithCleartextFallback(
 					attemptSend,

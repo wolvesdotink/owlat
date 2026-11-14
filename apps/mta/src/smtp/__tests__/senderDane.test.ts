@@ -46,7 +46,8 @@ import { sendToMx } from '../sender.js';
 import type { MtaConfig } from '../../config.js';
 import { X509Certificate } from 'node:crypto';
 import type { PeerCertificate, TLSSocket } from 'node:tls';
-import { resolveDaneMxDestinations } from '../daneMxResolver.js';
+import { resolveDaneHostAddresses, resolveDaneMxDestinations } from '../daneMxResolver.js';
+import { destinationFromMx } from '../destinationProvider.js';
 import { lookupTlsaRecords } from '../daneResolver.js';
 import { MX_CERT } from './certFixture.js';
 import {
@@ -335,6 +336,132 @@ describe('sendToMx DANE', () => {
 			expect(policy.policy['policy-string']).toContain(`3 1 1 ${MISMATCH_TLSA.data}`);
 			const details = policy['failure-details']!;
 			expect(details.find((d) => d['result-type'] === 'validation-failure')).toBeDefined();
+		});
+
+		describe('the addresses a DANE session dials', () => {
+			// The system resolver answers 192.0.2.x (installSenderDefaults); the
+			// validating resolver answers other addresses, so a dial shows its source.
+			const dialled = () =>
+				connectMock.mock.calls.map((call) => (call[0] as { host: string }).host);
+			function validatedDestination(
+				addresses: string[],
+				addressSecurity: 'secure' | 'insecure' = 'secure'
+			) {
+				vi.mocked(resolveDaneMxDestinations).mockResolvedValue({
+					status: 'destinations',
+					destinations: [
+						{
+							mxHostname: 'mx1.example.com',
+							preference: 10,
+							mxSecurity: 'secure',
+							addressSecurity,
+							addresses,
+						},
+					],
+				});
+			}
+
+			it.each(['enforce', 'report'] as const)(
+				'%s dials the DNSSEC-validated address of the source family, named as the MX host',
+				async (mode) => {
+					validatedDestination(['2001:db8:7::7', '198.51.100.7']);
+					vi.mocked(lookupTlsaRecords).mockResolvedValue({
+						status: 'records',
+						records: [MATCHING_TLSA],
+					});
+
+					const result = await sendToMx(createJob(), daneConfig(mode), redis, '10.0.0.1');
+
+					expect(result.success).toBe(true);
+					expect(dialled()).toEqual(['198.51.100.7']);
+					expect(connectMock.mock.calls[0]![0]).toMatchObject({
+						tls: { servername: 'mx1.example.com' },
+					});
+				}
+			);
+
+			it('screens validated addresses like any other MX target', async () => {
+				validatedDestination(['10.9.8.7']);
+				vi.mocked(lookupTlsaRecords).mockResolvedValue({
+					status: 'records',
+					records: [MATCHING_TLSA],
+				});
+
+				const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+				expect(result.success).toBe(false);
+				expect(connectMock).not.toHaveBeenCalled();
+			});
+
+			it('report mode still delivers on the normal path when no validated address is dialable', async () => {
+				validatedDestination(['10.9.8.7']);
+				vi.mocked(lookupTlsaRecords).mockResolvedValue({
+					status: 'records',
+					records: [MATCHING_TLSA],
+				});
+
+				const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
+
+				expect(result.success).toBe(true);
+				expect(dialled()).toEqual(['192.0.2.1']);
+				expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
+			});
+
+			it('looks the addresses up through the validating resolver when discovery did not carry the host', async () => {
+				vi.mocked(resolveDaneHostAddresses).mockResolvedValue({
+					security: 'secure',
+					addresses: ['198.51.100.8'],
+				});
+				vi.mocked(lookupTlsaRecords).mockResolvedValue({
+					status: 'records',
+					records: [MATCHING_TLSA],
+				});
+				// A destination resolved without DANE discovery (DANE switched on while
+				// the message waited) names its MX hosts but no validated addresses.
+				const destination = destinationFromMx('example.com', {
+					status: 'deliverable',
+					source: 'mx',
+					hosts: [{ exchange: 'mx1.example.com', priority: 10 }],
+				});
+
+				const result = await sendToMx(
+					createJob(),
+					daneConfig(),
+					redis,
+					'10.0.0.1',
+					undefined,
+					destination
+				);
+
+				expect(result.success).toBe(true);
+				expect(resolveDaneHostAddresses).toHaveBeenCalledWith(
+					'https://doh.example/dns-query',
+					'mx1.example.com'
+				);
+				expect(dialled()).toEqual(['198.51.100.8']);
+			});
+
+			it('does not apply DANE through unvalidated address records, and reports the session outside the tlsa policy', async () => {
+				validatedDestination(['198.51.100.7'], 'insecure');
+				vi.mocked(lookupTlsaRecords).mockResolvedValue({
+					status: 'records',
+					records: [MATCHING_TLSA],
+				});
+
+				const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+				// RFC 7672 §2.2.2: no TLSA lookup, pre-DANE opportunistic TLS.
+				expect(result.success).toBe(true);
+				expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
+				const opts = acquireOpts(0);
+				expect(opts.requireTLS).toBe(false);
+				expect(opts.tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
+				// The non-DANE path keeps dialling what it always dialled.
+				expect(dialled()).toEqual(['192.0.2.1']);
+				const policy = (await reportFor()).policies[0]!;
+				expect(policy.policy['policy-type']).toBe('no-policy-found');
+				expect(policy.summary['total-successful-session-count']).toBe(1);
+			});
 		});
 
 		it('report + TLSA lookup FAILURE => delivers on the normal path (never defers)', async () => {

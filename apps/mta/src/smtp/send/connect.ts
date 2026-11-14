@@ -16,7 +16,12 @@ import { logger } from '../../monitoring/logger.js';
 import { isIpEligibilityLeaseValid, type IpEligibilityLease } from '../../scaling/ipPool.js';
 import { pool, PoolOverCapError } from '../connectionPool.js';
 import type { DanePlan } from '../daneVerify.js';
-import { connectFamilyFor, resolveMxHostAddresses, type MxHostAddresses } from '../mxAddresses.js';
+import {
+	connectFamilyFor,
+	resolveMxHostAddresses,
+	screenAddressList,
+	type MxHostAddresses,
+} from '../mxAddresses.js';
 import type { TlsPolicyContext } from '../tlsRpt.js';
 import {
 	asHostRefusal,
@@ -130,11 +135,13 @@ export async function openMxConnection(
 	const { redis, recipientDomain, bindIp, eligibilityLease } = ctx;
 	const daneRequired = danePlan !== undefined;
 
-	const target = connectAddresses(
-		await resolveMxHostAddresses(mxHost, { allowPrivate: ctx.allowPrivateMxTargets }),
-		mxHost,
-		bindIp
-	);
+	// A DANE session dials the addresses the validating resolver vouched for; a
+	// forged system-resolver answer would otherwise pick the peer the TLSA check
+	// then runs against.
+	const resolution = danePlan
+		? screenAddressList(danePlan.addresses, ctx.allowPrivateMxTargets)
+		: await resolveMxHostAddresses(mxHost, { allowPrivate: ctx.allowPrivateMxTargets });
+	const target = connectAddresses(resolution, mxHost, bindIp);
 	if (target.kind === 'unroutable') {
 		logger.warn(
 			{ mxHost, recipientDomain, bindIp, reason: target.outcome },
