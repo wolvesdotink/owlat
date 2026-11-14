@@ -70,6 +70,7 @@ const globalOptions = {
 		SettingsWorkspaceLogoCard: true,
 		SettingsBodySearchIndexCard: true,
 		SettingsConnectedWorkspaces: true,
+		SettingsTransactionalSenderNote: true,
 		// Workspace settings sections that share the General page.
 		SettingsMigrationModeCard: true,
 		SettingsWorkspaceDangerZone: true,

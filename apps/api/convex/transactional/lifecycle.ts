@@ -184,6 +184,14 @@ export async function scanPublishedEdit(
 	);
 }
 
+/** `scanPublishedEdit` for the saved-block rerender (`emailBlocks/renderingPool.ts`). */
+export const scanRerenderedHtml = internalMutation({
+	args: { emailId: v.id('transactionalEmails') },
+	handler: async (ctx, args) => {
+		await scanPublishedEdit(ctx, args.emailId, 'system:rerender_pool');
+	},
+});
+
 // ─── Public entry points ────────────────────────────────────────────────────
 
 /**

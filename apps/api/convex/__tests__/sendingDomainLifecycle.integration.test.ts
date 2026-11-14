@@ -1455,6 +1455,7 @@ describe('Sending domain lifecycle — re-verification of a verified domain', ()
 		expect(gate.error).toContain('Settings > Domains');
 		expect(
 			decideSenderAndVariables({
+				fromEmail: 'news@dkim-gone.com',
 				domainStatus: gate,
 				dataVariables: undefined,
 				dataVariablesSchema: undefined,

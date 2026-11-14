@@ -253,4 +253,14 @@ export const domainTables = {
 	})
 		.index('by_reporter_report_id', ['organizationName', 'reportId'])
 		.index('by_range_start_ms', ['rangeStartMs']),
+
+	// The system sender domains the env-driven registration has handled, one
+	// row per domain, never deleted: a domain on this list is never added
+	// again, so one the operator removes stays removed. Written only by
+	// `domains/systemSenderDomain.ts`. Deployment state like the migration
+	// ledger it continues (see lib/nonTenantTables.ts NON_TENANT_TABLES).
+	systemSenderDomains: defineTable({
+		domain: v.string(),
+		recordedAt: v.number(),
+	}).index('by_domain', ['domain']),
 };

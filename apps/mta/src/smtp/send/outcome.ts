@@ -29,7 +29,15 @@ export type AttemptOutcome =
 	// MX loop tries the next host and keeps the reply for the final result if
 	// every host refuses.
 	| { kind: 'host-refused'; result: EmailJobResult }
-	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
+	// `cleartextRefusal`: the opportunistic cleartext retry on the same host was
+	// refused for being cleartext (`tlsFallback.ts`). The handshake failure is
+	// still the outcome; the refusal is kept so the final result can name both.
+	| {
+			kind: 'tls-failure';
+			resultType: TlsResultType;
+			response: string;
+			cleartextRefusal?: string;
+	  }
 	| { kind: 'connection'; response: string }
 	// No address of this MX host may be dialled: every answer was refused by
 	// the non-public screen, the host has no A/AAAA at all, its lookup failed,

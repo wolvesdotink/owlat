@@ -6,6 +6,8 @@
  *
  * The hub and every fix link are admin pages, so a member sees the verdict and
  * is told who can fix it instead of being sent to a page that turns them away.
+ * Under the verdict, the sender it is about: the address an operator sets is
+ * read where they judge whether their app can send.
  */
 import { useDeliveryReadiness } from '~/composables/useDeliveryReadiness';
 import { ArrowRightIcon } from '@coolicons/vue';
@@ -57,6 +59,8 @@ const levelWord = computed(() =>
 			:heading="t('components.delivery.readinessPanel.compact.heading')"
 			:show-action="isAdmin"
 		/>
+		<!-- The address the verdict is about, and where an admin changes it. -->
+		<LazyTransactionalSenderRow />
 		<p v-if="!isAdmin && verdict.level !== 'ready'" class="text-xs text-text-tertiary">
 			{{ t('components.delivery.readinessPanel.compact.askAdmin') }}
 		</p>

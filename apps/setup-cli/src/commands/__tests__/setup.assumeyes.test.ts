@@ -43,7 +43,7 @@ vi.mock('../../lib/flagState', () => ({
 import * as clack from '@clack/prompts';
 import { saveFlagState } from '../../lib/flagState';
 import { runSetup } from '../setup';
-import { buildAssumeYesConfig } from '../setupNonInteractive';
+import { assumeYesAdminFromEnv, buildAssumeYesConfig } from '../setupNonInteractive';
 import { parseSetupConfig } from '../../lib/setupConfig';
 import { readEnv } from '../../lib/env';
 
@@ -174,6 +174,16 @@ describe('buildAssumeYesConfig', () => {
 		expect(config.admin.name).toBe('Ops');
 		expect(config.admin.password).toBe('correct horse battery staple');
 		noPromptCalled();
+	});
+
+	it('gives quickstart the same OWLAT_ADMIN_* answers for the account it creates', () => {
+		expect(assumeYesAdminFromEnv()).toEqual({});
+		process.env['OWLAT_ADMIN_EMAIL'] = 'ops@acme.test';
+		process.env['OWLAT_ADMIN_PASSWORD'] = 'correct horse battery staple';
+		expect(assumeYesAdminFromEnv()).toEqual({
+			email: 'ops@acme.test',
+			password: 'correct horse battery staple',
+		});
 	});
 
 	it('selects a Resend provider when its key is present, else falls back to MTA', () => {

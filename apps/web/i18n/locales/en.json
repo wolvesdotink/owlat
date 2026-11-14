@@ -7391,6 +7391,13 @@
 					"voicePersonalize": "Personalize AI drafts for {address}",
 					"workspaceMute": "Mute notifications for {workspace}"
 				}
+			},
+			"transactionalSenderNote": {
+				"action": "Set a transactional sender",
+				"changeAction": "Change the transactional sender",
+				"off": "Transactional email is switched off, so it has no sender to set.",
+				"own": "Transactional mail goes out from its own sender, {from}.",
+				"usesDefault": "Transactional mail, such as password resets and receipts, also goes out from this default sender. Give it a sender of its own so a marketing problem can't hold it back."
 			}
 		},
 		"shareLinksPopover": {
@@ -7697,6 +7704,72 @@
 				"title": "Recent sends",
 				"titleNamed": "Recent sends — {name}",
 				"unknownRecipient": "Unknown recipient"
+			},
+			"senderAddressField": {
+				"addressLabel": "Address",
+				"domainLabel": "Sending domain",
+				"domainPlaceholder": "Choose a domain",
+				"domainsLink": "Add or verify a domain",
+				"localPartPlaceholder": "noreply",
+				"nameHelp": "What recipients see next to the address. Leave it empty to keep the usual name.",
+				"nameLabel": "Sender name",
+				"namePlaceholder": "Your company",
+				"preview": "Recipients see:",
+				"unverifiedGroup": "Not verified yet",
+				"verifiedGroup": "Verified"
+			},
+			"senderRow": {
+				"change": "Change",
+				"defaultSender": "default sender",
+				"error": "Couldn't load the sender.",
+				"loading": "Checking the sender…",
+				"none": "No sender is set.",
+				"ownSender": "transactional sender",
+				"sendsFrom": "Sends from",
+				"set": "Set a sender"
+			},
+			"senderDialog": {
+				"intro": "Password resets, receipts and other API sends go out from this address, unless an email sets its own.",
+				"layoutLink": "Plan one on the domains page",
+				"layoutTip": "A subdomain of its own, such as {host}, keeps complaints about your newsletters from reaching password resets.",
+				"loadError": "Couldn't load the sender and your sending domains.",
+				"loading": "Loading the sender",
+				"modeLegend": "Which address transactional mail goes out from",
+				"operation": "Save the transactional sender",
+				"save": "Save sender",
+				"saved": "Transactional mail now goes out from {address}.",
+				"savedDefault": "Transactional mail now goes out from the default sender.",
+				"saving": "Saving…",
+				"suggestion": {
+					"title": "Send from {domain}",
+					"use": "Use {domain}",
+					"why": "A subdomain of its own keeps complaints about your newsletters from reaching password resets and receipts."
+				},
+				"title": "Transactional sender",
+				"useDefault": "Use the default sender",
+				"useDefaultDescription": "{from}, the address set in General settings.",
+				"useDefaultMissing": "No default sender is set, so transactional mail would be refused.",
+				"useOwn": "Use a sender of its own",
+				"useOwnDescription": "Keeps password resets and receipts apart from your marketing mail."
+			},
+			"templateSenderCard": {
+				"change": "Change",
+				"loadError": "Couldn't load this email's sender.",
+				"loading": "Loading the sender…",
+				"noSender": "No sender is set, so sends of this email are refused.",
+				"operation": "Save this email's sender",
+				"override": "Use a different sender",
+				"restored": "This email uses the shared sender again.",
+				"save": "Save sender",
+				"saved": "This email now goes out from {address}.",
+				"sendsFrom": "Sends from",
+				"title": "Sender",
+				"unverified": "Not on a verified domain, so sends of this email are refused",
+				"useDefault": "Use the default sender",
+				"useTransactional": "Use the transactional sender",
+				"usesDefault": "Uses the default sender ({from}).",
+				"usesTransactional": "Uses the transactional sender ({from}).",
+				"verified": "On a verified domain"
 			}
 		},
 		"translation": {
@@ -16471,14 +16544,6 @@
 					"title": "Complaint rate",
 					"under": "{rate} of recipients complained, under the {limit} limit."
 				},
-				"defaultSender": {
-					"actionChange": "Change the sender",
-					"actionSet": "Set a default sender",
-					"missing": "No default sender is set, so every transactional send is refused.",
-					"title": "Default sender",
-					"unverified": "{address} isn't on a verified domain, so every transactional send is refused.",
-					"verified": "Transactional mail goes out from {address}."
-				},
 				"dmarc": {
 					"action": "Add the record",
 					"missing": "Publish a DMARC record. Gmail and Yahoo require one for bulk mail.",
@@ -16515,6 +16580,15 @@
 					"ready": "Every sending IP is in rotation.",
 					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
 					"title": "Sending IPs"
+				},
+				"transactionalSender": {
+					"actionChange": "Change the sender",
+					"actionSet": "Set a sender",
+					"missing": "No sender is set, so every transactional send is refused.",
+					"title": "Transactional sender",
+					"unverified": "{address} isn't on a verified domain, so every transactional send is refused.",
+					"verifiedDefault": "Transactional mail goes out from the default sender, {address}.",
+					"verifiedOwn": "Transactional mail goes out from {address}, its own sender."
 				},
 				"transport": {
 					"action": "Set up sending",
@@ -18111,6 +18185,10 @@
 				"brandColors": {
 					"title": "Brand colors",
 					"keywords": "brand colours, colors, colours, primary color, link color, palette, theme color"
+				},
+				"transactionalSender": {
+					"keywords": "transactional sender, transactional from address, password reset sender, receipt sender, api sender, mail subdomain, from address",
+					"title": "Transactional sender"
 				}
 			}
 		},
@@ -19761,8 +19839,8 @@
 				"noDomain": "No sending domain is set up yet",
 				"noVerifiedDomain": "No sending domain is verified yet",
 				"domainPending": "A sending domain isn't verified yet",
-				"senderMissing": "No default sender is set for transactional mail",
-				"senderUnverified": "The default sender's domain is not verified, so transactional mail is refused",
+				"senderMissing": "No sender is set for transactional mail",
+				"senderUnverified": "The transactional sender's domain is not verified, so transactional mail is refused",
 				"warmupHalted": "IP warm-up is halted",
 				"reputationCritical": "Sending reputation is critical",
 				"reputationHigh": "Sending reputation is at risk",
@@ -19781,6 +19859,17 @@
 				"deliveryOnHold": "Waiting to start: delivery is on hold · gives up {when}",
 				"mailServerNotReady": "Waiting to start: the mail server can't deliver · gives up {when}",
 				"unknown": "Waiting to start · gives up {when}"
+			}
+		},
+		"transactionalSender": {
+			"verdict": {
+				"domainMissing": "{domain} isn't one of your sending domains, so mail from it would be refused.",
+				"domainUnverified": "{domain} isn't verified yet, so mail from it would be refused.",
+				"domainVerified": "{domain} is verified. Mail from this address is signed as {domain}.",
+				"enterAddress": "Type the part before the domain, such as noreply.",
+				"invalidAddress": "That isn't a valid email address.",
+				"nameTooLong": "Keep the name to one line of at most {max} characters.",
+				"noDomains": "Add a sending domain first. Mail only goes out from a verified domain."
 			}
 		}
 	},

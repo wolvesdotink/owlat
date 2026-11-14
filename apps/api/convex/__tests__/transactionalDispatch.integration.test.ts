@@ -23,6 +23,8 @@ import {
 	createTestTransactionalEmail,
 } from './factories';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { mtaSendProvider } from '../lib/sendProviders/mta';
+import { resolveSendTransport } from '../lib/sendProviders/transports';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type * as SessionOrganization from '../lib/sessionOrganization';
 
@@ -736,6 +738,122 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 		expect(rows).toHaveLength(1);
 		const sends = await t.run(async (ctx) => await readInstanceCounter(ctx.db, 'sends'));
 		expect(sends.transactionalSendCount).toBe(1);
+	});
+});
+
+// ─── The sender ─────────────────────────────────────────────────────────────
+// Template sender, then the transactional sender, then the default sender.
+// Whatever resolves is the address the domain gate checks, the envelope's From
+// (which the MTA signs as, `lib/sendProviders/mta`), and the address the Send
+// row books reputation against.
+
+describe('transactional.dispatch.dispatch — the sender', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	async function dispatchOnce(t: TestConvex<typeof schema>, templateId: Id<'transactionalEmails'>) {
+		vi.mocked(transactionalEmailPool.enqueueAction).mockClear();
+		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+			templateLookup: { kind: 'id', id: templateId },
+			email: 'recipient@example.com',
+		});
+		const queued = vi.mocked(transactionalEmailPool.enqueueAction).mock.calls[0]?.[2] as
+			| { envelopeInput: { from: string } }
+			| undefined;
+		return { outcome, from: queued?.envelopeInput.from };
+	}
+
+	async function verifyDomain(t: TestConvex<typeof schema>, domain: string, status = 'verified') {
+		await t.run(async (ctx) =>
+			ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain,
+					status: status as 'verified',
+					lastVerifiedAt: Date.now(),
+				})
+			)
+		);
+	}
+
+	it('sends from the default sender while no transactional sender is set', async () => {
+		const t = newTest();
+		const { templateId } = await seedBaseline(t);
+		const { outcome, from } = await dispatchOnce(t, templateId);
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		expect(from).toBe('Owlat <noreply@example.com>');
+	});
+
+	it('sends from the transactional sender, signed as its own subdomain', async () => {
+		const t = newTest();
+		const { templateId, settingsId } = await seedBaseline(t);
+		await verifyDomain(t, 'mail.example.com');
+		await t.run(async (ctx) =>
+			ctx.db.patch(settingsId, {
+				transactionalFromEmail: 'account@mail.example.com',
+				transactionalFromName: 'Example Accounts',
+			})
+		);
+
+		const { outcome, from } = await dispatchOnce(t, templateId);
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		expect(from).toBe('Example Accounts <account@mail.example.com>');
+		const send = await t.run(async (ctx) => await ctx.db.get(outcome.sendId));
+		expect(send?.fromEmail).toBe('account@mail.example.com');
+
+		// The MTA derives the DKIM `d=` from the From it is handed.
+		vi.stubEnv('MTA_API_URL', 'http://mta.test');
+		vi.stubEnv('MTA_API_KEY', 'test-key');
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValue(new Response(JSON.stringify({ success: true, id: 'm' }), { status: 200 }));
+		vi.stubGlobal('fetch', fetchSpy);
+		await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
+			to: 'recipient@example.com',
+			from: from!,
+			subject: 'Welcome',
+			html: '<p>Hello</p>',
+		});
+		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+		expect(body.dkimDomain).toBe('mail.example.com');
+		vi.unstubAllGlobals();
+	});
+
+	it("sends from the template's own sender ahead of the transactional sender", async () => {
+		const t = newTest();
+		const { templateId, settingsId } = await seedBaseline(t);
+		await verifyDomain(t, 'mail.example.com');
+		await t.run(async (ctx) => {
+			await ctx.db.patch(settingsId, { transactionalFromEmail: 'account@mail.example.com' });
+			await ctx.db.patch(templateId, {
+				fromEmail: 'receipts@mail.example.com',
+				fromName: 'Example Billing',
+			});
+		});
+
+		const { outcome, from } = await dispatchOnce(t, templateId);
+		if (!outcome.ok) throw new Error(`expected ok, got ${outcome.reason}`);
+		expect(from).toBe('Example Billing <receipts@mail.example.com>');
+	});
+
+	it('never sends from a resolved sender whose domain is not verified, and names that address', async () => {
+		const t = newTest();
+		const { templateId, settingsId } = await seedBaseline(t);
+		// The default sender's domain is verified; the transactional sender's is not
+		// (any more): the send is refused rather than quietly falling back.
+		await verifyDomain(t, 'mail.example.com', 'pending');
+		await t.run(async (ctx) =>
+			ctx.db.patch(settingsId, { transactionalFromEmail: 'account@mail.example.com' })
+		);
+
+		const { outcome, from } = await dispatchOnce(t, templateId);
+		if (outcome.ok) throw new Error('expected a refusal');
+		expect(outcome.reason).toBe('domain_unverified');
+		expect(outcome.detail).toContain('account@mail.example.com');
+		expect(from).toBeUndefined();
+		const rows = await t.run(async (ctx) => await ctx.db.query('transactionalSends').collect());
+		expect(rows).toHaveLength(0);
 	});
 });
 

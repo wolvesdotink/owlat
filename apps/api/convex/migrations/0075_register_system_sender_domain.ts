@@ -15,15 +15,19 @@
  * (the Settings runner, which waits for every migration it starts to
  * complete) completes either way; started before that, it registers nothing,
  * and `owlat doctor` names the domain to add. Once completed it never runs
- * again, so a domain the operator removes stays removed.
+ * again; the cron then follows a sender that moves to another domain
+ * (`followSystemSenderDomain`), which never adds back a domain it handled, so
+ * a domain the operator removes stays removed.
  */
 
 import { internalMutation } from '../lib/writeFence';
 import { logInfo } from '../lib/runtimeLog';
 import { beginMigrationRun, readMigrationRun, recordMigrationPage } from '../lib/migrationLedger';
 import {
+	followSystemSenderDomain,
 	registerSystemSenderDomain,
 	systemSenderDomainBlocker,
+	systemSenderDomainName,
 } from '../domains/systemSenderDomain';
 import type { MutationCtx } from '../_generated/server';
 
@@ -34,6 +38,8 @@ const INTRODUCED_IN = '0.6.22';
 interface RunResult {
 	started: boolean;
 	reason?: string;
+	/** Set once completed, when the cron registered a domain the sender moved to. */
+	followed?: string;
 }
 
 const WAITING_FOR = {
@@ -62,14 +68,22 @@ export const run = internalMutation({
 });
 
 /**
- * The cron's entry point: once completed, one indexed read; otherwise
- * {@link run}, but only once there is a sender and an MTA to register with.
+ * The cron's entry point: once completed, it follows the sender to a new
+ * domain; otherwise {@link run}, but only once there is a sender and an MTA to
+ * register with.
  */
 export const ensure = internalMutation({
 	args: {},
 	handler: async (ctx): Promise<RunResult> => {
 		const existing = await readMigrationRun(ctx, MIGRATION);
-		if (existing?.status === 'completed') return { started: false };
+		if (existing?.status === 'completed') {
+			const outcome = await followSystemSenderDomain(ctx);
+			if (outcome === 'registered') {
+				logInfo('migration.0075_register_system_sender_domain.followed', { outcome });
+				return { started: false, followed: systemSenderDomainName() ?? '' };
+			}
+			return { started: false };
+		}
 		const blocker = systemSenderDomainBlocker();
 		if (blocker) return { started: false, reason: WAITING_FOR[blocker] };
 		return await registerOnce(ctx);

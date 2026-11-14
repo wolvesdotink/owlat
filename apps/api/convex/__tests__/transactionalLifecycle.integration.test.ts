@@ -371,6 +371,84 @@ describe('Transactional email lifecycle — translations are scanned', () => {
 	});
 });
 
+describe('Transactional email lifecycle — a saved-block edit is scanned', () => {
+	async function seedPublishedStale(t: ReturnType<typeof convexTest>, slug: string) {
+		return await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug,
+					status: 'published',
+					publishedAt: Date.now(),
+					htmlContent: '<p>Hello</p>',
+					contentRevision: 2,
+					htmlRenderState: { stale: true, failureCount: 0 },
+				})
+			)
+		);
+	}
+
+	it('keeps the live HTML when the re-rendered block is blocked', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedPublishedStale(t, 'block-blocked');
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await expect(
+				t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+					emailId,
+					htmlContent: '<p>BLOCKED-MARKER</p>',
+					expectedContentRevision: 2,
+				})
+			).rejects.toThrow(/Content blocked/);
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('published');
+		expect(email?.htmlContent).toBe('<p>Hello</p>');
+		expect(email?.htmlRenderState?.stale).toBe(true);
+	});
+
+	it('sends a published email to review when the re-rendered block is suspicious', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedPublishedStale(t, 'block-suspicious');
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+				emailId,
+				htmlContent: '<p>SUSPICIOUS-MARKER</p>',
+				expectedContentRevision: 2,
+			});
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		await t.run(async (ctx) => {
+			const email = await ctx.db.get(emailId);
+			expect(email?.status).toBe('pending_review');
+			const scans = await ctx.db.query('contentScanResults').collect();
+			expect(scans.find((s) => s.resourceId === emailId)?.level).toBe('suspicious');
+		});
+	});
+
+	it('lets a clean re-render go live', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedPublishedStale(t, 'block-clean');
+
+		const outcome = await t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+			emailId,
+			htmlContent: '<p>Hello again</p>',
+			expectedContentRevision: 2,
+		});
+
+		expect(outcome).toBe('applied');
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('published');
+		expect(email?.htmlContent).toBe('<p>Hello again</p>');
+	});
+});
+
 // ============================================================================
 // transition — unpublish + idempotency
 // ============================================================================

@@ -9,7 +9,7 @@ import type { BounceClassification } from '../types.js';
 // Hard/soft free-text patterns are shared with the Resend webhook adapter so the
 // two can't drift. The DSN-code precedence + complaint detection below stay local.
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
-import { enhancedCodeCause } from '../intelligence/bounceCause.js';
+import { enhancedCodeCause } from '@owlat/shared/bounceCause';
 
 // Complaint patterns — spam report
 const COMPLAINT_PATTERNS =

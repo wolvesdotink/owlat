@@ -7,6 +7,12 @@ import {
 	clearDomainFailure,
 } from '../degradation.js';
 import { durableEffectIdentity } from '../../lib/effectCheckpoint.js';
+import { classifyResult, reduce } from '../../dispatch/outcome.js';
+import { applyEffects } from '../../dispatch/effects.js';
+import { domainBackoffPhase } from '../../dispatch/phases/domainBackoff.js';
+import type { AttemptCtx, BasePhaseCtx } from '../../dispatch/types.js';
+import type { EmailJob } from '../../types.js';
+import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -62,6 +68,85 @@ describe('degradation', () => {
 
 			const result = await shouldBackoffDomain(redis, 'clear.com');
 			expect(result.backoff).toBe(false);
+		});
+	});
+
+	describe('a domain whose every MX host refuses at the greeting', () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-03-22T12:00:00Z'));
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		const destination: BasePhaseCtx['destination'] = {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [
+					{ exchange: 'mx1.example.com', priority: 10 },
+					{ exchange: 'mx2.example.com', priority: 20 },
+				],
+			},
+			daneDiscoveryAuthenticated: true,
+		};
+		const job = (messageId: string): EmailJob => ({
+			messageId,
+			to: 'user@example.com',
+			from: 'sender@owlat.com',
+			subject: 'Test',
+			html: '<p>Hello</p>',
+			ipPool: 'transactional',
+			organizationId: 'org-1',
+			dkimDomain: 'owlat.com',
+		});
+
+		it('backs the next message for that domain off instead of dialling straight back', async () => {
+			const deps = { redis, config: createOwlatHostConfig() } as unknown as Parameters<
+				typeof applyEffects
+			>[1];
+			const attempt: AttemptCtx = {
+				job: job('msg-1'),
+				domain: 'example.com',
+				destination,
+				fromDomain: 'owlat.com',
+				pool: 'transactional',
+				dedicatedIp: undefined,
+				ip: '192.0.2.10',
+				eligibilityGeneration: 1,
+				providerVolumePressure: 0,
+				utcDate: '2026-03-22',
+				durationMs: 12,
+			};
+			// What the MX loop returns once both hosts answered the greeting with 421.
+			const { effects } = reduce(
+				classifyResult({
+					success: false,
+					bounceType: 'deferred',
+					smtpCode: 421,
+					smtpPhase: 'greeting',
+					error: '421 mx2.example.com Service not available, closing transmission channel',
+				}),
+				attempt
+			);
+			await applyEffects(
+				effects.filter((effect) => effect.kind === 'domain_failure_record'),
+				deps
+			);
+
+			const next = await domainBackoffPhase.run(deps, {
+				job: job('msg-2'),
+				domain: 'example.com',
+				destination,
+				fromDomain: 'owlat.com',
+			});
+			// One recorded failure: the first step of the schedule, exactly.
+			expect(next).toMatchObject({ kind: 'defer', delayMs: 30_000, bounceCause: 'recipient' });
 		});
 	});
 

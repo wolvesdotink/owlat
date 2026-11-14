@@ -115,40 +115,79 @@ export function decideTemplate(
 	return { ok: true, template, isHtmlStale: template.htmlRenderState?.stale === true };
 }
 
+/** Which configured sender a transactional send resolved to. */
+export type TransactionalSenderSource = 'template' | 'transactional' | 'default';
+
+export interface ResolvedTransactionalSender {
+	readonly fromEmail: string;
+	readonly fromName: string;
+	readonly source: TransactionalSenderSource;
+}
+
+/** The sender fields a resolution reads; every one of them is optional. */
+export interface TransactionalSenderInputs {
+	readonly settings: Pick<
+		Doc<'instanceSettings'>,
+		'defaultFromEmail' | 'defaultFromName' | 'transactionalFromEmail' | 'transactionalFromName'
+	> | null;
+	readonly environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string };
+	/** The template being sent, when there is one; its own sender wins. */
+	readonly template?: Pick<Template, 'fromEmail' | 'fromName'> | null;
+}
+
+const filled = (value: string | undefined): string | undefined => value?.trim() || undefined;
+
 /**
- * The default sender address an operator configured (settings, then the
- * environment), or `null` when neither is set. The readiness surfaces and
- * {@link senderDefaults} both read it, so they agree on whether a sender exists.
+ * The sender a transactional send uses: the template's own sender, then the
+ * instance's transactional sender, then the default sender (settings, then
+ * the environment). `null` when none is configured. The display name comes
+ * from the same layer as the address, else from the next layer down, so an
+ * address set without a name still carries the workspace's usual name.
+ *
+ * The intake, the readiness query, the delivery health roll-up and the editor's
+ * test send all resolve through this, so they cannot name different senders.
  */
-export function configuredDefaultFromEmail(
-	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail'> | null,
-	environment: { readonly defaultFromEmail?: string }
-): string | null {
-	return settings?.defaultFromEmail?.trim() || environment.defaultFromEmail?.trim() || null;
+export function resolveTransactionalSender(
+	input: TransactionalSenderInputs
+): ResolvedTransactionalSender | null {
+	const { settings, environment, template } = input;
+	const names = [
+		filled(template?.fromName),
+		filled(settings?.transactionalFromName),
+		filled(settings?.defaultFromName),
+		filled(environment.defaultFromName),
+	];
+	const layers: [TransactionalSenderSource, string | undefined, number][] = [
+		['template', filled(template?.fromEmail), 0],
+		['transactional', filled(settings?.transactionalFromEmail), 1],
+		['default', filled(settings?.defaultFromEmail) ?? filled(environment.defaultFromEmail), 2],
+	];
+	for (const [source, fromEmail, firstName] of layers) {
+		if (!fromEmail) continue;
+		const fromName = names.slice(firstName).find((name) => name !== undefined) ?? 'Owlat';
+		return { fromEmail, fromName, source };
+	}
+	return null;
 }
 
 /**
- * The sender every transactional send uses. With none configured the request
- * is refused; a stand-in address would be one on a domain nobody here owns.
+ * {@link resolveTransactionalSender} as the intake needs it. With none
+ * configured the request is refused; a stand-in address would be one on a
+ * domain nobody here owns.
  */
-export function senderDefaults(
-	settings: Pick<Doc<'instanceSettings'>, 'defaultFromEmail' | 'defaultFromName'> | null,
-	environment: { readonly defaultFromEmail?: string; readonly defaultFromName?: string }
-): { ok: true; fromEmail: string; fromName: string } | DispatchRefusal {
-	const fromEmail = configuredDefaultFromEmail(settings, environment);
-	if (!fromEmail) {
+export function decideSender(
+	input: TransactionalSenderInputs
+): ({ ok: true } & ResolvedTransactionalSender) | DispatchRefusal {
+	const sender = resolveTransactionalSender(input);
+	if (!sender) {
 		return {
 			ok: false,
 			reason: 'sender_not_configured',
 			detail:
-				'Cannot send transactional email: no default sender is configured. Set a default From address for this instance, or DEFAULT_FROM_EMAIL in the deployment environment.',
+				'Cannot send transactional email: no sender is configured. Set a transactional or default From address for this instance, or DEFAULT_FROM_EMAIL in the deployment environment.',
 		};
 	}
-	return {
-		ok: true,
-		fromEmail,
-		fromName: settings?.defaultFromName ?? environment.defaultFromName ?? 'Owlat',
-	};
+	return { ok: true, ...sender };
 }
 
 /**
@@ -158,6 +197,8 @@ export function senderDefaults(
  * without a fallback.
  */
 export function decideSenderAndVariables(input: {
+	/** The address the send resolved to, named in the refusal. */
+	readonly fromEmail: string;
 	readonly domainStatus: {
 		readonly verified: boolean;
 		readonly domain: string;
@@ -172,9 +213,10 @@ export function decideSenderAndVariables(input: {
 		return {
 			ok: false,
 			reason: 'domain_unverified',
-			detail:
+			detail: `Cannot send transactional email from ${input.fromEmail}: ${
 				input.domainStatus.error ||
-				`Cannot send transactional email: domain "${input.domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`,
+				`domain "${input.domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`
+			}`,
 		};
 	}
 	const validation = validateDataVariables(input.dataVariables, input.dataVariablesSchema);
@@ -261,6 +303,7 @@ export function planTransactionalSend(input: {
 			// Authoritative for the row even though the worker re-resolves its route.
 			...(route ? { providerType: route.providerType } : {}),
 			correlationId: input.correlationId,
+			fromEmail: input.sender.fromEmail,
 			...(attachmentStorageIds && attachmentStorageIds.length > 0 ? { attachmentStorageIds } : {}),
 		},
 		// One write for the transactional + daily counters together, on the

@@ -214,6 +214,11 @@ export const templateTables = {
 		publishedAt: v.optional(v.number()),
 		// Whether to show unsubscribe link in the email (default: false for transactional)
 		showUnsubscribe: v.optional(v.boolean()),
+		// This template's own sender, ahead of the transactional sender and the
+		// default sender. Unset uses the transactional sender. Written only by
+		// `transactional/sender.ts`, which refuses an unverified domain.
+		fromName: v.optional(v.string()),
+		fromEmail: v.optional(v.string()),
 		// Multi-language support (same as emailTemplates)
 		// Default language for this email (e.g., "en", "de", "fr")
 		defaultLanguage: v.optional(v.string()),
@@ -312,6 +317,10 @@ export const templateTables = {
 		// Recipient information
 		email: v.string(), // Recipient email address
 		contactId: v.optional(v.id('contacts')), // Optional link to contact if they exist
+		// The From address a template API send resolved at intake. Reputation
+		// feedback for the Send is booked against this address's domain, so a
+		// transactional subdomain keeps its own record. Absent on other kinds.
+		fromEmail: v.optional(v.string()),
 		// Resolved recipient language for this send. Populated at intake by
 		// the Transactional send intake (module) from the request → contact →
 		// template-default fallback chain. Stored on the row so

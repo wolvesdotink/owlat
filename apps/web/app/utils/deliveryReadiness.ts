@@ -138,7 +138,7 @@ function streamInputFromSources(sources: ReadinessStreamSources): Partial<Readin
 				: null,
 		},
 		warmupHalted: streamTransport.marketing.usesOwnMta && sources.warming?.phase === 'plateau',
-		defaultSender: sources.transactionalSender,
+		transactionalSender: sources.transactionalSender,
 		marketingCapacity:
 			capacity == null
 				? null

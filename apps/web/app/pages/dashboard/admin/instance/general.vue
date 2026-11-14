@@ -363,6 +363,9 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 								</div>
 							</div>
 
+							<!-- Transactional mail's own sender; the settings search links here. -->
+							<SettingsTransactionalSenderNote id="transactional-sender" class="-mt-2" />
+
 							<!-- Campaign Archives Default -->
 							<div class="flex items-center justify-between gap-4 py-2">
 								<div class="min-w-0">

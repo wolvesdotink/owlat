@@ -31,6 +31,8 @@ describe('domainBackoffPhase', () => {
 			kind: 'defer',
 			delayMs: 240_000,
 			reason: expect.stringContaining('example.com'),
+			// The backoff stands in for connection failures, which are the recipient domain's.
+			bounceCause: 'recipient',
 		});
 	});
 

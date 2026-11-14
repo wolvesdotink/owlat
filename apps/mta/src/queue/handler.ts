@@ -154,7 +154,7 @@ export async function handleEmailJob(
 			'self_throttle',
 			piped.delayMs,
 			piped.reason,
-			piped.bounceCause
+			piped.bounceCause ?? 'sender'
 		);
 		return;
 	}
@@ -180,7 +180,8 @@ export async function handleEmailJob(
 			providerKey,
 			'self_throttle',
 			60_000,
-			'Selected outbound IP became ineligible before SMTP'
+			'Selected outbound IP became ineligible before SMTP',
+			'sender'
 		);
 		return;
 	}
@@ -198,7 +199,8 @@ export async function handleEmailJob(
 			providerKey,
 			'self_throttle',
 			60_000,
-			'Delayed-feedback provenance persistence failed'
+			'Delayed-feedback provenance persistence failed',
+			'sender'
 		);
 		return;
 	}
@@ -241,7 +243,8 @@ export async function handleEmailJob(
 			providerKey,
 			'self_throttle',
 			60_000,
-			'SMTP outcome journal is at capacity'
+			'SMTP outcome journal is at capacity',
+			'sender'
 		);
 		return;
 	}
@@ -312,7 +315,9 @@ async function applyCompletedAttempt(
  * Past the max age, give up: emit a terminal expired-bounce (delivery log +
  * Convex notification) and let the job complete so it leaves the queue. The
  * bounce carries `bounceCause`, the cause of the deferral that hit the limit, so
- * a receiver still refusing our sending identity leaves the recipient alone.
+ * a receiver still refusing our sending identity, or a hold of our own, leaves
+ * the recipient alone. Every caller names it: a hold that defaulted to the
+ * recipient would count our own warm-up cap or breaker against the address.
  */
 async function disposeDefer(
 	job: ReservedJob<EmailJob>,
@@ -323,7 +328,7 @@ async function disposeDefer(
 	kind: DeferKind,
 	delayMs: number,
 	reason: string,
-	bounceCause: BounceCause = 'recipient'
+	bounceCause: BounceCause
 ): Promise<void> {
 	const data = job.data;
 	const now = Date.now();

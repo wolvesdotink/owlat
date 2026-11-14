@@ -51,6 +51,7 @@ import {
 	type DoctorReport,
 } from '../lib/doctorReport';
 import { doctorText, envValue, trusted } from '../lib/doctorText';
+import { evaluateAcmeSidecar } from '../lib/acmeSidecar';
 import {
 	evaluateSendPath,
 	evaluateSiteUrl,
@@ -174,6 +175,7 @@ export async function collectDoctorReport(
 	}
 
 	for (const finding of evaluateSiteUrl(env)) report.record(finding);
+	for (const finding of evaluateAcmeSidecar(env)) report.record(finding);
 
 	// SEND PATH — the core capability check. A sending feature with no configured
 	// delivery provider is the exact hole that let doctor report "All checks

@@ -16,9 +16,14 @@
  * treated as no signature, so account mail loses nothing while the operator
  * publishes the record and passes from the first mail after.
  *
- * Registered once, by migration 0075: the admin seed runs it for a new install
- * (`auth/seedAdminCommit.ts`), its cron for an existing one. A domain the
- * operator removes afterwards is not added again.
+ * Registered by migration 0075: the admin seed runs it for a new install
+ * (`auth/seedAdminCommit.ts`), its cron for an existing one. After that the
+ * same hourly cron follows the sender: when `DEFAULT_FROM_*` moves to another
+ * domain, that domain is registered once ({@link followSystemSenderDomain}).
+ * Every domain this path has handled is recorded in `systemSenderDomains` and
+ * never added again, so a domain the operator removes stays removed. The
+ * instance default sender set in Settings registers its domain when it is
+ * changed ({@link registerDefaultSenderDomain}).
  */
 
 import { extractDomainOrNull } from '@owlat/shared';
@@ -57,25 +62,103 @@ export type SystemSenderDomainOutcome =
 /** What keeps the system sender's domain from being registered now, or null. */
 export function systemSenderDomainBlocker(): 'not_configured' | 'not_built_in_mta' | null {
 	if (!systemSenderDomainName()) return 'not_configured';
-	if (newDomainProviderKind() !== OWN_SENDING_DOMAIN_PROVIDER_KIND || getMtaConfig() === null) {
-		return 'not_built_in_mta';
-	}
-	return null;
+	return builtInMtaSends() ? null : 'not_built_in_mta';
 }
 
-/** Add the system sender's domain as a sending domain unless it is there already. */
+function builtInMtaSends(): boolean {
+	return newDomainProviderKind() === OWN_SENDING_DOMAIN_PROVIDER_KIND && getMtaConfig() !== null;
+}
+
+/** Add a domain through the domain lifecycle, or find it already there. */
+async function createSendingDomain(
+	ctx: MutationCtx,
+	domain: string,
+	userId: string
+): Promise<'registered' | 'already_registered' | 'invalid_domain'> {
+	const outcome = await ctx.runMutation(internal.domains.lifecycle.create, { domain, userId });
+	if (outcome.ok) return 'registered';
+	return outcome.reason === 'already_exists' ? 'already_registered' : 'invalid_domain';
+}
+
+async function isRecorded(ctx: MutationCtx, domain: string): Promise<boolean> {
+	const row = await ctx.db
+		.query('systemSenderDomains')
+		.withIndex('by_domain', (q) => q.eq('domain', domain))
+		.first();
+	return row !== null;
+}
+
+async function recordHandled(ctx: MutationCtx, domain: string): Promise<void> {
+	if (!(await isRecorded(ctx, domain))) {
+		await ctx.db.insert('systemSenderDomains', { domain, recordedAt: Date.now() });
+	}
+}
+
+/**
+ * Add the system sender's domain as a sending domain unless it is there
+ * already, and record it as handled.
+ */
 export async function registerSystemSenderDomain(
 	ctx: MutationCtx
 ): Promise<SystemSenderDomainOutcome> {
 	const blocker = systemSenderDomainBlocker();
 	const domain = systemSenderDomainName();
 	if (blocker || !domain) return blocker ?? 'not_configured';
-	const outcome = await ctx.runMutation(internal.domains.lifecycle.create, {
-		domain,
-		userId: SYSTEM_SENDER_DOMAIN_USER,
-	});
-	if (outcome.ok) return 'registered';
-	return outcome.reason === 'already_exists' ? 'already_registered' : 'invalid_domain';
+	const outcome = await createSendingDomain(ctx, domain, SYSTEM_SENDER_DOMAIN_USER);
+	await recordHandled(ctx, domain);
+	return outcome;
+}
+
+/**
+ * - `already_handled`: this path registered the domain before, or found it;
+ * - `baseline`: the first look on an install whose migration 0075 completed
+ *   before domains were recorded. Its sender's domain was 0075's to handle and
+ *   may have been removed since, so it is recorded and left as it is.
+ */
+export type FollowedSenderDomainOutcome =
+	| SystemSenderDomainOutcome
+	| 'already_handled'
+	| 'baseline';
+
+/**
+ * After migration 0075 completed: register the system sender's domain if the
+ * sender moved to a domain this path has not handled yet. Idempotent; one or
+ * two indexed reads when nothing changed.
+ */
+export async function followSystemSenderDomain(
+	ctx: MutationCtx
+): Promise<FollowedSenderDomainOutcome> {
+	const blocker = systemSenderDomainBlocker();
+	const domain = systemSenderDomainName();
+	if (blocker || !domain) return blocker ?? 'not_configured';
+	if (await isRecorded(ctx, domain)) return 'already_handled';
+	const anyRecorded = await ctx.db.query('systemSenderDomains').first();
+	if (anyRecorded === null) {
+		await recordHandled(ctx, domain);
+		return 'baseline';
+	}
+	return await registerSystemSenderDomain(ctx);
+}
+
+/**
+ * The instance default sender's domain, when an owner or admin changes the
+ * address to one on another domain and the built-in MTA sends: registered
+ * through the domain lifecycle under their name, so its mail is signed once
+ * the records are published. Mail from an unregistered domain is refused, so
+ * without this the new address sends nothing until the domain is added. Only
+ * a change registers, so saving other settings never adds back a domain the
+ * operator removed.
+ */
+export async function registerDefaultSenderDomain(
+	ctx: MutationCtx,
+	change: { from: string | undefined; to: string; userId: string }
+): Promise<SystemSenderDomainOutcome | 'unchanged'> {
+	const next = extractDomainOrNull(change.to.trim())?.toLowerCase() ?? null;
+	const previous = change.from ? (extractDomainOrNull(change.from)?.toLowerCase() ?? null) : null;
+	if (!next) return 'invalid_domain';
+	if (next === previous) return 'unchanged';
+	if (!builtInMtaSends()) return 'not_built_in_mta';
+	return await createSendingDomain(ctx, next, change.userId);
 }
 
 /** One record the operator publishes for the system sender's domain. */
