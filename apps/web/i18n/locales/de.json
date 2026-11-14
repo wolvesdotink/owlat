@@ -7705,10 +7705,10 @@
 				},
 				"title": "Versand",
 				"variables": {
-					"description": "Fehlt in der Anfrage eine Pflichtvariable, wird sie mit einem Fehler abgelehnt, der die Variable nennt. Eine optionale Variable darf fehlen und wird leer gesendet oder mit ihrem Ersatzwert.",
+					"description": "Eine Anfrage, die eine Variable weglässt, die die E-Mail ohne Fallback verwendet, wird mit einem Fehler abgelehnt, der sie nennt. Markiere eine Variable als optional, damit Anfragen sie weglassen dürfen: Sie wird dann leer gesendet oder mit ihrem Fallback.",
 					"empty": "Diese E-Mail hat noch keine Datenvariablen.",
 					"optional": "Darf fehlen",
-					"required": "Pflicht",
+					"required": "Pflicht, außer mit Fallback",
 					"title": "Datenvariablen",
 					"toggle": "{name} ist optional"
 				}

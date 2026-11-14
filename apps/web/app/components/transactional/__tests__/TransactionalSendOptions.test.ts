@@ -70,7 +70,9 @@ function mountOptions(
 describe('TransactionalSendOptions', () => {
 	it('marks a variable optional, and a marked one required again', async () => {
 		const wrapper = mountOptions({ optionalVariables: ['giftNote'] });
-		expect(wrapper.get('[data-testid="variable-state-orderNumber"]').text()).toBe('Required');
+		expect(wrapper.get('[data-testid="variable-state-orderNumber"]').text()).toBe(
+			'Required unless it has a fallback'
+		);
 		expect(wrapper.get('[data-testid="variable-state-giftNote"]').text()).toBe('Optional');
 
 		await wrapper.get('[data-testid="variable-optional-orderNumber"]').trigger('click');

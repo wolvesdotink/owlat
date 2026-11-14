@@ -7705,10 +7705,10 @@
 				},
 				"title": "Sending",
 				"variables": {
-					"description": "A required variable that the request leaves out is refused with an error naming it. An optional one may be left out and sends empty, or as its fallback.",
+					"description": "A request that leaves out a variable the email uses without a fallback is refused with an error naming it. Mark a variable optional to let requests leave it out: it then sends empty, or as its fallback.",
 					"empty": "This email has no data variables yet.",
 					"optional": "Optional",
-					"required": "Required",
+					"required": "Required unless it has a fallback",
 					"title": "Data variables",
 					"toggle": "{name} is optional"
 				}
