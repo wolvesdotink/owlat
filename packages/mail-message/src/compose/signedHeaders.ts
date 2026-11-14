@@ -10,7 +10,9 @@
 /**
  * Headers we sign when present (relaxed/relaxed). Mirrors the RFC 4871 §5.5
  * default set, trimmed to the headers Owlat actually emits, plus the
- * List-Unsubscribe PAIR so one-click unsubscribe stays integrity-protected.
+ * List-Unsubscribe PAIR so one-click unsubscribe stays integrity-protected and
+ * the threading pair (In-Reply-To, References) so a reply cannot be moved into
+ * another conversation.
  *
  * `list-unsubscribe-post` is deliberately listed alongside `list-unsubscribe`:
  * RFC 8058 §5.2 requires BOTH headers under the same DKIM signature whose `d=`
@@ -32,6 +34,8 @@ export const SIGNED_HEADERS: readonly string[] = [
 	'subject',
 	'date',
 	'message-id',
+	'in-reply-to',
+	'references',
 	'to',
 	'cc',
 	'mime-version',

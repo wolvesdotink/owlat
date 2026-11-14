@@ -2,8 +2,8 @@
  * DKIM key management for outbound signing.
  *
  * Resolves per-domain DKIM private keys from the Redis-backed store. The signing
- * itself — relaxed/relaxed canonicalization, body hashing, oversigning From/
- * Subject/To and the `t=` timestamp — lives in `@owlat/mail-message`'s
+ * itself — relaxed/relaxed canonicalization, body hashing, oversigning the
+ * headers a replay could add and the `t=` timestamp — lives in `@owlat/mail-message`'s
  * `signMessage(raw, key)`, which signs over the composed message BYTES on the
  * ONE shared canonicalizer (locked decision U4). The sender signs once per job
  * and ships byte-identical signed bytes across MX retries. This module owns only

@@ -19,13 +19,13 @@
  *       `mailauth`'s own `parseHeaders` / `formatRelaxedLine` /
  *       `formatSignatureHeaderLine` / `dkimBody` — so a byte match proves our
  *       ports of those (canon + our own assembly) match mailauth's, including
- *       oversigning From/Subject/To and the `t=` timestamp.
+ *       oversigning and the `t=` timestamp.
  *
  *       The reference reproduces the MTA signer rather than exercising the live
  *       `apps/mta/src/smtp/dkim.ts` because a `packages/*` test may not import an
  *       app (cross-package-import boundary) and that module pulls in Redis/DNS.
  *       To keep the reconstruction honest we ALSO anchor the emitted `h=` tag to
- *       a hand-computed literal (`from:subject:to:from:subject:to`) — the exact
+ *       a hand-computed literal (`from:subject:to` plus the oversigned slots) — the exact
  *       oversigned field list the real signer's `SIGNED_HEADERS` /
  *       `OVERSIGNED_HEADERS` constants yield for a From/To/Subject message, and
  *       the same contract `apps/mta`'s `dkimSign.e2e.test.ts` pins on the real
@@ -94,6 +94,8 @@ const SIGNED_HEADERS = [
 	'subject',
 	'date',
 	'message-id',
+	'in-reply-to',
+	'references',
 	'to',
 	'cc',
 	'mime-version',
@@ -104,7 +106,22 @@ const SIGNED_HEADERS = [
 	'cfbl-address',
 	'cfbl-feedback-id',
 ];
-const OVERSIGNED_HEADERS = ['from', 'subject', 'to', 'cfbl-address', 'cfbl-feedback-id'];
+const OVERSIGNED_HEADERS = [
+	'from',
+	'sender',
+	'reply-to',
+	'subject',
+	'date',
+	'message-id',
+	'in-reply-to',
+	'references',
+	'to',
+	'cc',
+	'list-unsubscribe',
+	'list-unsubscribe-post',
+	'cfbl-address',
+	'cfbl-feedback-id',
+];
 
 function splitHeadersAndBody(raw: Buffer): { headerBuf: Buffer; bodyBuf: Buffer } {
 	let idx = raw.indexOf('\r\n\r\n');
@@ -324,12 +341,11 @@ describe('signMessage — bit-for-bit vs the current MTA signer (old wire-M3)', 
 		// The `raw empty body` corpus message carries exactly From, To, Subject.
 		// The real signer (apps/mta/src/smtp/dkim.ts) walks SIGNED_HEADERS in order
 		// (from, …, subject, …, to, …) emitting only the present ones, then appends
-		// the OVERSIGNED slots (from, subject, to, cfbl-address, cfbl-feedback-id).
-		// So its h= is, lowercased, a hand-verifiable literal — pinned here
-		// independently of the reconstruction. Both CFBL fields are oversigned
-		// unconditionally (RFC 9477 defines no tiebreak between duplicate CFBL
-		// fields), so they appear in h= even on messages that carry no CFBL header
-		// at all.
+		// one OVERSIGNED slot for every header a replay could add. So its h= is,
+		// lowercased, a hand-verifiable literal — pinned here independently of the
+		// reconstruction. Oversigned slots are emitted unconditionally, so a header
+		// the message does not carry (Reply-To, the CFBL pair, …) still appears in
+		// h= and an instance added later breaks the signature.
 		const raw = corpus().find((c) => c.name === 'raw empty body')!.raw;
 		const sig = buildDkimSignatureLine(raw, signingKey, SIGN_TIME_MS).replace(/\r\n[ \t]+/g, ' ');
 		const hList = /(?:^|;|\s)h=([^;]+)/
@@ -341,8 +357,17 @@ describe('signMessage — bit-for-bit vs the current MTA signer (old wire-M3)', 
 			'subject',
 			'to',
 			'from',
+			'sender',
+			'reply-to',
 			'subject',
+			'date',
+			'message-id',
+			'in-reply-to',
+			'references',
 			'to',
+			'cc',
+			'list-unsubscribe',
+			'list-unsubscribe-post',
 			'cfbl-address',
 			'cfbl-feedback-id',
 		]);

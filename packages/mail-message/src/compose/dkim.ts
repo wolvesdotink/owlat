@@ -75,23 +75,37 @@ export { SIGNED_HEADERS } from './signedHeaders';
 
 /**
  * Headers we OVERSIGN: each gets one extra slot in `h=` beyond its occurrences
- * in the message. From/Subject/To are the DMARC- and display-critical headers
- * an attacker would re-prepend; oversigning them makes any added instance break
- * the signature. BOTH CFBL fields join them because RFC 9477 defines no tiebreak
+ * in the message, so an instance added after signing breaks the signature. A
+ * header that is absent when signing and not listed can be added to a replayed
+ * copy freely (RFC 6376 §5.4, §8.15), so every header a replay could use to
+ * change the message's meaning is here: who it is from and who answers it
+ * (From, Sender, Reply-To), who it went to (To, Cc), what it says and when
+ * (Subject, Date), which message and conversation it is (Message-ID,
+ * In-Reply-To, References), and where its unsubscribe lands (the RFC 8058
+ * pair). BOTH CFBL fields join them because RFC 9477 defines no tiebreak
  * between duplicate CFBL fields: oversigning turns an added second instance into
  * a signature failure instead of an ambiguity a report generator resolves in the
  * attacker's favour. The argument applies equally to `cfbl-feedback-id`, which
  * §4.2 asks the report generator to copy into the report's `Feedback-ID` field
- * and which is the second authenticated attribution path — signing it only once
- * would let an intermediary prepend an instance the verifier never sees, so a
- * generator picking that instance would emit a token that fails verification and
- * the complaint signal would be silently lost. (RFC 6376 §8.15; M3AAWG
- * oversigning.)
+ * and which is the second authenticated attribution path.
+ *
+ * Headers that relays and mailing lists add in transit (Received, Return-Path,
+ * ARC-*, Authentication-Results, X-*) are never listed, or a forwarded copy
+ * would fail. (M3AAWG oversigning.)
  */
 const OVERSIGNED_HEADERS: readonly string[] = [
 	'from',
+	'sender',
+	'reply-to',
 	'subject',
+	'date',
+	'message-id',
+	'in-reply-to',
+	'references',
 	'to',
+	'cc',
+	'list-unsubscribe',
+	'list-unsubscribe-post',
 	'cfbl-address',
 	'cfbl-feedback-id',
 ];
@@ -197,7 +211,7 @@ function formatDkimSignatureLine(values: Record<string, string | number>, folded
 
 /**
  * Produce a hardened `DKIM-Signature:` header line (no trailing CRLF) for the
- * given raw RFC822 message. Oversigns From/Subject/To and stamps `t=`.
+ * given raw RFC822 message. Oversigns {@link OVERSIGNED_HEADERS} and stamps `t=`.
  *
  * Throws if signing fails (e.g. an unusable private key) so the caller can fail
  * closed / fall back rather than ship a corrupt header — this pure module does
@@ -289,7 +303,7 @@ export function buildDkimSignatureLine(
 
 /**
  * Sign `raw` and return the signed wire bytes: a hardened `DKIM-Signature`
- * (oversigned From/Subject/To, `t=`, relaxed/relaxed) PREPENDED to the message.
+ * (oversigned headers, `t=`, relaxed/relaxed) PREPENDED to the message.
  *
  * The prepended header is byte-identical to the MTA signer's output for the same
  * inputs and verifies pass under both `mailauth` and our own `verifyDkim`.
