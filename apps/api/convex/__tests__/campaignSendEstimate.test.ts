@@ -84,7 +84,6 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 			estimatedDays: 1,
 			isTruncated: false,
 			isFullyWarmed: false,
-			message: 'Warming data not available yet. Your emails will be paced automatically.',
 		});
 	});
 
@@ -103,15 +102,14 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 
 		expect(estimate.isFullyWarmed).toBe(true);
 		expect(estimate.estimatedDays).toBe(1);
-		expect(estimate.message).toContain('fully warmed');
 	});
 
 	/**
 	 * Warming state EXISTS and `totalDailyCap` is non-zero, but the projection
 	 * cannot be built (here: the MTA sync stopped). The estimate falls back to
-	 * the shipped "paced automatically" copy rather than inventing a day count.
+	 * a one-day estimate rather than inventing a day count.
 	 */
-	it('falls back to the paced-automatically copy when capacity cannot be projected', async () => {
+	it('falls back to a one-day estimate when capacity cannot be projected', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t, {
 			phase: 'ramp',
@@ -129,13 +127,10 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 		expect(estimate.remainingToday).toBe(0);
 		expect(estimate.estimatedDays).toBe(1);
 		expect(estimate.isFullyWarmed).toBe(false);
-		expect(estimate.message).toBe(
-			'Warming data not available yet. Your emails will be paced automatically.'
-		);
 	});
 
 	/** A mixed graduated + ramping pool is unbounded, so it takes the same path. */
-	it('falls back to the paced-automatically copy on a mixed graduated pool', async () => {
+	it('falls back to a one-day estimate on a mixed graduated pool', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t, {
 			phase: 'ramp',
@@ -152,9 +147,6 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 		});
 
 		expect(estimate.estimatedDays).toBe(1);
-		expect(estimate.message).toBe(
-			'Warming data not available yet. Your emails will be paced automatically.'
-		);
 	});
 
 	/**
@@ -162,9 +154,9 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 	 * in theory: an IP on schedule day 29 crosses day 30 (`Infinity`, no cap) on
 	 * the FIRST projected day, so the projection bounds today alone — and with
 	 * today's cap already spent, that is `[0]`. Nothing can be scheduled, so the
-	 * readout says how the send will be paced rather than quoting a day count.
+	 * readout quotes no day count.
 	 */
-	it('falls back to the pacing copy when the projection bounds only a spent day', async () => {
+	it('falls back to a one-day estimate when the projection bounds only a spent day', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t, {
 			phase: 'ramp',
@@ -180,9 +172,6 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 		expect(estimate.remainingToday).toBe(0);
 		expect(estimate.estimatedDays).toBe(1);
 		expect(estimate.isFullyWarmed).toBe(false);
-		expect(estimate.message).toBe(
-			'Your emails will be paced automatically against your current warm-up capacity.'
-		);
 	});
 });
 
@@ -202,7 +191,6 @@ describe('getCampaignSendEstimate — day counts', () => {
 
 		expect(estimate.remainingToday).toBe(1_000);
 		expect(estimate.estimatedDays).toBe(1);
-		expect(estimate.message).toContain("fits within today's remaining capacity");
 	});
 
 	/**
@@ -225,9 +213,6 @@ describe('getCampaignSendEstimate — day counts', () => {
 
 		expect(estimate.estimatedDays).toBe(5);
 		expect(estimate.isTruncated).toBe(false);
-		expect(estimate.message).toBe(
-			'Based on your IP warmup progress, this campaign will take approximately 5 days to complete.'
-		);
 	});
 
 	/**
@@ -270,12 +255,9 @@ describe('getCampaignSendEstimate — day counts', () => {
 		// counts only the active day-1 IP, whose cap is already spent.
 		expect(estimate.remainingToday).toBe(0);
 		expect(estimate.estimatedDays).toBe(5);
-		expect(estimate.message).toBe(
-			'Based on your IP warmup progress, this campaign will take approximately 5 days to complete.'
-		);
 	});
 
-	it('says "60+ days" instead of quoting a truncated schedule as a finish date', async () => {
+	it('marks a truncated schedule as a floor, not a finish date', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t, {
 			phase: 'ramp',
@@ -290,8 +272,5 @@ describe('getCampaignSendEstimate — day counts', () => {
 
 		expect(estimate.estimatedDays).toBe(MAX_PLAN_DAYS);
 		expect(estimate.isTruncated).toBe(true);
-		expect(estimate.message).toBe(
-			`Campaign will take approximately ${MAX_PLAN_DAYS}+ days based on current warmup progress.`
-		);
 	});
 });

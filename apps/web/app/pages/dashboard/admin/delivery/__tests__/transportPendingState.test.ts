@@ -16,7 +16,7 @@
  *   - resolved with nothing → a named terminal state with a way forward;
  *   - resolved with a status → the real cards, and no skeleton left behind.
  */
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi, onTestFinished } from 'vitest';
 import { nextTick, ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
@@ -27,7 +27,11 @@ import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 // component; stubbing it would hide the very sentence these branches are about.
 import DeliveryTransportCanSendCard from '~/components/delivery/TransportCanSendCard.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { DESKTOP_SITE_URL, onDesktop } from '~/__tests__/desktopRuntimeFixture';
 import en from '~~/i18n/locales/en.json';
+
+const openExternal = vi.hoisted(() => vi.fn(async (_url: string) => undefined));
+vi.mock('@owlat/desktop/src/shell', () => ({ openExternal }));
 
 /** The shape `getStatus` answers with on a configured deployment. */
 function transportStatus() {
@@ -221,5 +225,37 @@ describe('one door to change the provider, and receiving rules in one place', ()
 			'owlat env AWS_SES_REGION <value>\nowlat env AWS_SES_SECRET_ACCESS_KEY <value>\nowlat apply'
 		);
 		wrapper.unmount();
+	});
+});
+
+describe('the transport page in the desktop app', () => {
+	// The desktop app is a static build: the editor's validate and apply steps
+	// post to server routes it does not have, and those routes handle secrets.
+	it("leaves the editor out and offers the instance's own page in the browser", async () => {
+		onDesktop();
+		stubPage({ status: transportStatus(), isLoading: false, error: null });
+		const wrapper = mount(TransportPage, { global: globalOptions });
+
+		expect(wrapper.find('delivery-transport-editor-stub').exists()).toBe(false);
+		const notice = wrapper.find('[data-testid="instance-transport-notice"]');
+		expect(notice.text()).toContain(en.components.delivery.instanceTransport.title);
+		// The read-only state still renders: it reads Convex only.
+		expect(wrapper.text()).toContain(en.dashboard.admin.delivery.transport.canSend.yes);
+
+		await notice.find('button').trigger('click');
+		await flushPromises();
+		expect(openExternal).toHaveBeenCalledWith(
+			`${DESKTOP_SITE_URL}/dashboard/admin/delivery/transport`
+		);
+	});
+
+	it('says where to change sending when no instance address is known', () => {
+		onDesktop(null);
+		stubPage({ status: transportStatus(), isLoading: false, error: null });
+		const wrapper = mount(TransportPage, { global: globalOptions });
+
+		const notice = wrapper.find('[data-testid="instance-transport-notice"]');
+		expect(notice.find('button').exists()).toBe(false);
+		expect(notice.text()).toContain(en.components.delivery.instanceTransport.noInstance);
 	});
 });

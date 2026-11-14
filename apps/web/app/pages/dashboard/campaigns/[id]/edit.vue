@@ -274,6 +274,7 @@ const { presend: sendBlocker, refusal: refusalBlocker } = useCampaignSendBlocker
 					<CampaignEditNotices
 						:content-block-reason="campaignData.contentBlockReason"
 						:start-refusal="campaignData.startRefusal"
+						:start-hold="campaignData.startHold"
 						:save-error="saveError"
 						:is-scheduled="isScheduled"
 						:scheduled-at="campaignData.scheduledAt"

@@ -3619,6 +3619,14 @@
 					"mta_unavailable": "The MTA isn't reachable, so the key wasn't saved."
 				},
 				"loadFailed": "Couldn't load how blocklist lookups are set up."
+			},
+			"instanceTransport": {
+				"title": "Sending is set up on the instance",
+				"body": "The desktop app shows how sending is set up. Changing the provider or its credentials happens on your Owlat instance itself, in your browser.",
+				"open": "Open in browser",
+				"opensInBrowser": "(opens in your browser)",
+				"noInstance": "Open this page on your Owlat instance in a browser to change sending.",
+				"openFailed": "Your browser didn't open. Go to {url} to change sending."
 			}
 		},
 		"desktop": {
@@ -19691,6 +19699,48 @@
 			"scheduledInPast": "That time has already passed. Pick a time in the future.",
 			"senderNotAllowed": "\"{email}\" is not an approved campaign sender. Add it to the campaign senders, or allow custom senders.",
 			"templateDeleted": "The email this campaign sends was deleted. Restore it, or choose another one."
+		},
+		"deliveryHealth": {
+			"reasons": {
+				"healthy": "Sending is healthy",
+				"noProvider": "No delivery provider is configured",
+				"noProviderTransactional": "No delivery provider is configured for transactional mail",
+				"noProviderCampaign": "No delivery provider is configured for campaigns",
+				"feedbackMissingCampaign": "Bounce and complaint reports cannot reach Owlat, so campaigns are refused",
+				"feedbackMissingTransactional": "Bounce and complaint reports cannot reach Owlat",
+				"mtaSigningHeld": "Mail from {domains} is held: the mail server has no usable DKIM key to sign it",
+				"mtaSigningHeldUnnamed": "Mail from a sending domain is held: the mail server has no usable DKIM key to sign it",
+				"mtaDegraded": "Mail server infrastructure is degraded",
+				"mtaUnreachable": "Mail server health endpoint is unreachable",
+				"mtaStale": "Mail server health check is stale",
+				"mtaUnchecked": "Mail server health has not been checked yet",
+				"ipsAllHeld": "Every sending IP is held back",
+				"ipsSomeHeld": "Some sending IPs are held back",
+				"domainFailed": "A sending domain failed verification",
+				"noDomain": "No sending domain is set up yet",
+				"noVerifiedDomain": "No sending domain is verified yet",
+				"domainPending": "A sending domain isn't verified yet",
+				"senderMissing": "No default sender is set for transactional mail",
+				"senderUnverified": "The default sender's domain is not verified, so transactional mail is refused",
+				"warmupHalted": "IP warm-up is halted",
+				"reputationCritical": "Sending reputation is critical",
+				"reputationHigh": "Sending reputation is at risk",
+				"reputationMedium": "Sending reputation needs attention"
+			}
+		},
+		"campaignStartHold": {
+			"title": "Waiting to start",
+			"reasons": {
+				"deliveryOnHold": "Delivery is on hold because the sending safety circuit is open.",
+				"mailServerNotReady": "The mail server can't deliver right now.",
+				"unknown": "Delivery can't start right now."
+			},
+			"givesUp": "Owlat checks again every minute and gives up {when} if delivery hasn't recovered by then. The campaign then goes back to draft.",
+			"rowMeta": {
+				"deliveryOnHold": "Waiting to start: delivery is on hold · gives up {when}",
+				"mailServerNotReady": "Waiting to start: the mail server can't deliver · gives up {when}",
+				"unknown": "Waiting to start · gives up {when}"
+			}
 		}
 	},
 	"sharedPkg": {

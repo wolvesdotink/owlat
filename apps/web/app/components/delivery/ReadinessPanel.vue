@@ -18,8 +18,8 @@ import type { ReadinessGate, ReadinessGateStatus } from '~/utils/deliveryReadine
 import { healthTextClass } from '~/utils/healthTone';
 import { useLocalized } from '~/composables/useLocalized';
 import { useDeliveryReadiness } from '~/composables/useDeliveryReadiness';
+import ReadinessActionLink from './ReadinessActionLink.vue';
 import {
-	ArrowRightIcon,
 	CircleCheckIcon,
 	CircleWarningIcon,
 	ClockIcon,
@@ -164,16 +164,12 @@ const GATE_ICON: Record<ReadinessGateStatus, IconComponent> = {
 						<p v-if="gateMeta(g)" class="text-xs text-text-tertiary mt-0.5">{{ gateMeta(g) }}</p>
 						<p class="text-sm text-text-secondary mt-0.5">{{ localized(g.detail) }}</p>
 					</div>
-					<NuxtLink
+					<ReadinessActionLink
 						v-if="g.actionHref && g.actionLabel"
-						:to="g.actionHref"
-						class="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline shrink-0 mt-0.5 group"
-					>
-						{{ localized(g.actionLabel) }}
-						<ArrowRightIcon
-							class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"
-						/>
-					</NuxtLink>
+						class="mt-0.5"
+						:href="g.actionHref"
+						:label="g.actionLabel"
+					/>
 				</li>
 			</ul>
 

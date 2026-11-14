@@ -57,6 +57,7 @@ type AttentionCandidate = Pick<
 	| 'abTestStatus'
 	| 'abWinner'
 	| 'contentBlockReason'
+	| 'startHold'
 	| 'updatedAt'
 	| 'statsSent'
 	| 'statsDelivered'
@@ -78,6 +79,7 @@ function projectCandidate(c: Doc<'campaigns'>): AttentionCandidate {
 		abTestStatus: c.abTestStatus,
 		abWinner: c.abWinner,
 		contentBlockReason: c.contentBlockReason,
+		startHold: c.startHold,
 		updatedAt: c.updatedAt,
 		statsSent: c.statsSent,
 		statsDelivered: c.statsDelivered,

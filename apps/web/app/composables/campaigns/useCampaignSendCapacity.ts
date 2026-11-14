@@ -37,8 +37,7 @@ export function useCampaignSendCapacity(
 
 	// Warming-aware "this campaign will take ~N days" estimate. The projection
 	// algorithm lives once on the backend (getCampaignSendEstimate); we just feed
-	// it the exact eligible recipient count and keep its structured fields. Its
-	// English `message` is for API readers: the card words the estimate itself.
+	// it the exact eligible recipient count; the card words the estimate itself.
 	// Skips until an exact count is known (factory returns undefined).
 	const { data: sendEstimateRaw } = useOrganizationQuery(
 		api.analytics.reputationQueries.getCampaignSendEstimate,

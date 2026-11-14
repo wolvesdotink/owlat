@@ -12,7 +12,7 @@ import {
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
 import { loadPacedWarmingCapacity } from '../delivery/pacedWarmingCapacity';
-import { MAX_PLAN_DAYS, buildCapacitySchedule } from '../campaigns/capacityPlan';
+import { buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -115,6 +115,8 @@ export const getSendingOverview = authedQuery({
 
 /**
  * Estimate how long a campaign will take to send based on IP warming state.
+ * Structured fields only: the campaign editor words the estimate itself, in
+ * the reader's language.
  */
 // all-members: the campaign wizard's send-duration estimate for editors, who
 // may send campaigns; derived from warm-up capacity only, no org data.
@@ -132,7 +134,6 @@ export const getCampaignSendEstimate = authedQuery({
 				estimatedDays: 1,
 				isTruncated: false,
 				isFullyWarmed: false,
-				message: 'Warming data not available yet. Your emails will be paced automatically.',
 			};
 		}
 
@@ -181,7 +182,6 @@ export const getCampaignSendEstimate = authedQuery({
 				estimatedDays: 1,
 				isTruncated: false,
 				isFullyWarmed: true,
-				message: 'Your IPs are fully warmed. Campaign will send at full speed.',
 			};
 		}
 
@@ -194,7 +194,6 @@ export const getCampaignSendEstimate = authedQuery({
 				estimatedDays: 1,
 				isTruncated: false,
 				isFullyWarmed: false,
-				message: `Campaign fits within today's remaining capacity (${remainingToday.toLocaleString()} emails).`,
 			};
 		}
 
@@ -205,7 +204,6 @@ export const getCampaignSendEstimate = authedQuery({
 				estimatedDays: 1,
 				isTruncated: false,
 				isFullyWarmed: false,
-				message: 'Warming data not available yet. Your emails will be paced automatically.',
 			};
 		}
 
@@ -228,13 +226,8 @@ export const getCampaignSendEstimate = authedQuery({
 				estimatedDays: 1,
 				isTruncated: false,
 				isFullyWarmed: false,
-				message: 'Your emails will be paced automatically against your current warm-up capacity.',
 			};
 		}
-
-		const message = plan.truncated
-			? `Campaign will take approximately ${MAX_PLAN_DAYS}+ days based on current warmup progress.`
-			: `Based on your IP warmup progress, this campaign will take approximately ${plan.days} day${plan.days === 1 ? '' : 's'} to complete.`;
 
 		return {
 			totalDailyCap,
@@ -244,7 +237,6 @@ export const getCampaignSendEstimate = authedQuery({
 			// `estimatedDays` is a floor, not a finish.
 			isTruncated: plan.truncated,
 			isFullyWarmed: false,
-			message,
 		};
 	},
 });

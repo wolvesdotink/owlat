@@ -3,6 +3,12 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { DecoratedRow } from '~/utils/campaignCommandRow';
 import { useLocalized } from '~/composables/useLocalized';
 import { useFormat } from '~/composables/useFormat';
+import { useNow } from '~/composables/useNow';
+import {
+	activeStartHold,
+	startHoldGivesUpAt,
+	startHoldRowMetaKey,
+} from '~/utils/campaignStartHold';
 import { ArrowRightIcon, CopyIcon, MoreVerticalIcon, SplitIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{ row: DecoratedRow }>();
@@ -18,7 +24,9 @@ const emit = defineEmits<{
 const dropdownOpen = ref(false);
 
 const { t, locale } = useI18n();
-const { formatPercentage } = useFormat();
+const { formatPercentage, formatRelativeTime } = useFormat();
+// A held start counts down to when the wait gives up; minutes are enough.
+const now = useNow({ intervalMs: 60_000 });
 const pointsFormat = computed(
 	() => new Intl.NumberFormat(locale.value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 );
@@ -77,6 +85,12 @@ const metaLine = computed(() => {
 		return t(`${meta}.abInProgress`);
 	}
 	if (c.status === 'scheduled') {
+		const hold = activeStartHold(c);
+		if (hold) {
+			return t(startHoldRowMetaKey(hold), {
+				when: formatRelativeTime(startHoldGivesUpAt(hold, now.value)),
+			});
+		}
 		return c.scheduledAt
 			? t(`${meta}.scheduledFor`, { at: formatDateTime(c.scheduledAt) })
 			: t(`${meta}.scheduled`);
@@ -171,7 +185,15 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 							/>
 							{{ message(row.statusBadge.label) }}
 						</span>
-						<span v-if="metaLine" class="text-xs text-text-tertiary truncate">{{ metaLine }}</span>
+						<!-- A scheduled row's line turns into the start gate's wait when it
+						     holds the start, so it is a status region while scheduled. -->
+						<span
+							v-if="metaLine"
+							:role="row.campaign.status === 'scheduled' ? 'status' : undefined"
+							data-testid="campaign-row-meta"
+							class="text-xs text-text-tertiary truncate"
+							>{{ metaLine }}</span
+						>
 					</div>
 				</div>
 

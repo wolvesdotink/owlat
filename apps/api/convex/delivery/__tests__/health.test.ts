@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { rollUpDeliveryHealth, type DeliveryHealthInputs } from '../health';
+import { DELIVERY_HEALTH_REASONS, type DeliveryHealthReason } from '../healthCopy';
 
 /** A fully-healthy baseline: provider configured, all domains verified, low risk. */
 const HEALTHY: DeliveryHealthInputs = {
@@ -9,56 +10,108 @@ const HEALTHY: DeliveryHealthInputs = {
 	mtaInfrastructure: null,
 };
 
+/**
+ * One input per sentence the roll-up can say. The roll-up is printed on
+ * translated surfaces, so every path names a catalog reason, never English.
+ */
+const REASON_PATHS: ReadonlyArray<{
+	inputs: Partial<DeliveryHealthInputs>;
+	level: 'ok' | 'warn' | 'error';
+	reasonCode: DeliveryHealthReason;
+	reasonParams?: Record<string, string>;
+}> = [
+	{ inputs: {}, level: 'ok', reasonCode: 'healthy' },
+	{ inputs: { canSend: false }, level: 'error', reasonCode: 'no_provider' },
+	{
+		inputs: { streamsWithoutTransport: ['transactional'] },
+		level: 'error',
+		reasonCode: 'no_provider_transactional',
+	},
+	{
+		inputs: { streamsWithoutTransport: ['campaign'] },
+		level: 'error',
+		reasonCode: 'no_provider_campaign',
+	},
+	{
+		inputs: { streamsWithoutFeedback: ['campaign'] },
+		level: 'error',
+		reasonCode: 'feedback_missing_campaign',
+	},
+	{
+		inputs: { streamsWithoutFeedback: ['transactional'] },
+		level: 'warn',
+		reasonCode: 'feedback_missing_transactional',
+	},
+	{
+		inputs: {
+			mtaInfrastructure: 'signing_held',
+			heldSigningDomains: ['example.com', 'example.org'],
+		},
+		level: 'error',
+		reasonCode: 'mta_signing_held',
+		reasonParams: { domains: 'example.com, example.org' },
+	},
+	{
+		inputs: { mtaInfrastructure: 'signing_held' },
+		level: 'error',
+		reasonCode: 'mta_signing_held_unnamed',
+	},
+	{ inputs: { mtaInfrastructure: 'degraded' }, level: 'error', reasonCode: 'mta_degraded' },
+	{ inputs: { mtaInfrastructure: 'unreachable' }, level: 'error', reasonCode: 'mta_unreachable' },
+	{ inputs: { mtaInfrastructure: 'stale' }, level: 'warn', reasonCode: 'mta_stale' },
+	{ inputs: { mtaInfrastructure: 'unchecked' }, level: 'warn', reasonCode: 'mta_unchecked' },
+	{ inputs: { sendingIps: 'all_held' }, level: 'error', reasonCode: 'ips_all_held' },
+	{ inputs: { sendingIps: 'some_held' }, level: 'warn', reasonCode: 'ips_some_held' },
+	{
+		inputs: { domainStatuses: ['verified', 'failed'] },
+		level: 'error',
+		reasonCode: 'domain_failed',
+	},
+	{ inputs: { domainStatuses: [] }, level: 'error', reasonCode: 'no_domain' },
+	{
+		inputs: { domainStatuses: ['pending', 'registering'] },
+		level: 'error',
+		reasonCode: 'no_verified_domain',
+	},
+	{
+		inputs: { domainStatuses: ['verified', 'pending'] },
+		level: 'warn',
+		reasonCode: 'domain_pending',
+	},
+	{ inputs: { transactionalSender: 'missing' }, level: 'error', reasonCode: 'sender_missing' },
+	{
+		inputs: { transactionalSender: 'unverified' },
+		level: 'error',
+		reasonCode: 'sender_unverified',
+	},
+	{ inputs: { isWarmupHalted: true }, level: 'warn', reasonCode: 'warmup_halted' },
+	{ inputs: { reputationRisk: 'critical' }, level: 'error', reasonCode: 'reputation_critical' },
+	{ inputs: { reputationRisk: 'high' }, level: 'warn', reasonCode: 'reputation_high' },
+	{ inputs: { reputationRisk: 'medium' }, level: 'warn', reasonCode: 'reputation_medium' },
+];
+
 describe('rollUpDeliveryHealth', () => {
-	it('is ok when every dimension is healthy', () => {
-		const r = rollUpDeliveryHealth(HEALTHY);
-		expect(r.level).toBe('ok');
+	it.each(REASON_PATHS)('names $reasonCode as a code ($level)', (path) => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, ...path.inputs })).toEqual({
+			level: path.level,
+			reasonCode: path.reasonCode,
+			...(path.reasonParams ? { reasonParams: path.reasonParams } : {}),
+		});
+	});
+
+	it('reaches every reason in the catalog, and no other', () => {
+		const reached = new Set(REASON_PATHS.map((path) => path.reasonCode));
+		expect([...reached].sort()).toEqual([...DELIVERY_HEALTH_REASONS].sort());
+	});
+
+	it('returns no English sentence for a client to print', () => {
+		for (const path of REASON_PATHS) {
+			expect(rollUpDeliveryHealth({ ...HEALTHY, ...path.inputs })).not.toHaveProperty('reason');
+		}
 	});
 
 	it('treats no-activity reputation (null) as ok', () => {
 		expect(rollUpDeliveryHealth({ ...HEALTHY, reputationRisk: null }).level).toBe('ok');
-	});
-
-	// --- provider dimension ---
-	it('errors when no provider is configured', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, canSend: false });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/provider/i);
-	});
-
-	// --- built-in MTA infrastructure dimension ---
-	it('errors when campaign bounce reports cannot come back, and only warns for transactional', () => {
-		const campaign = rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutFeedback: ['campaign'] });
-		expect(campaign.level).toBe('error');
-		expect(campaign.reason).toMatch(/campaigns are refused/);
-		expect(
-			rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutFeedback: ['transactional'] }).level
-		).toBe('warn');
-	});
-
-	it('errors when the MTA infrastructure is degraded', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, mtaInfrastructure: 'degraded' });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/infrastructure/i);
-	});
-
-	it('warns when the MTA health snapshot is stale', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, mtaInfrastructure: 'stale' });
-		expect(r.level).toBe('warn');
-		expect(r.reason).toMatch(/stale/i);
-	});
-
-	// --- domain dimension ---
-	it('errors on a failed domain', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['verified', 'failed'] });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/domain/i);
-	});
-
-	it('warns on a pending domain', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['verified', 'pending'] });
-		expect(r.level).toBe('warn');
-		expect(r.reason).toMatch(/verified yet/i);
 	});
 
 	it('warns on a registering domain next to a verified one', () => {
@@ -67,55 +120,19 @@ describe('rollUpDeliveryHealth', () => {
 		).toBe('warn');
 	});
 
-	// Going live needs a verified domain, as the Delivery page's readiness panel
-	// says, so the dot can't be green while that panel reads "Not ready to send".
-	it('errors with zero configured domains', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: [] });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/no sending domain is set up/i);
-	});
-
-	it('errors when no domain is verified yet', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, domainStatuses: ['pending', 'registering'] });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/no sending domain is verified/i);
-	});
-
-	// --- reputation dimension ---
-	it('errors on critical reputation', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, reputationRisk: 'critical' });
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/reputation/i);
-	});
-
-	it('warns on high reputation risk', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, reputationRisk: 'high' }).level).toBe('warn');
-	});
-
-	it('warns on medium reputation risk', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, reputationRisk: 'medium' }).level).toBe('warn');
+	it('treats ready sending IPs as ok', () => {
+		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'ready' }).level).toBe('ok');
 	});
 
 	// --- worst-of across dimensions ---
-	it('takes the worst level across all three inputs', () => {
-		// warn reputation + error domain -> error overall
+	it('takes the worst level across all inputs', () => {
 		const r = rollUpDeliveryHealth({
 			reputationRisk: 'high',
 			domainStatuses: ['failed'],
 			canSend: true,
 			mtaInfrastructure: null,
 		});
-		expect(r.level).toBe('error');
-	});
-
-	it('surfaces a warn when the only issue is a pending domain', () => {
-		const r = rollUpDeliveryHealth({
-			reputationRisk: 'low',
-			domainStatuses: ['verified', 'pending'],
-			canSend: true,
-			mtaInfrastructure: null,
-		});
-		expect(r.level).toBe('warn');
+		expect(r).toEqual({ level: 'error', reasonCode: 'domain_failed' });
 	});
 
 	it('resolves same-severity ties to the provider first (most actionable)', () => {
@@ -126,38 +143,6 @@ describe('rollUpDeliveryHealth', () => {
 			canSend: false,
 			mtaInfrastructure: null,
 		});
-		expect(r.level).toBe('error');
-		expect(r.reason).toMatch(/provider/i);
-	});
-
-	// --- per-stream dimensions the readiness panel shares ---
-	it('errors when one enabled stream has no transport of its own', () => {
-		const r = rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutTransport: ['transactional'] });
-		expect(r).toEqual({
-			level: 'error',
-			reason: 'No delivery provider is configured for transactional mail',
-		});
-	});
-
-	it('errors when the transactional default sender is missing or unverified', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, transactionalSender: 'missing' }).level).toBe(
-			'error'
-		);
-		expect(rollUpDeliveryHealth({ ...HEALTHY, transactionalSender: 'unverified' }).level).toBe(
-			'error'
-		);
-	});
-
-	it('errors when every sending IP is held and warns when only some are', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'all_held' }).level).toBe('error');
-		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'some_held' }).level).toBe('warn');
-		expect(rollUpDeliveryHealth({ ...HEALTHY, sendingIps: 'ready' }).level).toBe('ok');
-	});
-
-	it('warns on a halted warm-up', () => {
-		expect(rollUpDeliveryHealth({ ...HEALTHY, isWarmupHalted: true })).toEqual({
-			level: 'warn',
-			reason: 'IP warm-up is halted',
-		});
+		expect(r).toEqual({ level: 'error', reasonCode: 'no_provider' });
 	});
 });

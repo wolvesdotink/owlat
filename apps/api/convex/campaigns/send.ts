@@ -146,7 +146,15 @@ export const startCampaignSend = internalAction({
 			const start = await ctx.runQuery(internal.campaigns.startGate.checkScheduledStart, {
 				campaignId: args.campaignId,
 			});
-			if (start.kind === 'hold') return skip(start.reason);
+			if (start.kind === 'hold') {
+				if (start.hold) {
+					await ctx.runMutation(internal.campaigns.startGate.recordScheduledStartHold, {
+						campaignId: args.campaignId,
+						hold: start.hold,
+					});
+				}
+				return skip(start.reason);
+			}
 			if (start.kind === 'refuse') {
 				await ctx.runMutation(internal.campaigns.startGate.refuseScheduledStart, {
 					campaignId: args.campaignId,

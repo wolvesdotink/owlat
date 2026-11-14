@@ -190,6 +190,9 @@ export function reduce(
 	}
 
 	const patch = buildPatch(campaign, input, from);
+	// A recorded start wait belongs to the `scheduled` state it was written in:
+	// starting, refusing, rescheduling or cancelling all end it.
+	if (campaign.startHold) patch['startHold'] = undefined;
 	const effects: Effect[] = [
 		{
 			kind: 'audit_log',

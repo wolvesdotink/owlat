@@ -315,7 +315,7 @@ const activeAutomationId = computed(
 					<span class="truncate">{{
 						healthLevel === 'ok'
 							? t('components.shell.marketing.deliveryHealthy')
-							: (healthReason ?? t('components.shell.marketing.deliveryNeedsAttention'))
+							: healthReason || t('components.shell.marketing.deliveryNeedsAttention')
 					}}</span>
 				</NuxtLink>
 			</UiTooltip>

@@ -8,7 +8,7 @@
  * renders from a real verdict.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, type Ref } from 'vue';
 import ReadinessPanel from '../ReadinessPanel.vue';
 import StreamVerdict from '../StreamVerdict.vue';
@@ -19,6 +19,10 @@ import {
 	type StreamTransportFacts,
 } from '~/utils/deliveryReadiness';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { DESKTOP_SITE_URL, onDesktop } from '~/__tests__/desktopRuntimeFixture';
+
+const openExternal = vi.hoisted(() => vi.fn(async (_url: string) => undefined));
+vi.mock('@owlat/desktop/src/shell', () => ({ openExternal }));
 
 const state = {
 	readiness: ref(null) as Ref<DeliveryReadiness | null>,
@@ -154,5 +158,42 @@ describe('ReadinessPanel', () => {
 		expect(wrapper.find('[data-testid="stream-verdict-transactional"]').exists()).toBe(false);
 		await wrapper.find('[data-testid="query-error"] button').trigger('click');
 		expect(state.retry).toHaveBeenCalledOnce();
+	});
+});
+
+describe('ReadinessPanel in the desktop app', () => {
+	const noTransport = (): DeliveryReadiness =>
+		readinessFor({
+			transportConfigured: false,
+			streamTransport: {
+				transactional: { canSend: false, providerLabels: [], usesOwnMta: false },
+				marketing: { canSend: false, providerLabels: [], usesOwnMta: false },
+			},
+		});
+
+	it("opens the instance's transport page in the browser instead of the editor it cannot run", async () => {
+		onDesktop();
+		openExternal.mockClear();
+		state.readiness.value = noTransport();
+		const wrapper = mount(ReadinessPanel, { global });
+
+		// No in-app link to the transport editor, from a verdict or a gate.
+		expect(wrapper.find('a[href="/dashboard/admin/delivery/transport"]').exists()).toBe(false);
+		const setUp = wrapper
+			.findAll('button')
+			.filter((button) => button.text().includes('opens in your browser'));
+		expect(setUp.length).toBeGreaterThan(0);
+
+		await setUp[0]!.trigger('click');
+		await flushPromises();
+		expect(openExternal).toHaveBeenCalledWith(
+			`${DESKTOP_SITE_URL}/dashboard/admin/delivery/transport`
+		);
+	});
+
+	it('keeps the in-app link in the browser', () => {
+		state.readiness.value = noTransport();
+		const wrapper = mount(ReadinessPanel, { global });
+		expect(wrapper.find('a[href="/dashboard/admin/delivery/transport"]').exists()).toBe(true);
 	});
 });

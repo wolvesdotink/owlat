@@ -174,6 +174,8 @@ export const reschedule = campaignsMutation({
 			scheduledAt: args.scheduledAt,
 			...pickSchedulingOptions(args),
 			...(args.sendTimeOptimization !== undefined ? { sendTimeOptimization } : {}),
+			// A wait the start gate recorded was for the old start.
+			...(campaign.startHold ? { startHold: undefined } : {}),
 			updatedAt: Date.now(),
 		});
 

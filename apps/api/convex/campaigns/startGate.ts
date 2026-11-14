@@ -13,7 +13,9 @@
  *    circuit, or a built-in mail server that cannot deliver right now). The
  *    campaign stays `scheduled`; the per-minute scheduler tick re-enters
  *    `startCampaignSend`, which asks again, for at most
- *    {@link SCHEDULED_START_MAX_WAIT_MS} past the scheduled time.
+ *    {@link SCHEDULED_START_MAX_WAIT_MS} past the scheduled time. The wait is
+ *    recorded on the campaign (`startHold`), so its pages say it is waiting
+ *    instead of showing a start time in the past.
  *  - refuse: the cause needs a person (a deleted template, an unverified
  *    domain, a suspended account), or a hold outlasted its wait. The campaign
  *    goes back to `draft` with the refusal stored on it, the editor shows the
@@ -21,7 +23,7 @@
  *    Fixing the cause and scheduling or sending it again clears the refusal.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -29,7 +31,10 @@ import { getLive } from '../lib/softDelete';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { isGlobalBreakerOpenState } from '../lib/sendProviders/routeInputs';
-import { campaignStartRefusalValidator } from '../lib/validators/campaigns';
+import {
+	campaignStartHoldValidator,
+	campaignStartRefusalValidator,
+} from '../lib/validators/campaigns';
 import { transitionCampaign } from './lifecycle';
 import { validateReadyToSend, type PreflightResult } from './preflight';
 import { preflightMessageKey, type PreflightFailureReason } from './refusalCopy';
@@ -52,9 +57,12 @@ const TRANSIENT_REASONS: ReadonlySet<PreflightFailureReason> = new Set(['mail_se
 const DELIVERY_ON_HOLD_MESSAGE =
 	'The scheduled campaign did not start: delivery stayed on hold (the sending safety circuit was open) for the whole wait after its start time. Check delivery health, then schedule it again.';
 
+export type CampaignStartHold = Infer<typeof campaignStartHoldValidator>;
+
 export type ScheduledStartDecision =
 	| { kind: 'proceed' }
-	| { kind: 'hold'; reason: string }
+	/** `hold` is absent when there is nothing to wait for (the campaign moved on). */
+	| { kind: 'hold'; reason: string; hold?: CampaignStartHold }
 	| { kind: 'refuse'; refusal: CampaignStartRefusal };
 
 type PreflightFailure = Extract<PreflightResult, { ok: false }>;
@@ -74,6 +82,10 @@ function storedRefusal(
 	};
 }
 
+function startHold(reason: PreflightFailureReason, scheduledAt: number): CampaignStartHold {
+	return { reason, scheduledAt, givesUpAt: scheduledAt + SCHEDULED_START_MAX_WAIT_MS };
+}
+
 /**
  * Pure: the fire-time decision for a due scheduled campaign, from its
  * pre-flight result and whether delivery is held org-wide.
@@ -88,13 +100,21 @@ export function decideScheduledStart(input: {
 	const isWaitOver = now - scheduledAt >= SCHEDULED_START_MAX_WAIT_MS;
 	if (!preflight.ok) {
 		if (TRANSIENT_REASONS.has(preflight.reason) && !isWaitOver) {
-			return { kind: 'hold', reason: `Waiting for delivery: ${preflight.message}` };
+			return {
+				kind: 'hold',
+				reason: `Waiting for delivery: ${preflight.message}`,
+				hold: startHold(preflight.reason, scheduledAt),
+			};
 		}
 		return { kind: 'refuse', refusal: storedRefusal(preflight, scheduledAt, now) };
 	}
 	if (isDeliveryOnHold) {
 		if (!isWaitOver) {
-			return { kind: 'hold', reason: 'Waiting for delivery: the sending safety circuit is open' };
+			return {
+				kind: 'hold',
+				reason: 'Waiting for delivery: the sending safety circuit is open',
+				hold: startHold('delivery_on_hold', scheduledAt),
+			};
 		}
 		return {
 			kind: 'refuse',
@@ -173,5 +193,28 @@ export const refuseScheduledStart = internalMutation({
 			LIFECYCLE_USER_START_GATE
 		);
 		return { refused: outcome.ok };
+	},
+});
+
+/**
+ * Record that the gate is holding this start. Written once per hold reason,
+ * not on every per-minute tick, and never bumps `updatedAt` (the hold is not
+ * an edit). A no-op when the campaign moved on since the check.
+ */
+export const recordScheduledStartHold = internalMutation({
+	args: { campaignId: v.id('campaigns'), hold: campaignStartHoldValidator },
+	handler: async (ctx, args): Promise<null> => {
+		const campaign = await getLive(ctx, args.campaignId);
+		if (!campaign || !isStillThatStart(campaign, args.hold.scheduledAt)) return null;
+		const current = campaign.startHold;
+		if (
+			current?.reason === args.hold.reason &&
+			current.scheduledAt === args.hold.scheduledAt &&
+			current.givesUpAt === args.hold.givesUpAt
+		) {
+			return null;
+		}
+		await ctx.db.patch(args.campaignId, { startHold: args.hold });
+		return null;
 	},
 });

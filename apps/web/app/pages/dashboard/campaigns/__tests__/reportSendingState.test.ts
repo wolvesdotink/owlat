@@ -114,6 +114,29 @@ describe('campaign report while the send is still pending', () => {
 		expect(wrapper.text()).not.toContain('No earlier campaign to compare with');
 	});
 
+	it('says a start held past its time is waiting, why, and until when', () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(SCHEDULED_AT + 60 * 60 * 1000);
+		const wrapper = mountReport({
+			_id: CAMPAIGN_ID,
+			name: 'Weekly digest #34',
+			status: 'scheduled',
+			scheduledAt: SCHEDULED_AT,
+			startHold: {
+				reason: 'delivery_on_hold',
+				scheduledAt: SCHEDULED_AT,
+				givesUpAt: SCHEDULED_AT + 6 * 60 * 60 * 1000,
+			},
+			isABTest: false,
+		});
+
+		const status = wrapper.find('[data-testid="start-waiting"]');
+		expect(status.attributes('role')).toBe('status');
+		expect(status.text()).toContain('sending safety circuit is open');
+		expect(status.text()).toContain('in 5 hours');
+		expect(wrapper.text()).toContain('Waiting to start');
+	});
+
 	it('reads as in-flight while sending', () => {
 		const wrapper = mountReport({
 			_id: CAMPAIGN_ID,

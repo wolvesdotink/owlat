@@ -211,6 +211,29 @@ describe('campaigns.scheduling.reschedule', () => {
 		expect(newScheduledAt).toBeGreaterThan(future - 24 * HOUR);
 	});
 
+	it("clears the start gate's recorded wait for the old start", async () => {
+		const t = setupTest();
+		const oldStart = Date.now() + 2 * HOUR;
+		const campaignId = await seedSchedulableCampaign(t, { scheduledAt: oldStart });
+		await t.run(async (ctx) => {
+			await ctx.db.patch(campaignId, {
+				startHold: {
+					reason: 'delivery_on_hold',
+					scheduledAt: oldStart,
+					givesUpAt: oldStart + 6 * HOUR,
+				},
+			});
+		});
+
+		await t.mutation(api.campaigns.scheduling.reschedule, {
+			campaignId,
+			scheduledAt: Date.now() + 48 * HOUR,
+		});
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(campaignId));
+		expect(campaign?.startHold).toBeUndefined();
+	});
+
 	it('queues the 15-minute reminder for the new start', async () => {
 		// The scheduler turns the reminder's delay back into a timestamp with its
 		// own Date.now(); hold the clock still so both reads agree to the

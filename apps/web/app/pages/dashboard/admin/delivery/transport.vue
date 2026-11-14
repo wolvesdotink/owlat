@@ -9,6 +9,8 @@ import {
 } from '~/utils/providerFeedbackPanel';
 import { transportKindLabel } from '~/utils/transportState';
 import { useLocalized } from '~/composables/useLocalized';
+import { useInstanceTransportPage } from '~/composables/useInstanceTransportPage';
+import InstanceTransportNotice from '~/components/delivery/InstanceTransportNotice.vue';
 import { CheckIcon, CloseIcon, ServerIcon, ServerOffIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -37,6 +39,10 @@ const {
 } = useOrganizationQuery(api.delivery.status.getStatus);
 
 const canSend = computed(() => status.value?.canSend === true);
+
+// The desktop app has no server routes, so the editor's test and apply steps
+// cannot run there; it points to the instance's own page instead.
+const { isDesktop } = useInstanceTransportPage();
 
 // Provider feedback loop -----------------------------------------------------
 // WHICH panel (if any) this transport's feedback channel needs, and where the
@@ -239,10 +245,12 @@ const inboundHeadingId = useId();
 				     credentials in place, tested and applied through the same env-patch
 				     the setup wizard uses. The status cards stay the read-only summary. -->
 				<DeliveryTransportEditor
+					v-if="!isDesktop"
 					:current-provider="status.provider"
 					:current-outbound-tls-mode="status.outboundTlsMode"
 					@applied="refetchStatus"
 				/>
+				<InstanceTransportNotice v-else />
 
 				<!-- The follow-up to a change, not a second way to make it: once a relay
 				     is the active provider, walk the live send test, DNS alignment and

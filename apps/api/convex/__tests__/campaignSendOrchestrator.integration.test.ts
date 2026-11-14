@@ -747,7 +747,8 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 	it('an open safety circuit at fire time holds the start, which later sends exactly once', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupWalker(t, 3);
-		await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+		const scheduledAt = Date.now() - 60_000;
+		await makeScheduled(t, data.campaignId, scheduledAt);
 		await openDeliveryCircuit(t);
 
 		const held = await t.action(internal.campaigns.send.startCampaignSend, {
@@ -758,6 +759,12 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 		const waiting = await t.run(async (ctx) => ctx.db.get(data.campaignId));
 		expect(waiting?.status).toBe('scheduled');
 		expect(waiting?.startRefusal).toBeUndefined();
+		// The wait is on the campaign, so its pages can say why it has not started.
+		expect(waiting?.startHold).toEqual({
+			reason: 'delivery_on_hold',
+			scheduledAt,
+			givesUpAt: scheduledAt + SCHEDULED_START_MAX_WAIT_MS,
+		});
 		expect(await getJob(t, data.campaignId)).toBeNull();
 
 		await closeDeliveryCircuit(t);
@@ -769,6 +776,41 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 
 		expect((await getJob(t, data.campaignId))?.phase).toBe('done');
 		expect(await countSends(t, data.campaignId)).toBe(3);
+		// Started: the wait is over and no page still reports it.
+		expect((await t.run(async (ctx) => ctx.db.get(data.campaignId)))?.startHold).toBeUndefined();
+	});
+
+	it('a second held tick leaves the recorded wait as it is', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+		await openDeliveryCircuit(t);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		const first = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		const second = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(second?.startHold).toEqual(first?.startHold);
+		expect(second?.updatedAt).toBe(first?.updatedAt);
+	});
+
+	it('unscheduling a waiting campaign clears its recorded wait', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		await makeScheduled(t, data.campaignId, Date.now() - 60_000);
+		await openDeliveryCircuit(t);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		await t.mutation(internal.campaigns.lifecycle.transition, {
+			campaignId: data.campaignId,
+			input: { to: 'draft', at: Date.now() },
+			userId: 'test-user',
+		});
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.startHold).toBeUndefined();
 	});
 
 	it('a mail server that cannot deliver holds the start rather than refusing it outright', async () => {
@@ -790,7 +832,9 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 				campaignId: data.campaignId,
 			});
 			expect(held.reason).toMatch(/waiting for delivery/i);
-			expect((await t.run(async (ctx) => ctx.db.get(data.campaignId)))?.status).toBe('scheduled');
+			const waiting = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+			expect(waiting?.status).toBe('scheduled');
+			expect(waiting?.startHold?.reason).toBe('mail_server_not_ready');
 
 			// The same server, still down once the wait is over: now it is a refusal.
 			await makeScheduled(t, data.campaignId, Date.now() - SCHEDULED_START_MAX_WAIT_MS - 60_000);
@@ -839,6 +883,26 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 			messageKey: PREFLIGHT_MESSAGE_KEYS.delivery_on_hold.default,
 		});
 		expect(await countSends(t, data.campaignId)).toBe(0);
+	});
+
+	it('a wait that ends in a refusal leaves only the refusal on the campaign', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		const scheduledAt = Date.now() - 60_000;
+		await makeScheduled(t, data.campaignId, scheduledAt);
+		await openDeliveryCircuit(t);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		// The wait runs out with the circuit still open (a fresh signal).
+		vi.setSystemTime(scheduledAt + SCHEDULED_START_MAX_WAIT_MS + 60_000);
+		await closeDeliveryCircuit(t);
+		await openDeliveryCircuit(t);
+
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		const campaign = await t.run(async (ctx) => ctx.db.get(data.campaignId));
+		expect(campaign?.status).toBe('draft');
+		expect(campaign?.startRefusal?.reason).toBe('delivery_on_hold');
+		expect(campaign?.startHold).toBeUndefined();
 	});
 });
 
