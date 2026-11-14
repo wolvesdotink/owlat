@@ -13,12 +13,11 @@
  * normalization of the address key, or a suppressed recipient leaks through one
  * path while another blocks it.
  *
- * A FOURTH read does not come through here: `delivery/worker.ts` re-reads the
+ * A FOURTH read is the worker's last gate: `delivery/worker.ts` re-reads the
  * blocklist through `delivery/marketingDispatchGate.ts` immediately before
- * dispatching a MARKETING envelope (campaign or automation step), to catch an
- * address blocked between resolution/intake and the worker running. It
- * normalizes through the same `findBlockedByEmail`, so it agrees with this
- * module by construction.
+ * dispatching a campaign, automation or transactional envelope, to catch an
+ * address blocked between resolution/intake and the worker running. It calls
+ * `isSuppressed` with the scope the envelope was admitted under.
  *
  * AND SEVERAL SEND PATHS DO NOT GATE AT ALL, which is worth knowing before
  * trusting this list to be exhaustive: system mail (`maintenance/systemMail.ts` — auth mail,
@@ -47,6 +46,8 @@ import { normalizeEmail } from './inputGuards';
 import { isMarketingOnlyBlockReason } from '../delivery/suppressionMirror';
 import type { BlockReason } from './literalValidators';
 import { scheduleSuppressionMirror } from '../delivery/suppressionMirrorScheduler';
+import { isSuppressionExpired } from '@owlat/shared/softBounceSuppression';
+import { supersedesBlockedRow, writeBlockedRow } from '../blockedEmails/lookup';
 
 /**
  * WHAT KIND OF MAIL is being gated.
@@ -69,7 +70,9 @@ import { scheduleSuppressionMirror } from '../delivery/suppressionMirrorSchedule
 export type SuppressionScope = 'marketing' | 'transactional';
 
 /**
- * Is `rawEmail` on the suppression list for `scope`? Normalizes the address to
+ * Is `rawEmail` on the suppression list for `scope`? A soft-bounce row counts
+ * only until it expires (`@owlat/shared/softBounceSuppression`, the rule the
+ * MTA mirror applies too); every other reason never expires. Normalizes the address to
  * the same lowercase+trim key the blocklist stores, then does a single
  * `by_email` point read. The point read is the right shape for the per-send gate
  * (one recipient per call); use {@link loadSuppressedAmong} for a page of
@@ -84,7 +87,7 @@ export async function isSuppressed(
 		.query('blockedEmails')
 		.withIndex('by_email', (q) => q.eq('email', normalizeEmail(rawEmail)))
 		.first();
-	if (blocked === null) return false;
+	if (blocked === null || isSuppressionExpired(blocked, Date.now())) return false;
 	if ((options?.scope ?? 'marketing') === 'transactional') {
 		return !isMarketingOnlyBlockReason(blocked.reason);
 	}
@@ -110,6 +113,7 @@ export async function loadSuppressedAmong(
 	rawEmails: Iterable<string>
 ): Promise<ReadonlySet<string>> {
 	const keys = new Set<string>();
+	const now = Date.now();
 	for (const raw of rawEmails) keys.add(normalizeEmail(raw));
 	const hits = await Promise.all(
 		[...keys].map(async (email) => {
@@ -117,7 +121,7 @@ export async function loadSuppressedAmong(
 				.query('blockedEmails')
 				.withIndex('by_email', (q) => q.eq('email', email))
 				.first();
-			return row === null ? null : email;
+			return row === null || isSuppressionExpired(row, now) ? null : email;
 		})
 	);
 	return new Set(hits.filter((email): email is string => email !== null));
@@ -143,7 +147,10 @@ export async function loadSuppressionSet(
 	ctx: QueryCtx | MutationCtx
 ): Promise<ReadonlySet<string>> {
 	const records = await ctx.db.query('blockedEmails').collect(); // bounded: suppression list, one per blocked address
-	return new Set(records.map((b) => normalizeEmail(b.email)));
+	const now = Date.now();
+	return new Set(
+		records.filter((b) => !isSuppressionExpired(b, now)).map((b) => normalizeEmail(b.email))
+	);
 }
 
 /**
@@ -157,7 +164,9 @@ export async function loadSuppressionSet(
  * IDEMPOTENT AND NEVER DESTRUCTIVE. An address already on the list is left
  * exactly as it is and `null` is returned: an existing `bounced` /
  * `complained` row carries stronger evidence than any later hygiene decision,
- * and downgrading it would be data loss. Suppression here only ever INSERTS.
+ * and downgrading it would be data loss. The one row that yields is a
+ * soft-bounce row that expired or that the new reason outlasts
+ * (`supersedesBlockedRow`).
  *
  * THE MIRROR IS SKIPPED FOR MARKETING-ONLY REASONS. The MTA's suppression list
  * is the LAST HOP — it sits under Convex and blocks everything, transactional
@@ -186,9 +195,9 @@ export async function suppressEmail(
 		.query('blockedEmails')
 		.withIndex('by_email', (q) => q.eq('email', normalized))
 		.first();
-	if (existing) return null;
+	if (existing && !supersedesBlockedRow(existing, args, args.now ?? Date.now())) return null;
 
-	const blockedEmailId = await ctx.db.insert('blockedEmails', {
+	const blockedEmailId = await writeBlockedRow(ctx, existing, {
 		email: normalized,
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),
@@ -246,8 +255,11 @@ export async function loadSuppressionSetBounded(
 	const records = await ctx.db.query('blockedEmails').take(bound + 1);
 	const truncated = records.length > bound;
 	const kept = truncated ? records.slice(0, bound) : records;
+	const now = Date.now();
 	return {
-		blockedEmails: new Set(kept.map((b) => normalizeEmail(b.email))),
+		blockedEmails: new Set(
+			kept.filter((b) => !isSuppressionExpired(b, now)).map((b) => normalizeEmail(b.email))
+		),
 		truncated,
 		rowsRead: records.length,
 	};

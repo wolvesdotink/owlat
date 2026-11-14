@@ -90,10 +90,9 @@ export function reduceBounced(
 	const recipientAtFault = args.bounceCause !== 'sender';
 
 	// ── Per-recipient soft-bounce counter + suppress-after-N escalation ──────
-	// Increment on every soft bounce; escalate to the blocklist exactly once,
-	// at the moment the running count first reaches the threshold. Hardening a
-	// soft bounce blocklists via the hard path below, so it does not also
-	// trip the soft escalation.
+	// Increment on every soft bounce; escalate to the blocklist once the running
+	// count reaches the threshold. Hardening a soft bounce blocklists via the
+	// hard path below, so it does not also trip the soft escalation.
 	if (!isHard && recipientAtFault && recipientContact) {
 		const newCount = (recipientContact.softBounceCount ?? 0) + 1;
 		effects.push({
@@ -101,7 +100,10 @@ export function reduceBounced(
 			contactId: recipientContact._id,
 			count: newCount,
 		});
-		if (newCount === SOFT_BOUNCE_SUPPRESSION_THRESHOLD) {
+		// Also on every soft bounce after it: an active soft-bounce row absorbs the
+		// repeat, and an expired one is renewed (effects.ts), so a mailbox that is
+		// still full after the block lapsed is blocked again.
+		if (newCount >= SOFT_BOUNCE_SUPPRESSION_THRESHOLD) {
 			effects.push({
 				kind: 'blocklist_insert',
 				email: contactEmail,

@@ -11344,7 +11344,9 @@
 					"dateAdded": "Hinzugefügt am",
 					"email": "E-Mail-Adresse",
 					"notes": "Notizen",
-					"reason": "Grund"
+					"reason": "Grund",
+					"softBounceExpired": "Vorübergehender Bounce, abgelaufen am {date}: blockiert nicht mehr",
+					"softBounceExpires": "Vorübergehender Bounce, läuft ab am {date}"
 				},
 				"title": "Unterdrückungen",
 				"toasts": {

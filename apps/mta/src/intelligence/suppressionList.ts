@@ -17,6 +17,7 @@
 import type Redis from 'ioredis';
 import { normalizeEmail } from '@owlat/shared';
 import { isRecord } from '@owlat/shared/utils/guards';
+import { SOFT_BOUNCE_SUPPRESSION_TTL_MS } from '@owlat/shared/softBounceSuppression';
 import { logger } from '../monitoring/logger.js';
 import { expireIfDue } from './suppressionExpiry.js';
 import {
@@ -36,8 +37,8 @@ export {
 
 export type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'manual';
 
-/** Default TTL for soft-bounce suppressions (7 days) */
-const SOFT_BOUNCE_TTL_SECONDS = 7 * 86400;
+/** Default TTL for soft-bounce suppressions: the same window the Convex blocklist applies. */
+const SOFT_BOUNCE_TTL_SECONDS = SOFT_BOUNCE_SUPPRESSION_TTL_MS / 1000;
 
 /**
  * The reasons that are evidence about a mailbox rather than a policy choice

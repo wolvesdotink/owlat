@@ -7,6 +7,8 @@ import {
 	suppressionProvenanceLine,
 } from '~/utils/suppressionProvenance';
 import { useLocalized } from '~/composables/useLocalized';
+import { suppressionExpiresAt } from '@owlat/shared/softBounceSuppression';
+import { formatDateTime } from '~/utils/formatters';
 import { TrashIcon } from '@coolicons/vue';
 
 /**
@@ -55,6 +57,19 @@ const provenanceFor = (blockedEmailId: string): string | null => {
 // parameter is the closed `BlockReason` union, so the lookup is total: a fifth
 // schema literal fails the build instead of silently rendering as "manual".
 const presentation = (reason: BlockReason) => suppressionReasonPresentation(reason);
+
+// A soft bounce (a full or unavailable mailbox) blocks for a while and then
+// lapses, on the same rule every send path applies; say when, so a row that no
+// longer blocks is not read as a live block.
+const expiryLine = (row: SuppressionRow): string | null => {
+	const expiresAt = suppressionExpiresAt(row);
+	if (expiresAt === null) return null;
+	const key =
+		expiresAt <= Date.now()
+			? 'dashboard.audience.suppressions.table.softBounceExpired'
+			: 'dashboard.audience.suppressions.table.softBounceExpires';
+	return t(key, { date: formatDateTime(expiresAt) });
+};
 </script>
 
 <template>
@@ -128,6 +143,13 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 						]"
 					>
 						{{ t(presentation(blockedEmail.reason).label) }}
+					</span>
+					<span
+						v-if="expiryLine(blockedEmail)"
+						class="mt-1 block text-xs text-text-tertiary"
+						data-testid="suppression-expiry"
+					>
+						{{ expiryLine(blockedEmail) }}
 					</span>
 				</td>
 				<td class="px-6 py-4 hidden md:table-cell">

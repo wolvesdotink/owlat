@@ -14,18 +14,16 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { isSuppressed, loadSuppressionSet } from '../lib/suppression';
+import { isSuppressed, loadSuppressionSet, suppressEmail } from '../lib/suppression';
+import { SOFT_BOUNCE_SUPPRESSION_TTL_MS } from '@owlat/shared/softBounceSuppression';
 import { normalizeEmail } from '../lib/inputGuards';
 
 const modules = import.meta.glob('../**/*.*s');
 
 /** Insert a `blockedEmails` row. The blocklist stores normalized addresses. */
-async function block(
-	t: ReturnType<typeof convexTest>,
-	email: string,
-): Promise<void> {
+async function block(t: ReturnType<typeof convexTest>, email: string): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('blockedEmails', {
 			email,
@@ -121,5 +119,66 @@ describe('loadSuppressionSet', () => {
 		const t = convexTest(schema, modules);
 		const size = await t.run(async (ctx) => (await loadSuppressionSet(ctx)).size);
 		expect(size).toBe(0);
+	});
+});
+
+describe('soft-bounce expiry', () => {
+	const T0 = Date.UTC(2026, 10, 1, 9, 0, 0);
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function seedBounces(t: ReturnType<typeof convexTest>): Promise<void> {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('blockedEmails', {
+				email: 'full@example.com',
+				reason: 'bounced',
+				bounceType: 'soft',
+				createdAt: T0,
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'gone@example.com',
+				reason: 'bounced',
+				bounceType: 'hard',
+				createdAt: T0,
+			});
+		});
+	}
+
+	it('a soft-bounce block stops blocking after the window, a hard bounce does not', async () => {
+		vi.useFakeTimers({ now: T0 });
+		const t = convexTest(schema, modules);
+		await seedBounces(t);
+		const blocked = (email: string) =>
+			t.run((ctx) => isSuppressed(ctx, email, { scope: 'transactional' }));
+
+		vi.setSystemTime(T0 + SOFT_BOUNCE_SUPPRESSION_TTL_MS - 1);
+		expect(await blocked('full@example.com')).toBe(true);
+
+		vi.setSystemTime(T0 + SOFT_BOUNCE_SUPPRESSION_TTL_MS);
+		expect(await blocked('full@example.com')).toBe(false);
+		expect(await blocked('gone@example.com')).toBe(true);
+		const set = await t.run(async (ctx) => [...(await loadSuppressionSet(ctx))]);
+		expect(set).toEqual(['gone@example.com']);
+	});
+
+	it('a complaint replaces an active soft-bounce row instead of being dropped', async () => {
+		vi.useFakeTimers({ now: T0 });
+		const t = convexTest(schema, modules);
+		await seedBounces(t);
+
+		await t.run((ctx) => suppressEmail(ctx, { email: 'full@example.com', reason: 'complained' }));
+
+		vi.setSystemTime(T0 + 2 * SOFT_BOUNCE_SUPPRESSION_TTL_MS);
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_email', (q) => q.eq('email', 'full@example.com'))
+				.collect()
+		);
+		expect(rows.map((r) => [r.reason, r.bounceType])).toEqual([['complained', undefined]]);
+		expect(
+			await t.run((ctx) => isSuppressed(ctx, 'full@example.com', { scope: 'transactional' }))
+		).toBe(true);
 	});
 });
