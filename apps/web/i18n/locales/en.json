@@ -7826,6 +7826,7 @@
 					"emailClicked": "Email clicked",
 					"emailComplained": "Email complained",
 					"emailDelivered": "Email delivered",
+					"emailFailed": "Email failed",
 					"emailOpened": "Email opened",
 					"emailSent": "Email sent",
 					"test": "Test",
@@ -8550,6 +8551,11 @@
 						"needsAttention": "Your mail needs attention. Follow the next verified setup step below.",
 						"ready": "Your mail setup is verified and ready.",
 						"readyWithRecommended": "Your mail is deliverable. {count} recommended improvement available. | Your mail is deliverable. {count} recommended improvements available."
+					},
+					"bounceFeedback": {
+						"title": "Bounces and complaints cannot reach Owlat",
+						"detail": "{variables} is not set, so every bounce and complaint report is rejected and nothing is suppressed. Campaigns are refused until it is set; transactional mail still goes out.",
+						"action": "Open the delivery provider"
 					}
 				},
 				"dmarc": {
@@ -9924,7 +9930,8 @@
 					"toggleArchivesOperation": "Toggle campaign archives",
 					"unsavedChanges": "You have unsaved changes",
 					"verifiedLabel": "Verified:",
-					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again."
+					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again.",
+					"unverifiedFromDomain": "{domain} is not a verified sending domain yet. You can save this address, but automation emails, inbox replies, double opt-in confirmations and transactional mail from it are refused until the domain is verified."
 				},
 				"index": {
 					"applyChanges": "Apply changes",
@@ -11837,6 +11844,10 @@
 					"sendConfirm": {
 						"description": "This sends to {count} recipient(s) immediately and can't be undone.",
 						"title": "Send campaign now?"
+					},
+					"startRefused": {
+						"title": "This campaign did not start",
+						"description": "It was scheduled for {date} and went back to draft for this reason. Fix it, then schedule or send the campaign again."
 					},
 					"test": {
 						"button": "Send test",
@@ -16474,7 +16485,12 @@
 				},
 				"transport": {
 					"action": "Set up sending",
+					"actionFeedback": "Set the webhook secret",
 					"configured": "A delivery transport is configured, so mail has a way out.",
+					"feedbackMissing": {
+						"marketing": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set. Campaigns stay blocked until it is, so addresses that bounce or complain are suppressed.",
+						"transactional": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set, so addresses that bounce or complain are never suppressed."
+					},
 					"missing": "No transport is configured yet, so nothing can be sent.",
 					"missingFor": {
 						"marketing": "No transport is configured for campaigns, so they can't go out.",
@@ -18948,6 +18964,11 @@
 				"body": "{domain}: {check} check failed",
 				"bodyNoCheck": "{domain}: a DNS check failed",
 				"private": "A DNS check of a sending domain failed"
+			},
+			"campaignNotStarted": {
+				"title": "Scheduled campaign did not start",
+				"body": "{name} is back in draft. Open it to see why",
+				"private": "A scheduled campaign is back in draft. Open it to see why"
 			}
 		},
 		"useDesktopNotifications": {
@@ -19240,6 +19261,10 @@
 				"emailDelivered": {
 					"description": "When an email is delivered",
 					"label": "Email delivered"
+				},
+				"emailFailed": {
+					"description": "When an email cannot be sent and will not be retried",
+					"label": "Email failed"
 				},
 				"emailOpened": {
 					"description": "When an email is opened",
@@ -19651,6 +19676,7 @@
 			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
 			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",
 			"capacityTruncated": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it would take more than {maxDays} days to reach everyone. Send it in stages, or reduce the audience.",
+			"deliveryOnHold": "Delivery stayed on hold for the whole wait after the scheduled time, because the sending safety circuit was open. Check delivery health, then schedule the campaign again.",
 			"domainInvalidAddress": "\"{email}\" is not a valid sender address. Choose another sender.",
 			"domainMissing": "\"{domain}\" is not a sending domain on this workspace yet. Add and verify it before you send.",
 			"domainUnverified": "\"{domain}\" is not verified yet. Finish its DNS verification before you send.",
@@ -19660,7 +19686,11 @@
 				"senders": "Open campaign senders",
 				"transport": "Set up sending"
 			},
+			"mailServerAllIpsHeld": "Every campaign sending IP of the built-in mail server is held back (a blocklist, PTR or SPF problem). Fix the held IPs, then send again.",
+			"mailServerPort25Blocked": "The built-in mail server cannot reach other mail servers on port 25 from any campaign sending IP. Many hosting providers block port 25 until you ask them to open it.",
+			"mailServerUnreachable": "The built-in mail server is not answering its health check, so campaign mail would only wait in its queue. Check the mail server, then send again.",
 			"noAudience": "Choose who gets this campaign before you send it.",
+			"noBounceFeedback": "Bounces and complaints cannot reach Owlat because {variables} is not set, so addresses that bounce or complain would never be suppressed. Set it on the delivery provider page, then send again.",
 			"noDeliveryProvider": "Sending is not set up yet: campaign mail has no delivery provider. A connected mailbox does not send campaigns.",
 			"noFromEmail": "Choose who this campaign sends from before you send it.",
 			"noTemplate": "Choose the email this campaign sends before you send it.",

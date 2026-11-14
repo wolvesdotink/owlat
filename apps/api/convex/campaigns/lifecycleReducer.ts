@@ -11,7 +11,7 @@
  * machine reads in one place.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { AuditAction } from '../lib/auditLog';
 import { defineLifecycle } from '../lib/lifecycle';
@@ -20,6 +20,7 @@ import {
 	type SendTimeOptimizationSettings,
 } from '../lib/validators/sendTime';
 import type { MarketingNoticeEvent } from '../lib/validators/marketingNotifications';
+import { campaignStartRefusalValidator } from '../lib/validators/campaigns';
 import { CAMPAIGN_FINISHED_SETTLE_MS, campaignReminderDelayMs } from '../marketing/noticeEvents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -47,11 +48,18 @@ export type CampaignTransitionInput =
 			at: number;
 			/** Only set on `sending → draft` content-blocked path. */
 			contentBlockReason?: string;
+			/**
+			 * Only set on `scheduled → draft` when the scheduled start was given
+			 * up (`campaigns/startGate.ts`): stored on the campaign and announced.
+			 */
+			startRefusal?: CampaignStartRefusal;
 	  }
 	| { to: 'cancelled'; at: number }
 	| { to: 'sending'; at: number }
 	| { to: 'sent'; at: number }
 	| { to: 'pending_review'; at: number };
+
+export type CampaignStartRefusal = Infer<typeof campaignStartRefusalValidator>;
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -69,6 +77,7 @@ export const transitionInputValidator = v.union(
 		to: v.literal('draft'),
 		at: v.number(),
 		contentBlockReason: v.optional(v.string()),
+		startRefusal: v.optional(campaignStartRefusalValidator),
 	}),
 	v.object({ to: v.literal('cancelled'), at: v.number() }),
 	v.object({ to: v.literal('sending'), at: v.number() }),
@@ -215,6 +224,16 @@ export function reduce(
 				delayMs: reminderDelayMs,
 			});
 		}
+	} else if (input.to === 'draft' && input.startRefusal !== undefined && from === 'scheduled') {
+		effects.push({
+			kind: 'notify_marketing',
+			event: {
+				kind: 'campaign_not_started',
+				campaignId: campaign._id,
+				refusedAt: input.startRefusal.refusedAt,
+			},
+			delayMs: 0,
+		});
 	} else if (input.to === 'sent') {
 		effects.push({
 			kind: 'notify_marketing',
@@ -320,6 +339,9 @@ function buildAuditDetails(
 	if (input.to === 'draft' && input.contentBlockReason !== undefined) {
 		return { ...base, contentBlockReason: input.contentBlockReason };
 	}
+	if (input.to === 'draft' && input.startRefusal !== undefined) {
+		return { ...base, startRefusalReason: input.startRefusal.reason };
+	}
 	return base;
 }
 
@@ -340,6 +362,8 @@ function buildPatch(
 				// Written every time, like `useRecipientTimezone`, so scheduling
 				// without it clears a choice left over from an earlier schedule.
 				sendTimeOptimization: input.sendTimeOptimization,
+				// A new start supersedes the one that did not happen.
+				...(campaign.startRefusal ? { startRefusal: undefined } : {}),
 				updatedAt,
 			};
 		case 'draft': {
@@ -352,6 +376,9 @@ function buildPatch(
 			}
 			if (input.contentBlockReason !== undefined) {
 				patch['contentBlockReason'] = input.contentBlockReason;
+			}
+			if (input.startRefusal !== undefined && from === 'scheduled') {
+				patch['startRefusal'] = input.startRefusal;
 			}
 			return patch;
 		}
@@ -390,6 +417,7 @@ function buildPatch(
 				statsUnsubscribed: 0,
 				// Clear any prior block reason on re-send.
 				...(campaign.contentBlockReason ? { contentBlockReason: undefined } : {}),
+				...(campaign.startRefusal ? { startRefusal: undefined } : {}),
 				updatedAt,
 			};
 		case 'sent':

@@ -276,6 +276,72 @@ describe('scheduled campaign reminder', () => {
 	});
 });
 
+describe('scheduled campaign that did not start', () => {
+	const refusal = (refusedAt: number) => ({
+		reason: 'domain_not_verified',
+		messageKey: 'shared.campaignRefusal.domainMissing',
+		messageParams: { domain: 'example.com' },
+		message: 'Cannot send campaign: domain "example.com" is not verified.',
+		scheduledAt: NOW - MINUTE,
+		refusedAt,
+	});
+
+	it('is queued when the start is given up, and reaches everyone who may schedule', async () => {
+		const t = await harness();
+		const campaignId = await seedCampaign(t, { status: 'scheduled', scheduledAt: NOW - MINUTE });
+		await t.mutation(internal.campaigns.startGate.refuseScheduledStart, {
+			campaignId,
+			refusal: refusal(NOW),
+		});
+
+		const event = { kind: 'campaign_not_started', campaignId, refusedAt: NOW } as const;
+		expect((await queuedFanOuts(t)).map((job) => job.event)).toContainEqual(event);
+		expect(await fanOut(t, event)).toEqual({ written: 3 });
+
+		as('editor-1');
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([
+			expect.objectContaining({
+				kind: 'campaign_not_started',
+				name: 'Autumn launch',
+				url: `/dashboard/campaigns/${campaignId}/edit`,
+			}),
+		]);
+	});
+
+	it('goes stale once the campaign is scheduled again', async () => {
+		const t = await harness();
+		const campaignId = await seedCampaign(t, { status: 'scheduled', scheduledAt: NOW - MINUTE });
+		await t.mutation(internal.campaigns.startGate.refuseScheduledStart, {
+			campaignId,
+			refusal: refusal(NOW),
+		});
+		await fanOut(t, { kind: 'campaign_not_started', campaignId, refusedAt: NOW });
+
+		await t.mutation(internal.campaigns.lifecycle.transition, {
+			campaignId,
+			input: { to: 'scheduled', at: NOW, scheduledAt: NOW + 2 * HOUR },
+			userId: 'admin-1',
+		});
+
+		as('editor-1');
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
+	});
+
+	it('does not undo a newer decision: a refusal for an older start changes nothing', async () => {
+		const t = await harness();
+		const campaignId = await seedCampaign(t, { status: 'scheduled', scheduledAt: NOW + HOUR });
+
+		expect(
+			await t.mutation(internal.campaigns.startGate.refuseScheduledStart, {
+				campaignId,
+				refusal: refusal(NOW),
+			})
+		).toEqual({ refused: false });
+		const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+		expect(campaign?.status).toBe('scheduled');
+	});
+});
+
 describe('delivery hold', () => {
 	async function applySnapshot(t: T, appliedAt: number, breaker: boolean) {
 		const organizationId = await t.run((ctx) => getSingletonOrganizationId(ctx));

@@ -70,6 +70,8 @@ interface Observed {
 	isDeferralCounted: boolean;
 	/** Completion follow-ups, `<name>@<delay from NOW>`. */
 	jobs: string[];
+	/** Customer webhook events the completion fanned out. */
+	webhookEvents: string[];
 	thrown: string | null;
 }
 
@@ -118,6 +120,9 @@ async function complete(
 			jobs: scheduled
 				.filter((job) => /retrySend|expireUnconfirmedAcceptance/.test(job.name))
 				.map((job) => `${job.name.split(':').pop()}@${job.scheduledTime - NOW}`),
+			webhookEvents: scheduled
+				.filter((job) => job.name === 'webhooks/deliveryQueries:enqueueFanoutDeliveries')
+				.map((job) => String((job.args[0] as { event: string }).event)),
 			thrown,
 		};
 	});
@@ -319,6 +324,23 @@ describe('applyCompletion — deferred', () => {
 			errorCode: 'MTA_UNREACHABLE',
 			errorMessage: expect.stringMatching(/mail server could not be reached/i),
 			jobs: [],
+		});
+	});
+
+	it('emits no webhook for a send that is held and will be retried', async () => {
+		const observed = await complete({}, deferred('governed', { hold: 'mta_unreachable' }));
+		expect(observed).toMatchObject({ status: 'queued', webhookEvents: [] });
+	});
+
+	it('emits one email.failed when the hold outlives the deadline', async () => {
+		const observed = await complete(
+			{},
+			deferred('local', { startedAt: EXPIRED, hold: 'routing_policy' })
+		);
+		expect(observed).toMatchObject({
+			status: 'failed',
+			errorCode: 'DELIVERY_HOLD_EXPIRED',
+			webhookEvents: ['email.failed'],
 		});
 	});
 

@@ -1,13 +1,20 @@
 <script setup lang="ts">
 // The alerts above the campaign editor's form: a screening block that sent the
-// campaign back to draft, the last save's error, what stops the campaign from
-// going out, and the scheduled-send notice with Unschedule and Cancel. Several
-// roots, so each alert stays a direct child of the form's spaced column.
-import type { SendBlocker } from '~/lib/campaignRefusal';
+// campaign back to draft, a scheduled start that did not happen, the last
+// save's error, what stops the campaign from going out, and the scheduled-send
+// notice with Unschedule and Cancel. Several roots, so each alert stays a
+// direct child of the form's spaced column.
+import {
+	blockerFromStartRefusal,
+	type SendBlocker,
+	type StoredStartRefusal,
+} from '~/lib/campaignRefusal';
 import { CircleWarningIcon, ClockIcon, ShieldWarningIcon } from '@coolicons/vue';
 
-defineProps<{
+const props = defineProps<{
 	contentBlockReason?: string;
+	/** Why the last scheduled start did not happen; the campaign is a draft again. */
+	startRefusal?: StoredStartRefusal | null;
 	saveError: string | null | undefined;
 	isScheduled: boolean;
 	scheduledAt?: number;
@@ -19,7 +26,14 @@ defineProps<{
 
 const emit = defineEmits<{ unschedule: []; cancel: [] }>();
 
-const { t } = useI18n();
+const { t, te, locale } = useI18n();
+
+const startRefusalBlocker = computed(() =>
+	props.startRefusal ? blockerFromStartRefusal(props.startRefusal, (key) => te(key)) : null
+);
+const startRefusalDate = computed(() =>
+	props.startRefusal ? new Date(props.startRefusal.scheduledAt).toLocaleString(locale.value) : ''
+);
 </script>
 
 <template>
@@ -40,6 +54,26 @@ const { t } = useI18n();
 			<p class="text-xs text-text-tertiary mt-1">
 				{{ contentBlockReason }}
 			</p>
+		</div>
+	</div>
+	<!-- A scheduled start that did not happen: the stored refusal, in place. -->
+	<div
+		v-if="startRefusal && startRefusalBlocker"
+		role="alert"
+		class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
+		data-testid="start-refused-notice"
+	>
+		<ClockIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
+		<div class="min-w-0 flex-1 space-y-2">
+			<p class="text-sm font-medium text-text-primary">
+				{{ t('dashboard.campaigns.detail.edit.startRefused.title') }}
+			</p>
+			<p class="text-sm text-text-secondary">
+				{{
+					t('dashboard.campaigns.detail.edit.startRefused.description', { date: startRefusalDate })
+				}}
+			</p>
+			<CampaignsSendBlockedNote :blocker="startRefusalBlocker" />
 		</div>
 	</div>
 	<!-- Error Alert -->

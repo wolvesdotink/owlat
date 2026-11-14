@@ -14,6 +14,7 @@
  *     wide `.collect()` on the path.
  */
 
+import { verifySendingDomain } from '../../__tests__/helpers/verifiedSendingDomain';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as CellRoute from '../../lib/sendProviders/cellRoute';
@@ -980,6 +981,7 @@ describe('sendAssignments — campaign write path', () => {
 describe('sendAssignments — non-campaign write path', () => {
 	it('records the automation stream for an automation step send', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 
 		const outcome = await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 			kind: 'automation' as const,
@@ -1001,6 +1003,7 @@ describe('sendAssignments — non-campaign write path', () => {
 
 	it('records the transactional stream and the route table for the agent-reply message type', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		// The `transactional` route table names the SMTP relay; the recorded
 		// transport must come from THAT resolution, through the health-free cell
 		// seam — not from whatever the intake's own route resolution selected.

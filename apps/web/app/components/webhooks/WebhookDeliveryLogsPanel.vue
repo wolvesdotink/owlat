@@ -97,6 +97,7 @@ const EVENT_LABEL_KEYS: Record<string, string> = {
 	'email.clicked': 'components.webhooks.webhookDeliveryLogsPanel.events.emailClicked',
 	'email.bounced': 'components.webhooks.webhookDeliveryLogsPanel.events.emailBounced',
 	'email.complained': 'components.webhooks.webhookDeliveryLogsPanel.events.emailComplained',
+	'email.failed': 'components.webhooks.webhookDeliveryLogsPanel.events.emailFailed',
 	'contact.created': 'components.webhooks.webhookDeliveryLogsPanel.events.contactCreated',
 	'topic.unsubscribed': 'components.webhooks.webhookDeliveryLogsPanel.events.topicUnsubscribed',
 };

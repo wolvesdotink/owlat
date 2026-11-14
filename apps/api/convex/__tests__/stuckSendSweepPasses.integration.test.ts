@@ -47,7 +47,9 @@ describe('one pass at a time', () => {
 		at(T0 + HOUR);
 		const result = await t.mutation(internal.delivery.stuckSendSweep.sweepLostSends, {});
 		expect(result).toMatchObject({ started: ['transactionalSends'], busy: ['emailSends'] });
-		const pages = await pendingPages(t);
+		const pages = (await pendingPages(t)).filter(
+			(job) => (job.args[0] as { mode: string }).mode === 'deadline'
+		);
 		expect(pages.map((job) => (job.args[0] as { table: string }).table)).toEqual([
 			'transactionalSends',
 		]);
@@ -76,7 +78,9 @@ describe('one pass at a time', () => {
 		const leases = await t.run(async (ctx) => await ctx.db.query('lostSendSweepLeases').collect());
 		expect(leases.map((lease) => [lease.pass, lease.generation, lease.isActive]).sort()).toEqual([
 			['emailSends:deadline', 5, false],
+			['emailSends:no_feedback', 1, false],
 			['transactionalSends:deadline', 1, false],
+			['transactionalSends:no_feedback', 1, false],
 		]);
 	});
 

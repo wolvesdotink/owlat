@@ -118,6 +118,11 @@ describe('presentNativeMarketingNotice', () => {
 	it.each([
 		['campaign_finished', 'Secret launch', 'A campaign has finished sending'],
 		['campaign_reminder', 'Secret launch', 'Open it to review or cancel the send'],
+		[
+			'campaign_not_started',
+			'Secret launch',
+			'A scheduled campaign is back in draft. Open it to see why',
+		],
 		['automation_stalled', 'Secret flow', 'Contacts stalled in an automation'],
 		['automation_paused', 'Secret flow', 'An automation paused itself after repeated failed runs'],
 		['domain_dns', 'secret.example.com', 'A DNS check of a sending domain failed'],

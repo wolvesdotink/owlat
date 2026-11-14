@@ -14,6 +14,7 @@ import {
 	requestBody,
 	requiredString,
 } from './common';
+import { TRANSACTIONAL_SEND_STATUSES } from './types';
 
 /**
  * A language tag such as `en`, `de` or `en-US`, either letter case. An empty
@@ -104,10 +105,44 @@ export const sendTransactionalResponseSchema = z.strictObject({
 	email: z.string(),
 	transactionalEmailId: z.string().meta({
 		description:
-			'ID of the send record created for this email, not the template ID. Delivery webhooks carry it.',
+			'ID of the send created for this email, not the template ID. Every email.* webhook for this send carries it as sendId, and GET /api/v1/transactional/{sendId} reads its status.',
 	}),
-	slug: z.string(),
+	slug: z.string().meta({
+		description: 'Slug of the template used, also when the request named it by ID.',
+	}),
 	contactId: z.string().optional(),
 	contactCreated: z.boolean(),
 	language: z.string(),
+});
+
+const timestamp = (step: string) =>
+	z
+		.string()
+		.nullable()
+		.meta({ description: `ISO 8601 timestamp of when the send ${step}; null until then.` });
+
+export const transactionalSendStatusSchema = z.strictObject({
+	sendId: z.string().meta({
+		description: 'The ID the send call answered with as transactionalEmailId.',
+	}),
+	status: z.enum(TRANSACTIONAL_SEND_STATUSES),
+	email: z.string(),
+	templateId: z.string().nullable(),
+	slug: z.string().nullable(),
+	language: z.string().nullable(),
+	queuedAt: timestamp('was queued'),
+	sentAt: timestamp('was handed to the provider'),
+	deliveredAt: timestamp('was accepted by the receiving server'),
+	openedAt: timestamp('was first opened'),
+	clickedAt: timestamp('had its first link clicked'),
+	bouncedAt: timestamp('bounced'),
+	complainedAt: timestamp('drew a spam complaint'),
+	failedAt: timestamp('failed for good'),
+	bounceType: z.enum(['hard', 'soft']).nullable(),
+	errorCode: z.string().nullable().meta({
+		description: 'Stable code of the failure, for example MTA_UNREACHABLE. Null unless failed.',
+	}),
+	errorMessage: z.string().nullable().meta({
+		description: 'Human-readable reason of the failure. Null unless failed.',
+	}),
 });

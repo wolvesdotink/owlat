@@ -1,6 +1,6 @@
 import type { Doc } from '../../_generated/dataModel';
 import { transportOutcomeEffect, type Effect } from './effects';
-import { contactEmailOf } from './lookups';
+import { contactEmailOf, sendIdentityOf } from './lookups';
 import { sendTimeGroupOf } from './sendTimeEffects';
 import type { EmailSendDoc, SendRef, SendStatus, TransactionalSendDoc } from './types';
 
@@ -111,7 +111,7 @@ export function reduceDeliveryObservation(
 		kind: 'customer_webhook',
 		spec: {
 			literal: 'email.delivered',
-			input: { email: contactEmailOf(send), at },
+			input: { email: contactEmailOf(send), identity: sendIdentityOf(send, ref), at },
 		},
 	});
 

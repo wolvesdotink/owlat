@@ -3,7 +3,7 @@
  *
  * Single place that reads the provider-route config + provider-health
  * snapshots from the DB and runs the pure `resolveRoute` dispatcher. Both
- * the action send paths (via the `resolveSendRoute` internal query) and the
+ * the action send paths (via the `resolveSendRouteOrHold` internal query) and the
  * transactional intake mutation (via the `resolveSendRouteFromDb` helper,
  * reading in-transaction through `ctx.db`) share this so the lookup +
  * health-map + fallback sequence lives in one spot.
@@ -277,27 +277,22 @@ export async function resolveSendRouteOrHoldFromDb(
 
 /**
  * Internal query wrapper for action callers (which can only reach the DB via
- * `ctx.runQuery`). Folds the route lookup, the provider-health read, and the
- * caller-side `resolveRoute` into one round-trip.
+ * `ctx.runQuery`): {@link resolveSendRouteOrHoldFromDb} in one round-trip. A
+ * transient refusal comes back as its deferral code rather than a throw,
+ * because a throw crossing the action boundary loses its class and leaves the
+ * caller (the campaign page hop) dead instead of holding.
  */
-export const resolveSendRoute = internalQuery({
+export const resolveSendRouteOrHold = internalQuery({
 	args: {
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
-		baseOnly: v.optional(v.boolean()),
-		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
-		sendId: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
-		return await resolveSendRouteFromDb(ctx, args.messageType, {
-			to: args.to,
-			from: args.from,
-			baseOnly: args.baseOnly,
-			forceRelayReason: args.forceRelayReason,
-			sendId: args.sendId,
-		});
-	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> =>
+		await resolveSendRouteOrHoldFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
 });
 
 /**
@@ -416,7 +411,7 @@ export const resolveLastMileRoutePlan = internalQuery({
 		// The durable Send id, so the dispatch-time resolution replays the arm
 		// the enqueue transaction recorded (see `SendRouteAddressContext`).
 		sendId: v.optional(v.string()),
-		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
+		// No clock argument, deliberately — the sibling `resolveSendRouteOrHold` exposes
 		// none either. `now` lives on the …FromDb helper for tests, which call it
 		// directly; accepting one over the wire would let a backdated value revive
 		// a TTL-expired return-path verdict.

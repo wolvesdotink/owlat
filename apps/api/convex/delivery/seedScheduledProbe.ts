@@ -58,7 +58,7 @@ import { checkEmailDomainVerification } from '../domains/domains';
 import { utcDayKey } from '../lib/clock';
 import { getOptional } from '../lib/env';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
-import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
+import { resolveSendRouteOrHoldFromDb } from '../lib/sendProviders/route';
 import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 import { newSeedProbeId } from './seedShadowCopy';
 import { enqueueUntrackedProbe } from './governedEnqueue';
@@ -193,12 +193,16 @@ async function probeStream(
 	// this path uses. Resolving it once per stream rather than per seed is safe:
 	// the address context only steers the per-recipient mix, and a probe set is
 	// one measurement of one cell, not a per-seed experiment.
-	const route = await resolveSendRouteFromDb(ctx, args.stream, {
+	const { route } = await resolveSendRouteOrHoldFromDb(ctx, args.stream, {
 		to: firstSeed.address,
 		from: args.from,
 	});
 	// No configured provider is a supported configuration, not an error: the real
-	// stream cannot send either, so there is nothing to measure.
+	// stream cannot send either, so there is nothing to measure. A routing hold
+	// (an open safety circuit) skips the stream the same way: the stream's real
+	// mail is held too, and a throw here would roll back every probe this page
+	// already wrote and stop the sweep before it reschedules. The cadence guard
+	// above lets the next tick probe the stream once the hold lifts.
 	if (!route) return 0;
 
 	const message = buildScheduledSeedProbeMessage(args.stream, args.now);

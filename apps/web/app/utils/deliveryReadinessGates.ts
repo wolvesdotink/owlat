@@ -45,7 +45,9 @@ function transportGates(input: ReadinessInput): ReadinessGate[] {
 		first !== undefined &&
 		second !== undefined &&
 		facts[first].canSend === facts[second].canSend &&
-		transportLabel(facts[first]) === transportLabel(facts[second])
+		transportLabel(facts[first]) === transportLabel(facts[second]) &&
+		!hasMissingFeedback(facts[first]) &&
+		!hasMissingFeedback(facts[second])
 	) {
 		return [
 			{
@@ -57,11 +59,41 @@ function transportGates(input: ReadinessInput): ReadinessGate[] {
 	return streams.map((stream) => ({
 		...transportGate({ ...input, transportConfigured: facts[stream].canSend }),
 		...(facts[stream].canSend
-			? {}
+			? feedbackGateFields(stream, facts[stream])
 			: { detail: `shared.deliveryReadiness.gates.transport.missingFor.${stream}` }),
 		streams: [stream],
 		transport: transportLabel(facts[stream]),
 	}));
+}
+
+function hasMissingFeedback(facts: StreamTransportFacts): boolean {
+	return (facts.feedbackMissing?.length ?? 0) > 0;
+}
+
+/**
+ * A transport that sends but cannot receive bounce and complaint reports: its
+ * webhook key is unset, so the verifier rejects every report and nothing is
+ * ever suppressed. Campaigns are refused in that state (bulk mail to addresses
+ * that bounced is what gets a sender blocklisted), so it blocks marketing;
+ * transactional mail keeps flowing and is only warned about.
+ */
+function feedbackGateFields(
+	stream: MailStream,
+	facts: StreamTransportFacts
+): Partial<ReadinessGate> {
+	if (!hasMissingFeedback(facts)) return {};
+	const isMarketing = stream === 'marketing';
+	return {
+		detail: {
+			key: `shared.deliveryReadiness.gates.transport.feedbackMissing.${stream}`,
+			params: { variables: (facts.feedbackMissing ?? []).join(', ') },
+		},
+		status: 'attention',
+		tone: isMarketing ? 'error' : 'warning',
+		actionHref: READINESS_TRANSPORT_HREF,
+		actionLabel: 'shared.deliveryReadiness.gates.transport.actionFeedback',
+		isBlocking: isMarketing,
+	};
 }
 
 /** The transport gate: reads the same `canSend` the send path itself uses. */

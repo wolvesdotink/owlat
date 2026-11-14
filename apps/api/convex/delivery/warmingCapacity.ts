@@ -10,12 +10,13 @@
  * Two rules govern everything here:
  *
  *  - NEVER report zero for something we could not measure.
- *    Missing state, stale state, no active campaign IPs, or an effectively
- *    unbounded (graduated) pool all answer `null` — "capacity unknown" — and
- *    every caller maps that onto "allow the send".
+ *    Missing state, stale state, no active IP campaign mail could leave from,
+ *    or an effectively unbounded (graduated) pool all answer `null` —
+ *    "capacity unknown" — and every caller maps that onto "allow the send".
  *  - STATE THE BOUND HONESTLY. The projection is the PUBLISHED BASE
  *    SCHEDULE walked at ONE schedule day per calendar day, summed over the
- *    active campaign IPs. That is not an upper bound in general, and this file
+ *    IPs campaign mail leaves from (`campaignIps`). That is not an upper bound
+ *    in general, and this file
  *    does not claim one. The error runs in BOTH directions, and each direction
  *    is deliberate:
  *
@@ -44,6 +45,8 @@
  *    here", never as "zero beyond here".
  */
 
+import { campaignSendingIps } from '@owlat/shared/campaignIpPool';
+import { normalizeIpAddress } from '@owlat/shared/ipAddress';
 import { getWarmingCapForDay } from '@owlat/shared/warming';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -104,6 +107,37 @@ export interface WarmingCapacityProjection {
 	byDay: number[];
 }
 
+/**
+ * The warming rows of the IPs campaign mail leaves from, by the MTA's own rule
+ * (`campaignSendingIps`): the active campaign-pool IPs, or the active
+ * transactional-pool IPs it borrows when none is active. Pool membership comes
+ * from the synced `pools` lists when the MTA reports them, because a row's own
+ * `pool` names only the first pool of an address that serves both; older rows
+ * fall back to that label.
+ */
+function campaignIps(warmingState: Doc<'warmingState'>): {
+	rows: WarmingIp[];
+	isBorrowed: boolean;
+} {
+	const key = (ip: string) => normalizeIpAddress(ip) ?? ip;
+	const rows = new Map(warmingState.ips.map((row) => [key(row.ip), row]));
+	const pools = warmingState.pools
+		? {
+				campaign: warmingState.pools.campaign.map(key),
+				transactional: warmingState.pools.transactional.map(key),
+			}
+		: {
+				campaign: warmingState.ips
+					.filter((row) => row.pool === 'campaign')
+					.map((row) => key(row.ip)),
+				transactional: warmingState.ips
+					.filter((row) => row.pool === 'transactional')
+					.map((row) => key(row.ip)),
+			};
+	const { ips, isBorrowed } = campaignSendingIps(pools, (ip) => rows.get(ip)?.active === true);
+	return { rows: [...new Set(ips)].flatMap((ip) => rows.get(ip) ?? []), isBorrowed };
+}
+
 /** Sum of per-IP headroom, floored per IP so one over-sent IP cannot eat another's. */
 function sumRemainingToday(campaignIps: readonly WarmingIp[]): number {
 	let remainingToday = 0;
@@ -119,8 +153,8 @@ function sumRemainingToday(campaignIps: readonly WarmingIp[]): number {
  * Project sendable campaign volume per day. Returns `null` whenever capacity
  * is UNKNOWN or effectively unbounded.
  *
- * ONE population throughout: active IPs in the CAMPAIGN pool, every one of
- * them placeable on the warming schedule. Index 0 (today's remainder) is summed
+ * ONE population throughout: the IPs campaign mail leaves from
+ * (`campaignIps`), every one of them placeable on the warming schedule. Index 0 (today's remainder) is summed
  * per-IP over that SAME list rather than taken from `warmingState.totalDailyCap`
  * / `totalSentToday` — those roll up every campaign-pool IP regardless of
  * `active` (`packages/mta-protocol/src/ipReputation.ts` has no `active` test), so a
@@ -164,16 +198,19 @@ export async function loadWarmingCapacity(
 		return null;
 	}
 
+	const { rows: sendingIps, isBorrowed } = campaignIps(warmingState);
+	if (sendingIps.length === 0) return null;
 	// Graduated deployments have no warming cap at all — nothing to bind against.
-	if (warmingState.phase === 'graduated') return null;
-
-	const campaignIps = warmingState.ips.filter((ip) => ip.active && ip.pool === 'campaign');
-	if (campaignIps.length === 0) return null;
+	// The overall phase is rolled up from the CAMPAIGN pool's rows only, so it
+	// says nothing about borrowed transactional IPs: a deployment with no
+	// campaign IP reports `graduated` while those are still warming. Borrowed IPs
+	// are judged by their own phases below.
+	if (!isBorrowed && warmingState.phase === 'graduated') return null;
 	// Any graduated campaign IP ⇒ effectively unbounded capacity (see above).
-	if (campaignIps.some((ip) => ip.phase === 'graduated')) return null;
+	if (sendingIps.some((ip) => ip.phase === 'graduated')) return null;
 
 	// One unplaceable IP makes the whole population unprojectable (see above).
-	if (campaignIps.some((ip) => !Number.isFinite(ip.currentDay))) return null;
+	if (sendingIps.some((ip) => !Number.isFinite(ip.currentDay))) return null;
 
 	// Whole UTC days between now and the anchor. Clock skew (an anchor in the
 	// past, a non-finite anchor) collapses to 0 — i.e. "starts today".
@@ -184,7 +221,7 @@ export async function loadWarmingCapacity(
 			: 0;
 
 	// Today's remainder over the SAME population index k>0 projects.
-	const remainingToday = sumRemainingToday(campaignIps);
+	const remainingToday = sumRemainingToday(sendingIps);
 
 	const byDay: number[] = [];
 	// Only today's slice is partially consumed; every later day is whole.
@@ -196,7 +233,7 @@ export async function loadWarmingCapacity(
 	) {
 		let projected = 0;
 		let unbounded = false;
-		for (const ip of campaignIps) {
+		for (const ip of sendingIps) {
 			const cap = getWarmingCapForDay(Math.floor(ip.currentDay) + day);
 			if (!Number.isFinite(cap)) {
 				unbounded = true;

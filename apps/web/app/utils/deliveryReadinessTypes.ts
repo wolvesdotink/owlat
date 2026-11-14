@@ -59,6 +59,11 @@ export interface StreamTransportFacts {
 	providerLabels: readonly string[];
 	/** Whether the built-in MTA is one of them, so its gates apply. */
 	usesOwnMta: boolean;
+	/**
+	 * The unset webhook keys that keep bounce and complaint reports for this
+	 * type out; empty or absent when reports can arrive.
+	 */
+	feedbackMissing?: readonly string[];
 }
 
 /** The built-in MTA's health, classified as the Delivery health roll-up does. */

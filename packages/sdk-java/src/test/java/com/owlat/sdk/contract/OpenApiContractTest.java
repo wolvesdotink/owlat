@@ -27,6 +27,7 @@ import com.owlat.sdk.model.topic.RemoveFromTopicResponse;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.owlat.sdk.model.transactional.SendTransactionalResponse;
 import com.owlat.sdk.model.transactional.TransactionalAttachment;
+import com.owlat.sdk.model.transactional.TransactionalSendStatus;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -121,6 +122,9 @@ class OpenApiContractTest {
                                 .url("https://owlat.example/terms.pdf").build())
                         .build(), RequestOptions.idempotencyKey("order-1001-confirmation")),
                 type(SendTransactionalResponse.class), false));
+        calls.put("getTransactionalSend", new Call(
+                owlat -> owlat.transactional().get("k57s3nd00000000000000000000000"),
+                type(TransactionalSendStatus.class), false));
         calls.put("addContactToTopic", new Call(
                 owlat -> owlat.topics().addContact(
                         AddToTopicParams.builder(TOPIC_ID).email("ada@example.com").contactId(CONTACT_ID).build()),
