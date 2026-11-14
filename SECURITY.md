@@ -130,6 +130,8 @@ Convex-side rate limits _are_ in place for:
 - Mail authentication (`apps/api/convex/mail/authRateLimit.ts`)
 - IMAP per-(IP, address) (`apps/imap/src/rateLimit.ts`)
 - Webhook ingestion (`publicRateLimit.checkPublicRateLimit`)
+- Transactional send volume: per template and recipient, and per API key
+  per UTC day (`apps/api/convex/transactional/sendCaps.ts`)
 - Form submissions
 
 If you add a new public Convex `httpAction`, run it through

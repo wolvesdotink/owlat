@@ -2748,6 +2748,9 @@
 				"afterEvent": "{duration} nach {event}",
 				"clickedLinks": "Geklickte Links",
 				"dataVariables": "Datenvariablen",
+				"dataVariablesHidden": "Werte sind ausgeblendet. Nur Inhaber und Admins können sie sehen.",
+				"dataVariablesRedacted": "Werte wurden nach Ablauf der Aufbewahrungsfrist entfernt. Die Namen zeigen, was die Anfrage mitgeschickt hat.",
+				"dataVariablesRemovedAfter": "Werte werden nach dem {date} entfernt.",
 				"duration": {
 					"days": "{days} Tg.",
 					"daysHours": "{days} Tg. {hours} Std.",

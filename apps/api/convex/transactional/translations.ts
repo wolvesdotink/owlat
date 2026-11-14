@@ -15,6 +15,7 @@ import {
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
 	updateTranslationPatch,
 } from '../lib/emailTranslations';
+import { scanPublishedEdit } from './lifecycle';
 
 /**
  * Get transactional email content for a specific language
@@ -75,6 +76,7 @@ export const addTranslation = transactionalMutation({
 			'data'
 		);
 		await ctx.db.patch(args.id, patch);
+		await scanPublishedEdit(ctx, args.id, session.userId);
 		// The revision this write stored; the next write builds on it.
 		return { id: args.id, contentRevision: patch.contentRevision };
 	},
@@ -117,6 +119,7 @@ export const updateTranslation = transactionalMutation({
 			'data'
 		);
 		await ctx.db.patch(args.id, patch);
+		await scanPublishedEdit(ctx, args.id, session.userId);
 		// The revision this write stored; the next write builds on it.
 		return { id: args.id, contentRevision: patch.contentRevision };
 	},

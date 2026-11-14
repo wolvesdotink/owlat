@@ -23,6 +23,7 @@ import { assertContentRevision } from '../lib/contentRevision';
 import { rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
 import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
+import { scanPublishedEdit } from './lifecycle';
 
 // Data variable type for schema definition
 export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
@@ -252,6 +253,7 @@ export const update = transactionalMutation({
 
 		await ctx.db.patch(args.id, updates);
 		if (coedit) await markCoeditSaved(ctx, coedit, updates.contentRevision);
+		await scanPublishedEdit(ctx, args.id, session.userId);
 
 		const changedFields = Object.keys(updates).filter(
 			(k) => k !== 'updatedAt' && k !== 'contentRevision'

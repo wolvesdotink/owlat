@@ -16,6 +16,7 @@
 
 import { verifySendingDomain } from '../../__tests__/helpers/verifiedSendingDomain';
 import { convexTest } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as CellRoute from '../../lib/sendProviders/cellRoute';
 import type * as DeliverabilityRouteState from '../../lib/deliverabilityRouteState';
@@ -215,6 +216,8 @@ async function seedVerifiedSesRelay(ctx: { db: DatabaseWriter }, domain: string)
 
 /** Minimum instance state the transactional Template API needs to dispatch. */
 async function seedTransactionalTemplate(t: Harness): Promise<Id<'transactionalEmails'>> {
+	// The Template API intake charges its send caps through this component.
+	rateLimiterTest.register(t);
 	return await t.run(async (ctx) => {
 		await ctx.db.insert(
 			'instanceSettings',

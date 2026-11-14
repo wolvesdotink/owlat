@@ -47,6 +47,12 @@ const props = defineProps<{
 	errorCode?: string;
 	providerMessageId?: string;
 	dataVariables?: Record<string, unknown>;
+	/** The names the caller supplied; kept after the values are removed. */
+	dataVariableNames?: string[];
+	/** Whether this viewer gets the values: `hidden` without the role, `redacted` once removed. */
+	dataVariablesAccess?: 'visible' | 'hidden' | 'redacted';
+	/** When the stored values will be removed (the send's retention window). */
+	dataVariablesRemovedAfter?: number;
 	showQueued?: boolean;
 }>();
 
@@ -200,6 +206,23 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 });
 
 const showDataVariables = ref(false);
+const variableNames = computed(
+	() => props.dataVariableNames ?? Object.keys(props.dataVariables ?? {})
+);
+const hasVariableValues = computed(
+	() => props.dataVariablesAccess !== 'hidden' && props.dataVariablesAccess !== 'redacted'
+);
+const dataVariablesNote = computed(() => {
+	if (props.dataVariablesAccess === 'redacted')
+		return t('components.dashboard.emailSendTimeline.dataVariablesRedacted');
+	if (props.dataVariablesAccess === 'hidden')
+		return t('components.dashboard.emailSendTimeline.dataVariablesHidden');
+	if (props.dataVariablesRemovedAfter)
+		return t('components.dashboard.emailSendTimeline.dataVariablesRemovedAfter', {
+			date: formatTimestamp(props.dataVariablesRemovedAfter),
+		});
+	return null;
+});
 const { copy, copiedKey } = useCopyToClipboard();
 const messageIdCopied = computed(() => copiedKey.value === 'message-id');
 
@@ -346,10 +369,10 @@ const copyMessageId = async () => {
 		</div>
 
 		<!-- Data Variables (transactional only) -->
-		<div v-if="dataVariables && Object.keys(dataVariables).length > 0" class="card p-6">
+		<div v-if="variableNames.length > 0" class="card p-6">
 			<!-- The heading wraps the disclosure button: a heading inside a button
 			     is not announced as a heading. -->
-			<h3 class="text-lg font-medium text-text-primary">
+			<h3 v-if="hasVariableValues" class="text-lg font-medium text-text-primary">
 				<button
 					type="button"
 					class="flex items-center justify-between w-full text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -367,11 +390,31 @@ const copyMessageId = async () => {
 					/>
 				</button>
 			</h3>
-			<div v-if="showDataVariables" class="mt-4">
+			<h3 v-else class="flex items-center gap-3 text-lg font-medium text-text-primary">
+				<BracesIcon class="w-5 h-5 text-text-tertiary" aria-hidden="true" />
+				{{ t('components.dashboard.emailSendTimeline.dataVariables') }}
+			</h3>
+			<p
+				v-if="dataVariablesNote"
+				class="mt-2 text-sm text-text-tertiary"
+				data-testid="data-variables-note"
+			>
+				{{ dataVariablesNote }}
+			</p>
+			<div v-if="hasVariableValues && showDataVariables" class="mt-4">
 				<pre
 					class="text-sm text-text-secondary bg-bg-surface rounded-lg p-4 overflow-x-auto font-mono"
 					>{{ JSON.stringify(dataVariables, null, 2) }}</pre>
 			</div>
+			<ul v-else-if="!hasVariableValues" class="mt-4 flex flex-wrap gap-2">
+				<li
+					v-for="name in variableNames"
+					:key="name"
+					class="font-mono text-xs text-text-secondary bg-bg-surface rounded px-2 py-1"
+				>
+					{{ name }}
+				</li>
+			</ul>
 		</div>
 	</div>
 </template>

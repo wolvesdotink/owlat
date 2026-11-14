@@ -2,13 +2,26 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import { ConvexError } from 'convex/values';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import { createTestTransactionalEmail } from './factories';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import type { Id, Doc } from '../_generated/dataModel';
 import type * as EmailScannerModule from '@owlat/email-scanner';
 
 const modules = import.meta.glob('../**/*.*s');
+
+// The translation-edit tests call the public mutations; the rest call the
+// internal lifecycle and never reach these.
+vi.mock('../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../lib/sessionOrganization');
+	return {
+		...actual,
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+	};
+});
 
 // Mock @owlat/email-scanner so tests can drive the scan result deterministically.
 // Each test that needs a non-default verdict re-stubs the implementation via
@@ -222,6 +235,139 @@ describe('Transactional email lifecycle — publish with blocked scan', () => {
 			const email = await ctx.db.get(emailId!);
 			expect(email?.status).toBe('draft');
 		});
+	});
+});
+
+// ============================================================================
+// content scan — every variant a send can pick
+// ============================================================================
+
+/** Blocked when the scanned HTML carries the marker, suspicious for the other one. */
+function scanByMarker(subject: string, html: string) {
+	void subject;
+	if (html.includes('BLOCKED-MARKER')) {
+		return {
+			score: 80,
+			pass: false,
+			flags: [{ type: 'phishing_url' as const, severity: 'high' as const, description: 'bad' }],
+			level: 'blocked' as const,
+		};
+	}
+	if (html.includes('SUSPICIOUS-MARKER')) {
+		return {
+			score: 25,
+			pass: false,
+			flags: [{ type: 'spam_keywords' as const, severity: 'medium' as const, description: 'spam' }],
+			level: 'suspicious' as const,
+		};
+	}
+	return { score: 0, pass: true, flags: [], level: 'clean' as const };
+}
+
+describe('Transactional email lifecycle — translations are scanned', () => {
+	it('refuses to publish when a translation carries blocked content', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({ slug: 'tr-blocked', status: 'draft' })
+			)
+		);
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await expect(
+				t.mutation(internal.transactional.lifecycle.transition, {
+					emailId,
+					input: {
+						to: 'published',
+						at: Date.now(),
+						htmlContent: '<p>clean default</p>',
+						htmlTranslations: JSON.stringify({
+							de: { subject: 'Hallo', htmlContent: '<p>BLOCKED-MARKER</p>' },
+						}),
+					},
+					userId: 'user_pub',
+				})
+			).rejects.toThrow(/Content blocked/);
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('draft');
+	});
+
+	it('routes a published email to review when a forced translation edit is flagged', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug: 'tr-forced',
+					status: 'published',
+					publishedAt: Date.now(),
+					content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: '<p>Hello</p>' } }]),
+					defaultLanguage: 'en',
+					supportedLanguages: ['en', 'de'],
+					translations: JSON.stringify({
+						de: { subject: 'Hallo', blocks: { b1: { html: 'Hallo' } } },
+					}),
+				})
+			)
+		);
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await t.mutation(api.transactional.translations.updateTranslation, {
+				id: emailId,
+				language: 'de',
+				blocks: JSON.stringify({ b1: { html: 'SUSPICIOUS-MARKER' } }),
+				forceWhilePublished: true,
+			});
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		await t.run(async (ctx) => {
+			const email = await ctx.db.get(emailId);
+			expect(email?.status).toBe('pending_review');
+			const scans = await ctx.db.query('contentScanResults').collect();
+			expect(scans.find((s) => s.resourceId === emailId)?.level).toBe('suspicious');
+		});
+	});
+
+	it('rolls back a forced edit whose content is blocked', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug: 'tr-forced-blocked',
+					status: 'published',
+					publishedAt: Date.now(),
+					content: JSON.stringify([{ id: 'b1', type: 'text', content: { html: '<p>Hello</p>' } }]),
+					defaultLanguage: 'en',
+					supportedLanguages: ['en'],
+				})
+			)
+		);
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await expect(
+				t.mutation(api.transactional.emails.update, {
+					id: emailId,
+					content: JSON.stringify([
+						{ id: 'b1', type: 'text', content: { html: '<p>BLOCKED-MARKER</p>' } },
+					]),
+					forceWhilePublished: true,
+				})
+			).rejects.toThrow(/Content blocked/);
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('published');
+		expect(email?.htmlContent).not.toContain('BLOCKED-MARKER');
 	});
 });
 
