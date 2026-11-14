@@ -87,6 +87,10 @@ export const NON_TENANT_TABLES = [
 	// business data. Regenerable (partners re-send daily); not personal data of
 	// this org's contacts, so it is out of the tenant wipe like warmingState.
 	'tlsReports',
+	// Which system sender domains the env-driven registration has handled. It
+	// continues migration 0075's ledger entry and outlives a wipe like it, so a
+	// domain removed before the wipe is not added back after it.
+	'systemSenderDomains',
 	// End-to-end encryption key material (Sealed Mail): the instance signing
 	// identity plus per-address OpenPGP keypairs whose PUBLIC halves are published
 	// for discovery. Kept on purpose, unlike `aiProviderConfig`: nobody

@@ -40,6 +40,7 @@ describe('doctor report — stable ids', () => {
 			  "containers.health",
 			  "version.drift",
 			  "mta.egress_address",
+			  "env.acme",
 			]
 		`);
 	});
