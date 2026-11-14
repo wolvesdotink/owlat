@@ -165,6 +165,18 @@ describe('the public-address step of a re-run', () => {
 		expect((await readEnv(paths.envPath))['SITE_URL']).toBe('https://owlat.example.com');
 	});
 
+	it('keeps the address Caddy already serves without testing its ports again', async () => {
+		driver.text = ['example.com', 'ops@example.com'];
+		await runPublicAddressOnly({ ...paths, deps: reachableDeps() });
+		const before = await readEnv(paths.envPath);
+
+		const portsTaken: HostCheckDeps = { ...reachableDeps(), listen: async () => 'EADDRINUSE' };
+		driver.text = ['example.com', 'ops@example.com'];
+		expect(await runPublicAddressOnly({ ...paths, deps: portsTaken })).toBe(0);
+		expect(driver.messages).not.toContain('What now?');
+		expect(await readEnv(paths.envPath)).toEqual(before);
+	});
+
 	it('goes back to localhost, dropping the edge, when the domain is cleared', async () => {
 		driver.text = ['example.com', 'ops@example.com'];
 		await runPublicAddressOnly({ ...paths, deps: reachableDeps() });

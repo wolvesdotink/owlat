@@ -80,6 +80,8 @@ export async function askPublicAddress(opts: AskOptions): Promise<PublicAddressA
 			validate: (v) => (isValidEmail(v?.trim() ?? '') ? undefined : 'Enter a valid email'),
 		});
 		if (isCancel(email)) return null;
+		// The address Caddy already serves: its ports are Caddy's, and nothing moves.
+		if (current && network.siteUrl === current.siteUrl) return { network, email: email.trim() };
 
 		const s = progressSpinner();
 		s.start('Checking that these names reach this server on ports 80 and 443');

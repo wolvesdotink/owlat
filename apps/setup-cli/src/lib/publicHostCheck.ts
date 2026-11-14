@@ -7,8 +7,8 @@
  * NAT (a cloud instance whose public address is not on any interface), so the
  * check instead listens on the port itself with a one-time token and connects
  * to each hostname: only a connection that lands on this listener reads the
- * token back. When the port is already taken (Caddy from an earlier run), a
- * connection that opens is accepted, since something on this server answers.
+ * token back. A port something else already holds proves nothing about where
+ * a name points, so it is reported, with how to free it, rather than tested.
  *
  * The connection starts on this server, so a provider firewall that filters
  * only traffic from outside is not seen; the messages say so.
@@ -106,8 +106,13 @@ export async function checkPublicHosts(
 	for (const port of EDGE_PORTS) {
 		const token = deps.token();
 		const listener = await deps.listen(port, token);
-		const ownListener = typeof listener !== 'string';
-		if (!ownListener && listener !== 'EADDRINUSE') {
+		if (listener === 'EADDRINUSE') {
+			problems.push(
+				`Port ${port} is already in use on this server, so it cannot be tested. If Caddy serves the current address, stop it with \`docker compose --profile tls stop caddy\` and check again; \`owlat apply\` starts it with the new address.`
+			);
+			continue;
+		}
+		if (typeof listener === 'string') {
 			problems.push(
 				`Could not listen on port ${port} to test it (${listener}). Run the installer as root on the server itself.`
 			);
@@ -115,16 +120,14 @@ export async function checkPublicHosts(
 		}
 		try {
 			for (const [host, address] of resolved) {
-				const answer = await deps.connect(address, port);
-				const reached = ownListener ? answer === token : answer !== null;
-				if (!reached) {
+				if ((await deps.connect(address, port)) !== token) {
 					problems.push(
 						`Port ${port} on ${host} (${address}) does not reach this server: ${FIREWALL_HINT}.`
 					);
 				}
 			}
 		} finally {
-			if (ownListener) await listener.close();
+			await listener.close();
 		}
 	}
 	return problems;

@@ -56,11 +56,22 @@ describe('checkPublicHosts', () => {
 		);
 	});
 
-	it('accepts a port another process on this server already serves, when it connects', async () => {
-		const deps = server({ listen: async () => 'EADDRINUSE', connect: async () => '' });
-		expect(await checkPublicHosts(HOSTS, deps)).toEqual([]);
-		const unreachable = server({ listen: async () => 'EADDRINUSE', connect: async () => null });
-		expect(await checkPublicHosts(['owlat.example.com'], unreachable)).toHaveLength(2);
+	it('refuses a port another process holds, since a connection there proves nothing', async () => {
+		const connected: string[] = [];
+		const problems = await checkPublicHosts(
+			['owlat.example.com'],
+			server({
+				listen: async () => 'EADDRINUSE',
+				connect: async (address) => {
+					connected.push(address);
+					return '';
+				},
+			})
+		);
+		expect(connected).toEqual([]);
+		expect(problems).toHaveLength(2);
+		expect(problems[0]).toContain('Port 80 is already in use on this server');
+		expect(problems[0]).toContain('docker compose --profile tls stop caddy');
 	});
 
 	it('says so when it cannot listen to test a port', async () => {
