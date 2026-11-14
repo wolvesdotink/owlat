@@ -8,15 +8,17 @@ import {
 	type PostmasterComplianceCheck,
 	type PostmasterDeliveryError,
 } from '@owlat/mta-protocol/webhookEvent';
-import type { MutationCtx } from '../_generated/server';
+import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { utcDayKey } from '../lib/clock';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
+import type { GmailSpamReading } from '../analytics/reputationEnforcement';
 import {
 	GOOGLE_POSTMASTER_SIGNAL_SOURCE,
+	oldestFreshPostmasterPeriod,
 	type PostmasterCard,
 	type PostmasterDomainSignals,
 } from './signals/postmaster';
@@ -53,6 +55,35 @@ async function findVerifiedDomain(ctx: Pick<MutationCtx, 'db'>, domain: string) 
 		.withIndex('by_domain', (q) => q.eq('domain', domain))
 		.unique();
 	return row?.status === 'verified' ? row : null;
+}
+
+/** At most one row per verified domain per day survives the freshness window. */
+const RECENT_READINGS_LIMIT = 1_000;
+
+/**
+ * Each domain's latest spam-rate reading whose day is still recent enough for
+ * reputation enforcement to act on (`isPostmasterReadingFresh` decides).
+ */
+export async function readRecentGmailSpamReadings(
+	db: DatabaseReader,
+	now: number
+): Promise<GmailSpamReading[]> {
+	const rows = await db
+		.query('googlePostmasterStats')
+		.withIndex('by_period', (q) => q.gte('periodStart', oldestFreshPostmasterPeriod(now)))
+		.take(RECENT_READINGS_LIMIT);
+	const latest = new Map<string, GmailSpamReading>();
+	for (const row of rows) {
+		const seen = latest.get(row.domain);
+		if (seen && seen.periodStart >= row.periodStart) continue;
+		latest.set(row.domain, {
+			domain: row.domain,
+			userReportedSpamRatio: row.userReportedSpamRatio,
+			periodStart: row.periodStart,
+			fetchedAt: row.fetchedAt,
+		});
+	}
+	return [...latest.values()];
 }
 
 /** Fail-closed preflight before the collector retains any per-domain state. */

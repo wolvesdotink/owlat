@@ -26,14 +26,14 @@ import {
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
+import { isPostmasterReadingFresh, POSTMASTER_MAX_AGE_MS } from './signals/postmaster';
+import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import {
 	parsedDkimKeyBits,
 	resolveDkimKey,
 	type DkimKeyResolution,
 } from './checklistDkimValidation';
 
-const POSTMASTER_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
-const POSTMASTER_PERIOD_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1_000;
 export async function observeDomainCheck(
 	ctx: ActionCtx,
 	itemId: DeliverabilityCheckId,
@@ -436,11 +436,7 @@ export async function observeDomainCheck(
 							: 'No Google Postmaster observation has been ingested yet.'
 					);
 		case 'domain.spam_rate': {
-			if (
-				!context.postmaster ||
-				Date.now() - context.postmaster.fetchedAt > POSTMASTER_MAX_AGE_MS ||
-				Date.now() - context.postmaster.periodStart > POSTMASTER_PERIOD_MAX_AGE_MS
-			) {
+			if (!context.postmaster || !isPostmasterReadingFresh(context.postmaster, Date.now())) {
 				return checklistObservation(
 					'google-postmaster.spam-rate',
 					'warn',
@@ -452,7 +448,11 @@ export async function observeDomainCheck(
 			const ratio = context.postmaster.userReportedSpamRatio;
 			return checklistObservation(
 				'google-postmaster.spam-rate',
-				ratio >= 0.003 ? 'fail' : ratio >= 0.001 ? 'warn' : 'pass',
+				ratio >= PROVIDER_SPAM_RATE_POLICY.hardThreshold
+					? 'fail'
+					: ratio >= PROVIDER_SPAM_RATE_POLICY.target
+						? 'warn'
+						: 'pass',
 				`Google reported ${(ratio * 100).toFixed(3)}% user spam for the latest day.`,
 				[
 					`spam-ratio=${ratio}`,

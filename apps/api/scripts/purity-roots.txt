@@ -12,6 +12,9 @@
 convex/delivery/ramp
 convex/delivery/signals
 
+# Reputation enforcement: which abuse status the sending evidence calls for.
+convex/analytics/reputationEnforcement.ts
+
 # Decision plane: contracts, catalogs, routing, pricing and evidence rules.
 convex/lib/decision
 # Reserves spend for a native attempt through the LLM admission port.

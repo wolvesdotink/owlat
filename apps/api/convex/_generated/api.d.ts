@@ -287,6 +287,7 @@ import type * as analytics_llmUsage from '../analytics/llmUsage.js';
 import type * as analytics_marketingOverview from '../analytics/marketingOverview.js';
 import type * as analytics_marketingOverviewMath from '../analytics/marketingOverviewMath.js';
 import type * as analytics_reporter from '../analytics/reporter.js';
+import type * as analytics_reputationEnforcement from '../analytics/reputationEnforcement.js';
 import type * as analytics_reputationQueries from '../analytics/reputationQueries.js';
 import type * as analytics_reputationSnapshots from '../analytics/reputationSnapshots.js';
 import type * as analytics_seedAccounts from '../analytics/seedAccounts.js';
@@ -2208,6 +2209,7 @@ declare const fullApi: ApiFromModules<{
 	'analytics/marketingOverview': typeof analytics_marketingOverview;
 	'analytics/marketingOverviewMath': typeof analytics_marketingOverviewMath;
 	'analytics/reporter': typeof analytics_reporter;
+	'analytics/reputationEnforcement': typeof analytics_reputationEnforcement;
 	'analytics/reputationQueries': typeof analytics_reputationQueries;
 	'analytics/reputationSnapshots': typeof analytics_reputationSnapshots;
 	'analytics/seedAccounts': typeof analytics_seedAccounts;
