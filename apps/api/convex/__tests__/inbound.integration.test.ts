@@ -873,4 +873,39 @@ describe('mail.deliveryHooks.runPostDelivery', () => {
 
 		expect(sends.filter((s) => s.subject.startsWith('Fwd:'))).toHaveLength(0);
 	});
+
+	// ── a forward or auto-reply leaves under the mailbox's domain, so a domain
+	//    registered with the MTA holds it rather than send it unsigned ──
+	it('asks the MTA to hold a forward and an auto-reply from a domain registered with it', async () => {
+		const t = convexTest(schema, modules);
+		const { sends } = installMtaFetch();
+		const { mailboxId, folderId } = await seedMailbox(t, 'me@owlat.test');
+		const messageId = await seedMessage(t, mailboxId, folderId);
+		await enableForwarding(t, mailboxId, 'archive@example.com');
+		await enableVacation(t, mailboxId);
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('domains', {
+				domain: 'owlat.test',
+				status: 'verified',
+				dnsRecords: {},
+				providerType: 'mta',
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		await t.action(internal.mail.deliveryHooks.runPostDelivery, {
+			mailboxId,
+			mailboxAddress: 'me@owlat.test',
+			messageId,
+			fromAddress: 'human@example.com',
+			subject: 'Question',
+			bodyText: 'hi',
+			headers: {},
+		});
+
+		expect(sends).toHaveLength(2);
+		for (const send of sends) expect(send).toMatchObject({ requireDkimSignature: true });
+	});
 });

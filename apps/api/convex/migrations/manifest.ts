@@ -203,4 +203,13 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		isSteppingStone: false,
 		run: internal.migrations['0074_backfill_review_queue_counts'].run,
 	},
+	{
+		migration: '0075_register_system_sender_domain',
+		introducedIn: '0.6.22',
+		dependsOn: [],
+		isSteppingStone: false,
+		// Its cron waits for a system sender and the built-in MTA; one transaction.
+		startsItself: true,
+		run: internal.migrations['0075_register_system_sender_domain'].run,
+	},
 ];

@@ -38,6 +38,7 @@ const FCRDNS_PREFIX = 'mta:fcrdns:';
 const DNSBL_PREFIX = 'mta:dnsbl:';
 const IPV4_IDENTITY_PREFIX = 'mta:ipv4-identity:';
 const SOURCE_ADDRESS_PREFIX = 'mta:source-address-readiness:';
+const EGRESS_ADDRESS_PREFIX = 'mta:egress-address:';
 const SPF_PREFIX = 'mta:ipv6-spf:';
 export const IP_READINESS_ALERTS_PENDING = 'mta:ip-readiness-alerts:pending';
 
@@ -80,6 +81,7 @@ function isIpPoolBlockReason(value: string): value is IpPoolBlockReason {
 
 const STATE_PREFIX_BY_BLOCK_REASON: Record<IpPoolBlockReason, string> = {
 	dnsbl: DNSBL_PREFIX,
+	'egress-address': EGRESS_ADDRESS_PREFIX,
 	fcrdns: FCRDNS_PREFIX,
 	'ipv4-identity': IPV4_IDENTITY_PREFIX,
 	'source-address': SOURCE_ADDRESS_PREFIX,
@@ -344,7 +346,7 @@ export async function initializePools(
 	const allIps = [...new Set([...config.transactional, ...config.campaign])];
 	await redis.eval(
 		INITIALIZE_POOLS_SCRIPT,
-		14,
+		16,
 		IP_POOL_CONFIGURED,
 		IP_POOL_ACTIVE,
 		IP_POOL_ELIGIBILITY_GENERATIONS,
@@ -359,6 +361,8 @@ export async function initializePools(
 		`${UNDERLYING_BLOCKS_PREFIX}ipv4-identity`,
 		`${UNDERLYING_BLOCKS_PREFIX}source-address`,
 		`${UNDERLYING_BLOCKS_PREFIX}spf`,
+		`${APPLIED_OBSERVATIONS_PREFIX}egress-address`,
+		`${UNDERLYING_BLOCKS_PREFIX}egress-address`,
 		FCRDNS_PREFIX,
 		BLOCK_REASONS_PREFIX,
 		DNSBL_PREFIX,
@@ -366,6 +370,7 @@ export async function initializePools(
 		SOURCE_ADDRESS_PREFIX,
 		SPF_PREFIX,
 		OBSERVATION_SEQUENCE_PREFIX,
+		EGRESS_ADDRESS_PREFIX,
 		allowUnverifiedFcrdns ? '1' : '0',
 		IP_READINESS_BLOCK_REASONS.length,
 		...IP_READINESS_BLOCK_REASONS,

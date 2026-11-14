@@ -57,6 +57,8 @@ export interface PresendCheck {
 	summary: LocalizedText;
 	/** Extra context under the verdict (what was not verified, why it matters). */
 	note?: LocalizedText;
+	/** Where the fix is made, when that is a setting rather than the email. */
+	action?: { label: LocalizedText; to: string };
 	items: PresendItem[];
 }
 

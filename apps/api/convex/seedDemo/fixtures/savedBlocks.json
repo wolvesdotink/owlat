@@ -9,7 +9,7 @@
 		"slug": "footer-default",
 		"name": "Standard Footer",
 		"description": "Address + unsubscribe link block.",
-		"content": "[{\"id\":\"ftr-1\",\"type\":\"text\",\"content\":{\"html\":\"Owlat Demo Co · 123 Demo Street · {{unsubscribe_link}}\",\"blockType\":\"paragraph\",\"fontSize\":12,\"textColor\":\"#6b7280\",\"textAlign\":\"center\",\"lineHeight\":1.5}}]"
+		"content": "[{\"id\":\"ftr-1\",\"type\":\"text\",\"content\":{\"html\":\"Owlat Demo Co · 123 Demo Street · <a href=\\\"{{unsubscribe_link}}\\\">Unsubscribe</a>\",\"blockType\":\"paragraph\",\"fontSize\":12,\"textColor\":\"#6b7280\",\"textAlign\":\"center\",\"lineHeight\":1.5}}]"
 	},
 	{
 		"slug": "cta-button",

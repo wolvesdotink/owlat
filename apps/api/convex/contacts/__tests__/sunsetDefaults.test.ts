@@ -11,7 +11,7 @@ import {
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from '../sunsetEngine';
-import { NOW, daysAgo, harness } from './sunsetFixtures';
+import { NOW, daysAgo, harness, recordCampaignSend } from './sunsetFixtures';
 
 /**
  * THE CONSERVATIVE DEFAULT IS ON OUT OF THE BOX (deliverability plan P4-4). A
@@ -75,11 +75,7 @@ describe('sunset defaults', () => {
 					updatedAt: daysAgo(400),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(300),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(300));
 			return id;
 		});
 
@@ -137,11 +133,7 @@ describe('sunset defaults', () => {
 					updatedAt: daysAgo(500),
 				})
 			);
-			await ctx.db.insert('contactActivities', {
-				contactId: id,
-				activityType: 'email_sent',
-				occurredAt: daysAgo(480),
-			});
+			await recordCampaignSend(ctx, id, daysAgo(480));
 			await ctx.db.insert('sunsetPolicies', {
 				isEnabled: false,
 				createdAt: daysAgo(10),

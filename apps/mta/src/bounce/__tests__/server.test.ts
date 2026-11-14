@@ -16,7 +16,8 @@
  *     `552 5.2.2` (the sanctioned correction of the pre-cutover `550 552 5.2.2`).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import RedisMock from 'ioredis-mock';
 import type * as MailAuthModule from '@owlat/mail-auth';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -377,4 +378,62 @@ describe('bounce onRcptTo — mailbox quota (structured 552 5.2.2, sanctioned)',
 		expect(reply?.enhanced).toBe('4.3.0');
 		expect(reply?.code).not.toBe(550);
 	});
+});
+
+describe('bounce onRcptTo — bounce+ and fbl+ only on the hosts we answer for', () => {
+	const config = makeConfig({ ehloHostnames: { '198.51.100.7': 'mx2.owlat.test' } });
+
+	async function rcpt(redis: Redis, address: string) {
+		const onRcptTo = buildOnRcptTo(config, redis);
+		const recipient = addr(address);
+		const reply = await onRcptTo(recipient, makeSession() as Parameters<typeof onRcptTo>[1]);
+		return { reply: reply as SmtpReply | undefined, recipient };
+	}
+
+	beforeEach(() => {
+		vi.mocked(findMailboxRoute).mockReset().mockResolvedValue(null);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it.each(['bounce+abc@foreign.example', 'fbl+abc@foreign.example', 'bounce+abc'])(
+		'refuses %s as relaying',
+		async (address) => {
+			const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
+			expect(reply).toMatchObject({ code: 550, enhanced: '5.7.1' });
+		}
+	);
+
+	it.each(['bounce+abc@bounces.owlat.test', 'fbl+abc@MX2.owlat.test.', 'bounce+abc@mx.owlat.test'])(
+		'accepts %s on the return-path domain or an EHLO name',
+		async (address) => {
+			const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
+			expect(reply).toBeUndefined();
+		}
+	);
+
+	it('accepts a per-domain return-path host, including one registered after a miss', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(1_000_000);
+		const redis = new RedisMock() as unknown as Redis;
+		await redis.hset('mta:dkim:example.com', { selector: 's1', returnPathHost: 'rp.example.com' });
+		await redis.set('mta:dkim:signing-held', '1');
+		expect((await rcpt(redis, 'bounce+abc@rp.example.com')).reply).toBeUndefined();
+
+		expect((await rcpt(redis, 'fbl+abc@rp.example.net')).reply?.code).toBe(550);
+		await redis.hset('mta:dkim:example.net', { selector: 's1', returnPathHost: 'rp.example.net' });
+		vi.setSystemTime(1_000_000 + 5_000);
+		expect((await rcpt(redis, 'fbl+abc@rp.example.net')).reply).toBeUndefined();
+	});
+
+	it.each(['postmaster', 'Postmaster'])(
+		'accepts a bare %s as the return-path domain postmaster',
+		async (address) => {
+			const { reply, recipient } = await rcpt(new RedisMock() as unknown as Redis, address);
+			expect(reply).toBeUndefined();
+			expect(recipient.address).toBe('postmaster@bounces.owlat.test');
+		}
+	);
 });

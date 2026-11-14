@@ -319,3 +319,33 @@ describe('evaluateSunset — forward clock skew', () => {
 		expect(v.action).toBe('suppress');
 	});
 });
+
+describe('evaluateSunset — automated opens', () => {
+	it('holds while an automated fetch is inside the re-engage window', () => {
+		const v = evaluateSunset(
+			facts({ lastAutomatedOpenAt: daysAgo(SUNSET_POLICY_DEFAULTS.reengageAfterDays - 1) }),
+			policy()
+		);
+		expect(v).toMatchObject({ action: 'hold', reason: 'opens_unmeasurable' });
+	});
+
+	it('measures again once the last automated fetch is older than that window', () => {
+		const v = evaluateSunset(
+			facts({ lastAutomatedOpenAt: daysAgo(SUNSET_POLICY_DEFAULTS.reengageAfterDays + 1) }),
+			policy()
+		);
+		expect(v.action).toBe('suppress');
+	});
+
+	it('lets a human open win: a recent open still resumes the contact', () => {
+		const v = evaluateSunset(
+			facts({
+				stage: 'reengagement',
+				lastEngagementAt: daysAgo(5),
+				lastAutomatedOpenAt: daysAgo(5),
+			}),
+			policy()
+		);
+		expect(v.action).toBe('resume');
+	});
+});

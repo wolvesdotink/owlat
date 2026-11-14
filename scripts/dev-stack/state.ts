@@ -49,9 +49,19 @@ export interface DevStackSecrets {
 	readonly instanceSecret: string;
 	readonly betterAuthSecret: string;
 	readonly redisPassword: string;
+	/**
+	 * Signs the recipient links (unsubscribe, preferences) and the click
+	 * redirects. Without it every recipient page fails to verify its token.
+	 */
+	readonly unsubscribeSecret: string;
 }
 
-const SECRET_KEYS = ['instanceSecret', 'betterAuthSecret', 'redisPassword'] as const;
+const SECRET_KEYS = [
+	'instanceSecret',
+	'betterAuthSecret',
+	'redisPassword',
+	'unsubscribeSecret',
+] as const;
 
 function isHexSecret(value: unknown): value is string {
 	return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
@@ -122,6 +132,7 @@ export function deploymentSecretEnv(secrets: DevStackSecrets): Record<string, st
 	return {
 		INSTANCE_SECRET: secrets.instanceSecret,
 		BETTER_AUTH_SECRET: secrets.betterAuthSecret,
+		UNSUBSCRIBE_SECRET: secrets.unsubscribeSecret,
 		// Opens /seed and /dev/reset; dev:seed sets it too. A local stack only.
 		OWLAT_DEV_MODE: 'true',
 	};

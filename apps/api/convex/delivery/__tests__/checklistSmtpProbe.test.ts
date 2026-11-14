@@ -113,7 +113,7 @@ describe('deployment.source_ip', () => {
 		]);
 	});
 
-	it('passes a single NATed IP but says the translated source cannot be confirmed', async () => {
+	it('passes a single NATed IP and says the receivers confirm its address', async () => {
 		const observation = await observeDeploymentCheck(
 			'deployment.source_ip',
 			context([{ ip: '203.0.113.10', status: 'ok', sourceBinding: 'nat' }]),
@@ -121,7 +121,7 @@ describe('deployment.source_ip', () => {
 		);
 		expect(observation.status).toBe('pass');
 		expect(observation.diagnostic).toContain('203.0.113.10 is sent through NAT');
-		expect(observation.diagnostic).toContain('cannot see the translated source address');
+		expect(observation.diagnostic).toContain('holds this IP if it is another one');
 		expect(observation.observedValues).toEqual(['203.0.113.10=nat']);
 	});
 

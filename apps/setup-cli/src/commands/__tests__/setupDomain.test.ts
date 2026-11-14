@@ -46,7 +46,7 @@ vi.mock('@clack/prompts', () => {
 });
 
 // No sending IP detected, so the PTR announcement (which does DNS) is skipped.
-vi.mock('../../lib/outboundIp', () => ({ detectPrimaryIpv4: () => null }));
+vi.mock('../../lib/outboundIp', () => ({ detectOutboundIpv4: async () => undefined }));
 
 import { collectDomain } from '../setupDomain';
 import { buildEnvPatchFromConfig, type SetupConfig } from '../../lib/setupConfig';

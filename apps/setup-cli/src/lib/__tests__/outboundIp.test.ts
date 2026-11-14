@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { applyOutboundIpDefaults, pickPrimaryIpv4, type InterfaceAddress } from '../outboundIp.js';
+import {
+	applyOutboundIpDefaults,
+	chooseOutboundIpv4,
+	describeOutboundIpChoice,
+	pickPrimaryIpv4,
+	type InterfaceAddress,
+} from '../outboundIp.js';
 
 const vpsBox: InterfaceAddress[] = [
 	{ name: 'lo', address: '127.0.0.1', family: 'IPv4', internal: true },
@@ -20,6 +26,19 @@ describe('pickPrimaryIpv4', () => {
 		expect(pickPrimaryIpv4(reordered)).toBe('203.0.113.10');
 	});
 
+	it('picks the default-route source over the first listed address', () => {
+		const twoAddresses: InterfaceAddress[] = [
+			{ name: 'eth0', address: '203.0.113.10', family: 'IPv4', internal: false },
+			{ name: 'eth0', address: '198.51.100.20', family: 'IPv4', internal: false },
+		];
+		expect(pickPrimaryIpv4(twoAddresses, '198.51.100.20')).toBe('198.51.100.20');
+	});
+
+	it('falls back to the first usable address when the route source is not on this host', () => {
+		expect(pickPrimaryIpv4(vpsBox, '192.0.2.200')).toBe('203.0.113.10');
+		expect(pickPrimaryIpv4(vpsBox, undefined)).toBe('203.0.113.10');
+	});
+
 	it('accepts the numeric family Node 18 reports', () => {
 		expect(
 			pickPrimaryIpv4([{ name: 'ens3', address: '10.0.0.5', family: 4, internal: false }])
@@ -34,6 +53,35 @@ describe('pickPrimaryIpv4', () => {
 				{ name: 'docker0', address: '172.17.0.1', family: 'IPv4', internal: false },
 			])
 		).toBeUndefined();
+	});
+});
+
+describe('describeOutboundIpChoice', () => {
+	it('says which address it chose, why, and which others exist', () => {
+		const choice = chooseOutboundIpv4(
+			[
+				{ name: 'eth0', address: '203.0.113.10', family: 'IPv4', internal: false },
+				{ name: 'eth0', address: '198.51.100.20', family: 'IPv4', internal: false },
+			],
+			'198.51.100.20'
+		)!;
+		expect(choice).toEqual({
+			ip: '198.51.100.20',
+			interfaceName: 'eth0',
+			source: 'default-route',
+			others: ['203.0.113.10'],
+		});
+		const line = describeOutboundIpChoice(choice);
+		expect(line).toContain(
+			"default to 198.51.100.20, the source address of this server's default route"
+		);
+		expect(line).toContain('Other addresses on this server: 203.0.113.10');
+	});
+
+	it('says when the route source could not be read', () => {
+		const line = describeOutboundIpChoice(chooseOutboundIpv4(vpsBox, undefined)!);
+		expect(line).toContain('could not be read');
+		expect(line).not.toContain('Other addresses');
 	});
 });
 

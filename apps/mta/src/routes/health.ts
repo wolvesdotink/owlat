@@ -19,6 +19,7 @@ import { getSmtpReachability } from './smtpReachability.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
+import { getEgressAddressReadiness } from '../scaling/egressAddressReadiness.js';
 import { probeDelayedQueue } from '../queue/delayedOrphans.js';
 import { logger } from '../monitoring/logger.js';
 import { readDkimSigningHolds, type DkimSigningHold } from '../smtp/dkimSigningHold.js';
@@ -173,6 +174,7 @@ export function createHealthHandler(
 				const fcrdns = await getFcrdnsReadiness(redis, pool.ip);
 				const ipv6Spf = await getIpv6SpfReadiness(redis, pool.ip);
 				const sourceAddress = await getSourceAddressReadiness(redis, pool.ip);
+				const egressAddress = await getEgressAddressReadiness(redis, pool.ip);
 
 				return {
 					...pool,
@@ -180,6 +182,7 @@ export function createHealthHandler(
 					fcrdns,
 					ipv6Spf,
 					sourceAddress,
+					egressAddress,
 					warming: warmingState
 						? {
 								phase: warmingState.phase,

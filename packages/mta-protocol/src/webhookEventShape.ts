@@ -154,7 +154,7 @@ export interface MtaWebhookEventFields<P extends MtaWebhookPayloads = MtaWebhook
 	domain?: string;
 	selector?: string;
 	dnsRecord?: string;
-	phase?: 'pending' | 'activated';
+	phase?: 'pending' | 'activated' | 'cancelled';
 	campaignId?: string;
 	complaintRate?: number;
 	date?: string;
@@ -283,7 +283,7 @@ export type ValidatedMtaWebhookEvent =
 			domain: string;
 			selector: string;
 			dnsRecord: string;
-			phase: 'pending' | 'activated';
+			phase: 'pending' | 'activated' | 'cancelled';
 	  })
 	| (EventBase<'inbound.received'> & { organizationId: string; inboundPayload: object })
 	| (EventBase<'routing.reentry'> & {

@@ -100,4 +100,40 @@ describe('DeliverabilityChecklistGroups', () => {
 		expect(wrapper.text()).toContain('A check shipped after this bundle');
 		expect(wrapper.text()).toContain('Its rationale arrives with it.');
 	});
+
+	it('marks a check about an unused send path as not applicable, with nothing to do', () => {
+		const wrapper = mountGroups({
+			id: 'deployment.ptr',
+			scope: { kind: 'deployment' },
+			severity: 'blocking',
+			status: 'fail',
+			failureReason: 'No validator evidence has been recorded yet.',
+			lockedReason: 'Verify deployment.fcrdns first.',
+			notGraded: 'own_mta_unused',
+		});
+
+		expectFullyLocalized(wrapper);
+		expect(wrapper.text()).toContain('Not applicable');
+		expect(wrapper.text()).not.toContain('Not working');
+		expect(wrapper.text()).toContain('No route sends through the built-in mail server');
+		expect(wrapper.text()).not.toContain('Verify now');
+		expect(wrapper.text()).not.toContain('No validator evidence has been recorded yet.');
+		expect(wrapper.text()).not.toContain('Verify deployment.fcrdns first.');
+	});
+
+	it('marks a check whose source is not connected as not measured', () => {
+		const wrapper = mountGroups({ notGraded: 'not_measured' });
+
+		expectFullyLocalized(wrapper);
+		expect(wrapper.text()).toContain('Not measured');
+		expect(wrapper.text()).not.toContain('Needs attention');
+		expect(wrapper.text()).toContain('Google Postmaster Tools is not connected');
+	});
+
+	it('says a bulk-mail check applies to marketing mail while campaigns are off', () => {
+		const wrapper = mountGroups({ id: 'domain.unsubscribe', notGraded: 'marketing_off' });
+
+		expect(wrapper.text()).toContain('Not applicable');
+		expect(wrapper.text()).toContain('This check applies to marketing mail.');
+	});
 });

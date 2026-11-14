@@ -199,7 +199,11 @@ action calls). `internalQuery`/`internalMutation`/`internalAction` and
 `httpAction` are unaffected (server-only, or a separately-authenticated HTTP
 surface). HTTP routes that call into a session-gated function from an
 API-key/no-session context must call an `internal*` sibling (see
-`contacts.contacts.getInternal`, `topics.topics.addContactInternal`).
+`contacts.contacts.getInternal`, `topics.topics.addContactInternal`). The same
+holds for crons, scheduled functions and workpool jobs: they run with no
+session, so a `ctx.runQuery(api.…)` into an authed builder throws there.
+`scripts/check-server-api-calls.sh` fails on any server-to-public call that is
+not on its allowlist of calls that only run inside a user's request.
 
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
 builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI. The

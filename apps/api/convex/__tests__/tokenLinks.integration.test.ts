@@ -474,6 +474,25 @@ describe('seed probe ids are rejected by the tracking endpoints', () => {
 // One-click unsubscribe — POST /unsub/{token}
 // ============================================================================
 
+describe('the one-click target of a test preview (/unsub/test-preview)', () => {
+	it('answers a provider POST with 200 and unsubscribes nobody', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		const res = await t.fetch('/unsub/test-preview', { method: 'POST' });
+		expect(res.status).toBe(200);
+		const contact = await t.run(async (ctx) => await ctx.db.get(contactId));
+		expect(contact?.unsubscribedAt).toBeUndefined();
+	});
+
+	it('sends a person who opens it to the preview page', async () => {
+		process.env['SITE_URL'] = 'https://app.example.com';
+		const t = setupTest();
+		const res = await t.fetch('/unsub/test-preview', { method: 'GET', redirect: 'manual' });
+		expect(res.status).toBe(302);
+		expect(res.headers.get('Location')).toBe('https://app.example.com/unsubscribe?preview=test');
+	});
+});
+
 describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 	it('unsubscribes a contact with a valid token (200, ok:true)', async () => {
 		const t = setupTest();

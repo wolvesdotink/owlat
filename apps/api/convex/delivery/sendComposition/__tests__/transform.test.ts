@@ -539,3 +539,71 @@ describe('transformHtml — edge cases', () => {
 		expect(result).toContain('<img');
 	});
 });
+
+describe('transformHtml — footer sender address and language', () => {
+	const urls = {
+		unsubscribeUrl: 'https://app.example/unsubscribe?token=t',
+		preferenceUrl: 'https://app.example/preferences?token=p',
+	};
+
+	it('shows the postal address above the links when one is set', () => {
+		const result = transformHtml('<body><p>Hi</p></body>', {
+			...urls,
+			senderAddress: 'Northwind <GmbH>\n1 Example Street\n12345 Example City',
+		});
+		expect(result).toContain('Northwind &lt;GmbH&gt;<br>1 Example Street<br>12345 Example City');
+		expect(result.indexOf('12345 Example City')).toBeLessThan(result.indexOf('Unsubscribe'));
+	});
+
+	it('labels the links in German for a German body, and in English otherwise', () => {
+		const german = transformHtml('<body></body>', { ...urls, footerLanguage: 'de-AT' });
+		expect(german).toContain('>Einstellungen verwalten</a>');
+		expect(german).toContain('>Abmelden</a>');
+		expect(german).not.toContain('Unsubscribe');
+		const french = transformHtml('<body></body>', { ...urls, footerLanguage: 'fr' });
+		expect(french).toContain('>Manage Preferences</a>');
+		expect(french).toContain('>Unsubscribe</a>');
+	});
+});
+
+describe('transformHtml — the instance’s own subscription links', () => {
+	const env = {
+		SITE_URL: process.env['SITE_URL'],
+		CONVEX_SITE_URL: process.env['CONVEX_SITE_URL'],
+	};
+	beforeAll(() => {
+		process.env['SITE_URL'] = 'https://app.example/';
+		process.env['CONVEX_SITE_URL'] = 'https://convex.example';
+	});
+	afterAll(() => {
+		for (const [key, value] of Object.entries(env)) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	});
+	const tracked: TransformConfig = {
+		trackedLinkBase: { siteUrl: 'https://track.example', emailSendId: 'send1' },
+	};
+
+	it('leaves an unsubscribe or preference link the author wrote unwrapped', () => {
+		const html = [
+			'<a href="https://app.example/unsubscribe?token=abc">Leave</a>',
+			'<a href="https://APP.example/preferences">Settings</a>',
+			'<a href="https://convex.example/unsub/abc">One click</a>',
+			'<a href="https://convex.example/prefs/verify/abc">Prefs</a>',
+		].join('');
+		const result = transformHtml(`<body>${html}</body>`, tracked);
+		expect(result).not.toContain('/t/c/');
+		expect(result).toContain('href="https://app.example/unsubscribe?token=abc"');
+	});
+
+	it('still tracks other links on the same hosts and on lookalike paths', () => {
+		const html = [
+			'<a href="https://app.example/unsubscribe-later">a</a>',
+			'<a href="https://app.example/pricing">b</a>',
+			'<a href="https://other.example/unsubscribe">c</a>',
+		].join('');
+		const result = transformHtml(`<body>${html}</body>`, tracked);
+		expect(result.match(/\/t\/c\//g)).toHaveLength(3);
+	});
+});

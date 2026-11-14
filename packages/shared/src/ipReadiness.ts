@@ -4,6 +4,8 @@ import { isSpfRecord, spfRecordHasExactIpMechanism } from './spf';
 
 export const IP_READINESS_BLOCK_REASONS = [
 	'dnsbl',
+	/** Receivers see this IP's mail arrive from another address (behind NAT). */
+	'egress-address',
 	'fcrdns',
 	'ipv4-identity',
 	'source-address',
@@ -117,7 +119,7 @@ export type SendingIpPosture = 'ready' | 'some_held' | 'all_held';
 
 /**
  * Whether the MTA keeps mail off this address: it carries a readiness block
- * reason (blocklist, PTR, SPF, source address), or it is out of rotation.
+ * reason (blocklist, PTR, SPF, source or egress address), or it is out of rotation.
  */
 function isSendingIpHeld(ip: SendingIpPostureInput): boolean {
 	return !ip.active || (ip.blockReasons?.length ?? 0) > 0;

@@ -178,6 +178,53 @@ describe('sendTestEmail', () => {
 		});
 	});
 
+	it('shows what recipients get: the footer with the postal address and the one-click pair, acting on nobody', async () => {
+		vi.stubEnv('SITE_URL', 'https://app.example.com');
+		vi.stubEnv('CONVEX_SITE_URL', 'https://convex.example.com');
+		vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-secret');
+		const { t, campaignId } = await setup();
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				brandKit: { footerCompanyName: 'Example GmbH', footerAddress: '1 Example Street' },
+			});
+		});
+		const { transactionalEmailPool } = await import('../delivery/workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+
+		await t.action(api.campaigns.testSend.sendTestEmail, {
+			campaignId,
+			testEmail: 'ann@example.com',
+		});
+
+		const call = enqueueAction.mock.calls[0];
+		if (!call) throw new Error('no test Send was queued');
+		const envelope = (
+			call[2] as {
+				envelopeInput: {
+					headers?: Record<string, string>;
+					template: { htmlContent: string; plainTextContent?: string };
+				};
+			}
+		).envelopeInput;
+		expect(envelope.headers).toEqual({
+			'List-Unsubscribe': '<https://convex.example.com/unsub/test-preview>',
+			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+		});
+		const html = envelope.template.htmlContent;
+		expect(html).toContain('Example GmbH<br>1 Example Street');
+		expect(html).toContain('href="https://app.example.com/unsubscribe?preview=test"');
+		expect(html).toContain('href="https://app.example.com/preferences?preview=test"');
+		// No token, no tracking: nothing in a preview reaches a contact or a statistic.
+		expect(html).not.toContain('token=');
+		expect(html).not.toContain('/t/c/');
+		expect(html).not.toContain('/t/o/');
+		expect(envelope.template.plainTextContent).toContain(
+			'Unsubscribe: https://app.example.com/unsubscribe?preview=test'
+		);
+	});
+
 	it('a refused recipient still spends a rate-limit token and queues nothing', async () => {
 		const { t, campaignId } = await setup();
 		const send = (testEmail: string) =>

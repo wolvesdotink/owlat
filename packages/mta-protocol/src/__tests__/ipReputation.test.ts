@@ -49,6 +49,24 @@ describe('IP readiness DNSBL detail', () => {
 		).toBeNull();
 	});
 
+	it('carries the egress-address block reason', () => {
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [{ ...baseIp, active: false, blockReasons: ['egress-address'] }],
+			})?.ips[0]
+		).toMatchObject({ active: false, blockReasons: ['egress-address'] });
+	});
+
+	it('drops a block reason it does not know and keeps the address held', () => {
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [{ ...baseIp, active: true, blockReasons: ['spf', 'reason-from-a-newer-mta'] }],
+			})?.ips[0]
+		).toMatchObject({ active: false, blockReasons: ['spf'] });
+	});
+
 	it('carries the IPv6 prerequisite blocks and exact return-path SPF verdict', () => {
 		expect(
 			normalizeIpReputationPayload({

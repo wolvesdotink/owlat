@@ -355,3 +355,27 @@ describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ na
 		expect(result.stderr).toContain(expected);
 	});
 });
+
+describe.each(TEMPLATES)('$name publishes the mail client ports on IPv4 only', ({ name, env }) => {
+	const original = readTemplate(name);
+
+	it.each([
+		{
+			breaks: 'IMAP on every address family',
+			from: /'0\.0\.0\.0:(\$\{IMAP_PORT:-993\}|993):993'/,
+			expected: "must publish IMAP's port 993 as '0.0.0.0:<port>:993'",
+		},
+		{
+			breaks: 'submission on every address family',
+			from: /'\$\{SUBMISSION_BIND:-127\.0\.0\.1\}:\$\{SUBMISSION_PORT:-587\}:/,
+			expected: 'must publish 587 and 465',
+		},
+	])('rejects $breaks', ({ from, expected }) => {
+		const match = from.exec(original)?.[0];
+		expect(match, 'the shipped template publishes the port').toBeDefined();
+		const unbound = match!.replace(/^'(0\.0\.0\.0|\$\{SUBMISSION_BIND:-127\.0\.0\.1\}):/, "'");
+		const result = runGate(env, replaceOnce(original, match!, unbound));
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain(expected);
+	});
+});

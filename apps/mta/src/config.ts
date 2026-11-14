@@ -15,7 +15,7 @@ import {
 	type IntEnvOptions,
 } from '@owlat/shared/nodeEnv';
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
-import { assertMtaSecretStrength } from './lib/mtaSecretStrength.js';
+import { assertMtaSecretStrength, assertSharedSecretStrength } from './lib/mtaSecretStrength.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { parseDkimKeys } from './dkimKeysConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
@@ -396,13 +396,18 @@ export function loadConfig(): MtaConfig {
 	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
 	const governedDelivery = loadGovernedDeliveryConfig(optionalEnv);
 	const returnPathDomain = requiredEnv('RETURN_PATH_DOMAIN');
+	const apiKey = requiredEnv('MTA_API_KEY');
+	const webhookSecret = requiredEnv('MTA_WEBHOOK_SECRET');
+	const isProduction = process.env['NODE_ENV'] === 'production';
+	assertSharedSecretStrength('MTA_API_KEY', apiKey, isProduction);
+	assertSharedSecretStrength('MTA_WEBHOOK_SECRET', webhookSecret, isProduction);
 
 	return {
 		...governedDelivery,
 		port: intEnv('PORT', 3100, TCP_PORT_RANGE),
 		bouncePort: intEnv('BOUNCE_PORT', 25, TCP_PORT_RANGE),
 		redisUrl: optionalEnv('REDIS_URL', 'redis://localhost:6379'),
-		apiKey: requiredEnv('MTA_API_KEY'),
+		apiKey,
 		mtaSecret,
 		ehloHostname,
 		ehloHostnames: outboundIp.ehloHostnames,
@@ -412,7 +417,7 @@ export function loadConfig(): MtaConfig {
 		allowPrivateMxTargets: outboundIp.allowPrivateMxTargets,
 		returnPathDomain,
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
-		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
+		webhookSecret,
 		// TLS-RPT (RFC 8460) reporting address we publish in `_smtp._tls` rua=.
 		// When set (mailto: URI or bare address), inbound reports to it are
 		// caught by the TLS-RPT system route and forwarded to Convex. Optional —

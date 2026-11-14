@@ -1411,8 +1411,10 @@
 				},
 				"passed": "{count} Prüfung bestanden | {count} Prüfungen bestanden",
 				"postalAddress": {
-					"missing": "Wir haben keine Postanschrift gefunden. Das US-Recht (CAN-SPAM) verlangt eine in Marketing-E-Mails, und in der EU gehört sie ins Impressum. Ergänze sie in der Fußzeile.",
-					"pass": "Die E-Mail enthält eine Postanschrift."
+					"footer": "Owlat setzt deine Postanschrift aus dem Markenkit in die Fußzeile jeder Kampagne.",
+					"missing": "Es ist keine Postanschrift hinterlegt, und in der E-Mail haben wir keine gefunden. Das US-Recht (CAN-SPAM) verlangt eine in Marketing-E-Mails, und in der EU gehört sie ins Impressum. Sobald ein Admin sie im Markenkit einträgt, setzt Owlat sie in die Fußzeile jeder Kampagne.",
+					"pass": "Die E-Mail enthält eine Postanschrift.",
+					"setUp": "Im Markenkit eintragen"
 				},
 				"reasons": {
 					"blockedUrl": "passt auf das gesperrte Muster „{pattern}“",
@@ -2746,6 +2748,9 @@
 				"afterEvent": "{duration} nach {event}",
 				"clickedLinks": "Geklickte Links",
 				"dataVariables": "Datenvariablen",
+				"dataVariablesHidden": "Werte sind ausgeblendet. Nur Inhaber und Admins können sie sehen.",
+				"dataVariablesRedacted": "Werte wurden nach Ablauf der Aufbewahrungsfrist entfernt. Die Namen zeigen, was die Anfrage mitgeschickt hat.",
+				"dataVariablesRemovedAfter": "Werte werden nach dem {date} entfernt.",
 				"duration": {
 					"days": "{days} Tg.",
 					"daysHours": "{days} Tg. {hours} Std.",
@@ -2885,6 +2890,11 @@
 				"copyDiagnostic": "Diagnose kopieren",
 				"diagnosticCopied": "Diagnose kopiert",
 				"howThisWorks": "So funktioniert das",
+				"notGraded": {
+					"marketing_off": "Diese Prüfung gilt für Marketing-Mail. Kampagnen sind ausgeschaltet, deshalb zählt sie nicht für die Bewertung.",
+					"not_measured": "Google Postmaster Tools ist nicht verbunden, deshalb wird das nicht gemessen. Es senkt die Bewertung nicht.",
+					"own_mta_unused": "Keine Route sendet über den eingebauten Mailserver, deshalb trifft diese Prüfung nicht zu. Sie zählt wieder, sobald eine Route ihn nutzt."
+				},
 				"observed": "Beobachtet: {values}",
 				"thisServer": "Dieser Server",
 				"verifyNow": "Jetzt prüfen"
@@ -9536,7 +9546,7 @@
 					"footer": {
 						"addSocialLink": "Social-Media-Link hinzufügen",
 						"address": "Postanschrift",
-						"addressHelp": "Viele Länder schreiben eine Postanschrift in Marketing-E-Mails vor.",
+						"addressHelp": "Owlat setzt sie mit dem Firmennamen in die Fußzeile jeder Marketing-E-Mail. Das US-Recht (CAN-SPAM) verlangt eine Postanschrift in Marketing-E-Mails.",
 						"companyName": "Firmenname",
 						"platform": "Plattform",
 						"removeSocialLink": "{platform}-Link entfernen",
@@ -14982,6 +14992,11 @@
 			"contactToOptOut": "Um diese E-Mails abzubestellen, kannst du auch an {email} schreiben.",
 			"emailPreferences": "E-Mail-Einstellungen",
 			"rateLimited": "Gerade gab es zu viele Versuche. Bitte warte eine Minute und versuche es erneut.",
+			"testPreview": {
+				"heading": "Dieser Link stammt aus einer Test-E-Mail",
+				"preferences": "In einem echten Versand öffnet dieser Link die Abo-Einstellungen der Empfängerin oder des Empfängers. Es wurde nichts geändert.",
+				"unsubscribe": "In einem echten Versand meldet dieser Link die Empfängerin oder den Empfänger ab. Es wurde nichts geändert."
+			},
 			"verifying": "Dein Link wird geprüft…"
 		},
 		"unsubscribe": {
@@ -16024,6 +16039,8 @@
 			},
 			"status": {
 				"fail": "Funktioniert nicht",
+				"notApplicable": "Nicht zutreffend",
+				"notMeasured": "Nicht gemessen",
 				"pass": "Verifiziert",
 				"pendingDns": "Wird geprüft…",
 				"warn": "Handlungsbedarf"
@@ -17013,6 +17030,7 @@
 				}
 			},
 			"detail": {
+				"egressAddress": "Empfänger sehen die Mails dieser IP von einer anderen Adresse kommen, deshalb hält die MTA sie zurück: Reverse-DNS, SPF und Blocklisten wurden für eine Adresse geprüft, die gar nicht sendet.",
 				"ipv4": "Ausgehendes IPv6 bleibt in Quarantäne, bis jede konfigurierte IPv4-Identität FCrDNS besteht.",
 				"sourceAddress": "Ausgehendes IPv6 bleibt in Quarantäne, weil die MTA diese Quelladresse nicht binden und routen kann.",
 				"spf": "Ausgehendes IPv6 bleibt in Quarantäne, bis der SPF-Eintrag des Return-Path genau dessen ip6:-Adresse autorisiert."
@@ -17031,6 +17049,7 @@
 				"blocklistUnavailable": "Sperrlistenprüfung nicht verfügbar",
 				"blocklistWarning": "Sperrlisten-Warnung",
 				"blocklisted": "Auf Sperrliste",
+				"egressAddress": "Sendet von anderer Adresse",
 				"identityAndBlocklist": "Identität + Sperrliste",
 				"identityQuarantined": "Identität in Quarantäne",
 				"ipv4": "IPv4-Voraussetzung",
@@ -17053,6 +17072,7 @@
 					"unusable_answer": "Verwende einen DNS-Resolver, der Antworten nicht umschreibt, oder hinterlege einen Schlüssel für den Spamhaus Data Query Service."
 				},
 				"digitalocean": "Benenne das Droplet im DigitalOcean-Control-Panel in den EHLO-Hostnamen um; DigitalOcean verwendet diesen Namen für das Reverse-DNS.",
+				"egressAddress": "Mach diese IP zur ausgehenden Adresse des Servers (Quelle der Default-Route) oder setz IP_POOLS_* auf die Adresse, die Empfänger sehen, und führe dann die Bereitschaftsprüfung erneut aus.",
 				"generic": "Öffne die Reverse-DNS-/PTR-Einstellungen deines VPS-Anbieters für diese öffentliche IP.",
 				"hetzner": "Öffne in der Hetzner Console: Server → dein Server → Netzwerk → Primäre IP → Reverse DNS bearbeiten.",
 				"ipv4": "Repariere den IPv4-PTR, den A-Eintrag und die EHLO-Übereinstimmung, bevor du IPv6 aktivierst.",
@@ -17064,7 +17084,8 @@
 		"personalizationVariables": {
 			"email": "E-Mail",
 			"firstName": "Vorname",
-			"lastName": "Nachname"
+			"lastName": "Nachname",
+			"unsubscribeLink": "Abmeldelink"
 		},
 		"postbox": {
 			"offlineOutbox": {
@@ -19770,6 +19791,10 @@
 					"description": "Prüfungen für die IPv6-Adresse, von der der Server sendet.",
 					"label": "IPv6-Versand"
 				},
+				"not_applicable": {
+					"description": "Diese Prüfungen betreffen einen Versandweg, den diese Installation nicht nutzt. Sie zählen nicht für die Bewertung.",
+					"label": "Von dieser Installation nicht genutzt"
+				},
 				"recommended": {
 					"description": "Sinnvolle Härtung, nachdem der blockierende Pfad verifiziert ist.",
 					"label": "Empfohlen"
@@ -19847,6 +19872,10 @@
 					}
 				},
 				"domain": {
+					"bounce_mx": {
+						"impact": "Bounces erreichen Owlat nur, wenn der Return-Path-Host einen MX-Eintrag hat, der auf deinen Mailserver zeigt.",
+						"title": "Empfange Bounces auf deinem Mailserver"
+					},
 					"dkim": {
 						"impact": "DKIM belegt, dass Nachrichten von deiner Domain signiert und nicht verändert wurden.",
 						"title": "Signiere deine E-Mails, damit Gmail ihnen vertraut"
@@ -19854,6 +19883,10 @@
 					"dmarc": {
 						"impact": "DMARC-Ausrichtung ist für den Massenversand erforderlich und blockiert Domain-Missbrauch.",
 						"title": "Sage Empfängern, wie sie deine From-Adresse prüfen sollen"
+					},
+					"from_mx": {
+						"impact": "Empfänger lehnen Mail von einer Domain ab, die selbst keine Mail empfangen kann, weil Antworten und Bounces dann nirgends ankommen.",
+						"title": "Lass deine Domain Antworten und Bounces empfangen"
 					},
 					"mta_sts": {
 						"impact": "Eine abrufbare Richtlinie weist kompatible Absender an, die verschlüsselte Zustellung nicht herabzustufen.",

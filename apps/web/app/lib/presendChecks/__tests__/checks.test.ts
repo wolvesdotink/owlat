@@ -361,6 +361,25 @@ describe('subject, unsubscribe and postal address', () => {
 			'warning'
 		);
 	});
+
+	it('passes on the brand kit address the footer carries, with no address in the email', () => {
+		const check = find(
+			run(doc('<p>No address here</p>'), { senderAddress: 'Owlat GmbH\nHauptstraße 5' }),
+			'postalAddress'
+		);
+		expect(check.status).toBe('pass');
+		expect(words(check.summary)).toBe(
+			'Owlat adds your postal address from the brand kit to the footer of every campaign.'
+		);
+	});
+
+	it('without either, points at the brand kit instead of asking for an address in each email', () => {
+		const check = find(run(doc('<p>No address here</p>')), 'postalAddress');
+		expect(check.status).toBe('warning');
+		expect(check.action?.to).toBe('/dashboard/admin/instance/brand-kit');
+		expect(words(check.action!.label)).toBe('Add it to the brand kit');
+		expect(words(check.summary)).toContain('Owlat puts it in the footer of every campaign');
+	});
 });
 
 describe('sending and the summary', () => {

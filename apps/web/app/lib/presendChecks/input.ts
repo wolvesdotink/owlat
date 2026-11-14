@@ -8,6 +8,8 @@ export interface PresendInput {
 	blocks: EditorBlock[];
 	subject: string;
 	theme: Required<EmailTheme>;
+	/** The brand kit's postal address, which the send path adds to the footer. */
+	senderAddress?: string;
 	/** Review step only: why the send is refused today, `null` when it is not. */
 	blockedReason?: string | null;
 	remote: PresendRemote;

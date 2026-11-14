@@ -8,6 +8,7 @@ import type {
 } from '../../../delivery/nonCampaignIntake';
 import { formatFromAddress } from '../../../lib/emailProviders/domainVerification';
 import { getOptional } from '../../../lib/env';
+import { senderPostalAddress } from '@owlat/shared/brandKit';
 import type { StepExecuteArgs, StepModule, StepOutcome } from '../../types';
 import { getLive } from '../../../lib/softDelete';
 
@@ -183,6 +184,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// `siteUrl`, the web app whose unsubscribe and preference pages it links.
 		const convexSiteUrl = getOptional('CONVEX_SITE_URL');
 		const siteUrl = getOptional('SITE_URL');
+		const senderAddress = senderPostalAddress(orgSettings.brandKit);
 		let outcome: NonCampaignIntakeOutcome;
 		try {
 			outcome = await ctx.runMutation(internal.delivery.nonCampaignIntake.intake, {
@@ -195,6 +197,10 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 				from,
 				...(convexSiteUrl ? { listUnsubscribe: true, convexSiteUrl } : {}),
 				...(siteUrl ? { siteUrl } : {}),
+				// The footer's labels in the template's language (an automation sends
+				// the default content), and the brand kit's postal address.
+				...(template.defaultLanguage ? { footerLanguage: template.defaultLanguage } : {}),
+				...(senderAddress ? { senderAddress } : {}),
 				// The step run is the intake's idempotency key: a retried or
 				// recovered attempt of this step gets its first Send back.
 				automationStepRunId: args.stepRunId,

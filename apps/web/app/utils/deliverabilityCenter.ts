@@ -10,6 +10,8 @@ import type { LocalizedText } from '~/utils/localizedText';
 import {
 	CircleCheckIcon,
 	CircleCloseIcon,
+	CircleDashedIcon,
+	CircleMinusIcon,
 	CircleWarningIcon,
 	ShieldWarningIcon,
 	WavyCheckIcon,
@@ -47,8 +49,11 @@ export interface DeliverabilityChecklistItem extends Omit<CanonicalChecklistItem
 	lockedReason?: string;
 }
 
-/** One group per severity, plus `ipv6` for the IPv6 checks once IPv6 is on. */
-export type DeliverabilityGroupKey = DeliverabilitySeverity | 'ipv6';
+/**
+ * One group per severity, `ipv6` for the IPv6 checks once IPv6 is on, and
+ * `not_applicable` for checks about a send path the deployment does not use.
+ */
+export type DeliverabilityGroupKey = DeliverabilitySeverity | 'ipv6' | 'not_applicable';
 
 export interface DeliverabilityChecklistGroup {
 	key: DeliverabilityGroupKey;
@@ -174,10 +179,45 @@ export const DELIVERABILITY_STATUS_PRESENTATION = {
 	{ label: string; icon: IconComponent; className: string }
 >;
 
+/**
+ * A check left out of the grade wears that reason instead of its status: a
+ * mail server check on a relay-only deployment is not "Not working", and a
+ * spam rate with no Postmaster data connected is not "Needs attention".
+ */
+export const DELIVERABILITY_NOT_GRADED_PRESENTATION = {
+	own_mta_unused: {
+		label: 'shared.deliverabilityCenter.status.notApplicable',
+		icon: CircleMinusIcon,
+		className: 'border-border-subtle bg-bg-surface text-text-tertiary',
+	},
+	marketing_off: {
+		label: 'shared.deliverabilityCenter.status.notApplicable',
+		icon: CircleMinusIcon,
+		className: 'border-border-subtle bg-bg-surface text-text-tertiary',
+	},
+	not_measured: {
+		label: 'shared.deliverabilityCenter.status.notMeasured',
+		icon: CircleDashedIcon,
+		className: 'border-border-subtle bg-bg-surface text-text-tertiary',
+	},
+} as const satisfies Record<
+	NonNullable<DeliverabilityChecklistItem['notGraded']>,
+	{ label: string; icon: IconComponent; className: string }
+>;
+
+export function deliverabilityItemPresentation(
+	item: Pick<DeliverabilityChecklistItem, 'status' | 'notGraded'>
+): { label: string; icon: IconComponent; className: string } {
+	return item.notGraded
+		? DELIVERABILITY_NOT_GRADED_PRESENTATION[item.notGraded]
+		: DELIVERABILITY_STATUS_PRESENTATION[item.status];
+}
+
+/** Counts what grades; checks left out of the grade are not attention items. */
 export function countDeliverabilityItems(
 	groups: readonly DeliverabilityChecklistGroup[]
 ): DeliverabilityCounts {
-	const items = groups.flatMap((group) => group.items);
+	const items = groups.flatMap((group) => group.items).filter((item) => !item.notGraded);
 	return items.reduce<DeliverabilityCounts>(
 		(counts, item) => {
 			counts.total += 1;
@@ -275,7 +315,7 @@ export function buildDeliverabilityReport(
 		for (const item of group.items) {
 			const scope = item.scope.kind === 'domain' ? item.scope.domain : 'Deployment';
 			lines.push(
-				`- [${translate(DELIVERABILITY_STATUS_PRESENTATION[item.status].label)}] ${item.title} (${item.protocol}; ${scope})`
+				`- [${translate(deliverabilityItemPresentation(item).label)}] ${item.title} (${item.protocol}; ${scope})`
 			);
 			if (item.observed.length > 0) lines.push(`  Observed: ${item.observed.join(' · ')}`);
 			if (item.failureReason) lines.push(`  Reason: ${item.failureReason}`);

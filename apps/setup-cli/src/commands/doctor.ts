@@ -28,6 +28,7 @@ import {
 	publicMailIdentity,
 	systemMailSiteUrl,
 } from '../lib/publicSiteUrl';
+import { evaluateEgressAddress } from './doctorEgress';
 
 export type SendPathFinding = DoctorFinding;
 
@@ -231,6 +232,7 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		},
 	];
 	findings.push(...evaluateMtaIdentityHealth(value));
+	findings.push(...evaluateEgressAddress(value));
 	findings.push(...evaluateMtaQueueHealth(value));
 
 	if (smtp['ips'].length === 0) {

@@ -29,6 +29,11 @@ const testSendArgs = {
 	replyTo: v.optional(v.string()),
 	subject: v.string(),
 	html: v.string(),
+	// The composed text/plain part and the preview's `List-Unsubscribe` pair
+	// (`campaigns/testSend.ts`). Absent → the worker strips the html, and the
+	// preview carries no list headers.
+	text: v.optional(v.string()),
+	headers: v.optional(v.record(v.string(), v.string())),
 };
 const testSendValidator = v.object(testSendArgs);
 
@@ -96,7 +101,12 @@ export async function queueTestSend(
 				replyTo: args.replyTo,
 				organizationId: args.organizationId,
 				sendId,
-				template: { subject: args.subject, htmlContent: args.html },
+				template: {
+					subject: args.subject,
+					htmlContent: args.html,
+					...(args.text !== undefined ? { plainTextContent: args.text } : {}),
+				},
+				...(args.headers !== undefined ? { headers: args.headers } : {}),
 			},
 		}
 	);

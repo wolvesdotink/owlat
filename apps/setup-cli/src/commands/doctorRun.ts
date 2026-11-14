@@ -58,6 +58,12 @@ import {
 	probeMtaHealth,
 	refreshMtaIdentity,
 } from './doctor';
+import {
+	SYSTEM_SENDER_DNS_FUNCTION,
+	parseSystemSenderDnsStatus,
+	runConvexQuery,
+	systemSenderDnsFindings,
+} from '../lib/systemSenderDns';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -69,6 +75,8 @@ interface DoctorOptions {
 export interface DoctorIo {
 	/** stdout of `docker compose ps --format json` in `cwd`; throws when it cannot run. */
 	composePs(cwd: string): Promise<string>;
+	/** stdout of `convex run <fn>` through the deploy image in `cwd`; throws when it cannot run. */
+	convexRun(cwd: string, fn: string): Promise<string>;
 	now(): Date;
 	print(line: string): void;
 }
@@ -81,6 +89,11 @@ const BUN_DOCTOR_IO: DoctorIo = {
 			stderr: 'pipe',
 		});
 		return await new Response(proc.stdout).text();
+	},
+	async convexRun(cwd, fn) {
+		const output = await runConvexQuery(cwd, fn);
+		if (output === null) throw new Error(`convex run ${fn} failed`);
+		return output;
 	},
 	now: () => new Date(),
 	print: (line) => console.log(line),
@@ -186,6 +199,12 @@ export async function collectDoctorReport(
 		for (const finding of await probeIpAudit(env['MTA_API_URL'], env['MTA_API_KEY'])) {
 			report.record(finding);
 		}
+		// The DNS records system mail is still unsigned without. Silent when
+		// Convex cannot be asked: the compose checks below report a stopped stack.
+		const systemSenderDns = await io
+			.convexRun(owlatDir, SYSTEM_SENDER_DNS_FUNCTION)
+			.then(parseSystemSenderDnsStatus, () => null);
+		for (const finding of systemSenderDnsFindings(systemSenderDns)) report.record(finding);
 	}
 
 	const overridePath = join(owlatDir, 'docker-compose.override.yml');

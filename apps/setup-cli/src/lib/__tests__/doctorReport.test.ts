@@ -33,11 +33,13 @@ describe('doctor report — stable ids', () => {
 			  "mta.sending_ips",
 			  "mta.tcp25",
 			  "mta.ip_audit",
+			  "mta.system_sender_dns",
 			  "compose.override",
 			  "compose.services",
 			  "compose.cli",
 			  "containers.health",
 			  "version.drift",
+			  "mta.egress_address",
 			]
 		`);
 	});

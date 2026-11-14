@@ -317,8 +317,15 @@ export const templateTables = {
 		// template-default fallback chain. Stored on the row so
 		// analytics queries see it, not only the API response.
 		language: v.optional(v.string()),
-		// Data variables that were used for this send
+		// Data variables that were used for this send. Removed by the retention
+		// sweep once the send is done (`transactional/sendDataRetention.ts`).
 		dataVariables: v.optional(jsonPrimitiveRecord),
+		// What the retention sweep keeps of `dataVariables`: the names, so the
+		// send page can still say what the caller supplied.
+		dataVariableNames: v.optional(v.array(v.string())),
+		// When the retention sweep passed this row. Absent until then, which is
+		// what its index walks.
+		dataVariablesRedactedAt: v.optional(v.number()),
 		// Provider information
 		providerMessageId: v.optional(v.string()), // Message ID from email provider (Resend)
 		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
@@ -338,6 +345,9 @@ export const templateTables = {
 		attachmentStorageIds: v.optional(v.array(v.string())),
 	})
 		.index('by_transactional_email', ['transactionalEmailId'])
+		// The data-variable retention sweep: template sends it has not passed yet,
+		// oldest first.
+		.index('by_kind_data_variables_redacted', ['kind', 'dataVariablesRedactedAt'])
 		.index('by_status', ['status'])
 		.index('by_email', ['email'])
 		.index('by_contact', ['contactId'])

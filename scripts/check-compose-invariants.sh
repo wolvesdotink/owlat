@@ -464,6 +464,19 @@ for compose in "$root" "$vps"; do
 	else bad "$compose must publish the MTA's port 25 as '0.0.0.0:<port>:25', or IPv6 senders arrive as the bridge gateway"; fi
 done
 
+# The submission ports follow the same rule, and stay on loopback until the
+# operator publishes them, because a fresh install runs no submission listener.
+for compose in "$root" "$vps"; do
+	mta_block=$(service_block "$compose" mta)
+	if grep -qF -- "- '\${SUBMISSION_BIND:-127.0.0.1}:\${SUBMISSION_PORT:-587}:\${SUBMISSION_PORT:-587}'" <<<"$mta_block" \
+		&& grep -qF -- "- '\${SUBMISSION_BIND:-127.0.0.1}:\${SUBMISSION_IMPLICIT_TLS_PORT:-465}:\${SUBMISSION_IMPLICIT_TLS_PORT:-465}'" <<<"$mta_block"; then
+		ok "$compose publishes the submission ports 587/465 on one IPv4 bind address, loopback by default"
+	else bad "$compose must publish 587 and 465 as '\${SUBMISSION_BIND:-127.0.0.1}:<port>:<port>'"; fi
+	if grep -qE "^ {6}- '0\.0\.0\.0:(\\$\{IMAP_PORT:-993\}|993):993'$" <<<"$(service_block "$compose" imap)"; then
+		ok "$compose publishes IMAP's port 993 on IPv4 only"
+	else bad "$compose must publish IMAP's port 993 as '0.0.0.0:<port>:993', or IPv6 clients arrive as the bridge gateway"; fi
+done
+
 for envfile in .env.selfhost.example apps/mta/.env.example infra/templates/.env.vps.template; do
 	pools_with_v6=$(grep -E '^IP_POOLS_(TRANSACTIONAL|CAMPAIGN)=.*:' "$envfile" || true)
 	if grep -qE '^MTA_IPV6_ENABLED=false$' "$envfile" && [ -z "$pools_with_v6" ]; then

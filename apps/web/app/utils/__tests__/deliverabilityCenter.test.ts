@@ -76,6 +76,18 @@ describe('Deliverability Center view model', () => {
 		).toEqual({ passing: 1, attention: 2, pending: 1, total: 4 });
 	});
 
+	it('does not count a check left out of the grade as attention', () => {
+		const notApplicable = {
+			...domainItem('domain-a' as Id<'domains'>, 'fail'),
+			notGraded: 'own_mta_unused' as const,
+		};
+		expect(
+			countDeliverabilityItems([
+				{ key: 'not_applicable', label: '', description: '', items: [notApplicable] },
+			])
+		).toEqual({ passing: 0, attention: 0, pending: 0, total: 0 });
+	});
+
 	it('formats honest check ages and a live DNS countdown', () => {
 		const now = Date.UTC(2026, 6, 26, 12);
 		expect(localized(formatVerificationAge(now - 30_000, now))).toBe('checked just now');

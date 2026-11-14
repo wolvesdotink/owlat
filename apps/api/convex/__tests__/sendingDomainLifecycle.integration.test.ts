@@ -1051,6 +1051,82 @@ describe('Sending domain lifecycle — recordDkimRotation (MTA→Convex propagat
 		expect(outcome.changed).toBe(false);
 	});
 
+	it('cancelled phase: withdraws the pending selector and keeps the active one', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedRotatedDomain(t, 'cancel.com');
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+			domain: 'cancel.com',
+			selector: 's2',
+			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
+			phase: 'pending',
+			userId: 'system:dkim_rotation',
+		});
+
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+			domain: 'cancel.com',
+			selector: 's2',
+			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
+			phase: 'cancelled',
+			userId: 'system:dkim_rotation',
+		});
+
+		expect(outcome).toMatchObject({ ok: true, phase: 'cancelled', changed: true });
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.dnsRecords.dkim).toEqual([
+				{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; k=rsa; p=OLDKEY' },
+			]);
+		});
+		const pendingResults = [
+			{ verified: true, lastChecked: 1 },
+			{ verified: false, lastChecked: 1, rotationPending: true },
+		];
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			await ctx.db.patch(domainId, {
+				dnsRecords: {
+					...domain!.dnsRecords,
+					dkim: [
+						...domain!.dnsRecords.dkim!,
+						{ type: 'TXT', host: 's3._domainkey', value: 'v=DKIM1; p=X', rotationPending: true },
+					],
+				},
+				verificationResults: { ...domain!.verificationResults, dkim: pendingResults },
+			});
+		});
+		await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+			domain: 'cancel.com',
+			selector: 's3',
+			dnsRecord: 'v=DKIM1; p=X',
+			phase: 'cancelled',
+			userId: 'system:dkim_rotation',
+		});
+		await t.run(async (ctx) => {
+			// The active selector keeps its verification result.
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.verificationResults?.dkim).toEqual([pendingResults[0]]);
+		});
+	});
+
+	it('cancelled phase never removes a selector that is signing', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedRotatedDomain(t, 'cancel-active.com');
+
+		const outcome = await t.mutation(internal.domains.lifecycleDkim.recordDkimRotation, {
+			domain: 'cancel-active.com',
+			selector: 's1',
+			dnsRecord: 'v=DKIM1; k=rsa; p=OLDKEY',
+			phase: 'cancelled',
+			userId: 'system:dkim_rotation',
+		});
+
+		expect(outcome).toMatchObject({ ok: true, phase: 'cancelled', changed: false });
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.dnsRecords.dkim!.map((r) => r.host)).toEqual(['s1._domainkey']);
+		});
+	});
+
 	it('returns domain_not_found for a domain the MTA does not know in Convex', async () => {
 		const t = convexTest(schema, modules);
 

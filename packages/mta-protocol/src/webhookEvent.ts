@@ -171,7 +171,9 @@ export function isMtaWebhookEvent(value: unknown): value is ValidatedMtaWebhookE
 				bounded(value['domain'], 253) &&
 				bounded(value['selector'], 128) &&
 				bounded(value['dnsRecord'], 4096) &&
-				(value['phase'] === 'pending' || value['phase'] === 'activated')
+				(value['phase'] === 'pending' ||
+					value['phase'] === 'activated' ||
+					value['phase'] === 'cancelled')
 			);
 		case 'inbound.received':
 			return bounded(value['organizationId'], 128) && isRecord(value['inboundPayload']);

@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
 import { registerContactHygieneCrons } from './contacts/crons';
+import { registerMigrationCrons } from './migrations/cronRegistration';
 import { registerTeamInboxCrons } from './inbox/cronRegistration';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 import { registerWebhookCrons } from './webhooks/cronRegistration';
@@ -471,15 +472,8 @@ crons.interval(
 	{}
 );
 
-// IMAP folder membership backfill: start migration 0054 on a deployment
-// that never ran it, and resume one whose chain died, so every deployment stops
-// listing whole folders for the IMAP server. One indexed read once completed.
-crons.interval(
-	'ensure folder membership backfill',
-	{ minutes: 10 },
-	internal.migrations['0054_backfill_folder_membership'].ensure,
-	{}
-);
+// Migrations that start themselves (`startsItself` in the manifest).
+registerMigrationCrons(crons);
 
 // Contact-book hygiene (retention cascade, duplicate auto-merge, engagement
 // score decay, sunset policy). Grouped in `contacts/crons.ts`.

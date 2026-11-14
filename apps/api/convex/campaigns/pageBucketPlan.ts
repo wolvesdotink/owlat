@@ -21,6 +21,8 @@ type PlanBucketArgs = HopSendContext & {
 	htmlContent: string;
 	/** Pre-generated (or author-overridden) text/plain body; default language only. */
 	plainTextContent?: string;
+	/** The language the body was resolved to; the footer's labels follow it. */
+	resolvedLanguage?: string;
 	// Send-time optimization: the instant and arm the planner chose per
 	// contact id. Set only for an optimized campaign; replaces both the
 	// timezone grouping and the immediate send.
@@ -104,6 +106,8 @@ export function planBucket(args: PlanBucketArgs): PageBucket {
 			trackingBaseUrl: args.trackingBaseUrl,
 			organizationId: args.organizationId,
 			listId: args.listId,
+			...(args.resolvedLanguage !== undefined ? { footerLanguage: args.resolvedLanguage } : {}),
+			...(args.senderAddress !== undefined ? { senderAddress: args.senderAddress } : {}),
 			// Keys the deliverability seed-probe set: the two A/B arms are
 			// different messages and each gets its own placement reading.
 			abVariant: args.abVariant,

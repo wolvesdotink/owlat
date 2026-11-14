@@ -241,6 +241,27 @@ export async function getReturnPathHost(redis: Redis, domain: string): Promise<s
 }
 
 /**
+ * Every per-domain VERP return-path host currently registered, lowercased and
+ * deduplicated. One SCAN over the domain hashes, so callers cache the result
+ * (bounce/feedbackHosts.ts).
+ */
+export async function listReturnPathHosts(redis: Redis): Promise<string[]> {
+	const hosts = new Set<string>();
+	let cursor = '0';
+	do {
+		const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', `${DKIM_PREFIX}*`, 'COUNT', 100);
+		cursor = nextCursor;
+		for (const key of keys) {
+			// The prefix also holds non-hash keys (the signing hold, rotation state);
+			// a WRONGTYPE answer from one of those is not a host.
+			const host = await redis.hget(key, RETURN_PATH_FIELD).catch(() => null);
+			if (host) hosts.add(host.toLowerCase().replace(/\.$/, ''));
+		}
+	} while (cursor !== '0');
+	return [...hosts];
+}
+
+/**
  * Whether a DKIM key currently exists for a domain (Redis, not cache).
  */
 export async function hasDkimKey(redis: Redis, domain: string): Promise<boolean> {

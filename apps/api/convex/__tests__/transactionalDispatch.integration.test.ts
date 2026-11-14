@@ -8,6 +8,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
@@ -64,6 +65,13 @@ const modules = Object.fromEntries(
 			!path.includes('delivery/workpool')
 	)
 );
+
+/** A harness with the rate-limiter component the intake's send caps charge. */
+function newTest(): TestConvex<typeof schema> {
+	const t = convexTest(schema, modules);
+	rateLimiterTest.register(t);
+	return t;
+}
 
 // Silence "Could not find module" rejections from the excluded workpool/worker
 // modules — the dispatch enqueues an action whose target module is filtered
@@ -151,7 +159,7 @@ async function seedBaseline(
 
 describe('transactional.dispatch.dispatch — happy path', () => {
 	it('inserts a queued row, increments both counters, and returns ok', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId, settingsId } = await seedBaseline(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -182,7 +190,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 	});
 
 	it('stores the correlation id on the Send row and keeps it out of the queued envelope', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		const enqueue = vi.mocked(transactionalEmailPool.enqueueAction);
 		enqueue.mockClear();
@@ -205,7 +213,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 	});
 
 	it('resolves an existing contact via Contact resolution (upsert mode)', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 
 		// Pre-seed the contact + its identity row (mirrors what resolveContact would do).
@@ -239,7 +247,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 	});
 
 	it('looks up a template by slug as well as by id', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { slug } = await seedBaseline(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -251,7 +259,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 	});
 
 	it('answers with the template slug when the request names the template by id', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId, slug } = await seedBaseline(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -263,7 +271,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 	});
 
 	it('falls back to contact language when no request language', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, {
 			supportedLanguages: ['en', 'de'],
 			htmlTranslations: JSON.stringify({
@@ -308,7 +316,7 @@ describe('transactional.dispatch.dispatch — happy path', () => {
 
 describe('transactional.dispatch.dispatch — rejections', () => {
 	it("returns 'feature_disabled' and writes no row while the transactional feature is off", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId, settingsId } = await seedBaseline(t);
 		await t.run(async (ctx) => {
 			await ctx.db.patch(settingsId, { featureFlags: { transactional: false } });
@@ -328,7 +336,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'abuse_blocked' when instance is suspended", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, { abuseStatus: 'suspended' });
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -342,7 +350,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'no_delivery_provider' and writes no row when no provider is configured", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		const saved = {
 			p: process.env['EMAIL_PROVIDER'],
@@ -373,7 +381,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'recipient_blocked' when the recipient is on the blocklist", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
@@ -401,7 +409,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	// mailed / still drags the daily counter. See
 	// EMAIL_BEST_PRACTICES_AUDIT_2026-06-21.md "PR-72".
 	it('a blocked recipient writes no send row, bumps no counter, and enqueues nothing', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId, settingsId } = await seedBaseline(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
@@ -443,7 +451,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	// normalized (lowercased) email against a normalized row — the contract the
 	// HTTP shell guarantees.
 	it('rejects a normalized (lowercased) request against a blocked address (USER@ vs user@)', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		await t.run(async (ctx) => {
 			// Stored normalized, exactly as the lifecycle / blocklist writer stores it.
@@ -462,7 +470,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'template_not_found' when slug doesn't exist", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		await seedBaseline(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -479,7 +487,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 		['a malformed id', 'not-a-template-id'],
 		['an id from another table', 'contact'],
 	])("returns 'template_not_found' for %s", async (_label, kind) => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		await seedBaseline(t);
 		const id =
 			kind === 'contact'
@@ -495,7 +503,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'template_not_published' when status is 'draft'", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, { templateStatus: 'draft' });
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -509,7 +517,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'template_no_content' when htmlContent is empty", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, { htmlContent: '' });
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -523,7 +531,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'domain_unverified' when domain status is not 'verified'", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, { domainStatus: 'pending' });
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -537,7 +545,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 	});
 
 	it("returns 'invalid_variables' when dataVariables don't match the template schema", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, {
 			dataVariablesSchema: { age: 'number' },
 		});
@@ -579,7 +587,7 @@ describe('transactional.dispatch.dispatch — rejections', () => {
 
 describe('transactional.dispatch.dispatch — drift-bug closures', () => {
 	it("created contacts carry source 'transactional' (Contact resolution wiring)", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
@@ -594,7 +602,7 @@ describe('transactional.dispatch.dispatch — drift-bug closures', () => {
 	});
 
 	it('persists resolved language on the transactionalSends row (analytics drift fix)', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, {
 			supportedLanguages: ['en', 'de'],
 			htmlTranslations: JSON.stringify({
@@ -635,7 +643,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 
 	it('queues the default language with its plain text and the unsubscribe footer', async () => {
 		vi.stubEnv('SITE_URL', 'https://app.owlat.example');
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		await t.run(async (ctx) =>
 			ctx.db.patch(templateId, {
@@ -675,7 +683,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 	});
 
 	it('queues a translation without the default language plain text and no footer', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, {
 			supportedLanguages: ['en', 'de'],
 			htmlTranslations: JSON.stringify({
@@ -700,7 +708,7 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 	});
 
 	it('answers a repeat of a committed request from its receipt and queues nothing more', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId, slug } = await seedBaseline(t);
 		const idempotency = { organizationId: 'org_1', keyHash: 'key-hash', requestHash: 'req-hash' };
 		const request = {
@@ -767,7 +775,7 @@ describe('transactional.dispatch.dispatch — temporary routing holds', () => {
 	}
 
 	it('accepts and queues the send while the org-wide delivery circuit is open', async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		await openGlobalBreaker(t);
 
@@ -792,7 +800,7 @@ describe('transactional.dispatch.dispatch — temporary routing holds', () => {
 	});
 
 	it("still refuses with 'no_delivery_provider' while the circuit is open and nothing can deliver", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t);
 		await openGlobalBreaker(t);
 		vi.stubEnv('EMAIL_PROVIDER', '');
@@ -810,7 +818,7 @@ describe('transactional.dispatch.dispatch — temporary routing holds', () => {
 	});
 
 	it("still refuses with 'domain_unverified' while the circuit is open", async () => {
-		const t = convexTest(schema, modules);
+		const t = newTest();
 		const { templateId } = await seedBaseline(t, { domainStatus: 'pending' });
 		await openGlobalBreaker(t);
 

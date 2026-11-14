@@ -47,6 +47,7 @@ import {
 	TRANSACTIONAL_EMAIL_LIFECYCLE,
 	reduce,
 	resolvedTargetStatus,
+	scanPublishableVariants,
 	transitionInputValidator,
 	type Effect,
 	type TransactionalEmailStatus,
@@ -149,6 +150,38 @@ async function dispatch(
 		to: result.resolvedTo,
 		emailId: email._id,
 	};
+}
+
+/**
+ * Scan a published email after an edit made with `forceWhilePublished`, in the
+ * editing mutation's transaction and on the row as the edit left it. That edit
+ * changes what the API sends right away, so it gets the publish verdict: a
+ * blocked variant throws (and the whole edit rolls back), a suspicious one moves
+ * the email to `pending_review` with the same audit and scan record a publish
+ * writes. A clean scan writes nothing more. A row that is not published is
+ * left alone: its own publish scans it.
+ */
+export async function scanPublishedEdit(
+	ctx: MutationCtx,
+	emailId: Id<'transactionalEmails'>,
+	userId: string
+): Promise<void> {
+	const email = await ctx.db.get(emailId);
+	if (!email || email.status !== 'published' || !email.htmlContent) return;
+	const scan = scanPublishableVariants(email.subject, email.htmlContent, email.htmlTranslations);
+	if (scan.level === 'clean') return;
+	await dispatch(
+		ctx,
+		email,
+		{
+			to: 'published',
+			at: Date.now(),
+			htmlContent: email.htmlContent,
+			htmlTranslations: email.htmlTranslations,
+			...(email.rendererVersion !== undefined && { rendererVersion: email.rendererVersion }),
+		},
+		userId
+	);
 }
 
 // ─── Public entry points ────────────────────────────────────────────────────

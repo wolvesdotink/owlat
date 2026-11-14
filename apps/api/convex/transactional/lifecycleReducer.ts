@@ -15,7 +15,8 @@ import type { AuditAction } from '../lib/auditLog';
 import { defineLifecycle } from '../lib/lifecycle';
 import { scanContent } from '@owlat/email-scanner';
 import { throwInvalidState } from '../_utils/errors';
-import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
+import { htmlTranslationEntries } from '../lib/emailJson';
+import type { ContentFlag, ContentScanLevel, ContentScanResult } from '@owlat/email-scanner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,34 @@ type ReducerResult = {
 	resolvedTo: TransactionalEmailStatus;
 };
 
+// ─── Content scan ───────────────────────────────────────────────────────────
+
+const SCAN_LEVEL_RANK: Record<ContentScanLevel, number> = { clean: 0, suspicious: 1, blocked: 2 };
+
+/**
+ * The scan verdict for everything a published template can send: the default
+ * subject and HTML and every rendered translation. A send picks one variant by
+ * language, so the template is only as clean as its worst variant; that
+ * variant's result decides.
+ */
+export function scanPublishableVariants(
+	subject: string,
+	htmlContent: string,
+	htmlTranslations: string | undefined
+): ContentScanResult {
+	let worst = scanContent(subject, htmlContent);
+	for (const variant of htmlTranslationEntries(htmlTranslations)) {
+		const result = scanContent(variant.subject, variant.htmlContent);
+		if (
+			SCAN_LEVEL_RANK[result.level] > SCAN_LEVEL_RANK[worst.level] ||
+			(result.level === worst.level && result.score > worst.score)
+		) {
+			worst = result;
+		}
+	}
+	return worst;
+}
+
 // ─── Reducer ────────────────────────────────────────────────────────────────
 
 export function reduce(
@@ -154,7 +183,11 @@ export function reduce(
 
 	// ─── Publish-with-scan reducer ─────────────────────────────────────────
 	if (input.to === 'published') {
-		const scanResult = scanContent(email.subject, input.htmlContent);
+		const scanResult = scanPublishableVariants(
+			email.subject,
+			input.htmlContent,
+			input.htmlTranslations
+		);
 
 		if (scanResult.level === 'blocked') {
 			// Record scan result first (audit), then throw.

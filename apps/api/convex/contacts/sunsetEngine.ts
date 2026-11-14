@@ -258,6 +258,49 @@ async function loadLastQuietResetAt(
 	return newest;
 }
 
+/** How many of the contact's newest sent campaign mails are read for an automated open. */
+const RECENT_CAMPAIGN_SENDS = 5;
+
+/**
+ * The contact's campaign mail, the only mail that carries the open pixel and
+ * wrapped links: when it was first sent, and the newest automated fetch
+ * (`delivery/automatedOpens.ts`) among the latest few. Automation and
+ * transactional mail is not read here — it is untracked, so it cannot show
+ * engagement, and counting it as an opportunity to engage suppressed contacts
+ * who only ever received it.
+ *
+ * `by_contact` orders by insertion, and a Send row is inserted when its page
+ * is enqueued, so the first row with a `sentAt` is the first sent campaign
+ * mail to within one walker page.
+ */
+async function loadCampaignSendFacts(
+	ctx: QueryCtx | MutationCtx,
+	contactId: Id<'contacts'>
+): Promise<{ firstSentAt?: number; lastAutomatedOpenAt?: number }> {
+	const firstSent = await ctx.db
+		.query('emailSends')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.order('asc')
+		.filter((q) => q.neq(q.field('sentAt'), undefined))
+		.first();
+	const recent = await ctx.db
+		.query('emailSends')
+		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+		.order('desc')
+		.filter((q) => q.neq(q.field('sentAt'), undefined))
+		.take(RECENT_CAMPAIGN_SENDS);
+	let lastAutomatedOpenAt: number | undefined;
+	for (const send of recent) {
+		const at = send.automatedOpenedAt;
+		if (at === undefined || !Number.isFinite(at)) continue;
+		if (lastAutomatedOpenAt === undefined || at > lastAutomatedOpenAt) lastAutomatedOpenAt = at;
+	}
+	return {
+		...(firstSent?.sentAt !== undefined ? { firstSentAt: firstSent.sentAt } : {}),
+		...(lastAutomatedOpenAt !== undefined ? { lastAutomatedOpenAt } : {}),
+	};
+}
+
 /**
  * Gather everything `evaluateSunset` needs for one contact. Every absent fact
  * stays `undefined` / `false` — the decision core treats that as "unmeasured"
@@ -273,24 +316,16 @@ async function loadSunsetFacts(
 	const hasEmail = email.length > 0;
 	const isAlreadySuppressed = hasEmail ? await isSuppressed(ctx, email) : false;
 
-	// Same index, same reason as `loadLastEngagementAt`: the OLDEST send by
-	// `occurredAt`, not the first one that happened to be written.
-	const firstSend = await ctx.db
-		.query('contactActivities')
-		.withIndex('by_contact_type_and_occurred_at', (q) =>
-			q.eq('contactId', contact._id).eq('activityType', 'email_sent')
-		)
-		.order('asc')
-		.first();
-
+	const { firstSentAt, lastAutomatedOpenAt } = await loadCampaignSendFacts(ctx, contact._id);
 	const lastEngagementAt = await loadLastQuietResetAt(ctx, contact._id);
 
 	return {
 		...clock,
 		createdAt: contact.createdAt,
 		...(lastEngagementAt !== undefined ? { lastEngagementAt } : {}),
-		...(firstSend !== null ? { firstMessagedAt: firstSend.occurredAt } : {}),
-		hasSendHistory: firstSend !== null,
+		...(firstSentAt !== undefined ? { firstMessagedAt: firstSentAt } : {}),
+		hasSendHistory: firstSentAt !== undefined,
+		...(lastAutomatedOpenAt !== undefined ? { lastAutomatedOpenAt } : {}),
 		hasEmail,
 		isGloballyUnsubscribed: contact.unsubscribedAt !== undefined,
 		isAlreadySuppressed,
