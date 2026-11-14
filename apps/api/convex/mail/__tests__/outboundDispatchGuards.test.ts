@@ -191,7 +191,8 @@ describe('mail/outbound · the MTA intake', () => {
 			.mockImplementation(async () => new Response('{}', { status: 200 }));
 		await dispatch(t, draftId);
 		const call = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/send/postbox'));
-		return JSON.parse(String((call?.[1] as RequestInit).body)) as Record<string, unknown>;
+		expect(call).toBeDefined();
+		return JSON.parse(String((call![1] as RequestInit).body)) as Record<string, unknown>;
 	}
 
 	async function registerDomain(t: T, providerType: string) {

@@ -154,6 +154,7 @@ import type * as migrations_0075_register_system_sender_domain from '../migratio
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
+import type * as migrations_cronRegistration from '../migrations/cronRegistration.js';
 import type * as migrations_manifest from '../migrations/manifest.js';
 import type * as plugins_llmLedgerRows from '../plugins/llmLedgerRows.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
@@ -3875,6 +3876,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0074_backfill_review_queue_counts': typeof migrations_0074_backfill_review_queue_counts;
 	'migrations/0075_register_system_sender_domain': typeof migrations_0075_register_system_sender_domain;
 	'migrations/admin': typeof migrations_admin;
+	'migrations/cronRegistration': typeof migrations_cronRegistration;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
