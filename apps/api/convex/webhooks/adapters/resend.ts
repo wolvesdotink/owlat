@@ -22,6 +22,7 @@ import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
+import { sesBounceCause } from './sesBounceCause';
 
 /**
  * Every Resend event carries a `type` and a `data` object, and only the two
@@ -39,7 +40,14 @@ const resendFeedbackValidator = v.object({
 	data: v.object({
 		email_id: v.string(),
 		to: v.optional(v.array(v.string())),
-		bounce: v.optional(v.object({ message: v.optional(v.string()) })),
+		bounce: v.optional(
+			v.object({
+				message: v.optional(v.string()),
+				type: v.optional(v.string()),
+				subType: v.optional(v.string()),
+				diagnosticCode: v.optional(v.array(v.string())),
+			})
+		),
 	}),
 });
 
@@ -118,12 +126,21 @@ export const resendAdapter: InboundParser<'resend'> = {
 
 		switch (envelope.type) {
 			case 'email.bounced': {
-				const bounceMessage = payload.data.bounce?.message ?? '';
+				const bounce = payload.data.bounce;
+				const bounceMessage = bounce?.message ?? '';
 				return {
 					kind: 'email.bounced',
 					providerMessageId,
 					at,
 					bounceType: classifyResendBounce(bounceMessage),
+					// Resend sends through Amazon SES and reports SES's bounce
+					// vocabulary ("Bounce types" in
+					// https://resend.com/docs/dashboard/emails/email-bounces).
+					bounceCause: sesBounceCause({
+						bounceType: bounce?.type,
+						bounceSubType: bounce?.subType,
+						diagnostics: bounce?.diagnosticCode ?? [],
+					}),
 					...(bounceMessage ? { bounceMessage } : {}),
 				};
 			}

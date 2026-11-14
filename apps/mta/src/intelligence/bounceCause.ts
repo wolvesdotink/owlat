@@ -13,6 +13,7 @@
 
 import type { SmtpPhase } from '@owlat/smtp-client';
 import { SMTP_BLOCK_CATEGORIES, type BounceCause } from '@owlat/shared/smtpBlockCategories';
+import { enhancedCodeCause } from '@owlat/shared/bounceCause';
 import type { SmtpFailureCategory } from './smtpClassifier.js';
 import type { DispatchOutcome } from '../dispatch/outcomeClassification.js';
 
@@ -28,39 +29,6 @@ const PRE_RECIPIENT_PHASES: ReadonlySet<SmtpPhase> = new Set<SmtpPhase>([
 	'auth',
 	'mail',
 ]);
-
-/**
- * X.7.x codes that are about the recipient's mailbox rather than our identity:
- * a disabled account (X.7.13, RFC 7372) and a mailbox or domain that changed
- * owner (X.7.17 / X.7.18, RFC 7293). The rest of X.7 is security or policy
- * applied to the sender.
- */
-const RECIPIENT_SECURITY_DETAILS: ReadonlySet<number> = new Set([13, 17, 18]);
-
-/**
- * X.1.x codes that describe the SENDER's address (RFC 3463 §3.2): X.1.7 bad
- * sender mailbox syntax, X.1.8 bad sender system address. Every other X.1.x
- * is about the destination address.
- */
-const SENDER_ADDRESS_DETAILS: ReadonlySet<number> = new Set([7, 8]);
-
-/**
- * What an enhanced status code alone says about the cause, or `undefined` when
- * the code names neither party (X.0.x, X.3.x, X.4.x, X.5.x, X.6.x). Shared by
- * the live SMTP path and the asynchronous DSN classifier, so both read a code
- * the same way.
- */
-export function enhancedCodeCause(enhancedCode: string | undefined): BounceCause | undefined {
-	if (enhancedCode === undefined) return undefined;
-	const match = /^[245]\.(\d{1,3})\.(\d{1,3})$/.exec(enhancedCode);
-	if (!match) return undefined;
-	const subject = Number(match[1]);
-	const detail = Number(match[2]);
-	if (subject === 1) return SENDER_ADDRESS_DETAILS.has(detail) ? 'sender' : 'recipient';
-	if (subject === 2) return 'recipient';
-	if (subject === 7) return RECIPIENT_SECURITY_DETAILS.has(detail) ? 'recipient' : 'sender';
-	return undefined;
-}
 
 /**
  * The cause of a refusal the receiver answered with.

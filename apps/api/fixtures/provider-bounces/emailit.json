@@ -1,0 +1,20 @@
+{
+	"bounced": {
+		"event_id": "evt_01JBW7Q3J3W8Q9YVQ9V3X2Z4AB",
+		"type": "email.bounced",
+		"object": "event",
+		"data": {
+			"object": {
+				"id": "em_01JBW7Q3J3W8Q9YVQ9V3X2Z4CD",
+				"object": "email",
+				"from": "Acme <hello@example.com>",
+				"to": "customer@example.com",
+				"subject": "Your order has shipped",
+				"status": "bounced",
+				"meta": { "order_id": "1042" },
+				"updated_at": "2026-07-10T00:00:01.000Z",
+				"created_at": "2026-07-10T00:00:00.000Z"
+			}
+		}
+	}
+}
