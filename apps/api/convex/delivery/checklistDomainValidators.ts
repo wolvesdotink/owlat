@@ -3,7 +3,7 @@
 import dns from 'node:dns/promises';
 import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
 import type { ActionCtx } from '../_generated/server';
-import { api } from '../_generated/api';
+import { internal } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
 import { fetchMtaStsPolicyBody, resolveMtaStsTxt } from '../domains/mtaStsVerify';
 import { returnPathProviderFor } from '../domains/returnPathProviders';
@@ -262,7 +262,7 @@ export async function observeDomainCheck(
 					providerValues
 				);
 			}
-			const expected = await ctx.runQuery(api.domains.mtaSts.getMtaStsPolicy, {});
+			const expected = await ctx.runQuery(internal.domains.mtaSts.readMtaStsPolicy, {});
 			if (!expected) {
 				return checklistObservation(
 					'https.mta-sts',

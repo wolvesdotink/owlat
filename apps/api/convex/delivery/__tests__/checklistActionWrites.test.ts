@@ -21,6 +21,20 @@ vi.mock('../checklistDeploymentValidators', async (importOriginal) => ({
 	observeDeploymentCheck: observer.observe,
 }));
 
+const mtaSts = vi.hoisted(() => ({ txt: vi.fn(), body: vi.fn() }));
+vi.mock('../../domains/mtaStsVerify', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	resolveMtaStsTxt: mtaSts.txt,
+	fetchMtaStsPolicyBody: mtaSts.body,
+}));
+vi.mock('../checklistProviderDetection', () => ({
+	detectDomainDnsProvider: vi.fn(async () => null),
+	dnsProviderObservation: vi.fn(() => []),
+}));
+
+import { buildMtaStsPolicy, buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
+import { internal } from '../../_generated/api';
+import { createTestDomain } from '../../__tests__/factories';
 import { retry, sweep, verifyNow } from '../checklistVerification';
 import { start } from '../checklistLoopback';
 
@@ -228,6 +242,33 @@ describe('checklist verification writes', () => {
 			currentEvidenceId: evidence!._id,
 			leaseExpiresAt: NOW,
 		});
+	});
+});
+
+describe('the scheduled sweep without a session', () => {
+	// The daily sweep runs from a cron, where no member is signed in: every
+	// read on its path must work without one. Nothing here stubs an auth check.
+	it('verifies MTA-STS against the deployment policy', async () => {
+		vi.stubEnv('EHLO_HOSTNAME', 'mail.owlat.example');
+		const t = convexTest(schema, modules);
+		const domainId = await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { mtaStsMode: 'enforce', createdAt: Date.now() });
+			return ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'sts.example', status: 'verified' })
+			);
+		});
+		const mx = ['mail.owlat.example'];
+		mtaSts.txt.mockResolvedValue(buildMtaStsTxtValue(mtaStsPolicyId('enforce', mx)));
+		mtaSts.body.mockResolvedValue(buildMtaStsPolicy('enforce', mx));
+
+		const result = await t.action(internal.delivery.checklistVerification.sweep, {
+			organizationId: ORG,
+			itemId: 'domain.mta_sts',
+			domainId,
+		});
+
+		expect(result).toMatchObject({ accepted: true, status: 'pass' });
 	});
 });
 
