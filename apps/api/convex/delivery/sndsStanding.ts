@@ -15,11 +15,9 @@
  */
 
 import type { Doc } from '../_generated/dataModel';
-import { internalQuery, type ActionCtx, type QueryCtx } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { internalQuery, type QueryCtx } from '../_generated/server';
 import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
-import { getMtaConfig, mtaFetch } from '../mail/mtaClient';
 
 /** Today and the two days before it: SNDS publishes a day about a day late. */
 const SNDS_STANDING_FRESH_DAYS = 3;
@@ -74,23 +72,3 @@ export const getMicrosoftHeldIps = internalQuery({
 	handler: async (ctx): Promise<string[]> =>
 		microsoftHeldIps(await readSndsIpStandings(ctx.db, Date.now())),
 });
-
-/**
- * Hand the MTA the full list of held addresses, replacing the last one. An
- * empty list lifts every hold. A failed push is left to the next poll: the
- * MTA's list expires on its own, so a lost update cannot hold mail for long.
- */
-export async function pushMicrosoftHolds(ctx: ActionCtx): Promise<void> {
-	const mta = getMtaConfig();
-	if (!mta) return;
-	const ips: string[] = await ctx.runQuery(internal.delivery.sndsStanding.getMicrosoftHeldIps, {});
-	try {
-		await mtaFetch(mta, '/provider-holds', {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ provider: 'microsoft', ips }),
-		});
-	} catch {
-		// The MTA is unreachable; the next poll pushes again.
-	}
-}
