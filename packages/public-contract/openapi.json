@@ -1205,6 +1205,157 @@
 				}
 			}
 		},
+		"/api/v1/transactional/{sendId}": {
+			"get": {
+				"operationId": "getTransactionalSend",
+				"tags": ["Transactional"],
+				"summary": "Get the delivery status of one transactional send. Needs the same scope as sending.",
+				"security": [
+					{
+						"apiKey": ["transactional:send"]
+					}
+				],
+				"parameters": [
+					{
+						"name": "sendId",
+						"in": "path",
+						"required": true,
+						"description": "The `transactionalEmailId` the send call answered with.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Where the send stands.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "Requests left in the current window.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "When the window resets, as a Unix timestamp.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/TransactionalSendStatus"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"sendId": "k57s3nd00000000000000000000000",
+										"status": "failed",
+										"email": "ada@example.com",
+										"templateId": "k57t3mpl4te0000000000000000000",
+										"slug": "order-confirmation",
+										"language": "en-US",
+										"queuedAt": "2026-11-02T09:00:00.000Z",
+										"sentAt": null,
+										"deliveredAt": null,
+										"openedAt": null,
+										"clickedAt": null,
+										"bouncedAt": null,
+										"complainedAt": null,
+										"failedAt": "2026-11-06T09:00:00.000Z",
+										"bounceType": null,
+										"errorCode": "MTA_UNREACHABLE",
+										"errorMessage": "The mail server could not be reached before the delivery deadline passed"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/v1/topics/{topicId}/contacts": {
 			"post": {
 				"operationId": "addContactToTopic",
@@ -1813,10 +1964,11 @@
 					},
 					"transactionalEmailId": {
 						"type": "string",
-						"description": "ID of the send record created for this email, not the template ID. Delivery webhooks carry it."
+						"description": "ID of the send created for this email, not the template ID. Every email.* webhook for this send carries it as sendId, and GET /api/v1/transactional/{sendId} reads its status."
 					},
 					"slug": {
-						"type": "string"
+						"type": "string",
+						"description": "Slug of the template used, also when the request named it by ID."
 					},
 					"contactId": {
 						"type": "string"
@@ -1865,6 +2017,111 @@
 						"required": ["url"]
 					}
 				]
+			},
+			"TransactionalSendStatus": {
+				"type": "object",
+				"properties": {
+					"sendId": {
+						"type": "string",
+						"description": "The ID the send call answered with as transactionalEmailId."
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"queued",
+							"sent",
+							"failed",
+							"delivered",
+							"opened",
+							"clicked",
+							"bounced",
+							"complained"
+						]
+					},
+					"email": {
+						"type": "string"
+					},
+					"templateId": {
+						"type": ["string", "null"]
+					},
+					"slug": {
+						"type": ["string", "null"]
+					},
+					"language": {
+						"type": ["string", "null"]
+					},
+					"queuedAt": {
+						"description": "ISO 8601 timestamp of when the send was queued; null until then.",
+						"type": ["string", "null"]
+					},
+					"sentAt": {
+						"description": "ISO 8601 timestamp of when the send was handed to the provider; null until then.",
+						"type": ["string", "null"]
+					},
+					"deliveredAt": {
+						"description": "ISO 8601 timestamp of when the send was accepted by the receiving server; null until then.",
+						"type": ["string", "null"]
+					},
+					"openedAt": {
+						"description": "ISO 8601 timestamp of when the send was first opened; null until then.",
+						"type": ["string", "null"]
+					},
+					"clickedAt": {
+						"description": "ISO 8601 timestamp of when the send had its first link clicked; null until then.",
+						"type": ["string", "null"]
+					},
+					"bouncedAt": {
+						"description": "ISO 8601 timestamp of when the send bounced; null until then.",
+						"type": ["string", "null"]
+					},
+					"complainedAt": {
+						"description": "ISO 8601 timestamp of when the send drew a spam complaint; null until then.",
+						"type": ["string", "null"]
+					},
+					"failedAt": {
+						"description": "ISO 8601 timestamp of when the send failed for good; null until then.",
+						"type": ["string", "null"]
+					},
+					"bounceType": {
+						"anyOf": [
+							{
+								"type": "string",
+								"enum": ["hard", "soft"]
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"errorCode": {
+						"description": "Stable code of the failure, for example MTA_UNREACHABLE. Null unless failed.",
+						"type": ["string", "null"]
+					},
+					"errorMessage": {
+						"description": "Human-readable reason of the failure. Null unless failed.",
+						"type": ["string", "null"]
+					}
+				},
+				"required": [
+					"sendId",
+					"status",
+					"email",
+					"templateId",
+					"slug",
+					"language",
+					"queuedAt",
+					"sentAt",
+					"deliveredAt",
+					"openedAt",
+					"clickedAt",
+					"bouncedAt",
+					"complainedAt",
+					"failedAt",
+					"bounceType",
+					"errorCode",
+					"errorMessage"
+				],
+				"additionalProperties": false
 			},
 			"UpdateContactRequest": {
 				"type": "object",

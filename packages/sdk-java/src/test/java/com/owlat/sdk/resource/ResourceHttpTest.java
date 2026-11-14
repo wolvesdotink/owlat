@@ -171,4 +171,18 @@ class ResourceHttpTest {
         assertEquals("user@example.com", bodyJson().get("email").asText());
         assertEquals("welcome", bodyJson().get("slug").asText());
     }
+
+    @Test
+    void transactionalGetReadsTheSendByItsId() {
+        client().transactional().get("send_123");
+        assertEquals("GET", method);
+        assertEquals("/api/v1/transactional/send_123", rawPath);
+        assertEquals("", body);
+    }
+
+    @Test
+    void transactionalGetUrlEncodesTheId() {
+        client().transactional().get("a/b?c");
+        assertEquals("/api/v1/transactional/a%2Fb%3Fc", rawPath);
+    }
 }

@@ -36,6 +36,7 @@ import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
 import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featureFlags';
 import { claimPendingUploads } from './pendingUploads';
+import { templateSlugOfSend } from './sendStatus';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
 	idempotencyArgValidator,
@@ -61,10 +62,13 @@ import {
 // The outcome types live with the decisions; re-exported for existing importers.
 export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
 
-// Discriminated lookup so the module accepts either a typed id or a slug
-// from the HTTP shell without re-validating which was provided.
+// Discriminated lookup so the module accepts either an id or a slug from the
+// HTTP shell without re-validating which was provided. The id is a plain
+// string, not `v.id`: it is whatever the caller typed, and a malformed id or
+// one of another table must answer `template_not_found` (a 404), not fail
+// argument validation (a 500). The handler normalizes it.
 const templateLookupValidator = v.union(
-	v.object({ kind: v.literal('id'), id: v.id('transactionalEmails') }),
+	v.object({ kind: v.literal('id'), id: v.string() }),
 	v.object({ kind: v.literal('slug'), slug: v.string() })
 );
 
@@ -137,9 +141,11 @@ export const dispatch = internalMutation({
 				};
 			}
 			if (lookup.kind === 'replay') {
+				const stored = storedTransactionalResponse(lookup.receipt);
 				return {
 					ok: true,
-					...storedTransactionalResponse(lookup.receipt),
+					...stored,
+					slug: await templateSlugOfSend(ctx.db, stored.sendId),
 					queued: true,
 					replayed: true,
 				};
@@ -179,10 +185,12 @@ export const dispatch = internalMutation({
 
 		// 2. Template lookup + publish + has-HTML checks.
 		const lookup = args.templateLookup;
+		const templateId =
+			lookup.kind === 'id' ? ctx.db.normalizeId('transactionalEmails', lookup.id) : null;
 		const found = decideTemplate(
 			lookup,
 			lookup.kind === 'id'
-				? await ctx.db.get(lookup.id)
+				? templateId && (await ctx.db.get(templateId))
 				: await ctx.db
 						.query('transactionalEmails')
 						.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
@@ -294,6 +302,7 @@ export const dispatch = internalMutation({
 			contactId: resolved.contactId,
 			contactCreated,
 			language: plan.language,
+			slug: template.slug,
 			queued: true,
 		};
 	},

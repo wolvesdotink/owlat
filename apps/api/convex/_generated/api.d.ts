@@ -730,6 +730,7 @@ import type * as delivery_sendComposition_transform from '../delivery/sendCompos
 import type * as delivery_sendComposition_types from '../delivery/sendComposition/types.js';
 import type * as delivery_sendEngagement from '../delivery/sendEngagement.js';
 import type * as delivery_sendLifecycle from '../delivery/sendLifecycle.js';
+import type * as delivery_sendLifecycle_automatedEngagement from '../delivery/sendLifecycle/automatedEngagement.js';
 import type * as delivery_sendLifecycle_deliveryObservation from '../delivery/sendLifecycle/deliveryObservation.js';
 import type * as delivery_sendLifecycle_effects from '../delivery/sendLifecycle/effects.js';
 import type * as delivery_sendLifecycle_engagementActivity from '../delivery/sendLifecycle/engagementActivity.js';
@@ -1909,6 +1910,8 @@ import type * as transactional_lifecycle from '../transactional/lifecycle.js';
 import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
 import type * as transactional_pendingUploads from '../transactional/pendingUploads.js';
 import type * as transactional_sends from '../transactional/sends.js';
+import type * as transactional_sendStatus from '../transactional/sendStatus.js';
+import type * as transactional_sendStatusHttp from '../transactional/sendStatusHttp.js';
 import type * as transactional_translations from '../transactional/translations.js';
 import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
 import type * as webhooks_adapters_generic from '../webhooks/adapters/generic.js';
@@ -1943,9 +1946,11 @@ import type * as webhooks_events_emailBounced_index from '../webhooks/events/ema
 import type * as webhooks_events_emailClicked_index from '../webhooks/events/emailClicked/index.js';
 import type * as webhooks_events_emailComplained_index from '../webhooks/events/emailComplained/index.js';
 import type * as webhooks_events_emailDelivered_index from '../webhooks/events/emailDelivered/index.js';
+import type * as webhooks_events_emailFailed_index from '../webhooks/events/emailFailed/index.js';
 import type * as webhooks_events_emailOpened_index from '../webhooks/events/emailOpened/index.js';
 import type * as webhooks_events_emailSent_index from '../webhooks/events/emailSent/index.js';
 import type * as webhooks_events_registry from '../webhooks/events/registry.js';
+import type * as webhooks_events_sendIdentity from '../webhooks/events/sendIdentity.js';
 import type * as webhooks_events_test_index from '../webhooks/events/test/index.js';
 import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/events/topicUnsubscribed/index.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
@@ -2677,6 +2682,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendComposition/types': typeof delivery_sendComposition_types;
 	'delivery/sendEngagement': typeof delivery_sendEngagement;
 	'delivery/sendLifecycle': typeof delivery_sendLifecycle;
+	'delivery/sendLifecycle/automatedEngagement': typeof delivery_sendLifecycle_automatedEngagement;
 	'delivery/sendLifecycle/deliveryObservation': typeof delivery_sendLifecycle_deliveryObservation;
 	'delivery/sendLifecycle/effects': typeof delivery_sendLifecycle_effects;
 	'delivery/sendLifecycle/engagementActivity': typeof delivery_sendLifecycle_engagementActivity;
@@ -4120,6 +4126,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
 	'transactional/sends': typeof transactional_sends;
+	'transactional/sendStatus': typeof transactional_sendStatus;
+	'transactional/sendStatusHttp': typeof transactional_sendStatusHttp;
 	'transactional/translations': typeof transactional_translations;
 }> & ApiFromModules<{
 	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
@@ -4155,9 +4163,11 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events/emailClicked/index': typeof webhooks_events_emailClicked_index;
 	'webhooks/events/emailComplained/index': typeof webhooks_events_emailComplained_index;
 	'webhooks/events/emailDelivered/index': typeof webhooks_events_emailDelivered_index;
+	'webhooks/events/emailFailed/index': typeof webhooks_events_emailFailed_index;
 	'webhooks/events/emailOpened/index': typeof webhooks_events_emailOpened_index;
 	'webhooks/events/emailSent/index': typeof webhooks_events_emailSent_index;
 	'webhooks/events/registry': typeof webhooks_events_registry;
+	'webhooks/events/sendIdentity': typeof webhooks_events_sendIdentity;
 	'webhooks/events/test/index': typeof webhooks_events_test_index;
 	'webhooks/events/topicUnsubscribed/index': typeof webhooks_events_topicUnsubscribed_index;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;

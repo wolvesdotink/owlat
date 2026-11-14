@@ -4,6 +4,7 @@ import { emailBounced } from '../emailBounced';
 import { emailComplained } from '../emailComplained';
 import { emailSent } from '../emailSent';
 import { emailDelivered } from '../emailDelivered';
+import { emailFailed } from '../emailFailed';
 import { emailOpened } from '../emailOpened';
 import { emailClicked } from '../emailClicked';
 import { contactCreated } from '../contactCreated';
@@ -12,7 +13,7 @@ import { test as testEvent } from '../test';
 import type { Id } from '../../../_generated/dataModel';
 
 describe('WEBHOOK_EVENT_REGISTRY', () => {
-	it('registers all 9 modules under their wire literals', () => {
+	it('registers all 10 modules under their wire literals', () => {
 		expect(Object.keys(WEBHOOK_EVENT_REGISTRY).sort()).toEqual(
 			[
 				'contact.created',
@@ -20,6 +21,7 @@ describe('WEBHOOK_EVENT_REGISTRY', () => {
 				'email.clicked',
 				'email.complained',
 				'email.delivered',
+				'email.failed',
 				'email.opened',
 				'email.sent',
 				'test',
@@ -48,16 +50,23 @@ describe('WEBHOOK_EVENT_REGISTRY', () => {
 const TS_ISO = '2024-01-01T00:00:00.000Z';
 const TS_EPOCH = new Date(TS_ISO).getTime();
 
+/** A transactional API send: the send id the API returned, and its template. */
+const API_SEND = { sendId: 'send_1', campaignId: null, templateId: 'tpl_1' };
+/** A campaign send: no send id a caller could look up, only the campaign. */
+const CAMPAIGN_SEND = { sendId: null, campaignId: 'cmp_abc', templateId: null };
+
 describe('emailBounced.build', () => {
 	it('renders the documented payload shape', () => {
 		const data = emailBounced.build({
 			email: 'foo@example.com',
+			identity: API_SEND,
 			bounceType: 'hard',
 			message: 'user unknown',
 			at: TS_EPOCH,
 		});
 		expect(data).toEqual({
 			email: 'foo@example.com',
+			...API_SEND,
 			bounceType: 'hard',
 			message: 'user unknown',
 			timestamp: TS_ISO,
@@ -67,6 +76,7 @@ describe('emailBounced.build', () => {
 	it('defaults missing message to empty string', () => {
 		const data = emailBounced.build({
 			email: 'foo@example.com',
+			identity: API_SEND,
 			bounceType: 'soft',
 			at: TS_EPOCH,
 		});
@@ -75,69 +85,82 @@ describe('emailBounced.build', () => {
 });
 
 describe('emailComplained.build', () => {
-	it('renders {email, timestamp}', () => {
+	it('renders {email, sendId, campaignId, templateId, timestamp}', () => {
 		expect(
-			emailComplained.build({ email: 'foo@example.com', at: TS_EPOCH })
-		).toEqual({ email: 'foo@example.com', timestamp: TS_ISO });
+			emailComplained.build({ email: 'foo@example.com', identity: CAMPAIGN_SEND, at: TS_EPOCH })
+		).toEqual({ email: 'foo@example.com', ...CAMPAIGN_SEND, timestamp: TS_ISO });
 	});
 });
 
 describe('emailSent.build', () => {
-	it('renders nulls for missing campaign/transactional IDs', () => {
-		const data = emailSent.build({ email: 'foo@example.com', at: TS_EPOCH });
+	it('keeps transactionalEmailId as the template id beside the send id', () => {
+		const data = emailSent.build({ email: 'foo@example.com', identity: API_SEND, at: TS_EPOCH });
 		expect(data).toEqual({
 			email: 'foo@example.com',
-			campaignId: null,
-			transactionalEmailId: null,
+			...API_SEND,
+			transactionalEmailId: 'tpl_1',
 			timestamp: TS_ISO,
 		});
 	});
 
-	it('passes through campaignId when supplied', () => {
+	it('names the campaign for a campaign send', () => {
 		const data = emailSent.build({
 			email: 'foo@example.com',
-			campaignId: 'cmp_abc' as Id<'campaigns'>,
+			identity: CAMPAIGN_SEND,
 			at: TS_EPOCH,
 		});
 		expect(data.campaignId).toBe('cmp_abc');
 		expect(data.transactionalEmailId).toBeNull();
+		expect(data.sendId).toBeNull();
 	});
+});
 
-	it('passes through transactionalEmailId when supplied', () => {
-		const data = emailSent.build({
+describe('emailFailed.build', () => {
+	it('renders the send, the error code and the message', () => {
+		expect(
+			emailFailed.build({
+				email: 'foo@example.com',
+				identity: API_SEND,
+				errorCode: 'DELIVERY_HOLD_EXPIRED',
+				message: 'Delivery stayed on hold until the delivery deadline passed',
+				at: TS_EPOCH,
+			})
+		).toEqual({
 			email: 'foo@example.com',
-			transactionalEmailId: 'tx_xyz' as Id<'transactionalEmails'>,
-			at: TS_EPOCH,
+			...API_SEND,
+			errorCode: 'DELIVERY_HOLD_EXPIRED',
+			message: 'Delivery stayed on hold until the delivery deadline passed',
+			timestamp: TS_ISO,
 		});
-		expect(data.transactionalEmailId).toBe('tx_xyz');
-		expect(data.campaignId).toBeNull();
 	});
 });
 
 describe('emailDelivered/Opened.build', () => {
-	it('emailDelivered renders {email, timestamp}', () => {
+	it('emailDelivered renders {email, sendId, campaignId, templateId, timestamp}', () => {
 		expect(
-			emailDelivered.build({ email: 'foo@example.com', at: TS_EPOCH })
-		).toEqual({ email: 'foo@example.com', timestamp: TS_ISO });
+			emailDelivered.build({ email: 'foo@example.com', identity: API_SEND, at: TS_EPOCH })
+		).toEqual({ email: 'foo@example.com', ...API_SEND, timestamp: TS_ISO });
 	});
 
-	it('emailOpened renders {email, timestamp}', () => {
+	it('emailOpened renders {email, sendId, campaignId, templateId, timestamp}', () => {
 		expect(
-			emailOpened.build({ email: 'foo@example.com', at: TS_EPOCH })
-		).toEqual({ email: 'foo@example.com', timestamp: TS_ISO });
+			emailOpened.build({ email: 'foo@example.com', identity: API_SEND, at: TS_EPOCH })
+		).toEqual({ email: 'foo@example.com', ...API_SEND, timestamp: TS_ISO });
 	});
 });
 
 describe('emailClicked.build', () => {
-	it('renders {email, url, timestamp}', () => {
+	it('renders {email, sendId, campaignId, templateId, url, timestamp}', () => {
 		expect(
 			emailClicked.build({
 				email: 'foo@example.com',
+				identity: API_SEND,
 				url: 'https://example.com/landing',
 				at: TS_EPOCH,
 			})
 		).toEqual({
 			email: 'foo@example.com',
+			...API_SEND,
 			url: 'https://example.com/landing',
 			timestamp: TS_ISO,
 		});
