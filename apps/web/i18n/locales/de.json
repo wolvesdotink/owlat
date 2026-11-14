@@ -17028,6 +17028,7 @@
 				}
 			},
 			"detail": {
+				"egressAddress": "Empfänger sehen die Mails dieser IP von einer anderen Adresse kommen, deshalb hält die MTA sie zurück: Reverse-DNS, SPF und Blocklisten wurden für eine Adresse geprüft, die gar nicht sendet.",
 				"ipv4": "Ausgehendes IPv6 bleibt in Quarantäne, bis jede konfigurierte IPv4-Identität FCrDNS besteht.",
 				"sourceAddress": "Ausgehendes IPv6 bleibt in Quarantäne, weil die MTA diese Quelladresse nicht binden und routen kann.",
 				"spf": "Ausgehendes IPv6 bleibt in Quarantäne, bis der SPF-Eintrag des Return-Path genau dessen ip6:-Adresse autorisiert."
@@ -17046,6 +17047,7 @@
 				"blocklistUnavailable": "Sperrlistenprüfung nicht verfügbar",
 				"blocklistWarning": "Sperrlisten-Warnung",
 				"blocklisted": "Auf Sperrliste",
+				"egressAddress": "Sendet von anderer Adresse",
 				"identityAndBlocklist": "Identität + Sperrliste",
 				"identityQuarantined": "Identität in Quarantäne",
 				"ipv4": "IPv4-Voraussetzung",
@@ -17068,6 +17070,7 @@
 					"unusable_answer": "Verwende einen DNS-Resolver, der Antworten nicht umschreibt, oder hinterlege einen Schlüssel für den Spamhaus Data Query Service."
 				},
 				"digitalocean": "Benenne das Droplet im DigitalOcean-Control-Panel in den EHLO-Hostnamen um; DigitalOcean verwendet diesen Namen für das Reverse-DNS.",
+				"egressAddress": "Mach diese IP zur ausgehenden Adresse des Servers (Quelle der Default-Route) oder setz IP_POOLS_* auf die Adresse, die Empfänger sehen, und führe dann die Bereitschaftsprüfung erneut aus.",
 				"generic": "Öffne die Reverse-DNS-/PTR-Einstellungen deines VPS-Anbieters für diese öffentliche IP.",
 				"hetzner": "Öffne in der Hetzner Console: Server → dein Server → Netzwerk → Primäre IP → Reverse DNS bearbeiten.",
 				"ipv4": "Repariere den IPv4-PTR, den A-Eintrag und die EHLO-Übereinstimmung, bevor du IPv6 aktivierst.",

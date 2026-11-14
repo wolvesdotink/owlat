@@ -17028,6 +17028,7 @@
 				}
 			},
 			"detail": {
+				"egressAddress": "Receivers see mail from this IP arrive from another address, so the MTA keeps mail off it: its reverse DNS, SPF and blocklist checks are about an address that is not sending.",
 				"ipv4": "Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.",
 				"sourceAddress": "Outbound IPv6 stays quarantined because the MTA cannot bind and route this source address.",
 				"spf": "Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address."
@@ -17046,6 +17047,7 @@
 				"blocklistUnavailable": "Blocklist check unavailable",
 				"blocklistWarning": "Blocklist warning",
 				"blocklisted": "Blocklisted",
+				"egressAddress": "Sends from another address",
 				"identityAndBlocklist": "Identity + blocklist",
 				"identityQuarantined": "Identity quarantined",
 				"ipv4": "IPv4 prerequisite",
@@ -17068,6 +17070,7 @@
 					"unusable_answer": "Use a DNS resolver that doesn't rewrite answers, or add a Spamhaus Data Query Service key."
 				},
 				"digitalocean": "In the DigitalOcean control panel, rename the Droplet to the EHLO hostname; DigitalOcean uses that name for reverse DNS.",
+				"egressAddress": "Make this IP the server's outbound address (its default route source), or set IP_POOLS_* to the address receivers see, then run readiness again.",
 				"generic": "Open your VPS provider’s reverse-DNS/PTR settings for this public IP.",
 				"hetzner": "In Hetzner Console, open Servers → your server → Networking → Primary IP → Edit reverse DNS.",
 				"ipv4": "Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.",

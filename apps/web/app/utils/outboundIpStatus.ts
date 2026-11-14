@@ -93,6 +93,7 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true || ip.dnsbl === 'critical';
 	const ipv4IdentityBlocked = ip.blockReasons?.includes('ipv4-identity') === true;
 	const sourceAddressBlocked = ip.blockReasons?.includes('source-address') === true;
+	const egressAddressBlocked = ip.blockReasons?.includes('egress-address') === true;
 	const spfBlocked = ip.blockReasons?.includes('spf') === true;
 	const dnsblUnavailable = ip.dnsbl === 'unknown';
 	const dnsblDegraded = ip.dnsbl === 'degraded';
@@ -101,6 +102,9 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	if (sourceAddressBlocked) {
 		tone = 'error';
 		label = 'shared.outboundIpStatus.label.sourceAddress';
+	} else if (egressAddressBlocked) {
+		tone = 'error';
+		label = 'shared.outboundIpStatus.label.egressAddress';
 	} else if (spfBlocked) {
 		tone = 'error';
 		label = 'shared.outboundIpStatus.label.spf';
@@ -156,34 +160,38 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	const hasBlocklistConcern = dnsblBlocked || dnsblUnavailable || dnsblDegraded;
 	const detail = sourceAddressBlocked
 		? 'shared.outboundIpStatus.detail.sourceAddress'
-		: spfBlocked
-			? 'shared.outboundIpStatus.detail.spf'
-			: ipv4IdentityBlocked
-				? 'shared.outboundIpStatus.detail.ipv4'
-				: identityBlocked && dnsblBlocked
-					? // Both halves are on screen as one line, and a line is not assembled
-						// from translated fragments (their order is a per-language decision),
-						// so each pairing is its own message. The pairing names the blocklist
-						// state only; the reason is spelled out by the fix-it link's card.
-						`shared.outboundIpStatus.combined.${detailVariant(identityDetail)}.${ip.dnsbl === 'unknown' ? 'unavailable' : detailVariant(blocklistDetail)}`
-					: hasBlocklistConcern
-						? blocklistDetail
-						: identityDetail;
+		: egressAddressBlocked
+			? 'shared.outboundIpStatus.detail.egressAddress'
+			: spfBlocked
+				? 'shared.outboundIpStatus.detail.spf'
+				: ipv4IdentityBlocked
+					? 'shared.outboundIpStatus.detail.ipv4'
+					: identityBlocked && dnsblBlocked
+						? // Both halves are on screen as one line, and a line is not assembled
+							// from translated fragments (their order is a per-language decision),
+							// so each pairing is its own message. The pairing names the blocklist
+							// state only; the reason is spelled out by the fix-it link's card.
+							`shared.outboundIpStatus.combined.${detailVariant(identityDetail)}.${ip.dnsbl === 'unknown' ? 'unavailable' : detailVariant(blocklistDetail)}`
+						: hasBlocklistConcern
+							? blocklistDetail
+							: identityDetail;
 	const remediation = sourceAddressBlocked
 		? 'shared.outboundIpStatus.remediation.sourceAddress'
-		: spfBlocked
-			? 'shared.outboundIpStatus.remediation.spf'
-			: ipv4IdentityBlocked
-				? 'shared.outboundIpStatus.remediation.ipv4'
-				: identityBlocked && identity
-					? `shared.outboundIpStatus.remediation.${reverseDnsGuidance(identity.ptrNames).provider}`
-					: dnsblUnavailable
-						? // Nothing is listed, so "request delisting" would send the operator
-							// to fix a listing that does not exist. The lookup is what failed.
-							lookupRemediationKey(ip.dnsblUnknownReason)
-						: hasBlocklistConcern
-							? 'shared.outboundIpStatus.remediation.blocklist'
-							: null;
+		: egressAddressBlocked
+			? 'shared.outboundIpStatus.remediation.egressAddress'
+			: spfBlocked
+				? 'shared.outboundIpStatus.remediation.spf'
+				: ipv4IdentityBlocked
+					? 'shared.outboundIpStatus.remediation.ipv4'
+					: identityBlocked && identity
+						? `shared.outboundIpStatus.remediation.${reverseDnsGuidance(identity.ptrNames).provider}`
+						: dnsblUnavailable
+							? // Nothing is listed, so "request delisting" would send the operator
+								// to fix a listing that does not exist. The lookup is what failed.
+								lookupRemediationKey(ip.dnsblUnknownReason)
+							: hasBlocklistConcern
+								? 'shared.outboundIpStatus.remediation.blocklist'
+								: null;
 	const consequence = !dnsblUnavailable
 		? null
 		: ip.blockReasons?.includes('dnsbl') === true

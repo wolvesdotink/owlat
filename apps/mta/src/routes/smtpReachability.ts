@@ -8,7 +8,8 @@
  * issuing an SMTP command or sending a message. Behind Docker NAT it binds
  * nothing, exactly like the sender (see smtp/sourceAddress.ts), and reports
  * that per IP as `sourceBinding: 'nat'`: a successful unbound connect proves
- * port 25 is open, not which address the NAT sent it from.
+ * port 25 is open, not which address the NAT sent it from. That address is
+ * read from the receivers' EHLO greeting by `scaling/egressAddressReadiness.ts`.
  */
 
 import { resolve4, resolve6, resolveMx } from 'node:dns/promises';

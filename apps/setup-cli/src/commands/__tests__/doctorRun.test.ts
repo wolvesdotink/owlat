@@ -95,6 +95,7 @@ const brokenMta = {
 		{
 			ip: '192.0.2.10',
 			fcrdns: { verdict: 'fail', reason: 'ehlo-mismatch', ehlo: 'mail.example.com', ptrNames: [] },
+			egressAddress: { verdict: 'fail', observed: '192.0.2.99', checkedAt: 1 },
 		},
 	],
 	queue: { status: 'orphaned', orphaned: 3, sampled: 10, overdue: 40 },
@@ -646,6 +647,7 @@ describe('doctor --json — report contents', () => {
 			  "fail mta.dns check_mta",
 			  "fail mta.circuit_breaker check_ip_reputation",
 			  "fail mta.identity 192.0.2.10 fix_reverse_dns",
+			  "fail mta.egress_address 192.0.2.10 configure_sending_ips",
 			  "fail mta.queue_leak report_queue_leak",
 			  "fail mta.tcp25 192.0.2.10 unblock_outbound_smtp",
 			  "fail mta.sending_ips configure_sending_ips",

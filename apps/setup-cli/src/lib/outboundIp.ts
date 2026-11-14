@@ -7,10 +7,17 @@
  * defaults both to 127.0.0.1, which can never pass that identity check, so a
  * direct-delivery install has to name the box's routable IPv4 explicitly. The
  * installer runs on the box (host networking on the blessed VPS path), so the
- * host's own interfaces are visible and the primary non-loopback IPv4 is the
- * right default; an operator who set the keys by hand is never overridden.
+ * host's own routing table is visible; an operator who set the keys by hand is
+ * never overridden.
+ *
+ * The default is the source address of the default route, not the first
+ * address an interface lists. Behind the Docker bridge the MTA cannot bind its
+ * IP, so NAT sends from exactly that route source; on a host with a second or
+ * floating IPv4 the first listed address can be another one, and every PTR,
+ * SPF and blocklist check would then be run for an address that never sends.
  */
 
+import { createSocket } from 'node:dgram';
 import { networkInterfaces } from 'node:os';
 import type { EnvMap } from './env';
 
@@ -33,16 +40,96 @@ function isCandidate(iface: InterfaceAddress): boolean {
 	return true;
 }
 
-/**
- * Choose the primary IPv4 from an interface listing. Pure — tests feed it a
- * fixture. Returns undefined when nothing usable is present so the caller can
- * leave the compose default alone and let the MTA's own identity check report.
- */
-export function pickPrimaryIpv4(interfaces: InterfaceAddress[]): string | undefined {
-	return interfaces.find(isCandidate)?.address;
+export interface OutboundIpChoice {
+	ip: string;
+	interfaceName: string;
+	/** `default-route`: the kernel's source for public destinations; `interface`: no route answer. */
+	source: 'default-route' | 'interface';
+	/** The other usable IPv4 addresses on this host, which the operator may want instead. */
+	others: string[];
 }
 
-export function detectPrimaryIpv4(): string | undefined {
+/**
+ * Choose the sending IPv4 from an interface listing and the default route's
+ * source address. Pure — tests feed it a fixture. The route source wins when
+ * it is a usable address of this host; without one the first usable interface
+ * address is the fallback. Returns undefined when nothing usable is present so
+ * the caller can leave the compose default alone and let the MTA's own
+ * identity check report.
+ */
+export function chooseOutboundIpv4(
+	interfaces: InterfaceAddress[],
+	defaultRouteSource?: string
+): OutboundIpChoice | undefined {
+	const routed = interfaces.find(
+		(iface) =>
+			iface.address === defaultRouteSource &&
+			!iface.internal &&
+			(iface.family === 'IPv4' || iface.family === 4) &&
+			!iface.address.startsWith('169.254.')
+	);
+	const chosen = routed ?? interfaces.find(isCandidate);
+	if (!chosen) return undefined;
+	const others = [
+		...new Set(
+			interfaces
+				.filter((iface) => isCandidate(iface) && iface.address !== chosen.address)
+				.map((iface) => iface.address)
+		),
+	];
+	return {
+		ip: chosen.address,
+		interfaceName: chosen.name,
+		source: routed ? 'default-route' : 'interface',
+		others,
+	};
+}
+
+export function pickPrimaryIpv4(
+	interfaces: InterfaceAddress[],
+	defaultRouteSource?: string
+): string | undefined {
+	return chooseOutboundIpv4(interfaces, defaultRouteSource)?.ip;
+}
+
+/** One line for the installer log: which address, and why that one. */
+export function describeOutboundIpChoice(choice: OutboundIpChoice): string {
+	const why =
+		choice.source === 'default-route'
+			? `the source address of this server's default route (${choice.interfaceName}), which is where outbound mail leaves from`
+			: `the first address on ${choice.interfaceName}; the default route's source address could not be read`;
+	const others =
+		choice.others.length > 0
+			? `. Other addresses on this server: ${choice.others.join(', ')}; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN to send from one of them instead, and make it the default route's source`
+			: '';
+	return `Sending pools default to ${choice.ip}, ${why}${others}`;
+}
+
+/**
+ * The source address the kernel picks for a public IPv4 destination. A UDP
+ * `connect` only runs the route lookup: no packet is sent, and no service is
+ * asked. The destination is a documentation address, routed like any other
+ * public one, through the default route.
+ */
+export function detectDefaultRouteIpv4(): Promise<string | undefined> {
+	return new Promise((resolve) => {
+		const socket = createSocket('udp4');
+		const done = (address: string | undefined) => {
+			socket.close();
+			resolve(address);
+		};
+		socket.once('error', () => done(undefined));
+		socket.connect(9, '192.0.2.1', () => {
+			try {
+				done(socket.address().address);
+			} catch {
+				done(undefined);
+			}
+		});
+	});
+}
+
+function interfaceListing(): InterfaceAddress[] {
 	const listing: InterfaceAddress[] = [];
 	for (const [name, addresses] of Object.entries(networkInterfaces())) {
 		for (const address of addresses ?? []) {
@@ -54,7 +141,11 @@ export function detectPrimaryIpv4(): string | undefined {
 			});
 		}
 	}
-	return pickPrimaryIpv4(listing);
+	return listing;
+}
+
+export async function detectOutboundIpv4(): Promise<OutboundIpChoice | undefined> {
+	return chooseOutboundIpv4(interfaceListing(), await detectDefaultRouteIpv4());
 }
 
 /**

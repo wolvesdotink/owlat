@@ -39,6 +39,7 @@ describe('doctor report — stable ids', () => {
 			  "compose.cli",
 			  "containers.health",
 			  "version.drift",
+			  "mta.egress_address",
 			]
 		`);
 	});

@@ -148,7 +148,7 @@ export function observeSourceAddress(
 		'mta.source-address',
 		'pass',
 		natted
-			? `${natted.ip} is sent through NAT without binding. Owlat cannot see the translated source address, so make sure the host's default outbound IPv4 address is this IP.`
+			? `${natted.ip} is sent through NAT without binding, so the host picks the source address. The MTA asks receivers which address its mail arrives from and holds this IP if it is another one; make sure the host's default outbound IPv4 address is this IP.`
 			: addresses.every((entry) => entry.sourceBinding === 'bound')
 				? 'Every sending address is bound to its own IP.'
 				: 'No two sending addresses share a NAT egress address.',

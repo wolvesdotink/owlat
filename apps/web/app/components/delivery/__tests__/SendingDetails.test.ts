@@ -46,6 +46,40 @@ describe('SendingDetails', () => {
 		expect(wrapper.text()).toContain('mail.example.com');
 	});
 
+	it('says when receivers see the IP send from another address', () => {
+		const wrapper = mount(SendingDetails, {
+			props: {
+				warming: {
+					syncedAt: Date.now(),
+					ips: [
+						{
+							ip: '203.0.113.10',
+							pool: 'transactional',
+							currentDay: 1,
+							sentToday: 0,
+							dailyCap: 100,
+							active: false,
+							blockReasons: ['egress-address'],
+							dnsbl: 'clean',
+							fcrdns: {
+								ehlo: 'mail.example.com',
+								ptrNames: ['mail.example.com'],
+								verdict: 'pass',
+								isGenericPtr: false,
+								isOverridden: false,
+							},
+						},
+					],
+				},
+				volume: { dailySendCount: 0 },
+			},
+			global: { stubs: { UiCard: { template: '<div><slot /></div>' } } },
+		});
+		expect(wrapper.text()).toContain('Sends from another address');
+		expect(wrapper.text()).toContain('arrive from another address');
+		expect(wrapper.text()).toContain("Make this IP the server's outbound address");
+	});
+
 	it('deep-links each active blocklist warning to its provider runbook', () => {
 		const wrapper = mount(SendingDetails, {
 			props: {

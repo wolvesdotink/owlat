@@ -138,6 +138,26 @@ describe('doctor — evaluateMtaHealth', () => {
 		expect(findings.every((finding) => finding.ok)).toBe(true);
 	});
 
+	it('fails the sending IP whose mail receivers see arrive from another address', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			ips: [
+				{
+					...healthy.ips[0],
+					active: false,
+					blockReasons: ['egress-address'],
+					egressAddress: { verdict: 'fail', observed: '192.0.2.99', checkedAt: 1 },
+				},
+				{ ...healthy.ips[1], egressAddress: { verdict: 'unverified', checkedAt: 1 } },
+			],
+		});
+		const egress = findings.filter((finding) => finding.check === 'mta.egress_address');
+		expect(egress).toHaveLength(1);
+		expect(egress[0]?.ok).toBe(false);
+		expect(egress[0]?.subject).toBe('192.0.2.10');
+		expect(text(egress[0])).toContain('arrive from 192.0.2.99');
+	});
+
 	it('fails the exact source IP whose TCP/25 connection is blocked', () => {
 		const findings = evaluateMtaHealth({
 			...healthy,
