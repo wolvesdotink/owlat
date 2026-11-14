@@ -949,6 +949,31 @@ describe('composeForSend — the postal address appears once', () => {
 		expect(composed.text).toContain('Unsubscribe: https://app.example/unsubscribe?token=u');
 	});
 
+	it('keeps the address in the text part when the author wrote a text body without it', () => {
+		const composed = composeForSend(campaign({ ...withBlock, plainTextContent: 'Hello' }));
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
+		expect(occurrences(composed.text)).toBe(1);
+	});
+
+	it('keeps the address in the footer when it was edited out of the block', () => {
+		const [address] = blocks;
+		const edited = {
+			...address!,
+			content: { ...address!.content, html: '<strong>Northwind</strong>' },
+		} as typeof address;
+		const template = {
+			subject: 'News',
+			htmlContent: renderEmailHtml([edited!]),
+			plainTextContent: 'Northwind',
+		};
+		expect(template.htmlContent).toContain('data-owlat-postal-address');
+		const composed = composeForSend(campaign(template));
+		const html = transformHtml(composed.html, composed.transformConfig!);
+		expect(occurrences(html)).toBe(1);
+		expect(occurrences(composed.text)).toBe(1);
+	});
+
 	it('still prints the address when the body has no footer block', () => {
 		const bare = { subject: 'News', htmlContent: '<p>Hello</p>', plainTextContent: 'Hello' };
 		const composed = composeForSend(campaign(bare));

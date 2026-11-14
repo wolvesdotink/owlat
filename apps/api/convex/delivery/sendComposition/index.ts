@@ -11,14 +11,14 @@
  */
 
 import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
-import { htmlToPlainText } from '@owlat/shared/html';
+import { escapeHtml, htmlToPlainText } from '@owlat/shared/html';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
 import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
-import { footerText } from './footer';
+import { addressLines, footerText } from './footer';
 import { automationVariables, personalize, withUnsubscribeLink } from './personalization';
 import type {
 	ComposeInput,
@@ -72,7 +72,7 @@ const COMPOSERS = {
  */
 export function composeForSend(input: ComposeInput): ComposeOutput {
 	const composer = COMPOSERS[input.kind] as ComposerFn<typeof input.kind>;
-	const composed = withoutDuplicatePostalAddress(composer(input));
+	const composed = composer(input);
 	// The text/plain alternative, in preference order:
 	//  1. the template's `plainTextContent` — the author's manual override, or
 	//     the body generated from the block document at save time. It is
@@ -92,16 +92,27 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	const config = composed.transformConfig;
+	const lines = addressLines(config?.senderAddress);
 	const text =
 		config?.unsubscribeUrl && config.preferenceUrl
 			? `${body.trimEnd()}\n\n${footerText({
 					unsubscribeUrl: config.unsubscribeUrl,
 					preferenceUrl: config.preferenceUrl,
 					language: config.footerLanguage,
-					senderAddress: config.senderAddress,
+					// Decided on the text part itself: an author-written text body may
+					// leave out the address the html block prints.
+					senderAddress: printsEveryLine(body, lines) ? undefined : config.senderAddress,
 				})}`
 			: body;
-	return { ...composed, text };
+	const htmlPrintsAddress =
+		POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
+		printsEveryLine(
+			composed.html,
+			lines.map((line) => escapeHtml(line))
+		);
+	if (!config || !htmlPrintsAddress) return { ...composed, text };
+	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
+	return { ...composed, transformConfig, text };
 }
 
 /**
@@ -116,15 +127,15 @@ const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
 );
 
 /**
- * The brand kit footer block already prints the sender's address, so the
- * footer keeps only its two links. Seed shadow copies go through here too and
- * stay identical to the mail they mirror.
+ * Whether a body already prints every line of the sender's address, so the
+ * footer can keep only its two links. The html part counts only with the brand
+ * kit footer block's marker AND the lines still in it: an author who edited the
+ * address out of the block keeps the flag, not the address. Exact lines, not a
+ * guess at what looks like an address. Seed shadow copies go through here too
+ * and stay identical to the mail they mirror.
  */
-function withoutDuplicatePostalAddress(composed: ComposerOutput): ComposerOutput {
-	const config = composed.transformConfig;
-	if (!config?.senderAddress || !POSTAL_ADDRESS_BLOCK_RE.test(composed.html)) return composed;
-	const { senderAddress: _printedByTheBody, ...rest } = config;
-	return { ...composed, transformConfig: rest };
+function printsEveryLine(body: string, lines: readonly string[]): boolean {
+	return lines.length > 0 && lines.every((line) => body.includes(line));
 }
 
 /** The personalization variables this send kind substitutes into its subject. */
