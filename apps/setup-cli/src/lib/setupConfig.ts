@@ -32,7 +32,7 @@ import type {
 import { SETUP_SENDING_CATALOG_ENTRIES, sendingConfigEnv } from '@owlat/shared/setupSendingConfig';
 import { systemFromIdentityEnv } from '@owlat/shared/systemFromIdentity';
 import { mergeEnv, type EnvMap } from './env';
-import { applySetupDefaults } from './setupEnvDefaults';
+import { applyBundledProxyDefaults, applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
 import { assertFblDedupCutoverConfigured } from './fblDedupSetup';
 
@@ -401,6 +401,7 @@ export function buildSetupFromConfig(config: SetupConfig, existingEnv: EnvMap): 
 	const merged = mergeEnv(existingEnv, patch);
 	const withSecrets = ensureSecrets(merged);
 	applySetupDefaults(withSecrets, config.deploymentMode, flags, isFreshInstall);
+	if (config.network) applyBundledProxyDefaults(withSecrets);
 
 	return {
 		deploymentMode: config.deploymentMode,

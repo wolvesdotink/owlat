@@ -171,6 +171,20 @@ describe('auth mail sender', () => {
 		expect(sends.map((send) => send.from)).toEqual(['Owlat <noreply@mail.example.com>']);
 	});
 
+	// Account mail is exempt from the sending-domain gate campaign, automation,
+	// reply and double opt-in mail take: an operator whose domain is not
+	// verified yet must still be able to sign in, reset a password or invite
+	// someone to fix DNS. The context answers every query with "nothing", so a
+	// hook that consulted the domain would find no verified one.
+	it.each(Object.entries(hooks))(
+		'sends the %s mail with no verified sending domain',
+		async (_, run) => {
+			const { ctx: captureCtx, sends } = invitationCtx();
+			await run(createAuthOptions(captureCtx));
+			expect(sends).toHaveLength(1);
+		}
+	);
+
 	it.each(Object.entries(hooks))(
 		'refuses the %s mail when no sender is configured',
 		async (_, run) => {

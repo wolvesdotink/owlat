@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createTestClient, mockFetch, TEST_RATE_LIMIT_HEADERS } from './helpers';
-import { ValidationError } from '../src/errors';
+import { NotFoundError, ValidationError } from '../src/errors';
 import type { TransactionalAttachment } from '../src/types/transactional';
 
 afterEach(() => {
@@ -305,6 +305,65 @@ describe('TransactionalResource', () => {
 			const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
 			expect(body.dataVariables).toEqual({ userName: 'John', orderId: '123' });
 			expect(body.language).toBe('de');
+		});
+	});
+
+	describe('get', () => {
+		const status = {
+			sendId: 'send_1',
+			status: 'failed' as const,
+			email: 'user@example.com',
+			templateId: 'tpl_1',
+			slug: 'welcome',
+			language: 'en',
+			queuedAt: '2026-11-02T09:00:00.000Z',
+			sentAt: null,
+			deliveredAt: null,
+			openedAt: null,
+			clickedAt: null,
+			bouncedAt: null,
+			complainedAt: null,
+			failedAt: '2026-11-06T09:00:00.000Z',
+			bounceType: null,
+			errorCode: 'MTA_UNREACHABLE',
+			errorMessage: 'The mail server could not be reached',
+		};
+
+		it('GETs the send by the id the send call returned', async () => {
+			const spy = mockFetch({
+				status: 200,
+				body: { data: status },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			const client = createTestClient();
+
+			const result = await client.transactional.get('send_1');
+
+			expect(result).toEqual(status);
+			const [url, options] = spy.mock.calls[0];
+			expect(new URL(String(url)).pathname).toBe('/api/v1/transactional/send_1');
+			expect(options?.method).toBe('GET');
+		});
+
+		it('encodes the id into the path', async () => {
+			const spy = mockFetch({
+				status: 200,
+				body: { data: status },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			await createTestClient().transactional.get('a/b?c');
+			expect(new URL(String(spy.mock.calls[0][0])).pathname).toBe(
+				'/api/v1/transactional/a%2Fb%3Fc'
+			);
+		});
+
+		it('throws NotFoundError for an unknown send', async () => {
+			mockFetch({
+				status: 404,
+				body: { error: { category: 'not_found', message: 'Transactional send not found' } },
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			await expect(createTestClient().transactional.get('missing')).rejects.toThrow(NotFoundError);
 		});
 	});
 

@@ -113,6 +113,36 @@ async function draftCampaignReminder(
 	};
 }
 
+async function draftCampaignNotStarted(
+	ctx: MutationCtx,
+	event: Extract<MarketingNoticeEvent, { kind: 'campaign_not_started' }>
+): Promise<NoticeDraft | null> {
+	const campaign = await getLive(ctx, event.campaignId);
+	if (!isNotStartedCurrent(campaign, event.refusedAt)) return null;
+	return {
+		kind: 'campaign_not_started',
+		eventKey: `campaign_not_started:${campaign._id}:${event.refusedAt}`,
+		subjectKey: `campaign:${campaign._id}`,
+		campaignId: campaign._id,
+		name: campaign.name,
+		scheduledAt: campaign.startRefusal?.scheduledAt,
+		url: campaignEditUrl(campaign._id),
+	};
+}
+
+/** Still a draft carrying the refusal this notice is about: nobody rescheduled it yet. */
+function isNotStartedCurrent(
+	campaign: Doc<'campaigns'> | null,
+	refusedAt: number | undefined
+): campaign is Doc<'campaigns'> {
+	return (
+		campaign !== null &&
+		campaign.status === 'draft' &&
+		refusedAt !== undefined &&
+		campaign.startRefusal?.refusedAt === refusedAt
+	);
+}
+
 /** Still scheduled, for the start this reminder was queued for, and not started yet. */
 function isReminderCurrent(
 	campaign: Doc<'campaigns'> | null,
@@ -232,6 +262,8 @@ export async function draftNotice(
 			return draftCampaignFinished(ctx, event);
 		case 'campaign_reminder':
 			return draftCampaignReminder(ctx, event, now);
+		case 'campaign_not_started':
+			return draftCampaignNotStarted(ctx, event);
 		case 'delivery_hold':
 			return draftDeliveryHold(ctx, event, now);
 		case 'automation_stalled':
@@ -259,7 +291,8 @@ const LIVE: NoticeLiveness = {};
  * until when (see {@link NoticeLiveness}); null when it no longer holds. A
  * finished campaign stays finished, but one deleted since is gone; a reminder
  * is stale the moment its campaign is rescheduled, cancelled, deleted or
- * started; a hold, a pause or a DNS failure that has already cleared (or whose
+ * started; a start that did not happen holds until the campaign is scheduled
+ * or sent again; a hold, a pause or a DNS failure that has already cleared (or whose
  * domain was removed) is no longer news.
  */
 export async function noticeLiveness(
@@ -278,6 +311,13 @@ export async function noticeLiveness(
 			const campaign = await getLive(ctx, campaignId);
 			// It holds while now < scheduledAt.
 			return isReminderCurrent(campaign, scheduledAt, now) ? { liveUntil: scheduledAt - 1 } : null;
+		}
+		case 'campaign_not_started': {
+			if (notice.campaignId === undefined) return null;
+			const campaign = await getLive(ctx, notice.campaignId);
+			// The notice carries no refusal instant of its own; the draft still
+			// holding a refusal is what keeps it true.
+			return isNotStartedCurrent(campaign, campaign?.startRefusal?.refusedAt) ? LIVE : null;
 		}
 		case 'delivery_hold': {
 			if (notice.name === undefined) return null;

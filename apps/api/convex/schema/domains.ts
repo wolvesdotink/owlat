@@ -8,6 +8,7 @@ import {
 	verificationResultsValidator,
 	yahooCflStoredStateValidator,
 } from '../lib/convexValidators';
+import { trackingDomainCheckOutcomeValidator } from '../lib/literalValidators';
 
 /**
  * Domain tables — sending domains + per-provider identities + tracking domains.
@@ -199,12 +200,22 @@ export const domainTables = {
 		.index('by_org_domain', ['organizationId', 'domainId']),
 
 	// Custom Tracking Domains - branded domains for click/open tracking
+	// `isVerified` means the CNAME matched AND the host answered this
+	// deployment's HTTPS probe (domains/trackingDomainVerdict.ts); sends rewrite
+	// links to a domain only while it holds. `verifiedAt` stays set once a
+	// domain was ever verified, which keeps it in the daily re-check.
 	trackingDomains: defineTable({
 		domain: v.string(),
 		cnameTarget: v.string(),
 		isVerified: v.boolean(),
 		verifiedAt: v.optional(v.number()),
 		createdAt: v.number(),
+		// A verified domain's first failing check, waiting for its confirming one.
+		regressionSuspectedAt: v.optional(v.number()),
+		// The most recent check and which half of it failed, for the Domains page.
+		lastCheck: v.optional(
+			v.object({ at: v.number(), outcome: trackingDomainCheckOutcomeValidator })
+		),
 	}).index('by_domain', ['domain']),
 
 	// Per-domain reputation was folded into the unified, scope-discriminated

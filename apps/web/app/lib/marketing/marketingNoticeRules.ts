@@ -14,6 +14,7 @@
 export type MarketingNoticeKind =
 	| 'campaign_finished'
 	| 'campaign_reminder'
+	| 'campaign_not_started'
 	| 'delivery_hold'
 	| 'automation_stalled'
 	| 'automation_paused'
@@ -94,6 +95,13 @@ export function presentMarketingNotice(
 				toastType: 'info',
 				href,
 			};
+		case 'campaign_not_started':
+			return {
+				title: { key: `${PREFIX}.campaignNotStarted.title` },
+				body: { key: `${PREFIX}.campaignNotStarted.body`, params: { name } },
+				toastType: 'warning',
+				href,
+			};
 		case 'delivery_hold': {
 			const provider = PROVIDERS.has(name) ? name : 'other';
 			return {
@@ -150,6 +158,7 @@ export function freshMarketingNotices(
 const KIND_KEY: Record<MarketingNoticeKind, string> = {
 	campaign_finished: 'campaignFinished',
 	campaign_reminder: 'campaignReminder',
+	campaign_not_started: 'campaignNotStarted',
 	delivery_hold: 'deliveryHold',
 	automation_stalled: 'automationStalled',
 	automation_paused: 'automationPaused',

@@ -42,6 +42,7 @@ import { checkEmailDomainVerification } from '../domains/domains';
 import { configuredDefaultFromEmail } from '../transactional/dispatchDecision';
 import type { Doc } from '../_generated/dataModel';
 import { mtaInfrastructureState } from './health';
+import { missingFeedbackVariablesFor } from '../lib/sendProviders/feedbackReadiness';
 import { providerFeedbackFor } from '../providers/feedback';
 import {
 	deriveProviderFeedbackStatus,
@@ -172,17 +173,27 @@ type ReadinessMessageType = 'transactional' | 'campaign';
  * differently. `usesOwnMta` decides whether mail-server, IP and warm-up gates
  * apply to the type at all: an instance that sends a type only through an
  * external provider must not be told its own MTA is a problem.
+ * `feedbackMissing` names the unset webhook keys that keep bounce and
+ * complaint reports for the type out (names only: which key a transport
+ * signs with is catalog data, and its presence is the same kind of fact as
+ * `canSend`).
  */
 async function streamTransport(
 	ctx: QueryCtx,
 	routes: readonly Doc<'providerRoutes'>[],
 	messageType: ReadinessMessageType
-): Promise<{ canSend: boolean; providerLabels: string[]; usesOwnMta: boolean }> {
+): Promise<{
+	canSend: boolean;
+	providerLabels: string[];
+	usesOwnMta: boolean;
+	feedbackMissing: string[];
+}> {
 	const kinds = await messageTypeTransportKinds(ctx, routes, messageType);
 	return {
 		canSend: await isDeliveryConfigured(ctx, messageType),
 		providerLabels: kinds.map((kind) => sendProviderCatalogEntry(kind).label),
 		usesOwnMta: kinds.includes(OWN_ARM_TRANSPORT_KIND),
+		feedbackMissing: missingFeedbackVariablesFor(kinds),
 	};
 }
 

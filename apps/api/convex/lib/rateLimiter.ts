@@ -68,12 +68,40 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 20,
 	},
 
-	// Email tracking: high volume legitimate traffic (100 per minute per IP, burst to 150)
+	// Tracking requests that name no existing Send (a malformed or unknown id, a
+	// click whose signature does not verify), keyed per client address. They
+	// record nothing, so only junk competes for this bucket.
 	emailTracking: {
 		kind: 'token bucket',
 		rate: 100,
 		period: MINUTE,
 		capacity: 150,
+	},
+
+	// Opens and clicks of one existing Send, keyed on its id. A Send's tracking
+	// URLs reach only its recipient (the open id is visible in the mail, a click
+	// also needs its signature), so this bucket caps what one recipient's mail can
+	// generate, counted for that mail alone. It is not keyed on the client
+	// address: Apple's privacy proxy and link scanners fetch for many recipients
+	// from shared addresses, and on an install with no trusted proxy every caller
+	// is `unknown`, so an address key would let one send's automated fetches
+	// spend the budget of every other recipient's human opens. The capacity holds
+	// a scanner that clicks every link of a long newsletter at once.
+	emailTrackingSend: {
+		kind: 'token bucket',
+		rate: 30,
+		period: MINUTE,
+		capacity: 100,
+	},
+
+	// The tracking-domain HTTPS probe (`/t/probe/<nonce>`), per client address.
+	// The deployment's own check sends a handful a day; a refusal reads as
+	// inconclusive there, so a flood can delay a verification but never fail one.
+	trackingProbe: {
+		kind: 'token bucket',
+		rate: 30,
+		period: MINUTE,
+		capacity: 30,
 	},
 
 	// Subscription management: unsubscribe, preferences (30 per minute per IP)

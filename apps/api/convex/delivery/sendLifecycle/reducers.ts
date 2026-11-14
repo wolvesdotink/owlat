@@ -3,7 +3,8 @@ import { automatedOpenReason } from '../automatedOpens';
 import { automatedClickReason } from '../automatedClicks';
 import { transportOutcomeEffect, type Effect } from './effects';
 import { readerEngagementActivity } from './engagementActivity';
-import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
+import { reduceAutomatedClick, reduceAutomatedOpen } from './automatedEngagement';
+import { contactEmailOf, nonCampaignActivityProvenance, sendIdentityOf } from './lookups';
 import { sendTimeEngagementEffects, sendTimeGroupOf } from './sendTimeEffects';
 import type {
 	EmailSendDoc,
@@ -160,21 +161,12 @@ export function reduceSent(
 		domain: senderDomain,
 	});
 
-	// Customer webhook fires for both kinds. The payload tells the
-	// subscriber which kind by which id is populated.
+	// Customer webhook fires for both kinds; the identity names the send.
 	effects.push({
 		kind: 'customer_webhook',
 		spec: {
 			literal: 'email.sent',
-			input: {
-				email: contactEmailOf(send),
-				campaignId: ref.kind === 'campaign' ? (send as EmailSendDoc).campaignId : null,
-				transactionalEmailId:
-					ref.kind === 'transactional'
-						? ((send as TransactionalSendDoc).transactionalEmailId ?? null)
-						: null,
-				at: args.at,
-			},
+			input: { email: contactEmailOf(send), identity: sendIdentityOf(send, ref), at: args.at },
 		},
 	});
 
@@ -258,6 +250,22 @@ export function reduceFailed(
 	if (attachmentIds && attachmentIds.length > 0) {
 		effects.push({ kind: 'attachment_cleanup', storageIds: attachmentIds });
 	}
+	// The one event a caller hears about a send that will never go out. The
+	// duplicate arm above keeps it to once per send; a hold or a retry never
+	// reaches this reducer, so it fires only on the terminal answer.
+	effects.push({
+		kind: 'customer_webhook',
+		spec: {
+			literal: 'email.failed',
+			input: {
+				email: contactEmailOf(send),
+				identity: sendIdentityOf(send, ref),
+				errorCode: args.errorCode,
+				message: args.errorMessage,
+				at: args.at,
+			},
+		},
+	});
 	return {
 		patch: {
 			status: 'failed',
@@ -352,7 +360,7 @@ export function reduceOpened(
 			kind: 'customer_webhook',
 			spec: {
 				literal: 'email.opened',
-				input: { email: contactEmailOf(send), at: args.at },
+				input: { email: contactEmailOf(send), identity: sendIdentityOf(send, ref), at: args.at },
 			},
 		});
 		effects.push(...readerEngagementActivity(send, ref, args));
@@ -365,36 +373,6 @@ export function reduceOpened(
 		from,
 		to: 'opened',
 	};
-}
-
-/**
- * An automated open. Counted per send (`automatedOpenCount`), and once per send
- * (`automatedOpenedAt` is the uniqueness gate) into the campaign's
- * `statsAutomatedOpened`, so the report can show how many emails were fetched
- * automatically.
- * A reader who opens after an automated fetch still counts as a first open.
- */
-function reduceAutomatedOpen(
-	send: EmailSendDoc | TransactionalSendDoc,
-	args: Extract<TransitionInput, { to: 'opened' }>,
-	ref: SendRef,
-	from: SendStatus
-): ReducerResult {
-	const isFirstAutomatedOpen = !send.automatedOpenedAt;
-	const patch: Record<string, unknown> = {
-		automatedOpenCount: (send.automatedOpenCount ?? 0) + 1,
-	};
-	const effects: Effect[] = [];
-	if (isFirstAutomatedOpen) {
-		patch['automatedOpenedAt'] = args.at;
-		if (ref.kind === 'campaign') {
-			effects.push({
-				kind: 'campaign_stats_automated_opened',
-				campaignId: (send as EmailSendDoc).campaignId,
-			});
-		}
-	}
-	return { patch, effects, applied: 'recorded', from, to: 'opened' };
 }
 
 export function reduceClicked(
@@ -456,7 +434,12 @@ export function reduceClicked(
 		kind: 'customer_webhook',
 		spec: {
 			literal: 'email.clicked',
-			input: { email: contactEmailOf(send), url: args.url, at: args.at },
+			input: {
+				email: contactEmailOf(send),
+				identity: sendIdentityOf(send, ref),
+				url: args.url,
+				at: args.at,
+			},
 		},
 	});
 
@@ -467,33 +450,4 @@ export function reduceClicked(
 		from,
 		to: 'clicked',
 	};
-}
-
-/**
- * An automated click. Counted per send (`automatedClickCount`), and once per
- * send (`automatedClickedAt` is the uniqueness gate) into the campaign's
- * `statsAutomatedClicked`, so the report can show how many emails had their
- * links followed automatically.
- * A reader who clicks after a scanner still counts as a first click.
- */
-function reduceAutomatedClick(
-	send: EmailSendDoc | TransactionalSendDoc,
-	args: Extract<TransitionInput, { to: 'clicked' }>,
-	ref: SendRef,
-	from: SendStatus
-): ReducerResult {
-	const patch: Record<string, unknown> = {
-		automatedClickCount: (send.automatedClickCount ?? 0) + 1,
-	};
-	const effects: Effect[] = [];
-	if (!send.automatedClickedAt) {
-		patch['automatedClickedAt'] = args.at;
-		if (ref.kind === 'campaign') {
-			effects.push({
-				kind: 'campaign_stats_automated_clicked',
-				campaignId: (send as EmailSendDoc).campaignId,
-			});
-		}
-	}
-	return { patch, effects, applied: 'recorded', from, to: 'clicked' };
 }

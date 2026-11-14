@@ -1,4 +1,5 @@
 import { convexTest, type TestConvex } from 'convex-test';
+import { verifySendingDomain } from '../../__tests__/helpers/verifiedSendingDomain';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { applyEffects } from '../../delivery/sendLifecycle/effects';
 import schema from '../../schema';
@@ -417,6 +418,7 @@ describe('sunset suppression reuses the shipped path', () => {
 
 		it('an unengaged row blocks the automation kind and lets the 1:1 reply through', async () => {
 			const t = convexTest(schema, enqueueModules);
+			await verifySendingDomain(t);
 			await blocklist(t, 'quiet@example.com', 'unengaged');
 
 			expect(await send(t, 'automation', 'quiet@example.com')).toEqual({
@@ -439,6 +441,7 @@ describe('sunset suppression reuses the shipped path', () => {
 
 		it('a bounced row blocks BOTH kinds — mailbox evidence gates every scope', async () => {
 			const t = convexTest(schema, enqueueModules);
+			await verifySendingDomain(t);
 			await blocklist(t, 'broken@example.com', 'bounced');
 
 			expect(await send(t, 'automation', 'broken@example.com')).toEqual({

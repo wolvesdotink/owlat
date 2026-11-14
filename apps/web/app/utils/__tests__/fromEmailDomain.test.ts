@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emailDomain, unverifiedFromDomainWarning } from '../fromEmailDomain';
+import { emailDomain, unverifiedFromDomain } from '../fromEmailDomain';
 
 describe('emailDomain', () => {
 	it('extracts and lowercases the domain', () => {
@@ -17,31 +17,27 @@ describe('emailDomain', () => {
 	});
 });
 
-describe('unverifiedFromDomainWarning', () => {
-	it('warns when the domain is not among the verified set', () => {
-		expect(unverifiedFromDomainWarning('hello@evil.com', ['good.com'])).toBe(
-			'evil.com is not a verified sending domain.'
-		);
+describe('unverifiedFromDomain', () => {
+	it('names the domain when it is not among the verified set', () => {
+		expect(unverifiedFromDomain('hello@evil.com', ['good.com'])).toBe('evil.com');
 	});
 
 	it('returns null when the domain IS verified (case-insensitive)', () => {
-		expect(unverifiedFromDomainWarning('hello@Good.com', ['good.com'])).toBeNull();
-		expect(unverifiedFromDomainWarning('hello@good.com', ['GOOD.COM'])).toBeNull();
+		expect(unverifiedFromDomain('hello@Good.com', ['good.com'])).toBeNull();
+		expect(unverifiedFromDomain('hello@good.com', ['GOOD.COM'])).toBeNull();
 	});
 
 	it('returns null for an empty or domainless address', () => {
-		expect(unverifiedFromDomainWarning('', ['good.com'])).toBeNull();
-		expect(unverifiedFromDomainWarning('nope', ['good.com'])).toBeNull();
+		expect(unverifiedFromDomain('', ['good.com'])).toBeNull();
+		expect(unverifiedFromDomain('nope', ['good.com'])).toBeNull();
 	});
 
 	it('returns null while the verified set is still loading', () => {
-		expect(unverifiedFromDomainWarning('hello@evil.com', undefined)).toBeNull();
-		expect(unverifiedFromDomainWarning('hello@evil.com', null)).toBeNull();
+		expect(unverifiedFromDomain('hello@evil.com', undefined)).toBeNull();
+		expect(unverifiedFromDomain('hello@evil.com', null)).toBeNull();
 	});
 
-	it('warns when there are zero verified domains', () => {
-		expect(unverifiedFromDomainWarning('hello@evil.com', [])).toBe(
-			'evil.com is not a verified sending domain.'
-		);
+	it('names the domain when there are zero verified domains', () => {
+		expect(unverifiedFromDomain('hello@evil.com', [])).toBe('evil.com');
 	});
 });

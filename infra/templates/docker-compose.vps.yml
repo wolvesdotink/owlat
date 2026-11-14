@@ -195,6 +195,52 @@ services:
       - personal-mail
     restart: unless-stopped
 
+  # ── Mail cert bootstrap (self-signed default.{crt,key}) ──
+  # The MTA's inbound listener needs a pair in mail-certs to offer STARTTLS, and
+  # the default-on inbound TLS floor rejects every delivery without it, bounces
+  # included. The acme sidecar runs only under personal-mail, so an MTA-only
+  # instance would never get one. This one-shot self-signs a pair for
+  # EHLO_HOSTNAME when none is present and leaves an existing pair's contents
+  # alone; acme replaces it with the CA-issued certificate when it runs. The
+  # ownership fixup runs on every boot: this runs as root, and the MTA and imap
+  # images read the 0600 key as IMAP_RUNTIME_USER. Same service as in the root
+  # docker-compose.yml.
+  imap-cert-init:
+    logging: *default-logging
+    image: alpine:${ALPINE_VERSION:-3.24}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        cert_dir=/opt/owlat/certs
+        if [ -s "$$cert_dir/default.crt" ] && [ -s "$$cert_dir/default.key" ]; then
+          echo "imap-cert-init: TLS cert already present in $$cert_dir — leaving its contents untouched"
+        else
+          echo "imap-cert-init: generating self-signed TLS cert in $$cert_dir"
+          apk add --no-cache openssl >/dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -keyout "$$cert_dir/default.key" \
+            -out "$$cert_dir/default.crt" \
+            -subj "/CN=$${IMAP_GREETING_HOST}" \
+            -addext "subjectAltName=DNS:$${IMAP_GREETING_HOST}"
+        fi
+        chown -R "$${IMAP_RUNTIME_USER}" "$$cert_dir"
+        chmod 644 "$$cert_dir/default.crt"
+        chmod 600 "$$cert_dir/default.key"
+        echo "imap-cert-init: cert dir owned by $${IMAP_RUNTIME_USER}, key kept 0600 — done"
+    environment:
+      IMAP_GREETING_HOST: ${EHLO_HOSTNAME:-mail.localhost}
+      IMAP_RUNTIME_USER: ${IMAP_RUNTIME_USER:-1000:1000}
+    volumes:
+      - mail-certs:/opt/owlat/certs
+    # no-new-privileges only: `apk add` and `chown` need CAP_CHOWN.
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - personal-mail
+      - mta
+    restart: 'no'
+
   # ── IMAP server (Postbox personal mailboxes — port 993) ──
   # Activated by feature-flag profile "personal-mail".
   imap:
@@ -288,6 +334,8 @@ services:
     image: ghcr.io/wolvesdotink/mta:${OWLAT_VERSION:?OWLAT_VERSION must be set}
     ports:
       - '127.0.0.1:3100:3100'
+      # IPv4 only, like the root docker-compose.yml: while the bridge is
+      # IPv4-only, Docker would forward IPv6 senders from the bridge gateway.
       - '0.0.0.0:25:25'
     environment:
       PORT: '3100'
@@ -310,6 +358,9 @@ services:
       # value to use the host's resolver instead.
       DNSBL_RESOLVER: ${DNSBL_RESOLVER-dns-resolver:5335}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
+      # DMARC report address (default dmarc-reports@<RETURN_PATH_DOMAIN>, `off`
+      # to disable). Must match the backend's MTA_DMARC_REPORT_ADDRESS.
+      MTA_DMARC_REPORT_ADDRESS: ${MTA_DMARC_REPORT_ADDRESS:-}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:?BOUNCE_VERP_KEY is required}
       CONVEX_SITE_URL: http://convex:3211
       MTA_WEBHOOK_SECRET: ${MTA_WEBHOOK_SECRET}
@@ -324,10 +375,66 @@ services:
       NODE_ENV: production
       CLAMAV_HOST: clamav
       CLAMAV_PORT: '3310'
-      # Inbound STARTTLS cert/key: default.{crt,key} published by the acme
-      # sidecar into mail-certs (apps/mta/src/bounceTlsConfig.ts). Picked up
-      # without a restart when renewed or first issued.
+      # Inbound STARTTLS cert/key: default.{crt,key} in mail-certs
+      # (apps/mta/src/bounceTlsConfig.ts), self-signed by imap-cert-init and
+      # replaced by the acme sidecar where it runs. Picked up without a restart
+      # when renewed or first issued.
       TLS_CERT_DIR: /opt/owlat/certs
+      # Optional MTA settings. There is no env_file, so a setting reaches the MTA
+      # only if it is listed here. Each default is the MTA's own
+      # (apps/mta/src/config.ts); one without a default passes an empty value,
+      # which its reader treats as unset. scripts/__tests__/compose-mta-env.test.ts
+      # fails when the MTA reads a variable this map does not pass.
+      OUTBOUND_TLS_MODE: ${OUTBOUND_TLS_MODE:-opportunistic}
+      DANE_MODE: ${DANE_MODE:-off}
+      DANE_RESOLVER_URL: ${DANE_RESOLVER_URL:-}
+      MTA_TLSRPT_RUA: ${MTA_TLSRPT_RUA:-}
+      GOOGLE_POSTMASTER_CLIENT_ID: ${GOOGLE_POSTMASTER_CLIENT_ID:-}
+      GOOGLE_POSTMASTER_CLIENT_SECRET: ${GOOGLE_POSTMASTER_CLIENT_SECRET:-}
+      GOOGLE_POSTMASTER_REFRESH_TOKEN: ${GOOGLE_POSTMASTER_REFRESH_TOKEN:-}
+      ABUSIX_DNSBL_API_KEY: ${ABUSIX_DNSBL_API_KEY:-}
+      INVALUEMENT_DNSBL_ZONE: ${INVALUEMENT_DNSBL_ZONE:-}
+      RSPAMD_URL: ${RSPAMD_URL:-}
+      RSPAMD_REJECT_THRESHOLD: ${RSPAMD_REJECT_THRESHOLD:-15}
+      CONTENT_SCREENING_ENABLED: ${CONTENT_SCREENING_ENABLED:-true}
+      CONTENT_MAX_SIZE_KB: ${CONTENT_MAX_SIZE_KB:-500}
+      INBOUND_SPF_ENABLED: ${INBOUND_SPF_ENABLED:-true}
+      INBOUND_DKIM_ENABLED: ${INBOUND_DKIM_ENABLED:-true}
+      INBOUND_DMARC_ENABLED: ${INBOUND_DMARC_ENABLED:-true}
+      INBOUND_ARC_ENABLED: ${INBOUND_ARC_ENABLED:-true}
+      BOUNCE_TLS_CERT: ${BOUNCE_TLS_CERT:-}
+      BOUNCE_TLS_KEY: ${BOUNCE_TLS_KEY:-}
+      BOUNCE_TLS_CERT_FILE: ${BOUNCE_TLS_CERT_FILE:-}
+      BOUNCE_TLS_KEY_FILE: ${BOUNCE_TLS_KEY_FILE:-}
+      BOUNCE_MAX_CONNECTIONS_PER_IP: ${BOUNCE_MAX_CONNECTIONS_PER_IP:-10}
+      BOUNCE_MAX_CLIENTS: ${BOUNCE_MAX_CLIENTS:-200}
+      BOUNCE_TARPIT_ENABLED: ${BOUNCE_TARPIT_ENABLED:-true}
+      BOUNCE_TARPIT_DELAY_MS: ${BOUNCE_TARPIT_DELAY_MS:-5000}
+      BOUNCE_SOCKET_TIMEOUT_MS: ${BOUNCE_SOCKET_TIMEOUT_MS:-60000}
+      # This file publishes no submission port; enabling the listener also
+      # takes a port mapping for 587/465.
+      SUBMISSION_ENABLED: ${SUBMISSION_ENABLED:-false}
+      SUBMISSION_PORT: ${SUBMISSION_PORT:-587}
+      SUBMISSION_IMPLICIT_TLS_ENABLED: ${SUBMISSION_IMPLICIT_TLS_ENABLED:-false}
+      SUBMISSION_IMPLICIT_TLS_PORT: ${SUBMISSION_IMPLICIT_TLS_PORT:-465}
+      SUBMISSION_TLS_CERT: ${SUBMISSION_TLS_CERT:-}
+      SUBMISSION_TLS_KEY: ${SUBMISSION_TLS_KEY:-}
+      SUBMISSION_MAX_CONNECTIONS_PER_IP: ${SUBMISSION_MAX_CONNECTIONS_PER_IP:-10}
+      SUBMISSION_MAX_CLIENTS: ${SUBMISSION_MAX_CLIENTS:-200}
+      SUBMISSION_MAX_AUTH_FAILURES_PER_IP: ${SUBMISSION_MAX_AUTH_FAILURES_PER_IP:-10}
+      SMTP_POOL_MAX_PER_HOST: ${SMTP_POOL_MAX_PER_HOST:-3}
+      SMTP_POOL_IDLE_TIMEOUT_MS: ${SMTP_POOL_IDLE_TIMEOUT_MS:-30000}
+      SMTP_POOL_MAX_AGE_MS: ${SMTP_POOL_MAX_AGE_MS:-300000}
+      SMTP_POOL_MAX_MESSAGES_PER_CONNECTION: ${SMTP_POOL_MAX_MESSAGES_PER_CONNECTION:-100}
+      SMTP_POOL_GLOBAL_MAX_PER_HOST: ${SMTP_POOL_GLOBAL_MAX_PER_HOST:-10}
+      SMTP_POOL_COORDINATION_PROTOCOL: ${SMTP_POOL_COORDINATION_PROTOCOL:-legacy-v0}
+      ORG_DEFAULT_DAILY_LIMIT: ${ORG_DEFAULT_DAILY_LIMIT:-50000}
+      ORG_DEFAULT_HOURLY_LIMIT: ${ORG_DEFAULT_HOURLY_LIMIT:-5000}
+      DELIVERY_LOG_MAX_LEN: ${DELIVERY_LOG_MAX_LEN:-100000}
+      DELIVERY_LOG_TTL_HOURS: ${DELIVERY_LOG_TTL_HOURS:-72}
+      # Empty means the built-in four-day retry ceiling, the most it accepts.
+      MAX_MESSAGE_AGE_MS: ${MAX_MESSAGE_AGE_MS:-}
+      WEBHOOK_DLQ_MAX_SIZE: ${WEBHOOK_DLQ_MAX_SIZE:-10000}
     volumes:
       - mail-certs:/opt/owlat/certs:ro
     healthcheck:
@@ -340,6 +447,10 @@ services:
       retries: 3
       start_period: 30s
     depends_on:
+      # Self-signs the inbound pair on first boot so STARTTLS is offered from
+      # the start.
+      imap-cert-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       clamav:

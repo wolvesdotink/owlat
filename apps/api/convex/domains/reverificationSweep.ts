@@ -4,11 +4,17 @@
  * was ever verified, so each run stays bounded however many domains there are.
  * Domains never verified are left out: their operator is still publishing
  * records, and the Domains page re-checks them while it is open.
+ *
+ * The first page also schedules the tracking domains' re-check
+ * (`trackingDomains.scheduleTrackingDomainRechecks`): a tracking domain whose
+ * CNAME, proxy or certificate went away breaks every link in new mail, so it
+ * is re-checked on the same cadence and with the same confirming check.
  */
 
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
+import { scheduleTrackingDomainRechecks } from './trackingDomains';
 
 const PAGE_SIZE = 100;
 // Spread the checks so one sweep does not fire a burst of DNS lookups.
@@ -29,6 +35,9 @@ export const scheduleReverification = internalMutation({
 				{ domainId: domain._id }
 			);
 			scheduled += 1;
+		}
+		if (args.cursor === undefined) {
+			await scheduleTrackingDomainRechecks(ctx, STAGGER_MS);
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(

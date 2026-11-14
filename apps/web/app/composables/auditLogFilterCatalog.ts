@@ -85,7 +85,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: `${GROUPS}.automations`, prefixes: ['automation'] },
 	{ label: `${GROUPS}.settingsAndTeam`, prefixes: ['settings', 'team_member'] },
 	{ label: `${GROUPS}.apiAndWebhooks`, prefixes: ['api_key', 'webhook'] },
-	{ label: `${GROUPS}.sendingDomains`, prefixes: ['sending_domain'] },
+	{ label: `${GROUPS}.sendingDomains`, prefixes: ['sending_domain', 'tracking_domain'] },
 	{ label: `${GROUPS}.deliverability`, prefixes: ['deliverability_ramp'] },
 	{ label: `${GROUPS}.seedMailboxes`, prefixes: ['seed_mailbox'] },
 	{ label: `${GROUPS}.blocklist`, prefixes: ['blocklist'] },

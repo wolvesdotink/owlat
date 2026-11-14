@@ -109,4 +109,9 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/threadArchive.ts#archiveThreads': 'old web clients with the All inboxes digest open',
 	// A Team Inbox conversation now opens a page at a time (inbox/threadPage.ts).
 	'inbox/queries.ts#getThread': 'old web clients and desktop builds with a Team Inbox thread open',
+	// A tracking domain is now checked by domains/trackingDomainCheck.ts (CNAME
+	// and HTTPS), and a campaign hop picks its domain by the From address.
+	'domains/trackingDomains.ts#verifyTrackingDomainDns': 'old tracking-domain checks queued',
+	'domains/trackingDomains.ts#markVerifiedInternal': 'old tracking-domain checks mid-run',
+	'domains/trackingDomains.ts#getActiveTrackingDomain': 'old campaign send-walker hops mid-page',
 };

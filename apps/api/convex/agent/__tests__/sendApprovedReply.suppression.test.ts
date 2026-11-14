@@ -37,6 +37,7 @@ import {
 	createTestContact,
 	createTestInboundMessage,
 	createTestInstanceSettings,
+	createTestDomain,
 } from '../../__tests__/factories';
 
 // Stub the workpool so the enqueue's `enqueueAction` is a no-op.
@@ -108,6 +109,11 @@ async function seedApprovedMessage(
 	settingsOverrides: Record<string, unknown> = {}
 ): Promise<Id<'inboundMessages'>> {
 	return await t.run(async (ctx) => {
+		// The default sender's domain: non-campaign mail is refused from any other.
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({ domain: 'acme.test', status: 'verified', lastVerifiedAt: Date.now() })
+		);
 		await ctx.db.insert(
 			'instanceSettings',
 			createTestInstanceSettings({

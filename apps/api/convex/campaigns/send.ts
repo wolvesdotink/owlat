@@ -139,11 +139,27 @@ export const startCampaignSend = internalAction({
 
 		// Pre-flight re-validation at fire time — catches state that drifted
 		// between the original schedule and now (org suspended, template
-		// deleted, domain verification expired).
-		const preflight = await ctx.runQuery(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: args.campaignId,
-		});
-		if (!preflight.ok) return skip(`Pre-flight failed: ${preflight.message}`);
+		// deleted, domain verification expired). A scheduled start waits out a
+		// temporary hold and gives up visibly otherwise (`startGate.ts`); the
+		// per-minute tick re-enters here while it waits.
+		if (campaign.status === 'scheduled') {
+			const start = await ctx.runQuery(internal.campaigns.startGate.checkScheduledStart, {
+				campaignId: args.campaignId,
+			});
+			if (start.kind === 'hold') return skip(start.reason);
+			if (start.kind === 'refuse') {
+				await ctx.runMutation(internal.campaigns.startGate.refuseScheduledStart, {
+					campaignId: args.campaignId,
+					refusal: start.refusal,
+				});
+				return skip(`Pre-flight failed: ${start.refusal.message}`);
+			}
+		} else {
+			const preflight = await ctx.runQuery(internal.campaigns.preflight.validateReadyToSendQuery, {
+				campaignId: args.campaignId,
+			});
+			if (!preflight.ok) return skip(`Pre-flight failed: ${preflight.message}`);
+		}
 
 		// The lifecycle schedules a hop on `→ sending`, so the hop after a
 		// scheduler-tick start finds its send prepared. Skip before scanning.
@@ -319,15 +335,17 @@ export const resolveCampaignPage = internalAction({
 		});
 		const settings = hopSendSettings(job, campaign);
 
-		const resolvedRoute = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: 'campaign',
-			to: page.recipients[0]?.email,
-			from: settings.from,
-		});
+		// A temporary routing hold (an open safety circuit, an unverified relay)
+		// comes back as a deferral code rather than a throw, so it takes the
+		// same keep-the-cursor retry as a missing provider.
+		const { route: resolvedRoute, deferralCode } = await ctx.runQuery(
+			internal.lib.sendProviders.route.resolveSendRouteOrHold,
+			{ messageType: 'campaign', to: page.recipients[0]?.email, from: settings.from }
+		);
 		if (!resolvedRoute) {
 			// Fail closed and retry this same hop later; see `NO_PROVIDER_RETRY_MS`.
 			logWarn(
-				`Campaign send hop deferred for ${campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`
+				`Campaign send hop deferred for ${campaignId}: ${deferralCode ?? 'no delivery provider configured'}; retrying in ${NO_PROVIDER_RETRY_MS}ms`
 			);
 			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, { campaignId });
 			await ctx.scheduler.runAfter(
@@ -347,9 +365,10 @@ export const resolveCampaignPage = internalAction({
 			route: resolvedRoute,
 			siteUrl: getOptional('SITE_URL'),
 			convexSiteUrl: getOptional('CONVEX_SITE_URL'),
-			trackingDomain: (
-				await ctx.runQuery(internal.domains.trackingDomains.getActiveTrackingDomain, {})
-			)?.domain,
+			trackingDomain:
+				(await ctx.runQuery(internal.domains.trackingDomains.getTrackingDomainForSender, {
+					from: settings.from,
+				})) ?? undefined,
 			organizationId:
 				(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {})) ??
 				undefined,

@@ -2,7 +2,12 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	createTestTransactionalEmail,
+} from './factories';
 import type { Id } from '../_generated/dataModel';
 import { createContact } from '../contacts/creation';
 
@@ -134,6 +139,87 @@ describe('webhook emission — email.clicked', () => {
 			'https://example.com/b',
 		]);
 		expect(clicked.every((c) => c.data['email'] === 'click@example.com')).toBe(true);
+	});
+});
+
+/** A queued send created through the transactional API, and its template. */
+async function seedApiSend(t: ReturnType<typeof convexTest>) {
+	return await t.run(async (ctx) => {
+		const templateId = await ctx.db.insert('transactionalEmails', createTestTransactionalEmail());
+		const sendId = await ctx.db.insert('transactionalSends', {
+			kind: 'transactional' as const,
+			transactionalEmailId: templateId,
+			email: 'api@example.com',
+			status: 'queued' as const,
+			queuedAt: 1,
+		});
+		return { sendId, templateId };
+	});
+}
+
+describe('webhook emission — email.failed', () => {
+	it('fans out exactly one email.failed naming the send and its error code', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId, templateId } = await seedApiSend(t);
+		const failed = {
+			to: 'failed' as const,
+			at: 1000,
+			errorMessage: 'Delivery stayed on hold until the delivery deadline passed',
+			errorCode: 'DELIVERY_HOLD_EXPIRED',
+		};
+
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId },
+			transition: failed,
+		});
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId },
+			transition: { ...failed, at: 2000, errorCode: 'WORKPOOL_FAILED' },
+		});
+
+		const fanouts = await scheduledFanouts(t);
+		expect(fanouts.map((f) => f.event)).toEqual(['email.failed']);
+		expect(fanouts[0]!.data).toEqual({
+			email: 'api@example.com',
+			sendId,
+			campaignId: null,
+			templateId,
+			errorCode: 'DELIVERY_HOLD_EXPIRED',
+			message: 'Delivery stayed on hold until the delivery deadline passed',
+			timestamp: new Date(1000).toISOString(),
+		});
+	});
+});
+
+describe('webhook emission — every email event names its send', () => {
+	it('carries the send id the API returned on each event of one send', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await seedApiSend(t);
+		const transitions = [
+			{ to: 'sent' as const, at: 1000, providerMessageId: 'pm-1' },
+			{ to: 'delivered' as const, at: 2000 },
+			{ to: 'opened' as const, at: 3000 },
+			{ to: 'clicked' as const, at: 4000, url: 'https://example.com/a' },
+			{ to: 'complained' as const, at: 5000 },
+		];
+		for (const transition of transitions) {
+			await t.mutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'transactional', id: sendId },
+				transition,
+			});
+		}
+
+		const fanouts = await scheduledFanouts(t);
+		expect(fanouts.map((f) => f.event).sort()).toEqual([
+			'email.clicked',
+			'email.complained',
+			'email.delivered',
+			'email.opened',
+			'email.sent',
+		]);
+		for (const fanout of fanouts) {
+			expect(fanout.data['sendId'], fanout.event).toBe(sendId);
+		}
 	});
 });
 

@@ -16,6 +16,7 @@ import { emailBounced } from './emailBounced';
 import { emailClicked } from './emailClicked';
 import { emailComplained } from './emailComplained';
 import { emailDelivered } from './emailDelivered';
+import { emailFailed } from './emailFailed';
 import { emailOpened } from './emailOpened';
 import { emailSent } from './emailSent';
 import { test } from './test';
@@ -28,6 +29,7 @@ export const WEBHOOK_EVENT_REGISTRY = {
 	[emailClicked.literal]: emailClicked,
 	[emailBounced.literal]: emailBounced,
 	[emailComplained.literal]: emailComplained,
+	[emailFailed.literal]: emailFailed,
 	[contactCreated.literal]: contactCreated,
 	[topicUnsubscribed.literal]: topicUnsubscribed,
 	[test.literal]: test,

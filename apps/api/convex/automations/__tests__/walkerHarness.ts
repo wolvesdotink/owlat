@@ -17,6 +17,7 @@ import {
 	createTestContact,
 	createTestEmailTemplate,
 	createTestInstanceSettings,
+	createTestDomain,
 } from '../../__tests__/factories';
 import { bumpAutomationStats, summarizeAutomationStats } from '../statShards';
 
@@ -49,6 +50,11 @@ type StepSpec = { email: string } | { delayDays: number };
 
 export async function seedSettings(t: T): Promise<void> {
 	await t.run(async (ctx) => {
+		// The default sender's domain: non-campaign mail is refused from any other.
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
+		);
 		await ctx.db.insert(
 			'instanceSettings',
 			createTestInstanceSettings({

@@ -31,7 +31,8 @@ export interface EmailStepConfig {
  *   - `recipient_blocked` is about THIS contact and will never clear by
  *     retrying, so the step COMPLETES as a no-op skip: no Send row was
  *     written, the run advances, and nothing is retried.
- *   - `no_delivery_provider` and `abuse_blocked` are about the deployment.
+ *   - `no_delivery_provider`, `abuse_blocked` and `sender_domain_unverified`
+ *     are about the deployment.
  *     They FAIL the step, which is what makes them visible to the operator who
  *     has to fix them — and, for a suspended instance, halting the automation
  *     is the correct response rather than a silent skip. The walker's bounded
@@ -57,6 +58,13 @@ const REJECTION_STEP_OUTCOME: Record<
 	abuse_blocked: () => ({
 		status: 'failed',
 		error: 'Sending is disabled while this instance is suspended.',
+	}),
+	// About the deployment, like the two above: the step fails with the reason
+	// on its run, the walker's bounded backoff applies, and the failure breaker
+	// pauses an automation that keeps failing on it.
+	sender_domain_unverified: (detail) => ({
+		status: 'failed',
+		error: detail ?? "The default sender's domain is not a verified sending domain.",
 	}),
 };
 
@@ -158,7 +166,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// blocklist-on-hard-bounce effect now all fire for automation emails,
 		// which the old direct-dispatch path silently skipped.
 		//
-		// NO route resolution here. Running `resolveSendRoute` in this step and
+		// NO route resolution here. Running `resolveSendRouteOrHold` in this step and
 		// passing `providerType`/`ipPool` down would resolve the same message
 		// twice — once from an action that cannot see the row it is about — for a
 		// value the worker treats as a fallback. The intake resolves it in the same

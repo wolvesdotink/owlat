@@ -53,6 +53,9 @@ describe('campaign refusal copy', () => {
 		expect(refusalFixLink('sender_not_allowed')?.to).toBe('/dashboard/admin/team/senders');
 		// The delivery hub carries the account-status banner.
 		expect(refusalFixLink('sending_not_allowed')?.to).toBe('/dashboard/admin/delivery');
+		// ...and the mail-server, port 25 and sending-IP gates.
+		expect(refusalFixLink('mail_server_not_ready')?.to).toBe('/dashboard/admin/delivery');
+		expect(refusalFixLink('delivery_on_hold')?.to).toBe('/dashboard/admin/delivery');
 		// Fixed in the campaign itself, or not fixable by the operator.
 		expect(refusalFixLink('no_template')).toBeNull();
 		expect(refusalFixLink('scheduled_in_past')).toBeNull();

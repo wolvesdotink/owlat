@@ -259,6 +259,7 @@ async function copyReport() {
 			</template>
 
 			<div v-if="center" class="space-y-6">
+				<DeliveryBounceFeedbackNote />
 				<section
 					class="overflow-hidden rounded-(--radius-card) surface-2"
 					aria-labelledby="deliverability-grade-heading"

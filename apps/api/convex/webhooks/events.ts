@@ -24,9 +24,10 @@ export const webhookEventValidator = v.union(
 	v.literal('email.clicked'),
 	v.literal('email.bounced'),
 	v.literal('email.complained'),
+	v.literal('email.failed'),
 	v.literal('contact.created'),
 	v.literal('topic.unsubscribed'),
-	v.literal('test'),
+	v.literal('test')
 );
 
 /** Subscribable subset (excludes `test`). Used by webhook create/update/listByEvent args. */
@@ -37,8 +38,9 @@ export const subscribableWebhookEventValidator = v.union(
 	v.literal('email.clicked'),
 	v.literal('email.bounced'),
 	v.literal('email.complained'),
+	v.literal('email.failed'),
 	v.literal('contact.created'),
-	v.literal('topic.unsubscribed'),
+	v.literal('topic.unsubscribed')
 );
 
 // ─── Compile-time: webhookEventValidator ≡ keys of WEBHOOK_EVENT_REGISTRY ──

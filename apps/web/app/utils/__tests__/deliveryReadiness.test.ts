@@ -738,6 +738,25 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(verdict(r, 'marketing').level).toBe('ready');
 	});
 
+	it('blocks campaigns and warns transactional mail when bounce reports cannot come back', () => {
+		const noFeedback = { ...viaProvider, feedbackMissing: ['MTA_WEBHOOK_SECRET'] };
+		const r = deriveDeliveryReadiness(
+			input({
+				streamTransport: { transactional: noFeedback, marketing: noFeedback },
+				defaultSender: verifiedSender,
+			})
+		);
+		const transports = r.gates.filter((g) => g.key === 'transport');
+		expect(transports.map((g) => g.streams)).toEqual([['transactional'], ['marketing']]);
+		expect(transports.map((g) => g.actionHref)).toEqual([
+			'/dashboard/admin/delivery/transport',
+			'/dashboard/admin/delivery/transport',
+		]);
+		expect(localized(transports[1]!.detail)).toContain('MTA_WEBHOOK_SECRET is not set');
+		expect(verdict(r, 'marketing').level).toBe('blocked');
+		expect(verdict(r, 'transactional').level).toBe('attention');
+	});
+
 	it('gives no verdict to a stream whose feature is switched off', () => {
 		const r = deriveDeliveryReadiness(
 			streamInput(viaProvider, {

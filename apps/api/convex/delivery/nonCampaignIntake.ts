@@ -41,6 +41,11 @@ import { attachmentRefValidator, normalizeEngagementScore } from './workerEnvelo
 import { runSendIntakeGates, type SendIntakeRejectionReason } from './sendIntakeGates';
 import { loadContactMarketingIneligibility } from '../lib/marketingEligibility';
 import { findStepRunSend } from '../automations/stepRunSend';
+import {
+	checkEmailDomainVerification,
+	type EmailDomainVerificationStatus,
+} from '../domains/domains';
+import { extractEmail } from '../lib/emailAddress';
 
 // ============================================================
 // Public types
@@ -53,9 +58,15 @@ import { findStepRunSend } from '../automations/stepRunSend';
  * marketing (soft-deleted, erased, or globally unsubscribed; see
  * `lib/marketingEligibility.ts`). Only marketing-scope kinds are gated on it,
  * and it is permanent for this contact, like `recipient_blocked`. `detail`
- * carries the `MarketingIneligibility` value.
+ * carries the `MarketingIneligibility` value. And `sender_domain_unverified`:
+ * the From address is not on a verified sending domain, the same verdict the
+ * campaign pre-flight and the Template API intake apply. It is about the
+ * deployment, not the recipient; `detail` says which domain and what to do.
  */
-export type NonCampaignIntakeRejectionReason = SendIntakeRejectionReason | 'recipient_ineligible';
+export type NonCampaignIntakeRejectionReason =
+	| SendIntakeRejectionReason
+	| 'recipient_ineligible'
+	| 'sender_domain_unverified';
 
 /**
  * The discriminated outcome, modelled on `transactional/dispatch.ts`'s
@@ -137,6 +148,14 @@ const MESSAGE_TYPE_BY_KIND = {
 const NO_DELIVERY_PROVIDER_DETAIL =
 	'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending automation or agent mail.';
 
+/** Operator-facing text for a `sender_domain_unverified` refusal. */
+function senderDomainRefusalDetail(status: EmailDomainVerificationStatus): string {
+	if (!status.domain) return 'The default sender is not a valid email address.';
+	return status.exists
+		? `The default sender's domain "${status.domain}" is not verified yet. Finish its DNS verification under Settings > Domains.`
+		: `The default sender's domain "${status.domain}" is not a sending domain. Add and verify it under Settings > Domains.`;
+}
+
 // ============================================================
 // Internal mutation — the intake entry point
 // ============================================================
@@ -216,6 +235,19 @@ export const intake = internalMutation({
 		});
 		if (!gates.ok) return gates;
 		const resolvedRoute = gates.route;
+
+		// Every kind sends from the instance default sender. Mail from a domain
+		// that is not a verified sending domain fails DMARC at the receiver and
+		// teaches it that this sender is spoofed, so it is refused here, before
+		// any row is written, exactly as campaign and Template API sends are.
+		const senderDomain = await checkEmailDomainVerification(ctx, extractEmail(args.from));
+		if (!senderDomain.verified) {
+			return {
+				ok: false,
+				reason: 'sender_domain_unverified',
+				detail: senderDomainRefusalDetail(senderDomain),
+			};
+		}
 
 		// Contact-level marketing eligibility, for marketing-scope kinds only: a
 		// contact that unsubscribed from everything or was deleted while an

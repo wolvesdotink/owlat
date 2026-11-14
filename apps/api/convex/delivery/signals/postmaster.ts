@@ -56,6 +56,32 @@ export interface PostmasterDomainSignals {
 
 /** Google's published spam-rate line; above it Gmail filtering changes. */
 export const POSTMASTER_SPAM_RATE_LIMIT = 0.003;
+
+/** A Postmaster reading fetched longer ago than this no longer describes today. */
+export const POSTMASTER_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
+/** A reporting day older than this describes mail too old to act on. */
+const POSTMASTER_PERIOD_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1_000;
+
+/**
+ * May a stored spam-rate reading be acted on? The checklist grades only a
+ * fresh one, and reputation enforcement suspends only on a fresh one: a
+ * collector that stopped fetching must never keep a deployment suspended, or
+ * suspend it, on an old day.
+ */
+export function isPostmasterReadingFresh(
+	reading: { readonly fetchedAt: number; readonly periodStart: number },
+	now: number
+): boolean {
+	return (
+		now - reading.fetchedAt <= POSTMASTER_MAX_AGE_MS &&
+		now - reading.periodStart <= POSTMASTER_PERIOD_MAX_AGE_MS
+	);
+}
+
+/** The oldest reporting day `isPostmasterReadingFresh` can accept at `now`. */
+export function oldestFreshPostmasterPeriod(now: number): number {
+	return now - POSTMASTER_PERIOD_MAX_AGE_MS;
+}
 /** Below this share of authenticated traffic a bulk sender is out of policy. */
 export const POSTMASTER_AUTH_SUCCESS_FLOOR = 0.95;
 

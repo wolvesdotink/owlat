@@ -16,9 +16,10 @@
  *     readers. Bounce/complaint rate + risk level are derived on read, never
  *     stored. Reader-typed (`DatabaseReader`), so they run in both query and
  *     mutation ctx and the writer/reader cannot disagree about the number.
- *   - `evaluateAutoEnforce` is the auto-enforce DECISION, off the hot path: it
- *     runs on the reputation cron, summarizes the org window once per tick, and
- *     escalates when risk is `high`/`critical`. Running it here keeps the wide
+ *   - `evaluateAutoEnforce` is the auto-enforce step, off the hot path: it
+ *     runs on the reputation cron, summarizes the org window once per tick,
+ *     reads the fresh Gmail spam rates from Google Postmaster, and escalates on
+ *     what `reputationEnforcement.ts` decides. Running it here keeps the wide
  *     `.collect()` of the org window out of the per-event `recordEvent`.
  *   - `recalculateAll` is the cleanup cron: it ages out >60-day buckets across
  *     both scopes. Risk no longer needs periodic recalculation — it is derived.
@@ -33,6 +34,8 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
 import { utcDayStart } from '../lib/clock';
+import { readRecentGmailSpamReadings } from '../delivery/postmaster';
+import { decideReputationEnforcement } from './reputationEnforcement';
 import { DAY_MS } from '../lib/constants';
 
 // ============ RISK LEVEL THRESHOLDS ============
@@ -368,25 +371,34 @@ export const recordEvent = internalMutation({
 });
 
 /**
- * The auto-enforce DECISION, off the hot path. Runs on the reputation cron:
- * summarizes the org window once and escalates the deployment's Abuse status
- * when the derived risk is `high`/`critical`. This is the one wide
- * `.collect()` of the org window per cron tick rather than per send-event —
- * the move that removes the read-amplification from `recordEvent`.
+ * The auto-enforce step, off the hot path. Runs on the reputation cron:
+ * summarizes the org window once, reads each domain's latest Gmail spam rate
+ * from Google Postmaster, and escalates the deployment's Abuse status on what
+ * `decideReputationEnforcement` calls for. This is the one wide `.collect()` of
+ * the org window per cron tick rather than per send-event — the move that
+ * removes the read-amplification from `recordEvent`.
  *
- * The enforce decision lives only here; `recordEvent` has no per-event
- * trigger. It fires while the org window is `high`/`critical`; the Abuse
- * status module dedupes the transition idempotently, so the hourly check
- * enforces the same policy a per-event one would.
+ * Enforcement lives only here; `recordEvent` has no per-event trigger. It fires
+ * while the evidence stays over the line; the Abuse status module dedupes the
+ * transition idempotently, so the hourly check enforces the same policy a
+ * per-event one would.
  */
 export const evaluateAutoEnforce = internalMutation({
 	args: {},
 	handler: async (ctx) => {
+		const now = Date.now();
 		const org = await summarize(ctx.db, { kind: 'org' });
-		if (org.riskLevel === 'high' || org.riskLevel === 'critical') {
-			await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.autoEnforceReputation, {
-				riskLevel: org.riskLevel,
-			});
+		const decision = decideReputationEnforcement({
+			orgRiskLevel: org.riskLevel,
+			gmail: await readRecentGmailSpamReadings(ctx.db, now),
+			now,
+		});
+		if (decision) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.analytics.sendingReputation.autoEnforceReputation,
+				decision
+			);
 		}
 		return { riskLevel: org.riskLevel };
 	},
@@ -408,13 +420,19 @@ export const evaluateAutoEnforce = internalMutation({
 export const autoEnforceReputation = internalMutation({
 	args: {
 		riskLevel: v.union(v.literal('high'), v.literal('critical')),
+		/**
+		 * What the operator reads, naming the evidence. Absent on a job a previous
+		 * release scheduled, which only ever enforced on the internal window.
+		 */
+		reason: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const target = args.riskLevel === 'critical' ? 'suspended' : 'warned';
 		const reason =
-			args.riskLevel === 'critical'
+			args.reason ??
+			(args.riskLevel === 'critical'
 				? 'Auto-suspended: complaint rate or bounce rate exceeded critical thresholds'
-				: 'Auto-warned: complaint rate or bounce rate exceeding safe thresholds';
+				: 'Auto-warned: complaint rate or bounce rate exceeding safe thresholds');
 
 		await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
 			input: {

@@ -58,3 +58,22 @@ function optionalCountFields<const K extends string>(
 
 /** One optional counter column per sharded stat, for `campaigns` and `campaignStatShards`. */
 export const campaignShardedStatFields = optionalCountFields(CAMPAIGN_SHARDED_STAT_FIELDS);
+
+/**
+ * Why a scheduled campaign did not start at its time, kept on the campaign
+ * after it fell back to draft so the editor can say so in place. The reason
+ * and key are the pre-flight's own (`campaigns/refusalCopy.ts`), stored as
+ * strings: a refusal written by one build must still load after a later build
+ * renames or retires a reason, and the client falls back to `message`.
+ */
+export const campaignStartRefusalValidator = v.object({
+	reason: v.string(),
+	messageKey: v.string(),
+	messageParams: v.optional(v.record(v.string(), v.union(v.string(), v.number()))),
+	/** English, for API consumers and the fallback when the key is unknown. */
+	message: v.string(),
+	/** The start that did not happen. */
+	scheduledAt: v.number(),
+	/** When the start was given up. */
+	refusedAt: v.number(),
+});

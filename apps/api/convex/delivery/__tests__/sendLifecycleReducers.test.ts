@@ -13,6 +13,8 @@ import {
 } from '../sendLifecycle/reducers';
 import { reduceDeliveryObservation } from '../sendLifecycle/deliveryObservation';
 import { withoutTestSendEffects } from '../sendLifecycle/types';
+import type { Effect } from '../sendLifecycle/effects';
+import { WEBHOOK_EVENT_REGISTRY } from '../../webhooks/events/registry';
 import type { Doc, Id } from '../../_generated/dataModel';
 
 // Pure unit tests for the send-lifecycle reducers. These import the reducers
@@ -205,6 +207,165 @@ describe('reduceFailed', () => {
 			campaignRef
 		);
 		expect(result.effects.some((e) => e.kind === 'blocklist_insert')).toBe(false);
+	});
+});
+
+// The customer webhook payloads a reducer's effects put on the wire, built by
+// the same registry modules the fanout uses.
+function webhookPayloads(effects: ReadonlyArray<Effect>) {
+	return effects.flatMap((effect) => {
+		if (effect.kind !== 'customer_webhook') return [];
+		const module = WEBHOOK_EVENT_REGISTRY[effect.spec.literal];
+		const build = module.build as (input: unknown) => Record<string, unknown>;
+		return [{ event: effect.spec.literal, data: build(effect.spec.input) }];
+	});
+}
+
+describe('a transactional send names itself on every email event', () => {
+	const API_SEND_ID = 'api-send-1' as Id<'transactionalSends'>;
+	const TEMPLATE_ID = 'template-1' as Id<'transactionalEmails'>;
+	const apiRef: SendRef = { kind: 'transactional', id: API_SEND_ID };
+	const apiSend = (overrides: Partial<TransactionalSendDoc> = {}) =>
+		({
+			_id: API_SEND_ID,
+			_creationTime: 0,
+			kind: 'transactional',
+			transactionalEmailId: TEMPLATE_ID,
+			email: 'ada@example.com',
+			status: 'queued',
+			...overrides,
+		}) as unknown as TransactionalSendDoc;
+	const identity = { sendId: API_SEND_ID, templateId: TEMPLATE_ID, campaignId: null };
+
+	it('a failed send emits one email.failed with its id, code and message', () => {
+		const result = reduceFailed(
+			apiSend(),
+			{
+				to: 'failed',
+				at: 3000,
+				errorMessage: 'The mail server could not be reached',
+				errorCode: 'MTA_UNREACHABLE',
+			},
+			apiRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([
+			{
+				event: 'email.failed',
+				data: {
+					email: 'ada@example.com',
+					...identity,
+					errorCode: 'MTA_UNREACHABLE',
+					message: 'The mail server could not be reached',
+					timestamp: new Date(3000).toISOString(),
+				},
+			},
+		]);
+	});
+
+	it('a failure re-reported on a failed send emits nothing', () => {
+		const result = reduceFailed(
+			apiSend({ status: 'failed' }),
+			{ to: 'failed', at: 4000, errorMessage: 'again', errorCode: 'WORKPOOL_FAILED' },
+			apiRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([]);
+	});
+
+	it('every other email event carries the same send id', () => {
+		const effects = [
+			...reduceSent(
+				apiSend(),
+				{ to: 'sent', at: 1, providerMessageId: 'pm' },
+				apiRef,
+				'org.example'
+			).effects,
+			...reduceDeliveryObservation(apiSend({ status: 'sent' }), 2, apiRef, 'org.example', null)
+				.effects,
+			...reduceOpened(
+				apiSend({ status: 'delivered', sentAt: 1 }),
+				{ to: 'opened', at: 7_200_000 },
+				apiRef
+			).effects,
+			...reduceClicked(
+				apiSend({ status: 'opened', sentAt: 1 }),
+				{ to: 'clicked', at: 7_300_000, url: 'https://example.org/a' },
+				apiRef
+			).effects,
+			...reduceBounced(
+				apiSend({ status: 'sent' }),
+				{ to: 'bounced', at: 5, bounceType: 'soft' },
+				apiRef,
+				'ada@example.com',
+				'org.example',
+				null
+			).effects,
+			...reduceComplained(
+				apiSend({ status: 'delivered' }),
+				{ to: 'complained', at: 6 },
+				apiRef,
+				'ada@example.com',
+				'org.example'
+			).effects,
+		];
+		const payloads = webhookPayloads(effects);
+		expect(payloads.map((p) => p.event).sort()).toEqual([
+			'email.bounced',
+			'email.clicked',
+			'email.complained',
+			'email.delivered',
+			'email.opened',
+			'email.sent',
+		]);
+		for (const payload of payloads) {
+			expect(payload.data, payload.event).toMatchObject(identity);
+		}
+	});
+
+	it('email.sent keeps the template id under transactionalEmailId', () => {
+		const result = reduceSent(
+			apiSend(),
+			{ to: 'sent', at: 1, providerMessageId: 'pm' },
+			apiRef,
+			'org.example'
+		);
+		expect(webhookPayloads(result.effects)[0]?.data).toMatchObject({
+			sendId: API_SEND_ID,
+			templateId: TEMPLATE_ID,
+			transactionalEmailId: TEMPLATE_ID,
+		});
+	});
+
+	it('a campaign send names its campaign and no send id', () => {
+		const result = reduceFailed(
+			campaignSend({ status: 'queued' }),
+			{ to: 'failed', at: 3000, errorMessage: 'nope', errorCode: 'RECIPIENT_SUPPRESSED' },
+			campaignRef
+		);
+		expect(webhookPayloads(result.effects)).toEqual([
+			{
+				event: 'email.failed',
+				data: expect.objectContaining({
+					sendId: null,
+					campaignId: CAMPAIGN_ID,
+					templateId: null,
+					errorCode: 'RECIPIENT_SUPPRESSED',
+				}),
+			},
+		]);
+	});
+
+	it('an automation send carries no send id, since no API returned one', () => {
+		const result = reduceSent(
+			apiSend({ kind: 'automation', transactionalEmailId: undefined }),
+			{ to: 'sent', at: 1, providerMessageId: 'pm' },
+			apiRef,
+			'org.example'
+		);
+		expect(webhookPayloads(result.effects)[0]?.data).toMatchObject({
+			sendId: null,
+			templateId: null,
+			campaignId: null,
+		});
 	});
 });
 
