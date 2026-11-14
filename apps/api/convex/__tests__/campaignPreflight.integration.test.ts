@@ -11,6 +11,7 @@ import {
 import type { Id } from '../_generated/dataModel';
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { PREFLIGHT_MESSAGE_KEYS } from '../campaigns/refusalCopy';
+import { validateReadyToSend } from '../campaigns/preflight';
 import { writeInstanceCounter } from '../lib/instanceCounters';
 import { MTA_HEALTH_MAX_AGE_MS } from '../delivery/mtaHealthFreshness';
 
@@ -346,6 +347,15 @@ describe('validateReadyToSend — the built-in mail server', () => {
 		delete process.env['RESEND_API_KEY'];
 	});
 
+	// What a schedule or send-now runs: the orchestrator's own re-check of a
+	// send that already started skips this gate on purpose.
+	async function preflightFor(t: TestRunner, campaignId: Id<'campaigns'>) {
+		return await t.run(async (ctx) => {
+			const campaign = await ctx.db.get(campaignId);
+			return await validateReadyToSend(ctx, campaign!);
+		});
+	}
+
 	/** A campaign every other check passes, sending from `sender@verified.example.com`. */
 	async function seedReadyCampaign(t: TestRunner): Promise<Id<'campaigns'>> {
 		const templateId = await seedTemplate(t);
@@ -395,9 +405,7 @@ describe('validateReadyToSend — the built-in mail server', () => {
 		const campaignId = await seedReadyCampaign(t);
 		await seedPort25Blocked(t, NOW - 60_000);
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId,
-		});
+		const result = await preflightFor(t, campaignId);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -414,9 +422,7 @@ describe('validateReadyToSend — the built-in mail server', () => {
 			});
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId,
-		});
+		const result = await preflightFor(t, campaignId);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -454,9 +460,7 @@ describe('validateReadyToSend — the built-in mail server', () => {
 			});
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId,
-		});
+		const result = await preflightFor(t, campaignId);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
@@ -468,9 +472,7 @@ describe('validateReadyToSend — the built-in mail server', () => {
 		const campaignId = await seedReadyCampaign(t);
 		await seedPort25Blocked(t, NOW - MTA_HEALTH_MAX_AGE_MS - 60_000);
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId,
-		});
+		const result = await preflightFor(t, campaignId);
 
 		expect(result.ok).toBe(true);
 	});
@@ -482,9 +484,7 @@ describe('validateReadyToSend — the built-in mail server', () => {
 		process.env['EMAIL_PROVIDER'] = 'resend';
 		process.env['RESEND_API_KEY'] = 're_test';
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId,
-		});
+		const result = await preflightFor(t, campaignId);
 
 		expect(result.ok).toBe(true);
 	});

@@ -99,6 +99,14 @@ export interface PreflightOptions {
 	 * shipped fire-time check still runs.
 	 */
 	checkCapacity?: boolean;
+	/**
+	 * Run the built-in mail server check (default `true`). The orchestrator's
+	 * re-check of a send that already started (`validateReadyToSendQuery`)
+	 * passes `false`: that campaign is `sending` with no send job yet, nothing
+	 * would ever retry a start refused there, and the page hop and the MTA's
+	 * own queue already hold mail while the server cannot deliver.
+	 */
+	checkMailServer?: boolean;
 }
 
 /**
@@ -265,7 +273,8 @@ export async function validateReadyToSend(
 	// The built-in mail server must be able to deliver right now, judged from
 	// its last fresh health snapshot exactly as the Delivery hub judges it.
 	// Stale or missing health never refuses.
-	const mailServerBlock = await assessCampaignMailServer(ctx, now);
+	const mailServerBlock =
+		options.checkMailServer === false ? null : await assessCampaignMailServer(ctx, now);
 	if (mailServerBlock) {
 		return refuse(
 			'mail_server_not_ready',
@@ -323,7 +332,10 @@ export const validateReadyToSendQuery = internalQuery({
 		// consumer — it becomes `{ skipped: true }` and the campaign sits
 		// `scheduled` forever, which is strictly worse than the expiring tail this
 		// gate exists to prevent. Every shipped fire-time check still runs.
-		return await validateReadyToSend(ctx, campaign, { checkCapacity: false });
+		return await validateReadyToSend(ctx, campaign, {
+			checkCapacity: false,
+			checkMailServer: false,
+		});
 	},
 });
 

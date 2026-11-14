@@ -808,6 +808,22 @@ describe('startCampaignSend — a scheduled start that cannot go ahead', () => {
 		}
 	});
 
+	it('a send that already started is prepared even if the mail server stopped delivering meanwhile', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 2);
+		await t.run(async (ctx) => {
+			await writeInstanceCounter(ctx, 'mtaHealth', {
+				mtaHealth: { status: 'unreachable', observedAt: Date.now() },
+			});
+		});
+
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+
+		// Refused here, the campaign would sit in `sending` with no send job and
+		// nothing to resume it; the page hop and the MTA queue hold the mail.
+		expect((await getJob(t, data.campaignId))?.phase).toBe('resolving');
+	});
+
 	it('a hold that outlasts the wait gives up visibly', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupWalker(t, 2);
