@@ -41,6 +41,8 @@ import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { beginWorkspaceDeletion } from './deletion/job';
+import { registerDefaultSenderDomain } from '../domains/systemSenderDomain';
+import { logError } from '../lib/runtimeLog';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 
 // all-members: the singleton settings row drives every member's dashboard
@@ -162,6 +164,20 @@ export const update = authedMutation({
 		}
 		if (args.isInboundTlsRequired !== undefined) {
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.pushInboundTlsPolicy, {});
+		}
+		// A default sender on another domain registers that domain, so its mail
+		// is signed rather than refused. Best-effort: the address is saved either
+		// way, and the Domains page can add the domain by hand.
+		if (args.defaultFromEmail !== undefined) {
+			try {
+				await registerDefaultSenderDomain(ctx, {
+					from: existing?.defaultFromEmail,
+					to: args.defaultFromEmail,
+					userId: session.userId,
+				});
+			} catch (error) {
+				logError('[settings] default sender domain not registered:', error);
+			}
 		}
 		// THE OPT-OUT HAS TO REMOVE, NOT JUST STOP. Deep body search
 		// widens the plaintext carve-out to a ~8KB excerpt per message; an operator

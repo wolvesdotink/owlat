@@ -51,6 +51,7 @@ export const DOCTOR_CHECK_IDS = [
 	'containers.health',
 	'version.drift',
 	'mta.egress_address',
+	'env.acme',
 ] as const;
 
 export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
@@ -92,6 +93,7 @@ const CHECK_META: Record<
 	'flags.state': { component: 'config', remediation: 'run_setup' },
 	'env.required': { component: 'config', remediation: 'set_env_var' },
 	'env.site_url': { component: 'config', remediation: 'set_public_url' },
+	'env.acme': { component: 'config', remediation: 'set_env_var' },
 	'send_path.provider': { component: 'send_path', remediation: 'configure_email_provider' },
 	'send_path.credential': { component: 'send_path', remediation: 'set_env_var' },
 	'mta.health': { component: 'mta', remediation: 'check_mta' },

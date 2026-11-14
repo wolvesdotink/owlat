@@ -109,4 +109,66 @@ describe('0075_register_system_sender_domain', () => {
 		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
 		expect(await domains(t)).toEqual([]);
 	});
+
+	it('registers the domain once when the sender later moves to another domain', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(migration.run, {});
+
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.net');
+		expect(await t.mutation(migration.ensure, {})).toEqual({
+			started: false,
+			followed: 'mail.example.net',
+		});
+		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
+
+		expect((await domains(t)).map((row) => row.domain).sort()).toEqual([
+			'mail.example.net',
+			'mail.example.org',
+		]);
+	});
+
+	it('does not add a followed domain back after the operator removed it', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(migration.run, {});
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.net');
+		await t.mutation(migration.ensure, {});
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+		});
+
+		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
+		// Moving back to a domain this path handled before does not re-add it either.
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.org');
+		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
+		expect(await domains(t)).toEqual([]);
+	});
+
+	it('leaves the sender of an install that ran 0075 before domains were recorded as it is', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(migration.run, {});
+		// That install has no record of what 0075 handled, and its operator
+		// removed the domain 0075 added.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('domains').collect()) await ctx.db.delete(row._id);
+			for (const row of await ctx.db.query('systemSenderDomains').collect()) {
+				await ctx.db.delete(row._id);
+			}
+		});
+
+		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
+		expect(await domains(t)).toEqual([]);
+
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.net');
+		expect(await t.mutation(migration.ensure, {})).toMatchObject({ followed: 'mail.example.net' });
+		expect((await domains(t)).map((row) => row.domain)).toEqual(['mail.example.net']);
+	});
+
+	it('does not follow the sender while mail goes through a relay', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(migration.run, {});
+		vi.stubEnv('EMAIL_PROVIDER', 'ses');
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.net');
+		expect(await t.mutation(migration.ensure, {})).toEqual({ started: false });
+		expect((await domains(t)).map((row) => row.domain)).toEqual(['mail.example.org']);
+	});
 });
