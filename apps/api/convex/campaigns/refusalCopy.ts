@@ -25,6 +25,7 @@ export const PREFLIGHT_FAILURE_REASONS = [
 	'sending_not_allowed',
 	'scheduled_in_past',
 	'exceeds_sending_capacity',
+	'no_bounce_feedback',
 ] as const;
 
 export type PreflightFailureReason = (typeof PREFLIGHT_FAILURE_REASONS)[number];
@@ -59,6 +60,7 @@ export const PREFLIGHT_MESSAGE_KEYS = {
 		atLeast: 'shared.campaignRefusal.capacityAtLeast',
 		about: 'shared.campaignRefusal.capacityAbout',
 	},
+	no_bounce_feedback: { default: 'shared.campaignRefusal.noBounceFeedback' },
 } as const satisfies Record<PreflightFailureReason, Readonly<Record<string, string>>>;
 
 /** The variants one reason is worded in. */

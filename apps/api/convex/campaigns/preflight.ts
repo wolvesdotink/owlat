@@ -8,7 +8,8 @@ import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { api } from '../_generated/api';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
-import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { isDeliveryConfigured, messageTypeTransportKinds } from '../lib/sendProviders/capability';
+import { missingFeedbackVariablesFor } from '../lib/sendProviders/feedbackReadiness';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
 import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
@@ -250,6 +251,28 @@ export async function validateReadyToSend(
 	}
 
 	const now = options.now ?? Date.now();
+
+	// Bounce and complaint reports must be able to come back. Without the
+	// transport's webhook key every report is rejected, so hard bounces and
+	// complaints are never suppressed and the next campaign mails them again:
+	// that is what gets a sender blocklisted. Transactional mail keeps flowing
+	// with a warning on the Delivery hub; bulk mail waits for the key.
+	const feedbackMissing = missingFeedbackVariablesFor(
+		await messageTypeTransportKinds(
+			ctx,
+			await ctx.db.query('providerRoutes').collect(), // bounded: one row per message type
+			'campaign'
+		)
+	);
+	if (feedbackMissing.length > 0) {
+		const variables = feedbackMissing.join(', ');
+		return refuse(
+			'no_bounce_feedback',
+			'default',
+			`Cannot send campaign: bounces and complaints cannot reach Owlat because ${variables} is not set, so bounced and complaining addresses would never be suppressed. Set it, then send again.`,
+			{ variables }
+		);
+	}
 
 	if (options.scheduledAt !== undefined) {
 		if (options.scheduledAt <= now) {

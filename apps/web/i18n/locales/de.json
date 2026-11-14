@@ -8545,6 +8545,11 @@
 						"needsAttention": "Deine Zustellung braucht Aufmerksamkeit. Folge dem nächsten Einrichtungsschritt unten.",
 						"ready": "Dein Mail-Setup ist verifiziert und bereit.",
 						"readyWithRecommended": "Deine Mails werden zugestellt. {count} empfohlene Verbesserung verfügbar. | Deine Mails werden zugestellt. {count} empfohlene Verbesserungen verfügbar."
+					},
+					"bounceFeedback": {
+						"title": "Bounces und Beschwerden erreichen Owlat nicht",
+						"detail": "{variables} ist nicht gesetzt, deshalb wird jede Bounce- und Beschwerdemeldung abgelehnt und nichts gesperrt. Kampagnen werden abgelehnt, bis der Wert gesetzt ist; transaktionale Mails gehen weiter raus.",
+						"action": "Versanddienst öffnen"
 					}
 				},
 				"dmarc": {
@@ -9919,7 +9924,8 @@
 					"toggleArchivesOperation": "Kampagnenarchive umschalten",
 					"unsavedChanges": "Du hast ungespeicherte Änderungen",
 					"verifiedLabel": "Verifiziert:",
-					"nameSaveFailed": "Die übrigen Einstellungen sind gespeichert, aber der Workspace-Name konnte nicht geändert werden. Versuch es noch einmal."
+					"nameSaveFailed": "Die übrigen Einstellungen sind gespeichert, aber der Workspace-Name konnte nicht geändert werden. Versuch es noch einmal.",
+					"unverifiedFromDomain": "{domain} ist noch keine verifizierte Absenderdomain. Du kannst die Adresse speichern, aber Automations-Mails, Antworten aus dem Postfach, Double-Opt-in-Bestätigungen und transaktionale Mails von ihr werden abgelehnt, bis die Domain verifiziert ist."
 				},
 				"index": {
 					"applyChanges": "Änderungen anwenden",
@@ -16467,7 +16473,12 @@
 				},
 				"transport": {
 					"action": "Versand einrichten",
+					"actionFeedback": "Webhook-Secret setzen",
 					"configured": "Ein Versandtransport ist konfiguriert, Mail hat also einen Weg nach draußen.",
+					"feedbackMissing": {
+						"marketing": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt. Kampagnen bleiben gesperrt, bis der Wert gesetzt ist, damit Adressen, die bouncen oder sich beschweren, gesperrt werden.",
+						"transactional": "Mails gehen raus, aber Bounces und Beschwerden kommen nicht zurück: {variables} ist nicht gesetzt, Adressen, die bouncen oder sich beschweren, werden also nie gesperrt."
+					},
 					"missing": "Es ist noch kein Transport konfiguriert, es kann also nichts versendet werden.",
 					"missingFor": {
 						"marketing": "Für Kampagnen ist kein Transport konfiguriert, sie gehen also nicht raus.",
@@ -19654,6 +19665,7 @@
 				"transport": "Versand einrichten"
 			},
 			"noAudience": "Wähle aus, wer diese Kampagne bekommt, bevor du sie sendest.",
+			"noBounceFeedback": "Bounces und Beschwerden erreichen Owlat nicht, weil {variables} nicht gesetzt ist. Adressen, die bouncen oder sich beschweren, würden so nie gesperrt. Setze den Wert auf der Seite des Versanddienstes und sende dann erneut.",
 			"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet: Für Kampagnen-Mails gibt es keinen Versanddienst. Ein verbundenes Postfach versendet keine Kampagnen.",
 			"noFromEmail": "Wähle aus, von wem diese Kampagne kommt, bevor du sie sendest.",
 			"noTemplate": "Wähle die E-Mail aus, die diese Kampagne sendet, bevor du sie sendest.",

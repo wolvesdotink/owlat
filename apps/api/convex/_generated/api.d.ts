@@ -746,6 +746,7 @@ import type * as delivery_sndsFeed from '../delivery/sndsFeed.js';
 import type * as delivery_sndsPoll from '../delivery/sndsPoll.js';
 import type * as delivery_status from '../delivery/status.js';
 import type * as delivery_statusActions from '../delivery/statusActions.js';
+import type * as delivery_stuckSendFeedback from '../delivery/stuckSendFeedback.js';
 import type * as delivery_stuckSendSweep from '../delivery/stuckSendSweep.js';
 import type * as delivery_stuckSendSweepAdmin from '../delivery/stuckSendSweepAdmin.js';
 import type * as delivery_suppressionMirror from '../delivery/suppressionMirror.js';
@@ -1222,6 +1223,7 @@ import type * as lib_sendProviders_emailit_index from '../lib/sendProviders/emai
 import type * as lib_sendProviders_errors from '../lib/sendProviders/errors.js';
 import type * as lib_sendProviders_fallbackEligibility from '../lib/sendProviders/fallbackEligibility.js';
 import type * as lib_sendProviders_fallbackRelays from '../lib/sendProviders/fallbackRelays.js';
+import type * as lib_sendProviders_feedbackReadiness from '../lib/sendProviders/feedbackReadiness.js';
 import type * as lib_sendProviders_health from '../lib/sendProviders/health.js';
 import type * as lib_sendProviders_index from '../lib/sendProviders/index.js';
 import type * as lib_sendProviders_mandrill_client from '../lib/sendProviders/mandrill/client.js';
@@ -2693,6 +2695,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sndsPoll': typeof delivery_sndsPoll;
 	'delivery/status': typeof delivery_status;
 	'delivery/statusActions': typeof delivery_statusActions;
+	'delivery/stuckSendFeedback': typeof delivery_stuckSendFeedback;
 	'delivery/stuckSendSweep': typeof delivery_stuckSendSweep;
 	'delivery/stuckSendSweepAdmin': typeof delivery_stuckSendSweepAdmin;
 	'delivery/suppressionMirror': typeof delivery_suppressionMirror;
@@ -3212,6 +3215,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/errors': typeof lib_sendProviders_errors;
 	'lib/sendProviders/fallbackEligibility': typeof lib_sendProviders_fallbackEligibility;
 	'lib/sendProviders/fallbackRelays': typeof lib_sendProviders_fallbackRelays;
+	'lib/sendProviders/feedbackReadiness': typeof lib_sendProviders_feedbackReadiness;
 	'lib/sendProviders/health': typeof lib_sendProviders_health;
 	'lib/sendProviders/index': typeof lib_sendProviders_index;
 	'lib/sendProviders/mandrill/client': typeof lib_sendProviders_mandrill_client;
