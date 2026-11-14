@@ -26,6 +26,8 @@ const COMPOSE_FILES = ['docker-compose.yml', 'infra/templates/docker-compose.vps
 const NOT_FORWARDED: Record<string, string> = {
 	MTA_SERVER_ID:
 		'defaults to the container hostname; compose cannot leave a key unset, and an empty value would replace that default',
+	MTA_ALLOW_PRIVATE_MX:
+		'turns off the screening of loopback and private MX targets for a lab stack; a production install must not be able to switch it on from .env, so an operator adds it to the service by hand',
 };
 
 const NAME = String.raw`'([A-Z][A-Z0-9_]*)'`;
