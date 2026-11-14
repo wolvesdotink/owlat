@@ -106,6 +106,9 @@ const contactName = computed(() => {
 				:error-code="send.errorCode"
 				:provider-message-id="send.providerMessageId"
 				:data-variables="send.dataVariables"
+				:data-variable-names="send.dataVariableNames"
+				:data-variables-access="send.dataVariablesAccess"
+				:data-variables-removed-after="send.dataVariablesRemovedAfter"
 				:show-queued="false"
 			/>
 		</div>

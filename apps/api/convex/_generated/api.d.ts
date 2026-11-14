@@ -1908,6 +1908,8 @@ import type * as transactional_emails from '../transactional/emails.js';
 import type * as transactional_lifecycle from '../transactional/lifecycle.js';
 import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
 import type * as transactional_pendingUploads from '../transactional/pendingUploads.js';
+import type * as transactional_sendCaps from '../transactional/sendCaps.js';
+import type * as transactional_sendDataRetention from '../transactional/sendDataRetention.js';
 import type * as transactional_sends from '../transactional/sends.js';
 import type * as transactional_translations from '../transactional/translations.js';
 import type * as webhooks_adapters_emailit from '../webhooks/adapters/emailit.js';
@@ -4119,6 +4121,8 @@ declare const fullApi: ApiFromModules<{
 	'transactional/lifecycle': typeof transactional_lifecycle;
 	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
+	'transactional/sendCaps': typeof transactional_sendCaps;
+	'transactional/sendDataRetention': typeof transactional_sendDataRetention;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/translations': typeof transactional_translations;
 }> & ApiFromModules<{

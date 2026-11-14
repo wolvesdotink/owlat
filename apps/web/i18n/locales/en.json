@@ -2738,6 +2738,9 @@
 				"afterEvent": "{duration} after {event}",
 				"clickedLinks": "Clicked links",
 				"dataVariables": "Data variables",
+				"dataVariablesHidden": "Values are hidden. Only owners and admins can see them.",
+				"dataVariablesRedacted": "Values were removed after the retention period. The names show what the request supplied.",
+				"dataVariablesRemovedAfter": "Values are removed after {date}.",
 				"duration": {
 					"days": "{days}d",
 					"daysHours": "{days}d {hours}h",

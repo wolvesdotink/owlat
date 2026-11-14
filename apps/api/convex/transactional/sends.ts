@@ -4,11 +4,14 @@ import { getOrThrow } from '../_utils/errors';
 import { sendStatusValidator } from '../lib/literalValidators';
 import { isLiveContact } from '../lib/contactHelpers';
 import { isSharedInboxReader } from '../inbox/access';
+import { hasPermission } from '../lib/sessionOrganization';
+import { withDataVariablesForViewer } from './sendDataRetention';
 
 // Get all sends for a transactional email
 // all-members: the send log of a transactional template, which every role
 // reads on the template page. A Team inbox reply carries no template id, so
-// none reaches this list.
+// none reaches this list. The stored data variable values are not part of it
+// (the send page shows them to the roles that may).
 export const listByTransactionalEmail = transactionalQuery({
 	args: {
 		transactionalEmailId: v.id('transactionalEmails'),
@@ -57,7 +60,7 @@ export const listByTransactionalEmail = transactionalQuery({
 		const sendsWithContacts = paginatedSends.map((send) => {
 			const contactData = send.contactId ? contactMap.get(send.contactId) : null;
 			return {
-				...send,
+				...withDataVariablesForViewer(send, false),
 				contact: contactData
 					? {
 							_id: contactData._id,
@@ -79,7 +82,9 @@ export const listByTransactionalEmail = transactionalQuery({
 // Get a single send by ID. Every role reads template, automation and test
 // sends. An agent_reply or team_reply send is a Team inbox reply (its subject
 // and recipient come from the inbox thread), so it follows the shared-inbox
-// reader rule and reads as absent to everyone else.
+// reader rule and reads as absent to everyone else. The values of the data
+// variables an API caller supplied (reset tokens, sign-in links) go only to a
+// role that may edit transactional templates; every role sees their names.
 export const get = transactionalQuery({
 	args: { id: v.id('transactionalSends') },
 	handler: async (ctx, args, session) => {
@@ -109,7 +114,7 @@ export const get = transactionalQuery({
 		}
 
 		return {
-			...send,
+			...withDataVariablesForViewer(send, hasPermission(session.role, 'templates:manage')),
 			transactionalEmail: transactionalEmail
 				? {
 						name: transactionalEmail.name,
