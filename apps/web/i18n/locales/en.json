@@ -7725,7 +7725,7 @@
 			},
 			"senderDialog": {
 				"intro": "Password resets, receipts and other API sends go out from this address, unless an email sets its own.",
-				"layoutLink": "Plan one under Domains",
+				"layoutLink": "Plan one on the domains page",
 				"layoutTip": "A subdomain of its own, such as {host}, keeps complaints about your newsletters from reaching password resets.",
 				"loadError": "Couldn't load the sender and your sending domains.",
 				"loading": "Loading the sender",
