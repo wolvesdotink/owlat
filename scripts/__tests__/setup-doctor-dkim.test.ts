@@ -28,12 +28,16 @@ async function extractFunction(name: string): Promise<string> {
 	return source.slice(start + 1, end + 3);
 }
 
-/** The status, label and detail `doctor_dkim_keys` reports for `.env` text. */
-async function dkimCheck(cwd: string, envText: string): Promise<string> {
+/**
+ * The status, label and detail `doctor_dkim_keys` reports for `.env` text.
+ * `withoutPython` hides python3, as on a box that does not have it.
+ */
+async function dkimCheck(cwd: string, envText: string, withoutPython = false): Promise<string> {
 	await writeFile(join(cwd, '.env'), envText);
 	const script = [
 		'set -eo pipefail',
 		'doctor_check() { printf "%s|%s|%s\\n" "$1" "$2" "${3:-}"; }',
+		withoutPython ? 'command() { [[ "$*" == *python3* ]] && return 1; builtin command "$@"; }' : '',
 		await extractFunction('doctor_dkim_keys'),
 		'doctor_dkim_keys',
 	].join('\n');
@@ -60,18 +64,38 @@ describe.skipIf(process.platform === 'win32')('setup.sh doctor_dkim_keys', () =>
 		}
 	});
 
-	it('passes a pre-seeded key in the shape the MTA reads, PKCS#8 included', async () => {
+	const key = { selector: 's1', privateKey: '-----BEGIN PRIVATE KEY-----\nMII' };
+
+	it('passes pre-seeded keys in the shape the MTA reads', async () => {
 		const value = JSON.stringify({
-			'example.com': { selector: 's1', privateKey: '-----BEGIN PRIVATE KEY-----\nMII' },
+			'example.com': key,
+			'example.org': { ...key, organizationId: 'org' },
 		});
 		expect(await dkimCheck(dir, `DKIM_KEYS=${value}\n`)).toBe(
-			'pass|DKIM_KEYS pre-seeds an existing key|'
+			'pass|DKIM_KEYS pre-seeds existing keys|'
 		);
 	});
 
-	it('fails a value the MTA refuses to boot with', async () => {
-		expect(await dkimCheck(dir, 'DKIM_KEYS={"example.com":"not-a-key"}\n')).toMatch(
+	it.each([
+		[
+			'an entry that is not a key',
+			JSON.stringify({ 'example.com': key, 'other.example.com': 'not-a-key' }),
+		],
+		[
+			'an entry without its selector',
+			JSON.stringify({ 'example.com': { privateKey: key.privateKey } }),
+		],
+		['invalid JSON', `{"example.com":${JSON.stringify(key)}`],
+		['a JSON array', JSON.stringify([key])],
+	])('fails a value the MTA refuses to boot with: %s', async (_name, value) => {
+		expect(await dkimCheck(dir, `DKIM_KEYS=${value}\n`)).toMatch(
 			/^fail\|DKIM_KEYS is malformed\|the MTA refuses to boot with it/
 		);
+	});
+
+	it('says it did not check a set value when python3 is missing', async () => {
+		expect(
+			await dkimCheck(dir, `DKIM_KEYS=${JSON.stringify({ 'example.com': key })}\n`, true)
+		).toBe('warn|DKIM_KEYS is set but not checked|python3 is not installed');
 	});
 });
