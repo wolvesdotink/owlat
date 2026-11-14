@@ -59,6 +59,12 @@ import {
 import { deployBackend, verifyMtaIdentity } from './quickstartBackend';
 import { checkOutboundPort25, outboundPort25Warning } from './quickstartOutbound';
 import { localSiteUrlNotice } from '../lib/publicSiteUrl';
+import {
+	SYSTEM_SENDER_DNS_FUNCTION,
+	parseSystemSenderDnsStatus,
+	runConvexQuery,
+	systemSenderDnsLines,
+} from '../lib/systemSenderDns';
 import type { OutboundPort25 } from './doctor';
 
 interface RunOptions extends CliOptions {
@@ -412,6 +418,16 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// installer surfaces them in its drawer).
 	if (config?.network) {
 		for (const line of dnsInstructions(config)) {
+			reporter.log(line);
+			log.info(line);
+		}
+	}
+	// System mail's own records come from the Domains page's copy in Convex:
+	// the seed registered the system sender's domain and the MTA made its key.
+	if (composeProfilesUnion.includes('mta') && isOwnSendProviderKind(env['EMAIL_PROVIDER'])) {
+		const output = await runConvexQuery(opts.owlatDir, SYSTEM_SENDER_DNS_FUNCTION);
+		const status = output === null ? null : parseSystemSenderDnsStatus(output);
+		for (const line of systemSenderDnsLines(status)) {
 			reporter.log(line);
 			log.info(line);
 		}

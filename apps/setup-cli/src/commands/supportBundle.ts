@@ -44,6 +44,7 @@ import {
 	type SectionResult,
 } from '../lib/supportBundleSections';
 import { collectDoctorReport } from './doctorRun';
+import { convexRunArgs } from '../lib/systemSenderDns';
 
 export const DEFAULT_LOG_LINES = 200;
 export const MAX_LOG_LINES = 5000;
@@ -144,6 +145,16 @@ export async function collectSupportBundle(
 					if (result.code !== 0) throw new Error('docker compose ps failed');
 					return result.output;
 				},
+				async convexRun(cwd, fn) {
+					const result = await io.docker(convexRunArgs(fn), {
+						cwd,
+						timeoutMs: 180_000,
+						maxBytes: MIB,
+						keep: 'head',
+					});
+					if (result.code !== 0 || result.truncated) throw new Error(`convex run ${fn} failed`);
+					return result.output;
+				},
 				now: () => now,
 				print: () => {},
 			},
@@ -174,22 +185,7 @@ export async function collectSupportBundle(
 	// Migration ledger, through the deploy image's Convex CLI and the admin key.
 	io.log('Reading the migration ledger…');
 	let migrations: BundleMigrationState | null = null;
-	const ledger = await docker(
-		[
-			'compose',
-			'--profile',
-			'deploy',
-			'run',
-			'--rm',
-			'-T',
-			'--no-deps',
-			'convex-deploy',
-			'convex',
-			'run',
-			MIGRATION_STATE_FUNCTION,
-		],
-		{ timeoutMs: 180_000 }
-	);
+	const ledger = await docker(convexRunArgs(MIGRATION_STATE_FUNCTION), { timeoutMs: 180_000 });
 	if (ledger.code !== 0) {
 		sections['migrations'] = { status: 'unavailable', reason: failureReason(ledger) };
 	} else if (ledger.truncated) {

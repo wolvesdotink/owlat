@@ -168,6 +168,9 @@ describe('resolveRequiredDkimKey', () => {
 			cause: 'unpublished',
 		});
 		expect(unpublished).toHaveBeenCalledWith(`${selector}._domainkey.brand.com`);
+		// System mail never waits for DNS: it is signed with the key already, and
+		// a receiver that cannot find the record treats the mail as unsigned.
+		expect((await getDkimOptions(redis, 'brand.com', 'system'))?.keySelector).toBe(selector);
 
 		clearDkimPublicationCache();
 		const published = vi.fn().mockResolvedValue([[dnsRecord]]);

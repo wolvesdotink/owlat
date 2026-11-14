@@ -233,6 +233,8 @@ export async function dispatchViaMta(
 		inReplyToHeaderValue?: string;
 		referencesHeaderValue?: string;
 		allowedFromAddresses: string[];
+		/** The From domain is registered with the MTA: hold rather than send unsigned. */
+		requireDkimSignature: boolean;
 		mta: { baseUrl: string; apiKey: string } | null;
 	}
 ): Promise<void> {
@@ -317,6 +319,7 @@ export async function dispatchViaMta(
 						ipPool: 'transactional',
 						organizationId: 'postbox',
 						dkimDomain,
+						...(params.requireDkimSignature ? { requireDkimSignature: true } : {}),
 						allowedFromAddresses: params.allowedFromAddresses,
 					} satisfies MtaSendRequest),
 				},

@@ -150,9 +150,11 @@ import type * as migrations_0071_backfill_thread_sender_names from '../migration
 import type * as migrations_0072_backfill_thread_inbox_recency from '../migrations/0072_backfill_thread_inbox_recency.js';
 import type * as migrations_0073_backfill_label_membership from '../migrations/0073_backfill_label_membership.js';
 import type * as migrations_0074_backfill_review_queue_counts from '../migrations/0074_backfill_review_queue_counts.js';
+import type * as migrations_0075_register_system_sender_domain from '../migrations/0075_register_system_sender_domain.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
+import type * as migrations_cronRegistration from '../migrations/cronRegistration.js';
 import type * as migrations_manifest from '../migrations/manifest.js';
 import type * as plugins_llmLedgerRows from '../plugins/llmLedgerRows.js';
 import type * as schema_migrationRuns from '../schema/migrationRuns.js';
@@ -850,6 +852,7 @@ import type * as domains_spf from '../domains/spf.js';
 import type * as domains_streamSubdomainRecords from '../domains/streamSubdomainRecords.js';
 import type * as domains_streamSubdomainWizard from '../domains/streamSubdomainWizard.js';
 import type * as domains_streamSubdomains from '../domains/streamSubdomains.js';
+import type * as domains_systemSenderDomain from '../domains/systemSenderDomain.js';
 import type * as domains_tlsReports from '../domains/tlsReports.js';
 import type * as domains_tlsReportsHttp from '../domains/tlsReportsHttp.js';
 import type * as domains_tlsReportsNode from '../domains/tlsReportsNode.js';
@@ -2814,6 +2817,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/streamSubdomainRecords': typeof domains_streamSubdomainRecords;
 	'domains/streamSubdomainWizard': typeof domains_streamSubdomainWizard;
 	'domains/streamSubdomains': typeof domains_streamSubdomains;
+	'domains/systemSenderDomain': typeof domains_systemSenderDomain;
 	'domains/tlsReports': typeof domains_tlsReports;
 	'domains/tlsReportsHttp': typeof domains_tlsReportsHttp;
 	'domains/tlsReportsNode': typeof domains_tlsReportsNode;
@@ -3884,7 +3888,9 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0072_backfill_thread_inbox_recency': typeof migrations_0072_backfill_thread_inbox_recency;
 	'migrations/0073_backfill_label_membership': typeof migrations_0073_backfill_label_membership;
 	'migrations/0074_backfill_review_queue_counts': typeof migrations_0074_backfill_review_queue_counts;
+	'migrations/0075_register_system_sender_domain': typeof migrations_0075_register_system_sender_domain;
 	'migrations/admin': typeof migrations_admin;
+	'migrations/cronRegistration': typeof migrations_cronRegistration;
 	'migrations/manifest': typeof migrations_manifest;
 	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
 	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;

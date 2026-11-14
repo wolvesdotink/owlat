@@ -44,6 +44,7 @@ export const DOCTOR_CHECK_IDS = [
 	'mta.sending_ips',
 	'mta.tcp25',
 	'mta.ip_audit',
+	'mta.system_sender_dns',
 	'compose.override',
 	'compose.services',
 	'compose.cli',
@@ -76,6 +77,7 @@ export type DoctorRemediation =
 	| 'configure_sending_ips'
 	| 'unblock_outbound_smtp'
 	| 'replace_or_delist_ip'
+	| 'publish_dns_records'
 	| 'start_stack'
 	| 'install_docker_compose'
 	| 'inspect_container'
@@ -101,6 +103,7 @@ const CHECK_META: Record<
 	'mta.sending_ips': { component: 'mta', remediation: 'configure_sending_ips' },
 	'mta.tcp25': { component: 'mta', remediation: 'unblock_outbound_smtp' },
 	'mta.ip_audit': { component: 'mta', remediation: 'replace_or_delist_ip' },
+	'mta.system_sender_dns': { component: 'mta', remediation: 'publish_dns_records' },
 	'compose.override': { component: 'compose', remediation: 'run_setup' },
 	'compose.services': { component: 'compose', remediation: 'start_stack' },
 	'compose.cli': { component: 'compose', remediation: 'install_docker_compose' },
