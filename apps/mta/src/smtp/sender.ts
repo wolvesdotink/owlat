@@ -34,7 +34,7 @@ import { resolveDeliveryRoute } from './send/route.js';
 import { prepareSignedMessage } from './send/compose.js';
 import { resolveSendTlsPlan } from './send/tlsPlan.js';
 import { attemptSend as attemptSendOnce, type AttemptContext } from './send/attempt.js';
-import { attemptWithCleartextFallback } from './send/tlsFallback.js';
+import { attemptWithCleartextFallback, refusedForCleartext } from './send/tlsFallback.js';
 import { terminalResult, type AttemptOutcome } from './send/outcome.js';
 
 /**
@@ -111,10 +111,25 @@ export async function sendToMx(
 	// bounce names that (soft/deferred) rather than delivering without DANE.
 	let lastDaneDeferResponse: string | null = null;
 
+	// Remember a host whose STARTTLS failed and whose cleartext retry was then
+	// refused for being cleartext. That host wants TLS we could not negotiate, so
+	// if no host takes the message the result names the TLS failure, not the
+	// cleartext session's refusal, and stays retryable.
+	let lastCleartextRefusedResponse: string | null = null;
+	const noteFallbackTlsFailure = (outcome: AttemptOutcome) => {
+		if (outcome.kind !== 'tls-failure') return;
+		if (tls.requirements.requireTLS) lastTlsFailureResponse = outcome.response;
+		else if (outcome.cleartextRefusal !== undefined) {
+			lastCleartextRefusedResponse = `${outcome.response}; cleartext retry refused: ${outcome.cleartextRefusal}`;
+		}
+	};
+
 	// Remember a host that refused us at the greeting or EHLO, so that when every
 	// host refuses, the job ends on a real reply rather than "all MX failed". A
 	// temporary refusal replaces a permanent one: one host still willing to try
-	// later means the message is not undeliverable.
+	// later means the message is not undeliverable. A cleartext retry refused for
+	// being cleartext is not the host refusing us; the fallback keeps the TLS
+	// failure for it instead.
 	let hostRefusal: EmailJobResult | null = null;
 	// Why each MX host had no address to dial, so that a domain whose every
 	// host points at non-public space, or an implicit MX that does not resolve,
@@ -122,8 +137,10 @@ export async function sendToMx(
 	const unroutable = new Map<string, UnroutableReason>();
 	const attemptSend = async (...args: Parameters<typeof attemptSendOnce>) => {
 		const outcome: AttemptOutcome = await attemptSendOnce(...args);
+		const cleartextRetry = args[5] === true;
 		if (
 			outcome.kind === 'host-refused' &&
+			!(cleartextRetry && refusedForCleartext(outcome)) &&
 			(hostRefusal === null || outcome.result.bounceType === 'deferred')
 		) {
 			hostRefusal = outcome.result;
@@ -205,9 +222,7 @@ export async function sendToMx(
 				);
 				const retryFinished = terminalResult(retry);
 				if (retryFinished) return retryFinished;
-				if (retry.kind === 'tls-failure' && tls.requirements.requireTLS) {
-					lastTlsFailureResponse = retry.response;
-				}
+				noteFallbackTlsFailure(retry);
 				continue; // retry failed too — try the next MX
 			}
 			// over-cap / connection → try the next MX (same as the non-DANE path).
@@ -267,9 +282,7 @@ export async function sendToMx(
 				);
 				const retryFinished = terminalResult(retry);
 				if (retryFinished) return retryFinished;
-				if (retry.kind === 'tls-failure' && tls.requirements.requireTLS) {
-					lastTlsFailureResponse = retry.response;
-				}
+				noteFallbackTlsFailure(retry);
 				continue; // retry failed too — try the next MX
 			}
 			// over-cap / connection → try the next MX
@@ -282,9 +295,7 @@ export async function sendToMx(
 		const outcome = await attemptWithCleartextFallback(attemptSend, ctx, mxHost, tls.requirements);
 		const finished = terminalResult(outcome);
 		if (finished) return finished;
-		if (outcome.kind === 'tls-failure' && tls.requirements.requireTLS) {
-			lastTlsFailureResponse = outcome.response;
-		}
+		noteFallbackTlsFailure(outcome);
 		// over-cap / connection / tls-failure (no SMTP code) → try the next MX
 		continue;
 	}
@@ -303,10 +314,9 @@ export async function sendToMx(
 		unroutable
 	);
 	if (unroutableResult) return unroutableResult;
-	return buildAllMxFailedResult(
-		recipientDomain,
-		mxHosts,
-		lastTlsFailureResponse,
-		lastDaneDeferResponse
-	);
+	return buildAllMxFailedResult(recipientDomain, mxHosts, {
+		tlsRequired: lastTlsFailureResponse,
+		cleartextRefused: lastCleartextRefusedResponse,
+		daneDeferred: lastDaneDeferResponse,
+	});
 }

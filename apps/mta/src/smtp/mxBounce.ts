@@ -73,30 +73,47 @@ export function buildUnroutableResult(
  *     failure and stay soft/deferred (a TLS-required floor never falls back to
  *     cleartext — retried until the receiver's TLS is fixed or the message
  *     expires).
- *  2. Every MX deferred because its DANE TLSA lookup could not be completed
+ *  2. An opportunistic handshake failed and the cleartext retry on that host
+ *     was refused for being cleartext: the host wants TLS we could not
+ *     negotiate, so this is a TLS problem with it, soft/deferred like (1).
+ *  3. Every MX deferred because its DANE TLSA lookup could not be completed
  *     (SERVFAIL / timeout / transport error). Not a denial of existence, so we
  *     never downgrade to a non-DANE (possibly cleartext) delivery (RFC 7672
  *     §2.1) — soft/deferred until the resolver recovers or the message expires.
- *  3. Otherwise every MX failed at connection level.
+ *  4. Otherwise every MX failed at connection level.
+ *
+ * The TLS results carry no SMTP code or phase: the reply quoted in (2) refused
+ * the cleartext session, not the message, and must not read as a verdict on it.
  */
 export function buildAllMxFailedResult(
 	recipientDomain: string,
 	mxHosts: readonly string[],
-	lastTlsFailureResponse: string | null,
-	lastDaneDeferResponse: string | null
+	last: {
+		tlsRequired: string | null;
+		cleartextRefused: string | null;
+		daneDeferred: string | null;
+	}
 ): EmailJobResult {
-	if (lastTlsFailureResponse) {
+	if (last.tlsRequired) {
 		return {
 			success: false,
-			error: `TLS required but no MX for ${recipientDomain} completed a usable TLS handshake: ${lastTlsFailureResponse}`,
+			error: `TLS required but no MX for ${recipientDomain} completed a usable TLS handshake: ${last.tlsRequired}`,
 			bounceType: 'soft',
 		};
 	}
 
-	if (lastDaneDeferResponse) {
+	if (last.cleartextRefused) {
 		return {
 			success: false,
-			error: `DANE enabled but TLSA lookup could not be completed for any MX of ${recipientDomain}; deferring rather than delivering without DANE: ${lastDaneDeferResponse}`,
+			error: `No MX for ${recipientDomain} completed a usable TLS handshake, and the cleartext retry was refused: ${last.cleartextRefused}`,
+			bounceType: 'soft',
+		};
+	}
+
+	if (last.daneDeferred) {
+		return {
+			success: false,
+			error: `DANE enabled but TLSA lookup could not be completed for any MX of ${recipientDomain}; deferring rather than delivering without DANE: ${last.daneDeferred}`,
 			bounceType: 'soft',
 		};
 	}

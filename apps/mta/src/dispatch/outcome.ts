@@ -67,7 +67,27 @@ export function reduce(outcome: DispatchOutcome, ctx: AttemptCtx): OutcomeReduct
 			reduction = reduceAmbiguous(outcome, ctx);
 			break;
 	}
+	if (refusedEveryConnection(outcome)) {
+		reduction = {
+			...reduction,
+			effects: [...reduction.effects, { kind: 'domain_failure_record', domain: ctx.domain }],
+		};
+	}
 	return applyDeliveryDomainPolicy(reduction, ctx);
+}
+
+/**
+ * Whether the domain refused our connections as a whole. The MX loop moves on
+ * to the next host after a greeting or EHLO reply, so a result that still
+ * carries one of those phases means every host answered that way. It feeds the
+ * same per-domain connection backoff a refused TCP connect feeds, or the next
+ * message for the domain would dial straight back in.
+ */
+function refusedEveryConnection(outcome: DispatchOutcome): boolean {
+	return (
+		(outcome.kind === 'hard_bounce' || outcome.kind === 'deferred') &&
+		(outcome.smtpPhase === 'greeting' || outcome.smtpPhase === 'ehlo')
+	);
 }
 
 function reduceDelivered(
