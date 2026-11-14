@@ -125,6 +125,14 @@ export const contextTierValidator = v.union(
 	v.literal('emergency')
 );
 
+/**
+ * The built-in MTA route's `postmaster@`/`abuse@` mark on Team Inbox mail
+ * (`apps/mta/src/inbound/systemMailboxes.ts`). Marked mail is operational and
+ * can quote other people's messages, so no model, contact or audience sees it.
+ */
+export const systemMailboxValidator = v.union(v.literal('postmaster'), v.literal('abuse'));
+export type SystemMailbox = Infer<typeof systemMailboxValidator>;
+
 /** Antivirus verdict on an inbound message; `skipped` is "scanner not run". */
 export const virusVerdictValidator = v.union(
 	v.literal('clean'),
@@ -200,7 +208,9 @@ export const attachmentIndexingValidator = v.union(
 	// Junk folder or an MTA spam/quarantine verdict, `skipped_automated` for
 	// newsletters and automated mail (`mail/deliveryPipeline/captureGate.ts`).
 	v.literal('skipped_spam'),
-	v.literal('skipped_automated')
+	v.literal('skipped_automated'),
+	// Mail to `postmaster@`/`abuse@` (`systemMailboxValidator`): never indexed.
+	v.literal('skipped_system_mailbox')
 );
 
 export type AttachmentIndexing = Infer<typeof attachmentIndexingValidator>;

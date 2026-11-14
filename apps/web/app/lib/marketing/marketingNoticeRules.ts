@@ -18,7 +18,8 @@ export type MarketingNoticeKind =
 	| 'delivery_hold'
 	| 'automation_stalled'
 	| 'automation_paused'
-	| 'domain_dns';
+	| 'domain_dns'
+	| 'postmaster_mail';
 
 /** One row of `marketing.notifications.listRecent`. */
 export interface MarketingNoticeView {
@@ -140,6 +141,16 @@ export function presentMarketingNotice(
 				toastType: 'warning',
 				href,
 			};
+		case 'postmaster_mail':
+			return {
+				title: { key: `${PREFIX}.postmasterMail.title` },
+				body: {
+					key: `${PREFIX}.postmasterMail.body`,
+					params: { sender: notice.detail ?? '', address: name },
+				},
+				toastType: 'info',
+				href,
+			};
 	}
 }
 
@@ -163,6 +174,7 @@ const KIND_KEY: Record<MarketingNoticeKind, string> = {
 	automation_stalled: 'automationStalled',
 	automation_paused: 'automationPaused',
 	domain_dns: 'domainDns',
+	postmaster_mail: 'postmasterMail',
 };
 
 /** What an OS notification says, and the page it opens when clicked. */
@@ -175,7 +187,8 @@ export interface NativeMarketingNotice {
 /**
  * The OS notification for a notice. It can land on a lock screen, so with
  * private notifications on (the shared "hide message previews" switch) its
- * body names no campaign, automation or domain, the same rule Web Push follows.
+ * body names no campaign, automation, domain or correspondent, the same rule
+ * Web Push follows.
  * Titles name none to begin with; the provider of a delivery hold is not
  * private. The in-app toast is in front of the person already and keeps the
  * names.

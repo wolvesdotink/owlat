@@ -27,3 +27,8 @@ export function sendingDomainUrl(domain: string): string {
 }
 
 export const DELIVERABILITY_URL = '/dashboard/admin/delivery/deliverability';
+
+/** A Team Inbox conversation. */
+export function teamThreadUrl(threadId: string): string {
+	return `/dashboard/inbox/${threadId}`;
+}

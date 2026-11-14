@@ -4,6 +4,7 @@ import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttach
 import { conversationThreadSlaFields } from '../lib/validators/inboxSla';
 import { conversationThreadAutoCloseFields } from '../lib/validators/inboxAutoClose';
 import { teamThreadPriorityValidator } from '../lib/validators/teamThreadPriority';
+import { systemMailboxValidator } from '../lib/literalValidators';
 
 /**
  * The Team Inbox conversation thread table.
@@ -19,8 +20,12 @@ export const conversationThreadTables = {
 		subject: v.string(),
 		// Normalized subject for matching (stripped of Re:/Fwd: prefixes, lowercased)
 		normalizedSubject: v.string(),
-		// Linked contact
+		// Linked contact. Absent on a `systemMailbox` thread, which has none.
 		contactId: v.optional(v.id('contacts')),
+		// Set at create on a thread of `postmaster@`/`abuse@` mail (the
+		// `inboundMessages` column of the same name). Threading never mixes such a
+		// thread with customer mail (`threads/module.ts findOrCreateForEmail`).
+		systemMailbox: v.optional(systemMailboxValidator),
 		// Channel-neutral thread-list display identifier: an email for
 		// email/generic channels, a raw phone/handle for SMS/WhatsApp/chat.
 		// (Renamed from `contactEmail` — the misnomer the

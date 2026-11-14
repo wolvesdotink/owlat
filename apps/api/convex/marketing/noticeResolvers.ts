@@ -30,7 +30,9 @@ import {
 	campaignEditUrl,
 	campaignReportUrl,
 	sendingDomainUrl,
+	teamThreadUrl,
 } from './noticeUrls';
+import { extractEmail } from '../lib/emailAddress';
 
 /** Everything a notice row carries except who it is for and when it was written. */
 export interface NoticeDraft {
@@ -41,6 +43,7 @@ export interface NoticeDraft {
 	automationId?: Doc<'marketingNotices'>['automationId'];
 	domainId?: Doc<'marketingNotices'>['domainId'];
 	alertId?: Doc<'marketingNotices'>['alertId'];
+	threadId?: Doc<'marketingNotices'>['threadId'];
 	name?: string;
 	percent?: number;
 	count?: number;
@@ -57,6 +60,8 @@ export interface NoticeDraft {
 
 const HOUR_MS = 60 * 60 * 1000;
 const DELIVERY_HOLD_COOLDOWN_MS = 6 * HOUR_MS;
+/** One notice per postmaster conversation an hour, however fast its replies come. */
+const POSTMASTER_MAIL_COOLDOWN_MS = HOUR_MS;
 
 type Reader = QueryCtx | MutationCtx;
 
@@ -251,6 +256,36 @@ async function draftDomainDns(
 	};
 }
 
+/** A thread that still holds postmaster/abuse mail. */
+async function loadPostmasterThread(
+	ctx: Reader,
+	threadId: Doc<'marketingNotices'>['threadId']
+): Promise<Doc<'conversationThreads'> | null> {
+	if (threadId === undefined) return null;
+	const thread = await ctx.db.get(threadId);
+	return thread?.systemMailbox !== undefined ? thread : null;
+}
+
+async function draftPostmasterMail(
+	ctx: MutationCtx,
+	event: Extract<MarketingNoticeEvent, { kind: 'postmaster_mail' }>
+): Promise<NoticeDraft | null> {
+	const message = await ctx.db.get(event.inboundMessageId);
+	if (!message || message.systemMailbox === undefined) return null;
+	const thread = await loadPostmasterThread(ctx, message.threadId);
+	if (!thread) return null;
+	return {
+		kind: 'postmaster_mail',
+		eventKey: `postmaster_mail:${message._id}`,
+		subjectKey: `postmaster_mail:${thread._id}`,
+		threadId: thread._id,
+		name: extractEmail(message.to),
+		detail: extractEmail(message.from),
+		url: teamThreadUrl(thread._id),
+		cooldownMs: POSTMASTER_MAIL_COOLDOWN_MS,
+	};
+}
+
 /** The notice an occurrence becomes, or null when it no longer holds. */
 export async function draftNotice(
 	ctx: MutationCtx,
@@ -272,6 +307,8 @@ export async function draftNotice(
 			return draftAutomationPaused(ctx, event);
 		case 'domain_dns':
 			return draftDomainDns(ctx, event);
+		case 'postmaster_mail':
+			return draftPostmasterMail(ctx, event);
 	}
 }
 
@@ -293,7 +330,8 @@ const LIVE: NoticeLiveness = {};
  * is stale the moment its campaign is rescheduled, cancelled, deleted or
  * started; a start that did not happen holds until the campaign is scheduled
  * or sent again; a hold, a pause or a DNS failure that has already cleared (or whose
- * domain was removed) is no longer news.
+ * domain was removed) is no longer news; postmaster mail holds while its
+ * conversation exists.
  */
 export async function noticeLiveness(
 	ctx: Reader,
@@ -342,5 +380,7 @@ export async function noticeLiveness(
 			if (alert === null || alert.resolvedAt !== undefined) return null;
 			return (await ctx.db.get(notice.domainId)) !== null ? LIVE : null;
 		}
+		case 'postmaster_mail':
+			return (await loadPostmasterThread(ctx, notice.threadId)) !== null ? LIVE : null;
 	}
 }

@@ -1,6 +1,6 @@
 /**
  * Validators for marketing notifications (`marketing/notifications*`): what a
- * producer reports, what a stored notice is, and the five per-person switches.
+ * producer reports, what a stored notice is, and the per-person switches.
  *
  * One home because the producers (campaign lifecycle and scheduling, the
  * delivery snapshot, the automation sweep and breaker, the deliverability
@@ -20,12 +20,13 @@ export const marketingNoticeKindValidator = v.union(
 	v.literal('delivery_hold'),
 	v.literal('automation_stalled'),
 	v.literal('automation_paused'),
-	v.literal('domain_dns')
+	v.literal('domain_dns'),
+	v.literal('postmaster_mail')
 );
 export type MarketingNoticeKind = Infer<typeof marketingNoticeKindValidator>;
 
 /**
- * The five switches in Preferences → This device → Marketing notifications.
+ * The switches in Preferences → This device → Marketing notifications.
  * Both automation kinds share one switch: a stall and a breaker pause are the
  * same question for the person ("is this automation still doing its job?").
  */
@@ -35,6 +36,7 @@ export const MARKETING_NOTIFICATION_PREFERENCES = [
 	'deliveryHold',
 	'automationProblems',
 	'domainDns',
+	'postmasterMail',
 ] as const;
 export type MarketingNotificationPreference = (typeof MARKETING_NOTIFICATION_PREFERENCES)[number];
 
@@ -43,7 +45,8 @@ export const marketingNotificationPreferenceValidator = v.union(
 	v.literal('campaignReminder'),
 	v.literal('deliveryHold'),
 	v.literal('automationProblems'),
-	v.literal('domainDns')
+	v.literal('domainDns'),
+	v.literal('postmasterMail')
 );
 
 /**
@@ -95,6 +98,12 @@ export const marketingNoticeEventValidator = v.union(
 	v.object({
 		kind: v.literal('domain_dns'),
 		alertId: v.id('deliverabilityRegressionAlerts'),
+	}),
+	// Mail reached `postmaster@` or `abuse@` on the sending hosts (the MTA's
+	// built-in route). Only instance admins may read it, so only they hear.
+	v.object({
+		kind: v.literal('postmaster_mail'),
+		inboundMessageId: v.id('inboundMessages'),
 	})
 );
 export type MarketingNoticeEvent = Infer<typeof marketingNoticeEventValidator>;

@@ -190,6 +190,17 @@ export const ingestFromWebhook = internalAction({
 			return { inboundMessageId, isDuplicate: false };
 		}
 
+		// POSTMASTER/ABUSE MAIL IS NEVER INDEXED. Its attachments are blocklist
+		// evidence and other people's reported messages; in the file library the
+		// assistant would retrieve them into customer drafts. The marker says so
+		// to the admin reading it, only when there was a file to say it about.
+		if (args.mail.systemMailbox) {
+			if (staged.scan.candidates.length > 0) {
+				await markIndexing(ctx, inboundMessageId, 'skipped_system_mailbox');
+			}
+			return { inboundMessageId, isDuplicate: false };
+		}
+
 		// NOTHING UNSCANNED REACHES A MODEL, and the mechanism is the SET rather
 		// than the verdict: `scan.cleanParts` is exactly the leaves the scanner
 		// opened and cleared, and it is the only thing capture is given. A

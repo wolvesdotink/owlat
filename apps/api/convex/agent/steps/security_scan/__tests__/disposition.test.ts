@@ -140,6 +140,13 @@ describe('guardStanding', () => {
 		).toBe('rejected');
 	});
 
+	it('rejects postmaster and abuse mail before any model reads it', () => {
+		expect(guardStanding({ processingStatus: 'received', systemMailbox: 'abuse' })).toBe(
+			'rejected'
+		);
+		expect(guardStanding({ securityFlags: flags, systemMailbox: 'postmaster' })).toBe('rejected');
+	});
+
 	it('asks for the guard while the marker is set, and clears everything else', () => {
 		expect(
 			guardStanding({

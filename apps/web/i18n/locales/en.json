@@ -4425,6 +4425,7 @@
 				"notIndexedPlaceholder": "The assistant knows the names of some of these files but not what is inside them.",
 				"notIndexedRefusedType": "The assistant has not read every file here — some of these file types are never scanned for malware. Open them only if you trust the sender.",
 				"notIndexedSpam": "The assistant has not read these files — this message was marked as spam.",
+				"notIndexedSystemMailbox": "The assistant does not read files sent to postmaster{'@'} or abuse{'@'}.",
 				"notIndexedTooLarge": "The assistant has not read every file here — some are larger than the processing limit.",
 				"notIndexedUnsupported": "The assistant has not read every file here — it does not process some of these file types.",
 				"notIndexedUnverified": "The assistant has not read these files — this message's sender could not be verified.",
@@ -6923,6 +6924,10 @@
 				"domainDns": {
 					"label": "Sending domain DNS broken",
 					"hint": "When a DNS record of a sending domain stops passing its check."
+				},
+				"postmasterMail": {
+					"label": "Postmaster and abuse mail",
+					"hint": "When a mail provider, blocklist or abuse desk writes to postmaster{'@'} or abuse{'@'} on your sending hosts."
 				},
 				"saveOperation": "Save notification setting"
 			},
@@ -19074,6 +19079,11 @@
 				"body": "{domain}: {check} check failed",
 				"bodyNoCheck": "{domain}: a DNS check failed",
 				"private": "A DNS check of a sending domain failed"
+			},
+			"postmasterMail": {
+				"title": "Postmaster mail",
+				"body": "{sender} wrote to {address}",
+				"private": "New mail to postmaster{'@'} or abuse{'@'}"
 			},
 			"campaignNotStarted": {
 				"title": "Scheduled campaign did not start",

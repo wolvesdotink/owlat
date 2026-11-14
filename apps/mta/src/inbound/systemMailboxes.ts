@@ -14,7 +14,18 @@
 
 import type { MtaConfig } from '../config.js';
 
-const SYSTEM_MAILBOX_LOCAL_PARTS: ReadonlySet<string> = new Set(['postmaster', 'abuse']);
+/**
+ * Which of the two a message was addressed to. Rides the `inbound.received`
+ * payload as `systemMailbox`, which is how Convex tells this mail from
+ * customer mail: it is shown to instance admins only and never reaches the
+ * agent, contacts or audiences.
+ */
+export type SystemMailbox = 'postmaster' | 'abuse';
+
+const SYSTEM_MAILBOX_LOCAL_PARTS: ReadonlySet<string> = new Set<SystemMailbox>([
+	'postmaster',
+	'abuse',
+]);
 
 /** The lowercase hosts that answer for `postmaster@` and `abuse@`. */
 export function systemMailboxHosts(
@@ -42,6 +53,23 @@ export function isSystemMailboxAddress(address: string, hosts: readonly string[]
 		.toLowerCase()
 		.replace(/\.$/, '');
 	return SYSTEM_MAILBOX_LOCAL_PARTS.has(local) && hosts.includes(host);
+}
+
+/** Synthetic id of the built-in `accept` route `findRoute` answers these addresses with. */
+export const SYSTEM_MAILBOX_ROUTE_ID = '__system:postmaster__';
+
+/**
+ * The system mailbox a route stands for, or undefined for every other route.
+ * Only the built-in route answers: an operator's own exact route named
+ * `postmaster` keeps that route's ordinary handling.
+ */
+export function systemMailboxOfRoute(route: {
+	readonly id: string;
+	readonly address: string;
+}): SystemMailbox | undefined {
+	if (route.id !== SYSTEM_MAILBOX_ROUTE_ID) return undefined;
+	const local = route.address.toLowerCase();
+	return SYSTEM_MAILBOX_LOCAL_PARTS.has(local) ? (local as SystemMailbox) : undefined;
 }
 
 /**

@@ -126,6 +126,18 @@ describe('MtaInboundAdapter', () => {
 		expect(mail.mtaSpamScore).toBeUndefined();
 	});
 
+	it('carries the built-in route’s postmaster/abuse mark, and fails closed on one it does not know', () => {
+		const parse = (systemMailbox: unknown) =>
+			getInboundChannelAdapter('mta').parseInbound(mtaEnvelope({ systemMailbox })).systemMailbox;
+		expect(parse('abuse')).toBe('abuse');
+		expect(parse('postmaster')).toBe('postmaster');
+		expect(parse('hostmaster')).toBe('postmaster');
+		expect(parse(undefined)).toBeUndefined();
+		expect(getInboundChannelAdapter('mta').parseInbound(mtaEnvelope())).not.toHaveProperty(
+			'systemMailbox'
+		);
+	});
+
 	it('drops an unexpected key on an attachment rather than 500ing the route', () => {
 		// `inboundEmailMessageValidator` spells each element as a CLOSED
 		// `v.object`, and Convex refuses an unknown field in one — so a single

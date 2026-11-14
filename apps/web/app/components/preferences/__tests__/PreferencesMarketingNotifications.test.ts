@@ -48,6 +48,7 @@ const ALL_ON = {
 	deliveryHold: true,
 	automationProblems: true,
 	domainDns: true,
+	postmasterMail: true,
 };
 
 describe('PreferencesMarketingNotifications', () => {
@@ -90,6 +91,17 @@ describe('PreferencesMarketingNotifications', () => {
 		const w = mountCard();
 		expect(w.get('.badge').text()).toBe('All your devices');
 		expect(w.text()).toContain('on every device');
+	});
+
+	it('offers the postmaster and abuse mail switch to whoever the server lists it for', () => {
+		data.value = { kinds: ['domainDns', 'postmasterMail'], enabled: ALL_ON };
+		const w = mountCard();
+		expect(w.findAll('label').map((label) => label.text())).toEqual([
+			'Sending domain DNS broken',
+			'Postmaster and abuse mail',
+		]);
+		expect(w.text()).toContain('writes to postmaster@ or abuse@');
+		expectFullyLocalized(w);
 	});
 
 	it('saves a toggle for that switch only', async () => {
