@@ -24,7 +24,11 @@ import {
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
 import { sendWorkerOutcomeValidator, type SendWorkerOutcome } from './workerOutcome';
-import { marketingDispatchRecipient, type MarketingDispatchRefusal } from './marketingDispatchGate';
+import {
+	marketingDispatchRecipient,
+	transactionalDispatchRecipient,
+	type MarketingDispatchRefusal,
+} from './marketingDispatchGate';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -339,11 +343,13 @@ export const sendSingleEmail = internalAction({
 		// suppression obligation (CAN-SPAM §316.5, Gmail/Yahoo 2024) holds until
 		// the message leaves. Point reads only. Returned, never thrown, so the
 		// workpool does not retry; see delivery/marketingDispatchGate.ts.
-		const marketingRecipient = marketingDispatchRecipient(envelopeInput);
-		if (marketingRecipient) {
+		// Real transactional mail gets the blocklist half of the same gate.
+		const gateRecipient =
+			marketingDispatchRecipient(envelopeInput) ?? transactionalDispatchRecipient(envelopeInput);
+		if (gateRecipient) {
 			const refusal: MarketingDispatchRefusal | null = await ctx.runQuery(
 				internal.delivery.marketingDispatchGate.checkMarketingDispatch,
-				marketingRecipient
+				gateRecipient
 			);
 			if (refusal) return refusal;
 		}

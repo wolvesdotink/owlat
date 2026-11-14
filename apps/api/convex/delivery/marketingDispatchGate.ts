@@ -15,10 +15,15 @@
  *     operator-owned seed mailbox, not the contact, so only its address is
  *     checked.
  *   - a `transactional` envelope with `emailPurpose: 'marketing'` and a
- *     `sendId` — an automation email step. Real transactional mail (API sends,
- *     agent replies, previews) is out of scope: an unsubscribe must not block
- *     a receipt, and those kinds gate on the blocklist at intake under their
- *     own scope.
+ *     `sendId` — an automation email step.
+ *
+ * Real transactional mail with a Send (API template sends, agent and team
+ * replies) is re-checked too, but only against the blocklist and on the
+ * transactional scope it was admitted under (`lib/suppression.ts`): a hard
+ * bounce, a complaint or a manual block that landed while it was held or
+ * retried stops it; an unsubscribe or an `unengaged` suppression does not,
+ * because neither stops a receipt. Member previews and seed probes are not
+ * re-checked; they never gated on the blocklist.
  *
  * Point reads only: one `blockedEmails.by_email` lookup and one contact get.
  */
@@ -26,7 +31,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { findBlockedByEmail } from '../blockedEmails/lookup';
+import { isSuppressed } from '../lib/suppression';
 import {
 	loadContactMarketingIneligibility,
 	type MarketingIneligibility,
@@ -45,10 +50,12 @@ export const checkMarketingDispatch = internalQuery({
 	args: {
 		email: v.string(),
 		contactId: v.optional(v.id('contacts')),
+		// Set for real transactional mail: the blocklist on that scope, nothing else.
+		scope: v.optional(v.literal('transactional')),
 	},
 	handler: async (ctx, args): Promise<MarketingDispatchRefusal | null> => {
-		if ((await findBlockedByEmail(ctx, args.email)) !== null) return { kind: 'suppressed' };
-		if (args.contactId === undefined) return null;
+		if (await isSuppressed(ctx, args.email, { scope: args.scope })) return { kind: 'suppressed' };
+		if (args.contactId === undefined || args.scope === 'transactional') return null;
 		const reason = await loadContactMarketingIneligibility(ctx, args.contactId);
 		return reason === null ? null : { kind: 'suppressed', reason };
 	},
@@ -73,4 +80,18 @@ export function marketingDispatchRecipient(
 		};
 	}
 	return null;
+}
+
+/**
+ * The recipient of a real transactional envelope that the worker re-checks
+ * against the blocklist on the transactional scope, or `null` for marketing
+ * mail (see {@link marketingDispatchRecipient}), member previews and seed probes.
+ */
+export function transactionalDispatchRecipient(
+	envelope: WorkerEnvelopeInput
+): { email: string; scope: 'transactional' } | null {
+	if (envelope.kind !== 'transactional' || envelope.emailPurpose !== 'transactional') return null;
+	if (envelope.sendId === undefined || envelope.seedProbeRef !== undefined) return null;
+	if (envelope.deliveryDomain === 'member_test') return null;
+	return { email: envelope.to, scope: 'transactional' };
 }
