@@ -767,7 +767,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 			}
 		);
 		const r = deriveDeliveryReadiness(result);
-		const held = r.gates.filter((g) => g.key === 'sending-ips' && g.status === 'attention');
+		const held = r.gates.filter((g) => g.key === 'microsoft-hold');
 		expect(held).toHaveLength(1);
 		expect(held[0]!.streams).toEqual(['marketing']);
 		expect(held[0]!.isBlocking).toBe(false);

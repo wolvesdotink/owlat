@@ -126,7 +126,7 @@ function microsoftHoldGates(input: ReadinessInput): ReadinessGate[] {
 		byAddresses.set(key, [...(byAddresses.get(key) ?? []), stream]);
 	}
 	return [...byAddresses].map(([ips, streams]) => ({
-		key: 'sending-ips',
+		key: 'microsoft-hold',
 		title: 'shared.deliveryReadiness.gates.sendingIps.title',
 		detail: { key: 'shared.deliveryReadiness.gates.sendingIps.microsoftHeld', params: { ips } },
 		streams,
