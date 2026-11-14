@@ -2887,6 +2887,11 @@
 				"copyDiagnostic": "Copy diagnostic",
 				"diagnosticCopied": "Diagnostic copied",
 				"howThisWorks": "How this works",
+				"notGraded": {
+					"marketing_off": "This check applies to marketing mail. Campaigns are turned off, so it does not affect the grade.",
+					"not_measured": "Google Postmaster Tools is not connected, so this is not measured. It does not lower the grade.",
+					"own_mta_unused": "No route sends through the built-in mail server, so this check does not apply. It counts again once a route uses it."
+				},
 				"observed": "Observed: {values}",
 				"thisServer": "This server",
 				"verifyNow": "Verify now"
@@ -16029,6 +16034,8 @@
 			},
 			"status": {
 				"fail": "Not working",
+				"notApplicable": "Not applicable",
+				"notMeasured": "Not measured",
 				"pass": "Verified",
 				"pendingDns": "Checking…",
 				"warn": "Needs attention"
@@ -19776,6 +19783,10 @@
 					"description": "Checks for the IPv6 address the server sends from.",
 					"label": "IPv6 sending"
 				},
+				"not_applicable": {
+					"description": "These checks are about a way of sending this deployment does not use. They do not affect the grade.",
+					"label": "Not used by this deployment"
+				},
 				"recommended": {
 					"description": "Useful hardening after the blocking path is verified.",
 					"label": "Recommended"
@@ -19853,6 +19864,10 @@
 					}
 				},
 				"domain": {
+					"bounce_mx": {
+						"impact": "Bounces reach Owlat only when the return-path host has an MX record that points at your mail server.",
+						"title": "Receive bounces at your mail server"
+					},
 					"dkim": {
 						"impact": "DKIM proves messages were signed by your domain and were not changed.",
 						"title": "Sign your emails so Gmail trusts them"
@@ -19860,6 +19875,10 @@
 					"dmarc": {
 						"impact": "DMARC alignment is required for bulk sending and blocks domain impersonation.",
 						"title": "Tell receivers how to check your From address"
+					},
+					"from_mx": {
+						"impact": "Receivers refuse mail from a domain that cannot receive mail, because replies and bounces would have nowhere to go.",
+						"title": "Let your domain receive replies and bounces"
 					},
 					"mta_sts": {
 						"impact": "A fetchable policy tells compatible senders not to downgrade encrypted delivery.",

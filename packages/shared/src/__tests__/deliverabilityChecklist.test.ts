@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	DELIVERABILITY_CHECKLIST,
+	DELIVERABILITY_NOT_MEASURED,
+	deliverabilityNotGradedReason,
 	dependenciesPass,
 	deriveDeliverabilityGrade,
 	materializeChecklistItem,
@@ -193,5 +195,67 @@ describe('deliverability checklist reducer', () => {
 			kind: 'domain',
 			domainId: 'domain-b',
 		});
+	});
+});
+
+describe('which checks grade this deployment', () => {
+	const RELAY_ONLY = { usesOwnMta: false, sendsMarketing: true };
+	const OWN_MTA = { usesOwnMta: true, sendsMarketing: true };
+	const TRANSACTIONAL_ONLY = { usesOwnMta: true, sendsMarketing: false };
+	const definition = (id: string) => DELIVERABILITY_CHECKLIST.find((entry) => entry.id === id)!;
+	const graded = (id: string, observed: string[] = [], status = 'warn' as const) => ({
+		...definition(id),
+		status,
+		observed,
+	});
+
+	it('leaves the built-in mail server checks out when no route sends through it', () => {
+		for (const entry of DELIVERABILITY_CHECKLIST.filter((check) =>
+			check.id.startsWith('deployment.')
+		)) {
+			expect(deliverabilityNotGradedReason(graded(entry.id), RELAY_ONLY)).toBe('own_mta_unused');
+			expect(deliverabilityNotGradedReason(graded(entry.id), OWN_MTA)).toBeNull();
+		}
+		expect(deliverabilityNotGradedReason(graded('domain.spf'), RELAY_ONLY)).toBeNull();
+	});
+
+	it('leaves the bulk-mail checks out while the campaigns feature is off', () => {
+		for (const id of ['domain.unsubscribe', 'domain.spam_rate']) {
+			expect(deliverabilityNotGradedReason(graded(id), TRANSACTIONAL_ONLY)).toBe('marketing_off');
+			expect(deliverabilityNotGradedReason(graded(id), OWN_MTA)).toBeNull();
+		}
+	});
+
+	it('treats a measurement source that is absent as not measured, never as a finding', () => {
+		expect(
+			deliverabilityNotGradedReason(
+				graded('domain.spam_rate', [DELIVERABILITY_NOT_MEASURED]),
+				OWN_MTA
+			)
+		).toBe('not_measured');
+		expect(
+			deliverabilityNotGradedReason(
+				graded('domain.spam_rate', [DELIVERABILITY_NOT_MEASURED], 'pass' as never),
+				OWN_MTA
+			)
+		).toBeNull();
+	});
+
+	it('grades only the checks that apply and were measured', () => {
+		const ptr = { ...item(domainSpf, 'a', 'fail'), severity: 'blocking' as const };
+		expect(deriveDeliverabilityGrade([{ ...ptr, notGraded: 'own_mta_unused' as const }])).toBe(
+			'ready'
+		);
+		expect(
+			deriveDeliverabilityGrade([
+				item(domainSpf, 'a', 'pass'),
+				{ ...item(domainSpf, 'b', 'warn'), severity: 'reputation', notGraded: 'not_measured' },
+			])
+		).toBe('ready');
+		expect(
+			selectNextDeliverabilityItem([
+				{ ...item(domainSpf, 'a', 'fail'), notGraded: 'marketing_off' },
+			])
+		).toBeNull();
 	});
 });

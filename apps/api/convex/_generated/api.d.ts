@@ -601,6 +601,7 @@ import type * as delivery_checklistGuidance from '../delivery/checklistGuidance.
 import type * as delivery_checklistIpv6 from '../delivery/checklistIpv6.js';
 import type * as delivery_checklistLoopback from '../delivery/checklistLoopback.js';
 import type * as delivery_checklistLoopbackState from '../delivery/checklistLoopbackState.js';
+import type * as delivery_checklistMailFlowValidators from '../delivery/checklistMailFlowValidators.js';
 import type * as delivery_checklistProviderDetection from '../delivery/checklistProviderDetection.js';
 import type * as delivery_checklistRecords from '../delivery/checklistRecords.js';
 import type * as delivery_checklistRetention from '../delivery/checklistRetention.js';
@@ -608,6 +609,7 @@ import type * as delivery_checklistSmtpProbe from '../delivery/checklistSmtpProb
 import type * as delivery_checklistSpfObservation from '../delivery/checklistSpfObservation.js';
 import type * as delivery_checklistSweep from '../delivery/checklistSweep.js';
 import type * as delivery_checklistSweepState from '../delivery/checklistSweepState.js';
+import type * as delivery_checklistTrackingObservation from '../delivery/checklistTrackingObservation.js';
 import type * as delivery_checklistTraits from '../delivery/checklistTraits.js';
 import type * as delivery_checklistValidatorTypes from '../delivery/checklistValidatorTypes.js';
 import type * as delivery_checklistVerification from '../delivery/checklistVerification.js';
@@ -2564,6 +2566,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistIpv6': typeof delivery_checklistIpv6;
 	'delivery/checklistLoopback': typeof delivery_checklistLoopback;
 	'delivery/checklistLoopbackState': typeof delivery_checklistLoopbackState;
+	'delivery/checklistMailFlowValidators': typeof delivery_checklistMailFlowValidators;
 	'delivery/checklistProviderDetection': typeof delivery_checklistProviderDetection;
 	'delivery/checklistRecords': typeof delivery_checklistRecords;
 	'delivery/checklistRetention': typeof delivery_checklistRetention;
@@ -2571,6 +2574,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistSpfObservation': typeof delivery_checklistSpfObservation;
 	'delivery/checklistSweep': typeof delivery_checklistSweep;
 	'delivery/checklistSweepState': typeof delivery_checklistSweepState;
+	'delivery/checklistTrackingObservation': typeof delivery_checklistTrackingObservation;
 	'delivery/checklistTraits': typeof delivery_checklistTraits;
 	'delivery/checklistValidatorTypes': typeof delivery_checklistValidatorTypes;
 	'delivery/checklistVerification': typeof delivery_checklistVerification;

@@ -1,7 +1,10 @@
 'use node';
 
-import dns from 'node:dns/promises';
-import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
+import {
+	DELIVERABILITY_NOT_MEASURED,
+	verifyMtaStsPublication,
+	type DeliverabilityCheckId,
+} from '@owlat/shared';
 import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
@@ -20,6 +23,11 @@ import {
 	mtaStsObservation,
 } from './checklistDnsObservations';
 import { observeSpfCheck, spfSourceResult } from './checklistSpfObservation';
+import {
+	observeBouncesReachMailServer,
+	observeFromDomainAcceptsMail,
+} from './checklistMailFlowValidators';
+import { observeTrackingDomain } from './checklistTrackingObservation';
 import {
 	checklistObservation,
 	pendingDnsStatus,
@@ -340,69 +348,12 @@ export async function observeDomainCheck(
 					),
 				]
 			);
-		case 'domain.tracking': {
-			const row = context.tracking.find(
-				(candidate) =>
-					candidate.domain === domain.domain || candidate.domain.endsWith(`.${domain.domain}`)
-			);
-			if (!row) {
-				return checklistObservation(
-					'dns.tracking-cname',
-					'warn',
-					'No tracking domain is configured.',
-					providerValues
-				);
-			}
-			try {
-				const checkedAt = Date.now();
-				const answers = (await dns.resolveCname(row.domain)).map((value) =>
-					value.toLowerCase().replace(/\.$/, '')
-				);
-				const expected = row.cnameTarget.toLowerCase().replace(/\.$/, '');
-				const pass = answers.includes(expected);
-				return checklistObservation(
-					'dns.tracking-cname',
-					pass ? 'pass' : pendingDnsStatus(isFinalDnsRetry),
-					pass
-						? 'The tracking CNAME resolves to the configured Owlat endpoint.'
-						: 'The tracking CNAME points somewhere else.',
-					[
-						...providerValues,
-						dnsRecordObservation(
-							'tracking',
-							domain.domain,
-							{ type: 'CNAME', hostname: row.domain, value: expected },
-							{
-								verified: pass,
-								foundValue: answers.join(',') || undefined,
-								...(pass ? {} : { error: 'The CNAME points somewhere else.' }),
-								lastChecked: checkedAt,
-							}
-						),
-					]
-				);
-			} catch (error) {
-				const checkedAt = Date.now();
-				return checklistObservation(
-					'dns.tracking-cname',
-					pendingDnsStatus(isFinalDnsRetry),
-					'The tracking CNAME is not visible yet.',
-					[
-						...providerValues,
-						dnsRecordObservation(
-							'tracking',
-							domain.domain,
-							{ type: 'CNAME', hostname: row.domain, value: row.cnameTarget },
-							{
-								verified: false,
-								error: error instanceof Error ? error.message : 'lookup failed',
-								lastChecked: checkedAt,
-							}
-						),
-					]
-				);
-			}
-		}
+		case 'domain.tracking':
+			return observeTrackingDomain(context, providerValues, isFinalDnsRetry);
+		case 'domain.from_mx':
+			return observeFromDomainAcceptsMail(context, providerValues, isFinalDnsRetry);
+		case 'domain.bounce_mx':
+			return observeBouncesReachMailServer(context, providerValues, isFinalDnsRetry);
 		case 'domain.unsubscribe':
 			try {
 				assertMarketingOneClickSigningContract();
@@ -433,7 +384,8 @@ export async function observeDomainCheck(
 						'warn',
 						context.postmaster
 							? 'The latest Google Postmaster observation is stale.'
-							: 'No Google Postmaster observation has been ingested yet.'
+							: 'No Google Postmaster observation has been ingested yet.',
+						context.postmaster ? [] : [DELIVERABILITY_NOT_MEASURED]
 					);
 		case 'domain.spam_rate': {
 			if (!context.postmaster || !isPostmasterReadingFresh(context.postmaster, Date.now())) {
@@ -442,7 +394,8 @@ export async function observeDomainCheck(
 					'warn',
 					context.postmaster
 						? 'The latest provider-observed spam rate or reporting period is stale.'
-						: 'No provider-observed spam rate is available yet.'
+						: 'No provider-observed spam rate is available yet.',
+					context.postmaster ? [] : [DELIVERABILITY_NOT_MEASURED]
 				);
 			}
 			const ratio = context.postmaster.userReportedSpamRatio;

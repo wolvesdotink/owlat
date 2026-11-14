@@ -8,6 +8,14 @@
 import type { DeliverabilityCheckId, DeliverabilitySeverity } from './deliverabilityChecklist';
 
 /**
+ * Which mail a check is about. `own_mta` checks judge the built-in mail server
+ * and its addresses, so they say nothing about a deployment that sends only
+ * through an external provider; `marketing` checks judge bulk mail. Whether a
+ * check applies is decided from this by `deliverabilityNotGradedReason`.
+ */
+export type DeliverabilityAudience = 'all' | 'own_mta' | 'marketing';
+
+/**
  * Unlike `operatingModes.ts` — whose copy is catalog keys, because only the web
  * renders it — a check's `title` and `impact` are read outside the browser too:
  * `deliverabilityDiagnostics.ts` prints `Check: <title>` into the copyable
@@ -33,6 +41,7 @@ export interface DeliverabilityChecklistDefinition {
 	docsHref: string;
 	dependencies: readonly DeliverabilityCheckId[];
 	dnsBacked: boolean;
+	appliesTo: DeliverabilityAudience;
 }
 
 function check(
@@ -43,9 +52,10 @@ function check(
 	impact: string,
 	docsHref: string,
 	dependencies: readonly DeliverabilityCheckId[] = [],
-	dnsBacked = false
+	dnsBacked = false,
+	appliesTo: DeliverabilityAudience = 'all'
 ): DeliverabilityChecklistDefinition {
-	return { id, title, protocol, severity, impact, docsHref, dependencies, dnsBacked };
+	return { id, title, protocol, severity, impact, docsHref, dependencies, dnsBacked, appliesTo };
 }
 
 const DOCS_ORIGIN = 'https://docs.owlat.app';
@@ -63,7 +73,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Without a PTR record, Gmail and other receivers can slow down or refuse your mail.',
 		`${VPS}#the-outbound-ip-readiness-checklist`,
 		[],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.fcrdns',
@@ -73,7 +84,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Forward confirmation proves the server name and sending address belong together.',
 		`${VPS}#the-outbound-ip-readiness-checklist`,
 		['deployment.ptr'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.ptr_nongeneric',
@@ -83,7 +95,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Provider-default hostnames are a strong low-reputation signal.',
 		`${VPS}#the-outbound-ip-readiness-checklist`,
 		['deployment.ptr'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.ehlo_ptr',
@@ -92,7 +105,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'blocking',
 		'A matching SMTP greeting prevents identity errors during receiver checks.',
 		`${VPS}#the-outbound-ip-readiness-checklist`,
-		['deployment.fcrdns']
+		['deployment.fcrdns'],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.port25',
@@ -101,7 +116,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'blocking',
 		'Direct delivery cannot leave this server while outbound port 25 is blocked.',
 		`${VPS}#vps-provider-comparison`,
-		['deployment.fcrdns']
+		['deployment.fcrdns'],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.source_ip',
@@ -109,7 +126,10 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Per-IP source address',
 		'reputation',
 		'Behind NAT, several sending IPs leave from one address, so warm-up and reputation are credited to IPs that never sent the mail.',
-		`${MTA}#sending-behind-nat`
+		`${MTA}#sending-behind-nat`,
+		[],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.tls',
@@ -118,7 +138,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'blocking',
 		'Valid TLS avoids receiver throttling and protects messages in transit.',
 		`${VPS}#preflight-the-server-before-setup`,
-		['deployment.port25']
+		['deployment.port25'],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.dnsbl',
@@ -128,7 +150,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'A listed address can be refused before authentication is evaluated.',
 		`${VPS}#operate-the-ramp`,
 		['deployment.fcrdns'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.warmup',
@@ -137,7 +160,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'reputation',
 		'A controlled ramp prevents sudden-volume throttling on a new address.',
 		`${VPS}#what-warming-weeks-14-look-like`,
-		['deployment.port25', 'deployment.dnsbl']
+		['deployment.port25', 'deployment.dnsbl'],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.relay',
@@ -145,7 +170,10 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Relay fallback',
 		'recommended',
 		'A verified relay keeps important mail moving during an IP reputation incident.',
-		`${VPS}#choose-direct-relay-or-hybrid-delivery`
+		`${VPS}#choose-direct-relay-or-hybrid-delivery`,
+		[],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_address',
@@ -160,7 +188,9 @@ export const DELIVERABILITY_CHECKLIST = [
 			'deployment.ehlo_ptr',
 			'deployment.port25',
 			'deployment.dnsbl',
-		]
+		],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_source',
@@ -169,7 +199,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'recommended',
 		'Explicit source binding ensures real mail uses the address you verified.',
 		`${VPS}#add-outbound-ipv6-only-after-ipv4-is-green`,
-		['deployment.ipv6_address']
+		['deployment.ipv6_address'],
+		false,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_ptr',
@@ -179,7 +211,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'Receivers expect IPv6 senders to have the same strong identity as IPv4.',
 		`${VPS}#add-outbound-ipv6-only-after-ipv4-is-green`,
 		['deployment.ipv6_source'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_aaaa',
@@ -189,7 +222,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'The forward record must resolve exactly back to the sending IPv6 address.',
 		`${VPS}#add-outbound-ipv6-only-after-ipv4-is-green`,
 		['deployment.ipv6_ptr'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_spf',
@@ -199,7 +233,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'An exact ip6 mechanism prevents the new address from failing SPF.',
 		`${VPS}#add-outbound-ipv6-only-after-ipv4-is-green`,
 		['deployment.ipv6_aaaa'],
-		true
+		true,
+		'own_mta'
 	),
 	check(
 		'deployment.ipv6_pool',
@@ -208,7 +243,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'recommended',
 		'The pool stays locked until every IPv6 identity prerequisite is verified.',
 		`${VPS}#add-outbound-ipv6-only-after-ipv4-is-green`,
-		['deployment.ipv6_spf']
+		['deployment.ipv6_spf'],
+		false,
+		'own_mta'
 	),
 	check(
 		'domain.spf',
@@ -249,6 +286,27 @@ export const DELIVERABILITY_CHECKLIST = [
 		`${DOMAIN}#required-dns-records`,
 		['domain.spf'],
 		true
+	),
+	check(
+		'domain.from_mx',
+		'Let your domain receive replies and bounces',
+		'MX or address record',
+		'blocking',
+		'Receivers refuse mail from a domain that cannot receive mail, because replies and bounces would have nowhere to go.',
+		`${DOMAIN}#required-dns-records`,
+		[],
+		true
+	),
+	check(
+		'domain.bounce_mx',
+		'Receive bounces at your mail server',
+		'Return-path MX',
+		'blocking',
+		'Bounces reach Owlat only when the return-path host has an MX record that points at your mail server.',
+		`${VPS}#receive-bounces-at-your-mail-server`,
+		[],
+		true,
+		'own_mta'
 	),
 	check(
 		'domain.mta_sts',
@@ -297,7 +355,9 @@ export const DELIVERABILITY_CHECKLIST = [
 		'blocking',
 		'One-click unsubscribe prevents complaints and is required for bulk marketing mail.',
 		`${DOMAIN}#unsubscribe-and-preferences`,
-		['domain.dkim']
+		['domain.dkim'],
+		false,
+		'marketing'
 	),
 	check(
 		'domain.postmaster',
@@ -315,6 +375,8 @@ export const DELIVERABILITY_CHECKLIST = [
 		'reputation',
 		'A rising complaint rate damages both domain and IP reputation.',
 		`${DOMAIN}#what-01-and-03-mean`,
-		['domain.unsubscribe']
+		['domain.unsubscribe'],
+		false,
+		'marketing'
 	),
 ] as const satisfies readonly DeliverabilityChecklistDefinition[];
