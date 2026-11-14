@@ -45,6 +45,11 @@ export const WEBHOOK_EVENTS = [
 		description: `${K}.events.emailComplained.description`,
 	},
 	{
+		value: 'email.failed',
+		label: `${K}.events.emailFailed.label`,
+		description: `${K}.events.emailFailed.description`,
+	},
+	{
 		value: 'contact.created',
 		label: `${K}.events.contactCreated.label`,
 		description: `${K}.events.contactCreated.description`,

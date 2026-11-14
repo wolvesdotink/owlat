@@ -4,9 +4,10 @@
 import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getOptional } from '../lib/env';
+import { requireSystemSenderAddress } from '../lib/systemSender';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { generateConfirmationEmailHtml } from '../lib/systemEmails';
+import { logWarn } from '../lib/runtimeLog';
 
 /** `sendConfirmationEmail`'s arguments. */
 export const sendConfirmationEmailArgs = {
@@ -25,9 +26,28 @@ export async function sendDoiConfirmation(
 	const team = await ctx.runQuery(internal.contacts.confirmationEmailQueries.getTeamInfo, {});
 
 	const teamName = team?.name || 'Newsletter';
-	const fromEmail =
-		team?.defaultFromEmail || `noreply@${getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app'}`;
+	// The team's own address, else the system sender; with neither the
+	// scheduled action fails with the reason in the deployment logs.
+	const fromEmail = team?.defaultFromEmail || requireSystemSenderAddress();
 	const fromName = team?.defaultFromName || teamName;
+
+	// A confirmation is marketing-adjacent mail to a stranger from the default
+	// sender, so it takes the sending-domain gate campaigns and automations
+	// take: from an unverified domain it would fail DMARC and teach the
+	// receiver that this sender is spoofed. The contact stays pending, and
+	// "Resend confirmation" sends it once the domain verifies. Account mail
+	// (verification, password reset) is NOT gated: an operator must be able
+	// to sign in to fix DNS.
+	const senderDomain = await ctx.runQuery(
+		internal.contacts.confirmationEmailQueries.getSenderDomainVerification,
+		{ email: fromEmail }
+	);
+	if (!senderDomain.verified) {
+		logWarn(
+			`Double opt-in confirmation not sent: ${senderDomain.error ?? `the domain of ${fromEmail} is not verified`}`
+		);
+		return { success: false };
+	}
 
 	// Build confirmation URL
 	const confirmationUrl = `${args.siteUrl}/confirm?token=${encodeURIComponent(args.confirmationToken)}`;

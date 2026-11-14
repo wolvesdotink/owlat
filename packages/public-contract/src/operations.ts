@@ -28,7 +28,11 @@ import {
 	addToTopicResponseSchema,
 	removeFromTopicResponseSchema,
 } from './topics';
-import { sendTransactionalRequestSchema, sendTransactionalResponseSchema } from './transactional';
+import {
+	sendTransactionalRequestSchema,
+	sendTransactionalResponseSchema,
+	transactionalSendStatusSchema,
+} from './transactional';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -267,6 +271,31 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 409, 422],
+	},
+	{
+		operationId: 'getTransactionalSend',
+		method: 'GET',
+		path: '/api/v1/transactional/{sendId}',
+		tag: 'Transactional',
+		summary: 'Get the delivery status of one transactional send. Needs the same scope as sending.',
+		scope: 'transactional:send',
+		pathParameters: [
+			{
+				name: 'sendId',
+				description: 'The `transactionalEmailId` the send call answered with.',
+			},
+		],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'Where the send stands.',
+			name: 'TransactionalSendStatus',
+			data: transactionalSendStatusSchema,
+			paginated: false,
+		},
+		errors: [404],
 	},
 	{
 		operationId: 'addContactToTopic',

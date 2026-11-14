@@ -66,7 +66,17 @@ const ENV_KEYS = [
 	'OUTBOUND_TLS_MODE',
 	'LLM_PROVIDER',
 	'LLM_API_KEY',
+	'EHLO_HOSTNAME',
+	'RETURN_PATH_DOMAIN',
+	'DEFAULT_FROM_EMAIL',
+	'DEFAULT_FROM_NAME',
 ];
+
+/** The two answers the built-in mail server cannot do without. */
+function stubMailIdentity() {
+	process.env['EHLO_HOSTNAME'] = 'mail.example.com';
+	process.env['RETURN_PATH_DOMAIN'] = 'bounces.example.com';
+}
 
 let savedEnv: Record<string, string | undefined>;
 
@@ -96,6 +106,8 @@ function noPromptCalled() {
 }
 
 describe('buildAssumeYesConfig', () => {
+	beforeEach(stubMailIdentity);
+
 	it('returns a complete, valid SetupConfig from defaults (selfhost + MTA) with no prompt', () => {
 		const config = buildAssumeYesConfig({});
 
@@ -115,6 +127,39 @@ describe('buildAssumeYesConfig', () => {
 		// every field shape, proving the produced config is genuinely deployable.
 		expect(() => parseSetupConfig(config)).not.toThrow();
 		noPromptCalled();
+	});
+
+	it('takes the sending identity from the environment, or from the existing .env', () => {
+		expect(buildAssumeYesConfig({}).domain).toEqual({
+			ehloHostname: 'mail.example.com',
+			bounceDomain: 'bounces.example.com',
+		});
+		delete process.env['EHLO_HOSTNAME'];
+		delete process.env['RETURN_PATH_DOMAIN'];
+		expect(
+			buildAssumeYesConfig({
+				EHLO_HOSTNAME: 'mx.example.org',
+				RETURN_PATH_DOMAIN: 'rp.example.org',
+			}).domain
+		).toEqual({ ehloHostname: 'mx.example.org', bounceDomain: 'rp.example.org' });
+	});
+
+	it('refuses the built-in mail server without its sending identity, naming what is missing', () => {
+		delete process.env['EHLO_HOSTNAME'];
+		delete process.env['RETURN_PATH_DOMAIN'];
+		expect(() => buildAssumeYesConfig({})).toThrow(/EHLO_HOSTNAME and RETURN_PATH_DOMAIN/);
+		process.env['EHLO_HOSTNAME'] = 'mail.example.com';
+		expect(() => buildAssumeYesConfig({})).toThrow(/RETURN_PATH_DOMAIN/);
+		expect(() => buildAssumeYesConfig({})).toThrow(/needs RETURN_PATH_DOMAIN:/);
+		noPromptCalled();
+	});
+
+	it('needs no sending identity for a third-party provider', () => {
+		delete process.env['EHLO_HOSTNAME'];
+		delete process.env['RETURN_PATH_DOMAIN'];
+		process.env['EMAIL_PROVIDER'] = 'resend';
+		process.env['RESEND_API_KEY'] = 're_test_key';
+		expect(buildAssumeYesConfig({}).domain).toBeUndefined();
 	});
 
 	it('honors OWLAT_DEPLOYMENT_MODE and OWLAT_ADMIN_* overrides from the environment', () => {
@@ -215,6 +260,7 @@ describe('runSetup --assume-yes', () => {
 	});
 
 	it('completes without invoking any prompt and writes a deployable .env', async () => {
+		stubMailIdentity();
 		const code = await runSetup(opts(dir));
 
 		expect(code).toBe(0);
@@ -229,5 +275,29 @@ describe('runSetup --assume-yes', () => {
 		expect(env['INSTANCE_SECRET']).toBeTruthy();
 		expect(env['SITE_URL']).toBe('http://localhost:3000');
 		expect(env['COMPOSE_PROFILES']).toBeDefined();
+		// The same sending identity and system From the other setup paths write.
+		expect(env['EHLO_HOSTNAME']).toBe('mail.example.com');
+		expect(env['RETURN_PATH_DOMAIN']).toBe('bounces.example.com');
+		expect(env['DEFAULT_FROM_EMAIL']).toBe('noreply@mail.example.com');
+		expect(env['DEFAULT_FROM_DOMAIN']).toBe('mail.example.com');
+		expect(env['DEFAULT_FROM_NAME']).toBe('Owlat');
+	});
+
+	it('keeps a system From address given in the environment', async () => {
+		stubMailIdentity();
+		process.env['DEFAULT_FROM_EMAIL'] = 'system@example.com';
+		expect(await runSetup(opts(dir))).toBe(0);
+		const env = await readEnv(join(dir, '.env'));
+		expect(env['DEFAULT_FROM_EMAIL']).toBe('system@example.com');
+		expect(env['DEFAULT_FROM_DOMAIN']).toBe('example.com');
+	});
+
+	it('writes nothing and names the missing answers when the mail identity is not given', async () => {
+		expect(await runSetup(opts(dir))).toBe(1);
+		expect(clack.log.error).toHaveBeenCalledWith(
+			expect.stringContaining('EHLO_HOSTNAME and RETURN_PATH_DOMAIN')
+		);
+		expect(await readEnv(join(dir, '.env'))).toEqual({});
+		noPromptCalled();
 	});
 });

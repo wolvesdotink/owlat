@@ -8,6 +8,11 @@ import { logInfo } from '../lib/runtimeLog';
 import { countableSendRefValidator } from '../lib/validators/send';
 import { MAX_SEND_TIME_WINDOW_HOURS } from '../campaigns/sendTimeOptimization';
 import { unresolvedCompletionFailures } from './sendCompletionFeedback';
+import {
+	NO_FEEDBACK_ERROR_CODE,
+	noFeedbackMessage,
+	unreachableFeedbackVariables,
+} from './stuckSendFeedback';
 
 // ============================================================================
 // Lost-send sweep.
@@ -32,7 +37,9 @@ import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 //
 // WHAT IS NEVER SWEPT
 //   - a Send with a provider message id: a custody handoff (MTA), a stamped
-//     acceptance, or a direct provider's id. Provider feedback can reach it.
+//     acceptance, or a direct provider's id. Provider feedback can reach it,
+//     unless its transport's webhook key is unset: then the `no_feedback` pass
+//     ends it on the same deadline (`./stuckSendFeedback.ts`).
 //   - a Send with an open or exhausted `sendCompletionFailures` record: its
 //     outcome is known and the replay or an operator closes it.
 //   - a Send without `firstAttemptAt`: never attempted since this field
@@ -119,9 +126,15 @@ export type SweepTable = Infer<typeof sweepTableValidator>;
 /**
  * `deadline`: the cron's pass, Sends whose recorded first attempt is past the
  * deadline plus the grace. `unanchored`: the operator's pass, Sends with no
- * recorded first attempt created before a cutoff.
+ * recorded first attempt created before a cutoff. `no_feedback`: the cron's
+ * pass over Sends WITH a provider id, past the same deadline, whose transport
+ * cannot receive feedback (`./stuckSendFeedback.ts`).
  */
-export const sweepModeValidator = v.union(v.literal('deadline'), v.literal('unanchored'));
+export const sweepModeValidator = v.union(
+	v.literal('deadline'),
+	v.literal('unanchored'),
+	v.literal('no_feedback')
+);
 export type SweepMode = Infer<typeof sweepModeValidator>;
 
 /**
@@ -153,6 +166,21 @@ export function lostSendCandidates(
 	mode: SweepMode,
 	cutoff: number
 ) {
+	if (mode === 'no_feedback') {
+		// Every queued Send attempted before the cutoff, with or without a provider
+		// id: the page skips the ones without (the deadline pass owns them).
+		return table === 'emailSends'
+			? ctx.db
+					.query('emailSends')
+					.withIndex('by_status_first_attempt', (q) =>
+						q.eq('status', 'queued').gte('firstAttemptAt', 0).lt('firstAttemptAt', cutoff)
+					)
+			: ctx.db
+					.query('transactionalSends')
+					.withIndex('by_status_first_attempt', (q) =>
+						q.eq('status', 'queued').gte('firstAttemptAt', 0).lt('firstAttemptAt', cutoff)
+					);
+	}
 	if (table === 'emailSends') {
 		return ctx.db.query('emailSends').withIndex('by_status_provider_first_attempt', (q) => {
 			const unbound = q.eq('status', 'queued').eq('providerMessageId', undefined);
@@ -181,7 +209,9 @@ type LostSendVerdict =
 				| 'unanchored'
 				| 'anchored'
 				| 'too_recent'
-				| 'completion_failure_open';
+				| 'completion_failure_open'
+				| 'no_provider_id'
+				| 'feedback_reachable';
 	  };
 
 /**
@@ -198,8 +228,16 @@ export async function judgeLostSend(
 ): Promise<LostSendVerdict> {
 	if (!send) return { isLost: false, reason: 'missing' };
 	if (send.status !== 'queued') return { isLost: false, reason: 'not_queued' };
-	if (send.providerMessageId !== undefined) return { isLost: false, reason: 'has_provider_id' };
-	if (mode === 'deadline') {
+	if (mode === 'no_feedback') {
+		if (send.providerMessageId === undefined) return { isLost: false, reason: 'no_provider_id' };
+		if (send.firstAttemptAt === undefined) return { isLost: false, reason: 'unanchored' };
+		if (now < sweepableAt(send.firstAttemptAt)) return { isLost: false, reason: 'not_due' };
+		if (unreachableFeedbackVariables(send).length === 0) {
+			return { isLost: false, reason: 'feedback_reachable' };
+		}
+	} else if (send.providerMessageId !== undefined) {
+		return { isLost: false, reason: 'has_provider_id' };
+	} else if (mode === 'deadline') {
 		if (send.firstAttemptAt === undefined) return { isLost: false, reason: 'unanchored' };
 		if (now < sweepableAt(send.firstAttemptAt)) return { isLost: false, reason: 'not_due' };
 	} else {
@@ -237,8 +275,15 @@ export const failLostSend = internalMutation({
 			transition: {
 				to: 'failed',
 				at: now,
-				errorCode: LOST_SEND_ERROR_CODE,
-				errorMessage: mode === 'deadline' ? LOST_SEND_MESSAGE : UNANCHORED_LOST_SEND_MESSAGE,
+				...(mode === 'no_feedback' && send
+					? {
+							errorCode: NO_FEEDBACK_ERROR_CODE,
+							errorMessage: noFeedbackMessage(unreachableFeedbackVariables(send)),
+						}
+					: {
+							errorCode: LOST_SEND_ERROR_CODE,
+							errorMessage: mode === 'deadline' ? LOST_SEND_MESSAGE : UNANCHORED_LOST_SEND_MESSAGE,
+						}),
 			},
 		});
 		logInfo('[LostSendSweep] Failed a send no completion reached', {
@@ -343,6 +388,15 @@ export const sweepLostSendPage = internalMutation({
 		let scheduled = 0;
 		let skipped = 0;
 		for (const send of page.page) {
+			// The no-feedback range also holds the Sends without a provider id,
+			// which the deadline pass owns, and Sends whose reports can arrive.
+			if (
+				args.mode === 'no_feedback' &&
+				(send.providerMessageId === undefined || unreachableFeedbackVariables(send).length === 0)
+			) {
+				skipped += 1;
+				continue;
+			}
 			if (await hasUnresolvedCompletionFailure(ctx, send._id)) {
 				skipped += 1;
 				continue;
@@ -416,8 +470,9 @@ export async function startLostSendPasses(
 /**
  * Cron: fail the Sends first attempted more than the delivery window plus the
  * grace ago that still have no completion, no provider id and no open
- * completion-failure record. A tick with nothing due is two lease reads, two
- * lease writes and two index range reads.
+ * completion-failure record, and (the `no_feedback` pass) the ones with a
+ * provider id whose transport's feedback key is unset. A tick with nothing due
+ * is four lease reads, four lease writes and four index range reads.
  */
 export const sweepLostSends = internalMutation({
 	args: {},
@@ -427,6 +482,9 @@ export const sweepLostSends = internalMutation({
 		if (passes.busy.length > 0) {
 			logInfo('[LostSendSweep] Previous pass still running; not started', { tables: passes.busy });
 		}
-		return { cutoff, ...passes };
+		const noFeedback = await startLostSendPasses(ctx, 'no_feedback', cutoff, {
+			isTakeover: false,
+		});
+		return { cutoff, ...passes, noFeedback };
 	},
 });

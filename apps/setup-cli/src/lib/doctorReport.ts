@@ -31,6 +31,7 @@ export const DOCTOR_CHECK_IDS = [
 	'env.file',
 	'flags.state',
 	'env.required',
+	'env.site_url',
 	'send_path.provider',
 	'send_path.credential',
 	'mta.health',
@@ -66,6 +67,7 @@ export type DoctorSeverity = 'error';
 export type DoctorRemediation =
 	| 'run_setup'
 	| 'set_env_var'
+	| 'set_public_url'
 	| 'configure_email_provider'
 	| 'check_mta'
 	| 'check_ip_reputation'
@@ -86,6 +88,7 @@ const CHECK_META: Record<
 	'env.file': { component: 'config', remediation: 'run_setup' },
 	'flags.state': { component: 'config', remediation: 'run_setup' },
 	'env.required': { component: 'config', remediation: 'set_env_var' },
+	'env.site_url': { component: 'config', remediation: 'set_public_url' },
 	'send_path.provider': { component: 'send_path', remediation: 'configure_email_provider' },
 	'send_path.credential': { component: 'send_path', remediation: 'set_env_var' },
 	'mta.health': { component: 'mta', remediation: 'check_mta' },

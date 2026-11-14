@@ -84,6 +84,7 @@ const DAY = 24 * HOUR;
 beforeEach(() => {
 	mockUserId = 'host-A';
 	sentMail.length = 0;
+	vi.stubEnv('DEFAULT_FROM_DOMAIN', 'owlat.example');
 });
 
 // Every booking change queues invite mail on a real timer. Finish it before the
@@ -91,6 +92,7 @@ beforeEach(() => {
 const started: TestConvex<typeof schema>[] = [];
 afterEach(async () => {
 	for (const t of started.splice(0)) await t.finishAllScheduledFunctions(() => {});
+	vi.unstubAllEnvs();
 });
 
 async function setup() {

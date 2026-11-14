@@ -32,6 +32,7 @@ import { resolveBetterAuthIpAddressConfig } from './ipAddress';
 import { resolveTrustedOrigins } from './trustedOrigins';
 import { assertRegistrationAllowed } from './registrationGate';
 import { verificationEmailFor } from './verificationEmail';
+import { requireSystemSenderAddress } from '../lib/systemSender';
 
 // Custom access control to use 'editor' instead of 'member'
 // This matches the legacy team role system
@@ -108,14 +109,14 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				token: string;
 			}) => {
 				const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
-				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
+				const from = `Owlat <${requireSystemSenderAddress()}>`;
 				const resetUrl = `${siteUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
 				const html = generatePasswordResetEmailHtml(user.name || user.email, resetUrl);
 
 				await sendViaMta({
 					to: user.email,
-					from: `Owlat <noreply@${fromDomain}>`,
+					from,
 					subject: 'Reset your password — Owlat',
 					html,
 				});
@@ -155,14 +156,14 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					newEmail: string;
 					url: string;
 				}) => {
-					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
+					const from = `Owlat <${requireSystemSenderAddress()}>`;
 
 					const html = generateChangeEmailVerificationHtml(user.name || user.email, newEmail, url);
 
 					await sendViaMta({
 						// Sent to the CURRENT address on file, not the new one.
 						to: user.email,
-						from: `Owlat <noreply@${fromDomain}>`,
+						from,
 						subject: 'Confirm your new email — Owlat',
 						html,
 					});
@@ -194,12 +195,12 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				url: string;
 				token: string;
 			}) => {
-				const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
+				const from = `Owlat <${requireSystemSenderAddress()}>`;
 				const { subject, html } = verificationEmailFor({ user, url, token });
 
 				await sendViaMta({
 					to: user.email,
-					from: `Owlat <noreply@${fromDomain}>`,
+					from,
 					subject,
 					html,
 				});
@@ -349,6 +350,9 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				invitationExpiresIn: 60 * 60 * 24 * 7,
 				// Email invitation handler - sends invitation emails via own MTA
 				sendInvitationEmail: async ({ email, organization: org, inviter, invitation }) => {
+					// Resolved first, so an install with no sender fails without
+					// spending the invitation's resend cooldown on a mail that never left.
+					const from = `Owlat <${requireSystemSenderAddress()}>`;
 					// Single enforcement choke point for the 1/min-per-invite floor.
 					// Every send path — first invite, cooperating-client resend, and a
 					// raw `invite-member` API call with resend:true — routes through
@@ -360,7 +364,6 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 					});
 
 					const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
-					const fromDomain = getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app';
 
 					// Build accept URL - BetterAuth uses the invitation ID
 					const acceptUrl = `${siteUrl}/invite/accept?id=${encodeURIComponent(invitation.id)}`;
@@ -392,7 +395,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 
 					await sendViaMta({
 						to: email,
-						from: `Owlat <noreply@${fromDomain}>`,
+						from,
 						subject: inboxContext
 							? `${inviterDisplayName} invited you to ${inboxContext.inboxAddress}`
 							: `You're invited to join ${org.name} on Owlat`,

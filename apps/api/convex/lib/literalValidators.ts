@@ -317,3 +317,18 @@ export const desktopUpdateChannelValidator = v.union(v.literal('stable'), v.lite
 
 /** Which GitHub release line a cached desktop release came from (`v*` vs `desktop-v*`). */
 export const desktopReleaseLineValidator = v.union(v.literal('unified'), v.literal('desktop'));
+
+/**
+ * The result of one tracking-domain check (`domains/trackingDomainVerdict.ts`):
+ * which half failed, so the operator is told whether to fix DNS or the
+ * reverse proxy and certificate. `inconclusive` means the check could not be
+ * judged and changed nothing.
+ */
+export const trackingDomainCheckOutcomeValidator = v.union(
+	v.literal('verified'),
+	v.literal('dns_mismatch'),
+	v.literal('https_unreachable'),
+	v.literal('https_wrong_response'),
+	v.literal('inconclusive')
+);
+export type TrackingDomainCheckOutcome = Infer<typeof trackingDomainCheckOutcomeValidator>;

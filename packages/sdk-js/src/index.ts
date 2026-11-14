@@ -23,6 +23,8 @@ export type {
 	SendTransactionalParams,
 	SendTransactionalResponse,
 	TransactionalAttachment,
+	TransactionalSendStatus,
+	TransactionalSendStatusValue,
 	// Events
 	SendEventParams,
 	SendEventResponse,

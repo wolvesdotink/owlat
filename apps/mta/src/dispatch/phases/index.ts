@@ -11,6 +11,7 @@
 import { compose } from '../pipeline.js';
 import { contentScreeningPhase } from './contentScreening.js';
 import { suppressionPhase } from './suppression.js';
+import { dkimSignaturePhase } from './dkimSignature.js';
 import { circuitBreakerPhase } from './circuitBreaker.js';
 import { orgLimitPhase } from './orgLimit.js';
 import { smtpIntelPhase } from './smtpIntel.js';
@@ -23,6 +24,7 @@ import { warmingCapPhase } from './warmingCap.js';
 export {
 	contentScreeningPhase,
 	suppressionPhase,
+	dkimSignaturePhase,
 	circuitBreakerPhase,
 	orgLimitPhase,
 	smtpIntelPhase,
@@ -42,6 +44,7 @@ export {
 export const mainPipeline = compose(
 	contentScreeningPhase,
 	suppressionPhase,
+	dkimSignaturePhase,
 	circuitBreakerPhase,
 	orgLimitPhase,
 	smtpIntelPhase,
@@ -49,5 +52,5 @@ export const mainPipeline = compose(
 	resolvePoolPhase,
 	selectIpPhase,
 	acquireSlotPhase,
-	warmingCapPhase,
+	warmingCapPhase
 );

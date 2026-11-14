@@ -68,6 +68,7 @@ const ENV_KEYS = [
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'RESEND_WEBHOOK_SECRET',
 	'MANDRILL_WEBHOOK_KEY',
+	'DEFAULT_FROM_DOMAIN',
 ] as const;
 
 const original: Record<string, string | undefined> = {};
@@ -148,13 +149,28 @@ describe('delivery.status.getTransportSummary — per-stream readiness facts', (
 			canSend: true,
 			providerLabels: ['Resend'],
 			usesOwnMta: false,
+			// `setEnv` cleared the webhook key with every other variable.
+			feedbackMissing: ['RESEND_WEBHOOK_SECRET'],
 		});
 		expect(summary.streams.transactional).toEqual({
 			canSend: false,
 			providerLabels: [],
 			usesOwnMta: false,
+			feedbackMissing: [],
 		});
 		expect(summary.mailServer).toBeNull();
+	});
+
+	it('names the webhook key a stream is missing, so bounce reports cannot come back', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('MTA_WEBHOOK_SECRET', '');
+		try {
+			const summary = await t.query(api.delivery.status.getTransportSummary, {});
+			expect(summary.streams.transactional.feedbackMissing).toEqual(['MTA_WEBHOOK_SECRET']);
+			expect(summary.streams.campaign.feedbackMissing).toEqual(['MTA_WEBHOOK_SECRET']);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it('marks both streams as sent through the built-in MTA when it is the default', async () => {
@@ -317,7 +333,12 @@ describe('delivery.statusActions.sendTest — staged diagnostics', () => {
 	});
 
 	it('returns provider receipt metadata and passes every stage after acceptance', async () => {
-		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		setEnv({
+			EMAIL_PROVIDER: 'mta',
+			MTA_API_URL: 'http://mta:3100',
+			MTA_API_KEY: 'k',
+			DEFAULT_FROM_DOMAIN: 'owlat.example',
+		});
 		global.fetch = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ success: true, id: 'test-message-1' }), {
 				status: 200,

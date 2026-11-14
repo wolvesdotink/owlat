@@ -103,3 +103,25 @@ export function applySetupDefaults(
 		if (env[key] === undefined || env[key] === '') env[key] = value;
 	}
 }
+
+/**
+ * Client-address trust for an install the generated Caddyfile fronts
+ * (`caddyfile.ts`, written when the config names public URLs).
+ *
+ * Caddy is then the only hop in front of Convex: it sets `X-Forwarded-For` to
+ * the address it accepted the connection from (it trusts no upstream proxy, so
+ * a client-sent value never survives), and the compose files publish the Convex
+ * ports on loopback only, so nothing on the internet reaches Convex without
+ * passing Caddy. Under those two conditions the right-most `X-Forwarded-For`
+ * entry is the real client, which `xforwarded` reads; without it every caller
+ * shares one rate-limit bucket and the automated-open checks see no address.
+ *
+ * Not set for any other topology: behind a proxy the setup did not generate,
+ * or with `CONVEX_BIND=0.0.0.0`, a caller could reach Convex directly and
+ * choose its own bucket. An operator's existing value always wins.
+ */
+export function applyBundledProxyDefaults(env: EnvMap): void {
+	if (env['RATE_LIMIT_TRUSTED_PROXY'] === undefined || env['RATE_LIMIT_TRUSTED_PROXY'] === '') {
+		env['RATE_LIMIT_TRUSTED_PROXY'] = 'xforwarded';
+	}
+}

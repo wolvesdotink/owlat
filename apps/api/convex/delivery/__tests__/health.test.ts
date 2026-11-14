@@ -27,6 +27,15 @@ describe('rollUpDeliveryHealth', () => {
 	});
 
 	// --- built-in MTA infrastructure dimension ---
+	it('errors when campaign bounce reports cannot come back, and only warns for transactional', () => {
+		const campaign = rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutFeedback: ['campaign'] });
+		expect(campaign.level).toBe('error');
+		expect(campaign.reason).toMatch(/campaigns are refused/);
+		expect(
+			rollUpDeliveryHealth({ ...HEALTHY, streamsWithoutFeedback: ['transactional'] }).level
+		).toBe('warn');
+	});
+
 	it('errors when the MTA infrastructure is degraded', () => {
 		const r = rollUpDeliveryHealth({ ...HEALTHY, mtaInfrastructure: 'degraded' });
 		expect(r.level).toBe('error');

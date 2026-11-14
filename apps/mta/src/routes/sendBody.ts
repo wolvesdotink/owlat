@@ -63,6 +63,7 @@ export const sendBodyValidator = v.object({
 	// Read through `readEngagementScore`, which owns its shape and its fallback.
 	engagementScore: v.optional(v.any()),
 	dkimDomain: v.string(),
+	requireDkimSignature: v.optional(v.boolean()),
 	allowedFromAddresses: v.optional(v.array(v.string())),
 	routingLease: optionalString,
 	allowWarmupOverflow: v.optional(v.boolean()),

@@ -60,6 +60,7 @@ import type { Id } from '../../../_generated/dataModel';
 import {
 	createTestCampaign,
 	createTestContact,
+	createTestDomain,
 	createTestEmailSend,
 	createTestEmailTemplate,
 } from '../../../__tests__/factories';
@@ -277,8 +278,17 @@ async function seedRoutedProvider(
 	return t;
 }
 
-function intakeAutomation(t: ReturnType<typeof convexTest>) {
-	return t.mutation(internal.delivery.nonCampaignIntake.intake, {
+async function intakeAutomation(t: ReturnType<typeof convexTest>) {
+	// The sender's domain must be verified, or the intake refuses before the
+	// provider question this suite is about.
+	await t.run(async (ctx) => {
+		if ((await ctx.db.query('domains').first()) !== null) return;
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({ domain: 'example.com', status: 'verified', lastVerifiedAt: Date.now() })
+		);
+	});
+	return await t.mutation(internal.delivery.nonCampaignIntake.intake, {
 		kind: 'automation' as const,
 		email: 'recipient@example.com',
 		subject: 'Hello',

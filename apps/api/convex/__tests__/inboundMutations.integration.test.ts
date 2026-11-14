@@ -9,6 +9,7 @@ import {
 	createTestContact,
 	createTestInboundMessage,
 	createTestConversationThread,
+	createTestDomain,
 } from './factories';
 import { seedCleanInterpretation } from '../mail/interpret/__tests__/interpret.testlib';
 
@@ -963,6 +964,11 @@ describe('agentPipeline.sendApprovedReply', () => {
 
 	async function seedSettings(t: ReturnType<typeof convexTest>) {
 		await t.run(async (ctx) => {
+			// The default sender's domain: non-campaign mail is refused from any other.
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'acme.test', status: 'verified', lastVerifiedAt: Date.now() })
+			);
 			await ctx.db.insert('instanceSettings', {
 				defaultFromName: 'Acme Support',
 				defaultFromEmail: 'support@acme.test',
@@ -1319,6 +1325,11 @@ describe('agentPipeline.sendApprovedReply', () => {
 describe('inbound.receiveMessage blocklist auto-archive', () => {
 	async function enableAgent(t: ReturnType<typeof convexTest>) {
 		await t.run(async (ctx) => {
+			// The default sender's domain: non-campaign mail is refused from any other.
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'acme.test', status: 'verified', lastVerifiedAt: Date.now() })
+			);
 			await ctx.db.insert('instanceSettings', {
 				featureFlags: { ai: true, 'ai.agent': true, inbox: true },
 				createdAt: Date.now(),

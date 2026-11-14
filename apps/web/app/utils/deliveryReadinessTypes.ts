@@ -59,10 +59,21 @@ export interface StreamTransportFacts {
 	providerLabels: readonly string[];
 	/** Whether the built-in MTA is one of them, so its gates apply. */
 	usesOwnMta: boolean;
+	/**
+	 * The unset webhook keys that keep bounce and complaint reports for this
+	 * type out; empty or absent when reports can arrive.
+	 */
+	feedbackMissing?: readonly string[];
 }
 
 /** The built-in MTA's health, classified as the Delivery health roll-up does. */
-export type MailServerState = 'healthy' | 'degraded' | 'unreachable' | 'stale' | 'unchecked';
+export type MailServerState =
+	| 'healthy'
+	| 'degraded'
+	| 'signing_held'
+	| 'unreachable'
+	| 'stale'
+	| 'unchecked';
 
 /** Today's campaign capacity: paced by warm-up, or not capped at all. */
 export type MarketingCapacity = { paced: true; today: number } | { paced: false };

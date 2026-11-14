@@ -4028,7 +4028,7 @@
 				},
 				"loading": "Loading tracking domains...",
 				"note": {
-					"body": "{note} DNS changes can take up to 48 hours to propagate. After adding the record, click \"Verify\" to check the configuration.",
+					"body": "{note} DNS changes can take up to 48 hours to propagate. Your reverse proxy must also serve this subdomain over HTTPS. After adding both, click \"Verify\" to check the configuration.",
 					"label": "Note:"
 				},
 				"operations": {
@@ -4040,20 +4040,30 @@
 				"removeTitle": "Remove tracking domain",
 				"status": {
 					"pending": "Pending",
-					"verified": "Verified"
+					"verified": "Verified",
+					"failing": "Check failing",
+					"lapsed": "Not working"
 				},
 				"subtitle": "Serve open & click tracking from your own branded subdomain",
 				"title": "Tracking domains",
 				"toasts": {
 					"added": "Tracking domain added. Add the CNAME record below, then verify.",
 					"removed": "Tracking domain removed",
-					"verifying": "Checking DNS for this tracking domain. It will show as verified once the CNAME resolves."
+					"verifying": "Checking DNS and HTTPS for this tracking domain. It shows as verified once both work."
 				},
 				"verifiedAt": "Verified {date}",
 				"verify": "Verify",
-				"verifyTitle": "Check DNS for this tracking domain",
+				"verifyTitle": "Check DNS and HTTPS for this tracking domain",
 				"verifying": "Verifying...",
-				"rowLabel": "CNAME record for {domain}"
+				"rowLabel": "CNAME record for {domain}",
+				"lastCheck": {
+					"dnsMismatch": "Last check: the CNAME record is missing or points elsewhere. Point it at the value below.",
+					"httpsUnreachable": "Last check: DNS is correct, but this host does not answer over HTTPS with a valid certificate. Add a site for it to your reverse proxy.",
+					"httpsWrongResponse": "Last check: this host answers over HTTPS, but not with Owlat's tracking handler. Proxy it to your Convex site URL.",
+					"inconclusive": "Last check: DNS could not be looked up. Try again in a few minutes."
+				},
+				"failingHint": "New campaigns still use this domain. Owlat checks again within the hour and stops using it if the check fails again.",
+				"lapsedHint": "New campaigns use the default tracking host until this domain verifies again."
 			},
 			"yahooCflPanel": {
 				"confirmButton": "Yahoo accepted the domain",
@@ -7811,6 +7821,7 @@
 					"emailClicked": "Email clicked",
 					"emailComplained": "Email complained",
 					"emailDelivered": "Email delivered",
+					"emailFailed": "Email failed",
 					"emailOpened": "Email opened",
 					"emailSent": "Email sent",
 					"test": "Test",
@@ -8535,6 +8546,11 @@
 						"needsAttention": "Your mail needs attention. Follow the next verified setup step below.",
 						"ready": "Your mail setup is verified and ready.",
 						"readyWithRecommended": "Your mail is deliverable. {count} recommended improvement available. | Your mail is deliverable. {count} recommended improvements available."
+					},
+					"bounceFeedback": {
+						"title": "Bounces and complaints cannot reach Owlat",
+						"detail": "{variables} is not set, so every bounce and complaint report is rejected and nothing is suppressed. Campaigns are refused until it is set; transactional mail still goes out.",
+						"action": "Open the delivery provider"
 					}
 				},
 				"dmarc": {
@@ -9909,7 +9925,8 @@
 					"toggleArchivesOperation": "Toggle campaign archives",
 					"unsavedChanges": "You have unsaved changes",
 					"verifiedLabel": "Verified:",
-					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again."
+					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again.",
+					"unverifiedFromDomain": "{domain} is not a verified sending domain yet. You can save this address, but automation emails, inbox replies, double opt-in confirmations and transactional mail from it are refused until the domain is verified."
 				},
 				"index": {
 					"applyChanges": "Apply changes",
@@ -11822,6 +11839,10 @@
 					"sendConfirm": {
 						"description": "This sends to {count} recipient(s) immediately and can't be undone.",
 						"title": "Send campaign now?"
+					},
+					"startRefused": {
+						"title": "This campaign did not start",
+						"description": "It was scheduled for {date} and went back to draft for this reason. Fix it, then schedule or send the campaign again."
 					},
 					"test": {
 						"button": "Send test",
@@ -16436,6 +16457,8 @@
 					"action": "Check the mail server",
 					"degraded": "The mail server reports a fault, so mail can't reliably go out through it.",
 					"healthy": "The mail server is reachable and reports healthy.",
+					"signingHeld": "The mail server is holding mail because a sending domain has no usable DKIM key to sign it with. Restore the key, or publish the domain's new DKIM record.",
+					"signingHeldAction": "Open sending domains",
 					"stale": "The mail server's last health check is out of date, so the check itself may have stopped.",
 					"title": "Mail server",
 					"unchecked": "The mail server's health hasn't been checked yet.",
@@ -16455,7 +16478,12 @@
 				},
 				"transport": {
 					"action": "Set up sending",
+					"actionFeedback": "Set the webhook secret",
 					"configured": "A delivery transport is configured, so mail has a way out.",
+					"feedbackMissing": {
+						"marketing": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set. Campaigns stay blocked until it is, so addresses that bounce or complain are suppressed.",
+						"transactional": "Mail goes out, but bounces and complaints cannot come back: {variables} is not set, so addresses that bounce or complain are never suppressed."
+					},
 					"missing": "No transport is configured yet, so nothing can be sent.",
 					"missingFor": {
 						"marketing": "No transport is configured for campaigns, so they can't go out.",
@@ -18929,6 +18957,11 @@
 				"body": "{domain}: {check} check failed",
 				"bodyNoCheck": "{domain}: a DNS check failed",
 				"private": "A DNS check of a sending domain failed"
+			},
+			"campaignNotStarted": {
+				"title": "Scheduled campaign did not start",
+				"body": "{name} is back in draft. Open it to see why",
+				"private": "A scheduled campaign is back in draft. Open it to see why"
 			}
 		},
 		"useDesktopNotifications": {
@@ -19221,6 +19254,10 @@
 				"emailDelivered": {
 					"description": "When an email is delivered",
 					"label": "Email delivered"
+				},
+				"emailFailed": {
+					"description": "When an email cannot be sent and will not be retried",
+					"label": "Email failed"
 				},
 				"emailOpened": {
 					"description": "When an email is opened",
@@ -19632,6 +19669,7 @@
 			"capacityAbout": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes about {days} days to reach everyone, so send it over {days} days instead.",
 			"capacityAtLeast": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it takes at least {days} days to reach everyone, so send it over several days instead.",
 			"capacityTruncated": "This campaign is larger than your sending capacity allows in one go. At your current warm-up capacity it would take more than {maxDays} days to reach everyone. Send it in stages, or reduce the audience.",
+			"deliveryOnHold": "Delivery stayed on hold for the whole wait after the scheduled time, because the sending safety circuit was open. Check delivery health, then schedule the campaign again.",
 			"domainInvalidAddress": "\"{email}\" is not a valid sender address. Choose another sender.",
 			"domainMissing": "\"{domain}\" is not a sending domain on this workspace yet. Add and verify it before you send.",
 			"domainUnverified": "\"{domain}\" is not verified yet. Finish its DNS verification before you send.",
@@ -19641,7 +19679,11 @@
 				"senders": "Open campaign senders",
 				"transport": "Set up sending"
 			},
+			"mailServerAllIpsHeld": "Every campaign sending IP of the built-in mail server is held back (a blocklist, PTR or SPF problem). Fix the held IPs, then send again.",
+			"mailServerPort25Blocked": "The built-in mail server cannot reach other mail servers on port 25 from any campaign sending IP. Many hosting providers block port 25 until you ask them to open it.",
+			"mailServerUnreachable": "The built-in mail server is not answering its health check, so campaign mail would only wait in its queue. Check the mail server, then send again.",
 			"noAudience": "Choose who gets this campaign before you send it.",
+			"noBounceFeedback": "Bounces and complaints cannot reach Owlat because {variables} is not set, so addresses that bounce or complain would never be suppressed. Set it on the delivery provider page, then send again.",
 			"noDeliveryProvider": "Sending is not set up yet: campaign mail has no delivery provider. A connected mailbox does not send campaigns.",
 			"noFromEmail": "Choose who this campaign sends from before you send it.",
 			"noTemplate": "Choose the email this campaign sends before you send it.",

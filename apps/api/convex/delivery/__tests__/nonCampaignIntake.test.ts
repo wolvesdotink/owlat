@@ -30,6 +30,7 @@
  * that distinguishes a 1:1 agent reply from an automation broadcast.
  */
 
+import { verifySendingDomain } from '../../__tests__/helpers/verifiedSendingDomain';
 import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
@@ -145,6 +146,7 @@ function withNoDeliveryProvider(run: () => Promise<void>): Promise<void> {
 describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 	it('returns recipient_blocked and writes nothing when the recipient is suppressed', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
@@ -160,6 +162,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('normalizes the lookup so a mixed-case recipient is still blocked', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
@@ -181,6 +184,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('returns no_delivery_provider (with operator detail) when nothing can deliver', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await withNoDeliveryProvider(async () => {
 			const outcome = await enqueueAutomation(t, 'allowed@example.com');
 
@@ -194,6 +198,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('returns abuse_blocked when the instance is suspended', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'instanceSettings',
@@ -209,6 +214,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('returns abuse_blocked for a banned instance too', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'instanceSettings',
@@ -229,6 +235,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 	// the blocklist for a deployment-level suspension.
 	it('reports the BROADEST refusal first when several gates would refuse', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'instanceSettings',
@@ -248,6 +255,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('reports no_delivery_provider before recipient_blocked', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
@@ -267,6 +275,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 	// automation kind and must NOT block a 1:1 answer to a human who wrote in.
 	it('gates the automation kind at the marketing scope and the reply at the transactional one', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('blockedEmails', {
 				email: 'quiet@example.com',
@@ -300,6 +309,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 		'refuses the automation kind for a %s contact and writes nothing',
 		async (detail, contactState) => {
 			const t = convexTest(schema, modules);
+			await verifySendingDomain(t);
 			const contactId = await t.run(async (ctx) =>
 				ctx.db.insert('contacts', createTestContact({ email: 'gone@example.com', ...contactState }))
 			);
@@ -320,6 +330,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('keeps the transactional policy for agent replies to an unsubscribed contact', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const contactId = await t.run(async (ctx) =>
 			ctx.db.insert(
 				'contacts',
@@ -341,6 +352,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 
 	it('returns ok with a queued row for a non-blocked recipient (positive control)', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 
 		const outcome = await enqueueAutomation(t, 'allowed@example.com');
 
@@ -359,6 +371,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 describe('delivery.nonCampaignIntake.intake — route resolution', () => {
 	it('stamps the row and envelope from the route it resolved itself, with no caller-supplied provider', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const { transactionalEmailPool } = await import('../workpool');
 		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
 		enqueueAction.mockClear();
@@ -380,6 +393,7 @@ describe('delivery.nonCampaignIntake.intake — route resolution', () => {
 
 	it('resolves the automation kind against the automation route table', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		// Only the `automation` table names the relay; a resolution against the
 		// wrong message type would fall through to the `mta` env default.
 		await t.run(async (ctx) => {
@@ -442,6 +456,7 @@ describe('delivery.nonCampaignIntake.intake — temporary routing holds', () => 
 
 	it('queues the send without a provider stamp while the circuit is open', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await openGlobalBreaker(t);
 		const { transactionalEmailPool } = await import('../workpool');
 		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
@@ -462,6 +477,7 @@ describe('delivery.nonCampaignIntake.intake — temporary routing holds', () => 
 
 	it('still refuses no_delivery_provider while the circuit is open and nothing can deliver', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		await openGlobalBreaker(t);
 		await withNoDeliveryProvider(async () => {
 			const outcome = await enqueueAutomation(t, 'held@example.com');
@@ -476,6 +492,7 @@ describe('delivery.nonCampaignIntake.intake — temporary routing holds', () => 
 describe('delivery.nonCampaignIntake.intake — Auto-Submitted stamping', () => {
 	it('threads autoSubmittedType: auto-replied (and no List-Unsubscribe) on the agent_reply envelope', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const { transactionalEmailPool } = await import('../workpool');
 		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
 		enqueueAction.mockClear();
@@ -501,6 +518,7 @@ describe('delivery.nonCampaignIntake.intake — Auto-Submitted stamping', () => 
 
 	it('does NOT set autoSubmittedType on the automation envelope (composer defaults to auto-generated)', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const { transactionalEmailPool } = await import('../workpool');
 		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
 		enqueueAction.mockClear();
@@ -519,6 +537,7 @@ describe('delivery.nonCampaignIntake.intake — Auto-Submitted stamping', () => 
 
 	it('threads the site URL and the one-click flag onto an automation envelope, for the footer', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const { transactionalEmailPool } = await import('../workpool');
 		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
 		enqueueAction.mockClear();
@@ -576,6 +595,7 @@ describe('delivery.nonCampaignIntake.intake — engagementScore on the send enve
 
 	it('puts the contact score on the automation envelope', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const contactId = await t.run(
 			async (ctx) =>
 				await ctx.db.insert(
@@ -590,6 +610,7 @@ describe('delivery.nonCampaignIntake.intake — engagementScore on the send enve
 
 	it('omits the field for an unscored contact', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const contactId = await t.run(
 			async (ctx) =>
 				await ctx.db.insert('contacts', createTestContact({ email: 'unscored@example.com' }))
@@ -602,6 +623,7 @@ describe('delivery.nonCampaignIntake.intake — engagementScore on the send enve
 
 	it('does not look up a contact — and carries no score — when the send has none', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		// A scored contact exists for the SAME address; with no contactId on the
 		// send there is no lookup, so the score must not leak onto the envelope.
 		await t.run(async (ctx) => {
@@ -628,6 +650,7 @@ describe('delivery.nonCampaignIntake.intake — engagementScore on the send enve
 	// rejects it, and the deferred send's callback is silently dropped.
 	it('drops a degenerate STORED score at the write boundary', async () => {
 		const t = convexTest(schema, modules);
+		await verifySendingDomain(t);
 		const contactId = await t.run(
 			async (ctx) =>
 				await ctx.db.insert(

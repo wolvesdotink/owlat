@@ -108,6 +108,8 @@ const REFUSAL_MESSAGE: Record<
 	recipient_ineligible: () => 'The recipient can no longer receive email from this workspace',
 	no_delivery_provider: (detail) => detail ?? 'No delivery provider configured',
 	abuse_blocked: () => 'Sending is disabled while this instance is suspended.',
+	sender_domain_unverified: (detail) =>
+		detail ?? "The default sender's domain is not a verified sending domain",
 };
 
 type SendFollowUpResult =

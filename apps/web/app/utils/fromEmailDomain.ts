@@ -1,10 +1,9 @@
 /**
  * Pure helpers for validating the "Default From Email" against the org's
- * verified sending domains (settings/index.vue). Surfacing the mismatch as a
- * non-blocking warning — rather than a hard error — keeps the field usable
- * while a domain is still being verified, but points the operator at
- * /dashboard/admin/delivery/domains before they ship campaigns from an unauthorized
- * domain.
+ * verified sending domains (instance/general.vue). Surfacing the mismatch as a
+ * non-blocking warning — rather than a hard error — lets an operator save the
+ * address before DNS is done, while saying that mail from it is refused until
+ * the domain verifies, and pointing at /dashboard/admin/delivery/domains.
  */
 
 /** Extract the lowercased domain portion of an email address, or null. */
@@ -19,15 +18,16 @@ export function emailDomain(email: string): string | null {
 }
 
 /**
- * Warning text when a From email's domain is not among the verified sending
- * domains, or null when there is nothing to warn about. Returns null when:
+ * The From email's domain when it is not among the verified sending domains,
+ * or null when there is nothing to warn about. The caller words the warning
+ * from it. Returns null when:
  *   - the email is empty or has no domain part,
  *   - the verified-domain set is still loading (`undefined`/`null`) — never nag
  *     before the data arrives,
  *   - the domain IS verified.
  * Matching is case-insensitive.
  */
-export function unverifiedFromDomainWarning(
+export function unverifiedFromDomain(
 	email: string,
 	verifiedDomains: string[] | undefined | null
 ): string | null {
@@ -35,6 +35,5 @@ export function unverifiedFromDomainWarning(
 	if (!domain) return null;
 	if (!verifiedDomains) return null;
 	const verified = new Set(verifiedDomains.map((d) => d.toLowerCase()));
-	if (verified.has(domain)) return null;
-	return `${domain} is not a verified sending domain.`;
+	return verified.has(domain) ? null : domain;
 }

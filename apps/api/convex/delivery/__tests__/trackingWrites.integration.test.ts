@@ -1,8 +1,10 @@
 /**
- * What the open pixel and the click redirect write, around the per-IP
- * `emailTracking` budget: a request always spends one token, and only a request
- * inside the budget records its open or click. The response never depends on
- * either.
+ * What the open pixel and the click redirect write, around the tracking
+ * budgets: a request always spends one token, and only a request inside the
+ * budget records its open or click. A request for an existing Send spends that
+ * Send's own `emailTrackingSend` budget; anything else spends the caller's
+ * `emailTracking` budget, which is one shared `unknown` bucket when no proxy is
+ * trusted. The response never depends on either.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -25,7 +27,8 @@ const modules = Object.fromEntries(
 );
 
 const SECRET = 'tracking-writes-secret';
-const TRACKING_CAPACITY = 150;
+const SHARED_CAPACITY = 150;
+const SEND_CAPACITY = 100;
 const SAVED_ENV = { ...process.env };
 const TARGET = 'https://example.com/landing';
 const READER_AGENT =
@@ -107,13 +110,22 @@ async function seedEmailSend(t: TestConvex<typeof schema>): Promise<Id<'emailSen
 }
 
 /** Spend `count` of the shared `unknown` bucket's tokens. */
-async function spendTrackingTokens(t: TestConvex<typeof schema>, count: number): Promise<void> {
+async function spendSharedTokens(t: TestConvex<typeof schema>, count: number): Promise<void> {
 	for (let spent = 0; spent < count; spent += 1) {
 		await t.mutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
 			limitType: 'emailTracking',
 			key: 'unknown',
 		});
 	}
+}
+
+/** Whether the shared `unknown` bucket still has a token (spending it). */
+async function sharedBucketHasToken(t: TestConvex<typeof schema>): Promise<boolean> {
+	const { ok } = await t.mutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
+		limitType: 'emailTracking',
+		key: 'unknown',
+	});
+	return ok;
 }
 
 const open = (t: TestConvex<typeof schema>, emailSendId: string) =>
@@ -126,67 +138,72 @@ const click = async (t: TestConvex<typeof schema>, emailSendId: string) =>
 		headers: { 'User-Agent': READER_AGENT },
 	});
 
-describe('tracking writes under the per-IP budget', () => {
-	it('serves the pixel but records no open once the budget is spent', async () => {
+describe('tracking writes under the per-send budget', () => {
+	it('records an open even when the shared address bucket is spent', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
-		await spendTrackingTokens(t, TRACKING_CAPACITY);
+		await spendSharedTokens(t, SHARED_CAPACITY);
 
 		const res = await open(t, emailSendId);
 
 		expect(res.status).toBe(200);
-		expect(res.headers.get('Content-Type')).toBe('image/gif');
-		const send = await t.run((ctx) => ctx.db.get(emailSendId));
-		expect(send?.status).toBe('delivered');
-		expect(send?.openCount).toBe(0);
-	});
-
-	it('redirects but records no click once the budget is spent', async () => {
-		const t = setupTest();
-		const emailSendId = await seedEmailSend(t);
-		await spendTrackingTokens(t, TRACKING_CAPACITY);
-
-		const res = await click(t, emailSendId);
-
-		expect(res.status).toBe(302);
-		expect(res.headers.get('Location')).toBe(TARGET);
-		const send = await t.run((ctx) => ctx.db.get(emailSendId));
-		expect(send?.status).toBe('delivered');
-		expect(send?.clickedAt).toBeUndefined();
-	});
-
-	it('records the open that spends the last token', async () => {
-		const t = setupTest();
-		const emailSendId = await seedEmailSend(t);
-		await spendTrackingTokens(t, TRACKING_CAPACITY - 1);
-
-		await open(t, emailSendId);
-
 		const send = await t.run((ctx) => ctx.db.get(emailSendId));
 		expect(send?.status).toBe('opened');
 		expect(send?.openCount).toBe(1);
 	});
 
-	it('spends a token on an open for an id that is not a send, and records nothing', async () => {
+	it("does not let one send's spent budget drop another send's open", async () => {
+		const t = setupTest();
+		const busy = await seedEmailSend(t);
+		const quiet = await seedEmailSend(t);
+		// A proxy or scanner fetching one recipient's pixel over and over, with no
+		// client address known: more than the old shared bucket held.
+		for (let hit = 0; hit < SHARED_CAPACITY; hit += 1) await open(t, busy);
+
+		await open(t, quiet);
+
+		expect((await t.run((ctx) => ctx.db.get(busy)))?.openCount).toBe(SEND_CAPACITY);
+		const send = await t.run((ctx) => ctx.db.get(quiet));
+		expect(send?.status).toBe('opened');
+		expect(send?.openCount).toBe(1);
+	});
+
+	it("serves the pixel and redirects but records nothing once the send's budget is spent", async () => {
+		const t = setupTest();
+		const emailSendId = await seedEmailSend(t);
+		for (let hit = 0; hit < SEND_CAPACITY; hit += 1) await open(t, emailSendId);
+
+		const pixel = await open(t, emailSendId);
+		const redirect = await click(t, emailSendId);
+
+		expect(pixel.status).toBe(200);
+		expect(pixel.headers.get('Content-Type')).toBe('image/gif');
+		expect(redirect.status).toBe(302);
+		expect(redirect.headers.get('Location')).toBe(TARGET);
+		const send = await t.run((ctx) => ctx.db.get(emailSendId));
+		expect(send?.openCount).toBe(SEND_CAPACITY);
+		expect(send?.clickedAt).toBeUndefined();
+	});
+
+	it('charges an open for an id that is not a send to the shared bucket, and records nothing', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
 		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact() as never));
-		await spendTrackingTokens(t, TRACKING_CAPACITY - 1);
+		await spendSharedTokens(t, SHARED_CAPACITY - 1);
 
 		const res = await open(t, contactId);
 		expect(res.status).toBe(200);
 		expect(res.headers.get('Content-Type')).toBe('image/gif');
 
-		// The not-a-send open took the last token, so this real open is over budget.
+		expect(await sharedBucketHasToken(t)).toBe(false);
 		await open(t, emailSendId);
-		const send = await t.run((ctx) => ctx.db.get(emailSendId));
-		expect(send?.openCount).toBe(0);
+		expect((await t.run((ctx) => ctx.db.get(emailSendId)))?.openCount).toBe(1);
 	});
 
-	it('spends a token on a click whose signature does not verify', async () => {
+	it('charges a click whose signature does not verify to the shared bucket, not the send', async () => {
 		const t = setupTest();
 		const emailSendId = await seedEmailSend(t);
-		await spendTrackingTokens(t, TRACKING_CAPACITY - 1);
+		await spendSharedTokens(t, SHARED_CAPACITY - 1);
 
 		const forged = await t.fetch(
 			`/t/c/${emailSendId}/${base64Url(new TextEncoder().encode(TARGET))}/forged`,
@@ -194,10 +211,10 @@ describe('tracking writes under the per-IP budget', () => {
 		);
 		expect(forged.status).toBe(302);
 		expect(forged.headers.get('Location')).toBe('/');
+		expect(await sharedBucketHasToken(t)).toBe(false);
 
 		const res = await click(t, emailSendId);
 		expect(res.headers.get('Location')).toBe(TARGET);
-		const send = await t.run((ctx) => ctx.db.get(emailSendId));
-		expect(send?.clickedAt).toBeUndefined();
+		expect((await t.run((ctx) => ctx.db.get(emailSendId)))?.clickedAt).toBeTypeOf('number');
 	});
 });

@@ -57,6 +57,14 @@ export const mtaHealthSnapshotValidator = v.object({
 			checkedAt: v.number(),
 		})
 	),
+	// Sending domains whose mail the MTA is holding because they are owed a DKIM
+	// signature and no usable key made one. Absent when nothing is held, and
+	// from an MTA that predates the hold. `cause` is the MTA's bounded reason
+	// (`no_key`, `unreadable`, `unpublished`, …), kept as a string so a newer
+	// MTA's cause still reaches the operator.
+	dkimSigningHeld: v.optional(
+		v.array(v.object({ domain: v.string(), cause: v.string(), since: v.number() }))
+	),
 	observedAt: v.number(),
 });
 

@@ -90,6 +90,7 @@ export const GOVERNED_SEND_REQUEST_BYTES = JSON.stringify({
 	ipPool: 'campaign',
 	engagementScore: 73,
 	dkimDomain: 'mail.example.org',
+	requireDkimSignature: true,
 	organizationId: 'org-fixture-1',
 	messageType: 'campaign',
 	deliveryDomain: 'production',

@@ -356,6 +356,7 @@ describe('send intake', () => {
 			routingReentryToken: REQUEST.routingReentryToken,
 			deliveryDomain: REQUEST.deliveryDomain,
 			dkimDomain: 'mail.example.org',
+			requireDkimSignature: true,
 			firstEnqueuedAt: REQUEST.routingReentry.retryState.startedAt,
 		});
 		expect(job.routingReentry).toEqual(REQUEST.routingReentry);

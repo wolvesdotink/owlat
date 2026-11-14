@@ -22,7 +22,7 @@ const withSender: DeliveryTestFacts = {
 		kind: 'loaded',
 		defaultFromEmail: 'ops@owlat.example',
 		defaultFromName: 'Owlat Ops',
-		defaultFromDomain: undefined,
+		systemSender: null,
 	},
 };
 const receipt = { provider: 'mta', providerMessageId: 'msg-1', latencyMs: 12, attempts: 1 };
@@ -86,14 +86,14 @@ describe('nextDeliveryTestStep — the order of the steps', () => {
 		}
 	});
 
-	it('falls back to the instance noreply sender, and refuses an invalid one', () => {
+	it('falls back to the system sender, and refuses an invalid one', () => {
 		const fallback = nextDeliveryTestStep({
 			...member,
 			sender: {
 				kind: 'loaded',
 				defaultFromEmail: null,
 				defaultFromName: null,
-				defaultFromDomain: 'mail.owlat.example',
+				systemSender: 'noreply@mail.owlat.example',
 			},
 		});
 		expect(fallback).toMatchObject({
@@ -114,7 +114,29 @@ describe('nextDeliveryTestStep — the order of the steps', () => {
 					kind: 'loaded',
 					defaultFromEmail: 'not-a-sender',
 					defaultFromName: null,
-					defaultFromDomain: undefined,
+					systemSender: null,
+				},
+			})
+		).toEqual(['passed', 'passed', 'failed', 'not_run', 'not_run']);
+	});
+
+	it('refuses at the sender when none is configured, never sending from a foreign domain', () => {
+		const step = nextDeliveryTestStep({
+			...member,
+			sender: { kind: 'loaded', defaultFromEmail: null, defaultFromName: null, systemSender: null },
+		});
+		expect(step).toMatchObject({
+			kind: 'answer',
+			result: { success: false, error: expect.stringContaining('No sender is configured') },
+		});
+		expect(
+			statuses({
+				...member,
+				sender: {
+					kind: 'loaded',
+					defaultFromEmail: null,
+					defaultFromName: null,
+					systemSender: null,
 				},
 			})
 		).toEqual(['passed', 'passed', 'failed', 'not_run', 'not_run']);

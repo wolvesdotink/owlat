@@ -38,11 +38,16 @@ const trackedTransitionValidator = v.union(
 );
 
 /**
- * The open pixel's and the click redirect's one commit: spend the caller's
- * `emailTracking` token and, inside the budget, record the open or click.
- * Every request spends a token, including one with no event to record. The id
- * arrives as a string because a well-formed id of another table still spends
- * its token; it then records nothing.
+ * The open pixel's and the click redirect's one commit: spend one token and,
+ * inside the budget, record the open or click. Every request spends a token.
+ *
+ * A request for an existing Send spends that Send's `emailTrackingSend` token,
+ * so one recipient's opens, clicks and the automated fetches of their mail
+ * never spend another recipient's budget, whatever address they come from.
+ * Every other request (no event, an id that is malformed, of another table or
+ * of no row) spends the caller's `emailTracking` token and records nothing.
+ * The Send is looked up before its bucket is touched, so invented ids cannot
+ * create a rate-limit row each. The id arrives as a string for that reason.
  */
 export const recordTrackingHit = internalMutation({
 	args: {
@@ -52,11 +57,19 @@ export const recordTrackingHit = internalMutation({
 		),
 	},
 	handler: async (ctx, args): Promise<{ recorded: boolean }> => {
-		const { ok } = await rateLimiter.limit(ctx, 'emailTracking', { key: args.clientIp });
-		if (!ok || !args.event) return { recorded: false };
-		const id = ctx.db.normalizeId('emailSends', args.event.emailSendId);
-		if (id === null) return { recorded: false };
-		const outcome = await applySendTransition(ctx, { kind: 'campaign', id }, args.event.transition);
+		const id = args.event ? ctx.db.normalizeId('emailSends', args.event.emailSendId) : null;
+		const send = id === null ? null : await ctx.db.get(id);
+		if (!args.event || send === null) {
+			await rateLimiter.limit(ctx, 'emailTracking', { key: args.clientIp });
+			return { recorded: false };
+		}
+		const { ok } = await rateLimiter.limit(ctx, 'emailTrackingSend', { key: send._id });
+		if (!ok) return { recorded: false };
+		const outcome = await applySendTransition(
+			ctx,
+			{ kind: 'campaign', id: send._id },
+			args.event.transition
+		);
 		return { recorded: outcome.ok };
 	},
 });

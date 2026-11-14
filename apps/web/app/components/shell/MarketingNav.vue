@@ -36,9 +36,8 @@ const { isCollapsed, toggleGroup } = useShellSidebarPrefs();
 const campaignsOn = computed(() => isEnabled('campaigns'));
 const automationsOn = computed(() => isAdmin.value && isEnabled('automations'));
 
-const { data: attention } = useConvexQuery(
-	api.campaigns.organization.listAttentionCandidates,
-	() => (campaignsOn.value ? {} : 'skip')
+const { data: attention } = useConvexQuery(api.campaigns.organization.listAttentionCandidates, () =>
+	campaignsOn.value ? {} : 'skip'
 );
 const { data: recentPage } = useConvexQuery(api.campaigns.campaigns.list, () =>
 	campaignsOn.value ? { paginationOpts: { numItems: 5, cursor: null } } : 'skip'
@@ -58,12 +57,15 @@ function campaignStatus(c: {
 	status: string;
 	sentAt?: number;
 	contentBlockReason?: string;
+	/** A scheduled start that did not happen; the campaign is a draft again. */
+	startRefusal?: unknown;
 	isABTest?: boolean;
 	abTestStatus?: string;
 	abWinner?: string;
 }): ConversationStatus | null {
 	if (c.status === 'pending_review' || (c.contentBlockReason && c.status !== 'sent'))
 		return 'needs_review';
+	if (c.startRefusal && c.status === 'draft') return 'needs_review';
 	if (c.isABTest && c.abTestStatus === 'testing' && !c.abWinner) return 'needs_review';
 	if (c.status === 'sending') return 'running';
 	if (c.status === 'scheduled') return 'scheduled';
