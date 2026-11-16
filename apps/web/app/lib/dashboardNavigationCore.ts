@@ -95,6 +95,9 @@ export const editorOnly: Gate = (env) => env.role === 'editor';
  */
 export const recentlyDeletedGate: Gate = (env) => flag('campaigns')(env) || adminOnly(env);
 
+/** Transactional emails: admin work, behind their own feature flag. */
+export const transactionalGate: Gate = (env) => adminOnly(env) && flag('transactional')(env);
+
 interface CoreItem extends NavigationItem {
 	readonly gate?: Gate;
 }
@@ -261,9 +264,9 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		],
 	},
 	{
-		// The Marketing workspace: everything you send to an audience. Named with
-		// the breadcrumb's own section key, so the palette's context line, the
-		// trail and the sidebar switch say the same word.
+		// Marketing: everything you send to an audience. Named with the
+		// breadcrumb's own section key, so the palette's context line, the trail
+		// and the sidebar's Marketing zone say the same word.
 		key: 'send',
 		name: 'shared.breadcrumbRoutes.sections.marketing',
 		icon: PaperPlaneIcon,
@@ -287,12 +290,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				gate: (env) => adminOnly(env) && flag('automations')(env),
 			},
 			{
-				name: 'shared.dashboardNavigation.items.send.transactional',
-				href: '/dashboard/send/transactional',
-				icon: FileCodeIcon,
-				gate: (env) => adminOnly(env) && flag('transactional')(env),
-			},
-			{
 				name: 'shared.dashboardNavigation.items.send.templates',
 				href: '/dashboard/send',
 				icon: GridIcon,
@@ -303,6 +300,22 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/marketing/deleted',
 				icon: TrashIcon,
 				gate: recentlyDeletedGate,
+			},
+		],
+	},
+	{
+		// The emails an application triggers through the API. A section of its
+		// own, not a Marketing item, so the palette's context line and the trail
+		// name it "Transactional" like the sidebar's zone does.
+		key: 'transactional',
+		name: 'shared.breadcrumbRoutes.sections.transactional',
+		icon: FileCodeIcon,
+		gate: transactionalGate,
+		items: [
+			{
+				name: 'shared.dashboardNavigation.items.transactional.emails',
+				href: '/dashboard/send/transactional',
+				icon: FileCodeIcon,
 			},
 		],
 	},

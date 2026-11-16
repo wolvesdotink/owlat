@@ -1,12 +1,16 @@
 <script setup lang="ts">
 /**
- * The sidebar shows one context at a time (Inbox ↔ Marketing) so it stays
- * focused on the current work. Emergent: only rendered while both contexts
- * survived the feature flags. Switching navigates to the target context's
- * last-visited route.
+ * The sidebar shows one context at a time (Conversations ↔ Sending) so it
+ * stays focused on the current work. Emergent: only rendered while both
+ * contexts survived the feature flags. Switching navigates to the target
+ * context's last-visited route.
+ *
+ * The second tab says "Sending" rather than "Marketing" because it holds the
+ * Marketing and Transactional zones; each zone, its crumbs and its palette
+ * rows keep their own name.
  */
 import type { SidebarContext } from '~/lib/sidebarContext';
-import { ChatConversationIcon, MegaphoneIcon } from '@coolicons/vue';
+import { ChatConversationIcon, PaperPlaneIcon } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 
 defineProps<{ collapsed: boolean; activeContext: SidebarContext }>();
@@ -18,7 +22,7 @@ const { t } = useI18n();
 // than a sentence captured in whatever locale was active at mount.
 const sidebarContexts = [
 	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: ChatConversationIcon },
-	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: MegaphoneIcon },
+	{ key: 'marketing', label: 'shell.dashboard.contexts.sending', icon: PaperPlaneIcon },
 ] as const;
 </script>
 

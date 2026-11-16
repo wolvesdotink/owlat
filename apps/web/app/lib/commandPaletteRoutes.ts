@@ -27,7 +27,7 @@
  * them.
  */
 import type { NavigationEnvironment } from './dashboardNavigationCore';
-import { minRole, recentlyDeletedGate } from './dashboardNavigationCore';
+import { minRole, recentlyDeletedGate, transactionalGate } from './dashboardNavigationCore';
 import { routeConfigs } from './breadcrumbRoutes';
 import {
 	ADMIN_AREAS,
@@ -38,6 +38,7 @@ import {
 import {
 	ArrowTurnDownRightIcon,
 	DashboardIcon,
+	FileCodeIcon,
 	MegaphoneIcon,
 	SettingsIcon,
 	ShieldCheckIcon,
@@ -71,6 +72,7 @@ const never = () => false;
 const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment) => boolean]> = [
 	['/dashboard/admin', adminOnly],
 	['/dashboard/send', adminOnly],
+	['/dashboard/send/transactional', transactionalGate],
 	['/dashboard/audience', adminOnly],
 	['/dashboard/campaigns', (env) => env.isFeatureEnabled('campaigns')],
 	['/dashboard/automations', (env) => adminOnly(env) && env.isFeatureEnabled('automations')],
@@ -84,6 +86,7 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 const SECTION_ICONS: Readonly<Record<string, IconComponent>> = {
 	'shared.breadcrumbRoutes.sections.dashboard': DashboardIcon,
 	'shared.breadcrumbRoutes.sections.marketing': MegaphoneIcon,
+	'shared.breadcrumbRoutes.sections.transactional': FileCodeIcon,
 	'shared.breadcrumbRoutes.sections.audience': UsersIcon,
 	'shared.breadcrumbRoutes.sections.workspace': ShieldCheckIcon,
 	'shared.breadcrumbRoutes.sections.preferences': SettingsIcon,

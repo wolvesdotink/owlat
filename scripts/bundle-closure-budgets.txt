@@ -281,7 +281,7 @@ deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
 deferred 36 PostboxUndoSendToast
 deferred 3 backendConnection
-deferred 55 components/AppCommandPalette.vue
+deferred 58 components/AppCommandPalette.vue
 deferred 15 components/KeyboardShortcutsHelp.vue
 deferred 14 components/SendTestEmailModal.vue
 deferred 6 components/automations/steps/condition/Editor.vue

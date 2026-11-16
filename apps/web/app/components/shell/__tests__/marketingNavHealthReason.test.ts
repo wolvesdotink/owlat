@@ -34,7 +34,12 @@ beforeEach(() => {
 		useI18n: i18nStubs.useI18n,
 		useRoute: () => ({ path: '/dashboard/campaigns' }),
 		useFeatureFlag: () => ({ isEnabled: () => true }),
-		usePermissions: () => ({ isAdmin: ref(true), isRoleLoading: ref(false), can: () => true }),
+		usePermissions: () => ({
+			isAdmin: ref(true),
+			isRoleLoading: ref(false),
+			role: ref('admin'),
+			can: () => true,
+		}),
 		useConvexQuery: () => ({ data: ref(undefined) }),
 		useOrganizationQuery: (query: never) => healthQueryStub(health)(query),
 		useDeliveryHealth,

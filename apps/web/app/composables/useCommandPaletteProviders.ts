@@ -17,7 +17,7 @@ import {
 	KeyIcon,
 	ListChecklistIcon,
 	LogInIcon,
-	MegaphoneIcon,
+	PaperPlaneIcon,
 	ReloadIcon,
 	ShrinkIcon,
 	SparklesIcon,
@@ -27,7 +27,7 @@ import {
  * Static item providers for the app-wide command palette (AppCommandPalette):
  *   - verbs — New campaign, Compose, New contact, Copy latest sign-in code,
  *     Check for mail, Ask knowledge, Zen, the setup checklist, updates;
- *   - sidebar-context switch — offers the OTHER context (Inbox ↔ Marketing),
+ *   - sidebar-context switch — offers the OTHER context (Conversations ↔ Sending),
  *     only while the sidebar toggle itself exists (both contexts survived the
  *     feature flags); runs the same last-visited navigation as the toggle;
  *   - navigation — every sidebar destination (shared useDashboardNavigation),
@@ -67,6 +67,10 @@ const QUICK_CREATE_VERBS: Record<QuickCreateId, { id: string; labelKey: string }
 	automation: {
 		id: 'verb:new-automation',
 		labelKey: 'shared.useCommandPaletteProviders.newAutomation',
+	},
+	transactional: {
+		id: 'verb:new-transactional',
+		labelKey: 'shared.useCommandPaletteProviders.newTransactional',
 	},
 };
 export function useCommandPaletteProviders() {
@@ -193,9 +197,9 @@ export function useCommandPaletteProviders() {
 				label:
 					other === 'inbox'
 						? t('shared.useCommandPaletteProviders.switchToInbox')
-						: t('shared.useCommandPaletteProviders.switchToMarketing'),
+						: t('shared.useCommandPaletteProviders.switchToSending'),
 				subtitle: t('shared.useCommandPaletteProviders.sidebarContext'),
-				icon: other === 'inbox' ? InboxIcon : MegaphoneIcon,
+				icon: other === 'inbox' ? InboxIcon : PaperPlaneIcon,
 				run: () => void switchContext(other),
 			},
 		];

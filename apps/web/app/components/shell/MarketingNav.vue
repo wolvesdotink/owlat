@@ -7,6 +7,7 @@ import {
 	ChevronDownIcon,
 	CircleCheckIcon,
 	CircleWarningIcon,
+	FileCodeIcon,
 	LayoutTemplateIcon,
 	MegaphoneIcon,
 	PlusIcon,
@@ -14,13 +15,20 @@ import {
 	UsersIcon,
 } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
+import { sendingZones } from '~/lib/sidebarContext';
 import { useNow } from '~/composables/useNow';
 
 /**
- * The Marketing workspace's sidebar: Overview first, then the campaigns and
- * automations themselves as rows with one status each (the same pattern as the
- * Conversations sidebar), then Audience, Templates and Recently deleted. One quiet delivery line
- * at the bottom replaces the old Administration health dot.
+ * The Sending workspace's sidebar, in two zones. Marketing: Overview, then the
+ * campaigns and automations themselves as rows with one status each (the same
+ * pattern as the Conversations sidebar). Transactional: the latest API-triggered
+ * emails. Below both, Audience, Templates and Recently deleted, and one quiet
+ * delivery line at the bottom.
+ *
+ * The zone labels only render while both zones do; with one zone the rail is
+ * the flat list it would be without the other. Zone labels are uppercase and
+ * the Campaigns/Automations headers under them switch to sentence case, so
+ * the two levels read apart without a third indent.
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -30,11 +38,19 @@ const props = defineProps<{
 const { t } = useI18n();
 const route = useRoute();
 const { isEnabled } = useFeatureFlag();
-const { can, isAdmin, isRoleLoading } = usePermissions();
+const { can, isAdmin, isRoleLoading, role } = usePermissions();
 const { isCollapsed, toggleGroup } = useShellSidebarPrefs();
 
 const campaignsOn = computed(() => isEnabled('campaigns'));
 const automationsOn = computed(() => isAdmin.value && isEnabled('automations'));
+const zones = computed(() =>
+	sendingZones({ isFeatureEnabled: isEnabled, isDesktop: false, role: role.value })
+);
+
+const TRANSACTIONAL_HREF = '/dashboard/send/transactional';
+/** The list page opens its create dialog for this query (see `lib/quickCreate`). */
+const NEW_TRANSACTIONAL_HREF = `${TRANSACTIONAL_HREF}?action=create`;
+const TRANSACTIONAL_ROWS = 3;
 
 const { data: attention } = useConvexQuery(api.campaigns.organization.listAttentionCandidates, () =>
 	campaignsOn.value ? {} : 'skip'
@@ -113,6 +129,25 @@ const automationRows = computed(() =>
 	(automationPage.value?.page ?? []).map((a) => ({ id: a._id as string, name: a.name }))
 );
 
+// A bounded read: this sidebar is mounted on every page of the workspace.
+const { data: recentTransactional } = useConvexQuery(api.transactional.emails.listRecent, () =>
+	zones.value.transactional ? { limit: TRANSACTIONAL_ROWS } : 'skip'
+);
+
+// Published emails show when they last changed; anything else says why it is
+// not live: a draft, or held for review after a content scan.
+const transactionalRows = computed(() =>
+	(recentTransactional.value ?? []).map((email) => ({
+		id: email._id as string,
+		name: email.name,
+		status: email.status === 'pending_review' ? ('needs_review' as const) : null,
+		meta:
+			email.status === 'draft'
+				? t('components.shell.marketing.draft')
+				: formatCompactRelativeTime(email.updatedAt),
+	}))
+);
+
 const links = computed(() =>
 	[
 		{
@@ -140,10 +175,36 @@ const links = computed(() =>
 	].filter((l) => l.show)
 );
 
+// The collapsed rail: one icon per zone and the shared links below them.
+const railLinks = computed(() => [
+	...(campaignsOn.value
+		? [
+				{
+					to: '/dashboard/campaigns',
+					icon: MegaphoneIcon,
+					label: t('components.shell.marketing.campaigns'),
+				},
+			]
+		: []),
+	...(zones.value.transactional
+		? [
+				{
+					to: TRANSACTIONAL_HREF,
+					icon: FileCodeIcon,
+					label: t('shared.breadcrumbRoutes.sections.transactional'),
+				},
+			]
+		: []),
+	...links.value,
+]);
+
 const { level: healthLevel, reason: healthReason } = useDeliveryHealth();
 
 function isActive(to: string, exact = false): boolean {
-	return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`);
+	if (exact) return route.path === to;
+	// Transactional emails live under Templates' URL but have their own zone.
+	if (to === '/dashboard/send' && isActive(TRANSACTIONAL_HREF)) return false;
+	return route.path === to || route.path.startsWith(`${to}/`);
 }
 const activeCampaignId = computed(
 	() => /^\/dashboard\/campaigns\/([^/?#]+)/.exec(route.path)?.[1] ?? null
@@ -151,10 +212,32 @@ const activeCampaignId = computed(
 const activeAutomationId = computed(
 	() => /^\/dashboard\/automations\/([^/?#]+)/.exec(route.path)?.[1] ?? null
 );
+const activeTransactionalId = computed(
+	() => /^\/dashboard\/send\/transactional\/([^/?#]+)/.exec(route.path)?.[1] ?? null
+);
+
+// Under a zone label a group header steps down to sentence case; without one
+// it keeps the rail's usual uppercase header.
+const groupHeaderClass = computed(() =>
+	zones.value.labelled
+		? 'text-xs font-medium text-text-tertiary'
+		: 'text-2xs font-medium uppercase tracking-wider text-text-tertiary'
+);
+const ZONE_LABEL_CLASS =
+	'text-2xs font-semibold uppercase tracking-wider text-text-secondary hover:text-text-primary';
 </script>
 
 <template>
 	<div class="flex flex-col gap-px">
+		<h2
+			v-if="zones.labelled && !props.collapsed"
+			class="px-3 pb-1 pt-1"
+			:class="ZONE_LABEL_CLASS"
+			data-testid="shell-sending-zone-marketing"
+		>
+			{{ t('shared.breadcrumbRoutes.sections.marketing') }}
+		</h2>
+
 		<UiTooltip
 			v-if="campaignsOn"
 			:text="props.collapsed ? t('components.shell.marketing.overview') : undefined"
@@ -185,7 +268,8 @@ const activeAutomationId = computed(
 				<div class="group/cmp mt-3 flex items-center gap-1 pr-1">
 					<button
 						type="button"
-						class="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary hover:text-text-primary"
+						class="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 hover:text-text-primary"
+						:class="groupHeaderClass"
 						:aria-expanded="!isCollapsed('campaigns')"
 						@click="toggleGroup('campaigns')"
 					>
@@ -232,7 +316,8 @@ const activeAutomationId = computed(
 			<template v-if="automationsOn">
 				<button
 					type="button"
-					class="mt-3 flex items-center gap-1.5 px-2 py-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary hover:text-text-primary"
+					class="mt-3 flex items-center gap-1.5 px-2 py-1 hover:text-text-primary"
+					:class="groupHeaderClass"
 					:aria-expanded="!isCollapsed('automations')"
 					@click="toggleGroup('automations')"
 				>
@@ -259,14 +344,77 @@ const activeAutomationId = computed(
 				</div>
 			</template>
 
-			<!-- Automations and Templates are admin-only, and the page renders before
-			     the role is known: hold their place instead of letting them pop in. -->
+			<!-- The Transactional zone. Labelled, its zone label is also the
+			     collapse control; alone, it is a group like Campaigns. -->
+			<template v-if="zones.transactional">
+				<div
+					class="flex items-center gap-1 pr-1"
+					:class="zones.labelled ? 'mt-5' : campaignsOn || automationsOn ? 'mt-3' : ''"
+				>
+					<component
+						:is="zones.labelled ? 'h2' : 'div'"
+						class="flex min-w-0 flex-1"
+						:data-testid="zones.labelled ? 'shell-sending-zone-transactional' : undefined"
+					>
+						<button
+							type="button"
+							class="flex min-w-0 flex-1 items-center gap-1.5 py-1"
+							:class="
+								zones.labelled
+									? ['px-3', ZONE_LABEL_CLASS]
+									: ['px-2 hover:text-text-primary', groupHeaderClass]
+							"
+							:aria-expanded="!isCollapsed('transactional')"
+							@click="toggleGroup('transactional')"
+						>
+							<ChevronDownIcon
+								v-if="!zones.labelled || isCollapsed('transactional')"
+								class="size-3 transition-transform duration-(--motion-fast)"
+								:class="isCollapsed('transactional') ? '-rotate-90' : ''"
+							/>
+							{{ t('shared.breadcrumbRoutes.sections.transactional') }}
+						</button>
+					</component>
+					<UiTooltip :text="t('components.shell.marketing.newTransactional')">
+						<NuxtLink
+							:to="NEW_TRANSACTIONAL_HREF"
+							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary pointer-coarse:size-11"
+							:aria-label="t('components.shell.marketing.newTransactional')"
+						>
+							<PlusIcon class="size-3.5" />
+						</NuxtLink>
+					</UiTooltip>
+				</div>
+				<div v-if="!isCollapsed('transactional')" class="space-y-px">
+					<ShellThreadRow
+						v-for="row in transactionalRows"
+						:key="row.id"
+						:to="`${TRANSACTIONAL_HREF}/${row.id}/edit`"
+						:jump-key="`transactional:${row.id}`"
+						:title="row.name"
+						:meta="row.meta"
+						:status="row.status"
+						:is-active="activeTransactionalId === row.id"
+					/>
+					<NuxtLink
+						:to="TRANSACTIONAL_HREF"
+						class="flex items-center rounded-md px-3 py-1 text-2xs text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+						:aria-current="route.path === TRANSACTIONAL_HREF ? 'page' : undefined"
+						>{{ t('components.shell.marketing.allTransactional') }}</NuxtLink
+					>
+				</div>
+			</template>
+
+			<!-- Automations, Transactional and Templates are admin-only, and the page
+			     renders before the role is known: hold their place instead of
+			     letting them pop in. -->
 			<div
 				v-if="isRoleLoading"
 				class="mt-3 space-y-2 px-3"
 				data-testid="shell-marketing-role-skeleton"
 			>
 				<UiSkeleton v-if="isEnabled('automations')" class="h-3 w-24" />
+				<UiSkeleton v-if="isEnabled('transactional')" class="h-3 w-28" />
 				<UiSkeleton class="h-4 w-3/4" />
 			</div>
 
@@ -322,18 +470,7 @@ const activeAutomationId = computed(
 		</template>
 
 		<template v-else>
-			<UiTooltip
-				v-for="link in [
-					{
-						to: '/dashboard/campaigns',
-						icon: MegaphoneIcon,
-						label: t('components.shell.marketing.campaigns'),
-					},
-					...links,
-				]"
-				:key="link.to"
-				:text="link.label"
-			>
+			<UiTooltip v-for="link in railLinks" :key="link.to" :text="link.label">
 				<NuxtLink
 					:to="link.to"
 					:aria-label="link.label"

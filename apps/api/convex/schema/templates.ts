@@ -274,6 +274,7 @@ export const templateTables = {
 	})
 		.index('by_slug', ['slug'])
 		.index('by_status', ['status'])
+		.index('by_updated_at', ['updatedAt'])
 		.searchIndex('search_transactional', {
 			searchField: 'searchableText',
 			filterFields: [],
