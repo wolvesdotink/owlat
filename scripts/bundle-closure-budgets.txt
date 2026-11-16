@@ -233,8 +233,8 @@ deferred 20 ../node_modules/.cache/owlat-i18n/areas/dashboard-audience.de.json
 deferred 18 ../node_modules/.cache/owlat-i18n/areas/dashboard-audience.en.json
 deferred 8 ../node_modules/.cache/owlat-i18n/areas/dashboard-automations.de.json
 deferred 8 ../node_modules/.cache/owlat-i18n/areas/dashboard-automations.en.json
-deferred 24 ../node_modules/.cache/owlat-i18n/areas/dashboard-campaigns.de.json
-deferred 21 ../node_modules/.cache/owlat-i18n/areas/dashboard-campaigns.en.json
+deferred 27 ../node_modules/.cache/owlat-i18n/areas/dashboard-campaigns.de.json
+deferred 24 ../node_modules/.cache/owlat-i18n/areas/dashboard-campaigns.en.json
 deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-chat.de.json
 deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-chat.en.json
 deferred 4 ../node_modules/.cache/owlat-i18n/areas/dashboard-files.de.json
