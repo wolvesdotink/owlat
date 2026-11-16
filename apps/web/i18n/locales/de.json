@@ -8163,6 +8163,8 @@
 				"allCampaigns": "Alle Kampagnen",
 				"automations": "Automatisierungen",
 				"allAutomations": "Alle Automatisierungen",
+				"newTransactional": "Neue Transaktions-E-Mail",
+				"allTransactional": "Alle Transaktions-E-Mails",
 				"audience": "Zielgruppe",
 				"recentlyDeleted": "Zuletzt gelöscht",
 				"templates": "Vorlagen",
@@ -14009,7 +14011,9 @@
 				"pageTitle": "Vorlagen — Owlat",
 				"savedBlocks": "Gespeicherte Bausteine",
 				"savedBlocksCount": "Gespeicherte Bausteine ({count})",
-				"subtitle": "E-Mail-Designs, die du in Kampagnen, Automationen und im API-Versand wiederverwendest.",
+				"subtitle": "E-Mail-Designs, die du in Kampagnen und Automationen wiederverwendest.",
+				"transactionalTypeHint": "Vorlagen mit dem Label „Transaktional“ sind nur wiederverwendbare Designs: Kampagnen und Automationen bieten sie nicht an, und die API verschickt sie nicht. E-Mails, die deine App über die API verschickt, findest du unter {link}.",
+				"transactionalTypeHintLink": "Transaktions-E-Mails",
 				"templateTypes": {
 					"marketing": "Marketing",
 					"transactional": "Transaktional"
@@ -15758,6 +15762,9 @@
 				"editAutomation": "Automation bearbeiten",
 				"editCampaign": "Kampagne bearbeiten",
 				"editTemplate": "Vorlage bearbeiten",
+				"editEmail": "E-Mail bearbeiten",
+				"translations": "Übersetzungen",
+				"sendDetails": "Sendungsdetails",
 				"label": "Label",
 				"message": "Nachricht",
 				"newAutomation": "Neue Automation",
@@ -15831,16 +15838,17 @@
 				"teamInboxes": "Team-Postfächer",
 				"templates": "Vorlagen",
 				"topics": "Themen",
-				"transactional": "Transaktional",
 				"webhooks": "Webhooks",
 				"knowledgeGraph": "Graph-Explorer",
 				"responseTargets": "Antwortziele",
-				"responseAnalytics": "Antwortzeiten"
+				"responseAnalytics": "Antwortzeiten",
+				"transactionalEmails": "E-Mails"
 			},
 			"sections": {
 				"audience": "Zielgruppe",
 				"dashboard": "Werkbank",
 				"marketing": "Marketing",
+				"transactional": "Transaktional",
 				"preferences": "Meine Einstellungen",
 				"workspace": "Workspace",
 				"answer": "Antwortliste",
@@ -16194,8 +16202,10 @@
 					"campaigns": "Kampagnen",
 					"recentlyDeleted": "Zuletzt gelöscht",
 					"templates": "Vorlagen",
-					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
+				},
+				"transactional": {
+					"emails": "Transaktions-E-Mails"
 				}
 			},
 			"sections": {
@@ -17766,7 +17776,8 @@
 			"campaign": "Kampagne",
 			"compose": "E-Mail verfassen",
 			"contact": "Kontakt",
-			"aiCampaign": "Kampagne mit KI"
+			"aiCampaign": "Kampagne mit KI",
+			"transactional": "Transaktions-E-Mail"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -19115,9 +19126,10 @@
 			"newAutomation": "Neue Automation",
 			"newCampaign": "Neue Kampagne",
 			"newContact": "Neuer Kontakt",
+			"newTransactional": "Neue Transaktions-E-Mail",
 			"sidebarContext": "Seitenleisten-Kontext",
-			"switchToInbox": "Zum Posteingang wechseln",
-			"switchToMarketing": "Zu Marketing wechseln",
+			"switchToInbox": "Zu Unterhaltungen wechseln",
+			"switchToSending": "Zu Versand wechseln",
 			"copySignInCode": "Neuesten Anmeldecode kopieren",
 			"openSignInLink": "Neuesten Anmeldelink öffnen",
 			"checkForMail": "Nach neuer Mail suchen",
@@ -20575,7 +20587,7 @@
 			"collapseSidebar": "Seitenleiste einklappen",
 			"contexts": {
 				"inbox": "Unterhaltungen",
-				"marketing": "Marketing"
+				"sending": "Versand"
 			},
 			"dashboardTooltip": "Dashboard",
 			"expandSidebar": "Seitenleiste ausklappen",

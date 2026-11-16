@@ -35,9 +35,19 @@ export interface RouteConfig {
 	page?: string;
 }
 
-/** The Marketing workspace crumb — the word the sidebar's switch shows. */
+/** The Marketing crumb, the word the sidebar's Marketing zone shows. */
 const MARKETING = 'shared.breadcrumbRoutes.sections.marketing';
 const MARKETING_HREF = '/dashboard/marketing';
+
+/**
+ * "Transactional", the parent of every transactional email page. Its own
+ * section, not a Templates page: the list lives under `/dashboard/send/` only
+ * for its URL, and the sidebar files it in a zone of its own.
+ */
+export const TRANSACTIONAL = {
+	section: 'shared.breadcrumbRoutes.sections.transactional',
+	sectionHref: '/dashboard/send/transactional',
+} as const;
 
 /** "Marketing › Campaigns", the parent of every campaign page. */
 export const MARKETING_CAMPAIGNS = {
@@ -208,9 +218,9 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		'/dashboard/postbox/migrate': 'shared.breadcrumbRoutes.pages.importMail',
 	}),
 
-	// Marketing workspace. Campaigns, automations and templates are filed under
-	// it, matching the sidebar's Marketing switch — the trail used to say "Send",
-	// a section the sidebar no longer has.
+	// Marketing. Campaigns, automations and templates are filed under it, the
+	// name of the sidebar's Marketing zone. Transactional emails are not: they
+	// sit under `/dashboard/send/` but have their own section (TRANSACTIONAL).
 	'/dashboard/marketing': {
 		section: MARKETING,
 		sectionHref: MARKETING_HREF,
@@ -244,9 +254,10 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		...MARKETING_TEMPLATES,
 		page: 'shared.breadcrumbRoutes.pages.marketing',
 	},
+	// Named page, so the trail shows: a one-crumb trail is hidden in the header.
 	'/dashboard/send/transactional': {
-		...MARKETING_TEMPLATES,
-		page: 'shared.breadcrumbRoutes.pages.transactional',
+		...TRANSACTIONAL,
+		page: 'shared.breadcrumbRoutes.pages.transactionalEmails',
 	},
 	'/dashboard/send/blocks': {
 		...MARKETING_TEMPLATES,

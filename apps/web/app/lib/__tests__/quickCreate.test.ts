@@ -41,6 +41,7 @@ describe('quickCreateEntriesFor', () => {
 			'aiCampaign',
 			'contact',
 			'automation',
+			'transactional',
 		]);
 	});
 
@@ -55,10 +56,11 @@ describe('quickCreateEntriesFor', () => {
 	});
 
 	it('drops compose on an instance with no mail at all', () => {
-		expect(ids(env('owner', ['campaigns', 'automations']))).toEqual([
+		expect(ids(env('owner', ['campaigns', 'automations', 'transactional']))).toEqual([
 			'campaign',
 			'contact',
 			'automation',
+			'transactional',
 		]);
 	});
 
@@ -81,6 +83,12 @@ describe('quickCreateEntriesFor', () => {
 		expect(ids(env('owner', ['ai', 'ai.emailGeneration']))).not.toContain('aiCampaign');
 	});
 
+	it('offers a new transactional email to admins while the feature is on', () => {
+		expect(ids(env('admin', ['transactional']))).toEqual(['contact', 'transactional']);
+		expect(ids(env('editor', ['transactional']))).toEqual([]);
+		expect(ids(env('owner', ['postbox']))).not.toContain('transactional');
+	});
+
 	it('offers nothing to an editor on an instance with neither mail nor campaigns', () => {
 		expect(ids(env('editor', []))).toEqual([]);
 	});
@@ -101,6 +109,12 @@ describe('defaultQuickCreateEntry', () => {
 	it("leads with the workspace's own verb", () => {
 		expect(defaultQuickCreateEntry(env('owner'), 'inbox')?.id).toBe('compose');
 		expect(defaultQuickCreateEntry(env('owner'), 'marketing')?.id).toBe('campaign');
+	});
+
+	it('leads the Sending workspace with a transactional email when campaigns are off', () => {
+		expect(defaultQuickCreateEntry(env('owner', ['transactional']), 'marketing')?.id).toBe(
+			'transactional'
+		);
 	});
 
 	it('falls back when the workspace verb is not allowed', () => {
@@ -127,5 +141,6 @@ describe('the registry itself', () => {
 		expect(byId.get('campaign')?.href).toBe('/dashboard/campaigns/new');
 		expect(byId.get('automation')?.href).toBe('/dashboard/automations/new');
 		expect(byId.get('aiCampaign')?.href).toBe('/dashboard/campaigns/new?draft=ai');
+		expect(byId.get('transactional')?.href).toBe('/dashboard/send/transactional?action=create');
 	});
 });

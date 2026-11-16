@@ -8163,6 +8163,8 @@
 				"allCampaigns": "All campaigns",
 				"automations": "Automations",
 				"allAutomations": "All automations",
+				"newTransactional": "New transactional email",
+				"allTransactional": "All transactional emails",
 				"audience": "Audience",
 				"recentlyDeleted": "Recently deleted",
 				"templates": "Templates",
@@ -14009,7 +14011,9 @@
 				"pageTitle": "Templates — Owlat",
 				"savedBlocks": "Saved blocks",
 				"savedBlocksCount": "Saved blocks ({count})",
-				"subtitle": "Email designs you reuse in campaigns, automations and API sends.",
+				"subtitle": "Email designs you reuse in campaigns and automations.",
+				"transactionalTypeHint": "Templates labelled transactional are reusable designs only: campaigns and automations don't offer them, and the API doesn't send them. Emails your app sends through the API are in {link}.",
+				"transactionalTypeHintLink": "Transactional emails",
 				"templateTypes": {
 					"marketing": "Marketing",
 					"transactional": "Transactional"
@@ -15758,6 +15762,9 @@
 				"editAutomation": "Edit automation",
 				"editCampaign": "Edit campaign",
 				"editTemplate": "Edit template",
+				"editEmail": "Edit email",
+				"translations": "Translations",
+				"sendDetails": "Send details",
 				"label": "Label",
 				"message": "Message",
 				"newAutomation": "New automation",
@@ -15831,16 +15838,17 @@
 				"teamInboxes": "Team inboxes",
 				"templates": "Templates",
 				"topics": "Topics",
-				"transactional": "Transactional",
 				"webhooks": "Webhooks",
 				"knowledgeGraph": "Graph explorer",
 				"responseTargets": "Response targets",
-				"responseAnalytics": "Response analytics"
+				"responseAnalytics": "Response analytics",
+				"transactionalEmails": "Emails"
 			},
 			"sections": {
 				"audience": "Audience",
 				"dashboard": "Workbench",
 				"marketing": "Marketing",
+				"transactional": "Transactional",
 				"preferences": "My settings",
 				"workspace": "Workspace",
 				"answer": "Answer queue",
@@ -16194,8 +16202,10 @@
 					"campaigns": "Campaigns",
 					"recentlyDeleted": "Recently deleted",
 					"templates": "Templates",
-					"transactional": "Transactional",
 					"overview": "Marketing overview"
+				},
+				"transactional": {
+					"emails": "Transactional emails"
 				}
 			},
 			"sections": {
@@ -17766,7 +17776,8 @@
 			"campaign": "Campaign",
 			"compose": "Compose email",
 			"contact": "Contact",
-			"aiCampaign": "Campaign with AI"
+			"aiCampaign": "Campaign with AI",
+			"transactional": "Transactional email"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -19115,9 +19126,10 @@
 			"newAutomation": "New automation",
 			"newCampaign": "New campaign",
 			"newContact": "New contact",
+			"newTransactional": "New transactional email",
 			"sidebarContext": "Sidebar context",
-			"switchToInbox": "Switch to Inbox",
-			"switchToMarketing": "Switch to marketing",
+			"switchToInbox": "Switch to conversations",
+			"switchToSending": "Switch to sending",
 			"copySignInCode": "Copy latest sign-in code",
 			"openSignInLink": "Open latest sign-in link",
 			"checkForMail": "Check for mail",
@@ -20575,7 +20587,7 @@
 			"collapseSidebar": "Collapse sidebar",
 			"contexts": {
 				"inbox": "Conversations",
-				"marketing": "Marketing"
+				"sending": "Sending"
 			},
 			"dashboardTooltip": "Dashboard",
 			"expandSidebar": "Expand sidebar",

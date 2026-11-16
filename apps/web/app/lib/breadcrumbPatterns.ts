@@ -11,6 +11,7 @@ import {
 	MARKETING_AUTOMATIONS,
 	MARKETING_CAMPAIGNS,
 	MARKETING_TEMPLATES,
+	TRANSACTIONAL,
 	type RouteConfig,
 } from '~/lib/breadcrumbRoutes';
 
@@ -129,12 +130,26 @@ export const patternConfigs: PatternConfig[] = [
 			page: 'shared.breadcrumbPatterns.pages.editTemplate',
 		}),
 	},
-	// Transactional template edit
+	// Transactional email edit, translations and one send's details
 	{
 		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/edit$/,
 		getConfig: () => ({
-			...MARKETING_TEMPLATES,
-			page: 'shared.breadcrumbPatterns.pages.editTemplate',
+			...TRANSACTIONAL,
+			page: 'shared.breadcrumbPatterns.pages.editEmail',
+		}),
+	},
+	{
+		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/translations$/,
+		getConfig: () => ({
+			...TRANSACTIONAL,
+			page: 'shared.breadcrumbPatterns.pages.translations',
+		}),
+	},
+	{
+		pattern: /^\/dashboard\/send\/transactional\/([^/]+)\/sends\/([^/]+)$/,
+		getConfig: () => ({
+			...TRANSACTIONAL,
+			page: 'shared.breadcrumbPatterns.pages.sendDetails',
 		}),
 	},
 	// Campaign edit

@@ -145,6 +145,53 @@ describe('transactionalEmails.create', () => {
 	});
 });
 
+describe('transactionalEmails.listRecent', () => {
+	async function seed(t: ReturnType<typeof convexTest>, count: number) {
+		await t.run(async (ctx) => {
+			for (let index = 0; index < count; index++) {
+				await ctx.db.insert(
+					'transactionalEmails',
+					createTestTransactionalEmail({
+						name: `Email ${index}`,
+						slug: `email-${index}`,
+						status: index === 1 ? 'pending_review' : index === 2 ? 'draft' : 'published',
+						updatedAt: 1_000 + index,
+					})
+				);
+			}
+		});
+	}
+
+	it('returns the most recently updated emails first, up to the limit', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, 5);
+
+		const rows = await t.query(api.transactional.emails.listRecent, { limit: 3 });
+
+		expect(rows.map((row) => row.name)).toEqual(['Email 4', 'Email 3', 'Email 2']);
+		expect(rows[2]!.status).toBe('draft');
+	});
+
+	it('returns only the fields a sidebar row needs', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, 2);
+
+		const [row] = await t.query(api.transactional.emails.listRecent, { limit: 1 });
+
+		expect(Object.keys(row!).sort()).toEqual(['_id', 'name', 'status', 'updatedAt']);
+		expect(row!.status).toBe('pending_review');
+	});
+
+	it('caps the limit, so a caller cannot read the whole library through it', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t, 12);
+
+		const rows = await t.query(api.transactional.emails.listRecent, { limit: 500 });
+
+		expect(rows).toHaveLength(10);
+	});
+});
+
 // ============ transactionalEmails.get ============
 
 describe('transactionalEmails.get', () => {

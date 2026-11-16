@@ -249,6 +249,10 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 		...member(api.transactional.emails.list),
 		flag: 'transactional',
 	},
+	'transactional.emails.listRecent': {
+		...member(api.transactional.emails.listRecent, () => ({ limit: 3 })),
+		flag: 'transactional',
+	},
 	'transactional.sends.get': {
 		...member(api.transactional.sends.get, (s) => ({ id: s.transactionalSendId })),
 		flag: 'transactional',
@@ -274,7 +278,7 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 
 describe('query authorization matrix: audience, library, delivery and settings reads', () => {
 	it('covers every reviewed definition', () => {
-		expect(Object.keys(ROWS)).toHaveLength(44);
+		expect(Object.keys(ROWS)).toHaveLength(45);
 	});
 
 	describeQueryMatrix(ROWS, libraryHarness);

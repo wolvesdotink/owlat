@@ -65,6 +65,7 @@ describe('useQuickCreateMenu', () => {
 			'aiCampaign',
 			'contact',
 			'automation',
+			'transactional',
 		]);
 		expect(actions.value[0]?.label).toBe('shared.quickCreate.compose');
 	});

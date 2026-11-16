@@ -39,6 +39,7 @@ const {
 useRecordPaletteObjectOpen(() =>
 	email.value?.name ? { kind: 'template', id: emailId.value, title: email.value.name } : null
 );
+useTransactionalBreadcrumbs(() => email.value?.name);
 
 // Mutations. The save rejects on failure (StaleDraftError for a stale
 // revision, which the bridge turns into the conflict dialog).

@@ -303,7 +303,7 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 		@clear-search="list.clearSearch"
 	>
 		<!-- On desktop the top bar's primary is already New campaign in the
-		     Marketing workspace; the header copy is for phones, whose top bar
+		     Sending workspace; the header copy is for phones, whose top bar
 		     has no create button. -->
 		<template #actions>
 			<UiButton class="lg:hidden" @click="handleNewCampaign">

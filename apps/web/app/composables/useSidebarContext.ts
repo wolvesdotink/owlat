@@ -10,8 +10,8 @@ import {
 import { readStoredChoice } from '~/utils/storedValue';
 
 /**
- * Reactive wiring for the sidebar's Inbox ↔ Marketing context toggle (pure
- * model in `lib/sidebarContext.ts`).
+ * Reactive wiring for the sidebar's Conversations ↔ Sending context toggle
+ * (pure model in `lib/sidebarContext.ts`).
  *
  * - Route-driven: navigating anywhere inside a context's subtree activates it
  *   (⌘K, deep links and dashboard cards all cross contexts without the toggle).

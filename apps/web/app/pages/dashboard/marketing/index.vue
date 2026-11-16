@@ -108,7 +108,7 @@ function handleNewCampaign() {
 					<ArrowDownIcon class="w-3 h-3" aria-hidden="true" />
 				</button>
 				<!-- The top bar's primary already says New campaign on large screens in
-				     the Marketing workspace; this copy is for phones, whose top bar has
+				     the Sending workspace; this copy is for phones, whose top bar has
 				     no create button. -->
 				<UiButton class="lg:hidden" @click="handleNewCampaign">
 					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
