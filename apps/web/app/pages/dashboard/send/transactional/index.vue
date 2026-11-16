@@ -53,30 +53,6 @@ const isSenderOpen = computed({
 		void router.replace({ query });
 	},
 });
-// `?action=create` (the sidebar's +, quick create, the palette) opens the
-// create dialog, also when this page is already open, and is dropped at once
-// so Back from the new email's editor does not open it again. It can arrive
-// while another dialog is up (the palette opens over them, and a link can carry
-// `?sender=edit` too), so creating closes the others and takes the sender
-// dialog's query with it. Waits for the role: before it is known `canManage`
-// is false.
-watch(
-	() => [route.query['action'], isRoleLoading.value] as const,
-	([action, roleLoading]) => {
-		if (action !== 'create' || roleLoading) return;
-		const { action: _action, ...query } = route.query;
-		if (!canManage.value) {
-			void router.replace({ query });
-			return;
-		}
-		snippetEmail.value = null;
-		isRecentSendsOpen.value = false;
-		isCreateOpen.value = true;
-		const { sender: _sender, ...withoutSender } = query;
-		void router.replace({ query: withoutSender });
-	},
-	{ immediate: true }
-);
 // Loaded on first open and kept, so closing plays the modal's exit.
 const hasOpenedSender = ref(false);
 // The readiness line inside the API snippet links here too; one dialog at a time.
@@ -128,6 +104,34 @@ const list = reactive(
 			isRecentSendsOpen.value ||
 			isSenderOpen.value,
 	})
+);
+
+// `?action=create` (the sidebar's +, quick create, the palette) opens the
+// create dialog, also when this page is already open, and is dropped at once
+// so Back from the new email's editor does not open it again. It can arrive
+// while another dialog is up (the palette opens over them, and a link can carry
+// `?sender=edit` too), so creating closes the others and takes the sender
+// dialog's query with it. A delete that is running keeps its dialog; the
+// action waits in the address until it has finished. Waits for the role too:
+// before it is known `canManage` is false.
+watch(
+	() => [route.query['action'], isRoleLoading.value, list.isDeleting] as const,
+	([action, roleLoading, deleting]) => {
+		if (action !== 'create' || roleLoading) return;
+		const { action: _action, ...query } = route.query;
+		if (!canManage.value) {
+			void router.replace({ query });
+			return;
+		}
+		if (deleting) return;
+		list.closeDelete();
+		snippetEmail.value = null;
+		isRecentSendsOpen.value = false;
+		isCreateOpen.value = true;
+		const { sender: _sender, ...withoutSender } = query;
+		void router.replace({ query: withoutSender });
+	},
+	{ immediate: true }
 );
 
 const { data: statusCounts } = useOrganizationQuery(api.transactional.emails.countByStatus);

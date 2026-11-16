@@ -5,7 +5,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { nextTick, reactive, ref } from 'vue';
+import { nextTick, reactive, ref, type Ref } from 'vue';
 import { hasPermission, type Permission } from '@owlat/shared/organizationPermissions';
 
 import TransactionalIndex from '../transactional/index.vue';
@@ -23,8 +23,13 @@ const EMAIL = {
 
 let route: { path: string; query: Record<string, string> };
 let replace: ReturnType<typeof vi.fn>;
+// The list composable's delete confirmation, which the shell renders.
+let isDeleteOpen: Ref<boolean>;
+let isDeleting: Ref<boolean>;
 
 beforeEach(() => {
+	isDeleteOpen = ref(false);
+	isDeleting = ref(false);
 	route = reactive({ path: '/dashboard/send/transactional', query: {} });
 	replace = vi.fn(({ query }: { query: Record<string, string> }) => {
 		route.query = query;
@@ -53,16 +58,23 @@ function render(role: 'owner' | 'editor' = 'owner'): VueWrapper {
 			isEmpty: ref(false),
 			error: ref(null),
 			hasOrganization: ref(true),
-			isDeleteOpen: ref(false),
-			isDeleting: ref(false),
+			isDeleteOpen,
+			isDeleting,
 			deleteTarget: ref(null),
+			// As `useListPage` does: a delete in flight keeps its dialog.
+			closeDelete: () => {
+				if (!isDeleting.value) isDeleteOpen.value = false;
+			},
 		}),
 	});
 	return mount(TransactionalIndex, {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				ListPageShell: { template: '<div><slot name="table" /><slot /></div>' },
+				ListPageShell: {
+					props: ['deleteOpen'],
+					template: `<div><div data-dialog="delete" :data-open="String(deleteOpen)" /><slot name="table" /><slot /></div>`,
+				},
 				LazyDeliveryTransactionalReadinessLine: true,
 				SendTemplateGrid: true,
 				SendTemplateCardList: true,
@@ -133,6 +145,36 @@ describe('transactional list dialogs', () => {
 		await nextTick();
 
 		expect(openDialogs(wrapper)).toEqual(['create']);
+	});
+
+	it('closes an idle delete confirmation when a create action arrives', async () => {
+		const wrapper = render();
+		isDeleteOpen.value = true;
+		await nextTick();
+		expect(openDialogs(wrapper)).toEqual(['delete']);
+
+		route.query = { action: 'create' };
+		await nextTick();
+
+		expect(openDialogs(wrapper)).toEqual(['create']);
+	});
+
+	it('waits for a running delete, then opens the create dialog', async () => {
+		const wrapper = render();
+		isDeleteOpen.value = true;
+		isDeleting.value = true;
+		route.query = { action: 'create' };
+		await nextTick();
+
+		expect(openDialogs(wrapper)).toEqual(['delete']);
+		expect(route.query).toEqual({ action: 'create' });
+
+		isDeleteOpen.value = false;
+		isDeleting.value = false;
+		await nextTick();
+
+		expect(openDialogs(wrapper)).toEqual(['create']);
+		expect(route.query).toEqual({});
 	});
 
 	it('keeps the sender dialog closed while the create dialog is open', async () => {
