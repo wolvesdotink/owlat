@@ -148,8 +148,9 @@ jobs:
           grep -n '^version = ' Cargo.toml
 
       # Windows Installer versions are numeric only, so Tauri refuses to build
-      # the .msi of a prerelease such as 0.7.0-rc.1. Release candidates must
-      # build every artifact the stable release will, so give them one.
+      # the .msi of a prerelease such as 0.7.0-rc.1. A candidate builds every
+      # artifact the stable release will except the RPM (see the next step),
+      # so give it one.
       - name: Set the MSI version of prerelease builds
         if: runner.os == 'Windows'
         shell: bash
