@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { ref } from 'vue';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import PageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import SegmentedControl from '@owlat/ui/components/ui/SegmentedControl.vue';
@@ -33,9 +34,10 @@ beforeEach(() => {
 let listError: Error | null;
 let refetchList: ReturnType<typeof vi.fn>;
 
-function render(templates = TEMPLATES): VueWrapper {
+function render(templates = TEMPLATES, stubs: Record<string, unknown> = {}): VueWrapper {
 	installNuxtStubs({
 		...i18nStubs,
+		...stubs,
 		useRoute: () => ({ path: '/dashboard/send', query, params: {} }),
 		useRouter: () => ({ push: vi.fn(), replace }),
 		useOrganizationQuery: (reference: FunctionReference<'query'>) => {
@@ -147,6 +149,56 @@ describe('templates list', () => {
 		query = { type: 'marketing' };
 		const wrapper = render([]);
 		expect(wrapper.find('[data-stub="empty"]').text()).toBe('No marketing templates yet');
+	});
+
+	describe('the pointer to transactional emails', () => {
+		const HINT = '[data-testid="template-transactional-hint"]';
+		const permissions = (isAdmin: boolean) => ({
+			usePermissions: () => ({
+				can: () => isAdmin,
+				showGateFor: () => false,
+				isAdmin: ref(isAdmin),
+			}),
+		});
+		const flags = (on: boolean) => ({ useFeatureFlag: () => ({ isEnabled: () => on }) });
+
+		it('shows under the Transactional filter and links to the list', () => {
+			query = { type: 'transactional' };
+			const hint = render(TEMPLATES, { ...permissions(true), ...flags(true) }).get(HINT);
+			expect(hint.get('a').attributes('href')).toBe('/dashboard/send/transactional');
+		});
+
+		it('stays away from the other filters', () => {
+			expect(
+				render(TEMPLATES, { ...permissions(true), ...flags(true) })
+					.find(HINT)
+					.exists()
+			).toBe(false);
+			query = { type: 'marketing' };
+			expect(
+				render(TEMPLATES, { ...permissions(true), ...flags(true) })
+					.find(HINT)
+					.exists()
+			).toBe(false);
+		});
+
+		it('is not shown to a member who cannot open transactional emails', () => {
+			query = { type: 'transactional' };
+			expect(
+				render(TEMPLATES, { ...permissions(false), ...flags(true) })
+					.find(HINT)
+					.exists()
+			).toBe(false);
+		});
+
+		it('is not shown while the transactional feature is off', () => {
+			query = { type: 'transactional' };
+			expect(
+				render(TEMPLATES, { ...permissions(true), ...flags(false) })
+					.find(HINT)
+					.exists()
+			).toBe(false);
+		});
 	});
 
 	it('shows a failed read with Try again instead of an empty list (#721)', async () => {

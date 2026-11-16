@@ -18,7 +18,6 @@ import {
 } from '~/utils/templateListFilter';
 import { FileTextIcon, GridIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 import SendTemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
-import { transactionalGate } from '~/lib/dashboardNavigationCore';
 
 const { t, locale } = useI18n();
 
@@ -31,7 +30,7 @@ definePageMeta({
 
 const route = useRoute();
 const router = useRouter();
-const { can, showGateFor, role } = usePermissions();
+const { can, showGateFor, isAdmin } = usePermissions();
 const { isEnabled } = useFeatureFlag();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
@@ -48,11 +47,12 @@ const typeFilter = computed<TemplateTypeFilter>({
 // A template's type is only a label: the campaign and automation pickers list
 // marketing templates, and the transactional API sends `transactionalEmails`,
 // never a template. So the Transactional filter says where the API-triggered
-// emails actually are, to whoever can open that list.
+// emails actually are, to whoever can open that list: an admin with the
+// `transactional` flag on, the same rule as the navigation's gate. Spelled out
+// here because importing the navigation table would load it, its icons and the
+// settings registry with this page.
 const showTransactionalHint = computed(
-	() =>
-		typeFilter.value === 'transactional' &&
-		transactionalGate({ isFeatureEnabled: isEnabled, isDesktop: false, role: role.value })
+	() => typeFilter.value === 'transactional' && isAdmin.value && isEnabled('transactional')
 );
 
 const { data: typeCounts } = useOrganizationQuery(
