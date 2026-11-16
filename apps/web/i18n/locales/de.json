@@ -470,7 +470,7 @@
 				"nameSlugHelp": "Lass die Felder leer, dann schlägt die KI sie vor. Im Editor kannst du beide ändern.",
 				"references": {
 					"label": "Als Vorlage nutzen",
-					"optional": "(optional)",
+					"optional": "(freiwillig)",
 					"remove": "{name} entfernen",
 					"full": "Höchstens {max} Vorlagen",
 					"placeholder": "Vorlagen, transaktionale E-Mails und Kampagnen suchen",

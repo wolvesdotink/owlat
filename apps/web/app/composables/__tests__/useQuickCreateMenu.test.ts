@@ -62,6 +62,7 @@ describe('useQuickCreateMenu', () => {
 		expect(actions.value.map((action) => action.id)).toEqual([
 			'compose',
 			'campaign',
+			'aiCampaign',
 			'contact',
 			'automation',
 		]);
