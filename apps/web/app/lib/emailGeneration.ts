@@ -131,6 +131,34 @@ export function generationRequest(
 	};
 }
 
+type GenerationArgs = Extract<ReturnType<typeof generationRequest>, { ok: true }>['args'];
+
+/** The request id a submission is sent under, and the form it was minted for. */
+export interface Submission {
+	requestId: string;
+	form: string;
+}
+
+/**
+ * The submission to send `args` under. The same form sent again keeps its
+ * request id, so a retry after a failure whose outcome the client never saw
+ * (a dropped connection after the draft was made) is answered with that draft
+ * instead of a second one. Keeping it after a failure the server reported is
+ * harmless: that run created nothing, so the server runs the retry afresh. A
+ * changed form (prompt, kind, references, style switch, language, name, slug)
+ * is a new submission with a new id. A success clears the submission
+ * (`useEmailGeneration`), so the next one is new too.
+ */
+export function nextSubmission(
+	previous: Submission | null,
+	args: GenerationArgs,
+	mint: () => string
+): Submission {
+	const form = JSON.stringify(args);
+	if (previous && previous.form === form) return previous;
+	return { requestId: mint(), form };
+}
+
 export type GenerationFailure =
 	| { kind: 'budget'; reason: string | null }
 	| { kind: 'rate_limited' }

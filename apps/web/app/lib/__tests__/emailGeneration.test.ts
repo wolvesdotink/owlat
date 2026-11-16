@@ -14,6 +14,7 @@ import {
 	generationRequest,
 	MAX_PROMPT_CHARS,
 	MAX_REFERENCES,
+	nextSubmission,
 	removeReference,
 	type EmailReference,
 } from '../emailGeneration';
@@ -100,6 +101,57 @@ describe('generationRequest', () => {
 		expect(
 			generationRequest('template', { ...form, prompt: 'x'.repeat(MAX_PROMPT_CHARS + 1) })
 		).toEqual({ ok: false, reason: 'too_long' });
+	});
+});
+
+describe('nextSubmission', () => {
+	const form = {
+		prompt: 'A booking confirmation',
+		references: [{ kind: 'template' as const, id: 'r1', name: 'Old' }],
+		matchStyle: true,
+		defaultLanguage: 'en',
+		name: 'Booking',
+		slug: 'booking',
+	};
+	const argsOf = (
+		over: Partial<typeof form> = {},
+		kind: 'template' | 'transactional' = 'transactional'
+	) => {
+		const request = generationRequest(kind, { ...form, ...over });
+		if (!request.ok) throw new Error('expected a request');
+		return request.args;
+	};
+	let minted = 0;
+	const mint = () => `id-${++minted}`;
+
+	it('mints an id for a first submission', () => {
+		expect(nextSubmission(null, argsOf(), mint).requestId).toMatch(/^id-/);
+	});
+
+	it('keeps the id when the same form is sent again', () => {
+		const first = nextSubmission(null, argsOf(), mint);
+		expect(nextSubmission(first, argsOf(), mint).requestId).toBe(first.requestId);
+		// Whitespace the request trims away is not a change.
+		expect(nextSubmission(first, argsOf({ prompt: '  A booking confirmation ' }), mint)).toBe(
+			first
+		);
+	});
+
+	it.each([
+		['prompt', { prompt: 'A password reset' }],
+		['references', { references: [] }],
+		['style switch', { matchStyle: false }],
+		['language', { defaultLanguage: 'de' }],
+		['name', { name: 'Meeting booked' }],
+		['slug', { slug: 'meeting-booked' }],
+	] as const)('mints a new id once the %s changes', (_label, over) => {
+		const first = nextSubmission(null, argsOf(), mint);
+		expect(nextSubmission(first, argsOf(over), mint).requestId).not.toBe(first.requestId);
+	});
+
+	it('mints a new id for another kind', () => {
+		const first = nextSubmission(null, argsOf({}, 'transactional'), mint);
+		expect(nextSubmission(first, argsOf({}, 'template'), mint).requestId).not.toBe(first.requestId);
 	});
 });
 

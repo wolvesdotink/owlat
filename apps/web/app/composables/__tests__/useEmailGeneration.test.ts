@@ -135,4 +135,43 @@ describe('useEmailGeneration', () => {
 		});
 		expect(calls[0]).not.toHaveProperty('name');
 	});
+
+	it('sends a retry of the same form under the same request id', async () => {
+		const gen = useEmailGeneration('template');
+		gen.state.value.prompt = 'October newsletter';
+		const first = gen.generate();
+		onError!({ category: 'network', message: 'connection lost' });
+		pending[0]!({ ok: false });
+		await first;
+		const retry = gen.generate();
+		pending[1]!({ ok: true, result: campaign });
+		await retry;
+		const [sent, resent] = calls as { requestId: string }[];
+		expect(sent!.requestId).toMatch(/^[0-9a-f]{32}$/);
+		expect(resent!.requestId).toBe(sent!.requestId);
+	});
+
+	it('sends a new request id once the form changed after a failure', async () => {
+		const gen = useEmailGeneration('template');
+		gen.state.value.prompt = 'October newsletter';
+		const first = gen.generate();
+		pending[0]!({ ok: false });
+		await first;
+		gen.state.value.matchStyle = false;
+		void gen.generate();
+		const [sent, resent] = calls as { requestId: string }[];
+		expect(resent!.requestId).not.toBe(sent!.requestId);
+	});
+
+	it('sends a new request id after a success, for the same words', async () => {
+		const gen = useEmailGeneration('template');
+		gen.state.value.prompt = 'October newsletter';
+		const first = gen.generate();
+		pending[0]!({ ok: true, result: campaign });
+		await first;
+		gen.state.value.prompt = 'October newsletter';
+		void gen.generate();
+		const [sent, next] = calls as { requestId: string }[];
+		expect(next!.requestId).not.toBe(sent!.requestId);
+	});
 });

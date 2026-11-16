@@ -4,9 +4,11 @@ import {
 	classifyGenerationFailure,
 	draftPath,
 	generationRequest,
+	nextSubmission,
 	type EmailReference,
 	type GenerationFailure,
 	type GenerationKind,
+	type Submission,
 } from '~/lib/emailGeneration';
 
 export type GenerationResult = FunctionReturnType<typeof api.emailGeneration.generate.generate>;
@@ -19,6 +21,8 @@ interface GenerationState {
 	slug: string;
 	status: 'idle' | 'generating' | 'failed';
 	failure: GenerationFailure | null;
+	/** The last submission sent; kept until it succeeds (`nextSubmission`). */
+	submission: Submission | null;
 }
 
 /** The open dialog's success handler per kind; absent while every dialog is closed. */
@@ -32,7 +36,17 @@ const blank = (): GenerationState => ({
 	slug: '',
 	status: 'idle',
 	failure: null,
+	submission: null,
 });
+
+/**
+ * 128 random bits as hex. Not `crypto.randomUUID`, which only exists in a
+ * secure context, and an instance may be reached over plain HTTP.
+ */
+function newRequestId(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * One AI draft run per kind, shared by every surface that opens the generator.
@@ -43,7 +57,9 @@ const blank = (): GenerationState => ({
  * closing the dialog mid-run neither loses nor repeats the draft: the run
  * keeps going, reopening shows it still in progress (it cannot be sent a
  * second time), and when it lands with no dialog open a toast offers the
- * draft. A failure keeps the prompt and the picks for the next try.
+ * draft. A failure keeps the prompt and the picks for the next try, and the
+ * request id too while the form is unchanged, so a retry of a run whose answer
+ * was lost gets the draft it made, not a second one.
  */
 export function useEmailGeneration(kind: GenerationKind) {
 	const { t } = useI18n();
@@ -72,10 +88,15 @@ export function useEmailGeneration(kind: GenerationKind) {
 			...extra,
 		});
 		if (!request.ok) return;
+		const submission = nextSubmission(state.value.submission, request.args, newRequestId);
+		state.value.submission = submission;
 		state.value.status = 'generating';
 		state.value.failure = null;
 		// The reference ids came from the picker's own query, so they are document ids.
-		const outcome = await run(request.args as Parameters<typeof run>[0]);
+		const outcome = await run({
+			...request.args,
+			requestId: submission.requestId,
+		} as Parameters<typeof run>[0]);
 		if (!outcome.ok) {
 			state.value.status = 'failed';
 			return;
