@@ -9,8 +9,8 @@
  * The model writes plain text with three inline marks (**bold**, *italic*,
  * [label](url)); everything else it writes is escaped. Links and buttons keep
  * only http(s), mailto and `{{variable}}` targets. Merge tags the email kind
- * cannot fill are dropped (their fallback text stays), so a draft never ships
- * a token that renders blank at send time.
+ * cannot fill are dropped (their fallback text stays, braces removed), so a
+ * draft never ships a token that renders blank at send time.
  */
 
 import { moduleFor, validateBlocks } from '@owlat/email-renderer';
@@ -97,9 +97,23 @@ export function allowedVariables(
 	return allowed;
 }
 
+/** Fallback text with its braces removed, so it can never form or complete a token. */
+const neutralised = (fallback: string) => fallback.replace(/[{}]/g, '');
+
 /**
  * Remove every token whose name is not allowed, keeping its fallback text.
- * `dropped` and `used` collect names across calls.
+ * `dropped` and `used` collect names across calls; `used` holds only the
+ * tokens left in the returned text.
+ *
+ * The send path reads the stored text as tokens again, so nothing this
+ * writes may introduce one. Two holes, two measures:
+ * - A fallback (`{{bad|'{{hidden}}'}}`, or an allowed token's, which a send
+ *   prints when the value is missing) loses its braces. Re-reading the
+ *   fallback as tokens instead would leave `{{bad|'{{x'}}` as a half token.
+ * - A removal can join the text around it into a token
+ *   (`{{{{bad}}hidden}}` → `{{hidden}}`), which no fallback rule closes, so
+ *   the pass repeats until it changes nothing. Every pass that changes the
+ *   text shortens it, so the repeat ends.
  */
 export function filterTokens(
 	text: string,
@@ -107,14 +121,25 @@ export function filterTokens(
 	dropped: Set<string>,
 	used: Set<string>
 ): string {
-	return text.replace(TOKEN, (match, name: string, fallback: string | undefined) => {
-		if (allowed.has(name)) {
-			used.add(name);
-			return match;
+	let current = text;
+	for (;;) {
+		let droppedAny = false;
+		const kept = new Set<string>();
+		const next = current.replace(TOKEN, (match, name: string, fallback: string | undefined) => {
+			if (allowed.has(name)) {
+				kept.add(name);
+				return fallback === undefined ? match : `{{${name}|'${neutralised(fallback)}'}}`;
+			}
+			dropped.add(name);
+			droppedAny = true;
+			return neutralised(fallback ?? '');
+		});
+		if (!droppedAny && next === current) {
+			for (const name of kept) used.add(name);
+			return current;
 		}
-		dropped.add(name);
-		return fallback ?? '';
-	});
+		current = next;
+	}
 }
 
 /** A link target the draft may keep, or null. */

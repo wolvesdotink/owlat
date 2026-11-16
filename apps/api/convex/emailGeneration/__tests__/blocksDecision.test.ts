@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { renderEmailHtml } from '@owlat/email-renderer';
 import type { EditorBlock } from '@owlat/shared';
 import { resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import {
@@ -12,6 +13,7 @@ import {
 	type GenerationKind,
 } from '../blocksDecision';
 import { GENERATION_LIMITS, type GeneratedEmail, type GeneratedSection } from '../outputSchema';
+import { missingDataVariables } from '../../transactional/dispatchContent';
 
 const section = (
 	over: Partial<GeneratedSection> & Pick<GeneratedSection, 'kind'>
@@ -234,6 +236,89 @@ describe('merge tags and data variables', () => {
 		expect(content(result.blocks[1])!['url']).toBe('{{rescheduleUrl}}');
 		expect(content(result.blocks[2])!['html']).toBe('<p>Ref {{bad-name}}</p>');
 		expect(result.slug).toBe('booking-confirmation');
+	});
+
+	it('does not let the fallback of a dropped token smuggle in an undeclared variable', () => {
+		const result = plan(
+			email({
+				subject: "{{bad|'{{hidden}}'}}",
+				sections: [section({ kind: 'paragraph', text: 'Hello' })],
+				variables: [],
+			}),
+			'transactional'
+		);
+		expect(result.subject).toBe('hidden');
+		expect(result.dataVariablesSchema).toEqual({});
+		expect(result.droppedVariables).toEqual(['bad']);
+	});
+
+	it('does not let a fallback bring a marketing draft a tag a send cannot fill', () => {
+		const result = plan(
+			email({
+				subject: "Hi {{coupon|'{{secret}}'}}",
+				sections: [
+					section({
+						kind: 'paragraph',
+						text: "Code {{coupon|'{{plan}}'}} for {{firstName|'{{x}}'}}",
+					}),
+				],
+			})
+		);
+		expect(result.subject).toBe('Hi secret');
+		expect(content(result.blocks[0])!['html']).toBe("<p>Code plan for {{firstName|'x'}}</p>");
+	});
+
+	it('resolves a doubly nested fallback and a token joined by a removal to plain text', () => {
+		const result = plan(
+			email({
+				subject: "Hi {{a|'{{b|'{{c}}'}}'}}",
+				sections: [section({ kind: 'paragraph', text: 'Ref {{{{bad}}hidden}} end' })],
+			}),
+			'transactional'
+		);
+		expect(result.subject).toBe('Hi c');
+		expect(content(result.blocks[0])!['html']).toBe('<p>Ref end</p>');
+		expect(result.dataVariablesSchema).toEqual({});
+	});
+
+	it('never leaves the send path requiring a variable the stored schema does not declare', () => {
+		const smuggled = [
+			"{{bad|'{{hidden}}'}}",
+			"{{a|'{{b|'{{c}}'}}'}}",
+			'{{{{bad}}hidden}}',
+			"{{bad|'{{'}}hidden}}",
+			"{{{bad|'{'}}orderId}}}",
+			"{{orderId|'{{hidden}}'}}",
+			"{{{{x}}{{y|'{{z}}'}}orderId}}",
+		];
+		for (const text of smuggled) {
+			const result = plan(
+				email({
+					subject: `Order ${text}`,
+					previewText: `Preview ${text}`,
+					sections: [
+						section({ kind: 'heading', level: 'h1', text: `Heading ${text}` }),
+						section({ kind: 'paragraph', text: `Paragraph ${text}\n\nSecond ${text}` }),
+						section({ kind: 'list', items: [`Item ${text}`, text] }),
+						section({ kind: 'button', text: `Open ${text}`, url: text }),
+						section({ kind: 'button', text: 'Track', url: `{{${text.slice(2)}` }),
+					],
+					variables: [{ name: 'orderId', type: 'string', optional: false }],
+				}),
+				'transactional'
+			);
+			const html = renderEmailHtml(result.blocks, { preheaderText: result.previewText });
+			const required = missingDataVariables(
+				{ subject: result.subject, html, plainText: undefined },
+				{},
+				[]
+			);
+			const declared = Object.keys(result.dataVariablesSchema ?? {});
+			expect(
+				required.filter((name) => !declared.includes(name)),
+				text
+			).toEqual([]);
+		}
 	});
 });
 
