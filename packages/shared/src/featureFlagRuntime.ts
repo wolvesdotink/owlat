@@ -40,6 +40,7 @@ export type CoreFeatureFlagKey =
 	| 'ai.knowledge.analytics'
 	| 'ai.assistant'
 	| 'ai.visualizations'
+	| 'ai.emailGeneration'
 	// Integrations
 	| 'webhooks'
 	| 'forms'
@@ -198,6 +199,11 @@ export const FEATURE_FLAG_RULES: { readonly [Key in CoreFeatureFlagKey]: Feature
 	},
 	'ai.visualizations': {
 		key: 'ai.visualizations',
+		default: false,
+		requires: ['ai'],
+	},
+	'ai.emailGeneration': {
+		key: 'ai.emailGeneration',
 		default: false,
 		requires: ['ai'],
 	},

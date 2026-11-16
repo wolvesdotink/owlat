@@ -11,7 +11,9 @@ import {
 	templateHasBody,
 	type ReviewSchedule,
 } from '~/lib/campaignCompose';
-import { ArrowLeftIcon } from '@coolicons/vue';
+import { generationEntry, warmEmailGeneratePanel } from '~/lib/emailGenerationEntry';
+import type { GenerationResult } from '~/composables/useEmailGeneration';
+import { ArrowLeftIcon, SparklesIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -158,6 +160,28 @@ const isWizardReady = () =>
 
 const { currentStep, getStepStatus, isConnectorHighlighted, goToStep, goToNext, goToPrevious } =
 	useWizard(steps, { syncQuery: true, isStepComplete, isReady: isWizardReady });
+
+// "Draft the whole campaign with AI": creates the draft campaign with its email
+// attached, then the wizard picks it up on Setup, where the sender and the
+// audience stay the author's to choose. `?draft=ai` (quick create, the command
+// palette) opens it on arrival.
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const { can } = usePermissions();
+const { showToast } = useToast();
+const aiEntry = computed(() => generationEntry('campaign', { isFeatureEnabled, can }));
+const isAiDialogOpen = ref(route.query['draft'] === 'ai' && campaignId.value === null);
+watch(isAiDialogOpen, (isOpen) => {
+	if (isOpen || route.query['draft'] === undefined) return;
+	const query = { ...route.query };
+	delete query['draft'];
+	void router.replace({ query });
+});
+const handleAiDraft = async (result: GenerationResult) => {
+	if (result.kind !== 'campaign') return;
+	await rememberCampaign(result.campaignId);
+	goToStep('setup');
+	showToast(t('components.ai.emailGenerate.campaignReady'));
+};
 
 // Handle step submissions
 const handleSetupSubmit = async (newCampaignId: Id<'campaigns'>) => {
@@ -344,6 +368,50 @@ const reviewData = computed(() => {
 
 		<!-- Content -->
 		<div class="max-w-4xl mx-auto px-6 py-8">
+			<template v-if="currentStep === 'setup' && campaignId === null">
+				<button
+					v-if="aiEntry === 'show'"
+					type="button"
+					class="mb-6 flex w-full items-center gap-4 rounded-xl border border-brand/30 bg-brand/5 p-4 text-left transition-[border-color,box-shadow] hover:border-brand hover:shadow-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					data-testid="campaign-ai-draft"
+					@pointerenter="warmEmailGeneratePanel"
+					@focus="warmEmailGeneratePanel"
+					@click="isAiDialogOpen = true"
+				>
+					<span
+						class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand"
+					>
+						<SparklesIcon class="h-5 w-5" aria-hidden="true" />
+					</span>
+					<span class="min-w-0">
+						<span class="block font-medium text-text-primary">
+							{{ t('components.ai.emailGenerate.entry.campaignTitle') }}
+						</span>
+						<span class="block text-sm text-text-secondary">
+							{{ t('components.ai.emailGenerate.entry.campaign') }}
+						</span>
+					</span>
+				</button>
+				<p
+					v-else-if="aiEntry === 'enable_hint'"
+					class="mb-6 flex items-center gap-2 text-sm text-text-tertiary"
+				>
+					<SparklesIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
+					<span>
+						{{ t('components.ai.emailGenerate.enableHint') }}
+						<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">
+							{{ t('components.ai.emailGenerate.openFeatures') }}
+						</NuxtLink>
+					</span>
+				</p>
+			</template>
+			<AiEmailGenerateDialog
+				v-if="aiEntry === 'show'"
+				v-model:open="isAiDialogOpen"
+				kind="campaign"
+				@created="handleAiDraft"
+			/>
+
 			<KeepAlive>
 				<CampaignsStepsSetupStep
 					v-if="currentStep === 'setup'"

@@ -63,6 +63,7 @@ import { threadPurgeJobTables } from './schema/threadPurgeJobs';
 import { aiRoutingTables } from './schema/aiRouting';
 import { embeddingSpaceTables } from './schema/embeddingSpaces';
 import { apiRequestReceiptTables } from './schema/apiRequestReceipts';
+import { emailGenerationReceiptTables } from './schema/emailGenerationReceipts';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -130,5 +131,6 @@ export default defineSchema({
 	...aiRoutingTables,
 	...embeddingSpaceTables,
 	...apiRequestReceiptTables,
+	...emailGenerationReceiptTables,
 	...mcpTables,
 });

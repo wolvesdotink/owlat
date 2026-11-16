@@ -49,7 +49,7 @@ export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 		key: 'ai',
 		label: 'AI',
 		description:
-			'Reply drafts, auto-send rules, a knowledge graph, an assistant and AI dashboards.',
+			'Reply drafts, auto-send rules, a knowledge graph, an assistant, AI dashboards and email drafts.',
 		flags: [
 			'ai',
 			'ai.agent',
@@ -60,6 +60,7 @@ export const FEATURE_PACKS: Record<FeaturePackKey, FeaturePack> = {
 			'ai.knowledge.analytics',
 			'ai.assistant',
 			'ai.visualizations',
+			'ai.emailGeneration',
 		],
 	},
 };

@@ -82,6 +82,8 @@ export const AI_TASK_NAMES = [
 	'mail.rule_test',
 	// Language plane: a plain-language Postbox search rewritten into operators
 	'mail.search_rewrite',
+	// Language plane: an email template, transactional email or campaign drafted from a sentence
+	'email.generate',
 ] as const;
 
 export type AiTaskName = (typeof AI_TASK_NAMES)[number];

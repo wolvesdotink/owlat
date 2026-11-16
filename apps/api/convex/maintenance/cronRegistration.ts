@@ -96,6 +96,14 @@ export function registerRetentionCrons(crons: ReturnType<typeof cronJobs>): void
 		internal.transactional.sendDataRetention.sweepDataVariables,
 		{}
 	);
+	// AI draft receipts (emailGeneration/receipts.ts): they answer a repeated
+	// submission for a day. Hourly, so the day is not stretched to two.
+	crons.interval(
+		'retention: email generation receipts',
+		{ hours: 1 },
+		internal.emailGeneration.receipts.purgeExpired,
+		{}
+	);
 	// Recently deleted (marketing/recentlyDeleted.ts): campaigns, automations
 	// and email templates deleted more than 30 days ago are removed for good.
 	crons.interval(

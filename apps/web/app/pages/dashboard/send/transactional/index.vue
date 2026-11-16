@@ -34,6 +34,16 @@ const { run: deleteEmail } = useBackendOperation(api.transactional.emails.remove
 });
 
 const isCreateOpen = ref(false);
+// The create dialog carries the AI drafting switch, so it is fetched on first
+// open instead of with the list, and kept so that closing plays its exit.
+const hasOpenedCreate = ref(false);
+watch(
+	isCreateOpen,
+	(open) => {
+		if (open) hasOpenedCreate.value = true;
+	},
+	{ flush: 'sync' }
+);
 const snippetEmail = ref<{ name: string; slug: string } | null>(null);
 // Recent-sends modal (links through to the per-send delivery timeline)
 const recentSends = ref<{ id: Id<'transactionalEmails'>; name: string } | null>(null);
@@ -356,7 +366,7 @@ const rowActions = computed<TemplateRowAction<EmailRow>[]>(() => [
 			</SendTemplateCardList>
 		</template>
 
-		<TransactionalCreateEmailModal v-model:open="isCreateOpen" />
+		<LazyTransactionalCreateEmailModal v-if="hasOpenedCreate" v-model:open="isCreateOpen" />
 		<LazyTransactionalSenderDialog v-if="hasOpenedSender" v-model:open="isSenderOpen" />
 		<TransactionalApiSnippetModal :email="snippetEmail" @close="snippetEmail = null" />
 		<TransactionalRecentSendsModal

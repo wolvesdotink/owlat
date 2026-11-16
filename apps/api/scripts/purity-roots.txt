@@ -140,3 +140,8 @@ convex/auth/seedAdminDecision.ts
 # exportUserDataPage) and the staging commit (auth/accountExportArtifacts.ts
 # stageArtifact) are the shells.
 convex/auth/accountExportDecision.ts
+
+# AI email drafting: the outline-to-blocks mapper and the prompt and sample choice.
+convex/emailGeneration/blocksDecision.ts
+convex/emailGeneration/promptDecision.ts
+convex/emailGeneration/outputSchema.ts

@@ -83,6 +83,11 @@ const stepStubs = {
 		props: { getStepStatus: Function },
 		render: () => h('div'),
 	}),
+	AiEmailGenerateDialog: defineComponent({
+		props: { open: Boolean, kind: String },
+		emits: ['created', 'update:open'],
+		render: () => null,
+	}),
 	UiConfirmationDialog: defineComponent({
 		props: { open: Boolean },
 		emits: ['confirm', 'update:open'],

@@ -32,7 +32,7 @@ import { getLive } from '../lib/softDelete';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { duplicateEmailFields } from '../lib/publishableEmail';
-import { loadEmailTheme } from '../lib/publishableEmailRender';
+import { loadEmailTheme, renderForWrite } from '../lib/publishableEmailRender';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 
@@ -258,11 +258,97 @@ async function dispatch(
 
 // ─── Public entry points ────────────────────────────────────────────────────
 
+/** What {@link insertEmailTemplate} stores. */
+export interface EmailTemplateInsert {
+	name: string;
+	type: Doc<'emailTemplates'>['type'];
+	subject?: string;
+	previewText?: string;
+	content?: string;
+	defaultLanguage?: string;
+	linkedBlockIds?: string[];
+	userId: string;
+	/**
+	 * Render `htmlContent` and the text/plain body at insert. A row created
+	 * outside the editor has none until its first save, and a campaign send or
+	 * test send refuses a template without HTML; a draft written for the user
+	 * (AI drafting) has to be previewable and sendable as it is.
+	 */
+	render?: boolean;
+	/** Recorded on the audit row: the draft was written by AI drafting. */
+	generatedBy?: 'ai';
+}
+
 /**
  * Insert a new `emailTemplates` row at `draft`. The only insert site for
- * `emailTemplates` — used by `emails.create`, `organization.createForOrganization`,
- * and `organization.createFromPreset`.
+ * `emailTemplates`: `create` below wraps it, and the AI drafting commit
+ * (`emailGeneration/commit.ts`) calls it inside its own transaction.
  */
+export async function insertEmailTemplate(
+	ctx: MutationCtx,
+	args: EmailTemplateInsert
+): Promise<Id<'emailTemplates'>> {
+	const now = Date.now();
+	const defaultLanguage = args.defaultLanguage ?? 'en';
+	const name = args.name.trim();
+	const subject = args.subject?.trim() ?? '';
+	const searchableText = buildSearchableText(name, subject);
+	const content = sanitizeStoredBlocksJson(args.content ?? '[]');
+	const rendered = args.render
+		? renderForWrite(
+				{ content, subject, defaultLanguage, supportedLanguages: [defaultLanguage] },
+				'personalization',
+				await loadEmailTheme(ctx)
+			)
+		: null;
+
+	const templateId = await ctx.db.insert('emailTemplates', {
+		name,
+		subject,
+		previewText: args.previewText?.trim(),
+		content,
+		...(rendered
+			? { htmlContent: rendered.html, plainTextContent: rendered.plainTextContent }
+			: {}),
+		type: args.type,
+		status: 'draft',
+		defaultLanguage,
+		supportedLanguages: [defaultLanguage],
+		linkedBlockIds: args.linkedBlockIds,
+		contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
+		rendererVersion: CURRENT_RENDERER_VERSION,
+		searchableText,
+		createdAt: now,
+		updatedAt: now,
+	});
+	await recordListingCounter(ctx, 'templateType', null, { type: args.type });
+
+	const effects: Effect[] = [
+		{
+			kind: 'audit_log',
+			action: 'email_template.created',
+			templateId,
+			userId: args.userId,
+			details: {
+				name,
+				type: args.type,
+				applied: 'transitioned',
+				...(args.generatedBy ? { generatedBy: args.generatedBy } : {}),
+			},
+		},
+	];
+	if (args.linkedBlockIds && args.linkedBlockIds.length > 0) {
+		effects.push({
+			kind: 'update_block_usage_counts',
+			previousIds: [],
+			nextIds: args.linkedBlockIds,
+		});
+	}
+	await applyEffects(ctx, effects);
+	return templateId;
+}
+
+/** Insert a new `emailTemplates` row at `draft` ({@link insertEmailTemplate}). */
 export const create = internalMutation({
 	args: {
 		name: v.string(),
@@ -275,52 +361,7 @@ export const create = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<EmailTemplateCreateOutcome> => {
-		const now = Date.now();
-		const defaultLanguage = args.defaultLanguage ?? 'en';
-		const name = args.name.trim();
-		const subject = args.subject?.trim() ?? '';
-		const searchableText = buildSearchableText(name, subject);
-
-		const templateId = await ctx.db.insert('emailTemplates', {
-			name,
-			subject,
-			previewText: args.previewText?.trim(),
-			content: sanitizeStoredBlocksJson(args.content ?? '[]'),
-			type: args.type,
-			status: 'draft',
-			defaultLanguage,
-			supportedLanguages: [defaultLanguage],
-			linkedBlockIds: args.linkedBlockIds,
-			contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
-			rendererVersion: CURRENT_RENDERER_VERSION,
-			searchableText,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await recordListingCounter(ctx, 'templateType', null, { type: args.type });
-
-		const effects: Effect[] = [
-			{
-				kind: 'audit_log',
-				action: 'email_template.created',
-				templateId,
-				userId: args.userId,
-				details: {
-					name,
-					type: args.type,
-					applied: 'transitioned',
-				},
-			},
-		];
-		if (args.linkedBlockIds && args.linkedBlockIds.length > 0) {
-			effects.push({
-				kind: 'update_block_usage_counts',
-				previousIds: [],
-				nextIds: args.linkedBlockIds,
-			});
-		}
-		await applyEffects(ctx, effects);
-
+		const templateId = await insertEmailTemplate(ctx, args);
 		return { ok: true, templateId };
 	},
 });

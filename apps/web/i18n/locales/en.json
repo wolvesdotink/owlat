@@ -400,6 +400,115 @@
 				"submit": "Revise",
 				"submitting": "Revising…",
 				"toggle": "Revise…"
+			},
+			"emailGenerate": {
+				"operation": "Draft email with AI",
+				"readyToast": "Your AI draft is ready.",
+				"openDraft": "Open draft",
+				"campaignReady": "Campaign drafted with its email. Pick the sender and audience, then review the email.",
+				"loadFailed": "Couldn't load AI drafting. Check your connection and try again. If it keeps failing, reload the page.",
+				"title": {
+					"template": "Draft a template with AI",
+					"transactional": "Draft a transactional email with AI",
+					"campaign": "Draft a campaign with AI"
+				},
+				"entry": {
+					"title": "Describe it, AI drafts it",
+					"template": "Write a sentence about the email. You get an editable draft in the editor, styled with your brand kit.",
+					"campaignTitle": "Draft the whole campaign with AI",
+					"campaign": "Describe the campaign. You get a draft with its name, subject and email; the sender and audience stay yours to pick."
+				},
+				"enableHint": "Want AI to draft emails for you? Turn on “Draft emails with AI”.",
+				"openFeatures": "Open Features",
+				"mode": {
+					"blank": "Start blank",
+					"ai": "Draft with AI"
+				},
+				"languageLabel": "Language",
+				"languageFromPrompt": "Same as my description",
+				"promptLabel": "What should this email do?",
+				"promptPlaceholder": {
+					"template": "For example: our October newsletter about the new pricing, friendly and short",
+					"transactional": "For example: a booking confirmation with the meeting time and a reschedule link",
+					"campaign": "For example: announce our spring sale to past customers, 20% off until Sunday"
+				},
+				"examplesLabel": "Try:",
+				"examples": {
+					"newsletter": {
+						"label": "Monthly newsletter",
+						"prompt": "Our monthly newsletter: two short product updates, one customer story and a link to the blog. Friendly and brief."
+					},
+					"welcome": {
+						"label": "Welcome email",
+						"prompt": "A warm welcome email for new subscribers that says what they will get from us and links to our three most useful guides."
+					},
+					"event": {
+						"label": "Event invitation",
+						"prompt": "An invitation to our online event next month, with what attendees will learn and a button to register."
+					},
+					"booking": {
+						"label": "Booking confirmation",
+						"prompt": "A booking confirmation with the meeting date and time, the attendee's name and a link to reschedule."
+					},
+					"passwordReset": {
+						"label": "Password reset",
+						"prompt": "A password reset email with a button to the reset link, which expires in one hour, and a note to ignore it if they did not ask."
+					},
+					"orderShipped": {
+						"label": "Order shipped",
+						"prompt": "An order shipped notice with the order number, the carrier, the tracking link and the expected delivery date."
+					},
+					"launch": {
+						"label": "Product launch",
+						"prompt": "Announce our new feature to all customers: what it does, who it helps and a button to try it."
+					},
+					"winBack": {
+						"label": "Win back",
+						"prompt": "A friendly email to customers who have not bought in six months, with what is new since and a reason to come back."
+					}
+				},
+				"suggestedPlaceholder": "Suggested by AI",
+				"nameSlugHelp": "Leave these blank and AI suggests them. You can change both in the editor.",
+				"references": {
+					"label": "Use as reference",
+					"optional": "(optional)",
+					"remove": "Remove {name}",
+					"full": "Up to {max} references",
+					"placeholder": "Search templates, transactional emails and campaigns",
+					"searching": "Searching…",
+					"noMatches": "No emails match.",
+					"kind": {
+						"template": "Template",
+						"transactional": "Transactional",
+						"campaign": "Campaign"
+					}
+				},
+				"matchStyle": "Match the style of our existing emails",
+				"matchStyleHelp": "AI looks at a few of your recent emails for tone, structure and length.",
+				"generating": "Writing your draft…",
+				"generatingHelp": "This usually takes under a minute. You can close this; the draft is kept.",
+				"summary": {
+					"template": "This creates a draft template. Nothing is sent.",
+					"transactional": "This creates a draft transactional email with its data variables. Nothing is published or sent.",
+					"campaign": "This creates a draft campaign and its email. Nothing is scheduled or sent."
+				},
+				"submit": "Draft email",
+				"submitting": "Drafting…",
+				"errors": {
+					"budget": "The AI budget is used up.",
+					"rateLimited": "You have drafted a lot in a short time. Wait a few minutes and try again.",
+					"notConfigured": "No AI provider is set up on this instance yet. An admin can add one.",
+					"featureOff": "Drafting emails with AI is turned off on this instance.",
+					"permission": "You don't have permission to create this kind of email.",
+					"referenceMissing": "One of the picked references no longer exists. It was removed from your picks; try again.",
+					"invalidOutput": "The AI's answer wasn't a usable email. Try again, or describe the email in more detail.",
+					"providerFailed": "The AI provider didn't answer. Try again in a moment.",
+					"slugTaken": "That slug is already used by another transactional email. Pick another one or leave it blank.",
+					"invalidSlug": "The slug may only use lowercase letters, digits and hyphens, like order-confirmation. Fix it or leave it blank.",
+					"network": "You're offline. Your description is kept; try again when you're back online.",
+					"unknown": "Something went wrong while drafting. Your description is kept; try again.",
+					"invalidInput": "Check the description and the picks, then try again."
+				}
 			}
 		},
 		"appCommandPalette": {
@@ -17667,6 +17776,7 @@
 			"campaign": "Campaign",
 			"compose": "Compose email",
 			"contact": "Contact",
+			"aiCampaign": "Campaign with AI",
 			"transactional": "Transactional email"
 		},
 		"referenceRelay": {
@@ -19023,7 +19133,8 @@
 			"copySignInCode": "Copy latest sign-in code",
 			"openSignInLink": "Open latest sign-in link",
 			"checkForMail": "Check for mail",
-			"checkForMailSubtitle": "Connected accounts"
+			"checkForMailSubtitle": "Connected accounts",
+			"draftCampaignWithAi": "Draft a campaign with AI"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Add contacts to topic",
@@ -20188,6 +20299,10 @@
 					"visualizations": {
 						"description": "Describe a chart in plain words and get it built from your data.",
 						"label": "AI dashboards"
+					},
+					"emailGeneration": {
+						"label": "Draft emails with AI",
+						"description": "Describe an email in a sentence and get an editable draft: a template, a transactional email or a whole campaign. Nothing is sent."
 					}
 				},
 				"analytics": {
@@ -20325,7 +20440,7 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "Reply drafts, auto-send rules, a knowledge graph, an assistant and AI dashboards.",
+					"description": "Reply drafts, auto-send rules, a knowledge graph, an assistant, AI dashboards and email drafts.",
 					"label": "AI"
 				},
 				"emailClient": {

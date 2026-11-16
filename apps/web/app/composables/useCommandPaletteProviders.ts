@@ -63,6 +63,10 @@ import {
 const QUICK_CREATE_VERBS: Record<QuickCreateId, { id: string; labelKey: string }> = {
 	compose: { id: 'verb:compose', labelKey: 'shared.useCommandPaletteProviders.compose' },
 	campaign: { id: 'verb:new-campaign', labelKey: 'shared.useCommandPaletteProviders.newCampaign' },
+	aiCampaign: {
+		id: 'verb:draft-campaign-ai',
+		labelKey: 'shared.useCommandPaletteProviders.draftCampaignWithAi',
+	},
 	contact: { id: 'verb:new-contact', labelKey: 'shared.useCommandPaletteProviders.newContact' },
 	automation: {
 		id: 'verb:new-automation',

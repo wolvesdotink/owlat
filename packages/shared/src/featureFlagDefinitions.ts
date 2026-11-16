@@ -203,6 +203,7 @@ const FEATURE_FLAG_DETAILS: { readonly [Key in CoreFeatureFlagKey]: CoreFeatureF
 			'ai.knowledge.analytics',
 			'ai.assistant',
 			'ai.visualizations',
+			'ai.emailGeneration',
 		],
 		requiredEnvVars: ['LLM_PROVIDER', 'LLM_API_KEY'],
 		dockerProfiles: ['ai'], // optional local-LLM (ollama) sidecar
@@ -267,6 +268,12 @@ const FEATURE_FLAG_DETAILS: { readonly [Key in CoreFeatureFlagKey]: CoreFeatureF
 		category: 'ai',
 		label: 'AI dashboards',
 		description: 'Describe a chart in plain words and get it built from your data.',
+	},
+	'ai.emailGeneration': {
+		category: 'ai',
+		label: 'Draft emails with AI',
+		description:
+			'Describe an email in a sentence and get an editable draft: a template, a transactional email or a whole campaign. Nothing is sent.',
 	},
 
 	webhooks: {
