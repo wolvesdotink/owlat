@@ -10,9 +10,10 @@ export const emailGenerationReceiptTables = {
 	// twice. Scoped to the organization and the member: another member's
 	// guess of the id finds nothing.
 	//
-	// Only what the answer needs is kept: the ids of what was created and the
-	// variables the mapper left out. No prompt, no content. Rows only need to
-	// outlive a retry, so the hourly purge removes them after a day.
+	// Only what the answer needs is kept: the ids of what was created, a
+	// transactional email's slug, and the names of the variables the mapper
+	// left out. No prompt, no content. Rows only need to outlive a retry, so
+	// the hourly purge removes them once they are a day old.
 	emailGenerationReceipts: defineTable({
 		organizationId: v.string(),
 		userId: v.string(),

@@ -11,7 +11,10 @@
  *
  * A receipt answers with the result as first returned, also once the draft
  * has been deleted: the client reuses an id only when it never saw that
- * success, so the answer it lacks is the one it gets.
+ * success, so the answer it lacks is the one it gets. It answers only someone
+ * who could still draft that kind: after a demotion, or once the feature or
+ * the kind's own feature is off, a repeat gets the refusal a fresh run would
+ * get, not the ids and the slug of what the earlier run created.
  *
  * Receipts are scoped to the organization and the member, and kept for
  * {@link RECEIPT_RETENTION_MS}; the hourly purge removes older ones.
@@ -23,7 +26,10 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { requireOrgMember } from '../lib/sessionOrganization';
+import { getStoredFlags, resolveStoredFeatureFlags } from '../lib/featureFlags';
+import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import { DAY_MS } from '../lib/constants';
+import { generationRefusal, throwGenerationRefusal } from './_helpers';
 import type { GenerationOutcome } from './commit';
 
 /** How long a submission's result answers a repeat of it. */
@@ -41,6 +47,8 @@ const PURGE_BATCH = 200;
 export interface ReceiptScope {
 	organizationId: string;
 	userId: string;
+	/** Decides whether a recorded outcome may still be returned to this member. */
+	role: OrganizationRole | null;
 }
 
 async function findReceipt(
@@ -64,14 +72,21 @@ const outcomeOf = (receipt: Doc<'emailGenerationReceipts'>): GenerationOutcome =
 	droppedVariables: receipt.droppedVariables,
 });
 
-/** The recorded outcome of this member's submission, or null. */
+/**
+ * The recorded outcome of this member's submission, or null. Refuses, as a
+ * fresh run of the recorded kind would, when the member may no longer draft it.
+ */
 export async function recordedOutcome(
 	ctx: QueryCtx,
 	scope: ReceiptScope,
 	requestId: string
 ): Promise<GenerationOutcome | null> {
 	const receipt = await findReceipt(ctx.db, scope, requestId);
-	return receipt ? outcomeOf(receipt) : null;
+	if (!receipt) return null;
+	const flags = resolveStoredFeatureFlags(await getStoredFlags(ctx));
+	const refusal = generationRefusal(receipt.result.kind, flags, scope.role);
+	if (refusal) throwGenerationRefusal(refusal);
+	return outcomeOf(receipt);
 }
 
 /** Record the outcome, in the transaction that created the draft. */
@@ -99,7 +114,11 @@ export const lookup = internalQuery({
 		const session = await requireOrgMember(ctx);
 		return await recordedOutcome(
 			ctx,
-			{ organizationId: session.activeOrganizationId, userId: session.userId },
+			{
+				organizationId: session.activeOrganizationId,
+				userId: session.userId,
+				role: session.role,
+			},
 			args.requestId
 		);
 	},

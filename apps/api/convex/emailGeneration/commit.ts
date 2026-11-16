@@ -90,6 +90,7 @@ export const commit = internalMutation({
 		const scope: ReceiptScope = {
 			organizationId: session.activeOrganizationId,
 			userId: session.userId,
+			role: session.role,
 		};
 		const recorded = await recordedOutcome(ctx, scope, args.requestId);
 		if (recorded) return recorded;

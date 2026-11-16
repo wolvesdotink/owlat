@@ -745,6 +745,42 @@ describe('generate: one submission, one draft', () => {
 		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
 	});
 
+	it.each([
+		{ kind: 'template', email: newsletter, off: 'ai.emailGeneration' },
+		{ kind: 'template', email: newsletter, off: 'ai' },
+		{ kind: 'transactional', email: booking, off: 'transactional' },
+		{ kind: 'campaign', email: newsletter, off: 'campaigns' },
+	] as const)('refuses a repeated $kind request once $off is off', async ({ kind, email, off }) => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(email);
+		const args = { ...base, kind, requestId: `replay-${kind}-${off.replace('.', '-')}` };
+		await t.action(api.emailGeneration.generate.generate, args);
+
+		await setFlags(t, { [off]: false });
+
+		await expect(t.action(api.emailGeneration.generate.generate, args)).rejects.toThrow(
+			/disabled/i
+		);
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+	});
+
+	it('refuses a repeated request from a member who lost the permission since', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(booking);
+		const args = { ...base, kind: 'transactional' as const, requestId: 'replay-demoted' };
+		await t.action(api.emailGeneration.generate.generate, args);
+
+		session.role = 'editor';
+
+		await expect(t.action(api.emailGeneration.generate.generate, args)).rejects.toThrow(
+			/permission/i
+		);
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(await countRows(t)).toMatchObject({ transactional: 1, receipts: 1 });
+	});
+
 	it('does not answer one member with another member’s result', async () => {
 		const t = setup();
 		await enableFeatures(t, ALL_FLAGS);
