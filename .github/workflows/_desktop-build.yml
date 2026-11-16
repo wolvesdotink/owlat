@@ -148,14 +148,25 @@ jobs:
           grep -n '^version = ' Cargo.toml
 
       # Windows Installer versions are numeric only, so Tauri refuses to build
-      # the .msi of a prerelease such as 0.7.0-rc.1. Release candidates must
-      # build every artifact the stable release will, so give them one.
+      # the .msi of a prerelease such as 0.7.0-rc.1. A candidate builds every
+      # artifact the stable release will except the RPM (see the next step),
+      # so give it one.
       - name: Set the MSI version of prerelease builds
         if: runner.os == 'Windows'
         shell: bash
         env:
           TAG: ${{ inputs.tag }}
         run: bun scripts/ci/msi-version.ts
+
+      # RPM refuses a `-` in its version, so the bundler fails on a prerelease
+      # such as 0.7.0-rc.1. A candidate builds the deb and the AppImage (the
+      # updater's Linux artifact); the stable tag builds the RPM as well.
+      - name: Limit the Linux bundles of prerelease builds
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bun scripts/ci/linux-bundles.ts
 
       # Signing env is exported only when the secret actually has a value.
       # GitHub renders unset secrets as EMPTY strings, and tauri-bundler treats

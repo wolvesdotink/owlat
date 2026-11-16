@@ -84,6 +84,19 @@ export function msiVersion(version: string): string | null {
 	return `${parsed.base}.${build}`;
 }
 
+/**
+ * The Linux bundles a desktop build of `version` makes, or null for every
+ * bundle Tauri builds by default. RPM refuses a `-` in its version, so a
+ * prerelease (`0.7.0-rc.1`) leaves the RPM out; the stable release, whose
+ * version has no `-`, builds it. The AppImage is the updater's Linux artifact,
+ * so a candidate still exercises the update path.
+ */
+export function linuxBundleTargets(version: string): string[] | null {
+	const parsed = classifyReleaseTag(`v${version}`);
+	if (!parsed) throw new Error(`Invalid release version: ${version}`);
+	return parsed.channel === 'stable' ? null : ['deb', 'appimage'];
+}
+
 /** One candidate of the version being promoted, with what GitHub knows about it. */
 export interface CandidateEvidence {
 	tag: string;
