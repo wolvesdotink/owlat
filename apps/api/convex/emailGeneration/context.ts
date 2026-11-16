@@ -65,30 +65,61 @@ function missingReference(reference: Reference): never {
 	});
 }
 
-async function loadReference(
+type ResolvedReference =
+	| { kind: 'template'; template: Doc<'emailTemplates'> }
+	| { kind: 'transactional'; email: Doc<'transactionalEmails'> }
+	| { kind: 'campaign'; campaign: Doc<'campaigns'>; template: Doc<'emailTemplates'> };
+
+/**
+ * A picked reference as the caller may read it, or the request fails with
+ * `EMAIL_GENERATION_REFERENCE_MISSING` naming it. The context read and the
+ * commit both run this, so a reference deleted or switched off while the
+ * model ran fails the commit the same way it fails the read.
+ */
+export async function resolveReference(
 	ctx: QueryCtx,
 	reference: Reference,
 	flags: Readonly<Record<string, boolean>>
-): Promise<{ example: EmailExample; templateId?: string }> {
+): Promise<ResolvedReference> {
 	const flag = REFERENCE_FLAGS[reference.kind];
 	if (flag && flags[flag] !== true) missingReference(reference);
 	if (reference.kind === 'template') {
 		const template = await getLive(ctx, reference.id);
 		if (!template) missingReference(reference);
-		return { example: templateExample('template', template), templateId: template._id };
+		return { kind: 'template', template };
 	}
 	if (reference.kind === 'transactional') {
 		const email = await ctx.db.get(reference.id);
 		if (!email) missingReference(reference);
-		return { example: templateExample('transactional', email) };
+		return { kind: 'transactional', email };
 	}
 	const campaign = await getLive(ctx, reference.id);
 	const template = campaign?.emailTemplateId ? await getLive(ctx, campaign.emailTemplateId) : null;
 	if (!campaign || !template) missingReference(reference);
-	return {
-		example: { ...templateExample('campaign', template, campaign.subject), name: campaign.name },
-		templateId: template._id,
-	};
+	return { kind: 'campaign', campaign, template };
+}
+
+function referenceExample(resolved: ResolvedReference): {
+	example: EmailExample;
+	templateId?: string;
+} {
+	switch (resolved.kind) {
+		case 'template':
+			return {
+				example: templateExample('template', resolved.template),
+				templateId: resolved.template._id,
+			};
+		case 'transactional':
+			return { example: templateExample('transactional', resolved.email) };
+		case 'campaign':
+			return {
+				example: {
+					...templateExample('campaign', resolved.template, resolved.campaign.subject),
+					name: resolved.campaign.name,
+				},
+				templateId: resolved.template._id,
+			};
+	}
 }
 
 const hasBlocks = (content: string) => content.trim().length > 2 && content.trim() !== '[]';
@@ -165,7 +196,7 @@ export const load = internalQuery({
 		const references: EmailExample[] = [];
 		const exclude = new Set<string>();
 		for (const reference of args.references.slice(0, GENERATION_LIMITS.references)) {
-			const loaded = await loadReference(ctx, reference, flags);
+			const loaded = referenceExample(await resolveReference(ctx, reference, flags));
 			references.push(loaded.example);
 			exclude.add(reference.id);
 			if (loaded.templateId) exclude.add(loaded.templateId);

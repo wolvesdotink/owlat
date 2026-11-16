@@ -78,6 +78,12 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 		'The job row is deleted when the erasure completes.'
 	),
 	rel('onboardingProgress', 'userId', 'delete', 'Per-user onboarding state.'),
+	rel(
+		'emailGenerationReceipts',
+		'userId',
+		'retain',
+		'Which drafts an AI run created, under an opaque id that no longer resolves to a person; the hourly purge removes it within a day.'
+	),
 	rel('userOnboarding', 'authUserId', 'delete', 'Per-user onboarding checklist.'),
 	rel('sendReadyNotices', 'userId', 'delete', 'Nudges addressed to the member.'),
 	rel(

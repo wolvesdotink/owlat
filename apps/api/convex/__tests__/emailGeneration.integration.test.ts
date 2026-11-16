@@ -6,27 +6,30 @@
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type * as LlmDispatchModule from '../lib/llm/dispatch';
 import type * as LlmProviderModule from '../lib/llmProvider';
 import type * as BudgetModule from '../aiRouting/enforcedBudget';
-import { enableFeatures, createTestEmailTemplate } from './factories';
+import { enableFeatures, createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 import { personalize } from '../delivery/sendComposition/personalization';
 import { decideSenderAndVariables, decideTemplate } from '../transactional/dispatchDecision';
 import { selectSendContent } from '../transactional/dispatchContent';
 import type { GeneratedEmail } from '../emailGeneration/outputSchema';
 
-const session = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'editor' }));
+const session = vi.hoisted(() => ({
+	role: 'owner' as 'owner' | 'admin' | 'editor',
+	userId: 'user-1',
+}));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	const member = async () => ({
-		userId: 'user-1',
+		userId: session.userId,
 		role: session.role,
 		activeOrganizationId: 'org-1',
 	});
@@ -37,8 +40,8 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi.fn(member),
 		requireAdminContext: vi.fn(member),
 		isActiveOrgMember: vi.fn(async () => true),
-		getUserIdFromSession: vi.fn(async () => 'user-1'),
-		requireAuthenticatedIdentity: vi.fn(async () => ({ subject: 'user-1' })),
+		getUserIdFromSession: vi.fn(async () => session.userId),
+		requireAuthenticatedIdentity: vi.fn(async () => ({ subject: session.userId })),
 		getBetterAuthSessionWithRole: vi.fn(member),
 	};
 });
@@ -186,14 +189,22 @@ async function setFlags(t: T, flags: Record<string, boolean>): Promise<void> {
 	});
 }
 
+let requestSeq = 0;
+
 const base = {
 	prompt: 'Our October newsletter about the new pricing',
 	references: [],
 	matchStyle: true,
+	/** A fresh submission per spread; a test that retries passes its own. */
+	get requestId() {
+		requestSeq += 1;
+		return `request-${requestSeq}`;
+	},
 };
 
 beforeEach(() => {
 	session.role = 'owner';
+	session.userId = 'user-1';
 	budget.exhausted = false;
 	llm.runLlmObject.mockReset();
 });
@@ -336,13 +347,13 @@ describe('generate: what it creates', () => {
 		const t = setup();
 		await enableFeatures(t, ALL_FLAGS);
 		answer(booking);
-		const args = { ...base, kind: 'transactional' as const };
-		const first = await t.action(api.emailGeneration.generate.generate, args);
-		const second = await t.action(api.emailGeneration.generate.generate, args);
+		const args = () => ({ ...base, kind: 'transactional' as const });
+		const first = await t.action(api.emailGeneration.generate.generate, args());
+		const second = await t.action(api.emailGeneration.generate.generate, args());
 		expect(first).toMatchObject({ slug: 'booking-confirmation' });
 		expect(second).toMatchObject({ slug: 'booking-confirmation-2' });
 		await expect(
-			t.action(api.emailGeneration.generate.generate, { ...args, slug: 'booking-confirmation' })
+			t.action(api.emailGeneration.generate.generate, { ...args(), slug: 'booking-confirmation' })
 		).rejects.toThrow(/already exists/);
 	});
 
@@ -578,5 +589,246 @@ describe('generate: references and samples', () => {
 		expect(options).toEqual([
 			expect.objectContaining({ kind: 'template', name: 'Pricing update' }),
 		]);
+	});
+});
+
+const countRows = (t: T) =>
+	t.run(async (ctx) => ({
+		templates: (await ctx.db.query('emailTemplates').collect()).length,
+		transactional: (await ctx.db.query('transactionalEmails').collect()).length,
+		campaigns: (await ctx.db.query('campaigns').collect()).length,
+		receipts: (await ctx.db.query('emailGenerationReceipts').collect()).length,
+	}));
+
+describe('commit: the picked references are checked again', () => {
+	const blocks = JSON.stringify([
+		{ id: 'b1', type: 'text', content: { html: '<p>Hello</p>', blockType: 'paragraph' } },
+	]);
+
+	/** The model answers after `meanwhile` ran, as if the world moved during the call. */
+	function answerAfter(object: GeneratedEmail, meanwhile: () => Promise<void>) {
+		llm.runLlmObject.mockImplementation(async () => {
+			await meanwhile();
+			return { object, tokenUsage: undefined, modelUsed: 'test-model' };
+		});
+	}
+
+	it('creates nothing when a picked template was deleted while the model ran', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		const referenceId = await t.run((ctx) =>
+			ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ type: 'marketing', name: 'Spring', content: blocks }) as never
+			)
+		);
+		answerAfter(newsletter, () =>
+			t.run(async (ctx) => {
+				await ctx.db.patch(referenceId, { deletedAt: Date.now() });
+			})
+		);
+		await expect(
+			t.action(api.emailGeneration.generate.generate, {
+				...base,
+				kind: 'campaign',
+				references: [{ kind: 'template', id: referenceId }],
+			})
+		).rejects.toMatchObject({
+			data: { data: { code: 'EMAIL_GENERATION_REFERENCE_MISSING', referenceId } },
+		});
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(await countRows(t)).toEqual({
+			templates: 1,
+			transactional: 0,
+			campaigns: 0,
+			receipts: 0,
+		});
+	});
+
+	it.each([
+		{ flag: 'transactional', kind: 'transactional' },
+		{ flag: 'campaigns', kind: 'campaign' },
+	] as const)(
+		'creates nothing when the $flag feature was turned off while the model ran',
+		async ({ flag, kind }) => {
+			const t = setup();
+			await enableFeatures(t, ALL_FLAGS);
+			const reference = await t.run(async (ctx) => {
+				if (kind === 'transactional') {
+					const id = await ctx.db.insert(
+						'transactionalEmails',
+						createTestTransactionalEmail({ content: blocks }) as never
+					);
+					return { kind, id } as const;
+				}
+				const emailTemplateId = await ctx.db.insert(
+					'emailTemplates',
+					createTestEmailTemplate({ type: 'marketing', content: blocks }) as never
+				);
+				const id = await ctx.db.insert('campaigns', {
+					name: 'Black friday',
+					status: 'sent',
+					emailTemplateId,
+					subject: 'Deals',
+					createdAt: 1,
+					updatedAt: 1,
+				});
+				return { kind, id } as const;
+			});
+			const before = await countRows(t);
+			answerAfter(newsletter, () => setFlags(t, { [flag]: false }));
+			await expect(
+				t.action(api.emailGeneration.generate.generate, {
+					...base,
+					kind: 'template',
+					references: [reference],
+				})
+			).rejects.toMatchObject({
+				data: { data: { code: 'EMAIL_GENERATION_REFERENCE_MISSING', referenceId: reference.id } },
+			});
+			expect(await countRows(t)).toEqual(before);
+		}
+	);
+});
+
+describe('generate: one submission, one draft', () => {
+	it.each([
+		{ kind: 'template', email: newsletter },
+		{ kind: 'transactional', email: booking },
+		{ kind: 'campaign', email: newsletter },
+	] as const)('answers a repeated $kind request from its first result', async ({ kind, email }) => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(email);
+		const args = { ...base, kind, requestId: 'retry-after-lost-answer' };
+		const first = await t.action(api.emailGeneration.generate.generate, args);
+		const again = await t.action(api.emailGeneration.generate.generate, args);
+		expect(again).toEqual(first);
+		expect(first).toHaveProperty('droppedVariables');
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+		expect(await countRows(t)).toEqual({
+			templates: kind === 'transactional' ? 0 : 1,
+			transactional: kind === 'transactional' ? 1 : 0,
+			campaigns: kind === 'campaign' ? 1 : 0,
+			receipts: 1,
+		});
+		if (kind === 'transactional') expect(again).toMatchObject({ slug: 'booking-confirmation' });
+	});
+
+	it('spends one rate-limit token for a submission however often it is repeated', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(newsletter);
+		const repeated = { ...base, kind: 'template' as const, requestId: 'repeated' };
+		for (let i = 0; i < 5; i++) {
+			await t.action(api.emailGeneration.generate.generate, repeated);
+		}
+		// The bucket holds 10: the repeated submission took one of them.
+		for (let i = 0; i < 9; i++) {
+			await t.action(api.emailGeneration.generate.generate, { ...base, kind: 'template' });
+		}
+		await expect(
+			t.action(api.emailGeneration.generate.generate, { ...base, kind: 'template' })
+		).rejects.toMatchObject({ data: { category: 'rate_limited' } });
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(10);
+	});
+
+	it('keeps the result when the draft was deleted since', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(newsletter);
+		const args = { ...base, kind: 'template' as const, requestId: 'deleted-since' };
+		const first = await t.action(api.emailGeneration.generate.generate, args);
+		if (first.kind !== 'template') throw new Error('expected a template');
+		await t.mutation(api.emailTemplates.emails.remove, { templateId: first.templateId });
+		expect(await t.action(api.emailGeneration.generate.generate, args)).toEqual(first);
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not answer one member with another member’s result', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(newsletter);
+		const args = { ...base, kind: 'template' as const, requestId: 'shared-guess' };
+		const mine = await t.action(api.emailGeneration.generate.generate, args);
+		session.userId = 'user-2';
+		const theirs = await t.action(api.emailGeneration.generate.generate, args);
+		expect(theirs).not.toEqual(mine);
+		expect(llm.runLlmObject).toHaveBeenCalledTimes(2);
+		expect(await countRows(t)).toMatchObject({ templates: 2, receipts: 2 });
+	});
+
+	it('lets the commit that lost a race return the winner’s draft', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		const commitArgs = {
+			kind: 'template' as const,
+			requestId: 'raced',
+			references: [],
+			name: 'October newsletter',
+			subject: 'New pricing',
+			previewText: '',
+			language: 'en',
+			content: '[]',
+			droppedVariables: [],
+		};
+		// Both runs passed the action's lookup before either committed.
+		const winner = await t.mutation(internal.emailGeneration.commit.commit, commitArgs);
+		const loser = await t.mutation(internal.emailGeneration.commit.commit, {
+			...commitArgs,
+			name: 'Another answer',
+		});
+		expect(loser).toEqual(winner);
+		expect(await countRows(t)).toMatchObject({ templates: 1, receipts: 1 });
+	});
+
+	it('refuses a request id that is too long or not plain', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(newsletter);
+		for (const requestId of ['', 'x'.repeat(65), 'has space', 'semi;colon']) {
+			await expect(
+				t.action(api.emailGeneration.generate.generate, { ...base, kind: 'template', requestId })
+			).rejects.toThrow(/request id/i);
+		}
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+	});
+});
+
+describe('generation receipts: retention', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('purges records older than a day and keeps recent ones', async () => {
+		const t = setup();
+		const day = 24 * 60 * 60 * 1000;
+		const now = Date.UTC(2026, 10, 16, 12);
+		vi.setSystemTime(now);
+		await t.run(async (ctx) => {
+			const templateId = await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ type: 'marketing' }) as never
+			);
+			const row = {
+				organizationId: 'org-1',
+				userId: 'user-1',
+				result: { kind: 'template' as const, templateId },
+				droppedVariables: [],
+			};
+			await ctx.db.insert('emailGenerationReceipts', {
+				...row,
+				requestId: 'old',
+				createdAt: now - day - 1,
+			});
+			await ctx.db.insert('emailGenerationReceipts', {
+				...row,
+				requestId: 'recent',
+				createdAt: now - day + 60_000,
+			});
+		});
+		await t.mutation(internal.emailGeneration.receipts.purgeExpired, {});
+		const left = await t.run((ctx) => ctx.db.query('emailGenerationReceipts').collect());
+		expect(left.map((row) => row.requestId)).toEqual(['recent']);
 	});
 });

@@ -907,6 +907,7 @@ import type * as emailGeneration_context from '../emailGeneration/context.js';
 import type * as emailGeneration_generate from '../emailGeneration/generate.js';
 import type * as emailGeneration_outputSchema from '../emailGeneration/outputSchema.js';
 import type * as emailGeneration_promptDecision from '../emailGeneration/promptDecision.js';
+import type * as emailGeneration_receipts from '../emailGeneration/receipts.js';
 import type * as emailTemplates_organization from '../emailTemplates/organization.js';
 import type * as emailTemplates_presendChecks from '../emailTemplates/presendChecks.js';
 import type * as emailTemplates_presendChecksActions from '../emailTemplates/presendChecksActions.js';
@@ -1324,6 +1325,7 @@ import type * as lib_validators_deliveryChecklist from '../lib/validators/delive
 import type * as lib_validators_draftRevision from '../lib/validators/draftRevision.js';
 import type * as lib_validators_e2ee from '../lib/validators/e2ee.js';
 import type * as lib_validators_editLearning from '../lib/validators/editLearning.js';
+import type * as lib_validators_emailGeneration from '../lib/validators/emailGeneration.js';
 import type * as lib_validators_embedding from '../lib/validators/embedding.js';
 import type * as lib_validators_fields from '../lib/validators/fields.js';
 import type * as lib_validators_mail from '../lib/validators/mail.js';
@@ -1876,6 +1878,7 @@ import type * as schema_threadBrief from '../schema/threadBrief.js';
 import type * as schema_threadBriefFeedback from '../schema/threadBriefFeedback.js';
 import type * as schema_threadPurgeJobs from '../schema/threadPurgeJobs.js';
 import type * as schema_emailCoediting from '../schema/emailCoediting.js';
+import type * as schema_emailGenerationReceipts from '../schema/emailGenerationReceipts.js';
 import type * as schema_embeddingSpaces from '../schema/embeddingSpaces.js';
 import type * as schema_today from '../schema/today.js';
 import type * as schema_topics from '../schema/topics.js';
@@ -2898,6 +2901,7 @@ declare const fullApi: ApiFromModules<{
 	'emailGeneration/generate': typeof emailGeneration_generate;
 	'emailGeneration/outputSchema': typeof emailGeneration_outputSchema;
 	'emailGeneration/promptDecision': typeof emailGeneration_promptDecision;
+	'emailGeneration/receipts': typeof emailGeneration_receipts;
 }> & ApiFromModules<{
 	'emailTemplates/emails': typeof emailTemplates_emails;
 	'emailTemplates/i18n': typeof emailTemplates_i18n;
@@ -3351,6 +3355,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/validators/draftRevision': typeof lib_validators_draftRevision;
 	'lib/validators/e2ee': typeof lib_validators_e2ee;
 	'lib/validators/editLearning': typeof lib_validators_editLearning;
+	'lib/validators/emailGeneration': typeof lib_validators_emailGeneration;
 	'lib/validators/embedding': typeof lib_validators_embedding;
 	'lib/validators/fields': typeof lib_validators_fields;
 	'lib/validators/mail': typeof lib_validators_mail;
@@ -4113,6 +4118,7 @@ declare const fullApi: ApiFromModules<{
 	'schema/threadBriefFeedback': typeof schema_threadBriefFeedback;
 	'schema/threadPurgeJobs': typeof schema_threadPurgeJobs;
 	'schema/emailCoediting': typeof schema_emailCoediting;
+	'schema/emailGenerationReceipts': typeof schema_emailGenerationReceipts;
 	'schema/embeddingSpaces': typeof schema_embeddingSpaces;
 	'schema/today': typeof schema_today;
 	'schema/topics': typeof schema_topics;

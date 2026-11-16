@@ -5,14 +5,17 @@
  * whole campaign, from one sentence the author writes.
  *
  * One run reads, then calls the model once, then commits once:
+ *   0. a submission that already committed is answered from its receipt
+ *      (`receipts.lookup`), with no admission and no model call;
  *   1. read: the gate (flags and permission), the picked references, the
  *      style samples and the brand kit (`context.load`);
  *   2. admission: the `ai` flag, the spend budget and the
  *      `emailGenerationPerUser` bucket (`mail.ai.gate.assertAiAllowed`);
  *   3. one metered, schema-constrained model call;
  *   4. the outline mapped to editor blocks and validated (`blocksDecision.ts`);
- *   5. one commit (`commit.commit`) that re-checks the gate and creates the
- *      draft through each table's own insert path.
+ *   5. one commit (`commit.commit`) that re-checks the gate and the
+ *      references, creates the draft through each table's own insert path and
+ *      records the receipt, unless a run with the same request id beat it.
  *
  * The author waits for the result in the dialog. The run creates nothing
  * until its commit, so a run that fails, or that the author leaves, leaves
@@ -45,13 +48,9 @@ import { generationKindValidator, referenceValidator } from './_helpers';
 import { GENERATION_LIMITS, generatedEmailSchema, type GeneratedEmail } from './outputSchema';
 import { planDraft, type DraftPlan, type GenerationKind } from './blocksDecision';
 import { systemPrompt, userPrompt } from './promptDecision';
+import { isValidRequestId } from './receipts';
 import type { GenerationContext } from './context';
-import type { GenerationResult } from './commit';
-
-/** `generate`'s answer: what was created, and what the mapper left out. */
-export type GenerateOutcome = GenerationResult & {
-	droppedVariables: string[];
-};
+import type { GenerationOutcome } from './commit';
 
 /** Stable codes the web maps to its own copy (`useEmailGeneration`). */
 const CODES = {
@@ -61,12 +60,14 @@ const CODES = {
 } as const;
 
 function assertRequest(args: {
+	requestId: string;
 	prompt: string;
 	references: readonly unknown[];
 	name?: string;
 	slug?: string;
 	defaultLanguage?: string;
 }): void {
+	if (!isValidRequestId(args.requestId)) throwInvalidInput('The request id is not valid');
 	const prompt = args.prompt.trim();
 	if (!prompt) throwInvalidInput('Describe the email you want');
 	if (prompt.length > GENERATION_LIMITS.promptChars) {
@@ -174,6 +175,11 @@ function draftFrom(
 export const generate = authedAction({
 	args: {
 		kind: generationKindValidator,
+		/**
+		 * One per submission, minted by the client and sent again only when it
+		 * retries a submission whose outcome it never saw.
+		 */
+		requestId: v.string(),
 		prompt: v.string(),
 		references: v.array(referenceValidator),
 		matchStyle: v.boolean(),
@@ -185,11 +191,16 @@ export const generate = authedAction({
 	},
 	// authz: context.load and commit.commit both check the kind's permissions
 	// (templates:manage, plus campaigns:manage for a campaign) on the session.
-	handler: async (ctx, args): Promise<GenerateOutcome> => {
+	handler: async (ctx, args): Promise<GenerationOutcome> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
 		await requireAuthenticatedIdentity(ctx);
 		assertRequest(args);
+
+		const recorded = await ctx.runQuery(internal.emailGeneration.receipts.lookup, {
+			requestId: args.requestId,
+		});
+		if (recorded) return recorded;
 
 		const context = await ctx.runQuery(internal.emailGeneration.context.load, {
 			kind: args.kind,
@@ -208,8 +219,11 @@ export const generate = authedAction({
 
 		const name = args.name?.trim() || plan.name;
 		const slug = args.slug?.trim() || plan.slug || undefined;
-		const result = await ctx.runMutation(internal.emailGeneration.commit.commit, {
+		return await ctx.runMutation(internal.emailGeneration.commit.commit, {
 			kind: args.kind,
+			requestId: args.requestId,
+			references: args.references,
+			droppedVariables: plan.droppedVariables,
 			name,
 			subject: plan.subject,
 			previewText: plan.previewText,
@@ -224,6 +238,5 @@ export const generate = authedAction({
 					}
 				: {}),
 		});
-		return { ...result, droppedVariables: plan.droppedVariables };
 	},
 });

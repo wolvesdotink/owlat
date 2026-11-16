@@ -208,6 +208,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'campaignSenders',
 	'sendDailyStats',
 
+	// AI draft receipts name the campaigns and emails below: before them.
+	'emailGenerationReceipts',
 	// Campaign + template parents
 	'campaigns',
 	// Version snapshots before the templates they belong to.
