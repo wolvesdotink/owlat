@@ -21,7 +21,10 @@ const { useEmailGenerationInFlight } = await import('../useEmailGenerationInFlig
 type Outcome = { ok: true; result: unknown } | { ok: false };
 
 let store: Map<string, Ref<unknown>>;
+// The failure claim of the latest run.
 let onError: ((op: OperationError) => boolean) | undefined;
+let organizationId: Ref<string | null>;
+let user: Ref<{ id: string } | null>;
 let calls: unknown[];
 let pending: Array<(outcome: Outcome) => void>;
 const showToast = vi.fn();
@@ -33,6 +36,9 @@ beforeEach(() => {
 	pending = [];
 	showToast.mockReset();
 	navigateTo.mockReset();
+	organizationId = ref('org-a');
+	user = ref({ id: 'u1' });
+	vi.stubGlobal('useAuth', () => ({ user, activeOrganizationId: organizationId }));
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
 	vi.stubGlobal('useToast', () => ({ showToast }));
 	vi.stubGlobal('navigateTo', navigateTo);
@@ -40,18 +46,13 @@ beforeEach(() => {
 		if (!store.has(key)) store.set(key, ref(init()));
 		return store.get(key);
 	});
-	vi.stubGlobal(
-		'useBackendOperation',
-		(_ref: unknown, options: { onError?: (op: OperationError) => boolean }) => {
-			onError = options.onError;
-			return {
-				run: (args: unknown) => {
-					calls.push(args);
-					return new Promise<Outcome>((resolve) => pending.push(resolve));
-				},
-			};
-		}
-	);
+	vi.stubGlobal('useBackendOperation', () => ({
+		run: (args: unknown, runOptions: { onError?: (op: OperationError) => boolean }) => {
+			calls.push(args);
+			onError = runOptions.onError;
+			return new Promise<Outcome>((resolve) => pending.push(resolve));
+		},
+	}));
 });
 
 const campaign = { kind: 'campaign', campaignId: 'c1', templateId: 't1', droppedVariables: [] };
@@ -174,5 +175,97 @@ describe('useEmailGeneration', () => {
 		void gen.generate();
 		const [sent, next] = calls as { requestId: string }[];
 		expect(next!.requestId).not.toBe(sent!.requestId);
+	});
+
+	describe('per organisation', () => {
+		it('keeps each organisation its own form', () => {
+			const gen = useEmailGeneration('template');
+			gen.state.value.prompt = 'October newsletter';
+			gen.state.value.references = [{ kind: 'template', id: 'r1', name: 'Old' }];
+
+			organizationId.value = 'org-b';
+			expect(gen.state.value).toMatchObject({ prompt: '', references: [] });
+			gen.state.value.prompt = 'Welcome mail';
+
+			organizationId.value = 'org-a';
+			expect(gen.state.value.prompt).toBe('October newsletter');
+			expect(gen.state.value.references).toHaveLength(1);
+		});
+
+		it('does not show a run of one organisation as in flight in another', () => {
+			const gen = useEmailGeneration('campaign');
+			gen.state.value.prompt = 'Spring sale';
+			void gen.generate();
+
+			organizationId.value = 'org-b';
+
+			expect(gen.isGenerating.value).toBe(false);
+			expect(useEmailGenerationInFlight('campaign').value).toBe(false);
+		});
+
+		it('hands nothing over when the run lands after the organisation changed', async () => {
+			const gen = useEmailGeneration('campaign');
+			gen.state.value.prompt = 'Spring sale';
+			const run = gen.generate();
+
+			organizationId.value = 'org-b';
+			const createdInB = vi.fn();
+			gen.attach(createdInB);
+			gen.state.value.prompt = 'Summer sale';
+			pending[0]!({ ok: true, result: campaign });
+			await run;
+
+			expect(createdInB).not.toHaveBeenCalled();
+			expect(showToast).not.toHaveBeenCalled();
+			expect(gen.state.value.prompt).toBe('Summer sale');
+			organizationId.value = 'org-a';
+			expect(gen.state.value).toMatchObject({ prompt: '', status: 'idle' });
+		});
+
+		it('files a failure under the organisation that started the run', async () => {
+			const gen = useEmailGeneration('template');
+			gen.state.value.prompt = 'October newsletter';
+			const run = gen.generate();
+
+			organizationId.value = 'org-b';
+			onError!({ category: 'rate_limited', message: 'busy' });
+			pending[0]!({ ok: false });
+			await run;
+
+			expect(gen.state.value).toMatchObject({ status: 'idle', failure: null });
+			organizationId.value = 'org-a';
+			expect(gen.state.value).toMatchObject({
+				prompt: 'October newsletter',
+				status: 'failed',
+				failure: { kind: 'rate_limited' },
+			});
+		});
+
+		it('does not open the draft from a toast once the organisation changed', async () => {
+			const gen = useEmailGeneration('campaign');
+			gen.state.value.prompt = 'Spring sale';
+			const run = gen.generate();
+			pending[0]!({ ok: true, result: campaign });
+			await run;
+			const options = showToast.mock.calls[0]![2] as { action: { onAction: () => void } };
+
+			organizationId.value = 'org-b';
+			options.action.onAction();
+
+			expect(navigateTo).not.toHaveBeenCalled();
+		});
+
+		it('treats another member in the same organisation as another owner', async () => {
+			const gen = useEmailGeneration('campaign');
+			gen.state.value.prompt = 'Spring sale';
+			const run = gen.generate();
+
+			user.value = { id: 'u2' };
+			pending[0]!({ ok: true, result: campaign });
+			await run;
+
+			expect(showToast).not.toHaveBeenCalled();
+			expect(gen.state.value.prompt).toBe('');
+		});
 	});
 });

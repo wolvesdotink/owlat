@@ -9,13 +9,18 @@ import {
 } from '~/lib/emailGeneration';
 import {
 	blankGenerationState as blank,
+	useEmailGenerationOwner,
 	useEmailGenerationState,
+	useEmailGenerationStates,
 } from './useEmailGenerationInFlight';
 
 export type GenerationResult = FunctionReturnType<typeof api.emailGeneration.generate.generate>;
 
-/** The open dialog's success handler per kind; absent while every dialog is closed. */
-const hosts = new Map<GenerationKind, (result: GenerationResult) => void>();
+/**
+ * The open dialog's success handler per owner and kind (`<owner>:<kind>`);
+ * absent while every dialog is closed.
+ */
+const hosts = new Map<string, (result: GenerationResult) => void>();
 
 /**
  * 128 random bits as hex. Not `crypto.randomUUID`, which only exists in a
@@ -38,20 +43,23 @@ function newRequestId(): string {
  * draft. A failure keeps the prompt and the picks for the next try, and the
  * request id too while the form is unchanged, so a retry of a run whose answer
  * was lost gets the draft it made, not a second one.
+ *
+ * A run belongs to the member and organisation that started it. If the member
+ * has switched organisation or signed out by the time it lands, its outcome
+ * is filed under its owner and nothing is shown: the draft's link would open
+ * nothing in the organisation now on screen.
  */
 export function useEmailGeneration(kind: GenerationKind) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
+	const states = useEmailGenerationStates();
+	const owner = useEmailGenerationOwner();
 	const state = useEmailGenerationState(kind);
+	const ownerKey = () => `${owner.value}:${kind}`;
 
 	const { run } = useBackendOperation(api.emailGeneration.generate.generate, {
 		type: 'action',
 		label: () => t('components.ai.emailGenerate.operation'),
-		// Every failure is shown in the dialog, next to the prompt it keeps.
-		onError: (error) => {
-			state.value.failure = classifyGenerationFailure(error);
-			return true;
-		},
 	});
 
 	const isGenerating = computed(() => state.value.status === 'generating');
@@ -66,21 +74,32 @@ export function useEmailGeneration(kind: GenerationKind) {
 			...extra,
 		});
 		if (!request.ok) return;
-		const submission = nextSubmission(state.value.submission, request.args, newRequestId);
-		state.value.submission = submission;
-		state.value.status = 'generating';
-		state.value.failure = null;
-		// The reference ids came from the picker's own query, so they are document ids.
-		const outcome = await run({
-			...request.args,
-			requestId: submission.requestId,
-		} as Parameters<typeof run>[0]);
+		// Everything below writes to the form that started the run, whoever is
+		// on screen when it lands.
+		const startedBy = ownerKey();
+		const form = state.value;
+		const submission = nextSubmission(form.submission, request.args, newRequestId);
+		form.submission = submission;
+		form.status = 'generating';
+		form.failure = null;
+		const outcome = await run(
+			// The reference ids came from the picker's own query, so they are document ids.
+			{ ...request.args, requestId: submission.requestId } as Parameters<typeof run>[0],
+			{
+				// Every failure is shown in the dialog, next to the prompt it keeps.
+				onError: (error) => {
+					form.failure = classifyGenerationFailure(error);
+					return true;
+				},
+			}
+		);
 		if (!outcome.ok) {
-			state.value.status = 'failed';
+			form.status = 'failed';
 			return;
 		}
-		state.value = blank();
-		const host = hosts.get(kind);
+		states.value[startedBy] = blank();
+		if (ownerKey() !== startedBy) return;
+		const host = hosts.get(startedBy);
 		if (host) {
 			host(outcome.result);
 			return;
@@ -89,16 +108,20 @@ export function useEmailGeneration(kind: GenerationKind) {
 			durationMs: 0,
 			action: {
 				label: t('components.ai.emailGenerate.openDraft'),
-				onAction: () => void navigateTo(draftPath(outcome.result)),
+				// The toast stays until it is dismissed, so the owner can change under it.
+				onAction: () => {
+					if (ownerKey() === startedBy) void navigateTo(draftPath(outcome.result));
+				},
 			},
 		});
 	}
 
 	/** Register the open dialog as the one that takes the result. */
 	function attach(handler: (result: GenerationResult) => void): () => void {
-		hosts.set(kind, handler);
+		const key = ownerKey();
+		hosts.set(key, handler);
 		return () => {
-			if (hosts.get(kind) === handler) hosts.delete(kind);
+			if (hosts.get(key) === handler) hosts.delete(key);
 		};
 	}
 
