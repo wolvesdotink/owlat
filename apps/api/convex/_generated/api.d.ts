@@ -151,6 +151,7 @@ import type * as migrations_0072_backfill_thread_inbox_recency from '../migratio
 import type * as migrations_0073_backfill_label_membership from '../migrations/0073_backfill_label_membership.js';
 import type * as migrations_0074_backfill_review_queue_counts from '../migrations/0074_backfill_review_queue_counts.js';
 import type * as migrations_0075_register_system_sender_domain from '../migrations/0075_register_system_sender_domain.js';
+import type * as migrations_0076_backfill_member_profiles from '../migrations/0076_backfill_member_profiles.js';
 import type * as lib_migrationLedger from '../lib/migrationLedger.js';
 import type * as lib_migrationPlan from '../lib/migrationPlan.js';
 import type * as migrations_admin from '../migrations/admin.js';
@@ -3908,6 +3909,7 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0073_backfill_label_membership': typeof migrations_0073_backfill_label_membership;
 	'migrations/0074_backfill_review_queue_counts': typeof migrations_0074_backfill_review_queue_counts;
 	'migrations/0075_register_system_sender_domain': typeof migrations_0075_register_system_sender_domain;
+	'migrations/0076_backfill_member_profiles': typeof migrations_0076_backfill_member_profiles;
 	'migrations/admin': typeof migrations_admin;
 	'migrations/cronRegistration': typeof migrations_cronRegistration;
 	'migrations/manifest': typeof migrations_manifest;

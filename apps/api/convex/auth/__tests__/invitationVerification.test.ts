@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { memoryAdapter } from 'better-auth/adapters/memory';
+import { getFunctionName } from 'convex/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import { createAuthOptions } from '../auth';
@@ -47,6 +48,7 @@ describe('invitation identity verification with installed BetterAuth', () => {
 					};
 				}),
 				runAction: vi.fn(async () => ({ success: true })),
+				runMutation: vi.fn(async () => null),
 			} as unknown as ActionCtx;
 			const production = createAuthOptions(ctx);
 			// Exercise the actual registration hook and organization plugin. The
@@ -128,4 +130,107 @@ describe('invitation identity verification with installed BetterAuth', () => {
 			expect(accepted.member.role).toBe('admin');
 		}
 	);
+});
+
+describe('accepting an invitation', () => {
+	it('creates the new member’s profile when sign-up had to wait for a confirmed address', async () => {
+		// With verification required, sign-up returns no session, so the sign-up
+		// page cannot write the profile; the membership has to.
+		vi.stubEnv('REQUIRE_EMAIL_VERIFICATION', 'true');
+		vi.stubEnv('OWLAT_DEV_MODE', 'false');
+		vi.stubEnv('SITE_URL', 'https://owlat.example');
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'owlat.example');
+		vi.stubEnv('BETTER_AUTH_SECRET', 'test-only-secret-123456789012345678901234567890');
+		const now = new Date();
+		const db: Record<string, Array<Record<string, unknown>>> = {
+			user: [
+				{
+					id: 'seeded-owner',
+					email: 'owner@owlat.example',
+					name: 'Owner',
+					emailVerified: true,
+					createdAt: now,
+					updatedAt: now,
+				},
+			],
+			account: [],
+			session: [],
+			organization: [{ id: 'team-org', name: 'Team', slug: 'team', createdAt: now }],
+			member: [
+				{
+					id: 'owner-membership',
+					userId: 'seeded-owner',
+					organizationId: 'team-org',
+					role: 'owner',
+					createdAt: now,
+				},
+			],
+			invitation: [
+				{
+					id: 'teammate-invite',
+					email: 'teammate@owlat.example',
+					role: 'editor',
+					organizationId: 'team-org',
+					status: 'pending',
+					inviterId: 'seeded-owner',
+					createdAt: now,
+					expiresAt: new Date(Date.now() + 60_000),
+				},
+			],
+			verification: [],
+		};
+		const profileWrites: Array<{ fn: string; args: unknown }> = [];
+		const ctx = {
+			runQuery: vi.fn(async (_ref, args) => {
+				const rows = db[args.model] ?? [];
+				return {
+					page: rows.filter((row) =>
+						args.where.every(
+							(condition: { field: string; value: unknown }) =>
+								row[condition.field] === condition.value
+						)
+					),
+				};
+			}),
+			runAction: vi.fn(async () => ({ success: true })),
+			runMutation: vi.fn(async (ref, args) => {
+				profileWrites.push({ fn: getFunctionName(ref), args });
+				return null;
+			}),
+		} as unknown as ActionCtx;
+		const production = createAuthOptions(ctx);
+		const auth = betterAuth({
+			...production,
+			database: memoryAdapter(db),
+			plugins: production.plugins.filter((plugin) => plugin.id === 'organization'),
+		});
+
+		const signUp = await auth.api.signUpEmail({
+			body: { email: 'teammate@owlat.example', password: 'test-password-1234', name: 'Tea Mate' },
+		});
+		expect(signUp.token).toBeNull();
+		const teammateId = signUp.user.id;
+		db['user']!.find((user) => user['id'] === teammateId)!['emailVerified'] = true;
+		const signIn = await auth.api.signInEmail({
+			body: { email: 'teammate@owlat.example', password: 'test-password-1234' },
+			returnHeaders: true,
+		});
+		const cookie = signIn.headers
+			.getSetCookie()
+			.map((value) => value.split(';')[0])
+			.join('; ');
+		expect(profileWrites).toEqual([]);
+
+		await auth.api.acceptInvitation({
+			headers: new Headers({ cookie }),
+			body: { invitationId: 'teammate-invite' },
+		});
+
+		expect(profileWrites).toEqual([
+			{
+				fn: 'auth/userProfiles:createInternal',
+				args: { authUserId: teammateId, email: 'teammate@owlat.example', name: 'Tea Mate' },
+			},
+		]);
+	});
 });
