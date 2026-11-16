@@ -86,7 +86,7 @@ function render(role: 'owner' | 'editor' = 'owner'): VueWrapper {
 					props: ['items', 'actions'],
 					template: `<div><button v-for="action in actions" :key="action.key" :data-action="action.key" @click="action.run(items[0])" /></div>`,
 				},
-				TransactionalCreateEmailModal: {
+				LazyTransactionalCreateEmailModal: {
 					props: ['open'],
 					template: '<div data-dialog="create" :data-open="String(open)" />',
 				},

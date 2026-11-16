@@ -164,7 +164,7 @@ route 30 pages/dashboard/send/media.vue
 route 313 pages/dashboard/send/transactional/[id]/edit.vue
 route 18 pages/dashboard/send/transactional/[id]/sends/[sendId].vue
 route 144 pages/dashboard/send/transactional/[id]/translations.vue
-route 52 pages/dashboard/send/transactional/index.vue
+route 49 pages/dashboard/send/transactional/index.vue
 route 22 pages/dashboard/visualizations.vue
 route 9 pages/desktop/connect.vue
 route 10 pages/desktop/settings.vue
@@ -308,6 +308,7 @@ deferred 362 components/postbox/PostboxThreadReader.vue
 deferred 78 components/preferences/mcp/PreferencesMcpPendingActionCard.vue
 deferred 10 components/shell/BackendStatusHost.vue
 deferred 13 components/system/AppUpdatedBanner.vue
+deferred 21 components/transactional/CreateEmailModal.vue
 deferred 19 components/transactional/SenderDialog.vue
 deferred 5 components/transactional/SenderRow.vue
 deferred 14 components/transactional/TemplateSenderCard.vue
