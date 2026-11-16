@@ -2,11 +2,16 @@
 /**
  * The "New transactional email" dialog: name, slug (derived from the name until
  * edited) and default language. On success it opens the new email's editor.
+ * When AI drafting is on, "Draft with AI" writes the email from a sentence
+ * instead; name and slug are then suggested unless typed, and stay editable in
+ * the editor.
  */
 import { api } from '@owlat/api';
 import { toSlug } from '@owlat/shared';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
-import { CircleWarningIcon } from '@coolicons/vue';
+import { generationEntry } from '~/lib/emailGeneration';
+import { useEmailGenerationInFlight, type GenerationResult } from '~/composables/useEmailGeneration';
+import { CircleWarningIcon, SparklesIcon } from '@coolicons/vue';
 
 const open = defineModel<boolean>('open', { required: true });
 
@@ -28,6 +33,28 @@ const form = reactive({ name: '', slug: '', defaultLanguage: 'en' });
 const errors = reactive({ name: '', slug: '' });
 const isCreating = ref(false);
 
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const { can } = usePermissions();
+const aiEntry = computed(() => generationEntry('transactional', { isFeatureEnabled, can }));
+const isAiDraftInFlight = useEmailGenerationInFlight('transactional');
+const mode = ref<'blank' | 'ai'>('blank');
+/** AI mode: '' writes in the language of the description. */
+const aiLanguage = ref('');
+const modeOptions = computed(() => [
+	{ value: 'blank', label: t('components.ai.emailGenerate.mode.blank') },
+	{ value: 'ai', label: t('components.ai.emailGenerate.mode.ai') },
+]);
+const aiLanguageOptions = computed(() => [
+	{ value: '', label: t('components.ai.emailGenerate.languageFromPrompt') },
+	...languageSelectOptions.value,
+]);
+
+const handleGenerated = (result: GenerationResult) => {
+	if (result.kind !== 'transactional') return;
+	open.value = false;
+	router.push(`/dashboard/send/transactional/${result.transactionalEmailId}/edit`);
+};
+
 watch(
 	() => form.name,
 	(name) => {
@@ -46,6 +73,8 @@ watch(open, (isOpen) => {
 	errors.name = '';
 	errors.slug = '';
 	createError.value = '';
+	// A draft still being written reopens on its progress.
+	mode.value = isAiDraftInFlight.value ? 'ai' : 'blank';
 });
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -87,8 +116,46 @@ const handleCreate = async () => {
 		v-model:open="open"
 		:title="t('dashboard.send.transactional.index.create.title')"
 		:persistent="isCreating"
+		:size="mode === 'ai' ? '2xl' : 'md'"
 	>
-		<form @submit.prevent="handleCreate">
+		<UiSegmentedControl
+			v-if="aiEntry === 'show'"
+			v-model="mode"
+			:options="modeOptions"
+			class="mb-5"
+			data-testid="transactional-create-mode"
+		/>
+		<p
+			v-else-if="aiEntry === 'enable_hint'"
+			class="mb-4 flex items-center gap-2 text-sm text-text-tertiary"
+		>
+			<SparklesIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
+			<span>
+				{{ t('components.ai.emailGenerate.enableHint') }}
+				<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">
+					{{ t('components.ai.emailGenerate.openFeatures') }}
+				</NuxtLink>
+			</span>
+		</p>
+
+		<div v-if="mode === 'ai' && aiEntry === 'show'" class="space-y-5">
+			<UiSelect
+				v-model="aiLanguage"
+				:label="t('components.ai.emailGenerate.languageLabel')"
+				:options="aiLanguageOptions"
+			/>
+			<AiEmailGeneratePanel
+				kind="transactional"
+				:default-language="aiLanguage || undefined"
+				@created="handleGenerated"
+			>
+				<template #secondary>
+					<UiButton variant="secondary" @click="open = false">{{ t('common.cancel') }}</UiButton>
+				</template>
+			</AiEmailGeneratePanel>
+		</div>
+
+		<form v-else @submit.prevent="handleCreate">
 			<div
 				v-if="createError"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
@@ -135,7 +202,7 @@ const handleCreate = async () => {
 			/>
 		</form>
 
-		<template #footer>
+		<template v-if="mode === 'blank' || aiEntry !== 'show'" #footer>
 			<UiButton variant="secondary" :disabled="isCreating" @click="open = false">
 				{{ t('common.cancel') }}
 			</UiButton>

@@ -26,12 +26,13 @@ import type { SidebarContext } from './sidebarContext';
 import {
 	MegaphoneIcon,
 	PencilIcon,
+	SparklesIcon,
 	UserPlusCornerIcon,
 	ZapIcon,
 	type IconComponent,
 } from '@coolicons/vue';
 
-export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation';
+export type QuickCreateId = 'compose' | 'campaign' | 'aiCampaign' | 'contact' | 'automation';
 
 type Gate = (env: NavigationEnvironment) => boolean;
 
@@ -76,6 +77,15 @@ export const QUICK_CREATE_ENTRIES: readonly QuickCreateEntry[] = [
 		icon: MegaphoneIcon,
 		href: '/dashboard/campaigns/new',
 		gate: flag('campaigns'),
+	},
+	{
+		// The campaign and its email in one go: creating the email needs
+		// `templates:manage` (admin), so editors are not offered it.
+		id: 'aiCampaign',
+		labelKey: 'shared.quickCreate.aiCampaign',
+		icon: SparklesIcon,
+		href: '/dashboard/campaigns/new?draft=ai',
+		gate: (env) => adminOnly(env) && flag('campaigns')(env) && flag('ai.emailGeneration')(env),
 	},
 	{
 		id: 'contact',

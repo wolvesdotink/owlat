@@ -35,7 +35,13 @@ const ids = (environment: NavigationEnvironment) =>
 
 describe('quickCreateEntriesFor', () => {
 	it('offers an owner every verb, in registry order', () => {
-		expect(ids(env('owner'))).toEqual(['compose', 'campaign', 'contact', 'automation']);
+		expect(ids(env('owner'))).toEqual([
+			'compose',
+			'campaign',
+			'aiCampaign',
+			'contact',
+			'automation',
+		]);
 	});
 
 	it('keeps an editor to the verbs an editor may actually complete', () => {
@@ -63,6 +69,16 @@ describe('quickCreateEntriesFor', () => {
 
 	it('drops the flag-gated verbs when their features are off', () => {
 		expect(ids(env('owner', ['postbox']))).toEqual(['compose', 'contact']);
+	});
+
+	it('offers the AI campaign draft only to admins, with campaigns and AI drafting on', () => {
+		// The draft creates the campaign's email too, which needs templates:manage.
+		expect(ids(env('admin', ['campaigns', 'ai', 'ai.emailGeneration']))).toContain('aiCampaign');
+		expect(ids(env('editor', ['campaigns', 'ai', 'ai.emailGeneration']))).not.toContain(
+			'aiCampaign'
+		);
+		expect(ids(env('owner', ['campaigns']))).not.toContain('aiCampaign');
+		expect(ids(env('owner', ['ai', 'ai.emailGeneration']))).not.toContain('aiCampaign');
 	});
 
 	it('offers nothing to an editor on an instance with neither mail nor campaigns', () => {
@@ -110,5 +126,6 @@ describe('the registry itself', () => {
 		expect(byId.get('contact')?.href).toBeUndefined();
 		expect(byId.get('campaign')?.href).toBe('/dashboard/campaigns/new');
 		expect(byId.get('automation')?.href).toBe('/dashboard/automations/new');
+		expect(byId.get('aiCampaign')?.href).toBe('/dashboard/campaigns/new?draft=ai');
 	});
 });

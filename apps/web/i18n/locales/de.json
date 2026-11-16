@@ -400,6 +400,113 @@
 				"submit": "Überarbeiten",
 				"submitting": "Wird überarbeitet…",
 				"toggle": "Überarbeiten…"
+			},
+			"emailGenerate": {
+				"operation": "E-Mail mit KI entwerfen",
+				"readyToast": "Dein KI-Entwurf ist fertig.",
+				"openDraft": "Entwurf öffnen",
+				"campaignReady": "Kampagne samt E-Mail entworfen. Wähle Absender und Zielgruppe und prüfe dann die E-Mail.",
+				"title": {
+					"template": "Vorlage mit KI entwerfen",
+					"transactional": "Transaktionale E-Mail mit KI entwerfen",
+					"campaign": "Kampagne mit KI entwerfen"
+				},
+				"entry": {
+					"title": "Beschreib sie, die KI entwirft sie",
+					"template": "Schreib einen Satz zur E-Mail. Du bekommst einen bearbeitbaren Entwurf im Editor, gestaltet mit deinem Brand-Kit.",
+					"campaignTitle": "Ganze Kampagne mit KI entwerfen",
+					"campaign": "Beschreib die Kampagne. Du bekommst einen Entwurf mit Name, Betreff und E-Mail; Absender und Zielgruppe wählst du selbst."
+				},
+				"enableHint": "Soll die KI E-Mails für dich entwerfen? Schalte „E-Mails mit KI entwerfen“ ein.",
+				"openFeatures": "Funktionen öffnen",
+				"mode": {
+					"blank": "Leer beginnen",
+					"ai": "Mit KI entwerfen"
+				},
+				"languageLabel": "Sprache",
+				"languageFromPrompt": "Wie meine Beschreibung",
+				"promptLabel": "Was soll diese E-Mail tun?",
+				"promptPlaceholder": {
+					"template": "Zum Beispiel: unser Oktober-Newsletter zu den neuen Preisen, freundlich und kurz",
+					"transactional": "Zum Beispiel: eine Buchungsbestätigung mit Termin und einem Link zum Verschieben",
+					"campaign": "Zum Beispiel: kündige unseren Frühjahrssale bei Bestandskunden an, 20 % Rabatt bis Sonntag"
+				},
+				"examplesLabel": "Probier:",
+				"examples": {
+					"newsletter": {
+						"label": "Monatlicher Newsletter",
+						"prompt": "Unser monatlicher Newsletter: zwei kurze Produkt-Updates, eine Kundengeschichte und ein Link zum Blog. Freundlich und knapp."
+					},
+					"welcome": {
+						"label": "Willkommens-E-Mail",
+						"prompt": "Eine herzliche Willkommens-E-Mail für neue Abonnenten, die sagt, was sie von uns bekommen, mit Links zu unseren drei nützlichsten Anleitungen."
+					},
+					"event": {
+						"label": "Event-Einladung",
+						"prompt": "Eine Einladung zu unserem Online-Event im nächsten Monat, mit dem, was man dort lernt, und einem Button zur Anmeldung."
+					},
+					"booking": {
+						"label": "Buchungsbestätigung",
+						"prompt": "Eine Buchungsbestätigung mit Datum und Uhrzeit des Termins, dem Namen der teilnehmenden Person und einem Link zum Verschieben."
+					},
+					"passwordReset": {
+						"label": "Passwort zurücksetzen",
+						"prompt": "Eine E-Mail zum Zurücksetzen des Passworts mit einem Button zum Link, der nach einer Stunde abläuft, und dem Hinweis, sie zu ignorieren, falls niemand danach gefragt hat."
+					},
+					"orderShipped": {
+						"label": "Bestellung versendet",
+						"prompt": "Eine Versandbestätigung mit Bestellnummer, Versanddienst, Sendungsverfolgungslink und voraussichtlichem Lieferdatum."
+					},
+					"launch": {
+						"label": "Produktstart",
+						"prompt": "Kündige allen Kunden unsere neue Funktion an: was sie kann, wem sie hilft und ein Button zum Ausprobieren."
+					},
+					"winBack": {
+						"label": "Rückgewinnung",
+						"prompt": "Eine freundliche E-Mail an Kunden, die seit sechs Monaten nichts gekauft haben, mit dem, was seitdem neu ist, und einem Grund zurückzukommen."
+					}
+				},
+				"suggestedPlaceholder": "Von der KI vorgeschlagen",
+				"nameSlugHelp": "Lass die Felder leer, dann schlägt die KI sie vor. Im Editor kannst du beide ändern.",
+				"references": {
+					"label": "Als Vorlage nutzen",
+					"optional": "(optional)",
+					"remove": "{name} entfernen",
+					"full": "Höchstens {max} Vorlagen",
+					"placeholder": "Vorlagen, transaktionale E-Mails und Kampagnen suchen",
+					"searching": "Suche läuft…",
+					"noMatches": "Keine passenden E-Mails.",
+					"kind": {
+						"template": "Vorlage",
+						"transactional": "Transaktional",
+						"campaign": "Kampagne"
+					}
+				},
+				"matchStyle": "Stil unserer bisherigen E-Mails übernehmen",
+				"matchStyleHelp": "Die KI schaut sich einige deiner letzten E-Mails an, für Ton, Aufbau und Länge.",
+				"generating": "Dein Entwurf wird geschrieben…",
+				"generatingHelp": "Das dauert meist unter einer Minute. Du kannst das Fenster schließen; der Entwurf bleibt erhalten.",
+				"summary": {
+					"template": "Das erstellt eine Vorlage als Entwurf. Nichts wird gesendet.",
+					"transactional": "Das erstellt eine transaktionale E-Mail als Entwurf, samt Datenvariablen. Nichts wird veröffentlicht oder gesendet.",
+					"campaign": "Das erstellt eine Kampagne samt E-Mail als Entwurf. Nichts wird geplant oder gesendet."
+				},
+				"submit": "E-Mail entwerfen",
+				"submitting": "Wird entworfen…",
+				"errors": {
+					"budget": "Das KI-Budget ist aufgebraucht.",
+					"rateLimited": "Du hast in kurzer Zeit viel entworfen. Warte ein paar Minuten und versuch es dann noch mal.",
+					"notConfigured": "Auf dieser Instanz ist noch kein KI-Anbieter eingerichtet. Ein Admin kann einen hinzufügen.",
+					"featureOff": "E-Mails mit KI entwerfen ist auf dieser Instanz ausgeschaltet.",
+					"permission": "Du darfst diese Art von E-Mail nicht erstellen.",
+					"referenceMissing": "Eine der gewählten Vorlagen gibt es nicht mehr. Sie wurde aus deiner Auswahl entfernt; versuch es noch mal.",
+					"invalidOutput": "Die Antwort der KI war keine brauchbare E-Mail. Versuch es noch mal oder beschreib die E-Mail genauer.",
+					"providerFailed": "Der KI-Anbieter hat nicht geantwortet. Versuch es gleich noch mal.",
+					"slugTaken": "Dieser Slug gehört schon zu einer anderen transaktionalen E-Mail. Wähl einen anderen oder lass das Feld leer.",
+					"network": "Du bist offline. Deine Beschreibung bleibt erhalten; versuch es noch mal, sobald du wieder online bist.",
+					"unknown": "Beim Entwerfen ist etwas schiefgelaufen. Deine Beschreibung bleibt erhalten; versuch es noch mal.",
+					"invalidInput": "Prüf die Beschreibung und die Auswahl und versuch es dann noch mal."
+				}
 			}
 		},
 		"appCommandPalette": {
@@ -17656,7 +17763,8 @@
 			"automation": "Automatisierung",
 			"campaign": "Kampagne",
 			"compose": "E-Mail verfassen",
-			"contact": "Kontakt"
+			"contact": "Kontakt",
+			"aiCampaign": "Kampagne mit KI"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -19011,7 +19119,8 @@
 			"copySignInCode": "Neuesten Anmeldecode kopieren",
 			"openSignInLink": "Neuesten Anmeldelink öffnen",
 			"checkForMail": "Nach neuer Mail suchen",
-			"checkForMailSubtitle": "Verbundene Konten"
+			"checkForMailSubtitle": "Verbundene Konten",
+			"draftCampaignWithAi": "Kampagne mit KI entwerfen"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",
@@ -20176,6 +20285,10 @@
 					"visualizations": {
 						"description": "Ein Diagramm in eigenen Worten beschreiben und aus deinen Daten erstellen lassen.",
 						"label": "KI-Dashboards"
+					},
+					"emailGeneration": {
+						"label": "E-Mails mit KI entwerfen",
+						"description": "Beschreib eine E-Mail in einem Satz und bekomm einen bearbeitbaren Entwurf: eine Vorlage, eine transaktionale E-Mail oder eine ganze Kampagne. Nichts wird gesendet."
 					}
 				},
 				"analytics": {
@@ -20313,7 +20426,7 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent und KI-Dashboards.",
+					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent, KI-Dashboards und E-Mail-Entwürfe.",
 					"label": "KI"
 				},
 				"emailClient": {
