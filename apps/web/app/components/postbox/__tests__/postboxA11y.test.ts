@@ -166,6 +166,11 @@ function postboxStubs(rows: PostboxThreadRowMessage[]): Record<string, unknown> 
 			isOffline: ref(false),
 			cachedAt: ref(null),
 		}),
+		// The list warms the reader for a hovered or focused row after a debounce
+		// on the real clock. An audit that outlasts the debounce would run the real
+		// prefetch against the `api` proxy above, which has no function name to
+		// key a subscription on, and the error would surface outside any test.
+		usePostboxPrefetch: () => ({ prefetch: vi.fn() }),
 		usePostboxOptimisticHide: (messages: Ref<unknown[]>) => ({
 			visible: computed(() => messages.value),
 			hide: vi.fn(),
