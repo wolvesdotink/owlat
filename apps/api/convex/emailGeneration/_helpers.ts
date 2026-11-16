@@ -17,7 +17,7 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { authedQuery, featureGated } from '../lib/authedFunctions';
 import { hasPermission, type OrganizationRole, type Permission } from '../lib/sessionOrganization';
 import { throwFeatureDisabled } from '../lib/featureFlags';
-import { throwForbidden } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import type { GenerationKind } from './blocksDecision';
 
 export const emailGenerationQuery = featureGated(authedQuery, 'ai.emailGeneration');
@@ -71,6 +71,17 @@ export const REFERENCE_FLAGS: Record<
 	'template' | 'transactional' | 'campaign',
 	FeatureFlagKey | null
 > = { template: null, transactional: 'transactional', campaign: 'campaigns' };
+
+/**
+ * A slug the author typed that breaks the transactional format. Its own code,
+ * because the generic invalid-input copy points the author at the wrong fields.
+ */
+export function throwInvalidSlug(): never {
+	throwInvalidInput(
+		"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email', 'order-confirmation')",
+		{ code: 'EMAIL_GENERATION_INVALID_SLUG' }
+	);
+}
 
 export function throwGenerationRefusal(refusal: GenerationRefusal): never {
 	if (refusal.kind === 'feature') throwFeatureDisabled(refusal.flag);

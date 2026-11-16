@@ -26,12 +26,13 @@
 
 import { ConvexError, v } from 'convex/values';
 import { NoObjectGeneratedError } from 'ai';
-import { generateId } from '@owlat/shared';
+import { generateId, isValidSlug } from '@owlat/shared';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
 import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
+import { throwFeatureDisabled } from '../lib/featureFlags';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { runLlmObject } from '../lib/llm/dispatch';
 import { newRootRequest } from '../lib/llm/requestMeter';
@@ -44,7 +45,7 @@ import { AiNotConfiguredError } from '../lib/aiNotConfigured';
 import { logWarn } from '../lib/runtimeLog';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { STRING_LIMITS } from '../lib/inputGuards';
-import { generationKindValidator, referenceValidator } from './_helpers';
+import { generationKindValidator, referenceValidator, throwInvalidSlug } from './_helpers';
 import { GENERATION_LIMITS, generatedEmailSchema, type GeneratedEmail } from './outputSchema';
 import { planDraft, type DraftPlan, type GenerationKind } from './blocksDecision';
 import { systemPrompt, userPrompt } from './promptDecision';
@@ -79,6 +80,8 @@ function assertRequest(args: {
 	if ((args.name?.length ?? 0) > STRING_LIMITS.NAME) throwInvalidInput('The name is too long');
 	if ((args.slug?.length ?? 0) > GENERATION_LIMITS.slugChars)
 		throwInvalidInput('The slug is too long');
+	const slug = args.slug?.trim();
+	if (slug && !isValidSlug(slug)) throwInvalidSlug();
 	if ((args.defaultLanguage?.length ?? 0) > 16) throwInvalidInput('Unknown language');
 }
 
@@ -103,6 +106,33 @@ function rethrowModelFailure(error: unknown): never {
 	throwInvalidState('The AI provider did not answer. Try again in a moment.', {
 		code: CODES.providerFailed,
 	});
+}
+
+/**
+ * The shared AI gate (`mail.ai.gate.assertAiAllowed`). Its refusal for the
+ * master `ai` flag is a bare `forbidden` that other AI features rely on, and
+ * the web would read it as a missing permission. `ai` off means this feature
+ * is off, so that refusal is answered as the context read answers a disabled
+ * flag. The gate's only other `forbidden` refusal is the budget's, which
+ * carries a code and passes through unchanged.
+ */
+async function admit(ctx: ActionCtx): Promise<void> {
+	try {
+		// checkpoint: admission before the model call; the rate-limit token it
+		// consumes stays spent when the draft fails later, so retries stay bounded.
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			rateLimitBucket: 'emailGenerationPerUser',
+		});
+	} catch (error) {
+		if (isUncodedForbidden(error)) throwFeatureDisabled('ai.emailGeneration');
+		throw error;
+	}
+}
+
+function isUncodedForbidden(error: unknown): boolean {
+	if (!(error instanceof ConvexError)) return false;
+	const payload = error.data as { category?: unknown; data?: { code?: unknown } } | null;
+	return payload?.category === 'forbidden' && payload.data?.code === undefined;
 }
 
 async function writeEmail(
@@ -207,11 +237,7 @@ export const generate = authedAction({
 			references: args.references,
 			matchStyle: args.matchStyle,
 		});
-		// checkpoint: admission before the model call; the rate-limit token it
-		// consumes stays spent when the draft fails later, so retries stay bounded.
-		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
-			rateLimitBucket: 'emailGenerationPerUser',
-		});
+		await admit(ctx);
 
 		const language = args.defaultLanguage?.trim() || null;
 		const email = await writeEmail(ctx, args.kind, args.prompt.trim(), language, context);

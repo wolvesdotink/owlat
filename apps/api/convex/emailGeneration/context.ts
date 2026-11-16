@@ -39,7 +39,14 @@ export interface GenerationContext {
 	companyName: string;
 }
 
-/** How many recent rows the sample choice looks at. */
+/**
+ * The bounded windows the sample choice reads: the most recently updated
+ * marketing templates and transactional emails, and the most recently sent
+ * campaigns (whose send times score the templates they used). The preference
+ * order of `selectStyleSamples` applies within these rows, not across the
+ * whole library: an email nobody edited since the newest N of its kind is
+ * never a sample, however much it is used.
+ */
 const SAMPLE_WINDOW = { templates: 40, sentCampaigns: 30, transactional: 40 } as const;
 
 function templateExample(
@@ -122,9 +129,13 @@ function referenceExample(resolved: ResolvedReference): {
 	}
 }
 
-const hasBlocks = (content: string) => content.trim().length > 2 && content.trim() !== '[]';
+/** Decided from the parsed blocks, so `[ ]`, `{ "blocks": [] }` and unparsable content are empty. */
+const hasBlocks = (content: string) => parseContentBlocks(content).length > 0;
 
-/** Marketing templates, each scored by the newest send of a campaign that used it. */
+/**
+ * The most recently updated marketing templates, each scored by the newest
+ * send among the most recently sent campaigns that used it.
+ */
 async function marketingSamples(ctx: QueryCtx, exclude: ReadonlySet<string>) {
 	const [templates, sent] = await Promise.all([
 		ctx.db
@@ -162,10 +173,11 @@ async function marketingSamples(ctx: QueryCtx, exclude: ReadonlySet<string>) {
 	);
 }
 
-/** Transactional emails, each scored by its send count. */
+/** The most recently updated transactional emails, each scored by its send count. */
 async function transactionalSamples(ctx: QueryCtx, exclude: ReadonlySet<string>) {
 	const rows = await ctx.db
 		.query('transactionalEmails')
+		.withIndex('by_updated_at')
 		.order('desc')
 		.take(SAMPLE_WINDOW.transactional);
 	const candidates: SampleCandidate[] = rows.map((row) => ({

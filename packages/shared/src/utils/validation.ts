@@ -87,3 +87,11 @@ export function toSlug(value: string): string {
 		.replace(/[\s_-]+/g, '-')
 		.replace(/^-+|-+$/g, '');
 }
+
+/**
+ * Whether `value` is a slug as the transactional API addresses one: lowercase
+ * letters and digits in hyphen-separated runs (`order-confirmation`).
+ */
+export function isValidSlug(value: string): boolean {
+	return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}

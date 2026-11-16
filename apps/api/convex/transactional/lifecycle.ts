@@ -30,6 +30,7 @@
  */
 
 import { v } from 'convex/values';
+import { isValidSlug } from '@owlat/shared';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -212,8 +213,6 @@ export interface TransactionalEmailInsert {
 	generatedBy?: 'ai';
 }
 
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
 /** Whether `slug` is free: no transactional email, live or draft, uses it. */
 export async function isSlugFree(ctx: { db: MutationCtx['db'] }, slug: string): Promise<boolean> {
 	const existing = await ctx.db
@@ -232,7 +231,7 @@ export async function insertTransactionalEmail(
 	ctx: MutationCtx,
 	args: TransactionalEmailInsert
 ): Promise<TransactionalEmailCreateOutcome> {
-	if (!SLUG_PATTERN.test(args.slug)) {
+	if (!isValidSlug(args.slug)) {
 		return { ok: false, reason: 'invalid_slug_format' };
 	}
 	if (!(await isSlugFree(ctx, args.slug))) {

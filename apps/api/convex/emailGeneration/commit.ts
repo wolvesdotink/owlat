@@ -37,6 +37,7 @@ import {
 	generationRefusal,
 	referenceValidator,
 	throwGenerationRefusal,
+	throwInvalidSlug,
 } from './_helpers';
 import { brandDraftBlocks } from './blocksDecision';
 import { resolveReference } from './context';
@@ -143,11 +144,7 @@ async function createDraft(
 			generatedBy: 'ai',
 		});
 		if (!outcome.ok) {
-			if (outcome.reason === 'invalid_slug_format') {
-				throwInvalidInput(
-					"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email', 'order-confirmation')"
-				);
-			}
+			if (outcome.reason === 'invalid_slug_format') throwInvalidSlug();
 			throwAlreadyExists(`A transactional email with slug "${slug}" already exists`);
 		}
 		return { kind: 'transactional', transactionalEmailId: outcome.emailId, slug };

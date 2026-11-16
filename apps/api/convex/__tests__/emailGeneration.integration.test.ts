@@ -15,6 +15,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type * as LlmDispatchModule from '../lib/llm/dispatch';
 import type * as LlmProviderModule from '../lib/llmProvider';
 import type * as BudgetModule from '../aiRouting/enforcedBudget';
+import type * as FeatureFlagsModule from '../lib/featureFlags';
 import { enableFeatures, createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 import { personalize } from '../delivery/sendComposition/personalization';
 import { decideSenderAndVariables, decideTemplate } from '../transactional/dispatchDecision';
@@ -66,6 +67,21 @@ vi.mock('../aiRouting/enforcedBudget', async () => {
 			budget.exhausted
 				? { isAdmitted: false, reason: 'monthly_ceiling', limit: 'ceiling' }
 				: actual.budgetHeadroom(...args)
+		),
+	};
+});
+
+/**
+ * Turns `ai` off for the admission gate only, as if it were switched off
+ * after the context read had seen it on.
+ */
+const admission = vi.hoisted(() => ({ aiOff: false }));
+vi.mock('../lib/featureFlags', async () => {
+	const actual = await vi.importActual<typeof FeatureFlagsModule>('../lib/featureFlags');
+	return {
+		...actual,
+		isFeatureEnabled: vi.fn(async (...args: Parameters<typeof actual.isFeatureEnabled>) =>
+			admission.aiOff && args[1] === 'ai' ? false : actual.isFeatureEnabled(...args)
 		),
 	};
 });
@@ -206,6 +222,7 @@ beforeEach(() => {
 	session.role = 'owner';
 	session.userId = 'user-1';
 	budget.exhausted = false;
+	admission.aiOff = false;
 	llm.runLlmObject.mockReset();
 });
 
@@ -357,6 +374,44 @@ describe('generate: what it creates', () => {
 		).rejects.toThrow(/already exists/);
 	});
 
+	it('refuses a typed slug that breaks the format with its own code, before the model runs', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		answer(booking);
+		await expect(
+			t.action(api.emailGeneration.generate.generate, {
+				...base,
+				kind: 'transactional',
+				slug: 'Booking Confirmed!',
+			})
+		).rejects.toMatchObject({
+			data: { category: 'invalid_input', data: { code: 'EMAIL_GENERATION_INVALID_SLUG' } },
+		});
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+
+		// The commit's insert reports the same refusal with the same code.
+		await expect(
+			t.mutation(internal.emailGeneration.commit.commit, {
+				kind: 'transactional',
+				requestId: 'typed-bad-slug',
+				references: [],
+				name: 'Booking',
+				subject: 'Booked',
+				previewText: '',
+				language: 'en',
+				content: '[]',
+				slug: 'booking_confirmed',
+				isSlugSuggested: false,
+				dataVariablesSchema: {},
+				optionalDataVariables: [],
+				droppedVariables: [],
+			})
+		).rejects.toMatchObject({
+			data: { category: 'invalid_input', data: { code: 'EMAIL_GENERATION_INVALID_SLUG' } },
+		});
+		expect(await countRows(t)).toMatchObject({ transactional: 0, receipts: 0 });
+	});
+
 	it('keeps the name the author typed', async () => {
 		const t = setup();
 		await enableFeatures(t, ALL_FLAGS);
@@ -421,6 +476,22 @@ describe('generate: gates', () => {
 		await enableFeatures(t, ['ai.emailGeneration']);
 		await setFlags(t, { ai: false });
 		await refused(t, 'template', /disabled/i);
+	});
+
+	it('reports `ai` turned off after the context read as the feature being off', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		admission.aiOff = true;
+		answer(newsletter);
+		await expect(
+			t.action(api.emailGeneration.generate.generate, { ...base, kind: 'template' })
+		).rejects.toMatchObject({
+			data: {
+				category: 'forbidden',
+				data: { feature: 'ai.emailGeneration', features: ['ai.emailGeneration'] },
+			},
+		});
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
 	});
 
 	it('needs the transactional and campaigns features for those kinds', async () => {
@@ -569,6 +640,71 @@ describe('generate: references and samples', () => {
 			})
 		).rejects.toMatchObject({ data: { data: { code: 'EMAIL_GENERATION_REFERENCE_MISSING' } } });
 		expect(llm.runLlmObject).not.toHaveBeenCalled();
+	});
+
+	it('never takes an email with no blocks as a style sample', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		for (const [name, content] of [
+			['Spaced empty', '[ ]'],
+			['Formatted empty', '[\n  \n]'],
+			['Empty envelope', '{ "blocks": [] }'],
+			['Unparsable', 'not json {'],
+		]) {
+			await seedTemplate(t, { name, status: 'published', content });
+		}
+		await seedTemplate(t, { name: 'Real draft', content: body('Hello') });
+		answer(newsletter);
+
+		await t.action(api.emailGeneration.generate.generate, { ...base, kind: 'template' });
+		const { user } = promptOf();
+		const samples = user.slice(user.indexOf('<samples>'));
+		expect(samples).toContain('name: Real draft');
+		for (const name of ['Spaced empty', 'Formatted empty', 'Empty envelope', 'Unparsable']) {
+			expect(samples).not.toContain(name);
+		}
+	});
+
+	it('ranks transactional samples within the most recently updated ones', async () => {
+		const t = setup();
+		await enableFeatures(t, ALL_FLAGS);
+		const insert = (over: Record<string, unknown>) =>
+			t.run((ctx) =>
+				ctx.db.insert(
+					'transactionalEmails',
+					createTestTransactionalEmail({ content: body('Hello'), ...over }) as never
+				)
+			);
+		// Created first, edited last, and in use: inside the window, usage wins.
+		await insert({
+			name: 'Edited favourite',
+			status: 'published',
+			sendCount: 50,
+			updatedAt: 3_000,
+		});
+		for (let i = 0; i < 40; i++) {
+			await insert({
+				name: `Draft ${i}`,
+				slug: `draft-${i}`,
+				status: 'draft',
+				updatedAt: 2_000 + i,
+			});
+		}
+		// Created last but not edited for longest: outside the 40-row window.
+		await insert({
+			name: 'Old favourite',
+			status: 'published',
+			sendCount: 1_000,
+			updatedAt: 1_000,
+		});
+		answer(booking);
+
+		await t.action(api.emailGeneration.generate.generate, { ...base, kind: 'transactional' });
+		const user = promptOf().user;
+		const samples = user.slice(user.indexOf('<samples>'));
+		expect(samples).toContain('name: Edited favourite');
+		expect(samples).not.toContain('Old favourite');
+		expect(samples.indexOf('Edited favourite')).toBeLessThan(samples.indexOf('Draft 39'));
 	});
 
 	it('finds references by name for the picker', async () => {

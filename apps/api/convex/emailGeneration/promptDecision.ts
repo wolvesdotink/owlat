@@ -28,7 +28,8 @@ export interface SampleCandidate {
 }
 
 /**
- * The style samples for one request, best first: emails in use (most used or
+ * The style samples for one request, best first among the candidates given
+ * (the caller's bounded window, `context.ts`): emails in use (most used or
  * most recently sent first), then published ones, then drafts, each newest
  * first; never an empty email and never one the user already picked as a
  * reference. Ties break on id, so the same rows always give the same samples.
