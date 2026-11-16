@@ -11,7 +11,7 @@
  */
 import type { TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import schema from '../schema';
+import type schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type * as ManifestModule from '../migrations/manifest';
