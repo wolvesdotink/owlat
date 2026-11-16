@@ -45,7 +45,8 @@ const isRecentSendsOpen = ref(false);
 const route = useRoute();
 const router = useRouter();
 const isSenderOpen = computed({
-	get: () => route.query['sender'] === 'edit' && can('settings:manage'),
+	// Never over the create dialog: this page shows one dialog at a time.
+	get: () => route.query['sender'] === 'edit' && can('settings:manage') && !isCreateOpen.value,
 	set: (open: boolean) => {
 		if (open) return;
 		const { sender: _sender, ...query } = route.query;
@@ -54,15 +55,25 @@ const isSenderOpen = computed({
 });
 // `?action=create` (the sidebar's +, quick create, the palette) opens the
 // create dialog, also when this page is already open, and is dropped at once
-// so Back from the new email's editor does not open it again. Waits for the
-// role: before it is known `canManage` is false.
+// so Back from the new email's editor does not open it again. It can arrive
+// while another dialog is up (the palette opens over them, and a link can carry
+// `?sender=edit` too), so creating closes the others and takes the sender
+// dialog's query with it. Waits for the role: before it is known `canManage`
+// is false.
 watch(
 	() => [route.query['action'], isRoleLoading.value] as const,
 	([action, roleLoading]) => {
 		if (action !== 'create' || roleLoading) return;
-		if (canManage.value) isCreateOpen.value = true;
 		const { action: _action, ...query } = route.query;
-		void router.replace({ query });
+		if (!canManage.value) {
+			void router.replace({ query });
+			return;
+		}
+		snippetEmail.value = null;
+		isRecentSendsOpen.value = false;
+		isCreateOpen.value = true;
+		const { sender: _sender, ...withoutSender } = query;
+		void router.replace({ query: withoutSender });
 	},
 	{ immediate: true }
 );
