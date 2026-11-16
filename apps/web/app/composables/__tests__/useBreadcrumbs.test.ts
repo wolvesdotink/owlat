@@ -95,12 +95,14 @@ describe('useBreadcrumbs', () => {
 			expect(uncovered).toEqual([]);
 		});
 
-		// The Marketing workspace was split out of "Send"; every page in it has to
-		// say so, including the detail pages no exact entry names.
+		// Every Marketing page has to say so, including the detail pages no exact
+		// entry names. Transactional emails share the `send/` URL prefix but have
+		// their own section (see below).
 		it('every campaign, automation and template page starts at Marketing', async () => {
 			const uncovered: string[] = [];
 			for (const area of ['campaigns', 'automations', 'send']) {
 				for (const route of await routesUnder(area)) {
+					if (route.startsWith('/dashboard/send/transactional')) continue;
 					if (labelsFor(route)[0] !== 'Marketing') uncovered.push(route);
 				}
 			}
@@ -131,7 +133,7 @@ describe('useBreadcrumbs', () => {
 		});
 	});
 
-	describe('the Marketing workspace', () => {
+	describe('Marketing pages', () => {
 		it.each([
 			['/dashboard/campaigns', ['Marketing', 'Campaigns']],
 			['/dashboard/campaigns/new', ['Marketing', 'Campaigns', 'New campaign']],
@@ -145,7 +147,26 @@ describe('useBreadcrumbs', () => {
 		});
 
 		it('never says "Send" as a section', () => {
-			expect(labelsFor('/dashboard/send/transactional')[0]).toBe('Marketing');
+			expect(labelsFor('/dashboard/send/emails/abc123/edit')[0]).toBe('Marketing');
+		});
+	});
+
+	describe('transactional emails', () => {
+		it.each([
+			['/dashboard/send/transactional', ['Transactional', 'Emails']],
+			['/dashboard/send/transactional/abc123/edit', ['Transactional', 'Edit email']],
+			['/dashboard/send/transactional/abc123/translations', ['Transactional', 'Translations']],
+			['/dashboard/send/transactional/abc123/sends/def456', ['Transactional', 'Send details']],
+		])('%s reads %j', (route, trail) => {
+			expect(labelsFor(route)).toEqual(trail);
+		});
+
+		it('links the section crumb to the list on every transactional page', async () => {
+			for (const route of await routesUnder('send/transactional')) {
+				const [section] = trailFor(route);
+				expect(t(section!.label), route).toBe('Transactional');
+				expect(section!.href, route).toBe('/dashboard/send/transactional');
+			}
 		});
 	});
 

@@ -474,7 +474,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'shell.admin.areas.system',
 	'shell.admin.areas.team',
 	'shell.dashboard.alphaBadge',
-	'shell.dashboard.contexts.marketing',
 	'shell.dashboard.dashboardTooltip',
 	'welcome.freshStart.optional',
 	// "Workspace" is the German product term too (about 120 strings use it),

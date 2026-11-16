@@ -21,7 +21,7 @@ definePageMeta({
 // Transactional emails are templates for authorization: create, duplicate and
 // remove all require `templates:manage` (owner/admin) —
 // `apps/api/convex/transactional/emails.ts`. The list stays browsable.
-const { can, showGateFor } = usePermissions();
+const { can, showGateFor, isRoleLoading } = usePermissions();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
 const { showToast } = useToast();
@@ -52,6 +52,20 @@ const isSenderOpen = computed({
 		void router.replace({ query });
 	},
 });
+// `?action=create` (the sidebar's +, quick create, the palette) opens the
+// create dialog, also when this page is already open, and is dropped at once
+// so Back from the new email's editor does not open it again. Waits for the
+// role: before it is known `canManage` is false.
+watch(
+	() => [route.query['action'], isRoleLoading.value] as const,
+	([action, roleLoading]) => {
+		if (action !== 'create' || roleLoading) return;
+		if (canManage.value) isCreateOpen.value = true;
+		const { action: _action, ...query } = route.query;
+		void router.replace({ query });
+	},
+	{ immediate: true }
+);
 // Loaded on first open and kept, so closing plays the modal's exit.
 const hasOpenedSender = ref(false);
 // The readiness line inside the API snippet links here too; one dialog at a time.

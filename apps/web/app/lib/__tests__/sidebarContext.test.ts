@@ -1,5 +1,5 @@
 /**
- * Pure-logic coverage for the sidebar Inbox ↔ Marketing context model:
+ * Pure-logic coverage for the sidebar Conversations ↔ Sending context model:
  *   - route ownership: which context owns a path, shared routes → null
  *   - section partitioning: context blocks + shared block, order preserved
  *   - switch-target resolution: last-visited > preferred home > first item
@@ -10,8 +10,11 @@ import {
 	contextForPath,
 	readLastVisitedRoutes,
 	resolveSwitchTarget,
+	sendingZones,
 	splitSectionsByContext,
 } from '../sidebarContext';
+import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import type { OrganizationRole } from '~/composables/useOrganization';
 
 function section(key: SectionKey, hrefs: string[]) {
 	return { key, items: hrefs.map((href) => ({ href })) };
@@ -73,13 +76,14 @@ describe('splitSectionsByContext', () => {
 			section('chat', ['/dashboard/chat']),
 			section('assistant', ['/dashboard/assistant']),
 			section('send', ['/dashboard/send']),
+			section('transactional', ['/dashboard/send/transactional']),
 			section('audience', ['/dashboard/audience']),
 			section('administration', ['/dashboard/admin/delivery']),
 			section('knowledge', ['/dashboard/knowledge']),
 			section('preferences', ['/dashboard/preferences']),
 		]);
 		expect(split.inbox.map((s) => s.key)).toEqual(['inbox', 'postbox', 'chat', 'knowledge']);
-		expect(split.marketing.map((s) => s.key)).toEqual(['send', 'audience']);
+		expect(split.marketing.map((s) => s.key)).toEqual(['send', 'transactional', 'audience']);
 		expect(split.shared.map((s) => s.key)).toEqual(['assistant', 'administration', 'preferences']);
 	});
 
@@ -128,6 +132,18 @@ describe('resolveSwitchTarget', () => {
 		expect(resolveSwitchTarget('marketing', undefined, noPostbox)).toBe('/dashboard/send');
 	});
 
+	it('lands on the transactional list when Marketing has no overview', () => {
+		const transactionalOnly = [
+			section('inbox', ['/dashboard/inbox']),
+			section('send', ['/dashboard/send', '/dashboard/marketing/deleted']),
+			section('transactional', ['/dashboard/send/transactional']),
+			section('audience', ['/dashboard/audience/contacts']),
+		];
+		expect(resolveSwitchTarget('marketing', undefined, transactionalOnly)).toBe(
+			'/dashboard/send/transactional'
+		);
+	});
+
 	it('falls back to the dashboard when the context has no visible items', () => {
 		expect(resolveSwitchTarget('marketing', undefined, [])).toBe('/dashboard');
 	});
@@ -150,5 +166,61 @@ describe('readLastVisitedRoutes', () => {
 		for (const stored of [null, ['/dashboard/inbox'], '/dashboard/inbox', 1]) {
 			expect(readLastVisitedRoutes(stored)).toBeUndefined();
 		}
+	});
+});
+
+describe('sendingZones', () => {
+	const env = (role: OrganizationRole | null, flags: readonly FeatureFlagKey[]) => ({
+		isFeatureEnabled: (flag: FeatureFlagKey) => flags.includes(flag),
+		isDesktop: false,
+		role,
+	});
+
+	it('labels both zones when an admin sees marketing and transactional', () => {
+		expect(sendingZones(env('admin', ['campaigns', 'transactional']))).toEqual({
+			marketing: true,
+			transactional: true,
+			labelled: true,
+		});
+	});
+
+	it('keeps the Marketing zone for automations alone', () => {
+		expect(sendingZones(env('owner', ['automations', 'transactional']))).toEqual({
+			marketing: true,
+			transactional: true,
+			labelled: true,
+		});
+	});
+
+	it('drops the labels when campaigns and automations are off', () => {
+		expect(sendingZones(env('admin', ['transactional']))).toEqual({
+			marketing: false,
+			transactional: true,
+			labelled: false,
+		});
+	});
+
+	it('drops the labels when transactional is off', () => {
+		expect(sendingZones(env('admin', ['campaigns', 'automations']))).toEqual({
+			marketing: true,
+			transactional: false,
+			labelled: false,
+		});
+	});
+
+	it('shows an editor only the Marketing zone, unlabelled', () => {
+		expect(sendingZones(env('editor', ['campaigns', 'automations', 'transactional']))).toEqual({
+			marketing: true,
+			transactional: false,
+			labelled: false,
+		});
+	});
+
+	it('shows neither zone to an editor without campaigns', () => {
+		expect(sendingZones(env('editor', ['automations', 'transactional']))).toEqual({
+			marketing: false,
+			transactional: false,
+			labelled: false,
+		});
 	});
 });

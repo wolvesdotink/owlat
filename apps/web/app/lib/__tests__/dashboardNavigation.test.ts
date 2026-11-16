@@ -27,6 +27,7 @@ describe('buildNavigationSections — role-aware information architecture', () =
 			'chat',
 			'assistant',
 			'send',
+			'transactional',
 			'audience',
 			'knowledge',
 			'administration',
@@ -65,6 +66,29 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		expect(hrefs).not.toContain('/dashboard/send/transactional');
 		expect(hrefs).toContain('/dashboard/assistant');
 		expect(hrefs).toContain('/dashboard/knowledge');
+	});
+
+	it('files transactional emails under their own section, named as the trail names it', () => {
+		const sections = buildNavigationSections({ ...allFlags, role: 'admin' });
+		const transactional = sections.find((section) => section.key === 'transactional');
+		expect(t(transactional?.name ?? '')).toBe('Transactional');
+		expect(transactional?.items.map((item) => item.href)).toEqual([
+			'/dashboard/send/transactional',
+		]);
+		const send = sections.find((section) => section.key === 'send');
+		expect(t(send?.name ?? '')).toBe('Marketing');
+		expect(send?.items.map((item) => item.href)).not.toContain('/dashboard/send/transactional');
+	});
+
+	it('keeps the Transactional section behind the admin role and its feature flag', () => {
+		const flagOff = buildNavigationSections({
+			...allFlags,
+			role: 'owner',
+			isFeatureEnabled: (flag) => flag !== 'transactional',
+		});
+		expect(flagOff.some((section) => section.key === 'transactional')).toBe(false);
+		const editor = buildNavigationSections({ ...allFlags, role: 'editor' });
+		expect(editor.some((section) => section.key === 'transactional')).toBe(false);
 	});
 
 	it('keeps Assistant and Knowledge behind their feature flags', () => {

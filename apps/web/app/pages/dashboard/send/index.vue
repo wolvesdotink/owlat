@@ -18,6 +18,7 @@ import {
 } from '~/utils/templateListFilter';
 import { FileTextIcon, GridIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 import SendTemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
+import { transactionalGate } from '~/lib/dashboardNavigationCore';
 
 const { t, locale } = useI18n();
 
@@ -30,7 +31,8 @@ definePageMeta({
 
 const route = useRoute();
 const router = useRouter();
-const { can, showGateFor } = usePermissions();
+const { can, showGateFor, role } = usePermissions();
+const { isEnabled } = useFeatureFlag();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
 
@@ -42,6 +44,16 @@ const typeFilter = computed<TemplateTypeFilter>({
 		void router.replace({ query: { ...route.query, type: value === 'all' ? undefined : value } });
 	},
 });
+
+// A template's type is only a label: the campaign and automation pickers list
+// marketing templates, and the transactional API sends `transactionalEmails`,
+// never a template. So the Transactional filter says where the API-triggered
+// emails actually are, to whoever can open that list.
+const showTransactionalHint = computed(
+	() =>
+		typeFilter.value === 'transactional' &&
+		transactionalGate({ isFeatureEnabled: isEnabled, isDesktop: false, role: role.value })
+);
 
 const { data: typeCounts } = useOrganizationQuery(
 	api.emailTemplates.organization.countByTypeByOrganization
@@ -152,7 +164,11 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 
 		<!-- A wrapper that scrolls, so a narrow phone scrolls the strip sideways
 		     instead of squeezing its segments; the control keeps its natural width. -->
-		<div class="mb-6 max-w-full overflow-x-auto" data-testid="template-type-filter">
+		<div
+			class="max-w-full overflow-x-auto"
+			:class="showTransactionalHint ? 'mb-3' : 'mb-6'"
+			data-testid="template-type-filter"
+		>
 			<UiSegmentedControl
 				:model-value="typeFilter"
 				:options="filterOptions"
@@ -169,6 +185,22 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 				</template>
 			</UiSegmentedControl>
 		</div>
+		<I18nT
+			v-if="showTransactionalHint"
+			keypath="dashboard.send.index.transactionalTypeHint"
+			tag="p"
+			scope="global"
+			class="mb-6 max-w-2xl text-xs text-text-tertiary"
+			data-testid="template-transactional-hint"
+		>
+			<template #link>
+				<NuxtLink
+					to="/dashboard/send/transactional"
+					class="text-text-secondary underline hover:text-text-primary"
+					>{{ t('dashboard.send.index.transactionalTypeHintLink') }}</NuxtLink
+				>
+			</template>
+		</I18nT>
 
 		<UiCard padding="none" overflow="hidden">
 			<UiQueryBoundary

@@ -249,7 +249,7 @@ export function useKeyboardShortcuts() {
 			'global.goToContacts': '/dashboard/audience/contacts',
 			'global.goToEmails': '/dashboard/send',
 			'global.goToAutomations': '/dashboard/automations',
-			// g+m opens the Marketing workspace on its overview.
+			// g+m opens Marketing on its overview.
 			'global.goToCampaigns': '/dashboard/marketing',
 			'global.goToTransactional': '/dashboard/send/transactional',
 			// g+s routes to the administration area, not the preferences pages.
