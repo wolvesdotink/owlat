@@ -406,6 +406,7 @@
 				"readyToast": "Your AI draft is ready.",
 				"openDraft": "Open draft",
 				"campaignReady": "Campaign drafted with its email. Pick the sender and audience, then review the email.",
+				"loadFailed": "Couldn't load AI drafting. Check your connection and try again. If it keeps failing, reload the page.",
 				"title": {
 					"template": "Draft a template with AI",
 					"transactional": "Draft a transactional email with AI",

@@ -12,6 +12,7 @@
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { Permission } from '@owlat/shared/organizationPermissions';
+import type { Component } from 'vue';
 
 export type GenerationKind = 'template' | 'transactional' | 'campaign';
 
@@ -45,21 +46,33 @@ export function generationEntry(
 	return env.can('settings:manage') ? 'enable_hint' : 'hidden';
 }
 
-let panelChunk: Promise<void> | null = null;
+let panelChunk: Promise<Component> | null = null;
+
+/**
+ * The generator's component, fetched once however many callers ask. A failed
+ * fetch (offline, or a tab older than the deployment that no longer has the
+ * chunk) is forgotten, so asking again makes a new request instead of
+ * returning the same rejection.
+ */
+export function loadEmailGeneratePanel(): Promise<Component> {
+	if (!panelChunk) {
+		const request: Promise<Component> = import('~/components/ai/EmailGeneratePanel.vue').then(
+			(module) => module.default
+		);
+		request.catch(() => {
+			if (panelChunk === request) panelChunk = null;
+		});
+		panelChunk = request;
+	}
+	return panelChunk;
+}
 
 /**
  * Start downloading the generator before it is opened, from a hovered or
- * focused entry point, so the loader's placeholder rarely shows. One request
- * however often it is called; a failed load is forgotten so the next call
- * tries again, and the lazy mount itself still surfaces the error.
+ * focused entry point, so the loader's placeholder rarely shows. A failure is
+ * left for the loader to report when the author opens the generator.
  */
-export function warmEmailGeneratePanel(): Promise<void> {
-	if (import.meta.server) return Promise.resolve();
-	panelChunk ??= import('~/components/ai/EmailGeneratePanel.vue').then(
-		() => undefined,
-		() => {
-			panelChunk = null;
-		}
-	);
-	return panelChunk;
+export function warmEmailGeneratePanel(): void {
+	if (import.meta.server) return;
+	void loadEmailGeneratePanel().catch(() => undefined);
 }

@@ -406,6 +406,7 @@
 				"readyToast": "Dein KI-Entwurf ist fertig.",
 				"openDraft": "Entwurf öffnen",
 				"campaignReady": "Kampagne samt E-Mail entworfen. Wähle Absender und Zielgruppe und prüfe dann die E-Mail.",
+				"loadFailed": "KI-Entwürfe konnten nicht geladen werden. Prüf deine Verbindung und versuch es noch mal. Klappt es weiterhin nicht, lade die Seite neu.",
 				"title": {
 					"template": "Vorlage mit KI entwerfen",
 					"transactional": "Transaktionale E-Mail mit KI entwerfen",
