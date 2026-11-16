@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { isValidSlug } from '@owlat/shared';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -228,9 +229,7 @@ export const update = transactionalMutation({
 				throwAlreadyExists(`A transactional email with slug "${args.slug}" already exists`);
 			}
 
-			// Validate slug format
-			const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-			if (!slugRegex.test(args.slug)) {
+			if (!isValidSlug(args.slug)) {
 				throwInvalidInput(
 					"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email', 'order-confirmation')"
 				);
