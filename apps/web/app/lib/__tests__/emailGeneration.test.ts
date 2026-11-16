@@ -211,6 +211,17 @@ describe('classifyGenerationFailure', () => {
 		expect(classifyGenerationFailure(error({ category: 'network' }))).toEqual({ kind: 'network' });
 		expect(classifyGenerationFailure(error({}))).toEqual({ kind: 'unknown' });
 	});
+
+	it('names a typed slug that breaks the format, and keeps other input errors generic', () => {
+		expect(
+			classifyGenerationFailure(
+				error({ category: 'invalid_input', data: { code: 'EMAIL_GENERATION_INVALID_SLUG' } })
+			)
+		).toEqual({ kind: 'invalid_slug' });
+		expect(
+			classifyGenerationFailure(error({ category: 'invalid_input', message: 'Unknown language' }))
+		).toEqual({ kind: 'invalid_input', message: 'Unknown language' });
+	});
 });
 
 describe('copy', () => {
@@ -237,6 +248,7 @@ describe('copy', () => {
 			];
 			expect(keys.filter((key) => typeof lookup(catalog, key) !== 'string')).toEqual([]);
 		}
+		expect(FAILURE_KEYS).toHaveProperty('invalid_slug');
 	});
 
 	it('includes a booking confirmation among the transactional examples', () => {

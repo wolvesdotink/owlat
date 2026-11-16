@@ -76,16 +76,6 @@ const showFeaturesLink = computed(
 		isAdmin.value &&
 		(state.value.failure?.kind === 'not_configured' || state.value.failure?.kind === 'feature_off')
 );
-
-/** A pick the server could not find is removed, so the next try can go. */
-watch(
-	() => state.value.failure,
-	(failure) => {
-		if (failure?.kind === 'reference_missing' && failure.referenceId) {
-			state.value.references = state.value.references.filter((r) => r.id !== failure.referenceId);
-		}
-	}
-);
 </script>
 
 <template>
@@ -141,14 +131,12 @@ watch(
 
 		<div class="flex items-start justify-between gap-4">
 			<div>
-				<p :id="styleId" class="text-sm font-medium text-text-primary">{{ t(`${K}.matchStyle`) }}</p>
+				<p :id="styleId" class="text-sm font-medium text-text-primary">
+					{{ t(`${K}.matchStyle`) }}
+				</p>
 				<p class="text-xs text-text-tertiary">{{ t(`${K}.matchStyleHelp`) }}</p>
 			</div>
-			<UiSwitch
-				v-model="state.matchStyle"
-				:label="t(`${K}.matchStyle`)"
-				:disabled="isGenerating"
-			/>
+			<UiSwitch v-model="state.matchStyle" :label="t(`${K}.matchStyle`)" :disabled="isGenerating" />
 		</div>
 
 		<UiErrorAlert

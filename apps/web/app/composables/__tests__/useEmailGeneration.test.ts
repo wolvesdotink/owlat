@@ -125,6 +125,45 @@ describe('useEmailGeneration', () => {
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/campaigns/new?id=c1&step=setup');
 	});
 
+	it('removes a missing reference from the form that started the run, with no dialog open', async () => {
+		const gen = useEmailGeneration('template');
+		gen.state.value.prompt = 'October newsletter';
+		gen.state.value.references = [
+			{ kind: 'template', id: 'r1', name: 'Gone' },
+			{ kind: 'template', id: 'r2', name: 'Kept' },
+		];
+		const run = gen.generate();
+		organizationId.value = 'org-b';
+		gen.state.value.references = [{ kind: 'template', id: 'r1', name: 'Same id elsewhere' }];
+		onError!({
+			category: 'invalid_state',
+			message: 'gone',
+			data: { code: 'EMAIL_GENERATION_REFERENCE_MISSING', referenceId: 'r1' },
+		});
+		pending[0]!({ ok: false });
+		await run;
+
+		expect(gen.state.value.references.map((r) => r.id)).toEqual(['r1']);
+		organizationId.value = 'org-a';
+		expect(gen.state.value.references.map((r) => r.id)).toEqual(['r2']);
+		expect(gen.state.value.failure).toEqual({ kind: 'reference_missing', referenceId: 'r1' });
+	});
+
+	it('removes no reference when the failure names none', async () => {
+		const gen = useEmailGeneration('template');
+		gen.state.value.prompt = 'October newsletter';
+		gen.state.value.references = [{ kind: 'template', id: 'r1', name: 'Old' }];
+		const run = gen.generate();
+		onError!({
+			category: 'invalid_state',
+			message: 'gone',
+			data: { code: 'EMAIL_GENERATION_REFERENCE_MISSING' },
+		});
+		pending[0]!({ ok: false });
+		await run;
+		expect(gen.state.value.references.map((r) => r.id)).toEqual(['r1']);
+	});
+
 	it('passes the transactional name, slug and language along', async () => {
 		const gen = useEmailGeneration('transactional');
 		gen.state.value.prompt = 'Booking confirmation';
@@ -220,6 +259,30 @@ describe('useEmailGeneration', () => {
 			expect(gen.state.value.prompt).toBe('Summer sale');
 			organizationId.value = 'org-a';
 			expect(gen.state.value).toMatchObject({ prompt: '', status: 'idle' });
+		});
+
+		it('hands the draft to a dialog that stayed open while the organisation changed', async () => {
+			const gen = useEmailGeneration('campaign');
+			const created = vi.fn();
+			const detach = gen.attach(created);
+
+			organizationId.value = 'org-b';
+			gen.state.value.prompt = 'Spring sale';
+			const run = gen.generate();
+			pending[0]!({ ok: true, result: campaign });
+			await run;
+
+			expect(created).toHaveBeenCalledWith(campaign);
+			expect(showToast).not.toHaveBeenCalled();
+
+			// Detaching removes the handler from the key it moved to.
+			detach();
+			gen.state.value.prompt = 'Summer sale';
+			const next = gen.generate();
+			pending[1]!({ ok: true, result: campaign });
+			await next;
+			expect(created).toHaveBeenCalledTimes(1);
+			expect(showToast).toHaveBeenCalledTimes(1);
 		});
 
 		it('files a failure under the organisation that started the run', async () => {

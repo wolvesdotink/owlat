@@ -504,6 +504,7 @@
 					"invalidOutput": "The AI's answer wasn't a usable email. Try again, or describe the email in more detail.",
 					"providerFailed": "The AI provider didn't answer. Try again in a moment.",
 					"slugTaken": "That slug is already used by another transactional email. Pick another one or leave it blank.",
+					"invalidSlug": "The slug may only use lowercase letters, digits and hyphens, like order-confirmation. Fix it or leave it blank.",
 					"network": "You're offline. Your description is kept; try again when you're back online.",
 					"unknown": "Something went wrong while drafting. Your description is kept; try again.",
 					"invalidInput": "Check the description and the picks, then try again."

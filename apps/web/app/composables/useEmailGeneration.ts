@@ -5,6 +5,7 @@ import {
 	draftPath,
 	generationRequest,
 	nextSubmission,
+	removeReference,
 	type GenerationKind,
 } from '~/lib/emailGeneration';
 import {
@@ -40,8 +41,9 @@ function newRequestId(): string {
  * closing the dialog mid-run neither loses nor repeats the draft: the run
  * keeps going, reopening shows it still in progress (it cannot be sent a
  * second time), and when it lands with no dialog open a toast offers the
- * draft. A failure keeps the prompt and the picks for the next try, and the
- * request id too while the form is unchanged, so a retry of a run whose answer
+ * draft. A failure keeps the prompt and the picks for the next try (less a
+ * pick the server no longer finds), and the request id too while the form is
+ * unchanged, so a retry of a run whose answer
  * was lost gets the draft it made, not a second one.
  *
  * A run belongs to the member and organisation that started it. If the member
@@ -88,7 +90,13 @@ export function useEmailGeneration(kind: GenerationKind) {
 			{
 				// Every failure is shown in the dialog, next to the prompt it keeps.
 				onError: (error) => {
-					form.failure = classifyGenerationFailure(error);
+					const failure = classifyGenerationFailure(error);
+					form.failure = failure;
+					// A pick the server could not find leaves this form, dialog open
+					// or not, so the next try can go.
+					if (failure.kind === 'reference_missing' && failure.referenceId) {
+						form.references = removeReference(form.references, failure.referenceId);
+					}
 					return true;
 				},
 			}
@@ -116,11 +124,27 @@ export function useEmailGeneration(kind: GenerationKind) {
 		});
 	}
 
-	/** Register the open dialog as the one that takes the result. */
+	/**
+	 * Register the open dialog as the one that takes the result. The dialog
+	 * shows whichever owner is signed in now, so the registration follows the
+	 * owner while the dialog stays open; detaching removes it from the key it
+	 * is under by then.
+	 */
 	function attach(handler: (result: GenerationResult) => void): () => void {
-		const key = ownerKey();
+		let key = ownerKey();
 		hosts.set(key, handler);
+		const stop = watch(
+			owner,
+			() => {
+				if (hosts.get(key) === handler) hosts.delete(key);
+				key = ownerKey();
+				hosts.set(key, handler);
+			},
+			// Sync: a run started right after the switch must find the handler.
+			{ flush: 'sync' }
+		);
 		return () => {
+			stop();
 			if (hosts.get(key) === handler) hosts.delete(key);
 		};
 	}

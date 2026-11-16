@@ -135,6 +135,7 @@ export type GenerationFailure =
 	| { kind: 'invalid_output' }
 	| { kind: 'provider_failed' }
 	| { kind: 'slug_taken' }
+	| { kind: 'invalid_slug' }
 	| { kind: 'invalid_input'; message: string }
 	| { kind: 'network' }
 	| { kind: 'unknown' };
@@ -163,6 +164,8 @@ export function classifyGenerationFailure(error: OperationError): GenerationFail
 			return { kind: 'provider_failed' };
 		case 'EMAIL_GENERATION_FORBIDDEN':
 			return { kind: 'permission' };
+		case 'EMAIL_GENERATION_INVALID_SLUG':
+			return { kind: 'invalid_slug' };
 	}
 	switch (error.category) {
 		case 'rate_limited':
@@ -191,6 +194,7 @@ export const FAILURE_KEYS: Record<Exclude<GenerationFailure['kind'], 'invalid_in
 	invalid_output: `${K}.errors.invalidOutput`,
 	provider_failed: `${K}.errors.providerFailed`,
 	slug_taken: `${K}.errors.slugTaken`,
+	invalid_slug: `${K}.errors.invalidSlug`,
 	network: `${K}.errors.network`,
 	unknown: `${K}.errors.unknown`,
 };

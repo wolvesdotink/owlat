@@ -504,6 +504,7 @@
 					"invalidOutput": "Die Antwort der KI war keine brauchbare E-Mail. Versuch es noch mal oder beschreib die E-Mail genauer.",
 					"providerFailed": "Der KI-Anbieter hat nicht geantwortet. Versuch es gleich noch mal.",
 					"slugTaken": "Dieser Slug gehört schon zu einer anderen transaktionalen E-Mail. Wähl einen anderen oder lass das Feld leer.",
+					"invalidSlug": "Der Slug darf nur Kleinbuchstaben, Ziffern und Bindestriche enthalten, etwa order-confirmation. Korrigier ihn oder lass das Feld leer.",
 					"network": "Du bist offline. Deine Beschreibung bleibt erhalten; versuch es noch mal, sobald du wieder online bist.",
 					"unknown": "Beim Entwerfen ist etwas schiefgelaufen. Deine Beschreibung bleibt erhalten; versuch es noch mal.",
 					"invalidInput": "Prüf die Beschreibung und die Auswahl und versuch es dann noch mal."
