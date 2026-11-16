@@ -15,7 +15,8 @@ vi.mock('@owlat/api', () => {
 	return { api: anyPath };
 });
 
-const { useEmailGeneration, useEmailGenerationInFlight } = await import('../useEmailGeneration');
+const { useEmailGeneration } = await import('../useEmailGeneration');
+const { useEmailGenerationInFlight } = await import('../useEmailGenerationInFlight');
 
 type Outcome = { ok: true; result: unknown } | { ok: false };
 

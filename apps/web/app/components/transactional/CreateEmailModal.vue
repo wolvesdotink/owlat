@@ -9,8 +9,9 @@
 import { api } from '@owlat/api';
 import { toSlug } from '@owlat/shared';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
-import { generationEntry } from '~/lib/emailGeneration';
-import { useEmailGenerationInFlight, type GenerationResult } from '~/composables/useEmailGeneration';
+import { generationEntry, warmEmailGeneratePanel } from '~/lib/emailGenerationEntry';
+import { useEmailGenerationInFlight } from '~/composables/useEmailGenerationInFlight';
+import type { GenerationResult } from '~/composables/useEmailGeneration';
 import { CircleWarningIcon, SparklesIcon } from '@coolicons/vue';
 
 const open = defineModel<boolean>('open', { required: true });
@@ -124,6 +125,8 @@ const handleCreate = async () => {
 			:options="modeOptions"
 			class="mb-5"
 			data-testid="transactional-create-mode"
+			@pointerenter="warmEmailGeneratePanel"
+			@focusin="warmEmailGeneratePanel"
 		/>
 		<p
 			v-else-if="aiEntry === 'enable_hint'"
@@ -144,7 +147,7 @@ const handleCreate = async () => {
 				:label="t('components.ai.emailGenerate.languageLabel')"
 				:options="aiLanguageOptions"
 			/>
-			<AiEmailGeneratePanel
+			<AiEmailGenerateLoader
 				kind="transactional"
 				:default-language="aiLanguage || undefined"
 				@created="handleGenerated"
@@ -152,7 +155,7 @@ const handleCreate = async () => {
 				<template #secondary>
 					<UiButton variant="secondary" @click="open = false">{{ t('common.cancel') }}</UiButton>
 				</template>
-			</AiEmailGeneratePanel>
+			</AiEmailGenerateLoader>
 		</div>
 
 		<form v-else @submit.prevent="handleCreate">

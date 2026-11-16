@@ -5,39 +5,17 @@ import {
 	draftPath,
 	generationRequest,
 	nextSubmission,
-	type EmailReference,
-	type GenerationFailure,
 	type GenerationKind,
-	type Submission,
 } from '~/lib/emailGeneration';
+import {
+	blankGenerationState as blank,
+	useEmailGenerationState,
+} from './useEmailGenerationInFlight';
 
 export type GenerationResult = FunctionReturnType<typeof api.emailGeneration.generate.generate>;
 
-interface GenerationState {
-	prompt: string;
-	references: EmailReference[];
-	matchStyle: boolean;
-	name: string;
-	slug: string;
-	status: 'idle' | 'generating' | 'failed';
-	failure: GenerationFailure | null;
-	/** The last submission sent; kept until it succeeds (`nextSubmission`). */
-	submission: Submission | null;
-}
-
 /** The open dialog's success handler per kind; absent while every dialog is closed. */
 const hosts = new Map<GenerationKind, (result: GenerationResult) => void>();
-
-const blank = (): GenerationState => ({
-	prompt: '',
-	references: [],
-	matchStyle: true,
-	name: '',
-	slug: '',
-	status: 'idle',
-	failure: null,
-	submission: null,
-});
 
 /**
  * 128 random bits as hex. Not `crypto.randomUUID`, which only exists in a
@@ -64,7 +42,7 @@ function newRequestId(): string {
 export function useEmailGeneration(kind: GenerationKind) {
 	const { t } = useI18n();
 	const { showToast } = useToast();
-	const state = useState<GenerationState>(`email-generation:${kind}`, blank);
+	const state = useEmailGenerationState(kind);
 
 	const { run } = useBackendOperation(api.emailGeneration.generate.generate, {
 		type: 'action',
@@ -130,10 +108,4 @@ export function useEmailGeneration(kind: GenerationKind) {
 	}
 
 	return { state, isGenerating, generate, attach, dismissFailure };
-}
-
-/** Whether a run of this kind is in flight, for a host that reopens on it. */
-export function useEmailGenerationInFlight(kind: GenerationKind) {
-	const state = useState<GenerationState>(`email-generation:${kind}`, blank);
-	return computed(() => state.value.status === 'generating');
 }

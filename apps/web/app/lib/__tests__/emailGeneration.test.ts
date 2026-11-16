@@ -10,7 +10,6 @@ import {
 	draftPath,
 	EXAMPLE_PROMPT_KEYS,
 	FAILURE_KEYS,
-	generationEntry,
 	generationRequest,
 	MAX_PROMPT_CHARS,
 	MAX_REFERENCES,
@@ -18,6 +17,7 @@ import {
 	removeReference,
 	type EmailReference,
 } from '../emailGeneration';
+import { generationEntry } from '../emailGenerationEntry';
 
 const env = (flags: readonly FeatureFlagKey[], permissions: readonly Permission[]) => ({
 	isFeatureEnabled: (flag: FeatureFlagKey) => flags.includes(flag),

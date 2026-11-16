@@ -5,7 +5,7 @@
  * while a run is in flight: the run keeps going and its draft is offered in a
  * toast (`useEmailGeneration`).
  */
-import type { GenerationKind } from '~/lib/emailGeneration';
+import type { GenerationKind } from '~/lib/emailGenerationEntry';
 import type { GenerationResult } from '~/composables/useEmailGeneration';
 
 const open = defineModel<boolean>('open', { required: true });
@@ -22,7 +22,7 @@ function created(result: GenerationResult) {
 
 <template>
 	<UiModal v-model:open="open" :title="t(`components.ai.emailGenerate.title.${kind}`)" size="2xl">
-		<AiEmailGeneratePanel
+		<AiEmailGenerateLoader
 			v-if="open"
 			:kind="kind"
 			:default-language="defaultLanguage"
@@ -31,6 +31,6 @@ function created(result: GenerationResult) {
 			<template #secondary>
 				<UiButton variant="secondary" @click="open = false">{{ t('common.close') }}</UiButton>
 			</template>
-		</AiEmailGeneratePanel>
+		</AiEmailGenerateLoader>
 	</UiModal>
 </template>

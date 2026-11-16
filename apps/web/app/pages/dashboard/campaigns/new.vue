@@ -11,7 +11,7 @@ import {
 	templateHasBody,
 	type ReviewSchedule,
 } from '~/lib/campaignCompose';
-import { generationEntry } from '~/lib/emailGeneration';
+import { generationEntry, warmEmailGeneratePanel } from '~/lib/emailGenerationEntry';
 import type { GenerationResult } from '~/composables/useEmailGeneration';
 import { ArrowLeftIcon, SparklesIcon } from '@coolicons/vue';
 
@@ -374,6 +374,8 @@ const reviewData = computed(() => {
 					type="button"
 					class="mb-6 flex w-full items-center gap-4 rounded-xl border border-brand/30 bg-brand/5 p-4 text-left transition-[border-color,box-shadow] hover:border-brand hover:shadow-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					data-testid="campaign-ai-draft"
+					@pointerenter="warmEmailGeneratePanel"
+					@focus="warmEmailGeneratePanel"
 					@click="isAiDialogOpen = true"
 				>
 					<span

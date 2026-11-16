@@ -1,19 +1,15 @@
 /**
- * Drafting an email with AI, the parts that are decisions rather than UI:
- * who sees the entry point, what a request carries, how picked references
- * behave, and which sentence a failure gets. Pure, so the dialog, the three
- * entry points and their tests share one answer.
- *
- * The backend (`apps/api/convex/emailGeneration/`) is the authority on every
- * gate; these only decide what to show so nobody is offered a door that
- * refuses them.
+ * Drafting an email with AI, the parts of the generator that are decisions
+ * rather than UI: what a request carries, how picked references behave, and
+ * which sentence a failure gets. Pure, so the panel, its run and their tests
+ * share one answer. Who sees the entry point is `./emailGenerationEntry.ts`,
+ * kept apart so the hosts do not load any of this before the generator opens.
  */
-import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import type { Permission } from '@owlat/shared/organizationPermissions';
+import type { GenerationKind } from './emailGenerationEntry';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import type { OperationError } from '@owlat/shared/operationError';
 
-export type GenerationKind = 'template' | 'transactional' | 'campaign';
+export type { GenerationKind };
 export type ReferenceKind = 'template' | 'transactional' | 'campaign';
 
 export interface EmailReference {
@@ -38,36 +34,6 @@ export const EXAMPLE_PROMPT_KEYS: Record<GenerationKind, readonly string[]> = {
 	],
 	campaign: [`${K}.examples.newsletter`, `${K}.examples.launch`, `${K}.examples.winBack`],
 };
-
-const KIND_FLAGS: Record<GenerationKind, readonly FeatureFlagKey[]> = {
-	template: [],
-	transactional: ['transactional'],
-	campaign: ['campaigns'],
-};
-
-const KIND_PERMISSIONS: Record<GenerationKind, readonly Permission[]> = {
-	template: ['templates:manage'],
-	transactional: ['templates:manage'],
-	campaign: ['campaigns:manage', 'templates:manage'],
-};
-
-/**
- * What an entry point shows: the generator, a one-line pointer to the
- * Features page for an admin who could turn it on, or nothing. An editor
- * who could not use it sees nothing at all, never a disabled teaser.
- */
-export function generationEntry(
-	kind: GenerationKind,
-	env: {
-		isFeatureEnabled: (flag: FeatureFlagKey) => boolean;
-		can: (permission: Permission) => boolean;
-	}
-): 'show' | 'enable_hint' | 'hidden' {
-	if (KIND_FLAGS[kind].some((flag) => !env.isFeatureEnabled(flag))) return 'hidden';
-	if (KIND_PERMISSIONS[kind].some((permission) => !env.can(permission))) return 'hidden';
-	if (env.isFeatureEnabled('ai.emailGeneration')) return 'show';
-	return env.can('settings:manage') ? 'enable_hint' : 'hidden';
-}
 
 /** Add a pick: no duplicates, at most {@link MAX_REFERENCES}. */
 export function addReference(

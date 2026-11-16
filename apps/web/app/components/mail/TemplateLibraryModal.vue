@@ -5,11 +5,9 @@ import {
 	getPresetById,
 	type TemplatePreset,
 } from '~/data/marketingTemplatePresets';
-import { generationEntry } from '~/lib/emailGeneration';
-import {
-	useEmailGenerationInFlight,
-	type GenerationResult,
-} from '~/composables/useEmailGeneration';
+import { generationEntry, warmEmailGeneratePanel } from '~/lib/emailGenerationEntry';
+import { useEmailGenerationInFlight } from '~/composables/useEmailGenerationInFlight';
+import type { GenerationResult } from '~/composables/useEmailGeneration';
 import { PlusIcon, SparklesIcon } from '@coolicons/vue';
 
 interface Props {
@@ -30,7 +28,7 @@ const { t } = useI18n();
 // message keys, resolved here at render time.
 const presetText = (value: string) => t(value);
 
-// AI drafting, offered first when this member can use it (`lib/emailGeneration.ts`).
+// AI drafting, offered first when this member can use it (`lib/emailGenerationEntry.ts`).
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const { can } = usePermissions();
 const aiEntry = computed(() => generationEntry('template', { isFeatureEnabled, can }));
@@ -192,6 +190,8 @@ defineExpose({
 					type="button"
 					class="mb-6 flex w-full items-center gap-4 rounded-xl border border-brand/30 bg-brand/5 p-4 text-left transition-[border-color,box-shadow] hover:border-brand hover:shadow-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					data-testid="template-library-ai"
+					@pointerenter="warmEmailGeneratePanel"
+					@focus="warmEmailGeneratePanel"
 					@click="step = 'generate'"
 				>
 					<span
@@ -282,13 +282,13 @@ defineExpose({
 
 			<!-- AI drafting -->
 			<div v-else-if="step === 'generate'" class="p-6">
-				<AiEmailGeneratePanel kind="template" @created="handleGenerated">
+				<AiEmailGenerateLoader kind="template" @created="handleGenerated">
 					<template #secondary>
 						<UiButton variant="secondary" @click="goBackToLibrary">
 							{{ t('common.back') }}
 						</UiButton>
 					</template>
-				</AiEmailGeneratePanel>
+				</AiEmailGenerateLoader>
 			</div>
 
 			<!-- Step 2: Customize -->
