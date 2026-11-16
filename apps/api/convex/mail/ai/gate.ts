@@ -35,7 +35,8 @@ const AI_RATE_BUCKET = v.union(
 	v.literal('translateBatchPerUser'),
 	v.literal('quickQueryPerUser'),
 	v.literal('answerCoveragePerUser'),
-	v.literal('askMailboxPerUser')
+	v.literal('askMailboxPerUser'),
+	v.literal('emailGenerationPerUser')
 );
 
 /** A bucket {@link assertAiAllowed} accepts. */

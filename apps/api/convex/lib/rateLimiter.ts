@@ -305,6 +305,17 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
+	// Drafting an email with AI (`emailGeneration/generate.generate`). Each run
+	// is one capable-tier call that writes a whole email, so the bucket is
+	// smaller than the chat-style ones: room to retry a prompt a few times,
+	// not to loop.
+	emailGenerationPerUser: {
+		kind: 'token bucket',
+		rate: 30,
+		period: HOUR,
+		capacity: 10,
+	},
+
 	// The thread brief's first-open interpretation (`mail.interpret.lazy.ensure`).
 	// The reader calls it once per older thread it opens; each call schedules
 	// a few cheap-tier runs, so a loop over every thread is capped here.

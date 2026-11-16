@@ -900,6 +900,13 @@ import type * as emailTemplates_lifecycle from '../emailTemplates/lifecycle.js';
 import type * as emailTemplates_listing from '../emailTemplates/listing.js';
 import type * as emailTemplates_deletion from '../emailTemplates/deletion.js';
 import type * as emailTemplates_translate from '../emailTemplates/translate.js';
+import type * as emailGeneration__helpers from '../emailGeneration/_helpers.js';
+import type * as emailGeneration_blocksDecision from '../emailGeneration/blocksDecision.js';
+import type * as emailGeneration_commit from '../emailGeneration/commit.js';
+import type * as emailGeneration_context from '../emailGeneration/context.js';
+import type * as emailGeneration_generate from '../emailGeneration/generate.js';
+import type * as emailGeneration_outputSchema from '../emailGeneration/outputSchema.js';
+import type * as emailGeneration_promptDecision from '../emailGeneration/promptDecision.js';
 import type * as emailTemplates_organization from '../emailTemplates/organization.js';
 import type * as emailTemplates_presendChecks from '../emailTemplates/presendChecks.js';
 import type * as emailTemplates_presendChecksActions from '../emailTemplates/presendChecksActions.js';
@@ -2883,6 +2890,14 @@ declare const fullApi: ApiFromModules<{
 	'emailCoediting/sessions': typeof emailCoediting_sessions;
 	'emailCoediting/sweep': typeof emailCoediting_sweep;
 	'emailCoediting/target': typeof emailCoediting_target;
+}> & ApiFromModules<{
+	'emailGeneration/_helpers': typeof emailGeneration__helpers;
+	'emailGeneration/blocksDecision': typeof emailGeneration_blocksDecision;
+	'emailGeneration/commit': typeof emailGeneration_commit;
+	'emailGeneration/context': typeof emailGeneration_context;
+	'emailGeneration/generate': typeof emailGeneration_generate;
+	'emailGeneration/outputSchema': typeof emailGeneration_outputSchema;
+	'emailGeneration/promptDecision': typeof emailGeneration_promptDecision;
 }> & ApiFromModules<{
 	'emailTemplates/emails': typeof emailTemplates_emails;
 	'emailTemplates/i18n': typeof emailTemplates_i18n;

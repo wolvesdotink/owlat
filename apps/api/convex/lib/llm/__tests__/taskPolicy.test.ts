@@ -55,6 +55,7 @@ const TODAY: Record<string, [AiTaskName, readonly LlmTier[]]> = {
 	assistant_tool_draft: ['assistant.tool_draft', ['capable', 'fast']],
 	visualization: ['analytics.visualize', ['capable']],
 	visualization_title: ['analytics.visualize_title', ['fast']],
+	email_generation: ['email.generate', ['capable']],
 };
 
 describe('task-policy catalog', () => {

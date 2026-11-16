@@ -38,7 +38,7 @@ import { refuse } from '../lib/lifecycle';
 import { applyUsageCountDelta } from '../emailBlocks/module';
 import { buildSearchableText } from '../lib/queryHelpers';
 import { duplicateEmailFields } from '../lib/publishableEmail';
-import { loadEmailTheme } from '../lib/publishableEmailRender';
+import { loadEmailTheme, renderForWrite } from '../lib/publishableEmailRender';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import { CURRENT_CONTENT_BLOCK_VERSION, CURRENT_RENDERER_VERSION } from '../lib/constants';
 import { dataVariablesSchemaValidator } from '../lib/convexValidators';
@@ -194,10 +194,114 @@ export const scanRerenderedHtml = internalMutation({
 
 // ─── Public entry points ────────────────────────────────────────────────────
 
+/** What {@link insertTransactionalEmail} stores. */
+export interface TransactionalEmailInsert {
+	name: string;
+	slug: string;
+	subject?: string;
+	content?: string;
+	dataVariablesSchema?: Doc<'transactionalEmails'>['dataVariablesSchema'];
+	/** Variables a caller may leave out (`transactional/dispatchContent.ts`). */
+	optionalDataVariables?: string[];
+	defaultLanguage?: string;
+	linkedBlockIds?: string[];
+	userId: string;
+	/** Render `htmlContent` at insert, as `emailTemplates/lifecycle.ts` explains. */
+	render?: boolean;
+	/** Recorded on the audit row: the draft was written by AI drafting. */
+	generatedBy?: 'ai';
+}
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Whether `slug` is free: no transactional email, live or draft, uses it. */
+export async function isSlugFree(ctx: { db: MutationCtx['db'] }, slug: string): Promise<boolean> {
+	const existing = await ctx.db
+		.query('transactionalEmails')
+		.withIndex('by_slug', (q) => q.eq('slug', slug))
+		.first();
+	return existing === null;
+}
+
 /**
- * Insert a new `transactionalEmails` row at `draft`. The only insert
- * site for `transactionalEmails`.
+ * Insert a new `transactionalEmails` row at `draft`. The only insert site for
+ * `transactionalEmails`: `create` below wraps it, and the AI drafting commit
+ * (`emailGeneration/commit.ts`) calls it inside its own transaction.
  */
+export async function insertTransactionalEmail(
+	ctx: MutationCtx,
+	args: TransactionalEmailInsert
+): Promise<TransactionalEmailCreateOutcome> {
+	if (!SLUG_PATTERN.test(args.slug)) {
+		return { ok: false, reason: 'invalid_slug_format' };
+	}
+	if (!(await isSlugFree(ctx, args.slug))) {
+		return { ok: false, reason: 'slug_already_exists' };
+	}
+
+	const now = Date.now();
+	const defaultLanguage = args.defaultLanguage ?? 'en';
+	const subject = args.subject ?? '';
+	const searchableText = buildSearchableText(args.name, subject, args.slug);
+	const content = sanitizeStoredBlocksJson(args.content ?? '[]');
+	const rendered = args.render
+		? renderForWrite(
+				{ content, subject, defaultLanguage, supportedLanguages: [defaultLanguage] },
+				'data',
+				await loadEmailTheme(ctx)
+			)
+		: null;
+
+	const emailId = await ctx.db.insert('transactionalEmails', {
+		name: args.name,
+		slug: args.slug,
+		subject,
+		content,
+		...(rendered
+			? { htmlContent: rendered.html, plainTextContent: rendered.plainTextContent }
+			: {}),
+		dataVariablesSchema: args.dataVariablesSchema,
+		...(args.optionalDataVariables && args.optionalDataVariables.length > 0
+			? { optionalDataVariables: args.optionalDataVariables }
+			: {}),
+		status: 'draft',
+		defaultLanguage,
+		supportedLanguages: [defaultLanguage],
+		linkedBlockIds: args.linkedBlockIds,
+		contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
+		rendererVersion: CURRENT_RENDERER_VERSION,
+		searchableText,
+		createdAt: now,
+		updatedAt: now,
+	});
+
+	const effects: Effect[] = [
+		{
+			kind: 'audit_log',
+			action: 'transactional_email.created',
+			emailId,
+			userId: args.userId,
+			details: {
+				name: args.name,
+				slug: args.slug,
+				applied: 'transitioned',
+				...(args.generatedBy ? { generatedBy: args.generatedBy } : {}),
+			},
+		},
+	];
+	if (args.linkedBlockIds && args.linkedBlockIds.length > 0) {
+		effects.push({
+			kind: 'update_block_usage_counts',
+			previousIds: [],
+			nextIds: args.linkedBlockIds,
+		});
+	}
+	await applyEffects(ctx, effects);
+
+	return { ok: true, emailId };
+}
+
+/** Insert a new `transactionalEmails` row at `draft` ({@link insertTransactionalEmail}). */
 export const create = internalMutation({
 	args: {
 		name: v.string(),
@@ -209,66 +313,8 @@ export const create = internalMutation({
 		linkedBlockIds: v.optional(v.array(v.string())),
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<TransactionalEmailCreateOutcome> => {
-		const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-		if (!slugRegex.test(args.slug)) {
-			return { ok: false, reason: 'invalid_slug_format' };
-		}
-
-		const existing = await ctx.db
-			.query('transactionalEmails')
-			.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-			.first();
-		if (existing) {
-			return { ok: false, reason: 'slug_already_exists' };
-		}
-
-		const now = Date.now();
-		const defaultLanguage = args.defaultLanguage ?? 'en';
-		const subject = args.subject ?? '';
-		const searchableText = buildSearchableText(args.name, subject, args.slug);
-
-		const emailId = await ctx.db.insert('transactionalEmails', {
-			name: args.name,
-			slug: args.slug,
-			subject,
-			content: sanitizeStoredBlocksJson(args.content ?? '[]'),
-			dataVariablesSchema: args.dataVariablesSchema,
-			status: 'draft',
-			defaultLanguage,
-			supportedLanguages: [defaultLanguage],
-			linkedBlockIds: args.linkedBlockIds,
-			contentBlockVersion: CURRENT_CONTENT_BLOCK_VERSION,
-			rendererVersion: CURRENT_RENDERER_VERSION,
-			searchableText,
-			createdAt: now,
-			updatedAt: now,
-		});
-
-		const effects: Effect[] = [
-			{
-				kind: 'audit_log',
-				action: 'transactional_email.created',
-				emailId,
-				userId: args.userId,
-				details: {
-					name: args.name,
-					slug: args.slug,
-					applied: 'transitioned',
-				},
-			},
-		];
-		if (args.linkedBlockIds && args.linkedBlockIds.length > 0) {
-			effects.push({
-				kind: 'update_block_usage_counts',
-				previousIds: [],
-				nextIds: args.linkedBlockIds,
-			});
-		}
-		await applyEffects(ctx, effects);
-
-		return { ok: true, emailId };
-	},
+	handler: async (ctx, args): Promise<TransactionalEmailCreateOutcome> =>
+		insertTransactionalEmail(ctx, args),
 });
 
 /**

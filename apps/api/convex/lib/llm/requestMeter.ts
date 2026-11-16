@@ -64,6 +64,7 @@ export const ROOT_REQUEST_PATHS = [
 	'translate',
 	'settings',
 	'voice_profile',
+	'email_generation',
 ] as const;
 
 export type RootRequestPath = (typeof ROOT_REQUEST_PATHS)[number];

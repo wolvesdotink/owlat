@@ -274,6 +274,7 @@ Gated families and their builders:
 | `calendar.booking`           | `bookingQuery`, `bookingMutation`                                        | `booking/_helpers.ts`              |
 | `mail.mcp`                   | `mcpQuery`, `mcpMutation`                                                | `mcp/_helpers.ts`                  |
 | `inbox` (response targets)   | `teamInboxAdminQuery`, `teamInboxAdminMutation`                          | `inbox/sla/policy.ts`              |
+| `ai.emailGeneration`         | `emailGenerationQuery`                                                   | `emailGeneration/_helpers.ts`      |
 
 The knowledge soft-auth reads apply `ai.knowledge` through
 `resolveKnowledgeViewer` (they return empty rather than throw). The one
