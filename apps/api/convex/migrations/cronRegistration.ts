@@ -28,4 +28,13 @@ export function registerMigrationCrons(crons: Crons): void {
 		internal.migrations['0075_register_system_sender_domain'].ensure,
 		{}
 	);
+
+	// Member profiles: write the profile of every member who joined without
+	// one, so they can be added to team inboxes, chats and threads.
+	crons.interval(
+		'ensure member profiles',
+		{ hours: 1 },
+		internal.migrations['0076_backfill_member_profiles'].ensure,
+		{}
+	);
 }

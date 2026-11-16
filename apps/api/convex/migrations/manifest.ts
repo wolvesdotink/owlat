@@ -212,4 +212,13 @@ export const MIGRATION_MANIFEST: readonly MigrationManifestEntry[] = [
 		startsItself: true,
 		run: internal.migrations['0075_register_system_sender_domain'].run,
 	},
+	{
+		migration: '0076_backfill_member_profiles',
+		introducedIn: '0.6.22',
+		dependsOn: [],
+		isSteppingStone: false,
+		// Its cron repairs every install without an operator; one transaction.
+		startsItself: true,
+		run: internal.migrations['0076_backfill_member_profiles'].run,
+	},
 ];
