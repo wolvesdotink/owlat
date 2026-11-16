@@ -279,7 +279,7 @@ describe('brandDraftBlocks', () => {
 
 	it('adds the kit footer and restyles the blocks', () => {
 		const design = resolveBrandKitDesign(
-			{ primaryColor: '#123456' },
+			{ primaryColor: '#123456', fontFamily: 'Arial, sans-serif', backgroundColor: '#ffffff' },
 			{ footerCompanyName: 'Owlat', footerAddress: 'Main street 1' }
 		);
 		const result = brandDraftBlocks(

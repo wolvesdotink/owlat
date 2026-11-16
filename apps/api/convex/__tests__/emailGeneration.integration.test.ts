@@ -242,7 +242,7 @@ describe('generate: what it creates', () => {
 		}[];
 		const button = blocks.find((b) => b.type === 'button')!;
 		expect(button.content['backgroundColor']).toBe('#123456');
-		expect(blocks.at(-1)!.content['html']).toContain('Owlat Demo');
+		expect(blocks[blocks.length - 1]!.content['html']).toContain('Owlat Demo');
 
 		const audit = await t.run((ctx) => ctx.db.query('auditLogs').collect());
 		expect(audit.find((row) => row.action === 'email_template.created')?.details).toMatchObject({
