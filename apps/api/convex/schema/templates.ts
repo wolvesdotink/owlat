@@ -274,7 +274,6 @@ export const templateTables = {
 	})
 		.index('by_slug', ['slug'])
 		.index('by_status', ['status'])
-		// AI drafting reads its style samples from the newest-edited rows.
 		.index('by_updated_at', ['updatedAt'])
 		.searchIndex('search_transactional', {
 			searchField: 'searchableText',
