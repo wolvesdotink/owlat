@@ -3,11 +3,12 @@
  */
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
-import type { DeliveryDomain } from '@owlat/shared';
+import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { BounceCause } from '@owlat/shared/smtpBlockCategories';
 import type { SmtpPhase } from '@owlat/smtp-client';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
+import type { SystemMailbox } from './inbound/systemMailboxes.js';
 
 // ============ Email Job Types ============
 
@@ -83,6 +84,13 @@ export interface EmailJob {
 	 * `List-Unsubscribe` one (`smtp/send/compose.ts`). Governed intake only.
 	 */
 	listUnsubscribeMailto?: true;
+	/**
+	 * The governed stream the message belongs to. Only campaign and automation
+	 * mail is withdrawn when its recipient unsubscribes
+	 * (`intelligence/marketingOptOut.ts`). Absent on Postbox and system mail and
+	 * on jobs retained from before the field existed.
+	 */
+	messageType?: GovernedMessageType;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
@@ -300,6 +308,13 @@ export interface InboundEmailPayload extends Pick<
 	 * receiving side stores the message with no raw blob rather than failing.
 	 */
 	rawBytesBase64?: string;
+	/**
+	 * Set only when the built-in `postmaster@`/`abuse@` route accepted the
+	 * message (`systemMailboxOfRoute`). Convex keeps such mail to instance
+	 * admins and out of the agent, contacts and audiences. Absent on every
+	 * other route, an operator's own exact route of the same name included.
+	 */
+	systemMailbox?: SystemMailbox;
 	// Metadata only — the bytes ride `rawBytesBase64` above, not this array.
 	// `partIndex` is the MIME walk position `@owlat/shared/mailMime`'s
 	// `extractAttachmentAt` addresses a part by; without it a reader can only

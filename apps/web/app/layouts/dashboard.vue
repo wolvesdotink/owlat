@@ -192,7 +192,7 @@ useModalFocus(sidebarRef, isMobileDrawerOpen, () => {
 	isSidebarOpen.value = false;
 });
 
-// The sidebar renders one workspace at a time (Conversations ↔ Marketing). The
+// The sidebar renders one workspace at a time (Conversations ↔ Sending). The
 // toggle is emergent: it only exists while both workspaces survived the flags.
 const { showToggle, activeContext, sidebarSections, switchContext } = useSidebarContext();
 
@@ -320,7 +320,7 @@ useShellNotices();
 				@close="isSidebarOpen = false"
 			/>
 
-			<!-- Inbox ↔ Marketing, while both contexts survived the feature flags. -->
+			<!-- Conversations ↔ Sending, while both contexts survived the feature flags. -->
 			<ShellSidebarContextToggle
 				v-if="showToggle && !showSectionNavigation"
 				:collapsed="isCollapsed"

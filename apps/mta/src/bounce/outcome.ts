@@ -15,6 +15,8 @@ import type { BounceEffect } from './effects.js';
 import type { FblSourceIspToken } from './fblProcessor.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
+import type { InboundRoute } from '../inbound/router.js';
+import { systemMailboxOfRoute, type SystemMailbox } from '../inbound/systemMailboxes.js';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 
 /**
@@ -394,6 +396,12 @@ function reduceEndpointForward(
 	};
 }
 
+/** `systemMailbox` for the payload, present only on the built-in route. */
+function systemMailboxField(route: InboundRoute): { systemMailbox?: SystemMailbox } {
+	const systemMailbox = systemMailboxOfRoute(route);
+	return systemMailbox ? { systemMailbox } : {};
+}
+
 function reduceInboundAccept(
 	attempt: Extract<BounceAttempt, { kind: 'inbound_accept' }>,
 	ctx: BasePhaseCtx
@@ -482,6 +490,7 @@ function reduceInboundAccept(
 				arcSealerDomain,
 				arcAttestsOriginalPass,
 				attachments: attachmentMeta,
+				...systemMailboxField(route),
 			},
 			timestamp: Date.now(),
 		},

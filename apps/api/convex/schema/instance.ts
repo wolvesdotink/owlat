@@ -19,6 +19,8 @@ import {
 	successOrFailedValidator,
 } from '../lib/literalValidators';
 import { brandKitValidator, emailThemeValidator } from '../lib/validators/brandKit';
+import { inboxStatsValidator } from '../lib/validators/inboxStats';
+import { transactionalSendCapsValidator } from '../lib/validators/transactionalSendCaps';
 
 /**
  * The non-secret MTA health snapshot `delivery/mtaHealth` stores on
@@ -66,27 +68,6 @@ export const mtaHealthSnapshotValidator = v.object({
 		v.array(v.object({ domain: v.string(), cause: v.string(), since: v.number() }))
 	),
 	observedAt: v.number(),
-});
-
-/**
- * The inbox processing-status counters (`lib/inboxStats.ts`). Stored on the
- * `inbox` row of `instanceCounters`; the copy on `instanceSettings` is the
- * deprecated pre-split location, read only as a fallback.
- */
-export const inboxStatsValidator = v.object({
-	received: v.number(),
-	processing: v.number(), // security_check + classifying + drafting
-	draftReady: v.number(),
-	approved: v.number(),
-	sent: v.number(),
-	quarantined: v.number(),
-	failed: v.number(),
-	rejected: v.number(),
-	archived: v.number(),
-	// Parked as needs-no-reply (the Updates dashboard). Optional: rows
-	// written before the bucket existed have no field and read as 0.
-	informational: v.optional(v.number()),
-	total: v.number(),
 });
 
 /**
@@ -204,6 +185,9 @@ export const instanceTables = {
 		// `settings.update`; read by `delivery/rampIndependence`.
 		relayMinorUnitsPerThousand: v.optional(v.number()),
 		relayCurrency: v.optional(v.string()),
+		// Volume caps of the transactional send API. Unset ⇒ the defaults in
+		// `transactional/sendCapsPolicy.ts`. Admin-gated write via `transactional/sendCapSettings`.
+		transactionalSendCaps: v.optional(transactionalSendCapsValidator),
 		// DEPRECATED (plan 2.4): the flag map and plugin capability grants live on
 		// the `featureFlagSettings` singleton (schema/instanceHotRows.ts), so
 		// gate reads never share a document with counter writers. Still

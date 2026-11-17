@@ -14,6 +14,8 @@ import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import type { Hono } from 'hono';
 import type { MtaConfig } from '../../config.js';
+import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
+import { marketingOptOutAt } from '../../intelligence/marketingOptOut.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -154,6 +156,31 @@ describe('other admin bodies', () => {
 		await expectRefusedWithoutWrites(
 			await send(app, 'POST', '/', JSON.stringify({ emails: ['a@example.com', 1] }))
 		);
+	});
+
+	it('refuses a marketing opt-out without a numeric time', async () => {
+		const app = createSuppressionRoutes(redis, config);
+		await expectRefusedWithoutWrites(
+			await send(
+				app,
+				'POST',
+				'/marketing-opt-out',
+				JSON.stringify({ organizationId: 'org-1', email: 'a@example.com', optedOutAt: 'now' })
+			)
+		);
+	});
+
+	it('records a marketing opt-out for the organization and address', async () => {
+		const app = createSuppressionRoutes(redis, createTestConfig({ apiKey: API_KEY }));
+		const optedOutAt = Date.now();
+		const response = await send(
+			app,
+			'POST',
+			'/marketing-opt-out',
+			JSON.stringify({ organizationId: 'org-1', email: 'A@Example.com', optedOutAt })
+		);
+		expect(response.status).toBe(200);
+		expect(await marketingOptOutAt(redis, 'org-1', 'a@example.com')).toBe(optedOutAt);
 	});
 
 	it('refuses an org limit sent as a string', async () => {

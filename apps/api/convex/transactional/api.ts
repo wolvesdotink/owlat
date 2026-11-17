@@ -164,11 +164,13 @@ const REJECTION_RESPONSE_MAP: Record<
 	},
 	recipient_rate_limited: {
 		category: 'rate_limited',
-		defaultMessage: 'Too many emails from this template to this recipient. Try again later.',
+		defaultMessage:
+			'Too many emails from this template to this recipient. Try again later; the instance admin sets this limit.',
 	},
 	daily_send_limit: {
 		category: 'rate_limited',
-		defaultMessage: 'This API key has reached its daily transactional send limit.',
+		defaultMessage:
+			'This API key has reached its daily transactional send limit, which the instance admin sets.',
 	},
 	idempotency_conflict: {
 		category: 'conflict',

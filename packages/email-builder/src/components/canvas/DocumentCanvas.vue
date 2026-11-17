@@ -348,7 +348,6 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				-->
 				<div
 					ref="containerRef"
-					class="min-h-[100px]"
 					role="list"
 					:aria-label="t('builder.canvas.blocks')"
 					@keydown="handleListKeydown"

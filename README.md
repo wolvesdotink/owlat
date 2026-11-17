@@ -101,6 +101,7 @@ Owlat is built as a set of independent feature areas. Each one can be turned on 
 | Autonomous actions | `ai.autonomy`       | off     | Let the agent send approved replies without human review                                                                                                                                             |
 | Knowledge graph    | `ai.knowledge`      | off     | Semantic extraction from conversations for agent context                                                                                                                                             |
 | AI dashboards      | `ai.visualizations` | off     | Generate charts from natural-language prompts                                                                                                                                                        |
+| AI email drafts    | `ai.emailGeneration` | off    | Draft a template, transactional email or whole campaign from a sentence. Drafts only; nothing is sent                                                                                               |
 
 ### Integrations
 

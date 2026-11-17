@@ -30,6 +30,8 @@ export type DeliveryStatus =
 	| 'bounced'
 	| 'deferred'
 	| 'suppressed'
+	/** Queued marketing mail withdrawn because the contact unsubscribed. */
+	| 'unsubscribed'
 	| 'screened'
 	| 'failed'
 	/** Gave up after exceeding the max message age — a terminal soft-fail. */

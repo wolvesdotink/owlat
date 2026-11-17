@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { withBundleTargets } from '../ci/linux-bundles';
 import { withMsiVersion } from '../ci/msi-version';
 import type { Run } from '../ci/reuse';
 import {
 	candidatesOf,
 	checkPromotion,
 	classifyReleaseTag,
+	linuxBundleTargets,
 	msiVersion,
 	nextCandidateTag,
 	type CandidateEvidence,
@@ -112,6 +114,36 @@ describe('withMsiVersion', () => {
 			['{"bundle":', 'release.json is not valid JSON'],
 		])
 			expect(() => withMsiVersion(text!, '0.7.0.3', 'release.json')).toThrow(message);
+	});
+});
+
+describe('linuxBundleTargets', () => {
+	it('leaves the RPM out of a prerelease, whose version RPM cannot carry', () => {
+		expect(linuxBundleTargets('0.7.0-rc.3')).toEqual(['deb', 'appimage']);
+		expect(linuxBundleTargets('0.7.0-beta')).toEqual(['deb', 'appimage']);
+		expect(linuxBundleTargets('0.7.0')).toBeNull();
+		expect(() => linuxBundleTargets('not-a-version')).toThrow();
+	});
+});
+
+describe('withBundleTargets', () => {
+	it('sets the bundle targets and keeps every other release setting', () => {
+		const config = {
+			$schema: 'https://example.com/schema.json',
+			bundle: { createUpdaterArtifacts: true },
+		};
+		expect(
+			JSON.parse(withBundleTargets(JSON.stringify(config), ['deb', 'appimage'], 'release.json'))
+		).toEqual({
+			$schema: 'https://example.com/schema.json',
+			bundle: { createUpdaterArtifacts: true, targets: ['deb', 'appimage'] },
+		});
+	});
+
+	it('refuses a config it would have to overwrite to edit', () => {
+		expect(() => withBundleTargets('{"bundle":[]}', ['deb'], 'release.json')).toThrow(
+			'release.json.bundle must be an object'
+		);
 	});
 });
 

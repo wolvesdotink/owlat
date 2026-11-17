@@ -29,6 +29,7 @@
 
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
+import type { SystemMailbox } from '../../lib/literalValidators';
 import { internal } from '../../_generated/api';
 import { recordAuditLog } from '../../lib/auditLog';
 import { applyOpenThreadDelta } from '../../lib/inboxStats';
@@ -131,6 +132,24 @@ async function applyTransition(
 // `inbound_activity` reducer so the count / lastMessageAt patch and the
 // reopen-if-closed are atomic with discovery — the caller makes one call.
 
+/**
+ * Threads one subject-and-sender lookup looks at. A sender with both a
+ * postmaster/abuse thread and a customer thread under one subject is rare, so a
+ * handful covers every real case.
+ */
+const SUBJECT_MATCH_SCAN = 8;
+
+/** Same sender, and the same side of the postmaster/abuse line. */
+function isSameConversation(
+	thread: Pick<Doc<'conversationThreads'>, 'contactIdentifier' | 'systemMailbox'>,
+	arrival: { contactIdentifier: string; systemMailbox?: SystemMailbox }
+): boolean {
+	return (
+		thread.contactIdentifier === arrival.contactIdentifier &&
+		(thread.systemMailbox === undefined) === (arrival.systemMailbox === undefined)
+	);
+}
+
 export async function findOrCreateForEmail(
 	ctx: MutationCtx,
 	args: {
@@ -143,6 +162,8 @@ export async function findOrCreateForEmail(
 		occurredAt: number;
 		/** Newest-message plaintext preview for the team-inbox snippet line. */
 		preview?: string;
+		/** The MTA's `postmaster@`/`abuse@` mark on the arriving message. */
+		systemMailbox?: SystemMailbox;
 	}
 ): Promise<{ threadId: Id<'conversationThreads'>; action: 'matched' | 'created' }> {
 	let threadId: Id<'conversationThreads'> | undefined;
@@ -154,9 +175,13 @@ export async function findOrCreateForEmail(
 	// header match is only honoured when the referenced thread belongs to the
 	// SAME contact identifier as the incoming sender; otherwise we ignore it and
 	// fall through to the subject+contact composite (Strategy 3) / new thread.
+	//
+	// Postmaster/abuse mail and customer mail never share a thread either way:
+	// one is for the instance admins with the agent off, the other is not, and a
+	// joined thread would carry one's mail into the other's handling.
 	const ownedBySender = async (candidateThreadId: Id<'conversationThreads'>): Promise<boolean> => {
 		const thread = await ctx.db.get(candidateThreadId);
-		return thread?.contactIdentifier === args.contactIdentifier;
+		return thread !== null && isSameConversation(thread, args);
 	};
 
 	// Strategy 1 — In-Reply-To header → the referenced message's thread.
@@ -187,15 +212,15 @@ export async function findOrCreateForEmail(
 
 	// Strategy 3 — normalized subject + contact identifier composite.
 	if (!threadId) {
-		const existing = await ctx.db
+		const candidates = await ctx.db
 			.query('conversationThreads')
 			.withIndex('by_normalized_subject_and_contact', (q) =>
 				q
 					.eq('normalizedSubject', args.normalizedSubject)
 					.eq('contactIdentifier', args.contactIdentifier)
 			)
-			.first();
-		if (existing) threadId = existing._id;
+			.take(SUBJECT_MATCH_SCAN);
+		threadId = candidates.find((candidate) => isSameConversation(candidate, args))?._id;
 	}
 
 	const action: 'matched' | 'created' = threadId ? 'matched' : 'created';
@@ -206,6 +231,7 @@ export async function findOrCreateForEmail(
 			normalizedSubject: args.normalizedSubject,
 			contactId: args.contactId,
 			contactIdentifier: args.contactIdentifier,
+			...(args.systemMailbox ? { systemMailbox: args.systemMailbox } : {}),
 			status: 'open',
 			// Email is the default channel — leave `channel` unset so the row shows
 			// no channel chip (only non-email threads carry one).

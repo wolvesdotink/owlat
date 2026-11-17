@@ -35,7 +35,14 @@ const ids = (environment: NavigationEnvironment) =>
 
 describe('quickCreateEntriesFor', () => {
 	it('offers an owner every verb, in registry order', () => {
-		expect(ids(env('owner'))).toEqual(['compose', 'campaign', 'contact', 'automation']);
+		expect(ids(env('owner'))).toEqual([
+			'compose',
+			'campaign',
+			'aiCampaign',
+			'contact',
+			'automation',
+			'transactional',
+		]);
 	});
 
 	it('keeps an editor to the verbs an editor may actually complete', () => {
@@ -49,10 +56,11 @@ describe('quickCreateEntriesFor', () => {
 	});
 
 	it('drops compose on an instance with no mail at all', () => {
-		expect(ids(env('owner', ['campaigns', 'automations']))).toEqual([
+		expect(ids(env('owner', ['campaigns', 'automations', 'transactional']))).toEqual([
 			'campaign',
 			'contact',
 			'automation',
+			'transactional',
 		]);
 	});
 
@@ -63,6 +71,22 @@ describe('quickCreateEntriesFor', () => {
 
 	it('drops the flag-gated verbs when their features are off', () => {
 		expect(ids(env('owner', ['postbox']))).toEqual(['compose', 'contact']);
+	});
+
+	it('offers the AI campaign draft only to admins, with campaigns and AI drafting on', () => {
+		// The draft creates the campaign's email too, which needs templates:manage.
+		expect(ids(env('admin', ['campaigns', 'ai', 'ai.emailGeneration']))).toContain('aiCampaign');
+		expect(ids(env('editor', ['campaigns', 'ai', 'ai.emailGeneration']))).not.toContain(
+			'aiCampaign'
+		);
+		expect(ids(env('owner', ['campaigns']))).not.toContain('aiCampaign');
+		expect(ids(env('owner', ['ai', 'ai.emailGeneration']))).not.toContain('aiCampaign');
+	});
+
+	it('offers a new transactional email to admins while the feature is on', () => {
+		expect(ids(env('admin', ['transactional']))).toEqual(['contact', 'transactional']);
+		expect(ids(env('editor', ['transactional']))).toEqual([]);
+		expect(ids(env('owner', ['postbox']))).not.toContain('transactional');
 	});
 
 	it('offers nothing to an editor on an instance with neither mail nor campaigns', () => {
@@ -85,6 +109,12 @@ describe('defaultQuickCreateEntry', () => {
 	it("leads with the workspace's own verb", () => {
 		expect(defaultQuickCreateEntry(env('owner'), 'inbox')?.id).toBe('compose');
 		expect(defaultQuickCreateEntry(env('owner'), 'marketing')?.id).toBe('campaign');
+	});
+
+	it('leads the Sending workspace with a transactional email when campaigns are off', () => {
+		expect(defaultQuickCreateEntry(env('owner', ['transactional']), 'marketing')?.id).toBe(
+			'transactional'
+		);
 	});
 
 	it('falls back when the workspace verb is not allowed', () => {
@@ -110,5 +140,7 @@ describe('the registry itself', () => {
 		expect(byId.get('contact')?.href).toBeUndefined();
 		expect(byId.get('campaign')?.href).toBe('/dashboard/campaigns/new');
 		expect(byId.get('automation')?.href).toBe('/dashboard/automations/new');
+		expect(byId.get('aiCampaign')?.href).toBe('/dashboard/campaigns/new?draft=ai');
+		expect(byId.get('transactional')?.href).toBe('/dashboard/send/transactional?action=create');
 	});
 });

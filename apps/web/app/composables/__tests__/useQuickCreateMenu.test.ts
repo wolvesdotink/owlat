@@ -62,8 +62,10 @@ describe('useQuickCreateMenu', () => {
 		expect(actions.value.map((action) => action.id)).toEqual([
 			'compose',
 			'campaign',
+			'aiCampaign',
 			'contact',
 			'automation',
+			'transactional',
 		]);
 		expect(actions.value[0]?.label).toBe('shared.quickCreate.compose');
 	});

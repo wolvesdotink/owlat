@@ -400,6 +400,115 @@
 				"submit": "Überarbeiten",
 				"submitting": "Wird überarbeitet…",
 				"toggle": "Überarbeiten…"
+			},
+			"emailGenerate": {
+				"operation": "E-Mail mit KI entwerfen",
+				"readyToast": "Dein KI-Entwurf ist fertig.",
+				"openDraft": "Entwurf öffnen",
+				"campaignReady": "Kampagne samt E-Mail entworfen. Wähle Absender und Zielgruppe und prüfe dann die E-Mail.",
+				"loadFailed": "KI-Entwürfe konnten nicht geladen werden. Prüf deine Verbindung und versuch es noch mal. Klappt es weiterhin nicht, lade die Seite neu.",
+				"title": {
+					"template": "Vorlage mit KI entwerfen",
+					"transactional": "Transaktionale E-Mail mit KI entwerfen",
+					"campaign": "Kampagne mit KI entwerfen"
+				},
+				"entry": {
+					"title": "Beschreib sie, die KI entwirft sie",
+					"template": "Schreib einen Satz zur E-Mail. Du bekommst einen bearbeitbaren Entwurf im Editor, gestaltet mit deinem Brand-Kit.",
+					"campaignTitle": "Ganze Kampagne mit KI entwerfen",
+					"campaign": "Beschreib die Kampagne. Du bekommst einen Entwurf mit Name, Betreff und E-Mail; Absender und Zielgruppe wählst du selbst."
+				},
+				"enableHint": "Soll die KI E-Mails für dich entwerfen? Schalte „E-Mails mit KI entwerfen“ ein.",
+				"openFeatures": "Funktionen öffnen",
+				"mode": {
+					"blank": "Leer beginnen",
+					"ai": "Mit KI entwerfen"
+				},
+				"languageLabel": "Sprache",
+				"languageFromPrompt": "Wie meine Beschreibung",
+				"promptLabel": "Was soll diese E-Mail tun?",
+				"promptPlaceholder": {
+					"template": "Zum Beispiel: unser Oktober-Newsletter zu den neuen Preisen, freundlich und kurz",
+					"transactional": "Zum Beispiel: eine Buchungsbestätigung mit Termin und einem Link zum Verschieben",
+					"campaign": "Zum Beispiel: kündige unseren Frühjahrssale bei Bestandskunden an, 20 % Rabatt bis Sonntag"
+				},
+				"examplesLabel": "Probier:",
+				"examples": {
+					"newsletter": {
+						"label": "Monatlicher Newsletter",
+						"prompt": "Unser monatlicher Newsletter: zwei kurze Produkt-Updates, eine Kundengeschichte und ein Link zum Blog. Freundlich und knapp."
+					},
+					"welcome": {
+						"label": "Willkommens-E-Mail",
+						"prompt": "Eine herzliche Willkommens-E-Mail für neue Abonnenten, die sagt, was sie von uns bekommen, mit Links zu unseren drei nützlichsten Anleitungen."
+					},
+					"event": {
+						"label": "Event-Einladung",
+						"prompt": "Eine Einladung zu unserem Online-Event im nächsten Monat, mit dem, was man dort lernt, und einem Button zur Anmeldung."
+					},
+					"booking": {
+						"label": "Buchungsbestätigung",
+						"prompt": "Eine Buchungsbestätigung mit Datum und Uhrzeit des Termins, dem Namen der teilnehmenden Person und einem Link zum Verschieben."
+					},
+					"passwordReset": {
+						"label": "Passwort zurücksetzen",
+						"prompt": "Eine E-Mail zum Zurücksetzen des Passworts mit einem Button zum Link, der nach einer Stunde abläuft, und dem Hinweis, sie zu ignorieren, falls niemand danach gefragt hat."
+					},
+					"orderShipped": {
+						"label": "Bestellung versendet",
+						"prompt": "Eine Versandbestätigung mit Bestellnummer, Versanddienst, Sendungsverfolgungslink und voraussichtlichem Lieferdatum."
+					},
+					"launch": {
+						"label": "Produktstart",
+						"prompt": "Kündige allen Kunden unsere neue Funktion an: was sie kann, wem sie hilft und ein Button zum Ausprobieren."
+					},
+					"winBack": {
+						"label": "Rückgewinnung",
+						"prompt": "Eine freundliche E-Mail an Kunden, die seit sechs Monaten nichts gekauft haben, mit dem, was seitdem neu ist, und einem Grund zurückzukommen."
+					}
+				},
+				"suggestedPlaceholder": "Von der KI vorgeschlagen",
+				"nameSlugHelp": "Lass die Felder leer, dann schlägt die KI sie vor. Im Editor kannst du beide ändern.",
+				"references": {
+					"label": "Als Vorlage nutzen",
+					"optional": "(freiwillig)",
+					"remove": "{name} entfernen",
+					"full": "Höchstens {max} Vorlagen",
+					"placeholder": "Vorlagen, transaktionale E-Mails und Kampagnen suchen",
+					"searching": "Suche läuft…",
+					"noMatches": "Keine passenden E-Mails.",
+					"kind": {
+						"template": "Vorlage",
+						"transactional": "Transaktional",
+						"campaign": "Kampagne"
+					}
+				},
+				"matchStyle": "Stil unserer bisherigen E-Mails übernehmen",
+				"matchStyleHelp": "Die KI schaut sich einige deiner letzten E-Mails an, für Ton, Aufbau und Länge.",
+				"generating": "Dein Entwurf wird geschrieben…",
+				"generatingHelp": "Das dauert meist unter einer Minute. Du kannst das Fenster schließen; der Entwurf bleibt erhalten.",
+				"summary": {
+					"template": "Das erstellt eine Vorlage als Entwurf. Nichts wird gesendet.",
+					"transactional": "Das erstellt eine transaktionale E-Mail als Entwurf, samt Datenvariablen. Nichts wird veröffentlicht oder gesendet.",
+					"campaign": "Das erstellt eine Kampagne samt E-Mail als Entwurf. Nichts wird geplant oder gesendet."
+				},
+				"submit": "E-Mail entwerfen",
+				"submitting": "Wird entworfen…",
+				"errors": {
+					"budget": "Das KI-Budget ist aufgebraucht.",
+					"rateLimited": "Du hast in kurzer Zeit viel entworfen. Warte ein paar Minuten und versuch es dann noch mal.",
+					"notConfigured": "Auf dieser Instanz ist noch kein KI-Anbieter eingerichtet. Ein Admin kann einen hinzufügen.",
+					"featureOff": "E-Mails mit KI entwerfen ist auf dieser Instanz ausgeschaltet.",
+					"permission": "Du darfst diese Art von E-Mail nicht erstellen.",
+					"referenceMissing": "Eine der gewählten Vorlagen gibt es nicht mehr. Sie wurde aus deiner Auswahl entfernt; versuch es noch mal.",
+					"invalidOutput": "Die Antwort der KI war keine brauchbare E-Mail. Versuch es noch mal oder beschreib die E-Mail genauer.",
+					"providerFailed": "Der KI-Anbieter hat nicht geantwortet. Versuch es gleich noch mal.",
+					"slugTaken": "Dieser Slug gehört schon zu einer anderen transaktionalen E-Mail. Wähl einen anderen oder lass das Feld leer.",
+					"invalidSlug": "Der Slug darf nur Kleinbuchstaben, Ziffern und Bindestriche enthalten, etwa order-confirmation. Korrigier ihn oder lass das Feld leer.",
+					"network": "Du bist offline. Deine Beschreibung bleibt erhalten; versuch es noch mal, sobald du wieder online bist.",
+					"unknown": "Beim Entwerfen ist etwas schiefgelaufen. Deine Beschreibung bleibt erhalten; versuch es noch mal.",
+					"invalidInput": "Prüf die Beschreibung und die Auswahl und versuch es dann noch mal."
+				}
 			}
 		},
 		"appCommandPalette": {
@@ -4425,6 +4534,7 @@
 				"notIndexedPlaceholder": "Der Assistent kennt die Namen einiger dieser Dateien, aber nicht deren Inhalt.",
 				"notIndexedRefusedType": "Der Assistent hat nicht jede Datei hier gelesen — einige dieser Dateitypen werden nie auf Schadsoftware geprüft. Öffne sie nur, wenn du dem Absender vertraust.",
 				"notIndexedSpam": "Der Assistent hat diese Dateien nicht gelesen — diese Nachricht wurde als Spam markiert.",
+				"notIndexedSystemMailbox": "Der Assistent liest keine Dateien, die an postmaster{'@'} oder abuse{'@'} geschickt wurden.",
 				"notIndexedTooLarge": "Der Assistent hat nicht jede Datei hier gelesen — einige sind größer als das Verarbeitungslimit.",
 				"notIndexedUnsupported": "Der Assistent hat nicht jede Datei hier gelesen — einige Dateitypen verarbeitet er nicht.",
 				"notIndexedUnverified": "Der Assistent hat diese Dateien nicht gelesen — der Absender dieser Nachricht konnte nicht verifiziert werden.",
@@ -6924,6 +7034,10 @@
 					"label": "DNS der Versanddomain fehlerhaft",
 					"hint": "Wenn ein DNS-Eintrag einer Versanddomain seine Prüfung nicht mehr besteht."
 				},
+				"postmasterMail": {
+					"label": "Mail an postmaster und abuse",
+					"hint": "Wenn ein Mailanbieter, eine Blocklist oder ein Abuse-Team an postmaster{'@'} oder abuse{'@'} deiner Versandhosts schreibt."
+				},
 				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
 			"webPush": {
@@ -7700,6 +7814,26 @@
 				"titleNamed": "Letzte Sendungen — {name}",
 				"unknownRecipient": "Unbekannter Empfänger"
 			},
+			"sendOptions": {
+				"description": "Diese Einstellungen gelten sofort für den nächsten Versand, auch während die E-Mail veröffentlicht ist.",
+				"operations": {
+					"recipientLimit": "Empfängerlimit ändern",
+					"variable": "Variable ändern"
+				},
+				"recipientLimit": {
+					"description": "Für eine E-Mail, die nur an eine feste Adresse geht, etwa eine Bestellbenachrichtigung an deinen Shop. Das Limit pro Empfänger gilt dann nicht mehr, das Tageslimit pro API-Schlüssel schon.",
+					"title": "Versandlimit pro Empfänger überspringen"
+				},
+				"title": "Versand",
+				"variables": {
+					"description": "Eine Anfrage, die eine Variable weglässt, die die E-Mail ohne Fallback verwendet, wird mit einem Fehler abgelehnt, der sie nennt. Markiere eine Variable als optional, damit Anfragen sie weglassen dürfen: Sie wird dann leer gesendet oder mit ihrem Fallback.",
+					"empty": "Diese E-Mail hat noch keine Datenvariablen.",
+					"optional": "Darf fehlen",
+					"required": "Pflicht, außer mit Fallback",
+					"title": "Datenvariablen",
+					"toggle": "{name} ist optional"
+				}
+			},
 			"senderAddressField": {
 				"addressLabel": "Adresse",
 				"domainLabel": "Absenderdomain",
@@ -8029,6 +8163,8 @@
 				"allCampaigns": "Alle Kampagnen",
 				"automations": "Automatisierungen",
 				"allAutomations": "Alle Automatisierungen",
+				"newTransactional": "Neue Transaktions-E-Mail",
+				"allTransactional": "Alle Transaktions-E-Mails",
 				"audience": "Zielgruppe",
 				"recentlyDeleted": "Zuletzt gelöscht",
 				"templates": "Vorlagen",
@@ -8447,6 +8583,40 @@
 		"contactProperties": {
 			"propertyRow": {
 				"actionsFor": "Aktionen für {label}"
+			}
+		},
+		"apiKeys": {
+			"sendLimits": {
+				"change": "Limits ändern",
+				"intro": "Ein Transaktionsversand, der eines dieser Limits erreicht, wird mit HTTP 429 und einem Retry-After-Header abgelehnt. Eine Anfrage, die mit demselben Idempotency-Key wiederholt wird, zählt nie mit.",
+				"off": "Aus",
+				"per": "pro",
+				"perApiKeyDaily": {
+					"countLabel": "E-Mails pro API-Schlüssel und Tag",
+					"description": "Begrenzt, was ein Schlüssel an einem Tag senden kann, damit ein geleakter Schlüssel nicht deinen Absenderruf aufbraucht. Standard: {default} pro UTC-Tag.",
+					"offHint": "Ein API-Schlüssel kann ohne Tageslimit senden.",
+					"summary": "{count} pro UTC-Tag",
+					"title": "Pro API-Schlüssel und Tag",
+					"toggle": "Versand pro API-Schlüssel und Tag begrenzen",
+					"unit": "pro UTC-Tag"
+				},
+				"perRecipient": {
+					"countLabel": "E-Mails pro Empfänger",
+					"description": "Verhindert, dass eine Schleife oder eine fremde Adresse in einem öffentlichen Formular ein Postfach von deiner Domain aus flutet. Standard: {default}. Eine Vorlage, die nur an eine feste Adresse geht, kann sich in ihrem Editor davon ausnehmen.",
+					"offHint": "Jede Vorlage darf beliebig oft an dieselbe Adresse senden.",
+					"summary": "{count} pro {window}",
+					"title": "Pro Vorlage und Empfänger",
+					"toggle": "Versand pro Vorlage und Empfänger begrenzen",
+					"windowLabel": "Zeitfenster"
+				},
+				"problem": "Gib eine ganze Zahl zwischen {min} und {max} ein.",
+				"restoreDefaults": "Standardwerte wiederherstellen",
+				"title": "Versandlimits für Transaktionsmails",
+				"window": {
+					"days": "Tag | {count} Tage",
+					"hours": "Stunde | {count} Stunden",
+					"minutes": "Minute | {count} Minuten"
+				}
 			}
 		}
 	},
@@ -10630,7 +10800,8 @@
 							"create": "API-Schlüssel erstellen",
 							"delete": "API-Schlüssel löschen",
 							"rename": "API-Schlüssel umbenennen",
-							"revoke": "API-Schlüssel widerrufen"
+							"revoke": "API-Schlüssel widerrufen",
+							"saveSendLimits": "Versandlimits speichern"
 						},
 						"pageTitle": "API — Owlat",
 						"rateLimit": {
@@ -10691,7 +10862,8 @@
 							"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
 							"created": "API-Schlüssel erfolgreich erstellt",
 							"deleted": "API-Schlüssel dauerhaft gelöscht",
-							"revoked": "API-Schlüssel erfolgreich widerrufen"
+							"revoked": "API-Schlüssel erfolgreich widerrufen",
+							"sendLimitsSaved": "Versandlimits gespeichert"
 						},
 						"validation": {
 							"nameRequired": "Name ist erforderlich",
@@ -13839,7 +14011,9 @@
 				"pageTitle": "Vorlagen — Owlat",
 				"savedBlocks": "Gespeicherte Bausteine",
 				"savedBlocksCount": "Gespeicherte Bausteine ({count})",
-				"subtitle": "E-Mail-Designs, die du in Kampagnen, Automationen und im API-Versand wiederverwendest.",
+				"subtitle": "E-Mail-Designs, die du in Kampagnen und Automationen wiederverwendest.",
+				"transactionalTypeHint": "Vorlagen mit dem Label „Transaktional“ sind nur wiederverwendbare Designs: Kampagnen und Automationen bieten sie nicht an, und die API verschickt sie nicht. E-Mails, die deine App über die API verschickt, findest du unter {link}.",
+				"transactionalTypeHintLink": "Transaktions-E-Mails",
 				"templateTypes": {
 					"marketing": "Marketing",
 					"transactional": "Transaktional"
@@ -15588,6 +15762,9 @@
 				"editAutomation": "Automation bearbeiten",
 				"editCampaign": "Kampagne bearbeiten",
 				"editTemplate": "Vorlage bearbeiten",
+				"editEmail": "E-Mail bearbeiten",
+				"translations": "Übersetzungen",
+				"sendDetails": "Sendungsdetails",
 				"label": "Label",
 				"message": "Nachricht",
 				"newAutomation": "Neue Automation",
@@ -15661,16 +15838,17 @@
 				"teamInboxes": "Team-Postfächer",
 				"templates": "Vorlagen",
 				"topics": "Themen",
-				"transactional": "Transaktional",
 				"webhooks": "Webhooks",
 				"knowledgeGraph": "Graph-Explorer",
 				"responseTargets": "Antwortziele",
-				"responseAnalytics": "Antwortzeiten"
+				"responseAnalytics": "Antwortzeiten",
+				"transactionalEmails": "E-Mails"
 			},
 			"sections": {
 				"audience": "Zielgruppe",
 				"dashboard": "Werkbank",
 				"marketing": "Marketing",
+				"transactional": "Transaktional",
 				"preferences": "Meine Einstellungen",
 				"workspace": "Workspace",
 				"answer": "Antwortliste",
@@ -16024,8 +16202,10 @@
 					"campaigns": "Kampagnen",
 					"recentlyDeleted": "Zuletzt gelöscht",
 					"templates": "Vorlagen",
-					"transactional": "Transaktional",
 					"overview": "Marketing-Übersicht"
+				},
+				"transactional": {
+					"emails": "Transaktions-E-Mails"
 				}
 			},
 			"sections": {
@@ -17595,7 +17775,9 @@
 			"automation": "Automatisierung",
 			"campaign": "Kampagne",
 			"compose": "E-Mail verfassen",
-			"contact": "Kontakt"
+			"contact": "Kontakt",
+			"aiCampaign": "Kampagne mit KI",
+			"transactional": "Transaktions-E-Mail"
 		},
 		"referenceRelay": {
 			"multiRelay": {
@@ -18180,6 +18362,10 @@
 				"brandColors": {
 					"title": "Markenfarben",
 					"keywords": "Farben, Markenfarbe, Primärfarbe, Linkfarbe, Palette, brand colors"
+				},
+				"transactionalSendLimits": {
+					"keywords": "versandlimit, ratenbegrenzung, 429, too many requests, empfängerlimit, tageslimit, transaktionslimit, drosselung, send limit, rate limit",
+					"title": "Versandlimits für Transaktionsmails"
 				},
 				"transactionalSender": {
 					"keywords": "transaktionsabsender, transaktionsmail absender, passwort reset absender, beleg absender, api absender, mail subdomain, absenderadresse, transactional sender",
@@ -18940,13 +19126,15 @@
 			"newAutomation": "Neue Automation",
 			"newCampaign": "Neue Kampagne",
 			"newContact": "Neuer Kontakt",
+			"newTransactional": "Neue Transaktions-E-Mail",
 			"sidebarContext": "Seitenleisten-Kontext",
-			"switchToInbox": "Zum Posteingang wechseln",
-			"switchToMarketing": "Zu Marketing wechseln",
+			"switchToInbox": "Zu Unterhaltungen wechseln",
+			"switchToSending": "Zu Versand wechseln",
 			"copySignInCode": "Neuesten Anmeldecode kopieren",
 			"openSignInLink": "Neuesten Anmeldelink öffnen",
 			"checkForMail": "Nach neuer Mail suchen",
-			"checkForMailSubtitle": "Verbundene Konten"
+			"checkForMailSubtitle": "Verbundene Konten",
+			"draftCampaignWithAi": "Kampagne mit KI entwerfen"
 		},
 		"useContactBulkOperations": {
 			"addContactsOperation": "Kontakte zum Thema hinzufügen",
@@ -19074,6 +19262,11 @@
 				"body": "{domain}: Prüfung „{check}“ fehlgeschlagen",
 				"bodyNoCheck": "{domain}: eine DNS-Prüfung ist fehlgeschlagen",
 				"private": "Eine DNS-Prüfung einer Versanddomain ist fehlgeschlagen"
+			},
+			"postmasterMail": {
+				"title": "Postmaster-Mail",
+				"body": "{sender} hat an {address} geschrieben",
+				"private": "Neue Mail an postmaster{'@'} oder abuse{'@'}"
 			},
 			"campaignNotStarted": {
 				"title": "Geplante Kampagne nicht gestartet",
@@ -20106,6 +20299,10 @@
 					"visualizations": {
 						"description": "Ein Diagramm in eigenen Worten beschreiben und aus deinen Daten erstellen lassen.",
 						"label": "KI-Dashboards"
+					},
+					"emailGeneration": {
+						"label": "E-Mails mit KI entwerfen",
+						"description": "Beschreib eine E-Mail in einem Satz und bekomm einen bearbeitbaren Entwurf: eine Vorlage, eine transaktionale E-Mail oder eine ganze Kampagne. Nichts wird gesendet."
 					}
 				},
 				"analytics": {
@@ -20243,7 +20440,7 @@
 			},
 			"packs": {
 				"ai": {
-					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent und KI-Dashboards.",
+					"description": "Antwortentwürfe, Regeln für automatisches Senden, ein Wissensgraph, ein Assistent, KI-Dashboards und E-Mail-Entwürfe.",
 					"label": "KI"
 				},
 				"emailClient": {
@@ -20390,7 +20587,7 @@
 			"collapseSidebar": "Seitenleiste einklappen",
 			"contexts": {
 				"inbox": "Unterhaltungen",
-				"marketing": "Marketing"
+				"sending": "Versand"
 			},
 			"dashboardTooltip": "Dashboard",
 			"expandSidebar": "Seitenleiste ausklappen",

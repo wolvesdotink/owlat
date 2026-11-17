@@ -1,11 +1,13 @@
 /**
- * Pure model for the sidebar's Inbox ↔ Marketing context toggle.
+ * Pure model for the sidebar's Conversations ↔ Sending context toggle.
  *
  * The sidebar renders one *context* (workspace) at a time so it stays focused
  * on what the user is currently doing: Conversations (Today, the Answer queue,
- * every inbox, Chat, Knowledge) or Marketing (Overview, Campaigns, Automations,
- * Audience, Templates). Assistant and Settings are shared — owned by neither,
- * reached from the sidebar footer and ⌘K rather than listed in either.
+ * every inbox, Chat, Knowledge) or Sending, which holds two zones, Marketing
+ * (Overview, Campaigns, Automations) and Transactional (the API-triggered
+ * emails), above the Audience and Templates they share. Assistant and Settings
+ * are shared — owned by neither, reached from the sidebar footer and ⌘K rather
+ * than listed in either.
  *
  * The route is the source of truth: landing anywhere inside a context's route
  * subtree activates that context; shared routes are sticky and keep the last
@@ -15,7 +17,13 @@
  */
 import { isRecord } from '@owlat/shared/utils/guards';
 import type { SectionKey } from '~/composables/useSidebarState';
+import { minRole, transactionalGate, type NavigationEnvironment } from './dashboardNavigationCore';
 
+/**
+ * `marketing` is the Sending workspace. The key is what localStorage holds
+ * (`sidebar-context`, `sidebar-context-routes`), so renaming it would send
+ * every returning user back to Conversations and drop their last route there.
+ */
 export type SidebarContext = 'inbox' | 'marketing';
 
 export const SIDEBAR_CONTEXTS: readonly SidebarContext[] = ['inbox', 'marketing'];
@@ -46,6 +54,7 @@ const SECTION_CONTEXT: Record<SectionKey, SidebarContext | 'shared'> = {
 	chat: 'inbox',
 	assistant: 'shared',
 	send: 'marketing',
+	transactional: 'marketing',
 	audience: 'marketing',
 	knowledge: 'inbox',
 	administration: 'shared',
@@ -77,13 +86,15 @@ const CONTEXT_ROUTE_PREFIXES: Record<SidebarContext, string[]> = {
 };
 
 /**
- * Where a context lands when it has no last-visited route yet, provided the
- * destination survived feature-flag filtering; otherwise the first visible
- * item of the context wins.
+ * Where a context lands when it has no last-visited route yet: the first of
+ * these that survived feature-flag filtering, otherwise the first visible item
+ * of the context. Sending tries the Marketing overview, then the transactional
+ * list, so an instance with only transactional emails does not land on
+ * Templates.
  */
-const PREFERRED_CONTEXT_HOME: Record<SidebarContext, string> = {
-	inbox: '/dashboard',
-	marketing: '/dashboard/marketing',
+const PREFERRED_CONTEXT_HOMES: Record<SidebarContext, readonly string[]> = {
+	inbox: ['/dashboard'],
+	marketing: ['/dashboard/marketing', '/dashboard/send/transactional'],
 };
 
 /**
@@ -147,7 +158,34 @@ export function resolveSwitchTarget(
 	const hrefs = sections
 		.filter((section) => SECTION_CONTEXT[section.key] === target)
 		.flatMap((section) => section.items.map((item) => item.href));
-	const preferred = PREFERRED_CONTEXT_HOME[target];
-	if (UNGATED_HOMES.has(preferred) || hrefs.includes(preferred)) return preferred;
-	return hrefs[0] ?? '/dashboard';
+	const preferred = PREFERRED_CONTEXT_HOMES[target].find(
+		(home) => UNGATED_HOMES.has(home) || hrefs.includes(home)
+	);
+	return preferred ?? hrefs[0] ?? '/dashboard';
+}
+
+/** Which zones the Sending sidebar shows, and whether it names them. */
+export interface SendingZones {
+	/** Overview, the Campaigns group and the Automations group. */
+	marketing: boolean;
+	/** The latest transactional emails. */
+	transactional: boolean;
+	/**
+	 * Zone labels only separate two zones. With one, the label would head a
+	 * list that has nothing to be told apart from, so the rail stays flat.
+	 */
+	labelled: boolean;
+}
+
+/**
+ * The zones of the Sending sidebar, with the gates of the destinations they
+ * list: Campaigns behind its flag for everyone, Automations and Transactional
+ * for admins behind theirs.
+ */
+export function sendingZones(env: NavigationEnvironment): SendingZones {
+	const marketing =
+		env.isFeatureEnabled('campaigns') ||
+		(minRole('admin')(env) && env.isFeatureEnabled('automations'));
+	const transactional = transactionalGate(env);
+	return { marketing, transactional, labelled: marketing && transactional };
 }

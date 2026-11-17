@@ -279,7 +279,8 @@ async function ingest(
 	t: ReturnType<typeof setupTest>,
 	messageId: string,
 	raw: string | undefined,
-	attachments: Array<{ filename: string; contentType: string; size: number; partIndex: string }>
+	attachments: Array<{ filename: string; contentType: string; size: number; partIndex: string }>,
+	mail: { systemMailbox?: 'postmaster' | 'abuse' } = {}
 ): Promise<{ isDuplicate: boolean }> {
 	return await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
 		mail: {
@@ -291,6 +292,7 @@ async function ingest(
 			messageId: `<${messageId}>`,
 			attachments,
 			timestamp: Date.now(),
+			...mail,
 		},
 		rawBytesBase64: raw,
 	});
@@ -369,6 +371,25 @@ describe('inboundIngest — malware verdicts', () => {
 		expect(files).toHaveLength(0);
 		const actions = await t.run((ctx) => ctx.db.query('agentActions').collect());
 		expect(actions).toHaveLength(0);
+	});
+
+	it('never indexes a clean attachment sent to postmaster or abuse, and says so', async () => {
+		const t = setupTest();
+		configureMta();
+		stubScanner({ clean: true });
+
+		await ingest(
+			t,
+			'abuse-1@example.com',
+			encode(buildEmlWithAttachment('abuse-1@example.com')),
+			NOTES_META,
+			{ systemMailbox: 'abuse' }
+		);
+
+		const rows = await t.run((ctx) => ctx.db.query('inboundMessages').collect());
+		expect(rows[0]!.attachmentIndexing).toBe('skipped_system_mailbox');
+		expect(rows[0]!.rawStorageId).toBeTruthy();
+		expect(await t.run((ctx) => ctx.db.query('semanticFiles').collect())).toHaveLength(0);
 	});
 
 	it('stores a clean verdict and captures the attachment', async () => {

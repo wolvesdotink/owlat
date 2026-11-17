@@ -5,7 +5,10 @@ import {
 	getPresetById,
 	type TemplatePreset,
 } from '~/data/marketingTemplatePresets';
-import { PlusIcon } from '@coolicons/vue';
+import { generationEntry, warmEmailGeneratePanel } from '~/lib/emailGenerationEntry';
+import { useEmailGenerationInFlight } from '~/composables/useEmailGenerationInFlight';
+import type { GenerationResult } from '~/composables/useEmailGeneration';
+import { PlusIcon, SparklesIcon } from '@coolicons/vue';
 
 interface Props {
 	open: boolean;
@@ -25,8 +28,14 @@ const { t } = useI18n();
 // message keys, resolved here at render time.
 const presetText = (value: string) => t(value);
 
+// AI drafting, offered first when this member can use it (`lib/emailGenerationEntry.ts`).
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const { can } = usePermissions();
+const aiEntry = computed(() => generationEntry('template', { isFeatureEnabled, can }));
+const isAiDraftInFlight = useEmailGenerationInFlight('template');
+
 // Modal step state
-const step = ref<'library' | 'customize'>('library');
+const step = ref<'library' | 'customize' | 'generate'>('library');
 const selectedPreset = ref<string | null>(null);
 
 // Form state
@@ -47,7 +56,8 @@ watch(
 );
 
 const resetState = () => {
-	step.value = 'library';
+	// A draft still being written reopens on its progress, not on the library.
+	step.value = isAiDraftInFlight.value ? 'generate' : 'library';
 	selectedPreset.value = null;
 	templateName.value = '';
 	nameError.value = '';
@@ -68,6 +78,12 @@ const selectPreset = (presetId: string) => {
 		templateName.value = preset.id === 'blank' ? '' : presetText(preset.name);
 	}
 	step.value = 'customize';
+};
+
+const handleGenerated = (result: GenerationResult) => {
+	if (result.kind !== 'template') return;
+	emit('create', result.templateId);
+	emit('update:open', false);
 };
 
 const goBackToLibrary = () => {
@@ -146,7 +162,9 @@ defineExpose({
 		:title="
 			step === 'library'
 				? t('components.mail.templateLibraryModal.libraryTitle')
-				: t('components.mail.templateLibraryModal.customizeTitle')
+				: step === 'generate'
+					? t('components.ai.emailGenerate.title.template')
+					: t('components.mail.templateLibraryModal.customizeTitle')
 		"
 		size="4xl"
 		:closable="!isCreating"
@@ -164,6 +182,43 @@ defineExpose({
 			<div v-if="step === 'library'" class="p-6">
 				<p class="text-text-secondary mb-6">
 					{{ t('components.mail.templateLibraryModal.intro') }}
+				</p>
+
+				<!-- The first way to start: describe the email and AI drafts it. -->
+				<button
+					v-if="aiEntry === 'show'"
+					type="button"
+					class="mb-6 flex w-full items-center gap-4 rounded-xl border border-brand/30 bg-brand/5 p-4 text-left transition-[border-color,box-shadow] hover:border-brand hover:shadow-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					data-testid="template-library-ai"
+					@pointerenter="warmEmailGeneratePanel"
+					@focus="warmEmailGeneratePanel"
+					@click="step = 'generate'"
+				>
+					<span
+						class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand"
+					>
+						<SparklesIcon class="h-5 w-5" aria-hidden="true" />
+					</span>
+					<span class="min-w-0">
+						<span class="block font-medium text-text-primary">
+							{{ t('components.ai.emailGenerate.entry.title') }}
+						</span>
+						<span class="block text-sm text-text-secondary">
+							{{ t('components.ai.emailGenerate.entry.template') }}
+						</span>
+					</span>
+				</button>
+				<p
+					v-else-if="aiEntry === 'enable_hint'"
+					class="mb-6 flex items-center gap-2 text-sm text-text-tertiary"
+				>
+					<SparklesIcon class="h-4 w-4 shrink-0" aria-hidden="true" />
+					<span>
+						{{ t('components.ai.emailGenerate.enableHint') }}
+						<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">
+							{{ t('components.ai.emailGenerate.openFeatures') }}
+						</NuxtLink>
+					</span>
 				</p>
 
 				<div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -223,6 +278,17 @@ defineExpose({
 						</button>
 					</div>
 				</div>
+			</div>
+
+			<!-- AI drafting -->
+			<div v-else-if="step === 'generate'" class="p-6">
+				<AiEmailGenerateLoader kind="template" @created="handleGenerated">
+					<template #secondary>
+						<UiButton variant="secondary" @click="goBackToLibrary">
+							{{ t('common.back') }}
+						</UiButton>
+					</template>
+				</AiEmailGenerateLoader>
 			</div>
 
 			<!-- Step 2: Customize -->

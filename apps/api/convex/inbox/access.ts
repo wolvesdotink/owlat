@@ -13,6 +13,13 @@
  *
  * Not a gate of its own: each caller still decides what refusal looks like on
  * its surface (an empty list, `null`, a throw). This only answers the question.
+ *
+ * DO NOT WIDEN IT PAST THE INSTANCE ADMINS. Mail to `postmaster@`/`abuse@`
+ * (`inboundMessages.systemMailbox`) is stored here and may be read by holders
+ * of `organization:manage` only, and every read path relies on this gate for
+ * that. Letting another role read the Team Inbox first needs that mail kept
+ * from it on every one of those paths; `systemMailboxAccess.test.ts` fails
+ * until then.
  */
 
 import { internalQuery, type QueryCtx, type MutationCtx } from '../_generated/server';

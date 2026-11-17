@@ -599,6 +599,7 @@ describe('preferences', () => {
 				deliveryHold: false,
 				automationProblems: true,
 				domainDns: false,
+				postmasterMail: true,
 			},
 		});
 	});

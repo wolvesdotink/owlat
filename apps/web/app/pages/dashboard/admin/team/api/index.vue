@@ -5,6 +5,9 @@ import ApiKeysCreatedKeyModal from '~/components/apiKeys/CreatedKeyModal.vue';
 import ApiKeysCreateKeyModal from '~/components/apiKeys/CreateKeyModal.vue';
 import ApiKeysTable from '~/components/apiKeys/KeysTable.vue';
 import ApiKeysRateLimitInfo from '~/components/apiKeys/RateLimitInfo.vue';
+import ApiKeysTransactionalSendLimits, {
+	type SendCaps,
+} from '~/components/apiKeys/TransactionalSendLimits.vue';
 import { BookIcon, ArrowRightIcon, KeyIcon, LockIcon, PlusIcon, ShieldIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -213,6 +216,20 @@ const handleDelete = async () => {
 	closeDeleteModal();
 };
 
+// Transactional send caps: the limits behind a 429 on the send API. Only
+// admins read them (`adminQuery`), so editors skip the read.
+const { data: sendCaps } = useConvexQuery(api.transactional.sendCapSettings.get, () =>
+	canManage.value ? {} : 'skip'
+);
+const { run: saveSendCaps, isLoading: isSavingSendCaps } = useBackendOperation(
+	api.transactional.sendCapSettings.update,
+	{ label: () => t('dashboard.admin.team.api.index.operations.saveSendLimits') }
+);
+async function handleSaveSendCaps(caps: SendCaps) {
+	const result = await saveSendCaps(caps);
+	if (result.ok) showNotification(t('dashboard.admin.team.api.index.toasts.sendLimitsSaved'));
+}
+
 // Active keys count
 const activeKeysCount = computed(() => {
 	if (!apiKeys.value) return 0;
@@ -343,6 +360,18 @@ const activeKeysCount = computed(() => {
 				{{ t('dashboard.admin.team.api.index.docs.view') }}
 				<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
 			</UiButton>
+		</div>
+
+		<!-- The command palette's "send limits" control lands on this anchor. -->
+		<div v-if="canManage && sendCaps" id="transactional-send-limits">
+			<ApiKeysTransactionalSendLimits
+				:caps="sendCaps.caps"
+				:defaults="sendCaps.defaults"
+				:bounds="sendCaps.bounds"
+				:can-manage="canManage"
+				:busy="isSavingSendCaps"
+				@save="handleSaveSendCaps"
+			/>
 		</div>
 
 		<!-- Rate Limiting Info -->

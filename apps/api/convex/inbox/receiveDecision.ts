@@ -54,6 +54,7 @@ export type Arrival = Pick<
 	| 'signerInstance'
 	| 'isInboundSignatureValid'
 	| 'inboundSignerFingerprint'
+	| 'systemMailbox'
 > & {
 	readonly textBody?: string;
 	readonly htmlBody?: string;
@@ -74,10 +75,21 @@ export interface ArrivalPlan {
 	 */
 	readonly isInfected: boolean;
 	/**
+	 * `postmaster@`/`abuse@` mail from the MTA's built-in route. Blocklist
+	 * operators, abuse desks and mailbox providers write there about the
+	 * sending server, and a complaint may quote other people's messages, so it
+	 * is not a customer conversation: no contact, timeline row or activity is
+	 * written for its sender (which is what keeps it out of members' contact
+	 * views and out of audiences), the agent never runs on it, and a blocked
+	 * sender does not archive it out of the admins' sight.
+	 */
+	readonly isSystemMailbox: boolean;
+	/**
 	 * Mail the agent must not spend model budget on: quarantined, automated
 	 * (RFC 3834 autoresponders, list and bulk mail), or a self-send. The AI
 	 * inbox address is public, so each would otherwise trigger a full pipeline
 	 * run, and an auto-reply to an auto-responder forms a loop. Store-but-skip.
+	 * Always set for `isSystemMailbox`.
 	 */
 	readonly isPipelineSkipped: boolean;
 	/**
@@ -91,6 +103,7 @@ export interface ArrivalPlan {
 export function planArrival(input: Arrival): ArrivalPlan {
 	const senderEmail = extractEmail(input.from);
 	const isInfected = input.virusVerdict === 'infected';
+	const isSystemMailbox = input.systemMailbox !== undefined;
 	const isReply = Boolean(input.inReplyTo || input.references);
 	const replyText = input.textBody ?? input.htmlBody;
 	return {
@@ -104,12 +117,16 @@ export function planArrival(input: Arrival): ArrivalPlan {
 			html: input.htmlBody?.slice(0, PREVIEW_SOURCE_CHARS),
 		}),
 		isInfected,
+		isSystemMailbox,
 		isPipelineSkipped:
 			isInfected ||
+			isSystemMailbox ||
 			isAutomatedMail(parseHeaders(input.headers)) ||
 			senderEmail === extractEmail(input.to),
 		replyFeedbackText:
-			isReply && replyText && !isInfected ? replyText.slice(0, REPLY_TEXT_ARG_CHARS) : undefined,
+			isReply && replyText && !isInfected && !isSystemMailbox
+				? replyText.slice(0, REPLY_TEXT_ARG_CHARS)
+				: undefined,
 	};
 }
 
@@ -125,7 +142,7 @@ export function inboundMessageRow(
 	stored: {
 		readonly bodyColumns: StoredBodyColumns;
 		readonly threadId: Id<'conversationThreads'>;
-		readonly contactId: Id<'contacts'>;
+		readonly contactId: Id<'contacts'> | undefined;
 		readonly isInfected: boolean;
 	}
 ): InboundRow {
@@ -142,6 +159,7 @@ export function inboundMessageRow(
 		attachmentMetaVersion: arrival.attachmentMetaVersion,
 		threadId: stored.threadId,
 		contactId: stored.contactId,
+		systemMailbox: arrival.systemMailbox,
 		processingStatus: stored.isInfected ? 'quarantined' : 'received',
 		receivedAt: arrival.timestamp,
 		rawStorageId: arrival.rawStorageId,

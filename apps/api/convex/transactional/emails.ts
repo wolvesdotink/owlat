@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { isValidSlug } from '@owlat/shared';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -75,6 +76,29 @@ export const list = transactionalQuery({
 			}
 			return sortOrder === 'asc' ? comparison : -comparison;
 		});
+	},
+});
+
+/** Most rows `listRecent` returns, whatever the caller asks for. */
+const RECENT_LIMIT_MAX = 10;
+
+/**
+ * The most recently updated transactional emails, newest first, with only what
+ * a sidebar row shows. The Sending sidebar is mounted on every dashboard page,
+ * so it reads this instead of subscribing to the whole `list`.
+ */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
+export const listRecent = transactionalQuery({
+	args: { limit: v.number() },
+	handler: async (ctx, args) => {
+		const limit = Math.max(1, Math.min(Math.floor(args.limit), RECENT_LIMIT_MAX));
+		const emails = await ctx.db
+			.query('transactionalEmails')
+			.withIndex('by_updated_at')
+			.order('desc')
+			.take(limit);
+		return emails.map(({ _id, name, status, updatedAt }) => ({ _id, name, status, updatedAt }));
 	},
 });
 
@@ -228,9 +252,7 @@ export const update = transactionalMutation({
 				throwAlreadyExists(`A transactional email with slug "${args.slug}" already exists`);
 			}
 
-			// Validate slug format
-			const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-			if (!slugRegex.test(args.slug)) {
+			if (!isValidSlug(args.slug)) {
 				throwInvalidInput(
 					"Slug must be lowercase alphanumeric with hyphens (e.g., 'welcome-email', 'order-confirmation')"
 				);

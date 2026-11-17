@@ -27,7 +27,11 @@ import type * as Receipts from '../auth/apiRequestReceipts';
 import { RECEIPT_TTL_MS } from '../auth/apiRequestReceipts';
 import { publicOperation, successBodySchema } from '@owlat/public-contract/schemas';
 import { readInstanceCounter } from '../lib/instanceCounters';
-import { rateLimiter } from '../lib/rateLimiter';
+import {
+	PER_API_KEY_DAILY_BUCKET,
+	PER_API_KEY_DAILY_CONFIG,
+	readBucketUsage,
+} from '../transactional/sendCaps';
 import {
 	createTestAutomation,
 	createTestAutomationStep,
@@ -486,21 +490,35 @@ describe('transactional send volume caps', () => {
 		const t = setupTest();
 		const slug = await seedSendable(t);
 		const keyId = await t.run(async (ctx) => (await ctx.db.query('apiKeys').first())!._id);
-		const remaining = () =>
+		const used = () =>
 			t.run(
 				async (ctx) =>
-					(await rateLimiter.getValue(ctx, 'transactionalPerApiKeyDaily', { key: keyId })).value
+					(
+						await readBucketUsage(
+							ctx,
+							PER_API_KEY_DAILY_BUCKET,
+							keyId,
+							PER_API_KEY_DAILY_CONFIG,
+							Date.now()
+						)
+					).used
 			);
-		const fullDay = await remaining();
+		expect(await used()).toBe(0);
 
 		expect((await send(t, slug, 'a@example.com', 'day-1')).status).toBe(202);
 		expect((await send(t, slug, 'a@example.com', 'day-1')).status).toBe(202);
-		expect(await remaining()).toBe(fullDay - 1);
+		expect(await used()).toBe(1);
 
+		// An admin lowers the day's cap to what the key has already sent.
 		await t.run(async (ctx) => {
-			await rateLimiter.limit(ctx, 'transactionalPerApiKeyDaily', {
-				key: keyId,
-				count: fullDay - 1,
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, {
+				transactionalSendCaps: {
+					perRecipient: { isEnabled: true, count: 5, windowMs: 60 * 60 * 1000 },
+					perApiKeyDaily: { isEnabled: true, count: 1 },
+					updatedAt: Date.now(),
+					updatedBy: 'admin-user',
+				},
 			});
 		});
 		const refused = await send(t, slug, 'b@example.com', 'day-2');

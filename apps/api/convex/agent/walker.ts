@@ -81,6 +81,12 @@ export const start = internalAction({
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// Postmaster/abuse mail never enters the pipeline, whoever scheduled the
+		// start: ingest does not, but a retry or a quarantine release could.
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: args.inboundMessageId,
+		});
+		if (message?.systemMailbox !== undefined) return;
 		// Advance `received → security_check` before the scan runs. The
 		// `security_scan` step's route emits `classifying` / `quarantined` /
 		// `archived`, which are legal edges only from `security_check`. Without

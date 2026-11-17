@@ -135,6 +135,7 @@ const EXPECTED_BUILDERS: readonly string[] = [
 	'chatMutation',
 	'chatQuery',
 	'createAuthenticatedHandler',
+	'emailGenerationQuery',
 	'externalMailAdminMutation',
 	'externalMailMutation',
 	'externalMailQuery',

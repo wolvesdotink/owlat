@@ -63,6 +63,18 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// on it also gates sign-in. Invitation acceptance always requires verification
 	// independently: existing members can enumerate pending invitation IDs.
 	const requireEmailVerification = getBoolean('REQUIRE_EMAIL_VERIFICATION');
+	// The `userProfiles` row is what the app reads as org membership
+	// (lib/userProfiles.ts): without it a member can be listed by BetterAuth yet
+	// refused by every membership write (team inboxes, chat, assignment). It is
+	// written when the membership is, not at sign-up: with verification required,
+	// sign-up returns no session, so the sign-up page cannot write it.
+	const ensureMemberProfile = async (user: { id: string; email: string; name?: string | null }) => {
+		await ctx.runMutation(internal.auth.userProfiles.createInternal, {
+			authUserId: user.id,
+			email: user.email,
+			name: user.name || undefined,
+		});
+	};
 	return {
 		// Cast required: BetterAuth component bundles its own copy of Convex types
 		// which are structurally identical but nominally different (bun duplicate resolution)
@@ -342,6 +354,10 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 				// cannot create additional orgs and silently merge data with
 				// the existing tenant.
 				allowUserToCreateOrganization: false,
+				organizationHooks: {
+					afterAcceptInvitation: async ({ user }) => ensureMemberProfile(user),
+					afterAddMember: async ({ user }) => ensureMemberProfile(user),
+				},
 				// Default role for organization creator
 				creatorRole: 'owner',
 				// Maximum members per organization (reasonable limit)

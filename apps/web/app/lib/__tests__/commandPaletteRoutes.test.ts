@@ -104,6 +104,22 @@ describe('routePaletteTargets', () => {
 		}
 	});
 
+	it('names transactional emails by their own section, not Marketing', () => {
+		const target = routePaletteTargets(env(), new Set(), ADMIN).find(
+			(entry) => entry.href === '/dashboard/send/transactional'
+		);
+		expect(t(target!.labelKey)).toBe('Emails');
+		expect(t(target!.contextKey!)).toBe('Transactional');
+	});
+
+	it('takes Transactional with its feature flag', () => {
+		const reachable = hrefs(env({ isFeatureEnabled: (flag) => flag !== 'transactional' }));
+		expect(reachable.filter((href) => href.startsWith('/dashboard/send/transactional'))).toEqual(
+			[]
+		);
+		expect(reachable).toContain('/dashboard/send');
+	});
+
 	it('renders every derived key as words, never as a key path', () => {
 		for (const target of routePaletteTargets(env(), new Set(), ADMIN)) {
 			expect(t(target.labelKey)).not.toBe(target.labelKey);

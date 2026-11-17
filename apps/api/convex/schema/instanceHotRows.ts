@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { inboxStatsValidator, mtaHealthSnapshotValidator } from './instance';
+import { inboxStatsValidator } from '../lib/validators/inboxStats';
+import { mtaHealthSnapshotValidator } from './instance';
 
 /**
  * The rows split off the `instanceSettings` singleton (plan 2.4).

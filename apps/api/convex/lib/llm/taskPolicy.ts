@@ -328,6 +328,15 @@ const ENTRIES = {
 		...oneShot,
 		features: ['translate'],
 	}),
+	// One whole email (sections, subject, variables) per call, written on the
+	// capable tier: the draft is the product, and the user waits for it.
+	'email.generate': language({
+		...DOCUMENT_OUTPUT,
+		tiers: ['capable'],
+		...interactive,
+		...oneShot,
+		features: ['email_generation'],
+	}),
 	'mail.rule_compile': language({
 		...SMALL_OUTPUT,
 		tiers: ['fast'],

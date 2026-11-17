@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
 import MarketingNav from '../MarketingNav.vue';
@@ -32,7 +32,12 @@ beforeEach(() => {
 		useI18n: i18nStubs.useI18n,
 		useRoute: () => ({ path: '/dashboard' }),
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flags.has(flag) }),
-		usePermissions: () => ({ isAdmin, isRoleLoading, can: () => isAdmin.value === true }),
+		usePermissions: () => ({
+			isAdmin,
+			isRoleLoading,
+			role: computed(() => (isRoleLoading.value ? null : isAdmin.value ? 'admin' : 'editor')),
+			can: () => isAdmin.value === true,
+		}),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(true) }),
 		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null) }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
@@ -100,5 +105,22 @@ describe('Marketing sidebar while the role loads', () => {
 		await wrapper.vm.$nextTick();
 		expect(wrapper.find('[data-testid="shell-marketing-role-skeleton"]').exists()).toBe(false);
 		expect(wrapper.find('a[href="/dashboard/send"]').exists()).toBe(true);
+	});
+
+	it('names both zones for an admin once the role is known, and neither for an editor', async () => {
+		flags = new Set(['campaigns', 'automations', 'transactional']);
+		const zoneLabels = '[data-testid^="shell-sending-zone-"]';
+		const wrapper = mount(MarketingNav, { props, global });
+		expect(wrapper.findAll(zoneLabels)).toHaveLength(0);
+
+		isAdmin.value = true;
+		isRoleLoading.value = false;
+		await wrapper.vm.$nextTick();
+		expect(wrapper.findAll(zoneLabels)).toHaveLength(2);
+
+		isAdmin.value = false;
+		await wrapper.vm.$nextTick();
+		expect(wrapper.findAll(zoneLabels)).toHaveLength(0);
+		expect(wrapper.find('a[href="/dashboard/send/transactional"]').exists()).toBe(false);
 	});
 });

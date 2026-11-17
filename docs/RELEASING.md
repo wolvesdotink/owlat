@@ -71,7 +71,11 @@ owlat upgrade --version X.Y.Z-rc.N                           # an existing test 
 Desktop apps get it from the candidate's release assets, or through managed
 desktop updates on the `prerelease` channel. The candidate's artifacts carry
 `X.Y.Z-rc.N`; the Windows installer's MSI version is `X.Y.Z.N`, because
-Windows Installer versions are numeric (`scripts/ci/msi-version.ts`).
+Windows Installer versions are numeric (`scripts/ci/msi-version.ts`). A
+candidate builds every artifact the stable release does except the Linux
+RPM: RPM refuses the `-` in `X.Y.Z-rc.N` and Tauri has no separate RPM
+version, so the candidate ships the deb and the AppImage
+(`scripts/ci/linux-bundles.ts`) and only the stable build proves the RPM.
 
 Other prerelease tags (`vX.Y.Z-beta.1`) still publish a prerelease the same
 way, but can never be promoted.

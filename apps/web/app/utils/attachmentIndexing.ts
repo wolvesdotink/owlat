@@ -27,6 +27,7 @@ const NOT_INDEXED_KEYS: Record<NotIndexedMarker, string> = {
 	skipped_failed: 'notIndexedFailed',
 	skipped_spam: 'notIndexedSpam',
 	skipped_automated: 'notIndexedAutomated',
+	skipped_system_mailbox: 'notIndexedSystemMailbox',
 };
 
 /** The catalog key of the not-indexed line, or null for an indexed (or unmarked) message. */

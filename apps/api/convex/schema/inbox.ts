@@ -24,6 +24,7 @@ import {
 	attachmentIndexingValidator,
 	backfillJobStatusValidator,
 	contextTierValidator,
+	systemMailboxValidator,
 	virusVerdictValidator,
 } from '../lib/literalValidators';
 
@@ -165,9 +166,12 @@ export const inboxTables = {
 		// sealed semantics stay untouched. Absent on plaintext mail and pre-F1 rows.
 		isInboundSignatureValid: v.optional(v.boolean()),
 		inboundSignerFingerprint: v.optional(v.string()),
-		// Relationships
+		// Relationships. A message marked `systemMailbox` has no contact.
 		threadId: v.optional(v.id('conversationThreads')),
 		contactId: v.optional(v.id('contacts')),
+		// Mail the MTA's built-in `postmaster@`/`abuse@` route accepted; set once
+		// at ingest. Never read by a model (`guardStanding`) or the agent.
+		systemMailbox: v.optional(systemMailboxValidator),
 		// Processing state machine
 		processingStatus: v.union(
 			v.literal('received'), // Just stored, awaiting security scan

@@ -194,7 +194,7 @@ export function decideSender(
  * The refusals left once the template is known, in order: the sending domain
  * must be registered and verified, then `dataVariables` must match the
  * template's declared schema and supply every variable the content renders
- * without a fallback.
+ * without a fallback, unless the template marks that variable optional.
  */
 export function decideSenderAndVariables(input: {
 	/** The address the send resolved to, named in the refusal. */
@@ -205,7 +205,8 @@ export function decideSenderAndVariables(input: {
 		readonly error?: string;
 	};
 	readonly dataVariables: Record<string, unknown> | undefined;
-	readonly dataVariablesSchema: Template['dataVariablesSchema'];
+	/** The declared types, and the variables a caller may leave out. */
+	readonly template: Pick<Template, 'dataVariablesSchema' | 'optionalDataVariables'>;
 	/** What this send renders; a variable it uses without a fallback must be supplied. */
 	readonly content: Pick<SendContent, 'subject' | 'html' | 'plainText'>;
 }): DispatchRefusal | undefined {
@@ -219,17 +220,23 @@ export function decideSenderAndVariables(input: {
 			}`,
 		};
 	}
-	const validation = validateDataVariables(input.dataVariables, input.dataVariablesSchema);
+	const { template } = input;
+	const validation = validateDataVariables(input.dataVariables, template.dataVariablesSchema);
 	if (!validation.valid) {
 		return { ok: false, reason: 'invalid_variables', detail: validation.error };
 	}
-	const missing = missingDataVariables(input.content, input.dataVariables);
+	const missing = missingDataVariables(
+		input.content,
+		input.dataVariables,
+		template.optionalDataVariables
+	);
 	if (missing.length > 0) {
+		const one = missing.length === 1;
 		const names = missing.map((name) => `"${name}"`).join(', ');
 		return {
 			ok: false,
 			reason: 'invalid_variables',
-			detail: `Missing data ${missing.length === 1 ? 'variable' : 'variables'} ${names}: the email uses ${missing.length === 1 ? 'it' : 'them'} without a fallback.`,
+			detail: `Missing data ${one ? 'variable' : 'variables'} ${names}: the email uses ${one ? 'it' : 'them'} without a fallback. Supply ${one ? 'it' : 'them'}, or mark ${one ? 'it' : 'them'} optional in the template's variables to send ${one ? 'it' : 'them'} empty.`,
 		};
 	}
 	return undefined;

@@ -264,7 +264,8 @@
 					{ "flag": "ai.knowledge", "files": ["apps/api/convex/knowledge/**"] },
 					{ "flag": "calendar.booking", "files": ["apps/api/convex/booking/**"] },
 					{ "flag": "mail.mcp", "files": ["apps/api/convex/mcp/**"] },
-					{ "flag": "inbox", "files": ["apps/api/convex/inbox/sla/**"] }
+					{ "flag": "inbox", "files": ["apps/api/convex/inbox/sla/**"] },
+					{ "flag": "ai.emailGeneration", "files": ["apps/api/convex/emailGeneration/**"] }
 				],
 				// Postbox handlers use postboxQuery / postboxMutation, the external
 				// mailbox family the externalMail* builders.

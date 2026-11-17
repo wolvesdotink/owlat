@@ -401,6 +401,7 @@ export function createSendHandler(
 			...(mode === 'governed' && body.listUnsubscribeMailto === true
 				? { listUnsubscribeMailto: true as const }
 				: {}),
+			...(mode === 'governed' ? { messageType: body.messageType! } : {}),
 			engagementScore,
 			dkimDomain: body.dkimDomain,
 			...(body.requireDkimSignature === true ? { requireDkimSignature: true } : {}),

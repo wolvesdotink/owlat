@@ -66,6 +66,7 @@ export const TENANT_TABLES = [
 
 	// ── Transactional ──
 	'apiRequestReceipts', // Idempotency-Key receipts: they name the Sends and contacts below
+	'emailGenerationReceipts', // AI draft receipts: they name the drafts below
 	// API attachment uploads no Send claimed yet; the step frees each blob with its row.
 	'transactionalPendingUploads',
 	// Recorded send completions that threw: a pointer at a Send plus the

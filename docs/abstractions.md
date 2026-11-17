@@ -539,7 +539,7 @@ UI grouping over atomic flags. Toggling a pack flips every member.
 
 - `emailClient` = `inbox`, `chat`, `mail.compose`
 - `marketing` = `campaigns`, `automations`, `transactional`
-- `ai` = `ai`, `ai.agent`, `ai.autonomy`, `ai.knowledge`, `ai.visualizations`
+- `ai` = `ai`, `ai.agent`, `ai.autonomy`, `ai.knowledge`, `ai.visualizations`, `ai.emailGeneration`
 
 ### Where flags are enforced
 

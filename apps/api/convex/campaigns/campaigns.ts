@@ -1,7 +1,13 @@
 import { v } from 'convex/values';
 import { campaignsQuery, campaignsMutation } from './_helpers';
 import { paginationOptsValidator } from 'convex/server';
-import { hasPermission, requirePermission } from '../lib/sessionOrganization';
+import {
+	hasPermission,
+	requirePermission,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
+import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { restoreCampaign, softDeleteCampaign } from './deletion';
 import { listResources } from '../lib/listing';
@@ -290,32 +296,54 @@ export const create = campaignsMutation({
 			hasPermission(session.role, 'campaigns:manage'),
 			'You do not have permission to create campaigns'
 		);
-
-		const now = Date.now();
-		const name = args.name.trim();
-
-		// Build searchable text for full-text search
-		const searchableText = buildSearchableText(name);
-
-		const campaignId = await ctx.db.insert('campaigns', {
-			name,
-			status: 'draft',
-			searchableText,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await recordListingCounter(ctx, 'campaignStatus', null, { status: 'draft' });
-
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'campaign.created',
-			resource: 'campaign',
-			resourceId: campaignId,
-			details: { name },
-		});
-
-		await trackEvent(ctx, session, 'campaign_created', { campaignId });
-
-		return campaignId;
+		return await insertDraftCampaign(ctx, session, { name: args.name });
 	},
 });
+
+/**
+ * Insert a campaign at `draft`, optionally with its email attached: the row
+ * `create` makes, and the one the AI drafting commit (`emailGeneration/commit.ts`)
+ * makes inside its own transaction. No audience, sender or schedule: those
+ * stay the author's to set. The caller checks `campaigns:manage` and that the
+ * template is live.
+ */
+export async function insertDraftCampaign(
+	ctx: MutationCtx,
+	session: MutationSessionContext,
+	args: {
+		name: string;
+		subject?: string;
+		emailTemplateId?: Id<'emailTemplates'>;
+		generatedBy?: 'ai';
+	}
+): Promise<Id<'campaigns'>> {
+	const now = Date.now();
+	const name = args.name.trim();
+	const subject = args.subject?.trim();
+
+	// Build searchable text for full-text search
+	const searchableText = buildSearchableText(name, subject);
+
+	const campaignId = await ctx.db.insert('campaigns', {
+		name,
+		status: 'draft',
+		...(args.emailTemplateId ? { emailTemplateId: args.emailTemplateId } : {}),
+		...(subject ? { subject } : {}),
+		searchableText,
+		createdAt: now,
+		updatedAt: now,
+	});
+	await recordListingCounter(ctx, 'campaignStatus', null, { status: 'draft' });
+
+	await recordAuditLog(ctx, {
+		userId: session.userId,
+		action: 'campaign.created',
+		resource: 'campaign',
+		resourceId: campaignId,
+		details: { name, ...(args.generatedBy ? { generatedBy: args.generatedBy } : {}) },
+	});
+
+	await trackEvent(ctx, session, 'campaign_created', { campaignId });
+
+	return campaignId;
+}

@@ -13,7 +13,7 @@ import { CheckIcon, UserPlusCornerIcon } from '@coolicons/vue';
 // same invitations/invite the parent page reads).
 const { t } = useI18n();
 
-const { organizationId, invitations, invite } = useOrganization();
+const { invitations, invite } = useOrganization();
 
 // Roles an admin may invite into (never owner — ownership is transferred, not
 // invited). Copy is the single ROLE_DEFINITIONS source so the invite modal and
@@ -225,8 +225,9 @@ const validateInviteForm = (): boolean => {
 };
 
 // Handle invite submission
+// No early return on a workspace that is still loading: the click must always
+// answer. `invite` knows which workspace to use, and says so when it has none.
 const handleInvite = async () => {
-	if (!organizationId.value) return;
 	if (!validateInviteForm()) return;
 
 	isInviting.value = true;

@@ -64,6 +64,7 @@ const INVENTORY: readonly CallSite[] = [
 	site('analytics/visualizationAgentActions.ts', "ctx, 'analytics.visualize'", 'draft'),
 	site('analytics/visualizationAgentActions.ts', "ctx, 'analytics.visualize_title'", 'summarize'),
 	site('emailTemplates/translate.ts', "ctx, 'mail.translate'", 'summarize'),
+	site('emailGeneration/generate.ts', "ctx, 'email.generate'", 'draft'),
 	site(
 		'assistant/runner.ts',
 		"ctx, 'assistant.answer', opts.lastUserText",

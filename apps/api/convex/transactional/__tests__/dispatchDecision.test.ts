@@ -165,7 +165,7 @@ describe('the sender and the variables', () => {
 				fromEmail: 'receipts@x.test',
 				domainStatus: unverified,
 				dataVariables: { firstName: 3 },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({
@@ -177,7 +177,7 @@ describe('the sender and the variables', () => {
 				fromEmail: 'receipts@x.test',
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 3 },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ reason: 'invalid_variables' });
@@ -186,7 +186,7 @@ describe('the sender and the variables', () => {
 				fromEmail: 'receipts@x.test',
 				domainStatus: { verified: true, domain: 'x.test' },
 				dataVariables: { firstName: 'Ada' },
-				dataVariablesSchema: { firstName: 'string' },
+				template: { dataVariablesSchema: { firstName: 'string' } },
 				content: { subject: 'Hi {{firstName}}', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toBeUndefined();

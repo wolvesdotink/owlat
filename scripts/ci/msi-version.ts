@@ -11,7 +11,7 @@ import { isRecord, JsonShapeError, parseJson } from '../json';
 import { msiVersion } from './release-policy';
 
 /** `parent[key]` as an object to edit, created when absent; any other value is an error. */
-function section(
+export function section(
 	parent: Record<string, unknown>,
 	key: string,
 	path: string

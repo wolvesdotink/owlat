@@ -61,6 +61,13 @@ export const CONVERSATION_THREAD_DESCENDANTS: readonly DescendantRelation[] = [
 	},
 	{
 		parent: 'conversationThreads',
+		table: 'marketingNotices',
+		field: 'threadId',
+		action: 'retain',
+		why: 'Only a postmaster or abuse notice names a thread, and that mail never creates a contact, so no contact erasure deletes the thread it points at. The notice is pruned by its own retention and re-checked against the thread when read.',
+	},
+	{
+		parent: 'conversationThreads',
 		table: 'inboxFollowUps',
 		field: 'threadId',
 		action: 'delete',

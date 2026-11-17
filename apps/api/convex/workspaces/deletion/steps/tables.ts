@@ -42,6 +42,7 @@ export type OrganizationDeletionTable =
 	| 'mailDraftRequestNonces'
 	| 'mailDrafts'
 	| 'apiRequestReceipts'
+	| 'emailGenerationReceipts'
 	| 'transactionalPendingUploads'
 	| 'sendCompletionFailurePayloads'
 	| 'sendCompletionFailures'
@@ -265,6 +266,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('mailDraftRequestNonces'),
 	v.literal('mailDrafts'),
 	v.literal('apiRequestReceipts'),
+	v.literal('emailGenerationReceipts'),
 	v.literal('transactionalPendingUploads'),
 	v.literal('sendCompletionFailurePayloads'),
 	v.literal('sendCompletionFailures'),

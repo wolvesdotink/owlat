@@ -22,6 +22,7 @@ import { v, type Infer } from 'convex/values';
 import { decodeJsonValue, type JsonBody } from '@owlat/worker-protocol/decodeJson';
 import { logWarn } from '../../lib/runtimeLog';
 import { spamVerdictValidator } from '../../lib/convexValidators';
+import { systemMailboxValidator } from '../../lib/literalValidators';
 
 /**
  * Canonical inbound email shape consumed by `internal.inbound.receiveMessage`.
@@ -102,6 +103,13 @@ export const inboundEmailMessageValidator = v.object({
 	 */
 	mtaSpamVerdict: v.optional(spamVerdictValidator),
 	mtaSpamScore: v.optional(v.number()),
+	/**
+	 * Set only by the MTA's built-in `postmaster@`/`abuse@` route, on the
+	 * HMAC-verified delivery; never read from a header. Such mail is kept to
+	 * instance admins and away from the agent, contacts and audiences
+	 * (`inbox/messages.receiveMessage`). Absent on every other route.
+	 */
+	systemMailbox: v.optional(systemMailboxValidator),
 });
 
 export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
@@ -151,6 +159,8 @@ export const mtaInboundWirePayloadValidator = v.object({
 		/** The MTA's spam verdict, the same fields the mailbox payload carries. */
 		spamScore: v.optional(v.any()),
 		spamVerdict: v.optional(v.any()),
+		/** The built-in route's mark, projected by `systemMailboxOf`. */
+		systemMailbox: v.optional(v.any()),
 	}),
 });
 
@@ -161,13 +171,19 @@ export interface MtaInboundWirePayload {
 	timestamp: number;
 	inboundPayload: Omit<
 		CheckedInboundPayload,
-		'headers' | 'attachments' | 'arcAttestsOriginalPass' | 'spamScore' | 'spamVerdict'
+		| 'headers'
+		| 'attachments'
+		| 'arcAttestsOriginalPass'
+		| 'spamScore'
+		| 'spamVerdict'
+		| 'systemMailbox'
 	> & {
 		headers?: unknown;
 		attachments?: unknown;
 		arcAttestsOriginalPass?: unknown;
 		spamScore?: unknown;
 		spamVerdict?: unknown;
+		systemMailbox?: unknown;
 	};
 }
 
@@ -192,6 +208,17 @@ function mtaSpamVerdictOf(raw: unknown): InboundEmailMessage['mtaSpamVerdict'] {
 	return typeof raw === 'string' && MTA_SPAM_VERDICTS.has(raw)
 		? (raw as InboundEmailMessage['mtaSpamVerdict'])
 		: undefined;
+}
+
+/**
+ * The built-in route's mark. FAILS CLOSED: a value this side does not know
+ * (a newer MTA's) still marks the mail, as `postmaster`, so it stays with the
+ * instance admins and out of the agent. Refusing it instead would send mail
+ * the MTA already accepted through its retries into the DLQ.
+ */
+function systemMailboxOf(raw: unknown): Pick<InboundEmailMessage, 'systemMailbox'> {
+	if (raw === undefined || raw === null || raw === '' || raw === false) return {};
+	return { systemMailbox: raw === 'abuse' ? 'abuse' : 'postmaster' };
 }
 
 function mtaSpamScoreOf(raw: unknown): number | undefined {
@@ -385,6 +412,7 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			// trusted source of it on this path.
 			mtaSpamVerdict: mtaSpamVerdictOf(input.spamVerdict),
 			mtaSpamScore: mtaSpamScoreOf(input.spamScore),
+			...systemMailboxOf(input.systemMailbox),
 		};
 	}
 }

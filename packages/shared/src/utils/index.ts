@@ -21,4 +21,5 @@ export {
 	isValidUrl,
 	isEmpty,
 	toSlug,
+	isValidSlug,
 } from './validation';

@@ -49,6 +49,7 @@ ai.knowledge convex/knowledge/
 calendar.booking convex/booking/
 mail.mcp convex/mcp/
 inbox convex/inbox/sla/
+ai.emailGeneration convex/emailGeneration/
 '
 
 generate() {

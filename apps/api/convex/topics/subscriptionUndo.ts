@@ -9,6 +9,7 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { AddedMembership, RemovedMembership } from './subscriptionContract';
+import { scheduleMarketingOptOutMirror } from '../delivery/suppressionMirrorScheduler';
 import { patchCachedMemberCountDelta } from './subscriptionOps';
 
 async function findReceiptedMembership(
@@ -49,6 +50,8 @@ export async function revertAddedMemberships(
 			await ctx.db.patch(contact._id, {
 				unsubscribedAt: Math.min(receipt.liftedOptOutAt, now),
 			});
+			// Marketing dispatched while the opt-out was lifted is withdrawn too.
+			if (contact.email) await scheduleMarketingOptOutMirror(ctx, contact.email, now);
 		}
 	}
 

@@ -6,7 +6,8 @@ useHead({ title: () => t('imprint.pageTitle') });
 
 const { public: config } = useRuntimeConfig();
 const operatorName = workspaceDisplayName(config);
-const { isAuthenticated } = useAuth();
+// Never `useAuth()` here: it would fetch a session, and this page is public.
+const isSignedIn = useKnownSignedIn();
 
 // Every value on this page is the operator's runtime config, which defaults to
 // empty on a self-hosted install. Without a company name there is no imprint to
@@ -29,7 +30,7 @@ const addressLines = [
 				<NuxtLink to="/" class="font-display text-2xl text-text-primary">{{
 					operatorName ?? 'Owlat'
 				}}</NuxtLink>
-				<UiButton v-if="isAuthenticated" variant="ghost" to="/dashboard">{{
+				<UiButton v-if="isSignedIn" variant="ghost" to="/dashboard">{{
 					t('imprint.openApp')
 				}}</UiButton>
 				<UiButton v-else variant="ghost" to="/auth/login">{{ t('imprint.signIn') }}</UiButton>

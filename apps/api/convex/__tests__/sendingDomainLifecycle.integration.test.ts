@@ -1458,7 +1458,7 @@ describe('Sending domain lifecycle — re-verification of a verified domain', ()
 				fromEmail: 'news@dkim-gone.com',
 				domainStatus: gate,
 				dataVariables: undefined,
-				dataVariablesSchema: undefined,
+				template: { dataVariablesSchema: undefined },
 				content: { subject: 'Hi', html: '<p>Hi</p>', plainText: undefined },
 			})
 		).toMatchObject({ ok: false, reason: 'domain_unverified' });

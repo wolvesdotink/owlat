@@ -8,7 +8,9 @@
  * campaign goes to whoever may manage campaigns, a reminder to whoever may
  * cancel the schedule, a start that did not happen to whoever may schedule
  * it again, and the delivery hold and DNS failure to admins, who are
- * the only ones who can open the delivery pages they link to.
+ * the only ones who can open the delivery pages they link to. Postmaster mail
+ * goes to the readers of the Team Inbox it lands in (`inbox/access.ts`), the
+ * instance admins, and to nobody else.
  */
 
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
@@ -67,6 +69,11 @@ export const MARKETING_NOTICE_POLICY: Record<MarketingNoticeKind, NoticePolicy> 
 		permission: 'settings:manage',
 		features: SENDING_FEATURES,
 	},
+	postmaster_mail: {
+		preference: 'postmasterMail',
+		permission: 'organization:manage',
+		features: ['inbox'],
+	},
 };
 
 export type ResolvedFlags = Readonly<Record<FeatureFlagKey, boolean>>;
@@ -91,6 +98,7 @@ export const PREFERENCE_FIELD = {
 	deliveryHold: 'isDeliveryHoldOn',
 	automationProblems: 'isAutomationProblemsOn',
 	domainDns: 'isDomainDnsOn',
+	postmasterMail: 'isPostmasterMailOn',
 } as const satisfies Record<MarketingNotificationPreference, string>;
 
 /** The switches a person's row holds; an absent row or field means on. */

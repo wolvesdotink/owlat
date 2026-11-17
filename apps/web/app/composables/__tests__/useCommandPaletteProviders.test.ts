@@ -358,6 +358,7 @@ describe('settings controls', () => {
 			'setting:admin:webhooks:webhookSecret',
 			'setting:admin:brandKit:brandColors',
 			'setting:admin:instanceGeneral:transactionalSender',
+			'setting:admin:apiKeys:transactionalSendLimits',
 		]);
 		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
 	});

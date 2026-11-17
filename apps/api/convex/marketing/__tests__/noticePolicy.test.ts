@@ -45,6 +45,15 @@ describe('marketing notice policy', () => {
 		expect(isNoticeRoleAllowed('campaign_finished', null)).toBe(false);
 	});
 
+	it('tells only the Team Inbox readers about postmaster mail', () => {
+		expect(isNoticeRoleAllowed('postmaster_mail', 'editor')).toBe(false);
+		expect(isNoticeRoleAllowed('postmaster_mail', 'admin')).toBe(true);
+		expect(isNoticeRoleAllowed('postmaster_mail', 'owner')).toBe(true);
+		expect(isNoticeFeatureOn('postmaster_mail', flags(['campaigns']))).toBe(false);
+		expect(applicablePreferences('admin', flags(['inbox']))).toEqual(['postmasterMail']);
+		expect(applicablePreferences('editor', flags(['inbox']))).toEqual([]);
+	});
+
 	it('needs the feature a notice is about', () => {
 		expect(isNoticeFeatureOn('campaign_finished', flags(['automations']))).toBe(false);
 		expect(isNoticeFeatureOn('delivery_hold', flags(['transactional']))).toBe(true);
@@ -179,5 +188,22 @@ describe('marketing push copy', () => {
 				0
 			).body
 		).toBe('mail.example.com: SPF with -all check failed');
+	});
+
+	it('names who wrote to postmaster or abuse, except on a private lock screen', () => {
+		const postmaster = notice({
+			kind: 'postmaster_mail',
+			name: 'abuse@bounces.example.com',
+			detail: 'listings@blocklist.example',
+			url: '/dashboard/inbox/t1',
+		});
+		expect(marketingPayload(postmaster, 'de', false, 0)).toMatchObject({
+			title: 'Postmaster-Mail',
+			body: 'listings@blocklist.example hat an abuse@bounces.example.com geschrieben',
+			url: '/dashboard/inbox/t1',
+		});
+		const hidden = marketingPayload(postmaster, 'en', true, 0);
+		expect(hidden.body).toBe('New mail to postmaster@ or abuse@');
+		expect(JSON.stringify(hidden)).not.toContain('blocklist.example');
 	});
 });

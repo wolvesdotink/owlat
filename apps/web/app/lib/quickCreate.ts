@@ -21,17 +21,25 @@
  * editor work (`canSendCampaigns`), so that one is flag-gated only.
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import { minRole, type NavigationEnvironment } from './dashboardNavigationCore';
+import { minRole, transactionalGate, type NavigationEnvironment } from './dashboardNavigationCore';
 import type { SidebarContext } from './sidebarContext';
 import {
+	FileCodeIcon,
 	MegaphoneIcon,
 	PencilIcon,
+	SparklesIcon,
 	UserPlusCornerIcon,
 	ZapIcon,
 	type IconComponent,
 } from '@coolicons/vue';
 
-export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation';
+export type QuickCreateId =
+	| 'compose'
+	| 'campaign'
+	| 'aiCampaign'
+	| 'contact'
+	| 'automation'
+	| 'transactional';
 
 type Gate = (env: NavigationEnvironment) => boolean;
 
@@ -78,6 +86,15 @@ export const QUICK_CREATE_ENTRIES: readonly QuickCreateEntry[] = [
 		gate: flag('campaigns'),
 	},
 	{
+		// The campaign and its email in one go: creating the email needs
+		// `templates:manage` (admin), so editors are not offered it.
+		id: 'aiCampaign',
+		labelKey: 'shared.quickCreate.aiCampaign',
+		icon: SparklesIcon,
+		href: '/dashboard/campaigns/new?draft=ai',
+		gate: (env) => adminOnly(env) && flag('campaigns')(env) && flag('ai.emailGeneration')(env),
+	},
+	{
 		id: 'contact',
 		labelKey: 'shared.quickCreate.contact',
 		icon: UserPlusCornerIcon,
@@ -90,6 +107,15 @@ export const QUICK_CREATE_ENTRIES: readonly QuickCreateEntry[] = [
 		href: '/dashboard/automations/new',
 		gate: (env) => adminOnly(env) && flag('automations')(env),
 	},
+	{
+		// The create dialog lives on the list page, which opens it for
+		// `?action=create` and then drops the query.
+		id: 'transactional',
+		labelKey: 'shared.quickCreate.transactional',
+		icon: FileCodeIcon,
+		href: '/dashboard/send/transactional?action=create',
+		gate: transactionalGate,
+	},
 ];
 
 /** The verbs this member may actually run, in catalog order. */
@@ -98,14 +124,15 @@ export function quickCreateEntriesFor(env: NavigationEnvironment): QuickCreateEn
 }
 
 /**
- * The verb each workspace leads with: in Marketing the top-bar primary is New
- * campaign, in Conversations it is Compose. The other verbs stay in the
+ * The verbs each workspace leads with, first allowed one wins: in Sending the
+ * top-bar primary is New campaign (or a transactional email where campaigns
+ * are off), in Conversations it is Compose. The other verbs stay in the
  * dropdown, so a marketer is never offered "Compose email" as the black button
  * above a page full of campaigns.
  */
-const WORKSPACE_PRIMARY: Readonly<Record<SidebarContext, QuickCreateId>> = {
-	inbox: 'compose',
-	marketing: 'campaign',
+const WORKSPACE_PRIMARY: Readonly<Record<SidebarContext, readonly QuickCreateId[]>> = {
+	inbox: ['compose'],
+	marketing: ['campaign', 'transactional'],
 };
 
 /**
@@ -120,6 +147,8 @@ export function defaultQuickCreateEntry(
 	workspace: SidebarContext = 'inbox'
 ): QuickCreateEntry | null {
 	const entries = quickCreateEntriesFor(env);
-	const preferred = WORKSPACE_PRIMARY[workspace];
-	return entries.find((entry) => entry.id === preferred) ?? entries[0] ?? null;
+	const preferred = WORKSPACE_PRIMARY[workspace]
+		.map((id) => entries.find((entry) => entry.id === id))
+		.find((entry) => entry !== undefined);
+	return preferred ?? entries[0] ?? null;
 }
