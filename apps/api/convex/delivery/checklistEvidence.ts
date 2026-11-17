@@ -17,6 +17,7 @@ import { literalUnion } from '../lib/literalUnion';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { DEPLOYMENT_CHECK_IDS, checklistTraits } from './checklistTraits';
 import { resolveDeliverabilityAlert } from './checklistAlertResolution';
+import { isEmailOnAffectedTransport } from './checklistAlertChannelLedger';
 import { ipv6SendingAddresses, isIpv6CheckId } from './checklistIpv6';
 import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 
@@ -203,6 +204,14 @@ async function insertRegressionAlert(
 			q.eq('organizationId', args.organizationId).eq('identity', identity)
 		)
 		.unique();
+	// A sending domain's DNS record broke (a failure, not a warning, and not
+	// the server's own records): admins hear about it by the DNS notice, which
+	// has its own switch. The alert may already exist from a warning that came
+	// first; the notification is keyed by the alert, so repeated failures of
+	// one regression notify once.
+	const isDomainDnsFailure = Boolean(
+		args.domainId && args.status === 'fail' && definition?.dnsBacked
+	);
 	let alertId = existing?._id;
 	if (!alertId) {
 		alertId = await ctx.db.insert('deliverabilityRegressionAlerts', {
@@ -218,18 +227,20 @@ async function insertRegressionAlert(
 				`${definition?.title ?? 'A deliverability check'} regressed after a confirmed pass: ${args.diagnostic}`
 			),
 			emailNotificationState: 'pending',
+			...(isEmailOnAffectedTransport(args.itemId) ? { isEmailOnAffectedTransport: true } : {}),
 			createdAt: args.observedAt,
 		});
 		await ctx.scheduler.runAfter(0, internal.delivery.checklistAlerts.deliverRegressionEmail, {
 			identity,
 			organizationId: args.organizationId,
 		});
+		// The email leaves through the mail path the alert may be about, so the
+		// same admins also get an in-app notice and a push, which do not.
+		if (!isDomainDnsFailure) {
+			await scheduleMarketingNotice(ctx, { kind: 'deliverability_alert', alertId });
+		}
 	}
-	// A sending domain's DNS record broke (a failure, not a warning, and not
-	// the server's own records): admins also get a notification. The alert may
-	// already exist from a warning that came first; the notification is keyed
-	// by the alert, so repeated failures of one regression notify once.
-	if (args.domainId && args.status === 'fail' && definition?.dnsBacked) {
+	if (isDomainDnsFailure) {
 		await scheduleMarketingNotice(ctx, { kind: 'domain_dns', alertId });
 	}
 }

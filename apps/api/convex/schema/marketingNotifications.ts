@@ -52,8 +52,9 @@ export const marketingNotificationTables = {
 		percent: v.optional(v.number()),
 		// Automation stalled: runs ended.
 		count: v.optional(v.number()),
-		// Domain DNS: the failing check's protocol label ("SPF with -all").
-		// Postmaster mail: the sender's address.
+		// Domain DNS and deliverability alert: the failing check's protocol
+		// label ("SPF with -all", "Outbound SMTP port 25"). Postmaster mail:
+		// the sender's address.
 		detail: v.optional(v.string()),
 		// Campaign reminder: the start the reminder is for.
 		scheduledAt: v.optional(v.number()),
@@ -73,6 +74,7 @@ export const marketingNotificationTables = {
 		isAutomationProblemsOn: v.optional(v.boolean()),
 		isDomainDnsOn: v.optional(v.boolean()),
 		isPostmasterMailOn: v.optional(v.boolean()),
+		isDeliverabilityAlertsOn: v.optional(v.boolean()),
 		updatedAt: v.number(),
 	}).index('by_user', ['userId']),
 };

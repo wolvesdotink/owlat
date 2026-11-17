@@ -42,6 +42,11 @@ const alert: DeliverabilityRegressionAlert = {
 	observedAt: Date.UTC(2026, 6, 26, 11),
 	acknowledgedAt: null,
 	emailNotificationState: 'sent',
+	channels: {
+		email: { state: 'sent', isOnAffectedTransport: false },
+		inAppCount: 2,
+		push: { delivered: 1, failed: 0, held: 0 },
+	},
 };
 const stubs = {
 	UiButton: {
@@ -96,5 +101,45 @@ describe('DeliverabilityRegressionAlerts', () => {
 		expect(wrapper.text()).toContain('Acknowledged');
 		expect(wrapper.findAll('button').some((button) => button.text() === 'Acknowledge')).toBe(false);
 		expect(wrapper.text()).toContain('Resolve alert');
+	});
+
+	it('names every channel that carried the alert', () => {
+		const wrapper = mountAlerts();
+		expect(wrapper.get('[data-testid="alert-channels"]').text()).toBe(
+			'Email · In app to 2 people · Push on 1 device'
+		);
+		expect(wrapper.find('[data-testid="alert-email-may-not-arrive"]').exists()).toBe(false);
+	});
+
+	it('never reads as delivered by email when the alert is about the server the email leaves from', () => {
+		const wrapper = mountAlerts({
+			itemId: 'deployment.port25',
+			channels: {
+				email: { state: 'sent', isOnAffectedTransport: true },
+				inAppCount: 1,
+				push: { delivered: 0, failed: 1, held: 1 },
+			},
+		});
+		expectFullyLocalized(wrapper);
+		const line = wrapper.get('[data-testid="alert-channels"]').text();
+		expect(line).toBe(
+			'Email, handed to the affected server · In app to 1 person · Push held for quiet hours on 1 device · Push failed on 1 device'
+		);
+		expect(wrapper.get('[data-testid="alert-email-may-not-arrive"]').text()).toContain(
+			'the email may not arrive'
+		);
+	});
+
+	it('says when the email did not go out and nobody has the alert switched on', () => {
+		const wrapper = mountAlerts({
+			channels: {
+				email: { state: 'unavailable', isOnAffectedTransport: false },
+				inAppCount: 0,
+				push: { delivered: 0, failed: 0, held: 0 },
+			},
+		});
+		expect(wrapper.get('[data-testid="alert-channels"]').text()).toBe(
+			'Email not sent · In app to nobody, everyone switched it off'
+		);
 	});
 });

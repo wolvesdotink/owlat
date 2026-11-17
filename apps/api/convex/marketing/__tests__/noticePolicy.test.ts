@@ -50,7 +50,10 @@ describe('marketing notice policy', () => {
 		expect(isNoticeRoleAllowed('postmaster_mail', 'admin')).toBe(true);
 		expect(isNoticeRoleAllowed('postmaster_mail', 'owner')).toBe(true);
 		expect(isNoticeFeatureOn('postmaster_mail', flags(['campaigns']))).toBe(false);
-		expect(applicablePreferences('admin', flags(['inbox']))).toEqual(['postmasterMail']);
+		expect(applicablePreferences('admin', flags(['inbox']))).toEqual([
+			'postmasterMail',
+			'deliverabilityAlerts',
+		]);
 		expect(applicablePreferences('editor', flags(['inbox']))).toEqual([]);
 	});
 
@@ -69,11 +72,15 @@ describe('marketing notice policy', () => {
 			'deliveryHold',
 			'automationProblems',
 			'domainDns',
+			'deliverabilityAlerts',
 		]);
 		expect(applicablePreferences('admin', flags(['transactional']))).toEqual([
 			'deliveryHold',
 			'domainDns',
+			'deliverabilityAlerts',
 		]);
+		// No feature gates deliverability alerts: an admin always has the switch.
+		expect(applicablePreferences('admin', flags([]))).toEqual(['deliverabilityAlerts']);
 		expect(applicablePreferences('editor', flags([]))).toEqual([]);
 	});
 

@@ -2,12 +2,9 @@
 
 import { createHash } from 'node:crypto';
 import { v } from 'convex/values';
-import {
-	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
-	type DeliverabilityAlertAdminRecipient,
-} from '@owlat/shared';
+import type { DeliverabilityAlertAdminRecipient } from '@owlat/shared';
 import { escapeHtml } from '@owlat/shared/html';
-import { components, internal } from '../_generated/api';
+import { internal } from '../_generated/api';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
 import { EmailErrorCode } from '../lib/sendProviders';
@@ -17,6 +14,10 @@ import {
 	type SystemMailAttemptOutcome,
 	type SystemMailRetryDisposition,
 } from '../lib/systemMailOutcome';
+
+import { loadDeliverabilityAlertAdminRecipients } from './checklistAlertAudience';
+
+export { loadDeliverabilityAlertAdminRecipients };
 
 export const REGRESSION_EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000] as const;
 
@@ -30,55 +31,15 @@ type RegressionEmailResult = {
 		| 'delivery_failed';
 };
 
+/**
+ * This email may travel through the server the alert is about, so it names the
+ * channels that do not: whoever reads it learns where to look when it is late.
+ */
+const OTHER_CHANNELS_LINE =
+	'Owlat also shows this alert in the app and sends it as a push notification to admins who have push turned on.';
+
 export function regressionEmailRetryDelay(attempt: number): number | null {
 	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;
-}
-
-function normalizedEmail(value: string | undefined): string | undefined {
-	const email = value?.trim().toLowerCase();
-	return email || undefined;
-}
-
-export async function loadDeliverabilityAlertAdminRecipients(
-	ctx: ActionCtx,
-	organizationId: string
-): Promise<DeliverabilityAlertAdminRecipient[]> {
-	const results = await Promise.all(
-		(['owner', 'admin'] as const).map(
-			(role) =>
-				ctx.runQuery(components.betterAuth.adapter.findMany, {
-					model: 'member',
-					where: [
-						{ field: 'organizationId', value: organizationId },
-						{ field: 'role', value: role },
-					],
-					paginationOpts: {
-						cursor: null,
-						numItems: DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
-					},
-				}) as Promise<{
-					page?: Array<{ userId: string; role: string }>;
-				} | null>
-		)
-	);
-	const userIds = [
-		...new Set(results.flatMap((result) => result?.page ?? []).map((member) => member.userId)),
-	]
-		.sort()
-		.slice(0, DELIVERABILITY_ALERT_RECIPIENT_LIMIT);
-	const users = await Promise.all(
-		userIds.map(
-			(userId) =>
-				ctx.runQuery(components.betterAuth.adapter.findOne, {
-					model: 'user',
-					where: [{ field: '_id', value: userId }],
-				}) as Promise<{ email?: string } | null>
-		)
-	);
-	return userIds.map((userId, index) => {
-		const email = normalizedEmail(users[index]?.email);
-		return { userId, ...(email ? { email } : {}) };
-	});
 }
 
 type RegressionEmailArgs = {
@@ -116,7 +77,7 @@ const regressionEmailDependencies: RegressionEmailDependencies = {
 			EmailErrorCode.AMBIGUOUS_TIMEOUT
 		),
 	now: Date.now,
-	randomId: crypto.randomUUID,
+	randomId: () => crypto.randomUUID(),
 };
 
 function recipientIdempotencyKey(
@@ -234,7 +195,7 @@ export async function deliverRegressionEmailHandler(
 				to: claim.email,
 				from: `Owlat <${fromEmail}>`,
 				subject: 'Owlat deliverability regression detected',
-				html: `<p>Owlat detected that a previously verified deliverability check regressed.</p><p>${escapeHtml(prepared.message)}</p><p>Open the Deliverability Center to review the live evidence and remediation guidance.</p>`,
+				html: `<p>Owlat detected that a previously verified deliverability check regressed.</p><p>${escapeHtml(prepared.message)}</p><p>Open the Deliverability Center to review the live evidence and remediation guidance.</p><p>${OTHER_CHANNELS_LINE}</p>`,
 				idempotencyKey: recipientIdempotencyKey(
 					args.organizationId,
 					args.identity,

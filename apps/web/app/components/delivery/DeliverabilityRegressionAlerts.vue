@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatDateTime } from '~/utils/formatters';
 import type {
+	DeliverabilityAlertChannels,
 	DeliverabilityAlertOperation,
 	DeliverabilityChecklistGroup,
 	DeliverabilityRegressionAlert,
@@ -35,6 +36,27 @@ const rows = computed(() =>
 		item: findDeliverabilityItem(props.groups, alert),
 	}))
 );
+
+const C = 'components.delivery.deliverabilityRegressionAlerts.channels';
+
+/**
+ * One line naming every channel that carried the alert. The email part never
+ * reads as delivered when the alert is about the server the email leaves from.
+ */
+function channelSummary(channels: DeliverabilityAlertChannels): string {
+	const { email, inAppCount, push } = channels;
+	const parts = [
+		email.state === 'sent'
+			? t(email.isOnAffectedTransport ? `${C}.emailOnAffectedServer` : `${C}.emailSent`)
+			: t(email.state === 'pending' ? `${C}.emailPending` : `${C}.emailNotSent`),
+	];
+	if (inAppCount === 0) parts.push(t(`${C}.inAppNobody`));
+	else if (inAppCount !== null) parts.push(t(`${C}.inApp`, inAppCount));
+	if (push.delivered > 0) parts.push(t(`${C}.push`, push.delivered));
+	if (push.held > 0) parts.push(t(`${C}.pushHeld`, push.held));
+	if (push.failed > 0) parts.push(t(`${C}.pushFailed`, push.failed));
+	return parts.join(' · ');
+}
 
 function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertOperation['kind']) {
 	return props.activeOperation?.alertId === alert.id && props.activeOperation.kind === kind;
@@ -96,7 +118,18 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 						<dt>{{ t('components.delivery.deliverabilityRegressionAlerts.statusLabel') }}</dt>
 						<dd>{{ t('components.delivery.deliverabilityRegressionAlerts.acknowledged') }}</dd>
 					</div>
+					<div class="flex gap-1">
+						<dt>{{ t(`${C}.label`) }}</dt>
+						<dd data-testid="alert-channels">{{ channelSummary(alert.channels) }}</dd>
+					</div>
 				</dl>
+				<p
+					v-if="alert.channels.email.isOnAffectedTransport"
+					class="text-xs text-warning"
+					data-testid="alert-email-may-not-arrive"
+				>
+					{{ t(`${C}.mayNotArrive`) }}
+				</p>
 
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton size="sm" variant="secondary" @click="emit('view', alert)">

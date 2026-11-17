@@ -395,6 +395,17 @@ export const deliveryTables = {
 			})
 		),
 		emailDirectoryAttemptCount: v.optional(v.number()),
+		// The alert is about the transport its own email leaves through (a
+		// blocking server check while system mail goes out over the built-in
+		// MTA): "sent" then means accepted by that transport, not delivered.
+		isEmailOnAffectedTransport: v.optional(v.boolean()),
+		// What the channels that do not use the mail path did with the alert:
+		// in-app notices written (one per admin whose switch is on) and what
+		// the push services answered for them. Absent means not attempted.
+		inAppNoticeCount: v.optional(v.number()),
+		pushDeliveredCount: v.optional(v.number()),
+		pushFailedCount: v.optional(v.number()),
+		pushHeldCount: v.optional(v.number()),
 		acknowledgedAt: v.optional(v.number()),
 		resolvedAt: v.optional(v.number()),
 		createdAt: v.number(),

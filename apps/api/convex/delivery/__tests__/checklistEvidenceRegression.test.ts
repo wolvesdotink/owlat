@@ -1,7 +1,10 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
-import { internal } from '../../_generated/api';
+import { components, internal } from '../../_generated/api';
 import schema from '../../schema';
+import betterAuthSchema from '../../betterAuth/schema';
+import { betterAuthModules } from '../../__tests__/testModules';
+import { _resetSingletonOrgCacheForTests } from '../../lib/sessionOrganization';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../../lib/constants';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -12,12 +15,26 @@ const deliveryGlob = Object.fromEntries(
 	])
 );
 const modules = { ...rootGlob, ...deliveryGlob };
-const newTest = () => convexTest(schema, modules);
-type TestConvex = ReturnType<typeof newTest>;
+const createConvex = () => convexTest(schema, modules);
+type TestConvex = ReturnType<typeof createConvex>;
+
+/**
+ * A raised alert also schedules its in-app notice, whose fan-out reads the
+ * organization's members, so the harness has an organization like any install.
+ */
+async function newTest(): Promise<TestConvex> {
+	_resetSingletonOrgCacheForTests();
+	const t = createConvex();
+	t.registerComponent('betterAuth', betterAuthSchema, betterAuthModules);
+	await t.mutation(components.betterAuth.adapter.create, {
+		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: 1 } },
+	} as never);
+	return t;
+}
 
 describe('Deliverability Center regression evidence', () => {
 	it('preserves an active propagation generation when an hourly sweep arrives first', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newTest();
 		const organizationId = 'org-hourly';
 		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
 		const stateId = await t.run((ctx) =>
@@ -58,7 +75,7 @@ describe('Deliverability Center regression evidence', () => {
 	});
 
 	it('reclaims a lost scheduled retry after the bounded scheduler grace', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newTest();
 		const organizationId = 'org-lost-retry';
 		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
 		await t.run((ctx) =>
@@ -93,7 +110,7 @@ describe('Deliverability Center regression evidence', () => {
 	});
 
 	it('lets the scheduled retry claim exactly at its due time', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newTest();
 		const organizationId = 'org-scheduler-edge';
 		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
 		await t.run((ctx) =>
@@ -128,7 +145,7 @@ describe('Deliverability Center regression evidence', () => {
 	});
 
 	it('alerts pass → transient warn → confirmed fail and resolves on recovery', async () => {
-		const t = convexTest(schema, modules);
+		const t = await newTest();
 		const organizationId = 'org-regression';
 		const record = async (
 			attemptId: string,
@@ -290,7 +307,7 @@ describe('Deliverability Center regression evidence', () => {
 			);
 
 		it('alerts on a regression while IPv6 is on', async () => {
-			const t = convexTest(schema, modules);
+			const t = await newTest();
 			const record = recorder(t, 'org-ipv6-on');
 			await t.mutation(
 				internal.delivery.warmingSync.upsertWarmingState,
@@ -302,7 +319,7 @@ describe('Deliverability Center regression evidence', () => {
 		});
 
 		it('raises no alert (and schedules no email) once IPv6 is off', async () => {
-			const t = convexTest(schema, modules);
+			const t = await newTest();
 			const record = recorder(t, 'org-ipv6-off');
 			await t.mutation(
 				internal.delivery.warmingSync.upsertWarmingState,
@@ -325,7 +342,7 @@ describe('Deliverability Center regression evidence', () => {
 		});
 
 		it('resolves open IPv6 alerts when the warming sync learns IPv6 is off', async () => {
-			const t = convexTest(schema, modules);
+			const t = await newTest();
 			const organizationId = 'org-ipv6-disabled';
 			const record = recorder(t, organizationId);
 			await t.mutation(
@@ -375,7 +392,7 @@ describe('Deliverability Center regression evidence', () => {
 		});
 
 		it('also closes an IPv6 alert on the next check when IPv6 is already off', async () => {
-			const t = convexTest(schema, modules);
+			const t = await newTest();
 			const organizationId = 'org-ipv6-stale-alert';
 			const record = recorder(t, organizationId);
 			await t.mutation(

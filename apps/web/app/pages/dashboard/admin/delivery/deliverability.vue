@@ -338,6 +338,12 @@ async function copyReport() {
 					@resolve="updateRegressionAlert($event, 'resolve')"
 				/>
 
+				<!-- Who alerts reach, and on which channels: the email can travel
+				     through the server an alert is about, the others do not. -->
+				<div id="deliverability-alert-channels" class="scroll-mt-6">
+					<DeliveryDeliverabilityAlertChannels />
+				</div>
+
 				<DeliveryDeliverabilityNextActionCard
 					:item="center.nextItem"
 					:is-verifying="

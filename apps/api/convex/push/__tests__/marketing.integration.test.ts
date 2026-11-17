@@ -302,3 +302,97 @@ describe('push.dispatch marketing', () => {
 		expect(JSON.parse(summary!.payload).body).toBe('3 notifications arrived during quiet hours');
 	});
 });
+
+describe('push for deliverability alerts', () => {
+	async function seedAlert(t: T): Promise<Id<'deliverabilityRegressionAlerts'>> {
+		return t.run(async (ctx) => {
+			const evidence = {
+				organizationId: 'org',
+				itemId: 'deployment.port25' as const,
+				scopeKind: 'deployment' as const,
+				targetKey: '3:org|deployment',
+				attemptId: 'attempt',
+				validator: 'test',
+				status: 'fail' as const,
+				observedValues: [],
+				diagnostic: 'blocked',
+				observedAt: 1_000,
+				createdAt: 1_000,
+			};
+			const previousEvidenceId = await ctx.db.insert('deliverabilityEvidence', {
+				...evidence,
+				attemptId: 'previous',
+				status: 'pass',
+			});
+			const regressedEvidenceId = await ctx.db.insert('deliverabilityEvidence', evidence);
+			return ctx.db.insert('deliverabilityRegressionAlerts', {
+				organizationId: 'org',
+				identity: 'port25',
+				itemId: 'deployment.port25',
+				targetKey: '3:org|deployment',
+				previousEvidenceId,
+				regressedEvidenceId,
+				observedAt: 1_000,
+				message: 'Outbound SMTP port 25 regressed',
+				emailNotificationState: 'pending',
+				createdAt: 1_000,
+			});
+		});
+	}
+
+	async function seedAlertNotice(t: T, alertId: Id<'deliverabilityRegressionAlerts'>) {
+		return seedNotice(t, {
+			kind: 'deliverability_alert',
+			alertId,
+			detail: 'Outbound SMTP port 25',
+			subjectKey: 'deliverability_alert:3:org|deployment|deployment.port25',
+			url: '/dashboard/admin/delivery/deliverability',
+		});
+	}
+
+	it('names the check, and pushes nothing once the alert is resolved', async () => {
+		const t = await setup();
+		const alertId = await seedAlert(t);
+		const noticeId = await seedAlertNotice(t, alertId);
+		const [delivery] = await prepare(t, noticeId);
+		expect(delivery?.payload).toMatchObject({
+			title: 'Deliverability check regressed',
+			body: 'Outbound SMTP port 25 stopped passing',
+			url: '/dashboard/admin/delivery/deliverability',
+		});
+
+		await t.run((ctx) => ctx.db.patch(alertId, { resolvedAt: Date.now() }));
+		expect(await prepare(t, noticeId)).toEqual([]);
+	});
+
+	it('counts what the push services answered on the alert', async () => {
+		const t = await setup();
+		const alertId = await seedAlert(t);
+		const noticeId = await seedAlertNotice(t, alertId);
+		const first = await seedDevice(t, USER);
+		const second = await seedDevice(t, USER);
+		const held = await seedDevice(t, USER);
+		const event = { kind: 'marketing' as const, noticeId };
+		await t.mutation(internal.push.delivery.recordDelivery, {
+			userId: USER,
+			event,
+			held: [{ subscriptionId: held, isMarketing: true }],
+			outcomes: [
+				{ subscriptionId: first, outcome: 'delivered' },
+				{ subscriptionId: second, outcome: 'gone' },
+			],
+		});
+		const alert = await t.run((ctx) => ctx.db.get(alertId));
+		expect(alert).toMatchObject({ pushDeliveredCount: 1, pushFailedCount: 1, pushHeldCount: 1 });
+
+		// A push about anything else leaves the alert alone.
+		const finished = await seedFinished(t);
+		await t.mutation(internal.push.delivery.recordDelivery, {
+			userId: USER,
+			event: { kind: 'marketing', noticeId: finished },
+			held: [],
+			outcomes: [{ subscriptionId: first, outcome: 'delivered' }],
+		});
+		expect((await t.run((ctx) => ctx.db.get(alertId)))?.pushDeliveredCount).toBe(1);
+	});
+});

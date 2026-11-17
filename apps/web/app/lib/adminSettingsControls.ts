@@ -58,6 +58,7 @@ export const ADMIN_SETTINGS_CONTROLS: readonly AdminSettingsControl[] = [
 	control('aiProviderKey', 'aiProvider', 'ai-provider-key'),
 	control('autonomy', 'aiReplies', 'ai-reply-mode'),
 	control('rampPace', 'rampControls', 'ramp-presets'),
+	control('alertChannels', 'deliverability', 'deliverability-alert-channels'),
 	control('webhookSecret', 'webhooks', 'webhook-signing'),
 	control('brandColors', 'brandKit', 'brand-colors'),
 	control('transactionalSender', 'instanceGeneral', 'transactional-sender'),

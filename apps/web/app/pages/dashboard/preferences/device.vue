@@ -41,9 +41,10 @@ definePageMeta({
 const { isEnabled } = useFeatureFlag();
 const { isDesktop, platform } = useDesktopContext();
 const hasMail = computed(() => isEnabled('postbox') || isEnabled('mail.external'));
-// Campaign, automation and sending notifications exist on this instance.
+const { isAdmin } = usePermissions();
+// A sending feature is on, or this admin hears deliverability alerts: notices can fire.
 const hasMarketing = computed(
-	() => isEnabled('campaigns') || isEnabled('automations') || isEnabled('transactional')
+	() => isAdmin.value || (['campaigns', 'automations', 'transactional'] as const).some(isEnabled)
 );
 
 const { settings, isReady, setGlobal, workspaceLocal, setWorkspaceLocal } = useDesktopAppSettings();

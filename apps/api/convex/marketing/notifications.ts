@@ -32,6 +32,7 @@ import {
 } from '../lib/validators/marketingNotifications';
 import { internalMutation } from '../lib/writeFence';
 import { enqueuePush } from '../push/events';
+import { recordAlertInAppNotices } from '../delivery/checklistAlertChannelLedger';
 import {
 	MARKETING_NOTICE_POLICY,
 	PREFERENCE_FIELD,
@@ -137,6 +138,9 @@ export const fanOut = internalMutation({
 			await enqueuePush(ctx, userId, { kind: 'marketing', noticeId });
 			written++;
 		}
+		// The alert row shows which channels carried it, including "nobody":
+		// every admin may have switched this kind off.
+		if (fields.alertId) await recordAlertInAppNotices(ctx, fields.alertId, written);
 		return { written };
 	},
 });

@@ -22,7 +22,7 @@
  * `useI18n`, so every consumer resolves them at its own render boundary.
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
-import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
+import { hasPermission, type OrganizationRole } from '@owlat/shared/organizationPermissions';
 import { alertSoundKindsFor } from './alertSoundRules';
 import { fuzzyMatch } from './commandPalette';
 import {
@@ -75,11 +75,16 @@ const desktopOnly: SettingsGate = (env) => env.isDesktop;
 const browserOnly: SettingsGate = (env) => !env.isDesktop;
 /** Some alert sound can reach this person: the card's own predicate, so search matches it. */
 const hasAlertSounds: SettingsGate = (env) => alertSoundKindsFor(env).length > 0;
-/** Campaigns, automations or transactional sending: marketing notifications can fire. */
+/**
+ * Campaigns, automations or transactional sending, or an admin, whom
+ * deliverability alerts reach whatever is switched on: marketing
+ * notifications can fire.
+ */
 const hasMarketingNotices: SettingsGate = (env) =>
 	env.isFeatureEnabled('campaigns') ||
 	env.isFeatureEnabled('automations') ||
-	env.isFeatureEnabled('transactional');
+	env.isFeatureEnabled('transactional') ||
+	hasPermission(env.role ?? null, 'organization:manage');
 /** Something on this instance can send a Web Push: mail, the shared inbox, chat or marketing. */
 const hasPushSource: SettingsGate = (env) =>
 	hasMail(env) ||

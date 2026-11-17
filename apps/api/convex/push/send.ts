@@ -97,6 +97,7 @@ export const deliver = internalAction({
 		if (outcomes.length === 0 && plan.held.length === 0) return;
 		await ctx.runMutation(internal.push.delivery.recordDelivery, {
 			userId: args.userId,
+			event: args.event,
 			held: plan.held,
 			outcomes,
 		});

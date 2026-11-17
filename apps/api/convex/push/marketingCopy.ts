@@ -42,6 +42,9 @@ interface MarketingCopy {
 	postmasterTitle: string;
 	postmasterBody: (sender: string, address: string) => string;
 	postmasterPrivate: string;
+	alertTitle: string;
+	alertBody: (check: string | undefined, domain: string) => string;
+	alertPrivate: string;
 	open: string;
 	cancelSend: string;
 }
@@ -80,6 +83,12 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		postmasterTitle: 'Postmaster mail',
 		postmasterBody: (sender, address) => `${sender} wrote to ${address}`,
 		postmasterPrivate: 'New mail to postmaster@ or abuse@',
+		alertTitle: 'Deliverability check regressed',
+		alertBody: (check, domain) => {
+			const what = check ? `${check} stopped passing` : 'A check stopped passing';
+			return domain ? `${domain}: ${what}` : what;
+		},
+		alertPrivate: 'A deliverability check stopped passing',
 		open: 'Open',
 		cancelSend: 'Cancel send',
 	},
@@ -119,6 +128,12 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 		postmasterTitle: 'Postmaster-Mail',
 		postmasterBody: (sender, address) => `${sender} hat an ${address} geschrieben`,
 		postmasterPrivate: 'Neue Mail an postmaster@ oder abuse@',
+		alertTitle: 'Zustellbarkeitsprüfung zurückgefallen',
+		alertBody: (check, domain) => {
+			const what = check ? `„${check}“ besteht nicht mehr` : 'Eine Prüfung besteht nicht mehr';
+			return domain ? `${domain}: ${what}` : what;
+		},
+		alertPrivate: 'Eine Zustellbarkeitsprüfung besteht nicht mehr',
 		open: 'Öffnen',
 		cancelSend: 'Versand abbrechen',
 	},
@@ -220,6 +235,12 @@ export function marketingPayload(
 				body: isPrivate
 					? copy.postmasterPrivate
 					: clip(copy.postmasterBody(clip(notice.detail ?? '', 60), name), MAX_BODY),
+			};
+		case 'deliverability_alert':
+			return {
+				...base,
+				title: copy.alertTitle,
+				body: isPrivate ? copy.alertPrivate : clip(copy.alertBody(notice.detail, name), MAX_BODY),
 			};
 	}
 }

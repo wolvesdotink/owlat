@@ -6,8 +6,9 @@
  * same commit as the answers.
  */
 
-import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { v, type Infer } from 'convex/values';
+import { internalQuery, type MutationCtx } from '../_generated/server';
+import { recordAlertPushOutcomes } from '../delivery/checklistAlertChannelLedger';
 import { internalMutation } from '../lib/writeFence';
 import { pushEventValidator } from '../lib/validators/push';
 import { holdForQuietHours, planEvent, type DeliveryPlan } from './dispatch';
@@ -20,17 +21,43 @@ export const planDelivery = internalQuery({
 		await planEvent(ctx, userId, event),
 });
 
+/**
+ * A notice about a deliverability alert counts its pushes on the alert, so the
+ * Deliverability Center can say whether the alert reached anyone off the mail
+ * path. A push service that dropped the device (`gone`) or refused the
+ * message counts as failed.
+ */
+async function tallyAlertPushes(
+	ctx: MutationCtx,
+	event: Infer<typeof pushEventValidator>,
+	held: number,
+	outcomes: Infer<typeof pushOutcomeValidator>[]
+): Promise<void> {
+	if (event.kind !== 'marketing') return;
+	const notice = await ctx.db.get(event.noticeId);
+	if (!notice?.alertId) return;
+	const delivered = outcomes.filter((row) => row.outcome === 'delivered').length;
+	await recordAlertPushOutcomes(ctx, notice.alertId, {
+		delivered,
+		failed: outcomes.length - delivered,
+		held,
+	});
+}
+
 /** The commit after the pushes: held devices counted, answers written back. */
 export const recordDelivery = internalMutation({
 	args: {
 		userId: v.string(),
+		// Absent on jobs a previous release queued.
+		event: v.optional(pushEventValidator),
 		held: v.array(
 			v.object({ subscriptionId: v.id('pushSubscriptions'), isMarketing: v.boolean() })
 		),
 		outcomes: v.array(pushOutcomeValidator),
 	},
-	handler: async (ctx, { userId, held, outcomes }): Promise<void> => {
+	handler: async (ctx, { userId, event, held, outcomes }): Promise<void> => {
 		await holdForQuietHours(ctx, userId, held);
 		await applyPushOutcomes(ctx, outcomes);
+		if (event) await tallyAlertPushes(ctx, event, held.length, outcomes);
 	},
 });

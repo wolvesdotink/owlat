@@ -8,6 +8,7 @@ import {
 } from '../checklistAlerts';
 import type { SystemMailAttemptOutcome } from '../../lib/systemMailOutcome';
 import { EmailErrorCode } from '../../lib/sendProviders';
+import { isEmailOnAffectedTransport } from '../checklistAlertChannelLedger';
 
 function acceptedMail(): SystemMailAttemptOutcome {
 	return {
@@ -135,6 +136,21 @@ describe('deliverability regression email retry policy', () => {
 		expect(vi.mocked(test.dependencies.sendEmail).mock.calls[0]?.[1]).toMatchObject({
 			from: 'Owlat <noreply@mail.example.test>',
 		});
+	});
+
+	it('names the channels that do not travel through the mail server', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+		});
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		const html = vi.mocked(test.dependencies.sendEmail).mock.calls[0]?.[1].html;
+		expect(html).toContain('also shows this alert in the app');
+		expect(html).toContain('push notification');
 	});
 
 	it('records a terminal failure, and sends nothing, when no sender is configured', async () => {
@@ -405,5 +421,20 @@ describe('deliverability regression email retry policy', () => {
 		).resolves.toEqual({ sent: false, reason: 'not_pending' });
 		expect(test.dependencies.loadRecipients).not.toHaveBeenCalled();
 		expect(test.runMutation).not.toHaveBeenCalled();
+	});
+});
+
+describe('an alert about the transport its own email uses', () => {
+	it('is a blocking server check while system mail goes out over the built-in MTA', () => {
+		expect(isEmailOnAffectedTransport('deployment.port25', 'mta')).toBe(true);
+		expect(isEmailOnAffectedTransport('deployment.dnsbl', 'mta')).toBe(true);
+		expect(isEmailOnAffectedTransport('deployment.ptr', 'mta')).toBe(true);
+	});
+
+	it('is not a recommendation, a domain check, or any check under another provider', () => {
+		expect(isEmailOnAffectedTransport('deployment.relay', 'mta')).toBe(false);
+		expect(isEmailOnAffectedTransport('domain.dkim', 'mta')).toBe(false);
+		expect(isEmailOnAffectedTransport('deployment.port25', 'ses')).toBe(false);
+		expect(isEmailOnAffectedTransport('deployment.port25', 'resend')).toBe(false);
 	});
 });

@@ -21,7 +21,8 @@ export const marketingNoticeKindValidator = v.union(
 	v.literal('automation_stalled'),
 	v.literal('automation_paused'),
 	v.literal('domain_dns'),
-	v.literal('postmaster_mail')
+	v.literal('postmaster_mail'),
+	v.literal('deliverability_alert')
 );
 export type MarketingNoticeKind = Infer<typeof marketingNoticeKindValidator>;
 
@@ -37,6 +38,7 @@ export const MARKETING_NOTIFICATION_PREFERENCES = [
 	'automationProblems',
 	'domainDns',
 	'postmasterMail',
+	'deliverabilityAlerts',
 ] as const;
 export type MarketingNotificationPreference = (typeof MARKETING_NOTIFICATION_PREFERENCES)[number];
 
@@ -46,7 +48,8 @@ export const marketingNotificationPreferenceValidator = v.union(
 	v.literal('deliveryHold'),
 	v.literal('automationProblems'),
 	v.literal('domainDns'),
-	v.literal('postmasterMail')
+	v.literal('postmasterMail'),
+	v.literal('deliverabilityAlerts')
 );
 
 /**
@@ -104,6 +107,13 @@ export const marketingNoticeEventValidator = v.union(
 	v.object({
 		kind: v.literal('postmaster_mail'),
 		inboundMessageId: v.id('inboundMessages'),
+	}),
+	// Any other deliverability regression alert was raised. It reaches admins
+	// by notice and push as well as by email, because the email travels
+	// through the mail path the alert may be about.
+	v.object({
+		kind: v.literal('deliverability_alert'),
+		alertId: v.id('deliverabilityRegressionAlerts'),
 	})
 );
 export type MarketingNoticeEvent = Infer<typeof marketingNoticeEventValidator>;

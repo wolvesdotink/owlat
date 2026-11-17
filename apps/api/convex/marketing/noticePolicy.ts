@@ -1,16 +1,16 @@
 /**
  * Who may hear about each kind of marketing notice, behind which feature, and
- * which of the five switches silences it. Pure data and pure predicates (no
+ * which switch silences it. Pure data and pure predicates (no
  * Convex context), shared by the fan-out, the push sender, the in-app reader
  * and the preferences query so the four can never disagree.
  *
  * Recipients follow the permission that acts on the notice: a finished
  * campaign goes to whoever may manage campaigns, a reminder to whoever may
  * cancel the schedule, a start that did not happen to whoever may schedule
- * it again, and the delivery hold and DNS failure to admins, who are
- * the only ones who can open the delivery pages they link to. Postmaster mail
- * goes to the readers of the Team Inbox it lands in (`inbox/access.ts`), the
- * instance admins, and to nobody else.
+ * it again, and the delivery hold, DNS failure and deliverability alert to
+ * admins, who are the only ones who can open the delivery pages they link to.
+ * Postmaster mail goes to the readers of the Team Inbox it lands in
+ * (`inbox/access.ts`), the instance admins, and to nobody else.
  */
 
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
@@ -24,7 +24,7 @@ import { MARKETING_NOTIFICATION_PREFERENCES } from '../lib/validators/marketingN
 interface NoticePolicy {
 	preference: MarketingNotificationPreference;
 	permission: Permission;
-	/** At least one of these must be on. */
+	/** At least one of these must be on; none listed means no feature gates it. */
 	features: readonly FeatureFlagKey[];
 }
 
@@ -74,13 +74,22 @@ export const MARKETING_NOTICE_POLICY: Record<MarketingNoticeKind, NoticePolicy> 
 		permission: 'organization:manage',
 		features: ['inbox'],
 	},
+	// The audience of the alert email (`organization:manage` is owners and
+	// admins). No feature gates it: system mail, the postbox and transactional
+	// sending all leave through the transport these checks watch.
+	deliverability_alert: {
+		preference: 'deliverabilityAlerts',
+		permission: 'organization:manage',
+		features: [],
+	},
 };
 
 export type ResolvedFlags = Readonly<Record<FeatureFlagKey, boolean>>;
 
 /** The kind's feature is on on this instance. */
 export function isNoticeFeatureOn(kind: MarketingNoticeKind, flags: ResolvedFlags): boolean {
-	return MARKETING_NOTICE_POLICY[kind].features.some((flag) => flags[flag] === true);
+	const { features } = MARKETING_NOTICE_POLICY[kind];
+	return features.length === 0 || features.some((flag) => flags[flag] === true);
 }
 
 /** A member with this role may hear about this kind (and act on it). */
@@ -99,6 +108,7 @@ export const PREFERENCE_FIELD = {
 	automationProblems: 'isAutomationProblemsOn',
 	domainDns: 'isDomainDnsOn',
 	postmasterMail: 'isPostmasterMailOn',
+	deliverabilityAlerts: 'isDeliverabilityAlertsOn',
 } as const satisfies Record<MarketingNotificationPreference, string>;
 
 /** The switches a person's row holds; an absent row or field means on. */
