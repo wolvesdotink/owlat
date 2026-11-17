@@ -15,6 +15,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { CURRENT_WEBHOOK_PAYLOAD_VERSION, MAX_WEBHOOK_ATTEMPTS } from '../lib/constants';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 type DeliveryLog = Doc<'webhookDeliveryLogs'>;
 
@@ -121,4 +122,28 @@ export async function enqueueWebhookDelivery(
 		{ attemptNumber: 1, delayMs: 0 }
 	);
 	return logId;
+}
+
+/**
+ * Fan one event out to every active webhook subscribed to it: one delivery row
+ * per webhook, each with its first attempt scheduled in the caller's
+ * transaction. Nothing when outbound webhooks are turned off.
+ */
+export async function enqueueSubscribedDeliveries(
+	ctx: MutationCtx,
+	event: DeliveryLog['event'],
+	payload: DeliveryLog['payload']
+): Promise<Array<{ webhookId: Id<'webhooks'>; logId: Id<'webhookDeliveryLogs'> }>> {
+	if (!(await isFeatureEnabled(ctx, 'webhooks'))) return [];
+	const webhooks = await ctx.db
+		.query('webhooks')
+		.withIndex('by_active', (q) => q.eq('isActive', true))
+		.collect(); // bounded: active webhooks (org-scale config)
+	const deliveries: Array<{ webhookId: Id<'webhooks'>; logId: Id<'webhookDeliveryLogs'> }> = [];
+	for (const webhook of webhooks) {
+		if (!(webhook.events as readonly string[]).includes(event)) continue;
+		const logId = await enqueueWebhookDelivery(ctx, { webhookId: webhook._id, event, payload });
+		deliveries.push({ webhookId: webhook._id, logId });
+	}
+	return deliveries;
 }

@@ -87,6 +87,8 @@ export interface DeliverabilityAlertChannels {
 	/** People the in-app notice was written for; null before the notice ran. */
 	inAppCount: number | null;
 	push: { delivered: number; failed: number; held: number };
+	/** The alert webhook deliveries; null before the announcement ran. */
+	webhook: { delivered: number; failed: number; pending: number } | null;
 }
 
 export interface DeliverabilityAlertOperation {

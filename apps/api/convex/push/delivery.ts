@@ -11,7 +11,7 @@ import { internalQuery, type MutationCtx } from '../_generated/server';
 import { recordAlertPushOutcomes } from '../delivery/checklistAlertChannelLedger';
 import { internalMutation } from '../lib/writeFence';
 import { pushEventValidator } from '../lib/validators/push';
-import { holdForQuietHours, planEvent, type DeliveryPlan } from './dispatch';
+import { MAX_DEVICES_PER_USER, holdForQuietHours, planEvent, type DeliveryPlan } from './dispatch';
 import { applyPushOutcomes, pushOutcomeValidator } from './deviceWrites';
 
 /** The pushes to make now for one event, and the devices to hold it on. */
@@ -19,6 +19,31 @@ export const planDelivery = internalQuery({
 	args: { userId: v.string(), event: pushEventValidator },
 	handler: async (ctx, { userId, event }): Promise<DeliveryPlan> =>
 		await planEvent(ctx, userId, event),
+});
+
+/**
+ * "Send test alert" on the Deliverability Center: the alert test push for each
+ * of the caller's devices, through the same plan as any push (current member,
+ * push configured), so the test proves what a real alert would do.
+ */
+export const planAlertTestDelivery = internalQuery({
+	args: { userId: v.string() },
+	handler: async (ctx, { userId }): Promise<DeliveryPlan> => {
+		const devices = await ctx.db
+			.query('pushSubscriptions')
+			.withIndex('by_user', (q) => q.eq('userId', userId))
+			.take(MAX_DEVICES_PER_USER);
+		const plan: DeliveryPlan = { deliveries: [], held: [] };
+		for (const device of devices) {
+			const one = await planEvent(ctx, userId, {
+				kind: 'test',
+				subscriptionId: device._id,
+				isDeliverabilityAlert: true,
+			});
+			plan.deliveries.push(...one.deliveries);
+		}
+		return plan;
+	},
 });
 
 /**

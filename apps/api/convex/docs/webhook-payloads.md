@@ -158,6 +158,47 @@ Fired when a contact unsubscribes from one or more topics.
 
 `listsRemoved` is a JSON-encoded string (current shape constraint requires flat primitives). Receivers must `JSON.parse` it to access the array.
 
+### `deliverability.alert_raised`
+
+Fired when a deliverability check that had passed regresses and Owlat raises an alert, at the same moment as the alert email. It does not travel through the mail server, so it arrives when the alert is about that server. Also sent with `isTest: true` by "Send test alert" on the Deliverability Center.
+
+```json
+{
+  "alertId": "<Convex Id<'deliverabilityRegressionAlerts'>> | \"test\"",
+  "checkId": "deployment.port25",
+  "check": "Outbound SMTP port 25",
+  "severity": "blocking" | "reputation" | "recommended",
+  "scope": "deployment" | "domain",
+  "domain": "mail.example.com" | null,
+  "message": "<English diagnostic>",
+  "observedAt": "<ISO-8601>",
+  "emailMayNotArrive": true,
+  "isTest": false
+}
+```
+
+`emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
+
+### `deliverability.alert_resolved`
+
+Fired once when an alert announced by `deliverability.alert_raised` closes. `alertId` matches the raise.
+
+```json
+{
+  "alertId": "<Convex Id<'deliverabilityRegressionAlerts'>>",
+  "checkId": "deployment.port25",
+  "check": "Outbound SMTP port 25",
+  "scope": "deployment" | "domain",
+  "domain": "mail.example.com" | null,
+  "resolvedAt": "<ISO-8601>",
+  "resolution": "manual" | "automatic"
+}
+```
+
+`manual`: an admin resolved it. `automatic`: the check passed again, or Owlat closed it (IPv6 turned off, retention).
+
+Both are typed in `@owlat/public-contract` (`DeliverabilityAlertRaisedWebhook`, `DeliverabilityAlertResolvedWebhook`).
+
 ### `test`
 Sent by `sendTestWebhook` mutation to validate a receiver endpoint.
 ```json

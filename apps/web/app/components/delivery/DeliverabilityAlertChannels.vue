@@ -1,17 +1,19 @@
 <script setup lang="ts">
 /**
  * Where deliverability alerts go, on the Deliverability Center: one line
- * ("Email to 2 people · In app for 2 people · Push on 1 device") and, one
- * click away, a row per channel with the one action that fixes it.
+ * ("Email to 2 people · In app for 2 people · Push on 1 device · Webhook not
+ * set") and, one click away, a row per channel with the one action that fixes
+ * it, and a test through all of them.
  *
- * The email may leave through the server an alert is about; the in-app notice
- * and push do not. Naming them side by side is what tells an admin whether a
+ * The email may leave through the server an alert is about; the in-app notice,
+ * push and the alert webhook do not. Naming them side by side is what tells an admin whether a
  * blocked port 25 would still reach anyone. The in-app notice and push share
  * the caller's "Deliverability alerts" switch, so turning it off here is the
  * same write as in Preferences.
  */
 import { api } from '@owlat/api';
 import { BellIcon } from '@coolicons/vue';
+import { DELIVERABILITY_ALERT_WEBHOOK_PRESET } from '~/composables/useWebhookForm';
 
 const K = 'components.delivery.deliverabilityAlertChannels';
 const PUSH_DOCS_URL =
@@ -54,6 +56,7 @@ const summary = computed(() => {
 			? t(`${K}.summary.inApp`, c.inApp.recipientCount)
 			: t(`${K}.summary.noInApp`),
 		pushReaches.value ? t(`${K}.summary.push`, c.push.deviceCount) : t(`${K}.summary.noPush`),
+		c.webhook.count > 0 ? t(`${K}.summary.webhook`, c.webhook.count) : t(`${K}.summary.noWebhook`),
 	].join(' · ');
 });
 
@@ -72,6 +75,14 @@ const pushDetail = computed(() => {
 	if (!push.isConfigured) return t(`${K}.push.notConfigured`);
 	if (push.deviceCount === 0) return t(`${K}.push.noDevice`);
 	return t(`${K}.push.reach`, push.deviceCount);
+});
+
+const webhookDetail = computed(() => {
+	const webhook = channels.value?.webhook;
+	if (!webhook) return '';
+	if (!webhook.isFeatureOn) return t(`${K}.webhook.off`);
+	if (webhook.count === 0) return t(`${K}.webhook.notSet`);
+	return t(`${K}.webhook.reach`, webhook.count);
 });
 </script>
 
@@ -182,6 +193,34 @@ const pushDetail = computed(() => {
 					>
 						{{ t(`${K}.push.setUpDevice`) }}
 					</UiButton>
+				</li>
+				<li
+					class="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+				>
+					<div class="min-w-0">
+						<h3 class="text-sm font-medium text-text-primary">{{ t(`${K}.webhook.title`) }}</h3>
+						<p class="mt-0.5 text-xs text-text-tertiary" data-testid="alert-channel-webhook">
+							{{ webhookDetail }}
+						</p>
+					</div>
+					<UiButton
+						size="sm"
+						variant="secondary"
+						:to="
+							channels.webhook.count > 0 || !channels.webhook.isFeatureOn
+								? '/dashboard/admin/delivery/webhooks'
+								: `/dashboard/admin/delivery/webhooks?preset=${DELIVERABILITY_ALERT_WEBHOOK_PRESET}`
+						"
+					>
+						{{
+							channels.webhook.count > 0 || !channels.webhook.isFeatureOn
+								? t(`${K}.webhook.manage`)
+								: t(`${K}.webhook.add`)
+						}}
+					</UiButton>
+				</li>
+				<li>
+					<DeliveryDeliverabilityAlertTestPanel />
 				</li>
 			</ul>
 		</details>

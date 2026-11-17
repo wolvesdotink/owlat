@@ -12,6 +12,8 @@
  */
 
 import { contactCreated } from './contactCreated';
+import { deliverabilityAlertRaised } from './deliverabilityAlertRaised';
+import { deliverabilityAlertResolved } from './deliverabilityAlertResolved';
 import { emailBounced } from './emailBounced';
 import { emailClicked } from './emailClicked';
 import { emailComplained } from './emailComplained';
@@ -32,6 +34,8 @@ export const WEBHOOK_EVENT_REGISTRY = {
 	[emailFailed.literal]: emailFailed,
 	[contactCreated.literal]: contactCreated,
 	[topicUnsubscribed.literal]: topicUnsubscribed,
+	[deliverabilityAlertRaised.literal]: deliverabilityAlertRaised,
+	[deliverabilityAlertResolved.literal]: deliverabilityAlertResolved,
 	[test.literal]: test,
 } as const;
 

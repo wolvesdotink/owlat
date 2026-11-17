@@ -27,6 +27,8 @@ export const webhookEventValidator = v.union(
 	v.literal('email.failed'),
 	v.literal('contact.created'),
 	v.literal('topic.unsubscribed'),
+	v.literal('deliverability.alert_raised'),
+	v.literal('deliverability.alert_resolved'),
 	v.literal('test')
 );
 
@@ -40,7 +42,9 @@ export const subscribableWebhookEventValidator = v.union(
 	v.literal('email.complained'),
 	v.literal('email.failed'),
 	v.literal('contact.created'),
-	v.literal('topic.unsubscribed')
+	v.literal('topic.unsubscribed'),
+	v.literal('deliverability.alert_raised'),
+	v.literal('deliverability.alert_resolved')
 );
 
 // ─── Compile-time: webhookEventValidator ≡ keys of WEBHOOK_EVENT_REGISTRY ──

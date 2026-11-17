@@ -8,6 +8,7 @@ import {
 	deliverabilityAlertNotificationPatch,
 	toDeliverabilityAlertRecipientState,
 } from './checklistAlertRecipients';
+import { scheduleAlertWebhook } from './checklistAlertChannelLedger';
 
 export async function resolveDeliverabilityAlert(
 	ctx: MutationCtx,
@@ -28,6 +29,13 @@ export async function resolveDeliverabilityAlert(
 		if (state.status !== 'pending') continue;
 		Object.assign(state, cancelledDeliverabilityAlertRecipientPatch());
 		await ctx.db.patch(recipient._id, cancelledDeliverabilityAlertRecipientPatch());
+	}
+	// Announced once: resolving an already resolved alert only re-stamps it.
+	if (alert.resolvedAt === undefined) {
+		await scheduleAlertWebhook(ctx, alert._id, {
+			kind: 'resolved',
+			resolution: options.acknowledge ? 'manual' : 'automatic',
+		});
 	}
 	await ctx.db.patch(alert._id, {
 		...(options.acknowledge ? { acknowledgedAt: alert.acknowledgedAt ?? resolvedAt } : {}),

@@ -36,7 +36,7 @@ type RegressionEmailResult = {
  * channels that do not: whoever reads it learns where to look when it is late.
  */
 const OTHER_CHANNELS_LINE =
-	'Owlat also shows this alert in the app and sends it as a push notification to admins who have push turned on.';
+	'Owlat also shows this alert in the app, sends it as a push notification to admins who have push turned on, and sends it to any webhook subscribed to deliverability alerts.';
 
 export function regressionEmailRetryDelay(attempt: number): number | null {
 	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;

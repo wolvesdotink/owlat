@@ -17,7 +17,7 @@ import { literalUnion } from '../lib/literalUnion';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { DEPLOYMENT_CHECK_IDS, checklistTraits } from './checklistTraits';
 import { resolveOpenItemAlerts } from './checklistAlertResolution';
-import { isEmailOnAffectedTransport } from './checklistAlertChannelLedger';
+import { isEmailOnAffectedTransport, scheduleAlertWebhook } from './checklistAlertChannelLedger';
 import {
 	isChecklistItemApplicable,
 	loadDeliverabilitySendPaths,
@@ -247,10 +247,12 @@ async function insertRegressionAlert(
 			organizationId: args.organizationId,
 		});
 		// The email leaves through the mail path the alert may be about, so the
-		// same admins also get an in-app notice and a push, which do not.
+		// same admins also get an in-app notice and a push, and the operator's
+		// alert webhook hears about it; none of those do.
 		if (!isDomainDnsFailure) {
 			await scheduleMarketingNotice(ctx, { kind: 'deliverability_alert', alertId });
 		}
+		await scheduleAlertWebhook(ctx, alertId, { kind: 'raised' });
 	}
 	if (isDomainDnsFailure) {
 		await scheduleMarketingNotice(ctx, { kind: 'domain_dns', alertId });

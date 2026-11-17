@@ -14,6 +14,7 @@ interface Channels {
 	email: { recipientCount: number; isSenderConfigured: boolean; isOnOwnMta: boolean };
 	inApp: { recipientCount: number };
 	push: { isConfigured: boolean; deviceCount: number };
+	webhook: { isFeatureOn: boolean; count: number };
 	me: { isSwitchOn: boolean; deviceCount: number };
 }
 
@@ -21,6 +22,7 @@ const READY: Channels = {
 	email: { recipientCount: 2, isSenderConfigured: true, isOnOwnMta: false },
 	inApp: { recipientCount: 2 },
 	push: { isConfigured: true, deviceCount: 1 },
+	webhook: { isFeatureOn: true, count: 1 },
 	me: { isSwitchOn: true, deviceCount: 1 },
 };
 
@@ -46,6 +48,7 @@ function mountCard(channels: Channels | null = READY) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
+				DeliveryDeliverabilityAlertTestPanel: { template: '<div data-testid="test-panel" />' },
 				UiButton: {
 					props: ['to', 'href', 'loading'],
 					emits: ['click'],
@@ -71,8 +74,9 @@ describe('DeliverabilityAlertChannels', () => {
 		const wrapper = mountCard();
 		expectFullyLocalized(wrapper);
 		expect(wrapper.get('[data-testid="alert-channels-summary"]').text()).toBe(
-			'Email to 2 people · In app for 2 people · Push on 1 device'
+			'Email to 2 people · In app for 2 people · Push on 1 device · Webhook to 1 endpoint'
 		);
+		expect(wrapper.find('[data-testid="test-panel"]').exists()).toBe(true);
 	});
 
 	it('says the email may not arrive when it leaves through the server the checks watch', () => {
@@ -87,11 +91,12 @@ describe('DeliverabilityAlertChannels', () => {
 			email: { recipientCount: 2, isSenderConfigured: false, isOnOwnMta: false },
 			inApp: { recipientCount: 0 },
 			push: { isConfigured: false, deviceCount: 0 },
+			webhook: { isFeatureOn: true, count: 0 },
 			me: { isSwitchOn: false, deviceCount: 0 },
 		});
 		expectFullyLocalized(wrapper);
 		expect(wrapper.get('[data-testid="alert-channels-summary"]').text()).toBe(
-			'No email · Nobody in the app · No push'
+			'No email · Nobody in the app · No push · Webhook not set'
 		);
 		expect(wrapper.get('[data-testid="alert-channel-email"]').text()).toContain(
 			'no alert email goes out'
@@ -100,7 +105,11 @@ describe('DeliverabilityAlertChannels', () => {
 			'/dashboard/admin/delivery/transport',
 			'',
 			'https://docs.owlat.app/developer/environment-variables#optional-web-push-notifications',
+			'/dashboard/admin/delivery/webhooks?preset=deliverability-alerts',
 		]);
+		expect(wrapper.get('[data-testid="alert-channel-webhook"]').text()).toContain(
+			'No webhook receives deliverability alerts'
+		);
 		expect(wrapper.get('[data-testid="alert-channel-my-switch"]').text()).toBe('Turn on for me');
 	});
 
@@ -126,5 +135,14 @@ describe('DeliverabilityAlertChannels', () => {
 		const off = mountCard({ ...READY, me: { isSwitchOn: false, deviceCount: 1 } });
 		await off.get('[data-testid="alert-channel-my-switch"]').trigger('click');
 		expect(save).toHaveBeenLastCalledWith({ preference: 'deliverabilityAlerts', enabled: true });
+	});
+
+	it('sends a configured webhook to the webhook list, and says when webhooks are off', () => {
+		expect(actionTargets(mountCard())).toContain('/dashboard/admin/delivery/webhooks');
+		const off = mountCard({ ...READY, webhook: { isFeatureOn: false, count: 0 } });
+		expect(off.get('[data-testid="alert-channel-webhook"]').text()).toContain('turned off');
+		expect(actionTargets(off)).not.toContain(
+			'/dashboard/admin/delivery/webhooks?preset=deliverability-alerts'
+		);
 	});
 });

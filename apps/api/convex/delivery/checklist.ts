@@ -336,27 +336,29 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 			evidenceRows.reduce((latest, evidence) => Math.max(latest, evidence?.observedAt ?? 0), 0) ||
 			null,
 		statusRefreshedAt: now,
-		alerts: activeAlerts
-			// An alert raised while IPv6 was on points at a check the page no
-			// longer shows once it is off.
-			.filter((alert) => ipv6Enabled || !isIpv6CheckId(alert.itemId))
-			.map((alert) => ({
-				id: alert._id,
-				itemId: alert.itemId,
-				...(alert.domainId
-					? {
-							domainId: alert.domainId,
-							domain:
-								domains.find((domain) => domain._id === alert.domainId)?.domain ??
-								'Deleted sending domain',
-						}
-					: {}),
-				message: alert.message,
-				observedAt: alert.observedAt,
-				acknowledgedAt: alert.acknowledgedAt ?? null,
-				emailNotificationState: alert.emailNotificationState,
-				channels: alertChannelsView(alert),
-			})),
+		alerts: await Promise.all(
+			activeAlerts
+				// An alert raised while IPv6 was on points at a check the page no
+				// longer shows once it is off.
+				.filter((alert) => ipv6Enabled || !isIpv6CheckId(alert.itemId))
+				.map(async (alert) => ({
+					id: alert._id,
+					itemId: alert.itemId,
+					...(alert.domainId
+						? {
+								domainId: alert.domainId,
+								domain:
+									domains.find((domain) => domain._id === alert.domainId)?.domain ??
+									'Deleted sending domain',
+							}
+						: {}),
+					message: alert.message,
+					observedAt: alert.observedAt,
+					acknowledgedAt: alert.acknowledgedAt ?? null,
+					emailNotificationState: alert.emailNotificationState,
+					channels: await alertChannelsView(ctx, alert),
+				}))
+		),
 		nextItem,
 		groups,
 		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },

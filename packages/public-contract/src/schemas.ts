@@ -4,6 +4,7 @@ export * from './contacts';
 export * from './events';
 export * from './topics';
 export * from './transactional';
+export * from './webhooks';
 export * from './decode';
 export * from './operations';
 export { buildOpenApiDocument, serializeOpenApiDocument } from './openapi';

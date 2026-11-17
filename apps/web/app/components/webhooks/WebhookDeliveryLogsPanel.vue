@@ -100,6 +100,10 @@ const EVENT_LABEL_KEYS: Record<string, string> = {
 	'email.failed': 'components.webhooks.webhookDeliveryLogsPanel.events.emailFailed',
 	'contact.created': 'components.webhooks.webhookDeliveryLogsPanel.events.contactCreated',
 	'topic.unsubscribed': 'components.webhooks.webhookDeliveryLogsPanel.events.topicUnsubscribed',
+	'deliverability.alert_raised':
+		'components.webhooks.webhookDeliveryLogsPanel.events.deliverabilityAlertRaised',
+	'deliverability.alert_resolved':
+		'components.webhooks.webhookDeliveryLogsPanel.events.deliverabilityAlertResolved',
 };
 
 function formatEventLabel(event: string) {

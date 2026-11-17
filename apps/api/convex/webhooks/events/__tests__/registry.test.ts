@@ -13,10 +13,12 @@ import { test as testEvent } from '../test';
 import type { Id } from '../../../_generated/dataModel';
 
 describe('WEBHOOK_EVENT_REGISTRY', () => {
-	it('registers all 10 modules under their wire literals', () => {
+	it('registers all 12 modules under their wire literals', () => {
 		expect(Object.keys(WEBHOOK_EVENT_REGISTRY).sort()).toEqual(
 			[
 				'contact.created',
+				'deliverability.alert_raised',
+				'deliverability.alert_resolved',
 				'email.bounced',
 				'email.clicked',
 				'email.complained',

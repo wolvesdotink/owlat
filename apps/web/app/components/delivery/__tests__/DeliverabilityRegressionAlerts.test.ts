@@ -46,6 +46,7 @@ const alert: DeliverabilityRegressionAlert = {
 		email: { state: 'sent', isOnAffectedTransport: false },
 		inAppCount: 2,
 		push: { delivered: 1, failed: 0, held: 0 },
+		webhook: null,
 	},
 };
 const stubs = {
@@ -118,6 +119,7 @@ describe('DeliverabilityRegressionAlerts', () => {
 				email: { state: 'sent', isOnAffectedTransport: true },
 				inAppCount: 1,
 				push: { delivered: 0, failed: 1, held: 1 },
+				webhook: null,
 			},
 		});
 		expectFullyLocalized(wrapper);
@@ -136,10 +138,26 @@ describe('DeliverabilityRegressionAlerts', () => {
 				email: { state: 'unavailable', isOnAffectedTransport: false },
 				inAppCount: 0,
 				push: { delivered: 0, failed: 0, held: 0 },
+				webhook: { delivered: 0, failed: 0, pending: 0 },
 			},
 		});
 		expect(wrapper.get('[data-testid="alert-channels"]').text()).toBe(
 			'Email not sent · In app to nobody, everyone switched it off'
+		);
+	});
+
+	it('names the alert webhook deliveries by outcome', () => {
+		const wrapper = mountAlerts({
+			channels: {
+				email: { state: 'sent', isOnAffectedTransport: false },
+				inAppCount: 2,
+				push: { delivered: 0, failed: 0, held: 0 },
+				webhook: { delivered: 1, failed: 1, pending: 1 },
+			},
+		});
+		expectFullyLocalized(wrapper);
+		expect(wrapper.get('[data-testid="alert-channels"]').text()).toBe(
+			'Email · In app to 2 people · Webhook to 1 endpoint · Webhook still sending to 1 endpoint · Webhook failed on 1 endpoint'
 		);
 	});
 });

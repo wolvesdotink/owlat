@@ -31,6 +31,10 @@ import type {
 	transactionalSendStatusSchema,
 } from '../transactional';
 import type * as T from '../types';
+import type {
+	deliverabilityAlertRaisedWebhookSchema,
+	deliverabilityAlertResolvedWebhookSchema,
+} from '../webhooks';
 
 /**
  * A request type agrees with its schema when every value the type allows is
@@ -103,5 +107,14 @@ describe('schema and type agreement', () => {
 
 	it('a contact source includes inbound', () => {
 		expectTypeOf<'inbound'>().toExtend<T.ContactSource>();
+	});
+
+	it('webhook payloads are exactly their types', () => {
+		expectTypeOf<
+			z.output<typeof deliverabilityAlertRaisedWebhookSchema>
+		>().toEqualTypeOf<T.DeliverabilityAlertRaisedWebhook>();
+		expectTypeOf<
+			z.output<typeof deliverabilityAlertResolvedWebhookSchema>
+		>().toEqualTypeOf<T.DeliverabilityAlertResolvedWebhook>();
 	});
 });

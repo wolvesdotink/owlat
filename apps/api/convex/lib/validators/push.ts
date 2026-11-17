@@ -38,6 +38,11 @@ export const pushEventValidator = v.union(
 	// An AI client connected over MCP asked for a write that waits for this
 	// person's approval (`mcp/actions.ts`).
 	v.object({ kind: v.literal('mcpAction'), actionId: v.id('mcpPendingActions') }),
-	// "Send a test notification" from Preferences, to one device.
-	v.object({ kind: v.literal('test'), subscriptionId: v.id('pushSubscriptions') })
+	// "Send a test notification" from Preferences, to one device, or the
+	// Deliverability Center's "Send test alert" (`isDeliverabilityAlert`).
+	v.object({
+		kind: v.literal('test'),
+		subscriptionId: v.id('pushSubscriptions'),
+		isDeliverabilityAlert: v.optional(v.boolean()),
+	})
 );

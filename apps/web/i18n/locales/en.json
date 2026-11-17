@@ -3141,7 +3141,10 @@
 					"push": "Push on {count} device | Push on {count} devices",
 					"pushHeld": "Push held for quiet hours on {count} device | Push held for quiet hours on {count} devices",
 					"pushFailed": "Push failed on {count} device | Push failed on {count} devices",
-					"mayNotArrive": "This alert is about the server its email leaves from, so the email may not arrive. The in-app notice and push do not depend on that server."
+					"mayNotArrive": "This alert is about the server its email leaves from, so the email may not arrive. The in-app notice, push and the alert webhook do not depend on that server.",
+					"webhook": "Webhook to {count} endpoint | Webhook to {count} endpoints",
+					"webhookPending": "Webhook still sending to {count} endpoint | Webhook still sending to {count} endpoints",
+					"webhookFailed": "Webhook failed on {count} endpoint | Webhook failed on {count} endpoints"
 				},
 				"detected": "Detected:",
 				"domain": "Domain:",
@@ -3784,7 +3787,9 @@
 					"inApp": "In app for {count} person | In app for {count} people",
 					"noInApp": "Nobody in the app",
 					"push": "Push on {count} device | Push on {count} devices",
-					"noPush": "No push"
+					"noPush": "No push",
+					"webhook": "Webhook to {count} endpoint | Webhook to {count} endpoints",
+					"noWebhook": "Webhook not set"
 				},
 				"email": {
 					"title": "Email",
@@ -3812,6 +3817,50 @@
 					"desktop": "The desktop app shows alerts as system notifications.",
 					"setUpDevice": "Turn on push here",
 					"setUpServer": "How to set up push"
+				},
+				"webhook": {
+					"title": "Webhook",
+					"reach": "Sent to {count} webhook, signed and retried. | Sent to {count} webhooks, signed and retried.",
+					"notSet": "No webhook receives deliverability alerts. Send them to your on-call tool or team chat.",
+					"off": "Outbound webhooks are turned off on this instance.",
+					"add": "Add alert webhook",
+					"manage": "Manage webhooks"
+				}
+			},
+			"deliverabilityAlertTestPanel": {
+				"hint": "Sends a test alert through every channel: email and push to you, the webhook to every endpoint subscribed to deliverability alerts.",
+				"send": "Send test alert",
+				"operation": "Send test alert",
+				"toast": "Test deliverability alert: a real alert would show here.",
+				"labels": {
+					"email": "Email",
+					"inApp": "In app",
+					"push": "Push",
+					"webhook": "Webhook"
+				},
+				"email": {
+					"accepted": "Accepted for {to}",
+					"failed": "Not sent: {error}",
+					"noSender": "Not sent: system mail has no sender address",
+					"noAddress": "Not sent: your account has no email address"
+				},
+				"inApp": {
+					"shown": "Shown here",
+					"off": "Off for you, so real alerts do not show here"
+				},
+				"push": {
+					"delivered": "Delivered to {count} device | Delivered to {count} devices",
+					"partial": "Delivered to {delivered}, failed on {failed}",
+					"notConfigured": "Push is not set up on this server",
+					"noDevice": "None of your devices has push turned on",
+					"switchedOff": "Off for you, so no push was sent"
+				},
+				"webhook": {
+					"sending": "Sending to {count} endpoint | Sending to {count} endpoints",
+					"delivered": "Delivered to {count} endpoint | Delivered to {count} endpoints",
+					"failed": "Failed on {count} endpoint, see its delivery log | Failed on {count} endpoints, see their delivery logs",
+					"notSet": "No webhook is subscribed to deliverability alerts",
+					"off": "Outbound webhooks are turned off"
 				}
 			}
 		},
@@ -8128,7 +8177,9 @@
 					"emailOpened": "Email opened",
 					"emailSent": "Email sent",
 					"test": "Test",
-					"topicUnsubscribed": "Topic unsubscribed"
+					"topicUnsubscribed": "Topic unsubscribed",
+					"deliverabilityAlertRaised": "Deliverability alert raised",
+					"deliverabilityAlertResolved": "Deliverability alert resolved"
 				},
 				"httpStatus": "HTTP status",
 				"listTitle": "Delivery logs — {name}",
@@ -19684,10 +19735,21 @@
 				"topicUnsubscribed": {
 					"description": "When a contact unsubscribes from a topic",
 					"label": "Topic unsubscribed"
+				},
+				"deliverabilityAlertRaised": {
+					"label": "Deliverability alert raised",
+					"description": "When a deliverability check that passed starts failing, such as a blocked port 25"
+				},
+				"deliverabilityAlertResolved": {
+					"label": "Deliverability alert resolved",
+					"description": "When a deliverability alert is resolved"
 				}
 			},
 			"updateOperation": "Update webhook",
-			"updated": "Webhook updated successfully"
+			"updated": "Webhook updated successfully",
+			"presets": {
+				"deliverabilityAlerts": "Deliverability alerts"
+			}
 		},
 		"welcomeFlow": {
 			"steps": {

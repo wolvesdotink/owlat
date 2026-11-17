@@ -30,6 +30,11 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestWebhook } from '../../__tests__/factories';
 import { openWorkspaceDeletionFence } from '../../__tests__/helpers/workspaceDeletionFence';
+import { resolveDeliverabilityAlert } from '../../delivery/checklistAlertResolution';
+import {
+	deliverabilityAlertRaisedWebhookSchema,
+	deliverabilityAlertResolvedWebhookSchema,
+} from '@owlat/public-contract/schemas';
 
 vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
 	...(await importOriginal<typeof SsrfGuard>()),
@@ -430,5 +435,131 @@ describe('webhook delivery follows the webhooks feature flag', () => {
 			status: 'failed',
 			errorMessage: 'Outbound webhooks are turned off',
 		});
+	});
+});
+
+describe('deliverability alert events', () => {
+	const ALERT_EVENTS = ['deliverability.alert_raised', 'deliverability.alert_resolved'];
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	/** One result of the server's port 25 check, through the real evidence writer. */
+	async function recordPort25(t: T, attemptId: string, status: 'pass' | 'fail') {
+		const organizationId = 'org-alerts';
+		const leaseToken = `lease:${attemptId}`;
+		const now = Date.now();
+		const claim = await t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+			organizationId,
+			itemId: 'deployment.port25',
+			attemptId,
+			leaseToken,
+			now,
+		});
+		if (!claim.claimed) throw new Error('claim failed');
+		await t.mutation(internal.delivery.checklistEvidence.recordEvidence, {
+			organizationId,
+			itemId: 'deployment.port25',
+			attemptId,
+			generation: claim.generation,
+			leaseToken,
+			validator: 'smtp.port25',
+			status,
+			observedValues: [],
+			diagnostic: status === 'fail' ? 'Port 25 is blocked' : 'reachable',
+			observedAt: now,
+		});
+		vi.setSystemTime(now + 60_000);
+	}
+
+	/** Run the alert announcements the producers queued, as the scheduler would. */
+	async function runAnnouncements(t: T) {
+		const queued = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(entry) =>
+					entry.name === 'delivery/checklistAlertWebhooks:announce' &&
+					entry.state.kind === 'pending'
+			)
+		);
+		for (const entry of queued) {
+			await t.mutation(internal.delivery.checklistAlertWebhooks.announce, entry.args[0] as never);
+			// Settle the job as the scheduler would, so a later sweep does not replay it.
+			await t.run((ctx) => ctx.scheduler.cancel(entry._id));
+		}
+	}
+
+	async function deliveriesTo(t: T, webhookId: Id<'webhooks'>) {
+		return t.run(async (ctx) =>
+			(await ctx.db.query('webhookDeliveryLogs').collect())
+				.filter((log) => log.webhookId === webhookId)
+				.map((log) => log.payload)
+		);
+	}
+
+	it('reaches a subscribed webhook with raised and resolved exactly once each, and an unsubscribed one not at all', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const { t, webhookId: unsubscribed } = await setup();
+		const subscribed = await t.run((ctx) =>
+			ctx.db.insert(
+				'webhooks',
+				createTestWebhook({
+					isActive: true,
+					events: ALERT_EVENTS,
+					url: 'https://oncall.example.com/hook',
+				})
+			)
+		);
+
+		await recordPort25(t, 'pass', 'pass');
+		await recordPort25(t, 'fail-1', 'fail');
+		// The same regression observed again is the same alert.
+		await recordPort25(t, 'fail-2', 'fail');
+		await runAnnouncements(t);
+		await recordPort25(t, 'recovered', 'pass');
+		await runAnnouncements(t);
+
+		const payloads = await deliveriesTo(t, subscribed);
+		expect(payloads.map((payload) => payload.event)).toEqual(ALERT_EVENTS);
+		const [raised, resolved] = payloads;
+		expect(deliverabilityAlertRaisedWebhookSchema.parse(raised)).toMatchObject({
+			data: {
+				checkId: 'deployment.port25',
+				check: 'Outbound SMTP port 25',
+				scope: 'deployment',
+				domain: null,
+				emailMayNotArrive: true,
+				isTest: false,
+			},
+		});
+		expect(deliverabilityAlertResolvedWebhookSchema.parse(resolved)).toMatchObject({
+			data: { alertId: raised!.data['alertId'], resolution: 'automatic' },
+		});
+		expect(await deliveriesTo(t, unsubscribed)).toEqual([]);
+
+		// The alert keeps the raise's deliveries, which the Center reads its outcome from.
+		const alert = await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').first());
+		expect(alert?.webhookDeliveryLogIds).toHaveLength(1);
+	});
+
+	it('announces a manual resolution once, however often it is resolved', async () => {
+		const { t } = await setup({ events: ALERT_EVENTS });
+		await recordPort25(t, 'pass', 'pass');
+		await recordPort25(t, 'fail', 'fail');
+		const alert = await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').first());
+		await t.run(async (ctx) => {
+			await resolveDeliverabilityAlert(ctx, alert!, Date.now(), { acknowledge: true });
+			const resolved = await ctx.db.get(alert!._id);
+			await resolveDeliverabilityAlert(ctx, resolved!, Date.now(), { acknowledge: true });
+		});
+		const announcements = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((entry) => entry.name === 'delivery/checklistAlertWebhooks:announce')
+				.map((entry) => entry.args[0])
+		);
+		expect(announcements).toEqual([
+			{ alertId: alert!._id, kind: 'raised' },
+			{ alertId: alert!._id, kind: 'resolved', resolution: 'manual' },
+		]);
 	});
 });

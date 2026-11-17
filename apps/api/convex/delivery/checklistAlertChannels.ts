@@ -1,6 +1,7 @@
 /**
  * Where deliverability alerts would go right now, for the channel summary on
- * the Deliverability Center ("Email to 2 people · Push on 1 device").
+ * the Deliverability Center ("Email to 2 people · Push on 1 device · Webhook
+ * not set").
  *
  * The audience is the alert email's (`checklistAlertAudience.ts`); in-app and
  * push reach the part of it whose "Deliverability alerts" switch is on, and
@@ -18,6 +19,7 @@ import { isPreferenceOn } from '../marketing/noticePolicy';
 import { isWebPushConfigured } from '../push/config';
 import { MAX_DEVICES_PER_USER } from '../push/dispatch';
 import { loadDeliverabilityAlertAdminRecipients } from './checklistAlertAudience';
+import { subscribedAlertWebhookCount } from './checklistAlertWebhooks';
 
 interface RecipientReach {
 	userId: string;
@@ -72,6 +74,7 @@ export const getChannels = adminQuery({
 					? listening.reduce((total, row) => total + row.deviceCount, 0)
 					: 0,
 			},
+			webhook: await subscribedAlertWebhookCount(ctx),
 			me: {
 				isSwitchOn: me?.isSwitchOn ?? isPreferenceOn(null, 'deliverabilityAlerts'),
 				deviceCount: me?.deviceCount ?? 0,
