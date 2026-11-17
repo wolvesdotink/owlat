@@ -11,7 +11,7 @@
  */
 
 import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
-import { escapeHtml, htmlToPlainText } from '@owlat/shared/html';
+import { htmlToPlainText } from '@owlat/shared/html';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
 import { composeAutomation } from './automation';
@@ -104,12 +104,11 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 					senderAddress: printsEveryLine(body, lines) ? undefined : config.senderAddress,
 				})}`
 			: body;
+	// Compared on the rendered text, so bold or a link inside an address line
+	// still counts as printing it.
 	const htmlPrintsAddress =
 		POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
-		printsEveryLine(
-			composed.html,
-			lines.map((line) => escapeHtml(line))
-		);
+		printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines);
 	if (!config || !htmlPrintsAddress) return { ...composed, text };
 	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
 	return { ...composed, transformConfig, text };
@@ -135,7 +134,10 @@ const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
  * and stay identical to the mail they mirror.
  */
 function printsEveryLine(body: string, lines: readonly string[]): boolean {
-	return lines.length > 0 && lines.every((line) => body.includes(line));
+	// Runs of spaces, tabs and no-break spaces count as one space.
+	const spaced = (text: string) => text.replace(/[^\S\n]+/g, ' ');
+	const text = spaced(body);
+	return lines.length > 0 && lines.every((line) => text.includes(spaced(line)));
 }
 
 /** The personalization variables this send kind substitutes into its subject. */

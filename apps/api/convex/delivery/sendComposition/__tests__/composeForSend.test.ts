@@ -974,6 +974,25 @@ describe('composeForSend — the postal address appears once', () => {
 		expect(occurrences(composed.text)).toBe(1);
 	});
 
+	it('counts an address line the author formatted inside the block', () => {
+		const [address] = blocks;
+		const formatted = {
+			...address!,
+			content: {
+				...address!.content,
+				html: '<strong>Northwind</strong><br>1 <em>Example</em> Street<br>12345 Example&nbsp;City',
+			},
+		} as typeof address;
+		const template = {
+			subject: 'News',
+			htmlContent: renderEmailHtml([formatted!]),
+			plainTextContent: 'Northwind\n1 Example Street\n12345 Example City',
+		};
+		const composed = composeForSend(campaign(template));
+		expect(composed.transformConfig).not.toHaveProperty('senderAddress');
+		expect(occurrences(composed.text)).toBe(1);
+	});
+
 	it('still prints the address when the body has no footer block', () => {
 		const bare = { subject: 'News', htmlContent: '<p>Hello</p>', plainTextContent: 'Hello' };
 		const composed = composeForSend(campaign(bare));
