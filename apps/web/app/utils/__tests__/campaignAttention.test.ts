@@ -1,6 +1,7 @@
 /**
  * Campaign attention classifier (utils/campaignAttention):
- *   - precedence: A/B decision > needs review > send stopped > scheduled today
+ *   - precedence: A/B decision > needs review > didn't start > send stopped >
+ *     scheduled today
  *   - draft / sent / plain-scheduled-future campaigns do NOT need attention
  *   - overdue-but-still-scheduled surfaces as "going out today"
  *   - each attention bucket carries the right inline action label.
@@ -146,6 +147,29 @@ describe('classifyCampaignAttention', () => {
 			now: NOW,
 		});
 		expect(r.reason).toBe('ab_decision');
+	});
+
+	// The start gate puts a campaign whose scheduled start it gave up on back to
+	// draft with the reason stored; that draft waits on a person.
+	it('a draft whose scheduled start was refused asks for Review', () => {
+		const r = classifyCampaignAttention({
+			status: 'draft',
+			startRefusal: { reason: 'mail_server_not_ready' },
+			now: NOW,
+		});
+		expect(r.reason).toBe('start_refused');
+		expect(t(r.actionLabel!)).toBe('Review');
+		expect(t(CAMPAIGN_ATTENTION_DISPLAY.start_refused.chipLabel)).toBe("Didn't start");
+	});
+
+	it('blocked content outranks a refused start on the same draft', () => {
+		const r = classifyCampaignAttention({
+			status: 'draft',
+			contentBlockReason: 'phishing link',
+			startRefusal: { reason: 'mail_server_not_ready' },
+			now: NOW,
+		});
+		expect(r.reason).toBe('needs_review');
 	});
 
 	it('needs-review outranks send-stopped when both could apply', () => {

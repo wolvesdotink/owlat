@@ -46,6 +46,8 @@ import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { processBounceAttempt } from './attemptProcessor.js';
 import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
 import { buildOnRcptTo } from './recipientGate.js';
+import { recordMailedUnsubscribe } from './unsubscribeMail.js';
+import { isUnsubscribeAddress } from '@owlat/shared/verp';
 export { buildOnRcptTo } from './recipientGate.js';
 
 /**
@@ -306,6 +308,13 @@ export function buildOnData(
 			// suppresses auto-replies off the *envelope* (RFC 3834 §2), not `From:`.
 			const envelopeFrom = session.mailFrom;
 			const returnPath = envelopeFrom && envelopeFrom.address !== '<>' ? envelopeFrom.address : '';
+
+			// A mailed unsubscribe is decided by its signed address alone, before
+			// any message authentication: see bounce/unsubscribeMail.ts.
+			if (rcptTo && isUnsubscribeAddress(rcptTo)) {
+				await recordMailedUnsubscribe(rcptTo, { redis, config });
+				return AckAndSwallowErrors;
+			}
 
 			// Verify inbound DKIM (RFC 6376) over the raw bytes before parsing mangles
 			// canonicalization. Fail-open: a crash yields `temperror`, never a NACK.

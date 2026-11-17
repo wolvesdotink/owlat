@@ -116,6 +116,11 @@ export const MTA_EVENT_PARSERS = {
 			reason: payload.routingReentryReason,
 		};
 	},
+	unsubscribed: (payload) => ({
+		kind: 'internal.mailed_unsubscribe',
+		providerMessageId: payload.messageId,
+		at: payload.timestamp,
+	}),
 	'postmaster.authorize_domain': (payload) => {
 		if (!payload.domain) return null;
 		return {

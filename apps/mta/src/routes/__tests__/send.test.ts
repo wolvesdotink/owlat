@@ -809,6 +809,48 @@ describe('POST /send — job construction and routing', () => {
 		expect(arg.groupId).toBe('postbox:transactional:gmail.com');
 	});
 
+	it('keeps a governed request for the mailto unsubscribe target on the job', async () => {
+		const queue = fakeQueue();
+		const res = await post(
+			buildApp(queue, fakeRedis()),
+			validBody({ messageType: 'campaign', listUnsubscribeMailto: true })
+		);
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { listUnsubscribeMailto?: boolean } };
+		expect(arg.data.listUnsubscribeMailto).toBe(true);
+	});
+
+	it('ignores a mailto unsubscribe request on Postbox mail', async () => {
+		const queue = fakeQueue();
+		const res = await post(
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox'),
+			validBody({
+				organizationId: 'postbox',
+				messageType: undefined,
+				allowedFromAddresses: ['alice@example.com'],
+				routingLease: undefined,
+				routingReentry: undefined,
+				routingReentryToken: undefined,
+				workAttemptId: undefined,
+				listUnsubscribeMailto: true,
+			})
+		);
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { listUnsubscribeMailto?: boolean } };
+		expect(arg.data.listUnsubscribeMailto).toBeUndefined();
+	});
+
+	it('keeps the governed message stream on the job', async () => {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), validBody({ messageType: 'campaign' }));
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { messageType?: string } };
+		expect(arg.data.messageType).toBe('campaign');
+	});
+
 	it('ignores a queueLane a governed caller puts in the request body', async () => {
 		const queue = fakeQueue();
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ queueLane: 'postbox' }));

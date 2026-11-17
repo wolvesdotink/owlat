@@ -16,6 +16,7 @@ import { nanoid } from 'nanoid';
 import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 import { scheduleFanout } from '../webhooks/scheduleFanout';
 import { recordContactActivity } from '../contactActivities/writer';
+import { scheduleMarketingOptOutMirror } from '../delivery/suppressionMirrorScheduler';
 import {
 	effectFlagsForUnsubscribeSource,
 	subscribeGate,
@@ -302,6 +303,22 @@ async function fireTopicUnsubscribedWebhook(
 			})),
 		},
 	});
+}
+
+/**
+ * Stamp a contact's global marketing opt-out, once. Every global unsubscribe
+ * comes through here (the one-click POST, the page, mail to the unsubscribe
+ * address, admin and API removals), so it is also where the MTA is told to
+ * withdraw the campaign and automation mail it still holds for the address.
+ */
+export async function stampGlobalOptOut(
+	ctx: MutationCtx,
+	contact: Doc<'contacts'>,
+	now: number
+): Promise<void> {
+	if (contact.unsubscribedAt !== undefined) return;
+	await ctx.db.patch(contact._id, { unsubscribedAt: now });
+	if (contact.email) await scheduleMarketingOptOutMirror(ctx, contact.email, now);
 }
 
 /**

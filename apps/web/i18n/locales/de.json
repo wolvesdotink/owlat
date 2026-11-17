@@ -1795,8 +1795,8 @@
 					"askNamedAdmin": "Bitte {names}, einen anzulegen. Nur Admins können Absender hinzufügen.",
 					"curatedHint": "Empfänger sehen diesen Namen und diese Adresse. Die Liste verwaltest du unter Einstellungen → Kampagnen-Absender.",
 					"domainNeverChecked": "nie",
-					"domainNotRegistered": "Domain „{domain}“ ist nicht registriert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis du diese Domain unter Einstellungen → Domains hinzufügst und verifizierst.",
-					"domainNotVerified": "Domain „{domain}“ ist nicht verifiziert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis die DNS-Verifizierung unter Einstellungen → Domains abgeschlossen ist.",
+					"domainNotRegistered": "Domain „{domain}“ ist nicht registriert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis du diese Domain unter {domains} hinzufügst und verifizierst.",
+					"domainNotVerified": "Domain „{domain}“ ist nicht verifiziert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis die DNS-Verifizierung unter {domains} abgeschlossen ist.",
 					"domainStale": "Die Domain-Verifizierung ist veraltet (zuletzt geprüft: {lastChecked}). Erwäge eine erneute Verifizierung.",
 					"domainVerified": "Domain „{domain}“ ist verifiziert",
 					"emptyAdmin": "Noch keine Kampagnen-Absender. Füge die Adresse hinzu, von der diese Kampagne kommen soll.",
@@ -1816,7 +1816,10 @@
 					"loadFailed": "Kampagnen-Absender konnten nicht geladen werden. Bitte versuche es erneut.",
 					"loading": "Absender werden geladen…",
 					"selectPlaceholder": "Absender auswählen",
-					"sendFrom": "Absender"
+					"sendFrom": "Absender",
+					"domainNotRegisteredMember": "Domain „{domain}“ ist nicht registriert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis eine Person mit Adminrechten diese Domain hinzufügt und verifiziert.",
+					"domainNotVerifiedMember": "Domain „{domain}“ ist nicht verifiziert. Du kannst weiter bearbeiten, aber das Senden ist deaktiviert, bis eine Person mit Adminrechten die DNS-Verifizierung abschließt.",
+					"domainsLink": "Versanddomains"
 				},
 				"setupStep": {
 					"addABTest": "A/B-Test hinzufügen",
@@ -2560,7 +2563,9 @@
 				"remove": "Sperrung aufheben",
 				"removing": "Wird aufgehoben …",
 				"title": "Gesperrt",
-				"why": "Warum?"
+				"why": "Warum?",
+				"lapsedTitle": "Sperrung abgelaufen",
+				"lapsedDetail": "Das Postfach hat am {date} eine Zeit lang Mail abgelehnt, das hat den Versand bis {expiry} gestoppt. Das ist abgelaufen, Mail wird wieder zugestellt."
 			},
 			"timelineStatsCard": {
 				"byChannel": "Nach Kanal",
@@ -4822,6 +4827,11 @@
 				"selected": "{count} ausgewählt",
 				"assign": "Zuweisen",
 				"clear": "Auswahl aufheben"
+			},
+			"systemMailbox": {
+				"postmaster": "Postmaster-Mail",
+				"abuse": "Missbrauchsmeldung",
+				"explain": "An die Postmaster- oder Abuse-Adresse dieser Instanz gesendet. Nur Owner und Admins sehen sie, sie ist mit keinem Kontakt verknüpft und bekommt keinen KI-Entwurf."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -7523,7 +7533,8 @@
 					"created": "Angelegt, nicht gestartet",
 					"paused": "Pausiert",
 					"dead": "Fehlgeschlagen"
-				}
+				},
+				"onInstance": "Dienste werden auf deiner Owlat-Instanz selbst neu gestartet. Öffne ihre Funktionsseite im Browser, um die Änderung anzuwenden."
 			},
 			"team": {
 				"inviteModal": {
@@ -7784,7 +7795,8 @@
 				},
 				"unknown": "{count} benötigter Port konnte nicht gemessen werden. | {count} benötigte Ports konnten nicht gemessen werden.",
 				"unknownHint": "Die Prüfung kam weder zu einem Urteil noch an eine Firewall — der antwortende Dienst läuft hier nicht, oder der Name wurde nicht aufgelöst. Das ist etwas anderes als ein gesperrter Port, also wird in keine Richtung etwas behauptet.",
-				"declined": "Die Portprüfung lief nicht. Der Updater läuft; er hat diese Anfrage abgelehnt."
+				"declined": "Die Portprüfung lief nicht. Der Updater läuft; er hat diese Anfrage abgelehnt.",
+				"onInstance": "Portprüfungen laufen auf deiner Owlat-Instanz selbst. Öffne diese Seite im Browser, um sie auszuführen."
 			},
 			"updateProgress": {
 				"heading": "Update auf v{version} läuft",
@@ -8727,6 +8739,12 @@
 					"minutes": "Minute | {count} Minuten"
 				}
 			}
+		},
+		"instancePageNotice": {
+			"open": "Im Browser öffnen",
+			"opensInBrowser": "(öffnet sich in deinem Browser)",
+			"noInstance": "Öffne diese Seite auf deiner Owlat-Instanz im Browser.",
+			"openFailed": "Dein Browser hat sich nicht geöffnet. Geh zu {url}."
 		}
 	},
 	"compose": {
@@ -10756,7 +10774,8 @@
 							"removing": "Wird entfernt",
 							"restarting": "Startet neu",
 							"running": "Läuft"
-						}
+						},
+						"onInstance": "Die Container meldet der Updater der Instanz. Öffne diese Seite im Browser, um sie zu sehen."
 					},
 					"duration": {
 						"minutes": "{minutes}m {seconds}s",
@@ -10828,7 +10847,8 @@
 						"updateGuide": "Update-Anleitung",
 						"updateNowTo": "Auf v{version} aktualisieren",
 						"viewOnGithub": "Release auf GitHub",
-						"whatsNew": "Neu in v{version}"
+						"whatsNew": "Neu in v{version}",
+						"onInstance": "Updates werden auf deiner Owlat-Instanz selbst eingespielt. Öffne ihre Systemseite im Browser, um zu aktualisieren."
 					}
 				}
 			},
@@ -15985,6 +16005,10 @@
 			"send_stopped": {
 				"action": "Fortsetzen",
 				"chip": "Versand gestoppt"
+			},
+			"start_refused": {
+				"chip": "Nicht gestartet",
+				"action": "Prüfen"
 			}
 		},
 		"campaignCapacityRefusal": {
@@ -18708,6 +18732,10 @@
 			"unengaged": {
 				"label": "Inaktiv — hat monatelang jede Nachricht ignoriert",
 				"phrase": "wurde am {date} pausiert, nach Monaten ohne Öffnungen oder Klicks"
+			},
+			"softBounced": {
+				"label": "Vorübergehend unzustellbar — das Postfach hat Mail wiederholt abgelehnt (z. B. voll)",
+				"phrase": "war am {date} vorübergehend unzustellbar (Postfach voll oder nicht erreichbar)"
 			}
 		},
 		"taskCardRegistry": {
@@ -20184,6 +20212,16 @@
 				"invalidAddress": "Das ist keine gültige E-Mail-Adresse.",
 				"nameTooLong": "Der Name darf nur eine Zeile mit höchstens {max} Zeichen sein.",
 				"noDomains": "Füge zuerst eine Absenderdomain hinzu. Mails gehen nur von einer verifizierten Domain raus."
+			}
+		},
+		"useCampaignStatusBadge": {
+			"status": {
+				"draft": "Entwurf",
+				"scheduled": "Geplant",
+				"sending": "Wird gesendet",
+				"sent": "Versendet",
+				"cancelled": "Abgebrochen",
+				"pendingReview": "In Prüfung"
 			}
 		}
 	},

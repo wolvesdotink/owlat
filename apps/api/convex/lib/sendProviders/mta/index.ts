@@ -228,6 +228,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// never grants it.
 			allowWarmupOverflow: Boolean(input.messageType === 'campaign' && input.warmupOverflowEnabled),
 			...(input.requireDkimSignature === true ? { requireDkimSignature: true } : {}),
+			...(input.listUnsubscribeMailto === true ? { listUnsubscribeMailto: true } : {}),
 			...(input.ipPool ? { ipPool: input.ipPool as MtaIpPool } : {}),
 			...(input.correlationId ? { correlationId: input.correlationId } : {}),
 			// Omitted, never zeroed, when the recipient has no score: the MTA reads
@@ -306,6 +307,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
 			requireDkimSignature: extras?.requireDkimSignature,
+			listUnsubscribeMailto: extras?.listUnsubscribeMailto,
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
 			deliveryDomain: extras?.deliveryDomain,

@@ -36,6 +36,8 @@ import {
 	type DkimSigningKey,
 } from '../dkim.js';
 import { getReturnPathHost } from '../dkimStore.js';
+import { buildUnsubscribeAddress } from '@owlat/shared/verp';
+import { resolveSignedTokenKey } from '../../bounce/signedToken.js';
 
 /** The one payload every delivery attempt for this job writes. */
 export interface SignedMessage {
@@ -77,6 +79,37 @@ function withoutCfblHeaders(
 		([name]) => !RESERVED_CFBL_HEADER_KEYS.has(name.toLowerCase())
 	);
 	return entries.length === Object.keys(headers).length ? headers : Object.fromEntries(entries);
+}
+
+/**
+ * Put the signed `mailto:` unsubscribe target in front of the message's HTTPS
+ * one-click target (RFC 2369 lists both; mailto first is the convention). Some
+ * clients and gateways act only on a mailto target, and their users would
+ * otherwise reach for "report spam". `List-Unsubscribe-Post` is left alone: it
+ * applies to the HTTPS target only (RFC 8058).
+ *
+ * Only when Convex asked for it, which it does for marketing mail only and only
+ * when it can process the resulting `unsubscribed` event; only on a header that
+ * already carries an HTTPS target; and never without a signing key. The address
+ * is on the VERP host, where `bounce/recipientGate.ts` accepts it.
+ */
+function withMailtoUnsubscribe(
+	job: EmailJob,
+	feedbackHost: string,
+	signedAt: number
+): Record<string, string> | undefined {
+	const headers = job.headers;
+	if (job.listUnsubscribeMailto !== true || !headers) return headers;
+	const name = Object.keys(headers).find((key) => key.toLowerCase() === 'list-unsubscribe');
+	const value = name ? headers[name] : undefined;
+	if (!name || !value || !/<https:\/\//i.test(value) || /<mailto:/i.test(value)) return headers;
+	const address = buildUnsubscribeAddress(
+		job.messageId,
+		feedbackHost,
+		resolveSignedTokenKey(),
+		signedAt
+	);
+	return address ? { ...headers, [name]: `<mailto:${address}>, ${value}` } : headers;
 }
 
 /**
@@ -305,6 +338,10 @@ export async function prepareSignedMessage(
 	// complaint about a message delivered late by retries therefore has that
 	// many days less of the acceptance window.
 	const identity = messageIdentity(job, config.mtaSecret, Date.now());
+	// Signed at the message date like the CFBL pair, so a retry keeps its bytes.
+	const composedJob = job.sealedMimeBase64
+		? job
+		: { ...job, headers: withMailtoUnsubscribe(job, feedbackHost, identity.date.getTime()) };
 	const cfbl: CfblHeaderResult = job.sealedMimeBase64
 		? { outcome: 'sealed_raw', headers: {} }
 		: buildCfblHeaders({
@@ -316,7 +353,7 @@ export async function prepareSignedMessage(
 			});
 
 	const { bytes: signedBytes, signed: dkimSigned } = buildSignedBytes(
-		job,
+		composedJob,
 		identity,
 		dkimConfig,
 		verpAddress,

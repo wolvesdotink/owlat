@@ -64,6 +64,8 @@ interface GovernedDispatchRequest {
 	 * is not `0`, which would claim the recipient is cold.
 	 */
 	engagementScore?: number;
+	/** See `DispatchExtrasInput.listUnsubscribeMailto`. */
+	listUnsubscribeMailto?: boolean;
 	sendRef?: DispatchRef;
 	retryState?: WorkerRetryState;
 	message: Omit<EmailSendParams, 'to' | 'from' | 'replyTo'>;
@@ -295,6 +297,7 @@ export async function dispatchGovernedEmail(
 		engagementScore,
 		relayReturnPathHost,
 		requireDkimSignature,
+		...(request.listUnsubscribeMailto === true ? { listUnsubscribeMailto: true } : {}),
 		correlationId,
 	});
 	const dispatched = await sendProviderDispatch(

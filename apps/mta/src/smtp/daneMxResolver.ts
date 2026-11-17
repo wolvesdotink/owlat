@@ -59,7 +59,13 @@ function parseMxData(data: string): { preference: number; mxHostname: string } |
 	return { preference, mxHostname };
 }
 
-async function resolveAddresses(
+/**
+ * One MX host's A and AAAA answers through the validating resolver, with their
+ * DNSSEC state. `secure` only when both answers carry AD: a DANE session dials
+ * these addresses and nothing else, so one unauthenticated family would let a
+ * forged answer choose the peer.
+ */
+export async function resolveDaneHostAddresses(
 	resolverUrl: string,
 	mxHostname: string
 ): Promise<{ security: DnsSecurity; addresses: string[] }> {
@@ -151,7 +157,7 @@ export async function resolveDaneMxDestinations(
 
 	const destinations = await Promise.all(
 		mxRecords.map(async (record): Promise<DaneMxDestination> => {
-			const addressResult = await resolveAddresses(resolverUrl, record.mxHostname);
+			const addressResult = await resolveDaneHostAddresses(resolverUrl, record.mxHostname);
 			return {
 				...record,
 				mxSecurity,

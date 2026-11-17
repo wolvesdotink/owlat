@@ -58,6 +58,12 @@ export interface TextBlockContent
 	borderWidth?: number;
 	borderColor?: string;
 	borderStyle?: BorderStyle;
+	/**
+	 * Set on the brand kit footer block, which prints the sender's postal
+	 * address. The renderer marks the element with `POSTAL_ADDRESS_BLOCK_ATTRIBUTE`
+	 * (`brandKitBlocks.ts`).
+	 */
+	postalAddress?: boolean;
 }
 
 /**

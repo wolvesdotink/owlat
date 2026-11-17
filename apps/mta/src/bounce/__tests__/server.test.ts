@@ -398,21 +398,25 @@ describe('bounce onRcptTo — bounce+ and fbl+ only on the hosts we answer for',
 		vi.useRealTimers();
 	});
 
-	it.each(['bounce+abc@foreign.example', 'fbl+abc@foreign.example', 'bounce+abc'])(
-		'refuses %s as relaying',
-		async (address) => {
-			const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
-			expect(reply).toMatchObject({ code: 550, enhanced: '5.7.1' });
-		}
-	);
+	it.each([
+		'bounce+abc@foreign.example',
+		'fbl+abc@foreign.example',
+		'bounce+abc',
+		'unsubscribe+abc@foreign.example',
+	])('refuses %s as relaying', async (address) => {
+		const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
+		expect(reply).toMatchObject({ code: 550, enhanced: '5.7.1' });
+	});
 
-	it.each(['bounce+abc@bounces.owlat.test', 'fbl+abc@MX2.owlat.test.', 'bounce+abc@mx.owlat.test'])(
-		'accepts %s on the return-path domain or an EHLO name',
-		async (address) => {
-			const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
-			expect(reply).toBeUndefined();
-		}
-	);
+	it.each([
+		'bounce+abc@bounces.owlat.test',
+		'fbl+abc@MX2.owlat.test.',
+		'bounce+abc@mx.owlat.test',
+		'unsubscribe+abc@bounces.owlat.test',
+	])('accepts %s on the return-path domain or an EHLO name', async (address) => {
+		const { reply } = await rcpt(new RedisMock() as unknown as Redis, address);
+		expect(reply).toBeUndefined();
+	});
 
 	it('accepts a per-domain return-path host, including one registered after a miss', async () => {
 		vi.useFakeTimers({ toFake: ['Date'] });

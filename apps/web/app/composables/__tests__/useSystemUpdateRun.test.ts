@@ -26,6 +26,7 @@ vi.stubGlobal('useI18n', () => ({ t: (key: string) => key }));
 vi.stubGlobal('useConvex', () => ({ query: queryMock, mutation: mutationMock }));
 
 const { useSystemUpdateRun } = await import('../useSystemUpdateRun');
+const { onDesktop } = await import('~/__tests__/desktopRuntimeFixture');
 const { ROLLOUT_HEARTBEAT_MS } = await import('~/lib/backendConnection');
 
 beforeEach(() => {
@@ -272,5 +273,20 @@ describe('useSystemUpdateRun', () => {
 				vi.useRealTimers();
 			}
 		});
+	});
+
+	// The run posts to `/api/system/update`, a server route the static desktop
+	// build does not have; the page offers the instance's own page there.
+	it('on desktop, starts no run and posts nothing', async () => {
+		onDesktop();
+		const run = useSystemUpdateRun(() => '0.4.17');
+
+		run.startUpdate();
+		expect(run.updateState.value).toBe('idle');
+		await run.confirmUpdate();
+
+		expect(run.isDesktop).toBe(true);
+		expect(run.updateState.value).toBe('idle');
+		expect(apiFetchMock).not.toHaveBeenCalled();
 	});
 });

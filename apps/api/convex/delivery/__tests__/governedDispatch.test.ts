@@ -203,6 +203,47 @@ describe('dispatchGovernedEmail', () => {
 	// G-02 — the envelope's engagement score is stamped onto MtaExtras. The
 	// exact-match assertion above is the companion regression: with NO score on
 	// the request the extras object is byte-for-byte what it always was.
+	describe('the mailto unsubscribe target', () => {
+		function routeTo(providerKind: 'mta' | 'smtp') {
+			runMutation.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() });
+			// Only the MTA binds its provider identity before the send.
+			if (providerKind === 'mta') runMutation.mockResolvedValueOnce({ ok: true });
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind,
+				route: providerKind === 'mta' ? { ipPool: 'campaign' } : null,
+				organizationId: 'org-1',
+				...(providerKind === 'mta' ? { routingLease: 'lease-1' } : {}),
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: { success: true, id: 'message-1' },
+				providerType: providerKind,
+				latencyMs: 4,
+				attempts: 1,
+			});
+		}
+
+		it('is asked of the MTA for a marketing message it carries', async () => {
+			routeTo('mta');
+			await dispatchGovernedEmail(ctx, { ...baseRequest, listUnsubscribeMailto: true });
+			expect(sendProviderDispatch.mock.calls[0]?.[3]).toMatchObject({
+				listUnsubscribeMailto: true,
+			});
+		});
+
+		it('is not asked of a relay, whose return path does not reach Owlat', async () => {
+			routeTo('smtp');
+			await dispatchGovernedEmail(ctx, { ...baseRequest, listUnsubscribeMailto: true });
+			expect(sendProviderDispatch.mock.calls[0]?.[3]).toEqual({});
+		});
+
+		it('is not asked for when the worker did not request it', async () => {
+			routeTo('mta');
+			await dispatchGovernedEmail(ctx, baseRequest);
+			expect(sendProviderDispatch.mock.calls[0]?.[3]).not.toHaveProperty('listUnsubscribeMailto');
+		});
+	});
+
 	describe('engagementScore on MtaExtras', () => {
 		async function extrasForScore(engagementScore: number | undefined) {
 			runMutation

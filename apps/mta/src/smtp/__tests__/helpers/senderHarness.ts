@@ -114,7 +114,10 @@ export function createSenderHarness(): SenderHarness {
 		// family selection and screening stay real (installSenderDefaults).
 		mxAddressesModule: (actual) => ({ ...actual, resolveMxHostAddresses: resolveAddressesMock }),
 
-		daneMxResolverModule: () => ({ resolveDaneMxDestinations: vi.fn() }),
+		daneMxResolverModule: () => ({
+			resolveDaneMxDestinations: vi.fn(),
+			resolveDaneHostAddresses: vi.fn(),
+		}),
 
 		// Only the MTA-STS policy lookup is stubbed (per-test policy mode);
 		// `isMxAllowed` keeps its real RFC 8461 §4.1 wildcard/empty-list semantics so

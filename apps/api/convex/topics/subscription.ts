@@ -57,6 +57,7 @@ import {
 	applyUnsubscribeCallEffects,
 	patchCachedMemberCountDelta,
 	scheduleTransportUnsubscribeOutcome,
+	stampGlobalOptOut,
 	subscribeOne,
 	unsubscribeOne,
 } from './subscriptionOps';
@@ -337,9 +338,7 @@ export const unsubscribeAllForContact = internalMutation({
 		// Contact has no live memberships to delete, because a segment can still
 		// match them. See the `unsubscribedAt` field doc in schema/contacts.ts.
 		const isGlobalUnsubscribe = scopedTopicIds === undefined;
-		if (isGlobalUnsubscribe && contact.unsubscribedAt === undefined) {
-			await ctx.db.patch(args.contactId, { unsubscribedAt: now });
-		}
+		if (isGlobalUnsubscribe) await stampGlobalOptOut(ctx, contact, now);
 		// The opt-out also ends the open consent episode: a confirmation link
 		// minted before it must not lift it later. The DOI lifecycle withdraws
 		// the token and moves the episode on; a later signup gets a fresh token.

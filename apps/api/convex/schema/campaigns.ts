@@ -312,6 +312,15 @@ export const campaignTables = {
 		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
 		.index('by_deleted_at_and_status_and_updated_at', ['deletedAt', 'status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
+		// Drafts a scheduled start was refused for (`startRefusal`), for the
+		// command center's attention scan: drafts are too many to read, and a
+		// row without a refusal sorts before every `refusedAt`, so a range from 0
+		// reads only the refused ones.
+		.index('by_deleted_at_and_status_and_start_refused_at', [
+			'deletedAt',
+			'status',
+			'startRefusal.refusedAt',
+		])
 		// Today's Upcoming band: live scheduled campaigns, soonest first, so a
 		// Recently deleted row never takes a place on the page.
 		.index('by_deleted_at_and_status_and_scheduled_at', ['deletedAt', 'status', 'scheduledAt'])

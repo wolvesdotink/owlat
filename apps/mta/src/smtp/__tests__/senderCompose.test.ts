@@ -48,6 +48,7 @@ import { sendToMx } from '../sender.js';
 import { DkimSignatureUnavailableError, getDkimOptions, resolveRequiredDkimKey } from '../dkim.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
+import { verifyUnsubscribeAddress } from '@owlat/shared/verp';
 import {
 	createConfig,
 	createJob,
@@ -116,6 +117,51 @@ describe('sendToMx message composition', () => {
 
 		expect(headerValueOf(0, 'List-Unsubscribe')).toBe(listUnsubscribe);
 		expect(headerValueOf(0, 'List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
+	});
+
+	describe('the mailto unsubscribe target', () => {
+		const VERP_KEY = 'mailto-unsubscribe-verp-key-0123456789';
+		const https = '<https://test.convex.site/unsub/contact-123:1700000000000:sigabc>';
+		const marketing = (overrides: Partial<EmailJob> = {}) =>
+			createJob({
+				ipPool: 'campaign',
+				messageId: 'send_k17abcdefghjkmnpqrstvwxyz0123456',
+				headers: {
+					'List-Unsubscribe': https,
+					'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+				},
+				...overrides,
+			});
+
+		beforeEach(() => {
+			process.env['BOUNCE_VERP_KEY'] = VERP_KEY;
+		});
+		afterEach(() => {
+			delete process.env['BOUNCE_VERP_KEY'];
+		});
+
+		it('comes first, signed for this message on the return-path host, and keeps the HTTPS pair', async () => {
+			await sendToMx(marketing({ listUnsubscribeMailto: true }), config, redis, '10.0.0.2');
+
+			const value = headerValueOf(0, 'List-Unsubscribe')!;
+			const match = /^<mailto:(unsubscribe\+[^>]+@bounces\.owlat\.com)>, (.+)$/.exec(value);
+			expect(match?.[2]).toBe(https);
+			expect(verifyUnsubscribeAddress(match![1]!, VERP_KEY, Date.now())).toEqual({
+				kind: 'valid',
+				messageId: 'send_k17abcdefghjkmnpqrstvwxyz0123456',
+			});
+			expect(headerValueOf(0, 'List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
+		});
+
+		it('is left out when Convex did not ask for it', async () => {
+			await sendToMx(marketing(), config, redis, '10.0.0.2');
+			expect(headerValueOf(0, 'List-Unsubscribe')).toBe(https);
+		});
+
+		it('is left out of a message with no one-click header', async () => {
+			await sendToMx(createJob({ listUnsubscribeMailto: true }), config, redis, '10.0.0.2');
+			expect(headerValueOf(0, 'List-Unsubscribe')).toBeUndefined();
+		});
 	});
 
 	it('spreads job.headers onto the wire (RFC 3834 vacation auto-reply stamps)', async () => {

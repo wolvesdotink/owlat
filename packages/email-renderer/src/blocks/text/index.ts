@@ -8,6 +8,7 @@
  */
 
 import { fullSupport, type TextBlockContent } from '@owlat/shared';
+import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import type { BlockModule, Placement } from '../_module';
 import { transformHtmlLinks } from '../../helpers/linkTransform';
 import { stripHtml, extractLinks, underlineHeading } from '../../helpers/text';
@@ -69,6 +70,10 @@ const baseStyles = (
 	return styles;
 };
 
+/** The marker the send-time footer reads to skip its own copy of the address. */
+const postalAddressAttribute = (content: TextBlockContent): string =>
+	content.postalAddress === true ? ` ${POSTAL_ADDRESS_BLOCK_ATTRIBUTE}` : '';
+
 const renderRoot = (content: TextBlockContent): string => {
 	const styles = baseStyles(content, true, false);
 	const tag =
@@ -76,12 +81,12 @@ const renderRoot = (content: TextBlockContent): string => {
 			? content.blockType
 			: 'div';
 	if (tag !== 'div') styles.push('margin:0', 'padding:0');
-	return `<${tag} style="${styles.join(';')}">${content.html}</${tag}>`;
+	return `<${tag}${postalAddressAttribute(content)} style="${styles.join(';')}">${content.html}</${tag}>`;
 };
 
 const renderInColumn = (content: TextBlockContent): string => {
 	const styles = baseStyles(content, false, true);
-	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td style="padding:8px 0;${styles.join(';')}">${content.html}</td></tr></table>`;
+	return `<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation"><tr><td${postalAddressAttribute(content)} style="padding:8px 0;${styles.join(';')}">${content.html}</td></tr></table>`;
 };
 
 export const textModule: BlockModule<'text'> = {

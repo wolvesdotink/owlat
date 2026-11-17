@@ -20,6 +20,9 @@ import { currentContentRevision } from '../lib/contentRevision';
 import { rendererVersionAfterWrite, rendererVersionArg } from '../lib/rendererVersion';
 import { recordAuditLog } from '../lib/auditLog';
 import { brandKitEmailTheme, resolveBrandKitDesign } from '@owlat/shared/brandKit';
+import { scanPublishableVariants } from '../transactional/lifecycleReducer';
+import { resolveVariantBSource } from '../campaigns/sendPlanning';
+import { throwInvalidState } from '../_utils/errors';
 import type { Doc, Id } from '../_generated/dataModel';
 
 // ─── Workpool ───────────────────────────────────────────────────────────────
@@ -146,10 +149,75 @@ async function patchRenderedHtml(
 	return 'applied';
 }
 
+// bounded: `sending` is a transient state; a deployment runs a handful at once.
+const SENDING_CAMPAIGN_SCAN = 200;
+
+/** Whether a campaign that is sending right now reads this template's HTML. */
+async function isSendingCampaignTemplate(
+	ctx: MutationCtx,
+	templateId: Id<'emailTemplates'>
+): Promise<boolean> {
+	const sending = await ctx.db
+		.query('campaigns')
+		.withIndex('by_deleted_at_and_status_and_updated_at', (q) =>
+			q.eq('deletedAt', undefined).eq('status', 'sending')
+		)
+		.take(SENDING_CAMPAIGN_SCAN);
+	return sending.some(
+		(campaign) =>
+			campaign.emailTemplateId === templateId ||
+			resolveVariantBSource(campaign).templateId === templateId
+	);
+}
+
+/**
+ * A campaign is scanned once, when its send is prepared (`campaigns/send.ts`),
+ * and its walker then reads the template's live HTML for every page it
+ * enqueues (`campaigns/sendQueries.ts` `getEmailTemplateForLanguage`). So a
+ * re-render landing mid-send reaches the rest of the audience unscanned unless
+ * it is scanned here, with the verdict the prepare scan applies: blocked
+ * content never lands, and suspicious content does not land on a template a
+ * sending campaign uses (prepare would have held it for review). A template no
+ * campaign is sending takes suspicious content: that campaign's start scans it.
+ * Throwing rolls the patch back, so the template keeps the HTML it had and the
+ * job's `onComplete` records the failure.
+ */
+async function scanRerenderedTemplate(
+	ctx: MutationCtx,
+	templateId: Id<'emailTemplates'>
+): Promise<void> {
+	const template = await ctx.db.get(templateId);
+	if (!template?.htmlContent) return;
+	const scan = scanPublishableVariants(
+		template.subject,
+		template.htmlContent,
+		template.htmlTranslations
+	);
+	if (scan.level === 'clean') return;
+	const issues = scan.flags.map((flag) => flag.description).join('; ');
+	if (scan.level === 'blocked') {
+		throwInvalidState(
+			`Content blocked by our content scanner (score: ${scan.score}/100). Issues: ${issues}. ` +
+				'The template keeps its previous HTML.',
+			{ scanScore: scan.score }
+		);
+	}
+	if (await isSendingCampaignTemplate(ctx, templateId)) {
+		throwInvalidState(
+			`Content flagged by our content scanner (score: ${scan.score}/100) on a template a sending campaign uses. ` +
+				`Issues: ${issues}. The template keeps its previous HTML; review the saved block, then save the template again.`,
+			{ scanScore: scan.score }
+		);
+	}
+}
+
 export const patchTemplateHtml = internalMutation({
 	args: { templateId: v.id('emailTemplates'), ...rerenderPatchArgs },
-	handler: async (ctx, { templateId, ...args }): Promise<RerenderPatchOutcome> =>
-		await patchRenderedHtml(ctx, templateId, args),
+	handler: async (ctx, { templateId, ...args }): Promise<RerenderPatchOutcome> => {
+		const outcome = await patchRenderedHtml(ctx, templateId, args);
+		if (outcome === 'applied') await scanRerenderedTemplate(ctx, templateId);
+		return outcome;
+	},
 });
 
 /**
@@ -157,8 +225,9 @@ export const patchTemplateHtml = internalMutation({
  * it gets the scan a forced edit gets (`transactional/lifecycle.ts`
  * `scanPublishedEdit`): blocked content throws and rolls the patch back, so the
  * job fails and the live HTML stays as it was; suspicious content moves the
- * email to review. Called through the function reference because that module
- * imports this one's importer.
+ * email to review. An email already in review gets the same scan, because
+ * approving it publishes this HTML. Called through the function reference
+ * because that module imports this one's importer.
  */
 export const patchTransactionalHtml = internalMutation({
 	args: { emailId: v.id('transactionalEmails'), ...rerenderPatchArgs },
