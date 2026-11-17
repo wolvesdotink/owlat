@@ -24,6 +24,21 @@ export async function scheduleSuppressionMirror(
 	});
 }
 
+/**
+ * Ask the MTA to withdraw the marketing mail it still holds for an address
+ * whose contact just opted out of marketing (`suppressionMirror.ts`).
+ */
+export async function scheduleMarketingOptOutMirror(
+	ctx: MutationCtx,
+	email: string,
+	optedOutAt: number
+): Promise<void> {
+	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.withdrawQueuedMarketing, {
+		email,
+		optedOutAt,
+	});
+}
+
 export async function scheduleSuppressionUnmirror(
 	ctx: MutationCtx,
 	email: string,

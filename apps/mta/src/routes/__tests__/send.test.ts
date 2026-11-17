@@ -809,6 +809,15 @@ describe('POST /send — job construction and routing', () => {
 		expect(arg.groupId).toBe('postbox:transactional:gmail.com');
 	});
 
+	it('keeps the governed message stream on the job', async () => {
+		const queue = fakeQueue();
+		const res = await post(buildApp(queue, fakeRedis()), validBody({ messageType: 'campaign' }));
+
+		expect(res.status).toBe(200);
+		const arg = queue.add.mock.calls[0]![0] as { data: { messageType?: string } };
+		expect(arg.data.messageType).toBe('campaign');
+	});
+
 	it('ignores a queueLane a governed caller puts in the request body', async () => {
 		const queue = fakeQueue();
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ queueLane: 'postbox' }));
