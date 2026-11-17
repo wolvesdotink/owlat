@@ -276,6 +276,7 @@ function defaultStubs(): Record<string, unknown> {
 			resetPassword: vi.fn(),
 			refetch: vi.fn(),
 		}),
+		useKnownSignedIn: () => ref(true),
 		useOrganizationContext: () => ({
 			organization: ref({ id: 'org1', name: 'Owlat', slug: 'owlat' }),
 			organizationId: ref('org1'),

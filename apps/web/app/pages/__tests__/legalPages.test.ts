@@ -29,7 +29,7 @@ function stubs(publicConfig: Record<string, unknown>) {
 		useRuntimeConfig: () => ({
 			public: { deploymentMode: 'selfhost', ...emptyCompany, ...publicConfig },
 		}),
-		useAuth: () => ({ isAuthenticated: ref(false) }),
+		useKnownSignedIn: () => ref(false),
 	});
 }
 
