@@ -476,8 +476,6 @@ describe('docker workspace-manifest guard', () => {
 		expect(result.code).toBe(0);
 	});
 
-	// The only case here that runs the guard over the REAL tree: a `git ls-files`
-	// plus a parse of every Dockerfile in the repository.
 	/**
 	 * The plugin-kit rule on an image far larger than a pipe's buffer. A reader
 	 * that stops at its first match leaves the writer with most of such a file
@@ -555,6 +553,8 @@ describe('docker workspace-manifest guard', () => {
 		expect(result.code).toBe(1);
 	});
 
+	// The only case here that runs the guard over the REAL tree: a `git ls-files`
+	// plus a parse of every Dockerfile in the repository.
 	it('holds for the images checked into this repository', async () => {
 		const result = await captureGuard(REPOSITORY_ROOT);
 
