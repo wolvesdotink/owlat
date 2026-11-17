@@ -355,6 +355,7 @@ describe('settings controls', () => {
 			'setting:admin:aiProvider:aiProviderKey',
 			'setting:admin:aiReplies:autonomy',
 			'setting:admin:rampControls:rampPace',
+			'setting:admin:deliverability:alertChannels',
 			'setting:admin:webhooks:webhookSecret',
 			'setting:admin:brandKit:brandColors',
 			'setting:admin:instanceGeneral:transactionalSender',
