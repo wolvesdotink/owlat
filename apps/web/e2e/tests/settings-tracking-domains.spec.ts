@@ -46,6 +46,7 @@ test.describe('Settings — Tracking Domains', () => {
 		});
 
 		await trackingPage.expandDomain(domain);
+		await expect(trackingPage.getDomainDisclosure(domain)).toHaveAttribute('aria-expanded', 'true');
 
 		// The CNAME target is derived from THIS deployment's own tracking host
 		// (CONVEX_SITE_URL), not a hardcoded SaaS host — so assert the CNAME record

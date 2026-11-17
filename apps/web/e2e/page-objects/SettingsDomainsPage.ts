@@ -60,12 +60,18 @@ export class SettingsDomainsPage extends BasePage {
 			.click();
 	}
 
+	/** The row's disclosure button, which reports whether its DNS record is shown. */
+	getDomainDisclosure(domain: string): Locator {
+		return this.getDomainCard(domain).getByRole('button', { name: `CNAME record for ${domain}` });
+	}
+
 	/**
-	 * Toggle the row's disclosure by its header. Only the tracking list calls
-	 * this; its header is a plain click target without a role, so it is found
-	 * by test id rather than by accessible name.
+	 * Toggle the row by clicking its domain name, as a mouse does. Only the
+	 * tracking list calls this. The disclosure button spans the whole row and
+	 * lies under the name and the status badge, so its own centre may be
+	 * covered, depending on how wide the name renders.
 	 */
 	async expandDomain(domain: string) {
-		await this.getDomainCard(domain).getByTestId('tracking-domain-header').click();
+		await this.getDomainCard(domain).getByRole('heading', { name: domain, exact: true }).click();
 	}
 }
