@@ -27,6 +27,11 @@ vi.mock('../../domains/mtaStsVerify', async (importOriginal) => ({
 	resolveMtaStsTxt: mtaSts.txt,
 	fetchMtaStsPolicyBody: mtaSts.body,
 }));
+// The sweep runs from a cron and resolves the one organization itself.
+vi.mock('../../lib/sessionOrganization', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	getSingletonOrganizationId: vi.fn(async () => 'org-checklist-writes'),
+}));
 vi.mock('../checklistProviderDetection', () => ({
 	detectDomainDnsProvider: vi.fn(async () => null),
 	dnsProviderObservation: vi.fn(() => []),
@@ -361,5 +366,177 @@ describe('loopback probe start writes', () => {
 		expect(again).toEqual({ status: 'awaiting_inbound' });
 		expect(sendProbe).toHaveBeenCalledTimes(1);
 		expect(await attempts(t)).toHaveLength(1);
+	});
+});
+
+describe('checks that do not apply to the deployment', () => {
+	// The built-in mail server is unused: every message type goes out through
+	// an SMTP relay, so the mail-server checks say nothing about this install.
+	function sendThroughRelayOnly() {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+	}
+
+	const MAIL_SERVER_ITEM = 'deployment.ptr' as const;
+
+	const scheduledSweeps = (t: TestConvex<typeof schema>) =>
+		t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect())
+				.filter((job) => job.name === 'delivery/checklistVerification:sweep')
+				.map((job) => (job.args[0] as { itemId: string }).itemId)
+		);
+
+	async function seedOpenAlert(t: TestConvex<typeof schema>) {
+		return await t.run(async (ctx) => {
+			const evidence = (status: 'pass' | 'fail', observedAt: number) =>
+				ctx.db.insert('deliverabilityEvidence', {
+					organizationId: ORG,
+					itemId: MAIL_SERVER_ITEM,
+					scopeKind: 'deployment',
+					targetKey: DEPLOYMENT_TARGET,
+					attemptId: `attempt-${status}`,
+					validator: 'mta.ptr',
+					status,
+					observedValues: [],
+					diagnostic: status,
+					observedAt,
+					createdAt: observedAt,
+				});
+			const passId = await evidence('pass', NOW - 2 * 86_400_000);
+			const failId = await evidence('fail', NOW - 86_400_000);
+			await ctx.db.insert('deliverabilityVerificationState', {
+				organizationId: ORG,
+				itemId: MAIL_SERVER_ITEM,
+				targetKey: DEPLOYMENT_TARGET,
+				attemptId: 'attempt-fail',
+				generation: 2,
+				retryIndex: 0,
+				leaseToken: 'lease',
+				leaseExpiresAt: NOW - 86_400_000,
+				currentEvidenceId: failId,
+				updatedAt: NOW - 86_400_000,
+			});
+			return await ctx.db.insert('deliverabilityRegressionAlerts', {
+				organizationId: ORG,
+				identity: `alert-${MAIL_SERVER_ITEM}`,
+				itemId: MAIL_SERVER_ITEM,
+				targetKey: DEPLOYMENT_TARGET,
+				previousEvidenceId: passId,
+				regressedEvidenceId: failId,
+				observedAt: NOW - 86_400_000,
+				message: 'Reverse DNS regressed after a confirmed pass.',
+				emailNotificationState: 'pending',
+				createdAt: NOW - 86_400_000,
+			});
+		});
+	}
+
+	it('the sweeps schedule no mail-server check on a relay-only deployment', async () => {
+		sendThroughRelayOnly();
+		const t = convexTest(schema, modules);
+		await t.run((ctx) =>
+			ctx.db.insert('domains', createTestDomain({ domain: 'relay.example', status: 'verified' }))
+		);
+
+		await t.mutation(internal.delivery.checklistSweepState.schedulePage, {
+			mode: 'hourly',
+			paginationOpts: { cursor: null, numItems: 5 },
+		});
+		await t.mutation(internal.delivery.checklistSweepState.schedulePage, {
+			mode: 'daily',
+			paginationOpts: { cursor: null, numItems: 5 },
+		});
+
+		const swept = await scheduledSweeps(t);
+		expect(swept).toContain('domain.spf');
+		expect(swept).not.toContain('domain.bounce_mx');
+		expect(swept).not.toContain('deployment.ptr');
+		expect(swept).not.toContain('deployment.port25');
+		expect(swept).not.toContain('deployment.dnsbl');
+	});
+
+	it('resolves an open alert for a check that stopped applying, with that reason', async () => {
+		sendThroughRelayOnly();
+		const t = convexTest(schema, modules);
+		const alertId = await seedOpenAlert(t);
+
+		await t.mutation(internal.delivery.checklistSweepState.schedulePage, {
+			mode: 'hourly',
+			paginationOpts: { cursor: null, numItems: 5 },
+		});
+
+		expect(await t.run((ctx) => ctx.db.get(alertId))).toMatchObject({
+			resolvedAt: NOW,
+			resolvedReason: 'not_applicable',
+		});
+		// Nothing stale stays behind for a later run to be compared against.
+		const state = await t.run((ctx) =>
+			ctx.db
+				.query('deliverabilityVerificationState')
+				.withIndex('by_org_target_item', (q) =>
+					q
+						.eq('organizationId', ORG)
+						.eq('targetKey', DEPLOYMENT_TARGET)
+						.eq('itemId', MAIL_SERVER_ITEM)
+				)
+				.unique()
+		);
+		expect(state?.currentEvidenceId).toBeUndefined();
+	});
+
+	it('a manual verify of a mail-server check on a relay-only deployment runs nothing', async () => {
+		sendThroughRelayOnly();
+		const t = convexTest(schema, modules);
+		observer.observe.mockResolvedValue({
+			validator: 'mta.ptr',
+			status: 'fail',
+			observedValues: [],
+			diagnostic: 'No PTR record.',
+		});
+
+		const result = await handlerOf(verifyNow)(bridgeCtx(t, adminStubs), {
+			itemId: MAIL_SERVER_ITEM,
+		});
+
+		expect(result).toEqual({ accepted: false });
+		expect(observer.observe).not.toHaveBeenCalled();
+		expect(await evidenceRows(t)).toEqual([]);
+	});
+
+	it('does not alert against a pass from before the check stopped applying', async () => {
+		const t = convexTest(schema, modules);
+		const observe = (status: 'pass' | 'fail') =>
+			observer.observe.mockResolvedValueOnce({
+				validator: 'mta.ptr',
+				status,
+				observedValues: [],
+				diagnostic: status,
+			});
+		const sweepOnce = () =>
+			handlerOf(sweep)(bridgeCtx(t, adminStubs), {
+				organizationId: ORG,
+				itemId: MAIL_SERVER_ITEM,
+			});
+		observe('pass');
+		await sweepOnce();
+
+		// The operator moves to a relay; the next sweep finds the check unused.
+		sendThroughRelayOnly();
+		await t.mutation(internal.delivery.checklistSweepState.schedulePage, {
+			mode: 'hourly',
+			paginationOpts: { cursor: null, numItems: 5 },
+		});
+
+		// Months later the built-in mail server is back, on a new address.
+		vi.unstubAllEnvs();
+		vi.setSystemTime(NOW + 90 * 86_400_000);
+		observe('fail');
+		await sweepOnce();
+
+		const alerts = await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').collect());
+		expect(alerts).toEqual([]);
 	});
 });

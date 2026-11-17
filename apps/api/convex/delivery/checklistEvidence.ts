@@ -16,7 +16,12 @@ import { deliverabilityStatusValidator } from '../lib/convexValidators';
 import { literalUnion } from '../lib/literalUnion';
 import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { DEPLOYMENT_CHECK_IDS, checklistTraits } from './checklistTraits';
-import { resolveDeliverabilityAlert } from './checklistAlertResolution';
+import { resolveOpenItemAlerts } from './checklistAlertResolution';
+import {
+	isChecklistItemApplicable,
+	loadDeliverabilitySendPaths,
+	retireInapplicableCheck,
+} from './checklistApplicability';
 import { ipv6SendingAddresses, isIpv6CheckId } from './checklistIpv6';
 import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 
@@ -90,6 +95,10 @@ export const claimVerification = internalMutation({
 		}
 
 		const targetKey = deliverabilityTargetKey(args.organizationId, args.domainId);
+		if (!isChecklistItemApplicable(args.itemId, await loadDeliverabilitySendPaths(ctx))) {
+			await retireInapplicableCheck(ctx, { ...args, targetKey });
+			return { claimed: false as const, reason: 'not_applicable' as const };
+		}
 		const existing = await ctx.db
 			.query('deliverabilityVerificationState')
 			.withIndex('by_org_target_item', (q) =>
@@ -161,6 +170,9 @@ export const claimVerification = internalMutation({
 			leaseToken: args.leaseToken,
 			leaseExpiresAt: args.now + LEASE_MS,
 			...(existing?.currentEvidenceId ? { currentEvidenceId: existing.currentEvidenceId } : {}),
+			...(existing?.notApplicableAt !== undefined
+				? { notApplicableAt: existing.notApplicableAt }
+				: {}),
 			updatedAt: args.now,
 		};
 		if (existing) await ctx.db.replace(existing._id, state);
@@ -241,19 +253,7 @@ async function resolveRecoveredAlerts(
 	itemId: DeliverabilityCheckId,
 	resolvedAt: number
 ): Promise<void> {
-	const alerts = await ctx.db
-		.query('deliverabilityRegressionAlerts')
-		.withIndex('by_org_target_item_resolved', (q) =>
-			q
-				.eq('organizationId', organizationId)
-				.eq('targetKey', targetKey)
-				.eq('itemId', itemId)
-				.eq('resolvedAt', undefined)
-		)
-		.take(50);
-	for (const alert of alerts) {
-		await resolveDeliverabilityAlert(ctx, alert, resolvedAt, { acknowledge: false });
-	}
+	await resolveOpenItemAlerts(ctx, { organizationId, targetKey, itemId }, resolvedAt);
 }
 
 const IPV6_CHECK_IDS = DEPLOYMENT_CHECK_IDS.filter(isIpv6CheckId);
@@ -315,6 +315,12 @@ export const recordEvidence = internalMutation({
 		) {
 			return { recorded: false as const, reason: 'stale_attempt' as const };
 		}
+		// The deployment can change its send paths while a check runs.
+		if (!isChecklistItemApplicable(args.itemId, await loadDeliverabilitySendPaths(ctx))) {
+			await ctx.db.patch(state._id, { leaseExpiresAt: args.observedAt });
+			await retireInapplicableCheck(ctx, { ...args, targetKey, now: args.observedAt });
+			return { recorded: false as const, reason: 'not_applicable' as const };
+		}
 
 		const duplicate = await ctx.db
 			.query('deliverabilityEvidence')
@@ -336,6 +342,11 @@ export const recordEvidence = internalMutation({
 			)
 			.order('desc')
 			.first();
+		const baselinePass =
+			lastConfirmedPass &&
+			lastConfirmedPass.observedAt > (state.notApplicableAt ?? Number.NEGATIVE_INFINITY)
+				? lastConfirmedPass
+				: null;
 		const evidenceId = await ctx.db.insert('deliverabilityEvidence', {
 			organizationId: args.organizationId,
 			itemId: args.itemId,
@@ -357,11 +368,11 @@ export const recordEvidence = internalMutation({
 		const isHiddenIpv6Check = isIpv6CheckId(args.itemId) && !(await isIpv6SendingEnabled(ctx));
 		if (
 			!isHiddenIpv6Check &&
-			lastConfirmedPass &&
+			baselinePass &&
 			(args.status === 'fail' || args.status === 'warn') &&
 			args.validator !== 'checklist.orchestrator'
 		) {
-			await insertRegressionAlert(ctx, args, targetKey, lastConfirmedPass._id, evidenceId);
+			await insertRegressionAlert(ctx, args, targetKey, baselinePass._id, evidenceId);
 		}
 		if (args.status === 'pass' || isHiddenIpv6Check) {
 			await resolveRecoveredAlerts(
