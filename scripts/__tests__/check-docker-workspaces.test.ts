@@ -478,6 +478,83 @@ describe('docker workspace-manifest guard', () => {
 
 	// The only case here that runs the guard over the REAL tree: a `git ls-files`
 	// plus a parse of every Dockerfile in the repository.
+	/**
+	 * The plugin-kit rule on an image far larger than a pipe's buffer. A reader
+	 * that stops at its first match leaves the writer with most of such a file
+	 * still to send, so these images show whether the guard's verdict depends on
+	 * the size of the file or on where in it a line stands.
+	 */
+	const KIT_WORKSPACES = {
+		'package.json': JSON.stringify({
+			name: 'guard-fixture',
+			private: true,
+			workspaces: ['packages/*'],
+		}),
+		'packages/provider-kit/package.json': '{"name":"provider-kit"}',
+		'packages/plugin-kit/package.json': JSON.stringify({
+			name: 'plugin-kit',
+			dependencies: { 'provider-kit': 'workspace:*' },
+		}),
+	};
+
+	const KIT_STAGE_HEAD = [
+		'COPY --parents packages/*/package.json ./',
+		'RUN bun install --frozen-lockfile',
+	];
+
+	const PADDING = Array.from(
+		{ length: 20_000 },
+		(_, index) => `ENV PADDING_${index}=${'x'.repeat(40)}`
+	);
+
+	it('accepts a large image that ships provider-kit dist long before plugin-kit dist', async () => {
+		const result = await runGuard({
+			...KIT_WORKSPACES,
+			'docker/kits.Dockerfile': [
+				'FROM oven/bun:1 AS provider',
+				...KIT_STAGE_HEAD,
+				'COPY packages/provider-kit/ packages/provider-kit/',
+				'RUN bun run --cwd packages/provider-kit build',
+				'FROM oven/bun:1 AS runtime',
+				'COPY --from=provider /app/packages/provider-kit/dist/ packages/provider-kit/dist/',
+				...PADDING,
+				'FROM oven/bun:1 AS plugin',
+				...KIT_STAGE_HEAD,
+				'COPY packages/provider-kit/ packages/provider-kit/',
+				'COPY packages/plugin-kit/ packages/plugin-kit/',
+				'RUN bun run --cwd packages/plugin-kit build',
+				'FROM runtime',
+				'COPY --from=plugin /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/',
+				'',
+			].join('\n'),
+		});
+
+		expect(result.code, result.output).toBe(0);
+	});
+
+	it('fails a large image that ships plugin-kit dist without provider-kit dist', async () => {
+		const result = await runGuard({
+			...KIT_WORKSPACES,
+			'docker/kits.Dockerfile': [
+				'FROM oven/bun:1 AS deps',
+				...KIT_STAGE_HEAD,
+				'COPY packages/provider-kit/ packages/provider-kit/',
+				'COPY packages/plugin-kit/ packages/plugin-kit/',
+				'RUN bun run --cwd packages/provider-kit build',
+				'RUN bun run --cwd packages/plugin-kit build',
+				'FROM oven/bun:1 AS runtime',
+				'COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/',
+				...PADDING,
+				'',
+			].join('\n'),
+		});
+
+		expect(result.output).toContain(
+			'FAIL: docker/kits.Dockerfile ships plugin-kit dist without provider-kit dist'
+		);
+		expect(result.code).toBe(1);
+	});
+
 	it('holds for the images checked into this repository', async () => {
 		const result = await captureGuard(REPOSITORY_ROOT);
 

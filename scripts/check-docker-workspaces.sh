@@ -140,6 +140,12 @@ join_continuations() {
 failures=0
 checked=0
 
+# A yes/no question about an image is asked with `grep -q … <<<"$joined"`, never
+# through a pipe. `grep -q` exits at its first match; a writer that is still
+# sending the rest of the file then dies of SIGPIPE, and under `pipefail` the
+# pipeline reports that as "no match" — so the answer would depend on how much
+# of the file follows the matching line, not on whether the line is there.
+
 # Every checked-in tsconfig.json that extends the repo base, as a set. One grep
 # over the tree beats re-reading a config for each COPY token that names it.
 declare -A extends_base=()
@@ -213,7 +219,7 @@ while IFS= read -r dockerfile; do
 		# An image that installs from the frozen lockfile MUST declare the
 		# manifests it copies; skipping it here is how the guard would go
 		# quiet on exactly the image that needs it.
-		if printf '%s\n' "$joined" | grep -qE 'bun install[^&|]*--frozen-lockfile'; then
+		if grep -qE 'bun install[^&|]*--frozen-lockfile' <<<"$joined"; then
 			fail "$dockerfile runs 'bun install --frozen-lockfile' but copies no workspace manifests"
 			failures=$((failures + 1))
 		fi
@@ -239,7 +245,7 @@ while IFS= read -r dockerfile; do
 	# plugin-kit re-exports provider-kit and its package entry points at dist/.
 	# Any image that builds or ships plugin-kit must therefore build provider-kit
 	# first and ship its dist beside it; a manifest-only guard cannot see this.
-	if printf '%s\n' "$joined" | grep -q 'packages/plugin-kit'; then
+	if grep -q 'packages/plugin-kit' <<<"$joined"; then
 		provider_build_line=$(
 			printf '%s\n' "$joined" \
 				| grep -nE 'RUN (bun run --cwd packages/provider-kit build|cd packages/provider-kit && bun run build)' \
@@ -260,8 +266,8 @@ while IFS= read -r dockerfile; do
 			failures=$((failures + 1))
 		fi
 
-		if printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/plugin-kit/dist' \
-			&& ! printf '%s\n' "$joined" | grep -qE 'COPY --from=.*packages/provider-kit/dist'; then
+		if grep -qE 'COPY --from=.*packages/plugin-kit/dist' <<<"$joined" \
+			&& ! grep -qE 'COPY --from=.*packages/provider-kit/dist' <<<"$joined"; then
 			fail "$dockerfile ships plugin-kit dist without provider-kit dist"
 			failures=$((failures + 1))
 		fi
