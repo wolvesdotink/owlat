@@ -8838,6 +8838,12 @@
 						"title": "Bounces und Beschwerden erreichen Owlat nicht",
 						"detail": "{variables} ist nicht gesetzt, deshalb wird jede Bounce- und Beschwerdemeldung abgelehnt und nichts gesperrt. Kampagnen werden abgelehnt, bis der Wert gesetzt ist; transaktionale Mails gehen weiter raus.",
 						"action": "Versanddienst öffnen"
+					},
+					"microsoftSnds": {
+						"title": "Microsoft-Reputation (SNDS)",
+						"red": "SNDS bewertet {ip} für den {day} mit Rot: Outlook.com und Hotmail filtern den Großteil der Mails von dieser Adresse. Owlat sendet Mails an Microsoft von dieser Adresse mit reduzierter Rate, bis SNDS sie wieder grün bewertet. Andere Adressen und Anbieter sind nicht betroffen.",
+						"yellow": "SNDS bewertet {ip} für den {day} mit Gelb: Microsoft filtert einen Teil der Mails von dieser Adresse. Noch wird nichts zurückgehalten.",
+						"action": "So wird eine rote Adresse wieder grün"
 					}
 				},
 				"dmarc": {
@@ -16776,6 +16782,7 @@
 				"sendingIps": {
 					"action": "IP-Prüfungen ansehen",
 					"all_held": "Alle Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb, der Mailserver kann also nicht senden.",
+					"microsoftHeld": "Microsoft SNDS bewertet {ips} mit Rot, deshalb gehen Mails an Outlook.com und Hotmail von dort mit reduzierter Rate raus. Alles andere wird wie gewohnt gesendet.",
 					"ready": "Alle Versand-IPs sind im Einsatz.",
 					"some_held": "Einige Versand-IPs sind wegen einer fehlgeschlagenen Prüfung zurückgehalten oder außer Betrieb; die anderen übernehmen die Mail.",
 					"title": "Versand-IPs"

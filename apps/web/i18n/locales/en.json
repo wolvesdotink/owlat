@@ -8838,6 +8838,12 @@
 						"title": "Bounces and complaints cannot reach Owlat",
 						"detail": "{variables} is not set, so every bounce and complaint report is rejected and nothing is suppressed. Campaigns are refused until it is set; transactional mail still goes out.",
 						"action": "Open the delivery provider"
+					},
+					"microsoftSnds": {
+						"title": "Microsoft reputation (SNDS)",
+						"red": "SNDS rates {ip} red for {day}: Outlook.com and Hotmail filter most of its mail. Owlat sends Microsoft mail from this address at a reduced rate until SNDS rates it green again. Other addresses and providers are not affected.",
+						"yellow": "SNDS rates {ip} yellow for {day}: Microsoft filters some of its mail. Nothing is held back yet.",
+						"action": "How to recover a red address"
 					}
 				},
 				"dmarc": {
@@ -16776,6 +16782,7 @@
 				"sendingIps": {
 					"action": "See IP checks",
 					"all_held": "Every sending IP is held back by a failed check or is out of rotation, so the mail server can't send.",
+					"microsoftHeld": "Microsoft SNDS rates {ips} red, so mail to Outlook.com and Hotmail goes out from it at a reduced rate. Everything else is sent as usual.",
 					"ready": "Every sending IP is in rotation.",
 					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
 					"title": "Sending IPs"

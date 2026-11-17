@@ -114,6 +114,8 @@ export interface DeliverabilityCenter {
 		enabled: boolean;
 		addresses: string[];
 	};
+	/** Sending addresses Microsoft SNDS currently rates red or yellow. */
+	sndsStandings: Array<{ ip: string; filterResult: 'red' | 'yellow'; periodStart: number }>;
 	loopback: {
 		domains: Array<{
 			id: Id<'domains'>;

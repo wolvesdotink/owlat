@@ -31,6 +31,7 @@ export type ReadinessGateKey =
 	| 'transport'
 	| 'mail-server'
 	| 'sending-ips'
+	| 'microsoft-hold'
 	| 'domain'
 	| 'authentication'
 	| 'transactional-sender'
