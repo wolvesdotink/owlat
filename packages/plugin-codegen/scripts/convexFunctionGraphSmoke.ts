@@ -30,8 +30,8 @@ const convexDirectory = join(workspaceRoot, 'apps/api/convex');
  * carries its whole import closure, and esbuild holds all of a build's bundles
  * at once, so one build of the full set needs memory in proportion to the
  * number of Convex modules (about 15 GB at 1,900, more than a CI runner has).
- * Builds of a fixed size keep the peak near 2 GB however many modules the
- * backend has.
+ * With builds of a fixed size the peak follows the heaviest batch instead,
+ * about 2 GB for today's graph.
  */
 const ENTRIES_PER_BUILD = 75;
 
@@ -133,7 +133,7 @@ async function bundleIsolateEntries(
 		failures.push(`isolate bundle failed outright:\n${formatEsbuildError(error)}`);
 		return null;
 	} finally {
-		await rm(outdir, { recursive: true, force: true });
+		await releaseBuild(outdir);
 	}
 }
 
@@ -148,11 +148,15 @@ function inBatches(entryPoints: string[]): string[][] {
 /**
  * Drop one build's bundles and the esbuild service that produced them. The
  * service is a separate process that keeps what it allocated; the next build
- * starts a fresh one.
+ * starts a fresh one. A build that failed is released too: esbuild keeps a
+ * dead service cached, and every later build would fail on it.
  */
 async function releaseBuild(outdir: string): Promise<void> {
-	await rm(outdir, { recursive: true, force: true });
-	await stop();
+	try {
+		await rm(outdir, { recursive: true, force: true });
+	} finally {
+		await stop();
+	}
 }
 
 function builtinAuditPlugin(builtinImports: Map<string, Set<string>>): Plugin {
@@ -280,7 +284,7 @@ async function bundleNodeEntries(entryPoints: string[], failures: string[]): Pro
 	} catch (error) {
 		failures.push(`Node-runtime bundle failed:\n${formatEsbuildError(error)}`);
 	} finally {
-		await rm(outdir, { recursive: true, force: true });
+		await releaseBuild(outdir);
 	}
 }
 
@@ -295,11 +299,14 @@ function formatEsbuildError(error: unknown): string {
 			})
 			.join('\n');
 	}
-	// esbuild's service is a separate process. When the kernel kills it, the
-	// build rejects with this message and no location: the machine ran out of
-	// memory, and nothing was learned about the function graph.
+	// esbuild's service is a separate process. When it dies, usually because
+	// the kernel killed it for lack of memory, the build rejects with this
+	// message and no location, and nothing was learned about the function graph.
 	if (String(error).includes('The service was stopped')) {
-		return '  esbuild was killed before the build finished, most likely for lack of memory. This is not a finding about the function graph; run the smoke again.';
+		return (
+			`  ${String(error)}\n` +
+			'  esbuild stopped before the build finished, most likely killed for lack of memory. This is not a finding about the function graph.'
+		);
 	}
 	return `  ${String(error)}`;
 }
