@@ -3,7 +3,7 @@ import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, type Metafile, type Plugin } from 'esbuild';
+import { build, stop, type Metafile, type Plugin } from 'esbuild';
 
 /**
  * Full-function-graph Convex bundle smoke.
@@ -24,6 +24,16 @@ import { build, type Metafile, type Plugin } from 'esbuild';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const convexDirectory = join(workspaceRoot, 'apps/api/convex');
+
+/**
+ * Entries handed to esbuild in one build. Without code splitting every entry
+ * carries its whole import closure, and esbuild holds all of a build's bundles
+ * at once, so one build of the full set needs memory in proportion to the
+ * number of Convex modules (about 15 GB at 1,900, more than a CI runner has).
+ * Builds of a fixed size keep the peak near 2 GB however many modules the
+ * backend has.
+ */
+const ENTRIES_PER_BUILD = 75;
 
 const STUB_NAMESPACE = 'owlat-node-builtin-stub';
 const RESOLVE_GUARD = { owlatBuiltinProbe: true };
@@ -93,30 +103,56 @@ async function bundleIsolateEntries(
 	// importer path (workspace-relative) -> builtin specifiers it imports
 	const builtinImports = new Map<string, Set<string>>();
 	const outdir = join(tmpdir(), `owlat-convex-function-graph-${process.pid}`);
+	// Each build reports its own entries; an input shared by two builds has the
+	// same record in both, so the merged metafile reads like one build's.
+	const merged: Metafile = { inputs: {}, outputs: {} };
 	try {
-		const result = await build({
-			absWorkingDir: workspaceRoot,
-			entryPoints,
-			bundle: true,
-			platform: 'browser',
-			format: 'esm',
-			target: 'esnext',
-			conditions: ['convex', 'module'],
-			write: true,
-			outdir,
-			outbase: workspaceRoot,
-			metafile: true,
-			logLevel: 'silent',
-			plugins: [builtinAuditPlugin(builtinImports)],
-		});
-		reportBuiltinReach(result.metafile, builtinImports, failures);
-		return result.metafile;
+		for (const batch of inBatches(entryPoints)) {
+			const result = await build({
+				absWorkingDir: workspaceRoot,
+				entryPoints: batch,
+				bundle: true,
+				platform: 'browser',
+				format: 'esm',
+				target: 'esnext',
+				conditions: ['convex', 'module'],
+				write: true,
+				outdir,
+				outbase: workspaceRoot,
+				metafile: true,
+				logLevel: 'silent',
+				plugins: [builtinAuditPlugin(builtinImports)],
+			});
+			Object.assign(merged.inputs, result.metafile.inputs);
+			Object.assign(merged.outputs, result.metafile.outputs);
+			await releaseBuild(outdir);
+		}
+		reportBuiltinReach(merged, builtinImports, failures);
+		return merged;
 	} catch (error) {
 		failures.push(`isolate bundle failed outright:\n${formatEsbuildError(error)}`);
 		return null;
 	} finally {
 		await rm(outdir, { recursive: true, force: true });
 	}
+}
+
+function inBatches(entryPoints: string[]): string[][] {
+	const batches: string[][] = [];
+	for (let start = 0; start < entryPoints.length; start += ENTRIES_PER_BUILD) {
+		batches.push(entryPoints.slice(start, start + ENTRIES_PER_BUILD));
+	}
+	return batches;
+}
+
+/**
+ * Drop one build's bundles and the esbuild service that produced them. The
+ * service is a separate process that keeps what it allocated; the next build
+ * starts a fresh one.
+ */
+async function releaseBuild(outdir: string): Promise<void> {
+	await rm(outdir, { recursive: true, force: true });
+	await stop();
 }
 
 function builtinAuditPlugin(builtinImports: Map<string, Set<string>>): Plugin {
@@ -225,19 +261,22 @@ function formatImportChain(metafile: Metafile, entry: string, target: string): s
 async function bundleNodeEntries(entryPoints: string[], failures: string[]): Promise<void> {
 	const outdir = join(tmpdir(), `owlat-convex-function-graph-node-${process.pid}`);
 	try {
-		await build({
-			absWorkingDir: workspaceRoot,
-			entryPoints,
-			bundle: true,
-			platform: 'node',
-			format: 'esm',
-			target: 'esnext',
-			conditions: ['convex', 'module'],
-			write: true,
-			outdir,
-			outbase: workspaceRoot,
-			logLevel: 'silent',
-		});
+		for (const batch of inBatches(entryPoints)) {
+			await build({
+				absWorkingDir: workspaceRoot,
+				entryPoints: batch,
+				bundle: true,
+				platform: 'node',
+				format: 'esm',
+				target: 'esnext',
+				conditions: ['convex', 'module'],
+				write: true,
+				outdir,
+				outbase: workspaceRoot,
+				logLevel: 'silent',
+			});
+			await releaseBuild(outdir);
+		}
 	} catch (error) {
 		failures.push(`Node-runtime bundle failed:\n${formatEsbuildError(error)}`);
 	} finally {
@@ -255,6 +294,12 @@ function formatEsbuildError(error: unknown): string {
 				return `  ${location}${message.text}`;
 			})
 			.join('\n');
+	}
+	// esbuild's service is a separate process. When the kernel kills it, the
+	// build rejects with this message and no location: the machine ran out of
+	// memory, and nothing was learned about the function graph.
+	if (String(error).includes('The service was stopped')) {
+		return '  esbuild was killed before the build finished, most likely for lack of memory. This is not a finding about the function graph; run the smoke again.';
 	}
 	return `  ${String(error)}`;
 }
