@@ -3,6 +3,9 @@
  */
 import { DELIVERABILITY_OBSERVATION_SCHEMA_VERSION } from '@owlat/shared';
 
+// The HTTPS one-click token and the MTA's mailto unsubscribe address share it.
+export { UNSUBSCRIBE_TOKEN_MAX_AGE_MS } from '@owlat/shared/verpNormalize';
+
 // Default pagination sizes by context
 export const PAGE_SIZE_DEFAULT = 25;
 
@@ -58,7 +61,6 @@ export const CONNECTED_APP_HOOK_LOG_DEFAULT_LIMIT = 50;
 export const CONNECTED_APP_HOOK_LOG_MAX_LIMIT = 200;
 
 // Token expiry durations
-export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 export const AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Full-table pagination limit (for internal operations)

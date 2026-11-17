@@ -338,7 +338,6 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 			</UiButton>
 		</div>
 
-		<!-- Thread Content -->
 		<template v-else>
 			<!-- The actions stay a sibling of the header rather than its #actions:
 			     their row does not wrap and is wider than the header's actions cap
@@ -353,6 +352,7 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 					:priority="priority"
 					:snoozed-until="isSnoozed ? thread.snoozedUntil : null"
 					:presence-people="presencePeople"
+					:system-mailbox="thread.systemMailbox"
 				/>
 
 				<InboxThreadHeaderActions

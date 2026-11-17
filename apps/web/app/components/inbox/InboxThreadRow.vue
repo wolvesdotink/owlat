@@ -29,6 +29,8 @@ export interface InboxThreadRowThread {
 	responseDueAt?: number | null;
 	/** Set while the current resolve is the auto-close sweep's. */
 	autoClosedAt?: number | null;
+	/** Mail to the instance's `postmaster@` / `abuse@` (admins only, no contact, no AI draft). */
+	systemMailbox?: 'postmaster' | 'abuse' | null;
 }
 </script>
 
@@ -60,6 +62,7 @@ import {
 	CircleCheckIcon,
 	ClockIcon,
 	NoteIcon,
+	ShieldWarningIcon,
 	TimerIcon,
 	UserPlusCornerIcon,
 } from '@coolicons/vue';
@@ -280,6 +283,14 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									:snooze-returned-at="thread.snoozeReturnedAt"
 									:auto-closed-at="thread.autoClosedAt"
 								/>
+								<span
+									v-if="thread.systemMailbox"
+									class="flex-shrink-0 inline-flex items-center gap-1 text-xs text-text-tertiary"
+									data-testid="inbox-row-system-mailbox"
+								>
+									<ShieldWarningIcon class="w-3 h-3" aria-hidden="true" />
+									{{ t(`components.inbox.systemMailbox.${thread.systemMailbox}`) }}
+								</span>
 								<span
 									v-if="showChannelChip"
 									class="flex-shrink-0 inline-flex items-center gap-1 text-xs text-text-tertiary"

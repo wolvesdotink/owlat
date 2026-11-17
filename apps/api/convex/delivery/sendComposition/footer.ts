@@ -51,7 +51,7 @@ function footerCopy(language: string | undefined) {
 		: FOOTER_COPY.en;
 }
 
-function addressLines(senderAddress: string | undefined): string[] {
+export function addressLines(senderAddress: string | undefined): string[] {
 	return (senderAddress ?? '')
 		.split(/\r?\n/)
 		.map((line) => line.trim())

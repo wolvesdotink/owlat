@@ -18,6 +18,12 @@ export interface PostboxAuthResult {
 	appPasswordId: string;
 	userId: string;
 	organizationId: string;
+	/**
+	 * The mailbox's domain is a sending domain registered with this MTA, so its
+	 * mail must not leave unsigned. Convex decides it; the MTA cannot tell a
+	 * lost key from a domain that never had one.
+	 */
+	requireDkimSignature?: true;
 }
 
 export interface PostboxAuthClient {
@@ -40,9 +46,11 @@ const TIMEOUT_MS = 5_000;
 const isId = (value: unknown): value is string => typeof value === 'string' && value !== '';
 
 /**
- * The endpoint answers `{ ok: true, …identifiers }` or `{ ok: false }`. Only a
- * literal `ok: true` carrying every identifier authenticates; anything else,
- * a truthy `ok` with an identifier missing included, is a refusal.
+ * The endpoint answers `{ ok: true, …identifiers, requireDkimSignature }` or
+ * `{ ok: false }`. Only a literal `ok: true` carrying every identifier
+ * authenticates; anything else, a truthy `ok` with an identifier missing
+ * included, is a refusal. A backend that predates `requireDkimSignature` omits
+ * it, and anything but a literal `true` means no signature is owed.
  */
 function decodeVerifyResponse(value: unknown): PostboxAuthResult | null {
 	if (!isRecord(value) || value['ok'] !== true) return null;
@@ -51,7 +59,13 @@ function decodeVerifyResponse(value: unknown): PostboxAuthResult | null {
 		logger.warn('verify-credential answered ok without the identifiers');
 		return null;
 	}
-	return { mailboxId, appPasswordId, userId, organizationId };
+	return {
+		mailboxId,
+		appPasswordId,
+		userId,
+		organizationId,
+		...(value['requireDkimSignature'] === true ? { requireDkimSignature: true as const } : {}),
+	};
 }
 
 export async function verifyPostboxAppPassword(

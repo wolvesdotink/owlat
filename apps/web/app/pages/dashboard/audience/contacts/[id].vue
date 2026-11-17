@@ -273,6 +273,8 @@ async function handleRemoveSuppression() {
 			<ContactsSuppressionNotice
 				v-if="suppression"
 				:reason="suppression.reason"
+				:bounce-type="suppression.bounceType"
+				:created-at="suppression.createdAt"
 				:date-label="formatShortDate(suppression.createdAt)"
 				:can-manage="canManageContacts"
 				:removing="isRemovingSuppression"

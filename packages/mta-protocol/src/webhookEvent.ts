@@ -215,6 +215,12 @@ export function isMtaWebhookEvent(value: unknown): value is ValidatedMtaWebhookE
 				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		}
+		case 'unsubscribed':
+			return (
+				typeof value['eventId'] === 'string' &&
+				EVENT_ID.test(value['eventId']) &&
+				bounded(value['messageId'], 512)
+			);
 		case 'deliverability.probe_observed':
 			return (
 				typeof value['eventId'] === 'string' &&

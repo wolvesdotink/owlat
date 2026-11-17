@@ -14,6 +14,10 @@ import { adminDisplayNames } from '~/utils/campaignSetupReadiness';
 import { CircleCheckIcon, CircleWarningIcon, MailIcon, ReloadIcon, UserIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
+const { isAdmin } = usePermissions();
+
+/** Where a sender domain is added and verified (admin-only, `middleware/admin.ts`). */
+const DOMAINS_PAGE = '/dashboard/admin/delivery/domains';
 
 // Only the persisted-campaign fields the one-shot preselect reads.
 interface CampaignSenderDetails {
@@ -66,7 +70,13 @@ const senderError = ref<string | null>(null);
 // field-specific (e.g. nothing selected).
 const senderErrorField = ref<'name' | 'email' | null>(null);
 
-const senderOptions = computed(() => buildSenderOptions(senders.value, isCustomAllowed.value));
+// The custom-address row is a message key (`buildSenderOptions` cannot
+// translate); a curated sender's "Name <address>" is data and stays as is.
+const senderOptions = computed(() =>
+	buildSenderOptions(senders.value, isCustomAllowed.value).map((option) =>
+		isCustomSender(option.value) ? { ...option, label: t(option.label) } : option
+	)
+);
 const isCustomSelected = computed(() => isCustomSender(selectedSenderId.value));
 
 // The curated sender currently chosen (null on the custom branch or before a
@@ -175,27 +185,30 @@ const { data: domainVerificationStatus } = useOrganizationQuery(
 	}
 );
 
-const domainVerificationWarning = computed(() => {
+/**
+ * The custom address's domain is missing or unverified: the sentence, and
+ * whether it names the domains page. That page is admin-only, so a member reads
+ * a sentence that does not send them to it (and no link that would bounce them
+ * to Home).
+ */
+const domainProblem = computed(() => {
 	const status = domainVerificationStatus.value;
-	if (!status) return null;
-	if (!status.exists) {
-		return t('components.campaigns.steps.setupSenderPicker.domainNotRegistered', {
-			domain: status.domain,
-		});
-	}
-	if (!status.verified) {
-		return t('components.campaigns.steps.setupSenderPicker.domainNotVerified', {
-			domain: status.domain,
-		});
-	}
-	if (status.stale) {
-		return t('components.campaigns.steps.setupSenderPicker.domainStale', {
-			lastChecked: status.lastVerifiedAt
-				? new Intl.DateTimeFormat(locale.value).format(new Date(status.lastVerifiedAt))
-				: t('components.campaigns.steps.setupSenderPicker.domainNeverChecked'),
-		});
-	}
-	return null;
+	if (!status || (status.exists && status.verified)) return null;
+	const key = status.exists ? 'domainNotVerified' : 'domainNotRegistered';
+	return {
+		keypath: `components.campaigns.steps.setupSenderPicker.${key}${isAdmin.value ? '' : 'Member'}`,
+		domain: status.domain,
+	};
+});
+
+const domainStaleWarning = computed(() => {
+	const status = domainVerificationStatus.value;
+	if (!status?.exists || !status.verified || !status.stale) return null;
+	return t('components.campaigns.steps.setupSenderPicker.domainStale', {
+		lastChecked: status.lastVerifiedAt
+			? new Intl.DateTimeFormat(locale.value).format(new Date(status.lastVerifiedAt))
+			: t('components.campaigns.steps.setupSenderPicker.domainNeverChecked'),
+	});
 });
 
 // One source of truth for the guard AND the messages: map the util's
@@ -359,11 +372,26 @@ defineExpose({ validate, isReady });
 						:class="['input mt-1.5', senderErrorField === 'email' ? 'input-error' : '']"
 					/>
 					<p
-						v-if="domainVerificationWarning"
+						v-if="domainProblem"
+						class="mt-1.5 text-sm text-warning flex items-center gap-1.5"
+						data-testid="sender-domain-problem"
+					>
+						<CircleWarningIcon class="w-4 h-4 shrink-0" />
+						<I18nT :keypath="domainProblem.keypath" tag="span" scope="global">
+							<template #domain>{{ domainProblem.domain }}</template>
+							<template #domains>
+								<NuxtLink :to="DOMAINS_PAGE" class="link font-medium">{{
+									t('components.campaigns.steps.setupSenderPicker.domainsLink')
+								}}</NuxtLink>
+							</template>
+						</I18nT>
+					</p>
+					<p
+						v-else-if="domainStaleWarning"
 						class="mt-1.5 text-sm text-warning flex items-center gap-1.5"
 					>
 						<CircleWarningIcon class="w-4 h-4 shrink-0" />
-						{{ domainVerificationWarning }}
+						{{ domainStaleWarning }}
 					</p>
 					<p
 						v-else-if="domainVerificationStatus?.verified"

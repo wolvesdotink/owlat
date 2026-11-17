@@ -38,6 +38,10 @@ import { watchSlotScripts } from '../../__tests__/helpers/connectionSlotScripts.
 import { socketClosed } from '../../__tests__/helpers/socketClosed.js';
 import { prepareSignedMessage } from '../send/compose.js';
 import { parseMessage } from '@owlat/mail-message';
+import { generateKeyPairSync } from 'node:crypto';
+import { dkimSignaturePhase } from '../../dispatch/phases/dkimSignature.js';
+import { clearCache as clearDkimCache, setDkimKey } from '../dkimStore.js';
+import { DkimSignatureUnavailableError } from '../dkim.js';
 import {
 	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
 	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
@@ -888,6 +892,84 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(headerBlock).not.toMatch(/[\u0080-\uffff]/);
 		expect(headerBlock).toMatch(/^Subject: =\?UTF-8\?/m);
 		expect(parseMessage(signedBytes).subject).toBe(subject);
+	});
+});
+
+describe('submission from a mailbox whose domain this MTA signs', () => {
+	const postbox = {
+		mailboxId: 'mb1',
+		mailboxAddress: 'desk@brand.example',
+		appPasswordId: 'ap1',
+		userId: 'u1',
+	};
+	const mime = 'From: desk@brand.example\r\nTo: friend@x.example\r\nSubject: hi\r\n\r\nbody\r\n';
+	const composeConfig = {
+		returnPathDomain: 'bounces.example.com',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
+	} as MtaConfig;
+
+	beforeEach(async () => {
+		// ioredis-mock instances share one store: no key may survive a test.
+		await new Redis().flushall();
+		clearDkimCache();
+	});
+
+	it('binds the requirement the credential check answered onto the session', async () => {
+		verifyAppPasswordMock.mockResolvedValue({
+			organizationId: 'org1',
+			mailboxId: 'mb1',
+			appPasswordId: 'ap1',
+			userId: 'u1',
+			requireDkimSignature: true,
+		});
+		const { session } = await authCall({ username: 'desk@brand.example', password: 'app-pass' });
+		expect(session.state.auth?.postbox?.requireDkimSignature).toBe(true);
+	});
+
+	it('is held while the key is missing and goes out signed once it exists', async () => {
+		const { reply, queue, receiptRedis } = await dataCall(mime, {
+			organizationId: 'org1',
+			credentialName: 'postbox:desk@brand.example',
+			postbox: { ...postbox, requireDkimSignature: true },
+		});
+		// Accepted for delivery: the hold happens in the queue, not at DATA.
+		expect(reply).toBeUndefined();
+		const job = queue.add.mock.calls[0]![0].data;
+		expect(job.requireDkimSignature).toBe(true);
+
+		const ctx = { job, domain: 'x.example', fromDomain: 'brand.example' } as never;
+		const held = await dkimSignaturePhase.run({ redis: receiptRedis } as never, ctx);
+		expect(held).toMatchObject({ kind: 'defer', bounceCause: 'sender' });
+		await expect(
+			prepareSignedMessage(job, composeConfig, receiptRedis as never)
+		).rejects.toBeInstanceOf(DkimSignatureUnavailableError);
+
+		const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+		const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+		await setDkimKey(receiptRedis as never, 'brand.example', 's1', pem, 'org1');
+
+		const released = await dkimSignaturePhase.run({ redis: receiptRedis } as never, ctx);
+		expect(released.kind).toBe('continue');
+		const { signedBytes } = await prepareSignedMessage(job, composeConfig, receiptRedis as never);
+		expect(signedBytes.toString('latin1')).toMatch(/^DKIM-Signature: .*d=brand\.example;/m);
+	});
+
+	it('goes out as before when the domain is not one this MTA signs', async () => {
+		const { reply, queue, receiptRedis } = await dataCall(mime, {
+			organizationId: 'org1',
+			credentialName: 'postbox:desk@brand.example',
+			postbox,
+		});
+		expect(reply).toBeUndefined();
+		const job = queue.add.mock.calls[0]![0].data;
+		expect(job).not.toHaveProperty('requireDkimSignature');
+
+		const ctx = { job, domain: 'x.example', fromDomain: 'brand.example' } as never;
+		expect((await dkimSignaturePhase.run({ redis: receiptRedis } as never, ctx)).kind).toBe(
+			'continue'
+		);
+		const { signedBytes } = await prepareSignedMessage(job, composeConfig, receiptRedis as never);
+		expect(signedBytes.toString('latin1')).not.toMatch(/^DKIM-Signature:/m);
 	});
 });
 

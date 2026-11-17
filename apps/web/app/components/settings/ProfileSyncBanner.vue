@@ -7,6 +7,7 @@
  * CLI instructions when the updater sidecar is unreachable.
  */
 import { useProfileSync, type ProfileServiceResult } from '~/composables/useProfileSync';
+import InstancePageNotice from '~/components/InstancePageNotice.vue';
 import { CircleCheckIcon, ReloadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -15,6 +16,7 @@ const props = defineProps<{
 }>();
 
 const {
+	isDesktop,
 	pendingServices,
 	isApplying,
 	serviceResults,
@@ -84,8 +86,14 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 						}}</span>
 					</template>
 				</I18nT>
+				<InstancePageNotice
+					v-if="isDesktop"
+					class="mt-3"
+					path="/dashboard/admin/instance/features"
+					:body="t('components.settings.profileSyncBanner.onInstance')"
+				/>
 				<p
-					v-if="applyBusy"
+					v-else-if="applyBusy"
 					data-testid="profile-sync-busy"
 					role="status"
 					class="mt-3 rounded-lg bg-bg-surface px-3 py-2.5 text-sm text-text-secondary"
@@ -121,7 +129,12 @@ function serviceStateLabel(result: ProfileServiceResult): string {
 					</I18nT>
 				</div>
 			</div>
-			<UiButton data-testid="profile-sync-apply" :loading="isApplying" @click="apply(props.flags)">
+			<UiButton
+				v-if="!isDesktop"
+				data-testid="profile-sync-apply"
+				:loading="isApplying"
+				@click="apply(props.flags)"
+			>
 				{{
 					isApplying
 						? t('components.settings.profileSyncBanner.applying')

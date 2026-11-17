@@ -5,15 +5,20 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { computed, ref } from 'vue';
 import { SOFT_BOUNCE_SUPPRESSION_TTL_MS } from '@owlat/shared/softBounceSuppression';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
 import SuppressionsTable from '../SuppressionsTable.vue';
+import en from '~~/i18n/locales/en.json';
 
 const NOW = Date.UTC(2026, 10, 14, 9, 0, 0);
 
 beforeEach(() => {
 	vi.useFakeTimers({ now: NOW });
+	// `unstubAllGlobals` below also drops the setup file's Vue auto-imports.
+	vi.stubGlobal('computed', computed);
+	vi.stubGlobal('ref', ref);
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useOrganizationQuery', () => queryResult([]));
 });
@@ -48,6 +53,31 @@ describe('SuppressionsTable soft-bounce expiry', () => {
 		expect(lines[0]!.text()).toContain('expires');
 		expect(lines[1]!.text()).toContain('no longer blocks');
 		expect(lines[2]!.exists()).toBe(false);
+		w.unmount();
+	});
+});
+
+/**
+ * A soft bounce is a mailbox that kept refusing for a while (full, unavailable),
+ * not one that does not exist. Its label says so; the hard bounce keeps its own.
+ */
+describe('SuppressionsTable bounce labels', () => {
+	it('labels a soft bounce as temporary and a hard bounce as a missing mailbox', () => {
+		const w = mount(SuppressionsTable, {
+			props: {
+				rows: [
+					row('full', { reason: 'bounced', bounceType: 'soft', createdAt: NOW - 1000 }),
+					row('gone', { reason: 'bounced', bounceType: 'hard', createdAt: NOW - 1000 }),
+				] as never,
+				canManage: false,
+			},
+			global: { plugins: [createTestI18n()], stubs: { UiTooltip: true, UiButton: true } },
+		});
+
+		const [soft, hard] = w.findAll('tbody tr').map((tr) => tr.text());
+		expect(soft).toContain(en.shared.suppressionReasons.softBounced.label);
+		expect(soft).not.toContain(en.shared.suppressionReasons.bounced.label);
+		expect(hard).toContain(en.shared.suppressionReasons.bounced.label);
 		w.unmount();
 	});
 });

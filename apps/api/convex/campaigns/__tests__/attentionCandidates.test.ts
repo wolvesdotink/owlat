@@ -158,6 +158,47 @@ describe('campaigns.organization.listAttentionCandidates', () => {
 		expect(CANCELLED_ATTENTION_WINDOW_MS).toBe(30 * DAY);
 	});
 
+	// A scheduled start the start gate gave up on puts the campaign back to
+	// draft with the reason stored on it. That draft is waiting on a person,
+	// so it is a candidate; an ordinary draft is not, and neither is one in
+	// Recently deleted.
+	it('returns a draft whose scheduled start was refused, with the stored refusal', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['campaigns']);
+		const refusal = {
+			reason: 'mail_server_not_ready',
+			messageKey: 'shared.campaignRefusal.mailServerNotReady',
+			message: 'The mail server cannot deliver.',
+			scheduledAt: 1_700_000_000_000,
+			refusedAt: 1_700_000_600_000,
+		};
+
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ name: 'plain draft', status: 'draft' })
+			);
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ name: 'refused draft', status: 'draft', startRefusal: refusal })
+			);
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					name: 'deleted refused draft',
+					status: 'draft',
+					startRefusal: refusal,
+					deletedAt: 1_700_000_700_000,
+				})
+			);
+		});
+
+		const candidates = await t.query(api.campaigns.organization.listAttentionCandidates, {});
+		expect(candidates).toEqual([
+			expect.objectContaining({ name: 'refused draft', status: 'draft', startRefusal: refusal }),
+		]);
+	});
+
 	it('returns an empty list when nothing sits in a candidate status', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['campaigns']);

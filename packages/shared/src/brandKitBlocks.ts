@@ -22,6 +22,14 @@ import type {
 	TextBlockContent,
 } from './types/blocks';
 
+/**
+ * The attribute the renderer puts on a text block flagged `postalAddress`. The
+ * send-time footer (`apps/api/convex/delivery/sendComposition`) looks for it
+ * and leaves out its own copy of the sender's address, so the address is
+ * printed once.
+ */
+export const POSTAL_ADDRESS_BLOCK_ATTRIBUTE = 'data-owlat-postal-address';
+
 /** A logo file from the media library, as the editor needs it. */
 export interface BrandLogoAsset {
 	url: string;
@@ -102,6 +110,9 @@ export function brandFooterBlocks(design: BrandKitDesign, newId: () => string): 
 			lineHeight: 1.6,
 			...DEFAULT_BLOCK_PADDING,
 			...DEFAULT_BLOCK_MARGIN,
+			// The send-time footer prints the same address unless the body
+			// already does; this flag is how it can tell.
+			...(address ? { postalAddress: true } : {}),
 		};
 		blocks.push({ id: newId(), type: 'text', content });
 	}

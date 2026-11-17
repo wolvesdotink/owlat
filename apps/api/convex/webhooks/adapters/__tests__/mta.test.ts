@@ -275,6 +275,22 @@ describe('mtaAdapter.parseEvent', () => {
 		expect(event?.kind).not.toBe('email.bounced');
 	});
 
+	it('parses a mailed unsubscribe into the message it names', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'unsubscribed',
+				eventId: `unsubscribe:${'a'.repeat(64)}`,
+				messageId: 'send_abc',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toEqual({
+			kind: 'internal.mailed_unsubscribe',
+			providerMessageId: 'send_abc',
+			at: 1700000000000,
+		});
+	});
+
 	it('defaults the failed errorMessage when the message is absent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({ event: 'failed', messageId: 'msg_amb', timestamp: 1700000000000 })

@@ -159,8 +159,14 @@ async function dispatch(
  * changes what the API sends right away, so it gets the publish verdict: a
  * blocked variant throws (and the whole edit rolls back), a suspicious one moves
  * the email to `pending_review` with the same audit and scan record a publish
- * writes. A clean scan writes nothing more. A row that is not published is
- * left alone: its own publish scans it.
+ * writes. A clean scan writes nothing more.
+ *
+ * An email in `pending_review` gets the same scan: approval publishes the
+ * stored HTML without a scan of its own, so content that changes while it
+ * waits must be content a scan has seen. Blocked rolls the change back,
+ * suspicious records a fresh scan for the reviewer, and clean leaves it in
+ * review: only an approval publishes it. A draft is left alone: its own
+ * publish scans it.
  */
 export async function scanPublishedEdit(
 	ctx: MutationCtx,
@@ -168,7 +174,7 @@ export async function scanPublishedEdit(
 	userId: string
 ): Promise<void> {
 	const email = await ctx.db.get(emailId);
-	if (!email || email.status !== 'published' || !email.htmlContent) return;
+	if (!email || email.status === 'draft' || !email.htmlContent) return;
 	const scan = scanPublishableVariants(email.subject, email.htmlContent, email.htmlTranslations);
 	if (scan.level === 'clean') return;
 	await dispatch(

@@ -449,6 +449,7 @@ describe('MTA -> Convex webhook event bytes', () => {
 		'inbound.mailbox.received': null,
 		'ip.readiness_regressed': 'internal.ip_readiness_regressed',
 		'deliverability.probe_observed': 'internal.deliverability_probe_observed',
+		unsubscribed: 'internal.mailed_unsubscribe',
 	};
 
 	it.each(MTA_WEBHOOK_EVENT_TYPES)(

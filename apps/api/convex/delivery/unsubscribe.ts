@@ -150,7 +150,10 @@ export function getListUnsubscribeHeader(
 	const token = generateUnsubscribeToken(contactId);
 	const unsubscribeUrl = `${convexSiteUrl}/unsub/${encodeURIComponent(token)}`;
 	return {
-		// List-Unsubscribe header — HTTPS one-click endpoint (mailto form intentionally omitted)
+		// List-Unsubscribe header — HTTPS one-click endpoint. When the built-in MTA
+		// carries the message it puts a signed mailto target in front of this one
+		// (`listUnsubscribeMailto` in delivery/governedDispatch.ts); a relay-routed
+		// message keeps the HTTPS target alone.
 		listUnsubscribe: `<${unsubscribeUrl}>`,
 		// List-Unsubscribe-Post header for one-click unsubscribe (RFC 8058)
 		listUnsubscribePost: 'List-Unsubscribe=One-Click',

@@ -17,8 +17,9 @@ export const countByStatusByOrganization = campaignsQuery({
 // A campaign only ever "needs a human decision" while it sits in one of these
 // low-cardinality, inherently transient states: scheduled (going out), sending
 // (an A/B split awaiting its winner), cancelled (a stopped send), or
-// pending_review. The high-volume browse states (draft / sent) are never a
-// primary attention state, so the command center can classify attention over
+// pending_review. The high-volume browse states (draft / sent) are not scanned
+// (the one draft that needs a person, a refused scheduled start, is read
+// through its own index below), so the command center can classify attention over
 // the WHOLE candidate set — not just the loaded page — without scanning every
 // campaign. This keeps the "Needs attention empty ⇔ nothing needs you" promise
 // honest even past the first page of a large org.
@@ -35,6 +36,11 @@ const ATTENTION_CANDIDATE_STATUSES = [
 // cancelled bucket is the ones touched in the last 30 days, read as an index
 // range on `updatedAt` (plan C10). Older ones stay under the Cancelled pill.
 export const CANCELLED_ATTENTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+// A draft is a browse state, but one a scheduled start was refused for
+// (`startRefusal`, written by the start gate when it gives up) is waiting on a
+// person until it is scheduled or sent again, which clears the refusal. Read
+// from its own index, so the scan never walks ordinary drafts.
 
 // bounded: each attention state is transient/small (cancelled by the window
 // above); capped well above any real count so the scan can never run unbounded.
@@ -58,6 +64,7 @@ type AttentionCandidate = Pick<
 	| 'abWinner'
 	| 'contentBlockReason'
 	| 'startHold'
+	| 'startRefusal'
 	| 'updatedAt'
 	| 'statsSent'
 	| 'statsDelivered'
@@ -80,6 +87,7 @@ function projectCandidate(c: Doc<'campaigns'>): AttentionCandidate {
 		abWinner: c.abWinner,
 		contentBlockReason: c.contentBlockReason,
 		startHold: c.startHold,
+		startRefusal: c.startRefusal,
 		updatedAt: c.updatedAt,
 		statsSent: c.statsSent,
 		statsDelivered: c.statsDelivered,
@@ -112,6 +120,14 @@ export const listAttentionCandidates = campaignsQuery({
 				.take(ATTENTION_CANDIDATE_CAP);
 			out.push(...batch.map(projectCandidate));
 		}
+		const refusedDrafts = await ctx.db
+			.query('campaigns')
+			.withIndex('by_deleted_at_and_status_and_start_refused_at', (q) =>
+				q.eq('deletedAt', undefined).eq('status', 'draft').gte('startRefusal.refusedAt', 0)
+			)
+			.order('desc')
+			.take(ATTENTION_CANDIDATE_CAP);
+		out.push(...refusedDrafts.map(projectCandidate));
 		return out;
 	},
 });
