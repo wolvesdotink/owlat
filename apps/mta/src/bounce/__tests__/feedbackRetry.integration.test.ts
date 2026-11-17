@@ -159,6 +159,8 @@ describe('feedback durability through the real bounce pipeline', () => {
 describe('a mailed unsubscribe through the real bounce listener', () => {
 	let redis: InstanceType<typeof Redis>;
 	const now = Date.now();
+	// A governed send's message id, the only shape that gets an unsubscribe address.
+	const SEND_MESSAGE_ID = 'send_k17abcdefghjkmnpqrstvwxyz0123456';
 
 	function unsubscribeMail(): Buffer {
 		return Buffer.from(
@@ -186,14 +188,14 @@ describe('a mailed unsubscribe through the real bounce listener', () => {
 
 	it('reports a valid address to Convex as one unsubscribe for the message it was minted for', async () => {
 		const handler = buildOnData(config(), redis as unknown as RealRedis, {} as never);
-		const address = buildUnsubscribeAddress(MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
+		const address = buildUnsubscribeAddress(SEND_MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
 
 		expect(await handler(unsubscribeMail(), session(address))).toBeUndefined();
 		expect(await handler(unsubscribeMail(), session(address))).toBeUndefined();
 
 		expect(mocks.queueConvexWebhook).toHaveBeenCalledTimes(2);
 		const [event, , , idempotencyKey] = mocks.queueConvexWebhook.mock.calls[0]!;
-		expect(event).toMatchObject({ event: 'unsubscribed', messageId: MESSAGE_ID });
+		expect(event).toMatchObject({ event: 'unsubscribed', messageId: SEND_MESSAGE_ID });
 		// The outbox slot is keyed by the message, so repeats collapse into one.
 		expect(mocks.queueConvexWebhook.mock.calls[1]![3]).toBe(idempotencyKey);
 		expect((event as { eventId: string }).eventId).toBe(
@@ -203,10 +205,10 @@ describe('a mailed unsubscribe through the real bounce listener', () => {
 
 	it('accepts and drops a forged or expired address: no DSN, nothing told to Convex, counted', async () => {
 		const handler = buildOnData(config(), redis as unknown as RealRedis, {} as never);
-		const valid = buildUnsubscribeAddress(MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
-		const forged = valid.replace(/\+[A-Za-z0-9_-]{14}@/, '+AAAAAAAAAAAAAA@');
+		const valid = buildUnsubscribeAddress(SEND_MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
+		const forged = valid.replace(/\+[A-Za-z0-9_-]{12}@/, '+AAAAAAAAAAAA@');
 		const expired = buildUnsubscribeAddress(
-			MESSAGE_ID,
+			SEND_MESSAGE_ID,
 			'bounces.owlat.test',
 			VERP_KEY,
 			now - 100 * 24 * 60 * 60 * 1000
@@ -225,7 +227,7 @@ describe('a mailed unsubscribe through the real bounce listener', () => {
 	it('asks the sender to retry when the outbox cannot take the request', async () => {
 		mocks.queueConvexWebhook.mockRejectedValueOnce(new Error('outbox unavailable'));
 		const handler = buildOnData(config(), redis as unknown as RealRedis, {} as never);
-		const address = buildUnsubscribeAddress(MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
+		const address = buildUnsubscribeAddress(SEND_MESSAGE_ID, 'bounces.owlat.test', VERP_KEY, now)!;
 
 		expect(await handler(unsubscribeMail(), session(address))).toMatchObject({
 			code: 451,

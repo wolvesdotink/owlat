@@ -125,7 +125,7 @@ describe('sendToMx message composition', () => {
 		const marketing = (overrides: Partial<EmailJob> = {}) =>
 			createJob({
 				ipPool: 'campaign',
-				messageId: 'send_campaign-1',
+				messageId: 'send_k17abcdefghjkmnpqrstvwxyz0123456',
 				headers: {
 					'List-Unsubscribe': https,
 					'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -148,7 +148,7 @@ describe('sendToMx message composition', () => {
 			expect(match?.[2]).toBe(https);
 			expect(verifyUnsubscribeAddress(match![1]!, VERP_KEY, Date.now())).toEqual({
 				kind: 'valid',
-				messageId: 'send_campaign-1',
+				messageId: 'send_k17abcdefghjkmnpqrstvwxyz0123456',
 			});
 			expect(headerValueOf(0, 'List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
 		});
