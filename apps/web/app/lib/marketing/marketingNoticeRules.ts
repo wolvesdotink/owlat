@@ -19,7 +19,8 @@ export type MarketingNoticeKind =
 	| 'automation_stalled'
 	| 'automation_paused'
 	| 'domain_dns'
-	| 'postmaster_mail';
+	| 'postmaster_mail'
+	| 'deliverability_alert';
 
 /** One row of `marketing.notifications.listRecent`. */
 export interface MarketingNoticeView {
@@ -64,6 +65,15 @@ const PROVIDERS = new Set(['gmail', 'microsoft', 'yahoo', 'apple', 'other']);
 /** Minutes left until a reminder's start, at least one. */
 export function minutesUntil(scheduledAt: number, now: number): number {
 	return Math.max(1, Math.round((scheduledAt - now) / 60_000));
+}
+
+/** "mail.example.com: DKIM stopped passing", without the parts the notice lacks. */
+function deliverabilityAlertBody(check: string | undefined, domain: string): NoticeText {
+	const key = `${PREFIX}.deliverabilityAlert`;
+	if (!check) return { key: `${key}.bodyNoCheck` };
+	return domain
+		? { key: `${key}.bodyDomain`, params: { domain, check } }
+		: { key: `${key}.body`, params: { check } };
 }
 
 export function presentMarketingNotice(
@@ -151,6 +161,13 @@ export function presentMarketingNotice(
 				toastType: 'info',
 				href,
 			};
+		case 'deliverability_alert':
+			return {
+				title: { key: `${PREFIX}.deliverabilityAlert.title` },
+				body: deliverabilityAlertBody(notice.detail, name),
+				toastType: 'warning',
+				href,
+			};
 	}
 }
 
@@ -175,6 +192,7 @@ const KIND_KEY: Record<MarketingNoticeKind, string> = {
 	automation_paused: 'automationPaused',
 	domain_dns: 'domainDns',
 	postmaster_mail: 'postmasterMail',
+	deliverability_alert: 'deliverabilityAlert',
 };
 
 /** What an OS notification says, and the page it opens when clicked. */

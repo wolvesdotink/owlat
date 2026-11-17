@@ -3130,6 +3130,19 @@
 			"deliverabilityRegressionAlerts": {
 				"acknowledge": "Bestätigen",
 				"acknowledged": "Bestätigt",
+				"channels": {
+					"label": "Gemeldet per:",
+					"emailSent": "E-Mail",
+					"emailOnAffectedServer": "E-Mail, an den betroffenen Server übergeben",
+					"emailPending": "E-Mail wird noch gesendet",
+					"emailNotSent": "E-Mail nicht gesendet",
+					"inApp": "In der App an {count} Person | In der App an {count} Personen",
+					"inAppNobody": "In der App an niemanden, alle haben es ausgeschaltet",
+					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
+					"pushHeld": "Push wegen Ruhezeit auf {count} Gerät zurückgehalten | Push wegen Ruhezeit auf {count} Geräten zurückgehalten",
+					"pushFailed": "Push auf {count} Gerät fehlgeschlagen | Push auf {count} Geräten fehlgeschlagen",
+					"mayNotArrive": "Dieser Alarm betrifft den Server, über den seine E-Mail rausgeht. Sie kommt deshalb vielleicht nicht an. Hinweis in der App und Push hängen nicht von diesem Server ab."
+				},
 				"detected": "Erkannt:",
 				"domain": "Domain:",
 				"heading": "Verschlechterung der Zustellbarkeit erkannt | Verschlechterungen der Zustellbarkeit erkannt",
@@ -3759,6 +3772,47 @@
 				"opensInBrowser": "(öffnet sich in deinem Browser)",
 				"noInstance": "Öffne diese Seite auf deiner Owlat-Instanz im Browser, um den Versand zu ändern.",
 				"openFailed": "Dein Browser hat sich nicht geöffnet. Geh zu {url}, um den Versand zu ändern."
+			},
+			"deliverabilityAlertChannels": {
+				"heading": "Wohin Zustellbarkeitsalarme gehen",
+				"show": "Kanäle zeigen",
+				"hide": "Kanäle ausblenden",
+				"saveOperation": "Einstellung für Zustellbarkeitsalarme speichern",
+				"summary": {
+					"email": "E-Mail an {count} Person | E-Mail an {count} Personen",
+					"noEmail": "Keine E-Mail",
+					"inApp": "In der App für {count} Person | In der App für {count} Personen",
+					"noInApp": "Niemand in der App",
+					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
+					"noPush": "Kein Push"
+				},
+				"email": {
+					"title": "E-Mail",
+					"reach": "Geht an {count} Owner oder Admin. | Geht an {count} Owner und Admins.",
+					"ownServer": "Sie geht über deinen eigenen Mailserver raus, den diese Prüfungen überwachen. Wenn er das Problem ist, kommt sie vielleicht nicht an.",
+					"noSender": "System-Mails haben keine Absenderadresse, deshalb geht keine Alarm-E-Mail raus.",
+					"noRecipient": "Kein Owner oder Admin hat eine E-Mail-Adresse.",
+					"manageTeam": "Team verwalten",
+					"setUpSender": "System-Mails einrichten"
+				},
+				"inApp": {
+					"title": "In der App und auf dem Desktop",
+					"reach": "Wird {count} Owner oder Admin mit eingeschalteten Zustellbarkeitsalarmen angezeigt. | Wird {count} Ownern und Admins mit eingeschalteten Zustellbarkeitsalarmen angezeigt.",
+					"nobody": "Alle Owner und Admins haben Zustellbarkeitsalarme ausgeschaltet.",
+					"mineOn": "Deine sind an.",
+					"mineOff": "Deine sind aus.",
+					"turnOn": "Für mich einschalten",
+					"turnOff": "Für mich ausschalten"
+				},
+				"push": {
+					"title": "Push-Benachrichtigungen",
+					"reach": "Geht an {count} Gerät von Ownern und Admins. | Geht an {count} Geräte von Ownern und Admins.",
+					"noDevice": "Noch kein Owner oder Admin hat Push auf einem Gerät eingeschaltet.",
+					"notConfigured": "Push ist auf diesem Server nicht eingerichtet.",
+					"desktop": "Die Desktop-App zeigt Alarme als Systembenachrichtigungen.",
+					"setUpDevice": "Push hier einschalten",
+					"setUpServer": "So richtest du Push ein"
+				}
 			}
 		},
 		"desktop": {
@@ -7047,6 +7101,10 @@
 				"postmasterMail": {
 					"label": "Mail an postmaster und abuse",
 					"hint": "Wenn ein Mailanbieter, eine Blocklist oder ein Abuse-Team an postmaster{'@'} oder abuse{'@'} deiner Versandhosts schreibt."
+				},
+				"deliverabilityAlerts": {
+					"label": "Zustellbarkeitsalarme",
+					"hint": "Wenn eine bestandene Prüfung wieder fehlschlägt, etwa bei gesperrtem Port 25 oder einer gelisteten IP. Die Alarm-E-Mail geht trotzdem raus."
 				},
 				"saveOperation": "Benachrichtigungseinstellung speichern"
 			},
@@ -18386,6 +18444,10 @@
 					"title": "Tempo der Zustellungsrampe",
 					"keywords": "Rampe, Aufwärmen, warm-up, IP-Aufwärmung, Voreinstellung, wie stark hochfahren, vorsichtig"
 				},
+				"alertChannels": {
+					"title": "Kanäle für Zustellbarkeitsalarme",
+					"keywords": "Alarmkanäle, Zustellbarkeitsalarme, Alarm-E-Mail, Alarmempfänger, Bereitschaft, on-call, Push-Alarme"
+				},
 				"webhookSecret": {
 					"title": "Webhook-Signaturgeheimnis",
 					"keywords": "Webhook-Geheimnis, Signaturgeheimnis, Signatur, hmac, x-owlat-signature, Geheimnis neu erzeugen"
@@ -19307,6 +19369,13 @@
 				"title": "Geplante Kampagne nicht gestartet",
 				"body": "{name} ist wieder ein Entwurf. Öffne sie, um den Grund zu sehen",
 				"private": "Eine geplante Kampagne ist wieder ein Entwurf. Öffne sie, um den Grund zu sehen"
+			},
+			"deliverabilityAlert": {
+				"title": "Zustellbarkeitsprüfung zurückgefallen",
+				"body": "„{check}“ besteht nicht mehr",
+				"bodyDomain": "{domain}: „{check}“ besteht nicht mehr",
+				"bodyNoCheck": "Eine Prüfung besteht nicht mehr",
+				"private": "Eine Zustellbarkeitsprüfung besteht nicht mehr"
 			}
 		},
 		"useDesktopNotifications": {

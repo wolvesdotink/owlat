@@ -99,6 +99,17 @@ describe('presentMarketingNotice', () => {
 			href: '/dashboard/inbox/t1',
 		});
 	});
+
+	it('names the regressed check of a deliverability alert, and its domain when it has one', () => {
+		const server = render({ kind: 'deliverability_alert', detail: 'Outbound SMTP port 25' });
+		expect(server.title).toBe('Deliverability check regressed');
+		expect(server.body).toBe('Outbound SMTP port 25 stopped passing');
+		expect(server.toastType).toBe('warning');
+		expect(
+			render({ kind: 'deliverability_alert', name: 'mail.example.com', detail: 'DKIM' }).body
+		).toBe('mail.example.com: DKIM stopped passing');
+		expect(render({ kind: 'deliverability_alert' }).body).toBe('A check stopped passing');
+	});
 });
 
 describe('freshMarketingNotices', () => {
@@ -143,6 +154,7 @@ describe('presentNativeMarketingNotice', () => {
 		['automation_paused', 'Secret flow', 'An automation paused itself after repeated failed runs'],
 		['domain_dns', 'secret.example.com', 'A DNS check of a sending domain failed'],
 		['postmaster_mail', 'abuse@secret.example', 'New mail to postmaster@ or abuse@'],
+		['deliverability_alert', 'secret.example.com', 'A deliverability check stopped passing'],
 	] as const)('names no %s on the lock screen when private', (kind, name, body) => {
 		const native = presentNativeMarketingNotice(
 			view({ kind, name, count: 3, scheduledAt: 15 * 60_000, detail: 'SPF' }),

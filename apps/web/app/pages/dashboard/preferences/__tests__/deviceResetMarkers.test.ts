@@ -20,6 +20,7 @@ const setWorkspaceLocal = vi.fn();
 let global: ReturnType<typeof defaultDesktopSettings>['global'];
 let muted: boolean;
 let isReady: boolean;
+let isAdmin: boolean;
 
 beforeEach(() => {
 	setGlobal.mockClear();
@@ -27,11 +28,13 @@ beforeEach(() => {
 	global = defaultDesktopSettings().global;
 	muted = false;
 	isReady = true;
+	isAdmin = false;
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 	vi.stubGlobal('useHead', () => {});
 	vi.stubGlobal('definePageMeta', () => {});
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
+	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(isAdmin) }));
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(true), platform: ref('linux') }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({
 		settings: ref({ global }),
@@ -123,5 +126,13 @@ describe('Preferences → This device: reset to default', () => {
 		expect(setGlobal).toHaveBeenCalledWith('notificationsEnabled', true);
 		expect(setGlobal).toHaveBeenCalledWith('startupWorkspaceId', null);
 		expect(setWorkspaceLocal).toHaveBeenCalledWith('w1', 'muteNotifications', false);
+	});
+});
+
+describe('Preferences → This device: deliverability alerts', () => {
+	it('offers an admin the notification switches on an instance with no sending feature', () => {
+		expect(mountPage().find('preferences-marketing-notifications-stub').exists()).toBe(false);
+		isAdmin = true;
+		expect(mountPage().find('preferences-marketing-notifications-stub').exists()).toBe(true);
 	});
 });

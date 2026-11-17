@@ -280,6 +280,19 @@ describe('settingsControlTargets', () => {
 		);
 	});
 
+	it('keeps the marketing switches for an admin on any instance: deliverability alerts reach them', () => {
+		const admin: SettingsEnvironment = { ...NO_PUSH_SOURCE, role: 'admin' };
+		expect(visibleSettingsEntries(admin).map((entry) => entry.id)).toContain('device');
+		const ids = settingsControlTargets(admin).map((target) => target.control.id);
+		expect(ids).toContain('marketingNotifications');
+		expect(ids).toContain('pushNotifications');
+		expect(
+			settingsControlTargets({ ...NO_PUSH_SOURCE, role: 'editor' }).map(
+				(target) => target.control.id
+			)
+		).not.toContain('marketingNotifications');
+	});
+
 	it('offers the alert sounds exactly when the card shows a row', () => {
 		const ids = (env: SettingsEnvironment) =>
 			settingsControlTargets(env).map((target) => target.control.id);

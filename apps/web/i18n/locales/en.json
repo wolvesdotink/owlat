@@ -3130,6 +3130,19 @@
 			"deliverabilityRegressionAlerts": {
 				"acknowledge": "Acknowledge",
 				"acknowledged": "Acknowledged",
+				"channels": {
+					"label": "Sent by:",
+					"emailSent": "Email",
+					"emailOnAffectedServer": "Email, handed to the affected server",
+					"emailPending": "Email still sending",
+					"emailNotSent": "Email not sent",
+					"inApp": "In app to {count} person | In app to {count} people",
+					"inAppNobody": "In app to nobody, everyone switched it off",
+					"push": "Push on {count} device | Push on {count} devices",
+					"pushHeld": "Push held for quiet hours on {count} device | Push held for quiet hours on {count} devices",
+					"pushFailed": "Push failed on {count} device | Push failed on {count} devices",
+					"mayNotArrive": "This alert is about the server its email leaves from, so the email may not arrive. The in-app notice and push do not depend on that server."
+				},
 				"detected": "Detected:",
 				"domain": "Domain:",
 				"heading": "Deliverability regression detected | Deliverability regressions detected",
@@ -3759,6 +3772,47 @@
 				"opensInBrowser": "(opens in your browser)",
 				"noInstance": "Open this page on your Owlat instance in a browser to change sending.",
 				"openFailed": "Your browser didn't open. Go to {url} to change sending."
+			},
+			"deliverabilityAlertChannels": {
+				"heading": "Where deliverability alerts go",
+				"show": "Show channels",
+				"hide": "Hide channels",
+				"saveOperation": "Save deliverability alert setting",
+				"summary": {
+					"email": "Email to {count} person | Email to {count} people",
+					"noEmail": "No email",
+					"inApp": "In app for {count} person | In app for {count} people",
+					"noInApp": "Nobody in the app",
+					"push": "Push on {count} device | Push on {count} devices",
+					"noPush": "No push"
+				},
+				"email": {
+					"title": "Email",
+					"reach": "Goes to {count} owner or admin. | Goes to {count} owners and admins.",
+					"ownServer": "It leaves through your own mail server, the one these checks watch, so it may not arrive when that server is the problem.",
+					"noSender": "System mail has no sender address, so no alert email goes out.",
+					"noRecipient": "No owner or admin has an email address.",
+					"manageTeam": "Manage team",
+					"setUpSender": "Set up system mail"
+				},
+				"inApp": {
+					"title": "In app and desktop",
+					"reach": "Shown to {count} owner or admin who has deliverability alerts on. | Shown to {count} owners and admins who have deliverability alerts on.",
+					"nobody": "Every owner and admin turned deliverability alerts off.",
+					"mineOn": "Yours are on.",
+					"mineOff": "Yours are off.",
+					"turnOn": "Turn on for me",
+					"turnOff": "Turn off for me"
+				},
+				"push": {
+					"title": "Push",
+					"reach": "Sent to {count} device of owners and admins. | Sent to {count} devices of owners and admins.",
+					"noDevice": "No owner or admin has turned on push on a device yet.",
+					"notConfigured": "Push is not set up on this server.",
+					"desktop": "The desktop app shows alerts as system notifications.",
+					"setUpDevice": "Turn on push here",
+					"setUpServer": "How to set up push"
+				}
 			}
 		},
 		"desktop": {
@@ -7047,6 +7101,10 @@
 				"postmasterMail": {
 					"label": "Postmaster and abuse mail",
 					"hint": "When a mail provider, blocklist or abuse desk writes to postmaster{'@'} or abuse{'@'} on your sending hosts."
+				},
+				"deliverabilityAlerts": {
+					"label": "Deliverability alerts",
+					"hint": "When a check that passed starts failing, such as a blocked port 25 or a listed IP. The alert email goes out as well."
 				},
 				"saveOperation": "Save notification setting"
 			},
@@ -18386,6 +18444,10 @@
 					"title": "Delivery ramp pace",
 					"keywords": "ramp, warm-up, warmup, ip warming, preset, how hard to ramp, conservative"
 				},
+				"alertChannels": {
+					"title": "Deliverability alert channels",
+					"keywords": "alert channels, deliverability alerts, alert email, alert recipients, on-call, push alerts, regression alerts"
+				},
 				"webhookSecret": {
 					"title": "Webhook signing secret",
 					"keywords": "webhook secret, signing secret, signature, hmac, x-owlat-signature, regenerate secret"
@@ -19307,6 +19369,13 @@
 				"title": "Scheduled campaign did not start",
 				"body": "{name} is back in draft. Open it to see why",
 				"private": "A scheduled campaign is back in draft. Open it to see why"
+			},
+			"deliverabilityAlert": {
+				"title": "Deliverability check regressed",
+				"body": "{check} stopped passing",
+				"bodyDomain": "{domain}: {check} stopped passing",
+				"bodyNoCheck": "A check stopped passing",
+				"private": "A deliverability check stopped passing"
 			}
 		},
 		"useDesktopNotifications": {

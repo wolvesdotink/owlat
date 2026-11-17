@@ -20,7 +20,7 @@ import {
 	createTestDomain,
 	enableFeatures,
 } from '../../__tests__/factories';
-import { pushHarness } from '../../push/__tests__/pushFixtures';
+import { VAPID_ENV, pushHarness, seedDevice } from '../../push/__tests__/pushFixtures';
 import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import { bumpCampaignStats } from '../../campaigns/statShards';
 import {
@@ -519,12 +519,12 @@ describe('sending domain DNS', () => {
 		);
 		await record(t, domainId, 'pass', 'pass', NOW - HOUR);
 		await record(t, domainId, 'warn', 'warn', NOW - MINUTE);
-		expect(await queuedFanOuts(t)).toEqual([]);
+		// The warning raised the alert, which every alert announces off the mail path.
+		expect((await queuedFanOuts(t)).map((job) => job.event.kind)).toEqual(['deliverability_alert']);
 		await record(t, domainId, 'fail', 'fail', NOW);
 
-		const queued = await queuedFanOuts(t);
+		const queued = (await queuedFanOuts(t)).filter((job) => job.event.kind === 'domain_dns');
 		expect(queued).toHaveLength(1);
-		expect(queued[0]!.event.kind).toBe('domain_dns');
 		expect(await fanOut(t, queued[0]!.event)).toEqual({ written: 2 });
 
 		as('owner-1');
@@ -567,6 +567,147 @@ describe('sending domain DNS', () => {
 	});
 });
 
+describe('deliverability alerts', () => {
+	/** Record one result of the server's port 25 check. */
+	async function recordPort25(
+		t: T,
+		attemptId: string,
+		status: 'pass' | 'fail',
+		observedAt: number
+	) {
+		const organizationId = 'org-alerts';
+		const leaseToken = `lease:${attemptId}`;
+		const claim = await t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+			organizationId,
+			itemId: 'deployment.port25',
+			attemptId,
+			leaseToken,
+			now: observedAt,
+		});
+		if (!claim.claimed) throw new Error('claim failed');
+		await t.mutation(internal.delivery.checklistEvidence.recordEvidence, {
+			organizationId,
+			itemId: 'deployment.port25',
+			attemptId,
+			generation: claim.generation,
+			leaseToken,
+			validator: 'smtp.port25',
+			status,
+			observedValues: [],
+			diagnostic: status === 'fail' ? 'Port 25 is blocked' : 'reachable',
+			observedAt,
+		});
+	}
+
+	async function regress(t: T): Promise<Id<'deliverabilityRegressionAlerts'>> {
+		await recordPort25(t, 'pass', 'pass', NOW - HOUR);
+		await recordPort25(t, 'fail', 'fail', NOW);
+		const alerts = await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').collect());
+		expect(alerts).toHaveLength(1);
+		return alerts[0]!._id;
+	}
+
+	async function queuedJobs(t: T, path: string) {
+		return t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.name.includes(path) && job.state.kind === 'pending'
+			)
+		);
+	}
+
+	beforeEach(() => {
+		for (const [key, value] of Object.entries(VAPID_ENV)) vi.stubEnv(key, value);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('raises a notice and a push for owners and admins at the moment of the email, none for an editor', async () => {
+		// No sending feature on: the transport these checks watch carries system mail too.
+		const t = await harness([]);
+		for (const userId of Object.keys(MEMBERS)) await seedDevice(t, userId);
+		const alertId = await regress(t);
+
+		expect(await queuedJobs(t, 'delivery/checklistAlerts')).toEqual([
+			expect.objectContaining({ scheduledTime: NOW }),
+		]);
+		expect(await queuedFanOuts(t)).toEqual([
+			{ at: NOW, event: { kind: 'deliverability_alert', alertId } },
+		]);
+		expect(await fanOut(t, { kind: 'deliverability_alert', alertId })).toEqual({ written: 2 });
+		expect(await fanOut(t, { kind: 'deliverability_alert', alertId })).toEqual({ written: 0 });
+
+		expect((await noticesFor(t)).map((notice) => notice.userId).sort()).toEqual([
+			'admin-1',
+			'owner-1',
+		]);
+		const pushed = (await queuedJobs(t, 'push/send')).map(
+			(job) => (job.args[0] as { userId: string }).userId
+		);
+		expect(pushed.sort()).toEqual(['admin-1', 'owner-1']);
+		const alert = await t.run((ctx) => ctx.db.get(alertId));
+		expect(alert?.inAppNoticeCount).toBe(2);
+	});
+
+	it('reaches nobody whose switch is off, and records that it reached nobody', async () => {
+		const t = await harness([]);
+		const alertId = await regress(t);
+		for (const userId of ['owner-1', 'admin-1'] as const) {
+			as(userId);
+			await t.mutation(api.marketing.notifications.setMyPreference, {
+				preference: 'deliverabilityAlerts',
+				enabled: false,
+			});
+		}
+		expect(await fanOut(t, { kind: 'deliverability_alert', alertId })).toEqual({ written: 0 });
+		const alert = await t.run((ctx) => ctx.db.get(alertId));
+		expect(alert?.inAppNoticeCount).toBe(0);
+	});
+
+	it('still reaches admins in the app when the alert email could not go out', async () => {
+		const t = await harness([]);
+		const alertId = await regress(t);
+		// The admins have no address on file, so the email ends undeliverable.
+		await t.mutation(internal.delivery.checklistAlertState.prepareRecipientAttempts, {
+			organizationId: 'org-alerts',
+			identity: (await t.run((ctx) => ctx.db.get(alertId)))!.identity,
+			recipients: [{ userId: 'owner-1' }, { userId: 'admin-1' }],
+			attemptToken: 'attempt',
+			now: NOW,
+		});
+		expect((await t.run((ctx) => ctx.db.get(alertId)))?.emailNotificationState).toBe('unavailable');
+
+		expect(await fanOut(t, { kind: 'deliverability_alert', alertId })).toEqual({ written: 2 });
+		as('owner-1');
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([
+			expect.objectContaining({
+				kind: 'deliverability_alert',
+				detail: 'Outbound SMTP port 25',
+				url: '/dashboard/admin/delivery/deliverability',
+			}),
+		]);
+	});
+
+	it('takes the notice down when the alert resolves', async () => {
+		const t = await harness([]);
+		const alertId = await regress(t);
+		await fanOut(t, { kind: 'deliverability_alert', alertId });
+		as('admin-1');
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toHaveLength(1);
+
+		await recordPort25(t, 'recovered', 'pass', NOW + MINUTE);
+		expect((await t.run((ctx) => ctx.db.get(alertId)))?.resolvedAt).toBe(NOW + MINUTE);
+		expect(await t.query(api.marketing.notifications.listRecent, {})).toEqual([]);
+		// A fan-out that runs only now, after the resolution, writes nothing.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('marketingNotices').collect()) {
+				await ctx.db.delete(row._id);
+			}
+		});
+		expect(await fanOut(t, { kind: 'deliverability_alert', alertId })).toEqual({ written: 0 });
+	});
+});
+
 describe('preferences', () => {
 	it('lists only the switches that can fire for the caller, all on until turned off', async () => {
 		const t = await harness();
@@ -592,6 +733,7 @@ describe('preferences', () => {
 				'deliveryHold',
 				'automationProblems',
 				'domainDns',
+				'deliverabilityAlerts',
 			],
 			enabled: {
 				campaignFinished: true,
@@ -600,6 +742,7 @@ describe('preferences', () => {
 				automationProblems: true,
 				domainDns: false,
 				postmasterMail: true,
+				deliverabilityAlerts: true,
 			},
 		});
 	});

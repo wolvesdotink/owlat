@@ -71,6 +71,22 @@ export interface DeliverabilityRegressionAlert {
 	observedAt: number;
 	acknowledgedAt: number | null;
 	emailNotificationState: 'pending' | 'sent' | 'unavailable';
+	/** Which channels carried the alert, and what each did with it. */
+	channels: DeliverabilityAlertChannels;
+}
+
+export interface DeliverabilityAlertChannels {
+	email: {
+		state: 'pending' | 'sent' | 'unavailable';
+		/**
+		 * The alert is about the server its own email leaves through, so "sent"
+		 * means that server accepted it, not that it arrived.
+		 */
+		isOnAffectedTransport: boolean;
+	};
+	/** People the in-app notice was written for; null before the notice ran. */
+	inAppCount: number | null;
+	push: { delivered: number; failed: number; held: number };
 }
 
 export interface DeliverabilityAlertOperation {

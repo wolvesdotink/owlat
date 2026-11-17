@@ -286,6 +286,43 @@ async function draftPostmasterMail(
 	};
 }
 
+/**
+ * An open alert, and the sending domain it is about when it has one: a notice
+ * about a domain that was removed since would link nowhere.
+ */
+async function openAlertTarget(
+	ctx: Reader,
+	alertId: Doc<'deliverabilityRegressionAlerts'>['_id']
+): Promise<{
+	alert: Doc<'deliverabilityRegressionAlerts'>;
+	domain: Doc<'domains'> | null;
+} | null> {
+	const alert = await ctx.db.get(alertId);
+	if (!alert || alert.resolvedAt !== undefined) return null;
+	if (!alert.domainId) return { alert, domain: null };
+	const domain = await ctx.db.get(alert.domainId);
+	return domain ? { alert, domain } : null;
+}
+
+async function draftDeliverabilityAlert(
+	ctx: MutationCtx,
+	event: Extract<MarketingNoticeEvent, { kind: 'deliverability_alert' }>
+): Promise<NoticeDraft | null> {
+	const target = await openAlertTarget(ctx, event.alertId);
+	if (!target) return null;
+	const { alert, domain } = target;
+	const check = DELIVERABILITY_CHECKLIST.find((item) => item.id === alert.itemId);
+	return {
+		kind: 'deliverability_alert',
+		eventKey: `deliverability_alert:${alert.identity}`,
+		subjectKey: `deliverability_alert:${alert.targetKey}|${alert.itemId}`,
+		alertId: alert._id,
+		...(domain ? { domainId: domain._id, name: domain.domain } : {}),
+		...(check ? { detail: check.protocol } : {}),
+		url: DELIVERABILITY_URL,
+	};
+}
+
 /** The notice an occurrence becomes, or null when it no longer holds. */
 export async function draftNotice(
 	ctx: MutationCtx,
@@ -309,6 +346,8 @@ export async function draftNotice(
 			return draftDomainDns(ctx, event);
 		case 'postmaster_mail':
 			return draftPostmasterMail(ctx, event);
+		case 'deliverability_alert':
+			return draftDeliverabilityAlert(ctx, event);
 	}
 }
 
@@ -329,9 +368,9 @@ const LIVE: NoticeLiveness = {};
  * finished campaign stays finished, but one deleted since is gone; a reminder
  * is stale the moment its campaign is rescheduled, cancelled, deleted or
  * started; a start that did not happen holds until the campaign is scheduled
- * or sent again; a hold, a pause or a DNS failure that has already cleared (or whose
- * domain was removed) is no longer news; postmaster mail holds while its
- * conversation exists.
+ * or sent again; a hold, a pause, a DNS failure or a deliverability alert that
+ * has already cleared (or whose domain was removed) is no longer news;
+ * postmaster mail holds while its conversation exists.
  */
 export async function noticeLiveness(
 	ctx: Reader,
@@ -382,5 +421,11 @@ export async function noticeLiveness(
 		}
 		case 'postmaster_mail':
 			return (await loadPostmasterThread(ctx, notice.threadId)) !== null ? LIVE : null;
+		case 'deliverability_alert':
+			// Resolving the alert (by hand, by a passing re-check, or by turning
+			// IPv6 off) is what takes the notice down everywhere.
+			return notice.alertId !== undefined && (await openAlertTarget(ctx, notice.alertId)) !== null
+				? LIVE
+				: null;
 	}
 }

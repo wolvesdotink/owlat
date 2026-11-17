@@ -18,6 +18,7 @@ import {
 	type DeliverabilitySetupValue,
 } from '@owlat/shared';
 import { adminQuery } from '../lib/authedFunctions';
+import { alertChannelsView } from './checklistAlertChannelLedger';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { v } from 'convex/values';
 import { requireOrgPermission, type MutationSessionContext } from '../lib/sessionOrganization';
@@ -354,6 +355,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 				observedAt: alert.observedAt,
 				acknowledgedAt: alert.acknowledgedAt ?? null,
 				emailNotificationState: alert.emailNotificationState,
+				channels: alertChannelsView(alert),
 			})),
 		nextItem,
 		groups,

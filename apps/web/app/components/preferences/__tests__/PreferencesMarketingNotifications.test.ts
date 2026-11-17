@@ -49,6 +49,7 @@ const ALL_ON = {
 	automationProblems: true,
 	domainDns: true,
 	postmasterMail: true,
+	deliverabilityAlerts: true,
 };
 
 describe('PreferencesMarketingNotifications', () => {
@@ -115,5 +116,14 @@ describe('PreferencesMarketingNotifications', () => {
 		await input.trigger('change');
 		expect(save).toHaveBeenCalledWith({ preference: 'domainDns', enabled: false });
 		expectFullyLocalized(w);
+	});
+
+	it('offers an admin the deliverability alerts switch with its own copy', async () => {
+		data.value = { kinds: ['deliverabilityAlerts'], enabled: ALL_ON };
+		const w = mountCard();
+		expectFullyLocalized(w);
+		expect(w.findAll('label').map((label) => label.text())).toEqual(['Deliverability alerts']);
+		await w.get('#marketing-notify-deliverabilityAlerts').setValue(false);
+		expect(save).toHaveBeenCalledWith({ preference: 'deliverabilityAlerts', enabled: false });
 	});
 });

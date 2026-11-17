@@ -90,6 +90,7 @@ beforeEach(() => {
 	vi.stubGlobal('definePageMeta', () => {});
 	vi.stubGlobal('navigateTo', vi.fn());
 	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
+	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(false) }));
 	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(true), platform: ref('linux') }));
 	vi.stubGlobal('useDesktopAppSettings', () => ({
 		settings: ref({ global: { notificationsEnabled: true, showUnreadBadge: true } }),
