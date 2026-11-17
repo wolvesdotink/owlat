@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import schema from '../../schema';
 
@@ -55,6 +55,10 @@ async function readAlertState(t: ReturnType<typeof convexTest>) {
 	}));
 }
 
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
 describe('deliverability regression email state', () => {
 	it('does not return a recovered alert to a delayed email retry', async () => {
 		const t = convexTest(schema, modules);
@@ -99,6 +103,33 @@ describe('deliverability regression email state', () => {
 				identity: 'incident',
 			})
 		).resolves.toBeNull();
+	});
+
+	it('sends no email for a check that stopped applying, and resolves its alert', async () => {
+		const t = convexTest(schema, modules);
+		await insertPendingAlert(t, 'incident');
+		// The deployment moved to an SMTP relay after the alert was raised.
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		vi.stubEnv('MTA_API_URL', '');
+		vi.stubEnv('SMTP_RELAY_HOST', 'smtp.relay.example');
+		vi.stubEnv('SMTP_RELAY_USERNAME', 'relay-user');
+		vi.stubEnv('SMTP_RELAY_PASSWORD', 'relay-secret');
+
+		const prepared = await t.mutation(
+			internal.delivery.checklistAlertState.prepareRecipientAttempts,
+			{
+				organizationId: 'org',
+				identity: 'incident',
+				recipients: [{ userId: 'admin', email: 'admin@example.com' }],
+				attemptToken: 'attempt',
+				now: 2_000,
+			}
+		);
+
+		expect(prepared).toBeNull();
+		const { alert, recipients } = await readAlertState(t);
+		expect(alert).toMatchObject({ resolvedAt: 2_000, resolvedReason: 'not_applicable' });
+		expect(recipients).toEqual([]);
 	});
 
 	it('persists success by user id and retries only the failed user at their current email', async () => {

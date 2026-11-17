@@ -595,6 +595,7 @@ import type * as delivery_checklistAlertRecipients from '../delivery/checklistAl
 import type * as delivery_checklistAlertResolution from '../delivery/checklistAlertResolution.js';
 import type * as delivery_checklistAlertState from '../delivery/checklistAlertState.js';
 import type * as delivery_checklistAlerts from '../delivery/checklistAlerts.js';
+import type * as delivery_checklistApplicability from '../delivery/checklistApplicability.js';
 import type * as delivery_checklistCenterView from '../delivery/checklistCenterView.js';
 import type * as delivery_checklistDeploymentValidators from '../delivery/checklistDeploymentValidators.js';
 import type * as delivery_checklistDkimValidation from '../delivery/checklistDkimValidation.js';
@@ -2585,6 +2586,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/automatedOpens': typeof delivery_automatedOpens;
 	'delivery/cronRegistration': typeof delivery_cronRegistration;
 	'delivery/checklistAlerts': typeof delivery_checklistAlerts;
+	'delivery/checklistApplicability': typeof delivery_checklistApplicability;
 	'delivery/checklistCenterView': typeof delivery_checklistCenterView;
 	'delivery/checklistDeploymentValidators': typeof delivery_checklistDeploymentValidators;
 	'delivery/checklistDkimValidation': typeof delivery_checklistDkimValidation;

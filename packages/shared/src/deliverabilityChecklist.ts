@@ -166,25 +166,41 @@ export const DELIVERABILITY_NOT_MEASURED = 'measurement=absent';
 
 const AUDIENCE_UNUSED: Record<
 	Exclude<DeliverabilityAudience, 'all'>,
-	{ reason: DeliverabilityNotGradedReason; isUsed: (paths: DeliverabilitySendPaths) => boolean }
+	{
+		reason: Exclude<DeliverabilityNotGradedReason, 'not_measured'>;
+		isUsed: (paths: DeliverabilitySendPaths) => boolean;
+	}
 > = {
 	own_mta: { reason: 'own_mta_unused', isUsed: (paths) => paths.usesOwnMta },
 	marketing: { reason: 'marketing_off', isUsed: (paths) => paths.sendsMarketing },
 };
 
 /**
+ * Whether a check applies to this deployment at all, or the reason it does
+ * not: it judges a send path the deployment does not use. The grade, the
+ * sweeps, a manual verify and the regression alerts all ask this one question,
+ * so a check left out of one is left out of all of them.
+ */
+export function deliverabilityCheckUnusedReason(
+	item: Pick<DeliverabilityChecklistDefinition, 'appliesTo'>,
+	paths: DeliverabilitySendPaths
+): Exclude<DeliverabilityNotGradedReason, 'not_measured'> | null {
+	if (item.appliesTo === 'all') return null;
+	const audience = AUDIENCE_UNUSED[item.appliesTo];
+	return audience.isUsed(paths) ? null : audience.reason;
+}
+
+/**
  * Why a check stays out of the grade on this deployment, or null when it
- * counts: it judges a send path the deployment does not use, or its optional
- * measurement source is not connected.
+ * counts: it does not apply (see `deliverabilityCheckUnusedReason`), or its
+ * optional measurement source is not connected.
  */
 export function deliverabilityNotGradedReason(
 	item: Pick<DeliverabilityChecklistItem, 'appliesTo' | 'status' | 'observed'>,
 	paths: DeliverabilitySendPaths
 ): DeliverabilityNotGradedReason | null {
-	if (item.appliesTo !== 'all') {
-		const audience = AUDIENCE_UNUSED[item.appliesTo];
-		if (!audience.isUsed(paths)) return audience.reason;
-	}
+	const unused = deliverabilityCheckUnusedReason(item, paths);
+	if (unused) return unused;
 	return item.status !== 'pass' && item.observed.includes(DELIVERABILITY_NOT_MEASURED)
 		? 'not_measured'
 		: null;
