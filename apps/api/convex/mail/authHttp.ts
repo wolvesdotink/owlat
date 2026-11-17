@@ -4,7 +4,14 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  *
  * Endpoint: POST /webhooks/mta-verify-credential
  * Body:    { address, password, scope: 'imap' | 'smtp', clientName?, ip? }
- * Returns: { ok: true, mailboxId, appPasswordId, organizationId, userId } | { ok: false }
+ * Returns: { ok: true, mailboxId, appPasswordId, organizationId, userId, requireDkimSignature }
+ *        | { ok: false }
+ *
+ * `requireDkimSignature` is this route's alone: the IMAP server calls the
+ * `verify` action directly and its result does not carry it. The MTA builds the
+ * outbound job for mail a client submits, so it learns here, once per AUTH,
+ * whether that mail is owed a signature (`delivery/dkimSignatureRequirement.ts`).
+ * An MTA that predates the field ignores it and sends as before.
  *
  * Authenticated with the MTA request signature every MTA route verifies
  * (`webhooks/mtaSignature.ts`, MTA_WEBHOOK_SECRET, 60s request window) so we
@@ -149,6 +156,12 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 			channel: 'smtp',
 		})
 		.catch(() => undefined);
+	// Submission binds From to the mailbox address, so its domain is the domain
+	// every message of this session is signed for.
+	const requireDkimSignature = await ctx.runQuery(
+		internal.delivery.dkimSignatureRequirement.isRequiredForSender,
+		{ from: payload.address }
+	);
 	return new Response(
 		JSON.stringify({
 			ok: true,
@@ -156,6 +169,7 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 			appPasswordId: result.appPasswordId,
 			userId: result.userId,
 			organizationId: result.organizationId,
+			requireDkimSignature,
 		}),
 		{
 			status: 200,

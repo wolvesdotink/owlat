@@ -185,6 +185,9 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 					...(authData.postbox ? { queueLane: 'postbox' as const } : {}),
 					organizationId: authData.organizationId,
 					dkimDomain: fromDomain,
+					// From is the bound mailbox (checked above), so the requirement the
+					// credential check answered for the mailbox holds for this domain.
+					...(authData.postbox?.requireDkimSignature ? { requireDkimSignature: true } : {}),
 					firstEnqueuedAt: Date.now(),
 				};
 

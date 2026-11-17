@@ -29,6 +29,8 @@ export interface AuthenticatedSession {
 		mailboxAddress: string;
 		appPasswordId: string;
 		userId: string;
+		/** Mail from this mailbox is held rather than sent unsigned (see `PostboxAuthResult`). */
+		requireDkimSignature?: true;
 	};
 }
 
