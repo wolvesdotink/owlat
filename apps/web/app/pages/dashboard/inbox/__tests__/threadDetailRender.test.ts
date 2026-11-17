@@ -63,6 +63,10 @@ describe('Team Inbox thread page rendering', () => {
 		expect(page).toContain('teamThreadPriorityOf(thread.value)');
 	});
 
+	it('hands the header the postmaster or abuse mark the thread carries', () => {
+		expect(template).toMatch(/<InboxThreadPageHeader[^>]*:system-mailbox="thread.systemMailbox"/);
+	});
+
 	it('offers its verbs to ⌘K and joins the Jump back list', () => {
 		expect(page).toContain('useTeamThreadCommandSurface({');
 		expect(page).toMatch(/canAct: \(\) => isAdmin\.value/);

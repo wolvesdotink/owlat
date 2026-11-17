@@ -10,8 +10,7 @@
  * instance and open its transport page in the system browser instead. The
  * read-only state (status, readiness) reads Convex and works on desktop.
  */
-import { ref } from 'vue';
-import { getActiveWorkspace, isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import { useInstancePage } from '~/composables/useInstancePage';
 
 /** The transport page, on the web app and on the instance alike. */
 export const TRANSPORT_PAGE_PATH = '/dashboard/admin/delivery/transport';
@@ -33,35 +32,6 @@ export function isTransportChangeAction(href: string | null, label: unknown): bo
 	);
 }
 
-/** `path` on the connected instance's web origin, or `null` when that is unknown. */
-function instanceUrl(path: string): string | null {
-	const siteUrl = getActiveWorkspace()?.siteUrl;
-	if (!siteUrl) return null;
-	try {
-		return new URL(path, siteUrl).href;
-	} catch {
-		return null;
-	}
-}
-
 export function useInstanceTransportPage() {
-	// Stable for the page load: the runtime and the active workspace only change
-	// with a reload.
-	const isDesktop = isDesktopRuntime();
-	const url = isDesktop ? instanceUrl(TRANSPORT_PAGE_PATH) : null;
-	/** Set when the shell refused to open the browser, so the page can print the address. */
-	const openFailed = ref(false);
-
-	async function openInBrowser(): Promise<void> {
-		if (url === null) return;
-		try {
-			const { openExternal } = await import('@owlat/desktop/src/shell');
-			await openExternal(url);
-			openFailed.value = false;
-		} catch {
-			openFailed.value = true;
-		}
-	}
-
-	return { isDesktop, url, openFailed, openInBrowser };
+	return useInstancePage(TRANSPORT_PAGE_PATH);
 }

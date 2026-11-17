@@ -19,9 +19,12 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import PortChecksCard from '../system/PortChecksCard.vue';
+import { onDesktop } from '~/__tests__/desktopRuntimeFixture';
+import en from '~~/i18n/locales/en.json';
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 vi.mock('~/lib/csrfFetch', () => ({ apiFetch: apiFetchMock }));
+vi.mock('@owlat/desktop/src/shell', () => ({ openExternal: vi.fn(async () => undefined) }));
 
 beforeAll(() => {
 	Object.assign(globalThis, { ...i18nStubs, computed, ref });
@@ -226,5 +229,23 @@ describe('after a run', () => {
 		await w.vm.$nextTick();
 
 		expect(w.find('[data-testid="port-checks-unreachable"]').text()).toContain('Request timed out');
+	});
+});
+
+// The probes run through `/api/system/port-checks`, which the static desktop
+// build does not have: the card offers the instance's page instead of a run.
+describe('in the desktop app', () => {
+	it('offers no run and posts nothing, and says where the checks run', async () => {
+		onDesktop();
+		const w = mountCard();
+		await w.vm.$nextTick();
+
+		expect(w.text()).not.toContain(en.components.system.portChecksCard.run);
+		expect(w.find('[data-testid="port-checks-idle"]').exists()).toBe(false);
+		expect(w.find('[data-testid="instance-page-notice"]').text()).toContain(
+			en.components.system.portChecksCard.onInstance
+		);
+		for (const button of w.findAll('button')) await button.trigger('click');
+		expect(apiFetchMock).not.toHaveBeenCalled();
 	});
 });

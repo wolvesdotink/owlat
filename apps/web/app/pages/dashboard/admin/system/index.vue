@@ -17,6 +17,7 @@ import {
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import InstancePageNotice from '~/components/InstancePageNotice.vue';
 
 const { t, te } = useI18n();
 const { showToast } = useToast();
@@ -97,6 +98,7 @@ function migrationName(migration: string): string {
 // The run has real control flow — it outlives its own transport — so it lives in
 // a composable rather than inline among this page's read-only cards.
 const {
+	isDesktop,
 	updateState,
 	updateSteps,
 	updateError,
@@ -259,10 +261,16 @@ watch(updateState, (state) => {
 						</p>
 					</div>
 
+					<InstancePageNotice
+						v-if="isDesktop"
+						path="/dashboard/admin/system"
+						:body="t('dashboard.admin.system.index.updates.onInstance')"
+					/>
 					<div class="flex items-center gap-x-4 gap-y-2 flex-wrap">
 						<!-- Held while a run is in flight: a second run would only get the
 						     updater's 409, after replacing the progress card with a confirm. -->
 						<UiButton
+							v-if="!isDesktop"
 							variant="primary"
 							size="sm"
 							:disabled="updateInProgress || blockingMigrations.length > 0"

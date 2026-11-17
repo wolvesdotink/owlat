@@ -178,6 +178,25 @@ describe('InboxThreadRow', () => {
 	});
 });
 
+/**
+ * Mail to the instance's `postmaster@` / `abuse@` has no contact and no AI
+ * draft, and only admins see it; the row says what it is so nobody looks for
+ * either.
+ */
+describe('InboxThreadRow for postmaster and abuse mail', () => {
+	it('labels an abuse report and a postmaster thread, and leaves customer threads alone', () => {
+		expect(
+			mountRow({ systemMailbox: 'abuse' }).find('[data-testid="inbox-row-system-mailbox"]').text()
+		).toBe('Abuse report');
+		expect(
+			mountRow({ systemMailbox: 'postmaster' })
+				.find('[data-testid="inbox-row-system-mailbox"]')
+				.text()
+		).toBe('Postmaster mail');
+		expect(mountRow({}).find('[data-testid="inbox-row-system-mailbox"]').exists()).toBe(false);
+	});
+});
+
 describe('InboxThreadRow selection', () => {
 	it('selects from its checkbox without opening, and extends with Shift', async () => {
 		const w = mountRow({});

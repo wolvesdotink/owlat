@@ -41,6 +41,7 @@ export function useCampaignCommandRows(sources: CampaignCommandRowSources) {
 			abTestStatus: campaign.abTestStatus,
 			abWinner: campaign.abWinner,
 			contentBlockReason: campaign.contentBlockReason,
+			startRefusal: campaign.startRefusal,
 		});
 		const display = attention.reason ? CAMPAIGN_ATTENTION_DISPLAY[attention.reason] : null;
 		const openRate = rate(campaign.statsOpened, campaign.statsDelivered);

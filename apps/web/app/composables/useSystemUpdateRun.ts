@@ -2,6 +2,7 @@ import { getCurrentScope, onScopeDispose, watch } from 'vue';
 import { api } from '@owlat/api';
 import { apiFetch } from '~/lib/csrfFetch';
 import { ROLLOUT_HEARTBEAT_MS } from '~/lib/backendConnection';
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import {
 	isStartedRollout,
 	isUpdaterRefusal,
@@ -52,6 +53,10 @@ function newAttemptId(): string {
 export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	const { t } = useI18n();
 	const convex = useConvex();
+	// The run posts to `/api/system/update`, a server route the static desktop
+	// build does not have: there the page offers the instance's own page instead
+	// (`InstancePageNotice`), and nothing here starts a run.
+	const isDesktop = isDesktopRuntime();
 
 	const updateState = ref<UpdateState>('idle');
 	const updateSteps = ref<UpdateStep[] | null>(null);
@@ -124,7 +129,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	function startUpdate() {
 		// Starting over mid-run would swap the progress card for a confirm, and
 		// the updater answers a second run with 409 anyway.
-		if (updateInProgress.value) return;
+		if (isDesktop || updateInProgress.value) return;
 		const target = latestVersion();
 		if (!target) return;
 		pendingTargetVersion.value = target;
@@ -149,6 +154,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	}
 
 	async function confirmUpdate() {
+		if (isDesktop) return;
 		updateState.value = 'running';
 		updateError.value = '';
 		updateWarning.value = '';
@@ -220,6 +226,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	}
 
 	return {
+		isDesktop,
 		updateState,
 		updateSteps,
 		updateError,
