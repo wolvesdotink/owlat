@@ -30,7 +30,9 @@ test.describe('Authentication', () => {
 
 		await loginPage.login('nonexistent@example.com', 'WrongPassword123');
 
-		await expect(loginPage.errorAlert).toBeVisible({ timeout: 10_000 });
+		await expect(loginPage.errorAlert).toContainText('Invalid email or password', {
+			timeout: 10_000,
+		});
 	});
 
 	test('empty login form shows validation errors', async ({ page }) => {

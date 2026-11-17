@@ -80,6 +80,14 @@ export function useOrganization() {
 	// when a loaded roster shows this member's role.
 	const currentMemberRole = useState<OrganizationRole | null>('org-current-role', () => null);
 
+	// The session names the organization before better-auth's separate
+	// full-organization request has answered. A team page is usable in that
+	// window, so its roster loads and its invitations go out against the
+	// session's organization, not only once the full record has arrived.
+	const rosterOrganizationId = computed(
+		() => organizationId.value ?? sessionOrganizationId.value ?? null
+	);
+
 	const isLoading = computed(() => {
 		// Only track our own loading state (members/invitations fetch).
 		// Don't rely on BetterAuth's isPending — it can get stuck when the
@@ -102,10 +110,7 @@ export function useOrganization() {
 	 */
 	async function fetchMembers(options?: { force?: boolean }) {
 		membersWanted = true;
-		// The session names the organization before better-auth's separate
-		// full-organization request has answered; a page mounting in that window
-		// must still get its roster.
-		const orgId = organizationId.value ?? sessionOrganizationId.value;
+		const orgId = rosterOrganizationId.value;
 		if (!orgId) return;
 
 		// Skip fetch if cached for the same org and within TTL
@@ -199,7 +204,7 @@ export function useOrganization() {
 	});
 	const { invite, cancelInvite, resendInvite } = useOrganizationInvitations({
 		t,
-		organizationId,
+		organizationId: rosterOrganizationId,
 		fetchMembers,
 	});
 

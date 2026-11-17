@@ -6,7 +6,8 @@ useHead({ title: () => t('terms.pageTitle') });
 
 const { public: config } = useRuntimeConfig();
 const operatorName = workspaceDisplayName(config);
-const { isAuthenticated } = useAuth();
+// Never `useAuth()` here: it would fetch a session, and this page is public.
+const isSignedIn = useKnownSignedIn();
 
 // The terms below name the vendor as the contracting party and include its
 // billing clauses, so they only describe the hosted deployment the vendor runs.
@@ -35,7 +36,7 @@ const contactAddress = [
 				<NuxtLink to="/" class="font-display text-2xl text-text-primary">{{
 					operatorName ?? 'Owlat'
 				}}</NuxtLink>
-				<UiButton v-if="isAuthenticated" variant="ghost" to="/dashboard">{{
+				<UiButton v-if="isSignedIn" variant="ghost" to="/dashboard">{{
 					t('terms.openApp')
 				}}</UiButton>
 				<UiButton v-else variant="ghost" to="/auth/login">{{ t('terms.signIn') }}</UiButton>

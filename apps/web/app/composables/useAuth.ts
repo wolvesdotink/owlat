@@ -1,5 +1,5 @@
 import type { BetterFetchError } from '@better-fetch/fetch';
-import { effectScope, type EffectScope } from 'vue';
+import { effectScope, type ComputedRef, type EffectScope } from 'vue';
 import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
@@ -120,6 +120,22 @@ function sessionStore(): SessionStore {
  */
 export function warmAuthSession(): void {
 	sessionStore();
+}
+
+/**
+ * Whether this document already knows the visitor is signed in, for a page
+ * that must not ask.
+ *
+ * Building the session store starts its `/get-session` fetch, and a public page
+ * (utils/publicRoutes.ts) makes no auth request. So this reads the store only
+ * when an app route built it earlier in the same document, and never builds
+ * it. A visit that starts on a public page reads false, with or without a
+ * session cookie: the sign-in page's guest guard sends a signed-in visitor on
+ * to the app.
+ */
+export function useKnownSignedIn(): ComputedRef<boolean> {
+	const session = sharedSession;
+	return computed(() => Boolean(session?.value.data));
 }
 
 export function useAuth() {

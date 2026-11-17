@@ -14,7 +14,9 @@ export class LoginPage extends BasePage {
 		// substring match resolves to two elements.
 		this.passwordInput = page.getByLabel('Password', { exact: true });
 		this.submitButton = page.getByRole('button', { name: 'Sign in' });
-		this.errorAlert = page.locator('.bg-error-subtle');
+		// By role and never by colour class. The toast stacks are empty alerts on
+		// every page, so only an alert that says something is the form's error.
+		this.errorAlert = page.getByRole('alert').filter({ hasText: /\S/ });
 	}
 
 	async goto() {
