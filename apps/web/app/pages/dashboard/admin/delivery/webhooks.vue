@@ -34,6 +34,7 @@ const activeWebhooksCount = computed(() => {
 const {
 	// Create
 	isCreateModalOpen,
+	openCreateModalForPreset,
 	createForm,
 	createFormError,
 	isCreating,
@@ -89,6 +90,14 @@ const {
 	toggleExpanded,
 	showNotification,
 } = useWebhookForm();
+
+// The Deliverability Center links here with `?preset=deliverability-alerts`
+// to open the form ready for an alert webhook.
+const route = useRoute();
+onMounted(() => {
+	const preset = route.query['preset'];
+	if (typeof preset === 'string') openCreateModalForPreset(preset);
+});
 
 // Delivery logs
 const {

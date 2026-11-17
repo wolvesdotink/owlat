@@ -312,7 +312,7 @@ async function resolveEvent(
 			return resolveMcpActionPush(ctx, userId, event.actionId, prefs);
 		case 'test':
 			return {
-				payload: testPayload(prefs.locale),
+				payload: testPayload(prefs.locale, event.isDeliverabilityAlert === true),
 				rule: { kind: 'always' },
 				ttlSeconds: TTL_SECONDS.test,
 			};

@@ -15,11 +15,14 @@
 import { getOptional } from '../lib/env';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { webhookOutcome, type WebhookOutcome } from './checklistAlertWebhooks';
 import { checklistTraits } from './checklistTraits';
 import { DELIVERABILITY_CHECKLIST, type DeliverabilityCheckId } from '@owlat/shared';
 
 type AlertId = Id<'deliverabilityRegressionAlerts'>;
+export type AlertResolution = 'manual' | 'automatic';
 
 /**
  * A blocking check of the server itself (reverse DNS, port 25, TLS,
@@ -85,9 +88,14 @@ export interface AlertChannelsView {
 	/** People the in-app notice was written for; null when none was attempted yet. */
 	inAppCount: number | null;
 	push: AlertPushTally;
+	/** The alert webhook deliveries; null before the announcement ran. */
+	webhook: WebhookOutcome | null;
 }
 
-export function alertChannelsView(alert: Doc<'deliverabilityRegressionAlerts'>): AlertChannelsView {
+export async function alertChannelsView(
+	ctx: QueryCtx,
+	alert: Doc<'deliverabilityRegressionAlerts'>
+): Promise<AlertChannelsView> {
 	return {
 		email: {
 			state: alert.emailNotificationState,
@@ -99,5 +107,20 @@ export function alertChannelsView(alert: Doc<'deliverabilityRegressionAlerts'>):
 			failed: alert.pushFailedCount ?? 0,
 			held: alert.pushHeldCount ?? 0,
 		},
+		webhook: alert.webhookDeliveryLogIds
+			? await webhookOutcome(ctx, alert.webhookDeliveryLogIds)
+			: null,
 	};
+}
+
+/** Queue the webhook announcement of an alert being raised or closed. */
+export async function scheduleAlertWebhook(
+	ctx: MutationCtx,
+	alertId: AlertId,
+	change: { kind: 'raised' } | { kind: 'resolved'; resolution: AlertResolution }
+): Promise<void> {
+	await ctx.scheduler.runAfter(0, internal.delivery.checklistAlertWebhooks.announce, {
+		alertId,
+		...change,
+	});
 }

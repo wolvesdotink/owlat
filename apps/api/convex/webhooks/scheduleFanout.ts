@@ -63,7 +63,7 @@ type WirePayload = Record<string, string | number | boolean | null>;
  * The full webhook body (`docs/webhook-payloads.md`). The timestamp is taken
  * here, when the event is emitted, not when the enqueue mutation runs.
  */
-function buildPayload<L extends WebhookEventLiteral>(spec: { literal: L; input: unknown }) {
+export function buildPayload<L extends WebhookEventLiteral>(spec: { literal: L; input: unknown }) {
 	const module = WEBHOOK_EVENT_REGISTRY[spec.literal];
 	const data = (module.build as (input: unknown) => WirePayload)(spec.input);
 	return { event: spec.literal, timestamp: new Date().toISOString(), data };

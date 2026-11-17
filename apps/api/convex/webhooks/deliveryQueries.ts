@@ -1,11 +1,12 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../lib/constants';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { webhookPayloadValidator } from '../lib/convexValidators';
 import { subscribableWebhookEventValidator, webhookEventValidator } from './events';
 import {
+	enqueueSubscribedDeliveries,
 	enqueueWebhookDelivery,
 	finishDelivery,
 	isOpenDeliveryStatus,
@@ -25,25 +26,7 @@ export const enqueueFanoutDeliveries = internalMutation({
 		// Full webhook payload object: { event, timestamp, data } — see docs/webhook-payloads.md.
 		payload: webhookPayloadValidator,
 	},
-	handler: async (ctx, args) => {
-		if (!(await isFeatureEnabled(ctx, 'webhooks'))) return [];
-		const webhooks = await ctx.db
-			.query('webhooks')
-			.withIndex('by_active', (q) => q.eq('isActive', true))
-			.collect(); // bounded: active webhooks (org-scale config)
-
-		const deliveries: Array<{ webhookId: Id<'webhooks'>; logId: Id<'webhookDeliveryLogs'> }> = [];
-		for (const webhook of webhooks) {
-			if (!webhook.events.includes(args.event)) continue;
-			const logId = await enqueueWebhookDelivery(ctx, {
-				webhookId: webhook._id,
-				event: args.event,
-				payload: args.payload,
-			});
-			deliveries.push({ webhookId: webhook._id, logId });
-		}
-		return deliveries;
-	},
+	handler: async (ctx, args) => await enqueueSubscribedDeliveries(ctx, args.event, args.payload),
 });
 
 /**

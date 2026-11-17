@@ -406,6 +406,9 @@ export const deliveryTables = {
 		pushDeliveredCount: v.optional(v.number()),
 		pushFailedCount: v.optional(v.number()),
 		pushHeldCount: v.optional(v.number()),
+		// The `deliverability.alert_raised` deliveries, one per subscribed
+		// webhook; their rows say whether the operator's endpoint got it.
+		webhookDeliveryLogIds: v.optional(v.array(v.id('webhookDeliveryLogs'))),
 		acknowledgedAt: v.optional(v.number()),
 		resolvedAt: v.optional(v.number()),
 		createdAt: v.number(),

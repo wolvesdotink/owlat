@@ -41,7 +41,7 @@ route 33 pages/dashboard/admin/delivery/advanced/controls.vue
 route 29 pages/dashboard/admin/delivery/advanced/independence.vue
 route 3 pages/dashboard/admin/delivery/advanced/index.vue
 route 25 pages/dashboard/admin/delivery/advanced/measurement.vue
-route 45 pages/dashboard/admin/delivery/deliverability.vue
+route 47 pages/dashboard/admin/delivery/deliverability.vue
 route 154 pages/dashboard/admin/delivery/dmarc.vue
 route 192 pages/dashboard/admin/delivery/domains.vue
 route 13 pages/dashboard/admin/delivery/failed.vue

@@ -590,6 +590,8 @@ import type * as delivery_checklistAlertAudience from '../delivery/checklistAler
 import type * as delivery_checklistAlertChannelLedger from '../delivery/checklistAlertChannelLedger.js';
 import type * as delivery_checklistAlertChannels from '../delivery/checklistAlertChannels.js';
 import type * as delivery_checklistAlertManagement from '../delivery/checklistAlertManagement.js';
+import type * as delivery_checklistAlertTest from '../delivery/checklistAlertTest.js';
+import type * as delivery_checklistAlertWebhooks from '../delivery/checklistAlertWebhooks.js';
 import type * as delivery_checklistAlertRecipientPersistence from '../delivery/checklistAlertRecipientPersistence.js';
 import type * as delivery_checklistAlertRecipients from '../delivery/checklistAlertRecipients.js';
 import type * as delivery_checklistAlertResolution from '../delivery/checklistAlertResolution.js';
@@ -1982,6 +1984,8 @@ import type * as webhooks_endpoints from '../webhooks/endpoints.js';
 import type * as webhooks_events from '../webhooks/events.js';
 import type * as webhooks_events_catalog from '../webhooks/events/catalog.js';
 import type * as webhooks_events_contactCreated_index from '../webhooks/events/contactCreated/index.js';
+import type * as webhooks_events_deliverabilityAlertRaised_index from '../webhooks/events/deliverabilityAlertRaised/index.js';
+import type * as webhooks_events_deliverabilityAlertResolved_index from '../webhooks/events/deliverabilityAlertResolved/index.js';
 import type * as webhooks_events_emailBounced_index from '../webhooks/events/emailBounced/index.js';
 import type * as webhooks_events_emailClicked_index from '../webhooks/events/emailClicked/index.js';
 import type * as webhooks_events_emailComplained_index from '../webhooks/events/emailComplained/index.js';
@@ -2574,6 +2578,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistAlertChannelLedger': typeof delivery_checklistAlertChannelLedger;
 	'delivery/checklistAlertChannels': typeof delivery_checklistAlertChannels;
 	'delivery/checklistAlertManagement': typeof delivery_checklistAlertManagement;
+	'delivery/checklistAlertTest': typeof delivery_checklistAlertTest;
+	'delivery/checklistAlertWebhooks': typeof delivery_checklistAlertWebhooks;
 	'delivery/checklistAlertRecipientPersistence': typeof delivery_checklistAlertRecipientPersistence;
 	'delivery/checklistAlertRecipients': typeof delivery_checklistAlertRecipients;
 	'delivery/checklistAlertResolution': typeof delivery_checklistAlertResolution;
@@ -4240,6 +4246,8 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events': typeof webhooks_events;
 	'webhooks/events/catalog': typeof webhooks_events_catalog;
 	'webhooks/events/contactCreated/index': typeof webhooks_events_contactCreated_index;
+	'webhooks/events/deliverabilityAlertRaised/index': typeof webhooks_events_deliverabilityAlertRaised_index;
+	'webhooks/events/deliverabilityAlertResolved/index': typeof webhooks_events_deliverabilityAlertResolved_index;
 	'webhooks/events/emailBounced/index': typeof webhooks_events_emailBounced_index;
 	'webhooks/events/emailClicked/index': typeof webhooks_events_emailClicked_index;
 	'webhooks/events/emailComplained/index': typeof webhooks_events_emailComplained_index;

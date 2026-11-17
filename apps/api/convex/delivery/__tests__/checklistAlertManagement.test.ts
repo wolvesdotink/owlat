@@ -5,13 +5,21 @@ import type { MutationCtx } from '../../_generated/server';
 import schema from '../../schema';
 import betterAuthSchema from '../../betterAuth/schema';
 import { betterAuthModules } from '../../__tests__/testModules';
-import { VAPID_ENV } from '../../push/__tests__/pushFixtures';
+import { DEVICE_KEYS, VAPID_ENV } from '../../push/__tests__/pushFixtures';
 import {
 	requireAdminContext,
 	requireOrgPermission,
 	type OrganizationRole,
 } from '../../lib/sessionOrganization';
 import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as SsrfGuard from '../../lib/ssrfGuard';
+import { fetchGuarded } from '../../lib/ssrfGuard';
+
+// The network edge of Web Push; everything behind it is real.
+vi.mock('../../lib/ssrfGuard', async (importOriginal) => ({
+	...(await importOriginal<typeof SsrfGuard>()),
+	fetchGuarded: vi.fn(async () => new Response(null, { status: 201 })),
+}));
 
 /** Who is calling. The role is checked by the real permission map, not stubbed open. */
 const caller = vi.hoisted(() => ({
@@ -28,6 +36,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	const gate = realPermissionGate(actual, () => caller.role);
 	return {
 		...actual,
+		requireOrgMember: vi.fn(async () => ({ ...caller })),
 		requireAdminContext: vi.fn(async () => {
 			gate('organization:manage');
 			return { ...caller };
@@ -272,6 +281,7 @@ describe('deliverability alert channels', () => {
 			// The owner switched the kind off: only the admin hears about it in the app.
 			inApp: { recipientCount: 1 },
 			push: { isConfigured: true, deviceCount: 2 },
+			webhook: { isFeatureOn: false, count: 0 },
 			me: { isSwitchOn: true, deviceCount: 2 },
 		});
 	});
@@ -290,5 +300,66 @@ describe('deliverability alert channels', () => {
 		const { t, ids } = await seedOrganization();
 		Object.assign(caller, { userId: ids['editor']!, role: 'editor' });
 		await expect(t.query(api.delivery.checklistAlertChannels.getChannels, {})).rejects.toThrow();
+	});
+
+	it('sends a test through every channel and reports each one', async () => {
+		for (const [key, value] of Object.entries(VAPID_ENV)) vi.stubEnv(key, value);
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.com');
+		// No transport configured: the test email fails without touching a network.
+		vi.stubEnv('EMAIL_PROVIDER', '');
+		const { t, ids } = await seedOrganization();
+		await t.run(async (ctx) => {
+			for (const device of await ctx.db.query('pushSubscriptions').collect()) {
+				await ctx.db.patch(device._id, DEVICE_KEYS);
+			}
+			await ctx.db.insert('instanceSettings', {
+				featureFlags: { webhooks: true },
+				createdAt: 1,
+			});
+			await ctx.db.insert('webhooks', {
+				name: 'On-call',
+				url: 'https://oncall.example.com/hook',
+				events: ['deliverability.alert_raised'],
+				secret: 'whsec_test',
+				isActive: true,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+
+		const result = await t.action(api.delivery.checklistAlertTest.sendTestAlert, {});
+		expect(result.email).toMatchObject({ status: 'failed' });
+		expect(result.inApp).toEqual({ isSwitchOn: true });
+		// The caller (the admin) has two devices; the push services accepted both.
+		expect(result.push).toEqual({ status: 'sent', delivered: 2, failed: 0 });
+		expect(vi.mocked(fetchGuarded)).toHaveBeenCalledTimes(2);
+		expect(result.webhook).toMatchObject({ status: 'queued' });
+		if (result.webhook.status !== 'queued') throw new Error('unreachable');
+		expect(
+			await t.query(api.delivery.checklistAlertTest.getTestWebhookResults, {
+				logIds: result.webhook.logIds,
+			})
+		).toEqual({ delivered: 0, failed: 0, pending: 1 });
+		const [log] = await t.run((ctx) => ctx.db.query('webhookDeliveryLogs').collect());
+		expect(log?.payload).toMatchObject({
+			event: 'deliverability.alert_raised',
+			data: { isTest: true },
+		});
+
+		// An editor cannot run it.
+		Object.assign(caller, { userId: ids['editor']!, role: 'editor' });
+		await expect(t.action(api.delivery.checklistAlertTest.sendTestAlert, {})).rejects.toThrow();
+	});
+
+	it('says why each channel was skipped', async () => {
+		vi.stubEnv('DEFAULT_FROM_DOMAIN', '');
+		vi.stubEnv('DEFAULT_FROM_EMAIL', '');
+		const { t } = await seedOrganization();
+		expect(await t.action(api.delivery.checklistAlertTest.sendTestAlert, {})).toEqual({
+			email: { status: 'skipped', reason: 'no_sender' },
+			inApp: { isSwitchOn: true },
+			push: { status: 'skipped', reason: 'not_configured' },
+			webhook: { status: 'skipped', reason: 'webhooks_off' },
+		});
 	});
 });

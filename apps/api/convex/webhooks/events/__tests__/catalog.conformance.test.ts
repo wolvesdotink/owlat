@@ -45,6 +45,8 @@ const CORE_KINDS = [
 	'email.failed',
 	'contact.created',
 	'topic.unsubscribed',
+	'deliverability.alert_raised',
+	'deliverability.alert_resolved',
 	'test',
 ];
 

@@ -3136,7 +3136,10 @@
 					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
 					"pushHeld": "Push wegen Ruhezeit auf {count} Gerät zurückgehalten | Push wegen Ruhezeit auf {count} Geräten zurückgehalten",
 					"pushFailed": "Push auf {count} Gerät fehlgeschlagen | Push auf {count} Geräten fehlgeschlagen",
-					"mayNotArrive": "Dieser Alarm betrifft den Server, über den seine E-Mail rausgeht. Sie kommt deshalb vielleicht nicht an. Hinweis in der App und Push hängen nicht von diesem Server ab."
+					"mayNotArrive": "Dieser Alarm betrifft den Server, über den seine E-Mail rausgeht. Sie kommt deshalb vielleicht nicht an. Hinweis in der App, Push und Alarm-Webhook hängen nicht von diesem Server ab.",
+					"webhook": "Webhook an {count} Endpunkt | Webhook an {count} Endpunkte",
+					"webhookPending": "Webhook wird noch an {count} Endpunkt gesendet | Webhook wird noch an {count} Endpunkte gesendet",
+					"webhookFailed": "Webhook an {count} Endpunkt fehlgeschlagen | Webhook an {count} Endpunkte fehlgeschlagen"
 				},
 				"detected": "Erkannt:",
 				"domain": "Domain:",
@@ -3779,7 +3782,9 @@
 					"inApp": "In der App für {count} Person | In der App für {count} Personen",
 					"noInApp": "Niemand in der App",
 					"push": "Push auf {count} Gerät | Push auf {count} Geräten",
-					"noPush": "Kein Push"
+					"noPush": "Kein Push",
+					"webhook": "Webhook an {count} Endpunkt | Webhook an {count} Endpunkte",
+					"noWebhook": "Kein Webhook eingerichtet"
 				},
 				"email": {
 					"title": "E-Mail",
@@ -3807,6 +3812,50 @@
 					"desktop": "Die Desktop-App zeigt Alarme als Systembenachrichtigungen.",
 					"setUpDevice": "Push hier einschalten",
 					"setUpServer": "So richtest du Push ein"
+				},
+				"webhook": {
+					"title": "Webhook-Endpunkt",
+					"reach": "Geht an {count} Webhook, signiert und mit Wiederholungen. | Geht an {count} Webhooks, signiert und mit Wiederholungen.",
+					"notSet": "Kein Webhook empfängt Zustellbarkeitsalarme. Schick sie an dein Bereitschafts-Tool oder deinen Team-Chat.",
+					"off": "Ausgehende Webhooks sind auf dieser Instanz ausgeschaltet.",
+					"add": "Alarm-Webhook hinzufügen",
+					"manage": "Webhooks verwalten"
+				}
+			},
+			"deliverabilityAlertTestPanel": {
+				"hint": "Schickt einen Testalarm über jeden Kanal: E-Mail und Push an dich, den Webhook an jeden Endpunkt, der Zustellbarkeitsalarme abonniert hat.",
+				"send": "Testalarm senden",
+				"operation": "Testalarm senden",
+				"toast": "Test-Zustellbarkeitsalarm: Ein echter Alarm würde hier erscheinen.",
+				"labels": {
+					"email": "E-Mail",
+					"inApp": "In der App",
+					"push": "Push-Benachrichtigung",
+					"webhook": "Webhook-Endpunkt"
+				},
+				"email": {
+					"accepted": "Angenommen für {to}",
+					"failed": "Nicht gesendet: {error}",
+					"noSender": "Nicht gesendet: System-Mails haben keine Absenderadresse",
+					"noAddress": "Nicht gesendet: Dein Konto hat keine E-Mail-Adresse"
+				},
+				"inApp": {
+					"shown": "Hier angezeigt",
+					"off": "Für dich aus, echte Alarme erscheinen hier also nicht"
+				},
+				"push": {
+					"delivered": "An {count} Gerät zugestellt | An {count} Geräte zugestellt",
+					"partial": "An {delivered} zugestellt, an {failed} fehlgeschlagen",
+					"notConfigured": "Push ist auf diesem Server nicht eingerichtet",
+					"noDevice": "Auf keinem deiner Geräte ist Push eingeschaltet",
+					"switchedOff": "Für dich aus, deshalb wurde kein Push gesendet"
+				},
+				"webhook": {
+					"sending": "Wird an {count} Endpunkt gesendet | Wird an {count} Endpunkte gesendet",
+					"delivered": "An {count} Endpunkt zugestellt | An {count} Endpunkte zugestellt",
+					"failed": "An {count} Endpunkt fehlgeschlagen, sieh dir das Zustellprotokoll an | An {count} Endpunkte fehlgeschlagen, sieh dir die Zustellprotokolle an",
+					"notSet": "Kein Webhook hat Zustellbarkeitsalarme abonniert",
+					"off": "Ausgehende Webhooks sind ausgeschaltet"
 				}
 			}
 		},
@@ -8116,7 +8165,9 @@
 					"emailOpened": "E-Mail geöffnet",
 					"emailSent": "E-Mail gesendet",
 					"test": "Test",
-					"topicUnsubscribed": "Thema abbestellt"
+					"topicUnsubscribed": "Thema abbestellt",
+					"deliverabilityAlertRaised": "Zustellbarkeitsalarm ausgelöst",
+					"deliverabilityAlertResolved": "Zustellbarkeitsalarm behoben"
 				},
 				"httpStatus": "HTTP-Status",
 				"listTitle": "Zustellprotokolle — {name}",
@@ -19649,10 +19700,21 @@
 				"topicUnsubscribed": {
 					"description": "Wenn ein Kontakt ein Thema abbestellt",
 					"label": "Thema abbestellt"
+				},
+				"deliverabilityAlertRaised": {
+					"label": "Zustellbarkeitsalarm ausgelöst",
+					"description": "Wenn eine bestandene Zustellbarkeitsprüfung wieder fehlschlägt, etwa bei gesperrtem Port 25"
+				},
+				"deliverabilityAlertResolved": {
+					"label": "Zustellbarkeitsalarm behoben",
+					"description": "Wenn ein Zustellbarkeitsalarm behoben ist"
 				}
 			},
 			"updateOperation": "Webhook aktualisieren",
-			"updated": "Webhook erfolgreich aktualisiert"
+			"updated": "Webhook erfolgreich aktualisiert",
+			"presets": {
+				"deliverabilityAlerts": "Zustellbarkeitsalarme"
+			}
 		},
 		"welcomeFlow": {
 			"steps": {

@@ -44,7 +44,7 @@ const C = 'components.delivery.deliverabilityRegressionAlerts.channels';
  * reads as delivered when the alert is about the server the email leaves from.
  */
 function channelSummary(channels: DeliverabilityAlertChannels): string {
-	const { email, inAppCount, push } = channels;
+	const { email, inAppCount, push, webhook } = channels;
 	const parts = [
 		email.state === 'sent'
 			? t(email.isOnAffectedTransport ? `${C}.emailOnAffectedServer` : `${C}.emailSent`)
@@ -55,6 +55,9 @@ function channelSummary(channels: DeliverabilityAlertChannels): string {
 	if (push.delivered > 0) parts.push(t(`${C}.push`, push.delivered));
 	if (push.held > 0) parts.push(t(`${C}.pushHeld`, push.held));
 	if (push.failed > 0) parts.push(t(`${C}.pushFailed`, push.failed));
+	if (webhook && webhook.delivered > 0) parts.push(t(`${C}.webhook`, webhook.delivered));
+	if (webhook && webhook.pending > 0) parts.push(t(`${C}.webhookPending`, webhook.pending));
+	if (webhook && webhook.failed > 0) parts.push(t(`${C}.webhookFailed`, webhook.failed));
 	return parts.join(' · ');
 }
 

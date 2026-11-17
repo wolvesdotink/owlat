@@ -59,9 +59,30 @@ export const WEBHOOK_EVENTS = [
 		label: `${K}.events.topicUnsubscribed.label`,
 		description: `${K}.events.topicUnsubscribed.description`,
 	},
+	{
+		value: 'deliverability.alert_raised',
+		label: `${K}.events.deliverabilityAlertRaised.label`,
+		description: `${K}.events.deliverabilityAlertRaised.description`,
+	},
+	{
+		value: 'deliverability.alert_resolved',
+		label: `${K}.events.deliverabilityAlertResolved.label`,
+		description: `${K}.events.deliverabilityAlertResolved.description`,
+	},
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number]['value'];
+
+/**
+ * The webhook the Deliverability Center's "Add alert webhook" opens the form
+ * for: both deliverability alert events and nothing else, so the operator's
+ * on-call endpoint is not flooded with email events.
+ */
+export const DELIVERABILITY_ALERT_WEBHOOK_PRESET = 'deliverability-alerts';
+const DELIVERABILITY_ALERT_EVENTS: WebhookEvent[] = [
+	'deliverability.alert_raised',
+	'deliverability.alert_resolved',
+];
 
 /**
  * The message KEY for an event's label, or the raw event id when no definition
@@ -121,6 +142,14 @@ export function useWebhookForm() {
 		createForm.events = [];
 		createFormError.value = '';
 		isCreateModalOpen.value = true;
+	};
+
+	/** Open the create form filled in for a preset (`?preset=` on the webhooks page). */
+	const openCreateModalForPreset = (preset: string) => {
+		if (preset !== DELIVERABILITY_ALERT_WEBHOOK_PRESET) return;
+		openCreateModal();
+		createForm.name = t(`${K}.presets.deliverabilityAlerts`);
+		createForm.events = [...DELIVERABILITY_ALERT_EVENTS];
 	};
 
 	const closeCreateModal = () => {
@@ -319,6 +348,7 @@ export function useWebhookForm() {
 
 		// Create
 		isCreateModalOpen,
+		openCreateModalForPreset,
 		createForm,
 		createFormError,
 		isCreating,

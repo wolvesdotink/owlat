@@ -61,6 +61,8 @@ interface Copy {
 	quietBody: (count: number) => string;
 	testTitle: string;
 	testBody: string;
+	alertTestTitle: string;
+	alertTestBody: string;
 	mcpTitle: string;
 	mcpBody: (client: string, verb: string) => string;
 	mcpPrivate: string;
@@ -91,6 +93,8 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} notifications arrived during quiet hours`,
 		testTitle: 'Notifications are on',
 		testBody: 'This device will show Owlat notifications.',
+		alertTestTitle: 'Test deliverability alert',
+		alertTestBody: 'A real alert would reach this device. No check regressed.',
 		mcpTitle: 'Approval needed',
 		mcpBody: (client, verb) => `${client} wants to ${verb}`,
 		mcpPrivate: 'An AI client is waiting for your approval',
@@ -125,6 +129,9 @@ const COPY: Record<AppLocale, Copy> = {
 				: `${count} Benachrichtigungen sind während der Ruhezeiten eingegangen`,
 		testTitle: 'Benachrichtigungen sind an',
 		testBody: 'Dieses Gerät zeigt Owlat-Benachrichtigungen an.',
+		alertTestTitle: 'Test-Zustellbarkeitsalarm',
+		alertTestBody:
+			'Ein echter Alarm würde dieses Gerät erreichen. Keine Prüfung ist zurückgefallen.',
 		mcpTitle: 'Freigabe nötig',
 		mcpBody: (client, verb) => `${client} möchte ${verb}`,
 		mcpPrivate: 'Ein KI-Client wartet auf deine Freigabe',
@@ -274,8 +281,19 @@ export function quietSummaryPayload(count: number, locale: string | undefined): 
 	};
 }
 
-export function testPayload(locale: string | undefined): PushPayload {
+export function testPayload(
+	locale: string | undefined,
+	isDeliverabilityAlert = false
+): PushPayload {
 	const copy = copyFor(locale);
+	if (isDeliverabilityAlert) {
+		return {
+			title: copy.alertTestTitle,
+			body: copy.alertTestBody,
+			tag: 'test',
+			url: '/dashboard/admin/delivery/deliverability',
+		};
+	}
 	return {
 		title: copy.testTitle,
 		body: copy.testBody,

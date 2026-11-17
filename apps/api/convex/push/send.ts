@@ -119,3 +119,23 @@ export const deliverQuietSummary = internalAction({
 		await ctx.runMutation(internal.push.dispatch.recordOutcomes, { outcomes });
 	},
 });
+
+/**
+ * The Deliverability Center's test alert, to every device of one person, with
+ * what the push services answered: the test panel shows it per channel.
+ */
+export const deliverAlertTest = internalAction({
+	args: { userId: v.string() },
+	handler: async (ctx, args): Promise<{ delivered: number; failed: number }> => {
+		const plan: DeliveryPlan = await ctx.runQuery(
+			internal.push.delivery.planAlertTestDelivery,
+			args
+		);
+		const outcomes = await pushAll(plan.deliveries);
+		if (outcomes.length > 0) {
+			await ctx.runMutation(internal.push.dispatch.recordOutcomes, { outcomes });
+		}
+		const delivered = outcomes.filter((row) => row.outcome === 'delivered').length;
+		return { delivered, failed: outcomes.length - delivered };
+	},
+});
