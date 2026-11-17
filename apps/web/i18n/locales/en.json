@@ -1795,8 +1795,8 @@
 					"askNamedAdmin": "Ask {names} to add one. Only admins can add senders.",
 					"curatedHint": "Recipients see this name and address. Manage the list in Settings → Campaign senders.",
 					"domainNeverChecked": "never",
-					"domainNotRegistered": "Domain \"{domain}\" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in Settings → Domains.",
-					"domainNotVerified": "Domain \"{domain}\" is not verified. You can continue editing, but sending is disabled until DNS verification completes in Settings → Domains.",
+					"domainNotRegistered": "Domain \"{domain}\" is not registered. You can continue editing, but sending is disabled until you add and verify this domain in {domains}.",
+					"domainNotVerified": "Domain \"{domain}\" is not verified. You can continue editing, but sending is disabled until DNS verification completes in {domains}.",
 					"domainStale": "Domain verification is stale (last checked {lastChecked}). Consider re-verifying.",
 					"domainVerified": "Domain \"{domain}\" is verified",
 					"emptyAdmin": "No campaign senders yet. Add the address this campaign should come from.",
@@ -1816,7 +1816,10 @@
 					"loadFailed": "Could not load campaign senders. Please try again.",
 					"loading": "Loading senders…",
 					"selectPlaceholder": "Choose a sender",
-					"sendFrom": "Send from"
+					"sendFrom": "Send from",
+					"domainNotRegisteredMember": "Domain \"{domain}\" is not registered. You can continue editing, but sending is disabled until an admin adds and verifies this domain.",
+					"domainNotVerifiedMember": "Domain \"{domain}\" is not verified. You can continue editing, but sending is disabled until an admin finishes its DNS verification.",
+					"domainsLink": "Sending domains"
 				},
 				"setupStep": {
 					"addABTest": "Add an A/B test",
@@ -2560,7 +2563,9 @@
 				"remove": "Remove suppression",
 				"removing": "Removing…",
 				"title": "Suppressed",
-				"why": "Why?"
+				"why": "Why?",
+				"lapsedTitle": "Suppression expired",
+				"lapsedDetail": "The mailbox refused mail for a while on {date}, which stopped sending until {expiry}. That has expired, so mail goes out again."
 			},
 			"timelineStatsCard": {
 				"byChannel": "By channel",
@@ -4719,6 +4724,11 @@
 				"selected": "{count} selected",
 				"assign": "Assign",
 				"clear": "Clear selection"
+			},
+			"systemMailbox": {
+				"postmaster": "Postmaster mail",
+				"abuse": "Abuse report",
+				"explain": "Sent to this instance's postmaster or abuse address. Only owners and admins see it, it is not linked to a contact, and it gets no AI draft."
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -7416,7 +7426,8 @@
 					"created": "Created, not started",
 					"paused": "Paused",
 					"dead": "Failed"
-				}
+				},
+				"onInstance": "Services restart on your Owlat instance itself. Open its features page in your browser to apply the change."
 			},
 			"team": {
 				"inviteModal": {
@@ -7677,7 +7688,8 @@
 				},
 				"unknown": "{count} port this instance needs could not be measured. | {count} ports this instance needs could not be measured.",
 				"unknownHint": "The probe reached neither a verdict nor a firewall — the service that would answer is not running here, or the name did not resolve. That is not the same as a closed port, so nothing is claimed either way.",
-				"declined": "The port check did not run. The updater is up; it declined this request."
+				"declined": "The port check did not run. The updater is up; it declined this request.",
+				"onInstance": "Port checks run on your Owlat instance itself. Open this page in your browser to run them."
 			},
 			"updateProgress": {
 				"heading": "Updating to v{version}",
@@ -8618,6 +8630,12 @@
 					"minutes": "minute | {count} minutes"
 				}
 			}
+		},
+		"instancePageNotice": {
+			"open": "Open in browser",
+			"opensInBrowser": "(opens in your browser)",
+			"noInstance": "Open this page on your Owlat instance in a browser.",
+			"openFailed": "Your browser didn't open. Go to {url}."
 		}
 	},
 	"compose": {
@@ -8820,6 +8838,12 @@
 						"title": "Bounces and complaints cannot reach Owlat",
 						"detail": "{variables} is not set, so every bounce and complaint report is rejected and nothing is suppressed. Campaigns are refused until it is set; transactional mail still goes out.",
 						"action": "Open the delivery provider"
+					},
+					"microsoftSnds": {
+						"title": "Microsoft reputation (SNDS)",
+						"red": "SNDS rates {ip} red for {day}: Outlook.com and Hotmail filter most of its mail. Owlat sends Microsoft mail from this address at a reduced rate until SNDS rates it green again. Other addresses and providers are not affected.",
+						"yellow": "SNDS rates {ip} yellow for {day}: Microsoft filters some of its mail. Nothing is held back yet.",
+						"action": "How to recover a red address"
 					}
 				},
 				"dmarc": {
@@ -10647,7 +10671,8 @@
 							"removing": "Being removed",
 							"restarting": "Restarting",
 							"running": "Running"
-						}
+						},
+						"onInstance": "The instance's updater reports its containers. Open this page in your browser to see them."
 					},
 					"duration": {
 						"minutes": "{minutes}m {seconds}s",
@@ -10719,7 +10744,8 @@
 						"updateGuide": "Update guide",
 						"updateNowTo": "Update to v{version}",
 						"viewOnGithub": "Release on GitHub",
-						"whatsNew": "What's new in v{version}"
+						"whatsNew": "What's new in v{version}",
+						"onInstance": "Updates are applied on your Owlat instance itself. Open its system page in your browser to update."
 					}
 				}
 			},
@@ -15876,6 +15902,10 @@
 			"send_stopped": {
 				"action": "Resume",
 				"chip": "Send stopped"
+			},
+			"start_refused": {
+				"chip": "Didn't start",
+				"action": "Review"
 			}
 		},
 		"campaignCapacityRefusal": {
@@ -16752,6 +16782,7 @@
 				"sendingIps": {
 					"action": "See IP checks",
 					"all_held": "Every sending IP is held back by a failed check or is out of rotation, so the mail server can't send.",
+					"microsoftHeld": "Microsoft SNDS rates {ips} red, so mail to Outlook.com and Hotmail goes out from it at a reduced rate. Everything else is sent as usual.",
 					"ready": "Every sending IP is in rotation.",
 					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
 					"title": "Sending IPs"
@@ -18595,6 +18626,10 @@
 			"unengaged": {
 				"label": "Unengaged — ignored every message for months",
 				"phrase": "paused on {date} after months with no opens or clicks"
+			},
+			"softBounced": {
+				"label": "Temporary bounce — the mailbox kept refusing mail (for example, full)",
+				"phrase": "bounced temporarily on {date} (the mailbox was full or unavailable)"
 			}
 		},
 		"taskCardRegistry": {
@@ -20053,6 +20088,16 @@
 				"invalidAddress": "That isn't a valid email address.",
 				"nameTooLong": "Keep the name to one line of at most {max} characters.",
 				"noDomains": "Add a sending domain first. Mail only goes out from a verified domain."
+			}
+		},
+		"useCampaignStatusBadge": {
+			"status": {
+				"draft": "Draft",
+				"scheduled": "Scheduled",
+				"sending": "Sending",
+				"sent": "Sent",
+				"cancelled": "Cancelled",
+				"pendingReview": "Under review"
 			}
 		}
 	},

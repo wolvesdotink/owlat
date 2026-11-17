@@ -28,7 +28,8 @@ import { internal } from '../_generated/api';
 import { logError, logInfo } from '../lib/runtimeLog';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { isSuppressionExpired, suppressionExpiresAt } from '@owlat/shared/softBounceSuppression';
-import { getMtaConfig } from '../mail/mtaClient';
+import { getMtaConfig, mtaFetch } from '../mail/mtaClient';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { bounceTypeValidator, type BlockReason } from '../lib/literalValidators';
 
@@ -186,6 +187,65 @@ export const unmirror = internalAction({
 			logInfo(`[suppressionMirror] removed ${redactEmailAddress(email)} from MTA`);
 		} catch (error) {
 			logError('[suppressionMirror] failed to remove MTA mirror:', error);
+		}
+	},
+});
+
+/**
+ * Delays before the next try when the MTA could not take a marketing opt-out.
+ * The last one is past the point where a held message is likely to still be
+ * queued for a short-lived outage, so a longer one would only add load.
+ */
+const OPT_OUT_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000];
+
+/**
+ * Tell the MTA a contact opted out of marketing, so it withdraws the campaign
+ * and automation mail to them that it still holds (`POST
+ * /suppression/marketing-opt-out`). Convex's own gate stops every marketing
+ * message that has not reached the MTA yet; this covers the ones that have.
+ *
+ * Retried while the MTA is down or answers 5xx/429. Any other refusal (an MTA
+ * that does not have the endpoint answers 404) is logged and dropped: the
+ * opt-out itself is already recorded on the contact.
+ */
+export const withdrawQueuedMarketing = internalAction({
+	args: { email: v.string(), optedOutAt: v.number(), attempt: v.optional(v.number()) },
+	handler: async (ctx, args) => {
+		const mta = getMtaConfig();
+		if (!mta) return;
+		const attempt = args.attempt ?? 0;
+		let retry = false;
+		try {
+			const organizationId = await getSingletonOrganizationId(ctx);
+			const res = await mtaFetch(
+				mta,
+				'/suppression/marketing-opt-out',
+				{
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ organizationId, email: args.email, optedOutAt: args.optedOutAt }),
+				},
+				FETCH_TIMEOUTS.internalPush
+			);
+			if (res.ok) return;
+			retry = res.status >= 500 || res.status === 429;
+			logError(
+				`[suppressionMirror] MTA marketing opt-out returned ${res.status} for ${redactEmailAddress(args.email)}`
+			);
+		} catch (err) {
+			retry = true;
+			logError('[suppressionMirror] failed to send marketing opt-out to MTA:', err);
+		}
+		const delay = OPT_OUT_RETRY_DELAYS_MS[attempt];
+		if (retry && delay !== undefined) {
+			await ctx.scheduler.runAfter(
+				delay,
+				internal.delivery.suppressionMirror.withdrawQueuedMarketing,
+				{
+					...args,
+					attempt: attempt + 1,
+				}
+			);
 		}
 	},
 });

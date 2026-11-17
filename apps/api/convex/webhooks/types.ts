@@ -332,11 +332,9 @@ export type InboundEvent =
 			externalMessageId?: string;
 			metadata?: Record<string, unknown>;
 	  }
-	| {
-			kind: 'internal.circuit_breaker_tripped';
-			message: string;
-			bounceRate?: number;
-	  }
+	| { kind: 'internal.circuit_breaker_tripped'; message: string; bounceRate?: number }
+	// A recipient mailed the signed `mailto:` unsubscribe address of an MTA message.
+	| { kind: 'internal.mailed_unsubscribe'; providerMessageId: string; at: number }
 	| {
 			kind: 'internal.campaign_complaint_rate';
 			eventId: string;

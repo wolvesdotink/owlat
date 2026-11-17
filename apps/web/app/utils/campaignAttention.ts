@@ -5,15 +5,16 @@
  *
  * The campaign command center opens on "Needs attention" so the operator sees
  * only campaigns that are actually waiting on them — an undecided A/B test, a
- * stopped/failed send, something held for review, or a send that goes out
- * today. Everything else is browsing (All / Drafts / Scheduled / Sent).
+ * stopped/failed send, something held for review, a scheduled start that was
+ * refused, or a send that goes out today. Everything else is browsing (All / Drafts / Scheduled / Sent).
  *
  * Precedence (highest first) — a campaign lands in exactly one bucket so the
  * row shows at most one attention chip + at most one inline action:
  *   1. A/B decision   — the test has run and no winner is picked yet.
  *   2. Needs review    — held in review, or its content was blocked.
- *   3. Send stopped    — a cancelled/failed send the operator may want to revive.
- *   4. Going out today  — scheduled for today (or overdue and still scheduled).
+ *   3. Didn't start    — a draft again because its scheduled start was refused.
+ *   4. Send stopped    — a cancelled/failed send the operator may want to revive.
+ *   5. Going out today  — scheduled for today (or overdue and still scheduled).
  *
  * Copy is human: "Pick winner", "Review", "Resume" — no enum strings, no AI
  * jargon. Pure and clock-injectable so the ordering logic is unit-testable.
@@ -31,6 +32,7 @@ const K = 'shared.campaignAttention';
 export type CampaignAttentionReason =
 	| 'ab_decision'
 	| 'needs_review'
+	| 'start_refused'
 	| 'send_stopped'
 	| 'scheduled_today';
 
@@ -42,6 +44,8 @@ export interface CampaignAttentionInput {
 	abTestStatus?: 'pending' | 'testing' | 'winner_selected' | null;
 	abWinner?: 'A' | 'B' | null;
 	contentBlockReason?: string | null;
+	/** Why the last scheduled start did not happen (the start gate's stored refusal). */
+	startRefusal?: object | null;
 	/** Injectable clock for deterministic tests. Defaults to `Date.now()`. */
 	now?: number;
 }
@@ -79,6 +83,11 @@ export const CAMPAIGN_ATTENTION_DISPLAY: Record<CampaignAttentionReason, Campaig
 			chipLabel: `${K}.needs_review.chip`,
 			dot: 'bg-warning',
 			actionLabel: `${K}.needs_review.action`,
+		},
+		start_refused: {
+			chipLabel: `${K}.start_refused.chip`,
+			dot: 'bg-warning',
+			actionLabel: `${K}.start_refused.action`,
 		},
 		send_stopped: {
 			chipLabel: `${K}.send_stopped.chip`,
@@ -143,12 +152,19 @@ export function classifyCampaignAttention(input: CampaignAttentionInput): Campai
 		return needing('needs_review');
 	}
 
-	// 3. A stopped/failed send the operator may want to revive.
+	// 3. The start gate gave up on a scheduled start and put the campaign back
+	//    to draft with the reason. It stays a draft until someone fixes the cause
+	//    and schedules it again, which clears the refusal.
+	if (input.status === 'draft' && input.startRefusal != null) {
+		return needing('start_refused');
+	}
+
+	// 4. A stopped/failed send the operator may want to revive.
 	if (input.status === 'cancelled') {
 		return needing('send_stopped');
 	}
 
-	// 4. Scheduled for today, or overdue and still scheduled (the cron hasn't
+	// 5. Scheduled for today, or overdue and still scheduled (the cron hasn't
 	//    fired yet) — surfaced so it isn't a surprise. View-only; no inline action.
 	if (
 		input.status === 'scheduled' &&

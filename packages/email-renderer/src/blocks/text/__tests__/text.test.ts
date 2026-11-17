@@ -96,6 +96,28 @@ describe('textModule.html (column)', () => {
 	});
 });
 
+describe('textModule.html — postal address marker', () => {
+	const address: TextBlockContent = {
+		html: '1 Example Street',
+		blockType: 'paragraph',
+		fontSize: 12,
+		textColor: '#000',
+		postalAddress: true,
+	};
+
+	it('marks the block that prints the postal address, in either placement', () => {
+		expect(textModule.html(args(address))).toMatch(/^<div data-owlat-postal-address style=/);
+		expect(textModule.html(args(address, 'column'))).toContain(
+			'<td data-owlat-postal-address style='
+		);
+	});
+
+	it('leaves every other text block unmarked', () => {
+		const { postalAddress: _flag, ...plain } = address;
+		expect(textModule.html(args(plain))).not.toContain('data-owlat-postal-address');
+	});
+});
+
 describe('textModule.html — sanitization (stored XSS)', () => {
 	// The text block's `html` is author-supplied and is emitted verbatim into
 	// outbound email HTML AND the non-sandboxed in-app editor canvas. It must be

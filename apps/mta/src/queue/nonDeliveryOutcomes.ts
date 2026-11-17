@@ -160,9 +160,27 @@ export async function emitRunawayDeferBounce(
 }
 
 /**
+ * What Convex records for each drop. An unsubscribed contact's withdrawn
+ * marketing message is `RECIPIENT_UNSUBSCRIBED`, the code Convex's own
+ * pre-dispatch gate records, so the send reads "not sent: unsubscribed" and no
+ * `email.failed` webhook fires for it. None of them is a bounce.
+ */
+const DROP_FAILURE: Record<DropResult['status'], { message: string; errorCode: string }> = {
+	// The screening reason carries a live rspamd score, which is re-evaluated on
+	// a replay and would break the outbox payload comparison. The exact score
+	// stays in the delivery log.
+	screened: { message: 'Content screening rejected the message', errorCode: 'CONTENT_SCREENED' },
+	suppressed: { message: 'Recipient suppressed by MTA policy', errorCode: 'RECIPIENT_SUPPRESSED' },
+	unsubscribed: {
+		message: 'Contact unsubscribed from marketing before delivery',
+		errorCode: 'RECIPIENT_UNSUBSCRIBED',
+	},
+};
+
+/**
  * Apply the side effects for a pipeline drop. Status-specific:
  *   - `screened`: warn log, Prometheus rejected-counter inc, delivery log.
- *   - `suppressed`: info log, delivery log.
+ *   - `suppressed`, `unsubscribed`: info log, delivery log.
  */
 export async function handleDrop(
 	piped: DropResult,
@@ -191,6 +209,11 @@ export async function handleDrop(
 				outcome: 'rejected',
 			});
 		}
+	} else if (piped.status === 'unsubscribed') {
+		logger.info(
+			{ messageId: job.messageId, to: job.to },
+			'Recipient unsubscribed from marketing — withdrawing queued message'
+		);
 	} else {
 		logger.info({ messageId: job.messageId, to: job.to }, 'Recipient suppressed — skipping');
 	}
@@ -207,20 +230,13 @@ export async function handleDrop(
 			organizationId: job.organizationId,
 			deliveryDomain: job.deliveryDomain,
 			...(job.correlationId ? { correlationId: job.correlationId } : {}),
-			// The screening reason carries a live rspamd score, which is
-			// re-evaluated on a replay and would break the outbox payload
-			// comparison. The exact score stays in the delivery log above.
-			message:
-				piped.status === 'screened'
-					? 'Content screening rejected the message'
-					: 'Recipient suppressed by MTA policy',
-			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
+			...DROP_FAILURE[piped.status],
 			timestamp: droppedAt,
 		},
 	});
 
 	await applyEffects(effects, deps);
-	// Screening and suppression drop the message before any SMTP conversation,
+	// Every drop ends the message before any SMTP conversation,
 	// so the reserved warming slot and half-open probe were never consumed.
 	await releaseRoutingReservations(job, deps);
 }

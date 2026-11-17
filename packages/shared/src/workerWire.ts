@@ -53,7 +53,7 @@ export interface WorkerWireWindow {
 
 const WIRE_WINDOWS: Readonly<Record<Exclude<WorkerService, 'imap'>, WorkerWireWindow>> = {
 	'mail-sync': { current: 3, minSupported: 0 },
-	mta: { current: 1, minSupported: 0 },
+	mta: { current: 2, minSupported: 0 },
 	'code-worker': { current: 1, minSupported: 0 },
 };
 
@@ -67,6 +67,9 @@ const WIRE_WINDOWS: Readonly<Record<Exclude<WorkerService, 'imap'>, WorkerWireWi
  *   and reads `sendPath` and `graphAccessToken` off its credentials. An older
  *   backend lacks the call and the fields, and the worker then sends through
  *   SMTP as before.
+ * - mta 2: the MTA reads `requireDkimSignature` off the verify-credential
+ *   answer and holds submitted mail that is owed a signature. An older backend
+ *   omits it, and the MTA then sends submitted mail as before.
  */
 export function workerWireWindow(service: WorkerService): WorkerWireWindow {
 	if (service === 'imap') {

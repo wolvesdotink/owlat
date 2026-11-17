@@ -108,6 +108,14 @@ export interface MtaSendRequest {
 	 * and every other address stays blocked. No MTA-side special-casing needed.
 	 */
 	allowedFromAddresses?: string[];
+	/**
+	 * Governed only. Set by a Convex that processes `unsubscribed` feedback
+	 * events, on a marketing message whose `List-Unsubscribe` carries a
+	 * one-click target. The MTA then adds a signed `mailto:` target on its own
+	 * return-path host in front of the HTTPS one. An MTA without the feature
+	 * ignores the field, so the header stays HTTPS-only.
+	 */
+	listUnsubscribeMailto?: boolean;
 	/** Opaque lease token returned by POST /send/decision. */
 	routingLease?: string;
 	allowWarmupOverflow?: boolean;

@@ -254,8 +254,10 @@ function runAttentionAction(row: DecoratedRow) {
 		case 'needs_review':
 		// The review surface is the editor's pending-review panel — NOT the
 		// report (which shows zeros for an unsent campaign). A stopped send is
-		// resumed from the same editor, so both land there.
+		// resumed from the same editor, so both land there, and so does a refused
+		// start, whose reason the editor shows in place.
 		case 'send_stopped':
+		case 'start_refused':
 			router.push(`/dashboard/campaigns/${id}/edit`);
 			break;
 		default:

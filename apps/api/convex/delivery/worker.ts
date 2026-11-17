@@ -436,6 +436,9 @@ export const sendSingleEmail = internalAction({
 			// dispatch never point-reads a contact per send; absent for unscored
 			// contacts and for sends with no contact record at all.
 			engagementScore: envelopeInput.engagementScore,
+			// Marketing mail carries the one-click pair (asserted above); the MTA
+			// may add a mailto target beside it, a relay never does.
+			listUnsubscribeMailto: emailPurpose === 'marketing',
 			sendRef: dispatchRefFor(envelopeInput),
 			retryState,
 			message: {

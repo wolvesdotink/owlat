@@ -592,6 +592,7 @@ import type * as delivery_checklistAlertRecipients from '../delivery/checklistAl
 import type * as delivery_checklistAlertResolution from '../delivery/checklistAlertResolution.js';
 import type * as delivery_checklistAlertState from '../delivery/checklistAlertState.js';
 import type * as delivery_checklistAlerts from '../delivery/checklistAlerts.js';
+import type * as delivery_checklistApplicability from '../delivery/checklistApplicability.js';
 import type * as delivery_checklistCenterView from '../delivery/checklistCenterView.js';
 import type * as delivery_checklistDeploymentValidators from '../delivery/checklistDeploymentValidators.js';
 import type * as delivery_checklistDkimValidation from '../delivery/checklistDkimValidation.js';
@@ -757,6 +758,7 @@ import type * as delivery_snds from '../delivery/snds.js';
 import type * as delivery_sndsConfig from '../delivery/sndsConfig.js';
 import type * as delivery_sndsFeed from '../delivery/sndsFeed.js';
 import type * as delivery_sndsPoll from '../delivery/sndsPoll.js';
+import type * as delivery_sndsStanding from '../delivery/sndsStanding.js';
 import type * as delivery_status from '../delivery/status.js';
 import type * as delivery_statusActions from '../delivery/statusActions.js';
 import type * as delivery_stuckSendFeedback from '../delivery/stuckSendFeedback.js';
@@ -2580,6 +2582,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/automatedOpens': typeof delivery_automatedOpens;
 	'delivery/cronRegistration': typeof delivery_cronRegistration;
 	'delivery/checklistAlerts': typeof delivery_checklistAlerts;
+	'delivery/checklistApplicability': typeof delivery_checklistApplicability;
 	'delivery/checklistCenterView': typeof delivery_checklistCenterView;
 	'delivery/checklistDeploymentValidators': typeof delivery_checklistDeploymentValidators;
 	'delivery/checklistDkimValidation': typeof delivery_checklistDkimValidation;
@@ -2744,6 +2747,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sndsConfig': typeof delivery_sndsConfig;
 	'delivery/sndsFeed': typeof delivery_sndsFeed;
 	'delivery/sndsPoll': typeof delivery_sndsPoll;
+	'delivery/sndsStanding': typeof delivery_sndsStanding;
 	'delivery/status': typeof delivery_status;
 	'delivery/statusActions': typeof delivery_statusActions;
 	'delivery/stuckSendFeedback': typeof delivery_stuckSendFeedback;

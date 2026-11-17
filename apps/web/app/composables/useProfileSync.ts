@@ -17,6 +17,7 @@
  */
 import { ref } from 'vue';
 import { apiFetch } from '~/lib/csrfFetch';
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import {
 	getActiveProfiles,
 	type FeatureFlagRegistry,
@@ -60,6 +61,11 @@ const driftProbed = ref(false);
 
 export function useProfileSync() {
 	const { t } = useI18n();
+	// The probe and the apply are server routes (`/api/system/profile-drift`,
+	// `/api/system/apply-profiles`) the static desktop build does not have. There
+	// the banner still names the drift a flag change caused and offers the
+	// instance's features page in the browser instead of Apply.
+	const isDesktop = isDesktopRuntime();
 
 	/**
 	 * Record a committed flag change. A non-empty symmetric difference between
@@ -99,7 +105,7 @@ export function useProfileSync() {
 	 * CLI-fallback copy instead of silently pretending the stack is converged.
 	 */
 	async function hydrateFromProbe() {
-		if (driftProbed.value) return;
+		if (isDesktop || driftProbed.value) return;
 		driftProbed.value = true;
 		try {
 			const resp = await $fetch<ProfileDriftResponse>('/api/system/profile-drift', { retry: 0 });
@@ -122,7 +128,7 @@ export function useProfileSync() {
 	 * with the CLI fallback instructions.
 	 */
 	async function apply(flags: Record<string, boolean>) {
-		if (isApplying.value) return;
+		if (isDesktop || isApplying.value) return;
 		isApplying.value = true;
 		applyError.value = null;
 		applyBusy.value = false;
@@ -159,6 +165,7 @@ export function useProfileSync() {
 	}
 
 	return {
+		isDesktop,
 		pendingServices,
 		isApplying,
 		serviceResults,

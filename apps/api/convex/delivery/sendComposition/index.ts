@@ -10,6 +10,7 @@
  * adding a registry entry is a compile error.
  */
 
+import { POSTAL_ADDRESS_BLOCK_ATTRIBUTE } from '@owlat/shared/brandKitBlocks';
 import { htmlToPlainText } from '@owlat/shared/html';
 
 import { composeArchiveSnapshot } from './archive_snapshot';
@@ -17,7 +18,7 @@ import { composeAutomation } from './automation';
 import { composeCampaign } from './campaign';
 import { composeTest } from './test';
 import { composeTransactional } from './transactional';
-import { footerText } from './footer';
+import { addressLines, footerText } from './footer';
 import { automationVariables, personalize, withUnsubscribeLink } from './personalization';
 import type {
 	ComposeInput,
@@ -91,16 +92,52 @@ export function composeForSend(input: ComposeInput): ComposeOutput {
 		? personalize(stored, bodyVariablesFor(input), { escape: 'plain' })
 		: htmlToPlainText(composed.html, { preserveBreaks: true });
 	const config = composed.transformConfig;
+	const lines = addressLines(config?.senderAddress);
 	const text =
 		config?.unsubscribeUrl && config.preferenceUrl
 			? `${body.trimEnd()}\n\n${footerText({
 					unsubscribeUrl: config.unsubscribeUrl,
 					preferenceUrl: config.preferenceUrl,
 					language: config.footerLanguage,
-					senderAddress: config.senderAddress,
+					// Decided on the text part itself: an author-written text body may
+					// leave out the address the html block prints.
+					senderAddress: printsEveryLine(body, lines) ? undefined : config.senderAddress,
 				})}`
 			: body;
-	return { ...composed, text };
+	// Compared on the rendered text, so bold or a link inside an address line
+	// still counts as printing it.
+	const htmlPrintsAddress =
+		POSTAL_ADDRESS_BLOCK_RE.test(composed.html) &&
+		printsEveryLine(htmlToPlainText(composed.html, { preserveBreaks: true }), lines);
+	if (!config || !htmlPrintsAddress) return { ...composed, text };
+	const { senderAddress: _printedByTheBody, ...transformConfig } = config;
+	return { ...composed, transformConfig, text };
+}
+
+/**
+ * A rendered element carrying the postal-address marker. Anchored on a tag so
+ * the attribute name written as text in the body does not count. Authors cannot
+ * set the attribute themselves: the text and raw-HTML sanitizers drop it, so
+ * only the renderer's brand kit footer block emits it.
+ */
+const POSTAL_ADDRESS_BLOCK_RE = new RegExp(
+	`<[a-z][^>]*\\s${POSTAL_ADDRESS_BLOCK_ATTRIBUTE}(?=[\\s=/>])`,
+	'i'
+);
+
+/**
+ * Whether a body already prints every line of the sender's address, so the
+ * footer can keep only its two links. The html part counts only with the brand
+ * kit footer block's marker AND the lines still in it: an author who edited the
+ * address out of the block keeps the flag, not the address. Exact lines, not a
+ * guess at what looks like an address. Seed shadow copies go through here too
+ * and stay identical to the mail they mirror.
+ */
+function printsEveryLine(body: string, lines: readonly string[]): boolean {
+	// Runs of spaces, tabs and no-break spaces count as one space.
+	const spaced = (text: string) => text.replace(/[^\S\n]+/g, ' ');
+	const text = spaced(body);
+	return lines.length > 0 && lines.every((line) => text.includes(spaced(line)));
 }
 
 /** The personalization variables this send kind substitutes into its subject. */

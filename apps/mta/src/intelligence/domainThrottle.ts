@@ -20,6 +20,7 @@ import type Redis from 'ioredis';
 // defaults when Redis has no profile (e.g. before seeding).
 import { getProfile } from '../config/ispProfiles.js';
 import { logger } from '../monitoring/logger.js';
+import { isProviderHeld } from './providerHolds.js';
 import { createHash } from 'crypto';
 import {
 	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
@@ -111,6 +112,7 @@ return 1
  * ARGV[3] = default rate from ISP profile
  * ARGV[4] = hash TTL in seconds
  * ARGV[5] = window TTL in seconds
+ * ARGV[6] = rate cap of a provider hold on this IP (see providerHolds.ts), 0 for none
  *
  * Returns: 1 if slot acquired, 0 if denied
  */
@@ -123,6 +125,7 @@ local windowStart = ARGV[2]
 local defaultRate = tonumber(ARGV[3])
 local hashTtl = tonumber(ARGV[4])
 local windowTtl = tonumber(ARGV[5])
+local holdRate = tonumber(ARGV[6])
 
 -- Get or initialize current rate
 local currentRate = tonumber(redis.call('HGET', hashKey, 'currentRate'))
@@ -145,6 +148,12 @@ if status == 'blocking' then
   else
     return 0
   end
+end
+
+-- A provider hold caps this window only; the adaptive rate itself is kept, so
+-- lifting the hold resumes where the rate stood.
+if holdRate > 0 and holdRate < currentRate then
+  currentRate = holdRate
 end
 
 -- Clean expired entries and count window atomically
@@ -181,7 +190,10 @@ export async function acquireSlot(
 	throttleKey: string,
 	providerKey = throttleKey
 ): Promise<boolean> {
-	const profile = await getProfile(redis, providerKey);
+	const [profile, isHeld] = await Promise.all([
+		getProfile(redis, providerKey),
+		isProviderHeld(redis, ip, providerKey),
+	]);
 	const { hash: hashKey, window: windowKey } = keys(ip, throttleKey);
 	const now = Date.now();
 	const windowStart = now - WINDOW_SECONDS * 1000;
@@ -196,7 +208,8 @@ export async function acquireSlot(
 		String(windowStart),
 		String(profile.defaultRate),
 		String(HASH_TTL),
-		String(WINDOW_SECONDS + 10)
+		String(WINDOW_SECONDS + 10),
+		String(isHeld ? profile.floor : 0)
 	);
 
 	return result === 1;

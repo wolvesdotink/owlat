@@ -551,4 +551,41 @@ describe('domainThrottle', () => {
 			});
 		});
 	});
+
+	describe('a Microsoft SNDS hold on one sending IP', () => {
+		// Convex writes the hold when SNDS reports the address red (see
+		// providerHolds.ts); the throttle then gives that pair the provider's floor.
+		const holdMicrosoft = (ips: string[]) => redis.sadd('mta:provider-hold:microsoft', ...ips);
+
+		async function grantedOf(attempts: number, sender: string, domain: string, provider: string) {
+			let granted = 0;
+			for (let attempt = 0; attempt < attempts; attempt += 1) {
+				if (await acquireSlot(redis, sender, domain, provider)) granted += 1;
+			}
+			return granted;
+		}
+
+		it('admits only the Microsoft floor per window from the held address', async () => {
+			await holdMicrosoft([ip]);
+
+			expect(await grantedOf(20, ip, 'outlook.com', 'microsoft')).toBe(5);
+		});
+
+		it('leaves other addresses and other providers at their full rate', async () => {
+			await holdMicrosoft([ip]);
+
+			expect(await grantedOf(20, '10.0.0.2', 'outlook.com', 'microsoft')).toBe(20);
+			expect(await grantedOf(20, ip, 'gmail.com', 'gmail')).toBe(20);
+		});
+
+		it('sends at the full rate again once the hold is lifted', async () => {
+			await holdMicrosoft([ip]);
+			expect(await grantedOf(20, ip, 'outlook.com', 'microsoft')).toBe(5);
+
+			await redis.del('mta:provider-hold:microsoft');
+			vi.advanceTimersByTime(61_000);
+
+			expect(await grantedOf(20, ip, 'outlook.com', 'microsoft')).toBe(20);
+		});
+	});
 });

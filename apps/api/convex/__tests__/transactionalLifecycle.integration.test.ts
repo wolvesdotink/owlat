@@ -449,6 +449,99 @@ describe('Transactional email lifecycle — a saved-block edit is scanned', () =
 	});
 });
 
+/**
+ * An email held in review publishes on approval, without a scan of its own. So
+ * content that changes while it waits there (a saved-block re-render, an
+ * editor or translation save) is scanned when it changes: blocked content
+ * rolls the change back, suspicious content records a fresh scan for the
+ * reviewer, and approval only ever publishes HTML a scan has seen.
+ */
+describe('Transactional email lifecycle — content that changes in review is scanned', () => {
+	async function seedInReviewStale(t: ReturnType<typeof convexTest>, slug: string) {
+		return await t.run(async (ctx) =>
+			ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({
+					slug,
+					status: 'pending_review',
+					htmlContent: '<p>Reviewed</p>',
+					contentRevision: 2,
+					htmlRenderState: { stale: true, failureCount: 0 },
+				})
+			)
+		);
+	}
+
+	it('keeps the reviewed HTML when a re-render in review is blocked', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedInReviewStale(t, 'review-blocked');
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await expect(
+				t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+					emailId,
+					htmlContent: '<p>BLOCKED-MARKER</p>',
+					expectedContentRevision: 2,
+				})
+			).rejects.toThrow(/Content blocked/);
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('pending_review');
+		expect(email?.htmlContent).toBe('<p>Reviewed</p>');
+	});
+
+	it('records a scan of suspicious content that arrives in review, and approval publishes it', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedInReviewStale(t, 'review-suspicious');
+		vi.mocked(mockedScanContent).mockImplementation(scanByMarker);
+		try {
+			await t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+				emailId,
+				htmlContent: '<p>SUSPICIOUS-MARKER</p>',
+				expectedContentRevision: 2,
+			});
+		} finally {
+			vi.mocked(mockedScanContent).mockImplementation(() => scanByMarker('', ''));
+		}
+
+		await t.run(async (ctx) => {
+			const email = await ctx.db.get(emailId);
+			expect(email?.status).toBe('pending_review');
+			const scans = await ctx.db.query('contentScanResults').collect();
+			expect(scans.filter((s) => s.resourceId === emailId).map((s) => s.level)).toEqual([
+				'suspicious',
+			]);
+		});
+
+		await t.mutation(internal.transactional.lifecycle.transition, {
+			emailId,
+			input: { to: 'approved', at: Date.now() },
+			userId: 'admin_1',
+		});
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('published');
+		expect(email?.htmlContent).toBe('<p>SUSPICIOUS-MARKER</p>');
+	});
+
+	it('keeps a clean re-render in review until someone approves it', async () => {
+		const t = convexTest(schema, modules);
+		const emailId = await seedInReviewStale(t, 'review-clean');
+
+		await t.mutation(internal.emailBlocks.renderingPool.patchTransactionalHtml, {
+			emailId,
+			htmlContent: '<p>Clean now</p>',
+			expectedContentRevision: 2,
+		});
+
+		const email = await t.run(async (ctx) => ctx.db.get(emailId));
+		expect(email?.status).toBe('pending_review');
+		expect(email?.htmlContent).toBe('<p>Clean now</p>');
+	});
+});
+
 // ============================================================================
 // transition — unpublish + idempotency
 // ============================================================================

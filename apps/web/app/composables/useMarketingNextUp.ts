@@ -110,15 +110,21 @@ export function useMarketingNextUp() {
 	);
 	const scheduled = computed(() => scheduledAll.value.slice(0, SCHEDULED_SHOWN));
 
-	const drafts = computed<NextUpRow[]>(() =>
-		(draftsPage.value?.page ?? []).slice(0, DRAFTS_SHOWN).map((c) => ({
-			id: c._id,
-			name: c.name,
-			href: hrefFor(c._id),
-			updatedAt: c.updatedAt,
-			isUrgent: false,
-		}))
-	);
+	// A draft that needs you (blocked content, a refused start) is listed there
+	// once, not again among the drafts.
+	const drafts = computed<NextUpRow[]>(() => {
+		const listed = new Set(needsYou.value.map((r) => r.id));
+		return (draftsPage.value?.page ?? [])
+			.filter((c) => !listed.has(c._id))
+			.slice(0, DRAFTS_SHOWN)
+			.map((c) => ({
+				id: c._id,
+				name: c.name,
+				href: hrefFor(c._id),
+				updatedAt: c.updatedAt,
+				isUrgent: false,
+			}));
+	});
 
 	const todoCount = computed(() => needsYou.value.length + scheduledAll.value.length);
 	const isUrgent = computed(() => needsYou.value.some((r) => r.isUrgent));

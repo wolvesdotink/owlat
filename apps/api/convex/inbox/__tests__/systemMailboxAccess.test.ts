@@ -148,6 +148,8 @@ describe('postmaster and abuse mail is read by instance admins only', () => {
 
 		const list = await admin.query(api.inbox.queries.listThreads, {});
 		expect(list.threads.map((thread: { _id: string }) => thread._id)).toEqual([threadId]);
+		// The mark the list and the reader label the conversation with.
+		expect(list.threads[0]).toMatchObject({ systemMailbox: 'abuse' });
 		expect(await admin.query(api.inbox.queries.getThreadFilterCounts, {})).toMatchObject({
 			open: 1,
 		});
@@ -155,6 +157,7 @@ describe('postmaster and abuse mail is read by instance admins only', () => {
 			received: 1,
 		});
 		const thread = await admin.query(api.inbox.queries.getThread, { threadId });
+		expect(thread?.thread).toMatchObject({ systemMailbox: 'abuse' });
 		expect(thread?.messages.map((m: { _id: string }) => m._id)).toEqual([inboundMessageId]);
 		expect(
 			await admin.query(api.inbox.threadPage.getMessage, { messageId: inboundMessageId })

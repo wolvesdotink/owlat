@@ -1,0 +1,50 @@
+/**
+ * The Deliverability Center's note on what Microsoft SNDS says about the
+ * sending addresses. The local stack has no SNDS feed, so this suite is the
+ * proof of the red and yellow states.
+ */
+import { describe, expect, it } from 'vitest';
+import { mount } from '@vue/test-utils';
+
+import MicrosoftSndsNote from '../MicrosoftSndsNote.vue';
+import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+
+Object.assign(globalThis, i18nStubs);
+
+const DAY = Date.UTC(2026, 10, 13);
+
+function mountNote(
+	standings: Array<{ ip: string; filterResult: 'red' | 'yellow'; periodStart: number }>
+) {
+	return mount(MicrosoftSndsNote, {
+		props: { standings },
+		global: { plugins: [createTestI18n()] },
+	});
+}
+
+describe('MicrosoftSndsNote', () => {
+	it('renders nothing while SNDS reports no address red or yellow', () => {
+		expect(mountNote([]).find('[data-testid="microsoft-snds-note"]').exists()).toBe(false);
+	});
+
+	it('says a red address sends Microsoft mail at a reduced rate, and nothing else is held', () => {
+		const note = mountNote([{ ip: '203.0.113.10', filterResult: 'red', periodStart: DAY }]).find(
+			'[data-testid="microsoft-snds-note"]'
+		);
+		expect(note.text()).toContain('203.0.113.10');
+		expect(note.text()).toContain('reduced rate');
+		expect(note.text()).toContain('Other addresses and providers are not affected');
+		expect(note.find('a').attributes('href')).toContain(
+			'external-reputation-feedback#when-snds-reports-an-address-red'
+		);
+	});
+
+	it('warns about a yellow address without claiming anything is held', () => {
+		const note = mountNote([{ ip: '203.0.113.11', filterResult: 'yellow', periodStart: DAY }]).find(
+			'[data-testid="microsoft-snds-note"]'
+		);
+		expect(note.text()).toContain('203.0.113.11');
+		expect(note.text()).toContain('Nothing is held back');
+		expect(note.text()).not.toContain('reduced rate');
+	});
+});

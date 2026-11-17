@@ -15,7 +15,6 @@ import {
 	materializeChecklistItem,
 	selectNextDeliverabilityItem,
 	type DeliverabilityChecklistItem,
-	type DeliverabilitySendPaths,
 	type DeliverabilitySetupValue,
 } from '@owlat/shared';
 import { adminQuery } from '../lib/authedFunctions';
@@ -37,13 +36,12 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 import { ipv6SendingAddresses, isIpv6CheckId, partitionIpv6Items } from './checklistIpv6';
-import { messageTypeTransportKinds } from '../lib/sendProviders/capability';
-import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
-import { isFeatureEnabled } from '../lib/featureFlags';
+import { loadDeliverabilitySendPaths } from './checklistApplicability';
 import { OWN_SENDING_DOMAIN_PROVIDER_KIND, SENDING_DOMAIN_PROVIDERS } from '../domains/providers';
 import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import { readInstanceCounter } from '../lib/instanceCounters';
+import { readSndsIpStandings } from './sndsStanding';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -172,27 +170,6 @@ async function loadSettingsWithMtaHealth(ctx: QueryCtx): Promise<Doc<'instanceSe
 	return { ...settings, mtaHealth };
 }
 
-/**
- * Which send paths the checks are graded against. The transport kinds per
- * message type are the ones the readiness panel and the health dot read
- * (`messageTypeTransportKinds`), so the three surfaces agree on whether the
- * built-in mail server is in use.
- */
-async function loadSendPaths(
-	ctx: QueryCtx,
-	routes: readonly Doc<'providerRoutes'>[]
-): Promise<DeliverabilitySendPaths> {
-	const kinds = await Promise.all(
-		(['transactional', 'campaign', 'automation'] as const).map((messageType) =>
-			messageTypeTransportKinds(ctx, routes, messageType)
-		)
-	);
-	return {
-		usesOwnMta: kinds.some((forType) => forType.includes(OWN_ARM_TRANSPORT_KIND)),
-		sendsMarketing: await isFeatureEnabled(ctx, 'campaigns'),
-	};
-}
-
 async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 	const organizationId = session.activeOrganizationId;
 	const domains = await loadCenterDomains(ctx);
@@ -228,7 +205,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		'active regression alerts'
 	);
 	const verificationStates = statePages.flat();
-	const sendPaths = await loadSendPaths(ctx, routes);
+	const sendPaths = await loadDeliverabilitySendPaths(ctx, routes);
 
 	const evidenceRows = await Promise.all(
 		verificationStates.map((state) =>
@@ -381,6 +358,7 @@ async function buildCenter(ctx: QueryCtx, session: MutationSessionContext) {
 		nextItem,
 		groups,
 		ipv6: { enabled: ipv6Enabled, addresses: ipv6Addresses },
+		sndsStandings: await readSndsIpStandings(ctx.db, now),
 		loopback: {
 			domains: loopbackDomains(items, domains, loopbackInfrastructureReady).map(
 				(option, index) => ({

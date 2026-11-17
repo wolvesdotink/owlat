@@ -21,7 +21,7 @@ import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { lookupTlsaRecords } from './daneResolver.js';
 import { buildTlsaPolicyString, type TlsPolicyContext } from './tlsRpt.js';
-import type { DaneMxDestination } from './daneMxResolver.js';
+import { resolveDaneHostAddresses, type DaneMxDestination } from './daneMxResolver.js';
 
 function collectPeerChain(cert: PeerCertificate): Buffer[] {
 	const chain: Buffer[] = [];
@@ -170,6 +170,13 @@ export interface DanePlan {
 	policyFingerprint: string;
 	/** The TLS-RPT policy context (policy-type `tlsa`) to attribute the result to. */
 	policyContext: TlsPolicyContext;
+	/**
+	 * The MX host's A and AAAA records as the validating resolver answered them
+	 * (AD set). The session dials only these: the TLSA RRset authenticates the
+	 * peer only if the address that reached it was validated too (RFC 7672
+	 * §2.2.2), and the system resolver's answer is not.
+	 */
+	addresses: readonly string[];
 }
 
 /**
@@ -224,7 +231,12 @@ export async function prepareDaneAttempt(
 ): Promise<DaneDecision> {
 	const mode = config.daneMode ?? 'off';
 	if (mode === 'off' || !config.daneResolverUrl) return { kind: 'none' };
-	if (destination?.addressSecurity === 'indeterminate') {
+	// A destination resolved before DANE was on names its MX hosts but carries no
+	// validated addresses, so they are asked for here.
+	const addressChain = destination
+		? { security: destination.addressSecurity, addresses: destination.addresses }
+		: await resolveDaneHostAddresses(config.daneResolverUrl, mxHost);
+	if (addressChain.security === 'indeterminate') {
 		const reason = `DANE address discovery indeterminate for ${mxHost}`;
 		if (mode === 'enforce') return { kind: 'defer', reason };
 		logger.debug(
@@ -233,9 +245,13 @@ export async function prepareDaneAttempt(
 		);
 		return { kind: 'none' };
 	}
-	if (destination?.addressSecurity === 'insecure') {
+	// RFC 7672 §2.2.2: with insecure address records no TLSA is sought and the
+	// host gets pre-DANE opportunistic TLS, in `enforce` too. An insecure answer
+	// is not an error (§2.1.1), and TLS-RPT has no failure type for it, so the
+	// session is reported under its non-DANE policy like any other.
+	if (addressChain.security === 'insecure') {
 		logger.debug(
-			{ mxHost, recipientDomain, addressSecurity: destination.addressSecurity },
+			{ mxHost, recipientDomain, addressSecurity: addressChain.security },
 			'DANE skipped because the MX address chain is not DNSSEC-secure'
 		);
 		return { kind: 'none' };
@@ -275,6 +291,7 @@ export async function prepareDaneAttempt(
 			policyString: buildTlsaPolicyString(lookup.records),
 			mxHostPatterns: [mxHost],
 		},
+		addresses: addressChain.addresses,
 	};
 
 	// Report-only: same evaluation, but the caller records the result and delivers

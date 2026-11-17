@@ -5,7 +5,7 @@ import {
 	type TeamThreadPriority,
 } from '~/utils/teamThreadPriority';
 import type { PresencePerson } from './InboxThreadPresence.vue';
-import { AlarmIcon, FlagIcon } from '@coolicons/vue';
+import { AlarmIcon, FlagIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 /**
  * The Team Inbox thread page's header: the subject, once (the messages below
@@ -20,6 +20,8 @@ defineProps<{
 	/** Set while the thread is snoozed. */
 	snoozedUntil?: number | null;
 	presencePeople: PresencePerson[];
+	/** Mail to the instance's `postmaster@` / `abuse@`: says why it has no contact or AI draft. */
+	systemMailbox?: 'postmaster' | 'abuse' | null;
 }>();
 
 const { t, locale } = useI18n();
@@ -83,6 +85,19 @@ function absoluteTime(timestamp: number): string {
 						</time>
 					</span>
 				</template>
+			</p>
+			<p
+				v-if="systemMailbox"
+				class="mt-2 flex items-start gap-1.5 text-sm text-text-secondary"
+				data-testid="thread-system-mailbox"
+			>
+				<ShieldWarningIcon class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+				<span>
+					<span class="font-medium text-text-primary">{{
+						t(`components.inbox.systemMailbox.${systemMailbox}`)
+					}}</span>
+					· {{ t('components.inbox.systemMailbox.explain') }}
+				</span>
 			</p>
 			<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
 			<InboxThreadPresence :people="presencePeople" class="mt-3" />

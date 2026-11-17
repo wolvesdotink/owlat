@@ -3,7 +3,13 @@
  * Container health (Settings → System & updates): the services the updater
  * sidecar reports, their state and image tag.
  */
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import InstancePageNotice from '~/components/InstancePageNotice.vue';
+
 const { t, te } = useI18n();
+// The states come from `/api/internal/updater-health`, a server route the
+// static desktop build does not have; there the card offers the instance's page.
+const isDesktop = isDesktopRuntime();
 
 // Three outcomes, three states: a null ref alone cannot tell a failed fetch
 // from one still loading (it would show "Loading container status…" forever),
@@ -61,7 +67,9 @@ function stateLabel(state: string | undefined): string {
 	const key = `dashboard.admin.system.index.containers.states.${state}`;
 	return te(key) ? t(key) : state;
 }
-onMounted(fetchContainerHealth);
+onMounted(() => {
+	if (!isDesktop) void fetchContainerHealth();
+});
 </script>
 
 <template>
@@ -71,6 +79,7 @@ onMounted(fetchContainerHealth);
 				{{ t('dashboard.admin.system.index.containers.title') }}
 			</h2>
 			<UiButton
+				v-if="!isDesktop"
 				variant="ghost"
 				size="sm"
 				:loading="refreshing"
@@ -81,7 +90,12 @@ onMounted(fetchContainerHealth);
 			</UiButton>
 		</div>
 
-		<div v-if="containerHealthStatus === 'loading'" class="text-caption text-text-tertiary">
+		<InstancePageNotice
+			v-if="isDesktop"
+			path="/dashboard/admin/system"
+			:body="t('dashboard.admin.system.index.containers.onInstance')"
+		/>
+		<div v-else-if="containerHealthStatus === 'loading'" class="text-caption text-text-tertiary">
 			{{ t('dashboard.admin.system.index.containers.loading') }}
 		</div>
 

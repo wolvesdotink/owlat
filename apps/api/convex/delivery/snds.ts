@@ -6,18 +6,15 @@
  * What remains here is the durable side: the idempotent ingest mutation and the
  * retention sweep.
  *
- * WHAT READS THE ROWS. `delivery/rampPromotionEvidence.ts`, and only it: the
- * `snds_band` promotion route asks for the newest green complaint band in the
- * window, over the same `by_period` index the sweep walks. There is no gate read
- * here — a `getMicrosoftGateInput` internalQuery and the pure gate beside it
- * shipped ahead of a controller that never consumed either, and both were
- * removed rather than given an invented caller.
+ * WHAT READS THE ROWS. `delivery/rampPromotionEvidence.ts`: the `snds_band`
+ * promotion route asks for the newest green complaint band in the window, over
+ * the same `by_period` index the sweep walks. And `delivery/sndsStanding.ts`:
+ * the newest filter result per address, which slows Microsoft mail from a red
+ * address and is shown in the Center and on the Delivery hub.
  *
- * ADDITIVE ONLY. Nothing here throws on an absent enrolment: with no feed
- * configured the poller returns early, no row is ever written, and the Microsoft
- * cell runs on the `microsoft_snds` substitution the degradation matrix already
- * applies. SNDS can only lower measurement confidence and slow that cell's ramp,
- * never block it.
+ * Nothing here throws on an absent enrolment: with no feed configured the
+ * poller returns early, no row is ever written, and the Microsoft cell runs on
+ * the `microsoft_snds` substitution the degradation matrix already applies.
  */
 
 import { v } from 'convex/values';
