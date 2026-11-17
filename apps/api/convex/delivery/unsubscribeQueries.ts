@@ -10,6 +10,7 @@ import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
 import type { UnsubscribeOutcome } from '../topics/subscriptionContract';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
+import { resolveProviderMessageId } from './sendLifecycle/lookups';
 
 type ProcessUnsubscribeResult =
 	| { success: false; reason: 'not_found' }
@@ -96,6 +97,26 @@ export const processUnsubscribe = internalMutation({
 	},
 	handler: async (ctx, args): Promise<ProcessUnsubscribeResult> => {
 		return await applyPublicUnsubscribe(ctx, args);
+	},
+});
+
+/**
+ * Entry point for a MAILED unsubscribe: a recipient mailed the signed `mailto:`
+ * target in a message's `List-Unsubscribe` header, and the MTA verified the
+ * token (`apps/mta/src/bounce/unsubscribeMail.ts`). The token names the
+ * message, so the contact is the one that message went to; from there it is
+ * the one-click POST's own unsubscribe, with the same effects.
+ *
+ * A message no send matches (a seed probe, a send erased since) or a send
+ * without a contact answers `not_found` and changes nothing.
+ */
+export const processUnsubscribeByProviderMessageId = internalMutation({
+	args: { providerMessageId: v.string() },
+	handler: async (ctx, args): Promise<ProcessUnsubscribeResult> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		const send = ref ? await ctx.db.get(ref.id) : null;
+		if (!send?.contactId) return { success: false, reason: 'not_found' };
+		return await applyPublicUnsubscribe(ctx, { contactId: send.contactId });
 	},
 });
 

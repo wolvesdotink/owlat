@@ -41,6 +41,18 @@ describe('MTA webhook event runtime contract', () => {
 		).toBe(true);
 	});
 
+	it('accepts a mailed unsubscribe only with its event id and message id', () => {
+		const event = {
+			event: 'unsubscribed',
+			eventId: `unsubscribe:${'a'.repeat(64)}`,
+			messageId: 'send_1',
+			timestamp: 1,
+		};
+		expect(isMtaWebhookEvent(event)).toBe(true);
+		expect(isMtaWebhookEvent({ ...event, messageId: undefined })).toBe(false);
+		expect(isMtaWebhookEvent({ ...event, eventId: undefined })).toBe(false);
+	});
+
 	it('accepts only precisely formatted deliverability probe evidence and bounded verdicts', () => {
 		const event = {
 			event: 'deliverability.probe_observed',

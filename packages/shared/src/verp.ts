@@ -22,11 +22,15 @@
 
 import { createHmac } from 'node:crypto';
 import { constantTimeEqual } from './constantTimeEqual';
-import { normalizeReturnPathDomain, normalizeVerpKey } from './verpNormalize';
+import {
+	normalizeReturnPathDomain,
+	normalizeVerpKey,
+	UNSUBSCRIBE_TOKEN_MAX_AGE_MS,
+} from './verpNormalize';
 
 // Re-exported so every existing `@owlat/shared/verp` import site keeps working
 // while the crypto-free definitions stay out of the browser bundle's graph.
-export { normalizeReturnPathDomain, normalizeVerpKey };
+export { normalizeReturnPathDomain, normalizeVerpKey, UNSUBSCRIBE_TOKEN_MAX_AGE_MS };
 
 /** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
 const VERP_MAC_B64URL_LEN = 14; // ~84 bits
@@ -167,6 +171,103 @@ export function parseVerpAddress(
 	} catch {
 		return null;
 	}
+}
+
+// ─── Unsubscribe by mail ───────────────────────────────────────────────────
+
+/**
+ * Local-part prefix of the RFC 2369 `mailto:` unsubscribe target.
+ *
+ * Grammar: unsubscribe+{send id}+{window base36}+{hmac}@{host}
+ *
+ * The address must fit RFC 5321's 64-octet local part: a mail client or
+ * gateway that enforces the limit would never send the request. So it carries
+ * the bare Convex document id of a governed send (the message id is
+ * `send_{id}`, `delivery/governedDispatch.ts`) rather than an encoding of the
+ * whole message id, and a 12-character MAC. A message id of any other shape, or
+ * one too long to fit, gets no address. Unlike the bounce and complaint tokens
+ * the window is carried in the token, so verifying one costs a single HMAC
+ * however old it is: this address lives as long as the HTTPS one-click link
+ * beside it, not a week.
+ */
+const UNSUBSCRIBE_LOCAL_PART_PREFIX = 'unsubscribe+';
+
+/** The message-id prefix of a governed send; the token carries what follows it. */
+const UNSUBSCRIBE_MESSAGE_ID_PREFIX = 'send_';
+
+/** RFC 5321 §4.5.3.1.1. */
+const LOCAL_PART_MAX_OCTETS = 64;
+
+/** ~72 bits; shorter than the bounce MAC so a production send id fits. */
+const UNSUBSCRIBE_MAC_LENGTH = 12;
+
+/** Domain separator: an unsubscribe token never verifies as a bounce or complaint token. */
+const UNSUBSCRIBE_MAC_LABEL = 'unsub:';
+
+/** One window of clock skew between the signer and the verifier. */
+const UNSUBSCRIBE_FUTURE_WINDOWS = 1;
+
+function unsubscribeMac(sendId: string, window: number, key: string): string {
+	return computeSignedTokenMac(UNSUBSCRIBE_MAC_LABEL, sendId, window, key).slice(
+		0,
+		UNSUBSCRIBE_MAC_LENGTH
+	);
+}
+
+/** Is this recipient an unsubscribe address (signed or not)? */
+export function isUnsubscribeAddress(address: string): boolean {
+	return address.startsWith(UNSUBSCRIBE_LOCAL_PART_PREFIX);
+}
+
+/**
+ * Build the signed unsubscribe address for `messageId`, or null without a
+ * usable key, for a message id that is not a governed send's, or when the
+ * address would not fit the local-part limit.
+ */
+export function buildUnsubscribeAddress(
+	messageId: string,
+	host: string,
+	rawKey: string | undefined,
+	now: number
+): string | null {
+	const key = normalizeVerpKey(rawKey);
+	if (!key || !messageId.startsWith(UNSUBSCRIBE_MESSAGE_ID_PREFIX)) return null;
+	const sendId = messageId.slice(UNSUBSCRIBE_MESSAGE_ID_PREFIX.length);
+	if (!/^[0-9a-z]+$/.test(sendId)) return null;
+	const window = verpWindow(now);
+	const local = `${UNSUBSCRIBE_LOCAL_PART_PREFIX}${sendId}+${window.toString(36)}+${unsubscribeMac(sendId, window, key)}`;
+	return local.length <= LOCAL_PART_MAX_OCTETS ? `${local}@${host}` : null;
+}
+
+export type UnsubscribeAddressVerdict =
+	| { kind: 'valid'; messageId: string }
+	| { kind: 'expired' }
+	| { kind: 'invalid' };
+
+/**
+ * Verify an unsubscribe address. `expired` is only ever said of a token this
+ * key signed; anything else that fails is `invalid`.
+ */
+export function verifyUnsubscribeAddress(
+	address: string,
+	rawKey: string | undefined,
+	now: number
+): UnsubscribeAddressVerdict {
+	const key = normalizeVerpKey(rawKey);
+	const match = address.match(
+		/^unsubscribe\+([0-9a-z]{1,64})\+([0-9a-z]{1,8})\+([A-Za-z0-9_-]{12})@/
+	);
+	if (!key || !match?.[1] || !match[2] || !match[3]) return { kind: 'invalid' };
+	const [, sendId, windowText, presentedMac] = match;
+	const window = parseInt(windowText, 36);
+	if (!Number.isSafeInteger(window)) return { kind: 'invalid' };
+	if (!signedTokenMacsEqual(unsubscribeMac(sendId, window, key), presentedMac)) {
+		return { kind: 'invalid' };
+	}
+	const age = verpWindow(now) - window;
+	if (age < -UNSUBSCRIBE_FUTURE_WINDOWS) return { kind: 'invalid' };
+	if (age * VERP_WINDOW_MS > UNSUBSCRIBE_TOKEN_MAX_AGE_MS) return { kind: 'expired' };
+	return { kind: 'valid', messageId: `${UNSUBSCRIBE_MESSAGE_ID_PREFIX}${sendId}` };
 }
 
 /**

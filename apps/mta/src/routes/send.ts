@@ -398,6 +398,9 @@ export function createSendHandler(
 			...(mode === 'postbox' ? { queueLane: 'postbox' as const } : {}),
 			organizationId: body.organizationId,
 			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
+			...(mode === 'governed' && body.listUnsubscribeMailto === true
+				? { listUnsubscribeMailto: true as const }
+				: {}),
 			...(mode === 'governed' ? { messageType: body.messageType! } : {}),
 			engagementScore,
 			dkimDomain: body.dkimDomain,

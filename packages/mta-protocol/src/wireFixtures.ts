@@ -437,6 +437,12 @@ export const WEBHOOK_EVENT_BYTES: Record<MtaWebhookEventType, string> = {
 		message: 'IPv6 SPF readiness regressed',
 		timestamp: WIRE_FIXTURE_NOW,
 	} satisfies ValidatedMtaWebhookEvent),
+	unsubscribed: JSON.stringify({
+		event: 'unsubscribed',
+		eventId: 'unsubscribe-fixture-1',
+		messageId: 'send_fixture-1',
+		timestamp: WIRE_FIXTURE_NOW,
+	} satisfies ValidatedMtaWebhookEvent),
 	'deliverability.probe_observed': JSON.stringify({
 		event: 'deliverability.probe_observed',
 		eventId: 'probe-observed-fixture-1',

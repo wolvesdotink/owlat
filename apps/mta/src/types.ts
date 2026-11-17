@@ -80,6 +80,11 @@ export interface EmailJob {
 	/** Authenticated production-vs-member-preview effect domain. */
 	deliveryDomain?: DeliveryDomain;
 	/**
+	 * Convex asked for a signed `mailto:` target in front of the message's HTTPS
+	 * `List-Unsubscribe` one (`smtp/send/compose.ts`). Governed intake only.
+	 */
+	listUnsubscribeMailto?: true;
+	/**
 	 * The governed stream the message belongs to. Only campaign and automation
 	 * mail is withdrawn when its recipient unsubscribes
 	 * (`intelligence/marketingOptOut.ts`). Absent on Postbox and system mail and

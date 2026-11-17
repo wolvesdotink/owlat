@@ -1,6 +1,6 @@
 import type Redis from 'ioredis';
 import type { SmtpAddress, SmtpHandlerResult, SmtpReply, SmtpSession } from '@owlat/smtp-listener';
-import { isReturnPathProbeRecipient } from '@owlat/shared/verp';
+import { isReturnPathProbeRecipient, isUnsubscribeAddress } from '@owlat/shared/verp';
 import type { MtaConfig } from '../config.js';
 import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { findRoute } from '../inbound/router.js';
@@ -59,7 +59,12 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 			};
 			return;
 		}
-		if (address.address.startsWith('bounce+') || address.address.startsWith('fbl+')) {
+		// `unsubscribe+` is the signed RFC 2369 mailto target (bounce/unsubscribeMail.ts).
+		if (
+			address.address.startsWith('bounce+') ||
+			address.address.startsWith('fbl+') ||
+			isUnsubscribeAddress(address.address)
+		) {
 			const host = address.address.slice(address.address.lastIndexOf('@') + 1);
 			return isFeedbackHost(redis, config, address.address.includes('@') ? host : '')
 				.then((accepted): SmtpHandlerResult =>

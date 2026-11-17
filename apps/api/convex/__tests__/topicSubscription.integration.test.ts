@@ -1090,3 +1090,102 @@ describe('subscription — drift bug closures', () => {
 		expect((await getTopic(t, topicId))?.cachedMemberCount).toBe(0);
 	});
 });
+
+// ============================================================
+// Mailed unsubscribe (the signed mailto target the MTA verified)
+// ============================================================
+
+describe('unsubscribeQueries.processUnsubscribeByProviderMessageId', () => {
+	/** A subscribed contact who received a campaign send the MTA accepted. */
+	async function contactWithSend(t: TestConvex<typeof schema>, email: string) {
+		const contactId = await createContact(t, { email });
+		const topicId = await createTopic(t, false);
+		await t.mutation(internal.topics.subscription.subscribe, {
+			topicId,
+			contactId,
+			source: 'admin',
+		});
+		const { campaignId, providerMessageId } = await t.run(async (ctx) => {
+			const campaignId = await ctx.db.insert('campaigns', {
+				name: 'c',
+				status: 'sent' as const,
+				audience: { kind: 'topic' as const, topicId },
+				statsSent: 1,
+				statsUnsubscribed: 0,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			const sendId = await ctx.db.insert('emailSends', {
+				campaignId,
+				contactId,
+				contactEmail: email,
+				status: 'sent' as const,
+				queuedAt: Date.now(),
+				sentAt: Date.now(),
+				openCount: 0,
+			});
+			const providerMessageId = `send_${sendId}`;
+			await ctx.db.patch(sendId, { providerMessageId });
+			return { campaignId, providerMessageId };
+		});
+		return { contactId, topicId, campaignId, providerMessageId };
+	}
+
+	async function effects(
+		t: TestConvex<typeof schema>,
+		seeded: Awaited<ReturnType<typeof contactWithSend>>
+	) {
+		const contact = await getContact(t, seeded.contactId);
+		const campaign = await t.run(async (ctx) => ctx.db.get(seeded.campaignId));
+		const activities = await getActivitiesForContact(t, seeded.contactId);
+		return {
+			optedOut: contact?.unsubscribedAt !== undefined,
+			member: (await getMembership(t, seeded.contactId, seeded.topicId)) !== null,
+			statsUnsubscribed: campaign?.statsUnsubscribed,
+			unsubscribeActivities: activities
+				.filter((a: { activityType: string }) => a.activityType === 'topic_unsubscribed')
+				.map((a: { metadata?: { reason?: string } }) => a.metadata?.reason),
+		};
+	}
+
+	it('unsubscribes once, with the effects of the one-click POST', async () => {
+		const t = convexTest(schema, modules);
+		const byLink = await contactWithSend(t, 'link@example.com');
+		const byMail = await contactWithSend(t, 'mail@example.com');
+
+		vi.useFakeTimers();
+		await t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribe, {
+			contactId: byLink.contactId,
+		});
+		const first = await t.mutation(
+			internal.delivery.unsubscribeQueries.processUnsubscribeByProviderMessageId,
+			{ providerMessageId: byMail.providerMessageId }
+		);
+		const second = await t.mutation(
+			internal.delivery.unsubscribeQueries.processUnsubscribeByProviderMessageId,
+			{ providerMessageId: byMail.providerMessageId }
+		);
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		vi.useRealTimers();
+
+		expect(first).toEqual({ success: true, alreadyUnsubscribed: false, listsRemoved: 1 });
+		expect(second).toEqual({ success: true, alreadyUnsubscribed: true });
+		const mailed = await effects(t, byMail);
+		expect(mailed).toEqual({
+			optedOut: true,
+			member: false,
+			statsUnsubscribed: 1,
+			unsubscribeActivities: ['unsubscribe'],
+		});
+		expect(mailed).toEqual(await effects(t, byLink));
+	});
+
+	it('changes nothing for a message no send matches', async () => {
+		const t = convexTest(schema, modules);
+		await expect(
+			t.mutation(internal.delivery.unsubscribeQueries.processUnsubscribeByProviderMessageId, {
+				providerMessageId: 'probe_unknown',
+			})
+		).resolves.toEqual({ success: false, reason: 'not_found' });
+	});
+});

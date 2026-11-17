@@ -34,6 +34,16 @@ describe('assertMarketingOneClickHeaders', () => {
 		).toThrow('valid RFC 8058');
 	});
 
+	it('accepts the header with a mailto target in front of the HTTPS one', () => {
+		expect(() =>
+			assertMarketingOneClickHeaders('marketing', {
+				...RFC8058_HEADERS,
+				'List-Unsubscribe':
+					'<mailto:unsubscribe+c2VuZF8x+g0z+AAAAAAAAAAAAAA@bounces.example.test>, <https://example.test/unsub/token>',
+			})
+		).not.toThrow();
+	});
+
 	it('does not impose marketing headers on transactional mail', () => {
 		expect(() => assertMarketingOneClickHeaders('transactional', {})).not.toThrow();
 	});

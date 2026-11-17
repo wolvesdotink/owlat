@@ -237,6 +237,14 @@ const DISPATCH: DispatchTable = {
 			eventAt: e.at,
 		});
 	},
+	'internal.mailed_unsubscribe': async (ctx, e) => {
+		// The MTA verified the signed address; the mutation joins the message to
+		// its contact and applies the same unsubscribe the one-click POST does.
+		return await ctx.runMutation(
+			internal.delivery.unsubscribeQueries.processUnsubscribeByProviderMessageId,
+			{ providerMessageId: e.providerMessageId }
+		);
+	},
 	'email.provider_suppressed': applyProviderSuppression,
 	'email.complained': dispatchComplaint,
 	'email.opened': async (ctx, e) => {
