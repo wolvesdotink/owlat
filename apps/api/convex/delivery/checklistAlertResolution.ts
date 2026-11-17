@@ -1,3 +1,4 @@
+import type { DeliverabilityCheckId } from '@owlat/shared';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import {
@@ -13,7 +14,7 @@ export async function resolveDeliverabilityAlert(
 	ctx: MutationCtx,
 	alert: Doc<'deliverabilityRegressionAlerts'>,
 	resolvedAt: number,
-	options: { acknowledge: boolean }
+	options: { acknowledge: boolean; reason?: 'not_applicable' }
 ): Promise<void> {
 	const recipients = boundedDeliverabilityAlertRecipientRows(
 		await ctx.db
@@ -39,6 +40,32 @@ export async function resolveDeliverabilityAlert(
 	await ctx.db.patch(alert._id, {
 		...(options.acknowledge ? { acknowledgedAt: alert.acknowledgedAt ?? resolvedAt } : {}),
 		resolvedAt,
+		...(options.reason ? { resolvedReason: options.reason } : {}),
 		...deliverabilityAlertNotificationPatch(states, alert.compactedRecipientOutcomes),
 	});
+}
+
+/** Resolve every open alert of one check on one target. */
+export async function resolveOpenItemAlerts(
+	ctx: MutationCtx,
+	target: { organizationId: string; targetKey: string; itemId: DeliverabilityCheckId },
+	resolvedAt: number,
+	reason?: 'not_applicable'
+): Promise<void> {
+	const alerts = await ctx.db
+		.query('deliverabilityRegressionAlerts')
+		.withIndex('by_org_target_item_resolved', (q) =>
+			q
+				.eq('organizationId', target.organizationId)
+				.eq('targetKey', target.targetKey)
+				.eq('itemId', target.itemId)
+				.eq('resolvedAt', undefined)
+		)
+		.take(50);
+	for (const alert of alerts) {
+		await resolveDeliverabilityAlert(ctx, alert, resolvedAt, {
+			acknowledge: false,
+			...(reason ? { reason } : {}),
+		});
+	}
 }
