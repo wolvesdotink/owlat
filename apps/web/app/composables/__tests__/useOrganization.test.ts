@@ -98,19 +98,24 @@ describe('useOrganization session wiring', () => {
 		data: { members: [{ id: 'm-owner', userId: 'u-owner', role: 'owner' }] },
 	}));
 	const listInvitations = vi.fn(async () => ({ data: [] as unknown[] }));
+	const inviteMember = vi.fn(async (_invitation: unknown) => ({
+		data: { id: 'inv-1' },
+		error: null,
+	}));
 
 	beforeEach(() => {
 		vi.resetModules();
 		activeOrganization = ref<{ id: string } | null>({ id: 'org-1' });
 		listMembers.mockClear();
 		listInvitations.mockClear();
+		inviteMember.mockClear();
 		vi.doMock('~/lib/auth-client', () => ({
 			useActiveOrganization: () =>
 				computed(() => ({ data: activeOrganization.value, error: null, isPending: false })),
 			useListOrganizations: () => computed(() => ({ data: [] })),
 			listMembers,
 			listInvitations,
-			inviteMember: vi.fn(),
+			inviteMember,
 			removeMember: vi.fn(),
 			updateMemberRole: vi.fn(),
 			cancelInvitation: vi.fn(),
@@ -197,6 +202,24 @@ describe('useOrganization session wiring', () => {
 		expect(failure?.cause).toBeInstanceOf(Error);
 		expect(failure?.cause).toMatchObject({
 			message: 'shared.useOrganization.errors.notCurrentOwner',
+		});
+	});
+
+	it('invites into the organization the session names while the full record loads', async () => {
+		activeOrganization.value = null;
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'u-owner' }),
+			activeOrganizationId: ref('org-1'),
+			refetch: vi.fn(async () => null),
+		}));
+		const { useOrganization } = await import('../useOrganization');
+
+		await useOrganization().invite('jo@owlat.example', 'editor');
+
+		expect(inviteMember).toHaveBeenCalledWith({
+			organizationId: 'org-1',
+			email: 'jo@owlat.example',
+			role: 'member',
 		});
 	});
 
