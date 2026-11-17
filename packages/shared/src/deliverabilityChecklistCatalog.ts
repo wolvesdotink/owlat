@@ -309,6 +309,14 @@ export const DELIVERABILITY_CHECKLIST = [
 		'own_mta'
 	),
 	check(
+		'domain.blocklist',
+		'Keep your domains off blocklists',
+		'Domain blocklists (Spamhaus DBL, SURBL, URIBL)',
+		'blocking',
+		'A listed domain gets every message that names it junked, whatever the sending address.',
+		`${DOCS_ORIGIN}/developer/dnsbl-delisting#domain-blocklists`
+	),
+	check(
 		'domain.mta_sts',
 		'Require trusted TLS for incoming mail',
 		'MTA-STS',

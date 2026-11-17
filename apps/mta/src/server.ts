@@ -22,6 +22,7 @@ import { createOutboundTlsRoutes } from './routes/outboundTls.js';
 import { createPoolRulesRoutes } from './routes/poolRules.js';
 import { createIpAuditRoutes } from './routes/ipAudit.js';
 import { createDnsblAccessRoutes } from './routes/dnsblAccess.js';
+import { createDomainBlocklistRoutes } from './routes/domainBlocklists.js';
 import { createProviderHoldRoutes } from './routes/providerHolds.js';
 import { createOutboundIdentityRoutes } from './routes/outboundIdentity.js';
 import { createInboundRoutes } from './routes/inboundRoutes.js';
@@ -123,6 +124,9 @@ export function createApp(
 
 	// Blocklist resolver + Spamhaus DQS key for the admin card (master-key protected)
 	app.route('/dnsbl-access', createDnsblAccessRoutes(redis, config));
+
+	// Domain blocklist lookups for the Deliverability Center (master-key protected)
+	app.route('/domain-blocklists', createDomainBlocklistRoutes(redis, config));
 
 	// Per-(IP, provider) holds from a provider's reputation feed (master-key protected)
 	app.route('/provider-holds', createProviderHoldRoutes(redis, config));

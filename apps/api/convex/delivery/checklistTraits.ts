@@ -82,6 +82,7 @@ export const CHECKLIST_ITEM_TRAITS = {
 	'domain.return_path': domain('dns', true, true),
 	'domain.from_mx': domain('dns', false, true),
 	'domain.bounce_mx': domain('dns', false, true),
+	'domain.blocklist': domain(null, false, false, ['tracking']),
 	'domain.mta_sts': domain('dns', false, true),
 	'domain.tls_rpt': domain('dns', true, true),
 	'domain.tlsa': domain('dns', true, true),

@@ -1,5 +1,5 @@
 /**
- * Outbound-IP DNS blocklist taxonomy shared by the MTA and operator UI.
+ * DNS blocklist taxonomy (sending IPs and sending domains) shared by the MTA and operator UI.
  *
  * Severity is deliberately policy, not a property inferred from a DNS answer:
  * only Spamhaus can quarantine a sending IP. The other providers are advisory
@@ -129,4 +129,107 @@ export function isDnsblUnknownReason(value: unknown): value is DnsblUnknownReaso
 
 export function isDnsblListId(value: string): value is DnsblListId {
 	return DNSBL_LIST_IDS.includes(value as DnsblListId);
+}
+
+/**
+ * Domain blocklists: the From domain, the return-path host and the tracking
+ * domain appear in every message, and a listing on one of these junks mail
+ * whatever the sending IP's reputation.
+ *
+ * Each zone answers a querier it will not serve with a reserved code instead
+ * of data, and that answer is neither a listing nor a clean result:
+ *
+ *   * Spamhaus DBL answers 127.255.255.254 to a public or unattributable
+ *     resolver, 127.255.255.255 when the querier is over its volume, and
+ *     127.255.255.252 for a malformed query. Its listings are 127.0.1.0/24
+ *     (127.0.1.255 means "IP queries are not allowed here"). The Data Query
+ *     Service answers the same data under `<key>.dbl.dq.spamhaus.net` from
+ *     anywhere, with the operator's Spamhaus DQS key.
+ *   * SURBL and URIBL answer 127.0.0.1 to every query they refuse (a public
+ *     resolver or excessive volume); bit 1 is never a listing. SURBL's listing
+ *     bits are every other bit of the last octet; URIBL's black list is bit 2,
+ *     and its grey (bulk senders) and red (monitored) bits are not listings.
+ *
+ * All three are free for low-volume queries from a server's own recursive
+ * resolver, which is what the MTA's `DNSBL_RESOLVER` provides.
+ */
+export const DOMAIN_BLOCKLIST_IDS = ['spamhaus_dbl', 'surbl', 'uribl'] as const;
+export type DomainBlocklistId = (typeof DOMAIN_BLOCKLIST_IDS)[number];
+
+export interface DomainBlocklistDefinition {
+	id: DomainBlocklistId;
+	name: string;
+	zone: string;
+	/** The keyed zone the Spamhaus DQS key unlocks, as for the IP list. */
+	keyedZone?: string;
+	/** Where the domain owner asks for removal. */
+	delistingUrl: string;
+}
+
+export const DOMAIN_BLOCKLISTS: Record<DomainBlocklistId, DomainBlocklistDefinition> = {
+	spamhaus_dbl: {
+		id: 'spamhaus_dbl',
+		name: 'Spamhaus DBL',
+		zone: 'dbl.spamhaus.org',
+		keyedZone: 'dbl.dq.spamhaus.net',
+		delistingUrl: 'https://check.spamhaus.org/',
+	},
+	surbl: {
+		id: 'surbl',
+		name: 'SURBL',
+		zone: 'multi.surbl.org',
+		delistingUrl: 'https://surbl.org/surbl-analysis',
+	},
+	uribl: {
+		id: 'uribl',
+		name: 'URIBL',
+		zone: 'multi.uribl.com',
+		delistingUrl: 'https://admin.uribl.com/',
+	},
+};
+
+export function isDomainBlocklistId(value: string): value is DomainBlocklistId {
+	return DOMAIN_BLOCKLIST_IDS.includes(value as DomainBlocklistId);
+}
+
+export type DomainBlocklistVerdict =
+	| { status: 'listed' | 'clean' }
+	| { status: 'unknown'; reason: DnsblUnknownReason };
+
+function lastOctet(answer: string, prefix: string): number | null {
+	if (!answer.startsWith(prefix)) return null;
+	const value = Number(answer.slice(prefix.length));
+	return Number.isInteger(value) && value >= 0 && value <= 255 ? value : null;
+}
+
+/**
+ * Read one zone's A answers for a queried domain. An empty answer is NXDOMAIN,
+ * i.e. clean. A refusal or an answer outside the zone's documented codes is
+ * `unknown`, never listed and never clean.
+ */
+export function readDomainBlocklistAnswer(
+	id: DomainBlocklistId,
+	answers: readonly string[]
+): DomainBlocklistVerdict {
+	if (answers.length === 0) return { status: 'clean' };
+	if (answers.some((answer) => answer.startsWith('127.255.255.'))) {
+		return {
+			status: 'unknown',
+			reason: answers.includes('127.255.255.255') ? 'rate_limited' : 'resolver_refused',
+		};
+	}
+	if (id === 'spamhaus_dbl') {
+		const codes = answers.map((answer) => lastOctet(answer, '127.0.1.'));
+		if (codes.some((code) => code === null || code === 255)) {
+			return { status: 'unknown', reason: 'unusable_answer' };
+		}
+		return { status: 'listed' };
+	}
+	const bits = answers.map((answer) => lastOctet(answer, '127.0.0.'));
+	if (bits.some((value) => value === null)) return { status: 'unknown', reason: 'unusable_answer' };
+	if (bits.some((value) => value === 1)) return { status: 'unknown', reason: 'resolver_refused' };
+	const listingBits = id === 'uribl' ? 0b10 : 0b1111_1110;
+	return bits.some((value) => (value! & listingBits) !== 0)
+		? { status: 'listed' }
+		: { status: 'clean' };
 }

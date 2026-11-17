@@ -20380,6 +20380,10 @@
 					}
 				},
 				"domain": {
+					"blocklist": {
+						"impact": "Eine gelistete Domain lässt jede Mail im Spam landen, die sie nennt, egal von welcher Adresse sie kommt.",
+						"title": "Halte deine Domains von Blocklisten fern"
+					},
 					"bounce_mx": {
 						"impact": "Bounces erreichen Owlat nur, wenn der Return-Path-Host einen MX-Eintrag hat, der auf deinen Mailserver zeigt.",
 						"title": "Empfange Bounces auf deinem Mailserver"

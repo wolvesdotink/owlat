@@ -20380,6 +20380,10 @@
 					}
 				},
 				"domain": {
+					"blocklist": {
+						"impact": "A listed domain gets every message that names it junked, whatever the sending address.",
+						"title": "Keep your domains off blocklists"
+					},
 					"bounce_mx": {
 						"impact": "Bounces reach Owlat only when the return-path host has an MX record that points at your mail server.",
 						"title": "Receive bounces at your mail server"

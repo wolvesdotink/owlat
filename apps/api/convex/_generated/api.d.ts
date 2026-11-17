@@ -601,6 +601,7 @@ import type * as delivery_checklistApplicability from '../delivery/checklistAppl
 import type * as delivery_checklistCenterView from '../delivery/checklistCenterView.js';
 import type * as delivery_checklistDeploymentValidators from '../delivery/checklistDeploymentValidators.js';
 import type * as delivery_checklistDkimValidation from '../delivery/checklistDkimValidation.js';
+import type * as delivery_checklistDomainBlocklist from '../delivery/checklistDomainBlocklist.js';
 import type * as delivery_checklistDnsObservations from '../delivery/checklistDnsObservations.js';
 import type * as delivery_checklistDomainValidators from '../delivery/checklistDomainValidators.js';
 import type * as delivery_checklistEvidence from '../delivery/checklistEvidence.js';
@@ -2597,6 +2598,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/checklistCenterView': typeof delivery_checklistCenterView;
 	'delivery/checklistDeploymentValidators': typeof delivery_checklistDeploymentValidators;
 	'delivery/checklistDkimValidation': typeof delivery_checklistDkimValidation;
+	'delivery/checklistDomainBlocklist': typeof delivery_checklistDomainBlocklist;
 	'delivery/checklistDnsObservations': typeof delivery_checklistDnsObservations;
 	'delivery/checklistDomainValidators': typeof delivery_checklistDomainValidators;
 	'delivery/checklistEvidence': typeof delivery_checklistEvidence;
