@@ -358,6 +358,7 @@ describe('settings controls', () => {
 			'setting:admin:deliverability:alertChannels',
 			'setting:admin:webhooks:webhookSecret',
 			'setting:admin:brandKit:brandColors',
+			'setting:admin:features:operatingMode',
 			'setting:admin:instanceGeneral:transactionalSender',
 			'setting:admin:apiKeys:transactionalSendLimits',
 		]);

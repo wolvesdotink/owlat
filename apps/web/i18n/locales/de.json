@@ -7625,6 +7625,19 @@
 				"off": "Transaktionsmails sind ausgeschaltet, es gibt also keinen Absender festzulegen.",
 				"own": "Transaktionsmails gehen von ihrem eigenen Absender raus: {from}.",
 				"usesDefault": "Transaktionsmails wie Passwort-Resets und Belege gehen ebenfalls von diesem Standardabsender raus. Gib ihnen einen eigenen Absender, damit ein Marketingproblem sie nicht ausbremst."
+			},
+			"operatingModeCard": {
+				"applyChanges": "Änderungen anwenden",
+				"changeModeOperation": "Betriebsmodus ändern",
+				"disableCount": "Deaktivieren ({count})",
+				"enableCount": "Aktivieren ({count})",
+				"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
+				"modeChangedToast": "Betriebsmodus auf {mode} geändert",
+				"nothing": "Nichts",
+				"operatingMode": "Betriebsmodus",
+				"operatingModeHelp": "Wähle eine grobe Produktform. Du siehst jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
+				"reviewTitle": "Änderungen am Betriebsmodus prüfen",
+				"currentMode": "Aktuell"
 			}
 		},
 		"shareLinksPopover": {
@@ -9282,7 +9295,7 @@
 				"groups": {
 					"ai": "KI-Anbieter, KI-Antworten und Agentenzustand.",
 					"delivery": "Versandgesundheit, Domains, Zustellungsanbieter, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
-					"features": "Welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
+					"features": "Der Betriebsmodus, welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
 					"system": "Name und Voreinstellungen des Workspace, Desktop-App-Updates, Systemaktualisierungen und Backups.",
 					"team": "Mitglieder, Einladungen, Team-Postfächer, Kampagnenabsender, die API und das Audit-Protokoll."
 				},
@@ -10328,72 +10341,6 @@
 					"verifiedLabel": "Verifiziert:",
 					"nameSaveFailed": "Die übrigen Einstellungen sind gespeichert, aber der Workspace-Name konnte nicht geändert werden. Versuch es noch einmal.",
 					"unverifiedFromDomain": "{domain} ist noch keine verifizierte Absenderdomain. Du kannst die Adresse speichern, aber Automations-Mails, Antworten aus dem Postfach, Double-Opt-in-Bestätigungen und transaktionale Mails von ihr werden abgelehnt, bis die Domain verifiziert ist."
-				},
-				"index": {
-					"applyChanges": "Änderungen anwenden",
-					"changeModeOperation": "Betriebsmodus ändern",
-					"disableCount": "Deaktivieren ({count})",
-					"enableCount": "Aktivieren ({count})",
-					"groups": {
-						"agentHealth": {
-							"description": "Live-Genauigkeit, Eskalationen und jüngste Agentenläufe.",
-							"title": "Agentenzustand"
-						},
-						"aiProvider": {
-							"description": "Wähle den gehosteten oder selbst betriebenen Modellanbieter und schalte die KI ein.",
-							"title": "KI-Anbieter"
-						},
-						"aiReplies": {
-							"description": "Lege fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
-							"title": "KI-Antworten"
-						},
-						"brandKit": {
-							"description": "Logo, Farben, Schriften und Fußzeile, mit denen jede E-Mail startet.",
-							"title": "Markenkit"
-						},
-						"channels": {
-							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
-							"title": "Kanäle"
-						},
-						"desktopUpdates": {
-							"description": "Lege fest, welche Version verbundene Desktop-Apps installieren — oder halte alle zurück.",
-							"title": "Desktop-Updates"
-						},
-						"features": {
-							"description": "Feingranulare Feature-Flags und Pakete für die erweiterte Konfiguration.",
-							"title": "Funktionen"
-						},
-						"forms": {
-							"description": "Anmelde-Endpunkte und eingebettete Kundenformulare.",
-							"title": "Formulare"
-						},
-						"general": {
-							"description": "Workspace-Name, Zeitzone, Standardabsender und Kampagnenvorgaben.",
-							"title": "Allgemein"
-						},
-						"plugins": {
-							"description": "Installierte Plugins konfigurieren oder Einstellungen entfernen, die alte Plugins hinterlassen haben.",
-							"title": "Plugins"
-						},
-						"properties": {
-							"description": "Benutzerdefinierte Felder, die das Kundenverzeichnis gemeinsam nutzt.",
-							"title": "Kontakteigenschaften"
-						},
-						"sealedMail": {
-							"description": "Lege die Organisationsrichtlinie für geschützte persönliche Nachrichten fest.",
-							"title": "Versiegelte Mail"
-						}
-					},
-					"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
-					"modeChangedToast": "Betriebsmodus auf {mode} geändert",
-					"nothing": "Nichts",
-					"operatingMode": "Betriebsmodus",
-					"operatingModeHelp": "Wähle eine grobe Produktform. Du siehst jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
-					"pageTitle": "Instanz — Owlat",
-					"reviewTitle": "Änderungen am Betriebsmodus prüfen",
-					"subtitle": "Konfiguration, die alle in diesem Workspace betrifft.",
-					"title": "Instanz",
-					"currentMode": "Aktuell"
 				},
 				"plugins": {
 					"detail": {
@@ -15945,7 +15892,6 @@
 				"health": "Zustellungsgesundheit",
 				"importMail": "E-Mails importieren",
 				"independence": "Unabhängigkeit",
-				"instance": "Instanz",
 				"mailSearch": "Suche",
 				"marketing": "Marketing-E-Mails",
 				"measurement": "Messung",
@@ -16288,7 +16234,6 @@
 			"items": {
 				"administration": {
 					"delivery": "Zustellungsgesundheit",
-					"instance": "Instanz",
 					"overview": "Übersicht",
 					"teamAccess": "Team"
 				},
@@ -18510,6 +18455,10 @@
 				"transactionalSender": {
 					"keywords": "transaktionsabsender, transaktionsmail absender, passwort reset absender, beleg absender, api absender, mail subdomain, absenderadresse, transactional sender",
 					"title": "Transaktionsabsender"
+				},
+				"operatingMode": {
+					"title": "Betriebsmodus",
+					"keywords": "betriebsmodus, modus, produktform, modusvorlage, funktionsvorlage, modus wechseln"
 				}
 			}
 		},

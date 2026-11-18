@@ -7625,6 +7625,19 @@
 				"off": "Transactional email is switched off, so it has no sender to set.",
 				"own": "Transactional mail goes out from its own sender, {from}.",
 				"usesDefault": "Transactional mail, such as password resets and receipts, also goes out from this default sender. Give it a sender of its own so a marketing problem can't hold it back."
+			},
+			"operatingModeCard": {
+				"applyChanges": "Apply changes",
+				"changeModeOperation": "Change operating mode",
+				"disableCount": "Disable ({count})",
+				"enableCount": "Enable ({count})",
+				"keepData": "Disabled features keep their existing data.",
+				"modeChangedToast": "Operating mode changed to {mode}",
+				"nothing": "Nothing",
+				"operatingMode": "Operating mode",
+				"operatingModeHelp": "Choose a coarse product shape. You will preview every feature change before it is applied, and turning a feature off keeps its data.",
+				"reviewTitle": "Review operating-mode changes",
+				"currentMode": "Current"
 			}
 		},
 		"shareLinksPopover": {
@@ -9282,7 +9295,7 @@
 				"groups": {
 					"ai": "AI provider, AI replies and agent health.",
 					"delivery": "Sending health, domains, the delivery provider, webhooks, and held or failed incoming mail.",
-					"features": "Which features are on, channels, forms, contact properties and the email theme.",
+					"features": "The operating mode, which features are on, channels, forms, contact properties and the email theme.",
 					"system": "Workspace name and defaults, desktop app updates, system updates and backups.",
 					"team": "Members, invites, team inboxes, campaign senders, the API and the audit log."
 				},
@@ -10328,72 +10341,6 @@
 					"verifiedLabel": "Verified:",
 					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again.",
 					"unverifiedFromDomain": "{domain} is not a verified sending domain yet. You can save this address, but automation emails, inbox replies, double opt-in confirmations and transactional mail from it are refused until the domain is verified."
-				},
-				"index": {
-					"applyChanges": "Apply changes",
-					"changeModeOperation": "Change operating mode",
-					"disableCount": "Disable ({count})",
-					"enableCount": "Enable ({count})",
-					"groups": {
-						"agentHealth": {
-							"description": "Live accuracy, escalations, and recent agent runs.",
-							"title": "Agent health"
-						},
-						"aiProvider": {
-							"description": "Choose the hosted or self-run model provider and turn AI on.",
-							"title": "AI provider"
-						},
-						"aiReplies": {
-							"description": "Choose whether the AI drafts replies for review, sends them when confident, or stays off.",
-							"title": "AI replies"
-						},
-						"brandKit": {
-							"description": "Logo, colors, fonts and footer that every email starts from.",
-							"title": "Brand kit"
-						},
-						"channels": {
-							"description": "Messaging channels available across the instance.",
-							"title": "Channels"
-						},
-						"desktopUpdates": {
-							"description": "Choose which release connected desktop apps install, or hold them all.",
-							"title": "Desktop updates"
-						},
-						"features": {
-							"description": "Fine-grained feature flags and packs for advanced configuration.",
-							"title": "Features"
-						},
-						"forms": {
-							"description": "Signup endpoints and embedded customer forms.",
-							"title": "Forms"
-						},
-						"general": {
-							"description": "Workspace name, timezone, default sender, and campaign defaults.",
-							"title": "General"
-						},
-						"plugins": {
-							"description": "Configure installed plugins or remove settings left by old ones.",
-							"title": "Plugins"
-						},
-						"properties": {
-							"description": "Custom fields shared by the customer directory.",
-							"title": "Contact properties"
-						},
-						"sealedMail": {
-							"description": "Set organization policy for protected personal messages.",
-							"title": "Sealed mail"
-						}
-					},
-					"keepData": "Disabled features keep their existing data.",
-					"modeChangedToast": "Operating mode changed to {mode}",
-					"nothing": "Nothing",
-					"operatingMode": "Operating mode",
-					"operatingModeHelp": "Choose a coarse product shape. You will preview every feature change before it is applied, and turning a feature off keeps its data.",
-					"pageTitle": "Instance — Owlat",
-					"reviewTitle": "Review operating-mode changes",
-					"subtitle": "Configuration that affects everyone in this workspace.",
-					"title": "Instance",
-					"currentMode": "Current"
 				},
 				"plugins": {
 					"detail": {
@@ -15945,7 +15892,6 @@
 				"health": "Delivery health",
 				"importMail": "Import mail",
 				"independence": "Independence",
-				"instance": "Instance",
 				"mailSearch": "Search",
 				"marketing": "Marketing emails",
 				"measurement": "Measurement",
@@ -16288,7 +16234,6 @@
 			"items": {
 				"administration": {
 					"delivery": "Delivery health",
-					"instance": "Instance",
 					"overview": "Overview",
 					"teamAccess": "Team"
 				},
@@ -18510,6 +18455,10 @@
 				"transactionalSender": {
 					"keywords": "transactional sender, transactional from address, password reset sender, receipt sender, api sender, mail subdomain, from address",
 					"title": "Transactional sender"
+				},
+				"operatingMode": {
+					"title": "Operating mode",
+					"keywords": "operating mode, product shape, mode preset, feature preset, deployment shape, switch mode"
 				}
 			}
 		},
