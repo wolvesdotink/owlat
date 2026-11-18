@@ -43,7 +43,11 @@ beforeEach(() => {
 
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
-	vi.stubGlobal('useFeatureFlag', () => ({ flags: ref({}), isEnabled: () => false }));
+	vi.stubGlobal('useFeatureFlag', () => ({
+		flags: ref({}),
+		isEnabled: () => false,
+		isLoading: ref(false),
+	}));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useConvexQuery', (reference: unknown, args: unknown) => {
 		const name = getFunctionName(reference as never);
@@ -81,9 +85,11 @@ describe('Operating mode card — copy', () => {
 describe('Operating mode card — applying a mode', () => {
 	it('reports the flag change to the out-of-sync banner', async () => {
 		trackFlagChange.mockClear();
+		const flagsLoading = ref(true);
 		vi.stubGlobal('useFeatureFlag', () => ({
 			flags: ref({ campaigns: true }),
 			isEnabled: () => false,
+			isLoading: flagsLoading,
 		}));
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: vi.fn().mockResolvedValue({ ok: true, result: {} }),
@@ -101,6 +107,13 @@ describe('Operating mode card — applying a mode', () => {
 		const byText = (text: string) =>
 			wrapper.findAll('button').find((candidate) => candidate.text().includes(text));
 		await byText('IMAP-only')!.trigger('click');
+		// Nothing is saved or reported while the flags are still defaults.
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+		expect(trackFlagChange).not.toHaveBeenCalled();
+
+		flagsLoading.value = false;
+		await flushPromises();
 		await byText('Apply changes')!.trigger('click');
 		await flushPromises();
 
