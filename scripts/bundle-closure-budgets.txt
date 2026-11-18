@@ -139,7 +139,7 @@ route 57 pages/dashboard/preferences/account.vue
 route 27 pages/dashboard/preferences/add-account.vue
 route 22 pages/dashboard/preferences/ai-clients.vue
 route 17 pages/dashboard/preferences/aliases.vue
-route 19 pages/dashboard/preferences/app-passwords.vue
+route 22 pages/dashboard/preferences/app-passwords.vue
 route 27 pages/dashboard/preferences/booking.vue
 route 71 pages/dashboard/preferences/device.vue
 route 63 pages/dashboard/preferences/external-account.vue
