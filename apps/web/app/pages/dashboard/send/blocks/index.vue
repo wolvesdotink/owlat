@@ -246,6 +246,10 @@ const navigateToEditPage = (block: BlockRow) => {
 		@confirm-delete="list.confirmDelete"
 		@cancel-delete="list.closeDelete"
 	>
+		<template #before-header>
+			<SendTabs />
+		</template>
+
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>

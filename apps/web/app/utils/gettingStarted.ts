@@ -168,7 +168,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		title: 'shared.gettingStarted.createdEmail.title',
 		description: 'shared.gettingStarted.createdEmail.description',
 		icon: FileTextIcon,
-		href: '/dashboard/send/marketing',
+		href: '/dashboard/send',
 		cta: 'shared.gettingStarted.createdEmail.cta',
 	},
 	{

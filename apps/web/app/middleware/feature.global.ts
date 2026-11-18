@@ -58,7 +58,6 @@ export const PATH_FEATURE_RULES: ReadonlyArray<{
 	{ prefix: '/dashboard/marketing', required: 'campaigns' },
 	{ prefix: '/dashboard/automations', required: 'automations' },
 	{ prefix: '/dashboard/visualizations', required: 'ai.visualizations' },
-	{ prefix: '/dashboard/send/marketing', required: 'campaigns' },
 	// Transactional list AND editor now both live under /dashboard/send/transactional
 	// (list at .../transactional, editor at .../transactional/[id]/{edit,sends,translations}),
 	// so one prefix gates the whole tree — otherwise the editor is reachable by URL

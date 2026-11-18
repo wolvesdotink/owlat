@@ -1,23 +1,29 @@
 <script setup lang="ts">
 /**
- * Templates: one list of every email template with a type filter.
+ * Templates: one list of every email template, whatever its type, with
+ * search, sort, the grid/list switch and duplicate/delete on each row.
  *
- * One list, one filter and one "New template" button: no stat tiles, quick
- * actions or "recent" cards with create buttons of their own. Saved blocks
- * keep their own page, linked from the header; images are picked from inside
- * the email editor.
+ * Saved blocks and the media library are tabs beside it (`SendTabs`). One
+ * "New template" button: no stat tiles, quick actions or "recent" cards with
+ * create buttons of their own.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { FunctionReturnType } from 'convex/server';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
-import { formatCompactRelativeTime } from '~/utils/formatters';
+import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
+import { useTemplateList } from '~/composables/useTemplateList';
+import { formatDate } from '~/utils/formatters';
+import { sortTemplateRows } from '~/utils/templateListSort';
 import {
 	TEMPLATE_TYPE_FILTERS,
 	parseTemplateTypeFilter,
 	type TemplateTypeFilter,
 } from '~/utils/templateListFilter';
-import { FileTextIcon, GridIcon, MailIcon, PlusIcon } from '@coolicons/vue';
+import { FileTextIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 import SendTemplateStatusBadge from '~/components/send/TemplateStatusBadge.vue';
+
+type TemplateRow = FunctionReturnType<typeof api.emailTemplates.emails.list>['page'][number];
 
 const { t, locale } = useI18n();
 
@@ -30,15 +36,33 @@ definePageMeta({
 
 const route = useRoute();
 const router = useRouter();
+// Creating, duplicating and deleting a template all require `templates:manage`
+// (owner/admin) on the backend — `apps/api/convex/emailTemplates/emails.ts`.
+// Browsing and opening one stays open to every member; the writes do not.
 const { can, showGateFor, isAdmin } = usePermissions();
 const { isEnabled } = useFeatureFlag();
 const canManage = computed(() => can('templates:manage'));
 const showManageGate = computed(() => showGateFor('templates:manage'));
+const { showToast } = useToast();
+
+const { data: typeCounts } = useOrganizationQuery(
+	api.emailTemplates.organization.countByTypeByOrganization
+);
+
+// The create flow only makes marketing templates, so a transactional-typed one
+// exists only when someone changed a template's type in its settings. Until
+// then the filter would separate nothing, so it stays hidden and the list is
+// unfiltered even under a stale `?type=` link. While the counts load, the URL
+// is trusted, so a filtered link does not query twice.
+const showTypeFilter = computed(() => (typeCounts.value?.['transactional'] ?? 0) > 0);
 
 // The filter lives in the URL (`?type=marketing`), so a filtered list can be
 // linked to and survives a reload.
 const typeFilter = computed<TemplateTypeFilter>({
-	get: () => parseTemplateTypeFilter(route.query['type']),
+	get: () =>
+		typeCounts.value && !showTypeFilter.value
+			? 'all'
+			: parseTemplateTypeFilter(route.query['type']),
 	set: (value) => {
 		void router.replace({ query: { ...route.query, type: value === 'all' ? undefined : value } });
 	},
@@ -52,25 +76,11 @@ const typeFilter = computed<TemplateTypeFilter>({
 // here because importing the navigation table would load it, its icons and the
 // settings registry with this page.
 const showTransactionalHint = computed(
-	() => typeFilter.value === 'transactional' && isAdmin.value && isEnabled('transactional')
-);
-
-const { data: typeCounts } = useOrganizationQuery(
-	api.emailTemplates.organization.countByTypeByOrganization
-);
-const { data: blocksStats } = useOrganizationQuery(api.emailBlocks.blocks.getStatsByTeam);
-
-const {
-	results: templates,
-	status,
-	isLoading,
-	error,
-	refetch,
-	loadMore,
-} = useOrganizationPaginatedQuery(
-	api.emailTemplates.emails.list,
-	() => (typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
-	{ initialNumItems: 50 }
+	() =>
+		showTypeFilter.value &&
+		typeFilter.value === 'transactional' &&
+		isAdmin.value &&
+		isEnabled('transactional')
 );
 
 function countFor(filter: TemplateTypeFilter): number | null {
@@ -92,14 +102,21 @@ const filterOptions = computed(() =>
 	})
 );
 
-const blockCount = computed(() => blocksStats.value?.total ?? null);
-
 // Every template type opens in the same email editor.
 function editPath(id: Id<'emailTemplates'>): string {
 	return `/dashboard/send/emails/${id}/edit`;
 }
 
-// --- New template (the same library modal the marketing list uses) ---------
+const { run: duplicateTemplate } = useBackendOperation(api.emailTemplates.emails.duplicate, {
+	label: () => t('dashboard.send.index.operations.duplicate'),
+});
+const { run: deleteTemplate } = useBackendOperation(api.emailTemplates.emails.remove, {
+	label: () => t('dashboard.send.index.operations.delete'),
+});
+const { run: restoreTemplate } = useBackendOperation(api.emailTemplates.emails.restore, {
+	label: () => t('dashboard.send.index.operations.restore'),
+});
+const { deleteWithUndo } = useMarketingDeleteUndo();
 const { run: createTemplate } = useBackendOperation(api.emailTemplates.emails.create, {
 	label: () => t('dashboard.send.index.createOperation'),
 });
@@ -125,6 +142,60 @@ const libraryRef = ref<{
 	isCreating: boolean;
 } | null>(null);
 
+// The list query is built inside `useTemplateList`; its pager is kept here for
+// Load more.
+let pager: { status: { readonly value: string }; loadMore: (numItems: number) => void } | undefined;
+
+// `reactive` unwraps the composable's refs, so the template reads `list.items`.
+const list = reactive(
+	useTemplateList<TemplateRow>({
+		// Type filter + full-text search run server-side through the Listing engine;
+		// the sort is applied client-side over the loaded page, and a
+		// search keeps the engine's relevance order.
+		query: ({ search, sort }) => {
+			const { results, status, loadMore, isLoading, error, refetch } =
+				useOrganizationPaginatedQuery(
+					api.emailTemplates.emails.list,
+					() => ({
+						...(typeFilter.value === 'all' ? {} : { type: typeFilter.value }),
+						search: search.value || undefined,
+					}),
+					{ initialNumItems: 50 }
+				);
+			pager = { status, loadMore };
+			const rows = computed(() =>
+				search.value ? results.value : sortTemplateRows(results.value, sort.value)
+			);
+			return { rows, isLoading, error, refetch };
+		},
+		defaultViewMode: 'grid',
+		editPath: (template) => editPath(template._id),
+		onDuplicate: async (template) => {
+			const result = await duplicateTemplate({ templateId: template._id });
+			if (result.ok) showToast(t('dashboard.send.index.toasts.duplicated'));
+		},
+		// A delete runs at once (the template goes to Recently deleted) and the
+		// toast offers Undo.
+		confirmDelete: false,
+		onDelete: (template) =>
+			deleteWithUndo({
+				name: template.name,
+				remove: async () => (await deleteTemplate({ templateId: template._id })).ok,
+				restore: () => restoreTemplate({ templateId: template._id }),
+			}),
+		onNew: () => (isLibraryOpen.value = true),
+		canCreate: () => canManage.value,
+		isBusy: () => isLibraryOpen.value,
+		onEscape: () => {
+			if (!isLibraryOpen.value || libraryRef.value?.isCreating) return false;
+			isLibraryOpen.value = false;
+			return true;
+		},
+	})
+);
+
+const canLoadMore = computed(() => list.items.length > 0 && pager?.status.value === 'CanLoadMore');
+
 async function handleCreateSubmit() {
 	await libraryRef.value?.handleCreate(createTemplate, createFromPreset);
 }
@@ -135,137 +206,184 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 </script>
 
 <template>
-	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
-		<UiPageHeader
-			:title="t('dashboard.send.index.title')"
-			:description="t('dashboard.send.index.subtitle')"
-			class="mb-6"
-		>
-			<template #actions>
-				<UiButton variant="secondary" to="/dashboard/send/blocks">
-					<template #iconLeft><GridIcon class="w-4 h-4" /></template>
-					{{
-						blockCount === null
-							? t('dashboard.send.index.savedBlocks')
-							: t('dashboard.send.index.savedBlocksCount', {
-									count: blockCount.toLocaleString(locale),
-								})
-					}}
-				</UiButton>
-				<UiButton v-if="canManage" data-testid="new-template" @click="isLibraryOpen = true">
-					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
-					{{ t('dashboard.send.index.newTemplate') }}
-				</UiButton>
-				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
-					{{ t('dashboard.send.index.adminsOnly') }}
-				</p>
-			</template>
-		</UiPageHeader>
+	<ListPageShell
+		v-model:search="list.searchQuery"
+		v-model:view-mode="list.viewMode"
+		:title="t('dashboard.send.index.title')"
+		:description="t('dashboard.send.index.subtitle')"
+		:loading="list.isLoading"
+		:error="list.error"
+		:error-title="t('dashboard.send.index.loadError')"
+		:loading-label="t('dashboard.send.index.loadingTemplates')"
+		:has-organization="list.hasOrganization"
+		:is-empty="list.isEmpty"
+		:active-search="list.debouncedSearch"
+		:search-placeholder="t('dashboard.send.index.searchPlaceholder')"
+		:sort-options="list.sortOptions"
+		:sort="list.currentSort.value"
+		:sort-label="t('dashboard.send.index.sortLabel')"
+		sort-listbox-id="templates-sort-listbox"
+		:empty-no-org="{
+			icon: MailIcon,
+			title: t('dashboard.send.index.emptyNoTeam.title'),
+			description: t('dashboard.send.index.emptyNoTeam.description'),
+		}"
+		:empty="{
+			icon: FileTextIcon,
+			title:
+				typeFilter === 'all'
+					? t('dashboard.send.index.empty.title')
+					: t(`dashboard.send.index.empty.filtered.${typeFilter}`),
+			description: canManage ? t('dashboard.send.index.empty.description') : '',
+		}"
+		:no-results="{
+			title: t('dashboard.send.index.noResults.title'),
+			description: t('dashboard.send.index.noResults.description', {
+				query: list.debouncedSearch,
+			}),
+		}"
+		@update:sort="list.selectSort"
+		@retry="list.refetch"
+		@clear-search="list.clearSearch"
+	>
+		<template #before-header>
+			<SendTabs />
+		</template>
 
-		<!-- A wrapper that scrolls, so a narrow phone scrolls the strip sideways
-		     instead of squeezing its segments; the control keeps its natural width. -->
-		<div
-			class="max-w-full overflow-x-auto"
-			:class="showTransactionalHint ? 'mb-3' : 'mb-6'"
-			data-testid="template-type-filter"
-		>
-			<UiSegmentedControl
-				:model-value="typeFilter"
-				:options="filterOptions"
-				:aria-label="t('dashboard.send.index.typeFilterLabel')"
-				fit="content"
-				class="w-max"
-				@update:model-value="typeFilter = parseTemplateTypeFilter($event)"
+		<template #actions>
+			<UiButton v-if="canManage" size="sm" data-testid="new-template" @click="isLibraryOpen = true">
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
+				{{ t('dashboard.send.index.newTemplate') }}
+			</UiButton>
+			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
+				{{ t('dashboard.send.index.adminsOnly') }}
+			</p>
+		</template>
+
+		<template v-if="showTransactionalHint" #after-header>
+			<I18nT
+				keypath="dashboard.send.index.transactionalTypeHint"
+				tag="p"
+				scope="global"
+				class="max-w-2xl text-xs text-text-tertiary"
+				data-testid="template-transactional-hint"
 			>
-				<template v-for="option in filterOptions" :key="option.value" #[`option-${option.value}`]>
-					{{ option.label }}
-					<span v-if="option.count !== null" class="tabular-nums text-text-tertiary">
-						{{ option.count }}
+				<template #link>
+					<NuxtLink
+						to="/dashboard/send/transactional"
+						class="text-text-secondary underline hover:text-text-primary"
+						>{{ t('dashboard.send.index.transactionalTypeHintLink') }}</NuxtLink
+					>
+				</template>
+			</I18nT>
+		</template>
+
+		<template #filters>
+			<!-- A wrapper that scrolls, so a narrow phone scrolls the strip sideways
+			     instead of squeezing its segments; the control keeps its natural width. -->
+			<div
+				v-if="showTypeFilter"
+				class="max-w-full overflow-x-auto"
+				data-testid="template-type-filter"
+			>
+				<UiSegmentedControl
+					:model-value="typeFilter"
+					:options="filterOptions"
+					:aria-label="t('dashboard.send.index.typeFilterLabel')"
+					fit="content"
+					class="w-max"
+					@update:model-value="typeFilter = parseTemplateTypeFilter($event)"
+				>
+					<template v-for="option in filterOptions" :key="option.value" #[`option-${option.value}`]>
+						{{ option.label }}
+						<span v-if="option.count !== null" class="tabular-nums text-text-tertiary">
+							{{ option.count }}
+						</span>
+					</template>
+				</UiSegmentedControl>
+			</div>
+		</template>
+
+		<template #grid>
+			<SendTemplateGrid
+				:items="list.items"
+				:can-manage="canManage"
+				@edit="list.handleEdit"
+				@duplicate="list.handleDuplicate"
+				@delete="list.openDelete"
+			>
+				<template #meta="{ item }">
+					<!-- Marketing is the default type; only the exception gets a badge -->
+					<span
+						v-if="item.type !== 'marketing'"
+						class="text-xs px-1.5 py-0.5 rounded bg-info-subtle text-info"
+					>
+						{{ t(`dashboard.send.index.templateTypes.${item.type}`) }}
 					</span>
 				</template>
-			</UiSegmentedControl>
-		</div>
-		<I18nT
-			v-if="showTransactionalHint"
-			keypath="dashboard.send.index.transactionalTypeHint"
-			tag="p"
-			scope="global"
-			class="mb-6 max-w-2xl text-xs text-text-tertiary"
-			data-testid="template-transactional-hint"
-		>
-			<template #link>
-				<NuxtLink
-					to="/dashboard/send/transactional"
-					class="text-text-secondary underline hover:text-text-primary"
-					>{{ t('dashboard.send.index.transactionalTypeHintLink') }}</NuxtLink
-				>
-			</template>
-		</I18nT>
+			</SendTemplateGrid>
+		</template>
 
-		<UiCard padding="none" overflow="hidden">
-			<UiQueryBoundary
-				:loading="isLoading && templates.length === 0"
-				:error="error"
-				@retry="refetch"
-				:error-title="t('dashboard.send.index.loadError')"
+		<template #table>
+			<SendTemplateTable
+				:items="list.items"
+				:columns="[
+					t('common.name'),
+					t('dashboard.send.index.columns.subject'),
+					t('common.status'),
+					t('dashboard.send.index.columns.updated'),
+				]"
+				:can-manage="canManage"
+				@edit="list.handleEdit"
+				@duplicate="list.handleDuplicate"
+				@delete="list.openDelete"
 			>
-				<template #loading>
-					<DashboardListSkeleton variant="card" leading :rows="5" />
-				</template>
-
-				<UiEmptyState
-					v-if="templates.length === 0"
-					:icon="FileTextIcon"
-					:title="
-						typeFilter === 'all'
-							? t('dashboard.send.index.empty.title')
-							: t(`dashboard.send.index.empty.filtered.${typeFilter}`)
-					"
-					:description="canManage ? t('dashboard.send.index.empty.description') : undefined"
-				/>
-
-				<ul v-else class="divide-y divide-border-subtle" data-testid="template-list">
-					<li v-for="template in templates" :key="template._id">
-						<NuxtLink
-							:to="editPath(template._id)"
-							class="flex items-center gap-4 px-4 py-3 hover:bg-bg-surface transition-colors"
+				<template #cells="{ item }">
+					<td class="px-6 py-4">
+						<span class="text-text-primary font-medium">{{ item.name }}</span>
+						<span
+							v-if="item.type !== 'marketing'"
+							class="ml-2 text-xs px-1.5 py-0.5 rounded bg-info-subtle text-info"
 						>
-							<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-primary truncate font-medium" :title="template.name">
-									{{ template.name }}
-								</p>
-								<p v-if="template.subject" class="text-xs text-text-tertiary truncate">
-									{{ template.subject }}
-								</p>
-							</div>
-							<!-- Published is the norm; an unpublished template says so, so the
-							     hub shows which templates are live without opening each one. -->
-							<SendTemplateStatusBadge
-								v-if="template.status && template.status !== 'published'"
-								:status="template.status"
-								class="shrink-0"
-							/>
-							<!-- Marketing is the default type; only the exception gets a badge -->
-							<span
-								v-if="template.type !== 'marketing'"
-								class="text-xs px-1.5 py-0.5 rounded shrink-0 bg-info-subtle text-info"
-							>
-								{{ t(`dashboard.send.index.templateTypes.${template.type}`) }}
-							</span>
-							<span
-								class="hidden sm:inline text-xs text-text-tertiary shrink-0 w-24 text-right tabular-nums"
-							>
-								{{ formatCompactRelativeTime(template.updatedAt) }}
-							</span>
-						</NuxtLink>
-					</li>
-				</ul>
-			</UiQueryBoundary>
-		</UiCard>
+							{{ t(`dashboard.send.index.templateTypes.${item.type}`) }}
+						</span>
+					</td>
+					<td class="px-6 py-4">
+						<span class="text-text-secondary">{{
+							item.subject || t('shared.templateList.noSubject')
+						}}</span>
+					</td>
+					<td class="px-6 py-4">
+						<SendTemplateStatusBadge :status="item.status" />
+					</td>
+					<td class="px-6 py-4">
+						<span class="text-text-tertiary text-sm">{{ formatDate(item.updatedAt) }}</span>
+					</td>
+				</template>
+			</SendTemplateTable>
+		</template>
 
-		<div v-if="templates.length > 0 && status === 'CanLoadMore'" class="flex justify-center mt-6">
-			<UiButton variant="outline" size="sm" @click="loadMore(50)">
+		<template #cards>
+			<SendTemplateCardList
+				:items="list.items"
+				:can-manage="canManage"
+				@edit="list.handleEdit"
+				@duplicate="list.handleDuplicate"
+				@delete="list.openDelete"
+			>
+				<template #meta="{ item }">
+					<span
+						v-if="item.type !== 'marketing'"
+						class="text-xs px-1.5 py-0.5 rounded bg-info-subtle text-info"
+					>
+						{{ t(`dashboard.send.index.templateTypes.${item.type}`) }}
+					</span>
+				</template>
+			</SendTemplateCardList>
+		</template>
+
+		<div v-if="canLoadMore" class="flex justify-center mt-6">
+			<UiButton variant="outline" size="sm" @click="pager?.loadMore(50)">
 				{{ t('dashboard.send.index.loadMore') }}
 			</UiButton>
 		</div>
@@ -285,5 +403,5 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 				</UiButton>
 			</template>
 		</LazyMailTemplateLibraryModal>
-	</div>
+	</ListPageShell>
 </template>

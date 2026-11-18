@@ -66,7 +66,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 						scope="global"
 					>
 						<template #link>
-							<NuxtLink to="/dashboard/send/marketing" class="link underline">
+							<NuxtLink to="/dashboard/send" class="link underline">
 								{{ t('components.automations.steps.email.editor.noTemplatesLink') }}
 							</NuxtLink>
 						</template>
@@ -82,13 +82,7 @@ const { data: selectedTemplate } = useEmailTemplateById(selectedTemplateId);
 				<p class="text-sm text-text-secondary mb-2">
 					{{ t('components.automations.steps.email.editor.createPrompt') }}
 				</p>
-				<UiButton
-					variant="secondary"
-					size="sm"
-					full-width
-					to="/dashboard/send/marketing"
-					class="gap-2"
-				>
+				<UiButton variant="secondary" size="sm" full-width to="/dashboard/send" class="gap-2">
 					<PlusIcon class="w-4 h-4" />
 					{{ t('components.automations.steps.email.editor.createCta') }}
 				</UiButton>

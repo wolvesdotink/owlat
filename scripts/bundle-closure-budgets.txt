@@ -158,8 +158,8 @@ route 42 pages/dashboard/send/blocks/index.vue
 route 328 pages/dashboard/send/emails/[id]/edit.vue
 route 142 pages/dashboard/send/emails/[id]/settings.vue
 route 144 pages/dashboard/send/emails/[id]/translations.vue
-route 19 pages/dashboard/send/index.vue
-route 48 pages/dashboard/send/marketing/index.vue
+route 51 pages/dashboard/send/index.vue
+route 3 pages/dashboard/send/marketing/index.vue
 route 30 pages/dashboard/send/media.vue
 route 313 pages/dashboard/send/transactional/[id]/edit.vue
 route 18 pages/dashboard/send/transactional/[id]/sends/[sendId].vue

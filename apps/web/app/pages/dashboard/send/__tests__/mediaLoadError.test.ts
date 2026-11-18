@@ -65,6 +65,7 @@ function render(): VueWrapper {
 				UiConfirmationDialog: true,
 				UiSpinner: true,
 				UiPageHeader: true,
+				SendTabs: true,
 				UiErrorAlert: { props: ['title'], template: '<p data-stub="error">{{ title }}</p>' },
 				UiEmptyState: { props: ['title'], template: '<p data-stub="empty">{{ title }}</p>' },
 				UiButton: {

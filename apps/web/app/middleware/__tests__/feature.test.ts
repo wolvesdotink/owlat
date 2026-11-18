@@ -174,7 +174,6 @@ describe('pathRule — path-derived feature gate', () => {
 		expect(pathRule('/dashboard/campaigns/new')?.required).toBe('campaigns');
 		expect(pathRule('/dashboard/automations/123/edit')?.required).toBe('automations');
 		expect(pathRule('/dashboard/visualizations')?.required).toBe('ai.visualizations');
-		expect(pathRule('/dashboard/send/marketing')?.required).toBe('campaigns');
 		expect(pathRule('/dashboard/send/transactional/x')?.required).toBe('transactional');
 		expect(pathRule('/dashboard/knowledge/abc')?.required).toBe('ai.knowledge');
 	});
@@ -208,12 +207,6 @@ describe('pathRule — path-derived feature gate', () => {
 	it('does not match a prefix that is only a partial path segment', () => {
 		expect(pathRule('/dashboard/campaignsX')).toBeUndefined();
 		expect(pathRule('/dashboard/inboxes')).toBeUndefined();
-	});
-
-	it('picks the longest matching prefix (send/marketing over any send rule)', () => {
-		const rule = pathRule('/dashboard/send/marketing/anything');
-		expect(rule?.prefix).toBe('/dashboard/send/marketing');
-		expect(rule?.required).toBe('campaigns');
 	});
 
 	it('every rule maps to a real path under /dashboard', () => {
