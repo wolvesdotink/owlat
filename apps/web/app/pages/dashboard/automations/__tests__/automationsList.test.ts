@@ -275,6 +275,17 @@ describe('automations list — rows', () => {
 		]);
 	});
 
+	it('keeps out of the overflow menu what the name, the pencil and the switch do', async () => {
+		const wrapper = await mountList();
+		const overflow = (name: string) =>
+			rowOf(wrapper, name)
+				.findAll('.menu [role="menuitem"]')
+				.map((b) => b.text());
+		expect(overflow('Welcome sequence')).toEqual(['Duplicate']);
+		expect(overflow('Re-engagement: 90 days quiet')).toEqual(['Duplicate', 'Delete']);
+		expect(overflow('Birthday greeting')).toEqual(['Duplicate', 'Delete']);
+	});
+
 	it('renders a card list below md, with the same links and actions', async () => {
 		tableFits.value = false;
 		const wrapper = await mountList();
@@ -439,13 +450,15 @@ describe('automations list — row context menu', () => {
 
 	const LINK_VERBS = ['Open in new tab', 'Copy link'];
 
-	it('offers the overflow menu’s verbs on right-click, and runs them', async () => {
+	it('offers every verb on right-click, and runs them', async () => {
 		const wrapper = await mountList();
-		for (const name of ['Welcome sequence', 'Re-engagement: 90 days quiet', 'Birthday greeting']) {
-			const row = rowOf(wrapper, name);
-			const overflow = row.findAll('.menu [role="menuitem"]').map((b) => b.text());
-			await row.trigger('contextmenu', { clientX: 10, clientY: 10 });
-			expect(contextLabels()).toEqual([...overflow, ...LINK_VERBS]);
+		for (const [name, verbs] of [
+			['Welcome sequence', ['View details', 'Edit', 'Duplicate', 'Pause']],
+			['Re-engagement: 90 days quiet', ['View details', 'Edit', 'Duplicate', 'Resume', 'Delete']],
+			['Birthday greeting', ['Edit', 'Duplicate', 'Delete']],
+		] as const) {
+			await rowOf(wrapper, name).trigger('contextmenu', { clientX: 10, clientY: 10 });
+			expect(contextLabels()).toEqual([...verbs, ...LINK_VERBS]);
 			document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 			await flushPromises();
 		}

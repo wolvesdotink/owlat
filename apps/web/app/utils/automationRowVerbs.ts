@@ -1,7 +1,8 @@
 /**
  * The verbs an automation row offers, in menu order: the one list the row's
- * overflow menu (RowActions.vue) and its context menu (right-click, long-press)
- * both render, so the two can never disagree about what a row allows.
+ * context menu (right-click, long-press) renders in full and its overflow menu
+ * (RowActions.vue) narrows, so the two can never disagree about what a row
+ * allows.
  *
  * Every write needs `automations:manage`, so an editor keeps only "View
  * details", which a draft does not have (it has never run, so there are no
@@ -54,7 +55,7 @@ export function automationRowVerbs(
 			id: 'toggle',
 			labelKey: isActive
 				? 'dashboard.automations.index.actions.pause'
-				: 'dashboard.automations.index.actions.activate',
+				: 'dashboard.automations.index.actions.resume',
 			icon: isActive ? PauseIcon : PlayIcon,
 		});
 	}
@@ -68,6 +69,22 @@ export function automationRowVerbs(
 		});
 	}
 	return verbs;
+}
+
+/**
+ * Verbs the row already shows as a control of its own: the name opens the
+ * detail page of anything but a draft, the pencil edits and the switch pauses
+ * or resumes. Each is in `automationRowVerbs` only when its control is on the
+ * row, so the overflow menu can drop all three without losing an action.
+ */
+const SHOWN_ON_ROW: ReadonlySet<AutomationRowVerbId> = new Set(['view', 'edit', 'toggle']);
+
+/** The overflow menu's verbs: the row's verbs without a visible twin. */
+export function automationOverflowVerbs(
+	status: 'draft' | 'active' | 'paused',
+	canManage: boolean
+): AutomationRowVerb[] {
+	return automationRowVerbs(status, canManage).filter((verb) => !SHOWN_ON_ROW.has(verb.id));
 }
 
 /**

@@ -11995,10 +11995,6 @@
 						"paused": "Pausiert"
 					},
 					"stepNumber": "Schritt {number}",
-					"steps": {
-						"buildWorkflow": "Workflow erstellen",
-						"chooseTrigger": "Auslöser wählen"
-					},
 					"toasts": {
 						"activated": "Automation aktiviert",
 						"draftSaved": "Entwurf gespeichert",
@@ -12071,10 +12067,10 @@
 			},
 			"index": {
 				"actions": {
-					"activate": "Aktivieren",
 					"activeSwitch": "Aktiv: {name}",
 					"more": "Weitere Aktionen",
 					"pause": "Pausieren",
+					"resume": "Fortsetzen",
 					"viewDetails": "Details ansehen"
 				},
 				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
@@ -15897,6 +15893,7 @@
 				"editCampaign": "Kampagne bearbeiten",
 				"editTemplate": "Vorlage bearbeiten",
 				"editEmail": "E-Mail bearbeiten",
+				"editTrigger": "Auslöser bearbeiten",
 				"translations": "Übersetzungen",
 				"sendDetails": "Sendungsdetails",
 				"label": "Label",

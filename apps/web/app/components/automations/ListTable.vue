@@ -38,8 +38,9 @@ const props = defineProps<{
 	/** Last-7-days counts by automation id; a missing entry shows a dash. */
 	health: ReadonlyMap<string, AutomationHealth>;
 	/**
-	 * A row's context menu (right-click, long-press), built when it opens: the
-	 * same verbs as the row's overflow menu. Absent: the browser's own menu.
+	 * A row's context menu (right-click, long-press), built when it opens: every
+	 * verb the row has, including the ones its switch, pencil and name link
+	 * already offer. Absent: the browser's own menu.
 	 */
 	menuItems?: (automation: AutomationListItem) => ContextMenuItem[];
 }>();
