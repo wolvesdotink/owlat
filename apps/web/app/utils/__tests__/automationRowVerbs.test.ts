@@ -1,9 +1,10 @@
 /**
- * The automation row's verbs, which the overflow menu and the context menu
- * both render: what each status and role may do, in menu order.
+ * The automation row's verbs: what each status and role may do, in menu order.
+ * The context menu renders them all; the overflow menu leaves out the ones the
+ * row already shows as a control of its own.
  */
 import { describe, expect, it } from 'vitest';
-import { automationRowVerbs } from '../automationRowVerbs';
+import { automationOverflowVerbs, automationRowVerbs } from '../automationRowVerbs';
 
 const ids = (status: 'draft' | 'active' | 'paused', canManage: boolean) =>
 	automationRowVerbs(status, canManage).map((verb) => verb.id);
@@ -25,8 +26,25 @@ describe('automationRowVerbs', () => {
 		const active = automationRowVerbs('active', true).find((v) => v.id === 'toggle');
 		const paused = automationRowVerbs('paused', true).find((v) => v.id === 'toggle');
 		expect(active?.labelKey).toBe('dashboard.automations.index.actions.pause');
-		expect(paused?.labelKey).toBe('dashboard.automations.index.actions.activate');
+		expect(paused?.labelKey).toBe('dashboard.automations.index.actions.resume');
 		const remove = automationRowVerbs('paused', true).find((v) => v.id === 'delete');
 		expect(remove).toMatchObject({ danger: true, separatorBefore: true });
+	});
+});
+
+describe('automationOverflowVerbs', () => {
+	const overflow = (status: 'draft' | 'active' | 'paused', canManage: boolean) =>
+		automationOverflowVerbs(status, canManage).map((verb) => verb.id);
+
+	it('leaves out what the name link, the pencil and the switch already do', () => {
+		expect(overflow('active', true)).toEqual(['duplicate']);
+		expect(overflow('paused', true)).toEqual(['duplicate', 'delete']);
+		expect(overflow('draft', true)).toEqual(['duplicate', 'delete']);
+	});
+
+	it('leaves an editor nothing, since the name already opens the detail page', () => {
+		expect(overflow('active', false)).toEqual([]);
+		expect(overflow('paused', false)).toEqual([]);
+		expect(overflow('draft', false)).toEqual([]);
 	});
 });

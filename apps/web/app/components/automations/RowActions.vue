@@ -5,14 +5,13 @@
  * state (on = active) and flipping it asks the page to pause or resume; the
  * page offers the Undo.
  *
- * Every write needs `automations:manage`, so an editor keeps only "View
- * details" — which a draft does not have (it has never run, so there are no
- * analytics), and the menu trigger goes too rather than open an empty menu.
- * Delete is offered only for an automation that is not running; the page's
- * dialog refuses one that became active while it was open.
+ * The overflow menu holds only what no other control on the row does, so an
+ * editor, who has no write verbs, gets no menu trigger rather than an empty
+ * menu. Delete is offered only for an automation that is not running; the
+ * page's dialog refuses one that became active while it was open.
  */
 import type { AutomationListItem } from './ListTable.vue';
-import { automationRowVerbs, type AutomationRowVerbId } from '~/utils/automationRowVerbs';
+import { automationOverflowVerbs, type AutomationRowVerbId } from '~/utils/automationRowVerbs';
 import { MoreVerticalIcon, PencilIcon } from '@coolicons/vue';
 
 const props = defineProps<{
@@ -41,15 +40,15 @@ const isActive = computed(() => props.automation.status === 'active');
 const toggleLabel = computed(() =>
 	isActive.value
 		? t('dashboard.automations.index.actions.pause')
-		: t('dashboard.automations.index.actions.activate')
+		: t('dashboard.automations.index.actions.resume')
 );
 // A switch names the setting, never its state: aria-checked says on or off.
 const switchLabel = computed(() =>
 	t('dashboard.automations.index.actions.activeSwitch', { name: props.automation.name })
 );
 
-// The same verbs, in the same order, as the row's context menu.
-const verbs = computed(() => automationRowVerbs(props.automation.status, props.canManage));
+// The context menu's verbs, in the same order, less the ones with a control on the row.
+const verbs = computed(() => automationOverflowVerbs(props.automation.status, props.canManage));
 
 function runVerb(id: AutomationRowVerbId) {
 	switch (id) {

@@ -9,11 +9,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const pagesRoot = join(here, '../../pages');
 
 const path = ref('/dashboard');
+const query = ref<Record<string, string>>({});
 const role = ref<'owner' | 'admin' | 'editor' | null>('admin');
 
 vi.stubGlobal('useRoute', () => ({
 	get path() {
 		return path.value;
+	},
+	get query() {
+		return query.value;
 	},
 }));
 vi.stubGlobal('useOrganizationContext', () => ({ role }));
@@ -23,7 +27,9 @@ const { useBreadcrumbs } = await import('../useBreadcrumbs');
 const { breadcrumbs, setDynamicBreadcrumbs } = useBreadcrumbs();
 
 function trailFor(route: string, viewerRole: typeof role.value = 'admin') {
-	path.value = route;
+	const [routePath, search] = route.split('?');
+	path.value = routePath!;
+	query.value = Object.fromEntries(new URLSearchParams(search));
 	role.value = viewerRole;
 	return breadcrumbs.value;
 }
@@ -140,6 +146,8 @@ describe('useBreadcrumbs', () => {
 			['/dashboard/campaigns/abc123/edit', ['Marketing', 'Campaigns', 'Edit campaign']],
 			['/dashboard/automations', ['Marketing', 'Automations']],
 			['/dashboard/automations/abc123', ['Marketing', 'Automations']],
+			['/dashboard/automations/new', ['Marketing', 'Automations', 'New automation']],
+			['/dashboard/automations/new?edit=abc123', ['Marketing', 'Automations', 'Edit trigger']],
 			['/dashboard/send', ['Marketing', 'Templates']],
 			['/dashboard/send/emails/abc123/edit', ['Marketing', 'Templates', 'Edit template']],
 		])('%s reads %j', (route, trail) => {
