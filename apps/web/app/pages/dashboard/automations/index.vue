@@ -237,8 +237,9 @@ const handleEdit = (automation: AutomationListItem) =>
 const handleViewDetails = (automation: AutomationListItem) =>
 	router.push(`/dashboard/automations/${automation._id}`);
 
-// The row's context menu: the overflow menu's verbs, run by the same handlers,
-// then the link verbs for where the row's name leads (none when it is plain text).
+// The row's context menu: every row verb, run by the same handlers as the
+// row's own controls, then the link verbs for where the row's name leads (none
+// when it is plain text).
 const { linkItems } = useRowLinkMenu();
 const verbHandlers: Record<AutomationRowVerbId, (automation: AutomationListItem) => unknown> = {
 	view: handleViewDetails,
