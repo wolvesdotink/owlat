@@ -14,7 +14,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
 import { getFunctionName } from 'convex/server';
+
+const trackFlagChange = vi.hoisted(() => vi.fn());
+vi.mock('~/composables/useProfileSync', () => ({
+	useProfileSync: () => ({ trackFlagChange }),
+}));
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([]),
@@ -69,6 +75,39 @@ describe('Operating mode card — copy', () => {
 		expect(text).toContain('Hosted mail server (Postbox)');
 		expect(text).toContain('Run Owlat as your mail server (Gmail-equivalent).');
 		expectFullyLocalized(wrapper);
+	});
+});
+
+describe('Operating mode card — applying a mode', () => {
+	it('reports the flag change to the out-of-sync banner', async () => {
+		trackFlagChange.mockClear();
+		vi.stubGlobal('useFeatureFlag', () => ({
+			flags: ref({ campaigns: true }),
+			isEnabled: () => false,
+		}));
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: vi.fn().mockResolvedValue({ ok: true, result: {} }),
+			isLoading: ref(false),
+		}));
+		const wrapper = mountDashboardPage(OperatingModeCard, {
+			stubs: {
+				UiCard: passthroughStub,
+				UiDisclosure: passthroughStub,
+				UiModal: { template: '<div><slot /><slot name="footer" /></div>' },
+				UiButton: { template: '<button><slot /></button>' },
+			},
+		});
+
+		const byText = (text: string) =>
+			wrapper.findAll('button').find((candidate) => candidate.text().includes(text));
+		await byText('IMAP-only')!.trigger('click');
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+
+		expect(trackFlagChange).toHaveBeenCalledTimes(1);
+		const [before, after] = trackFlagChange.mock.calls[0]!;
+		expect(before).toEqual({ campaigns: true });
+		expect(after).toMatchObject({ campaigns: false, 'mail.external': true });
 	});
 });
 

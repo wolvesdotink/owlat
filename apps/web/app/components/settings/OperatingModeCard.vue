@@ -6,8 +6,9 @@ import {
 	operatingModeFlags,
 	type OperatingModeKey,
 } from '@owlat/shared/operatingModes';
-import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
+import type { CoreFeatureFlagKey, FeatureFlagState } from '@owlat/shared/featureFlags';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
+import { useProfileSync } from '~/composables/useProfileSync';
 
 const { t } = useI18n();
 
@@ -55,13 +56,22 @@ function chooseMode(key: OperatingModeKey) {
 	selectedMode.value = key;
 }
 
+// A mode can start or stop background services, so it feeds the Features
+// page's out-of-sync banner like every other flag control there.
+const { trackFlagChange } = useProfileSync();
+
 async function applyMode() {
-	if (!selectedMode.value || !desiredFlags.value) return;
-	const result = await setAllFlags({ flags: desiredFlags.value });
+	// Snapshots: Cancel or Escape can clear the selection while the save runs.
+	const mode = selectedMode.value;
+	const desired = desiredFlags.value;
+	if (!mode || !desired) return;
+	const before: FeatureFlagState = { ...flags.value };
+	const result = await setAllFlags({ flags: desired });
 	if (!result.ok) return;
+	trackFlagChange(before, { ...before, ...desired });
 	showToast(
 		t('components.settings.operatingModeCard.modeChangedToast', {
-			mode: t(OPERATING_MODES[selectedMode.value].label),
+			mode: t(OPERATING_MODES[mode].label),
 		})
 	);
 	selectedMode.value = null;
