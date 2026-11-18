@@ -20,6 +20,7 @@ import {
 	resetShortcutScopes,
 } from '~/utils/shortcutScope';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
+import { isShortcutEntryAvailable, NAVIGATION_SHORTCUT_ROUTES } from '~/utils/shortcutSettingsRows';
 
 const push = vi.fn();
 
@@ -39,6 +40,20 @@ function mountHost(register: (api: ReturnType<typeof useKeyboardShortcuts>) => v
 	return mount(Host);
 }
 
+/** The `g` chords, gated the way the dashboard layout gates them. */
+function registerNavigation(api: ReturnType<typeof useKeyboardShortcuts>) {
+	api.registerNavigationShortcuts(NAVIGATION_SHORTCUT_ROUTES, (id) =>
+		isShortcutEntryAvailable(
+			{ id, scope: 'global' },
+			{
+				isFeatureEnabled: (flag) => !disabledFlags.includes(flag),
+				isDesktop: false,
+				role,
+			}
+		)
+	);
+}
+
 function press(key: string, init: KeyboardEventInit = {}) {
 	const event = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
 	document.dispatchEvent(event);
@@ -47,9 +62,13 @@ function press(key: string, init: KeyboardEventInit = {}) {
 
 let wrapper: VueWrapper | null = null;
 let registered: ReturnType<typeof useKeyboardShortcuts> | null = null;
+let role: 'owner' | 'admin' | 'editor' | null;
+let disabledFlags: string[];
 
 beforeEach(() => {
 	push.mockClear();
+	role = 'admin';
+	disabledFlags = [];
 	vi.stubGlobal('useRouter', () => ({ push }));
 	resetShortcutScopes();
 	resetShortcutPreferences();
@@ -69,7 +88,7 @@ afterEach(() => {
 describe('useKeyboardShortcuts — sequence chords', () => {
 	beforeEach(() => {
 		wrapper = mountHost((api) => {
-			api.registerNavigationShortcuts();
+			registerNavigation(api);
 		});
 	});
 
@@ -115,11 +134,43 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 	});
 });
 
+describe('useKeyboardShortcuts — go-to chords follow their destination', () => {
+	it('does nothing on `g s` for an editor, who has no workspace settings', async () => {
+		role = 'editor';
+		wrapper = mountHost((api) => {
+			registerNavigation(api);
+		});
+		await nextTick();
+
+		press('g');
+		press('s');
+		press('g');
+		press('d');
+
+		expect(push.mock.calls).toEqual([['/dashboard']]);
+	});
+
+	it('does nothing on `g a` while automations are off', async () => {
+		disabledFlags = ['automations'];
+		wrapper = mountHost((api) => {
+			registerNavigation(api);
+		});
+		await nextTick();
+
+		press('g');
+		press('a');
+		press('g');
+		press('s');
+
+		expect(push.mock.calls).toEqual([['/dashboard/admin']]);
+	});
+});
+
 describe('useKeyboardShortcuts — scoping', () => {
 	it('gives a chord to the surface that claimed the keyboard', async () => {
 		const postbox = vi.fn();
 		wrapper = mountHost((api) => {
-			api.registerNavigationShortcuts();
+			registerNavigation(api);
 			api.registerShortcut({ id: 'postbox.goStarred', handler: postbox, ignoreInputs: true });
 		});
 		await nextTick();
@@ -218,7 +269,7 @@ describe('useKeyboardShortcuts — one arbiter per press', () => {
 	 */
 	it('marks an UNBOUND chord completion claimed, so window-level triage stands down', async () => {
 		wrapper = mountHost((api) => {
-			api.registerNavigationShortcuts();
+			registerNavigation(api);
 		});
 		await nextTick();
 

@@ -226,11 +226,6 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				href: '/dashboard/postbox/trash',
 				icon: TrashIcon,
 			},
-			{
-				name: 'shared.dashboardNavigation.items.postbox.preferences',
-				href: '/dashboard/preferences',
-				icon: SettingsIcon,
-			},
 		],
 	},
 	{
@@ -256,7 +251,9 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		gate: flag('ai.assistant'),
 		items: [
 			{
-				name: 'shared.dashboardNavigation.items.assistant.chat',
+				// The section's own name: there is one Assistant, and "Chat" is the
+				// team chat's word.
+				name: 'shared.dashboardNavigation.sections.assistant',
 				href: '/dashboard/assistant',
 				icon: SparklesIcon,
 			},
@@ -412,6 +409,30 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		items: PREFERENCES_ITEMS,
 	},
 ];
+
+/**
+ * Whether the table offers `env` the page at `path`, under the same section and
+ * item gates the sidebar applies. An item is matched by its path without the
+ * query, so `/dashboard/answer?in=team` also opens the Answer queue. A path the
+ * table does not declare (the Workbench at `/dashboard`) is open to everyone.
+ * Pure.
+ */
+export function isCorePathReachable(path: string, env: NavigationEnvironment): boolean {
+	let declared = false;
+	for (const section of CORE_SECTIONS) {
+		const sectionOpen = (section.gate ?? always)(env);
+		if (section.href === path) {
+			declared = true;
+			if (sectionOpen) return true;
+		}
+		for (const item of section.items) {
+			if (item.href.split('?')[0] !== path) continue;
+			declared = true;
+			if (sectionOpen && (item.gate ?? always)(env)) return true;
+		}
+	}
+	return !declared;
+}
 
 /**
  * Every href the core table declares. The sidebar renders core destinations as

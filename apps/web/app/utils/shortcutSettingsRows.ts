@@ -16,6 +16,7 @@ import type {
 	ShortcutScope,
 } from './shortcutRegistry';
 import type { SettingsEnvironment } from '~/lib/settingsRegistry';
+import { isCorePathReachable } from '~/lib/dashboardNavigationCore';
 
 /** The order the page lists the scopes in, app-wide first. */
 export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = [
@@ -70,6 +71,23 @@ export function isShortcutScopeAvailable(scope: ShortcutScope, env: SettingsEnvi
 	}
 }
 
+/**
+ * Where each app-wide `g` chord goes. The dispatcher binds these, and a chord
+ * is only offered and only fires where the navigation table offers its page.
+ */
+export const NAVIGATION_SHORTCUT_ROUTES: Readonly<Record<string, string>> = {
+	'global.goToDashboard': '/dashboard',
+	'global.goToAnswer': '/dashboard/answer',
+	'global.goToContacts': '/dashboard/audience/contacts',
+	'global.goToEmails': '/dashboard/send',
+	'global.goToAutomations': '/dashboard/automations',
+	// g+m opens Marketing on its overview.
+	'global.goToCampaigns': '/dashboard/marketing',
+	'global.goToTransactional': '/dashboard/send/transactional',
+	// g+s routes to the administration area, not the preferences pages.
+	'global.goToAdmin': '/dashboard/admin',
+};
+
 /** Entries whose own feature can be off while their scope is on. */
 const ENTRY_GATES: Readonly<Record<string, (env: SettingsEnvironment) => boolean>> = {
 	'global.assistant': (env) => env.isFeatureEnabled('ai.assistant'),
@@ -88,6 +106,10 @@ export function isShortcutEntryAvailable(
 	env: SettingsEnvironment
 ): boolean {
 	if (!isShortcutScopeAvailable(def.scope, env)) return false;
+	const route = NAVIGATION_SHORTCUT_ROUTES[def.id];
+	if (route !== undefined && !isCorePathReachable(route, { ...env, role: env.role ?? null })) {
+		return false;
+	}
 	return ENTRY_GATES[def.id]?.(env) ?? true;
 }
 

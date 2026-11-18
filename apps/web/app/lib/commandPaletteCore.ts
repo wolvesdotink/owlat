@@ -39,6 +39,14 @@ export interface SettingsPaletteItem extends PaletteItem {
 	keywords: readonly string[];
 }
 
+/**
+ * A Go-to row. A settings page carries its registry synonyms, because the hub
+ * is titled "General" and is still the row someone typing "preferences" wants.
+ */
+export interface NavigationPaletteItem extends PaletteItem {
+	keywords?: readonly string[];
+}
+
 /** A single object-search hit from the shared search index. */
 export interface SearchResult {
 	id: string;
@@ -79,12 +87,14 @@ export interface CorePaletteProviderDeps {
 	jumpBackItems: () => PaletteItem[];
 	/** Recent object-search terms, newest first. */
 	recentSearches: () => readonly string[];
-	/** Verb/utility items (New campaign, Compose, …). */
+	/** The verbs that create something (New campaign, Compose, …). */
 	verbItems: () => PaletteItem[];
+	/** The verbs that create nothing (Check for mail, Zen mode, …). */
+	actionItems: () => PaletteItem[];
 	/** Sidebar-context switch item(s), empty when there is nothing to switch to. */
 	contextItems: () => PaletteItem[];
 	/** Navigation items — every sidebar destination. */
-	navItems: () => PaletteItem[];
+	navItems: () => NavigationPaletteItem[];
 	/**
 	 * Individual settings CONTROLS (dark mode, auto-advance, notify me about),
 	 * each deep-linking to the section that holds it. Search-only: they stay out
@@ -284,7 +294,8 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			},
 		},
 		{
-			// Verbs / utilities.
+			// Verbs: what creates something under Create, everything else under
+			// Actions. Two groups, so each gets its own cap and Create stays true.
 			id: 'core:verbs',
 			priority: 20,
 			build: ({ query }): PaletteGroup[] => [
@@ -294,6 +305,14 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					order: 5,
 					mode: 'commands',
 					items: filterItems(deps.verbItems(), query),
+				},
+				{
+					// Between Create (5) and the context switch (6).
+					key: 'actions',
+					heading: 'common.actions',
+					order: 5.5,
+					mode: 'commands',
+					items: filterItems(deps.actionItems(), query),
 				},
 			],
 		},
@@ -410,7 +429,8 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 					order: 40,
 					cap: 8,
 					mode: 'commands',
-					items: filterItems(deps.navItems(), query),
+					// Synonyms rank below every name match (see `filterByKeywords`).
+					items: filterByKeywords(deps.navItems(), query),
 				},
 			],
 		},

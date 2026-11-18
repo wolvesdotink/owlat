@@ -78,6 +78,10 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 	['/dashboard/automations', (env) => adminOnly(env) && env.isFeatureEnabled('automations')],
 	['/dashboard/inbox', (env) => env.isFeatureEnabled('inbox')],
 	['/dashboard/marketing/deleted', recentlyDeletedGate],
+	[
+		'/dashboard/visualizations',
+		(env) => adminOnly(env) && env.isFeatureEnabled('ai.visualizations'),
+	],
 	// Owned by the settings registry (see the module doc).
 	['/dashboard/preferences', never],
 ];
@@ -119,6 +123,7 @@ function gateFor(href: string): (env: NavigationEnvironment) => boolean {
 const REDIRECT_ONLY_ROUTES: ReadonlySet<string> = new Set([
 	'/dashboard/audience',
 	'/dashboard/admin/delivery/advanced',
+	'/dashboard/inboxes',
 ]);
 
 /**

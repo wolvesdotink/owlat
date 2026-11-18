@@ -148,7 +148,7 @@ route 18 pages/dashboard/preferences/forwarding.vue
 route 32 pages/dashboard/preferences/index.vue
 route 23 pages/dashboard/preferences/members/[mailboxId].vue
 route 44 pages/dashboard/preferences/security.vue
-route 37 pages/dashboard/preferences/shortcuts.vue
+route 43 pages/dashboard/preferences/shortcuts.vue
 route 150 pages/dashboard/preferences/signatures.vue
 route 153 pages/dashboard/preferences/snippets.vue
 route 19 pages/dashboard/preferences/vacation.vue
@@ -282,7 +282,7 @@ deferred 7 ConfirmationDialog
 deferred 36 PostboxUndoSendToast
 deferred 3 backendConnection
 deferred 58 components/AppCommandPalette.vue
-deferred 15 components/KeyboardShortcutsHelp.vue
+deferred 21 components/KeyboardShortcutsHelp.vue
 deferred 14 components/SendTestEmailModal.vue
 deferred 23 components/ai/EmailGeneratePanel.vue
 deferred 6 components/automations/steps/condition/Editor.vue

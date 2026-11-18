@@ -239,24 +239,26 @@ export function useKeyboardShortcuts() {
 	}
 
 	/**
-	 * Register default navigation shortcuts
+	 * Register the app-wide `g` chords. Each fires only where the cheat sheet
+	 * lists it, so a chord to a page this person cannot open does nothing
+	 * rather than bouncing them to the Workbench.
+	 *
+	 * The routes and their gate come from the caller: this composable is in
+	 * every page's chunk, and the gate reads the navigation table, which only
+	 * the shell should load.
 	 */
-	function registerNavigationShortcuts() {
+	function registerNavigationShortcuts(
+		routes: Readonly<Record<string, string>>,
+		isAvailable: (id: string) => boolean
+	) {
 		const router = useRouter();
-		const routes: Record<string, string> = {
-			'global.goToDashboard': '/dashboard',
-			'global.goToAnswer': '/dashboard/answer',
-			'global.goToContacts': '/dashboard/audience/contacts',
-			'global.goToEmails': '/dashboard/send',
-			'global.goToAutomations': '/dashboard/automations',
-			// g+m opens Marketing on its overview.
-			'global.goToCampaigns': '/dashboard/marketing',
-			'global.goToTransactional': '/dashboard/send/transactional',
-			// g+s routes to the administration area, not the preferences pages.
-			'global.goToAdmin': '/dashboard/admin',
-		};
 		for (const [id, path] of Object.entries(routes)) {
-			registerShortcut({ id, handler: () => router.push(path), ignoreInputs: true });
+			registerShortcut({
+				id,
+				handler: () => router.push(path),
+				ignoreInputs: true,
+				when: () => isAvailable(id),
+			});
 		}
 	}
 

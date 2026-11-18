@@ -129,9 +129,9 @@ describe('verbs', () => {
 
 	it('brings back the setup checklist, for every role', async () => {
 		role = 'editor';
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		const verb = byId(verbItems.value, 'verb:show-setup-checklist');
+		const verb = byId(actionItems.value, 'verb:show-setup-checklist');
 		expect(verb?.label).toBe('Show setup checklist');
 		verb?.run();
 
@@ -147,9 +147,9 @@ describe('verbs', () => {
 			senderDomain: 'northwind.example',
 			expiresAt: Date.now() + 60_000,
 		};
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		const verb = byId(verbItems.value, 'verb:copy-sign-in-code');
+		const verb = byId(actionItems.value, 'verb:copy-sign-in-code');
 		expect(verb?.label).toBe('Copy latest sign-in code');
 		expect(verb?.subtitle).toBe('482913 · northwind.example');
 		verb?.run();
@@ -166,9 +166,9 @@ describe('verbs', () => {
 			senderDomain: 'fabrikam.example',
 			expiresAt: Date.now() + 60_000,
 		};
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		const verb = byId(verbItems.value, 'verb:copy-sign-in-code');
+		const verb = byId(actionItems.value, 'verb:copy-sign-in-code');
 		expect(verb?.label).toBe('Open latest sign-in link');
 		verb?.run();
 
@@ -181,7 +181,7 @@ describe('verbs', () => {
 	});
 
 	it('offers no sign-in code verb without a live code or without personal mail', async () => {
-		expect(byId((await providers()).verbItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
+		expect(byId((await providers()).actionItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
 
 		latestSignInCode = {
 			kind: 'code',
@@ -190,13 +190,13 @@ describe('verbs', () => {
 			expiresAt: Date.now() + 60_000,
 		};
 		disabledFlags = ['postbox', 'mail.external'];
-		expect(byId((await providers()).verbItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
+		expect(byId((await providers()).actionItems.value, 'verb:copy-sign-in-code')).toBeUndefined();
 	});
 
 	it('checks the connected accounts for mail and says so', async () => {
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		const verb = byId(verbItems.value, 'verb:check-mail');
+		const verb = byId(actionItems.value, 'verb:check-mail');
 		expect(verb?.label).toBe('Check for mail');
 		verb?.run();
 		await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
@@ -212,9 +212,9 @@ describe('verbs', () => {
 
 	it('says the mail check failed when mail-sync did not take it', async () => {
 		action = vi.fn(async () => ({ status: 'failed' }));
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		byId(verbItems.value, 'verb:check-mail')?.run();
+		byId(actionItems.value, 'verb:check-mail')?.run();
 		await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
 
 		expect(showToast).toHaveBeenCalledWith(
@@ -225,9 +225,9 @@ describe('verbs', () => {
 
 	it('offers no mail check without personal mail', async () => {
 		disabledFlags = ['postbox', 'mail.external'];
-		const { verbItems } = await providers();
+		const { actionItems } = await providers();
 
-		expect(byId(verbItems.value, 'verb:check-mail')).toBeUndefined();
+		expect(byId(actionItems.value, 'verb:check-mail')).toBeUndefined();
 	});
 
 	it('drops Compose entirely when no mail feature is on', async () => {
@@ -256,6 +256,28 @@ describe('verbs', () => {
 		byId(verbItems.value, 'verb:new-automation')?.run();
 
 		expect(navigations).toEqual(['/dashboard/automations/new']);
+	});
+	// "Create" lists what creates something; the rest are actions under their
+	// own heading, so the Create cap can never cut "Check for mail".
+	it('keeps the verbs that create nothing out of Create', async () => {
+		latestSignInCode = { kind: 'code', value: '123456', senderDomain: 'owlat.app' };
+		const { verbItems, actionItems } = await providers();
+
+		expect(verbItems.value.map((item) => item.id)).toEqual([
+			'verb:compose',
+			'verb:new-campaign',
+			'verb:draft-campaign-ai',
+			'verb:new-contact',
+			'verb:new-automation',
+			'verb:new-transactional',
+		]);
+		expect(actionItems.value.map((item) => item.id)).toEqual([
+			'verb:copy-sign-in-code',
+			'verb:check-mail',
+			'verb:ask-knowledge',
+			'verb:zen',
+			'verb:show-setup-checklist',
+		]);
 	});
 });
 
@@ -297,6 +319,27 @@ describe('navigation', () => {
 
 		expect(admin).toHaveLength(1);
 		expect(admin[0]?.icon).toBe(GaugeIcon);
+	});
+
+	it('lists the settings hub under its registry name, found by "settings" and "preferences"', async () => {
+		const { SETTINGS_REGISTRY } = await import('~/lib/settingsRegistry');
+		const hub = SETTINGS_REGISTRY.find((entry) => entry.path === '/dashboard/preferences')!;
+		vi.stubGlobal('useDashboardNavigation', () => ({
+			navigationSections: ref([
+				{
+					name: 'shared.breadcrumbRoutes.sections.preferences',
+					items: [{ name: hub.titleKey, href: hub.path, icon: hub.icon }],
+				},
+			]),
+		}));
+		const { navItems } = await providers();
+
+		const row = byId(navItems.value, 'nav:/dashboard/preferences') as
+			| (PaletteItem & { keywords?: readonly string[] })
+			| undefined;
+		expect(row?.label).toBe('General');
+		expect(row?.subtitle).toBe('My settings');
+		expect(row?.keywords).toEqual(expect.arrayContaining(['settings', 'preferences']));
 	});
 
 	it('offers a member nothing under /dashboard/admin', async () => {

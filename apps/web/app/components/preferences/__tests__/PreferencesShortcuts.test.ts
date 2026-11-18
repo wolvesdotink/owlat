@@ -57,6 +57,7 @@ beforeAll(() => {
 		useBackendOperation: () => ({ run: save, isLoading: ref(false) }),
 		useFeatureFlag: () => ({ isEnabled: (flag: string) => flags.includes(flag) }),
 		useDesktopContext: () => ({ isDesktop: ref(false) }),
+		usePermissions: () => ({ role: ref('owner') }),
 	});
 });
 beforeEach(() => {

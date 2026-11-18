@@ -16219,9 +16219,6 @@
 					"overview": "Overview",
 					"teamAccess": "Team"
 				},
-				"assistant": {
-					"chat": "Chat"
-				},
 				"audience": {
 					"contacts": "Contacts",
 					"segments": "Segments",
@@ -16247,7 +16244,6 @@
 				"postbox": {
 					"drafts": "Drafts",
 					"inbox": "Inbox",
-					"preferences": "Preferences",
 					"sent": "Sent",
 					"spam": "Spam",
 					"trash": "Trash",
@@ -18496,13 +18492,13 @@
 				"extendSelection": "Extend selection",
 				"focusSearch": "Focus search",
 				"forward": "Forward",
-				"goToAdmin": "Go to admin",
+				"goToAdmin": "Go to workspace settings",
 				"goToAutomations": "Go to automations",
 				"goToCampaigns": "Go to campaigns",
 				"goToContacts": "Go to contacts",
-				"goToDashboard": "Go to dashboard",
+				"goToDashboard": "Go to Workbench",
 				"goToDrafts": "Go to drafts",
-				"goToEmails": "Go to emails",
+				"goToEmails": "Go to templates",
 				"goToInbox": "Go to Inbox",
 				"goToSent": "Go to sent",
 				"goToStarred": "Go to starred",

@@ -96,6 +96,16 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		expect(sections.some((section) => section.key === 'knowledge')).toBe(false);
 	});
 
+	it('declares the settings hub once, as the settings registry names it', () => {
+		const sections = buildNavigationSections({ ...allFlags, role: 'owner' });
+		const hub = sections.flatMap((section) =>
+			section.items
+				.filter((item) => item.href === '/dashboard/preferences')
+				.map((item) => ({ section: section.key, name: t(item.name) }))
+		);
+		expect(hub).toEqual([{ section: 'preferences', name: 'General' }]);
+	});
+
 	it('fails closed while the organization role is unresolved', () => {
 		const sections = buildNavigationSections({ ...allFlags, role: null });
 		expect(sections.some((section) => section.key === 'administration')).toBe(false);

@@ -1,9 +1,9 @@
 import { api } from '@owlat/api';
 import type { PaletteItem } from '~/lib/commandPalette';
-import type { SettingsPaletteItem } from '~/lib/commandPaletteCore';
+import type { NavigationPaletteItem, SettingsPaletteItem } from '~/lib/commandPaletteCore';
 import { routePaletteTargets } from '~/lib/commandPaletteRoutes';
 import { quickCreateEntriesFor, type QuickCreateId } from '~/lib/quickCreate';
-import { parseKeywords, settingsControlTargets } from '~/lib/settingsRegistry';
+import { parseKeywords, SETTINGS_REGISTRY, settingsControlTargets } from '~/lib/settingsRegistry';
 import { adminControlTargets } from '~/lib/adminSettingsControls';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
@@ -25,7 +25,8 @@ import {
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
- *   - verbs — New campaign, Compose, New contact, Copy latest sign-in code,
+ *   - verbs — what creates something: New campaign, Compose, New contact;
+ *   - actions — the verbs that create nothing: Copy latest sign-in code,
  *     Check for mail, Ask knowledge, Zen, the setup checklist, updates;
  *   - sidebar-context switch — offers the OTHER context (Conversations ↔ Sending),
  *     only while the sidebar toggle itself exists (both contexts survived the
@@ -128,11 +129,16 @@ export function useCommandPaletteProviders() {
 						: () => void openNewContact(),
 			};
 		});
+		return verbs;
+	});
+
+	const actionItems = computed<PaletteItem[]>(() => {
+		const actions: PaletteItem[] = [];
 		const signInCode = latestSignInCode.value;
 		if (signInCode) {
 			// The subtitle names the sender's domain, as the chip does, so a
 			// look-alike domain stands out before the code is used.
-			verbs.push({
+			actions.push({
 				id: 'verb:copy-sign-in-code',
 				label: t(
 					signInCode.kind === 'code'
@@ -149,7 +155,7 @@ export function useCommandPaletteProviders() {
 		}
 		// The desktop tray's "Check for Mail", for every client with personal mail.
 		if (hasPersonalMail.value) {
-			verbs.push({
+			actions.push({
 				id: 'verb:check-mail',
 				label: t('shared.useCommandPaletteProviders.checkForMail'),
 				subtitle: t('shared.useCommandPaletteProviders.checkForMailSubtitle'),
@@ -158,7 +164,7 @@ export function useCommandPaletteProviders() {
 			});
 		}
 		if (isFeatureEnabled('ai.knowledge')) {
-			verbs.push({
+			actions.push({
 				id: 'verb:ask-knowledge',
 				label: t('shared.useCommandPaletteProviders.askKnowledge'),
 				subtitle: t('shared.useCommandPaletteProviders.askKnowledgeSubtitle'),
@@ -166,7 +172,7 @@ export function useCommandPaletteProviders() {
 				run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
 			});
 		}
-		verbs.push({
+		actions.push({
 			id: 'verb:zen',
 			label: isZen.value ? t('components.shell.zen.exit') : t('components.shell.zen.enter'),
 			subtitle: t('components.shell.zen.paletteSubtitle'),
@@ -174,7 +180,7 @@ export function useCommandPaletteProviders() {
 			run: toggleZen,
 		});
 		// The way back to Getting started after it was dismissed or finished.
-		verbs.push({
+		actions.push({
 			id: 'verb:show-setup-checklist',
 			label: t('components.dashboard.gettingStarted.show'),
 			subtitle: t('components.dashboard.gettingStarted.title'),
@@ -182,14 +188,14 @@ export function useCommandPaletteProviders() {
 			run: () => void showChecklist(),
 		});
 		if (isDesktop.value) {
-			verbs.push({
+			actions.push({
 				id: 'verb:check-updates',
 				label: t('shared.useCommandPaletteProviders.checkUpdates'),
 				icon: CloudDownloadIcon,
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});
 		}
-		return verbs;
+		return actions;
 	});
 
 	const contextItems = computed<PaletteItem[]>(() => {
@@ -211,16 +217,22 @@ export function useCommandPaletteProviders() {
 
 	// Section/item names come from the navigation registry, so they are message
 	// keys resolved here rather than literal copy.
-	const sidebarItems = computed<PaletteItem[]>(() =>
+	// A settings page also answers to its registry synonyms ("preferences" finds
+	// the hub, which is titled "General").
+	const sidebarItems = computed<NavigationPaletteItem[]>(() =>
 		navigationSections.value.flatMap((section) =>
-			section.items.map((item) => ({
-				id: `nav:${item.href}`,
-				label: t(item.name),
-				subtitle: t(section.name),
-				icon: item.icon,
-				href: item.href,
-				run: () => void navigateTo(item.href),
-			}))
+			section.items.map((item) => {
+				const settingsEntry = SETTINGS_REGISTRY.find((entry) => entry.path === item.href);
+				return {
+					id: `nav:${item.href}`,
+					label: t(item.name),
+					subtitle: t(section.name),
+					icon: item.icon,
+					href: item.href,
+					...(settingsEntry ? { keywords: parseKeywords(t(settingsEntry.keywordsKey)) } : {}),
+					run: () => void navigateTo(item.href),
+				};
+			})
 		)
 	);
 
@@ -246,7 +258,10 @@ export function useCommandPaletteProviders() {
 		}));
 	});
 
-	const navItems = computed<PaletteItem[]>(() => [...sidebarItems.value, ...routeItems.value]);
+	const navItems = computed<NavigationPaletteItem[]>(() => [
+		...sidebarItems.value,
+		...routeItems.value,
+	]);
 
 	// Controls, not destinations: "dark mode" should find Appearance even though
 	// no page is called that. The registry declares the synonyms as message keys,
@@ -268,5 +283,5 @@ export function useCommandPaletteProviders() {
 		}))
 	);
 
-	return { verbItems, contextItems, navItems, settingsItems };
+	return { verbItems, actionItems, contextItems, navItems, settingsItems };
 }

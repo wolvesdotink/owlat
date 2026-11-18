@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
+import { isShortcutEntryAvailable, NAVIGATION_SHORTCUT_ROUTES } from '~/utils/shortcutSettingsRows';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
 import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
 import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
@@ -124,8 +125,15 @@ useWorkspaceHotkeys();
 // Native window material and the macOS traffic lights (desktop only).
 useShellWindowChrome({ isDesktop, isMac, isWindows, effectiveHidden, isPeeking });
 
+// The `g` chords fire only where the navigation table offers their page.
+const { role } = usePermissions();
 onMounted(() => {
-	registerNavigationShortcuts();
+	registerNavigationShortcuts(NAVIGATION_SHORTCUT_ROUTES, (id) =>
+		isShortcutEntryAvailable(
+			{ id, scope: 'global' },
+			{ isFeatureEnabled, isDesktop: isDesktop.value, role: role.value }
+		)
+	);
 	initFromStorage();
 });
 

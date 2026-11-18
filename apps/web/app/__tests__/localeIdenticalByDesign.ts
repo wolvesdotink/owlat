@@ -386,7 +386,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	// The age beside "Saved": a separator and a placeholder, the same in German.
 	'shared.draftAutosave.savedAge',
 	'shared.dashboardNavigation.items.administration.teamAccess',
-	'shared.dashboardNavigation.items.assistant.chat',
 	'shared.dashboardNavigation.items.knowledge.explorer',
 	'shared.dashboardNavigation.items.knowledge.graph',
 	'shared.dashboardNavigation.items.postbox.spam',

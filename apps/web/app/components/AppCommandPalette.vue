@@ -61,7 +61,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { verbItems, contextItems, navItems, settingsItems } = useCommandPaletteProviders();
+const { verbItems, actionItems, contextItems, navItems, settingsItems } =
+	useCommandPaletteProviders();
 const registryProviders = useCommandPaletteRegistry();
 const { isEnabled: isFlagEnabled } = useFeatureFlag();
 const route = useRoute();
@@ -191,6 +192,7 @@ const coreProviders = buildCorePaletteProviders({
 	jumpBackItems: () => objectRecents.jumpBackItems.value,
 	recentSearches: () => recentSearches.value,
 	verbItems: () => verbItems.value,
+	actionItems: () => actionItems.value,
 	contextItems: () => contextItems.value,
 	navItems: () => navItems.value,
 	settingsItems: () => settingsItems.value,
