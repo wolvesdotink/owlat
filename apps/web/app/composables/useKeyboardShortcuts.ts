@@ -39,7 +39,6 @@ import {
 	shortcutBindings,
 } from '~/utils/shortcutScope';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
-import { isShortcutEntryAvailable, NAVIGATION_SHORTCUT_ROUTES } from '~/utils/shortcutSettingsRows';
 
 /**
  * Gets the press, for the few commands one id covers several keys of (1 to 9
@@ -243,22 +242,22 @@ export function useKeyboardShortcuts() {
 	 * Register the app-wide `g` chords. Each fires only where the cheat sheet
 	 * lists it, so a chord to a page this person cannot open does nothing
 	 * rather than bouncing them to the Workbench.
+	 *
+	 * The routes and their gate come from the caller: this composable is in
+	 * every page's chunk, and the gate reads the navigation table, which only
+	 * the shell should load.
 	 */
-	function registerNavigationShortcuts() {
+	function registerNavigationShortcuts(
+		routes: Readonly<Record<string, string>>,
+		isAvailable: (id: string) => boolean
+	) {
 		const router = useRouter();
-		const { isEnabled } = useFeatureFlag();
-		const { role } = usePermissions();
-		const { isDesktop } = useDesktopContext();
-		for (const [id, path] of Object.entries(NAVIGATION_SHORTCUT_ROUTES)) {
+		for (const [id, path] of Object.entries(routes)) {
 			registerShortcut({
 				id,
 				handler: () => router.push(path),
 				ignoreInputs: true,
-				when: () =>
-					isShortcutEntryAvailable(
-						{ id, scope: 'global' },
-						{ isFeatureEnabled: isEnabled, isDesktop: isDesktop.value, role: role.value }
-					),
+				when: () => isAvailable(id),
 			});
 		}
 	}
