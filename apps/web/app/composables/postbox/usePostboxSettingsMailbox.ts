@@ -4,23 +4,35 @@
  *
  * Settings hides the Postbox sidebar and its mailbox switcher, so the page
  * names its mailbox itself. A switch here is local to settings: it is held in
- * `?settingsMailbox=`, never in the shared Postbox selection, so looking at a
- * team inbox's auto-reply does not change which mailbox the Postbox opens on.
- * The key must not be `mailbox`: `usePostboxMailbox` writes that one into the
- * shared selection. Without the query the page edits the mailbox open in the
- * Postbox, when the viewer may edit it there.
+ * session state the six pages share, never in the shared Postbox selection, so
+ * looking at a team inbox's auto-reply does not change which mailbox the
+ * Postbox opens on. It is not held in the URL either: a page's draft belongs to
+ * the mailbox it was typed for, and a sidebar link or Back that dropped a query
+ * would otherwise move the draft onto another mailbox. A link about one mailbox
+ * seeds the choice with `?settingsMailbox=` (see `SETTINGS_MAILBOX_QUERY`).
+ * Without a choice the page edits the mailbox open in the Postbox, when the
+ * viewer may edit it there.
  *
  * `minRole` is the floor the page's save mutations check: vacation, forwarding,
  * filters, aliases and app passwords need `owner`, signatures only `member`.
  * A mailbox below it is not offered, because every save on it would be refused.
+ * A stored choice below the floor is passed over on that page but kept, so the
+ * signatures page can stay on a team inbox the other pages cannot edit.
+ *
+ * `onSwitch` runs when the edited mailbox changes after one was settled, by the
+ * picker or underneath it (the roles read drops the mailbox, the Postbox moves
+ * in another tab). The page drops its draft there, so nothing typed for one
+ * mailbox is saved to another.
  */
 
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { SETTINGS_MAILBOX_QUERY } from '~/utils/postboxSettingsMailbox';
 
-export const SETTINGS_MAILBOX_QUERY = 'settingsMailbox';
-
-export function usePostboxSettingsMailbox(minRole: 'owner' | 'member') {
+export function usePostboxSettingsMailbox(
+	minRole: 'owner' | 'member',
+	options: { onSwitch?: () => void } = {}
+) {
 	const {
 		mailboxes: all,
 		currentMailbox: openMailbox,
@@ -44,16 +56,36 @@ export function usePostboxSettingsMailbox(minRole: 'owner' | 'member') {
 		return all.value.filter((m) => allowed.has(m._id));
 	});
 
-	const route = useRoute();
+	const chosen = useState<Id<'mailboxes'> | null>('settings-mailbox', () => null);
+	// Read once, at setup: the seed is consumed into `chosen` before a page's
+	// deep-link cleanup clears the query.
+	const seed = useRoute().query[SETTINGS_MAILBOX_QUERY];
+	if (typeof seed === 'string' && seed) chosen.value = seed as Id<'mailboxes'>;
+
 	const currentMailbox = computed(() => {
 		const list = mailboxes.value;
-		const requested = route.query[SETTINGS_MAILBOX_QUERY];
 		const open = openMailbox.value?._id;
 		return (
-			list.find((m) => m._id === requested) ?? list.find((m) => m._id === open) ?? list[0] ?? null
+			list.find((m) => m._id === chosen.value) ??
+			list.find((m) => m._id === open) ??
+			list[0] ??
+			null
 		);
 	});
 	const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+
+	// A blip to null (a read re-subscribing) is not a switch; the next mailbox
+	// is compared with the last one the page actually edited.
+	let settled: Id<'mailboxes'> | null = null;
+	watch(
+		mailboxId,
+		(next) => {
+			if (!next) return;
+			if (settled && settled !== next) options.onSwitch?.();
+			settled = next;
+		},
+		{ immediate: true }
+	);
 
 	const error = computed(() => listError.value ?? rolesError.value ?? null);
 	const isLoading = computed(
@@ -61,10 +93,7 @@ export function usePostboxSettingsMailbox(minRole: 'owner' | 'member') {
 	);
 
 	function selectMailbox(id: Id<'mailboxes'>) {
-		void navigateTo(
-			{ query: { ...route.query, [SETTINGS_MAILBOX_QUERY]: id }, hash: route.hash },
-			{ replace: true }
-		);
+		chosen.value = id;
 	}
 
 	function refetch() {

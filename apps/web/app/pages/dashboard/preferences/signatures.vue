@@ -20,7 +20,11 @@ const {
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxSettingsMailbox('member');
+} = usePostboxSettingsMailbox('member', {
+	onSwitch: () => {
+		editor.value = null;
+	},
+});
 
 const {
 	signatures,

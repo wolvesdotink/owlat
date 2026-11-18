@@ -39,7 +39,6 @@ import {
 	loadAccessibleMailboxes,
 	requireMailboxAccess,
 } from './permissions';
-import { readSession } from './mailbox/shared';
 import { createProvisionedMailbox } from './mailbox/identity';
 import { extractEmail } from '../lib/emailAddress';
 import { assertLiveOrgMembers, loadProfileSummary } from '../lib/userProfiles';
@@ -287,15 +286,13 @@ export const myRole = postboxQuery({
  */
 export const myRoles = postboxQuery({
 	args: {},
-	handler: async (ctx) => {
-		const session = await readSession(ctx);
-		if (!session) return [];
+	handler: async (ctx, _args, session) => {
 		const mailboxes = await loadAccessibleMailboxes(
 			ctx,
 			session.userId,
 			session.activeOrganizationId
 		);
-		const gate = createMailboxAccessGate(ctx);
+		const gate = createMailboxAccessGate(ctx, session);
 		const rows: Array<{ mailboxId: Id<'mailboxes'>; role: 'owner' | 'member' }> = [];
 		for (const mailbox of mailboxes) {
 			const access = await gate(mailbox._id);

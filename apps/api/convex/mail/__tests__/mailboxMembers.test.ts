@@ -30,7 +30,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn(async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
-			return { userId: sessionMock.userId, role: sessionMock.role };
+			return {
+				userId: sessionMock.userId,
+				role: sessionMock.role,
+				activeOrganizationId: sessionMock.orgId,
+			};
 		}),
 		getMutationContext: vi.fn(async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');

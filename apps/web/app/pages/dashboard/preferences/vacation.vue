@@ -70,9 +70,11 @@ function toLocalInputValue(ts: number): string {
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Keyed on the mailbox as well: two mailboxes with no responder deliver equal
+// reads, and the form must still start over for the other one.
 watch(
-	data,
-	(stored) => {
+	[data, mailboxId],
+	([stored]) => {
 		if (stored === undefined) return;
 		// No responder on this mailbox: the defaults, not the previous mailbox's.
 		if (stored === null) {

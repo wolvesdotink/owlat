@@ -20,7 +20,12 @@ const {
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxSettingsMailbox('owner');
+} = usePostboxSettingsMailbox('owner', {
+	onSwitch: () => {
+		newAddress.value = '';
+		error.value = null;
+	},
+});
 
 const {
 	data,

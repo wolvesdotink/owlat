@@ -21,7 +21,12 @@ const {
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxSettingsMailbox('owner');
+} = usePostboxSettingsMailbox('owner', {
+	onSwitch: () => {
+		newAlias.value = '';
+		error.value = null;
+	},
+});
 
 const {
 	data,

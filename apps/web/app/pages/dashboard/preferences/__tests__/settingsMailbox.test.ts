@@ -5,10 +5,11 @@
  * shared selection silently could set an auto-reply on the wrong mailbox. The
  * page runs on the real `usePostboxSettingsMailbox`; only the Convex reads and
  * the router are stubbed, so the mailbox the page edits is the one its reads
- * and saves name.
+ * and saves name. `useState` is keyed as in Nuxt, so a choice made on one page
+ * is still there when the next one mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { computed, reactive, ref, type Component } from 'vue';
+import { computed, reactive, ref, type Component, type Ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { api } from '@owlat/api';
@@ -16,8 +17,11 @@ import { installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { usePostboxSettingsMailbox } from '~/composables/postbox/usePostboxSettingsMailbox';
 import PreferencesMailboxPicker from '~/components/preferences/PreferencesMailboxPicker.vue';
+import PostboxPlainRules from '~/components/postbox/PostboxPlainRules.vue';
 import VacationPage from '../vacation.vue';
 import SignaturesPage from '../signatures.vue';
+import ForwardingPage from '../forwarding.vue';
+import FiltersPage from '../filters.vue';
 
 const PERSONAL = { _id: 'mb_me', address: 'me@owlat.test', scope: 'personal', status: 'active' };
 const SUPPORT = {
@@ -42,15 +46,22 @@ const responders: Record<string, { subject: string } | null> = {
 };
 
 let mailboxes: Array<typeof PERSONAL | typeof SUPPORT>;
-let roles: Array<{ mailboxId: string; role: 'owner' | 'member' }>;
+// A ref, so a test can hold the roles read in its loading state and land it.
+const roles = ref<Array<{ mailboxId: string; role: 'owner' | 'member' }> | undefined>();
 const openMailboxId = ref<string | null>(null);
 const route = reactive<{ query: Record<string, string>; hash: string }>({ query: {}, hash: '' });
 const navigateTo = vi.fn((to: { query: Record<string, string> }) => {
 	route.query = to.query;
 });
+const sessionState = new Map<string, Ref<unknown>>();
+function useState<T>(key: string, init?: () => T): Ref<T> {
+	if (!sessionState.has(key)) sessionState.set(key, ref(init?.()));
+	return sessionState.get(key) as Ref<T>;
+}
+const operationRun = vi.fn(async (_args: Record<string, unknown>) => ({ ok: true, result: null }));
 
 function respond(name: string, args: Record<string, unknown>): unknown {
-	if (name === getFunctionName(api.mail.mailboxMembers.myRoles)) return roles;
+	if (name === getFunctionName(api.mail.mailboxMembers.myRoles)) return roles.value;
 	if (name === getFunctionName(api.mail.vacation.get)) {
 		const stored = responders[args['mailboxId'] as string];
 		return stored
@@ -84,18 +95,21 @@ function useConvexQuery(fn: FunctionReference<'query'>, args: () => unknown) {
 
 beforeEach(() => {
 	mailboxes = [PERSONAL, SUPPORT, SALES];
-	roles = [
+	roles.value = [
 		{ mailboxId: 'mb_me', role: 'owner' },
 		{ mailboxId: 'mb_support', role: 'owner' },
 		{ mailboxId: 'mb_sales', role: 'member' },
 	];
 	openMailboxId.value = null;
 	route.query = {};
+	sessionState.clear();
 	navigateTo.mockClear();
 	vacationReads.mockClear();
+	operationRun.mockClear();
 	installNuxtStubs({
 		...i18nStubs,
 		useRoute: () => route,
+		useState,
 		navigateTo,
 		useConvexQuery,
 		usePostboxMailbox: () => ({
@@ -108,7 +122,7 @@ beforeEach(() => {
 			refetch: vi.fn(),
 		}),
 		usePostboxSettingsMailbox,
-		useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false) }),
+		useBackendOperation: () => ({ run: operationRun, isLoading: ref(false) }),
 		usePostboxSignatures: () => ({
 			signatures: ref([]),
 			isLoading: ref(false),
@@ -118,6 +132,34 @@ beforeEach(() => {
 			update: vi.fn(),
 			remove: vi.fn(),
 		}),
+		usePostboxFilters: () => ({
+			filters: ref([]),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+			create: vi.fn(),
+			update: vi.fn(),
+			setEnabled: vi.fn(),
+			remove: vi.fn(),
+			reorder: vi.fn(),
+		}),
+		usePostboxRules: () => ({
+			drafts: ref([]),
+			compile: vi.fn(),
+			confirm: vi.fn(),
+			discard: vi.fn(),
+			test: vi.fn(),
+			isCompiling: ref(false),
+			isTesting: ref(false),
+		}),
+		usePostboxFolders: () => ({ folders: ref([]) }),
+		usePostboxLabels: () => ({ labels: ref([]) }),
+		usePostboxSettings: () => ({
+			codeAutoArchive: ref(false),
+			setCodeAutoArchive: vi.fn(),
+			isSaving: ref(false),
+			isLoading: ref(false),
+		}),
 	});
 });
 
@@ -125,8 +167,19 @@ function mountPage(page: Component) {
 	return mount(page, {
 		global: {
 			plugins: [createTestI18n()],
-			components: { PreferencesMailboxPicker },
+			components: { PreferencesMailboxPicker, PostboxPlainRules },
 			stubs: {
+				UiInput: {
+					props: ['modelValue'],
+					emits: ['update:modelValue'],
+					template:
+						'<input v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+				},
+				UiSpinner: true,
+				PostboxRuleChips: true,
+				PostboxRuleDryRun: true,
+				PostboxFilterRuleBuilder: true,
+				PostboxFilterRunControl: true,
 				UiQueryBoundary: { template: '<div><slot /></div>' },
 				UiSwitch: true,
 				UiSkeleton: true,
@@ -149,7 +202,7 @@ const optionValues = (wrapper: ReturnType<typeof mountPage>) =>
 describe('the vacation reply names the mailbox it edits', () => {
 	it('shows the address as plain text when there is only one mailbox to edit', async () => {
 		mailboxes = [PERSONAL];
-		roles = [{ mailboxId: 'mb_me', role: 'owner' }];
+		roles.value = [{ mailboxId: 'mb_me', role: 'owner' }];
 		const wrapper = mountPage(VacationPage);
 		await flushPromises();
 
@@ -181,10 +234,8 @@ describe('the vacation reply names the mailbox it edits', () => {
 		await wrapper.get('select#settings-mailbox').setValue('mb_support');
 		await flushPromises();
 
-		expect(navigateTo).toHaveBeenCalledWith(
-			expect.objectContaining({ query: { settingsMailbox: 'mb_support' } }),
-			{ replace: true }
-		);
+		// The choice is session state, not a URL a sidebar link could drop.
+		expect(navigateTo).not.toHaveBeenCalled();
 		expect(vacationReads).toHaveBeenLastCalledWith({ mailboxId: 'mb_support' });
 		expect((wrapper.get('#draft-subject').element as HTMLInputElement).value).toBe(
 			'Support is closed this week'
@@ -220,5 +271,121 @@ describe('signatures name their mailbox too', () => {
 		await flushPromises();
 
 		expect(optionValues(wrapper)).toEqual(['mb_me', 'mb_support', 'mb_sales']);
+	});
+});
+
+describe('a chosen mailbox stays chosen', () => {
+	const selectValue = (wrapper: ReturnType<typeof mountPage>) =>
+		(wrapper.get('select#settings-mailbox').element as HTMLSelectElement).value;
+
+	it('keeps the forwarding draft on the chosen mailbox when a link drops the query', async () => {
+		const wrapper = mountPage(ForwardingPage);
+		await flushPromises();
+		await wrapper.get('select#settings-mailbox').setValue('mb_support');
+		await flushPromises();
+		await wrapper.get('#newaddress').setValue('desk@elsewhere.test');
+
+		// The Settings sidebar's Forwarding link, or Back: the same page, no query.
+		route.query = {};
+		await flushPromises();
+		expect(selectValue(wrapper)).toBe('mb_support');
+
+		await wrapper.get('form').trigger('submit');
+		await flushPromises();
+		expect(operationRun).toHaveBeenCalledWith(
+			expect.objectContaining({ mailboxId: 'mb_support', forwardTo: 'desk@elsewhere.test' })
+		);
+	});
+
+	it('carries the choice to the next settings page', async () => {
+		const vacation = mountPage(VacationPage);
+		await flushPromises();
+		await vacation.get('select#settings-mailbox').setValue('mb_support');
+		vacation.unmount();
+
+		const forwarding = mountPage(ForwardingPage);
+		await flushPromises();
+		expect(selectValue(forwarding)).toBe('mb_support');
+	});
+
+	it('drops a draft when the mailbox changes under it', async () => {
+		openMailboxId.value = 'mb_support';
+		const wrapper = mountPage(ForwardingPage);
+		await flushPromises();
+		await wrapper.get('#newaddress').setValue('desk@elsewhere.test');
+
+		// The roles read updates without the team inbox: the page falls back.
+		roles.value = [
+			{ mailboxId: 'mb_me', role: 'owner' },
+			{ mailboxId: 'mb_sales', role: 'owner' },
+		];
+		await flushPromises();
+
+		expect(selectValue(wrapper)).toBe('mb_me');
+		expect((wrapper.get('#newaddress').element as HTMLInputElement).value).toBe('');
+	});
+});
+
+describe('the filters page', () => {
+	const selectValue = (wrapper: ReturnType<typeof mountPage>) =>
+		(wrapper.get('select#settings-mailbox').element as HTMLSelectElement).value;
+	const editorOpen = (wrapper: ReturnType<typeof mountPage>) =>
+		wrapper.findComponent({ name: 'PostboxFilterRuleBuilder' }).exists();
+
+	it('holds the switch while the plain-language composer has text', async () => {
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+		const select = wrapper.get('select#settings-mailbox');
+		expect(select.attributes('disabled')).toBeUndefined();
+
+		await wrapper.get('form input').setValue('archive newsletters after a week');
+		expect(select.attributes('disabled')).toBeDefined();
+
+		await wrapper.get('form input').setValue('  ');
+		expect(select.attributes('disabled')).toBeUndefined();
+	});
+
+	it("opens a message's filter on the mailbox the message is in", async () => {
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_support' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(selectValue(wrapper)).toBe('mb_support');
+		expect(editorOpen(wrapper)).toBe(true);
+		// The deep link is consumed; the mailbox choice outlives it.
+		expect(route.query).toEqual({});
+	});
+
+	it('waits for the roles read before deciding where the filter goes', async () => {
+		roles.value = undefined;
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_support' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+		expect(editorOpen(wrapper)).toBe(false);
+
+		roles.value = [
+			{ mailboxId: 'mb_me', role: 'owner' },
+			{ mailboxId: 'mb_support', role: 'owner' },
+		];
+		await flushPromises();
+		expect(selectValue(wrapper)).toBe('mb_support');
+		expect(editorOpen(wrapper)).toBe(true);
+	});
+
+	it('opens no editor when the message is in a mailbox the viewer may not edit filters for', async () => {
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_sales' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(selectValue(wrapper)).toBe('mb_me');
+		expect(editorOpen(wrapper)).toBe(false);
+	});
+
+	it('still opens the editor from a link that names no mailbox', async () => {
+		route.query = { filterFrom: 'billing@example.com' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(editorOpen(wrapper)).toBe(true);
 	});
 });
