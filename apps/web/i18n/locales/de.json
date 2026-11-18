@@ -7004,6 +7004,10 @@
 				"subtitle": "Wähle die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
 				"title": "Sprache"
 			},
+			"preferencesMailboxPicker": {
+				"label": "Postfach",
+				"locked": "Speichere oder verwirf deine Änderungen, um das Postfach zu wechseln."
+			},
 			"preferencesReading": {
 				"reading": "Lesen",
 				"autoAdvanceLabel": "Nach dem Archivieren, Löschen oder Schlummern",

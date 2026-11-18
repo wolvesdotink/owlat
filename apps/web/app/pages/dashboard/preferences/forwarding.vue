@@ -14,12 +14,13 @@ definePageMeta({
 });
 
 const {
-	currentMailbox,
+	mailboxes,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner');
 
 const {
 	data,
@@ -78,6 +79,13 @@ async function confirmRemove() {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="newAddress.trim() !== ''"
+			@select="selectMailbox"
+		/>
 		<header class="mb-6">
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.forwarding.intro') }}

@@ -7004,6 +7004,10 @@
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
 				"title": "Language"
 			},
+			"preferencesMailboxPicker": {
+				"label": "Mailbox",
+				"locked": "Save or cancel your changes to switch mailboxes."
+			},
 			"preferencesReading": {
 				"reading": "Reading",
 				"autoAdvanceLabel": "After archiving, deleting or snoozing",

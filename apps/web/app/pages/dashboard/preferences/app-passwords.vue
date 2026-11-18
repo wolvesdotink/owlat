@@ -15,11 +15,12 @@ definePageMeta({
 const {
 	mailboxes,
 	currentMailbox,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner');
 
 const {
 	passwords,
@@ -90,6 +91,12 @@ const smtpHost = computed(() => imapHost.value);
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			@select="selectMailbox"
+		/>
 		<header
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>

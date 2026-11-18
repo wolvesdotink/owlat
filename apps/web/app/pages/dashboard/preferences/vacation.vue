@@ -12,12 +12,13 @@ definePageMeta({
 });
 
 const {
-	currentMailbox,
+	mailboxes,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner');
 
 const {
 	data,
@@ -52,6 +53,10 @@ const defaultDraft = () => ({
 });
 
 const draft = reactive(defaultDraft());
+// The draft as the stored responder last seeded it. A switch reseeds the form
+// from the other mailbox, so the picker holds while the draft has moved off it.
+const seeded = ref(JSON.stringify(draft));
+const isDirty = computed(() => loaded.value && JSON.stringify(draft) !== seeded.value);
 
 /**
  * A stored instant as the wall-clock value a `datetime-local` input shows.
@@ -72,6 +77,7 @@ watch(
 		// No responder on this mailbox: the defaults, not the previous mailbox's.
 		if (stored === null) {
 			Object.assign(draft, defaultDraft());
+			seeded.value = JSON.stringify(draft);
 			return;
 		}
 		draft.enabled = stored.isEnabled;
@@ -80,6 +86,7 @@ watch(
 		draft.startAt = stored.startAt ? toLocalInputValue(stored.startAt) : '';
 		draft.endAt = stored.endAt ? toLocalInputValue(stored.endAt) : '';
 		draft.replyIntervalDays = stored.replyIntervalDays;
+		seeded.value = JSON.stringify(draft);
 	},
 	{ immediate: true }
 );
@@ -112,6 +119,13 @@ async function confirmDisable() {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="isDirty"
+			@select="selectMailbox"
+		/>
 		<header class="mb-6">
 			<p class="text-text-secondary">
 				{{ t('dashboard.preferences.vacation.intro') }}

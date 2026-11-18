@@ -206,6 +206,15 @@ beforeEach(() => {
 			error: ref(null),
 		}),
 		usePostboxSettings: () => ({ settings: ref(null), isLoading: ref(false) }),
+		usePostboxSettingsMailbox: () => ({
+			mailboxes: ref([]),
+			currentMailbox: ref(null),
+			mailboxId: ref(null),
+			selectMailbox: vi.fn(),
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		}),
 	});
 });
 

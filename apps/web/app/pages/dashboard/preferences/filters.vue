@@ -32,12 +32,14 @@ definePageMeta({
 });
 
 const {
+	mailboxes,
 	currentMailbox,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner');
 
 const {
 	filters,
@@ -247,6 +249,13 @@ async function confirmRemove() {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="!!editor"
+			@select="selectMailbox"
+		/>
 		<!-- The page's own intro leads, as on every Preferences page; the
 		     plain-language rules card follows it as its own section. -->
 		<header
