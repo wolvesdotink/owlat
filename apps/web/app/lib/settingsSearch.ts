@@ -69,10 +69,16 @@ export function settingsSearchResults(
 	const pages: Row[] = [
 		...input.youSections.flatMap((section) =>
 			section.entries.map((entry) =>
-				row(entry.path, entry.path, entry.icon, t(entry.titleKey), t(section.titleKey), [
-					...parseKeywords(t(entry.keywordsKey)),
-					t(entry.descriptionKey),
-				])
+				row(
+					entry.path,
+					entry.path,
+					entry.icon,
+					t(entry.titleKey),
+					t(section.titleKey),
+					// Synonyms only. The matcher is a subsequence match, so a page's
+					// description sentence would match almost any short query.
+					parseKeywords(t(entry.keywordsKey))
+				)
 			)
 		),
 		...input.adminAreas.flatMap((area) =>

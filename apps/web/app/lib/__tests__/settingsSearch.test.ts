@@ -1,6 +1,6 @@
 /**
  * The Settings sidebar's search box. It answers to the same words ⌘K does: a
- * page's synonyms and description, and the individual controls on each page.
+ * page's synonyms, and the individual controls on each page.
  */
 import { describe, expect, it } from 'vitest';
 import { adminAreasFor } from '../adminSettingsNav';
@@ -57,9 +57,9 @@ describe('settingsSearchResults', () => {
 		});
 	});
 
-	it('finds a page by its description', () => {
-		const results = settingsSearchResults(admin, 'auto-reply while away');
-		expect(results.map((r) => r.path)).toContain('/dashboard/preferences/vacation');
+	it('does not match a page through its description sentence', () => {
+		const results = settingsSearchResults(admin, 'team');
+		expect(results.map((r) => r.path)).not.toContain('/dashboard/preferences/booking');
 	});
 
 	it('lists page matches before control matches', () => {
