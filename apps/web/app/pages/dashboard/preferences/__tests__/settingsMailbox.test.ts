@@ -308,6 +308,19 @@ describe('a chosen mailbox stays chosen', () => {
 		expect(selectValue(forwarding)).toBe('mb_support');
 	});
 
+	it('does not hand the choice to the next account in the same tab', async () => {
+		const vacation = mountPage(VacationPage);
+		await flushPromises();
+		await vacation.get('select#settings-mailbox').setValue('mb_support');
+		vacation.unmount();
+
+		// Signing out does not reload the app, so the session state is still there.
+		vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'user2' }) }));
+		const forwarding = mountPage(ForwardingPage);
+		await flushPromises();
+		expect(selectValue(forwarding)).toBe('mb_me');
+	});
+
 	it('drops a draft when the mailbox changes under it', async () => {
 		openMailboxId.value = 'mb_support';
 		const wrapper = mountPage(ForwardingPage);
@@ -378,6 +391,20 @@ describe('the filters page', () => {
 		await flushPromises();
 
 		expect(selectValue(wrapper)).toBe('mb_me');
+		expect(editorOpen(wrapper)).toBe(false);
+	});
+
+	it('keeps the earlier choice when a link names a mailbox the page may not edit', async () => {
+		const vacation = mountPage(VacationPage);
+		await flushPromises();
+		await vacation.get('select#settings-mailbox').setValue('mb_support');
+		vacation.unmount();
+
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_sales' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+
+		expect(selectValue(wrapper)).toBe('mb_support');
 		expect(editorOpen(wrapper)).toBe(false);
 	});
 

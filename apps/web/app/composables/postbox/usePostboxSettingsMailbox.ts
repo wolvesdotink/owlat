@@ -9,7 +9,11 @@
  * Postbox opens on. It is not held in the URL either: a page's draft belongs to
  * the mailbox it was typed for, and a sidebar link or Back that dropped a query
  * would otherwise move the draft onto another mailbox. A link about one mailbox
- * seeds the choice with `?settingsMailbox=` (see `SETTINGS_MAILBOX_QUERY`).
+ * seeds the choice with `?settingsMailbox=` (see `SETTINGS_MAILBOX_QUERY`); the
+ * seed only becomes the stored choice once the page may edit that mailbox, so
+ * a link to one the viewer cannot edit does not replace what they chose. The
+ * stored choice belongs to the signed-in user: signing out does not reload the
+ * app, and the next account must not inherit it.
  * Without a choice the page edits the mailbox open in the Postbox, when the
  * viewer may edit it there.
  *
@@ -56,16 +60,30 @@ export function usePostboxSettingsMailbox(
 		return all.value.filter((m) => allowed.has(m._id));
 	});
 
-	const chosen = useState<Id<'mailboxes'> | null>('settings-mailbox', () => null);
-	// Read once, at setup: the seed is consumed into `chosen` before a page's
-	// deep-link cleanup clears the query.
-	const seed = useRoute().query[SETTINGS_MAILBOX_QUERY];
-	if (typeof seed === 'string' && seed) chosen.value = seed as Id<'mailboxes'>;
+	const { user } = useAuth();
+	const stored = useState<{ userId: string; mailboxId: Id<'mailboxes'> } | null>(
+		'settings-mailbox',
+		() => null
+	);
+	const chosen = computed(() =>
+		stored.value && stored.value.userId === user.value?.id ? stored.value.mailboxId : null
+	);
+	function choose(id: Id<'mailboxes'>) {
+		const userId = user.value?.id;
+		if (userId) stored.value = { userId, mailboxId: id };
+	}
+
+	// Read once, at setup, before a page's deep-link cleanup clears the query.
+	const seedQuery = useRoute().query[SETTINGS_MAILBOX_QUERY];
+	const seed = ref<Id<'mailboxes'> | null>(
+		typeof seedQuery === 'string' && seedQuery ? (seedQuery as Id<'mailboxes'>) : null
+	);
 
 	const currentMailbox = computed(() => {
 		const list = mailboxes.value;
 		const open = openMailbox.value?._id;
 		return (
+			(seed.value ? list.find((m) => m._id === seed.value) : undefined) ??
 			list.find((m) => m._id === chosen.value) ??
 			list.find((m) => m._id === open) ??
 			list[0] ??
@@ -92,8 +110,22 @@ export function usePostboxSettingsMailbox(
 		() => listLoading.value || (roles.value === undefined && !rolesError.value)
 	);
 
+	// Once the reads have answered, an editable seed becomes the choice and any
+	// other seed is dropped.
+	watch(
+		isLoading,
+		(loading) => {
+			const id = seed.value;
+			if (loading || !id) return;
+			if (mailboxes.value.some((m) => m._id === id)) choose(id);
+			seed.value = null;
+		},
+		{ immediate: true }
+	);
+
 	function selectMailbox(id: Id<'mailboxes'>) {
-		chosen.value = id;
+		seed.value = null;
+		choose(id);
 	}
 
 	function refetch() {
