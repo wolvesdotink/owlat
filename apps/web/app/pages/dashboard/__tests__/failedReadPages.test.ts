@@ -162,8 +162,11 @@ const PAGES: PageCase[] = [
 		load: () => import('../preferences/aliases.vue'),
 		absent: ['dashboard.preferences.aliases.empty'],
 		stubs: () => ({
-			usePostboxMailbox: () => ({
+			usePostboxSettingsMailbox: () => ({
+				mailboxes: ref([mailbox]),
 				currentMailbox: ref(mailbox),
+				mailboxId: ref(mailbox._id),
+				selectMailbox: vi.fn(),
 				isLoading: ref(false),
 				error: ref(null),
 				refetch: vi.fn(),
@@ -175,8 +178,11 @@ const PAGES: PageCase[] = [
 		load: () => import('../preferences/aliases.vue'),
 		absent: ['dashboard.preferences.aliases.noMailbox'],
 		stubs: () => ({
-			usePostboxMailbox: () => ({
+			usePostboxSettingsMailbox: () => ({
+				mailboxes: ref([]),
 				currentMailbox: ref(null),
+				mailboxId: ref(null),
+				selectMailbox: vi.fn(),
 				isLoading: ref(false),
 				error: ref(failure()),
 				refetch,
@@ -215,6 +221,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'KnowledgeLinkedContactsCard',
 		'KnowledgeRelationsCard',
 		'KnowledgeShareWithMembers',
+		'PreferencesMailboxPicker',
 		'ShellStatusPill',
 		'UiBadge',
 		'UiConfirmationDialog',

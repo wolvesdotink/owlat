@@ -30,6 +30,8 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: 'toggle', filterId: Id<'mailFilters'>, isEnabled: boolean): void;
 	(e: 'remove', filterId: Id<'mailFilters'>): void;
+	/** Whether the composer holds unsaved text, which belongs to this mailbox. */
+	(e: 'composing', hasText: boolean): void;
 }>();
 
 const { t } = useI18n();
@@ -54,11 +56,26 @@ function labelName(id: Id<'mailLabels'>): string | undefined {
 }
 
 const text = ref('');
+watch(
+	() => text.value.trim() !== '',
+	(hasText) => emit('composing', hasText)
+);
+onBeforeUnmount(() => emit('composing', false));
+// A sentence typed for one mailbox is not compiled into another's rules.
+watch(
+	() => props.mailboxId,
+	() => {
+		text.value = '';
+	}
+);
 async function add() {
 	const value = text.value.trim();
 	if (!value || isCompiling.value) return;
+	const mailboxId = props.mailboxId;
 	text.value = '';
-	if (!(await compile(value))) text.value = value;
+	// A failed compile hands the sentence back, but only to the mailbox it was
+	// typed for: the picker unlocks while the request runs.
+	if (!(await compile(value)) && props.mailboxId === mailboxId) text.value = value;
 }
 
 const dryRun = ref<{ key: string; result: RuleDryRunResult } | null>(null);

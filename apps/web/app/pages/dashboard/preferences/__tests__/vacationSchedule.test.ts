@@ -30,8 +30,11 @@ beforeEach(() => {
 	upsert.mockClear();
 	installNuxtStubs({
 		...i18nStubs,
-		usePostboxMailbox: () => ({
+		usePostboxSettingsMailbox: () => ({
+			mailboxes: ref([{ _id: 'mb_1' }]),
 			currentMailbox: ref({ _id: 'mb_1' }),
+			mailboxId: ref('mb_1'),
+			selectMailbox: vi.fn(),
 			isLoading: ref(false),
 			error: ref(null),
 			refetch: vi.fn(),
@@ -62,6 +65,7 @@ function mountPage() {
 				UiSwitch: true,
 				UiSkeleton: true,
 				UiConfirmationDialog: true,
+				PreferencesMailboxPicker: true,
 				UiButton: {
 					inheritAttrs: false,
 					template: '<button v-bind="$attrs"><slot /></button>',

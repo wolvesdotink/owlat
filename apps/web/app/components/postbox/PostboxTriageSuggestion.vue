@@ -21,7 +21,7 @@ import { CheckIcon } from '@coolicons/vue';
 const props = defineProps<{ messageId: string }>();
 
 const { t } = useI18n();
-const { senderAddress, suggestion, accepted, accept, dismiss, undo, isBusy } =
+const { senderAddress, suggestion, accepted, mailboxId, accept, dismiss, undo, isBusy } =
 	usePostboxTriageSuggestion(computed(() => props.messageId as Id<'mailMessages'>));
 
 const offerCopy = computed(() =>
@@ -50,14 +50,14 @@ const offerCopy = computed(() =>
 			</div>
 		</div>
 
-		<div v-else-if="accepted" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+		<div v-else-if="accepted && mailboxId" class="flex flex-wrap items-center gap-x-3 gap-y-2">
 			<CheckIcon class="w-4 h-4 flex-shrink-0 text-success" />
 			<p class="flex-1 min-w-40 text-sm text-text-secondary">
 				{{ t('components.postbox.postboxTriageSuggestion.created', { rule: accepted.filterName }) }}
 			</p>
 			<div class="flex items-center gap-2">
 				<NuxtLink
-					:to="postboxFilterRuleLink(String(accepted.filterId))"
+					:to="postboxFilterRuleLink(String(accepted.filterId), String(mailboxId))"
 					class="text-sm text-brand hover:underline"
 				>
 					{{ t('components.postbox.postboxTriageSuggestion.viewRule') }}

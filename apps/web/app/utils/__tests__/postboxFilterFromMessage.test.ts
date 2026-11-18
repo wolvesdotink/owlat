@@ -24,5 +24,12 @@ describe('postboxFilterQueryFrom', () => {
 	it('gives nothing to seed when the message has neither', () => {
 		expect(postboxFilterQueryFrom({ subject: '  ' })).toBeNull();
 		expect(postboxFilterQueryFrom({})).toBeNull();
+		expect(postboxFilterQueryFrom({ mailboxId: 'mb_team' })).toBeNull();
+	});
+
+	it("names the message's mailbox, so the filter is made on the mailbox it came from", () => {
+		expect(
+			postboxFilterQueryFrom({ fromAddress: 'billing@example.com', mailboxId: 'mb_team' })
+		).toEqual({ filterFrom: 'billing@example.com', settingsMailbox: 'mb_team' });
 	});
 });

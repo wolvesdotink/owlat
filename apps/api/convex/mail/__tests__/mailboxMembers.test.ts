@@ -30,7 +30,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn(async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
-			return { userId: sessionMock.userId, role: sessionMock.role };
+			return {
+				userId: sessionMock.userId,
+				role: sessionMock.role,
+				activeOrganizationId: sessionMock.orgId,
+			};
 		}),
 		getMutationContext: vi.fn(async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
@@ -428,5 +432,36 @@ describe('transferOwnership', () => {
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBe('owner');
 		setSession('admin-user', 'editor');
 		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId: id })).toBe('member');
+	});
+});
+
+describe('myRoles', () => {
+	it("lists the caller's effective role on every mailbox they can open", async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		setSession('admin-user', 'admin');
+		await seedVerifiedDomain(t);
+		await seedUsers(t, 'user-B');
+		const team = await t.mutation(api.mail.mailboxMembers.createShared, {
+			address: 'support@owlat.test',
+			memberUserIds: ['user-B'],
+		});
+		const own = await seedMailbox(t, { userId: 'user-B', address: 'b@owlat.test' });
+		await seedMailbox(t, { userId: 'user-B', address: 'paused@owlat.test', status: 'suspended' });
+
+		setSession('user-B', 'editor');
+		const rows = await t.query(api.mail.mailboxMembers.myRoles, {});
+		// A suspended mailbox is one no setting can be saved on, so it is left out.
+		expect(new Map(rows.map((r) => [r.mailboxId, r.role]))).toEqual(
+			new Map([
+				[own, 'owner'],
+				[team, 'member'],
+			])
+		);
+
+		// An org admin acts as owner on the team inbox, whatever their membership row says.
+		setSession('admin-user', 'admin');
+		const adminRows = await t.query(api.mail.mailboxMembers.myRoles, {});
+		expect(adminRows).toEqual([{ mailboxId: team, role: 'owner' }]);
 	});
 });

@@ -25,15 +25,15 @@ describe('postboxTriageVerbCopy', () => {
 });
 
 describe('postboxFilterRuleLink', () => {
-	it('deep-links the created rule into the Filters page', () => {
-		expect(postboxFilterRuleLink('abc123')).toBe(
-			'/dashboard/preferences/filters?openFilter=abc123'
+	it('deep-links the created rule into the Filters page, on the mailbox that owns it', () => {
+		expect(postboxFilterRuleLink('abc123', 'mb_team')).toBe(
+			'/dashboard/preferences/filters?openFilter=abc123&settingsMailbox=mb_team'
 		);
 	});
 
-	it('escapes the id rather than splicing it into the query raw', () => {
-		expect(postboxFilterRuleLink('a&b=c')).toBe(
-			'/dashboard/preferences/filters?openFilter=a%26b%3Dc'
+	it('escapes the ids rather than splicing them into the query raw', () => {
+		expect(postboxFilterRuleLink('a&b=c', 'm&b')).toBe(
+			'/dashboard/preferences/filters?openFilter=a%26b%3Dc&settingsMailbox=m%26b'
 		);
 	});
 });

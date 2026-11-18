@@ -16,6 +16,7 @@
  *   - myRole              the caller's own role on a mailbox, or null — the
  *                         reactive query the UI (and tests) watch to see access
  *                         appear/disappear the instant membership changes.
+ *   - myRoles             the same role for every mailbox the caller can open.
  *   - addMember / removeMember / transferOwnership
  *                         mutate the roster; gated at the `owner` floor of
  *                         `requireMailboxAccess` (which also admits org
@@ -33,7 +34,11 @@ import { postboxQuery, postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { requireMailboxAccess } from './permissions';
+import {
+	createMailboxAccessGate,
+	loadAccessibleMailboxes,
+	requireMailboxAccess,
+} from './permissions';
 import { createProvisionedMailbox } from './mailbox/identity';
 import { extractEmail } from '../lib/emailAddress';
 import { assertLiveOrgMembers, loadProfileSummary } from '../lib/userProfiles';
@@ -269,6 +274,31 @@ export const myRole = postboxQuery({
 		// everyone else's explicit membership role).
 		const access = await requireMailboxAccess(ctx, args.mailboxId);
 		return access.ok ? access.role : null;
+	},
+});
+
+/**
+ * {@link myRole} for every mailbox the caller can open, in one read: what the
+ * mailbox picker on a mail settings page filters by, since vacation replies,
+ * forwarding, filters, aliases and app passwords need `owner` to save while a
+ * team-inbox member only reads them. A mailbox the gate refuses (a suspended
+ * one) is left out.
+ */
+export const myRoles = postboxQuery({
+	args: {},
+	handler: async (ctx, _args, session) => {
+		const mailboxes = await loadAccessibleMailboxes(
+			ctx,
+			session.userId,
+			session.activeOrganizationId
+		);
+		const gate = createMailboxAccessGate(ctx, session);
+		const rows: Array<{ mailboxId: Id<'mailboxes'>; role: 'owner' | 'member' }> = [];
+		for (const mailbox of mailboxes) {
+			const access = await gate(mailbox._id);
+			if (access.ok) rows.push({ mailboxId: mailbox._id, role: access.role });
+		}
+		return rows;
 	},
 });
 

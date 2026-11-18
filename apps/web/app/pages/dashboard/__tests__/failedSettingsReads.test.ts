@@ -174,8 +174,11 @@ const FORMS: FormCase[] = [
 			);
 		},
 		stubs: () => ({
-			usePostboxMailbox: () => ({
+			usePostboxSettingsMailbox: () => ({
+				mailboxes: ref([mailbox]),
 				currentMailbox: ref(mailbox),
+				mailboxId: ref(mailbox._id),
+				selectMailbox: vi.fn(),
 				isLoading: ref(false),
 				error: ref(null),
 				refetch: vi.fn(),
@@ -258,6 +261,7 @@ function mountForm(Page: Component): VueWrapper {
 		stubs: {
 			UiUnsavedChangesDialog: true,
 			UiConfirmationDialog: true,
+			PreferencesMailboxPicker: true,
 			UiModal: passthrough,
 			UiPageHeader: true,
 			UiSkeleton: true,

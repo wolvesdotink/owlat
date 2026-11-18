@@ -18,6 +18,7 @@ import {
 } from '~/composables/postbox/usePostboxFilters';
 import { moveSibling } from '~/utils/postboxReorder';
 import { isPlainLanguageRule } from '~/composables/postbox/usePostboxRules';
+import { SETTINGS_MAILBOX_QUERY } from '~/utils/postboxSettingsMailbox';
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -32,12 +33,18 @@ definePageMeta({
 });
 
 const {
+	mailboxes,
 	currentMailbox,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner', {
+	onSwitch: () => {
+		editor.value = null;
+	},
+});
 
 const {
 	filters,
@@ -61,6 +68,9 @@ interface DraftFilter {
 }
 
 const editor = ref<DraftFilter | null>(null);
+// Unsaved text in the plain-language composer: like an open editor, it belongs
+// to the mailbox it was typed on.
+const composerHasText = ref(false);
 const saving = ref(false);
 const editorSection = ref<HTMLElement | null>(null);
 
@@ -128,36 +138,65 @@ function startFromMessage(seed: { from?: string; subject?: string }) {
 
 // `?filterFrom=<address>&filterSubject=<subject>` is how the reader's overflow
 // hands a message over; `?openFilter=<id>` is how the reader's accepted rule
-// suggestion (idea 27) links to the rule it created. Read once on mount and
-// cleared from the URL, so a reload does not reopen an editor the user already
-// dismissed.
+// suggestion (idea 27) links to the rule it created. Both name the message's
+// mailbox in `?settingsMailbox=`, which the mailbox composable has already
+// taken as the page's choice. Read once on mount and cleared from the URL, so a
+// reload does not reopen an editor the user already dismissed.
 const route = useRoute();
+
+/**
+ * Run `decide` with the first value `source` gives that is not `undefined`,
+ * now or once a read lands. Checked before watching: an immediate watcher would
+ * call its own stop handle before `watch` has returned it.
+ */
+function whenDefined<T>(source: () => T | undefined, decide: (value: T) => void) {
+	const now = source();
+	if (now !== undefined) return decide(now);
+	const stop = watch(source, (value) => {
+		if (value === undefined) return;
+		stop();
+		decide(value);
+	});
+}
+
 onMounted(() => {
 	const openId = route.query['openFilter'];
 	if (typeof openId === 'string') {
-		// The list may still be loading; watch once for the row rather than
-		// silently dropping a deep link that arrived first.
-		const stop = watch(
-			filters,
-			(rows) => {
-				const found = rows.find((f) => f._id === openId);
-				if (!found) return;
+		// The list may still be loading; wait for the row rather than silently
+		// dropping a deep link that arrived first.
+		whenDefined(
+			() => filters.value.find((f) => f._id === openId),
+			(found) => {
 				startEdit(found);
-				stop();
 				void navigateTo({ query: {} }, { replace: true });
-			},
-			{ immediate: true }
+			}
 		);
 		return;
 	}
 	const from = route.query['filterFrom'];
 	const subject = route.query['filterSubject'];
 	if (!from && !subject) return;
-	startFromMessage({
+	const seed = {
 		from: typeof from === 'string' ? from : undefined,
 		subject: typeof subject === 'string' ? subject : undefined,
-	});
-	void navigateTo({ query: {} }, { replace: true });
+	};
+	const named = route.query[SETTINGS_MAILBOX_QUERY];
+	if (typeof named !== 'string') {
+		startFromMessage(seed);
+		void navigateTo({ query: {} }, { replace: true });
+		return;
+	}
+	// The rule is for the named mailbox. When the viewer may not edit its
+	// filters the page falls back to another mailbox, and a prefilled editor
+	// there would save the rule to the wrong one, so none opens. The roles read
+	// may still be loading or have failed; an empty list then says nothing yet.
+	whenDefined(
+		() => (mailboxesLoading.value || mailboxesError.value ? undefined : mailboxId.value),
+		(id) => {
+			if (id === named) startFromMessage(seed);
+			void navigateTo({ query: {} }, { replace: true });
+		}
+	);
 });
 
 function startEdit(f: (typeof filters.value)[number]) {
@@ -247,6 +286,13 @@ async function confirmRemove() {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="!!editor || composerHasText"
+			@select="selectMailbox"
+		/>
 		<!-- The page's own intro leads, as on every Preferences page; the
 		     plain-language rules card follows it as its own section. -->
 		<header
@@ -266,6 +312,7 @@ async function confirmRemove() {
 			:mailbox-id="mailboxId"
 			:filters="filters"
 			@toggle="setEnabled"
+			@composing="(hasText: boolean) => (composerHasText = hasText)"
 			@remove="(id: Id<'mailFilters'>) => (filterToRemove = id)"
 		/>
 
