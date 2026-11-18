@@ -143,13 +143,6 @@ describe('routePaletteTargets', () => {
 		);
 	});
 
-	it('takes the marketing templates with Campaigns, as the route does', () => {
-		const href = '/dashboard/send/marketing';
-		expect(hrefs()).toContain(href);
-		expect(hrefs(env({ isFeatureEnabled: (flag) => flag !== 'campaigns' }))).not.toContain(href);
-		expect(hrefs(env({ role: 'editor' }))).not.toContain(href);
-	});
-
 	it('takes a section with its feature flag', () => {
 		const reachable = hrefs(env({ isFeatureEnabled: (flag) => flag !== 'campaigns' }));
 		expect(reachable.filter((href) => href.startsWith('/dashboard/campaigns'))).toEqual([]);

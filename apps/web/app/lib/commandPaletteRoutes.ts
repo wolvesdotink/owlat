@@ -72,7 +72,6 @@ const never = () => false;
 const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment) => boolean]> = [
 	['/dashboard/admin', adminOnly],
 	['/dashboard/send', adminOnly],
-	['/dashboard/send/marketing', (env) => adminOnly(env) && env.isFeatureEnabled('campaigns')],
 	['/dashboard/send/transactional', transactionalGate],
 	['/dashboard/audience', adminOnly],
 	['/dashboard/campaigns', (env) => env.isFeatureEnabled('campaigns')],
