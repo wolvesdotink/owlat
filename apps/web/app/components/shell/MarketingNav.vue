@@ -183,8 +183,8 @@ const links = computed(() =>
 	].filter((l) => l.show)
 );
 
-// The collapsed rail: one icon per group and the links below them, so
-// collapsing never drops a destination the expanded rail lists.
+// The collapsed rail: one icon per group, then the shared links and the plugin
+// items. The delivery line has no icon here.
 const railLinks = computed(() => [
 	...(campaignsOn.value
 		? [

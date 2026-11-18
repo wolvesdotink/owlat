@@ -52,12 +52,14 @@ const activeRoomId = computed(() => /^\/dashboard\/chat\/([^/?#]+)/.exec(route.p
 			name-class="text-2xs font-medium uppercase tracking-wider text-text-tertiary"
 			@toggle="emit('toggle')"
 		>
-			<span
-				v-if="unreadTotal > 0"
-				class="ml-auto normal-case tracking-normal tabular-nums"
-				:aria-label="t('components.shell.inboxGroup.unread', { count: unreadTotal })"
-				>{{ unreadTotal > 99 ? '99+' : unreadTotal }}</span
-			>
+			<template v-if="unreadTotal > 0">
+				<span class="ml-auto normal-case tracking-normal tabular-nums" aria-hidden="true">{{
+					unreadTotal > 99 ? '99+' : unreadTotal
+				}}</span>
+				<span class="sr-only">{{
+					t('components.shell.inboxGroup.unread', { count: unreadTotal })
+				}}</span>
+			</template>
 		</ShellGroupHeader>
 		<div v-if="!props.collapsed" class="mt-px space-y-px">
 			<ShellThreadRow
