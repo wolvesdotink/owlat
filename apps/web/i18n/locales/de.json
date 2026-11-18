@@ -17088,9 +17088,9 @@
 				"title": "Einen API-Schlüssel erstellen"
 			},
 			"createdEmail": {
-				"cta": "E-Mail erstellen",
+				"cta": "Vorlage erstellen",
 				"description": "Erstelle eine E-Mail-Vorlage, die du versenden kannst.",
-				"title": "Eine E-Mail erstellen"
+				"title": "Eine Vorlage erstellen"
 			},
 			"finishSetup": {
 				"cta": "Einrichtung fortsetzen",

@@ -17088,9 +17088,9 @@
 				"title": "Create an API key"
 			},
 			"createdEmail": {
-				"cta": "Create email",
+				"cta": "Create a template",
 				"description": "Build an email template you can send.",
-				"title": "Create an email"
+				"title": "Create a template"
 			},
 			"finishSetup": {
 				"cta": "Finish setting up",
