@@ -61,10 +61,10 @@ route 144 pages/dashboard/admin/instance/brand-kit.vue
 route 25 pages/dashboard/admin/instance/channels.vue
 route 22 pages/dashboard/admin/instance/desktop-updates.vue
 route 3 pages/dashboard/admin/instance/email-theme.vue
-route 36 pages/dashboard/admin/instance/features.vue
+route 41 pages/dashboard/admin/instance/features.vue
 route 32 pages/dashboard/admin/instance/forms.vue
 route 62 pages/dashboard/admin/instance/general.vue
-route 20 pages/dashboard/admin/instance/index.vue
+route 3 pages/dashboard/admin/instance/index.vue
 route 22 pages/dashboard/admin/instance/plugins/[id].vue
 route 18 pages/dashboard/admin/instance/plugins/index.vue
 route 22 pages/dashboard/admin/instance/properties.vue
