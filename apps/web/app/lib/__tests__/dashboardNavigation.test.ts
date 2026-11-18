@@ -35,12 +35,7 @@ describe('buildNavigationSections — role-aware information architecture', () =
 		]);
 		expect(
 			sections.find((section) => section.key === 'administration')?.items.map((item) => item.href)
-		).toEqual([
-			'/dashboard/admin',
-			'/dashboard/admin/delivery',
-			'/dashboard/admin/team',
-			'/dashboard/admin/instance',
-		]);
+		).toEqual(['/dashboard/admin', '/dashboard/admin/delivery', '/dashboard/admin/team']);
 	});
 
 	it('gives editors a customer-first surface with no administrative destinations', () => {

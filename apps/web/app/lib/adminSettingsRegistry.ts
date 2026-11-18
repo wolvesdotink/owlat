@@ -49,7 +49,6 @@ import {
 	RobotIcon,
 	RouteIcon,
 	ScrollTextIcon,
-	ServerSettingsCornerIcon,
 	ShieldCheckIcon,
 	ShieldWarningIcon,
 	Slider1Icon,
@@ -339,17 +338,6 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('features'),
 		icon: ToggleRightIcon,
 		area: 'features',
-	},
-	{
-		// The operating-mode picker. It sets feature flags in bulk, so it hangs
-		// off Features rather than holding a rail row of its own.
-		id: 'instance',
-		path: `${ADMIN_ROOT}/instance`,
-		titleKey: label('instance'),
-		icon: ServerSettingsCornerIcon,
-		area: 'features',
-		hidden: true,
-		parent: 'features',
 	},
 	{
 		id: 'channels',

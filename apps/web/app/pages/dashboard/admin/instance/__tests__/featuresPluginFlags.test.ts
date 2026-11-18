@@ -120,6 +120,7 @@ function mountPage() {
 			UiModal: modalStub,
 			UiButton: buttonStub,
 			NuxtLink: true,
+			OperatingModeCard: true,
 			DeliveryEnvSetupSteps: {
 				props: ['variables'],
 				template: '<pre data-testid="env-setup">{{ variables.join(\'\\n\') }}</pre>',

@@ -237,7 +237,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.admin.instance.general.timezones.pacificAuckland',
 	'dashboard.admin.instance.general.timezones.pacificHonolulu',
 	'dashboard.admin.instance.general.timezones.utc',
-	'dashboard.admin.instance.index.groups.plugins.title',
 	'dashboard.admin.instance.plugins.detail.packageVersion',
 	'dashboard.admin.instance.plugins.detail.pageTitle',
 	'dashboard.admin.instance.plugins.detail.settings.secretLabelSuffix',

@@ -24,6 +24,7 @@ import FeaturePackList from '~/components/settings/FeaturePackList.vue';
 import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
 import ProfileSyncBanner from '~/components/settings/ProfileSyncBanner.vue';
 import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
+import OperatingModeCard from '~/components/settings/OperatingModeCard.vue';
 import { useProfileSync } from '~/composables/useProfileSync';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { InboxIcon } from '@coolicons/vue';
@@ -273,6 +274,8 @@ async function togglePack(packKey: FeaturePackKey) {
 		<!-- Persistent apply banner: toggles that change the docker-profile set
 		     leave services out of sync until an explicit Apply. -->
 		<ProfileSyncBanner :flags="resolved" class="mb-6" />
+
+		<OperatingModeCard id="operating-mode" class="mb-6" />
 
 		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError" @retry="refetchFlags">
 			<FeaturePackList

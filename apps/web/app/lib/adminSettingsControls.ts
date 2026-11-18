@@ -61,6 +61,7 @@ export const ADMIN_SETTINGS_CONTROLS: readonly AdminSettingsControl[] = [
 	control('alertChannels', 'deliverability', 'deliverability-alert-channels'),
 	control('webhookSecret', 'webhooks', 'webhook-signing'),
 	control('brandColors', 'brandKit', 'brand-colors'),
+	control('operatingMode', 'features', 'operating-mode'),
 	control('transactionalSender', 'instanceGeneral', 'transactional-sender'),
 	control('transactionalSendLimits', 'apiKeys', 'transactional-send-limits'),
 ];

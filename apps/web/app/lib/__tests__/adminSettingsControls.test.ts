@@ -44,7 +44,7 @@ function lookup(catalog: unknown, key: string): unknown {
 }
 
 describe('admin settings controls', () => {
-	it('indexes the eight anchored admin topics', () => {
+	it('indexes the anchored admin topics', () => {
 		expect(ids(FULL)).toEqual([
 			'dkim',
 			'aiProviderKey',
@@ -53,6 +53,7 @@ describe('admin settings controls', () => {
 			'alertChannels',
 			'webhookSecret',
 			'brandColors',
+			'operatingMode',
 			'transactionalSender',
 			'transactionalSendLimits',
 		]);
@@ -80,6 +81,13 @@ describe('admin settings controls', () => {
 		);
 		expect(brand?.href).toBe('/dashboard/admin/instance/brand-kit#brand-colors');
 		expect(brand?.id).toBe('admin:brandKit:brandColors');
+	});
+
+	it('lands the operating mode on its card at the top of Features', () => {
+		const mode = adminControlTargets(FULL, true).find(
+			(target) => target.control.id === 'operatingMode'
+		);
+		expect(mode?.href).toBe('/dashboard/admin/instance/features#operating-mode');
 	});
 
 	it.each(ADMIN_SETTINGS_CONTROLS.map((control) => [control.id, control] as const))(
@@ -124,6 +132,7 @@ describe('admin settings controls', () => {
 		expect(first('on-call')).toBe('alertChannels');
 		expect(first('webhook secret')).toBe('webhookSecret');
 		expect(first('brand colors')).toBe('brandColors');
+		expect(first('operating mode')).toBe('operatingMode');
 		expect(first('transactional sender')).toBe('transactionalSender');
 		expect(first('password reset')).toBe('transactionalSender');
 	});
