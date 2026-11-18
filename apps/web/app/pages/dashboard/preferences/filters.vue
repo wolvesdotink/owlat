@@ -189,9 +189,9 @@ onMounted(() => {
 	// The rule is for the named mailbox. When the viewer may not edit its
 	// filters the page falls back to another mailbox, and a prefilled editor
 	// there would save the rule to the wrong one, so none opens. The roles read
-	// may still be loading; an empty list then says nothing yet.
+	// may still be loading or have failed; an empty list then says nothing yet.
 	whenDefined(
-		() => (mailboxesLoading.value ? undefined : mailboxId.value),
+		() => (mailboxesLoading.value || mailboxesError.value ? undefined : mailboxId.value),
 		(id) => {
 			if (id === named) startFromMessage(seed);
 			void navigateTo({ query: {} }, { replace: true });

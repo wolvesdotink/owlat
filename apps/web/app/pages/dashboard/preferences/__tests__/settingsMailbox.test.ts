@@ -48,6 +48,7 @@ const responders: Record<string, { subject: string } | null> = {
 let mailboxes: Array<typeof PERSONAL | typeof SUPPORT>;
 // A ref, so a test can hold the roles read in its loading state and land it.
 const roles = ref<Array<{ mailboxId: string; role: 'owner' | 'member' }> | undefined>();
+const rolesError = ref<Error | null>(null);
 const openMailboxId = ref<string | null>(null);
 const route = reactive<{ query: Record<string, string>; hash: string }>({ query: {}, hash: '' });
 const navigateTo = vi.fn((to: { query: Record<string, string> }) => {
@@ -88,7 +89,7 @@ function useConvexQuery(fn: FunctionReference<'query'>, args: () => unknown) {
 			return respond(name, resolved as Record<string, unknown>);
 		}),
 		isLoading: ref(false),
-		error: ref(null),
+		error: name === getFunctionName(api.mail.mailboxMembers.myRoles) ? rolesError : ref(null),
 		refetch: vi.fn(),
 	};
 }
@@ -100,6 +101,7 @@ beforeEach(() => {
 		{ mailboxId: 'mb_support', role: 'owner' },
 		{ mailboxId: 'mb_sales', role: 'member' },
 	];
+	rolesError.value = null;
 	openMailboxId.value = null;
 	route.query = {};
 	sessionState.clear();
@@ -392,6 +394,24 @@ describe('the filters page', () => {
 
 		expect(selectValue(wrapper)).toBe('mb_me');
 		expect(editorOpen(wrapper)).toBe(false);
+	});
+
+	it("keeps a link's mailbox through a failed roles read", async () => {
+		const loaded = roles.value;
+		roles.value = undefined;
+		rolesError.value = new Error('offline');
+		route.query = { filterFrom: 'billing@example.com', settingsMailbox: 'mb_support' };
+		const wrapper = mountPage(FiltersPage);
+		await flushPromises();
+		expect(editorOpen(wrapper)).toBe(false);
+
+		// The retry succeeds.
+		rolesError.value = null;
+		roles.value = loaded;
+		await flushPromises();
+
+		expect(selectValue(wrapper)).toBe('mb_support');
+		expect(editorOpen(wrapper)).toBe(true);
 	});
 
 	it('keeps the earlier choice when a link names a mailbox the page may not edit', async () => {

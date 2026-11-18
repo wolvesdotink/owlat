@@ -110,13 +110,14 @@ export function usePostboxSettingsMailbox(
 		() => listLoading.value || (roles.value === undefined && !rolesError.value)
 	);
 
-	// Once the reads have answered, an editable seed becomes the choice and any
-	// other seed is dropped.
+	// Once both reads have succeeded, an editable seed becomes the choice and
+	// any other seed is dropped. A failed read says nothing about eligibility,
+	// so the seed waits for the retry.
 	watch(
-		isLoading,
-		(loading) => {
+		[isLoading, error],
+		([loading, failed]) => {
 			const id = seed.value;
-			if (loading || !id) return;
+			if (loading || failed || !id) return;
 			if (mailboxes.value.some((m) => m._id === id)) choose(id);
 			seed.value = null;
 		},
