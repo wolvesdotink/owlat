@@ -117,6 +117,7 @@ const handleFileSelect = (event: Event) => {
 		@dragleave="handleDragLeave"
 		@drop="handleDrop"
 	>
+		<SendTabs />
 		<UiPageHeader
 			:title="t('dashboard.send.media.title')"
 			:description="

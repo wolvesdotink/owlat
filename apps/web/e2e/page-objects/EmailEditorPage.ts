@@ -31,15 +31,14 @@ export class EmailEditorPage extends BasePage {
 	}
 
 	/**
-	 * Navigate to marketing templates listing, create a new blank template, and
+	 * Navigate to the templates list, create a new blank template, and
 	 * end up in the editor. Returns the name the template was created with.
 	 */
 	async gotoNewTemplate(): Promise<string> {
-		await this.page.goto('/dashboard/send/marketing');
-		await this.expectOnPage('Marketing Templates');
+		await this.page.goto('/dashboard/send');
+		await this.expectOnPage('Templates');
 
-		// Click "New Marketing Template" button
-		await this.page.getByRole('button', { name: /New Marketing Template/i }).click();
+		await this.page.getByRole('button', { name: /New template/i }).click();
 
 		// Pick the blank preset by its NAME, inside the modal.
 		// `getByText('Empty Canvas')` matched two nodes — the preset's description
@@ -56,8 +55,7 @@ export class EmailEditorPage extends BasePage {
 		await nameInput.waitFor({ timeout: 5_000 });
 		await nameInput.fill(name);
 
-		// Click "Create & Edit"
-		await this.page.getByRole('button', { name: /Create & Edit/i }).click();
+		await this.page.getByRole('button', { name: /Create and edit/i }).click();
 
 		// Wait for redirect to editor
 		await this.page.waitForURL('**/emails/**/edit', { timeout: 15_000 });

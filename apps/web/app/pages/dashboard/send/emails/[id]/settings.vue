@@ -332,8 +332,8 @@ const handleBack = () => {
 					<p class="text-text-secondary mb-6">
 						{{ t('dashboard.send.emails.detail.settings.notFound.description') }}
 					</p>
-					<UiButton @click="router.push('/dashboard/send/marketing')">
-						{{ t('dashboard.send.emails.detail.settings.backToEmails') }}
+					<UiButton @click="router.push('/dashboard/send')">
+						{{ t('dashboard.send.emails.detail.settings.backToTemplates') }}
 					</UiButton>
 				</div>
 			</div>

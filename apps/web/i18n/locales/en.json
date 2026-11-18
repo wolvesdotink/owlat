@@ -733,7 +733,7 @@
 				},
 				"email": {
 					"editor": {
-						"createCta": "Create new email",
+						"createCta": "Create new template",
 						"createPrompt": "Or create a new email template for this automation:",
 						"editTemplate": "Edit template →",
 						"noTemplates": "No marketing templates yet. {link} first.",
@@ -14015,7 +14015,7 @@
 					"noResultsTitle": "No results found",
 					"noWorkspaceDescription": "Create or select a workspace to start managing reusable blocks.",
 					"noWorkspaceTitle": "No workspace selected",
-					"pageTitle": "Email blocks — Owlat",
+					"pageTitle": "Saved blocks — Owlat",
 					"quickSettings": "Quick settings",
 					"saveChanges": "Save changes",
 					"savingChanges": "Saving...",
@@ -14037,7 +14037,7 @@
 				"detail": {
 					"edit": {
 						"backToCampaign": "Back to campaign",
-						"backToEmails": "Back to emails",
+						"backToTemplates": "Back to templates",
 						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
 						"campaignReturnHint": "Save your changes, then go back to review and send the campaign.",
 						"checkEmail": "Check email",
@@ -14067,7 +14067,7 @@
 						"unpublish": "Unpublish"
 					},
 					"settings": {
-						"backToEmails": "Back to emails",
+						"backToTemplates": "Back to templates",
 						"info": {
 							"body": "When sending an email, the system checks each recipient's language preference. If a translation exists for their language, they'll receive the translated subject and preview text. Otherwise, they'll receive the default language content.",
 							"title": "How translations work"
@@ -14123,7 +14123,11 @@
 				}
 			},
 			"index": {
-				"adminsOnly": "Only admins can create templates.",
+				"adminsOnly": "Only owners and admins can create or delete templates.",
+				"columns": {
+					"subject": "Subject",
+					"updated": "Updated"
+				},
 				"createAndEdit": "Create and edit",
 				"createOperation": "Create template",
 				"creating": "Creating…",
@@ -14135,6 +14139,10 @@
 					},
 					"title": "No templates yet"
 				},
+				"emptyNoTeam": {
+					"description": "Create or select a team to start creating email templates.",
+					"title": "No team selected"
+				},
 				"filters": {
 					"all": "All",
 					"marketing": "Marketing",
@@ -14142,11 +14150,24 @@
 				},
 				"loadError": "Couldn't load templates",
 				"loadMore": "Load more",
+				"loadingTemplates": "Loading templates...",
 				"newTemplate": "New template",
+				"noResults": {
+					"description": "No templates match “{query}”. Try a different search term.",
+					"title": "No results found"
+				},
+				"operations": {
+					"delete": "Delete template",
+					"duplicate": "Duplicate template",
+					"restore": "Restore template"
+				},
 				"pageTitle": "Templates — Owlat",
-				"savedBlocks": "Saved blocks",
-				"savedBlocksCount": "Saved blocks ({count})",
+				"searchPlaceholder": "Search templates...",
+				"sortLabel": "Sort templates",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
+				"toasts": {
+					"duplicated": "Template duplicated successfully"
+				},
 				"transactionalTypeHint": "Templates labelled transactional are reusable designs only: campaigns and automations don't offer them, and the API doesn't send them. Emails your app sends through the API are in {link}.",
 				"transactionalTypeHintLink": "Transactional emails",
 				"templateTypes": {
@@ -14155,48 +14176,6 @@
 				},
 				"title": "Templates",
 				"typeFilterLabel": "Template type"
-			},
-			"marketing": {
-				"index": {
-					"adminsOnly": "Only owners and admins can create or delete templates.",
-					"columns": {
-						"subject": "Subject",
-						"updated": "Updated"
-					},
-					"createAndEdit": "Create & edit",
-					"creating": "Creating...",
-					"empty": {
-						"action": "Create marketing template",
-						"description": "Create your first marketing template to start sending campaigns and newsletters.",
-						"title": "No marketing templates yet"
-					},
-					"emptyNoTeam": {
-						"description": "Create or select a team to start creating email templates.",
-						"title": "No team selected"
-					},
-					"loadError": "Couldn't load templates",
-					"loadingTemplates": "Loading templates...",
-					"newTemplate": "New marketing template",
-					"noResults": {
-						"description": "No templates match “{query}”. Try a different search term.",
-						"title": "No results found"
-					},
-					"operations": {
-						"create": "Create template",
-						"delete": "Delete template",
-						"duplicate": "Duplicate template",
-						"restore": "Restore template"
-					},
-					"pageTitle": "Marketing emails — Owlat",
-					"searchPlaceholder": "Search templates...",
-					"sortLabel": "Sort templates",
-					"subtitle": "Create and manage marketing email templates for campaigns and newsletters",
-					"templateCount": "{count} marketing template | {count} marketing templates",
-					"title": "Marketing templates",
-					"toasts": {
-						"duplicated": "Template duplicated successfully"
-					}
-				}
 			},
 			"media": {
 				"allTags": "All tags",
@@ -15927,7 +15906,7 @@
 				"auditLog": "Audit log",
 				"automations": "Automations",
 				"backups": "Backups",
-				"blocks": "Blocks",
+				"blocks": "Saved blocks",
 				"brandKit": "Brand kit",
 				"campaignSenders": "Campaign senders",
 				"campaigns": "Campaigns",
@@ -15951,9 +15930,8 @@
 				"independence": "Independence",
 				"instance": "Instance",
 				"mailSearch": "Search",
-				"marketing": "Marketing emails",
 				"measurement": "Measurement",
-				"media": "Media",
+				"media": "Media library",
 				"migrateFromMailchimp": "Migrate from Mailchimp",
 				"newCampaign": "New campaign",
 				"operatorConsole": "Operator console",

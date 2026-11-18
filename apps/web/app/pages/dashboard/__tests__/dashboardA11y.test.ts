@@ -207,7 +207,12 @@ const pages: readonly AuditedPage[] = [
 	},
 	{ name: 'new campaign wizard', component: CampaignsNew, loaded: 'Create campaign' },
 	{ name: 'contacts list', component: ContactsIndex, loaded: 'No contacts yet' },
-	{ name: 'templates list', component: SendIndex, loaded: 'No templates yet' },
+	{
+		name: 'templates list',
+		component: SendIndex,
+		loaded: 'No templates yet',
+		components: LIST_SCAFFOLD,
+	},
 	{ name: 'team inbox', component: InboxIndex, loaded: 'Inbox zero' },
 	{ name: 'admin overview', component: AdminIndex, loaded: 'Overview' },
 	// The settings screen is the one page here whose title lives in the shell

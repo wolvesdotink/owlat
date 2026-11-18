@@ -42,7 +42,7 @@ interface TemplateListQuery<T> {
 interface UseTemplateListOptions<T extends TemplateListItem> {
 	/**
 	 * Build the page's query from the list state. The two lists differ here on
-	 * purpose: marketing sorts the loaded page client-side, transactional passes
+	 * purpose: templates sorts the loaded page client-side, transactional passes
 	 * the sort to its query.
 	 */
 	query: (state: {
@@ -66,7 +66,7 @@ interface UseTemplateListOptions<T extends TemplateListItem> {
 }
 
 /**
- * List state for the marketing and transactional template pages: `useListPage`
+ * List state for the templates and transactional email lists: `useListPage`
  * (search, sort, delete dialog, shortcuts) plus the parts only template lists
  * share — the grid/list view mode, opening a row, and the loading/empty flags
  * `ListPageShell` renders from.
