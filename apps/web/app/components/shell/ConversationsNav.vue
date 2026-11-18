@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 import { ALL_INBOXES_PATH, isUnifiedFolderPath } from '~/utils/postboxAllInboxes';
-import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
+import {
+	BrainIcon,
+	ChatCircleIcon,
+	DashboardIcon,
+	InboxIcon,
+	ReplyAllIcon,
+	RobotIcon,
+} from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 import { uniqueRailLabels } from '~/utils/inboxIdentity';
 import { usePostboxMailboxDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
@@ -43,6 +50,7 @@ const showRoleSkeleton = computed(
 // the sidebar and ⌘K say the same word.
 const showKnowledge = computed(() => isEnabled('ai.knowledge'));
 const KNOWLEDGE_HREF = '/dashboard/knowledge';
+const TEAM_INBOX_HREF = '/dashboard/inbox';
 
 const pinned = computed(() => [
 	{
@@ -186,6 +194,17 @@ function isActive(to: string, exact: boolean): boolean {
 					>
 				</NuxtLink>
 			</UiTooltip>
+			<UiTooltip v-if="showTeamInbox" :text="t('components.shell.teamInbox')">
+				<NuxtLink
+					:to="TEAM_INBOX_HREF"
+					:aria-label="t('components.shell.teamInbox')"
+					:aria-current="isActive(TEAM_INBOX_HREF, false) ? 'page' : undefined"
+					class="flex justify-center rounded-lg py-2 hover:bg-(--surface-2-hover) hover:text-text-primary"
+					:class="isActive(TEAM_INBOX_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
+				>
+					<component :is="navIcon(RobotIcon, isActive(TEAM_INBOX_HREF, false))" class="size-4.5" />
+				</NuxtLink>
+			</UiTooltip>
 			<UiTooltip v-if="showChat" :text="t('components.shell.chat.title')">
 				<NuxtLink
 					to="/dashboard/chat"
@@ -205,6 +224,15 @@ function isActive(to: string, exact: boolean): boolean {
 					data-testid="shell-nav-knowledge"
 				>
 					<component :is="navIcon(BrainIcon, isActive(KNOWLEDGE_HREF, false))" class="size-4.5" />
+				</NuxtLink>
+			</UiTooltip>
+			<UiTooltip v-for="item in extraItems" :key="item.href" :text="t(item.name)">
+				<NuxtLink
+					:to="item.href"
+					:aria-label="t(item.name)"
+					class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+				>
+					<component :is="item.icon" class="size-4.5" />
 				</NuxtLink>
 			</UiTooltip>
 		</template>

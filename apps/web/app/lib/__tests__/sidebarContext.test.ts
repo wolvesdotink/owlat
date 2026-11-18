@@ -3,6 +3,7 @@
  *   - route ownership: which context owns a path, shared routes → null
  *   - section partitioning: context blocks + shared block, order preserved
  *   - switch-target resolution: last-visited > preferred home > first item
+ *   - the shown context: the active one with the toggle, else the only one left
  */
 import { describe, it, expect } from 'vitest';
 import type { SectionKey } from '~/composables/useSidebarState';
@@ -11,6 +12,7 @@ import {
 	readLastVisitedRoutes,
 	resolveSwitchTarget,
 	sendingZones,
+	shownSidebarContext,
 	splitSectionsByContext,
 } from '../sidebarContext';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
@@ -94,6 +96,33 @@ describe('splitSectionsByContext', () => {
 		]);
 		expect(split.inbox).toEqual([]);
 		expect(split.marketing.map((s) => s.key)).toEqual(['send']);
+	});
+});
+
+describe('shownSidebarContext', () => {
+	const both = splitSectionsByContext([
+		section('inbox', ['/dashboard/inbox']),
+		section('send', ['/dashboard/send']),
+	]);
+	const sendingOnly = splitSectionsByContext([
+		section('send', ['/dashboard/send']),
+		section('preferences', ['/dashboard/preferences']),
+	]);
+	const conversationsOnly = splitSectionsByContext([section('inbox', ['/dashboard/inbox'])]);
+
+	it('shows the active context while both contexts have sections', () => {
+		expect(shownSidebarContext('inbox', both)).toBe('inbox');
+		expect(shownSidebarContext('marketing', both)).toBe('marketing');
+	});
+
+	it('shows Sending in a workspace with only Sending features, on any route', () => {
+		expect(shownSidebarContext('inbox', sendingOnly)).toBe('marketing');
+		expect(shownSidebarContext('marketing', sendingOnly)).toBe('marketing');
+	});
+
+	it('shows Conversations when it is the only context, or when neither is left', () => {
+		expect(shownSidebarContext('marketing', conversationsOnly)).toBe('inbox');
+		expect(shownSidebarContext('marketing', splitSectionsByContext([]))).toBe('inbox');
 	});
 });
 

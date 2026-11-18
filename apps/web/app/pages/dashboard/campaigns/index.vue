@@ -6,6 +6,7 @@ import { useListPage } from '~/composables/useListPage';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
+import { campaignHref, campaignOpensReport } from '~/utils/campaignDestination';
 import { CircleCheckIcon, PaperPlaneIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
@@ -169,7 +170,7 @@ useCampaignCommandSurface({
 		visibleRows.value.map((row) => ({
 			id: row.campaign._id,
 			name: row.campaign.name,
-			opensReport: row.campaign.status === 'sent' || row.campaign.status === 'sending',
+			opensReport: campaignOpensReport(row.campaign.status),
 		})),
 });
 
@@ -236,11 +237,7 @@ const emptyCopy = computed(() =>
 
 /** Row click opens the report for sent/sending campaigns, else the editor. */
 function openCampaign(campaign: CampaignRowFields) {
-	if (campaign.status === 'sent' || campaign.status === 'sending') {
-		router.push(`/dashboard/campaigns/${campaign._id}/report`);
-	} else {
-		router.push(`/dashboard/campaigns/${campaign._id}/edit`);
-	}
+	router.push(campaignHref(campaign));
 }
 
 /** The inline attention action navigates only — no fake backend calls. */

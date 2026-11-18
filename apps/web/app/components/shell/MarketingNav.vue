@@ -4,18 +4,18 @@ import type { ConversationStatus } from '~/utils/conversationStatus';
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
 import {
 	ChartBarVerticalIcon,
-	ChevronDownIcon,
 	CircleCheckIcon,
 	CircleWarningIcon,
 	FileCodeIcon,
 	LayoutTemplateIcon,
 	MegaphoneIcon,
-	PlusIcon,
 	TrashIcon,
 	UsersIcon,
+	ZapIcon,
 } from '@coolicons/vue';
 import { navIcon } from '~/lib/navIcons';
 import { sendingZones } from '~/lib/sidebarContext';
+import { campaignHref } from '~/utils/campaignDestination';
 import { useNow } from '~/composables/useNow';
 
 /**
@@ -47,6 +47,8 @@ const zones = computed(() =>
 	sendingZones({ isFeatureEnabled: isEnabled, isDesktop: false, role: role.value })
 );
 
+const CAMPAIGNS_HREF = '/dashboard/campaigns';
+const AUTOMATIONS_HREF = '/dashboard/automations';
 const TRANSACTIONAL_HREF = '/dashboard/send/transactional';
 /** The list page opens its create dialog for this query (see `lib/quickCreate`). */
 const NEW_TRANSACTIONAL_HREF = `${TRANSACTIONAL_HREF}?action=create`;
@@ -92,8 +94,13 @@ function campaignStatus(c: {
 
 const campaignRows = computed(() => {
 	const seen = new Set<string>();
-	const rows: Array<{ id: string; name: string; status: ConversationStatus | null; meta: string }> =
-		[];
+	const rows: Array<{
+		id: string;
+		name: string;
+		href: string;
+		status: ConversationStatus | null;
+		meta: string;
+	}> = [];
 	const push = (c: {
 		_id: string;
 		name: string;
@@ -111,6 +118,7 @@ const campaignRows = computed(() => {
 		rows.push({
 			id: c._id,
 			name: c.name,
+			href: campaignHref(c),
 			status: campaignStatus(c),
 			meta:
 				c.status === 'draft'
@@ -175,14 +183,24 @@ const links = computed(() =>
 	].filter((l) => l.show)
 );
 
-// The collapsed rail: one icon per zone and the shared links below them.
+// The collapsed rail: one icon per group, then the shared links and the plugin
+// items. The delivery line has no icon here.
 const railLinks = computed(() => [
 	...(campaignsOn.value
 		? [
 				{
-					to: '/dashboard/campaigns',
+					to: CAMPAIGNS_HREF,
 					icon: MegaphoneIcon,
 					label: t('components.shell.marketing.campaigns'),
+				},
+			]
+		: []),
+	...(automationsOn.value
+		? [
+				{
+					to: AUTOMATIONS_HREF,
+					icon: ZapIcon,
+					label: t('components.shell.marketing.automations'),
 				},
 			]
 		: []),
@@ -196,6 +214,7 @@ const railLinks = computed(() => [
 			]
 		: []),
 	...links.value,
+	...props.extraItems.map((i) => ({ to: i.href, icon: i.icon, label: t(i.name) })),
 ]);
 
 const { level: healthLevel, reason: healthReason } = useDeliveryHealth();
@@ -265,68 +284,39 @@ const ZONE_LABEL_CLASS =
 
 		<template v-if="!props.collapsed">
 			<template v-if="campaignsOn">
-				<div class="group/cmp mt-3 flex items-center gap-1 pr-1">
-					<button
-						type="button"
-						class="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 hover:text-text-primary"
-						:class="groupHeaderClass"
-						:aria-expanded="!isCollapsed('campaigns')"
-						@click="toggleGroup('campaigns')"
-					>
-						<ChevronDownIcon
-							class="size-3 transition-transform duration-(--motion-fast)"
-							:class="isCollapsed('campaigns') ? '-rotate-90' : ''"
-						/>
-						{{ t('components.shell.marketing.campaigns') }}
-					</button>
-					<UiTooltip :text="t('components.shell.marketing.newCampaign')">
-						<NuxtLink
-							to="/dashboard/campaigns/new"
-							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary pointer-coarse:size-11"
-							:aria-label="t('components.shell.marketing.newCampaign')"
-						>
-							<PlusIcon class="size-3.5" />
-						</NuxtLink>
-					</UiTooltip>
-				</div>
+				<ShellGroupHeader
+					class="mt-3"
+					:name="t('components.shell.marketing.campaigns')"
+					:to="CAMPAIGNS_HREF"
+					:collapsed="isCollapsed('campaigns')"
+					:name-class="groupHeaderClass"
+					create-to="/dashboard/campaigns/new"
+					:create-label="t('components.shell.marketing.newCampaign')"
+					@toggle="toggleGroup('campaigns')"
+				/>
 				<div v-if="!isCollapsed('campaigns')" class="space-y-px">
 					<ShellThreadRow
 						v-for="row in campaignRows"
 						:key="row.id"
-						:to="
-							row.status === 'results_in'
-								? `/dashboard/campaigns/${row.id}/report`
-								: `/dashboard/campaigns/${row.id}/edit`
-						"
+						:to="row.href"
 						:jump-key="`campaign:${row.id}`"
 						:title="row.name"
 						:meta="row.meta"
 						:status="row.status"
 						:is-active="activeCampaignId === row.id"
 					/>
-					<NuxtLink
-						to="/dashboard/campaigns"
-						class="flex items-center rounded-md px-3 py-1 text-2xs text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
-						:aria-current="route.path === '/dashboard/campaigns' ? 'page' : undefined"
-						>{{ t('components.shell.marketing.allCampaigns') }}</NuxtLink
-					>
 				</div>
 			</template>
 
 			<template v-if="automationsOn">
-				<button
-					type="button"
-					class="mt-3 flex items-center gap-1.5 px-2 py-1 hover:text-text-primary"
-					:class="groupHeaderClass"
-					:aria-expanded="!isCollapsed('automations')"
-					@click="toggleGroup('automations')"
-				>
-					<ChevronDownIcon
-						class="size-3 transition-transform duration-(--motion-fast)"
-						:class="isCollapsed('automations') ? '-rotate-90' : ''"
-					/>
-					{{ t('components.shell.marketing.automations') }}
-				</button>
+				<ShellGroupHeader
+					class="mt-3"
+					:name="t('components.shell.marketing.automations')"
+					:to="AUTOMATIONS_HREF"
+					:collapsed="isCollapsed('automations')"
+					:name-class="groupHeaderClass"
+					@toggle="toggleGroup('automations')"
+				/>
 				<div v-if="!isCollapsed('automations')" class="space-y-px">
 					<ShellThreadRow
 						v-for="row in automationRows"
@@ -336,55 +326,24 @@ const ZONE_LABEL_CLASS =
 						:title="row.name"
 						:is-active="activeAutomationId === row.id"
 					/>
-					<NuxtLink
-						to="/dashboard/automations"
-						class="flex items-center rounded-md px-3 py-1 text-2xs text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
-						>{{ t('components.shell.marketing.allAutomations') }}</NuxtLink
-					>
 				</div>
 			</template>
 
-			<!-- The Transactional zone. Labelled, its zone label is also the
-			     collapse control; alone, it is a group like Campaigns. -->
+			<!-- The Transactional zone. Labelled, its zone label is the group name;
+			     alone, it is a group like Campaigns. -->
 			<template v-if="zones.transactional">
-				<div
-					class="flex items-center gap-1 pr-1"
+				<ShellGroupHeader
 					:class="zones.labelled ? 'mt-5' : campaignsOn || automationsOn ? 'mt-3' : ''"
-				>
-					<component
-						:is="zones.labelled ? 'h2' : 'div'"
-						class="flex min-w-0 flex-1"
-						:data-testid="zones.labelled ? 'shell-sending-zone-transactional' : undefined"
-					>
-						<button
-							type="button"
-							class="flex min-w-0 flex-1 items-center gap-1.5 py-1"
-							:class="
-								zones.labelled
-									? ['px-3', ZONE_LABEL_CLASS]
-									: ['px-2 hover:text-text-primary', groupHeaderClass]
-							"
-							:aria-expanded="!isCollapsed('transactional')"
-							@click="toggleGroup('transactional')"
-						>
-							<ChevronDownIcon
-								v-if="!zones.labelled || isCollapsed('transactional')"
-								class="size-3 transition-transform duration-(--motion-fast)"
-								:class="isCollapsed('transactional') ? '-rotate-90' : ''"
-							/>
-							{{ t('shared.breadcrumbRoutes.sections.transactional') }}
-						</button>
-					</component>
-					<UiTooltip :text="t('components.shell.marketing.newTransactional')">
-						<NuxtLink
-							:to="NEW_TRANSACTIONAL_HREF"
-							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary pointer-coarse:size-11"
-							:aria-label="t('components.shell.marketing.newTransactional')"
-						>
-							<PlusIcon class="size-3.5" />
-						</NuxtLink>
-					</UiTooltip>
-				</div>
+					:name="t('shared.breadcrumbRoutes.sections.transactional')"
+					:to="TRANSACTIONAL_HREF"
+					:collapsed="isCollapsed('transactional')"
+					:name-class="zones.labelled ? ZONE_LABEL_CLASS : groupHeaderClass"
+					:heading="zones.labelled"
+					:create-to="NEW_TRANSACTIONAL_HREF"
+					:create-label="t('components.shell.marketing.newTransactional')"
+					:data-testid="zones.labelled ? 'shell-sending-zone-transactional' : undefined"
+					@toggle="toggleGroup('transactional')"
+				/>
 				<div v-if="!isCollapsed('transactional')" class="space-y-px">
 					<ShellThreadRow
 						v-for="row in transactionalRows"
@@ -396,12 +355,6 @@ const ZONE_LABEL_CLASS =
 						:status="row.status"
 						:is-active="activeTransactionalId === row.id"
 					/>
-					<NuxtLink
-						:to="TRANSACTIONAL_HREF"
-						class="flex items-center rounded-md px-3 py-1 text-2xs text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
-						:aria-current="route.path === TRANSACTIONAL_HREF ? 'page' : undefined"
-						>{{ t('components.shell.marketing.allTransactional') }}</NuxtLink
-					>
 				</div>
 			</template>
 

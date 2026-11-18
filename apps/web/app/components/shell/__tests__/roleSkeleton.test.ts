@@ -8,6 +8,7 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import ConversationsNav from '../ConversationsNav.vue';
+import GroupHeader from '../GroupHeader.vue';
 import MarketingNav from '../MarketingNav.vue';
 
 // The inbox drop targets are their own test (railMailboxDrop.test.ts).
@@ -55,7 +56,7 @@ beforeEach(() => {
 
 const global = {
 	plugins: [createTestI18n()],
-	components: { NuxtLink: NuxtLinkStub },
+	components: { NuxtLink: NuxtLinkStub, ShellGroupHeader: GroupHeader },
 	stubs: {
 		UiSkeleton: true,
 		ShellSidebarOptions: true,
