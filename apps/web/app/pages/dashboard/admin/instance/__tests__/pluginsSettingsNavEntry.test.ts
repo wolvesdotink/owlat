@@ -47,6 +47,7 @@ beforeEach(() => {
 		flags: ref({}),
 		isEnabled: () => false,
 		isLoading: ref(false),
+		error: ref(null),
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
 	vi.stubGlobal('useConvexQuery', (reference: unknown, args: unknown) => {
@@ -86,10 +87,12 @@ describe('Operating mode card — applying a mode', () => {
 	it('reports the flag change to the out-of-sync banner', async () => {
 		trackFlagChange.mockClear();
 		const flagsLoading = ref(true);
+		const flagsError = ref<Error | null>(null);
 		vi.stubGlobal('useFeatureFlag', () => ({
 			flags: ref({ campaigns: true }),
 			isEnabled: () => false,
 			isLoading: flagsLoading,
+			error: flagsError,
 		}));
 		vi.stubGlobal('useBackendOperation', () => ({
 			run: vi.fn().mockResolvedValue({ ok: true, result: {} }),
@@ -112,7 +115,15 @@ describe('Operating mode card — applying a mode', () => {
 		await flushPromises();
 		expect(trackFlagChange).not.toHaveBeenCalled();
 
+		// A read that timed out stopped loading but delivered nothing live.
 		flagsLoading.value = false;
+		flagsError.value = new Error('timed out');
+		await flushPromises();
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+		expect(trackFlagChange).not.toHaveBeenCalled();
+
+		flagsError.value = null;
 		await flushPromises();
 		await byText('Apply changes')!.trigger('click');
 		await flushPromises();

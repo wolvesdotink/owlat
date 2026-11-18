@@ -12,7 +12,11 @@ import { useProfileSync } from '~/composables/useProfileSync';
 
 const { t } = useI18n();
 
-const { flags, isLoading: flagsLoading } = useFeatureFlag();
+const { flags, isLoading: flagsLoading, error: flagsError } = useFeatureFlag();
+// Until a live result arrives `flags` holds defaults or the last cached set
+// (also after the read failed or timed out), and a diff against those would
+// miss a service the mode stops.
+const flagsLive = computed(() => !flagsLoading.value && !flagsError.value);
 const { flagKeyLabel } = useFeatureCopy();
 
 // The mode whose flag set the workspace runs on right now, if any: a mixed set
@@ -64,9 +68,7 @@ async function applyMode() {
 	// Snapshots: Cancel or Escape can clear the selection while the save runs.
 	const mode = selectedMode.value;
 	const desired = desiredFlags.value;
-	// Before the live flags arrive `flags` holds defaults, and a diff against
-	// defaults would miss a service the mode stops.
-	if (!mode || !desired || flagsLoading.value) return;
+	if (!mode || !desired || !flagsLive.value) return;
 	const before: FeatureFlagState = { ...flags.value };
 	const result = await setAllFlags({ flags: desired });
 	if (!result.ok) return;
@@ -172,7 +174,7 @@ async function applyMode() {
 			</div>
 			<template #footer>
 				<UiButton variant="ghost" @click="selectedMode = null">{{ t('common.cancel') }}</UiButton>
-				<UiButton :loading="applyingMode" :disabled="flagsLoading" @click="applyMode">{{
+				<UiButton :loading="applyingMode" :disabled="!flagsLive" @click="applyMode">{{
 					t('components.settings.operatingModeCard.applyChanges')
 				}}</UiButton>
 			</template>
