@@ -15,7 +15,7 @@ export interface AdminEnvironment {
 	isFeatureEnabled(flag: FeatureFlagKey): boolean;
 	/** Deployment-level tooling (operator console, system, backups). */
 	isPlatformAdmin: boolean;
-	/** This build ships at least one plugin that has settings. */
+	/** This build ships a plugin with settings, or a removed plugin left settings behind. */
 	hasPlugins: boolean;
 	/** The delivery ramp has taken over a cell (now, or within decision retention). */
 	hasRampStarted: boolean;

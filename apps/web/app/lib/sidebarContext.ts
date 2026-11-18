@@ -145,6 +145,20 @@ export function splitSectionsByContext<T extends { key: SectionKey }>(
 }
 
 /**
+ * The context the sidebar shows. While both contexts have sections the toggle
+ * picks; with one left after the feature flags, that one, so a workspace with
+ * only Sending features never gets the Conversations sidebar. With neither,
+ * Conversations, whose Workbench row needs no flag.
+ */
+export function shownSidebarContext(
+	active: SidebarContext,
+	split: SplitSections<unknown>
+): SidebarContext {
+	if (split.inbox.length > 0 && split.marketing.length > 0) return active;
+	return split.marketing.length > 0 ? 'marketing' : 'inbox';
+}
+
+/**
  * Where switching to `target` should navigate: its last-visited route if that
  * route still belongs to the target context, else the preferred home when the
  * flags kept it, else the first visible item of the context.

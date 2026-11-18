@@ -181,6 +181,13 @@ describe('gates', () => {
 		expect(paths).not.toContain(`${ADMIN_ROOT}/instance/autonomy`);
 	});
 
+	it('keeps the old Instance URL as a redirect to Features, where the operating mode lives', async () => {
+		const source = await readFile(join(adminPages, 'instance', 'index.vue'), 'utf8');
+		expect(isRedirectStub(source)).toBe(true);
+		expect(source).toContain(`'${ADMIN_ROOT}/instance/features'`);
+		expect(ADMIN_REGISTRY.map((entry) => entry.path)).not.toContain(`${ADMIN_ROOT}/instance`);
+	});
+
 	it('drops team inboxes on an instance with no mail at all', () => {
 		expect(reachableAdminEntries(NO_MAIL).map((entry) => entry.id)).not.toContain('inboxes');
 	});

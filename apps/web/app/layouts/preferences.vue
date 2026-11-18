@@ -40,7 +40,11 @@ const sections = computed(() =>
 
 // Owners and admins get the Workspace tab of the same sidebar.
 const { isAdmin } = usePermissions();
-const { areas: adminAreas, badges } = useWorkspaceSettingsNav(isAdmin);
+const {
+	environment: adminEnvironment,
+	areas: adminAreas,
+	badges,
+} = useWorkspaceSettingsNav(isAdmin);
 
 const activeEntry = computed(() => settingsEntryFor(route.path));
 const heading = computed(() => (activeEntry.value ? t(activeEntry.value.titleKey) : ''));
@@ -65,7 +69,12 @@ const compactEntries = computed(() =>
 			<!-- Settings takes the sidebar over on desktop. -->
 			<DashboardNavigationPortal :title="t('components.shell.settings.title')">
 				<div class="hidden lg:block w-56 shrink-0 self-start">
-					<ShellSettingsNav :you-sections="sections" :admin-areas="adminAreas" :badges="badges" />
+					<ShellSettingsNav
+						:you-sections="sections"
+						:admin-areas="adminAreas"
+						:admin-environment="adminEnvironment"
+						:badges="badges"
+					/>
 				</div>
 			</DashboardNavigationPortal>
 

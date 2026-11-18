@@ -132,6 +132,7 @@ const STUBS = {
 	UiSpinner: true,
 	UiPageHeader: { template: '<div><slot /><slot name="actions" /></div>' },
 	AudienceTabs: true,
+	SendTabs: true,
 	UiQueryBoundary: SLOTTED,
 	UiEmptyState: { template: '<div><slot name="action" /></div>' },
 	DashboardListSkeleton: true,
@@ -378,8 +379,9 @@ describe('automations list', () => {
 		expect(wrapper.find('button[aria-label="Edit"]').exists()).toBe(true);
 		expect(wrapper.find('[role="switch"]').exists()).toBe(true);
 		expect(wrapper.find('button[aria-label="More actions"]').exists()).toBe(true);
+		// The name, the pencil and the switch are not repeated in the menu.
 		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
-		expect(menu).toEqual(['View details', 'Edit', 'Duplicate', 'Pause']);
+		expect(menu).toEqual(['Duplicate']);
 		wrapper.unmount();
 	});
 
@@ -393,9 +395,9 @@ describe('automations list', () => {
 
 		expect(wrapper.find('button[aria-label="Edit"]').exists()).toBe(false);
 		expect(wrapper.find('[role="switch"]').exists()).toBe(false);
-		// Reading the automation is not a write: the menu keeps "View details".
-		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
-		expect(menu).toEqual(['View details']);
+		// The name already opens the detail page, so no menu is left to offer.
+		expect(wrapper.find('button[aria-label="More actions"]').exists()).toBe(false);
+		expect(wrapper.findAll('[role="menuitem"]')).toHaveLength(0);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit automations.');
 		expect(wrapper.text()).toContain('Welcome sequence');
 		wrapper.unmount();

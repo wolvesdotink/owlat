@@ -1,107 +1,79 @@
 /**
- * Settings landing page — the "Plugins" nav entry must stay reachable when a
- * removed plugin left residual settings behind, even though this deployment now
- * bundles zero plugins. Otherwise the orphan-purge UX is undiscoverable exactly
- * when it is needed.
+ * The "Plugins" settings row must stay reachable when a removed plugin left
+ * residual settings behind, even though this deployment now bundles zero
+ * plugins. Otherwise the orphan-purge UX is undiscoverable exactly when it is
+ * needed.
  *
- * The bundled composition is mocked empty so the entry depends solely on the
+ * The bundled composition is mocked empty so the row depends solely on the
  * orphaned-settings signal.
+ *
+ * The operating-mode card sits on the Features page and paints
+ * `@owlat/shared`'s `OPERATING_MODES`, whose copy is `sharedPkg.operatingModes.*`
+ * KEYS — a card that bound them straight would show an admin the key path where
+ * the mode's name belongs.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref, useSlots } from 'vue';
+import { ref } from 'vue';
+import { flushPromises } from '@vue/test-utils';
+import { getFunctionName } from 'convex/server';
+
+const trackFlagChange = vi.hoisted(() => vi.fn());
+vi.mock('~/composables/useProfileSync', () => ({
+	useProfileSync: () => ({ trackFlagChange }),
+}));
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([]),
 }));
 
-// Avoid pulling the email-builder → email-renderer chain (and its transitive
-// module resolution) into this page test; the page only needs the dialog shell.
-vi.mock('@owlat/email-builder', () => ({ UnsavedChangesDialog: { template: '<div />' } }));
-
-import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
-import SettingsIndexPage from '../index.vue';
+import OperatingModeCard from '~/components/settings/OperatingModeCard.vue';
+import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
+import { reachableAdminEntries } from '~/lib/adminSettingsRegistry';
 import { expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
 
-const overview = ref<{ plugins: unknown[]; orphaned: unknown[] }>({ plugins: [], orphaned: [] });
+const OVERVIEW = 'plugins/settings:getPluginSettingsOverview';
+
+const overview = ref<{ plugins: unknown[]; orphaned: unknown[] } | undefined>(undefined);
+const queried: string[] = [];
 
 beforeEach(() => {
 	overview.value = { plugins: [], orphaned: [] };
+	queried.length = 0;
 
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
-	// UiPageHeader reads its slots through the Nuxt auto-import.
-	vi.stubGlobal('useSlots', useSlots);
-	vi.stubGlobal('useHead', vi.fn());
-	vi.stubGlobal('definePageMeta', vi.fn());
-	vi.stubGlobal('useOrganizationContext', () => ({
-		hasActiveOrganization: ref(true),
-		isLoading: ref(false),
-		role: ref('owner'),
-	}));
-	vi.stubGlobal('useOrganization', () => ({
-		organization: ref({ name: 'Acme' }),
-		update: vi.fn(),
-	}));
-	vi.stubGlobal('useAppTheme', () => ({ themePreference: ref('system'), setTheme: vi.fn() }));
-	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
-	vi.stubGlobal('useOrganizationQuery', () => ({
-		data: ref([]),
-		isLoading: ref(false),
-		error: ref(null),
-	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
-	vi.stubGlobal('useFeatureFlag', () => ({ flags: ref({}), isEnabled: () => false }));
-	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
-	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(true) }));
-	vi.stubGlobal('useUnsavedChanges', () => ({
-		showDialog: ref(false),
-		confirmDiscard: vi.fn(),
-		confirmSave: vi.fn(),
-		cancelNavigation: vi.fn(),
-		setHasChanges: vi.fn(),
-	}));
-	vi.stubGlobal('useConvexQuery', () => ({
-		data: overview,
+	vi.stubGlobal('useFeatureFlag', () => ({
+		flags: ref({}),
+		isEnabled: () => false,
 		isLoading: ref(false),
 		error: ref(null),
-		refetch: vi.fn(),
 	}));
+	vi.stubGlobal('useToast', () => ({ showToast: vi.fn() }));
+	vi.stubGlobal('useConvexQuery', (reference: unknown, args: unknown) => {
+		const name = getFunctionName(reference as never);
+		const resolved = typeof args === 'function' ? (args as () => unknown)() : args;
+		if (resolved !== 'skip') queried.push(name);
+		return {
+			data: name === OVERVIEW && resolved !== 'skip' ? overview : ref(undefined),
+			isLoading: ref(false),
+			error: ref(null),
+		};
+	});
 });
 
 const passthroughStub = { template: '<div><slot name="loading"/><slot/></div>' };
-const nuxtLinkStub = {
-	props: ['to'],
-	template: '<a :href="to"><slot/></a>',
-};
 
-function mountPage() {
-	return mountDashboardPage(SettingsIndexPage, {
-		stubs: {
-			UiPageHeader,
-			UiQueryBoundary: passthroughStub,
-			UiCard: passthroughStub,
-			UiDisclosure: passthroughStub,
-			UiModal: passthroughStub,
-			NuxtLink: nuxtLinkStub,
-			UiSwitch: true,
-			UiInput: true,
-			UiButton: true,
-			UiBadge: true,
-			UnsavedChangesDialog: true,
-		},
-	});
-}
-
-const PLUGINS_HREF = 'a[href="/dashboard/admin/instance/plugins"]';
-
-/**
- * The mode picker paints `@owlat/shared`'s `OPERATING_MODES`, whose copy is
- * `sharedPkg.operatingModes.*` KEYS — a card that bound them straight would show
- * an admin the key path where the mode's name belongs.
- */
-describe('Settings index — operating mode copy', () => {
+describe('Operating mode card — copy', () => {
 	it('renders each preset name and audience line as words', () => {
-		const wrapper = mountPage();
+		const wrapper = mountDashboardPage(OperatingModeCard, {
+			stubs: {
+				UiCard: passthroughStub,
+				UiDisclosure: passthroughStub,
+				UiModal: passthroughStub,
+				UiButton: true,
+			},
+		});
 		const text = wrapper.text();
 
 		expect(text).toContain('CRM only');
@@ -111,20 +83,78 @@ describe('Settings index — operating mode copy', () => {
 	});
 });
 
-describe('Settings index — Plugins nav entry', () => {
-	it('hides the entry when no plugins are bundled and nothing is orphaned', () => {
-		const wrapper = mountPage();
-		expect(wrapper.find(PLUGINS_HREF).exists()).toBe(false);
+describe('Operating mode card — applying a mode', () => {
+	it('reports the flag change to the out-of-sync banner', async () => {
+		trackFlagChange.mockClear();
+		const flagsLoading = ref(true);
+		const flagsError = ref<Error | null>(null);
+		vi.stubGlobal('useFeatureFlag', () => ({
+			flags: ref({ campaigns: true }),
+			isEnabled: () => false,
+			isLoading: flagsLoading,
+			error: flagsError,
+		}));
+		vi.stubGlobal('useBackendOperation', () => ({
+			run: vi.fn().mockResolvedValue({ ok: true, result: {} }),
+			isLoading: ref(false),
+		}));
+		const wrapper = mountDashboardPage(OperatingModeCard, {
+			stubs: {
+				UiCard: passthroughStub,
+				UiDisclosure: passthroughStub,
+				UiModal: { template: '<div><slot /><slot name="footer" /></div>' },
+				UiButton: { template: '<button><slot /></button>' },
+			},
+		});
+
+		const byText = (text: string) =>
+			wrapper.findAll('button').find((candidate) => candidate.text().includes(text));
+		await byText('IMAP-only')!.trigger('click');
+		// Nothing is saved or reported while the flags are still defaults.
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+		expect(trackFlagChange).not.toHaveBeenCalled();
+
+		// A read that timed out stopped loading but delivered nothing live.
+		flagsLoading.value = false;
+		flagsError.value = new Error('timed out');
+		await flushPromises();
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+		expect(trackFlagChange).not.toHaveBeenCalled();
+
+		flagsError.value = null;
+		await flushPromises();
+		await byText('Apply changes')!.trigger('click');
+		await flushPromises();
+
+		expect(trackFlagChange).toHaveBeenCalledTimes(1);
+		const [before, after] = trackFlagChange.mock.calls[0]!;
+		expect(before).toEqual({ campaigns: true });
+		expect(after).toMatchObject({ campaigns: false, 'mail.external': true });
+	});
+});
+
+describe('Workspace settings — Plugins row', () => {
+	const pluginsReachable = () => {
+		const { environment } = useAdminEnvironment(ref(true));
+		return reachableAdminEntries(environment.value).some((entry) => entry.id === 'plugins');
+	};
+
+	it('hides the row when no plugins are bundled and nothing is orphaned', () => {
+		expect(pluginsReachable()).toBe(false);
 	});
 
-	it('shows the entry when a removed plugin left residual settings behind', () => {
+	it('shows the row when a removed plugin left residual settings behind', () => {
 		overview.value = {
 			plugins: [],
 			orphaned: [{ flagKey: 'plugin.removed-pack', pluginId: 'removed-pack' }],
 		};
-		const wrapper = mountPage();
-		const link = wrapper.find(PLUGINS_HREF);
-		expect(link.exists()).toBe(true);
-		expect(link.text()).toContain('Plugins');
+		expect(pluginsReachable()).toBe(true);
+	});
+
+	it("never asks for the plugin overview on a member's session", () => {
+		useAdminEnvironment(ref(false));
+		expect(queried).not.toContain(OVERVIEW);
 	});
 });

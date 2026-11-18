@@ -14,12 +14,17 @@ definePageMeta({
 });
 
 const {
-	currentMailbox,
+	mailboxes,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('member', {
+	onSwitch: () => {
+		editor.value = null;
+	},
+});
 
 const {
 	signatures,
@@ -108,6 +113,13 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="!!editor"
+			@select="selectMailbox"
+		/>
 		<header
 			class="mb-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>

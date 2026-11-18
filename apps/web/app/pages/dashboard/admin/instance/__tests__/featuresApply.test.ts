@@ -167,6 +167,7 @@ const stubs = {
 	UiIconBox: true,
 	NuxtLink: true,
 	DeliveryEnvSetupSteps: true,
+	OperatingModeCard: true,
 };
 
 function mountFeatures() {

@@ -733,7 +733,7 @@
 				},
 				"email": {
 					"editor": {
-						"createCta": "Create new email",
+						"createCta": "Create new template",
 						"createPrompt": "Or create a new email template for this automation:",
 						"editTemplate": "Edit template →",
 						"noTemplates": "No marketing templates yet. {link} first.",
@@ -7004,6 +7004,10 @@
 				"subtitle": "Choose the language Owlat's interface is shown in on this device.",
 				"title": "Language"
 			},
+			"preferencesMailboxPicker": {
+				"label": "Mailbox",
+				"locked": "Save or cancel your changes to switch mailboxes."
+			},
 			"preferencesReading": {
 				"reading": "Reading",
 				"autoAdvanceLabel": "After archiving, deleting or snoozing",
@@ -7625,6 +7629,19 @@
 				"off": "Transactional email is switched off, so it has no sender to set.",
 				"own": "Transactional mail goes out from its own sender, {from}.",
 				"usesDefault": "Transactional mail, such as password resets and receipts, also goes out from this default sender. Give it a sender of its own so a marketing problem can't hold it back."
+			},
+			"operatingModeCard": {
+				"applyChanges": "Apply changes",
+				"changeModeOperation": "Change operating mode",
+				"disableCount": "Disable ({count})",
+				"enableCount": "Enable ({count})",
+				"keepData": "Disabled features keep their existing data.",
+				"modeChangedToast": "Operating mode changed to {mode}",
+				"nothing": "Nothing",
+				"operatingMode": "Operating mode",
+				"operatingModeHelp": "Choose a coarse product shape. You will preview every feature change before it is applied, and turning a feature off keeps its data.",
+				"reviewTitle": "Review operating-mode changes",
+				"currentMode": "Current"
 			}
 		},
 		"shareLinksPopover": {
@@ -8253,10 +8270,12 @@
 				"moreUnread": "one more unread | {count} more unread",
 				"showMore": "Show more"
 			},
+			"groupToggle": {
+				"expand": "Show {name}",
+				"collapse": "Hide {name}"
+			},
 			"chat": {
 				"title": "Chat",
-				"all": "Open chat",
-				"allWithUnread": "{count} new",
 				"empty": "Nothing new in chat."
 			},
 			"options": {
@@ -8281,11 +8300,8 @@
 				"overview": "Overview",
 				"campaigns": "Campaigns",
 				"newCampaign": "New campaign",
-				"allCampaigns": "All campaigns",
 				"automations": "Automations",
-				"allAutomations": "All automations",
 				"newTransactional": "New transactional email",
-				"allTransactional": "All transactional emails",
 				"audience": "Audience",
 				"recentlyDeleted": "Recently deleted",
 				"templates": "Templates",
@@ -9283,7 +9299,7 @@
 				"groups": {
 					"ai": "AI provider, AI replies and agent health.",
 					"delivery": "Sending health, domains, the delivery provider, webhooks, and held or failed incoming mail.",
-					"features": "Which features are on, channels, forms, contact properties and the email theme.",
+					"features": "The operating mode, which features are on, channels, forms, contact properties and the email theme.",
 					"system": "Workspace name and defaults, desktop app updates, system updates and backups.",
 					"team": "Members, invites, team inboxes, campaign senders, the API and the audit log."
 				},
@@ -10329,72 +10345,6 @@
 					"verifiedLabel": "Verified:",
 					"nameSaveFailed": "The other settings were saved, but the workspace name could not be changed. Try again.",
 					"unverifiedFromDomain": "{domain} is not a verified sending domain yet. You can save this address, but automation emails, inbox replies, double opt-in confirmations and transactional mail from it are refused until the domain is verified."
-				},
-				"index": {
-					"applyChanges": "Apply changes",
-					"changeModeOperation": "Change operating mode",
-					"disableCount": "Disable ({count})",
-					"enableCount": "Enable ({count})",
-					"groups": {
-						"agentHealth": {
-							"description": "Live accuracy, escalations, and recent agent runs.",
-							"title": "Agent health"
-						},
-						"aiProvider": {
-							"description": "Choose the hosted or self-run model provider and turn AI on.",
-							"title": "AI provider"
-						},
-						"aiReplies": {
-							"description": "Choose whether the AI drafts replies for review, sends them when confident, or stays off.",
-							"title": "AI replies"
-						},
-						"brandKit": {
-							"description": "Logo, colors, fonts and footer that every email starts from.",
-							"title": "Brand kit"
-						},
-						"channels": {
-							"description": "Messaging channels available across the instance.",
-							"title": "Channels"
-						},
-						"desktopUpdates": {
-							"description": "Choose which release connected desktop apps install, or hold them all.",
-							"title": "Desktop updates"
-						},
-						"features": {
-							"description": "Fine-grained feature flags and packs for advanced configuration.",
-							"title": "Features"
-						},
-						"forms": {
-							"description": "Signup endpoints and embedded customer forms.",
-							"title": "Forms"
-						},
-						"general": {
-							"description": "Workspace name, timezone, default sender, and campaign defaults.",
-							"title": "General"
-						},
-						"plugins": {
-							"description": "Configure installed plugins or remove settings left by old ones.",
-							"title": "Plugins"
-						},
-						"properties": {
-							"description": "Custom fields shared by the customer directory.",
-							"title": "Contact properties"
-						},
-						"sealedMail": {
-							"description": "Set organization policy for protected personal messages.",
-							"title": "Sealed mail"
-						}
-					},
-					"keepData": "Disabled features keep their existing data.",
-					"modeChangedToast": "Operating mode changed to {mode}",
-					"nothing": "Nothing",
-					"operatingMode": "Operating mode",
-					"operatingModeHelp": "Choose a coarse product shape. You will preview every feature change before it is applied, and turning a feature off keeps its data.",
-					"pageTitle": "Instance — Owlat",
-					"reviewTitle": "Review operating-mode changes",
-					"subtitle": "Configuration that affects everyone in this workspace.",
-					"title": "Instance",
-					"currentMode": "Current"
 				},
 				"plugins": {
 					"detail": {
@@ -11996,10 +11946,6 @@
 						"paused": "Paused"
 					},
 					"stepNumber": "Step {number}",
-					"steps": {
-						"buildWorkflow": "Build workflow",
-						"chooseTrigger": "Choose trigger"
-					},
 					"toasts": {
 						"activated": "Automation activated",
 						"draftSaved": "Draft saved",
@@ -12072,10 +12018,10 @@
 			},
 			"index": {
 				"actions": {
-					"activate": "Activate",
 					"activeSwitch": "Active: {name}",
 					"more": "More actions",
 					"pause": "Pause",
+					"resume": "Resume",
 					"viewDetails": "View details"
 				},
 				"adminsOnly": "Only owners and admins can create or edit automations.",
@@ -14015,7 +13961,7 @@
 					"noResultsTitle": "No results found",
 					"noWorkspaceDescription": "Create or select a workspace to start managing reusable blocks.",
 					"noWorkspaceTitle": "No workspace selected",
-					"pageTitle": "Email blocks — Owlat",
+					"pageTitle": "Saved blocks — Owlat",
 					"quickSettings": "Quick settings",
 					"saveChanges": "Save changes",
 					"savingChanges": "Saving...",
@@ -14037,7 +13983,7 @@
 				"detail": {
 					"edit": {
 						"backToCampaign": "Back to campaign",
-						"backToEmails": "Back to emails",
+						"backToTemplates": "Back to templates",
 						"builderError": "The email editor hit an unexpected error. Please refresh — your last saved version is safe.",
 						"campaignReturnHint": "Save your changes, then go back to review and send the campaign.",
 						"checkEmail": "Check email",
@@ -14067,7 +14013,7 @@
 						"unpublish": "Unpublish"
 					},
 					"settings": {
-						"backToEmails": "Back to emails",
+						"backToTemplates": "Back to templates",
 						"info": {
 							"body": "When sending an email, the system checks each recipient's language preference. If a translation exists for their language, they'll receive the translated subject and preview text. Otherwise, they'll receive the default language content.",
 							"title": "How translations work"
@@ -14123,7 +14069,11 @@
 				}
 			},
 			"index": {
-				"adminsOnly": "Only admins can create templates.",
+				"adminsOnly": "Only owners and admins can create or delete templates.",
+				"columns": {
+					"subject": "Subject",
+					"updated": "Updated"
+				},
 				"createAndEdit": "Create and edit",
 				"createOperation": "Create template",
 				"creating": "Creating…",
@@ -14135,6 +14085,10 @@
 					},
 					"title": "No templates yet"
 				},
+				"emptyNoTeam": {
+					"description": "Create or select a team to start creating email templates.",
+					"title": "No team selected"
+				},
 				"filters": {
 					"all": "All",
 					"marketing": "Marketing",
@@ -14142,11 +14096,24 @@
 				},
 				"loadError": "Couldn't load templates",
 				"loadMore": "Load more",
+				"loadingTemplates": "Loading templates...",
 				"newTemplate": "New template",
+				"noResults": {
+					"description": "No templates match “{query}”. Try a different search term.",
+					"title": "No results found"
+				},
+				"operations": {
+					"delete": "Delete template",
+					"duplicate": "Duplicate template",
+					"restore": "Restore template"
+				},
 				"pageTitle": "Templates — Owlat",
-				"savedBlocks": "Saved blocks",
-				"savedBlocksCount": "Saved blocks ({count})",
+				"searchPlaceholder": "Search templates...",
+				"sortLabel": "Sort templates",
 				"subtitle": "Email designs you reuse in campaigns and automations.",
+				"toasts": {
+					"duplicated": "Template duplicated successfully"
+				},
 				"transactionalTypeHint": "Templates labelled transactional are reusable designs only: campaigns and automations don't offer them, and the API doesn't send them. Emails your app sends through the API are in {link}.",
 				"transactionalTypeHintLink": "Transactional emails",
 				"templateTypes": {
@@ -14155,48 +14122,6 @@
 				},
 				"title": "Templates",
 				"typeFilterLabel": "Template type"
-			},
-			"marketing": {
-				"index": {
-					"adminsOnly": "Only owners and admins can create or delete templates.",
-					"columns": {
-						"subject": "Subject",
-						"updated": "Updated"
-					},
-					"createAndEdit": "Create & edit",
-					"creating": "Creating...",
-					"empty": {
-						"action": "Create marketing template",
-						"description": "Create your first marketing template to start sending campaigns and newsletters.",
-						"title": "No marketing templates yet"
-					},
-					"emptyNoTeam": {
-						"description": "Create or select a team to start creating email templates.",
-						"title": "No team selected"
-					},
-					"loadError": "Couldn't load templates",
-					"loadingTemplates": "Loading templates...",
-					"newTemplate": "New marketing template",
-					"noResults": {
-						"description": "No templates match “{query}”. Try a different search term.",
-						"title": "No results found"
-					},
-					"operations": {
-						"create": "Create template",
-						"delete": "Delete template",
-						"duplicate": "Duplicate template",
-						"restore": "Restore template"
-					},
-					"pageTitle": "Marketing emails — Owlat",
-					"searchPlaceholder": "Search templates...",
-					"sortLabel": "Sort templates",
-					"subtitle": "Create and manage marketing email templates for campaigns and newsletters",
-					"templateCount": "{count} marketing template | {count} marketing templates",
-					"title": "Marketing templates",
-					"toasts": {
-						"duplicated": "Template duplicated successfully"
-					}
-				}
 			},
 			"media": {
 				"allTags": "All tags",
@@ -15898,6 +15823,7 @@
 				"editCampaign": "Edit campaign",
 				"editTemplate": "Edit template",
 				"editEmail": "Edit email",
+				"editTrigger": "Edit trigger",
 				"translations": "Translations",
 				"sendDetails": "Send details",
 				"label": "Label",
@@ -15927,7 +15853,7 @@
 				"auditLog": "Audit log",
 				"automations": "Automations",
 				"backups": "Backups",
-				"blocks": "Blocks",
+				"blocks": "Saved blocks",
 				"brandKit": "Brand kit",
 				"campaignSenders": "Campaign senders",
 				"campaigns": "Campaigns",
@@ -15949,11 +15875,9 @@
 				"health": "Delivery health",
 				"importMail": "Import mail",
 				"independence": "Independence",
-				"instance": "Instance",
 				"mailSearch": "Search",
-				"marketing": "Marketing emails",
 				"measurement": "Measurement",
-				"media": "Media",
+				"media": "Media library",
 				"migrateFromMailchimp": "Migrate from Mailchimp",
 				"newCampaign": "New campaign",
 				"operatorConsole": "Operator console",
@@ -16292,7 +16216,6 @@
 			"items": {
 				"administration": {
 					"delivery": "Delivery health",
-					"instance": "Instance",
 					"overview": "Overview",
 					"teamAccess": "Team"
 				},
@@ -17106,9 +17029,9 @@
 				"title": "Create an API key"
 			},
 			"createdEmail": {
-				"cta": "Create email",
+				"cta": "Create a template",
 				"description": "Build an email template you can send.",
-				"title": "Create an email"
+				"title": "Create a template"
 			},
 			"finishSetup": {
 				"cta": "Finish setting up",
@@ -18510,6 +18433,10 @@
 				"transactionalSender": {
 					"keywords": "transactional sender, transactional from address, password reset sender, receipt sender, api sender, mail subdomain, from address",
 					"title": "Transactional sender"
+				},
+				"operatingMode": {
+					"title": "Operating mode",
+					"keywords": "operating mode, product shape, mode preset, feature preset, deployment shape, switch mode"
 				}
 			}
 		},

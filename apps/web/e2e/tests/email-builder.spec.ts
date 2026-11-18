@@ -8,18 +8,17 @@ test.describe('Email Builder', () => {
 		editor = new EmailEditorPage(page);
 	});
 
-	test('navigate to marketing templates listing', async ({ page }) => {
-		await page.goto('/dashboard/send/marketing');
+	test('navigate to the templates list', async ({ page }) => {
+		await page.goto('/dashboard/send');
 
 		// Verify page loaded with correct heading
 		// By role: the string also appears in the breadcrumb, so getByText matched
 		// two nodes.
-		await expect(page.getByRole('heading', { level: 1, name: 'Marketing Templates' })).toBeVisible({
+		await expect(page.getByRole('heading', { level: 1, name: 'Templates' })).toBeVisible({
 			timeout: 15_000,
 		});
 
-		// Verify "New Marketing Template" button is visible
-		await expect(page.getByRole('button', { name: /New Marketing Template/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: /New template/i })).toBeVisible();
 	});
 
 	test('create new template from blank and open editor', async ({ page }) => {

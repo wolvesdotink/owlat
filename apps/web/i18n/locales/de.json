@@ -733,7 +733,7 @@
 				},
 				"email": {
 					"editor": {
-						"createCta": "Neue E-Mail erstellen",
+						"createCta": "Neue Vorlage erstellen",
 						"createPrompt": "Oder erstelle eine neue E-Mail-Vorlage für diese Automation:",
 						"editTemplate": "Vorlage bearbeiten →",
 						"noTemplates": "Noch keine Marketing-Vorlagen. {link}.",
@@ -7004,6 +7004,10 @@
 				"subtitle": "Wähle die Sprache, in der die Owlat-Oberfläche auf diesem Gerät erscheint.",
 				"title": "Sprache"
 			},
+			"preferencesMailboxPicker": {
+				"label": "Postfach",
+				"locked": "Speichere oder verwirf deine Änderungen, um das Postfach zu wechseln."
+			},
 			"preferencesReading": {
 				"reading": "Lesen",
 				"autoAdvanceLabel": "Nach dem Archivieren, Löschen oder Schlummern",
@@ -7625,6 +7629,19 @@
 				"off": "Transaktionsmails sind ausgeschaltet, es gibt also keinen Absender festzulegen.",
 				"own": "Transaktionsmails gehen von ihrem eigenen Absender raus: {from}.",
 				"usesDefault": "Transaktionsmails wie Passwort-Resets und Belege gehen ebenfalls von diesem Standardabsender raus. Gib ihnen einen eigenen Absender, damit ein Marketingproblem sie nicht ausbremst."
+			},
+			"operatingModeCard": {
+				"applyChanges": "Änderungen anwenden",
+				"changeModeOperation": "Betriebsmodus ändern",
+				"disableCount": "Deaktivieren ({count})",
+				"enableCount": "Aktivieren ({count})",
+				"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
+				"modeChangedToast": "Betriebsmodus auf {mode} geändert",
+				"nothing": "Nichts",
+				"operatingMode": "Betriebsmodus",
+				"operatingModeHelp": "Wähle eine grobe Produktform. Du siehst jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
+				"reviewTitle": "Änderungen am Betriebsmodus prüfen",
+				"currentMode": "Aktuell"
 			}
 		},
 		"shareLinksPopover": {
@@ -8253,10 +8270,12 @@
 				"moreUnread": "eine weitere ungelesen | {count} weitere ungelesen",
 				"showMore": "Mehr anzeigen"
 			},
+			"groupToggle": {
+				"expand": "{name} anzeigen",
+				"collapse": "{name} ausblenden"
+			},
 			"chat": {
 				"title": "Chat",
-				"all": "Chat öffnen",
-				"allWithUnread": "{count} neu",
 				"empty": "Nichts Neues im Chat."
 			},
 			"options": {
@@ -8281,11 +8300,8 @@
 				"overview": "Übersicht",
 				"campaigns": "Kampagnen",
 				"newCampaign": "Neue Kampagne",
-				"allCampaigns": "Alle Kampagnen",
 				"automations": "Automatisierungen",
-				"allAutomations": "Alle Automatisierungen",
 				"newTransactional": "Neue Transaktions-E-Mail",
-				"allTransactional": "Alle Transaktions-E-Mails",
 				"audience": "Zielgruppe",
 				"recentlyDeleted": "Zuletzt gelöscht",
 				"templates": "Vorlagen",
@@ -9283,7 +9299,7 @@
 				"groups": {
 					"ai": "KI-Anbieter, KI-Antworten und Agentenzustand.",
 					"delivery": "Versandgesundheit, Domains, Zustellungsanbieter, Webhooks sowie zurückgehaltene oder fehlgeschlagene eingehende Mail.",
-					"features": "Welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
+					"features": "Der Betriebsmodus, welche Funktionen aktiv sind, Kanäle, Formulare, Kontakteigenschaften und das E-Mail-Design.",
 					"system": "Name und Voreinstellungen des Workspace, Desktop-App-Updates, Systemaktualisierungen und Backups.",
 					"team": "Mitglieder, Einladungen, Team-Postfächer, Kampagnenabsender, die API und das Audit-Protokoll."
 				},
@@ -10329,72 +10345,6 @@
 					"verifiedLabel": "Verifiziert:",
 					"nameSaveFailed": "Die übrigen Einstellungen sind gespeichert, aber der Workspace-Name konnte nicht geändert werden. Versuch es noch einmal.",
 					"unverifiedFromDomain": "{domain} ist noch keine verifizierte Absenderdomain. Du kannst die Adresse speichern, aber Automations-Mails, Antworten aus dem Postfach, Double-Opt-in-Bestätigungen und transaktionale Mails von ihr werden abgelehnt, bis die Domain verifiziert ist."
-				},
-				"index": {
-					"applyChanges": "Änderungen anwenden",
-					"changeModeOperation": "Betriebsmodus ändern",
-					"disableCount": "Deaktivieren ({count})",
-					"enableCount": "Aktivieren ({count})",
-					"groups": {
-						"agentHealth": {
-							"description": "Live-Genauigkeit, Eskalationen und jüngste Agentenläufe.",
-							"title": "Agentenzustand"
-						},
-						"aiProvider": {
-							"description": "Wähle den gehosteten oder selbst betriebenen Modellanbieter und schalte die KI ein.",
-							"title": "KI-Anbieter"
-						},
-						"aiReplies": {
-							"description": "Lege fest, ob die KI Antworten zur Prüfung entwirft, sie bei hoher Sicherheit selbst sendet oder aus bleibt.",
-							"title": "KI-Antworten"
-						},
-						"brandKit": {
-							"description": "Logo, Farben, Schriften und Fußzeile, mit denen jede E-Mail startet.",
-							"title": "Markenkit"
-						},
-						"channels": {
-							"description": "Nachrichtenkanäle, die in der gesamten Instanz verfügbar sind.",
-							"title": "Kanäle"
-						},
-						"desktopUpdates": {
-							"description": "Lege fest, welche Version verbundene Desktop-Apps installieren — oder halte alle zurück.",
-							"title": "Desktop-Updates"
-						},
-						"features": {
-							"description": "Feingranulare Feature-Flags und Pakete für die erweiterte Konfiguration.",
-							"title": "Funktionen"
-						},
-						"forms": {
-							"description": "Anmelde-Endpunkte und eingebettete Kundenformulare.",
-							"title": "Formulare"
-						},
-						"general": {
-							"description": "Workspace-Name, Zeitzone, Standardabsender und Kampagnenvorgaben.",
-							"title": "Allgemein"
-						},
-						"plugins": {
-							"description": "Installierte Plugins konfigurieren oder Einstellungen entfernen, die alte Plugins hinterlassen haben.",
-							"title": "Plugins"
-						},
-						"properties": {
-							"description": "Benutzerdefinierte Felder, die das Kundenverzeichnis gemeinsam nutzt.",
-							"title": "Kontakteigenschaften"
-						},
-						"sealedMail": {
-							"description": "Lege die Organisationsrichtlinie für geschützte persönliche Nachrichten fest.",
-							"title": "Versiegelte Mail"
-						}
-					},
-					"keepData": "Deaktivierte Funktionen behalten ihre vorhandenen Daten.",
-					"modeChangedToast": "Betriebsmodus auf {mode} geändert",
-					"nothing": "Nichts",
-					"operatingMode": "Betriebsmodus",
-					"operatingModeHelp": "Wähle eine grobe Produktform. Du siehst jede Funktionsänderung in der Vorschau, bevor sie angewendet wird, und beim Abschalten einer Funktion bleiben deren Daten erhalten.",
-					"pageTitle": "Instanz — Owlat",
-					"reviewTitle": "Änderungen am Betriebsmodus prüfen",
-					"subtitle": "Konfiguration, die alle in diesem Workspace betrifft.",
-					"title": "Instanz",
-					"currentMode": "Aktuell"
 				},
 				"plugins": {
 					"detail": {
@@ -11996,10 +11946,6 @@
 						"paused": "Pausiert"
 					},
 					"stepNumber": "Schritt {number}",
-					"steps": {
-						"buildWorkflow": "Workflow erstellen",
-						"chooseTrigger": "Auslöser wählen"
-					},
 					"toasts": {
 						"activated": "Automation aktiviert",
 						"draftSaved": "Entwurf gespeichert",
@@ -12072,10 +12018,10 @@
 			},
 			"index": {
 				"actions": {
-					"activate": "Aktivieren",
 					"activeSwitch": "Aktiv: {name}",
 					"more": "Weitere Aktionen",
 					"pause": "Pausieren",
+					"resume": "Fortsetzen",
 					"viewDetails": "Details ansehen"
 				},
 				"adminsOnly": "Nur Inhaber und Administratoren können Automationen erstellen oder bearbeiten.",
@@ -14015,7 +13961,7 @@
 					"noResultsTitle": "Keine Ergebnisse gefunden",
 					"noWorkspaceDescription": "Erstelle oder wähle einen Workspace, um wiederverwendbare Bausteine zu verwalten.",
 					"noWorkspaceTitle": "Kein Workspace ausgewählt",
-					"pageTitle": "E-Mail-Bausteine — Owlat",
+					"pageTitle": "Gespeicherte Bausteine — Owlat",
 					"quickSettings": "Schnelleinstellungen",
 					"saveChanges": "Änderungen speichern",
 					"savingChanges": "Wird gespeichert...",
@@ -14037,7 +13983,7 @@
 				"detail": {
 					"edit": {
 						"backToCampaign": "Zurück zur Kampagne",
-						"backToEmails": "Zurück zu den E-Mails",
+						"backToTemplates": "Zurück zu den Vorlagen",
 						"builderError": "Im E-Mail-Editor ist ein unerwarteter Fehler aufgetreten. Bitte lade die Seite neu — deine zuletzt gespeicherte Version ist sicher.",
 						"campaignReturnHint": "Speichere deine Änderungen und geh dann zurück, um die Kampagne zu prüfen und zu senden.",
 						"checkEmail": "E-Mail prüfen",
@@ -14067,7 +14013,7 @@
 						"unpublish": "Zurückziehen"
 					},
 					"settings": {
-						"backToEmails": "Zurück zu den E-Mails",
+						"backToTemplates": "Zurück zu den Vorlagen",
 						"info": {
 							"body": "Beim Versand einer E-Mail prüft das System die Sprachpräferenz jedes Empfängers. Existiert eine Übersetzung für seine Sprache, erhält er den übersetzten Betreff und Vorschautext. Andernfalls erhält er die Inhalte in der Standardsprache.",
 							"title": "So funktionieren Übersetzungen"
@@ -14123,7 +14069,11 @@
 				}
 			},
 			"index": {
-				"adminsOnly": "Nur Admins können Vorlagen erstellen.",
+				"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
+				"columns": {
+					"subject": "Betreff",
+					"updated": "Aktualisiert"
+				},
 				"createAndEdit": "Erstellen und bearbeiten",
 				"createOperation": "Vorlage erstellen",
 				"creating": "Wird erstellt…",
@@ -14135,6 +14085,10 @@
 					},
 					"title": "Noch keine Vorlagen"
 				},
+				"emptyNoTeam": {
+					"description": "Erstelle oder wähle ein Team, um E-Mail-Vorlagen anzulegen.",
+					"title": "Kein Team ausgewählt"
+				},
 				"filters": {
 					"all": "Alle",
 					"marketing": "Marketing",
@@ -14142,11 +14096,24 @@
 				},
 				"loadError": "Vorlagen konnten nicht geladen werden",
 				"loadMore": "Mehr laden",
+				"loadingTemplates": "Vorlagen werden geladen...",
 				"newTemplate": "Neue Vorlage",
+				"noResults": {
+					"description": "Keine Vorlagen passen zu „{query}“. Versuche einen anderen Suchbegriff.",
+					"title": "Keine Ergebnisse gefunden"
+				},
+				"operations": {
+					"delete": "Vorlage löschen",
+					"duplicate": "Vorlage duplizieren",
+					"restore": "Vorlage wiederherstellen"
+				},
 				"pageTitle": "Vorlagen — Owlat",
-				"savedBlocks": "Gespeicherte Bausteine",
-				"savedBlocksCount": "Gespeicherte Bausteine ({count})",
+				"searchPlaceholder": "Vorlagen suchen...",
+				"sortLabel": "Vorlagen sortieren",
 				"subtitle": "E-Mail-Designs, die du in Kampagnen und Automationen wiederverwendest.",
+				"toasts": {
+					"duplicated": "Vorlage erfolgreich dupliziert"
+				},
 				"transactionalTypeHint": "Vorlagen mit dem Label „Transaktional“ sind nur wiederverwendbare Designs: Kampagnen und Automationen bieten sie nicht an, und die API verschickt sie nicht. E-Mails, die deine App über die API verschickt, findest du unter {link}.",
 				"transactionalTypeHintLink": "Transaktions-E-Mails",
 				"templateTypes": {
@@ -14155,48 +14122,6 @@
 				},
 				"title": "Vorlagen",
 				"typeFilterLabel": "Vorlagentyp"
-			},
-			"marketing": {
-				"index": {
-					"adminsOnly": "Nur Inhaber und Administratoren können Vorlagen erstellen oder löschen.",
-					"columns": {
-						"subject": "Betreff",
-						"updated": "Aktualisiert"
-					},
-					"createAndEdit": "Erstellen & bearbeiten",
-					"creating": "Wird erstellt...",
-					"empty": {
-						"action": "Marketing-Vorlage erstellen",
-						"description": "Erstelle deine erste Marketing-Vorlage, um Kampagnen und Newsletter zu versenden.",
-						"title": "Noch keine Marketing-Vorlagen"
-					},
-					"emptyNoTeam": {
-						"description": "Erstelle oder wähle ein Team, um E-Mail-Vorlagen anzulegen.",
-						"title": "Kein Team ausgewählt"
-					},
-					"loadError": "Vorlagen konnten nicht geladen werden",
-					"loadingTemplates": "Vorlagen werden geladen...",
-					"newTemplate": "Neue Marketing-Vorlage",
-					"noResults": {
-						"description": "Keine Vorlagen passen zu „{query}“. Versuche einen anderen Suchbegriff.",
-						"title": "Keine Ergebnisse gefunden"
-					},
-					"operations": {
-						"create": "Vorlage erstellen",
-						"delete": "Vorlage löschen",
-						"duplicate": "Vorlage duplizieren",
-						"restore": "Vorlage wiederherstellen"
-					},
-					"pageTitle": "Marketing-E-Mails — Owlat",
-					"searchPlaceholder": "Vorlagen suchen...",
-					"sortLabel": "Vorlagen sortieren",
-					"subtitle": "Erstelle und verwalte Marketing-E-Mail-Vorlagen für Kampagnen und Newsletter",
-					"templateCount": "{count} Marketing-Vorlage | {count} Marketing-Vorlagen",
-					"title": "Marketing-Vorlagen",
-					"toasts": {
-						"duplicated": "Vorlage erfolgreich dupliziert"
-					}
-				}
 			},
 			"media": {
 				"allTags": "Alle Tags",
@@ -15898,6 +15823,7 @@
 				"editCampaign": "Kampagne bearbeiten",
 				"editTemplate": "Vorlage bearbeiten",
 				"editEmail": "E-Mail bearbeiten",
+				"editTrigger": "Auslöser bearbeiten",
 				"translations": "Übersetzungen",
 				"sendDetails": "Sendungsdetails",
 				"label": "Label",
@@ -15927,7 +15853,7 @@
 				"auditLog": "Audit-Protokoll",
 				"automations": "Automationen",
 				"backups": "Backups",
-				"blocks": "Blöcke",
+				"blocks": "Gespeicherte Bausteine",
 				"brandKit": "Markenkit",
 				"campaignSenders": "Kampagnenabsender",
 				"campaigns": "Kampagnen",
@@ -15949,11 +15875,9 @@
 				"health": "Zustellungsgesundheit",
 				"importMail": "E-Mails importieren",
 				"independence": "Unabhängigkeit",
-				"instance": "Instanz",
 				"mailSearch": "Suche",
-				"marketing": "Marketing-E-Mails",
 				"measurement": "Messung",
-				"media": "Medien",
+				"media": "Medienbibliothek",
 				"migrateFromMailchimp": "Von Mailchimp migrieren",
 				"newCampaign": "Neue Kampagne",
 				"operatorConsole": "Betreiberkonsole",
@@ -16292,7 +16216,6 @@
 			"items": {
 				"administration": {
 					"delivery": "Zustellungsgesundheit",
-					"instance": "Instanz",
 					"overview": "Übersicht",
 					"teamAccess": "Team"
 				},
@@ -17106,9 +17029,9 @@
 				"title": "Einen API-Schlüssel erstellen"
 			},
 			"createdEmail": {
-				"cta": "E-Mail erstellen",
+				"cta": "Vorlage erstellen",
 				"description": "Erstelle eine E-Mail-Vorlage, die du versenden kannst.",
-				"title": "Eine E-Mail erstellen"
+				"title": "Eine Vorlage erstellen"
 			},
 			"finishSetup": {
 				"cta": "Einrichtung fortsetzen",
@@ -18510,6 +18433,10 @@
 				"transactionalSender": {
 					"keywords": "transaktionsabsender, transaktionsmail absender, passwort reset absender, beleg absender, api absender, mail subdomain, absenderadresse, transactional sender",
 					"title": "Transaktionsabsender"
+				},
+				"operatingMode": {
+					"title": "Betriebsmodus",
+					"keywords": "betriebsmodus, modus, produktform, modusvorlage, funktionsvorlage, modus wechseln"
 				}
 			}
 		},

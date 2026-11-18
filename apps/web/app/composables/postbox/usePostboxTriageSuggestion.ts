@@ -21,6 +21,8 @@ export function usePostboxTriageSuggestion(messageId: Ref<Id<'mailMessages'> | n
 	const senderAddress = computed(() => data.value?.senderAddress ?? '');
 	const suggestion = computed(() => data.value?.suggestion ?? null);
 	const accepted = computed(() => data.value?.accepted ?? null);
+	// The mailbox the suggestion and the rule it created belong to.
+	const mailboxId = computed(() => data.value?.mailboxId ?? null);
 
 	const acceptOp = useBackendOperation(api.mail.triageTally.acceptSuggestion, {
 		label: () => t('shared.postbox.usePostboxTriageSuggestion.createRule'),
@@ -75,6 +77,7 @@ export function usePostboxTriageSuggestion(messageId: Ref<Id<'mailMessages'> | n
 		senderAddress,
 		suggestion,
 		accepted,
+		mailboxId,
 		accept,
 		dismiss,
 		undo,

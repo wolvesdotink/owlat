@@ -69,7 +69,7 @@ export function useBreadcrumbs() {
 			for (const patternConfig of patternConfigs) {
 				const match = path.match(patternConfig.pattern);
 				if (match) {
-					config = patternConfig.getConfig(match);
+					config = patternConfig.getConfig(match, route.query);
 					break;
 				}
 			}

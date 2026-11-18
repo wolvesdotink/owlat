@@ -7,6 +7,7 @@
  * boundary and a locale switch relabels in place.
  */
 
+import { SETTINGS_MAILBOX_QUERY } from '~/utils/postboxSettingsMailbox';
 import { ArchiveIcon, ShieldWarningIcon, TrashIcon, type IconComponent } from '@coolicons/vue';
 
 export type PostboxTriageVerb = 'archive' | 'trash' | 'spam';
@@ -52,8 +53,10 @@ export function postboxTriageVerbCopy(verb: string): TriageVerbCopy | null {
  *
  * "A visible link to the created rule" is what makes accepting reversible in the
  * user's own terms: the rule is an ordinary filter from that moment, and this is
- * where they see, edit or delete it.
+ * where they see, edit or delete it. The page opens on the mailbox that owns the
+ * rule, since it lists one mailbox's filters at a time.
  */
-export function postboxFilterRuleLink(filterId: string): string {
-	return `/dashboard/preferences/filters?openFilter=${encodeURIComponent(filterId)}`;
+export function postboxFilterRuleLink(filterId: string, mailboxId: string): string {
+	const query = new URLSearchParams({ openFilter: filterId, [SETTINGS_MAILBOX_QUERY]: mailboxId });
+	return `/dashboard/preferences/filters?${query.toString()}`;
 }

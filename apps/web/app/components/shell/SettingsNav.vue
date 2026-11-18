@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { SettingsSectionView } from '~/lib/settingsRegistry';
-import { adminRailEntryFor } from '~/lib/adminSettingsRegistry';
+import { adminRailEntryFor, type AdminEnvironment } from '~/lib/adminSettingsRegistry';
 import { type AdminAreaView } from '~/lib/adminSettingsNav';
+import { settingsSearchResults } from '~/lib/settingsSearch';
 import { ArrowLeftIcon, SearchIcon } from '@coolicons/vue';
 
 /**
@@ -13,13 +14,15 @@ import { ArrowLeftIcon, SearchIcon } from '@coolicons/vue';
  * (team, email delivery, AI, features, system). One long column of both put
  * the workspace half below the fold. The tab follows the page you are on and
  * can be switched to browse the other half without leaving it; search always
- * covers both.
+ * covers both, pages and the controls on them, as ⌘K finds them.
  *
  * Both registries stay the single source of truth; this only renders them.
  */
 const props = defineProps<{
 	youSections: readonly SettingsSectionView[];
 	adminAreas: readonly AdminAreaView[];
+	/** The gates the Workspace controls answer to, for search. */
+	adminEnvironment: AdminEnvironment;
 	/** Attention counts by entry path (quarantine, failed messages). */
 	badges?: Readonly<Record<string, number>>;
 }>();
@@ -45,34 +48,24 @@ const workspaceNeedsAttention = computed(() =>
 	Object.values(props.badges ?? {}).some((count) => count > 0)
 );
 
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+const { isDesktop } = useDesktopContext();
+const { role } = usePermissions();
+
 const query = ref('');
 const normalized = computed(() => query.value.trim().toLowerCase());
-const results = computed(() => {
-	if (!normalized.value) return [];
-	const all = [
-		...props.youSections.flatMap((s) =>
-			s.entries.map((e) => ({
-				path: e.path,
-				icon: e.icon,
-				title: t(e.titleKey),
-				group: t(s.titleKey),
-			}))
-		),
-		...props.adminAreas.flatMap((a) =>
-			a.entries.map((e) => ({
-				path: e.path,
-				icon: e.icon,
-				title: t(e.titleKey),
-				group: t(a.titleKey),
-			}))
-		),
-	];
-	return all.filter(
-		(r) =>
-			r.title.toLowerCase().includes(normalized.value) ||
-			r.group.toLowerCase().includes(normalized.value)
-	);
-});
+const results = computed(() =>
+	settingsSearchResults(
+		{
+			youSections: props.youSections,
+			adminAreas: props.adminAreas,
+			environment: { isFeatureEnabled, isDesktop: isDesktop.value, role: role.value },
+			adminEnvironment: props.adminEnvironment,
+			t,
+		},
+		query.value
+	)
+);
 
 /** The rail row that stands for this page — its parent for a hidden child page. */
 const currentRailPath = computed(() => adminRailEntryFor(route.path)?.path ?? route.path);
@@ -165,7 +158,7 @@ const tabs = computed(() => [
 		</div>
 
 		<ul v-if="normalized" class="px-1" :aria-label="t('components.shell.settings.results')">
-			<li v-for="result in results" :key="result.path">
+			<li v-for="result in results" :key="result.id">
 				<NuxtLink
 					:to="result.path"
 					class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary"

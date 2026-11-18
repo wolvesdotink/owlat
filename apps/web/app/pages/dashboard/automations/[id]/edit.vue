@@ -14,7 +14,6 @@ import ActivateConfirmModal from '~/components/automations/editor/ActivateConfir
 import ActivationIssues from '~/components/automations/editor/ActivationIssues.vue';
 import AddStepMenu from '~/components/automations/editor/AddStepMenu.vue';
 import EditorHeader from '~/components/automations/editor/EditorHeader.vue';
-import EditorProgress from '~/components/automations/editor/EditorProgress.vue';
 import EmptySteps from '~/components/automations/editor/EmptySteps.vue';
 import StepCard from '~/components/automations/editor/StepCard.vue';
 import TriggerNode from '~/components/automations/editor/TriggerNode.vue';
@@ -318,9 +317,6 @@ onUnmounted(() => {
 			@toggle-status="handleToggleStatus"
 			@activate="handleShowActivateConfirm"
 		/>
-
-		<!-- Progress Indicator -->
-		<EditorProgress :inert="isInspectorOverlay || undefined" />
 
 		<!-- A failed read is not a missing automation. -->
 		<div v-if="automationError" class="flex-1 flex items-center justify-center">

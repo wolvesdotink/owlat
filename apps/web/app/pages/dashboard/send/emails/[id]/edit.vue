@@ -215,12 +215,12 @@ const campaignReturn = computed(() => campaignReturnTarget(route.query['returnTo
 const backLabel = computed(() =>
 	campaignReturn.value
 		? t('dashboard.send.emails.detail.edit.backToCampaign')
-		: t('dashboard.send.emails.detail.edit.backToEmails')
+		: t('dashboard.send.emails.detail.edit.backToTemplates')
 );
 
 // Back handler
 const handleBack = () => {
-	router.push(campaignReturn.value ?? '/dashboard/send/marketing');
+	router.push(campaignReturn.value ?? '/dashboard/send');
 };
 
 // Settings handler

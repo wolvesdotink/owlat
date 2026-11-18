@@ -14,12 +14,19 @@ definePageMeta({
 });
 
 const {
+	mailboxes,
 	currentMailbox,
+	mailboxId,
+	selectMailbox,
 	isLoading: mailboxesLoading,
 	error: mailboxesError,
 	refetch: refetchMailboxes,
-} = usePostboxMailbox();
-const mailboxId = computed(() => currentMailbox.value?._id ?? null);
+} = usePostboxSettingsMailbox('owner', {
+	onSwitch: () => {
+		newAlias.value = '';
+		error.value = null;
+	},
+});
 
 const {
 	data,
@@ -67,6 +74,13 @@ async function confirmRemove() {
 
 <template>
 	<div>
+		<PreferencesMailboxPicker
+			v-if="mailboxId"
+			:mailboxes="mailboxes"
+			:mailbox-id="mailboxId"
+			:locked="newAlias.trim() !== ''"
+			@select="selectMailbox"
+		/>
 		<header class="mb-6">
 			<I18nT
 				keypath="dashboard.preferences.aliases.subheading"

@@ -113,7 +113,12 @@ registerCommandPaletteProvider({
 				<!-- Settings takes the sidebar over on desktop. -->
 				<DashboardNavigationPortal :title="t('components.shell.settings.title')">
 					<div class="hidden lg:block w-56 shrink-0 self-start">
-						<ShellSettingsNav :you-sections="youSections" :admin-areas="areas" :badges="badges" />
+						<ShellSettingsNav
+							:you-sections="youSections"
+							:admin-areas="areas"
+							:admin-environment="environment"
+							:badges="badges"
+						/>
 					</div>
 				</DashboardNavigationPortal>
 

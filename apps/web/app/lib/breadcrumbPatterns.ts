@@ -14,10 +14,11 @@ import {
 	TRANSACTIONAL,
 	type RouteConfig,
 } from '~/lib/breadcrumbRoutes';
+import type { LocationQuery } from 'vue-router';
 
 export interface PatternConfig {
 	pattern: RegExp;
-	getConfig: (match: RegExpMatchArray) => RouteConfig;
+	getConfig: (match: RegExpMatchArray, query: LocationQuery) => RouteConfig;
 }
 
 /**
@@ -176,12 +177,15 @@ export const patternConfigs: PatternConfig[] = [
 			page: 'shared.breadcrumbPatterns.pages.editAutomation',
 		}),
 	},
-	// Automation new
+	// Automation new; `?edit=<id>` reuses the page to change an existing
+	// automation's trigger.
 	{
 		pattern: /^\/dashboard\/automations\/new$/,
-		getConfig: () => ({
+		getConfig: (_match, query) => ({
 			...MARKETING_AUTOMATIONS,
-			page: 'shared.breadcrumbPatterns.pages.newAutomation',
+			page: query['edit']
+				? 'shared.breadcrumbPatterns.pages.editTrigger'
+				: 'shared.breadcrumbPatterns.pages.newAutomation',
 		}),
 	},
 	// Contact detail

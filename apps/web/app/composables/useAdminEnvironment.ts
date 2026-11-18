@@ -29,10 +29,20 @@ export function useAdminEnvironment(enabled: Readonly<Ref<boolean>>) {
 		() => (enabled.value ? {} : 'skip')
 	);
 
+	// Settings left behind by a plugin removed from the build keep the Plugins
+	// page listed, because that page is the only place to purge them. A build
+	// that bundles plugins lists the page anyway, so it skips the read.
+	const { data: pluginSettingsOverview } = useConvexQuery(
+		api.plugins.settings.getPluginSettingsOverview,
+		() => (enabled.value && bundledPluginComposition.length === 0 ? {} : 'skip')
+	);
+
 	const environment = computed<AdminEnvironment>(() => ({
 		isFeatureEnabled,
 		isPlatformAdmin: isPlatformAdmin.value === true,
-		hasPlugins: bundledPluginComposition.length > 0,
+		hasPlugins:
+			bundledPluginComposition.length > 0 ||
+			(pluginSettingsOverview.value?.orphaned.length ?? 0) > 0,
 		hasRampStarted: hasRampStarted.value === true,
 	}));
 

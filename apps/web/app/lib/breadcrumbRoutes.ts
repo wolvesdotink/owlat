@@ -250,10 +250,6 @@ export const routeConfigs: Record<string, RouteConfig> = {
 		sectionHref: MARKETING_HREF,
 		page: 'shared.breadcrumbRoutes.pages.templates',
 	},
-	'/dashboard/send/marketing': {
-		...MARKETING_TEMPLATES,
-		page: 'shared.breadcrumbRoutes.pages.marketing',
-	},
 	// Named page, so the trail shows: a one-crumb trail is hidden in the header.
 	'/dashboard/send/transactional': {
 		...TRANSACTIONAL,
