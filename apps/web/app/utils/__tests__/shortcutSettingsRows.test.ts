@@ -10,12 +10,27 @@ import {
 } from '../shortcutSettingsRows';
 import type { SettingsEnvironment } from '~/lib/settingsRegistry';
 
-const env = (flags: string[], isDesktop = false): SettingsEnvironment => ({
+const env = (
+	flags: string[],
+	isDesktop = false,
+	role: SettingsEnvironment['role'] = 'owner'
+): SettingsEnvironment => ({
 	isFeatureEnabled: (flag) => flags.includes(flag),
 	isDesktop,
+	role,
 });
 const EVERYTHING = env(
-	['postbox', 'mail.external', 'inbox', 'chat', 'ai.assistant', 'ai.knowledge'],
+	[
+		'postbox',
+		'mail.external',
+		'inbox',
+		'chat',
+		'ai.assistant',
+		'ai.knowledge',
+		'campaigns',
+		'automations',
+		'transactional',
+	],
 	true
 );
 const NO_MAIL = env(['inbox']);
@@ -99,6 +114,46 @@ describe('shortcut page sections', () => {
 		expect(
 			isShortcutEntryAvailable({ id: 'global.ask', scope: 'global' }, env(['ai.knowledge']))
 		).toBe(true);
+	});
+
+	// A `g` chord answers to the gate its destination has in the navigation
+	// table, so nobody is shown a key that only bounces them to the Workbench.
+	it('offers each go-to chord only where its destination is in the navigation', () => {
+		const goTo = (environment: SettingsEnvironment) =>
+			SHORTCUT_CATALOG.filter(
+				(def) => def.groupKey === 'shared.shortcuts.groups.navigation' && def.scope === 'global'
+			)
+				.filter((def) => isShortcutEntryAvailable(def, environment))
+				.map((def) => def.id);
+		const flags = ['postbox', 'campaigns', 'automations', 'transactional'];
+
+		expect(goTo(env(flags))).toEqual([
+			'global.goToDashboard',
+			'global.goToAnswer',
+			'global.goToContacts',
+			'global.goToEmails',
+			'global.goToCampaigns',
+			'global.goToAutomations',
+			'global.goToTransactional',
+			'global.goToAdmin',
+		]);
+		// An editor has no templates, automations, transactional or workspace settings.
+		expect(goTo(env(flags, false, 'editor'))).toEqual([
+			'global.goToDashboard',
+			'global.goToAnswer',
+			'global.goToContacts',
+			'global.goToCampaigns',
+		]);
+		// A feature that is off takes its chord with it, the Answer queue with mail.
+		expect(goTo(env(['transactional']))).toEqual([
+			'global.goToDashboard',
+			'global.goToContacts',
+			'global.goToEmails',
+			'global.goToTransactional',
+			'global.goToAdmin',
+		]);
+		// The role is unknown until it loads: fail closed, as the sidebar does.
+		expect(goTo(env(flags, false, null))).not.toContain('global.goToAdmin');
 	});
 
 	it('marks fixed and changed rows', () => {

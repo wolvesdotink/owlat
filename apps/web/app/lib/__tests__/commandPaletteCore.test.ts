@@ -45,6 +45,7 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		],
 		recentSearches: () => ['acme', 'globex'],
 		verbItems: () => [paletteItem('verb:new-contact')],
+		actionItems: () => [paletteItem('verb:zen')],
 		contextItems: () => [paletteItem('context:inbox')],
 		navItems: () => [paletteItem('nav:/dashboard/inbox')],
 		settingsItems: () => [
@@ -172,6 +173,17 @@ describe('core:verbs and core:context', () => {
 		expect(t(verbs?.heading ?? '')).toBe('Create');
 		expect(verbs?.cap).toBeUndefined();
 
+		// The verbs that create nothing get their own heading, right under Create
+		// and with Create's own (default) cap, so a long Create list cannot cut them.
+		const actions = groupByKey(build('core:verbs', ''), 'actions');
+		expect(actions?.order).toBeGreaterThan(5);
+		expect(actions?.order).toBeLessThan(6);
+		expect(t(actions?.heading ?? '')).toBe('Actions');
+		expect(actions?.cap).toBeUndefined();
+		expect(actions?.mode).toBe('commands');
+		expect(actions?.items.map((item) => item.id)).toEqual(['verb:zen']);
+		expect(verbs?.items.map((item) => item.id)).toEqual(['verb:new-contact']);
+
 		const context = groupByKey(build('core:context', ''), 'context');
 		expect(context?.order).toBe(6);
 		expect(t(context?.heading ?? '')).toBe('Context');
@@ -179,6 +191,7 @@ describe('core:verbs and core:context', () => {
 		// The query filters items (a non-matching query empties the group).
 		const filtered = groupByKey(build('core:verbs', 'zzzz'), 'verbs');
 		expect(filtered?.items).toEqual([]);
+		expect(groupByKey(build('core:verbs', 'zzzz'), 'actions')?.items).toEqual([]);
 	});
 });
 
@@ -301,6 +314,28 @@ describe('core:navigation', () => {
 		expect(nav?.cap).toBe(8);
 		expect(t(nav?.heading ?? '')).toBe('Go to');
 		expect(nav?.items.map((i) => i.id)).toEqual(['nav:/dashboard/inbox']);
+	});
+
+	// The settings hub is called "General"; "preferences" is only its synonym.
+	it('finds a destination by its synonyms, after the rows that match by name', () => {
+		const nav = groupByKey(
+			build('core:navigation', 'preferences', {
+				navItems: () => [
+					{
+						...paletteItem('nav:/dashboard/preferences'),
+						label: 'General',
+						keywords: ['preferences'],
+					},
+					{ ...paletteItem('nav:/dashboard/inbox'), label: 'Team inbox' },
+					{ ...paletteItem('nav:/dashboard/preferences/x'), label: 'Preferences X' },
+				],
+			}),
+			'navigation'
+		);
+		expect(nav?.items.map((i) => i.id)).toEqual([
+			'nav:/dashboard/preferences/x',
+			'nav:/dashboard/preferences',
+		]);
 	});
 });
 

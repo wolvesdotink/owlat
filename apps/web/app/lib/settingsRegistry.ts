@@ -432,11 +432,11 @@ export function parseKeywords(resolved: string): string[] {
 export interface KeywordSearchable {
 	label: string;
 	subtitle?: string;
-	keywords: readonly string[];
+	keywords?: readonly string[];
 }
 
 /**
- * Fuzzy-filter localized settings rows over label, subtitle AND keywords.
+ * Fuzzy-filter localized palette rows over label, subtitle AND keywords.
  *
  * `filterItems` (the palette's own) only looks at label and subtitle, so typing
  * "dark" would never surface "Appearance". Ranking is label > subtitle >
@@ -461,7 +461,7 @@ export function filterByKeywords<T extends KeywordSearchable>(items: T[], rawQue
 			continue;
 		}
 		let best: number | null = null;
-		for (const word of item.keywords) {
+		for (const word of item.keywords ?? []) {
 			const hit = fuzzyMatch(word, query);
 			if (hit && (best === null || hit.score > best)) best = hit.score;
 		}

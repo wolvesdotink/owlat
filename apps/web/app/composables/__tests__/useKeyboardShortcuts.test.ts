@@ -47,10 +47,19 @@ function press(key: string, init: KeyboardEventInit = {}) {
 
 let wrapper: VueWrapper | null = null;
 let registered: ReturnType<typeof useKeyboardShortcuts> | null = null;
+let role: 'owner' | 'admin' | 'editor' | null;
+let disabledFlags: string[];
 
 beforeEach(() => {
 	push.mockClear();
+	role = 'admin';
+	disabledFlags = [];
 	vi.stubGlobal('useRouter', () => ({ push }));
+	vi.stubGlobal('usePermissions', () => ({ role: ref(role) }));
+	vi.stubGlobal('useFeatureFlag', () => ({
+		isEnabled: (flag: string) => !disabledFlags.includes(flag),
+	}));
+	vi.stubGlobal('useDesktopContext', () => ({ isDesktop: ref(false) }));
 	resetShortcutScopes();
 	resetShortcutPreferences();
 });
@@ -112,6 +121,38 @@ describe('useKeyboardShortcuts — sequence chords', () => {
 		expect(press('g', { metaKey: true }).defaultPrevented).toBe(false);
 		press('d');
 		expect(push).not.toHaveBeenCalled();
+	});
+});
+
+describe('useKeyboardShortcuts — go-to chords follow their destination', () => {
+	it('does nothing on `g s` for an editor, who has no workspace settings', async () => {
+		role = 'editor';
+		wrapper = mountHost((api) => {
+			api.registerNavigationShortcuts();
+		});
+		await nextTick();
+
+		press('g');
+		press('s');
+		press('g');
+		press('d');
+
+		expect(push.mock.calls).toEqual([['/dashboard']]);
+	});
+
+	it('does nothing on `g a` while automations are off', async () => {
+		disabledFlags = ['automations'];
+		wrapper = mountHost((api) => {
+			api.registerNavigationShortcuts();
+		});
+		await nextTick();
+
+		press('g');
+		press('a');
+		press('g');
+		press('s');
+
+		expect(push.mock.calls).toEqual([['/dashboard/admin']]);
 	});
 });
 

@@ -39,6 +39,7 @@ import {
 	shortcutBindings,
 } from '~/utils/shortcutScope';
 import { SHORTCUT_CATALOG } from '~/utils/shortcutCatalog';
+import { isShortcutEntryAvailable, NAVIGATION_SHORTCUT_ROUTES } from '~/utils/shortcutSettingsRows';
 
 /**
  * Gets the press, for the few commands one id covers several keys of (1 to 9
@@ -239,24 +240,26 @@ export function useKeyboardShortcuts() {
 	}
 
 	/**
-	 * Register default navigation shortcuts
+	 * Register the app-wide `g` chords. Each fires only where the cheat sheet
+	 * lists it, so a chord to a page this person cannot open does nothing
+	 * rather than bouncing them to the Workbench.
 	 */
 	function registerNavigationShortcuts() {
 		const router = useRouter();
-		const routes: Record<string, string> = {
-			'global.goToDashboard': '/dashboard',
-			'global.goToAnswer': '/dashboard/answer',
-			'global.goToContacts': '/dashboard/audience/contacts',
-			'global.goToEmails': '/dashboard/send',
-			'global.goToAutomations': '/dashboard/automations',
-			// g+m opens Marketing on its overview.
-			'global.goToCampaigns': '/dashboard/marketing',
-			'global.goToTransactional': '/dashboard/send/transactional',
-			// g+s routes to the administration area, not the preferences pages.
-			'global.goToAdmin': '/dashboard/admin',
-		};
-		for (const [id, path] of Object.entries(routes)) {
-			registerShortcut({ id, handler: () => router.push(path), ignoreInputs: true });
+		const { isEnabled } = useFeatureFlag();
+		const { role } = usePermissions();
+		const { isDesktop } = useDesktopContext();
+		for (const [id, path] of Object.entries(NAVIGATION_SHORTCUT_ROUTES)) {
+			registerShortcut({
+				id,
+				handler: () => router.push(path),
+				ignoreInputs: true,
+				when: () =>
+					isShortcutEntryAvailable(
+						{ id, scope: 'global' },
+						{ isFeatureEnabled: isEnabled, isDesktop: isDesktop.value, role: role.value }
+					),
+			});
 		}
 	}
 

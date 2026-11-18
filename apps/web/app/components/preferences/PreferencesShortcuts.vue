@@ -44,6 +44,8 @@ const {
 } = useShortcutPreferences();
 const { isEnabled } = useFeatureFlag();
 const { isDesktop } = useDesktopContext();
+// A `g` chord to a page this role cannot open is left out (`g s` for an editor).
+const { role } = usePermissions();
 const isMac = useShortcutIsMac();
 
 const ns = 'components.preferences.preferencesShortcuts';
@@ -64,7 +66,7 @@ const scopeTitle = (scope: string) => t(`${ns}.scopes.${scope}`);
 
 const sections = computed(() =>
 	shortcutSettingsSections(SHORTCUT_CATALOG, bindings.value, {
-		env: { isFeatureEnabled: isEnabled, isDesktop: isDesktop.value },
+		env: { isFeatureEnabled: isEnabled, isDesktop: isDesktop.value, role: role.value },
 		overridden: new Set(overridesById.value.keys()),
 		query: query.value,
 		describe: (def, chords) => [

@@ -29,6 +29,7 @@ const { isHelpModalOpen, closeHelpModal } = useKeyboardShortcuts();
 const { platform, isDesktop } = useDesktopContext();
 const isMac = computed(() => import.meta.client && platform.value === 'mac');
 const { isEnabled } = useFeatureFlag();
+const { role } = usePermissions();
 // The footer names the key that opens this sheet as the person has it bound,
 // and says nothing when they unbound it.
 const { labelFor } = useShortcutLabels();
@@ -36,11 +37,11 @@ const helpKey = computed(() => labelFor('global.help'));
 
 // Recomputed while open: the scope chain changes with the route, and the
 // bindings change when the user picks a preset or remaps a key. Entries whose
-// feature is off here (the Assistant's ⌘J) are left out, as on the
-// shortcuts page.
+// feature is off here (the Assistant's ⌘J), or whose page this role cannot
+// open (`g s` for an editor), are left out, as on the shortcuts page.
 const groups = computed(() => {
 	if (!isHelpModalOpen.value) return [];
-	const env = { isFeatureEnabled: isEnabled, isDesktop: isDesktop.value };
+	const env = { isFeatureEnabled: isEnabled, isDesktop: isDesktop.value, role: role.value };
 	return buildShortcutSheet(
 		SHORTCUT_CATALOG.filter((def) => isShortcutEntryAvailable(def, env)),
 		shortcutBindings.value,

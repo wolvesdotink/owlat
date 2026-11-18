@@ -134,6 +134,22 @@ describe('routePaletteTargets', () => {
 		expect(reachable).toContain('/dashboard');
 	});
 
+	it('takes Visualizations with the admin role and its feature flag, as the page does', () => {
+		const href = '/dashboard/visualizations';
+		expect(hrefs()).toContain(href);
+		expect(hrefs(env({ role: 'editor' }))).not.toContain(href);
+		expect(hrefs(env({ isFeatureEnabled: (flag) => flag !== 'ai.visualizations' }))).not.toContain(
+			href
+		);
+	});
+
+	it('takes the marketing templates with Campaigns, as the route does', () => {
+		const href = '/dashboard/send/marketing';
+		expect(hrefs()).toContain(href);
+		expect(hrefs(env({ isFeatureEnabled: (flag) => flag !== 'campaigns' }))).not.toContain(href);
+		expect(hrefs(env({ role: 'editor' }))).not.toContain(href);
+	});
+
 	it('takes a section with its feature flag', () => {
 		const reachable = hrefs(env({ isFeatureEnabled: (flag) => flag !== 'campaigns' }));
 		expect(reachable.filter((href) => href.startsWith('/dashboard/campaigns'))).toEqual([]);
@@ -190,10 +206,17 @@ describe('palette targets and redirect-only pages', () => {
 		return null;
 	}
 
+	// A page redirects with `redirect:` in its meta, a top-level `await
+	// navigateTo(…)`, or a `navigateTo(…)` in an inline middleware of its meta.
+	// The last alternative stays inside the `definePageMeta({…})` block, so a
+	// click handler further down the page never counts.
+	const REDIRECTS =
+		/\bredirect:|await navigateTo\(|definePageMeta\(\{(?:(?!\n\}\);)[\s\S])*navigateTo\(/;
+
 	it('never offers a page that only redirects somewhere else', () => {
 		const redirecting = hrefs(env({ role: 'owner', isDesktop: true })).filter((href) => {
 			const source = pageSource(href);
-			return source !== null && /\bredirect:|await navigateTo\(/.test(source);
+			return source !== null && REDIRECTS.test(source);
 		});
 		expect(redirecting).toEqual([]);
 	});
