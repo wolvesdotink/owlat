@@ -14,6 +14,7 @@ import {
 	healthQueryStub,
 } from '~/__tests__/deliveryHealthFixture';
 import { useDeliveryHealth } from '~/composables/useDeliveryHealth';
+import GroupHeader from '../GroupHeader.vue';
 import MarketingNav from '../MarketingNav.vue';
 
 const NuxtLinkStub = {
@@ -58,7 +59,7 @@ function mountNav() {
 		props: { collapsed: false, extraItems: [] },
 		global: {
 			plugins: [germanTestI18n()],
-			components: { NuxtLink: NuxtLinkStub },
+			components: { NuxtLink: NuxtLinkStub, ShellGroupHeader: GroupHeader },
 			stubs: {
 				UiSkeleton: true,
 				UiTooltip: TooltipStub,

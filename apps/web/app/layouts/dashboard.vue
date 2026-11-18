@@ -345,7 +345,7 @@ useShellNotices();
 			>
 				<div ref="appNavigationRef">
 					<ShellConversationsNav
-						v-if="activeContext === 'inbox' || !showToggle"
+						v-if="activeContext === 'inbox'"
 						:collapsed="isCollapsed"
 						:extra-items="pluginItems"
 					/>

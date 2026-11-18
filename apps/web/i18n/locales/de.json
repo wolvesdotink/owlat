@@ -8253,10 +8253,12 @@
 				"moreUnread": "eine weitere ungelesen | {count} weitere ungelesen",
 				"showMore": "Mehr anzeigen"
 			},
+			"groupToggle": {
+				"expand": "{name} anzeigen",
+				"collapse": "{name} ausblenden"
+			},
 			"chat": {
 				"title": "Chat",
-				"all": "Chat öffnen",
-				"allWithUnread": "{count} neu",
 				"empty": "Nichts Neues im Chat."
 			},
 			"options": {
@@ -8281,11 +8283,8 @@
 				"overview": "Übersicht",
 				"campaigns": "Kampagnen",
 				"newCampaign": "Neue Kampagne",
-				"allCampaigns": "Alle Kampagnen",
 				"automations": "Automatisierungen",
-				"allAutomations": "Alle Automatisierungen",
 				"newTransactional": "Neue Transaktions-E-Mail",
-				"allTransactional": "Alle Transaktions-E-Mails",
 				"audience": "Zielgruppe",
 				"recentlyDeleted": "Zuletzt gelöscht",
 				"templates": "Vorlagen",

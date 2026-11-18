@@ -5,6 +5,7 @@ import {
 	contextForPath,
 	readLastVisitedRoutes,
 	resolveSwitchTarget,
+	shownSidebarContext,
 	splitSectionsByContext,
 } from '~/lib/sidebarContext';
 import { readStoredChoice } from '~/utils/storedValue';
@@ -20,7 +21,7 @@ import { readStoredChoice } from '~/utils/storedValue';
  * - Toggling navigates: to that context's last-visited route, falling back to
  *   its home. Never leaves the page and the sidebar disagreeing.
  * - Emergent: the toggle only exists while BOTH contexts survived the feature
- *   flags; otherwise the sidebar stays today's flat list.
+ *   flags; otherwise the sidebar shows the one that did, on every route.
  */
 
 // Module-level storage (singleton across component instances, same pattern as
@@ -47,8 +48,10 @@ export function useSidebarContext() {
 	);
 
 	// Owned route → that context; shared route → whatever was last active.
-	const activeContext = computed<SidebarContext>(
-		() => contextForPath(route.path) ?? contextStorage.data.value
+	// Without the toggle, the only context left, which every reader (sidebar,
+	// quick-create) must agree on.
+	const activeContext = computed<SidebarContext>(() =>
+		shownSidebarContext(contextForPath(route.path) ?? contextStorage.data.value, split.value)
 	);
 
 	// Record owned-route visits so switching back returns where you left off.

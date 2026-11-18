@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
-import { ChevronDownIcon } from '@coolicons/vue';
 /**
  * Chat in the Conversations sidebar: the channels and direct messages with
- * something new, most recent first, plus a link to all of chat. A mention
+ * something new, most recent first, under a header that opens all of chat. A mention
  * reads as "Mentioned you" — the chat version of "Needs you".
  */
 const props = defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
 const { t } = useI18n();
 const route = useRoute();
+const CHAT_HREF = '/dashboard/chat';
 
 const { channels, dms } = useChatRooms();
 const drafts = useComposerDrafts();
@@ -44,34 +44,26 @@ const activeRoomId = computed(() => /^\/dashboard\/chat\/([^/?#]+)/.exec(route.p
 
 <template>
 	<div>
-		<div class="group/chat mt-3 flex items-center gap-1 pr-1">
-			<button
-				type="button"
-				class="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1 text-2xs font-medium uppercase tracking-wider text-text-tertiary hover:text-text-primary"
-				:aria-expanded="!props.collapsed"
-				@click="emit('toggle')"
+		<ShellGroupHeader
+			class="mt-3"
+			:name="t('components.shell.chat.title')"
+			:to="CHAT_HREF"
+			:collapsed="props.collapsed"
+			name-class="text-2xs font-medium uppercase tracking-wider text-text-tertiary"
+			@toggle="emit('toggle')"
+		>
+			<span
+				v-if="unreadTotal > 0"
+				class="ml-auto normal-case tracking-normal tabular-nums"
+				:aria-label="t('components.shell.inboxGroup.unread', { count: unreadTotal })"
+				>{{ unreadTotal > 99 ? '99+' : unreadTotal }}</span
 			>
-				<ChevronDownIcon
-					class="size-3 transition-transform duration-(--motion-fast)"
-					:class="props.collapsed ? '-rotate-90' : ''"
-				/>
-				{{ t('components.shell.chat.title') }}
-			</button>
-			<NuxtLink
-				to="/dashboard/chat"
-				class="rounded px-1.5 text-2xs text-text-tertiary hover:text-text-primary"
-				>{{
-					unreadTotal > 0
-						? t('components.shell.chat.allWithUnread', { count: unreadTotal })
-						: t('components.shell.chat.all')
-				}}</NuxtLink
-			>
-		</div>
+		</ShellGroupHeader>
 		<div v-if="!props.collapsed" class="mt-px space-y-px">
 			<ShellThreadRow
 				v-for="row in rows"
 				:key="row.id"
-				:to="`/dashboard/chat/${row.id}`"
+				:to="`${CHAT_HREF}/${row.id}`"
 				:jump-key="`chat:${row.id}`"
 				:title="row.title"
 				:meta="formatCompactRelativeTime(row.lastMessageAt)"
