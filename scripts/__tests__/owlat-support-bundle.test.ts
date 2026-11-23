@@ -1,5 +1,6 @@
 /**
- * `owlat support-bundle` runs the collector in the version-pinned setup image
+ * `owlat support-bundle` and `owlat doctor` read the running stack from the
+ * setup image. `owlat support-bundle` runs the collector in the version-pinned setup image
  * and writes the archive it streams on stdout to a host file. These cases run
  * the REAL `scripts/owlat` against a stub `docker` that records each call and
  * the environment it saw, and answer the setup image with a fake archive.
@@ -242,5 +243,21 @@ describe('owlat support-bundle', () => {
 		expect(result.code).toBe(1);
 		expect(result.stderr).toContain('already exists');
 		expect(await readFile(join(install.caller, 'bundle.tar.gz'), 'utf8')).toBe('keep me');
+	});
+});
+
+describe('owlat doctor', () => {
+	it('runs doctor with the socket, project, profiles and network the support bundle gets', async () => {
+		const install = await makeInstall();
+		const result = await install.invoke(['doctor', '--json']);
+		expect(result.code, result.stderr).toBe(0);
+
+		const doctor = (await install.calls()).find((call) => call.includes(' doctor '));
+		expect(doctor).toContain('run --rm --network owlat-test_default -v');
+		expect(doctor).toContain('-v /var/run/docker.sock:/var/run/docker.sock');
+		expect(doctor).toContain('-e OWLAT_DIR=/opt/owlat');
+		expect(doctor).toContain('-e COMPOSE_PROJECT_NAME=owlat-test');
+		expect(doctor).toContain('-e COMPOSE_PROFILES=mta');
+		expect(doctor).toContain('setup-image:test doctor --json |');
 	});
 });

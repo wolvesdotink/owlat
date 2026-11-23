@@ -13,7 +13,11 @@
 #   owlat setup --legacy      — run the legacy bash setup.sh
 #   owlat config              — re-open the wizard for an existing install
 #   owlat sample-data [install|remove|status] — opt-in demo content, removable
+#   owlat bootstrap-org       — create the first admin user and the organization
+#   owlat seed [--reset] | reset — dev installs only (OWLAT_DEV_MODE=true):
+#                               full demo seed, or wipe the instance to blank
 #   owlat feature <key> on|off — toggle a single feature flag
+#   owlat pack <key> on|off   — toggle every flag in a feature pack
 #   owlat feature --sync      — rewrite .owlat-flags.json from the flags the
 #                               running backend holds (after a restore)
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
@@ -362,6 +366,35 @@ compose_project_name() {
 	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
 }
 
+# The `docker run` arguments of a setup-image command that reads the running
+# stack (doctor, support-bundle): the Docker socket (compose ps/logs, and convex
+# run through the convex-deploy image), this stack's project name and profiles,
+# so the in-container compose sees THIS stack, and the stack's default network,
+# where doctor's MTA probes resolve MTA_API_URL (`http://mta:3100`). Fills
+# STACK_READER_ARGS.
+stack_reader_run_args() {
+	export_compose_profiles
+	local project_name network=""
+	project_name="$(compose_project_name)"
+	if [[ -n "$project_name" ]]; then
+		# Compose labels the network it created as the project's `default`,
+		# whatever name it was given. None while the stack is down: the MTA is
+		# then unreachable from anywhere and doctor reports exactly that.
+		network="$(docker network ls \
+			--filter "label=com.docker.compose.project=$project_name" \
+			--filter "label=com.docker.compose.network=default" \
+			--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || network=""
+	fi
+	STACK_READER_ARGS=(
+		${network:+--network "$network"}
+		-v "$OWLAT_DIR:/opt/owlat"
+		-v /var/run/docker.sock:/var/run/docker.sock
+		-e "OWLAT_DIR=/opt/owlat"
+		${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"}
+		${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"}
+	)
+}
+
 # Whether the pinned setup image knows the command $1 (`push-env` arrived with
 # `owlat apply`, `unset-env` later). A host `owlat` newer than the stack runs an
 # older image, which answers an unknown command with "Unknown command" and its
@@ -464,9 +497,15 @@ sync_flag_mirror() {
 # takes more than five minutes to start (a restore waits for readiness). Prints
 # the answer's `description` (or `error`), then `snapshot-id: <id>` when the
 # answer names a snapshot; exits non-zero on a non-2xx answer.
+# A body of `--stdin-field=<name>` sends `{"<name>": <stdin>}`: a compose
+# template is too large for an argument and the host may have no JSON encoder.
 UPDATER_REQUEST_JS='
 const http = require("node:http");
-const [method, path, body] = process.argv.slice(1);
+const [method, path, bodyArg] = process.argv.slice(1);
+const stdinField = bodyArg && bodyArg.startsWith("--stdin-field=") ? bodyArg.slice(14) : "";
+const body = stdinField
+	? JSON.stringify({ [stdinField]: require("node:fs").readFileSync(0, "utf8") })
+	: bodyArg;
 const req = http.request(
 	{
 		host: "127.0.0.1",
@@ -526,18 +565,14 @@ require_supported_arch() {
 	exit 1
 }
 
-# Run the TS setup CLI inside the owlat/setup container.
-# Falls back to legacy bash wizard with --legacy.
-run_setup_container() {
-	# Pass through interactive TTY when available, mount the install dir, forward env.
-	local tty_flag=""
-	[[ -t 1 ]] && tty_flag="-it"
-	docker run --rm $tty_flag \
-		-v "$OWLAT_DIR:/opt/owlat" \
-		-e "OWLAT_DIR=/opt/owlat" \
-		-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-		"$OWLAT_SETUP_IMAGE" "$@"
-}
+# `-it` for the setup containers when the operator is at a terminal, so the
+# wizard can prompt. Decided here and expanded as an array: inside `$(…)`
+# stdout is the capture pipe, so a `[ -t 1 ]` there is always false. Both ends
+# must be a terminal; `docker run -it` refuses a piped stdin.
+SETUP_TTY_ARGS=()
+if [[ -t 0 && -t 1 ]]; then
+	SETUP_TTY_ARGS=(-it)
+fi
 
 # ── Host config-file bind-mount ───────────────────────────────────────────────
 # A setup config file lives on the host, but the wizard container only sees
@@ -646,6 +681,16 @@ run_quickstart_container() {
 	"$@"
 }
 
+# Hand a `--legacy` run to the bash wizard. setup.sh is the legacy wizard and
+# has no such option (it rejects unknown arguments), so the flag is dropped.
+exec_legacy_wizard() {
+	local args=() arg
+	for arg in "$@"; do
+		[[ "$arg" == "--legacy" ]] || args+=("$arg")
+	done
+	exec bash scripts/setup.sh ${args[@]+"${args[@]}"}
+}
+
 # Provisioning subcommands double as the repair path: an install that never got
 # the symlink (desktop SSH flow, hand-clone) gains it here, and one that already
 # has it pays a single readlink. Best-effort — a wizard must never abort because
@@ -661,7 +706,7 @@ case "$cmd" in
 		# Allow --legacy to fall back to the bash wizard.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh "$@"
+				exec_legacy_wizard "$@"
 			fi
 		done
 		# Host networking on a Linux server: the wizard's public-address step
@@ -669,7 +714,7 @@ case "$cmd" in
 		# names reach it.
 		setup_network_args=()
 		on_docker_desktop || setup_network_args=(--network host)
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			${setup_network_args[@]+"${setup_network_args[@]}"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
@@ -698,7 +743,7 @@ case "$cmd" in
 		# --legacy falls back to the complete bash wizard.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh "$@"
+				exec_legacy_wizard "$@"
 			fi
 		done
 		# Local-source installs: OWLAT_BUILD_LOCAL=1 makes quickstart write
@@ -719,7 +764,7 @@ case "$cmd" in
 			quickstart_docker_desktop=1
 		fi
 		if [[ "$quickstart_docker_desktop" == "1" ]]; then
-			run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
+			run_quickstart_container docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-v /var/run/docker.sock:/var/run/docker.sock \
@@ -734,7 +779,7 @@ case "$cmd" in
 				"$OWLAT_SETUP_IMAGE" quickstart "$@"
 			exit $?
 		fi
-		run_quickstart_container docker run --rm $([ -t 1 ] && echo "-it") \
+		run_quickstart_container docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-v /var/run/docker.sock:/var/run/docker.sock \
@@ -749,15 +794,28 @@ case "$cmd" in
 		exit $?
 		;;
 	config)
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
 			"$OWLAT_SETUP_IMAGE" config "$@"
 		;;
-	sample-data)
-		# Opt-in demo content for a real install (install | remove | status).
-		# Unlike `feature`/`env`, this talks to the running backend's published
-		# Convex site port, so the container needs the same networking treatment
+	sample-data|bootstrap-org|seed|reset)
+		# `seed` and `reset` call the backend's /dev endpoints, which answer only
+		# with OWLAT_DEV_MODE on, and `reset` deletes every user. Refuse them here
+		# on an install whose .env leaves dev mode off, before anything asks for
+		# a confirmation the backend would then refuse anyway. `reset` keeps the
+		# setup CLI's own confirmation; nothing here answers it.
+		if [[ "$cmd" == seed || "$cmd" == reset ]]; then
+			dev_mode="$(grep -E '^OWLAT_DEV_MODE=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'" | tr '[:upper:]' '[:lower:]' || true)"
+			if [[ "$dev_mode" != "true" ]]; then
+				printf '%s\n' "'owlat $cmd' only works on a development install: it needs OWLAT_DEV_MODE=true in .env, and this install leaves it off." \
+					"For demo content on this install, use 'owlat sample-data install'." >&2
+				exit 2
+			fi
+		fi
+		# Opt-in demo content for a real install (install | remove | status), the
+		# first admin user, and the dev seed and reset. Unlike `feature`/`env`,
+		# these talk to the running backend's published Convex site port, so the container needs the same networking treatment
 		# as quickstart: host networking on Linux, host.docker.internal under
 		# Docker Desktop (where the container's localhost is the VM, not the box).
 		sample_data_docker_desktop=0
@@ -767,20 +825,20 @@ case "$cmd" in
 			sample_data_docker_desktop=1
 		fi
 		if [[ "$sample_data_docker_desktop" == "1" ]]; then
-			exec docker run --rm $([ -t 1 ] && echo "-it") \
+			exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 				--add-host=host.docker.internal:host-gateway \
 				-v "$OWLAT_DIR:/opt/owlat" \
 				-e "OWLAT_DIR=/opt/owlat" \
 				-e "OWLAT_LOCAL_HOST=host.docker.internal" \
 				-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-				"$OWLAT_SETUP_IMAGE" sample-data "$@"
+				"$OWLAT_SETUP_IMAGE" "$cmd" "$@"
 		fi
-		exec docker run --rm $([ -t 1 ] && echo "-it") \
+		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-e "OWLAT_DIR=/opt/owlat" \
 			-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-			"$OWLAT_SETUP_IMAGE" sample-data "$@"
+			"$OWLAT_SETUP_IMAGE" "$cmd" "$@"
 		;;
 	feature)
 		if [[ "${1:-}" == --sync ]]; then
@@ -791,6 +849,11 @@ case "$cmd" in
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" feature "$@"
+		;;
+	pack)
+		exec docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			"$OWLAT_SETUP_IMAGE" pack "$@"
 		;;
 	env)
 		exec docker run --rm \
@@ -889,21 +952,17 @@ case "$cmd" in
 		# New TS doctor inside the setup container; --legacy falls back to bash.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh doctor "$@"
+				exec_legacy_wizard doctor "$@"
 			fi
 		done
-		exec docker run --rm \
-			-v "$OWLAT_DIR:/opt/owlat" \
-			"$OWLAT_SETUP_IMAGE" doctor "$@"
+		stack_reader_run_args
+		exec docker run --rm "${STACK_READER_ARGS[@]}" "$OWLAT_SETUP_IMAGE" doctor "$@"
 		;;
 	support-bundle)
-		# One archive for a bug report, collected read-only by the setup image:
-		# it needs the Docker socket (compose ps/logs, and the migration read
-		# through the convex-deploy image), this stack's project name and
-		# profiles, so the in-container compose sees THIS stack, and the stack's
-		# default network, where doctor's MTA probes resolve MTA_API_URL
-		# (`http://mta:3100`). The archive comes back on stdout and is written
-		# here, so --output can be any host path.
+		# One archive for a bug report, collected read-only by the setup image
+		# with doctor's view of the stack (stack_reader_run_args). The archive
+		# comes back on stdout and is written here, so --output can be any host
+		# path.
 		bundle_usage="Usage: owlat support-bundle [--lines N] [--output FILE]"
 		bundle_out=""
 		bundle_args=()
@@ -959,26 +1018,9 @@ case "$cmd" in
 			echo "Error: cannot write $bundle_out." >&2
 			exit 1
 		fi
-		export_compose_profiles
-		project_name="$(compose_project_name)"
-		bundle_network=""
-		if [[ -n "$project_name" ]]; then
-			# Compose labels the network it created as the project's `default`,
-			# whatever name it was given. None while the stack is down: the MTA is
-			# then unreachable from anywhere and doctor reports exactly that.
-			bundle_network="$(docker network ls \
-				--filter "label=com.docker.compose.project=$project_name" \
-				--filter "label=com.docker.compose.network=default" \
-				--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || bundle_network=""
-		fi
+		stack_reader_run_args
 		bundle_status=0
-		docker run --rm \
-			${bundle_network:+--network "$bundle_network"} \
-			-v "$OWLAT_DIR:/opt/owlat" \
-			-v /var/run/docker.sock:/var/run/docker.sock \
-			-e "OWLAT_DIR=/opt/owlat" \
-			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
-			${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"} \
+		docker run --rm "${STACK_READER_ARGS[@]}" \
 			"$OWLAT_SETUP_IMAGE" support-bundle --output - ${bundle_args[@]+"${bundle_args[@]}"} \
 			>&3 || bundle_status=$?
 		exec 3>&-
@@ -1086,18 +1128,6 @@ case "$cmd" in
 			esac
 		done
 
-		# Resolve INSTANCE_SECRET from .env (needed to call updater sidecar)
-		if [[ ! -f .env ]]; then
-			echo "Error: .env not found — cannot call updater sidecar" >&2
-			exit 1
-		fi
-
-		instance_secret=$(grep -E "^INSTANCE_SECRET=" .env | cut -d= -f2- | tr -d '"' | tr -d "'")
-		if [[ -z "$instance_secret" ]]; then
-			echo "Error: INSTANCE_SECRET not set in .env" >&2
-			exit 1
-		fi
-
 		# Resolve target compose template
 		if [[ -z "$target_version" ]]; then
 			# Default: fetch the latest docker-compose-*.yml from GitHub Releases
@@ -1124,30 +1154,18 @@ case "$cmd" in
 			exit 1
 		}
 
-		# Post to the local updater sidecar via docker network — simplest path
-		# is to use a short-lived curl container on the same network.
-		echo -e "${CYAN}${BOLD}[info]${RESET} Dispatching to updater sidecar…"
-		payload=$(printf '%s' "$template" | jq -R -s '{composeTemplate: .}' 2>/dev/null) || {
-			# Fallback without jq — base64 encode and decode server-side
-			echo "Error: 'jq' is required. Install with: apt install jq" >&2
-			exit 1
-		}
-
-		response=$(docker compose exec -T web curl -sf \
-			-X POST "http://updater:3200/update" \
-			-H "Content-Type: application/json" \
-			-H "X-Instance-Secret: $instance_secret" \
-			--max-time 600 \
-			-d "$payload")
-
-		if [[ -n "$response" ]]; then
-			echo "$response" | jq . 2>/dev/null || echo "$response"
-			echo ""
-			echo -e "${GREEN}${BOLD}[ ok ]${RESET} Upgrade dispatched. Poll with: owlat status"
-		else
-			echo "Error: No response from updater" >&2
-			exit 1
+		# The web image has no curl, and the host may have no jq: the request goes
+		# through updater_request, from inside the updater container, which also
+		# holds the instance secret. It answers once the release is up or failed.
+		echo -e "${CYAN}${BOLD}[info]${RESET} Applying the release through the updater (this takes a few minutes)…"
+		upgrade_status=0
+		printf '%s' "$template" | updater_request POST /update --stdin-field=composeTemplate || upgrade_status=$?
+		if [[ "$upgrade_status" -ne 0 ]]; then
+			printf '%b\n' "${RED}${BOLD}[err ]${RESET} The update to v${target_version} did not complete (see above)." \
+				"       Check that the updater is running ('owlat status') and read its log ('owlat logs updater')." >&2
+			exit "$upgrade_status"
 		fi
+		echo -e "${GREEN}${BOLD}[ ok ]${RESET} Updated to v${target_version}."
 		;;
 	install-cli)
 		# Explicit repair/first-install of the PATH entry. install.sh delegates here

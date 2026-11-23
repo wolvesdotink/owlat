@@ -179,4 +179,20 @@ describe('site URL for the success messages', () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it('loadBackendContext reaches the published port through OWLAT_LOCAL_HOST (Docker Desktop)', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'owlat-backend-'));
+		vi.stubEnv('OWLAT_LOCAL_HOST', 'host.docker.internal');
+		try {
+			writeFileSync(join(dir, '.env'), 'INSTANCE_SECRET=abc\n');
+			expect((await loadBackendContext(dir)).baseUrl).toBe('http://host.docker.internal:3211');
+			// An explicit URL still wins.
+			expect((await loadBackendContext(dir, 'http://127.0.0.1:9999')).baseUrl).toBe(
+				'http://127.0.0.1:9999'
+			);
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

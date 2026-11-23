@@ -15,7 +15,7 @@
  * link has to be in place BEFORE the wizard takes over the process.
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
 	chmod,
 	copyFile,
@@ -53,6 +53,10 @@ interface Clone {
 	/** Stands in for `/usr/local/bin/owlat`. */
 	readonly link: string;
 	readonly invoke: (args: string[], env?: Record<string, string>) => Promise<CommandResult>;
+	/** The same, with stdin, stdout and stderr on a pseudo-terminal (util-linux `script`). */
+	readonly invokeOnTerminal: (args: string[]) => Promise<CommandResult>;
+	/** Every `docker` command line the wrapper ran, in order. */
+	readonly dockerCalls: () => Promise<string[]>;
 }
 
 interface CommandResult {
@@ -92,21 +96,32 @@ async function makeClone(): Promise<Clone> {
 	await chmod(join(stubDir, 'docker'), 0o755);
 
 	const link = join(binDir, 'owlat');
+	const wrapperEnv = (env: Record<string, string> = {}) => ({
+		...process.env,
+		PATH: `${stubDir}:${process.env['PATH'] ?? ''}`,
+		OWLAT_DIR: owlatDir,
+		OWLAT_CLI_LINK: link,
+		...env,
+	});
 
 	return {
 		owlatDir,
 		wrapper,
 		link,
+		async invokeOnTerminal(args) {
+			const command = ['bash', wrapper, ...args].map((word) => `'${word}'`).join(' ');
+			const { stdout, stderr } = await run('script', ['-qec', command, '/dev/null'], {
+				env: wrapperEnv(),
+			});
+			return { code: 0, stdout, stderr };
+		},
+		async dockerCalls() {
+			return (await readFile(join(root, 'docker-calls.log'), 'utf8')).trim().split('\n');
+		},
 		async invoke(args, env = {}) {
 			try {
 				const { stdout, stderr } = await run('bash', [wrapper, ...args], {
-					env: {
-						...process.env,
-						PATH: `${stubDir}:${process.env['PATH'] ?? ''}`,
-						OWLAT_DIR: owlatDir,
-						OWLAT_CLI_LINK: link,
-						...env,
-					},
+					env: wrapperEnv(env),
 				});
 				return { code: 0, stdout, stderr };
 			} catch (error) {
@@ -227,5 +242,39 @@ describe('provisioning subcommands self-heal the link', () => {
 		await clone.invoke([cmd]);
 
 		await expect(lstat(clone.link)).rejects.toThrow();
+	});
+});
+
+// util-linux `script` runs a command on a pseudo-terminal; the BSD one on macOS
+// takes other arguments.
+const hasUtilLinuxScript = (() => {
+	try {
+		return execFileSync('script', ['--version'], { encoding: 'utf8' }).includes('util-linux');
+	} catch {
+		return false;
+	}
+})();
+
+describe('the setup container gets a terminal when the operator has one', () => {
+	const WIZARD_COMMANDS = ['quickstart', 'setup', 'config', 'sample-data'];
+	const setupRun = async (clone: Clone) =>
+		(await clone.dockerCalls()).find((call) => call.startsWith('run '));
+
+	it.skipIf(!hasUtilLinuxScript).each(WIZARD_COMMANDS)(
+		'%s passes -it on a terminal',
+		async (cmd) => {
+			const clone = await makeClone();
+			await clone.invokeOnTerminal([cmd]);
+			expect(await setupRun(clone)).toMatch(/^run --rm -it /);
+		}
+	);
+
+	it.each(WIZARD_COMMANDS)('%s passes no -it without a terminal', async (cmd) => {
+		const clone = await makeClone();
+		const result = await clone.invoke([cmd]);
+		expect(result.code, result.stderr).toBe(0);
+		const call = await setupRun(clone);
+		expect(call).toMatch(/^run --rm /);
+		expect(call).not.toContain(' -it ');
 	});
 });

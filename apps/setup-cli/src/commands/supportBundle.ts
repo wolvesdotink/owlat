@@ -142,8 +142,8 @@ export async function collectSupportBundle(
 						maxBytes: 2 * MIB,
 						keep: 'head',
 					});
-					if (result.code !== 0) throw new Error('docker compose ps failed');
-					return result.output;
+					if (result.code === 127) throw new Error('docker could not be started');
+					return { code: result.code, stdout: result.output, stderr: '' };
 				},
 				async convexRun(cwd, fn) {
 					const result = await io.docker(convexRunArgs(fn), {

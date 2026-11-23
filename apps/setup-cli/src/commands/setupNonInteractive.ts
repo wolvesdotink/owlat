@@ -3,7 +3,7 @@
  *
  *   1. `--config <file>` — a JSON {@link SetupConfig} supplies every answer (CI
  *      and the desktop app driving a remote install over SSH).
- *   2. `--assume-yes` — the documented `OWLAT_ASSUME_YES=1 curl … | bash`
+ *   2. `--assume-yes` — the documented `curl … | OWLAT_ASSUME_YES=1 bash`
  *      install, where stdin is not a TTY and every clack prompt would block
  *      forever. A complete config is assembled from sensible defaults (plus
  *      environment overrides) instead.
