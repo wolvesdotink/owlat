@@ -6,6 +6,7 @@ import OperatorAdminsTab from '~/components/operator/AdminsTab.vue';
 import OperatorOrganizationsTab from '~/components/operator/OrganizationsTab.vue';
 import OperatorOverviewTab from '~/components/operator/OverviewTab.vue';
 import OperatorReviewTab from '~/components/operator/ReviewTab.vue';
+import OperatorSendingStatusCard from '~/components/operator/SendingStatusCard.vue';
 import {
 	isBlockingAbuseStatus,
 	operatorConsoleLayout,
@@ -34,10 +35,8 @@ const abuseQuery = useConvexQuery(api.platformAdmin.queries.listRecentAbuse, () 
 const reviewQuery = useConvexQuery(api.platformAdmin.queries.getContentReviewQueue, () => ({}));
 const flaggedQuery = useConvexQuery(api.platformAdmin.queries.listFlaggedOrganizations, () => ({}));
 const orgsQuery = useConvexQuery(api.platformAdmin.queries.listAllOrganizations, () => ({}));
-const { data: orgDetail } = useConvexQuery(
-	api.platformAdmin.queries.getOrganizationDetail,
-	() => ({})
-);
+const orgDetailQuery = useConvexQuery(api.platformAdmin.queries.getOrganizationDetail, () => ({}));
+const orgDetail = orgDetailQuery.data;
 const adminsQuery = useConvexQuery(api.platformAdmin.queries.listPlatformAdmins, () => ({}));
 const usersQuery = useConvexQuery(api.platformAdmin.queries.listAllUsers, () => ({}));
 const stats = statsQuery.data;
@@ -53,9 +52,13 @@ const allUsers = usersQuery.data;
 const tabReads = computed(
 	() =>
 		({
-			overview: [statsQuery, abuseQuery],
+			// The sending-status card reads the settings detail; until it answers
+			// the card would show a clean status.
+			overview: layout.value.showSendingStatusOnOverview
+				? [statsQuery, abuseQuery, orgDetailQuery]
+				: [statsQuery, abuseQuery],
 			review: [reviewQuery],
-			organizations: [flaggedQuery, orgsQuery],
+			organizations: [flaggedQuery, orgsQuery, orgDetailQuery],
 			admins: [adminsQuery, usersQuery],
 		})[activeTab.value]
 );
@@ -346,12 +349,21 @@ const anyMutationLoading = computed(
 				@retry="retryTab"
 			/>
 
-			<OperatorOverviewTab
-				v-else-if="activeTab === 'overview'"
-				:stats="stats"
-				:recent-abuse="recentAbuse"
-				:show-delivery-stats="layout.showDeliveryStats"
-			/>
+			<div v-else-if="activeTab === 'overview'" class="space-y-6">
+				<OperatorSendingStatusCard
+					v-if="layout.showSendingStatusOnOverview"
+					:current-abuse-status="currentAbuseStatus"
+					:abuse-status-reason="orgDetail?.settings?.abuseStatusReason"
+					:is-warned="isWarnedAbuseStatus"
+					:busy="anyMutationLoading"
+					@set-status="openStatus"
+				/>
+				<OperatorOverviewTab
+					:stats="stats"
+					:recent-abuse="recentAbuse"
+					:show-delivery-stats="layout.showDeliveryStats"
+				/>
+			</div>
 
 			<OperatorReviewTab
 				v-else-if="activeTab === 'review'"

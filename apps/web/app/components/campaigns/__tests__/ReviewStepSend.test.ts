@@ -436,7 +436,7 @@ describe('ReviewStep send blockers', () => {
 	it('renders a refused send beside the button instead of leaving it to a toast', async () => {
 		const refusal: OperationError = {
 			category: 'invalid_state',
-			message: 'Your account has been suspended due to policy violations.',
+			message: 'Sending is suspended on this instance.',
 			data: {
 				reason: 'sending_not_allowed',
 				messageKey: 'shared.campaignRefusal.accountSuspended',
@@ -459,7 +459,7 @@ describe('ReviewStep send blockers', () => {
 
 		expect(claimed).toEqual([true]);
 		const note = wrapper.find('[role="alert"][data-testid="send-blocked-note"]');
-		expect(note.text()).toContain('Sending is suspended for this workspace');
+		expect(note.text()).toContain('Sending is suspended on this instance');
 		expect(note.find('a').attributes('data-to')).toBe('/dashboard/admin/delivery');
 		expect(pushed).toEqual([]);
 	});

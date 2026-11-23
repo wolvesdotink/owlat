@@ -76,13 +76,13 @@ export async function requireSendingAllowed(ctx: MutationCtx): Promise<void> {
 
 	if (status === 'suspended') {
 		throwInvalidState(
-			'Your account has been suspended due to policy violations. Please contact support for assistance.'
+			'Sending is suspended on this instance. An operator can lift it in the operator console.'
 		);
 	}
 
 	if (status === 'banned') {
 		throwInvalidState(
-			'Your account has been permanently disabled. Please contact support for more information.'
+			'Sending is permanently disabled on this instance. An operator can lift it in the operator console.'
 		);
 	}
 }

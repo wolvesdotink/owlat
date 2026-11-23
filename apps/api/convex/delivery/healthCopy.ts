@@ -14,6 +14,8 @@
 /** Every reason the roll-up can return, as a runtime list. */
 export const DELIVERY_HEALTH_REASONS = [
 	'healthy',
+	'sending_suspended',
+	'sending_banned',
 	'no_provider',
 	'no_provider_transactional',
 	'no_provider_campaign',
@@ -47,6 +49,8 @@ export type DeliveryHealthReason = (typeof DELIVERY_HEALTH_REASONS)[number];
  */
 export const DELIVERY_HEALTH_REASON_KEYS = {
 	healthy: 'shared.deliveryHealth.reasons.healthy',
+	sending_suspended: 'shared.deliveryHealth.reasons.sendingSuspended',
+	sending_banned: 'shared.deliveryHealth.reasons.sendingBanned',
 	no_provider: 'shared.deliveryHealth.reasons.noProvider',
 	no_provider_transactional: 'shared.deliveryHealth.reasons.noProviderTransactional',
 	no_provider_campaign: 'shared.deliveryHealth.reasons.noProviderCampaign',

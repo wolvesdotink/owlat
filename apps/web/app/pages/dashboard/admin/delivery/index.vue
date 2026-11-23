@@ -98,30 +98,51 @@ const warmup = computed(() => {
 	return sentence === null ? null : localized(sentence);
 });
 
-// --- Abuse status banner (preserved from the old sending-limits card) ---
+// --- Abuse status banner ---
+// The stored reason is an English sentence written by the backend (it names
+// the evidence), so it is quoted under translated framing, not translated.
 const abuseWarning = computed(() => {
-	const status = sendingOverview.value?.abuseStatus;
+	const overview = sendingOverview.value;
+	const status = overview?.abuseStatus;
 	if (!status || status === 'clean') return null;
+	const detail = {
+		reason: overview?.abuseStatusReason ?? null,
+		since:
+			overview?.abuseStatusChangedAt != null
+				? formatDate(overview.abuseStatusChangedAt, 'medium', locale.value)
+				: null,
+	};
 	switch (status) {
 		case 'warned':
 			return {
 				message: t('dashboard.admin.delivery.index.abuse.warned'),
 				severity: 'warning' as const,
+				...detail,
 			};
 		case 'suspended':
 			return {
 				message: t('dashboard.admin.delivery.index.abuse.suspended'),
 				severity: 'error' as const,
+				...detail,
 			};
 		case 'banned':
 			return {
 				message: t('dashboard.admin.delivery.index.abuse.banned'),
 				severity: 'error' as const,
+				...detail,
 			};
 		default:
 			return null;
 	}
 });
+
+// Only a platform admin can lift a suspension (operator console), so only
+// they get the link; everyone else is told who can.
+const isSendingBlocked = computed(() => abuseWarning.value?.severity === 'error');
+const { data: isPlatformAdmin } = useConvexQuery(
+	api.platformAdmin.platformAdmin.isPlatformAdmin,
+	() => (isSendingBlocked.value ? {} : 'skip')
+);
 
 // --- Stat tiles ---
 // Yesterday's rolling rates — the point just before the newest snapshot — so the
@@ -314,7 +335,31 @@ const sendingDetail = computed(() => {
 					:is="abuseWarning.severity === 'error' ? TriangleWarningIcon : CircleWarningIcon"
 					class="w-5 h-5 mt-0.5 shrink-0"
 				/>
-				<p class="text-sm">{{ abuseWarning.message }}</p>
+				<div class="min-w-0 space-y-2 text-sm">
+					<p>{{ abuseWarning.message }}</p>
+					<div v-if="abuseWarning.reason" class="text-text-secondary">
+						<p class="text-caption">{{ t('dashboard.admin.delivery.index.abuse.reason') }}</p>
+						<blockquote class="mt-1 border-l-2 border-current pl-3 break-words">
+							{{ abuseWarning.reason }}
+						</blockquote>
+					</div>
+					<p v-if="abuseWarning.since" class="text-caption text-text-secondary">
+						{{ t('dashboard.admin.delivery.index.abuse.since', { date: abuseWarning.since }) }}
+					</p>
+					<template v-if="isSendingBlocked">
+						<NuxtLink
+							v-if="isPlatformAdmin === true"
+							to="/dashboard/admin/operator"
+							class="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+						>
+							{{ t('dashboard.admin.delivery.index.abuse.liftAction') }}
+							<ArrowRightIcon class="w-4 h-4" aria-hidden="true" />
+						</NuxtLink>
+						<p v-else-if="isPlatformAdmin === false" class="text-text-secondary">
+							{{ t('dashboard.admin.delivery.index.abuse.askOperator') }}
+						</p>
+					</template>
+				</div>
 			</div>
 
 			<!-- Sender compliance: the heading and every number it introduces in
