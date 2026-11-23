@@ -14382,7 +14382,12 @@
 			"noInbox": {
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
-				"cta": "Postfach verbinden"
+				"cta": "Postfach verbinden",
+				"mailOff": {
+					"title": "Mail ist in diesem Workspace ausgeschaltet",
+					"bodyAdmin": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank. Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um eines hinzuzufügen.",
+					"bodyMember": "Jedes Postfach, das du liest, bekäme hier seine eigene Werkbank. Ein Admin kann Mail einschalten."
+				}
 			}
 		},
 		"answer": {
