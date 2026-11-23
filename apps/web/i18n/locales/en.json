@@ -7157,7 +7157,7 @@
 				},
 				"deliverabilityAlerts": {
 					"label": "Deliverability alerts",
-					"hint": "When a check that passed starts failing, such as a blocked port 25 or a listed IP. The alert email goes out as well."
+					"hint": "When a check that passed starts failing, such as a blocked port 25 or a listed IP. The alert email goes out as well. Also when sending on the instance is suspended or resumes."
 				},
 				"saveOperation": "Save notification setting"
 			},
@@ -9073,7 +9073,7 @@
 						"liftAction": "Review in the operator console",
 						"reason": "Reason recorded:",
 						"since": "Since {date}",
-						"suspended": "Sending is suspended on this instance. No new mail goes out until an operator lifts the suspension.",
+						"suspended": "Sending is suspended on this instance. No new mail goes out until the suspension is lifted.",
 						"warned": "Your account is flagged for elevated bounce or complaint rates. Improve list quality to avoid further restrictions."
 					},
 					"domains": {
@@ -16828,6 +16828,12 @@
 					"some_held": "Some sending IPs are held back by a failed check or are out of rotation; the others carry the mail.",
 					"title": "Sending IPs"
 				},
+				"suspension": {
+					"action": "See why and how it resumes",
+					"banned": "Sending is disabled on this instance, so no new mail goes out on any stream.",
+					"suspended": "Sending is suspended on this instance, so no new mail goes out on any stream.",
+					"title": "Sending status"
+				},
 				"transactionalSender": {
 					"actionChange": "Change the sender",
 					"actionSet": "Set a sender",
@@ -19363,6 +19369,16 @@
 				"bodyDomain": "{domain}: {check} stopped passing",
 				"bodyNoCheck": "A check stopped passing",
 				"private": "A deliverability check stopped passing"
+			},
+			"sendingSuspended": {
+				"body": "No new mail goes out from this instance. Open Delivery health to see why",
+				"private": "No new mail goes out from this instance",
+				"title": "Sending suspended"
+			},
+			"sendingResumed": {
+				"body": "Mail from this instance goes out again",
+				"private": "Mail from this instance goes out again",
+				"title": "Sending resumed"
 			}
 		},
 		"useDesktopNotifications": {
@@ -20168,6 +20184,27 @@
 				"sent": "Sent",
 				"cancelled": "Cancelled",
 				"pendingReview": "Under review"
+			}
+		},
+		"sendingSuspension": {
+			"hold": "The automatic check is paused for the {triggers} until {date}. If the 30-day numbers are still over the line then, sending is suspended again.",
+			"lift": {
+				"admin": "This suspension does not lift by itself. A platform admin has to lift it.",
+				"bounce": "Sending resumes by itself once the bounce rate over the last 30 days is under {limit}. It is {current} now.",
+				"cleared": "The rates are back under the line, so sending resumes at the next hourly check.",
+				"complaint": "Sending resumes by itself once the complaint rate over the last 30 days is under {limit}. It is {current} now.",
+				"gmail": "Sending resumes by itself once no Gmail reading for {domain} in the last 30 days is at or above {limit}. The highest is {current} and leaves the 30 days on {date}.",
+				"manualSetting": "This instance waits for a platform admin: sending resumes only once one lifts the suspension, even after the rates recover."
+			},
+			"liftHint": "Lifting it pauses the automatic check, until {date}, for every rate that is over the line right now. A rate that crosses the line later still suspends sending.",
+			"setting": {
+				"description": "Off: a suspension the reputation check imposed lifts by itself once the rate behind it is back under the line. On: sending resumes only after a platform admin lifts it.",
+				"label": "Wait for a platform admin to lift a suspension"
+			},
+			"trigger": {
+				"bounce_rate": "bounce rate",
+				"complaint_rate": "complaint rate",
+				"gmail_spam_rate": "Gmail spam rate for {domain}"
 			}
 		}
 	},

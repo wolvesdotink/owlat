@@ -45,6 +45,10 @@ interface MarketingCopy {
 	alertTitle: string;
 	alertBody: (check: string | undefined, domain: string) => string;
 	alertPrivate: string;
+	suspendedTitle: string;
+	suspendedBody: string;
+	resumedTitle: string;
+	resumedBody: string;
 	open: string;
 	cancelSend: string;
 }
@@ -89,6 +93,10 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 			return domain ? `${domain}: ${what}` : what;
 		},
 		alertPrivate: 'A deliverability check stopped passing',
+		suspendedTitle: 'Sending suspended',
+		suspendedBody: 'No new mail goes out from this instance. Open Delivery health to see why',
+		resumedTitle: 'Sending resumed',
+		resumedBody: 'Mail from this instance goes out again',
 		open: 'Open',
 		cancelSend: 'Cancel send',
 	},
@@ -134,6 +142,11 @@ const COPY: Record<AppLocale, MarketingCopy> = {
 			return domain ? `${domain}: ${what}` : what;
 		},
 		alertPrivate: 'Eine Zustellbarkeitsprüfung besteht nicht mehr',
+		suspendedTitle: 'Versand ausgesetzt',
+		suspendedBody:
+			'Von dieser Instanz geht keine neue Mail raus. Unter Zustellungsgesundheit siehst du, warum',
+		resumedTitle: 'Versand wieder aktiv',
+		resumedBody: 'Mails von dieser Instanz gehen wieder raus',
 		open: 'Öffnen',
 		cancelSend: 'Versand abbrechen',
 	},
@@ -242,5 +255,11 @@ export function marketingPayload(
 				title: copy.alertTitle,
 				body: isPrivate ? copy.alertPrivate : clip(copy.alertBody(notice.detail, name), MAX_BODY),
 			};
+		// The stored reason can name rates and domains, so the push stays generic
+		// and the delivery hub shows the detail.
+		case 'sending_suspended':
+			return { ...base, title: copy.suspendedTitle, body: copy.suspendedBody };
+		case 'sending_resumed':
+			return { ...base, title: copy.resumedTitle, body: copy.resumedBody };
 	}
 }

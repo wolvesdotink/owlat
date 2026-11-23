@@ -209,15 +209,15 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
-	// Evaluate the org reputation window hourly and auto-escalate Abuse status when
-	// risk is high/critical. Moved off the per-send-event hot path (FIX 3a-1): the
-	// wide org-window summarize runs once per cron tick instead of once per
-	// recipient. Abuse status dedupes transitions, so the deliverability gate still
-	// trips — just on the cron cadence rather than per event.
+	// Evaluate the org reputation window hourly: auto-escalate Abuse status when
+	// risk is high/critical, and lift a suspension the check imposed once its
+	// evidence clears. Off the per-send-event hot path: the wide org-window
+	// summarize runs once per cron tick instead of once per recipient. Abuse
+	// status dedupes transitions, so the gate still trips on the cron cadence.
 	crons.interval(
 		'evaluate reputation auto-enforce',
 		{ hours: 1 },
-		internal.analytics.sendingReputation.evaluateAutoEnforce,
+		internal.analytics.reputationCheck.evaluateAutoEnforce,
 		{}
 	);
 

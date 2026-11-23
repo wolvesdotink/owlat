@@ -708,6 +708,64 @@ describe('deliverability alerts', () => {
 	});
 });
 
+describe('sending suspended and resumed', () => {
+	beforeEach(() => {
+		for (const [key, value] of Object.entries(VAPID_ENV)) vi.stubEnv(key, value);
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	async function queuedJobs(t: T, path: string) {
+		return t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.name.includes(path) && job.state.kind === 'pending'
+			)
+		);
+	}
+
+	async function changeStatus(t: T, to: 'suspended' | 'clean', at: number) {
+		await t.run(async (ctx) => {
+			if (!(await ctx.db.query('instanceSettings').first())) {
+				await ctx.db.insert('instanceSettings', { createdAt: NOW } as never);
+			}
+		});
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to, at, reason: 'Auto-suspended: test evidence', changedBy: 'admin-9' },
+		});
+	}
+
+	it('tells owners and admins and pushes to them, under the deliverability alerts switch', async () => {
+		const t = await harness([]);
+		for (const userId of Object.keys(MEMBERS)) await seedDevice(t, userId);
+		await changeStatus(t, 'suspended', NOW);
+
+		expect(await queuedFanOuts(t)).toEqual([
+			{ at: NOW, event: { kind: 'sending_suspended', changedAt: NOW } },
+		]);
+		expect(await fanOut(t, { kind: 'sending_suspended', changedAt: NOW })).toEqual({ written: 2 });
+		expect((await noticesFor(t)).map((notice) => notice.userId).sort()).toEqual([
+			'admin-1',
+			'owner-1',
+		]);
+		const pushed = (await queuedJobs(t, 'push/send')).map(
+			(job) => (job.args[0] as { userId: string }).userId
+		);
+		expect(pushed.sort()).toEqual(['admin-1', 'owner-1']);
+	});
+
+	it('a suspension that already lifted again tells nobody; the resume does', async () => {
+		const t = await harness([]);
+		await changeStatus(t, 'suspended', NOW);
+		await changeStatus(t, 'clean', NOW + MINUTE);
+
+		expect(await fanOut(t, { kind: 'sending_suspended', changedAt: NOW })).toEqual({ written: 0 });
+		expect(await fanOut(t, { kind: 'sending_resumed', changedAt: NOW + MINUTE })).toEqual({
+			written: 2,
+		});
+	});
+});
+
 describe('preferences', () => {
 	it('lists only the switches that can fire for the caller, all on until turned off', async () => {
 		const t = await harness();

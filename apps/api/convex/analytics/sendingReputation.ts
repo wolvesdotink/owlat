@@ -16,11 +16,12 @@
  *     readers. Bounce/complaint rate + risk level are derived on read, never
  *     stored. Reader-typed (`DatabaseReader`), so they run in both query and
  *     mutation ctx and the writer/reader cannot disagree about the number.
- *   - `evaluateAutoEnforce` is the auto-enforce step, off the hot path: it
+ *   - the auto-enforce step, off the hot path, is `reputationCheck.ts`: it
  *     runs on the reputation cron, summarizes the org window once per tick,
- *     reads the fresh Gmail spam rates from Google Postmaster, and escalates on
- *     what `reputationEnforcement.ts` decides. Running it here keeps the wide
- *     `.collect()` of the org window out of the per-event `recordEvent`.
+ *     and escalates (or lifts its own suspension) on what
+ *     `reputationEnforcement.ts` and `reputationResume.ts` decide. That keeps
+ *     the wide `.collect()` of the org window out of the per-event
+ *     `recordEvent`.
  *   - `recalculateAll` is the cleanup cron: it ages out >60-day buckets across
  *     both scopes. Risk no longer needs periodic recalculation — it is derived.
  *   - `autoEnforceReputation` is the unchanged enforce executor (delegates to
@@ -34,8 +35,8 @@ import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
 import { utcDayStart } from '../lib/clock';
-import { readRecentGmailSpamReadings } from '../delivery/postmaster';
-import { decideReputationEnforcement } from './reputationEnforcement';
+import { REPUTATION_WINDOW_MS } from './reputationResume';
+import { reputationTriggerValidator } from '../lib/validators/abuseStatus';
 import { DAY_MS } from '../lib/constants';
 
 // ============ RISK LEVEL THRESHOLDS ============
@@ -128,7 +129,7 @@ const eventTypeValidator = v.union(
 	v.literal('deliver')
 );
 
-const WINDOW_MS = 30 * DAY_MS; // rolling rate window
+const WINDOW_MS = REPUTATION_WINDOW_MS; // rolling rate window
 const RETENTION_MS = 60 * DAY_MS; // cleanup horizon
 
 /**
@@ -351,7 +352,7 @@ async function bumpBucket(
  * lifecycle's `reputation_update` effect), so it does the minimum: two point
  * read-modify-writes against sharded rows and nothing else. The risk
  * derivation + auto-enforce decision `.collect()`s the whole org window, so it
- * stays off the hot path, in the hourly `evaluateAutoEnforce` step on the
+ * stays off the hot path, in the hourly step of `reputationCheck.ts` on the
  * reputation cron (the Abuse status module dedupes transitions idempotently,
  * so checking hourly instead of per event keeps the enforce behavior — the
  * deliverability gate still trips, just on the cron cadence).
@@ -367,40 +368,6 @@ export const recordEvent = internalMutation({
 		if (args.domain) {
 			await bumpBucket(ctx, { kind: 'domain', domain: args.domain }, args.eventType);
 		}
-	},
-});
-
-/**
- * The auto-enforce step, off the hot path. Runs on the reputation cron:
- * summarizes the org window once, reads each domain's latest Gmail spam rate
- * from Google Postmaster, and escalates the deployment's Abuse status on what
- * `decideReputationEnforcement` calls for. This is the one wide `.collect()` of
- * the org window per cron tick rather than per send-event — the move that
- * removes the read-amplification from `recordEvent`.
- *
- * Enforcement lives only here; `recordEvent` has no per-event trigger. It fires
- * while the evidence stays over the line; the Abuse status module dedupes the
- * transition idempotently, so the hourly check enforces the same policy a
- * per-event one would.
- */
-export const evaluateAutoEnforce = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const now = Date.now();
-		const org = await summarize(ctx.db, { kind: 'org' });
-		const decision = decideReputationEnforcement({
-			orgRiskLevel: org.riskLevel,
-			gmail: await readRecentGmailSpamReadings(ctx.db, now),
-			now,
-		});
-		if (decision) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.sendingReputation.autoEnforceReputation,
-				decision
-			);
-		}
-		return { riskLevel: org.riskLevel };
 	},
 });
 
@@ -425,6 +392,8 @@ export const autoEnforceReputation = internalMutation({
 		 * release scheduled, which only ever enforced on the internal window.
 		 */
 		reason: v.optional(v.string()),
+		/** The metric the call was made on; absent on a job a previous release scheduled. */
+		trigger: v.optional(reputationTriggerValidator),
 	},
 	handler: async (ctx, args) => {
 		const target = args.riskLevel === 'critical' ? 'suspended' : 'warned';
@@ -440,6 +409,7 @@ export const autoEnforceReputation = internalMutation({
 				at: Date.now(),
 				reason,
 				changedBy: 'system',
+				...(args.trigger ? { trigger: args.trigger } : {}),
 			},
 		});
 	},

@@ -250,6 +250,7 @@ const sendingDetail = computed(() => {
 			:status="sendingOverview?.abuseStatus"
 			:reason="sendingOverview?.abuseStatusReason"
 			:changed-at="sendingOverview?.abuseStatusChangedAt"
+			:lift="sendingOverview?.suspensionLift"
 		/>
 
 		<!-- The one readiness panel leads the hub: it derives a single truth for

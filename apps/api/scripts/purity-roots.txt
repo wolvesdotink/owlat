@@ -14,6 +14,7 @@ convex/delivery/signals
 
 # Reputation enforcement: which abuse status the sending evidence calls for.
 convex/analytics/reputationEnforcement.ts
+convex/analytics/reputationResume.ts
 
 # Decision plane: contracts, catalogs, routing, pricing and evidence rules.
 convex/lib/decision

@@ -3,6 +3,7 @@ import { countBlockedByReason } from '../blockedEmails/lookup';
 import { platformAdminQuery } from '../lib/authedFunctions';
 import { utcDayKey } from '../lib/clock';
 import { summarize } from '../analytics/sendingReputation';
+import { readSuspensionLift } from '../analytics/reputationEvidence';
 import { readInstanceCounter } from '../lib/instanceCounters';
 import { readCachedContactCount } from '../lib/contactCountHelpers';
 
@@ -87,6 +88,13 @@ export const getOrganizationDetail = platformAdminQuery({
 				abuseStatusReason: settings.abuseStatusReason,
 				abuseStatusChangedAt: settings.abuseStatusChangedAt,
 				abuseStatusChangedBy: settings.abuseStatusChangedBy,
+				suspensionLift: await readSuspensionLift(ctx.db, settings, Date.now()),
+				isSendingResumeManual: settings.isSendingResumeManual === true,
+				// The pause a lift put on the check, while it lasts.
+				reputationCheckHold:
+					settings.reputationCheckHold && settings.reputationCheckHold.until > Date.now()
+						? settings.reputationCheckHold
+						: null,
 				dailySendCount: (await readInstanceCounter(ctx.db, 'sends')).dailySendCount || 0,
 				createdAt: settings.createdAt,
 				contactCount: (await readCachedContactCount(ctx.db)) || 0,

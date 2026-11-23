@@ -9,10 +9,10 @@
  * scopes.
  */
 
-import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
-import schema from '../schema';
-import { internal } from '../_generated/api';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { newBetterAuthHarness } from './testModules';
+import { _resetSingletonOrgCacheForTests } from '../lib/sessionOrganization';
+import { components, internal } from '../_generated/api';
 import { summarize, summarizeDomains } from '../analytics/sendingReputation';
 import {
 	SPAM_RATE_HARD_THRESHOLD,
@@ -55,7 +55,22 @@ const modules = Object.fromEntries(
 );
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-type Tester = ReturnType<typeof convexTest>;
+
+/**
+ * A status change that stops or resumes sending notifies owners and admins,
+ * and that fan-out reads the organization, so the harness has one like any
+ * install.
+ */
+async function harness() {
+	_resetSingletonOrgCacheForTests();
+	const t = newBetterAuthHarness(modules);
+	await t.mutation(components.betterAuth.adapter.create, {
+		input: { model: 'organization', data: { name: 'Acme', slug: 'acme', createdAt: 1 } },
+	} as never);
+	return t;
+}
+const HOUR_MS = 60 * 60 * 1000;
+type Tester = Awaited<ReturnType<typeof harness>>;
 
 function dayStart(epochMs: number): number {
 	const d = new Date(epochMs);
@@ -117,7 +132,7 @@ async function record(
 describe('provider-facing FBL spam rate', () => {
 	it('uses delivered volume and classifies the exact 0.1% / 0.3% boundaries', async () => {
 		const now = dayStart(Date.now()) + 12 * 60 * 60 * 1000;
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(now),
@@ -143,7 +158,7 @@ describe('provider-facing FBL spam rate', () => {
 
 	it('requires seven completed active days strictly below 0.3% for recovery', async () => {
 		const now = dayStart(Date.now()) + 12 * 60 * 60 * 1000;
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
 			await seedBucket(t, {
 				scope: 'org',
@@ -175,7 +190,7 @@ describe('provider-facing FBL spam rate', () => {
 
 describe('recordEvent — accumulation', () => {
 	it('bumps the org window on every event and the domain window only on its own', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 
 		await record(t, 'send'); // org only
 		await record(t, 'send'); // org only
@@ -199,7 +214,7 @@ describe('recordEvent — accumulation', () => {
 	});
 
 	it('hard_bounce increments both totalBounced and totalHardBounced', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 
 		await record(t, 'hard_bounce');
 
@@ -209,7 +224,7 @@ describe('recordEvent — accumulation', () => {
 	});
 
 	it('an event without a domain creates no domain-scoped buckets', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 
 		await record(t, 'send');
 
@@ -231,7 +246,7 @@ describe('recordEvent — accumulation', () => {
 	// thresholds then read those separate rates. See
 	// EMAIL_BEST_PRACTICES_AUDIT_2026-06-21.md "PR-72".
 	it('keeps soft bounce, hard bounce and complaint on separate counters', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 
 		await record(t, 'bounce'); // soft bounce — totalBounced only
 		await record(t, 'hard_bounce'); // hard bounce — totalBounced + totalHardBounced
@@ -256,7 +271,7 @@ describe('recordEvent — accumulation', () => {
 
 describe('summarize — complaint rate drives risk independently (PR-72)', () => {
 	it('a 0.3% complaint rate with zero bounces derives critical', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -279,7 +294,7 @@ describe('summarize — complaint rate drives risk independently (PR-72)', () =>
 
 describe('sharded writes — summarize sums across shards', () => {
 	it('summarize across shards equals the total after recording many events', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 
 		const SENDS = 200;
 		const BOUNCES = 25;
@@ -320,7 +335,7 @@ describe('sharded writes — summarize sums across shards', () => {
 	});
 
 	it('summarize sums hand-seeded shards of the same (scope, day) bucket', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const today = dayStart(Date.now());
 		// Three explicit shards of the same org day-bucket.
 		await seedBucket(t, {
@@ -358,7 +373,7 @@ describe('sharded writes — summarize sums across shards', () => {
 
 describe('summarize — derive on read', () => {
 	it('derives bounce/complaint rate and risk from in-window buckets', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -373,7 +388,7 @@ describe('summarize — derive on read', () => {
 	});
 
 	it('excludes buckets older than the 30-day window', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const now = Date.now();
 		// Recent, healthy bucket.
 		await seedBucket(t, {
@@ -397,7 +412,7 @@ describe('summarize — derive on read', () => {
 	});
 
 	it('returns low/zero for an empty scope', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const org = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
 		expect(org.totalSent).toBe(0);
 		expect(org.bounceRate).toBe(0);
@@ -405,7 +420,7 @@ describe('summarize — derive on read', () => {
 	});
 
 	it('derives risk per scope — a noisy domain does not lift the org window', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const today = dayStart(Date.now());
 		await seedBucket(t, { scope: 'org', periodStart: today, totalSent: 1000, totalBounced: 0 });
 		await seedBucket(t, {
@@ -423,7 +438,7 @@ describe('summarize — derive on read', () => {
 	});
 
 	it('summarizeDomains groups by domain and omits domains with no in-window activity', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const now = Date.now();
 		const today = dayStart(now);
 		await seedBucket(t, {
@@ -477,7 +492,7 @@ async function pendingEnforceJobs(t: Tester): Promise<Array<{ riskLevel?: string
 
 describe('recordEvent — off the enforce hot path', () => {
 	it('does NOT schedule autoEnforceReputation even at a critical org window', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		// Today's org bucket already at the critical bounce rate (10%).
 		await seedBucket(t, {
 			scope: 'org',
@@ -504,12 +519,12 @@ describe('recordEvent — off the enforce hot path', () => {
 // ────────────────────────────────────────────────────────────────────
 
 async function evaluate(t: Tester): Promise<{ riskLevel: string }> {
-	return await t.mutation(internal.analytics.sendingReputation.evaluateAutoEnforce, {});
+	return await t.mutation(internal.analytics.reputationCheck.evaluateAutoEnforce, {});
 }
 
 describe('evaluateAutoEnforce — enforce decision', () => {
 	it('crossing critical enqueues an enforce with riskLevel critical', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -526,7 +541,7 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 	});
 
 	it('high risk enqueues an enforce with riskLevel high', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -543,7 +558,7 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 	});
 
 	it('low risk enqueues no enforce', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -558,7 +573,7 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 	});
 
 	it('decides off the ORG window only — a critical domain does not enqueue', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		// Healthy org window; a noisy domain bucket must not lift it.
 		await seedBucket(t, {
 			scope: 'org',
@@ -622,7 +637,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 	}
 
 	it('suspends at the hard line and names Gmail as the source', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedSettings(t);
 		await seedPostmaster(t, { ratio: 0.0042, fetchedAgoMs: 2 * 60 * 60 * 1000 });
 
@@ -635,7 +650,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 	});
 
 	it('warns between Google’s guidance and the hard line', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedSettings(t);
 		await seedPostmaster(t, { ratio: 0.0015, fetchedAgoMs: 2 * 60 * 60 * 1000 });
 
@@ -650,7 +665,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 		['fetched too long ago', { fetchedAgoMs: 3 * DAY_MS }],
 		['describing a day too long ago', { fetchedAgoMs: 60 * 60 * 1000, periodAgoMs: 6 * DAY_MS }],
 	])('never enforces on Postmaster data %s', async (_label, age) => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedSettings(t);
 		await seedPostmaster(t, { ratio: 0.009, ...age });
 
@@ -666,7 +681,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 
 describe('autoEnforceReputation — executor', () => {
 	it('critical → org is auto-suspended (delegates to Abuse status)', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedSettings(t); // abuseStatus defaults to clean
 
 		await t.mutation(internal.analytics.sendingReputation.autoEnforceReputation, {
@@ -680,7 +695,7 @@ describe('autoEnforceReputation — executor', () => {
 	});
 
 	it('high → org is auto-warned', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		await seedSettings(t);
 
 		await t.mutation(internal.analytics.sendingReputation.autoEnforceReputation, {
@@ -700,7 +715,7 @@ describe('autoEnforceReputation — executor', () => {
 
 describe('recalculateAll — cleanup', () => {
 	it('prunes >60-day buckets across both scopes and keeps recent ones', async () => {
-		const t = convexTest(schema, modules);
+		const t = await harness();
 		const now = Date.now();
 		const old = dayStart(now - 61 * DAY_MS);
 		const recent = dayStart(now);
@@ -719,5 +734,232 @@ describe('recalculateAll — cleanup', () => {
 			// Both scopes survive at the recent bucket.
 			expect(rows.map((r) => r.scope).sort()).toEqual(['domain', 'org']);
 		});
+	});
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Automatic resume, and a manual lift that holds
+// ────────────────────────────────────────────────────────────────────
+
+describe('evaluateAutoEnforce — automatic resume', () => {
+	const NOW = Date.UTC(2026, 10, 20, 12);
+	afterEach(() => vi.useRealTimers());
+
+	async function settingsRow(t: Tester) {
+		return await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+	}
+
+	async function resumeNotices(t: Tester): Promise<string[]> {
+		return await t.run(async (ctx) => {
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs
+				.filter((j) => j.name.includes('fanOut'))
+				.map((j) => (j.args[0] as { event: { kind: string } }).event.kind);
+		});
+	}
+
+	const systemSuspension = {
+		abuseStatus: 'suspended',
+		abuseStatusReason: 'Auto-suspended: complaint rate or bounce rate exceeded critical thresholds',
+		abuseStatusChangedAt: NOW - DAY_MS,
+		abuseStatusChangedBy: 'system',
+		abuseStatusTrigger: { code: 'bounce_rate' },
+	};
+
+	it('lifts a suspension the check imposed once the rate is under the clear line, not before', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemSuspension);
+		// 7%: under the 10% that suspends, still over the 5% that clears it.
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 70,
+		});
+
+		await evaluate(t);
+		expect((await settingsRow(t))?.abuseStatus).toBe('suspended');
+
+		// Another 1000 clean sends bring the window to 3.5%.
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			shardKey: 1,
+			totalSent: 1000,
+		});
+		await evaluate(t);
+
+		const row = await settingsRow(t);
+		expect(row?.abuseStatus).toBe('clean');
+		expect(row?.abuseStatusTrigger).toBeUndefined();
+		const audit = await t.run(async (ctx) =>
+			(await ctx.db.query('auditLogs').collect()).filter(
+				(l) => l.action === 'abuse_status_changed' && l.details?.['newStatus'] === 'clean'
+			)
+		);
+		expect(audit).toHaveLength(1);
+		expect(audit[0]?.userId).toBe('system');
+		expect(audit[0]?.details?.['trigger']).toBe('bounce_rate');
+		expect(await resumeNotices(t)).toContain('sending_resumed');
+	});
+
+	it('lifts once the evidence has aged out of the window (too few sends left to judge)', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemSuspension);
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW - 31 * DAY_MS),
+			totalSent: 1000,
+			totalBounced: 200,
+		});
+
+		await evaluate(t);
+
+		expect((await settingsRow(t))?.abuseStatus).toBe('clean');
+	});
+
+	it('does not lift when the instance requires a platform admin to lift it', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { ...systemSuspension, isSendingResumeManual: true });
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), totalSent: 1000 });
+
+		await evaluate(t);
+
+		expect((await settingsRow(t))?.abuseStatus).toBe('suspended');
+	});
+
+	it.each([
+		[
+			'a suspension a platform admin imposed',
+			{ abuseStatus: 'suspended', abuseStatusChangedBy: 'admin-1', abuseStatusReason: 'spam' },
+		],
+		[
+			'a ban, even one the check stored a trigger for',
+			{ ...systemSuspension, abuseStatus: 'banned' },
+		],
+		[
+			'a legacy auto-suspension with no stored trigger',
+			{
+				abuseStatus: 'suspended',
+				abuseStatusChangedBy: 'system',
+				abuseStatusReason: systemSuspension.abuseStatusReason,
+			},
+		],
+	])('never lifts %s', async (_label, row) => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, row);
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), totalSent: 1000 });
+
+		await evaluate(t);
+
+		expect((await settingsRow(t))?.abuseStatus).toBe(row.abuseStatus);
+	});
+
+	it('a Gmail suspension lifts only once no reading in the window is over Google’s guidance', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, {
+			...systemSuspension,
+			abuseStatusTrigger: { code: 'gmail_spam_rate', domain: 'news.example.com' },
+		});
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'news.example.com', status: 'verified' })
+			);
+			await ctx.db.insert('googlePostmasterStats', {
+				domainId,
+				domain: 'news.example.com',
+				periodStart: dayStart(NOW - 10 * DAY_MS),
+				userReportedSpamRatio: 0.004,
+				fetchedAt: NOW - 9 * DAY_MS,
+				ingestedAt: NOW - 9 * DAY_MS,
+			});
+		});
+
+		// Too old to enforce, still inside the 30-day window.
+		await evaluate(t);
+		expect((await settingsRow(t))?.abuseStatus).toBe('suspended');
+
+		vi.setSystemTime(NOW + 21 * DAY_MS);
+		await evaluate(t);
+		expect((await settingsRow(t))?.abuseStatus).toBe('clean');
+	});
+});
+
+describe('evaluateAutoEnforce — a manual lift holds', () => {
+	const NOW = Date.UTC(2026, 10, 20, 12);
+	afterEach(() => vi.useRealTimers());
+
+	async function liftByAdmin(t: Tester) {
+		return await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'clean', at: Date.now(), reason: 'list cleaned', changedBy: 'admin-1' },
+		});
+	}
+
+	it('does not suspend again on the evidence known at the lift until the hold ends', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+
+		const outcome = await liftByAdmin(t);
+
+		vi.setSystemTime(NOW + HOUR_MS);
+		await evaluate(t);
+		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect(outcome).toMatchObject({
+			ok: true,
+			hold: { until: NOW + 7 * DAY_MS, triggers: [{ code: 'bounce_rate' }] },
+		});
+
+		vi.setSystemTime(NOW + 7 * DAY_MS + HOUR_MS);
+		await evaluate(t);
+		const jobs = await pendingEnforceJobs(t);
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]?.riskLevel).toBe('critical');
+	});
+
+	it('still suspends during the hold on evidence that was not over the line at the lift', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+		await liftByAdmin(t);
+
+		// Complaints arrive after the lift: 0.5%, over the 0.3% that suspends.
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			shardKey: 1,
+			totalComplaints: 5,
+		});
+		vi.setSystemTime(NOW + HOUR_MS);
+		await evaluate(t);
+
+		const jobs = await pendingEnforceJobs(t);
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]).toMatchObject({ riskLevel: 'critical', trigger: { code: 'complaint_rate' } });
 	});
 });

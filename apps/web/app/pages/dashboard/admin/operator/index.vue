@@ -9,8 +9,10 @@ import OperatorReviewTab from '~/components/operator/ReviewTab.vue';
 import OperatorSendingStatusCard from '~/components/operator/SendingStatusCard.vue';
 import { useOperatorConsoleReads } from '~/composables/useOperatorConsoleReads';
 import { isBlockingAbuseStatus, type OperatorReviewItem } from '~/utils/operatorConsole';
+import { formatDate } from '~/utils/formatters';
+import { MANUAL_LIFT_HOLD_MS, reputationHoldText } from '~/utils/suspensionLift';
 
-const { t } = useI18n();
+const { t, te, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 
@@ -174,7 +176,10 @@ const statusOptions = computed(() => [
 	{ value: 'banned', label: t('dashboard.admin.operator.index.statusOptions.banned') },
 ]);
 
+// The lift hint names the day the hold would end if the admin lifts now.
+const liftHoldEnds = ref('');
 function openStatus(initial: 'clean' | 'warned' | 'suspended' | 'banned') {
+	liftHoldEnds.value = formatDate(Date.now() + MANUAL_LIFT_HOLD_MS, 'medium', locale.value);
 	statusTargetValue.value = initial;
 	statusReason.value = '';
 	statusModalOpen.value = true;
@@ -190,10 +195,14 @@ async function confirmStatus() {
 		reason: statusReason.value.trim(),
 	});
 	if (r.ok) {
+		// A lift says at once what the automatic check will not suspend on, and until when.
+		const hold = r.result.hold;
 		showToast(
-			t('dashboard.admin.operator.index.toasts.statusSet', {
-				status: t(`dashboard.admin.operator.index.abuseStatus.${statusTargetValue.value}`),
-			})
+			hold
+				? reputationHoldText({ t, te }, hold, locale.value)
+				: t('dashboard.admin.operator.index.toasts.statusSet', {
+						status: t(`dashboard.admin.operator.index.abuseStatus.${statusTargetValue.value}`),
+					})
 		);
 		statusModalOpen.value = false;
 	}
@@ -209,6 +218,9 @@ const isWarnedAbuseStatus = computed(() => currentAbuseStatus.value === 'warned'
 // Suspending or banning stops a workspace's mail, so the confirm says so and
 // takes the danger treatment instead of a neutral "Apply".
 const statusTargetBlocks = computed(() => isBlockingAbuseStatus(statusTargetValue.value));
+const isLifting = computed(
+	() => isBlockingAbuseStatus(currentAbuseStatus.value) && !statusTargetBlocks.value
+);
 
 // ── Admin roster ──────────────────────────────────────────────────────────────
 const addAdminModalOpen = ref(false);
@@ -324,6 +336,7 @@ const anyMutationLoading = computed(
 					:abuse-status-reason="orgDetail?.settings?.abuseStatusReason"
 					:is-warned="isWarnedAbuseStatus"
 					:busy="anyMutationLoading"
+					:sending="orgDetail?.settings"
 					@set-status="openStatus"
 				/>
 				<OperatorOverviewTab
@@ -347,6 +360,7 @@ const anyMutationLoading = computed(
 				:current-abuse-status="currentAbuseStatus"
 				:abuse-status-reason="orgDetail?.settings?.abuseStatusReason"
 				:is-warned="isWarnedAbuseStatus"
+				:sending="orgDetail?.settings"
 				:flagged-orgs="flaggedOrgs"
 				:all-orgs="allOrgs"
 				:busy="anyMutationLoading"
@@ -406,6 +420,9 @@ const anyMutationLoading = computed(
 					:placeholder="t('dashboard.admin.operator.index.statusModal.reasonPlaceholder')"
 					:rows="3"
 				/>
+				<p v-if="isLifting" class="text-caption text-text-secondary">
+					{{ t('shared.sendingSuspension.liftHint', { date: liftHoldEnds }) }}
+				</p>
 			</div>
 			<template #footer>
 				<UiButton variant="ghost" @click="statusModalOpen = false">{{

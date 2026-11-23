@@ -6,7 +6,8 @@ import { getOrThrow, throwNotFound, throwInvalidInput, throwInvalidState } from 
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
 import { findPlatformAdmin } from '../lib/platformAdminAccess';
-import { abuseStatusValidator } from '../workspaces/abuseStatus';
+import { abuseStatusValidator, type AbuseStatus } from '../workspaces/abuseStatus';
+import type { ReputationCheckHold } from '../analytics/reputationEnforcement';
 import { getLiveOrThrow } from '../lib/softDelete';
 
 // Authorization model: every mutation here is a `platformAdminMutation`
@@ -30,13 +31,28 @@ import { getLiveOrThrow } from '../lib/softDelete';
  * the legacy `platform_admin.org_status_changed` row stays for
  * compatibility with existing platform-admin UI queries that filter by
  * that literal.
+ *
+ * Lifting a suspension pauses the reputation check for the evidence over the
+ * line at that moment; the result's `hold` says for which triggers and until
+ * when.
  */
 export const setOrganizationStatus = platformAdminMutation({
 	args: {
 		abuseStatus: abuseStatusValidator,
 		reason: v.string(),
 	},
-	handler: async (ctx, args, admin) => {
+	// Annotated: the result carries part of an `internal` call's answer, and an
+	// inferred type through `internal` is circular.
+	handler: async (
+		ctx,
+		args,
+		admin
+	): Promise<{
+		success: true;
+		previousStatus: AbuseStatus;
+		newStatus: AbuseStatus;
+		hold: ReputationCheckHold | null;
+	}> => {
 		const settings = await ctx.db.query('instanceSettings').first();
 
 		if (!settings) {
@@ -73,7 +89,14 @@ export const setOrganizationStatus = platformAdminMutation({
 			},
 		});
 
-		return { success: true, previousStatus, newStatus: args.abuseStatus };
+		// A lift puts the triggers over the line right now on hold; the console
+		// tells the admin until when (see `abuseStatus.liftHold`).
+		return {
+			success: true,
+			previousStatus,
+			newStatus: args.abuseStatus,
+			hold: outcome.hold ?? null,
+		};
 	},
 });
 

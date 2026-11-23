@@ -876,3 +876,48 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(r.level).toBe('ready');
 	});
 });
+
+describe('deriveDeliveryReadiness — a suspended instance', () => {
+	const viaProvider: StreamTransportFacts = {
+		canSend: true,
+		providerLabels: ['Amazon SES'],
+		usesOwnMta: false,
+	};
+	const ready = input({
+		streamTransport: { transactional: viaProvider, marketing: viaProvider },
+		transactionalSender: { address: 'hello@acme.com', isDomainVerified: true },
+	});
+
+	it.each([
+		['suspended', 'Sending is suspended on this instance'],
+		['banned', 'Sending is disabled on this instance'],
+	] as const)('blocks both streams while %s, however ready the rest is', (status, sentence) => {
+		const r = deriveDeliveryReadiness({ ...ready, sendingSuspension: status });
+		expect(r.level).toBe('blocked');
+		expect(localized(r.headline)).not.toBe('Ready to send');
+		for (const stream of r.streams) {
+			expect(stream.level).toBe('blocked');
+			expect(localized(stream.sentence)).toContain(sentence);
+			expect(stream.actionHref).toBe('/dashboard/admin/delivery#sending-status');
+		}
+		expect(localized(gate(r, 'sending-suspended').actionLabel ?? '')).toBe(
+			'See why and how it resumes'
+		);
+	});
+
+	it('adds no gate while sending is allowed', () => {
+		const r = deriveDeliveryReadiness(ready);
+		expect(r.level).toBe('ready');
+		expect(r.gates.some((g) => g.key === 'sending-suspended')).toBe(false);
+	});
+
+	it('reads the status from the sending overview', () => {
+		const folded = readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, null, {
+			streams: { transactional: viaProvider, campaign: viaProvider },
+			mailServer: null,
+			transactionalSender: null,
+			abuseStatus: 'suspended',
+		});
+		expect(folded.sendingSuspension).toBe('suspended');
+	});
+});
