@@ -49,6 +49,7 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
+import { automationStepFailureReasonValidator } from '../lib/validators/automations';
 import {
 	contactMarketingIneligibility,
 	marketingIneligibilityValidator,
@@ -275,7 +276,7 @@ export const claimStepRun = internalMutation({
 				ctx,
 				stepRun,
 				'Step execution was interrupted and ran out of recovery attempts',
-				{ countRunFailure: true, stepFault: true }
+				{ countRunFailure: true, stepFault: true, failureReason: 'interrupted' }
 			);
 			return { kind: 'ended', reason: 'Retries exhausted' };
 		}
@@ -289,7 +290,7 @@ export const claimStepRun = internalMutation({
 					ctx,
 					stepRun,
 					`Automation exceeded ${MAX_STEPS_PER_RUN} step executions — cancelled to prevent a loop`,
-					{ countRunFailure: false, stepFault: true }
+					{ countRunFailure: false, stepFault: true, failureReason: 'step_limit' }
 				);
 				return { kind: 'ended', reason: 'Max steps exceeded' };
 			}
@@ -386,6 +387,9 @@ export const retryOrFailStepRun = internalMutation({
 		stepRunId: v.id('automationStepRuns'),
 		attempt: v.number(),
 		errorMessage: v.string(),
+		// Optional so a walker action still running the previous release's code
+		// across a deploy is not rejected; such a failure records as `unknown`.
+		failureReason: v.optional(automationStepFailureReasonValidator),
 	},
 	handler: async (
 		ctx,
@@ -412,6 +416,7 @@ export const retryOrFailStepRun = internalMutation({
 		await failStepAndCancelRun(ctx, stepRun, args.errorMessage, {
 			countRunFailure: true,
 			stepFault: true,
+			failureReason: args.failureReason ?? 'unknown',
 		});
 		return { kind: 'failed' };
 	},

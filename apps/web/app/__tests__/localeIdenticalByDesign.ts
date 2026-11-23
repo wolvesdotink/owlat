@@ -262,6 +262,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.audience.contacts.index.importMenu.integrationsDescription',
 	'dashboard.audience.segments.detail.index.pageTitle',
 	'dashboard.automations.detail.edit.activateDialog.automation',
+	'dashboard.automations.detail.index.runs.failure.details',
 	'dashboard.automations.detail.index.runs.range',
 	'dashboard.automations.new.form.optionalHint',
 	'dashboard.campaigns.detail.edit.details.optionalSuffix',
