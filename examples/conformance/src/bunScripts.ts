@@ -37,20 +37,42 @@ export async function prepareForScripts(root: string): Promise<void> {
 	);
 }
 
+/**
+ * Import each specifier from `cwd` in a Bun child and report the ones whose
+ * default export is not an object, which is what a generated registry's
+ * default import would receive.
+ */
+export function findMissingDefaultExports(
+	cwd: string,
+	specifiers: readonly string[]
+): ScriptResult {
+	const source = `const missing = [];
+for (const specifier of ${JSON.stringify(specifiers)}) {
+	const module = await import(specifier);
+	if (typeof module.default !== 'object' || module.default === null) missing.push(specifier);
+}
+console.log(JSON.stringify(missing));`;
+	return runBun(cwd, ['-e', source]);
+}
+
 export function runRepositoryScript(
 	cwd: string,
 	script: string,
 	args: readonly string[]
 ): ScriptResult {
+	return runBun(cwd, [join(REPOSITORY_ROOT, script), ...args]);
+}
+
+function runBun(cwd: string, args: readonly string[]): ScriptResult {
 	// The child must not inherit this run's Vitest wiring.
 	const env = Object.fromEntries(
 		Object.entries(process.env).filter(([key]) => !key.startsWith('VITEST'))
 	);
-	const result = spawnSync(
-		process.versions['bun'] ? process.execPath : 'bun',
-		[join(REPOSITORY_ROOT, script), ...args],
-		{ cwd, encoding: 'utf8', env }
-	);
+	const result = spawnSync(process.versions['bun'] ? process.execPath : 'bun', args, {
+		cwd,
+		encoding: 'utf8',
+		env,
+	});
 	if (result.error) throw result.error;
 	return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }

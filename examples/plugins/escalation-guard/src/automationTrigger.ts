@@ -65,3 +65,6 @@ export const escalationTrigger: PluginAutomationTriggerModule<EscalationTriggerC
 		};
 	},
 };
+
+/** The generated module registry imports this contribution by default import. */
+export default escalationTrigger;

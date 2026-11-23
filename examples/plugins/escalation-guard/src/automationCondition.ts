@@ -67,3 +67,6 @@ export const priorityAccountCondition: PluginAutomationConditionModule<PriorityA
 		return domain.length > 0 && config.domains.includes(domain);
 	},
 };
+
+/** The generated module registry imports this contribution by default import. */
+export default priorityAccountCondition;

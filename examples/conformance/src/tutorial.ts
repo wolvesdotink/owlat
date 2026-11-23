@@ -217,7 +217,8 @@ export class TutorialRun {
 		if (manifest['private'] === true) {
 			throw new Error('error: attempted to publish a private package');
 		}
-		if (name.startsWith('@') && !args.includes('--access')) {
+		const access = args[args.indexOf('--access') + 1];
+		if (name.startsWith('@') && (!args.includes('--access') || access !== 'public')) {
 			throw new Error('a scoped package publishes as restricted unless --access public is passed');
 		}
 		const key = `${name}@${version}`;

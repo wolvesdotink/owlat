@@ -6,13 +6,15 @@
  * green whatever the real `src/index.ts` exports. This suite installs the real
  * package files and runs the shipped codegen script on them, so a reference that
  * stops default-exporting its manifest, or names an export path its
- * `package.json` lacks, fails here.
+ * `package.json` lacks, fails here. Codegen never imports a contribution module,
+ * so the suite then imports each one the way the generated registries do, by
+ * default import.
  */
 
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { REFERENCE_GALLERY } from '../gallery';
-import { prepareForScripts, runRepositoryScript } from '../bunScripts';
+import { contributionExportPaths, REFERENCE_GALLERY } from '../gallery';
+import { findMissingDefaultExports, prepareForScripts, runRepositoryScript } from '../bunScripts';
 import { installFromRegistry, packDirectory } from '../registryInstall';
 import { REPOSITORY_ROOT } from '../repository';
 import { cleanupDeployments, createDeployment, readWorkspaceFile } from '../workspace';
@@ -40,5 +42,15 @@ describe('reference packages as published', () => {
 		for (const entry of REFERENCE_GALLERY) {
 			expect(composition).toContain(`from ${JSON.stringify(entry.packageName)};`);
 		}
+
+		const modules = REFERENCE_GALLERY.flatMap((entry) =>
+			contributionExportPaths(entry.manifest).map(
+				(exportPath) => `${entry.packageName}${exportPath.slice(1)}`
+			)
+		);
+		expect(modules.length).toBeGreaterThan(0);
+		const imported = findMissingDefaultExports(root, modules);
+		expect(imported.status, imported.output).toBe(0);
+		expect(JSON.parse(imported.output.trim()), 'modules without a default export').toEqual([]);
 	});
 });

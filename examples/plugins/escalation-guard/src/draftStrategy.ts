@@ -92,3 +92,6 @@ export const carefulAcknowledgementStrategy: PluginDraftStrategyModule = {
 		return { draftBody };
 	},
 };
+
+/** The generated module registry imports this contribution by default import. */
+export default carefulAcknowledgementStrategy;
