@@ -18,7 +18,7 @@ const rateAgainstLimitSchema = z.strictObject({
 	isOver: z.boolean().meta({ description: 'Whether the rate has reached the limit.' }),
 });
 
-const sendingHoldLiftSchema = z
+export const sendingHoldLiftSchema = z
 	.strictObject({
 		mode: z.enum(SENDING_HOLD_LIFT_MODES).meta({
 			description:

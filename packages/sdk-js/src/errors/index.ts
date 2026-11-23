@@ -1,4 +1,5 @@
 import type { ApiErrorReason, RateLimitInfo } from '../types/common';
+import type { AbuseBlockedErrorData } from '../types/status';
 
 /**
  * Base error class for all Owlat SDK errors.
@@ -143,6 +144,12 @@ export class ConflictError extends OwlatError {
  * abuse-blocked account.
  */
 export class ForbiddenError extends OwlatError {
+	/**
+	 * Set when sending is suspended or banned (`reason: 'abuse_blocked'`): the
+	 * status, since when, the recorded reason and how it lifts.
+	 */
+	readonly abuseBlocked?: AbuseBlockedErrorData;
+
 	constructor(
 		message: string,
 		code: string = 'forbidden',
@@ -151,6 +158,9 @@ export class ForbiddenError extends OwlatError {
 	) {
 		super(message, code, 403, rateLimit, data);
 		this.name = 'ForbiddenError';
+		// The server sends this shape with the reason; the SDK does not re-validate responses.
+		if (this.reason === 'abuse_blocked')
+			this.abuseBlocked = data as unknown as AbuseBlockedErrorData;
 	}
 }
 

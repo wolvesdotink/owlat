@@ -33,6 +33,7 @@ export type {
 	SendEventParams,
 	SendEventResponse,
 	// Status
+	AbuseBlockedErrorData,
 	DeliveryFix,
 	DeliveryFixAudience,
 	DeliveryRates,

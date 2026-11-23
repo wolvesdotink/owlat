@@ -10,6 +10,7 @@ import {
 	InvalidStateError,
 	LimitReachedError,
 } from '../src/errors';
+import type { AbuseBlockedErrorData } from '../src';
 import type { RateLimitInfo } from '../src/types/common';
 
 const rateLimit: RateLimitInfo = { limit: 100, remaining: 99, reset: 1700000000 };
@@ -139,6 +140,22 @@ describe('ForbiddenError', () => {
 		expect(err.name).toBe('ForbiddenError');
 		expect(err.statusCode).toBe(403);
 		expect(err.code).toBe('forbidden');
+	});
+
+	it('exposes the sending hold of an abuse_blocked refusal, with how it lifts', () => {
+		const data: AbuseBlockedErrorData = {
+			reason: 'abuse_blocked',
+			status: 'suspended',
+			since: '2026-11-20T09:00:00.000Z',
+			detail: null,
+			lift: { mode: 'admin', condition: null },
+		};
+		const err = new ForbiddenError('Sending is suspended', 'forbidden', undefined, data);
+		expect(err.abuseBlocked).toEqual(data);
+		expect(err.abuseBlocked?.lift?.mode).toBe('admin');
+		expect(
+			new ForbiddenError('msg', 'forbidden', undefined, { reason: 'missing_scope' }).abuseBlocked
+		).toBeUndefined();
 	});
 
 	it('should be instanceof OwlatError and Error', () => {

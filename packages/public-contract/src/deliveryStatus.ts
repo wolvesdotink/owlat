@@ -166,6 +166,16 @@ export interface SendingHold {
 	lift: SendingHoldLift;
 }
 
+/**
+ * `error.data` of the `403 abuse_blocked` refusal of `POST /api/v1/transactional`:
+ * the sending hold, as `GET /api/v1/status` reports it.
+ */
+export interface AbuseBlockedErrorData extends Omit<SendingHold, 'lift'> {
+	reason: 'abuse_blocked';
+	/** How it lifts; `null` only if the suspension lifted while the request ran. */
+	lift: SendingHoldLift | null;
+}
+
 /** Body of `GET /api/v1/status`. */
 export interface DeliveryStatus {
 	level: DeliveryStatusLevel;

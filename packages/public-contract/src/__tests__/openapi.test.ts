@@ -121,6 +121,39 @@ describe('error reasons', () => {
 		}
 	});
 
+	it("describes the send route's abuse_blocked data, with the lift the status endpoint returns", () => {
+		type DataSchema = {
+			properties: Record<string, { anyOf?: Array<{ $ref?: string }> }>;
+			required?: string[];
+			additionalProperties?: unknown;
+		};
+		const send = Object.values(paths)
+			.flatMap((methods) => Object.values(methods))
+			.find((op) => op.operationId === 'sendTransactional')!;
+		const forbidden = send.responses['403']!.content['application/json'].schema as {
+			allOf: Array<{ properties?: { error: { properties: { data: DataSchema } } } }>;
+		};
+		const data = forbidden.allOf[1]!.properties!.error.properties.data;
+		expect(Object.keys(data.properties).sort()).toEqual(
+			['detail', 'lift', 'reason', 'since', 'status'].sort()
+		);
+		// Optional and open: the other 403 reasons send none of these.
+		expect(data.required).toBeUndefined();
+		expect(data.additionalProperties).toBeUndefined();
+
+		const schemas = (committed['components'] as { schemas: Record<string, JsonSchema> }).schemas;
+		type JsonSchema = {
+			properties?: Record<string, JsonSchema>;
+			$ref?: string;
+			anyOf?: JsonSchema[];
+		};
+		const statusLift = schemas['DeliveryStatus']!.properties!['sendingHold']!.anyOf!.find(
+			(branch) => branch.properties
+		)!.properties!['lift']!;
+		expect(statusLift.$ref).toBe('#/components/schemas/SendingHoldLift');
+		expect(data.properties['lift']!.anyOf!.map((branch) => branch.$ref)).toContain(statusLift.$ref);
+	});
+
 	it('names each reason only under a status its operation answers with', () => {
 		for (const operation of PUBLIC_OPERATIONS) {
 			const statuses = new Set<number>([
