@@ -172,13 +172,14 @@ Fired when a deliverability check that had passed regresses and Owlat raises an 
   "scope": "deployment" | "domain",
   "domain": "mail.example.com" | null,
   "message": "<English diagnostic>",
+  "nextAction": "<English fix sentence>",
   "observedAt": "<ISO-8601>",
   "emailMayNotArrive": true,
   "isTest": false
 }
 ```
 
-`emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
+`nextAction` is the check's fix sentence from `DELIVERABILITY_NEXT_ACTIONS` in `@owlat/shared`, the one the Deliverability Center shows; a test alert carries a fixed sentence. `emailMayNotArrive` is true when the alert is about the server its own email leaves through (a blocking server check while system mail uses the built-in MTA).
 
 ### `deliverability.alert_resolved`
 

@@ -15,7 +15,7 @@
  */
 
 import { v } from 'convex/values';
-import { DELIVERABILITY_CHECKLIST } from '@owlat/shared';
+import { DELIVERABILITY_CHECKLIST, DELIVERABILITY_NEXT_ACTIONS } from '@owlat/shared';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -69,6 +69,7 @@ export const announce = internalMutation({
 				...subject,
 				severity: definition?.severity ?? 'blocking',
 				message: alert.message,
+				nextAction: DELIVERABILITY_NEXT_ACTIONS[alert.itemId],
 				observedAt: alert.observedAt,
 				emailMayNotArrive: alert.isEmailOnAffectedTransport === true,
 				isTest: false,
@@ -100,6 +101,7 @@ export async function enqueueTestAlertWebhooks(
 			severity: 'blocking',
 			domain: null,
 			message: 'This is a test deliverability alert from Owlat. No check regressed.',
+			nextAction: 'Nothing to fix. Check that this alert reached the right place.',
 			observedAt: now,
 			emailMayNotArrive: false,
 			isTest: true,

@@ -19,6 +19,7 @@ export const deliverabilityAlertRaisedDataSchema = z.strictObject({
 	scope,
 	domain: z.string().nullable(),
 	message: z.string(),
+	nextAction: z.string(),
 	observedAt: isoTime,
 	emailMayNotArrive: z.boolean(),
 	isTest: z.boolean(),

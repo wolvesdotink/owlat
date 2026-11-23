@@ -483,6 +483,8 @@ export interface DeliverabilityAlertResolvedData extends DeliverabilityAlertSubj
 export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubject {
 	severity: string;
 	message: string;
+	/** The fix the Deliverability Center shows for this check. */
+	nextAction: string;
 	observedAt: string;
 	/** The alert is about the server its own email leaves from; that email may not arrive. */
 	emailMayNotArrive: boolean;
