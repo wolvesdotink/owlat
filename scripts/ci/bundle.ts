@@ -74,12 +74,14 @@ export const CHECK_STEPS: readonly Step[] = [
 ];
 
 /**
- * Everything the steps write, repo-relative. A production `nuxt build` keeps
- * its build directory under node_modules/.cache, not in apps/web/.nuxt, which
- * the dev server and the web typecheck use and the run never touches.
+ * Everything the steps write, repo-relative. A production `nuxt build` puts its
+ * build directory under node_modules/.cache when apps/web/.nuxt (the dev
+ * server's and the web typecheck's) exists, and into apps/web/.nuxt otherwise.
+ * A path that existed before the run is kept and holds this run's build.
  */
 export const WRITTEN: readonly string[] = [
 	'apps/web/.output',
+	'apps/web/.nuxt',
 	'apps/web/node_modules/.cache/nuxt/.nuxt',
 	'packages/ui/.nuxt',
 	'packages/provider-kit/dist',
