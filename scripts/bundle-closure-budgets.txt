@@ -288,6 +288,7 @@ deferred 21 components/KeyboardShortcutsHelp.vue
 deferred 14 components/SendTestEmailModal.vue
 deferred 23 components/ai/EmailGeneratePanel.vue
 deferred 5 components/automations/RunFailureNote.vue
+deferred 16 components/automations/RunsPanel.vue
 deferred 6 components/automations/steps/condition/Editor.vue
 deferred 4 components/automations/steps/delay/Editor.vue
 deferred 45 components/automations/steps/email/Editor.vue

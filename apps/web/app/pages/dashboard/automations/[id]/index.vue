@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc } from '@owlat/api/dataModel';
+import { defineAsyncComponent } from 'vue';
 import { formatNumber } from '~/utils/formatters';
 import { useFormat } from '~/composables/useFormat';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
 import AutomationsFunnelChart from '~/components/automations/FunnelChart.vue';
-import AutomationsRunsPanel from '~/components/automations/RunsPanel.vue';
 import {
 	ArrowLeftIcon,
 	ClockIcon,
@@ -21,6 +21,12 @@ import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 const { formatPercentage } = useFormat();
+// The runs list sits below the stats and the funnel and runs its own query, so
+// it and its filter control load after the page instead of with it (the
+// route's bundle budget).
+const AutomationsRunsPanel = defineAsyncComponent(
+	() => import('~/components/automations/RunsPanel.vue')
+);
 
 useHead({ title: () => t('dashboard.automations.detail.index.pageTitle') });
 
