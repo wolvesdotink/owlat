@@ -31,7 +31,7 @@ import {
 	type PluginAutonomyGateInput,
 	type PluginAutonomyGateServices,
 } from '@owlat/plugin-kit';
-import { helloPlugin } from './docsSamples/minimalManifest';
+import helloOwlatPluginDefault, { helloOwlatPlugin } from './docsSamples/minimalManifest';
 import { preflightPlugin } from './docsSamples/contributionManifest';
 import { gate } from './docsSamples/gateModule';
 import { cron } from './docsSamples/cronModule';
@@ -45,8 +45,9 @@ import { acmeRelayPlugin } from './docsSamples/sendProviderManifest';
 
 describe('docs samples: the manifests validate through the shipped validator', () => {
 	it('accepts the minimal manifest', () => {
-		expect(helloPlugin.id).toBe('hello-owlat');
-		expect(helloPlugin.capabilities).toEqual(['plugin-storage:read', 'plugin-storage:write']);
+		expect(helloOwlatPlugin.id).toBe('hello-owlat');
+		expect(helloOwlatPlugin.capabilities).toEqual(['plugin-storage:read', 'plugin-storage:write']);
+		expect(helloOwlatPluginDefault).toBe(helloOwlatPlugin);
 	});
 
 	it('rejects the minimal manifest once its required flag is removed', () => {

@@ -211,6 +211,35 @@ describe('installed plugin loading', () => {
 		expect(throwing.details).toEqual(['TypeError: settings is not defined']);
 	});
 
+	it('lists every issue when definePlugin rejects the manifest while the package is imported', async () => {
+		const issues = Array.from({ length: 12 }, (_, index) => ({
+			code: 'missing',
+			path: `$.contributes.crons[${index}].timeoutMs`,
+			message: 'must be an integer between 1000 and 300000',
+		}));
+		const root = await createWorkspace(
+			{ 'defined-plugin': '1.0.0' },
+			{
+				'defined-plugin': `class PluginManifestError extends Error {
+	constructor(issues) {
+		super('Invalid plugin manifest: ' + issues.map((issue) => issue.path + ' ' + issue.message).join('; '));
+		this.name = 'PluginManifestError';
+		this.issues = issues;
+	}
+}
+throw new PluginManifestError(${JSON.stringify(issues)});`,
+			}
+		);
+
+		const error = await loadBundledPlugins(root, ['defined-plugin']).catch((cause) => cause);
+
+		expect(error).toMatchObject({
+			code: 'invalid_manifest',
+			message: 'Bundled plugin defined-plugin does not export a valid default manifest',
+		});
+		expect(error.details).toEqual(issues.map((issue) => `${issue.path} ${issue.message}`));
+	});
+
 	it('rejects duplicate manifest ids across packages', async () => {
 		const root = await createWorkspace(
 			{ 'one-plugin': '1.0.0', 'two-plugin': '1.0.0' },

@@ -85,6 +85,11 @@ async function readJson(path: string): Promise<unknown> {
 
 const OWLAT_SCOPE = '@owlat/';
 
+/** One shell word: `create --dir` accepts any path inside the workspace, spaces included. */
+function shellWord(value: string): string {
+	return /^[\w./@-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 /**
  * The refusal `add` raises for a workspace package, with the exact commands
  * that turn it into one codegen accepts. Codegen bundles only registry installs
@@ -104,12 +109,12 @@ export function workspacePackageRefusal(
 		`${packageName} is the workspace package in ${member.directory}. A bundled plugin has to be installed from a package registry.`,
 		[
 			'From the checkout root, publish it, take the folder out of the checkout and install the published version:',
-			`  cd ${member.directory}`,
+			`  cd ${shellWord(member.directory)}`,
 			...(ownedScope ? [] : [`  npm pkg set name=${publishedName}`]),
 			...(member.private ? ['  npm pkg delete private'] : []),
 			'  bun publish --access public',
 			'  cd -',
-			`  mv ${member.directory} ../${folder}`,
+			`  mv ${shellWord(member.directory)} ${shellWord(`../${folder}`)}`,
 			`  bun add --exact ${publishedName}@${member.version}`,
 			`  ${CLI_INVOCATION} add ${publishedName}`,
 			...(ownedScope

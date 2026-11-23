@@ -155,6 +155,25 @@ describe('add', () => {
 		);
 	});
 
+	it('quotes a folder name the shell would split', async () => {
+		const root = await createCliWorkspace({
+			workspaceMembers: {
+				'examples/plugins/my plugin': { name: '@acme/my-plugin', version: '0.0.0', private: true },
+			},
+		});
+		const { io } = captureIo();
+
+		const error = (await runMutation(
+			'add',
+			root,
+			{ packageInput: '@acme/my-plugin', dryRun: false },
+			io
+		).catch((cause: unknown) => cause)) as PluginCliError;
+
+		expect(error.details).toContain("  cd 'examples/plugins/my plugin'");
+		expect(error.details).toContain("  mv 'examples/plugins/my plugin' '../my plugin'");
+	});
+
 	it('rejects an invalid package-name argument', async () => {
 		const root = await createCliWorkspace();
 		const { io } = captureIo();

@@ -51,6 +51,15 @@ export async function loadBundledPlugins(
 		try {
 			loadedModule = await loadModule(resolvedEntry);
 		} catch (cause) {
+			const issues = manifestIssueDetails(cause);
+			if (issues) {
+				throw new PluginCodegenError(
+					'invalid_manifest',
+					`Bundled plugin ${packageName} does not export a valid default manifest`,
+					issues,
+					{ cause }
+				);
+			}
 			throw new PluginCodegenError(
 				'package_load_failed',
 				`Bundled plugin ${packageName} could not be imported`,
@@ -69,9 +78,7 @@ export async function loadBundledPlugins(
 				`Bundled plugin ${packageName} does not export a valid default manifest`,
 				defaultExport === undefined
 					? [describeMissingDefault(loadedModule)]
-					: cause instanceof PluginManifestError
-						? cause.issues.map((issue) => `${issue.path} ${issue.message}`)
-						: [],
+					: (manifestIssueDetails(cause) ?? []),
 				{ cause }
 			);
 		}
@@ -105,6 +112,28 @@ function readDefaultExport(loadedModule: unknown): unknown {
 }
 
 const MAX_CAUSE_LENGTH = 300;
+
+/**
+ * The validator's issues as detail lines, whichever side raised them: codegen's
+ * own parse, or `definePlugin` throwing while the package's module is imported.
+ * The second error comes from the copy of the kit the PLUGIN resolved, which need
+ * not be the instance codegen imported, so it is recognised by shape rather than
+ * by `instanceof`.
+ */
+function manifestIssueDetails(cause: unknown): readonly string[] | undefined {
+	if (cause instanceof PluginManifestError) {
+		return cause.issues.map((issue) => `${issue.path} ${issue.message}`);
+	}
+	if (!(cause instanceof Error) || cause.name !== 'PluginManifestError') return undefined;
+	const issues: unknown = Reflect.get(cause, 'issues');
+	if (!Array.isArray(issues)) return undefined;
+	const lines = issues.flatMap((issue: unknown) => {
+		if (!isRecord(issue)) return [];
+		const { path, message } = issue;
+		return typeof path === 'string' && typeof message === 'string' ? [`${path} ${message}`] : [];
+	});
+	return lines.length > 0 ? lines : undefined;
+}
 
 /**
  * The first line of what the import threw, bounded. A plugin's own top-level

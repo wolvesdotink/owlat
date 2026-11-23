@@ -12,6 +12,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { buildScaffold } from '@owlat/plugin-cli/scaffold';
+import { parsePluginPackageName } from '@owlat/plugin-host';
+import { parsePluginId } from '@owlat/plugin-kit';
 import { readRepositoryFile } from '../repository';
 import { cleanupTutorialRuns, TutorialRun, tutorialCommands } from '../tutorial';
 
@@ -57,6 +60,36 @@ describe('the plugin authoring tutorial', () => {
 		expect(refusal).toContain('is the workspace package in examples/plugins/');
 		const stepSix = commands.filter((command) => command.step.startsWith('6.'));
 		for (const command of stepSix.slice(0, -1)) expect(refusal).toContain(`  ${command.line}`);
+	});
+
+	it('runs the CLI the way a checkout provides it', async () => {
+		const cliCommands = (await englishCommands()).filter((command) =>
+			/owlat-plugins|plugin-cli/.test(command.line)
+		);
+		expect(cliCommands.length).toBeGreaterThan(0);
+		for (const command of cliCommands) expect(command.line).toMatch(/^bun run owlat-plugins /);
+	});
+
+	it("gives step 2 a manifest that drops into the scaffold's src/manifest.ts", async () => {
+		const sample = await readRepositoryFile(
+			'packages/plugin-kit/src/__tests__/docsSamples/minimalManifest.ts'
+		);
+		const create = (await englishCommands()).find((command) =>
+			command.line.startsWith('bun run owlat-plugins create ')
+		);
+		const [, , , , id, , packageName] = create?.line.split(' ') ?? [];
+		const index = buildScaffold(
+			'/workspace',
+			`/workspace/examples/plugins/${id}`,
+			parsePluginId(id ?? ''),
+			parsePluginPackageName(packageName ?? '')
+		).get('src/index.ts');
+		// The scaffold's entry re-exports the manifest by name and as the default.
+		const named = /export \{ (\w+) \} from '\.\/manifest';/.exec(index ?? '')?.[1];
+		expect(index).toContain("export { default } from './manifest';");
+		expect(sample).toContain(`export const ${named} = definePlugin({`);
+		expect(sample).toContain(`export default ${named};`);
+		expect(sample).toContain(`id: '${id}',`);
 	});
 
 	it('gives the German page the same commands', async () => {
