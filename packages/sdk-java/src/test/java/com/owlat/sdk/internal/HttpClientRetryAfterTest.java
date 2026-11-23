@@ -90,6 +90,7 @@ class HttpClientRetryAfterTest {
 
         assertEquals(3600, ex.getRetryAfter());
         assertEquals(Map.of("reason", "recipient_rate_limited"), ex.getData());
+        assertEquals("recipient_rate_limited", ex.getReason());
         assertEquals(1, requests.get());
         assertEquals(List.of(), delays);
     }

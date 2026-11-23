@@ -53,6 +53,7 @@ export const validateAndCheckRateLimit = internalMutation({
 				return {
 					success: false as const,
 					error: 'rate_limited' as const,
+					bucket: 'failed_auth' as const,
 					retryAfter: failure.retryAfter ?? 1000,
 				};
 			}
@@ -69,6 +70,7 @@ export const validateAndCheckRateLimit = internalMutation({
 			return {
 				success: false as const,
 				error: 'rate_limited' as const,
+				bucket: 'key' as const,
 				retryAfter: retryAfter ?? 1000,
 			};
 		}
