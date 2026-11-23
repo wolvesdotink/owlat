@@ -61,6 +61,7 @@ describe('built-in tool registry conformance', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'getDeliveryHealth',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
@@ -83,6 +84,7 @@ describe('built-in tool registry conformance', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'getDeliveryHealth',
 		]) {
 			expect(byName.get(readTool)?.spend).toBeNull();
 		}
@@ -95,6 +97,17 @@ describe('built-in tool registry conformance', () => {
 			expect(module.flag).toBe(flags[module.name]);
 		}
 		expect(hasFlaggedModule(TOOL_MODULES)).toBe(true);
+	});
+
+	it('declares delivery health as an unflagged, scrubbed read that spends nothing', () => {
+		const deliveryHealth = TOOL_MODULES.find((m) => m.name === 'getDeliveryHealth');
+		expect(deliveryHealth).toMatchObject({
+			scope: 'workspace:read',
+			spend: null,
+			scrubOutput: true,
+			isRetrieval: false,
+		});
+		expect(deliveryHealth?.flag).toBeUndefined();
 	});
 
 	it('declares the mail answer as a flagged, scrubbed read that counts as a retrieval', () => {
@@ -263,6 +276,7 @@ describe('buildAssistantTools', () => {
 			'searchEverything',
 			'getCampaignStats',
 			'getEmailStats',
+			'getDeliveryHealth',
 			'draftEmailReply',
 			'draftCampaignCopy',
 		]);
@@ -281,6 +295,7 @@ describe('buildAssistantTools', () => {
 				'searchEverything',
 				'getCampaignStats',
 				'getEmailStats',
+				'getDeliveryHealth',
 				'draftEmailReply',
 				'draftCampaignCopy',
 			]);

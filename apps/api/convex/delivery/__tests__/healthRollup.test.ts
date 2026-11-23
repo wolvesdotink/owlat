@@ -1,7 +1,9 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import schema from '../../schema';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
+import { createTestCampaign } from '../../__tests__/factories';
+import { DELIVERY_HEALTH_EXPLANATIONS } from '../healthCopy';
 import { MTA_HEALTH_MAX_AGE_MS, MTA_HEALTH_RESTAMP_MS } from '../mtaHealthFreshness';
 
 /**
@@ -436,6 +438,192 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		expect(health).toEqual({
 			level: 'error',
 			reasonCode: 'no_provider_transactional',
+		});
+	});
+});
+
+/**
+ * The assistant's delivery-health read: the same roll-up the sidebar dot shows,
+ * explained in a sentence, with the facts behind it that members can already
+ * read (domain verification, the org's rates, the sending hold).
+ */
+describe('assistant deliveryHealth', () => {
+	const SUSPENDED_AT = Date.UTC(2026, 10, 20, 9, 0, 0);
+	const REASON =
+		'Auto-suspended: Gmail reports a spam rate of 0.42% for mail.example.com on 2026-11-19';
+
+	async function seed(
+		t: ReturnType<typeof convexTest>,
+		opts: {
+			extraDomains?: { domain: string; status: 'pending' | 'failed' }[];
+			settings?: Record<string, unknown>;
+			reputation?: { sent: number; bounced: number; complaints: number };
+		} = {}
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: { status: 'ok', observedAt: Date.now() },
+				defaultFromEmail: 'hello@mail.example.com',
+				...opts.settings,
+				createdAt: Date.now(),
+			});
+			for (const { domain, status } of [
+				{ domain: 'mail.example.com', status: 'verified' as const },
+				...(opts.extraDomains ?? []),
+			]) {
+				await ctx.db.insert('domains', {
+					domain,
+					status,
+					dnsRecords: {},
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+			}
+			if (opts.reputation) {
+				const { sent, bounced, complaints } = opts.reputation;
+				await ctx.db.insert('sendingReputation', {
+					scope: 'org',
+					periodStart: Date.now() - (Date.now() % 86_400_000),
+					shardKey: 0,
+					totalSent: sent,
+					totalDelivered: sent - bounced,
+					totalBounced: bounced,
+					totalHardBounced: bounced,
+					totalComplaints: complaints,
+					lastCalculatedAt: Date.now(),
+				});
+			}
+		});
+	}
+
+	it('reports a healthy instance with its domains and nothing held', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t);
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health).toEqual({
+			level: 'ok',
+			reasonCode: 'healthy',
+			explanation: DELIVERY_HEALTH_EXPLANATIONS.healthy.sentence,
+			fix: null,
+			domains: [{ domain: 'mail.example.com', status: 'verified' }],
+			isDomainListTruncated: false,
+			rates: null,
+			sendHold: null,
+		});
+	});
+
+	it('names a failed domain and where to fix it', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, { extraDomains: [{ domain: 'news.example.com', status: 'failed' }] });
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health).toMatchObject({
+			level: 'error',
+			reasonCode: 'domain_failed',
+			explanation: DELIVERY_HEALTH_EXPLANATIONS.domain_failed.sentence,
+			fix: { route: '/dashboard/admin/delivery/domains', who: 'workspace_admin' },
+		});
+		expect(health.domains).toEqual(
+			expect.arrayContaining([
+				{ domain: 'mail.example.com', status: 'verified' },
+				{ domain: 'news.example.com', status: 'failed' },
+			])
+		);
+	});
+
+	it('returns the recorded reason and since-when of a suspension', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			settings: {
+				abuseStatus: 'suspended',
+				abuseStatusReason: REASON,
+				abuseStatusChangedAt: SUSPENDED_AT,
+				abuseStatusChangedBy: 'system',
+			},
+		});
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health).toMatchObject({
+			level: 'error',
+			reasonCode: 'sending_suspended',
+			fix: { route: '/dashboard/admin/operator', who: 'platform_admin' },
+			sendHold: {
+				status: 'suspended',
+				reason: REASON,
+				since: new Date(SUSPENDED_AT).toISOString(),
+			},
+		});
+	});
+
+	it('keeps no stale reason once sending is allowed again', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			settings: { abuseStatus: 'clean', abuseStatusReason: REASON, abuseStatusChangedAt: 1 },
+		});
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health.sendHold).toBeNull();
+	});
+
+	it('flags the bounce and complaint rates that are over their limits', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, { reputation: { sent: 1000, bounced: 60, complaints: 2 } });
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health.rates).toEqual({
+			windowDays: 30,
+			sent: 1000,
+			bounce: { ratePct: 6, limitPct: 2, isOver: true },
+			complaint: { ratePct: 0.2, limitPct: 0.1, isOver: true },
+		});
+	});
+
+	it('leaves rates under their limits unflagged', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, { reputation: { sent: 1000, bounced: 10, complaints: 0 } });
+
+		const health = await t.query(internal.assistant.insights.deliveryHealth, {});
+		expect(health.rates).toMatchObject({
+			bounce: { ratePct: 1, isOver: false },
+			complaint: { ratePct: 0, isOver: false },
+		});
+	});
+
+	it("carries the suspension's reason on a held campaign's sendHold", async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await seed(t, {
+			settings: {
+				abuseStatus: 'suspended',
+				abuseStatusReason: REASON,
+				abuseStatusChangedAt: SUSPENDED_AT,
+			},
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					name: 'Spring sale',
+					searchableText: 'spring sale',
+					status: 'sending',
+				}) as never
+			);
+		});
+
+		const { campaigns } = await t.query(internal.assistant.insights.campaignStats, {
+			query: 'spring',
+		});
+		expect(campaigns[0]?.sendHold).toMatchObject({
+			kind: 'held',
+			status: 'suspended',
+			reason: REASON,
 		});
 	});
 });

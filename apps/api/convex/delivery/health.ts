@@ -123,12 +123,13 @@ export function mtaInfrastructureState(
 	return snapshot.status;
 }
 
-interface DeliveryHealthRollup {
+export interface DeliveryHealthRollup {
 	level: DeliveryHealthLevel;
 	/**
 	 * The worst offender as a catalog reason (`healthCopy.ts`), worded by the
-	 * client in the reader's language. Nothing outside the web app reads the
-	 * roll-up, so it carries no English sentence of its own.
+	 * client in the reader's language, so the roll-up carries no English
+	 * sentence of its own. The assistant explains it through
+	 * `DELIVERY_HEALTH_EXPLANATIONS` instead.
 	 */
 	reasonCode: DeliveryHealthReason;
 	/** The values the reason's sentence interpolates, when it has any. */
@@ -312,43 +313,49 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
 // all-members: delivery health is org-wide operational status, member-visible — a coarse ok/warn/error level + reason code, no credentials or raw metrics.
 export const getDeliveryHealth = authedQuery({
 	args: {},
-	handler: async (ctx): Promise<DeliveryHealthRollup> => {
-		// Rolling 30-day org reputation, derived on read through the single
-		// summarizer. No in-window activity summarizes to 'low' → treated as ok.
-		const orgSummary = await summarize(ctx.db, { kind: 'org' });
-		const hasActivity =
-			orgSummary.totalSent > 0 ||
-			orgSummary.totalDelivered > 0 ||
-			orgSummary.totalBounced > 0 ||
-			orgSummary.totalComplaints > 0;
-
-		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most.
-
-		const canSend = await isDeliveryConfigured(ctx);
-		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
-		const usesMta =
-			getOptional('EMAIL_PROVIDER') === OWN_ARM_TRANSPORT_KIND ||
-			routes.some((route) =>
-				route.providers.some(
-					(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
-				)
-			);
-		const { mtaHealth: snapshot } = await readInstanceCounter(ctx.db, 'mtaHealth');
-		const mtaInfrastructure = usesMta ? mtaInfrastructureState(snapshot, Date.now()) : null;
-
-		const streams = await streamHealthInputs(ctx, routes);
-		return rollUpDeliveryHealth({
-			reputationRisk: hasActivity ? orgSummary.riskLevel : null,
-			domainStatuses: domains.map((d) => d.status),
-			canSend,
-			mtaInfrastructure,
-			...streams,
-			...(mtaInfrastructure === 'signing_held'
-				? { heldSigningDomains: snapshot?.dkimSigningHeld?.map((held) => held.domain) ?? [] }
-				: {}),
-		});
-	},
+	handler: async (ctx): Promise<DeliveryHealthRollup> => await loadDeliveryHealth(ctx),
 });
+
+/**
+ * The roll-up's reads, shared by the member query above and the assistant's
+ * internal read (`assistant/insights.ts`), so both name the same verdict.
+ */
+export async function loadDeliveryHealth(ctx: QueryCtx): Promise<DeliveryHealthRollup> {
+	// Rolling 30-day org reputation, derived on read through the single
+	// summarizer. No in-window activity summarizes to 'low' → treated as ok.
+	const orgSummary = await summarize(ctx.db, { kind: 'org' });
+	const hasActivity =
+		orgSummary.totalSent > 0 ||
+		orgSummary.totalDelivered > 0 ||
+		orgSummary.totalBounced > 0 ||
+		orgSummary.totalComplaints > 0;
+
+	const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most.
+
+	const canSend = await isDeliveryConfigured(ctx);
+	const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
+	const usesMta =
+		getOptional('EMAIL_PROVIDER') === OWN_ARM_TRANSPORT_KIND ||
+		routes.some((route) =>
+			route.providers.some(
+				(provider) => provider.isEnabled && provider.providerType === OWN_ARM_TRANSPORT_KIND
+			)
+		);
+	const { mtaHealth: snapshot } = await readInstanceCounter(ctx.db, 'mtaHealth');
+	const mtaInfrastructure = usesMta ? mtaInfrastructureState(snapshot, Date.now()) : null;
+
+	const streams = await streamHealthInputs(ctx, routes);
+	return rollUpDeliveryHealth({
+		reputationRisk: hasActivity ? orgSummary.riskLevel : null,
+		domainStatuses: domains.map((d) => d.status),
+		canSend,
+		mtaInfrastructure,
+		...streams,
+		...(mtaInfrastructure === 'signing_held'
+			? { heldSigningDomains: snapshot?.dkimSigningHeld?.map((held) => held.domain) ?? [] }
+			: {}),
+	});
+}
 
 /**
  * The inputs read off the settings row: the abuse status, and the per-stream
