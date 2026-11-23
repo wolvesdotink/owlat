@@ -7,7 +7,12 @@
 import { z } from 'zod';
 import { apiErrorResponseSchema, paginationMetaSchema } from './common';
 import { OPERATION_EXAMPLES, type OperationExample } from './examples';
-import { KEYED_ERROR_STATUSES, PUBLIC_OPERATIONS, type PublicOperation } from './operations';
+import {
+	KEYED_ERROR_STATUSES,
+	PUBLIC_OPERATIONS,
+	reasonsAt,
+	type PublicOperation,
+} from './operations';
 import { transactionalAttachmentSchema } from './transactional';
 
 type JsonObject = Record<string, unknown>;
@@ -29,11 +34,12 @@ const RATE_LIMIT_HEADERS: JsonObject = {
 		schema: { type: 'integer' },
 	},
 	'X-RateLimit-Remaining': {
-		description: 'Requests left in the current window.',
+		description:
+			'A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.',
 		schema: { type: 'integer' },
 	},
 	'X-RateLimit-Reset': {
-		description: 'When the window resets, as a Unix timestamp.',
+		description: 'A Unix timestamp one second after the response; not when the limit refills.',
 		schema: { type: 'integer' },
 	},
 };
@@ -95,7 +101,41 @@ function successBody(operation: PublicOperation): JsonObject {
 	};
 }
 
-function errorResponse(status: number): JsonObject {
+/**
+ * The error body at one status: the shared envelope, and when the operation
+ * names reasons at that status, `error.data.reason` narrowed to them.
+ */
+function errorBody(reasons: readonly string[]): JsonObject {
+	if (reasons.length === 0) return ref('ApiErrorResponse');
+	return {
+		allOf: [
+			ref('ApiErrorResponse'),
+			{
+				type: 'object',
+				properties: {
+					error: {
+						type: 'object',
+						properties: {
+							data: {
+								type: 'object',
+								properties: {
+									reason: {
+										type: 'string',
+										enum: reasons,
+										description:
+											'Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status.',
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		],
+	};
+}
+
+function errorResponse(status: number, reasons: readonly string[]): JsonObject {
 	return {
 		description: STATUS_TEXT[status] ?? 'Error.',
 		...(status === 429
@@ -108,7 +148,7 @@ function errorResponse(status: number): JsonObject {
 					},
 				}
 			: {}),
-		content: { 'application/json': { schema: ref('ApiErrorResponse') } },
+		content: { 'application/json': { schema: errorBody(reasons) } },
 	};
 }
 
@@ -188,7 +228,12 @@ function operationObject(operation: PublicOperation): JsonObject {
 					},
 				},
 			},
-			...Object.fromEntries(errorStatuses.map((status) => [String(status), errorResponse(status)])),
+			...Object.fromEntries(
+				errorStatuses.map((status) => [
+					String(status),
+					errorResponse(status, reasonsAt(operation, status)),
+				])
+			),
 		},
 	};
 }

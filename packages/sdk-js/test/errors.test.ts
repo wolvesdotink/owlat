@@ -33,6 +33,15 @@ describe('OwlatError', () => {
 		expect(err.data).toEqual({ field: 'email' });
 	});
 
+	it('reads the refusal code from data.reason', () => {
+		const err = new AuthenticationError('Invalid API key', 'unauthenticated', undefined, {
+			reason: 'invalid_key',
+		});
+		expect(err.reason).toBe('invalid_key');
+		expect(new OwlatError('err', 'internal', 500).reason).toBeUndefined();
+		expect(new OwlatError('err', 'internal', 500, undefined, { reason: 3 }).reason).toBeUndefined();
+	});
+
 	it('should leave data undefined when not provided', () => {
 		const err = new OwlatError('err', 'internal', 500);
 		expect(err.data).toBeUndefined();

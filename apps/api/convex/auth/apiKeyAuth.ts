@@ -10,6 +10,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { getClientIp } from '../lib/publicRateLimit';
 import { logError } from '../lib/runtimeLog';
+import type { ApiKeyErrorReason } from '@owlat/public-contract';
 import type { RateLimitHeaders } from './apiResponses';
 
 // Rate limiting configuration
@@ -57,6 +58,8 @@ interface ApiAuthError {
 	success: false;
 	error: string;
 	status: number;
+	/** The `data.reason` of the refusal; absent on the per-key rate limit. */
+	reason?: ApiKeyErrorReason;
 	retryAfter?: number;
 	rateLimit?: RateLimitHeaders;
 }
@@ -106,6 +109,7 @@ export async function authenticateApiRequest(
 			success: false,
 			error: 'Missing or invalid Authorization header. Use: Authorization: Bearer <api_key>',
 			status: 401,
+			reason: 'missing_credentials',
 		};
 	}
 
@@ -119,6 +123,7 @@ export async function authenticateApiRequest(
 			success: false,
 			error: 'Invalid API key format',
 			status: 401,
+			reason: 'malformed_key',
 		};
 	}
 
@@ -143,16 +148,34 @@ export async function authenticateApiRequest(
 		| {
 				success: false;
 				error: 'rate_limited';
+				/** `failed_auth`: this IP's failed-key throttle; `key`: the key's own limit. */
+				bucket: 'failed_auth' | 'key';
 				retryAfter: number;
 		  }
 	>(internal.auth.apiAuth.validateAndCheckRateLimit, { keyHash, ip: clientIp });
 
 	if (!result.success) {
 		if (result.error === 'invalid_key') {
+			// One answer for a key that does not exist, is revoked or has expired:
+			// telling them apart would confirm to a caller holding a leaked or
+			// guessed key that it once was real.
 			return {
 				success: false,
 				error: 'Invalid API key',
 				status: 401,
+				reason: 'invalid_key',
+			};
+		}
+		if (result.bucket === 'failed_auth') {
+			// No key authenticated, so no per-key headers, and no thresholds named:
+			// the sentence must not help a caller pace a sweep over key hashes.
+			return {
+				success: false,
+				error:
+					'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+				status: 429,
+				reason: 'too_many_failed_attempts',
+				retryAfter: Math.ceil(result.retryAfter / 1000),
 			};
 		}
 		// Rate limited

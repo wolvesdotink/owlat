@@ -6,6 +6,7 @@ export * from './topics';
 export * from './transactional';
 export * from './webhooks';
 export * from './decode';
+export * from './errors';
 export * from './operations';
 export { buildOpenApiDocument, serializeOpenApiDocument } from './openapi';
 export { OPERATION_EXAMPLES, type OperationExample } from './examples';

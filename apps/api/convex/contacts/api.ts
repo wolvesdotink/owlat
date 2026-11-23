@@ -11,6 +11,7 @@ import {
 	jsonResponse,
 	errorResponse,
 	errorResponseFromThrow,
+	invalidInputResponse,
 	lastPathSegment,
 	type PathSegment,
 } from '../auth/apiResponses';
@@ -150,9 +151,9 @@ function validateNameFields(body: { firstName?: string; lastName?: string }): Re
 		const value = body[field];
 		if (value === undefined) continue;
 		if (value.length > STRING_LIMITS.NAME) {
-			return errorResponse(
-				'invalid_input',
-				`${field} must be at most ${STRING_LIMITS.NAME} characters`
+			return invalidInputResponse(
+				`${field} must be at most ${STRING_LIMITS.NAME} characters`,
+				field
 			);
 		}
 	}
@@ -175,10 +176,10 @@ export const createContact = createAuthenticatedHandler(
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
 		const decoded = decodeRequest(createContactRequestSchema, raw);
-		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
 		if (!isValidEmail(body.email)) {
-			return errorResponse('invalid_input', 'Invalid email format');
+			return invalidInputResponse('Invalid email format', 'email');
 		}
 
 		const nameError = validateNameFields(body);
@@ -260,10 +261,10 @@ export const updateContact = createAuthenticatedHandler(
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
 		const decoded = decodeRequest(updateContactRequestSchema, raw);
-		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
 		if (body.email !== undefined && !isValidEmail(body.email)) {
-			return errorResponse('invalid_input', 'Invalid email format');
+			return invalidInputResponse('Invalid email format', 'email');
 		}
 
 		const nameError = validateNameFields(body);
