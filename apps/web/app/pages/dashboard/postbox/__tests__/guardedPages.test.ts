@@ -64,8 +64,11 @@ beforeAll(() => {
 		}),
 		useFeatureFlag: () => ({
 			isEnabled: (flag: string) => flag === 'mail.external' && externalAllowed.value,
+			isLoading: ref(false),
 		}),
 		useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false) }),
+		// A member: the admin variants are pinned in PostboxMailboxGuard.test.ts.
+		usePermissions: () => ({ isAdmin: computed(() => false), isRoleLoading: ref(false) }),
 	});
 });
 
@@ -157,13 +160,15 @@ describe.each(pages)('the %s page', (_name, page, content, messageId) => {
 		const w = mountPage(page);
 		expect(byTestId(w, 'mailbox-guard-reserved')).toBe(true);
 		expect(w.find('a[href="/dashboard/preferences/add-account"]').exists()).toBe(false);
+		expect(w.find('a[href="/dashboard/postbox/migrate"]').exists()).toBe(false);
 	});
 
 	it('offers to connect an account only when external accounts are allowed', () => {
 		externalAllowed.value = true;
 		const w = mountPage(page);
 		expect(byTestId(w, 'mailbox-guard-external')).toBe(true);
-		expect(w.find('a[href="/dashboard/preferences/add-account"]').exists()).toBe(true);
+		expect(w.find('a[href="/dashboard/postbox/migrate"]').exists()).toBe(true);
+		expect(w.find('a[href="/dashboard/preferences/add-account"]').exists()).toBe(false);
 	});
 
 	it('falls back to asking an admin', () => {

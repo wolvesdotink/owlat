@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { api } from '@owlat/api';
 import { PlusIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
@@ -86,12 +87,17 @@ function formatTime(ts?: number) {
 	}).format(ts);
 }
 
-const imapHost = computed(() => {
-	if (import.meta.server) return 'mail.your-domain';
-	const slug = window.location.hostname.split('.')[0];
-	return `mail.${slug}.owlat.app`;
-});
-const smtpHost = computed(() => imapHost.value);
+// The instance's mail host comes from the backend. Nothing here may derive it
+// from the browser's address: the dashboard and the mail server are different
+// hosts, and a guess sends a mail client somewhere else.
+const { data: connection, error: connectionError } = useConvexQuery(
+	api.mail.appPasswords.clientConnection,
+	{}
+);
+const mailHost = computed(() => connection.value?.mailHost ?? null);
+const mailHostUnknown = computed(
+	() => !mailHost.value && (connection.value !== undefined || !!connectionError.value)
+);
 </script>
 
 <template>
@@ -122,21 +128,26 @@ const smtpHost = computed(() => imapHost.value);
 			</header>
 			<!-- Label above value on a phone: a mono host name next to a label column
 			     does not fit 390px. -->
+			<p v-if="mailHostUnknown" class="px-5 pt-4 text-sm text-text-secondary">
+				{{ t('dashboard.preferences.appPasswords.hostUnknown') }}
+			</p>
 			<dl
 				class="px-5 py-4 grid grid-cols-1 gap-y-0.5 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-6 sm:gap-y-2"
 			>
-				<dt class="text-text-tertiary max-sm:not-first:mt-2">
-					{{ t('dashboard.preferences.appPasswords.imapLabel') }}
-				</dt>
-				<dd class="font-mono break-words">
-					{{ t('dashboard.preferences.appPasswords.imapValue', { host: imapHost }) }}
-				</dd>
-				<dt class="text-text-tertiary max-sm:not-first:mt-2">
-					{{ t('dashboard.preferences.appPasswords.smtpLabel') }}
-				</dt>
-				<dd class="font-mono break-words">
-					{{ t('dashboard.preferences.appPasswords.smtpValue', { host: smtpHost }) }}
-				</dd>
+				<template v-if="mailHost">
+					<dt class="text-text-tertiary max-sm:not-first:mt-2">
+						{{ t('dashboard.preferences.appPasswords.imapLabel') }}
+					</dt>
+					<dd class="font-mono break-words">
+						{{ t('dashboard.preferences.appPasswords.imapValue', { host: mailHost }) }}
+					</dd>
+					<dt class="text-text-tertiary max-sm:not-first:mt-2">
+						{{ t('dashboard.preferences.appPasswords.smtpLabel') }}
+					</dt>
+					<dd class="font-mono break-words">
+						{{ t('dashboard.preferences.appPasswords.smtpValue', { host: mailHost }) }}
+					</dd>
+				</template>
 				<dt class="text-text-tertiary max-sm:not-first:mt-2">
 					{{ t('dashboard.preferences.appPasswords.usernameLabel') }}
 				</dt>

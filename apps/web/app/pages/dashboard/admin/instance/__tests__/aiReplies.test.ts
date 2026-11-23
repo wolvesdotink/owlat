@@ -210,4 +210,23 @@ describe('AI replies page', () => {
 			'Warm and brief'
 		);
 	});
+
+	it('sends an emptied tone and signature so the stored ones are cleared', async () => {
+		config.value = { toneDescription: 'Warm and brief', signatureTemplate: 'Cheers, the team' };
+		const wrapper = mountPage();
+		await flushPromises();
+		await wrapper.get('#ai-replies-tone').setValue('');
+		await wrapper.get('#ai-replies-signature').setValue('');
+
+		const saveButtons = wrapper
+			.findAll('button')
+			.filter((button) => button.text().includes('Save changes'));
+		await saveButtons.at(-1)!.trigger('click');
+		await flushPromises();
+
+		const update = writes.find(
+			(write) => write.fn === getFunctionName(api.agent.configMutations.updateConfig)
+		);
+		expect(update?.args).toMatchObject({ toneDescription: '', signatureTemplate: '' });
+	});
 });

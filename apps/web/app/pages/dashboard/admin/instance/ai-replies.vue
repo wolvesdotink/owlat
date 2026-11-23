@@ -130,8 +130,10 @@ const {
 		const result = await updateConfig({
 			confidenceThreshold: draft.confidenceThreshold,
 			maxDailyAutoReplies: draft.maxDailyAutoReplies,
-			toneDescription: draft.toneDescription || undefined,
-			signatureTemplate: draft.signatureTemplate || undefined,
+			// Sent as-is so an emptied field clears the stored text; the drafting
+			// steps skip an empty tone or signature.
+			toneDescription: draft.toneDescription,
+			signatureTemplate: draft.signatureTemplate,
 			coalesceWindowMs: draft.coalesceWindowMs,
 		});
 		if (!result.ok) return false;

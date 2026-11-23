@@ -13602,6 +13602,7 @@
 				"generate": "Erzeugen",
 				"generateDialogTitle": "App-Passwort erzeugen",
 				"generating": "Wird erzeugt…",
+				"hostUnknown": "Frag deine Administration nach der Adresse des Mailservers.",
 				"imapLabel": "IMAP",
 				"imapValue": "{host}:993 (TLS)",
 				"labelLabel": "Bezeichnung",
@@ -14819,6 +14820,8 @@
 	},
 	"postbox": {
 		"mailboxGuard": {
+			"adminBody": "Richte ein persönliches Postfach für dich ein oder ein Team-Postfach, das dein Team teilt.",
+			"adminCta": "Postfach einrichten",
 			"awaitingDomainBody": "{address} ist für dich reserviert. Es wird hier automatisch aktiv, sobald die Versanddomain deines Workspace verifiziert ist.",
 			"awaitingDomainHeading": "Dein Postfach ist reserviert",
 			"deadEndAskedBody": "Wir haben deiner Administration mitgeteilt, dass du ein Postfach brauchst. Es erscheint hier, sobald es eingerichtet ist.",
@@ -16767,6 +16770,12 @@
 					"complete": "SPF und DKIM sind eingerichtet, Postfächer können deiner Mail also vertrauen.",
 					"missing": "Füge {records} hinzu, damit Postfächer deiner Mail vertrauen und sie im Posteingang landet.",
 					"title": "E-Mail-Authentifizierung"
+				},
+				"bounces": {
+					"action": "Sperrliste prüfen",
+					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
+					"title": "Bounce-Rate",
+					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
 				},
 				"capacity": {
 					"action": "Warm-up-Prüfungen ansehen",

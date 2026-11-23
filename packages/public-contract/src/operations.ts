@@ -170,7 +170,7 @@ export const PUBLIC_OPERATIONS = [
 			data: contactSchema,
 			paginated: false,
 		},
-		errors: [409],
+		errors: [409, 422],
 	},
 	{
 		operationId: 'getContact',
@@ -210,7 +210,7 @@ export const PUBLIC_OPERATIONS = [
 			data: contactSchema,
 			paginated: false,
 		},
-		errors: [404, 409],
+		errors: [404, 409, 422],
 	},
 	{
 		operationId: 'deleteContact',
@@ -230,7 +230,7 @@ export const PUBLIC_OPERATIONS = [
 			data: deleteContactResponseSchema,
 			paginated: false,
 		},
-		errors: [404],
+		errors: [404, 422],
 	},
 	{
 		operationId: 'sendEvent',
@@ -250,7 +250,7 @@ export const PUBLIC_OPERATIONS = [
 			data: sendEventResponseSchema,
 			paginated: false,
 		},
-		errors: [404, 409],
+		errors: [404, 409, 422],
 	},
 	{
 		operationId: 'sendTransactional',
@@ -315,7 +315,7 @@ export const PUBLIC_OPERATIONS = [
 			data: addToTopicResponseSchema,
 			paginated: false,
 		},
-		errors: [404],
+		errors: [404, 422],
 	},
 	{
 		operationId: 'removeContactFromTopic',
@@ -341,7 +341,7 @@ export const PUBLIC_OPERATIONS = [
 			data: removeFromTopicResponseSchema,
 			paginated: false,
 		},
-		errors: [404],
+		errors: [404, 422],
 	},
 ] as const satisfies readonly PublicOperation[];
 

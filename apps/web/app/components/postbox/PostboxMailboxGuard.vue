@@ -11,6 +11,14 @@
  *   - dead-end         — nothing they can do alone; one click asks an admin
  *                        (self-contained request, surfaced to admins in-app).
  *
+ * Owners and admins are never told to ask an admin: the owner who just
+ * installed Owlat lands here first. They get the add-account page, where they
+ * can create a personal mailbox or a team inbox, but only while that page is
+ * reachable (`postbox` or `mail.external` on, the page's own gate); otherwise
+ * the link would bounce off the feature gate. Members are not sent there,
+ * because creating a hosted mailbox needs `organization:manage`; their
+ * "Connect an account" opens the connect wizard, which any member may finish.
+ *
  * The no-mailbox signals (reservation, external-account flag, open request) are
  * fetched HERE from `mail.mailboxRequest.freshStartStatus` + the `mail.external`
  * feature flag, so every caller — the primary Postbox surface and the simple
@@ -44,14 +52,24 @@ const { data: freshStatus, isLoading: freshLoading } = useConvexQuery(
 	api.mail.mailboxRequest.freshStartStatus,
 	() => (props.mailboxId ? 'skip' : {})
 );
-const { isEnabled } = useFeatureFlag();
+const { isEnabled, isLoading: flagsLoading } = useFeatureFlag();
 const externalAllowed = computed(() => isEnabled('mail.external'));
+// The add-account page gates on the same role, and the server refuses to create
+// a mailbox for anyone else.
+const { isAdmin, isRoleLoading } = usePermissions();
+const canSetUpMailbox = computed(
+	() => isAdmin.value && (isEnabled('postbox') || externalAllowed.value)
+);
 
 const state = computed(() =>
 	deriveMailboxGuardState({
 		// Keep showing the spinner until the fresh-start signals resolve too, so the
 		// dead-end never flashes before flipping to reserved / external.
-		loading: props.loading || (!props.mailboxId && freshLoading.value),
+		// The role and the flags too, so an admin is never shown "Ask an admin"
+		// first and the dead-end never flashes before the external state.
+		loading:
+			props.loading ||
+			(!props.mailboxId && (freshLoading.value || isRoleLoading.value || flagsLoading.value)),
 		hasMailbox: Boolean(props.mailboxId),
 		reservedAddress: freshStatus.value?.reservedAddress ?? null,
 		externalAllowed: externalAllowed.value,
@@ -155,13 +173,19 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 			<p class="text-sm text-text-secondary mt-2">
 				{{ t('postbox.mailboxGuard.externalBody') }}
 			</p>
-			<UiButton to="/dashboard/preferences/add-account" class="mt-6">
-				{{ t('postbox.mailboxGuard.externalCta') }}
-			</UiButton>
+			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+				<UiButton to="/dashboard/postbox/migrate">
+					{{ t('postbox.mailboxGuard.externalCta') }}
+				</UiButton>
+				<UiButton v-if="canSetUpMailbox" variant="outline" to="/dashboard/preferences/add-account">
+					{{ t('postbox.mailboxGuard.adminCta') }}
+				</UiButton>
+			</div>
 		</div>
 	</div>
 
-	<!-- Honest dead-end: only an admin can give this member a mailbox. -->
+	<!-- Honest dead-end: only an admin can give this member a mailbox. An admin
+	     is sent to set one up instead. -->
 	<div
 		v-else
 		class="flex-1 flex items-center justify-center p-12"
@@ -172,7 +196,18 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 			<h2 class="text-lg font-semibold text-text-primary mt-4">
 				{{ t('postbox.mailboxGuard.deadEndHeading') }}
 			</h2>
-			<template v-if="alreadyAsked">
+			<template v-if="canSetUpMailbox">
+				<p class="text-sm text-text-secondary mt-2">
+					{{ t('postbox.mailboxGuard.adminBody') }}
+				</p>
+				<UiButton to="/dashboard/preferences/add-account" class="mt-6">
+					{{ t('postbox.mailboxGuard.adminCta') }}
+				</UiButton>
+			</template>
+			<!-- An admin on an instance with mail turned off: nobody to ask, and
+			     nothing to set up here. -->
+			<template v-else-if="isAdmin" />
+			<template v-else-if="alreadyAsked">
 				<p class="text-sm text-text-secondary mt-2">
 					{{ t('postbox.mailboxGuard.deadEndAskedBody') }}
 				</p>
