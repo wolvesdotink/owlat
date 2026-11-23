@@ -67,8 +67,8 @@ fi
 
 # The root gates, ending with lint:plugin-imports without its plugins:prepare
 # prefix (see above). script-tests is the single vitest boot for
-# scripts/__tests__, the unit tests for the gate scripts themselves. It used to
-# be a `vitest run <file>` prefix inside each lint:* entry, which booted vitest
-# once per gate and left the test files without a matching lint:* entry running
-# only in security.yml.
+# scripts/__tests__, the unit tests for the gate scripts themselves. Don't
+# prefix each lint:* entry with `vitest run <file>` instead: that boots vitest
+# once per gate, and a test file without a matching lint:* entry would not run
+# in this gate at all.
 run_manifest gates

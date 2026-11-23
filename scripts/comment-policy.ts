@@ -38,6 +38,11 @@ export interface TextPiece {
 	 * sentence wrapped onto this line is not read as opening here.
 	 */
 	readonly previous?: string;
+	/**
+	 * The comment this line belongs to: lines that share it are one comment,
+	 * read as one text for phrases that wrap (see `wrappedNarrationHits`).
+	 */
+	readonly comment?: number;
 }
 
 export const RULE_ADVICE: Record<CommentRule, string> = {
@@ -75,6 +80,7 @@ const NARRATION = [
 	/\b(?:before|after) this (?:change|fix|PR|commit|refactor)\b/i,
 	/\bused to (?:be|do|live|run|return|throw|call|read|write|send|store|keep|have|use|fail|pass)\b/i,
 ];
+const NARRATION_ANYWHERE = NARRATION.map((pattern) => new RegExp(pattern.source, 'gi'));
 
 /**
  * `SPEC §4.2`, `INBOX_ZERO_PLAN §2`, `plan §06`: sections of specs and plans that
@@ -117,6 +123,57 @@ function opensWithPreviously(piece: Pick<TextPiece, 'text' | 'previous'>): strin
 	return above === '' || /[.;:!?]$/.test(above) ? match[0] : undefined;
 }
 
+/**
+ * Narration phrases that wrap from one line of a comment onto the next, each
+ * reported on the line the phrase starts on. A phrase inside one line is
+ * `ruleHits`' to report. An empty comment line ends a paragraph, so a phrase
+ * does not run across it.
+ */
+export function wrappedNarrationHits(
+	pieces: readonly TextPiece[]
+): { readonly line: number; readonly hit: RuleHit }[] {
+	const comments = new Map<number, TextPiece[]>();
+	for (const piece of pieces) {
+		if (piece.kind !== 'comment' || piece.comment === undefined) continue;
+		const lines = comments.get(piece.comment);
+		if (lines) lines.push(piece);
+		else comments.set(piece.comment, [piece]);
+	}
+	const hits: { line: number; hit: RuleHit }[] = [];
+	for (const lines of comments.values()) {
+		for (const paragraph of paragraphsOf(lines)) {
+			if (paragraph.length < 2) continue;
+			let joined = '';
+			const starts: number[] = [];
+			for (const { body } of paragraph) {
+				if (joined) joined += ' ';
+				starts.push(joined.length);
+				joined += body;
+			}
+			const lineAt = (offset: number) => starts.findLastIndex((start) => start <= offset);
+			for (const pattern of NARRATION_ANYWHERE) {
+				for (const match of joined.matchAll(pattern)) {
+					const first = lineAt(match.index);
+					if (first === lineAt(match.index + match[0].length - 1)) continue;
+					hits.push({ line: paragraph[first]!.line, hit: { rule: 'narration', match: match[0] } });
+				}
+			}
+		}
+	}
+	return hits;
+}
+
+/** The lines of one comment as runs of non-empty bodies. */
+function paragraphsOf(lines: readonly TextPiece[]): { line: number; body: string }[][] {
+	const paragraphs: { line: number; body: string }[][] = [[]];
+	for (const piece of lines.toSorted((a, b) => a.line - b.line)) {
+		const body = commentBody(piece.text).trim();
+		if (body) paragraphs.at(-1)!.push({ line: piece.line, body });
+		else paragraphs.push([]);
+	}
+	return paragraphs;
+}
+
 /** Every rule hit in one line of comment text or test title. */
 export function ruleHits(piece: Pick<TextPiece, 'text' | 'kind' | 'previous'>): RuleHit[] {
 	const hits: RuleHit[] = [];
@@ -144,9 +201,48 @@ export function ruleHits(piece: Pick<TextPiece, 'text' | 'kind' | 'previous'>): 
 	return hits;
 }
 
+let lastCommentId = 0;
+
+/** A fresh comment id, unique across every file kind a run reads. */
+function newCommentId(): number {
+	lastCommentId += 1;
+	return lastCommentId;
+}
+
+/**
+ * Ids for the line comments (`//`, `#`) of one scan, taken in line order. A
+ * line comment that stands alone on its line continues the one alone on the
+ * line above: a paragraph written as a run of `//` lines is one comment. A
+ * comment after code on its line starts a comment of its own and continues
+ * none.
+ */
+function lineCommentIds(): (line: number, ownLine: boolean) => number {
+	let run: { line: number; id: number } | undefined;
+	return (line, ownLine) => {
+		const id = ownLine && run?.line === line - 1 ? run.id : newCommentId();
+		run = ownLine ? { line, id } : undefined;
+		return id;
+	};
+}
+
+/** Whether only whitespace stands between the start of the line and `offset`. */
+function standsAlone(text: string, offset: number): boolean {
+	return /^[ \t\uFEFF]*$/.test(text.slice(text.lastIndexOf('\n', offset - 1) + 1, offset));
+}
+
 /** Split `text` (starting on 1-based `line`) into one piece per line. */
-function piecesOf(text: string, line: number, kind: TextPiece['kind']): TextPiece[] {
-	return text.split('\n').map((part, index) => ({ line: line + index, text: part, kind }));
+function piecesOf(
+	text: string,
+	line: number,
+	kind: TextPiece['kind'],
+	comment?: number
+): TextPiece[] {
+	return text.split('\n').map((part, index) => ({
+		line: line + index,
+		text: part,
+		kind,
+		...(comment === undefined ? {} : { comment }),
+	}));
 }
 
 const TEST_FUNCTIONS = new Set(['describe', 'it', 'test', 'suite', 'bench']);
@@ -198,13 +294,32 @@ export function scriptPieces(text: string, kind: ts.ScriptKind, firstLine = 1): 
 		for (const child of node.getChildren(source)) visit(child);
 	};
 	visit(source);
+	// Ids are assigned in source order, so a run of `//` lines is found; the
+	// pieces keep the order the ranges were collected in.
+	const lineCommentId = lineCommentIds();
+	const commentIds = new Map<number, number>();
+	// Text inside JSX (`<p>// not a comment</p>`) is scanned as trivia by the
+	// comment-range helpers; it is copy, not a comment.
+	const inJsxText = (range: ts.CommentRange) =>
+		jsxText.some(([start, end]) => range.pos >= start && range.pos < end);
+	for (const range of ranges.toSorted((a, b) => a.pos - b.pos)) {
+		if (commentIds.has(range.pos) || inJsxText(range)) continue;
+		const ownLine =
+			range.kind === ts.SyntaxKind.SingleLineCommentTrivia && standsAlone(text, range.pos);
+		commentIds.set(
+			range.pos,
+			range.kind === ts.SyntaxKind.SingleLineCommentTrivia
+				? lineCommentId(lineOf(range.pos), ownLine)
+				: newCommentId()
+		);
+	}
 	for (const range of ranges) {
-		// Text inside JSX (`<p>// not a comment</p>`) is scanned as trivia by
-		// the comment-range helpers; it is copy, not a comment.
-		if (commentStarts.has(range.pos)) continue;
-		if (jsxText.some(([start, end]) => range.pos >= start && range.pos < end)) continue;
+		if (commentStarts.has(range.pos) || inJsxText(range)) continue;
 		commentStarts.add(range.pos);
-		pieces.push(...piecesOf(text.slice(range.pos, range.end), lineOf(range.pos), 'comment'));
+		const comment = commentIds.get(range.pos);
+		pieces.push(
+			...piecesOf(text.slice(range.pos, range.end), lineOf(range.pos), 'comment', comment)
+		);
 	}
 	return pieces;
 }
@@ -281,6 +396,7 @@ export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 	const pending: HereDocument[] = [];
 	const bodies: HereDocument[] = [];
 	const stack: ShellContext[] = [{ kind: 'command', depth: 0 }];
+	const lineCommentId = lineCommentIds();
 	for (const [index, line] of text.split('\n').entries()) {
 		const body = bodies[0];
 		if (body) {
@@ -361,7 +477,12 @@ export function shellCommentPieces(text: string, firstLine = 1): TextPiece[] {
 				// A comment inside backquotes ends at the closing backquote, elsewhere at the line end.
 				const end = context.closer === '`' ? line.indexOf('`', column) : -1;
 				const comment = end === -1 ? line.slice(column) : line.slice(column, end);
-				pieces.push({ line: firstLine + index, text: comment, kind: 'comment' });
+				pieces.push({
+					line: firstLine + index,
+					text: comment,
+					kind: 'comment',
+					comment: lineCommentId(firstLine + index, line.slice(0, column).trim() === ''),
+				});
 				if (end === -1) break;
 				column = end - 1;
 			}
@@ -398,11 +519,12 @@ function dedent(source: string): string {
 export function yamlCommentPieces(text: string): TextPiece[] {
 	const lineOf = lineCounter(text);
 	const pieces: TextPiece[] = [];
+	const comments: { offset: number; source: string }[] = [];
 	const visit = (node: unknown) => {
 		if (typeof node !== 'object' || node === null) return;
 		const token = node as YamlToken;
 		if (token.type === 'comment' && token.offset !== undefined && token.source) {
-			pieces.push({ line: lineOf(token.offset), text: token.source, kind: 'comment' });
+			comments.push({ offset: token.offset, source: token.source });
 		}
 		const { key, value } = token;
 		if (key?.source === 'run' && value?.type === 'block-scalar' && value.offset !== undefined) {
@@ -412,6 +534,16 @@ export function yamlCommentPieces(text: string): TextPiece[] {
 		for (const child of Object.values(node)) visit(child);
 	};
 	for (const token of new YamlParser().parse(text)) visit(token);
+	const lineCommentId = lineCommentIds();
+	for (const { offset, source } of comments.toSorted((a, b) => a.offset - b.offset)) {
+		const line = lineOf(offset);
+		pieces.push({
+			line,
+			text: source,
+			kind: 'comment',
+			comment: lineCommentId(line, standsAlone(text, offset)),
+		});
+	}
 	return pieces.toSorted((a, b) => a.line - b.line);
 }
 
@@ -425,7 +557,7 @@ function scriptKindOf(lang: string | undefined): ts.ScriptKind {
 /** The comment nodes of a template, wherever they nest. */
 function templateCommentPieces(node: RootNode | TemplateChildNode): TextPiece[] {
 	if (node.type === NodeTypes.COMMENT)
-		return piecesOf(node.loc.source, node.loc.start.line, 'comment');
+		return piecesOf(node.loc.source, node.loc.start.line, 'comment', newCommentId());
 	if (node.type !== NodeTypes.ROOT && node.type !== NodeTypes.ELEMENT) return [];
 	return node.children.flatMap((child) => templateCommentPieces(child));
 }
@@ -442,12 +574,16 @@ function styleCommentPieces(
 	lang: string | undefined
 ): TextPiece[] {
 	const lineOf = lineCounter(content, firstLine);
+	const lineCommentId = lineCommentIds();
 	const pieces: TextPiece[] = [];
 	for (const match of content.matchAll(STYLE_TOKEN)) {
 		const token = match[0];
-		const isComment =
-			token.startsWith('/*') || (token.startsWith('//') && LINE_COMMENT_STYLES.has(lang ?? ''));
-		if (isComment) pieces.push(...piecesOf(token, lineOf(match.index), 'comment'));
+		const line = lineOf(match.index);
+		if (token.startsWith('/*')) pieces.push(...piecesOf(token, line, 'comment', newCommentId()));
+		else if (token.startsWith('//') && LINE_COMMENT_STYLES.has(lang ?? '')) {
+			const comment = lineCommentId(line, standsAlone(content, match.index));
+			pieces.push(...piecesOf(token, line, 'comment', comment));
+		}
 	}
 	return pieces;
 }

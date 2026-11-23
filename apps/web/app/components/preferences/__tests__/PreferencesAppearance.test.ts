@@ -1,10 +1,10 @@
 /**
  * THE THEME PICKER.
  *
- * Three cards that look identical to assistive tech: the selected one used to
- * be marked by a border colour and nothing else, so a screen-reader user was
- * told "Light, button / Dark, button / System, button" with no way to hear
- * which theme is on. LanguagePicker one card down already solves this with a
+ * Three cards that look identical to assistive tech: marked by a border colour
+ * alone, the selected one tells a screen-reader user only
+ * "Light, button / Dark, button / System, button" with no way to hear which
+ * theme is on. LanguagePicker one card down already solves this with a
  * labelled `role="group"` and `aria-pressed`; these assertions hold this one to
  * the same contract, and to a single pressed card (two would be a lie about a
  * radio-style choice).

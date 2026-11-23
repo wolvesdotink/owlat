@@ -10,9 +10,8 @@ export type ActivityType = ContactActivityType;
 // (module)** at `convex/contactActivities/`. Lifecycle modules (Send,
 // DOI, Topic subscription) emit `contact_activity` effects that route
 // through `recordContactActivity`; non-lifecycle inline writers (e.g.
-// `inbox/messages.ts:receiveMessage`) call it directly. The per-type
-// `logXActivity` mutations and the generic `create` mutation that used
-// to live in this file were never wired up and are now deleted.
+// `inbox/messages.ts:receiveMessage`) call it directly, so this file holds
+// reads only: a write mutation here would bypass that owner.
 
 // List activities for a contact with pagination
 // Returns activities in chronological order (most recent first)

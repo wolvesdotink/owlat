@@ -145,12 +145,12 @@ export type OwnSendProviderKind = OwnCatalogEntry['kind'];
  * and by nothing else".
  *
  * Derived from `tier: 'own'` rather than written out, so the one identity
- * question that legitimately exists has exactly one answer in the repo. It used
- * to be `OWN_ARM_TRANSPORT_KIND` inside
- * `apps/api/convex/lib/sendProviders/strategies/adaptive_mix` — unreachable from
- * this package, from `apps/web` and from `apps/setup-cli`, all three of which
- * ask the same question, so all three restated it as `=== 'mta'`. It lives here
- * now because this is the leaf every one of them may import, and the backend
+ * question that legitimately exists has exactly one answer in the repo. A
+ * constant inside `apps/api/convex/lib/sendProviders/strategies/adaptive_mix`
+ * would be unreachable from this package, from `apps/web` and from
+ * `apps/setup-cli`, all three of which ask the same question, so each would
+ * restate it as `=== 'mta'`. It lives here because this is the leaf every one
+ * of them may import, and the backend
  * constant re-exports THIS rather than restating the literal.
  *
  * The catalog suite pins that exactly one entry carries `tier: 'own'`, which is

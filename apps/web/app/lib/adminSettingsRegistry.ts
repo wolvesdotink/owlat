@@ -209,9 +209,9 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		icon: RouteIcon,
 		area: 'delivery',
 	},
-	// Received mail the pipeline held back or could not process. These used to
-	// live under the team inbox, where the people who can act on them would
-	// never look; here they carry a badge when something is waiting.
+	// Received mail the pipeline held back or could not process. It sits here,
+	// not under the team inbox, where the people who can act on it would never
+	// look; here it carries a badge when something is waiting.
 	{
 		id: 'quarantine',
 		path: `${ADMIN_ROOT}/delivery/quarantine`,

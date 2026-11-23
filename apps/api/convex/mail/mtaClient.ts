@@ -162,8 +162,8 @@ const decodeAttachmentScanResponse = validatorDecoder(
 		 * WHICH gate answered. The endpoint runs its file-type allowlist BEFORE
 		 * ClamAV and answers a refusal with the same `clean: false` shape a virus
 		 * gets, tagged `'file_type_validation'` (see `apps/mta/src/routes/scan.ts`).
-		 * Without reading it, a legacy `.doc` — an OLE2 container the type gate used
-		 * to call an installer — came back indistinguishable from a trojan.
+		 * Without reading it, a file the type gate refuses comes back
+		 * indistinguishable from a trojan.
 		 */
 		stage: v.optional(v.string()),
 	})
