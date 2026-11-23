@@ -182,6 +182,21 @@ describe('FreshStart copy', () => {
 		expect(w.find('[data-testid="mailbox-guard"]').exists()).toBe(true);
 		expect(w.text()).not.toContain('Notify me about');
 	});
+
+	it('still offers the way out to a member with no mailbox', async () => {
+		mailbox.value = null;
+		await settleTransport(false);
+		const w = mountFreshStart();
+
+		const exit = w.findAll('button').find((b) => b.text() === 'Go to the Workbench');
+		expect(exit).toBeDefined();
+		await exit!.trigger('click');
+		await flushPromises();
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard');
+		// Nothing to save without a mailbox, and `completeFreshStart` refuses a
+		// member who has none. The welcome page itself records `welcomedAt`.
+		expect(runOp).not.toHaveBeenCalled();
+	});
 });
 
 describe('FreshStart sending-readiness latch', () => {

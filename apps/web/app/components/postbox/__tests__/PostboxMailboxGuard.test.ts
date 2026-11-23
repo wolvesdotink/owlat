@@ -7,7 +7,7 @@
  * domain verifies" — progress, not a stalled "being set up right now" or a dead
  * end. Once the domain verifies, the reservation reads as actively provisioning.
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PostboxMailboxGuard from '../PostboxMailboxGuard.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -21,6 +21,10 @@ type FreshStatus = {
 
 // The composables are Nuxt auto-imports the SFC references as bare globals — a
 // module-level ref the tests reassign so each mount reads a fresh status.
+const role = ref<'owner' | 'admin' | 'editor' | 'member'>('member');
+const roleLoading = ref(false);
+const externalOn = ref(false);
+const postboxOn = ref(true);
 const freshStatusRef = ref<FreshStatus>({
 	hasMailbox: false,
 	reservedAddress: null,
@@ -33,9 +37,24 @@ beforeAll(() => {
 		data: freshStatusRef,
 		isLoading: ref(false),
 	}));
-	vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => false }));
+	vi.stubGlobal('useFeatureFlag', () => ({
+		isEnabled: (flag: string) =>
+			(flag === 'mail.external' && externalOn.value) || (flag === 'postbox' && postboxOn.value),
+		isLoading: ref(false),
+	}));
+	vi.stubGlobal('usePermissions', () => ({
+		isAdmin: computed(() => role.value === 'owner' || role.value === 'admin'),
+		isRoleLoading: roleLoading,
+	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
+});
+
+beforeEach(() => {
+	role.value = 'member';
+	roleLoading.value = false;
+	externalOn.value = false;
+	postboxOn.value = true;
 });
 
 function mountGuard() {
@@ -43,7 +62,10 @@ function mountGuard() {
 		props: { mailboxId: null, loading: false },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { NuxtLink: true, UiButton: true },
+			stubs: {
+				NuxtLink: true,
+				UiButton: { props: ['to'], template: '<button :data-to="to"><slot /></button>' },
+			},
 		},
 	});
 }
@@ -104,5 +126,81 @@ describe('PostboxMailboxGuard failed mailbox read (#721)', () => {
 		const retry = w.findAll('button').find((button) => button.text() === 'Try again');
 		await retry!.trigger('click');
 		expect(w.emitted('retry')).toHaveLength(1);
+	});
+});
+
+describe('PostboxMailboxGuard with no mailbox and no reservation', () => {
+	beforeEach(() => {
+		freshStatusRef.value = {
+			hasMailbox: false,
+			reservedAddress: null,
+			reservationAwaitingDomain: false,
+			hasOpenRequest: false,
+		};
+	});
+
+	it('sends an owner to set up a mailbox instead of asking an admin', () => {
+		role.value = 'owner';
+		const w = mountGuard();
+
+		const deadEnd = w.get('[data-testid="mailbox-guard-deadend"]');
+		const cta = deadEnd.get('button');
+		expect(cta.attributes('data-to')).toBe('/dashboard/preferences/add-account');
+		expect(cta.text()).toBe('Set up a mailbox');
+		expect(deadEnd.text()).not.toContain('Ask an admin');
+		expect(deadEnd.text()).not.toContain('Only an admin');
+	});
+
+	it('offers an admin no link while mail is turned off on the instance', () => {
+		role.value = 'owner';
+		postboxOn.value = false;
+		const w = mountGuard();
+
+		const deadEnd = w.get('[data-testid="mailbox-guard-deadend"]');
+		// The add-account page needs `postbox` or `mail.external`; a link there
+		// would only bounce back to the dashboard.
+		expect(deadEnd.find('button').exists()).toBe(false);
+		expect(deadEnd.text()).not.toContain('Ask an admin');
+	});
+
+	it('keeps the ask-an-admin request for a member', () => {
+		const w = mountGuard();
+
+		const deadEnd = w.get('[data-testid="mailbox-guard-deadend"]');
+		const cta = deadEnd.get('button');
+		expect(cta.attributes('data-to')).toBeUndefined();
+		expect(cta.text()).toBe('Ask an admin');
+		expect(deadEnd.text()).not.toContain('Set up a mailbox');
+	});
+
+	it('does not show the member dead-end to an admin while the role resolves', () => {
+		role.value = 'admin';
+		roleLoading.value = true;
+		const w = mountGuard();
+
+		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
+	});
+
+	it('sends a member who may connect an account to the connect wizard', () => {
+		externalOn.value = true;
+		const w = mountGuard();
+
+		const external = w.get('[data-testid="mailbox-guard-external"]');
+		// Creating a hosted mailbox on the add-account page is admin-only.
+		expect(external.findAll('button').map((b) => b.attributes('data-to'))).toEqual([
+			'/dashboard/postbox/migrate',
+		]);
+	});
+
+	it('offers an admin who may connect an account a hosted mailbox as well', () => {
+		externalOn.value = true;
+		role.value = 'admin';
+		const w = mountGuard();
+
+		const buttons = w.get('[data-testid="mailbox-guard-external"]').findAll('button');
+		expect(buttons.map((b) => [b.text(), b.attributes('data-to')])).toEqual([
+			['Connect an account', '/dashboard/postbox/migrate'],
+			['Set up a mailbox', '/dashboard/preferences/add-account'],
+		]);
 	});
 });
