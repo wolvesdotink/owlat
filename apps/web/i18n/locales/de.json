@@ -16806,7 +16806,7 @@
 					"title": "E-Mail-Authentifizierung"
 				},
 				"bounces": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Unzustellbare Adressen prüfen",
 					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
 					"title": "Bounce-Rate",
 					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
@@ -16820,7 +16820,7 @@
 					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
 				},
 				"complaints": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Beschwerden prüfen",
 					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
 					"title": "Beschwerderate",
 					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
