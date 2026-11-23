@@ -27,6 +27,7 @@ import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
+import { listDomains } from '../publicApi/domainsHttp';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -1990,6 +1991,254 @@ describe('GET /api/v1/status (getStatus → status:read)', () => {
 	});
 });
 
+// ─── GET /api/v1/domains ─────────────────────────────────────────────────────
+
+describe('GET /api/v1/domains (listDomains → status:read)', () => {
+	const CHECKED_AT = Date.UTC(2026, 10, 21, 7, 30, 0);
+	const checked = (fields: { verified: boolean; [field: string]: unknown }) => ({
+		lastChecked: CHECKED_AT,
+		...fields,
+	});
+
+	/**
+	 * One verified domain with an apex SPF record, and one that failed: a DKIM
+	 * selector found, one pointing elsewhere, DMARC absent, and return-path
+	 * records the resolver could not answer for or that were never checked.
+	 */
+	async function seedDomains(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) => {
+			const now = Date.now();
+			const verified = await ctx.db.insert('domains', {
+				domain: 'mail.example.com',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {
+					spf: { type: 'TXT', host: '@', value: 'v=spf1 include:spf.owlat.example ~all' },
+					dkim: [{ type: 'TXT', host: 'owlat1._domainkey', value: 'v=DKIM1; k=rsa; p=PUBKEY' }],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+				},
+				verificationResults: {
+					spf: checked({ verified: true, foundValue: 'v=spf1 include:spf.owlat.example ~all' }),
+					dkim: [checked({ verified: true, foundValue: 'v=DKIM1; k=rsa; p=PUBKEY' })],
+					dmarc: checked({ verified: true, foundValue: 'v=DMARC1; p=none' }),
+				},
+				lastVerifiedAt: CHECKED_AT,
+				createdAt: now,
+				updatedAt: now,
+			});
+			const failed = await ctx.db.insert('domains', {
+				domain: 'news.example.com',
+				status: 'failed',
+				providerType: 'ses',
+				dnsRecords: {
+					dkim: [
+						{ type: 'CNAME', host: 's1._domainkey', value: 's1.dkim.owlat.example' },
+						{ type: 'CNAME', host: 's2._domainkey', value: 's2.dkim.owlat.example' },
+					],
+					dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+					mailFrom: [
+						{ type: 'MX', host: 'bounce', value: 'feedback.owlat.example', priority: 10 },
+						{ type: 'TXT', hostname: 'bounces.owlat.example', value: 'v=spf1 a -all' },
+					],
+				},
+				verificationResults: {
+					dkim: [
+						checked({ verified: true, foundValue: 's1.dkim.owlat.example' }),
+						checked({
+							verified: false,
+							error: "CNAME record doesn't point to expected value",
+							foundValue: 'old.dkim.example.net',
+						}),
+					],
+					dmarc: checked({ verified: false, error: 'No matching TXT record found' }),
+					mailFrom: [
+						checked({
+							verified: false,
+							inconclusive: true,
+							error: 'DNS lookup failed: resolver-error-canary',
+						}),
+					],
+				},
+				lastRegistrationError: 'registration-error-canary',
+				returnPathHostSyncError: 'mta-sync-error-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId: failed,
+				dkimTokens: ['ses-dkim-token-canary'],
+				verificationToken: 'ses-verification-token-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('sendingDomainMtaIdentities', {
+				domainId: verified,
+				dkimSelector: 'owlat1',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { verified, failed };
+		});
+	}
+
+	async function fetchDomains(t: ReturnType<typeof convexTest>, scopes = ['status:read']) {
+		const key = await seedKey(t, scopes);
+		return await t.fetch('/api/v1/domains', { method: 'GET', headers: authHeaders(key) });
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/domains', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('listDomains', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can only send', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t, ['transactional:send']);
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'status:read' });
+		expectDocumentedReason('listDomains', res, body, 'missing_scope');
+	});
+
+	it('lists each domain with the records to publish and what the last check found', async () => {
+		const t = setupTest();
+		const { verified, failed } = await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		await expectContractSuccess('listDomains', res);
+		expect((await res.json()).data).toEqual([
+			{
+				id: verified,
+				domain: 'mail.example.com',
+				status: 'verified',
+				lastCheckedAt: new Date(CHECKED_AT).toISOString(),
+				records: [
+					{
+						purpose: 'spf',
+						type: 'TXT',
+						host: 'mail.example.com',
+						value: 'v=spf1 include:spf.owlat.example ~all',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'TXT',
+						host: 'owlat1._domainkey.mail.example.com',
+						value: 'v=DKIM1; k=rsa; p=PUBKEY',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.mail.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+				],
+			},
+			{
+				id: failed,
+				domain: 'news.example.com',
+				status: 'failed',
+				lastCheckedAt: null,
+				records: [
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's1._domainkey.news.example.com',
+						value: 's1.dkim.owlat.example',
+						priority: null,
+						state: 'found',
+						foundValue: null,
+					},
+					{
+						purpose: 'dkim',
+						type: 'CNAME',
+						host: 's2._domainkey.news.example.com',
+						value: 's2.dkim.owlat.example',
+						priority: null,
+						state: 'wrong',
+						foundValue: 'old.dkim.example.net',
+					},
+					{
+						purpose: 'dmarc',
+						type: 'TXT',
+						host: '_dmarc.news.example.com',
+						value: 'v=DMARC1; p=none',
+						priority: null,
+						state: 'missing',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'MX',
+						host: 'bounce.news.example.com',
+						value: 'feedback.owlat.example',
+						priority: 10,
+						state: 'unchecked',
+						foundValue: null,
+					},
+					{
+						purpose: 'mail_from',
+						type: 'TXT',
+						host: 'bounces.owlat.example',
+						value: 'v=spf1 a -all',
+						priority: null,
+						state: 'unchecked',
+						foundValue: null,
+					},
+				],
+			},
+		]);
+	});
+
+	it('answers an empty list on an instance with no sending domain', async () => {
+		const t = setupTest();
+		const res = await fetchDomains(t);
+		await expectContractSuccess('listDomains', res);
+		expect(await res.json()).toEqual({ data: [] });
+	});
+
+	it('carries nothing a member cannot see: no provider tokens, keys or raw errors', async () => {
+		// The deployment serves one organization, so there is no other workspace
+		// whose domains could leak; what is left to rule out is admin-only data.
+		const t = setupTest();
+		await seedDomains(t);
+		const res = await fetchDomains(t);
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		for (const field of [
+			'privateKey',
+			'dkimPrivateKey',
+			'dkimTokens',
+			'verificationToken',
+			'dkimSelector',
+			'lastRegistrationError',
+			'returnPathHostSyncError',
+			'verificationResults',
+		]) {
+			expect(text).not.toContain(field);
+		}
+		for (const canary of [
+			'ses-dkim-token-canary',
+			'ses-verification-token-canary',
+			'registration-error-canary',
+			'mta-sync-error-canary',
+			'resolver-error-canary',
+		]) {
+			expect(text).not.toContain(canary);
+		}
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -2041,6 +2290,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	removeContactFromTopic,
 	listTopics,
 	getStatus,
+	listDomains,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */

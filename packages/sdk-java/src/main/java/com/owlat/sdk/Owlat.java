@@ -2,6 +2,7 @@ package com.owlat.sdk;
 
 import com.owlat.sdk.internal.HttpClient;
 import com.owlat.sdk.resource.ContactsResource;
+import com.owlat.sdk.resource.DomainsResource;
 import com.owlat.sdk.resource.EventsResource;
 import com.owlat.sdk.resource.StatusResource;
 import com.owlat.sdk.resource.TopicsResource;
@@ -14,6 +15,7 @@ public class Owlat {
     private final EventsResource events;
     private final TopicsResource topics;
     private final StatusResource status;
+    private final DomainsResource domains;
 
     /**
      * A client from an API key alone, which talks to the hosted address
@@ -36,6 +38,7 @@ public class Owlat {
         this.events = new EventsResource(httpClient);
         this.topics = new TopicsResource(httpClient);
         this.status = new StatusResource(httpClient);
+        this.domains = new DomainsResource(httpClient);
     }
 
     public ContactsResource contacts() {
@@ -57,5 +60,10 @@ public class Owlat {
     /** Whether the instance can send, and why not. */
     public StatusResource status() {
         return status;
+    }
+
+    /** The sending domains and the DNS records each needs. */
+    public DomainsResource domains() {
+        return domains;
     }
 }

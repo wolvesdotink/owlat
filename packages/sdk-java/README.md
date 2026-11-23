@@ -204,6 +204,18 @@ status.getFix();         // the page in the web app that fixes it, or null
 status.getSendingHold(); // set while sending is suspended or banned, or null
 ```
 
+### Domains
+
+Every sending domain with its verification state and the DNS records it needs.
+Needs the `status:read` scope.
+
+```java
+for (SendingDomainSetup domain : owlat.domains().list()) {
+    domain.getStatus();  // "verified", "pending", ...
+    domain.getRecords(); // each with getHost(), getValue() and getState(): found, wrong, missing or unchecked
+}
+```
+
 ## Error Handling
 
 All exceptions extend `OwlatException` (unchecked) and include the HTTP status code and rate limit info.

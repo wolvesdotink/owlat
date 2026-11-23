@@ -10925,7 +10925,7 @@
 								"label": "Ereignisse — schreiben"
 							},
 							"statusRead": {
-								"description": "Sehen, ob diese Instanz senden kann, und warum nicht.",
+								"description": "Sehen, ob diese Instanz senden kann, warum nicht und welche DNS-Einträge jede Absenderdomain noch braucht.",
 								"label": "Status — lesen"
 							},
 							"topicsRead": {

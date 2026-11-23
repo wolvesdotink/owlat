@@ -27,6 +27,7 @@ import { sendTransactional } from '../transactional/api';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
+import { listDomains } from './domainsHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -82,6 +83,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	// Status API
 	http.route({
 		path: '/api/v1/status',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	// Domains API
+	http.route({
+		path: '/api/v1/domains',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -168,6 +176,15 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/status',
 		method: 'GET',
 		handler: getStatus,
+	});
+
+	// ============ DOMAINS API ENDPOINTS ============
+
+	// GET /api/v1/domains - Sending domains and the DNS records each needs
+	http.route({
+		path: '/api/v1/domains',
+		method: 'GET',
+		handler: listDomains,
 	});
 
 	// ============ TOPICS API ENDPOINTS ============

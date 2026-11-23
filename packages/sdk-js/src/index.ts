@@ -32,6 +32,12 @@ export type {
 	// Events
 	SendEventParams,
 	SendEventResponse,
+	// Domains
+	DnsRecordPurpose,
+	DnsRecordState,
+	DnsRecordType,
+	SendingDomainRecord,
+	SendingDomainSetup,
 	// Status
 	AbuseBlockedErrorData,
 	DeliveryFix,

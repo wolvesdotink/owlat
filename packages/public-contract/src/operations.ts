@@ -22,6 +22,7 @@ import {
 	deleteContactResponseSchema,
 	updateContactRequestSchema,
 } from './contacts';
+import { sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
 import { deliveryStatusSchema } from './status';
 import {
@@ -66,7 +67,7 @@ export interface PublicOperation {
 	method: HttpMethod;
 	/** The path with `{name}` placeholders for its path parameters. */
 	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Health';
+	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
 	summary: string;
 	/** The key scope the operation needs; `null` for the unauthenticated probe. */
 	scope: PublicApiScope | null;
@@ -404,6 +405,28 @@ export const PUBLIC_OPERATIONS = [
 			description: 'How sending stands.',
 			name: 'DeliveryStatus',
 			data: deliveryStatusSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [],
+	},
+	{
+		operationId: 'listDomains',
+		method: 'GET',
+		path: '/api/v1/domains',
+		tag: 'Domains',
+		summary:
+			'List the sending domains, each with its verification state and every DNS record it needs: the name, the value to publish and what the last check found. Needs the same scope as the status.',
+		scope: 'status:read',
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'Every sending domain.',
+			name: 'SendingDomainSetupList',
+			data: sendingDomainSetupListSchema,
 			paginated: false,
 		},
 		errors: [],

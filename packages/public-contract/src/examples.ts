@@ -24,6 +24,7 @@ import type {
 	SendEventResponse,
 	SendTransactionalRequest,
 	SendTransactionalResponse,
+	SendingDomainSetup,
 	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
@@ -216,5 +217,46 @@ export const OPERATION_EXAMPLES = {
 				},
 			},
 		} satisfies ApiResponse<DeliveryStatus>,
+	},
+	listDomains: {
+		response: {
+			data: [
+				{
+					id: 'k57d0main0000000000000000000000',
+					domain: 'news.example.com',
+					status: 'failed',
+					lastCheckedAt: '2026-11-21T07:30:00.000Z',
+					records: [
+						{
+							purpose: 'dkim',
+							type: 'CNAME',
+							host: 's1._domainkey.news.example.com',
+							value: 's1.dkim.owlat.example',
+							priority: null,
+							state: 'wrong',
+							foundValue: 'old.dkim.example.net',
+						},
+						{
+							purpose: 'dmarc',
+							type: 'TXT',
+							host: '_dmarc.news.example.com',
+							value: 'v=DMARC1; p=none',
+							priority: null,
+							state: 'missing',
+							foundValue: null,
+						},
+						{
+							purpose: 'mail_from',
+							type: 'MX',
+							host: 'bounce.news.example.com',
+							value: 'feedback.owlat.example',
+							priority: 10,
+							state: 'found',
+							foundValue: null,
+						},
+					],
+				},
+			],
+		} satisfies ApiResponse<SendingDomainSetup[]>,
 	},
 } satisfies Record<PublicOperationId, OperationExample>;

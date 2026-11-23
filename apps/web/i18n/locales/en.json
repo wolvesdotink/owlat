@@ -10925,7 +10925,7 @@
 								"label": "Events — write"
 							},
 							"statusRead": {
-								"description": "See whether this instance can send, and why not.",
+								"description": "See whether this instance can send, why not, and which DNS records each sending domain still needs.",
 								"label": "Status — read"
 							},
 							"topicsRead": {

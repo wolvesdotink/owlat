@@ -13,6 +13,7 @@ import {
 	reasonsAt,
 	type PublicOperation,
 } from './operations';
+import { sendingDomainSetupSchema } from './domains';
 import { sendingHoldLiftSchema } from './status';
 import { transactionalAttachmentSchema } from './transactional';
 import type { ApiErrorReason } from './types';
@@ -288,6 +289,7 @@ export function buildOpenApiDocument(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
 			['PaginationMeta', paginationMetaSchema],
+			['SendingDomainSetup', sendingDomainSetupSchema],
 			['SendingHoldLift', sendingHoldLiftSchema],
 			...operations.map((operation) => [operation.success.name, operation.success.data] as const),
 		],
@@ -322,9 +324,9 @@ export function buildOpenApiDocument(
 				},
 			},
 		],
-		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Health'].map((name) => ({
-			name,
-		})),
+		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Domains', 'Health'].map(
+			(name) => ({ name })
+		),
 		paths,
 		components: {
 			securitySchemes: {

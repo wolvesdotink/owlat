@@ -248,6 +248,18 @@ console.log(status.fix?.route); // the page in the web app that fixes it
 console.log(status.sendingHold); // set while sending is suspended or banned
 ```
 
+### Domains
+
+Every sending domain with its verification state and the DNS records it needs.
+Needs the `status:read` scope.
+
+```typescript
+for (const domain of await owlat.domains.list()) {
+	const outstanding = domain.records.filter((record) => record.state !== 'found');
+	console.log(domain.domain, domain.status, outstanding);
+}
+```
+
 ## Error Handling
 
 The SDK throws typed errors that you can catch and handle appropriately:

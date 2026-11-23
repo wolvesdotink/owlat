@@ -8,6 +8,8 @@ import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.SendingDomainRecord;
+import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -211,6 +214,27 @@ class ResourceHttpTest {
     void transactionalGetUrlEncodesTheId() {
         client().transactional().get("a/b?c");
         assertEquals("/api/v1/transactional/a%2Fb%3Fc", rawPath);
+    }
+
+    // ── domains ─────────────────────────────────────────────────────────────
+
+    @Test
+    void domainsListReadsTheDomainsRoute() {
+        responseBody = "{\"data\":[{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
+                + "\"lastCheckedAt\":null,\"records\":[{\"purpose\":\"mail_from\",\"type\":\"MX\","
+                + "\"host\":\"bounce.news.example.com\",\"value\":\"feedback.owlat.example\",\"priority\":10,"
+                + "\"state\":\"wrong\",\"foundValue\":\"10 mx.example.net\"}]}]}";
+        List<SendingDomainSetup> domains = client().domains().list();
+        assertEquals("GET", method);
+        assertEquals("/api/v1/domains", rawPath);
+        assertEquals("", body);
+        assertEquals("failed", domains.get(0).getStatus());
+        assertNull(domains.get(0).getLastCheckedAt());
+        SendingDomainRecord record = domains.get(0).getRecords().get(0);
+        assertEquals("bounce.news.example.com", record.getHost());
+        assertEquals(10, record.getPriority());
+        assertEquals("wrong", record.getState());
+        assertEquals("10 mx.example.net", record.getFoundValue());
     }
 
     // ── status ──────────────────────────────────────────────────────────────

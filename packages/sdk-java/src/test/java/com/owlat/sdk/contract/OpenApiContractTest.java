@@ -18,6 +18,7 @@ import com.owlat.sdk.model.contact.Contact;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.DeleteContactResponse;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
 import com.owlat.sdk.model.status.DeliveryStatus;
@@ -140,6 +141,10 @@ class OpenApiContractTest {
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
         calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
+        calls.put("listDomains", new Call(
+                owlat -> owlat.domains().list(),
+                mapper -> mapper.getTypeFactory().constructCollectionType(List.class, SendingDomainSetup.class),
+                false));
         return calls;
     }
 
