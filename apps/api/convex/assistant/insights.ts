@@ -115,7 +115,7 @@ export const campaignStats = internalQuery({
 				...campaignSnapshot(campaign),
 				sendHold:
 					sendHold?.kind === 'held'
-						? { ...sendHold, reason: suspension?.reason ?? null }
+						? { ...sendHold, reason: suspension?.reason ?? null, lift: suspension?.lift ?? null }
 						: sendHold,
 			});
 		}
@@ -128,8 +128,8 @@ const MAX_SUSPENSION_REASON = 500;
 
 /**
  * The suspension or ban in force, its stored reason clamped for the model and
- * its time as ISO 8601, or `null` while sending is allowed. The same fields
- * `getSendingOverview` returns to every member.
+ * its time as ISO 8601 and how it lifts, or `null` while sending is allowed.
+ * The same facts `getSendingOverview` returns to every member.
  */
 function suspensionForModel(hold: Awaited<ReturnType<typeof readSendingHoldRecord>>) {
 	if (!hold) return null;
@@ -137,6 +137,7 @@ function suspensionForModel(hold: Awaited<ReturnType<typeof readSendingHoldRecor
 		status: hold.status,
 		reason: hold.reason ? clampText(hold.reason, MAX_SUSPENSION_REASON) : null,
 		since: hold.since !== null ? new Date(hold.since).toISOString() : null,
+		lift: hold.lift,
 	};
 }
 

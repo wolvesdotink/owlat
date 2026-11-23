@@ -180,6 +180,17 @@ export const OPERATION_EXAMPLES = {
 					status: 'suspended',
 					since: '2026-11-20T09:00:00.000Z',
 					detail: 'Auto-suspended: complaint rate 0.42% over the 0.1% limit',
+					lift: {
+						mode: 'automatic',
+						condition: {
+							trigger: 'complaint_rate',
+							domain: null,
+							currentPct: 0.42,
+							limitPct: 0.2,
+							isClear: false,
+							clearsAt: null,
+						},
+					},
 				},
 			},
 		} satisfies ApiResponse<DeliveryStatus>,

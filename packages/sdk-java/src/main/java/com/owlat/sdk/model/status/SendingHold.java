@@ -12,15 +12,18 @@ public class SendingHold {
     private final String status;
     private final String since;
     private final String detail;
+    private final SendingHoldLift lift;
 
     @JsonCreator
     public SendingHold(
             @JsonProperty("status") String status,
             @JsonProperty("since") String since,
-            @JsonProperty("detail") String detail) {
+            @JsonProperty("detail") String detail,
+            @JsonProperty("lift") SendingHoldLift lift) {
         this.status = status;
         this.since = since;
         this.detail = detail;
+        this.lift = lift;
     }
 
     /** {@code suspended} or {@code banned}. */
@@ -36,5 +39,10 @@ public class SendingHold {
     /** The reason recorded with the status, or {@code null} when none was. */
     public String getDetail() {
         return detail;
+    }
+
+    /** How it lifts. */
+    public SendingHoldLift getLift() {
+        return lift;
     }
 }

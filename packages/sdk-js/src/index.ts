@@ -43,6 +43,10 @@ export type {
 	SendingDomain,
 	SendingDomainStatusValue,
 	SendingHold,
+	SendingHoldLift,
+	SendingHoldLiftCondition,
+	SendingHoldLiftMode,
+	SendingHoldTrigger,
 	// Topics
 	DoiStatus,
 	AddToTopicParams,

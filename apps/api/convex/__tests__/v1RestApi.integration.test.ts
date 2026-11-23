@@ -1097,9 +1097,11 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 			status: 'suspended',
 			since: '2026-11-20T09:00:00.000Z',
 			detail: reason,
+			// No recorded trigger: the check did not impose it, so it does not lift by itself.
+			lift: { mode: 'admin', condition: null },
 		});
 		expect(body.error.message).toBe(
-			`Sending is suspended on this Owlat instance. A platform admin of this instance can lift it in the operator console. Reason: ${reason}`
+			`Sending is suspended on this Owlat instance. It does not lift by itself. A platform admin of this instance can lift it in the operator console. Reason: ${reason}`
 		);
 	});
 

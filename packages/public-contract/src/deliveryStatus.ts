@@ -107,6 +107,52 @@ export interface DeliveryRates {
 }
 
 /**
+ * How a suspension lifts: `automatic` lifts by itself once `condition` is
+ * met; `manual_setting` waits for a platform admin, even after the rates
+ * recover, because the instance is set to; `admin` never lifts by itself (a
+ * ban, or a suspension a platform admin imposed). A platform admin can lift
+ * any of them in the operator console.
+ */
+export const SENDING_HOLD_LIFT_MODES = ['automatic', 'manual_setting', 'admin'] as const;
+
+/** How a suspension lifts. */
+export type SendingHoldLiftMode = (typeof SENDING_HOLD_LIFT_MODES)[number];
+
+/**
+ * The metric a suspension the reputation check imposed waits on: the 30-day
+ * bounce or complaint rate, or Gmail's spam rate for one sending domain.
+ */
+export const SENDING_HOLD_TRIGGERS = ['bounce_rate', 'complaint_rate', 'gmail_spam_rate'] as const;
+
+/** The metric an automatic lift waits on. */
+export type SendingHoldTrigger = (typeof SENDING_HOLD_TRIGGERS)[number];
+
+/** What has to be true for an automatic lift, and where it stands. */
+export interface SendingHoldLiftCondition {
+	trigger: SendingHoldTrigger;
+	/** The sending domain of a Gmail spam rate; `null` for the instance-wide rates. */
+	domain: string | null;
+	/**
+	 * The metric now, in percent: the 30-day rate, or the highest Gmail reading
+	 * at or above the limit. `null` when no evidence is left in the window.
+	 */
+	currentPct: number | null;
+	/** Sending resumes once the metric is under this, in percent. */
+	limitPct: number;
+	/** The metric is back under the limit: sending resumes at the next hourly check. */
+	isClear: boolean;
+	/** ISO 8601 time the last Gmail reading over the limit leaves the 30-day window; `null` otherwise. */
+	clearsAt: string | null;
+}
+
+/** How a suspension lifts, and on what condition when it lifts by itself. */
+export interface SendingHoldLift {
+	mode: SendingHoldLiftMode;
+	/** Set when `mode` is `automatic`, otherwise `null`. */
+	condition: SendingHoldLiftCondition | null;
+}
+
+/**
  * Sending is suspended or banned: every new send is refused. The same fields
  * the `403 abuse_blocked` refusal of `POST /api/v1/transactional` carries.
  */
@@ -116,6 +162,8 @@ export interface SendingHold {
 	since: string | null;
 	/** The reason recorded with the status, or `null` when none was. */
 	detail: string | null;
+	/** How it lifts. */
+	lift: SendingHoldLift;
 }
 
 /** Body of `GET /api/v1/status`. */
