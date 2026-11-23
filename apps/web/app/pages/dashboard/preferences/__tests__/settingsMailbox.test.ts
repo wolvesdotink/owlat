@@ -320,6 +320,7 @@ describe('a connected mailbox, where Owlat never receives the mail', () => {
 		// A responder saved earlier never runs, so it must not read as on.
 		expect(wrapper.find('#draft-subject').exists()).toBe(false);
 		expect(wrapper.text()).not.toContain('Saved before the notice');
+		expect(vacationReads).not.toHaveBeenCalledWith({ mailboxId: 'mb_gmail' });
 	});
 
 	it('says forwarding is set up at the provider and lists no rule as active', async () => {

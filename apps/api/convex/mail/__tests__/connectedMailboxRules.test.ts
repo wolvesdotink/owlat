@@ -65,16 +65,17 @@ describe('rules Owlat cannot run for a connected mailbox', () => {
 				mailboxId,
 				forwardTo: 'desk@elsewhere.test',
 				keepLocalCopy: true,
-				isEnabled: false,
+				isEnabled: true,
 				createdAt: 1,
 				updatedAt: 1,
 			});
 		});
 
+		await t.mutation(api.mail.forwarding.update, { id: ruleId, isEnabled: false });
+		expect(await t.run(async (ctx) => (await ctx.db.get(ruleId))?.isEnabled)).toBe(false);
 		await expect(
 			t.mutation(api.mail.forwarding.update, { id: ruleId, isEnabled: true })
 		).rejects.toThrow(/synced from its provider/);
-		await t.mutation(api.mail.forwarding.update, { id: ruleId, isEnabled: false });
 		await t.mutation(api.mail.forwarding.remove, { id: ruleId });
 		await t.mutation(api.mail.vacation.remove, { mailboxId });
 		await t.run(async (ctx) => {
