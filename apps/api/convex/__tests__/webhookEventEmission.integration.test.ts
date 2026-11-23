@@ -191,6 +191,34 @@ describe('webhook emission — email.failed', () => {
 	});
 });
 
+describe('webhook emission — email.bounced', () => {
+	it('says whether the receiver refused the address or our sending identity', async () => {
+		const t = convexTest(schema, modules);
+		const deadAddress = await seedSentCampaignSend(t, 'gone@example.com');
+		const refusedSender = await seedSentCampaignSend(t, 'fine@example.com');
+
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: deadAddress },
+			transition: { to: 'bounced', at: 1000, bounceType: 'hard', bounceMessage: '550 5.1.1' },
+		});
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: refusedSender },
+			transition: {
+				to: 'bounced',
+				at: 2000,
+				bounceType: 'hard',
+				bounceCause: 'sender',
+				bounceMessage: '550 5.7.1 rejected by policy',
+			},
+		});
+
+		const bounced = (await scheduledFanouts(t)).filter((f) => f.event === 'email.bounced');
+		const causeOf = (email: string) => bounced.find((f) => f.data['email'] === email)?.data;
+		expect(causeOf('gone@example.com')).toMatchObject({ bounceType: 'hard', cause: 'recipient' });
+		expect(causeOf('fine@example.com')).toMatchObject({ bounceType: 'hard', cause: 'sender' });
+	});
+});
+
 describe('webhook emission — every email event names its send', () => {
 	it('carries the send id the API returned on each event of one send', async () => {
 		const t = convexTest(schema, modules);
