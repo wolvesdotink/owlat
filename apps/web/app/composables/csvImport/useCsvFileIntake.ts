@@ -4,7 +4,6 @@
  * `useCsvImport` owns, then advances to the mapping step.
  */
 import type { Ref, ShallowRef } from 'vue';
-import { parseCsvFile } from '~/utils/contactsCsv';
 import { useDropZone } from '~/composables/useDropZone';
 import { useNativeFilePicker } from '~/composables/useNativeFilePicker';
 import type { ImportStep } from '~/composables/csvImport/types';
@@ -34,6 +33,9 @@ export function useCsvFileIntake(state: CsvFileIntakeState) {
 
 		let data: string[][];
 		try {
+			// The parser (papaparse) loads with the first file, not with the
+			// contacts page that holds this state.
+			const { parseCsvFile } = await import('~/utils/contactsCsv');
 			data = await parseCsvFile(file);
 		} catch (parseError) {
 			const message = parseError instanceof Error ? parseError.message : String(parseError);
@@ -55,20 +57,20 @@ export function useCsvFileIntake(state: CsvFileIntakeState) {
 	// Guard that a chosen/dropped file is a `.csv` before parsing it, setting
 	// `errorMessage` when it isn't. Shared by the `<input>`, the native picker
 	// and the drop zone so the "first file → `.csv` guard → error → ingest" flow
-	// lives in exactly one place.
-	const acceptCsvFile = (file: File | undefined, errorMessage: string) => {
+	// lives in exactly one place. Resolves once the file is parsed.
+	const acceptCsvFile = async (file: File | undefined, errorMessage: string): Promise<void> => {
 		if (!file) return;
 		if (!file.name.endsWith('.csv')) {
 			error.value = errorMessage;
 			return;
 		}
-		void ingestFile(file);
+		await ingestFile(file);
 	};
 
 	// Handle file selection
-	const handleFileSelect = (event: Event) => {
+	const handleFileSelect = (event: Event): Promise<void> => {
 		const input = event.target as HTMLInputElement;
-		acceptCsvFile(input.files?.[0], t('shared.useCsvImport.errors.selectCsv'));
+		return acceptCsvFile(input.files?.[0], t('shared.useCsvImport.errors.selectCsv'));
 	};
 
 	// Trigger file selection: the native OS picker (filtered to `.csv`) on
@@ -91,7 +93,7 @@ export function useCsvFileIntake(state: CsvFileIntakeState) {
 	// drops are accepted too, scoped to the drop element via `dropRootRef`.
 	const dropRootRef = ref<HTMLElement | null>(null);
 	const dropZone = useDropZone(
-		(files) => acceptCsvFile(files[0], t('shared.useCsvImport.errors.dropCsv')),
+		(files) => void acceptCsvFile(files[0], t('shared.useCsvImport.errors.dropCsv')),
 		{
 			osFileDrop: true,
 			rootRef: dropRootRef,
