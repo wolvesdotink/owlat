@@ -4,6 +4,7 @@ import { ContactsResource } from './resources/contacts';
 import { TransactionalResource } from './resources/transactional';
 import { EventsResource } from './resources/events';
 import { TopicsResource } from './resources/topics';
+import { StatusResource } from './resources/status';
 
 /**
  * The hosted Owlat address. No self-hosted instance answers here, so a client
@@ -35,6 +36,7 @@ const DEFAULT_BASE_URL_WARNING = `[@owlat/sdk-js] No baseUrl given, so requests 
  * await owlat.transactional.send({ email: 'user@example.com', slug: 'welcome' });
  * await owlat.events.send({ email: 'user@example.com', eventName: 'signup' });
  * await owlat.topics.addContact({ topicId: 'topic_123', email: 'user@example.com' });
+ * const { level, reasonCode } = await owlat.status.get();
  * ```
  */
 export class Owlat {
@@ -57,6 +59,11 @@ export class Owlat {
 	 * Manage topic memberships.
 	 */
 	readonly topics: TopicsResource;
+
+	/**
+	 * Read whether the instance can send, and why not.
+	 */
+	readonly status: StatusResource;
 
 	/**
 	 * Create a client from an API key alone, which talks to the hosted address
@@ -92,5 +99,6 @@ export class Owlat {
 		this.transactional = new TransactionalResource(http);
 		this.events = new EventsResource(http);
 		this.topics = new TopicsResource(http);
+		this.status = new StatusResource(http);
 	}
 }

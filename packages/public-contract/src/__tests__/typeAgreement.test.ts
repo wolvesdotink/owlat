@@ -19,6 +19,7 @@ import type {
 	updateContactRequestSchema,
 } from '../contacts';
 import type { sendEventRequestSchema, sendEventResponseSchema } from '../events';
+import type { deliveryStatusSchema } from '../status';
 import type {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
@@ -68,6 +69,7 @@ describe('schema and type agreement', () => {
 		expectTypeOf<
 			z.output<typeof removeFromTopicResponseSchema>
 		>().toEqualTypeOf<T.RemoveFromTopicResponse>();
+		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();
 		expectTypeOf<z.output<typeof paginationMetaSchema>>().toEqualTypeOf<T.PaginationMeta>();
 		expectTypeOf<z.output<typeof apiErrorResponseSchema>>().toEqualTypeOf<T.ApiErrorResponse>();

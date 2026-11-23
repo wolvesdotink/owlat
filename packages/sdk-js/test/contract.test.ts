@@ -88,6 +88,11 @@ const CALLS: Record<
 		path: `/api/v1/topics/${TOPIC_ID}/contacts/ada%40example.com`,
 		result: example('removeContactFromTopic').response.data,
 	},
+	getStatus: {
+		call: (client) => client.status.get(),
+		path: '/api/v1/status',
+		result: example('getStatus').response.data,
+	},
 };
 
 /** The path template a concrete path instantiates, e.g. `/a/{id}` for `/a/x`. */

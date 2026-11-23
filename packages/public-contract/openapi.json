@@ -30,6 +30,9 @@
 			"name": "Topics"
 		},
 		{
+			"name": "Status"
+		},
+		{
 			"name": "Health"
 		}
 	],
@@ -2563,6 +2566,227 @@
 					}
 				}
 			}
+		},
+		"/api/v1/status": {
+			"get": {
+				"operationId": "getStatus",
+				"tags": ["Status"],
+				"summary": "Whether the instance can send: the worst problem with its fix, each sending domain, the bounce and complaint rates and a suspension in force.",
+				"security": [
+					{
+						"apiKey": ["status:read"]
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "How sending stands.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/DeliveryStatus"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"level": "error",
+										"reasonCode": "sending_suspended",
+										"explanation": "Sending is suspended on this instance, so new sends are refused and campaigns hold until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.",
+										"fix": {
+											"route": "/dashboard/admin/operator",
+											"who": "platform_admin"
+										},
+										"domains": [
+											{
+												"domain": "mail.example.com",
+												"status": "verified"
+											},
+											{
+												"domain": "news.example.com",
+												"status": "pending"
+											}
+										],
+										"rates": {
+											"windowDays": 30,
+											"sent": 12000,
+											"bounce": {
+												"ratePct": 1.25,
+												"limitPct": 2,
+												"isOver": false
+											},
+											"complaint": {
+												"ratePct": 0.42,
+												"limitPct": 0.1,
+												"isOver": true
+											}
+										},
+										"sendingHold": {
+											"status": "suspended",
+											"since": "2026-11-20T09:00:00.000Z",
+											"detail": "Auto-suspended: complaint rate 0.42% over the 0.1% limit"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The API key lacks the scope this operation needs, or the feature is disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -2711,6 +2935,196 @@
 					}
 				},
 				"required": ["id", "deleted"],
+				"additionalProperties": false
+			},
+			"DeliveryStatus": {
+				"type": "object",
+				"properties": {
+					"level": {
+						"type": "string",
+						"enum": ["ok", "warn", "error"],
+						"description": "How sending stands overall: error blocks some or all mail, warn needs attention."
+					},
+					"reasonCode": {
+						"type": "string",
+						"enum": [
+							"healthy",
+							"sending_suspended",
+							"sending_banned",
+							"no_provider",
+							"no_provider_transactional",
+							"no_provider_campaign",
+							"feedback_missing_campaign",
+							"feedback_missing_transactional",
+							"mta_signing_held",
+							"mta_signing_held_unnamed",
+							"mta_degraded",
+							"mta_unreachable",
+							"mta_stale",
+							"mta_unchecked",
+							"ips_all_held",
+							"ips_some_held",
+							"domain_failed",
+							"no_domain",
+							"no_verified_domain",
+							"domain_pending",
+							"sender_missing",
+							"sender_unverified",
+							"warmup_halted",
+							"reputation_critical",
+							"reputation_high",
+							"reputation_medium"
+						],
+						"description": "The worst problem, as a stable code. New codes can be added; treat an unknown one by its level."
+					},
+					"explanation": {
+						"type": "string",
+						"description": "What the reason means and what to do about it, in English."
+					},
+					"fix": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"route": {
+										"type": "string",
+										"description": "Path of the page in the instance's web app."
+									},
+									"who": {
+										"type": "string",
+										"enum": [
+											"workspace_admin",
+											"platform_admin",
+											"contact_manager",
+											"deployment_operator"
+										],
+										"description": "Who can make the fix there."
+									}
+								},
+								"required": ["route", "who"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Where the fix is made; null when there is nothing to fix."
+					},
+					"domains": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"domain": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["registering", "pending", "verified", "failed"]
+								}
+							},
+							"required": ["domain", "status"],
+							"additionalProperties": false
+						}
+					},
+					"rates": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"windowDays": {
+										"type": "integer",
+										"description": "Length of the rolling window, in days."
+									},
+									"sent": {
+										"type": "integer",
+										"description": "Emails sent in the window."
+									},
+									"bounce": {
+										"type": "object",
+										"properties": {
+											"ratePct": {
+												"type": "number",
+												"description": "The rate in percent, to three decimals."
+											},
+											"limitPct": {
+												"type": "number",
+												"description": "The limit in percent."
+											},
+											"isOver": {
+												"type": "boolean",
+												"description": "Whether the rate has reached the limit."
+											}
+										},
+										"required": ["ratePct", "limitPct", "isOver"],
+										"additionalProperties": false
+									},
+									"complaint": {
+										"type": "object",
+										"properties": {
+											"ratePct": {
+												"type": "number",
+												"description": "The rate in percent, to three decimals."
+											},
+											"limitPct": {
+												"type": "number",
+												"description": "The limit in percent."
+											},
+											"isOver": {
+												"type": "boolean",
+												"description": "Whether the rate has reached the limit."
+											}
+										},
+										"required": ["ratePct", "limitPct", "isOver"],
+										"additionalProperties": false
+									}
+								},
+								"required": ["windowDays", "sent", "bounce", "complaint"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The rolling rates; null while nothing was sent in the window."
+					},
+					"sendingHold": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"status": {
+										"type": "string",
+										"enum": ["suspended", "banned"]
+									},
+									"since": {
+										"description": "ISO 8601 timestamp of when the status was set; null if not recorded.",
+										"type": ["string", "null"]
+									},
+									"detail": {
+										"description": "The reason recorded with the status, or null.",
+										"type": ["string", "null"]
+									}
+								},
+								"required": ["status", "since", "detail"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "The suspension or ban in force, with the fields of the transactional 403 abuse_blocked refusal; null while sending is allowed."
+					}
+				},
+				"required": [
+					"level",
+					"reasonCode",
+					"explanation",
+					"fix",
+					"domains",
+					"rates",
+					"sendingHold"
+				],
 				"additionalProperties": false
 			},
 			"HealthStatus": {

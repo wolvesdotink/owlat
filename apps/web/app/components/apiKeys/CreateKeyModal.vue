@@ -48,6 +48,11 @@ const AVAILABLE_SCOPES = computed<
 		label: t('dashboard.admin.team.api.index.scopes.topicsWrite.label'),
 		description: t('dashboard.admin.team.api.index.scopes.topicsWrite.description'),
 	},
+	{
+		value: 'status:read',
+		label: t('dashboard.admin.team.api.index.scopes.statusRead.label'),
+		description: t('dashboard.admin.team.api.index.scopes.statusRead.description'),
+	},
 ]);
 </script>
 

@@ -10,7 +10,12 @@ export default defineConfig({
 	// the bundle keeps an import of a file it does not ship. The declaration
 	// build widens `rootDir` to take them in.
 	dts: {
-		resolve: [/^@owlat\/public-contract$/, /^\.\/errorReasons$/, /^\.\/webhookEvents$/],
+		resolve: [
+			/^@owlat\/public-contract$/,
+			/^\.\/deliveryStatus$/,
+			/^\.\/errorReasons$/,
+			/^\.\/webhookEvents$/,
+		],
 		compilerOptions: { rootDir: '../..' },
 	},
 	clean: true,

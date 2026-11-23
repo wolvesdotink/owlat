@@ -10925,6 +10925,10 @@
 								"description": "Ereignisse einspielen, die Automationen auslösen können.",
 								"label": "Ereignisse — schreiben"
 							},
+							"statusRead": {
+								"description": "Sehen, ob diese Instanz senden kann, und warum nicht.",
+								"label": "Status — lesen"
+							},
 							"topicsWrite": {
 								"description": "Kontakte zu Themen hinzufügen oder daraus entfernen.",
 								"label": "Themen — schreiben"

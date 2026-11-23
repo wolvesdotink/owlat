@@ -2,6 +2,7 @@ export * from './types';
 export * from './common';
 export * from './contacts';
 export * from './events';
+export * from './status';
 export * from './topics';
 export * from './transactional';
 export * from './webhooks';
