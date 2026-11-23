@@ -58,10 +58,8 @@ describe('sending hold alert email', () => {
 	beforeEach(() => vi.stubEnv('DEFAULT_FROM_DOMAIN', 'mail.example.com'));
 	afterEach(() => vi.unstubAllEnvs());
 
-	it('says queued marketing mail is dropped after its 4-day delivery limit', () => {
-		expect(sendingHoldEmail(RAISED).html).toContain(
-			'Mail still waiting 4 days after its send started is not sent.'
-		);
+	it('says held marketing mail is dropped once it waited 4 days', () => {
+		expect(sendingHoldEmail(RAISED).html).toContain('Mail still waiting after 4 days is not sent.');
 		expect(
 			sendingHoldEmail({
 				kind: 'resolved',
@@ -71,7 +69,7 @@ describe('sending hold alert email', () => {
 				resolution: 'automatic',
 				at: 2000,
 			}).html
-		).toContain('unless their send started more than 4 days ago');
+		).toContain('unless they waited 4 days or more');
 	});
 
 	it('escapes the stored reason', () => {

@@ -57,7 +57,7 @@ const dependencies: SendingHoldEmailDependencies = {
 		ctx.runAction(internal.maintenance.systemMail.trySendSystemEmail, payload),
 };
 
-/** Queued marketing mail is dropped this many days after its send started, hold or not. */
+/** Held marketing mail is dropped once it has waited this many days (its delivery deadline). */
 const HELD_MAIL_DAYS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS / (24 * 60 * 60 * 1000);
 
 /** Subject and body; the stored reason is the only text that is not ours. */
@@ -66,7 +66,7 @@ export function sendingHoldEmail(alert: SendingHoldAlert): { subject: string; ht
 	if (alert.kind === 'raised') {
 		return {
 			subject: `Owlat: sending is ${alert.holdStatus}`,
-			html: `<p>Sending on your Owlat instance is ${alert.holdStatus}. Campaigns and automation emails wait, and new transactional sends are refused, until it lifts. Mail still waiting ${HELD_MAIL_DAYS} days after its send started is not sent.</p><p>Reason: ${reason}</p><p>${escapeHtml(alert.nextAction)}</p><p>Open Delivery health in Owlat to see where the rates stand.</p><p>${OTHER_CHANNELS_LINE}</p>`,
+			html: `<p>Sending on your Owlat instance is ${alert.holdStatus}. Campaigns and automation emails wait, and new transactional sends are refused, until it lifts. Mail still waiting after ${HELD_MAIL_DAYS} days is not sent.</p><p>Reason: ${reason}</p><p>${escapeHtml(alert.nextAction)}</p><p>Open Delivery health in Owlat to see where the rates stand.</p><p>${OTHER_CHANNELS_LINE}</p>`,
 		};
 	}
 	const how =
@@ -75,7 +75,7 @@ export function sendingHoldEmail(alert: SendingHoldAlert): { subject: string; ht
 			: `A platform admin lifted it: ${reason}`;
 	return {
 		subject: 'Owlat: sending resumed',
-		html: `<p>Sending on your Owlat instance resumed. ${how}</p><p>Campaigns and automation emails that waited continue where they stopped, unless their send started more than ${HELD_MAIL_DAYS} days ago; nobody is mailed twice.</p><p>${OTHER_CHANNELS_LINE}</p>`,
+		html: `<p>Sending on your Owlat instance resumed. ${how}</p><p>Campaigns and automation emails that waited continue where they stopped, unless they waited ${HELD_MAIL_DAYS} days or more; nobody is mailed twice.</p><p>${OTHER_CHANNELS_LINE}</p>`,
 	};
 }
 
