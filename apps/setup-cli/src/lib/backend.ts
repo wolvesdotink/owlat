@@ -15,6 +15,7 @@ import { log } from '@clack/prompts';
 import pc from 'picocolors';
 import { readEnv, type EnvMap } from './env';
 import { progressSpinner } from './progress';
+import { resolveLocalHost } from './localHost';
 
 export interface BackendContext {
 	baseUrl: string;
@@ -50,9 +51,12 @@ export async function loadBackendContext(
 	// site proxy (http://localhost:3211): for a domain install, CONVEX_SITE_URL
 	// holds the PUBLIC URL (consumed by the function runtime), which isn't
 	// reachable on-box until DNS + TLS are live. The installer talks to the
-	// published port directly.
+	// published port directly. Under Docker Desktop `scripts/owlat` runs this
+	// container on the bridge and sets OWLAT_LOCAL_HOST, because `localhost`
+	// there is the VM, not the host that published port 3211.
 	const baseUrl =
 		baseUrlOverride ||
+		(process.env['OWLAT_LOCAL_HOST'] ? `http://${resolveLocalHost()}:3211` : '') ||
 		env['CONVEX_SITE_URL'] ||
 		env['NUXT_PUBLIC_CONVEX_SITE_URL'] ||
 		'http://localhost:3211';

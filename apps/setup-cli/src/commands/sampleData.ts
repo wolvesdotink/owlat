@@ -19,23 +19,10 @@ import { intro, outro, log, confirm, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadBackendContext, postWithSpinner, type BackendContext } from '../lib/backend';
 import { formatCounts } from '../lib/format';
-import { resolveLocalHost } from '../lib/localHost';
 
 import type { CliOptions as RunOptions } from '../lib/cliOptions';
 
 export type SampleDataAction = 'install' | 'remove' | 'status';
-
-/**
- * Where to reach the backend. Quickstart passes the on-box site URL explicitly
- * for a domain install; a standalone run falls back to the `.env` values —
- * except under Docker Desktop, where `scripts/owlat` runs this container on the
- * bridge and sets OWLAT_LOCAL_HOST, because `localhost` there is the VM, not
- * the host that published port 3211.
- */
-function resolveBaseUrl(baseUrlOverride?: string): string | undefined {
-	if (baseUrlOverride) return baseUrlOverride;
-	return process.env['OWLAT_LOCAL_HOST'] ? `http://${resolveLocalHost()}:3211` : undefined;
-}
 
 interface SampleDataResponse {
 	inserted?: Record<string, number>;
@@ -85,7 +72,7 @@ export async function installSampleData(
 	// Same on-box override as bootstrap: for a domain install the env URLs are
 	// PUBLIC and unreachable until DNS/TLS are live — the installer talks to
 	// the published localhost port instead.
-	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
+	const ctx = await loadBackendContext(opts.owlatDir, baseUrlOverride);
 
 	const response = await call(ctx, '/sample-data/install', 'Installing sample data');
 	if (!response) return 1;
@@ -114,7 +101,7 @@ async function removeSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 		}
 	}
 
-	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
+	const ctx = await loadBackendContext(opts.owlatDir, baseUrlOverride);
 	const response = await call(ctx, '/sample-data/remove', 'Removing sample data');
 	if (!response) return 1;
 
@@ -132,7 +119,7 @@ async function removeSampleData(opts: RunOptions, baseUrlOverride?: string): Pro
 async function statusSampleData(opts: RunOptions, baseUrlOverride?: string): Promise<number> {
 	intro(pc.bgCyan(pc.black(' Sample Data Status ')));
 
-	const ctx = await loadBackendContext(opts.owlatDir, resolveBaseUrl(baseUrlOverride));
+	const ctx = await loadBackendContext(opts.owlatDir, baseUrlOverride);
 	const response = await call(ctx, '/sample-data/status', 'Counting sample-data rows');
 	if (!response) return 1;
 

@@ -13,7 +13,11 @@
 #   owlat setup --legacy      — run the legacy bash setup.sh
 #   owlat config              — re-open the wizard for an existing install
 #   owlat sample-data [install|remove|status] — opt-in demo content, removable
+#   owlat bootstrap-org       — create the first admin user and the organization
+#   owlat seed [--reset] | reset — dev installs only (OWLAT_DEV_MODE=true):
+#                               full demo seed, or wipe the instance to blank
 #   owlat feature <key> on|off — toggle a single feature flag
+#   owlat pack <key> on|off   — toggle every flag in a feature pack
 #   owlat feature --sync      — rewrite .owlat-flags.json from the flags the
 #                               running backend holds (after a restore)
 #   owlat env <KEY> <VALUE>   — set a single env var in .env
@@ -677,6 +681,16 @@ run_quickstart_container() {
 	"$@"
 }
 
+# Hand a `--legacy` run to the bash wizard. setup.sh is the legacy wizard and
+# has no such option (it rejects unknown arguments), so the flag is dropped.
+exec_legacy_wizard() {
+	local args=() arg
+	for arg in "$@"; do
+		[[ "$arg" == "--legacy" ]] || args+=("$arg")
+	done
+	exec bash scripts/setup.sh ${args[@]+"${args[@]}"}
+}
+
 # Provisioning subcommands double as the repair path: an install that never got
 # the symlink (desktop SSH flow, hand-clone) gains it here, and one that already
 # has it pays a single readlink. Best-effort — a wizard must never abort because
@@ -692,7 +706,7 @@ case "$cmd" in
 		# Allow --legacy to fall back to the bash wizard.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh "$@"
+				exec_legacy_wizard "$@"
 			fi
 		done
 		# Host networking on a Linux server: the wizard's public-address step
@@ -729,7 +743,7 @@ case "$cmd" in
 		# --legacy falls back to the complete bash wizard.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh "$@"
+				exec_legacy_wizard "$@"
 			fi
 		done
 		# Local-source installs: OWLAT_BUILD_LOCAL=1 makes quickstart write
@@ -785,10 +799,23 @@ case "$cmd" in
 			${CONFIG_MOUNT_ARGS[@]+"${CONFIG_MOUNT_ARGS[@]}"} \
 			"$OWLAT_SETUP_IMAGE" config "$@"
 		;;
-	sample-data)
-		# Opt-in demo content for a real install (install | remove | status).
-		# Unlike `feature`/`env`, this talks to the running backend's published
-		# Convex site port, so the container needs the same networking treatment
+	sample-data|bootstrap-org|seed|reset)
+		# `seed` and `reset` call the backend's /dev endpoints, which answer only
+		# with OWLAT_DEV_MODE on, and `reset` deletes every user. Refuse them here
+		# on an install whose .env leaves dev mode off, before anything asks for
+		# a confirmation the backend would then refuse anyway. `reset` keeps the
+		# setup CLI's own confirmation; nothing here answers it.
+		if [[ "$cmd" == seed || "$cmd" == reset ]]; then
+			dev_mode="$(grep -E '^OWLAT_DEV_MODE=' .env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"'" | tr '[:upper:]' '[:lower:]' || true)"
+			if [[ "$dev_mode" != "true" ]]; then
+				printf '%s\n' "'owlat $cmd' only works on a development install: it needs OWLAT_DEV_MODE=true in .env, and this install leaves it off." \
+					"For demo content on this install, use 'owlat sample-data install'." >&2
+				exit 2
+			fi
+		fi
+		# Opt-in demo content for a real install (install | remove | status), the
+		# first admin user, and the dev seed and reset. Unlike `feature`/`env`,
+		# these talk to the running backend's published Convex site port, so the container needs the same networking treatment
 		# as quickstart: host networking on Linux, host.docker.internal under
 		# Docker Desktop (where the container's localhost is the VM, not the box).
 		sample_data_docker_desktop=0
@@ -804,14 +831,14 @@ case "$cmd" in
 				-e "OWLAT_DIR=/opt/owlat" \
 				-e "OWLAT_LOCAL_HOST=host.docker.internal" \
 				-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-				"$OWLAT_SETUP_IMAGE" sample-data "$@"
+				"$OWLAT_SETUP_IMAGE" "$cmd" "$@"
 		fi
 		exec docker run --rm ${SETUP_TTY_ARGS[@]+"${SETUP_TTY_ARGS[@]}"} \
 			--network host \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			-e "OWLAT_DIR=/opt/owlat" \
 			-e "OWLAT_ASSUME_YES=${OWLAT_ASSUME_YES:-0}" \
-			"$OWLAT_SETUP_IMAGE" sample-data "$@"
+			"$OWLAT_SETUP_IMAGE" "$cmd" "$@"
 		;;
 	feature)
 		if [[ "${1:-}" == --sync ]]; then
@@ -822,6 +849,11 @@ case "$cmd" in
 		exec docker run --rm \
 			-v "$OWLAT_DIR:/opt/owlat" \
 			"$OWLAT_SETUP_IMAGE" feature "$@"
+		;;
+	pack)
+		exec docker run --rm \
+			-v "$OWLAT_DIR:/opt/owlat" \
+			"$OWLAT_SETUP_IMAGE" pack "$@"
 		;;
 	env)
 		exec docker run --rm \
@@ -920,7 +952,7 @@ case "$cmd" in
 		# New TS doctor inside the setup container; --legacy falls back to bash.
 		for arg in "$@"; do
 			if [[ "$arg" == "--legacy" ]]; then
-				exec bash scripts/setup.sh doctor "$@"
+				exec_legacy_wizard doctor "$@"
 			fi
 		done
 		stack_reader_run_args
