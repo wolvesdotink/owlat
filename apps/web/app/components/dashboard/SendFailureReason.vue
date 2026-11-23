@@ -2,13 +2,24 @@
 /**
  * Why sends did not arrive, for one failure class: the sentence first, the
  * page that fixes it (for an admin; a member is told to ask one), and the
- * provider's own text one click away. An unknown code has no sentence that
- * says more than "unknown", so its provider text is shown right away.
+ * recorded error text one click away. An unknown code has no sentence that
+ * says more than "unknown", so its text is shown right away.
+ *
+ * Takes the class, or one send's status, bounce type and code to derive it
+ * from: the send page loads this component lazily, so the catalog stays off
+ * its first load when the send arrived.
  */
-import { failureFixLink, failureReasonKey, type SendFailureClass } from '~/lib/sendFailureReasons';
+import {
+	failureClassOfSend,
+	failureFixLink,
+	failureReasonKey,
+	type SendFailureClass,
+} from '~/lib/sendFailureReasons';
 
 const props = defineProps<{
-	failureClass: SendFailureClass;
+	failureClass?: SendFailureClass;
+	status?: string;
+	bounceType?: 'hard' | 'soft';
 	errorCode?: string | null;
 	providerText?: string | null;
 }>();
@@ -16,8 +27,17 @@ const props = defineProps<{
 const { t } = useI18n();
 const { isAdmin } = usePermissions();
 
-const fix = computed(() => failureFixLink(props.failureClass));
-const isUnknown = computed(() => props.failureClass === 'unknown');
+const failureClass = computed(
+	() =>
+		props.failureClass ??
+		failureClassOfSend({
+			status: props.status,
+			bounceType: props.bounceType,
+			errorCode: props.errorCode,
+		})
+);
+const fix = computed(() => failureFixLink(failureClass.value));
+const isUnknown = computed(() => failureClass.value === 'unknown');
 const showProviderText = ref(false);
 const hasDetails = computed(() => Boolean(props.providerText || props.errorCode));
 const detailsId = useId();

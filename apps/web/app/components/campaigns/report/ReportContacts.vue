@@ -3,11 +3,11 @@
 // tabs and the page of contacts under the active one. This section owns the
 // queries and the offsets; the page may choose the tab (the failure line's
 // "Show who" does).
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import CampaignReportClickedList from '~/components/campaigns/report/ReportClickedList.vue';
 import CampaignReportOpenedList from '~/components/campaigns/report/ReportOpenedList.vue';
-import CampaignReportUndeliveredList from '~/components/campaigns/report/ReportUndeliveredList.vue';
 import { formatNumber } from '~/utils/formatters';
 import {
 	CircleCloseIcon,
@@ -29,6 +29,12 @@ const props = defineProps<{
 }>();
 
 const selectedTab = defineModel<ContactTab>('tab', { default: 'opened' });
+
+// Failed and Bounced load their list, and the reason catalog it reads, only
+// when one of those tabs is opened.
+const CampaignReportUndeliveredList = defineAsyncComponent(
+	() => import('~/components/campaigns/report/ReportUndeliveredList.vue')
+);
 
 const { t } = useI18n();
 

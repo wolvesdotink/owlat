@@ -6,9 +6,9 @@
  * The error card of a send that did not arrive: a sentence first, the fix page
  * for an admin, and the provider's text and code behind a click.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import EmailSendTimeline from '../EmailSendTimeline.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -74,6 +74,12 @@ describe('EmailSendTimeline data variables', () => {
 });
 
 describe('EmailSendTimeline error details', () => {
+	// The reason component loads lazily; wait for it before reading the card.
+	const settle = async () => {
+		await vi.dynamicImportSettled();
+		await flushPromises();
+	};
+
 	const errorCard = (w: ReturnType<typeof mountTimeline>) =>
 		w.find('[data-testid="send-failure-reason"]');
 
@@ -84,6 +90,7 @@ describe('EmailSendTimeline error details', () => {
 			errorCode: 'AUTH_FAILED',
 			errorMessage: '535 5.7.8 Username and Password not accepted',
 		});
+		await settle();
 
 		const card = errorCard(w);
 		expect(card.text()).toContain("refused Owlat's sending credentials");
@@ -101,21 +108,23 @@ describe('EmailSendTimeline error details', () => {
 		w.unmount();
 	});
 
-	it('tells a member to ask an admin instead of linking to an admin page', () => {
+	it('tells a member to ask an admin instead of linking to an admin page', async () => {
 		isAdmin = false;
 		const w = mountTimeline({ status: 'failed', errorCode: 'AUTH_FAILED' });
+		await settle();
 		expect(errorCard(w).find('a').exists()).toBe(false);
 		expect(errorCard(w).text()).toContain('Ask an admin');
 		isAdmin = true;
 		w.unmount();
 	});
 
-	it('shows the provider text right away for a code it does not know', () => {
+	it('shows the provider text right away for a code it does not know', async () => {
 		const w = mountTimeline({
 			status: 'failed',
 			errorCode: 'X_PROVIDER_QUOTA',
 			errorMessage: 'Daily sending quota exceeded',
 		});
+		await settle();
 		const card = errorCard(w);
 		expect(card.text()).toContain('a reason Owlat does not recognize');
 		expect(card.find('[data-testid="send-failure-provider-text"]').text()).toContain(
@@ -125,13 +134,14 @@ describe('EmailSendTimeline error details', () => {
 		w.unmount();
 	});
 
-	it('says a soft bounce is handled without asking for anything', () => {
+	it('says a soft bounce is handled without asking for anything', async () => {
 		const w = mountTimeline({
 			status: 'bounced',
 			bounceType: 'soft',
 			bouncedAt: 3,
 			errorMessage: '452 4.2.2 Mailbox full',
 		});
+		await settle();
 		const card = errorCard(w);
 		expect(card.text()).toContain('Owlat pauses it on its own');
 		expect(card.find('a').exists()).toBe(false);

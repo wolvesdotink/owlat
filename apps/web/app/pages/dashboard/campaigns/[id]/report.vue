@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
@@ -12,7 +13,6 @@ import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchi
 import CampaignReportContacts, {
 	type ContactTab,
 } from '~/components/campaigns/report/ReportContacts.vue';
-import CampaignReportFailures from '~/components/campaigns/report/ReportFailures.vue';
 import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
 import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
@@ -83,6 +83,13 @@ const { data: stats, isLoading: statsLoading } = useConvexQuery(
 const { data: failureSummary } = useConvexQuery(
 	api.delivery.sendFailures.getFailureSummary,
 	() => ({ campaignId: campaignId.value })
+);
+// The failure line loads only for a campaign that has failed or bounced sends.
+const hasUndelivered = computed(
+	() => (failureSummary.value?.failed.total ?? 0) + (failureSummary.value?.bounced.total ?? 0) > 0
+);
+const CampaignReportFailures = defineAsyncComponent(
+	() => import('~/components/campaigns/report/ReportFailures.vue')
 );
 
 // The contacts card's tab, which the failure line's "Show who" also sets.
@@ -296,6 +303,7 @@ const currentSnapshot = computed(() => ({
 						:bounced="stats.bounced"
 					/>
 					<CampaignReportFailures
+						v-if="hasUndelivered"
 						class="mt-4"
 						:summary="failureSummary"
 						@show-list="showUndelivered"

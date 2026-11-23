@@ -212,6 +212,12 @@ function mountReport(campaign: Record<string, unknown>) {
 	});
 }
 
+// The Failed / Bounced lists and the expanded reasons load lazily.
+const settle = async () => {
+	await vi.dynamicImportSettled();
+	await flushPromises();
+};
+
 const button = (wrapper: ReturnType<typeof mountReport>, text: string) => {
 	const found = wrapper.findAll('button').find((b) => b.text().trim().startsWith(text));
 	if (!found) throw new Error(`no "${text}" button`);
@@ -326,6 +332,7 @@ describe('campaign report wiring', () => {
 		failureSummary = FAILURES;
 		stats = STATS;
 		const wrapper = mountReport(SENT);
+		await settle();
 		const section = wrapper.find('[data-testid="report-failures"]');
 		expect(section.text()).toContain('25 could not be sent');
 		expect(section.text()).toContain('25 bounced');
@@ -333,6 +340,7 @@ describe('campaign report wiring', () => {
 
 		const [failedToggle] = section.findAll('[data-testid="report-failures-toggle"]');
 		await failedToggle!.trigger('click');
+		await settle();
 		const credentials = section.find('[data-class="credentials"]');
 		expect(credentials.text()).toContain('Provider refused the account');
 		expect(credentials.text()).toContain("refused Owlat's sending credentials");
@@ -352,6 +360,7 @@ describe('campaign report wiring', () => {
 		failureSummary = FAILURES;
 		stats = STATS;
 		const wrapper = mountReport(SENT);
+		await settle();
 		expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual([
 			'Opened (25)',
 			'Clicked (0)',
@@ -360,6 +369,7 @@ describe('campaign report wiring', () => {
 		]);
 
 		await button(wrapper, 'Show who').trigger('click');
+		await settle();
 		expect(wrapper.find('#campaign-report-tab-failed').attributes('aria-selected')).toBe('true');
 		const reasons = wrapper.findAll('[data-testid="undelivered-reason"]').map((r) => r.text());
 		expect(reasons[0]).toBe('Other error');
@@ -377,6 +387,7 @@ describe('campaign report wiring', () => {
 		failedTotal.value = 11;
 		const wrapper = mountReport(SENT);
 		await wrapper.find('#campaign-report-tab-failed').trigger('click');
+		await settle();
 		await button(wrapper, 'Next').trigger('click');
 		expect(wrapper.text()).toContain('11-11 of 11');
 
@@ -392,7 +403,9 @@ describe('campaign report wiring', () => {
 		failureSummary = FAILURES;
 		stats = STATS;
 		const wrapper = mountReport(SENT);
+		await settle();
 		await wrapper.find('#campaign-report-tab-bounced').trigger('click');
+		await settle();
 		expect(wrapper.find('[data-testid="undelivered-reason"]').text()).toBe('Hard bounce');
 		expect(
 			wrapper.find('a[data-to="/dashboard/campaigns/campaign_1/sends/bounced_0"]').exists()

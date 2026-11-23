@@ -3,13 +3,13 @@
  * The report's line about sends that did not arrive: how many could not be
  * sent and how many bounced, each opening its reasons and its list of
  * recipients. Renders nothing when every send arrived, so a clean report
- * looks the same as one without this section.
+ * looks the same as one without this section. The reasons load when a line is
+ * first expanded.
  */
 import type { FunctionReturnType } from 'convex/server';
 // TYPE-ONLY: the section needs the query's return shape, never the client.
 import type { api } from '@owlat/api';
-import SendFailureReason from '~/components/dashboard/SendFailureReason.vue';
-import { failureLabelKey, groupFailureReasons } from '~/lib/sendFailureReasons';
+import { defineAsyncComponent } from 'vue';
 import { formatNumber } from '~/utils/formatters';
 import { ChevronDownIcon, CircleCloseIcon, TriangleWarningIcon } from '@coolicons/vue';
 
@@ -21,6 +21,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{ showList: [kind: UndeliveredKind] }>();
 
+const ReportFailureReasons = defineAsyncComponent(
+	() => import('~/components/campaigns/report/ReportFailureReasons.vue')
+);
+
+type Summary = NonNullable<typeof props.summary>;
+
 const { t } = useI18n();
 
 const rows = computed(() => {
@@ -30,7 +36,7 @@ const rows = computed(() => {
 		kind: UndeliveredKind;
 		total: number;
 		headline: string;
-		reasons: ReturnType<typeof groupFailureReasons>;
+		reasons: Summary['failed']['reasons'] | Summary['bounced']['reasons'];
 	}[] = [
 		{
 			kind: 'failed',
@@ -40,7 +46,7 @@ const rows = computed(() => {
 				{ count: formatNumber(summary.failed.total) },
 				summary.failed.total
 			),
-			reasons: groupFailureReasons(summary.failed.reasons),
+			reasons: summary.failed.reasons,
 		},
 		{
 			kind: 'bounced',
@@ -50,7 +56,7 @@ const rows = computed(() => {
 				{ count: formatNumber(summary.bounced.total) },
 				summary.bounced.total
 			),
-			reasons: groupFailureReasons(summary.bounced.reasons),
+			reasons: summary.bounced.reasons,
 		},
 	];
 	return entries.filter((entry) => entry.total > 0);
@@ -97,38 +103,11 @@ const expanded = ref<Record<UndeliveredKind, boolean>>({ failed: false, bounced:
 					{{ t('dashboard.campaigns.detail.report.failures.showWho') }}
 				</UiButton>
 			</div>
-			<ul
+			<ReportFailureReasons
 				v-if="expanded[row.kind]"
 				:id="`report-failures-${row.kind}`"
-				class="divide-y divide-border-subtle border-t border-border-subtle"
-			>
-				<li
-					v-for="reason in row.reasons"
-					:key="reason.failureClass"
-					class="space-y-1 px-3 py-3"
-					:data-class="reason.failureClass"
-				>
-					<div class="flex items-baseline justify-between gap-3 text-sm">
-						<span class="font-medium text-text-primary">
-							{{ t(failureLabelKey(reason.failureClass)) }}
-						</span>
-						<span class="tabular-nums text-text-tertiary">
-							{{
-								t(
-									'dashboard.campaigns.detail.report.failures.sendCount',
-									{ count: formatNumber(reason.count) },
-									reason.count
-								)
-							}}
-						</span>
-					</div>
-					<SendFailureReason
-						:failure-class="reason.failureClass"
-						:error-code="reason.errorCode"
-						:provider-text="reason.exampleMessage"
-					/>
-				</li>
-			</ul>
+				:reasons="row.reasons"
+			/>
 		</div>
 	</section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import {
 	BracesIcon,
 	CheckIcon,
@@ -15,8 +16,6 @@ import {
 	TriangleWarningIcon,
 	type IconComponent,
 } from '@coolicons/vue';
-import SendFailureReason from '~/components/dashboard/SendFailureReason.vue';
-import { failureClassOfSend } from '~/lib/sendFailureReasons';
 
 interface TimelineEvent {
 	key: string;
@@ -209,14 +208,11 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	return events;
 });
 
-// The reason leads with a sentence; the raw code and provider text stay one
-// click away inside it.
-const failureClass = computed(() =>
-	failureClassOfSend({
-		status: props.status,
-		bounceType: props.bounceType,
-		errorCode: props.errorCode,
-	})
+// The reason leads with a sentence; the raw code and error text stay one click
+// away inside it. Loaded only for a send that did not arrive, so the reason
+// catalog stays off the send page's first load.
+const SendFailureReason = defineAsyncComponent(
+	() => import('~/components/dashboard/SendFailureReason.vue')
 );
 const hasFailure = computed(
 	() => Boolean(props.errorMessage || props.errorCode) || props.status === 'bounced'
@@ -349,7 +345,8 @@ const copyMessageId = async () => {
 				</h3>
 			</div>
 			<SendFailureReason
-				:failure-class="failureClass"
+				:status="status"
+				:bounce-type="bounceType"
 				:error-code="errorCode"
 				:provider-text="errorMessage"
 			/>
