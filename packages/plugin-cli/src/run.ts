@@ -3,6 +3,7 @@ import { parseArgs, requireNoPositionals, requireSinglePositional } from './args
 import { runCreate } from './commands/create';
 import { runCodegen } from './commands/codegen';
 import { runMutation } from './commands/mutate';
+import { CLI_INVOCATION } from './command';
 import { PluginCliError } from './errors';
 import type { CliIo } from './io';
 
@@ -15,9 +16,9 @@ export interface CliContext {
 	readonly loadingOptions?: PackageLoadingOptions;
 }
 
-export const USAGE = `owlat plugins — manage bundled Owlat plugins
+export const USAGE = `owlat-plugins — manage bundled Owlat plugins
 
-Usage: owlat plugins <command> [options]
+Usage: ${CLI_INVOCATION} <command> [options]
 
 Commands:
   create <plugin-id> [--name <package>] [--dir <path>] [--template <name>]
@@ -36,7 +37,7 @@ Commands:
   dev
       Regenerate the composition and re-run on every plugins.config.ts change.
 
-Run from anywhere inside the Owlat workspace.`;
+Run from anywhere inside an Owlat checkout.`;
 
 /**
  * Route one finite subcommand (everything except the long-running `dev`, whose
@@ -95,7 +96,7 @@ export async function dispatchFinite(
 		default:
 			throw new PluginCliError(`Unknown command: ${command}`, [
 				`Run one of: ${KNOWN_COMMANDS.join(', ')}`,
-				'Run "owlat plugins --help" for usage.',
+				`Run "${CLI_INVOCATION} --help" for usage.`,
 			]);
 	}
 }

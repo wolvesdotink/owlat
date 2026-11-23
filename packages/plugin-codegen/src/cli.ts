@@ -1,5 +1,5 @@
 import { generatePluginComposition } from './generate';
-import { PluginCodegenError } from './errors';
+import { formatPluginCodegenFailure, PluginCodegenError } from './errors';
 import { findWorkspaceRoot } from './workspaceRoot';
 
 const allowedArguments = new Set(['--check', '--boundaries-only']);
@@ -31,11 +31,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-	if (error instanceof PluginCodegenError) {
-		console.error(error.message);
-		for (const detail of error.details) console.error(`  ${detail}`);
-	} else {
-		console.error('Plugin codegen failed unexpectedly.');
-	}
+	for (const line of formatPluginCodegenFailure(error)) console.error(line);
 	process.exitCode = 1;
 });

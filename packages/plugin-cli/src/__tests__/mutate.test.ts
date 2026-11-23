@@ -34,7 +34,7 @@ describe('add', () => {
 		expect(text).toContain('+ alpha-plugin (alpha)');
 		expect(text).toContain('gained: mail:read');
 		expect(text).toContain('Added alpha-plugin');
-		expect(text).toContain('owlat plugins codegen');
+		expect(text).toContain('Run `bun run plugins:codegen` to regenerate the bundled composition.');
 	});
 
 	it('is idempotent for an already-listed package', async () => {
@@ -87,6 +87,72 @@ describe('add', () => {
 			runMutation('add', root, { packageInput: 'bad-plugin', dryRun: false }, io)
 		).rejects.toThrow(PluginCliError);
 		expect(await readConfigSource(root)).toBe(before);
+	});
+
+	it('refuses a package from this workspace and lists the steps that bundle it', async () => {
+		const root = await createCliWorkspace({
+			workspaceMembers: {
+				'examples/plugins/hello-owlat': {
+					name: '@acme/owlat-plugin-hello-owlat',
+					version: '0.0.0',
+					private: true,
+				},
+			},
+		});
+		const before = await readConfigSource(root);
+		const { io } = captureIo();
+
+		const error = await runMutation(
+			'add',
+			root,
+			{ packageInput: '@acme/owlat-plugin-hello-owlat', dryRun: false },
+			io
+		).catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(PluginCliError);
+		expect((error as PluginCliError).message).toBe(
+			'@acme/owlat-plugin-hello-owlat is the workspace package in examples/plugins/hello-owlat. A bundled plugin has to be installed from a package registry.'
+		);
+		expect((error as PluginCliError).details).toEqual([
+			'From the checkout root, publish it, take the folder out of the checkout and install the published version:',
+			'  cd examples/plugins/hello-owlat',
+			'  npm pkg delete private',
+			'  bun publish --access public',
+			'  cd -',
+			'  mv examples/plugins/hello-owlat ../hello-owlat',
+			'  bun add --exact @acme/owlat-plugin-hello-owlat@0.0.0',
+			'  bun run owlat-plugins add @acme/owlat-plugin-hello-owlat',
+			'The folder has to leave the checkout because Bun links a workspace folder in place of the published package of the same name.',
+			'Building a Plugin, step 6, explains each step.',
+		]);
+		expect(await readConfigSource(root)).toBe(before);
+	});
+
+	it('asks for a scope of your own before publishing a package named under @owlat', async () => {
+		const root = await createCliWorkspace({
+			workspaceMembers: {
+				'examples/plugins/hello-owlat': { name: '@owlat/plugin-hello-owlat', version: '0.0.0' },
+			},
+		});
+		const { io } = captureIo();
+
+		const error = (await runMutation(
+			'add',
+			root,
+			{ packageInput: '@owlat/plugin-hello-owlat', dryRun: false },
+			io
+		).catch((cause: unknown) => cause)) as PluginCliError;
+
+		expect(error.details.slice(0, 4)).toEqual([
+			'From the checkout root, publish it, take the folder out of the checkout and install the published version:',
+			'  cd examples/plugins/hello-owlat',
+			'  npm pkg set name=@your-scope/plugin-hello-owlat',
+			'  bun publish --access public',
+		]);
+		expect(error.details).toContain('  bun add --exact @your-scope/plugin-hello-owlat@0.0.0');
+		expect(error.details).toContain(
+			'The @owlat scope belongs to the Owlat project: replace @your-scope with an npm scope you can publish to.'
+		);
 	});
 
 	it('rejects an invalid package-name argument', async () => {

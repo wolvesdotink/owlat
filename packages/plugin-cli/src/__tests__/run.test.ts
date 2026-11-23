@@ -1,7 +1,10 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parsePluginId } from '@owlat/plugin-kit';
+import type { PluginPackageName } from '@owlat/plugin-host';
 import { PluginCliError } from '../errors';
+import { buildScaffold, SCAFFOLD_TEMPLATES } from '../scaffold';
 import { dispatchFinite, KNOWN_COMMANDS, USAGE } from '../run';
 import {
 	captureIo,
@@ -69,5 +72,43 @@ describe('dispatchFinite', () => {
 describe('USAGE', () => {
 	it('documents every known command', () => {
 		for (const command of KNOWN_COMMANDS) expect(USAGE).toContain(command);
+	});
+});
+
+describe('the command name', () => {
+	// The binary is the only thing a developer can run, so every place that tells
+	// them what to type has to name it. A spelling with a space reads like a
+	// subcommand of the operator wrapper, which has none.
+	const invocation = 'bun run owlat-plugins';
+
+	it('is the package binary, and the usage text names it that way', async () => {
+		const packageJson = JSON.parse(
+			await readFile(join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')
+		) as { bin: Record<string, string> };
+		expect(Object.keys(packageJson.bin)).toEqual(['owlat-plugins']);
+		expect(USAGE).toContain(`Usage: ${invocation} <command> [options]`);
+		expect(USAGE).not.toMatch(/owlat plugins/);
+	});
+
+	it('is the one an unknown command points at', async () => {
+		const root = await createCliWorkspace();
+		const { io } = captureIo();
+		const error = await dispatchFinite('bundle', [], { workspaceRoot: root, io }).catch(
+			(cause: unknown) => cause
+		);
+		expect((error as PluginCliError).details).toContain(`Run "${invocation} --help" for usage.`);
+	});
+
+	it.each(SCAFFOLD_TEMPLATES)('is the one the %s README tells its author to run', (template) => {
+		const packageName = '@acme/owlat-plugin-hello' as PluginPackageName;
+		const readme = buildScaffold(
+			'/workspace',
+			'/workspace/examples/plugins/hello',
+			parsePluginId('hello'),
+			packageName,
+			template
+		).get('README.md');
+		expect(readme).toContain(`${invocation} add ${packageName}`);
+		expect(readme).not.toMatch(/owlat plugins/);
 	});
 });

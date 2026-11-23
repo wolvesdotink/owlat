@@ -6,7 +6,11 @@ import {
 	type BundledPlugin,
 	type ValidatedBundledPluginSource,
 } from '@owlat/plugin-host';
-import { parsePluginManifest, pluginContributionModules } from '@owlat/plugin-kit';
+import {
+	parsePluginManifest,
+	PluginManifestError,
+	pluginContributionModules,
+} from '@owlat/plugin-kit';
 import { isRecord } from '@owlat/shared';
 import { PluginCodegenError } from './errors';
 import {
@@ -50,19 +54,24 @@ export async function loadBundledPlugins(
 			throw new PluginCodegenError(
 				'package_load_failed',
 				`Bundled plugin ${packageName} could not be imported`,
-				[],
+				[describeImportFailure(cause)],
 				{ cause }
 			);
 		}
 
 		let manifest;
+		const defaultExport = readDefaultExport(loadedModule);
 		try {
-			manifest = parsePluginManifest(readDefaultExport(loadedModule));
+			manifest = parsePluginManifest(defaultExport);
 		} catch (cause) {
 			throw new PluginCodegenError(
 				'invalid_manifest',
 				`Bundled plugin ${packageName} does not export a valid default manifest`,
-				[],
+				defaultExport === undefined
+					? [describeMissingDefault(loadedModule)]
+					: cause instanceof PluginManifestError
+						? cause.issues.map((issue) => `${issue.path} ${issue.message}`)
+						: [],
 				{ cause }
 			);
 		}
@@ -93,6 +102,35 @@ function readDefaultExport(loadedModule: unknown): unknown {
 	if (!isRecord(loadedModule)) return undefined;
 	const descriptor = Object.getOwnPropertyDescriptor(loadedModule, 'default');
 	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+}
+
+const MAX_CAUSE_LENGTH = 300;
+
+/**
+ * The first line of what the import threw, bounded. A plugin's own top-level
+ * code produced it, so it is the author's diagnosis; the stack and any later
+ * lines stay out because they can carry paths and values from the build host.
+ */
+function describeImportFailure(cause: unknown): string {
+	if (!(cause instanceof Error)) return 'The import threw a non-Error value';
+	const firstLine = cause.message.split('\n', 1)[0]?.trim() ?? '';
+	const text = firstLine.length > 0 ? `${cause.name}: ${firstLine}` : cause.name;
+	return text.length > MAX_CAUSE_LENGTH ? `${text.slice(0, MAX_CAUSE_LENGTH)}…` : text;
+}
+
+/**
+ * Names only the module's export KEYS: reading their values could run an
+ * accessor, which the loader never does.
+ */
+function describeMissingDefault(loadedModule: unknown): string {
+	const names = isRecord(loadedModule)
+		? Object.keys(loadedModule).filter((name) => name !== 'default')
+		: [];
+	const shown = names.slice(0, 10).join(', ');
+	const more = names.length > 10 ? `, and ${names.length - 10} more` : '';
+	return names.length === 0
+		? 'The root module has no default export and no named exports'
+		: `The root module has no default export. Its named exports are: ${shown}${more}`;
 }
 
 async function importModule(resolvedEntry: string): Promise<unknown> {

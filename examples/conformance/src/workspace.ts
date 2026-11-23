@@ -25,6 +25,9 @@
  * closes that gap: it reads each reference's real `package.json` and asserts it
  * declares the shape this harness synthesizes — a string root export plus a
  * string export for every contribution module its manifest names.
+ * `referencePackages.test.ts` installs each reference's own files instead and
+ * bundles them, which is what proves its root module default-exports the
+ * manifest.
  */
 
 import { createHash } from 'node:crypto';

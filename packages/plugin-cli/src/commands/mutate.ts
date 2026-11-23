@@ -10,6 +10,7 @@ import {
 	writePluginsConfig,
 } from '../config';
 import type { CliIo } from '../io';
+import { findWorkspacePackage, workspacePackageRefusal } from '../workspacePackages';
 import { formatCapabilityDiff } from '../report';
 
 export type MutationKind = 'add' | 'remove';
@@ -26,8 +27,10 @@ export interface MutationArgs {
  * (or an absent package on `remove`) is a reported no-op that writes nothing.
  * Before any file is touched, the proposed set is fully validated by loading its
  * manifests through the verified loader and the capability diff is computed;
- * only then is the canonical config written. `--dry-run` prints the diff and the
- * proposed file without writing. A write failure leaves the config unchanged.
+ * only then is the canonical config written. A package that is a member of this
+ * workspace is refused first, with the steps that publish and install it.
+ * `--dry-run` prints the diff and the proposed file without writing. A write
+ * failure leaves the config unchanged.
  */
 export async function runMutation(
 	kind: MutationKind,
@@ -50,6 +53,11 @@ export async function runMutation(
 		return;
 	}
 
+	if (kind === 'add') {
+		const member = await findWorkspacePackage(workspaceRoot, packageName);
+		if (member) throw workspacePackageRefusal(packageName, member);
+	}
+
 	const diff = await computeCapabilityDiff(workspaceRoot, packages, edit.packages, loadingOptions);
 	for (const line of formatCapabilityDiff(diff)) io.log(line);
 
@@ -70,5 +78,5 @@ export async function runMutation(
 			? `Added ${packageName} to ${CONFIG_PATH}.`
 			: `Removed ${packageName} from ${CONFIG_PATH}.`
 	);
-	io.log('Run `owlat plugins codegen` to regenerate the bundled composition.');
+	io.log('Run `bun run plugins:codegen` to regenerate the bundled composition.');
 }

@@ -4,7 +4,7 @@
  *
  * Two suites in this package drive it: `pluginProviderParity.test.ts` over the
  * hand-written Mock ESP (P3.3 — "can a package be a provider?") and
- * `scaffoldedProviderConformance.test.ts` over `owlat plugins create --template
+ * `scaffoldedProviderConformance.test.ts` over `owlat-plugins create --template
  * send-provider`'s real output (P3.4 — "is the package we HAND an author already
  * one?"). Both questions are answered against the SAME rules, because they are
  * the host's rules and not either fixture's; a second copy of them would be a

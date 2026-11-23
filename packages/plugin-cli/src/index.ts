@@ -38,6 +38,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-	reportCliFailure(consoleIo, error, 'owlat plugins failed unexpectedly.');
+	reportCliFailure(consoleIo, error);
 	process.exitCode = 1;
 });
