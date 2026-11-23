@@ -20193,7 +20193,7 @@
 				"bounce": "Sending resumes by itself once the bounce rate over the last 30 days is under {limit}. It is {current} now.",
 				"cleared": "The rates are back under the line, so sending resumes at the next hourly check.",
 				"complaint": "Sending resumes by itself once the complaint rate over the last 30 days is under {limit}. It is {current} now.",
-				"gmail": "Sending resumes by itself once no Gmail reading for {domain} in the last 30 days is at or above {limit}. The highest is {current} and leaves the 30 days on {date}.",
+				"gmail": "Sending resumes by itself once no Gmail reading for {domain} in the last 30 days is at or above {limit}. The highest is {current}; the last reading over the line leaves the 30 days on {date}.",
 				"manualSetting": "This instance waits for a platform admin: sending resumes only once one lifts the suspension, even after the rates recover."
 			},
 			"liftHint": "Lifting it pauses the automatic check, until {date}, for every rate that is over the line right now. A rate that crosses the line later still suspends sending.",

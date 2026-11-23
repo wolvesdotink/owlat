@@ -754,6 +754,19 @@ describe('sending suspended and resumed', () => {
 		expect(pushed.sort()).toEqual(['admin-1', 'owner-1']);
 	});
 
+	it('a resume followed at once by a warning is still told', async () => {
+		const t = await harness([]);
+		await changeStatus(t, 'suspended', NOW);
+		await changeStatus(t, 'clean', NOW + MINUTE);
+		await t.mutation(internal.workspaces.abuseStatus.transition, {
+			input: { to: 'warned', at: NOW + 2 * MINUTE, reason: 'Auto-warned', changedBy: 'system' },
+		});
+
+		expect(await fanOut(t, { kind: 'sending_resumed', changedAt: NOW + MINUTE })).toEqual({
+			written: 2,
+		});
+	});
+
 	it('a suspension that already lifted again tells nobody; the resume does', async () => {
 		const t = await harness([]);
 		await changeStatus(t, 'suspended', NOW);

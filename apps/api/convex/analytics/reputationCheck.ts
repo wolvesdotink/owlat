@@ -60,11 +60,16 @@ export const evaluateAutoEnforce = internalMutation({
 				},
 			});
 		}
+		// A suspension stays on its trigger until that one clears: handing it to
+		// another metric first could lift it while the first is still over its
+		// clear line.
+		const keepsTrigger =
+			settings?.abuseStatus === 'suspended' && condition !== null && !condition.isClear;
 		if (decision) {
 			await ctx.scheduler.runAfter(
 				0,
 				internal.analytics.sendingReputation.autoEnforceReputation,
-				decision
+				keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision
 			);
 		}
 		return { riskLevel: org.riskLevel };

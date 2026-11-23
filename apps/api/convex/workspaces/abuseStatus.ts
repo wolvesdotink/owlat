@@ -127,16 +127,28 @@ function sameTrigger(a: ReputationTrigger | undefined, b: ReputationTrigger | un
 function reduce(
 	settings: Doc<'instanceSettings'>,
 	input: TransitionInput,
-	hold: ReputationCheckHold | undefined
+	options: { adminOverride: boolean; hold: ReputationCheckHold | undefined }
 ): ReducerResult {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 	const trigger = input.to === 'warned' || input.to === 'suspended' ? input.trigger : undefined;
 
 	if (from === input.to) {
-		// Same-state recorded — observability captures the attempt. A status the
-		// check set follows the check onto another trigger, so the suspension
-		// lifts on the evidence that holds it now. One without a trigger (a
-		// platform admin's) never gains one.
+		// Same-state recorded — observability captures the attempt. A platform
+		// admin who sets the status the check already set takes it over: the
+		// trigger goes, so the check no longer lifts what the admin decided.
+		if (options.adminOverride) {
+			return {
+				patch: {
+					abuseStatusReason: input.reason,
+					abuseStatusChangedBy: input.changedBy,
+					abuseStatusTrigger: undefined,
+				},
+				applied: 'recorded',
+			};
+		}
+		// A status the check set follows the check onto another trigger (the
+		// check hands off only once the stored one has cleared). One without a
+		// trigger (a platform admin's) never gains one.
 		const isRetriggered =
 			settings.abuseStatusTrigger !== undefined &&
 			trigger !== undefined &&
@@ -154,7 +166,12 @@ function reduce(
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
 			abuseStatusTrigger: trigger,
-			reputationCheckHold: hold,
+			// A lift sets the hold; only a new suspension or ban ends it early.
+			// A warning on another metric leaves it, or the held evidence would
+			// suspend again at the next run.
+			...(options.hold !== undefined || !isSendingAllowed(input.to)
+				? { reputationCheckHold: options.hold }
+				: {}),
 		},
 		applied: 'transitioned',
 	};
@@ -203,7 +220,7 @@ async function dispatch(
 	}
 
 	const hold = options.adminOverride ? await liftHold(ctx, from, input) : undefined;
-	const result = reduce(settings, input, hold);
+	const result = reduce(settings, input, { adminOverride: options.adminOverride, hold });
 
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(settings._id, result.patch as Partial<Doc<'instanceSettings'>>);

@@ -805,7 +805,31 @@ describe('evaluateAutoEnforce — automatic resume', () => {
 		expect(await resumeNotices(t)).toContain('sending_resumed');
 	});
 
-	it('lifts once the evidence has aged out of the window (too few sends left to judge)', async () => {
+	it('keeps its trigger while that trigger is still over the clear line, whatever else crosses', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemSuspension);
+		// Bounces 7% (not cleared), complaints 0.4% (over the suspension line).
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 70,
+			totalComplaints: 4,
+		});
+
+		await evaluate(t);
+		const [job] = await pendingEnforceJobs(t);
+		await t.mutation(
+			internal.analytics.sendingReputation.autoEnforceReputation,
+			job as { riskLevel: 'high' | 'critical' }
+		);
+
+		expect((await settingsRow(t))?.abuseStatusTrigger).toEqual({ code: 'bounce_rate' });
+	});
+
+	it('lifts once the evidence has aged out of the window', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(NOW);
 		const t = await harness();
@@ -933,6 +957,34 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		const jobs = await pendingEnforceJobs(t);
 		expect(jobs).toHaveLength(1);
 		expect(jobs[0]?.riskLevel).toBe('critical');
+	});
+
+	it('a warning on another metric during the hold does not end the hold', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+		await liftByAdmin(t);
+		await t.mutation(internal.workspaces.abuseStatus.transition, {
+			input: {
+				to: 'warned',
+				at: NOW + 1,
+				reason: 'Auto-warned: complaints',
+				changedBy: 'system',
+				trigger: { code: 'complaint_rate' },
+			},
+		});
+
+		vi.setSystemTime(NOW + HOUR_MS);
+		await evaluate(t);
+
+		expect(await pendingEnforceJobs(t)).toHaveLength(0);
 	});
 
 	it('still suspends during the hold on evidence that was not over the line at the lift', async () => {

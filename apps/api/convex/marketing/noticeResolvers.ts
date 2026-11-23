@@ -330,19 +330,17 @@ function isSendingBlocked(settings: Doc<'instanceSettings'> | null): boolean {
 }
 
 /**
- * A suspension or a resume, while it is still the instance's latest status
- * change. The stored reason rides along as the detail: it names the evidence
- * or carries the platform admin's note.
+ * A suspension or a resume, while sending is still in that state. A later
+ * change that keeps it (a resume followed by a warning) does not silence it; a
+ * suspension already lifted again is old news, its resume notice follows. The
+ * stored reason rides along as the detail.
  */
 async function draftSendingStatus(
 	ctx: MutationCtx,
 	event: Extract<MarketingNoticeEvent, { kind: 'sending_suspended' | 'sending_resumed' }>
 ): Promise<NoticeDraft | null> {
 	const settings = await ctx.db.query('instanceSettings').first();
-	const isCurrent =
-		settings?.abuseStatusChangedAt === event.changedAt &&
-		isSendingBlocked(settings) === (event.kind === 'sending_suspended');
-	if (!isCurrent) return null;
+	if (isSendingBlocked(settings) !== (event.kind === 'sending_suspended')) return null;
 	return {
 		kind: event.kind,
 		eventKey: `${event.kind}:${event.changedAt}`,

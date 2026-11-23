@@ -20193,7 +20193,7 @@
 				"bounce": "Der Versand läuft von selbst wieder an, sobald die Bounce-Rate der letzten 30 Tage unter {limit} liegt. Aktuell sind es {current}.",
 				"cleared": "Die Raten liegen wieder unter der Grenze. Der Versand läuft bei der nächsten stündlichen Prüfung wieder an.",
 				"complaint": "Der Versand läuft von selbst wieder an, sobald die Beschwerderate der letzten 30 Tage unter {limit} liegt. Aktuell sind es {current}.",
-				"gmail": "Der Versand läuft von selbst wieder an, sobald Gmail für {domain} in den letzten 30 Tagen keinen Wert ab {limit} mehr meldet. Der höchste liegt bei {current} und fällt am {date} aus den 30 Tagen.",
+				"gmail": "Der Versand läuft von selbst wieder an, sobald Gmail für {domain} in den letzten 30 Tagen keinen Wert ab {limit} mehr meldet. Der höchste liegt bei {current}; der letzte Wert über der Grenze fällt am {date} aus den 30 Tagen.",
 				"manualSetting": "Diese Instanz wartet auf eine Person mit Plattform-Admin-Rechten: Der Versand läuft erst wieder an, wenn sie die Sperre aufhebt, auch wenn sich die Raten erholt haben."
 			},
 			"liftHint": "Wenn du sie aufhebst, pausiert die automatische Prüfung bis {date} für jede Rate, die gerade über der Grenze liegt. Überschreitet eine Rate die Grenze später, wird der Versand trotzdem ausgesetzt.",

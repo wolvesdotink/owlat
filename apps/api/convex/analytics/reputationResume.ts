@@ -12,9 +12,10 @@
  *     Google's 0.1% guidance. Gmail reports a day only when enough mail was
  *     sent, so a suspended domain gets no new readings; the old bad day leaving
  *     the window is what clears it.
- * An internal window with fewer sends than the minimum sample counts as clear:
- * the evidence has aged out of the 30-day window, and enforcement itself judges
- * nothing below that sample.
+ * The internal rates are judged on whatever sends are left in the window, even
+ * fewer than the minimum sample enforcement needs: a suspended instance sends
+ * nothing new, so the window only shrinks. An empty window counts as clear,
+ * because the evidence has aged out of it.
  *
  * Only a suspension that records its trigger lifts, so one a platform admin
  * imposed, a legacy row written before triggers were stored, and a ban never
@@ -23,11 +24,7 @@
  * PURE: every reading and `now` are parameters (scripts/purity-roots.txt).
  */
 
-import {
-	PROVIDER_SPAM_RATE_POLICY,
-	REPUTATION_MIN_SAMPLE_SIZE,
-	REPUTATION_THRESHOLDS,
-} from '@owlat/shared/reputation';
+import { PROVIDER_SPAM_RATE_POLICY, REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import { DAY_MS } from '../lib/constants';
 import type { OrgRates, ReputationTrigger, ReputationTriggerCode } from './reputationEnforcement';
 
@@ -61,7 +58,7 @@ export interface ResumeCondition {
 	readonly domain?: string;
 	/** The metric lifts the suspension once it is under this. */
 	readonly limit: number;
-	/** The metric now; `null` when there is too little evidence left to judge. */
+	/** The metric now; `null` when no evidence is left in the window. */
 	readonly current: number | null;
 	readonly isClear: boolean;
 	/** When the evidence leaves the window by the clock alone, if known. */
@@ -94,7 +91,7 @@ export function resumeCondition(
 			: REPUTATION_THRESHOLDS.complaint.high;
 	const rate =
 		trigger.code === 'bounce_rate' ? evidence.org.bounceRate : evidence.org.complaintRate;
-	const current = evidence.org.totalSent >= REPUTATION_MIN_SAMPLE_SIZE ? rate : null;
+	const current = evidence.org.totalSent > 0 ? rate : null;
 	return {
 		code: trigger.code,
 		limit,

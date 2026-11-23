@@ -114,11 +114,16 @@ export const update = authedMutation({
 		emailTheme: v.optional(emailThemeValidator),
 	},
 	handler: async (ctx, args, session) => {
-		requirePermission(
-			hasPermission(session.role, 'settings:manage'),
-			'Only owners and admins can update organization settings'
-		);
-		if (args.isSendingResumeManual !== undefined) await requirePlatformAdmin(ctx);
+		// The resume switch is the platform admins' (whatever their workspace
+		// role); every other field needs settings:manage.
+		const { isSendingResumeManual, ...workspaceFields } = args;
+		if (Object.values(workspaceFields).some((value) => value !== undefined)) {
+			requirePermission(
+				hasPermission(session.role, 'settings:manage'),
+				'Only owners and admins can update organization settings'
+			);
+		}
+		if (isSendingResumeManual !== undefined) await requirePlatformAdmin(ctx);
 		const now = Date.now();
 		if (
 			args.relayMinorUnitsPerThousand !== undefined &&

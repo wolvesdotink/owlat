@@ -30,10 +30,13 @@ describe('resumeCondition', () => {
 		).toMatchObject({ limit: 0.002, current: 0.0024, isClear: false });
 	});
 
-	it('treats a window with too few sends as cleared: the evidence has aged out', () => {
+	it('treats an empty window as cleared, but judges a small one by its rate', () => {
 		expect(
-			resumeCondition({ code: 'bounce_rate' }, { org: org(0.5, 0, 40), gmail: [] })
+			resumeCondition({ code: 'bounce_rate' }, { org: org(0, 0, 0), gmail: [] })
 		).toMatchObject({ current: null, isClear: true });
+		expect(
+			resumeCondition({ code: 'bounce_rate' }, { org: org(12 / 90, 0, 90), gmail: [] })
+		).toMatchObject({ isClear: false });
 	});
 
 	it('clears Gmail once its last reading over the guidance leaves the window', () => {

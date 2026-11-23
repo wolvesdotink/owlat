@@ -466,6 +466,27 @@ describe('abuseStatus — suspend and resume', () => {
 		expect(await noticeKinds(t)).toEqual(['sending_suspended']);
 	});
 
+	it('a platform admin who re-imposes an automatic suspension takes it over', async () => {
+		const t = await harness();
+		await seedSettings(t, {
+			abuseStatus: 'suspended',
+			abuseStatusChangedBy: 'system',
+			abuseStatusTrigger: { code: 'bounce_rate' },
+		});
+
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'suspended', at: Date.now(), reason: 'keep it off', changedBy: 'admin-1' },
+		});
+
+		await t.run(async (ctx) => {
+			const s = await ctx.db.query('instanceSettings').first();
+			expect(s?.abuseStatusTrigger).toBeUndefined();
+			expect(s?.abuseStatusChangedBy).toBe('admin-1');
+			expect(s?.abuseStatusReason).toBe('keep it off');
+		});
+		expect(await noticeKinds(t)).toEqual([]);
+	});
+
 	it('a manual lift is audited with its hold and notifies', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
