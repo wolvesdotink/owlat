@@ -38,6 +38,7 @@ import type { SendTransactionalResponse } from '@owlat/public-contract';
 import { decodeRequest, sendTransactionalRequestSchema } from '@owlat/public-contract/schemas';
 import type { z } from 'zod';
 import type { DispatchRejectionReason } from './dispatch';
+import type { SendIntakeAbuseState } from '../delivery/sendIntakeGates';
 import { prepareAttachments, uploadAndDispatch, type PreparedAttachment } from './attachmentIntake';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
@@ -113,18 +114,49 @@ function validateDecodedBody(body: SendTransactionalBody): Response | null {
 // Outcome → response mapping
 // ============================================================
 
+/**
+ * The 403 for a suspended or banned instance. The caller may run the instance
+ * itself, so the message names who lifts it instead of "support". `data` keeps
+ * `reason` for existing clients and adds the status, since when, and the
+ * stored reason. That reason is free text from the reputation job (rates, a
+ * sending domain, a campaign id) or a platform admin's note, the same text the
+ * workspace's members see on Delivery health.
+ */
+function abuseBlockedResponse(outcome: {
+	detail?: string;
+	abuse?: SendIntakeAbuseState;
+}): Response {
+	const status = outcome.abuse?.status ?? 'suspended';
+	const since = outcome.abuse?.since ?? null;
+	const detail = outcome.detail || null;
+	const message = [
+		status === 'banned'
+			? 'Sending is permanently disabled on this Owlat instance.'
+			: 'Sending is suspended on this Owlat instance.',
+		'A platform admin of this instance can lift it in the operator console.',
+		// Last, because a stored reason carries no closing punctuation.
+		detail ? `Reason: ${detail}` : null,
+	]
+		.filter((part) => part !== null)
+		.join(' ');
+	return errorResponse('forbidden', message, {
+		data: {
+			reason: 'abuse_blocked',
+			status,
+			since: since === null ? null : new Date(since).toISOString(),
+			detail,
+		},
+	});
+}
+
 const REJECTION_RESPONSE_MAP: Record<
-	DispatchRejectionReason,
+	Exclude<DispatchRejectionReason, 'abuse_blocked'>,
 	{ category: OperationErrorCategory; defaultMessage: string }
 > = {
 	feature_disabled: {
 		// The status every feature floor uses for a disabled flag.
 		category: 'forbidden',
 		defaultMessage: featureDisabledMessage('transactional'),
-	},
-	abuse_blocked: {
-		category: 'forbidden',
-		defaultMessage: 'Your account has been suspended. Please contact support for assistance.',
 	},
 	no_delivery_provider: {
 		// 422: the instance isn't in a state that can send transactional email
@@ -314,6 +346,7 @@ export const sendTransactional = createAuthenticatedHandler(
 		if (!intake.ok) return intake.response;
 		const outcome = intake.outcome;
 		if (!outcome.ok) {
+			if (outcome.reason === 'abuse_blocked') return abuseBlockedResponse(outcome);
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];
 			return errorResponse(map.category, outcome.detail || map.defaultMessage, {
 				data: { reason: outcome.reason },

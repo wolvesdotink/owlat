@@ -110,6 +110,7 @@ export const update = authedMutation({
 	args: {
 		topicId: v.id('topics'),
 		name: v.optional(v.string()),
+		// Omitted leaves the description as it is; an empty string removes it.
 		description: v.optional(v.string()),
 		requireDoubleOptIn: v.optional(v.boolean()),
 		displayOrder: v.optional(v.number()),
@@ -141,7 +142,8 @@ export const update = authedMutation({
 			updates.name = args.name;
 		}
 		if (args.description !== undefined) {
-			updates.description = args.description;
+			// Patching a field to undefined removes it.
+			updates.description = args.description || undefined;
 		}
 		if (args.requireDoubleOptIn !== undefined) {
 			updates.requireDoubleOptIn = args.requireDoubleOptIn;

@@ -792,14 +792,17 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		);
 		expect(verdict(r, 'marketing').level).toBe('attention');
 		expect(r.gates.find((g) => g.key === 'unsubscribe')).toBeUndefined();
+		expect(gate(r, 'complaints').actionHref).toBe(
+			'/dashboard/audience/suppressions?reason=complained'
+		);
 	});
 
-	it('says a bounce rate over the limit asks for attention and links to the suppressions', () => {
+	it('says a bounce rate over the limit asks for attention and links to the bounced addresses', () => {
 		const r = deriveDeliveryReadiness(streamInput(viaProvider, { bounceRate: 0.031 }));
 		const g = gate(r, 'bounces');
 		expect(g.status).toBe('attention');
 		expect(g.streams).toEqual(['marketing']);
-		expect(g.actionHref).toBe('/dashboard/audience/suppressions');
+		expect(g.actionHref).toBe('/dashboard/audience/suppressions?reason=bounced');
 		expect(localized(g.actionLabel!)).toBe('Review suppressions');
 		expect(localized(g.detail)).toBe(
 			'3.10% of your mail bounced, over the 2% limit. Remove addresses that bounce before the next campaign.'

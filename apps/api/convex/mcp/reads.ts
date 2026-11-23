@@ -213,8 +213,54 @@ async function threadMessage(ctx: QueryCtx, message: Doc<'mailMessages'>) {
 	};
 }
 
+/**
+ * Up to `limit` messages of a thread, newest first, all of them older than
+ * `before` when it is given. The index orders by `receivedAt`, then by
+ * `_creationTime`, so a message with the same `receivedAt` as `before` is
+ * older only when it was created first: the page boundary between two such
+ * messages skips neither.
+ */
+async function threadMessagesBefore(
+	ctx: QueryCtx,
+	threadId: Id<'mailThreads'>,
+	before: Doc<'mailMessages'> | null,
+	limit: number
+): Promise<Array<Doc<'mailMessages'>>> {
+	if (!before) {
+		return ctx.db
+			.query('mailMessages')
+			.withIndex('by_thread_and_received', (q) => q.eq('threadId', threadId))
+			.order('desc')
+			.take(limit);
+	}
+	const sameTime = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_and_received', (q) =>
+			q
+				.eq('threadId', threadId)
+				.eq('receivedAt', before.receivedAt)
+				.lt('_creationTime', before._creationTime)
+		)
+		.order('desc')
+		.take(limit);
+	if (sameTime.length >= limit) return sameTime;
+	const earlier = await ctx.db
+		.query('mailMessages')
+		.withIndex('by_thread_and_received', (q) =>
+			q.eq('threadId', threadId).lt('receivedAt', before.receivedAt)
+		)
+		.order('desc')
+		.take(limit - sameTime.length);
+	return [...sameTime, ...earlier];
+}
+
 export const readThread = internalQuery({
-	args: { clientId: v.id('mcpClients'), messageId: v.string(), maxMessages: v.number() },
+	args: {
+		clientId: v.id('mcpClients'),
+		messageId: v.string(),
+		maxMessages: v.number(),
+		beforeMessageId: v.optional(v.string()),
+	},
 	handler: async (ctx, args): Promise<ToolOutcome> => {
 		const access = await resolveMcpAccess(ctx, args.clientId);
 		if (!access.ok) return denied(NO_ACCESS);
@@ -225,11 +271,19 @@ export const readThread = internalQuery({
 		if (!seed || !access.mailboxes.some((mailbox) => mailbox._id === seed.mailboxId)) {
 			return denied('No message with that id is available to this connection.');
 		}
-		const newest = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_thread_and_received', (q) => q.eq('threadId', seed.threadId))
-			.order('desc')
-			.take(args.maxMessages + 1);
+		let before: Doc<'mailMessages'> | null = null;
+		if (args.beforeMessageId !== undefined) {
+			const beforeId = ctx.db.normalizeId('mailMessages', args.beforeMessageId);
+			before = beforeId ? await ctx.db.get(beforeId) : null;
+			// Only a message this read could have returned: the seed's thread in
+			// the seed's mailbox, which the check above already allowed. Any other
+			// id, a teammate's message in the same thread included, gets the
+			// answer an unknown id gets.
+			if (!before || before.threadId !== seed.threadId || before.mailboxId !== seed.mailboxId) {
+				return denied('No message with that before_message_id is in this conversation.');
+			}
+		}
+		const newest = await threadMessagesBefore(ctx, seed.threadId, before, args.maxMessages + 1);
 		const hasOlder = newest.length > args.maxMessages;
 		const inMailbox = newest
 			.slice(0, args.maxMessages)

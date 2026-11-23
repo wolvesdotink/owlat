@@ -63,21 +63,48 @@ function campaignSnapshot(c: {
 }
 
 /**
+ * The live campaigns of one status, newest `sentAt` first. A campaign stamps
+ * `sentAt` when its send starts, so this orders sending and sent alike.
+ */
+function latestWithStatus(db: DatabaseReader, status: 'sending' | 'sent', limit: number) {
+	return db
+		.query('campaigns')
+		.withIndex('by_deleted_at_and_status_and_sent_at', (s) =>
+			s.eq('deletedAt', undefined).eq('status', status)
+		)
+		.order('desc')
+		.take(limit);
+}
+
+/**
  * Look up campaign performance by a name/subject query. Returns the top matches
  * (bounded) with delivery/open/click stats. Empty array when nothing matches.
+ * Without a query it returns the latest campaigns instead: the ones still
+ * sending first, then the most recently sent.
  */
 export const campaignStats = internalQuery({
-	args: { query: v.string(), limit: v.optional(v.number()) },
+	args: { query: v.optional(v.string()), limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const q = args.query.trim();
+		const q = args.query?.trim() ?? '';
 		const limit = Math.max(1, Math.min(args.limit ?? 3, 10));
-		if (q.length < 2) return { campaigns: [] };
-		const matches = await ctx.db
-			.query('campaigns')
-			.withSearchIndex('search_campaigns', (s) =>
-				s.search('searchableText', q).eq('deletedAt', undefined)
-			)
-			.take(limit);
+		let matches;
+		if (q.length === 0) {
+			const sending = await latestWithStatus(ctx.db, 'sending', limit);
+			const sent =
+				sending.length < limit
+					? await latestWithStatus(ctx.db, 'sent', limit - sending.length)
+					: [];
+			matches = [...sending, ...sent];
+		} else if (q.length < 2) {
+			return { campaigns: [] };
+		} else {
+			matches = await ctx.db
+				.query('campaigns')
+				.withSearchIndex('search_campaigns', (s) =>
+					s.search('searchableText', q).eq('deletedAt', undefined)
+				)
+				.take(limit);
+		}
 		// The same hold the campaign report shows, so "why is it not sending"
 		// has an answer: a suspended workspace holds every sending campaign, and
 		// a held campaign carries the reason recorded for the suspension.

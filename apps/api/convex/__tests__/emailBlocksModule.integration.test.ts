@@ -312,6 +312,31 @@ describe('Saved block module — update', () => {
 		});
 	});
 
+	it('removes the description when it is sent empty', async () => {
+		const t = convexTest(schema, modules);
+		const blockId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert('emailBlocks', {
+					name: 'Footer',
+					description: 'Shared footer',
+					content: '[]',
+					usageCount: 0,
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				})
+		);
+
+		const outcome = await t.mutation(internal.emailBlocks.module.update, {
+			blockId,
+			patch: { description: '  ' },
+			userId: 'user_desc',
+		});
+		expect(outcome.ok && outcome.descriptionChanged).toBe(true);
+
+		const block = await t.run(async (ctx) => await ctx.db.get(blockId));
+		expect(block).not.toHaveProperty('description');
+	});
+
 	it('returns block_not_found for missing block', async () => {
 		const t = convexTest(schema, modules);
 
