@@ -17,6 +17,16 @@ import {
 } from '../auth/apiRequestReceipts';
 
 /**
+ * Convex refuses an object key that is longer than 1024 characters, starts
+ * with `$`, or holds a character outside printable ASCII, and it throws while
+ * serializing the mutation's arguments. The contract accepts any string key,
+ * so the handler checks them before the call and answers the caller's 400.
+ */
+function isStorablePropertyName(name: string): boolean {
+	return name.length <= 1024 && !name.startsWith('$') && /^[\x20-\x7e]*$/.test(name);
+}
+
+/**
  * POST /api/v1/events - Send an event to trigger automations
  *
  * The request and response shapes are the public contract's
@@ -43,6 +53,12 @@ export const sendEvent = createAuthenticatedHandler(
 		const body = decoded.value;
 		if (!isValidEmail(body.email)) {
 			return errorResponse('invalid_input', 'Invalid email format');
+		}
+		if (!Object.keys(body.eventProperties ?? {}).every(isStorablePropertyName)) {
+			return errorResponse(
+				'invalid_input',
+				'eventProperties keys must be printable ASCII, at most 1024 characters, and must not start with "$"'
+			);
 		}
 
 		const createContactIfNotExists = body.createContactIfNotExists ?? false;

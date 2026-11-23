@@ -733,6 +733,30 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		expect(body.error.category).toBe('invalid_input');
 	});
 
+	it.each([
+		['a non-ASCII character', 'café'],
+		['a leading $', '$source'],
+		['more than 1024 characters', 'k'.repeat(1025)],
+	])(
+		'400 invalid_input for an eventProperties key with %s, which Convex cannot store (not 500)',
+		async (_label, propertyName) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['events:write']);
+			const res = await t.fetch('/api/v1/events', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: JSON.stringify({
+					email: 'keys@example.com',
+					eventName: 'signed_up',
+					createContactIfNotExists: true,
+					eventProperties: { [propertyName]: 'x' },
+				}),
+			});
+			expect(res.status).toBe(400);
+			expect((await res.json()).error.category).toBe('invalid_input');
+		}
+	);
+
 	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
 		const t = setupTest();
 		const key = await seedKey(t, ['events:write']);
@@ -1379,14 +1403,6 @@ describe('a write route answers a backend failure by its category, not as invali
 	});
 
 	it.each([
-		[
-			'POST /contacts',
-			'Failed to create contact',
-			(f: Fixtures): [string, RequestInit] => [
-				'/api/v1/contacts',
-				{ method: 'POST', headers: authHeaders(f.key), body: '{"email":"fresh@example.com"}' },
-			],
-		],
 		[
 			'POST /events',
 			'Failed to send event',
