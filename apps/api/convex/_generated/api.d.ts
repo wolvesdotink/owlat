@@ -1811,6 +1811,7 @@ import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as publicApi_domains from '../publicApi/domains.js';
 import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_openApiHttp from '../publicApi/openApiHttp.js';
 import type * as publicApi_status from '../publicApi/status.js';
 import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
 import type * as publicApi_topics from '../publicApi/topics.js';
@@ -4069,6 +4070,7 @@ declare const fullApi: ApiFromModules<{
 	'publicApi/domains': typeof publicApi_domains;
 	'publicApi/domainsHttp': typeof publicApi_domainsHttp;
 	'publicApi/events': typeof publicApi_events;
+	'publicApi/openApiHttp': typeof publicApi_openApiHttp;
 	'publicApi/status': typeof publicApi_status;
 	'publicApi/statusHttp': typeof publicApi_statusHttp;
 	'publicApi/topics': typeof publicApi_topics;

@@ -10823,6 +10823,7 @@
 							"contacts": "List or create contacts",
 							"events": "Track custom events",
 							"health": "Health probe",
+							"openapi": "This instance's OpenAPI document, for API clients and AI agents",
 							"topics": "Manage topics and subscriptions",
 							"transactional": "Send a transactional email (slug in body)"
 						},

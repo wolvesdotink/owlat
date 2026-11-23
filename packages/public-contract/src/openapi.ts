@@ -272,9 +272,32 @@ function operationObject(operation: PublicOperation): JsonObject {
 	};
 }
 
-/** The OpenAPI document, deterministic for a given contract. */
+/** The placeholder server of the committed document, which every caller fills in. */
+const TEMPLATE_SERVER: JsonObject = {
+	url: '{baseUrl}',
+	// Every install serves its own API; a real host as the default
+	// would send a caller's key to someone else's server.
+	variables: {
+		baseUrl: {
+			default: 'https://rest.api.example.com',
+			description:
+				"Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL.",
+		},
+	},
+};
+
+export interface OpenApiDocumentOptions {
+	/**
+	 * The API address of the instance serving the document. Without it the
+	 * document carries a placeholder server for the caller to fill in.
+	 */
+	serverUrl?: string;
+}
+
+/** The OpenAPI document, deterministic for a given contract and options. */
 export function buildOpenApiDocument(
-	operations: readonly PublicOperation[] = PUBLIC_OPERATIONS
+	operations: readonly PublicOperation[] = PUBLIC_OPERATIONS,
+	options: OpenApiDocumentOptions = {}
 ): JsonObject {
 	const requests = componentSchemas(
 		[
@@ -308,22 +331,9 @@ export function buildOpenApiDocument(
 			title: 'Owlat API',
 			version: 'v1',
 			description:
-				'The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand.',
+				'The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand. Every instance serves its own copy at `/api/v1/openapi.json`, with its own API address as the server.',
 		},
-		servers: [
-			{
-				url: '{baseUrl}',
-				// Every install serves its own API; a real host as the default
-				// would send a caller's key to someone else's server.
-				variables: {
-					baseUrl: {
-						default: 'https://rest.api.example.com',
-						description:
-							"Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL.",
-					},
-				},
-			},
-		],
+		servers: [options.serverUrl ? { url: options.serverUrl } : TEMPLATE_SERVER],
 		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Domains', 'Health'].map(
 			(name) => ({ name })
 		),

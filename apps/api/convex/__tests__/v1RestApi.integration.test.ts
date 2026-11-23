@@ -17,6 +17,7 @@ import {
 	type DeliveryStatusReason,
 	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
+import { buildOpenApiDocument } from '@owlat/public-contract/openapi';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
@@ -2239,6 +2240,60 @@ describe('GET /api/v1/domains (listDomains → status:read)', () => {
 	});
 });
 
+// ─── GET /api/v1/openapi.json ────────────────────────────────────────────────
+
+describe('GET /api/v1/openapi.json (the instance describes its own API)', () => {
+	const SITE_URL = 'https://api.owlat.example';
+
+	it("serves the contract's document with this instance's API address as its server, without a key", async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect(res.status).toBe(200);
+		expect(res.headers.get('Content-Type')).toContain('application/json');
+		const served = await res.json();
+		expect(served.servers).toEqual([{ url: SITE_URL }]);
+		expect(served).toEqual(buildOpenApiDocument(PUBLIC_OPERATIONS, { serverUrl: SITE_URL }));
+		const { servers: _served, ...rest } = served;
+		const { servers: _built, ...built } = buildOpenApiDocument();
+		expect(rest).toEqual(built);
+	});
+
+	it('drops a trailing slash from the configured address', async () => {
+		process.env['CONVEX_SITE_URL'] = `${SITE_URL}/`;
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', { method: 'GET' });
+		expect((await res.json()).servers).toEqual([{ url: SITE_URL }]);
+	});
+
+	it("keeps the placeholder server, not the request's Host, when no address is configured", async () => {
+		delete process.env['CONVEX_SITE_URL'];
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Host: 'attacker.example', 'X-Forwarded-Host': 'attacker.example' },
+		});
+		expect(res.status).toBe(200);
+		expect((await res.json()).servers).toEqual(buildOpenApiDocument()['servers']);
+	});
+
+	it('lets a browser on another origin read it', async () => {
+		process.env['CONVEX_SITE_URL'] = SITE_URL;
+		const t = setupTest();
+		const preflight = await t.fetch('/api/v1/openapi.json', {
+			method: 'OPTIONS',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+		const res = await t.fetch('/api/v1/openapi.json', {
+			method: 'GET',
+			headers: { Origin: 'https://tools.example' },
+		});
+		expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -2307,9 +2362,12 @@ describe('the public contract (@owlat/public-contract)', () => {
 		}
 	});
 
-	it('documents every route other than the CORS preflights', () => {
+	it('documents every route other than the CORS preflights and the document itself', () => {
 		for (const [path, method] of router.getRoutes()) {
 			if (method === 'OPTIONS') continue;
+			// The document is served as is, not in the `{ data }` envelope every
+			// operation answers with, so it cannot describe itself as one.
+			if (path === '/api/v1/openapi.json') continue;
 			const documented = PUBLIC_OPERATIONS.some(
 				(operation) =>
 					operation.method === method &&

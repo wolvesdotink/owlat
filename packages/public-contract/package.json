@@ -19,6 +19,10 @@
 			"types": "./src/schemas.ts",
 			"import": "./src/schemas.ts"
 		},
+		"./openapi": {
+			"types": "./src/openapi.ts",
+			"import": "./src/openapi.ts"
+		},
 		"./openapi.json": "./openapi.json"
 	},
 	"scripts": {

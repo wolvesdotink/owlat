@@ -28,6 +28,7 @@ import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
+import { getOpenApiDocument } from './openApiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -44,6 +45,20 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/health',
 		method: 'OPTIONS',
 		handler: healthCheck,
+	});
+
+	// This instance's OpenAPI document (no authentication required). It
+	// answers its own preflight for the same reason the probe does.
+	http.route({
+		path: '/api/v1/openapi.json',
+		method: 'GET',
+		handler: getOpenApiDocument,
+	});
+
+	http.route({
+		path: '/api/v1/openapi.json',
+		method: 'OPTIONS',
+		handler: getOpenApiDocument,
 	});
 
 	// CORS preflight handlers for API routes

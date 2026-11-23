@@ -10823,6 +10823,7 @@
 							"contacts": "Kontakte auflisten oder anlegen",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
+							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
 							"topics": "Themen und Abonnements verwalten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"
 						},

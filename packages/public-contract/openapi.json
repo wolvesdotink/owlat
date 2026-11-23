@@ -3,7 +3,7 @@
 	"info": {
 		"title": "Owlat API",
 		"version": "v1",
-		"description": "The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand."
+		"description": "The public REST API of an Owlat instance. Generated from `@owlat/public-contract`; do not edit by hand. Every instance serves its own copy at `/api/v1/openapi.json`, with its own API address as the server."
 	},
 	"servers": [
 		{
