@@ -14818,6 +14818,8 @@
 	},
 	"postbox": {
 		"mailboxGuard": {
+			"adminBody": "Richte ein persönliches Postfach für dich ein oder ein Team-Postfach, das dein Team teilt.",
+			"adminCta": "Postfach einrichten",
 			"awaitingDomainBody": "{address} ist für dich reserviert. Es wird hier automatisch aktiv, sobald die Versanddomain deines Workspace verifiziert ist.",
 			"awaitingDomainHeading": "Dein Postfach ist reserviert",
 			"deadEndAskedBody": "Wir haben deiner Administration mitgeteilt, dass du ein Postfach brauchst. Es erscheint hier, sobald es eingerichtet ist.",

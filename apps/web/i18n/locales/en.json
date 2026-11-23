@@ -14818,6 +14818,8 @@
 	},
 	"postbox": {
 		"mailboxGuard": {
+			"adminBody": "Create a personal mailbox for yourself, or a team inbox your team shares.",
+			"adminCta": "Set up a mailbox",
 			"awaitingDomainBody": "{address} is held for you. It activates here automatically as soon as your workspace's sending domain verifies.",
 			"awaitingDomainHeading": "Your mailbox is reserved",
 			"deadEndAskedBody": "We've let your admins know you need a mailbox. You'll see it here once they set one up.",

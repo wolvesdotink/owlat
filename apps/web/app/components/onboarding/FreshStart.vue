@@ -17,9 +17,10 @@
  * and a transport that lands while they are still on this screen turns the note
  * into a visible "sending is ready now".
  *
- * When the member has no mailbox and no way to make one, the same honest
- * next-step surface the Postbox guard uses is shown (reserved / connect an
- * external account / ask an admin) — no dead "go to inbox" into an empty wall.
+ * When the member has no mailbox, the same honest next-step surface the Postbox
+ * guard uses is shown (reserved / connect an external account / set one up /
+ * ask an admin) — no dead "go to inbox" into an empty wall — with the Workbench
+ * exit under it, because the rest of Owlat works without a mailbox.
  */
 import { api } from '@owlat/api';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS, type PostboxNotifyAbout } from '~/utils/postboxNotify';
@@ -230,12 +231,17 @@ function skipToToday() {
 			<UiSpinner size="sm" />
 		</div>
 
-		<!-- No mailbox → the same honest next-step surface as the Postbox guard. -->
-		<div
-			v-else-if="!mailbox"
-			class="overflow-hidden rounded-xl border border-border-subtle bg-bg-surface/50"
-		>
-			<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
+		<!-- No mailbox → the same honest next-step surface as the Postbox guard,
+		     and the way on to the Workbench. -->
+		<div v-else-if="!mailbox" class="space-y-6">
+			<div class="overflow-hidden rounded-xl border border-border-subtle bg-bg-surface/50">
+				<PostboxMailboxGuard :mailbox-id="null" :loading="false" />
+			</div>
+			<div class="flex justify-end">
+				<UiButton variant="outline" :loading="finishing" @click="finishSetup">
+					{{ t('welcome.freshStart.finish') }}
+				</UiButton>
+			</div>
 		</div>
 
 		<!-- Two-minute setup for a member who has a mailbox. -->
