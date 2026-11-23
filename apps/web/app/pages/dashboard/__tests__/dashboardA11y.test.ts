@@ -27,6 +27,7 @@ import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
 import { useCampaignStatusBadge } from '~/composables/useCampaignStatusBadge';
 import { useClickOutside } from '~/composables/useClickOutside';
+import { useFeatureOffNotice } from '~/composables/useFeatureOffNotice';
 import { useContactBulkOperations } from '~/composables/useContactBulkOperations';
 import { useContactCsvImportOperations } from '~/composables/useContactCsvImportOperations';
 import { useCsvImport } from '~/composables/useCsvImport';
@@ -91,6 +92,7 @@ beforeEach(() => {
 		useCsvImport,
 		useDataTable,
 		useDebouncedSearch,
+		useFeatureOffNotice,
 		useFormModal,
 		usePostboxListKeyboard,
 		// Inert: the real guard registers `onBeforeRouteLeave`, which needs a

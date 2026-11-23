@@ -49,7 +49,6 @@ import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 	answerMode: true,
 });
 

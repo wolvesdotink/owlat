@@ -105,7 +105,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('teamInboxes'),
 		icon: InboxIcon,
 		area: 'team',
-		// Same pair the page's `requiresAnyFeature` names.
+		// Same pair the route table (`lib/routeFeatureGates.ts`) names.
 		gate: anyFlag('postbox', 'mail.external'),
 	},
 	{
@@ -114,7 +114,7 @@ export const ADMIN_REGISTRY: readonly AdminEntry[] = [
 		titleKey: label('savedReplies'),
 		icon: ChatQuoteIcon,
 		area: 'team',
-		// Same set the page's `requiresAnyFeature` names.
+		// Same set the route table (`lib/routeFeatureGates.ts`) names.
 		gate: anyFlag('postbox', 'mail.external', 'inbox'),
 	},
 	{

@@ -217,7 +217,11 @@ onUnmounted(stopPolling);
 		<UiHeroField />
 
 		<!-- ─────────────────────── The finale ─────────────────────── -->
-		<SetupReviewComplete v-if="phase === 'complete'" :redirect-target="redirectTarget" />
+		<SetupReviewComplete
+			v-if="phase === 'complete'"
+			:redirect-target="redirectTarget"
+			:flags="flags"
+		/>
 
 		<div v-else class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">

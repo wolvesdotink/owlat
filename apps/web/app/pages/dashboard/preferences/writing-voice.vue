@@ -9,7 +9,6 @@ useHead({ title: () => t('dashboard.preferences.writingVoice.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const { mailboxes, isLoading, error, refetch } = usePostboxMailbox();

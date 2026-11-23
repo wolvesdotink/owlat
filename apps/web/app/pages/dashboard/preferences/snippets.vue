@@ -13,7 +13,6 @@ useHead({ title: () => t('dashboard.preferences.snippets.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external', 'inbox'],
 });
 
 const { isAdmin } = usePermissions();

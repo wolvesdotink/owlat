@@ -17,7 +17,6 @@ useHead({ title: () => t('dashboard.preferences.booking.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresFeature: 'calendar.booking',
 });
 
 const { data, error, refetch } = useConvexQuery(api.booking.settings.getMine, {});

@@ -41,7 +41,7 @@ export function subgraphQueryArgs(
  *
  * Gated end-to-end on `ai.knowledge.analytics`: every Convex subscription returns
  * `'skip'` until the flag resolves on, so the view fetches nothing — and the page
- * is also route-gated by `definePageMeta({ requiresFeature })`. Mirrors
+ * is also route-gated in `lib/routeFeatureGates.ts`. Mirrors
  * `useKnowledgeGraph` (presentation helpers re-exported from the shared map) and
  * seeds the subgraph BFS from the top god node so the canvas opens on the densest
  * hub.

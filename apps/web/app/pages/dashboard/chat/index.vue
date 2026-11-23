@@ -8,7 +8,6 @@ useHead({ title: () => t('dashboard.chat.index.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'chat',
 });
 
 // The rail, its drawer and the shared dialogs live in the parent route
