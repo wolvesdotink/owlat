@@ -795,6 +795,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(gate(r, 'complaints').actionHref).toBe(
 			'/dashboard/audience/suppressions?reason=complained'
 		);
+		expect(localized(gate(r, 'complaints').actionLabel!)).toBe('Review complaints');
 	});
 
 	it('says a bounce rate over the limit asks for attention and links to the bounced addresses', () => {
@@ -803,7 +804,7 @@ describe('deriveDeliveryReadiness — stream verdicts', () => {
 		expect(g.status).toBe('attention');
 		expect(g.streams).toEqual(['marketing']);
 		expect(g.actionHref).toBe('/dashboard/audience/suppressions?reason=bounced');
-		expect(localized(g.actionLabel!)).toBe('Review suppressions');
+		expect(localized(g.actionLabel!)).toBe('Review bounced addresses');
 		expect(localized(g.detail)).toBe(
 			'3.10% of your mail bounced, over the 2% limit. Remove addresses that bounce before the next campaign.'
 		);

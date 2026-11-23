@@ -7,6 +7,7 @@
  */
 
 import { z } from 'zod';
+import { sendingHoldLiftSchema } from './status';
 
 const isoTime = z.iso.datetime();
 const scope = z.enum(['deployment', 'domain']);
@@ -23,6 +24,18 @@ export const deliverabilityAlertRaisedDataSchema = z.strictObject({
 	observedAt: isoTime,
 	emailMayNotArrive: z.boolean(),
 	isTest: z.boolean(),
+	holdStatus: z.enum(['suspended', 'banned']).optional(),
+	// The status endpoint's lift object as JSON text: event data is flat.
+	lift: z
+		.string()
+		.refine((text) => {
+			try {
+				return sendingHoldLiftSchema.safeParse(JSON.parse(text)).success;
+			} catch {
+				return false;
+			}
+		}, 'lift must be the JSON text of a SendingHoldLift')
+		.optional(),
 });
 
 export const deliverabilityAlertResolvedDataSchema = z.strictObject({

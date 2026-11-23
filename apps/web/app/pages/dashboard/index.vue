@@ -18,7 +18,7 @@ import {
 	type WorkbenchScope,
 	type WorkbenchTab,
 } from '~/utils/workbench';
-import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
+import { CircleWarningIcon, MentionIcon } from '@coolicons/vue';
 
 /**
  * The Workbench — the home screen, one tab per inbox. Each tab summarises only
@@ -40,7 +40,15 @@ const { user } = useAuth();
 const { hasActiveOrganization } = useOrganizationContext();
 // The team-inbox tab (and its Done / Reply anyway) exists for admins only.
 const { isAdmin } = usePermissions();
-const { isEnabled } = useFeatureFlag();
+// Until the live flags answer, the mail flags may read as off and the inbox
+// list goes unread, so the no-inbox state would wrongly say mail is off: it
+// waits for them, and a failed read shows its error instead.
+const {
+	isEnabled,
+	isLoading: flagsLoading,
+	error: flagsError,
+	refetch: refetchFlags,
+} = useFeatureFlag();
 const userId = computed(() => user.value?.id ?? null);
 const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
 
@@ -336,34 +344,23 @@ useWorkbenchKeyboard({
 			/>
 		</div>
 
-		<div v-if="inboxesLoading && tabs.length === 0" class="mt-8 space-y-3">
+		<div v-if="(inboxesLoading || flagsLoading) && tabs.length === 0" class="mt-8 space-y-3">
 			<UiSkeleton class="h-9 w-full max-w-80" />
 			<UiSkeleton class="h-36 w-full rounded-2xl" />
 		</div>
 
+		<UiQueryBoundary
+			v-else-if="flagsError && tabs.length === 0"
+			:error="flagsError"
+			@retry="refetchFlags"
+		/>
 		<UiQueryBoundary
 			v-else-if="inboxRead.error.value && tabs.length === 0"
 			:error="inboxRead.error.value"
 			@retry="inboxRead.refetch"
 		/>
 		<!-- No inbox to work from yet (a failed read is not that). -->
-		<div
-			v-else-if="scope === null"
-			class="mt-8 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-border-subtle px-6 py-8"
-		>
-			<InboxIcon class="size-6 text-text-tertiary" />
-			<div>
-				<h2 class="text-base font-medium text-text-primary">
-					{{ t('dashboard.today.noInbox.title') }}
-				</h2>
-				<p class="mt-1 max-w-lg text-sm text-text-secondary">
-					{{ t('dashboard.today.noInbox.body') }}
-				</p>
-			</div>
-			<UiButton to="/dashboard/preferences/add-account" size="sm">
-				{{ t('dashboard.today.noInbox.cta') }}
-			</UiButton>
-		</div>
+		<TodayNoInbox v-else-if="scope === null" class="mt-8" />
 
 		<template v-else>
 			<TodayWorkbenchTabs

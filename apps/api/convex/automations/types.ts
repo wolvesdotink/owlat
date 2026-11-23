@@ -13,7 +13,10 @@ export type StepOutcome =
 	// The contact stopped being eligible for marketing between the claim and the
 	// send (see lib/marketingEligibility.ts). The step is skipped and never
 	// retried; a deleted contact's run is cancelled, an unsubscribed one's moves on.
-	| { status: 'contact_ineligible'; reason: MarketingIneligibility };
+	| { status: 'contact_ineligible'; reason: MarketingIneligibility }
+	// The run, the automation or the step went away between the claim and the
+	// send. The intake already ended the step run, so the walker commits nothing.
+	| { status: 'ended'; reason: string };
 
 export interface StepExecuteArgs<C> {
 	config: C;

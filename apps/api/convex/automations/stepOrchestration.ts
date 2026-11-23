@@ -44,17 +44,15 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { MAX_RETRY_ATTEMPTS, RETRY_DELAYS_MS } from '../lib/constants';
 import { automationStepFailureReasonValidator } from '../lib/validators/automations';
-import {
-	contactMarketingIneligibility,
-	marketingIneligibilityValidator,
-} from '../lib/marketingEligibility';
+import { marketingIneligibilityValidator } from '../lib/marketingEligibility';
 import { findStepRunSend } from './stepRunSend';
+import { gateStepRun } from './stepRunGate';
 import {
 	configurationWaitReason,
 	isWaitLongOver,
@@ -145,69 +143,6 @@ type ClaimResult =
 /** Does `attempt` still own this step run? */
 function ownsStepRun(stepRun: Doc<'automationStepRuns'>, attempt: number): boolean {
 	return stepRun.status === 'executing' && (stepRun.retryCount ?? 0) === attempt;
-}
-
-export type StepRunGate =
-	| {
-			isOpen: true;
-			run: Doc<'automationRuns'>;
-			step: Doc<'automationSteps'>;
-			contact: Doc<'contacts'>;
-			automation: Doc<'automations'>;
-	  }
-	| { isOpen: false; isRunEnded: boolean; reason: string };
-
-/**
- * Re-check, in the claiming transaction, that a step run may still run its
- * side effect: the run is running, the automation active, the step present and
- * the contact eligible. A closed gate has already written its outcome — the
- * step run skipped or failed, and the run cancelled or moved on — so the
- * caller only reports it.
- */
-export async function gateStepRun(
-	ctx: MutationCtx,
-	stepRun: Doc<'automationStepRuns'>
-): Promise<StepRunGate> {
-	const run = await ctx.db.get(stepRun.automationRunId);
-	if (!run || run.status !== 'running') {
-		await transitionStepRun(ctx, stepRun, 'skipped', {
-			completedAt: Date.now(),
-			errorMessage: 'Automation run is no longer running',
-			leaseExpiresAt: undefined,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Run not running' };
-	}
-
-	const automation = await ctx.db.get(run.automationId);
-	if (!automation || automation.status !== 'active') {
-		await failStepAndCancelRun(ctx, stepRun, 'Automation is no longer active', {
-			countRunFailure: false,
-			stepFault: false,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Automation inactive' };
-	}
-
-	const step = await ctx.db.get(stepRun.automationStepId);
-	if (!step) {
-		await failStepAndCancelRun(ctx, stepRun, 'Step not found', {
-			countRunFailure: false,
-			stepFault: false,
-		});
-		return { isOpen: false, isRunEnded: true, reason: 'Step not found' };
-	}
-
-	const contact = await ctx.db.get(run.contactId);
-	const ineligibility = contactMarketingIneligibility(contact);
-	if (ineligibility === 'contact_deleted' || contact === null) {
-		await skipStepAndCancelRun(ctx, stepRun, 'Contact is no longer eligible: contact_deleted');
-		return { isOpen: false, isRunEnded: true, reason: 'Contact ineligible (contact_deleted)' };
-	}
-	if (ineligibility === 'contact_unsubscribed' && step.stepType === 'email') {
-		await skipUnsubscribedStepAndAdvance(ctx, stepRun);
-		return { isOpen: false, isRunEnded: false, reason: 'Contact unsubscribed; email skipped' };
-	}
-
-	return { isOpen: true, run, step, contact, automation };
 }
 
 /**
