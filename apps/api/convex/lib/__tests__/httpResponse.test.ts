@@ -123,12 +123,20 @@ describe('errorResponseFromThrow', () => {
 		expect(body.error.data).toEqual({ action: 'unpublish' });
 	});
 
-	it('collapses a non-Operation throw to internal (500)', async () => {
+	it('collapses a non-Operation throw to internal (500) without echoing its text', async () => {
 		const response = errorResponseFromThrow(new Error('boom'));
 		expect(response.status).toBe(500);
 		const body = await response.json();
-		expect(body.error.category).toBe('internal');
-		expect(body.error.message).toBe('boom');
+		expect(body.error).toEqual({ category: 'internal', message: 'Internal server error' });
+	});
+
+	it('answers a non-Operation throw with the fallback message it is given', async () => {
+		const response = errorResponseFromThrow(new Error('boom'), null, 'Failed to send event');
+		expect(response.status).toBe(500);
+		expect((await response.json()).error).toEqual({
+			category: 'internal',
+			message: 'Failed to send event',
+		});
 	});
 });
 

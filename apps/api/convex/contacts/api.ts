@@ -10,6 +10,7 @@ import {
 import {
 	jsonResponse,
 	errorResponse,
+	errorResponseFromThrow,
 	lastPathSegment,
 	type PathSegment,
 } from '../auth/apiResponses';
@@ -209,11 +210,12 @@ export const createContact = createAuthenticatedHandler(
 			);
 		} catch (error) {
 			// Locked error envelope: classify by the thrown category, never by the
-			// wording, and never echo the raw message back — only fixed strings ship.
+			// wording. The duplicate's message names the address, so it ships a
+			// fixed string; any other failure keeps its own category.
 			if (isDuplicateContact(error)) {
 				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
-			return errorResponse('invalid_input', 'Failed to create contact');
+			return errorResponseFromThrow(error, 'Failed to create contact');
 		}
 	}
 );
@@ -294,11 +296,11 @@ export const updateContact = createAuthenticatedHandler(
 				data: formatContactResponse(updatedContact),
 			});
 		} catch (error) {
-			// Locked error envelope — classify by category, never echo the raw message.
+			// Locked error envelope — classify by category; the duplicate ships a fixed string.
 			if (isDuplicateContact(error)) {
 				return errorResponse('already_exists', 'A contact with this email already exists');
 			}
-			return errorResponse('invalid_input', 'Failed to update contact');
+			return errorResponseFromThrow(error, 'Failed to update contact');
 		}
 	}
 );
@@ -332,9 +334,8 @@ export const deleteContact = createAuthenticatedHandler(
 				},
 				200
 			);
-		} catch {
-			// Locked error envelope — do not echo the raw internal error message.
-			return errorResponse('invalid_input', 'Failed to delete contact');
+		} catch (error) {
+			return errorResponseFromThrow(error, 'Failed to delete contact');
 		}
 	}
 );
