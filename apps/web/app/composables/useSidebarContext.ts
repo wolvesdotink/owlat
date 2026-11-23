@@ -9,6 +9,7 @@ import {
 	splitSectionsByContext,
 } from '~/lib/sidebarContext';
 import { readStoredChoice } from '~/utils/storedValue';
+import { isFeatureReachable } from '~/lib/routeFeatureGates';
 
 /**
  * Reactive wiring for the sidebar's Conversations ↔ Sending context toggle
@@ -40,6 +41,7 @@ const lastVisitedStorage = useLocalStorage<Partial<Record<SidebarContext, string
 export function useSidebarContext() {
 	const route = useRoute();
 	const { navigationSections } = useDashboardNavigation();
+	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 	const split = computed(() => splitSectionsByContext(navigationSections.value));
 
@@ -86,7 +88,12 @@ export function useSidebarContext() {
 		if (contextForPath(route.path) === target) return;
 		contextStorage.set(target);
 		await navigateTo(
-			resolveSwitchTarget(target, lastVisitedStorage.data.value[target], navigationSections.value)
+			resolveSwitchTarget(
+				target,
+				lastVisitedStorage.data.value[target],
+				navigationSections.value,
+				(href) => isFeatureReachable(href, isFeatureEnabled)
+			)
 		);
 	};
 

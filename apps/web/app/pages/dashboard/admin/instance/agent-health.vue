@@ -12,8 +12,6 @@ import {
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	// Mirror the nav gate: only reachable when ai.agent is enabled.
-	requiresFeature: 'ai.agent',
 });
 
 const { t } = useI18n();

@@ -10,7 +10,6 @@ useHead({ title: () => t('dashboard.inbox.codeTasks.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox.codeTasks',
 });
 
 const {

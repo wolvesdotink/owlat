@@ -41,7 +41,6 @@ useHead({ title: () => t('dashboard.inbox.detail.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox',
 });
 
 const threadId = useRouteId<'conversationThreads'>('threadId');

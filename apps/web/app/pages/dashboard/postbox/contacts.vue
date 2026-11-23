@@ -27,7 +27,6 @@ useHead({ title: () => t('dashboard.postbox.contacts.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {
