@@ -12000,7 +12000,27 @@
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automatisierung",
 						"failed": "Fehlgeschlagen",
-						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben",
+						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben. Ein beendeter Durchlauf geht nicht weiter: Durchläufe, die nach der Behebung starten, laufen durch.",
+						"failure": {
+							"contactNoEmail": "Dieser Kontakt hat keine E-Mail-Adresse.",
+							"details": "Details",
+							"domainNotVerified": "Die Domain des Standardabsenders ist keine verifizierte Absenderdomain, deshalb konnte diese E-Mail nicht rausgehen.",
+							"fix": {
+								"defaultSender": "Standardabsender festlegen",
+								"plugins": "Plugins öffnen"
+							},
+							"interrupted": "Dieser Schritt wurde immer wieder unterbrochen und dann aufgegeben.",
+							"invalidStepConfig": "Die Einstellungen dieses Schritts sind unvollständig oder ungültig. Prüfe den Schritt im Editor.",
+							"noDefaultSender": "Es ist kein Standardabsender festgelegt, deshalb konnte diese E-Mail nicht rausgehen.",
+							"noDeliveryProvider": "Der Versand ist noch nicht eingerichtet, deshalb konnte diese E-Mail nicht rausgehen.",
+							"pluginDenied": "Das Plugin hinter diesem Schritt ist ausgeschaltet oder darf keine Automatisierungsschritte ausführen.",
+							"pluginFailed": "Das Plugin hinter diesem Schritt hat einen Fehler gemeldet.",
+							"sendingNotAllowed": "Der Versand ist auf dieser Instanz ausgesetzt, deshalb konnte diese E-Mail nicht rausgehen.",
+							"stepLimit": "Dieser Durchlauf hat zu viele Schritte ausgeführt und wurde gestoppt. Meist führt eine Bedingung zurück zu einem früheren Schritt.",
+							"templateEmpty": "Die E-Mail dieses Schritts hat keinen Inhalt. Füge Inhalt hinzu oder wähle im Editor eine andere E-Mail.",
+							"templateMissing": "Dieser Schritt hat keine E-Mail zum Senden, oder seine E-Mail wurde gelöscht. Wähle im Editor eine aus.",
+							"unknown": "Dieser Schritt ist fehlgeschlagen."
+						},
 						"inProgress": "In Bearbeitung",
 						"next": "Weiter",
 						"noEmail": "Keine E-Mail",

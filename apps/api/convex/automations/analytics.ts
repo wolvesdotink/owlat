@@ -4,11 +4,51 @@ import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
 import { getLiveContact } from '../lib/contactHelpers';
-import { automationRunEndReasonValidator } from '../lib/validators/automations';
+import {
+	automationRunEndReasonValidator,
+	type AutomationStepFailureReason,
+} from '../lib/validators/automations';
 import { healthWindowStart } from './health';
+import type { DatabaseReader } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
 
 // Runs, steps and counters of a deleted automation stay until the purge, but
 // it reads as missing: every query here answers as for an unknown id.
+
+/** Why a run a failed step ended failed: the coded reason and the stored sentence. */
+export type AutomationRunFailure = {
+	reason: AutomationStepFailureReason;
+	detail: string | null;
+};
+
+/**
+ * How many of a run's newest step runs are searched for the failed one. The
+ * step run that failed is the run's last: failing it cancels the run in the
+ * same transaction, so nothing is written after it.
+ */
+const FAILED_STEP_RUN_SEARCH = 4;
+
+/**
+ * The failure of a run a failed step ended, or null for any other run. A failed
+ * step run without a code (written before codes existed) reads as `unknown`,
+ * with its sentence as the detail.
+ */
+async function runFailureOf(
+	db: DatabaseReader,
+	run: Doc<'automationRuns'>
+): Promise<AutomationRunFailure | null> {
+	if (run.endReason !== 'step_failed') return null;
+	const recent = await db
+		.query('automationStepRuns')
+		.withIndex('by_automation_run', (q) => q.eq('automationRunId', run._id))
+		.order('desc')
+		.take(FAILED_STEP_RUN_SEARCH);
+	const failed = recent.find((stepRun) => stepRun.status === 'failed');
+	return {
+		reason: failed?.failureReason ?? 'unknown',
+		detail: failed?.errorMessage ?? null,
+	};
+}
 
 // Get automation runs for analytics with contact details.
 // Pagination is index-ordered (desc by creation time); the previous shape
@@ -25,6 +65,9 @@ import { healthWindowStart } from './health';
 // read; the joined contact is the display projection (id, email, name) already
 // member-visible on the contact list. Runs outlive a contact's soft delete for
 // the retention window, so a missing or soft-deleted contact joins as `null`.
+// A run a failed step ended also joins `failure`, the coded reason and the
+// stored sentence (null on every other run); the sentence is the walker's own
+// text or a plugin's reason, already clamped and stripped at the plugin seam.
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -73,9 +116,13 @@ export const getAutomationRuns = automationsQuery({
 
 		const enrichedRuns = await Promise.all(
 			paginatedRuns.map(async (run) => {
-				const contact = await getLiveContact(ctx, run.contactId);
+				const [contact, failure] = await Promise.all([
+					getLiveContact(ctx, run.contactId),
+					runFailureOf(ctx.db, run),
+				]);
 				return {
 					...run,
+					failure,
 					contact: contact
 						? {
 								_id: contact._id,

@@ -20,6 +20,7 @@ import {
 	type IconComponent,
 } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import AutomationsRunFailureNote from '~/components/automations/RunFailureNote.vue';
 
 const props = defineProps<{ automationId: Id<'automations'> }>();
 
@@ -195,64 +196,74 @@ const loadPrevRuns = () => {
 				<div
 					v-for="run in runs.runs"
 					:key="run._id"
-					class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors"
+					class="px-6 py-4 hover:bg-bg-surface transition-colors"
 				>
-					<div class="flex items-center gap-3 min-w-0">
-						<UiIconBox :icon="UsersIcon" size="lg" rounded="full" />
-						<div class="min-w-0">
-							<div class="text-text-primary font-medium truncate">
-								{{
-									run.contact?.firstName || run.contact?.email?.split('@')[0] || t('common.unknown')
-								}}
-								{{ run.contact?.lastName || '' }}
-							</div>
-							<div class="text-sm text-text-tertiary truncate">
-								{{ run.contact?.email || t('dashboard.automations.detail.index.runs.noEmail') }}
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-3 min-w-0">
+							<UiIconBox :icon="UsersIcon" size="lg" rounded="full" />
+							<div class="min-w-0">
+								<div class="text-text-primary font-medium truncate">
+									{{
+										run.contact?.firstName ||
+										run.contact?.email?.split('@')[0] ||
+										t('common.unknown')
+									}}
+									{{ run.contact?.lastName || '' }}
+								</div>
+								<div class="text-sm text-text-tertiary truncate">
+									{{ run.contact?.email || t('dashboard.automations.detail.index.runs.noEmail') }}
+								</div>
 							</div>
 						</div>
-					</div>
-					<div class="flex items-center gap-4 shrink-0">
-						<div class="text-right">
-							<span
-								:class="[
-									'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-									getRunStatusBadge(run).color,
-								]"
-							>
-								<component
-									:is="getRunStatusBadge(run).icon"
+						<div class="flex items-center gap-4 shrink-0">
+							<div class="text-right">
+								<span
 									:class="[
-										'w-3 h-3',
-										getRunStatusBadge(run).animated
-											? 'animate-spin motion-reduce:animate-none'
-											: '',
+										'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+										getRunStatusBadge(run).color,
 									]"
-									size="1em"
-								/>
-								{{ getRunStatusBadge(run).label }}
-							</span>
-							<div class="text-xs text-text-tertiary mt-1">
-								{{
-									t('dashboard.automations.detail.index.runs.stepAndTime', {
-										number: run.currentStepIndex + 1,
-										time: formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }),
-									})
-								}}
+								>
+									<component
+										:is="getRunStatusBadge(run).icon"
+										:class="[
+											'w-3 h-3',
+											getRunStatusBadge(run).animated
+												? 'animate-spin motion-reduce:animate-none'
+												: '',
+										]"
+										size="1em"
+									/>
+									{{ getRunStatusBadge(run).label }}
+								</span>
+								<div class="text-xs text-text-tertiary mt-1">
+									{{
+										t('dashboard.automations.detail.index.runs.stepAndTime', {
+											number: run.currentStepIndex + 1,
+											time: formatCompactRelativeTime(run.startedAt, { emptyLabel: '—' }),
+										})
+									}}
+								</div>
 							</div>
-						</div>
-						<UiTooltip
-							v-if="run.contact"
-							:text="t('dashboard.automations.detail.index.runs.viewContact')"
-						>
-							<NuxtLink
-								:to="`/dashboard/audience/contacts/${run.contact._id}`"
-								class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-								:aria-label="t('dashboard.automations.detail.index.runs.viewContact')"
+							<UiTooltip
+								v-if="run.contact"
+								:text="t('dashboard.automations.detail.index.runs.viewContact')"
 							>
-								<ChevronRightIcon class="w-4 h-4" />
-							</NuxtLink>
-						</UiTooltip>
+								<NuxtLink
+									:to="`/dashboard/audience/contacts/${run.contact._id}`"
+									class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+									:aria-label="t('dashboard.automations.detail.index.runs.viewContact')"
+								>
+									<ChevronRightIcon class="w-4 h-4" />
+								</NuxtLink>
+							</UiTooltip>
+						</div>
 					</div>
+					<!-- Why a failed run failed, aligned with the contact's name -->
+					<AutomationsRunFailureNote
+						v-if="run.failure"
+						:failure="run.failure"
+						class="mt-2 sm:pl-13"
+					/>
 				</div>
 			</div>
 

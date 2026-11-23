@@ -84,7 +84,11 @@ describe('hosted plugin automation step execution', () => {
 	it('fails closed when authorization is denied and never runs the module', async () => {
 		const ctx = makeCtx(false);
 		const outcome = await executePluginStep(ctx as never, step, contact);
-		expect(outcome).toEqual({ status: 'failed', error: 'Plugin automation step access denied' });
+		expect(outcome).toEqual({
+			status: 'failed',
+			reason: 'plugin_denied',
+			error: 'Plugin automation step access denied',
+		});
 		expect(stepExecute).not.toHaveBeenCalled();
 	});
 
@@ -101,14 +105,22 @@ describe('hosted plugin automation step execution', () => {
 		stepExecute.mockResolvedValue({ kind: 'sideways' });
 		const ctx = makeCtx(true);
 		const outcome = await executePluginStep(ctx as never, step, contact);
-		expect(outcome).toEqual({ status: 'failed', error: 'Plugin automation step failed' });
+		expect(outcome).toEqual({
+			status: 'failed',
+			reason: 'plugin_failed',
+			error: 'Plugin automation step failed',
+		});
 	});
 
 	it('fails when the module throws', async () => {
 		stepExecute.mockRejectedValue(new Error('explode'));
 		const ctx = makeCtx(true);
 		const outcome = await executePluginStep(ctx as never, step, contact);
-		expect(outcome).toEqual({ status: 'failed', error: 'Plugin automation step failed' });
+		expect(outcome).toEqual({
+			status: 'failed',
+			reason: 'plugin_failed',
+			error: 'Plugin automation step failed',
+		});
 	});
 
 	it('still completes the step and logs once when the audit write fails', async () => {
@@ -135,6 +147,7 @@ describe('hosted plugin automation step execution', () => {
 			await vi.advanceTimersByTimeAsync(30_000);
 			await expect(pending).resolves.toEqual({
 				status: 'failed',
+				reason: 'plugin_failed',
 				error: 'Plugin automation step failed',
 			});
 		} finally {

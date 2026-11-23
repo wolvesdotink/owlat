@@ -8,7 +8,10 @@ import {
 } from '../lib/convexValidators';
 import { stepKindValidator } from '../automations/steps/catalog';
 import { triggerKindValidator } from '../automations/triggers/catalog';
-import { automationRunEndReasonValidator } from '../lib/validators/automations';
+import {
+	automationRunEndReasonValidator,
+	automationStepFailureReasonValidator,
+} from '../lib/validators/automations';
 
 /** Every automation table, children before parents: the order the organization wipe deletes them. */
 export const AUTOMATION_TABLES = [
@@ -164,6 +167,9 @@ export const automationTables = {
 		delayUntil: v.optional(v.number()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
+		// The coded reason next to `errorMessage`, set when the step ends failed.
+		// Absent on rows failed before codes existed; those read as `unknown`.
+		failureReason: v.optional(automationStepFailureReasonValidator),
 		// The execution attempt that currently owns this step run (0 for the
 		// first claim, +1 per retry or lease recovery). It doubles as the fencing
 		// token: finalize/retry mutations carrying an older attempt are stale and
