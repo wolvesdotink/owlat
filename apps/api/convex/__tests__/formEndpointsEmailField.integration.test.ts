@@ -104,6 +104,51 @@ describe('forms.endpoints.update — email-field invariant', () => {
 	});
 });
 
+describe('forms.endpoints.update — clearing optional settings', () => {
+	async function createConfiguredForm(t: ReturnType<typeof convexTest>) {
+		const topicId = await t.run(
+			async (ctx) => await ctx.db.insert('topics', { name: 'News', createdAt: Date.now() })
+		);
+		const id = await t.mutation(api.forms.endpoints.create, {
+			name: 'Signup',
+			fields: [emailField],
+			topicId,
+			redirectUrl: 'https://owlat.example.com/thanks',
+			honeypotFieldName: 'website',
+		});
+		return { id, topicId };
+	}
+
+	it('removes the topic, redirect URL and honeypot field when asked to clear them', async () => {
+		const t = convexTest(schema, modules);
+		const { id } = await createConfiguredForm(t);
+
+		await t.mutation(api.forms.endpoints.update, {
+			formEndpointId: id,
+			topicId: null,
+			redirectUrl: '',
+			honeypotFieldName: '',
+		});
+
+		const form = await t.run(async (ctx) => await ctx.db.get(id));
+		expect(form?.topicId).toBeUndefined();
+		expect(form?.redirectUrl).toBeUndefined();
+		expect(form?.honeypotFieldName).toBeUndefined();
+	});
+
+	it('leaves them alone when an update omits them', async () => {
+		const t = convexTest(schema, modules);
+		const { id, topicId } = await createConfiguredForm(t);
+
+		await t.mutation(api.forms.endpoints.update, { formEndpointId: id, isActive: false });
+
+		const form = await t.run(async (ctx) => await ctx.db.get(id));
+		expect(form?.topicId).toBe(topicId);
+		expect(form?.redirectUrl).toBe('https://owlat.example.com/thanks');
+		expect(form?.honeypotFieldName).toBe('website');
+	});
+});
+
 describe('forms.endpoints — forms feature floor', () => {
 	it('refuses an update with forms off (formsMutation floor)', async () => {
 		const t = convexTest(schema, modules);
