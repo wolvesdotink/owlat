@@ -166,17 +166,15 @@ public class HttpClient {
                 if (response.statusCode() >= 400) {
                     int status = response.statusCode();
                     int retryAfterSeconds = status == 429 ? parseHeader(response, "Retry-After", 0) : 0;
-                    // A 429 asking for a longer wait than the client sleeps
-                    // cannot be outwaited by retrying: throw it at once.
-                    if (retryAfterSeconds * 1000L > MAX_RETRY_AFTER_MS) {
-                        handleError(response, rateLimit);
-                    }
                     // 429 is a pre-processing rejection — retryable for any
-                    // method, and we honor Retry-After. 5xx is only replayed
+                    // method, and we honor Retry-After. One asking for a longer
+                    // wait than the client sleeps cannot be outwaited by
+                    // retrying, so it is thrown at once. 5xx is only replayed
                     // for replay-safe requests so a POST the server may have
                     // already applied is never duplicated without an
                     // idempotency key. A 409 is never retried.
-                    if (attempt < maxRetries && isRetryable(replaySafe, status)) {
+                    if (attempt < maxRetries && isRetryable(replaySafe, status)
+                            && retryAfterSeconds * 1000L <= MAX_RETRY_AFTER_MS) {
                         long delayMs;
                         if (status == 429) {
                             // Retry-After is in seconds; fall back to backoff.

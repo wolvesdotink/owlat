@@ -5,7 +5,10 @@ package com.owlat.sdk;
  * backoff. Mirrors the JS SDK's {@code retry} option
  * (packages/sdk-js src/types/config.ts).
  *
- * <p>A 429 is always retried (it respects {@code Retry-After}). A 5xx or
+ * <p>A 429 is retried after its {@code Retry-After}, or with backoff when it
+ * has none; a 429 whose {@code Retry-After} is over 30 seconds is thrown at
+ * once as a {@code RateLimitException} carrying {@code getRetryAfter()}, so
+ * the caller can schedule the retry itself. A 5xx or
  * network/timeout failure is retried for idempotent methods (GET/PUT/DELETE)
  * and for a {@code POST} send ({@code transactional.send},
  * {@code events.send}) called with {@link RequestOptions#idempotencyKey(String)},
