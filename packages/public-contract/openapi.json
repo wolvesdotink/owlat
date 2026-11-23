@@ -1704,6 +1704,30 @@
 																	"type": "string",
 																	"enum": ["missing_scope", "feature_disabled", "abuse_blocked"],
 																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																},
+																"status": {
+																	"type": "string",
+																	"enum": ["suspended", "banned"],
+																	"description": "Whether sending is suspended or banned."
+																},
+																"since": {
+																	"type": ["string", "null"],
+																	"description": "ISO 8601 timestamp of when the status was set; null if not recorded."
+																},
+																"detail": {
+																	"type": ["string", "null"],
+																	"description": "The reason recorded with the status, or null."
+																},
+																"lift": {
+																	"anyOf": [
+																		{
+																			"$ref": "#/components/schemas/SendingHoldLift"
+																		},
+																		{
+																			"type": "null"
+																		}
+																	],
+																	"description": "How the suspension lifts, as GET /api/v1/status's sendingHold.lift; null only if it lifted while the request ran."
 																}
 															}
 														}
@@ -2616,7 +2640,7 @@
 									"data": {
 										"level": "error",
 										"reasonCode": "sending_suspended",
-										"explanation": "Sending is suspended on this instance, so new sends are refused and campaigns hold until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.",
+										"explanation": "Sending is suspended on this instance, so new sends are refused and campaigns hold until it lifts; the sending hold says whether it lifts by itself once the rate behind it recovers, and a platform admin of this instance can lift it in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.",
 										"fix": {
 											"route": "/dashboard/admin/operator",
 											"who": "platform_admin"
@@ -2648,7 +2672,18 @@
 										"sendingHold": {
 											"status": "suspended",
 											"since": "2026-11-20T09:00:00.000Z",
-											"detail": "Auto-suspended: complaint rate 0.42% over the 0.1% limit"
+											"detail": "Auto-suspended: complaint rate 0.42% over the 0.1% limit",
+											"lift": {
+												"mode": "automatic",
+												"condition": {
+													"trigger": "complaint_rate",
+													"domain": null,
+													"currentPct": 0.42,
+													"limitPct": 0.2,
+													"isClear": false,
+													"clearsAt": null
+												}
+											}
 										}
 									}
 								}
@@ -3104,9 +3139,12 @@
 									"detail": {
 										"description": "The reason recorded with the status, or null.",
 										"type": ["string", "null"]
+									},
+									"lift": {
+										"$ref": "#/components/schemas/SendingHoldLift"
 									}
 								},
-								"required": ["status", "since", "detail"],
+								"required": ["status", "since", "detail", "lift"],
 								"additionalProperties": false
 							},
 							{
@@ -3221,6 +3259,59 @@
 				},
 				"required": ["eventId", "contactId", "eventName", "triggeredAutomations", "contactCreated"],
 				"additionalProperties": false
+			},
+			"SendingHoldLift": {
+				"type": "object",
+				"properties": {
+					"mode": {
+						"type": "string",
+						"enum": ["automatic", "manual_setting", "admin"],
+						"description": "automatic: lifts by itself once condition is met. manual_setting: the instance waits for a platform admin, even after the rates recover. admin: never lifts by itself (a ban, or a suspension a platform admin imposed). A platform admin can lift any of them."
+					},
+					"condition": {
+						"anyOf": [
+							{
+								"type": "object",
+								"properties": {
+									"trigger": {
+										"type": "string",
+										"enum": ["bounce_rate", "complaint_rate", "gmail_spam_rate"],
+										"description": "The metric the lift waits on: the 30-day bounce or complaint rate, or Gmail's spam rate for one sending domain."
+									},
+									"domain": {
+										"description": "The sending domain of a Gmail spam rate; null for the instance-wide rates.",
+										"type": ["string", "null"]
+									},
+									"currentPct": {
+										"description": "The metric now, in percent: the 30-day rate, or the highest Gmail reading at or above the limit. null when no evidence is left in the window.",
+										"type": ["number", "null"]
+									},
+									"limitPct": {
+										"type": "number",
+										"description": "Sending resumes once the metric is under this, in percent."
+									},
+									"isClear": {
+										"type": "boolean",
+										"description": "The metric is back under the limit: sending resumes at the next hourly check."
+									},
+									"clearsAt": {
+										"description": "ISO 8601 time the last Gmail reading over the limit leaves the 30-day window; null otherwise.",
+										"type": ["string", "null"]
+									}
+								},
+								"required": ["trigger", "domain", "currentPct", "limitPct", "isClear", "clearsAt"],
+								"additionalProperties": false
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Set when mode is automatic, otherwise null."
+					}
+				},
+				"required": ["mode", "condition"],
+				"additionalProperties": false,
+				"description": "How the suspension or ban lifts."
 			},
 			"SendTransactionalRequest": {
 				"type": "object",

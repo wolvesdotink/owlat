@@ -270,6 +270,8 @@ try {
 	} else if (error instanceof ForbiddenError) {
 		// 403 — suspended / abuse-blocked account.
 		console.error('Not permitted:', error.message);
+		// While sending is suspended: whether it lifts by itself, and on what condition.
+		if (error.abuseBlocked) console.error('Lifts:', error.abuseBlocked.lift?.mode);
 	} else if (error instanceof ConflictError) {
 		console.error('Contact already exists');
 	} else if (error instanceof AuthenticationError) {

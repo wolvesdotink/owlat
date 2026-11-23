@@ -33,6 +33,7 @@ export type {
 	SendEventParams,
 	SendEventResponse,
 	// Status
+	AbuseBlockedErrorData,
 	DeliveryFix,
 	DeliveryFixAudience,
 	DeliveryRates,
@@ -43,6 +44,10 @@ export type {
 	SendingDomain,
 	SendingDomainStatusValue,
 	SendingHold,
+	SendingHoldLift,
+	SendingHoldLiftCondition,
+	SendingHoldLiftMode,
+	SendingHoldTrigger,
 	// Topics
 	DoiStatus,
 	AddToTopicParams,

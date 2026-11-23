@@ -1,4 +1,5 @@
 export type {
+	AbuseBlockedErrorData,
 	DeliveryFix,
 	DeliveryFixAudience,
 	DeliveryRates,
@@ -9,4 +10,8 @@ export type {
 	SendingDomain,
 	SendingDomainStatusValue,
 	SendingHold,
+	SendingHoldLift,
+	SendingHoldLiftCondition,
+	SendingHoldLiftMode,
+	SendingHoldTrigger,
 } from '@owlat/public-contract';

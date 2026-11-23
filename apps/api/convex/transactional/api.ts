@@ -34,7 +34,8 @@ import { featureDisabledMessage } from '../lib/featureFlags';
 import { utf8Bytes } from '../lib/bytes';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
-import type { SendTransactionalResponse } from '@owlat/public-contract';
+import type { SendingHoldLift, SendTransactionalResponse } from '@owlat/public-contract';
+import { sendingHoldLiftSentence } from '../delivery/sendingHoldLift';
 import { decodeRequest, sendTransactionalRequestSchema } from '@owlat/public-contract/schemas';
 import type { z } from 'zod';
 import type { DispatchRejectionReason } from './dispatch';
@@ -118,14 +119,19 @@ function validateDecodedBody(body: SendTransactionalBody): Response | null {
  * The 403 for a suspended or banned instance. The caller may run the instance
  * itself, so the message names who lifts it instead of "support". `data` keeps
  * `reason` for existing clients and adds the status, since when, and the
- * stored reason. That reason is free text from the reputation job (rates, a
- * sending domain, a campaign id) or a platform admin's note, the same text the
- * workspace's members see on Delivery health.
+ * stored reason and how it lifts (`GET /api/v1/status` carries the same). That
+ * reason is free text from the reputation job (rates, a sending domain, a
+ * campaign id) or a platform admin's note, the same text the workspace's
+ * members see on Delivery health. `lift` is read after the refusal, so it is
+ * `null` only if the suspension lifted in between.
  */
-function abuseBlockedResponse(outcome: {
-	detail?: string;
-	abuse?: SendIntakeAbuseState;
-}): Response {
+function abuseBlockedResponse(
+	outcome: {
+		detail?: string;
+		abuse?: SendIntakeAbuseState;
+	},
+	lift: SendingHoldLift | null
+): Response {
 	const status = outcome.abuse?.status ?? 'suspended';
 	const since = outcome.abuse?.since ?? null;
 	const detail = outcome.detail || null;
@@ -133,6 +139,8 @@ function abuseBlockedResponse(outcome: {
 		status === 'banned'
 			? 'Sending is permanently disabled on this Owlat instance.'
 			: 'Sending is suspended on this Owlat instance.',
+		// A ban never lifts by itself, and its first sentence already says so.
+		status === 'suspended' && lift ? sendingHoldLiftSentence(lift) : null,
 		'A platform admin of this instance can lift it in the operator console.',
 		// Last, because a stored reason carries no closing punctuation.
 		detail ? `Reason: ${detail}` : null,
@@ -145,6 +153,7 @@ function abuseBlockedResponse(outcome: {
 			status,
 			since: since === null ? null : new Date(since).toISOString(),
 			detail,
+			lift,
 		},
 	});
 }
@@ -346,7 +355,10 @@ export const sendTransactional = createAuthenticatedHandler(
 		if (!intake.ok) return intake.response;
 		const outcome = intake.outcome;
 		if (!outcome.ok) {
-			if (outcome.reason === 'abuse_blocked') return abuseBlockedResponse(outcome);
+			if (outcome.reason === 'abuse_blocked') {
+				const lift = await ctx.runQuery(internal.publicApi.status.sendingHoldLift, {});
+				return abuseBlockedResponse(outcome, lift);
+			}
 			const map = REJECTION_RESPONSE_MAP[outcome.reason];
 			return errorResponse(map.category, outcome.detail || map.defaultMessage, {
 				data: { reason: outcome.reason },
