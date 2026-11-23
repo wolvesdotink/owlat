@@ -4,7 +4,10 @@
  * `types.ts`; see there for why.
  */
 
-/** How sending stands overall: `error` blocks some or all mail, `warn` needs attention. */
+/**
+ * How sending stands overall: `error` is a problem that stops mail or is about
+ * to, `warn` needs attention. Whether sending is suspended now is `sendingHold`.
+ */
 export const DELIVERY_STATUS_LEVELS = ['ok', 'warn', 'error'] as const;
 
 /** How sending stands overall. */
@@ -124,7 +127,7 @@ export interface DeliveryStatus {
 	fix: DeliveryFix | null;
 	/** Every sending domain with its verification state. */
 	domains: SendingDomain[];
-	/** The rolling rates; `null` while nothing was sent in the window. */
+	/** The rolling rates; `null` while the window holds no sends, deliveries, bounces or complaints. */
 	rates: DeliveryRates | null;
 	/** The suspension or ban in force; `null` while sending is allowed. */
 	sendingHold: SendingHold | null;

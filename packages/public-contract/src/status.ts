@@ -18,7 +18,8 @@ const rateAgainstLimitSchema = z.strictObject({
 
 export const deliveryStatusSchema = z.strictObject({
 	level: z.enum(DELIVERY_STATUS_LEVELS).meta({
-		description: 'How sending stands overall: error blocks some or all mail, warn needs attention.',
+		description:
+			'How sending stands overall: error is a problem that stops mail or is about to, warn needs attention. Whether sending is suspended now is sendingHold.',
 	}),
 	reasonCode: z.enum(DELIVERY_STATUS_REASONS).meta({
 		description:
@@ -43,7 +44,10 @@ export const deliveryStatusSchema = z.strictObject({
 			complaint: rateAgainstLimitSchema,
 		})
 		.nullable()
-		.meta({ description: 'The rolling rates; null while nothing was sent in the window.' }),
+		.meta({
+			description:
+				'The rolling rates; null while the window holds no sends, deliveries, bounces or complaints.',
+		}),
 	sendingHold: z
 		.strictObject({
 			status: z.enum(['suspended', 'banned']),

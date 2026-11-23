@@ -38,7 +38,11 @@ public class DeliveryStatus {
         this.sendingHold = sendingHold;
     }
 
-    /** {@code ok}, {@code warn} (needs attention) or {@code error} (blocks some or all mail). */
+    /**
+     * {@code ok}, {@code warn} (needs attention) or {@code error} (a problem that
+     * stops mail or is about to). Whether sending is suspended now is
+     * {@link #getSendingHold()}.
+     */
     public String getLevel() {
         return level;
     }
@@ -67,7 +71,7 @@ public class DeliveryStatus {
         return domains;
     }
 
-    /** The 30-day rates, or {@code null} while nothing was sent in the window. */
+    /** The 30-day rates, or {@code null} while the window holds no sends, deliveries, bounces or complaints. */
     public DeliveryRates getRates() {
         return rates;
     }
