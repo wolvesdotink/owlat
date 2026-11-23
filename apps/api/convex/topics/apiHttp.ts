@@ -11,6 +11,7 @@ import {
 	jsonResponse,
 	errorResponse,
 	errorResponseFromThrow,
+	invalidInputResponse,
 	pathSegmentAfter,
 	type PathSegment,
 } from '../auth/apiResponses';
@@ -53,17 +54,17 @@ export const addContactToTopic = createAuthenticatedHandler(
 		}
 		// The schema refuses a body naming neither an email nor a contact ID.
 		const decoded = decodeRequest(addContactToTopicRequestSchema, raw);
-		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
 
 		// Validate email format if provided
 		if (body.email && !isValidEmail(body.email)) {
-			return errorResponse('invalid_input', 'Invalid email format');
+			return invalidInputResponse('Invalid email format', 'email');
 		}
 
 		// Validate contactId format if provided
 		if (body.contactId && !isValidConvexId(body.contactId)) {
-			return errorResponse('invalid_input', 'Invalid contactId format');
+			return invalidInputResponse('Invalid contactId format', 'contactId');
 		}
 
 		// Check if the topic exists and belongs to the organization

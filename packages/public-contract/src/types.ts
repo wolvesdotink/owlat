@@ -1,13 +1,15 @@
 /**
  * The wire types of the public v1 API: the package's root export.
  *
- * This file is plain TypeScript with no imports. The JavaScript SDK
- * re-exports these declarations type-only and its declaration build inlines
- * this one file into the published `.d.ts`, so it must stay a single module
- * that reaches nothing else. The schemas beside it are checked against these
+ * This file and the plain modules it re-exports have no other imports. The
+ * JavaScript SDK re-exports these declarations type-only and its declaration
+ * build inlines them into the published `.d.ts`, so they must reach nothing
+ * outside this folder. The schemas beside them are checked against these
  * types at compile time (`__tests__/typeAgreement.test.ts`).
  */
 
+export * from './errorReasons';
+export * from './webhookEvents';
 // ── Shared envelopes and values ─────────────────────────────────────────────
 
 /** A JSON primitive: the only value a template variable or event property may hold. */
@@ -77,7 +79,7 @@ export interface PaginatedResponse<T> {
 /**
  * Error response from the API — the HTTP serialization of an Operation error.
  * `category` is the closed classification (e.g. 'not_found', 'invalid_input',
- * 'rate_limited'); `data` carries the specifics ({ field }, { retryAfter }, …).
+ * 'rate_limited'); `data` carries the specifics ({ field }, { reason }, …).
  */
 export interface ApiErrorResponse {
 	error: {
@@ -458,43 +460,3 @@ export interface TransactionalSendStatus {
 	/** Human-readable reason of the failure; `null` unless `failed`. */
 	errorMessage: string | null;
 }
-
-// ── Outbound webhook events (body: `{ event, timestamp, data }`, times ISO-8601) ──
-export interface WebhookPayload<Event extends string, Data> {
-	event: Event;
-	timestamp: string;
-	data: Data;
-}
-/** What both deliverability alert events say; see docs/webhook-payloads.md. */
-export interface DeliverabilityAlertSubject {
-	alertId: string;
-	checkId: string;
-	check: string;
-	scope: 'deployment' | 'domain';
-	domain: string | null;
-}
-/** `deliverability.alert_resolved`: the alert with this `alertId` closed. */
-export interface DeliverabilityAlertResolvedData extends DeliverabilityAlertSubject {
-	resolvedAt: string;
-	/** `manual`: an admin resolved it; `automatic`: the check passed again or Owlat closed it. */
-	resolution: 'manual' | 'automatic';
-}
-/** `deliverability.alert_raised`: a check that had passed regressed; `nextAction` is the fix the Deliverability Center shows for it. */
-export interface DeliverabilityAlertRaisedData extends DeliverabilityAlertSubject {
-	severity: string;
-	message: string;
-	nextAction: string;
-	observedAt: string;
-	/** The alert is about the server its own email leaves from; that email may not arrive. */
-	emailMayNotArrive: boolean;
-	/** Sent by "Send test alert"; no check regressed. */
-	isTest: boolean;
-}
-export type DeliverabilityAlertRaisedWebhook = WebhookPayload<
-	'deliverability.alert_raised',
-	DeliverabilityAlertRaisedData
->;
-export type DeliverabilityAlertResolvedWebhook = WebhookPayload<
-	'deliverability.alert_resolved',
-	DeliverabilityAlertResolvedData
->;

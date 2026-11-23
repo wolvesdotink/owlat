@@ -119,13 +119,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -195,7 +195,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -205,7 +229,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -223,7 +271,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -275,13 +347,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -328,7 +400,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -338,7 +434,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -376,7 +496,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -426,13 +570,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -479,7 +623,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -489,7 +657,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -517,7 +709,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -579,13 +795,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -632,7 +848,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -642,7 +882,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -690,7 +954,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -738,13 +1026,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -786,7 +1074,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -796,7 +1108,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -834,7 +1170,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -908,13 +1268,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -966,7 +1326,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -976,7 +1360,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -996,7 +1404,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["idempotency_conflict", "idempotency_erased"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1024,7 +1456,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1109,13 +1565,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1159,7 +1615,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["invalid_variables"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1169,7 +1649,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1179,7 +1683,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope", "feature_disabled", "abuse_blocked"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1189,7 +1717,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["template_not_found"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1199,7 +1751,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["idempotency_conflict", "idempotency_erased"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1209,7 +1785,38 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"no_delivery_provider",
+																		"recipient_blocked",
+																		"template_not_published",
+																		"template_no_content",
+																		"sender_not_configured",
+																		"domain_unverified"
+																	],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1227,7 +1834,35 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": [
+																		"too_many_failed_attempts",
+																		"recipient_rate_limited",
+																		"daily_send_limit"
+																	],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1277,13 +1912,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1340,7 +1975,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1350,7 +2009,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope", "feature_disabled"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1378,7 +2061,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1441,13 +2148,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1491,7 +2198,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1501,7 +2232,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1539,7 +2294,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1598,13 +2377,13 @@
 								}
 							},
 							"X-RateLimit-Remaining": {
-								"description": "Requests left in the current window.",
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
 								"schema": {
 									"type": "integer"
 								}
 							},
 							"X-RateLimit-Reset": {
-								"description": "When the window resets, as a Unix timestamp.",
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
 								"schema": {
 									"type": "integer"
 								}
@@ -1646,7 +2425,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1656,7 +2459,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_scope"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}
@@ -1694,7 +2521,31 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/ApiErrorResponse"
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
 								}
 							}
 						}

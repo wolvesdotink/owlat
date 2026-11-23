@@ -86,6 +86,19 @@ export function errorResponse(
 }
 
 /**
+ * The 400 for a request whose body field `field` is wrong, named in
+ * `data.field` the way the body addresses it (`email`, `attachments.0.url`).
+ * Without a field it is the plain `invalid_input` answer.
+ */
+export function invalidInputResponse(message: string, field?: string): Response {
+	return errorResponse(
+		'invalid_input',
+		message,
+		field === undefined ? undefined : { data: { field } }
+	);
+}
+
+/**
  * API-key posture answer to a backend call that threw. An Operation error keeps
  * its category and status (a write refused by the deletion fence is a 422, not
  * the caller's 400); any other throw is a 500 with the route's fixed
