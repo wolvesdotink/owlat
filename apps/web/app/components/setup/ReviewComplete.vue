@@ -1,16 +1,21 @@
 <script setup lang="ts">
 /**
  * The setup wizard's finale, shown once the restart has landed: eyebrow, title,
- * one lead, and three real next steps behind the sign-in.
+ * one lead, and the real next steps behind the sign-in.
  */
+import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 import { setupSignInHref } from '~/composables/useSetupWizard';
-import { SETUP_NEXT_STEPS } from '~/composables/setupWizardReview';
+import { setupNextSteps } from '~/composables/setupWizardReview';
 import { ArrowRightIcon, PartyPopperIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The same-origin login path the apply endpoint answered with. */
 	redirectTarget: string;
+	/** The features setup just applied: a next step they close is not offered. */
+	flags: FeatureFlagState;
 }>();
+
+const nextSteps = computed(() => setupNextSteps(props.flags));
 
 const { t } = useI18n();
 
@@ -54,7 +59,7 @@ function signInHref(next?: string): string {
 
 		<h2 class="lp-eyebrow mb-3">{{ t('setup.review.complete.nextHeading') }}</h2>
 		<ul class="space-y-2">
-			<li v-for="step in SETUP_NEXT_STEPS" :key="step.id">
+			<li v-for="step in nextSteps" :key="step.id">
 				<a
 					:href="signInHref(step.to)"
 					class="flex items-center gap-4 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent px-4 py-3 transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"

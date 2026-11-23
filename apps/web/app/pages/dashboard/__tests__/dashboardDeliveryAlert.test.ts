@@ -20,6 +20,7 @@ import {
 	healthQueryStub,
 } from '~/__tests__/deliveryHealthFixture';
 import { useDeliveryHealth } from '~/composables/useDeliveryHealth';
+import { useFeatureOffNotice } from '~/composables/useFeatureOffNotice';
 import DashboardHome from '../index.vue';
 
 const NuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
@@ -59,6 +60,7 @@ beforeEach(() => {
 			can: () => true,
 		}),
 		useDeliveryHealth,
+		useFeatureOffNotice,
 		useOrganizationQuery: healthQueryStub(NO_PROVIDER_HEALTH),
 		useConvexQuery: () => queryResult(undefined),
 		usePaginatedQuery: () => paginatedResult([]),

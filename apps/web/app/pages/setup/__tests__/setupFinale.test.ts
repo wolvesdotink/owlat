@@ -91,10 +91,15 @@ async function settle(): Promise<void> {
 	}
 }
 
-/** Drive the review step from "filled in" to "launched and restarted". */
-async function launch(wrapper: VueWrapper): Promise<void> {
+/**
+ * Drive the review step from "filled in" to "launched and restarted". The
+ * operator turns personal mail on unless a case says otherwise.
+ */
+async function launch(wrapper: VueWrapper, { mail = true } = {}): Promise<void> {
 	// A provider is what opens the launch gate; the admin is what apply seeds.
 	states.get('setupEnv')!.value = { EMAIL_PROVIDER: 'resend' };
+	const flags = states.get('setupFlags')!;
+	flags.value = { ...(flags.value as object), postbox: mail };
 	states.get('setupAdmin')!.value = {
 		email: 'admin@acme.test',
 		name: 'Ada Lovelace',
@@ -161,6 +166,20 @@ describe('the first-run finale', () => {
 				expect(hrefs).toContain(`${REDIRECT_TO}&redirect=%2Fdashboard%2Fpostbox`);
 				// Every exit is an anchor — no button quietly assigning location.
 				expect(hrefs.every((href) => href?.startsWith('/auth/login'))).toBe(true);
+			},
+		});
+	});
+
+	it('leaves the Postbox out when the operator did not turn mail on', async () => {
+		await auditA11y(SetupReviewPage, {
+			global: { plugins: [createTestI18n()] },
+			prepare: async (wrapper) => {
+				await launch(wrapper, { mail: false });
+
+				const hrefs = wrapper.findAll('a').map((a) => a.attributes('href'));
+				expect(hrefs).toContain(`${REDIRECT_TO}&redirect=%2Fdashboard%2Fadmin%2Fteam`);
+				expect(hrefs).not.toContain(`${REDIRECT_TO}&redirect=%2Fdashboard%2Fpostbox`);
+				expect(wrapper.text()).not.toContain('Open your postbox');
 			},
 		});
 	});

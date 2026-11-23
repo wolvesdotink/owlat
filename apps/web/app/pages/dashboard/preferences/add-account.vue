@@ -14,7 +14,6 @@ useHead({ title: () => t('dashboard.preferences.addAccount.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const step = ref<1 | 4>(1);
@@ -305,9 +304,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 							scope="global"
 							class="text-xs text-text-tertiary mt-1"
 						>
-							<template #address
-								><code>{{ selectedAddress }}</code></template
-							>
+							<template #address><code>{{ selectedAddress }}</code></template>
 						</I18nT>
 					</div>
 
