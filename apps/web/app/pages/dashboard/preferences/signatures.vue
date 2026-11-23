@@ -10,7 +10,6 @@ useHead({ title: () => t('dashboard.preferences.signatures.pageTitle') });
 definePageMeta({
 	layout: 'preferences',
 	middleware: 'auth',
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {

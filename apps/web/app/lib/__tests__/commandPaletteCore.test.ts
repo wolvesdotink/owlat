@@ -61,6 +61,7 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		buildMailItems: (results) => results.map((r) => paletteItem(`mail:${r.id}`)),
 		buildSearchMailItem: (term) => paletteItem(`mail:search-for:${term}`),
 		isMailScope: () => false,
+		isMailAvailable: () => true,
 		mailSuggestionItems: () => [paletteItem('mail-suggest:operator:from:')],
 		mailHitItems: () => [paletteItem('mail-hit:message1')],
 		mailStartItems: () => ({
@@ -279,6 +280,10 @@ describe('core:mail', () => {
 
 		expect(t(mailSearch?.heading ?? '')).not.toBe(t(navigation?.heading ?? ''));
 		expect(t(mailSearch?.heading ?? '')).toBe('Search');
+	});
+
+	it('offers no mail search where mail is switched off', () => {
+		expect(build('core:mail', 'invoice', { isMailAvailable: () => false })).toEqual([]);
 	});
 
 	it('still offers the search-mail row while hits are missing or unresolved', () => {

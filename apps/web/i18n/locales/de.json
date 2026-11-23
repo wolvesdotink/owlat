@@ -14330,6 +14330,7 @@
 		},
 		"today": {
 			"pageTitle": "Werkbank",
+			"featureOff": "{feature} ist in diesem Workspace ausgeschaltet.",
 			"greeting": {
 				"morning": "Guten Morgen",
 				"morningNamed": "Guten Morgen, {name}",
@@ -14347,6 +14348,7 @@
 			"openQueue": "Liste öffnen",
 			"deliveryAlert": "Die Zustellung braucht Aufmerksamkeit.",
 			"openDelivery": "Zustellung öffnen",
+			"openFeatures": "Funktionen öffnen",
 			"operations": {
 				"done": "Als erledigt markieren",
 				"replyAnyway": "Antwort anfordern",

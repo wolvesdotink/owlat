@@ -13,6 +13,15 @@ public class Owlat {
     private final EventsResource events;
     private final TopicsResource topics;
 
+    /**
+     * A client from an API key alone, which talks to the hosted address
+     * {@code https://api.owlat.app} instead of your instance.
+     *
+     * @deprecated Build an {@link OwlatConfig} with
+     *     {@link OwlatConfig.Builder#baseUrl(String)} set to your instance's API
+     *     URL. This constructor goes away when the base URL becomes required.
+     */
+    @Deprecated
     public Owlat(String apiKey) {
         this(OwlatConfig.builder(apiKey).build());
     }

@@ -14330,6 +14330,7 @@
 		},
 		"today": {
 			"pageTitle": "Workbench",
+			"featureOff": "{feature} is turned off in this workspace.",
 			"greeting": {
 				"morning": "Good morning",
 				"morningNamed": "Good morning, {name}",
@@ -14347,6 +14348,7 @@
 			"openQueue": "Open queue",
 			"deliveryAlert": "Mail delivery needs attention.",
 			"openDelivery": "Open delivery",
+			"openFeatures": "Open Features",
 			"operations": {
 				"done": "Mark as done",
 				"replyAnyway": "Ask for a reply",

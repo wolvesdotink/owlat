@@ -204,6 +204,7 @@ const coreProviders = buildCorePaletteProviders({
 	buildMailItems,
 	buildSearchMailItem,
 	isMailScope: () => prompt.value === 'mailSearch',
+	isMailAvailable: () => paletteScope.isMailAvailable.value,
 	mailSuggestionItems: () => mailScope.suggestionItems.value,
 	mailHitItems: () => mailScope.hitItems.value,
 	mailStartItems: () => mailScope.startItems.value,

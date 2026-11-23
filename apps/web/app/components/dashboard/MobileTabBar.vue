@@ -12,7 +12,8 @@ import {
 import { navIcon } from '~/lib/navIcons';
 
 /**
- * The phone's bottom bar: Workbench, Answer, create, Inbox, More.
+ * The phone's bottom bar: Workbench, Answer, create, Inbox, More. Answer and
+ * Inbox leave the bar on an instance that has nothing behind them.
  *
  * Before this, the entire mobile chrome was a hamburger, a logo and a search
  * icon — every destination and every create started by opening the drawer and
@@ -87,6 +88,19 @@ const inboxTab = computed<TabItem | null>(() => {
 	};
 });
 
+const { navigationSections } = useDashboardNavigation();
+
+/**
+ * The Answer queue is a slot wherever the drawer offers it (the same gate the
+ * `g a` shortcut reads): an instance without mail or a team inbox has nothing
+ * that could ever wait in it.
+ */
+const isAnswerOffered = computed(() =>
+	navigationSections.value.some((section) =>
+		section.items.some((item) => item.href.split('?')[0] === '/dashboard/answer')
+	)
+);
+
 /** The Workbench and the Answer queue — the two places a day starts from. */
 const leadingTabs = computed<TabItem[]>(() => [
 	{
@@ -95,13 +109,17 @@ const leadingTabs = computed<TabItem[]>(() => [
 		icon: DashboardIcon,
 		label: t('components.dashboard.mobileTabBar.today'),
 	},
-	{
-		id: 'answer',
-		href: '/dashboard/answer',
-		icon: ReplyAllIcon,
-		label: t('components.dashboard.mobileTabBar.answer'),
-		badge: answerCount.value,
-	},
+	...(isAnswerOffered.value
+		? [
+				{
+					id: 'answer',
+					href: '/dashboard/answer',
+					icon: ReplyAllIcon,
+					label: t('components.dashboard.mobileTabBar.answer'),
+					badge: answerCount.value,
+				},
+			]
+		: []),
 ]);
 
 /** The slots right of it — "More" is a button, so it is not in this list. */
@@ -113,7 +131,6 @@ function isActive(href: string): boolean {
 }
 
 // "More": the gated sidebar sections, minus what the bar already holds.
-const { navigationSections } = useDashboardNavigation();
 const moreDestinations = computed(() =>
 	mobileMoreDestinations(navigationSections.value, [
 		...leadingTabs.value.map((tab) => tab.href),

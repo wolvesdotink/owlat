@@ -19,6 +19,7 @@ const user = ref<{ id: string } | null>({ id: 'u1' });
 const organization = ref<string | null>('o1');
 const navigateTo = vi.fn();
 const setActiveMailboxId = vi.fn();
+let disabledFlags: string[] = [];
 
 beforeEach(() => {
 	localStorage.clear();
@@ -26,7 +27,9 @@ beforeEach(() => {
 	organization.value = 'o1';
 	navigateTo.mockClear();
 	setActiveMailboxId.mockClear();
+	disabledFlags = [];
 	installNuxtStubs({
+		useFeatureFlag: () => ({ isEnabled: (flag: string) => !disabledFlags.includes(flag) }),
 		...i18nStubs,
 		useAuth: () => ({ user, activeOrganizationId: organization }),
 		useRoute: () => ({ path: '/dashboard/campaigns/c1/edit' }),
@@ -157,6 +160,30 @@ describe('useCommandPaletteObjectRecents', () => {
 		expect(setActiveMailboxId).toHaveBeenCalledWith('mb-team');
 		expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/m1');
 		expect(recents.recencyOf('m1')).toBe(5);
+	});
+
+	it('leaves out a record whose feature has since been switched off', () => {
+		localStorage.setItem(
+			'owlat_recent_objects:u1:o1',
+			JSON.stringify([
+				{
+					kind: 'campaign',
+					id: 'c1',
+					title: 'Spring launch',
+					href: '/dashboard/campaigns/c1',
+					openedAt: 5,
+				},
+				{
+					kind: 'contact',
+					id: 'k1',
+					title: 'Ada Marlow',
+					href: '/dashboard/contacts/k1',
+					openedAt: 4,
+				},
+			])
+		);
+		disabledFlags = ['campaigns'];
+		expect(palette().jumpBackItems.value.map((item) => item.label)).toEqual(['Ada Marlow']);
 	});
 
 	it('survives storage that throws', () => {

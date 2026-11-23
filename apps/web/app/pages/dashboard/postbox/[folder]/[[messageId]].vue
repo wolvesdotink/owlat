@@ -14,7 +14,6 @@ const { t } = useI18n();
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 	key: POSTBOX_PAGE_KEY,
 });
 

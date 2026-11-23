@@ -11,7 +11,6 @@ useHead({ title: () => t('dashboard.inbox.failed.pageTitle') });
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	requiresFeature: 'inbox',
 });
 
 // Fetch permanently-failed messages

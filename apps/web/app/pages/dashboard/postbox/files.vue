@@ -13,7 +13,6 @@ useHead({ title: () => t('dashboard.postbox.files.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 const {

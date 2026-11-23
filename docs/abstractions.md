@@ -547,9 +547,10 @@ UI grouping over atomic flags. Toggling a pack flips every member.
   Convex functions. Implementation: `apps/api/convex/lib/featureFlags.ts`.
 - **Frontend nav** — `apps/web/app/layouts/dashboard.vue` reads
   `useFeatureFlag().isEnabled(flag)` to conditionally render sections.
-- **Route gates** — pages declare `definePageMeta({ requiresFeature: '…' })`
-  and `apps/web/app/middleware/feature.global.ts` redirects to the dashboard
-  when the flag is off. Closes the deep-link hole.
+- **Route gates** — `apps/web/app/lib/routeFeatureGates.ts` maps path
+  prefixes to flags; `apps/web/app/middleware/feature.global.ts` redirects a
+  switched-off page to the dashboard, and every surface that offers links
+  reads the same table.
 - **Docker profiles** — `getActiveProfiles(flags)` maps active flags to
   compose profiles so disabled features don't even start their containers.
 - **Setup CLI** — `owlat-setup pack <key> <on|off>` and

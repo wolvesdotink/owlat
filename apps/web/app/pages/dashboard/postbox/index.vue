@@ -3,7 +3,6 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 // Default to inbox folder
