@@ -60,7 +60,10 @@ Owlat owlat = new Owlat(
 ### Retries
 
 Transient failures are retried automatically with exponential backoff. A `429`
-is always retried (honoring `Retry-After`); a `5xx`, network error, or timeout
+is retried after its `Retry-After`, up to 30 seconds; a longer wait (a send
+limit that refills in minutes, or the daily limit) throws a
+`RateLimitException` at once, and `getRetryAfter()` says when to try again. A
+`5xx`, network error, or timeout
 is retried for idempotent methods (`GET`/`PUT`/`DELETE`) and for a `POST` send
 made with an idempotency key. The server applies a keyed send at most once per
 key for 24 hours and answers a repeat with the first response; a send without a
