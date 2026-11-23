@@ -172,8 +172,11 @@ export interface SendingHold {
  */
 export interface AbuseBlockedErrorData extends Omit<SendingHold, 'lift'> {
 	reason: 'abuse_blocked';
-	/** How it lifts; `null` only if the suspension lifted while the request ran. */
-	lift: SendingHoldLift | null;
+	/**
+	 * How it lifts; `null` only if the suspension lifted while the request ran.
+	 * Absent from servers that predate the field, so a client can talk to either.
+	 */
+	lift?: SendingHoldLift | null;
 }
 
 /** Body of `GET /api/v1/status`. */

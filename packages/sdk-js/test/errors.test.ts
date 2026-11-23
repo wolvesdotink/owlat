@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, expectTypeOf } from 'vitest';
 import {
 	OwlatError,
 	AuthenticationError,
@@ -10,7 +10,7 @@ import {
 	InvalidStateError,
 	LimitReachedError,
 } from '../src/errors';
-import type { AbuseBlockedErrorData } from '../src';
+import type { AbuseBlockedErrorData, SendingHoldLift } from '../src';
 import type { RateLimitInfo } from '../src/types/common';
 
 const rateLimit: RateLimitInfo = { limit: 100, remaining: 99, reset: 1700000000 };
@@ -143,19 +143,33 @@ describe('ForbiddenError', () => {
 	});
 
 	it('exposes the sending hold of an abuse_blocked refusal, with how it lifts', () => {
-		const data: AbuseBlockedErrorData = {
+		const data = {
 			reason: 'abuse_blocked',
 			status: 'suspended',
 			since: '2026-11-20T09:00:00.000Z',
 			detail: null,
 			lift: { mode: 'admin', condition: null },
-		};
+		} satisfies AbuseBlockedErrorData;
 		const err = new ForbiddenError('Sending is suspended', 'forbidden', undefined, data);
 		expect(err.abuseBlocked).toEqual(data);
 		expect(err.abuseBlocked?.lift?.mode).toBe('admin');
 		expect(
 			new ForbiddenError('msg', 'forbidden', undefined, { reason: 'missing_scope' }).abuseBlocked
 		).toBeUndefined();
+	});
+
+	it('leaves lift undefined for a server older than the lift field', () => {
+		const err = new ForbiddenError('Sending is suspended', 'forbidden', undefined, {
+			reason: 'abuse_blocked',
+			status: 'suspended',
+			since: null,
+			detail: null,
+		});
+		expect(err.abuseBlocked?.status).toBe('suspended');
+		expect(err.abuseBlocked?.lift).toBeUndefined();
+		expectTypeOf<AbuseBlockedErrorData['lift']>().toEqualTypeOf<
+			SendingHoldLift | null | undefined
+		>();
 	});
 
 	it('should be instanceof OwlatError and Error', () => {
