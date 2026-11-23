@@ -225,6 +225,19 @@ if (result.removed) {
 }
 ```
 
+### Status
+
+Whether the instance can send and, if not, why and what fixes it. Needs the
+`status:read` scope.
+
+```typescript
+const status = await owlat.status.get();
+console.log(status.level); // 'ok' | 'warn' | 'error'
+console.log(status.reasonCode); // e.g. 'domain_failed'
+console.log(status.fix?.route); // the page in the web app that fixes it
+console.log(status.sendingHold); // set while sending is suspended or banned
+```
+
 ## Error Handling
 
 The SDK throws typed errors that you can catch and handle appropriately:

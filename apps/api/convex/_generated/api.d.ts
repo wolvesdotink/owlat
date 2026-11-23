@@ -642,6 +642,7 @@ import type * as delivery_governedDispatch from '../delivery/governedDispatch.js
 import type * as delivery_governedEnqueue from '../delivery/governedEnqueue.js';
 import type * as delivery_health from '../delivery/health.js';
 import type * as delivery_healthCopy from '../delivery/healthCopy.js';
+import type * as delivery_healthReport from '../delivery/healthReport.js';
 import type * as delivery_ipReadinessAlerts from '../delivery/ipReadinessAlerts.js';
 import type * as delivery_ipv6Setup from '../delivery/ipv6Setup.js';
 import type * as delivery_ipv6SetupCheck from '../delivery/ipv6SetupCheck.js';
@@ -1804,6 +1805,8 @@ import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_status from '../publicApi/status.js';
+import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -2644,6 +2647,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/governedEnqueue': typeof delivery_governedEnqueue;
 	'delivery/health': typeof delivery_health;
 	'delivery/healthCopy': typeof delivery_healthCopy;
+	'delivery/healthReport': typeof delivery_healthReport;
 	'delivery/ipReadinessAlerts': typeof delivery_ipReadinessAlerts;
 	'delivery/ipv6Setup': typeof delivery_ipv6Setup;
 	'delivery/ipv6SetupCheck': typeof delivery_ipv6SetupCheck;
@@ -4052,6 +4056,8 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
 	'publicApi/events': typeof publicApi_events;
+	'publicApi/status': typeof publicApi_status;
+	'publicApi/statusHttp': typeof publicApi_statusHttp;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;

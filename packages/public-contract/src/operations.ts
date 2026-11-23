@@ -23,6 +23,7 @@ import {
 	updateContactRequestSchema,
 } from './contacts';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
+import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
 	addToTopicResponseSchema,
@@ -44,7 +45,8 @@ export type PublicApiScope =
 	| 'contacts:write'
 	| 'events:write'
 	| 'transactional:send'
-	| 'topics:write';
+	| 'topics:write'
+	| 'status:read';
 
 export interface PathParameter {
 	name: string;
@@ -62,7 +64,7 @@ export interface PublicOperation {
 	method: HttpMethod;
 	/** The path with `{name}` placeholders for its path parameters. */
 	path: string;
-	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Health';
+	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Health';
 	summary: string;
 	/** The key scope the operation needs; `null` for the unauthenticated probe. */
 	scope: PublicApiScope | null;
@@ -356,6 +358,28 @@ export const PUBLIC_OPERATIONS = [
 			paginated: false,
 		},
 		errors: [404, 422],
+		reasons: [],
+	},
+	{
+		operationId: 'getStatus',
+		method: 'GET',
+		path: '/api/v1/status',
+		tag: 'Status',
+		summary:
+			'Whether the instance can send: the worst problem with its fix, each sending domain, the bounce and complaint rates and a suspension in force.',
+		scope: 'status:read',
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'How sending stands.',
+			name: 'DeliveryStatus',
+			data: deliveryStatusSchema,
+			paginated: false,
+		},
+		errors: [],
 		reasons: [],
 	},
 ] as const satisfies readonly PublicOperation[];

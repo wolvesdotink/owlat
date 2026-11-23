@@ -10924,6 +10924,10 @@
 								"description": "Ingest events that can trigger automations.",
 								"label": "Events — write"
 							},
+							"statusRead": {
+								"description": "See whether this instance can send, and why not.",
+								"label": "Status — read"
+							},
 							"topicsWrite": {
 								"description": "Add or remove contacts on topics.",
 								"label": "Topics — write"

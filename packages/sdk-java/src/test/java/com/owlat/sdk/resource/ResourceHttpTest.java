@@ -8,6 +8,7 @@ import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.event.SendEventParams;
+import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
@@ -184,5 +185,31 @@ class ResourceHttpTest {
     void transactionalGetUrlEncodesTheId() {
         client().transactional().get("a/b?c");
         assertEquals("/api/v1/transactional/a%2Fb%3Fc", rawPath);
+    }
+
+    // ── status ──────────────────────────────────────────────────────────────
+
+    @Test
+    void statusGetReadsTheStatusRoute() {
+        responseBody = "{\"data\":{\"level\":\"error\",\"reasonCode\":\"sending_suspended\","
+                + "\"explanation\":\"Sending is suspended.\","
+                + "\"fix\":{\"route\":\"/dashboard/admin/operator\",\"who\":\"platform_admin\"},"
+                + "\"domains\":[{\"domain\":\"mail.example.com\",\"status\":\"verified\"}],"
+                + "\"rates\":{\"windowDays\":30,\"sent\":1000,"
+                + "\"bounce\":{\"ratePct\":6,\"limitPct\":2,\"isOver\":true},"
+                + "\"complaint\":{\"ratePct\":0.05,\"limitPct\":0.1,\"isOver\":false}},"
+                + "\"sendingHold\":{\"status\":\"suspended\",\"since\":\"2026-11-20T09:00:00.000Z\",\"detail\":null}}}";
+        DeliveryStatus status = client().status().get();
+        assertEquals("GET", method);
+        assertEquals("/api/v1/status", rawPath);
+        assertEquals("", body);
+        assertEquals("sending_suspended", status.getReasonCode());
+        assertEquals("platform_admin", status.getFix().getWho());
+        assertEquals("verified", status.getDomains().get(0).getStatus());
+        assertEquals(6.0, status.getRates().getBounce().getRatePct());
+        assertTrue(status.getRates().getBounce().isOver());
+        assertFalse(status.getRates().getComplaint().isOver());
+        assertEquals("2026-11-20T09:00:00.000Z", status.getSendingHold().getSince());
+        assertNull(status.getSendingHold().getDetail());
     }
 }

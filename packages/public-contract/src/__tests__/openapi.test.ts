@@ -13,7 +13,11 @@ import {
 } from '../operations';
 import { addContactToTopicRequestSchema } from '../topics';
 import { sendTransactionalRequestSchema } from '../transactional';
-import { API_KEY_ERROR_REASONS, TRANSACTIONAL_REFUSAL_REASONS } from '../types';
+import {
+	API_KEY_ERROR_REASONS,
+	DELIVERY_STATUS_REASONS,
+	TRANSACTIONAL_REFUSAL_REASONS,
+} from '../types';
 
 const committed = JSON.parse(
 	readFileSync(new URL('../../openapi.json', import.meta.url), 'utf8')
@@ -65,6 +69,15 @@ describe('openapi.json', () => {
 			)
 		);
 		expect(altered).not.toEqual(committed);
+	});
+});
+
+describe('delivery status', () => {
+	it('lists every reason code the status can name, and only those', () => {
+		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
+		expect(schemas['DeliveryStatus'].properties.reasonCode.enum).toEqual([
+			...DELIVERY_STATUS_REASONS,
+		]);
 	});
 });
 
