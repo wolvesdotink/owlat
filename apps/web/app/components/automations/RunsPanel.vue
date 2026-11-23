@@ -23,8 +23,8 @@ import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ automationId: Id<'automations'> }>();
 
-// Shown only under a failed run, so its reasons map and the campaign fix-link
-// catalog it reuses load with the first failed run, not with every visit.
+// Shown only under a failed or waiting run, so its reasons map and the campaign
+// fix-link catalog it reuses load with the first such run, not with every visit.
 const AutomationsRunFailureNote = defineAsyncComponent(
 	() => import('~/components/automations/RunFailureNote.vue')
 );
@@ -99,9 +99,19 @@ const filterNote = computed(() => {
 
 type RunBadge = { color: string; icon: IconComponent; label: string; animated: boolean };
 
-const getRunStatusBadge = (run: Pick<Doc<'automationRuns'>, 'status' | 'endReason'>): RunBadge => {
+const getRunStatusBadge = (
+	run: Pick<Doc<'automationRuns'>, 'status' | 'endReason'> & { waiting: object | null }
+): RunBadge => {
 	switch (run.status) {
 		case 'running':
+			if (run.waiting) {
+				return {
+					color: 'bg-warning/10 text-warning',
+					icon: CirclePauseIcon,
+					label: t('dashboard.automations.detail.index.runs.waitingBadge'),
+					animated: false,
+				};
+			}
 			return {
 				color: 'bg-brand/10 text-brand',
 				icon: SpinnerIcon,
@@ -263,10 +273,10 @@ const loadPrevRuns = () => {
 							</UiTooltip>
 						</div>
 					</div>
-					<!-- Why a failed run failed, aligned with the contact's name -->
+					<!-- Why a run failed or what it waits for, aligned with the contact's name -->
 					<AutomationsRunFailureNote
-						v-if="run.failure"
-						:failure="run.failure"
+						v-if="run.failure ?? run.waiting"
+						:failure="run.failure ?? run.waiting!"
 						:automation-id="automationId"
 						class="mt-2 sm:pl-13"
 					/>

@@ -13,7 +13,9 @@ import {
 	reasonsAt,
 	type PublicOperation,
 } from './operations';
+import { sendingHoldLiftSchema } from './status';
 import { transactionalAttachmentSchema } from './transactional';
+import type { ApiErrorReason } from './types';
 
 type JsonObject = Record<string, unknown>;
 
@@ -102,10 +104,40 @@ function successBody(operation: PublicOperation): JsonObject {
 }
 
 /**
- * The error body at one status: the shared envelope, and when the operation
- * names reasons at that status, `error.data.reason` narrowed to them.
+ * The `error.data` fields a reason carries beyond `reason`. Optional, because
+ * the other reasons at the same status send none of them, and `data` stays
+ * open to fields a later release adds.
  */
-function errorBody(reasons: readonly string[]): JsonObject {
+const REASON_DATA: Partial<Record<ApiErrorReason, JsonObject>> = {
+	abuse_blocked: {
+		status: {
+			type: 'string',
+			enum: ['suspended', 'banned'],
+			description: 'Whether sending is suspended or banned.',
+		},
+		since: {
+			type: ['string', 'null'],
+			description: 'ISO 8601 timestamp of when the status was set; null if not recorded.',
+		},
+		detail: {
+			type: ['string', 'null'],
+			description: 'The reason recorded with the status, or null.',
+		},
+		// The status endpoint's own schema, so the two cannot drift apart.
+		lift: {
+			anyOf: [ref('SendingHoldLift'), { type: 'null' }],
+			description:
+				"How the suspension lifts, as GET /api/v1/status's sendingHold.lift; null only if it lifted while the request ran.",
+		},
+	},
+};
+
+/**
+ * The error body at one status: the shared envelope, and when the operation
+ * names reasons at that status, `error.data.reason` narrowed to them and the
+ * fields those reasons carry.
+ */
+function errorBody(reasons: readonly ApiErrorReason[]): JsonObject {
 	if (reasons.length === 0) return ref('ApiErrorResponse');
 	return {
 		allOf: [
@@ -125,6 +157,7 @@ function errorBody(reasons: readonly string[]): JsonObject {
 										description:
 											'Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status.',
 									},
+									...Object.assign({}, ...reasons.map((reason) => REASON_DATA[reason] ?? {})),
 								},
 							},
 						},
@@ -135,7 +168,7 @@ function errorBody(reasons: readonly string[]): JsonObject {
 	};
 }
 
-function errorResponse(status: number, reasons: readonly string[]): JsonObject {
+function errorResponse(status: number, reasons: readonly ApiErrorReason[]): JsonObject {
 	return {
 		description: STATUS_TEXT[status] ?? 'Error.',
 		...(status === 429
@@ -255,6 +288,7 @@ export function buildOpenApiDocument(
 		[
 			['ApiErrorResponse', apiErrorResponseSchema],
 			['PaginationMeta', paginationMetaSchema],
+			['SendingHoldLift', sendingHoldLiftSchema],
 			...operations.map((operation) => [operation.success.name, operation.success.data] as const),
 		],
 		'output'

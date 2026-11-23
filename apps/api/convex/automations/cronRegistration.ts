@@ -28,6 +28,17 @@ export function registerAutomationCrons(crons: Crons): void {
 		internal.automations.stepWalker.processPendingDelays
 	);
 
+	// Re-run the one email step that has waited longest since its last check for
+	// the sending setup to be fixed. One step attempt per tick however many wait;
+	// when it sends, the rest are released (automations/configurationWait.ts).
+	// The cadence is how long mail waits after the fix.
+	crons.interval(
+		'recheck automation steps waiting for configuration',
+		{ minutes: 5 },
+		internal.automations.configurationWait.probeWaitingStepRun,
+		{}
+	);
+
 	// Recover automation runs left `running` with no active step run (a step walker
 	// action that died between two of its calls). Pages through every running run,
 	// so it runs a few times a day rather than every few minutes; see

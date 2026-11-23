@@ -8,7 +8,7 @@
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
 import { decideReputationEnforcement } from './reputationEnforcement';
-import { decideAutoResume, resumeReason } from './reputationResume';
+import { decideAutoClear, resumeReason } from './reputationResume';
 import { readEnforcementEvidence, readResumeCondition } from './reputationEvidence';
 
 /**
@@ -21,13 +21,14 @@ import { readEnforcementEvidence, readResumeCondition } from './reputationEviden
  *
  * Enforcement lives only here; `recordEvent` has no per-event trigger. It fires
  * while the evidence stays over the line; the Abuse status module dedupes the
- * transition idempotently, so the hourly check enforces the same policy a
+ * transition idempotently (and, as a recheck, writes no audit row for an hour
+ * that changed nothing), so the hourly check enforces the same policy a
  * per-event one would. A trigger a platform admin's lift put on hold is left
  * out until the hold ends.
  *
- * The same step lifts a suspension the check imposed once its trigger has
- * cleared (`reputationResume.ts` holds the rule), unless the instance requires
- * a platform admin to lift it.
+ * The same step clears a suspension or a warning the check set once its
+ * trigger has cleared (`reputationResume.ts` holds the rule). A suspension
+ * waits instead when the instance requires a platform admin to lift it.
  */
 export const evaluateAutoEnforce = internalMutation({
 	args: {},
@@ -40,36 +41,42 @@ export const evaluateAutoEnforce = internalMutation({
 			...evidence,
 			hold: settings?.reputationCheckHold ?? null,
 		});
+		const status = settings?.abuseStatus;
+		const checked = status === 'suspended' || status === 'warned' ? status : null;
 		const trigger = settings?.abuseStatusTrigger;
-		const condition = trigger ? await readResumeCondition(ctx.db, trigger, org, now) : null;
-		const isResuming = decideAutoResume({
-			status: settings?.abuseStatus,
+		const condition =
+			trigger && checked ? await readResumeCondition(ctx.db, trigger, org, now, checked) : null;
+		const isClearing = decideAutoClear({
+			status,
 			trigger,
 			isManualResumeRequired: settings?.isSendingResumeManual === true,
-			isStillCritical: decision?.riskLevel === 'critical',
+			call: decision?.riskLevel ?? null,
 			condition,
 		});
-		if (isResuming && trigger && condition) {
+		if (isClearing && checked && trigger && condition) {
 			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
 				input: {
 					to: 'clean',
 					at: now,
-					reason: resumeReason(condition),
+					reason: resumeReason(condition, checked),
 					changedBy: 'system',
 					trigger,
 				},
 			});
 		}
-		// A suspension stays on its trigger until that one clears: handing it to
-		// another metric first could lift it while the first is still over its
-		// clear line.
+		// A status stays on its trigger until that one clears: handing it to
+		// another metric first could clear it while the first is still over its
+		// clear line. A warning that escalates takes the trigger that suspends.
 		const keepsTrigger =
-			settings?.abuseStatus === 'suspended' && condition !== null && !condition.isClear;
+			condition !== null &&
+			!condition.isClear &&
+			(status === 'suspended' || (status === 'warned' && decision?.riskLevel === 'high'));
 		// Applied in this mutation, not queued: the decision was made on the hold
 		// read above, and a platform admin's lift committed in between would
 		// otherwise be undone by it.
 		if (decision) {
 			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
+				isRecheck: true,
 				input: {
 					to: decision.riskLevel === 'critical' ? 'suspended' : 'warned',
 					at: now,

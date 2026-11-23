@@ -7,6 +7,7 @@ import { getLiveContact } from '../lib/contactHelpers';
 import {
 	automationRunEndReasonValidator,
 	type AutomationStepFailureReason,
+	type AutomationStepWaitReason,
 } from '../lib/validators/automations';
 import { healthWindowStart } from './health';
 import type { DatabaseReader } from '../_generated/server';
@@ -21,28 +22,55 @@ export type AutomationRunFailure = {
 	detail: string | null;
 };
 
-/**
- * The failure of a run a failed step ended, or null for any other run. A failed
- * step run without a code (written before codes existed) reads as `unknown`,
- * with its sentence as the detail.
- */
-async function runFailureOf(
-	db: DatabaseReader,
-	run: Doc<'automationRuns'>
-): Promise<AutomationRunFailure | null> {
-	if (run.endReason !== 'step_failed') return null;
-	// The failed step run is the run's newest: failing it cancels the run in the
-	// same transaction, so nothing is written after it.
-	const newest = await db
+/** What a running run's email step waits for, and when the wait gives up. */
+export type AutomationRunWait = {
+	reason: AutomationStepWaitReason;
+	detail: string | null;
+	until: number;
+};
+
+const newestStepRunOf = (db: DatabaseReader, run: Doc<'automationRuns'>) =>
+	db
 		.query('automationStepRuns')
 		.withIndex('by_automation_run', (q) => q.eq('automationRunId', run._id))
 		.order('desc')
 		.first();
-	const failed = newest?.status === 'failed' ? newest : null;
-	return {
-		reason: failed?.failureReason ?? 'unknown',
-		detail: failed?.errorMessage ?? null,
-	};
+
+/**
+ * Why a run is not moving on: `failure` for a run a failed step ended, `waiting`
+ * for a running run whose step waits for the sending setup to be fixed, null
+ * otherwise. A failed step run without a code (written before codes existed)
+ * reads as `unknown`, with its sentence as the detail.
+ */
+async function runNotesOf(
+	db: DatabaseReader,
+	run: Doc<'automationRuns'>
+): Promise<{ failure: AutomationRunFailure | null; waiting: AutomationRunWait | null }> {
+	if (run.endReason === 'step_failed') {
+		// The failed step run is the run's newest: failing it cancels the run in
+		// the same transaction, so nothing is written after it.
+		const newest = await newestStepRunOf(db, run);
+		const failed = newest?.status === 'failed' ? newest : null;
+		return {
+			failure: {
+				reason: failed?.failureReason ?? 'unknown',
+				detail: failed?.errorMessage ?? null,
+			},
+			waiting: null,
+		};
+	}
+	if (run.status !== 'running') return { failure: null, waiting: null };
+	// A run's only non-terminal step run is its newest.
+	const newest = await newestStepRunOf(db, run);
+	const waiting =
+		newest?.status === 'pending' && newest.waitingFor && newest.waitingUntil !== undefined
+			? {
+					reason: newest.waitingFor,
+					detail: newest.errorMessage ?? null,
+					until: newest.waitingUntil,
+				}
+			: null;
+	return { failure: null, waiting };
 }
 
 // Get automation runs for analytics with contact details.
@@ -63,6 +91,8 @@ async function runFailureOf(
 // A run a failed step ended also joins `failure`, the coded reason and the
 // stored sentence (null on every other run); the sentence is the walker's own
 // text or a plugin's reason, already clamped and stripped at the plugin seam.
+// A running run whose email step waits for the sending setup joins `waiting`,
+// the same pair plus when the wait gives up (null on every other run).
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -111,13 +141,13 @@ export const getAutomationRuns = automationsQuery({
 
 		const enrichedRuns = await Promise.all(
 			paginatedRuns.map(async (run) => {
-				const [contact, failure] = await Promise.all([
+				const [contact, notes] = await Promise.all([
 					getLiveContact(ctx, run.contactId),
-					runFailureOf(ctx.db, run),
+					runNotesOf(ctx.db, run),
 				]);
 				return {
 					...run,
-					failure,
+					...notes,
 					contact: contact
 						? {
 								_id: contact._id,

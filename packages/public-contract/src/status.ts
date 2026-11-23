@@ -8,6 +8,8 @@ import {
 	DELIVERY_STATUS_LEVELS,
 	DELIVERY_STATUS_REASONS,
 	SENDING_DOMAIN_STATUSES,
+	SENDING_HOLD_LIFT_MODES,
+	SENDING_HOLD_TRIGGERS,
 } from './types';
 
 const rateAgainstLimitSchema = z.strictObject({
@@ -15,6 +17,42 @@ const rateAgainstLimitSchema = z.strictObject({
 	limitPct: z.number().meta({ description: 'The limit in percent.' }),
 	isOver: z.boolean().meta({ description: 'Whether the rate has reached the limit.' }),
 });
+
+export const sendingHoldLiftSchema = z
+	.strictObject({
+		mode: z.enum(SENDING_HOLD_LIFT_MODES).meta({
+			description:
+				'automatic: lifts by itself once condition is met. manual_setting: the instance waits for a platform admin, even after the rates recover. admin: never lifts by itself (a ban, or a suspension a platform admin imposed). A platform admin can lift any of them.',
+		}),
+		condition: z
+			.strictObject({
+				trigger: z.enum(SENDING_HOLD_TRIGGERS).meta({
+					description:
+						"The metric the lift waits on: the 30-day bounce or complaint rate, or Gmail's spam rate for one sending domain.",
+				}),
+				domain: z.string().nullable().meta({
+					description: 'The sending domain of a Gmail spam rate; null for the instance-wide rates.',
+				}),
+				currentPct: z.number().nullable().meta({
+					description:
+						'The metric now, in percent: the 30-day rate, or the highest Gmail reading at or above the limit. null when no evidence is left in the window.',
+				}),
+				limitPct: z.number().meta({
+					description: 'Sending resumes once the metric is under this, in percent.',
+				}),
+				isClear: z.boolean().meta({
+					description:
+						'The metric is back under the limit: sending resumes at the next hourly check.',
+				}),
+				clearsAt: z.string().nullable().meta({
+					description:
+						'ISO 8601 time the last Gmail reading over the limit leaves the 30-day window; null otherwise.',
+				}),
+			})
+			.nullable()
+			.meta({ description: 'Set when mode is automatic, otherwise null.' }),
+	})
+	.meta({ description: 'How the suspension or ban lifts.' });
 
 export const deliveryStatusSchema = z.strictObject({
 	level: z.enum(DELIVERY_STATUS_LEVELS).meta({
@@ -57,6 +95,7 @@ export const deliveryStatusSchema = z.strictObject({
 			detail: z.string().nullable().meta({
 				description: 'The reason recorded with the status, or null.',
 			}),
+			lift: sendingHoldLiftSchema,
 		})
 		.nullable()
 		.meta({
