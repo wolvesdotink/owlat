@@ -213,6 +213,28 @@ bun run ci:verify   # scripts/ci-gate.sh verify: lint gates + typecheck + tests
 bun run test:ramp   # the ramp-gate matrix, both legs (see "CI checks")
 ```
 
+### Web bundle budgets
+
+The built web app has gzip budgets: one for the entry closure that every page
+loads (`GZIP_BUDGET_KB` in `scripts/check-bundle-budget.ts`) and one line per
+page and lazily loaded chunk in
+[`scripts/bundle-closure-budgets.txt`](scripts/bundle-closure-budgets.txt). A
+page or lazy feature whose static imports grow trips them, and so does a new
+page or lazy chunk, which needs a line of its own (the failure prints it). They
+need a production build, so only the **Docker Build (web)** job checks them, and
+`ci:lint` and `ci:verify` pass without them. Before pushing a web change, run:
+
+```bash
+bun run ci:bundle
+```
+
+It builds the web app the way its image does, runs both checks, prints what is
+over budget last and removes the build output again. The build needs about
+5 GiB of free memory, and the command refuses to start with less. A closure over
+its budget loads the new code lazily (`import()`, `defineAsyncComponent`) or
+imports a smaller leaf module. Raise a line only with the reason in the pull
+request.
+
 ### Dead-code gate
 
 A zero-tolerance gate keeps orphaned exports, files, modules, and dependencies
@@ -354,7 +376,8 @@ manual dispatch run the full set as a safety valve.
     `bun run ci:typecheck`.
   - **Docker Build (<image>).** Builds each affected image listed in
     `.github/docker-images.json`; images marked `runtimeSmoke` also get their
-    packaged Node entry imported once.
+    packaged Node entry imported once. The web image's build is checked
+    against the [web bundle budgets](#web-bundle-budgets).
   - **Test (packages/sdk-java).** Maven `verify`, when `packages/sdk-java`
     changes.
   - **Desktop SPA (build + inspect).** Builds the real `generate:desktop`

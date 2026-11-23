@@ -319,5 +319,10 @@ if (stale.length > 0) {
 			stale.map((line) => `  ${line}`).join('\n')
 	);
 }
-if (over.length + missing.length + stale.length > 0) process.exit(1);
+if (over.length + missing.length + stale.length > 0) {
+	console.error(
+		'\nAfter the fix, `bun run ci:bundle` builds the web app and checks it again locally.'
+	);
+	process.exit(1);
+}
 console.info(`\nEvery route and deferred feature is within its budget.`);

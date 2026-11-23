@@ -15,10 +15,18 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -63,9 +71,34 @@ interface LintTask {
 	readonly files: ReadonlySet<string>;
 }
 
+/**
+ * One generated file in each kind of output tree a local build or `nuxi
+ * prepare` writes, planted before the dry run so the generated-tree case
+ * checks every kind whether or not this checkout has built. A production
+ * `nuxt build` writes its types under node_modules/.cache/nuxt/.nuxt, which
+ * the api task's sibling-app globs reach.
+ */
+const PLANTED = [
+	'apps/web/node_modules/.cache/nuxt/.nuxt/types/turbo-lint-inputs-planted.d.ts',
+	'packages/ui/node_modules/.cache/nuxt/.nuxt/turbo-lint-inputs-planted.d.ts',
+	'apps/web/.nuxt/turbo-lint-inputs-planted.d.ts',
+	'apps/web/.output/server/turbo-lint-inputs-planted.ts',
+];
+const plantedRoots: string[] = [];
+
 let lintTasks: Map<string, LintTask>;
 
+afterAll(() => {
+	for (const file of PLANTED) rmSync(join(REPOSITORY_ROOT, file), { force: true });
+	for (const root of plantedRoots) rmSync(root, { recursive: true, force: true });
+});
+
 beforeAll(() => {
+	for (const file of PLANTED) {
+		const created = mkdirSync(dirname(join(REPOSITORY_ROOT, file)), { recursive: true });
+		if (created !== undefined) plantedRoots.push(created);
+		writeFileSync(join(REPOSITORY_ROOT, file), 'export {};\n');
+	}
 	const dryRun = JSON.parse(
 		execFileSync(
 			join(REPOSITORY_ROOT, 'node_modules/.bin/turbo'),
@@ -297,8 +330,13 @@ describe('workspace lint task inputs', () => {
 	});
 
 	it('leave generated trees out, so a build, nuxt prepare or turbo log cannot move a hash', () => {
+		const hashed = [...lintTasks.values()].flatMap(({ files }) => [...files]);
+		expect(hashed).toContain('apps/web/app/app.vue');
 		for (const [packageName, { files }] of lintTasks) {
-			expect([...files].filter(isGenerated), packageName).toEqual([]);
+			expect(
+				[...files].filter(isGenerated),
+				`${packageName}#lint hashes generated output: exclude it in that task's turbo.json inputs`
+			).toEqual([]);
 		}
 	});
 

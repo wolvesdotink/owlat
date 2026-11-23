@@ -33,11 +33,11 @@ export interface EmailStepConfig {
  *     written, the run advances, and nothing is retried.
  *   - `no_delivery_provider`, `abuse_blocked` and `sender_domain_unverified`
  *     are about the deployment.
- *     They FAIL the step, which is what makes them visible to the operator who
- *     has to fix them — and, for a suspended instance, halting the automation
- *     is the correct response rather than a silent skip. The walker's bounded
- *     backoff (`MAX_RETRY_ATTEMPTS`, then cancel the run) applies as it does to
- *     any other step failure; neither reason spins beyond it.
+ *     They FAIL the attempt with a coded reason, which the walker turns into a
+ *     bounded wait for the fix (`automations/configurationWait.ts`): the run
+ *     shows what it waits for, sends nothing meanwhile (for a suspended
+ *     instance that halt is the point, not a silent skip), and fails with the
+ *     same reason if the fix does not come within the wait.
  */
 const REJECTION_STEP_OUTCOME: Record<
 	NonCampaignIntakeRejectionReason,
@@ -61,9 +61,8 @@ const REJECTION_STEP_OUTCOME: Record<
 		reason: 'sending_not_allowed',
 		error: 'Sending is disabled while this instance is suspended.',
 	}),
-	// About the deployment, like the two above: the step fails with the reason
-	// on its run, the walker's bounded backoff applies, and the failure breaker
-	// pauses an automation that keeps failing on it.
+	// About the deployment, like the two above: the step waits for the fix with
+	// the reason on its run, and fails with it once the wait is over.
 	sender_domain_unverified: (detail) => ({
 		status: 'failed',
 		reason: 'domain_not_verified',
