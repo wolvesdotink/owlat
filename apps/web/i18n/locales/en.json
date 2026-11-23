@@ -575,6 +575,7 @@
 					"getCampaignStats": "Looked up campaign stats",
 					"getDeliveryHealth": "Checked delivery health",
 					"getEmailStats": "Looked up email stats",
+					"getTransactionalSends": "Looked up the emails sent to an address",
 					"searchEverything": "Searched workspace",
 					"searchFiles": "Searched files",
 					"searchKnowledge": "Searched knowledge"

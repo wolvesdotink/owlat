@@ -575,6 +575,7 @@
 					"getCampaignStats": "Kampagnenstatistiken abgerufen",
 					"getDeliveryHealth": "Zustellung geprüft",
 					"getEmailStats": "E-Mail-Statistiken abgerufen",
+					"getTransactionalSends": "E-Mails an eine Adresse nachgesehen",
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",
 					"searchKnowledge": "Wissensdatenbank durchsucht"
