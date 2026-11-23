@@ -30,8 +30,9 @@ const route = useRoute();
 const router = useRouter();
 const { showToast } = useToast();
 const { isEnabled, isLoading: flagsLoading } = useFeatureFlag();
-// Gate inline rather than via requiresAnyFeature: when external mailboxes are
-// turned off the wizard explains itself instead of silently redirecting away.
+// Gate `mail.external` inline rather than in the route table: when external
+// mailboxes are turned off the wizard explains itself instead of silently
+// redirecting away.
 // While the flags subscription is still resolving, `isEnabled` returns the
 // default (false) — so on a hard reload / deep link (the c1 onboarding entry
 // path) we must show a loading state, not flash the "turned off" lock card at

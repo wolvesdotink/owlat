@@ -36,7 +36,6 @@ useHead({ title: () => t('dashboard.inbox.index.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'inbox',
 });
 
 // ── Access gate ──

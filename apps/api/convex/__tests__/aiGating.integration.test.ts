@@ -135,10 +135,9 @@ beforeEach(() => {
 // visualizationAgent — the ai.visualizations feature floor
 // ============================================================
 
-// The `/dashboard/visualizations` route declares `requiresFeature:
-// 'ai.visualizations'`, but a route guard only decides what the browser
-// renders: every function below is published on the deployment's client API,
-// so without a server-side check an admin of an instance that never turned AI
+// The web app gates `/dashboard/visualizations` on `ai.visualizations`, but a
+// route guard only decides what the browser renders: every function below is
+// published on the deployment's client API, so without a server-side check an admin of an instance that never turned AI
 // dashboards on could still spend tokens generating one.
 describe('visualizationAgent — ai.visualizations feature floor', () => {
 	it('refuses the list when the flag is off', async () => {

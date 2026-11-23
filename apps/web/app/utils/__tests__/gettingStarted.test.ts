@@ -52,6 +52,7 @@ function input(overrides: Partial<GettingStartedInput> = {}): GettingStartedInpu
 		sendPathReady: true,
 		// Default to "no cap to quote"; the readiness cases supply one.
 		sendCapacityToday: null,
+		isFeatureEnabled: () => true,
 		...overrides,
 	};
 }
@@ -464,5 +465,63 @@ describe("the send-a-campaign step carries today's sending headroom", () => {
 			'Send your first email campaign to your audience.'
 		);
 		expect(say(sentCampaignDescription(1))).toContain('About 1 contact can be reached today');
+	});
+});
+
+describe('buildGettingStarted — steps on switched-off features', () => {
+	const ALL_DONE: Record<InstanceFlagId, boolean> = {
+		sendPathReady: true,
+		addedContacts: true,
+		createdEmail: true,
+		sentCampaign: false,
+		createdApiKey: true,
+		setupDomain: true,
+	};
+
+	it('leaves out "Send a campaign" while campaigns are off, and counts without it', () => {
+		const model = buildGettingStarted(
+			input({
+				role: 'admin',
+				instanceFlags: ALL_DONE,
+				userDismissed: true,
+				isFeatureEnabled: (flag) => flag !== 'campaigns',
+			})
+		);
+		expect(allStepIds(model)).not.toContain('sentCampaign');
+		expect(model.completedCount).toBe(model.totalCount);
+	});
+
+	it('keeps "Send a campaign" while campaigns are on', () => {
+		const model = buildGettingStarted(
+			input({ role: 'admin', instanceFlags: ALL_DONE, userDismissed: true })
+		);
+		expect(allStepIds(model)).toContain('sentCampaign');
+		expect(model.completedCount).toBe(model.totalCount - 1);
+	});
+
+	it('leaves out the mailbox steps without mail, and the rest completes the section', () => {
+		const noMail = (flag: string) => flag !== 'postbox' && flag !== 'mail.external';
+		const open = buildGettingStarted(
+			input({ role: 'admin', instanceDismissed: true, isFeatureEnabled: noMail })
+		);
+		const personal = open.sections.find((section) => section.id === 'personal')!;
+		expect(personal.steps.filter((step) => !step.informational).map((step) => step.id)).toEqual([
+			'aiConnected',
+		]);
+
+		const done = buildGettingStarted(
+			input({
+				role: 'admin',
+				instanceDismissed: true,
+				personalCompleted: new Set<ChecklistStepId>(['aiConnected']),
+				isFeatureEnabled: noMail,
+			})
+		);
+		expect(done.visible).toBe(false);
+	});
+
+	it("leaves a member's own steps alone", () => {
+		const model = buildGettingStarted(input({ isFeatureEnabled: () => false }));
+		expect(allStepIds(model)).toEqual(MEMBER_STEPS.map((step) => step.id));
 	});
 });

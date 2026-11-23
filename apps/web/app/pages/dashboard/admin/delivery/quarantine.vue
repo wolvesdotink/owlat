@@ -16,7 +16,6 @@ useHead({ title: () => t('dashboard.inbox.quarantine.pageTitle') });
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	requiresFeature: 'inbox',
 });
 
 // Fetch quarantined messages

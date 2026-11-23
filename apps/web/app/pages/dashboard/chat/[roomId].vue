@@ -9,7 +9,6 @@ import { ArrowLeftIcon, EyeIcon, LockIcon, UserPlusCornerIcon } from '@coolicons
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'chat',
 });
 
 const { t } = useI18n();

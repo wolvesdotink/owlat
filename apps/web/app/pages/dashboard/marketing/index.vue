@@ -25,7 +25,6 @@ useHead({ title: () => t('dashboard.marketing.pageTitle') });
 definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
-	requiresFeature: 'campaigns',
 });
 
 const router = useRouter();

@@ -10,7 +10,6 @@ useHead({ title: () => t('dashboard.admin.team.inboxes.pageTitle') });
 definePageMeta({
 	layout: 'admin',
 	middleware: ['auth', 'admin'],
-	requiresAnyFeature: ['postbox', 'mail.external'],
 });
 
 // Team inboxes are org infrastructure: the backend list (`listShared`) and

@@ -122,6 +122,8 @@ export interface CorePaletteProviderDeps {
 	 * `groupsForScope` in the shell, so one rule decides what Mail scope shows.
 	 */
 	isMailScope: () => boolean;
+	/** Whether this workspace has mail to search; without it the mail rows stay out. */
+	isMailAvailable: () => boolean;
 	/**
 	 * Operator/contact/label completions for the token under the caret, already
 	 * mapped to rows that rewrite the box (`~/utils/postboxSearchSuggest`).
@@ -390,7 +392,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			priority: 45,
 			build: ({ query }): PaletteGroup[] => {
 				const term = query.trim();
-				if (term.length < SEARCH_MIN_QUERY) return [];
+				if (term.length < SEARCH_MIN_QUERY || !deps.isMailAvailable()) return [];
 				const results = deps.searchResults();
 				const groups: PaletteGroup[] = [];
 				if (results && results.mail.length > 0) {
