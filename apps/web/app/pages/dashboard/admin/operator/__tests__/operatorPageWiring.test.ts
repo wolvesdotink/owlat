@@ -181,6 +181,8 @@ async function mountOn(tab: string) {
 	await flushPromises();
 	const target = wrapper.findAll('[role="tab"]').find((t) => t.text().startsWith(tab))!;
 	await target.trigger('click');
+	// Tabs past the Overview load on their first click.
+	await vi.dynamicImportSettled();
 	await flushPromises();
 	return wrapper;
 }

@@ -2,10 +2,9 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
-import OperatorAdminsTab from '~/components/operator/AdminsTab.vue';
+import { defineAsyncComponent } from 'vue';
 import OperatorOrganizationsTab from '~/components/operator/OrganizationsTab.vue';
 import OperatorOverviewTab from '~/components/operator/OverviewTab.vue';
-import OperatorReviewTab from '~/components/operator/ReviewTab.vue';
 import OperatorSendingStatusCard from '~/components/operator/SendingStatusCard.vue';
 import { useOperatorConsoleReads } from '~/composables/useOperatorConsoleReads';
 import { isBlockingAbuseStatus, type OperatorReviewItem } from '~/utils/operatorConsole';
@@ -13,6 +12,9 @@ import { formatDate } from '~/utils/formatters';
 import { MANUAL_LIFT_HOLD_MS, reputationHoldText } from '~/utils/suspensionLift';
 
 const { t, te, locale } = useI18n();
+// Tabs that open only on a click load then (the route's bundle budget).
+const OperatorAdminsTab = defineAsyncComponent(() => import('~/components/operator/AdminsTab.vue'));
+const OperatorReviewTab = defineAsyncComponent(() => import('~/components/operator/ReviewTab.vue'));
 
 useHead({ title: () => t('dashboard.admin.operator.index.pageTitle') });
 

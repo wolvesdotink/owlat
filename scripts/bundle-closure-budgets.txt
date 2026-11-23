@@ -300,6 +300,8 @@ deferred 15 components/contacts/ExportModal.vue
 deferred 13 components/contacts/IntegrationImportModal.vue
 deferred 138 components/delivery/TransactionalReadinessLine.vue
 deferred 16 components/mail/TemplateLibraryModal.vue
+deferred 7 components/operator/AdminsTab.vue
+deferred 6 components/operator/ReviewTab.vue
 deferred 162 components/postbox/PostboxAllInboxesLayout.vue
 deferred 7 components/postbox/PostboxArrivalUndoHost.vue
 deferred 11 components/postbox/PostboxContactsCardDavPanel.vue
