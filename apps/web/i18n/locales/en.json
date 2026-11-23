@@ -12000,7 +12000,7 @@
 						"emptyFiltered": "No runs match this filter",
 						"emptyTitle": "No contacts in this automation yet",
 						"failed": "Failed",
-						"failedNote": "Runs a failed step ended in the last 7 days. An ended run does not continue. Once the cause is fixed, new runs go through; if the automation paused itself after repeated failures, resume it.",
+						"failedNote": "Runs a failed step ended in the last 7 days. An ended run does not continue. Once the cause is fixed, new runs go through; if the automation paused itself after repeated failures, an admin needs to resume it.",
 						"failure": {
 							"contactNoEmail": "This contact has no email address.",
 							"details": "Details",

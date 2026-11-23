@@ -12000,7 +12000,7 @@
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
 						"emptyTitle": "Noch keine Kontakte in dieser Automatisierung",
 						"failed": "Fehlgeschlagen",
-						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben. Ein beendeter Durchlauf geht nicht weiter. Sobald die Ursache behoben ist, laufen neue Durchläufe durch; hat sich die Automatisierung nach wiederholten Fehlern selbst pausiert, setze sie fort.",
+						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben. Ein beendeter Durchlauf geht nicht weiter. Sobald die Ursache behoben ist, laufen neue Durchläufe durch; hat sich die Automatisierung nach wiederholten Fehlern selbst pausiert, muss eine Person mit Admin-Rechten sie fortsetzen.",
 						"failure": {
 							"contactNoEmail": "Dieser Kontakt hat keine E-Mail-Adresse.",
 							"details": "Details",
