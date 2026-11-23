@@ -19797,11 +19797,11 @@
 				},
 				"deliverabilityAlertRaised": {
 					"label": "Zustellbarkeitsalarm ausgelöst",
-					"description": "Wenn eine bestandene Zustellbarkeitsprüfung wieder fehlschlägt, etwa bei gesperrtem Port 25"
+					"description": "Wenn eine bestandene Zustellbarkeitsprüfung wieder fehlschlägt, etwa bei gesperrtem Port 25, oder der Versand auf der Instanz ausgesetzt wird"
 				},
 				"deliverabilityAlertResolved": {
 					"label": "Zustellbarkeitsalarm behoben",
-					"description": "Wenn ein Zustellbarkeitsalarm behoben ist"
+					"description": "Wenn ein Zustellbarkeitsalarm behoben ist oder der Versand wieder anläuft"
 				}
 			},
 			"updateOperation": "Webhook aktualisieren",

@@ -19797,11 +19797,11 @@
 				},
 				"deliverabilityAlertRaised": {
 					"label": "Deliverability alert raised",
-					"description": "When a deliverability check that passed starts failing, such as a blocked port 25"
+					"description": "When a deliverability check that passed starts failing, such as a blocked port 25, or sending on the instance is suspended"
 				},
 				"deliverabilityAlertResolved": {
 					"label": "Deliverability alert resolved",
-					"description": "When a deliverability alert is resolved"
+					"description": "When a deliverability alert is resolved, or sending resumes"
 				}
 			},
 			"updateOperation": "Update webhook",
