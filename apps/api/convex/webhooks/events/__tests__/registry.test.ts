@@ -63,6 +63,7 @@ describe('emailBounced.build', () => {
 			email: 'foo@example.com',
 			identity: API_SEND,
 			bounceType: 'hard',
+			cause: 'recipient',
 			message: 'user unknown',
 			at: TS_EPOCH,
 		});
@@ -70,6 +71,7 @@ describe('emailBounced.build', () => {
 			email: 'foo@example.com',
 			...API_SEND,
 			bounceType: 'hard',
+			cause: 'recipient',
 			message: 'user unknown',
 			timestamp: TS_ISO,
 		});
@@ -80,6 +82,7 @@ describe('emailBounced.build', () => {
 			email: 'foo@example.com',
 			identity: API_SEND,
 			bounceType: 'soft',
+			cause: 'sender',
 			at: TS_EPOCH,
 		});
 		expect(data.message).toBe('');

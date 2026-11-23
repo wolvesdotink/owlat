@@ -254,7 +254,9 @@ export const update = internalMutation({
 		const now = Date.now();
 		const rowPatch: Partial<Doc<'emailBlocks'>> = { updatedAt: now };
 		if (args.patch.name !== undefined) rowPatch.name = args.patch.name.trim();
-		if (args.patch.description !== undefined) rowPatch.description = args.patch.description.trim();
+		// An empty description removes it; patching a field to undefined unsets it.
+		if (args.patch.description !== undefined)
+			rowPatch.description = args.patch.description.trim() || undefined;
 		if (content !== undefined) rowPatch.content = content;
 
 		await ctx.db.patch(args.blockId, rowPatch);

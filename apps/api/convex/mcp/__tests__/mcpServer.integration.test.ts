@@ -283,6 +283,83 @@ describe('POST /mcp/postbox', () => {
 		expect(malformed.body.result.isError).toBe(true);
 	});
 
+	it('pages back to the start of a long conversation with before_message_id', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const ids: Id<'mailMessages'>[] = [];
+		// Offers 3 and 4 share a timestamp, and the first page ends between them.
+		for (const [i, receivedAt] of [1_000, 1_001, 1_002, 1_003, 1_003, 1_005].entries()) {
+			ids.push(await seedMessage(t, own, { subject: `Re: Offer ${i}`, receivedAt }));
+		}
+		await t.run(async (ctx) => {
+			const threadId = (await ctx.db.get(ids[0]!))!.threadId;
+			for (const id of ids) await ctx.db.patch(id, { threadId });
+		});
+		const { token } = await t.mutation(api.mcp.clients.create, {
+			label: 'Claude',
+			mailboxIds: [own],
+		});
+		const page = async (before?: string) =>
+			(
+				await callTool(t, token, 'read_thread', {
+					message_id: ids[5],
+					max_messages: 2,
+					...(before ? { before_message_id: before } : {}),
+				})
+			).body.result.structuredContent as {
+				messages: { message_id: string; subject: string }[];
+				has_older_messages: boolean;
+			};
+
+		const subjects: string[][] = [];
+		let before: string | undefined;
+		for (let i = 0; i < 4; i++) {
+			const content = await page(before);
+			subjects.push(content.messages.map((m) => m.subject));
+			if (!content.has_older_messages) break;
+			before = content.messages[0]!.message_id;
+		}
+		expect(subjects).toEqual([
+			['Re: Offer 4', 'Re: Offer 5'],
+			['Re: Offer 2', 'Re: Offer 3'],
+			['Re: Offer 0', 'Re: Offer 1'],
+		]);
+	});
+
+	it('refuses a before_message_id outside the conversation like an unknown one', async () => {
+		const { t, orgId } = await harness();
+		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');
+		const teammates = await mailbox(t, orgId, 'user-b', 'b@owlat.test');
+		const mine = await seedMessage(t, own, { subject: 'Offer', receivedAt: 2_000 });
+		const otherThread = await seedMessage(t, own, { subject: 'Lunch', receivedAt: 1_000 });
+		const theirs = await seedMessage(t, teammates, { subject: 'Private', receivedAt: 1_000 });
+		// A foreign message in the same conversation still belongs to a mailbox
+		// this connection cannot read.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(theirs, { threadId: (await ctx.db.get(mine))!.threadId });
+		});
+		const { token } = await t.mutation(api.mcp.clients.create, {
+			label: 'Claude',
+			mailboxIds: [own],
+		});
+		const unknownId = await seedMessage(t, own, { subject: 'Gone' });
+		await t.run((ctx) => ctx.db.delete(unknownId));
+
+		const answers = [];
+		for (const before of [theirs, otherThread, unknownId, 'nope']) {
+			const result = await callTool(t, token, 'read_thread', {
+				message_id: mine,
+				before_message_id: before,
+			});
+			answers.push(result.body.result);
+		}
+		for (const answer of answers) {
+			expect(answer.isError).toBe(true);
+			expect(answer).toEqual(answers[0]);
+		}
+		expect(JSON.stringify(answers)).not.toContain('Private');
+	});
+
 	it('stops working once revoked or once the member leaves the organization', async () => {
 		const { t, orgId } = await harness();
 		const own = await mailbox(t, orgId, 'user-a', 'a@owlat.test');

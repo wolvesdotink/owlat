@@ -573,6 +573,7 @@
 					"draftCampaignCopy": "Kampagnentext entworfen",
 					"draftEmailReply": "E-Mail-Antwort entworfen",
 					"getCampaignStats": "Kampagnenstatistiken abgerufen",
+					"getDeliveryHealth": "Zustellung geprüft",
 					"getEmailStats": "E-Mail-Statistiken abgerufen",
 					"searchEverything": "Workspace durchsucht",
 					"searchFiles": "Dateien durchsucht",

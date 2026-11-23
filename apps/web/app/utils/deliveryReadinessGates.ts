@@ -322,7 +322,7 @@ function bouncesGate(input: ReadinessInput): ReadinessGate | null {
 		},
 		status: isOver ? 'attention' : 'ready',
 		tone: isOver ? 'warning' : 'success',
-		actionHref: isOver ? '/dashboard/audience/suppressions' : null,
+		actionHref: isOver ? '/dashboard/audience/suppressions?reason=bounced' : null,
 		actionLabel: isOver ? 'shared.deliveryReadiness.gates.bounces.action' : null,
 		streams: ['marketing'],
 	};
@@ -346,7 +346,7 @@ function complaintsGate(input: ReadinessInput): ReadinessGate | null {
 		},
 		status: isOver ? 'attention' : 'ready',
 		tone: isOver ? 'warning' : 'success',
-		actionHref: isOver ? '/dashboard/audience/suppressions' : null,
+		actionHref: isOver ? '/dashboard/audience/suppressions?reason=complained' : null,
 		actionLabel: isOver ? 'shared.deliveryReadiness.gates.complaints.action' : null,
 		streams: ['marketing'],
 	};

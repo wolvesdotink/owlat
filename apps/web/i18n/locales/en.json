@@ -573,6 +573,7 @@
 					"draftCampaignCopy": "Drafted campaign copy",
 					"draftEmailReply": "Drafted an email reply",
 					"getCampaignStats": "Looked up campaign stats",
+					"getDeliveryHealth": "Checked delivery health",
 					"getEmailStats": "Looked up email stats",
 					"searchEverything": "Searched workspace",
 					"searchFiles": "Searched files",
