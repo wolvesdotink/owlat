@@ -13656,14 +13656,13 @@
 				"fromSenderName": "E-Mail von {sender}"
 			},
 			"forwarding": {
+				"connectedNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb kann Owlat die Mail dieses Postfachs nicht weiterleiten. Richte die Weiterleitung bei deinem Anbieter ein.",
 				"activeRules": "Aktive Regeln",
 				"addressPlaceholder": "archive{'@'}example.com",
 				"createOperation": "Weiterleitungsregel hinzufügen",
 				"empty": "Noch keine Weiterleitungsregeln.",
-				"forwardOnly": "Nur weiterleiten (keine Kopie im Posteingang)",
 				"forwardTo": "Weiterleiten an",
-				"intro": "Eingehende Mail automatisch an eine externe Adresse weiterleiten. Mail von Mailinglisten und automatisch versendete Mail wird übersprungen, um Schleifen zu vermeiden.",
-				"keepLocalCopy": "Lokale Kopie behalten",
+				"intro": "Eingehende Mail automatisch an eine externe Adresse weiterleiten. Die Nachricht bleibt außerdem in diesem Postfach. Mail von Mailinglisten und automatisch versendete Mail wird übersprungen, um Schleifen zu vermeiden.",
 				"noMailbox": "Kein Postfach konfiguriert.",
 				"pageTitle": "Weiterleitung — Owlat",
 				"removeConfirm": "Regel entfernen",
@@ -13867,6 +13866,7 @@
 				"sharedLink": "Team → Gespeicherte Antworten"
 			},
 			"vacation": {
+				"connectedNotice": "{address} wird von deinem Anbieter synchronisiert, deshalb kann Owlat dafür keine automatischen Antworten senden. Richte die automatische Antwort bei deinem Anbieter ein.",
 				"defaultBody": "Ich bin derzeit nicht per E-Mail erreichbar und antworte nach meiner Rückkehr.",
 				"defaultSubject": "Abwesend",
 				"enabledLabel": "Automatische Antwort senden",

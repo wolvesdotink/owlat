@@ -38,14 +38,44 @@ const SALES = {
 	scope: 'shared',
 	status: 'active',
 };
+// Synced from the user's provider, so Owlat's MTA never receives its mail.
+const CONNECTED = {
+	_id: 'mb_gmail',
+	address: 'me@gmail.test',
+	scope: 'personal',
+	kind: 'external',
+	status: 'active',
+};
 
 const responders: Record<string, { subject: string } | null> = {
 	mb_me: { subject: 'Away from my desk' },
 	mb_support: { subject: 'Support is closed this week' },
 	mb_sales: null,
+	mb_gmail: { subject: 'Saved before the notice' },
 };
 
-let mailboxes: Array<typeof PERSONAL | typeof SUPPORT>;
+const forwardingRules: Record<string, Array<Record<string, unknown>>> = {
+	mb_me: [
+		{
+			_id: 'fw_1',
+			mailboxId: 'mb_me',
+			forwardTo: 'archive@elsewhere.test',
+			keepLocalCopy: false,
+			isEnabled: true,
+		},
+	],
+	mb_gmail: [
+		{
+			_id: 'fw_2',
+			mailboxId: 'mb_gmail',
+			forwardTo: 'desk@elsewhere.test',
+			keepLocalCopy: true,
+			isEnabled: true,
+		},
+	],
+};
+
+let mailboxes: Array<typeof PERSONAL | typeof SUPPORT | typeof CONNECTED>;
 // A ref, so a test can hold the roles read in its loading state and land it.
 const roles = ref<Array<{ mailboxId: string; role: 'owner' | 'member' }> | undefined>();
 const rolesError = ref<Error | null>(null);
@@ -73,6 +103,9 @@ function respond(name: string, args: Record<string, unknown>): unknown {
 					replyIntervalDays: 7,
 				}
 			: null;
+	}
+	if (name === getFunctionName(api.mail.forwarding.list)) {
+		return forwardingRules[args['mailboxId'] as string] ?? [];
 	}
 	return undefined;
 }
@@ -264,6 +297,72 @@ describe('the vacation reply names the mailbox it edits', () => {
 
 		await wrapper.get('#draft-subject').setValue('Gone fishing');
 		expect(select.attributes('disabled')).toBeDefined();
+	});
+});
+
+describe('a connected mailbox, where Owlat never receives the mail', () => {
+	beforeEach(() => {
+		mailboxes = [PERSONAL, CONNECTED];
+		roles.value = [
+			{ mailboxId: 'mb_me', role: 'owner' },
+			{ mailboxId: 'mb_gmail', role: 'owner' },
+		];
+		openMailboxId.value = 'mb_gmail';
+	});
+
+	it('says the vacation reply is set up at the provider and shows no form', async () => {
+		const wrapper = mountPage(VacationPage);
+		await flushPromises();
+
+		const notice = wrapper.get('[data-testid="connected-mailbox-notice"]');
+		expect(notice.text()).toContain('me@gmail.test is synced from your provider');
+		expect(notice.text()).toContain('Set the auto-reply up at your provider.');
+		// A responder saved earlier never runs, so it must not read as on.
+		expect(wrapper.find('#draft-subject').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('Saved before the notice');
+	});
+
+	it('says forwarding is set up at the provider and lists no rule as active', async () => {
+		const wrapper = mountPage(ForwardingPage);
+		await flushPromises();
+
+		const notice = wrapper.get('[data-testid="connected-mailbox-notice"]');
+		expect(notice.text()).toContain('me@gmail.test is synced from your provider');
+		expect(wrapper.find('#newaddress').exists()).toBe(false);
+		expect(wrapper.text()).not.toContain('desk@elsewhere.test');
+	});
+
+	it('shows the form again when the picker moves to the hosted mailbox', async () => {
+		const wrapper = mountPage(VacationPage);
+		await flushPromises();
+
+		await wrapper.get('select#settings-mailbox').setValue('mb_me');
+		await flushPromises();
+		expect(wrapper.find('[data-testid="connected-mailbox-notice"]').exists()).toBe(false);
+		expect((wrapper.get('#draft-subject').element as HTMLInputElement).value).toBe(
+			'Away from my desk'
+		);
+	});
+});
+
+describe('forwarding always keeps the message in the mailbox', () => {
+	it('offers no forward-only choice, and a rule saved as one still loads', async () => {
+		mailboxes = [PERSONAL];
+		roles.value = [{ mailboxId: 'mb_me', role: 'owner' }];
+		const wrapper = mountPage(ForwardingPage);
+		await flushPromises();
+
+		expect(wrapper.findComponent({ name: 'UiCheckbox' }).exists()).toBe(false);
+		expect(wrapper.text()).toContain('archive@elsewhere.test');
+		expect(wrapper.text()).not.toContain('Forward only');
+
+		await wrapper.get('#newaddress').setValue('desk@elsewhere.test');
+		await wrapper.get('form').trigger('submit');
+		await flushPromises();
+		expect(operationRun).toHaveBeenCalledWith({
+			mailboxId: 'mb_me',
+			forwardTo: 'desk@elsewhere.test',
+		});
 	});
 });
 

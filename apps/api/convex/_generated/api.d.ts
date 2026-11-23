@@ -1525,6 +1525,7 @@ import type * as mail_forwarding from '../mail/forwarding.js';
 import type * as mail_handlingRules from '../mail/handlingRules.js';
 import type * as mail_handlingRules_engine from '../mail/handlingRules/engine.js';
 import type * as mail_handlingRulesCompile from '../mail/handlingRulesCompile.js';
+import type * as mail_hostedDeliveryRules from '../mail/hostedDeliveryRules.js';
 import type * as mail_identities from '../mail/identities.js';
 import type * as mail_imageAllowlist from '../mail/imageAllowlist.js';
 import type * as mail_imap_append from '../mail/imap/append.js';
@@ -3665,6 +3666,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/handlingRules': typeof mail_handlingRules;
 	'mail/handlingRules/engine': typeof mail_handlingRules_engine;
 	'mail/handlingRulesCompile': typeof mail_handlingRulesCompile;
+	'mail/hostedDeliveryRules': typeof mail_hostedDeliveryRules;
 	'mail/identities': typeof mail_identities;
 	'mail/imageAllowlist': typeof mail_imageAllowlist;
 	'mail/imap/append': typeof mail_imap_append;
