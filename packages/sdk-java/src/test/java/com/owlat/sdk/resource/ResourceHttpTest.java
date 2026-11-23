@@ -9,6 +9,7 @@ import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.status.DeliveryStatus;
+import com.owlat.sdk.model.status.SendingHoldLift;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
@@ -198,7 +199,10 @@ class ResourceHttpTest {
                 + "\"rates\":{\"windowDays\":30,\"sent\":1000,"
                 + "\"bounce\":{\"ratePct\":6,\"limitPct\":2,\"isOver\":true},"
                 + "\"complaint\":{\"ratePct\":0.05,\"limitPct\":0.1,\"isOver\":false}},"
-                + "\"sendingHold\":{\"status\":\"suspended\",\"since\":\"2026-11-20T09:00:00.000Z\",\"detail\":null}}}";
+                + "\"sendingHold\":{\"status\":\"suspended\",\"since\":\"2026-11-20T09:00:00.000Z\",\"detail\":null,"
+                + "\"lift\":{\"mode\":\"automatic\",\"condition\":{\"trigger\":\"gmail_spam_rate\","
+                + "\"domain\":\"mail.example.com\",\"currentPct\":0.4,\"limitPct\":0.1,\"isClear\":false,"
+                + "\"clearsAt\":\"2026-12-18T00:00:00.000Z\"}}}}}";
         DeliveryStatus status = client().status().get();
         assertEquals("GET", method);
         assertEquals("/api/v1/status", rawPath);
@@ -211,5 +215,24 @@ class ResourceHttpTest {
         assertFalse(status.getRates().getComplaint().isOver());
         assertEquals("2026-11-20T09:00:00.000Z", status.getSendingHold().getSince());
         assertNull(status.getSendingHold().getDetail());
+        SendingHoldLift lift = status.getSendingHold().getLift();
+        assertEquals("automatic", lift.getMode());
+        assertEquals("gmail_spam_rate", lift.getCondition().getTrigger());
+        assertEquals("mail.example.com", lift.getCondition().getDomain());
+        assertEquals(0.4, lift.getCondition().getCurrentPct());
+        assertEquals(0.1, lift.getCondition().getLimitPct());
+        assertFalse(lift.getCondition().isClear());
+        assertEquals("2026-12-18T00:00:00.000Z", lift.getCondition().getClearsAt());
+    }
+
+    @Test
+    void statusGetReadsAManualLiftWithoutACondition() {
+        responseBody = "{\"data\":{\"level\":\"error\",\"reasonCode\":\"sending_suspended\","
+                + "\"explanation\":\"Sending is suspended.\",\"fix\":null,\"domains\":[],\"rates\":null,"
+                + "\"sendingHold\":{\"status\":\"suspended\",\"since\":null,\"detail\":null,"
+                + "\"lift\":{\"mode\":\"admin\",\"condition\":null}}}}";
+        SendingHoldLift lift = client().status().get().getSendingHold().getLift();
+        assertEquals("admin", lift.getMode());
+        assertNull(lift.getCondition());
     }
 }

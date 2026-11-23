@@ -200,7 +200,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	settings: Doc<'instanceSettings'>,
 	input: TransitionInput,
-	options: { adminOverride: boolean; eventId?: string }
+	options: { adminOverride: boolean; eventId?: string; isRecheck?: boolean }
 ): Promise<TransitionOutcome> {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 
@@ -233,7 +233,14 @@ async function dispatch(
 
 	// Audit log fires on every transition (including `recorded` no-ops) —
 	// observability captures every attempt, even same-state ones
-	// (e.g., "circuit breaker tripped again while already warned").
+	// (e.g., "circuit breaker tripped again while already warned"). The hourly
+	// reputation check is the exception: it re-reads the same 30-day evidence
+	// every hour, so a same-state call that changes nothing is no new event and
+	// would bury the real ones under a row an hour.
+	const isUnchanged = result.applied === 'recorded' && Object.keys(result.patch).length === 0;
+	if (options.isRecheck && isUnchanged) {
+		return { ok: true, applied: result.applied, from, to: input.to };
+	}
 	await recordAuditLog(ctx, {
 		userId: input.changedBy,
 		action: 'abuse_status_changed',
@@ -270,17 +277,25 @@ async function dispatch(
  * Severity rules:
  *   - `banned` is terminal — escape only via `adminOverride`.
  *   - Downgrades are refused except to `clean` (auto-recover).
- *   - Same-state is `applied: 'recorded'`, audit-logged but not patched.
+ *   - Same-state is `applied: 'recorded'`, audit-logged but not patched
+ *     (unless `isRecheck` and nothing changed: then not audited either).
  *
  * Returns `{ ok: false, reason: 'no_settings_row' }` when the singleton
  * `instanceSettings` row is missing (early-deployment edge case).
  */
 export const transition = internalMutation({
-	args: { input: transitionInputValidator },
+	args: {
+		input: transitionInputValidator,
+		// Set by the hourly reputation check: a call that changes nothing writes no audit row.
+		isRecheck: v.optional(v.boolean()),
+	},
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return { ok: false, reason: 'no_settings_row' };
-		return await dispatch(ctx, settings, args.input, { adminOverride: false });
+		return await dispatch(ctx, settings, args.input, {
+			adminOverride: false,
+			isRecheck: args.isRecheck === true,
+		});
 	},
 });
 

@@ -13,8 +13,11 @@
 
 import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import type { DatabaseReader, QueryCtx } from '../_generated/server';
+import type { SendingHoldLift } from '@owlat/public-contract';
+import { readSuspensionLift } from '../analytics/reputationEvidence';
 import { readOrgReputation } from '../analytics/reputationQueries';
 import { loadDeliveryHealth, type DeliveryHealthLevel, type DomainStatus } from './health';
+import { publicSendingHoldLift } from './sendingHoldLift';
 import {
 	DELIVERY_HEALTH_EXPLANATIONS,
 	type DeliveryHealthFixAudience,
@@ -29,22 +32,26 @@ function rateAgainstLimit(rate: number, limit: number) {
 
 /**
  * The suspension or ban in force, with the reason and time the status was
- * recorded, or `null` while sending is allowed. A lift keeps the old reason on
- * the row, so it is read only while the status still holds. `reason` is the
- * stored text as is; a reader that hands it to a model clamps it.
+ * recorded and how it lifts, or `null` while sending is allowed. A lift keeps
+ * the old reason on the row, so it is read only while the status still holds.
+ * `reason` is the stored text as is; a reader that hands it to a model clamps
+ * it. `lift` is what the delivery hub banner tells every member.
  */
 export async function readSendingHoldRecord(db: DatabaseReader): Promise<{
 	status: 'suspended' | 'banned';
 	reason: string | null;
 	since: number | null;
+	lift: SendingHoldLift;
 } | null> {
 	const settings = await db.query('instanceSettings').first();
 	const status = settings?.abuseStatus;
 	if (status !== 'suspended' && status !== 'banned') return null;
+	const lift = await readSuspensionLift(db, settings, Date.now());
 	return {
 		status,
 		reason: settings?.abuseStatusReason || null,
 		since: settings?.abuseStatusChangedAt ?? null,
+		lift: publicSendingHoldLift(lift ?? { mode: 'admin' }),
 	};
 }
 

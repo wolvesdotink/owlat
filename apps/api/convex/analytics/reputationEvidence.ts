@@ -1,6 +1,6 @@
 /**
  * The reads behind the reputation check: the evidence `reputationEnforcement`
- * decides on, the evidence `reputationResume` lifts a suspension on, and how a
+ * decides on, the evidence `reputationResume` clears a status on, and how a
  * blocked instance gets sending back, as the banner and the operator console
  * show it. One home so the hourly check, a platform admin's lift and the two
  * screens read the same numbers.
@@ -20,6 +20,7 @@ import {
 	REPUTATION_WINDOW_MS,
 	describeSuspensionLift,
 	resumeCondition,
+	type CheckedStatus,
 	type ResumeCondition,
 	type SuspensionLift,
 } from './reputationResume';
@@ -43,7 +44,8 @@ export async function readResumeCondition(
 	db: DatabaseReader,
 	trigger: ReputationTrigger,
 	org: ReputationSummary,
-	now: number
+	now: number,
+	status: CheckedStatus
 ): Promise<ResumeCondition> {
 	const domain = trigger.domain;
 	const gmail =
@@ -55,7 +57,7 @@ export async function readResumeCondition(
 					)
 					.take(GMAIL_WINDOW_READINGS_LIMIT)
 			: [];
-	return resumeCondition(trigger, { org, gmail });
+	return resumeCondition(trigger, { org, gmail }, status);
 }
 
 /** How sending comes back while it is suspended or banned; `null` while it is allowed. */
@@ -70,7 +72,7 @@ export async function readSuspensionLift(
 	const evidence = await readEnforcementEvidence(db, now);
 	let condition =
 		trigger && status === 'suspended'
-			? await readResumeCondition(db, trigger, evidence.org, now)
+			? await readResumeCondition(db, trigger, evidence.org, now, 'suspended')
 			: null;
 	// Once the stored trigger clears, the check hands the suspension to any
 	// other metric still over its suspension line; describe that one instead.
@@ -80,7 +82,7 @@ export async function readSuspensionLift(
 			hold: settings?.reputationCheckHold ?? null,
 		});
 		if (next?.riskLevel === 'critical') {
-			condition = await readResumeCondition(db, next.trigger, evidence.org, now);
+			condition = await readResumeCondition(db, next.trigger, evidence.org, now, 'suspended');
 		}
 	}
 	return describeSuspensionLift({

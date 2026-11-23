@@ -55,6 +55,12 @@ import {
 	marketingIneligibilityValidator,
 } from '../lib/marketingEligibility';
 import { findStepRunSend } from './stepRunSend';
+import {
+	configurationWaitReason,
+	isWaitLongOver,
+	releaseAfterWaitedSend,
+	waitForConfiguration,
+} from './configurationWait';
 import { logWarn } from '../lib/runtimeLog';
 import {
 	abandonPreUpgradeStepRun,
@@ -281,9 +287,20 @@ export const claimStepRun = internalMutation({
 			return { kind: 'ended', reason: 'Retries exhausted' };
 		}
 
+		// A re-check, a release or a recovered attempt of a step that waited.
+		if (isWaitLongOver(stepRun, now)) {
+			await failStepAndCancelRun(ctx, stepRun, stepRun.errorMessage ?? 'Configuration wait ended', {
+				countRunFailure: true,
+				stepFault: true,
+				failureReason: stepRun.waitingFor ?? 'unknown',
+			});
+			return { kind: 'ended', reason: 'Configuration wait ended' };
+		}
+
 		if (stepRun.status === 'pending') {
-			// Loop protection counts step executions, so only a first claim counts.
-			const stepsExecuted = (run.stepsExecuted ?? 0) + 1;
+			// Loop protection counts step executions, so only a first claim counts:
+			// re-running a step that waited for configuration is the same execution.
+			const stepsExecuted = (run.stepsExecuted ?? 0) + (stepRun.waitingUntil === undefined ? 1 : 0);
 			await ctx.db.patch(run._id, { stepsExecuted });
 			if (stepsExecuted > MAX_STEPS_PER_RUN) {
 				await failStepAndCancelRun(
@@ -363,6 +380,7 @@ export const finalizeStepRun = internalMutation({
 			emailSendId: args.outcome.emailSendId,
 			leaseExpiresAt: undefined,
 		});
+		await releaseAfterWaitedSend(ctx, stepRun, args.outcome.emailSendId);
 
 		const run = await ctx.db.get(stepRun.automationRunId);
 		if (!run || run.status !== 'running') return { kind: 'run_ended' };
@@ -381,6 +399,8 @@ export const finalizeStepRun = internalMutation({
  * A failed side effect: schedule the next attempt with backoff (the retry and
  * its lease extension commit together), or — once the budget is spent — fail
  * the step, cancel the run and count the failure toward the circuit breaker.
+ * A fault of the sending setup instead puts the step to wait for the fix
+ * (`configurationWait.ts`), and fails it at once when that wait is over.
  */
 export const retryOrFailStepRun = internalMutation({
 	args: {
@@ -394,9 +414,26 @@ export const retryOrFailStepRun = internalMutation({
 	handler: async (
 		ctx,
 		args
-	): Promise<{ kind: 'retrying'; delayMs: number } | { kind: 'failed' } | { kind: 'stale' }> => {
+	): Promise<
+		| { kind: 'retrying'; delayMs: number }
+		| { kind: 'waiting' }
+		| { kind: 'failed' }
+		| { kind: 'stale' }
+	> => {
 		const stepRun = await ctx.db.get(args.stepRunId);
 		if (!stepRun || !ownsStepRun(stepRun, args.attempt)) return { kind: 'stale' };
+
+		const waitReason = configurationWaitReason(args.failureReason);
+		if (waitReason) {
+			const waiting = await waitForConfiguration(ctx, stepRun, waitReason, args.errorMessage);
+			if (waiting) return { kind: 'waiting' };
+			await failStepAndCancelRun(ctx, stepRun, args.errorMessage, {
+				countRunFailure: true,
+				stepFault: true,
+				failureReason: waitReason,
+			});
+			return { kind: 'failed' };
+		}
 
 		if (args.attempt < MAX_RETRY_ATTEMPTS) {
 			const delayMs = RETRY_DELAYS_MS[args.attempt] ?? 30_000;

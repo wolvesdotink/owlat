@@ -136,6 +136,7 @@
 		"ci:test": "turbo test --filter='!@owlat/desktop'",
 		"ci:test:coverage": "turbo test:coverage --filter='!@owlat/desktop'",
 		"ci:verify": "bash scripts/ci-gate.sh verify",
+		"ci:bundle": "bun scripts/ci/bundle.ts",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"test:ramp": "bun run --cwd apps/api test:ramp",

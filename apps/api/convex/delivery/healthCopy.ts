@@ -120,7 +120,7 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	healthy: { sentence: 'Sending is healthy and no check blocks or warns right now.', fix: null },
 	sending_suspended: {
 		sentence:
-			'Sending is suspended on this instance, so new sends are refused and campaigns hold until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
+			'Sending is suspended on this instance, so new sends are refused and campaigns hold until it lifts; the sending hold says whether it lifts by itself once the rate behind it recovers, and a platform admin of this instance can lift it in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
 		fix: OPERATOR_CONSOLE,
 	},
 	sending_banned: {

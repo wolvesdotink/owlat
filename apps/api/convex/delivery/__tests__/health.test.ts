@@ -186,6 +186,13 @@ describe('DELIVERY_HEALTH_EXPLANATIONS', () => {
 		expect(sentence.slice(0, -1)).not.toMatch(/\.\s/);
 	});
 
+	it('says a suspension may lift by itself, and that a platform admin can lift it', () => {
+		const { sentence } = DELIVERY_HEALTH_EXPLANATIONS.sending_suspended;
+		expect(sentence).toContain('lifts by itself');
+		expect(sentence).toContain('a platform admin of this instance can lift it');
+		expect(sentence).not.toContain('until a platform admin');
+	});
+
 	it('points every problem at a page in the app, and a healthy verdict at none', () => {
 		for (const reason of DELIVERY_HEALTH_REASONS) {
 			const { fix } = DELIVERY_HEALTH_EXPLANATIONS[reason];

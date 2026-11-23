@@ -164,7 +164,7 @@ export const OPERATION_EXAMPLES = {
 				level: 'error',
 				reasonCode: 'sending_suspended',
 				explanation:
-					'Sending is suspended on this instance, so new sends are refused and campaigns hold until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
+					'Sending is suspended on this instance, so new sends are refused and campaigns hold until it lifts; the sending hold says whether it lifts by itself once the rate behind it recovers, and a platform admin of this instance can lift it in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
 				fix: { route: '/dashboard/admin/operator', who: 'platform_admin' },
 				domains: [
 					{ domain: 'mail.example.com', status: 'verified' },
@@ -180,6 +180,17 @@ export const OPERATION_EXAMPLES = {
 					status: 'suspended',
 					since: '2026-11-20T09:00:00.000Z',
 					detail: 'Auto-suspended: complaint rate 0.42% over the 0.1% limit',
+					lift: {
+						mode: 'automatic',
+						condition: {
+							trigger: 'complaint_rate',
+							domain: null,
+							currentPct: 0.42,
+							limitPct: 0.2,
+							isClear: false,
+							clearsAt: null,
+						},
+					},
 				},
 			},
 		} satisfies ApiResponse<DeliveryStatus>,
