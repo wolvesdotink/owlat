@@ -76,7 +76,7 @@ export const DELIVERY_HEALTH_REASON_KEYS = {
 	reputation_medium: 'shared.deliveryHealth.reasons.reputationMedium',
 } as const satisfies Record<DeliveryHealthReason, string>;
 
-/** Who can open the page a reason's fix lives on. */
+/** Who can make a reason's fix on its page. */
 export type DeliveryHealthFixAudience = 'workspace_admin' | 'platform_admin' | 'contact_manager';
 
 /** One reason, explained: what it means and what to do, plus the page to do it on. */
@@ -96,6 +96,7 @@ const TRANSACTIONAL_SENDER = {
 	route: '/dashboard/send/transactional?sender=edit',
 	who: 'workspace_admin',
 } as const;
+const DELIVERY_HUB = { route: '/dashboard/admin/delivery', who: 'workspace_admin' } as const;
 const SUPPRESSIONS = { route: '/dashboard/audience/suppressions', who: 'contact_manager' } as const;
 
 /**
@@ -116,7 +117,7 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	sending_banned: {
 		sentence:
-			'Sending is permanently disabled on this instance, so new sends are refused and campaigns hold until a platform admin of this instance lifts the ban in the operator console, and a campaign held past its delivery deadline stops without mailing the rest.',
+			'Sending is permanently disabled on this instance, so new sends are refused and campaigns hold until a platform admin of this instance lifts the ban in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
 		fix: OPERATOR_CONSOLE,
 	},
 	no_provider: {
@@ -136,13 +137,13 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	feedback_missing_campaign: {
 		sentence:
-			"Bounce and complaint reports from the campaign provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so campaigns are refused until they are set, and the delivery transport page names the missing settings.",
-		fix: TRANSPORT,
+			"Bounce and complaint reports from the campaign provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so campaigns are refused until they are set, and the readiness panel on the delivery hub names the missing settings.",
+		fix: DELIVERY_HUB,
 	},
 	feedback_missing_transactional: {
 		sentence:
-			"Bounce and complaint reports from the transactional provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so bad addresses are not suppressed until they are set, and the delivery transport page names the missing settings.",
-		fix: TRANSPORT,
+			"Bounce and complaint reports from the transactional provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so bad addresses are not suppressed until they are set, and the readiness panel on the delivery hub names the missing settings.",
+		fix: DELIVERY_HUB,
 	},
 	mta_signing_held: {
 		sentence:
