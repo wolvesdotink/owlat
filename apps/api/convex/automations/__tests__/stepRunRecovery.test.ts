@@ -331,17 +331,20 @@ describe('executing rows claimed before leases existed', () => {
 describe('side-effect retry', () => {
 	it('retries a failed side effect with backoff; a racing duplicate of the retry is dropped', async () => {
 		const t = convexTest(schema, walkerModules);
-		// No settings row yet: the email step fails with "sender not configured".
-		const { automationId } = await seedAutomation(t, [{ email: 'Welcome' }]);
+		await seedSettings(t);
+		const { automationId, stepIds } = await seedAutomation(t, [{ email: 'Welcome' }]);
 		const { runId } = await seedRun(t, automationId);
 		const stepRunId = await begin(t, runId);
+		// The step names no email yet, a failure the walker retries.
+		const config = await t.run(async (ctx) => (await ctx.db.get(stepIds[0]!))?.config);
+		await t.run(async (ctx) => ctx.db.patch(stepIds[0]!, { config: { emailTemplateId: '' } }));
 
 		const first = await t.action(internal.automations.stepWalker.executeStep, {
 			automationRunId: runId,
 			stepRunId,
 		});
 		expect(first.retrying).toBe(true);
-		await seedSettings(t);
+		await t.run(async (ctx) => ctx.db.patch(stepIds[0]!, { config }));
 
 		// The scheduled retry (attempt 1) and a duplicate of it race.
 		await t.action(internal.automations.stepWalker.executeStep, {

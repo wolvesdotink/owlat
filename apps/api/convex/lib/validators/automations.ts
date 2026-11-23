@@ -61,3 +61,31 @@ export const automationStepFailureReasonValidator = v.union(
 );
 
 export type AutomationStepFailureReason = Infer<typeof automationStepFailureReasonValidator>;
+
+/**
+ * The failure reasons an email step waits out instead of failing
+ * (`automations/configurationWait.ts`). Each is a fault of the instance's
+ * sending setup that a person fixes on a settings page, outside the
+ * automation, and that a later attempt of the same step passes unchanged once
+ * it is fixed:
+ *   - `no_delivery_provider`: a transport gets set up;
+ *   - `domain_not_verified`: the default sender's domain finishes DNS
+ *     verification, which often takes a while by itself;
+ *   - `sending_not_allowed`: an operator lifts the suspension, a deliberate
+ *     decision that sending may go on, and the send re-checks it;
+ *   - `no_default_sender`: a default sender gets set.
+ * Not waited out, because waiting fixes nothing without an edit to the
+ * automation or the contact, and that edit is what restarts mail for the
+ * contacts who enter afterwards: `template_missing`, `template_empty`,
+ * `invalid_step_config`, `contact_no_email`. Neither are the plugin codes (a
+ * plugin's failure is its own, not the instance's sending setup), `interrupted`
+ * and `step_limit` (faults of the run itself) or `unknown`.
+ */
+export const automationStepWaitReasonValidator = v.union(
+	v.literal('no_delivery_provider'),
+	v.literal('domain_not_verified'),
+	v.literal('sending_not_allowed'),
+	v.literal('no_default_sender')
+);
+
+export type AutomationStepWaitReason = Infer<typeof automationStepWaitReasonValidator>;
