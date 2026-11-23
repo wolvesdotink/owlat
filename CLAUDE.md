@@ -117,6 +117,11 @@ The proof a change needs depends on what it changes:
 - **Backend behaviour with no visible surface** ships focused tests for that
   behaviour, plus the command output when a run shows something a test can't.
 
+A web change that adds a page or lazily loaded chunk, or grows what one
+imports, can fail the bundle budgets, which only CI's Docker Build (web) job
+checks. Run `bun run ci:bundle` before pushing it
+([CONTRIBUTING.md](CONTRIBUTING.md#web-bundle-budgets)).
+
 Tests are deterministic. **A test that needs a timeout to pass is wrong.**
 
 - Don't sleep on the real clock (`setTimeout` in a promise, `timers/promises`,

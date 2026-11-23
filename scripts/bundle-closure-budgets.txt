@@ -1,6 +1,7 @@
 # Route and deferred-feature closure budgets for the built web app, checked by
 # scripts/report-bundle-closures.ts (CI: "Report web route and deferred-feature
-# closures" in .github/workflows/test.yml, a blocking step).
+# closures" in .github/workflows/test.yml, a blocking step). `bun run ci:bundle`
+# builds the web app and runs this check on your machine.
 #
 # Each line is `<route|deferred> <KiB> <key>`: the most gzip (level 9, KiB of
 # 1024 bytes) that the static JavaScript closure of a page or lazily loaded
