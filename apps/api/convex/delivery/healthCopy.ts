@@ -111,12 +111,12 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	healthy: { sentence: 'Sending is healthy and no check blocks or warns right now.', fix: null },
 	sending_suspended: {
 		sentence:
-			'Sending is suspended on this instance, so no new mail goes out and running campaigns wait until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console.',
+			'Sending is suspended on this instance, so new sends are refused and campaigns hold until a platform admin of this instance reviews the recorded reason and lifts the suspension in the operator console, while transactional mail already queued is still delivered and a campaign held past its delivery deadline stops without mailing the rest.',
 		fix: OPERATOR_CONSOLE,
 	},
 	sending_banned: {
 		sentence:
-			'Sending is permanently disabled on this instance, and no mail goes out until a platform admin of this instance lifts the ban in the operator console.',
+			'Sending is permanently disabled on this instance, so new sends are refused and campaigns hold until a platform admin of this instance lifts the ban in the operator console, and a campaign held past its delivery deadline stops without mailing the rest.',
 		fix: OPERATOR_CONSOLE,
 	},
 	no_provider: {
@@ -136,12 +136,12 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	feedback_missing_campaign: {
 		sentence:
-			"Bounce and complaint reports from the campaign provider cannot reach Owlat, so campaigns are refused until an admin sets the provider's webhook key on the delivery transport page.",
+			"Bounce and complaint reports from the campaign provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so campaigns are refused until they are set, and the delivery transport page names the missing settings.",
 		fix: TRANSPORT,
 	},
 	feedback_missing_transactional: {
 		sentence:
-			"Bounce and complaint reports from the transactional provider cannot reach Owlat, so bad addresses are not suppressed until an admin sets the provider's webhook key on the delivery transport page.",
+			"Bounce and complaint reports from the transactional provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so bad addresses are not suppressed until they are set, and the delivery transport page names the missing settings.",
 		fix: TRANSPORT,
 	},
 	mta_signing_held: {
@@ -176,7 +176,7 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	ips_all_held: {
 		sentence:
-			'Every sending IP of the built-in mail server is held back, for example because it is on a blocklist, so it sends nothing until an admin reviews the addresses on the deliverability page.',
+			"Every sending IP in one of the built-in mail server's pools is held back, for example because it is on a blocklist, so the mail that pool carries stops until an admin reviews the addresses on the deliverability page.",
 		fix: DELIVERABILITY,
 	},
 	ips_some_held: {
@@ -186,7 +186,7 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	domain_failed: {
 		sentence:
-			'A sending domain failed DNS verification, so its mail cannot be authenticated until an admin corrects its DNS records and verifies it again on the sending domains page.',
+			'A sending domain failed setup or DNS verification, so its mail cannot be authenticated until an admin opens it on the sending domains page, fixes the error shown there and verifies it again.',
 		fix: DOMAINS,
 	},
 	no_domain: {
@@ -206,12 +206,12 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	},
 	sender_missing: {
 		sentence:
-			'No sender address is set for transactional mail, so transactional sends are refused until an admin sets one on the transactional page.',
+			'No default sender address is set for transactional mail, so transactional templates without a sender of their own are refused until an admin sets one on the transactional page.',
 		fix: TRANSACTIONAL_SENDER,
 	},
 	sender_unverified: {
 		sentence:
-			"The transactional sender's domain is not verified, so transactional mail is refused until an admin verifies that domain or picks a sender on a verified one.",
+			"The default transactional sender's domain is not verified, so transactional templates without a verified sender of their own are refused until an admin verifies that domain or picks a default sender on a verified one.",
 		fix: TRANSACTIONAL_SENDER,
 	},
 	warmup_halted: {

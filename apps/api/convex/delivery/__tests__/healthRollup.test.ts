@@ -508,7 +508,6 @@ describe('assistant deliveryHealth', () => {
 			explanation: DELIVERY_HEALTH_EXPLANATIONS.healthy.sentence,
 			fix: null,
 			domains: [{ domain: 'mail.example.com', status: 'verified' }],
-			isDomainListTruncated: false,
 			rates: null,
 			sendHold: null,
 		});

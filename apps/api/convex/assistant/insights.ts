@@ -102,9 +102,6 @@ export const campaignStats = internalQuery({
 /** Longest stored suspension reason handed to the model. */
 const MAX_SUSPENSION_REASON = 500;
 
-/** Most sending domains listed; a deployment curates low tens at most. */
-const MAX_DOMAINS = 25;
-
 /**
  * The suspension or ban in force, with the reason and time the status was
  * recorded, or `null` while sending is allowed. A lift keeps the old reason on
@@ -151,17 +148,14 @@ export const deliveryHealth = internalQuery({
 			sentence as string
 		);
 
-		const domainRows = await ctx.db.query('domains').take(MAX_DOMAINS + 1);
+		const domainRows = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
 		const reputation = await readOrgReputation(ctx.db);
 		return {
 			level: verdict.level,
 			reasonCode: verdict.reasonCode,
 			explanation,
 			fix,
-			domains: domainRows
-				.slice(0, MAX_DOMAINS)
-				.map((row) => ({ domain: row.domain, status: row.status })),
-			isDomainListTruncated: domainRows.length > MAX_DOMAINS,
+			domains: domainRows.map((row) => ({ domain: row.domain, status: row.status })),
 			// The limit is the one the delivery hub's tiles and the marketing
 			// overview quote; past it the reputation verdict starts to warn.
 			rates: reputation
