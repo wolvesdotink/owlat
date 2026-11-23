@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue';
 import {
 	BracesIcon,
 	CheckIcon,
@@ -45,6 +46,8 @@ const props = defineProps<{
 	clickedLinks?: ClickedLink[];
 	errorMessage?: string;
 	errorCode?: string;
+	/** A bounced send's class; its sentence says what Owlat already did about it. */
+	bounceType?: 'hard' | 'soft';
 	providerMessageId?: string;
 	dataVariables?: Record<string, unknown>;
 	/** The names the caller supplied; kept after the values are removed. */
@@ -205,6 +208,16 @@ const timelineEvents = computed<TimelineEvent[]>(() => {
 	return events;
 });
 
+// The reason leads with a sentence; the raw code and error text stay one click
+// away inside it. Loaded only for a send that did not arrive, so the reason
+// catalog stays off the send page's first load.
+const SendFailureReason = defineAsyncComponent(
+	() => import('~/components/dashboard/SendFailureReason.vue')
+);
+const hasFailure = computed(
+	() => Boolean(props.errorMessage || props.errorCode) || props.status === 'bounced'
+);
+
 const showDataVariables = ref(false);
 const variableNames = computed(
 	() => props.dataVariableNames ?? Object.keys(props.dataVariables ?? {})
@@ -324,24 +337,19 @@ const copyMessageId = async () => {
 		</div>
 
 		<!-- Error Details -->
-		<div v-if="errorMessage || errorCode" class="card p-6 bg-error-subtle border-error/20">
+		<div v-if="hasFailure" class="card p-6 bg-error-subtle border-error/20">
 			<div class="flex items-center gap-3 mb-3">
 				<TriangleWarningIcon class="w-5 h-5 text-error" />
 				<h3 class="text-lg font-medium text-error">
 					{{ t('components.dashboard.emailSendTimeline.errorDetails') }}
 				</h3>
 			</div>
-			<div class="space-y-2 text-sm">
-				<p v-if="errorCode" class="text-text-secondary">
-					<span class="font-medium">{{
-						t('components.dashboard.emailSendTimeline.errorCode')
-					}}</span>
-					{{ errorCode }}
-				</p>
-				<p v-if="errorMessage" class="text-text-primary">
-					{{ errorMessage }}
-				</p>
-			</div>
+			<SendFailureReason
+				:status="status"
+				:bounce-type="bounceType"
+				:error-code="errorCode"
+				:provider-text="errorMessage"
+			/>
 		</div>
 
 		<!-- Provider Message ID -->

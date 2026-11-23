@@ -26,6 +26,12 @@ import { getBoolean } from '../lib/env';
  *
  * Matching an invitation permits account creation, not organization access.
  * Invitation acceptance separately requires verified inbox ownership in auth.ts.
+ *
+ * Each refusal carries a `code`, which the sign-up form translates
+ * (apps/web/app/utils/authErrorCopy.ts) instead of showing the English
+ * message. With REQUIRE_EMAIL_VERIFICATION on, better-auth answers a refused
+ * sign-up like a duplicate one (no session, no error), so no code reaches the
+ * form then.
  */
 export async function assertRegistrationAllowed(
 	ctx: ActionCtx,
@@ -33,7 +39,10 @@ export async function assertRegistrationAllowed(
 ): Promise<void> {
 	const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
 	if (!normalized) {
-		throw new APIError('BAD_REQUEST', { message: 'A valid email is required to register.' });
+		throw new APIError('BAD_REQUEST', {
+			message: 'A valid email is required to register.',
+			code: 'INVALID_EMAIL',
+		});
 	}
 
 	// Public signup must not create the first production user: even an unverified
@@ -47,6 +56,7 @@ export async function assertRegistrationAllowed(
 		if (getBoolean('OWLAT_DEV_MODE')) return;
 		throw new APIError('FORBIDDEN', {
 			message: 'An administrator must complete instance setup before registration.',
+			code: 'REGISTRATION_SETUP_REQUIRED',
 		});
 	}
 
@@ -70,6 +80,7 @@ export async function assertRegistrationAllowed(
 	if (!hasLiveInvite) {
 		throw new APIError('FORBIDDEN', {
 			message: 'Registration on this instance is invite-only. Ask an administrator to invite you.',
+			code: 'REGISTRATION_INVITE_ONLY',
 		});
 	}
 }

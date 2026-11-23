@@ -261,6 +261,16 @@ const PROBES: Record<string, Probe> = {
 		read: ({ t, campaignId }) => t.query(api.delivery.sends.getClickedContacts, { campaignId }),
 		shownWhileLive: true,
 	},
+	'delivery/sendFailures.ts:getFailureSummary': {
+		read: ({ t, campaignId }) =>
+			t.query(api.delivery.sendFailures.getFailureSummary, { campaignId }),
+		shownWhileLive: true,
+	},
+	'delivery/sendFailures.ts:getUndeliveredContacts': {
+		read: ({ t, campaignId }) =>
+			t.query(api.delivery.sendFailures.getUndeliveredContacts, { campaignId, status: 'bounced' }),
+		shownWhileLive: true,
+	},
 	'delivery/sends.ts:getLinkClickStats': {
 		read: ({ t, campaignId }) => t.query(api.delivery.sends.getLinkClickStats, { campaignId }),
 		shownWhileLive: true,

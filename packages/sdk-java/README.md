@@ -188,6 +188,19 @@ RemoveFromTopicResponse response = owlat.topics().removeContact(
 );
 ```
 
+### Status
+
+Whether the instance can send and, if not, why and what fixes it. Needs the
+`status:read` scope.
+
+```java
+DeliveryStatus status = owlat.status().get();
+status.getLevel();       // "ok", "warn" or "error"
+status.getReasonCode();  // e.g. "domain_failed"
+status.getFix();         // the page in the web app that fixes it, or null
+status.getSendingHold(); // set while sending is suspended or banned, or null
+```
+
 ## Error Handling
 
 All exceptions extend `OwlatException` (unchecked) and include the HTTP status code and rate limit info.

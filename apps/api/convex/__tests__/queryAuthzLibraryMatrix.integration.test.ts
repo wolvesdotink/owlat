@@ -165,6 +165,14 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 	'contacts.timeline.getTimelineStats': member(api.contacts.timeline.getTimelineStats, (s) => ({
 		contactId: s.contactId,
 	})),
+	'delivery.sendFailures.getFailureSummary': member(
+		api.delivery.sendFailures.getFailureSummary,
+		(s) => ({ campaignId: s.campaignId })
+	),
+	'delivery.sendFailures.getUndeliveredContacts': member(
+		api.delivery.sendFailures.getUndeliveredContacts,
+		(s) => ({ campaignId: s.campaignId, status: 'failed' })
+	),
 	'delivery.sends.get': member(api.delivery.sends.get, (s) => ({ id: s.emailSendId })),
 	'delivery.sends.getClickedContacts': member(api.delivery.sends.getClickedContacts, (s) => ({
 		campaignId: s.campaignId,
@@ -278,7 +286,7 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 
 describe('query authorization matrix: audience, library, delivery and settings reads', () => {
 	it('covers every reviewed definition', () => {
-		expect(Object.keys(ROWS)).toHaveLength(45);
+		expect(Object.keys(ROWS)).toHaveLength(47);
 	});
 
 	describeQueryMatrix(ROWS, libraryHarness);

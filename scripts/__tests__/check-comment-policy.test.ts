@@ -401,6 +401,73 @@ describe('findingsInFile', () => {
 	});
 });
 
+describe('narration wrapped across the lines of one comment', () => {
+	const narration = (path: string, text: string) =>
+		findingsInFile(path, text)!.map(
+			(finding) => `${finding.line}:${finding.rule}:${finding.match}`
+		);
+
+	it.each([
+		[
+			'line comments',
+			'a.ts',
+			'const a = 1;\n// That used to\n// be spelled out.\n',
+			'2:narration:used to be',
+		],
+		[
+			'a block comment',
+			'a.ts',
+			'/**\n * The cap holds until\n * now.\n */\n',
+			'2:narration:until now',
+		],
+		[
+			'a template comment',
+			'a.vue',
+			'<template>\n\t<!-- the list held until\n\t\tnow -->\n\t<p />\n</template>\n',
+			'2:narration:until now',
+		],
+		[
+			'a style comment',
+			'a.vue',
+			'<template><p /></template>\n<style>\n/* drawn twice until\n   now */\n</style>\n',
+			'3:narration:until now',
+		],
+		[
+			'shell comments',
+			'a.sh',
+			'#!/usr/bin/env bash\n# runs twice until\n# now\ntrue\n',
+			'2:narration:until now',
+		],
+		['YAML comments', 'a.yml', 'key: value\n# runs twice until\n# now\n', '2:narration:until now'],
+		[
+			'the shell comments of a run: block',
+			'a.yml',
+			'steps:\n  - run: |\n      # What this\n      # PR changes\n      true\n',
+			'3:narration:this PR',
+		],
+	])('flags a phrase wrapped in %s on the line it starts', (_style, path, text, expected) => {
+		expect(narration(path, text)).toEqual([expected]);
+	});
+
+	it.each([
+		['two block comments', 'a.ts', '/* That used to */\n/* be spelled out. */\n'],
+		['a block comment after a line comment', 'a.ts', '// That used to\n/* be spelled out. */\n'],
+		['a trailing comment and the line below', 'a.ts', 'const a = 1; // until\n// now\n'],
+		['code between two comments', 'a.ts', '// That used to\nconst a = 1;\n// be spelled out.\n'],
+		['a trailing comment on the next line', 'a.ts', '// That used to\nconst a = 1; // be it\n'],
+		['an empty comment line', 'a.ts', '/**\n * runs until\n *\n * now it is done\n */\n'],
+		[
+			'two template comments',
+			'a.vue',
+			'<template>\n\t<!-- held until -->\n\t<!-- now -->\n</template>\n',
+		],
+		['a shell comment and a trailing one', 'a.sh', '# runs until\ntrue # now\n'],
+		['YAML comments around a key', 'a.yml', '# runs until\nkey: value\n# now\n'],
+	])('leaves a phrase split across %s alone', (_shape, path, text) => {
+		expect(narration(path, text)).toEqual([]);
+	});
+});
+
 const sandboxes: string[] = [];
 afterEach(() => {
 	while (sandboxes.length > 0) rmSync(sandboxes.pop()!, { recursive: true, force: true });

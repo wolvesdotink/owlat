@@ -400,6 +400,26 @@ function mtaStsGate(): ReadinessGate {
 	};
 }
 
+/**
+ * A suspended or banned instance sends nothing on any stream, whatever else is
+ * in place. Links to the delivery hub's banner, which says why and how sending
+ * comes back.
+ */
+function suspensionGate(input: ReadinessInput): ReadinessGate | null {
+	const status = input.sendingSuspension;
+	if (status == null) return null;
+	return {
+		key: 'sending-suspended',
+		title: 'shared.deliveryReadiness.gates.suspension.title',
+		detail: `shared.deliveryReadiness.gates.suspension.${status}`,
+		status: 'attention',
+		tone: 'error',
+		actionHref: '/dashboard/admin/delivery#sending-status',
+		actionLabel: 'shared.deliveryReadiness.gates.suspension.action',
+		isBlocking: true,
+	};
+}
+
 function present<T>(value: T | null): value is T {
 	return value !== null;
 }
@@ -412,6 +432,7 @@ export function enabledReadinessStreams(input: ReadinessInput): MailStream[] {
 /** Every gate that applies to this instance, in the order the panel lists them. */
 export function buildReadinessGates(input: ReadinessInput): ReadinessGate[] {
 	const gates: ReadinessGate[] = [
+		suspensionGate(input),
 		...transportGates(input),
 		mailServerGate(input),
 		...sendingIpGates(input),

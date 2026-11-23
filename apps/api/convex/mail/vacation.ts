@@ -1,7 +1,8 @@
 /**
  * Vacation auto-responder (RFC 3834-compliant).
  *
- * One responder per mailbox at most. The actual delivery-time logic
+ * One responder per mailbox at most, and only for a mailbox whose mail Owlat
+ * receives itself (`./hostedDeliveryRules`). The actual delivery-time logic
  * lives in deliveryHooks.runPostDelivery; this module exposes the CRUD
  * surface plus the internal load / dedup-log helpers it consumes.
  *
@@ -24,6 +25,7 @@ import { requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { pick } from '../lib/validators/fields';
 import { mailVacationRespondersFields } from '../schema/mailRules';
+import { assertRunsDeliveryRules } from './hostedDeliveryRules';
 
 const DEFAULT_REPLY_INTERVAL_DAYS = 7;
 
@@ -58,6 +60,7 @@ export const upsert = postboxMutation({
 		// Vacation auto-reply is a mailbox-wide setting — owner-grade.
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		assertRunsDeliveryRules(owned.mailbox);
 
 		const trimmedSubject = args.subject.trim();
 		if (!trimmedSubject) throwInvalidInput('Subject required');

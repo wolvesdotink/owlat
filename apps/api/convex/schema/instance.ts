@@ -20,6 +20,10 @@ import {
 } from '../lib/literalValidators';
 import { brandKitValidator, emailThemeValidator } from '../lib/validators/brandKit';
 import { inboxStatsValidator } from '../lib/validators/inboxStats';
+import {
+	reputationCheckHoldValidator,
+	reputationTriggerValidator,
+} from '../lib/validators/abuseStatus';
 import { transactionalSendCapsValidator } from '../lib/validators/transactionalSendCaps';
 
 /**
@@ -228,6 +232,14 @@ export const instanceTables = {
 		abuseStatusReason: v.optional(v.string()),
 		abuseStatusChangedAt: v.optional(v.number()),
 		abuseStatusChangedBy: v.optional(v.string()), // admin user ID or 'system'
+		// The metric the reputation check suspended or warned on, only while the
+		// status is one the check set. Absent (an admin's, the MTA's, a legacy
+		// row): never lifted automatically. See `analytics/reputationResume.ts`.
+		abuseStatusTrigger: v.optional(reputationTriggerValidator),
+		// A platform admin's lift: these triggers do not suspend again until then.
+		reputationCheckHold: v.optional(reputationCheckHoldValidator),
+		// On: a check-imposed suspension waits for a platform admin. Absent: off.
+		isSendingResumeManual: v.optional(v.boolean()),
 		// Anti-abuse: sending tier for new account warmup
 		sendingTier: v.optional(
 			v.union(

@@ -1,6 +1,8 @@
 /**
  * External-forwarding rules — automatically resend inbound mail to an
- * external address (e.g. archive@example.com).
+ * external address (e.g. archive@example.com). The message always stays in
+ * the mailbox as well, and rules exist only for mailboxes whose mail Owlat
+ * receives itself (`./hostedDeliveryRules`).
  *
  * Anti-loop guards (see processInboundForwarding):
  *   - skip messages with `Auto-Submitted` header set (RFC 3834)
@@ -16,6 +18,7 @@ import { postboxMutation } from './_helpers';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { normalizeEmail } from '@owlat/shared';
+import { assertRunsDeliveryRules } from './hostedDeliveryRules';
 
 // public: soft-auth — returns empty for anonymous; mailbox access is still enforced in-handler
 export const list = publicQuery({
@@ -34,12 +37,15 @@ export const create = postboxMutation({
 	args: {
 		mailboxId: v.id('mailboxes'),
 		forwardTo: v.string(),
+		// Ignored: a forwarded message always stays in the mailbox too. A
+		// previous-release client still sends it; remove after release N+1.
 		keepLocalCopy: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		// Forwarding reroutes the mailbox's mail off-box — owner-grade routing.
 		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Mailbox not accessible');
+		assertRunsDeliveryRules(owned.mailbox);
 
 		const forwardTo = normalizeEmail(args.forwardTo);
 		if (!forwardTo.includes('@')) throwInvalidInput('Invalid forwarding address');
@@ -53,7 +59,7 @@ export const create = postboxMutation({
 		return ctx.db.insert('mailForwarding', {
 			mailboxId: args.mailboxId,
 			forwardTo,
-			keepLocalCopy: args.keepLocalCopy ?? true,
+			keepLocalCopy: true,
 			isEnabled: true,
 			createdAt: now,
 			updatedAt: now,
@@ -65,6 +71,7 @@ export const update = postboxMutation({
 	args: {
 		id: v.id('mailForwarding'),
 		forwardTo: v.optional(v.string()),
+		// Ignored, as on `create`; remove after release N+1.
 		keepLocalCopy: v.optional(v.boolean()),
 		isEnabled: v.optional(v.boolean()),
 	},
@@ -72,9 +79,10 @@ export const update = postboxMutation({
 		const row = await getOrThrow(ctx, args.id, 'Forwarding rule');
 		const owned = await requireMailboxAccess(ctx, row.mailboxId, 'owner');
 		if (!owned.ok) throwForbidden('Not accessible');
+		// Switching a rule off stays possible, so a stored one can be retired.
+		if (args.isEnabled !== false) assertRunsDeliveryRules(owned.mailbox);
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
 		if (args.forwardTo !== undefined) patch['forwardTo'] = normalizeEmail(args.forwardTo);
-		if (args.keepLocalCopy !== undefined) patch['keepLocalCopy'] = args.keepLocalCopy;
 		if (args.isEnabled !== undefined) patch['isEnabled'] = args.isEnabled;
 		await ctx.db.patch(args.id, patch);
 	},

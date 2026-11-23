@@ -3,9 +3,9 @@
  *
  * The H2 cross-tenant DKIM guard binds each domain's DKIM key to its owning
  * organization (`mta:dkim:{domain}` gains an `organizationId` field), and the
- * signer refuses to sign under another tenant's key. New keys are now born owned
- * (the register action threads the singleton org), but keys generated before this
- * change carry no owner, so the guard has nothing to enforce for them. This
+ * signer refuses to sign under another tenant's key. New keys are born owned
+ * (the register action threads the singleton org), but a key generated without
+ * that field carries no owner, so the guard has nothing to enforce for it. This
  * migration backfills ownership onto those legacy keys.
  *
  * An operator runs `convex run migrations/0039_backfill_dkim_ownership:run` once.

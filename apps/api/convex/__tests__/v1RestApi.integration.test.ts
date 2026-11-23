@@ -11,6 +11,11 @@ import {
 	successBodySchema,
 	type PublicOperationId,
 	type TransactionalRefusalReason,
+	DELIVERY_STATUS_REASONS,
+	type DeliveryFixAudience,
+	type DeliveryStatusLevel,
+	type DeliveryStatusReason,
+	type SendingDomainStatusValue,
 } from '@owlat/public-contract/schemas';
 import { httpRouter } from 'convex/server';
 import { registerPublicApiRoutes } from '../publicApi/v1Http';
@@ -21,6 +26,9 @@ import type { DispatchRejectionReason } from '../transactional/dispatch';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';
+import { getStatus } from '../publicApi/statusHttp';
+import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
+import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
 import type * as ContactEditModule from '../contacts/contactEdit';
 import type * as MembershipShellsModule from '../topics/membershipShells';
@@ -97,6 +105,7 @@ const ALL_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'status:read',
 ];
 
 function setupTest() {
@@ -1642,6 +1651,213 @@ describe('a write route answers a backend failure by its category, not as invali
 	);
 });
 
+// ─── GET /api/v1/status ──────────────────────────────────────────────────────
+
+describe('GET /api/v1/status (getStatus → status:read)', () => {
+	const SUSPENDED_AT = Date.UTC(2026, 10, 20, 9, 0, 0);
+	const SUSPENSION_REASON =
+		'Auto-suspended: Gmail reports a spam rate of 0.42% for mail.example.com on 2026-11-19';
+
+	/**
+	 * A deployment that sends through the built-in MTA from one verified
+	 * domain: the roll-up reads healthy until a test adds a problem.
+	 */
+	async function seedInstance(
+		t: ReturnType<typeof convexTest>,
+		opts: {
+			extraDomains?: { domain: string; status: 'pending' | 'failed'; syncError?: string }[];
+			settings?: Record<string, unknown>;
+			reputation?: { sent: number; bounced: number; complaints: number };
+		} = {}
+	) {
+		for (const name of ['RESEND_API_KEY', 'AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID']) {
+			delete process.env[name];
+		}
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		process.env['MTA_API_URL'] = 'http://mta:3100';
+		process.env['MTA_API_KEY'] = 'mta-secret-key-canary';
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: { status: 'ok', observedAt: Date.now() },
+				defaultFromEmail: 'hello@mail.example.com',
+				...opts.settings,
+				createdAt: Date.now(),
+			});
+			for (const { domain, status, syncError } of [
+				{ domain: 'mail.example.com', status: 'verified' as const, syncError: undefined },
+				...(opts.extraDomains ?? []),
+			]) {
+				await ctx.db.insert('domains', {
+					domain,
+					status,
+					dnsRecords: { spf: { type: 'TXT', host: domain, value: 'v=spf1 dns-record-canary' } },
+					...(syncError ? { returnPathHostSyncError: syncError } : {}),
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+			}
+			if (opts.reputation) {
+				const { sent, bounced, complaints } = opts.reputation;
+				await ctx.db.insert('sendingReputation', {
+					scope: 'org',
+					periodStart: Date.now() - (Date.now() % 86_400_000),
+					shardKey: 0,
+					totalSent: sent,
+					totalDelivered: sent - bounced,
+					totalBounced: bounced,
+					totalHardBounced: bounced,
+					totalComplaints: complaints,
+					lastCalculatedAt: Date.now(),
+				});
+			}
+		});
+	}
+
+	async function readStatus(t: ReturnType<typeof convexTest>, scopes = ['status:read']) {
+		const key = await seedKey(t, scopes);
+		const res = await t.fetch('/api/v1/status', { method: 'GET', headers: authHeaders(key) });
+		await expectContractSuccess('getStatus', res);
+		return (await res.json()).data;
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		await seedInstance(t);
+		const res = await t.fetch('/api/v1/status', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expectDocumentedReason('getStatus', res, await res.json(), 'missing_credentials');
+	});
+
+	it('403 for a key that can only send', async () => {
+		const t = setupTest();
+		await seedInstance(t);
+		const key = await seedKey(t, ['transactional:send']);
+		const res = await t.fetch('/api/v1/status', { method: 'GET', headers: authHeaders(key) });
+		expect(res.status).toBe(403);
+		const body = await res.json();
+		expect(body.error.data).toEqual({ reason: 'missing_scope', scope: 'status:read' });
+		expectDocumentedReason('getStatus', res, body, 'missing_scope');
+	});
+
+	it('reports a healthy instance with its domains, no rates yet and nothing held', async () => {
+		const t = setupTest();
+		await seedInstance(t);
+		expect(await readStatus(t)).toEqual({
+			level: 'ok',
+			reasonCode: 'healthy',
+			explanation: 'Sending is healthy and no check blocks or warns right now.',
+			fix: null,
+			domains: [{ domain: 'mail.example.com', status: 'verified' }],
+			rates: null,
+			sendingHold: null,
+		});
+	});
+
+	it('names a failed domain, what it means and where it is fixed', async () => {
+		const t = setupTest();
+		await seedInstance(t, { extraDomains: [{ domain: 'news.example.com', status: 'failed' }] });
+		const status = await readStatus(t);
+		expect(status).toMatchObject({
+			level: 'error',
+			reasonCode: 'domain_failed',
+			fix: { route: '/dashboard/admin/delivery/domains', who: 'workspace_admin' },
+		});
+		expect(status.explanation).toContain('A sending domain failed setup or DNS verification');
+		expect(status.domains).toEqual([
+			{ domain: 'mail.example.com', status: 'verified' },
+			{ domain: 'news.example.com', status: 'failed' },
+		]);
+	});
+
+	it('flags the 30-day bounce and complaint rates that are over their limits', async () => {
+		const t = setupTest();
+		await seedInstance(t, { reputation: { sent: 1000, bounced: 60, complaints: 2 } });
+		const status = await readStatus(t);
+		expect(status.rates).toEqual({
+			windowDays: 30,
+			sent: 1000,
+			bounce: { ratePct: 6, limitPct: 2, isOver: true },
+			complaint: { ratePct: 0.2, limitPct: 0.1, isOver: true },
+		});
+		expect(status.level).not.toBe('ok');
+		expect(status.reasonCode).toMatch(/^reputation_/);
+	});
+
+	it('leaves rates under their limits unflagged', async () => {
+		const t = setupTest();
+		await seedInstance(t, { reputation: { sent: 1000, bounced: 10, complaints: 0 } });
+		expect((await readStatus(t)).rates).toMatchObject({
+			bounce: { ratePct: 1, isOver: false },
+			complaint: { ratePct: 0, isOver: false },
+		});
+	});
+
+	it("returns a suspension's status, stored reason and since-when in the transactional 403's shape", async () => {
+		const t = setupTest();
+		await seedInstance(t, {
+			settings: {
+				abuseStatus: 'suspended',
+				abuseStatusReason: SUSPENSION_REASON,
+				abuseStatusChangedAt: SUSPENDED_AT,
+				abuseStatusChangedBy: 'system',
+			},
+		});
+		const status = await readStatus(t, ['status:read', 'transactional:send']);
+		expect(status).toMatchObject({
+			level: 'error',
+			reasonCode: 'sending_suspended',
+			fix: { route: '/dashboard/admin/operator', who: 'platform_admin' },
+			sendingHold: {
+				status: 'suspended',
+				since: '2026-11-20T09:00:00.000Z',
+				detail: SUSPENSION_REASON,
+			},
+		});
+
+		const key = await seedKey(t, ['transactional:send'], 'send'.repeat(10));
+		const refused = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'to@example.com', slug: 'welcome' }),
+		});
+		const { reason, ...hold } = (await refused.json()).error.data;
+		expect(reason).toBe('abuse_blocked');
+		expect(status.sendingHold).toEqual(hold);
+	});
+
+	it('keeps no stale reason once sending is allowed again', async () => {
+		const t = setupTest();
+		await seedInstance(t, {
+			settings: {
+				abuseStatus: 'clean',
+				abuseStatusReason: SUSPENSION_REASON,
+				abuseStatusChangedAt: SUSPENDED_AT,
+			},
+		});
+		expect((await readStatus(t)).sendingHold).toBeNull();
+	});
+
+	it('carries nothing a member cannot see: no DNS records, sync errors or provider settings', async () => {
+		const t = setupTest();
+		await seedInstance(t, {
+			extraDomains: [
+				{ domain: 'news.example.com', status: 'pending', syncError: 'mta-sync-error-canary' },
+			],
+		});
+		// The deployment serves one organization, so there is no other workspace
+		// whose rows could leak; what is left to rule out is admin-only data.
+		const key = await seedKey(t, ['status:read']);
+		const res = await t.fetch('/api/v1/status', { method: 'GET', headers: authHeaders(key) });
+		expect(res.status).toBe(200);
+		const text = await res.text();
+		for (const canary of ['dns-record-canary', 'mta-sync-error-canary', 'mta-secret-key-canary']) {
+			expect(text).not.toContain(canary);
+		}
+		expect(text).not.toContain('dnsRecords');
+		expect(text).not.toContain('http://mta:3100');
+	});
+});
+
 // ─── A single all-scope key works across every route ─────────────────────────
 
 describe('an all-scope key satisfies every route', () => {
@@ -1691,6 +1907,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	getTransactionalSend,
 	addContactToTopic,
 	removeContactFromTopic,
+	getStatus,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -1748,6 +1965,16 @@ describe('the public contract (@owlat/public-contract)', () => {
 		// The route's refusal table is keyed by DispatchRejectionReason, so this
 		// also keeps it in step with the contract's list.
 		expectTypeOf<DispatchRejectionReason>().toEqualTypeOf<TransactionalRefusalReason>();
+	});
+
+	it('declares exactly the reason codes the delivery-health roll-up names', () => {
+		// The status route returns the roll-up's code as is, so a reason added to
+		// the roll-up must be added to the contract's enum, and the other way round.
+		expect([...DELIVERY_STATUS_REASONS]).toEqual([...DELIVERY_HEALTH_REASONS]);
+		expectTypeOf<DeliveryStatusReason>().toEqualTypeOf<(typeof DELIVERY_HEALTH_REASONS)[number]>();
+		expectTypeOf<DeliveryStatusLevel>().toEqualTypeOf<DeliveryHealthLevel>();
+		expectTypeOf<DeliveryFixAudience>().toEqualTypeOf<DeliveryHealthFixAudience>();
+		expectTypeOf<SendingDomainStatusValue>().toEqualTypeOf<DomainStatus>();
 	});
 
 	it('answers the health probe with the documented body', async () => {

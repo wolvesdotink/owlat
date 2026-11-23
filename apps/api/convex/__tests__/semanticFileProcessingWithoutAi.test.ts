@@ -7,10 +7,10 @@ import { newHarness } from './testModules';
 
 /**
  * AI is optional. An instance with no provider set up still captures inbound
- * attachments and uploads, and `processFile` runs for each of them. It used to
- * throw "LLM API not configured" at the embedding step, so the file never got
- * its extracted text or search text, and the backfill re-ran it into the same
- * error. Without a provider it now stores everything that needs no model.
+ * attachments and uploads, and `processFile` runs for each of them. It must not
+ * throw "LLM API not configured" at the embedding step: the file would never get
+ * its extracted text or search text, and the backfill would re-run it into the
+ * same error. Without a provider it stores everything that needs no model.
  */
 
 // Spied, not replaced: a summary attempt without a provider would throw inside
