@@ -280,6 +280,7 @@ deferred 77 ../node_modules/.cache/owlat-i18n/boot/de.json
 deferred 69 ../node_modules/.cache/owlat-i18n/boot/en.json
 deferred 17 ChatLinkEmailDialog
 deferred 7 ConfirmationDialog
+deferred 12 KnowledgeEntryForm
 deferred 36 PostboxUndoSendToast
 deferred 6 SendFailureReason
 deferred 3 backendConnection
