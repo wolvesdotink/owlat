@@ -18101,7 +18101,7 @@
 				"mailServerUnreachable": "Der Mailserver war vor Ablauf der Zustellfrist nicht erreichbar, obwohl Owlat es immer wieder versucht hat.",
 				"noFeedback": "Der Anbieter hat die Nachricht angenommen, aber seine Zustellberichte erreichen Owlat nicht, weil der Webhook-Schlüssel fehlt. Ob sie angekommen ist, ist unbekannt.",
 				"providerRefused": "Der Zustellanbieter hat gemeldet, dass er die Nachricht nicht senden konnte. Seinen Grund findest du in der Meldung des Anbieters.",
-				"providerUnavailable": "Der Zustellanbieter hat mit einem vorübergehenden Fehler geantwortet, zum Beispiel weil er überlastet war, und die Nachricht nicht angenommen.",
+				"providerUnavailable": "Beim Senden über den Zustellanbieter ist ein Fehler aufgetreten. Die Details findest du in der Meldung des Anbieters.",
 				"recipientRefused": "Der Anbieter hat abgelehnt, an diese Adresse zu senden. Seinen Grund findest du in der Meldung des Anbieters.",
 				"sender": "Der Anbieter hat die Absenderadresse oder ihre Domain abgelehnt. Die Domain muss verifiziert sein, bevor sie senden kann.",
 				"sendingSuspended": "Der Versand war für diesen Workspace gesperrt, bis die Zustellfrist abgelaufen war.",

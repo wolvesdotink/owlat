@@ -18101,7 +18101,7 @@
 				"mailServerUnreachable": "The mail server could not be reached before the delivery deadline, although Owlat kept retrying.",
 				"noFeedback": "The provider accepted the message, but its delivery reports cannot reach Owlat because the webhook key is not set. Whether it arrived is unknown.",
 				"providerRefused": "The delivery provider reported that it could not send the message. Its reason is in the provider's message.",
-				"providerUnavailable": "The delivery provider answered with a temporary error, for example because it was overloaded, and did not take the message.",
+				"providerUnavailable": "Owlat ran into an error while sending through the delivery provider. The details are in the provider's message.",
 				"recipientRefused": "The provider refused to send to this address. Its reason is in the provider's message.",
 				"sender": "The provider refused the sender address or its domain. The domain has to be verified before it can send.",
 				"sendingSuspended": "Sending was suspended for this workspace until the delivery deadline passed.",
