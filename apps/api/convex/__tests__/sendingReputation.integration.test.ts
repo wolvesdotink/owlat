@@ -1016,11 +1016,13 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		vi.setSystemTime(NOW);
 		const t = await harness();
 		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		// Complaints at 0.2%: on the warning line, so the warning stays.
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(NOW),
 			totalSent: 1000,
 			totalBounced: 120,
+			totalComplaints: 2,
 		});
 		await liftByAdmin(t);
 		await t.mutation(internal.workspaces.abuseStatus.transition, {
@@ -1092,5 +1094,219 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 			status: 'suspended',
 			trigger: { code: 'complaint_rate' },
 		});
+	});
+});
+
+describe('evaluateAutoEnforce — a warning the check set clears by itself', () => {
+	const NOW = Date.UTC(2026, 10, 20, 12);
+	afterEach(() => vi.useRealTimers());
+
+	const systemWarning = {
+		abuseStatus: 'warned',
+		abuseStatusReason: 'Auto-warned: complaint rate or bounce rate exceeding safe thresholds',
+		abuseStatusChangedAt: NOW - DAY_MS,
+		abuseStatusChangedBy: 'system',
+		abuseStatusTrigger: { code: 'bounce_rate' },
+	};
+
+	async function auditRows(t: Tester) {
+		return await t.run(async (ctx) =>
+			(await ctx.db.query('auditLogs').collect()).filter((l) => l.action === 'abuse_status_changed')
+		);
+	}
+
+	it('clears once its trigger is under the line below the warning line, not before', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemWarning);
+		// 3%: under the 5% that warns, still over the 2% that clears it.
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 30,
+		});
+
+		await evaluate(t);
+		expect(await abuseState(t)).toMatchObject({
+			status: 'warned',
+			trigger: { code: 'bounce_rate' },
+		});
+
+		// Another 1000 clean sends bring the window to 1.5%.
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), shardKey: 1, totalSent: 1000 });
+		await evaluate(t);
+
+		const state = await abuseState(t);
+		expect(state.status).toBe('clean');
+		expect(state.trigger).toBeUndefined();
+		const cleared = (await auditRows(t)).filter((l) => l.details?.['newStatus'] === 'clean');
+		expect(cleared).toHaveLength(1);
+		expect(cleared[0]?.userId).toBe('system');
+		expect(cleared[0]?.details?.['trigger']).toBe('bounce_rate');
+		expect(cleared[0]?.details?.['reason']).toBe(
+			'Cleared automatically: the bounce rate is back under 2.00%'
+		);
+	});
+
+	it('clears even when the instance waits for a platform admin to lift suspensions', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { ...systemWarning, isSendingResumeManual: true });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 10,
+		});
+
+		await evaluate(t);
+
+		expect((await abuseState(t)).status).toBe('clean');
+	});
+
+	it('moves to the metric still over the warning line instead of clearing', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemWarning);
+		// Bounces 1% (cleared), complaints 0.25% (over the 0.2% warning line).
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 2000,
+			totalBounced: 20,
+			totalComplaints: 5,
+		});
+
+		await evaluate(t);
+
+		expect(await abuseState(t)).toMatchObject({
+			status: 'warned',
+			trigger: { code: 'complaint_rate' },
+		});
+	});
+
+	it.each([
+		['keeps its uncleared trigger when another metric only warns', 2, 'warned', 'bounce_rate'],
+		['suspends on the metric that crossed the suspension line', 3, 'suspended', 'complaint_rate'],
+	])('%s', async (_label, complaints, status, trigger) => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemWarning);
+		// Bounces at 3%: under the warning line, still over the 2% that clears it.
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 30,
+			totalComplaints: complaints,
+		});
+
+		await evaluate(t);
+
+		expect(await abuseState(t)).toMatchObject({ status, trigger: { code: trigger } });
+	});
+
+	it('a Gmail warning clears once no reading in the window is at Google’s guidance', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, {
+			...systemWarning,
+			abuseStatusTrigger: { code: 'gmail_spam_rate', domain: 'news.example.com' },
+		});
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'news.example.com', status: 'verified' })
+			);
+			await ctx.db.insert('googlePostmasterStats', {
+				domainId,
+				domain: 'news.example.com',
+				periodStart: dayStart(NOW - 10 * DAY_MS),
+				userReportedSpamRatio: 0.0015,
+				fetchedAt: NOW - 9 * DAY_MS,
+				ingestedAt: NOW - 9 * DAY_MS,
+			});
+		});
+
+		await evaluate(t);
+		expect((await abuseState(t)).status).toBe('warned');
+
+		vi.setSystemTime(NOW + 21 * DAY_MS);
+		await evaluate(t);
+		expect((await abuseState(t)).status).toBe('clean');
+	});
+
+	it.each([
+		[
+			'a warning a platform admin set',
+			{ abuseStatus: 'warned', abuseStatusChangedBy: 'admin-1', abuseStatusReason: 'watch it' },
+		],
+		[
+			'an MTA complaint-rate alert',
+			{
+				abuseStatus: 'warned',
+				abuseStatusChangedBy: 'mta_campaign_complaint_rate',
+				abuseStatusReason: 'MTA campaign complaint rate: high (0.40%) [campaign c1]',
+			},
+		],
+		[
+			'a legacy auto-warning with no stored trigger',
+			{
+				abuseStatus: 'warned',
+				abuseStatusChangedBy: 'system',
+				abuseStatusReason: systemWarning.abuseStatusReason,
+			},
+		],
+	])('never clears %s', async (_label, row) => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, row);
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), totalSent: 1000 });
+
+		await evaluate(t);
+
+		expect((await abuseState(t)).status).toBe('warned');
+	});
+
+	it('a platform admin who sets the warning the check set takes it over', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemWarning);
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'warned', at: NOW, reason: 'keep an eye on it', changedBy: 'admin-1' },
+		});
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), totalSent: 1000 });
+
+		await evaluate(t);
+
+		const state = await abuseState(t);
+		expect(state.status).toBe('warned');
+		expect(state.trigger).toBeUndefined();
+	});
+
+	it('sends no notice when a warning clears: warnings never notified', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, systemWarning);
+		await seedBucket(t, { scope: 'org', periodStart: dayStart(NOW), totalSent: 1000 });
+
+		await evaluate(t);
+
+		expect((await abuseState(t)).status).toBe('clean');
+		const notices = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter((j) =>
+				j.name.includes('fanOut')
+			)
+		);
+		expect(notices).toHaveLength(0);
 	});
 });
