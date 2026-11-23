@@ -1,4 +1,4 @@
-import type { RateLimitInfo } from '../types/common';
+import type { ApiErrorReason, RateLimitInfo } from '../types/common';
 
 /**
  * Base error class for all Owlat SDK errors.
@@ -28,6 +28,14 @@ export class OwlatError extends Error {
 	 */
 	readonly data?: Record<string, unknown>;
 
+	/**
+	 * Why the API refused the request, from `data.reason`: one of the
+	 * {@link ApiErrorReason} codes, or a newer one this SDK does not know yet,
+	 * which is best handled by its status. Undefined when the response named
+	 * none.
+	 */
+	readonly reason?: ApiErrorReason | (string & {});
+
 	constructor(
 		message: string,
 		code: string,
@@ -41,6 +49,8 @@ export class OwlatError extends Error {
 		this.statusCode = statusCode;
 		this.rateLimit = rateLimit;
 		this.data = data;
+		const reason = data?.['reason'];
+		if (typeof reason === 'string') this.reason = reason;
 	}
 }
 

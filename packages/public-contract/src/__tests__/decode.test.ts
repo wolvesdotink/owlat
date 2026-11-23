@@ -130,6 +130,56 @@ describe('decodeRequest', () => {
 	});
 });
 
+describe('the field a refusal names', () => {
+	const field = (schema: Parameters<typeof decodeRequest>[0], input: unknown) => {
+		const result = decodeRequest(schema, input);
+		return result.ok ? 'accepted' : result.field;
+	};
+	const base = { email: 'ada@example.com', slug: 'welcome' };
+
+	it.each([
+		[{ slug: 'welcome' }, 'email'],
+		[{ ...base, language: 'english' }, 'language'],
+		[{ ...base, dataVariables: { name: { first: 'Ada' } } }, 'dataVariables.name'],
+		[{ ...base, dataVariables: ['a'] }, 'dataVariables'],
+		[{ ...base, attachments: {} }, 'attachments'],
+		[{ ...base, attachments: ['x'] }, 'attachments.0'],
+		[
+			{ ...base, attachments: [{ filename: 'a', url: 'https://x' }, { url: 'https://x' }] },
+			'attachments.1.filename',
+		],
+		[{ ...base, attachments: [{ filename: 'a' }] }, 'attachments.0'],
+	])('transactional %j → %s', (body, expected) => {
+		expect(field(sendTransactionalRequestSchema, body)).toBe(expected);
+	});
+
+	it('is the field as the client sent it when the body holds a __proto__ key', () => {
+		const body = JSON.parse(
+			'{"email":"ada@example.com","slug":"welcome","dataVariables":{"__proto__":{"nested":true}}}'
+		);
+		expect(field(sendTransactionalRequestSchema, body)).toBe('dataVariables.__proto__');
+	});
+
+	it.each([
+		['contact', { email: 5 }, 'email', createContactRequestSchema],
+		[
+			'contact',
+			{ email: 'ada@example.com', firstName: 5 },
+			'firstName',
+			createContactRequestSchema,
+		],
+		['event', { email: 'ada@example.com', eventName: '1st' }, 'eventName', sendEventRequestSchema],
+	])('%s %j → %s', (_kind, body, expected, schema) => {
+		expect(field(schema, body)).toBe(expected);
+	});
+
+	it('is absent when the fault is the body as a whole', () => {
+		expect(field(sendTransactionalRequestSchema, null)).toBeUndefined();
+		expect(field(sendTransactionalRequestSchema, { email: 'ada@example.com' })).toBeUndefined();
+		expect(field(addContactToTopicRequestSchema, {})).toBeUndefined();
+	});
+});
+
 describe('transactional request', () => {
 	const base = { email: 'ada@example.com', slug: 'welcome' };
 

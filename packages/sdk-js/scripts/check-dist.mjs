@@ -4,7 +4,8 @@
  * the private @owlat/public-contract workspace package, which the declaration
  * build inlines; a type import that stopped being inlined, or a value import
  * of the contract (which would pull in its schema library), would ship a
- * bundle that cannot be installed. Only relative paths and `node:` builtins
+ * bundle that cannot be installed. The bundle is one file per format, so a
+ * relative path names a file it does not ship either: only `node:` builtins
  * may appear as module specifiers.
  */
 
@@ -15,15 +16,15 @@ const SPECIFIER =
 	/(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+|\bexport\s+\*\s+from\s*)['"]([^'"]+)['"]/gm;
 
 /**
- * Module specifiers in `text` that are neither relative nor `node:` builtins.
- * Comments are dropped first: the JSDoc examples name the package itself.
+ * Module specifiers in `text` other than `node:` builtins. Comments are
+ * dropped first: the JSDoc examples name the package itself.
  */
 export function externalSpecifiers(text) {
 	const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 	const found = new Set();
 	for (const match of code.matchAll(SPECIFIER)) {
 		const specifier = match[1];
-		if (specifier.startsWith('.') || specifier.startsWith('node:')) continue;
+		if (specifier.startsWith('node:')) continue;
 		found.add(specifier);
 	}
 	return [...found].sort();

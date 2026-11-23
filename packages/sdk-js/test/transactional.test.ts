@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vitest';
 import { createTestClient, mockFetch, TEST_RATE_LIMIT_HEADERS } from './helpers';
-import { NotFoundError, ValidationError } from '../src/errors';
+import { InvalidStateError, NotFoundError, ValidationError } from '../src/errors';
+import type { ApiErrorReason } from '../src';
 import type { TransactionalAttachment } from '../src/types/transactional';
 
 afterEach(() => {
@@ -364,6 +365,29 @@ describe('TransactionalResource', () => {
 				headers: TEST_RATE_LIMIT_HEADERS,
 			});
 			await expect(createTestClient().transactional.get('missing')).rejects.toThrow(NotFoundError);
+		});
+	});
+
+	describe('a refused send', () => {
+		it('carries the refusal code as a typed reason', async () => {
+			mockFetch({
+				status: 422,
+				body: {
+					error: {
+						category: 'invalid_state',
+						message: 'Sending domain is not verified.',
+						data: { reason: 'domain_unverified' },
+					},
+				},
+				headers: TEST_RATE_LIMIT_HEADERS,
+			});
+			const error = await createTestClient()
+				.transactional.send({ email: 'ada@example.com', slug: 'welcome' })
+				.catch((caught: unknown) => caught);
+			expect(error).toBeInstanceOf(InvalidStateError);
+			const reason = (error as InvalidStateError).reason;
+			expect(reason).toBe('domain_unverified');
+			expectTypeOf(reason).toEqualTypeOf<ApiErrorReason | (string & {}) | undefined>();
 		});
 	});
 

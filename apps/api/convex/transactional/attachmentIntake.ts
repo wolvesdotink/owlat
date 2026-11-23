@@ -11,7 +11,7 @@
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
-import { errorResponse } from '../auth/apiResponses';
+import { errorResponse, invalidInputResponse } from '../auth/apiResponses';
 import type { JsonPrimitiveValue } from '../lib/inputGuards';
 import { validateOutboundUrl } from '../lib/outboundUrlValidation';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
@@ -31,8 +31,8 @@ type PrepareResult =
 	| { ok: true; prepared: PreparedAttachment[] }
 	| { ok: false; response: Response };
 
-function invalidAttachment(message: string): { ok: false; response: Response } {
-	return { ok: false, response: errorResponse('invalid_input', message) };
+function invalidAttachment(message: string, field: string): { ok: false; response: Response } {
+	return { ok: false, response: invalidInputResponse(message, field) };
 }
 
 /** Strict base64 (atob's alphabet and padding rules) straight into bytes. */
@@ -70,7 +70,7 @@ export function prepareAttachments(
 			// (SSRF). DNS-time range enforcement is applied again at the fetch site.
 			const urlCheck = validateOutboundUrl(att.url, { requirePublic: true });
 			if (!urlCheck.ok) {
-				return invalidAttachment(`attachments[${i}].url ${urlCheck.error}`);
+				return invalidAttachment(`attachments[${i}].url ${urlCheck.error}`, `attachments.${i}.url`);
 			}
 			prepared.push({ filename: att.filename, contentType: att.contentType, url: att.url });
 			continue;
@@ -81,17 +81,22 @@ export function prepareAttachments(
 		// undecoded caller from storing an empty file.
 		if (att.content === undefined) {
 			return invalidAttachment(
-				`attachments[${i}] must have exactly one of "content" (base64) or "url"`
+				`attachments[${i}] must have exactly one of "content" (base64) or "url"`,
+				`attachments.${i}`
 			);
 		}
 		const bytes = decodeBase64(att.content);
 		if (!bytes) {
-			return invalidAttachment(`attachments[${i}].content is not valid base64`);
+			return invalidAttachment(
+				`attachments[${i}].content is not valid base64`,
+				`attachments.${i}.content`
+			);
 		}
 		totalDecodedSize += bytes.byteLength;
 		if (totalDecodedSize > MAX_TOTAL_SIZE) {
 			return invalidAttachment(
-				`Total attachment size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`
+				`Total attachment size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`,
+				'attachments'
 			);
 		}
 		prepared.push({ filename: att.filename, contentType: att.contentType, bytes });
