@@ -41,6 +41,7 @@ describe('doctor report — stable ids', () => {
 			  "version.drift",
 			  "mta.egress_address",
 			  "env.acme",
+			  "compose.docker",
 			]
 		`);
 	});

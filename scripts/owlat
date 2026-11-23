@@ -362,6 +362,35 @@ compose_project_name() {
 	docker compose config 2>/dev/null | sed -n 's/^name:[[:space:]]*//p' | head -1 || true
 }
 
+# The `docker run` arguments of a setup-image command that reads the running
+# stack (doctor, support-bundle): the Docker socket (compose ps/logs, and convex
+# run through the convex-deploy image), this stack's project name and profiles,
+# so the in-container compose sees THIS stack, and the stack's default network,
+# where doctor's MTA probes resolve MTA_API_URL (`http://mta:3100`). Fills
+# STACK_READER_ARGS.
+stack_reader_run_args() {
+	export_compose_profiles
+	local project_name network=""
+	project_name="$(compose_project_name)"
+	if [[ -n "$project_name" ]]; then
+		# Compose labels the network it created as the project's `default`,
+		# whatever name it was given. None while the stack is down: the MTA is
+		# then unreachable from anywhere and doctor reports exactly that.
+		network="$(docker network ls \
+			--filter "label=com.docker.compose.project=$project_name" \
+			--filter "label=com.docker.compose.network=default" \
+			--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || network=""
+	fi
+	STACK_READER_ARGS=(
+		${network:+--network "$network"}
+		-v "$OWLAT_DIR:/opt/owlat"
+		-v /var/run/docker.sock:/var/run/docker.sock
+		-e "OWLAT_DIR=/opt/owlat"
+		${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"}
+		${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"}
+	)
+}
+
 # Whether the pinned setup image knows the command $1 (`push-env` arrived with
 # `owlat apply`, `unset-env` later). A host `owlat` newer than the stack runs an
 # older image, which answers an unknown command with "Unknown command" and its
@@ -898,18 +927,14 @@ case "$cmd" in
 				exec bash scripts/setup.sh doctor "$@"
 			fi
 		done
-		exec docker run --rm \
-			-v "$OWLAT_DIR:/opt/owlat" \
-			"$OWLAT_SETUP_IMAGE" doctor "$@"
+		stack_reader_run_args
+		exec docker run --rm "${STACK_READER_ARGS[@]}" "$OWLAT_SETUP_IMAGE" doctor "$@"
 		;;
 	support-bundle)
-		# One archive for a bug report, collected read-only by the setup image:
-		# it needs the Docker socket (compose ps/logs, and the migration read
-		# through the convex-deploy image), this stack's project name and
-		# profiles, so the in-container compose sees THIS stack, and the stack's
-		# default network, where doctor's MTA probes resolve MTA_API_URL
-		# (`http://mta:3100`). The archive comes back on stdout and is written
-		# here, so --output can be any host path.
+		# One archive for a bug report, collected read-only by the setup image
+		# with doctor's view of the stack (stack_reader_run_args). The archive
+		# comes back on stdout and is written here, so --output can be any host
+		# path.
 		bundle_usage="Usage: owlat support-bundle [--lines N] [--output FILE]"
 		bundle_out=""
 		bundle_args=()
@@ -965,26 +990,9 @@ case "$cmd" in
 			echo "Error: cannot write $bundle_out." >&2
 			exit 1
 		fi
-		export_compose_profiles
-		project_name="$(compose_project_name)"
-		bundle_network=""
-		if [[ -n "$project_name" ]]; then
-			# Compose labels the network it created as the project's `default`,
-			# whatever name it was given. None while the stack is down: the MTA is
-			# then unreachable from anywhere and doctor reports exactly that.
-			bundle_network="$(docker network ls \
-				--filter "label=com.docker.compose.project=$project_name" \
-				--filter "label=com.docker.compose.network=default" \
-				--format '{{.Name}}' 2>/dev/null | sed -n 1p)" || bundle_network=""
-		fi
+		stack_reader_run_args
 		bundle_status=0
-		docker run --rm \
-			${bundle_network:+--network "$bundle_network"} \
-			-v "$OWLAT_DIR:/opt/owlat" \
-			-v /var/run/docker.sock:/var/run/docker.sock \
-			-e "OWLAT_DIR=/opt/owlat" \
-			${project_name:+-e "COMPOSE_PROJECT_NAME=$project_name"} \
-			${COMPOSE_PROFILES:+-e "COMPOSE_PROFILES=$COMPOSE_PROFILES"} \
+		docker run --rm "${STACK_READER_ARGS[@]}" \
 			"$OWLAT_SETUP_IMAGE" support-bundle --output - ${bundle_args[@]+"${bundle_args[@]}"} \
 			>&3 || bundle_status=$?
 		exec 3>&-
