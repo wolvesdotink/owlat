@@ -24,10 +24,15 @@ implementation 'com.owlat:owlat-sdk:0.1.0'
 
 ```java
 import com.owlat.sdk.Owlat;
+import com.owlat.sdk.OwlatConfig;
 import com.owlat.sdk.model.contact.Contact;
 import com.owlat.sdk.model.contact.CreateContactParams;
 
-Owlat owlat = new Owlat("lm_live_xxxxxxxx");
+Owlat owlat = new Owlat(
+    OwlatConfig.builder("lm_live_xxxxxxxx")
+        .baseUrl("https://rest.api.example.com")
+        .build()
+);
 
 // Create a contact
 Contact contact = owlat.contacts().create(
@@ -37,6 +42,10 @@ Contact contact = owlat.contacts().create(
         .build()
 );
 ```
+
+`baseUrl` is your instance's API URL: the web app shows it as **Your API base URL** under **Settings → API → API quickstart**. It is the `NUXT_PUBLIC_CONVEX_SITE_URL` your operator set, `https://rest.api.<your-domain>` when the setup wizard derived it from your domain.
+
+> **No `baseUrl`:** the client sends requests and your API key to `https://api.owlat.app`, which is not your instance, and logs a warning through `java.util.logging`. `new Owlat(String apiKey)` does the same and is deprecated. The base URL will become required.
 
 ## Configuration
 
@@ -48,7 +57,7 @@ import java.time.Duration;
 
 Owlat owlat = new Owlat(
     OwlatConfig.builder("lm_live_xxxxxxxx")
-        .baseUrl("https://api.owlat.app")
+        .baseUrl("https://rest.api.example.com")
         .timeout(Duration.ofSeconds(60))
         // Optional: tune automatic retries (defaults to 2 retries,
         // 500ms initial backoff, ×2 multiplier).
@@ -81,6 +90,7 @@ Disable retries entirely with `RetryConfig.disabled()`:
 
 ```java
 OwlatConfig.builder("lm_live_xxxxxxxx")
+    .baseUrl("https://rest.api.example.com")
     .retry(RetryConfig.disabled())
     .build();
 ```
@@ -197,6 +207,9 @@ try {
     System.err.println("Invalid request: " + e.getMessage());
 } catch (ConflictException e) {
     System.err.println("Conflict: " + e.getMessage());
+} catch (UnexpectedResponseException e) {
+    // The answer did not come from the Owlat API: check baseUrl.
+    System.err.println("Not an Owlat API: " + e.getUrl() + " " + e.getStatusCode() + " " + e.getBodyExcerpt());
 } catch (OwlatException e) {
     System.err.println("API error " + e.getStatusCode() + ": " + e.getMessage());
 }

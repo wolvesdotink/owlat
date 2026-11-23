@@ -8,7 +8,11 @@ export interface OwlatConfig {
 	apiKey: string;
 
 	/**
-	 * Base URL for the Owlat API. Defaults to "https://api.owlat.app".
+	 * Your instance's API URL: "Your API base URL" in the web app under
+	 * Settings → API → API quickstart, which an operator sets as
+	 * `NUXT_PUBLIC_CONVEX_SITE_URL`. Left out,
+	 * requests go to the hosted address `https://api.owlat.app`, not to your
+	 * instance, and the client warns. This option will become required.
 	 */
 	baseUrl?: string;
 
