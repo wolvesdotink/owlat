@@ -496,4 +496,13 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.files.detail.fileKinds.video',
 	'dashboard.files.detail.fileKinds.audio',
 	'desktop.setup.admin.nameLabel',
+	// „Automation“ is the German name of the feature too, so a label that is
+	// only the word (or the word and a provider name) reads the same.
+	'shared.commandPaletteObjectRecents.kinds.automation',
+	'shared.deliverabilityMeasurement.cell.automation.apple',
+	'shared.deliverabilityMeasurement.cell.automation.gmail',
+	'shared.deliverabilityMeasurement.cell.automation.microsoft',
+	'shared.deliverabilityMeasurement.cell.automation.yahoo',
+	'shared.deliverabilityMeasurement.stream.automation',
+	'shared.quickCreate.automation',
 ];

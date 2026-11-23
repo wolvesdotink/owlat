@@ -165,19 +165,28 @@ describe('server-side registration gate (H3)', () => {
 			vi.stubEnv('OWLAT_DEV_MODE', mode);
 			await expect(
 				assertRegistrationAllowed(ctxWith([], []), 'owner@owlat.example')
-			).rejects.toThrow(/complete instance setup/);
+			).rejects.toMatchObject({
+				message: expect.stringMatching(/complete instance setup/),
+				body: expect.objectContaining({ code: 'REGISTRATION_SETUP_REQUIRED' }),
+			});
 		}
 	);
 
 	it('rejects a missing/blank email (fails closed)', async () => {
-		await expect(assertRegistrationAllowed(ctxWith([{}], []), '')).rejects.toThrow(/email/i);
+		await expect(assertRegistrationAllowed(ctxWith([{}], []), '')).rejects.toMatchObject({
+			message: expect.stringMatching(/email/i),
+			body: expect.objectContaining({ code: 'INVALID_EMAIL' }),
+		});
 		await expect(assertRegistrationAllowed(ctxWith([{}], []), undefined)).rejects.toThrow(/email/i);
 	});
 
 	it('rejects an un-invited signup once the instance is bootstrapped', async () => {
 		await expect(
 			assertRegistrationAllowed(ctxWith([{ email: 'owner@example.com' }], []), 'intruder@evil.com')
-		).rejects.toThrow(/invite-only/i);
+		).rejects.toMatchObject({
+			message: expect.stringMatching(/invite-only/i),
+			body: expect.objectContaining({ code: 'REGISTRATION_INVITE_ONLY' }),
+		});
 	});
 
 	it('rejects when only an EXPIRED pending invitation matches', async () => {

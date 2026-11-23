@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { acceptInvitation, getSession, sendVerificationEmail } from '~/lib/auth-client';
 import { CheckIcon, CircleWarningIcon, MailIcon, UsersIcon } from '@coolicons/vue';
 import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+import { authErrorCopy, type AuthClientError } from '~/utils/authErrorCopy';
 
 const { t } = useI18n();
 
@@ -142,7 +143,7 @@ async function handleAcceptInvitation({ joinedElsewhere = false } = {}) {
 
 		if (result.error) {
 			status.value = 'error';
-			errorMessage.value = acceptErrorCopy(result.error.code);
+			errorMessage.value = acceptErrorCopy(result.error);
 			return;
 		}
 
@@ -218,15 +219,10 @@ const hasClaims = computed(
  * that is not the invited address with another; anything else keeps the
  * generic line rather than better-auth's English message.
  */
-function acceptErrorCopy(code: string | undefined): string {
-	switch (code) {
-		case 'INVITATION_NOT_FOUND':
-			return t('invite.accept.errors.notFound');
-		case 'YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION':
-			return t('invite.accept.errors.wrongRecipient', { email: sessionEmail.value });
-		default:
-			return t('invite.accept.errors.acceptFailed');
-	}
+function acceptErrorCopy(error: AuthClientError): string {
+	return authErrorCopy(t, error, 'invite.accept.errors.acceptFailed', {
+		email: sessionEmail.value,
+	});
 }
 
 function redirectToLogin() {

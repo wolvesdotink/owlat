@@ -10,6 +10,7 @@ import {
 	inviteMember as inviteOrgMember,
 	cancelInvitation as cancelOrgInvitation,
 } from '~/lib/auth-client';
+import { authErrorCopy } from '~/utils/authErrorCopy';
 import {
 	mapToBetterAuthRole,
 	type OrganizationInvitation,
@@ -69,7 +70,7 @@ export function useOrganizationInvitations(options: {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.sendInvitationFailed')
+				authErrorCopy(t, result.error, 'shared.useOrganization.errors.sendInvitationFailed')
 			);
 		}
 
@@ -115,7 +116,7 @@ export function useOrganizationInvitations(options: {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.cancelInvitationFailed')
+				authErrorCopy(t, result.error, 'shared.useOrganization.errors.cancelInvitationFailed')
 			);
 		}
 
@@ -169,7 +170,7 @@ export function useOrganizationInvitations(options: {
 
 		if (result.error) {
 			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.resendInvitationFailed')
+				authErrorCopy(t, result.error, 'shared.useOrganization.errors.resendInvitationFailed')
 			);
 		}
 
