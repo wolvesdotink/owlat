@@ -800,3 +800,60 @@ describe('organizations.settings.update — default sender domain', () => {
 		expect(await domainNames(t)).toEqual([]);
 	});
 });
+
+// ============================================================
+// update — an emptied sender field clears the stored value
+// ============================================================
+
+describe('organizations.settings.update — clearing the default sender', () => {
+	const readRow = (t: ReturnType<typeof convexTest>) =>
+		t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+
+	it('removes the default From address and name when they are sent empty', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromName: 'News',
+			defaultFromEmail: 'hello@news.example.com',
+		});
+
+		await t.mutation(api.workspaces.settings.update, { defaultFromName: '', defaultFromEmail: '' });
+
+		const row = await readRow(t);
+		expect(row?.defaultFromEmail).toBeUndefined();
+		expect(row?.defaultFromName).toBeUndefined();
+	});
+
+	it('keeps the default sender when a save leaves the fields out', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromName: 'News',
+			defaultFromEmail: 'hello@news.example.com',
+		});
+
+		await t.mutation(api.workspaces.settings.update, { timezone: 'Europe/Berlin' });
+
+		const row = await readRow(t);
+		expect(row?.defaultFromEmail).toBe('hello@news.example.com');
+		expect(row?.defaultFromName).toBe('News');
+	});
+
+	it('records the removal in the audit log', async () => {
+		const t = convexTest(schema, modules);
+		await t.mutation(api.workspaces.settings.update, {
+			defaultFromEmail: 'hello@news.example.com',
+		});
+
+		await t.mutation(api.workspaces.settings.update, { defaultFromEmail: '' });
+
+		const audit = await t.run((ctx) =>
+			ctx.db
+				.query('auditLogs')
+				.withIndex('by_action', (q) => q.eq('action', 'settings.updated'))
+				.collect()
+		);
+		const last = JSON.parse(audit[audit.length - 1]?.detailsBlob ?? '{}');
+		expect(last.changes).toEqual({
+			defaultFromEmail: { from: 'hello@news.example.com', to: null },
+		});
+	});
+});

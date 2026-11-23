@@ -116,7 +116,9 @@ export const update = formsMutation({
 	args: {
 		formEndpointId: v.id('formEndpoints'),
 		name: v.optional(v.string()),
-		topicId: v.optional(v.id('topics')),
+		// Omitted leaves the field as it is. null removes the topic, and an empty
+		// redirect URL or honeypot name removes that setting.
+		topicId: v.optional(v.union(v.id('topics'), v.null())),
 		fields: v.optional(v.array(formFieldValidator)),
 		redirectUrl: v.optional(v.string()),
 		honeypotFieldName: v.optional(v.string()),
@@ -145,11 +147,13 @@ export const update = formsMutation({
 		};
 
 		if (updates.name !== undefined) updateData['name'] = updates.name;
-		if (updates.topicId !== undefined) updateData['topicId'] = updates.topicId;
+		// Patching a field to undefined removes it.
+		if (updates.topicId !== undefined) updateData['topicId'] = updates.topicId ?? undefined;
 		if (updates.fields !== undefined) updateData['fields'] = updates.fields;
-		if (updates.redirectUrl !== undefined) updateData['redirectUrl'] = updates.redirectUrl;
+		if (updates.redirectUrl !== undefined)
+			updateData['redirectUrl'] = updates.redirectUrl || undefined;
 		if (updates.honeypotFieldName !== undefined)
-			updateData['honeypotFieldName'] = updates.honeypotFieldName;
+			updateData['honeypotFieldName'] = updates.honeypotFieldName || undefined;
 		if (updates.isActive !== undefined) updateData['isActive'] = updates.isActive;
 		if (updates.doubleOptIn !== undefined) updateData['doubleOptIn'] = updates.doubleOptIn;
 
