@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import PostboxMailboxGuard from '../PostboxMailboxGuard.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
@@ -25,6 +26,7 @@ const role = ref<'owner' | 'admin' | 'editor' | 'member'>('member');
 const roleLoading = ref(false);
 const externalOn = ref(false);
 const postboxOn = ref(true);
+const flagsLoading = ref(false);
 const freshStatusRef = ref<FreshStatus>({
 	hasMailbox: false,
 	reservedAddress: null,
@@ -40,7 +42,7 @@ beforeAll(() => {
 	vi.stubGlobal('useFeatureFlag', () => ({
 		isEnabled: (flag: string) =>
 			(flag === 'mail.external' && externalOn.value) || (flag === 'postbox' && postboxOn.value),
-		isLoading: ref(false),
+		isLoading: flagsLoading,
 	}));
 	vi.stubGlobal('usePermissions', () => ({
 		isAdmin: computed(() => role.value === 'owner' || role.value === 'admin'),
@@ -55,6 +57,7 @@ beforeEach(() => {
 	roleLoading.value = false;
 	externalOn.value = false;
 	postboxOn.value = true;
+	flagsLoading.value = false;
 });
 
 function mountGuard() {
@@ -181,6 +184,18 @@ describe('PostboxMailboxGuard with no mailbox and no reservation', () => {
 		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
 	});
 
+	it('waits for the flags before it picks between the dead-end and connecting', async () => {
+		externalOn.value = true;
+		flagsLoading.value = true;
+		const w = mountGuard();
+		expect(w.find('[data-testid="mailbox-guard-deadend"]').exists()).toBe(false);
+		expect(w.find('[data-testid="mailbox-guard-external"]').exists()).toBe(false);
+
+		flagsLoading.value = false;
+		await nextTick();
+		expect(w.find('[data-testid="mailbox-guard-external"]').exists()).toBe(true);
+	});
+
 	it('sends a member who may connect an account to the connect wizard', () => {
 		externalOn.value = true;
 		const w = mountGuard();
@@ -194,6 +209,8 @@ describe('PostboxMailboxGuard with no mailbox and no reservation', () => {
 
 	it('offers an admin who may connect an account a hosted mailbox as well', () => {
 		externalOn.value = true;
+		// `mail.external` alone makes the add-account page reachable.
+		postboxOn.value = false;
 		role.value = 'admin';
 		const w = mountGuard();
 
