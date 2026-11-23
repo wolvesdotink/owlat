@@ -221,9 +221,12 @@ function buildSearchEverything(ctx: ActionCtx): Tool {
 function buildGetCampaignStats(ctx: ActionCtx): Tool {
 	return tool({
 		description:
-			"Look up performance stats for marketing campaigns matching a name/subject query — sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates. `sendHold` is set when the workspace's sending is suspended: `held` means the campaign waits and resumes once sending is restored, with the reason recorded for the suspension, `stopped` means the hold outlasted the delivery deadline and the remaining recipients were not mailed.",
+			"Look up performance stats for marketing campaigns matching a name/subject query, or, called without `campaign`, for the latest campaigns (any still sending first, then the most recently sent): use that for questions about the last, latest or most recent campaign. Returns sends, deliveries, opens, clicks, bounces, unsubscribes, and open/click rates. `sendHold` is set when the workspace's sending is suspended: `held` means the campaign waits and resumes once sending is restored, with the reason recorded for the suspension, `stopped` means the hold outlasted the delivery deadline and the remaining recipients were not mailed.",
 		inputSchema: z.object({
-			campaign: z.string().describe('Campaign name, subject, or keyword.'),
+			campaign: z
+				.string()
+				.optional()
+				.describe('Campaign name, subject, or keyword. Leave it out for the latest campaigns.'),
 		}),
 		execute: async ({ campaign }) => {
 			const r = await ctx.runQuery(internal.assistant.insights.campaignStats, {

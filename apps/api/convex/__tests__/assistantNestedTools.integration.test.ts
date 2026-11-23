@@ -41,7 +41,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { newHarness } from './testModules';
-import { enableFeatures } from './factories';
+import { createTestCampaign, enableFeatures } from './factories';
 import { TOOL_MODULES, buildAssistantTools } from '../assistant/tools';
 import { RETRIEVAL_LIMIT_MESSAGE } from '../assistant/toolRegistry';
 import { STOP_POLL_MS } from '../assistant/runner';
@@ -235,6 +235,51 @@ describe('delivery health', () => {
 				since: new Date(changedAt).toISOString(),
 			},
 		});
+	});
+});
+
+describe('campaign stats', () => {
+	async function seedCampaigns(t: Harness) {
+		await t.run(async (c) => {
+			const campaign = (name: string, fields: Record<string, unknown>) =>
+				c.db.insert('campaigns', {
+					...createTestCampaign({ name, searchableText: name.toLowerCase() }),
+					...fields,
+				} as never);
+			await campaign('Spring sale', { status: 'sent', sentAt: 1_000, statsSent: 10 });
+			await campaign('Summer news', { status: 'sent', sentAt: 3_000, statsSent: 30 });
+			await campaign('Autumn digest', { status: 'sending', sentAt: 2_000, statsSent: 5 });
+			await campaign('Winter recap', { status: 'sent', sentAt: 4_000, deletedAt: 5_000 });
+			await campaign('Holiday draft', { status: 'draft' });
+		});
+	}
+
+	it('answers "my last campaign" without a keyword: sending first, then the latest sent', async () => {
+		const { t, ctx } = await setup();
+		await seedCampaigns(t);
+		const tools = await buildAssistantTools(ctx, { canReadInbox: false }, TOOL_MODULES, turnRoot);
+
+		const result = (await run(tools, 'getCampaignStats', {})) as {
+			campaigns: { name: string; status: string; sent: number }[];
+		};
+
+		expect(result.campaigns.map((c) => [c.name, c.status, c.sent])).toEqual([
+			['Autumn digest', 'sending', 5],
+			['Summer news', 'sent', 30],
+			['Spring sale', 'sent', 10],
+		]);
+	});
+
+	it('still filters by a keyword', async () => {
+		const { t, ctx } = await setup();
+		await seedCampaigns(t);
+		const tools = await buildAssistantTools(ctx, { canReadInbox: false }, TOOL_MODULES, turnRoot);
+
+		const result = (await run(tools, 'getCampaignStats', { campaign: 'spring' })) as {
+			campaigns: { name: string }[];
+		};
+
+		expect(result.campaigns.map((c) => c.name)).toEqual(['Spring sale']);
 	});
 });
 
