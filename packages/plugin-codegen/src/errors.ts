@@ -56,7 +56,8 @@ export const PLUGIN_CODEGEN_ERROR_HINTS: Readonly<Record<PluginCodegenErrorCode,
 		direct_plugin_import: 'Import a bundled plugin only through the generated composition files.',
 		generated_files_stale:
 			'Run `bun run plugins:codegen` and commit the generated files together with plugins.config.ts.',
-		generated_path_unsafe: 'Replace the symlinked generated file or directory with a real one.',
+		generated_path_unsafe:
+			'Make the named path a regular file under real directories inside the checkout (no symbolic links), then run codegen again.',
 		invalid_manifest:
 			"Fix each field listed above in the package's definePlugin manifest, and keep the manifest the root module's default export.",
 		package_load_failed:

@@ -115,7 +115,7 @@ export function workspacePackageRefusal(
 			'  bun publish --access public',
 			'  cd -',
 			`  mv ${shellWord(member.directory)} ${shellWord(`../${folder}`)}`,
-			`  bun add --exact ${publishedName}@${member.version}`,
+			`  bun add --exact ${shellWord(`${publishedName}@${member.version}`)}`,
 			`  ${CLI_INVOCATION} add ${publishedName}`,
 			...(ownedScope
 				? []

@@ -158,7 +158,11 @@ describe('add', () => {
 	it('quotes a folder name the shell would split', async () => {
 		const root = await createCliWorkspace({
 			workspaceMembers: {
-				'examples/plugins/my plugin': { name: '@acme/my-plugin', version: '0.0.0', private: true },
+				'examples/plugins/my plugin': {
+					name: '@acme/my-plugin',
+					version: '0.0.0$(id)',
+					private: true,
+				},
 			},
 		});
 		const { io } = captureIo();
@@ -172,6 +176,7 @@ describe('add', () => {
 
 		expect(error.details).toContain("  cd 'examples/plugins/my plugin'");
 		expect(error.details).toContain("  mv 'examples/plugins/my plugin' '../my plugin'");
+		expect(error.details).toContain("  bun add --exact '@acme/my-plugin@0.0.0$(id)'");
 	});
 
 	it('rejects an invalid package-name argument', async () => {
