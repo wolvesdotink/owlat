@@ -91,9 +91,9 @@ export function updateRequestWasAnswered(error: unknown): boolean {
 /**
  * The reason an answered update failed, in the words the sidecar used.
  *
- * `FetchError.message` is built from the status line alone, so the banner used
- * to read `[POST] "/api/system/update": 502` and nothing else — the reason the
- * route took care to forward existed only in `docker logs owlat-web-1`.
+ * `FetchError.message` is built from the status line alone, so on its own the
+ * banner reads `[POST] "/api/system/update": 502` and nothing else, and the
+ * reason the route took care to forward shows only in `docker logs owlat-web-1`.
  */
 export function updateFailureMessage(error: unknown, fallback: string): string {
 	if (typeof error !== 'object' || error === null) return fallback;

@@ -337,8 +337,12 @@ bun run --cwd <path-to-this-package> test
 
 What was emitted is already formatted at the repository's width. A plugin id
 much longer than \`${names.id}\` pushes two or three generated lines past it —
-if the format gate reports this package, run the repository's \`bun run ox:fmt\`
-once and commit the rewrap.
+if the format gate reports this package, format it once from the repository
+root and commit the rewrap:
+
+\`\`\`sh
+./node_modules/.bin/oxfmt --config oxfmtrc.json <path-to-this-package>
+\`\`\`
 
 ${bundlingReadmeSection(packageName)}`;
 }

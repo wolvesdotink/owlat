@@ -26,6 +26,7 @@ import type {
 import { summarizeCampaignStats } from '../campaigns/statShards';
 import {
 	DELIVERABILITY_URL,
+	DELIVERY_HUB_URL,
 	automationUrl,
 	campaignEditUrl,
 	campaignReportUrl,
@@ -323,6 +324,32 @@ async function draftDeliverabilityAlert(
 	};
 }
 
+/** Sending is stopped on the instance (`workspaces/abuseStatus.ts`). */
+function isSendingBlocked(settings: Doc<'instanceSettings'> | null): boolean {
+	return settings?.abuseStatus === 'suspended' || settings?.abuseStatus === 'banned';
+}
+
+/**
+ * A suspension or a resume, while sending is still in that state. A later
+ * change that keeps it (a resume followed by a warning) does not silence it; a
+ * suspension already lifted again is old news, its resume notice follows. The
+ * stored reason rides along as the detail.
+ */
+async function draftSendingStatus(
+	ctx: MutationCtx,
+	event: Extract<MarketingNoticeEvent, { kind: 'sending_suspended' | 'sending_resumed' }>
+): Promise<NoticeDraft | null> {
+	const settings = await ctx.db.query('instanceSettings').first();
+	if (isSendingBlocked(settings) !== (event.kind === 'sending_suspended')) return null;
+	return {
+		kind: event.kind,
+		eventKey: `${event.kind}:${event.changedAt}`,
+		subjectKey: 'sending_status',
+		...(settings?.abuseStatusReason ? { detail: settings.abuseStatusReason } : {}),
+		url: DELIVERY_HUB_URL,
+	};
+}
+
 /** The notice an occurrence becomes, or null when it no longer holds. */
 export async function draftNotice(
 	ctx: MutationCtx,
@@ -348,6 +375,9 @@ export async function draftNotice(
 			return draftPostmasterMail(ctx, event);
 		case 'deliverability_alert':
 			return draftDeliverabilityAlert(ctx, event);
+		case 'sending_suspended':
+		case 'sending_resumed':
+			return draftSendingStatus(ctx, event);
 	}
 }
 
@@ -427,5 +457,11 @@ export async function noticeLiveness(
 			return notice.alertId !== undefined && (await openAlertTarget(ctx, notice.alertId)) !== null
 				? LIVE
 				: null;
+		case 'sending_suspended':
+		case 'sending_resumed': {
+			// Holds until sending changes state again.
+			const settings = await ctx.db.query('instanceSettings').first();
+			return isSendingBlocked(settings) === (notice.kind === 'sending_suspended') ? LIVE : null;
+		}
 	}
 }

@@ -22,8 +22,8 @@
  * consumer (at-rest bodies, external-mail creds, the E2EE key vault).
  *
  * TOLERANT FALLBACK: with no `INSTANCE_SECRET` configured, `sealImportCredential`
- * returns the plaintext verbatim (behaviour is then exactly as before this
- * change — no worse), and `openImportCredential` returns any non-envelope value
+ * returns the plaintext verbatim (an instance without the secret keeps working
+ * with unsealed credentials), and `openImportCredential` returns any non-envelope value
  * verbatim. A real deployment sets `INSTANCE_SECRET`, so credentials seal.
  */
 

@@ -151,8 +151,9 @@ export const mailRulesTables = {
 		.index('by_alias', ['alias'])
 		.index('by_target', ['targetMailboxId']),
 
-	// External-forwarding rule. On delivery the message is forwarded to
-	// `forwardTo`; if `keepLocalCopy=false`, the local insert is skipped.
+	// External-forwarding rule. On hosted delivery the message is forwarded to
+	// `forwardTo` and also kept in the mailbox. `keepLocalCopy` is not read:
+	// new rules store `true`, and a stored `false` changes nothing.
 
 	mailForwarding: defineTable({
 		mailboxId: v.id('mailboxes'),

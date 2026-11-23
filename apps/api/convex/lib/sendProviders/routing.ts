@@ -59,9 +59,8 @@ export interface DeliverabilityRouteInput {
 /**
  * The two ways a configured deliverability fallback refuses to relay.
  *
- * NEITHER MESSAGE NAMES A PROVIDER. The `unavailable` copy used to
- * read "enable the verified Amazon SES transport", which was accurate only
- * while the gate above it was `relayProviderType !== 'ses'`: it told an
+ * NEITHER MESSAGE NAMES A PROVIDER. Copy such as "enable the verified Amazon
+ * SES transport" would be accurate only behind an SES-only gate: it tells an
  * operator whose route names Resend, an SMTP relay or Mandrill to go configure
  * a transport their deployment has nothing to do with. The instruction that
  * survives every kind is the one the gate actually checks — configure and

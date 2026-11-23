@@ -56,7 +56,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.dashboard.dashboardEditor.sizes.large',
 	'components.dashboard.dashboardEditor.sizes.medium',
 	'components.dashboard.dashboardEditor.sizes.small',
-	'components.dashboard.emailSendTimeline.errorCode',
 	'components.dashboard.gettingStartedResources.urlPlaceholder',
 	'components.delivery.complianceTelemetryCard.unsubscribe.milliseconds',
 	'components.delivery.complianceTelemetryCard.unsubscribe.seconds',
@@ -262,6 +261,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.audience.contacts.index.importMenu.integrationsDescription',
 	'dashboard.audience.segments.detail.index.pageTitle',
 	'dashboard.automations.detail.edit.activateDialog.automation',
+	'dashboard.automations.detail.index.runs.failure.details',
 	'dashboard.automations.detail.index.runs.range',
 	'dashboard.automations.new.form.optionalHint',
 	'dashboard.campaigns.detail.edit.details.optionalSuffix',
@@ -436,6 +436,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.preferences.preferencesShortcuts.presets.gmail',
 	'components.preferences.preferencesShortcuts.presets.outlook',
 	'components.preferences.preferencesShortcuts.presets.superhuman',
+	'shared.sendFailure.code',
 	'shared.shortcuts.groups.navigation',
 	'shared.shortcuts.groups.triage',
 	'shared.postbox.usePostboxThreadCategories.options.spam',
@@ -495,4 +496,13 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'dashboard.files.detail.fileKinds.video',
 	'dashboard.files.detail.fileKinds.audio',
 	'desktop.setup.admin.nameLabel',
+	// „Automation“ is the German name of the feature too, so a label that is
+	// only the word (or the word and a provider name) reads the same.
+	'shared.commandPaletteObjectRecents.kinds.automation',
+	'shared.deliverabilityMeasurement.cell.automation.apple',
+	'shared.deliverabilityMeasurement.cell.automation.gmail',
+	'shared.deliverabilityMeasurement.cell.automation.microsoft',
+	'shared.deliverabilityMeasurement.cell.automation.yahoo',
+	'shared.deliverabilityMeasurement.stream.automation',
+	'shared.quickCreate.automation',
 ];

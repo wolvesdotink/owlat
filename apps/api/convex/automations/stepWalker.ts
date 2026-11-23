@@ -55,7 +55,16 @@ async function runStepSideEffect(
 			return await executePluginStep(ctx, step, contact);
 		}
 		const module = stepModuleFor(step.stepType as CoreStepKind);
-		const config = module.parseConfig(step.config);
+		let config: unknown;
+		try {
+			config = module.parseConfig(step.config);
+		} catch (error) {
+			return {
+				status: 'failed',
+				reason: 'invalid_step_config',
+				error: error instanceof Error ? error.message : 'Invalid step config',
+			};
+		}
 		return await module.execute(ctx, {
 			config: config as never,
 			contact,
@@ -63,7 +72,11 @@ async function runStepSideEffect(
 			stepRunId,
 		});
 	} catch (error) {
-		return { status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' };
+		return {
+			status: 'failed',
+			reason: 'unknown',
+			error: error instanceof Error ? error.message : 'Unknown error',
+		};
 	}
 }
 
@@ -104,7 +117,12 @@ export const executeStep = internalAction({
 		if (outcome.status === 'failed') {
 			const retry = await ctx.runMutation(
 				internal.automations.stepOrchestration.retryOrFailStepRun,
-				{ stepRunId: args.stepRunId, attempt, errorMessage: outcome.error }
+				{
+					stepRunId: args.stepRunId,
+					attempt,
+					errorMessage: outcome.error,
+					failureReason: outcome.reason,
+				}
 			);
 			if (retry.kind === 'retrying') {
 				return { success: false, error: outcome.error, retrying: true };

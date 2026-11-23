@@ -8,6 +8,7 @@
  * types at compile time (`__tests__/typeAgreement.test.ts`).
  */
 
+export * from './deliveryStatus';
 export * from './errorReasons';
 export * from './webhookEvents';
 // ── Shared envelopes and values ─────────────────────────────────────────────

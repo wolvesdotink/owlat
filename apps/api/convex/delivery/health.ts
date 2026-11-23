@@ -317,8 +317,9 @@ export const getDeliveryHealth = authedQuery({
 });
 
 /**
- * The roll-up's reads, shared by the member query above and the assistant's
- * internal read (`assistant/insights.ts`), so both name the same verdict.
+ * The roll-up's reads, shared by the member query above and the explained
+ * report (`healthReport.ts`) the assistant and `GET /api/v1/status` read, so
+ * all of them name the same verdict.
  */
 export async function loadDeliveryHealth(ctx: QueryCtx): Promise<DeliveryHealthRollup> {
 	// Rolling 30-day org reputation, derived on read through the single

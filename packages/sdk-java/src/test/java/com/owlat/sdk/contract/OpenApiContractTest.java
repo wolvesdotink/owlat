@@ -20,6 +20,7 @@ import com.owlat.sdk.model.contact.DeleteContactResponse;
 import com.owlat.sdk.model.contact.UpdateContactParams;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.event.SendEventResponse;
+import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.AddToTopicResponse;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
@@ -40,6 +41,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -132,6 +134,7 @@ class OpenApiContractTest {
         calls.put("removeContactFromTopic", new Call(
                 owlat -> owlat.topics().removeContact(new RemoveFromTopicParams(TOPIC_ID, "ada@example.com")),
                 type(RemoveFromTopicResponse.class), false));
+        calls.put("getStatus", new Call(owlat -> owlat.status().get(), type(DeliveryStatus.class), false));
         return calls;
     }
 
@@ -276,7 +279,9 @@ class OpenApiContractTest {
      * model back and compare: a field the model lacks, renames or holds as a
      * different type shows up as a difference. The model writes no nulls, so the
      * example's null fields are left out of the comparison; the strict read has
-     * already proved the model knows them.
+     * already proved the model knows them. Numbers compare by value: JSON has one
+     * number type, so a {@code double} field that read {@code 2} writes
+     * {@code 2.0}, and the strict read already refuses a fraction in an integer.
      */
     static List<String> readBack(Call call, JsonNode expected, Object resultFromClient) {
         List<String> problems = new ArrayList<>();
@@ -295,12 +300,18 @@ class OpenApiContractTest {
         }
         JsonNode written = fields.valueToTree(model);
         JsonNode wanted = withoutNulls(expected);
-        if (!wanted.equals(written)) problems.add("model writes " + written + ", documented " + wanted);
-        if (resultFromClient != null && !written.equals(fields.valueToTree(resultFromClient))) {
+        if (!wanted.equals(NUMBERS_BY_VALUE, written)) problems.add("model writes " + written + ", documented " + wanted);
+        if (resultFromClient != null && !written.equals(NUMBERS_BY_VALUE, fields.valueToTree(resultFromClient))) {
             problems.add("the client returned something other than the documented response");
         }
         return problems;
     }
+
+    private static final Comparator<JsonNode> NUMBERS_BY_VALUE = (a, b) -> {
+        if (a.equals(b)) return 0;
+        if (a.isNumber() && b.isNumber()) return a.decimalValue().compareTo(b.decimalValue());
+        return 1;
+    };
 
     private static JsonNode withoutNulls(JsonNode node) {
         if (node.isObject()) {

@@ -35,6 +35,7 @@ export const ENDPOINT_SCOPES = [
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	'status:read',
 ] as const;
 
 /**

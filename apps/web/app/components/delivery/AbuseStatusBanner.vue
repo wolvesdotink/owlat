@@ -1,21 +1,32 @@
 <script setup lang="ts">
 /**
  * The account-status banner at the top of the delivery hub: what the abuse
- * status means for sending, the reason stored with it and since when, and for
- * a platform admin the way to the operator console. Renders nothing while the
- * status is clean or unknown.
+ * status means for sending, how a suspension lifts (by itself and on what
+ * condition, or by a platform admin), the reason stored with it and since
+ * when, and for a platform admin the way to the operator console. Renders
+ * nothing while the status is clean or unknown. The readiness panel links here
+ * (`#sending-status`).
  */
 import { api } from '@owlat/api';
 import { formatDate } from '~/utils/formatters';
+import { resolveLocalized } from '~/utils/localizedText';
+import { suspensionLiftText, type SuspensionLiftView } from '~/utils/suspensionLift';
 import { ArrowRightIcon, CircleWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	status: string | null | undefined;
 	reason: string | null | undefined;
 	changedAt: number | null | undefined;
+	lift?: SuspensionLiftView | null;
 }>();
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
+
+const liftLine = computed(() => {
+	if (props.status !== 'suspended') return null;
+	const text = suspensionLiftText(props.lift, locale.value);
+	return text === null ? null : resolveLocalized({ t, te }, text);
+});
 
 // The stored reason is an English sentence written by the backend (it names
 // the evidence), so it is quoted under translated framing, not translated.
@@ -62,6 +73,7 @@ const { data: isPlatformAdmin } = useConvexQuery(
 <template>
 	<div
 		v-if="abuseWarning"
+		id="sending-status"
 		:class="
 			abuseWarning.severity === 'error'
 				? 'bg-error/10 border-error/20 text-error'
@@ -75,6 +87,7 @@ const { data: isPlatformAdmin } = useConvexQuery(
 		/>
 		<div class="min-w-0 space-y-2 text-sm">
 			<p>{{ abuseWarning.message }}</p>
+			<p v-if="liftLine" class="font-medium">{{ liftLine }}</p>
 			<div v-if="abuseWarning.reason" class="text-text-secondary">
 				<p class="text-caption">{{ t('dashboard.admin.delivery.index.abuse.reason') }}</p>
 				<blockquote class="mt-1 border-l-2 border-current pl-3 break-words">

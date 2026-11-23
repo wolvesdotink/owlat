@@ -45,26 +45,6 @@ owlat sample-data install  # add it later instead
 
 See [docs/developer/self-hosting](https://docs.owlat.app/developer/self-hosting) for the detailed guide.
 
-## Local development
-
-For working on Owlat itself (cloned repo, Docker available, no real DNS or email infra needed):
-
-```sh
-git clone https://github.com/wolvesdotink/owlat.git
-cd owlat
-bun install
-bun run setup    # interactive: wizard + docker up + bootstrap admin + seed demo data
-```
-
-`bun run setup` walks through a small wizard and then asks one decision:
-
-- **Populated** _(default)_ — creates an admin user and seeds realistic demo data (15 contacts across 3 topics, 3 email templates, a sent campaign with stats, an automation, one verified sending domain). Best for working on existing features. A local `dev` deployment (`OWLAT_DEV_MODE=true`) gets the fuller `/seed/demo` dataset on top — dummy teammate sign-ins, their Postbox mailboxes, and a live automation; any other install gets the same content through the removable sample-data path instead, because those sign-ins carry published password hashes (and there the automation is paused, so it can't mail anyone real).
-- **Blank** — brings up the stack with no admin, no data. Visit `http://localhost:3000` and the app redirects to `/auth/register` so you can exercise the real signup flow end-to-end. Use `bunx owlat-setup reset` to wipe back to blank between attempts.
-
-When working on the UI (`bun run dev`, which runs `nuxt dev`), the dashboard exposes a few admin shortcuts marked with a yellow **DEV** badge — currently a "Force Verify" button on the domains settings page that flips a domain to `verified` without running real DNS lookups. They're tree-shaken out of any `nuxt build` bundle (selfhost or hosted) via `import.meta.env.DEV`, and the backend additionally requires `OWLAT_DEV_MODE` to be set on the Convex deployment (`npx convex env set OWLAT_DEV_MODE true`). Production deployments leave it unset and the dev endpoints (`/seed/demo`, `/dev/reset`, Force Verify) fail-closed with a 403 — nothing in the install flow turns dev mode on, because demo content for a real install goes through `owlat sample-data install` instead.
-
-The lower-level path (`bash scripts/setup.sh`) is still available for headless VPS provisioning. `bun run setup` is the path to take when you have a clone in front of you.
-
 ### Resource requirements
 
 |              | Minimum  | Recommended |
@@ -73,6 +53,19 @@ The lower-level path (`bash scripts/setup.sh`) is still available for headless V
 | Disk         | 20 GB    | 40 GB       |
 | CPU          | 2 vCPU   | 4 vCPU      |
 | Domain + DNS | Required | Required    |
+
+## Local development
+
+For working on Owlat itself (Docker available, no real DNS or email needed):
+
+```sh
+git clone https://github.com/wolvesdotink/owlat.git
+cd owlat
+bun run setup:worktree   # frozen install + the workspace builds the web app needs
+bun run dev:stack        # local Convex + Redis for this checkout, seeded, with Nuxt
+```
+
+`dev:stack` prints the URL to open and the demo sign-in. The [development runbook](docs/operations/development.md) covers ports, seeding and stopping the stack; [CONTRIBUTING.md](CONTRIBUTING.md) covers tests and the checks to run before a pull request.
 
 ## Features
 
@@ -199,33 +192,14 @@ The hosted-cloud control plane (Stripe billing, multi-tenancy, VPS auto-provisio
 
 ### Setup
 
-```bash
-git clone https://github.com/wolvesdotink/owlat.git
-cd owlat
-bun run setup:worktree   # frozen install + the workspace builds the web app needs
-bun run dev:stack        # local Convex + Redis per checkout, seeded, with Nuxt
-                         # (runbook: docs/operations/development.md)
-# — or, full self-host stack (generates secrets, deploys backend functions,
-# pushes the Convex runtime env vars, creates the admin account — plain
-# `docker compose up` alone boots an empty backend with no functions, no
-# runtime env vars, and no way to log in):
-scripts/owlat quickstart      # the blessed flow (legacy bash fallback: bash scripts/setup.sh)
-# Doing it entirely by hand? `cp .env.selfhost.example .env && docker compose
-# up -d` is NOT a working instance on its own — you must also mint the admin
-# key, deploy functions, AND `convex env set` the runtime secrets
-# (BETTER_AUTH_SECRET, SITE_URL, UNSUBSCRIBE_SECRET, EMAIL_PROVIDER,
-# MTA_API_URL, …). See the full Option B sequence in
-# docs/developer/self-hosting.
-```
+See [Local development](#local-development): `bun run setup:worktree`, then `bun run dev:stack`. To run a full instance instead, see [Quick install](#quick-install).
 
 ### Commands
 
 ```bash
 bun run dev:stack     # local backend + Nuxt for this checkout (ports per
                       # worktree; `ports`, `status`, `logs`, `down [--volumes]`)
-bun run dev           # web + api in parallel against the deployment .env selects
-bun run dev:web       # Nuxt frontend only
-bun run dev:api       # Convex backend only
+bun run dev:web       # Nuxt frontend only, against the deployment .env selects
 bun run dev:seed      # seed the local stack with dummy accounts + demo data
                       # (contacts, topics, campaigns, …). Every account gets a
                       # hosted mailbox on demo.localhost (plus a shared team@
@@ -239,7 +213,8 @@ bun run build         # Production build (all apps)
 bun run typecheck     # Turbo typecheck
 bun run lint          # Oxlint
 bun run lint:fix      # Oxlint + auto-fix
-bun run ox:fmt        # Oxfmt
+bun run lint:format   # oxfmt check of the JS/TS files your branch changes; format
+                      # them with ./node_modules/.bin/oxfmt --config oxfmtrc.json <paths>
 bun run ci:test       # Run all tests (vitest, NOT bun test)
 ```
 

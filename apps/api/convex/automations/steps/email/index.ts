@@ -53,10 +53,12 @@ const REJECTION_STEP_OUTCOME: Record<
 	}),
 	no_delivery_provider: (detail) => ({
 		status: 'failed',
+		reason: 'no_delivery_provider',
 		error: detail ?? 'No delivery provider configured',
 	}),
 	abuse_blocked: () => ({
 		status: 'failed',
+		reason: 'sending_not_allowed',
 		error: 'Sending is disabled while this instance is suspended.',
 	}),
 	// About the deployment, like the two above: the step fails with the reason
@@ -64,6 +66,7 @@ const REJECTION_STEP_OUTCOME: Record<
 	// pauses an automation that keeps failing on it.
 	sender_domain_unverified: (detail) => ({
 		status: 'failed',
+		reason: 'domain_not_verified',
 		error: detail ?? "The default sender's domain is not a verified sending domain.",
 	}),
 };
@@ -92,7 +95,11 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		const { config, contact, automation } = args;
 
 		if (!config.emailTemplateId) {
-			return { status: 'failed', error: 'No email template configured' };
+			return {
+				status: 'failed',
+				reason: 'template_missing',
+				error: 'No email template configured',
+			};
 		}
 
 		const template = await ctx.runQuery(
@@ -101,10 +108,14 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		);
 
 		if (!template) {
-			return { status: 'failed', error: 'Email template not found' };
+			return { status: 'failed', reason: 'template_missing', error: 'Email template not found' };
 		}
 		if (!template.htmlContent) {
-			return { status: 'failed', error: 'Email template has no HTML content' };
+			return {
+				status: 'failed',
+				reason: 'template_empty',
+				error: 'Email template has no HTML content',
+			};
 		}
 
 		const orgSettings = await ctx.runQuery(
@@ -114,6 +125,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		if (!orgSettings?.defaultFromEmail) {
 			return {
 				status: 'failed',
+				reason: 'no_default_sender',
 				error:
 					'Email sender not configured. Please set a default sender email in organization settings.',
 			};
@@ -126,6 +138,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		if (!contact.email) {
 			return {
 				status: 'failed',
+				reason: 'contact_no_email',
 				error: 'Contact has no email address',
 			};
 		}
@@ -212,6 +225,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 			// decision. Nothing is classified by matching the message any more.
 			return {
 				status: 'failed',
+				reason: 'unknown',
 				error: error instanceof Error ? error.message : 'Unknown email error',
 			};
 		}

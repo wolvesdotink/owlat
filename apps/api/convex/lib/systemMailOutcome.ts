@@ -28,11 +28,11 @@ export type SystemMailAttemptOutcome =
  *
  * The ambiguous case is the interesting one: an AMBIGUOUS_TIMEOUT means the
  * request may or may not have been accepted, so repeating it is safe only where
- * the transport DEDUPLICATES on the idempotency key we handed it. That used to
- * be spelled `provider === 'mta' || provider === 'resend'` — a list, and the
- * third copy of a fact `maintenance/systemMail.ts` also encoded twice (an MTA arm carrying
- * the key as `messageId`, a Resend ternary carrying it as a header). The catalog
- * declares it once now, and the same declaration is what the adapters'
+ * the transport DEDUPLICATES on the idempotency key we handed it. Don't spell
+ * that as a list (`provider === 'mta' || provider === 'resend'`): it would be
+ * another copy of what each adapter does with the key (the MTA carries it as
+ * `messageId`, Resend as a header). The catalog declares it once, and the same
+ * declaration is what the adapters'
  * `buildSystemMailExtras` honours, so the promise and the wiring cannot drift.
  *
  * `provider` arrives as a raw string — it may be an unset env, a retired kind or

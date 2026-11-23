@@ -12,6 +12,12 @@
  *
  * Audit-log effect fires on every transition (closes drift bug where
  * internal escalations wrote `abuseStatus` without an audit-log row).
+ *
+ * The status also records the reputation check's trigger while the check set
+ * it (`abuseStatusTrigger`), which is what lets the check lift its own
+ * suspension (`analytics/reputationResume.ts`), and the hold a platform
+ * admin's lift puts on the check (`reputationCheckHold`). Sending stopping or
+ * resuming notifies owners and admins.
  */
 
 import { v } from 'convex/values';
@@ -19,6 +25,15 @@ import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { recordAuditLog } from '../lib/auditLog';
+import { reputationTriggerValidator } from '../lib/validators/abuseStatus';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
+import {
+	suspendingTriggers,
+	type ReputationCheckHold,
+	type ReputationTrigger,
+} from '../analytics/reputationEnforcement';
+import { MANUAL_LIFT_HOLD_MS } from '../analytics/reputationResume';
+import { readEnforcementEvidence } from '../analytics/reputationEvidence';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +51,8 @@ export type TransitionInput = {
 	at: number;
 	reason: string;
 	changedBy: string;
+	/** The reputation check's trigger; stored only on `warned` / `suspended`. */
+	trigger?: ReputationTrigger;
 };
 
 export type TransitionOutcome =
@@ -44,6 +61,8 @@ export type TransitionOutcome =
 			applied: 'transitioned' | 'recorded';
 			from: AbuseStatus;
 			to: AbuseStatus;
+			/** A platform admin's lift: what the check will not suspend on, and until when. */
+			hold?: ReputationCheckHold;
 	  }
 	| {
 			ok: false;
@@ -86,6 +105,7 @@ const transitionInputValidator = v.object({
 	at: v.number(),
 	reason: v.string(),
 	changedBy: v.string(),
+	trigger: v.optional(reputationTriggerValidator),
 });
 
 // ─── Reducer ────────────────────────────────────────────────────────────────
@@ -95,12 +115,48 @@ type ReducerResult = {
 	applied: 'transitioned' | 'recorded';
 };
 
-function reduce(settings: Doc<'instanceSettings'>, input: TransitionInput): ReducerResult {
+/** Whether sending is allowed under a status (the **Abuse gate (module)**'s rule). */
+function isSendingAllowed(status: AbuseStatus): boolean {
+	return status !== 'suspended' && status !== 'banned';
+}
+
+function sameTrigger(a: ReputationTrigger | undefined, b: ReputationTrigger | undefined): boolean {
+	return a?.code === b?.code && a?.domain === b?.domain;
+}
+
+function reduce(
+	settings: Doc<'instanceSettings'>,
+	input: TransitionInput,
+	options: { adminOverride: boolean; hold: ReputationCheckHold | null | undefined }
+): ReducerResult {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
+	const trigger = input.to === 'warned' || input.to === 'suspended' ? input.trigger : undefined;
 
 	if (from === input.to) {
-		// Same-state recorded — observability captures the attempt.
-		return { patch: {}, applied: 'recorded' };
+		// Same-state recorded — observability captures the attempt. A platform
+		// admin who sets the status the check already set takes it over: the
+		// trigger goes, so the check no longer lifts what the admin decided.
+		if (options.adminOverride) {
+			return {
+				patch: {
+					abuseStatusReason: input.reason,
+					abuseStatusChangedBy: input.changedBy,
+					abuseStatusTrigger: undefined,
+				},
+				applied: 'recorded',
+			};
+		}
+		// A status the check set follows the check onto another trigger (the
+		// check hands off only once the stored one has cleared). One without a
+		// trigger (a platform admin's) never gains one.
+		const isRetriggered =
+			settings.abuseStatusTrigger !== undefined &&
+			trigger !== undefined &&
+			!sameTrigger(settings.abuseStatusTrigger, trigger);
+		return {
+			patch: isRetriggered ? { abuseStatusTrigger: trigger, abuseStatusReason: input.reason } : {},
+			applied: 'recorded',
+		};
 	}
 
 	return {
@@ -109,9 +165,33 @@ function reduce(settings: Doc<'instanceSettings'>, input: TransitionInput): Redu
 			abuseStatusReason: input.reason,
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
+			abuseStatusTrigger: trigger,
+			// Every lift replaces the hold (`null` clears it); otherwise it ends at
+			// its deadline. A warning or a suspension on another metric leaves it,
+			// or the held evidence would suspend again once that one clears.
+			...(options.hold !== undefined ? { reputationCheckHold: options.hold ?? undefined } : {}),
 		},
 		applied: 'transitioned',
 	};
+}
+
+/**
+ * The hold a platform admin's lift puts on the reputation check: every
+ * trigger over the suspension line right now stays paused for
+ * `MANUAL_LIFT_HOLD_MS`, so the next hourly run does not suspend again on the
+ * evidence the admin just reviewed. Evidence that crosses the line on another
+ * trigger still suspends, and so does this evidence if it is still over the
+ * line when the hold ends. A lift with nothing over the line returns `null`,
+ * which ends an earlier lift's hold.
+ */
+async function liftHold(
+	ctx: MutationCtx,
+	from: AbuseStatus,
+	input: TransitionInput
+): Promise<ReputationCheckHold | null | undefined> {
+	if (isSendingAllowed(from) || !isSendingAllowed(input.to)) return undefined;
+	const triggers = suspendingTriggers(await readEnforcementEvidence(ctx.db, input.at));
+	return triggers.length > 0 ? { until: input.at + MANUAL_LIFT_HOLD_MS, triggers } : null;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
@@ -138,10 +218,17 @@ async function dispatch(
 		}
 	}
 
-	const result = reduce(settings, input);
+	const hold = options.adminOverride ? await liftHold(ctx, from, input) : undefined;
+	const result = reduce(settings, input, { adminOverride: options.adminOverride, hold });
 
 	if (Object.keys(result.patch).length > 0) {
 		await ctx.db.patch(settings._id, result.patch as Partial<Doc<'instanceSettings'>>);
+	}
+	if (result.applied === 'transitioned' && isSendingAllowed(from) !== isSendingAllowed(input.to)) {
+		await scheduleMarketingNotice(ctx, {
+			kind: isSendingAllowed(input.to) ? 'sending_resumed' : 'sending_suspended',
+			changedAt: input.at,
+		});
 	}
 
 	// Audit log fires on every transition (including `recorded` no-ops) —
@@ -159,6 +246,9 @@ async function dispatch(
 			applied: result.applied,
 			adminOverride: options.adminOverride ? 'true' : 'false',
 			...(options.eventId ? { eventId: options.eventId } : {}),
+			...(input.trigger ? { trigger: input.trigger.code } : {}),
+			...(input.trigger?.domain ? { triggerDomain: input.trigger.domain } : {}),
+			...(hold ? { holdUntil: hold.until } : {}),
 		},
 	});
 
@@ -167,6 +257,7 @@ async function dispatch(
 		applied: result.applied,
 		from,
 		to: input.to,
+		...(hold ? { hold } : {}),
 	};
 }
 

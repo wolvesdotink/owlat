@@ -102,6 +102,43 @@ describe('UI message catalogs', () => {
 		expect(stale).toEqual([]);
 	});
 
+	/**
+	 * One German word per destination, in the navigation, the breadcrumb and the
+	 * page. Suppressions are „Unterdrückungen“, because „Sperrlisten“ already
+	 * names the DNS blocklists on the delivery pages. Automations are
+	 * „Automationen“, the word the builder and the list use throughout.
+	 */
+	it('names each destination with one German word', () => {
+		const names = (keys: string[]) => new Set(keys.map((key) => catalogs.de.get(key)));
+		expect(
+			names([
+				'shared.dashboardNavigation.items.audience.suppressions',
+				'shared.breadcrumbRoutes.pages.suppressions',
+				'dashboard.audience.suppressions.title',
+			])
+		).toEqual(new Set(['Unterdrückungen']));
+		expect(
+			names([
+				'shared.dashboardNavigation.items.send.automations',
+				'components.shell.marketing.automations',
+				'shared.breadcrumbRoutes.pages.automations',
+				'dashboard.automations.index.title',
+				'dashboard.marketing.deleted.tabs.automations',
+				'sharedPkg.featureFlags.flags.automations.label',
+				'home.capabilities.automations',
+			])
+		).toEqual(new Set(['Automationen']));
+
+		const strays = [...catalogs.de]
+			.filter(
+				([key, message]) =>
+					/Automatisierung/.test(message) ||
+					(/suppression/i.test(catalogs.en.get(key) ?? '') && /Sperrliste/.test(message))
+			)
+			.map(([key]) => key);
+		expect(strays).toEqual([]);
+	});
+
 	// The catalogs are compiled by @nuxtjs/i18n at build time, so a message the
 	// compiler chokes on is a failed deploy — and one it accepts but that leaks a
 	// `{placeholder}` is a visible defect on a page a stranger reads.

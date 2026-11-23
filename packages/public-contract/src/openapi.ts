@@ -288,7 +288,9 @@ export function buildOpenApiDocument(
 				},
 			},
 		],
-		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Health'].map((name) => ({ name })),
+		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Status', 'Health'].map((name) => ({
+			name,
+		})),
 		paths,
 		components: {
 			securitySchemes: {

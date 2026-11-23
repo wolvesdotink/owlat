@@ -81,6 +81,8 @@ async function mountAdminsTab() {
 	await flushPromises();
 	const tab = wrapper.findAll('[role="tab"]').find((t) => t.text().startsWith('Admins'))!;
 	await tab.trigger('click');
+	// Tabs past the Overview load on their first click.
+	await vi.dynamicImportSettled();
 	await flushPromises();
 	return wrapper;
 }

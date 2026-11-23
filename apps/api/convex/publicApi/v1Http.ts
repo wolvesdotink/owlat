@@ -26,6 +26,7 @@ import { sendEvent } from './events';
 import { sendTransactional } from '../transactional/api';
 import { getTransactionalSend } from '../transactional/sendStatusHttp';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { getStatus } from './statusHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)
@@ -74,6 +75,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 
 	http.route({
 		pathPrefix: '/api/v1/transactional/',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	// Status API
+	http.route({
+		path: '/api/v1/status',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -145,6 +153,15 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		pathPrefix: '/api/v1/transactional/',
 		method: 'GET',
 		handler: getTransactionalSend,
+	});
+
+	// ============ STATUS API ENDPOINTS ============
+
+	// GET /api/v1/status - Whether the instance can send, and why not
+	http.route({
+		path: '/api/v1/status',
+		method: 'GET',
+		handler: getStatus,
 	});
 
 	// ============ TOPICS API ENDPOINTS ============

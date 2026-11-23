@@ -32,6 +32,17 @@ export type {
 	// Events
 	SendEventParams,
 	SendEventResponse,
+	// Status
+	DeliveryFix,
+	DeliveryFixAudience,
+	DeliveryRates,
+	DeliveryStatus,
+	DeliveryStatusLevel,
+	DeliveryStatusReason,
+	RateAgainstLimit,
+	SendingDomain,
+	SendingDomainStatusValue,
+	SendingHold,
 	// Topics
 	DoiStatus,
 	AddToTopicParams,

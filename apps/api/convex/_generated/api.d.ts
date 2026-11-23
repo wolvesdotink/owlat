@@ -1,6 +1,9 @@
 import type * as agent_replyEnvelope from '../agent/replyEnvelope.js';
 import type * as agent_steps_classify_intents from '../agent/steps/classify/intents.js';
 import type * as analytics_meteredSpend from '../analytics/meteredSpend.js';
+import type * as analytics_reputationCheck from '../analytics/reputationCheck.js';
+import type * as analytics_reputationEvidence from '../analytics/reputationEvidence.js';
+import type * as analytics_reputationResume from '../analytics/reputationResume.js';
 import type * as chat_attachmentAccess from '../chat/attachmentAccess.js';
 import type * as contacts_growthCounters from '../contacts/growthCounters.js';
 import type * as delivery_sendLifecycle_sourceFinalization from '../delivery/sendLifecycle/sourceFinalization.js';
@@ -33,6 +36,7 @@ import type * as lib_llm_taskLimits from '../lib/llm/taskLimits.js';
 import type * as lib_llm_truncation from '../lib/llm/truncation.js';
 import type * as lib_rowCounters from '../lib/rowCounters.js';
 import type * as lib_semanticFileText from '../lib/semanticFileText.js';
+import type * as lib_validators_abuseStatus from '../lib/validators/abuseStatus.js';
 import type * as mail_ai_gapQuestions from '../mail/ai/gapQuestions.js';
 import type * as mail_ai_nudgeDraft from '../mail/ai/nudgeDraft.js';
 import type * as mail_draftOfferUsage from '../mail/draftOfferUsage.js';
@@ -638,6 +642,7 @@ import type * as delivery_governedDispatch from '../delivery/governedDispatch.js
 import type * as delivery_governedEnqueue from '../delivery/governedEnqueue.js';
 import type * as delivery_health from '../delivery/health.js';
 import type * as delivery_healthCopy from '../delivery/healthCopy.js';
+import type * as delivery_healthReport from '../delivery/healthReport.js';
 import type * as delivery_ipReadinessAlerts from '../delivery/ipReadinessAlerts.js';
 import type * as delivery_ipv6Setup from '../delivery/ipv6Setup.js';
 import type * as delivery_ipv6SetupCheck from '../delivery/ipv6SetupCheck.js';
@@ -758,6 +763,7 @@ import type * as delivery_sendLifecycle_outcomeAccounting from '../delivery/send
 import type * as delivery_sendLifecycle_reducers from '../delivery/sendLifecycle/reducers.js';
 import type * as delivery_sendLifecycle_types from '../delivery/sendLifecycle/types.js';
 import type * as delivery_sendRetryPlan from '../delivery/sendRetryPlan.js';
+import type * as delivery_sendFailures from '../delivery/sendFailures.js';
 import type * as delivery_sends from '../delivery/sends.js';
 import type * as delivery_snds from '../delivery/snds.js';
 import type * as delivery_sndsConfig from '../delivery/sndsConfig.js';
@@ -1525,6 +1531,7 @@ import type * as mail_forwarding from '../mail/forwarding.js';
 import type * as mail_handlingRules from '../mail/handlingRules.js';
 import type * as mail_handlingRules_engine from '../mail/handlingRules/engine.js';
 import type * as mail_handlingRulesCompile from '../mail/handlingRulesCompile.js';
+import type * as mail_hostedDeliveryRules from '../mail/hostedDeliveryRules.js';
 import type * as mail_identities from '../mail/identities.js';
 import type * as mail_imageAllowlist from '../mail/imageAllowlist.js';
 import type * as mail_imap_append from '../mail/imap/append.js';
@@ -1798,6 +1805,8 @@ import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_status from '../publicApi/status.js';
+import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -2243,6 +2252,9 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
+	'analytics/reputationCheck': typeof analytics_reputationCheck;
+	'analytics/reputationEvidence': typeof analytics_reputationEvidence;
+	'analytics/reputationResume': typeof analytics_reputationResume;
 	'analytics/visualizationAgentActions': typeof analytics_visualizationAgentActions;
 	'analytics/visualizationAgent': typeof analytics_visualizationAgent;
 	'analytics/admissionPorts': typeof analytics_admissionPorts;
@@ -2635,6 +2647,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/governedEnqueue': typeof delivery_governedEnqueue;
 	'delivery/health': typeof delivery_health;
 	'delivery/healthCopy': typeof delivery_healthCopy;
+	'delivery/healthReport': typeof delivery_healthReport;
 	'delivery/ipReadinessAlerts': typeof delivery_ipReadinessAlerts;
 	'delivery/ipv6Setup': typeof delivery_ipv6Setup;
 	'delivery/ipv6SetupCheck': typeof delivery_ipv6SetupCheck;
@@ -2754,6 +2767,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/sendLifecycle/reducers': typeof delivery_sendLifecycle_reducers;
 	'delivery/sendLifecycle/types': typeof delivery_sendLifecycle_types;
 	'delivery/sendRetryPlan': typeof delivery_sendRetryPlan;
+	'delivery/sendFailures': typeof delivery_sendFailures;
 	'delivery/sends': typeof delivery_sends;
 	'delivery/snds': typeof delivery_snds;
 	'delivery/sndsConfig': typeof delivery_sndsConfig;
@@ -3353,6 +3367,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/textPreview': typeof lib_textPreview;
 	'lib/typeAssert': typeof lib_typeAssert;
 	'lib/userProfiles': typeof lib_userProfiles;
+	'lib/validators/abuseStatus': typeof lib_validators_abuseStatus;
 	'lib/validators/aiProviderConfig': typeof lib_validators_aiProviderConfig;
 	'lib/validators/aiRouting': typeof lib_validators_aiRouting;
 	'lib/validators/answerAsk': typeof lib_validators_answerAsk;
@@ -3665,6 +3680,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/handlingRules': typeof mail_handlingRules;
 	'mail/handlingRules/engine': typeof mail_handlingRules_engine;
 	'mail/handlingRulesCompile': typeof mail_handlingRulesCompile;
+	'mail/hostedDeliveryRules': typeof mail_hostedDeliveryRules;
 	'mail/identities': typeof mail_identities;
 	'mail/imageAllowlist': typeof mail_imageAllowlist;
 	'mail/imap/append': typeof mail_imap_append;
@@ -4040,6 +4056,8 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
 	'publicApi/events': typeof publicApi_events;
+	'publicApi/status': typeof publicApi_status;
+	'publicApi/statusHttp': typeof publicApi_statusHttp;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;
