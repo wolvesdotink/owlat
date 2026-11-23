@@ -170,6 +170,26 @@ describe('parseToolCall', () => {
 		expect(
 			parseToolCall({ name: 'read_thread', arguments: { message_id: 'm1', max_messages: 3 } })
 		).toEqual({ ok: true, call: { tool: 'read_thread', messageId: 'm1', maxMessages: 3 } });
+		expect(
+			parseToolCall({
+				name: 'read_thread',
+				arguments: { message_id: 'm1', before_message_id: 'm0' },
+			})
+		).toEqual({
+			ok: true,
+			call: { tool: 'read_thread', messageId: 'm1', maxMessages: 10, beforeMessageId: 'm0' },
+		});
+	});
+
+	it('refuses a before_message_id that is not an id', () => {
+		for (const before of ['', 7, {}]) {
+			expect(
+				parseToolCall({
+					name: 'read_thread',
+					arguments: { message_id: 'm1', before_message_id: before },
+				})
+			).toMatchObject({ ok: false, tool: 'read_thread' });
+		}
 	});
 
 	it('names the tool on a bad argument, and not on an unknown tool', () => {
