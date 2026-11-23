@@ -382,6 +382,7 @@ describe('the route and deferred-feature budgets', () => {
 			/route pages\/emails\/\[id\]\/edit\.vue: [\d.]+ KB gzip, over its 4 KB budget/
 		);
 		expect(failing.output).not.toContain('pages/index.vue: ');
+		expect(failing.output).toContain('`bun run ci:bundle` builds the web app and checks it again');
 
 		expect(run(output, '--budgets', budgets(64)).status).toBe(0);
 	});
