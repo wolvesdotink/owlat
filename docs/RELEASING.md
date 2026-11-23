@@ -68,6 +68,13 @@ curl -fsSL https://get.owlat.app | OWLAT_REF=vX.Y.Z-rc.N bash   # fresh install
 owlat upgrade --version X.Y.Z-rc.N                           # an existing test install
 ```
 
+When `get.owlat.app` does not answer, take the installer from the candidate's
+tag instead:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/vX.Y.Z-rc.N/install.sh | OWLAT_REF=vX.Y.Z-rc.N bash
+```
+
 Desktop apps get it from the candidate's release assets, or through managed
 desktop updates on the `prerelease` channel. The candidate's artifacts carry
 `X.Y.Z-rc.N`; the Windows installer's MSI version is `X.Y.Z.N`, because

@@ -10,6 +10,7 @@ import {
 	ForbiddenError,
 	InvalidStateError,
 	LimitReachedError,
+	UnexpectedResponseError,
 } from '../src/errors';
 
 const BASE_URL = 'https://api.test.owlat.app';
@@ -152,22 +153,6 @@ describe('createHttpClient', () => {
 			const result = await http.get('/test');
 
 			expect(result.data).toBeUndefined();
-		});
-
-		it('should throw parse_error for unparseable response body', async () => {
-			// A fresh Response per call: a shared one has its body consumed by
-			// the first request, which the client rightly reports as a network
-			// failure rather than a parse error.
-			vi.spyOn(globalThis, 'fetch').mockImplementation(
-				async () => new Response('not json', { status: 200 })
-			);
-			const http = createClient();
-
-			await expect(http.get('/test')).rejects.toThrow(OwlatError);
-			await expect(http.get('/test')).rejects.toMatchObject({
-				code: 'parse_error',
-				statusCode: 200,
-			});
 		});
 
 		it('should throw parse_error when a 2xx body is a scalar, not an object', async () => {
@@ -355,14 +340,8 @@ describe('createHttpClient', () => {
 			});
 		});
 
-		it.each([
-			['null', null],
-			['a list', [{ error: { message: 'x', category: 'y' } }]],
-			['an error that is a string', { error: 'boom' }],
-			['an error that is a list', { error: ['boom'] }],
-			['a message and category of the wrong type', { error: { message: 42, category: { c: 1 } } }],
-		])('should use the fallbacks for an error body holding %s', async (_name, body) => {
-			mockFetch(500, body);
+		it('should use the fallbacks for an error envelope whose message and category have the wrong type', async () => {
+			mockFetch(500, { error: { message: 42, category: { c: 1 } } });
 			const http = createClient();
 
 			const error = await http.get('/test').then(
@@ -389,6 +368,142 @@ describe('createHttpClient', () => {
 			expect(error).toBeInstanceOf(RateLimitError);
 			expect(error).toMatchObject({ message: 'Slow down', retryAfter: 30 });
 			expect((error as RateLimitError).data).toBeUndefined();
+		});
+	});
+
+	describe('a response that is not the API error envelope', () => {
+		// What a wrong baseUrl answers with: the Convex router's plain-text 404
+		// for a path it has no action for, a proxy's HTML error page, or the web
+		// app's HTML page served with 200.
+		function mockText(status: number, text: string) {
+			return vi
+				.spyOn(globalThis, 'fetch')
+				.mockImplementation(async () => new Response(text, { status }));
+		}
+
+		async function rejection(promise: Promise<unknown>): Promise<UnexpectedResponseError> {
+			const error = await promise.then(
+				() => expect.fail('should have thrown'),
+				(err: unknown) => err
+			);
+			expect(error).toBeInstanceOf(UnexpectedResponseError);
+			return error as UnexpectedResponseError;
+		}
+
+		const HTML_502 =
+			'<html>\n<head><title>502 Bad Gateway</title></head>\n<body>\n<center><h1>502 Bad Gateway</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>\n';
+
+		it('names the status, the URL and the body of a plain-text 404', async () => {
+			mockText(404, 'No HttpAction routed for /x');
+			const http = createClient();
+
+			const error = await rejection(http.get('/x'));
+			expect(error).not.toBeInstanceOf(NotFoundError);
+			expect(error).toMatchObject({
+				code: 'unexpected_response',
+				statusCode: 404,
+				url: `${BASE_URL}/x`,
+				bodyExcerpt: 'No HttpAction routed for /x',
+			});
+			expect(error.message).toContain(`${BASE_URL}/x`);
+			expect(error.message).toContain('404');
+			expect(error.message).toContain('No HttpAction routed for /x');
+			expect(error.message).toContain('baseUrl');
+		});
+
+		it('names the status, the URL and the start of an HTML 502 page', async () => {
+			mockText(502, HTML_502);
+			const http = createClient();
+
+			const error = await rejection(http.post('/api/v1/transactional', { slug: 'welcome' }));
+			expect(error).toMatchObject({
+				code: 'unexpected_response',
+				statusCode: 502,
+				url: `${BASE_URL}/api/v1/transactional`,
+			});
+			expect(error.bodyExcerpt).toContain('<title>502 Bad Gateway</title>');
+			expect(error.bodyExcerpt).not.toContain('\n');
+			expect(error.message).toContain('502');
+			expect(error.message).toContain(`${BASE_URL}/api/v1/transactional`);
+		});
+
+		it('never carries the API key, even when the body echoes it', async () => {
+			mockText(400, `<pre>Authorization: Bearer ${API_KEY}</pre>`);
+			const http = createClient();
+
+			const error = await rejection(http.get('/x'));
+			expect(JSON.stringify({ ...error, message: error.message })).not.toContain(API_KEY);
+		});
+
+		it('leaves the query string and credentials out of the URL', async () => {
+			mockText(404, 'Not Found');
+			const http = createHttpClient(
+				API_KEY,
+				'https://user:secret@api.test.owlat.app',
+				DEFAULT_TIMEOUT,
+				{
+					maxRetries: 0,
+				}
+			);
+
+			const error = await rejection(http.get('/api/v1/contacts?email=user%40example.com'));
+			expect(error.url).toBe('https://api.test.owlat.app/api/v1/contacts');
+			expect(error.message).not.toContain('secret');
+			expect(error.message).not.toContain('example.com');
+		});
+
+		it('cuts a long body to a short excerpt', async () => {
+			mockText(500, `<html>${'x'.repeat(5000)}</html>`);
+			const http = createClient();
+
+			const error = await rejection(http.get('/x'));
+			expect(error.bodyExcerpt.length).toBeLessThanOrEqual(200);
+		});
+
+		it.each([
+			['null', 'null'],
+			['a list', JSON.stringify([{ error: { message: 'x', category: 'y' } }])],
+			['an error that is a string', JSON.stringify({ error: 'boom' })],
+			['an error that is a list', JSON.stringify({ error: ['boom'] })],
+			['another API’s error shape', JSON.stringify({ message: 'Not Found' })],
+		])('treats a JSON body holding %s as not the envelope', async (_name, text) => {
+			mockText(500, text);
+			const http = createClient();
+
+			const error = await rejection(http.get('/x'));
+			expect(error).toMatchObject({ statusCode: 500, bodyExcerpt: text });
+		});
+
+		it('treats a 2xx body that is not JSON as a wrong host', async () => {
+			mockText(200, '<!DOCTYPE html><html><head><title>Owlat</title></head></html>');
+			const http = createClient();
+
+			const error = await rejection(http.get('/api/v1/contacts'));
+			expect(error).toMatchObject({ code: 'unexpected_response', statusCode: 200 });
+		});
+
+		it('still retries a replay-safe request on such a 5xx', async () => {
+			const spy = mockText(503, HTML_502);
+			const http = createHttpClient(API_KEY, BASE_URL, DEFAULT_TIMEOUT, {
+				maxRetries: 2,
+				initialDelayMs: 0,
+			});
+
+			await rejection(http.get('/x'));
+			expect(spy).toHaveBeenCalledTimes(3);
+		});
+
+		it('keeps a 429 without the envelope a RateLimitError', async () => {
+			vi.spyOn(globalThis, 'fetch').mockImplementation(
+				async () =>
+					new Response('Too Many Requests', { status: 429, headers: { 'Retry-After': '60' } })
+			);
+			const http = createClient();
+
+			await expect(http.get('/x')).rejects.toMatchObject({
+				name: 'RateLimitError',
+				retryAfter: 60,
+			});
 		});
 	});
 

@@ -4,6 +4,8 @@
 #
 # Usage (fresh VPS):
 #   curl -fsSL https://get.owlat.app | bash
+# The same file from GitHub, when get.owlat.app does not answer:
+#   curl -fsSL https://raw.githubusercontent.com/wolvesdotink/owlat/main/install.sh | bash
 #
 # Non-interactive (CI / Ansible): the variable goes on `bash`, which runs the
 # installer, not on `curl`:

@@ -232,7 +232,15 @@ export function buildOpenApiDocument(
 		servers: [
 			{
 				url: '{baseUrl}',
-				variables: { baseUrl: { default: 'https://api.owlat.app' } },
+				// Every install serves its own API; a real host as the default
+				// would send a caller's key to someone else's server.
+				variables: {
+					baseUrl: {
+						default: 'https://rest.api.example.com',
+						description:
+							"Your instance's API URL: 'Your API base URL' under Settings → API → API quickstart, set by the operator as NUXT_PUBLIC_CONVEX_SITE_URL.",
+					},
+				},
 			},
 		],
 		tags: ['Contacts', 'Events', 'Transactional', 'Topics', 'Health'].map((name) => ({ name })),

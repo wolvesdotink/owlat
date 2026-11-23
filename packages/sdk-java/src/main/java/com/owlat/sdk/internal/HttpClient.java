@@ -38,6 +38,9 @@ public class HttpClient {
     private static final Set<HttpMethod> IDEMPOTENT_METHODS =
             Set.of(HttpMethod.GET, HttpMethod.PUT, HttpMethod.DELETE);
 
+    /** Longest stretch of a foreign response body an exception carries. */
+    private static final int BODY_EXCERPT_LENGTH = 200;
+
     private final String apiKey;
     private final String baseUrl;
     private final Duration defaultTimeout;
@@ -187,7 +190,7 @@ public class HttpClient {
                         sleep(delayMs);
                         continue;
                     }
-                    handleError(response, rateLimit);
+                    handleError(response, rateLimit, url);
                 }
 
                 // Empty success response (e.g., 204 No Content). Only reached
@@ -197,7 +200,14 @@ public class HttpClient {
                     return null;
                 }
 
-                return mapper.readValue(response.body(), typeRef);
+                try {
+                    return mapper.readValue(response.body(), typeRef);
+                } catch (com.fasterxml.jackson.core.JsonParseException e) {
+                    // The API answers every 2xx with JSON; an HTML page here is
+                    // most often the web app's address given as the base URL.
+                    throw new UnexpectedResponseException(response.statusCode(), displayUrl(url),
+                            bodyExcerpt(response.body()), rateLimit);
+                }
             } catch (OwlatException e) {
                 throw e;
             } catch (java.net.http.HttpTimeoutException e) {
@@ -282,14 +292,55 @@ public class HttpClient {
                 .orElse(defaultValue);
     }
 
-    private void handleError(HttpResponse<String> response, RateLimitInfo rateLimit) {
+    /**
+     * The start of a response body, on one line, for an exception message. A
+     * server that echoes the request could put the API key in its body, so the
+     * key is cut out before anything is kept.
+     */
+    private String bodyExcerpt(String rawBody) {
+        String text = rawBody.replaceAll("\\s+", " ").trim();
+        if (apiKey != null && !apiKey.isEmpty()) {
+            text = text.replace(apiKey, "[redacted]");
+        }
+        return text.length() > BODY_EXCERPT_LENGTH ? text.substring(0, BODY_EXCERPT_LENGTH - 1) + "…" : text;
+    }
+
+    /**
+     * The called URL as an exception may show it: without credentials in the
+     * authority, and without the query string, which can hold a contact's email.
+     */
+    private static String displayUrl(String url) {
+        String withoutQuery = url.split("[?#]", 2)[0];
+        return withoutQuery.replaceFirst("^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@", "$1");
+    }
+
+    private void handleError(HttpResponse<String> response, RateLimitInfo rateLimit, String url) {
         String message = "Unknown error";
         String category = "internal";
         java.util.Map<String, Object> data = null;
+        int statusCode = response.statusCode();
+        String rawBody = response.body();
+
+        // The API wraps every failure of its own in the envelope, so a body that
+        // is there but is not one came from something else: a wrong host or
+        // path, or a proxy. An empty body keeps the status's typed exception, and
+        // a 429 stays a rate limit whoever sent it, since proxies throttle too.
+        JsonNode error = null;
+        if (!rawBody.isEmpty()) {
+            try {
+                JsonNode body = mapper.readTree(rawBody);
+                JsonNode candidate = body != null && body.isObject() ? body.get("error") : null;
+                if (candidate != null && candidate.isObject()) {
+                    error = candidate;
+                }
+            } catch (IOException ignored) {
+            }
+            if (error == null && statusCode != 429) {
+                throw new UnexpectedResponseException(statusCode, displayUrl(url), bodyExcerpt(rawBody), rateLimit);
+            }
+        }
 
         try {
-            JsonNode body = mapper.readTree(response.body());
-            JsonNode error = body.get("error");
             if (error != null) {
                 if (error.has("message")) {
                     message = error.get("message").asText();
@@ -305,10 +356,9 @@ public class HttpClient {
                     data = parsed;
                 }
             }
-        } catch (IOException | IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException ignored) {
         }
 
-        int statusCode = response.statusCode();
         switch (statusCode) {
             case 401:
                 throw new AuthenticationException(message, rateLimit, data);
