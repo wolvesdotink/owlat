@@ -11,6 +11,7 @@ import { triggerKindValidator } from '../automations/triggers/catalog';
 import {
 	automationRunEndReasonValidator,
 	automationStepFailureReasonValidator,
+	automationStepWaitReasonValidator,
 } from '../lib/validators/automations';
 
 /** Every automation table, children before parents: the order the organization wipe deletes them. */
@@ -181,11 +182,22 @@ export const automationTables = {
 		// re-dispatched by the recovery sweep. Absent on rows claimed before
 		// leases existed, which the sweep leaves alone.
 		leaseExpiresAt: v.optional(v.number()),
+		// An email step waiting for the instance's sending setup to be fixed
+		// (automations/configurationWait.ts). `waitingFor` is the reason while the
+		// step run is `pending` on it; `waitingUntil` is when the wait gives up,
+		// set by the first wait and kept by every later one; `waitingCheckedAt` is
+		// set while the step run sits in the re-check queue and cleared when it
+		// is taken out to run. A pending row without them is an ordinary
+		// scheduled or delayed step.
+		waitingFor: v.optional(automationStepWaitReasonValidator),
+		waitingUntil: v.optional(v.number()),
+		waitingCheckedAt: v.optional(v.number()),
 	})
 		.index('by_automation_run', ['automationRunId'])
 		.index('by_status', ['status'])
 		.index('by_status_and_delay_until', ['status', 'delayUntil'])
-		.index('by_status_and_lease_expires_at', ['status', 'leaseExpiresAt']),
+		.index('by_status_and_lease_expires_at', ['status', 'leaseExpiresAt'])
+		.index('by_status_and_waiting_checked_at', ['status', 'waitingCheckedAt']),
 
 	// Write-sharded automation run counters (inc-only: entered/completed/cancelled).
 	// fireTrigger / complete / cancel bump a RANDOM shard instead of the single

@@ -12031,7 +12031,15 @@
 						"statusFilterLabel": "Filter contacts by status",
 						"stepAndTime": "Step {number} · {time}",
 						"title": "Contacts in automation",
-						"viewContact": "View contact"
+						"viewContact": "View contact",
+						"waiting": {
+							"domainNotVerified": "Waiting for the default sender's domain to be verified. The email goes out once it is, or the run gives up on {date}.",
+							"noDefaultSender": "Waiting for a default sender to be set. The email goes out once it is, or the run gives up on {date}.",
+							"noDeliveryProvider": "Waiting for sending to be set up. The email goes out once it is, or the run gives up on {date}.",
+							"sendingNotAllowed": "Waiting for sending to be resumed on this instance. The email goes out once it is, or the run gives up on {date}.",
+							"unknown": "Waiting for sending to work again. The email goes out once it does, or the run gives up on {date}."
+						},
+						"waitingBadge": "Waiting"
 					},
 					"stats": {
 						"completed": "Completed",

@@ -28,6 +28,8 @@ interface ExecuteStepResult {
 	nextStepScheduled?: boolean;
 	delayMs?: number;
 	retrying?: boolean;
+	/** The step waits for the sending setup to be fixed (`configurationWait.ts`). */
+	waiting?: boolean;
 	cancelled?: boolean;
 }
 
@@ -126,6 +128,9 @@ export const executeStep = internalAction({
 			);
 			if (retry.kind === 'retrying') {
 				return { success: false, error: outcome.error, retrying: true };
+			}
+			if (retry.kind === 'waiting') {
+				return { success: false, error: outcome.error, waiting: true };
 			}
 			return { success: false, error: outcome.error, cancelled: retry.kind === 'failed' };
 		}

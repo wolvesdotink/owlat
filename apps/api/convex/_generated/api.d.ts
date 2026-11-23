@@ -373,6 +373,7 @@ import type * as auth_verificationEmail from '../auth/verificationEmail.js';
 import type * as automations__helpers from '../automations/_helpers.js';
 import type * as automations_analytics from '../automations/analytics.js';
 import type * as automations_automations from '../automations/automations.js';
+import type * as automations_configurationWait from '../automations/configurationWait.js';
 import type * as automations_cronRegistration from '../automations/cronRegistration.js';
 import type * as automations_guards from '../automations/guards.js';
 import type * as automations_health from '../automations/health.js';
@@ -2352,6 +2353,7 @@ declare const fullApi: ApiFromModules<{
 	'automations/_helpers': typeof automations__helpers;
 	'automations/analytics': typeof automations_analytics;
 	'automations/automations': typeof automations_automations;
+	'automations/configurationWait': typeof automations_configurationWait;
 	'automations/cronRegistration': typeof automations_cronRegistration;
 	'automations/guards': typeof automations_guards;
 	'automations/health': typeof automations_health;

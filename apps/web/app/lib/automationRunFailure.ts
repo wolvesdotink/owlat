@@ -1,5 +1,6 @@
 /**
- * Why a failed automation run failed, and where that is fixed.
+ * Why a failed automation run failed, or what a waiting one waits for, and
+ * where that is fixed.
  *
  * The backend codes every step failure from a closed set
  * (`automationStepFailureReasonValidator`). Its three send-gate codes are the
@@ -65,10 +66,27 @@ const MESSAGE_KEYS: Readonly<Record<AutomationStepFailureReason, string>> = {
 	unknown: 'dashboard.automations.detail.index.runs.failure.unknown',
 };
 
-/** A run's failure as `getAutomationRuns` returns it. */
+/**
+ * An email step that hits one of these waits for the fix instead of failing
+ * (`automations/configurationWait.ts`); each sentence takes the give-up `{date}`.
+ */
+const WAITING_MESSAGE_KEYS: Readonly<Partial<Record<AutomationStepFailureReason, string>>> = {
+	no_delivery_provider: 'dashboard.automations.detail.index.runs.waiting.noDeliveryProvider',
+	domain_not_verified: 'dashboard.automations.detail.index.runs.waiting.domainNotVerified',
+	sending_not_allowed: 'dashboard.automations.detail.index.runs.waiting.sendingNotAllowed',
+	no_default_sender: 'dashboard.automations.detail.index.runs.waiting.noDefaultSender',
+	// A wait reason this build does not know (the backend is newer).
+	unknown: 'dashboard.automations.detail.index.runs.waiting.unknown',
+};
+
+/**
+ * A run's failure as `getAutomationRuns` returns it, or its wait (which also
+ * carries `until`, when the wait gives up).
+ */
 export interface AutomationRunFailure {
 	reason: string;
 	detail: string | null;
+	until?: number;
 }
 
 export interface RunFailureNote {
@@ -92,8 +110,12 @@ export function runFailureNote(
 ): RunFailureNote {
 	const reason = isKnownReason(failure.reason) ? failure.reason : 'unknown';
 	const fix = FAILURE_FIX_LINKS[reason];
+	const waitingKey =
+		failure.until === undefined
+			? undefined
+			: (WAITING_MESSAGE_KEYS[reason] ?? WAITING_MESSAGE_KEYS.unknown);
 	return {
-		messageKey: MESSAGE_KEYS[reason],
+		messageKey: waitingKey ?? MESSAGE_KEYS[reason],
 		fix:
 			fix === IN_AUTOMATION
 				? {
@@ -114,5 +136,5 @@ export function allRunFailureMessageKeys(): string[] {
 				? [fix.labelKey, ...(fix.askKey ? [fix.askKey] : [])]
 				: []
 	);
-	return [...Object.values(MESSAGE_KEYS), ...fixKeys];
+	return [...Object.values(MESSAGE_KEYS), ...Object.values(WAITING_MESSAGE_KEYS), ...fixKeys];
 }
