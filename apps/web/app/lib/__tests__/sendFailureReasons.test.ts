@@ -45,6 +45,7 @@ describe('send failure copy', () => {
 
 	it('falls back to the generic reason for a code it does not know, or none', () => {
 		expect(failureClassOfCode('SOMETHING_NEW')).toBe('unknown');
+		expect(failureClassOfCode('constructor')).toBe('unknown');
 		expect(failureClassOfCode(undefined)).toBe('unknown');
 		expect(failureClassOfCode(null)).toBe('unknown');
 		expect(failureFixLink('unknown')).toBeNull();

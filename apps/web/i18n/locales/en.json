@@ -18090,7 +18090,7 @@
 			},
 			"providerText": "Provider's message",
 			"reasons": {
-				"addressUnsupported": "The receiving server does not accept addresses with characters outside plain ASCII, such as ü, so this address cannot be reached through it.",
+				"addressUnsupported": "The mail server used for this send cannot handle addresses with characters outside plain ASCII, such as ü, in the sender or the recipient.",
 				"blocklisted": "Skipped because the address is on the blocklist. Owlat does this on its own, so there is nothing to do.",
 				"contactDeleted": "Skipped because the contact was deleted before the message went out.",
 				"content": "The provider refused the content of the message, for example as spam. Change the content before you send it again.",
@@ -18101,7 +18101,7 @@
 				"mailServerUnreachable": "The mail server could not be reached before the delivery deadline, although Owlat kept retrying.",
 				"noFeedback": "The provider accepted the message, but its delivery reports cannot reach Owlat because the webhook key is not set. Whether it arrived is unknown.",
 				"providerRefused": "The delivery provider reported that it could not send the message. Its reason is in the provider's message.",
-				"providerUnavailable": "The delivery provider kept answering with an error. Owlat retried on its own before it gave up.",
+				"providerUnavailable": "The delivery provider answered with a temporary error, for example because it was overloaded, and did not take the message.",
 				"recipientRefused": "The provider refused to send to this address. Its reason is in the provider's message.",
 				"sender": "The provider refused the sender address or its domain. The domain has to be verified before it can send.",
 				"sendingSuspended": "Sending was suspended for this workspace until the delivery deadline passed.",

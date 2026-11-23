@@ -85,8 +85,8 @@ const MANDRILL_REJECT_PREFIX = 'MANDRILL_REJECT';
 /** The class of a failed send's code; `unknown` for a code this build does not know. */
 export function failureClassOfCode(code: string | null | undefined): SendFailureClass {
 	if (!code) return 'unknown';
-	const known = SEND_FAILURE_CODE_CLASSES[code];
-	if (known) return known;
+	// Own keys only: a provider code such as `constructor` is not a class.
+	if (Object.hasOwn(SEND_FAILURE_CODE_CLASSES, code)) return SEND_FAILURE_CODE_CLASSES[code]!;
 	if (code.startsWith(MANDRILL_REJECT_PREFIX)) return 'providerRefused';
 	return 'unknown';
 }
