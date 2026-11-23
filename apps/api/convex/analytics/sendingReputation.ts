@@ -394,17 +394,8 @@ export const autoEnforceReputation = internalMutation({
 		reason: v.optional(v.string()),
 		/** The metric the call was made on; absent on a job a previous release scheduled. */
 		trigger: v.optional(reputationTriggerValidator),
-		/** When the hourly check made the call; absent on a job a previous release scheduled. */
-		decidedAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		// A status change after the call (a platform admin's lift, typically)
-		// makes it stale: applying it would skip the hold the lift just set. The
-		// next hourly run decides again.
-		if (args.decidedAt !== undefined) {
-			const settings = await ctx.db.query('instanceSettings').first();
-			if ((settings?.abuseStatusChangedAt ?? 0) > args.decidedAt) return;
-		}
 		const target = args.riskLevel === 'critical' ? 'suspended' : 'warned';
 		const reason =
 			args.reason ??

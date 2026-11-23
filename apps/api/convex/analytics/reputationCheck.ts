@@ -65,11 +65,14 @@ export const evaluateAutoEnforce = internalMutation({
 		// clear line.
 		const keepsTrigger =
 			settings?.abuseStatus === 'suspended' && condition !== null && !condition.isClear;
+		// Applied in this mutation, not queued: the decision was made on the hold
+		// read above, and a platform admin's lift committed in between would
+		// otherwise be undone by it.
 		if (decision) {
-			await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.autoEnforceReputation, {
-				...(keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision),
-				decidedAt: now,
-			});
+			await ctx.runMutation(
+				internal.analytics.sendingReputation.autoEnforceReputation,
+				keepsTrigger ? { riskLevel: decision.riskLevel, reason: decision.reason } : decision
+			);
 		}
 		return { riskLevel: org.riskLevel };
 	},

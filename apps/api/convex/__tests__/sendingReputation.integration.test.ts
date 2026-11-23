@@ -491,6 +491,18 @@ async function pendingEnforceJobs(t: Tester): Promise<Array<{ riskLevel?: string
 	});
 }
 
+/** The status the hourly check left, with the trigger it stored. */
+async function abuseState(t: Tester) {
+	return await t.run(async (ctx) => {
+		const settings = await ctx.db.query('instanceSettings').first();
+		return {
+			status: settings?.abuseStatus,
+			trigger: settings?.abuseStatusTrigger,
+			reason: settings?.abuseStatusReason,
+		};
+	});
+}
+
 describe('recordEvent — off the enforce hot path', () => {
 	it('does NOT schedule autoEnforceReputation even at a critical org window', async () => {
 		const t = await harness();
@@ -512,11 +524,8 @@ describe('recordEvent — off the enforce hot path', () => {
 // ────────────────────────────────────────────────────────────────────
 // evaluateAutoEnforce — the enforce DECISION, moved to the cron path
 //
-// evaluateAutoEnforce schedules `autoEnforceReputation` via runAfter(0).
-// convex-test @0.0.50 doesn't reliably run runAfter(0) jobs (the same chaining
-// quirk the organization-deletion walker test documents), so we assert
-// deterministically on the pending `_scheduled_functions` entry it enqueued —
-// and cover the executor's effect separately below.
+// evaluateAutoEnforce applies its decision in the same mutation that read the
+// evidence and the hold, so the tests read the status it left.
 // ────────────────────────────────────────────────────────────────────
 
 async function evaluate(t: Tester): Promise<{ riskLevel: string }> {
@@ -524,8 +533,9 @@ async function evaluate(t: Tester): Promise<{ riskLevel: string }> {
 }
 
 describe('evaluateAutoEnforce — enforce decision', () => {
-	it('crossing critical enqueues an enforce with riskLevel critical', async () => {
+	it('crossing critical suspends', async () => {
 		const t = await harness();
+		await seedSettings(t);
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -536,13 +546,16 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 		const result = await evaluate(t);
 		expect(result.riskLevel).toBe('critical');
 
-		const jobs = await pendingEnforceJobs(t);
-		expect(jobs).toHaveLength(1);
-		expect(jobs[0]?.riskLevel).toBe('critical');
+		expect(await abuseState(t)).toMatchObject({
+			status: 'suspended',
+			trigger: { code: 'bounce_rate' },
+		});
+		expect(await pendingEnforceJobs(t)).toHaveLength(0);
 	});
 
-	it('high risk enqueues an enforce with riskLevel high', async () => {
+	it('high risk warns', async () => {
 		const t = await harness();
+		await seedSettings(t);
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -553,13 +566,12 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 		const result = await evaluate(t);
 		expect(result.riskLevel).toBe('high');
 
-		const jobs = await pendingEnforceJobs(t);
-		expect(jobs).toHaveLength(1);
-		expect(jobs[0]?.riskLevel).toBe('high');
+		expect((await abuseState(t)).status).toBe('warned');
 	});
 
-	it('low risk enqueues no enforce', async () => {
+	it('low risk changes nothing', async () => {
 		const t = await harness();
+		await seedSettings(t);
 		await seedBucket(t, {
 			scope: 'org',
 			periodStart: dayStart(Date.now()),
@@ -570,11 +582,12 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 		const result = await evaluate(t);
 		expect(result.riskLevel).toBe('low');
 
-		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect((await abuseState(t)).status).toBeUndefined();
 	});
 
-	it('decides off the ORG window only — a critical domain does not enqueue', async () => {
+	it('decides off the ORG window only — a critical domain does not enforce', async () => {
 		const t = await harness();
+		await seedSettings(t);
 		// Healthy org window; a noisy domain bucket must not lift it.
 		await seedBucket(t, {
 			scope: 'org',
@@ -593,7 +606,7 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 		const result = await evaluate(t);
 		expect(result.riskLevel).toBe('low');
 
-		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect((await abuseState(t)).status).toBeUndefined();
 	});
 });
 
@@ -622,28 +635,13 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 		});
 	}
 
-	/** Run the enqueued executor with the args the decision gave it. */
-	async function applyEnforce(t: Tester): Promise<{ status?: string; reason?: string }> {
-		const [job] = await pendingEnforceJobs(t);
-		if (job) {
-			await t.mutation(
-				internal.analytics.sendingReputation.autoEnforceReputation,
-				job as { riskLevel: 'high' | 'critical'; reason?: string }
-			);
-		}
-		return await t.run(async (ctx) => {
-			const settings = await ctx.db.query('instanceSettings').first();
-			return { status: settings?.abuseStatus, reason: settings?.abuseStatusReason };
-		});
-	}
-
 	it('suspends at the hard line and names Gmail as the source', async () => {
 		const t = await harness();
 		await seedSettings(t);
 		await seedPostmaster(t, { ratio: 0.0042, fetchedAgoMs: 2 * 60 * 60 * 1000 });
 
 		await evaluate(t);
-		const { status, reason } = await applyEnforce(t);
+		const { status, reason } = await abuseState(t);
 
 		expect(status).toBe('suspended');
 		expect(reason).toContain('Gmail reports a spam rate of 0.42%');
@@ -656,7 +654,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 		await seedPostmaster(t, { ratio: 0.0015, fetchedAgoMs: 2 * 60 * 60 * 1000 });
 
 		await evaluate(t);
-		const { status, reason } = await applyEnforce(t);
+		const { status, reason } = await abuseState(t);
 
 		expect(status).toBe('warned');
 		expect(reason).toContain('Gmail reports a spam rate of 0.15%');
@@ -672,7 +670,7 @@ describe('evaluateAutoEnforce — Gmail spam rate from Postmaster', () => {
 
 		await evaluate(t);
 
-		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect((await abuseState(t)).status).toBeUndefined();
 	});
 });
 
@@ -821,11 +819,6 @@ describe('evaluateAutoEnforce — automatic resume', () => {
 		});
 
 		await evaluate(t);
-		const [job] = await pendingEnforceJobs(t);
-		await t.mutation(
-			internal.analytics.sendingReputation.autoEnforceReputation,
-			job as { riskLevel: 'high' | 'critical' }
-		);
 
 		expect((await settingsRow(t))?.abuseStatusTrigger).toEqual({ code: 'bounce_rate' });
 	});
@@ -968,7 +961,7 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 
 		vi.setSystemTime(NOW + HOUR_MS);
 		await evaluate(t);
-		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect((await abuseState(t)).status).toBe('clean');
 		expect(outcome).toMatchObject({
 			ok: true,
 			hold: { until: NOW + 7 * DAY_MS, triggers: [{ code: 'bounce_rate' }] },
@@ -976,9 +969,38 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 
 		vi.setSystemTime(NOW + 7 * DAY_MS + HOUR_MS);
 		await evaluate(t);
-		const jobs = await pendingEnforceJobs(t);
-		expect(jobs).toHaveLength(1);
-		expect(jobs[0]?.riskLevel).toBe('critical');
+		expect(await abuseState(t)).toMatchObject({
+			status: 'suspended',
+			trigger: { code: 'bounce_rate' },
+		});
+	});
+
+	it('a later lift with nothing over the line ends the earlier hold', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = await harness();
+		await seedSettings(t, { abuseStatus: 'suspended', abuseStatusChangedBy: 'system' });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(NOW),
+			totalSent: 1000,
+			totalBounced: 120,
+		});
+		await liftByAdmin(t);
+		await t.mutation(internal.workspaces.abuseStatus.adminOverride, {
+			input: { to: 'suspended', at: NOW + 1, reason: 'again', changedBy: 'admin-1' },
+		});
+		// The bounces are cleaned up before the second lift.
+		await t.run(async (ctx) => {
+			for (const row of await ctx.db.query('sendingReputation').collect()) {
+				await ctx.db.delete(row._id);
+			}
+		});
+		vi.setSystemTime(NOW + 2);
+		await liftByAdmin(t);
+
+		const row = await t.run(async (ctx) => await ctx.db.query('instanceSettings').first());
+		expect(row?.reputationCheckHold).toBeUndefined();
 	});
 
 	it('a warning on another metric during the hold does not end the hold', async () => {
@@ -1006,7 +1028,7 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		vi.setSystemTime(NOW + HOUR_MS);
 		await evaluate(t);
 
-		expect(await pendingEnforceJobs(t)).toHaveLength(0);
+		expect((await abuseState(t)).status).toBe('warned');
 	});
 
 	it('a suspension on another metric during the hold does not end the hold', async () => {
@@ -1035,37 +1057,6 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		expect(row?.reputationCheckHold?.triggers).toEqual([{ code: 'bounce_rate' }]);
 	});
 
-	it('a decision the hourly check queued is dropped when the status changed after it', async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(NOW);
-		const t = await harness();
-		await seedSettings(t, {
-			abuseStatus: 'suspended',
-			abuseStatusChangedBy: 'system',
-			abuseStatusTrigger: { code: 'bounce_rate' },
-		});
-		await seedBucket(t, {
-			scope: 'org',
-			periodStart: dayStart(NOW),
-			totalSent: 1000,
-			totalBounced: 120,
-		});
-		await evaluate(t);
-		const [job] = await pendingEnforceJobs(t);
-
-		vi.setSystemTime(NOW + 1);
-		await liftByAdmin(t);
-		vi.setSystemTime(NOW + 2);
-		await t.mutation(
-			internal.analytics.sendingReputation.autoEnforceReputation,
-			job as { riskLevel: 'high' | 'critical' }
-		);
-
-		expect(
-			(await t.run(async (ctx) => await ctx.db.query('instanceSettings').first()))?.abuseStatus
-		).toBe('clean');
-	});
-
 	it('still suspends during the hold on evidence that was not over the line at the lift', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(NOW);
@@ -1089,8 +1080,9 @@ describe('evaluateAutoEnforce — a manual lift holds', () => {
 		vi.setSystemTime(NOW + HOUR_MS);
 		await evaluate(t);
 
-		const jobs = await pendingEnforceJobs(t);
-		expect(jobs).toHaveLength(1);
-		expect(jobs[0]).toMatchObject({ riskLevel: 'critical', trigger: { code: 'complaint_rate' } });
+		expect(await abuseState(t)).toMatchObject({
+			status: 'suspended',
+			trigger: { code: 'complaint_rate' },
+		});
 	});
 });

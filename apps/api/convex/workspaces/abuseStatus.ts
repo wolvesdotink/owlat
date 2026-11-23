@@ -127,7 +127,7 @@ function sameTrigger(a: ReputationTrigger | undefined, b: ReputationTrigger | un
 function reduce(
 	settings: Doc<'instanceSettings'>,
 	input: TransitionInput,
-	options: { adminOverride: boolean; hold: ReputationCheckHold | undefined }
+	options: { adminOverride: boolean; hold: ReputationCheckHold | null | undefined }
 ): ReducerResult {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 	const trigger = input.to === 'warned' || input.to === 'suspended' ? input.trigger : undefined;
@@ -166,10 +166,10 @@ function reduce(
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
 			abuseStatusTrigger: trigger,
-			// Only the next lift replaces the hold; otherwise it ends at its
-			// deadline. A warning or a suspension on another metric leaves it, or
-			// the held evidence would suspend again once that one clears.
-			...(options.hold !== undefined ? { reputationCheckHold: options.hold } : {}),
+			// Every lift replaces the hold (`null` clears it); otherwise it ends at
+			// its deadline. A warning or a suspension on another metric leaves it,
+			// or the held evidence would suspend again once that one clears.
+			...(options.hold !== undefined ? { reputationCheckHold: options.hold ?? undefined } : {}),
 		},
 		applied: 'transitioned',
 	};
@@ -181,16 +181,17 @@ function reduce(
  * `MANUAL_LIFT_HOLD_MS`, so the next hourly run does not suspend again on the
  * evidence the admin just reviewed. Evidence that crosses the line on another
  * trigger still suspends, and so does this evidence if it is still over the
- * line when the hold ends.
+ * line when the hold ends. A lift with nothing over the line returns `null`,
+ * which ends an earlier lift's hold.
  */
 async function liftHold(
 	ctx: MutationCtx,
 	from: AbuseStatus,
 	input: TransitionInput
-): Promise<ReputationCheckHold | undefined> {
+): Promise<ReputationCheckHold | null | undefined> {
 	if (isSendingAllowed(from) || !isSendingAllowed(input.to)) return undefined;
 	const triggers = suspendingTriggers(await readEnforcementEvidence(ctx.db, input.at));
-	return triggers.length > 0 ? { until: input.at + MANUAL_LIFT_HOLD_MS, triggers } : undefined;
+	return triggers.length > 0 ? { until: input.at + MANUAL_LIFT_HOLD_MS, triggers } : null;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────
