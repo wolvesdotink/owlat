@@ -288,8 +288,8 @@ export function networkUrlsFromHosts(
 
 /**
  * Loopback hostnames a desktop app can never reach on a *remote* server: the
- * app's `localhost` is the user's own machine, not the box we provisioned. Used
- * to keep the wizard from baking — or trying to open — an unreachable URL.
+ * app's `localhost` is the user's own machine, not the box we provisioned. It
+ * keeps the wizard from baking — or trying to open — an unreachable URL.
  */
 export function isLoopbackHost(host: string): boolean {
 	const h = host.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '');

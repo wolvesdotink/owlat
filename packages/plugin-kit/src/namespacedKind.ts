@@ -3,12 +3,11 @@ import { isPluginId, parsePluginId, type PluginId } from './pluginId';
 /**
  * The ONE place the namespaced-kind grammar is written.
  *
- * Every contributed kind is `plugin.<pluginId>.<localId>`. That grammar used to
- * be restated eleven times — a `PluginXLocalId = string` alias, a
- * `PluginXKind` template type and a `pluginXKind()` builder per bucket — while
- * the seven places that actually construct a kind (codegen and the automation
- * trigger seam) bypassed all of them and inlined the template literal. So the
- * grammar existed in eighteen places and no single edit could change it.
+ * Every contributed kind is `plugin.<pluginId>.<localId>`. Don't restate that
+ * grammar per bucket (a `PluginXLocalId = string` alias, a `PluginXKind`
+ * template type, a `pluginXKind()` builder) or inline the template literal
+ * where a kind is constructed (codegen and the automation trigger seam): every
+ * copy is one more place an edit to the grammar has to reach.
  *
  * A namespaced kind is a security boundary, not a display string: the host tells
  * core kinds from plugin kinds by this prefix, and every ownership check compares

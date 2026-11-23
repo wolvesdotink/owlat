@@ -236,10 +236,10 @@ async function stopGroup(child: ChildProcess, graceMs: number): Promise<void> {
  * interpolated into a shell. With an argv array there is no shell to inject
  * into, whatever the value contains.
  *
- * Asynchronous because a pull, a deploy or a recreate takes minutes. This used
- * to be execFileSync, and for as long as one ran the updater could not answer
- * /health, turn a second rollout away with a 409, or even notice a SIGTERM, so
- * Docker's stop timeout killed it partway through a rollout it had promised to
+ * Asynchronous because a pull, a deploy or a recreate takes minutes. With
+ * execFileSync, for as long as one ran the updater could not answer /health,
+ * turn a second rollout away with a 409, or even notice a SIGTERM, so Docker's
+ * stop timeout would kill it partway through a rollout it had promised to
  * finish.
  *
  * The child runs in a process group of its own, so a timeout (or `signal`)

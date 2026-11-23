@@ -7,7 +7,8 @@
 # would be pure noise and fail every build. Instead this ratchets — every
 # JS/TS file a change touches must be oxfmt-clean, so drift only ever shrinks.
 #
-# Run the whole-tree formatter/check via `bun run ox:fmt` / `bun run ox:fmt:check`.
+# `bun run ox:fmt:check` checks the whole tree; `bun run ox:fmt` refuses to
+# format it (scripts/command-pointer.ts).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

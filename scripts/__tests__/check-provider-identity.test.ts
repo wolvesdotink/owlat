@@ -138,7 +138,7 @@ describe('provider-identity ratchet, seeded violations', () => {
 	it('fails on a comparison the formatter split across two lines', () => {
 		// A long condition is printed with the operator at the end of one line and
 		// the literal alone on the next. A per-line grep calls that clean, so the
-		// gate would be one `bun run ox:fmt` away from being bypassable.
+		// gate would be one oxfmt run away from being bypassable.
 		const root = sandbox({
 			files: {
 				'apps/api/convex/delivery/wrapped.ts': [
@@ -186,7 +186,7 @@ describe('provider-identity ratchet, seeded violations', () => {
 			3,
 		],
 	])('fails on %s', (_label, lines, line) => {
-		// `bun run ox:fmt` prints a long membership test as an array one element per
+		// oxfmt prints a long membership test as an array one element per
 		// line, and a long argument on its own line. Membership is the shape the
 		// question takes once `===` is blocked, so a per-line matcher would leave
 		// the gate one cosmetic reformat away from bypassable — for exactly the

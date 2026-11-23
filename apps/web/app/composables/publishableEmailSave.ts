@@ -15,10 +15,10 @@ import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRenderi
  * Every persisted representation — the block JSON, the default HTML, each
  * language's HTML and the text/plain body — is derived from ONE frozen copy of
  * the draft plus the translation overlays of the row the draft was built on, and
- * written in ONE mutation that names that row's revision. Translations used to
- * be rendered from the persisted (previous) content and patched in by a second
- * write, so a failure between the two left new blocks beside stale translated
- * HTML, and edits typed while translations loaded leaked into the payload.
+ * written in ONE mutation that names that row's revision. Translations rendered
+ * from the persisted content and patched in by a second write would leave new
+ * blocks beside stale translated HTML when the second write fails, and would
+ * leak edits typed while translations load into the payload.
  */
 
 /** The editable fields, read from the editor refs when the save starts. */

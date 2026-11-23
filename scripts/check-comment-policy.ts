@@ -12,7 +12,13 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { RULE_ADVICE, isCheckedPath, piecesOfFile, ruleHits } from './comment-policy';
+import {
+	RULE_ADVICE,
+	isCheckedPath,
+	piecesOfFile,
+	ruleHits,
+	wrappedNarrationHits,
+} from './comment-policy';
 
 /** Files that quote the patterns they reject. */
 const EXEMPT_PATHS = new Set([
@@ -45,14 +51,18 @@ export interface CommentFinding {
 	readonly match: string;
 }
 
-/** Rule hits on every comment line and test title of one file. */
+/**
+ * Rule hits on every comment line and test title of one file, plus narration
+ * a comment wraps onto its next line, in line order.
+ */
 export function findingsInFile(path: string, text: string): CommentFinding[] | undefined {
 	const pieces = piecesOfFile(path, text);
 	if (!pieces) return undefined;
 	const findings: CommentFinding[] = [];
 	for (const piece of pieces)
 		for (const hit of ruleHits(piece)) findings.push({ path, line: piece.line, ...hit });
-	return findings;
+	for (const { line, hit } of wrappedNarrationHits(pieces)) findings.push({ path, line, ...hit });
+	return findings.toSorted((a, b) => a.line - b.line);
 }
 
 export interface GateResult {
