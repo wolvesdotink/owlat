@@ -20,7 +20,7 @@
 
 import { calculateRateLimit, DAY, type RateLimitConfig } from '@convex-dev/rate-limiter';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { rateLimiter } from '../lib/rateLimiter';
 import type { DispatchRefusal } from './dispatchDecision';
@@ -50,16 +50,22 @@ export const PER_API_KEY_DAILY_CONFIG: RateLimitConfig = {
 	start: 0,
 };
 
-/** Sends counted against a bucket now, and when its current window began. */
+/**
+ * Sends counted against a bucket now, and when its current window began. A
+ * read only: nothing is charged, so a query may call it.
+ */
 export async function readBucketUsage(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	name: string,
 	key: string,
 	config: RateLimitConfig,
 	now: number
 ): Promise<{ used: number; windowStart: number }> {
 	const stored = await rateLimiter.getValue(ctx, name, { key, config });
-	const current = calculateRateLimit({ value: stored.value, ts: stored.ts }, config, now);
+	// A clock read before a charge that landed later would project the bucket
+	// backwards (a negative number of windows): read it no earlier than its own time.
+	const at = Math.max(now, stored.ts);
+	const current = calculateRateLimit({ value: stored.value, ts: stored.ts }, config, at);
 	return { used: USAGE_CEILING - current.value, windowStart: current.ts };
 }
 

@@ -6,6 +6,7 @@ import { EventsResource } from './resources/events';
 import { TopicsResource } from './resources/topics';
 import { StatusResource } from './resources/status';
 import { DomainsResource } from './resources/domains';
+import { LimitsResource } from './resources/limits';
 
 /**
  * The hosted Owlat address. No self-hosted instance answers here, so a client
@@ -39,6 +40,7 @@ const DEFAULT_BASE_URL_WARNING = `[@owlat/sdk-js] No baseUrl given, so requests 
  * await owlat.topics.addContact({ topicId: 'topic_123', email: 'user@example.com' });
  * const { level, reasonCode } = await owlat.status.get();
  * const domains = await owlat.domains.list();
+ * const { dailySends } = await owlat.limits.get();
  * ```
  */
 export class Owlat {
@@ -71,6 +73,11 @@ export class Owlat {
 	 * Read the sending domains and the DNS records each needs.
 	 */
 	readonly domains: DomainsResource;
+
+	/**
+	 * Read the send limits that apply to this key, and what is left of them.
+	 */
+	readonly limits: LimitsResource;
 
 	/**
 	 * Create a client from an API key alone, which talks to the hosted address
@@ -108,5 +115,6 @@ export class Owlat {
 		this.topics = new TopicsResource(http);
 		this.status = new StatusResource(http);
 		this.domains = new DomainsResource(http);
+		this.limits = new LimitsResource(http);
 	}
 }

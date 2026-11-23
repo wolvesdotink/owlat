@@ -25,6 +25,7 @@ import {
 } from './contacts';
 import { sendingDomainSetupListSchema } from './domains';
 import { sendEventRequestSchema, sendEventResponseSchema } from './events';
+import { sendLimitsSchema } from './limits';
 import { deliveryStatusSchema } from './status';
 import {
 	addContactToTopicRequestSchema,
@@ -58,6 +59,9 @@ export type PublicApiScope =
 	| 'topics:read'
 	| 'status:read';
 
+/** The `scope` of an operation every authenticated key may call, whatever its scopes. */
+export const ANY_KEY = 'any_key';
+
 export interface PathParameter {
 	name: string;
 	description: string;
@@ -76,8 +80,11 @@ export interface PublicOperation {
 	path: string;
 	tag: 'Contacts' | 'Events' | 'Transactional' | 'Topics' | 'Status' | 'Domains' | 'Health';
 	summary: string;
-	/** The key scope the operation needs; `null` for the unauthenticated probe. */
-	scope: PublicApiScope | null;
+	/**
+	 * The key scope the operation needs: {@link ANY_KEY} when any key may call
+	 * it, `null` for the unauthenticated probe.
+	 */
+	scope: PublicApiScope | typeof ANY_KEY | null;
 	pathParameters: readonly PathParameter[];
 	queryParameters: readonly QueryParameter[];
 	/** Whether an `Idempotency-Key` header makes a repeat answer with the first response. */
@@ -485,6 +492,28 @@ export const PUBLIC_OPERATIONS = [
 		errors: [],
 		reasons: [],
 	},
+	{
+		operationId: 'getLimits',
+		method: 'GET',
+		path: '/api/v1/limits',
+		tag: 'Transactional',
+		summary:
+			"Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own.",
+		scope: ANY_KEY,
+		pathParameters: [],
+		queryParameters: [],
+		idempotent: false,
+		request: null,
+		success: {
+			status: 200,
+			description: 'The limits in force.',
+			name: 'SendLimits',
+			data: sendLimitsSchema,
+			paginated: false,
+		},
+		errors: [],
+		reasons: [],
+	},
 ] as const satisfies readonly PublicOperation[];
 
 export type PublicOperationId = (typeof PUBLIC_OPERATIONS)[number]['operationId'];
@@ -503,9 +532,10 @@ export function publicOperation(operationId: PublicOperationId): PublicOperation
 
 /** The `error.data.reason` codes an operation can answer with at `status`. */
 export function reasonsAt(operation: PublicOperation, status: number): ApiErrorReason[] {
-	const reasons = [
-		...(operation.scope === null ? [] : API_KEY_ERROR_REASONS),
-		...operation.reasons,
-	];
+	const keyReasons =
+		operation.scope === ANY_KEY
+			? API_KEY_ERROR_REASONS.filter((reason) => reason !== 'missing_scope')
+			: API_KEY_ERROR_REASONS;
+	const reasons = [...(operation.scope === null ? [] : keyReasons), ...operation.reasons];
 	return reasons.filter((reason) => ERROR_REASON_STATUS[reason] === status);
 }

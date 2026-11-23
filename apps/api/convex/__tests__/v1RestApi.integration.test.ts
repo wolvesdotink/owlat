@@ -6,6 +6,7 @@ import type { Id } from '../_generated/dataModel';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic, createTestTransactionalEmail } from './factories';
 import {
+	ANY_KEY,
 	apiErrorResponseSchema,
 	PUBLIC_OPERATIONS,
 	publicOperation,
@@ -34,6 +35,9 @@ import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics
 import { healthCheck } from '../auth/apiAuthHttp';
 import { getStatus } from '../publicApi/statusHttp';
 import { listDomains } from '../publicApi/domainsHttp';
+import { getLimits } from '../publicApi/limitsHttp';
+import { rateLimiter } from '../lib/rateLimiter';
+import { PER_API_KEY_DAILY_BUCKET, PER_API_KEY_DAILY_CONFIG } from '../transactional/sendCaps';
 import { DELIVERY_HEALTH_REASONS, type DeliveryHealthFixAudience } from '../delivery/healthCopy';
 import type { DeliveryHealthLevel, DomainStatus } from '../delivery/health';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
@@ -1715,6 +1719,159 @@ function recordingDb(
 	});
 }
 
+// ─── GET /api/v1/limits ──────────────────────────────────────────────────────
+
+describe('GET /api/v1/limits (getLimits → any key)', () => {
+	// 15:30 UTC: the daily window began at midnight and ends at the next one.
+	const NOW = Date.UTC(2026, 10, 23, 15, 30, 0);
+	const NEXT_MIDNIGHT = new Date(Date.UTC(2026, 10, 24)).toISOString();
+
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function keyIdOf(t: ReturnType<typeof convexTest>, key: string): Promise<Id<'apiKeys'>> {
+		const keyHash = await hashKey(key);
+		const keys = await t.run(async (ctx) => await ctx.db.query('apiKeys').collect());
+		return keys.find((row) => row.keyHash === keyHash)!._id as Id<'apiKeys'>;
+	}
+
+	/** Count `sends` against a key's daily cap, as accepted sends do. */
+	async function chargeDaily(
+		t: ReturnType<typeof convexTest>,
+		keyId: Id<'apiKeys'>,
+		sends: number
+	) {
+		await t.run(async (ctx) => {
+			await rateLimiter.limit(ctx, PER_API_KEY_DAILY_BUCKET, {
+				key: keyId,
+				config: PER_API_KEY_DAILY_CONFIG,
+				count: sends,
+			});
+		});
+	}
+
+	async function readLimits(t: ReturnType<typeof convexTest>, key: string) {
+		const res = await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) });
+		expect(res.status).toBe(200);
+		return (await res.json()).data;
+	}
+
+	it('401 with no key', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/limits', { method: 'GET' });
+		expect(res.status).toBe(401);
+		expect((await res.json()).error.data).toEqual({ reason: 'missing_credentials' });
+	});
+
+	it('answers any key with the caps in force and what is left of them', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['contacts:read']);
+		const res = await t.fetch('/api/v1/limits', { method: 'GET', headers: authHeaders(key) });
+		await expectContractSuccess('getLimits', res);
+		expect((await res.json()).data).toEqual({
+			dailySends: {
+				isEnabled: true,
+				limit: 50_000,
+				used: 0,
+				remaining: 50_000,
+				resetsAt: NEXT_MIDNIGHT,
+			},
+			recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
+		});
+	});
+
+	it("reads the asking key's own usage from the limiter, and reading spends none of it", async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send'], `own${'a'.repeat(40)}`);
+		const other = await seedKey(t, ['transactional:send'], `other${'a'.repeat(40)}`);
+		await chargeDaily(t, await keyIdOf(t, key), 3);
+		await chargeDaily(t, await keyIdOf(t, other), 7);
+
+		await readLimits(t, key);
+		const limits = await readLimits(t, key);
+		expect(limits.dailySends).toMatchObject({
+			used: 3,
+			remaining: 49_997,
+			resetsAt: NEXT_MIDNIGHT,
+		});
+		expect((await readLimits(t, other)).dailySends).toMatchObject({ used: 7, remaining: 49_993 });
+	});
+
+	it('reads a send charged just after midnight as today, from a clock read just before it', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		const keyId = await keyIdOf(t, key);
+		vi.setSystemTime(Date.UTC(2026, 10, 24, 0, 0, 1));
+		await chargeDaily(t, keyId, 1);
+		const limits = await t.query(internal.transactional.sendLimits.forApiKey, {
+			keyId,
+			now: Date.UTC(2026, 10, 23, 23, 59, 59),
+		});
+		expect(limits.dailySends).toMatchObject({
+			used: 1,
+			remaining: 49_999,
+			resetsAt: new Date(Date.UTC(2026, 10, 25)).toISOString(),
+		});
+	});
+
+	it('starts the count again at UTC midnight', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await chargeDaily(t, await keyIdOf(t, key), 4);
+		vi.setSystemTime(Date.UTC(2026, 10, 24, 0, 0, 1));
+		expect((await readLimits(t, key)).dailySends).toEqual({
+			isEnabled: true,
+			limit: 50_000,
+			used: 0,
+			remaining: 50_000,
+			resetsAt: new Date(Date.UTC(2026, 10, 25)).toISOString(),
+		});
+	});
+
+	it("follows the admin's caps: a lowered cap leaves nothing, a cap switched off counts nothing", async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		await chargeDaily(t, await keyIdOf(t, key), 3);
+		const setCaps = (daily: { isEnabled: boolean; count: number }) =>
+			t.run(async (ctx) => {
+				const existing = await ctx.db.query('instanceSettings').first();
+				const transactionalSendCaps = {
+					perRecipient: { isEnabled: true, count: 10, windowMs: 30 * 60 * 1000 },
+					perApiKeyDaily: daily,
+					updatedAt: NOW,
+					updatedBy: 'admin-user',
+				};
+				if (existing) await ctx.db.patch(existing._id, { transactionalSendCaps });
+				else
+					await ctx.db.insert('instanceSettings', {
+						contactCount: 0,
+						createdAt: NOW,
+						transactionalSendCaps,
+					});
+			});
+
+		await setCaps({ isEnabled: true, count: 2 });
+		expect(await readLimits(t, key)).toEqual({
+			dailySends: { isEnabled: true, limit: 2, used: 3, remaining: 0, resetsAt: NEXT_MIDNIGHT },
+			recipientSends: { isEnabled: true, limit: 10, windowSeconds: 1800 },
+		});
+
+		// A cap that is off is neither checked nor charged, so no count of it means anything.
+		await setCaps({ isEnabled: false, count: 2 });
+		expect((await readLimits(t, key)).dailySends).toEqual({
+			isEnabled: false,
+			limit: 2,
+			used: null,
+			remaining: null,
+			resetsAt: null,
+		});
+	});
+});
+
 // ─── POST /api/v1/topics/{id}/contacts (add) ─────────────────────────────────
 
 describe('POST /api/v1/topics/{id}/contacts (addContactToTopic → topics:write)', () => {
@@ -2778,6 +2935,7 @@ const HANDLERS: Record<PublicOperationId, unknown> = {
 	listTopics,
 	getStatus,
 	listDomains,
+	getLimits,
 };
 
 /** A concrete path for a contract path template: each `{param}` gets a sample value. */
@@ -2811,7 +2969,10 @@ describe('the public contract (@owlat/public-contract)', () => {
 
 	it('enforces the scope each keyed operation documents, with the documented error body', async () => {
 		const t = setupTest();
-		const keyed = PUBLIC_OPERATIONS.filter((operation) => operation.scope !== null);
+		// An operation any key may call has no scope to withhold.
+		const keyed = PUBLIC_OPERATIONS.filter(
+			(operation) => operation.scope !== null && operation.scope !== ANY_KEY
+		);
 		for (const [index, operation] of keyed.entries()) {
 			const key = await seedKey(
 				t,

@@ -26,6 +26,7 @@ import type {
 	SendTransactionalRequest,
 	SendTransactionalResponse,
 	SendingDomainSetup,
+	SendLimits,
 	Topic,
 	TransactionalSendStatus,
 	UpdateContactRequest,
@@ -287,5 +288,19 @@ export const OPERATION_EXAMPLES = {
 				},
 			],
 		} satisfies ApiResponse<SendingDomainSetup[]>,
+	},
+	getLimits: {
+		response: {
+			data: {
+				dailySends: {
+					isEnabled: true,
+					limit: 50_000,
+					used: 1_204,
+					remaining: 48_796,
+					resetsAt: '2026-11-24T00:00:00.000Z',
+				},
+				recipientSends: { isEnabled: true, limit: 5, windowSeconds: 3600 },
+			},
+		} satisfies ApiResponse<SendLimits>,
 	},
 } satisfies Record<PublicOperationId, OperationExample>;

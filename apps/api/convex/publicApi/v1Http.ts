@@ -28,6 +28,7 @@ import { getTransactionalSend, listTransactionalSends } from '../transactional/s
 import { addContactToTopic, listTopics, removeContactFromTopic } from '../topics/apiHttp';
 import { getStatus } from './statusHttp';
 import { listDomains } from './domainsHttp';
+import { getLimits } from './limitsHttp';
 import { getOpenApiDocument } from './openApiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
@@ -105,6 +106,13 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 	// Domains API
 	http.route({
 		path: '/api/v1/domains',
+		method: 'OPTIONS',
+		handler: handleCors,
+	});
+
+	// Limits API
+	http.route({
+		path: '/api/v1/limits',
 		method: 'OPTIONS',
 		handler: handleCors,
 	});
@@ -207,6 +215,15 @@ export function registerPublicApiRoutes(http: HttpRouter): void {
 		path: '/api/v1/domains',
 		method: 'GET',
 		handler: listDomains,
+	});
+
+	// ============ LIMITS API ENDPOINTS ============
+
+	// GET /api/v1/limits - The send limits of this key, and what is left
+	http.route({
+		path: '/api/v1/limits',
+		method: 'GET',
+		handler: getLimits,
 	});
 
 	// ============ TOPICS API ENDPOINTS ============

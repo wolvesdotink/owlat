@@ -32,6 +32,10 @@ export type {
 	TransactionalAttachment,
 	TransactionalSendStatus,
 	TransactionalSendStatusValue,
+	// Limits
+	DailySendLimit,
+	RecipientSendLimit,
+	SendLimits,
 	// Events
 	SendEventParams,
 	SendEventResponse,

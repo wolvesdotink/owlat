@@ -6,6 +6,7 @@ import { OPERATION_EXAMPLES } from '../examples';
 import { buildOpenApiDocument } from '../openapi';
 import { ERROR_REASON_STATUS } from '../errors';
 import {
+	ANY_KEY,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	publicOperation,
@@ -106,6 +107,14 @@ describe('sending domains', () => {
 	});
 });
 
+describe('the limits', () => {
+	it('take any key: no scope, and no 403 for a scope the key lacks', () => {
+		const limits = (committed['paths'] as Record<string, any>)['/api/v1/limits'].get;
+		expect(limits.security).toEqual([{ apiKey: [] }]);
+		expect(Object.keys(limits.responses)).toEqual(['200', '400', '401', '429', '500']);
+	});
+});
+
 describe('the send list', () => {
 	it('pages without a total, since counting the matches would read them all', () => {
 		const schemas = (committed['components'] as { schemas: Record<string, any> }).schemas;
@@ -175,7 +184,9 @@ describe('error reasons', () => {
 			for (const reason of API_KEY_ERROR_REASONS) {
 				const listed = reasonsListed(operation.operationId, ERROR_REASON_STATUS[reason]);
 				if (operation.scope === null) expect(listed, operation.operationId).toEqual([]);
-				else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
+				else if (operation.scope === ANY_KEY && reason === 'missing_scope') {
+					expect(listed, operation.operationId).not.toContain(reason);
+				} else expect(listed, `${operation.operationId} ${reason}`).toContain(reason);
 			}
 		}
 	});

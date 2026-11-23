@@ -103,6 +103,11 @@ const CALLS: Record<
 		path: '/api/v1/domains',
 		result: example('listDomains').response.data,
 	},
+	getLimits: {
+		call: (client) => client.limits.get(),
+		path: '/api/v1/limits',
+		result: example('getLimits').response.data,
+	},
 	getStatus: {
 		call: (client) => client.status.get(),
 		path: '/api/v1/status',

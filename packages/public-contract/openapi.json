@@ -3566,6 +3566,169 @@
 					}
 				}
 			}
+		},
+		"/api/v1/limits": {
+			"get": {
+				"operationId": "getLimits",
+				"tags": ["Transactional"],
+				"summary": "Read the transactional send limits that apply to this key, and what is left of the key's daily limit until it resets. Any key may read its own.",
+				"security": [
+					{
+						"apiKey": []
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The limits in force.",
+						"headers": {
+							"X-RateLimit-Limit": {
+								"description": "Requests allowed per window for this key.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Remaining": {
+								"description": "A fixed value: 0 on a 429 from the per-key limit, otherwise one less than the limit. Not a count of the requests left; back off by the Retry-After of a 429.",
+								"schema": {
+									"type": "integer"
+								}
+							},
+							"X-RateLimit-Reset": {
+								"description": "A Unix timestamp one second after the response; not when the limit refills.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"data": {
+											"$ref": "#/components/schemas/SendLimits"
+										}
+									},
+									"required": ["data"],
+									"additionalProperties": false
+								},
+								"example": {
+									"data": {
+										"dailySends": {
+											"isEnabled": true,
+											"limit": 50000,
+											"used": 1204,
+											"remaining": 48796,
+											"resetsAt": "2026-11-24T00:00:00.000Z"
+										},
+										"recipientSends": {
+											"isEnabled": true,
+											"limit": 5,
+											"windowSeconds": 3600
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "The request is malformed or fails validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "The API key is missing, malformed or unknown.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["missing_credentials", "malformed_key", "invalid_key"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "Too many requests; retry after the `Retry-After` header.",
+						"headers": {
+							"Retry-After": {
+								"description": "Seconds to wait before retrying.",
+								"schema": {
+									"type": "integer"
+								}
+							}
+						},
+						"content": {
+							"application/json": {
+								"schema": {
+									"allOf": [
+										{
+											"$ref": "#/components/schemas/ApiErrorResponse"
+										},
+										{
+											"type": "object",
+											"properties": {
+												"error": {
+													"type": "object",
+													"properties": {
+														"data": {
+															"type": "object",
+															"properties": {
+																"reason": {
+																	"type": "string",
+																	"enum": ["too_many_failed_attempts"],
+																	"description": "Why the request was refused. New reasons can be added; treat an unknown one by its HTTP status."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									]
+								}
+							}
+						}
+					},
+					"500": {
+						"description": "The server failed to complete the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -3573,7 +3736,7 @@
 			"apiKey": {
 				"type": "http",
 				"scheme": "bearer",
-				"description": "An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs."
+				"description": "An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs; one that lists none takes any key."
 			}
 		},
 		"schemas": {
@@ -4149,6 +4312,74 @@
 				"required": ["mode", "condition"],
 				"additionalProperties": false,
 				"description": "How the suspension or ban lifts."
+			},
+			"SendLimits": {
+				"type": "object",
+				"properties": {
+					"dailySends": {
+						"type": "object",
+						"properties": {
+							"isEnabled": {
+								"type": "boolean",
+								"description": "Whether the instance admin has the cap on."
+							},
+							"limit": {
+								"type": "integer",
+								"description": "Sends allowed per API key and UTC day; kept while the cap is off."
+							},
+							"used": {
+								"anyOf": [
+									{
+										"type": "integer"
+									},
+									{
+										"type": "null"
+									}
+								],
+								"description": "Sends counted against this key today; null while the cap is off, since none are counted."
+							},
+							"remaining": {
+								"anyOf": [
+									{
+										"type": "integer"
+									},
+									{
+										"type": "null"
+									}
+								],
+								"description": "Sends this key may still make today, never below 0; null while the cap is off."
+							},
+							"resetsAt": {
+								"description": "ISO 8601 time the count starts again (the next UTC midnight); null while the cap is off.",
+								"type": ["string", "null"]
+							}
+						},
+						"required": ["isEnabled", "limit", "used", "remaining", "resetsAt"],
+						"additionalProperties": false
+					},
+					"recipientSends": {
+						"type": "object",
+						"properties": {
+							"isEnabled": {
+								"type": "boolean",
+								"description": "Whether the instance admin has the cap on."
+							},
+							"limit": {
+								"type": "integer",
+								"description": "Sends allowed per template and address within the window."
+							},
+							"windowSeconds": {
+								"type": "integer",
+								"description": "Length of the window, in seconds."
+							}
+						},
+						"required": ["isEnabled", "limit", "windowSeconds"],
+						"additionalProperties": false,
+						"description": "The cap on sends of one template to one address. What is left depends on the template and the address, so no count is given: a send over it answers 429 with Retry-After. The allowance refills continuously, limit per window. A template can be exempt from it."
+					}
+				},
+				"required": ["dailySends", "recipientSends"],
+				"additionalProperties": false
 			},
 			"SendTransactionalRequest": {
 				"type": "object",

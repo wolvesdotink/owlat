@@ -21,6 +21,7 @@ import type {
 } from '../contacts';
 import type { sendingDomainSetupSchema } from '../domains';
 import type { sendEventRequestSchema, sendEventResponseSchema } from '../events';
+import type { sendLimitsSchema } from '../limits';
 import type { deliveryStatusSchema } from '../status';
 import type {
 	addContactToTopicRequestSchema,
@@ -75,6 +76,7 @@ describe('schema and type agreement', () => {
 		expectTypeOf<z.output<typeof topicSchema>>().toEqualTypeOf<T.Topic>();
 		expectTypeOf<z.output<typeof sendingDomainSetupSchema>>().toEqualTypeOf<T.SendingDomainSetup>();
 		expectTypeOf<z.output<typeof deliveryStatusSchema>>().toEqualTypeOf<T.DeliveryStatus>();
+		expectTypeOf<z.output<typeof sendLimitsSchema>>().toEqualTypeOf<T.SendLimits>();
 		expectTypeOf<z.output<typeof healthStatusSchema>>().toEqualTypeOf<T.HealthStatus>();
 		expectTypeOf<z.output<typeof paginationMetaSchema>>().toEqualTypeOf<T.PaginationMeta>();
 		expectTypeOf<

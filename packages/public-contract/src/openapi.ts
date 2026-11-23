@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { apiErrorResponseSchema, cursorPaginationMetaSchema, paginationMetaSchema } from './common';
 import { OPERATION_EXAMPLES, type OperationExample } from './examples';
 import {
+	ANY_KEY,
 	KEYED_ERROR_STATUSES,
 	PUBLIC_OPERATIONS,
 	reasonsAt,
@@ -230,14 +231,18 @@ function operationObject(operation: PublicOperation): JsonObject {
 				}
 			: {}),
 	};
-	const errorStatuses = [
-		...new Set([...(keyed ? KEYED_ERROR_STATUSES : []), ...operation.errors]),
-	].sort((a, b) => a - b);
+	// A key without a scope to lack has no 403 to receive.
+	const keyedStatuses = KEYED_ERROR_STATUSES.filter(
+		(status) => status !== 403 || operation.scope !== ANY_KEY
+	);
+	const errorStatuses = [...new Set([...(keyed ? keyedStatuses : []), ...operation.errors])].sort(
+		(a, b) => a - b
+	);
 	return {
 		operationId: operation.operationId,
 		tags: [operation.tag],
 		summary: operation.summary,
-		security: keyed ? [{ apiKey: [operation.scope] }] : [],
+		security: keyed ? [{ apiKey: operation.scope === ANY_KEY ? [] : [operation.scope] }] : [],
 		...(parameters.length ? { parameters } : {}),
 		...(operation.request
 			? {
@@ -346,7 +351,7 @@ export function buildOpenApiDocument(
 					type: 'http',
 					scheme: 'bearer',
 					description:
-						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs.',
+						'An Owlat API key, sent as `Authorization: Bearer <key>`. Each operation lists the scope the key needs; one that lists none takes any key.',
 				},
 			},
 			schemas: sortKeys({ ...requests, ...responses }),
