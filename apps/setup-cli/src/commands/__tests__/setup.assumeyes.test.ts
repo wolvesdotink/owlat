@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 /**
  * Regression test for `headless-assumeyes`: the documented headless install
- * (`OWLAT_ASSUME_YES=1 curl … | bash`) used to HANG because the terminal wizard
+ * (`curl … | OWLAT_ASSUME_YES=1 bash`) used to HANG because the terminal wizard
  * still issued interactive clack prompts that never resolve in a non-TTY. The
  * fix routes `--assume-yes` through `buildAssumeYesConfig` (defaults + env) and
  * `buildSetupFromConfig`, with no prompt.

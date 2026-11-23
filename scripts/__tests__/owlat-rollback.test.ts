@@ -1,5 +1,5 @@
 /**
- * `owlat rollback` restores the snapshot the updater took before the last
+ * `owlat upgrade` and `owlat rollback` drive the updater sidecar. `owlat rollback` restores the snapshot the updater took before the last
  * in-app update, through the updater's own `GET /snapshot` and
  * `POST /rollback`. These cases run the REAL `scripts/owlat` against a stub
  * `docker` whose `compose exec -T updater …` runs the command on this machine,
@@ -33,7 +33,22 @@ exit 3
 `;
 
 /** What the updater serves the CLI. */
-const ROUTES = new Set(['GET /snapshot', 'POST /rollback']);
+const ROUTES = new Set(['GET /snapshot', 'POST /rollback', 'POST /update']);
+
+// A release's compose template, with the characters a JSON encoder must escape.
+// No trailing newline: the CLI holds the download in a variable, which drops it.
+const TEMPLATE =
+	"services:\n  web:\n    image: \"ghcr.io/wolvesdotink/web:9.9.9\"\n    command: ['sh', '-c', 'echo \\\\$HOME']";
+
+// Host curl: the release lookup and the template download. Any other URL fails.
+const STUB_CURL = `#!/bin/sh
+for arg in "$@"; do url="$arg"; done
+case "$url" in
+	*/releases/latest) printf '%s\\n' '{"tag_name": "v9.9.9"}' ;;
+	*/download/v9.9.9/docker-compose-9.9.9.yml | */download/v1.2.3/docker-compose-1.2.3.yml) cat "$OWLAT_TEST_TEMPLATE" ;;
+	*) echo "curl: (22) The requested URL returned error: 404" >&2; exit 22 ;;
+esac
+`;
 
 interface Seen {
 	method: string;
@@ -87,6 +102,10 @@ beforeAll(async () => {
 	await writeFile(join(dir, 'docker-compose.yml'), 'services: {}\n');
 	await writeFile(join(stubDir, 'docker'), STUB_DOCKER);
 	await chmod(join(stubDir, 'docker'), 0o755);
+	await writeFile(join(stubDir, 'curl'), STUB_CURL);
+	await chmod(join(stubDir, 'curl'), 0o755);
+	await writeFile(join(root, 'template.yml'), TEMPLATE);
+	await writeFile(join(dir, '.env'), `OWLAT_VERSION=9.9.8\nINSTANCE_SECRET=${SECRET}\n`);
 });
 
 afterAll(async () => {
@@ -112,23 +131,27 @@ beforeEach(() => {
 				description: `Rolled back to snapshot ${SNAPSHOT_ID}.`,
 			},
 		},
+		'POST /update': { status: 200, body: { success: true, rollout: 'healthy', steps: [] } },
 	};
 });
 
 async function owlat(
 	args: string[],
-	input = ''
+	input = '',
+	extraEnv: Record<string, string> = {}
 ): Promise<{ code: number; stdout: string; stderr: string }> {
 	try {
 		const pending = run('bash', [join(dir, 'scripts', 'owlat'), ...args], {
 			env: {
 				...process.env,
+				OWLAT_TEST_TEMPLATE: join(root, 'template.yml'),
 				PATH: `${stubDir}:${process.env['PATH'] ?? ''}`,
 				OWLAT_DIR: dir,
 				OWLAT_SKIP_CLI_LINK: '1',
 				// What the updater container's environment carries.
 				PORT: String(port),
 				INSTANCE_SECRET: SECRET,
+				...extraEnv,
 			},
 		});
 		// What the operator types at the confirmation prompt.
@@ -197,6 +220,49 @@ describe('owlat rollback', () => {
 		const result = await owlat(['rollback', '--force']);
 
 		expect(result.code).toBe(2);
+		expect(seen).toEqual([]);
+	});
+});
+
+describe('owlat upgrade', () => {
+	it("hands the release's compose template to the updater with the instance secret", async () => {
+		const result = await owlat(['upgrade']);
+
+		expect(result.stderr).toBe('');
+		expect(result.code).toBe(0);
+		expect(result.stdout).toContain('Target version: ');
+		expect(seen.map((r) => `${r.method} ${r.path}`)).toEqual(['POST /update']);
+		expect(seen[0]!.secret).toBe(SECRET);
+		expect(JSON.parse(seen[0]!.body)).toEqual({ composeTemplate: TEMPLATE });
+	});
+
+	it('pins the version named with --version', async () => {
+		const result = await owlat(['upgrade', '--version', '1.2.3']);
+
+		expect(result.code).toBe(0);
+		expect(result.stdout).toContain('Target version: 1.2.3');
+		expect(result.stdout).not.toContain('Fetching latest release info');
+		expect(JSON.parse(seen[0]!.body)).toEqual({ composeTemplate: TEMPLATE });
+	});
+
+	it("fails with the updater's own reason and says where to look", async () => {
+		answers['POST /update'] = {
+			status: 507,
+			body: { error: 'Not enough free disk space for the release.' },
+		};
+		const result = await owlat(['upgrade']);
+
+		expect(result.code).not.toBe(0);
+		expect(result.stdout + result.stderr).toContain('Not enough free disk space for the release.');
+		expect(result.stderr).toContain('owlat logs updater');
+	});
+
+	it('says the updater could not be reached when it is not running', async () => {
+		const result = await owlat(['upgrade'], '', { PORT: '1' });
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain('Cannot reach the updater');
+		expect(result.stderr).toContain('owlat status');
 		expect(seen).toEqual([]);
 	});
 });

@@ -74,8 +74,12 @@ interface DoctorOptions {
 
 /** The runtime edges of a doctor run, injectable so the whole run is testable. */
 export interface DoctorIo {
-	/** stdout of `docker compose ps --format json` in `cwd`; throws when it cannot run. */
-	composePs(cwd: string): Promise<string>;
+	/**
+	 * `docker compose ps --format json` in `cwd`, with its exit code; throws when
+	 * docker cannot be started. A non-zero exit is usually a daemon or socket
+	 * doctor cannot reach, and its stdout is then empty, not a list of nothing.
+	 */
+	composePs(cwd: string): Promise<{ code: number; stdout: string; stderr: string }>;
 	/** stdout of `convex run <fn>` through the deploy image in `cwd`; throws when it cannot run. */
 	convexRun(cwd: string, fn: string): Promise<string>;
 	now(): Date;
@@ -89,7 +93,12 @@ const BUN_DOCTOR_IO: DoctorIo = {
 			stdout: 'pipe',
 			stderr: 'pipe',
 		});
-		return await new Response(proc.stdout).text();
+		const [stdout, stderr, code] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		return { code, stdout, stderr };
 	},
 	async convexRun(cwd, fn) {
 		const output = await runConvexQuery(cwd, fn);
@@ -216,9 +225,25 @@ export async function collectDoctorReport(
 		message: doctorText`Compose override present at ${shownInstallFile('docker-compose.override.yml')}`,
 	});
 
-	// Best-effort docker check via shelling out.
-	try {
-		const services = parseComposePs(await io.composePs(owlatDir));
+	// Best-effort docker check via shelling out. A failed `compose ps` (no
+	// socket, a stopped daemon) is its own finding: read as an empty list it
+	// would report a healthy stack as "0 compose service(s) running".
+	const ps = await io.composePs(owlatDir).catch(() => null);
+	if (ps === null) {
+		report.record({
+			check: 'compose.cli',
+			ok: false,
+			message: doctorText`docker compose not callable from this shell`,
+		});
+	} else if (ps.code !== 0) {
+		const detail = ps.stderr.trim().split('\n')[0] || `exit code ${ps.code}`;
+		report.record({
+			check: 'compose.docker',
+			ok: false,
+			message: doctorText`Doctor could not ask Docker about the stack: \`docker compose ps\` failed (${detail}). Check that Docker is running, and run this check as \`owlat doctor\`, which gives it the Docker socket.`,
+		});
+	} else {
+		const services = parseComposePs(ps.stdout);
 		report.record({
 			check: 'compose.services',
 			ok: services.length > 0,
@@ -242,12 +267,6 @@ export async function collectDoctorReport(
 		for (const finding of evaluateVersionDrift(services, configuredVersion, doctorText)) {
 			report.record({ check: 'version.drift', subject: finding.service, ...finding });
 		}
-	} catch {
-		report.record({
-			check: 'compose.cli',
-			ok: false,
-			message: doctorText`docker compose not callable from this shell`,
-		});
 	}
 
 	const activeFeatures = Object.entries(resolved)

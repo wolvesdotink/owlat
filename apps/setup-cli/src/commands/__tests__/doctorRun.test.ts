@@ -61,8 +61,8 @@ interface Fixture {
 	env: string;
 	flags?: string;
 	override?: boolean;
-	/** stdout of `docker compose ps`, or an error when docker cannot run. */
-	compose: string | Error;
+	/** stdout of `docker compose ps`, its failed exit, or an error when docker cannot run. */
+	compose: string | Error | { code: number; stdout: string; stderr: string };
 	fetch?: (url: string, init?: RequestInit) => Response;
 	/** stdout of `convex run` for the system sender's DNS records; absent: it cannot run. */
 	systemSenderDns?: string;
@@ -212,6 +212,19 @@ const FIXTURES: Record<string, Fixture> = {
 			throw new Error(`connect ECONNREFUSED ${url}`);
 		},
 		secrets: [`${URL_PASSWORD}@second`],
+	},
+	dockerUnreachable: {
+		// Docker is installed but doctor has no socket: `compose ps` exits non-zero.
+		env: ['EMAIL_PROVIDER=resend', `RESEND_API_KEY=${RESEND_KEY}`, 'OWLAT_VERSION=0.6.15'].join(
+			'\n'
+		),
+		override: true,
+		compose: {
+			code: 1,
+			stdout: '',
+			stderr:
+				'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n',
+		},
 	},
 	shortCredential: {
 		// A three-character key, pasted into the provider variable too.
@@ -551,7 +564,9 @@ async function run(fixture: Fixture, json: boolean): Promise<{ code: number; std
 	const io: DoctorIo = {
 		composePs: async () => {
 			if (fixture.compose instanceof Error) throw fixture.compose;
-			return fixture.compose;
+			return typeof fixture.compose === 'string'
+				? { code: 0, stdout: fixture.compose, stderr: '' }
+				: fixture.compose;
 		},
 		convexRun: async () => {
 			if (fixture.systemSenderDns === undefined) throw new Error('docker is not available');
@@ -853,6 +868,19 @@ describe('doctor --json — report contents', () => {
 	])('fails the flag state check for a file holding %s', async (_name, flags) => {
 		const { report } = await runBoth({ ...FIXTURES['healthy']!, flags });
 		expect(report.checks.find((check) => check.id === 'flags.state')?.status).toBe('fail');
+	});
+
+	it('says Docker cannot be reached when docker compose ps fails, instead of counting 0 services', async () => {
+		const { report } = await runBoth(FIXTURES['dockerUnreachable']!);
+		const compose = report.checks.filter((check) => check.component === 'compose');
+		expect(
+			compose.map((check) => `${check.status} ${check.id} ${check.remediation ?? ''}`)
+		).toEqual(['pass compose.override ', 'fail compose.docker connect_docker']);
+		expect(compose[1]!.message).toBe(
+			'Doctor could not ask Docker about the stack: `docker compose ps` failed ' +
+				'(Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?). ' +
+				'Check that Docker is running, and run this check as `owlat doctor`, which gives it the Docker socket.'
+		);
 	});
 
 	it('reads a flag file with an unknown key and a plugin override as valid', async () => {
