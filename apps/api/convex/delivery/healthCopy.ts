@@ -76,8 +76,13 @@ export const DELIVERY_HEALTH_REASON_KEYS = {
 	reputation_medium: 'shared.deliveryHealth.reasons.reputationMedium',
 } as const satisfies Record<DeliveryHealthReason, string>;
 
-/** Who can make a reason's fix on its page. */
-export type DeliveryHealthFixAudience = 'workspace_admin' | 'platform_admin' | 'contact_manager';
+/** Who can make a reason's fix. */
+export type DeliveryHealthFixAudience =
+	| 'workspace_admin'
+	| 'platform_admin'
+	| 'contact_manager'
+	/** Whoever runs the deployment and sets its environment; the page only shows the gap. */
+	| 'deployment_operator';
 
 /** One reason, explained: what it means and what to do, plus the page to do it on. */
 export interface DeliveryHealthExplanation {
@@ -96,7 +101,10 @@ const TRANSACTIONAL_SENDER = {
 	route: '/dashboard/send/transactional?sender=edit',
 	who: 'workspace_admin',
 } as const;
-const DELIVERY_HUB = { route: '/dashboard/admin/delivery', who: 'workspace_admin' } as const;
+const FEEDBACK_SETTINGS = {
+	route: '/dashboard/admin/delivery',
+	who: 'deployment_operator',
+} as const;
 const SUPPRESSIONS = { route: '/dashboard/audience/suppressions', who: 'contact_manager' } as const;
 
 /**
@@ -138,12 +146,12 @@ export const DELIVERY_HEALTH_EXPLANATIONS = {
 	feedback_missing_campaign: {
 		sentence:
 			"Bounce and complaint reports from the campaign provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so campaigns are refused until they are set, and the readiness panel on the delivery hub names the missing settings.",
-		fix: DELIVERY_HUB,
+		fix: FEEDBACK_SETTINGS,
 	},
 	feedback_missing_transactional: {
 		sentence:
 			"Bounce and complaint reports from the transactional provider cannot reach Owlat because its feedback settings are missing from the deployment's environment, so bad addresses are not suppressed until they are set, and the readiness panel on the delivery hub names the missing settings.",
-		fix: DELIVERY_HUB,
+		fix: FEEDBACK_SETTINGS,
 	},
 	mta_signing_held: {
 		sentence:

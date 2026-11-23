@@ -262,7 +262,7 @@ function buildGetEmailStats(ctx: ActionCtx): Tool {
 function buildGetDeliveryHealth(ctx: ActionCtx): Tool {
 	return tool({
 		description:
-			"Check whether the workspace's email sending is healthy and, if not, why and how to fix it. Use it first when someone asks why mail is not arriving or not going out, why opens or deliveries dropped, or whether sending is healthy. Returns the overall level (ok, warn, error), the main reason with an explanation and the page where it is fixed (`fix.route`, and `fix.who` says who can open it: most fixes need a workspace admin, a suspension needs a platform admin of the instance), each sending domain's verification status, the 30-day bounce and complaint rates against their limits, and `sendHold` with the recorded reason when sending is suspended or banned.",
+			"Check whether the workspace's email sending is healthy and, if not, why and how to fix it. Use it first when someone asks why mail is not arriving or not going out, why opens or deliveries dropped, or whether sending is healthy. Returns the overall level (ok, warn, error), the main reason with an explanation and the page where it is fixed (`fix.route`, and `fix.who` says who can open it: most fixes need a workspace admin, a suspension needs a platform admin of the instance, missing feedback settings need whoever runs the deployment), each sending domain's verification status, the 30-day bounce and complaint rates against their limits, and `sendHold` with the recorded reason when sending is suspended or banned.",
 		inputSchema: z.object({}),
 		execute: async () => ctx.runQuery(internal.assistant.insights.deliveryHealth, {}),
 	});
