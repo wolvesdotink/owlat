@@ -28,7 +28,7 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { jsonResponse, errorResponse, invalidInputResponse } from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import { featureDisabledMessage } from '../lib/featureFlags';
 import { utf8Bytes } from '../lib/bytes';
@@ -99,7 +99,7 @@ function envelopeBytes(body: SendTransactionalBody): number {
  */
 function validateDecodedBody(body: SendTransactionalBody): Response | null {
 	if (!isValidEmail(body.email)) {
-		return errorResponse('invalid_input', 'Invalid email format');
+		return invalidInputResponse('Invalid email format', 'email');
 	}
 	if (envelopeBytes(body) > MAX_ENVELOPE_BYTES) {
 		return errorResponse(
@@ -299,7 +299,7 @@ export const sendTransactional = createAuthenticatedHandler(
 			return errorResponse('invalid_input', 'Invalid JSON in request body');
 		}
 		const decoded = decodeRequest(sendTransactionalRequestSchema, raw);
-		if (!decoded.ok) return errorResponse('invalid_input', decoded.message);
+		if (!decoded.ok) return invalidInputResponse(decoded.message, decoded.field);
 		const body = decoded.value;
 		const bodyError = validateDecodedBody(body);
 		if (bodyError) return bodyError;

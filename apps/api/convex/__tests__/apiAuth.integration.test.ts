@@ -330,6 +330,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Missing or invalid Authorization header');
+			expect(result.reason).toBe('missing_credentials');
 		}
 	});
 
@@ -347,6 +348,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Invalid API key format');
+			expect(result.reason).toBe('malformed_key');
 		}
 	});
 
@@ -364,6 +366,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toContain('Invalid API key format');
+			expect(result.reason).toBe('malformed_key');
 		}
 	});
 
@@ -386,6 +389,7 @@ describe('authenticateApiRequest', () => {
 		if (!result.success) {
 			expect(result.status).toBe(401);
 			expect(result.error).toBe('Invalid API key');
+			expect(result.reason).toBe('invalid_key');
 		}
 	});
 
@@ -412,6 +416,31 @@ describe('authenticateApiRequest', () => {
 			expect(result.rateLimit).toBeDefined();
 			expect(result.rateLimit!.remaining).toBe(0);
 		}
+	});
+
+	it('answers the failed-key throttle in its own words, without the per-key headers', async () => {
+		const request = new Request('https://example.com', {
+			headers: { Authorization: `Bearer lm_live_${'a'.repeat(40)}` },
+		});
+		const mockCtx = {
+			runQuery: vi.fn(),
+			runMutation: vi.fn().mockResolvedValue({
+				success: false,
+				error: 'rate_limited',
+				retryAfter: 30_000,
+				bucket: 'failed_auth',
+			}),
+		};
+
+		const result = await authenticateApiRequest(mockCtx, request);
+		expect(result).toEqual({
+			success: false,
+			status: 429,
+			error:
+				'Too many failed API key attempts from this address. Wait for the Retry-After interval before trying again.',
+			reason: 'too_many_failed_attempts',
+			retryAfter: 30,
+		});
 	});
 
 	it('returns success with keyId and rateLimit for valid key', async () => {
@@ -477,10 +506,17 @@ describe('requireScope', () => {
 		expect(requireScope(authWith(['contacts:read']), 'contacts:read')).toBeNull();
 	});
 
-	it('forbids (403) when the key lacks the scope', () => {
+	it('forbids (403) when the key lacks the scope, naming it in data', async () => {
 		const denied = requireScope(authWith(['contacts:read']), 'contacts:write');
 		expect(denied).not.toBeNull();
 		expect(denied!.status).toBe(403);
+		expect(await denied!.json()).toEqual({
+			error: {
+				category: 'forbidden',
+				message: 'This API key is missing the required scope: contacts:write',
+				data: { reason: 'missing_scope', scope: 'contacts:write' },
+			},
+		});
 	});
 
 	it('forbids when the key has no scopes at all', () => {
