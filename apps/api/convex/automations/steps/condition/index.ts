@@ -29,8 +29,7 @@ export const conditionStepModule: StepModule<'condition', ConditionStepConfig> =
 			condition: conditionRaw as unknown as Condition,
 			yesBranchStepIndex:
 				typeof r['yesBranchStepIndex'] === 'number' ? r['yesBranchStepIndex'] : null,
-			noBranchStepIndex:
-				typeof r['noBranchStepIndex'] === 'number' ? r['noBranchStepIndex'] : null,
+			noBranchStepIndex: typeof r['noBranchStepIndex'] === 'number' ? r['noBranchStepIndex'] : null,
 		};
 	},
 	async execute(ctx: ActionCtx, args: StepExecuteArgs<ConditionStepConfig>): Promise<StepOutcome> {
@@ -44,7 +43,7 @@ export const conditionStepModule: StepModule<'condition', ConditionStepConfig> =
 		);
 
 		if (!result.ok) {
-			return { status: 'failed', error: result.reason };
+			return { status: 'failed', reason: 'unknown', error: result.reason };
 		}
 
 		const branchTarget = result.result ? config.yesBranchStepIndex : config.noBranchStepIndex;

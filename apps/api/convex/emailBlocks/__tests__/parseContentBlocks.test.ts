@@ -1,8 +1,9 @@
 /**
  * `parseContentBlocks` gives every Block an id. Legacy saved Blocks
  * were stored as one `{ type, content }` object without an id, and an API
- * write or a hand-edited template can leave one out too; the renderer used to
- * throw on such a Block, so a publish or rerender failed without saying why.
+ * write or a hand-edited template can leave one out too. The id is the
+ * deterministic one the editor gives, so a translation overlay keyed by it
+ * applies on the server as well.
  */
 
 import { readFileSync } from 'node:fs';

@@ -100,7 +100,7 @@
 # provider added to the catalog is ratcheted the day it is declared rather than
 # the day someone remembers to update this script.
 #
-# MATCHED OVER A THREE-LINE WINDOW, not per line. `bun run ox:fmt` breaks a long
+# MATCHED OVER A THREE-LINE WINDOW, not per line. oxfmt breaks a long
 # condition after the operator (`… .toLowerCase() ===` / `'resend'`) and prints a
 # long membership test as an array over one line per element (`[` / `'ses',` /
 # `'resend',` / `].includes(kind)`); a per-line grep calls all of that clean, so

@@ -156,7 +156,11 @@ export async function executePluginStep(
 ): Promise<StepOutcome> {
 	const entry = pluginStepCatalogEntry(step.stepType);
 	if (!entry) {
-		return { status: 'failed', error: `Unknown plugin automation step kind: ${step.stepType}` };
+		return {
+			status: 'failed',
+			reason: 'plugin_failed',
+			error: `Unknown plugin automation step kind: ${step.stepType}`,
+		};
 	}
 	// The catalog entry's id came from a validated manifest at codegen time; parse
 	// it once into the branded `PluginId` the host services require, so no call
@@ -164,7 +168,11 @@ export async function executePluginStep(
 	const pluginId = parsePluginId(entry.pluginId);
 	const module = PLUGIN_STEP_MODULES.get(step.stepType);
 	if (!module) {
-		return { status: 'failed', error: 'Plugin automation step module is not registered' };
+		return {
+			status: 'failed',
+			reason: 'plugin_failed',
+			error: 'Plugin automation step module is not registered',
+		};
 	}
 
 	const authorized = await ctx.runMutation(
@@ -173,7 +181,11 @@ export async function executePluginStep(
 	);
 	if (!authorized) {
 		// Fail closed: a disabled flag or ungranted capability is a failure, not a skip.
-		return { status: 'failed', error: 'Plugin automation step access denied' };
+		return {
+			status: 'failed',
+			reason: 'plugin_denied',
+			error: 'Plugin automation step access denied',
+		};
 	}
 
 	const host = createPluginHost({
@@ -201,7 +213,7 @@ export async function executePluginStep(
 		});
 	} catch {
 		await recordOutcome(ctx, entry.pluginId, step.stepType, false);
-		return { status: 'failed', error: 'Plugin automation step failed' };
+		return { status: 'failed', reason: 'plugin_failed', error: 'Plugin automation step failed' };
 	}
 
 	if (result.kind === 'completed') {
@@ -209,7 +221,7 @@ export async function executePluginStep(
 		return { status: 'completed' };
 	}
 	await recordOutcome(ctx, entry.pluginId, step.stepType, false);
-	return { status: 'failed', error: result.reason };
+	return { status: 'failed', reason: 'plugin_failed', error: result.reason };
 }
 
 async function recordOutcome(

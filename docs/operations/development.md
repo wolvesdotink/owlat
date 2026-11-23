@@ -261,11 +261,11 @@ account as already present and the demo rows as skipped.
 
 ## `bun run dev` and `bun run dev:api`
 
-These run `convex dev` directly in `apps/api` against whatever `.env` and
-`apps/api/.env.local` select. The CLI bundles the functions on your machine
-before it talks to any deployment, so this path hits the test-helper problem
-described above whichever deployment it targets. Use `bun run dev:stack` for
-backend work.
+Both print a pointer to `bun run dev:stack` and exit 1. Running `convex dev`
+directly in `apps/api` bundles the functions on your machine for the push, so
+it hits the test-helper problem described above whichever deployment `.env` and
+`apps/api/.env.local` select. `bun run dev:web` still runs Nuxt alone against
+the deployment `.env` selects.
 
 ## Troubleshooting
 

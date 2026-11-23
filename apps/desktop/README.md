@@ -131,10 +131,16 @@ only be validated against an actual fresh VPS.
 ## Develop
 
 ```sh
-bun run dev      # from the repo root — web (localhost:3000) + Convex backend
 cd apps/desktop
-bun run dev      # tauri dev — loads the Nuxt dev server at localhost:3000
+bun run dev        # tauri dev — starts a desktop-mode Nuxt at localhost:3000 and loads it
 ```
+
+`tauri dev` starts that Nuxt itself (`beforeDevCommand` runs `dev:desktop` in
+`apps/web`), and it reads the repository's `.env` and `.env.local`, so a
+backend those files point at must already be running. `bun run dev:stack` is
+not that backend yet: it has no backend-only mode, its own Nuxt takes port 3000
+in the main checkout, and in a linked worktree it hands its backend URLs to its
+own Nuxt only.
 
 In dev the app loads `devUrl` (the Nuxt dev server), which has the full Nitro
 server, so both the web cookie flow and the desktop cross-domain flow work.

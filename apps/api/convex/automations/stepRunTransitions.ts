@@ -13,7 +13,10 @@ import { computeEntryDelay } from './steps';
 import { recordAutomationRunFailure } from './lifecycle';
 import { bumpAutomationStats } from './statShards';
 import { recordAutomationHealth } from './health';
-import type { AutomationRunEndReason } from '../lib/validators/automations';
+import type {
+	AutomationRunEndReason,
+	AutomationStepFailureReason,
+} from '../lib/validators/automations';
 
 // ============== Denormalized step-run status counters ==============
 
@@ -311,11 +314,17 @@ export async function failStepAndCancelRun(
 	ctx: MutationCtx,
 	stepRun: Doc<'automationStepRuns'>,
 	errorMessage: string,
-	options: { countRunFailure: boolean; stepFault: boolean }
+	options: {
+		countRunFailure: boolean;
+		stepFault: boolean;
+		/** The coded cause of a step fault, for the runs panel. */
+		failureReason?: AutomationStepFailureReason;
+	}
 ): Promise<void> {
 	await transitionStepRun(ctx, stepRun, 'failed', {
 		completedAt: Date.now(),
 		errorMessage,
+		...(options.failureReason ? { failureReason: options.failureReason } : {}),
 		leaseExpiresAt: undefined,
 	});
 	const cancelled = await cancelRun(

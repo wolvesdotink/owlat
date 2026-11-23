@@ -1001,9 +1001,9 @@ describe('deliverability relay domain lifecycle', () => {
 		const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 10 },
 		});
-		// AGEING MOVED TO THE SURFACE, and the bound moved with it. The query used
-		// to return a synthesised `stale`, computed here against SES's constant;
-		// the row now carries the evidence date and the SAME bound routing refuses
+		// AGEING HAPPENS ON THE SURFACE, and the bound travels with the row. The
+		// query returns no synthesised `stale` computed against SES's constant;
+		// the row carries the evidence date and the SAME bound routing refuses
 		// past, so one clock read in the browser ages the proof for every kind
 		// (Mandrill's seven days, the plugin tier's, SES's thirty) instead of one
 		// backend rule per vendor. A page left open catches up on the next tick

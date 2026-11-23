@@ -5,8 +5,8 @@ import type { ComponentPublicInstance, Ref } from 'vue';
  * component (`<UiButton ref="triggerEl">`) — that component's public instance,
  * whose rendered root node is `$el`. Accepting both means a consumer can swap a
  * raw `<button>` for a component without the containment check silently
- * breaking (a component instance is truthy but has no `.contains`, which used to
- * throw on every document click and leave the panel stuck open).
+ * breaking (a component instance is truthy but has no `.contains`; calling it
+ * would throw on every document click and leave the panel stuck open).
  */
 type ClickOutsideTarget = Ref<HTMLElement | ComponentPublicInstance | null | undefined>;
 

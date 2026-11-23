@@ -19,7 +19,10 @@ import { createTestAutomation, enableFeatures } from '../../__tests__/factories'
 import type { StepKind } from '../steps/catalog';
 import type * as PluginAuthorization from '../../plugins/authorization';
 import type * as SessionOrganization from '../../lib/sessionOrganization';
+import { authorizeHostedContribution } from '../../plugins/hostedContributionAuthorization';
+import { RETRY_DELAYS_MS } from '../../lib/constants';
 import {
+	advanceAndRun,
 	runDueScheduled,
 	runOf,
 	seedRun,
@@ -98,6 +101,7 @@ vi.mock('../../delivery/workpool', () => ({
 beforeEach(() => {
 	vi.useFakeTimers();
 	pluginExecute.mockReset().mockResolvedValue({ kind: 'completed' });
+	vi.mocked(authorizeHostedContribution).mockResolvedValue(true);
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -160,6 +164,46 @@ describe('plugin step kind through run creation', () => {
 		expect(pluginExecute).toHaveBeenCalledOnce();
 		expect((await stepRunsOf(t, runId)).map((r) => r.status)).toEqual(['completed']);
 		expect((await runOf(t, runId)).status).toBe('completed');
+	});
+
+	it.each([
+		{
+			name: 'a failure the plugin reports',
+			arrange: () => pluginExecute.mockResolvedValue({ kind: 'failed', reason: 'CRM is down' }),
+			reason: 'plugin_failed',
+			detail: 'CRM is down',
+		},
+		{
+			name: 'a plugin that is not authorized to run',
+			arrange: () => vi.mocked(authorizeHostedContribution).mockResolvedValue(false),
+			reason: 'plugin_denied',
+			detail: 'Plugin automation step access denied',
+		},
+	])('codes $name on the failed step run', async ({ arrange, reason, detail }) => {
+		const t = await freshT();
+		const automationId = await t.run(async (ctx) =>
+			ctx.db.insert('automations', createTestAutomation({ status: 'draft' }))
+		);
+		await t.mutation(api.automations.steps.addStep, {
+			automationId,
+			stepType: PLUGIN_KIND,
+			config: { pluginConfig: { channel: 'crm' } },
+		});
+		await t.run(async (ctx) => ctx.db.patch(automationId, { status: 'active' }));
+		const { runId } = await seedRun(t, automationId);
+		arrange();
+
+		await t.action(internal.automations.stepWalker.startAutomationRun, {
+			automationRunId: runId,
+		});
+		await runDueScheduled(t);
+		for (const delay of RETRY_DELAYS_MS) await advanceAndRun(t, delay);
+
+		const [stepRun] = await stepRunsOf(t, runId);
+		expect(stepRun?.status).toBe('failed');
+		expect(stepRun?.failureReason).toBe(reason);
+		expect(stepRun?.errorMessage).toBe(detail);
+		expect((await runOf(t, runId)).endReason).toBe('step_failed');
 	});
 
 	it('rejects a plugin kind that is not in the composed catalog, at the editor and in storage', async () => {

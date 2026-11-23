@@ -186,10 +186,10 @@ Format only the files you changed, with the repository's config:
 ./node_modules/.bin/oxfmt --config oxfmtrc.json <paths>
 ```
 
-Avoid `bun run ox:fmt` before a commit: the repository predates its formatter
-config, so a whole-tree run rewrites several hundred files the change never
-touched. Bare `npx oxfmt` / `bunx oxfmt` ignore `oxfmtrc.json` or fetch a
-different version. `bun run ci:lint` does not typecheck, so run
+`bun run ox:fmt` refuses and prints that command instead: the repository
+predates its formatter config, so a whole-tree run rewrites several hundred
+files the change never touched. Bare `npx oxfmt` / `bunx oxfmt` ignore
+`oxfmtrc.json` or fetch a different version. `bun run ci:lint` does not typecheck, so run
 `bun run typecheck` (or `bun run ci:typecheck`) as well.
 
 For a quick pre-push pass over just your change, run:
