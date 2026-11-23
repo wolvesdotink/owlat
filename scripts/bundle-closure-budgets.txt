@@ -283,6 +283,7 @@ deferred 7 ConfirmationDialog
 deferred 12 KnowledgeEntryForm
 deferred 36 PostboxUndoSendToast
 deferred 6 SendFailureReason
+deferred 6 UnsavedChangesDialog
 deferred 3 backendConnection
 deferred 58 components/AppCommandPalette.vue
 deferred 21 components/KeyboardShortcutsHelp.vue
