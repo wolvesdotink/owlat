@@ -4,14 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.owlat.sdk.Owlat;
 import com.owlat.sdk.OwlatConfig;
 import com.owlat.sdk.internal.JsonMapper;
+import com.owlat.sdk.model.PaginatedResponse;
 import com.owlat.sdk.model.PaginationParams;
 import com.owlat.sdk.model.contact.CreateContactParams;
 import com.owlat.sdk.model.contact.UpdateContactParams;
+import com.owlat.sdk.model.domain.SendingDomainRecord;
+import com.owlat.sdk.model.domain.SendingDomainSetup;
 import com.owlat.sdk.model.event.SendEventParams;
 import com.owlat.sdk.model.status.DeliveryStatus;
 import com.owlat.sdk.model.status.SendingHoldLift;
 import com.owlat.sdk.model.topic.AddToTopicParams;
 import com.owlat.sdk.model.topic.RemoveFromTopicParams;
+import com.owlat.sdk.model.topic.Topic;
 import com.owlat.sdk.model.transactional.SendTransactionalParams;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -22,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -139,6 +144,29 @@ class ResourceHttpTest {
     // ── topics ──────────────────────────────────────────────────────────────
 
     @Test
+    void topicsListGetsTopicsRootWithPaginationQuery() {
+        responseBody = "{\"data\":[{\"id\":\"topic_1\",\"name\":\"Product updates\",\"description\":null,"
+                + "\"requiresDoubleOptIn\":true,\"createdAt\":\"2026-01-10T08:00:00.000Z\"}],"
+                + "\"pagination\":{\"limit\":10,\"totalItems\":11,\"cursor\":\"c2\",\"isDone\":false}}";
+        PaginatedResponse<Topic> page = client().topics().list(PaginationParams.builder().limit(10).cursor("c1").build());
+        assertEquals("GET", method);
+        assertEquals("/api/v1/topics", rawPath);
+        assertEquals("limit=10&cursor=c1", query);
+        assertEquals("topic_1", page.getData().get(0).getId());
+        assertTrue(page.getData().get(0).requiresDoubleOptIn());
+        assertNull(page.getData().get(0).getDescription());
+        assertEquals("c2", page.getPagination().getCursor());
+    }
+
+    @Test
+    void topicsListWithoutParamsSendsNoQuery() {
+        responseBody = "{\"data\":[],\"pagination\":{\"limit\":25,\"totalItems\":0,\"cursor\":null,\"isDone\":true}}";
+        client().topics().list();
+        assertEquals("/api/v1/topics", rawPath);
+        assertNull(query);
+    }
+
+    @Test
     void topicsAddContactPostsToTopicContactsPath() throws IOException {
         client().topics().addContact(AddToTopicParams.builder("topic_42").email("user@example.com").build());
         assertEquals("POST", method);
@@ -186,6 +214,27 @@ class ResourceHttpTest {
     void transactionalGetUrlEncodesTheId() {
         client().transactional().get("a/b?c");
         assertEquals("/api/v1/transactional/a%2Fb%3Fc", rawPath);
+    }
+
+    // ── domains ─────────────────────────────────────────────────────────────
+
+    @Test
+    void domainsListReadsTheDomainsRoute() {
+        responseBody = "{\"data\":[{\"id\":\"d1\",\"domain\":\"news.example.com\",\"status\":\"failed\","
+                + "\"lastCheckedAt\":null,\"records\":[{\"purpose\":\"mail_from\",\"type\":\"MX\","
+                + "\"host\":\"bounce.news.example.com\",\"value\":\"feedback.owlat.example\",\"priority\":10,"
+                + "\"state\":\"wrong\",\"foundValue\":\"10 mx.example.net\"}]}]}";
+        List<SendingDomainSetup> domains = client().domains().list();
+        assertEquals("GET", method);
+        assertEquals("/api/v1/domains", rawPath);
+        assertEquals("", body);
+        assertEquals("failed", domains.get(0).getStatus());
+        assertNull(domains.get(0).getLastCheckedAt());
+        SendingDomainRecord record = domains.get(0).getRecords().get(0);
+        assertEquals("bounce.news.example.com", record.getHost());
+        assertEquals(10, record.getPriority());
+        assertEquals("wrong", record.getState());
+        assertEquals("10 mx.example.net", record.getFoundValue());
     }
 
     // ── status ──────────────────────────────────────────────────────────────

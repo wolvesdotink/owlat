@@ -14,6 +14,7 @@ import { internalQuery, type DatabaseReader } from '../_generated/server';
 import { campaignSendHold } from '../campaigns/sendHold';
 import { readSendJob } from '../campaigns/sendJob';
 import { loadDeliveryHealthReport, readSendingHoldRecord } from '../delivery/healthReport';
+import { loadSendingDomainSetups } from '../domains/recordStates';
 import { readSendingHold } from '../workspaces/abuseGate';
 import { clampText } from './prompt';
 
@@ -144,13 +145,27 @@ function suspensionForModel(hold: Awaited<ReturnType<typeof readSendingHoldRecor
 /**
  * Why delivery is or is not healthy, for the assistant: the shared report
  * (`delivery/healthReport.ts`), with the sending hold in the shape the model
- * reads.
+ * reads, and on each domain the DNS records it still needs
+ * (`domains/recordStates.ts`). A record goes to the model by name and state
+ * only: a DKIM key is long, and the value a check found is text from DNS, so
+ * the person reads both on the Domains page.
  */
 export const deliveryHealth = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const { hold, ...report } = await loadDeliveryHealthReport(ctx);
-		return { ...report, sendHold: suspensionForModel(hold) };
+		const { hold, domains: _domains, ...report } = await loadDeliveryHealthReport(ctx);
+		const setups = await loadSendingDomainSetups(ctx.db);
+		return {
+			...report,
+			domains: setups.map(({ domain, status, records }) => ({
+				domain,
+				status,
+				recordsToFix: records
+					.filter((record) => record.state !== 'found')
+					.map(({ purpose, type, host, state }) => ({ purpose, type, host, state })),
+			})),
+			sendHold: suspensionForModel(hold),
+		};
 	},
 });
 

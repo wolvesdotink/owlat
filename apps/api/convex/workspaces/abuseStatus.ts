@@ -17,7 +17,8 @@
  * it (`abuseStatusTrigger`), which is what lets the check lift its own
  * suspension (`analytics/reputationResume.ts`), and the hold a platform
  * admin's lift puts on the check (`reputationCheckHold`). Sending stopping or
- * resuming notifies owners and admins.
+ * resuming notifies owners and admins, and travels the deliverability alert
+ * channels (`delivery/sendingHoldAlerts.ts`).
  */
 
 import { v } from 'convex/values';
@@ -34,6 +35,7 @@ import {
 } from '../analytics/reputationEnforcement';
 import { MANUAL_LIFT_HOLD_MS } from '../analytics/reputationResume';
 import { readEnforcementEvidence } from '../analytics/reputationEvidence';
+import { scheduleSendingHoldAlert } from '../delivery/sendingHoldAlerts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +168,9 @@ function reduce(
 			abuseStatusChangedAt: input.at,
 			abuseStatusChangedBy: input.changedBy,
 			abuseStatusTrigger: trigger,
+			...(isSendingAllowed(from) !== isSendingAllowed(input.to)
+				? { sendingStoppedAt: isSendingAllowed(input.to) ? undefined : input.at }
+				: {}),
 			// Every lift replaces the hold (`null` clears it); otherwise it ends at
 			// its deadline. A warning or a suspension on another metric leaves it,
 			// or the held evidence would suspend again once that one clears.
@@ -228,6 +233,13 @@ async function dispatch(
 		await scheduleMarketingNotice(ctx, {
 			kind: isSendingAllowed(input.to) ? 'sending_resumed' : 'sending_suspended',
 			changedAt: input.at,
+		});
+		await scheduleSendingHoldAlert(ctx, {
+			before: settings,
+			after: { ...settings, ...result.patch } as Doc<'instanceSettings'>,
+			at: input.at,
+			reason: input.reason,
+			isPlatformAdmin: options.adminOverride,
 		});
 	}
 

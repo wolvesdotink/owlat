@@ -10823,6 +10823,7 @@
 							"contacts": "Kontakte auflisten oder anlegen",
 							"events": "Eigene Ereignisse erfassen",
 							"health": "Statusprüfung",
+							"openapi": "Das OpenAPI-Dokument dieser Instanz, für API-Clients und KI-Agenten",
 							"topics": "Themen und Abonnements verwalten",
 							"transactional": "Eine Transaktions-E-Mail senden (Slug im Body)"
 						},
@@ -10925,8 +10926,12 @@
 								"label": "Ereignisse — schreiben"
 							},
 							"statusRead": {
-								"description": "Sehen, ob diese Instanz senden kann, und warum nicht.",
+								"description": "Sehen, ob diese Instanz senden kann, warum nicht und welche DNS-Einträge jede Absenderdomain noch braucht.",
 								"label": "Status — lesen"
+							},
+							"topicsRead": {
+								"description": "Themen und die IDs auflisten, mit denen du Kontakte hinzufügst.",
+								"label": "Themen — lesen"
 							},
 							"topicsWrite": {
 								"description": "Kontakte zu Themen hinzufügen oder daraus entfernen.",
@@ -14390,7 +14395,12 @@
 			"noInbox": {
 				"title": "Noch kein Postfach zum Arbeiten",
 				"body": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank: was dich braucht, was sich getan hat und was angekommen ist. Verbinde ein Postfach, um loszulegen.",
-				"cta": "Postfach verbinden"
+				"cta": "Postfach verbinden",
+				"mailOff": {
+					"title": "Mail ist in diesem Workspace ausgeschaltet",
+					"bodyAdmin": "Jedes Postfach, das du liest, bekommt hier seine eigene Werkbank. Schalte unter Funktionen persönliche Mail oder externe Postfächer ein, um eines hinzuzufügen.",
+					"bodyMember": "Jedes Postfach, das du liest, bekäme hier seine eigene Werkbank. Ein Admin kann Mail einschalten."
+				}
 			}
 		},
 		"answer": {
@@ -16814,7 +16824,7 @@
 					"title": "E-Mail-Authentifizierung"
 				},
 				"bounces": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Unzustellbare Adressen prüfen",
 					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
 					"title": "Bounce-Rate",
 					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
@@ -16828,7 +16838,7 @@
 					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
 				},
 				"complaints": {
-					"action": "Unterdrückungen prüfen",
+					"action": "Beschwerden prüfen",
 					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
 					"title": "Beschwerderate",
 					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
@@ -19805,11 +19815,11 @@
 				},
 				"deliverabilityAlertRaised": {
 					"label": "Zustellbarkeitsalarm ausgelöst",
-					"description": "Wenn eine bestandene Zustellbarkeitsprüfung wieder fehlschlägt, etwa bei gesperrtem Port 25"
+					"description": "Wenn eine bestandene Zustellbarkeitsprüfung wieder fehlschlägt, etwa bei gesperrtem Port 25, oder der Versand auf der Instanz ausgesetzt wird"
 				},
 				"deliverabilityAlertResolved": {
 					"label": "Zustellbarkeitsalarm behoben",
-					"description": "Wenn ein Zustellbarkeitsalarm behoben ist"
+					"description": "Wenn ein Zustellbarkeitsalarm behoben ist oder der Versand wieder anläuft"
 				}
 			},
 			"updateOperation": "Webhook aktualisieren",

@@ -729,6 +729,8 @@ import type * as delivery_routingReentry from '../delivery/routingReentry.js';
 import type * as delivery_routingReentryToken from '../delivery/routingReentryToken.js';
 import type * as delivery_nonCampaignIntake from '../delivery/nonCampaignIntake.js';
 import type * as delivery_sendIntakeGates from '../delivery/sendIntakeGates.js';
+import type * as delivery_sendingHoldAlertEmail from '../delivery/sendingHoldAlertEmail.js';
+import type * as delivery_sendingHoldAlerts from '../delivery/sendingHoldAlerts.js';
 import type * as delivery_sendingHoldLift from '../delivery/sendingHoldLift.js';
 import type * as delivery_seedScheduledProbe from '../delivery/seedScheduledProbe.js';
 import type * as delivery_seedShadowCopy from '../delivery/seedShadowCopy.js';
@@ -812,6 +814,7 @@ import type * as domains_dmarcReportsHttp from '../domains/dmarcReportsHttp.js';
 import type * as domains_dmarcReportsNode from '../domains/dmarcReportsNode.js';
 import type * as domains_dmarcSources from '../domains/dmarcSources.js';
 import type * as domains_dnsMatch from '../domains/dnsMatch.js';
+import type * as domains_dnsRecordNames from '../domains/dnsRecordNames.js';
 import type * as domains_dnsVerification from '../domains/dnsVerification.js';
 import type * as domains_domains from '../domains/domains.js';
 import type * as domains_forwardedReportBody from '../domains/forwardedReportBody.js';
@@ -861,6 +864,7 @@ import type * as domains_providers_ses_relayVerification from '../domains/provid
 import type * as domains_providers_ses_returnPath from '../domains/providers/ses/returnPath.js';
 import type * as domains_providers_types from '../domains/providers/types.js';
 import type * as domains_queries from '../domains/queries.js';
+import type * as domains_recordStates from '../domains/recordStates.js';
 import type * as domains_returnPath from '../domains/returnPath.js';
 import type * as domains_returnPathProviders from '../domains/returnPathProviders.js';
 import type * as domains_reverification from '../domains/reverification.js';
@@ -1807,9 +1811,13 @@ import type * as providers_composition from '../providers/composition.js';
 import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
+import type * as publicApi_domains from '../publicApi/domains.js';
+import type * as publicApi_domainsHttp from '../publicApi/domainsHttp.js';
 import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_openApiHttp from '../publicApi/openApiHttp.js';
 import type * as publicApi_status from '../publicApi/status.js';
 import type * as publicApi_statusHttp from '../publicApi/statusHttp.js';
+import type * as publicApi_topics from '../publicApi/topics.js';
 import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
@@ -2736,6 +2744,8 @@ declare const fullApi: ApiFromModules<{
 	'delivery/routingReentryToken': typeof delivery_routingReentryToken;
 	'delivery/nonCampaignIntake': typeof delivery_nonCampaignIntake;
 	'delivery/sendIntakeGates': typeof delivery_sendIntakeGates;
+	'delivery/sendingHoldAlertEmail': typeof delivery_sendingHoldAlertEmail;
+	'delivery/sendingHoldAlerts': typeof delivery_sendingHoldAlerts;
 	'delivery/sendingHoldLift': typeof delivery_sendingHoldLift;
 	'delivery/seedScheduledProbe': typeof delivery_seedScheduledProbe;
 	'delivery/seedShadowCopy': typeof delivery_seedShadowCopy;
@@ -2822,6 +2832,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/dmarcReportsNode': typeof domains_dmarcReportsNode;
 	'domains/dmarcSources': typeof domains_dmarcSources;
 	'domains/dnsMatch': typeof domains_dnsMatch;
+	'domains/dnsRecordNames': typeof domains_dnsRecordNames;
 	'domains/dnsVerification': typeof domains_dnsVerification;
 	'domains/domains': typeof domains_domains;
 	'domains/forwardedReportBody': typeof domains_forwardedReportBody;
@@ -2871,6 +2882,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/ses/returnPath': typeof domains_providers_ses_returnPath;
 	'domains/providers/types': typeof domains_providers_types;
 	'domains/queries': typeof domains_queries;
+	'domains/recordStates': typeof domains_recordStates;
 	'domains/returnPath': typeof domains_returnPath;
 	'domains/returnPathProviders': typeof domains_returnPathProviders;
 	'domains/reverification': typeof domains_reverification;
@@ -4061,9 +4073,13 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/domains': typeof publicApi_domains;
+	'publicApi/domainsHttp': typeof publicApi_domainsHttp;
 	'publicApi/events': typeof publicApi_events;
+	'publicApi/openApiHttp': typeof publicApi_openApiHttp;
 	'publicApi/status': typeof publicApi_status;
 	'publicApi/statusHttp': typeof publicApi_statusHttp;
+	'publicApi/topics': typeof publicApi_topics;
 	'publicApi/v1Http': typeof publicApi_v1Http;
 }> & ApiFromModules<{
 	'push/config': typeof push_config;
