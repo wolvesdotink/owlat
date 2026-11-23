@@ -4,6 +4,7 @@ import { authClient, type AuthSessionData } from '~/lib/auth-client';
 import { resetConvexAuthTokenCache } from '~/lib/convex-auth';
 import { clearCachedFeatureFlags } from '~/lib/featureFlagCache';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
+import { authErrorCopy, signInErrorCopy } from '~/utils/authErrorCopy';
 
 type SessionData = AuthSessionData | null;
 
@@ -39,10 +40,10 @@ function delay(ms: number) {
  * session state — it never reaches a branch that produces copy — so outside a
  * component the fallbacks degrade to their key rather than taking the app down.
  */
-function authTranslator(): (key: string) => string {
+function authTranslator(): (key: string, named?: Record<string, unknown>) => string {
 	if (!getCurrentInstance()) return (key: string) => key;
 	const { t } = useI18n();
-	return (key: string) => t(key);
+	return (key: string, named?: Record<string, unknown>) => (named ? t(key, named) : t(key));
 }
 
 function toError(error: BetterFetchError | null, t: (key: string) => string): Error | null {
@@ -50,7 +51,7 @@ function toError(error: BetterFetchError | null, t: (key: string) => string): Er
 		return null;
 	}
 
-	return new Error(error.message || t('shared.useAuth.requestFailed'));
+	return new Error(authErrorCopy(t, error, 'shared.useAuth.requestFailed'));
 }
 
 function matchesExpectedSession(session: SessionData, options: RefreshSessionOptions): boolean {
@@ -224,7 +225,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signInFailed'));
+			throw new Error(signInErrorCopy(t, result.error));
 		}
 
 		// An account with TOTP enabled answers with `{ twoFactorRedirect: true }`
@@ -259,11 +260,10 @@ export function useAuth() {
 				: await authClient.twoFactor.verifyTotp({ code: input.code });
 
 		if (result.error) {
-			// Unlike the sibling calls above, the server's own message is NOT used:
-			// every failure here is "that code was not accepted" (wrong code, spent
-			// backup code, expired challenge), and BetterAuth phrases those as
-			// untranslated English prose that would land straight on the sign-in
-			// form. One catalog message says the same thing in the user's language.
+			// Unlike the sibling calls above, this reads no code: every failure
+			// here is "that code was not accepted" (wrong code, spent backup code,
+			// expired challenge), so one catalog message says it in the user's
+			// language.
 			throw new Error(t('shared.useAuth.twoFactorFailed'));
 		}
 
@@ -291,7 +291,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signUpFailed'));
+			throw new Error(authErrorCopy(t, result.error, 'shared.useAuth.signUpFailed'));
 		}
 
 		if (result.data?.token) {
@@ -344,7 +344,7 @@ export function useAuth() {
 		const result = await authClient.signOut();
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.signOutFailed'));
+			throw new Error(authErrorCopy(t, result.error, 'shared.useAuth.signOutFailed'));
 		}
 
 		// The next boot in this browser may be someone else's: drop the
@@ -371,7 +371,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.resetEmailFailed'));
+			throw new Error(authErrorCopy(t, result.error, 'shared.useAuth.resetEmailFailed'));
 		}
 
 		return result.data;
@@ -384,7 +384,7 @@ export function useAuth() {
 		});
 
 		if (result.error) {
-			throw new Error(result.error.message || t('shared.useAuth.resetPasswordFailed'));
+			throw new Error(authErrorCopy(t, result.error, 'shared.useAuth.resetPasswordFailed'));
 		}
 
 		return result.data;

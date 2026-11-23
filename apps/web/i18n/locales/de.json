@@ -656,7 +656,7 @@
 					"preview": "Vor dem Import prüfen",
 					"upload": "Lade eine Adressliste hoch"
 				},
-				"title": "Sperrliste importieren",
+				"title": "Unterdrückungen importieren",
 				"validAddresses": "Gültige Adressen",
 				"completeWithProblemsTitle": "Import mit Problemen abgeschlossen"
 			}
@@ -2418,14 +2418,14 @@
 					"audienceListIdHint": "Deine List-ID findest du in Mailchimp: Audience {chevron} Settings {chevron} Audience name and defaults",
 					"audienceListIdPlaceholder": "abc123def4",
 					"carrySuppressions": "Auch Sperren übernehmen",
-					"carrySuppressionsHint": "Abgemeldete Mitglieder werden als Opt-outs erfasst und bereinigte (hart abgewiesene) Adressen deiner Sperrliste hinzugefügt, sodass diese Audience nie erneut von Owlat angeschrieben wird. Übernommene Sperren laufen nicht ab.",
+					"carrySuppressionsHint": "Abgemeldete Mitglieder werden als Opt-outs erfasst und bereinigte (hart abgewiesene) Adressen deiner Unterdrückungsliste hinzugefügt, sodass diese Audience nie erneut von Owlat angeschrieben wird. Übernommene Unterdrückungen laufen nicht ab.",
 					"fieldMapping": "Feldzuordnung",
 					"handleDuplicates": "Umgang mit Duplikaten",
 					"mailchimpApiKey": "Mailchimp-API-Schlüssel",
 					"mailchimpApiKeyHint": "Deinen API-Schlüssel findest du in Mailchimp: Account {chevron} Extras {chevron} API keys",
 					"mailchimpApiKeyPlaceholder": "abc123def456-us21",
-					"mandrillBody": "Importiert die Rejection-Blacklist aus dem Mandrill-Konto, das im {apiKeyVar} dieser Installation konfiguriert ist — derselbe Schlüssel, den der Mandrill-Versandtransport verwendet. Hard Bounces, Soft Bounces und Spam-Beschwerden werden deiner Sperrliste hinzugefügt, {unsubEntry}-Einträge werden als Opt-outs erfasst, und Einträge, die dein Konto statt eines Empfängers beschreiben, werden ignoriert.",
-					"mandrillNote": "Es werden keine Kontakte importiert. Übernommene Sperren laufen nicht ab — entferne eine Adresse aus der Sperrliste, um sie wieder anzuschreiben.",
+					"mandrillBody": "Importiert die Rejection-Blacklist aus dem Mandrill-Konto, das im {apiKeyVar} dieser Installation konfiguriert ist — derselbe Schlüssel, den der Mandrill-Versandtransport verwendet. Hard Bounces, Soft Bounces und Spam-Beschwerden werden deiner Unterdrückungsliste hinzugefügt, {unsubEntry}-Einträge werden als Opt-outs erfasst, und Einträge, die dein Konto statt eines Empfängers beschreiben, werden ignoriert.",
+					"mandrillNote": "Es werden keine Kontakte importiert. Übernommene Unterdrückungen laufen nicht ab — entferne eine Adresse aus der Unterdrückungsliste, um sie wieder anzuschreiben.",
 					"restrictedKeyBody": "Erstelle aus Sicherheitsgründen einen eingeschränkten API-Schlüssel mit ausschließlich der Berechtigung \"Customers: Read\".",
 					"restrictedKeyTitle": "Verwende einen eingeschränkten Schlüssel",
 					"skipDuplicates": "Duplikate überspringen",
@@ -2475,8 +2475,8 @@
 						"name": "Mailchimp"
 					},
 					"mandrill": {
-						"description": "Die Rejection-Blacklist eines Mandrill-Kontos in deine Sperrliste übernehmen",
-						"name": "Mandrill-Sperrliste"
+						"description": "Die Rejection-Blacklist eines Mandrill-Kontos in deine Unterdrückungsliste übernehmen",
+						"name": "Mandrill-Unterdrückungsliste"
 					},
 					"stripe": {
 						"description": "Kunden aus deinem Stripe-Konto importieren",
@@ -3343,18 +3343,18 @@
 				"flagsOff": "Beide Integrationsimporte sind für diesen Workspace abgeschaltet. Aktiviere {mailchimpFlag} und {mandrillFlag} unter {settingsLink}, um deine Historie zu übernehmen.",
 				"importFailed": "Der Import ist fehlgeschlagen.",
 				"importingContacts": "Kontakte werden importiert…",
-				"importingSuppressions": "Sperrlisten werden importiert…",
+				"importingSuppressions": "Unterdrückungen werden importiert…",
 				"listIdLabel": "Audience-(Listen-)ID",
 				"listIdPlaceholder": "a1b2c3d4e5",
 				"mailchimpFlag": "Mailchimp-Import",
-				"mandrillFlag": "Mandrill-Sperrlisten-Import",
-				"nothingToCarry": "Nichts Neues zu übernehmen — die Sperrliste hier stimmt bereits überein.",
+				"mandrillFlag": "Mandrill-Unterdrückungsimport",
+				"nothingToCarry": "Nichts Neues zu übernehmen — die Unterdrückungsliste hier stimmt bereits überein.",
 				"processed": "{count} verarbeitet",
 				"runAgain": "Übernahme erneut ausführen",
 				"settingsLink": "Einstellungen → Funktionen",
 				"start": "Übernahme starten",
 				"startFailed": "Der Import konnte nicht gestartet werden.",
-				"suppressionStartFailed": "Der Sperrlisten-Import konnte nicht gestartet werden."
+				"suppressionStartFailed": "Der Import der Unterdrückungen konnte nicht gestartet werden."
 			},
 			"migrationPresetStep": {
 				"appliedEntry": "{write} angewendet",
@@ -3548,7 +3548,7 @@
 					"events": {
 						"deferral": "ein Empfänger hat Mandrill gebeten, es später erneut zu versuchen",
 						"hardBounce": "unterdrückt die Adresse und fließt in die Bounce-Prüfung ein",
-						"reject": "spiegelt Mandrills eigene Sperrliste in deine Unterdrückungsliste",
+						"reject": "spiegelt Mandrills eigene Blacklist in deine Unterdrückungsliste",
 						"send": "bestätigt, dass Mandrill die Nachricht angenommen hat",
 						"softBounce": "zählt in das Zurückstellungsbild dieses Arms ein",
 						"spam": "unterdrückt die Adresse und fließt in die Beschwerde-Prüfung ein",
@@ -8301,7 +8301,7 @@
 				"overview": "Übersicht",
 				"campaigns": "Kampagnen",
 				"newCampaign": "Neue Kampagne",
-				"automations": "Automatisierungen",
+				"automations": "Automationen",
 				"newTransactional": "Neue Transaktions-E-Mail",
 				"audience": "Zielgruppe",
 				"recentlyDeleted": "Zuletzt gelöscht",
@@ -11073,7 +11073,7 @@
 					}
 				},
 				"dangerZone": {
-					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
+					"body": "Das Löschen des Workspace entfernt dauerhaft seine Daten: Kontakte, Kampagnen, Vorlagen, Automationen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften und können sich weiterhin im geleerten Workspace anmelden. Diese Aktion kann nicht rückgängig gemacht werden.",
 					"heading": "Gefahrenbereich",
 					"subtitle": "Die Daten dieses Workspace dauerhaft löschen",
 					"title": "Workspace löschen"
@@ -11084,7 +11084,7 @@
 					"subtitle": "Das kann nicht rückgängig gemacht werden",
 					"title": "Workspace löschen",
 					"typeToConfirm": "Gib zur Bestätigung {phrase} ein",
-					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automatisierungen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
+					"warning": "{label} Dies löscht dauerhaft die Daten in {workspace}: Kontakte, Kampagnen, Vorlagen, Automationen, Postfächer samt Mails, Versanddomains, Auswertungen, Workspace-Einstellungen und gespeicherte API-Schlüssel, auch die des KI-Anbieters. Die Teammitglieder behalten ihre Konten und Mitgliedschaften. Du wirst sofort abgemeldet.",
 					"warningLabel": "Warnung:"
 				},
 				"inboxes": {
@@ -11700,9 +11700,9 @@
 					"title": "Kein Workspace ausgewählt"
 				},
 				"operations": {
-					"add": "Zur Sperrliste hinzufügen",
-					"import": "Sperrliste importieren",
-					"remove": "Aus der Sperrliste entfernen"
+					"add": "Unterdrückung hinzufügen",
+					"import": "Unterdrückungen importieren",
+					"remove": "Unterdrückung entfernen"
 				},
 				"pageTitle": "Unterdrückungen — Owlat",
 				"removeDescription": "Wenn du die Unterdrückung für „{email}“ entfernst, erhält diese Adresse wieder deine E-Mails.",
@@ -11969,15 +11969,15 @@
 					}
 				},
 				"index": {
-					"backToAutomations": "Zurück zu den Automatisierungen",
+					"backToAutomations": "Zurück zu den Automationen",
 					"completedOfEntered": "{completed} von {total} Kontakten haben alle Schritte abgeschlossen",
 					"completionRate": "Abschlussquote",
-					"completionRateLabel": "Abschlussquote der Automatisierung",
+					"completionRateLabel": "Abschlussquote der Automation",
 					"createdAt": "Erstellt {date}",
-					"editAutomation": "Automatisierung bearbeiten",
+					"editAutomation": "Automation bearbeiten",
 					"funnel": {
 						"configureSteps": "Schritte konfigurieren",
-						"emptyDescription": "Füge deiner Automatisierung Schritte hinzu, um Funnel-Analysen zu sehen",
+						"emptyDescription": "Füge deiner Automation Schritte hinzu, um Funnel-Analysen zu sehen",
 						"emptyTitle": "Keine Schritte konfiguriert",
 						"entered": "{count} eingetreten",
 						"executing": "{count} in Ausführung",
@@ -11989,16 +11989,16 @@
 						"trigger": "Auslöser",
 						"loadError": "Schritt-Trichter konnte nicht geladen werden"
 					},
-					"loading": "Automatisierung wird geladen …",
-					"notFoundDescription": "Diese Automatisierung wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
-					"notFoundTitle": "Automatisierung nicht gefunden",
-					"pageTitle": "Automatisierungsdetails — Owlat",
+					"loading": "Automation wird geladen …",
+					"notFoundDescription": "Diese Automation wurde möglicherweise gelöscht oder du hast keinen Zugriff darauf.",
+					"notFoundTitle": "Automation nicht gefunden",
+					"pageTitle": "Automationsdetails — Owlat",
 					"runs": {
 						"cancelled": "Abgebrochen",
 						"completed": "Abgeschlossen",
-						"emptyDescription": "Kontakte erscheinen hier, sobald die Automatisierung ausgelöst wird",
+						"emptyDescription": "Kontakte erscheinen hier, sobald die Automation ausgelöst wird",
 						"emptyFiltered": "Keine Durchläufe für diesen Filter",
-						"emptyTitle": "Noch keine Kontakte in dieser Automatisierung",
+						"emptyTitle": "Noch keine Kontakte in dieser Automation",
 						"failed": "Fehlgeschlagen",
 						"failedNote": "Durchläufe, die in den letzten 7 Tagen an einem fehlgeschlagenen Schritt geendet haben",
 						"inProgress": "In Bearbeitung",
@@ -12010,7 +12010,7 @@
 						"stalledNote": "Durchläufe, die in den letzten 7 Tagen hängen geblieben sind und beendet wurden",
 						"statusFilterLabel": "Kontakte nach Status filtern",
 						"stepAndTime": "Schritt {number} · {time}",
-						"title": "Kontakte in der Automatisierung",
+						"title": "Kontakte in der Automation",
 						"viewContact": "Kontakt ansehen"
 					},
 					"stats": {
@@ -12864,7 +12864,7 @@
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Absender blockieren",
-				"blockDialogDescription": "Künftige Nachrichten von „{sender}“ werden automatisch blockiert. Du kannst die Blockierung später unter „Sperrlisten“ aufheben.",
+				"blockDialogDescription": "Künftige Nachrichten von „{sender}“ werden automatisch blockiert. Du kannst die Blockierung später unter „Unterdrückungen“ aufheben.",
 				"blockDialogTitle": "Absender blockieren",
 				"blockOperation": "Absender blockieren",
 				"blockSender": "Absender blockieren",
@@ -13472,7 +13472,7 @@
 				"deletedItems": {
 					"analytics": "Analysen und Aktivitätsverlauf",
 					"apiKeys": "API-Schlüssel und Webhook-Konfigurationen",
-					"automations": "Automatisierungen und Workflows",
+					"automations": "Automationen und Workflows",
 					"chatMemberships": "Deine Chatnachrichten und Teammitgliedschaften",
 					"contacts": "Kontakte, Kampagnen und E-Mail-Vorlagen",
 					"externalAccounts": "Verbundene externe E-Mail-Konten und App-Passwörter",
@@ -13490,7 +13490,7 @@
 				"emailChangeRequested": "Prüfe deinen Posteingang, um die Änderung zu bestätigen",
 				"emailInvalid": "Gib eine gültige E-Mail-Adresse ein",
 				"emailUnchanged": "Das ist bereits deine Anmelde-E-Mail",
-				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten, deine gespeicherten Antworten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automatisierungen und weitere zugehörige Daten.",
+				"exportBody": "Du kannst deine Daten jederzeit exportieren. Der Export enthält deine Profilinformationen, dein persönliches Postfach und deine E-Mails, Entwürfe, verbundene externe Konten, deine Chatnachrichten, deine gespeicherten Antworten und deine Teammitgliedschaften. Für Teams, in denen du Inhaberin oder Administrator bist, enthält er außerdem Kontakte, Kampagnen, Automationen und weitere zugehörige Daten.",
 				"exportCsvAction": "CSV exportieren",
 				"exportCsvDescription": "CSV-Format für den einfachen Import in Tabellenkalkulationen oder andere E-Mail-Tools.",
 				"exportCsvFailed": "Kontakte konnten nicht exportiert werden",
@@ -14691,7 +14691,7 @@
 	},
 	"home": {
 		"capabilities": {
-			"automations": "Automatisierungen",
+			"automations": "Automationen",
 			"campaigns": "Kampagnen",
 			"ownMta": "Eigener MTA",
 			"personalMail": "Persönliche E-Mails",
@@ -14707,7 +14707,7 @@
 			"eyebrow": "Open Source · Selbst gehostet",
 			"getStarted": "Loslegen",
 			"logIn": "Anmelden",
-			"tagline": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automatisierungen, transaktionaler Versand, ein Team-Postfach und persönliche E-Mails — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
+			"tagline": "Owlat ist eine quelloffene, selbst gehostete E-Mail-Plattform. Kampagnen, Automationen, transaktionaler Versand, ein Team-Postfach und persönliche E-Mails — mit eigenem MTA und integrierten Werkzeugen für die Zustellbarkeit.",
 			"title": "Versende bessere E-Mails.",
 			"titleAccent": "Besitze den gesamten Stack."
 		},
@@ -14762,9 +14762,7 @@
 			"errors": {
 				"acceptFailed": "Die Einladung konnte nicht angenommen werden",
 				"unexpected": "Ein unerwarteter Fehler ist aufgetreten",
-				"incompleteLink": "Dieser Einladungslink ist unvollständig. Öffne ihn noch einmal aus der Einladungs-E-Mail.",
-				"notFound": "Diese Einladung ist abgelaufen oder wurde schon verwendet.",
-				"wrongRecipient": "Diese Einladung ging an eine andere Adresse als {email}. Melde dich mit der eingeladenen Adresse an, um sie anzunehmen."
+				"incompleteLink": "Dieser Einladungslink ist unvollständig. Öffne ihn noch einmal aus der Einladungs-E-Mail."
 			},
 			"getStarted": "Loslegen",
 			"joinTeamInboxOperation": "Team-Postfach beitreten",
@@ -15899,7 +15897,7 @@
 				"segments": "Segmente",
 				"sendingDomains": "Versanddomains",
 				"subscriptions": "Abonnements",
-				"suppressions": "Sperrlisten",
+				"suppressions": "Unterdrückungen",
 				"systemAndUpdates": "System & Updates",
 				"team": "Team",
 				"teamInboxes": "Team-Postfächer",
@@ -16230,7 +16228,7 @@
 				"audience": {
 					"contacts": "Kontakte",
 					"segments": "Segmente",
-					"suppressions": "Sperrlisten",
+					"suppressions": "Unterdrückungen",
 					"topics": "Themen"
 				},
 				"chat": {
@@ -16406,11 +16404,11 @@
 		"deliverabilityMeasurement": {
 			"cell": {
 				"automation": {
-					"apple": "Automatisierung → Apple",
-					"gmail": "Automatisierung → Gmail",
-					"microsoft": "Automatisierung → Microsoft",
-					"other": "Automatisierung → Überall sonst",
-					"yahoo": "Automatisierung → Yahoo"
+					"apple": "Automation → Apple",
+					"gmail": "Automation → Gmail",
+					"microsoft": "Automation → Microsoft",
+					"other": "Automation → Überall sonst",
+					"yahoo": "Automation → Yahoo"
 				},
 				"campaign": {
 					"apple": "Kampagne → Apple",
@@ -16507,7 +16505,7 @@
 				"relaysPlotted": "Alles Folgende wird an deiner eigenen Historie gemessen — die von dir verbundenen Relays haben zuletzt nichts von diesem Verkehr getragen, die Prüfungen hatten also nichts zum Vergleich. Die Tage, an denen sie ihn getragen haben, sind auf den Karten unten weiterhin eingezeichnet."
 			},
 			"stream": {
-				"automation": "Automatisierung",
+				"automation": "Automation",
 				"campaign": "Kampagne",
 				"transactional": "Transaktional"
 			},
@@ -16772,7 +16770,7 @@
 					"title": "E-Mail-Authentifizierung"
 				},
 				"bounces": {
-					"action": "Sperrliste prüfen",
+					"action": "Unterdrückungen prüfen",
 					"over": "{rate} deiner Mails sind zurückgekommen, über dem Limit von {limit}. Entferne unzustellbare Adressen vor der nächsten Kampagne.",
 					"title": "Bounce-Rate",
 					"under": "{rate} deiner Mails sind zurückgekommen, unter dem Limit von {limit}."
@@ -16786,7 +16784,7 @@
 					"usedUp": "Die Warm-up-Kapazität für heute ist aufgebraucht; Kampagnen laufen morgen weiter."
 				},
 				"complaints": {
-					"action": "Sperrliste prüfen",
+					"action": "Unterdrückungen prüfen",
 					"over": "{rate} der Empfänger haben sich beschwert, über der Grenze von {limit}. Bereinige deine Liste vor der nächsten Kampagne.",
 					"title": "Beschwerderate",
 					"under": "{rate} der Empfänger haben sich beschwert, unter der Grenze von {limit}."
@@ -17808,7 +17806,7 @@
 			"messageTypes": {
 				"automation": {
 					"description": "E-Mails aus automatisierten Journeys und Triggern",
-					"label": "Automatisierungen"
+					"label": "Automationen"
 				},
 				"campaign": {
 					"description": "Newsletter-Versand und Marketingkampagnen",
@@ -17845,7 +17843,7 @@
 			}
 		},
 		"quickCreate": {
-			"automation": "Automatisierung",
+			"automation": "Automation",
 			"campaign": "Kampagne",
 			"compose": "E-Mail verfassen",
 			"contact": "Kontakt",
@@ -18941,7 +18939,7 @@
 				"aiProviders": "KI-Anbieter",
 				"apiAndWebhooks": "API & Webhooks",
 				"automations": "Automationen",
-				"blocklist": "Sperrliste",
+				"blocklist": "Unterdrückungsliste",
 				"campaigns": "Kampagnen",
 				"connectedApps": "Verbundene Apps",
 				"contacts": "Kontakte",
@@ -19017,7 +19015,7 @@
 				"all": "Alle Ressourcen",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automationen",
-				"blocklist": "Sperrliste",
+				"blocklist": "Unterdrückungsliste",
 				"campaign": "Kampagnen",
 				"connectedApp": "Verbundene Apps",
 				"contact": "Kontakte",
@@ -19036,7 +19034,7 @@
 				"aiRoutingPolicy": "KI-Routing-Richtlinie",
 				"apiKey": "API-Schlüssel",
 				"automation": "Automation",
-				"blocklist": "Sperrliste",
+				"blocklist": "Unterdrückungsliste",
 				"campaign": "Kampagne",
 				"connectedApp": "Verbundene App",
 				"contact": "Kontakt",
@@ -19068,6 +19066,29 @@
 					"other": "vor {count} Minuten"
 				}
 			}
+		},
+		"authErrors": {
+			"invalidCredentials": "E-Mail-Adresse oder Passwort stimmt nicht.",
+			"invalidEmail": "Gib eine gültige E-Mail-Adresse ein.",
+			"passwordTooShort": "Dieses Passwort ist zu kurz.",
+			"passwordTooLong": "Dieses Passwort ist zu lang.",
+			"emailNotVerified": "Bestätige zuerst deine E-Mail-Adresse. Den Link findest du in der E-Mail, die wir dir geschickt haben.",
+			"accountExists": "Mit dieser E-Mail-Adresse gibt es schon ein Konto. Melde dich stattdessen an.",
+			"signUpDisabled": "Die Registrierung ist auf dieser Instanz ausgeschaltet.",
+			"inviteOnly": "Auf dieser Instanz kannst du dich nur mit einer Einladung registrieren. Bitte jemanden mit Admin-Rechten, dich einzuladen.",
+			"setupRequired": "Bevor sich jemand registrieren kann, muss ein Admin die Einrichtung dieser Instanz abschließen.",
+			"linkInvalid": "Dieser Link ist abgelaufen oder wurde schon verwendet. Fordere einen neuen an.",
+			"invitationNotFound": "Diese Einladung ist abgelaufen oder wurde schon verwendet.",
+			"wrongRecipient": "Diese Einladung ging an eine andere Adresse als {email}. Melde dich mit der eingeladenen Adresse an, um sie anzunehmen.",
+			"alreadyMember": "Diese Person ist schon Mitglied des Workspace.",
+			"alreadyInvited": "Diese Person hat schon eine offene Einladung.",
+			"notAllowed": "Deine Rolle erlaubt das nicht.",
+			"roleNotAllowed": "Mit deiner Rolle kannst du niemanden mit dieser Rolle einladen.",
+			"memberNotFound": "Diese Person ist nicht mehr Mitglied des Workspace. Lade die Liste neu.",
+			"invitationLimit": "Der Workspace hat die Höchstzahl offener Einladungen erreicht.",
+			"membershipLimit": "Der Workspace hat die Höchstzahl an Mitgliedern erreicht.",
+			"lastOwner": "Der Workspace braucht einen Eigentümer. Übertrage zuerst die Eigentümerschaft.",
+			"tooManyAttempts": "Zu viele Versuche. Warte ein paar Minuten und versuch es dann noch einmal."
 		},
 		"useAuth": {
 			"requestFailed": "Authentifizierungsanfrage fehlgeschlagen",
@@ -20052,7 +20073,7 @@
 				"teamThread": "Unterhaltung im Team-Postfach",
 				"campaign": "Kampagne",
 				"contact": "Kontakt",
-				"automation": "Automatisierung",
+				"automation": "Automation",
 				"template": "Vorlage"
 			}
 		},
@@ -20433,7 +20454,7 @@
 				},
 				"automations": {
 					"description": "Auslöserbasierte, mehrstufige Workflows (Willkommensserien, Drip-Kampagnen).",
-					"label": "Automatisierungen"
+					"label": "Automationen"
 				},
 				"billing": {
 					"stripe": {
@@ -20479,8 +20500,8 @@
 						"label": "Mailchimp-Import"
 					},
 					"mandrill": {
-						"description": "Die Ablehnungsliste eines Mandrill-Kontos (Bounces, Beschwerden, Abmeldungen) bei der Migration in die Sperrliste übernehmen.",
-						"label": "Mandrill-Sperrlisten-Import"
+						"description": "Die Ablehnungsliste eines Mandrill-Kontos (Bounces, Beschwerden, Abmeldungen) bei der Migration in die Unterdrückungsliste übernehmen.",
+						"label": "Mandrill-Unterdrückungsimport"
 					},
 					"stripe": {
 						"description": "Stripe-Kunden mit Umsatzeigenschaften in Owlat-Kontakte synchronisieren.",
@@ -20568,7 +20589,7 @@
 					"label": "E-Mail-Client"
 				},
 				"marketing": {
-					"description": "Kampagnen, Automatisierungen und die transaktionale API.",
+					"description": "Kampagnen, Automationen und die transaktionale API.",
 					"label": "Marketing"
 				}
 			}
@@ -20581,7 +20602,7 @@
 			},
 			"full": {
 				"audience": "Marketing, persönliche und Team-Mail sowie KI in einem.",
-				"description": "Alles: Kampagnen, Automatisierungen, transaktionaler Versand, gemeinsames Postfach, Chat, gehostete Postbox, externe Postfächer und die vollständige KI-Suite.",
+				"description": "Alles: Kampagnen, Automationen, transaktionaler Versand, gemeinsames Postfach, Chat, gehostete Postbox, externe Postfächer und die vollständige KI-Suite.",
 				"label": "Full Stack"
 			},
 			"hosted_mail": {
@@ -20595,8 +20616,8 @@
 				"label": "Nur IMAP (lesen + persönlich antworten)"
 			},
 			"marketing": {
-				"audience": "Kampagnen, Automatisierungen und Formulare für eine Kontaktliste betreiben.",
-				"description": "Broadcast-Kampagnen, Drip-Automatisierungen, Anmeldeformulare und die transaktionale API über einen Zustellungsanbieter mit einer verifizierten, authentifizierten Versanddomain.",
+				"audience": "Kampagnen, Automationen und Formulare für eine Kontaktliste betreiben.",
+				"description": "Broadcast-Kampagnen, Drip-Automationen, Anmeldeformulare und die transaktionale API über einen Zustellungsanbieter mit einer verifizierten, authentifizierten Versanddomain.",
 				"label": "Marketing-Plattform"
 			},
 			"team_inbox": {

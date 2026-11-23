@@ -14762,9 +14762,7 @@
 			"errors": {
 				"acceptFailed": "Failed to accept invitation",
 				"unexpected": "An unexpected error occurred",
-				"incompleteLink": "This invitation link is incomplete. Open it again from the invitation email.",
-				"notFound": "This invitation has expired or was already used.",
-				"wrongRecipient": "This invitation was sent to a different address than {email}. Sign in with the invited address to accept it."
+				"incompleteLink": "This invitation link is incomplete. Open it again from the invitation email."
 			},
 			"getStarted": "Get started",
 			"joinTeamInboxOperation": "Join team inbox",
@@ -19068,6 +19066,29 @@
 					"other": "{count} minutes ago"
 				}
 			}
+		},
+		"authErrors": {
+			"invalidCredentials": "The email address or password is not correct.",
+			"invalidEmail": "Enter a valid email address.",
+			"passwordTooShort": "This password is too short.",
+			"passwordTooLong": "This password is too long.",
+			"emailNotVerified": "Confirm your email address first. The link is in the email we sent you.",
+			"accountExists": "An account with this email address already exists. Sign in instead.",
+			"signUpDisabled": "Registration is turned off on this instance.",
+			"inviteOnly": "You can only register on this instance with an invitation. Ask an admin to invite you.",
+			"setupRequired": "An admin has to finish setting up this instance before anyone can register.",
+			"linkInvalid": "This link has expired or was already used. Request a new one.",
+			"invitationNotFound": "This invitation has expired or was already used.",
+			"wrongRecipient": "This invitation was sent to a different address than {email}. Sign in with the invited address to accept it.",
+			"alreadyMember": "This person is already a member of the workspace.",
+			"alreadyInvited": "This person already has an open invitation.",
+			"notAllowed": "Your role does not allow this.",
+			"roleNotAllowed": "Your role cannot invite people with this role.",
+			"memberNotFound": "This person is no longer a member of the workspace. Reload the list.",
+			"invitationLimit": "The workspace has reached its limit of open invitations.",
+			"membershipLimit": "The workspace has reached its member limit.",
+			"lastOwner": "The workspace needs an owner. Transfer ownership first.",
+			"tooManyAttempts": "Too many attempts. Wait a few minutes, then try again."
 		},
 		"useAuth": {
 			"requestFailed": "Authentication request failed",
