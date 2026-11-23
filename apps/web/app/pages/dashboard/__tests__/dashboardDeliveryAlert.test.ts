@@ -4,13 +4,14 @@
  * German reader gets the German sentence, not the backend's English.
  *
  * The no-inbox empty state waits for the live feature flags: until they
- * answer (a slow first read times out and answers later), the mail flags read
- * as off and the inbox list is not read, so the page would claim mail is off
- * in a workspace that has it.
+ * answer, the mail flags read as off and the inbox list is not read, so the
+ * page would claim mail is off in a workspace that has it. A failed flags read
+ * shows the query boundary's error with Try again instead, and a late answer
+ * (a slow first read times out, then delivers) clears it.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { defineComponent, nextTick, ref } from 'vue';
 import {
 	dashboardShellStubs,
 	installNuxtStubs,
@@ -30,6 +31,19 @@ import DashboardHome from '../index.vue';
 
 const flagsLoading = ref(false);
 const flagsError = ref<Error | null>(null);
+const refetchFlags = vi.fn();
+
+/** The boundary's contract, without its copy: error → marker + retry, else the content. */
+const QueryBoundaryStub = defineComponent({
+	props: { error: { type: null, default: null } },
+	emits: ['retry'],
+	template: `
+		<div v-if="error" data-testid="query-error">
+			<button type="button" data-testid="query-retry" @click="$emit('retry')" />
+		</div>
+		<slot v-else />
+	`,
+});
 
 const NuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 
@@ -73,6 +87,7 @@ beforeEach(() => {
 			isEnabled: () => false,
 			isLoading: flagsLoading,
 			error: flagsError,
+			refetch: refetchFlags,
 		}),
 		useDeliveryHealth,
 		useFeatureOffNotice,
@@ -97,7 +112,10 @@ describe('dashboard delivery alert', () => {
 describe('dashboard with no inbox', () => {
 	function mountHome() {
 		return mount(DashboardHome, {
-			global: { plugins: [germanTestI18n()], stubs: { ...FEATURE_STUBS, NuxtLink: NuxtLinkStub } },
+			global: {
+				plugins: [germanTestI18n()],
+				stubs: { ...FEATURE_STUBS, NuxtLink: NuxtLinkStub, UiQueryBoundary: QueryBoundaryStub },
+			},
 		});
 	}
 
@@ -113,12 +131,20 @@ describe('dashboard with no inbox', () => {
 		expect(mountHome().find('today-no-inbox-stub').exists()).toBe(true);
 	});
 
-	it('keeps waiting when the first flags read timed out', () => {
+	it('shows a failed flags read with a retry, and clears it when a late answer arrives', async () => {
 		flagsError.value = new Error('Convex query subscription timed out');
 		try {
-			const timedOut = mountHome();
-			expect(timedOut.find('today-no-inbox-stub').exists()).toBe(false);
-			expect(timedOut.find('ui-skeleton-stub').exists()).toBe(true);
+			const failed = mountHome();
+			expect(failed.find('[data-testid="query-error"]').exists()).toBe(true);
+			expect(failed.find('ui-skeleton-stub').exists()).toBe(false);
+			expect(failed.find('today-no-inbox-stub').exists()).toBe(false);
+			await failed.get('[data-testid="query-retry"]').trigger('click');
+			expect(refetchFlags).toHaveBeenCalledTimes(1);
+
+			flagsError.value = null;
+			await nextTick();
+			expect(failed.find('[data-testid="query-error"]').exists()).toBe(false);
+			expect(failed.find('today-no-inbox-stub').exists()).toBe(true);
 		} finally {
 			flagsError.value = null;
 		}

@@ -41,11 +41,14 @@ const { hasActiveOrganization } = useOrganizationContext();
 // The team-inbox tab (and its Done / Reply anyway) exists for admins only.
 const { isAdmin } = usePermissions();
 // Until the live flags answer, the mail flags may read as off and the inbox
-// list goes unread, so the no-inbox state would wrongly say mail is off. A slow
-// first read times out with an error and still answers later, so an error
-// waits too.
-const { isEnabled, isLoading: flagsLoading, error: flagsError } = useFeatureFlag();
-const flagsPending = computed(() => flagsLoading.value || flagsError.value !== null);
+// list goes unread, so the no-inbox state would wrongly say mail is off: it
+// waits for them, and a failed read shows its error instead.
+const {
+	isEnabled,
+	isLoading: flagsLoading,
+	error: flagsError,
+	refetch: refetchFlags,
+} = useFeatureFlag();
 const userId = computed(() => user.value?.id ?? null);
 const firstName = computed(() => user.value?.name?.split(' ')[0] ?? '');
 
@@ -341,11 +344,16 @@ useWorkbenchKeyboard({
 			/>
 		</div>
 
-		<div v-if="(inboxesLoading || flagsPending) && tabs.length === 0" class="mt-8 space-y-3">
+		<div v-if="(inboxesLoading || flagsLoading) && tabs.length === 0" class="mt-8 space-y-3">
 			<UiSkeleton class="h-9 w-full max-w-80" />
 			<UiSkeleton class="h-36 w-full rounded-2xl" />
 		</div>
 
+		<UiQueryBoundary
+			v-else-if="flagsError && tabs.length === 0"
+			:error="flagsError"
+			@retry="refetchFlags"
+		/>
 		<UiQueryBoundary
 			v-else-if="inboxRead.error.value && tabs.length === 0"
 			:error="inboxRead.error.value"
