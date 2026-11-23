@@ -4,7 +4,7 @@
  * status named here.
  */
 
-import type { ApiErrorReason } from './types';
+import type { ApiErrorReason } from './errorReasons';
 
 export const ERROR_REASON_STATUS: Record<ApiErrorReason, number> = {
 	missing_credentials: 401,
