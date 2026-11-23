@@ -1,6 +1,6 @@
 /**
  * Internal read accessors for the AI assistant's data tools (getCampaignStats,
- * getEmailStats, draftEmailReply). The conversation runner is a scheduled
+ * getEmailStats, getDeliveryHealth, draftEmailReply). The conversation runner is a scheduled
  * action with no user identity, so the tool layer reaches these `internalQuery`
  * functions rather than the authed UI queries. Single-org deployment, so there
  * is nothing to scope beyond the one tenant's data.
@@ -10,10 +10,15 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
+import { internalQuery, type DatabaseReader } from '../_generated/server';
+import { readOrgReputation } from '../analytics/reputationQueries';
 import { campaignSendHold } from '../campaigns/sendHold';
 import { readSendJob } from '../campaigns/sendJob';
+import { loadDeliveryHealth } from '../delivery/health';
+import { DELIVERY_HEALTH_EXPLANATIONS } from '../delivery/healthCopy';
 import { readSendingHold } from '../workspaces/abuseGate';
+import { clampText } from './prompt';
 
 /** Rate as a percentage to one decimal place, or null when the denominator is 0. */
 function pct(num: number, den: number): number | null {
@@ -74,17 +79,99 @@ export const campaignStats = internalQuery({
 			)
 			.take(limit);
 		// The same hold the campaign report shows, so "why is it not sending"
-		// has an answer: a suspended workspace holds every sending campaign.
+		// has an answer: a suspended workspace holds every sending campaign, and
+		// a held campaign carries the reason recorded for the suspension.
 		const hold = await readSendingHold(ctx.db);
+		const suspension = await readSuspension(ctx.db);
 		const campaigns = [];
 		for (const campaign of matches) {
 			const job = await readSendJob(ctx, campaign._id);
+			const sendHold = campaignSendHold({ campaign, job, hold });
 			campaigns.push({
 				...campaignSnapshot(campaign),
-				sendHold: campaignSendHold({ campaign, job, hold }),
+				sendHold:
+					sendHold?.kind === 'held'
+						? { ...sendHold, reason: suspension?.reason ?? null }
+						: sendHold,
 			});
 		}
 		return { campaigns };
+	},
+});
+
+/** Longest stored suspension reason handed to the model. */
+const MAX_SUSPENSION_REASON = 500;
+
+/**
+ * The suspension or ban in force, with the reason and time the status was
+ * recorded, or `null` while sending is allowed. A lift keeps the old reason on
+ * the row, so it is read only while the status still holds. The same fields
+ * `getSendingOverview` returns to every member.
+ */
+async function readSuspension(db: DatabaseReader) {
+	const settings = await db.query('instanceSettings').first();
+	const status = settings?.abuseStatus;
+	if (status !== 'suspended' && status !== 'banned') return null;
+	return {
+		status,
+		reason: settings?.abuseStatusReason
+			? clampText(settings.abuseStatusReason, MAX_SUSPENSION_REASON)
+			: null,
+		since:
+			settings?.abuseStatusChangedAt !== undefined
+				? new Date(settings.abuseStatusChangedAt).toISOString()
+				: null,
+	};
+}
+
+/** A rate (0–1) as a percentage to three decimals, next to its limit. */
+function rateAgainstLimit(rate: number, limit: number) {
+	const asPct = (value: number) => Math.round(value * 100_000) / 1000;
+	return { ratePct: asPct(rate), limitPct: asPct(limit), isOver: rate >= limit };
+}
+
+/**
+ * Why delivery is or is not healthy, for the assistant. The sidebar dot's
+ * roll-up with its reason explained in English, plus the member-visible facts
+ * behind it: each sending domain's verification status, the org's rolling
+ * bounce and complaint rates against the limits the delivery hub shows, and the
+ * sending hold. Nothing here is admin-only; the Deliverability Center's checks
+ * (`delivery/checklist.ts`) stay out.
+ */
+export const deliveryHealth = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const verdict = await loadDeliveryHealth(ctx);
+		const { sentence, fix } = DELIVERY_HEALTH_EXPLANATIONS[verdict.reasonCode];
+		const explanation = Object.entries(verdict.reasonParams ?? {}).reduce(
+			(text, [name, value]) => text.replaceAll(`{${name}}`, value),
+			sentence as string
+		);
+
+		const domainRows = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
+		const reputation = await readOrgReputation(ctx.db);
+		return {
+			level: verdict.level,
+			reasonCode: verdict.reasonCode,
+			explanation,
+			fix,
+			domains: domainRows.map((row) => ({ domain: row.domain, status: row.status })),
+			// The limit is the one the delivery hub's tiles and the marketing
+			// overview quote; past it the reputation verdict starts to warn.
+			rates: reputation
+				? {
+						// The summarizer's rolling window (`analytics/sendingReputation.ts`).
+						windowDays: 30,
+						sent: reputation.totalSent,
+						bounce: rateAgainstLimit(reputation.bounceRate, REPUTATION_THRESHOLDS.bounce.medium),
+						complaint: rateAgainstLimit(
+							reputation.complaintRate,
+							REPUTATION_THRESHOLDS.complaint.medium
+						),
+					}
+				: null,
+			sendHold: await readSuspension(ctx.db),
+		};
 	},
 });
 
