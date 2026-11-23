@@ -5,7 +5,7 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiHandlers';
-import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { jsonResponse, errorResponse, errorResponseFromThrow } from '../auth/apiResponses';
 import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import type { SendEventResponse } from '@owlat/public-contract';
 import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
@@ -64,9 +64,8 @@ export const sendEvent = createAuthenticatedHandler(
 				createContactIfNotExists,
 				...(idempotency ? { idempotency } : {}),
 			});
-		} catch {
-			// Locked error envelope — do not echo the raw internal error message.
-			return errorResponse('invalid_input', 'Failed to send event');
+		} catch (error) {
+			return errorResponseFromThrow(error, 'Failed to send event');
 		}
 
 		if (!result.ok) {

@@ -10,10 +10,12 @@ import { corsHeaders as sharedCorsHeaders } from '../lib/cors';
 import {
 	jsonResponse as libJsonResponse,
 	errorResponse as libErrorResponse,
+	errorResponseFromThrow as libErrorResponseFromThrow,
 	methodNotAllowed as libMethodNotAllowed,
 } from '../lib/httpResponse';
+import { logError } from '../lib/runtimeLog';
 import { safeDecodeURIComponent } from '../lib/inputGuards';
-import type { OperationErrorCategory } from '@owlat/shared/operationError';
+import { extractOperationError, type OperationErrorCategory } from '@owlat/shared/operationError';
 
 /**
  * Rate limit headers to include in responses
@@ -81,6 +83,19 @@ export function errorResponse(
 		composed['Retry-After'] = String(retryAfter);
 	}
 	return libErrorResponse(category, message, data, composed);
+}
+
+/**
+ * API-key posture answer to a backend call that threw. An Operation error keeps
+ * its category and status (a write refused by the deletion fence is a 422, not
+ * the caller's 400); any other throw is a 500 with the route's fixed
+ * `fallbackMessage`, and its raw text goes to the log, never to the body. The
+ * SDKs treat a 400 as the caller's mistake and never retry it, so a transient
+ * fault must not be answered as one.
+ */
+export function errorResponseFromThrow(error: unknown, fallbackMessage: string): Response {
+	if (!extractOperationError(error)) logError('API handler error:', error);
+	return libErrorResponseFromThrow(error, sharedCorsHeaders(undefined, undefined), fallbackMessage);
 }
 
 /**

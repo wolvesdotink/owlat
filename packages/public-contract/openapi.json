@@ -353,6 +353,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
 					"429": {
 						"description": "Too many requests; retry after the `Retry-After` header.",
 						"headers": {
@@ -657,6 +667,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
 					"429": {
 						"description": "Too many requests; retry after the `Retry-After` header.",
 						"headers": {
@@ -783,6 +803,16 @@
 					},
 					"404": {
 						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -963,6 +993,16 @@
 					},
 					"409": {
 						"description": "The request conflicts with existing data or reuses an Idempotency-Key.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -1476,6 +1516,16 @@
 							}
 						}
 					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
 					"429": {
 						"description": "Too many requests; retry after the `Retry-After` header.",
 						"headers": {
@@ -1613,6 +1663,16 @@
 					},
 					"404": {
 						"description": "A resource the request names does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiErrorResponse"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "The workspace is not in a state that can carry out the request.",
 						"content": {
 							"application/json": {
 								"schema": {
