@@ -17,7 +17,8 @@ import { v } from 'convex/values';
 import { internalQuery, internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { publicQuery } from '../lib/authedFunctions';
-import { postboxMutation } from './_helpers';
+import { postboxMutation, postboxQuery } from './_helpers';
+import { getOptional } from '../lib/env';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
@@ -130,6 +131,22 @@ export const generate = postboxMutation({
 		});
 
 		return { id, cleartext };
+	},
+});
+
+// The host a native mail client connects to for IMAP and SMTP submission. The
+// IMAP server greets as EHLO_HOSTNAME and its default certificate is issued for
+// it, and the MTA that runs the submission listeners announces the same name,
+// so it is the one value a client can use for both. `mailHost` is null when
+// EHLO_HOSTNAME is unset, and the page then tells the user to ask their admin
+// instead of guessing.
+// all-members: any member with a mailbox sets up a mail client, and the value is
+// a public DNS name with no credential or internal address in it.
+export const clientConnection = postboxQuery({
+	args: {},
+	handler: async () => {
+		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
+		return { mailHost };
 	},
 });
 

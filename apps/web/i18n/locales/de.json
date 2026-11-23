@@ -13601,6 +13601,7 @@
 				"generate": "Erzeugen",
 				"generateDialogTitle": "App-Passwort erzeugen",
 				"generating": "Wird erzeugt…",
+				"hostUnknown": "Frag deine Administration nach der Adresse des Mailservers.",
 				"imapLabel": "IMAP",
 				"imapValue": "{host}:993 (TLS)",
 				"labelLabel": "Bezeichnung",
