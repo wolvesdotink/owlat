@@ -196,19 +196,29 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 		});
 	});
 
-	it('returns abuse_blocked when the instance is suspended', async () => {
+	it('returns abuse_blocked with the stored reason and since-when when the instance is suspended', async () => {
 		const t = convexTest(schema, modules);
 		await verifySendingDomain(t);
+		const changedAt = Date.UTC(2026, 10, 20, 9, 0, 0);
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'instanceSettings',
-				createTestInstanceSettings({ abuseStatus: 'suspended' })
+				createTestInstanceSettings({
+					abuseStatus: 'suspended',
+					abuseStatusReason: 'Auto-suspended: complaint rate exceeded critical thresholds',
+					abuseStatusChangedAt: changedAt,
+				})
 			);
 		});
 
 		const outcome = await enqueueAutomation(t, 'allowed@example.com');
 
-		expect(outcome).toEqual({ ok: false, reason: 'abuse_blocked' });
+		expect(outcome).toEqual({
+			ok: false,
+			reason: 'abuse_blocked',
+			detail: 'Auto-suspended: complaint rate exceeded critical thresholds',
+			abuse: { status: 'suspended', since: changedAt },
+		});
 		await expectNothingWritten(t);
 	});
 
@@ -222,9 +232,10 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 			);
 		});
 
-		expect(await enqueueAutomation(t, 'allowed@example.com')).toEqual({
+		expect(await enqueueAutomation(t, 'allowed@example.com')).toMatchObject({
 			ok: false,
 			reason: 'abuse_blocked',
+			abuse: { status: 'banned', since: null },
 		});
 	});
 
@@ -247,7 +258,7 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 			);
 		});
 
-		expect(await enqueueAutomation(t, 'blocked@example.com')).toEqual({
+		expect(await enqueueAutomation(t, 'blocked@example.com')).toMatchObject({
 			ok: false,
 			reason: 'abuse_blocked',
 		});

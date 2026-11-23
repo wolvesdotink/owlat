@@ -15,7 +15,7 @@ import type { WithoutSystemFields } from 'convex/server';
 import type { Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { IdempotencyRefusalReason } from '../auth/apiRequestReceipts';
-import type { SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
+import type { SendIntakeAbuseState, SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
 import type { WorkerEnvelopeInput } from '../delivery/workerEnvelope';
 import type { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
@@ -54,6 +54,8 @@ export type DispatchRefusal = {
 	ok: false;
 	reason: DispatchRejectionReason;
 	detail?: string;
+	/** Set on `abuse_blocked`: the status that refused, and since when. */
+	abuse?: SendIntakeAbuseState;
 	/** Set on the volume-cap refusals: when the cap admits the next send. */
 	retryAfterMs?: number;
 };
